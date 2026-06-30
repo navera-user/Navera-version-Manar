@@ -1,0 +1,14 @@
+/**:
+  ros__parameters:
+    camera_type: "day"
+    topic_ns: "day"
+    source: "csv"
+    fps: 0.1
+    loop: false
+    frame_id: "day_camera_link"
+    image_encoding: "bgr8"
+    default_gps_valid: true
+    csv_path: ""
+    images_dir: ""
+    width: 1920
+    height: 1080

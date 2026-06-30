@@ -1,0 +1,14 @@
+/**:
+  ros__parameters:
+    camera_type: "thermal"
+    topic_ns: "thermal"
+    source: "csv"
+    fps: 0.1
+    loop: false
+    frame_id: "thermal_camera_link"
+    image_encoding: "mono8"
+    default_gps_valid: false
+    csv_path: ""
+    images_dir: ""
+    width: 640
+    height: 480

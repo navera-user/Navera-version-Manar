@@ -1,0 +1,10 @@
+FROM navera_isaac_ros:stable
+
+# Fix NumPy
+RUN pip install "numpy<2" --break-system-packages --force-reinstall
+
+# S'assure que flask est là
+RUN pip install flask flask-cors --break-system-packages
+
+USER admin
+WORKDIR /workspaces/isaac_ros-dev

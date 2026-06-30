@@ -1,0 +1,72 @@
+# Ignore all pycache files
+**/__pycache__/**
+*.py[cod]
+*.egg-info/
+*.egg-link
+
+# Ignore config files
+.isaac_ros_common-config
+
+# ROS 2 / colcon build artifacts
+build/
+install/
+log/
+
+# Large binaries / datasets / model weights (do NOT commit)
+*.npz
+*.mbtiles
+*.safetensors
+*.pth
+*.pt
+*.ckpt
+*.fits
+*.h5
+*.onnx
+*.engine
+*.tif
+
+# Nested vendored repo (kept as an independent repository)
+night_pkg/STHN/
+
+# Replay / test images (data, not source — provided separately)
+*.jpg
+*.jpeg
+
+# Backup files
+*.backup
+*.BACKUP
+*.backup-*
+*.bak
+*.bak_*
+
+# Runtime logs
+*.log
+
+# Astrometry solver outputs (generated)
+*.xyls
+*.wcs
+*.solved
+*.rdls
+*.match
+*.corr
+*.axy
+*.new
+# Caches de modeles telecharges (ne pas committer)
+.torch_cache/
+.cache/
+model_cache/
+*.mbtiles-shm
+*.mbtiles-wal
+
+# Caches de modèles téléchargés (ne pas committer)
+.torch_cache/
+.cache/
+model_cache/
+*.mbtiles-shm
+*.mbtiles-wal
+torch_jetson/
+*.whl
+*.so
+*.so.*
+torchgen/
+functorch/

@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>cn_pkg</name>
+  <version>0.0.1</version>
+  <description>NAVERA Celestial Navigation — ROS2 subscriber that consumes /celestial/* topics from camera_pkg and produces position fixes via astrometry.net.</description>
+  <maintainer email="navera@example.com">Navera</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+
+  <depend>rclpy</depend>
+  <depend>launch</depend>
+  <depend>launch-ros</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>cv_bridge</depend>
+
+  <!-- System tools the astrometry solve chain shells out to (drone_sky_prep.py):
+       netpbm → jpegtopnm, needed by solve-field to decode the JPEG sky image. -->
+  <exec_depend>netpbm</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

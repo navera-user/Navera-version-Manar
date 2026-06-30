@@ -1,0 +1,5 @@
+imu_node:
+  ros__parameters:
+    # I2C bus: Jetson Orin Nano = 7 (pins 3/5). Other boards may use 1.
+    i2c_bus: 7
+    publish_rate: 10.0

@@ -1,0 +1,14 @@
+/**:
+  ros__parameters:
+    camera_type: "celestial"
+    topic_ns: "celestial"
+    source: "csv"
+    fps: 0.05
+    loop: false
+    frame_id: "celestial_camera_link"
+    image_encoding: "mono8"
+    default_gps_valid: false
+    csv_path: ""
+    images_dir: ""
+    width: 1920
+    height: 1080

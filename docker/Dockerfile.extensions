@@ -1,0 +1,2 @@
+# NAVERA night_pkg (STHN) — --no-deps pour préserver le torch Jetson custom
+RUN python3 -m pip install --no-deps kornia kornia_rs safetensors --break-system-packages

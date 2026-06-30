@@ -1,0 +1,229 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                    GPU OPTIMIZATION DEPLOYMENT CHECKLIST                  ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+PROJECT: Jetson Orin Nano GPU Acceleration for Vision Localization
+VERSION: v7 (Production Ready)
+STATUS: ✅ COMPLETE
+
+═══════════════════════════════════════════════════════════════════════════════
+PRE-DEPLOYMENT VERIFICATION
+═══════════════════════════════════════════════════════════════════════════════
+
+CODE QUALITY:
+  ☐ Both files syntax valid (verified ✓)
+  ☐ All imports available (verified ✓)
+  ☐ No breaking API changes (verified ✓)
+  ☐ Backward compatible (verified ✓)
+  ☐ Error handling robust (verified ✓)
+
+TESTING:
+  ☐ Run: python3 test_gpu_optimization.py
+  ☐ Expected: All 7 tests PASS ✓
+  ☐ Check: GPU detection works
+  ☐ Check: Model loading works
+  ☐ Check: Async operations work
+
+DOCUMENTATION:
+  ☐ GPU_OPTIMIZATION_GUIDE.md (7.7 KB) ✓
+  ☐ OPTIMIZATION_SUMMARY.md (8.7 KB) ✓
+  ☐ QUICK_START.md (4.1 KB) ✓
+  ☐ GPU_OPTIMIZATION_INDEX.md (7.3 KB) ✓
+  ☐ test_gpu_optimization.py (8.0 KB) ✓
+
+═══════════════════════════════════════════════════════════════════════════════
+DEPLOYMENT STEPS
+═══════════════════════════════════════════════════════════════════════════════
+
+1. PREPARE JETSON ORIN NANO
+   ☐ Connect to Jetson device
+   ☐ Verify network connectivity
+   ☐ Check disk space (need ~500MB)
+   ☐ Update system: sudo apt update && apt upgrade
+
+2. INSTALL DEPENDENCIES
+   ☐ Verify CUDA: nvidia-smi (should show GPU)
+   ☐ Install PyTorch: pip3 install torch torchvision
+   ☐ Verify PyTorch: python3 -c "import torch; print(torch.cuda.is_available())"
+   ☐ Install Flask: pip3 install flask flask-cors
+
+3. COPY FILES
+   ☐ Copy gps_localizer.py to vision_pkg/
+   ☐ Copy receiver.py to vision_pkg/
+   ☐ Copy documentation files
+   ☐ Copy test suite
+
+4. RUN VERIFICATION
+   ☐ cd /home/navera/isaac_ros_common/vision_pkg
+   ☐ python3 test_gpu_optimization.py
+   ☐ All tests should PASS ✓
+
+5. START SERVER
+   ☐ python3 vision_pkg/receiver.py
+   ☐ Should print: "GPU available — using dinov2"
+   ☐ Should print: "Starting Flask (GPU-optimized)"
+
+6. VERIFY OPERATION
+   ☐ Check GPU config: curl http://localhost:5000/api/gpu_config
+   ☐ Should return: {"model": "dinov2", "device": "cuda", ...}
+   ☐ Monitor GPU: nvidia-smi -l 1
+   ☐ Check status: curl http://localhost:5000/status
+
+═══════════════════════════════════════════════════════════════════════════════
+CONFIGURATION TUNING (OPTIONAL)
+═══════════════════════════════════════════════════════════════════════════════
+
+FOR MAXIMUM SPEED:
+   ☐ Set MATCH_TIMEOUT_SEC = 2.0 (in receiver.py)
+   ☐ Set BATCH_SIZE = 64 (in gps_localizer.py)
+   ☐ Use MODEL_TYPE = "dinov2" (faster)
+
+FOR MAXIMUM ACCURACY:
+   ☐ Set MATCH_TIMEOUT_SEC = 10.0 (in receiver.py)
+   ☐ Set BATCH_SIZE = 16 (in gps_localizer.py)
+   ☐ Use MODEL_TYPE = "netvlad" (more accurate)
+   ☐ Use top_k = 10 (more candidates)
+
+FOR MEMORY EFFICIENCY:
+   ☐ Set BATCH_SIZE = 8 (in gps_localizer.py)
+   ☐ Reduce memory fraction to 0.6 (from 0.8)
+   ☐ Monitor with: nvidia-smi --query-gpu=memory.used
+
+═══════════════════════════════════════════════════════════════════════════════
+OPERATIONAL MONITORING
+═══════════════════════════════════════════════════════════════════════════════
+
+DAILY CHECKS:
+  ☐ GPU memory usage: nvidia-smi
+  ☐ Match performance: curl http://localhost:5000/status
+  ☐ Error logs: tail -f receiver.log
+  ☐ GPU temperature: nvidia-smi
+
+PERFORMANCE METRICS:
+  ☐ Match latency: Check last_match_ms in /status
+  ☐ GPS latency: Should be 0ms (non-blocking)
+  ☐ GPU utilization: Should be >50% during matches
+  ☐ Memory usage: Should stay <1GB
+
+ALERT CONDITIONS:
+  ☐ GPU memory > 1.5GB → Reduce batch size
+  ☐ Timeout errors → Increase MATCH_TIMEOUT_SEC
+  ☐ Memory errors → Reduce BATCH_SIZE
+  ☐ GPU not found → Check nvidia-smi
+
+═══════════════════════════════════════════════════════════════════════════════
+API ENDPOINT VERIFICATION
+═══════════════════════════════════════════════════════════════════════════════
+
+TEST ENDPOINTS:
+
+1. Check GPU Configuration
+   Command: curl http://localhost:5000/api/gpu_config
+   Expected: {"model": "dinov2", "device": "cuda", "gpu_enabled": true}
+
+2. Switch Model
+   Command: curl -X POST http://localhost:5000/api/gpu_config \
+              -d '{"model": "netvlad"}'
+   Expected: {"status": "ok", "model": "netvlad"}
+
+3. Check Status
+   Command: curl http://localhost:5000/status
+   Expected: includes "last_match_ms", "gpu_enabled": true
+
+4. Health Check
+   Command: curl http://localhost:5000/health
+   Expected: {"ok": true, "localizer": true}
+
+═══════════════════════════════════════════════════════════════════════════════
+TROUBLESHOOTING QUICK REFERENCE
+═══════════════════════════════════════════════════════════════════════════════
+
+PROBLEM: GPU not detected
+SOLUTION:
+  ☐ Run: python3 -c "import torch; print(torch.cuda.is_available())"
+  ☐ Run: nvidia-smi (should show GPU)
+  ☐ Check CUDA installation
+  ☐ Restart Python interpreter
+
+PROBLEM: Memory errors
+SOLUTION:
+  ☐ Reduce BATCH_SIZE from 32 to 16 or 8
+  ☐ Reduce memory_fraction from 0.8 to 0.6
+  ☐ Monitor with: nvidia-smi --query-gpu=memory.used
+
+PROBLEM: Timeout errors
+SOLUTION:
+  ☐ Increase MATCH_TIMEOUT_SEC from 5.0 to 10.0
+  ☐ Check GPU load: nvidia-smi
+  ☐ Reduce batch size to free GPU memory
+  ☐ Restart server to clear GPU cache
+
+PROBLEM: DINOv2 fails to load
+SOLUTION:
+  ☐ Check internet connection (downloads model)
+  ☐ Try NetVLAD: POST /api/gpu_config with {"model": "netvlad"}
+  ☐ Check disk space (1-2GB needed for model)
+  ☐ Reinstall PyTorch
+
+═══════════════════════════════════════════════════════════════════════════════
+ROLLBACK PROCEDURE
+═══════════════════════════════════════════════════════════════════════════════
+
+IF ISSUES OCCUR:
+  1. Stop server: Ctrl+C
+  2. Restore backup: cp backup/gps_localizer.py vision_pkg/
+  3. Restore backup: cp backup/receiver.py vision_pkg/
+  4. Restart: python3 vision_pkg/receiver.py
+
+TO DISABLE GPU:
+  1. Set: export GPU_ENABLED=0
+  2. Restart server
+  3. Falls back to CPU MobileNetV3
+
+═══════════════════════════════════════════════════════════════════════════════
+SUCCESS CRITERIA
+═══════════════════════════════════════════════════════════════════════════════
+
+✓ Server starts without errors
+✓ GPU detected by PyTorch
+✓ DINOv2 or NetVLAD loads successfully
+✓ GPS frames return <1ms
+✓ Visual matches complete in <5s
+✓ Top-K results returned
+✓ GPU utilization visible in nvidia-smi
+✓ No memory leaks
+✓ Configuration API works
+
+ALL CRITERIA MET = DEPLOYMENT SUCCESSFUL ✅
+
+═══════════════════════════════════════════════════════════════════════════════
+DOCUMENTATION REFERENCES
+═══════════════════════════════════════════════════════════════════════════════
+
+Quick Setup:        See QUICK_START.md
+Full Guide:         See GPU_OPTIMIZATION_GUIDE.md
+Technical Details:  See OPTIMIZATION_SUMMARY.md
+Navigation:         See GPU_OPTIMIZATION_INDEX.md
+Testing:            Run test_gpu_optimization.py
+
+═══════════════════════════════════════════════════════════════════════════════
+SUPPORT & CONTACT
+═══════════════════════════════════════════════════════════════════════════════
+
+For questions or issues:
+1. Check GPU_OPTIMIZATION_GUIDE.md Troubleshooting section
+2. Run test_gpu_optimization.py for diagnostics
+3. Review logs: tail -f receiver.log
+4. Check GPU health: nvidia-smi
+
+═══════════════════════════════════════════════════════════════════════════════
+
+DEPLOYMENT DATE: ___________________
+DEPLOYED BY: ______________________
+VERIFICATION COMPLETE: □ YES  □ NO
+NOTES: _________________________________________________________________
+________________________________________________________________________
+
+═══════════════════════════════════════════════════════════════════════════════
+                        DEPLOYMENT READY ✅
+═══════════════════════════════════════════════════════════════════════════════

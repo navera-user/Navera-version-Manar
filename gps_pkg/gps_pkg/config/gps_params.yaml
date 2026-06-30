@@ -1,0 +1,5 @@
+gps_node:
+  ros__parameters:
+    # UART pin path on Jetson Orin Nano. Change to /dev/ttyUSB0 for a USB GPS.
+    serial_port: "/dev/ttyTHS1"
+    baud_rate: 9600

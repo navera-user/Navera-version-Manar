@@ -1,0 +1,2465 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NAVERA — Mission Planner & Flight Monitor</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+/* ═══════════════════════════════════════════════════════════════════
+   RESET & ROOT
+════════════════════════════════════════════════════════════════════ */
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;font-family:'Inter',sans-serif;font-size:14px}
+
+/* ═══════════════════════════════════════════════════════════════════
+   VIEW SYSTEM
+════════════════════════════════════════════════════════════════════ */
+.view{position:absolute;inset:0;transition:opacity .4s;pointer-events:none;opacity:0}
+.view.active{pointer-events:all;opacity:1}
+
+/* ═══════════════════════════════════════════════════════════════════
+   LAUNCH TRANSITION OVERLAY
+════════════════════════════════════════════════════════════════════ */
+#lt{
+  position:fixed;inset:0;z-index:9000;
+  background:#030712;
+  display:none;flex-direction:column;align-items:center;justify-content:center;gap:24px;
+}
+#lt.show{display:flex}
+#lt-drone{font-size:56px;animation:lt-fly 2s ease-in-out infinite}
+@keyframes lt-fly{0%,100%{transform:translateY(0) rotate(0deg)}50%{transform:translateY(-18px) rotate(-5deg)}}
+#lt-title{font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;color:#06b6d4;letter-spacing:3px}
+#lt-sub{font-size:13px;color:#64748b;letter-spacing:2px}
+#lt-bar-wrap{width:280px;height:4px;background:rgba(255,255,255,0.1);border-radius:4px;overflow:hidden}
+#lt-bar{height:100%;width:0%;background:linear-gradient(90deg,#06b6d4,#10b981);transition:width .35s ease}
+#lt-steps{display:flex;flex-direction:column;gap:6px;min-width:240px}
+.lt-step{font-size:12px;color:#334155;display:flex;align-items:center;gap:8px;transition:color .3s}
+.lt-step.done{color:#10b981}.lt-step.active{color:#06b6d4}
+.lt-dot{width:8px;height:8px;border-radius:50%;background:#334155;flex-shrink:0;transition:background .3s}
+.lt-step.done .lt-dot{background:#10b981}.lt-step.active .lt-dot{background:#06b6d4;animation:lt-pulse 1s infinite}
+@keyframes lt-pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* ═══════════════════════════════════════════════════════════════════
+   MISSION PLANNER — CSS VARIABLES (light theme)
+════════════════════════════════════════════════════════════════════ */
+#view-planner{background:#f8f9fc;color:#0f172a}
+#view-planner,:root{
+  --bg:#f8f9fc;--surface:#fff;--surface2:#f1f4f9;--border:#e2e8f0;--border2:#cbd5e1;
+  --accent:#2563eb;--accent-light:#eff6ff;--accent-dark:#1d4ed8;
+  --green:#16a34a;--green-light:#f0fdf4;--red:#dc2626;--red-light:#fef2f2;
+  --amber:#d97706;--amber-light:#fffbeb;--purple:#7c3aed;
+  --text:#0f172a;--text2:#475569;--text3:#94a3b8;
+  --shadow:0 1px 3px rgba(0,0,0,0.08);--shadow-md:0 4px 16px rgba(0,0,0,0.1);
+  --radius:12px;--radius-sm:8px
+}
+#view-planner{display:flex;flex-direction:column;height:100%}
+
+/* PLANNER TOPBAR */
+.p-topbar{background:#fff;border-bottom:1px solid var(--border);padding:0 24px;height:56px;
+  display:flex;align-items:center;justify-content:space-between;flex-shrink:0;
+  box-shadow:var(--shadow);z-index:100}
+.p-logo{font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:10px}
+.p-logo-icon{width:30px;height:30px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center}
+.badge{background:var(--accent);color:white;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s;font-family:'Inter',sans-serif;white-space:nowrap}
+.btn-primary{background:var(--accent);color:white}.btn-primary:hover{background:var(--accent-dark);transform:translateY(-1px)}
+.btn-primary:disabled{background:var(--border2);color:var(--text3);cursor:not-allowed;transform:none}
+.btn-success{background:var(--green);color:white}.btn-success:hover{background:#15803d}
+.btn-ghost{background:var(--surface2);color:var(--text2);border:1px solid var(--border)}.btn-ghost:hover{background:var(--border)}
+.btn-outline{background:transparent;color:var(--accent);border:1px solid var(--accent)}.btn-outline:hover{background:var(--accent-light)}
+.btn-sm{padding:6px 14px;font-size:12px}
+/* PLANNER LAYOUT */
+.p-main{display:grid;grid-template-columns:360px 1fr;flex:1;overflow:hidden}
+.p-panel{background:#fff;border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.panel-tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0}
+.tab{flex:1;padding:12px;font-size:12px;font-weight:600;color:var(--text3);cursor:pointer;text-align:center;border-bottom:2px solid transparent;transition:all .15s}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}.tab:hover{color:var(--text2)}
+.tab-content{display:none;flex:1;overflow-y:auto;padding:16px}.tab-content.active{display:block}
+.section{margin-bottom:18px}
+.section-label{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.section-label::before{content:'';width:3px;height:11px;background:var(--accent);border-radius:2px;flex-shrink:0}
+.point-card{border:2px solid var(--border);border-radius:var(--radius-sm);padding:14px;margin-bottom:10px;transition:all .2s}
+.point-card.set{border-color:var(--green);background:var(--green-light)}
+.point-header{display:flex;flex-direction:row;align-items:center;justify-content:space-between;padding:10px 20px;border-bottom:1px solid var(--border);background:white;flex-shrink:0;width:100%}
+.point-badge{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex-shrink:0;color:white}
+.point-title{font-weight:600;font-size:13px;color:var(--text);flex:1}
+.btn-clear{background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:0 4px;line-height:1}.btn-clear:hover{color:var(--red)}
+.coords-display{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:12px;font-family:'Space Grotesk',monospace;display:flex;gap:16px;margin-bottom:10px}
+.coord-inputs{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.input-label{font-size:11px;font-weight:500;color:var(--text3)}
+input[type=number],input[type=text]{width:100%;border:1.5px solid var(--border2);border-radius:6px;font-size:13px;font-family:'Inter',sans-serif;padding:8px 10px;color:var(--text);background:#fff;outline:none;transition:all .15s}
+input[type=number]:focus,input[type=text]:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+input[type=number].error{border-color:var(--red);background:var(--red-light)}
+.apply-btn{width:100%;margin-top:8px;padding:8px;font-size:12px;font-weight:600;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;transition:all .15s}.apply-btn:hover{background:var(--accent-dark)}
+.click-hint{display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--accent-light);border:1px solid #bfdbfe;border-radius:6px;font-size:12px;color:var(--accent);font-weight:500;cursor:pointer;transition:all .15s;margin-bottom:12px}
+.click-hint:hover{background:#dbeafe}
+.click-hint.waiting{animation:pulse-border 1.5s infinite}
+@keyframes pulse-border{0%,100%{border-color:#bfdbfe}50%{border-color:var(--accent)}}
+.slider-field{margin-bottom:14px}
+.slider-header{display:flex;flex-direction:row;align-items:center;justify-content:space-between;padding:6px 0}
+.slider-lbl{font-size:12px;font-weight:500;color:var(--text2)}
+.slider-val{font-size:12px;font-weight:700;color:var(--accent);background:var(--accent-light);padding:2px 10px;border-radius:20px;min-width:55px;text-align:center}
+input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;height:4px}
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.stat-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px}
+.stat-lbl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)}
+.stat-val{font-size:20px;font-weight:700;color:var(--text);margin-top:2px;font-family:'Space Grotesk',sans-serif}
+.stat-unit{font-size:11px;color:var(--text3);font-weight:400}
+.kv{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px}
+.kv:last-child{border-bottom:none}.kv-k{color:var(--text3);font-weight:500}
+.kv-v{font-weight:600;color:var(--text)}.kv-v.green{color:var(--green)}.kv-v.amber{color:var(--amber)}.kv-v.blue{color:var(--accent)}
+.cache-card{border-radius:var(--radius-sm);padding:12px;margin-bottom:12px;display:flex;align-items:center;gap:10px;border:1px solid}
+.cache-card.ready{background:var(--green-light);border-color:#bbf7d0}
+.cache-card.not-ready{background:var(--amber-light);border-color:#fde68a}
+.cache-card.running{background:var(--accent-light);border-color:#bfdbfe}
+.cache-icon{font-size:20px;flex-shrink:0}
+.cache-title{font-size:13px;font-weight:600;color:var(--text)}
+.cache-sub{font-size:11px;color:var(--text3);margin-top:2px}
+.progress-box{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;margin-bottom:12px;display:none}
+.progress-box.show{display:block}
+.progress-title{font-size:13px;font-weight:600;color:var(--text)}
+.progress-pct{font-size:13px;font-weight:700;color:var(--accent)}
+.progress-msg{font-size:11px;color:var(--text3);margin-bottom:8px;font-family:monospace}
+.progress-bar{height:8px;background:var(--border);border-radius:4px;overflow:hidden}
+.progress-fill{height:100%;border-radius:4px;background:var(--accent);transition:width .5s ease;width:0%}
+.progress-fill.done{background:var(--green)}
+.p-map-container{position:relative;flex:1}
+#p-map{width:100%;height:100%}
+.map-controls{position:absolute;top:12px;right:12px;z-index:1000;display:flex;flex-direction:column;gap:6px}
+.map-btn{background:white;border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;color:var(--text2);display:flex;align-items:center;gap:6px;box-shadow:var(--shadow);transition:all .15s;font-family:'Inter',sans-serif}
+.map-btn:hover{background:var(--accent-light);color:var(--accent);border-color:var(--accent)}
+.map-btn.toggled{background:var(--accent);color:white;border-color:var(--accent)}
+.map-legend{position:absolute;bottom:20px;left:12px;z-index:1000;background:white;border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;box-shadow:var(--shadow-md);min-width:170px}
+.legend-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px}
+.legend-item{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);margin-bottom:5px}
+.legend-dot{width:11px;height:11px;border-radius:50%;flex-shrink:0}
+.legend-line{width:18px;height:3px;border-radius:2px;flex-shrink:0}
+.legend-circle-icon{width:13px;height:13px;border-radius:50%;border:2px solid rgba(37,99,235,.7);flex-shrink:0}
+.map-coords{position:absolute;bottom:20px;right:12px;z-index:1000;background:white;border:1px solid var(--border);border-radius:6px;padding:7px 12px;font-size:11px;color:var(--text3);font-family:monospace;box-shadow:var(--shadow)}
+.toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(60px);padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:9999;transition:all .3s;opacity:0;pointer-events:none;white-space:nowrap}
+.toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+.toast.ok{background:#0f172a;color:white}.toast.green{background:var(--green);color:white}
+.toast.red{background:var(--red);color:white}.toast.amber{background:var(--amber);color:white}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+/* CONFIG OVERLAY */
+.cfg-step{width:32px;height:32px;border-radius:50%;background:#334155;color:#64748b;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;transition:all .3s;flex-shrink:0}
+.cfg-step.active{background:#6366f1;color:white}.cfg-step.done{background:#22c55e;color:white}
+.cfg-line{height:2px;width:50px;background:#334155;transition:all .3s}.cfg-line.done{background:#6366f1}
+.vehicle-card{background:#0f172a;border:2px solid #334155;border-radius:12px;padding:20px;text-align:center;cursor:pointer;transition:all .2s}
+.vehicle-card:hover{border-color:#6366f1}.vehicle-card.selected{border-color:#6366f1;background:#1e1b4b}
+.cfg-field label{display:block;color:#94a3b8;font-size:13px;margin-bottom:8px;font-weight:500}
+.cfg-input,.cfg-select{width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:white;padding:10px 12px;font-size:14px;outline:none;font-family:'Inter',sans-serif}
+.cfg-select option{background:#1e293b}
+.cfg-toggle-card{background:#0f172a;border:1px solid #334155;border-radius:10px;padding:12px 16px;cursor:pointer;display:flex;align-items:center;gap:12px;transition:all .2s;color:#94a3b8;font-size:13px;font-weight:500}
+.cfg-toggle-card:hover{border-color:#6366f1}
+.cfg-toggle{width:40px;height:22px;border-radius:11px;background:#334155;position:relative;transition:all .3s;flex-shrink:0;margin-left:auto}
+.cfg-toggle::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#64748b;transition:all .3s}
+.cfg-toggle.on{background:#6366f1}.cfg-toggle.on::after{left:21px;background:white}
+
+/* MODE SELECTOR — Day / Night */
+#cfg-mode-select{text-align:center}
+.mode-card{background:#0f172a;border:2px solid #334155;border-radius:16px;padding:28px 24px;text-align:center;cursor:pointer;transition:all .3s;position:relative;overflow:hidden}
+.mode-card:hover{border-color:#6366f1;transform:translateY(-4px);box-shadow:0 12px 30px rgba(0,0,0,0.4)}
+.mode-card.selected{border-color:#6366f1;background:#1e1b4b}
+.mode-card .mode-icon{font-size:48px;margin-bottom:12px;display:block}
+.mode-card .mode-title{color:white;font-weight:700;font-size:18px;margin-bottom:6px;font-family:'Space Grotesk',sans-serif}
+.mode-card .mode-sub{color:#94a3b8;font-size:12px;line-height:1.5}
+.mode-card .mode-badge{position:absolute;top:12px;right:12px;font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;letter-spacing:1px}
+.mode-card.day-card .mode-badge{background:rgba(250,204,21,0.2);color:#facc15}
+.mode-card.night-card .mode-badge{background:rgba(139,92,246,0.2);color:#a78bfa}
+.mode-card.day-card.selected{border-color:#facc15;background:linear-gradient(135deg,#1a1500,#1e1b00)}
+.mode-card.night-card.selected{border-color:#a78bfa;background:linear-gradient(135deg,#1a0033,#1e1b4b)}
+.mode-card.stellar-card .mode-badge{background:rgba(56,189,248,0.2);color:#38bdf8}
+.mode-card.stellar-card:hover{border-color:#38bdf8;transform:translateY(-4px);box-shadow:0 12px 30px rgba(56,189,248,0.25)}
+.mode-card.stellar-card.selected{border-color:#38bdf8;background:linear-gradient(135deg,#001a2e,#001e3a)}
+/* Star shimmer animation for stellar card */
+@keyframes twinkle{0%,100%{opacity:1;text-shadow:0 0 8px #38bdf8,0 0 20px #0ea5e9}50%{opacity:.7;text-shadow:0 0 4px #38bdf8}}
+.mode-card.stellar-card .mode-icon{animation:twinkle 2.5s ease-in-out infinite}
+.mode-check{position:absolute;top:12px;left:12px;font-size:18px;transition:all .3s}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FLIGHT MONITOR — CSS VARIABLES (dark theme)
+════════════════════════════════════════════════════════════════════ */
+#view-flight{
+  --fbg:#030712;--fpanel:rgba(17,24,39,0.75);--fborder:rgba(255,255,255,0.1);
+  --fcyan:#06b6d4;--fgreen:#10b981;--forange:#f59e0b;--fred:#ef4444;
+  --ftext:#f8fafc;--fdim:#94a3b8;
+  --ffont-mono:'Space Grotesk',monospace;--ffont-sans:'Inter',sans-serif;
+  background:var(--fbg);color:var(--ftext);font-family:var(--ffont-sans);
+  width:100%;height:100%;
+}
+/* FLIGHT MAP */
+.f-mapwrap{position:absolute;inset:0;z-index:1}
+#f-lmap{width:100%;height:100%}
+.leaflet-tile{filter:brightness(0.9) contrast(1.1) saturate(1.1)}
+/* BACK BUTTON */
+.btn-back{position:absolute;top:20px;left:20px;z-index:1000;background:var(--fpanel);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--fborder);border-radius:12px;padding:10px 20px;color:var(--ftext);font-family:var(--ffont-sans);font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:0 4px 20px rgba(0,0,0,0.3);transition:all .3s}
+.btn-back:hover{background:rgba(30,41,59,0.9);border-color:var(--fcyan);box-shadow:0 0 15px rgba(6,182,212,0.3)}
+/* TELEMETRY BOXES */
+.f-tele{position:absolute;bottom:30px;left:50%;transform:translateX(-50%);z-index:1000;display:flex;gap:16px}
+.f-tbox{background:var(--fpanel);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--fborder);border-radius:16px;padding:16px 24px;min-width:160px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.5);transition:all .3s;position:relative}
+.f-tbox::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.2),transparent)}
+.f-tlbl{font-size:11px;font-weight:700;color:var(--fdim);letter-spacing:2px;text-transform:uppercase;margin-bottom:6px}
+.f-tval{font-family:var(--ffont-mono);font-size:22px;font-weight:600;color:var(--ftext)}
+.f-tunit{font-size:12px;color:var(--fdim);font-weight:400;margin-left:2px}
+.f-tbox.active-gps{border-bottom:2px solid var(--fcyan)}
+.f-tbox.lost-gps{border-bottom:2px solid var(--fred)}
+.f-tbox.est-gps{border-bottom:2px solid var(--forange)}
+/* WP BOX */
+.f-wp{position:absolute;top:20px;right:20px;z-index:1000}
+.f-wpbox{background:linear-gradient(135deg,rgba(16,185,129,.1),rgba(6,182,212,.1));backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(16,185,129,.3);border-radius:16px;padding:16px 24px;min-width:180px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.4)}
+.f-wpval{font-family:var(--ffont-mono);font-size:28px;font-weight:700;color:var(--fgreen);text-shadow:0 0 10px rgba(16,185,129,.4)}
+/* GPS BANNER */
+.f-gps-banner{position:absolute;top:80px;left:50%;transform:translateX(-50%);z-index:1000;background:rgba(239,68,68,.9);color:white;font-family:var(--ffont-sans);font-size:13px;font-weight:700;letter-spacing:2px;padding:10px 24px;border-radius:30px;box-shadow:0 0 30px rgba(239,68,68,.6);display:none;animation:f-pulse 2s infinite}
+@keyframes f-pulse{0%,100%{opacity:.9;transform:translateX(-50%) scale(1)}50%{opacity:1;transform:translateX(-50%) scale(1.05)}}
+.f-gps-banner.show{display:block}
+/* LOADING */
+.f-mload{position:absolute;inset:0;z-index:2000;background:rgba(3,7,18,0);pointer-events:none;display:none;flex-direction:column;align-items:center;justify-content:center}
+.f-mload.show{display:flex}
+.f-ml-t{font-size:18px;font-weight:700;letter-spacing:4px;color:var(--fcyan);margin-bottom:24px}
+.f-ml-bo{width:300px;height:4px;background:rgba(255,255,255,0.1);border-radius:4px;overflow:hidden;margin-bottom:16px}
+.f-ml-bi{height:100%;width:0%;background:linear-gradient(90deg,var(--fcyan),var(--fgreen));transition:width .4s ease}
+.f-ml-s{font-family:var(--ffont-mono);font-size:13px;color:var(--fdim)}
+/* MATCH POPUP */
+.f-mpopup{position:absolute;top:140px;left:50%;transform:translateX(-50%);z-index:1000;background:rgba(16,185,129,.15);backdrop-filter:blur(12px);border:1px solid var(--fgreen);border-radius:12px;padding:16px 24px;display:none;box-shadow:0 0 30px rgba(16,185,129,.3)}
+.f-mpopup.show{display:block;animation:dropDown .4s cubic-bezier(.175,.885,.32,1.275)}
+@keyframes dropDown{from{opacity:0;transform:translateX(-50%) translateY(-20px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+.f-mp-t{font-weight:700;font-size:12px;letter-spacing:2px;color:var(--fgreen);margin-bottom:12px;text-transform:uppercase}
+.f-mpg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.f-mpc{font-family:var(--ffont-mono);font-size:12px}
+.f-mpc .k{color:var(--fdim)}.f-mpc .v{color:var(--ftext);font-weight:600}
+.f-pred-mark{filter:drop-shadow(0 0 15px rgba(245,158,11,.8))}
+.f-search-tip{background:var(--forange);border:none;font-weight:700;color:#000;padding:4px 10px;border-radius:6px}
+/* HIDDEN LEGACY DOM for flight JS compatibility */
+#f-legacy{display:none}
+/* TV DISPLAY CLASSES */
+.tv{font-family:var(--ffont-mono);font-weight:600;font-size:14px;color:var(--text);text-shadow:0 0 8px rgba(0,229,255,.3)}
+.tv.grn{color:var(--green);text-shadow:0 0 8px rgba(16,185,129,.5)}
+.tv.red{color:var(--red);text-shadow:0 0 8px rgba(239,68,68,.5)}
+.tv.amber{color:var(--amber);text-shadow:0 0 8px rgba(245,158,11,.5)}
+.tv.pred{color:var(--amber);text-shadow:0 0 8px rgba(245,158,11,.4);font-style:italic}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     CONFIG OVERLAY (pre-flight)
+════════════════════════════════════════════════════════════════════ -->
+<div id="config-overlay" style="position:fixed;inset:0;background:#0f172a;z-index:9999;display:flex;align-items:center;justify-content:center;font-family:'Inter',sans-serif;overflow-y:auto;padding:20px">
+  <div style="background:#1e293b;border-radius:16px;padding:40px;max-width:680px;width:100%;box-shadow:0 25px 50px rgba(0,0,0,0.5);border:1px solid #334155">
+    <div style="text-align:center;margin-bottom:32px">
+      <div style="width:64px;height:64px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 16px">✈️</div>
+      <h1 style="color:white;font-size:24px;font-weight:700;font-family:'Space Grotesk',sans-serif;margin:0">Configuration Pré-Vol</h1>
+      <p style="color:#94a3b8;margin:8px 0 0;font-size:14px">Configurez votre système avant le lancement</p>
+    </div>
+    <div id="cfg-mode-select">
+      <p style="color:#64748b;font-size:13px;margin:0 0 24px">Choisissez le mode de fonctionnement</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:24px">
+        <div class="mode-card day-card" id="mc-day" onclick="selectTimeMode('day')">
+          <span class="mode-check" id="check-day" style="color:transparent">✓</span>
+          <span class="mode-badge">DIURNE</span>
+          <span class="mode-icon">☀️</span>
+          <div class="mode-title">Day Mode</div>
+          <div class="mode-sub">NetVLAD + DINOv2 + FMC<br>Satellite image matching<br><b style="color:#facc15">vision_pkg · port 5000</b></div>
+        </div>
+        <div class="mode-card night-card" id="mc-night" onclick="selectTimeMode('night')">
+          <span class="mode-check" id="check-night" style="color:transparent">✓</span>
+          <span class="mode-badge">NOCTURNE</span>
+          <span class="mode-icon">🌙</span>
+          <div class="mode-title">Night Mode</div>
+          <div class="mode-sub">STHN Homography Matching<br>Bias-corrected localization<br><b style="color:#a78bfa">night_pkg · port 5001</b></div>
+        </div>
+        <div class="mode-card stellar-card" id="mc-stellar" onclick="selectTimeMode('stellar')">
+          <span class="mode-check" id="check-stellar" style="color:transparent">✓</span>
+          <span class="mode-badge">CÉLESTE</span>
+          <span class="mode-icon">🌟</span>
+          <div class="mode-title">Stellar Mode</div>
+          <div class="mode-sub">Stellar Inertial Navigation<br>Celestial geolocation<br><b style="color:#38bdf8">stellar_pkg · port 5002</b></div>
+        </div>
+      </div>
+      <button id="cfg-mode-btn" onclick="confirmTimeMode()" disabled style="background:#334155;color:#64748b;border:none;border-radius:8px;padding:12px 32px;font-size:14px;font-weight:600;cursor:not-allowed;width:100%;transition:all .3s">Sélectionnez un mode →</button>
+    </div>
+    <div id="cfg-steps-wrapper" style="display:none">
+    <div style="display:flex;align-items:center;justify-content:center;margin-bottom:32px">
+      <div class="cfg-step active" id="step-dot-0">0</div>
+      <div class="cfg-line" id="step-line-0"></div>
+      <div class="cfg-step" id="step-dot-1">1</div>
+      <div class="cfg-line" id="step-line-1"></div>
+      <div class="cfg-step" id="step-dot-2">2</div>
+      <div class="cfg-line" id="step-line-2"></div>
+      <div class="cfg-step" id="step-dot-3">3</div>
+      <div class="cfg-line" id="step-line-3"></div>
+      <div class="cfg-step" id="step-dot-4">4</div>
+    </div>
+    <div id="cfg-step-0">
+      <h2 style="color:white;font-size:18px;font-weight:600;margin:0 0 8px">🎯 Mode de mission</h2>
+      <p style="color:#64748b;font-size:13px;margin:0 0 20px">Connaissez-vous votre point d'arrivée à l'avance ?</p>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="vehicle-card selected" onclick="selectMission(this,'ab')" id="mode-ab">
+          <div style="display:flex;align-items:center;gap:16px;text-align:left">
+            <div style="font-size:32px">🗺️</div>
+            <div><div style="color:white;font-weight:600">A → B connus</div><div style="color:#94a3b8;font-size:12px;margin-top:4px">Trajet défini · Dataset collecté avant le vol</div></div>
+            <div style="margin-left:auto;color:#6366f1;font-size:18px" id="check-ab">✓</div>
+          </div>
+        </div>
+        <div class="vehicle-card" onclick="selectMission(this,'a-only')" id="mode-a-only">
+          <div style="display:flex;align-items:center;gap:16px;text-align:left">
+            <div style="font-size:32px">🔄</div>
+            <div><div style="color:white;font-weight:600">A connu, B inconnu</div><div style="color:#94a3b8;font-size:12px;margin-top:4px">Exploration libre · Dataset collecté en temps réel</div></div>
+            <div style="margin-left:auto;color:transparent;font-size:18px" id="check-a">✓</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="cfg-step-1" style="display:none">
+      <h2 style="color:white;font-size:18px;font-weight:600;margin:0 0 20px">🚁 Type de véhicule</h2>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="vehicle-card selected" onclick="selectVehicle(this,'drone')"><div style="font-size:32px;margin-bottom:8px">🚁</div><div style="color:white;font-weight:600">Drone</div><div style="color:#94a3b8;font-size:12px">Multirotor UAV</div></div>
+        <div class="vehicle-card" onclick="selectVehicle(this,'fixed-wing')"><div style="font-size:32px;margin-bottom:8px">✈️</div><div style="color:white;font-weight:600">Fixed-Wing</div><div style="color:#94a3b8;font-size:12px">Avion autonome</div></div>
+        <div class="vehicle-card" onclick="selectVehicle(this,'rover')"><div style="font-size:32px;margin-bottom:8px">🚗</div><div style="color:white;font-weight:600">Rover</div><div style="color:#94a3b8;font-size:12px">Robot terrestre</div></div>
+        <div class="vehicle-card" onclick="selectVehicle(this,'boat')"><div style="font-size:32px;margin-bottom:8px">🚢</div><div style="color:white;font-weight:600">Bateau</div><div style="color:#94a3b8;font-size:12px">Robot nautique</div></div>
+      </div>
+    </div>
+    <div id="cfg-step-2" style="display:none">
+      <h2 style="color:white;font-size:18px;font-weight:600;margin:0 0 20px">📷 Caméra & Capteurs</h2>
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="cfg-field"><label>Résolution caméra</label>
+          <select id="cfg-cam-res" class="cfg-select"><option value="640">640×480 (VGA)</option><option value="1280" selected>1280×720 (HD)</option><option value="1920">1920×1080 (Full HD)</option><option value="3840">3840×2160 (4K)</option></select>
+        </div>
+        <div class="cfg-field"><label>FOV caméra (degrés)</label><input type="number" id="cfg-fov" class="cfg-input" value="90" min="30" max="180"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="cfg-toggle-card" onclick="toggleSensor(this,'imu')"><span style="font-size:18px">🔄</span><span>IMU</span><div class="cfg-toggle on" id="tog-imu"></div></div>
+          <div class="cfg-toggle-card" onclick="toggleSensor(this,'baro')"><span style="font-size:18px">📊</span><span>Baromètre</span><div class="cfg-toggle on" id="tog-baro"></div></div>
+          <div class="cfg-toggle-card" onclick="toggleSensor(this,'mag')"><span style="font-size:18px">🧭</span><span>Magnétomètre</span><div class="cfg-toggle on" id="tog-mag"></div></div>
+          <div class="cfg-toggle-card" onclick="toggleSensor(this,'lidar')"><span style="font-size:18px">📡</span><span>LiDAR</span><div class="cfg-toggle" id="tog-lidar"></div></div>
+        </div>
+      </div>
+    </div>
+    <div id="cfg-step-3" style="display:none">
+      <h2 style="color:white;font-size:18px;font-weight:600;margin:0 0 20px">⚙️ Paramètres de vol</h2>
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="cfg-field"><label>Altitude maximale (m)</label>
+          <div style="display:flex;align-items:center;gap:12px"><input type="range" id="cfg-alt-max" min="50" max="2000" value="400" step="50" oninput="document.getElementById('cfg-alt-max-val').textContent=this.value+'m'" style="flex:1;accent-color:#6366f1"><span id="cfg-alt-max-val" style="color:#6366f1;font-weight:700;min-width:60px">400m</span></div>
+        </div>
+        <div class="cfg-field"><label>Vitesse max (m/s)</label>
+          <div style="display:flex;align-items:center;gap:12px"><input type="range" id="cfg-speed" min="1" max="30" value="10" step="1" oninput="document.getElementById('cfg-speed-val').textContent=this.value+'m/s'" style="flex:1;accent-color:#6366f1"><span id="cfg-speed-val" style="color:#6366f1;font-weight:700;min-width:60px">10m/s</span></div>
+        </div>
+        <div class="cfg-field"><label>Batterie minimale (%)</label>
+          <div style="display:flex;align-items:center;gap:12px"><input type="range" id="cfg-batt" min="5" max="50" value="20" step="5" oninput="document.getElementById('cfg-batt-val').textContent=this.value+'%'" style="flex:1;accent-color:#6366f1"><span id="cfg-batt-val" style="color:#6366f1;font-weight:700;min-width:60px">20%</span></div>
+        </div>
+        <div class="cfg-field"><label>Mode de vol</label>
+          <select id="cfg-flight-mode" class="cfg-select"><option value="auto">Automatique</option><option value="manual">Manuel assisté</option><option value="loiter">Loiter (stationnaire)</option></select>
+        </div>
+      </div>
+    </div>
+    <div id="cfg-step-4" style="display:none">
+      <h2 style="color:white;font-size:18px;font-weight:600;margin:0 0 20px">📡 GPS & Vision Fallback</h2>
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="cfg-toggle-card" onclick="toggleGPS()" style="flex-direction:row;justify-content:space-between;padding:16px"><div><div style="color:white;font-weight:600">GPS Principal</div><div style="color:#94a3b8;font-size:12px">Localisation par satellite</div></div><div class="cfg-toggle on" id="tog-gps"></div></div>
+        <div class="cfg-toggle-card" onclick="toggleVision()" style="flex-direction:row;justify-content:space-between;padding:16px"><div><div style="color:white;font-weight:600">Vision Fallback (NetVLAD+DINOv2)</div><div style="color:#94a3b8;font-size:12px">Localisation visuelle si GPS perdu</div></div><div class="cfg-toggle on" id="tog-vision"></div></div>
+        <div class="cfg-field"><label>Seuil de confiance vision (0.0 → 1.0)</label>
+          <div style="display:flex;align-items:center;gap:12px"><input type="range" id="cfg-conf" min="0.5" max="1.0" value="0.85" step="0.05" oninput="document.getElementById('cfg-conf-val').textContent=parseFloat(this.value).toFixed(2)" style="flex:1;accent-color:#6366f1"><span id="cfg-conf-val" style="color:#6366f1;font-weight:700;min-width:50px">0.85</span></div>
+        </div>
+        <div class="cfg-field"><label>Rayon de recherche vision (m)</label>
+          <div style="display:flex;align-items:center;gap:12px"><input type="range" id="cfg-search-r" min="100" max="1000" value="300" step="50" oninput="document.getElementById('cfg-search-r-val').textContent=this.value+'m'" style="flex:1;accent-color:#6366f1"><span id="cfg-search-r-val" style="color:#6366f1;font-weight:700;min-width:60px">300m</span></div>
+        </div>
+        <div style="background:#0f172a;border-radius:8px;padding:16px">
+          <div style="color:#64748b;font-size:11px;font-weight:600;text-transform:uppercase;margin-bottom:12px">Résumé configuration</div>
+          <div id="cfg-summary" style="font-size:12px;color:#94a3b8;line-height:2"></div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:28px">
+      <button id="cfg-btn-prev" onclick="cfgPrev()" style="background:#334155;color:#94a3b8;border:none;border-radius:8px;padding:10px 24px;font-size:14px;font-weight:600;cursor:pointer;display:none">← Précédent</button>
+      <div></div>
+      <button id="cfg-btn-next" onclick="cfgNext()" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;border:none;border-radius:8px;padding:10px 28px;font-size:14px;font-weight:600;cursor:pointer">Suivant →</button>
+    </div>
+    </div><!-- /cfg-steps-wrapper -->
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     LAUNCH TRANSITION OVERLAY
+════════════════════════════════════════════════════════════════════ -->
+<div id="lt">
+  <div id="lt-drone">🚁</div>
+  <div id="lt-title">NAVERA SYSTEM</div>
+  <div id="lt-sub">INITIALISATION DU VOL...</div>
+  <div id="lt-bar-wrap"><div id="lt-bar"></div></div>
+  <div id="lt-steps">
+    <div class="lt-step" id="lts-1"><div class="lt-dot"></div>Connexion backend...</div>
+    <div class="lt-step" id="lts-2"><div class="lt-dot"></div>Chargement carte satellite...</div>
+    <div class="lt-step" id="lts-3"><div class="lt-dot"></div>Initialisation pipeline visual loc...</div>
+    <div class="lt-step" id="lts-4"><div class="lt-dot"></div>Démarrage threads NAVERA...</div>
+    <div class="lt-step" id="lts-5"><div class="lt-dot"></div>Mission en cours...</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     VIEW 1 — MISSION PLANNER
+════════════════════════════════════════════════════════════════════ -->
+<div id="view-planner" class="view">
+  <header class="p-topbar">
+    <div class="p-logo">
+      <div class="p-logo-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+      <span>NAVERA</span><span class="badge">Mission Planner</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button class="btn btn-ghost btn-sm" onclick="pClearAll()">🗑 Effacer tout</button>
+      <button class="btn btn-outline btn-sm" onclick="pExportMission()">📤 Exporter JSON</button>
+      <button class="btn btn-primary btn-sm" id="btn-precollect" onclick="pStartPrecollect()" disabled>⚡ Pré-collecter</button>
+      <button class="btn btn-success btn-sm" id="btn-launch" onclick="launchMission()" disabled>🚀 Launch Mission</button>
+    </div>
+  </header>
+  <div class="p-main">
+    <div class="p-panel">
+      <div class="panel-tabs">
+        <div class="tab active" onclick="pSwitchTab('points',this)">📍 Point A</div>
+        <div class="tab" onclick="pSwitchTab('params',this)">⚙️ Paramètres</div>
+        <div class="tab" onclick="pSwitchTab('cache',this)">⚡ Cache</div>
+      </div>
+      <div class="tab-content active" id="tab-points">
+        <div class="section">
+          <div class="section-label">Mode de saisie</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <button class="btn btn-primary btn-sm" id="mode-click" onclick="pSetMode('click')" style="justify-content:center">🖱 Clic carte</button>
+            <button class="btn btn-ghost btn-sm" id="mode-type" onclick="pSetMode('type')" style="justify-content:center">⌨ Saisie libre</button>
+          </div>
+        </div>
+        <div class="click-hint waiting" id="click-hint" onclick="pSetActivePoint('A')">⊙ Cliquez sur la carte → Point A</div>
+        <div class="section">
+          <div class="section-label">Point de départ A</div>
+          <div class="point-card" id="card-a">
+            <div class="point-header">
+              <div class="point-badge" style="background:#2563eb">A</div>
+              <div><div class="point-title">Départ</div><div id="sub-a" style="font-size:11px;color:var(--text3)">Non défini</div></div>
+              <button class="btn-clear" onclick="pClearPoint('A')">×</button>
+            </div>
+            <div class="coords-display" id="coords-a"><span>Lat <b id="disp-lat-a">—</b></span><span>Lon <b id="disp-lon-a">—</b></span><span>Alt <b>400m</b></span></div>
+            <div class="coord-inputs">
+              <div><div class="input-label">Latitude</div><input type="number" id="inp-lat-a" step="0.0001" placeholder="35.8511" oninput="pValidateCoord('a')"></div>
+              <div><div class="input-label">Longitude</div><input type="number" id="inp-lon-a" step="0.0001" placeholder="10.6097" oninput="pValidateCoord('a')"></div>
+            </div>
+            <button class="apply-btn" onclick="pApplyCoords('A')">✓ Appliquer point A</button>
+          </div>
+        </div>
+        <!-- Point B hidden for Night Mode (exploration libre) -->
+        <div style="display:none" id="card-b-section">
+          <div class="section">
+            <div class="section-label">Point d'arrivée B</div>
+            <div class="point-card" id="card-b">
+              <div class="point-header">
+                <div class="point-badge" style="background:#dc2626">B</div>
+                <div><div class="point-title">Arrivée</div><div id="sub-b" style="font-size:11px;color:var(--text3)">Non défini</div></div>
+                <button class="btn-clear" onclick="pClearPoint('B')">×</button>
+              </div>
+              <div class="coords-display" id="coords-b"><span>Lat <b id="disp-lat-b">—</b></span><span>Lon <b id="disp-lon-b">—</b></span></div>
+              <div class="coord-inputs">
+                <div><div class="input-label">Latitude</div><input type="number" id="inp-lat-b" step="0.0001" placeholder="35.870" oninput="pValidateCoord('b')"></div>
+                <div><div class="input-label">Longitude</div><input type="number" id="inp-lon-b" step="0.0001" placeholder="10.590" oninput="pValidateCoord('b')"></div>
+              </div>
+              <button class="apply-btn" onclick="pApplyCoords('B')">✓ Appliquer point B</button>
+            </div>
+          </div>
+        </div>
+        <div id="stats-section" style="display:none">
+          <div class="section">
+            <div class="section-label">Statistiques mission</div>
+            <div class="stats-grid">
+              <div class="stat-card"><div class="stat-lbl">Distance</div><div class="stat-val" id="s-dist">—</div></div>
+              <div class="stat-card"><div class="stat-lbl">Waypoints</div><div class="stat-val" id="s-wp">—</div></div>
+              <div class="stat-card"><div class="stat-lbl">Rayon R</div><div class="stat-val" id="s-r">—</div></div>
+              <div class="stat-card"><div class="stat-lbl">Images/WP</div><div class="stat-val" id="s-imgs">—</div></div>
+            </div>
+            <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px">
+              <div class="kv"><span class="kv-k">Temps pré-collecte</span><span class="kv-v amber" id="s-time">—</span></div>
+              <div class="kv"><span class="kv-k">Matching vol (cache)</span><span class="kv-v green">~105ms/frame</span></div>
+              <div class="kv"><span class="kv-k">Formule rayon</span><span class="kv-v blue">footprint×4</span></div>
+            </div>
+          </div>
+        </div>
+        <!-- Waypoints hidden for Night Mode -->
+      </div>
+      <div class="tab-content" id="tab-params">
+        <div class="section">
+          <div class="section-label">Altitude de vol</div>
+          <div class="slider-field">
+            <div class="slider-header"><span class="slider-lbl">Altitude (m)</span><span class="slider-val" id="v-alt">400m</span></div>
+            <input type="range" min="50" max="1000" step="25" value="400" oninput="pUpdateAlt(this.value)">
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-label">Espacement waypoints</div>
+          <div class="slider-field">
+            <div class="slider-header"><span class="slider-lbl">Distance entre WP (m)</span><span class="slider-val" id="v-step">800m</span></div>
+            <input type="range" min="0" max="3000" step="50" value="800" oninput="pUpdateStep(this.value)">
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-label">Zoom MBTiles</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div id="z17" class="click-hint" style="cursor:pointer" onclick="pSetZoom(17)"><strong>Zoom 17</strong> — 0.24 m/px · 341 images · ~6s ✓</div>
+            <div id="z18" class="click-hint" style="cursor:pointer;background:var(--surface2);border-color:var(--border);color:var(--text2)" onclick="pSetZoom(18)"><strong>Zoom 18</strong> — 0.12 m/px · 1361 images · ~14s</div>
+          </div>
+        </div>
+        <div class="section" style="margin-top:8px">
+          <div class="section-label">Paramètres calculés</div>
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px">
+            <div class="kv"><span class="kv-k">Altitude</span><span class="kv-v" id="p-alt">400m</span></div>
+            <div class="kv"><span class="kv-k">Footprint image</span><span class="kv-v" id="p-foot">—</span></div>
+            <div class="kv"><span class="kv-k">Rayon R calculé</span><span class="kv-v blue" id="p-r">—</span></div>
+            <div class="kv"><span class="kv-k">Zoom actif</span><span class="kv-v" id="p-zoom">17</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="tab-content" id="tab-cache">
+        <div class="section">
+          <div class="section-label">État du cache</div>
+          <div class="cache-card not-ready" id="cache-card">
+            <div class="cache-icon" id="cache-icon">⏳</div>
+            <div><div class="cache-title" id="cache-title">Cache non disponible</div><div class="cache-sub" id="cache-sub">Planifiez la mission puis pré-collectez</div></div>
+          </div>
+          <div class="progress-box" id="progress-box">
+            <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+              <span id="prog-title" style="font-size:13px;font-weight:600">Pré-collecte</span>
+              <span id="prog-pct" style="font-size:13px;font-weight:700;color:var(--accent)">0%</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" id="prog-fill"></div></div>
+            <div style="font-size:11px;color:var(--text3);margin-top:6px" id="prog-msg">Initialisation...</div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-label">Performance</div>
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px">
+            <div class="kv"><span class="kv-k">Sans cache</span><span class="kv-v" style="color:var(--red)">~13,500ms</span></div>
+            <div class="kv"><span class="kv-k">Avec cache (warm)</span><span class="kv-v green">~105ms ✅</span></div>
+            <div class="kv"><span class="kv-k">Gain</span><span class="kv-v green">128× plus rapide</span></div>
+            <div class="kv"><span class="kv-k">Score confiance</span><span class="kv-v blue">0.983</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="p-map-container">
+      <div id="p-map"></div>
+      <div class="map-controls">
+        <button class="map-btn" onclick="pMap.setView([35.82883,10.63605],13)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>Sousse
+        </button>
+        <button class="map-btn" id="btn-circles" onclick="pToggleCircles()">⭕ Cercles</button>
+        <button class="map-btn" onclick="pFitBounds()">🎯 Centrer</button>
+      </div>
+      <div class="map-legend">
+        <div class="legend-title">Légende</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#2563eb"></div>Point A — Départ</div>
+        <!-- Point B legend removed: A-only mission model (B is discovered by visual loc) -->
+        <div class="legend-item" style="display:none"><div class="legend-dot" style="background:#dc2626"></div>Point B — Arrivée</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#7c3aed"></div>Waypoints</div>
+        <div class="legend-item"><div class="legend-line" style="background:#2563eb;opacity:.7"></div>Route de vol</div>
+        <div class="legend-item"><div class="legend-circle-icon"></div>Zone dataset (R)</div>
+      </div>
+      <div class="map-coords" id="map-coords">—, —</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     VIEW 2 — FLIGHT MONITOR
+════════════════════════════════════════════════════════════════════ -->
+<div id="view-flight" class="view">
+  <div class="f-mapwrap"><div id="f-lmap"></div></div>
+  <button class="btn-back" onclick="backToPlanner()">← Mission Planner</button>
+  <div class="f-tele">
+    <div class="f-tbox active-gps" id="f-box-lat"><div class="f-tlbl">LATITUDE</div><div class="f-tval" id="f-disp-lat">—</div></div>
+    <div class="f-tbox active-gps" id="f-box-lon"><div class="f-tlbl">LONGITUDE</div><div class="f-tval" id="f-disp-lon">—</div></div>
+    <div class="f-tbox active-gps" id="f-box-alt"><div class="f-tlbl">ALTITUDE</div><div class="f-tval" id="f-disp-alt">400<span class="f-tunit">m</span></div></div>
+  </div>
+  <div class="f-gps-banner" id="gps-banner">⚠ GPS SIGNAL LOST — VISUAL LOCALIZATION ACTIVE</div>
+  <div class="f-mpopup" id="mpopup">
+    <div class="f-mp-t">✅ MATCH TROUVÉ — POSITION ESTIMÉE</div>
+    <div class="f-mpg">
+      <div class="f-mpc"><span class="k">LAT : </span><span class="v" id="mp-lat">—</span></div>
+      <div class="f-mpc"><span class="k">LON : </span><span class="v" id="mp-lon">—</span></div>
+      <div class="f-mpc"><span class="k">Score : </span><span class="v" id="mp-dv">—</span></div>
+      <div class="f-mpc"><span class="k">Rayon : </span><span class="v" id="mp-err">—</span></div>
+      <div class="f-mpc" style="grid-column:1/-1"><span class="k">Match : </span><span class="v" id="mp-fi">—</span></div>
+    </div>
+  </div>
+  <div class="f-mload" id="mload">
+    <div class="f-ml-t" id="ml-t">GENERATING DATASET</div>
+    <div class="f-ml-bo"><div class="f-ml-bi" id="ml-bi"></div></div>
+    <div class="f-ml-s" id="ml-s">Extraction MBTiles zoom 18...</div>
+  </div>
+  <!-- Hidden legacy DOM for flight JS -->
+  <div id="f-legacy">
+    <div id="flog"></div><div id="term"></div>
+    <input type="range" id="spdsl" value="2"><span id="spdv"></span>
+    <div id="ps1"></div><div id="ps2"></div><div id="ps3"></div><div id="ps4"></div><div id="ps5"></div>
+    <div id="pv1"></div><div id="pv2"></div><div id="pv3"></div><div id="pv4"></div><div id="pv5"></div>
+    <div id="thr-csv"></div><div id="thr-ds"></div><div id="thr-nv"></div><div id="thr-dv"></div><div id="thr-sw"></div>
+    <div id="hud-lat"></div><div id="hud-lon"></div><div id="hud-gps"></div><div id="hud-ds"></div>
+    <div id="hud-mr"></div><div id="hud-mf"></div><div id="hud-dv"></div><div id="hud-tm"></div>
+    <div id="gbar"></div><div id="gdot"></div><div id="gtxt"></div>
+    <div id="t-lat"></div><div id="t-lon"></div><div id="t-gps"></div><div id="t-hdg"></div>
+    <div id="sbox"></div><div id="spct"></div><div id="sbi"></div><div id="snum"></div>
+    <div id="chip-hdg"></div><div id="chip-fr"></div><div id="chip-st"></div><div id="ml-thread"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+//  CONFIG OVERLAY LOGIC
+// ═══════════════════════════════════════════════════════════════════
+let cfgCurrentStep = 0;
+const cfgData = {
+  timeMode:'day',
+  missionMode:'ab', vehicle:'drone', camRes:1280, fov:90,
+  sensors:{imu:true,baro:true,mag:true,lidar:false},
+  altMax:400, speed:10, battery:20, flightMode:'auto',
+  gps:true, vision:true, confidence:0.85, searchRadius:300
+};
+function selectTimeMode(mode){
+  cfgData.timeMode=mode;
+  document.getElementById('mc-day').classList.toggle('selected',mode==='day');
+  document.getElementById('mc-night').classList.toggle('selected',mode==='night');
+  document.getElementById('mc-stellar').classList.toggle('selected',mode==='stellar');
+  document.getElementById('check-day').style.color=mode==='day'?'#facc15':'transparent';
+  document.getElementById('check-night').style.color=mode==='night'?'#a78bfa':'transparent';
+  document.getElementById('check-stellar').style.color=mode==='stellar'?'#38bdf8':'transparent';
+  const btn=document.getElementById('cfg-mode-btn');
+  btn.disabled=false;btn.style.cursor='pointer';
+  if(mode==='day'){
+    btn.style.background='linear-gradient(135deg,#ca8a04,#facc15)';
+    btn.style.color='#000';
+    btn.textContent='☀️ Continuer en mode Day →';
+  } else if(mode==='night'){
+    btn.style.background='linear-gradient(135deg,#7c3aed,#a78bfa)';
+    btn.style.color='#fff';
+    btn.textContent='🌙 Continuer en mode Night →';
+  } else {
+    btn.style.background='linear-gradient(135deg,#0369a1,#38bdf8)';
+    btn.style.color='#fff';
+    btn.textContent='🌟 Continuer en mode Stellar →';
+  }
+}
+function confirmTimeMode(){
+  if(!cfgData.timeMode) return;
+  if(cfgData.timeMode==='stellar'){ openStellarMode(); return; }
+  if(cfgData.timeMode==='night'){ launchMissionPlanner(); return; }
+  document.getElementById('cfg-mode-select').style.display='none';
+  document.getElementById('cfg-steps-wrapper').style.display='block';
+}
+function selectMission(el,mode){
+  document.querySelectorAll('#cfg-step-0 .vehicle-card').forEach(c=>c.classList.remove('selected'));
+  el.classList.add('selected'); cfgData.missionMode=mode;
+  document.getElementById('check-ab').style.color=mode==='ab'?'#6366f1':'transparent';
+  document.getElementById('check-a').style.color=mode==='a-only'?'#6366f1':'transparent';
+}
+function selectVehicle(el,v){
+  document.querySelectorAll('#cfg-step-1 .vehicle-card').forEach(c=>c.classList.remove('selected'));
+  el.classList.add('selected'); cfgData.vehicle=v;
+}
+function toggleSensor(el,s){cfgData.sensors[s]=!cfgData.sensors[s];document.getElementById('tog-'+s).classList.toggle('on',cfgData.sensors[s]);}
+function toggleGPS(){cfgData.gps=!cfgData.gps;document.getElementById('tog-gps').classList.toggle('on',cfgData.gps);}
+function toggleVision(){cfgData.vision=!cfgData.vision;document.getElementById('tog-vision').classList.toggle('on',cfgData.vision);}
+function updateCfgSummary(){
+  const sensors=Object.entries(cfgData.sensors).filter(([k,v])=>v).map(([k])=>k.toUpperCase()).join(', ');
+  document.getElementById('cfg-summary').innerHTML=
+    `🚁 Véhicule : <b style="color:white">${cfgData.vehicle}</b><br>`+
+    `📷 Caméra : <b style="color:white">${cfgData.camRes}px · FOV ${cfgData.fov}°</b><br>`+
+    `🔧 Capteurs : <b style="color:white">${sensors||'Aucun'}</b><br>`+
+    `✈️ Alt max : <b style="color:white">${cfgData.altMax}m</b> · Vitesse : <b style="color:white">${cfgData.speed}m/s</b><br>`+
+    `📡 GPS : <b style="color:${cfgData.gps?'#22c55e':'#ef4444'}">${cfgData.gps?'✅ Activé':'❌ Désactivé'}</b> · `+
+    `Vision : <b style="color:${cfgData.vision?'#22c55e':'#ef4444'}">${cfgData.vision?'✅ Activé':'❌ Désactivé'}</b>`;
+}
+function cfgNext(){
+  if(cfgCurrentStep===2){cfgData.camRes=parseInt(document.getElementById('cfg-cam-res').value);cfgData.fov=parseInt(document.getElementById('cfg-fov').value);}
+  if(cfgCurrentStep===3){cfgData.altMax=parseInt(document.getElementById('cfg-alt-max').value);cfgData.speed=parseInt(document.getElementById('cfg-speed').value);cfgData.battery=parseInt(document.getElementById('cfg-batt').value);cfgData.flightMode=document.getElementById('cfg-flight-mode').value;}
+  if(cfgCurrentStep===4){cfgData.confidence=parseFloat(document.getElementById('cfg-conf').value);cfgData.searchRadius=parseInt(document.getElementById('cfg-search-r').value);launchMissionPlanner();return;}
+  document.getElementById('cfg-step-'+cfgCurrentStep).style.display='none';
+  document.getElementById('step-dot-'+cfgCurrentStep).classList.remove('active');
+  document.getElementById('step-dot-'+cfgCurrentStep).classList.add('done');
+  const line=document.getElementById('step-line-'+cfgCurrentStep);
+  if(line) line.classList.add('done');
+  cfgCurrentStep++;
+  document.getElementById('cfg-step-'+cfgCurrentStep).style.display='block';
+  document.getElementById('step-dot-'+cfgCurrentStep).classList.add('active');
+  document.getElementById('cfg-btn-prev').style.display='block';
+  if(cfgCurrentStep===4){updateCfgSummary();document.getElementById('cfg-btn-next').textContent='🚀 Lancer Mission Planner';document.getElementById('cfg-btn-next').style.background='linear-gradient(135deg,#059669,#10b981)';}
+}
+function cfgPrev(){
+  document.getElementById('cfg-step-'+cfgCurrentStep).style.display='none';
+  document.getElementById('step-dot-'+cfgCurrentStep).classList.remove('active');
+  cfgCurrentStep--;
+  document.getElementById('cfg-step-'+cfgCurrentStep).style.display='block';
+  document.getElementById('step-dot-'+cfgCurrentStep).classList.remove('done');
+  document.getElementById('step-dot-'+cfgCurrentStep).classList.add('active');
+  const line=document.getElementById('step-line-'+cfgCurrentStep);
+  if(line) line.classList.remove('done');
+  if(cfgCurrentStep===0) document.getElementById('cfg-btn-prev').style.display='none';
+  document.getElementById('cfg-btn-next').textContent='Suivant →';
+  document.getElementById('cfg-btn-next').style.background='linear-gradient(135deg,#6366f1,#8b5cf6)';
+}
+function launchMissionPlanner(){
+  window.vehicleConfig=cfgData; window.missionMode=cfgData.missionMode;
+  RECEIVER = (cfgData.timeMode==='night')
+                ? `http://${NAVERA_HOST}:5001`
+                : (cfgData.timeMode==='stellar')
+                    ? `http://${NAVERA_HOST}:5002`
+                    : `http://${NAVERA_HOST}:8181`;   // day → navera_web_bridge serves gps_status.json on 8181
+  window.naveraTimeMode=cfgData.timeMode;
+  console.log('NAVERA mode:',cfgData.timeMode,'→ RECEIVER:',RECEIVER);
+  const isNight=cfgData.timeMode==='night';
+  const overlay=document.getElementById('config-overlay');
+  overlay.style.transition='opacity 0.5s'; overlay.style.opacity='0';
+  setTimeout(()=>{
+    overlay.style.display='none';
+    document.getElementById('view-planner').classList.add('active');
+    pInitMap();
+    setTimeout(()=>{if(pMap) pMap.invalidateSize();},200);
+    pUpdateAlt(Math.min(cfgData.altMax||400,400));
+    if(isNight){
+      // Night mode: hide unnecessary controls, keep launch always enabled
+      document.getElementById('btn-precollect').style.display='none';
+      const exportBtn=document.querySelector('.btn-outline.btn-sm');
+      if(exportBtn) exportBtn.style.display='none';
+      document.getElementById('btn-launch').disabled=false;
+      document.getElementById('btn-launch').style.opacity='1';
+      document.getElementById('btn-launch').style.cursor='pointer';
+      // Hide Point B section
+      const cardBSection=document.getElementById('card-b-section');
+      if(cardBSection) cardBSection.style.display='none';
+      // Hide waypoints section
+      const wpSection=document.getElementById('tab-waypoints');
+      if(wpSection) wpSection.style.display='none';
+      document.getElementById('click-hint').textContent='🌙 Mode Night — Cliquez sur la carte pour définir le Point A';
+    } else if(cfgData.missionMode==='a-only'){
+      window.continuousCollect=true;
+      const cardB=document.getElementById('card-b');
+      if(cardB) cardB.closest('.section').style.display='none';
+      // a-only: Point A only — enable launch like night mode (no Point B required)
+      document.getElementById('btn-launch').disabled=false;
+      document.getElementById('btn-launch').style.opacity='1';
+      document.getElementById('btn-launch').style.cursor='pointer';
+    } else {
+      window.continuousCollect=false;
+    }
+  },500);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MISSION PLANNER LOGIC
+// ═══════════════════════════════════════════════════════════════════
+// NAVERA endpoint config
+// server.py    → port 8181 (tile proxy + static files)
+// receiver.py  → port 5000 (day-mode frame intake)
+// night_recv   → port 5001 (STHN night-mode frame intake)
+// stellar_recv → port 5002 (stellar mode)
+// fusion_pkg   → port 8182 (ROS2 node control)
+// Use the host the page was loaded from so it works both locally on the
+// Jetson AND from a remote browser (PC-Nour, laptop, phone…).
+const NAVERA_HOST = window.location.hostname || 'localhost';
+const TILE_SERVER = `http://${NAVERA_HOST}:8181`;
+//   // Always poll through TILE_SERVER (8181) — server.py proxies to night_receiver.
+//   // This avoids CORS errors and keeps a single origin for all API calls.
+let   RECEIVER    = `http://${NAVERA_HOST}:8181`;
+const FUSION      = `http://${NAVERA_HOST}:8182`;
+let pMap=null;
+let ptA=null,ptB=null,markerA=null,markerB=null;
+let routeLine=null,pWpMarkers=[],pCircles=[],circlesOn=true;
+let activeP='A',inputMode='click';
+let routeMarkers=[],manualWPList=[],bboxRect=null;
+let altitude=400,wpStep=800,zoomLevel=17,precollecting=false;
+
+const iconA=L.divIcon({html:`<div style="width:34px;height:34px;border-radius:50%;background:#2563eb;color:white;font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center;border:3px solid white;box-shadow:0 3px 10px rgba(37,99,235,.5)">A</div>`,iconSize:[34,34],iconAnchor:[17,17],className:''});
+const iconB=L.divIcon({html:`<div style="width:34px;height:34px;border-radius:50%;background:#dc2626;color:white;font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center;border:3px solid white;box-shadow:0 3px 10px rgba(220,38,38,.5)">B</div>`,iconSize:[34,34],iconAnchor:[17,17],className:''});
+function wpIcon(n){return L.divIcon({html:`<div style="width:22px;height:22px;border-radius:50%;background:#7c3aed;color:white;font-weight:700;font-size:9px;display:flex;align-items:center;justify-content:center;border:2px solid white;box-shadow:0 2px 6px rgba(124,58,237,.4)">${n}</div>`,iconSize:[22,22],iconAnchor:[11,11],className:''})}
+
+function pCalcRadius(alt){const res=zoomLevel===18?0.12:0.24;return Math.round(alt*res*224/1000*4);}
+function pHaversine(a,b){const R=6371000,dLat=(b.lat-a.lat)*Math.PI/180,dLon=(b.lng-a.lng)*Math.PI/180;const x=Math.sin(dLat/2)**2+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLon/2)**2;return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
+function pInterpolate(a,b,step){const d=pHaversine(a,b),n=Math.max(1,Math.floor(d/step)),pts=[];for(let i=0;i<=n;i++) pts.push({lat:a.lat+(b.lat-a.lat)*(i/n),lng:a.lng+(b.lng-a.lng)*(i/n)});return pts;}
+
+function pInitMap(){
+  if(pMap) return;
+  pMap=L.map('p-map',{zoomControl:true,preferCanvas:true}).setView([35.83563,10.59082],13);
+  L.tileLayer(`${TILE_SERVER}/tiles/{z}/{x}/{y}.png`,{attribution:'MBTiles · Sousse Satellite',maxZoom:20,minZoom:8,maxNativeZoom:18,errorTileUrl:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'}).addTo(pMap);
+  pMap.on('click',e=>{
+    if(inputMode==='wp'){pAddManualWP_latlng(e.latlng);return;}
+    if(inputMode!=='click') return;
+    // A-only mission model: every map click sets Point A. B is never placed.
+    pSetPoint('A',e.latlng);
+    ptA=e.latlng;
+    document.getElementById('inp-lat-a').value=e.latlng.lat.toFixed(6);
+    document.getElementById('inp-lon-a').value=e.latlng.lng.toFixed(6);
+  });
+  pMap.on('mousemove',e=>{document.getElementById('map-coords').textContent=`${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}`;});
+  pMap.getContainer().style.cursor='crosshair';
+}
+
+function pSetPoint(which,latlng){
+  if(which==='A'){ptA=latlng;if(markerA) pMap.removeLayer(markerA);markerA=L.marker(latlng,{icon:iconA,draggable:false}).addTo(pMap).bindTooltip('Point A — Départ',{permanent:false});pRefreshUI('A');}
+  else{ptB=latlng;if(markerB) pMap.removeLayer(markerB);markerB=L.marker(latlng,{icon:iconB,draggable:false}).addTo(pMap).bindTooltip('Point B — Arrivée',{permanent:false});pRefreshUI('B');}
+  pUpdateRoute();
+}
+function pRefreshUI(which){
+  const pt=which==='A'?ptA:ptB; const s=which.toLowerCase(); if(!pt) return;
+  document.getElementById(`disp-lat-${s}`).textContent=pt.lat.toFixed(6);
+  document.getElementById(`disp-lon-${s}`).textContent=pt.lng.toFixed(6);
+  document.getElementById(`inp-lat-${s}`).value=pt.lat.toFixed(6);
+  document.getElementById(`inp-lon-${s}`).value=pt.lng.toFixed(6);
+  document.getElementById(`sub-${s}`).textContent='✓ Défini · modifiable';
+  document.getElementById(`card-${s}`).className='point-card set';
+  // A-only mission model: enable launch as soon as Point A is set (B is never required)
+  if(which==='A'){
+    document.getElementById('btn-launch').disabled=false;
+    document.getElementById('click-hint').textContent='✅ Point A défini — prêt pour le lancement';
+    document.getElementById('click-hint').className='click-hint';
+  }
+}
+function pValidateCoord(s){
+  const lat=parseFloat(document.getElementById(`inp-lat-${s}`).value);
+  const lon=parseFloat(document.getElementById(`inp-lon-${s}`).value);
+  const latOk=!isNaN(lat)&&lat>=-90&&lat<=90; const lonOk=!isNaN(lon)&&lon>=-180&&lon<=180;
+  document.getElementById(`inp-lat-${s}`).className=latOk||isNaN(lat)?'':'error';
+  document.getElementById(`inp-lon-${s}`).className=lonOk||isNaN(lon)?'':'error';
+  return latOk&&lonOk;
+}
+function pApplyCoords(which){
+  const s=which.toLowerCase(); if(!pValidateCoord(s)){toast('Coordonnées invalides','red');return;}
+  const lat=parseFloat(document.getElementById(`inp-lat-${s}`).value);
+  const lon=parseFloat(document.getElementById(`inp-lon-${s}`).value);
+  pSetPoint(which,L.latLng(lat,lon)); pMap.setView([lat,lon],Math.max(pMap.getZoom(),14));
+  toast(`Point ${which} défini : (${lat.toFixed(5)}, ${lon.toFixed(5)})`, 'green');
+}
+function pUpdateRoute(){
+  pClearRoute(); if(!ptA) return;
+  const R=pCalcRadius(altitude); let wps=[];
+  if(manualWPList.length>0){wps=[{lat:ptA.lat,lng:ptA.lng},...manualWPList];if(ptB) wps.push({lat:ptB.lat,lng:ptB.lng});}
+  else{if(!ptB) return; wps=pInterpolate(ptA,ptB,wpStep);}
+  let totalDist=0; for(let i=0;i<wps.length-1;i++) totalDist+=pHaversine(wps[i],wps[i+1]);
+  routeLine=L.polyline(wps,{color:'#2563eb',weight:3,opacity:.75,dashArray:'10 5'}).addTo(pMap);
+  wps.forEach((wp,i)=>{
+    const circle=L.circle(wp,{radius:R,color:'rgba(37,99,235,.65)',fillColor:'rgba(37,99,235,.05)',fillOpacity:1,weight:1.5,dashArray:'5 4'}).addTo(pMap);
+    circle.bindTooltip(`Zone WP${i} · R=${R}m`,{direction:'top'}); pCircles.push(circle);
+  });
+  if(!circlesOn) pCircles.forEach(c=>pMap.removeLayer(c));
+  if(bboxRect) pMap.removeLayer(bboxRect);
+  const lats=wps.map(w=>w.lat),lngs=wps.map(w=>w.lng);
+  bboxRect=L.rectangle([[Math.min(...lats)-0.002,Math.min(...lngs)-0.002],[Math.max(...lats)+0.002,Math.max(...lngs)+0.002]],{color:'#f59e0b',weight:2.5,fillColor:'#fef3c7',fillOpacity:.15,dashArray:'8 4'}).addTo(pMap);
+  const timeS=Math.round(wps.length*7.2);
+  document.getElementById('s-dist').innerHTML=`${(totalDist/1000).toFixed(2)}<span class="stat-unit"> km</span>`;
+  document.getElementById('s-wp').textContent=wps.length;
+  document.getElementById('s-r').innerHTML=`${R}<span class="stat-unit"> m</span>`;
+  document.getElementById('s-time').textContent=timeS<60?`~${timeS}s`:`~${Math.floor(timeS/60)}min ${timeS%60}s`;
+  const foot2=Math.round(altitude*(zoomLevel===18?0.12:0.24)*224/1000);
+  document.getElementById('s-imgs').textContent=Math.max(1,Math.round(Math.PI*Math.pow(R,2)/Math.pow(Math.max(1,foot2*0.3),2)));
+  document.getElementById('stats-section').style.display='block';
+  document.getElementById('btn-precollect').disabled=!ptA;
+  document.getElementById('btn-launch').disabled=!ptA;   // A-only: launch needs only Point A
+  document.getElementById('click-hint').textContent='✅ Route calculée — '+wps.length+' waypoints';
+  document.getElementById('click-hint').className='click-hint';
+}
+function pClearRoute(){
+  if(routeLine){pMap.removeLayer(routeLine);routeLine=null;}
+  if(bboxRect){pMap.removeLayer(bboxRect);bboxRect=null;}
+  routeMarkers.forEach(m=>pMap.removeLayer(m)); routeMarkers=[];
+  pCircles.forEach(c=>pMap.removeLayer(c)); pCircles=[];
+}
+function pClearPoint(which){
+  if(which==='A'){ptA=null;if(markerA){pMap.removeLayer(markerA);markerA=null;}document.getElementById('disp-lat-a').textContent='—';document.getElementById('disp-lon-a').textContent='—';document.getElementById('inp-lat-a').value='';document.getElementById('inp-lon-a').value='';document.getElementById('sub-a').textContent='Non défini';document.getElementById('card-a').className='point-card';}
+  else{ptB=null;if(markerB){pMap.removeLayer(markerB);markerB=null;}document.getElementById('disp-lat-b').textContent='—';document.getElementById('disp-lon-b').textContent='—';document.getElementById('inp-lat-b').value='';document.getElementById('inp-lon-b').value='';document.getElementById('sub-b').textContent='Non défini';document.getElementById('card-b').className='point-card';}
+  pClearRoute(); document.getElementById('stats-section').style.display='none';
+  document.getElementById('btn-precollect').disabled=true; document.getElementById('btn-launch').disabled=!ptA;   // A-only: enabled while A is set
+  pResetClickHint();
+}
+function pClearAll(){
+  pClearPoint('A');pClearPoint('B');
+  pWpMarkers.forEach(m=>pMap.removeLayer(m)); pWpMarkers=[];
+  routeMarkers.forEach(m=>pMap.removeLayer(m)); routeMarkers=[];
+  manualWPList=[]; pCircles.forEach(c=>pMap.removeLayer(c)); pCircles=[];
+  if(routeLine){pMap.removeLayer(routeLine);routeLine=null;}
+  document.getElementById('stats-section').style.display='none';
+  document.getElementById('wp-manual-list').innerHTML='';
+  document.getElementById('btn-precollect').disabled=true;document.getElementById('btn-launch').disabled=true;   // A-only: cleared → no A yet
+  document.getElementById('btn-precollect').textContent='⚡ Pré-collecter';
+  pSetCacheUI('not-ready','Cache non disponible','Planifiez la mission puis pré-collectez');
+  document.getElementById('progress-box').classList.remove('show');
+  toast('Tout effacé','amber');
+}
+function pResetClickHint(){const h=document.getElementById('click-hint');h.textContent='Cliquez sur la carte → Point A';h.className='click-hint waiting';h.style.cssText='';}
+function pSetActivePoint(which){
+  activeP=which; const h=document.getElementById('click-hint');
+  if(ptA&&ptB) return;
+  h.textContent=`Cliquez sur la carte → Point ${which}`; h.className='click-hint waiting';
+}
+function pSetMode(mode){
+  inputMode=mode;
+  document.getElementById('mode-click').className=mode==='click'?'btn btn-primary btn-sm':'btn btn-ghost btn-sm';
+  document.getElementById('mode-type').className=mode==='type'?'btn btn-primary btn-sm':'btn btn-ghost btn-sm';
+  pMap.getContainer().style.cursor=mode==='click'?'crosshair':'grab';
+  document.getElementById('click-hint').style.display=mode==='click'?'flex':'none';
+}
+function pUpdateAlt(v){
+  altitude=parseInt(v);
+  document.getElementById('v-alt').textContent=v+'m';document.getElementById('p-alt').textContent=v+'m';
+  const res=zoomLevel===18?0.12:0.24; const foot=Math.round(parseInt(v)*res*224/1000);
+  document.getElementById('p-foot').textContent=foot+'m';document.getElementById('p-r').textContent=pCalcRadius(parseInt(v))+'m';
+  if(ptA&&ptB) pUpdateRoute();
+}
+function pUpdateStep(v){wpStep=parseInt(v);document.getElementById('v-step').textContent=v+'m';if(ptA&&ptB) pUpdateRoute();}
+function pSetZoom(z){
+  pMap.setZoom(z); zoomLevel=z;
+  ['17','18'].forEach(n=>{const el=document.getElementById('z'+n);el.style.background=parseInt(n)===z?'var(--accent-light)':'var(--surface2)';el.style.color=parseInt(n)===z?'var(--accent)':'var(--text2)';el.style.borderColor=parseInt(n)===z?'var(--accent)':'var(--border)';});
+  if(ptA&&ptB) pUpdateRoute();
+}
+function pToggleCircles(){
+  circlesOn=!circlesOn; document.getElementById('btn-circles').className=circlesOn?'map-btn toggled':'map-btn';
+  pCircles.forEach(c=>circlesOn?c.addTo(pMap):pMap.removeLayer(c));
+}
+function pFitBounds(){if(ptA&&ptB) pMap.fitBounds([[ptA.lat,ptA.lng],[ptB.lat,ptB.lng]],{padding:[50,50]});}
+function pSwitchTab(id,el){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active'); document.getElementById('tab-'+id).classList.add('active');
+}
+function pSetCacheUI(state,title,sub){
+  const c=document.getElementById('cache-card');
+  c.className='cache-card '+(state==='ready'?'ready':state==='running'?'running':'not-ready');
+  document.getElementById('cache-icon').textContent=state==='ready'?'✅':state==='running'?'⚡':'⏳';
+  document.getElementById('cache-title').textContent=title;
+  document.getElementById('cache-sub').textContent=sub;
+}
+function pAddManualWP_latlng(latlng){
+  const lat=latlng.lat,lon=latlng.lng,R=pCalcRadius(altitude),n=manualWPList.length+1;
+  const m=L.marker(latlng,{icon:wpIcon(n),draggable:false}).addTo(pMap);
+  m.bindTooltip(`WP ${n} · (${lat.toFixed(4)}, ${lon.toFixed(4)})`,{direction:'top'});
+  pWpMarkers.push(m);
+  const circle=L.circle([lat,lon],{radius:R,color:'rgba(37,99,235,.65)',fillColor:'rgba(37,99,235,.05)',fillOpacity:1,weight:1.5,dashArray:'5 4'}).addTo(pMap);
+  circle.bindTooltip(`Zone WP ${n} · R=${R}m`,{direction:'top'}); pCircles.push(circle);
+  manualWPList.push({lat,lng:lon}); pUpdateWPList();
+  if(ptA) pUpdateRoute(); toast(`WP${n} ajouté → (${lat.toFixed(4)}, ${lon.toFixed(4)})`,'green');
+}
+function pUpdateWPList(){
+  const list=document.getElementById('wp-manual-list'); if(!list) return;
+  list.innerHTML=pWpMarkers.map((m,i)=>{const p=m.getLatLng();return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 6px;margin-top:4px;background:var(--accent-light);border-radius:4px;font-size:11px;color:var(--accent)"><span>📍 WP${i+1}: (${p.lat.toFixed(5)}, ${p.lng.toFixed(5)})</span><span onclick="pRemoveWP(${i})" style="cursor:pointer;color:red;font-weight:700;padding:0 4px">×</span></div>`;}).join('');
+}
+function pRemoveWP(idx){
+  if(pWpMarkers[idx]) pMap.removeLayer(pWpMarkers[idx]); if(pCircles[idx]) pMap.removeLayer(pCircles[idx]);
+  pWpMarkers.splice(idx,1); pCircles.splice(idx,1); manualWPList.splice(idx,1);
+  pUpdateWPList(); if(ptA) pUpdateRoute(); toast('Waypoint supprimé','amber');
+}
+function pAddManualWP(){
+  const lat=parseFloat(document.getElementById('wp-lat').value);
+  const lon=parseFloat(document.getElementById('wp-lon').value);
+  if(isNaN(lat)||isNaN(lon)){alert('Entrez lat et lon valides');return;}
+  pAddManualWP_latlng(L.latLng(lat,lon)); pMap.panTo([lat,lon],{animate:true});
+  document.getElementById('wp-lat').value=''; document.getElementById('wp-lon').value='';
+}
+function pToggleWPClickMode(){
+  const btn=document.getElementById('btn-wp-click');
+  if(inputMode==='wp'){inputMode='click';btn.style.background='var(--surface2)';btn.textContent='🖱 Clic carte';pMap.getContainer().style.cursor='crosshair';toast('Mode waypoint désactivé','amber');}
+  else{inputMode='wp';btn.style.background='var(--accent)';btn.style.color='white';btn.textContent='✅ Clic actif — cliquez sur la carte';pMap.getContainer().style.cursor='crosshair';toast('Cliquez sur la carte pour ajouter des waypoints !','green');}
+}
+function pStartPrecollect(){
+  if(!ptA||precollecting) return;
+  precollecting=true;
+  pSwitchTab('cache',document.querySelectorAll('.tab')[2]);
+
+  // Bbox englobant A + waypoints + B avec marge
+  const allPts=[];
+  if(ptA) allPts.push({lat:ptA.lat,lng:ptA.lng});
+  if(manualWPList&&manualWPList.length>0) manualWPList.forEach(w=>allPts.push(w));
+  if(ptB) allPts.push({lat:ptB.lat,lng:ptB.lng});
+  const lats=allPts.map(p=>p.lat), lngs=allPts.map(p=>p.lng||p.lon);
+  const PAD=0.012;
+  const bbox={minLat:Math.min(...lats)-PAD,maxLat:Math.max(...lats)+PAD,
+               minLng:Math.min(...lngs)-PAD,maxLng:Math.max(...lngs)+PAD};
+
+  document.getElementById('progress-box').classList.add('show');
+  document.getElementById('btn-precollect').disabled=true;
+  document.getElementById('btn-precollect').textContent='⏳ Collecte BBox...';
+  document.getElementById('prog-title').textContent='Collecte tuiles satellite...';
+  document.getElementById('prog-msg').textContent='Lancement collecte en arrière-plan...';
+  document.getElementById('prog-fill').style.width='5%';
+  document.getElementById('prog-pct').textContent='5%';
+  pSetCacheUI('running','⚡ Collecte BBox en cours...','Dataset plat · images/ + metadata.csv');
+
+  // Lancer la collecte avec radius calculé depuis bbox
+  const centerLat = (bbox.minLat + bbox.maxLat) / 2 || 35.8288;
+  const centerLng = (bbox.minLng + bbox.maxLng) / 2 || 10.6360;
+  
+  // Calculate radius from bbox dimensions (approx 111km per degree at equator)
+  const bboxWidth = (bbox.maxLng - bbox.minLng) * 111000; // in meters
+  const bboxHeight = (bbox.maxLat - bbox.minLat) * 111000; // in meters
+  const radius_m = Math.max(bboxWidth, bboxHeight) / 2 + 500; // half-diagonal + margin
+  
+  // Skip precollect for stellar mode — solve-field works on demand
+  if(cfgData.timeMode === 'stellar'){
+    console.log('🌟 Stellar mode — skipping precollect, solver ready on demand');
+    const cacheDiv = document.getElementById('cache-status');
+    if(cacheDiv) cacheDiv.innerHTML = '🌟 Stellar solver prêt';
+    return;
+  }
+  fetch(`${RECEIVER}/api/precollect`,{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({minLat:bbox.minLat,maxLat:bbox.maxLat,minLng:bbox.minLng,maxLng:bbox.maxLng,zoom:zoomLevel})
+  })
+  .then(r=>r.json())
+  .then(d=>{
+    if(d.success||d.status==='started'){
+      pPollCollectProgress();
+    } else {
+      precollecting=false;
+      document.getElementById('btn-precollect').disabled=false;
+      document.getElementById('btn-precollect').textContent='⚡ Pré-collecter';
+      toast('❌ '+(d.error||'Erreur inconnue'),'red');
+    }
+  })
+  .catch(e=>{
+    precollecting=false;
+    document.getElementById('btn-precollect').disabled=false;
+    document.getElementById('btn-precollect').textContent='⚡ Pré-collecter';
+    toast('❌ Connexion: '+e,'red');
+  });
+}
+
+function pPollCollectProgress(){
+  // Poll /api/precollect_progress toutes les 500ms
+  const iv=setInterval(()=>{
+    fetch(`${RECEIVER}/api/precollect_progress`)
+    .then(r=>r.json())
+    .then(d=>{
+      const pct=d.pct||5;
+      const phase1Done = !d.running && d.success===true;
+      const phase1Err  = !d.running && d.success===false;
+
+      if(phase1Err){
+        clearInterval(iv);
+        precollecting=false;
+        document.getElementById('btn-precollect').disabled=false;
+        document.getElementById('btn-precollect').textContent='⚡ Pré-collecter';
+        toast('❌ Erreur collecte: '+(d.error||'inconnue'),'red');
+        return;
+      }
+
+      if(d.running){
+        // Phase 1 : collecte tuiles — display pct directly (5-95%)
+        document.getElementById('prog-fill').style.width=pct+'%';
+        document.getElementById('prog-pct').textContent=pct+'%';
+        document.getElementById('prog-msg').textContent=
+          d.total>0?`Tuiles: ${d.done}/${d.total} images extraites`:'Extraction tuiles...';
+        return;
+      }
+
+      if(phase1Done){
+        // Phase 1 terminée → Phase 2 : construction cache descripteurs
+        clearInterval(iv);
+        document.getElementById('prog-fill').style.width='60%';
+        document.getElementById('prog-pct').textContent='60%';
+        document.getElementById('prog-msg').textContent=
+          `✅ ${d.files} tuiles extraites — Construction cache descripteurs...`;
+        pPollCacheReady(d.files);
+      }
+    })
+    .catch(()=>{});
+  },500);
+}
+
+function pPollCacheReady(nImages){
+  // Poll /api/cache_status jusqu'à ce que le cache soit prêt
+  let pct=60;
+  const iv=setInterval(()=>{
+    fetch(`${RECEIVER}/api/cache_status`)
+    .then(r=>r.json())
+    .then(d=>{
+      if(d.ready&&!d.running){
+        clearInterval(iv);
+        precollecting=false;
+        document.getElementById('prog-fill').style.width='100%';
+        document.getElementById('prog-pct').textContent='100%';
+        document.getElementById('prog-msg').textContent='✅ Cache prêt !';
+        document.getElementById('btn-precollect').textContent='✅ Cache prêt';
+        pSetCacheUI('ready',
+          '✅ Cache prêt — matching ultra-rapide !',
+          nImages+' images · ~105ms/frame');
+        toast('✅ Dataset prêt ! Vous pouvez lancer la mission.','green');
+        document.getElementById('btn-launch').disabled=false;
+      } else {
+        pct=Math.min(95,pct+3);
+        document.getElementById('prog-fill').style.width=pct+'%';
+        document.getElementById('prog-pct').textContent=Math.round(pct)+'%';
+        document.getElementById('prog-msg').textContent='Construction cache descripteurs... '+Math.round(pct)+'%';
+      }
+    })
+    .catch(()=>{});
+  },1500);
+}
+function pPollPipelineStatus(nWps){pPollCacheReady(nWps);}
+function pExportMission(){
+  if(!ptA){toast("Définissez le point A d'abord",'amber');return;}
+  let wps=manualWPList&&manualWPList.length>0?[{lat:ptA.lat,lng:ptA.lng},...manualWPList]:[{lat:ptA.lat,lng:ptA.lng}];
+  const data={mission:{alt_m:altitude,wp_step_m:wpStep,radius_m:pCalcRadius(altitude),zoom:zoomLevel},point_a:{lat:ptA.lat,lon:ptA.lng},waypoints:wps.map((w,i)=>({id:i,lat:w.lat,lon:w.lng}))};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const url=window.URL.createObjectURL(blob); const a=document.createElement('a');
+  a.style.display='none';a.href=url;a.download='mission_plan.json';document.body.appendChild(a);a.click();
+  setTimeout(()=>{window.URL.revokeObjectURL(url);document.body.removeChild(a);},100);
+  toast('Exporté → mission_plan.json','green');
+}
+setInterval(()=>{fetch(`${RECEIVER}/api/cache_status`).then(r=>r.json()).then(d=>{if(d.ready&&!precollecting&&window.naveraTimeMode!=='night'){pSetCacheUI('ready','✅ Cache disponible','~105ms/frame · prêt pour le vol');if(ptA) document.getElementById('btn-launch').disabled=false;}}).catch(()=>{});},3000);
+// Night mode safety net: keep Launch Mission always enabled
+setInterval(()=>{if(window.naveraTimeMode==='night'||window.missionMode==='a-only'){const b=document.getElementById('btn-launch');if(b&&b.disabled){b.disabled=false;}}},500);
+
+// ═══════════════════════════════════════════════════════════════════
+//  LAUNCH TRANSITION  (Mission Planner → Flight Monitor)
+// ═══════════════════════════════════════════════════════════════════
+async function launchMission(){
+  // A-only mission model: only Point A is required (B is discovered by visual loc).
+  if(!ptA){toast('Définissez le point A','amber');return;}
+  // Build waypoints list — Point A only (path is discovered, not pre-planned).
+  const waypoints = [{lat:ptA.lat,lon:ptA.lng}];
+
+  // Store mission params INCLUDING WAYPOINTS
+  window.missionParams={
+    alt:altitude,
+    lat:ptA.lat,
+    lon:ptA.lng,
+    zoom:zoomLevel,
+    waypoints:waypoints,
+    point_a:{lat:ptA.lat,lon:ptA.lng}
+  };
+
+  // Send mission config to receiver BEFORE starting services
+  const missionConfig = {
+    mission_mode: 'a-only',
+    waypoints: waypoints.map((w,i)=>({id:`wp_${i.toString().padStart(4,'0')}`,lat:w.lat,lon:w.lon||w.lng})),
+    altitude_m: altitude,
+    wp_step_m: wpStep,
+    search_radius_m: pCalcRadius(altitude),
+    zoom: zoomLevel,
+    point_a: {lat:ptA.lat,lon:ptA.lng}
+  };
+  
+  try {
+    const setMissionResp = await fetch(`${RECEIVER}/api/set_mission`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(missionConfig)
+    });
+    if(!setMissionResp.ok) {
+      console.warn('⚠ set_mission response:', setMissionResp.status);
+    }
+  } catch(e) {
+    console.warn('⚠ set_mission error:', e);
+  }
+  
+  // Start backend calls
+  // Start backend calls — vision_node not needed (tiles served by server.py)
+if(cfgData.timeMode === 'night'){
+  // night_receiver must already be running — do NOT restart it here (causes OOM-kill)
+} else if(cfgData.timeMode === 'stellar'){
+  setTimeout(()=>fetch(`${TILE_SERVER}/api/node?action=start_stellar_receiver`).catch(()=>{}),800);
+} else {
+  setTimeout(()=>fetch(`${TILE_SERVER}/api/node?action=start_receiver`).catch(()=>{}),800);
+}
+  if (cfgData.timeMode === 'night') {
+    setTimeout(() => {
+     fetch(`${TILE_SERVER}/api/start_night_mission`, {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({
+         pc_nour_ip:  '192.168.1.18',   // ← correct PC-Nour IP
+         agent_port:  6001,
+         fps:         1 / 10,           // ← 1 frame / 10s
+         csv:         '/home/nour-el-houda-mokded/Bureau/testNight/sousse_flight/flight_ready.csv',
+         images_dir:  '/home/nour-el-houda-mokded/Bureau/testNight/sousse_flight',
+       })
+     })
+     .then(r => r.json())
+     .then(d => console.log('🌙 Night mission triggered:', d))
+     .catch(e => console.warn('⚠ Night mission trigger failed:', e));
+   }, 500);   // 0.5s — night_receiver already running, no need to wait
+  }
+  // Show transition overlay
+  document.getElementById('lt').classList.add('show');
+  const isStellar = cfgData.timeMode === 'stellar';
+  const steps=['lts-1','lts-2','lts-3','lts-4','lts-5'];
+  const pcts=[0,20,45,70,90,100];
+  const msgs=isStellar
+    ?['Connexion backend stellaire...','Chargement catalogue d\'étoiles...','Calibration capteur stellaire...','Démarrage stellar_pkg · port 5002...','Navigation céleste active...']
+    :['Connexion backend...','Chargement carte satellite...','Initialisation pipeline visual loc...','Démarrage threads NAVERA...','Mission en cours...'];
+  if(isStellar) document.getElementById('lt-sub').textContent='NAVIGATION STELLAIRE...';
+  for(let i=0;i<steps.length;i++){
+    document.getElementById(steps[i]).querySelector('.lt-dot').nextSibling.textContent = msgs[i];
+    document.getElementById(steps[i]).className='lt-step active';
+    document.getElementById('lt-bar').style.width=pcts[i+1]+'%';
+    await new Promise(r=>setTimeout(r,700));
+    document.getElementById(steps[i]).className='lt-step done';
+  }
+  document.getElementById('lt-sub').textContent=isStellar?'NAVIGATION CÉLESTE ACTIVE ✓':'VOL EN COURS ✓';
+  await new Promise(r=>setTimeout(r,400));
+  // Switch views
+  document.getElementById('lt').classList.remove('show');
+  document.getElementById('view-planner').classList.remove('active');
+  document.getElementById('view-flight').classList.add('active');
+  // Init flight
+  initFlightMap();
+  // Force Leaflet to recalculate size after view becomes visible
+  setTimeout(()=>{if(fMap){fMap.invalidateSize(true);}},100);
+  setTimeout(()=>{if(fMap){fMap.invalidateSize(true);}},400);
+}
+
+function backToPlanner(){
+  // Cleanup flight
+  if(fDrone){fMap.removeLayer(fDrone);fDrone=null;}
+  if(fTLineGpsValid){fMap.removeLayer(fTLineGpsValid);fTLineGpsValid=null;}
+  if(fTLineGpsPredicted){fMap.removeLayer(fTLineGpsPredicted);fTLineGpsPredicted=null;}
+  fWpMarkers.forEach(m=>fMap.removeLayer(m)); fWpMarkers=[];
+  fTrail=[]; fTrailGpsValid=[]; fTrailGpsPredicted=[];
+  if(fSearchCircle){fMap.removeLayer(fSearchCircle);fSearchCircle=null;}
+  if(fPredictedMarker){fMap.removeLayer(fPredictedMarker);fPredictedMarker=null;}
+  if(fPredictionLine){fMap.removeLayer(fPredictionLine);fPredictionLine=null;}
+  clearInterval(pollCsvInterval); clearInterval(pollGpsInterval);
+  if(fFlightSyncInterval) clearInterval(fFlightSyncInterval);
+  if(fMap){fMap.remove();fMap=null;}
+  if(fIdleOverlay){fIdleOverlay.remove();fIdleOverlay=null;}
+  fPointAMarker=null;
+  missionStarted=false;
+  fCurrentFrames=[]; fLastFrameId=0; fLastGpsStatusStr=''; fGpsLostProcessed=false; fFocusMode=false;
+  document.getElementById('mpopup').classList.remove('show');
+  document.getElementById('gps-banner').classList.remove('show');
+  document.getElementById('mload').classList.remove('show');
+  // Switch back
+  document.getElementById('view-flight').classList.remove('active');
+  document.getElementById('view-planner').classList.add('active');
+  setTimeout(()=>{if(pMap) pMap.invalidateSize();},200);
+  toast('Retour Mission Planner','ok');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  FLIGHT MONITOR LOGIC
+// ═══════════════════════════════════════════════════════════════════
+let fMap=null;
+let sm=2;
+let fDrone=null,fWpMarkers=[],fTLine=null,fTrail=[];
+let fSearchCircle=null,fSearchCenterMark=null;
+let fPredictedMarker=null,fPredictionLine=null;
+let fFocusMode=false,fFocusFrameId=null;
+let fCurrentFrames=[],fLastFrameId=0;
+let fLastGpsStatusStr='',fLastGpsStatus=null,fGpsLostProcessed=false;
+let pollCsvInterval=null, pollGpsInterval=null;
+let fTrailGpsValid=[], fTrailGpsPredicted=[]; // Separate trails for colors
+let fTLineGpsValid=null, fTLineGpsPredicted=null; // Separate polylines
+let missionStarted=false;
+let fFlightSyncInterval=null;
+let fIdleOverlay=null;
+let fPointAMarker=null;
+
+document.getElementById('spdsl').oninput=function(){sm=+this.value;document.getElementById('spdv').textContent=`×${sm}`;};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms/sm));
+
+function initFlightMap(){
+  missionStarted=false;
+  fLastGpsStatusStr='';
+  fLastGpsStatus=null;
+  fGpsLostProcessed=false;
+  const params=window.missionParams||{};
+  const initLat=params.lat||35.829, initLon=params.lon||10.634, initZoom=params.zoom||17, initAlt=params.alt||400;
+  document.getElementById('f-disp-alt').innerHTML=`${initAlt}<span class="f-tunit">m</span>`;
+  fMap=L.map('f-lmap',{center:[initLat,initLon],zoom:initZoom,zoomControl:false,attributionControl:false,preferCanvas:false});
+  L.control.zoom({position:'bottomleft'}).addTo(fMap);
+  L.tileLayer(`${TILE_SERVER}/tiles/{z}/{x}/{y}.png`,{maxZoom:19,minZoom:13,maxNativeZoom:18,attribution:'MBTiles · Sousse Satellite',errorTileUrl:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'}).addTo(fMap);
+  setTimeout(()=>{ if(fMap){ fMap.invalidateSize(true); fMap.setView([initLat,initLon],initZoom); } },200);
+  // Mark point A
+  fPointAMarker=L.marker([initLat,initLon],{icon:L.divIcon({html:`<div style="width:28px;height:28px;background:#2563eb;color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;border:2px solid white;box-shadow:0 4px 10px rgba(0,0,0,0.4);font-size:14px">A</div>`,iconSize:[28,28],iconAnchor:[14,14],className:''})}).addTo(fMap).bindTooltip('Point A — Départ',{permanent:true,direction:'right',offset:[14,0]}).openTooltip();
+  fDrone=L.marker([initLat,initLon],{icon:fMkDrone('#00e5ff',0),zIndexOffset:1000}).addTo(fMap);
+  // Anchor the trajectory at Point A: the trace's FIRST vertex is A, so the
+  // polyline starts exactly where the user placed Point A — not the first CSV row.
+  window._dayPrevPt=[initLat,initLon];
+  fTrailGpsValid=[[initLat,initLon]]; fTrailGpsPredicted=[];
+  if(fTLineGpsValid){fMap.removeLayer(fTLineGpsValid);}
+  fTLineGpsValid=L.polyline(fTrailGpsValid,{color:'#00e5ff',weight:2.5,opacity:.8,dashArray:'6 4'}).addTo(fMap);
+  showMissionIdleOverlay(true);
+  // Sync lat/lon displays
+  if(fFlightSyncInterval) clearInterval(fFlightSyncInterval);
+  fFlightSyncInterval=setInterval(()=>{
+    const bg_lat=document.getElementById('t-lat'); const bg_lon=document.getElementById('t-lon');
+    if(bg_lat&&bg_lat.textContent!=='—'&&bg_lat.textContent!=='N/A'){document.getElementById('f-disp-lat').textContent=bg_lat.textContent;document.getElementById('f-disp-lon').textContent=bg_lon?.textContent||'—';}
+    else if(bg_lat&&bg_lat.textContent==='N/A'){document.getElementById('f-disp-lat').textContent='LOST';document.getElementById('f-disp-lon').textContent='LOST';}
+    const isLost=bg_lat&&bg_lat.className.includes('red'); const isEst=bg_lat&&bg_lat.className.includes('org');
+    const cls=isLost?'lost-gps':(isEst?'est-gps':'active-gps');
+    document.getElementById('f-box-lat').className=`f-tbox ${cls}`;document.getElementById('f-box-lon').className=`f-tbox ${cls}`;document.getElementById('f-box-alt').className=`f-tbox ${cls}`;
+  },300);
+  // Init log
+  fInitLog();
+  if(window.naveraTimeMode==='night'){
+    fTlog('🌙 NIGHT MODE — STHN Homography Matching','info');
+    fTlog('🔗 Receiver: '+RECEIVER+' (night_pkg)','info');
+    document.getElementById('gps-banner').textContent='⚠ GPS SIGNAL LOST — STHN NIGHT LOCALIZATION ACTIVE';
+  } else {
+    fTlog('☀️ DAY MODE — NetVLAD + DINOv2 + FMC','info');
+    fTlog('🔗 Receiver: '+RECEIVER+' (vision_pkg)','info');
+  }
+  fTlog('📡 En attente des frames du receiver...','info');
+  fTlog('🧵 Threads: CSVWatcher · NoGPSWorker · StatusWriter · ImgWriter×4','info');
+  document.getElementById('chip-st').textContent='LIVE';document.getElementById('chip-st').style.color='#10b981';
+  setThread('csv','active'); setThread('sw','active');
+  // Start polling
+  window._dayLastFid=null; window._daySame=0; window._dayDone=false; window._dayPrevPt=null;
+  pollCsvInterval=setInterval(pollCsv,1000);
+  pollGpsInterval=setInterval(pollGpsStatus,500);
+}
+
+function showMissionIdleOverlay(visible){
+  if(!fMap) return;
+  const container=fMap.getContainer();
+  const host=container.parentElement || container;
+  if(!fIdleOverlay){
+    if(getComputedStyle(host).position==='static') host.style.position='relative';
+    const overlay=document.createElement('div');
+    overlay.id='navera-mission-idle';
+    overlay.style.cssText='position:absolute;inset:0;z-index:1200;display:flex;align-items:center;justify-content:center;pointer-events:none;background:linear-gradient(180deg,rgba(3,7,18,.50),rgba(3,7,18,.62));backdrop-filter:blur(1px);-webkit-backdrop-filter:blur(1px);opacity:0;transition:opacity .25s ease;';
+    overlay.innerHTML=`
+      <div style="background:rgba(15,23,42,.92);border:1px solid rgba(6,182,212,.35);border-radius:16px;padding:22px 32px;box-shadow:0 18px 50px rgba(0,0,0,.45);text-align:center;min-width:280px">
+        <div style="font-size:42px;line-height:1;margin-bottom:10px">🛸</div>
+        <div style="font-family:'Space Grotesk',sans-serif;color:#06b6d4;font-weight:700;letter-spacing:2px;text-transform:uppercase;font-size:15px">Waiting for Mission</div>
+        <div style="margin-top:8px;color:#cbd5e1;font-size:12px;line-height:1.5">The drone is locked on Point A until the first <b style="color:#fff">FLY</b> signal arrives.</div>
+      </div>`;
+    host.appendChild(overlay);
+    fIdleOverlay=overlay;
+  }
+  fIdleOverlay.style.opacity=visible?'1':'0';
+  fIdleOverlay.style.display=visible?'flex':'none';
+}
+
+function setMissionStarted(started){
+  if(missionStarted===started) return;
+  missionStarted=started;
+  showMissionIdleOverlay(!started);
+  if(started){
+    console.log('🟢 Mission started — drone unlocked');
+  }
+}
+
+function fMkDrone(color,hdg){
+  const r=hdg-90;
+  return L.divIcon({html:`<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="-18 -18 36 36"><g transform="rotate(${r})"><circle cx="0" cy="0" r="15" fill="${color}20" stroke="${color}" stroke-width="1.2" opacity=".7"/><polygon points="0,-12 3.5,0 2.5,7 0,8.5 -2.5,7 -3.5,0" fill="${color}" stroke="${color}99" stroke-width="1"/><polygon points="-3.5,-1.5 -14,4 -8,6" fill="${color}" stroke="${color}99" stroke-width="1"/><polygon points="3.5,-1.5 14,4 8,6" fill="${color}" stroke="${color}99" stroke-width="1"/><polygon points="-2.5,7 -6,12 0,10 6,12 2.5,7" fill="${color}" stroke="${color}99" stroke-width="1"/><circle cx="0" cy="0" r="1.8" fill="white" opacity=".9"/></g></svg>`,iconSize:[36,36],iconAnchor:[18,18],className:''});
+}
+function fMkWP(f,active){
+  const c=active?'#00e5ff':(f.valid?'#00ff88':'#ff2244');
+  return L.divIcon({html:`<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22"><circle cx="11" cy="11" r="9" fill="${c}25" stroke="${c}" stroke-width="2"/><text x="11" y="15" text-anchor="middle" fill="${c}" font-size="9" font-family="monospace" font-weight="bold">${f.id}</text></svg>`,iconSize:[22,22],iconAnchor:[11,11],className:''});
+}
+
+function fTlog(msg,type='data'){
+  const b=document.getElementById('term'); const ts=new Date().toLocaleTimeString('fr-FR');
+  const d=document.createElement('div'); d.className='tline';
+  d.innerHTML=`<span style="color:#4b5563">[${ts}]</span><span style="color:${type==='ok'?'#10b981':type==='warn'?'#f59e0b':type==='err'?'#ef4444':type==='info'?'#06b6d4':'#94a3b8'}">${msg}</span>`;
+  b.appendChild(d); b.scrollTop=b.scrollHeight;
+}
+// alias used by flight code
+function tlog(msg,type){fTlog(msg,type);}
+
+function setPS(n,st,v=''){document.getElementById(`ps${n}`).className=`ps ${st}`;if(v) document.getElementById(`pv${n}`).textContent=v;}
+function setThread(id,state){const el=document.getElementById(`thr-${id}`);if(!el) return;el.className='thr'+(state==='active'?' active':state==='done'?' done':'');}
+function updHUD(lat,lon,gst){
+  document.getElementById('hud-lat').textContent=lat?lat.toFixed(6):'N/A';
+  document.getElementById('hud-lon').textContent=lon?lon.toFixed(6):'N/A';
+  const g=document.getElementById('hud-gps');
+  if(gst==='ok'){g.textContent='NOMINAL';g.className='grn';}else if(gst==='lost'){g.textContent='LOST';g.className='red';}else if(gst==='est'){g.textContent='ESTIMATED';g.className='yel';}else{g.textContent='STANDBY';}
+}
+function showLoad(title,msg){document.getElementById('ml-t').textContent=title;document.getElementById('ml-s').textContent=msg;document.getElementById('ml-bi').style.width='0%';document.getElementById('mload').classList.add('show');}
+function hideLoad(){document.getElementById('mload').classList.remove('show');}
+async function animLoad(steps){for(const[p,s,ms] of steps){document.getElementById('ml-bi').style.width=p+'%';document.getElementById('ml-s').textContent=s;await sleep(ms);}}
+
+function fInitLog(){document.getElementById('flog').innerHTML='<div style="padding:10px;color:#4b5563;font-style:italic;text-align:center">⏳ En attente des frames...</div>';}
+function addFrameToLog(frame){
+  const flog=document.getElementById('flog');
+  if(flog.querySelector('div[style*="italic"]')) flog.innerHTML='';
+  const fi=document.createElement('div');
+  fi.className=`fi ${frame.valid?'gps-ok':'gps-no'}`; fi.id=`fi-${frame.id}`;
+  fi.innerHTML=`<div style="font-size:11px;padding:4px 8px;border-radius:4px;margin-bottom:2px;display:flex;justify-content:space-between;align-items:center;background:${frame.valid?'rgba(16,185,129,.1)':'rgba(239,68,68,.1)'}"><span style="font-family:monospace;color:#94a3b8">${frame.id}</span><span style="color:${frame.valid?'#10b981':'#ef4444'};font-size:10px;font-weight:700">${frame.valid?'GPS ✓':'NO GPS'}</span></div>`;
+  flog.appendChild(fi); fi.scrollIntoView({block:'nearest',behavior:'smooth'});
+}
+function actF(id){document.querySelectorAll('.fi').forEach(e=>e.classList.remove('active'));const e=document.getElementById(`fi-${id}`);if(e){e.classList.add('active');e.scrollIntoView({block:'nearest',behavior:'smooth'});}document.getElementById('chip-fr').textContent=`${id} / ${fCurrentFrames.length}`;}
+
+function moveDrone(lat,lon,hdg,color){
+  return new Promise(resolve=>{
+    // PATCHED: removed missionStarted block — pollCsv drives movement.
+    if(!fDrone){fDrone=L.marker([lat,lon],{icon:fMkDrone(color,hdg),zIndexOffset:1000}).addTo(fMap);resolve();return;}
+    const{lat:slat,lng:slon}=fDrone.getLatLng();
+    const isPred=(color==='#ffd700'); const steps=isPred?Math.max(50,Math.round(100/sm)):Math.max(20,Math.round(60/sm)); const delay=isPred?30:25;
+    let i=0;
+    const iv=setInterval(()=>{i++;const t=i/steps;const e=t<.5?2*t*t:-1+(4-2*t)*t;const curLat=slat+(lat-slat)*e;const curLon=slon+(lon-slon)*e;fDrone.setLatLng([curLat,curLon]);fDrone.setIcon(fMkDrone(color,hdg));if(isPred&&i%4===0) fMap.panTo([curLat,curLon],{animate:false});if(i>=steps){clearInterval(iv);fDrone.setLatLng([lat,lon]);fDrone.setIcon(fMkDrone(color,hdg));resolve();}},delay);
+  });
+}
+function updateMapWithFrame(frame){
+  // PATCHED: a frame is being processed → ensure mission is unlocked.
+  if(!missionStarted) setMissionStarted(true);
+  actF(frame.id);
+  if(frame.valid || (frame.lat && frame.lon)){
+    // Use predicted coordinates if GPS is lost
+    const displayLat = frame.lat || frame.predicted_lat;
+    const displayLon = frame.lon || frame.predicted_lon;
+    const gpsQuality = frame.valid ? '#00e5ff' : '#ffd700';
+    
+    if(displayLat && displayLon){
+      const wm=L.marker([displayLat,displayLon],{icon:fMkWP(frame,!frame.valid)}).addTo(fMap); fWpMarkers.push(wm);
+      moveDrone(displayLat,displayLon,frame.hdg,gpsQuality); fMap.panTo([displayLat,displayLon],{animate:true,duration:.5});
+      
+      if(frame.valid){
+        // Add to GPS-valid trail
+        fTrailGpsValid.push([displayLat,displayLon]);
+        if(fTLineGpsValid) fMap.removeLayer(fTLineGpsValid);
+        fTLineGpsValid=L.polyline(fTrailGpsValid,{color:'#00e5ff',weight:2.5,opacity:.8,dashArray:'6 4'}).addTo(fMap);
+      }
+      
+      updHUD(displayLat,displayLon,frame.valid?'ok':'predicted');
+      document.getElementById('t-lat').textContent=displayLat.toFixed(6);
+      document.getElementById('t-lon').textContent=displayLon.toFixed(6);
+      document.getElementById('t-lat').className=frame.valid?'tv':'tv pred';
+      document.getElementById('t-lon').className=frame.valid?'tv':'tv pred';
+      
+      if(frame.valid){
+        document.getElementById('gbar').classList.remove('lost');document.getElementById('gdot').classList.remove('lost');
+        document.getElementById('gtxt').textContent='GPS SIGNAL NOMINAL';
+        document.getElementById('t-gps').textContent='TRUE';document.getElementById('t-gps').className='tv grn';
+        fTlog(`Frame ${frame.id} → lat=${displayLat.toFixed(6)} lon=${displayLon.toFixed(6)} ✅`,'ok');
+      } else {
+        document.getElementById('gbar').classList.add('lost');document.getElementById('gdot').classList.add('lost');
+        document.getElementById('gtxt').textContent='GPS LOST — Predicting...';
+        document.getElementById('t-gps').textContent='FALSE';document.getElementById('t-gps').className='tv amber';
+        const matchStr = frame.match_score ? `(score: ${frame.match_score.toFixed(3)})` : '';
+        fTlog(`Frame ${frame.id} → PREDICTED: lat=${displayLat.toFixed(6)} lon=${displayLon.toFixed(6)} ${matchStr} 📍`,'info');
+      }
+      document.getElementById('chip-hdg').textContent=frame.hdg+' °';
+      setThread('csv','active');
+    }
+  } else {
+    updHUD(null,null,'lost');
+    document.getElementById('t-lat').textContent='N/A';document.getElementById('t-lon').textContent='N/A';
+    document.getElementById('t-lat').className='tv red';document.getElementById('t-lon').className='tv red';
+    document.getElementById('gbar').classList.add('lost');document.getElementById('gdot').classList.add('lost');
+    document.getElementById('gtxt').textContent='GPS SIGNAL LOST — Waiting for prediction...';
+    document.getElementById('t-gps').textContent='FALSE';document.getElementById('t-gps').className='tv red';
+    fTlog(`Frame ${frame.id} → ❌ NO GPS & NO PREDICTION`,'warn');
+  }
+}
+function cleanupSearchVisuals(keepZone=false){
+  if(!keepZone && fSearchCircle){fMap.removeLayer(fSearchCircle);fSearchCircle=null;}
+  if(fSearchCenterMark){fMap.removeLayer(fSearchCenterMark);fSearchCenterMark=null;}
+}
+function showSearchZone(lat,lon,radiusM){
+  cleanupSearchVisuals();
+  fSearchCircle=L.circle([lat,lon],{color:'#ff6b00',fillColor:'#ff6b00',fillOpacity:.10,radius:radiusM,weight:2.5,dashArray:'10, 8'}).addTo(fMap);
+  fSearchCircle.bindTooltip(`Dataset gen zone · r=${radiusM}m`,{permanent:true,direction:'right',offset:[0,-10],className:'f-search-tip'});
+  fSearchCenterMark=L.circleMarker([lat,lon],{radius:5,color:'#ff6b00',fillColor:'#ff6b00',fillOpacity:.9,weight:2}).addTo(fMap);
+  fMap.fitBounds(fSearchCircle.getBounds().pad(.18),{animate:true,duration:.8});
+  fTlog(`🟠 Search zone: r=${radiusM}m at (${lat.toFixed(5)}, ${lon.toFixed(5)})`,'info');
+}
+function showPredictionLine(fromLat,fromLon,toLat,toLon){
+  if(fPredictionLine) fMap.removeLayer(fPredictionLine);
+  fPredictionLine=L.polyline([[fromLat,fromLon],[toLat,toLon]],{color:'#ffd700',weight:3.5,opacity:.9,dashArray:'8 6'}).addTo(fMap);
+  // Add to GPS-predicted trail
+  fTrailGpsPredicted.push([toLat,toLon]);
+  if(fTLineGpsPredicted) fMap.removeLayer(fTLineGpsPredicted);
+  fTLineGpsPredicted=L.polyline(fTrailGpsPredicted,{color:'#ffd700',weight:2.5,opacity:.75,dashArray:'4 6'}).addTo(fMap);
+  // Connect predicted point to main cyan trail for trajectory continuity
+  fTrailGpsValid.push([toLat,toLon]);
+  if(fTLineGpsValid) fMap.removeLayer(fTLineGpsValid);
+  fTLineGpsValid=L.polyline(fTrailGpsValid,{color:'#00e5ff',weight:2.5,opacity:.8,dashArray:'6 4'}).addTo(fMap);
+  fTlog('🟡 Trajectory: last GPS → predicted position','info');
+}
+function showPredictedMarker(lat,lon,score,match){
+  if(fPredictedMarker) fMap.removeLayer(fPredictedMarker);
+  fPredictedMarker=L.marker([lat,lon],{icon:L.divIcon({html:`<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="none" stroke="#ffd700" stroke-width="2" stroke-dasharray="6 3"><animateTransform attributeName="transform" type="rotate" dur="4s" from="0 22 22" to="360 22 22" repeatCount="indefinite"/></circle><circle cx="22" cy="22" r="13" fill="#ffd70028" stroke="#ffd700" stroke-width="1.5"/><circle cx="22" cy="22" r="6" fill="#ffd700" opacity=".9"><animate attributeName="r" values="5;7;5" dur="2s" repeatCount="indefinite"/></circle><circle cx="22" cy="22" r="2.5" fill="white" opacity=".95"/></svg>`,iconSize:[44,44],iconAnchor:[22,22],className:'f-pred-mark'}),zIndexOffset:900}).addTo(fMap);
+  const methodName=window.naveraTimeMode==='night'?'STHN Homography':'NetVLAD + DINOv2';
+  fPredictedMarker.bindPopup(`<div style="font-family:monospace;font-size:11px;line-height:1.7"><strong style="color:#ffd700;font-size:13px">📍 PREDICTED POSITION</strong><br/><strong>LAT:</strong> ${lat.toFixed(6)}<br/><strong>LON:</strong> ${lon.toFixed(6)}<br/><strong>Score:</strong> ${(score||0).toFixed(3)}<br/><strong>Method:</strong> ${methodName}<br/><strong>Match:</strong> ${match||'N/A'}</div>`);
+  fTlog(`📍 Predicted marker at (${lat.toFixed(5)}, ${lon.toFixed(5)})`,'info');
+}
+function showMatchPopup(status){
+  document.getElementById('mp-lat').textContent=status.lat.toFixed(6);document.getElementById('mp-lon').textContent=status.lon.toFixed(6);
+  document.getElementById('mp-dv').textContent=(status.score||0).toFixed(3);document.getElementById('mp-fi').textContent=status.match||'N/A';
+  document.getElementById('mp-err').textContent=`~${status.search_radius_m||300}m radius`;
+  document.getElementById('hud-mr').style.display='block';document.getElementById('hud-mf').textContent=status.match||'N/A';
+  document.getElementById('hud-dv').textContent=(status.score||0).toFixed(3);document.getElementById('hud-tm').textContent=status.total_ms?`${Math.round(status.total_ms)}ms`:'< 5s';
+  document.getElementById('mpopup').classList.add('show');
+  setTimeout(()=>document.getElementById('mpopup').classList.remove('show'),14000);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  VISUAL LOCALIZATION ENHANCEMENTS
+// ═══════════════════════════════════════════════════════════════════
+var fGpsMarker=null;      // Green marker for true GPS
+var fVisualMarker=null;   // Orange marker for visual localization
+var fGpsAccuracyCircle=null;
+var fVisualAccuracyCircle=null;
+
+function showGpsMarker(lat,lon){
+  if(fGpsMarker) fMap.removeLayer(fGpsMarker);
+  fGpsMarker=L.circleMarker([lat,lon],{radius:8,color:'#00ff00',fillColor:'#00ff00',fillOpacity:.9,weight:2,className:'gps-marker',zIndexOffset:800}).addTo(fMap);
+  fGpsMarker.bindPopup(`<div style="font-family:monospace;font-size:11px"><strong style="color:#00ff00">📍 GPS Position</strong><br/>Lat: ${lat.toFixed(6)}<br/>Lon: ${lon.toFixed(6)}</div>`);
+  if(fGpsAccuracyCircle) fMap.removeLayer(fGpsAccuracyCircle);
+  fGpsAccuracyCircle=L.circle([lat,lon],{radius:10,color:'#00ff00',fillColor:'#00ff00',fillOpacity:.1,weight:1,dashArray:'5,5',interactive:false}).addTo(fMap);
+}
+
+function showVisualMarkerEnhanced(lat,lon,confidence,matchFile){
+  if(fVisualMarker) fMap.removeLayer(fVisualMarker);
+  const color=confidence>.7?'#ffaa00':confidence>.5?'#ff6600':'#ff3300';
+  const icon=confidence>.7?'🎯':confidence>.5?'📍':'❓';
+  fVisualMarker=L.circleMarker([lat,lon],{radius:7,color:color,fillColor:color,fillOpacity:.85,weight:2,className:'visual-marker',zIndexOffset:850}).addTo(fMap);
+  fVisualMarker.bindPopup(`<div style="font-family:monospace;font-size:11px"><strong style="color:${color}">${icon} Visual Localization</strong><br/>Confidence: ${(confidence*100).toFixed(1)}%<br/>Lat: ${lat.toFixed(6)}<br/>Lon: ${lon.toFixed(6)}<br/>Match: ${matchFile||'N/A'}</div>`);
+  if(fVisualAccuracyCircle) fMap.removeLayer(fVisualAccuracyCircle);
+  fVisualAccuracyCircle=L.circle([lat,lon],{radius:Math.max(50,200/confidence),color:color,fillColor:color,fillOpacity:.05,weight:1,dashArray:'3,3',interactive:false}).addTo(fMap);
+}
+
+function clearVisualMarkers(){
+  if(fVisualMarker){fMap.removeLayer(fVisualMarker);fVisualMarker=null;}
+  if(fVisualAccuracyCircle){fMap.removeLayer(fVisualAccuracyCircle);fVisualAccuracyCircle=null;}
+}
+
+function updateNoGpsInLog(lat,lon){
+  const fis=document.querySelectorAll('.fi.gps-no');
+  if(fis.length>0){
+    const last=fis[fis.length-1];
+    const coord=last.querySelector('.fi-coord');
+    if(coord) coord.textContent=`📍 ${lat.toFixed(5)}, ${lon.toFixed(5)} (est)`;
+  }
+}
+
+async function pollCsv(){
+  try{
+    const res=await fetch(`${RECEIVER}/flight_log.csv`,{cache:'no-cache'}); if(!res.ok) return;
+    const text=await res.text(); const lines=text.trim().split('\n'); if(lines.length<=1) return;
+    const dataRows=lines.slice(1);
+    for(let i=fLastFrameId;i<dataRows.length;i++){
+      const row=dataRows[i].split(',');
+      const gpsValid=row[8]?.trim()==='True';
+      // Use GPS coordinates if available, otherwise use predicted coordinates
+      const lat=gpsValid && row[3]?.trim()!=='None'?parseFloat(row[3]):parseFloat(row[9])||null;
+      const lon=gpsValid && row[4]?.trim()!=='None'?parseFloat(row[4]):parseFloat(row[10])||null;
+      const frame={
+        id:parseInt(row[0]),
+        timestamp:row[1],
+        image_file:row[2],
+        lat:lat,
+        lon:lon,
+        alt:parseFloat(row[5]),
+        hdg:parseFloat(row[6]),
+        speed:parseFloat(row[7]),
+        valid:gpsValid,
+        predicted_lat:parseFloat(row[9])||null,
+        predicted_lon:parseFloat(row[10])||null,
+        match_score:parseFloat(row[11])||0
+      };
+      // PATCHED: a frame in the CSV means the mission is live → unlock.
+      if(!missionStarted) setMissionStarted(true);
+      fCurrentFrames.push(frame); addFrameToLog(frame); updateMapWithFrame(frame); fLastFrameId++;
+      document.getElementById('chip-fr').textContent=`${fCurrentFrames.length} / ${fCurrentFrames.length}`;
+      if(!frame.valid && !fFocusMode){fFocusMode=true;fFocusFrameId=frame.id;document.getElementById('chip-st').textContent='FOCUSING';document.getElementById('chip-st').style.color='#f59e0b';fTlog(`🛑 FOCUS MODE — Frame ${frame.id}: No GPS detected, using visual prediction...`,'warn');fTlog('⏳ Waiting for visual localization result...','info');}
+    }
+  }catch(e){console.warn('pollCsv:',e);}
+}
+
+function showMissionDoneBadge(){
+  const c=document.getElementById('chip-st'); if(c){ c.textContent='✅ MISSION TERMINÉE'; c.style.color='#10b981'; }
+  toast('🏁 Mission terminée — toutes les frames traitées, aucun rejeu','ok');
+  fTlog('🏁 Fin de mission'+(window._dayLastFid!=null?(' — dernière frame='+window._dayLastFid):'')+' (arrêt propre, pas de rejeu)','ok');
+}
+async function pollGpsStatus(){
+  try{
+    const res=await fetch(`${RECEIVER}/gps_status.json`,{cache:'no-cache'}); if(!res.ok) return;
+    const status=await res.json();
+    // Dédup par frame_id (anti-répétition) + détection fin de mission
+    const fid=status.frame_id;
+    if(fid!=null && fid===window._dayLastFid){
+      window._daySame=(window._daySame||0)+1;
+      if(window._daySame>=6 && !window._dayDone && status.status==='predicted'){ window._dayDone=true; showMissionDoneBadge(); }
+      return;
+    }
+    if(fid!=null){ window._dayLastFid=fid; window._daySame=0; window._dayDone=false; }
+    fLastGpsStatus=status;
+    // PATCHED: unlock as soon as the receiver reports the mission is on
+    // (or any non-idle status). Never block here — pollCsv moves the drone.
+    if(!missionStarted){
+      if(status.mission_started || (status.status && status.status!=='idle')){
+        setMissionStarted(true);
+      }
+    }
+    if(status.status==='searching'){
+      document.getElementById('gps-banner').classList.add('show');
+      if(status.lat&&status.lon) showSearchZone(status.lat,status.lon,status.search_radius_m||300);
+      setPS(1,'active',`GPS LOST — Frame ${status.frame_id||'?'}`);setPS(2,'active','Préparation zone de recherche...');
+      setThread('csv','active');setThread('ds','active');
+      fTlog(`📡 GPS LOST — Ref: (${(status.lat||0).toFixed(5)}, ${(status.lon||0).toFixed(5)})`,'warn');
+      const loadTitle=window.naveraTimeMode==='night'?'GPS LOST — STHN NIGHT LOCALIZATION':'GPS LOST — VISUAL LOCALIZATION';
+      showLoad(loadTitle,`Zone de recherche: (${(status.lat||0).toFixed(5)}, ${(status.lon||0).toFixed(5)})`);
+      fGpsLostProcessed=true;
+    } else if(status.status==='generating'){
+      if(status.lat&&status.lon&&!fSearchCircle) showSearchZone(status.lat,status.lon,status.search_radius_m||300);
+      setPS(1,'done','GPS LOST ✓');setPS(2,'active',`Génération (r=${status.search_radius_m||300}m · 12 threads)...`);setPS(3,'active','En attente du dataset...');setThread('ds','active');
+      showLoad('GENERATING DATASET — 12 THREADS',status.message||'Extraction tiles MBTiles zoom 18...');
+      animLoad([[10,'🔍 Calcul grille de points...',400],[25,'🗺️ Extraction tiles MBTiles...',700],[45,'🖼️ Assemblage mosaïques...',900],[62,'💾 Écriture images + metadata...',600],[72,'🧠 NetVLAD features (GPU AMP)...',1000],[85,'🔬 DINOv2 re-ranking ViT-S/14...',800],[95,'📍 Calcul coordonnées GPS estimées...',400],[100,'✅ Match trouvé — position prédite !',300]]);
+    } else if(status.status==='predicted'){
+      document.getElementById('gps-banner').classList.remove('show');
+      // Point-A anchor: the first "position" is the user's start point, not a
+      // prediction — seed the trail/drone at A and skip the match visuals.
+      if(status.source==='point_a' && status.lat && status.lon){
+        window._dayPrevPt=[status.lat,status.lon];
+        if(!fTrailGpsValid.length) fTrailGpsValid.push([status.lat,status.lon]);
+        if(fDrone) fDrone.setLatLng([status.lat,status.lon]);
+        updHUD(status.lat,status.lon,'ok');
+        fTlog(`🟦 Mission anchored at Point A (${status.lat.toFixed(5)}, ${status.lon.toFixed(5)})`,'info');
+        return;
+      }
+      setThread('ds','done');setThread('nv','done');setThread('dv','done');setThread('sw','done');
+      if(status.lat&&status.lon){
+        const isGps=(status.source==='gps');
+        const col=isGps?'#00e5ff':'#ffd700';   // cyan=GPS connu, or=prédit
+        // segment de trajectoire coloré (continuité cyan→or)
+        if(window._dayPrevPt){ L.polyline([window._dayPrevPt,[status.lat,status.lon]],{color:col,weight:3,opacity:.85}).addTo(fMap); }
+        window._dayPrevPt=[status.lat,status.lon];
+        const fromLat=status.last_valid_lat; const fromLon=status.last_valid_lon;
+        if(!isGps && fromLat&&fromLon) showPredictionLine(fromLat,fromLon,status.lat,status.lon);
+        showPredictedMarker(status.lat,status.lon,status.score,status.match);
+        const conf=Math.min(status.score||0,1.0);
+        showVisualMarkerEnhanced(status.lat,status.lon,conf,status.match||'');
+        fTlog((isGps?'🟢 GPS connu → ':'🟡 Prédit → ')+`(${status.lat.toFixed(5)}, ${status.lon.toFixed(5)})`,isGps?'ok':'info');
+        await moveDrone(status.lat,status.lon,251,col);
+        fTlog('✅ Drone arrived at predicted position!','ok');
+        updateNoGpsInLog(status.lat,status.lon);
+        document.getElementById('t-lat').textContent=status.lat.toFixed(6);document.getElementById('t-lon').textContent=status.lon.toFixed(6);
+        document.getElementById('t-lat').className='tv org';document.getElementById('t-lon').className='tv org';
+        updHUD(status.lat,status.lon,'est');
+        document.getElementById('gbar').classList.remove('lost');document.getElementById('gdot').classList.remove('lost');
+        document.getElementById('gtxt').textContent='GPS ESTIMATED (Visual Loc)';document.getElementById('t-gps').textContent='EST';document.getElementById('t-gps').className='tv org';
+        document.getElementById('sbox').style.display='block';
+        const pct=Math.round((status.score||0)*100);document.getElementById('spct').textContent=pct+'%';document.getElementById('sbi').style.width=pct+'%';document.getElementById('snum').textContent=(status.score||0).toFixed(3);
+        showMatchPopup(status);
+        if(fSearchCircle){const grp=L.featureGroup([fSearchCircle,L.marker([status.lat,status.lon])]);fMap.fitBounds(grp.getBounds().pad(.22),{animate:true,duration:1});}
+        else{fMap.panTo([status.lat,status.lon],{animate:true,duration:.8});}
+      }
+      setPS(1,'done','GPS LOST ✓');setPS(2,'done',`Dataset: ${status.dataset_images||'?'} images (${Math.round(status.dataset_ms||0)}ms) ✓`);setPS(3,'done','NetVLAD Top-50 ✓');setPS(4,'done','DINOv2 best match ✓');setPS(5,'done',`(${(status.lat||0).toFixed(5)}, ${(status.lon||0).toFixed(5)})`);
+      fTlog(`🎯 PREDICTED: (${(status.lat||0).toFixed(6)}, ${(status.lon||0).toFixed(6)})`,'ok');
+      fTlog(`📊 Score: ${(status.score||0).toFixed(3)} | Match: ${status.match||'N/A'}`,'ok');
+      fTlog(`⏱️ Total: ${Math.round(status.total_ms||0)}ms`,'info');
+      hideLoad(); fGpsLostProcessed=false;
+      if(fFocusMode){setTimeout(()=>{fFocusMode=false;fFocusFrameId=null;document.getElementById('chip-st').textContent='LIVE';document.getElementById('chip-st').style.color='#10b981';fTlog('▶️ System resumed — processing next frames...','info');setTimeout(()=>cleanupSearchVisuals(false),6000);},3500);}
+      else{setTimeout(()=>cleanupSearchVisuals(false),20000);}
+    } else if(status.status==='error'){
+      document.getElementById('gps-banner').classList.remove('show');
+      setPS(1,'done','Erreur');setPS(2,'',status.error||'Unknown error');
+      fTlog(`❌ Error: ${status.error||'Unknown'}`,'err');hideLoad();fGpsLostProcessed=false;
+      if(fFocusMode){fFocusMode=false;fFocusFrameId=null;document.getElementById('chip-st').textContent='LIVE';document.getElementById('chip-st').style.color='#10b981';}
+    } else if(status.status==='active'){
+      // PATCHED: GPS valid frame — hide the lost-banner, normal nav.
+      document.getElementById('gps-banner').classList.remove('show');
+      hideLoad();
+    } else if(status.status==='idle'){
+      document.getElementById('gps-banner').classList.remove('show');
+    }
+  }catch(e){console.warn('pollGpsStatus:',e);}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  TOAST
+// ═══════════════════════════════════════════════════════════════════
+function toast(msg,type){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className=`toast ${type} show`;
+  setTimeout(()=>t.className='toast',3500);
+}
+
+// Real-time frame simulation and sending
+let fFrameSimInterval = null;
+let fFrameId = 0;
+let fCurrentWpIndex = 0;
+let fLastLat = null;
+let fLastLon = null;
+let fLastHeading = 0;
+let fSimActive = false;
+
+function generateDummyFrame() {
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 224; canvas.height = 224;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#4a5568';
+    ctx.fillRect(0, 0, 224, 224);
+    for(let i = 0; i < 30; i++) {
+      ctx.fillStyle = `rgba(${Math.random()*100+100}, ${Math.random()*100+100}, ${Math.random()*100+100}, ${Math.random()*.5+.3})`;
+      ctx.fillRect(Math.random()*224, Math.random()*224, Math.random()*50+10, Math.random()*50+10);
+    }
+    return canvas.toDataURL('image/jpeg').split(',')[1];
+  } catch(e) {
+    return '';
+  }
+}
+
+async function sendFrameToReceiver(lat, lon, heading, gpsValid) {
+  try {
+    // CRITICAL FIX: when GPS is lost, send null lat/lon so backend uses
+    // last_pred_lat/lon as anchor (chained dead-reckoning), not the real position.
+    // Sending real coords when gpsValid=false breaks the chain every frame.
+    const frameData = {
+      metadata: {
+        frame_id: fFrameId,
+        lat: gpsValid ? lat : null,
+        lon: gpsValid ? lon : null,
+        gps_valid: gpsValid,
+        altitude_m: window.missionParams?.alt || 400,
+        heading_deg: heading,
+        speed_mps: 5.0,
+        delta_t_s: 8.0
+      },
+      image_b64: generateDummyFrame()
+    };
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    const resp = await fetch(`${RECEIVER}/frame`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(frameData),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+    
+    if(!resp.ok) {
+      return null;
+    }
+    
+    const result = await resp.json();
+    return {
+      frame_id: fFrameId,
+      predicted_lat: result.predicted_lat || result.lat,
+      predicted_lon: result.predicted_lon || result.lon,
+      source: result.source || (gpsValid ? 'gps' : 'dead_reckoning'),
+      match_score: result.match_score || 0,
+      response: result
+    };
+  } catch(e) {
+    return null;
+  }
+}
+
+function calcHeading(fromLat, fromLon, toLat, toLon) {
+  const dLon = toLon - fromLon;
+  const y = Math.sin(dLon * Math.PI / 180) * Math.cos(toLat * Math.PI / 180);
+  const x = Math.cos(fromLat * Math.PI / 180) * Math.sin(toLat * Math.PI / 180) - 
+            Math.sin(fromLat * Math.PI / 180) * Math.cos(toLat * Math.PI / 180) * Math.cos(dLon * Math.PI / 180);
+  let bearing = Math.atan2(y, x) * 180 / Math.PI;
+  return (bearing + 360) % 360;
+}
+
+function interpPos(lat1, lon1, lat2, lon2, progress) {
+  return {
+    lat: lat1 + (lat2 - lat1) * progress,
+    lon: lon1 + (lon2 - lon1) * progress
+  };
+}
+
+async function startFrameSimulation() {
+  if(fSimActive) return;
+  fSimActive = true;
+  fFrameId = 0;
+  
+  const waypoints = window.missionParams?.waypoints || [];
+  
+  if(waypoints.length === 0) {
+    fTlog('No mission parameters available','err');
+    fSimActive = false;
+    return;
+  }
+  
+  fTlog('Frame simulation started', 'info');
+  
+  let wpStart = waypoints[0];
+  let wpEnd = waypoints[waypoints.length - 1];
+  let wpProgress = 0;
+  let framesUntilGpsLoss = Math.floor(Math.random() * 2 + 3);
+  let gpsCurrentlyLost = false;
+  
+  fFrameSimInterval = setInterval(async () => {
+    try {
+      if(wpProgress >= 1.0) {
+        fTlog('Mission complete!', 'ok');
+        fSimActive = false;
+        clearInterval(fFrameSimInterval);
+        return;
+      }
+      
+      let currentPos = interpPos(wpStart.lat, wpStart.lon, wpEnd.lat, wpEnd.lon, wpProgress);
+      wpProgress += 0.08;
+      
+      framesUntilGpsLoss--;
+      if(framesUntilGpsLoss <= 0) {
+        gpsCurrentlyLost = !gpsCurrentlyLost;
+        framesUntilGpsLoss = Math.floor(Math.random() * 2 + 3);
+      }
+      
+      fLastHeading = calcHeading(currentPos.lat, currentPos.lon, wpEnd.lat, wpEnd.lon);
+      
+      const result = await sendFrameToReceiver(
+        currentPos.lat, 
+        currentPos.lon, 
+        fLastHeading, 
+        !gpsCurrentlyLost
+      );
+      
+      if(result) {
+        let displayLat, displayLon, source;
+
+        if(!gpsCurrentlyLost) {
+          // GPS valid — use real position
+          displayLat = currentPos.lat;
+          displayLon = currentPos.lon;
+          source = 'gps';
+          fLastLat = displayLat;
+          fLastLon = displayLon;
+        } else {
+          // GPS lost — backend chained dead-reckoning is the primary estimate.
+          // Use backend predicted position if available and plausible,
+          // otherwise fall back to local dead-reckoning (heading + speed × dt).
+          const backendLat = result.predicted_lat;
+          const backendLon = result.predicted_lon;
+          if(backendLat && backendLon &&
+             result.source === 'dead_reckoning') {
+            // Backend dead-reckoned — trust it
+            displayLat = backendLat;
+            displayLon = backendLon;
+          } else if(fLastLat && fLastLon) {
+            // Local dead-reckoning: advance from last known by heading+speed×dt
+            const dt = 8.0, spd = 5.0;
+            const dist = spd * dt;
+            const R_earth = 6371000;
+            const hdgRad = fLastHeading * Math.PI / 180;
+            displayLat = fLastLat + (dist * Math.cos(hdgRad)) / R_earth * (180 / Math.PI);
+            displayLon = fLastLon + (dist * Math.sin(hdgRad)) / (R_earth * Math.cos(fLastLat * Math.PI / 180)) * (180 / Math.PI);
+          } else {
+            displayLat = currentPos.lat;
+            displayLon = currentPos.lon;
+          }
+          fLastLat = displayLat;
+          fLastLon = displayLon;
+          source = 'dead_reckoning';
+        }
+
+        document.getElementById('t-lat').textContent = displayLat.toFixed(6);
+        document.getElementById('t-lon').textContent = displayLon.toFixed(6);
+        document.getElementById('t-lat').className = source === 'gps' ? 'tv' : 'tv pred';
+        document.getElementById('t-lon').className = source === 'gps' ? 'tv' : 'tv pred';
+        document.getElementById('chip-hdg').textContent = Math.round(fLastHeading) + ' °';
+      }
+      
+      fFrameId++;
+    } catch(e) {
+      fTlog('Frame error: ' + e.message, 'err');
+    }
+  }, 8000);
+}
+
+
+</script>
+
+<!-- STELLAR VIEW (inline, fully scoped) -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+#stl-view{
+  /* mirror Flight Monitor (#view-flight) tokens exactly */
+  --stl-bg:#030712;
+  --stl-panel:rgba(17,24,39,0.75);
+  --stl-panel2:rgba(15,23,42,0.92);
+  --stl-border:rgba(255,255,255,0.10);
+  --stl-cyan:#06b6d4;
+  --stl-green:#10b981;
+  --stl-yellow:#f59e0b;
+  --stl-orange:#f59e0b;
+  --stl-red:#ef4444;
+  --stl-dim:#94a3b8;
+  --stl-text:#f8fafc;
+  --stl-mono:'Space Grotesk',monospace;
+  --stl-title:'Space Grotesk',sans-serif;
+  --stl-sans:'Inter',sans-serif;
+}
+#stl-view{box-sizing:border-box;margin:0;padding:0}
+#stl-view,#stl-view *{box-sizing:border-box}
+#stl-view{width:100%;height:100%;background:var(--stl-bg);font-family:var(--stl-sans);color:var(--stl-text);overflow:hidden}
+#stl-view .page{position:absolute;inset:0;z-index:100;display:none}
+#stl-view .page.active{display:block}
+#stl-view #stl-page-setup.active{display:flex}
+#stl-view #stl-page-setup{display:flex;background:var(--stl-bg)}
+
+/* ── SETUP: left glass panel (same glass as flight) ── */
+#stl-view #stl-setup-panel{width:380px;min-width:380px;background:var(--stl-panel);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-right:1px solid var(--stl-border);display:flex;flex-direction:column;padding:40px 32px;position:relative;z-index:10;box-shadow:4px 0 30px rgba(0,0,0,0.5)}
+#stl-view #stl-setup-panel::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.2),transparent)}
+#stl-view .s-logo{font-family:var(--stl-title);font-size:18px;font-weight:700;letter-spacing:1px;color:var(--stl-text);margin-bottom:6px;display:flex;align-items:center;gap:10px}
+#stl-view .s-sub{font-size:11px;color:var(--stl-dim);letter-spacing:2px;text-transform:uppercase;margin-bottom:36px}
+#stl-view .s-section{font-size:11px;font-weight:700;letter-spacing:2px;color:var(--stl-dim);text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+#stl-view .s-section::before{content:'';width:3px;height:11px;background:var(--stl-cyan);border-radius:2px;flex-shrink:0}
+#stl-view .coord-row{display:flex;gap:10px;margin-bottom:14px}
+#stl-view .coord-input{flex:1;background:rgba(3,7,18,0.6);border:1px solid var(--stl-border);border-radius:12px;color:var(--stl-cyan);font-family:var(--stl-mono);font-weight:600;font-size:15px;padding:12px 14px;outline:none;transition:all .2s}
+#stl-view .coord-input:focus{border-color:var(--stl-cyan);box-shadow:0 0 0 3px rgba(6,182,212,.15)}
+#stl-view .coord-input::placeholder{color:var(--stl-dim);font-weight:400;font-size:12px}
+#stl-view #stl-point-a-box{background:rgba(3,7,18,0.6);border:1px solid var(--stl-border);border-radius:12px;padding:13px 16px;margin-bottom:28px;font-family:var(--stl-mono);font-weight:600;font-size:13px;color:var(--stl-dim);min-height:44px;display:flex;align-items:center;transition:color .3s,border-color .3s,background .3s}
+#stl-view #stl-point-a-box.set{color:var(--stl-green);border-color:rgba(16,185,129,.4);background:rgba(16,185,129,.08)}
+#stl-view .hint{font-size:11px;color:var(--stl-dim);letter-spacing:.3px;margin-bottom:28px;text-align:center;line-height:1.7}
+#stl-view #stl-btn-launch{width:100%;padding:14px;background:linear-gradient(135deg,var(--stl-cyan),var(--stl-green));border:none;border-radius:16px;color:#021016;font-family:var(--stl-title);font-weight:700;font-size:13px;letter-spacing:2px;cursor:pointer;transition:all .25s;text-transform:uppercase;opacity:.35;pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,0.3)}
+#stl-view #stl-btn-launch.ready{opacity:1;pointer-events:all}
+#stl-view #stl-btn-launch.ready:hover{transform:translateY(-2px);box-shadow:0 0 25px rgba(6,182,212,.45)}
+#stl-view #stl-setup-map{flex:1;height:100%;cursor:crosshair !important}
+#stl-view #stl-setup-map .leaflet-tile{filter:brightness(0.9) contrast(1.1) saturate(1.1)}
+#stl-view #stl-map-hint-overlay{position:absolute;top:50%;left:calc(380px + 50%);transform:translate(-50%,-50%);pointer-events:none;z-index:200;text-align:center}
+#stl-view #stl-map-hint-overlay .hint-text{font-family:var(--stl-title);font-weight:600;font-size:12px;letter-spacing:2px;color:var(--stl-text);background:var(--stl-panel);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--stl-border);border-radius:30px;padding:10px 20px;box-shadow:0 4px 20px rgba(0,0,0,.3)}
+
+/* ── FLIGHT page ── */
+#stl-view #stl-page-flight{background:var(--stl-bg)}
+#stl-view #stl-flight-map{position:absolute;inset:0;top:0;bottom:0}
+#stl-view #stl-flight-map .leaflet-tile{filter:brightness(0.9) contrast(1.1) saturate(1.1)}
+
+/* top HUD — styled like the flight .btn-back area, floating glass pill */
+#stl-view #stl-topbar{position:absolute;top:20px;left:20px;right:20px;z-index:1000;height:auto;min-height:46px;background:var(--stl-panel);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--stl-border);border-radius:12px;display:flex;align-items:center;padding:10px 16px;gap:14px;box-shadow:0 4px 20px rgba(0,0,0,0.3)}
+#stl-view .tb-title{font-family:var(--stl-title);font-weight:700;font-size:13px;letter-spacing:2px;color:var(--stl-text)}
+#stl-view #stl-back-btn{background:rgba(3,7,18,0.5);border:1px solid var(--stl-border);border-radius:10px;color:var(--stl-dim);font-family:var(--stl-sans);font-weight:600;font-size:13px;padding:8px 16px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:all .3s}
+#stl-view #stl-back-btn:hover{border-color:var(--stl-cyan);color:var(--stl-cyan);box-shadow:0 0 15px rgba(6,182,212,.3)}
+#stl-view #stl-topbar-status{margin-left:auto;font-size:12px;font-weight:600;letter-spacing:1px;color:var(--stl-dim)}
+
+/* bottom telemetry — EXACTLY like flight .f-tele / .f-tbox floating boxes */
+#stl-view #stl-statusbar{position:absolute;bottom:30px;left:50%;transform:translateX(-50%);z-index:1000;display:flex;gap:16px;height:auto;width:auto;background:none;border:none;border-radius:0;box-shadow:none;backdrop-filter:none;overflow:visible}
+#stl-view .stat-cell{background:var(--stl-panel);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--stl-border);border-radius:16px;padding:16px 24px;min-width:150px;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,0.5);position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center}
+#stl-view .stat-cell::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.2),transparent)}
+#stl-view .stat-cell:nth-child(3){border-bottom:2px solid var(--stl-green)}
+#stl-view .stat-label{font-size:11px;font-weight:700;color:var(--stl-dim);letter-spacing:2px;text-transform:uppercase;margin-bottom:6px}
+#stl-view .stat-value{font-family:var(--stl-mono);font-size:20px;font-weight:600;color:var(--stl-text)}
+#stl-view .stat-value.green{color:var(--stl-green);text-shadow:0 0 10px rgba(16,185,129,.4)}
+#stl-view .stat-value.yellow{color:var(--stl-yellow)}
+#stl-view .stat-value.red{color:var(--stl-red)}
+
+/* center modal — glass like flight overlays */
+#stl-view #stl-modal{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1500;background:var(--stl-panel);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--stl-border);border-radius:16px;padding:36px 44px;text-align:center;min-width:340px;display:none;box-shadow:0 10px 30px rgba(0,0,0,0.5);transition:opacity .4s ease}
+#stl-view #stl-modal::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.2),transparent)}
+#stl-view #stl-modal.visible{display:block}
+#stl-view #stl-modal.hiding{opacity:0;pointer-events:none}
+#stl-view .drone-marker svg{filter:drop-shadow(0 0 6px var(--stl-cyan))}
+@keyframes droneFloat{0%,100%{transform:translateY(0px)}50%{transform:translateY(-3px)}}
+#stl-view .drone-marker{animation:droneFloat 2s ease-in-out infinite}
+@keyframes predGlow{0%,100%{filter:drop-shadow(0 0 4px var(--stl-cyan))}50%{filter:drop-shadow(0 0 18px var(--stl-cyan)) drop-shadow(0 0 30px rgba(6,182,212,.5))}}
+#stl-view .pred-marker svg{animation:predGlow 1.8s ease-in-out infinite}
+#stl-view .m-icon{font-size:46px;margin-bottom:16px}
+#stl-view .m-title{font-family:var(--stl-title);font-weight:700;font-size:14px;letter-spacing:2px;color:var(--stl-cyan);margin-bottom:10px}
+#stl-view .m-sub{font-size:13px;color:var(--stl-dim);line-height:1.8}
+#stl-view .m-sub code{color:var(--stl-cyan);font-family:var(--stl-mono);font-size:12px}
+#stl-view .spin-ring{width:50px;height:50px;border-radius:50%;border:3px solid var(--stl-border);border-top-color:var(--stl-cyan);animation:spin 1s linear infinite;margin:0 auto 18px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* result toast — glass card styled like flight .f-mpopup */
+#stl-view #stl-toast{position:absolute;top:88px;right:20px;z-index:2000;background:rgba(16,185,129,.12);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--stl-green);border-radius:16px;padding:18px 22px;min-width:280px;display:none;box-shadow:0 10px 30px rgba(16,185,129,.25);animation:fadeIn .4s ease}
+#stl-view #stl-toast.visible{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1}}
+#stl-view .t-header{font-family:var(--stl-title);font-weight:700;font-size:12px;letter-spacing:2px;color:var(--stl-green);margin-bottom:14px;text-transform:uppercase}
+#stl-view .t-row{display:flex;justify-content:space-between;margin-bottom:9px;font-size:13px}
+#stl-view .t-key{color:var(--stl-dim)}
+#stl-view .t-val{color:var(--stl-text);font-family:var(--stl-mono);font-weight:600}
+#stl-view .t-close{margin-top:16px;width:100%;background:rgba(3,7,18,0.4);border:1px solid var(--stl-border);border-radius:10px;color:var(--stl-dim);font-family:var(--stl-sans);font-weight:600;font-size:11px;padding:9px;cursor:pointer;letter-spacing:1px;transition:all .2s}
+#stl-view .t-close:hover{border-color:var(--stl-cyan);color:var(--stl-text)}
+#stl-view .leaflet-control-zoom a{background:var(--stl-panel) !important;backdrop-filter:blur(12px);color:var(--stl-cyan) !important;border-color:var(--stl-border) !important}
+#stl-view .leaflet-control-zoom a:hover{background:rgba(6,182,212,.2) !important}
+#stl-view .leaflet-control-attribution{display:none}
+</style>
+<div id="stl-overlay" style="display:none;position:fixed;inset:0;z-index:9998;background:#07090f;">
+  <button onclick="closeStellarAndReturn()"
+    style="position:absolute;top:10px;left:10px;z-index:99999;
+           background:rgba(13,17,23,.92);border:1px solid #1a2535;
+           color:#00e5ff;font-family:'Share Tech Mono',monospace;
+           font-size:11px;padding:7px 16px;cursor:pointer;letter-spacing:2px;"
+    onmouseover="this.style.borderColor='#00e5ff'"
+    onmouseout="this.style.borderColor='#1a2535'">← NAVERA</button>
+  <div id="stl-view" style="position:absolute;inset:0;overflow:hidden;">
+<!-- ══════════════════════════════════════
+     PAGE 1 — SETUP
+══════════════════════════════════════ -->
+<div id="stl-page-setup" class="page active">
+
+  <!-- Left sidebar -->
+  <div id="stl-setup-panel">
+    <div class="s-logo">🌟 NAVERA STELLAR</div>
+    <div class="s-sub">CELESTIAL NAVIGATION SYSTEM</div>
+
+    <div class="s-section">Point de départ — A</div>
+    <div class="coord-row">
+      <input class="coord-input" id="stl-a-lat" placeholder="Latitude" type="number" step="0.00001"/>
+      <input class="coord-input" id="stl-a-lon" placeholder="Longitude" type="number" step="0.00001"/>
+    </div>
+
+    <div id="stl-point-a-box">Point A non défini</div>
+
+    <div class="hint">
+      Cliquez sur la carte pour placer le Point A<br/>
+      ou entrez les coordonnées ci-dessus
+    </div>
+
+    <button id="stl-btn-launch" onclick="stlLaunchMission()">🚀 LANCER LA MISSION</button>
+  </div>
+
+  <!-- Right = full map -->
+  <div id="stl-setup-map"></div>
+  <div id="stl-map-hint-overlay">
+    <div class="hint-text">CLIQUEZ POUR PLACER POINT A</div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════
+     PAGE 2 — FLIGHT
+══════════════════════════════════════ -->
+<div id="stl-page-flight" class="page">
+
+  <div id="stl-flight-map"></div>
+
+  <!-- Top HUD -->
+  <div id="stl-topbar">
+    <button id="stl-back-btn" onclick="stlGoBack()">← SETUP</button>
+    <span class="tb-title">NAVERA // CELESTIAL NAVIGATION</span>
+    <span id="stl-topbar-status">EN ATTENTE</span>
+  </div>
+
+  <!-- Modal (waiting / solving) -->
+  <div id="stl-modal" class="visible">
+    <div id="stl-wait-box">
+      <div class="m-icon">🛸</div>
+      <div class="m-title">EN ATTENTE DE L'IMAGE</div>
+      <div class="m-sub">
+        Drone sur Point A.<br/>
+        En attente d'une image stellaire via<br/>
+        <code>receiver_stellar.py (port 5001)</code>
+      </div>
+    </div>
+    <div id="stl-solving-box" style="display:none;">
+      <div class="spin-ring"></div>
+      <div class="m-title">RÉSOLUTION EN COURS</div>
+      <div class="m-sub">astrometry.net analyse le ciel…<br/>~13–15 secondes</div>
+    </div>
+  </div>
+
+  <!-- Result toast -->
+  <div id="stl-toast">
+    <div class="t-header">✅ POSITION PRÉDITE — STELLAR</div>
+    <div class="t-row"><span class="t-key">Latitude</span>  <span class="t-val" id="stl-t-lat">—</span></div>
+    <div class="t-row"><span class="t-key">Longitude</span> <span class="t-val" id="stl-t-lon">—</span></div>
+    <div class="t-row"><span class="t-key">RA / Dec</span>  <span class="t-val" id="stl-t-radec">—</span></div>
+    <div class="t-row"><span class="t-key">Solve time</span><span class="t-val" id="stl-t-time">—</span></div>
+    <div class="t-row"><span class="t-key">Image</span>     <span class="t-val" id="stl-t-img">—</span></div>
+    <button class="t-close" onclick="document.getElementById('stl-toast').classList.remove('visible')">FERMER</button>
+  </div>
+
+  <!-- Bottom HUD -->
+  <div id="stl-statusbar">
+    <div class="stat-cell"><div class="stat-label">LATITUDE</div><div class="stat-value" id="stl-sb-lat">—</div></div>
+    <div class="stat-cell"><div class="stat-label">LONGITUDE</div><div class="stat-value" id="stl-sb-lon">—</div></div>
+    <div class="stat-cell"><div class="stat-label">SOURCE</div><div class="stat-value yellow" id="stl-sb-src">ATTENTE</div></div>
+    <div class="stat-cell"><div class="stat-label">RA / DEC</div><div class="stat-value" id="stl-sb-radec">—</div></div>
+  </div>
+
+</div>
+  </div>
+</div>
+<script>
+// ════════════════════════════════════════════════════
+// CONFIG
+// ════════════════════════════════════════════════════
+// Stellar mode is served by navera_stellar_bridge.py on the same host:port as
+// the page itself (default :8181) — tiles AND gps_status.json both come from it.
+const STL_BRIDGE_ORIGIN = location.protocol + "//" + location.hostname +
+                          (location.port ? ":" + location.port : "");
+const STL_TILE_URL     = STL_BRIDGE_ORIGIN + "/tiles/{z}/{x}/{y}.png";
+const STL_RECEIVER_URL = STL_BRIDGE_ORIGIN;
+const STL_POLL_MS      = 1500;
+
+// Center of Sousse, Tunisia
+const STL_DEFAULT_CENTER = [35.8256, 10.6369];
+const STL_DEFAULT_ZOOM   = 13;
+
+// ════════════════════════════════════════════════════
+// State
+// ════════════════════════════════════════════════════
+let stlPointA = null;
+let stlSetupMap = null, stlFlightMap = null;
+let stlMarkerSetup = null, stlMarkerA = null, stlMarkerP = null;
+let stlTrackLine = null;
+let stlDroneMarker = null;
+let stlPollTimer = null, stlLastTimestamp = null;
+
+// ════════════════════════════════════════════════════
+// Tile layer factory
+// ════════════════════════════════════════════════════
+function stlMakeTileLayer() {
+  return L.tileLayer(STL_TILE_URL, {
+    maxZoom: 19,
+    tileSize: 256,
+    keepBuffer: 4,
+    // Fallback: if local tile server is down, show a dark placeholder
+    errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+  });
+}
+
+// ════════════════════════════════════════════════════
+// Custom marker SVGs
+// ════════════════════════════════════════════════════
+function stlIconA() {
+  return L.divIcon({
+    html: `<svg width="24" height="24" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="10" fill="none" stroke="#00ff88" stroke-width="1.5" opacity=".4"/>
+      <circle cx="12" cy="12" r="6" fill="#00ff88" opacity=".9"/>
+      <circle cx="12" cy="12" r="2.5" fill="#fff"/>
+    </svg>`,
+    className: '', iconSize: [24,24], iconAnchor: [12,12]
+  });
+}
+
+function stlIconDrone() {
+  return L.divIcon({
+    html: `<div class="drone-marker"><svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+      <!-- drone body -->
+      <circle cx="16" cy="16" r="5" fill="#00e5ff" opacity=".95"/>
+      <circle cx="16" cy="16" r="2.5" fill="#fff"/>
+      <!-- arms -->
+      <line x1="16" y1="16" x2="4"  y2="4"  stroke="#00e5ff" stroke-width="1.5" opacity=".7"/>
+      <line x1="16" y1="16" x2="28" y2="4"  stroke="#00e5ff" stroke-width="1.5" opacity=".7"/>
+      <line x1="16" y1="16" x2="4"  y2="28" stroke="#00e5ff" stroke-width="1.5" opacity=".7"/>
+      <line x1="16" y1="16" x2="28" y2="28" stroke="#00e5ff" stroke-width="1.5" opacity=".7"/>
+      <!-- rotors -->
+      <circle cx="4"  cy="4"  r="3.5" fill="none" stroke="#00e5ff" stroke-width="1.2" opacity=".8"/>
+      <circle cx="28" cy="4"  r="3.5" fill="none" stroke="#00e5ff" stroke-width="1.2" opacity=".8"/>
+      <circle cx="4"  cy="28" r="3.5" fill="none" stroke="#00e5ff" stroke-width="1.2" opacity=".8"/>
+      <circle cx="28" cy="28" r="3.5" fill="none" stroke="#00e5ff" stroke-width="1.2" opacity=".8"/>
+    </svg></div>`,
+    className: '', iconSize: [32,32], iconAnchor: [16,16]
+  });
+}
+
+function stlIconP() {
+  return L.divIcon({
+    html: `<div class="pred-marker"><svg width="44" height="44" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg">
+      <!-- outer pulse rings -->
+      <circle cx="22" cy="22" r="20" fill="none" stroke="#00e5ff" stroke-width="1" opacity=".2">
+        <animate attributeName="r" values="14;22;14" dur="2s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values=".5;0;.5" dur="2s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="22" cy="22" r="16" fill="none" stroke="#00e5ff" stroke-width="1.5" opacity=".35">
+        <animate attributeName="r" values="10;16;10" dur="2s" begin=".4s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" values=".6;0;.6" dur="2s" begin=".4s" repeatCount="indefinite"/>
+      </circle>
+      <!-- crosshair -->
+      <line x1="22" y1="8"  x2="22" y2="14" stroke="#00e5ff" stroke-width="1.5" opacity=".8"/>
+      <line x1="22" y1="30" x2="22" y2="36" stroke="#00e5ff" stroke-width="1.5" opacity=".8"/>
+      <line x1="8"  y1="22" x2="14" y2="22" stroke="#00e5ff" stroke-width="1.5" opacity=".8"/>
+      <line x1="30" y1="22" x2="36" y2="22" stroke="#00e5ff" stroke-width="1.5" opacity=".8"/>
+      <!-- center dot -->
+      <circle cx="22" cy="22" r="7" fill="#00e5ff" opacity=".9"/>
+      <circle cx="22" cy="22" r="3.5" fill="#fff"/>
+      <!-- star label -->
+      <text x="22" y="-2" text-anchor="middle" fill="#00e5ff" font-size="10" font-family="monospace">🌟</text>
+    </svg></div>`,
+    className: '', iconSize: [44,44], iconAnchor: [22,22]
+  });
+}
+
+// ════════════════════════════════════════════════════
+// Setup map
+// ════════════════════════════════════════════════════
+function stlInitSetupMap() {
+  stlSetupMap = L.map('stl-setup-map', {
+    center: STL_DEFAULT_CENTER,
+    zoom: STL_DEFAULT_ZOOM,
+    zoomControl: true,
+    attributionControl: false
+  });
+  stlMakeTileLayer().addTo(stlSetupMap);
+
+  // Verify tiles are loading
+  stlSetupMap.on('tileerror', () => {
+    console.warn('Tile error — check server.py is running on port 8181');
+  });
+
+  stlSetupMap.on('click', e => stlSetPointA(e.latlng.lat, e.latlng.lng));
+
+  // Hide hint overlay after first click
+  stlSetupMap.on('click', () => {
+    document.getElementById('stl-map-hint-overlay').style.display = 'none';
+  });
+}
+
+function stlSetPointA(lat, lon) {
+  stlPointA = { lat: +lat.toFixed(6), lon: +lon.toFixed(6) };
+
+  document.getElementById('stl-a-lat').value = stlPointA.lat;
+  document.getElementById('stl-a-lon').value = stlPointA.lon;
+
+  const box = document.getElementById('stl-point-a-box');
+  box.innerHTML = `🟢 &nbsp;${stlPointA.lat.toFixed(5)}° N &nbsp; ${stlPointA.lon.toFixed(5)}° E`;
+  box.classList.add('set');
+
+  document.getElementById('stl-btn-launch').classList.add('ready');
+
+  if (stlMarkerSetup) stlSetupMap.removeLayer(stlMarkerSetup);
+  stlMarkerSetup = L.marker([lat, lon], { icon: stlIconA() })
+    .addTo(stlSetupMap)
+    .bindPopup(`<b style="color:#00ff88;font-family:monospace">POINT A</b><br>${lat.toFixed(5)}° N<br>${lon.toFixed(5)}° E`);
+  stlSetupMap.setView([lat, lon], Math.max(stlSetupMap.getZoom(), 14));
+}
+
+// ════════════════════════════════════════════════════
+// Flight map
+// ════════════════════════════════════════════════════
+function stlInitFlightMap() {
+  stlFlightMap = L.map('stl-flight-map', {
+    center: [stlPointA.lat, stlPointA.lon], zoom: 14,
+    zoomControl: true, attributionControl: false
+  });
+  stlMakeTileLayer().addTo(stlFlightMap);
+  stlMarkerA = L.marker([stlPointA.lat, stlPointA.lon], { icon: stlIconA() })
+    .addTo(stlFlightMap)
+    .bindTooltip("POINT A", { permanent: true, direction: "right", offset: [14,0] });
+  stlDroneMarker = L.marker([stlPointA.lat, stlPointA.lon], {
+    icon: stlIconDrone(), zIndexOffset: 2000
+  }).addTo(stlFlightMap);
+}
+
+// ════════════════════════════════════════════════════
+// Launch / Back
+// ════════════════════════════════════════════════════
+async function stlLaunchMission() {
+  if (!stlPointA) return;
+
+  // Mirror day mode: tell the stellar bridge to anchor Point A and start the
+  // camera. Nothing streams/solves until this POST flips /celestial/camera/start.
+  try {
+    await fetch(`${STL_RECEIVER_URL}/api/set_mission`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ mission_mode: 'a-only',
+                             point_a: {lat: stlPointA.lat, lon: stlPointA.lon} })
+    });
+  } catch (e) { console.warn('⚠ stellar set_mission error:', e); }
+
+  document.getElementById('stl-page-setup').classList.remove('active');
+  document.getElementById('stl-page-flight').classList.add('active');
+
+  if (!stlFlightMap) {
+    stlInitFlightMap();
+  } else {
+    stlFlightMap.setView([stlPointA.lat, stlPointA.lon], 14);
+  }
+
+  stlShowWaiting();
+  stlStartPolling();
+}
+
+function stlGoBack() {
+  stlStopPolling();
+  document.getElementById('stl-page-flight').classList.remove('active');
+  document.getElementById('stl-page-setup').classList.add('active');
+  setTimeout(() => stlSetupMap && stlSetupMap.invalidateSize(), 100);
+}
+
+// ════════════════════════════════════════════════════
+// GPS Polling
+// ════════════════════════════════════════════════════
+function stlStartPolling() {
+  stlPollGps();
+  stlPollTimer = setInterval(stlPollGps, STL_POLL_MS);
+}
+function stlStopPolling() {
+  if (stlPollTimer) { clearInterval(stlPollTimer); stlPollTimer = null; }
+}
+
+async function stlPollGps() {
+  try {
+    const r = await fetch(`${STL_RECEIVER_URL}/gps_status.json`, { cache: 'no-store' });
+    if (!r.ok) return;
+    stlHandleGps(await r.json());
+  } catch(e) {
+    stlSetStatus("RECEIVER OFFLINE", "var(--stl-red)");
+  }
+}
+
+function stlHandleGps(d) {
+  const s = d.status || "idle";
+
+  // Point-A anchor: first published position is the user's start point, not a
+  // solve — sit the drone on A and keep "waiting" until the first real fix.
+  if (d.source === "point_a" && d.lat != null && d.lon != null) {
+    stlShowWaiting();
+    stlSetStatus("✅ POINT A — EN ATTENTE DU SOLVER", "var(--stl-dim)");
+    if (stlFlightMap) {
+      if (!stlDroneMarker) stlDroneMarker =
+        L.marker([d.lat, d.lon], {icon: stlIconDrone(), zIndexOffset: 2000}).addTo(stlFlightMap);
+      stlDroneMarker.setLatLng([d.lat, d.lon]);
+      stlFlightMap.setView([d.lat, d.lon], 14);
+    }
+    return;
+  }
+
+  if (s === "idle") {
+    stlShowWaiting();
+    stlSetStatus("EN ATTENTE", "var(--stl-dim)");
+
+  } else if (s === "solving") {
+    stlShowSolving();
+    stlSetStatus("RÉSOLUTION…", "var(--stl-yellow)");
+    stlSetSrc("SOLVING", "yellow");
+
+  } else if (s === "predicted") {
+    if (d.timestamp === stlLastTimestamp) return;
+    stlLastTimestamp = d.timestamp;
+    stlOnPredicted(d);
+
+  } else if (s === "error") {
+    stlSetStatus("ERREUR SOLVER", "var(--stl-red)");
+    stlSetSrc("ERREUR", "red");
+    setTimeout(stlShowWaiting, 3000);
+  }
+}
+
+function stlOnPredicted(d) {
+  const lat=d.lat, lon=d.lon;
+  const ra  = d.ra_deg  != null ? (+d.ra_deg).toFixed(4)  : "—";
+  const dec = d.dec_deg != null ? (+d.dec_deg).toFixed(4) : "—";
+  const st  = d.solve_time_s != null ? d.solve_time_s+"s" : "—";
+  const img = d.image || "—";
+  const modal = document.getElementById("stl-modal");
+  modal.classList.add("hiding");
+  setTimeout(()=>{ modal.classList.remove("visible","hiding"); modal.style.opacity=""; }, 420);
+  stlSetStatus("✅ POSITION PREDITE — NAVIGATION EN COURS","var(--stl-green)");
+  document.getElementById("stl-sb-lat").textContent   = lat.toFixed(5)+"° N";
+  document.getElementById("stl-sb-lon").textContent   = lon.toFixed(5)+"° E";
+  document.getElementById("stl-sb-radec").textContent = ra+"° / "+dec+"°";
+  stlSetSrc("STELLAR","green");
+  const distM   = stlHaversine(stlPointA.lat, stlPointA.lon, lat, lon);
+  const distStr = distM < 1000 ? distM.toFixed(0)+" m" : (distM/1000).toFixed(2)+" km";
+  if (stlTrackLine) stlFlightMap.removeLayer(stlTrackLine);
+  stlTrackLine = L.polyline([[stlPointA.lat,stlPointA.lon],[lat,lon]],
+    {color:"#00e5ff",weight:2.5,dashArray:"10 6",opacity:0.7}).addTo(stlFlightMap);
+  const midLat=(stlPointA.lat+lat)/2, midLon=(stlPointA.lon+lon)/2;
+  L.marker([midLat,midLon],{icon:L.divIcon({
+    html:"<div style='background:rgba(7,9,15,.88);border:1px solid #00e5ff44;color:#ffd600;font-family:Share Tech Mono,monospace;font-size:10px;padding:4px 10px;white-space:nowrap;border-radius:3px;'>📏 "+distStr+"</div>",
+    className:"",iconSize:[100,24],iconAnchor:[50,12]
+  })}).addTo(stlFlightMap);
+  if (stlMarkerP) stlFlightMap.removeLayer(stlMarkerP);
+  stlMarkerP = L.marker([lat,lon],{icon:stlIconP(),zIndexOffset:1000}).addTo(stlFlightMap)
+    .bindPopup("<div style='font-family:monospace;line-height:1.9;min-width:220px'>"+
+      "<b style='color:#00e5ff'>🌟 POSITION STELLAIRE</b><br>"+
+      "Lat <b style='color:#00e5ff'>"+lat.toFixed(5)+"° N</b><br>"+
+      "Lon <b style='color:#00e5ff'>"+lon.toFixed(5)+"° E</b><br>"+
+      "RA/Dec <span style='color:#ffd600'>"+ra+"° / "+dec+"°</span><br>"+
+      "Résolu en <span style='color:#00ff88'>"+st+"</span><br>"+
+      "Distance <span style='color:#ffd600'>"+distStr+"</span></div>");
+  stlFlightMap.fitBounds(L.latLngBounds([[stlPointA.lat,stlPointA.lon],[lat,lon]]),
+    {padding:[80,80],maxZoom:15,animate:true,duration:0.8});
+  if (!stlDroneMarker) {
+    stlDroneMarker = L.marker([stlPointA.lat,stlPointA.lon],{icon:stlIconDrone(),zIndexOffset:2000}).addTo(stlFlightMap);
+  }
+  stlDroneMarker.setLatLng([stlPointA.lat,stlPointA.lon]);
+  const STEPS=60, DUR=2500;
+  let step=0;
+  const fly=setInterval(()=>{
+    step++;
+    const t=step/STEPS, ease=t<0.5?2*t*t:-1+(4-2*t)*t;
+    stlDroneMarker.setLatLng([
+      stlPointA.lat+(lat-stlPointA.lat)*ease,
+      stlPointA.lon+(lon-stlPointA.lon)*ease
+    ]);
+    if(step>=STEPS){
+      clearInterval(fly);
+      stlDroneMarker.setLatLng([lat,lon]);
+      stlMarkerP.openPopup();
+      stlFlightMap.setView([lat,lon],15,{animate:true,duration:0.6});
+      stlSetStatus("✅ DRONE ARRIVE — "+lat.toFixed(5)+"° N, "+lon.toFixed(5)+"° E","var(--stl-green)");
+    }
+  }, DUR/STEPS);
+  document.getElementById("stl-t-lat").textContent   = lat.toFixed(5)+"° N";
+  document.getElementById("stl-t-lon").textContent   = lon.toFixed(5)+"° E";
+  document.getElementById("stl-t-radec").textContent = ra+"° / "+dec+"°";
+  document.getElementById("stl-t-time").textContent  = st;
+  document.getElementById("stl-t-img").textContent   = img;
+  document.getElementById("stl-toast").classList.add("visible");
+}
+
+// ════════════════════════════════════════════════════
+// UI helpers
+// ════════════════════════════════════════════════════
+function stlShowWaiting() {
+  document.getElementById('stl-modal').classList.add('visible');
+  document.getElementById('stl-wait-box').style.display    = 'block';
+  document.getElementById('stl-solving-box').style.display = 'none';
+}
+function stlShowSolving() {
+  document.getElementById('stl-modal').classList.add('visible');
+  document.getElementById('stl-wait-box').style.display    = 'none';
+  document.getElementById('stl-solving-box').style.display = 'block';
+}
+function stlSetStatus(t, c) {
+  const el = document.getElementById('stl-topbar-status');
+  el.textContent = t; el.style.color = c;
+}
+function stlSetSrc(t, c) {
+  const el = document.getElementById('stl-sb-src');
+  el.textContent = t; el.className = "stat-value " + c;
+}
+
+// Boot
+
+
+
+function stlHaversine(lat1, lon1, lat2, lon2) {
+  const R = 6371000, r = Math.PI / 180;
+  const dLat = (lat2-lat1)*r, dLon = (lon2-lon1)*r;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*r)*Math.cos(lat2*r)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+function stlBoot() {
+  if (window._stlBooted) {
+    setTimeout(function(){ if(stlSetupMap) stlSetupMap.invalidateSize(); }, 150);
+    return;
+  }
+  window._stlBooted = true;
+  stlInitSetupMap();
+  ['stl-a-lat','stl-a-lon'].forEach(function(id) {
+    document.getElementById(id).addEventListener('input', function() {
+      var lat = parseFloat(document.getElementById('stl-a-lat').value);
+      var lon = parseFloat(document.getElementById('stl-a-lon').value);
+      if (!isNaN(lat) && !isNaN(lon)) stlSetPointA(lat, lon);
+    });
+  });
+}
+
+function openStellarMode() {
+  var ov = document.getElementById('config-overlay');
+  ov.style.transition = 'opacity .3s';
+  ov.style.opacity = '0';
+  setTimeout(function() {
+    ov.style.display = 'none';
+    document.getElementById('stl-overlay').style.display = 'block';
+    setTimeout(stlBoot, 50);
+  }, 320);
+}
+
+function closeStellarAndReturn() {
+  document.getElementById('stl-overlay').style.display = 'none';
+  var ov = document.getElementById('config-overlay');
+  ov.style.display = 'flex';
+  ov.style.opacity = '0';
+  setTimeout(function(){ ov.style.opacity = '1'; }, 20);
+  if(typeof stlStopPolling==='function') stlStopPolling();
+}
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,2 @@
+frame_id,image_file,lat,lon,altitude_m,heading_deg,speed_mps
+1,etoiles.jpeg,,,400,0,10

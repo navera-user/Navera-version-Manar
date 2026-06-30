@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NAVERA Night Mission — Sousse</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1a1a1a;
+            color: #fff;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        #map {
+            flex: 1;
+            position: relative;
+        }
+        
+        .control-panel {
+            background: rgba(0, 0, 0, 0.85);
+            padding: 15px 20px;
+            border-top: 2px solid #00d4ff;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .mission-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 212, 255, 0.4);
+        }
+        
+        #launchBtn {
+            background: linear-gradient(135deg, #00d4ff, #0099cc);
+            color: #000;
+        }
+        
+        #launchBtn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .stats-display {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            font-size: 13px;
+        }
+        
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        
+        .stat-label {
+            color: #999;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .stat-value {
+            color: #00d4ff;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .legend-box {
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid #00d4ff;
+            border-radius: 6px;
+            padding: 12px 15px;
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            z-index: 1000;
+            font-size: 12px;
+            max-width: 250px;
+        }
+        
+        .legend-title {
+            color: #00d4ff;
+            font-weight: bold;
+            margin-bottom: 8px;
+            border-bottom: 1px solid #00d4ff;
+            padding-bottom: 6px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 6px 0;
+            padding: 4px 0;
+        }
+        
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 2px solid #fff;
+        }
+        
+        .legend-line {
+            width: 20px;
+            height: 2px;
+            border-radius: 1px;
+        }
+        
+        .legend-line.gps {
+            background: #00ff00;
+        }
+        
+        .legend-line.sthn {
+            background: #00d4ff;
+            border-top: 1px dashed #00d4ff;
+            opacity: 0.7;
+        }
+        
+        .mission-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid #00d4ff;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-dot.idle {
+            background: #888;
+            animation: none;
+        }
+        
+        .status-dot.active {
+            background: #00ff00;
+        }
+        
+        .status-dot.error {
+            background: #ff0000;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .frame-progress {
+            font-size: 12px;
+            color: #00d4ff;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <div class="legend-box">
+        <div class="legend-title">🌙 NAVERA Mission Legend</div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #00ff00;"></div>
+            <span>GPS Position</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #00d4ff;"></div>
+            <span>STHN Prediction</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-line gps"></div>
+            <span>GPS Path</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-line sthn"></div>
+            <span>STHN Path</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #ff6b00;"></div>
+            <span>Point A (Start)</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background: #00ff00;"></div>
+            <span>Point B (End)</span>
+        </div>
+    </div>
+    
+    <div class="control-panel">
+        <div class="mission-controls">
+            <button id="launchBtn">🚀 Launch Mission</button>
+            <div class="mission-status">
+                <div class="status-dot idle" id="statusDot"></div>
+                <span id="statusText">Ready</span>
+            </div>
+        </div>
+        <div class="stats-display">
+            <div class="stat-item">
+                <span class="stat-label">Total Points</span>
+                <span class="stat-value" id="totalPoints">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">GPS Points</span>
+                <span class="stat-value" id="gpsCount">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">STHN Points</span>
+                <span class="stat-value" id="sthnCount">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Distance</span>
+                <span class="stat-value" id="distance">0 km</span>
+            </div>
+            <div class="stat-item frame-progress">
+                <span class="stat-label">Progress</span>
+                <span class="stat-value" id="frameProgress">0/30</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== MAP INITIALIZATION ====================
+        const map = L.map('map').setView([35.83, 10.63], 15);
+        
+        L.tileLayer('http://localhost:8181/tiles/{z}/{x}/{y}.png', {
+            attribution: 'NAVERA Sousse Satellite',
+            maxZoom: 19,
+            minZoom: 13
+        }).addTo(map);
+        
+        // ==================== DATA STORAGE ====================
+        let flightData = [];
+        let missionActive = false;
+        let polylineGPS = null;
+        let polylineSTHN = null;
+        let markers = {};
+        
+        // ==================== UTILITY FUNCTIONS ====================
+        function haversineDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // Earth radius in km
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = 
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+        
+        function updateDistance() {
+            let totalDist = 0;
+            for (let i = 1; i < flightData.length; i++) {
+                const prev = flightData[i - 1];
+                const curr = flightData[i];
+                if (prev.lat && curr.lat && prev.lon && curr.lon) {
+                    totalDist += haversineDistance(prev.lat, prev.lon, curr.lat, curr.lon);
+                }
+            }
+            document.getElementById('distance').textContent = totalDist.toFixed(2) + ' km';
+        }
+        
+        function updateStats() {
+            const gpsCount = flightData.filter(p => p.type === 'gps').length;
+            const sthnCount = flightData.filter(p => p.type === 'sthn').length;
+            
+            document.getElementById('totalPoints').textContent = flightData.length;
+            document.getElementById('gpsCount').textContent = gpsCount;
+            document.getElementById('sthnCount').textContent = sthnCount;
+            document.getElementById('frameProgress').textContent = `${flightData.length}/30`;
+            updateDistance();
+        }
+        
+        // ==================== POLYLINE DRAWING ====================
+        function redrawPolylines() {
+            // Remove old polylines
+            if (polylineGPS) map.removeLayer(polylineGPS);
+            if (polylineSTHN) map.removeLayer(polylineSTHN);
+            
+            const gpsCoords = [];
+            const sthnCoords = [];
+            let lastGPSCoord = null;
+            
+            // Build coordinate arrays in frame order
+            for (let i = 0; i < flightData.length; i++) {
+                const point = flightData[i];
+                
+                if (point.lat && point.lon) {
+                    const coord = [point.lat, point.lon];
+                    
+                    if (point.type === 'gps') {
+                        gpsCoords.push(coord);
+                        lastGPSCoord = coord;
+                    } else if (point.type === 'sthn') {
+                        // Connect STHN to last GPS point
+                        if (lastGPSCoord) {
+                            sthnCoords.push(lastGPSCoord);
+                        }
+                        sthnCoords.push(coord);
+                    }
+                }
+            }
+            
+            // Draw GPS polyline (solid green)
+            if (gpsCoords.length > 1) {
+                polylineGPS = L.polyline(gpsCoords, {
+                    color: '#00ff00',
+                    weight: 3,
+                    opacity: 0.8,
+                    dashArray: null,
+                    lineCap: 'round',
+                    lineJoin: 'round'
+                }).addTo(map);
+            }
+            
+            // Draw STHN polyline (dashed cyan)
+            if (sthnCoords.length > 1) {
+                polylineSTHN = L.polyline(sthnCoords, {
+                    color: '#00d4ff',
+                    weight: 2,
+                    opacity: 0.6,
+                    dashArray: '5, 5',
+                    lineCap: 'round',
+                    lineJoin: 'round'
+                }).addTo(map);
+            }
+        }
+        
+        // ==================== MARKER MANAGEMENT ====================
+        function addOrUpdateMarker(frameNum, lat, lon, type) {
+            const markerId = `frame_${frameNum}`;
+            
+            // Remove old marker if exists
+            if (markers[markerId]) {
+                map.removeLayer(markers[markerId]);
+            }
+            
+            const color = type === 'gps' ? '#00ff00' : '#00d4ff';
+            const icon = L.divIcon({
+                className: 'custom-marker',
+                html: `<div style="
+                    background: ${color};
+                    width: 12px;
+                    height: 12px;
+                    border-radius: 50%;
+                    border: 2px solid #fff;
+                    box-shadow: 0 0 8px ${color};
+                "></div>`,
+                iconSize: [16, 16],
+                iconAnchor: [8, 8]
+            });
+            
+            const marker = L.marker([lat, lon], { icon })
+                .bindPopup(`
+                    <div style="font-size: 12px; color: #000;">
+                        <strong>Frame ${frameNum}</strong><br>
+                        Type: ${type.toUpperCase()}<br>
+                        Lat: ${lat.toFixed(6)}<br>
+                        Lon: ${lon.toFixed(6)}
+                    </div>
+                `)
+                .addTo(map);
+            
+            markers[markerId] = marker;
+        }
+        
+        // ==================== DATA FETCH & UPDATE ====================
+        async function fetchFlightData() {
+            try {
+                const response = await fetch('http://localhost:5001/flight_log.csv');
+                const csv = await response.text();
+                const lines = csv.trim().split('\n');
+                
+                const newData = [];
+                for (let i = 1; i < lines.length; i++) {
+                    const parts = lines[i].split(',');
+                    if (parts.length >= 4) {
+                        const frame = parseInt(parts[0]);
+                        const lat = parseFloat(parts[1]);
+                        const lon = parseFloat(parts[2]);
+                        const type = parts[3].toLowerCase().includes('gps') ? 'gps' : 'sthn';
+                        
+                        if (!isNaN(lat) && !isNaN(lon)) {
+                            newData.push({ frame, lat, lon, type });
+                        }
+                    }
+                }
+                
+                return newData;
+            } catch (error) {
+                console.error('Error fetching flight data:', error);
+                return [];
+            }
+        }
+        
+        async function updateMissionData() {
+            if (!missionActive) return;
+            
+            const newData = await fetchFlightData();
+            
+            // Only update if new data arrived
+            if (newData.length > flightData.length) {
+                // Add new points
+                for (let i = flightData.length; i < newData.length; i++) {
+                    const point = newData[i];
+                    flightData.push(point);
+                    addOrUpdateMarker(point.frame, point.lat, point.lon, point.type);
+                }
+                
+                redrawPolylines();
+                updateStats();
+                
+                // Check if mission complete
+                if (flightData.length >= 30) {
+                    endMission();
+                }
+            }
+        }
+        
+        // ==================== MISSION CONTROL ====================
+        async function startMission() {
+            try {
+                missionActive = true;
+                flightData = [];
+                markers = {};
+                
+                // Clear map
+                Object.values(markers).forEach(m => map.removeLayer(m));
+                if (polylineGPS) map.removeLayer(polylineGPS);
+                if (polylineSTHN) map.removeLayer(polylineSTHN);
+                
+                updateUIStatus('active', 'Mission Running...');
+                document.getElementById('launchBtn').disabled = true;
+                
+                // Trigger mission on server
+                const response = await fetch('http://localhost:8181/api/start_night_mission', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (response.ok) {
+                    // Poll for updates every 500ms
+                    const pollInterval = setInterval(async () => {
+                        await updateMissionData();
+                        if (!missionActive) clearInterval(pollInterval);
+                    }, 500);
+                } else {
+                    updateUIStatus('error', 'Mission Start Failed');
+                    missionActive = false;
+                    document.getElementById('launchBtn').disabled = false;
+                }
+            } catch (error) {
+                console.error('Mission start error:', error);
+                updateUIStatus('error', 'Error: ' + error.message);
+                missionActive = false;
+                document.getElementById('launchBtn').disabled = false;
+            }
+        }
+        
+        function endMission() {
+            missionActive = false;
+            updateUIStatus('idle', '✅ Mission Complete!');
+            document.getElementById('launchBtn').disabled = false;
+            console.log('Mission ended. Total points:', flightData.length);
+        }
+        
+        function updateUIStatus(status, text) {
+            const dot = document.getElementById('statusDot');
+            dot.className = `status-dot ${status}`;
+            document.getElementById('statusText').textContent = text;
+        }
+        
+        // ==================== EVENT LISTENERS ====================
+        document.getElementById('launchBtn').addEventListener('click', startMission);
+        
+        // Initial status
+        updateUIStatus('idle', 'Ready');
+        updateStats();
+    </script>
+</body>
+</html>

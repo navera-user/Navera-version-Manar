@@ -1,0 +1,16 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+# NAVERA — dépendances permanentes (day + cn)
+RUN pip install "numpy<2" --break-system-packages
+RUN pip install timm --no-deps --break-system-packages
+RUN pip install "torchvision==0.16.0" --no-deps --break-system-packages
+RUN pip install scikit-learn huggingface_hub astropy --break-system-packages
+RUN apt-get update && apt-get install -y netpbm libgsl27 && rm -rf /var/lib/apt/lists/*
+# NAVERA — pré-cuisson des poids DINOv2 + ResNet50 dans l'image (évite re-téléchargement ~3-4min à chaque démarrage)
+ENV TORCH_HOME=/opt/torch_cache
+ENV HF_HOME=/opt/hf_cache
+RUN mkdir -p /opt/torch_cache /opt/hf_cache && \
+    python3 -c "import torch; torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14', pretrained=True)" && \
+    python3 -c "import timm; timm.create_model('resnet50', pretrained=True, features_only=True)" && \
+    chmod -R a+rX /opt/torch_cache /opt/hf_cache
