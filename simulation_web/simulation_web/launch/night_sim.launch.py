@@ -23,6 +23,7 @@ from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -91,7 +92,10 @@ def generate_launch_description():
                 'conf_threshold': conf_threshold,
                 'patch_size':     LaunchConfiguration('patch_size'),
                 'dr_step_min_m':  LaunchConfiguration('dr_step_min_m'),
-                'mixed_precision': LaunchConfiguration('mixed_precision'),
+                # value_type=str : sinon launch_ros coerce 'true'→bool et le nœud
+                # (qui déclare/parse mixed_precision en string) crashe au démarrage.
+                'mixed_precision': ParameterValue(
+                    LaunchConfiguration('mixed_precision'), value_type=str),
                 'image_topic':    '/thermal/image_raw',
                 'meta_topic':     '/thermal/frame_meta',
                 'fix_topic':      '/night/position_estimate',
