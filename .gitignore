@@ -70,3 +70,7 @@ torch_jetson/
 *.so.*
 torchgen/
 functorch/
+
+# Binaires trackés retirés du dépôt (gardés sur disque, hors git)
+/mission.zip
+/NAVERA_FULL_DOCUMENTATION.pdf
