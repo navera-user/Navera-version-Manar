@@ -1,0 +1,16 @@
+[Unit]
+Description=NAVERA GPS sensor node (NMEA /dev/ttyTHS1 → /navera/sensors/gps_fix)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=navera
+Group=navera
+WorkingDirectory=/home/navera/isaac_ros_common
+ExecStart=/home/navera/navera_boot_gps.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
