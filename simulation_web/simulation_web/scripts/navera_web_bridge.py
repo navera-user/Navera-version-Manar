@@ -7,8 +7,9 @@ shape navera.html already polls, so the browser marker moves in real time from
 the ROS chain (camera_pkg → day_subscriber → /day/position_estimate):
 
   ROS in:
-    /day/day_status        std_msgs/String   (JSON from day_subscriber)
-    /day/position_estimate sensor_msgs/NavSatFix  (fallback lat/lon)
+    /day/day_status         std_msgs/String   (JSON from day_subscriber)
+    /day/position_estimate  sensor_msgs/NavSatFix  (fallback lat/lon)
+    /navera/sensors/gps_fix sensor_msgs/NavSatFix  (real GPS; wins over vision when valid)
 
   HTTP out (single server, default port 8181):
     GET  /                       → navera.html
@@ -98,6 +99,7 @@ class NaveraWebBridge(Node):
         self._state_lock = threading.Lock()
         self._gps_status = {"status": "idle"}
         self._point_a = None
+        self._gps_fix = None   # latest VALID real GPS fix {lat, lon}; None → fall back to vision
 
         # ── Tile DB (lazy, thread-safe) ─────────────────────────
         self._db_conn = None
@@ -106,6 +108,11 @@ class NaveraWebBridge(Node):
         # ── ROS subscriptions ───────────────────────────────────
         self.create_subscription(String,    status_topic, self._on_status, 10)
         self.create_subscription(NavSatFix, fix_topic,    self._on_fix,    10)
+
+        # ── Real GPS fix (source hierarchy: GPS wins over vision) ──
+        self.declare_parameter("gps_fix_topic", "/navera/sensors/gps_fix")
+        gps_fix_topic = self.get_parameter("gps_fix_topic").value
+        self.create_subscription(NavSatFix, gps_fix_topic, self._on_gps_fix, 10)
 
         # ── camera start/pause trigger (Option A) ──
         self.declare_parameter("start_topic", "/day/camera/start")
@@ -183,6 +190,23 @@ class NaveraWebBridge(Node):
                     "mission_started": True, "timestamp": time.time(),
                 }
 
+    def _on_gps_fix(self, msg: NavSatFix):
+        """Store the latest VALID real GPS fix in self._gps_fix, else clear it to None.
+
+        Valid = the receiver reports a fix (status.status >= 0, i.e. not
+        STATUS_NO_FIX = -1) AND lat/lon are finite and not the (0, 0) null island.
+        When the fix is invalid, self._gps_fix is reset to None so that
+        operator_position() falls back to the vision source."""
+        lat, lon = msg.latitude, msg.longitude
+        has_fix = msg.status.status >= 0                 # -1 == NavSatStatus.STATUS_NO_FIX
+        finite  = (lat == lat) and (lon == lon)          # NaN guard
+        nonzero = not (lat == 0.0 and lon == 0.0)        # reject (0, 0) placeholder
+        with self._state_lock:
+            if has_fix and finite and nonzero:
+                self._gps_fix = {"lat": float(lat), "lon": float(lon)}
+            else:
+                self._gps_fix = None
+
     def set_point_a(self, pa):
         """Anchor the trajectory at the user-entered Point A.
 
@@ -249,11 +273,11 @@ class NaveraWebBridge(Node):
           2. VISION— else the current day-localization fix (source="VISION").
           3. none  — else {"valid": False}.
 
-        GPS is a placeholder for now: self._gps_fix is not populated yet. The real
-        subscription to /navera/sensors/gps_fix lands in the next step; once that
-        sets self._gps_fix, this method already prefers it with no other change.
+        self._gps_fix holds the latest VALID real GPS fix (from the
+        /navera/sensors/gps_fix subscription, via _on_gps_fix); it is None when
+        no valid fix is available, so the hierarchy falls back to vision.
         """
-        # 1) GPS — placeholder until the gps_fix subscription is wired.
+        # 1) GPS — latest valid real fix (None → fall through to vision).
         gps = getattr(self, "_gps_fix", None)
         if gps and gps.get("lat") is not None and gps.get("lon") is not None:
             return {"lat": float(gps["lat"]), "lon": float(gps["lon"]),
