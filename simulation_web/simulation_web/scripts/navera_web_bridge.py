@@ -15,6 +15,8 @@ the ROS chain (camera_pkg → day_subscriber → /day/position_estimate):
     GET  /navera.html            → navera.html
     GET  /tiles/{z}/{x}/{y}.png  → MBTiles tile (TMS flip-Y), served as image/jpeg
     GET  /gps_status.json        → latest position {status:"predicted", lat, lon, …}
+    GET  /operator               → operator.html (fullscreen operator view)
+    GET  /api/operator_position  → {lat, lon, source:"GPS"|"VISION", valid} (GPS→vision hierarchy)
     GET  /flight_log.csv         → minimal header (keeps navera.html pollCsv happy)
     GET/POST /api/set_mission    → store Point A (map centring)
     GET  /api/cache_status, /api/precollect_progress, POST /api/precollect → benign stubs
@@ -239,6 +241,33 @@ class NaveraWebBridge(Node):
         with self._state_lock:
             return json.dumps(self._gps_status).encode()
 
+    def operator_position(self):
+        """Position for the operator view, with source hierarchy GPS → VISION → none.
+
+        Returns a dict {lat, lon, source, valid}:
+          1. GPS   — if a valid GPS fix is available (source="GPS").
+          2. VISION— else the current day-localization fix (source="VISION").
+          3. none  — else {"valid": False}.
+
+        GPS is a placeholder for now: self._gps_fix is not populated yet. The real
+        subscription to /navera/sensors/gps_fix lands in the next step; once that
+        sets self._gps_fix, this method already prefers it with no other change.
+        """
+        # 1) GPS — placeholder until the gps_fix subscription is wired.
+        gps = getattr(self, "_gps_fix", None)
+        if gps and gps.get("lat") is not None and gps.get("lon") is not None:
+            return {"lat": float(gps["lat"]), "lon": float(gps["lon"]),
+                    "source": "GPS", "valid": True}
+        # 2) VISION — current day-localization fix (predicted or searching keeps last good).
+        with self._state_lock:
+            st = dict(self._gps_status)
+        if st.get("status") in ("predicted", "searching") \
+                and st.get("lat") is not None and st.get("lon") is not None:
+            return {"lat": float(st["lat"]), "lon": float(st["lon"]),
+                    "source": "VISION", "valid": True}
+        # 3) No fix.
+        return {"valid": False}
+
     # ────────────────────────────────────────────────────────────
     # HTTP server
     # ────────────────────────────────────────────────────────────
@@ -302,6 +331,16 @@ class NaveraWebBridge(Node):
 
                 if path == "/health":
                     return self._json(200, {"ok": True})
+
+                if path == "/operator":
+                    op_html = os.path.join(bridge.resources_dir, "operator.html")
+                    if os.path.exists(op_html):
+                        with open(op_html, "rb") as f:
+                            return self._send(200, "text/html; charset=utf-8", f.read())
+                    return self._json(404, {"error": "operator.html not found"})
+
+                if path == "/api/operator_position":
+                    return self._json(200, bridge.operator_position())
 
                 # Static fallback from resources/ (leaflet assets, etc.)
                 return self._serve_static(path)
