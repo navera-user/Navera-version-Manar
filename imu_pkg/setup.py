@@ -16,11 +16,16 @@ setup(
     version='0.0.1',
     packages=find_packages(exclude=['test', 'config']),
     data_files=data_files,
-    install_requires=['setuptools', 'rclpy', 'smbus2'],
+    # Runtime pip deps (BNO085 via Adafruit Blinka) are NOT listed here on purpose:
+    # they are provided by the image (Dockerfile.navera) and by the host for the
+    # navera-imu systemd service. Listing them would make `colcon build` try to
+    # resolve them from PyPI on a machine that has no network.
+    #   Jetson.GPIO>=2.1.12, adafruit-blinka, adafruit-circuitpython-bno08x
+    install_requires=['setuptools', 'rclpy'],
     zip_safe=True,
     maintainer='Navera',
     maintainer_email='navera@example.com',
-    description='NAVERA IMU sensor driver (MPU6050+BMP180+QMC5883L → /navera/sensors/imu, /mag, /altitude_baro)',
+    description='NAVERA IMU sensor driver — BNO085 9-DoF over I2C → /navera/sensors/imu',
     license='Apache-2.0',
     entry_points={
         'console_scripts': [

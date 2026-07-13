@@ -6,5 +6,14 @@ RUN pip install "numpy<2" --break-system-packages --force-reinstall
 # S'assure que flask est là
 RUN pip install flask flask-cors --break-system-packages
 
+# IMU BNO085 (I2C via Adafruit Blinka) — parité avec l'hôte, où tourne le service navera-imu.
+# Jetson.GPIO doit être >= 2.1.12 : les versions antérieures (2.1.7) ne reconnaissent pas
+# l'Orin Nano et Blinka échoue avec "Could not determine Jetson model".
+RUN pip install \
+        "Jetson.GPIO>=2.1.12" \
+        adafruit-blinka \
+        adafruit-circuitpython-bno08x \
+    --break-system-packages
+
 USER admin
 WORKDIR /workspaces/isaac_ros-dev

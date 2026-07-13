@@ -3,7 +3,7 @@
 <package format="3">
   <name>imu_pkg</name>
   <version>0.0.1</version>
-  <description>NAVERA IMU sensor driver — MPU6050 (accel/gyro) + BMP180 (baro/alt) + QMC5883L (magnetometer), all on the same I2C bus.</description>
+  <description>NAVERA IMU sensor driver — BNO085 9-DoF (on-chip fusion) over I2C, publishing sensor_msgs/Imu.</description>
   <maintainer email="navera@example.com">Navera</maintainer>
   <license>Apache-2.0</license>
 
@@ -13,7 +13,11 @@
   <depend>launch</depend>
   <depend>launch-ros</depend>
   <depend>sensor_msgs</depend>
-  <depend>std_msgs</depend>
+
+  <!-- Python deps installed via pip (no rosdep key exists for them):
+       Jetson.GPIO>=2.1.12, adafruit-blinka, adafruit-circuitpython-bno08x.
+       Provided by Dockerfile.navera in the container, and on the host for the
+       navera-imu systemd service. -->
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
