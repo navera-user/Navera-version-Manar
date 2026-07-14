@@ -22,6 +22,7 @@ import base64, csv, json, math, threading, time
 from pathlib import Path
 
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
@@ -509,15 +510,22 @@ class CameraPublisher(Node):
 
 
 def main(args=None):
+    """Entry point. Exits cleanly (code 0) on SIGINT and SIGTERM.
+
+    rclpy installs handlers for both signals and shuts the context down itself,
+    so spin() returns with the context already closed — an unconditional
+    rclpy.shutdown() here would then raise RCLError. Hence the rclpy.ok() guard.
+    """
     rclpy.init(args=args)
     node = CameraPublisher()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
-        node.get_logger().info("Interrupted by user — bye.")
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":
