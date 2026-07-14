@@ -132,10 +132,18 @@ If a change is risky or large, describe the plan and ask before executing.
 
 ## 8. CURRENT PRIORITIES (the roadmap — tracked by the certification dossier)
 
-Verified requirements are done. The roadmap = the not-yet-done items:
+Verified requirements are done. The roadmap = the not-yet-done items.
+
+### Done — validated on real hardware
+- **Clock node** (`rtc_pkg`, DS3231 on I²C bus 1, addr `0x68`). Validated by a full power-cycle
+  reboot on the Jetson (2026-07-14): the `navera-rtc` systemd service comes up on its own,
+  the node reports `valid:true` and `lost_power:false` **after** the reboot (the CR2032 backup
+  battery holds the clock through the power cut), and measured drift is **-0.148 s vs NTP**.
+  Celestial no longer needs a manual time entry; its remaining blocker is IMU tilt/azimuth.
+
+### Not yet done
 - **Clean & document** the codebase (remove legacy/dupes, add per-package READMEs, docstrings). ← start here
 - **Wire real sensors:** gps_node → pipelines, imu_node → dead-reckoning + celestial.
-- **Add a clock node** for accurate time reference (needed for celestial).
 - **Optimize** models with TensorRT (latency).
 - **Automatic startup** on boot (clean systemd service, not the old broken crontab).
 - **Standardized vehicle-integration interface** (UAV/USV/UGV).
