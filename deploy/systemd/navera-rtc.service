@@ -1,0 +1,17 @@
+[Unit]
+Description=NAVERA RTC sensor node (DS3231 I2C bus 1 @ 0x68 → /navera/sensors/rtc_time)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=navera
+Group=navera
+SupplementaryGroups=i2c
+WorkingDirectory=/home/navera/isaac_ros_common
+ExecStart=/home/navera/navera_boot_rtc.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
