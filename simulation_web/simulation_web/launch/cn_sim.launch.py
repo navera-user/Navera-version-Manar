@@ -2,11 +2,19 @@
 """
 cn_sim.launch.py — full NAVERA "stellar" (celestial) simulation in one command.
 
-Stellar counterpart of day_sim.launch.py. Starts the whole ROS→web chain:
-  camera_pkg (celestial, etoiles.jpeg + meta)
-    → cn_subscriber (astrometry geolocation)
-      → /cn/position_estimate + /cn/cn_status
-        → navera_stellar_bridge (HTTP :8181: navera.html + tiles + gps_status.json)
+Thin wrapper over the two halves of the chain:
+  cn_pipeline.launch.py   camera_pkg (celestial) → cn_subscriber (astrometry)
+  bridge.launch.py        navera_stellar_bridge (HTTP :8181)
+
+It exists so the single-command workflow keeps working. The composition itself
+lives in the two included files — nothing is declared twice here.
+
+Celestial uses its own bridge binary (navera_stellar_bridge), selected here via
+bridge.launch.py's bridge_executable/bridge_name arguments. That bridge has no GPS
+source, so it does not declare gps_fix_topic; bridge.launch.py passes the parameter
+anyway. That is harmless and verified: rclpy silently ignores an override for a
+parameter the node never declares (the node starts, binds its port and serves). The
+two bridges merge once the arbiter (navera_estimator) exists — see the package README.
 
 Then open http://<jetson>:8181/ , pick "Stellar Mode", set Point A, launch — the
 drone marker moves on the .mbtiles map from the real ROS celestial fix.
@@ -24,19 +32,15 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node
-from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
-    camera_share = get_package_share_directory('camera_pkg')
+    web_share = get_package_share_directory('simulation_web')
 
     default_mbtiles = '/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles'
 
-    web_port       = LaunchConfiguration('web_port')
-    mbtiles_path   = LaunchConfiguration('mbtiles_path')
-    conf_threshold = LaunchConfiguration('conf_threshold')
-
+    # Public interface: same argument names and same defaults as before the split, so
+    # every existing invocation (docs, CLI overrides) keeps working.
     return LaunchDescription([
         DeclareLaunchArgument('web_port',       default_value='8181'),
         DeclareLaunchArgument('mbtiles_path',   default_value=default_mbtiles),
@@ -47,48 +51,33 @@ def generate_launch_description():
         DeclareLaunchArgument('azimuth',     default_value='283.18'),
         DeclareLaunchArgument('utc_time',    default_value='2026-03-10 20:20:00'),
 
-        # 1) Camera publisher (celestial namespace, etoiles.jpeg + meta)
+        # 1) Celestial pipeline: camera(celestial) + cn_subscriber (astrometry, CPU)
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
-                os.path.join(camera_share, 'launch', 'celestial.launch.py')
+                os.path.join(web_share, 'launch', 'cn_pipeline.launch.py')
             ),
             launch_arguments={
-                'start_paused': 'true',   # idle until Launch Mission flips /celestial/camera/start
-                'loop':         'false',  # one-shot: solve frame 1 once, no endless re-solve loop
+                'conf_threshold': LaunchConfiguration('conf_threshold'),
+                'solver_mode':    LaunchConfiguration('solver_mode'),
+                'tilt':           LaunchConfiguration('tilt'),
+                'azimuth':        LaunchConfiguration('azimuth'),
+                'utc_time':       LaunchConfiguration('utc_time'),
             }.items(),
         ),
 
-        # 2) Celestial navigation subscriber (astrometry)
-        Node(
-            package='cn_pkg',
-            executable='cn_subscriber.py',
-            name='cn_subscriber',
-            output='screen',
-            parameters=[{
-                'conf_threshold': conf_threshold,
-                'image_topic':  '/celestial/image_raw',
-                'meta_topic':   '/celestial/frame_meta',
-                'fix_topic':    '/cn/position_estimate',
-                'status_topic': '/cn/cn_status',
-                'solver_mode':  ParameterValue(LaunchConfiguration('solver_mode'), value_type=str),
-                'tilt':         ParameterValue(LaunchConfiguration('tilt'), value_type=float),
-                'azimuth':      ParameterValue(LaunchConfiguration('azimuth'), value_type=float),
-                # Force str — "YYYY-MM-DD HH:MM:SS" would otherwise be inferred as datetime.
-                'utc_time':     ParameterValue(LaunchConfiguration('utc_time'), value_type=str),
-            }],
-        ),
-
-        # 3) ROS→web bridge (HTTP :8181 — navera.html + tiles + gps_status.json)
-        Node(
-            package='simulation_web',
-            executable='navera_stellar_bridge.py',
-            name='navera_stellar_bridge',
-            output='screen',
-            parameters=[{
-                'status_topic': '/cn/cn_status',
-                'fix_topic':    '/cn/position_estimate',
-                'mbtiles_path': mbtiles_path,
-                'web_port':     web_port,
-            }],
+        # 2) ROS→web bridge — the stellar one, pointed at the celestial pipeline.
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(web_share, 'launch', 'bridge.launch.py')
+            ),
+            launch_arguments={
+                'bridge_executable': 'navera_stellar_bridge.py',
+                'bridge_name':       'navera_stellar_bridge',
+                'status_topic':      '/cn/cn_status',
+                'fix_topic':         '/cn/position_estimate',
+                'start_topic':       '/celestial/camera/start',
+                'mbtiles_path':      LaunchConfiguration('mbtiles_path'),
+                'web_port':          LaunchConfiguration('web_port'),
+            }.items(),
         ),
     ])
