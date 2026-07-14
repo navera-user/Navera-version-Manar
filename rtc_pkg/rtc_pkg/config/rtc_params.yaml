@@ -1,0 +1,23 @@
+rtc_node:
+  ros__parameters:
+    # DS3231 on the Jetson Orin Nano 40-pin header, sharing bus 1 with the BNO085 IMU.
+    # Bus 1 = pins 27 (SDA) / 28 (SCL). Bus 7 = pins 3 / 5.
+    # The I2C address is fixed at 0x68 in silicon — not a parameter.
+    i2c_bus: 1
+
+    # The DS3231 resolves whole seconds only; polling faster buys nothing.
+    publish_rate: 1.0
+    frame_id: "rtc_link"
+
+    # Goes into TimeReference.source, so consumers can tell RTC time from GPS time.
+    time_source: "ds3231"
+
+    # Warn past this |RTC - system clock| gap, in seconds. With NTP up the two should
+    # agree closely; a large gap means the RTC was never set, or NTP is absent and the
+    # system clock is the wrong one. The node does not arbitrate — it reports.
+    drift_warn_s: 2.0
+
+    # False: a DS3231 that lost power (OSF flag set) publishes rtc_status with
+    # valid=false but NO rtc_time — a wrong-by-decades timestamp is worse for the
+    # celestial solver than a missing one. Set True for bench diagnostics only.
+    publish_when_invalid: false

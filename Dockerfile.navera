@@ -15,5 +15,13 @@ RUN pip install \
         adafruit-circuitpython-bno08x \
     --break-system-packages
 
+# RTC DS3231 (I2C 0x68, même bus 1 que l'IMU) — parité avec l'hôte, où tourne le
+# service navera-rtc. adafruit-register est une dépendance transitive de ds3231 :
+# on la liste explicitement pour que le stack I2C soit auditable en un seul endroit.
+RUN pip install \
+        adafruit-circuitpython-ds3231 \
+        adafruit-register \
+    --break-system-packages
+
 USER admin
 WORKDIR /workspaces/isaac_ros-dev
