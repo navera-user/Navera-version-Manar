@@ -2,14 +2,20 @@
 """
 day_sim.launch.py — full NAVERA "day" simulation in one command.
 
-Starts the whole ROS→web chain:
-  camera_pkg (day, /day/* test images)
-    → day_subscriber (DayLocalizer, GPU)
-      → /day/position_estimate + /day/day_status
-        → navera_web_bridge (HTTP :8181: navera.html + tiles + gps_status.json)
+Thin wrapper over the two halves of the chain:
+  day_pipeline.launch.py   camera_pkg (day) → day_subscriber (DayLocalizer, DINOv2, GPU)
+  bridge.launch.py         navera_web_bridge (HTTP :8181)
+
+It exists because the single-command workflow must keep working: navera-day.service
+runs exactly `ros2 launch simulation_web day_sim.launch.py`, with no argument. The
+composition itself lives in the two included files — nothing is declared twice here.
 
 Then open http://<jetson>:8181/ , pick "day", set Point A, launch — the drone
 marker moves on the .mbtiles map from the real ROS localization.
+
+To run two pipelines side by side, do NOT use this file: start each pipeline without
+a bridge (*_pipeline.launch.py) plus exactly one bridge.launch.py, otherwise the
+second bridge dies binding the same HTTP port.
 
 Examples:
   ros2 launch simulation_web day_sim.launch.py
@@ -23,18 +29,15 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    camera_share = get_package_share_directory('camera_pkg')
+    web_share = get_package_share_directory('simulation_web')
 
     default_mbtiles = '/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles'
 
-    web_port       = LaunchConfiguration('web_port')
-    mbtiles_path   = LaunchConfiguration('mbtiles_path')
-    conf_threshold = LaunchConfiguration('conf_threshold')
-
+    # Public interface: same argument names and same defaults as before the split, so
+    # every existing invocation (systemd service, docs, CLI overrides) keeps working.
     return LaunchDescription([
         DeclareLaunchArgument('web_port',       default_value='8181'),
         DeclareLaunchArgument('mbtiles_path',   default_value=default_mbtiles),
@@ -45,50 +48,33 @@ def generate_launch_description():
         DeclareLaunchArgument('antijump_min_step_m', default_value='120.0'),
         DeclareLaunchArgument('antijump_alpha',      default_value='0.4'),
 
-        # 1) Camera publisher (day namespace, test images)
+        # 1) Localization pipeline: camera(day) + day_subscriber
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
-                os.path.join(camera_share, 'launch', 'day.launch.py')
+                os.path.join(web_share, 'launch', 'day_pipeline.launch.py')
             ),
             launch_arguments={
-                'start_paused': 'true',
-                'fps': '0.5',
-                'start_delay_s': '7.0',
-                'flow_control': 'ack',   # back-pressure: next frame only after subscriber ack
-                'csv_path': os.path.join(camera_share, 'data', 'day', 'flight_demo.csv'),
-            }.items(),
-        ),
-
-        # 2) Day localization subscriber (GPU)
-        Node(
-            package='day_pkg',
-            executable='day_subscriber.py',
-            name='day_subscriber',
-            output='screen',
-            parameters=[{
-                'conf_threshold': conf_threshold,
-                'image_topic':  '/day/image_raw',
-                'meta_topic':   '/day/frame_meta',
-                'fix_topic':    '/day/position_estimate',
-                'status_topic': '/day/day_status',
+                'conf_threshold':      LaunchConfiguration('conf_threshold'),
                 'antijump_enabled':    LaunchConfiguration('antijump_enabled'),
                 'antijump_margin':     LaunchConfiguration('antijump_margin'),
                 'antijump_min_step_m': LaunchConfiguration('antijump_min_step_m'),
                 'antijump_alpha':      LaunchConfiguration('antijump_alpha'),
-            }],
+            }.items(),
         ),
 
-        # 3) ROS→web bridge (HTTP :8181 — navera.html + tiles + gps_status.json)
-        Node(
-            package='simulation_web',
-            executable='navera_web_bridge.py',
-            name='navera_web_bridge',
-            output='screen',
-            parameters=[{
+        # 2) ROS→web bridge, pointed at the day pipeline. The topics are spelled out
+        # even though they are also the bridge's own defaults: day_sim must keep
+        # driving day if those defaults ever move.
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(web_share, 'launch', 'bridge.launch.py')
+            ),
+            launch_arguments={
                 'status_topic': '/day/day_status',
                 'fix_topic':    '/day/position_estimate',
-                'mbtiles_path': mbtiles_path,
-                'web_port':     web_port,
-            }],
+                'start_topic':  '/day/camera/start',
+                'mbtiles_path': LaunchConfiguration('mbtiles_path'),
+                'web_port':     LaunchConfiguration('web_port'),
+            }.items(),
         ),
     ])
