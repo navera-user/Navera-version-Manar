@@ -71,11 +71,20 @@ def build_gst_pipeline(sensor_id, width, height, fps, flip):
     )
 
 
+# The producer thread must stop before the publishers are torn down. Bounded, so a
+# wedged producer can never hang the process on shutdown.
+_WORKER_JOIN_TIMEOUT_S = 5.0
+
+
 # ───────────────── node ─────────────────
 
 class CameraPublisher(Node):
     def __init__(self):
         super().__init__("camera_publisher")
+
+        # Created first: both the startup wait below and the producer key off it.
+        self._stop = threading.Event()
+        self._frame_count = 0
 
         # ── parameters ──
         self.declare_parameter("camera_type", "generic")     # thermal|celestial|day
@@ -175,10 +184,14 @@ class CameraPublisher(Node):
         # may miss the first frame (typical on Jetson + Fast-DDS).
         _delay = float(self.get_parameter("startup_delay").value)
         if _delay > 0:
-            import time as _time
             self.get_logger().info(f"  ⏳ waiting {_delay:.1f}s for ROS2 discovery…")
-            _time.sleep(_delay)
-            self.get_logger().info("  ✅ discovery wait done, starting publication")
+            if self._wait_startup(_delay):
+                self.get_logger().info("  ✅ discovery wait done, starting publication")
+            else:
+                # A signal landed mid-startup and rclpy closed the context. Carrying
+                # on would raise "rcl node's context is invalid" on the first
+                # create_subscription() below. Abort construction instead.
+                raise ExternalShutdownException()
 
         # ── Option A: start/pause gate ──
         self._go = threading.Event()
@@ -222,10 +235,23 @@ class CameraPublisher(Node):
             self.get_logger().info(f"  🎞 cadence min entre frames : {self.min_frame_interval:.1f}s")
 
         # ── start producer thread ──
-        self._stop = threading.Event()
-        self._frame_count = 0
         self._worker = threading.Thread(target=self._run, daemon=True)
         self._worker.start()
+
+    def _wait_startup(self, seconds: float) -> bool:
+        """Sleep `seconds`, aborting early if the node is shutting down.
+
+        Runs inside __init__, i.e. before spin(): nothing sets _stop that early, so
+        a SIGINT/SIGTERM here surfaces only as rclpy.ok() going False. Poll it.
+        Returns True if the full delay elapsed, False if it was cut short.
+        """
+        deadline = time.perf_counter() + seconds
+        while rclpy.ok() and not self._stop.is_set():
+            remaining = deadline - time.perf_counter()
+            if remaining <= 0:
+                return True
+            self._stop.wait(min(remaining, 0.2))
+        return False
 
     # ───── producer ─────
 
@@ -505,7 +531,22 @@ class CameraPublisher(Node):
         self._log_frame(meta)
 
     def destroy_node(self):
+        """Stop the producer BEFORE tearing the publishers down.
+
+        The worker publishes from its own thread; destroying the publishers while
+        it sits inside publish() is a use-after-free on the rclpy handles. Setting
+        _stop alone is enough to unblock it — every wait it can park in polls _stop
+        at 0.5 s — and, unlike waking the gates, it cannot let the worker take one
+        more step (and publish one more frame) on the way out.
+        """
         self._stop.set()
+        worker = getattr(self, "_worker", None)   # __init__ may have failed before it existed
+        if worker is not None and worker.is_alive():
+            worker.join(timeout=_WORKER_JOIN_TIMEOUT_S)
+            if worker.is_alive():
+                self.get_logger().warn(
+                    f"producer thread still alive after {_WORKER_JOIN_TIMEOUT_S:.0f}s "
+                    f"— tearing down anyway")
         super().destroy_node()
 
 
@@ -517,13 +558,15 @@ def main(args=None):
     rclpy.shutdown() here would then raise RCLError. Hence the rclpy.ok() guard.
     """
     rclpy.init(args=args)
-    node = CameraPublisher()
+    node = None
     try:
+        node = CameraPublisher()   # may abort if a signal lands during the startup wait
         rclpy.spin(node)
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
-        node.destroy_node()
+        if node is not None:
+            node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
 
