@@ -18,9 +18,22 @@ std_msgs/Header header
 uint8 state
 uint8 STATE_INITIALIZING=0   # since boot / before mission start: no solution YET. Expected, transient.
 uint8 STATE_NO_FIX=1         # running, but NO source is currently usable. First-class, not an error.
-uint8 STATE_FIX=2            # a trusted position is published from a fresh measurement.
-uint8 STATE_DEGRADED=3       # a position is published but trust is reduced:
-                             #   single source, propagated/held, or low confidence.
+uint8 STATE_FIX=2            # a fresh MEASURED position whose uncertainty is BOUNDED
+                             # (position_covariance_type != UNKNOWN). The green light means
+                             # "you may rely on this AND on its stated error" -- e.g. a GPS fix.
+uint8 STATE_DEGRADED=3       # a position is published but trust is reduced. Two triggers today:
+                             #   1. MEASURED but uncertainty UNKNOWN -- a real fix we cannot yet
+                             #      bound (e.g. day vision: DINOv2 recognises terrain but has no
+                             #      validated sigma). Reporting it as FIX would let a ~500 m guess
+                             #      wear the same green label as a metric GPS lock -- the exact
+                             #      mislabelling this contract exists to prevent.
+                             #   2. PROPAGATED / HELD -- dead-reckoned or re-emitted, not fresh.
+                             # NOTE: "single source" is DELIBERATELY NOT a trigger. In GPS-denied
+                             # nav exactly one source contributes at a time (source hierarchy), so
+                             # single-source => DEGRADED would make STATE_FIX unreachable -- a state
+                             # that can never fire carries no information. The single-source clause
+                             # only becomes meaningful once SOURCE_FUSED exists and FIX can mean
+                             # "corroborated by several sources".
 
 # ---------- 2. WHO IS PROVIDING IT, AND HOW FRESH? ----------
 
