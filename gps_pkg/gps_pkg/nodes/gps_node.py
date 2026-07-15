@@ -12,6 +12,7 @@ Parameters:
     baud_rate    (default 9600)            — typical for NMEA GPS modules
 """
 import rclpy
+from navera_common.lifecycle import die_with_parent
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from sensor_msgs.msg import NavSatFix, NavSatStatus
@@ -125,6 +126,7 @@ def main(args=None):
     so spin() returns with the context already closed — an unconditional
     rclpy.shutdown() here would then raise RCLError. Hence the rclpy.ok() guard.
     """
+    die_with_parent()  # orphan guard: die if our launcher/systemd unit is killed
     rclpy.init(args=args)
     node = GPSNode()
     try:

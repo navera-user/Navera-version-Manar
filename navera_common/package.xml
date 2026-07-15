@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>navera_common</name>
+  <version>0.0.1</version>
+  <description>NAVERA shared utilities imported across the pipeline packages. Currently provides die_with_parent() (prctl PR_SET_PDEATHSIG) so launcher death never orphans a node.</description>
+  <maintainer email="navera@example.com">Navera</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+
+  <!-- die_with_parent() uses only the Python standard library (ctypes/os/signal). -->
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
