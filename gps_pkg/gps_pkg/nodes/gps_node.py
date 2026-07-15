@@ -4,8 +4,15 @@ gps_node.py — NAVERA GPS sensor driver.
 
 Reads NMEA sentences from a serial GPS (e.g. /dev/ttyTHS1 on Jetson UART, or
 /dev/ttyUSB0 for a USB GPS) and publishes:
-    /navera/sensors/gps_fix   sensor_msgs/NavSatFix
-    /navera/sensors/gps_vel   geometry_msgs/TwistStamped
+    /navera/sensors/gps_fix    sensor_msgs/NavSatFix       (unchanged, legacy sensor topic)
+    /navera/sensors/gps_vel    geometry_msgs/TwistStamped  (unchanged)
+    /navera/estimate/gps       navera_msgs/PositionEstimate (NEW: the source contract)
+
+The PositionEstimate output is the typed contract consumed by navera_estimator.
+It is strictly additive: gps_fix / gps_vel are untouched. GPS always reports
+SOURCE_GPS / MODE_MEASURED (it is a live sensor, never replayed) and carries the
+SAME HDOP-derived covariance as gps_fix (COVARIANCE_TYPE_APPROXIMATED) — no
+fabricated uncertainty.
 
 Parameters:
     serial_port  (default "/dev/ttyTHS1") — serial device
@@ -17,7 +24,8 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from sensor_msgs.msg import NavSatFix, NavSatStatus
 from geometry_msgs.msg import TwistStamped
-import serial, pynmea2, threading, traceback
+from navera_msgs.msg import PositionEstimate
+import serial, pynmea2, threading, traceback, json, math
 
 
 class GPSNode(Node):
@@ -30,6 +38,9 @@ class GPSNode(Node):
 
         self.pub_fix = self.create_publisher(NavSatFix,    "/navera/sensors/gps_fix", 10)
         self.pub_vel = self.create_publisher(TwistStamped, "/navera/sensors/gps_vel", 10)
+        # Additive: the typed source contract for navera_estimator. RELIABLE
+        # depth 10, same class as the sensor data topics (CLAUDE.md QoS rule).
+        self.pub_est = self.create_publisher(PositionEstimate, "/navera/estimate/gps", 10)
         self.fix_count = 0
 
         try:
@@ -82,6 +93,15 @@ class GPSNode(Node):
             fix.latitude = fix.longitude = fix.altitude = 0.0
             fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_UNKNOWN
             self.pub_fix.publish(fix)
+            # Contract: an invalid fix is published, not swallowed. valid=False,
+            # NaN position (0,0 is a real place — never emit it as a fix),
+            # covariance UNKNOWN. Still MODE_MEASURED: it IS a live reading.
+            self._publish_estimate(
+                fix.header, valid=False,
+                lat=math.nan, lon=math.nan, alt=math.nan,
+                cov=None, reason=f"no GPS fix (qual={gps_qual})",
+                extras={"gps_qual": gps_qual},
+            )
             self.get_logger().info(f"No fix yet (qual={gps_qual})")
             return
         fix.status.status = NavSatStatus.STATUS_FIX
@@ -95,10 +115,53 @@ class GPSNode(Node):
         fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_APPROXIMATED
         self.pub_fix.publish(fix)
         self.fix_count += 1
+        # Same fix, same HDOP-derived covariance, on the typed contract.
+        try:
+            num_sats = int(msg.num_sats) if msg.num_sats else 0
+        except (TypeError, ValueError):
+            num_sats = 0
+        self._publish_estimate(
+            fix.header, valid=True,
+            lat=msg.latitude, lon=msg.longitude, alt=fix.altitude,
+            cov=list(fix.position_covariance), reason="",
+            extras={"hdop": round(hdop, 2), "num_sats": num_sats, "gps_qual": gps_qual},
+        )
         self.get_logger().info(
             f"FIX #{self.fix_count}: lat={msg.latitude:.6f} lon={msg.longitude:.6f} "
             f"alt={fix.altitude:.1f}m sats={msg.num_sats} hdop={hdop:.1f}"
         )
+
+    def _publish_estimate(self, header, valid, lat, lon, alt, cov, reason, extras):
+        """Emit the GPS PositionEstimate. GPS is always SOURCE_GPS / MODE_MEASURED."""
+        est = PositionEstimate()
+        est.header = header                       # same stamp + frame_id as the NavSatFix
+        est.latitude = float(lat)
+        est.longitude = float(lon)
+        est.altitude = float(alt)
+        if cov is None:
+            est.position_covariance = [0.0] * 9
+            est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_UNKNOWN
+        else:
+            est.position_covariance = cov
+            est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_APPROXIMATED
+        est.source = PositionEstimate.SOURCE_GPS
+        est.mode = PositionEstimate.MODE_MEASURED
+        est.valid = valid
+        # confidence stays 0.0 on purpose: any HDOP->confidence curve needs a
+        # CHOSEN constant we have not measured (same reason we reject the 0.95
+        # celestial constant). The real, fusable uncertainty already lives in
+        # position_covariance. Populate this only once a field-measured
+        # HDOP<->error relation exists. Raw HDOP is kept in details_json.
+        est.confidence = 0.0
+        est.reason = reason
+        # TODO(step 6): true measurement instant = GGA UTC + date(RMC)/RTC.
+        # Until then sensor_stamp = publication stamp (zero apparent latency).
+        est.sensor_stamp = header.stamp
+        est.producer = "gps_node"
+        est.model_id = "nmea_gga"
+        est.frame_index = -1                      # not a camera-pipeline frame
+        est.details_json = json.dumps(extras)
+        self.pub_est.publish(est)
 
     def _publish_vel(self, msg):
         try:
