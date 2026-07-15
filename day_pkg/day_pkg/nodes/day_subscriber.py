@@ -124,6 +124,13 @@ class DaySubscriber(Node):
         self.localizer.load_or_build_cache()
         self.get_logger().info("✅ DayLocalizer ready, awaiting frames…")
 
+        # A signal (SIGINT/SIGTERM) during the multi-second DINOv2 load makes rclpy
+        # close the context; the create_publisher/create_subscription calls below
+        # would then raise "rcl node's context is invalid" (RCLError, exit 1). Abort
+        # construction cleanly — main() maps ExternalShutdownException to exit 0.
+        if not rclpy.ok():
+            raise ExternalShutdownException()
+
         # ── QoS per topic (must match camera_pkg publisher) ────
         # RELIABLE — MUST match the camera_publisher image publisher (also RELIABLE).
         # A RELIABLE subscriber + BEST_EFFORT publisher would NOT connect.
@@ -482,13 +489,15 @@ def main(args=None):
     """
     die_with_parent()  # orphan guard: die if our launcher/systemd unit is killed
     rclpy.init(args=args)
-    node = DaySubscriber()
+    node = None
     try:
+        node = DaySubscriber()   # may abort if a signal lands during model load
         rclpy.spin(node)
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
-        node.destroy_node()
+        if node is not None:
+            node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
 

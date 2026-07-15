@@ -152,6 +152,14 @@ class NightSubscriber(Node):
             raise
         self.get_logger().info("✅ STHN model ready, awaiting frames…")
 
+        # A signal (SIGINT/SIGTERM) during the multi-second STHN load makes rclpy
+        # close the context; the create_publisher/create_subscription calls below
+        # would then raise "rcl node's context is invalid" (RCLError, exit 1). Abort
+        # construction cleanly — main() maps ExternalShutdownException to exit 0.
+        # (Lands outside the load try/except above, so STHN failure handling is intact.)
+        if not rclpy.ok():
+            raise ExternalShutdownException()
+
         # ── QoS (RELIABLE — match camera_publisher ack mode) ───
         image_qos = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
                                history=HistoryPolicy.KEEP_LAST, depth=10)
@@ -353,13 +361,15 @@ def main(args=None):
     """
     die_with_parent()  # orphan guard: die if our launcher/systemd unit is killed
     rclpy.init(args=args)
-    node = NightSubscriber()
+    node = None
     try:
+        node = NightSubscriber()   # may abort if a signal lands during model load
         rclpy.spin(node)
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
-        node.destroy_node()
+        if node is not None:
+            node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
 

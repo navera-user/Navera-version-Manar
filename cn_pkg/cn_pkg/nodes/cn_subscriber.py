@@ -284,13 +284,21 @@ def main(args=None):
     """
     die_with_parent()  # orphan guard: die if our launcher/systemd unit is killed
     rclpy.init(args=args)
-    node = CNSubscriber()
+    node = None
     try:
+        # Unlike day/night, CNSubscriber.__init__ has NO heavy pre-load: cn is a
+        # per-frame astrometry.net plate-solver, so subscriptions are created
+        # immediately (no multi-second startup window to be interrupted). Hence no
+        # rclpy.ok() guard inside __init__ — there is no window to protect. node=None
+        # still matters: if __init__ raises for any other reason, the finally below
+        # must not touch an undefined node.
+        node = CNSubscriber()
         rclpy.spin(node)
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
-        node.destroy_node()
+        if node is not None:
+            node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
 
