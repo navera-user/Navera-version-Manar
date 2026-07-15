@@ -1,0 +1,18 @@
+[Unit]
+Description=NAVERA day localization pipeline (camera + day_subscriber, DINOv2/GPU, no bridge)
+Wants=network-online.target
+After=network-online.target
+# No ordering vs navera-web: pipeline↔bridge talk over DDS (discovery-based,
+# order-independent) with latched handshake topics, so either may start/restart first.
+
+[Service]
+Type=simple
+User=navera
+Group=navera
+WorkingDirectory=/home/navera/isaac_ros_common
+ExecStart=/home/navera/navera_boot_pipeline_day.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

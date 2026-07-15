@@ -1,0 +1,18 @@
+[Unit]
+Description=NAVERA web bridge (ROS→HTTP dashboard :8181, drives the day pipeline over DDS)
+Wants=network-online.target
+After=network-online.target
+# No ordering vs navera-pipeline-day: bridge↔pipeline talk over DDS (discovery-based,
+# order-independent) with latched handshake topics, so either may start/restart first.
+
+[Service]
+Type=simple
+User=navera
+Group=navera
+WorkingDirectory=/home/navera/isaac_ros_common
+ExecStart=/home/navera/navera_boot_web.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
