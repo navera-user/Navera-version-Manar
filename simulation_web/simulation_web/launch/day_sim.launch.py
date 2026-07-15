@@ -6,9 +6,11 @@ Thin wrapper over the two halves of the chain:
   day_pipeline.launch.py   camera_pkg (day) → day_subscriber (DayLocalizer, DINOv2, GPU)
   bridge.launch.py         navera_web_bridge (HTTP :8181)
 
-It exists because the single-command workflow must keep working: navera-day.service
-runs exactly `ros2 launch simulation_web day_sim.launch.py`, with no argument. The
-composition itself lives in the two included files — nothing is declared twice here.
+It exists for the single-command dev/test workflow: `ros2 launch simulation_web
+day_sim.launch.py` brings up the whole day chain (pipeline + bridge) at once. It is
+NOT used at boot — production runs the pipeline and the bridge as two separate systemd
+services (navera-pipeline-day, navera-web); see deploy/README.md. The composition
+itself lives in the two included files — nothing is declared twice here.
 
 Then open http://<jetson>:8181/ , pick "day", set Point A, launch — the drone
 marker moves on the .mbtiles map from the real ROS localization.
