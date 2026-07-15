@@ -39,6 +39,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPo
 from sensor_msgs.msg import Image, NavSatFix, NavSatStatus
 from std_msgs.msg import String, Int32, Bool
 from cv_bridge import CvBridge
+from navera_msgs.msg import PositionEstimate
 
 # Existing localization logic (UNMODIFIED user code).
 # DayLocalizer().predict(bgr_array, threshold=...) -> dict
@@ -60,6 +61,23 @@ R_MIN_M        = 400.0    # plancher : ~1 pas inter-frame (frames à ~480 m)
 R_MAX_M        = 600.0    # PLAFOND décisif : garde R dans la bande validée
 SCORE_MIN      = 0.0      # si score top-1 < SCORE_MIN → dead_reckon (0.0 = désactivé)
 
+# ── source contract for navera_estimator (additive; see step 4) ──────────────
+# Internal src label → honest provenance mode. This is the whole point of the
+# mode field: a REPLAYED CSV point can NEVER pass itself off as a DINOv2
+# MEASURED recognition, and a dead-reckon bridge is PROPAGATED, not measured.
+_DAY_MODE_BY_SRC = {
+    "gps":          PositionEstimate.MODE_REPLAYED,    # CSV ground truth, not a measurement
+    "predicted":    PositionEstimate.MODE_MEASURED,    # real DINOv2 inference (global/gate)
+    "visual_match": PositionEstimate.MODE_MEASURED,    # real DINOv2 inference (spatial a-priori)
+    "dead_reckon":  PositionEstimate.MODE_PROPAGATED,  # heading/speed bridge from anchor
+}
+_DAY_MODEL_BY_SRC = {
+    "gps":          "csv_ground_truth",
+    "predicted":    "dinov2_vits14+gem",
+    "visual_match": "dinov2_vits14+gem",
+    "dead_reckon":  "dead_reckon",
+}
+
 
 class DaySubscriber(Node):
     def __init__(self):
@@ -71,6 +89,7 @@ class DaySubscriber(Node):
         self.declare_parameter("meta_topic", "/day/frame_meta")
         self.declare_parameter("fix_topic", "/day/position_estimate")
         self.declare_parameter("status_topic", "/day/day_status")
+        self.declare_parameter("estimate_topic", "/navera/estimate/day")  # typed source contract
         self.declare_parameter("done_topic", "/day/frame_done")   # back-pressure ack (Int32 frame_id)
         self.declare_parameter("ready_topic", "/day/localizer_ready")  # handshake: modèle chargé
         # ── anti-jump filter (predicted frames only) ──
@@ -148,6 +167,10 @@ class DaySubscriber(Node):
         # ── Publishers ──────────────────────────────────────────
         self.pub_fix    = self.create_publisher(NavSatFix, fix_topic,    10)
         self.pub_status = self.create_publisher(String,    status_topic, 10)
+        # Additive: typed per-source estimate for navera_estimator. Same RELIABLE
+        # depth-10 class as the fix/status topics. /day/* topics are UNTOUCHED.
+        estimate_topic = self.get_parameter("estimate_topic").value
+        self.pub_est   = self.create_publisher(PositionEstimate, estimate_topic, 10)
         # back-pressure ack: published once per frame (RELIABLE, matches camera ack sub)
         done_qos = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
@@ -295,6 +318,9 @@ class DaySubscriber(Node):
         self._success_count += 1
         # frame 11 (1ère prédiction) prendra CE point GPS (frame 10) comme référence
         self._anchor_lat, self._anchor_lon, self._anchor_time = lat, lon, time.time()
+        # Additive contract: CSV truth → MODE_REPLAYED (never a DINOv2 measurement).
+        self._publish_estimate(now, seq_id, "gps", lat, lon, meta, score=1.0,
+                               details={"src": "gps", "score": 1.0, "note": "CSV ground truth"})
         self.get_logger().info(
             f"[day] 🛰 KNOWN frame={seq_id}  lat={lat:+.5f}  lon={lon:+.5f}  (GPS truth)"
         )
@@ -349,6 +375,12 @@ class DaySubscriber(Node):
         fix.altitude        = float(meta.get("altitude_m") or 0.0)
         fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_UNKNOWN
         self.pub_fix.publish(fix)
+        # Additive contract: same fix on the typed channel; mode derived from src.
+        self._publish_estimate(now, seq_id, src, lat, lon, meta, score=score,
+                               details={"src": src, "score": score, "jump_m": jump_m,
+                                        "reason": reason,
+                                        "fused_score": status.get("fused_score"),
+                                        "match": status.get("match")})
         if src == "dead_reckon":
             self._reject_count += 1
         else:
@@ -359,6 +391,50 @@ class DaySubscriber(Node):
             f"[day] {icon} frame={seq_id} src={src} lat={lat:+.5f} lon={lon:+.5f} "
             f"score={score:.2f}{extra}" + (f" ({reason})" if reason else "")
         )
+
+    # ────────────────────────────────────────────────────────────
+    # Typed source contract (additive) → /navera/estimate/day
+    # ────────────────────────────────────────────────────────────
+    @staticmethod
+    def _as_frame_index(seq_id):
+        try:
+            return int(seq_id)
+        except (TypeError, ValueError):
+            return -1
+
+    def _publish_estimate(self, now, seq_id, src, lat, lon, meta, score, details):
+        """Additive: emit the typed source contract on /navera/estimate/day.
+
+        One PositionEstimate per NavSatFix, same lat/lon. `mode` is the honesty
+        axis (REPLAYED/MEASURED/PROPAGATED via _DAY_MODE_BY_SRC). Covariance is
+        UNKNOWN and confidence 0.0: the day pipeline has no measured sigma — the
+        harness median error is sim-only and not a validated Gaussian (step-4
+        note). Raw score lives in details_json, diagnostic only.
+        """
+        est = PositionEstimate()
+        est.header.stamp    = now
+        est.header.frame_id = "day_camera_link"
+        # null-island guard (GPS lesson): a 0,0 fallback is NOT a position.
+        valid = not (float(lat) == 0.0 and float(lon) == 0.0)
+        est.latitude  = float(lat) if valid else math.nan
+        est.longitude = float(lon) if valid else math.nan
+        # altitude NaN-if-unknown (contract): 0.0 is sea level, a REAL altitude —
+        # same trap as null-island. Absent altitude_m must be NaN, never 0.0.
+        _alt = meta.get("altitude_m")
+        est.altitude  = float(_alt) if _alt is not None else math.nan
+        est.position_covariance      = [0.0] * 9
+        est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_UNKNOWN
+        est.source     = PositionEstimate.SOURCE_DAY_VISION
+        est.mode       = _DAY_MODE_BY_SRC.get(src, PositionEstimate.MODE_MEASURED)
+        est.valid      = valid
+        est.confidence = 0.0
+        est.reason     = "" if valid else "no anchor (0,0 fallback)"
+        est.sensor_stamp = now           # TODO(step6): true exposure instant (meta has no epoch)
+        est.producer   = "day_subscriber"
+        est.model_id   = _DAY_MODEL_BY_SRC.get(src, "")
+        est.frame_index = self._as_frame_index(seq_id)
+        est.details_json = json.dumps(details)
+        self.pub_est.publish(est)
 
     # ────────────────────────────────────────────────────────────
     # Publish result
