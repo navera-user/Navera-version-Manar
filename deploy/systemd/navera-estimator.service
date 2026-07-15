@@ -1,0 +1,21 @@
+[Unit]
+Description=NAVERA position arbiter (per-source PositionEstimate → /navera/position + /navera/nav_status)
+Wants=network-online.target
+After=network-online.target
+# No ordering vs the source services (navera-gps, navera-pipeline-day, navera-imu…):
+# the arbiter consumes their estimate topics over DDS (discovery-based,
+# order-independent) and tolerates any source appearing/disappearing BY DESIGN
+# (freshness gate + first-class NO_FIX). Same reasoning as navera-web ↔
+# navera-pipeline-day — any unit may start/restart first.
+
+[Service]
+Type=simple
+User=navera
+Group=navera
+WorkingDirectory=/home/navera/isaac_ros_common
+ExecStart=/home/navera/navera_boot_estimator.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
