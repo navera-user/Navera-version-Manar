@@ -1,0 +1,15 @@
+estimator_node:
+  ros__parameters:
+    # How often the arbiter re-evaluates its inputs and publishes nav_status.
+    # Decision runs on THIS clock, not on message arrival, so a source going
+    # silent is caught within one tick instead of never.
+    publish_rate_hz: 5.0
+
+    # GPS estimate is "fresh"/"alive" only if its header.stamp is younger than
+    # this. 3.0 s tolerates 2-3 dropped frames at the MEASURED 1.0 Hz GPS rate
+    # (ros2 topic hz /navera/sensors/gps_fix = 1.000 Hz, std 0.148 s).
+    gps_timeout_s: 3.0
+
+    # IMU liveness window. The IMU contributes NO position in v1 (contributing
+    # is always false); this only decides whether it is reported alive.
+    imu_timeout_s: 1.0
