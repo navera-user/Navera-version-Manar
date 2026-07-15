@@ -12,6 +12,8 @@ find_package(std_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/PositionEstimate.msg"
+  "msg/SourceHealth.msg"
+  "msg/NavStatus.msg"
   DEPENDENCIES builtin_interfaces std_msgs
 )
 
