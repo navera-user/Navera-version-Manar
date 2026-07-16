@@ -4,8 +4,13 @@ day.launch.py — launch ONE camera (day).
 
 The YAML file config/day.yaml carries all camera-specific defaults
 (camera_type, topic_ns, encoding, fps, default_gps_valid, ...).
-Only csv_path / images_dir / loop can be overridden at launch time, since
-those depend on where the data lives.
+
+Overridable at launch time: csv_path / images_dir / loop (they depend on where
+the data lives), the cadence/handshake arguments, and default_gps_valid — whose
+default here MIRRORS day.yaml, so overriding nothing reproduces the YAML exactly.
+
+  ros2 launch camera_pkg day.launch.py                            # GPS-known replay
+  ros2 launch camera_pkg day.launch.py default_gps_valid:=false   # GPS-denied
 """
 import os
 from ament_index_python.packages import get_package_share_directory
@@ -30,6 +35,16 @@ def generate_launch_description():
         DeclareLaunchArgument('fps', default_value='0.1'),
         DeclareLaunchArgument('start_delay_s', default_value='0.0'),
         DeclareLaunchArgument('flow_control', default_value='rate'),   # rate | ack (back-pressure)
+        # default_gps_valid: mirrors day.yaml ('true'), so this argument changes
+        # nothing by itself — it only makes the value reachable without editing a
+        # file, which is what lets the GPS-denied regime be MEASURED before it is
+        # shipped. Same pattern as thermal.launch.py.
+        # 'true'  → a CSV row carrying lat/lon is replayed as GPS-known (MODE_REPLAYED,
+        #           no DINOv2 inference). Only the 5 rows with a blank lat/lon are
+        #           localized — the 5 frames with no ground truth to check against.
+        # 'false' → every frame is GPS-denied: DINOv2 runs on all 30, and the 25 rows
+        #           that DO carry lat/lon become measurable.
+        DeclareLaunchArgument('default_gps_valid', default_value='true'),
         # ── handshake "ready" + cadence (Problème 1) ──
         DeclareLaunchArgument('wait_for_ready', default_value='true'),       # frame 1 attend le subscriber prêt
         DeclareLaunchArgument('ready_timeout_s', default_value='0.0'),       # 0 = attendre indéfiniment
@@ -47,6 +62,7 @@ def generate_launch_description():
                     'csv_path':   LaunchConfiguration('csv_path'),
                     'images_dir': LaunchConfiguration('images_dir'),
                     'loop':       LaunchConfiguration('loop'),
+                    'default_gps_valid': LaunchConfiguration('default_gps_valid'),
                     'start_paused': LaunchConfiguration('start_paused'),
                     'fps':        LaunchConfiguration('fps'),
                     'start_delay_s': LaunchConfiguration('start_delay_s'),
