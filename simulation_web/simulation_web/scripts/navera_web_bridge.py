@@ -368,6 +368,11 @@ class NaveraWebBridge(Node):
              running. That is NOT NO_FIX, and conflating the two would report
              "no source is usable" when the truth is "nobody is answering".
              Reported as state OFFLINE.
+             Measured on the Jetson: after `systemctl restart navera-estimator`
+             this clears in ~5-10 s, not in nav_status_timeout_s. The timeout
+             only bounds how fast we NOTICE the silence; the rest is ros2 launch
+             + rclpy init + DDS discovery. OFFLINE lingering ~10 s after a
+             restart is the system working, not a stuck bridge.
           2. state INITIALIZING / NO_FIX → no usable position. The last
              /navera/position is DROPPED, not held. /navera/position is silent
              when no source wins — absence IS the information — and re-showing
