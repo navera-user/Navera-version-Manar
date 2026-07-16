@@ -16,6 +16,7 @@ and STHN together do not fit in the Orin Nano's 8 GB shared envelope.
 Examples:
   ros2 launch simulation_web day_pipeline.launch.py
   ros2 launch simulation_web day_pipeline.launch.py conf_threshold:=0.6
+  ros2 launch simulation_web day_pipeline.launch.py default_gps_valid:=false  # GPS-denied
 """
 import os
 from ament_index_python.packages import get_package_share_directory
@@ -38,6 +39,14 @@ def generate_launch_description():
         DeclareLaunchArgument('antijump_margin',     default_value='3.0'),
         DeclareLaunchArgument('antijump_min_step_m', default_value='120.0'),
         DeclareLaunchArgument('antijump_alpha',      default_value='0.4'),
+        # default_gps_valid: mirrors day.yaml ('true'), so this argument changes
+        # nothing by itself — it forwards day.launch.py's argument up to this level,
+        # which is what lets the GPS-denied regime be MEASURED without editing a
+        # config file shared with the live service.
+        #   'true'  → CSV rows carrying lat/lon are replayed (MODE_REPLAYED, no DINOv2)
+        #   'false' → every frame is GPS-denied: DINOv2 runs, the 25 rows with
+        #             lat/lon become measurable ground truth.
+        DeclareLaunchArgument('default_gps_valid', default_value='true'),
 
         # 1) Camera publisher (day namespace, test images)
         IncludeLaunchDescription(
@@ -50,6 +59,7 @@ def generate_launch_description():
                 'start_delay_s': '7.0',
                 'flow_control': 'ack',   # back-pressure: next frame only after subscriber ack
                 'csv_path': os.path.join(camera_share, 'data', 'day', 'flight_demo.csv'),
+                'default_gps_valid': LaunchConfiguration('default_gps_valid'),
             }.items(),
         ),
 
