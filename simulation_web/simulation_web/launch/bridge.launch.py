@@ -34,18 +34,19 @@ def generate_launch_description():
     default_mbtiles = '/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles'
 
     return LaunchDescription([
-        # Which bridge binary. navera_web_bridge serves day/night (and owns the
-        # GPS→vision operator hierarchy); navera_stellar_bridge serves celestial
-        # and has neither GPS nor /operator. Merging the two is a task for the
-        # brick that introduces the arbiter — see the package README.
+        # Which bridge binary. navera_web_bridge serves day/night and renders the
+        # arbiter's decision on /operator; navera_stellar_bridge serves celestial
+        # and has no /operator. Merging the two is a task of its own — see the
+        # package README.
         DeclareLaunchArgument('bridge_executable', default_value='navera_web_bridge.py'),
         DeclareLaunchArgument('bridge_name',       default_value='navera_web_bridge'),
 
         # Which pipeline the bridge listens to, and which camera it starts.
+        # The arbiter topics (/navera/position, /navera/nav_status) are NOT
+        # arguments: there is one arbiter, so they never vary per pipeline.
         DeclareLaunchArgument('status_topic',  default_value='/day/day_status'),
         DeclareLaunchArgument('fix_topic',     default_value='/day/position_estimate'),
         DeclareLaunchArgument('start_topic',   default_value='/day/camera/start'),
-        DeclareLaunchArgument('gps_fix_topic', default_value='/navera/sensors/gps_fix'),
 
         DeclareLaunchArgument('mbtiles_path', default_value=default_mbtiles),
         DeclareLaunchArgument('web_host',     default_value='0.0.0.0'),
@@ -60,7 +61,6 @@ def generate_launch_description():
                 'status_topic':  LaunchConfiguration('status_topic'),
                 'fix_topic':     LaunchConfiguration('fix_topic'),
                 'start_topic':   LaunchConfiguration('start_topic'),
-                'gps_fix_topic': LaunchConfiguration('gps_fix_topic'),
                 'mbtiles_path':  LaunchConfiguration('mbtiles_path'),
                 'web_host':      LaunchConfiguration('web_host'),
                 'web_port':      LaunchConfiguration('web_port'),

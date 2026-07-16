@@ -2,14 +2,20 @@
 """
 navera_web_bridge.py — ROS 2 → web bridge for the NAVERA simulation (day mode).
 
-Subscribes to the day localization output and exposes it over HTTP in the exact
-shape navera.html already polls, so the browser marker moves in real time from
-the ROS chain (camera_pkg → day_subscriber → /day/position_estimate):
+This bridge serves TWO surfaces with deliberately different sources:
+
+  "/"          navera.html — the pipeline DEBUG dashboard. Reads /day/day_status
+               (score, match, total_ms, frame_id): per-frame algorithm detail
+               that exists nowhere else as typed fields. Unchanged.
+  "/operator"  operator.html — the NAVIGATION view. Reads the arbiter's decision
+               ONLY (/navera/position + /navera/nav_status). It re-implements no
+               hierarchy: navera_estimator decides, this bridge renders.
 
   ROS in:
-    /day/day_status         std_msgs/String   (JSON from day_subscriber)
-    /day/position_estimate  sensor_msgs/NavSatFix  (fallback lat/lon)
-    /navera/sensors/gps_fix sensor_msgs/NavSatFix  (real GPS; wins over vision when valid)
+    /day/day_status         std_msgs/String            (JSON from day_subscriber; "/" only)
+    /day/position_estimate  sensor_msgs/NavSatFix      (fallback lat/lon for "/" only)
+    /navera/position        navera_msgs/PositionEstimate  (the WINNING estimate; "/operator")
+    /navera/nav_status      navera_msgs/NavStatus      (the decision + heartbeat; "/operator")
 
   HTTP out (single server, default port 8181):
     GET  /                       → navera.html
@@ -17,7 +23,9 @@ the ROS chain (camera_pkg → day_subscriber → /day/position_estimate):
     GET  /tiles/{z}/{x}/{y}.png  → MBTiles tile (TMS flip-Y), served as image/jpeg
     GET  /gps_status.json        → latest position {status:"predicted", lat, lon, …}
     GET  /operator               → operator.html (fullscreen operator view)
-    GET  /api/operator_position  → {lat, lon, source:"GPS"|"VISION", valid} (GPS→vision hierarchy)
+    GET  /api/operator_position  → the arbiter's decision, rendered:
+                                   {lat, lon, source, valid, state, mode, reason}
+                                   or {valid:false, state, reason} — see operator_position()
     GET  /flight_log.csv         → minimal header (keeps navera.html pollCsv happy)
     GET/POST /api/set_mission    → store Point A (map centring)
     GET  /api/cache_status, /api/precollect_progress, POST /api/precollect → benign stubs
@@ -30,6 +38,7 @@ Run standalone (test the bridge alone, no camera/subscriber needed):
     # → {"status": "idle"}   (then "predicted" once /day/day_status flows)
 """
 import json
+import math
 import os
 import sqlite3
 import threading
@@ -46,6 +55,8 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPo
 from std_msgs.msg import String, Bool
 from sensor_msgs.msg import NavSatFix
 
+from navera_msgs.msg import NavStatus, PositionEstimate
+
 try:
     from ament_index_python.packages import get_package_share_directory
 except Exception:
@@ -57,6 +68,37 @@ _MBTILES_CANDIDATES = [
     "/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles",
     "/home/navera/isaac_ros_common/sousse_satellite.mbtiles",
 ]
+
+# ── Enum → display strings for /api/operator_position ──────────────────────
+# Rendering only. These tables never gate a decision: the arbiter already made
+# it, and re-deriving "is this usable?" here is what created the duplicate
+# hierarchy this node just lost.
+_STATE_NAME = {
+    NavStatus.STATE_INITIALIZING: "INITIALIZING",
+    NavStatus.STATE_NO_FIX: "NO_FIX",
+    NavStatus.STATE_FIX: "FIX",
+    NavStatus.STATE_DEGRADED: "DEGRADED",
+}
+_MODE_NAME = {
+    NavStatus.MODE_MEASURED: "MEASURED",
+    NavStatus.MODE_PROPAGATED: "PROPAGATED",
+    NavStatus.MODE_HELD: "HELD",
+    NavStatus.MODE_REPLAYED: "REPLAYED",
+}
+# The only two sources the arbiter can elect today: it subscribes to
+# /navera/estimate/gps and /navera/estimate/day, and nothing else. The labels
+# are the vocabulary operator.html already speaks — its SRC table maps "GPS"
+# and "VISION" to a badge and renders every other string as NO FIX, so serving
+# "DAY_VISION" would paint NO FIX over a perfectly valid position.
+#
+# Celestial, inertial and night are deliberately NOT pre-mapped. A source that
+# cannot occur cannot be tested, and an entry for it would claim a coverage
+# that does not exist. When one of them starts winning, _source_label() says so
+# in the log and this table grows then — that warning IS the mechanism.
+_SOURCE_LABEL = {
+    NavStatus.SOURCE_GPS: "GPS",
+    NavStatus.SOURCE_DAY_VISION: "VISION",
+}
 
 
 def _resolve_resources_dir():
@@ -84,10 +126,27 @@ class NaveraWebBridge(Node):
         self.declare_parameter("web_host", "0.0.0.0")
         self.declare_parameter("web_port", 8181)
 
+        # Arbiter outputs for /operator. Not launch arguments (unlike the
+        # pipeline topics above): there is exactly ONE arbiter, so these never
+        # vary per pipeline — the day/night/celestial split happens upstream.
+        self.declare_parameter("position_topic", "/navera/position")
+        self.declare_parameter("nav_status_topic", "/navera/nav_status")
+        # nav_status is the heartbeat (published every estimator tick, ~5 Hz):
+        # 2 s ≈ 10 missed ticks → the arbiter is gone, not merely fixless.
+        self.declare_parameter("nav_status_timeout_s", 2.0)
+        # A position accompanying a FIX/DEGRADED tick arrives with it. Older
+        # than 1 s (~5 ticks) while the state claims a winner = messages lost.
+        self.declare_parameter("position_timeout_s", 1.0)
+
         status_topic = self.get_parameter("status_topic").value
         fix_topic    = self.get_parameter("fix_topic").value
         self.web_host = self.get_parameter("web_host").value
         self.web_port = int(self.get_parameter("web_port").value)
+
+        self._position_topic     = self.get_parameter("position_topic").value
+        nav_status_topic         = self.get_parameter("nav_status_topic").value
+        self._nav_status_timeout = float(self.get_parameter("nav_status_timeout_s").value)
+        self._position_timeout   = float(self.get_parameter("position_timeout_s").value)
 
         mb = self.get_parameter("mbtiles_path").value
         if not mb:
@@ -101,20 +160,29 @@ class NaveraWebBridge(Node):
         self._state_lock = threading.Lock()
         self._gps_status = {"status": "idle"}
         self._point_a = None
-        self._gps_fix = None   # latest VALID real GPS fix {lat, lon}; None → fall back to vision
+        # Arbiter snapshot for /operator. Receipt instants are time.monotonic(),
+        # NOT header stamps: what we need to know is "is the estimator still
+        # talking to us", which is a property of our own clock and immune to
+        # cross-process skew.
+        self._nav_status = None      # last NavStatus; None → never heard
+        self._nav_status_rx = None
+        self._position = None        # last winning PositionEstimate
+        self._position_rx = None
 
         # ── Tile DB (lazy, thread-safe) ─────────────────────────
         self._db_conn = None
         self._db_lock = threading.Lock()
 
-        # ── ROS subscriptions ───────────────────────────────────
+        # ── ROS subscriptions: pipeline detail, for the "/" dashboard ──
         self.create_subscription(String,    status_topic, self._on_status, 10)
         self.create_subscription(NavSatFix, fix_topic,    self._on_fix,    10)
 
-        # ── Real GPS fix (source hierarchy: GPS wins over vision) ──
-        self.declare_parameter("gps_fix_topic", "/navera/sensors/gps_fix")
-        gps_fix_topic = self.get_parameter("gps_fix_topic").value
-        self.create_subscription(NavSatFix, gps_fix_topic, self._on_gps_fix, 10)
+        # ── ROS subscriptions: the arbiter's decision, for "/operator" ──
+        # RELIABLE depth 10 — matches navera_estimator's publishers.
+        self.create_subscription(
+            PositionEstimate, self._position_topic, self._on_position, 10)
+        self.create_subscription(
+            NavStatus, nav_status_topic, self._on_nav_status, 10)
 
         # ── camera start/pause trigger (Option A) ──
         self.declare_parameter("start_topic", "/day/camera/start")
@@ -127,8 +195,10 @@ class NaveraWebBridge(Node):
         # ── Banner ──────────────────────────────────────────────
         self.get_logger().info("=" * 60)
         self.get_logger().info("  NAVERA web bridge — ROS → web (day mode)")
-        self.get_logger().info(f"  status topic : {status_topic}")
-        self.get_logger().info(f"  fix topic    : {fix_topic}")
+        self.get_logger().info(f"  status topic : {status_topic}   (dashboard /)")
+        self.get_logger().info(f"  fix topic    : {fix_topic}   (dashboard /)")
+        self.get_logger().info(f"  position     : {self._position_topic}   (/operator)")
+        self.get_logger().info(f"  nav_status   : {nav_status_topic}   (/operator)")
         self.get_logger().info(f"  mbtiles      : {self.mbtiles_path}"
                                f" {'(OK)' if os.path.exists(self.mbtiles_path) else '(MISSING!)'}")
         self.get_logger().info(f"  navera.html  : {self.navera_html}"
@@ -192,22 +262,25 @@ class NaveraWebBridge(Node):
                     "mission_started": True, "timestamp": time.time(),
                 }
 
-    def _on_gps_fix(self, msg: NavSatFix):
-        """Store the latest VALID real GPS fix in self._gps_fix, else clear it to None.
+    def _on_nav_status(self, msg: NavStatus):
+        """Store the arbiter's decisional summary (every estimator tick, ~5 Hz).
 
-        Valid = the receiver reports a fix (status.status >= 0, i.e. not
-        STATUS_NO_FIX = -1) AND lat/lon are finite and not the (0, 0) null island.
-        When the fix is invalid, self._gps_fix is reset to None so that
-        operator_position() falls back to the vision source."""
-        lat, lon = msg.latitude, msg.longitude
-        has_fix = msg.status.status >= 0                 # -1 == NavSatStatus.STATUS_NO_FIX
-        finite  = (lat == lat) and (lon == lon)          # NaN guard
-        nonzero = not (lat == 0.0 and lon == 0.0)        # reject (0, 0) placeholder
+        This is the heartbeat of /operator. Its ABSENCE is information — it is
+        what separates "the arbiter says no source is usable" (NO_FIX, a
+        first-class answer) from "the arbiter is dead" (no answer at all)."""
         with self._state_lock:
-            if has_fix and finite and nonzero:
-                self._gps_fix = {"lat": float(lat), "lon": float(lon)}
-            else:
-                self._gps_fix = None
+            self._nav_status = msg
+            self._nav_status_rx = time.monotonic()
+
+    def _on_position(self, msg: PositionEstimate):
+        """Store the winning estimate.
+
+        Published ONLY while a source contributes, and never as a HELD echo —
+        so this cache must never be served on its own. operator_position() gates
+        it on nav_status; see the note there."""
+        with self._state_lock:
+            self._position = msg
+            self._position_rx = time.monotonic()
 
     def set_point_a(self, pa):
         """Anchor the trajectory at the user-entered Point A.
@@ -267,32 +340,86 @@ class NaveraWebBridge(Node):
         with self._state_lock:
             return json.dumps(self._gps_status).encode()
 
-    def operator_position(self):
-        """Position for the operator view, with source hierarchy GPS → VISION → none.
+    def _source_label(self, source: int) -> str:
+        """Enum → the string operator.html expects. Unknown → explicit "UNKNOWN".
 
-        Returns a dict {lat, lon, source, valid}:
-          1. GPS   — if a valid GPS fix is available (source="GPS").
-          2. VISION— else the current day-localization fix (source="VISION").
-          3. none  — else {"valid": False}.
-
-        self._gps_fix holds the latest VALID real GPS fix (from the
-        /navera/sensors/gps_fix subscription, via _on_gps_fix); it is None when
-        no valid fix is available, so the hierarchy falls back to vision.
+        An unmapped source is never guessed at and never silently dropped: it is
+        labelled UNKNOWN and logged, so a new source announces itself as a
+        warning in the log instead of as a wrong badge in the operator's face.
         """
-        # 1) GPS — latest valid real fix (None → fall through to vision).
-        gps = getattr(self, "_gps_fix", None)
-        if gps and gps.get("lat") is not None and gps.get("lon") is not None:
-            return {"lat": float(gps["lat"]), "lon": float(gps["lon"]),
-                    "source": "GPS", "valid": True}
-        # 2) VISION — current day-localization fix (predicted or searching keeps last good).
+        label = _SOURCE_LABEL.get(source)
+        if label is None:
+            self.get_logger().warn(
+                f"[bridge] nav_status.active_source={source} has no operator label — "
+                f"serving 'UNKNOWN' (operator.html will render NO FIX). Add it to "
+                f"_SOURCE_LABEL and to the front's SRC table.",
+                throttle_duration_sec=10.0)
+            return "UNKNOWN"
+        return label
+
+    def operator_position(self):
+        """The arbiter's decision, rendered as JSON. This method decides NOTHING.
+
+        navera_estimator owns the source hierarchy; it publishes the winner on
+        /navera/position and the decision on /navera/nav_status. Here we only
+        translate. Three rules, in order:
+
+          1. No nav_status for > nav_status_timeout_s → the arbiter is not
+             running. That is NOT NO_FIX, and conflating the two would report
+             "no source is usable" when the truth is "nobody is answering".
+             Reported as state OFFLINE.
+          2. state INITIALIZING / NO_FIX → no usable position. The last
+             /navera/position is DROPPED, not held. /navera/position is silent
+             when no source wins — absence IS the information — and re-showing
+             a stale point as live is exactly the lie this chain removes.
+          3. state FIX / DEGRADED → serve the last /navera/position, provided it
+             is fresh.
+
+        The position cache is gated by nav_status, NEVER by its own age alone:
+        a cache that can answer on its own is a cache that will eventually
+        answer with a ghost.
+
+        Returns {lat, lon, source, valid, state, mode, reason} when usable, else
+        {valid: False, state, reason} with no lat/lon. state/mode/reason are
+        additive: operator.html reads only valid/lat/lon/source and ignores them.
+        """
+        now = time.monotonic()
         with self._state_lock:
-            st = dict(self._gps_status)
-        if st.get("status") in ("predicted", "searching") \
-                and st.get("lat") is not None and st.get("lon") is not None:
-            return {"lat": float(st["lat"]), "lon": float(st["lon"]),
-                    "source": "VISION", "valid": True}
-        # 3) No fix.
-        return {"valid": False}
+            status, status_rx = self._nav_status, self._nav_status_rx
+            pos, pos_rx = self._position, self._position_rx
+
+        # 1) Is the arbiter alive at all?
+        if status is None or (now - status_rx) > self._nav_status_timeout:
+            return {"valid": False, "state": "OFFLINE",
+                    "reason": "no nav_status from navera_estimator"}
+
+        state_name = _STATE_NAME.get(status.state, "UNKNOWN")
+
+        # 2) The arbiter says no source is usable. A first-class answer.
+        if status.state not in (NavStatus.STATE_FIX, NavStatus.STATE_DEGRADED):
+            return {"valid": False, "state": state_name, "reason": status.reason}
+
+        # 3) A winner exists → its position must be here, and fresh.
+        if pos is None or (now - pos_rx) > self._position_timeout:
+            return {"valid": False, "state": state_name,
+                    "reason": f"{state_name} declared but no fresh position on "
+                              f"{self._position_topic}"}
+
+        lat, lon = float(pos.latitude), float(pos.longitude)
+        if not (math.isfinite(lat) and math.isfinite(lon)):
+            # Serialization guard, not a policy call: json.dumps emits a bare
+            # NaN, which is invalid JSON and throws in the browser's parse.
+            return {"valid": False, "state": state_name,
+                    "reason": f"{state_name} declared but position is not finite"}
+
+        return {
+            "lat": lat, "lon": lon,
+            "source": self._source_label(status.active_source),
+            "valid": True,
+            "state": state_name,
+            "mode": _MODE_NAME.get(status.active_mode, "UNKNOWN"),
+            "reason": status.reason,
+        }
 
     # ────────────────────────────────────────────────────────────
     # HTTP server

@@ -10,11 +10,10 @@ It exists so the single-command workflow keeps working. The composition itself
 lives in the two included files — nothing is declared twice here.
 
 Celestial uses its own bridge binary (navera_stellar_bridge), selected here via
-bridge.launch.py's bridge_executable/bridge_name arguments. That bridge has no GPS
-source, so it does not declare gps_fix_topic; bridge.launch.py passes the parameter
-anyway. That is harmless and verified: rclpy silently ignores an override for a
-parameter the node never declares (the node starts, binds its port and serves). The
-two bridges merge once the arbiter (navera_estimator) exists — see the package README.
+bridge.launch.py's bridge_executable/bridge_name arguments. That bridge serves no
+/operator view: the operator view renders the arbiter's decision, and celestial is
+not yet one of the arbiter's sources. The two bridges merge once it is — see the
+package README.
 
 Then open http://<jetson>:8181/ , pick "Stellar Mode", set Point A, launch — the
 drone marker moves on the .mbtiles map from the real ROS celestial fix.
