@@ -1,0 +1,371 @@
+<!-- ═══════════════ NAVERA i18n — FR / EN / AR (injected) ═══════════════ -->
+<style id="navera-i18n-style">
+  #nav-i18n{position:fixed;right:14px;bottom:14px;z-index:99999;display:flex;gap:4px;
+    background:rgba(13,17,23,.85);backdrop-filter:blur(10px);
+    border:1px solid rgba(88,230,217,.25);border-radius:20px;padding:4px 6px;
+    font-family:'Space Grotesk','Inter',system-ui,sans-serif;
+    box-shadow:0 4px 16px rgba(0,0,0,.5)}
+  #nav-i18n button{border:none;background:transparent;color:#7d8590;cursor:pointer;
+    font-size:12px;font-weight:700;letter-spacing:.5px;padding:4px 9px;border-radius:14px;
+    transition:background .2s,color .2s}
+  #nav-i18n button:hover{color:#e6edf3}
+  #nav-i18n button.on{background:rgba(88,230,217,.18);color:#58e6d9}
+  html[dir="rtl"] #nav-i18n{right:auto;left:14px}
+</style>
+<script id="navera-i18n">
+(function(){
+'use strict';
+/* FR is the source language of the page. Keys = normalized French strings. */
+var EN = {
+"A connu, B inconnu":"A known, B unknown",
+"A → B connus":"A → B known",
+"ATTENTE":"STANDBY",
+"Altitude de vol":"Flight altitude",
+"Altitude (m)":"Altitude (m)",
+"Altitude maximale (m)":"Maximum altitude (m)",
+"Arrivée":"Arrival",
+"Automatique":"Automatic",
+"Avec cache (warm)":"With cache (warm)",
+"Avion autonome":"Autonomous aircraft",
+"Baromètre":"Barometer",
+"Bateau":"Boat",
+"Batterie minimale (%)":"Minimum battery (%)",
+"CLIQUEZ POUR PLACER POINT A":"CLICK TO PLACE POINT A",
+"Cache non disponible":"Cache unavailable",
+"Chargement carte satellite...":"Loading satellite map...",
+"Choisissez le mode de fonctionnement":"Choose the operating mode",
+"Cliquez sur la carte pour placer le Point A":"Click on the map to place Point A",
+"Configuration Pré-Vol":"Pre-Flight Configuration",
+"Configurez votre système avant le lancement":"Configure your system before launch",
+"Connaissez-vous votre point d'arrivée à l'avance ?":"Do you know your arrival point in advance?",
+"Connexion backend...":"Connecting to backend...",
+"CÉLESTE":"CELESTIAL",
+"DIURNE":"DAY",
+"NOCTURNE":"NIGHT",
+"Distance entre WP (m)":"Distance between WPs (m)",
+"Drone sur Point A.":"Drone at Point A.",
+"Démarrage threads NAVERA...":"Starting NAVERA threads...",
+"Départ":"Departure",
+"EN ATTENTE":"STANDBY",
+"EN ATTENTE DE L'IMAGE":"WAITING FOR IMAGE",
+"En attente d'une image stellaire via":"Waiting for a star image via",
+"Espacement waypoints":"Waypoint spacing",
+"Exploration libre · Dataset collecté en temps réel":"Free exploration · Dataset collected in real time",
+"Extraction MBTiles zoom 18...":"Extracting MBTiles zoom 18...",
+"FERMER":"CLOSE",
+"FOV caméra (degrés)":"Camera FOV (degrees)",
+"Footprint image":"Image footprint",
+"Formule rayon":"Radius formula",
+"GPS Principal":"Primary GPS",
+"INITIALISATION DU VOL...":"FLIGHT INITIALIZATION...",
+"Initialisation pipeline visual loc...":"Initializing visual-loc pipeline...",
+"Initialisation...":"Initializing...",
+"LAT :":"LAT:",
+"LON :":"LON:",
+"Localisation par satellite":"Satellite localization",
+"Localisation visuelle si GPS perdu":"Visual localization if GPS is lost",
+"Loiter (stationnaire)":"Loiter (stationary)",
+"Légende":"Legend",
+"Magnétomètre":"Magnetometer",
+"Manuel assisté":"Assisted manual",
+"Match :":"Match:",
+"Matching vol (cache)":"Flight matching (cache)",
+"Mission en cours...":"Mission in progress...",
+"Mode de saisie":"Input mode",
+"Mode de vol":"Flight mode",
+"Non défini":"Not set",
+"Paramètres calculés":"Computed parameters",
+"Planifiez la mission puis pré-collectez":"Plan the mission, then pre-collect",
+"Point A non défini":"Point A not set",
+"Point A — Départ":"Point A — Departure",
+"Point B — Arrivée":"Point B — Arrival",
+"Point d'arrivée B":"Arrival point B",
+"Point de départ A":"Departure point A",
+"Point de départ — A":"Departure point — A",
+"Pré-collecte":"Pre-collection",
+"RÉSOLUTION EN COURS":"SOLVING",
+"Rayon :":"Radius:",
+"Rayon R calculé":"Computed radius R",
+"Rayon de recherche vision (m)":"Vision search radius (m)",
+"Robot nautique":"Marine robot",
+"Robot terrestre":"Ground robot",
+"Route de vol":"Flight route",
+"Résolution caméra":"Camera resolution",
+"Résumé configuration":"Configuration summary",
+"Sans cache":"Without cache",
+"Score :":"Score:",
+"Score confiance":"Confidence score",
+"Seuil de confiance vision (0.0 → 1.0)":"Vision confidence threshold (0.0 → 1.0)",
+"Statistiques mission":"Mission statistics",
+"Suivant →":"Next →",
+"Sélectionnez un mode →":"Select a mode →",
+"Temps pré-collecte":"Pre-collection time",
+"Trajet défini · Dataset collecté avant le vol":"Route defined · Dataset collected before flight",
+"Vitesse max (m/s)":"Max speed (m/s)",
+"Zone dataset (R)":"Dataset area (R)",
+"Zoom actif":"Active zoom",
+"astrometry.net analyse le ciel…":"astrometry.net is analyzing the sky…",
+"ou entrez les coordonnées ci-dessus":"or enter the coordinates above",
+"État du cache":"Cache status",
+"128× plus rapide":"128× faster",
+"~13–15 secondes":"~13–15 seconds",
+"← Précédent":"← Previous",
+"⊙ Cliquez sur la carte → Point A":"⊙ Click the map → Point A",
+"⌨ Saisie libre":"⌨ Manual entry",
+"⚙️ Paramètres":"⚙️ Settings",
+"⚙️ Paramètres de vol":"⚙️ Flight settings",
+"⚡ Pré-collecter":"⚡ Pre-collect",
+"✅ MATCH TROUVÉ — POSITION ESTIMÉE":"✅ MATCH FOUND — POSITION ESTIMATED",
+"✅ POSITION PRÉDITE — STELLAR":"✅ PREDICTED POSITION — STELLAR",
+"✓ Appliquer point A":"✓ Apply point A",
+"✓ Appliquer point B":"✓ Apply point B",
+"⭕ Cercles":"⭕ Circles",
+"🎯 Centrer":"🎯 Center",
+"🎯 Mode de mission":"🎯 Mission mode",
+"📤 Exporter JSON":"📤 Export JSON",
+"📷 Caméra & Capteurs":"📷 Camera & Sensors",
+"🖱 Clic carte":"🖱 Map click",
+"🗑 Effacer tout":"🗑 Clear all",
+"🚀 LANCER LA MISSION":"🚀 LAUNCH MISSION",
+"🚁 Type de véhicule":"🚁 Vehicle type"
+};
+var AR = {
+"A connu, B inconnu":"أ معروفة، ب مجهولة",
+"A → B connus":"أ ← ب معروفتان",
+"ALTITUDE":"الارتفاع",
+"ATTENTE":"انتظار",
+"Altitude":"الارتفاع",
+"Altitude de vol":"ارتفاع الطيران",
+"Altitude (m)":"الارتفاع (م)",
+"Altitude maximale (m)":"الارتفاع الأقصى (م)",
+"Arrivée":"الوصول",
+"Automatique":"تلقائي",
+"Avec cache (warm)":"مع ذاكرة مؤقتة (جاهزة)",
+"Avion autonome":"طائرة ذاتية القيادة",
+"Baromètre":"مقياس الضغط الجوي",
+"Bateau":"قارب",
+"Batterie minimale (%)":"الحد الأدنى للبطارية (%)",
+"CELESTIAL NAVIGATION SYSTEM":"نظام الملاحة الفلكية",
+"CLIQUEZ POUR PLACER POINT A":"انقر لوضع النقطة أ",
+"Cache non disponible":"الذاكرة المؤقتة غير متاحة",
+"Celestial geolocation":"تحديد الموقع فلكيًا",
+"Chargement carte satellite...":"جارٍ تحميل خريطة الأقمار الصناعية...",
+"Choisissez le mode de fonctionnement":"اختر وضع التشغيل",
+"Cliquez sur la carte pour placer le Point A":"انقر على الخريطة لوضع النقطة أ",
+"Configuration Pré-Vol":"إعدادات ما قبل الطيران",
+"Configurez votre système avant le lancement":"قم بإعداد النظام قبل الإطلاق",
+"Connaissez-vous votre point d'arrivée à l'avance ?":"هل تعرف نقطة الوصول مسبقًا؟",
+"Connexion backend...":"جارٍ الاتصال بالخادم...",
+"CÉLESTE":"فلكي",
+"DIURNE":"نهاري",
+"NOCTURNE":"ليلي",
+"Day Mode":"الوضع النهاري",
+"Night Mode":"الوضع الليلي",
+"Stellar Mode":"الوضع النجمي",
+"Distance":"المسافة",
+"Distance entre WP (m)":"المسافة بين نقاط المسار (م)",
+"Drone":"طائرة مسيّرة",
+"Drone sur Point A.":"الطائرة عند النقطة أ.",
+"Démarrage threads NAVERA...":"جارٍ تشغيل خيوط NAVERA...",
+"Départ":"الانطلاق",
+"EN ATTENTE":"في الانتظار",
+"EN ATTENTE DE L'IMAGE":"في انتظار الصورة",
+"En attente d'une image stellaire via":"في انتظار صورة نجمية عبر",
+"Espacement waypoints":"تباعد نقاط المسار",
+"Exploration libre · Dataset collecté en temps réel":"استكشاف حر · تُجمع البيانات آنيًا",
+"Extraction MBTiles zoom 18...":"استخراج MBTiles تكبير 18...",
+"FERMER":"إغلاق",
+"FOV caméra (degrés)":"مجال رؤية الكاميرا (بالدرجات)",
+"Footprint image":"بصمة الصورة",
+"Formule rayon":"معادلة نصف القطر",
+"GENERATING DATASET":"جارٍ توليد البيانات",
+"GPS Principal":"GPS الرئيسي",
+"INITIALISATION DU VOL...":"تهيئة الطيران...",
+"Image":"صورة",
+"Initialisation pipeline visual loc...":"تهيئة خط الملاحة البصرية...",
+"Initialisation...":"جارٍ التهيئة...",
+"LAT :":"خط العرض:",
+"LATITUDE":"خط العرض",
+"LON :":"خط الطول:",
+"LONGITUDE":"خط الطول",
+"Latitude":"خط العرض",
+"Longitude":"خط الطول",
+"Localisation par satellite":"تحديد الموقع بالأقمار الصناعية",
+"Localisation visuelle si GPS perdu":"ملاحة بصرية عند فقدان GPS",
+"Loiter (stationnaire)":"تحويم (ثابت)",
+"Légende":"مفتاح الخريطة",
+"Magnétomètre":"مقياس المغناطيسية",
+"Manuel assisté":"يدوي مُساعَد",
+"Match :":"تطابق:",
+"Matching vol (cache)":"مطابقة الطيران (ذاكرة)",
+"Mission Planner":"مخطط المهمة",
+"Mission en cours...":"المهمة جارية...",
+"Mode de saisie":"وضع الإدخال",
+"Mode de vol":"وضع الطيران",
+"Non défini":"غير محدد",
+"Paramètres calculés":"معاملات محسوبة",
+"Performance":"الأداء",
+"Planifiez la mission puis pré-collectez":"خطّط المهمة ثم اجمع البيانات مسبقًا",
+"Point A non défini":"النقطة أ غير محددة",
+"Point A — Départ":"النقطة أ — الانطلاق",
+"Point B — Arrivée":"النقطة ب — الوصول",
+"Point d'arrivée B":"نقطة الوصول ب",
+"Point de départ A":"نقطة الانطلاق أ",
+"Point de départ — A":"نقطة الانطلاق — أ",
+"Pré-collecte":"جمع مسبق",
+"RÉSOLUTION EN COURS":"جارٍ الحل",
+"Rayon :":"نصف القطر:",
+"Rayon R":"نصف القطر R",
+"Rayon R calculé":"نصف القطر R المحسوب",
+"Rayon de recherche vision (m)":"نصف قطر البحث البصري (م)",
+"Robot nautique":"روبوت بحري",
+"Robot terrestre":"روبوت بري",
+"Route de vol":"مسار الطيران",
+"Résolution caméra":"دقة الكاميرا",
+"Résumé configuration":"ملخص الإعدادات",
+"SOURCE":"المصدر",
+"Sans cache":"بدون ذاكرة مؤقتة",
+"Satellite image matching":"مطابقة صور الأقمار الصناعية",
+"Score :":"النتيجة:",
+"Score confiance":"درجة الثقة",
+"Seuil de confiance vision (0.0 → 1.0)":"عتبة ثقة الرؤية (0.0 ← 1.0)",
+"Sousse":"سوسة",
+"Statistiques mission":"إحصاءات المهمة",
+"Stellar Inertial Navigation":"ملاحة نجمية بالقصور الذاتي",
+"Suivant →":"التالي ←",
+"Sélectionnez un mode →":"اختر وضعًا ←",
+"Temps pré-collecte":"زمن الجمع المسبق",
+"Trajet défini · Dataset collecté avant le vol":"مسار محدد · تُجمع البيانات قبل الطيران",
+"Vitesse max (m/s)":"السرعة القصوى (م/ث)",
+"Waypoints":"نقاط المسار",
+"Zone dataset (R)":"منطقة البيانات (R)",
+"Zoom actif":"التكبير النشط",
+"astrometry.net analyse le ciel…":"astrometry.net يحلّل السماء…",
+"ou entrez les coordonnées ci-dessus":"أو أدخل الإحداثيات أعلاه",
+"État du cache":"حالة الذاكرة المؤقتة",
+"128× plus rapide":"أسرع 128 مرة",
+"~13–15 secondes":"حوالي 13–15 ثانية",
+"← Précédent":"السابق ←",
+"⊙ Cliquez sur la carte → Point A":"⊙ انقر على الخريطة ← النقطة أ",
+"⌨ Saisie libre":"⌨ إدخال يدوي",
+"⚙️ Paramètres":"⚙️ الإعدادات",
+"⚙️ Paramètres de vol":"⚙️ إعدادات الطيران",
+"⚠ GPS SIGNAL LOST — VISUAL LOCALIZATION ACTIVE":"⚠ فُقدت إشارة GPS — الملاحة البصرية نشطة",
+"⚡ Cache":"⚡ الذاكرة المؤقتة",
+"⚡ Pré-collecter":"⚡ جمع مسبق",
+"✅ MATCH TROUVÉ — POSITION ESTIMÉE":"✅ عُثر على تطابق — تم تقدير الموقع",
+"✅ POSITION PRÉDITE — STELLAR":"✅ موقع متنبأ به — نجمي",
+"✓ Appliquer point A":"✓ تطبيق النقطة أ",
+"✓ Appliquer point B":"✓ تطبيق النقطة ب",
+"⭕ Cercles":"⭕ دوائر",
+"🎯 Centrer":"🎯 توسيط",
+"🎯 Mode de mission":"🎯 وضع المهمة",
+"📍 Point A":"📍 النقطة أ",
+"📡 GPS & Vision Fallback":"📡 GPS واحتياط بصري",
+"📤 Exporter JSON":"📤 تصدير JSON",
+"📷 Caméra & Capteurs":"📷 الكاميرا والمستشعرات",
+"🖱 Clic carte":"🖱 نقرة على الخريطة",
+"🗑 Effacer tout":"🗑 مسح الكل",
+"🚀 LANCER LA MISSION":"🚀 إطلاق المهمة",
+"🚀 Launch Mission":"🚀 إطلاق المهمة",
+"🚁 Type de véhicule":"🚁 نوع المركبة"
+};
+var DICTS = { fr:null, en:EN, ar:AR };
+var lang = 'fr';
+try { lang = localStorage.getItem('navera_lang') || 'fr'; } catch(e){}
+if (!(lang in DICTS)) lang = 'fr';
+var applying = false;
+var ATTRS = ['title','placeholder','aria-label'];
+function norm(s){ return s.replace(/\s+/g,' ').trim(); }
+function tr(fr){
+  if (lang === 'fr') return null;
+  var d = DICTS[lang];
+  return Object.prototype.hasOwnProperty.call(d, fr) ? d[fr] : null;
+}
+function translateTextNode(n){
+  if (n.__navOrig === undefined) n.__navOrig = n.nodeValue;
+  var key = norm(n.__navOrig);
+  var out = tr(key);
+  var target = (out === null) ? n.__navOrig : out;
+  if (n.nodeValue !== target) n.nodeValue = target;
+}
+function translateAttrs(el){
+  for (var i=0;i<ATTRS.length;i++){
+    var a = ATTRS[i];
+    if (!el.hasAttribute || !el.hasAttribute(a)) continue;
+    var store = '__navOrig_'+a;
+    if (el[store] === undefined) el[store] = el.getAttribute(a);
+    var out = tr(norm(el[store]));
+    var target = (out === null) ? el[store] : out;
+    if (el.getAttribute(a) !== target) el.setAttribute(a, target);
+  }
+}
+function walk(root){
+  if (root.nodeType === 3) { translateTextNode(root); return; }
+  if (root.nodeType !== 1) return;
+  var tag = root.tagName;
+  if (tag === 'SCRIPT' || tag === 'STYLE') return;
+  if (root.id === 'nav-i18n') return;
+  translateAttrs(root);
+  for (var c = root.firstChild; c; c = c.nextSibling) walk(c);
+}
+function applyAll(){
+  applying = true;
+  walk(document.body);
+  var de = document.documentElement;
+  de.setAttribute('lang', lang);
+  de.setAttribute('dir', lang === 'ar' ? 'rtl' : 'ltr');
+  var btns = document.querySelectorAll('#nav-i18n button');
+  for (var i=0;i<btns.length;i++) btns[i].classList.toggle('on', btns[i].dataset.l === lang);
+  if (mo) mo.takeRecords();   /* discard records caused by our own writes */
+  applying = false;
+}
+function setLang(l){
+  lang = l;
+  try { localStorage.setItem('navera_lang', l); } catch(e){}
+  applyAll();
+}
+/* switcher */
+var bar = document.createElement('div');
+bar.id = 'nav-i18n';
+bar.innerHTML = '<button data-l="fr">FR</button><button data-l="en">EN</button><button data-l="ar">ع</button>';
+bar.addEventListener('click', function(e){
+  var b = e.target.closest('button');
+  if (b) setLang(b.dataset.l);
+});
+document.body.appendChild(bar);
+/* dynamic content */
+function isOwnWrite(n){
+  /* our writes always leave nodeValue equal to the translation of __navOrig */
+  if (n.__navOrig === undefined) return false;
+  var out = tr(norm(n.__navOrig));
+  var target = (out === null) ? n.__navOrig : out;
+  return n.nodeValue === target;
+}
+var mo = new MutationObserver(function(muts){
+  applying = true;
+  for (var i=0;i<muts.length;i++){
+    var m = muts[i];
+    if (m.type === 'characterData'){
+      if (!isOwnWrite(m.target)) m.target.__navOrig = m.target.nodeValue; /* app wrote new source text */
+      translateTextNode(m.target);
+    } else if (m.type === 'childList'){
+      for (var j=0;j<m.addedNodes.length;j++) walk(m.addedNodes[j]);
+    } else if (m.type === 'attributes'){
+      var el = m.target, a = m.attributeName, store = '__navOrig_'+a;
+      var cur = el.getAttribute(a);
+      var out = (el[store] !== undefined) ? tr(norm(el[store])) : null;
+      var ours = (el[store] !== undefined) && (cur === ((out === null) ? el[store] : out));
+      if (!ours) el[store] = cur;
+      translateAttrs(el);
+    }
+  }
+  mo.takeRecords();   /* discard records caused by our own writes above */
+  applying = false;
+});
+mo.observe(document.body, {subtree:true, childList:true, characterData:true,
+                           attributes:true, attributeFilter:ATTRS});
+applyAll();
+})();
+</script>
+<!-- ═══════════════ end NAVERA i18n ═══════════════ -->
