@@ -43,7 +43,7 @@ import os
 import sqlite3
 import threading
 import time
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 import rclpy
@@ -537,7 +537,7 @@ class NaveraWebBridge(Node):
                 return self._json(404, {"error": f"unknown path: /{rel}"})
 
         try:
-            self._httpd = HTTPServer((self.web_host, self.web_port), Handler)
+            self._httpd = ThreadingHTTPServer((self.web_host, self.web_port), Handler)
         except Exception as e:
             self.get_logger().error(f"❌ cannot bind {self.web_host}:{self.web_port} — {e}")
             raise

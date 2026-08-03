@@ -272,6 +272,7 @@ input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;height:4p
           <span class="mode-icon">🌙</span>
           <div class="mode-title">Night Mode</div>
           <div class="mode-sub">STHN Homography Matching<br>Bias-corrected localization<br><b style="color:#a78bfa">night_pkg · STHN (bridge ROS)</b></div>
+          <div style="margin-top:8px;font-size:10px;color:#f59e0b;border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:2px 8px;display:inline-block">⚠ non raccordé à cette interface</div>
         </div>
         <div class="mode-card stellar-card" id="mc-stellar" onclick="selectTimeMode('stellar')">
           <span class="mode-check" id="check-stellar" style="color:transparent">✓</span>
@@ -279,6 +280,7 @@ input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;height:4p
           <span class="mode-icon">🌟</span>
           <div class="mode-title">Stellar Mode</div>
           <div class="mode-sub">Stellar Inertial Navigation<br>Celestial geolocation<br><b style="color:#38bdf8">stellar_pkg · port 5002</b></div>
+          <div style="margin-top:8px;font-size:10px;color:#f59e0b;border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:2px 8px;display:inline-block">⚠ non raccordé à cette interface</div>
         </div>
       </div>
       <button id="cfg-mode-btn" onclick="confirmTimeMode()" disabled style="background:#334155;color:#64748b;border:none;border-radius:8px;padding:12px 32px;font-size:14px;font-weight:600;cursor:not-allowed;width:100%;transition:all .3s">Sélectionnez un mode →</button>
@@ -411,7 +413,7 @@ input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;height:4p
     <div style="display:flex;align-items:center;gap:8px">
       <button class="btn btn-ghost btn-sm" onclick="pClearAll()">🗑 Effacer tout</button>
       <button class="btn btn-outline btn-sm" onclick="pExportMission()">📤 Exporter JSON</button>
-      <button class="btn btn-primary btn-sm" id="btn-precollect" onclick="pStartPrecollect()" disabled>⚡ Pré-collecter</button>
+      <button class="btn btn-primary btn-sm" id="btn-precollect" onclick="pStartPrecollect()" disabled style="display:none">⚡ Pré-collecter</button>
       <button class="btn btn-success btn-sm" id="btn-launch" onclick="launchMission()" disabled>🚀 Launch Mission</button>
     </div>
   </header>
@@ -649,8 +651,10 @@ function selectTimeMode(mode){
 }
 function confirmTimeMode(){
   if(!cfgData.timeMode) return;
-  if(cfgData.timeMode==='stellar'){ openStellarMode(); return; }
-  if(cfgData.timeMode==='night'){ launchMissionPlanner(); return; }
+  if(cfgData.timeMode==='stellar' || cfgData.timeMode==='night'){
+    toast("Mode disponible via ros2 launch uniquement — pas encore raccordé à cette interface","amber");
+    return;
+  }
   document.getElementById('cfg-mode-select').style.display='none';
   document.getElementById('cfg-steps-wrapper').style.display='block';
 }
@@ -887,7 +891,7 @@ function pClearAll(){
   document.getElementById('wp-manual-list').innerHTML='';
   document.getElementById('btn-precollect').disabled=true;document.getElementById('btn-launch').disabled=true;   // A-only: cleared → no A yet
   document.getElementById('btn-precollect').textContent='⚡ Pré-collecter';
-  pSetCacheUI('not-ready','Cache non disponible','Planifiez la mission puis pré-collectez');
+  pSetCacheUI('not-ready','En attente du Point A','Placez le Point A puis lancez la mission');
   document.getElementById('progress-box').classList.remove('show');
   toast('Tout effacé','amber');
 }
@@ -1111,7 +1115,7 @@ function pExportMission(){
   setTimeout(()=>{window.URL.revokeObjectURL(url);document.body.removeChild(a);},100);
   toast('Exporté → mission_plan.json','green');
 }
-setInterval(()=>{fetch(`${RECEIVER}/api/cache_status`).then(r=>r.json()).then(d=>{if(d.ready&&!precollecting&&window.naveraTimeMode!=='night'){pSetCacheUI('ready','✅ Cache disponible','~105ms/frame · prêt pour le vol');if(ptA) document.getElementById('btn-launch').disabled=false;}}).catch(()=>{});},3000);
+setInterval(()=>{fetch(`${RECEIVER}/api/cache_status`).then(r=>r.json()).then(d=>{if(d.ready&&!precollecting&&window.naveraTimeMode!=='night'){pSetCacheUI('ready','✅ Chaîne embarquée prête','rejeu mission via ROS 2 · aucune pré-collecte requise');if(ptA) document.getElementById('btn-launch').disabled=false;}}).catch(()=>{});},3000);
 // Night mode safety net: keep Launch Mission always enabled
 setInterval(()=>{if(window.naveraTimeMode==='night'||window.missionMode==='a-only'){const b=document.getElementById('btn-launch');if(b&&b.disabled){b.disabled=false;}}},500);
 
@@ -2481,6 +2485,12 @@ function closeStellarAndReturn() {
 'use strict';
 /* FR is the source language of the page. Keys = normalized French strings. */
 var EN = {
+"⚠ non raccordé à cette interface":"⚠ not wired to this UI yet",
+"Mode disponible via ros2 launch uniquement — pas encore raccordé à cette interface":"Mode available via ros2 launch only — not wired to this UI yet",
+"✅ Chaîne embarquée prête":"✅ Onboard chain ready",
+"rejeu mission via ROS 2 · aucune pré-collecte requise":"mission replay via ROS 2 · no pre-collection needed",
+"En attente du Point A":"Waiting for Point A",
+"Placez le Point A puis lancez la mission":"Place Point A, then launch the mission",
 "A connu, B inconnu":"A known, B unknown",
 "A → B connus":"A → B known",
 "ATTENTE":"STANDBY",
@@ -2594,6 +2604,12 @@ var EN = {
 "🚁 Type de véhicule":"🚁 Vehicle type"
 };
 var AR = {
+"⚠ non raccordé à cette interface":"⚠ غير موصول بهذه الواجهة بعد",
+"Mode disponible via ros2 launch uniquement — pas encore raccordé à cette interface":"الوضع متاح عبر ros2 launch فقط — غير موصول بهذه الواجهة بعد",
+"✅ Chaîne embarquée prête":"✅ السلسلة المدمجة جاهزة",
+"rejeu mission via ROS 2 · aucune pré-collecte requise":"إعادة تشغيل المهمة عبر ROS 2 · لا حاجة لجمع مسبق",
+"En attente du Point A":"في انتظار النقطة أ",
+"Placez le Point A puis lancez la mission":"ضع النقطة أ ثم أطلق المهمة",
 "A connu, B inconnu":"أ معروفة، ب مجهولة",
 "A → B connus":"أ ← ب معروفتان",
 "ALTITUDE":"الارتفاع",
