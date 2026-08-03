@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-estimator_node.py — NAVERA position arbiter (v2: GPS > day).
+estimator_node.py — NAVERA position arbiter (v3: GPS > day > night > cn).
 
 This is the node that answers the operator's one question: *do we have a usable
 position right now, and who is providing it?* It consumes the typed per-source
@@ -13,8 +13,8 @@ outputs:
                         (state + who is alive), published every tick.
 
 Scope: honest single-winner arbitration across the LIVE sources.
-  * Subscribes to /navera/estimate/gps and /navera/estimate/day.
-    Priority GPS > day (CLAUDE.md §3: first reliable source wins).
+  * Subscribes to /navera/estimate/{gps,day,night,cn}.
+    Priority GPS > day > night > cn (CLAUDE.md §3: first reliable source wins).
   * Subscribes to /navera/sensors/imu for LIVENESS ONLY. The IMU reports
     alive=true / contributing=false — zero invented position, zero covariance.
   * Eligibility: valid==true AND mode in {MEASURED, PROPAGATED} AND fresh
@@ -35,9 +35,13 @@ State machine:
 
 Parameters:
     publish_rate_hz (default 5.0) — decision + nav_status cadence
-    gps_timeout_s   (default 3.0) — GPS freshness/liveness window
-    day_timeout_s   (default 3.0) — day freshness/liveness window
-    imu_timeout_s   (default 1.0) — IMU liveness window
+    gps_timeout_s   (default 3.0)  — GPS freshness/liveness window
+    day_timeout_s   (default 3.0)  — day freshness/liveness window
+    night_timeout_s (default 5.0)  — night freshness/liveness window
+    cn_timeout_s    (default 45.0) — celestial window (a solve takes ~15 s and
+                     fixes are sparse; value is a starting point, to be MEASURED
+                     under real cadence, not decreed — same rule as hysteresis)
+    imu_timeout_s   (default 1.0)  — IMU liveness window
 """
 from typing import Optional
 
@@ -78,15 +82,21 @@ class EstimatorNode(Node):
         self.declare_parameter("publish_rate_hz", 5.0)
         self.declare_parameter("gps_timeout_s", 3.0)
         self.declare_parameter("day_timeout_s", 3.0)
+        self.declare_parameter("night_timeout_s", 5.0)
+        self.declare_parameter("cn_timeout_s", 45.0)
         self.declare_parameter("imu_timeout_s", 1.0)
         rate = float(self.get_parameter("publish_rate_hz").value)
         self._gps_timeout = float(self.get_parameter("gps_timeout_s").value)
         self._day_timeout = float(self.get_parameter("day_timeout_s").value)
+        self._night_timeout = float(self.get_parameter("night_timeout_s").value)
+        self._cn_timeout = float(self.get_parameter("cn_timeout_s").value)
         self._imu_timeout = float(self.get_parameter("imu_timeout_s").value)
 
         # Latest snapshot from each watched source. None until first heard.
         self._gps_last: Optional[PositionEstimate] = None
         self._day_last: Optional[PositionEstimate] = None
+        self._night_last: Optional[PositionEstimate] = None
+        self._cn_last: Optional[PositionEstimate] = None
         self._imu_last_stamp: Optional[Time] = None
 
         # RELIABLE depth 10, matching the sensor/estimate data topics (CLAUDE.md).
@@ -94,6 +104,10 @@ class EstimatorNode(Node):
             PositionEstimate, "/navera/estimate/gps", self._on_gps, 10)
         self.sub_day = self.create_subscription(
             PositionEstimate, "/navera/estimate/day", self._on_day, 10)
+        self.sub_night = self.create_subscription(
+            PositionEstimate, "/navera/estimate/night", self._on_night, 10)
+        self.sub_cn = self.create_subscription(
+            PositionEstimate, "/navera/estimate/cn", self._on_cn, 10)
         self.sub_imu = self.create_subscription(
             Imu, "/navera/sensors/imu", self._on_imu, 10)
 
@@ -102,8 +116,9 @@ class EstimatorNode(Node):
 
         self.create_timer(1.0 / rate, self._tick)
         self.get_logger().info(
-            f"estimator up (v2 GPS>day): rate={rate:.1f}Hz "
+            f"estimator up (v3 GPS>day>night>cn): rate={rate:.1f}Hz "
             f"gps_timeout={self._gps_timeout:.1f}s day_timeout={self._day_timeout:.1f}s "
+            f"night_timeout={self._night_timeout:.1f}s cn_timeout={self._cn_timeout:.1f}s "
             f"imu_timeout={self._imu_timeout:.1f}s"
         )
 
@@ -114,6 +129,12 @@ class EstimatorNode(Node):
 
     def _on_day(self, msg: PositionEstimate) -> None:
         self._day_last = msg
+
+    def _on_night(self, msg: PositionEstimate) -> None:
+        self._night_last = msg
+
+    def _on_cn(self, msg: PositionEstimate) -> None:
+        self._cn_last = msg
 
     def _on_imu(self, msg: Imu) -> None:
         # Liveness only: we keep the stamp, never the sample. The IMU feeds no
@@ -173,6 +194,10 @@ class EstimatorNode(Node):
             now, self._gps_last, self._gps_timeout)
         day_alive, day_eligible, day_age = self._eval_source(
             now, self._day_last, self._day_timeout)
+        night_alive, night_eligible, night_age = self._eval_source(
+            now, self._night_last, self._night_timeout)
+        cn_alive, cn_eligible, cn_age = self._eval_source(
+            now, self._cn_last, self._cn_timeout)
 
         # --- IMU: liveness only ---
         imu_alive = (
@@ -182,12 +207,17 @@ class EstimatorNode(Node):
 
         # --- pick a winner + resolve state ---
         ever_heard = any(x is not None for x in
-                         (self._gps_last, self._day_last, self._imu_last_stamp))
-        # Priority GPS > day (CLAUDE.md §3). Exactly one winner, or none.
+                         (self._gps_last, self._day_last, self._night_last,
+                          self._cn_last, self._imu_last_stamp))
+        # Priority GPS > day > night > cn (CLAUDE.md §3). Exactly one winner, or none.
         if gps_eligible:
             winner: Optional[PositionEstimate] = self._gps_last
         elif day_eligible:
             winner = self._day_last
+        elif night_eligible:
+            winner = self._night_last
+        elif cn_eligible:
+            winner = self._cn_last
         else:
             winner = None
 
@@ -198,17 +228,19 @@ class EstimatorNode(Node):
             reason = "waiting for first source message"
         else:
             state = NavStatus.STATE_NO_FIX
-            reason = self._no_fix_reason(gps_age, day_age)
+            reason = self._no_fix_reason(gps_age, day_age, night_age, cn_age)
 
         self._publish_status(now, state, winner, imu_alive, reason)
         if winner is not None:
             self._publish_position(now, winner)
 
-    def _no_fix_reason(self, gps_age, day_age) -> str:
+    def _no_fix_reason(self, gps_age, day_age, night_age, cn_age) -> str:
         """Why no source is usable — one clause per watched estimate source."""
         parts = [
             self._source_reason("GPS", self._gps_last, gps_age, self._gps_timeout),
             self._source_reason("day", self._day_last, day_age, self._day_timeout),
+            self._source_reason("night", self._night_last, night_age, self._night_timeout),
+            self._source_reason("cn", self._cn_last, cn_age, self._cn_timeout),
         ]
         return "; ".join(p for p in parts if p) or "no usable source"
 
@@ -271,6 +303,10 @@ class EstimatorNode(Node):
                                   self._gps_timeout, winner),
             self._estimate_health(SourceHealth.SOURCE_DAY_VISION, self._day_last,
                                   self._day_timeout, winner),
+            self._estimate_health(SourceHealth.SOURCE_NIGHT_VISION, self._night_last,
+                                  self._night_timeout, winner),
+            self._estimate_health(SourceHealth.SOURCE_CELESTIAL, self._cn_last,
+                                  self._cn_timeout, winner),
             self._imu_health(imu_alive),
         ]
         status.reason = reason

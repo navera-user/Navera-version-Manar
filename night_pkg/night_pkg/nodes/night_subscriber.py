@@ -47,6 +47,21 @@ from cv_bridge import CvBridge
 # Import the existing STHN wrapper (UNMODIFIED user code).
 # NightLocalizer.localize(query_bgr, prior_lat, prior_lon) -> dict
 from night_pkg.nodes.night_localizer import NightLocalizer
+from navera_msgs.msg import PositionEstimate
+
+# Typed source contract (estimator step 6) — mode is the HONESTY axis:
+# a replayed CSV point can NEVER pass itself off as a STHN measurement,
+# and a dead-reckon bridge is PROPAGATED, not measured. Same rule as day_pkg.
+_NIGHT_MODE_BY_SRC = {
+    "gps":         PositionEstimate.MODE_REPLAYED,   # CSV ground truth, not a measurement
+    "night_sthn":  PositionEstimate.MODE_MEASURED,   # real STHN inference
+    "dead_reckon": PositionEstimate.MODE_PROPAGATED, # heading/speed bridge from anchor
+}
+_NIGHT_MODEL_BY_SRC = {
+    "gps":         "csv_replay",
+    "night_sthn":  "sthn_one_stage",
+    "dead_reckon": "dead_reckon_v1",
+}
 
 # ── Constantes night (configurables) ───────────────────────────────────────
 # Dead-reckoning : pas planché pour que l'anchor avance visiblement même si
@@ -172,6 +187,8 @@ class NightSubscriber(Node):
         done_qos = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
                               history=HistoryPolicy.KEEP_LAST, depth=1)
         self.pub_done   = self.create_publisher(Int32, done_topic, done_qos)
+        # Typed source contract for navera_estimator (additive, estimator step 6).
+        self.pub_est    = self.create_publisher(PositionEstimate, "/navera/estimate/night", 10)
 
         # ── Subscribers ─────────────────────────────────────────
         self.sub_image = self.create_subscription(Image, image_topic, self.on_image, image_qos)
@@ -326,6 +343,9 @@ class NightSubscriber(Node):
         fix.altitude        = float(meta.get("altitude_m") or 0.0)
         fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_UNKNOWN
         self.pub_fix.publish(fix)
+        self._publish_estimate(now, seq_id, src, lat, lon, meta,
+                               details={"src": src, "score": score, "conf": conf,
+                                        "dt_ms": dt_ms, "rms_px": rms_px, "reason": reason})
 
         if src == "dead_reckon":
             self._reject_count += 1
@@ -342,6 +362,60 @@ class NightSubscriber(Node):
         self.pub_status.publish(String(data=json.dumps({
             "frame_id": seq_id, "success": False, "reason": reason, "source": "none",
         })))
+        # Contract: an unusable frame is DECLARED, never swallowed (valid=False).
+        now = self.get_clock().now().to_msg()
+        est = PositionEstimate()
+        est.header.stamp = now
+        est.header.frame_id = "thermal_camera_link"
+        est.latitude = math.nan
+        est.longitude = math.nan
+        est.altitude = math.nan
+        est.position_covariance = [0.0] * 9
+        est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_UNKNOWN
+        est.source = PositionEstimate.SOURCE_NIGHT_VISION
+        est.mode = PositionEstimate.MODE_MEASURED
+        est.valid = False
+        est.confidence = 0.0
+        est.reason = str(reason or "no usable night frame")
+        est.sensor_stamp = now
+        est.producer = "night_subscriber"
+        est.model_id = ""
+        est.frame_index = -1
+        est.details_json = json.dumps({"reason": reason})
+        self.pub_est.publish(est)
+
+    def _publish_estimate(self, now, seq_id, src, lat, lon, meta, details):
+        """Additive: emit the typed source contract on /navera/estimate/night.
+
+        Covariance is UNKNOWN and confidence 0.0: STHN has no validated sigma on
+        real thermal imagery yet (same honesty stance as day_pkg — never emit a
+        number that looks measured but is not). Raw score/conf live in
+        details_json, diagnostic only.
+        """
+        est = PositionEstimate()
+        est.header.stamp    = now
+        est.header.frame_id = "thermal_camera_link"
+        valid = not (float(lat) == 0.0 and float(lon) == 0.0)   # null-island guard
+        est.latitude  = float(lat) if valid else math.nan
+        est.longitude = float(lon) if valid else math.nan
+        _alt = meta.get("altitude_m")
+        est.altitude  = float(_alt) if _alt is not None else math.nan
+        est.position_covariance      = [0.0] * 9
+        est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_UNKNOWN
+        est.source     = PositionEstimate.SOURCE_NIGHT_VISION
+        est.mode       = _NIGHT_MODE_BY_SRC.get(src, PositionEstimate.MODE_MEASURED)
+        est.valid      = valid
+        est.confidence = 0.0
+        est.reason     = "" if valid else "no anchor (0,0 fallback)"
+        est.sensor_stamp = now
+        est.producer   = "night_subscriber"
+        est.model_id   = _NIGHT_MODEL_BY_SRC.get(src, "")
+        try:
+            est.frame_index = int(seq_id)
+        except (TypeError, ValueError):
+            est.frame_index = -1
+        est.details_json = json.dumps(details)
+        self.pub_est.publish(est)
 
     def _publish_done(self, seq_id):
         try:

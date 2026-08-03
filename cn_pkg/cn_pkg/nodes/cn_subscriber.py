@@ -45,6 +45,8 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 from sensor_msgs.msg import Image, NavSatFix, NavSatStatus
+from navera_msgs.msg import PositionEstimate
+import math
 from std_msgs.msg import String
 from cv_bridge import CvBridge
 
@@ -113,6 +115,8 @@ class CNSubscriber(Node):
         # ── Publishers ──────────────────────────────────────────
         self.pub_fix    = self.create_publisher(NavSatFix, fix_topic,    10)
         self.pub_status = self.create_publisher(String,    status_topic, 10)
+        # Typed source contract for navera_estimator (additive, estimator step 7).
+        self.pub_est    = self.create_publisher(PositionEstimate, "/navera/estimate/cn", 10)
 
         # ── Subscribers ─────────────────────────────────────────
         self.sub_image = self.create_subscription(
@@ -254,6 +258,11 @@ class CNSubscriber(Node):
                 self.get_logger().warn(
                     f"[cn] ✗  frame={seq_id} solver failed: {str(err)[:120]}"
                 )
+            # Contract: a failed/rejected solve is DECLARED, never swallowed.
+            self._publish_estimate(now, seq_id, None, None, meta,
+                                   valid=False,
+                                   reason=str(status.get("reason") or result.get("error") or "solve failed"),
+                                   details=status)
             return
 
         fix = NavSatFix()
@@ -266,6 +275,10 @@ class CNSubscriber(Node):
         fix.altitude        = float(meta.get("altitude_m") or 0.0)
         fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_UNKNOWN
         self.pub_fix.publish(fix)
+        self._publish_estimate(now, seq_id, fix.latitude, fix.longitude, meta,
+                               valid=True, reason="",
+                               details={**status, "hardcoded_score_warning":
+                                        "match_score is a CONSTANT (0.95), not a measured confidence"})
 
         self._success_count += 1
         self.get_logger().info(
@@ -273,6 +286,45 @@ class CNSubscriber(Node):
             f"score={score:.2f}  "
             f"(total: ok={self._success_count} reject={self._reject_count} skip={self._skip_count})"
         )
+
+
+    def _publish_estimate(self, now, seq_id, lat, lon, meta, valid, reason, details):
+        """Additive: emit the typed source contract on /navera/estimate/cn."""
+        est = PositionEstimate()
+        est.header.stamp    = now
+        est.header.frame_id = "celestial_camera_link"
+        if valid and lat is not None and lon is not None:
+            est.latitude, est.longitude = float(lat), float(lon)
+        else:
+            est.latitude = est.longitude = math.nan
+            valid = False
+        _alt = meta.get("altitude_m") if isinstance(meta, dict) else None
+        est.altitude  = float(_alt) if _alt is not None else math.nan
+        est.position_covariance      = [0.0] * 9
+        est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_UNKNOWN
+        est.source     = PositionEstimate.SOURCE_CELESTIAL
+        est.mode       = PositionEstimate.MODE_MEASURED
+        est.valid      = bool(valid)
+        est.confidence = 0.0        # hard-coded 0.95 is NOT a measurement — see module doc
+        est.reason     = reason
+        est.sensor_stamp = now
+        est.producer   = "cn_subscriber"
+        est.model_id   = "astrometry.net"
+        try:
+            est.frame_index = int(seq_id)
+        except (TypeError, ValueError):
+            est.frame_index = -1
+        est.details_json = json.dumps(details, default=str)
+        self.pub_est.publish(est)
+
+
+CN_SUBSCRIBER_ESTIMATE_DOC = """Typed contract notes (estimator step 7):
+Covariance UNKNOWN and confidence 0.0 by design: the celestial match_score is a
+hard-coded constant (0.95), NOT a measured confidence (handoff warning). It is
+relegated to details_json as diagnostic only. Also: the geodetic solution
+depends on tilt/azimuth/UTC inputs that are still static test metadata — until
+RTC UTC + IMU attitude are wired in, celestial fixes are MEASURED but unbounded.
+"""
 
 
 def main(args=None):
