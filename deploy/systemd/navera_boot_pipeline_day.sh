@@ -27,4 +27,5 @@ source install/setup.bash
 # 4) exec → ros2 launch devient le MainPID vu par systemd (stop/restart propres, SIGTERM
 #    transmis au launch). Pipeline SEUL (day_pipeline, PAS day_sim) : caméra(day) +
 #    day_subscriber, sans bridge. Défauts inchangés → comportement identique à aujourd'hui.
+export ROS_LOCALHOST_ONLY=1   # decouverte DDS via loopback uniquement (fix multicast Wi-Fi)
 exec ros2 launch simulation_web day_pipeline.launch.py

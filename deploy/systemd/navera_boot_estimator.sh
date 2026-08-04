@@ -26,4 +26,5 @@ source install/setup.bash
 #    SIGTERM transmis au launch). Paramètres laissés aux défauts du launch
 #    (publish_rate_hz=5.0, gps_timeout_s=3.0, day_timeout_s=3.0, imu_timeout_s=1.0 ;
 #    déclarés dans estimator.launch.py + config/estimator_params.yaml).
+export ROS_LOCALHOST_ONLY=1   # decouverte DDS via loopback uniquement (fix multicast Wi-Fi)
 exec ros2 launch navera_estimator estimator.launch.py

@@ -23,6 +23,7 @@ source install/setup.bash
 #    SIGTERM transmis au launch). Topics/port épelés (= défauts de bridge.launch.py, rendus
 #    visibles ici pour que le câblage "day" + le port soient auditables en un endroit).
 #    Comportement STRICTEMENT identique à day_sim aujourd'hui : mêmes topics, port 8181.
+export ROS_LOCALHOST_ONLY=1   # decouverte DDS via loopback uniquement (fix multicast Wi-Fi)
 exec ros2 launch simulation_web bridge.launch.py \
     status_topic:=/day/day_status \
     fix_topic:=/day/position_estimate \
