@@ -19,5 +19,4 @@ source install/setup.bash
 # 3) exec → ros2 launch devient le MainPID vu par systemd (stop/restart propres,
 #    SIGTERM transmis au launch). serial_port/baud_rate explicites (= défauts du launch,
 #    mais rendus visibles ici pour que la config du port soit auditable en un endroit).
-export ROS_LOCALHOST_ONLY=1   # decouverte DDS via loopback uniquement (fix multicast Wi-Fi)
 exec ros2 launch gps_pkg gps.launch.py serial_port:=/dev/ttyTHS1 baud_rate:=9600

@@ -25,5 +25,4 @@ source install/setup.bash
 #    SIGTERM transmis au launch). i2c_bus/publish_rate explicites (= défauts du launch,
 #    mais rendus visibles ici pour que le câblage soit auditable en un endroit).
 #    Bus 1 = pins 27 (SDA) / 28 (SCL), partagé avec l'IMU. Adresse 0x68 (figée en silicium).
-export ROS_LOCALHOST_ONLY=1   # decouverte DDS via loopback uniquement (fix multicast Wi-Fi)
 exec ros2 launch rtc_pkg rtc.launch.py i2c_bus:=1 publish_rate:=1.0
