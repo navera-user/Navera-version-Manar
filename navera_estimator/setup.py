@@ -21,7 +21,7 @@ setup(
     maintainer='IRIS Systems',
     maintainer_email='contact@iris-systems.tn',
     description='NAVERA position arbiter (per-source PositionEstimate → /navera/position + /navera/nav_status)',
-    license='Apache-2.0',
+    license='Proprietary',
     entry_points={
         'console_scripts': [
             'estimator_node.py=navera_estimator.nodes.estimator_node:main',

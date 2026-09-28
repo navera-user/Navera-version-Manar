@@ -20,7 +20,7 @@ setup(
     maintainer='IRIS Systems',
     maintainer_email='contact@iris-systems.tn',
     description='NAVERA night STHN ROS2 subscriber',
-    license='Apache-2.0',
+    license='Proprietary',
     entry_points={
         'console_scripts': [
             'night_subscriber.py=night_pkg.nodes.night_subscriber:main',

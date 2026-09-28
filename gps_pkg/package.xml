@@ -5,7 +5,7 @@
   <version>0.0.1</version>
   <description>NAVERA GPS sensor driver — reads NMEA from a serial GPS and publishes NavSatFix + velocity on /navera/sensors/.</description>
   <maintainer email="contact@iris-systems.tn">IRIS Systems</maintainer>
-  <license>Apache-2.0</license>
+  <license>Proprietary</license>
 
 
   <depend>rclpy</depend>

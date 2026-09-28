@@ -26,7 +26,7 @@ setup(
     maintainer='IRIS Systems',
     maintainer_email='contact@iris-systems.tn',
     description='NAVERA RTC driver — DS3231 over I2C → /navera/sensors/rtc_time',
-    license='Apache-2.0',
+    license='Proprietary',
     entry_points={
         'console_scripts': [
             'rtc_node.py=rtc_pkg.nodes.rtc_node:main',

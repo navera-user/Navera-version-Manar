@@ -5,7 +5,7 @@
   <version>0.0.1</version>
   <description>NAVERA IMU sensor driver — BNO085 9-DoF (on-chip fusion) over I2C, publishing sensor_msgs/Imu.</description>
   <maintainer email="contact@iris-systems.tn">IRIS Systems</maintainer>
-  <license>Apache-2.0</license>
+  <license>Proprietary</license>
 
 
   <depend>rclpy</depend>

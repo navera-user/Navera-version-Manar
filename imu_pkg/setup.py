@@ -26,7 +26,7 @@ setup(
     maintainer='IRIS Systems',
     maintainer_email='contact@iris-systems.tn',
     description='NAVERA IMU sensor driver — BNO085 9-DoF over I2C → /navera/sensors/imu',
-    license='Apache-2.0',
+    license='Proprietary',
     entry_points={
         'console_scripts': [
             'imu_node.py=imu_pkg.nodes.imu_node:main',

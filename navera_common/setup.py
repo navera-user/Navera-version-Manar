@@ -17,7 +17,7 @@ setup(
     maintainer='IRIS Systems',
     maintainer_email='contact@iris-systems.tn',
     description='NAVERA shared utilities (process lifecycle, geodesy helpers).',
-    license='Apache-2.0',
+    license='Proprietary',
     # Library package: no console_scripts. Imported by the pipeline nodes.
     entry_points={
         'console_scripts': [],

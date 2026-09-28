@@ -50,7 +50,7 @@ setup(
     maintainer='IRIS Systems',
     maintainer_email='contact@iris-systems.tn',
     description='NAVERA celestial navigation ROS2 subscriber',
-    license='Apache-2.0',
+    license='Proprietary',
     entry_points={
         'console_scripts': [
             'cn_subscriber.py=cn_pkg.nodes.cn_subscriber:main',

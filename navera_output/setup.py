@@ -19,7 +19,7 @@ setup(
     maintainer='IRIS Systems',
     maintainer_email='contact@iris-systems.tn',
     description='NAVERA output to the vehicle: NMEA GPS emulation and MAVLink GPS_INPUT',
-    license='Apache-2.0',
+    license='Proprietary',
     entry_points={
         'console_scripts': [
             'vehicle_output_node.py=navera_output.nodes.vehicle_output_node:main',

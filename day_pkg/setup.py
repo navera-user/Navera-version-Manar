@@ -20,7 +20,7 @@ setup(
     maintainer='IRIS Systems',
     maintainer_email='contact@iris-systems.tn',
     description='Day Mode ROS2 Package - NVIDIA Isaac',
-    license='Apache-2.0',
+    license='Proprietary',
     entry_points={
         'console_scripts': [
             'day_subscriber.py=day_pkg.nodes.day_subscriber:main',

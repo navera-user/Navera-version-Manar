@@ -5,7 +5,7 @@
   <version>0.3.0</version>
   <description>NAVERA output to the vehicle: NMEA GPS emulation and MAVLink GPS_INPUT</description>
   <maintainer email="contact@iris-systems.tn">IRIS Systems</maintainer>
-  <license>Apache-2.0</license>
+  <license>Proprietary</license>
 
   <exec_depend>rclpy</exec_depend>
   <exec_depend>launch</exec_depend>

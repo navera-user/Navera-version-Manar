@@ -34,7 +34,7 @@ setup(
     maintainer='IRIS Systems',
     maintainer_email='contact@iris-systems.tn',
     description='Camera / frame source ROS2 package for NAVERA (replaces PC-Nour)',
-    license='Apache-2.0',
+    license='Proprietary',
     entry_points={
         'console_scripts': [
             'camera_publisher.py=camera_pkg.nodes.camera_publisher:main',

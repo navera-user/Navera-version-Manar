@@ -5,7 +5,7 @@
   <version>0.0.1</version>
   <description>NAVERA RTC driver — DS3231 (TCXO) over I2C, publishing sensor_msgs/TimeReference for the celestial pipeline.</description>
   <maintainer email="contact@iris-systems.tn">IRIS Systems</maintainer>
-  <license>Apache-2.0</license>
+  <license>Proprietary</license>
 
 
   <depend>rclpy</depend>

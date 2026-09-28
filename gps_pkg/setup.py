@@ -21,7 +21,7 @@ setup(
     maintainer='IRIS Systems',
     maintainer_email='contact@iris-systems.tn',
     description='NAVERA GPS sensor driver (NMEA → /navera/sensors/gps_*)',
-    license='Apache-2.0',
+    license='Proprietary',
     entry_points={
         'console_scripts': [
             'gps_node.py=gps_pkg.nodes.gps_node:main',

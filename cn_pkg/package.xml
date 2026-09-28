@@ -5,7 +5,7 @@
   <version>0.0.1</version>
   <description>NAVERA Celestial Navigation — ROS2 subscriber that consumes /celestial/* topics from camera_pkg and produces position fixes via astrometry.net.</description>
   <maintainer email="contact@iris-systems.tn">IRIS Systems</maintainer>
-  <license>Apache-2.0</license>
+  <license>Proprietary</license>
 
 
   <depend>rclpy</depend>

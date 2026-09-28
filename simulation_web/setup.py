@@ -30,7 +30,7 @@ setup(
     maintainer='IRIS Systems',
     maintainer_email='contact@iris-systems.tn',
     description='NAVERA web bridge: operator view, dashboard, map tiles, launch files',
-    license='Apache-2.0',
+    license='Proprietary',
     entry_points={
         'console_scripts': [
             'navera_web_bridge.py=simulation_web.scripts.navera_web_bridge:main',
