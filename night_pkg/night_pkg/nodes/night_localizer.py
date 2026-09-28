@@ -107,13 +107,10 @@ def _stitch_satellite_patch(conn, lat, lon, zoom, size):
 
 # ─── Bing ↔ ESRI projection bias correction ──────────────────────────────────
 
-# Empirical bias measured between Bing and ESRI at zoom 17 over Sousse
-BING_ESRI_BIAS_LAT = -0.00004   # degrees  (~4 m south)
-BING_ESRI_BIAS_LON =  0.00006   # degrees  (~5 m east)
-
-
-def _apply_bias_correction(lat, lon):
-    return lat - BING_ESRI_BIAS_LAT, lon - BING_ESRI_BIAS_LON
+# Map calibration offset (degrees), subtracted from every fix. A fixed
+# Bing-vs-ESRI offset measured once over Sousse (-0.00004, +0.00006) used to be
+# applied everywhere; an offset belongs to one map and must be measured for it,
+# so the default is none.
 
 
 # ─── Main localizer ───────────────────────────────────────────────────────────
@@ -140,9 +137,11 @@ class NightLocalizer:
         device: str = None,
         conf_threshold: float = 0.30,
         mixed_precision: bool = False,
+        map_offset_deg: tuple = (0.0, 0.0),
     ):
         self.zoom           = zoom
         self.conf_threshold = conf_threshold
+        self.map_offset_deg = (float(map_offset_deg[0]), float(map_offset_deg[1]))
         self.mixed_precision = bool(mixed_precision)   # fp16 autocast au forward (network.py:110/139)
         self.device     = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -197,13 +196,28 @@ class NightLocalizer:
                 "torchvision", "torchvision.transforms", "torchvision.models",
                 "datasets_4cor_img",
             ]
+            # Only modules that are really missing get a stand-in, and only
+            # while network.py is being imported: a global MagicMock would
+            # silently replace a real library for the rest of the process.
+            installed = []
             for _dep in _MOCK_MODS:
-                if _dep not in sys.modules:
-                    sys.modules[_dep] = _mock.MagicMock()
+                if _dep in sys.modules:
+                    continue
+                try:
+                    if importlib.util.find_spec(_dep) is not None:
+                        continue
+                except (ImportError, ValueError):
+                    pass
+                sys.modules[_dep] = _mock.MagicMock()
+                installed.append(_dep)
             spec = importlib.util.spec_from_file_location("_sthn_local_network", candidate)
             mod  = importlib.util.module_from_spec(spec)
             try:
-                spec.loader.exec_module(mod)
+                try:
+                    spec.loader.exec_module(mod)
+                finally:
+                    for _dep in installed:
+                        sys.modules.pop(_dep, None)
                 Network = getattr(mod, "STHN", None) or getattr(mod, "Network", None)
                 if Network is not None:
                     logger.info(f"Loaded Network from {candidate}")
@@ -482,8 +496,9 @@ class NightLocalizer:
         raw_lat, raw_lon = _tile_frac_to_latlon(
             origin_x + u / 256.0, origin_y + v / 256.0, self.zoom)
 
-        # 6. Bias correction (Bing ↔ ESRI alignment at zoom 17)
-        corr_lat, corr_lon = _apply_bias_correction(raw_lat, raw_lon)
+        # 6. Map calibration offset (none unless measured for this map)
+        corr_lat = raw_lat - self.map_offset_deg[0]
+        corr_lon = raw_lon - self.map_offset_deg[1]
 
         logger.debug(
             f"Night fix: ({corr_lat:.6f}, {corr_lon:.6f})  conf={conf:.2f}  dt={dt_ms:.1f}ms"

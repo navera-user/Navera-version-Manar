@@ -69,6 +69,17 @@ _NIGHT_MODEL_BY_SRC = {
 
 
 
+def image_to_bgr8(bridge, msg: Image):
+    """Image → 8-bit BGR. 16-bit thermal is contrast-stretched (2nd-98th
+    percentile): a plain conversion saturates or blanks the scene."""
+    if msg.encoding in ("mono16", "16UC1"):
+        raw = bridge.imgmsg_to_cv2(msg, desired_encoding="passthrough").astype(np.float32)
+        lo, hi = np.percentile(raw, (2.0, 98.0))
+        g = np.clip((raw - lo) / max(hi - lo, 1.0) * 255.0, 0, 255).astype(np.uint8)
+        return cv2.cvtColor(g, cv2.COLOR_GRAY2BGR)
+    return bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+
+
 class NightSubscriber(Node):
     def __init__(self):
         super().__init__("night_subscriber")
@@ -89,6 +100,9 @@ class NightSubscriber(Node):
         self.declare_parameter("done_topic",      "/thermal/frame_done")     # ack back-pressure
         self.declare_parameter("ready_topic",     "/night/localizer_ready")  # handshake
         # Live GPS, used as the prior (see day_subscriber).
+        # Map calibration offset (deg), measured for the map in use; none by default.
+        self.declare_parameter("map_offset_lat_deg", 0.0)
+        self.declare_parameter("map_offset_lon_deg", 0.0)
         self.declare_parameter("gps_topic",       "/navera/estimate/gps")
         self.declare_parameter("gps_prior_timeout_s", 2.0)
         # Mission start/stop gate of the camera: a stop (rewind) resets tracking.
@@ -151,6 +165,8 @@ class NightSubscriber(Node):
                 sthn_dir=sthn_dir, weights=weights, mbtiles=mbtiles,
                 zoom=zoom, conf_threshold=self.conf_threshold,
                 mixed_precision=self.mixed_precision,
+                map_offset_deg=(float(self.get_parameter("map_offset_lat_deg").value),
+                                float(self.get_parameter("map_offset_lon_deg").value)),
             )
         except Exception as e:
             self.get_logger().fatal("=" * 60)
@@ -212,7 +228,7 @@ class NightSubscriber(Node):
     # ────────────────────────────────────────────────────────────
     def on_image(self, msg: Image):
         try:
-            img = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+            img = image_to_bgr8(self.bridge, msg)
         except Exception as e:
             self.get_logger().warn(f"cv_bridge decode failed: {e}")
             img = None                      # still paired, so the frame is acked
