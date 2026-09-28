@@ -44,11 +44,10 @@ def generate_launch_description():
         DeclareLaunchArgument('web_port',       default_value='8181'),
         DeclareLaunchArgument('mbtiles_path',   default_value=default_mbtiles),
         DeclareLaunchArgument('conf_threshold', default_value='0.75'),
-        # anti-jump filter (predicted frames only) — toggle/tune without rebuild
+        # track filter — toggle/tune without rebuild
         DeclareLaunchArgument('antijump_enabled',    default_value='true'),
-        DeclareLaunchArgument('antijump_margin',     default_value='3.0'),
-        DeclareLaunchArgument('antijump_min_step_m', default_value='120.0'),
-        DeclareLaunchArgument('antijump_alpha',      default_value='0.4'),
+        DeclareLaunchArgument('max_consecutive_rejects', default_value='3'),
+        DeclareLaunchArgument('max_dead_reckon_s',       default_value='30.0'),
 
         # 1) Localization pipeline: camera(day) + day_subscriber
         IncludeLaunchDescription(
@@ -58,9 +57,8 @@ def generate_launch_description():
             launch_arguments={
                 'conf_threshold':      LaunchConfiguration('conf_threshold'),
                 'antijump_enabled':    LaunchConfiguration('antijump_enabled'),
-                'antijump_margin':     LaunchConfiguration('antijump_margin'),
-                'antijump_min_step_m': LaunchConfiguration('antijump_min_step_m'),
-                'antijump_alpha':      LaunchConfiguration('antijump_alpha'),
+                'max_consecutive_rejects': LaunchConfiguration('max_consecutive_rejects'),
+                'max_dead_reckon_s':       LaunchConfiguration('max_dead_reckon_s'),
             }.items(),
         ),
 

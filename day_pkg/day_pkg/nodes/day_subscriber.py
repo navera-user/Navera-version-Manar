@@ -31,6 +31,7 @@ import time
 import cv2
 
 import rclpy
+from navera_common.geo import dead_reckon, is_finite_latlon
 from navera_common.lifecycle import die_with_parent
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
@@ -59,7 +60,6 @@ FOOTPRINT_MULT = 3.0
 ALTITUDE_MULT  = 2.0
 R_MIN_M        = 400.0    # plancher : ~1 pas inter-frame (frames à ~480 m)
 R_MAX_M        = 600.0    # PLAFOND décisif : garde R dans la bande validée
-SCORE_MIN      = 0.0      # si score top-1 < SCORE_MIN → dead_reckon (0.0 = désactivé)
 
 # ── source contract for navera_estimator (additive; see step 4) ──────────────
 # Internal src label → honest provenance mode. This is the whole point of the
@@ -92,11 +92,14 @@ class DaySubscriber(Node):
         self.declare_parameter("estimate_topic", "/navera/estimate/day")  # typed source contract
         self.declare_parameter("done_topic", "/day/frame_done")   # back-pressure ack (Int32 frame_id)
         self.declare_parameter("ready_topic", "/day/localizer_ready")  # handshake: modèle chargé
-        # ── anti-jump filter (predicted frames only) ──
-        self.declare_parameter("antijump_enabled", True)
-        self.declare_parameter("antijump_margin", 3.0)        # gate budget = margin × speed × dt (floored)
-        self.declare_parameter("antijump_min_step_m", 120.0)  # floor for gate budget AND dead-reckon step
-        self.declare_parameter("antijump_alpha", 0.4)         # smoothing lerp on accepted predictions (0..1)
+        # ── track filter (anchor, spatial prior, dead-reckoning) ──
+        self.declare_parameter("antijump_enabled", True)      # false = raw per-frame output, no anchor
+        # After this many consecutive frames without an accepted match, the anchor
+        # is dropped and the next frame searches globally: a wrong anchor must not
+        # confine the search forever.
+        self.declare_parameter("max_consecutive_rejects", 3)
+        # Dead-reckoning from the last accepted fix is only published for this long.
+        self.declare_parameter("max_dead_reckon_s", 30.0)
 
         self.conf_threshold = float(self.get_parameter("conf_threshold").value)
         image_topic   = self.get_parameter("image_topic").value
@@ -106,9 +109,8 @@ class DaySubscriber(Node):
         done_topic    = self.get_parameter("done_topic").value
         ready_topic   = self.get_parameter("ready_topic").value
         self.antijump_enabled    = bool(self.get_parameter("antijump_enabled").value)
-        self.antijump_margin     = float(self.get_parameter("antijump_margin").value)
-        self.antijump_min_step_m = float(self.get_parameter("antijump_min_step_m").value)
-        self.antijump_alpha      = float(self.get_parameter("antijump_alpha").value)
+        self.max_consecutive_rejects = int(self.get_parameter("max_consecutive_rejects").value)
+        self.max_dead_reckon_s   = float(self.get_parameter("max_dead_reckon_s").value)
 
         # ── State ───────────────────────────────────────────────
         self.bridge        = CvBridge()
@@ -124,6 +126,8 @@ class DaySubscriber(Node):
         self._anchor_lat  = None
         self._anchor_lon  = None
         self._anchor_time = None   # wall-clock (time.time()) of last retained frame
+        self._last_measured_time = None   # wall-clock of the last MEASURED/known fix
+        self._rejects_in_row     = 0
 
         # ── Banner (PRE-load) ──────────────────────────────────
         self.get_logger().info("=" * 60)
@@ -312,12 +316,15 @@ class DaySubscriber(Node):
         fix.status.service  = NavSatStatus.SERVICE_GPS
         fix.latitude        = lat
         fix.longitude       = lon
-        fix.altitude        = float(meta.get("altitude_m") or 0.0)
+        _alt = meta.get("altitude_m")
+        fix.altitude        = float(_alt) if _alt is not None else math.nan
         fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_UNKNOWN
         self.pub_fix.publish(fix)
         self._success_count += 1
         # frame 11 (1ère prédiction) prendra CE point GPS (frame 10) comme référence
         self._anchor_lat, self._anchor_lon, self._anchor_time = lat, lon, time.time()
+        self._last_measured_time = self._anchor_time
+        self._rejects_in_row = 0
         # Additive contract: CSV truth → MODE_REPLAYED (never a DINOv2 measurement).
         self._publish_estimate(now, seq_id, "gps", lat, lon, meta, score=1.0,
                                details={"src": "gps", "score": 1.0, "note": "CSV ground truth"})
@@ -350,16 +357,6 @@ class DaySubscriber(Node):
         R           = min(max(R_theorique, R_MIN_M), R_MAX_M)
         return (self._anchor_lat, self._anchor_lon), R
 
-    def _dead_reckon(self, lat, lon, heading_deg, speed_mps, dt):
-        """Propage (lat,lon) le long du cap à la vitesse pour dt s (équirectangulaire).
-        Pas planché à antijump_min_step_m pour que l'anchor avance même si speed×dt
-        est minuscule (timing sim compressé)."""
-        d = max(speed_mps * dt, self.antijump_min_step_m)
-        brng = math.radians(heading_deg)
-        dlat = (d * math.cos(brng)) / 111320.0
-        dlon = (d * math.sin(brng)) / (111320.0 * math.cos(math.radians(lat)))
-        return lat + dlat, lon + dlon
-
     def _emit_fix(self, now, seq_id, lat, lon, meta, status, src, score, jump_m, reason=None):
         status["source"], status["lat"], status["lon"] = src, lat, lon
         status["jump_m"], status["reason"] = jump_m, reason
@@ -372,7 +369,8 @@ class DaySubscriber(Node):
         fix.status.service  = NavSatStatus.SERVICE_GPS
         fix.latitude        = lat
         fix.longitude       = lon
-        fix.altitude        = float(meta.get("altitude_m") or 0.0)
+        _alt = meta.get("altitude_m")
+        fix.altitude        = float(_alt) if _alt is not None else math.nan
         fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_UNKNOWN
         self.pub_fix.publish(fix)
         # Additive contract: same fix on the typed channel; mode derived from src.
@@ -414,8 +412,8 @@ class DaySubscriber(Node):
         est = PositionEstimate()
         est.header.stamp    = now
         est.header.frame_id = "day_camera_link"
-        # null-island guard (GPS lesson): a 0,0 fallback is NOT a position.
-        valid = not (float(lat) == 0.0 and float(lon) == 0.0)
+        # A NaN / out-of-range / (0,0) position is never published as valid.
+        valid = is_finite_latlon(lat, lon)
         est.latitude  = float(lat) if valid else math.nan
         est.longitude = float(lon) if valid else math.nan
         # altitude NaN-if-unknown (contract): 0.0 is sea level, a REAL altitude —
@@ -428,7 +426,7 @@ class DaySubscriber(Node):
         est.mode       = _DAY_MODE_BY_SRC.get(src, PositionEstimate.MODE_MEASURED)
         est.valid      = valid
         est.confidence = 0.0
-        est.reason     = "" if valid else "no anchor (0,0 fallback)"
+        est.reason     = "" if valid else "non-finite position"
         est.sensor_stamp = now           # TODO(step6): true exposure instant (meta has no epoch)
         est.producer   = "day_subscriber"
         est.model_id   = _DAY_MODEL_BY_SRC.get(src, "")
@@ -481,79 +479,85 @@ class DaySubscriber(Node):
 
         # ───── filtre ON ─────
         t_now = time.time()
-        dt    = max(1e-3, t_now - self._anchor_time) if self._anchor_time else 0.0
-        spd   = float(meta.get("speed_mps") or 0.0)
-        hdg   = float(meta.get("heading_deg") or 0.0)
+        spatial_empty = bool(result.get("spatial_empty"))
+        measured = (not err) and accepted and not spatial_empty and is_finite_latlon(raw_lat, raw_lon)
 
-        # ───── branche A PRIORI SPATIAL (frame GPS-denied, cercle autour de l'anchor) ─────
-        # La position top-1 est DÉJÀ ≤ R de l'anchor par construction → le cercle EST le
-        # filtre de plausibilité : on utilise R comme budget du gate (jamais 120 m fixe),
-        # et on émet le CENTRE BRUT de la tuile top-1 (PAS de lissage α → parité harnais).
-        if result.get("spatial"):
-            R = float(result.get("radius_m") or 0.0)
-            n = result.get("n_candidates")
-            # étape 5 : aucune tuile dans le cercle → dead_reckon (comportement existant)
-            if result.get("spatial_empty"):
-                if self._anchor_lat is None:
-                    out_lat, out_lon = 0.0, 0.0
-                else:
-                    out_lat, out_lon = self._dead_reckon(self._anchor_lat, self._anchor_lon, hdg, spd, dt)
-                self._anchor_lat, self._anchor_lon, self._anchor_time = out_lat, out_lon, t_now
-                self._emit_fix(now, seq_id, out_lat, out_lon, meta, status, "dead_reckon",
-                               0.0, None, reason=f"no tile in circle (R={R:.0f}m)")
-                return
-            jump_m = (haversine_m(self._anchor_lat, self._anchor_lon, float(raw_lat), float(raw_lon))
-                      if self._anchor_lat is not None else None)
-            # score plancher optionnel → dead_reckon explicite
-            if score < SCORE_MIN:
-                if self._anchor_lat is None:
-                    out_lat, out_lon = float(raw_lat), float(raw_lon)
-                else:
-                    out_lat, out_lon = self._dead_reckon(self._anchor_lat, self._anchor_lon, hdg, spd, dt)
-                self._anchor_lat, self._anchor_lon, self._anchor_time = out_lat, out_lon, t_now
-                self._emit_fix(now, seq_id, out_lat, out_lon, meta, status, "dead_reckon",
-                               score, jump_m, reason=f"score {score:.2f}<{SCORE_MIN:.2f}")
-                return
-            # accepté : centre brut de la tuile top-1 (gate = R, in-circle par construction)
+        if measured:
+            # Accepted match: in spatial mode it lies within R of the anchor by
+            # construction; in global mode (no anchor) it passed conf_threshold.
             out_lat, out_lon = float(raw_lat), float(raw_lon)
+            jump_m = (haversine_m(self._anchor_lat, self._anchor_lon, out_lat, out_lon)
+                      if self._anchor_lat is not None else None)
+            src = "visual_match" if result.get("spatial") else "predicted"
+            reason = (f"in-circle R={float(result.get('radius_m') or 0.0):.0f}m "
+                      f"n={result.get('n_candidates')}") if result.get("spatial") else None
             self._anchor_lat, self._anchor_lon, self._anchor_time = out_lat, out_lon, t_now
-            self._emit_fix(now, seq_id, out_lat, out_lon, meta, status, "visual_match",
-                           score, jump_m, reason=f"in-circle R={R:.0f}m n={n}")
+            self._last_measured_time = t_now
+            self._rejects_in_row = 0
+            self._emit_fix(now, seq_id, out_lat, out_lon, meta, status, src, score, jump_m, reason)
             return
 
-        use_pred = (not err) and accepted and (raw_lat is not None)
-        reason   = err or (None if accepted else f"score {score:.2f}<{self.conf_threshold:.2f}")
-        jump_m   = None
-
-        # 1) GATE de plausibilité (distance à l'anchor vs budget vitesse, planché)
-        if use_pred and self._anchor_lat is not None:
-            jump_m   = haversine_m(self._anchor_lat, self._anchor_lon, float(raw_lat), float(raw_lon))
-            budget_m = max(spd * dt * self.antijump_margin, self.antijump_min_step_m)
-            if jump_m > budget_m:
-                use_pred = False
-                reason   = f"gate {jump_m:.0f}m > {budget_m:.0f}m"
-
-        if use_pred:
-            # 3) LISSAGE α : tirer l'anchor vers la prédiction brute
-            if self._anchor_lat is None:
-                out_lat, out_lon = float(raw_lat), float(raw_lon)
-            else:
-                a = self.antijump_alpha
-                out_lat = self._anchor_lat + a * (float(raw_lat) - self._anchor_lat)
-                out_lon = self._anchor_lon + a * (float(raw_lon) - self._anchor_lon)
-            src = "predicted"
+        # ── No usable match this frame ──
+        self._rejects_in_row += 1
+        if err:
+            why = str(err)
+        elif spatial_empty:
+            why = f"no tile within R={float(result.get('radius_m') or 0.0):.0f}m"
         else:
-            # 2) DEAD-RECKONING : propage l'anchor par cap+vitesse (avance toujours)
-            if self._anchor_lat is None:                 # aucun GPS encore vu (cas limite)
-                out_lat = float(raw_lat) if raw_lat is not None else 0.0
-                out_lon = float(raw_lon) if raw_lon is not None else 0.0
-            else:
-                out_lat, out_lon = self._dead_reckon(self._anchor_lat, self._anchor_lon, hdg, spd, dt)
-            src = "dead_reckon"
+            why = f"score {score:.2f} < {self.conf_threshold:.2f}"
 
-        # avance l'anchor → la zone de recherche suit (jamais figée)
-        self._anchor_lat, self._anchor_lon, self._anchor_time = out_lat, out_lon, t_now
-        self._emit_fix(now, seq_id, out_lat, out_lon, meta, status, src, score, jump_m, reason)
+        propagated = None
+        if (self._anchor_lat is not None and self._last_measured_time is not None
+                and t_now - self._last_measured_time <= self.max_dead_reckon_s):
+            propagated = dead_reckon(self._anchor_lat, self._anchor_lon,
+                                     meta.get("heading_deg"), meta.get("speed_mps"),
+                                     t_now - self._anchor_time)
+        if propagated is not None:
+            self._anchor_lat, self._anchor_lon = propagated
+            self._anchor_time = t_now
+            self._emit_fix(now, seq_id, propagated[0], propagated[1], meta, status,
+                           "dead_reckon", score, None, reason=why)
+        else:
+            if self._anchor_lat is None:
+                why += "; no previous fix"
+            elif t_now - (self._last_measured_time or t_now) > self.max_dead_reckon_s:
+                why += f"; dead-reckoning limit {self.max_dead_reckon_s:.0f}s reached"
+            else:
+                why += "; heading/speed unknown, cannot dead-reckon"
+            self._publish_no_fix(now, seq_id, meta, status, score, why)
+
+        if self._anchor_lat is not None and self._rejects_in_row >= self.max_consecutive_rejects:
+            self.get_logger().warn(
+                f"[day] {self._rejects_in_row} frames without a match — dropping the anchor, "
+                "next frame searches the whole map")
+            self._anchor_lat = self._anchor_lon = self._anchor_time = None
+            self._rejects_in_row = 0
+
+    def _publish_no_fix(self, now, seq_id, meta, status, score, reason):
+        """Declare a frame that produced no position (valid=False, NaN) — never a guess."""
+        self._reject_count += 1
+        status.update({"success": False, "rejected": True, "reason": reason,
+                       "lat": None, "lon": None, "source": "none"})
+        self.pub_status.publish(String(data=json.dumps(status)))
+        est = PositionEstimate()
+        est.header.stamp    = now
+        est.header.frame_id = "day_camera_link"
+        est.latitude = est.longitude = est.altitude = math.nan
+        est.position_covariance      = [0.0] * 9
+        est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_UNKNOWN
+        est.source     = PositionEstimate.SOURCE_DAY_VISION
+        est.mode       = PositionEstimate.MODE_MEASURED
+        est.valid      = False
+        est.confidence = 0.0
+        est.reason     = reason
+        est.sensor_stamp = now
+        est.producer   = "day_subscriber"
+        est.model_id   = _DAY_MODEL_BY_SRC["predicted"]
+        est.frame_index = self._as_frame_index(seq_id)
+        est.details_json = json.dumps({"score": score, "reason": reason,
+                                       "match": status.get("match")})
+        self.pub_est.publish(est)
+        self.get_logger().warn(f"[day] ✗ frame={seq_id} no position: {reason}")
 
 
 def main(args=None):
