@@ -88,20 +88,23 @@ dead-reckoning is not implemented yet (the IMU is liveness only).
 
 ## 4. ENVIRONMENT & HOW TO RUN
 
+Deployment runs **on the host** (systemd services, `deploy/README.md`), not in a container.
+
 ```bash
-# Start container (from host)
-cd ~/isaac_ros_common && ./start_navera.sh
-# Inside container:
 source /opt/ros/humble/setup.bash
-source /workspaces/isaac_ros-dev/install/setup.bash
-# Run a pipeline:
+colcon build --symlink-install          # builds the 11 NAVERA packages (vendored/legacy dirs are COLCON_IGNOREd)
+source install/setup.bash
+set -a; . /etc/navera/navera.env; set +a   # data paths, ROS_DOMAIN_ID, ROS_LOCALHOST_ONLY, token
 ros2 launch simulation_web day_sim.launch.py     # or night_sim / cn_sim
-# Dashboard: http://<jetson-ip>:8181/
+# Operator view: http://<jetson-ip>:8181/operator
+navera_tools/run_tests.sh --integration          # the test suite — run it before every commit
 ```
 
-- The workspace `~/isaac_ros_common` is mounted as `/workspaces/isaac_ros-dev` inside the container.
-- Build with `colcon build` only when needed; `install/` is the compiled output (gitignored).
-- GPU check inside container: `python3 -c "import torch; print(torch.cuda.is_available())"` → must be True.
+- Large data (MBTiles map, tile dataset, STHN weights, model caches) is not in git; its paths
+  come from the `NAVERA_*` / `DAY_DATASET_DIR` / `TORCH_HOME` environment variables.
+- GPU check: `python3 -c "import torch; print(torch.cuda.is_available())"` → must be True.
+- `Dockerfile.navera` and `docker/`, `scripts/` are Isaac ROS **development-container** tooling,
+  kept for development only.
 
 ---
 

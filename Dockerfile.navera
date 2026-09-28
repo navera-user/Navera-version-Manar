@@ -1,3 +1,5 @@
+# Development container only (Isaac ROS base image). NAVERA is deployed on the host with
+# systemd — see deploy/README.md.
 FROM navera_isaac_ros:stable
 
 # Fix NumPy

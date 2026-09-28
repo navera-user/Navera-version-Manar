@@ -1,5 +1,8 @@
 # NAVERA Codebase Audit (read-only)
 
+> **Historical document (2026-06-30).** The current status of every finding is tracked in
+> [docs/ENGINEERING_BACKLOG.md](docs/ENGINEERING_BACKLOG.md).
+
 > **Date:** 2026-06-30 · **Branch:** `produit-clean` · **Scope:** the 8 NAVERA ROS2 packages
 > (`camera_pkg`, `day_pkg`, `night_pkg`, `cn_pkg`, `gps_pkg`, `imu_pkg`, `simulation_web`) plus the
 > legacy `vision_pkg`. The vendored `isaac_ros_*` / `isaac_common*` packages and

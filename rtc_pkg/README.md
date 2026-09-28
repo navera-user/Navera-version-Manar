@@ -115,3 +115,11 @@ write it from a Python one-liner using `adafruit_ds3231` with a UTC `struct_time
   Deliberate choice for now: userspace, no risk to the running system.
 - **Nothing consumes these topics yet.** Feeding `rtc_time` into the celestial solver
   (`cn_subscriber` currently hardcodes `utc_time`) is a separate, deliberate feature.
+
+## Local-time detection
+
+An RTC written in local time instead of UTC is off from the system clock by a whole number of
+hours. `rtc_node` reports such a clock as **invalid** (`rtc_status.reason`: "holds local
+time"), because one hour is 15° of celestial longitude. Any other large drift is only warned
+about: at an offline boot the system clock may be the wrong one. A transient I²C error while
+connecting no longer crashes the node.

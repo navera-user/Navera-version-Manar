@@ -117,4 +117,5 @@ NAVERA_ALLOW_SIM=1 python3 navera_tools/sensor_sim.py
 - [docs/VALIDATION_STATUS.md](docs/VALIDATION_STATUS.md): what is measured, how, and the known limitations
 - [deploy/README.md](deploy/README.md): boot services, installation (in French)
 - [CLAUDE.md](CLAUDE.md): engineering rules for this codebase
-- [AUDIT.md](AUDIT.md): codebase audit (2026-06-30)
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): data flow, topics, the position contract, protocols, web API
+- [AUDIT.md](AUDIT.md): codebase audit (2026-06-30, historical)
