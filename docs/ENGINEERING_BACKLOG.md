@@ -99,7 +99,7 @@ Status: ✅ done · 🔧 in progress · ⬜ open
 | DEP-8 | M | No mount ordering for an external data disk; offline boot needs pre-filled model caches | ✅ 252fa15 |
 | DEP-9 | M | `After=network-online.target` delays boot on a vehicle with no network | ✅ 252fa15 |
 | DEP-10 | M | Docker files and start_navera.sh stale vs host deployment | ✅ 093c32d |
-| DEP-11 | M | Licences: root LICENSE is NVIDIA's; package.xml says Apache-2.0 / navera@example.com; satellite imagery licence | ⬜ |
+| DEP-11 | M | Licences: root LICENSE is NVIDIA's; package.xml says Apache-2.0 / navera@example.com; satellite imagery licence — code proprietary + THIRD_PARTY_NOTICES done; **ESRI imagery licence still required** | ◐ c8356b3 |
 | DEP-12 | L | package.xml buildtool ament_cmake_python on ament_python packages; dead CMakeLists.txt | ✅ 3a832e3 |
 | DEP-13 | L | Log growth (~/.ros/log never rotated) | ✅ 252fa15 |
 | DEP-14 | L | Reboot validation of the new restart mechanism on a deployed unit | ⬜ |
