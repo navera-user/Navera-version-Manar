@@ -22,26 +22,26 @@ Status: ✅ done · 🔧 in progress · ⬜ open
 | LOC-9 | C | Night: NaN from the model poisoned the whole mission | ✅ ce66efc |
 | LOC-10 | C | Celestial: fixed test date/attitude; single asin root; no precession | ✅ 7c553fc |
 | LOC-11 | C | Camera invents speed 5 m/s, heading 0, altitude 400 m; live mode crashes | ✅ 2d4e5d1 |
-| LOC-12 | H | Day/night: first anchor only from replayed CSV — no prior in real operation (wire last valid GPS) | ⬜ |
-| LOC-13 | H | Day: global search accepts anything (scores 0.92–0.97 even when km off) — confidence not discriminative | ⬜ |
+| LOC-12 | H | Day/night: first anchor only from replayed CSV — no prior in real operation (wire last valid GPS) | ✅ a2fd365 |
+| LOC-13 | H | Day: global search accepts anything (scores 0.92–0.97 even when km off) — confidence not discriminative | ✅ eaeeceb |
 | LOC-14 | H | Day: accuracy ~440 m median — matching method redesign (local features vs satellite around prior) | ⬜ |
-| LOC-15 | H | Image/meta paired as "latest of each" — pair by frame_id (day, night, cn) | ⬜ |
+| LOC-15 | H | Image/meta paired as "latest of each" — pair by frame_id (day, night, cn) | ✅ 5b9d760 |
 | LOC-16 | H | Night: query not normalised for scale (altitude/FOV) or heading | ⬜ |
-| LOC-17 | M | sensor_stamp = publication time; use image exposure stamp | ⬜ |
+| LOC-17 | M | sensor_stamp = publication time; use image exposure stamp | ✅ 5b9d760 |
 | LOC-18 | M | Day: no coverage check (outside the tile set a Sousse tile is still returned) | ⬜ |
-| LOC-19 | M | Day: unused NetVLAD/ResNet50 loaded and run at boot (VRAM, internet download) | ⬜ |
-| LOC-20 | M | Anchor not reset when the mission restarts (camera rewind) | ⬜ |
-| LOC-21 | M | MODE_REPLAYED estimates published with valid=True; unknown src defaults to MEASURED | ⬜ |
-| LOC-22 | M | Vision/DR fixes published on NavSatFix as STATUS_FIX / SERVICE_GPS | ⬜ |
+| LOC-19 | M | Day: unused NetVLAD/ResNet50 loaded and run at boot (VRAM, internet download) | ✅ d055bc0 |
+| LOC-20 | M | Anchor not reset when the mission restarts (camera rewind) | ✅ cc4fe58 |
+| LOC-21 | M | MODE_REPLAYED estimates published with valid=True; unknown src defaults to MEASURED | ✅ 1201291 |
+| LOC-22 | M | Vision/DR fixes published on NavSatFix as STATUS_FIX / SERVICE_GPS | ✅ 1201291 |
 | LOC-23 | M | Night: Sousse-specific Bing/ESRI bias applied everywhere | ⬜ |
 | LOC-24 | M | Night: mono16 thermal converted to bgr8 without scaling | ⬜ |
 | LOC-25 | M | Night: MagicMock stand-ins installed globally in sys.modules | ⬜ |
 | LOC-26 | M | Celestial: solver timeout leaves solve-field/siril orphans; siril has no timeout; /tmp log leak | ⬜ |
 | LOC-27 | M | Celestial: solve-field path hardcoded (/usr/local/astrometry); FOV scale 50–90° hardcoded | ⬜ |
 | LOC-28 | M | Celestial: confidence gate is a constant (0.95) | ⬜ |
-| LOC-29 | L | Non-dict frame_meta crashes the day node | ⬜ |
+| LOC-29 | L | Non-dict frame_meta crashes the day node | ✅ 5b9d760 |
 | LOC-30 | L | Integer launch overrides (e.g. conf_threshold:=1) crash float parameters | ⬜ |
-| LOC-31 | L | No CUDA warm-up before localizer_ready (first frame may exceed ack timeout) | ⬜ |
+| LOC-31 | L | No CUDA warm-up before localizer_ready (first frame may exceed ack timeout) | ✅ d055bc0 |
 
 ## 2. Estimator and sensors
 
@@ -107,7 +107,7 @@ Status: ✅ done · 🔧 in progress · ⬜ open
 
 | ID | Sev | Item | Status |
 |---|---|---|---|
-| QA-1 | H | No automated tests; no one-command test run | ⬜ |
+| QA-1 | H | No automated tests; no one-command test run | ✅ 9ad7c7e |
 | QA-2 | M | Per-package READMEs missing (camera, day, cn, gps, imu, simulation_web, estimator, common) | ⬜ |
 | QA-3 | L | print() instead of ROS logger in day_localizer; dead code; orphan scripts in packages | ⬜ |
 | QA-4 | L | Stale docs: ROS_TOPICS_AND_COMMUNICATION.md, NAVERA_FULL_DOCUMENTATION.md, VISUAL_LOCALIZATION_SUMMARY.md, night READMEs | ⬜ |
