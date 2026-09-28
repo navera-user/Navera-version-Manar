@@ -1,3 +1,4 @@
+import math
 import os, time
 import numpy as np
 import torch
@@ -118,6 +119,43 @@ class DINOv2GeM(nn.Module):
         out = self.gem(out.reshape(B,H,W,C).permute(0,3,1,2))
         return nn.functional.normalize(out, p=2, dim=1)
 
+def tile_center_latlon(filename):
+    """Centre (lat, lon) of an XYZ slippy-map tile named ``tile_<z>_<x>_<y>.jpg``.
+
+    The dataset CSV stores each tile's NORTH-WEST CORNER (the value
+    tile_to_latlon(x, y) returns), not its centre: publishing that as the
+    position biases every fix by half a tile (~175 m at z17, to the NW).
+    Returns None when the name does not follow the pattern.
+    """
+    parts = os.path.splitext(os.path.basename(str(filename)))[0].split("_")
+    if len(parts) != 4 or parts[0] != "tile":
+        return None
+    try:
+        z, x, y = int(parts[1]), int(parts[2]), int(parts[3])
+    except ValueError:
+        return None
+    n   = 2 ** z
+    lon = (x + 0.5) / n * 360.0 - 180.0
+    lat = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * (y + 0.5) / n))))
+    return lat, lon
+
+
+def dataset_coords(df):
+    """(N, 2) array of tile-centre coordinates for the rows of the dataset CSV.
+
+    Uses the centre derived from the tile filename; falls back to the CSV's
+    lat/lon columns (``lat``/``lon`` or ``latitude``/``longitude``) for rows
+    whose name does not encode a tile.
+    """
+    lat_col = "lat" if "lat" in df.columns else "latitude"
+    lon_col = "lon" if "lon" in df.columns else "longitude"
+    out = []
+    for _, row in df.iterrows():
+        c = tile_center_latlon(row["imageName"])
+        out.append(c if c is not None else (float(row[lat_col]), float(row[lon_col])))
+    return np.array(out, dtype=float)
+
+
 def haversine_m(lat1, lon1, lat2, lon2):
     R       = 6_371_000
     p1, p2  = radians(lat1), radians(lat2)
@@ -177,11 +215,18 @@ class DayLocalizer:
             cache           = np.load(CACHE_PATH)
             self.nv_descs   = cache["netvlad_descriptors"]
             self.dino_descs = cache["dinov2_descriptors"]
-            self.coords     = cache["coords"]
             valid_idx       = cache["valid_indices"].tolist()
             df              = pd.read_csv(CSV_PATH)
             df              = df.rename(columns={"filename": "imageName"})
+            if len(valid_idx) != len(self.dino_descs) or (valid_idx and max(valid_idx) >= len(df)):
+                raise RuntimeError(
+                    f"descriptor cache {CACHE_PATH} does not match {CSV_PATH} "
+                    f"({len(self.dino_descs)} descriptors, {len(valid_idx)} indices, "
+                    f"{len(df)} CSV rows) — delete the cache to rebuild it")
             self.df_valid   = df.iloc[valid_idx].reset_index(drop=True)
+            # Coordinates are always re-derived from the CSV rather than trusted
+            # from the cache: caches built before the tile-centre fix hold NW corners.
+            self.coords     = dataset_coords(self.df_valid)
             self.ready      = True
             print(f"[DayLocalizer] Cache loaded: {len(self.coords)} images")
         else:
@@ -193,7 +238,7 @@ class DayLocalizer:
         df    = pd.read_csv(CSV_PATH)
         df    = df.rename(columns={"filename": "imageName"})
         total = len(df)
-        nv_list=[]; dino_list=[]; coords=[]; valid_idx=[]
+        nv_list=[]; dino_list=[]; valid_idx=[]
         with torch.no_grad():
             for i, (_, row) in enumerate(df.iterrows()):
                 p = os.path.join(IMAGES_DIR, str(row["imageName"]).strip())
@@ -202,7 +247,6 @@ class DayLocalizer:
                     img = load_image_tensor(p).unsqueeze(0).to(self.device)
                     nv_list.append(self.netvlad_model(img).cpu().numpy()[0])
                     dino_list.append(self.dinov2_model(img).cpu().numpy()[0])
-                    coords.append([float(row["latitude"]), float(row["longitude"])])
                     valid_idx.append(i)
                     if i % 20 == 0:
                         print(f"  [{i}/{total}]...")
@@ -210,8 +254,8 @@ class DayLocalizer:
                     print(f"  Skip {i}: {e}")
         self.nv_descs   = np.array(nv_list)
         self.dino_descs = np.array(dino_list)
-        self.coords     = np.array(coords)
         self.df_valid   = df.iloc[valid_idx].reset_index(drop=True)
+        self.coords     = dataset_coords(self.df_valid)
         np.savez(CACHE_PATH,
                  netvlad_descriptors=self.nv_descs,
                  dinov2_descriptors=self.dino_descs,
