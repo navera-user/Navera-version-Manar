@@ -125,6 +125,8 @@ class RTCNode(Node):
             i2c = busio.I2C(getattr(board, scl_name), getattr(board, sda_name))
             rtc = adafruit_ds3231.DS3231(i2c)
             _ = rtc.datetime  # probe: fails here if nothing answers at 0x68
+            lost_power = bool(rtc.lost_power)   # inside the try: a transient I2C
+                                                # error here must not crash the node
         except Exception as exc:  # I2C bus, wiring or missing-device failure
             self.get_logger().error(
                 f"DS3231 init failed on I2C bus {self.bus_num} @ 0x68: {exc}"
@@ -137,7 +139,7 @@ class RTCNode(Node):
         self.get_logger().info(
             f"DS3231 ready on I2C bus {self.bus_num} ({scl_name}/{sda_name}) @ 0x68"
         )
-        if rtc.lost_power:
+        if lost_power:
             self.get_logger().error(
                 "DS3231 oscillator-stop flag is SET: it lost power since the time was "
                 "last written, so its time is NOT trustworthy. Check the backup cell, "
@@ -219,7 +221,23 @@ class RTCNode(Node):
             drift_s = rtc_epoch - sys_epoch
             plausible = stamp.tm_year >= _MIN_PLAUSIBLE_YEAR
 
-        valid = (not lost_power) and plausible
+        # An RTC written in LOCAL time is off from UTC by a whole number of
+        # hours (Tunisia: +1 h = 15° of celestial longitude). Neither clock can
+        # prove the other right, but that signature is unambiguous.
+        local_time_hours = None
+        if drift_s is not None and abs(drift_s) >= 3600 - 1:
+            hours = round(drift_s / 3600.0)
+            if abs(drift_s - hours * 3600.0) <= 1.5:
+                local_time_hours = hours
+        valid = (not lost_power) and plausible and local_time_hours is None
+        if lost_power:
+            reason = "oscillator stopped (lost power) — time not trustworthy"
+        elif not plausible:
+            reason = "implausible date"
+        elif local_time_hours is not None:
+            reason = f"RTC is {local_time_hours:+d} h from the system clock — it holds local time, not UTC"
+        else:
+            reason = ""
 
         now = self.get_clock().now().to_msg()
 
@@ -230,6 +248,7 @@ class RTCNode(Node):
             "drift_s": round(drift_s, 3) if drift_s is not None else None,
             "rtc_utc": rtc_utc,
             "source": self.time_source,
+            "reason": reason,
         }
         status_msg = String()
         status_msg.data = json.dumps(status)
@@ -237,8 +256,7 @@ class RTCNode(Node):
 
         if not valid and not self.publish_when_invalid:
             self.get_logger().error(
-                f"DS3231 time is NOT valid (lost_power={lost_power}, "
-                f"rtc_utc={rtc_utc}) — withholding rtc_time",
+                f"DS3231 time is NOT valid ({reason}; rtc_utc={rtc_utc}) — withholding rtc_time",
                 throttle_duration_sec=30.0,
             )
             return

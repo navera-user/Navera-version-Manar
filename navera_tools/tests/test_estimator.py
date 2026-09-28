@@ -33,7 +33,15 @@ def main():
     n.create_subscription(PositionEstimate, "/navera/position", positions.append, 10)
     n.create_subscription(NavStatus, "/navera/nav_status", statuses.append, 10)
     threading.Thread(target=rclpy.spin, args=(n,), daemon=True).start()
-    time.sleep(4.0)
+    # Wait for the estimator to be up (cold starts after a build can be slow),
+    # instead of a fixed sleep.
+    deadline = time.time() + 20.0
+    while not statuses and time.time() < deadline:
+        time.sleep(0.2)
+    if not statuses:
+        print("FAIL estimator did not start within 20 s")
+        return 1
+    time.sleep(1.0)
 
     def est(src, lat=35.83, lon=10.64, valid=True, ahead_s=0.0, known_cov=True, var=4.0):
         m = PositionEstimate()

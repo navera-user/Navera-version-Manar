@@ -49,7 +49,14 @@ def main():
     got = []
     node.create_subscription(PositionEstimate, "/navera/estimate/gps", got.append, 10)
     threading.Thread(target=rclpy.spin, args=(node,), daemon=True).start()
-    time.sleep(4.0)
+    # Wait until gps_node's publisher is discovered (instead of a fixed sleep).
+    deadline = time.time() + 20.0
+    while node.count_publishers("/navera/estimate/gps") == 0 and time.time() < deadline:
+        time.sleep(0.2)
+    if node.count_publishers("/navera/estimate/gps") == 0:
+        print("FAIL gps_node did not start within 20 s")
+        return 1
+    time.sleep(1.0)
 
     failures = []
     for name, line, expect in CASES:

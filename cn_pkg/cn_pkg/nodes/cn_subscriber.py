@@ -34,6 +34,7 @@ running, the new pair is DROPPED (logged) — never queued, never parallel.
 import json
 import base64
 import threading
+import time
 from datetime import datetime, timezone
 
 import cv2
@@ -46,7 +47,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
-from sensor_msgs.msg import Image, NavSatFix, NavSatStatus
+from sensor_msgs.msg import Image, NavSatFix, NavSatStatus, TimeReference
 from navera_msgs.msg import PositionEstimate
 import math
 from std_msgs.msg import String
@@ -81,6 +82,9 @@ class CNSubscriber(Node):
         # Approximate position of the operating area: one sky direction matches
         # two positions in general, and this prior picks the right one.
         self.declare_parameter("prior_lat", float("nan"))
+        # Time source when frame_meta and utc_time do not give one: the DS3231
+        # RTC (survives an offline boot), else the system clock.
+        self.declare_parameter("rtc_topic", "/navera/sensors/rtc_time")
         self.declare_parameter("prior_lon", float("nan"))
 
         self.conf_threshold = float(self.get_parameter("conf_threshold").value)
@@ -94,6 +98,9 @@ class CNSubscriber(Node):
         self.utc_time    = str(self.get_parameter("utc_time").value)
         self.prior_lat   = float(self.get_parameter("prior_lat").value)
         self.prior_lon   = float(self.get_parameter("prior_lon").value)
+        self._rtc_sample = None   # (rtc_epoch, system_epoch_at_read)
+        self.create_subscription(TimeReference, self.get_parameter("rtc_topic").value,
+                                 self._on_rtc, 10)
 
         # ── State ───────────────────────────────────────────────
         self.bridge        = CvBridge()
@@ -164,6 +171,21 @@ class CNSubscriber(Node):
         if pair is not None:
             self._dispatch(*pair)
 
+    def _on_rtc(self, msg: TimeReference):
+        """rtc_node publishes rtc_time only when the DS3231 time is valid (UTC)."""
+        sys_epoch = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+        self._rtc_sample = (msg.time_ref.sec + msg.time_ref.nanosec * 1e-9, sys_epoch)
+
+    def _utc_now(self):
+        """(UTC "YYYY-MM-DD HH:MM:SS", source) — RTC-based when a recent valid
+        reading exists, else the system clock."""
+        now = time.time()
+        if self._rtc_sample is not None and 0.0 <= now - self._rtc_sample[1] <= 5.0:
+            rtc_epoch, sys_epoch = self._rtc_sample
+            t = datetime.fromtimestamp(rtc_epoch + (now - sys_epoch), tz=timezone.utc)
+            return t.strftime("%Y-%m-%d %H:%M:%S"), "rtc"
+        return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"), "system_clock"
+
     def on_meta(self, msg: String):
         try:
             meta = json.loads(msg.data)
@@ -219,8 +241,11 @@ class CNSubscriber(Node):
             if self.solver_mode == "geoloc":
                 tilt    = float(meta.get("tilt", self.tilt))
                 azimuth = float(meta.get("azimuth", self.azimuth))
-                utc     = str(meta.get("utc_time") or self.utc_time or
-                              datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
+                utc = meta.get("utc_time") or self.utc_time
+                utc_src = "frame" if meta.get("utc_time") else "parameter"
+                if not utc:
+                    utc, utc_src = self._utc_now()
+                meta["utc_source"] = utc_src
                 if not (math.isfinite(tilt) and math.isfinite(azimuth)):
                     result = {"success": False,
                               "error": "camera attitude (tilt/azimuth) unknown — needs the IMU"}
@@ -330,7 +355,7 @@ class CNSubscriber(Node):
             est.frame_index = int(seq_id)
         except (TypeError, ValueError):
             est.frame_index = -1
-        est.details_json = json.dumps(details, default=str)
+        est.details_json = json.dumps({**details, "utc_source": meta.get("utc_source") if isinstance(meta, dict) else None}, default=str)
         self.pub_est.publish(est)
 
 

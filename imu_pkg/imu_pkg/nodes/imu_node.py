@@ -35,6 +35,7 @@ dead-reckoning; set the parameter to False for any consumer that follows REP-145
 from typing import Optional, Tuple
 
 import rclpy
+from navera_common.health import FrozenSampleDetector, RetryTimer
 from navera_common.lifecycle import die_with_parent
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
@@ -59,6 +60,13 @@ _BUS_PINS = {
 
 # Consecutive read failures tolerated before the sensor is re-initialized.
 _MAX_READ_FAILURES = 10
+# The Adafruit driver returns its last parsed report when the sensor stops
+# reporting. A real sample never repeats bit-for-bit (sensor noise), so this
+# many identical consecutive reads (1 s at 50 Hz) means the data is frozen.
+_MAX_FROZEN_SAMPLES = 50
+# Minimum time between two re-initialisation attempts: the bus is shared with
+# the RTC, and a missing sensor must not be probed at the publish rate.
+_RECONNECT_PERIOD_S = 2.0
 
 
 class IMUNode(Node):
@@ -97,6 +105,9 @@ class IMUNode(Node):
         self.bno: Optional[BNO08X_I2C] = None
         self.read_failures = 0
         self.sample_count = 0
+        self._i2c = None
+        self._frozen = FrozenSampleDetector(_MAX_FROZEN_SAMPLES)
+        self._retry = RetryTimer(_RECONNECT_PERIOD_S)
 
         self._connect()
         self.timer = self.create_timer(1.0 / rate, self.publish_imu)
@@ -120,8 +131,10 @@ class IMUNode(Node):
             return False
 
         scl_name, sda_name = _BUS_PINS[self.bus_num]
+        self._release_bus()
         try:
             i2c = busio.I2C(getattr(board, scl_name), getattr(board, sda_name))
+            self._i2c = i2c
             bno = BNO08X_I2C(i2c, address=self.address)
             bno.enable_feature(BNO_REPORT_ROTATION_VECTOR)
             bno.enable_feature(BNO_REPORT_GYROSCOPE)
@@ -135,10 +148,20 @@ class IMUNode(Node):
 
         self.bno = bno
         self.read_failures = 0
+        self._frozen.reset()
         self.get_logger().info(
             f"BNO085 ready on I2C bus {self.bus_num} ({scl_name}/{sda_name}) @ 0x{self.address:02X}"
         )
         return True
+
+    def _release_bus(self) -> None:
+        """Free the previous I2C handle before opening a new one (no fd leak)."""
+        if self._i2c is not None:
+            try:
+                self._i2c.deinit()
+            except Exception:
+                pass
+            self._i2c = None
 
     def _read(self) -> Optional[Tuple[tuple, tuple, tuple]]:
         """Read one sample. Returns (quaternion, gyro, accel) or None if the read failed."""
@@ -172,10 +195,11 @@ class IMUNode(Node):
     def publish_imu(self) -> None:
         """Timer callback: read the BNO085 and publish one sensor_msgs/Imu."""
         if self.bno is None:
-            self.get_logger().warn(
-                "BNO085 not connected, retrying init...", throttle_duration_sec=5.0
-            )
-            self._connect()
+            if self._retry.ready():
+                self.get_logger().warn(
+                    "BNO085 not connected, retrying init...", throttle_duration_sec=5.0
+                )
+                self._connect()
             return
 
         sample = self._read()
@@ -188,6 +212,12 @@ class IMUNode(Node):
             return
 
         quat, gyro, accel = sample
+        if self._frozen.update((tuple(quat), tuple(gyro), tuple(accel))):
+            # Publishing it would keep the IMU "alive" with fresh stamps.
+            self.get_logger().error(
+                f"BNO085 data frozen ({_MAX_FROZEN_SAMPLES} identical samples) — reinitializing")
+            self.bno = None
+            return
 
         msg = Imu()
         msg.header.stamp = self.get_clock().now().to_msg()
