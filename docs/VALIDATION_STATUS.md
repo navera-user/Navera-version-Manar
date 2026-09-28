@@ -1,10 +1,12 @@
 # NAVERA — Validation status and known limitations
 
-**Status: engineering prototype.** Last updated 2026-09-28.
+**Release 0.2 — field validation pending.** Last updated 2026-09-28.
 
-This document states what has been measured, how, and what has not been validated yet.
-Every number below comes from a run on the Jetson Orin Nano. None of them comes from a
-real flight. Anything not listed here has not been measured.
+This document states what has been measured, how, and what still has to be validated in
+the field. Every number below comes from a run on the Jetson Orin Nano (bench, replay and
+synthetic data). None of them comes from a real flight. Anything not listed here has not
+been measured. Open engineering items are tracked in
+[ENGINEERING_BACKLOG.md](ENGINEERING_BACKLOG.md).
 
 ## Summary
 

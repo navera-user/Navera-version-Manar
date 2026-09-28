@@ -5,9 +5,10 @@ position when GPS fails, is jammed or has no coverage. It works by matching the 
 camera against an onboard satellite map, with night (thermal) and celestial (star camera)
 fallbacks. It is vehicle-agnostic (UAV, USV, UGV). By IRIS Systems.
 
-> **Status: engineering prototype.** The positioning methods are not yet validated on
-> real flight data, and day vision is not accurate enough to replace GPS. Read
-> [docs/VALIDATION_STATUS.md](docs/VALIDATION_STATUS.md) before relying on any output.
+> **Release 0.2 — field validation pending.** Positioning accuracy is measured on bench and
+> replay data only; day vision is not yet accurate enough to replace GPS. See
+> [docs/VALIDATION_STATUS.md](docs/VALIDATION_STATUS.md) for every measured number and
+> [docs/ENGINEERING_BACKLOG.md](docs/ENGINEERING_BACKLOG.md) for open work.
 
 ## How it works
 
