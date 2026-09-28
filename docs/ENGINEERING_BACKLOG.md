@@ -83,7 +83,7 @@ Status: ✅ done · 🔧 in progress · ⬜ open
 | WEB-11 | M | Bridge /gps_status.json never expires a "predicted" position | ✅ 3fac266 |
 | WEB-12 | M | DDS open to the network; simulators can hijack the estimator | ✅ c3aae6e, 8774666 |
 | WEB-13 | L | Web interface is plain HTTP (no TLS) | ⬜ |
-| WEB-14 | L | Orphan front-ends: root index.html, server.js, navera_IMPROVED.html, navera_stellar.html (empty), scripts/server.py | ⬜ |
+| WEB-14 | L | Orphan front-ends: root index.html, server.js, navera_IMPROVED.html, navera_stellar.html (empty), scripts/server.py | ✅ 3a832e3 |
 
 ## 4. Deployment and packaging
 
@@ -100,7 +100,7 @@ Status: ✅ done · 🔧 in progress · ⬜ open
 | DEP-9 | M | `After=network-online.target` delays boot on a vehicle with no network | ✅ 252fa15 |
 | DEP-10 | M | Docker files and start_navera.sh stale vs host deployment | ⬜ |
 | DEP-11 | M | Licences: root LICENSE is NVIDIA's; package.xml says Apache-2.0 / navera@example.com; satellite imagery licence | ⬜ |
-| DEP-12 | L | package.xml buildtool ament_cmake_python on ament_python packages; dead CMakeLists.txt | ⬜ |
+| DEP-12 | L | package.xml buildtool ament_cmake_python on ament_python packages; dead CMakeLists.txt | ✅ 3a832e3 |
 | DEP-13 | L | Log growth (~/.ros/log never rotated) | ✅ 252fa15 |
 | DEP-14 | L | Reboot validation of the new restart mechanism on a deployed unit | ⬜ |
 
@@ -110,8 +110,8 @@ Status: ✅ done · 🔧 in progress · ⬜ open
 |---|---|---|---|
 | QA-1 | H | No automated tests; no one-command test run | ✅ 9ad7c7e |
 | QA-2 | M | Per-package READMEs missing (camera, day, cn, gps, imu, simulation_web, estimator, common) | ⬜ |
-| QA-3 | L | print() instead of ROS logger in day_localizer; dead code; orphan scripts in packages | ⬜ |
-| QA-5 | L | Intermittent test-suite failure seen twice on the first run right after a rebuild (every step printed PASS); runner now names the failing step | ⬜ |
+| QA-3 | L | print() instead of ROS logger in day_localizer; dead code; orphan scripts in packages | ✅ 3a832e3 |
+| QA-5 | L | Intermittent test-suite failure seen twice on the first run right after a rebuild (every step printed PASS); runner now names the failing step | ✅ 3a832e3 |
 | QA-4 | L | Stale docs: ROS_TOPICS_AND_COMMUNICATION.md, NAVERA_FULL_DOCUMENTATION.md, VISUAL_LOCALIZATION_SUMMARY.md, night READMEs | ⬜ |
 
 ## 6. Product features
