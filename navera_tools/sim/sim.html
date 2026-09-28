@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NAVERA Mission Simulator</title>
+<link rel="stylesheet" href="/leaflet/leaflet.min.css"/>
+<script src="/leaflet/leaflet.min.js"></script>
+<style>
+:root{
+  --bg:#0b0f15; --panel:#11161e; --card:#161c26; --line:#232b38; --text:#e6edf3; --mute:#8b949e;
+  --gps:#3fb950; --day:#58e6d9; --night:#a371f7; --deg:#d29922; --bad:#f85149; --ap:#f2cc60;
+  --accent:#58a6ff;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);
+  font-family:Inter,'Segoe UI',system-ui,-apple-system,sans-serif;font-size:13px}
+button{font:inherit;color:inherit}
+#app{display:grid;grid-template-rows:48px 1fr;height:100%}
+header{display:flex;align-items:center;gap:14px;padding:0 16px;background:var(--panel);
+  border-bottom:1px solid var(--line)}
+header .logo{font-weight:800;letter-spacing:2px;font-size:15px}
+header .logo span{color:var(--accent)}
+.simtag{background:var(--bad);color:#fff;font-weight:700;font-size:11px;letter-spacing:1.5px;
+  padding:3px 9px;border-radius:5px}
+#phase{flex:1;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#phase b{color:var(--text)}
+header a{color:var(--accent);text-decoration:none;font-weight:600;white-space:nowrap}
+main{display:grid;grid-template-columns:1fr 400px;min-height:0}
+#mapwrap{position:relative;min-height:0}
+#map{position:absolute;inset:0;background:#0b0f15}
+.leaflet-control-attribution{display:none}
+#maphint{position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:900;
+  background:rgba(17,22,30,.92);border:1px solid var(--line);border-radius:8px;padding:7px 14px;
+  font-weight:600;pointer-events:none}
+#legend{position:absolute;left:12px;bottom:12px;z-index:900;background:rgba(17,22,30,.9);
+  border:1px solid var(--line);border-radius:8px;padding:8px 11px;line-height:1.75;font-size:12px}
+#legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:7px;vertical-align:-1px}
+#legend i.sq{border-radius:2px}
+#toast{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);z-index:950;display:none;
+  background:#3a1d1d;border:1px solid rgba(248,81,73,.6);color:#ffb3ad;border-radius:8px;padding:9px 16px;
+  font-weight:600;max-width:80%}
+#mapbtns{position:absolute;right:12px;top:12px;z-index:900;display:flex;gap:6px}
+aside{background:var(--panel);border-left:1px solid var(--line);overflow-y:auto;padding:12px;
+  display:flex;flex-direction:column;gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
+.card h3{font-size:11px;letter-spacing:1.3px;text-transform:uppercase;color:var(--mute);
+  margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+.row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 0}
+.row .k{color:var(--mute)}
+.row .v{font-variant-numeric:tabular-nums;font-weight:600;text-align:right}
+.seg{display:flex;background:#0e131a;border:1px solid var(--line);border-radius:8px;padding:3px;gap:3px}
+.seg button{flex:1;border:0;background:transparent;padding:6px 4px;border-radius:6px;cursor:pointer;
+  color:var(--mute);font-weight:600;font-size:12px;white-space:nowrap}
+.seg button.on{background:#243044;color:var(--text)}
+.seg.fault button.on.warn{background:rgba(248,81,73,.22);color:#ff938c}
+.seg.fault button.on.ok{background:rgba(63,185,80,.18);color:#56d364}
+.lbl{font-size:12px;color:var(--mute);margin:10px 0 5px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.btn{border:1px solid var(--line);background:#1d2533;border-radius:8px;padding:8px 12px;cursor:pointer;
+  font-weight:600}
+.btn:hover{background:#243044}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#07111f}
+.btn.primary:disabled{opacity:.45;cursor:not-allowed}
+.btn.danger{border-color:rgba(248,81,73,.5);color:#ff938c}
+.btn.sm{padding:5px 9px;font-size:12px}
+.btn.on{background:#243044;border-color:var(--accent)}
+.btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.pts{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+.pt{border:1px dashed var(--line);border-radius:8px;padding:7px 9px;cursor:pointer;font-size:12px}
+.pt.on{border-style:solid;border-color:var(--accent);background:rgba(88,166,255,.08)}
+.pt b{display:block;font-size:11px;color:var(--mute);letter-spacing:1px;margin-bottom:2px}
+.badge{display:inline-flex;align-items:center;gap:8px;font-weight:800;font-size:18px;letter-spacing:1px}
+.badge .dot{width:12px;height:12px;border-radius:50%}
+.big{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.chip{border:1px solid var(--line);border-radius:12px;padding:3px 9px;font-size:11px;font-weight:700;
+  color:var(--mute)}
+.chip.alive{color:var(--text)}
+.chip.active{border-color:var(--gps);color:var(--gps)}
+.chip.dead{color:#5a626c;text-decoration:line-through}
+.reason{color:var(--mute);font-size:12px;margin-top:6px;line-height:1.4}
+#cam{width:100%;aspect-ratio:3/2;border-radius:8px;background:#0e131a;display:block;object-fit:cover;
+  border:1px solid var(--line)}
+#chart{width:100%;height:150px;display:block}
+#log{max-height:240px;overflow-y:auto;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11.5px;
+  line-height:1.55}
+#log div{padding:1px 0;border-bottom:1px solid rgba(255,255,255,.03)}
+#log .t{color:#5a626c;margin-right:6px}
+#log .warn{color:#e3b341} #log .error{color:#ff938c} #log .ok{color:#56d364}
+.note{font-size:11.5px;color:var(--mute);line-height:1.45;margin-top:8px}
+.kpi{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kpi div{background:#0e131a;border:1px solid var(--line);border-radius:8px;padding:8px}
+.kpi small{display:block;color:var(--mute);font-size:11px;margin-bottom:2px}
+.kpi b{font-size:17px;font-variant-numeric:tabular-nums}
+@media (max-width:900px){
+  main{grid-template-columns:1fr;grid-template-rows:55vh auto}
+  aside{border-left:0;border-top:1px solid var(--line);overflow:visible}
+  #app{height:auto;min-height:100%}
+  header #phase{display:none}
+}
+</style>
+</head>
+<body>
+<div id="app">
+<header>
+  <div class="logo">NAVERA<span>·SIM</span></div>
+  <div class="simtag">SIMULATION</div>
+  <div id="phase">—</div>
+  <a id="oplink" href="#" target="_blank">Operator view ↗</a>
+</header>
+<main>
+  <div id="mapwrap">
+    <div id="map"></div>
+    <div id="toast"></div>
+    <div id="maphint">Click the map to place the START point</div>
+    <div id="mapbtns">
+      <button class="btn sm on" id="follow">Follow vehicle</button>
+      <button class="btn sm" id="clear">Clear tracks</button>
+    </div>
+    <div id="legend">
+      <div><i style="background:#fff"></i>True vehicle &amp; path</div>
+      <div><i style="background:var(--gps)"></i>NAVERA — GPS</div>
+      <div><i style="background:var(--day)"></i>NAVERA — day vision</div>
+      <div><i style="background:var(--night)"></i>NAVERA — night vision</div>
+      <div><i style="background:var(--deg)"></i>NAVERA — degraded</div>
+      <div><i class="sq" style="background:var(--ap)"></i>Autopilot's belief</div>
+    </div>
+  </div>
+  <aside>
+    <div class="card" id="missionCard">
+      <h3>Mission</h3>
+      <div class="seg" id="vehicle">
+        <button data-v="drone" class="on">✈ Drone</button>
+        <button data-v="boat">⛴ Boat</button>
+        <button data-v="robot">⛭ Ground robot</button>
+      </div>
+      <div class="pts">
+        <div class="pt on" id="ptStart"><b>START</b><span>click the map</span></div>
+        <div class="pt" id="ptDest"><b>DESTINATION</b><span>click the map</span></div>
+      </div>
+      <div class="lbl">Speed: <b id="spdV">15</b> m/s</div>
+      <input type="range" id="spd" min="2" max="20" value="15">
+      <div id="altBox"><div class="lbl">Altitude: <b id="altV">120</b> m</div>
+      <input type="range" id="alt" min="30" max="400" step="10" value="120"></div>
+      <div class="lbl">Vision accuracy</div>
+      <div class="seg" id="profile">
+        <button data-v="measured" class="on">Measured today</button>
+        <button data-v="target">Target</button>
+      </div>
+      <div class="note" id="profNote"></div>
+      <label class="row" style="justify-content:flex-start;gap:8px;margin-top:10px;cursor:pointer">
+        <input type="checkbox" id="fwd"> <span>Forward degraded positions to the autopilot</span></label>
+      <div class="btns">
+        <button class="btn primary" id="startBtn" disabled>Start mission</button>
+        <button class="btn" id="rtlBtn">Return to start</button>
+        <button class="btn" id="landBtn">Land / stop</button>
+        <button class="btn danger" id="stopBtn">End simulation</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Inject faults</h3>
+      <div class="lbl" style="margin-top:0">GPS receiver</div>
+      <div class="seg fault" id="f_gps">
+        <button data-v="ok" class="on ok">OK</button>
+        <button data-v="jammed">Jammed</button>
+        <button data-v="spoof_jump">Spoof jump</button>
+        <button data-v="spoof_drift">Spoof drift</button>
+        <button data-v="off">Off</button>
+      </div>
+      <div class="lbl">Camera</div>
+      <div class="seg fault" id="f_camera"><button data-v="ok" class="on ok">OK</button><button data-v="failed">Failed</button></div>
+      <div class="lbl">Light</div>
+      <div class="seg fault" id="f_light"><button data-v="day" class="on ok">Day</button><button data-v="night">Night</button></div>
+      <div class="lbl">IMU</div>
+      <div class="seg fault" id="f_imu"><button data-v="ok" class="on ok">OK</button><button data-v="failed">Failed</button></div>
+    </div>
+
+    <div class="card">
+      <h3>NAVERA <span id="navMode" class="chip">—</span></h3>
+      <div class="badge"><span class="dot" id="navDot"></span><span id="navState">—</span></div>
+      <div class="reason" id="navReason">—</div>
+      <div class="kpi" style="margin-top:10px">
+        <div><small>Source</small><b id="navSrc">—</b></div>
+        <div><small>Error vs truth</small><b id="navErr">—</b></div>
+      </div>
+      <div class="chips" id="chips"></div>
+    </div>
+
+    <div class="card">
+      <h3>Autopilot (ArduPilot) <span class="chip" id="apLink">—</span></h3>
+      <div class="kpi">
+        <div><small>Mode</small><b id="apMode">—</b></div>
+        <div><small>GPS from NAVERA</small><b id="apFix">—</b></div>
+        <div><small>Its position error</small><b id="apErr">—</b></div>
+        <div><small>Navigation filter</small><b id="apEkf">—</b></div>
+        <div><small>Altitude / speed</small><b id="apAlt">—</b></div>
+        <div><small>To destination</small><b id="apDist">—</b></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Error vs truth <span style="text-transform:none;letter-spacing:0">last 5 min · log scale</span></h3>
+      <canvas id="chart"></canvas>
+    </div>
+
+    <div class="card">
+      <h3>Sensors</h3>
+      <img id="cam" alt="camera">
+      <div class="row"><span class="k">Camera</span><span class="v" id="sCam">—</span></div>
+      <div class="row"><span class="k">GPS receiver (NMEA → gps_node)</span><span class="v" id="sGps">—</span></div>
+      <div class="row"><span class="k">IMU</span><span class="v" id="sImu">—</span></div>
+      <div class="row"><span class="k">Clock (RTC)</span><span class="v" id="sRtc">—</span></div>
+      <div class="row"><span class="k">NAVERA nodes</span><span class="v" id="sProcs">—</span></div>
+      <div class="note">Simulated: the world, GPS receiver, IMU, clock and the vision fixes' error.
+        Real: NAVERA's GPS driver, arbiter, vehicle output and web view, and the ArduPilot autopilot.
+        The camera picture is cut from the onboard map, so it says nothing about vision accuracy.</div>
+    </div>
+
+    <div class="card">
+      <h3>Event log</h3>
+      <div id="log"></div>
+    </div>
+  </aside>
+</main>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const COLORS = {GPS:'#3fb950', 'DAY VISION':'#58e6d9', 'NIGHT VISION':'#a371f7', CELESTIAL:'#e3b341'};
+const PROF_NOTE = {
+  measured:'Vision error as measured today on real frames: day ≈ 440 m median, night drifts. ' +
+           'NAVERA reports it as DEGRADED and, by default, does not give it to the autopilot.',
+  target:'The accuracy goal (15 m day, 25 m night). NOT a measured performance — use it to show ' +
+         'how the system behaves once vision meets its target.'};
+$('oplink').href = `${location.protocol}//${location.hostname}:8181/operator`;
+
+// ── map ──
+const map = L.map('map', {zoomControl:true, attributionControl:false, preferCanvas:true})
+             .setView([35.835, 10.61], 13);
+L.tileLayer('/tiles/{z}/{x}/{y}.png', {maxZoom:19, maxNativeZoom:18, minZoom:8,
+  errorTileUrl:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'}).addTo(map);
+
+const flag = (color, label) => L.divIcon({className:'', iconSize:[30,40], iconAnchor:[15,38],
+  html:`<svg width="30" height="40" viewBox="0 0 30 40"><path d="M15 39C15 39 3 24 3 15a12 12 0 0 1 24 0c0 9-12 24-12 24z"
+   fill="${color}" stroke="#0b0f15" stroke-width="2"/><text x="15" y="19" font-size="11" font-weight="800"
+   text-anchor="middle" fill="#0b0f15" font-family="sans-serif">${label}</text></svg>`});
+const VSHAPE = {
+  drone:'<circle r="4" fill="#fff"/><g stroke="#fff" stroke-width="2.4"><line x1="-9" y1="-9" x2="9" y2="9"/><line x1="9" y1="-9" x2="-9" y2="9"/></g><g fill="none" stroke="#fff" stroke-width="1.6"><circle cx="-9" cy="-9" r="4.5"/><circle cx="9" cy="-9" r="4.5"/><circle cx="-9" cy="9" r="4.5"/><circle cx="9" cy="9" r="4.5"/></g><path d="M0-17 5-11H-5z" fill="#ff5c5c"/>',
+  boat:'<path d="M0-15 7-4 6 13H-6L-7-4z" fill="#fff" stroke="#0b0f15" stroke-width="1.5"/><path d="M0-15 3-10H-3z" fill="#ff5c5c"/>',
+  robot:'<rect x="-8" y="-11" width="16" height="22" rx="3" fill="#fff" stroke="#0b0f15" stroke-width="1.5"/><rect x="-11" y="-9" width="3" height="7" fill="#fff"/><rect x="8" y="-9" width="3" height="7" fill="#fff"/><rect x="-11" y="3" width="3" height="7" fill="#fff"/><rect x="8" y="3" width="3" height="7" fill="#fff"/><path d="M0-10 4-5H-4z" fill="#ff5c5c"/>'};
+const vIcon = (kind, hdg) => L.divIcon({className:'', iconSize:[44,44], iconAnchor:[22,22],
+  html:`<svg width="44" height="44" viewBox="-22 -22 44 44" style="filter:drop-shadow(0 0 3px #000)">
+    <g transform="rotate(${hdg||0})">${VSHAPE[kind]||VSHAPE.drone}</g></svg>`});
+
+let startPt = null, destPt = null, pick = 'start';
+const startM = L.marker([0,0], {icon:flag('#3fb950','S')});
+const destM = L.marker([0,0], {icon:flag('#ff5c5c','D')});
+const plan = L.polyline([], {color:'#ff5c5c', weight:2, dashArray:'6 8', opacity:.9});
+let vehM = null, truthLine = null, lastTruth = null;
+let apM = null, apLine = L.polyline([], {color:'#f2cc60', weight:2, opacity:.8}).addTo(map);
+let navM = null, navDots = [], lastNavKey = null;
+const DOTS_MAX = 1500;
+
+function drawPlan(){
+  if(startPt){ startM.setLatLng(startPt).addTo(map); } else startM.remove();
+  if(destPt){ destM.setLatLng(destPt).addTo(map); } else destM.remove();
+  plan.setLatLngs(startPt && destPt ? [startPt, destPt] : []).addTo(map);
+  $('ptStart').querySelector('span').textContent = startPt ? fmtLL(startPt) : 'click the map';
+  $('ptDest').querySelector('span').textContent = destPt ? fmtLL(destPt) : 'click the map';
+  $('ptStart').classList.toggle('on', pick === 'start');
+  $('ptDest').classList.toggle('on', pick === 'dest');
+  updateHint();
+}
+const fmtLL = p => `${p[0].toFixed(5)}, ${p[1].toFixed(5)}`;
+$('ptStart').onclick = () => { pick = 'start'; drawPlan(); };
+$('ptDest').onclick = () => { pick = 'dest'; drawPlan(); };
+
+map.on('click', e => {
+  const p = [e.latlng.lat, e.latlng.lng];
+  if(flying()){ post('goto', {dest:p}).then(r => { if(r.ok){ destPt = p; drawPlan(); } }); return; }
+  if(pick === 'start'){ startPt = p; pick = 'dest'; } else { destPt = p; }
+  drawPlan();
+});
+
+// ── controls ──
+const cfg = {vehicle:'drone', profile:'measured'};
+function seg(id, onPick){
+  $(id).querySelectorAll('button').forEach(b => b.onclick = () => onPick(b.dataset.v));
+}
+function setSeg(id, v, fault){
+  $(id).querySelectorAll('button').forEach(b => {
+    const on = b.dataset.v === v;
+    b.classList.toggle('on', on);
+    if(fault){ b.classList.toggle('ok', on && (v === 'ok' || v === 'day'));
+               b.classList.toggle('warn', on && !(v === 'ok' || v === 'day')); }
+  });
+}
+const DEF = {drone:[15,120], boat:[8,0], robot:[4,0]};
+const MAXSPD = {drone:20, boat:15, robot:8};
+seg('vehicle', v => { cfg.vehicle = v; setSeg('vehicle', v);
+  $('spd').max = MAXSPD[v];
+  $('spd').value = DEF[v][0]; $('spdV').textContent = DEF[v][0];
+  $('altBox').style.display = v === 'drone' ? '' : 'none'; });
+seg('profile', v => { cfg.profile = v; setSeg('profile', v); $('profNote').textContent = PROF_NOTE[v]; });
+$('profNote').textContent = PROF_NOTE.measured;
+$('spd').oninput = () => $('spdV').textContent = $('spd').value;
+$('alt').oninput = () => $('altV').textContent = $('alt').value;
+for(const k of ['gps','camera','light','imu']){
+  seg('f_' + k, v => post('fault', {[k]: v}));
+}
+
+async function post(action, body){
+  try{
+    const r = await fetch('/api/' + action, {method:'POST', headers:{'Content-Type':'application/json'},
+                                             body:JSON.stringify(body||{})});
+    const d = await r.json();
+    if(!d.ok) toast(d.error || 'refused');
+    return d;
+  }catch(e){ toast('simulator not reachable'); return {ok:false}; }
+}
+let toastT = null;
+function toast(msg){
+  $('toast').textContent = msg; $('toast').style.display = 'block';
+  clearTimeout(toastT); toastT = setTimeout(() => $('toast').style.display = 'none', 4000);
+}
+$('startBtn').onclick = () => {
+  clearTracks();
+  post('mission', {vehicle:cfg.vehicle, start:startPt, dest:destPt, speed:+$('spd').value,
+                   alt:+$('alt').value, profile:cfg.profile, forward_degraded:$('fwd').checked});
+  follow = true; $('follow').classList.add('on');
+};
+$('rtlBtn').onclick = () => post('rtl');
+$('landBtn').onclick = () => post('land');
+$('stopBtn').onclick = () => post('stop');
+let follow = true;
+$('follow').onclick = () => { follow = !follow; $('follow').classList.toggle('on', follow); };
+$('clear').onclick = clearTracks;
+function clearTracks(){
+  navDots.forEach(d => map.removeLayer(d)); navDots = [];
+  if(truthLine){ map.removeLayer(truthLine); truthLine = null; }
+  apLine.setLatLngs([]); lastTruth = null; series = [];
+}
+
+// ── state ──
+let S = null, series = [];
+const flying = () => S && ['starting','waiting_gps','arming','takeoff','enroute','arrived','rtl','landing','failsafe'].includes(S.phase);
+function updateHint(){
+  let t;
+  if(S && ['starting','waiting_gps','arming'].includes(S.phase)) t = 'Mission starting… (click the map to change the destination)';
+  else if(flying()) t = 'Click the map to send the vehicle to a new destination';
+  else if(!startPt) t = 'Click the map to place the START point';
+  else if(!destPt) t = 'Click the map to place the DESTINATION';
+  else t = 'Ready — press Start mission';
+  $('maphint').textContent = t;
+  $('startBtn').disabled = !(startPt && destPt) || (S && ['starting','waiting_gps','arming','takeoff'].includes(S.phase));
+}
+const m = v => v == null ? '—' : v >= 1000 ? `${(v/1000).toFixed(2)} km` : `${Math.round(v)} m`;
+const FIX = {0:'none',1:'no fix',2:'2D fix',3:'3D fix',4:'DGPS',5:'RTK float',6:'RTK fixed'};
+
+function render(d){
+  S = d;
+  const pc = ['failsafe','error'].includes(d.phase) ? 'var(--bad)' : 'var(--text)';
+  $('phase').innerHTML = `<b style="color:${pc}">${d.phase.replace('_',' ').toUpperCase()}</b> · ${esc(d.detail)}`;
+  for(const k of ['gps','camera','light','imu']) setSeg('f_' + k, d.faults[k], true);
+  if(d.cfg && d.phase !== 'idle'){
+    if(d.cfg.start && !startPt) startPt = d.cfg.start;
+    if(d.cfg.dest){ destPt = d.cfg.dest; }
+  }
+  drawPlan();
+
+  // NAVERA
+  const n = d.navera, fresh = n.fresh;
+  const col = !fresh ? '#6e7681' : n.state === 'FIX' ? (COLORS[n.source] || '#3fb950') : '#d29922';
+  $('navDot').style.background = col; $('navDot').style.boxShadow = `0 0 10px ${col}`;
+  $('navState').textContent = n.state; $('navState').style.color = col;
+  $('navReason').textContent = n.reason || '—';
+  $('navSrc').textContent = fresh ? n.source : '—';
+  $('navErr').textContent = fresh ? m(n.err_m) : '—';
+  $('navMode').textContent = fresh ? n.mode || '—' : 'no output';
+  const ch = [];
+  for(const [name, h] of Object.entries(d.sources || {})){
+    const cls = h.contributing ? 'active' : h.alive ? 'alive' : 'dead';
+    ch.push(`<span class="chip ${cls}">${name}</span>`);
+  }
+  $('chips').innerHTML = ch.join('');
+
+  // autopilot
+  const a = d.autopilot || {};
+  $('apLink').textContent = a.link ? (a.armed ? 'ARMED' : 'disarmed') : 'not running';
+  $('apLink').className = 'chip ' + (a.link ? (a.armed ? 'active' : 'alive') : 'dead');
+  $('apMode').textContent = a.link ? a.mode : '—';
+  $('apFix').textContent = a.link ? FIX[a.fix_type] || a.fix_type : '—';
+  $('apFix').style.color = a.fix_type >= 3 ? 'var(--gps)' : a.link ? 'var(--bad)' : '';
+  $('apErr').textContent = m(a.err_m);
+  $('apErr').style.color = a.err_m == null ? '' : a.err_m < 30 ? 'var(--gps)' : a.err_m < 150 ? 'var(--deg)' : 'var(--bad)';
+  $('apEkf').textContent = a.link ? (a.ekf_ok ? 'position OK' : 'NO POSITION') : '—';
+  $('apEkf').style.color = a.link ? (a.ekf_ok ? 'var(--gps)' : 'var(--bad)') : '';
+  const t = d.truth;
+  $('apAlt').textContent = t ? `${Math.round(t.alt)} m · ${t.speed.toFixed(1)} m/s` : '—';
+  const eta = t && a.dist_to_dest_m != null && t.speed > 0.5 ? ` · ${Math.round(a.dist_to_dest_m / t.speed / 60)} min` : '';
+  $('apDist').textContent = a.dist_to_dest_m != null ? m(a.dist_to_dest_m) + eta : '—';
+
+  // sensors
+  const g = d.gps;
+  $('sGps').textContent = `${g.mode.replace('_',' ')} · ` + (g.node_valid ? `fix, ${g.sats ?? '?'} sats, HDOP ${g.hdop ?? '?'}` :
+                           g.node_age == null || g.node_age > 3 ? 'no data' : 'no fix');
+  $('sGps').style.color = g.node_valid && g.mode === 'ok' ? 'var(--gps)' : g.mode === 'ok' ? '' : 'var(--bad)';
+  $('sImu').textContent = d.faults.imu === 'ok' ? (t ? 'OK · 20 Hz' : 'waiting') : 'FAILED';
+  $('sImu').style.color = d.faults.imu === 'ok' ? '' : 'var(--bad)';
+  $('sRtc').textContent = 'OK · 1 Hz';
+  $('sCam').textContent = d.faults.camera !== 'ok' ? 'FAILED' :
+                          (d.faults.light === 'night' ? 'thermal (night)' : 'day') + (t ? ' · 1 fix/s' : '');
+  $('sCam').style.color = d.faults.camera === 'ok' ? '' : 'var(--bad)';
+  const pr = Object.entries(d.procs || {});
+  const down = pr.filter(([, up]) => !up).map(([k]) => k);
+  $('sProcs').textContent = down.length ? `DOWN: ${down.join(', ')}` : `${pr.length} running`;
+  $('sProcs').style.color = down.length ? 'var(--bad)' : 'var(--gps)';
+
+  // map
+  if(t){
+    const p = [t.lat, t.lon];
+    if(!vehM) vehM = L.marker(p, {icon:vIcon(d.cfg.vehicle, t.heading), zIndexOffset:2000}).addTo(map);
+    else { vehM.setLatLng(p); vehM.setIcon(vIcon(d.cfg.vehicle, t.heading)); }
+    if(!truthLine || (lastTruth && dist(lastTruth, p) > 500)){
+      truthLine = L.polyline([p], {color:'#fff', weight:3, opacity:.9}).addTo(map);
+    } else truthLine.addLatLng(p);
+    lastTruth = p;
+    if(follow && !map.getBounds().pad(-0.25).contains(p)) map.panTo(p);
+  } else if(vehM){ map.removeLayer(vehM); vehM = null; }
+  if(fresh && n.lat != null){
+    const key = `${n.lat},${n.lon}`;
+    if(key !== lastNavKey){
+      lastNavKey = key;
+      const c = n.state === 'FIX' ? (COLORS[n.source] || '#3fb950') : '#d29922';
+      navDots.push(L.circleMarker([n.lat, n.lon], {radius:3.5, color:c, weight:1, fillColor:c,
+                                  fillOpacity:.85, interactive:false}).addTo(map));
+      if(navDots.length > DOTS_MAX) map.removeLayer(navDots.shift());
+    }
+  }
+  if(a.belief){
+    const b = a.belief;
+    if(!apM) apM = L.marker(b, {icon:L.divIcon({className:'', iconSize:[18,18], iconAnchor:[9,9],
+        html:'<svg width="18" height="18" viewBox="-9 -9 18 18"><rect x="-6" y="-6" width="12" height="12" transform="rotate(45)" fill="none" stroke="#f2cc60" stroke-width="2.5"/></svg>'}),
+        zIndexOffset:1500}).addTo(map);
+    else apM.setLatLng(b);
+    if(a.armed) apLine.addLatLng(b);
+  } else if(apM){ map.removeLayer(apM); apM = null; }
+
+  // log
+  $('log').innerHTML = d.events.slice().reverse().map(e =>
+    `<div class="${e.level}"><span class="t">${e.clock}</span>${esc(e.text)}</div>`).join('');
+  series = d.series;
+  drawChart();
+  updateHint();
+}
+const esc = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function dist(a, b){
+  const r = Math.PI/180, dLat = (b[0]-a[0])*r, dLon = (b[1]-a[1])*r;
+  const h = Math.sin(dLat/2)**2 + Math.cos(a[0]*r)*Math.cos(b[0]*r)*Math.sin(dLon/2)**2;
+  return 2*6371000*Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+// ── chart ──
+function drawChart(){
+  const c = $('chart'), dpr = window.devicePixelRatio || 1;
+  const W = c.clientWidth, H = c.clientHeight;
+  if(c.width !== W*dpr){ c.width = W*dpr; c.height = H*dpr; }
+  const g = c.getContext('2d');
+  g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
+  const L0 = 34, B = H - 16;
+  const ymin = 1, ymax = 10000, ly = v => B - (Math.log10(Math.max(ymin, Math.min(ymax, v))) / 4) * (B - 6);
+  g.font = '10px sans-serif'; g.fillStyle = '#6e7681'; g.strokeStyle = 'rgba(255,255,255,.07)';
+  for(const v of [1, 10, 100, 1000, 10000]){
+    const y = ly(v); g.beginPath(); g.moveTo(L0, y); g.lineTo(W, y); g.stroke();
+    g.fillText(v >= 1000 ? `${v/1000}k` : v, 4, y + 3);
+  }
+  if(!series.length) return;
+  const t1 = series[series.length-1][0], t0 = t1 - 300;
+  const lx = t => L0 + (t - t0) / 300 * (W - L0 - 4);
+  g.fillText('−5 min', L0, H - 3); g.fillText('now', W - 22, H - 3);
+  // autopilot error
+  g.strokeStyle = '#f2cc60'; g.lineWidth = 1.5; g.beginPath(); let on = false;
+  for(const [t,, ae] of series){ if(t < t0 || ae == null){ on = false; continue; }
+    const x = lx(t), y = ly(ae); on ? g.lineTo(x, y) : g.moveTo(x, y); on = true; }
+  g.stroke();
+  // NAVERA error, coloured by source
+  for(const [t, ne,, src] of series){
+    if(t < t0 || ne == null) continue;
+    g.fillStyle = COLORS[src] || '#d29922';
+    g.fillRect(lx(t) - 1, ly(ne) - 1, 2.4, 2.4);
+  }
+}
+
+// ── polling ──
+async function poll(){
+  try{
+    const r = await fetch('/api/state', {cache:'no-store'});
+    if(r.ok) render(await r.json());
+  }catch(e){ $('phase').innerHTML = '<b style="color:var(--bad)">SIMULATOR NOT REACHABLE</b>'; }
+  setTimeout(poll, 500);
+}
+setInterval(() => { if(S && S.truth) $('cam').src = '/api/camera.jpg?' + Date.now(); }, 1000);
+poll();
+</script>
+</body>
+</html>

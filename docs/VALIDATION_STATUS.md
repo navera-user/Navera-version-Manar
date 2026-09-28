@@ -111,6 +111,27 @@ unit, and the IMU attitude is not wired in yet.
 | Estimator: timestamp 60 s in the future | Refused ("clock problem") |
 | Estimator: GPS flapping every 0.5 s | One source switch in 8 s, no zig-zag |
 | Estimator: GPS jumps 5 km in 1 s (spoofing / glitch) | Refused ("possible spoofing"), re-accepted once plausible again |
+| Estimator: GPS jumps 2 km and stays there, vision with a stated accuracy sees the true position | Refused for as long as it lasts (150 s tested); the true GPS re-accepted 2 s after it returns. Before the fix the spoof was accepted after offset / max speed (33 s) and then the true GPS was locked out |
+
+### Autopilot in the loop (ArduPilot SITL — simulation)
+
+`navera_tools/run_sim.sh`: ArduPilot SITL (Copter 4.5, Rover, motorboat) whose only position
+input is NAVERA's output; NAVERA's GPS driver reads a simulated receiver over a
+pseudo-terminal. The world and the vision errors are simulated, so these are **behaviour**
+results, not accuracy results.
+
+| Scenario | Result |
+|---|---|
+| Drone, GPS OK, 120 m, 10–15 m/s | NAVERA error 1–4 m; autopilot position error 1–3 m |
+| Drone, GPS jammed in flight, vision at the target accuracy (15 m σ, simulated) | Mission continues on NAVERA's vision fix; autopilot error 2–18 m for 2.5 min, no failsafe |
+| Boat, 2 km GPS spoof for 150 s | Refused within 1 s; boat continues on vision (3–21 m) |
+| Robot, GPS jammed, vision at today's measured accuracy (DEGRADED, withheld) | Autopilot loses its position → its own failsafe (HOLD); resumes when GPS returns |
+| GPS jammed + camera failed | NAVERA: NO FIX → autopilot failsafe (Copter LAND, Rover HOLD) |
+
+Integration defects found and fixed this way: no velocity sent (ArduPilot assumed zero or
+stale velocity → EKF failsafe during take-off); vision fixes labelled 2D (ignored by
+ArduPilot); the same fix repeated at 5 Hz; the spoofing gate above. The ArduPilot settings
+this requires are in navera_output/README.md.
 | Web: control without token / cross-site request / bad input | Refused (401 / 415 / 400) |
 
 ## Known limitations
@@ -123,10 +144,13 @@ unit, and the IMU attitude is not wired in yet.
 4. **One pipeline at a time.** Day and night cannot both be loaded within 8 GB.
 5. **Map coverage is Sousse only** (z13–z19 MBTiles). Other areas need their own map and
    tile cache. The imagery licence must allow offline commercial use.
-6. **No vehicle output yet.** The position is available on ROS 2 topics and the web
-   API. NMEA / MAVLink output for autopilots is planned.
+6. **Vehicle output validated in simulation only** (ArduPilot SITL, above); not yet on a real
+   autopilot, and not on PX4. ArduPilot needs `EK3_SRC1_VELXY = 0` / `EK3_SRC1_VELZ = 0` and
+   one real GPS fix at power-on (navera_output/README.md).
 7. **GPS spoofing:** a sudden jump beyond the vehicle's maximum speed (`max_speed_mps`, set
-   per vehicle) is refused. A slow, gradual spoof is **not** detected: that needs an
-   independent position source (accurate vision or inertial navigation) to compare with.
+   per vehicle) is refused, and stays refused until an independent source with a stated
+   accuracy confirms it. With vision of unknown accuracy (today) the gate falls back to
+   reachability, which a patient spoofer can outwait. A slow, gradual spoof is **not**
+   detected: that needs continuous comparison with an accurate independent source (EST-8).
 8. **Security model:** DDS is limited to the box itself (`ROS_LOCALHOST_ONLY`). The web
    control API needs a token. The web interface itself is plain HTTP (no TLS).

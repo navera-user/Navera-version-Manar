@@ -7,6 +7,7 @@
 | `sensor_sim.py` | simulated GPS/IMU/RTC on the real topics |
 | `navera_fakes.py` | fake publishers for the whole graph (rqt_graph) |
 | `run_scenario.sh` | scripted GPS-loss scenario with `sensor_sim` |
+| `run_sim.sh` | **mission simulator** (below): control page on :8190, real NAVERA nodes, ArduPilot autopilot in the loop |
 | `run_demo.sh [measured\|target]` | **demonstration**: simulated mission over Sousse with GPS jamming, on the real arbiter and operator view (`demo_mission.py`) |
 | `record_session.sh <dir> [day\|night\|cn]` | record a test session (all sensors, estimates, decision, camera) into a ROS 2 bag |
 | `evaluate_session.py <bag>` | measure each source against GPS in a recorded session (median / p90 / within 50-100-300 m) |
@@ -21,6 +22,39 @@
 3. `python3 navera_tools/evaluate_session.py /data/sessions/2026-10-01_drive1 --csv errors.csv`.
 
 Only numbers produced this way, on representative data, go into docs/VALIDATION_STATUS.md.
+
+## Mission simulator
+
+    source ~/navera_env.sh
+    navera_tools/run_sim.sh
+
+Open **`http://<jetson-ip>:8190`** (control page) and, if wanted, `http://<jetson-ip>:8181/operator`
+(the product's own operator view, which shows a SIMULATION banner).
+
+1. Choose the vehicle (drone, boat, ground robot), click the map for the **start** and the
+   **destination**, set speed / altitude and the vision accuracy (*Measured today* or
+   *Target* — the target is not a measured performance).
+2. **Start mission.** The autopilot starts at the start point, waits until it accepts NAVERA's
+   position (30–60 s), arms, takes off (drone) and goes to the destination. Click the map at any
+   time for a new destination.
+3. **Inject faults** at any time: GPS jammed / spoofed (2 km jump) / spoofed (slow drift) / off,
+   camera failed, night, IMU failed.
+
+The page shows the true vehicle and path, NAVERA's output (coloured by source), the autopilot's
+own belief, NAVERA's state and reason, the autopilot's mode, fix and navigation filter, every
+sensor, the error against the truth over time, the camera picture and an event log.
+
+| Real (as on the box) | Simulated |
+|---|---|
+| `gps_node` (reads NMEA from a pseudo-terminal), `navera_estimator`, `vehicle_output` (MAVLink GPS_INPUT), web bridge + operator view, **ArduPilot** (SITL: Copter 4.5 for the drone, Rover for the boat and robot) whose only position input is NAVERA | the world (ArduPilot's physics), the GPS receiver, IMU and clock samples, the vision fixes' error (profile), the camera picture (cut from the onboard map) |
+
+A new mission restarts NAVERA's nodes, like powering the box on at a new place. Needs an
+ArduPilot SITL build (`./waf configure --board sitl && ./waf copter rover`, default
+`~/ardupilot`, or `$NAVERA_ARDUPILOT`). One instance at a time; ROS domain 79, loopback only;
+logs in `~/.navera_sim/`. The control page has no password: run it on a trusted network.
+
+Files: `sim/sim_server.py` (world, sensors, mission, HTTP API), `sim/autopilot.py` (SITL
+process and MAVLink), `sim/nmea_gps.py` (receiver), `sim/camera_view.py`, `sim/sim.html`.
 
 ## Demonstration (simulated mission)
 
