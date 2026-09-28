@@ -37,21 +37,20 @@ def solve_image_b64(image_b64: str) -> dict:
             h = hdul[0].header
             ra  = float(h.get('CRVAL1', 0))
             dec = float(h.get('CRVAL2', 0))
-        lat = dec
-        lon = (ra - 180.0) % 360 - 180.0
+        # RA/Dec is where the camera points in the SKY, not a ground position:
+        # never report it as a fix.
         return {
-            'success': True,
+            'success': False,
             'ra_deg': ra,
             'dec_deg': dec,
-            'predicted_lat': lat,
-            'predicted_lon': lon,
+            'error': 'wcs mode gives sky coordinates only (use geoloc for a position)',
             'source': 'stellar',
-            'match_score': 0.99
         }
 
 
 def solve_image_b64_geoloc(image_b64: str, tilt: float, azimuth: float,
-                           utc_time: str) -> dict:
+                           utc_time: str, prior_lat: float = float('nan'),
+                           prior_lon: float = float('nan')) -> dict:
     """Real celestial geolocation.
 
     Runs drone_sky_prep.py (astrometry RA/Dec + observer tilt/azimuth + UTC
@@ -64,6 +63,8 @@ def solve_image_b64_geoloc(image_b64: str, tilt: float, azimuth: float,
         tilt:      camera degrees above horizon (90 = straight up).
         azimuth:   compass heading the camera points at (0=N, 90=E, ...).
         utc_time:  "YYYY-MM-DD HH:MM:SS" of the exposure (UTC).
+        prior_lat, prior_lon: approximate position used to pick between the
+                   two positions one sky direction is consistent with (NaN = none).
     """
     img_bytes = base64.b64decode(image_b64)
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -78,6 +79,10 @@ def solve_image_b64_geoloc(image_b64: str, tilt: float, azimuth: float,
 
         cmd = [sys.executable, DRONE_SKY_PREP, img_path, date_str, time_str,
                str(tilt), str(azimuth)]
+        if prior_lat == prior_lat:          # not NaN
+            cmd += ['--prior-lat', str(prior_lat)]
+        if prior_lon == prior_lon:
+            cmd += ['--prior-lon', str(prior_lon)]
         try:
             result = subprocess.run(cmd, capture_output=True, text=True,
                                     timeout=300)

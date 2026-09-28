@@ -34,6 +34,7 @@ running, the new pair is DROPPED (logged) — never queued, never parallel.
 import json
 import base64
 import threading
+from datetime import datetime, timezone
 
 import cv2
 import numpy as np
@@ -67,12 +68,19 @@ class CNSubscriber(Node):
         # Solver selection:
         #   "geoloc" → real ground fix via drone_sky_prep.py (needs tilt/azimuth/UTC)
         #   "wcs"    → rough placeholder (lat=Dec, lon=f(RA)) via solve_image_b64
-        # tilt/azimuth/utc_time default to the bundled etoiles.jpeg sample; a
-        # frame_meta carrying "tilt"/"azimuth"/"utc_time" overrides them per frame.
+        # A frame_meta carrying "tilt"/"azimuth"/"utc_time" overrides the
+        # parameters per frame. Defaults are UNKNOWN: without a measured camera
+        # attitude (IMU) no position is published, and an empty utc_time means
+        # "the system clock at processing time" (RTC-backed on the vehicle).
+        # Replay launch files set the values of their sample image explicitly.
         self.declare_parameter("solver_mode", "geoloc")
-        self.declare_parameter("tilt", 75.46)
-        self.declare_parameter("azimuth", 283.18)
-        self.declare_parameter("utc_time", "2026-03-10 20:20:00")
+        self.declare_parameter("tilt", float("nan"))
+        self.declare_parameter("azimuth", float("nan"))
+        self.declare_parameter("utc_time", "")
+        # Approximate position of the operating area: one sky direction matches
+        # two positions in general, and this prior picks the right one.
+        self.declare_parameter("prior_lat", float("nan"))
+        self.declare_parameter("prior_lon", float("nan"))
 
         self.conf_threshold = float(self.get_parameter("conf_threshold").value)
         image_topic   = self.get_parameter("image_topic").value
@@ -83,6 +91,8 @@ class CNSubscriber(Node):
         self.tilt        = float(self.get_parameter("tilt").value)
         self.azimuth     = float(self.get_parameter("azimuth").value)
         self.utc_time    = str(self.get_parameter("utc_time").value)
+        self.prior_lat   = float(self.get_parameter("prior_lat").value)
+        self.prior_lon   = float(self.get_parameter("prior_lon").value)
 
         # ── State ───────────────────────────────────────────────
         self.bridge        = CvBridge()
@@ -212,8 +222,14 @@ class CNSubscriber(Node):
             if self.solver_mode == "geoloc":
                 tilt    = float(meta.get("tilt", self.tilt))
                 azimuth = float(meta.get("azimuth", self.azimuth))
-                utc     = str(meta.get("utc_time", self.utc_time))
-                result = cn_solver.solve_image_b64_geoloc(b64, tilt, azimuth, utc)
+                utc     = str(meta.get("utc_time") or self.utc_time or
+                              datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
+                if not (math.isfinite(tilt) and math.isfinite(azimuth)):
+                    result = {"success": False,
+                              "error": "camera attitude (tilt/azimuth) unknown — needs the IMU"}
+                else:
+                    result = cn_solver.solve_image_b64_geoloc(
+                        b64, tilt, azimuth, utc, self.prior_lat, self.prior_lon)
             else:
                 result = cn_solver.solve_image_b64(b64)
             self._publish_result(seq_id, meta, result)
@@ -272,7 +288,8 @@ class CNSubscriber(Node):
         fix.status.service  = NavSatStatus.SERVICE_GPS
         fix.latitude        = float(result["predicted_lat"])
         fix.longitude       = float(result["predicted_lon"])
-        fix.altitude        = float(meta.get("altitude_m") or 0.0)
+        _alt = meta.get("altitude_m")
+        fix.altitude        = float(_alt) if _alt is not None else math.nan
         fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_UNKNOWN
         self.pub_fix.publish(fix)
         self._publish_estimate(now, seq_id, fix.latitude, fix.longitude, meta,

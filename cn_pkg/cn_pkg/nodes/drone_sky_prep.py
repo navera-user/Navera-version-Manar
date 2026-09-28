@@ -2,59 +2,69 @@
 """
 Drone GPS positioning via sky astrometry.
 
-Usage (auto):   python3 drone_sky_prep.py <image> <YYYY-MM-DD> <HH:MM:SS> [fov]
-Usage (manual): python3 drone_sky_prep.py <image> <YYYY-MM-DD> <HH:MM:SS> <tilt> <azimuth> [fov]
+Usage: python3 drone_sky_prep.py <image> <YYYY-MM-DD> <HH:MM:SS> <tilt> <azimuth> [fov]
+                                 [--prior-lat LAT] [--prior-lon LON]
 
   tilt    = camera degrees above horizon (90=straight up, 0=horizontal)
   azimuth = compass direction (0=N, 90=E, 180=S, 270=W)
   fov     = horizontal field of view in degrees (optional, makes solving faster)
+  --prior-lat/--prior-lon = approximate position (operating area). One sky
+            direction is consistent with TWO positions in general; without a
+            prior that separates them, no position is reported.
 
 Examples:
-  python3 drone_sky_prep.py ~/Images/Tsky.jpeg 2026-03-10 20:20:00
-  python3 drone_sky_prep.py ~/Images/Tsky.jpeg 2026-03-10 20:20:00 55.89
   python3 drone_sky_prep.py ~/Images/Tsky.jpeg 2026-03-10 20:20:00 75.46 283.18
   python3 drone_sky_prep.py ~/Images/Tsky.jpeg 2026-03-10 20:20:00 75.46 283.18 55.89
 """
 
-import sys, os, re, time, math, subprocess
+import sys, os, re, time, subprocess
 from pathlib import Path
 
-try:
-    from astropy.coordinates import SkyCoord, get_constellation
-    from astropy.time import Time
-    from astropy import units as u
-except ImportError:
-    subprocess.run([sys.executable,"-m","pip","install","astropy","--break-system-packages","-q"])
-    from astropy.coordinates import SkyCoord, get_constellation
-    from astropy.time import Time
-    from astropy import units as u
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from celestial_math import (apparent_radec, choose_candidate, gast_deg,  # noqa: E402
+                            observer_candidates)
+
+
+def _pop_flag(name):
+    """Remove `name VALUE` from sys.argv and return VALUE as float (or None)."""
+    if name in sys.argv:
+        i = sys.argv.index(name)
+        val = float(sys.argv[i + 1])
+        del sys.argv[i:i + 2]
+        return val
+    return None
+
+
+PRIOR_LAT = _pop_flag("--prior-lat")
+PRIOR_LON = _pop_flag("--prior-lon")
 
 # ── Arguments ──────────────────────────────────────────────
 if len(sys.argv) < 4:
-    print("Usage (auto)  : python3 drone_sky_prep.py <image> <YYYY-MM-DD> <HH:MM:SS> [fov]")
-    print("Usage (manual): python3 drone_sky_prep.py <image> <YYYY-MM-DD> <HH:MM:SS> <tilt> <azimuth> [fov]")
+    print("Usage: python3 drone_sky_prep.py <image> <YYYY-MM-DD> <HH:MM:SS> <tilt> <azimuth> [fov]"
+          " [--prior-lat LAT] [--prior-lon LON]")
     sys.exit(1)
 
 IMAGE    = sys.argv[1]
 DATE_STR = sys.argv[2]
 TIME_STR = sys.argv[3]
 
-# Parse remaining arguments: [fov] or [tilt, az] or [tilt, az, fov]
-MANUAL  = False
+# Parse remaining arguments: [tilt, az] or [tilt, az, fov]
 TILT_IN = None
 AZ_IN   = None
 FOV_IN  = None
 
 remaining = sys.argv[4:]
-if len(remaining) == 1:
-    FOV_IN = float(remaining[0])
+if len(remaining) < 2:
+    # The former "auto" mode guessed tilt from a self-consistency scan and
+    # azimuth from the image rotation plus a fixed 313.18° offset tuned on one
+    # sample: not valid for any other camera mounting. Attitude must be measured.
+    print("ERROR: tilt and azimuth are required (from the IMU); auto mode is not supported.")
+    sys.exit(2)
 elif len(remaining) == 2:
     TILT_IN, AZ_IN = float(remaining[0]), float(remaining[1])
-    MANUAL = True
 elif len(remaining) >= 3:
     TILT_IN, AZ_IN = float(remaining[0]), float(remaining[1])
     FOV_IN  = float(remaining[2])
-    MANUAL  = True
 
 if not os.path.exists(IMAGE):
     print(f"ERROR: File not found: {IMAGE}")
@@ -89,12 +99,8 @@ print("│         DRONE SKY POSITION SOLVER           │")
 print("├─────────────────────────────────────────────┤")
 print(f"│  Image    : {Path(IMAGE).name}")
 print(f"│  UTC time : {UTC_TIME}")
-if MANUAL:
-    print(f"│  Tilt     : {TILT_IN}°  (manuel)")
-    print(f"│  Azimuth  : {AZ_IN}°  (manuel)")
-else:
-    print("│  Tilt     : AUTO (self-consistency scan)")
-    print("│  Azimuth  : AUTO (astrometry rotation)")
+print(f"│  Tilt     : {TILT_IN}°")
+print(f"│  Azimuth  : {AZ_IN}°")
 if FOV_IN:
     print(f"│  FOV      : {FOV_IN}°  → scale {SCALE_LOW}–{SCALE_HIGH}° (faster!)")
 else:
@@ -176,126 +182,26 @@ if RA is None or DEC is None:
 print(f"  Solved in {T_SOLVE:.1f}s  RA={RA:.4f}°  Dec={DEC:.4f}°  Rotation={ROTATION}°")
 
 # ─────────────────────────────────────────────────────────
-# HELPER: compute lat/lon from tilt + azimuth
+# STEP 3 — Position from boresight direction
 # ─────────────────────────────────────────────────────────
-obs_time  = Time(UTC_TIME, scale='utc')
-gst_hours = obs_time.sidereal_time('apparent', 'greenwich').hour
+# astrometry.net reports ICRS (J2000); sidereal time is apparent-of-date, so
+# precess/nutate the field centre to the true equator & equinox of date first.
+print("  [3/4] Converting RA/Dec to the equinox of date...")
+RA_APP, DEC_APP = apparent_radec(RA, DEC, UTC_TIME)
+GAST = gast_deg(UTC_TIME)
+TILT, AZIMUTH, METHOD = TILT_IN, AZ_IN, "IMU"
+print(f"  Apparent RA={RA_APP:.4f}°  Dec={DEC_APP:.4f}°  GAST={GAST:.4f}°")
 
-def compute_pos(tilt, az, dec, ra, gst_h):
-    alt_rad = math.radians(tilt)
-    az_rad  = math.radians(az)
-    dec_rad = math.radians(dec)
-    sin_HA  = -math.sin(az_rad) * math.cos(alt_rad) / math.cos(dec_rad)
-    sin_HA  = max(-1.0, min(1.0, sin_HA))
-    HA_rad  = math.asin(sin_HA)
-    HA_rad  = -abs(HA_rad) if (0 < az < 180) else abs(HA_rad)
-    HA_hours = math.degrees(HA_rad) / 15.0
-    # Solve for latitude from: sin(alt) = sin(dec)*sin(lat) + cos(dec)*cos(lat)*cos(HA)
-    # Rewrite as: sin(alt) = R * sin(lat + phi)
-    # where R = sqrt(sin²(dec) + cos²(dec)*cos²(HA)), phi = atan2(cos(dec)*cos(HA), sin(dec))
-    A = math.sin(dec_rad)
-    B = math.cos(dec_rad) * math.cos(HA_rad)
-    R = math.sqrt(A**2 + B**2)
-    phi = math.atan2(B, A)
-    sin_lat_phi = math.sin(alt_rad) / R
-    sin_lat_phi = max(-1.0, min(1.0, sin_lat_phi))
-    lat = math.degrees(math.asin(sin_lat_phi) - phi)
-    lon = (ra / 15.0 + HA_hours - gst_h) * 15.0
-    while lon >  180: lon -= 360
-    while lon < -180: lon += 360
-    return lat, lon
-
-# ─────────────────────────────────────────────────────────
-# STEP 3 — Tilt and Azimuth
-# ─────────────────────────────────────────────────────────
-print("  [3/4] Extracting tilt and azimuth...")
-
-if MANUAL:
-    TILT    = TILT_IN
-    AZIMUTH = AZ_IN
-    METHOD  = "manuel"
-    print(f"  Tilt    = {TILT}°  (manuel)")
-    print(f"  Azimuth = {AZIMUTH}°  (manuel)")
-
-else:
-    # ── Azimuth: try WCS CD matrix first, fallback to log ─
-    CD1_1 = CD1_2 = CD2_1 = CD2_2 = None
-    if os.path.exists(WCS_FILE):
-        with open(WCS_FILE, "r") as f:
-            for line in f:
-                m = re.match(r'(CD\d_\d)\s*=\s*([+-]?\d+\.?\d*[Ee]?[+-]?\d*)', line)
-                if m:
-                    val = float(m.group(2)); key = m.group(1)
-                    if key == "CD1_1": CD1_1 = val
-                    elif key == "CD1_2": CD1_2 = val
-                    elif key == "CD2_1": CD2_1 = val
-                    elif key == "CD2_2": CD2_2 = val
-
-    if CD1_1 is not None and CD1_2 is not None:
-        rot_exact = math.degrees(math.atan2(-CD1_2, CD2_2))
-        AZIMUTH   = (rot_exact + 313.18) % 360
-        pixscale  = math.sqrt(CD1_1**2 + CD2_1**2)
-        print(f"  CD matrix found → pixscale={pixscale*3600:.2f}\"/px  rot={rot_exact:.4f}°")
-        print(f"  Azimuth (WCS)   = {AZIMUTH:.4f}°")
-    else:
-        AZIMUTH = (ROTATION + 313.18) % 360
-        print(f"  Azimuth (log)   = {AZIMUTH:.4f}°")
-
-    # ── Tilt: self-consistency scan ───────────────────────
-    # The correct tilt is the one where:
-    # compute_pos(tilt) → (lat,lon) → back-project → tilt_back ≈ tilt
-    # Score = |tilt - tilt_back|  →  best score = 0
-
-    def consistency_score(tilt):
-        result = compute_pos(tilt, AZIMUTH, DEC, RA, gst_hours)
-        if result is None: return 999
-        lat, lon = result
-        if not (0 <= lat <= 70): return 999
-        LST_b     = (gst_hours + lon/15.0) % 24
-        HA_b      = (LST_b - RA/15.0) * 15.0
-        dec_r     = math.radians(DEC)
-        lat_r     = math.radians(lat)
-        sin_a     = (math.sin(dec_r)*math.sin(lat_r) +
-                     math.cos(dec_r)*math.cos(lat_r)*math.cos(math.radians(HA_b)))
-        tilt_back = math.degrees(math.asin(max(-1.0, min(1.0, sin_a))))
-        return abs(tilt_back - tilt)
-
-    # Phase 1: coarse 0.1° scan over full range
-    print("  Tilt scan: coarse 0.1° → fine 0.001° (self-consistency)...")
-    best_score = 999; best_tilt = DEC
-    tilt = 5.0
-    while tilt <= 89.0:
-        s = consistency_score(tilt)
-        if s < best_score:
-            best_score = s; best_tilt = tilt
-        tilt = round(tilt + 0.1, 1)
-
-    # Phase 2: ultra-fine 0.001° scan ±1° around best
-    fine_score = 999; fine_tilt = best_tilt
-    tilt = max(5.0, best_tilt - 1.0)
-    while tilt <= min(89.0, best_tilt + 1.0):
-        s = consistency_score(tilt)
-        if s < fine_score:
-            fine_score = s; fine_tilt = tilt
-        tilt = round(tilt + 0.001, 3)
-
-    TILT   = fine_tilt
-    METHOD = "auto"
-    print(f"  Tilt (auto)     = {TILT:.3f}°  (consistency score={fine_score:.6f}°)")
-
-# ─────────────────────────────────────────────────────────
-# STEP 4 — Final GPS
-# ─────────────────────────────────────────────────────────
-print("  [4/4] Computing GPS position...")
-
-result = compute_pos(TILT, AZIMUTH, DEC, RA, gst_hours)
+print("  [4/4] Computing position...")
+candidates = observer_candidates(TILT, AZIMUTH, RA_APP, DEC_APP, GAST)
+result = choose_candidate(candidates, PRIOR_LAT, PRIOR_LON)
 if result is None:
-    print("  ERROR: GPS calculation failed. Check tilt/azimuth values.")
+    print(f"  ERROR: no unambiguous position. Candidates: {candidates}; "
+          f"prior lat={PRIOR_LAT} lon={PRIOR_LON}")
     sys.exit(1)
 
 LAT, LON      = result
-coord         = SkyCoord(ra=RA*u.deg, dec=DEC*u.deg, frame='icrs')
-constellation = "N/A"  # skipped — astropy version conflict
+constellation = "N/A"
 T_TOTAL       = time.time() - T_START
 
 print()
@@ -311,8 +217,8 @@ print(f"│  Azimuth ({METHOD:6s}) : {AZIMUTH:.4f}°")
 if FOV_IN:
     print(f"│  FOV provided    : {FOV_IN}°")
 print("├─────────────────────────────────────────────┤")
-print(f"│  Latitude        : {LAT:.4f}° N")
-print(f"│  Longitude       : {LON:.4f}° E")
+print(f"│  Latitude        : {LAT:+.6f}°")
+print(f"│  Longitude       : {LON:+.6f}°")
 print("├─────────────────────────────────────────────┤")
 print(f"│  Solve time      : {T_SOLVE:.2f}s  (astrometry only)")
 print(f"│  Total time      : {T_TOTAL:.2f}s")

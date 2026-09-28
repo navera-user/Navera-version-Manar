@@ -49,6 +49,10 @@ def generate_launch_description():
         DeclareLaunchArgument('tilt',        default_value='75.46'),
         DeclareLaunchArgument('azimuth',     default_value='283.18'),
         DeclareLaunchArgument('utc_time',    default_value='2026-03-10 20:20:00'),
+        # Operating-area prior (Sousse) — picks between the two positions a sky
+        # direction is consistent with.
+        DeclareLaunchArgument('prior_lat',   default_value='35.83'),
+        DeclareLaunchArgument('prior_lon',   default_value='10.64'),
 
         # 1) Celestial pipeline: camera(celestial) + cn_subscriber (astrometry, CPU)
         IncludeLaunchDescription(
@@ -61,6 +65,8 @@ def generate_launch_description():
                 'tilt':           LaunchConfiguration('tilt'),
                 'azimuth':        LaunchConfiguration('azimuth'),
                 'utc_time':       LaunchConfiguration('utc_time'),
+                'prior_lat':      LaunchConfiguration('prior_lat'),
+                'prior_lon':      LaunchConfiguration('prior_lon'),
             }.items(),
         ),
 

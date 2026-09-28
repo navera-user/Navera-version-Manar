@@ -47,6 +47,10 @@ def generate_launch_description():
         DeclareLaunchArgument('tilt',        default_value='75.46'),
         DeclareLaunchArgument('azimuth',     default_value='283.18'),
         DeclareLaunchArgument('utc_time',    default_value='2026-03-10 20:20:00'),
+        # Operating-area prior (Sousse) — picks between the two positions a sky
+        # direction is consistent with.
+        DeclareLaunchArgument('prior_lat',   default_value='35.83'),
+        DeclareLaunchArgument('prior_lon',   default_value='10.64'),
 
         # 1) Camera publisher (celestial namespace, etoiles.jpeg + meta)
         IncludeLaunchDescription(
@@ -76,6 +80,8 @@ def generate_launch_description():
                 'azimuth':      ParameterValue(LaunchConfiguration('azimuth'), value_type=float),
                 # Force str — "YYYY-MM-DD HH:MM:SS" would otherwise be inferred as datetime.
                 'utc_time':     ParameterValue(LaunchConfiguration('utc_time'), value_type=str),
+                'prior_lat':    ParameterValue(LaunchConfiguration('prior_lat'), value_type=float),
+                'prior_lon':    ParameterValue(LaunchConfiguration('prior_lon'), value_type=float),
             }],
         ),
     ])
