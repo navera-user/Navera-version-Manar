@@ -165,7 +165,8 @@ class GPSNode(Node):
             fix.header, valid=True,
             lat=msg.latitude, lon=msg.longitude, alt=fix.altitude,
             cov=est_cov, reason="",
-            extras={"hdop": hdop, "num_sats": num_sats, "gps_qual": gps_qual},
+            extras={"hdop": hdop, "num_sats": num_sats, "gps_qual": gps_qual,
+                    "geo_sep_m": geo_sep},
         )
         self.get_logger().info(
             f"FIX #{self.fix_count}: lat={msg.latitude:.6f} lon={msg.longitude:.6f} "

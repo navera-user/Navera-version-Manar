@@ -1,0 +1,17 @@
+vehicle_output:
+  ros__parameters:
+    rate_hz: 5.0
+    # NMEA GPS emulation on a serial port ("" = disabled), e.g. /dev/ttyUSB0
+    nmea_port: ""
+    nmea_baud: 9600
+    # MAVLink GPS_INPUT ("" = disabled), e.g. "/dev/ttyTHS2,57600" or "udpout:127.0.0.1:14550"
+    mavlink_url: ""
+    mavlink_system_id: 1
+    mavlink_component_id: 191
+    # DEGRADED positions (vision / celestial) are withheld unless enabled here,
+    # with the accuracy to report stated explicitly. Measure it first
+    # (docs/VALIDATION_STATUS.md): the autopilot will trust this number.
+    forward_degraded: false
+    degraded_sigma_m: .nan
+    position_timeout_s: 2.0
+    nav_status_timeout_s: 2.0

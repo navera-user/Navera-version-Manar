@@ -1,0 +1,31 @@
+[Unit]
+Description=NAVERA vehicle output (NMEA GPS emulation + MAVLink GPS_INPUT to the autopilot)
+# No network dependency: a vehicle in the field often has none, and all
+# NAVERA nodes talk over loopback DDS.
+After=local-fs.target
+# Never give up restarting (the default limit stops after 5 fast failures).
+StartLimitIntervalSec=0
+# No ordering vs the source services (navera-gps, navera-pipeline-day, navera-imu…):
+# the arbiter consumes their estimate topics over DDS (discovery-based,
+# order-independent) and tolerates any source appearing/disappearing BY DESIGN
+# (freshness gate + first-class NO_FIX). Same reasoning as navera-web ↔
+# navera-pipeline-day — any unit may start/restart first.
+
+[Service]
+# Site settings shared by all NAVERA units (data paths, ROS_DOMAIN_ID...).
+# The leading "-" keeps the unit working if the file does not exist.
+EnvironmentFile=-/etc/navera/navera.env
+Type=simple
+User=navera
+Group=navera
+# Serial port to the autopilot (e.g. /dev/ttyUSB0, /dev/ttyTHS2).
+SupplementaryGroups=dialout
+WorkingDirectory=/home/navera/isaac_ros_common
+ExecStart=/home/navera/navera_boot_output.sh
+# always: `ros2 launch` exits with code 0 even when a node crashed (every node
+# has on_exit=Shutdown), so on-failure would never restart it.
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
