@@ -38,10 +38,10 @@ from launch_ros.parameter_descriptions import ParameterValue
 def generate_launch_description():
     camera_share = get_package_share_directory('camera_pkg')
 
-    conf_threshold = LaunchConfiguration('conf_threshold')
 
     return LaunchDescription([
-        DeclareLaunchArgument('conf_threshold', default_value='0.30'),
+        DeclareLaunchArgument('min_log_odds',   default_value='20.7'),
+        DeclareLaunchArgument('camera_fov_deg', default_value='nan'),
         # Celestial solver config (defaults match the bundled etoiles.jpeg sample)
         DeclareLaunchArgument('solver_mode', default_value='geoloc'),
         DeclareLaunchArgument('tilt',        default_value='75.46'),
@@ -73,7 +73,8 @@ def generate_launch_description():
             # (Restart=always) restarts the whole pipeline.
             on_exit=Shutdown(reason='node exited'),
             parameters=[{
-                'conf_threshold': conf_threshold,
+                'min_log_odds': ParameterValue(LaunchConfiguration('min_log_odds'), value_type=float),
+                'camera_fov_deg': ParameterValue(LaunchConfiguration('camera_fov_deg'), value_type=float),
                 'image_topic':  '/celestial/image_raw',
                 'meta_topic':   '/celestial/frame_meta',
                 'fix_topic':    '/cn/position_estimate',

@@ -21,8 +21,10 @@ Pairing strategy:
     against any timestamp format and works for celestial (slow) frames.
 
 Parameters:
-    conf_threshold (float, default 0.30) — minimum match_score below which
-                   the fix is REJECTED.
+    min_log_odds   (float, default 20.7) — minimum astrometry.net log-odds of
+                   the star match (20.7 ~ odds of 1e9, astrometry's own default).
+    camera_fov_deg (float, default NaN) — star camera horizontal field of view;
+                   unknown = slower wide search.
     image_topic    (str,  default "/celestial/image_raw")
     meta_topic     (str,  default "/celestial/frame_meta")
     fix_topic      (str,  default "/cn/position_estimate")
@@ -61,7 +63,8 @@ class CNSubscriber(Node):
         super().__init__("cn_subscriber")
 
         # ── Parameters ──────────────────────────────────────────
-        self.declare_parameter("conf_threshold", 0.30)
+        self.declare_parameter("min_log_odds", 20.7)
+        self.declare_parameter("camera_fov_deg", float("nan"))
         self.declare_parameter("image_topic", "/celestial/image_raw")
         self.declare_parameter("meta_topic", "/celestial/frame_meta")
         self.declare_parameter("fix_topic", "/cn/position_estimate")
@@ -87,7 +90,8 @@ class CNSubscriber(Node):
         self.declare_parameter("rtc_topic", "/navera/sensors/rtc_time")
         self.declare_parameter("prior_lon", float("nan"))
 
-        self.conf_threshold = float(self.get_parameter("conf_threshold").value)
+        self.min_log_odds   = float(self.get_parameter("min_log_odds").value)
+        self.camera_fov_deg = float(self.get_parameter("camera_fov_deg").value)
         image_topic   = self.get_parameter("image_topic").value
         meta_topic    = self.get_parameter("meta_topic").value
         fix_topic     = self.get_parameter("fix_topic").value
@@ -149,7 +153,7 @@ class CNSubscriber(Node):
         self.get_logger().info(f"  meta  topic     : {meta_topic}")
         self.get_logger().info(f"  fix   topic     : {fix_topic}")
         self.get_logger().info(f"  status topic    : {status_topic}")
-        self.get_logger().info(f"  conf_threshold  : {self.conf_threshold:.2f}")
+        self.get_logger().info(f"  min_log_odds    : {self.min_log_odds:.1f}   camera_fov_deg: {self.camera_fov_deg}")
         self.get_logger().info(f"  solver_mode     : {self.solver_mode}")
         if self.solver_mode == "geoloc":
             self.get_logger().info(
@@ -251,7 +255,8 @@ class CNSubscriber(Node):
                               "error": "camera attitude (tilt/azimuth) unknown — needs the IMU"}
                 else:
                     result = cn_solver.solve_image_b64_geoloc(
-                        b64, tilt, azimuth, utc, self.prior_lat, self.prior_lon)
+                        b64, tilt, azimuth, utc, self.prior_lat, self.prior_lon,
+                        self.camera_fov_deg)
             else:
                 result = cn_solver.solve_image_b64(b64)
             self._publish_result(seq_id, meta, result)
@@ -273,20 +278,18 @@ class CNSubscriber(Node):
             "dec_deg": result.get("dec_deg"),
             "lat":     result.get("predicted_lat"),
             "lon":     result.get("predicted_lon"),
-            "match_score": result.get("match_score"),
+            "log_odds": result.get("log_odds"),
             "source": result.get("source", "stellar"),
             "error":  result.get("error"),
         }
 
-        score = float(result.get("match_score", 0.0) or 0.0)
-        if result.get("success") and score < self.conf_threshold:
+        log_odds = result.get("log_odds")
+        if result.get("success") and (log_odds is None or log_odds < self.min_log_odds):
             self._reject_count += 1
             status["success"]   = False
             status["rejected"]  = True
-            status["reason"]    = f"match_score {score:.2f} < threshold {self.conf_threshold:.2f}"
-            self.get_logger().warn(
-                f"[cn] ⚠  frame={seq_id} REJECTED (score={score:.2f} < {self.conf_threshold:.2f})"
-            )
+            status["reason"]    = f"star match log-odds {log_odds} < {self.min_log_odds:.1f}"
+            self.get_logger().warn(f"[cn] ⚠  frame={seq_id} REJECTED ({status['reason']})")
 
         self.pub_status.publish(String(data=json.dumps(status)))
 
@@ -318,13 +321,12 @@ class CNSubscriber(Node):
         self.pub_fix.publish(fix)
         self._publish_estimate(now, seq_id, fix.latitude, fix.longitude, meta,
                                valid=True, reason="",
-                               details={**status, "hardcoded_score_warning":
-                                        "match_score is a CONSTANT (0.95), not a measured confidence"})
+                               details=status)
 
         self._success_count += 1
         self.get_logger().info(
             f"[cn] ✅ frame={seq_id}  lat={fix.latitude:+.5f}  lon={fix.longitude:+.5f}  "
-            f"score={score:.2f}  "
+            f"log-odds={log_odds}  "
             f"(total: ok={self._success_count} reject={self._reject_count} skip={self._skip_count})"
         )
 
@@ -360,7 +362,8 @@ class CNSubscriber(Node):
 
 
 CN_SUBSCRIBER_ESTIMATE_DOC = """Typed contract notes (estimator step 7):
-Covariance UNKNOWN and confidence 0.0 by design: the celestial match_score is a
+Covariance UNKNOWN and confidence 0.0 by design: the astrometry log-odds rates the star
+match only, not the attitude or time used to turn it into a position; the old match_score was a
 hard-coded constant (0.95), NOT a measured confidence (handoff warning). It is
 relegated to details_json as diagnostic only. Also: the geodetic solution
 depends on tilt/azimuth/UTC inputs that are still static test metadata — until

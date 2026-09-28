@@ -17,7 +17,7 @@ Examples:
   python3 drone_sky_prep.py ~/Images/Tsky.jpeg 2026-03-10 20:20:00 75.46 283.18 55.89
 """
 
-import sys, os, re, time, subprocess
+import sys, os, re, time, shutil, subprocess
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -81,8 +81,14 @@ BASE     = Path(IMAGE).stem
 OUTDIR   = Path(IMAGE).parent
 TIF_OUT  = str(OUTDIR / f"{BASE}_siril.tif")
 WCS_FILE = str(OUTDIR / f"{BASE}_siril.wcs")
-LOG_FILE = f"/tmp/solve_log_{os.getpid()}.txt"
-SSF_FILE = f"/tmp/drone_siril_{os.getpid()}.ssf"
+# Work files live next to the image (the caller's temporary directory), so
+# nothing is left behind in /tmp, whatever happens.
+LOG_FILE = str(OUTDIR / f"{BASE}_solve.log")
+SSF_FILE = str(OUTDIR / f"{BASE}.ssf")
+SOLVE_FIELD = (os.environ.get("NAVERA_SOLVE_FIELD") or shutil.which("solve-field")
+               or "/usr/local/astrometry/bin/solve-field")
+SIRIL_TIMEOUT_S = 60
+SOLVE_TIMEOUT_S = 240      # > solve-field's own --cpulimit 180
 
 # Scale range for solve-field
 if FOV_IN:
@@ -90,7 +96,9 @@ if FOV_IN:
     SCALE_LOW   = round(FOV_IN * (1 - MARGIN), 2)
     SCALE_HIGH  = round(FOV_IN * (1 + MARGIN), 2)
 else:
-    SCALE_LOW   = 50
+    # Unknown camera: a wide search (slower) rather than a range that silently
+    # excludes narrow-FOV star cameras.
+    SCALE_LOW   = 5
     SCALE_HIGH  = 90
 
 print()
@@ -123,9 +131,12 @@ with open(SSF_FILE, "w") as f:
     f.write(f"savetif {BASE}_siril\n")
 
 try:
-    subprocess.run(["siril", "-s", SSF_FILE], capture_output=True, cwd=str(OUTDIR))
+    subprocess.run(["siril", "-s", SSF_FILE], capture_output=True, cwd=str(OUTDIR),
+                   timeout=SIRIL_TIMEOUT_S)
 except FileNotFoundError:
     print("  siril not installed — using PIL fallback")
+except subprocess.TimeoutExpired:
+    print(f"  siril timed out after {SIRIL_TIMEOUT_S}s — using PIL fallback")
 if os.path.exists(SSF_FILE): os.remove(SSF_FILE)
 
 if not os.path.exists(TIF_OUT):
@@ -144,26 +155,37 @@ T_SOLVE_START = time.time()
 with open(LOG_FILE, "w") as log:
     _ASTROMETRY_CFG = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                    "astrometry.cfg")
-    subprocess.run([
-        "/usr/local/astrometry/bin/solve-field", TIF_OUT,
-        "--config", _ASTROMETRY_CFG,
-        "--overwrite", "--no-plots", "--no-verify", "--resort",
-        "--wcs", WCS_FILE,
-        "--scale-units", "degwidth",
-        "--scale-low",   str(SCALE_LOW),
-        "--scale-high",  str(SCALE_HIGH),
-        "--downsample",  "2",
-        "--objs",        "100",
-        "--cpulimit",    "180"
-    ], stdout=log, stderr=log, cwd=str(OUTDIR))
+    try:
+        subprocess.run([
+            SOLVE_FIELD, TIF_OUT,
+            "--config", _ASTROMETRY_CFG,
+            "--overwrite", "--no-plots", "--no-verify", "--resort",
+            "--wcs", WCS_FILE,
+            "--scale-units", "degwidth",
+            "--scale-low",   str(SCALE_LOW),
+            "--scale-high",  str(SCALE_HIGH),
+            "--downsample",  "2",
+            "--objs",        "100",
+            "--cpulimit",    "180",
+        ], stdout=log, stderr=log, cwd=str(OUTDIR), timeout=SOLVE_TIMEOUT_S)
+    except FileNotFoundError:
+        print(f"  ERROR: solve-field not found ({SOLVE_FIELD}); install astrometry.net")
+        sys.exit(1)
+    except subprocess.TimeoutExpired:
+        print(f"  ERROR: solve-field timed out after {SOLVE_TIMEOUT_S}s")
+        sys.exit(1)
 T_SOLVE = time.time() - T_SOLVE_START
 
 with open(LOG_FILE, "r") as f:
     solve_output = f.read()
 os.remove(LOG_FILE)
 
-RA, DEC, ROTATION = None, None, None
+RA, DEC, ROTATION, LOG_ODDS = None, None, None, None
 for line in solve_output.splitlines():
+    if LOG_ODDS is None and "log-odds ratio" in line:
+        m = re.search(r'log-odds ratio\s+([-+]?\d+\.?\d*)', line)
+        if m:
+            LOG_ODDS = float(m.group(1))
     if "Field center:" in line and "RA,Dec" in line:
         m = re.search(r'RA,Dec\) = \(([^,]+),\s*([^)]+)\)', line)
         if m:
@@ -217,6 +239,7 @@ print(f"│  Azimuth ({METHOD:6s}) : {AZIMUTH:.4f}°")
 if FOV_IN:
     print(f"│  FOV provided    : {FOV_IN}°")
 print("├─────────────────────────────────────────────┤")
+print(f"│  Log-odds        : {LOG_ODDS}")
 print(f"│  Latitude        : {LAT:+.6f}°")
 print(f"│  Longitude       : {LON:+.6f}°")
 print("├─────────────────────────────────────────────┤")

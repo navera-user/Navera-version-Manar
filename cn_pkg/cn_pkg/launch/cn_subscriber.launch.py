@@ -7,7 +7,7 @@ camera_pkg) and emits /cn/position_estimate + /cn/cn_status.
 
 Examples:
   ros2 launch cn_pkg cn_subscriber.launch.py
-  ros2 launch cn_pkg cn_subscriber.launch.py conf_threshold:=0.5
+  ros2 launch cn_pkg cn_subscriber.launch.py min_log_odds:=30
   ros2 launch cn_pkg cn_subscriber.launch.py image_topic:=/celestial/image_raw \
                                               meta_topic:=/celestial/frame_meta
 """
@@ -16,11 +16,13 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument('conf_threshold', default_value='0.30'),
+        DeclareLaunchArgument('min_log_odds',   default_value='20.7'),
+        DeclareLaunchArgument('camera_fov_deg', default_value='nan'),
         DeclareLaunchArgument('image_topic',    default_value='/celestial/image_raw'),
         DeclareLaunchArgument('meta_topic',     default_value='/celestial/frame_meta'),
         DeclareLaunchArgument('fix_topic',      default_value='/cn/position_estimate'),
@@ -32,7 +34,8 @@ def generate_launch_description():
             name='cn_subscriber',
             output='screen',
             parameters=[{
-                'conf_threshold': LaunchConfiguration('conf_threshold'),
+                'min_log_odds': ParameterValue(LaunchConfiguration('min_log_odds'), value_type=float),
+                'camera_fov_deg': ParameterValue(LaunchConfiguration('camera_fov_deg'), value_type=float),
                 'image_topic':    LaunchConfiguration('image_topic'),
                 'meta_topic':     LaunchConfiguration('meta_topic'),
                 'fix_topic':      LaunchConfiguration('fix_topic'),

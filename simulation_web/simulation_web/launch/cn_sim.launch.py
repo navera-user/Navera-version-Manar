@@ -20,7 +20,7 @@ drone marker moves on the .mbtiles map from the real ROS celestial fix.
 
 Examples:
   ros2 launch simulation_web cn_sim.launch.py
-  ros2 launch simulation_web cn_sim.launch.py conf_threshold:=0.5
+  ros2 launch simulation_web cn_sim.launch.py min_log_odds:=30
   ros2 launch simulation_web cn_sim.launch.py solver_mode:=wcs       # placeholder solver
   ros2 launch simulation_web cn_sim.launch.py tilt:=75.46 azimuth:=283.18 \
                                               utc_time:="2026-03-10 20:20:00"
@@ -43,7 +43,8 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('web_port',       default_value='8181'),
         DeclareLaunchArgument('mbtiles_path',   default_value=default_mbtiles),
-        DeclareLaunchArgument('conf_threshold', default_value='0.30'),
+        DeclareLaunchArgument('min_log_odds',   default_value='20.7'),
+        DeclareLaunchArgument('camera_fov_deg', default_value='nan'),
         # Celestial solver config (defaults match the bundled etoiles.jpeg sample)
         DeclareLaunchArgument('solver_mode', default_value='geoloc'),
         DeclareLaunchArgument('tilt',        default_value='75.46'),
@@ -60,7 +61,8 @@ def generate_launch_description():
                 os.path.join(web_share, 'launch', 'cn_pipeline.launch.py')
             ),
             launch_arguments={
-                'conf_threshold': LaunchConfiguration('conf_threshold'),
+                'min_log_odds':   LaunchConfiguration('min_log_odds'),
+                'camera_fov_deg': LaunchConfiguration('camera_fov_deg'),
                 'solver_mode':    LaunchConfiguration('solver_mode'),
                 'tilt':           LaunchConfiguration('tilt'),
                 'azimuth':        LaunchConfiguration('azimuth'),
