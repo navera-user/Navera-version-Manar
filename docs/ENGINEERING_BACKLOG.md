@@ -51,7 +51,9 @@ Status: ✅ done · 🔧 in progress · ⬜ open
 | EST-2 | C | Future timestamp kept a dead source "fresh" | ✅ 2a68e08 |
 | EST-3 | H | GPS/vision flapping zig-zag (no hold-off) | ✅ 2a68e08 |
 | EST-4 | H | GPS always wins, even when spoofed — kinematic jump gate | ✅ fef6d26 |
-| EST-8 | H | Gradual GPS spoof detection (needs an independent position: accurate vision or INS) | ⬜ |
+| EST-8 | H | Gradual GPS spoof detection — done against an independent source of stated accuracy (continuous cross-check, 3 s persistence); still undetected while vision accuracy is unknown (needs validated vision or INS) | ◐ e57a126 |
+| EST-11 | C | "Jam, then spoof": GPS returning after an outage accepted if reachable from the last fix (any offset after a long outage) — now cross-checked like a refused GPS (found in the mission simulator) | ✅ e57a126 |
+| EST-12 | M | Status did not say why GPS was not used while it was still transmitting — reason now appended ("GPS refused: …") | ✅ e57a126 |
 | EST-9 | C | Refused GPS re-accepted once "reachable" by time alone: a patient spoofer gets in, then the true GPS is locked out (found in the mission simulator) — now needs agreement with an independent source of stated accuracy | ✅ e199f2e |
 | EST-10 | M | A second arbiter on the same ROS network interleaved decisions silently — now reported | ✅ 555b851 |
 | EST-5 | M | No sanity check on winner (NaN/range/covariance) | ✅ 2a68e08 |

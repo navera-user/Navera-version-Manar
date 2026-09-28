@@ -111,6 +111,8 @@ unit, and the IMU attitude is not wired in yet.
 | Estimator: timestamp 60 s in the future | Refused ("clock problem") |
 | Estimator: GPS flapping every 0.5 s | One source switch in 8 s, no zig-zag |
 | Estimator: GPS jumps 5 km in 1 s (spoofing / glitch) | Refused ("possible spoofing"), re-accepted once plausible again |
+| Estimator: GPS silent 4 s (jammed), then back 2 km away while vision (stated accuracy) disagrees ("jam, then spoof") | Refused; true GPS accepted as soon as it agrees with vision |
+| Estimator: GPS pulled away gradually (40 m/s bench, 4 m/s simulator) while vision (stated accuracy) stays on the truth | Refused once it has disagreed beyond 5 σ + 50 m for 3 s (simulator: at ~160–200 m); status says "GPS refused: … drifting away" |
 | Estimator: GPS jumps 2 km and stays there, vision with a stated accuracy sees the true position | Refused for as long as it lasts (150 s tested); the true GPS re-accepted 2 s after it returns. Before the fix the spoof was accepted after offset / max speed (33 s) and then the true GPS was locked out |
 
 ### Autopilot in the loop (ArduPilot SITL — simulation)
@@ -125,6 +127,8 @@ results, not accuracy results.
 | Drone, GPS OK, 120 m, 10–15 m/s | NAVERA error 1–4 m; autopilot position error 1–3 m |
 | Drone, GPS jammed in flight, vision at the target accuracy (15 m σ, simulated) | Mission continues on NAVERA's vision fix; autopilot error 2–18 m for 2.5 min, no failsafe |
 | Boat, 2 km GPS spoof for 150 s | Refused within 1 s; boat continues on vision (3–21 m) |
+| Drone, GPS jammed 30 s then spoofed 2 km for 30 s | Spoof refused throughout; true GPS re-accepted 3 s after it returns |
+| Drone, GPS spoofed by a slow drift (4 m/s) | Refused at ~160–200 m offset; the autopilot followed the drift to ~200 m, then recovered on vision without failsafe |
 | Robot, GPS jammed, vision at today's measured accuracy (DEGRADED, withheld) | Autopilot loses its position → its own failsafe (HOLD); resumes when GPS returns |
 | GPS jammed + camera failed | NAVERA: NO FIX → autopilot failsafe (Copter LAND, Rover HOLD) |
 
@@ -148,9 +152,12 @@ this requires are in navera_output/README.md.
    autopilot, and not on PX4. ArduPilot needs `EK3_SRC1_VELXY = 0` / `EK3_SRC1_VELZ = 0` and
    one real GPS fix at power-on (navera_output/README.md).
 7. **GPS spoofing:** a sudden jump beyond the vehicle's maximum speed (`max_speed_mps`, set
-   per vehicle) is refused, and stays refused until an independent source with a stated
-   accuracy confirms it. With vision of unknown accuracy (today) the gate falls back to
-   reachability, which a patient spoofer can outwait. A slow, gradual spoof is **not**
-   detected: that needs continuous comparison with an accurate independent source (EST-8).
+   per vehicle) is refused, and stays refused until an independent source with a **stated**
+   accuracy (vision / celestial with a known covariance) confirms it. A GPS returning after an
+   outage must agree with that source too ("jam, then spoof"), and a trusted GPS that drifts
+   away from it for 3 s is refused (gradual spoofing, detected beyond 5 σ + 50 m). **All three
+   protections need that independent source.** With vision of unknown accuracy — today's day
+   and night vision — the gate falls back to reachability from the last good fix: a sudden
+   jump is caught, but a patient or gradual spoofer is not.
 8. **Security model:** DDS is limited to the box itself (`ROS_LOCALHOST_ONLY`). The web
    control API needs a token. The web interface itself is plain HTTP (no TLS).
