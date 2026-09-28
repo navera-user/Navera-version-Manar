@@ -3,7 +3,7 @@
 day_subscriber.py — NAVERA day_pkg, visual-localization subscriber.
 
 Consumes the DAY camera stream published by camera_pkg and runs the existing
-DayLocalizer (NetVLAD + DINOv2 retrieval) on each frame:
+DayLocalizer (DINOv2 retrieval) on each frame:
 
     /day/image_raw    sensor_msgs/Image   (bgr8, BEST_EFFORT)
     /day/frame_meta   std_msgs/String     (JSON from camera_publisher.py, RELIABLE)
@@ -151,10 +151,11 @@ class DaySubscriber(Node):
         self.get_logger().info("=" * 60)
 
         # ── Load DayLocalizer model + descriptor cache (blocking) ─
-        self.get_logger().info("⏳ Loading DayLocalizer (NetVLAD + DINOv2)…")
+        self.get_logger().info("⏳ Loading DayLocalizer (DINOv2)…")
         self.localizer = DayLocalizer()
         self.localizer.load_models()
         self.localizer.load_or_build_cache()
+        self.localizer.warm_up()
         self.get_logger().info("✅ DayLocalizer ready, awaiting frames…")
 
         # A signal (SIGINT/SIGTERM) during the multi-second DINOv2 load makes rclpy
@@ -319,7 +320,7 @@ class DaySubscriber(Node):
         for c in top5:
             self.get_logger().info(
                 f"        #{c['rank']} idx={c['index']:4d} {c['image']:<28} "
-                f"dino={c['dino']:.3f} nv={c['netvlad']:.3f} "
+                f"dino={c['dino']:.3f} "
                 f"lat={c['lat']:+.5f} lon={c['lon']:+.5f}"
             )
 
