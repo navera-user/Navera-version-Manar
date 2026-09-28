@@ -166,6 +166,11 @@ class EstimatorNode(Node):
         self.pub_status = self.create_publisher(NavStatus, "/navera/nav_status", 10)
 
         self.create_timer(1.0 / rate, self._tick)
+        # Exactly one arbiter may speak on a ROS network: a second one (another
+        # box on the same domain, a leftover test or demo) interleaves two
+        # decisions on /navera/position. Checked every 5 s, reported loudly.
+        self._rival_reported = False
+        self.create_timer(5.0, self._check_single_arbiter)
         self.get_logger().info(
             f"estimator up (v3 GPS>day>night>cn): rate={rate:.1f}Hz "
             f"gps_timeout={self._gps_timeout:.1f}s day_timeout={self._day_timeout:.1f}s "
@@ -216,6 +221,17 @@ class EstimatorNode(Node):
         # Liveness only: we keep the stamp, never the sample. The IMU feeds no
         # position in v1.
         self._imu_last_stamp = Time.from_msg(msg.header.stamp)
+
+    def _check_single_arbiter(self) -> None:
+        n = self.count_publishers("/navera/position")
+        if n > 1 and not self._rival_reported:
+            self.get_logger().error(
+                f"{n} publishers on /navera/position: another arbiter is running on this "
+                f"ROS network (ROS_DOMAIN_ID). Two decisions are being interleaved — stop "
+                f"the other one.")
+        elif n <= 1 and self._rival_reported:
+            self.get_logger().warn("only one arbiter on /navera/position again")
+        self._rival_reported = n > 1
 
     # ---------- decision ----------
 

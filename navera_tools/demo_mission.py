@@ -264,6 +264,16 @@ def main():
     ap.add_argument("--seed", type=int, default=1)
     a = ap.parse_args()
     rclpy.init()
+    probe = rclpy.create_node("demo_mission_probe")
+    t_end = time.monotonic() + 3.0                 # DDS discovery
+    while time.monotonic() < t_end and probe.count_publishers("/navera/sim/truth") == 0:
+        rclpy.spin_once(probe, timeout_sec=0.2)
+    others = probe.count_publishers("/navera/sim/truth")
+    probe.destroy_node()
+    if others:
+        rclpy.shutdown()
+        sys.exit("another simulation is already running on this ROS domain: two simulated "
+                 "vehicles would be mixed. Stop it first.")
     node = DemoMission(a)
     try:
         rclpy.spin(node)

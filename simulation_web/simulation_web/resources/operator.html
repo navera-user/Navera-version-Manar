@@ -186,7 +186,8 @@ function showPosition(d){
 const elSim = document.getElementById('op-sim');
 const elLegend = document.getElementById('op-legend');
 const elErr = document.getElementById('op-err');
-let truthMarker = null, truthLine = null, trail = [], lastTrail = null;
+let truthMarker = null, truthLines = [], lastTruth = null, trail = [], lastTrail = null;
+const TRUTH_BREAK_M = 300;   // a longer step between polls is a restart, not motion: new segment
 const TRAIL_MAX = 400;
 function addTrail(lat, lon, color){
   if(lastTrail && lastTrail[0] === lat && lastTrail[1] === lon) return;
@@ -210,14 +211,17 @@ function showSim(d){
       truthMarker = L.circleMarker(t, {radius:7, color:'#fff', weight:2, fillColor:'#fff',
                                        fillOpacity:.25, interactive:false}).addTo(map);
     }else{ truthMarker.setLatLng(t); }
-    if(!truthLine){
-      truthLine = L.polyline([t], {color:'#fff', weight:3, opacity:.95,
-                                   interactive:false}).addTo(map);
+    if(!lastTruth || distM(lastTruth, t) > TRUTH_BREAK_M){
+      truthLines.push(L.polyline([t], {color:'#fff', weight:3, opacity:.95,
+                                       interactive:false}).addTo(map));
+      if(truthLines.length > 5) map.removeLayer(truthLines.shift());
     }else{
-      truthLine.addLatLng(t);
-      const ll = truthLine.getLatLngs();
-      if(ll.length > 3 * TRAIL_MAX) truthLine.setLatLngs(ll.slice(-3 * TRAIL_MAX));
+      const line = truthLines[truthLines.length - 1];
+      line.addLatLng(t);
+      const ll = line.getLatLngs();
+      if(ll.length > 3 * TRAIL_MAX) line.setLatLngs(ll.slice(-3 * TRAIL_MAX));
     }
+    lastTruth = t;
     if(firstFix){
       const pts = [t];
       if(d.valid === true) pts.push([Number(d.lat), Number(d.lon)]);
@@ -231,7 +235,7 @@ function showSim(d){
       : 'error vs truth: no position';
   }else if(truthMarker){
     map.removeLayer(truthMarker); truthMarker = null;
-    if(truthLine){ map.removeLayer(truthLine); truthLine = null; }
+    truthLines.forEach(l => map.removeLayer(l)); truthLines = []; lastTruth = null;
   }
 }
 function showNoPosition(state, reason){

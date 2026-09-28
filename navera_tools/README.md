@@ -31,7 +31,9 @@ Open `http://<jetson-ip>:8181/operator`. A simulated vehicle flies a 14 km loop 
 25 m/s: GPS OK 40 s → GPS jammed 90 s → GPS restored 30 s, repeated. The real
 `navera_estimator` and web bridge run on their own ROS domain (78, loopback). The view shows a red
 **SIMULATION** banner, the true path (white), NAVERA's output coloured by source, and the error
-against the truth. The terminal prints the output error per phase.
+against the truth. The terminal prints the output error per phase. Only one demo runs at a time: a second
+`run_demo.sh` is refused (lock in `~/.navera_demo/`, where the node logs also go), and
+`demo_mission.py` refuses to start if another simulated vehicle is already on the domain.
 
 | Profile | Simulated vision error | What the operator sees during jamming | Measured on the bench (one cycle) |
 |---|---|---|---|
