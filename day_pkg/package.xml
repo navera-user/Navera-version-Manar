@@ -4,10 +4,9 @@
   <name>day_pkg</name>
   <version>0.0.1</version>
   <description>Day Mode — NetVLAD + DINOv2 + FMC Visual Localization</description>
-  <maintainer email="navera@example.com">Navera</maintainer>
+  <maintainer email="contact@iris-systems.tn">IRIS Systems</maintainer>
   <license>Apache-2.0</license>
 
-  <buildtool_depend>ament_cmake_python</buildtool_depend>
   
   <depend>rclpy</depend>
   <exec_depend>navera_common</exec_depend>

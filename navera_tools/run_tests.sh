@@ -26,13 +26,16 @@ mapfile -t UNIT < <(find . -path ./build -prune -o -path ./install -prune -o \
 echo "== unit tests (${#UNIT[@]} files)"
 python3 -m pytest -q -p no:cacheprovider "${UNIT[@]}"
 rc=$?
+[ "$rc" -eq 0 ] || echo "FAILED STEP: unit tests (exit $rc)"
 
 if [ "${1:-}" = "--integration" ]; then
   export ROS_DOMAIN_ID="${NAVERA_TEST_DOMAIN_ID:-77}"
   export ROS_LOCALHOST_ONLY=1
   for t in navera_tools/tests/test_*.py; do
     echo "== integration: $t"
-    python3 "$t" || rc=1
+    python3 "$t"
+    code=$?
+    if [ "$code" -ne 0 ]; then echo "FAILED STEP: $t (exit $code)"; rc=1; fi
   done
 fi
 

@@ -18,8 +18,8 @@ setup(
     data_files=data_files,
     install_requires=['setuptools', 'rclpy'],
     zip_safe=True,
-    maintainer='Navera',
-    maintainer_email='navera@example.com',
+    maintainer='IRIS Systems',
+    maintainer_email='contact@iris-systems.tn',
     description='NAVERA position arbiter (per-source PositionEstimate → /navera/position + /navera/nav_status)',
     license='Apache-2.0',
     entry_points={

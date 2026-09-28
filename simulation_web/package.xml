@@ -4,10 +4,9 @@
   <name>simulation_web</name>
   <version>0.0.1</version>
   <description>Web-based simulation interface for NVIDIA Isaac with flight logging and mapping visualization</description>
-  <maintainer email="navera@example.com">Navera</maintainer>
+  <maintainer email="contact@iris-systems.tn">IRIS Systems</maintainer>
   <license>Apache-2.0</license>
 
-  <buildtool_depend>ament_cmake_python</buildtool_depend>
   
   <depend>rclpy</depend>
   <exec_depend>navera_common</exec_depend>

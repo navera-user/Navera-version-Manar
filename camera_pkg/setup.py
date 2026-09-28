@@ -31,8 +31,8 @@ setup(
     data_files=data_files,
     install_requires=['setuptools', 'rclpy', 'launch', 'launch-ros'],
     zip_safe=True,
-    maintainer='Navera',
-    maintainer_email='navera@example.com',
+    maintainer='IRIS Systems',
+    maintainer_email='contact@iris-systems.tn',
     description='Camera / frame source ROS2 package for NAVERA (replaces PC-Nour)',
     license='Apache-2.0',
     entry_points={

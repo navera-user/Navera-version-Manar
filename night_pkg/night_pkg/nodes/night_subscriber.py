@@ -27,6 +27,7 @@ Handshake + back-pressure + cadence identiques au day (la cadence est gérée pa
 le camera_publisher via min_frame_interval).
 """
 import json
+import logging
 import math
 import os
 import threading
@@ -487,6 +488,8 @@ def main(args=None):
     so spin() returns with the context already closed — an unconditional
     rclpy.shutdown() here would then raise RCLError. Hence the rclpy.ok() guard.
     """
+    # The localizer libraries log through the standard logging module.
+    logging.basicConfig(level=logging.INFO, format="[%(levelname)s] [%(name)s]: %(message)s")
     die_with_parent()  # orphan guard: die if our launcher/systemd unit is killed
     rclpy.init(args=args)
     node = None

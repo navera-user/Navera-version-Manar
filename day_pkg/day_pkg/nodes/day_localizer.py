@@ -1,3 +1,4 @@
+import logging
 import math
 import os, time
 import numpy as np
@@ -7,6 +8,9 @@ import cv2
 from math import radians, sin, cos, sqrt, atan2
 from torchvision import transforms
 from sklearn.metrics.pairwise import cosine_similarity
+
+logger = logging.getLogger("day_localizer")
+
 
 def _resolve_dataset_dir():
     """Locate the descriptor dataset robustly across source / installed layouts.
@@ -142,17 +146,17 @@ class DayLocalizer:
         self.coords         = None
         self.df_valid       = None
         self.ready          = False
-        print(f"[DayLocalizer] device={self.device}")
+        logger.info(f"device={self.device}")
 
     def load_models(self):
-        print("[DayLocalizer] Loading DINOv2...")
+        logger.info("Loading DINOv2...")
         self.dinov2_model  = DINOv2GeM().to(self.device).eval()
-        print("[DayLocalizer] Models ready")
+        logger.info("Models ready")
 
     def load_or_build_cache(self):
         import pandas as pd
         if os.path.exists(CACHE_PATH):
-            print("[DayLocalizer] Loading cache...")
+            logger.info("Loading cache...")
             cache           = np.load(CACHE_PATH)
             self.dino_descs = cache["dinov2_descriptors"]
             valid_idx       = cache["valid_indices"].tolist()
@@ -168,13 +172,13 @@ class DayLocalizer:
             # from the cache: caches built before the tile-centre fix hold NW corners.
             self.coords     = dataset_coords(self.df_valid)
             self.ready      = True
-            print(f"[DayLocalizer] Cache loaded: {len(self.coords)} images")
+            logger.info(f"Cache loaded: {len(self.coords)} images")
         else:
             self._build_cache()
 
     def _build_cache(self):
         import pandas as pd
-        print("[DayLocalizer] Building cache (takes a few minutes)...")
+        logger.info("Building cache (takes a few minutes)...")
         df    = pd.read_csv(CSV_PATH)
         df    = df.rename(columns={"filename": "imageName"})
         total = len(df)
@@ -188,9 +192,9 @@ class DayLocalizer:
                     dino_list.append(self.dinov2_model(img).cpu().numpy()[0])
                     valid_idx.append(i)
                     if i % 20 == 0:
-                        print(f"  [{i}/{total}]...")
+                        logger.info(f"cache build: {i}/{total}")
                 except Exception as e:
-                    print(f"  Skip {i}: {e}")
+                    logger.warning(f"cache build: skipping tile {i}: {e}")
         self.dino_descs = np.array(dino_list)
         self.df_valid   = df.iloc[valid_idx].reset_index(drop=True)
         self.coords     = dataset_coords(self.df_valid)
@@ -199,7 +203,7 @@ class DayLocalizer:
                  coords=self.coords,
                  valid_indices=np.array(valid_idx))
         self.ready = True
-        print(f"[DayLocalizer] Cache saved: {len(self.coords)} images")
+        logger.info(f"Cache saved: {len(self.coords)} images")
 
     def _haversine_to_coords(self, lat, lon):
         """Distance haversine (m) de (lat,lon) vers TOUTES les coords du cache → (N,)."""

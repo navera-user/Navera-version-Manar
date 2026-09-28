@@ -4,10 +4,9 @@
   <name>navera_common</name>
   <version>0.0.1</version>
   <description>NAVERA shared utilities imported across the pipeline packages. Currently provides die_with_parent() (prctl PR_SET_PDEATHSIG) so launcher death never orphans a node.</description>
-  <maintainer email="navera@example.com">Navera</maintainer>
+  <maintainer email="contact@iris-systems.tn">IRIS Systems</maintainer>
   <license>Apache-2.0</license>
 
-  <buildtool_depend>ament_cmake_python</buildtool_depend>
 
   <!-- die_with_parent() uses only the Python standard library (ctypes/os/signal). -->
 

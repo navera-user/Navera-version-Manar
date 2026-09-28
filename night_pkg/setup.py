@@ -17,8 +17,8 @@ setup(
     data_files=data_files,
     install_requires=['setuptools', 'rclpy', 'opencv-python', 'numpy', 'torch', 'safetensors'],
     zip_safe=True,
-    maintainer='Navera',
-    maintainer_email='navera@example.com',
+    maintainer='IRIS Systems',
+    maintainer_email='contact@iris-systems.tn',
     description='NAVERA night STHN ROS2 subscriber',
     license='Apache-2.0',
     entry_points={

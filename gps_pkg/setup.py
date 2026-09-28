@@ -18,8 +18,8 @@ setup(
     data_files=data_files,
     install_requires=['setuptools', 'rclpy', 'pyserial', 'pynmea2'],
     zip_safe=True,
-    maintainer='Navera',
-    maintainer_email='navera@example.com',
+    maintainer='IRIS Systems',
+    maintainer_email='contact@iris-systems.tn',
     description='NAVERA GPS sensor driver (NMEA → /navera/sensors/gps_*)',
     license='Apache-2.0',
     entry_points={

@@ -14,8 +14,8 @@ setup(
     data_files=data_files,
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='Navera',
-    maintainer_email='navera@example.com',
+    maintainer='IRIS Systems',
+    maintainer_email='contact@iris-systems.tn',
     description='NAVERA shared utilities (process lifecycle, geodesy helpers).',
     license='Apache-2.0',
     # Library package: no console_scripts. Imported by the pipeline nodes.

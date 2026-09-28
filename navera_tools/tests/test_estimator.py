@@ -17,6 +17,7 @@ import time
 import rclpy
 from navera_msgs.msg import NavStatus, PositionEstimate
 from rclpy.duration import Duration
+from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 
 GPS, DAY = PositionEstimate.SOURCE_GPS, PositionEstimate.SOURCE_DAY_VISION
@@ -32,7 +33,10 @@ def main():
     positions, statuses = [], []
     n.create_subscription(PositionEstimate, "/navera/position", positions.append, 10)
     n.create_subscription(NavStatus, "/navera/nav_status", statuses.append, 10)
-    threading.Thread(target=rclpy.spin, args=(n,), daemon=True).start()
+    executor = SingleThreadedExecutor()
+    executor.add_node(n)
+    spinner = threading.Thread(target=executor.spin, daemon=True)
+    spinner.start()
     # Wait for the estimator to be up (cold starts after a build can be slow),
     # instead of a fixed sleep.
     deadline = time.time() + 20.0
@@ -119,6 +123,11 @@ def main():
 
     proc.terminate()
     proc.wait(timeout=10)
+    # Stop spinning before tearing ROS down: shutting the context down under a
+    # spinning thread aborts the interpreter (exit 134) intermittently.
+    executor.shutdown()
+    spinner.join(timeout=5)
+    n.destroy_node()
     rclpy.shutdown()
     for f in failures:
         print("FAIL", f)

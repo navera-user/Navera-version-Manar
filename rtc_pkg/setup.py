@@ -23,8 +23,8 @@ setup(
     #   adafruit-blinka, adafruit-circuitpython-ds3231, adafruit-register
     install_requires=['setuptools', 'rclpy'],
     zip_safe=True,
-    maintainer='Navera',
-    maintainer_email='navera@example.com',
+    maintainer='IRIS Systems',
+    maintainer_email='contact@iris-systems.tn',
     description='NAVERA RTC driver — DS3231 over I2C → /navera/sensors/rtc_time',
     license='Apache-2.0',
     entry_points={

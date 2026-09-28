@@ -15,6 +15,7 @@ import time
 
 import rclpy
 from navera_msgs.msg import PositionEstimate
+from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 
 
@@ -48,7 +49,10 @@ def main():
     node = Node("gps_serial_test")
     got = []
     node.create_subscription(PositionEstimate, "/navera/estimate/gps", got.append, 10)
-    threading.Thread(target=rclpy.spin, args=(node,), daemon=True).start()
+    executor = SingleThreadedExecutor()
+    executor.add_node(node)
+    spinner = threading.Thread(target=executor.spin, daemon=True)
+    spinner.start()
     # Wait until gps_node's publisher is discovered (instead of a fixed sleep).
     deadline = time.time() + 20.0
     while node.count_publishers("/navera/estimate/gps") == 0 and time.time() < deadline:
@@ -89,6 +93,11 @@ def main():
         code = None
     if code != 1:
         failures.append(f"port loss: exit code {code}, expected 1")
+    # Stop spinning before tearing ROS down: shutting the context down under a
+    # spinning thread aborts the interpreter (exit 134) intermittently.
+    executor.shutdown()
+    spinner.join(timeout=5)
+    node.destroy_node()
     rclpy.shutdown()
 
     for f in failures:

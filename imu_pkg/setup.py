@@ -23,8 +23,8 @@ setup(
     #   Jetson.GPIO>=2.1.12, adafruit-blinka, adafruit-circuitpython-bno08x
     install_requires=['setuptools', 'rclpy'],
     zip_safe=True,
-    maintainer='Navera',
-    maintainer_email='navera@example.com',
+    maintainer='IRIS Systems',
+    maintainer_email='contact@iris-systems.tn',
     description='NAVERA IMU sensor driver — BNO085 9-DoF over I2C → /navera/sensors/imu',
     license='Apache-2.0',
     entry_points={
