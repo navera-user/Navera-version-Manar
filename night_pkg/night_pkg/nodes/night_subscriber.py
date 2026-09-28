@@ -91,6 +91,8 @@ class NightSubscriber(Node):
         # Live GPS, used as the prior (see day_subscriber).
         self.declare_parameter("gps_topic",       "/navera/estimate/gps")
         self.declare_parameter("gps_prior_timeout_s", 2.0)
+        # Mission start/stop gate of the camera: a stop (rewind) resets tracking.
+        self.declare_parameter("start_topic", "/thermal/camera/start")
         # Dead-reckoning from the last accepted fix is only published for this long.
         self.declare_parameter("max_dead_reckon_s", 30.0)
         # fp16 au forward STHN (string pour un toggle 'false' fiable) — défaut activé.
@@ -190,6 +192,12 @@ class NightSubscriber(Node):
         self._gps_prior = GpsPrior(float(self.get_parameter("gps_prior_timeout_s").value))
         self.sub_gps   = self.create_subscription(
             PositionEstimate, self.get_parameter("gps_topic").value, self.on_gps, 10)
+        # Same latched QoS as the camera's gate (TRANSIENT_LOCAL, depth 1).
+        start_qos = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
+                               durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                               history=HistoryPolicy.KEEP_LAST, depth=1)
+        self.sub_start = self.create_subscription(
+            Bool, self.get_parameter("start_topic").value, self.on_start_cmd, start_qos)
 
         # ── Handshake "ready" (latché) ─────────────────────────
         ready_qos = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
@@ -219,6 +227,15 @@ class NightSubscriber(Node):
             self._anchor_lat, self._anchor_lon = msg.latitude, msg.longitude
             self._anchor_time = time.time()
             self._last_measured_time = self._anchor_time
+
+    def on_start_cmd(self, msg: Bool):
+        """Mission stop/rewind → forget the previous run's track (the next run
+        starts from GPS, or reports no position until it has a prior)."""
+        if msg.data or self._gps_prior.fresh() is not None:
+            return
+        self._anchor_lat = self._anchor_lon = self._anchor_time = None
+        self._last_measured_time = None
+        self.get_logger().info("[thermal] mission rewind — tracking state reset")
 
     def on_meta(self, msg: String):
         try:
