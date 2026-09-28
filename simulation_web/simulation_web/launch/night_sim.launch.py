@@ -37,14 +37,13 @@ def generate_launch_description():
 
     # Public interface: same argument names and same defaults as before the split, so
     # every existing invocation (docs, CLI overrides) keeps working. The STHN tuning
-    # knobs (patch_size, cuda_*, mixed_precision, weights) are documented in
+    # knobs (cuda_*, mixed_precision, weights) are documented in
     # night_pipeline.launch.py, which is where they are consumed.
     return LaunchDescription([
         DeclareLaunchArgument('web_port',       default_value='8181'),   # même URL que day/cn (un mode à la fois)
         DeclareLaunchArgument('mbtiles_path',   default_value=default_mbtiles),
         DeclareLaunchArgument('conf_threshold', default_value='0.30'),   # seuil conf STHN
-        DeclareLaunchArgument('dr_step_min_m',  default_value='120.0'),  # plancher dead-reckon
-        DeclareLaunchArgument('patch_size',     default_value='256'),
+        DeclareLaunchArgument('max_dead_reckon_s', default_value='30.0'),
         DeclareLaunchArgument('cuda_visible_devices', default_value='0'),
         DeclareLaunchArgument('cuda_alloc_conf', default_value='expandable_segments:True'),
         DeclareLaunchArgument('mixed_precision', default_value='true'),
@@ -61,8 +60,7 @@ def generate_launch_description():
             launch_arguments={
                 'mbtiles_path':          LaunchConfiguration('mbtiles_path'),
                 'conf_threshold':        LaunchConfiguration('conf_threshold'),
-                'dr_step_min_m':         LaunchConfiguration('dr_step_min_m'),
-                'patch_size':            LaunchConfiguration('patch_size'),
+                'max_dead_reckon_s':         LaunchConfiguration('max_dead_reckon_s'),
                 'cuda_visible_devices':  LaunchConfiguration('cuda_visible_devices'),
                 'cuda_alloc_conf':       LaunchConfiguration('cuda_alloc_conf'),
                 'mixed_precision':       LaunchConfiguration('mixed_precision'),

@@ -8,32 +8,29 @@ Usage:
 """
 
 import sys
-import os
 import math
 import sqlite3
 import logging
 import time
 from pathlib import Path
-from collections import deque
 
 import numpy as np
 import cv2
 import torch
 
 logger = logging.getLogger("night_localizer")
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# STHN "one_stage" model geometry — MUST match the weights' one_stage/config.json
+# (corr_level 4, database_size 1536, resize_width 256). The satellite search
+# area is DATABASE_SIZE px at the tile GSD (z17 ≈ 0.97 m/px here, close to the
+# ~1 m/px STHN was trained on); both images are fed to the network at
+# RESIZE_WIDTH, and four_pred is expressed at that scale.
+STHN_RESIZE_WIDTH  = 256
+STHN_DATABASE_SIZE = 1536
+STHN_CORR_LEVEL    = 4
 
 
 # ─── Tile utilities (MBTiles → numpy) ────────────────────────────────────────
-
-def _latlon_to_tile(lat, lon, zoom):
-    """Convert lat/lon to tile x,y at given zoom (Web Mercator / XYZ)."""
-    n = 2 ** zoom
-    x = int((lon + 180.0) / 360.0 * n)
-    lat_r = math.radians(lat)
-    y = int((1.0 - math.log(math.tan(lat_r) + 1.0 / math.cos(lat_r)) / math.pi) / 2.0 * n)
-    return x, y
-
 
 def _read_tile(conn, z, x, y):
     """Read a tile from MBTiles (TMS y-flip required)."""
@@ -50,38 +47,62 @@ def _read_tile(conn, z, x, y):
     return img
 
 
-def _stitch_satellite_patch(conn, lat, lon, zoom, patch_size=512):
-    """
-    Build a satellite patch of `patch_size x patch_size` px centered on (lat, lon).
-    Returns (patch_bgr, ref_lat, ref_lon, metres_per_pixel).
-    """
-    cx, cy = _latlon_to_tile(lat, lon, zoom)
+def _latlon_to_tile_frac(lat, lon, zoom):
+    """Fractional XYZ tile coordinates (Web Mercator) of (lat, lon)."""
+    n = 2 ** zoom
+    x = (lon + 180.0) / 360.0 * n
+    lat_r = math.radians(lat)
+    y = (1.0 - math.log(math.tan(lat_r) + 1.0 / math.cos(lat_r)) / math.pi) / 2.0 * n
+    return x, y
 
-    # 3×3 neighbourhood of 256 px tiles → 768 px mosaic, then centre-crop
+
+def _tile_frac_to_latlon(x, y, zoom):
+    """Inverse of _latlon_to_tile_frac."""
+    n = 2 ** zoom
+    lon = x / n * 360.0 - 180.0
+    lat = math.degrees(math.atan(math.sinh(math.pi * (1.0 - 2.0 * y / n))))
+    return lat, lon
+
+
+def _stitch_satellite_patch(conn, lat, lon, zoom, size):
+    """
+    Build a `size` x `size` px satellite patch CENTRED ON (lat, lon).
+
+    The mosaic of 256 px tiles around the prior is cropped around the prior's
+    own pixel position (not a tile centre, which can be half a tile away).
+
+    Returns (patch_bgr, origin_x, origin_y, n_missing) where (origin_x,
+    origin_y) are the fractional tile coordinates of the patch's top-left
+    pixel edge — patch pixel (u, v) spans tile coords origin + (u, v) / 256 —
+    and n_missing counts the tiles under the crop that are absent from the
+    MBTiles (outside coverage).
+    """
+    xf, yf = _latlon_to_tile_frac(lat, lon, zoom)
+    x0f = xf - size / 512.0          # crop edges in tile units (256 px per tile)
+    y0f = yf - size / 512.0
+    tx0, ty0 = int(math.floor(x0f)), int(math.floor(y0f))
+    tx1 = int(math.floor(x0f + size / 256.0 - 1e-9))
+    ty1 = int(math.floor(y0f + size / 256.0 - 1e-9))
+
     rows = []
-    for dy in range(-1, 2):
+    n_missing = 0
+    for ty in range(ty0, ty1 + 1):
         row_tiles = []
-        for dx in range(-1, 2):
-            tile = _read_tile(conn, zoom, cx + dx, cy + dy)
+        for tx in range(tx0, tx1 + 1):
+            tile = _read_tile(conn, zoom, tx, ty)
             if tile is None:
+                n_missing += 1
                 tile = np.zeros((256, 256, 3), dtype=np.uint8)
             if tile.shape[:2] != (256, 256):
                 tile = cv2.resize(tile, (256, 256))
             row_tiles.append(tile)
         rows.append(np.concatenate(row_tiles, axis=1))
-    mosaic = np.concatenate(rows, axis=0)   # 768×768
+    mosaic = np.concatenate(rows, axis=0)   # pixel (0,0) = tile (tx0, ty0)
 
-    h, w   = mosaic.shape[:2]
-    cy_px  = h // 2
-    cx_px  = w // 2
-    half   = patch_size // 2
-    patch  = mosaic[cy_px - half : cy_px + half, cx_px - half : cx_px + half]
-
-    if patch.shape[0] != patch_size or patch.shape[1] != patch_size:
-        patch = cv2.resize(patch, (patch_size, patch_size))
-
-    mpp = 156543.03392 * math.cos(math.radians(lat)) / (2 ** zoom)
-    return patch, lat, lon, mpp
+    x0 = int(round((x0f - tx0) * 256.0))
+    y0 = int(round((y0f - ty0) * 256.0))
+    patch = mosaic[y0:y0 + size, x0:x0 + size]
+    return patch, tx0 + x0 / 256.0, ty0 + y0 / 256.0, n_missing
 
 
 # ─── Bing ↔ ESRI projection bias correction ──────────────────────────────────
@@ -107,8 +128,6 @@ class NightLocalizer:
     weights    : path to local_pipeline checkpoint (.pth)
     mbtiles    : path to sousse_satellite.mbtiles
     zoom       : MBTiles zoom level (default 17)
-    patch_size : satellite reference patch size (default 512)
-    roll_avg_n : rolling average window (default 5)
     device     : 'cuda' or 'cpu'
     """
 
@@ -118,20 +137,14 @@ class NightLocalizer:
         weights: str,
         mbtiles: str,
         zoom: int = 17,
-        patch_size: int = 256,
-        roll_avg_n: int = 5,
         device: str = None,
         conf_threshold: float = 0.30,
         mixed_precision: bool = False,
     ):
         self.zoom           = zoom
-        self.patch_size     = patch_size
         self.conf_threshold = conf_threshold
         self.mixed_precision = bool(mixed_precision)   # fp16 autocast au forward (network.py:110/139)
         self.device     = device or ("cuda" if torch.cuda.is_available() else "cpu")
-        self.roll_avg_n = roll_avg_n
-        self._lat_buf   = deque(maxlen=roll_avg_n)
-        self._lon_buf   = deque(maxlen=roll_avg_n)
 
         # Insert STHN into sys.path
         sthn_dir = str(Path(sthn_dir).resolve())
@@ -212,7 +225,7 @@ class NightLocalizer:
             netvlad_clusters=64,
             fc_output_dim=512,
             infer_batch_size=1,
-            resize=[self.patch_size, self.patch_size],
+            resize=[STHN_RESIZE_WIDTH, STHN_RESIZE_WIDTH],
             db_size=512,
             rw=256,
             no_cuda=(self.device == "cpu"),
@@ -256,14 +269,14 @@ class NightLocalizer:
             GAN_mode="none",
             D_net="none",
             G_contrast=False,
-            resize_width=self.patch_size,
-            resize_height=self.patch_size,
-            database_size=self.patch_size,
+            resize_width=STHN_RESIZE_WIDTH,
+            resize_height=STHN_RESIZE_WIDTH,
+            database_size=STHN_DATABASE_SIZE,
             arch="IHN",
             two_stages=False,
             restore_ckpt=None,
             finetune=False,
-            corr_level=2,
+            corr_level=STHN_CORR_LEVEL,
             corr_radius=4,
             vis_all=False,
             G_loss_lambda=1.0,
@@ -295,7 +308,19 @@ class NightLocalizer:
             else:
                 state = checkpoint
 
-        model.netG.load_state_dict(state, strict=False)
+        # The published checkpoint stores the whole Network ("netG.<param>"),
+        # while it is loaded into model.netG itself: strip that prefix.
+        if state and all(k.startswith("netG.") for k in state):
+            state = {k[len("netG."):]: v for k, v in state.items()}
+        missing, unexpected = model.netG.load_state_dict(state, strict=False)
+        if missing:
+            # A wrong or re-prefixed checkpoint would otherwise leave the network
+            # with random weights while reporting "loaded".
+            raise RuntimeError(
+                f"STHN checkpoint {weights_path} is missing {len(missing)} weights "
+                f"(e.g. {missing[:3]}); refusing to run with random weights")
+        if unexpected:
+            logger.warning(f"STHN checkpoint has {len(unexpected)} unused keys (e.g. {unexpected[:3]})")
         model.netG = model.netG.to(self.device).eval()
         logger.info(f"STHN weights loaded from {weights_path}")
 
@@ -306,36 +331,69 @@ class NightLocalizer:
 
     # ── Preprocessing ─────────────────────────────────────────────────────────
 
-    def _preprocess(self, img_bgr, size=256):
-        import cv2
+    def _preprocess(self, img_bgr, size=256, grey=False):
+        """Centre-square crop, resize to `size`, RGB (or 3x grey) tensor in [0, 1].
+
+        No ImageNet normalisation here: STHN's IHN.forward applies it itself,
+        so normalising twice would feed the network out-of-distribution input.
+        """
         h, w = img_bgr.shape[:2]
         side = min(h, w)
         y0 = (h - side) // 2
         x0 = (w - side) // 2
-        img_bgr = img_bgr[y0:y0+side, x0:x0+side]
-        img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-        img_resized = cv2.resize(img_rgb, (size, size))
-        tensor = torch.from_numpy(img_resized).permute(2, 0, 1).float() / 255.0
-        mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
-        std  = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
-        tensor = (tensor - mean) / std
-        return tensor.unsqueeze(0).to(DEVICE)
-    
+        img = img_bgr[y0:y0 + side, x0:x0 + side]
+        if grey:
+            g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            img = np.stack([g, g, g], axis=-1)
+        else:
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = cv2.resize(img, (size, size), interpolation=cv2.INTER_LINEAR)
+        tensor = torch.from_numpy(np.ascontiguousarray(img)).permute(2, 0, 1).float() / 255.0
+        return tensor.unsqueeze(0).to(self.device)
+
     # ── Homography corners → lat/lon ──────────────────────────────────────────
 
-    def _corners_to_latlon(self, corners_px, ref_lat, ref_lon, mpp):
-        """
-        corners_px : (4, 2) predicted corner displacements in pixels
-                     relative to the patch centre.
-        Returns estimated (lat, lon) of the drone nadir point.
-        """
-        cx_px = float(corners_px[:, 0].mean())
-        cy_px = float(corners_px[:, 1].mean())
+    @staticmethod
+    def _predicted_corners(four_pred, resize_width):
+        """Predicted corners of the thermal frame inside the satellite patch.
 
-        d_lon = cx_px * mpp / (111320.0 * math.cos(math.radians(ref_lat)))
-        d_lat = -cy_px * mpp / 111320.0   # image y-axis is south-positive
+        STHN's four_pred is [1, 2, 2, 2]: dim 1 is the coordinate (0 = x,
+        1 = y), dims 2-3 the corner grid (row: top/bottom, col: left/right).
+        Values are pixel DISPLACEMENTS at resize_width scale, added to the
+        identity corners (0, rw-1) — see STHN_demo.visualize_result.
+        Returns a (4, 2) array of (x, y) in TL, TR, BR, BL order.
+        """
+        fp = np.asarray(four_pred, dtype=np.float64).reshape(2, 2, 2)
+        e = resize_width - 1.0
+        org = np.array([[[0.0, e], [0.0, e]],      # x of TL, TR / BL, BR
+                        [[0.0, 0.0], [e, e]]])     # y of TL, TR / BL, BR
+        pts = fp + org
+        return np.array([[pts[0, 0, 0], pts[1, 0, 0]],
+                         [pts[0, 0, 1], pts[1, 0, 1]],
+                         [pts[0, 1, 1], pts[1, 1, 1]],
+                         [pts[0, 1, 0], pts[1, 1, 0]]])
 
-        return ref_lat + d_lat, ref_lon + d_lon
+    @staticmethod
+    def _quad_consistency(corners):
+        """Geometric plausibility of the predicted quad in [0, 1].
+
+        1.0 = a square (what a nadir view of a square crop should map to);
+        0.0 = self-intersecting or degenerate. This is NOT a calibrated
+        probability of correctness — STHN outputs none — only a gate against
+        geometrically impossible predictions.
+        """
+        c = np.asarray(corners)
+        cross = []
+        for i in range(4):
+            a, b, d = c[i], c[(i + 1) % 4], c[(i + 2) % 4]
+            cross.append((b[0] - a[0]) * (d[1] - b[1]) - (b[1] - a[1]) * (d[0] - b[0]))
+        if not (all(x > 0 for x in cross) or all(x < 0 for x in cross)):
+            return 0.0
+        sides = [np.linalg.norm(c[(i + 1) % 4] - c[i]) for i in range(4)]
+        diags = [np.linalg.norm(c[2] - c[0]), np.linalg.norm(c[3] - c[1])]
+        if min(sides) <= 1e-6:
+            return 0.0
+        return float((min(sides) / max(sides)) * (min(diags) / max(diags)))
 
     # ── Main inference ────────────────────────────────────────────────────────
 
@@ -365,90 +423,80 @@ class NightLocalizer:
         _FAIL = {"success": False, "lat": prior_lat, "lon": prior_lon,
                  "conf": 0.0, "dt_ms": 0.0, "rms_px": 0.0}
 
-        # 1. Fetch satellite reference patch
+        # 1. Satellite reference patch centred on the prior
         try:
-            sat_patch, ref_lat, ref_lon, mpp = _stitch_satellite_patch(
-                self._conn, prior_lat, prior_lon, self.zoom, self.patch_size
+            sat_patch, origin_x, origin_y, n_missing = _stitch_satellite_patch(
+                self._conn, prior_lat, prior_lon, self.zoom, STHN_DATABASE_SIZE
             )
         except Exception as e:
             logger.warning(f"Tile fetch failed: {e}")
             return _FAIL
+        if n_missing:
+            # Matching against black filler tiles is meaningless (outside coverage).
+            logger.warning(f"{n_missing} satellite tiles missing around the prior")
+            return _FAIL
 
-        # 2. Preprocess
-        q_t  = self._preprocess(query_bgr,  size=self.patch_size)
-        db_t = self._preprocess(sat_patch,  size=self.patch_size)
+        # 2. Preprocess: satellite RGB at full search size (STHN downsamples it
+        #    itself), thermal as 3x grey at RESIZE_WIDTH, both in [0, 1]
+        sat_t = self._preprocess(sat_patch, size=STHN_DATABASE_SIZE)
+        thr_t = self._preprocess(query_bgr, size=STHN_RESIZE_WIDTH, grey=True)
 
-        # 3. Forward pass
-        #    STHN Network.forward(query, db) — positional args, not kwargs.
-        #    The model returns predicted 4-corner offsets: shape (1,4,2) or (1,8).
+        # 3. Forward pass. STHN's contract is set_input(A=satellite, B=thermal).
         try:
-            # STHN is not nn.Module — use set_input + forward pattern
-            pass  # empty_cache disabled (crashes Jetson allocator)
-            self._model.set_input(q_t, db_t, flow_gt=torch.zeros(1, 2, 2, 2, device=self.device))
+            self._model.set_input(sat_t, thr_t, flow_gt=torch.zeros(1, 2, 2, 2, device=self.device))
             with torch.no_grad():
                 self._model.forward(for_training=False)
-            pred = self._model.four_pred  # shape (1, 2, 2, 2)
+            pred = self._model.four_pred
         except Exception as e:
             logger.error(f"STHN forward failed: {e}")
             return _FAIL
+        if tuple(pred.shape) != (1, 2, 2, 2):
+            logger.warning(f"Unexpected STHN output shape: {tuple(pred.shape)}")
+            return _FAIL
+        pred_np = pred.detach().cpu().float().numpy()
+        if not np.all(np.isfinite(pred_np)):
+            logger.warning("STHN output is not finite → rejected")
+            return _FAIL
 
-        # 4. Normalise output → (4, 2)
-        pred_np = pred.squeeze().cpu().float().numpy()
-        if pred_np.ndim == 1:
-            if pred_np.size == 8:
-                pred_np = pred_np.reshape(4, 2)
-            else:
-                # Unexpected output size — abort gracefully
-                logger.warning(f"Unexpected STHN output shape: {pred_np.shape}")
-                return _FAIL
-
-        # Scale from normalised [-1..1] to pixel coords
-        pred_px = pred_np * (self.patch_size / 2.0)
-
-        # 5. Confidence: inverse RMS displacement (large disp → low conf)
-        rms = float(np.sqrt((pred_px ** 2).mean()))
-        max_expected_px = self.patch_size * 0.3
-        conf = float(np.clip(1.0 - rms / max_expected_px, 0.0, 1.0))
-
-        # PATCHED: reject low-confidence predictions so the receiver can
-        # fall back to dead-reckoning instead of jumping to a wrong point.
-        if conf < self.conf_threshold:
-            logger.warning(
-                f"STHN low confidence {conf:.2f} < {self.conf_threshold:.2f} "
-                f"(rms={rms:.1f}px) → rejected, receiver will dead-reckon")
-            return {"success": False, "lat": prior_lat, "lon": prior_lon,
-                    "conf": conf, "dt_ms": (time.perf_counter()-t0)*1000.0,
-                    "rms_px": rms, "raw_lat": prior_lat, "raw_lon": prior_lon}
-
-        # 6. Convert corners → lat/lon
-        raw_lat, raw_lon = self._corners_to_latlon(pred_px, ref_lat, ref_lon, mpp)
-
-        # 7. Bias correction (Bing ↔ ESRI alignment at zoom 17)
-        corr_lat, corr_lon = _apply_bias_correction(raw_lat, raw_lon)
-
-        # 8. Rolling average to smooth jitter
-        self._lat_buf.append(corr_lat)
-        self._lon_buf.append(corr_lon)
-        avg_lat = float(np.mean(self._lat_buf))
-        avg_lon = float(np.mean(self._lon_buf))
-
+        # 4. Where the thermal frame's centre lies in the satellite patch
+        corners = self._predicted_corners(pred_np, STHN_RESIZE_WIDTH)
+        conf = self._quad_consistency(corners)
+        cx, cy = corners.mean(axis=0)           # RESIZE_WIDTH pixel coordinates
+        scale = STHN_DATABASE_SIZE / float(STHN_RESIZE_WIDTH)   # → satellite patch px
+        u = (cx + 0.5) * scale
+        v = (cy + 0.5) * scale
+        half = STHN_DATABASE_SIZE / 2.0
+        disp_px = float(np.hypot(u - half, v - half))
+        inside = 0.0 <= u <= STHN_DATABASE_SIZE and 0.0 <= v <= STHN_DATABASE_SIZE
         dt_ms = (time.perf_counter() - t0) * 1000.0
 
+        if not inside or conf < self.conf_threshold:
+            logger.warning(
+                f"STHN prediction rejected: consistency {conf:.2f} (min {self.conf_threshold:.2f}), "
+                f"centre {'inside' if inside else 'OUTSIDE'} patch, shift {disp_px:.1f}px")
+            return {"success": False, "lat": prior_lat, "lon": prior_lon,
+                    "conf": conf, "dt_ms": dt_ms, "rms_px": disp_px,
+                    "raw_lat": prior_lat, "raw_lon": prior_lon}
+
+        # 5. Patch pixels → geographic position (exact Web Mercator, 256 px/tile)
+        raw_lat, raw_lon = _tile_frac_to_latlon(
+            origin_x + u / 256.0, origin_y + v / 256.0, self.zoom)
+
+        # 6. Bias correction (Bing ↔ ESRI alignment at zoom 17)
+        corr_lat, corr_lon = _apply_bias_correction(raw_lat, raw_lon)
+
         logger.debug(
-            f"Night fix: ({avg_lat:.6f}, {avg_lon:.6f})  conf={conf:.2f}  dt={dt_ms:.1f}ms"
+            f"Night fix: ({corr_lat:.6f}, {corr_lon:.6f})  conf={conf:.2f}  dt={dt_ms:.1f}ms"
         )
 
         return {
             "success": True,
-            "lat":     avg_lat,
-            "lon":     avg_lon,
+            "lat":     corr_lat,
+            "lon":     corr_lon,
             "raw_lat": raw_lat,
             "raw_lon": raw_lon,
             "conf":    conf,
-            "rms_px":  rms,
+            "rms_px":  disp_px,
             "dt_ms":   dt_ms,
         }
 
-    def reset_rolling(self):
-        self._lat_buf.clear()
-        self._lon_buf.clear()

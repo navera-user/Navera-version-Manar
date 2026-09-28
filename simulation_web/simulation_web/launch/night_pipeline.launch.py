@@ -37,10 +37,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('mbtiles_path',   default_value=default_mbtiles),
         DeclareLaunchArgument('conf_threshold', default_value='0.30'),   # seuil conf STHN
-        DeclareLaunchArgument('dr_step_min_m',  default_value='120.0'),  # plancher dead-reckon
-        # patch_size STHN : 512 fait OOM (NvMap ENOMEM) sur Orin Nano 8 Go ;
-        # 256 divise la VRAM des volumes de corrélation IHN par ~4.
-        DeclareLaunchArgument('patch_size',     default_value='256'),
+        DeclareLaunchArgument('max_dead_reckon_s', default_value='30.0'),
         # VRAM Jetson 8 Go partagée : si STHN OOM dès l'init du contexte CUDA
         # (network.py:168, torch.zeros().to(device) — alloc minuscule qui échoue
         # car la VRAM est déjà saturée), forcer le night STHN sur CPU avec
@@ -88,8 +85,7 @@ def generate_launch_description():
                 'weights':        LaunchConfiguration('weights'),
                 'mbtiles':        mbtiles_path,
                 'conf_threshold': conf_threshold,
-                'patch_size':     LaunchConfiguration('patch_size'),
-                'dr_step_min_m':  LaunchConfiguration('dr_step_min_m'),
+                'max_dead_reckon_s':  LaunchConfiguration('max_dead_reckon_s'),
                 # value_type=str : sinon launch_ros coerce 'true'→bool et le nœud
                 # (qui déclare/parse mixed_precision en string) crashe au démarrage.
                 'mixed_precision': ParameterValue(

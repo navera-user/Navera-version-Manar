@@ -36,6 +36,7 @@ import cv2
 import numpy as np
 
 import rclpy
+from navera_common.geo import dead_reckon, is_finite_latlon
 from navera_common.lifecycle import die_with_parent
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
@@ -64,10 +65,6 @@ _NIGHT_MODEL_BY_SRC = {
     "dead_reckon": "dead_reckon_v1",
 }
 
-# ── Constantes night (configurables) ───────────────────────────────────────
-# Dead-reckoning : pas planché pour que l'anchor avance visiblement même si
-# speed×dt est minuscule (timing sim compressé) — comme antijump_min_step_m du day.
-DR_STEP_MIN_M = 120.0   # plancher (m) du pas de dead-reckon
 
 
 class NightSubscriber(Node):
@@ -82,7 +79,6 @@ class NightSubscriber(Node):
         self.declare_parameter("mbtiles",
             os.environ.get("NAVERA_MBTILES", "/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles"))
         self.declare_parameter("zoom",            17)
-        self.declare_parameter("patch_size",      512)
         self.declare_parameter("conf_threshold",  0.30)
         self.declare_parameter("image_topic",     "/thermal/image_raw")
         self.declare_parameter("meta_topic",      "/thermal/frame_meta")
@@ -90,7 +86,8 @@ class NightSubscriber(Node):
         self.declare_parameter("status_topic",    "/night/night_status")
         self.declare_parameter("done_topic",      "/thermal/frame_done")     # ack back-pressure
         self.declare_parameter("ready_topic",     "/night/localizer_ready")  # handshake
-        self.declare_parameter("dr_step_min_m",   DR_STEP_MIN_M)             # dead-reckon floor
+        # Dead-reckoning from the last accepted fix is only published for this long.
+        self.declare_parameter("max_dead_reckon_s", 30.0)
         # fp16 au forward STHN (string pour un toggle 'false' fiable) — défaut activé.
         self.declare_parameter("mixed_precision", "true")
 
@@ -98,7 +95,6 @@ class NightSubscriber(Node):
         weights    = self.get_parameter("weights").value
         mbtiles    = self.get_parameter("mbtiles").value
         zoom       = int(self.get_parameter("zoom").value)
-        patch_size = int(self.get_parameter("patch_size").value)
         self.conf_threshold = float(self.get_parameter("conf_threshold").value)
         # parse robuste string→bool (bool('false') serait True : on évite ce piège)
         self.mixed_precision = str(self.get_parameter("mixed_precision").value).strip().lower() \
@@ -109,7 +105,8 @@ class NightSubscriber(Node):
         status_topic  = self.get_parameter("status_topic").value
         done_topic    = self.get_parameter("done_topic").value
         ready_topic   = self.get_parameter("ready_topic").value
-        self.dr_step_min_m = float(self.get_parameter("dr_step_min_m").value)
+        self.max_dead_reckon_s = float(self.get_parameter("max_dead_reckon_s").value)
+        self._last_measured_time = None   # wall-clock of the last STHN / known fix
 
         # ── State ───────────────────────────────────────────────
         self.bridge        = CvBridge()
@@ -133,7 +130,7 @@ class NightSubscriber(Node):
         self.get_logger().info(f"  fix   topic     : {fix_topic}")
         self.get_logger().info(f"  status topic    : {status_topic}")
         self.get_logger().info(f"  conf_threshold  : {self.conf_threshold:.2f}")
-        self.get_logger().info(f"  dr_step_min_m   : {self.dr_step_min_m:.0f} m")
+        self.get_logger().info(f"  max_dead_reckon : {self.max_dead_reckon_s:.0f} s")
         self.get_logger().info(f"  mixed_precision : {self.mixed_precision} (fp16 forward)")
         self.get_logger().info("  policy          : strictly-serial, back-pressure (acks frame_done)")
         self.get_logger().info("=" * 60)
@@ -145,18 +142,11 @@ class NightSubscriber(Node):
         # Point A. On rend donc l'échec EXPLICITE avant de ré-émettre.
         self.get_logger().info("⏳ Loading STHN model — this can take 20-60s…")
         try:
-            try:
-                self.localizer = NightLocalizer(
-                    sthn_dir=sthn_dir, weights=weights, mbtiles=mbtiles,
-                    zoom=zoom, patch_size=patch_size, conf_threshold=self.conf_threshold,
-                    mixed_precision=self.mixed_precision,
-                )
-            except TypeError:
-                # NightLocalizer plus ancien (sans conf_threshold) → fallback signature.
-                self.localizer = NightLocalizer(
-                    sthn_dir=sthn_dir, weights=weights, mbtiles=mbtiles,
-                    zoom=zoom, patch_size=patch_size,
-                )
+            self.localizer = NightLocalizer(
+                sthn_dir=sthn_dir, weights=weights, mbtiles=mbtiles,
+                zoom=zoom, conf_threshold=self.conf_threshold,
+                mixed_precision=self.mixed_precision,
+            )
         except Exception as e:
             self.get_logger().fatal("=" * 60)
             self.get_logger().fatal("❌ STHN n'a PAS pu charger — handshake non publié,")
@@ -265,10 +255,7 @@ class NightSubscriber(Node):
                 self._publish_status_only(seq_id, reason="no anchor yet")
                 return
 
-            hdg   = float(meta.get("heading_deg") or 0.0)
-            spd   = float(meta.get("speed_mps") or 0.0)
             t_now = time.time()
-            dt    = max(1e-3, t_now - self._anchor_time) if self._anchor_time else 0.0
 
             self.get_logger().info(
                 f"[night] 🛰 STHN frame={seq_id} prior=anchor"
@@ -276,28 +263,38 @@ class NightSubscriber(Node):
             result = self.localizer.localize(img, self._anchor_lat, self._anchor_lon)
             conf   = float(result.get("conf", 0.0) or 0.0)
 
-            # ── RAW (avant gating conf) : distingue "STHN tourne & rejette" de
-            #    "forward avorté". _FAIL (forward KO) → dt_ms=0, rms_px=0, raw_lat/lon ABSENTS.
-            #    Rejet conf       → dt_ms>0, rms_px>0, raw_lat/lon PRÉSENTS. ──
             self.get_logger().info(
                 f"[night] 🔬 RAW frame={seq_id} success={result.get('success')} "
-                f"conf={conf:.3f} rms_px={result.get('rms_px')} dt_ms={result.get('dt_ms')} "
+                f"conf={conf:.3f} shift_px={result.get('rms_px')} dt_ms={result.get('dt_ms')} "
                 f"raw_lat={result.get('raw_lat')} raw_lon={result.get('raw_lon')}"
             )
 
-            if result.get("success") and conf >= self.conf_threshold:
+            if (result.get("success") and conf >= self.conf_threshold
+                    and is_finite_latlon(result.get("lat"), result.get("lon"))):
                 out_lat = float(result["lat"]); out_lon = float(result["lon"])
                 self._anchor_lat, self._anchor_lon, self._anchor_time = out_lat, out_lon, t_now
+                self._last_measured_time = t_now
                 self._publish_fix(seq_id, out_lat, out_lon, meta, "night_sthn",
                                   score=conf, conf=conf,
                                   dt_ms=result.get("dt_ms"), rms_px=result.get("rms_px"))
-            else:
-                # échec / conf basse → dead-reckon depuis l'anchor (avance toujours)
-                out_lat, out_lon = self._dead_reckon(self._anchor_lat, self._anchor_lon, hdg, spd, dt)
-                self._anchor_lat, self._anchor_lon, self._anchor_time = out_lat, out_lon, t_now
-                reason = f"STHN conf {conf:.2f}<{self.conf_threshold:.2f}"
-                self._publish_fix(seq_id, out_lat, out_lon, meta, "dead_reckon",
+                return
+
+            # Rejected / failed: dead-reckon only from measured motion, and only for a while.
+            reason = f"STHN rejected (consistency {conf:.2f}, min {self.conf_threshold:.2f})"
+            propagated = None
+            if (self._last_measured_time is not None
+                    and t_now - self._last_measured_time <= self.max_dead_reckon_s):
+                propagated = dead_reckon(self._anchor_lat, self._anchor_lon,
+                                         meta.get("heading_deg"), meta.get("speed_mps"),
+                                         t_now - self._anchor_time)
+            if propagated is not None:
+                self._anchor_lat, self._anchor_lon = propagated
+                self._anchor_time = t_now
+                self._publish_fix(seq_id, propagated[0], propagated[1], meta, "dead_reckon",
                                   score=0.0, conf=conf, reason=reason)
+            else:
+                self._publish_status_only(
+                    seq_id, reason=reason + "; no measured motion or dead-reckoning limit reached")
         except Exception as e:
             self.get_logger().error(f"[night] STHN error frame={seq_id}: {e}")
         finally:
@@ -307,19 +304,11 @@ class NightSubscriber(Node):
     # ────────────────────────────────────────────────────────────
     # Helpers
     # ────────────────────────────────────────────────────────────
-    def _dead_reckon(self, lat, lon, heading_deg, speed_mps, dt):
-        """Propage (lat,lon) le long du cap à la vitesse pour dt s (équirectangulaire).
-        Pas planché à dr_step_min_m pour que l'anchor avance même si speed×dt est minuscule."""
-        d    = max(speed_mps * dt, self.dr_step_min_m)
-        brng = math.radians(heading_deg)
-        dlat = (d * math.cos(brng)) / 111320.0
-        dlon = (d * math.sin(brng)) / (111320.0 * math.cos(math.radians(lat)))
-        return lat + dlat, lon + dlon
-
     def _publish_known(self, seq_id, meta):
         """GPS connu (vérité terrain) : publie la position du CSV, sans STHN."""
         lat = float(meta["lat"]); lon = float(meta["lon"])
         self._anchor_lat, self._anchor_lon, self._anchor_time = lat, lon, time.time()
+        self._last_measured_time = self._anchor_time
         self._publish_fix(seq_id, lat, lon, meta, "gps", score=1.0, conf=1.0)
 
     def _publish_fix(self, seq_id, lat, lon, meta, src, score, conf,
@@ -341,7 +330,8 @@ class NightSubscriber(Node):
         fix.status.service  = NavSatStatus.SERVICE_GPS
         fix.latitude        = lat
         fix.longitude       = lon
-        fix.altitude        = float(meta.get("altitude_m") or 0.0)
+        _alt = meta.get("altitude_m")
+        fix.altitude        = float(_alt) if _alt is not None else math.nan
         fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_UNKNOWN
         self.pub_fix.publish(fix)
         self._publish_estimate(now, seq_id, src, lat, lon, meta,
@@ -396,7 +386,7 @@ class NightSubscriber(Node):
         est = PositionEstimate()
         est.header.stamp    = now
         est.header.frame_id = "thermal_camera_link"
-        valid = not (float(lat) == 0.0 and float(lon) == 0.0)   # null-island guard
+        valid = is_finite_latlon(lat, lon)   # NaN / out-of-range / (0,0) is never a fix
         est.latitude  = float(lat) if valid else math.nan
         est.longitude = float(lon) if valid else math.nan
         _alt = meta.get("altitude_m")
@@ -407,7 +397,7 @@ class NightSubscriber(Node):
         est.mode       = _NIGHT_MODE_BY_SRC.get(src, PositionEstimate.MODE_MEASURED)
         est.valid      = valid
         est.confidence = 0.0
-        est.reason     = "" if valid else "no anchor (0,0 fallback)"
+        est.reason     = "" if valid else "non-finite position"
         est.sensor_stamp = now
         est.producer   = "night_subscriber"
         est.model_id   = _NIGHT_MODEL_BY_SRC.get(src, "")
