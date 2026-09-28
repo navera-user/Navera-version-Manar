@@ -44,6 +44,7 @@ import numpy as np
 
 import rclpy
 from navera_common.lifecycle import die_with_parent
+from navera_common.params import declare_float
 from navera_common.pairing import FramePairer, exposure_stamp, stamp_ns
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
@@ -63,8 +64,8 @@ class CNSubscriber(Node):
         super().__init__("cn_subscriber")
 
         # ── Parameters ──────────────────────────────────────────
-        self.declare_parameter("min_log_odds", 20.7)
-        self.declare_parameter("camera_fov_deg", float("nan"))
+        declare_float(self, "min_log_odds", 20.7)
+        declare_float(self, "camera_fov_deg", float("nan"))
         self.declare_parameter("image_topic", "/celestial/image_raw")
         self.declare_parameter("meta_topic", "/celestial/frame_meta")
         self.declare_parameter("fix_topic", "/cn/position_estimate")
@@ -79,16 +80,16 @@ class CNSubscriber(Node):
         # "the system clock at processing time" (RTC-backed on the vehicle).
         # Replay launch files set the values of their sample image explicitly.
         self.declare_parameter("solver_mode", "geoloc")
-        self.declare_parameter("tilt", float("nan"))
-        self.declare_parameter("azimuth", float("nan"))
+        declare_float(self, "tilt", float("nan"))
+        declare_float(self, "azimuth", float("nan"))
         self.declare_parameter("utc_time", "")
         # Approximate position of the operating area: one sky direction matches
         # two positions in general, and this prior picks the right one.
-        self.declare_parameter("prior_lat", float("nan"))
+        declare_float(self, "prior_lat", float("nan"))
         # Time source when frame_meta and utc_time do not give one: the DS3231
         # RTC (survives an offline boot), else the system clock.
         self.declare_parameter("rtc_topic", "/navera/sensors/rtc_time")
-        self.declare_parameter("prior_lon", float("nan"))
+        declare_float(self, "prior_lon", float("nan"))
 
         self.min_log_odds   = float(self.get_parameter("min_log_odds").value)
         self.camera_fov_deg = float(self.get_parameter("camera_fov_deg").value)

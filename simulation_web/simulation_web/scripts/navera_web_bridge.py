@@ -46,6 +46,7 @@ from urllib.parse import urlparse
 
 import rclpy
 from navera_common.lifecycle import die_with_parent
+from navera_common.params import declare_float
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
@@ -132,18 +133,18 @@ class NaveraWebBridge(Node):
         # vary per pipeline — the day/night/celestial split happens upstream.
         # Dashboard (/) freshness and readiness: a status older than this is
         # served as "stale"; readiness is the localizer's latched handshake.
-        self.declare_parameter("status_stale_s", 10.0)
+        declare_float(self, "status_stale_s", 10.0)
         self.declare_parameter("ready_topic", "/day/localizer_ready")
         self.declare_parameter("position_topic", "/navera/position")
         self.declare_parameter("nav_status_topic", "/navera/nav_status")
         # nav_status is the heartbeat (published every estimator tick, ~5 Hz):
         # 2 s ≈ 10 missed ticks → the arbiter is gone, not merely fixless.
-        self.declare_parameter("nav_status_timeout_s", 2.0)
+        declare_float(self, "nav_status_timeout_s", 2.0)
         # The arbiter publishes each winning measurement ONCE and judges its
         # freshness itself (per-source timeouts, up to 45 s for celestial), so
         # the position is gated by nav_status. This is only a sanity bound
         # against a lost /navera/position message.
-        self.declare_parameter("position_timeout_s", 60.0)
+        declare_float(self, "position_timeout_s", 60.0)
 
         status_topic = self.get_parameter("status_topic").value
         fix_topic    = self.get_parameter("fix_topic").value

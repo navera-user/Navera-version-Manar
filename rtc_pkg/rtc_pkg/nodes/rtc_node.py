@@ -54,6 +54,7 @@ from typing import Optional, Tuple
 
 import rclpy
 from navera_common.lifecycle import die_with_parent
+from navera_common.params import declare_float
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from sensor_msgs.msg import TimeReference
@@ -85,10 +86,10 @@ class RTCNode(Node):
         super().__init__("rtc_node")
 
         self.declare_parameter("i2c_bus", 1)
-        self.declare_parameter("publish_rate", 1.0)
+        declare_float(self, "publish_rate", 1.0)
         self.declare_parameter("frame_id", "rtc_link")
         self.declare_parameter("time_source", "ds3231")
-        self.declare_parameter("drift_warn_s", 2.0)
+        declare_float(self, "drift_warn_s", 2.0)
         self.declare_parameter("publish_when_invalid", False)
 
         self.bus_num = int(self.get_parameter("i2c_bus").value)

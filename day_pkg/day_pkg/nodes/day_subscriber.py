@@ -33,6 +33,7 @@ import cv2
 import rclpy
 from navera_common.geo import dead_reckon, is_finite_latlon
 from navera_common.lifecycle import die_with_parent
+from navera_common.params import declare_float
 from navera_common.pairing import FramePairer, exposure_stamp, stamp_ns
 from navera_common.prior import GpsPrior
 from rclpy.executors import ExternalShutdownException
@@ -86,7 +87,7 @@ class DaySubscriber(Node):
         super().__init__("day_subscriber")
 
         # ── Parameters ──────────────────────────────────────────
-        self.declare_parameter("conf_threshold", 0.75)
+        declare_float(self, "conf_threshold", 0.75)
         self.declare_parameter("image_topic", "/day/image_raw")
         self.declare_parameter("meta_topic", "/day/frame_meta")
         self.declare_parameter("fix_topic", "/day/position_estimate")
@@ -95,7 +96,7 @@ class DaySubscriber(Node):
         # Live GPS, used as the search prior: while it is valid the anchor follows
         # it and inference is skipped; when it drops, vision starts from its last fix.
         self.declare_parameter("gps_topic", "/navera/estimate/gps")
-        self.declare_parameter("gps_prior_timeout_s", 2.0)
+        declare_float(self, "gps_prior_timeout_s", 2.0)
         # Mission start/stop gate of the camera: a stop (rewind) resets tracking.
         self.declare_parameter("start_topic", "/day/camera/start")
         self.declare_parameter("done_topic", "/day/frame_done")   # back-pressure ack (Int32 frame_id)
@@ -107,7 +108,7 @@ class DaySubscriber(Node):
         # confine the search forever.
         self.declare_parameter("max_consecutive_rejects", 3)
         # Dead-reckoning from the last accepted fix is only published for this long.
-        self.declare_parameter("max_dead_reckon_s", 30.0)
+        declare_float(self, "max_dead_reckon_s", 30.0)
         # Whole-map search (no prior). Measured on labelled frames: 12 % within
         # 300 m, and the similarity score does not separate good matches from
         # bad ones (docs/VALIDATION_STATUS.md). Off: without a prior (GPS fix or

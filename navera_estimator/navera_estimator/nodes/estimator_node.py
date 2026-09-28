@@ -69,6 +69,7 @@ from typing import Optional
 import rclpy
 from navera_common.geo import is_finite_latlon
 from navera_common.lifecycle import die_with_parent
+from navera_common.params import declare_float
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.time import Time
@@ -109,18 +110,18 @@ class EstimatorNode(Node):
 
     def __init__(self) -> None:
         super().__init__("estimator_node")
-        self.declare_parameter("publish_rate_hz", 5.0)
-        self.declare_parameter("gps_timeout_s", 3.0)
-        self.declare_parameter("day_timeout_s", 3.0)
-        self.declare_parameter("night_timeout_s", 5.0)
-        self.declare_parameter("cn_timeout_s", 45.0)
-        self.declare_parameter("imu_timeout_s", 1.0)
-        self.declare_parameter("future_tolerance_s", 0.5)
-        self.declare_parameter("switch_holdoff_s", 2.0)
-        self.declare_parameter("max_speed_mps", 100.0)
-        self.declare_parameter("gps_jump_margin_m", 50.0)
+        declare_float(self, "publish_rate_hz", 5.0)
+        declare_float(self, "gps_timeout_s", 3.0)
+        declare_float(self, "day_timeout_s", 3.0)
+        declare_float(self, "night_timeout_s", 5.0)
+        declare_float(self, "cn_timeout_s", 45.0)
+        declare_float(self, "imu_timeout_s", 1.0)
+        declare_float(self, "future_tolerance_s", 0.5)
+        declare_float(self, "switch_holdoff_s", 2.0)
+        declare_float(self, "max_speed_mps", 100.0)
+        declare_float(self, "gps_jump_margin_m", 50.0)
         # FIX also requires the stated horizontal sigma to be at most this.
-        self.declare_parameter("fix_max_sigma_m", 25.0)
+        declare_float(self, "fix_max_sigma_m", 25.0)
         rate = float(self.get_parameter("publish_rate_hz").value)
         if rate <= 0.0:
             raise ValueError(f"publish_rate_hz must be > 0 (got {rate})")

@@ -23,6 +23,7 @@ from pathlib import Path
 
 import rclpy
 from navera_common.lifecycle import die_with_parent
+from navera_common.params import declare_float
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
@@ -91,23 +92,23 @@ class CameraPublisher(Node):
         self.declare_parameter("camera_type", "generic")     # thermal|celestial|day
         self.declare_parameter("topic_ns", "camera")
         self.declare_parameter("source", "csv")              # csv | camera
-        self.declare_parameter("fps", 0.1)
+        declare_float(self, "fps", 0.1)
         self.declare_parameter("loop", False)
         self.declare_parameter("start_index", 0)
         self.declare_parameter("frame_id", "camera_link")
         self.declare_parameter("image_encoding", "bgr8")     # bgr8 | mono8 | mono16
         self.declare_parameter("default_gps_valid", True)    # force GPS off for thermal/celestial
         self.declare_parameter("start_paused", False)        # true: wait for 'camera/start' (Bool) before streaming
-        self.declare_parameter("start_delay_s", 0.0)         # delay after start command, before frame 1
+        declare_float(self, "start_delay_s", 0.0)         # delay after start command, before frame 1
         # ── back-pressure (flow control) ──
         self.declare_parameter("flow_control", "rate")       # rate | ack  (rate = legacy fixed-fps)
         self.declare_parameter("ack_topic", "frame_done")    # Int32 frame_id acked by the subscriber
-        self.declare_parameter("ack_timeout_s", 30.0)        # safety: continue if no ack within this delay
+        declare_float(self, "ack_timeout_s", 30.0)        # safety: continue if no ack within this delay
         # ── handshake "ready" + cadence (Problème 1) ──
         self.declare_parameter("wait_for_ready", False)      # true: gate frame 1 on subscriber-ready (model loaded)
         self.declare_parameter("ready_topic", "/day/localizer_ready")  # Bool latched published by the subscriber
-        self.declare_parameter("ready_timeout_s", 0.0)       # 0 = wait indefinitely; >0 = start anyway after delay
-        self.declare_parameter("min_frame_interval", 1.0)    # cadence min visible entre frames (ack mode)
+        declare_float(self, "ready_timeout_s", 0.0)       # 0 = wait indefinitely; >0 = start anyway after delay
+        declare_float(self, "min_frame_interval", 1.0)    # cadence min visible entre frames (ack mode)
 
         # CSV replay
         self.declare_parameter("csv_path", "")
@@ -120,7 +121,7 @@ class CameraPublisher(Node):
         self.declare_parameter("width", 1280)
         self.declare_parameter("height", 720)
         self.declare_parameter("flip_method", 0)
-        self.declare_parameter("startup_delay", 3.0)
+        declare_float(self, "startup_delay", 3.0)
 
         p = self.get_parameter
         self.camera_type     = p("camera_type").value

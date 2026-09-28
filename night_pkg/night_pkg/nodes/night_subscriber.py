@@ -38,6 +38,7 @@ import numpy as np
 import rclpy
 from navera_common.geo import dead_reckon, is_finite_latlon
 from navera_common.lifecycle import die_with_parent
+from navera_common.params import declare_float
 from navera_common.pairing import FramePairer, exposure_stamp, stamp_ns
 from navera_common.prior import GpsPrior
 from rclpy.executors import ExternalShutdownException
@@ -92,7 +93,7 @@ class NightSubscriber(Node):
         self.declare_parameter("mbtiles",
             os.environ.get("NAVERA_MBTILES", "/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles"))
         self.declare_parameter("zoom",            17)
-        self.declare_parameter("conf_threshold",  0.30)
+        declare_float(self, "conf_threshold",  0.30)
         self.declare_parameter("image_topic",     "/thermal/image_raw")
         self.declare_parameter("meta_topic",      "/thermal/frame_meta")
         self.declare_parameter("fix_topic",       "/night/position_estimate")
@@ -101,14 +102,14 @@ class NightSubscriber(Node):
         self.declare_parameter("ready_topic",     "/night/localizer_ready")  # handshake
         # Live GPS, used as the prior (see day_subscriber).
         # Map calibration offset (deg), measured for the map in use; none by default.
-        self.declare_parameter("map_offset_lat_deg", 0.0)
-        self.declare_parameter("map_offset_lon_deg", 0.0)
+        declare_float(self, "map_offset_lat_deg", 0.0)
+        declare_float(self, "map_offset_lon_deg", 0.0)
         self.declare_parameter("gps_topic",       "/navera/estimate/gps")
-        self.declare_parameter("gps_prior_timeout_s", 2.0)
+        declare_float(self, "gps_prior_timeout_s", 2.0)
         # Mission start/stop gate of the camera: a stop (rewind) resets tracking.
         self.declare_parameter("start_topic", "/thermal/camera/start")
         # Dead-reckoning from the last accepted fix is only published for this long.
-        self.declare_parameter("max_dead_reckon_s", 30.0)
+        declare_float(self, "max_dead_reckon_s", 30.0)
         # fp16 au forward STHN (string pour un toggle 'false' fiable) — défaut activé.
         self.declare_parameter("mixed_precision", "true")
 

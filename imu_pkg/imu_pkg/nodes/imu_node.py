@@ -37,6 +37,7 @@ from typing import Optional, Tuple
 import rclpy
 from navera_common.health import FrozenSampleDetector, RetryTimer
 from navera_common.lifecycle import die_with_parent
+from navera_common.params import declare_float
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from sensor_msgs.msg import Imu
@@ -77,12 +78,12 @@ class IMUNode(Node):
 
         self.declare_parameter("i2c_bus", 1)
         self.declare_parameter("i2c_address", 0x4A)
-        self.declare_parameter("publish_rate", 50.0)
+        declare_float(self, "publish_rate", 50.0)
         self.declare_parameter("frame_id", "imu_link")
         self.declare_parameter("gravity_compensated", True)
-        self.declare_parameter("orientation_stddev", 0.02)
-        self.declare_parameter("angular_velocity_stddev", 0.005)
-        self.declare_parameter("linear_acceleration_stddev", 0.08)
+        declare_float(self, "orientation_stddev", 0.02)
+        declare_float(self, "angular_velocity_stddev", 0.005)
+        declare_float(self, "linear_acceleration_stddev", 0.08)
 
         self.bus_num = int(self.get_parameter("i2c_bus").value)
         self.address = int(self.get_parameter("i2c_address").value)
