@@ -29,7 +29,7 @@ from launch_ros.parameter_descriptions import ParameterValue
 def generate_launch_description():
     camera_share = get_package_share_directory('camera_pkg')
 
-    default_mbtiles = '/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles'
+    default_mbtiles = os.environ.get('NAVERA_MBTILES', '/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles')
 
     mbtiles_path   = LaunchConfiguration('mbtiles_path')
     conf_threshold = LaunchConfiguration('conf_threshold')
@@ -55,9 +55,9 @@ def generate_launch_description():
         # B) fp16 sur le forward STHN (fnet1 + update_block_4, ~2× VRAM). 'false' pour désactiver.
         DeclareLaunchArgument('mixed_precision', default_value='true'),
         DeclareLaunchArgument('sthn_dir',
-            default_value='/home/navera/isaac_ros_common/night_pkg/STHN'),
+            default_value=os.environ.get('NAVERA_STHN_DIR', '/home/navera/isaac_ros_common/night_pkg/STHN')),
         DeclareLaunchArgument('weights',
-            default_value='/home/navera/isaac_ros_common/night_pkg/STHN/weights/one_stage/model.safetensors'),
+            default_value=os.environ.get('NAVERA_STHN_WEIGHTS', '/home/navera/isaac_ros_common/night_pkg/STHN/weights/one_stage/model.safetensors')),
 
         # 1) Camera publisher (thermal namespace, test images) — back-pressure + handshake
         IncludeLaunchDescription(

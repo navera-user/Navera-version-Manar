@@ -29,6 +29,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     camera_share = get_package_share_directory('camera_pkg')
+    day_data = os.path.join(camera_share, 'data', 'day')
 
     conf_threshold = LaunchConfiguration('conf_threshold')
 
@@ -47,6 +48,12 @@ def generate_launch_description():
         #   'false' → every frame is GPS-denied: DINOv2 runs, the 25 rows with
         #             lat/lon become measurable ground truth.
         DeclareLaunchArgument('default_gps_valid', default_value='true'),
+        # Replay data. $NAVERA_DAY_CSV / $NAVERA_DAY_IMAGES_DIR let a machine keep
+        # the frames outside the install tree (e.g. on an external data disk).
+        DeclareLaunchArgument('csv_path', default_value=os.environ.get(
+            'NAVERA_DAY_CSV', os.path.join(day_data, 'flight_demo.csv'))),
+        DeclareLaunchArgument('images_dir', default_value=os.environ.get(
+            'NAVERA_DAY_IMAGES_DIR', day_data)),
 
         # 1) Camera publisher (day namespace, test images)
         IncludeLaunchDescription(
@@ -58,7 +65,8 @@ def generate_launch_description():
                 'fps': '0.5',
                 'start_delay_s': '7.0',
                 'flow_control': 'ack',   # back-pressure: next frame only after subscriber ack
-                'csv_path': os.path.join(camera_share, 'data', 'day', 'flight_demo.csv'),
+                'csv_path': LaunchConfiguration('csv_path'),
+                'images_dir': LaunchConfiguration('images_dir'),
                 'default_gps_valid': LaunchConfiguration('default_gps_valid'),
             }.items(),
         ),

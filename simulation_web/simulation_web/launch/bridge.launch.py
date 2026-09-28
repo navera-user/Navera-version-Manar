@@ -24,6 +24,7 @@ Every topic is an argument, so one launch file serves day, night and celestial:
        status_topic:=/cn/cn_status fix_topic:=/cn/position_estimate \
        start_topic:=/celestial/camera/start
 """
+import os
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
@@ -31,7 +32,7 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    default_mbtiles = '/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles'
+    default_mbtiles = os.environ.get('NAVERA_MBTILES', '/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles')
 
     return LaunchDescription([
         # Which bridge binary. navera_web_bridge serves day/night and renders the

@@ -28,6 +28,7 @@ le camera_publisher via min_frame_interval).
 """
 import json
 import math
+import os
 import threading
 import time
 
@@ -75,11 +76,11 @@ class NightSubscriber(Node):
 
         # ── Parameters ──────────────────────────────────────────
         self.declare_parameter("sthn_dir",
-            "/home/navera/isaac_ros_common/night_pkg/STHN")
+            os.environ.get("NAVERA_STHN_DIR", "/home/navera/isaac_ros_common/night_pkg/STHN"))
         self.declare_parameter("weights",
-            "/home/navera/isaac_ros_common/night_pkg/STHN/weights/one_stage/model.safetensors")
+            os.environ.get("NAVERA_STHN_WEIGHTS", "/home/navera/isaac_ros_common/night_pkg/STHN/weights/one_stage/model.safetensors"))
         self.declare_parameter("mbtiles",
-            "/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles")
+            os.environ.get("NAVERA_MBTILES", "/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles"))
         self.declare_parameter("zoom",            17)
         self.declare_parameter("patch_size",      512)
         self.declare_parameter("conf_threshold",  0.30)

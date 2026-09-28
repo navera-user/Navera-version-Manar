@@ -47,10 +47,12 @@ except Exception:
     get_package_share_directory = None
 
 
-_MBTILES_CANDIDATES = [
+# $NAVERA_MBTILES, when set, is tried first.
+_MBTILES_CANDIDATES = [p for p in (
+    os.environ.get("NAVERA_MBTILES"),
     "/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles",
     "/home/navera/isaac_ros_common/sousse_satellite.mbtiles",
-]
+) if p]
 
 
 def _resolve_resources_dir():

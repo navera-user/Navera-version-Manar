@@ -64,10 +64,12 @@ except Exception:
 
 
 # Default MBTiles candidates (first existing one wins) if no param given.
-_MBTILES_CANDIDATES = [
+# $NAVERA_MBTILES, when set, is tried first.
+_MBTILES_CANDIDATES = [p for p in (
+    os.environ.get("NAVERA_MBTILES"),
     "/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles",
     "/home/navera/isaac_ros_common/sousse_satellite.mbtiles",
-]
+) if p]
 
 # ── Enum → display strings for /api/operator_position ──────────────────────
 # Rendering only. These tables never gate a decision: the arbiter already made

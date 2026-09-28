@@ -21,11 +21,11 @@ from launch_ros.actions import Node
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('sthn_dir',
-            default_value='/home/navera/isaac_ros_common/night_pkg/STHN'),
+            default_value=os.environ.get('NAVERA_STHN_DIR', '/home/navera/isaac_ros_common/night_pkg/STHN')),
         DeclareLaunchArgument('weights',
-            default_value='/home/navera/isaac_ros_common/night_pkg/STHN/weights/one_stage/model.safetensors'),
+            default_value=os.environ.get('NAVERA_STHN_WEIGHTS', '/home/navera/isaac_ros_common/night_pkg/STHN/weights/one_stage/model.safetensors')),
         DeclareLaunchArgument('mbtiles',
-            default_value='/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles'),
+            default_value=os.environ.get('NAVERA_MBTILES', '/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles')),
         DeclareLaunchArgument('zoom',           default_value='17'),
         DeclareLaunchArgument('patch_size',     default_value='512'),
         DeclareLaunchArgument('conf_threshold', default_value='0.30'),
