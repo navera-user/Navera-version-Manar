@@ -27,3 +27,10 @@ estimator_node:
     # While the active source stays usable, a higher-priority source must be
     # continuously usable this long before it takes over (anti-flapping).
     switch_holdoff_s: 2.0
+
+    # GPS kinematic plausibility gate (anti-jump / anti-spoofing). A GPS fix
+    # farther from the last trusted fix than max_speed_mps x elapsed +
+    # gps_jump_margin_m is refused until it becomes reachable. SET PER VEHICLE
+    # (e.g. multirotor 25, fixed-wing 60, boat 20, ground robot 15 m/s).
+    max_speed_mps: 100.0
+    gps_jump_margin_m: 50.0

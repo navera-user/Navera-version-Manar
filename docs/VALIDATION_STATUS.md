@@ -101,6 +101,7 @@ unit, and the IMU attitude is not wired in yet.
 | Estimator: one measurement | Published once (it was re-published at 5 Hz) |
 | Estimator: timestamp 60 s in the future | Refused ("clock problem") |
 | Estimator: GPS flapping every 0.5 s | One source switch in 8 s, no zig-zag |
+| Estimator: GPS jumps 5 km in 1 s (spoofing / glitch) | Refused ("possible spoofing"), re-accepted once plausible again |
 | Web: control without token / cross-site request / bad input | Refused (401 / 415 / 400) |
 
 ## Known limitations
@@ -115,5 +116,8 @@ unit, and the IMU attitude is not wired in yet.
    tile cache. The imagery licence must allow offline commercial use.
 6. **No vehicle output yet.** The position is available on ROS 2 topics and the web
    API. NMEA / MAVLink output for autopilots is planned.
-7. **Security model:** DDS is limited to the box itself (`ROS_LOCALHOST_ONLY`). The web
+7. **GPS spoofing:** a sudden jump beyond the vehicle's maximum speed (`max_speed_mps`, set
+   per vehicle) is refused. A slow, gradual spoof is **not** detected: that needs an
+   independent position source (accurate vision or inertial navigation) to compare with.
+8. **Security model:** DDS is limited to the box itself (`ROS_LOCALHOST_ONLY`). The web
    control API needs a token. The web interface itself is plain HTTP (no TLS).

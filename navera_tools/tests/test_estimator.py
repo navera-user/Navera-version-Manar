@@ -3,7 +3,8 @@
 
 Checks: one estimate is published once; a future stamp is refused; a NaN
 position marked valid is refused; a flapping GPS does not zig-zag the output;
-losing GPS falls back to day vision immediately. Needs a sourced ROS 2
+losing GPS falls back to day vision immediately; a sudden GPS jump (spoofing)
+is refused and GPS is re-accepted once it is plausible again. Needs a sourced ROS 2
 workspace. Exit code 0 = pass.
 """
 import math
@@ -87,6 +88,19 @@ def main():
     time.sleep(1.0)
     if statuses[-1].active_source != DAY or statuses[-1].state != NavStatus.STATE_DEGRADED:
         failures.append("day vision did not take over as DEGRADED after GPS loss")
+
+    settle()
+    # Spoofing: GPS at A, then a sudden 5 km jump 1 s later, then back at A.
+    est(GPS)
+    time.sleep(1.0)
+    est(GPS, lat=35.875)                                   # ~5 km north, 1 s later
+    time.sleep(0.6)
+    if statuses[-1].state != NavStatus.STATE_NO_FIX or "spoofing" not in statuses[-1].reason:
+        failures.append(f"5 km GPS jump was not refused: {statuses[-1].reason}")
+    est(GPS)                                               # plausible again
+    time.sleep(0.6)
+    if statuses[-1].state != NavStatus.STATE_FIX:
+        failures.append("GPS not re-accepted once plausible again")
 
     proc.terminate()
     proc.wait(timeout=10)

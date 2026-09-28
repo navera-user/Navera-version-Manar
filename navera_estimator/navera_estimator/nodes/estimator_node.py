@@ -26,6 +26,13 @@ Scope: honest single-winner arbitration across the LIVE sources.
     source must have been continuously eligible for switch_holdoff_s before it
     takes over (a flapping GPS must not zig-zag the output between GPS and a
     ~500 m vision fix). Losing the active source switches immediately.
+  * GPS kinematic plausibility gate (anti-jump / anti-spoofing): a GPS fix
+    farther from the last trusted GPS fix than the vehicle could have
+    travelled (max_speed_mps x elapsed + gps_jump_margin_m) is refused, and
+    GPS stays refused until its claimed position becomes reachable again.
+    This catches sudden jumps (a spoofer taking over, receiver glitches). It
+    cannot detect a slow, gradual spoof: that needs an independent position
+    source to compare with.
   * /navera/position carries each winning MEASUREMENT once: a new message is
     published only when the winner changes or sends a new estimate, never the
     same estimate re-stamped at every tick (a filter downstream would fuse it
@@ -52,6 +59,8 @@ Parameters:
     future_tolerance_s (default 0.5) — clock skew tolerated on header stamps
     switch_holdoff_s   (default 2.0) — dwell before a recovering higher-priority
                      source pre-empts the active one
+    max_speed_mps      (default 100.0) — fastest the vehicle can move (set per vehicle)
+    gps_jump_margin_m  (default 50.0) — GPS noise allowance in the plausibility gate
 """
 import math
 from typing import Optional
@@ -65,6 +74,14 @@ from rclpy.time import Time
 from sensor_msgs.msg import Imu
 
 from navera_msgs.msg import NavStatus, PositionEstimate, SourceHealth
+
+def _haversine_m(lat1, lon1, lat2, lon2) -> float:
+    """Great-circle distance in metres."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    a = (math.sin((p2 - p1) / 2) ** 2
+         + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2)
+    return 2 * 6_371_000.0 * math.asin(math.sqrt(min(1.0, a)))
+
 
 # Modes that a source may contribute a position in. A HELD echo or REPLAYED
 # ground-truth point is never eligible to win.
@@ -99,11 +116,18 @@ class EstimatorNode(Node):
         self.declare_parameter("imu_timeout_s", 1.0)
         self.declare_parameter("future_tolerance_s", 0.5)
         self.declare_parameter("switch_holdoff_s", 2.0)
+        self.declare_parameter("max_speed_mps", 100.0)
+        self.declare_parameter("gps_jump_margin_m", 50.0)
         rate = float(self.get_parameter("publish_rate_hz").value)
         if rate <= 0.0:
             raise ValueError(f"publish_rate_hz must be > 0 (got {rate})")
         self._future_tol = float(self.get_parameter("future_tolerance_s").value)
         self._holdoff = float(self.get_parameter("switch_holdoff_s").value)
+        self._max_speed = float(self.get_parameter("max_speed_mps").value)
+        self._jump_margin = float(self.get_parameter("gps_jump_margin_m").value)
+        # Last GPS fix that passed the plausibility gate: (lat, lon, Time).
+        self._gps_trusted = None
+        self._gps_suspect: Optional[str] = None   # reason while GPS is refused
         # Hold-off / de-duplication state
         self._active_source: Optional[int] = None
         self._eligible_since = {}                 # source const -> Time
@@ -148,6 +172,31 @@ class EstimatorNode(Node):
 
     def _on_gps(self, msg: PositionEstimate) -> None:
         self._gps_last = msg
+        self._check_gps_plausibility(msg)
+
+    def _check_gps_plausibility(self, msg: PositionEstimate) -> None:
+        """Kinematic gate: refuse a GPS fix the vehicle cannot have reached."""
+        if not (msg.valid and msg.mode == PositionEstimate.MODE_MEASURED and self._sane(msg)):
+            return                                  # invalid fixes are handled by eligibility
+        stamp = Time.from_msg(msg.header.stamp)
+        if self._gps_trusted is None:
+            self._gps_trusted = (msg.latitude, msg.longitude, stamp)
+            return
+        lat0, lon0, t0 = self._gps_trusted
+        dt = max(0.0, (stamp - t0).nanoseconds / 1e9)
+        dist = _haversine_m(lat0, lon0, msg.latitude, msg.longitude)
+        reachable = self._max_speed * dt + self._jump_margin
+        if dist <= reachable:
+            if self._gps_suspect:
+                self.get_logger().warn("GPS plausible again — re-accepted")
+            self._gps_suspect = None
+            self._gps_trusted = (msg.latitude, msg.longitude, stamp)
+        else:
+            reason = (f"implausible jump {dist:.0f} m in {dt:.1f} s "
+                      f"(max {reachable:.0f} m at {self._max_speed:.0f} m/s) — possible spoofing")
+            if self._gps_suspect is None:
+                self.get_logger().error(f"GPS refused: {reason}")
+            self._gps_suspect = reason
 
     def _on_day(self, msg: PositionEstimate) -> None:
         self._day_last = msg
@@ -246,6 +295,7 @@ class EstimatorNode(Node):
 
         gps_alive, gps_eligible, gps_age = self._eval_source(
             now, self._gps_last, self._gps_timeout)
+        gps_eligible = gps_eligible and self._gps_suspect is None
         day_alive, day_eligible, day_age = self._eval_source(
             now, self._day_last, self._day_timeout)
         night_alive, night_eligible, night_age = self._eval_source(
@@ -290,7 +340,8 @@ class EstimatorNode(Node):
     def _no_fix_reason(self, gps_age, day_age, night_age, cn_age) -> str:
         """Why no source is usable — one clause per watched estimate source."""
         parts = [
-            self._source_reason("GPS", self._gps_last, gps_age, self._gps_timeout),
+            (f"GPS: {self._gps_suspect}" if self._gps_suspect else
+             self._source_reason("GPS", self._gps_last, gps_age, self._gps_timeout)),
             self._source_reason("day", self._day_last, day_age, self._day_timeout),
             self._source_reason("night", self._night_last, night_age, self._night_timeout),
             self._source_reason("cn", self._cn_last, cn_age, self._cn_timeout),
