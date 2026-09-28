@@ -26,10 +26,22 @@ Parameters:
     degraded_sigma_m     (NaN)   accuracy stated for them (required if forwarded)
     position_timeout_s   (2.0)   an older position is not current
     nav_status_timeout_s (2.0)   a silent arbiter means "no fix"
+    gps_vel_timeout_s    (1.0)   the GPS velocity (/navera/sensors/gps_vel) sent with
+                                 a GPS position must be younger than this
+    fix_type_without_alt (3)     MAVLink fix_type for a position with no altitude
+                                 (vision / celestial): 3 = usable by ArduPilot / PX4,
+                                 which then take height from the barometer; 2 = the
+                                 literal label, which they ignore (mavlink_out)
+
+Each position is sent ONCE, when it arrives (a 1 Hz vision fix is not repeated
+5 times with fresh timestamps: an autopilot filter would read the repeats as
+"stopped, then jumped"). "No fix" is sent at rate_hz, so the autopilot always
+hears from NAVERA.
 
 If an enabled output cannot be opened, the node exits with code 1 so the
 service restarts it.
 """
+import math
 import sys
 import time
 from datetime import datetime, timezone
@@ -37,6 +49,7 @@ from datetime import datetime, timezone
 import rclpy
 from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
+from geometry_msgs.msg import TwistStamped
 from navera_msgs.msg import NavStatus, PositionEstimate
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
@@ -58,6 +71,12 @@ class VehicleOutputNode(Node):
         declare_float(self, "degraded_sigma_m", float("nan"))
         declare_float(self, "position_timeout_s", 2.0)
         declare_float(self, "nav_status_timeout_s", 2.0)
+        declare_float(self, "gps_vel_timeout_s", 1.0)
+        self.declare_parameter("fix_type_without_alt", 3)
+        self._fix_type_without_alt = int(self.get_parameter("fix_type_without_alt").value)
+        if self._fix_type_without_alt not in (2, 3):
+            raise ValueError("fix_type_without_alt must be 2 or 3")
+        self._vel_timeout = float(self.get_parameter("gps_vel_timeout_s").value)
 
         self.cfg = Config(
             forward_degraded=bool(self.get_parameter("forward_degraded").value),
@@ -90,9 +109,13 @@ class VehicleOutputNode(Node):
         self._pos = None
         self._pos_rx = None
         self._last_kind = None
+        self._sent_pos = None             # the last position message sent (sent once)
+        self._vel = None                  # (north, east) m/s from the GPS receiver
+        self._vel_rx = None
         self.failed = False
         self.create_subscription(NavStatus, "/navera/nav_status", self._on_status, 10)
         self.create_subscription(PositionEstimate, "/navera/position", self._on_position, 10)
+        self.create_subscription(TwistStamped, "/navera/sensors/gps_vel", self._on_gps_vel, 10)
         self.create_timer(1.0 / rate, self._tick)
         self.get_logger().info(
             f"vehicle output: nmea={port or 'off'} mavlink={url or 'off'} rate={rate:.1f}Hz "
@@ -104,15 +127,21 @@ class VehicleOutputNode(Node):
     def _on_position(self, msg: PositionEstimate) -> None:
         self._pos, self._pos_rx = msg, time.monotonic()
 
+    def _on_gps_vel(self, msg: TwistStamped) -> None:
+        # gps_node publishes ENU: linear.x east, linear.y north.
+        self._vel, self._vel_rx = (msg.twist.linear.y, msg.twist.linear.x), time.monotonic()
+
     def _tick(self) -> None:
         now = time.monotonic()
         st = self._status
+        vel = (self._vel if self._vel is not None and now - self._vel_rx <= self._vel_timeout
+               else None)
         out = decide(self.cfg,
                      st.state if st else None,
                      now - self._status_rx if st else None,
                      self._pos,
                      now - self._pos_rx if self._pos else None,
-                     st.active_source if st else None)
+                     st.active_source if st else None, vel)
         if out.kind != self._last_kind:
             # Separate call sites: rclpy refuses one call site changing severity.
             if out.kind == KIND_NONE:
@@ -120,12 +149,22 @@ class VehicleOutputNode(Node):
             else:
                 self.get_logger().info(f"output → {out.kind} ({out.reason})")
             self._last_kind = out.kind
+        if out.kind != KIND_NONE:
+            if self._pos is self._sent_pos:
+                return                    # already sent: wait for the next measurement
+            self._sent_pos = self._pos
         t_utc = datetime.now(timezone.utc)
         try:
             if self._serial is not None:
-                self._serial.write((nmea.gga(out, t_utc) + nmea.rmc(out, t_utc)).encode("ascii"))
+                spd = crs = math.nan
+                if out.has_velocity:
+                    spd = math.hypot(out.vel_n_mps, out.vel_e_mps)
+                    crs = math.degrees(math.atan2(out.vel_e_mps, out.vel_n_mps)) % 360.0
+                self._serial.write((nmea.gga(out, t_utc) + nmea.rmc(out, t_utc, spd, crs))
+                                   .encode("ascii"))
             if self._mav is not None:
-                self._mav.mav.gps_input_send(**mavlink_out.gps_input_fields(out, t_utc))
+                self._mav.mav.gps_input_send(**mavlink_out.gps_input_fields(
+                    out, t_utc, self._fix_type_without_alt))
         except Exception as e:     # serial unplugged, socket error...
             self.get_logger().fatal(f"output failed: {e} — exiting so the service restarts")
             self.failed = True

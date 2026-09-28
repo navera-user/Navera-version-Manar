@@ -1,8 +1,15 @@
 """MAVLink GPS_INPUT (id 232) fields for PX4 / ArduPilot (GPS_TYPE = MAV).
 
 Accuracies are sent as stated (1-sigma, m); anything unknown is marked with the
-corresponding ignore flag instead of a made-up number. Velocity is not known
-from NAVERA positions and is always ignored.
+corresponding ignore flag instead of a made-up number. Horizontal velocity is
+sent when the position comes with one (GPS); vertical velocity never is.
+
+fix_type without altitude: a vision or celestial position has no altitude
+(IGNORE_ALT is set). A 2D fix is the literal label, but ArduPilot and PX4 only
+fuse a GPS position at fix_type >= 3, so a 2D fix is never used. The default
+(3) sends such a position as 3D with the altitude flagged ignored: the
+autopilot must then take its height from the barometer (ArduPilot
+EK3_SRC1_POSZ = 1, the default; PX4 EKF2_HGT_REF = baro).
 """
 import math
 from datetime import datetime, timezone
@@ -36,17 +43,19 @@ def gps_week_time(t_utc: datetime):
     return week, int(round((s - week * 7 * 86400) * 1000))
 
 
-def gps_input_fields(out: Output, t_utc: datetime) -> dict:
+def gps_input_fields(out: Output, t_utc: datetime, fix_type_without_alt: int = FIX_3D) -> dict:
     """Keyword arguments for mav.gps_input_send()."""
+    if fix_type_without_alt not in (FIX_2D, FIX_3D):
+        raise ValueError("fix_type_without_alt must be 2 or 3")
     week, week_ms = gps_week_time(t_utc)
-    ignore = IGNORE_VEL_HORIZ | IGNORE_VEL_VERT | IGNORE_SPEED_ACCURACY
+    ignore = IGNORE_VEL_VERT | IGNORE_SPEED_ACCURACY
     fields = dict(time_usec=int(t_utc.timestamp() * 1e6), gps_id=0, time_week_ms=week_ms,
                   time_week=week, lat=0, lon=0, alt=0.0, hdop=0.0, vdop=0.0,
                   vn=0.0, ve=0.0, vd=0.0, speed_accuracy=0.0, horiz_accuracy=0.0,
                   vert_accuracy=0.0, satellites_visible=0)
     if out.kind not in (KIND_FIX, KIND_ESTIMATED):
         fields.update(fix_type=FIX_NO_FIX,
-                      ignore_flags=ignore | IGNORE_ALT | IGNORE_HDOP | IGNORE_VDOP
+                      ignore_flags=ignore | IGNORE_VEL_HORIZ | IGNORE_ALT | IGNORE_HDOP | IGNORE_VDOP
                       | IGNORE_HORIZONTAL_ACCURACY | IGNORE_VERTICAL_ACCURACY)
         return fields
 
@@ -58,7 +67,11 @@ def gps_input_fields(out: Output, t_utc: datetime) -> dict:
         fix_type = FIX_3D
     else:
         ignore |= IGNORE_ALT
-        fix_type = FIX_2D
+        fix_type = fix_type_without_alt
+    if out.has_velocity:
+        fields.update(vn=float(out.vel_n_mps), ve=float(out.vel_e_mps))
+    else:
+        ignore |= IGNORE_VEL_HORIZ
     if math.isfinite(out.sigma_h_m):
         fields["horiz_accuracy"] = float(out.sigma_h_m)
         fields["hdop"] = float(min(out.sigma_h_m / UERE_M, 99.9))

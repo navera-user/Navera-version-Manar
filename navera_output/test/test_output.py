@@ -114,8 +114,11 @@ def test_gps_input_no_fix_and_unknown_altitude():
     m = _roundtrip(mavlink_out.gps_input_fields(Output(KIND_NONE), T))
     assert m.fix_type == mavlink_out.FIX_NO_FIX and m.lat == 0
     o = decide(Config(), STATE_FIX, 0.1, pos(alt=math.nan), 0.1, GPS)
-    m = _roundtrip(mavlink_out.gps_input_fields(o, T))
+    m = _roundtrip(mavlink_out.gps_input_fields(o, T, mavlink_out.FIX_2D))
     assert m.fix_type == mavlink_out.FIX_2D and m.ignore_flags & mavlink_out.IGNORE_ALT
+    # default: usable by ArduPilot / PX4 (3D, altitude flagged ignored)
+    m = _roundtrip(mavlink_out.gps_input_fields(o, T))
+    assert m.fix_type == mavlink_out.FIX_3D and m.ignore_flags & mavlink_out.IGNORE_ALT
 
 
 def test_gps_week_time():
@@ -123,3 +126,26 @@ def test_gps_week_time():
     # plus 18 leap seconds.
     week, ms = mavlink_out.gps_week_time(datetime(2026, 9, 28, tzinfo=timezone.utc))
     assert week == 2438 and ms == (1 * 86400 + 18) * 1000
+
+
+# ── Velocity ──────────────────────────────────────────────────────────────
+def test_gps_velocity_is_sent_with_a_gps_position():
+    o = decide(Config(), STATE_FIX, 0.1, pos(), 0.1, GPS, (3.0, -4.0))
+    assert o.has_velocity
+    m = _roundtrip(mavlink_out.gps_input_fields(o, T))
+    assert not m.ignore_flags & mavlink_out.IGNORE_VEL_HORIZ
+    assert m.ignore_flags & mavlink_out.IGNORE_VEL_VERT
+    assert (m.vn, m.ve) == (pytest.approx(3.0), pytest.approx(-4.0))
+    r = pynmea2.parse(nmea.rmc(o, T, 5.0, 306.87).strip())
+    assert float(r.spd_over_grnd) == pytest.approx(5.0 / 0.514444, abs=0.01)
+
+
+def test_no_velocity_without_gps_velocity_or_for_other_sources():
+    o = decide(Config(), STATE_FIX, 0.1, pos(), 0.1, GPS, None)
+    assert not o.has_velocity
+    assert _roundtrip(mavlink_out.gps_input_fields(o, T)).ignore_flags & mavlink_out.IGNORE_VEL_HORIZ
+    day = pos(source=2)
+    o = decide(Config(), STATE_FIX, 0.1, day, 0.1, 2, (3.0, -4.0))
+    assert o.kind == KIND_FIX and not o.has_velocity
+    o = decide(Config(), STATE_FIX, 0.1, pos(), 0.1, GPS, (math.nan, 1.0))
+    assert not o.has_velocity
