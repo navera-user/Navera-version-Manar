@@ -43,6 +43,14 @@ Scope: honest single-winner arbitration across the LIVE sources.
     gps_jump_margin_m + max_speed_mps x the time between the two. Only when
     no such source exists does it fall back to reachability (a known,
     documented weakness while vision accuracy is not validated).
+    The same cross-check applies when GPS RETURNS after an outage (no trusted
+    fix within gps_timeout_s): "jam, then spoof" is the classic attack, and
+    after a long outage almost any position is reachable.
+    Slow spoofing: while GPS is trusted, it is also compared with that
+    independent source at every fix; disagreeing beyond the tolerance for
+    gps_crosscheck_persist_s refuses it ("drifting away"). This needs a source
+    with a stated accuracy — with vision of unknown accuracy a gradual spoof
+    is still not detected.
   * /navera/position carries each winning MEASUREMENT once: a new message is
     published only when the winner changes or sends a new estimate, never the
     same estimate re-stamped at every tick (a filter downstream would fuse it
@@ -74,6 +82,8 @@ Parameters:
     gps_jump_margin_m  (default 50.0) — GPS noise allowance in the plausibility gate
     gps_crosscheck_sigmas (default 5.0) — agreement needed with an independent
                      source (in its sigmas) to re-accept a refused GPS
+    gps_crosscheck_persist_s (default 3.0) — a trusted GPS that keeps disagreeing
+                     with that source this long is refused (gradual spoofing)
 """
 import math
 from typing import Optional
@@ -133,6 +143,7 @@ class EstimatorNode(Node):
         declare_float(self, "max_speed_mps", 100.0)
         declare_float(self, "gps_jump_margin_m", 50.0)
         declare_float(self, "gps_crosscheck_sigmas", 5.0)
+        declare_float(self, "gps_crosscheck_persist_s", 3.0)
         # FIX also requires the stated horizontal sigma to be at most this.
         declare_float(self, "fix_max_sigma_m", 25.0)
         rate = float(self.get_parameter("publish_rate_hz").value)
@@ -143,6 +154,8 @@ class EstimatorNode(Node):
         self._max_speed = float(self.get_parameter("max_speed_mps").value)
         self._jump_margin = float(self.get_parameter("gps_jump_margin_m").value)
         self._crosscheck_sigmas = float(self.get_parameter("gps_crosscheck_sigmas").value)
+        self._crosscheck_persist = float(self.get_parameter("gps_crosscheck_persist_s").value)
+        self._disagree_since: Optional[Time] = None   # trusted GPS vs independent source
         self._fix_max_sigma = float(self.get_parameter("fix_max_sigma_m").value)
         # Last GPS fix that passed the plausibility gate: (lat, lon, Time).
         self._gps_trusted = None
@@ -203,10 +216,9 @@ class EstimatorNode(Node):
         if not (msg.valid and msg.mode == PositionEstimate.MODE_MEASURED and self._sane(msg)):
             return                                  # invalid fixes are handled by eligibility
         stamp = Time.from_msg(msg.header.stamp)
-        if self._gps_trusted is None:
-            self._gps_trusted = (msg.latitude, msg.longitude, stamp)
-            return
-        if self._gps_suspect is not None:
+        continuous = (self._gps_trusted is not None and self._gps_suspect is None
+                      and (stamp - self._gps_trusted[2]).nanoseconds / 1e9 <= self._gps_timeout)
+        if not continuous:
             ref = self._independent_reference(stamp)
             if ref is not None:
                 name, rlat, rlon, tol = ref
@@ -217,9 +229,17 @@ class EstimatorNode(Node):
                     self._gps_suspect = None
                     self._gps_trusted = (msg.latitude, msg.longitude, stamp)
                 else:
+                    if self._gps_suspect is None:
+                        self.get_logger().error(
+                            f"GPS refused: {d:.0f} m from {name} (tolerance {tol:.0f} m)")
                     self._gps_suspect = (f"GPS {d:.0f} m from {name} (tolerance {tol:.0f} m) "
                                          f"— possible spoofing")
                 return
+        if self._gps_trusted is None:
+            self._gps_trusted = (msg.latitude, msg.longitude, stamp)
+            return
+        if continuous and self._drifting_away(msg, stamp):
+            return
         lat0, lon0, t0 = self._gps_trusted
         dt = max(0.0, (stamp - t0).nanoseconds / 1e9)
         dist = _haversine_m(lat0, lon0, msg.latitude, msg.longitude)
@@ -235,6 +255,28 @@ class EstimatorNode(Node):
             if self._gps_suspect is None:
                 self.get_logger().error(f"GPS refused: {reason}")
             self._gps_suspect = reason
+
+    def _drifting_away(self, msg: PositionEstimate, stamp: Time) -> bool:
+        """Trusted GPS vs an independent source of stated accuracy: True (and
+        GPS refused) once they have disagreed for gps_crosscheck_persist_s."""
+        ref = self._independent_reference(stamp)
+        if ref is None:
+            self._disagree_since = None
+            return False
+        name, rlat, rlon, tol = ref
+        d = _haversine_m(rlat, rlon, msg.latitude, msg.longitude)
+        if d <= tol:
+            self._disagree_since = None
+            return False
+        if self._disagree_since is None:
+            self._disagree_since = stamp
+        if (stamp - self._disagree_since).nanoseconds / 1e9 < self._crosscheck_persist:
+            return False
+        self._gps_suspect = (f"GPS drifting away from {name}: {d:.0f} m apart for "
+                             f"{self._crosscheck_persist:.0f} s (tolerance {tol:.0f} m) — possible spoofing")
+        self._disagree_since = None
+        self.get_logger().error(f"GPS refused: {self._gps_suspect}")
+        return True
 
     def _independent_reference(self, gps_stamp: Time):
         """(name, lat, lon, tolerance_m) from the most accurate fresh non-GPS
@@ -404,6 +446,9 @@ class EstimatorNode(Node):
 
         if winner is not None:
             state, reason = self._classify(winner)
+            if winner.source != PositionEstimate.SOURCE_GPS and gps_alive and self._gps_suspect:
+                # The operator must see WHY GPS is not used while it is still talking.
+                reason = f"{reason} — GPS refused: {self._gps_suspect}"
         elif not ever_heard:
             state = NavStatus.STATE_INITIALIZING
             reason = "waiting for first source message"

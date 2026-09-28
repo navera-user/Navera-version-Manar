@@ -140,12 +140,55 @@ def main():
         failures.append(f"patient 2 km spoof accepted after 7 s: {statuses[-1].reason}")
     if statuses[-1].active_source != DAY:
         failures.append(f"day vision did not take over during the spoof: {statuses[-1].reason}")
+    elif "GPS refused" not in statuses[-1].reason:
+        failures.append(f"status does not say why GPS is not used: {statuses[-1].reason}")
     for _ in range(8):                                     # true GPS back, holdoff 2 s
         est(GPS)
         est(DAY, var=15.0 ** 2)
         time.sleep(0.5)
     if statuses[-1].active_source != GPS or statuses[-1].state != NavStatus.STATE_FIX:
         failures.append(f"true GPS not re-accepted when vision agrees: {statuses[-1].reason}")
+
+    # Jam, then spoof: GPS silent for 4 s (vision carries on), then it comes back
+    # 2 km away — "reachable" after 4 s at 500 m/s, but vision disagrees.
+    for _ in range(8):
+        est(DAY, var=15.0 ** 2)
+        time.sleep(0.5)
+    for _ in range(6):
+        est(GPS, lat=35.848)
+        est(DAY, var=15.0 ** 2)
+        time.sleep(0.5)
+    if statuses[-1].active_source == GPS:
+        failures.append(f"spoof after a GPS outage accepted: {statuses[-1].reason}")
+    for _ in range(8):
+        est(GPS)
+        est(DAY, var=15.0 ** 2)
+        time.sleep(0.5)
+    if statuses[-1].active_source != GPS:
+        failures.append(f"true GPS after the outage not accepted: {statuses[-1].reason}")
+
+    # Gradual spoof: GPS pulled away at 40 m/s (well under max_speed, so the
+    # jump gate never fires) while vision (15 m) stays on the true position.
+    refused_at = None
+    # (vision is sent just before each GPS fix: the tolerance includes
+    # max_speed x the time between the two, 500 m/s in this test)
+    for k in range(24):
+        est(DAY, var=15.0 ** 2)
+        time.sleep(0.02)
+        est(GPS, lat=35.83 + k * 20.0 / 111320.0)          # +20 m every 0.5 s
+        time.sleep(0.5)
+        if refused_at is None and statuses[-1].active_source == DAY:
+            refused_at = k * 20.0
+    if refused_at is None:
+        failures.append(f"gradual spoof never refused: {statuses[-1].reason}")
+    elif refused_at > 400:
+        failures.append(f"gradual spoof refused only at {refused_at:.0f} m")
+    for _ in range(8):
+        est(GPS)
+        est(DAY, var=15.0 ** 2)
+        time.sleep(0.5)
+    if statuses[-1].active_source != GPS:
+        failures.append(f"true GPS not re-accepted after the gradual spoof: {statuses[-1].reason}")
 
     proc.terminate()
     proc.wait(timeout=10)
