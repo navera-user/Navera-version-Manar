@@ -106,6 +106,11 @@ class DaySubscriber(Node):
         self.declare_parameter("max_consecutive_rejects", 3)
         # Dead-reckoning from the last accepted fix is only published for this long.
         self.declare_parameter("max_dead_reckon_s", 30.0)
+        # Whole-map search (no prior). Measured on labelled frames: 12 % within
+        # 300 m, and the similarity score does not separate good matches from
+        # bad ones (docs/VALIDATION_STATUS.md). Off: without a prior (GPS fix or
+        # tracked match) day vision reports no position instead of a guess.
+        self.declare_parameter("allow_global_search", False)
 
         self.conf_threshold = float(self.get_parameter("conf_threshold").value)
         image_topic   = self.get_parameter("image_topic").value
@@ -117,6 +122,7 @@ class DaySubscriber(Node):
         self.antijump_enabled    = bool(self.get_parameter("antijump_enabled").value)
         self.max_consecutive_rejects = int(self.get_parameter("max_consecutive_rejects").value)
         self.max_dead_reckon_s   = float(self.get_parameter("max_dead_reckon_s").value)
+        self.allow_global_search = bool(self.get_parameter("allow_global_search").value)
 
         # ── State ───────────────────────────────────────────────
         self.bridge        = CvBridge()
@@ -285,6 +291,12 @@ class DaySubscriber(Node):
             center, R = self._spatial_window(img, meta)
             if center is not None:
                 self.get_logger().info(f"[day] 🔎 localizing frame={seq_id}… (cercle R={R:.0f}m autour de l'anchor)")
+            elif not self.allow_global_search:
+                self._publish_no_fix(self.get_clock().now().to_msg(), seq_id, meta,
+                                     {"frame_id": seq_id}, 0.0,
+                                     "no position prior (waiting for a GPS fix); "
+                                     "whole-map search disabled — not reliable")
+                return
             else:
                 self.get_logger().info(f"[day] 🔎 localizing frame={seq_id}… (pas d'anchor → recherche globale)")
             result = self.localizer.predict(img, threshold=self.conf_threshold,

@@ -47,6 +47,13 @@ Data: 33 labelled replay frames around Sousse (`vision_pkg/.../frames_gps`), 112
 In a simulated GPS loss (GPS for 3 frames, then 30 frames of vision), the error grew to
 **4–5 km**. The similarity score stays high on wrong matches, so it cannot flag them.
 
+Whole-map search, score discrimination (33 labelled frames, 4 within 300 m): scores of the
+good matches (0.942–0.974) lie inside the range of the bad ones (0.823–0.972). The best
+possible score threshold classifies 94 % correctly, against 88 % for "always reject". The
+top-1/top-2 and top-1/top-5 gaps do no better than "always reject". **Whole-map search is
+therefore disabled by default** (`allow_global_search: false`). Day vision reports no
+position until it has a prior (the last GPS fix, or its own tracked matches).
+
 **Conclusion:** the current day method must not be relied on as a GPS replacement. A
 different matching approach (local feature matching against the satellite image around a
 prior) is required and is the main open development item.

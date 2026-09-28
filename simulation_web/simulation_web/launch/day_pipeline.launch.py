@@ -39,6 +39,7 @@ def generate_launch_description():
         DeclareLaunchArgument('antijump_enabled',    default_value='true'),
         DeclareLaunchArgument('max_consecutive_rejects', default_value='3'),
         DeclareLaunchArgument('max_dead_reckon_s',       default_value='30.0'),
+        DeclareLaunchArgument('allow_global_search',     default_value='false'),
         # default_gps_valid: mirrors day.yaml ('true'), so this argument changes
         # nothing by itself — it forwards day.launch.py's argument up to this level,
         # which is what lets the GPS-denied regime be MEASURED without editing a
@@ -88,6 +89,7 @@ def generate_launch_description():
                 'antijump_enabled':    LaunchConfiguration('antijump_enabled'),
                 'max_consecutive_rejects': LaunchConfiguration('max_consecutive_rejects'),
                 'max_dead_reckon_s':       LaunchConfiguration('max_dead_reckon_s'),
+                'allow_global_search':     LaunchConfiguration('allow_global_search'),
             }],
         ),
     ])
