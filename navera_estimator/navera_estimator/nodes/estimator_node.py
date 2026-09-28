@@ -18,11 +18,18 @@ Scope: honest single-winner arbitration across the LIVE sources.
   * Subscribes to /navera/sensors/imu for LIVENESS ONLY. The IMU reports
     alive=true / contributing=false — zero invented position, zero covariance.
   * Eligibility: valid==true AND mode in {MEASURED, PROPAGATED} AND fresh
-    (header age < <source>_timeout_s). Generic — no per-source special-casing;
+    (0 <= header age < <source>_timeout_s, a stamp more than
+    future_tolerance_s ahead of the clock is refused) AND a finite, in-range
+    position with a finite covariance. Generic — no per-source special-casing;
     the arbiter has NO knowledge of any source's quirks, it applies one rule.
-  * No hysteresis / dwell / jump-guard yet — with GPS-invalid + day there is
-    still only ONE contributor at a time, so nothing to ping-pong. Those land
-    with the values measured under real concurrency.
+  * Switch hold-off: while the active source stays eligible, a higher-priority
+    source must have been continuously eligible for switch_holdoff_s before it
+    takes over (a flapping GPS must not zig-zag the output between GPS and a
+    ~500 m vision fix). Losing the active source switches immediately.
+  * /navera/position carries each winning MEASUREMENT once: a new message is
+    published only when the winner changes or sends a new estimate, never the
+    same estimate re-stamped at every tick (a filter downstream would fuse it
+    many times over).
 
 State machine:
   INITIALIZING  no watched message has EVER arrived (transient, since boot).
@@ -42,10 +49,15 @@ Parameters:
                      fixes are sparse; value is a starting point, to be MEASURED
                      under real cadence, not decreed — same rule as hysteresis)
     imu_timeout_s   (default 1.0)  — IMU liveness window
+    future_tolerance_s (default 0.5) — clock skew tolerated on header stamps
+    switch_holdoff_s   (default 2.0) — dwell before a recovering higher-priority
+                     source pre-empts the active one
 """
+import math
 from typing import Optional
 
 import rclpy
+from navera_common.geo import is_finite_latlon
 from navera_common.lifecycle import die_with_parent
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
@@ -85,7 +97,17 @@ class EstimatorNode(Node):
         self.declare_parameter("night_timeout_s", 5.0)
         self.declare_parameter("cn_timeout_s", 45.0)
         self.declare_parameter("imu_timeout_s", 1.0)
+        self.declare_parameter("future_tolerance_s", 0.5)
+        self.declare_parameter("switch_holdoff_s", 2.0)
         rate = float(self.get_parameter("publish_rate_hz").value)
+        if rate <= 0.0:
+            raise ValueError(f"publish_rate_hz must be > 0 (got {rate})")
+        self._future_tol = float(self.get_parameter("future_tolerance_s").value)
+        self._holdoff = float(self.get_parameter("switch_holdoff_s").value)
+        # Hold-off / de-duplication state
+        self._active_source: Optional[int] = None
+        self._eligible_since = {}                 # source const -> Time
+        self._last_published_key = None
         self._gps_timeout = float(self.get_parameter("gps_timeout_s").value)
         self._day_timeout = float(self.get_parameter("day_timeout_s").value)
         self._night_timeout = float(self.get_parameter("night_timeout_s").value)
@@ -144,22 +166,54 @@ class EstimatorNode(Node):
     # ---------- decision ----------
 
     def _age_s(self, now: Time, stamp: Time) -> float:
-        """Seconds between ``stamp`` and ``now`` (>= 0; clamps future stamps)."""
-        dt = (now - stamp).nanoseconds / 1e9
-        return dt if dt > 0.0 else 0.0
+        """Seconds from ``stamp`` to ``now``. Negative = stamp in the future."""
+        return (now - stamp).nanoseconds / 1e9
+
+    @staticmethod
+    def _sane(msg: PositionEstimate) -> bool:
+        """A usable position: finite and in range, finite non-negative variances."""
+        if not is_finite_latlon(msg.latitude, msg.longitude):
+            return False
+        cov = list(msg.position_covariance)
+        if not all(math.isfinite(c) for c in cov):
+            return False
+        return all(cov[i] >= 0.0 for i in (0, 4, 8))
 
     def _eval_source(self, now, last, timeout):
         """(alive, eligible, age) for a stored PositionEstimate, or (F, F, None).
 
         Generic — applied identically to GPS, day and every future source. The
         arbiter never special-cases a source: eligibility is one rule for all.
+        A stamp from the future (clock stepped back, other clock domain) makes
+        the source neither alive nor eligible: its age cannot be trusted.
         """
         if last is None:
             return False, False, None
         age = self._age_s(now, Time.from_msg(last.header.stamp))
-        alive = age < timeout
-        eligible = alive and last.valid and last.mode in _ELIGIBLE_MODES
+        alive = -self._future_tol <= age < timeout
+        eligible = (alive and last.valid and last.mode in _ELIGIBLE_MODES
+                    and self._sane(last))
         return alive, eligible, age
+
+    def _select(self, now: Time, candidates):
+        """Winner among [(source, eligible, msg)] in priority order, with hold-off."""
+        for src, eligible, _ in candidates:
+            if eligible:
+                self._eligible_since.setdefault(src, now)
+            else:
+                self._eligible_since.pop(src, None)
+        eligible = [(src, msg) for src, ok, msg in candidates if ok]
+        if not eligible:
+            self._active_source = None
+            return None
+        best_src, best_msg = eligible[0]
+        active = next(((s, m) for s, m in eligible if s == self._active_source), None)
+        if active is not None and best_src != self._active_source:
+            dwell = (now - self._eligible_since[best_src]).nanoseconds / 1e9
+            if dwell < self._holdoff:
+                return active[1]                  # keep the active source for now
+        self._active_source = best_src
+        return best_msg
 
     def _classify(self, winner):
         """State + reason for the winning source. See NavStatus.msg for semantics.
@@ -202,7 +256,7 @@ class EstimatorNode(Node):
         # --- IMU: liveness only ---
         imu_alive = (
             self._imu_last_stamp is not None
-            and self._age_s(now, self._imu_last_stamp) < self._imu_timeout
+            and -self._future_tol <= self._age_s(now, self._imu_last_stamp) < self._imu_timeout
         )
 
         # --- pick a winner + resolve state ---
@@ -210,16 +264,12 @@ class EstimatorNode(Node):
                          (self._gps_last, self._day_last, self._night_last,
                           self._cn_last, self._imu_last_stamp))
         # Priority GPS > day > night > cn (CLAUDE.md §3). Exactly one winner, or none.
-        if gps_eligible:
-            winner: Optional[PositionEstimate] = self._gps_last
-        elif day_eligible:
-            winner = self._day_last
-        elif night_eligible:
-            winner = self._night_last
-        elif cn_eligible:
-            winner = self._cn_last
-        else:
-            winner = None
+        winner: Optional[PositionEstimate] = self._select(now, [
+            (PositionEstimate.SOURCE_GPS, gps_eligible, self._gps_last),
+            (PositionEstimate.SOURCE_DAY_VISION, day_eligible, self._day_last),
+            (PositionEstimate.SOURCE_NIGHT_VISION, night_eligible, self._night_last),
+            (PositionEstimate.SOURCE_CELESTIAL, cn_eligible, self._cn_last),
+        ])
 
         if winner is not None:
             state, reason = self._classify(winner)
@@ -232,7 +282,10 @@ class EstimatorNode(Node):
 
         self._publish_status(now, state, winner, imu_alive, reason)
         if winner is not None:
-            self._publish_position(now, winner)
+            key = (winner.source, winner.header.stamp.sec, winner.header.stamp.nanosec)
+            if key != self._last_published_key:
+                self._last_published_key = key
+                self._publish_position(now, winner)
 
     def _no_fix_reason(self, gps_age, day_age, night_age, cn_age) -> str:
         """Why no source is usable — one clause per watched estimate source."""
@@ -248,12 +301,16 @@ class EstimatorNode(Node):
         """One clause explaining why `last` is not contributing (empty if it is)."""
         if last is None:
             return f"{name}: none received"
+        if age is not None and age < -self._future_tol:
+            return f"{name}: timestamp {-age:.1f}s in the future (clock problem)"
         if age is not None and age >= timeout:
             return f"{name}: stale ({age:.1f}s>{timeout:.1f}s)"
         if not last.valid:
             return f"{name}: invalid ({last.reason})" if last.reason else f"{name}: invalid"
         if last.mode not in _ELIGIBLE_MODES:
             return f"{name}: {_MODE_NAME.get(last.mode, last.mode)} not usable"
+        if not self._sane(last):
+            return f"{name}: non-finite position or covariance"
         return ""
 
     # ---------- outputs ----------
@@ -322,7 +379,7 @@ class EstimatorNode(Node):
             h.contributing = False
         else:
             now = self.get_clock().now()
-            h.alive = self._age_s(now, Time.from_msg(last.header.stamp)) < timeout
+            h.alive = -self._future_tol <= self._age_s(now, Time.from_msg(last.header.stamp)) < timeout
             h.last_seen = last.header.stamp
             h.contributing = winner is not None and winner.source == source_const
         return h

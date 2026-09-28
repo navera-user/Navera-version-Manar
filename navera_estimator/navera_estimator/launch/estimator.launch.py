@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-estimator.launch.py — start the NAVERA position arbiter (v1: GPS-only).
+estimator.launch.py — start the NAVERA position arbiter (GPS > day > night > celestial).
 
 Examples:
   ros2 launch navera_estimator estimator.launch.py

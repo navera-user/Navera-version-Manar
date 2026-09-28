@@ -13,3 +13,17 @@ estimator_node:
     # IMU liveness window. The IMU contributes NO position in v1 (contributing
     # is always false); this only decides whether it is reported alive.
     imu_timeout_s: 1.0
+
+    # Vision / celestial freshness windows (starting points, to be measured
+    # under the real frame cadence of each pipeline).
+    day_timeout_s: 3.0
+    night_timeout_s: 5.0
+    cn_timeout_s: 45.0
+
+    # A header stamp more than this far in the FUTURE is refused (clock stepped
+    # back, or a producer on another clock): its age cannot be trusted.
+    future_tolerance_s: 0.5
+
+    # While the active source stays usable, a higher-priority source must be
+    # continuously usable this long before it takes over (anti-flapping).
+    switch_holdoff_s: 2.0
