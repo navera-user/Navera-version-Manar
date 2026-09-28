@@ -38,6 +38,7 @@ import numpy as np
 import rclpy
 from navera_common.geo import dead_reckon, is_finite_latlon
 from navera_common.lifecycle import die_with_parent
+from navera_common.prior import GpsPrior
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
@@ -86,6 +87,9 @@ class NightSubscriber(Node):
         self.declare_parameter("status_topic",    "/night/night_status")
         self.declare_parameter("done_topic",      "/thermal/frame_done")     # ack back-pressure
         self.declare_parameter("ready_topic",     "/night/localizer_ready")  # handshake
+        # Live GPS, used as the prior (see day_subscriber).
+        self.declare_parameter("gps_topic",       "/navera/estimate/gps")
+        self.declare_parameter("gps_prior_timeout_s", 2.0)
         # Dead-reckoning from the last accepted fix is only published for this long.
         self.declare_parameter("max_dead_reckon_s", 30.0)
         # fp16 au forward STHN (string pour un toggle 'false' fiable) — défaut activé.
@@ -184,6 +188,9 @@ class NightSubscriber(Node):
         # ── Subscribers ─────────────────────────────────────────
         self.sub_image = self.create_subscription(Image, image_topic, self.on_image, image_qos)
         self.sub_meta  = self.create_subscription(String, meta_topic, self.on_meta, meta_qos)
+        self._gps_prior = GpsPrior(float(self.get_parameter("gps_prior_timeout_s").value))
+        self.sub_gps   = self.create_subscription(
+            PositionEstimate, self.get_parameter("gps_topic").value, self.on_gps, 10)
 
         # ── Handshake "ready" (latché) ─────────────────────────
         ready_qos = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
@@ -205,6 +212,14 @@ class NightSubscriber(Node):
         with self._state_lock:
             self._latest_img = img
         self._try_dispatch("image")
+
+    def on_gps(self, msg: PositionEstimate):
+        """Valid measured GPS → it becomes the anchor (the prior for GPS loss)."""
+        if self._gps_prior.update(msg.latitude, msg.longitude, msg.valid,
+                                  msg.mode == PositionEstimate.MODE_MEASURED):
+            self._anchor_lat, self._anchor_lon = msg.latitude, msg.longitude
+            self._anchor_time = time.time()
+            self._last_measured_time = self._anchor_time
 
     def on_meta(self, msg: String):
         try:
@@ -247,11 +262,18 @@ class NightSubscriber(Node):
                 self._publish_known(seq_id, meta)
                 return
 
+            # Live GPS healthy → it is the position source; no inference needed.
+            if self._gps_prior.fresh() is not None:
+                self.pub_status.publish(String(data=json.dumps({
+                    "frame_id": seq_id, "success": False, "source": "gps_active",
+                    "reason": "GPS valid — STHN idle, tracking GPS as prior"})))
+                return
+
             # 2) NOGPS → prior = anchor (dernier point valide)
             if self._anchor_lat is None:
                 # aucun anchor encore (cas limite : 1res frames NOGPS) → hold
                 self.get_logger().warn(
-                    f"[night] ⚠ frame={seq_id} NOGPS sans anchor — en attente d'un 1er GPS")
+                    f"[night] ⚠ frame={seq_id} no prior: GPS never had a fix")
                 self._publish_status_only(seq_id, reason="no anchor yet")
                 return
 
