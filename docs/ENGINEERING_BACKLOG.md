@@ -26,7 +26,7 @@ Status: ✅ done · 🔧 in progress · ⬜ open
 | LOC-13 | H | Day: global search accepts anything (scores 0.92–0.97 even when km off) — confidence not discriminative | ✅ eaeeceb |
 | LOC-14 | H | Day: accuracy ~440 m median — matching method redesign (local features vs satellite around prior) | ⬜ |
 | LOC-15 | H | Image/meta paired as "latest of each" — pair by frame_id (day, night, cn) | ✅ 5b9d760 |
-| LOC-16 | H | Night: query not normalised for scale (altitude/FOV) or heading | ⬜ |
+| LOC-16 | H | Night: query not normalised for scale (altitude/FOV) or heading — confirmed blocker: 4.7 km drift on replay frames | ⬜ |
 | LOC-17 | M | sensor_stamp = publication time; use image exposure stamp | ✅ 5b9d760 |
 | LOC-18 | M | Day: no coverage check (outside the tile set a Sousse tile is still returned) — closed by disabling whole-map search: outside coverage the circle has no tile → no position | ✅ eaeeceb |
 | LOC-19 | M | Day: unused NetVLAD/ResNet50 loaded and run at boot (VRAM, internet download) | ✅ d055bc0 |
@@ -121,5 +121,5 @@ Status: ✅ done · 🔧 in progress · ⬜ open
 | FEAT-1 | Vehicle outputs: NMEA GPS emulation (serial) + MAVLink GPS_INPUT | ✅ 44d7e11 |
 | FEAT-1b | Validate the outputs against an autopilot — ArduPilot SITL passed (MAVLink + NMEA); real vehicle pending | ✅ f2f2c6b |
 | FEAT-2 | IMU dead-reckoning (heading/speed) and celestial attitude | ⬜ |
-| FEAT-3 | GPU inference for STHN on JetPack 6 (cusolver) / TensorRT | ⬜ |
+| FEAT-3 | GPU inference for STHN on JetPack 6 — done (CPU route for small solves); TensorRT not done | ✅ 20634c3 |
 | FEAT-4 | Real-data recording tool (camera + GPS + IMU synchronised) and evaluation harness in repo | ✅ 6652916 |
