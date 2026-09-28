@@ -1,0 +1,26 @@
+[Unit]
+Description=NAVERA celestial localization pipeline (star camera + astrometry.net)
+# No network dependency: a vehicle in the field often has none, and all
+# NAVERA nodes talk over loopback DDS.
+After=local-fs.target
+# Never give up restarting (the default limit stops after 5 fast failures).
+StartLimitIntervalSec=0
+# One vision pipeline at a time (GPU memory): starting another stops this one.
+Conflicts=navera-pipeline-day.service navera-pipeline-night.service
+
+[Service]
+# Site settings shared by all NAVERA units (data paths, ROS_DOMAIN_ID...).
+# The leading "-" keeps the unit working if the file does not exist.
+EnvironmentFile=-/etc/navera/navera.env
+Type=simple
+User=navera
+Group=navera
+WorkingDirectory=/home/navera/isaac_ros_common
+ExecStart=/home/navera/navera_boot_pipeline_cn.sh
+# always: `ros2 launch` exits with code 0 even when a node crashed (every node
+# has on_exit=Shutdown), so on-failure would never restart it.
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

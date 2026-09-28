@@ -1,7 +1,8 @@
 [Unit]
 Description=NAVERA RTC sensor node (DS3231 I2C bus 1 @ 0x68 → /navera/sensors/rtc_time)
-Wants=network-online.target
-After=network-online.target
+# No network dependency: a vehicle in the field often has none, and all
+# NAVERA nodes talk over loopback DDS.
+After=local-fs.target
 # Never give up restarting (the default limit stops after 5 fast failures).
 StartLimitIntervalSec=0
 

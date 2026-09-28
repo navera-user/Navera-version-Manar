@@ -4,8 +4,9 @@ Ce dossier contient les fichiers de déploiement permettant de lancer **automati
 démarrage de la Jetson** l'ensemble NAVERA (capteurs + pipeline de localisation « day » +
 dashboard web), sans intervention manuelle et sans session interactive.
 
-L'architecture de boot est **découpée en 6 services systemd indépendants** — 3 capteurs, 1
-pipeline de vision, 1 arbitre de position (`navera-estimator`), 1 bridge web. Chaque brique démarre, tombe et redémarre seule
+L'architecture de boot est **découpée en services systemd indépendants** — 3 capteurs, 1
+pipeline de vision (jour, nuit **ou** céleste : un seul à la fois), 1 arbitre de position
+(`navera-estimator`), 1 bridge web. Chaque brique démarre, tombe et redémarre seule
 (`Restart=always`, voir « Redémarrage automatique »), sans dépendre de l'ordre de démarrage des autres.
 
 Découpage validé par reboot sur la Jetson Orin Nano (JetPack 6.2.1, Ubuntu 22.04) le
@@ -43,6 +44,9 @@ capteurs (host, CPU)          pipeline vision (host, GPU/CUDA)      bridge web (
 | `systemd/navera-imu.service` + `navera_boot_imu.sh` | Node capteur IMU (BNO085, I²C bus 1 @ `0x4A` → `/navera/sensors/imu`). |
 | `systemd/navera-rtc.service` + `navera_boot_rtc.sh` | Node horloge RTC (DS3231, I²C bus 1 @ `0x68` → `/navera/sensors/rtc_time`). |
 | `systemd/navera-estimator.service` + `navera_boot_estimator.sh` | Arbitre de position : choisit la meilleure source (GPS > jour > nuit > céleste) → `/navera/position`, `/navera/nav_status`. |
+| `systemd/navera-pipeline-night.service` + `navera_boot_pipeline_night.sh` | Pipeline de nuit : caméra thermique + STHN (GPU). Non activé par défaut. |
+| `systemd/navera-pipeline-cn.service` + `navera_boot_pipeline_cn.sh` | Pipeline céleste : caméra stellaire + astrometry.net. Non activé par défaut. |
+| `systemd/navera_boot_lib.sh` | Étapes communes des wrappers (environnement ROS, purge des logs, vérification des données). |
 | `navera.env.example` | Réglages du site (chemins des données, `ROS_DOMAIN_ID`, isolation réseau) → à copier dans `/etc/navera/navera.env`. |
 
 > **Note :** l'ancien service monolithique `navera-day` (un seul service lançant
@@ -63,6 +67,15 @@ tant qu'utilisateur `navera`. Chaque wrapper :
 
 L'`exec` remplace le shell → le process ROS devient le process principal vu par systemd, ce
 qui garantit un `stop`/`restart` propre.
+
+### Démarrage sans réseau, données absentes
+
+- Aucun service n'attend le réseau (`network-online.target`) : sur le terrain il n'y en a
+  souvent pas, et tous les nodes dialoguent en DDS local.
+- Avant de lancer un pipeline, son wrapper vérifie que ses données existent (carte MBTiles,
+  jeu de tuiles, poids STHN). Si le disque de données n'est pas encore monté, le wrapper sort
+  en erreur et systemd réessaie toutes les 10 s : le pipeline ne tourne jamais « à moitié ».
+- Les dossiers de logs ROS (`~/.ros/log`) de plus de 7 jours sont purgés à chaque démarrage.
 
 ### Redémarrage automatique
 
@@ -105,8 +118,13 @@ chmod +x /home/navera/navera_boot_*.sh
 sudo cp deploy/systemd/navera-*.service /etc/systemd/system/
 sudo systemctl daemon-reload
 
-# 3) Activer les 6 services au boot
+# 3) Activer les services au boot (pipeline de jour par défaut)
 sudo systemctl enable navera-web navera-pipeline-day navera-gps navera-imu navera-rtc navera-estimator
+
+# 3b) Modèles hors ligne : le véhicule peut démarrer sans internet. Pré-remplir UNE fois
+#     (avec internet) le cache DINOv2 pointé par TORCH_HOME dans navera.env :
+sudo -u navera bash -c 'set -a; . /etc/navera/navera.env; set +a; \
+  python3 -c "import torch; torch.hub.load(\"facebookresearch/dinov2\", \"dinov2_vits14\")"'
 
 # 4) S'assurer que la Jetson boote en mode multi-utilisateur (pas d'interface graphique requise)
 sudo systemctl set-default multi-user.target
@@ -117,6 +135,19 @@ sudo systemctl start navera-web navera-pipeline-day navera-gps navera-imu navera
 
 > Les wrappers sont volontairement installés dans `~` et non lancés depuis le repo, pour coller
 > à la configuration validée (`ExecStart=/home/navera/navera_boot_*.sh`).
+
+## Changer de pipeline (jour / nuit / céleste)
+
+Un seul pipeline de vision tient en mémoire GPU ; les unités sont en `Conflicts=` : en démarrer
+un arrête les autres.
+
+```bash
+# Exemple : passer en nuit
+sudo sed -i 's/^NAVERA_PIPELINE=.*/NAVERA_PIPELINE=night/' /etc/navera/navera.env
+sudo systemctl disable --now navera-pipeline-day
+sudo systemctl enable --now navera-pipeline-night
+sudo systemctl restart navera-web      # le bridge suit NAVERA_PIPELINE
+```
 
 ## Vérifier que ça tourne
 
@@ -154,7 +185,7 @@ sudo systemctl disable --now navera-pipeline-day
 sudo rm /etc/systemd/system/navera-pipeline-day.service
 
 # Ou tout d'un coup
-sudo systemctl disable --now navera-web navera-pipeline-day navera-gps navera-imu navera-rtc navera-estimator
-sudo rm /etc/systemd/system/navera-{web,pipeline-day,gps,imu,rtc,estimator}.service
+sudo systemctl disable --now navera-web navera-pipeline-day navera-pipeline-night navera-pipeline-cn navera-gps navera-imu navera-rtc navera-estimator
+sudo rm /etc/systemd/system/navera-*.service
 sudo systemctl daemon-reload
 ```

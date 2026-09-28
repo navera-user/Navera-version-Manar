@@ -1,7 +1,7 @@
 [Unit]
 Description=NAVERA web bridge (ROS→HTTP dashboard :8181, drives the day pipeline over DDS)
-Wants=network-online.target
-After=network-online.target
+# Binds a port: needs the network stack, not a network connection.
+After=network.target
 # Never give up restarting (the default limit stops after 5 fast failures).
 StartLimitIntervalSec=0
 # No ordering vs navera-pipeline-day: bridge↔pipeline talk over DDS (discovery-based,

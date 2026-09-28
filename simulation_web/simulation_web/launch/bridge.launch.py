@@ -46,6 +46,8 @@ def generate_launch_description():
         # The arbiter topics (/navera/position, /navera/nav_status) are NOT
         # arguments: there is one arbiter, so they never vary per pipeline.
         DeclareLaunchArgument('status_topic',  default_value='/day/day_status'),
+        # Latched localizer handshake: the dashboard shows 'ready' only once it is True.
+        DeclareLaunchArgument('ready_topic',   default_value='/day/localizer_ready'),
         DeclareLaunchArgument('fix_topic',     default_value='/day/position_estimate'),
         DeclareLaunchArgument('start_topic',   default_value='/day/camera/start'),
 
@@ -63,6 +65,7 @@ def generate_launch_description():
             on_exit=Shutdown(reason='node exited'),
             parameters=[{
                 'status_topic':  LaunchConfiguration('status_topic'),
+                'ready_topic':   LaunchConfiguration('ready_topic'),
                 'fix_topic':     LaunchConfiguration('fix_topic'),
                 'start_topic':   LaunchConfiguration('start_topic'),
                 'mbtiles_path':  LaunchConfiguration('mbtiles_path'),

@@ -1,9 +1,12 @@
 [Unit]
 Description=NAVERA day localization pipeline (camera + day_subscriber, DINOv2/GPU, no bridge)
-Wants=network-online.target
-After=network-online.target
+# No network dependency: a vehicle in the field often has none, and all
+# NAVERA nodes talk over loopback DDS.
+After=local-fs.target
 # Never give up restarting (the default limit stops after 5 fast failures).
 StartLimitIntervalSec=0
+# One vision pipeline at a time (GPU memory): starting another stops this one.
+Conflicts=navera-pipeline-night.service navera-pipeline-cn.service
 # No ordering vs navera-web: pipeline↔bridge talk over DDS (discovery-based,
 # order-independent) with latched handshake topics, so either may start/restart first.
 
