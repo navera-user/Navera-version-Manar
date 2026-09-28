@@ -379,7 +379,7 @@ function render(d){
   $('navReason').textContent = n.reason || '—';
   $('navSrc').textContent = fresh ? n.source : '—';
   $('navErr').textContent = fresh ? m(n.err_m) : '—';
-  $('navMode').textContent = fresh ? n.mode || '—' : 'no output';
+  $('navMode').textContent = fresh ? (n.mode ? 'mode: ' + n.mode : '—') : 'no output';
   const ch = [];
   for(const [name, h] of Object.entries(d.sources || {})){
     const cls = h.contributing ? 'active' : h.alive ? 'alive' : 'dead';
