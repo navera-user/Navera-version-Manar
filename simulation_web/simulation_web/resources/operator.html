@@ -60,6 +60,18 @@
   #op-coords .tag{display:none;color:#d29922;font-size:10px;letter-spacing:1px}
   #op-coords.stale .tag{display:block}
 
+  /* Bandeau SIMULATION : visible uniquement quand le bridge signale des données simulées */
+  #op-sim{display:none;position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:1001;
+    background:rgba(248,81,73,.92);color:#fff;border-radius:8px;padding:7px 16px;
+    font-size:13px;font-weight:700;letter-spacing:1.5px;text-align:center;
+    box-shadow:0 4px 16px rgba(0,0,0,.5);pointer-events:none}
+  #op-sim small{display:block;font-weight:500;letter-spacing:.3px;font-size:11px;opacity:.95}
+  #op-legend{display:none;position:absolute;right:14px;bottom:14px;z-index:1000;
+    background:rgba(13,17,23,.78);backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,.10);border-radius:8px;padding:8px 11px;
+    font-size:11px;line-height:1.7;color:#c9d1d9;pointer-events:none}
+  #op-legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+
   /* Marqueur véhicule (divIcon) : point + halo pulsant, aucun asset image */
   .op-veh-halo{animation:opPulse 2s ease-out infinite;transform-origin:center}
   @keyframes opPulse{0%{opacity:.55;r:8}70%{opacity:0;r:20}100%{opacity:0;r:20}}
@@ -73,6 +85,15 @@
   </div>
 
   <div id="op-detail">—</div>
+
+  <div id="op-sim">SIMULATION<small>simulated data — not a real vehicle</small></div>
+  <div id="op-legend">
+    <div><i style="background:#fff"></i>true position (simulation)</div>
+    <div><i style="background:#3fb950"></i>NAVERA output — GPS</div>
+    <div><i style="background:#58e6d9"></i>NAVERA output — vision (fix)</div>
+    <div><i style="background:#d29922"></i>NAVERA output — degraded</div>
+    <div id="op-err">error: —</div>
+  </div>
 
   <div id="op-coords" class="stale">
     <div class="tag" id="op-tag">LAST KNOWN — NOT CURRENT</div>
@@ -123,6 +144,11 @@ function placeVehicle(lat, lon, color){
     vehMarker.setIcon(vehIcon(color));
   }
   if(firstFix){ map.setView([lat,lon], Math.max(map.getZoom(), DEF_ZOOM)); firstFix=false; }
+  else if(!truthMarker){ keepInView([lat,lon]); }
+}
+// Follow mode: re-centre when the point leaves the central part of the view.
+function keepInView(ll){
+  if(!map.getBounds().pad(-0.25).contains(ll)) map.panTo(ll);
 }
 function removeVehicle(){
   if(vehMarker){ map.removeLayer(vehMarker); vehMarker = null; }
@@ -144,13 +170,69 @@ function setBadge(cls, text){
 }
 function showPosition(d){
   const fix = d.state === 'FIX';
-  setBadge(fix ? 'gps' : 'degraded', `${d.source || 'UNKNOWN'} · ${fix ? 'FIX' : 'DEGRADED'}`);
+  const cls = !fix ? 'degraded' : (d.source === 'GPS' ? 'gps' : 'vision');
+  setBadge(cls, `${d.source || 'UNKNOWN'} · ${fix ? 'FIX' : 'DEGRADED'}`);
   const age = Number.isFinite(Number(d.age_s)) ? `${Number(d.age_s).toFixed(1)} s ago` : '';
   elDetail.textContent = [MODE_TXT[d.mode] || d.mode, age, d.reason].filter(Boolean).join(' · ');
   elLat.textContent = Number(d.lat).toFixed(6);
   elLon.textContent = Number(d.lon).toFixed(6);
   elCoords.classList.remove('stale');
-  placeVehicle(Number(d.lat), Number(d.lon), fix ? SRC_COLOR.GPS : (SRC_COLOR[d.source] || '#d29922'));
+  const color = fix ? (SRC_COLOR[d.source] || SRC_COLOR.GPS) : '#d29922';
+  placeVehicle(Number(d.lat), Number(d.lon), color);
+  addTrail(Number(d.lat), Number(d.lon), color);
+}
+
+// ── Simulation overlay (only while the bridge reports simulated data) ──
+const elSim = document.getElementById('op-sim');
+const elLegend = document.getElementById('op-legend');
+const elErr = document.getElementById('op-err');
+let truthMarker = null, truthLine = null, trail = [], lastTrail = null;
+const TRAIL_MAX = 400;
+function addTrail(lat, lon, color){
+  if(lastTrail && lastTrail[0] === lat && lastTrail[1] === lon) return;
+  lastTrail = [lat, lon];
+  trail.push(L.circleMarker([lat,lon], {radius:3, color, weight:1, fillColor:color,
+                                        fillOpacity:.8, interactive:false}).addTo(map));
+  if(trail.length > TRAIL_MAX) map.removeLayer(trail.shift());
+}
+function distM(a, b){
+  const r = Math.PI/180, dLat = (b[0]-a[0])*r, dLon = (b[1]-a[1])*r;
+  const h = Math.sin(dLat/2)**2 + Math.cos(a[0]*r)*Math.cos(b[0]*r)*Math.sin(dLon/2)**2;
+  return 2*6371000*Math.asin(Math.min(1, Math.sqrt(h)));
+}
+function showSim(d){
+  const on = d.simulated === true;
+  elSim.style.display = on ? 'block' : 'none';
+  elLegend.style.display = on ? 'block' : 'none';
+  const t = Array.isArray(d.sim_truth) ? d.sim_truth.map(Number) : null;
+  if(on && t && t.every(Number.isFinite)){
+    if(!truthMarker){
+      truthMarker = L.circleMarker(t, {radius:7, color:'#fff', weight:2, fillColor:'#fff',
+                                       fillOpacity:.25, interactive:false}).addTo(map);
+    }else{ truthMarker.setLatLng(t); }
+    if(!truthLine){
+      truthLine = L.polyline([t], {color:'#fff', weight:3, opacity:.95,
+                                   interactive:false}).addTo(map);
+    }else{
+      truthLine.addLatLng(t);
+      const ll = truthLine.getLatLngs();
+      if(ll.length > 3 * TRAIL_MAX) truthLine.setLatLngs(ll.slice(-3 * TRAIL_MAX));
+    }
+    if(firstFix){
+      const pts = [t];
+      if(d.valid === true) pts.push([Number(d.lat), Number(d.lon)]);
+      map.fitBounds(L.latLngBounds(pts).pad(0.6), {maxZoom:15, animate:false});
+      firstFix = false;
+    }else{
+      keepInView(t);
+    }
+    elErr.textContent = d.valid === true
+      ? `error vs truth: ${Math.round(distM(t, [Number(d.lat), Number(d.lon)]))} m`
+      : 'error vs truth: no position';
+  }else if(truthMarker){
+    map.removeLayer(truthMarker); truthMarker = null;
+    if(truthLine){ map.removeLayer(truthLine); truthLine = null; }
+  }
 }
 function showNoPosition(state, reason){
   removeVehicle();
@@ -172,6 +254,7 @@ async function poll(){
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const d = await res.json();
     lastAnswer = Date.now();
+    showSim(d);
     const lat = Number(d.lat), lon = Number(d.lon);
     if(d.valid === true && Number.isFinite(lat) && Number.isFinite(lon)){
       showPosition(d);

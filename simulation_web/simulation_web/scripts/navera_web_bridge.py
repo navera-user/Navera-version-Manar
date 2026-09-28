@@ -202,6 +202,13 @@ class NaveraWebBridge(Node):
         self.create_subscription(
             NavStatus, nav_status_topic, self._on_nav_status, 10)
 
+        # ── Simulation marker: navera_tools/demo_mission.py publishes the true
+        # position of its simulated vehicle here. Never published on a live box;
+        # while it flows, /operator shows a SIMULATION banner and the truth. ──
+        self._sim_truth = None
+        self._sim_truth_rx = None
+        self.create_subscription(NavSatFix, "/navera/sim/truth", self._on_sim_truth, 10)
+
         # ── camera start/pause trigger (Option A) ──
         self.declare_parameter("start_topic", "/day/camera/start")
         start_topic = self.get_parameter("start_topic").value
@@ -371,7 +378,36 @@ class NaveraWebBridge(Node):
             return "UNKNOWN"
         return label
 
+    def _on_sim_truth(self, msg: NavSatFix):
+        with self._state_lock:
+            self._sim_truth = (float(msg.latitude), float(msg.longitude))
+            self._sim_truth_rx = time.monotonic()
+
     def operator_position(self):
+        """operator_decision(), plus the simulation marker when one is running.
+
+        {"simulated": true, "sim_truth": [lat, lon]} is added only while
+        /navera/sim/truth flows (a demo_mission run), or when the served
+        position itself is labelled simulated. Live data never carries it.
+        """
+        out = self.operator_decision()
+        now = time.monotonic()
+        with self._state_lock:
+            truth, truth_rx, pos = self._sim_truth, self._sim_truth_rx, self._position
+        simulated = False
+        if truth is not None and now - truth_rx < 3.0 and valid_latlon(*truth):
+            out["sim_truth"] = [truth[0], truth[1]]
+            simulated = True
+        if out.get("valid") and pos is not None:
+            try:
+                simulated |= bool(json.loads(pos.details_json or "{}").get("simulated"))
+            except (ValueError, AttributeError):
+                pass
+        if simulated:
+            out["simulated"] = True
+        return out
+
+    def operator_decision(self):
         """The arbiter's decision, rendered as JSON. This method decides NOTHING.
 
         navera_estimator owns the source hierarchy; it publishes the winner on
