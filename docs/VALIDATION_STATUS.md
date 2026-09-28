@@ -15,7 +15,7 @@ been measured. Open engineering items are tracked in
 | GPS pass-through, fix arbitration, operator display | Working, bench-tested | Scripted tests, virtual serial port, simulated sensors |
 | Automatic restart after a crash | Mechanism verified; not yet reboot-tested on a deployed unit | Node exit → launch exit, verified |
 | Day vision (DINOv2 tile retrieval) | **Not accurate enough to replace GPS** | Median 442 m on labelled replay frames |
-| Night vision (STHN homography) | Maths verified on synthetic data; **not validated on real thermal imagery** | 3–17 m on 100–150 m synthetic shifts |
+| Night vision (STHN homography) | Maths verified at the trained scale; **drifts on off-scale frames**; not validated on real thermal | 3–17 m on synthetic shifts; 4.7 km median on replayed frames |
 | Celestial (astrometry.net) | Geometry verified; **not run end to end** | 0 wrong positions in 20 000 simulated pointings |
 | IMU dead-reckoning | **Not implemented** (IMU is liveness only) | — |
 
@@ -70,11 +70,20 @@ prior) is required and is the main open development item.
 - Synthetic test: greyscale satellite crops stand in for thermal frames, at 2 locations.
   Known shifts of 100–150 m are recovered within **3–17 m**. One 320 m shift failed
   (238 m error), yet its consistency score was 0.93, so it was not flagged.
-- About 1.6 s per frame on CPU. On this unit's software stack, GPU inference needs a
-  CUDA solver library newer than JetPack 6 ships (see Deployment).
+- GPU: ~225 ms per frame (fp32) vs ~1.5 s on CPU, identical positions (≤ 0.02 m). The Jetson
+  PyTorch build cannot load CUDA linear algebra on JetPack 6, so the small homography
+  solves run on the CPU automatically. fp16 brought no speed, memory or accuracy gain.
+- **Replayed "night" frames (30 frames, 1536×730, darkened satellite images — not thermal,
+  scale unknown, ~480 m apart), GPS for 3 frames then lost:** tracking **drifts** —
+  median error 4.7 km, max 9.7 km over 22 scored frames, the estimate advancing ~100 m per
+  frame while the vehicle moves ~480 m. The consistency score stayed at 0.90–0.94
+  throughout: **it cannot detect a drifting track.** Cause: the query is not rescaled to the
+  satellite scale STHN was trained on (backlog LOC-16).
 
 **Not validated:** real thermal imagery, real altitudes and headings, and any
-confidence calibration.
+confidence calibration. Night positions must not be trusted until the frame scale is
+normalised from altitude and field of view (LOC-16) and the result is measured on real
+thermal data.
 
 ### Celestial (`cn_pkg`)
 

@@ -115,6 +115,34 @@ def _stitch_satellite_patch(conn, lat, lon, zoom, size):
 
 # ─── Main localizer ───────────────────────────────────────────────────────────
 
+def _ensure_cuda_linalg(device) -> bool:
+    """Make torch.linalg.solve usable on CUDA; returns True if a CPU route was installed.
+
+    STHN solves small 8x8 systems (kornia get_perspective_transform) at every
+    iteration. The Jetson PyTorch build for JetPack 6 needs a newer cuSOLVER
+    than JetPack ships, so CUDA linear algebra fails to load ("undefined
+    symbol cusolverDn..."). Those systems are tiny: solving them on the CPU
+    costs nothing and gives the same result (measured: <= 0.02 m difference,
+    network ~6x faster on GPU than full CPU). Installed only when needed.
+    """
+    if str(device) != "cuda":
+        return False
+    try:
+        torch.linalg.solve(torch.eye(2, device="cuda"), torch.ones(2, 1, device="cuda"))
+        return False
+    except RuntimeError as e:
+        _solve = torch.linalg.solve
+
+        def _cpu_solve(A, B, *args, **kwargs):
+            if A.is_cuda:
+                return _solve(A.cpu(), B.cpu(), *args, **kwargs).to(A.device)
+            return _solve(A, B, *args, **kwargs)
+        torch.linalg.solve = _cpu_solve
+        logger.warning(f"CUDA linear algebra unavailable ({str(e).splitlines()[0][:90]}) — "
+                       "small homography solves run on the CPU, the network on the GPU")
+        return True
+
+
 class NightLocalizer:
     """
     Wraps STHN local_pipeline to produce lat/lon fixes from night drone frames.
@@ -147,8 +175,11 @@ class NightLocalizer:
 
         # Insert STHN into sys.path
         sthn_dir = str(Path(sthn_dir).resolve())
+        self._sthn_dir = sthn_dir
         if sthn_dir not in sys.path:
             sys.path.insert(0, sthn_dir)
+
+        _ensure_cuda_linalg(self.device)
 
         # Load model
         self._model = self._load_model(weights)
@@ -169,7 +200,10 @@ class NightLocalizer:
 
         # ── Look ONLY in local_pipeline/model/network.py ─────────────────────
         Network = None
-        sthn_root = Path(sys.path[0])
+        # The STHN directory given by the caller — not sys.path[0], which the
+        # first load changes (a second NightLocalizer in the same process then
+        # found nothing).
+        sthn_root = Path(self._sthn_dir)
         candidates = list(sthn_root.rglob("local_pipeline/model/network.py"))
         logger.info(f"Searching for local_pipeline/model/network.py in {sthn_root}")
         logger.info(f"Candidates found: {candidates}")

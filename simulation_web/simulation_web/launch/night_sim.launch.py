@@ -46,7 +46,7 @@ def generate_launch_description():
         DeclareLaunchArgument('max_dead_reckon_s', default_value='30.0'),
         DeclareLaunchArgument('cuda_visible_devices', default_value='0'),
         DeclareLaunchArgument('cuda_alloc_conf', default_value='expandable_segments:True'),
-        DeclareLaunchArgument('mixed_precision', default_value='true'),
+        DeclareLaunchArgument('mixed_precision', default_value='false'),
         DeclareLaunchArgument('sthn_dir',
             default_value=os.environ.get('NAVERA_STHN_DIR', '/home/navera/isaac_ros_common/night_pkg/STHN')),
         DeclareLaunchArgument('weights',

@@ -116,7 +116,7 @@ class NightSubscriber(Node):
         # Dead-reckoning from the last accepted fix is only published for this long.
         declare_float(self, "max_dead_reckon_s", 30.0)
         # fp16 au forward STHN (string pour un toggle 'false' fiable) — défaut activé.
-        self.declare_parameter("mixed_precision", "true")
+        self.declare_parameter("mixed_precision", "false")
 
         sthn_dir   = self.get_parameter("sthn_dir").value
         weights    = self.get_parameter("weights").value

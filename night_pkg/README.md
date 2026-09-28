@@ -30,5 +30,7 @@ In: `/thermal/image_raw` (bgr8 or mono16), `/thermal/frame_meta`, `/navera/estim
 
 ## Limits
 - The thermal footprint is not yet rescaled from altitude/FOV to the satellite scale.
-- On this JetPack the Jetson PyTorch build needs a newer cusolver for GPU inference; CPU works
-  (~1.6 s/frame).
+- GPU: ~225 ms/frame. On JetPack 6 the Jetson PyTorch build cannot load CUDA linear algebra;
+  the small homography solves are then routed to the CPU automatically (same results).
+- Frames at another scale than training make the track drift (4.7 km median on the replay
+  set) while the consistency score stays high: see docs/VALIDATION_STATUS.md.

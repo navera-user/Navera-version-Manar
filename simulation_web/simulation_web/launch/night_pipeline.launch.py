@@ -40,6 +40,13 @@ def generate_launch_description():
         DeclareLaunchArgument('max_dead_reckon_s', default_value='30.0'),
         # Test flights: vision runs while GPS is valid, for measurement.
         DeclareLaunchArgument('shadow_mode', default_value='false'),
+        # Replay data ($NAVERA_THERMAL_CSV / $NAVERA_THERMAL_IMAGES_DIR, e.g. on the data disk)
+        # and whether CSV lat/lon rows count as GPS (replay only).
+        DeclareLaunchArgument('csv_path', default_value=os.environ.get(
+            'NAVERA_THERMAL_CSV', os.path.join(camera_share, 'data', 'thermal', 'flight_ready.csv'))),
+        DeclareLaunchArgument('images_dir', default_value=os.environ.get(
+            'NAVERA_THERMAL_IMAGES_DIR', os.path.join(camera_share, 'data', 'thermal'))),
+        DeclareLaunchArgument('default_gps_valid', default_value='true'),
         # VRAM Jetson 8 Go partagée : si STHN OOM dès l'init du contexte CUDA
         # (network.py:168, torch.zeros().to(device) — alloc minuscule qui échoue
         # car la VRAM est déjà saturée), forcer le night STHN sur CPU avec
@@ -52,7 +59,8 @@ def generate_launch_description():
         #    + réduit l'OOM forward sur ~2 Go libres). '' pour désactiver (tester A seul/off).
         DeclareLaunchArgument('cuda_alloc_conf', default_value='expandable_segments:True'),
         # B) fp16 sur le forward STHN (fnet1 + update_block_4, ~2× VRAM). 'false' pour désactiver.
-        DeclareLaunchArgument('mixed_precision', default_value='true'),
+        # fp16 measured on the Orin: same accuracy, no speed or memory gain → off.
+        DeclareLaunchArgument('mixed_precision', default_value='false'),
         DeclareLaunchArgument('sthn_dir',
             default_value=os.environ.get('NAVERA_STHN_DIR', '/home/navera/isaac_ros_common/night_pkg/STHN')),
         DeclareLaunchArgument('weights',
@@ -68,11 +76,12 @@ def generate_launch_description():
                 'fps': '0.5',
                 'start_delay_s': '7.0',
                 'flow_control': 'ack',            # next frame only after night_subscriber ack
-                'default_gps_valid': 'true',      # CSV lat/lon → GPS-known (direct nav)
+                'default_gps_valid': LaunchConfiguration('default_gps_valid'),
                 'wait_for_ready': 'true',         # frame 1 attend STHN chargé
                 'ready_topic': '/night/localizer_ready',
                 'min_frame_interval': '1.0',      # cadence visible frame-par-frame
-                'csv_path': os.path.join(camera_share, 'data', 'thermal', 'flight_ready.csv'),
+                'csv_path': LaunchConfiguration('csv_path'),
+                'images_dir': LaunchConfiguration('images_dir'),
             }.items(),
         ),
 
