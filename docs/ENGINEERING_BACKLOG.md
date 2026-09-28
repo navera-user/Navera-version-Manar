@@ -82,7 +82,7 @@ Status: ✅ done · 🔧 in progress · ⬜ open
 | WEB-10 | M | "/" dashboard: pre-flight settings (thresholds, limits) are never sent anywhere | ✅ 3fac266 |
 | WEB-11 | M | Bridge /gps_status.json never expires a "predicted" position | ✅ 3fac266 |
 | WEB-12 | M | DDS open to the network; simulators can hijack the estimator | ✅ c3aae6e, 8774666 |
-| WEB-13 | L | Web interface is plain HTTP (no TLS) | ⬜ |
+| WEB-13 | L | Web interface is plain HTTP (no TLS) — optional HTTPS, off by default (decision: enable per site) | ✅ a29051c |
 | WEB-14 | L | Orphan front-ends: root index.html, server.js, navera_IMPROVED.html, navera_stellar.html (empty), scripts/server.py | ✅ 3a832e3 |
 
 ## 4. Deployment and packaging
@@ -118,7 +118,8 @@ Status: ✅ done · 🔧 in progress · ⬜ open
 
 | ID | Item | Status |
 |---|---|---|
-| FEAT-1 | Vehicle outputs: NMEA GPS emulation (serial) + MAVLink GPS_INPUT; SITL test | ⬜ |
+| FEAT-1 | Vehicle outputs: NMEA GPS emulation (serial) + MAVLink GPS_INPUT | ✅ 44d7e11 |
+| FEAT-1b | Validate the outputs against an autopilot — ArduPilot SITL passed (MAVLink + NMEA); real vehicle pending | ✅ f2f2c6b |
 | FEAT-2 | IMU dead-reckoning (heading/speed) and celestial attitude | ⬜ |
 | FEAT-3 | GPU inference for STHN on JetPack 6 (cusolver) / TensorRT | ⬜ |
-| FEAT-4 | Real-data recording tool (camera + GPS + IMU synchronised) and evaluation harness in repo | ⬜ |
+| FEAT-4 | Real-data recording tool (camera + GPS + IMU synchronised) and evaluation harness in repo | ✅ 6652916 |
