@@ -281,8 +281,10 @@ class CNSubscriber(Node):
         fix = NavSatFix()
         fix.header.stamp    = now
         fix.header.frame_id = "celestial_camera_link"
+        # Legacy/diagnostic topic; the authoritative output is /navera/position.
+        # service 0 = not a GNSS position; dead-reckoning is not a fix.
         fix.status.status   = NavSatStatus.STATUS_FIX
-        fix.status.service  = NavSatStatus.SERVICE_GPS
+        fix.status.service  = 0
         fix.latitude        = float(result["predicted_lat"])
         fix.longitude       = float(result["predicted_lon"])
         _alt = meta.get("altitude_m")

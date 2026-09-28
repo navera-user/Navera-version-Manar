@@ -348,8 +348,11 @@ class NightSubscriber(Node):
         fix = NavSatFix()
         fix.header.stamp    = now
         fix.header.frame_id = "thermal_camera_link"
-        fix.status.status   = NavSatStatus.STATUS_FIX
-        fix.status.service  = NavSatStatus.SERVICE_GPS
+        # Legacy/diagnostic topic; the authoritative output is /navera/position.
+        # service 0 = not a GNSS position unless replayed GPS; dead-reckoning is not a fix.
+        fix.status.status   = (NavSatStatus.STATUS_NO_FIX if src == "dead_reckon"
+                               else NavSatStatus.STATUS_FIX)
+        fix.status.service  = NavSatStatus.SERVICE_GPS if src == "gps" else 0
         fix.latitude        = lat
         fix.longitude       = lon
         _alt = meta.get("altitude_m")
@@ -408,7 +411,8 @@ class NightSubscriber(Node):
         est = PositionEstimate()
         est.header.stamp    = now
         est.header.frame_id = "thermal_camera_link"
-        valid = is_finite_latlon(lat, lon)   # NaN / out-of-range / (0,0) is never a fix
+        mode = _NIGHT_MODE_BY_SRC.get(src)
+        valid = is_finite_latlon(lat, lon) and mode not in (None, PositionEstimate.MODE_REPLAYED)
         est.latitude  = float(lat) if valid else math.nan
         est.longitude = float(lon) if valid else math.nan
         _alt = meta.get("altitude_m")
@@ -416,10 +420,13 @@ class NightSubscriber(Node):
         est.position_covariance      = [0.0] * 9
         est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_UNKNOWN
         est.source     = PositionEstimate.SOURCE_NIGHT_VISION
-        est.mode       = _NIGHT_MODE_BY_SRC.get(src, PositionEstimate.MODE_MEASURED)
+        est.mode       = PositionEstimate.MODE_MEASURED if mode is None else mode
         est.valid      = valid
         est.confidence = 0.0
-        est.reason     = "" if valid else "non-finite position"
+        est.reason     = ("" if valid else
+                          "replayed ground truth (test data), never a measurement"
+                          if mode == PositionEstimate.MODE_REPLAYED else
+                          f"unknown source '{src}'" if mode is None else "non-finite position")
         est.sensor_stamp = exposure_stamp(meta, now)
         est.producer   = "night_subscriber"
         est.model_id   = _NIGHT_MODEL_BY_SRC.get(src, "")
