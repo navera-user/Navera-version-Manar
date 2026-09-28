@@ -38,10 +38,14 @@
 
 ## 3. ARCHITECTURE (verified live — this is accurate)
 
-Three localization pipelines share ONE chain. Only one runs at a time.
+Three localization pipelines share ONE chain. Only one runs at a time. Every source publishes
+the typed contract `navera_msgs/PositionEstimate` on `/navera/estimate/<source>`, and
+`navera_estimator` elects one winner.
 
 ```
-camera_pkg (source) → [day|night|cn]_subscriber (localizer) → simulation_web bridge (HTTP :8181) → browser (Leaflet)
+camera_pkg (source) → [day|night|cn]_subscriber (localizer) → /navera/estimate/* ┐
+gps_node ────────────────────────────────────────────────────→ /navera/estimate/gps ┼→ navera_estimator
+                  → /navera/position + /navera/nav_status → simulation_web bridge (HTTP :8181) → /operator
 ```
 
 ### ROS2 packages
@@ -51,9 +55,12 @@ camera_pkg (source) → [day|night|cn]_subscriber (localizer) → simulation_web
 | `day_pkg` | `day_subscriber.py` (+`day_localizer.py`) | Day localization — **DINOv2** retrieval vs satellite |
 | `night_pkg` | `night_subscriber.py` (+`night_localizer.py`) | Night localization — **STHN** homography |
 | `cn_pkg` | `cn_subscriber.py` | Celestial — astrometry.net plate-solving |
-| `gps_pkg` | `gps_node.py` | GPS driver (NMEA serial) — **publishes, 0 subscribers (not yet wired)** |
-| `imu_pkg` | `imu_node.py` | IMU driver (GY-87 I²C) — **publishes, 0 subscribers (not yet wired)** |
-| `simulation_web` | `navera_web_bridge.py`, `navera_stellar_bridge.py` | ROS→HTTP bridge, dashboard |
+| `gps_pkg` | `gps_node.py` | GPS driver (NMEA serial, checksummed) → estimator |
+| `imu_pkg` | `imu_node.py` | IMU driver (BNO085, I²C bus 1 @ 0x4A) — estimator uses it for liveness only |
+| `rtc_pkg` | `rtc_node.py` | Real-time clock (DS3231, I²C bus 1 @ 0x68) |
+| `navera_estimator` | `estimator_node.py` | Position arbiter: GPS > day > night > celestial |
+| `navera_msgs` / `navera_common` | — | Message contracts / shared helpers (lifecycle, geodesy) |
+| `simulation_web` | `navera_web_bridge.py`, `navera_stellar_bridge.py` | ROS→HTTP bridge, operator view, dashboard |
 
 ### Communication protocol (camera ↔ localizer)
 - **Start gate:** mission starts on command (`camera/start`, latched Bool).
@@ -63,14 +70,19 @@ camera_pkg (source) → [day|night|cn]_subscriber (localizer) → simulation_web
   (NavSatFix), `*_status` (String/JSON: source, score, jump_m).
 - QoS: data topics RELIABLE depth 10; ack depth 1; ready/start TRANSIENT_LOCAL (latched).
 
-### Source-selection hierarchy (per frame)
-`GPS (if valid) → vision (day/night) → celestial → inertial dead-reckoning`. First reliable source wins.
+### Source-selection hierarchy
+`GPS (if valid) → day vision → night vision → celestial` (navera_estimator). Inertial
+dead-reckoning is not implemented yet (the IMU is liveness only).
 
 ### Important truths (do not "fix" these without discussion)
+- **Measured accuracy lives in `docs/VALIDATION_STATUS.md`.** Day vision measured ~440 m median —
+  not a GPS replacement. Never quote a better number without a new measurement.
 - **NetVLAD is present but UNTRAINED** in the day pipeline — retrieval is **DINOv2-only**. Don't assume NetVLAD works.
 - **`vision_pkg/` is LEGACY** (old prototype). Treat as deprecated; do not build new work on it.
-- **gps_node / imu_node publish into the void** (0 subscribers). Wiring them is a real feature, not a bug fix.
-- **Celestial** uses manual tilt/azimuth defaults; accurate celestial needs the **clock + IMU** (not yet integrated).
+  Its `dataset/frames_gps/` frames ARE correctly labelled; `camera_pkg/data/day` frames are NOT.
+- **Celestial** needs a measured camera attitude (IMU, not wired yet); without it cn reports no
+  position. Time comes from the system clock (RTC-backed).
+- **STHN geometry is fixed by its weights** (one_stage: corr_level 4, database 1536, resize 256).
 
 ---
 
@@ -139,14 +151,23 @@ Verified requirements are done. The roadmap = the not-yet-done items.
   reboot on the Jetson (2026-07-14): the `navera-rtc` systemd service comes up on its own,
   the node reports `valid:true` and `lost_power:false` **after** the reboot (the CR2032 backup
   battery holds the clock through the power cut), and measured drift is **-0.148 s vs NTP**.
-  Celestial no longer needs a manual time entry; its remaining blocker is IMU tilt/azimuth.
+- **Automatic startup** — 6 systemd services (validated by reboot 2026-07-15; the restart
+  mechanism was reworked 2026-09-28 and needs a new reboot validation).
+
+### Done — bench-verified 2026-09-28 (not on a vehicle)
+- Localization maths corrected (day tile centres, night STHN contract and weights, celestial
+  geometry/precession), honest dead-reckoning, GPS parsing/recovery, estimator de-dup and
+  clock checks, web control token, honest operator view. See `docs/VALIDATION_STATUS.md`.
 
 ### Not yet done
-- **Clean & document** the codebase (remove legacy/dupes, add per-package READMEs, docstrings). ← start here
-- **Wire real sensors:** gps_node → pipelines, imu_node → dead-reckoning + celestial.
+- **Validate on real data** (camera + GPS + IMU recorded together; real thermal for STHN;
+  real sky for celestial). ← the blocker for every accuracy claim
+- **Day vision redesign** (local feature matching vs satellite around a prior) — current
+  retrieval is ~440 m median.
+- **Vehicle-integration outputs** (NMEA GPS emulation, MAVLink GPS_INPUT) for UAV/USV/UGV.
+- **Wire the IMU** → dead-reckoning (heading/speed) and celestial attitude.
+- **GPU for STHN** on this JetPack (torch 2.8 needs cusolver ≥ 11.7; JetPack has 11.6.4).
 - **Optimize** models with TensorRT (latency).
-- **Automatic startup** on boot (clean systemd service, not the old broken crontab).
-- **Standardized vehicle-integration interface** (UAV/USV/UGV).
-- **Validate on real data** (real thermal frames for STHN, real sensors for celestial).
+- **Clean & document** (per-package READMEs, remove legacy/orphans).
 
 Never claim these are done until measured/verified. Update this list as items complete.
