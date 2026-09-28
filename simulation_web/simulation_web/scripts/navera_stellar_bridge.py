@@ -26,10 +26,8 @@ Run standalone (test the bridge alone, no camera/subscriber needed):
 """
 import json
 import os
-import sqlite3
 import threading
 import time
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 
 import rclpy
@@ -40,6 +38,9 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPo
 
 from std_msgs.msg import String, Bool
 from sensor_msgs.msg import NavSatFix
+
+from simulation_web.web_common import (BridgeHandler, MBTilesReader, parse_tile_path,
+                                       start_server, valid_latlon)
 
 try:
     from ament_index_python.packages import get_package_share_directory
@@ -78,11 +79,15 @@ class NaveraStellarBridge(Node):
         self.declare_parameter("mbtiles_path", "")
         self.declare_parameter("web_host", "0.0.0.0")
         self.declare_parameter("web_port", 8181)
+        # Shared secret for POST control endpoints; defaults to $NAVERA_WEB_TOKEN.
+        # Empty = control disabled (read-only).
+        self.declare_parameter("control_token", os.environ.get("NAVERA_WEB_TOKEN", ""))
 
         status_topic = self.get_parameter("status_topic").value
         fix_topic    = self.get_parameter("fix_topic").value
         self.web_host = self.get_parameter("web_host").value
         self.web_port = int(self.get_parameter("web_port").value)
+        self._control_token = str(self.get_parameter("control_token").value)
 
         mb = self.get_parameter("mbtiles_path").value
         if not mb:
@@ -98,8 +103,7 @@ class NaveraStellarBridge(Node):
         self._point_a = None
 
         # ── Tile DB (lazy, thread-safe) ─────────────────────────
-        self._db_conn = None
-        self._db_lock = threading.Lock()
+        self._tiles = MBTilesReader(self.mbtiles_path, self.get_logger())
 
         # ── ROS subscriptions ───────────────────────────────────
         self.create_subscription(String,    status_topic, self._on_status, 10)
@@ -185,12 +189,10 @@ class NaveraStellarBridge(Node):
         Makes A the FIRST position published over /gps_status.json, so the
         stellar view starts at A instead of nothing. The first real /cn/cn_status
         solve replaces this anchor (and _on_fix won't clobber it: not 'idle')."""
-        try:
-            lat = float(pa["lat"])
-            lon = float(pa["lon"])
-        except (KeyError, TypeError, ValueError):
+        if not isinstance(pa, dict) or not valid_latlon(pa.get("lat"), pa.get("lon")):
             self.get_logger().warn(f"[stellar-bridge] set_mission: bad point_a payload: {pa!r}")
-            return
+            return False
+        lat, lon = float(pa["lat"]), float(pa["lon"])
         self._point_a = {"lat": lat, "lon": lon}
         with self._state_lock:
             self._gps_status = {
@@ -201,33 +203,13 @@ class NaveraStellarBridge(Node):
             }
         self.get_logger().info(
             f"[stellar-bridge] Point A anchored at ({lat:.6f}, {lon:.6f}) — first published position")
+        return True
 
     def trigger_camera_start(self):
         # stop/reset (false → pause+rewind) then go (true) — guarantees a frame-1 restart
         self._start_pub.publish(Bool(data=False))
         threading.Timer(0.4, lambda: self._start_pub.publish(Bool(data=True))).start()
         self.get_logger().info("[stellar-bridge] /api/set_mission → camera (rewind then go)")
-
-    # ────────────────────────────────────────────────────────────
-    # Tiles (MBTiles, TMS flip-Y)
-    # ────────────────────────────────────────────────────────────
-    def _get_tile(self, z, x, y):
-        if not os.path.exists(self.mbtiles_path):
-            return None
-        with self._db_lock:
-            if self._db_conn is None:
-                self._db_conn = sqlite3.connect(self.mbtiles_path, check_same_thread=False)
-                self._db_conn.execute("PRAGMA cache_size=8000")
-                self._db_conn.execute("PRAGMA temp_store=MEMORY")
-            y_tms = (2 ** z - 1) - y
-            cur = self._db_conn.cursor()
-            cur.execute(
-                "SELECT tile_data FROM tiles "
-                "WHERE zoom_level=? AND tile_column=? AND tile_row=?",
-                (z, x, y_tms),
-            )
-            row = cur.fetchone()
-            return bytes(row[0]) if row else None
 
     def gps_status_json(self):
         with self._state_lock:
@@ -239,102 +221,52 @@ class NaveraStellarBridge(Node):
     def _start_http_server(self):
         bridge = self
 
-        class Handler(BaseHTTPRequestHandler):
-            def log_message(self, fmt, *args):
-                if "404" not in (fmt % args):
-                    bridge.get_logger().info(fmt % args)
-
-            def _send(self, code, ctype, body):
-                self.send_response(code)
-                self.send_header("Content-Type", ctype)
-                self.send_header("Content-Length", str(len(body)))
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
-                self.end_headers()
-                self.wfile.write(body)
-
-            def _json(self, code, obj):
-                self._send(code, "application/json", json.dumps(obj).encode())
-
-            def do_OPTIONS(self):
-                self.send_response(204)
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-                self.send_header("Access-Control-Allow-Headers", "Content-Type")
-                self.end_headers()
-
+        class Handler(BridgeHandler):
             def do_GET(self):
-                parsed = urlparse(self.path)
-                path   = parsed.path.rstrip("/")
+                path = urlparse(self.path).path.rstrip("/")
 
                 if path.startswith("/tiles/"):
-                    parts = path.split("/")
-                    try:
-                        z, x, y = int(parts[2]), int(parts[3]), int(parts[4].split(".")[0])
-                    except (IndexError, ValueError):
-                        return self._json(400, {"error": "bad tile path"})
-                    data = bridge._get_tile(z, x, y)
-                    return self._send(200, "image/jpeg", data) if data \
-                        else self._json(404, {"error": "tile not found"})
+                    zxy = parse_tile_path(path)
+                    data = bridge._tiles.get(*zxy) if zxy else None
+                    return self.send_body(200, "image/jpeg", data) if data \
+                        else self.send_json(404, {"error": "tile not found"})
 
                 if path in ("", "/", "/navera.html"):
                     if os.path.exists(bridge.navera_html):
-                        with open(bridge.navera_html, "rb") as f:
-                            return self._send(200, "text/html; charset=utf-8", f.read())
-                    return self._json(404, {"error": "navera.html not found"})
+                        return self.send_file(bridge.navera_html)
+                    return self.send_json(404, {"error": "navera.html not found"})
 
                 if path == "/gps_status.json":
-                    return self._send(200, "application/json", bridge.gps_status_json())
+                    return self.send_body(200, "application/json", bridge.gps_status_json())
 
                 if path in ("/api/cache_status", "/api/precollect_progress", "/api/node"):
-                    return self._json(200, {"ok": True, "ready": True, "source": "stellar"})
+                    return self.send_json(200, {"ok": True, "ready": True, "source": "stellar"})
 
                 if path == "/health":
-                    return self._json(200, {"ok": True})
+                    return self.send_json(200, {"ok": True})
 
-                return self._serve_static(path)
+                return self.serve_static(bridge.resources_dir, path)
 
             def do_POST(self):
-                parsed = urlparse(self.path)
-                path   = parsed.path.rstrip("/")
-                length = int(self.headers.get("Content-Length", 0))
-                body   = self.rfile.read(length) if length else b""
-
+                path = urlparse(self.path).path.rstrip("/")
                 if path == "/api/set_mission":
-                    try:
-                        d = json.loads(body or b"{}")
-                        if "point_a" in d:
-                            bridge.set_point_a(d["point_a"])   # anchor trace at A (publish A first)
-                    except Exception:
-                        pass
+                    d = self.read_control_json(bridge._control_token)
+                    if d is None:
+                        return None
+                    if "point_a" in d and not bridge.set_point_a(d["point_a"]):
+                        return self.send_json(400, {"error": "point_a must be finite lat/lon in range"})
                     bridge.trigger_camera_start()
-                    return self._json(200, {"ok": True, "source": "stellar"})
+                    return self.send_json(200, {"ok": True, "source": "stellar"})
+                return self.send_json(404, {"error": f"unknown path: {path}"})
 
-                if path in ("/api/precollect", "/frame", "/api/stellar_gps"):
-                    return self._json(200, {"ok": True, "source": "stellar",
-                                            "note": "handled by ROS chain"})
-
-                return self._json(404, {"error": f"unknown path: {path}"})
-
-            def _serve_static(self, path):
-                rel = path.lstrip("/")
-                full = os.path.normpath(os.path.join(bridge.resources_dir, rel))
-                if full.startswith(bridge.resources_dir) and os.path.isfile(full):
-                    ctype = "text/html" if full.endswith(".html") else \
-                            "application/javascript" if full.endswith(".js") else \
-                            "text/css" if full.endswith(".css") else \
-                            "application/octet-stream"
-                    with open(full, "rb") as f:
-                        return self._send(200, ctype, f.read())
-                return self._json(404, {"error": f"unknown path: /{rel}"})
-
+        Handler.bridge = bridge
         try:
-            self._httpd = HTTPServer((self.web_host, self.web_port), Handler)
-        except Exception as e:
+            # Threaded (was a single-threaded HTTPServer: one slow client
+            # blocked tiles and status for everyone).
+            self._httpd = start_server(self.web_host, self.web_port, Handler)
+        except OSError as e:
             self.get_logger().error(f"❌ cannot bind {self.web_host}:{self.web_port} — {e}")
             raise
-        self._http_thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
-        self._http_thread.start()
         self.get_logger().info(f"✅ HTTP server up — open http://localhost:{self.web_port}/")
 
     def destroy_node(self):
