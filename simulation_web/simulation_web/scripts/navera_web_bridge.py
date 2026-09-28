@@ -130,6 +130,10 @@ class NaveraWebBridge(Node):
         # Arbiter outputs for /operator. Not launch arguments (unlike the
         # pipeline topics above): there is exactly ONE arbiter, so these never
         # vary per pipeline — the day/night/celestial split happens upstream.
+        # Dashboard (/) freshness and readiness: a status older than this is
+        # served as "stale"; readiness is the localizer's latched handshake.
+        self.declare_parameter("status_stale_s", 10.0)
+        self.declare_parameter("ready_topic", "/day/localizer_ready")
         self.declare_parameter("position_topic", "/navera/position")
         self.declare_parameter("nav_status_topic", "/navera/nav_status")
         # nav_status is the heartbeat (published every estimator tick, ~5 Hz):
@@ -146,6 +150,8 @@ class NaveraWebBridge(Node):
         self.web_host = self.get_parameter("web_host").value
         self.web_port = int(self.get_parameter("web_port").value)
         self._control_token = str(self.get_parameter("control_token").value)
+        self._status_stale_s = float(self.get_parameter("status_stale_s").value)
+        self._localizer_ready = False
 
         self._position_topic     = self.get_parameter("position_topic").value
         nav_status_topic         = self.get_parameter("nav_status_topic").value
@@ -178,6 +184,11 @@ class NaveraWebBridge(Node):
 
         # ── ROS subscriptions: pipeline detail, for the "/" dashboard ──
         self.create_subscription(String,    status_topic, self._on_status, 10)
+        ready_qos = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
+                               durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                               history=HistoryPolicy.KEEP_LAST, depth=1)
+        self.create_subscription(Bool, self.get_parameter("ready_topic").value,
+                                 self._on_ready, ready_qos)
         self.create_subscription(NavSatFix, fix_topic,    self._on_fix,    10)
 
         # ── ROS subscriptions: the arbiter's decision, for "/operator" ──
@@ -214,6 +225,9 @@ class NaveraWebBridge(Node):
     # ────────────────────────────────────────────────────────────
     # ROS callbacks → update shared gps_status
     # ────────────────────────────────────────────────────────────
+    def _on_ready(self, msg: Bool):
+        self._localizer_ready = bool(msg.data)
+
     def _on_status(self, msg: String):
         try:
             d = json.loads(msg.data)
@@ -225,7 +239,12 @@ class NaveraWebBridge(Node):
         lat, lon = d.get("lat"), d.get("lon")
 
         if d.get("error"):
-            new = {"status": "error", "error": str(d.get("error")), "frame_id": frame_id}
+            new = {"status": "error", "error": str(d.get("error")), "frame_id": frame_id,
+                   "timestamp": time.time()}
+        elif d.get("source") == "gps_active":
+            # Live GPS is healthy; vision is idle on purpose. Not "GPS lost".
+            new = {"status": "gps_active", "frame_id": frame_id, "reason": d.get("reason"),
+                   "mission_started": True, "timestamp": time.time()}
         elif d.get("success") and lat is not None and lon is not None:
             new = {
                 "status": "predicted",
@@ -318,8 +337,18 @@ class NaveraWebBridge(Node):
         self.get_logger().info("[bridge] /api/set_mission → camera (rewind then go)")
 
     def gps_status_json(self):
+        """Dashboard status; served as "stale" (with its age) once it stops
+        being updated, so a stalled pipeline never looks live."""
         with self._state_lock:
-            return json.dumps(self._gps_status).encode()
+            st = dict(self._gps_status)
+        ts = st.get("timestamp")
+        if st.get("status") not in (None, "idle") and ts is not None:
+            age = time.time() - ts
+            st["age_s"] = round(age, 1)
+            if age > self._status_stale_s:
+                st["last_status"] = st.get("status")
+                st["status"] = "stale"
+        return json.dumps(st, allow_nan=False).encode()
 
     def _source_label(self, source: int) -> str:
         """Enum → the string operator.html expects. Unknown → explicit "UNKNOWN".
@@ -449,7 +478,8 @@ class NaveraWebBridge(Node):
                     return self.send_body(200, "text/csv", hdr.encode())
 
                 if path in ("/api/cache_status", "/api/precollect_progress"):
-                    return self.send_json(200, {"ok": True, "ready": True, "pct": 100})
+                    ready = bridge._localizer_ready
+                    return self.send_json(200, {"ok": True, "ready": ready, "pct": 100 if ready else 0})
 
                 if path == "/health":
                     return self.send_json(200, {"ok": True})

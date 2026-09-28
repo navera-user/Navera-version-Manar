@@ -8,6 +8,14 @@
 <link rel="stylesheet" href="/leaflet/leaflet.min.css"/>
 <script src="/leaflet/leaflet.min.js"></script>
 <script>
+// Text from the box (tile names, error messages) is never trusted as HTML.
+function escHtml(v){
+  return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+// Long flights must not grow the page without bound.
+const MAX_LOG_LINES=500, MAX_TRAIL_POINTS=5000, MAX_LAYERS=2000;
+function capArray(a,n){ if(a.length>n) a.splice(0,a.length-n); return a; }
+function capLayers(list,n){ while(list.length>n){ const l=list.shift(); if(l&&l.remove) l.remove(); } }
 // Mission control needs the box's control token (NAVERA_WEB_TOKEN), asked once
 // and kept in this browser only.
 function naveraToken(forceAsk){
@@ -367,6 +375,10 @@ input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;height:4p
     </div>
     <div id="cfg-step-3" style="display:none">
       <h2 style="color:white;font-size:18px;font-weight:600;margin:0 0 20px">⚙️ Paramètres de vol</h2>
+      <div style="margin:-10px 0 18px;padding:10px 12px;border-radius:8px;border:1px solid rgba(245,158,11,.45);background:rgba(245,158,11,.08);color:#fbbf24;font-size:12px;line-height:1.5">
+        ⚠ Ces réglages servent à l'affichage de cette page uniquement : ils ne sont <b>pas</b> transmis au boîtier NAVERA.
+        Les seuils et limites du système se règlent dans sa configuration (paramètres ROS 2, <code>/etc/navera/navera.env</code>).
+      </div>
       <div style="display:flex;flex-direction:column;gap:16px">
         <div class="cfg-field"><label>Altitude maximale (m)</label>
           <div style="display:flex;align-items:center;gap:12px"><input type="range" id="cfg-alt-max" min="50" max="2000" value="400" step="50" oninput="document.getElementById('cfg-alt-max-val').textContent=this.value+'m'" style="flex:1;accent-color:#6366f1"><span id="cfg-alt-max-val" style="color:#6366f1;font-weight:700;min-width:60px">400m</span></div>
@@ -1139,7 +1151,7 @@ function pExportMission(){
   setTimeout(()=>{window.URL.revokeObjectURL(url);document.body.removeChild(a);},100);
   toast('Exporté → mission_plan.json','green');
 }
-setInterval(()=>{fetch(`${RECEIVER}/api/cache_status`).then(r=>r.json()).then(d=>{if(d.ready&&!precollecting&&window.naveraTimeMode!=='night'){pSetCacheUI('ready','✅ Chaîne embarquée prête','rejeu mission via ROS 2 · aucune pré-collecte requise');if(ptA) document.getElementById('btn-launch').disabled=false;}}).catch(()=>{});},3000);
+setInterval(()=>{fetch(`${RECEIVER}/api/cache_status`).then(r=>r.json()).then(d=>{if(d.ready&&!precollecting&&window.naveraTimeMode!=='night'){pSetCacheUI('ready','✅ Chaîne embarquée prête','rejeu mission via ROS 2 · aucune pré-collecte requise');if(ptA) document.getElementById('btn-launch').disabled=false;}else if(!d.ready&&!precollecting){pSetCacheUI('not-ready','⏳ Chaîne embarquée non prête','localisateur pas encore prêt (chargement du modèle, ou service arrêté)');}}).catch(()=>{pSetCacheUI('not-ready','⚠ NAVERA injoignable','aucune réponse du boîtier');});},3000);
 // Night mode safety net: keep Launch Mission always enabled
 setInterval(()=>{if(window.naveraTimeMode==='night'||window.missionMode==='a-only'){const b=document.getElementById('btn-launch');if(b&&b.disabled){b.disabled=false;}}},500);
 
@@ -1236,7 +1248,7 @@ function backToPlanner(){
   if(fSearchCircle){fMap.removeLayer(fSearchCircle);fSearchCircle=null;}
   if(fPredictedMarker){fMap.removeLayer(fPredictedMarker);fPredictedMarker=null;}
   if(fPredictionLine){fMap.removeLayer(fPredictionLine);fPredictionLine=null;}
-  clearInterval(pollCsvInterval); clearInterval(pollGpsInterval);
+  clearInterval(pollCsvInterval); pollGpsInterval=false;   // stops the sequential GPS loop
   if(fFlightSyncInterval) clearInterval(fFlightSyncInterval);
   if(fMap){fMap.remove();fMap=null;}
   if(fIdleOverlay){fIdleOverlay.remove();fIdleOverlay=null;}
@@ -1303,7 +1315,7 @@ function initFlightMap(){
     const bg_lat=document.getElementById('t-lat'); const bg_lon=document.getElementById('t-lon');
     if(bg_lat&&bg_lat.textContent!=='—'&&bg_lat.textContent!=='N/A'){document.getElementById('f-disp-lat').textContent=bg_lat.textContent;document.getElementById('f-disp-lon').textContent=bg_lon?.textContent||'—';}
     else if(bg_lat&&bg_lat.textContent==='N/A'){document.getElementById('f-disp-lat').textContent='LOST';document.getElementById('f-disp-lon').textContent='LOST';}
-    const isLost=bg_lat&&bg_lat.className.includes('red'); const isEst=bg_lat&&bg_lat.className.includes('org');
+    const isLost=bg_lat&&bg_lat.className.includes('red'); const isEst=bg_lat&&bg_lat.className.includes('amber');
     const cls=isLost?'lost-gps':(isEst?'est-gps':'active-gps');
     document.getElementById('f-box-lat').className=`f-tbox ${cls}`;document.getElementById('f-box-lon').className=`f-tbox ${cls}`;document.getElementById('f-box-alt').className=`f-tbox ${cls}`;
   },300);
@@ -1324,7 +1336,9 @@ function initFlightMap(){
   // Start polling
   window._dayLastFid=null; window._daySame=0; window._dayDone=false; window._dayPrevPt=null;
   pollCsvInterval=setInterval(pollCsv,1000);
-  pollGpsInterval=setInterval(pollGpsStatus,500);
+  // Sequential: the next poll starts 500 ms after the previous one finished.
+  pollGpsInterval=true;
+  (async function gpsLoop(){ while(pollGpsInterval){ await pollGpsStatus(); await new Promise(r=>setTimeout(r,500)); } })();
 }
 
 function showMissionIdleOverlay(visible){
@@ -1370,8 +1384,14 @@ function fMkWP(f,active){
 function fTlog(msg,type='data'){
   const b=document.getElementById('term'); const ts=new Date().toLocaleTimeString('fr-FR');
   const d=document.createElement('div'); d.className='tline';
-  d.innerHTML=`<span style="color:#4b5563">[${ts}]</span><span style="color:${type==='ok'?'#10b981':type==='warn'?'#f59e0b':type==='err'?'#ef4444':type==='info'?'#06b6d4':'#94a3b8'}">${msg}</span>`;
-  b.appendChild(d); b.scrollTop=b.scrollHeight;
+  const t=document.createElement('span'); t.style.color='#4b5563'; t.textContent=`[${ts}]`;
+  const m=document.createElement('span');
+  m.style.color=type==='ok'?'#10b981':type==='warn'?'#f59e0b':type==='err'?'#ef4444':type==='info'?'#06b6d4':'#94a3b8';
+  m.textContent=String(msg);
+  d.appendChild(t); d.appendChild(m);
+  b.appendChild(d);
+  while(b.childElementCount>MAX_LOG_LINES) b.removeChild(b.firstElementChild);
+  b.scrollTop=b.scrollHeight;
 }
 // alias used by flight code
 function tlog(msg,type){fTlog(msg,type);}
@@ -1394,8 +1414,8 @@ function addFrameToLog(frame){
   if(flog.querySelector('div[style*="italic"]')) flog.innerHTML='';
   const fi=document.createElement('div');
   fi.className=`fi ${frame.valid?'gps-ok':'gps-no'}`; fi.id=`fi-${frame.id}`;
-  fi.innerHTML=`<div style="font-size:11px;padding:4px 8px;border-radius:4px;margin-bottom:2px;display:flex;justify-content:space-between;align-items:center;background:${frame.valid?'rgba(16,185,129,.1)':'rgba(239,68,68,.1)'}"><span style="font-family:monospace;color:#94a3b8">${frame.id}</span><span style="color:${frame.valid?'#10b981':'#ef4444'};font-size:10px;font-weight:700">${frame.valid?'GPS ✓':'NO GPS'}</span></div>`;
-  flog.appendChild(fi); fi.scrollIntoView({block:'nearest',behavior:'smooth'});
+  fi.innerHTML=`<div style="font-size:11px;padding:4px 8px;border-radius:4px;margin-bottom:2px;display:flex;justify-content:space-between;align-items:center;background:${frame.valid?'rgba(16,185,129,.1)':'rgba(239,68,68,.1)'}"><span style="font-family:monospace;color:#94a3b8">${escHtml(frame.id)}</span><span style="color:${frame.valid?'#10b981':'#ef4444'};font-size:10px;font-weight:700">${frame.valid?'GPS ✓':'NO GPS'}</span></div>`;
+  flog.appendChild(fi); while(flog.childElementCount>MAX_LOG_LINES) flog.removeChild(flog.firstElementChild); fi.scrollIntoView({block:'nearest',behavior:'smooth'});
 }
 function actF(id){document.querySelectorAll('.fi').forEach(e=>e.classList.remove('active'));const e=document.getElementById(`fi-${id}`);if(e){e.classList.add('active');e.scrollIntoView({block:'nearest',behavior:'smooth'});}document.getElementById('chip-fr').textContent=`${id} / ${fCurrentFrames.length}`;}
 
@@ -1420,12 +1440,12 @@ function updateMapWithFrame(frame){
     const gpsQuality = frame.valid ? '#00e5ff' : '#ffd700';
     
     if(displayLat && displayLon){
-      const wm=L.marker([displayLat,displayLon],{icon:fMkWP(frame,!frame.valid)}).addTo(fMap); fWpMarkers.push(wm);
+      const wm=L.marker([displayLat,displayLon],{icon:fMkWP(frame,!frame.valid)}).addTo(fMap); fWpMarkers.push(wm); capLayers(fWpMarkers,MAX_LAYERS);
       moveDrone(displayLat,displayLon,frame.hdg,gpsQuality); fMap.panTo([displayLat,displayLon],{animate:true,duration:.5});
       
       if(frame.valid){
         // Add to GPS-valid trail
-        fTrailGpsValid.push([displayLat,displayLon]);
+        capArray(fTrailGpsValid,MAX_TRAIL_POINTS).push([displayLat,displayLon]);
         if(fTLineGpsValid) fMap.removeLayer(fTLineGpsValid);
         fTLineGpsValid=L.polyline(fTrailGpsValid,{color:'#00e5ff',weight:2.5,opacity:.8,dashArray:'6 4'}).addTo(fMap);
       }
@@ -1477,16 +1497,17 @@ function showPredictionLine(fromLat,fromLon,toLat,toLon){
   if(fPredictionLine) fMap.removeLayer(fPredictionLine);
   fPredictionLine=L.polyline([[fromLat,fromLon],[toLat,toLon]],{color:'#ffd700',weight:3.5,opacity:.9,dashArray:'8 6'}).addTo(fMap);
   // Add to GPS-predicted trail
-  fTrailGpsPredicted.push([toLat,toLon]);
+  capArray(fTrailGpsPredicted,MAX_TRAIL_POINTS).push([toLat,toLon]);
   if(fTLineGpsPredicted) fMap.removeLayer(fTLineGpsPredicted);
   fTLineGpsPredicted=L.polyline(fTrailGpsPredicted,{color:'#ffd700',weight:2.5,opacity:.75,dashArray:'4 6'}).addTo(fMap);
   // Connect predicted point to main cyan trail for trajectory continuity
-  fTrailGpsValid.push([toLat,toLon]);
+  capArray(fTrailGpsValid,MAX_TRAIL_POINTS).push([toLat,toLon]);
   if(fTLineGpsValid) fMap.removeLayer(fTLineGpsValid);
   fTLineGpsValid=L.polyline(fTrailGpsValid,{color:'#00e5ff',weight:2.5,opacity:.8,dashArray:'6 4'}).addTo(fMap);
   fTlog('🟡 Trajectory: last GPS → predicted position','info');
 }
 function showPredictedMarker(lat,lon,score,match){
+  match=escHtml(match);
   if(fPredictedMarker) fMap.removeLayer(fPredictedMarker);
   fPredictedMarker=L.marker([lat,lon],{icon:L.divIcon({html:`<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="none" stroke="#ffd700" stroke-width="2" stroke-dasharray="6 3"><animateTransform attributeName="transform" type="rotate" dur="4s" from="0 22 22" to="360 22 22" repeatCount="indefinite"/></circle><circle cx="22" cy="22" r="13" fill="#ffd70028" stroke="#ffd700" stroke-width="1.5"/><circle cx="22" cy="22" r="6" fill="#ffd700" opacity=".9"><animate attributeName="r" values="5;7;5" dur="2s" repeatCount="indefinite"/></circle><circle cx="22" cy="22" r="2.5" fill="white" opacity=".95"/></svg>`,iconSize:[44,44],iconAnchor:[22,22],className:'f-pred-mark'}),zIndexOffset:900}).addTo(fMap);
   const methodName=window.naveraTimeMode==='night'?'STHN Homography':'DINOv2';
@@ -1496,7 +1517,7 @@ function showPredictedMarker(lat,lon,score,match){
 function showMatchPopup(status){
   document.getElementById('mp-lat').textContent=status.lat.toFixed(6);document.getElementById('mp-lon').textContent=status.lon.toFixed(6);
   document.getElementById('mp-dv').textContent=(status.score||0).toFixed(3);document.getElementById('mp-fi').textContent=status.match||'N/A';
-  document.getElementById('mp-err').textContent=`~${status.search_radius_m||300}m radius`;
+  document.getElementById('mp-err').textContent='uncertainty unknown';
   document.getElementById('hud-mr').style.display='block';document.getElementById('hud-mf').textContent=status.match||'N/A';
   document.getElementById('hud-dv').textContent=(status.score||0).toFixed(3);document.getElementById('hud-tm').textContent=status.total_ms?`${Math.round(status.total_ms)}ms`:'< 5s';
   document.getElementById('mpopup').classList.add('show');
@@ -1524,9 +1545,10 @@ function showVisualMarkerEnhanced(lat,lon,confidence,matchFile){
   const color=confidence>.7?'#ffaa00':confidence>.5?'#ff6600':'#ff3300';
   const icon=confidence>.7?'🎯':confidence>.5?'📍':'❓';
   fVisualMarker=L.circleMarker([lat,lon],{radius:7,color:color,fillColor:color,fillOpacity:.85,weight:2,className:'visual-marker',zIndexOffset:850}).addTo(fMap);
-  fVisualMarker.bindPopup(`<div style="font-family:monospace;font-size:11px"><strong style="color:${color}">${icon} Visual Localization</strong><br/>Confidence: ${(confidence*100).toFixed(1)}%<br/>Lat: ${lat.toFixed(6)}<br/>Lon: ${lon.toFixed(6)}<br/>Match: ${matchFile||'N/A'}</div>`);
-  if(fVisualAccuracyCircle) fMap.removeLayer(fVisualAccuracyCircle);
-  fVisualAccuracyCircle=L.circle([lat,lon],{radius:Math.max(50,200/confidence),color:color,fillColor:color,fillOpacity:.05,weight:1,dashArray:'3,3',interactive:false}).addTo(fMap);
+  fVisualMarker.bindPopup(`<div style="font-family:monospace;font-size:11px"><strong style="color:${color}">${icon} Visual Localization</strong><br/>Match score: ${(confidence*100).toFixed(1)}% (similarity, not a probability)<br/>Uncertainty: unknown<br/>Lat: ${lat.toFixed(6)}<br/>Lon: ${lon.toFixed(6)}<br/>Match: ${escHtml(matchFile||'N/A')}</div>`);
+  // No accuracy circle: the uncertainty of a vision fix is not measured, and a
+  // drawn radius would present a guess as a bound.
+  if(fVisualAccuracyCircle){ fMap.removeLayer(fVisualAccuracyCircle); fVisualAccuracyCircle=null; }
 }
 
 function clearVisualMarkers(){
@@ -1588,12 +1610,19 @@ async function pollGpsStatus(){
     const status=await res.json();
     // Dédup par frame_id (anti-répétition) + détection fin de mission
     const fid=status.frame_id;
-    if(fid!=null && fid===window._dayLastFid){
-      window._daySame=(window._daySame||0)+1;
-      if(window._daySame>=6 && !window._dayDone && status.status==='predicted'){ window._dayDone=true; showMissionDoneBadge(); }
+    // A status that has not changed for a while is reported "stale" by the
+    // bridge. No "mission done" is inferred from silence: a stalled pipeline
+    // must not look like a clean end of mission.
+    if(status.status==='stale'){
+      const c=document.getElementById('chip-st'); if(c){ c.textContent='⚠ NO UPDATE'; c.style.color='#f59e0b'; }
+      document.getElementById('gtxt').textContent=`NO UPDATE for ${Math.round(status.age_s||0)} s — position not current`;
+      document.getElementById('t-gps').textContent='STALE'; document.getElementById('t-gps').className='tv red';
+      if(fDrone) fDrone.setOpacity(0.35);
       return;
     }
-    if(fid!=null){ window._dayLastFid=fid; window._daySame=0; window._dayDone=false; }
+    if(fDrone) fDrone.setOpacity(1);
+    if(fid!=null && fid===window._dayLastFid) return;
+    if(fid!=null){ window._dayLastFid=fid; }
     fLastGpsStatus=status;
     // PATCHED: unlock as soon as the receiver reports the mission is on
     // (or any non-idle status). Never block here — pollCsv moves the drone.
@@ -1601,6 +1630,11 @@ async function pollGpsStatus(){
       if(status.mission_started || (status.status && status.status!=='idle')){
         setMissionStarted(true);
       }
+    }
+    if(status.status==='gps_active'){
+      document.getElementById('gps-banner').classList.remove('show');
+      hideLoad();
+      return;
     }
     if(status.status==='searching'){
       document.getElementById('gps-banner').classList.add('show');
@@ -1631,27 +1665,30 @@ async function pollGpsStatus(){
       setThread('ds','done');setThread('nv','done');setThread('dv','done');setThread('sw','done');
       if(status.lat&&status.lon){
         const isGps=(status.source==='gps');
-        const col=isGps?'#00e5ff':'#ffd700';   // cyan=GPS connu, or=prédit
+        const isDR=(status.source==='dead_reckon');
+        const col=isGps?'#00e5ff':isDR?'#f97316':'#ffd700';   // cyan=GPS (replay), orange=dead-reckoned, gold=vision
+        const label=isGps?'GPS (replayed test data)':isDR?'DEAD-RECKONED — estimate from last fix':'VISION — uncertainty unknown';
         // segment de trajectoire coloré (continuité cyan→or)
-        if(window._dayPrevPt){ L.polyline([window._dayPrevPt,[status.lat,status.lon]],{color:col,weight:3,opacity:.85}).addTo(fMap); }
+        if(window._dayPrevPt){ (window._daySegs=window._daySegs||[]).push(L.polyline([window._dayPrevPt,[status.lat,status.lon]],{color:col,weight:3,opacity:.85}).addTo(fMap)); capLayers(window._daySegs,MAX_LAYERS); }
         window._dayPrevPt=[status.lat,status.lon];
         const fromLat=status.last_valid_lat; const fromLon=status.last_valid_lon;
         if(!isGps && fromLat&&fromLon) showPredictionLine(fromLat,fromLon,status.lat,status.lon);
-        showPredictedMarker(status.lat,status.lon,status.score,status.match);
-        const conf=Math.min(status.score||0,1.0);
-        showVisualMarkerEnhanced(status.lat,status.lon,conf,status.match||'');
-        fTlog((isGps?'🟢 GPS connu → ':'🟡 Prédit → ')+`(${status.lat.toFixed(5)}, ${status.lon.toFixed(5)})`,isGps?'ok':'info');
+        if(!isGps && !isDR){
+          showPredictedMarker(status.lat,status.lon,status.score,status.match);
+          showVisualMarkerEnhanced(status.lat,status.lon,Math.min(status.score||0,1.0),status.match||'');
+        }
+        fTlog(`${label} → (${status.lat.toFixed(5)}, ${status.lon.toFixed(5)})`,isGps?'ok':isDR?'warn':'info');
         await moveDrone(status.lat,status.lon,251,col);
-        fTlog('✅ Drone arrived at predicted position!','ok');
+
         updateNoGpsInLog(status.lat,status.lon);
         document.getElementById('t-lat').textContent=status.lat.toFixed(6);document.getElementById('t-lon').textContent=status.lon.toFixed(6);
-        document.getElementById('t-lat').className='tv org';document.getElementById('t-lon').className='tv org';
+        document.getElementById('t-lat').className='tv amber';document.getElementById('t-lon').className='tv amber';
         updHUD(status.lat,status.lon,'est');
         document.getElementById('gbar').classList.remove('lost');document.getElementById('gdot').classList.remove('lost');
-        document.getElementById('gtxt').textContent='GPS ESTIMATED (Visual Loc)';document.getElementById('t-gps').textContent='EST';document.getElementById('t-gps').className='tv org';
+        document.getElementById('gtxt').textContent=label;document.getElementById('t-gps').textContent=isGps?'REPLAY':isDR?'DR':'VISION';document.getElementById('t-gps').className=isGps?'tv':'tv amber';
         document.getElementById('sbox').style.display='block';
         const pct=Math.round((status.score||0)*100);document.getElementById('spct').textContent=pct+'%';document.getElementById('sbi').style.width=pct+'%';document.getElementById('snum').textContent=(status.score||0).toFixed(3);
-        showMatchPopup(status);
+        if(!isGps && !isDR) showMatchPopup(status);
         if(fSearchCircle){const grp=L.featureGroup([fSearchCircle,L.marker([status.lat,status.lon])]);fMap.fitBounds(grp.getBounds().pad(.22),{animate:true,duration:1});}
         else{fMap.panTo([status.lat,status.lon],{animate:true,duration:.8});}
       }
@@ -2365,9 +2402,9 @@ function stlOnPredicted(d) {
       "<b style='color:#00e5ff'>🌟 POSITION STELLAIRE</b><br>"+
       "Lat <b style='color:#00e5ff'>"+lat.toFixed(5)+"° N</b><br>"+
       "Lon <b style='color:#00e5ff'>"+lon.toFixed(5)+"° E</b><br>"+
-      "RA/Dec <span style='color:#ffd600'>"+ra+"° / "+dec+"°</span><br>"+
-      "Résolu en <span style='color:#00ff88'>"+st+"</span><br>"+
-      "Distance <span style='color:#ffd600'>"+distStr+"</span></div>");
+      "RA/Dec <span style='color:#ffd600'>"+escHtml(ra)+"° / "+escHtml(dec)+"°</span><br>"+
+      "Résolu en <span style='color:#00ff88'>"+escHtml(st)+"</span><br>"+
+      "Distance <span style='color:#ffd600'>"+escHtml(distStr)+"</span></div>");
   stlFlightMap.fitBounds(L.latLngBounds([[stlPointA.lat,stlPointA.lon],[lat,lon]]),
     {padding:[80,80],maxZoom:15,animate:true,duration:0.8});
   if (!stlDroneMarker) {
