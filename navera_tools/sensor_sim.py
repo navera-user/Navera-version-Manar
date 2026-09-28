@@ -107,7 +107,9 @@ class SensorSim(Node):
         est.producer = "sensor_sim"
         est.model_id = "sim-v1"
         est.frame_index = -1
-        est.details_json = json.dumps({"simulated": True, "num_sats": 12, "hdop": 0.7})
+        # geo_sep_m like a real receiver (Sousse geoid ~33 m) so the MSL altitude is known.
+        est.details_json = json.dumps({"simulated": True, "num_sats": 12, "hdop": 0.7,
+                                       "geo_sep_m": 33.0})
         self.pub_est.publish(est)
 
         fix = NavSatFix()
