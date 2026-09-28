@@ -16,7 +16,7 @@ setup(
     zip_safe=True,
     maintainer='Navera',
     maintainer_email='navera@example.com',
-    description='NAVERA shared utilities (process lifecycle, and future cross-package helpers).',
+    description='NAVERA shared utilities (process lifecycle, geodesy helpers).',
     license='Apache-2.0',
     # Library package: no console_scripts. Imported by the pipeline nodes.
     entry_points={

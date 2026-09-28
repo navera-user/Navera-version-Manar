@@ -384,9 +384,11 @@ class CameraPublisher(Node):
                     image_name = (row.get("image_file") or "").strip()
                     lat = _to_float_or_none(row.get("lat"))
                     lon = _to_float_or_none(row.get("lon"))
-                    alt = _to_float_or_none(row.get("altitude_m")) or 400.0
-                    hdg = _to_float_or_none(row.get("heading_deg")) or 0.0
-                    spd = _to_float_or_none(row.get("speed_mps")) or 5.0
+                    # Unknown stays unknown (None): a default would be read downstream
+                    # as a measured altitude/heading/speed and drive dead-reckoning.
+                    alt = _to_float_or_none(row.get("altitude_m"))
+                    hdg = _to_float_or_none(row.get("heading_deg"))
+                    spd = _to_float_or_none(row.get("speed_mps"))
 
                     # GPS rule: must be valid in CSV AND allowed by config
                     gps_valid = (lat is not None) and (lon is not None) and self.default_gps_valid
@@ -458,10 +460,12 @@ class CameraPublisher(Node):
                 self.get_logger().warn("Camera read failed")
                 self._stop.wait(0.1); continue
 
+            # A live frame carries no position and no motion data (GPS/IMU are
+            # separate nodes), so nothing here may claim to be known.
             meta = {
                 "frame_id": self._frame_count, "lat": None, "lon": None,
-                "gps_valid": self.default_gps_valid, "altitude_m": 400.0,
-                "heading_deg": 0.0, "speed_mps": 5.0,
+                "gps_valid": False, "altitude_m": None,
+                "heading_deg": None, "speed_mps": None,
                 "timestamp": time.strftime("%H:%M:%S"),
                 "image_file": f"live_{self._frame_count:06d}.jpg",
                 "camera_type": self.camera_type,
@@ -484,16 +488,16 @@ class CameraPublisher(Node):
 
     def _publish_gps_and_meta(self, header, meta):
         fix = NavSatFix(); fix.header = header
+        alt = meta.get("altitude_m")
+        fix.altitude = float(alt) if alt is not None else float("nan")
         if meta["gps_valid"]:
             fix.status.status = NavSatStatus.STATUS_FIX
             fix.latitude  = float(meta["lat"])
             fix.longitude = float(meta["lon"])
-            fix.altitude  = float(meta["altitude_m"])
         else:
             fix.status.status = NavSatStatus.STATUS_NO_FIX
             fix.latitude  = float("nan")
             fix.longitude = float("nan")
-            fix.altitude  = float(meta["altitude_m"])
         self.pub_gps.publish(fix)
 
         m = String(); m.data = json.dumps(meta)
