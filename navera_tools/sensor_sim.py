@@ -15,7 +15,7 @@ Ceci est un banc de test, jamais un mode de vol.
 Usage (sur le Jetson, environnement ROS source) :
   cd ~/isaac_ros_common
   source /opt/ros/humble/setup.bash && source install/setup.bash
-  python3 navera_tools/sensor_sim.py [--mode measured|replayed]
+  NAVERA_ALLOW_SIM=1 python3 navera_tools/sensor_sim.py [--mode measured|replayed]
 
 Arret : Ctrl-C, ou kill <PID> (le PID est affiche au demarrage).
 """
@@ -23,9 +23,16 @@ import argparse
 import json
 import math
 import os
+import sys
 import time
 
-import rclpy
+# This tool publishes FAKE sensor data on the real topics. Refuse to run unless
+# explicitly allowed, so it can never feed a live box by accident.
+if os.environ.get("NAVERA_ALLOW_SIM") != "1":
+    sys.exit("refusing to run: this publishes simulated sensor data on the real "
+             "NAVERA topics. Set NAVERA_ALLOW_SIM=1 on a test machine to allow it.")
+
+import rclpy  # noqa: E402
 from rclpy.node import Node
 from std_msgs.msg import String
 from sensor_msgs.msg import Imu, NavSatFix, NavSatStatus, TimeReference

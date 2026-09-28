@@ -4,11 +4,19 @@ navera_fakes.py — Fake publishers for the FULL NAVERA system graph.
 Lightweight nodes that publish on the REAL topics so rqt_graph shows the
 complete 8-node architecture WITHOUT loading heavy AI models (no OOM).
 
-Run a single fake:   python3 navera_fakes.py imu
-Run all at once:     python3 navera_fakes.py all
+Run a single fake:   NAVERA_ALLOW_SIM=1 python3 navera_fakes.py imu
+Run all at once:     NAVERA_ALLOW_SIM=1 python3 navera_fakes.py all
 """
+import os
 import sys, math, json, time
-import rclpy
+
+# These fakes publish on the REAL topics (and ack the camera handshake). Refuse
+# to run unless explicitly allowed, so they can never feed a live box by accident.
+if os.environ.get("NAVERA_ALLOW_SIM") != "1":
+    sys.exit("refusing to run: this publishes fake data on the real NAVERA topics. "
+             "Set NAVERA_ALLOW_SIM=1 on a test machine to allow it.")
+
+import rclpy  # noqa: E402
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from sensor_msgs.msg import Imu, MagneticField, NavSatFix, NavSatStatus, Image
