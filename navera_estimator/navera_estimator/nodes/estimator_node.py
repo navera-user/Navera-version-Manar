@@ -33,6 +33,16 @@ Scope: honest single-winner arbitration across the LIVE sources.
     This catches sudden jumps (a spoofer taking over, receiver glitches). It
     cannot detect a slow, gradual spoof: that needs an independent position
     source to compare with.
+    While GPS is refused, "reachable again" alone would let a patient spoofer
+    in: the reachable radius grows with time, so any fixed offset becomes
+    "reachable" after offset / max_speed_mps seconds (found in the mission
+    simulator: a 2 km spoof accepted after 33 s, then the true GPS locked
+    out). So while refused, GPS is re-accepted only when it AGREES with an
+    independent, fresh source of stated accuracy (vision / celestial with a
+    known covariance): within gps_crosscheck_sigmas x its sigma +
+    gps_jump_margin_m + max_speed_mps x the time between the two. Only when
+    no such source exists does it fall back to reachability (a known,
+    documented weakness while vision accuracy is not validated).
   * /navera/position carries each winning MEASUREMENT once: a new message is
     published only when the winner changes or sends a new estimate, never the
     same estimate re-stamped at every tick (a filter downstream would fuse it
@@ -62,6 +72,8 @@ Parameters:
     max_speed_mps      (default 100.0) — fastest the vehicle can move (set per vehicle)
     fix_max_sigma_m    (default 25.0) — largest horizontal sigma still reported as FIX
     gps_jump_margin_m  (default 50.0) — GPS noise allowance in the plausibility gate
+    gps_crosscheck_sigmas (default 5.0) — agreement needed with an independent
+                     source (in its sigmas) to re-accept a refused GPS
 """
 import math
 from typing import Optional
@@ -120,6 +132,7 @@ class EstimatorNode(Node):
         declare_float(self, "switch_holdoff_s", 2.0)
         declare_float(self, "max_speed_mps", 100.0)
         declare_float(self, "gps_jump_margin_m", 50.0)
+        declare_float(self, "gps_crosscheck_sigmas", 5.0)
         # FIX also requires the stated horizontal sigma to be at most this.
         declare_float(self, "fix_max_sigma_m", 25.0)
         rate = float(self.get_parameter("publish_rate_hz").value)
@@ -129,6 +142,7 @@ class EstimatorNode(Node):
         self._holdoff = float(self.get_parameter("switch_holdoff_s").value)
         self._max_speed = float(self.get_parameter("max_speed_mps").value)
         self._jump_margin = float(self.get_parameter("gps_jump_margin_m").value)
+        self._crosscheck_sigmas = float(self.get_parameter("gps_crosscheck_sigmas").value)
         self._fix_max_sigma = float(self.get_parameter("fix_max_sigma_m").value)
         # Last GPS fix that passed the plausibility gate: (lat, lon, Time).
         self._gps_trusted = None
@@ -192,6 +206,20 @@ class EstimatorNode(Node):
         if self._gps_trusted is None:
             self._gps_trusted = (msg.latitude, msg.longitude, stamp)
             return
+        if self._gps_suspect is not None:
+            ref = self._independent_reference(stamp)
+            if ref is not None:
+                name, rlat, rlon, tol = ref
+                d = _haversine_m(rlat, rlon, msg.latitude, msg.longitude)
+                if d <= tol:
+                    self.get_logger().warn(
+                        f"GPS confirmed by {name} ({d:.0f} m apart, tolerance {tol:.0f} m) — re-accepted")
+                    self._gps_suspect = None
+                    self._gps_trusted = (msg.latitude, msg.longitude, stamp)
+                else:
+                    self._gps_suspect = (f"GPS {d:.0f} m from {name} (tolerance {tol:.0f} m) "
+                                         f"— possible spoofing")
+                return
         lat0, lon0, t0 = self._gps_trusted
         dt = max(0.0, (stamp - t0).nanoseconds / 1e9)
         dist = _haversine_m(lat0, lon0, msg.latitude, msg.longitude)
@@ -207,6 +235,26 @@ class EstimatorNode(Node):
             if self._gps_suspect is None:
                 self.get_logger().error(f"GPS refused: {reason}")
             self._gps_suspect = reason
+
+    def _independent_reference(self, gps_stamp: Time):
+        """(name, lat, lon, tolerance_m) from the most accurate fresh non-GPS
+        source with a STATED accuracy, or None. A source of unknown accuracy
+        cannot vouch for or against GPS."""
+        now = self.get_clock().now()
+        best = None
+        for last, timeout in ((self._day_last, self._day_timeout),
+                              (self._night_last, self._night_timeout),
+                              (self._cn_last, self._cn_timeout)):
+            _, eligible, _ = self._eval_source(now, last, timeout)
+            if not eligible or last.position_covariance_type == \
+                    PositionEstimate.COVARIANCE_TYPE_UNKNOWN:
+                continue
+            sigma = math.sqrt(max(last.position_covariance[0], last.position_covariance[4]))
+            gap = abs((gps_stamp - self._measured_at(last)).nanoseconds) / 1e9
+            tol = self._crosscheck_sigmas * sigma + self._jump_margin + self._max_speed * gap
+            if best is None or tol < best[3]:
+                best = (_SOURCE_NAME.get(last.source, "source"), last.latitude, last.longitude, tol)
+        return best
 
     def _on_day(self, msg: PositionEstimate) -> None:
         self._day_last = msg

@@ -24,7 +24,10 @@ GPS, DAY = PositionEstimate.SOURCE_GPS, PositionEstimate.SOURCE_DAY_VISION
 
 
 def main():
-    proc = subprocess.Popen(["ros2", "run", "navera_estimator", "estimator_node.py"],
+    # max_speed 500 m/s: a 2 km offset becomes "reachable" after ~4 s, so the
+    # patient-spoofer case below runs in seconds.
+    proc = subprocess.Popen(["ros2", "run", "navera_estimator", "estimator_node.py",
+                             "--ros-args", "-p", "max_speed_mps:=500.0"],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     rclpy.init()
     n = Node("estimator_test")
@@ -120,6 +123,29 @@ def main():
     time.sleep(0.6)
     if statuses[-1].state != NavStatus.STATE_FIX:
         failures.append("GPS not re-accepted once plausible again")
+
+    settle()
+    # Patient spoofer: GPS jumps 2 km and STAYS there while day vision (stated
+    # 15 m accuracy) sees the vehicle at A. Reachability alone would accept the
+    # spoof after ~4 s here; the independent source must keep it out, then
+    # re-admit the true GPS as soon as it agrees again.
+    est(GPS)
+    time.sleep(0.5)
+    t0 = time.time()
+    while time.time() - t0 < 7.0:
+        est(GPS, lat=35.848)                               # ~2 km north
+        est(DAY, var=15.0 ** 2)
+        time.sleep(0.5)
+    if statuses[-1].active_source == GPS:
+        failures.append(f"patient 2 km spoof accepted after 7 s: {statuses[-1].reason}")
+    if statuses[-1].active_source != DAY:
+        failures.append(f"day vision did not take over during the spoof: {statuses[-1].reason}")
+    for _ in range(8):                                     # true GPS back, holdoff 2 s
+        est(GPS)
+        est(DAY, var=15.0 ** 2)
+        time.sleep(0.5)
+    if statuses[-1].active_source != GPS or statuses[-1].state != NavStatus.STATE_FIX:
+        failures.append(f"true GPS not re-accepted when vision agrees: {statuses[-1].reason}")
 
     proc.terminate()
     proc.wait(timeout=10)
