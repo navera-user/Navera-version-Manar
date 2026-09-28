@@ -41,6 +41,7 @@ import numpy as np
 
 import rclpy
 from navera_common.lifecycle import die_with_parent
+from navera_common.pairing import FramePairer, exposure_stamp, stamp_ns
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
@@ -97,9 +98,7 @@ class CNSubscriber(Node):
         # ── State ───────────────────────────────────────────────
         self.bridge        = CvBridge()
         self._busy_lock    = threading.Lock()
-        self._state_lock   = threading.Lock()
-        self._latest_img   = None   # cv2 numpy image (BGR)
-        self._latest_meta  = None   # dict from JSON
+        self._pairer       = FramePairer()   # image/meta matched on the image stamp
         self._frame_count  = 0
         self._success_count = 0
         self._skip_count   = 0
@@ -160,39 +159,37 @@ class CNSubscriber(Node):
             img = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         except Exception as e:
             self.get_logger().warn(f"cv_bridge decode failed: {e}")
-            return
-        with self._state_lock:
-            self._latest_img = img
-        self._try_dispatch("image")
+            img = None                      # still paired, so the frame is acked
+        pair = self._pairer.add_image(stamp_ns(msg.header.stamp), img)
+        if pair is not None:
+            self._dispatch(*pair)
 
     def on_meta(self, msg: String):
         try:
             meta = json.loads(msg.data)
-        except Exception as e:
+        except ValueError as e:
             self.get_logger().warn(f"meta JSON decode failed: {e}")
             return
-        with self._state_lock:
-            self._latest_meta = meta
-        self._try_dispatch("meta")
+        if not isinstance(meta, dict):
+            self.get_logger().warn(f"meta is not a JSON object: {msg.data[:80]!r}")
+            return
+        pair = self._pairer.add_meta(meta)
+        if pair is not None:
+            self._dispatch(*pair)
 
     # ────────────────────────────────────────────────────────────
     # Pair + dispatch
     # ────────────────────────────────────────────────────────────
-    def _try_dispatch(self, source):
-        """If we have a latest image AND a latest meta, run the solver."""
-        with self._state_lock:
-            img  = self._latest_img
-            meta = self._latest_meta
-            if img is None or meta is None:
-                return
-            # Consume the pair — next pair must come from new arrivals.
-            self._latest_img  = None
-            self._latest_meta = None
-
+    def _dispatch(self, img, meta):
+        """Handle one image/meta pair (matched on the image stamp)."""
         seq_id = meta.get("frame_id", "?")
+        if img is None:
+            self.get_logger().error(
+                f"[cn] frame={seq_id}: image missing or undecodable — acked, not localized")
+            return
         self._frame_count += 1
         self.get_logger().info(
-            f"[cn] 🌟 paired (via {source}) frame={seq_id}  "
+            f"[cn] 🌟 paired frame={seq_id}  "
             f"shape={img.shape}  gps_valid={meta.get('gps_valid')}"
         )
 
@@ -324,7 +321,7 @@ class CNSubscriber(Node):
         est.valid      = bool(valid)
         est.confidence = 0.0        # hard-coded 0.95 is NOT a measurement — see module doc
         est.reason     = reason
-        est.sensor_stamp = now
+        est.sensor_stamp = exposure_stamp(meta, now)
         est.producer   = "cn_subscriber"
         est.model_id   = "astrometry.net"
         try:

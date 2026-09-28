@@ -33,6 +33,7 @@ import cv2
 import rclpy
 from navera_common.geo import dead_reckon, is_finite_latlon
 from navera_common.lifecycle import die_with_parent
+from navera_common.pairing import FramePairer, exposure_stamp, stamp_ns
 from navera_common.prior import GpsPrior
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
@@ -120,9 +121,7 @@ class DaySubscriber(Node):
         # ── State ───────────────────────────────────────────────
         self.bridge        = CvBridge()
         self._busy_lock    = threading.Lock()
-        self._state_lock   = threading.Lock()
-        self._latest_img   = None   # cv2 numpy image (BGR)
-        self._latest_meta  = None   # dict from JSON
+        self._pairer       = FramePairer()   # image/meta matched on the image stamp
         self._frame_count   = 0
         self._success_count = 0
         self._skip_count    = 0
@@ -219,10 +218,10 @@ class DaySubscriber(Node):
             img = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         except Exception as e:
             self.get_logger().warn(f"cv_bridge decode failed: {e}")
-            return
-        with self._state_lock:
-            self._latest_img = img
-        self._try_dispatch("image")
+            img = None                      # still paired, so the frame is acked
+        pair = self._pairer.add_image(stamp_ns(msg.header.stamp), img)
+        if pair is not None:
+            self._dispatch(*pair)
 
     def on_gps(self, msg: PositionEstimate):
         """Valid measured GPS → it becomes the anchor (the prior for GPS loss)."""
@@ -236,31 +235,30 @@ class DaySubscriber(Node):
     def on_meta(self, msg: String):
         try:
             meta = json.loads(msg.data)
-        except Exception as e:
+        except ValueError as e:
             self.get_logger().warn(f"meta JSON decode failed: {e}")
             return
-        with self._state_lock:
-            self._latest_meta = meta
-        self._try_dispatch("meta")
+        if not isinstance(meta, dict):
+            self.get_logger().warn(f"meta is not a JSON object: {msg.data[:80]!r}")
+            return
+        pair = self._pairer.add_meta(meta)
+        if pair is not None:
+            self._dispatch(*pair)
 
     # ────────────────────────────────────────────────────────────
     # Pair + dispatch
     # ────────────────────────────────────────────────────────────
-    def _try_dispatch(self, source):
-        """If we have a latest image AND a latest meta, run the localizer."""
-        with self._state_lock:
-            img  = self._latest_img
-            meta = self._latest_meta
-            if img is None or meta is None:
-                return
-            # Consume the pair — next pair must come from new arrivals.
-            self._latest_img  = None
-            self._latest_meta = None
-
+    def _dispatch(self, img, meta):
+        """Handle one image/meta pair (matched on the image stamp)."""
         seq_id = meta.get("frame_id", "?")
+        if img is None:
+            self.get_logger().error(
+                f"[day] frame={seq_id}: image missing or undecodable — acked, not localized")
+            self._publish_done(seq_id)
+            return
         self._frame_count += 1
         self.get_logger().info(
-            f"[day] 📷 paired (via {source}) frame={seq_id}  "
+            f"[day] 📷 paired frame={seq_id}  "
             f"shape={img.shape}  gps_valid={meta.get('gps_valid')}"
         )
 
@@ -273,7 +271,7 @@ class DaySubscriber(Node):
     def _process_frame(self, seq_id, img, meta):
         try:
             # GPS connu (CSV lat/lon réelles) → naviguer vers CE point, SANS prédire.
-            # (la paire img/meta est déjà consommée dans _try_dispatch ; le finally
+            # (la paire img/meta est déjà consommée dans _dispatch ; le finally
             #  ci-dessous release _busy_lock → la frame suivante est traitée normalement)
             if meta.get("gps_valid") and meta.get("lat") is not None and meta.get("lon") is not None:
                 self._publish_known(seq_id, meta)
@@ -450,7 +448,7 @@ class DaySubscriber(Node):
         est.valid      = valid
         est.confidence = 0.0
         est.reason     = "" if valid else "non-finite position"
-        est.sensor_stamp = now           # TODO(step6): true exposure instant (meta has no epoch)
+        est.sensor_stamp = exposure_stamp(meta, now)
         est.producer   = "day_subscriber"
         est.model_id   = _DAY_MODEL_BY_SRC.get(src, "")
         est.frame_index = self._as_frame_index(seq_id)
@@ -573,7 +571,7 @@ class DaySubscriber(Node):
         est.valid      = False
         est.confidence = 0.0
         est.reason     = reason
-        est.sensor_stamp = now
+        est.sensor_stamp = exposure_stamp(meta, now)
         est.producer   = "day_subscriber"
         est.model_id   = _DAY_MODEL_BY_SRC["predicted"]
         est.frame_index = self._as_frame_index(seq_id)

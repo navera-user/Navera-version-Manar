@@ -38,6 +38,7 @@ import numpy as np
 import rclpy
 from navera_common.geo import dead_reckon, is_finite_latlon
 from navera_common.lifecycle import die_with_parent
+from navera_common.pairing import FramePairer, exposure_stamp, stamp_ns
 from navera_common.prior import GpsPrior
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
@@ -115,9 +116,7 @@ class NightSubscriber(Node):
         # ── State ───────────────────────────────────────────────
         self.bridge        = CvBridge()
         self._busy_lock    = threading.Lock()
-        self._state_lock   = threading.Lock()
-        self._latest_img   = None
-        self._latest_meta  = None
+        self._pairer       = FramePairer()   # image/meta matched on the image stamp
         self._frame_count    = 0
         self._success_count  = 0
         self._reject_count   = 0
@@ -208,10 +207,10 @@ class NightSubscriber(Node):
             img = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         except Exception as e:
             self.get_logger().warn(f"cv_bridge decode failed: {e}")
-            return
-        with self._state_lock:
-            self._latest_img = img
-        self._try_dispatch("image")
+            img = None                      # still paired, so the frame is acked
+        pair = self._pairer.add_image(stamp_ns(msg.header.stamp), img)
+        if pair is not None:
+            self._dispatch(*pair)
 
     def on_gps(self, msg: PositionEstimate):
         """Valid measured GPS → it becomes the anchor (the prior for GPS loss)."""
@@ -224,29 +223,30 @@ class NightSubscriber(Node):
     def on_meta(self, msg: String):
         try:
             meta = json.loads(msg.data)
-        except Exception as e:
+        except ValueError as e:
             self.get_logger().warn(f"meta JSON decode failed: {e}")
             return
-        with self._state_lock:
-            self._latest_meta = meta
-        self._try_dispatch("meta")
+        if not isinstance(meta, dict):
+            self.get_logger().warn(f"meta is not a JSON object: {msg.data[:80]!r}")
+            return
+        pair = self._pairer.add_meta(meta)
+        if pair is not None:
+            self._dispatch(*pair)
 
     # ────────────────────────────────────────────────────────────
     # Pair + dispatch (strictly-serial, back-pressure garantit 1 frame en vol)
     # ────────────────────────────────────────────────────────────
-    def _try_dispatch(self, source):
-        with self._state_lock:
-            img  = self._latest_img
-            meta = self._latest_meta
-            if img is None or meta is None:
-                return
-            self._latest_img  = None
-            self._latest_meta = None
-
+    def _dispatch(self, img, meta):
+        """Handle one image/meta pair (matched on the image stamp)."""
         seq_id = meta.get("frame_id", "?")
+        if img is None:
+            self.get_logger().error(
+                f"[night] frame={seq_id}: image missing or undecodable — acked, not localized")
+            self._publish_done(seq_id)
+            return
         self._frame_count += 1
         self.get_logger().info(
-            f"[night] 🌙 paired (via {source}) frame={seq_id}  "
+            f"[night] 🌙 paired frame={seq_id}  "
             f"shape={img.shape}  gps_valid={meta.get('gps_valid')}"
         )
         with self._busy_lock:
@@ -274,7 +274,7 @@ class NightSubscriber(Node):
                 # aucun anchor encore (cas limite : 1res frames NOGPS) → hold
                 self.get_logger().warn(
                     f"[night] ⚠ frame={seq_id} no prior: GPS never had a fix")
-                self._publish_status_only(seq_id, reason="no anchor yet")
+                self._publish_status_only(seq_id, reason="no anchor yet", meta=meta)
                 return
 
             t_now = time.time()
@@ -316,7 +316,7 @@ class NightSubscriber(Node):
                                   score=0.0, conf=conf, reason=reason)
             else:
                 self._publish_status_only(
-                    seq_id, reason=reason + "; no measured motion or dead-reckoning limit reached")
+                    seq_id, reason=reason + "; no measured motion or dead-reckoning limit reached", meta=meta)
         except Exception as e:
             self.get_logger().error(f"[night] STHN error frame={seq_id}: {e}")
         finally:
@@ -370,7 +370,7 @@ class NightSubscriber(Node):
             f"conf={conf:.2f}" + (f" ({reason})" if reason else "")
         )
 
-    def _publish_status_only(self, seq_id, reason):
+    def _publish_status_only(self, seq_id, reason, meta=None):
         """Statut sans fix (ex. NOGPS sans anchor) — le bridge garde le dernier point."""
         self.pub_status.publish(String(data=json.dumps({
             "frame_id": seq_id, "success": False, "reason": reason, "source": "none",
@@ -390,7 +390,7 @@ class NightSubscriber(Node):
         est.valid = False
         est.confidence = 0.0
         est.reason = str(reason or "no usable night frame")
-        est.sensor_stamp = now
+        est.sensor_stamp = exposure_stamp(meta, now)
         est.producer = "night_subscriber"
         est.model_id = ""
         est.frame_index = -1
@@ -420,7 +420,7 @@ class NightSubscriber(Node):
         est.valid      = valid
         est.confidence = 0.0
         est.reason     = "" if valid else "non-finite position"
-        est.sensor_stamp = now
+        est.sensor_stamp = exposure_stamp(meta, now)
         est.producer   = "night_subscriber"
         est.model_id   = _NIGHT_MODEL_BY_SRC.get(src, "")
         try:

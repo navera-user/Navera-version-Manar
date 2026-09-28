@@ -487,6 +487,9 @@ class CameraPublisher(Node):
         return h
 
     def _publish_gps_and_meta(self, header, meta):
+        # The subscriber pairs image and meta on this exact stamp, and uses it
+        # as the measurement instant (sensor_stamp).
+        meta["image_stamp_ns"] = int(header.stamp.sec) * 1_000_000_000 + int(header.stamp.nanosec)
         fix = NavSatFix(); fix.header = header
         alt = meta.get("altitude_m")
         fix.altitude = float(alt) if alt is not None else float("nan")
@@ -531,6 +534,11 @@ class CameraPublisher(Node):
                 img_msg = self.bridge.cv2_to_imgmsg(cv_img, encoding=self.image_encoding)
                 img_msg.header = header
                 self.pub_image.publish(img_msg)
+            else:
+                # Tell the subscriber, so it acks at once instead of the camera
+                # waiting ack_timeout_s for a frame that will never come.
+                self.get_logger().error(f"cannot read image {img_path}")
+                meta["image_missing"] = True
         self._publish_gps_and_meta(header, meta)
         self._frame_count += 1
         self._log_frame(meta)
