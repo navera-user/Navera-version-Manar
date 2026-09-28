@@ -161,15 +161,19 @@ Verified requirements are done. The roadmap = the not-yet-done items.
 - Localization maths corrected (day tile centres, night STHN contract and weights, celestial
   geometry/precession), honest dead-reckoning, GPS parsing/recovery, estimator de-dup and
   clock checks, web control token, honest operator view. See `docs/VALIDATION_STATUS.md`.
+- Vehicle outputs (`navera_output`: NMEA GGA/RMC, MAVLink GPS_INPUT) accepted by ArduPilot
+  Copter-4.5 SITL (`navera_tools/tests/sitl_ardupilot.py`).
+- STHN on the GPU (~225 ms/frame): on JetPack 6 the small homography solves run on the CPU
+  automatically because the Jetson torch build cannot load CUDA linear algebra.
 
 ### Not yet done
 - **Validate on real data** (camera + GPS + IMU recorded together; real thermal for STHN;
   real sky for celestial). ← the blocker for every accuracy claim
 - **Day vision redesign** (local feature matching vs satellite around a prior) — current
   retrieval is ~440 m median.
-- **Vehicle-integration outputs** (NMEA GPS emulation, MAVLink GPS_INPUT) for UAV/USV/UGV.
 - **Wire the IMU** → dead-reckoning (heading/speed) and celestial attitude.
-- **GPU for STHN** on this JetPack (torch 2.8 needs cusolver ≥ 11.7; JetPack has 11.6.4).
+- **Night scale normalisation** (LOC-16): STHN drifts (4.7 km median) on frames not at its
+  training scale, and its score does not flag it. Blocker for any night claim.
 - **Optimize** models with TensorRT (latency).
 - **Clean & document** (per-package READMEs, remove legacy/orphans).
 
