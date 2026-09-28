@@ -52,7 +52,7 @@ Status: ✅ done · 🔧 in progress · ⬜ open
 | EST-3 | H | GPS/vision flapping zig-zag (no hold-off) | ✅ 2a68e08 |
 | EST-4 | H | GPS always wins, even when spoofed — kinematic jump gate | ✅ fef6d26 |
 | EST-8 | H | Gradual GPS spoof detection (needs an independent position: accurate vision or INS) | ⬜ |
-| EST-9 | C | Refused GPS re-accepted once "reachable" by time alone: a patient spoofer gets in, then the true GPS is locked out (found in the mission simulator) — now needs agreement with an independent source of stated accuracy | ✅ this release |
+| EST-9 | C | Refused GPS re-accepted once "reachable" by time alone: a patient spoofer gets in, then the true GPS is locked out (found in the mission simulator) — now needs agreement with an independent source of stated accuracy | ✅ e199f2e |
 | EST-10 | M | A second arbiter on the same ROS network interleaved decisions silently — now reported | ✅ 555b851 |
 | EST-5 | M | No sanity check on winner (NaN/range/covariance) | ✅ 2a68e08 |
 | EST-6 | M | FIX has no threshold on uncertainty size (HDOP 20 = green) | ✅ 0a1cc05 |
@@ -125,8 +125,8 @@ Status: ✅ done · 🔧 in progress · ⬜ open
 | FEAT-2 | IMU dead-reckoning (heading/speed) and celestial attitude | ⬜ |
 | FEAT-3 | GPU inference for STHN on JetPack 6 — done (CPU route for small solves); TensorRT not done | ✅ 20634c3 |
 | FEAT-4 | Real-data recording tool (camera + GPS + IMU synchronised) and evaluation harness in repo | ✅ 6652916 |
-| FEAT-5 | Mission simulator: control page (start / destination / vehicle / faults), real NAVERA nodes, ArduPilot SITL fed only by NAVERA | ✅ this release |
-| OUT-1 | C | No velocity sent: ArduPilot fused zero / stale GPS velocity → EKF failsafe (SITL) — GPS velocity now forwarded; ArduPilot must use position only (EK3_SRC1_VELXY 0) | ✅ this release |
-| OUT-2 | H | Vision fix sent as 2D: ignored by ArduPilot / PX4 — `fix_type_without_alt` (default 3, altitude flagged ignored) | ✅ this release |
-| OUT-3 | H | Same fix re-sent at 5 Hz with fresh timestamps ("stopped, then jumped") — each position now sent once | ✅ this release |
+| FEAT-5 | Mission simulator: control page (start / destination / vehicle / faults), real NAVERA nodes, ArduPilot SITL fed only by NAVERA | ✅ 465d185 |
+| OUT-1 | C | No velocity sent: ArduPilot fused zero / stale GPS velocity → EKF failsafe (SITL) — GPS velocity now forwarded; ArduPilot must use position only (EK3_SRC1_VELXY 0) | ✅ 2809ea0 |
+| OUT-2 | H | Vision fix sent as 2D: ignored by ArduPilot / PX4 — `fix_type_without_alt` (default 3, altitude flagged ignored) | ✅ 2809ea0 |
+| OUT-3 | H | Same fix re-sent at 5 Hz with fresh timestamps ("stopped, then jumped") — each position now sent once | ✅ 2809ea0 |
 | OUT-4 | M | Validate on PX4 and on a real autopilot | ⬜ |
