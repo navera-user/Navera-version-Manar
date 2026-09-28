@@ -103,6 +103,7 @@ Every source publishes the same message on `/navera/estimate/<source>`:
 | `GET /health` | Liveness of the bridge process |
 
 No CORS headers are sent; request bodies are limited to 4 KiB of JSON; idle connections time out after 10 s.
+With `NAVERA_TLS_CERT` / `NAVERA_TLS_KEY` set, the bridge serves HTTPS only (TLS ≥ 1.2).
 
 ## 7. Deployment
 

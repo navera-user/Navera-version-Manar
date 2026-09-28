@@ -127,6 +127,9 @@ class NaveraWebBridge(Node):
         # Shared secret for POST control endpoints; defaults to $NAVERA_WEB_TOKEN.
         # Empty = control disabled (read-only dashboard).
         self.declare_parameter("control_token", os.environ.get("NAVERA_WEB_TOKEN", ""))
+        # HTTPS: certificate + key (PEM). Empty = plain HTTP.
+        self.declare_parameter("tls_cert", os.environ.get("NAVERA_TLS_CERT", ""))
+        self.declare_parameter("tls_key", os.environ.get("NAVERA_TLS_KEY", ""))
 
         # Arbiter outputs for /operator. Not launch arguments (unlike the
         # pipeline topics above): there is exactly ONE arbiter, so these never
@@ -501,11 +504,13 @@ class NaveraWebBridge(Node):
 
         Handler.bridge = bridge
         try:
-            self._httpd = start_server(self.web_host, self.web_port, Handler)
+            self._httpd = start_server(self.web_host, self.web_port, Handler,
+                                       str(self.get_parameter("tls_cert").value),
+                                       str(self.get_parameter("tls_key").value))
         except OSError as e:
             self.get_logger().error(f"❌ cannot bind {self.web_host}:{self.web_port} — {e}")
             raise
-        self.get_logger().info(f"✅ HTTP server up — open http://localhost:{self.web_port}/")
+        self.get_logger().info(f"✅ HTTP{'S' if self.get_parameter('tls_cert').value else ''} server up on port {self.web_port}")
 
     def destroy_node(self):
         try:

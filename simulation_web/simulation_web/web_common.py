@@ -10,13 +10,15 @@ API on the vehicle's network, so the security rules live here, once:
   * request bodies are JSON objects of at most MAX_BODY bytes;
   * map tile coordinates are bounded before any arithmetic on them;
   * static files are confined to the resources directory;
-  * idle connections time out.
+  * idle connections time out;
+  * HTTPS when a certificate is configured (NAVERA_TLS_CERT / NAVERA_TLS_KEY).
 """
 import hmac
 import json
 import math
 import os
 import sqlite3
+import ssl
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Optional, Tuple
@@ -169,9 +171,18 @@ class BridgeHandler(BaseHTTPRequestHandler):
         return self.send_json(404, {"error": f"unknown path: /{rel}"})
 
 
-def start_server(host: str, port: int, handler_cls):
-    """Threaded HTTP server running in a daemon thread. Returns the server."""
+def start_server(host: str, port: int, handler_cls, certfile: str = "", keyfile: str = ""):
+    """Threaded HTTP(S) server running in a daemon thread. Returns the server.
+
+    With a certificate and key, the server speaks HTTPS only (TLS >= 1.2):
+    the control token and the positions are then encrypted on the network.
+    """
     httpd = ThreadingHTTPServer((host, port), handler_cls)
     httpd.daemon_threads = True
+    if certfile:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+        ctx.load_cert_chain(certfile, keyfile or None)
+        httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     return httpd

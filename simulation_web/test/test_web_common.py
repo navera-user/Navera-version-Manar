@@ -132,3 +132,37 @@ def test_mbtiles_reader_flips_rows_and_is_read_only(tmp_path):
 
 def test_mbtiles_reader_missing_file(tmp_path):
     assert MBTilesReader(str(tmp_path / "none.mbtiles"), _Log()).get(0, 0, 0) is None
+
+
+def test_https_when_a_certificate_is_configured(tmp_path):
+    import shutil
+    import ssl
+    import subprocess
+    if shutil.which("openssl") is None:
+        pytest.skip("openssl not available")
+    cert, key = tmp_path / "c.pem", tmp_path / "k.pem"
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+                    "-subj", "/CN=navera-test", "-keyout", str(key), "-out", str(cert)],
+                   check=True, capture_output=True)
+    (tmp_path / "p.html").write_text("ok")
+
+    class Handler(BridgeHandler):
+        def do_GET(self):
+            return self.serve_static(str(tmp_path), self.path)
+
+    Handler.bridge = _Bridge()
+    httpd = start_server("127.0.0.1", 0, Handler, str(cert), str(key))
+    port = httpd.server_address[1]
+    try:
+        ctx = ssl.create_default_context(cafile=str(cert))
+        ctx.check_hostname = False
+        c = http.client.HTTPSConnection("127.0.0.1", port, context=ctx, timeout=5)
+        c.request("GET", "/p.html")
+        r = c.getresponse()
+        assert r.status == 200 and r.read() == b"ok"
+        plain = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        with pytest.raises(Exception):                   # plain HTTP is not served
+            plain.request("GET", "/p.html")
+            plain.getresponse()
+    finally:
+        httpd.shutdown()
