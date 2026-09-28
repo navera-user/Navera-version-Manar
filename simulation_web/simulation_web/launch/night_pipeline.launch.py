@@ -38,6 +38,8 @@ def generate_launch_description():
         DeclareLaunchArgument('mbtiles_path',   default_value=default_mbtiles),
         DeclareLaunchArgument('conf_threshold', default_value='0.30'),   # seuil conf STHN
         DeclareLaunchArgument('max_dead_reckon_s', default_value='30.0'),
+        # Test flights: vision runs while GPS is valid, for measurement.
+        DeclareLaunchArgument('shadow_mode', default_value='false'),
         # VRAM Jetson 8 Go partagée : si STHN OOM dès l'init du contexte CUDA
         # (network.py:168, torch.zeros().to(device) — alloc minuscule qui échoue
         # car la VRAM est déjà saturée), forcer le night STHN sur CPU avec
@@ -89,6 +91,7 @@ def generate_launch_description():
                 'mbtiles':        mbtiles_path,
                 'conf_threshold': conf_threshold,
                 'max_dead_reckon_s':  LaunchConfiguration('max_dead_reckon_s'),
+                'shadow_mode':  LaunchConfiguration('shadow_mode'),
                 # value_type=str : sinon launch_ros coerce 'true'→bool et le nœud
                 # (qui déclare/parse mixed_precision en string) crashe au démarrage.
                 'mixed_precision': ParameterValue(

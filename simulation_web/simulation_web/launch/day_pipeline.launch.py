@@ -39,6 +39,8 @@ def generate_launch_description():
         DeclareLaunchArgument('antijump_enabled',    default_value='true'),
         DeclareLaunchArgument('max_consecutive_rejects', default_value='3'),
         DeclareLaunchArgument('max_dead_reckon_s',       default_value='30.0'),
+        # Test flights: vision runs while GPS is valid, for measurement.
+        DeclareLaunchArgument('shadow_mode', default_value='false'),
         DeclareLaunchArgument('allow_global_search',     default_value='false'),
         # default_gps_valid: mirrors day.yaml ('true'), so this argument changes
         # nothing by itself — it forwards day.launch.py's argument up to this level,
@@ -89,6 +91,7 @@ def generate_launch_description():
                 'antijump_enabled':    LaunchConfiguration('antijump_enabled'),
                 'max_consecutive_rejects': LaunchConfiguration('max_consecutive_rejects'),
                 'max_dead_reckon_s':       LaunchConfiguration('max_dead_reckon_s'),
+                'shadow_mode':       LaunchConfiguration('shadow_mode'),
                 'allow_global_search':     LaunchConfiguration('allow_global_search'),
             }],
         ),

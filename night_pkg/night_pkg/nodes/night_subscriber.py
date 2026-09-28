@@ -108,6 +108,10 @@ class NightSubscriber(Node):
         self.declare_parameter("gps_topic",       "/navera/estimate/gps")
         declare_float(self, "gps_prior_timeout_s", 2.0)
         # Mission start/stop gate of the camera: a stop (rewind) resets tracking.
+        # Test flights only: run vision even while GPS is valid, to measure it
+        # against GPS. GPS only seeds the track once (a prior re-centred on the
+        # truth every frame would make the measured error meaningless).
+        self.declare_parameter("shadow_mode", False)
         self.declare_parameter("start_topic", "/thermal/camera/start")
         # Dead-reckoning from the last accepted fix is only published for this long.
         declare_float(self, "max_dead_reckon_s", 30.0)
@@ -208,6 +212,9 @@ class NightSubscriber(Node):
         self.sub_image = self.create_subscription(Image, image_topic, self.on_image, image_qos)
         self.sub_meta  = self.create_subscription(String, meta_topic, self.on_meta, meta_qos)
         self._gps_prior = GpsPrior(float(self.get_parameter("gps_prior_timeout_s").value))
+        self.shadow_mode = bool(self.get_parameter("shadow_mode").value)
+        if self.shadow_mode:
+            self.get_logger().warn("SHADOW MODE: vision runs while GPS is valid (test flights)")
         self.sub_gps   = self.create_subscription(
             PositionEstimate, self.get_parameter("gps_topic").value, self.on_gps, 10)
         # Same latched QoS as the camera's gate (TRANSIENT_LOCAL, depth 1).
@@ -239,9 +246,12 @@ class NightSubscriber(Node):
             self._dispatch(*pair)
 
     def on_gps(self, msg: PositionEstimate):
-        """Valid measured GPS → it becomes the anchor (the prior for GPS loss)."""
+        """Valid measured GPS → it becomes the anchor (the prior for GPS loss).
+        In shadow mode it only seeds a missing anchor."""
         if self._gps_prior.update(msg.latitude, msg.longitude, msg.valid,
                                   msg.mode == PositionEstimate.MODE_MEASURED):
+            if self.shadow_mode and self._anchor_lat is not None:
+                return
             self._anchor_lat, self._anchor_lon = msg.latitude, msg.longitude
             self._anchor_time = time.time()
             self._last_measured_time = self._anchor_time
@@ -298,7 +308,7 @@ class NightSubscriber(Node):
                 return
 
             # Live GPS healthy → it is the position source; no inference needed.
-            if self._gps_prior.fresh() is not None:
+            if self._gps_prior.fresh() is not None and not self.shadow_mode:
                 self.pub_status.publish(String(data=json.dumps({
                     "frame_id": seq_id, "success": False, "source": "gps_active",
                     "reason": "GPS valid — STHN idle, tracking GPS as prior"})))
