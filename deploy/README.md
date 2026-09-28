@@ -4,14 +4,18 @@ Ce dossier contient les fichiers de déploiement permettant de lancer **automati
 démarrage de la Jetson** l'ensemble NAVERA (capteurs + pipeline de localisation « day » +
 dashboard web), sans intervention manuelle et sans session interactive.
 
-L'architecture de boot est **découpée en 5 services systemd indépendants** — 3 capteurs, 1
-pipeline de vision, 1 bridge web. Chaque brique démarre, tombe et redémarre seule
-(`Restart=on-failure`), sans dépendre de l'ordre de démarrage des autres.
+L'architecture de boot est **découpée en 6 services systemd indépendants** — 3 capteurs, 1
+pipeline de vision, 1 arbitre de position (`navera-estimator`), 1 bridge web. Chaque brique démarre, tombe et redémarre seule
+(`Restart=always`, voir « Redémarrage automatique »), sans dépendre de l'ordre de démarrage des autres.
 
 Découpage validé par reboot sur la Jetson Orin Nano (JetPack 6.2.1, Ubuntu 22.04) le
 2026-07-15 : après un simple `reboot`, les 5 services remontent seuls, le bridge binde le
 port `:8181` (HTTP 200), les 6 nodes tournent, et le marqueur bouge sur le dashboard — donc
 le bridge et le pipeline se parlent bien en DDS malgré la séparation en deux services.
+
+> **À revalider :** cette validation date d'avant l'ajout de `navera-estimator`, de
+> `Restart=always` / `on_exit=Shutdown` et de `/etc/navera/navera.env`. Refaire le test de
+> reboot, puis tuer un node (`pkill -f gps_node`) et vérifier qu'il revient en ~10 s.
 
 ## Architecture
 
@@ -38,6 +42,8 @@ capteurs (host, CPU)          pipeline vision (host, GPU/CUDA)      bridge web (
 | `systemd/navera-gps.service` + `navera_boot_gps.sh` | Node capteur GPS (NMEA `/dev/ttyTHS1` → `/navera/sensors/gps_fix`). CPU-only. |
 | `systemd/navera-imu.service` + `navera_boot_imu.sh` | Node capteur IMU (BNO085, I²C bus 1 @ `0x4A` → `/navera/sensors/imu`). |
 | `systemd/navera-rtc.service` + `navera_boot_rtc.sh` | Node horloge RTC (DS3231, I²C bus 1 @ `0x68` → `/navera/sensors/rtc_time`). |
+| `systemd/navera-estimator.service` + `navera_boot_estimator.sh` | Arbitre de position : choisit la meilleure source (GPS > jour > nuit > céleste) → `/navera/position`, `/navera/nav_status`. |
+| `navera.env.example` | Réglages du site (chemins des données, `ROS_DOMAIN_ID`, isolation réseau) → à copier dans `/etc/navera/navera.env`. |
 
 > **Note :** l'ancien service monolithique `navera-day` (un seul service lançant
 > `day_sim.launch.py` = pipeline + bridge ensemble) a été **retiré** au profit de ce découpage.
@@ -56,8 +62,20 @@ tant qu'utilisateur `navera`. Chaque wrapper :
 4. `exec` la commande ROS du service (`ros2 launch` / `ros2 run`).
 
 L'`exec` remplace le shell → le process ROS devient le process principal vu par systemd, ce
-qui garantit un `stop`/`restart` propre. En cas d'échec, systemd relance après 10 s
-(`Restart=on-failure`, `RestartSec=10`).
+qui garantit un `stop`/`restart` propre.
+
+### Redémarrage automatique
+
+`ros2 launch` sort avec le code 0 même quand un de ses nodes a planté : `Restart=on-failure`
+ne relançait donc jamais rien. Désormais :
+
+- chaque node des launch files de boot a `on_exit=Shutdown` : si **un** node meurt, tout le
+  launch s'arrête (la caméra ne reste pas seule à attendre un localiseur mort) ;
+- chaque unité a `Restart=always` + `RestartSec=10` + `StartLimitIntervalSec=0` : systemd
+  relance le service 10 s après n'importe quel arrêt, indéfiniment (un `systemctl stop`
+  volontaire n'est pas relancé) ;
+- `gps_node` sort avec le code 1 si le port série est absent ou se déconnecte : le cycle
+  ci-dessus le relance toutes les 10 s jusqu'au retour du GPS.
 
 Résultat : après un simple `reboot`, capteurs, pipeline et dashboard sont disponibles sans
 aucune action manuelle.
@@ -68,6 +86,15 @@ aucune action manuelle.
 `/home/navera/isaac_ros_common` et compilé — `install/` généré par `colcon build`).
 
 ```bash
+# 0) Utilisateur de service et accès matériel (port série GPS, bus I²C)
+sudo useradd -m -s /bin/bash navera 2>/dev/null || true
+sudo usermod -aG dialout,i2c,gpio navera
+
+# 0b) Réglages du site : chemins des données, isolation réseau ROS 2
+sudo mkdir -p /etc/navera
+sudo cp /home/navera/isaac_ros_common/deploy/navera.env.example /etc/navera/navera.env
+sudoedit /etc/navera/navera.env
+
 cd /home/navera/isaac_ros_common
 
 # 1) Installer les wrappers dans le HOME (les .service pointent vers ~/navera_boot_*.sh)
@@ -78,14 +105,14 @@ chmod +x /home/navera/navera_boot_*.sh
 sudo cp deploy/systemd/navera-*.service /etc/systemd/system/
 sudo systemctl daemon-reload
 
-# 3) Activer les 5 services au boot
-sudo systemctl enable navera-web navera-pipeline-day navera-gps navera-imu navera-rtc
+# 3) Activer les 6 services au boot
+sudo systemctl enable navera-web navera-pipeline-day navera-gps navera-imu navera-rtc navera-estimator
 
 # 4) S'assurer que la Jetson boote en mode multi-utilisateur (pas d'interface graphique requise)
 sudo systemctl set-default multi-user.target
 
 # 5) (optionnel) Démarrer tout de suite sans rebooter
-sudo systemctl start navera-web navera-pipeline-day navera-gps navera-imu navera-rtc
+sudo systemctl start navera-web navera-pipeline-day navera-gps navera-imu navera-rtc navera-estimator
 ```
 
 > Les wrappers sont volontairement installés dans `~` et non lancés depuis le repo, pour coller
@@ -94,11 +121,15 @@ sudo systemctl start navera-web navera-pipeline-day navera-gps navera-imu navera
 ## Vérifier que ça tourne
 
 ```bash
-# État des 5 services (tous "active (running)")
+# État des 6 services (tous "active (running)")
 systemctl status 'navera-*'
 
 # Confirmer qu'ils sont activés au boot ("enabled")
-systemctl is-enabled navera-web navera-pipeline-day navera-gps navera-imu navera-rtc
+systemctl is-enabled navera-web navera-pipeline-day navera-gps navera-imu navera-rtc navera-estimator
+
+# Voir les topics depuis un shell : charger le même environnement que les services
+set -a; . /etc/navera/navera.env; set +a
+ros2 topic echo /navera/nav_status
 
 # Suivre les logs en direct (ex. le bridge ou le pipeline)
 journalctl -u navera-web -f
@@ -114,7 +145,6 @@ sudo reboot
 Accès au dashboard une fois `navera-web` actif :
 
 - **En local / réseau :** `http://<ip-jetson>:8181/`
-- **Via Tailscale :** `http://100.126.3.71:8181/`
 
 ## Désinstaller / désactiver
 
@@ -124,7 +154,7 @@ sudo systemctl disable --now navera-pipeline-day
 sudo rm /etc/systemd/system/navera-pipeline-day.service
 
 # Ou tout d'un coup
-sudo systemctl disable --now navera-web navera-pipeline-day navera-gps navera-imu navera-rtc
-sudo rm /etc/systemd/system/navera-{web,pipeline-day,gps,imu,rtc}.service
+sudo systemctl disable --now navera-web navera-pipeline-day navera-gps navera-imu navera-rtc navera-estimator
+sudo rm /etc/systemd/system/navera-{web,pipeline-day,gps,imu,rtc,estimator}.service
 sudo systemctl daemon-reload
 ```

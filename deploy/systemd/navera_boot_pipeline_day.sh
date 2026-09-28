@@ -17,7 +17,7 @@ cd /home/navera/isaac_ros_common || exit 1
 
 # 2) CUDA 12.6 — normalement ajouté par ~/.bashrc, ABSENT sous systemd. À remettre ici.
 export PATH=/usr/local/cuda/bin:$PATH
-export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/usr/local/cuda/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 
 # 3) Sourcer ROS Humble puis l'overlay du workspace (fournit AMENT_PREFIX_PATH,
 #    PYTHONPATH, ROS_DISTRO, ROS_VERSION…).

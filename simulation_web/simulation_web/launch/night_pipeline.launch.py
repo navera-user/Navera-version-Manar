@@ -19,7 +19,7 @@ Examples:
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, Shutdown
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -80,6 +80,9 @@ def generate_launch_description():
             executable='night_subscriber.py',
             name='night_subscriber',
             output='screen',
+            # Any node exiting ends the launch, so the systemd unit
+            # (Restart=always) restarts the whole pipeline.
+            on_exit=Shutdown(reason='node exited'),
             parameters=[{
                 'sthn_dir':       LaunchConfiguration('sthn_dir'),
                 'weights':        LaunchConfiguration('weights'),

@@ -21,7 +21,7 @@ Examples:
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, Shutdown
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -76,6 +76,9 @@ def generate_launch_description():
             executable='day_subscriber.py',
             name='day_subscriber',
             output='screen',
+            # Any node exiting ends the launch, so the systemd unit
+            # (Restart=always) restarts the whole pipeline.
+            on_exit=Shutdown(reason='node exited'),
             parameters=[{
                 'conf_threshold': conf_threshold,
                 'image_topic':  '/day/image_raw',

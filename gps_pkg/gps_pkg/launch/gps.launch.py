@@ -9,7 +9,7 @@ Examples:
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, Shutdown
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -27,6 +27,9 @@ def generate_launch_description():
             executable='gps_node.py',
             name='gps_node',
             output='screen',
+            # Any node exiting ends the launch, so the systemd unit
+            # (Restart=always) restarts the whole pipeline.
+            on_exit=Shutdown(reason='node exited'),
             parameters=[
                 cfg,
                 {

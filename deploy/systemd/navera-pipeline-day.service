@@ -2,16 +2,23 @@
 Description=NAVERA day localization pipeline (camera + day_subscriber, DINOv2/GPU, no bridge)
 Wants=network-online.target
 After=network-online.target
+# Never give up restarting (the default limit stops after 5 fast failures).
+StartLimitIntervalSec=0
 # No ordering vs navera-web: pipeline↔bridge talk over DDS (discovery-based,
 # order-independent) with latched handshake topics, so either may start/restart first.
 
 [Service]
+# Site settings shared by all NAVERA units (data paths, ROS_DOMAIN_ID...).
+# The leading "-" keeps the unit working if the file does not exist.
+EnvironmentFile=-/etc/navera/navera.env
 Type=simple
 User=navera
 Group=navera
 WorkingDirectory=/home/navera/isaac_ros_common
 ExecStart=/home/navera/navera_boot_pipeline_day.sh
-Restart=on-failure
+# always: `ros2 launch` exits with code 0 even when a node crashed (every node
+# has on_exit=Shutdown), so on-failure would never restart it.
+Restart=always
 RestartSec=10
 
 [Install]

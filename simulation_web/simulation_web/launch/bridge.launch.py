@@ -26,7 +26,7 @@ Every topic is an argument, so one launch file serves day, night and celestial:
 """
 import os
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, Shutdown
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -58,6 +58,9 @@ def generate_launch_description():
             executable=LaunchConfiguration('bridge_executable'),
             name=LaunchConfiguration('bridge_name'),
             output='screen',
+            # Any node exiting ends the launch, so the systemd unit
+            # (Restart=always) restarts the whole pipeline.
+            on_exit=Shutdown(reason='node exited'),
             parameters=[{
                 'status_topic':  LaunchConfiguration('status_topic'),
                 'fix_topic':     LaunchConfiguration('fix_topic'),

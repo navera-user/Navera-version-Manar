@@ -15,7 +15,7 @@ default here MIRRORS day.yaml, so overriding nothing reproduces the YAML exactly
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, Shutdown
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -56,6 +56,9 @@ def generate_launch_description():
             name='camera_publisher',
             namespace='day',
             output='screen',
+            # Any node exiting ends the launch, so the systemd unit
+            # (Restart=always) restarts the whole pipeline.
+            on_exit=Shutdown(reason='node exited'),
             parameters=[
                 cfg,
                 {

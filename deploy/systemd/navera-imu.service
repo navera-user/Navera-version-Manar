@@ -2,15 +2,22 @@
 Description=NAVERA IMU sensor node (BNO085 I2C bus 1 @ 0x4A → /navera/sensors/imu)
 Wants=network-online.target
 After=network-online.target
+# Never give up restarting (the default limit stops after 5 fast failures).
+StartLimitIntervalSec=0
 
 [Service]
+# Site settings shared by all NAVERA units (data paths, ROS_DOMAIN_ID...).
+# The leading "-" keeps the unit working if the file does not exist.
+EnvironmentFile=-/etc/navera/navera.env
 Type=simple
 User=navera
 Group=navera
 SupplementaryGroups=i2c
 WorkingDirectory=/home/navera/isaac_ros_common
 ExecStart=/home/navera/navera_boot_imu.sh
-Restart=on-failure
+# always: `ros2 launch` exits with code 0 even when a node crashed (every node
+# has on_exit=Shutdown), so on-failure would never restart it.
+Restart=always
 RestartSec=10
 
 [Install]
