@@ -98,7 +98,7 @@ Status: ✅ done · 🔧 in progress · ⬜ open
 | DEP-7 | M | No night / celestial boot services | ✅ 252fa15 |
 | DEP-8 | M | No mount ordering for an external data disk; offline boot needs pre-filled model caches | ✅ 252fa15 |
 | DEP-9 | M | `After=network-online.target` delays boot on a vehicle with no network | ✅ 252fa15 |
-| DEP-10 | M | Docker files and start_navera.sh stale vs host deployment | ⬜ |
+| DEP-10 | M | Docker files and start_navera.sh stale vs host deployment | ✅ 093c32d |
 | DEP-11 | M | Licences: root LICENSE is NVIDIA's; package.xml says Apache-2.0 / navera@example.com; satellite imagery licence | ⬜ |
 | DEP-12 | L | package.xml buildtool ament_cmake_python on ament_python packages; dead CMakeLists.txt | ✅ 3a832e3 |
 | DEP-13 | L | Log growth (~/.ros/log never rotated) | ✅ 252fa15 |
@@ -109,10 +109,10 @@ Status: ✅ done · 🔧 in progress · ⬜ open
 | ID | Sev | Item | Status |
 |---|---|---|---|
 | QA-1 | H | No automated tests; no one-command test run | ✅ 9ad7c7e |
-| QA-2 | M | Per-package READMEs missing (camera, day, cn, gps, imu, simulation_web, estimator, common) | ⬜ |
+| QA-2 | M | Per-package READMEs missing (camera, day, cn, gps, imu, simulation_web, estimator, common) | ✅ 093c32d |
 | QA-3 | L | print() instead of ROS logger in day_localizer; dead code; orphan scripts in packages | ✅ 3a832e3 |
 | QA-5 | L | Intermittent test-suite failure seen twice on the first run right after a rebuild (every step printed PASS); runner now names the failing step | ✅ 3a832e3 |
-| QA-4 | L | Stale docs: ROS_TOPICS_AND_COMMUNICATION.md, NAVERA_FULL_DOCUMENTATION.md, VISUAL_LOCALIZATION_SUMMARY.md, night READMEs | ⬜ |
+| QA-4 | L | Stale docs: ROS_TOPICS_AND_COMMUNICATION.md, NAVERA_FULL_DOCUMENTATION.md, VISUAL_LOCALIZATION_SUMMARY.md, night READMEs | ✅ 093c32d |
 
 ## 6. Product features
 
