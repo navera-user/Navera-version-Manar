@@ -13,6 +13,15 @@
   <exec_depend>navera_common</exec_depend>
   <depend>navera_msgs</depend>
 
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch-ros</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>camera_pkg</exec_depend>
+  <exec_depend>day_pkg</exec_depend>
+  <exec_depend>night_pkg</exec_depend>
+  <exec_depend>cn_pkg</exec_depend>
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
   <test_depend>ament_pep257</test_depend>
