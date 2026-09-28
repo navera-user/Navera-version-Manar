@@ -60,6 +60,7 @@ Parameters:
     switch_holdoff_s   (default 2.0) — dwell before a recovering higher-priority
                      source pre-empts the active one
     max_speed_mps      (default 100.0) — fastest the vehicle can move (set per vehicle)
+    fix_max_sigma_m    (default 25.0) — largest horizontal sigma still reported as FIX
     gps_jump_margin_m  (default 50.0) — GPS noise allowance in the plausibility gate
 """
 import math
@@ -118,6 +119,8 @@ class EstimatorNode(Node):
         self.declare_parameter("switch_holdoff_s", 2.0)
         self.declare_parameter("max_speed_mps", 100.0)
         self.declare_parameter("gps_jump_margin_m", 50.0)
+        # FIX also requires the stated horizontal sigma to be at most this.
+        self.declare_parameter("fix_max_sigma_m", 25.0)
         rate = float(self.get_parameter("publish_rate_hz").value)
         if rate <= 0.0:
             raise ValueError(f"publish_rate_hz must be > 0 (got {rate})")
@@ -125,6 +128,7 @@ class EstimatorNode(Node):
         self._holdoff = float(self.get_parameter("switch_holdoff_s").value)
         self._max_speed = float(self.get_parameter("max_speed_mps").value)
         self._jump_margin = float(self.get_parameter("gps_jump_margin_m").value)
+        self._fix_max_sigma = float(self.get_parameter("fix_max_sigma_m").value)
         # Last GPS fix that passed the plausibility gate: (lat, lon, Time).
         self._gps_trusted = None
         self._gps_suspect: Optional[str] = None   # reason while GPS is refused
@@ -219,6 +223,14 @@ class EstimatorNode(Node):
         return (now - stamp).nanoseconds / 1e9
 
     @staticmethod
+    def _measured_at(msg: PositionEstimate) -> Time:
+        """Instant of the measurement (sensor_stamp), or the publication stamp
+        for a producer that does not fill it. Freshness is judged on this: a
+        fix computed slowly from an old image is as old as the image."""
+        s = msg.sensor_stamp
+        return Time.from_msg(s if (s.sec or s.nanosec) else msg.header.stamp)
+
+    @staticmethod
     def _sane(msg: PositionEstimate) -> bool:
         """A usable position: finite and in range, finite non-negative variances."""
         if not is_finite_latlon(msg.latitude, msg.longitude):
@@ -238,7 +250,7 @@ class EstimatorNode(Node):
         """
         if last is None:
             return False, False, None
-        age = self._age_s(now, Time.from_msg(last.header.stamp))
+        age = self._age_s(now, self._measured_at(last))
         alive = -self._future_tol <= age < timeout
         eligible = (alive and last.valid and last.mode in _ELIGIBLE_MODES
                     and self._sane(last))
@@ -284,6 +296,10 @@ class EstimatorNode(Node):
         """
         name = _SOURCE_NAME.get(winner.source, "source")
         bounded = winner.position_covariance_type != PositionEstimate.COVARIANCE_TYPE_UNKNOWN
+        sigma = math.sqrt(max(winner.position_covariance[0], winner.position_covariance[4]))
+        if winner.mode == PositionEstimate.MODE_MEASURED and bounded and sigma > self._fix_max_sigma:
+            return (NavStatus.STATE_DEGRADED,
+                    f"{name} fix, uncertainty {sigma:.0f} m > {self._fix_max_sigma:.0f} m")
         if winner.mode == PositionEstimate.MODE_MEASURED and bounded:
             return NavStatus.STATE_FIX, f"{name} fix"
         if winner.mode == PositionEstimate.MODE_MEASURED:
@@ -430,7 +446,7 @@ class EstimatorNode(Node):
             h.contributing = False
         else:
             now = self.get_clock().now()
-            h.alive = -self._future_tol <= self._age_s(now, Time.from_msg(last.header.stamp)) < timeout
+            h.alive = -self._future_tol <= self._age_s(now, self._measured_at(last)) < timeout
             h.last_seen = last.header.stamp
             h.contributing = winner is not None and winner.source == source_const
         return h

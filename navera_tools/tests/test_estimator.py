@@ -4,7 +4,8 @@
 Checks: one estimate is published once; a future stamp is refused; a NaN
 position marked valid is refused; a flapping GPS does not zig-zag the output;
 losing GPS falls back to day vision immediately; a sudden GPS jump (spoofing)
-is refused and GPS is re-accepted once it is plausible again. Needs a sourced ROS 2
+is refused and GPS is re-accepted once it is plausible again; a large stated
+uncertainty is DEGRADED, not FIX. Needs a sourced ROS 2
 workspace. Exit code 0 = pass.
 """
 import math
@@ -34,12 +35,12 @@ def main():
     threading.Thread(target=rclpy.spin, args=(n,), daemon=True).start()
     time.sleep(4.0)
 
-    def est(src, lat=35.83, lon=10.64, valid=True, ahead_s=0.0, known_cov=True):
+    def est(src, lat=35.83, lon=10.64, valid=True, ahead_s=0.0, known_cov=True, var=4.0):
         m = PositionEstimate()
         m.header.stamp = (n.get_clock().now() + Duration(seconds=ahead_s)).to_msg()
         m.latitude, m.longitude, m.altitude = lat, lon, math.nan
         if known_cov:
-            m.position_covariance = [4.0, 0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 16.0]
+            m.position_covariance = [var, 0.0, 0.0, 0.0, var, 0.0, 0.0, 0.0, 4 * var]
             m.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_APPROXIMATED
         m.source, m.mode, m.valid = src, PositionEstimate.MODE_MEASURED, valid
         pub[src].publish(m)
@@ -88,6 +89,12 @@ def main():
     time.sleep(1.0)
     if statuses[-1].active_source != DAY or statuses[-1].state != NavStatus.STATE_DEGRADED:
         failures.append("day vision did not take over as DEGRADED after GPS loss")
+
+    settle()
+    est(GPS, var=40.0 ** 2)                                # HDOP ~20: sigma 40 m
+    time.sleep(1.0)
+    if statuses[-1].state != NavStatus.STATE_DEGRADED:
+        failures.append("GPS with 40 m sigma reported as FIX")
 
     settle()
     # Spoofing: GPS at A, then a sudden 5 km jump 1 s later, then back at A.
