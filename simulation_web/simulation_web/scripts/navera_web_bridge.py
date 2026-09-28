@@ -37,6 +37,7 @@ Run standalone (test the bridge alone, no camera/subscriber needed):
     curl http://localhost:8181/gps_status.json
     # → {"status": "idle"}   (then "predicted" once /day/day_status flows)
 """
+import hmac
 import json
 import math
 import os
@@ -44,7 +45,7 @@ import sqlite3
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import quote, urlparse
 
 import rclpy
 from navera_common.lifecycle import die_with_parent
@@ -87,20 +88,20 @@ _MODE_NAME = {
     NavStatus.MODE_HELD: "HELD",
     NavStatus.MODE_REPLAYED: "REPLAYED",
 }
-# The only two sources the arbiter can elect today: it subscribes to
-# /navera/estimate/gps and /navera/estimate/day, and nothing else. The labels
-# are the vocabulary operator.html already speaks — its SRC table maps "GPS"
-# and "VISION" to a badge and renders every other string as NO FIX, so serving
-# "DAY_VISION" would paint NO FIX over a perfectly valid position.
-#
-# Celestial, inertial and night are deliberately NOT pre-mapped. A source that
-# cannot occur cannot be tested, and an entry for it would claim a coverage
-# that does not exist. When one of them starts winning, _source_label() says so
-# in the log and this table grows then — that warning IS the mechanism.
+# Every source navera_estimator can elect (GPS > day > night > celestial).
+# The labels are the vocabulary operator.html speaks (its SRC table); an
+# unmapped source is served as "UNKNOWN" and logged.
 _SOURCE_LABEL = {
     NavStatus.SOURCE_GPS: "GPS",
     NavStatus.SOURCE_DAY_VISION: "VISION",
+    NavStatus.SOURCE_NIGHT_VISION: "NIGHT",
+    NavStatus.SOURCE_CELESTIAL: "CELESTIAL",
 }
+
+# Control requests (mission start / Point A) need this token in the
+# X-Navera-Token header. No token configured → control is disabled.
+_MAX_BODY = 4096
+_MAX_ZOOM = 22
 
 
 def _resolve_resources_dir():
@@ -127,6 +128,9 @@ class NaveraWebBridge(Node):
         self.declare_parameter("mbtiles_path", "")
         self.declare_parameter("web_host", "0.0.0.0")
         self.declare_parameter("web_port", 8181)
+        # Shared secret for POST control endpoints; defaults to $NAVERA_WEB_TOKEN.
+        # Empty = control disabled (read-only dashboard).
+        self.declare_parameter("control_token", os.environ.get("NAVERA_WEB_TOKEN", ""))
 
         # Arbiter outputs for /operator. Not launch arguments (unlike the
         # pipeline topics above): there is exactly ONE arbiter, so these never
@@ -136,14 +140,17 @@ class NaveraWebBridge(Node):
         # nav_status is the heartbeat (published every estimator tick, ~5 Hz):
         # 2 s ≈ 10 missed ticks → the arbiter is gone, not merely fixless.
         self.declare_parameter("nav_status_timeout_s", 2.0)
-        # A position accompanying a FIX/DEGRADED tick arrives with it. Older
-        # than 1 s (~5 ticks) while the state claims a winner = messages lost.
-        self.declare_parameter("position_timeout_s", 1.0)
+        # The arbiter publishes each winning measurement ONCE and judges its
+        # freshness itself (per-source timeouts, up to 45 s for celestial), so
+        # the position is gated by nav_status. This is only a sanity bound
+        # against a lost /navera/position message.
+        self.declare_parameter("position_timeout_s", 60.0)
 
         status_topic = self.get_parameter("status_topic").value
         fix_topic    = self.get_parameter("fix_topic").value
         self.web_host = self.get_parameter("web_host").value
         self.web_port = int(self.get_parameter("web_port").value)
+        self._control_token = str(self.get_parameter("control_token").value)
 
         self._position_topic     = self.get_parameter("position_topic").value
         nav_status_topic         = self.get_parameter("nav_status_topic").value
@@ -295,8 +302,11 @@ class NaveraWebBridge(Node):
             lat = float(pa["lat"])
             lon = float(pa["lon"])
         except (KeyError, TypeError, ValueError):
+            lat = lon = math.nan
+        if not (math.isfinite(lat) and math.isfinite(lon)
+                and -90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
             self.get_logger().warn(f"[bridge] set_mission: bad point_a payload: {pa!r}")
-            return
+            return False
         self._point_a = {"lat": lat, "lon": lon}
         with self._state_lock:
             self._gps_status = {
@@ -310,6 +320,7 @@ class NaveraWebBridge(Node):
             }
         self.get_logger().info(
             f"[bridge] Point A anchored at ({lat:.6f}, {lon:.6f}) — first published position")
+        return True
 
     def trigger_camera_start(self):
         # stop/reset (false → pause+rewind) then go (true) — guarantees a frame-1 restart
@@ -321,21 +332,31 @@ class NaveraWebBridge(Node):
     # Tiles (MBTiles, TMS flip-Y) — same logic as day_node.py
     # ────────────────────────────────────────────────────────────
     def _get_tile(self, z, x, y):
+        # Bounds first: an unchecked z made the server compute 2**z for any
+        # client-supplied integer (memory exhaustion) and overflow sqlite.
+        if not (0 <= z <= _MAX_ZOOM and 0 <= x < 2 ** z and 0 <= y < 2 ** z):
+            return None
         if not os.path.exists(self.mbtiles_path):
             return None
         with self._db_lock:
-            if self._db_conn is None:
-                self._db_conn = sqlite3.connect(self.mbtiles_path, check_same_thread=False)
-                self._db_conn.execute("PRAGMA cache_size=8000")
-                self._db_conn.execute("PRAGMA temp_store=MEMORY")
-            y_tms = (2 ** z - 1) - y
-            cur = self._db_conn.cursor()
-            cur.execute(
-                "SELECT tile_data FROM tiles "
-                "WHERE zoom_level=? AND tile_column=? AND tile_row=?",
-                (z, x, y_tms),
-            )
-            row = cur.fetchone()
+            try:
+                if self._db_conn is None:
+                    uri = "file:" + quote(self.mbtiles_path) + "?mode=ro"
+                    self._db_conn = sqlite3.connect(uri, uri=True, check_same_thread=False)
+                    self._db_conn.execute("PRAGMA cache_size=8000")
+                    self._db_conn.execute("PRAGMA temp_store=MEMORY")
+                y_tms = (2 ** z - 1) - y
+                cur = self._db_conn.cursor()
+                cur.execute(
+                    "SELECT tile_data FROM tiles "
+                    "WHERE zoom_level=? AND tile_column=? AND tile_row=?",
+                    (z, x, y_tms),
+                )
+                row = cur.fetchone()
+            except sqlite3.Error as e:
+                self.get_logger().error(f"[bridge] mbtiles read failed: {e}",
+                                        throttle_duration_sec=10.0)
+                return None
             return bytes(row[0]) if row else None
 
     def gps_status_json(self):
@@ -380,15 +401,14 @@ class NaveraWebBridge(Node):
              when no source wins — absence IS the information — and re-showing
              a stale point as live is exactly the lie this chain removes.
           3. state FIX / DEGRADED → serve the last /navera/position, provided it
-             is fresh.
+             comes from the source nav_status declares active.
 
         The position cache is gated by nav_status, NEVER by its own age alone:
         a cache that can answer on its own is a cache that will eventually
         answer with a ghost.
 
-        Returns {lat, lon, source, valid, state, mode, reason} when usable, else
-        {valid: False, state, reason} with no lat/lon. state/mode/reason are
-        additive: operator.html reads only valid/lat/lon/source and ignores them.
+        Returns {lat, lon, source, valid, state, mode, reason, age_s} when
+        usable, else {valid: False, state, reason} with no lat/lon.
         """
         now = time.monotonic()
         with self._state_lock:
@@ -406,11 +426,14 @@ class NaveraWebBridge(Node):
         if status.state not in (NavStatus.STATE_FIX, NavStatus.STATE_DEGRADED):
             return {"valid": False, "state": state_name, "reason": status.reason}
 
-        # 3) A winner exists → its position must be here, and fresh.
-        if pos is None or (now - pos_rx) > self._position_timeout:
+        # 3) A winner exists → its latest position must be here. The arbiter
+        #    publishes each measurement once and owns freshness; we only check
+        #    the position belongs to the source it declares active.
+        if (pos is None or pos.source != status.active_source
+                or (now - pos_rx) > self._position_timeout):
             return {"valid": False, "state": state_name,
-                    "reason": f"{state_name} declared but no fresh position on "
-                              f"{self._position_topic}"}
+                    "reason": f"{state_name} declared but no matching position on "
+                              f"{self._position_topic} yet"}
 
         lat, lon = float(pos.latitude), float(pos.longitude)
         if not (math.isfinite(lat) and math.isfinite(lon)):
@@ -421,11 +444,12 @@ class NaveraWebBridge(Node):
 
         return {
             "lat": lat, "lon": lon,
-            "source": self._source_label(status.active_source),
+            "source": self._source_label(pos.source),
             "valid": True,
             "state": state_name,
-            "mode": _MODE_NAME.get(status.active_mode, "UNKNOWN"),
+            "mode": _MODE_NAME.get(pos.mode, "UNKNOWN"),
             "reason": status.reason,
+            "age_s": round(now - pos_rx, 1),     # since this measurement was published
         }
 
     # ────────────────────────────────────────────────────────────
@@ -435,28 +459,30 @@ class NaveraWebBridge(Node):
         bridge = self
 
         class Handler(BaseHTTPRequestHandler):
+            # A client that connects and goes silent must not hold a thread forever.
+            timeout = 10
+
             def log_message(self, fmt, *args):
-                if "404" not in (fmt % args):
-                    bridge.get_logger().info(fmt % args)
+                bridge.get_logger().debug(fmt % args)
 
             def _send(self, code, ctype, body):
+                # No Access-Control-Allow-Origin: the pages are served by this
+                # server (same origin); other web sites must not script it.
                 self.send_response(code)
                 self.send_header("Content-Type", ctype)
                 self.send_header("Content-Length", str(len(body)))
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+                self.send_header("X-Content-Type-Options", "nosniff")
                 self.end_headers()
                 self.wfile.write(body)
 
             def _json(self, code, obj):
                 self._send(code, "application/json", json.dumps(obj).encode())
 
-            def do_OPTIONS(self):
-                self.send_response(204)
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-                self.send_header("Access-Control-Allow-Headers", "Content-Type")
-                self.end_headers()
+            def _authorized(self):
+                token = bridge._control_token
+                given = self.headers.get("X-Navera-Token", "")
+                return bool(token) and hmac.compare_digest(given.encode(), token.encode())
 
             def do_GET(self):
                 parsed = urlparse(self.path)
@@ -508,16 +534,29 @@ class NaveraWebBridge(Node):
             def do_POST(self):
                 parsed = urlparse(self.path)
                 path   = parsed.path.rstrip("/")
-                length = int(self.headers.get("Content-Length", 0))
-                body   = self.rfile.read(length) if length else b""
+                try:
+                    length = int(self.headers.get("Content-Length", 0))
+                except ValueError:
+                    return self._json(400, {"error": "bad Content-Length"})
+                if not 0 <= length <= _MAX_BODY:
+                    return self._json(413, {"error": "body too large"})
+                body = self.rfile.read(length) if length else b""
 
                 if path == "/api/set_mission":
+                    if not bridge._control_token:
+                        return self._json(403, {"error": "control disabled: set NAVERA_WEB_TOKEN"})
+                    if not self._authorized():
+                        return self._json(401, {"error": "missing or wrong X-Navera-Token"})
+                    if "application/json" not in self.headers.get("Content-Type", ""):
+                        return self._json(415, {"error": "Content-Type must be application/json"})
                     try:
                         d = json.loads(body or b"{}")
-                        if "point_a" in d:
-                            bridge.set_point_a(d["point_a"])   # anchor trace at A (publish A first)
-                    except Exception:
-                        pass
+                    except ValueError:
+                        return self._json(400, {"error": "invalid JSON"})
+                    if not isinstance(d, dict):
+                        return self._json(400, {"error": "JSON object expected"})
+                    if "point_a" in d and not bridge.set_point_a(d["point_a"]):
+                        return self._json(400, {"error": "point_a must be finite lat/lon in range"})
                     bridge.trigger_camera_start()
                     return self._json(200, {"ok": True})
 
@@ -528,8 +567,12 @@ class NaveraWebBridge(Node):
 
             def _serve_static(self, path):
                 rel = path.lstrip("/")
-                full = os.path.normpath(os.path.join(bridge.resources_dir, rel))
-                if full.startswith(bridge.resources_dir) and os.path.isfile(full):
+                # Containment is checked on the normalised path (blocks "../"),
+                # not the resolved one: a symlink install makes every resource a
+                # symlink into build/, created by our own build.
+                root = os.path.normpath(bridge.resources_dir)
+                full = os.path.normpath(os.path.join(root, rel))
+                if os.path.commonpath([root, full]) == root and os.path.isfile(full):
                     ctype = "text/html" if full.endswith(".html") else \
                             "application/javascript" if full.endswith(".js") else \
                             "text/css" if full.endswith(".css") else \

@@ -4,9 +4,33 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NAVERA — Mission Planner & Flight Monitor</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<!-- Leaflet served locally by the bridge: the box may have no internet. -->
+<link rel="stylesheet" href="/leaflet/leaflet.min.css"/>
+<script src="/leaflet/leaflet.min.js"></script>
+<script>
+// Mission control needs the box's control token (NAVERA_WEB_TOKEN), asked once
+// and kept in this browser only.
+function naveraToken(forceAsk){
+  let t = null;
+  try { t = forceAsk ? null : localStorage.getItem('navera_token'); } catch(e) {}
+  if(!t){
+    t = window.prompt('NAVERA control token:') || '';
+    try { if(t) localStorage.setItem('navera_token', t); } catch(e) {}
+  }
+  return t;
+}
+async function naveraControlPost(url, payload){
+  let resp = await fetch(url, {method:'POST',
+    headers:{'Content-Type':'application/json', 'X-Navera-Token': naveraToken(false)},
+    body: JSON.stringify(payload)});
+  if(resp.status === 401){
+    resp = await fetch(url, {method:'POST',
+      headers:{'Content-Type':'application/json', 'X-Navera-Token': naveraToken(true)},
+      body: JSON.stringify(payload)});
+  }
+  return resp;
+}
+</script>
 <style>
 /* ═══════════════════════════════════════════════════════════════════
    RESET & ROOT
@@ -264,7 +288,7 @@ input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;height:4p
           <span class="mode-badge">DIURNE</span>
           <span class="mode-icon">☀️</span>
           <div class="mode-title">Day Mode</div>
-          <div class="mode-sub">NetVLAD + DINOv2 + FMC<br>Satellite image matching<br><b style="color:#facc15">vision_pkg · port 5000</b></div>
+          <div class="mode-sub">DINOv2 tile matching<br>Satellite image matching<br><b style="color:#facc15">day_pkg · ROS 2</b></div>
         </div>
         <div class="mode-card night-card" id="mc-night" onclick="selectTimeMode('night')">
           <span class="mode-check" id="check-night" style="color:transparent">✓</span>
@@ -279,7 +303,7 @@ input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;height:4p
           <span class="mode-badge">CÉLESTE</span>
           <span class="mode-icon">🌟</span>
           <div class="mode-title">Stellar Mode</div>
-          <div class="mode-sub">Stellar Inertial Navigation<br>Celestial geolocation<br><b style="color:#38bdf8">stellar_pkg · port 5002</b></div>
+          <div class="mode-sub">Star plate solving<br>Celestial geolocation<br><b style="color:#38bdf8">cn_pkg · ROS 2</b></div>
           <div style="margin-top:8px;font-size:10px;color:#f59e0b;border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:2px 8px;display:inline-block">⚠ non raccordé à cette interface</div>
         </div>
       </div>
@@ -362,7 +386,7 @@ input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;height:4p
       <h2 style="color:white;font-size:18px;font-weight:600;margin:0 0 20px">📡 GPS & Vision Fallback</h2>
       <div style="display:flex;flex-direction:column;gap:16px">
         <div class="cfg-toggle-card" onclick="toggleGPS()" style="flex-direction:row;justify-content:space-between;padding:16px"><div><div style="color:white;font-weight:600">GPS Principal</div><div style="color:#94a3b8;font-size:12px">Localisation par satellite</div></div><div class="cfg-toggle on" id="tog-gps"></div></div>
-        <div class="cfg-toggle-card" onclick="toggleVision()" style="flex-direction:row;justify-content:space-between;padding:16px"><div><div style="color:white;font-weight:600">Vision Fallback (NetVLAD+DINOv2)</div><div style="color:#94a3b8;font-size:12px">Localisation visuelle si GPS perdu</div></div><div class="cfg-toggle on" id="tog-vision"></div></div>
+        <div class="cfg-toggle-card" onclick="toggleVision()" style="flex-direction:row;justify-content:space-between;padding:16px"><div><div style="color:white;font-weight:600">Vision Fallback (DINOv2)</div><div style="color:#94a3b8;font-size:12px">Localisation visuelle si GPS perdu</div></div><div class="cfg-toggle on" id="tog-vision"></div></div>
         <div class="cfg-field"><label>Seuil de confiance vision (0.0 → 1.0)</label>
           <div style="display:flex;align-items:center;gap:12px"><input type="range" id="cfg-conf" min="0.5" max="1.0" value="0.85" step="0.05" oninput="document.getElementById('cfg-conf-val').textContent=parseFloat(this.value).toFixed(2)" style="flex:1;accent-color:#6366f1"><span id="cfg-conf-val" style="color:#6366f1;font-weight:700;min-width:50px">0.85</span></div>
         </div>
@@ -1149,17 +1173,19 @@ async function launchMission(){
     point_a: {lat:ptA.lat,lon:ptA.lng}
   };
   
+  // The mission only starts if the box accepts it — never show a scripted
+  // "flight in progress" for a mission the box refused or never received.
   try {
-    const setMissionResp = await fetch(`${RECEIVER}/api/set_mission`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(missionConfig)
-    });
+    const setMissionResp = await naveraControlPost(`${RECEIVER}/api/set_mission`, missionConfig);
     if(!setMissionResp.ok) {
-      console.warn('⚠ set_mission response:', setMissionResp.status);
+      let msg = `HTTP ${setMissionResp.status}`;
+      try { msg = (await setMissionResp.json()).error || msg; } catch(e) {}
+      alert(`Mission NOT started: ${msg}`);
+      return;
     }
   } catch(e) {
-    console.warn('⚠ set_mission error:', e);
+    alert(`Mission NOT started: the NAVERA box is unreachable (${e})`);
+    return;
   }
   
   // Start backend calls
@@ -1171,31 +1197,13 @@ if(cfgData.timeMode === 'night'){
 } else {
   setTimeout(()=>fetch(`${TILE_SERVER}/api/node?action=start_receiver`).catch(()=>{}),800);
 }
-  if (cfgData.timeMode === 'night') {
-    setTimeout(() => {
-     fetch(`${TILE_SERVER}/api/start_night_mission`, {
-       method: 'POST',
-       headers: { 'Content-Type': 'application/json' },
-       body: JSON.stringify({
-         pc_nour_ip:  '192.168.1.18',   // ← correct PC-Nour IP
-         agent_port:  6001,
-         fps:         1 / 10,           // ← 1 frame / 10s
-         csv:         '/home/nour-el-houda-mokded/Bureau/testNight/sousse_flight/flight_ready.csv',
-         images_dir:  '/home/nour-el-houda-mokded/Bureau/testNight/sousse_flight',
-       })
-     })
-     .then(r => r.json())
-     .then(d => console.log('🌙 Night mission triggered:', d))
-     .catch(e => console.warn('⚠ Night mission trigger failed:', e));
-   }, 500);   // 0.5s — night_receiver already running, no need to wait
-  }
   // Show transition overlay
   document.getElementById('lt').classList.add('show');
   const isStellar = cfgData.timeMode === 'stellar';
   const steps=['lts-1','lts-2','lts-3','lts-4','lts-5'];
   const pcts=[0,20,45,70,90,100];
   const msgs=isStellar
-    ?['Connexion backend stellaire...','Chargement catalogue d\'étoiles...','Calibration capteur stellaire...','Démarrage stellar_pkg · port 5002...','Navigation céleste active...']
+    ?['Connexion backend stellaire...','Chargement catalogue d\'étoiles...','Calibration capteur stellaire...','Démarrage cn_pkg...','Navigation céleste active...']
     :['Connexion backend...','Chargement carte satellite...','Initialisation pipeline visual loc...','Démarrage threads NAVERA...','Mission en cours...'];
   if(isStellar) document.getElementById('lt-sub').textContent='NAVIGATION STELLAIRE...';
   for(let i=0;i<steps.length;i++){
@@ -1306,7 +1314,7 @@ function initFlightMap(){
     fTlog('🔗 Receiver: '+RECEIVER+' (night_pkg)','info');
     document.getElementById('gps-banner').textContent='⚠ GPS SIGNAL LOST — STHN NIGHT LOCALIZATION ACTIVE';
   } else {
-    fTlog('☀️ DAY MODE — NetVLAD + DINOv2 + FMC','info');
+    fTlog('☀️ DAY MODE — DINOv2 tile matching','info');
     fTlog('🔗 Receiver: '+RECEIVER+' (vision_pkg)','info');
   }
   fTlog('📡 En attente des frames du receiver...','info');
@@ -1481,7 +1489,7 @@ function showPredictionLine(fromLat,fromLon,toLat,toLon){
 function showPredictedMarker(lat,lon,score,match){
   if(fPredictedMarker) fMap.removeLayer(fPredictedMarker);
   fPredictedMarker=L.marker([lat,lon],{icon:L.divIcon({html:`<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="none" stroke="#ffd700" stroke-width="2" stroke-dasharray="6 3"><animateTransform attributeName="transform" type="rotate" dur="4s" from="0 22 22" to="360 22 22" repeatCount="indefinite"/></circle><circle cx="22" cy="22" r="13" fill="#ffd70028" stroke="#ffd700" stroke-width="1.5"/><circle cx="22" cy="22" r="6" fill="#ffd700" opacity=".9"><animate attributeName="r" values="5;7;5" dur="2s" repeatCount="indefinite"/></circle><circle cx="22" cy="22" r="2.5" fill="white" opacity=".95"/></svg>`,iconSize:[44,44],iconAnchor:[22,22],className:'f-pred-mark'}),zIndexOffset:900}).addTo(fMap);
-  const methodName=window.naveraTimeMode==='night'?'STHN Homography':'NetVLAD + DINOv2';
+  const methodName=window.naveraTimeMode==='night'?'STHN Homography':'DINOv2';
   fPredictedMarker.bindPopup(`<div style="font-family:monospace;font-size:11px;line-height:1.7"><strong style="color:#ffd700;font-size:13px">📍 PREDICTED POSITION</strong><br/><strong>LAT:</strong> ${lat.toFixed(6)}<br/><strong>LON:</strong> ${lon.toFixed(6)}<br/><strong>Score:</strong> ${(score||0).toFixed(3)}<br/><strong>Method:</strong> ${methodName}<br/><strong>Match:</strong> ${match||'N/A'}</div>`);
   fTlog(`📍 Predicted marker at (${lat.toFixed(5)}, ${lon.toFixed(5)})`,'info');
 }
@@ -1607,7 +1615,7 @@ async function pollGpsStatus(){
       if(status.lat&&status.lon&&!fSearchCircle) showSearchZone(status.lat,status.lon,status.search_radius_m||300);
       setPS(1,'done','GPS LOST ✓');setPS(2,'active',`Génération (r=${status.search_radius_m||300}m · 12 threads)...`);setPS(3,'active','En attente du dataset...');setThread('ds','active');
       showLoad('GENERATING DATASET — 12 THREADS',status.message||'Extraction tiles MBTiles zoom 18...');
-      animLoad([[10,'🔍 Calcul grille de points...',400],[25,'🗺️ Extraction tiles MBTiles...',700],[45,'🖼️ Assemblage mosaïques...',900],[62,'💾 Écriture images + metadata...',600],[72,'🧠 NetVLAD features (GPU AMP)...',1000],[85,'🔬 DINOv2 re-ranking ViT-S/14...',800],[95,'📍 Calcul coordonnées GPS estimées...',400],[100,'✅ Match trouvé — position prédite !',300]]);
+      animLoad([[10,'🔍 Calcul grille de points...',400],[25,'🗺️ Extraction tiles MBTiles...',700],[45,'🖼️ Assemblage mosaïques...',900],[62,'💾 Écriture images + metadata...',600],[72,'🧠 DINOv2 descriptor (GPU)...',1000],[85,'🔬 Tile ranking (cosine)...',800],[95,'📍 Calcul coordonnées GPS estimées...',400],[100,'✅ Match trouvé — position prédite !',300]]);
     } else if(status.status==='predicted'){
       document.getElementById('gps-banner').classList.remove('show');
       // Point-A anchor: the first "position" is the user's start point, not a
@@ -1647,7 +1655,7 @@ async function pollGpsStatus(){
         if(fSearchCircle){const grp=L.featureGroup([fSearchCircle,L.marker([status.lat,status.lon])]);fMap.fitBounds(grp.getBounds().pad(.22),{animate:true,duration:1});}
         else{fMap.panTo([status.lat,status.lon],{animate:true,duration:.8});}
       }
-      setPS(1,'done','GPS LOST ✓');setPS(2,'done',`Dataset: ${status.dataset_images||'?'} images (${Math.round(status.dataset_ms||0)}ms) ✓`);setPS(3,'done','NetVLAD Top-50 ✓');setPS(4,'done','DINOv2 best match ✓');setPS(5,'done',`(${(status.lat||0).toFixed(5)}, ${(status.lon||0).toFixed(5)})`);
+      setPS(1,'done','GPS LOST ✓');setPS(2,'done',`Dataset: ${status.dataset_images||'?'} images (${Math.round(status.dataset_ms||0)}ms) ✓`);setPS(3,'done','DINOv2 descriptor ✓');setPS(4,'done','Best tile match ✓');setPS(5,'done',`(${(status.lat||0).toFixed(5)}, ${(status.lon||0).toFixed(5)})`);
       fTlog(`🎯 PREDICTED: (${(status.lat||0).toFixed(6)}, ${(status.lon||0).toFixed(6)})`,'ok');
       fTlog(`📊 Score: ${(status.score||0).toFixed(3)} | Match: ${status.match||'N/A'}`,'ok');
       fTlog(`⏱️ Total: ${Math.round(status.total_ms||0)}ms`,'info');
@@ -1873,7 +1881,6 @@ async function startFrameSimulation() {
 </script>
 
 <!-- STELLAR VIEW (inline, fully scoped) -->
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 #stl-view{
   /* mirror Flight Monitor (#view-flight) tokens exactly */
@@ -2244,13 +2251,10 @@ async function stlLaunchMission() {
   // Mirror day mode: tell the stellar bridge to anchor Point A and start the
   // camera. Nothing streams/solves until this POST flips /celestial/camera/start.
   try {
-    await fetch(`${STL_RECEIVER_URL}/api/set_mission`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ mission_mode: 'a-only',
-                             point_a: {lat: stlPointA.lat, lon: stlPointA.lon} })
-    });
-  } catch (e) { console.warn('⚠ stellar set_mission error:', e); }
+    const r = await naveraControlPost(`${STL_RECEIVER_URL}/api/set_mission`,
+      { mission_mode: 'a-only', point_a: {lat: stlPointA.lat, lon: stlPointA.lon} });
+    if(!r.ok){ alert(`Mission NOT started: HTTP ${r.status}`); return; }
+  } catch (e) { alert(`Mission NOT started: the NAVERA box is unreachable (${e})`); return; }
 
   document.getElementById('stl-page-setup').classList.remove('active');
   document.getElementById('stl-page-flight').classList.add('active');

@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NAVERA — Operator View</title>
 <!-- Leaflet LOCAL (servi par le bridge depuis resources/leaflet/, pas de CDN) -->
-<link rel="stylesheet" href="leaflet/leaflet.min.css"/>
-<script src="leaflet/leaflet.min.js"></script>
+<link rel="stylesheet" href="/leaflet/leaflet.min.css"/>
+<script src="/leaflet/leaflet.min.js"></script>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%;width:100%;overflow:hidden;
@@ -45,8 +45,20 @@
   #op-src.gps .dot{background:#3fb950;box-shadow:0 0 8px rgba(63,185,80,.7)}
   #op-src.vision{border-color:rgba(88,230,217,.45);color:#58e6d9}
   #op-src.vision .dot{background:#58e6d9;box-shadow:0 0 8px rgba(88,230,217,.7)}
-  #op-src.nofix{border-color:rgba(210,153,34,.40);color:#d29922}
-  #op-src.nofix .dot{background:#d29922}
+  #op-src.nofix{border-color:rgba(125,133,144,.45);color:#9da5ae}
+  #op-src.nofix .dot{background:#7d8590}
+  #op-src.degraded{border-color:rgba(210,153,34,.55);color:#d29922}
+  #op-src.degraded .dot{background:#d29922;box-shadow:0 0 8px rgba(210,153,34,.7)}
+  #op-src.offline{border-color:rgba(248,81,73,.60);color:#f85149}
+  #op-src.offline .dot{background:#f85149;box-shadow:0 0 8px rgba(248,81,73,.7)}
+
+  /* Détail sous le badge : mode, âge, raison (pour humains) */
+  #op-detail{position:absolute;right:14px;top:50px;z-index:1000;max-width:min(420px,70vw);
+    background:rgba(13,17,23,.78);backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:6px 10px;
+    font-size:11px;line-height:1.45;color:#9da5ae;pointer-events:none}
+  #op-coords .tag{display:none;color:#d29922;font-size:10px;letter-spacing:1px}
+  #op-coords.stale .tag{display:block}
 
   /* Marqueur véhicule (divIcon) : point + halo pulsant, aucun asset image */
   .op-veh-halo{animation:opPulse 2s ease-out infinite;transform-origin:center}
@@ -60,22 +72,29 @@
     <span class="dot"></span><span id="op-src-txt">NO FIX</span>
   </div>
 
+  <div id="op-detail">—</div>
+
   <div id="op-coords" class="stale">
+    <div class="tag" id="op-tag">LAST KNOWN — NOT CURRENT</div>
     <div><span class="lbl">LAT</span> <span class="val" id="op-lat">—</span></div>
     <div><span class="lbl">LON</span> <span class="val" id="op-lon">—</span></div>
   </div>
 
 <script>
 'use strict';
-// ── Config (mêmes conventions que navera.html) ─────────────────────────
-const ORIGIN     = window.location.origin;          // tile server = même origine
+// Operator view: renders navera_estimator's decision (/api/operator_position).
+// Rules: the vehicle marker exists ONLY while the answer is a valid position;
+// every other answer (NO_FIX, OFFLINE, link lost) removes it and greys the
+// last coordinates as "last known". Nothing here decides trust — the arbiter does.
+const ORIGIN     = window.location.origin;
 const TILE_URL   = ORIGIN + '/tiles/{z}/{x}/{y}.png';
-const POLL_URL   = '/api/operator_position';          // endpoint créé à l'étape suivante
+const POLL_URL   = '/api/operator_position';
 const POLL_MS    = 1000;
-const DEF_CENTER = [35.83563, 10.59082];              // Sousse (défaut navera.html)
+const TIMEOUT_MS = 2000;       // one request never waits longer than this
+const LINK_LOST_MS = 3000;     // no answer for this long → LINK LOST
+const DEF_CENTER = [35.83563, 10.59082];
 const DEF_ZOOM   = 15;
 
-// ── Carte (identique au mécanisme navera.html) ─────────────────────────
 const map = L.map('op-map', {zoomControl:true, preferCanvas:true, attributionControl:false})
               .setView(DEF_CENTER, DEF_ZOOM);
 L.tileLayer(TILE_URL, {
@@ -83,7 +102,6 @@ L.tileLayer(TILE_URL, {
   errorTileUrl:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
 }).addTo(map);
 
-// ── Marqueur véhicule ──────────────────────────────────────────────────
 function vehIcon(color){
   return L.divIcon({
     className:'',
@@ -97,7 +115,6 @@ function vehIcon(color){
 }
 let vehMarker = null;
 let firstFix  = true;
-
 function placeVehicle(lat, lon, color){
   if(!vehMarker){
     vehMarker = L.marker([lat,lon], {icon:vehIcon(color), zIndexOffset:1000}).addTo(map);
@@ -107,52 +124,70 @@ function placeVehicle(lat, lon, color){
   }
   if(firstFix){ map.setView([lat,lon], Math.max(map.getZoom(), DEF_ZOOM)); firstFix=false; }
 }
+function removeVehicle(){
+  if(vehMarker){ map.removeLayer(vehMarker); vehMarker = null; }
+}
 
-// ── UI : badge source + encart coords ──────────────────────────────────
 const elSrc = document.getElementById('op-src');
 const elSrcTxt = document.getElementById('op-src-txt');
+const elDetail = document.getElementById('op-detail');
 const elCoords = document.getElementById('op-coords');
 const elLat = document.getElementById('op-lat');
 const elLon = document.getElementById('op-lon');
 
-const SRC = {
-  GPS:    {cls:'gps',    label:'GPS',    color:'#3fb950'},
-  VISION: {cls:'vision', label:'VISION', color:'#58e6d9'}
-};
-function setSource(src){
-  const s = SRC[src] || null;
-  elSrc.className = s ? s.cls : 'nofix';
-  elSrcTxt.textContent = s ? s.label : 'NO FIX';
-  return s ? s.color : '#7d8590';
+const SRC_COLOR = {GPS:'#3fb950', VISION:'#58e6d9', NIGHT:'#a371f7', CELESTIAL:'#e3b341'};
+const MODE_TXT = {MEASURED:'measured', PROPAGATED:'dead-reckoned', HELD:'held', REPLAYED:'replayed'};
+
+function setBadge(cls, text){
+  elSrc.className = cls;
+  elSrcTxt.textContent = text;
 }
-function setCoords(lat, lon, live){
-  elLat.textContent = lat.toFixed(6);
-  elLon.textContent = lon.toFixed(6);
-  elCoords.classList.toggle('stale', !live);
+function showPosition(d){
+  const fix = d.state === 'FIX';
+  setBadge(fix ? 'gps' : 'degraded', `${d.source || 'UNKNOWN'} · ${fix ? 'FIX' : 'DEGRADED'}`);
+  const age = Number.isFinite(Number(d.age_s)) ? `${Number(d.age_s).toFixed(1)} s ago` : '';
+  elDetail.textContent = [MODE_TXT[d.mode] || d.mode, age, d.reason].filter(Boolean).join(' · ');
+  elLat.textContent = Number(d.lat).toFixed(6);
+  elLon.textContent = Number(d.lon).toFixed(6);
+  elCoords.classList.remove('stale');
+  placeVehicle(Number(d.lat), Number(d.lon), fix ? SRC_COLOR.GPS : (SRC_COLOR[d.source] || '#d29922'));
 }
-function noFix(){
-  setSource(null);
+function showNoPosition(state, reason){
+  removeVehicle();
   elCoords.classList.add('stale');
+  if(state === 'OFFLINE' || state === 'LINK LOST'){
+    setBadge('offline', state);
+  }else{
+    setBadge('nofix', state === 'INITIALIZING' ? 'STARTING' : 'NO FIX');
+  }
+  elDetail.textContent = reason || '—';
 }
 
-// ── Polling /api/operator_position (mécanisme navera.html) ─────────────
+let lastAnswer = Date.now();
 async function poll(){
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
   try{
-    const res = await fetch(POLL_URL, {cache:'no-store'});
-    if(!res.ok){ noFix(); return; }                 // endpoint pas encore prêt → NO FIX
+    const res = await fetch(POLL_URL, {cache:'no-store', signal:ctl.signal});
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const d = await res.json();
+    lastAnswer = Date.now();
     const lat = Number(d.lat), lon = Number(d.lon);
-    const valid = (d.valid !== false) && Number.isFinite(lat) && Number.isFinite(lon);
-    if(!valid){ noFix(); return; }
-    const color = setSource(d.source);
-    setCoords(lat, lon, true);
-    placeVehicle(lat, lon, color);
+    if(d.valid === true && Number.isFinite(lat) && Number.isFinite(lon)){
+      showPosition(d);
+    }else{
+      showNoPosition(d.state || 'NO_FIX', d.reason);
+    }
   }catch(e){
-    noFix();                                         // réseau coupé → NO FIX, on garde le dernier marqueur
+    if(Date.now() - lastAnswer > LINK_LOST_MS){
+      showNoPosition('LINK LOST', 'no answer from the NAVERA box');
+    }
+  }finally{
+    clearTimeout(timer);
+    setTimeout(poll, POLL_MS);   // sequential: never two requests in flight
   }
 }
 poll();
-setInterval(poll, POLL_MS);
 </script>
 </body>
 </html>
