@@ -317,6 +317,8 @@ class DaySubscriber(Node):
             if self._gps_prior.fresh() is not None and not self.shadow_mode:
                 self.pub_status.publish(String(data=json.dumps({
                     "frame_id": seq_id, "success": False, "source": "gps_active",
+                    "anchor": [self._anchor_lat, self._anchor_lon]
+                    if self._anchor_lat is not None else None,
                     "reason": "GPS valid — vision idle, tracking GPS as prior"})))
                 return
             center, R = self._spatial_window(img, meta)
@@ -332,6 +334,7 @@ class DaySubscriber(Node):
                 self.get_logger().info(f"[day] 🔎 localizing frame={seq_id}… (pas d'anchor → recherche globale)")
             result = self.localizer.predict(img, threshold=self.conf_threshold,
                                             center=center, radius_m=R)
+            result["search_center"] = list(center) if center is not None else None
             self._log_top5(seq_id, result)
             self._publish_result(seq_id, meta, result)
         except Exception as e:
@@ -527,6 +530,14 @@ class DaySubscriber(Node):
             "total_ms":    result.get("total_ms"),
             "source":      "predicted",
             "error":       err,
+            # The search, for display: circle (centre = last retained position),
+            # how many tiles it held, and the best candidates.
+            "search_center":   result.get("search_center"),
+            "search_radius_m": result.get("radius_m"),
+            "n_candidates":    result.get("n_candidates"),
+            "threshold":       self.conf_threshold,
+            "top5": [{"lat": c["lat"], "lon": c["lon"], "score": c["dino"], "image": c["image"]}
+                     for c in (result.get("top5") or [])],
         }
 
         # ───── filtre OFF → comportement BRUT historique (inchangé, pour comparaison) ─────

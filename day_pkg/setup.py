@@ -24,6 +24,7 @@ setup(
     entry_points={
         'console_scripts': [
             'day_subscriber.py=day_pkg.nodes.day_subscriber:main',
+            'prepare_area.py=day_pkg.prepare_area:main',
         ],
     },
 )
