@@ -114,3 +114,31 @@ def local_to_radec(lat_deg: float, lon_deg: float, alt_deg: float, az_deg: float
                    math.sin(a) * math.cos(p) - math.cos(a) * math.sin(p) * math.cos(A))
     ra = (gast + lon_deg - math.degrees(H)) % 360.0
     return ra, math.degrees(d)
+
+
+def boresight_altaz(q_xyzw, mount_elevation_deg: float = 90.0, mount_azimuth_deg: float = 0.0,
+                    declination_deg: float = 0.0) -> Tuple[float, float]:
+    """Camera boresight (altitude above horizon, azimuth from true north) from the IMU.
+
+    q_xyzw: body orientation in the local ENU frame (sensor_msgs/Imu, REP-103:
+    body x forward, y left, z up). The camera is mounted at mount_elevation_deg
+    above the body's x-y plane (90 = along the body's up axis) and
+    mount_azimuth_deg clockwise from the body's forward axis. A magnetometer
+    heading gives MAGNETIC north: declination_deg (east positive) turns it into
+    true north.
+    """
+    x, y, z, w = q_xyzw
+    n = math.sqrt(x * x + y * y + z * z + w * w)
+    if not n > 0:
+        raise ValueError("invalid quaternion")
+    x, y, z, w = x / n, y / n, z / n, w / n
+    el, az = math.radians(mount_elevation_deg), math.radians(mount_azimuth_deg)
+    b = (math.cos(el) * math.cos(az), -math.cos(el) * math.sin(az), math.sin(el))   # FLU
+    # rotate b by q (body → ENU)
+    r = [[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+         [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+         [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]]
+    e, nn, u = (sum(r[i][j] * b[j] for j in range(3)) for i in range(3))
+    alt = math.degrees(math.asin(max(-1.0, min(1.0, u))))
+    azimuth = (math.degrees(math.atan2(e, nn)) + declination_deg) % 360.0
+    return alt, azimuth

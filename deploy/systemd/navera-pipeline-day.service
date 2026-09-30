@@ -6,7 +6,7 @@ After=local-fs.target
 # Never give up restarting (the default limit stops after 5 fast failures).
 StartLimitIntervalSec=0
 # One vision pipeline at a time (GPU memory): starting another stops this one.
-Conflicts=navera-pipeline-night.service navera-pipeline-cn.service
+Conflicts=navera-pipeline-night.service
 # No ordering vs navera-web: pipeline↔bridge talk over DDS (discovery-based,
 # order-independent) with latched handshake topics, so either may start/restart first.
 

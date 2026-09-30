@@ -51,6 +51,13 @@ def generate_launch_description():
         # direction is consistent with.
         DeclareLaunchArgument('prior_lat',   default_value='35.83'),
         DeclareLaunchArgument('prior_lon',   default_value='10.64'),
+        # Star-camera attitude from the IMU (when frame_meta has none): mounting,
+        # magnetic declination, and the IMU's attitude accuracy (sets the stated
+        # accuracy: ~111 km per degree). See cn_pkg/README.md.
+        DeclareLaunchArgument('camera_mount_elevation_deg', default_value=os.environ.get('NAVERA_STAR_CAMERA_ELEVATION_DEG', '90.0')),
+        DeclareLaunchArgument('camera_mount_azimuth_deg', default_value=os.environ.get('NAVERA_STAR_CAMERA_AZIMUTH_DEG', '0.0')),
+        DeclareLaunchArgument('magnetic_declination_deg', default_value=os.environ.get('NAVERA_MAGNETIC_DECLINATION_DEG', '0.0')),
+        DeclareLaunchArgument('attitude_sigma_deg', default_value=os.environ.get('NAVERA_ATTITUDE_SIGMA_DEG', 'nan')),
 
         # 1) Camera publisher (celestial namespace, etoiles.jpeg + meta)
         IncludeLaunchDescription(
@@ -86,6 +93,10 @@ def generate_launch_description():
                 'utc_time':     ParameterValue(LaunchConfiguration('utc_time'), value_type=str),
                 'prior_lat':    ParameterValue(LaunchConfiguration('prior_lat'), value_type=float),
                 'prior_lon':    ParameterValue(LaunchConfiguration('prior_lon'), value_type=float),
+                'camera_mount_elevation_deg': ParameterValue(LaunchConfiguration('camera_mount_elevation_deg'), value_type=float),
+                'camera_mount_azimuth_deg': ParameterValue(LaunchConfiguration('camera_mount_azimuth_deg'), value_type=float),
+                'magnetic_declination_deg': ParameterValue(LaunchConfiguration('magnetic_declination_deg'), value_type=float),
+                'attitude_sigma_deg': ParameterValue(LaunchConfiguration('attitude_sigma_deg'), value_type=float),
             }],
         ),
     ])

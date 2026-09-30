@@ -6,7 +6,7 @@ After=local-fs.target
 # Never give up restarting (the default limit stops after 5 fast failures).
 StartLimitIntervalSec=0
 # One vision pipeline at a time (GPU memory): starting another stops this one.
-Conflicts=navera-pipeline-day.service navera-pipeline-cn.service
+Conflicts=navera-pipeline-day.service
 
 [Service]
 # Site settings shared by all NAVERA units (data paths, ROS_DOMAIN_ID...).

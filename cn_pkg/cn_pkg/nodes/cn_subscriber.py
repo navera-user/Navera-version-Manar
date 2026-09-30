@@ -50,13 +50,14 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
-from sensor_msgs.msg import Image, NavSatFix, NavSatStatus, TimeReference
+from sensor_msgs.msg import Image, Imu, NavSatFix, NavSatStatus, TimeReference
 from navera_msgs.msg import PositionEstimate
 import math
 from std_msgs.msg import String
 from cv_bridge import CvBridge
 
 from cn_pkg.nodes import solver as cn_solver
+from cn_pkg.nodes.celestial_math import boresight_altaz
 
 
 class CNSubscriber(Node):
@@ -90,6 +91,20 @@ class CNSubscriber(Node):
         # RTC (survives an offline boot), else the system clock.
         self.declare_parameter("rtc_topic", "/navera/sensors/rtc_time")
         declare_float(self, "prior_lon", float("nan"))
+        # Camera attitude from the IMU (used when frame_meta has no tilt/azimuth):
+        # how the star camera is mounted on the vehicle, and the local magnetic
+        # declination (the IMU heading is magnetic). 90 / 0 = pointing up.
+        declare_float(self, "camera_mount_elevation_deg", 90.0)
+        declare_float(self, "camera_mount_azimuth_deg", 0.0)
+        declare_float(self, "magnetic_declination_deg", 0.0)
+        self.declare_parameter("imu_topic", "/navera/sensors/imu")
+        declare_float(self, "imu_timeout_s", 1.0)
+        # 1-sigma attitude accuracy of the IMU (deg). Each degree of attitude
+        # error moves the fix by ~111 km, so it sets the stated accuracy; NaN =
+        # unknown (the fix is then published with an unknown covariance).
+        declare_float(self, "attitude_sigma_deg", float("nan"))
+        # Without prior_lat/lon, the last valid GPS fix is the prior.
+        self.declare_parameter("gps_topic", "/navera/estimate/gps")
 
         self.min_log_odds   = float(self.get_parameter("min_log_odds").value)
         self.camera_fov_deg = float(self.get_parameter("camera_fov_deg").value)
@@ -103,6 +118,16 @@ class CNSubscriber(Node):
         self.utc_time    = str(self.get_parameter("utc_time").value)
         self.prior_lat   = float(self.get_parameter("prior_lat").value)
         self.prior_lon   = float(self.get_parameter("prior_lon").value)
+        self.mount_el    = float(self.get_parameter("camera_mount_elevation_deg").value)
+        self.mount_az    = float(self.get_parameter("camera_mount_azimuth_deg").value)
+        self.declination = float(self.get_parameter("magnetic_declination_deg").value)
+        self.imu_timeout = float(self.get_parameter("imu_timeout_s").value)
+        self.attitude_sigma_deg = float(self.get_parameter("attitude_sigma_deg").value)
+        self._imu = None          # (quaternion xyzw, monotonic time)
+        self._gps_prior = None    # last valid GPS fix (lat, lon)
+        self.create_subscription(Imu, self.get_parameter("imu_topic").value, self._on_imu, 10)
+        self.create_subscription(PositionEstimate, self.get_parameter("gps_topic").value,
+                                 self._on_gps, 10)
         self._rtc_sample = None   # (rtc_epoch, system_epoch_at_read)
         self.create_subscription(TimeReference, self.get_parameter("rtc_topic").value,
                                  self._on_rtc, 10)
@@ -181,6 +206,33 @@ class CNSubscriber(Node):
         sys_epoch = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
         self._rtc_sample = (msg.time_ref.sec + msg.time_ref.nanosec * 1e-9, sys_epoch)
 
+    def _on_imu(self, msg: Imu):
+        q = msg.orientation
+        if (q.x, q.y, q.z, q.w) != (0.0, 0.0, 0.0, 0.0):
+            self._imu = ((q.x, q.y, q.z, q.w), time.monotonic())
+
+    def _on_gps(self, msg: PositionEstimate):
+        if msg.valid and msg.mode == PositionEstimate.MODE_MEASURED and \
+                math.isfinite(msg.latitude) and math.isfinite(msg.longitude):
+            self._gps_prior = (msg.latitude, msg.longitude)
+
+    def _attitude(self, meta):
+        """(tilt, azimuth, source): frame_meta, else a fresh IMU, else parameters."""
+        if meta.get("tilt") is not None and meta.get("azimuth") is not None:
+            return float(meta["tilt"]), float(meta["azimuth"]), "frame"
+        if self._imu and time.monotonic() - self._imu[1] <= self.imu_timeout:
+            alt, az = boresight_altaz(self._imu[0], self.mount_el, self.mount_az,
+                                      self.declination)
+            return alt, az, "imu"
+        return self.tilt, self.azimuth, "parameter"
+
+    def _prior(self):
+        if math.isfinite(self.prior_lat):
+            return self.prior_lat, self.prior_lon, "parameter"
+        if self._gps_prior:
+            return self._gps_prior[0], self._gps_prior[1], "last GPS fix"
+        return float("nan"), float("nan"), "none"
+
     def _utc_now(self):
         """(UTC "YYYY-MM-DD HH:MM:SS", source) — RTC-based when a recent valid
         reading exists, else the system clock."""
@@ -244,20 +296,25 @@ class CNSubscriber(Node):
                 f"[cn] 🛰  solving frame={seq_id} (mode={self.solver_mode}, 10-60s)…"
             )
             if self.solver_mode == "geoloc":
-                tilt    = float(meta.get("tilt", self.tilt))
-                azimuth = float(meta.get("azimuth", self.azimuth))
+                tilt, azimuth, att_src = self._attitude(meta)
+                prior_lat, prior_lon, prior_src = self._prior()
+                meta.update(attitude_source=att_src, tilt_used=tilt, azimuth_used=azimuth,
+                            prior=[prior_lat, prior_lon], prior_source=prior_src)
                 utc = meta.get("utc_time") or self.utc_time
                 utc_src = "frame" if meta.get("utc_time") else "parameter"
                 if not utc:
                     utc, utc_src = self._utc_now()
                 meta["utc_source"] = utc_src
+                meta["utc_used"] = utc
                 if not (math.isfinite(tilt) and math.isfinite(azimuth)):
                     result = {"success": False,
                               "error": "camera attitude (tilt/azimuth) unknown — needs the IMU"}
                 else:
+                    t0 = time.monotonic()
                     result = cn_solver.solve_image_b64_geoloc(
-                        b64, tilt, azimuth, utc, self.prior_lat, self.prior_lon,
+                        b64, tilt, azimuth, utc, prior_lat, prior_lon,
                         self.camera_fov_deg)
+                    result["solve_s"] = round(time.monotonic() - t0, 1)
             else:
                 result = cn_solver.solve_image_b64(b64)
             self._publish_result(seq_id, meta, result)
@@ -282,6 +339,13 @@ class CNSubscriber(Node):
             "log_odds": result.get("log_odds"),
             "source": result.get("source", "stellar"),
             "error":  result.get("error"),
+            "solve_s": result.get("solve_s"),
+            "tilt":   meta.get("tilt_used"), "azimuth": meta.get("azimuth_used"),
+            "attitude_source": meta.get("attitude_source"),
+            "prior": meta.get("prior"), "prior_source": meta.get("prior_source"),
+            "utc": meta.get("utc_used"), "utc_source": meta.get("utc_source"),
+            "sigma_m": self._sigma_m(),
+            "min_log_odds": self.min_log_odds,
         }
 
         log_odds = result.get("log_odds")
@@ -332,6 +396,11 @@ class CNSubscriber(Node):
         )
 
 
+    def _sigma_m(self):
+        """Stated 1-sigma horizontal accuracy: attitude error x ~111 km/deg (NaN = unknown)."""
+        s = self.attitude_sigma_deg
+        return s * 111_195.0 if math.isfinite(s) and s > 0 else None
+
     def _publish_estimate(self, now, seq_id, lat, lon, meta, valid, reason, details):
         """Additive: emit the typed source contract on /navera/estimate/cn."""
         est = PositionEstimate()
@@ -344,8 +413,13 @@ class CNSubscriber(Node):
             valid = False
         _alt = meta.get("altitude_m") if isinstance(meta, dict) else None
         est.altitude  = float(_alt) if _alt is not None else math.nan
-        est.position_covariance      = [0.0] * 9
-        est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_UNKNOWN
+        sigma = self._sigma_m()
+        if sigma:
+            est.position_covariance = [sigma ** 2, 0.0, 0.0, 0.0, sigma ** 2, 0.0, 0.0, 0.0, 0.0]
+            est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_APPROXIMATED
+        else:
+            est.position_covariance      = [0.0] * 9
+            est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_UNKNOWN
         est.source     = PositionEstimate.SOURCE_CELESTIAL
         est.mode       = PositionEstimate.MODE_MEASURED
         est.valid      = bool(valid)

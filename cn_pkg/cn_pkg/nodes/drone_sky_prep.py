@@ -153,20 +153,33 @@ print(f"  [2/4] Running astrometry (scale {SCALE_LOW}–{SCALE_HIGH}°)...")
 
 T_SOLVE_START = time.time()
 with open(LOG_FILE, "w") as log:
-    _ASTROMETRY_CFG = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                   "astrometry.cfg")
+    # $NAVERA_ASTROMETRY_CFG points at another index location (e.g. index files
+    # on the data disk); default: the packaged config (/usr/share/astrometry).
+    _ASTROMETRY_CFG = os.environ.get("NAVERA_ASTROMETRY_CFG") or os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "astrometry.cfg")
     try:
         subprocess.run([
             SOLVE_FIELD, TIF_OUT,
             "--config", _ASTROMETRY_CFG,
-            "--overwrite", "--no-plots", "--no-verify", "--resort",
+            # no --resort: re-sorting the detected stars made the fit land 46
+            # arcmin off (reproducible) instead of 2.9 on the same frame.
+            "--overwrite", "--no-plots", "--no-verify",
             "--wcs", WCS_FILE,
             "--scale-units", "degwidth",
             "--scale-low",   str(SCALE_LOW),
             "--scale-high",  str(SCALE_HIGH),
-            "--downsample",  "2",
-            "--objs",        "100",
+            # The boresight is read at the image centre: anchor the fit there and
+            # fit the wide-field distortion (4th order). With the defaults the
+            # fit was anchored near an edge and the centre came out ~1° off
+            # (111 km); anchored + order 4: 2.9 arcmin on a 60° field.
+            "--crpix-center", "--tweak-order", "4",
+            "--downsample",  "1",
+            "--objs",        "400",
             "--cpulimit",    "180",
+            # astrometry.net's Python helpers for these two steps use np.bool,
+            # gone from the NumPy NAVERA runs (1.26): "removelines" then fails
+            # and nothing is solved. A star-camera frame needs neither.
+            "--no-remove-lines", "--uniformize", "0",
         ], stdout=log, stderr=log, cwd=str(OUTDIR), timeout=SOLVE_TIMEOUT_S)
     except FileNotFoundError:
         print(f"  ERROR: solve-field not found ({SOLVE_FIELD}); install astrometry.net")
@@ -195,6 +208,18 @@ for line in solve_output.splitlines():
         m = re.search(r'up is ([+-]?\d+\.?\d*)', line)
         if m:
             ROTATION = float(m.group(1))
+
+# The solution file gives the direction of the exact image centre (the log's
+# "Field center" line is kept only as a fallback).
+if os.path.exists(WCS_FILE):
+    try:
+        from astropy.io import fits as _fits
+        from astropy.wcs import WCS as _WCS
+        _h = _fits.getheader(WCS_FILE)
+        _c = _WCS(_h).pixel_to_world((_h["IMAGEW"] - 1) / 2.0, (_h["IMAGEH"] - 1) / 2.0)
+        RA, DEC = float(_c.ra.deg), float(_c.dec.deg)
+    except Exception as _e:                  # noqa: BLE001 — fall back to the log
+        print(f"  WCS read failed ({_e}); using the solver's reported field centre")
 
 if RA is None or DEC is None:
     print("  ERROR: Astrometry could not solve the image.")

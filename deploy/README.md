@@ -103,6 +103,9 @@ aucune action manuelle.
 sudo useradd -m -s /bin/bash navera 2>/dev/null || true
 sudo usermod -aG dialout,i2c,gpio navera
 
+# 0a) Pipeline céleste : résolveur astrometry.net + index Tycho-2 (champs 1°–33°+)
+sudo apt install astrometry.net astrometry-data-tycho2-10-19
+
 # 0b) Réglages du site : chemins des données, isolation réseau ROS 2
 sudo mkdir -p /etc/navera
 sudo cp /home/navera/isaac_ros_common/deploy/navera.env.example /etc/navera/navera.env
@@ -138,8 +141,10 @@ sudo systemctl start navera-web navera-pipeline-day navera-gps navera-imu navera
 
 ## Changer de pipeline (jour / nuit / céleste)
 
-Un seul pipeline de vision tient en mémoire GPU ; les unités sont en `Conflicts=` : en démarrer
-un arrête les autres.
+Un seul pipeline de vision GPU tient en mémoire : jour et nuit sont en `Conflicts=` (en démarrer
+un arrête l'autre). Le pipeline céleste (caméra stellaire, astrometry.net, CPU) n'est en conflit
+avec aucun : il peut tourner en même temps que le jour ou la nuit, comme repli quand la vision
+ne donne plus de position (priorité de l'arbitre : GPS > jour > nuit > céleste).
 
 ```bash
 # Exemple : passer en nuit
