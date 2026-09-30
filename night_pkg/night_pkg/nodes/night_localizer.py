@@ -55,8 +55,11 @@ def normalize_query(img_bgr, lat, zoom, altitude_m, hfov_deg, heading_deg=None):
     with info["reason"] when the frame cannot be brought to scale.
     """
     info = {}
-    if altitude_m is None or not math.isfinite(altitude_m) or altitude_m <= 0:
+    if altitude_m is None or not math.isfinite(altitude_m):
         info["reason"] = "altitude unknown — the thermal image cannot be scaled to the map"
+        return None, info
+    if altitude_m <= 1.0:
+        info["reason"] = f"vehicle on the ground ({altitude_m:.0f} m): no ground footprint to match"
         return None, info
     if hfov_deg is None or not (1.0 < hfov_deg < 170.0):
         info["reason"] = "camera field of view not configured (camera_hfov_deg)"
