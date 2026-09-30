@@ -141,6 +141,8 @@ input[type=number]{width:80px;background:#0e131a;border:1px solid var(--line);co
       <div><i class="sq" style="background:var(--ap)"></i>Autopilot's belief</div>
       <div><i style="background:transparent;border:2px dashed #58e6d9"></i>Vision search circle</div>
       <div><i class="sq" style="background:rgba(88,230,217,.35);border:1px solid #58e6d9"></i>Candidate / matched tile</div>
+      <div><i class="sq" style="background:rgba(163,113,247,.35);border:1px solid #a371f7"></i>Night: search square / matched footprint</div>
+      <div><i style="background:transparent;border:2px solid #e3b341"></i>Celestial fix ± stated accuracy</div>
     </div>
   </div>
   <aside>
@@ -168,16 +170,23 @@ input[type=number]{width:80px;background:#0e131a;border:1px solid var(--line);co
       <div class="bar" id="prepBar" style="display:none"><div></div></div>
       <div class="stat" id="prepStat"></div>
       <div class="btns"><button class="btn primary" id="prepBtn" disabled>Prepare map</button></div>
-      <div class="note">Extracts the satellite tiles of a ±1 km corridor around the route from the
+      <div class="note">Needed for day vision only (night vision reads the map directly).
+        Extracts the satellite tiles of a ±1 km corridor around the route from the
         MBTiles map and computes their DINOv2 descriptors: the dataset day vision searches when GPS
         is lost. Tiles the map lacks are shown in red — vision has nothing to match there.</div>
     </div>
 
     <div class="card">
       <h3><span class="step"><i id="st3">3</i> Fly</span></h3>
-      <div class="lbl" style="margin-top:0">Position when GPS is lost</div>
+      <div class="lbl" style="margin-top:0">Time of day</div>
+      <div class="seg" id="tod">
+        <button data-v="day" class="on">☀ Day — day vision</button>
+        <button data-v="night">☾ Night — thermal + stars</button>
+      </div>
+      <div class="note" id="todNote"></div>
+      <div class="lbl">Position when GPS is lost</div>
       <div class="seg" id="vision">
-        <button data-v="real" class="on">Real NAVERA day vision</button>
+        <button data-v="real" class="on">Real NAVERA vision</button>
         <button data-v="profile">Simulated error</button>
       </div>
       <div id="profBox" style="display:none">
@@ -230,16 +239,32 @@ input[type=number]{width:80px;background:#0e131a;border:1px solid var(--line);co
     </div>
 
     <div class="card" id="visCard">
-      <h3>Day vision <span class="chip" id="visChip">—</span></h3>
+      <h3><span id="visTitle">Day vision</span> <span class="chip" id="visChip">—</span></h3>
       <div class="reason" id="visWhat" style="margin-top:0">—</div>
       <div class="kpi" style="margin-top:10px">
-        <div><small>Search circle</small><b id="visR">—</b></div>
-        <div><small>Candidate tiles</small><b id="visN">—</b></div>
-        <div><small>Best match score</small><b id="visScore">—</b>
+        <div><small id="visRk">Search circle</small><b id="visR">—</b></div>
+        <div><small id="visNk">Candidate tiles</small><b id="visN">—</b></div>
+        <div><small id="visScoreK">Best match score</small><b id="visScore">—</b>
           <div class="scorebar"><div id="visScoreBar"></div><span id="visThr"></span></div></div>
         <div><small>Match error vs truth</small><b id="visErr">—</b></div>
       </div>
       <div class="stat" id="visStats"></div>
+    </div>
+
+    <div class="card" id="cnCard" style="display:none">
+      <h3>Celestial (stars) <span class="chip" id="cnChip">—</span></h3>
+      <img id="starImg" alt="star camera" style="width:100%;aspect-ratio:4/3;border-radius:8px;background:#000;display:block;border:1px solid var(--line)">
+      <div class="reason" id="cnWhat">—</div>
+      <div class="kpi" style="margin-top:10px">
+        <div><small>Fix error vs truth</small><b id="cnErr">—</b></div>
+        <div><small>Stated accuracy (1σ)</small><b id="cnSig">—</b></div>
+        <div><small>Star match (log-odds)</small><b id="cnOdds">—</b></div>
+        <div><small>Camera attitude used</small><b id="cnAtt">—</b></div>
+      </div>
+      <div class="stat" id="cnStats"></div>
+      <div class="note">Accuracy is set by the IMU: each degree of attitude error moves the fix
+        ~111 km (simulated IMU: 0.3° tilt, 1.5° heading). A coarse check of the region — not a
+        position to fly a mission on.</div>
     </div>
 
     <div class="card">
@@ -267,10 +292,13 @@ input[type=number]{width:80px;background:#0e131a;border:1px solid var(--line);co
       <div class="row"><span class="k">IMU</span><span class="v" id="sImu">—</span></div>
       <div class="row"><span class="k">Clock (RTC)</span><span class="v" id="sRtc">—</span></div>
       <div class="row"><span class="k">NAVERA nodes</span><span class="v" id="sProcs">—</span></div>
-      <div class="note">Real: NAVERA's GPS driver, day vision (DINOv2), arbiter, vehicle output and
-        web view, and the ArduPilot autopilot. Simulated: the world, the GPS receiver, IMU and clock,
-        and the camera picture — cut north-up from the same satellite map vision searches, so vision
-        looks better here than with a real camera (other day, season, angle, sensor).</div>
+      <div class="note">Real: NAVERA's GPS driver, day vision (DINOv2), night vision (STHN),
+        celestial (astrometry.net), arbiter, vehicle output and web view, and the ArduPilot
+        autopilot. Simulated: the world, the GPS receiver, the IMU (with BNO085-class attitude
+        errors) and clock, the camera pictures — cut from the same satellite map vision searches,
+        so vision looks better here than with a real camera (other day, season, angle, sensor;
+        real thermal differs from grey imagery) — and the star images, drawn from the Yale
+        Bright Star Catalogue for a simulated night sky.</div>
     </div>
 
     <div class="card">
@@ -286,9 +314,9 @@ input[type=number]{width:80px;background:#0e131a;border:1px solid var(--line);co
 const $ = id => document.getElementById(id);
 const COLORS = {GPS:'#3fb950', 'DAY VISION':'#58e6d9', 'NIGHT VISION':'#a371f7', CELESTIAL:'#e3b341'};
 const PROF_NOTE = {
-  real:'The real NAVERA day-vision software (DINOv2) localises the simulated camera image against the ' +
-       'prepared tiles, searching a circle around the last known position. Drone only: it needs a ' +
-       'downward camera at altitude.',
+  real:'The real NAVERA vision software localises the simulated camera image: by day DINOv2 against ' +
+       'the prepared tiles (a circle around the last known position), by night STHN against the map ' +
+       '(a 1.5 km square around it). Drone only: it needs a downward camera at altitude.',
   measured:'Vision error as measured today on real frames: day ≈ 440 m median, night drifts. ' +
            'NAVERA reports it as DEGRADED and, by default, does not give it to the autopilot.',
   target:'The accuracy goal (15 m day, 25 m night). NOT a measured performance — use it to show ' +
@@ -416,8 +444,80 @@ function tileOf(name){
   const m = /tile_(\d+)_(\d+)_(\d+)/.exec(name || '');
   return m ? tileBounds(+m[2], +m[3], +m[1]) : null;
 }
+const cnLayer = L.layerGroup().addTo(map);
+let cnKey = null, starT = 0;
+function renderCelestial(d){
+  const c = d.celestial || {}, st = c.status, on = d.faults.light === 'night';
+  $('cnCard').style.display = on ? '' : 'none';
+  if(!on){ cnLayer.clearLayers(); cnKey = null; return; }
+  if(Date.now() - starT > 4000 && c.stats && c.stats.frames){ starT = Date.now(); $('starImg').src = '/api/star.jpg?' + starT; }
+  const r = c.render || {};
+  const chip = $('cnChip');
+  if(!c.enabled){ chip.textContent = 'off'; chip.className = 'chip dead'; $('cnWhat').textContent = 'Starts with a night mission.'; }
+  else if(!st){ chip.textContent = 'solving'; chip.className = 'chip alive';
+    $('cnWhat').textContent = `Identifying the stars (astrometry.net)… ${r.stars != null ? r.stars + ' stars in view' : ''}`; }
+  else {
+    chip.textContent = st.success ? 'FIX' : 'NO FIX'; chip.className = 'chip ' + (st.success ? 'active' : '');
+    chip.style.color = st.success ? '' : 'var(--bad)';
+    $('cnWhat').textContent = st.success
+      ? `Stars identified; camera pointing RA ${(+st.ra_deg).toFixed(2)}° Dec ${(+st.dec_deg).toFixed(2)}° at ${st.utc} UTC (simulated night sky) → position.`
+      : `No fix: ${String(st.error || st.reason || '').slice(0, 140)}`;
+  }
+  $('cnErr').textContent = st && st.err_m != null ? m(st.err_m) : '—';
+  $('cnSig').textContent = st && st.sigma_m ? m(st.sigma_m) : '—';
+  $('cnOdds').textContent = st && st.log_odds != null ? `${(+st.log_odds).toFixed(0)} (min ${st.min_log_odds})` : '—';
+  $('cnAtt').textContent = st && st.tilt != null ? `${(+st.tilt).toFixed(1)}° / ${(+st.azimuth).toFixed(0)}° (${st.attitude_source})` : '—';
+  const k = c.stats || {};
+  $('cnStats').innerHTML = `Star images <b>${k.frames||0}</b> · fixes <b class="ok">${k.solved||0}</b> · no fix <b class="bad">${k.failed||0}</b>` +
+    (r.stars != null ? ` · last image: <b>${r.stars}</b> stars` : '');
+  const key = st ? `${st.frame_id}` : null;
+  if(key === cnKey) return;
+  cnKey = key; cnLayer.clearLayers();
+  if(st && st.success && st.lat != null){
+    if(st.sigma_m) L.circle([st.lat, st.lon], {radius:st.sigma_m, color:'#e3b341', weight:1.5, fillOpacity:.04, interactive:false}).addTo(cnLayer);
+    L.marker([st.lat, st.lon], {interactive:false, icon:L.divIcon({className:'', iconSize:[26,26], iconAnchor:[13,13],
+      html:'<div style="font-size:22px;color:#e3b341;text-shadow:0 0 4px #000;line-height:26px;text-align:center">★</div>'})}).addTo(cnLayer);
+  }
+}
+const M_DEG = 111320;
+function squareAround(c, size){
+  const dl = size / 2 / M_DEG, dn = size / 2 / (M_DEG * Math.cos(c[0] * Math.PI / 180));
+  return [[c[0] - dl, c[1] - dn], [c[0] + dl, c[1] + dn]];
+}
+function renderNight(d, v, st){
+  const searching = st && st.source !== 'gps_active' && st.search_center;
+  const q = (st && st.query) || {};
+  $('visRk').textContent = 'Search area'; $('visNk').textContent = 'Ground seen by the camera';
+  $('visScoreK').textContent = 'Match consistency';
+  $('visR').textContent = searching ? `${(st.search_size_m / 1000).toFixed(1)} km square` : '—';
+  $('visN').textContent = q.footprint_w_m ? `${Math.round(q.footprint_w_m)} × ${Math.round(q.footprint_h_m)} m` : '—';
+  if(st && st.conf != null && st.source !== 'gps_active'){
+    $('visScore').textContent = `${(+st.conf).toFixed(2)} (min ${st.threshold})`;
+    $('visScoreBar').style.width = (Math.max(0, Math.min(1, st.conf)) * 100) + '%';
+    $('visScoreBar').style.background = st.conf >= st.threshold ? '#a371f7' : 'var(--bad)';
+    $('visThr').style.left = (st.threshold * 100) + '%';
+  } else { $('visScore').textContent = '—'; $('visScoreBar').style.width = '0'; }
+  const key = st ? `${st.frame_id}:${st.source}` : null;
+  if(key === visKey) return;
+  visKey = key; visLayer.clearLayers();
+  if(!searching){ wasSearching = false; return; }
+  const c = st.search_center;
+  if(!wasSearching && follow) map.fitBounds(squareAround(c, st.search_size_m * 1.3), {animate:true});
+  wasSearching = true;
+  L.rectangle(squareAround(c, st.search_size_m), {color:'#a371f7', weight:2, dashArray:'8 6', fillOpacity:.03, interactive:false}).addTo(visLayer);
+  L.circleMarker(c, {radius:4, color:'#a371f7', fillColor:'#a371f7', fillOpacity:1, interactive:false})
+    .bindTooltip('last known position (search centre)').addTo(visLayer);
+  if(st.footprint_quad && st.success)
+    L.polygon(st.footprint_quad, {color:'#a371f7', weight:2, fillOpacity:.25, interactive:false}).addTo(visLayer);
+  if(st.success && st.lat != null)
+    L.polyline([c, [st.lat, st.lon]], {color:'#a371f7', weight:1.5, opacity:.8, interactive:false}).addTo(visLayer);
+}
+
 function renderVision(d){
   const v = d.vision || {}, st = v.status, real = d.cfg.vision === 'real';
+  renderCelestial(d);
+  const night = v.kind === 'night';
+  $('visTitle').textContent = night ? 'Night vision (thermal, STHN)' : 'Day vision (DINOv2)';
   $('visCard').style.display = real ? '' : 'none';
   if(!real){ visLayer.clearLayers(); return; }
   const chip = $('visChip');
@@ -427,14 +527,24 @@ function renderVision(d){
   else if(!st || st.source === 'gps_active'){
     chip.textContent = 'standby'; chip.className = 'chip alive'; chip.style.color = '';
     $('visWhat').textContent = 'GPS is good: vision is idle and keeps the last GPS position as the centre of its future search.';
+    chip.className = 'chip alive';
   } else {
     const ok = st.success;
     chip.textContent = ok ? 'MATCH' : 'NO MATCH'; chip.className = 'chip ' + (ok ? 'active' : '');
     chip.style.color = ok ? '' : 'var(--bad)';
     $('visWhat').textContent = ok
-      ? `GPS lost: searched ${st.n_candidates} tiles within ${Math.round(st.search_radius_m)} m of the last known position and matched ${st.match || ''}.`
+      ? (night ? `GPS lost: aligned the thermal image with the map in a ${(st.search_size_m/1000).toFixed(1)} km square around the last known position (heading from ${st.heading_source}).`
+               : `GPS lost: searched ${st.n_candidates} tiles within ${Math.round(st.search_radius_m)} m of the last known position and matched ${st.match || ''}.`)
       : `No position this frame: ${st.reason || '—'}`;
   }
+  $('visErr').textContent = st && st.err_m != null ? m(st.err_m) : '—';
+  const k0 = v.stats || {};
+  $('visStats').innerHTML = `Frames <b>${k0.frames||0}</b> · on GPS standby <b>${k0.idle||0}</b> · ` +
+    `matched <b class="ok">${k0.matched||0}</b> · no match <b class="bad">${k0.rejected||0}</b>` +
+    (v.matches && v.matches.length ? ` · median match error <b>${m(median(v.matches.map(x => x[2]).filter(x => x != null)))}</b>` : '');
+  if(night) return renderNight(d, v, st);
+  $('visRk').textContent = 'Search circle'; $('visNk').textContent = 'Candidate tiles';
+  $('visScoreK').textContent = 'Best match score';
   const searching = st && st.source !== 'gps_active' && st.search_center;
   $('visR').textContent = searching ? `${Math.round(st.search_radius_m)} m` : '—';
   $('visN').textContent = searching ? st.n_candidates : '—';
@@ -480,7 +590,12 @@ function renderVision(d){
 const median = a => { if(!a.length) return null; const s = a.slice().sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
 
 // ── controls ──
-const cfg = {vehicle:'drone', profile:'measured', vision:'real'};
+const cfg = {vehicle:'drone', profile:'measured', vision:'real', light:'day'};
+const TOD_NOTE = {
+  day:'Day: the real day vision (DINOv2) localises the camera against the prepared tiles.',
+  night:'Night: the real night vision (STHN) aligns the thermal image with the map around the last ' +
+        'position (no preparation needed), and the star camera gives a coarse celestial fix. ' +
+        'Night vision needs ≥ 350 m with this 84° camera.'};
 function seg(id, onPick){
   $(id).querySelectorAll('button').forEach(b => b.onclick = () => onPick(b.dataset.v));
 }
@@ -507,8 +622,15 @@ function setVision(v){
   updateHint();
 }
 seg('vision', setVision);
+function setTod(v){
+  cfg.light = v; setSeg('tod', v); $('todNote').textContent = TOD_NOTE[v];
+  if(v === 'night' && +$('alt').value < 350){ $('alt').value = 400; $('alt').oninput(); }
+  updateHint();
+}
+seg('tod', setTod);
 seg('profile', v => { cfg.profile = v; setSeg('profile', v); $('profNote').textContent = PROF_NOTE[v]; });
 $('profNote').textContent = PROF_NOTE.real;
+$('todNote').textContent = TOD_NOTE.day;
 $('spd').oninput = () => $('spdV').textContent = $('spd').value;
 $('alt').oninput = () => { $('altV').textContent = $('alt').value;
   $('fpV').textContent = Math.round(2 * $('alt').value * Math.tan(42 * Math.PI / 180)); };
@@ -533,7 +655,7 @@ function toast(msg){
 $('startBtn').onclick = () => {
   clearTracks();
   post('mission', {vehicle:cfg.vehicle, start:startPt, dest:destPt, speed:+$('spd').value,
-                   alt:+$('alt').value, profile:cfg.profile, vision:cfg.vision,
+                   alt:+$('alt').value, profile:cfg.profile, vision:cfg.vision, light:cfg.light,
                    forward_degraded:$('fwd').checked, degraded_sigma_m:+$('fwdSigma').value});
   follow = true; $('follow').classList.add('on');
 };
@@ -558,10 +680,10 @@ function updateHint(){
   else if(flying()) t = 'Click the map to send the vehicle to a new destination';
   else if(!startPt) t = 'Click the map to place the START point';
   else if(!destPt) t = 'Click the map to place the DESTINATION';
-  else if(cfg.vision === 'real' && !areaReady) t = 'Step 2 — press Prepare map';
+  else if(cfg.vision === 'real' && cfg.light === 'day' && !areaReady) t = 'Step 2 — press Prepare map';
   else t = 'Ready — press Start mission';
   $('maphint').textContent = t;
-  $('startBtn').disabled = !(startPt && destPt) || (cfg.vision === 'real' && !areaReady) ||
+  $('startBtn').disabled = !(startPt && destPt) || (cfg.vision === 'real' && cfg.light === 'day' && !areaReady) ||
     (S && ['starting','waiting_gps','arming','takeoff'].includes(S.phase));
 }
 const m = v => v == null ? '—' : v >= 1000 ? `${(v/1000).toFixed(2)} km` : `${Math.round(v)} m`;
@@ -582,6 +704,7 @@ function render(d){
     cfg.vehicle = c.vehicle; setSeg('vehicle', c.vehicle);
     $('altBox').style.display = c.vehicle === 'drone' ? '' : 'none';
     cfg.profile = c.profile; setSeg('profile', c.profile);
+    setTod(d.faults.light);
     setVision(c.vision);
     $('fwd').checked = !!c.forward_degraded; $('fwdSigma').value = c.degraded_sigma_m;
     $('spd').value = c.speed; $('spdV').textContent = c.speed;

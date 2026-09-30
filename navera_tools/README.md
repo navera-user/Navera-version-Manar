@@ -48,6 +48,17 @@ Open **`http://<jetson-ip>:8190`** (control page) and, if wanted, `http://<jetso
 4. **Inject faults** at any time: GPS jammed / spoofed (2 km jump) / spoofed (slow drift) / off,
    camera failed, night, IMU failed.
 
+**Night missions** (step 3, *Night*): the real night vision (`night_subscriber`, STHN, no map
+preparation) receives heading-up grey "thermal" images and the real celestial node
+(`cn_subscriber`, astrometry.net) receives star images drawn from the Yale Bright Star
+Catalogue for the true position and attitude at a simulated night sky time (20:30 UTC +
+elapsed). The map shows the night search square and matched footprint, and the celestial fix
+with its stated accuracy circle. The simulated IMU has BNO085-class attitude errors (0.3° tilt,
+1.5° heading, drawn per mission), which set the celestial error (tens of km). Night vision
+needs ≥ 350 m with the simulated 84° camera. For development without root, astrometry.net can
+be unpacked from the Ubuntu packages into `~/.navera_sim/astrometry/` (`solve-field` wrapper +
+`astrometry.cfg`); the simulator uses it when no `solve-field` is installed.
+
 With real vision, when GPS is lost the map zooms to vision's **search circle** (centred on the
 last known position, 600 m), the candidate tiles with their scores, the tile it matched and the
 position it gave; the Day vision card shows the frame's result, the score against the

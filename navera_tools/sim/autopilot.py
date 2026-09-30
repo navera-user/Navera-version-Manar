@@ -75,6 +75,7 @@ class Autopilot:
                     "EK3_SRC1_VELXY 0\nEK3_SRC1_VELZ 0\n")
             if vehicle == "drone":
                 f.write("ANGLE_MAX 4500\n")      # 30 deg caps the SITL quad at ~10 m/s
+                f.write("WPNAV_SPEED_UP 500\n")  # climb at 5 m/s (default 2.5): 400 m in ~80 s
         files = ",".join([os.path.join(dp, d) for d in defaults] + [params])
         cmd = [os.path.join(self.dir, "build/sitl/bin", binary), "--model", model,
                "--home", f"{lat},{lon},10,{heading}", "--defaults", files, "-I0", "-w"]

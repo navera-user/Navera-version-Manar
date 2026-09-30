@@ -28,6 +28,7 @@ import random
 import signal
 import subprocess
 import sys
+import shutil
 import threading
 import time
 import traceback
@@ -52,7 +53,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from autopilot import NAVERA_URL, VEHICLES, Autopilot  # noqa: E402
 from camera_view import CameraView  # noqa: E402
 from nmea_gps import MODES as GPS_MODES, NmeaGps  # noqa: E402
-from vision_link import AreaManager, DayCamera  # noqa: E402
+from vision_link import AreaManager, StarCamera, VisionCamera  # noqa: E402
+from cn_pkg.nodes.celestial_math import boresight_altaz  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 M_PER_DEG = 111_320.0
@@ -159,7 +161,12 @@ class Simulator(Node):
         self.event("info", f"NAVERA nodes started ({env_note}); GPS receiver on {self.gps.port}")
 
         self.areas = AreaManager(mbtiles, work_dir, self.event)
-        self.daycam = DayCamera(self, self.tiles, self._truth, self.event)
+        self.daycam = VisionCamera(self, self.tiles, self._truth, self.event, "day")
+        self.nightcam = VisionCamera(self, self.tiles, self._truth, self.event, "night")
+        self.starcam = StarCamera(self, work_dir, self._truth, self._true_boresight,
+                                  self._sky_utc, self.event)
+        self.sky_base = None                  # (utc epoch at switch, monotonic at switch)
+        self.imu_bias = (0.0, 0.0, 0.0)       # roll, pitch, yaw (rad): drawn per mission
         self.pub_truth = self.create_publisher(NavSatFix, "/navera/sim/truth", 10)
         self.pub_imu = self.create_publisher(Imu, "/navera/sensors/imu", 10)
         self.pub_rtc = self.create_publisher(TimeReference, "/navera/sensors/rtc_time", 10)
@@ -228,6 +235,29 @@ class Simulator(Node):
         self.pub_truth.publish(fix)
         self.gps.tick(lat, lon, tr[9], tr[4], tr[5], 0.2)
 
+    @staticmethod
+    def _quat_enu(roll, pitch, yaw):
+        """ArduPilot NED attitude (rad) → ROS ENU body (FLU) quaternion (x, y, z, w)."""
+        y, p, r = math.pi / 2 - yaw, -pitch, roll
+        cy, sy, cp, sp, cr, sr = (math.cos(y / 2), math.sin(y / 2), math.cos(p / 2),
+                                  math.sin(p / 2), math.cos(r / 2), math.sin(r / 2))
+        return (sr * cp * cy - cr * sp * sy, cr * sp * cy + sr * cp * sy,
+                cr * cp * sy - sr * sp * cy, cr * cp * cy + sr * sp * sy)
+
+    def _true_boresight(self):
+        """True (alt, az) of the upward star camera, from the physics attitude."""
+        s = self.ap.snapshot()
+        if not s["link"]:
+            return None
+        return boresight_altaz(self._quat_enu(*s["attitude"]), 90.0, 0.0, 0.0)
+
+    def _sky_utc(self):
+        """Simulated sky time: tonight 20:30 UTC + elapsed since the switch to night."""
+        if self.sky_base is None:
+            return time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+        return time.strftime("%Y-%m-%d %H:%M:%S",
+                             time.gmtime(self.sky_base[0] + time.monotonic() - self.sky_base[1]))
+
     def _tick_imu(self):
         if self.faults["imu"] != "ok":
             return
@@ -235,17 +265,14 @@ class Simulator(Node):
         if not s["link"]:
             return
         roll, pitch, yaw = s["attitude"]
-        # NED (ArduPilot) -> ENU (ROS): yaw_enu = pi/2 - yaw_ned, pitch and roll swap sign convention
-        y, p, r = math.pi / 2 - yaw, -pitch, roll
-        cy, sy, cp, sp, cr, sr = (math.cos(y / 2), math.sin(y / 2), math.cos(p / 2),
-                                  math.sin(p / 2), math.cos(r / 2), math.sin(r / 2))
+        # BNO085-class IMU: constant attitude bias drawn per mission + small noise
+        br, bp, by = self.imu_bias
+        n = lambda: self.rng.gauss(0.0, math.radians(0.05))     # noqa: E731
+        qx, qy, qz, qw = self._quat_enu(roll + br + n(), pitch + bp + n(), yaw + by + n())
         imu = Imu()
         imu.header.stamp = self.get_clock().now().to_msg()
         imu.header.frame_id = "imu_link"
-        imu.orientation.w = cr * cp * cy + sr * sp * sy
-        imu.orientation.x = sr * cp * cy - cr * sp * sy
-        imu.orientation.y = cr * sp * cy + sr * cp * sy
-        imu.orientation.z = cr * cp * sy - sr * sp * cy
+        imu.orientation.x, imu.orientation.y, imu.orientation.z, imu.orientation.w = qx, qy, qz, qw
         gx, gy, gz = s["gyro"]
         imu.angular_velocity.x, imu.angular_velocity.y, imu.angular_velocity.z = gx, -gy, -gz
         imu.linear_acceleration.z = 9.81
@@ -401,14 +428,13 @@ class Simulator(Node):
                 self.nav.update(state="—", source="—", reason="", lat=None, lon=None)
                 self._last_state = self._last_source = None
             self._stop_vision()
-            if c["vision"] == "real":
-                vp = Proc("day_vision", ["ros2", "run", "day_pkg", "day_subscriber.py"], self.work,
-                          env={"DAY_DATASET_DIR": self.areas.path(c["area"])})
-                vp.start()
-                with self.lock:
-                    self.procs["day_vision"] = vp
-                self.daycam.start()
-                self.event("info", "day vision: loading DINOv2 and the prepared area…")
+            self.imu_bias = (self.rng.gauss(0, math.radians(0.3)), self.rng.gauss(0, math.radians(0.3)),
+                             self.rng.gauss(0, math.radians(1.5)))
+            self.event("info", "IMU (simulated, BNO085-class): attitude bias roll "
+                               f"{math.degrees(self.imu_bias[0]):+.2f}°, pitch "
+                               f"{math.degrees(self.imu_bias[1]):+.2f}°, heading "
+                               f"{math.degrees(self.imu_bias[2]):+.2f}°")
+            self._apply_pipelines()
             self.ap.start(c["vehicle"], c["start"][0], c["start"][1], self._bearing(c["start"], c["dest"]))
             self.ap.connect()
             vo_cmd = ["ros2", "run", "navera_output", "vehicle_output_node.py", "--ros-args",
@@ -437,7 +463,8 @@ class Simulator(Node):
             if c["vehicle"] == "drone":
                 self._set_phase("takeoff", f"taking off to {c['alt']:.0f} m")
                 self.ap.takeoff(c["alt"])
-                self._wait(lambda: (self.ap.snapshot()["truth"] or (0, 0, 0))[2] > 0.9 * c["alt"], 120,
+                self._wait(lambda: (self.ap.snapshot()["truth"] or (0, 0, 0))[2] > 0.9 * c["alt"],
+                           60 + c["alt"] / 2.0,
                            "takeoff did not complete")
             self._fly_to(self.cfg["dest"])
             while not self._abort.is_set():
@@ -468,12 +495,73 @@ class Simulator(Node):
         except Exception as e:
             self._set_phase("error", f"stopped: {e}")
 
-    def _stop_vision(self):
-        self.daycam.stop()
+    def _stop_vision(self, keep=()):
+        for name, cam in (("day_vision", self.daycam), ("night_vision", self.nightcam),
+                          ("celestial", self.starcam)):
+            if name in keep:
+                continue
+            cam.stop()
+            with self.lock:
+                vp = self.procs.pop(name, None)
+            if vp:
+                vp.stop()
+
+    def _start_proc(self, name, cmd, env=None):
+        vp = Proc(name, cmd, self.work, env=env)
+        vp.start()
         with self.lock:
-            vp = self.procs.pop("day_vision", None)
-        if vp:
-            vp.stop()
+            self.procs[name] = vp
+
+    def _apply_pipelines(self):
+        """Run the pipelines the box would run for this light, as on the vehicle:
+        day → day vision (DINOv2, needs the prepared area); night → night vision
+        (STHN, GPU — never both) + celestial (CPU, star camera)."""
+        night = self.faults["light"] == "night"
+        real = self.cfg["vision"] == "real"
+        want = set()
+        if real:
+            want.add("night_vision" if night else "day_vision")
+        if night:
+            want.add("celestial")
+        with self.lock:
+            running = set(k for k in ("day_vision", "night_vision", "celestial") if k in self.procs)
+        self._stop_vision(keep=want & running)
+        if night and self.sky_base is None:
+            t = time.gmtime()
+            base = time.mktime((t.tm_year, t.tm_mon, t.tm_mday, 20, 30, 0, 0, 0, 0)) - time.timezone
+            self.sky_base = (base, time.monotonic())
+        if not night:
+            self.sky_base = None
+        if "day_vision" in want and "day_vision" not in running:
+            area = self.cfg.get("area")
+            if not (area and self.areas.is_prepared(area)):
+                self.event("warn", "day vision: no prepared map area for this route — "
+                                   "prepare the map to use day vision")
+            else:
+                self._start_proc("day_vision", ["ros2", "run", "day_pkg", "day_subscriber.py"],
+                                 env={"DAY_DATASET_DIR": self.areas.path(area)})
+                self.daycam.start()
+                self.event("info", "day vision: loading DINOv2 and the prepared area…")
+        if "night_vision" in want and "night_vision" not in running:
+            self._start_proc("night_vision", [
+                "ros2", "run", "night_pkg", "night_subscriber.py", "--ros-args",
+                "-p", f"mbtiles:={self.tiles.path}", "-p", "camera_hfov_deg:=84.0"])
+            self.nightcam.start()
+            self.event("info", "night vision: loading the STHN network (thermal camera, "
+                               "84° field of view)…")
+        if "celestial" in want and "celestial" not in running:
+            astro = os.path.join(os.path.expanduser("~/.navera_sim"), "astrometry")
+            env = {}
+            if os.path.exists(os.path.join(astro, "solve-field")) and not shutil.which("solve-field"):
+                env = {"NAVERA_SOLVE_FIELD": os.path.join(astro, "solve-field"),
+                       "NAVERA_ASTROMETRY_CFG": os.path.join(astro, "astrometry.cfg")}
+            self._start_proc("celestial", [
+                "ros2", "run", "cn_pkg", "cn_subscriber.py", "--ros-args",
+                "-p", "camera_fov_deg:=60.0", "-p", "attitude_sigma_deg:=0.5",
+                "-p", "camera_mount_elevation_deg:=90.0"], env=env)
+            self.starcam.start()
+            self.event("info", f"celestial: star camera on (60°, pointing up); sky time "
+                               f"{self._sky_utc()} UTC")
 
     def _fly_to(self, dest):
         self.cfg["dest"] = dest
@@ -522,14 +610,18 @@ class Simulator(Node):
                 raise ValueError("the destination is less than 50 m from the start")
             spd, alt = DEFAULTS[vehicle]
             vision = "real" if body.get("vision", "real") == "real" else "profile"
-            area = None
+            light = "night" if body.get("light") == "night" else "day"
+            area = self.areas.area_id([tuple(map(float, start)), tuple(map(float, dest))], 1000.0)
             if vision == "real":
                 if vehicle != "drone":
-                    raise ValueError("real day vision needs a downward camera at altitude: "
+                    raise ValueError("real vision needs a downward camera at altitude: "
                                      "use the drone, or the simulated vision profile")
-                area = self.areas.area_id([tuple(map(float, start)), tuple(map(float, dest))], 1000.0)
-                if not self.areas.is_prepared(area):
+                if light == "day" and not self.areas.is_prepared(area):
                     raise ValueError("prepare the map for this route first (Prepare map)")
+                if light == "night" and float(body.get("alt", 400)) < 350:
+                    self.event("warn", "night vision needs about 350 m or more with this 84° "
+                                       "camera: below, it will report 'fly higher'")
+            self.faults["light"] = light
             self.start_mission(dict(
                 vision=vision, area=area,
                 degraded_sigma_m=max(5.0, min(2000.0, float(body.get("degraded_sigma_m", 300.0)))),
@@ -575,8 +667,11 @@ class Simulator(Node):
                         self.faults[k] = body[k]
                         if k == "gps":
                             self.gps.set_mode(body[k])
-                        self.daycam.failed = self.faults["camera"] != "ok"
+                        for cam in (self.daycam, self.nightcam, self.starcam):
+                            cam.failed = self.faults["camera"] != "ok"
                         self.daycam.night = self.faults["light"] == "night"
+                        if k == "light" and self.phase not in ("idle", "error"):
+                            threading.Thread(target=self._apply_pipelines, daemon=True).start()
                         label = {"gps": "GPS receiver", "camera": "camera", "light": "light",
                                  "imu": "IMU"}[k]
                         self.event("warn" if body[k] not in ("ok", "day") else "info",
@@ -599,7 +694,10 @@ class Simulator(Node):
                 truth=None, navera=nav, autopilot=None, sources=self.sources,
                 procs={n: p.alive() for n, p in list(self.procs.items())},
                 events=list(self.events)[-60:], series=list(self.series)[-600:],
-                area=self.areas.state(), vision=self.daycam.state())
+                area=self.areas.state(),
+                vision=(self.nightcam if self.faults["light"] == "night" else self.daycam).state(),
+                celestial=self.starcam.state(),
+                imu_bias_deg=[round(math.degrees(b), 2) for b in self.imu_bias])
         nav["fresh"] = nav_fresh
         if truth:
             out["truth"] = dict(lat=truth[0], lon=truth[1], alt=truth[2], heading=truth[3], speed=truth[4])
@@ -622,8 +720,9 @@ class Simulator(Node):
         return out
 
     def camera_jpeg(self):
-        if self.cfg["vision"] == "real" and self.daycam.last_jpeg:
-            return self.daycam.last_jpeg
+        cam = self.nightcam if self.faults["light"] == "night" else self.daycam
+        if self.cfg["vision"] == "real" and cam.enabled and cam.last_jpeg:
+            return cam.last_jpeg
         tr = self._truth()
         if tr is None:
             return None
@@ -633,7 +732,8 @@ class Simulator(Node):
     def shutdown(self):
         self._closing = True
         self._abort.set()
-        self.daycam.close()
+        for cam in (self.daycam, self.nightcam, self.starcam):
+            cam.close()
         self.areas.stop()
         self.ap.stop()
         with self.lock:
@@ -682,6 +782,9 @@ def serve(sim, host, port):
                 except Exception as e:
                     sim.get_logger().error("state: " + traceback.format_exc())
                     return self._json(500, {"error": str(e)})
+            if path == "/api/star.jpg":
+                img = sim.starcam.last_jpeg
+                return self._send(200, img, "image/jpeg") if img else self._send(204, b"", "image/jpeg")
             if path == "/api/camera.jpg":
                 img = sim.camera_jpeg()
                 return self._send(200, img, "image/jpeg") if img else self._send(204, b"", "image/jpeg")

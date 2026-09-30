@@ -138,24 +138,44 @@ class AreaManager:
             self._proc.terminate()
 
 
-class DayCamera:
-    """Simulated downward day camera → the real day_subscriber."""
+TOPICS = {
+    "day": dict(img="/day/image_raw", meta="/day/frame_meta", start="/day/camera/start",
+                ready="/day/localizer_ready", done="/day/frame_done", status="/day/day_status",
+                frame="day_camera_link", name="day vision", model="DINOv2 model and area descriptors"),
+    "night": dict(img="/thermal/image_raw", meta="/thermal/frame_meta",
+                  start="/thermal/camera/start", ready="/night/localizer_ready",
+                  done="/thermal/frame_done", status="/night/night_status",
+                  frame="thermal_camera_link", name="night vision", model="STHN network"),
+}
+MATCH_SOURCES = ("visual_match", "predicted", "night_sthn")
 
-    def __init__(self, node, tiles, truth_fn, log):
+
+class VisionCamera:
+    """Simulated downward camera (day colour or night thermal) → the real localizer.
+
+    day:   north-up colour image (the day pipeline does not de-rotate; the image
+           is assumed de-rotated upstream).
+    night: heading-up grey "thermal" image, as a fixed camera sees it; the night
+           node scales it from the altitude and turns it north-up with the IMU.
+    """
+
+    def __init__(self, node, tiles, truth_fn, log, kind="day"):
         self.node, self.tiles, self.truth_fn, self.log = node, tiles, truth_fn, log
+        self.kind = kind
+        self.t = TOPICS[kind]
         latched = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
                              durability=DurabilityPolicy.TRANSIENT_LOCAL,
                              history=HistoryPolicy.KEEP_LAST, depth=1)
         rel = QoSProfile(reliability=ReliabilityPolicy.RELIABLE, history=HistoryPolicy.KEEP_LAST,
                          depth=10)
-        self.pub_img = node.create_publisher(Image, "/day/image_raw", rel)
-        self.pub_meta = node.create_publisher(String, "/day/frame_meta", rel)
-        self.pub_start = node.create_publisher(Bool, "/day/camera/start", latched)
-        node.create_subscription(Bool, "/day/localizer_ready", self._on_ready, latched)
-        node.create_subscription(Int32, "/day/frame_done",
+        self.pub_img = node.create_publisher(Image, self.t["img"], rel)
+        self.pub_meta = node.create_publisher(String, self.t["meta"], rel)
+        self.pub_start = node.create_publisher(Bool, self.t["start"], latched)
+        node.create_subscription(Bool, self.t["ready"], self._on_ready, latched)
+        node.create_subscription(Int32, self.t["done"],
                                  self._on_done, QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
                                                            history=HistoryPolicy.KEEP_LAST, depth=1))
-        node.create_subscription(String, "/day/day_status", self._on_status, 10)
+        node.create_subscription(String, self.t["status"], self._on_status, 10)
         self.lock = threading.Lock()
         self.enabled = False
         self.ready = False
@@ -176,7 +196,7 @@ class DayCamera:
         with self.lock:
             was, self.ready = self.ready, bool(msg.data)
         if self.ready and not was:
-            self.log("ok", "day vision: DINOv2 model and area descriptors loaded — ready")
+            self.log("ok", f"{self.t['name']}: {self.t['model']} loaded — ready")
 
     def _on_done(self, msg):
         with self.lock:
@@ -193,11 +213,11 @@ class DayCamera:
             truth = self.last_frame_truth.pop(fid, None)
             d["t"] = time.monotonic()
             src = d.get("source")
-            if truth and d.get("lat") is not None and src in ("visual_match", "predicted"):
+            if truth and d.get("lat") is not None and src in MATCH_SOURCES:
                 d["err_m"] = _haversine(truth, (d["lat"], d["lon"]))
             if src == "gps_active":
                 self.stats["idle"] += 1
-            elif d.get("success"):
+            elif d.get("success") and src in MATCH_SOURCES:
                 self.stats["matched"] += 1
                 self.matches.append((d["lat"], d["lon"], d.get("err_m")))
             else:
@@ -219,8 +239,8 @@ class DayCamera:
         self.pub_start.publish(Bool(data=False))
 
     # ---- rendering ----
-    def render(self, lat, lon, alt_m):
-        """North-up nadir view of the map for this position and altitude."""
+    def render(self, lat, lon, alt_m, heading_deg=0.0):
+        """Nadir view of the map for this position and altitude (see class doc)."""
         footprint = max(40.0, 2.0 * max(alt_m, 1.0) * math.tan(math.radians(HFOV_DEG / 2)))
         z = 18 if footprint <= 600 else 17
         tile_m = 40_075_016.7 * math.cos(math.radians(lat)) / 2 ** z
@@ -239,12 +259,19 @@ class DayCamera:
                     except Exception:
                         pass
         cx, cy = (x - tx + half) * 256, (y - ty + half) * 256
+        if self.kind == "night" and heading_deg:
+            # heading-up: the north-up view turned counter-clockwise by the heading
+            mosaic = mosaic.rotate(heading_deg, resample=PILImage.BILINEAR, center=(cx, cy))
         w_px = footprint / tile_m * 256
         h_px = w_px * FRAME_H / FRAME_W
         img = mosaic.crop((int(cx - w_px / 2), int(cy - h_px / 2),
                            int(cx + w_px / 2), int(cy + h_px / 2))).resize((FRAME_W, FRAME_H),
                                                                            PILImage.BILINEAR)
-        if self.night:        # a day camera at night: almost nothing visible
+        if self.kind == "night":      # thermal look: grey, stretched, soft, grainy
+            g = ImageOps.autocontrast(ImageOps.grayscale(img), cutoff=1)
+            g = g.filter(ImageFilter.GaussianBlur(1.0))
+            img = PILImage.blend(g, PILImage.effect_noise((FRAME_W, FRAME_H), 25), 0.10).convert("RGB")
+        elif self.night:      # a day camera at night: almost nothing visible
             img = ImageEnhance.Brightness(ImageOps.grayscale(img).convert("RGB")).enhance(0.08)
             img = PILImage.blend(img, PILImage.effect_noise((FRAME_W, FRAME_H), 30).convert("RGB"),
                                  0.15)
@@ -273,7 +300,7 @@ class DayCamera:
 
     def _send(self, tr):
         lat, lon, alt = tr[0], tr[1], max(tr[2], 0.0)
-        img, footprint = self.render(lat, lon, alt)
+        img, footprint = self.render(lat, lon, alt, tr[3])
         stamp = self.node.get_clock().now().to_msg()
         with self.lock:
             self.frame_id += 1
@@ -288,14 +315,14 @@ class DayCamera:
         self.last_jpeg = buf.getvalue()
         msg = Image()
         msg.header.stamp = stamp
-        msg.header.frame_id = "day_camera_link"
+        msg.header.frame_id = self.t["frame"]
         msg.height, msg.width, msg.encoding = FRAME_H, FRAME_W, "bgr8"
         msg.step = FRAME_W * 3
         r, g, b = img.split()
         msg.data = PILImage.merge("RGB", (b, g, r)).tobytes()
         meta = {"frame_id": fid, "image_stamp_ns": stamp.sec * 1_000_000_000 + stamp.nanosec,
                 "lat": None, "lon": None, "gps_valid": False, "altitude_m": round(alt, 1),
-                "heading_deg": None, "speed_mps": None, "camera_type": "day",
+                "heading_deg": None, "speed_mps": None, "camera_type": self.kind,
                 "timestamp": time.strftime("%H:%M:%S"), "image_file": f"sim_{fid:06d}.jpg",
                 "simulated": True, "footprint_m": round(footprint)}
         self.pub_meta.publish(String(data=json.dumps(meta)))
@@ -306,7 +333,7 @@ class DayCamera:
             st = dict(self.last_status) if self.last_status else None
             if st:
                 st["age_s"] = round(time.monotonic() - st.pop("t"), 1)
-            return dict(enabled=self.enabled, ready=self.ready, failed=self.failed,
+            return dict(kind=self.kind, enabled=self.enabled, ready=self.ready, failed=self.failed,
                         status=st, stats=dict(self.stats),
                         matches=[list(m) for m in self.matches])
 
@@ -321,4 +348,120 @@ def _haversine(a, b):
     return 2 * 6_371_000.0 * math.asin(math.sqrt(min(1.0, h)))
 
 
-__all__ = ["AreaManager", "DayCamera", "BUFFER_M", "tile_nw"]
+__all__ = ["AreaManager", "VisionCamera", "BUFFER_M", "tile_nw"]
+
+
+class StarCamera:
+    """Simulated upward star camera → the real cn_subscriber (astrometry.net).
+
+    Draws the real sky (sky_view.SkyCamera) seen with the TRUE attitude at the
+    simulated sky time, every `period_s`. The node computes the camera attitude
+    from the (imperfect) IMU, as on the vehicle, so the fix error shows what the
+    IMU's attitude error costs (~111 km per degree).
+    """
+
+    def __init__(self, node, work_dir, truth_fn, attitude_fn, utc_fn, log, hfov_deg=60.0,
+                 period_s=15.0):
+        self.node, self.truth_fn, self.attitude_fn, self.utc_fn, self.log = (
+            node, truth_fn, attitude_fn, utc_fn, log)
+        self.work, self.hfov, self.period = work_dir, hfov_deg, period_s
+        rel = QoSProfile(reliability=ReliabilityPolicy.RELIABLE, history=HistoryPolicy.KEEP_LAST,
+                         depth=10)
+        self.pub_img = node.create_publisher(Image, "/celestial/image_raw", rel)
+        self.pub_meta = node.create_publisher(String, "/celestial/frame_meta", rel)
+        node.create_subscription(String, "/cn/cn_status", self._on_status, 10)
+        self.lock = threading.Lock()
+        self.enabled = False
+        self.failed = False
+        self.sky = None
+        self.frame_id = 0
+        self.last_jpeg = None
+        self.last_status = None
+        self.last_render = {}
+        self.truth_at = {}
+        self.stats = dict(frames=0, solved=0, failed=0)
+        self._stop = threading.Event()
+        threading.Thread(target=self._loop, daemon=True).start()
+
+    def _on_status(self, msg):
+        try:
+            d = json.loads(msg.data)
+        except ValueError:
+            return
+        with self.lock:
+            truth = self.truth_at.pop(d.get("frame_id"), None)
+            if truth and d.get("success") and d.get("lat") is not None:
+                d["err_m"] = _haversine(truth, (d["lat"], d["lon"]))
+            self.stats["solved" if d.get("success") else "failed"] += 1
+            d["t"] = time.monotonic()
+            self.last_status = d
+        if d.get("success"):
+            self.log("ok", f"celestial: stars identified (log-odds {d.get('log_odds')}) — fix "
+                           f"{(d.get('err_m') or 0) / 1000:.1f} km from the truth")
+        else:
+            self.log("warn", f"celestial: no fix — {str(d.get('error') or d.get('reason'))[:90]}")
+
+    def start(self):
+        with self.lock:
+            self.enabled = True
+            self.last_status = None
+            self.stats = dict(frames=0, solved=0, failed=0)
+
+    def stop(self):
+        with self.lock:
+            self.enabled = False
+
+    def _loop(self):
+        last = 0.0
+        while not self._stop.is_set():
+            time.sleep(0.2)
+            if not self.enabled or self.failed or time.monotonic() - last < self.period:
+                continue
+            stamp = self.node.get_clock().now().to_msg()     # exposure = attitude sample
+            tr, att = self.truth_fn(), self.attitude_fn()
+            if tr is None or att is None:
+                continue
+            last = time.monotonic()
+            try:
+                self._send(tr, att, stamp)
+            except Exception as e:                   # noqa: BLE001
+                self.log("error", f"star camera: {e}")
+
+    def _send(self, tr, att, stamp):
+        if self.sky is None:
+            from sky_view import SkyCamera
+            self.sky = SkyCamera(self.work, hfov_deg=self.hfov)
+        alt, az = att
+        utc = self.utc_fn()
+        img, n, sun = self.sky.render(tr[0], tr[1], utc, alt, az, roll_deg=tr[3])
+        with self.lock:
+            self.frame_id += 1
+            fid = self.frame_id
+            self.truth_at[fid] = (tr[0], tr[1])
+            self.stats["frames"] += 1
+            self.last_render = dict(stars=n, sun_alt=round(sun, 1), utc=utc,
+                                    true_alt=round(alt, 2), true_az=round(az, 2))
+        ok, jpg = __import__("cv2").imencode(".jpg", img)
+        self.last_jpeg = jpg.tobytes() if ok else None
+        msg = Image()
+        msg.header.stamp = stamp
+        msg.header.frame_id = "celestial_camera_link"
+        msg.height, msg.width, msg.encoding = img.shape[0], img.shape[1], "mono8"
+        msg.step = img.shape[1]
+        msg.data = img.tobytes()
+        meta = {"frame_id": fid, "image_stamp_ns": stamp.sec * 1_000_000_000 + stamp.nanosec,
+                "utc_time": utc, "altitude_m": round(tr[2], 1), "gps_valid": False,
+                "camera_type": "celestial", "simulated": True}
+        self.pub_meta.publish(String(data=json.dumps(meta)))
+        self.pub_img.publish(msg)
+
+    def state(self):
+        with self.lock:
+            st = dict(self.last_status) if self.last_status else None
+            if st:
+                st["age_s"] = round(time.monotonic() - st.pop("t"), 1)
+            return dict(enabled=self.enabled, failed=self.failed, status=st,
+                        stats=dict(self.stats), render=dict(self.last_render))
+
+    def close(self):
+        self._stop.set()
