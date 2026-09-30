@@ -114,6 +114,7 @@ unit, and the IMU attitude is not wired in yet.
 | Estimator: GPS silent 4 s (jammed), then back 2 km away while vision (stated accuracy) disagrees ("jam, then spoof") | Refused; true GPS accepted as soon as it agrees with vision |
 | Estimator: GPS pulled away gradually (40 m/s bench, 4 m/s simulator) while vision (stated accuracy) stays on the truth | Refused once it has disagreed beyond 5 σ + 50 m for 3 s (simulator: at ~160–200 m); status says "GPS refused: … drifting away" |
 | Estimator: GPS jumps 2 km and stays there, vision with a stated accuracy sees the true position | Refused for as long as it lasts (150 s tested); the true GPS re-accepted 2 s after it returns. Before the fix the spoof was accepted after offset / max speed (33 s) and then the true GPS was locked out |
+| Web: control without token / cross-site request / bad input | Refused (401 / 415 / 400) |
 
 ### Autopilot in the loop (ArduPilot SITL — simulation)
 
@@ -132,11 +133,22 @@ results, not accuracy results.
 | Robot, GPS jammed, vision at today's measured accuracy (DEGRADED, withheld) | Autopilot loses its position → its own failsafe (HOLD); resumes when GPS returns |
 | GPS jammed + camera failed | NAVERA: NO FIX → autopilot failsafe (Copter LAND, Rover HOLD) |
 
+**With the real day vision** (`day_subscriber`, DINOv2) on simulated camera images, drone at
+150 m (≈270 m footprint), 7.5 km route prepared with `prepare_area.py` (356 tiles), GPS jammed
+in flight: vision searched a 600 m circle around the last GPS fix (18–21 candidate tiles) and
+matched every frame; NAVERA's error 27–187 m, median match error 96 m. With its positions given
+to the autopilot (stated accuracy 300 m), the drone continued the mission (autopilot error
+27–209 m, one glitch warning, no failsafe); with NAVERA's default (not given), the autopilot
+landed. **These accuracies are optimistic:** the camera images are cut from the same satellite
+map vision matches against. The best-match score stayed at 0.95–0.98 for good and bad matches
+alike, as on real data.
+
 Integration defects found and fixed this way: no velocity sent (ArduPilot assumed zero or
 stale velocity → EKF failsafe during take-off); vision fixes labelled 2D (ignored by
-ArduPilot); the same fix repeated at 5 Hz; the spoofing gate above. The ArduPilot settings
+ArduPilot); the same fix repeated at 5 Hz; the spoofing gate above; positions forwarded on a
+5 Hz timer while arriving at 5 Hz, which dropped or doubled messages — ArduPilot reported
+"GPS not healthy" and refused to arm (the estimator and the output now act on arrival). The ArduPilot settings
 this requires are in navera_output/README.md.
-| Web: control without token / cross-site request / bad input | Refused (401 / 415 / 400) |
 
 ## Known limitations
 
