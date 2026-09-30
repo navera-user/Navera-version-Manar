@@ -610,15 +610,16 @@ class Simulator(Node):
         return math.degrees(math.atan2(y, x)) % 360
 
     def command(self, action, body):
-        if action == "plan":
+        if action in ("plan", "prepare"):
             start, dest = body.get("start"), body.get("dest")
-            if not (isinstance(start, list) and isinstance(dest, list)):
+            if not (isinstance(start, list) and isinstance(dest, list) and len(start) == 2
+                    and len(dest) == 2):
                 raise ValueError("start and destination are required")
-            plan = self.areas.make_plan([(float(start[0]), float(start[1])),
-                                         (float(dest[0]), float(dest[1]))])
-            return
-        if action == "prepare":
-            self.areas.start_prepare()
+            route = [[float(start[0]), float(start[1])], [float(dest[0]), float(dest[1])]]
+            if action == "plan":
+                self.areas.make_plan(route)
+            else:
+                self.areas.start_prepare(route)
             return
         if action == "mission":
             vehicle = body.get("vehicle", "drone")
@@ -633,9 +634,10 @@ class Simulator(Node):
             spd, alt = DEFAULTS[vehicle]
             vision = "real" if body.get("vision", "real") == "real" else "profile"
             light = "night" if body.get("light") == "night" else "day"
-            area = self.areas.area_id([tuple(map(float, start)), tuple(map(float, dest))], 1000.0)
-            plan = self.areas.state()["plan"]
-            covered_offline = bool(plan and plan["id"] == area and not plan["missing"])
+            route = [[float(start[0]), float(start[1])], [float(dest[0]), float(dest[1])]]
+            area = self.areas.area_id(route)
+            plan = self.areas.plan_for(route)["plan"]
+            covered_offline = not plan["missing"]
             if vision == "real":
                 if vehicle != "drone":
                     raise ValueError("real vision needs a downward camera at altitude: "
@@ -649,6 +651,7 @@ class Simulator(Node):
                     self.event("warn", "night vision needs about 350 m or more with this 84° "
                                        "camera: below, it will report 'fly higher'")
             self.faults["light"] = light
+            self.areas.current = area
             self.start_mission(dict(
                 vision=vision, area=area,
                 degraded_sigma_m=max(5.0, min(2000.0, float(body.get("degraded_sigma_m", 300.0)))),
@@ -855,6 +858,16 @@ def serve(sim, host, port, tls=None):
                     return self._json(500, {"error": str(e)})
             if path == "/api/config":
                 return self._json(200, sim.config())
+            if path == "/api/plan":
+                try:
+                    from urllib.parse import parse_qs
+                    q = parse_qs(urlparse(self.path).query)
+                    a_, b_ = ([float(v) for v in q[k][0].split(",")] for k in ("a", "b"))
+                    if len(a_) != 2 or len(b_) != 2:
+                        raise ValueError("a and b must be lat,lon")
+                    return self._json(200, _clean(sim.areas.plan_for([a_, b_])))
+                except (KeyError, ValueError) as e:
+                    return self._json(400, {"error": f"bad route: {e}"})
             if path == "/api/location":
                 return self._json(200, _clean(sim.box_location()))
             if path == "/api/star.jpg":

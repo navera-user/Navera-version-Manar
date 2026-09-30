@@ -71,6 +71,9 @@ class MultiTiles:
 
 
 class AreaManager:
+    """Route plans and map preparation, kept PER ROUTE (several pages or users may
+    plan different routes at the same time; each prepares exactly its own)."""
+
     def __init__(self, mbtiles, work_dir, log):
         self.mbtiles = mbtiles
         self.cache = os.path.join(work_dir, "world_tiles.mbtiles")
@@ -78,12 +81,14 @@ class AreaManager:
         os.makedirs(self.dir, exist_ok=True)
         self.log = log
         self.lock = threading.Lock()
-        self.plan = None           # last plan (for the page)
-        self.prep = None           # {"id", "stage", "done", "total", "status", "error"}
+        self.plans = {}            # area id -> plan
+        self.preps = {}            # area id -> {"stage", "done", "total", "status", "error"}
+        self.current = None        # area id shown in the flight view (the mission's)
         self._proc = None
+        self._running = None       # area id being prepared
 
     @staticmethod
-    def area_id(route, buffer_m):
+    def area_id(route, buffer_m=BUFFER_M):
         key = json.dumps([[round(a, 5), round(b, 5)] for a, b in route] + [buffer_m])
         return hashlib.sha1(key.encode()).hexdigest()[:12]
 
@@ -94,6 +99,7 @@ class AreaManager:
         return os.path.exists(os.path.join(self.path(aid), "descriptors_cache.npz"))
 
     def make_plan(self, route, buffer_m=BUFFER_M):
+        route = [[float(a), float(b)] for a, b in route]
         p = plan_tiles(self.mbtiles, route, buffer_m, 17, self.cache)
         aid = self.area_id(route, buffer_m)
         length = sum(math.hypot((b[1] - a[1]) * 111320 * math.cos(math.radians(a[0])),
@@ -103,32 +109,51 @@ class AreaManager:
                     in_base=p["in_base"], in_cache=p["in_cache"],
                     prepared=self.is_prepared(aid))
         with self.lock:
-            self.plan = plan
+            self.plans[aid] = plan
+            if len(self.plans) > 50:                   # keep memory bounded
+                for k in list(self.plans)[:-50]:
+                    if k not in (self.current, self._running):
+                        self.plans.pop(k, None)
         return plan
 
-    def start_prepare(self):
+    def plan_for(self, route):
+        """The plan of this route (computed if needed) with its preparation status."""
+        aid = self.area_id([[float(a), float(b)] for a, b in route])
         with self.lock:
-            plan = self.plan
-            if plan is None:
-                raise ValueError("plan the route first")
-            if self._proc and self._proc.poll() is None:
-                raise ValueError("already preparing")
+            plan = self.plans.get(aid)
+        if plan is None:
+            plan = self.make_plan(route)
+        with self.lock:
+            prep = dict(self.preps[aid]) if aid in self.preps else None
+            running = self._running
+        return dict(plan=plan, prep=prep, busy_other=running not in (None, aid))
 
-            self.prep = dict(id=plan["id"], stage="starting", done=0, total=plan["tiles"],
-                             status="running", error=None)
+    def start_prepare(self, route):
+        plan = self.plan_for(route)["plan"]
+        aid = plan["id"]
+        with self.lock:
+            if self._proc and self._proc.poll() is None:
+                other = self.preps.get(self._running, {})
+                pct = (f" ({other.get('stage')} {other.get('done')}/{other.get('total')})"
+                       if other else "")
+                raise ValueError("another map preparation is running" + pct + " — try again when it ends"
+                                 if self._running != aid else "this map is already being prepared")
+            self.preps[aid] = dict(stage="starting", done=0, total=plan["tiles"], status="running",
+                                   error=None)
+            self._running = aid
         cmd = ["ros2", "run", "day_pkg", "prepare_area.py", "--mbtiles", self.mbtiles,
-               "--out", self.path(plan["id"]), "--buffer-m", str(plan["buffer_m"]),
+               "--out", self.path(aid), "--buffer-m", str(plan["buffer_m"]),
                "--fetch-url", TILE_URL, "--cache", self.cache,
                "--route"] + [f"{a},{b}" for a, b in plan["route"]]
         self._proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                       text=True, start_new_session=True)
-        threading.Thread(target=self._read, args=(self._proc, plan["id"]), daemon=True).start()
+        threading.Thread(target=self._read, args=(self._proc, aid, plan), daemon=True).start()
         dl = len(plan["missing"])
         self.log("info", f"map: preparing {plan['tiles']} tiles for vision "
                          f"({plan['length_m'] / 1000:.1f} km route, ±{plan['buffer_m']:.0f} m)"
                          + (f"; downloading {dl} tiles the onboard map lacks" if dl else ""))
 
-    def _read(self, proc, aid):
+    def _read(self, proc, aid, plan):
         tail = deque(maxlen=5)
         for line in proc.stdout:
             tail.append(line.strip())
@@ -137,38 +162,37 @@ class AreaManager:
             except ValueError:
                 continue
             with self.lock:
-                if self.prep and self.prep["id"] == aid and "stage" in d and d["stage"] != "warning":
-                    self.prep.update(stage=d["stage"], done=d.get("done", 0), total=d.get("total", 0))
+                if aid in self.preps and "stage" in d and d["stage"] != "warning":
+                    self.preps[aid].update(stage=d["stage"], done=d.get("done", 0),
+                                           total=d.get("total", 0))
         code = proc.wait()
-        with self.lock:
-            if self.prep and self.prep["id"] == aid:
-                ok = code == 0 and self.is_prepared(aid)
-                self.prep["status"] = "done" if ok else "failed"
-                self.prep["error"] = None if ok else " / ".join(tail)
-                if self.plan and self.plan["id"] == aid:
-                    self.plan["prepared"] = ok
-        with self.lock:
-            plan = self.plan
-        if code == 0 and plan and plan["id"] == aid:
+        ok = code == 0 and self.is_prepared(aid)
+        if ok:
             try:                                  # coverage changed: tiles were downloaded
                 self.make_plan(plan["route"], plan["buffer_m"])
             except Exception as e:                # noqa: BLE001
                 self.log("warn", f"map: coverage refresh failed: {e}")
-        if code == 0:
+        with self.lock:
+            self.preps[aid]["status"] = "done" if ok else "failed"
+            self.preps[aid]["error"] = None if ok else " / ".join(tail)
+            self._running = None
+        if ok:
             info = json.load(open(os.path.join(self.path(aid), "area.json")))
+            missing = len(info.get("missing") or [])
             self.log("ok", f"map: area ready — {info['prepared']} tiles with vision descriptors "
-                           f"in {info['build_s']:.0f} s")
+                           f"in {info['build_s']:.0f} s" + (f" ({missing} tiles could not be "
+                                                             f"downloaded)" if missing else ""))
         else:
             self.log("error", f"map: preparation failed ({' / '.join(tail)})")
 
     def state(self):
+        """Plan of the mission's route (flight view), with its preparation."""
         with self.lock:
-            p = self.plan
-            plan = None if p is None else {k: p[k] for k in (
-                "id", "route", "buffer_m", "length_m", "tiles", "prepared", "in_base",
-                "in_cache")} | {
-                "present": p["present"], "missing": p["missing"]}
-            return dict(plan=plan, prep=dict(self.prep) if self.prep else None)
+            aid = self.current
+            p = self.plans.get(aid) if aid else None
+            plan = None if p is None else dict(p)
+            prep = dict(self.preps[aid]) if aid in self.preps else None
+        return dict(plan=plan, prep=prep)
 
     def stop(self):
         if self._proc and self._proc.poll() is None:

@@ -693,21 +693,30 @@ function drawPlan(){
     $('stBrg').textContent = `${Math.round(bearing(A, B))}°`;
   } else { $('stDist').textContent = $('stEta').textContent = $('stBrg').textContent = '—'; }
 }
-let planTimer = null, planKey = null;
+let planTimer = null, planKey = null, PLANR = null, planFetched = 0;
+async function fetchPlan(){
+  if(!(A && B)){ PLANR = null; return; }
+  const key = JSON.stringify([A, B]);
+  try{
+    const r = await fetch(`/api/plan?a=${A[0]},${A[1]}&b=${B[0]},${B[1]}`, {cache:'no-store'});
+    const d = await r.json();
+    if(key === JSON.stringify([A, B])){ PLANR = r.ok ? d : null; planFetched = Date.now(); }
+    if(!r.ok) toast(d.error || 'route refused');
+  }catch(e){}
+}
 function routeChanged(){
   drawPlan();
-  if(!(A && B)) return updateUI();
+  try{ localStorage.setItem('navera.route', JSON.stringify([A, B])); }catch(e){}
+  if(!(A && B)){ PLANR = null; return updateUI(); }
   const key = JSON.stringify([A, B]);
   if(key !== planKey){
+    planKey = key; PLANR = null;
     clearTimeout(planTimer);
-    planTimer = setTimeout(async () => {
-      planKey = key;
-      const r = await post('plan', {start:A, dest:B});
-      if(!r.ok) planKey = null;
-    }, 300);
+    planTimer = setTimeout(fetchPlan, 250);
   }
   updateUI();
 }
+try{ const r = JSON.parse(localStorage.getItem('navera.route') || 'null'); if(r){ [A, B] = r; if(A && !B) pick = 'B'; } }catch(e){}
 $('ptA').onclick = e => { if(e.target.id !== 'xA'){ pick = 'A'; drawPlan(); updateUI(); } };
 $('ptB').onclick = e => { if(e.target.id !== 'xB'){ pick = 'B'; drawPlan(); updateUI(); } };
 $('xA').onclick = () => { A = null; pick = 'A'; planKey = null; routeChanged(); };
@@ -835,8 +844,12 @@ function drawCorridor(plan){
 }
 let areaReady = false, areaCovered = false;
 function renderArea(d){
-  const a = d.area || {}, plan = a.plan, prep = a.prep;
-  const matches = plan && A && B && JSON.stringify(plan.route) === JSON.stringify([A, B]);
+  // planner: this page's own route; flight: the mission's route
+  const own = !flying();
+  if(own && A && B && Date.now() - planFetched > ((PLANR && PLANR.prep && PLANR.prep.status === 'running') ? 1000 : 4000)) fetchPlan();
+  const src = own ? (PLANR || {}) : (d.area || {});
+  const plan = src.plan, prep = src.prep;
+  const matches = !!(plan && (!own || (A && B && plan.id)));
   $('cov').classList.toggle('hidden', !(plan && matches));
   if(plan && (matches || flying())){
     drawCorridor(plan);
@@ -850,12 +863,14 @@ function renderArea(d){
     $('covNote').textContent = t('planFirst', 'Place the start and the destination first.');
   }
   const running = prep && prep.status === 'running';
-  $('prepBtn').disabled = !plan || !matches || plan.prepared || running || flying();
+  const busyOther = own && PLANR && PLANR.busy_other;
+  $('prepBtn').disabled = !plan || !matches || plan.prepared || running || busyOther || flying();
+  if(busyOther && !plan.prepared) $('covNote').innerHTML += ' · <b class="warnc">another map is being prepared — wait</b>';
   const dl = plan && matches ? plan.missing.length : 0;
   $('prepBtn').textContent = running ? '…' : plan && plan.prepared && matches ? '✓ ' + t('mapReady', 'Map ready')
     : t('prepare', 'Prepare map') + (dl ? ` (${dl} ↓)` : '');
-  $('prepBox').classList.toggle('hidden', !(prep && plan && prep.id === plan.id));
-  if(prep && plan && prep.id === plan.id){
+  $('prepBox').classList.toggle('hidden', !(prep && plan));
+  if(prep && plan){
     const f = prep.total ? prep.done / prep.total : 0;
     const pct = prep.status === 'done' ? 100 : prep.stage === 'download' ? 45 * f : prep.stage === 'tiles' ? 45 + 10 * f
               : prep.stage === 'descriptors' ? 55 + 45 * f : 2;
@@ -869,7 +884,13 @@ function renderArea(d){
   areaReady = !!(plan && plan.prepared && matches);
   areaCovered = !!(plan && matches && plan.missing.length === 0);
 }
-$('prepBtn').onclick = () => post('prepare');
+$('prepBtn').onclick = async () => {
+  if(!(A && B)) return;
+  $('prepBtn').disabled = true;
+  const r = await post('prepare', {start:A, dest:B});
+  planFetched = 0; await fetchPlan();
+  if(r.ok) toast(t('prepStarted', 'Map preparation started'), true);
+};
 
 /* ───────────────────────────── launch & views ───────────────────────────── */
 let S = null, series = [], restored = false, view = 'planner';
@@ -1078,8 +1099,6 @@ function render(d){
   }
   if(!fl) restored = false;
   if(fl && d.cfg.dest) B = d.cfg.dest;
-  const pl = d.area && d.area.plan;
-  if(pl && !A && !B && !fl){ A = pl.route[0]; B = pl.route[1]; planKey = JSON.stringify([A, B]); }
   renderArea(d); drawPlan(); updateUI();
   if(!fl && view === 'planner'){ return; }
 
@@ -1172,6 +1191,7 @@ async function poll(){
   setTimeout(poll, 600);
 }
 applyLang(); renderSummary(); drawPlan();
+if(A && B){ planKey = JSON.stringify([A, B]); fetchPlan(); map.fitBounds(L.latLngBounds([A, B]).pad(0.3)); }
 let wizDone = false; try{ wizDone = sessionStorage.getItem('navera.wiz') === '1'; }catch(e){}
 fetch('/api/state').then(r => r.json()).then(d => {
   const running = d && ['starting','waiting_gps','arming','takeoff','enroute','arrived','rtl','landing','failsafe'].includes(d.phase);
