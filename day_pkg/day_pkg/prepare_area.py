@@ -108,24 +108,88 @@ def fetch_tile(url_template: str, z: int, x: int, y: int, retries: int = 2):
 
 
 def _present(path, zoom, tiles):
-    """Subset of tiles (x, y) present in an MBTiles file (missing file = none)."""
+    """Subset of tiles (x, y) present in an MBTiles file (missing file = none).
+
+    One indexed range query per tile column (zoom, column, row BETWEEN): a
+    single query with hundreds of OR terms could not use the index and took
+    ~1 ms per tile (75 s for a long route).
+    """
     if not path or not os.path.exists(path) or not tiles:
         return set()
-    con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     n = 2 ** zoom
+    cols = {}
+    for x, y in tiles:
+        cols.setdefault(x, []).append(y)
+    con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     present = set()
     try:
-        for i in range(0, len(tiles), 500):
-            chunk = tiles[i:i + 500]
-            q = " OR ".join("(tile_column=? AND tile_row=?)" for _ in chunk)
-            args = [v for x, y in chunk for v in (x, n - 1 - y)]
-            for col, row in con.execute(
-                    f"SELECT tile_column, tile_row FROM tiles WHERE zoom_level=? AND ({q})",
-                    [zoom] + args):
-                present.add((col, n - 1 - row))
+        for x, ys in cols.items():
+            lo, hi = n - 1 - max(ys), n - 1 - min(ys)          # TMS rows
+            want = set(ys)
+            for (row,) in con.execute(
+                    "SELECT tile_row FROM tiles WHERE zoom_level=? AND tile_column=? "
+                    "AND tile_row BETWEEN ? AND ?", (zoom, x, lo, hi)):
+                y = n - 1 - row
+                if y in want:
+                    present.add((x, y))
     finally:
         con.close()
     return present
+
+
+def route_length_m(route) -> float:
+    return sum(_dist_to_route_m(a[0], a[1], [b]) for a, b in zip(route, route[1:]))
+
+
+def _tile_m(route, zoom):
+    lat_c = sum(p[0] for p in route) / len(route)
+    return 40_075_016.7 * math.cos(math.radians(lat_c)) / 2 ** zoom
+
+
+def corridor_tiles(route, buffer_m: float, zoom: int = 17):
+    """Tiles (x, y) whose centre is within buffer_m (+ half a tile diagonal) of the route.
+
+    Samples the route every half tile and tests only the tiles around it,
+    vectorised: the cost grows with the route length (the former bounding-box
+    scan grew with its square — minutes, and a stuck planner, for long routes).
+    """
+    import numpy as np
+    tile_m = _tile_m(route, zoom)
+    reach = buffer_m + tile_m * math.sqrt(2) / 2
+    half = int(math.ceil(reach / tile_m)) + 1
+    pts = np.asarray(route if len(route) > 1 else [route[0], route[0]], dtype=float)
+    lat_s, lon_s = [], []
+    for a, b in zip(pts, pts[1:]):
+        seg = _dist_to_route_m(a[0], a[1], [tuple(b)])
+        f = np.linspace(0.0, 1.0, max(1, int(math.ceil(seg / (tile_m / 2)))) + 1)
+        lat_s.append(a[0] + f * (b[0] - a[0]))
+        lon_s.append(a[1] + f * (b[1] - a[1]))
+    lat_s, lon_s = np.concatenate(lat_s), np.concatenate(lon_s)
+    n = 2 ** zoom
+    tx = np.floor((lon_s + 180.0) / 360.0 * n).astype(np.int64)
+    r = np.radians(lat_s)
+    ty = np.floor((1.0 - np.log(np.tan(r) + 1.0 / np.cos(r)) / np.pi) / 2.0 * n).astype(np.int64)
+    off = np.arange(-half, half + 1, dtype=np.int64)
+    dx, dy = (g.ravel() for g in np.meshgrid(off, off))
+    keys = np.unique(((tx[:, None] + dx) << 32) | (ty[:, None] + dy))
+    x, y = keys >> 32, keys & 0xFFFFFFFF
+    clon = (x + 0.5) / n * 360.0 - 180.0
+    clat = np.degrees(np.arctan(np.sinh(np.pi * (1 - 2 * (y + 0.5) / n))))
+    # distance to the polyline, in a local flat frame (as _dist_to_route_m)
+    k = np.cos(np.radians(clat))
+    px, py = clon * M_PER_DEG * k, clat * M_PER_DEG
+    best = np.full(len(keys), np.inf)
+    for a, b in zip(pts, pts[1:]):
+        ax, ay = a[1] * M_PER_DEG * k, a[0] * M_PER_DEG
+        bx, by = b[1] * M_PER_DEG * k, b[0] * M_PER_DEG
+        vx, vy = bx - ax, by - ay
+        l2 = vx * vx + vy * vy
+        with np.errstate(invalid="ignore", divide="ignore"):
+            t = np.where(l2 > 0, ((px - ax) * vx + (py - ay) * vy) / np.where(l2 > 0, l2, 1), 0.0)
+        t = np.clip(t, 0.0, 1.0)
+        best = np.minimum(best, np.hypot(px - ax - t * vx, py - ay - t * vy))
+    ok = best <= reach
+    return sorted(zip(x[ok].tolist(), y[ok].tolist()))
 
 
 def plan_tiles(mbtiles: str, route, buffer_m: float, zoom: int = 17, cache: str = None):
@@ -136,21 +200,8 @@ def plan_tiles(mbtiles: str, route, buffer_m: float, zoom: int = 17, cache: str 
     """
     if not route:
         raise ValueError("empty route")
-    lats = [p[0] for p in route]
-    lons = [p[1] for p in route]
-    pad_lat = buffer_m / M_PER_DEG
-    pad_lon = buffer_m / (M_PER_DEG * math.cos(math.radians(sum(lats) / len(lats))))
-    x0, y0 = tile_xy(max(lats) + pad_lat, min(lons) - pad_lon, zoom)
-    x1, y1 = tile_xy(min(lats) - pad_lat, max(lons) + pad_lon, zoom)
-    lat_c = sum(lats) / len(lats)
-    tile_m = 40_075_016.7 * math.cos(math.radians(lat_c)) / 2 ** zoom
-    reach = buffer_m + tile_m * math.sqrt(2) / 2
-    needed = []
-    for x in range(int(x0), int(x1) + 1):
-        for y in range(int(y0), int(y1) + 1):
-            c = tile_center(x, y, zoom)
-            if _dist_to_route_m(c[0], c[1], route) <= reach:
-                needed.append((x, y))
+    needed = corridor_tiles(route, buffer_m, zoom)
+    tile_m = _tile_m(route, zoom)
     in_base = _present(mbtiles, zoom, needed)
     in_cache = _present(cache, zoom, [t for t in needed if t not in in_base])
     present = in_base | in_cache
