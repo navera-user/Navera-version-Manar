@@ -132,7 +132,7 @@ Status: ✅ done · 🔧 in progress · ⬜ open
 | OUT-2 | H | Vision fix sent as 2D: ignored by ArduPilot / PX4 — `fix_type_without_alt` (default 3, altitude flagged ignored) | ✅ 2809ea0 |
 | OUT-3 | H | Same fix re-sent at 5 Hz with fresh timestamps ("stopped, then jumped") — each position now sent once | ✅ 2809ea0 |
 | OUT-4 | M | Validate on PX4 and on a real autopilot | ⬜ |
-| OUT-5 | H | Output polled at 5 Hz while positions arrive at 5 Hz: dropped / doubled messages → ArduPilot "GPS not healthy", refused to arm (SITL) — now sent on arrival | ✅ this release |
-| EST-13 | M | Estimator decided only on its 5 Hz tick: up to 200 ms added latency, a measurement skipped when two arrived between ticks — now decides on arrival too | ✅ this release |
-| FEAT-6 | Mission area preparation from the MBTiles map (`prepare_area.py`: corridor tiles + DINOv2 descriptors, coverage report) | ✅ this release |
-| FEAT-7 | Simulator: plan → prepare map → fly, with the real day vision and its search circle on the map | ✅ this release |
+| OUT-5 | H | Output polled at 5 Hz while positions arrive at 5 Hz: dropped / doubled messages → ArduPilot "GPS not healthy", refused to arm (SITL) — now sent on arrival | ✅ 6fc5ff4 |
+| EST-13 | M | Estimator decided only on its 5 Hz tick: up to 200 ms added latency, a measurement skipped when two arrived between ticks — now decides on arrival too | ✅ 6fc5ff4 |
+| FEAT-6 | Mission area preparation from the MBTiles map (`prepare_area.py`: corridor tiles + DINOv2 descriptors, coverage report) | ✅ 173ca5d |
+| FEAT-7 | Simulator: plan → prepare map → fly, with the real day vision and its search circle on the map | ✅ 64db567 |
