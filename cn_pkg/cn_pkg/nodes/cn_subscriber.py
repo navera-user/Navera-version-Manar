@@ -35,6 +35,7 @@ running, the new pair is DROPPED (logged) — never queued, never parallel.
 """
 import json
 import base64
+from collections import deque
 import threading
 import time
 from datetime import datetime, timezone
@@ -123,7 +124,10 @@ class CNSubscriber(Node):
         self.declination = float(self.get_parameter("magnetic_declination_deg").value)
         self.imu_timeout = float(self.get_parameter("imu_timeout_s").value)
         self.attitude_sigma_deg = float(self.get_parameter("attitude_sigma_deg").value)
-        self._imu = None          # (quaternion xyzw, monotonic time)
+        # IMU history (stamp ns, quaternion): the attitude used is the one at the
+        # frame's EXPOSURE, not at processing time — on a moving vehicle the
+        # difference is degrees, i.e. hundreds of km (found in the simulator).
+        self._imu_hist = deque(maxlen=400)
         self._gps_prior = None    # last valid GPS fix (lat, lon)
         self.create_subscription(Imu, self.get_parameter("imu_topic").value, self._on_imu, 10)
         self.create_subscription(PositionEstimate, self.get_parameter("gps_topic").value,
@@ -209,7 +213,14 @@ class CNSubscriber(Node):
     def _on_imu(self, msg: Imu):
         q = msg.orientation
         if (q.x, q.y, q.z, q.w) != (0.0, 0.0, 0.0, 0.0):
-            self._imu = ((q.x, q.y, q.z, q.w), time.monotonic())
+            self._imu_hist.append((stamp_ns(msg.header.stamp), (q.x, q.y, q.z, q.w)))
+
+    def _imu_at(self, t_ns):
+        """IMU orientation nearest to t_ns, if within imu_timeout_s of it."""
+        if not self._imu_hist:
+            return None
+        ts, q = min(list(self._imu_hist), key=lambda s: abs(s[0] - t_ns))
+        return q if abs(ts - t_ns) <= self.imu_timeout * 1e9 else None
 
     def _on_gps(self, msg: PositionEstimate):
         if msg.valid and msg.mode == PositionEstimate.MODE_MEASURED and \
@@ -220,10 +231,11 @@ class CNSubscriber(Node):
         """(tilt, azimuth, source): frame_meta, else a fresh IMU, else parameters."""
         if meta.get("tilt") is not None and meta.get("azimuth") is not None:
             return float(meta["tilt"]), float(meta["azimuth"]), "frame"
-        if self._imu and time.monotonic() - self._imu[1] <= self.imu_timeout:
-            alt, az = boresight_altaz(self._imu[0], self.mount_el, self.mount_az,
-                                      self.declination)
-            return alt, az, "imu"
+        exp = meta.get("image_stamp_ns")
+        q = self._imu_at(int(exp) if exp is not None else self.get_clock().now().nanoseconds)
+        if q is not None:
+            alt, az = boresight_altaz(q, self.mount_el, self.mount_az, self.declination)
+            return alt, az, "imu (at exposure)" if exp is not None else "imu (latest)"
         return self.tilt, self.azimuth, "parameter"
 
     def _prior(self):
