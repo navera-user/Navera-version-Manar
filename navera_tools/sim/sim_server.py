@@ -52,6 +52,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from autopilot import NAVERA_URL, VEHICLES, Autopilot  # noqa: E402
 from camera_view import CameraView  # noqa: E402
 from nmea_gps import MODES as GPS_MODES, NmeaGps  # noqa: E402
+from vision_link import AreaManager, DayCamera  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 M_PER_DEG = 111_320.0
@@ -66,9 +67,14 @@ DAY_MEASURED_SIGMA = 440.0 / math.sqrt(2.0 * math.log(2.0))
 DAY_TARGET_SIGMA = 15.0
 NIGHT_TARGET_SIGMA = 25.0
 NIGHT_MEASURED_GAIN = 0.25
-DEFAULTS = {"drone": (15.0, 120.0), "boat": (8.0, 0.0), "robot": (4.0, 0.0)}
+DEFAULTS = {"drone": (15.0, 150.0), "boat": (8.0, 0.0), "robot": (4.0, 0.0)}
 # NAVERA's max_speed_mps (GPS plausibility gate), set per vehicle as in service.
 MAX_SPEED = {"drone": 30.0, "boat": 20.0, "robot": 10.0}
+
+
+def _route_dist(p, route):
+    from day_pkg.prepare_area import _dist_to_route_m
+    return _dist_to_route_m(p[0], p[1], route)
 
 
 def haversine_m(a, b):
@@ -85,15 +91,16 @@ def offset(lat, lon, east, north):
 class Proc:
     """A NAVERA node run as in production, in its own process group."""
 
-    def __init__(self, name, cmd, log_dir):
-        self.name, self.cmd = name, cmd
+    def __init__(self, name, cmd, log_dir, env=None):
+        self.name, self.cmd, self.env = name, cmd, env
         self.log_path = os.path.join(log_dir, f"{name}.log")
         self.p = None
 
     def start(self):
         self.stop()
         self.p = subprocess.Popen(self.cmd, stdout=open(self.log_path, "w"), stderr=subprocess.STDOUT,
-                                  start_new_session=True)
+                                  start_new_session=True,
+                                  env=dict(os.environ, **self.env) if self.env else None)
 
     def alive(self):
         return self.p is not None and self.p.poll() is None
@@ -123,7 +130,8 @@ class Simulator(Node):
         self.ap = Autopilot(ardupilot, work_dir, self.event)
 
         self.cfg = dict(vehicle="drone", start=[35.8256, 10.6385], dest=None, speed=15.0,
-                        alt=120.0, profile="measured", forward_degraded=False)
+                        alt=150.0, profile="measured", vision="real", area=None,
+                        forward_degraded=False, degraded_sigma_m=300.0)
         self.faults = dict(gps="ok", camera="ok", light="day", imu="ok")
         self.phase = "idle"                     # idle, starting, waiting_gps, takeoff, enroute, arrived, ...
         self.phase_detail = "Choose a start point and a destination on the map, then Start."
@@ -150,6 +158,8 @@ class Simulator(Node):
             p.start()
         self.event("info", f"NAVERA nodes started ({env_note}); GPS receiver on {self.gps.port}")
 
+        self.areas = AreaManager(mbtiles, work_dir, self.event)
+        self.daycam = DayCamera(self, self.tiles, self._truth, self.event)
         self.pub_truth = self.create_publisher(NavSatFix, "/navera/sim/truth", 10)
         self.pub_imu = self.create_publisher(Imu, "/navera/sensors/imu", 10)
         self.pub_rtc = self.create_publisher(TimeReference, "/navera/sensors/rtc_time", 10)
@@ -256,6 +266,8 @@ class Simulator(Node):
         self._watch_procs()
 
     def _vision(self, truth, now):
+        if self.cfg["vision"] == "real":
+            return                        # the real day_subscriber does it (DayCamera)
         lat, lon = truth[0], truth[1]
         night = self.faults["light"] == "night"
         if self.faults["camera"] != "ok":
@@ -388,12 +400,22 @@ class Simulator(Node):
             with self.lock:
                 self.nav.update(state="—", source="—", reason="", lat=None, lon=None)
                 self._last_state = self._last_source = None
+            self._stop_vision()
+            if c["vision"] == "real":
+                vp = Proc("day_vision", ["ros2", "run", "day_pkg", "day_subscriber.py"], self.work,
+                          env={"DAY_DATASET_DIR": self.areas.path(c["area"])})
+                vp.start()
+                with self.lock:
+                    self.procs["day_vision"] = vp
+                self.daycam.start()
+                self.event("info", "day vision: loading DINOv2 and the prepared area…")
             self.ap.start(c["vehicle"], c["start"][0], c["start"][1], self._bearing(c["start"], c["dest"]))
             self.ap.connect()
             vo_cmd = ["ros2", "run", "navera_output", "vehicle_output_node.py", "--ros-args",
                       "-p", f"mavlink_url:={NAVERA_URL}", "-p", "rate_hz:=5.0"]
             if c["forward_degraded"]:
-                vo_cmd += ["-p", "forward_degraded:=true", "-p", "degraded_sigma_m:=500.0"]
+                vo_cmd += ["-p", "forward_degraded:=true",
+                           "-p", f"degraded_sigma_m:={c['degraded_sigma_m']:.1f}"]
             vo = Proc("vehicle_output", vo_cmd, self.work)
             vo.start()
             with self.lock:
@@ -423,8 +445,17 @@ class Simulator(Node):
                 s = self.ap.snapshot()
                 if self.phase in ("enroute", "arrived") and s["armed"] and \
                         s["mode"] not in ("GUIDED", "—"):
+                    why = ""
+                    with self.lock:
+                        nav_state = self.nav["state"]
+                    if nav_state == "DEGRADED" and not self.cfg["forward_degraded"]:
+                        why = (" NAVERA still has a vision position (DEGRADED) but, by default, does "
+                               "not give it to the autopilot — tick 'Give vision positions to the "
+                               "autopilot' to let it continue.")
+                    elif nav_state == "NO FIX":
+                        why = " NAVERA has no position to give (no GPS, no vision)."
                     self._set_phase("failsafe", f"the autopilot left the mission: {s['mode']} "
-                                                f"(its own failsafe). Click the map to resume.")
+                                                f"(its own failsafe).{why} Click the map to resume.")
                 if s["truth"] and self.phase == "enroute" and self.cfg["dest"] and \
                         haversine_m(s["truth"], self.cfg["dest"]) < 20:
                     self._set_phase("arrived", "arrived at the destination — holding. "
@@ -437,12 +468,23 @@ class Simulator(Node):
         except Exception as e:
             self._set_phase("error", f"stopped: {e}")
 
+    def _stop_vision(self):
+        self.daycam.stop()
+        with self.lock:
+            vp = self.procs.pop("day_vision", None)
+        if vp:
+            vp.stop()
+
     def _fly_to(self, dest):
         self.cfg["dest"] = dest
         self.ap.set_mode("GUIDED")
         self.ap.goto(dest[0], dest[1], self.cfg["alt"] if self.cfg["vehicle"] == "drone" else 0)
         s = self.ap.snapshot()
         dist = haversine_m(s["truth"], dest) if s["truth"] else float("nan")
+        plan = self.areas.state()["plan"]
+        if self.cfg["vision"] == "real" and plan and _route_dist(dest, plan["route"]) > plan["buffer_m"]:
+            self.event("warn", "new destination is OUTSIDE the prepared map area: day vision has "
+                               "no tiles there and will report no position if GPS is lost")
         self._set_phase("enroute", f"flying to the destination ({dist / 1000:.2f} km)"
                         if self.cfg["vehicle"] == "drone" else f"heading to the destination ({dist / 1000:.2f} km)")
 
@@ -456,6 +498,18 @@ class Simulator(Node):
         return math.degrees(math.atan2(y, x)) % 360
 
     def command(self, action, body):
+        if action == "plan":
+            start, dest = body.get("start"), body.get("dest")
+            if not (isinstance(start, list) and isinstance(dest, list)):
+                raise ValueError("start and destination are required")
+            plan = self.areas.make_plan([(float(start[0]), float(start[1])),
+                                         (float(dest[0]), float(dest[1]))])
+            if not plan["present"]:
+                raise ValueError("the onboard map has no tiles along this route")
+            return
+        if action == "prepare":
+            self.areas.start_prepare()
+            return
         if action == "mission":
             vehicle = body.get("vehicle", "drone")
             if vehicle not in VEHICLES:
@@ -467,12 +521,23 @@ class Simulator(Node):
             if haversine_m(start, dest) < 50:
                 raise ValueError("the destination is less than 50 m from the start")
             spd, alt = DEFAULTS[vehicle]
+            vision = "real" if body.get("vision", "real") == "real" else "profile"
+            area = None
+            if vision == "real":
+                if vehicle != "drone":
+                    raise ValueError("real day vision needs a downward camera at altitude: "
+                                     "use the drone, or the simulated vision profile")
+                area = self.areas.area_id([tuple(map(float, start)), tuple(map(float, dest))], 1000.0)
+                if not self.areas.is_prepared(area):
+                    raise ValueError("prepare the map for this route first (Prepare map)")
             self.start_mission(dict(
+                vision=vision, area=area,
+                degraded_sigma_m=max(5.0, min(2000.0, float(body.get("degraded_sigma_m", 300.0)))),
                 vehicle=vehicle, start=[float(start[0]), float(start[1])],
                 dest=[float(dest[0]), float(dest[1])],
                 speed=max(1.0, min({"drone": 20.0, "boat": 15.0, "robot": 8.0}[vehicle],
                                    float(body.get("speed", spd)))),
-                alt=max(20.0, min(500.0, float(body.get("alt", alt)))),
+                alt=max(30.0, min(400.0, float(body.get("alt", alt)))),
                 profile="target" if body.get("profile") == "target" else "measured",
                 forward_degraded=bool(body.get("forward_degraded", False))))
         elif action == "goto":
@@ -493,6 +558,7 @@ class Simulator(Node):
             self._set_phase("landing", "landing" if self.cfg["vehicle"] == "drone" else "stopping")
         elif action == "stop":
             self._abort.set()
+            self._stop_vision()
             self.ap.stop()
             with self.lock:
                 old = self.procs.pop("vehicle_output", None)
@@ -509,6 +575,8 @@ class Simulator(Node):
                         self.faults[k] = body[k]
                         if k == "gps":
                             self.gps.set_mode(body[k])
+                        self.daycam.failed = self.faults["camera"] != "ok"
+                        self.daycam.night = self.faults["light"] == "night"
                         label = {"gps": "GPS receiver", "camera": "camera", "light": "light",
                                  "imu": "IMU"}[k]
                         self.event("warn" if body[k] not in ("ok", "day") else "info",
@@ -530,7 +598,8 @@ class Simulator(Node):
                 phase=self.phase, detail=self.phase_detail, cfg=self.cfg, faults=self.faults,
                 truth=None, navera=nav, autopilot=None, sources=self.sources,
                 procs={n: p.alive() for n, p in list(self.procs.items())},
-                events=list(self.events)[-60:], series=list(self.series)[-600:])
+                events=list(self.events)[-60:], series=list(self.series)[-600:],
+                area=self.areas.state(), vision=self.daycam.state())
         nav["fresh"] = nav_fresh
         if truth:
             out["truth"] = dict(lat=truth[0], lon=truth[1], alt=truth[2], heading=truth[3], speed=truth[4])
@@ -553,6 +622,8 @@ class Simulator(Node):
         return out
 
     def camera_jpeg(self):
+        if self.cfg["vision"] == "real" and self.daycam.last_jpeg:
+            return self.daycam.last_jpeg
         tr = self._truth()
         if tr is None:
             return None
@@ -562,6 +633,8 @@ class Simulator(Node):
     def shutdown(self):
         self._closing = True
         self._abort.set()
+        self.daycam.close()
+        self.areas.stop()
         self.ap.stop()
         with self.lock:
             procs = list(self.procs.values())

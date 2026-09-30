@@ -93,6 +93,20 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .kpi div{background:#0e131a;border:1px solid var(--line);border-radius:8px;padding:8px}
 .kpi small{display:block;color:var(--mute);font-size:11px;margin-bottom:2px}
 .kpi b{font-size:17px;font-variant-numeric:tabular-nums}
+.step{display:flex;align-items:center;gap:8px}
+.step i{font-style:normal;display:inline-flex;width:20px;height:20px;border-radius:50%;background:#243044;
+  color:var(--text);align-items:center;justify-content:center;font-size:11px;font-weight:800}
+.step i.done{background:var(--gps);color:#07111f}
+.bar{height:8px;background:#0e131a;border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-top:8px}
+.bar div{height:100%;width:0;background:var(--accent);transition:width .4s}
+.stat{font-size:12px;color:var(--mute);margin-top:8px;line-height:1.5}
+.stat b{color:var(--text)}
+.ok{color:var(--gps)} .bad{color:var(--bad)} .warnc{color:var(--deg)}
+.scorebar{position:relative;height:10px;background:#0e131a;border:1px solid var(--line);border-radius:6px;margin-top:4px}
+.scorebar div{position:absolute;left:0;top:0;bottom:0;border-radius:6px}
+.scorebar span{position:absolute;top:-3px;bottom:-3px;width:2px;background:#fff}
+input[type=number]{width:80px;background:#0e131a;border:1px solid var(--line);color:var(--text);
+  border-radius:6px;padding:4px 6px;font:inherit}
 @media (max-width:900px){
   main{grid-template-columns:1fr;grid-template-rows:55vh auto}
   aside{border-left:0;border-top:1px solid var(--line);overflow:visible}
@@ -125,11 +139,13 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       <div><i style="background:var(--night)"></i>NAVERA — night vision</div>
       <div><i style="background:var(--deg)"></i>NAVERA — degraded</div>
       <div><i class="sq" style="background:var(--ap)"></i>Autopilot's belief</div>
+      <div><i style="background:transparent;border:2px dashed #58e6d9"></i>Vision search circle</div>
+      <div><i class="sq" style="background:rgba(88,230,217,.35);border:1px solid #58e6d9"></i>Candidate / matched tile</div>
     </div>
   </div>
   <aside>
     <div class="card" id="missionCard">
-      <h3>Mission</h3>
+      <h3><span class="step"><i id="st1">1</i> Plan the mission</span></h3>
       <div class="seg" id="vehicle">
         <button data-v="drone" class="on">✈ Drone</button>
         <button data-v="boat">⛴ Boat</button>
@@ -141,16 +157,41 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       </div>
       <div class="lbl">Speed: <b id="spdV">15</b> m/s</div>
       <input type="range" id="spd" min="2" max="20" value="15">
-      <div id="altBox"><div class="lbl">Altitude: <b id="altV">120</b> m</div>
-      <input type="range" id="alt" min="30" max="400" step="10" value="120"></div>
-      <div class="lbl">Vision accuracy</div>
-      <div class="seg" id="profile">
-        <button data-v="measured" class="on">Measured today</button>
-        <button data-v="target">Target</button>
+      <div id="altBox"><div class="lbl">Altitude: <b id="altV">150</b> m
+        <span style="color:var(--mute)">· camera footprint ≈ <b id="fpV">270</b> m</span></div>
+      <input type="range" id="alt" min="30" max="400" step="10" value="150"></div>
+    </div>
+
+    <div class="card" id="mapCard">
+      <h3><span class="step"><i id="st2">2</i> Prepare the onboard map</span></h3>
+      <div class="stat" id="planStat" style="margin-top:0">Place the start and the destination on the map.</div>
+      <div class="bar" id="prepBar" style="display:none"><div></div></div>
+      <div class="stat" id="prepStat"></div>
+      <div class="btns"><button class="btn primary" id="prepBtn" disabled>Prepare map</button></div>
+      <div class="note">Extracts the satellite tiles of a ±1 km corridor around the route from the
+        MBTiles map and computes their DINOv2 descriptors: the dataset day vision searches when GPS
+        is lost. Tiles the map lacks are shown in red — vision has nothing to match there.</div>
+    </div>
+
+    <div class="card">
+      <h3><span class="step"><i id="st3">3</i> Fly</span></h3>
+      <div class="lbl" style="margin-top:0">Position when GPS is lost</div>
+      <div class="seg" id="vision">
+        <button data-v="real" class="on">Real NAVERA day vision</button>
+        <button data-v="profile">Simulated error</button>
+      </div>
+      <div id="profBox" style="display:none">
+        <div class="seg" id="profile" style="margin-top:6px">
+          <button data-v="measured" class="on">Measured today (≈440 m)</button>
+          <button data-v="target">Target (15 m)</button>
+        </div>
       </div>
       <div class="note" id="profNote"></div>
       <label class="row" style="justify-content:flex-start;gap:8px;margin-top:10px;cursor:pointer">
-        <input type="checkbox" id="fwd"> <span>Forward degraded positions to the autopilot</span></label>
+        <input type="checkbox" id="fwd"> <span>Give vision positions to the autopilot, stated accuracy
+        <input type="number" id="fwdSigma" value="300" min="5" max="2000"> m</span></label>
+      <div class="note">NAVERA's default: vision positions (accuracy not validated) are shown but NOT
+        sent to the autopilot, which then applies its own failsafe (land / hold) when GPS is lost.</div>
       <div class="btns">
         <button class="btn primary" id="startBtn" disabled>Start mission</button>
         <button class="btn" id="rtlBtn">Return to start</button>
@@ -188,6 +229,19 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       <div class="chips" id="chips"></div>
     </div>
 
+    <div class="card" id="visCard">
+      <h3>Day vision <span class="chip" id="visChip">—</span></h3>
+      <div class="reason" id="visWhat" style="margin-top:0">—</div>
+      <div class="kpi" style="margin-top:10px">
+        <div><small>Search circle</small><b id="visR">—</b></div>
+        <div><small>Candidate tiles</small><b id="visN">—</b></div>
+        <div><small>Best match score</small><b id="visScore">—</b>
+          <div class="scorebar"><div id="visScoreBar"></div><span id="visThr"></span></div></div>
+        <div><small>Match error vs truth</small><b id="visErr">—</b></div>
+      </div>
+      <div class="stat" id="visStats"></div>
+    </div>
+
     <div class="card">
       <h3>Autopilot (ArduPilot) <span class="chip" id="apLink">—</span></h3>
       <div class="kpi">
@@ -213,9 +267,10 @@ input[type=range]{width:100%;accent-color:var(--accent)}
       <div class="row"><span class="k">IMU</span><span class="v" id="sImu">—</span></div>
       <div class="row"><span class="k">Clock (RTC)</span><span class="v" id="sRtc">—</span></div>
       <div class="row"><span class="k">NAVERA nodes</span><span class="v" id="sProcs">—</span></div>
-      <div class="note">Simulated: the world, GPS receiver, IMU, clock and the vision fixes' error.
-        Real: NAVERA's GPS driver, arbiter, vehicle output and web view, and the ArduPilot autopilot.
-        The camera picture is cut from the onboard map, so it says nothing about vision accuracy.</div>
+      <div class="note">Real: NAVERA's GPS driver, day vision (DINOv2), arbiter, vehicle output and
+        web view, and the ArduPilot autopilot. Simulated: the world, the GPS receiver, IMU and clock,
+        and the camera picture — cut north-up from the same satellite map vision searches, so vision
+        looks better here than with a real camera (other day, season, angle, sensor).</div>
     </div>
 
     <div class="card">
@@ -231,6 +286,9 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 const $ = id => document.getElementById(id);
 const COLORS = {GPS:'#3fb950', 'DAY VISION':'#58e6d9', 'NIGHT VISION':'#a371f7', CELESTIAL:'#e3b341'};
 const PROF_NOTE = {
+  real:'The real NAVERA day-vision software (DINOv2) localises the simulated camera image against the ' +
+       'prepared tiles, searching a circle around the last known position. Drone only: it needs a ' +
+       'downward camera at altitude.',
   measured:'Vision error as measured today on real frames: day ≈ 440 m median, night drifts. ' +
            'NAVERA reports it as DEGRADED and, by default, does not give it to the autopilot.',
   target:'The accuracy goal (15 m day, 25 m night). NOT a measured performance — use it to show ' +
@@ -283,10 +341,146 @@ map.on('click', e => {
   if(flying()){ post('goto', {dest:p}).then(r => { if(r.ok){ destPt = p; drawPlan(); } }); return; }
   if(pick === 'start'){ startPt = p; pick = 'dest'; } else { destPt = p; }
   drawPlan();
+  requestPlan();
 });
 
+// ── planning & map preparation ──
+let planTimer = null, planKey = null, tileLayer = L.layerGroup().addTo(map), shownPlan = null;
+function requestPlan(){
+  if(!(startPt && destPt) || flying()) return;
+  const key = JSON.stringify([startPt, destPt]);
+  if(key === planKey) return;
+  clearTimeout(planTimer);
+  planTimer = setTimeout(async () => {
+    planKey = key;
+    $('planStat').textContent = 'Checking map coverage…';
+    const r = await post('plan', {start:startPt, dest:destPt});
+    if(!r.ok) planKey = null;
+  }, 250);
+}
+const t2lon = (x, z) => x / 2 ** z * 360 - 180;
+const t2lat = (y, z) => { const n = Math.PI - 2 * Math.PI * y / 2 ** z;
+                          return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n))); };
+const tileBounds = (x, y, z) => [[t2lat(y + 1, z), t2lon(x, z)], [t2lat(y, z), t2lon(x + 1, z)]];
+function drawTiles(plan){
+  const key = plan.id + plan.prepared + flying();
+  if(shownPlan === key) return;
+  shownPlan = key;
+  tileLayer.clearLayers();
+  const style = flying() ? {color:'#3fb950', weight:0, fillOpacity:.06}
+              : plan.prepared ? {color:'#3fb950', weight:.6, fillOpacity:.10, opacity:.5}
+              : {color:'#58a6ff', weight:.6, fillOpacity:.07, opacity:.45};
+  for(const [x, y] of plan.present)
+    L.rectangle(tileBounds(x, y, 17), {...style, interactive:false}).addTo(tileLayer);
+  for(const [x, y] of plan.missing)
+    L.rectangle(tileBounds(x, y, 17), {color:'#f85149', weight:1, fillOpacity:.35, interactive:false})
+      .addTo(tileLayer);
+}
+function renderArea(d){
+  const a = d.area || {}, plan = a.plan, prep = a.prep;
+  const matches = plan && startPt && destPt && JSON.stringify(plan.route) === JSON.stringify([startPt, destPt]);
+  if(plan && (matches || flying())){
+    drawTiles(plan);
+    const miss = plan.missing.length;
+    $('planStat').innerHTML = `Route <b>${(plan.length_m/1000).toFixed(2)} km</b> · corridor ±${plan.buffer_m/1000} km · ` +
+      `<b>${plan.tiles}</b> map tiles · ` + (miss ? `<b class="bad">${miss} missing</b>` : `<b class="ok">all present</b>`) +
+      ` · ` + (plan.prepared ? '<b class="ok">prepared ✓</b>' : '<b class="warnc">not prepared</b>');
+  } else if(!flying()){
+    tileLayer.clearLayers(); shownPlan = null;
+    if(!(startPt && destPt)) $('planStat').textContent = 'Place the start and the destination on the map.';
+  }
+  const running = prep && prep.status === 'running';
+  $('prepBtn').disabled = !plan || !matches || plan.prepared || running;
+  $('prepBtn').textContent = running ? 'Preparing…' : plan && plan.prepared && matches ? 'Map ready ✓' : 'Prepare map';
+  if(prep && plan && prep.id === plan.id){
+    $('prepBar').style.display = '';
+    const f = prep.total ? prep.done / prep.total : 0;
+    const pct = prep.status === 'done' ? 100 : prep.stage === 'descriptors' ? 30 + 70 * f : prep.stage === 'tiles' ? 30 * f : 2;
+    $('prepBar').firstElementChild.style.width = pct.toFixed(0) + '%';
+    $('prepStat').innerHTML = prep.status === 'failed' ? `<b class="bad">Failed:</b> ${esc(prep.error || '')}` :
+      prep.status === 'done' ? `<b class="ok">Ready:</b> ${prep.done} tiles with vision descriptors` :
+      prep.stage === 'descriptors' ? `Computing DINOv2 descriptors… ${prep.done}/${prep.total}` :
+      `Extracting tiles from the MBTiles map… ${prep.done}/${prep.total}`;
+  } else { $('prepBar').style.display = 'none'; $('prepStat').textContent = ''; }
+  $('st1').classList.toggle('done', !!(startPt && destPt));
+  $('st2').classList.toggle('done', !!(plan && plan.prepared && matches));
+  $('st3').classList.toggle('done', flying());
+  return !!(plan && plan.prepared && matches);
+}
+$('prepBtn').onclick = () => post('prepare');
+
+// ── vision search display ──
+const visLayer = L.layerGroup().addTo(map);
+let visKey = null, wasSearching = false;
+function tileOf(name){
+  const m = /tile_(\d+)_(\d+)_(\d+)/.exec(name || '');
+  return m ? tileBounds(+m[2], +m[3], +m[1]) : null;
+}
+function renderVision(d){
+  const v = d.vision || {}, st = v.status, real = d.cfg.vision === 'real';
+  $('visCard').style.display = real ? '' : 'none';
+  if(!real){ visLayer.clearLayers(); return; }
+  const chip = $('visChip');
+  if(!v.enabled){ chip.textContent = 'off'; chip.className = 'chip dead'; $('visWhat').textContent = 'Starts with the mission.'; }
+  else if(!v.ready){ chip.textContent = 'loading'; chip.className = 'chip alive'; $('visWhat').textContent = 'Loading DINOv2 and the prepared tiles…'; }
+  else if(d.faults.camera !== 'ok'){ chip.textContent = 'NO CAMERA'; chip.className = 'chip'; chip.style.color = 'var(--bad)'; $('visWhat').textContent = 'Camera failed: no frames, no vision position.'; }
+  else if(!st || st.source === 'gps_active'){
+    chip.textContent = 'standby'; chip.className = 'chip alive'; chip.style.color = '';
+    $('visWhat').textContent = 'GPS is good: vision is idle and keeps the last GPS position as the centre of its future search.';
+  } else {
+    const ok = st.success;
+    chip.textContent = ok ? 'MATCH' : 'NO MATCH'; chip.className = 'chip ' + (ok ? 'active' : '');
+    chip.style.color = ok ? '' : 'var(--bad)';
+    $('visWhat').textContent = ok
+      ? `GPS lost: searched ${st.n_candidates} tiles within ${Math.round(st.search_radius_m)} m of the last known position and matched ${st.match || ''}.`
+      : `No position this frame: ${st.reason || '—'}`;
+  }
+  const searching = st && st.source !== 'gps_active' && st.search_center;
+  $('visR').textContent = searching ? `${Math.round(st.search_radius_m)} m` : '—';
+  $('visN').textContent = searching ? st.n_candidates : '—';
+  if(st && st.score != null && st.source !== 'gps_active'){
+    $('visScore').textContent = `${st.score.toFixed(3)} (min ${st.threshold})`;
+    $('visScoreBar').style.width = (Math.max(0, Math.min(1, st.score)) * 100) + '%';
+    $('visScoreBar').style.background = st.score >= st.threshold ? 'var(--day)' : 'var(--bad)';
+    $('visThr').style.left = (st.threshold * 100) + '%';
+  } else { $('visScore').textContent = '—'; $('visScoreBar').style.width = '0'; }
+  $('visErr').textContent = st && st.err_m != null ? m(st.err_m) : '—';
+  const k = v.stats || {};
+  $('visStats').innerHTML = `Frames <b>${k.frames||0}</b> · on GPS standby <b>${k.idle||0}</b> · ` +
+    `matched <b class="ok">${k.matched||0}</b> · no match <b class="bad">${k.rejected||0}</b>` +
+    (v.matches && v.matches.length ? ` · median match error <b>${m(median(v.matches.map(x => x[2]).filter(x => x != null)))}</b>` : '');
+  // map
+  const key = st ? `${st.frame_id}:${st.source}` : null;
+  if(key === visKey) return;
+  visKey = key;
+  visLayer.clearLayers();
+  if(!searching){ wasSearching = false; return; }
+  const c = st.search_center;
+  if(!wasSearching && follow){
+    map.fitBounds(L.latLng(c).toBounds(st.search_radius_m * 2.6), {animate:true});
+  }
+  wasSearching = true;
+  L.circle(c, {radius:st.search_radius_m, color:'#58e6d9', weight:2, dashArray:'8 6', fillOpacity:.04,
+               interactive:false}).addTo(visLayer);
+  L.circleMarker(c, {radius:4, color:'#58e6d9', fillColor:'#58e6d9', fillOpacity:1, interactive:false})
+    .bindTooltip('last known position (search centre)').addTo(visLayer);
+  (st.top5 || []).forEach((t, i) => {
+    const b = tileOf(t.image); if(!b) return;
+    const best = i === 0 && st.success;
+    L.rectangle(b, {color: best ? '#58e6d9' : '#9be9e1', weight: best ? 2.5 : 1,
+                    fillOpacity: best ? .30 : .06, dashArray: best ? null : '3 4', interactive:false})
+      .addTo(visLayer);
+    if(map.getZoom() >= 15) L.marker([t.lat, t.lon], {interactive:false, icon:L.divIcon({className:'', iconSize:[40,16], iconAnchor:[20,8],
+      html:`<div style="font:700 10px sans-serif;color:#fff;text-shadow:0 0 3px #000;text-align:center">#${i+1} ${t.score.toFixed(2)}</div>`})})
+      .addTo(visLayer);
+  });
+  if(st.success && st.lat != null)
+    L.polyline([c, [st.lat, st.lon]], {color:'#58e6d9', weight:1.5, opacity:.8, interactive:false}).addTo(visLayer);
+}
+const median = a => { if(!a.length) return null; const s = a.slice().sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+
 // ── controls ──
-const cfg = {vehicle:'drone', profile:'measured'};
+const cfg = {vehicle:'drone', profile:'measured', vision:'real'};
 function seg(id, onPick){
   $(id).querySelectorAll('button').forEach(b => b.onclick = () => onPick(b.dataset.v));
 }
@@ -298,16 +492,26 @@ function setSeg(id, v, fault){
                b.classList.toggle('warn', on && !(v === 'ok' || v === 'day')); }
   });
 }
-const DEF = {drone:[15,120], boat:[8,0], robot:[4,0]};
+const DEF = {drone:[15,150], boat:[8,0], robot:[4,0]};
 const MAXSPD = {drone:20, boat:15, robot:8};
 seg('vehicle', v => { cfg.vehicle = v; setSeg('vehicle', v);
   $('spd').max = MAXSPD[v];
   $('spd').value = DEF[v][0]; $('spdV').textContent = DEF[v][0];
-  $('altBox').style.display = v === 'drone' ? '' : 'none'; });
+  $('altBox').style.display = v === 'drone' ? '' : 'none';
+  if(v !== 'drone' && cfg.vision === 'real') setVision('profile');
+  $('vision').querySelector('[data-v="real"]').disabled = v !== 'drone'; });
+function setVision(v){
+  cfg.vision = v; setSeg('vision', v);
+  $('profBox').style.display = v === 'profile' ? '' : 'none';
+  $('profNote').textContent = PROF_NOTE[v === 'real' ? 'real' : cfg.profile];
+  updateHint();
+}
+seg('vision', setVision);
 seg('profile', v => { cfg.profile = v; setSeg('profile', v); $('profNote').textContent = PROF_NOTE[v]; });
-$('profNote').textContent = PROF_NOTE.measured;
+$('profNote').textContent = PROF_NOTE.real;
 $('spd').oninput = () => $('spdV').textContent = $('spd').value;
-$('alt').oninput = () => $('altV').textContent = $('alt').value;
+$('alt').oninput = () => { $('altV').textContent = $('alt').value;
+  $('fpV').textContent = Math.round(2 * $('alt').value * Math.tan(42 * Math.PI / 180)); };
 for(const k of ['gps','camera','light','imu']){
   seg('f_' + k, v => post('fault', {[k]: v}));
 }
@@ -329,7 +533,8 @@ function toast(msg){
 $('startBtn').onclick = () => {
   clearTracks();
   post('mission', {vehicle:cfg.vehicle, start:startPt, dest:destPt, speed:+$('spd').value,
-                   alt:+$('alt').value, profile:cfg.profile, forward_degraded:$('fwd').checked});
+                   alt:+$('alt').value, profile:cfg.profile, vision:cfg.vision,
+                   forward_degraded:$('fwd').checked, degraded_sigma_m:+$('fwdSigma').value});
   follow = true; $('follow').classList.add('on');
 };
 $('rtlBtn').onclick = () => post('rtl');
@@ -345,7 +550,7 @@ function clearTracks(){
 }
 
 // ── state ──
-let S = null, series = [];
+let S = null, series = [], areaReady = false, restored = false;
 const flying = () => S && ['starting','waiting_gps','arming','takeoff','enroute','arrived','rtl','landing','failsafe'].includes(S.phase);
 function updateHint(){
   let t;
@@ -353,9 +558,11 @@ function updateHint(){
   else if(flying()) t = 'Click the map to send the vehicle to a new destination';
   else if(!startPt) t = 'Click the map to place the START point';
   else if(!destPt) t = 'Click the map to place the DESTINATION';
+  else if(cfg.vision === 'real' && !areaReady) t = 'Step 2 — press Prepare map';
   else t = 'Ready — press Start mission';
   $('maphint').textContent = t;
-  $('startBtn').disabled = !(startPt && destPt) || (S && ['starting','waiting_gps','arming','takeoff'].includes(S.phase));
+  $('startBtn').disabled = !(startPt && destPt) || (cfg.vision === 'real' && !areaReady) ||
+    (S && ['starting','waiting_gps','arming','takeoff'].includes(S.phase));
 }
 const m = v => v == null ? '—' : v >= 1000 ? `${(v/1000).toFixed(2)} km` : `${Math.round(v)} m`;
 const FIX = {0:'none',1:'no fix',2:'2D fix',3:'3D fix',4:'DGPS',5:'RTK float',6:'RTK fixed'};
@@ -365,6 +572,25 @@ function render(d){
   const pc = ['failsafe','error'].includes(d.phase) ? 'var(--bad)' : 'var(--text)';
   $('phase').innerHTML = `<b style="color:${pc}">${d.phase.replace('_',' ').toUpperCase()}</b> · ${esc(d.detail)}`;
   for(const k of ['gps','camera','light','imu']) setSeg('f_' + k, d.faults[k], true);
+  const pl = d.area && d.area.plan;
+  if(pl && !startPt && !destPt){                 // page reopened: restore the planned route
+    startPt = pl.route[0]; destPt = pl.route[1]; planKey = JSON.stringify([startPt, destPt]); pick = 'dest';
+  }
+  if(flying() && !restored){                   // page (re)opened during a mission
+    restored = true;
+    const c = d.cfg;
+    cfg.vehicle = c.vehicle; setSeg('vehicle', c.vehicle);
+    $('altBox').style.display = c.vehicle === 'drone' ? '' : 'none';
+    cfg.profile = c.profile; setSeg('profile', c.profile);
+    setVision(c.vision);
+    $('fwd').checked = !!c.forward_degraded; $('fwdSigma').value = c.degraded_sigma_m;
+    $('spd').value = c.speed; $('spdV').textContent = c.speed;
+    $('alt').value = c.alt; $('alt').oninput();
+  }
+  if(!flying()) restored = false;
+  $('startBtn').textContent = flying() ? 'Restart mission' : 'Start mission';
+  areaReady = renderArea(d);
+  renderVision(d);
   if(d.cfg && d.phase !== 'idle'){
     if(d.cfg.start && !startPt) startPt = d.cfg.start;
     if(d.cfg.dest){ destPt = d.cfg.dest; }

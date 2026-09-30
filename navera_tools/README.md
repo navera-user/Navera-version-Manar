@@ -31,14 +31,27 @@ Only numbers produced this way, on representative data, go into docs/VALIDATION_
 Open **`http://<jetson-ip>:8190`** (control page) and, if wanted, `http://<jetson-ip>:8181/operator`
 (the product's own operator view, which shows a SIMULATION banner).
 
-1. Choose the vehicle (drone, boat, ground robot), click the map for the **start** and the
-   **destination**, set speed / altitude and the vision accuracy (*Measured today* or
-   *Target* — the target is not a measured performance).
-2. **Start mission.** The autopilot starts at the start point, waits until it accepts NAVERA's
-   position (30–60 s), arms, takes off (drone) and goes to the destination. Click the map at any
-   time for a new destination.
-3. **Inject faults** at any time: GPS jammed / spoofed (2 km jump) / spoofed (slow drift) / off,
+1. **Plan:** choose the vehicle (drone, boat, ground robot), click the map for the **start** and
+   the **destination**, set speed and altitude (the camera footprint is shown). The page
+   checks the MBTiles coverage of a ±1 km corridor around the route and draws it (missing
+   tiles in red).
+2. **Prepare the map:** extracts the corridor's tiles and computes their DINOv2 descriptors
+   with the product tool `day_pkg prepare_area.py`, with a progress bar (about 16 s for
+   5 km). Prepared areas are kept in `~/.navera_sim/areas/` and reused.
+3. **Fly:** choose what gives the position when GPS is lost — **Real NAVERA day vision**
+   (drone only: the real `day_subscriber` on the simulated camera images) or a simulated error
+   profile (*Measured today* / *Target*, the latter not a measured performance) — and whether
+   vision positions are given to the autopilot (NAVERA's default: no, so the autopilot's own
+   failsafe acts). **Start mission.** The autopilot waits until it accepts NAVERA's position
+   (30–60 s), arms, takes off and goes to the destination. Click the map at any time for a new
+   destination (a warning is logged when it leaves the prepared area).
+4. **Inject faults** at any time: GPS jammed / spoofed (2 km jump) / spoofed (slow drift) / off,
    camera failed, night, IMU failed.
+
+With real vision, when GPS is lost the map zooms to vision's **search circle** (centred on the
+last known position, 600 m), the candidate tiles with their scores, the tile it matched and the
+position it gave; the Day vision card shows the frame's result, the score against the
+threshold and the error against the truth.
 
 The page shows the true vehicle and path, NAVERA's output (coloured by source), the autopilot's
 own belief, NAVERA's state and reason, the autopilot's mode, fix and navigation filter, every
@@ -46,7 +59,7 @@ sensor, the error against the truth over time, the camera picture and an event l
 
 | Real (as on the box) | Simulated |
 |---|---|
-| `gps_node` (reads NMEA from a pseudo-terminal), `navera_estimator`, `vehicle_output` (MAVLink GPS_INPUT), web bridge + operator view, **ArduPilot** (SITL: Copter 4.5 for the drone, Rover for the boat and robot) whose only position input is NAVERA | the world (ArduPilot's physics), the GPS receiver, IMU and clock samples, the vision fixes' error (profile), the camera picture (cut from the onboard map) |
+| `gps_node` (reads NMEA from a pseudo-terminal), **`day_subscriber` (DINOv2 day vision)**, `navera_estimator`, `vehicle_output` (MAVLink GPS_INPUT), web bridge + operator view, `prepare_area.py`, **ArduPilot** (SITL: Copter 4.5 for the drone, Rover for the boat and robot) whose only position input is NAVERA | the world (ArduPilot's physics), the GPS receiver, IMU and clock samples, the camera images (cut north-up from the same satellite map, 84° field of view — so vision looks **better than with a real camera**), the vision error when the profile mode is chosen |
 
 A new mission restarts NAVERA's nodes, like powering the box on at a new place. Needs an
 ArduPilot SITL build (`./waf configure --board sitl && ./waf copter rover`, default
@@ -54,7 +67,8 @@ ArduPilot SITL build (`./waf configure --board sitl && ./waf copter rover`, defa
 logs in `~/.navera_sim/`. The control page has no password: run it on a trusted network.
 
 Files: `sim/sim_server.py` (world, sensors, mission, HTTP API), `sim/autopilot.py` (SITL
-process and MAVLink), `sim/nmea_gps.py` (receiver), `sim/camera_view.py`, `sim/sim.html`.
+process and MAVLink), `sim/nmea_gps.py` (receiver), `sim/vision_link.py` (map preparation and
+the camera for the real day vision), `sim/camera_view.py`, `sim/sim.html`.
 
 ## Demonstration (simulated mission)
 
