@@ -33,7 +33,7 @@ Parameters:
                                  which then take height from the barometer; 2 = the
                                  literal label, which they ignore (mavlink_out)
 
-Each position is sent ONCE, when it arrives (a 1 Hz vision fix is not repeated
+Each position is sent ONCE, as soon as it arrives (a 1 Hz vision fix is not repeated
 5 times with fresh timestamps: an autopilot filter would read the repeats as
 "stopped, then jumped"). "No fix" is sent at rate_hz, so the autopilot always
 hears from NAVERA.
@@ -126,6 +126,10 @@ class VehicleOutputNode(Node):
 
     def _on_position(self, msg: PositionEstimate) -> None:
         self._pos, self._pos_rx = msg, time.monotonic()
+        # Forward at once: waiting for the next timer tick adds latency and, with
+        # both at 5 Hz, drops or doubles messages — an irregular stream that
+        # ArduPilot reports as "GPS not healthy" and refuses to arm on (SITL).
+        self._tick()
 
     def _on_gps_vel(self, msg: TwistStamped) -> None:
         # gps_node publishes ENU: linear.x east, linear.y north.

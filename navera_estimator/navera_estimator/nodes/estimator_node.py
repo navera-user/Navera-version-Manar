@@ -51,6 +51,9 @@ Scope: honest single-winner arbitration across the LIVE sources.
     gps_crosscheck_persist_s refuses it ("drifting away"). This needs a source
     with a stated accuracy — with vision of unknown accuracy a gradual spoof
     is still not detected.
+  * Decisions are taken when an estimate arrives (no added latency, no
+    measurement skipped when two arrive between ticks) and every
+    1/publish_rate_hz to notice sources going silent.
   * /navera/position carries each winning MEASUREMENT once: a new message is
     published only when the winner changes or sends a new estimate, never the
     same estimate re-stamped at every tick (a filter downstream would fuse it
@@ -210,6 +213,7 @@ class EstimatorNode(Node):
     def _on_gps(self, msg: PositionEstimate) -> None:
         self._gps_last = msg
         self._check_gps_plausibility(msg)
+        self._tick()
 
     def _check_gps_plausibility(self, msg: PositionEstimate) -> None:
         """Kinematic gate: refuse a GPS fix the vehicle cannot have reached."""
@@ -300,12 +304,15 @@ class EstimatorNode(Node):
 
     def _on_day(self, msg: PositionEstimate) -> None:
         self._day_last = msg
+        self._tick()
 
     def _on_night(self, msg: PositionEstimate) -> None:
         self._night_last = msg
+        self._tick()
 
     def _on_cn(self, msg: PositionEstimate) -> None:
         self._cn_last = msg
+        self._tick()
 
     def _on_imu(self, msg: Imu) -> None:
         # Liveness only: we keep the stamp, never the sample. The IMU feeds no
