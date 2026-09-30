@@ -45,9 +45,35 @@ def _tile_xy(lat, lon, z):
             (1.0 - math.log(math.tan(r) + 1.0 / math.cos(r)) / math.pi) / 2.0 * n)
 
 
+# Online imagery for areas the onboard map lacks (development / demonstration).
+# Storing it for offline use in a product needs the provider's licence.
+TILE_URL = os.environ.get(
+    "NAVERA_TILE_URL",
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}")
+
+
+class MultiTiles:
+    """Tiles from several MBTiles readers, first hit wins (onboard map, then cache)."""
+
+    def __init__(self, readers):
+        self.readers = readers
+        self.path = readers[0].path
+
+    def exists(self):
+        return any(r.exists() for r in self.readers)
+
+    def get(self, z, x, y):
+        for r in self.readers:
+            data = r.get(z, x, y)
+            if data:
+                return data
+        return None
+
+
 class AreaManager:
     def __init__(self, mbtiles, work_dir, log):
         self.mbtiles = mbtiles
+        self.cache = os.path.join(work_dir, "world_tiles.mbtiles")
         self.dir = os.path.join(work_dir, "areas")
         os.makedirs(self.dir, exist_ok=True)
         self.log = log
@@ -68,12 +94,13 @@ class AreaManager:
         return os.path.exists(os.path.join(self.path(aid), "descriptors_cache.npz"))
 
     def make_plan(self, route, buffer_m=BUFFER_M):
-        p = plan_tiles(self.mbtiles, route, buffer_m, 17)
+        p = plan_tiles(self.mbtiles, route, buffer_m, 17, self.cache)
         aid = self.area_id(route, buffer_m)
         length = sum(math.hypot((b[1] - a[1]) * 111320 * math.cos(math.radians(a[0])),
                                 (b[0] - a[0]) * 111320) for a, b in zip(route, route[1:]))
         plan = dict(id=aid, route=route, buffer_m=buffer_m, zoom=17, length_m=length,
                     tiles=len(p["needed"]), present=p["present"], missing=p["missing"],
+                    in_base=p["in_base"], in_cache=p["in_cache"],
                     prepared=self.is_prepared(aid))
         with self.lock:
             self.plan = plan
@@ -86,18 +113,20 @@ class AreaManager:
                 raise ValueError("plan the route first")
             if self._proc and self._proc.poll() is None:
                 raise ValueError("already preparing")
-            if not plan["present"]:
-                raise ValueError("the map has no tiles along this route")
-            self.prep = dict(id=plan["id"], stage="starting", done=0, total=len(plan["present"]),
+
+            self.prep = dict(id=plan["id"], stage="starting", done=0, total=plan["tiles"],
                              status="running", error=None)
         cmd = ["ros2", "run", "day_pkg", "prepare_area.py", "--mbtiles", self.mbtiles,
                "--out", self.path(plan["id"]), "--buffer-m", str(plan["buffer_m"]),
+               "--fetch-url", TILE_URL, "--cache", self.cache,
                "--route"] + [f"{a},{b}" for a, b in plan["route"]]
         self._proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                       text=True, start_new_session=True)
         threading.Thread(target=self._read, args=(self._proc, plan["id"]), daemon=True).start()
-        self.log("info", f"map: preparing {len(plan['present'])} tiles for vision "
-                         f"({plan['length_m'] / 1000:.1f} km route, ±{plan['buffer_m']:.0f} m)")
+        dl = len(plan["missing"])
+        self.log("info", f"map: preparing {plan['tiles']} tiles for vision "
+                         f"({plan['length_m'] / 1000:.1f} km route, ±{plan['buffer_m']:.0f} m)"
+                         + (f"; downloading {dl} tiles the onboard map lacks" if dl else ""))
 
     def _read(self, proc, aid):
         tail = deque(maxlen=5)
@@ -118,6 +147,13 @@ class AreaManager:
                 self.prep["error"] = None if ok else " / ".join(tail)
                 if self.plan and self.plan["id"] == aid:
                     self.plan["prepared"] = ok
+        with self.lock:
+            plan = self.plan
+        if code == 0 and plan and plan["id"] == aid:
+            try:                                  # coverage changed: tiles were downloaded
+                self.make_plan(plan["route"], plan["buffer_m"])
+            except Exception as e:                # noqa: BLE001
+                self.log("warn", f"map: coverage refresh failed: {e}")
         if code == 0:
             info = json.load(open(os.path.join(self.path(aid), "area.json")))
             self.log("ok", f"map: area ready — {info['prepared']} tiles with vision descriptors "
@@ -129,7 +165,8 @@ class AreaManager:
         with self.lock:
             p = self.plan
             plan = None if p is None else {k: p[k] for k in (
-                "id", "route", "buffer_m", "length_m", "tiles", "prepared")} | {
+                "id", "route", "buffer_m", "length_m", "tiles", "prepared", "in_base",
+                "in_cache")} | {
                 "present": p["present"], "missing": p["missing"]}
             return dict(plan=plan, prep=dict(self.prep) if self.prep else None)
 
@@ -243,6 +280,8 @@ class VisionCamera:
         """Nadir view of the map for this position and altitude (see class doc)."""
         footprint = max(40.0, 2.0 * max(alt_m, 1.0) * math.tan(math.radians(HFOV_DEG / 2)))
         z = 18 if footprint <= 600 else 17
+        if z == 18 and not self.tiles.get(18, *map(int, _tile_xy(lat, lon, 18))):
+            z = 17                        # area prepared at z17 only (downloaded tiles)
         tile_m = 40_075_016.7 * math.cos(math.radians(lat)) / 2 ** z
         half = int(math.ceil(footprint / 2 / tile_m)) + 1
         x, y = _tile_xy(lat, lon, z)

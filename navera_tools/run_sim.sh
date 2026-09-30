@@ -26,16 +26,26 @@ if ! flock -n 9; then
   echo "the NAVERA simulator is already running: open http://$(hostname -I | awk '{print $1}'):8190" >&2
   exit 1
 fi
-for port in 8181 8190 5760 5762; do
+for port in 8181 8190 8443 5760 5762; do
   if ss -ltn 2>/dev/null | grep -q ":$port "; then
     echo "port $port is in use (NAVERA web service, a demo, or another ArduPilot SITL): stop it first." >&2
     exit 1
   fi
 done
 
+# Self-signed certificate for the HTTPS port (browsers share the device location
+# only with HTTPS pages). Created once; the browser asks to accept it the first time.
+tls="$NAVERA_SIM_DIR/tls"
+if [ ! -f "$tls/cert.pem" ] && command -v openssl >/dev/null; then
+  mkdir -p "$tls"
+  openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -subj "/CN=navera-sim" \
+    -keyout "$tls/key.pem" -out "$tls/cert.pem" >/dev/null 2>&1 && chmod 600 "$tls/key.pem"
+fi
+
 set +u; source /opt/ros/humble/setup.bash && source install/setup.bash; set -u
 export ROS_DOMAIN_ID="${NAVERA_SIM_DOMAIN:-79}" ROS_LOCALHOST_ONLY=1 NAVERA_ALLOW_SIM=1 NAVERA_ARDUPILOT="$ap"
 ip=$(hostname -I | awk '{print $1}')
-echo "NAVERA simulator — control page: http://$ip:8190   operator view: http://$ip:8181/operator"
+echo "NAVERA simulator — dashboard: http://$ip:8190  (or https://$ip:8443 for 'My location')"
+echo "                  operator view: http://$ip:8181/operator"
 echo "(Ctrl-C to stop; logs in $NAVERA_SIM_DIR)"
 exec python3 navera_tools/sim/sim_server.py

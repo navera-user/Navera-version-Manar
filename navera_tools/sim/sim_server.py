@@ -53,7 +53,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from autopilot import NAVERA_URL, VEHICLES, Autopilot  # noqa: E402
 from camera_view import CameraView  # noqa: E402
 from nmea_gps import MODES as GPS_MODES, NmeaGps  # noqa: E402
-from vision_link import AreaManager, StarCamera, VisionCamera  # noqa: E402
+from vision_link import TILE_URL, AreaManager, MultiTiles, StarCamera, VisionCamera  # noqa: E402
 from cn_pkg.nodes.celestial_math import boresight_altaz  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -129,7 +129,9 @@ class Simulator(Node):
         self.series = deque(maxlen=900)             # (t, navera_err, autopilot_err, source)
         self.rng = random.Random(7)
         self.t0 = time.monotonic()
-        self.tiles = MBTilesReader(mbtiles, self.get_logger())
+        self.tiles = MultiTiles([MBTilesReader(mbtiles, self.get_logger()),
+                                 MBTilesReader(os.path.join(work_dir, "world_tiles.mbtiles"),
+                                               self.get_logger())])
         self.camera = CameraView(self.tiles)
         self.gps = NmeaGps()
         self.ap = Autopilot(ardupilot, work_dir, self.event)
@@ -257,6 +259,14 @@ class Simulator(Node):
         if not s["link"]:
             return None
         return boresight_altaz(self._quat_enu(*s["attitude"]), 90.0, 0.0, 0.0)
+
+    def _night_map(self):
+        """The map the night localizer reads: the onboard map when it covers the whole
+        route corridor, else the cache (prepare_area makes it complete for the corridor)."""
+        plan = self.areas.state()["plan"]
+        if plan and plan["in_base"] < plan["tiles"] and os.path.exists(self.areas.cache):
+            return self.areas.cache
+        return self.tiles.path
 
     def _sky_utc(self):
         """Simulated sky time: tonight 20:30 UTC + elapsed since the switch to night."""
@@ -539,8 +549,10 @@ class Simulator(Node):
             running = set(k for k in ("day_vision", "night_vision", "celestial") if k in self.procs)
         self._stop_vision(keep=want & running)
         if night and self.sky_base is None:
+            # 20:30 local mean solar time at the start point (the night, anywhere)
             t = time.gmtime()
-            base = time.mktime((t.tm_year, t.tm_mon, t.tm_mday, 20, 30, 0, 0, 0, 0)) - time.timezone
+            midnight_utc = time.mktime((t.tm_year, t.tm_mon, t.tm_mday, 0, 0, 0, 0, 0, 0)) - time.timezone
+            base = midnight_utc + (20.5 - self.cfg["start"][1] / 15.0) * 3600.0
             self.sky_base = (base, time.monotonic())
         if not night:
             self.sky_base = None
@@ -557,7 +569,7 @@ class Simulator(Node):
         if "night_vision" in want and "night_vision" not in running:
             self._start_proc("night_vision", [
                 "ros2", "run", "night_pkg", "night_subscriber.py", "--ros-args",
-                "-p", f"mbtiles:={self.tiles.path}", "-p", "camera_hfov_deg:=84.0"])
+                "-p", f"mbtiles:={self._night_map()}", "-p", "camera_hfov_deg:=84.0"])
             self.nightcam.start()
             self.event("info", "night vision: loading the STHN network (thermal camera, "
                                "84° field of view)…")
@@ -604,8 +616,6 @@ class Simulator(Node):
                 raise ValueError("start and destination are required")
             plan = self.areas.make_plan([(float(start[0]), float(start[1])),
                                          (float(dest[0]), float(dest[1]))])
-            if not plan["present"]:
-                raise ValueError("the onboard map has no tiles along this route")
             return
         if action == "prepare":
             self.areas.start_prepare()
@@ -624,12 +634,17 @@ class Simulator(Node):
             vision = "real" if body.get("vision", "real") == "real" else "profile"
             light = "night" if body.get("light") == "night" else "day"
             area = self.areas.area_id([tuple(map(float, start)), tuple(map(float, dest))], 1000.0)
+            plan = self.areas.state()["plan"]
+            covered_offline = bool(plan and plan["id"] == area and not plan["missing"])
             if vision == "real":
                 if vehicle != "drone":
                     raise ValueError("real vision needs a downward camera at altitude: "
                                      "use the drone, or the simulated vision profile")
                 if light == "day" and not self.areas.is_prepared(area):
                     raise ValueError("prepare the map for this route first (Prepare map)")
+                if light == "night" and not (covered_offline or self.areas.is_prepared(area)):
+                    raise ValueError("this route is outside the onboard map: prepare the map "
+                                     "first (its tiles are downloaded)")
                 if light == "night" and float(body.get("alt", 400)) < 350:
                     self.event("warn", "night vision needs about 350 m or more with this 84° "
                                        "camera: below, it will report 'fly higher'")
@@ -744,6 +759,35 @@ class Simulator(Node):
             return d + f" — climbing {max(0, s['truth'][2]):.0f} m"
         return d
 
+    def config(self):
+        """What the dashboard needs to know about maps."""
+        return dict(
+            offline_map=os.path.basename(self.tiles.path or ""),
+            offline_bounds=self._offline_bounds(),
+            prepare_source=TILE_URL.split("/")[2] if "//" in TILE_URL else TILE_URL,
+            imagery_note="Areas outside the onboard map are downloaded from online imagery "
+                         "(Esri World Imagery by default). Development and demonstration only: "
+                         "storing imagery offline in a product needs the provider's licence.")
+
+    def _offline_bounds(self):
+        try:
+            import sqlite3 as _sq
+            con = _sq.connect(f"file:{self.tiles.path}?mode=ro", uri=True)
+            row = con.execute("SELECT value FROM metadata WHERE name='bounds'").fetchone()
+            con.close()
+            w, s_, e, n = (float(v) for v in row[0].split(","))
+            return [[s_, w], [n, e]]
+        except Exception:                            # noqa: BLE001
+            return None
+
+    def box_location(self):
+        """The box's own position, if it has one: NAVERA's current output."""
+        with self.lock:
+            nav = dict(self.nav)
+        if nav["lat"] is not None and time.monotonic() - nav["t"] < 5 and nav["state"] in ("FIX", "DEGRADED"):
+            return dict(lat=nav["lat"], lon=nav["lon"], source=f"NAVERA ({nav['source']})")
+        return dict(lat=None, lon=None, source=None)
+
     def camera_jpeg(self):
         cam = self.nightcam if self.faults["light"] == "night" else self.daycam
         if self.cfg["vision"] == "real" and cam.enabled and cam.last_jpeg:
@@ -768,7 +812,9 @@ class Simulator(Node):
         self.gps.close()
 
 
-def serve(sim, host, port):
+def serve(sim, host, port, tls=None):
+    """HTTP(S) server for the dashboard and its API. tls = (cert, key) for HTTPS —
+    browsers give the page the device's location only over HTTPS (or localhost)."""
     page = os.path.join(HERE, "sim.html")
 
     class H(BaseHTTPRequestHandler):
@@ -807,6 +853,10 @@ def serve(sim, host, port):
                 except Exception as e:
                     sim.get_logger().error("state: " + traceback.format_exc())
                     return self._json(500, {"error": str(e)})
+            if path == "/api/config":
+                return self._json(200, sim.config())
+            if path == "/api/location":
+                return self._json(200, _clean(sim.box_location()))
             if path == "/api/star.jpg":
                 img = sim.starcam.last_jpeg
                 return self._send(200, img, "image/jpeg") if img else self._send(204, b"", "image/jpeg")
@@ -836,6 +886,11 @@ def serve(sim, host, port):
 
     srv = ThreadingHTTPServer((host, port), H)
     srv.daemon_threads = True
+    if tls:
+        import ssl
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(*tls)
+        srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv
 
@@ -858,7 +913,15 @@ def main():
     sim = Simulator(work, os.environ["NAVERA_MBTILES"], os.environ.get("NAVERA_ARDUPILOT", "~/ardupilot"))
     port = int(os.environ.get("NAVERA_SIM_PORT", "8190"))
     srv = serve(sim, "0.0.0.0", port)
-    sim.event("info", f"simulator ready on port {port}")
+    servers = [srv]
+    cert, key = (os.path.join(work, "tls", n) for n in ("cert.pem", "key.pem"))
+    if os.path.exists(cert) and os.path.exists(key):
+        tls_port = int(os.environ.get("NAVERA_SIM_TLS_PORT", "8443"))
+        servers.append(serve(sim, "0.0.0.0", tls_port, (cert, key)))
+        sim.event("info", f"simulator ready on port {port} (HTTP) and {tls_port} (HTTPS: "
+                          "needed for 'My location' from another device)")
+    else:
+        sim.event("info", f"simulator ready on port {port}")
     ex = MultiThreadedExecutor(num_threads=4)
     ex.add_node(sim)
     stop = threading.Event()
@@ -867,7 +930,8 @@ def main():
     t = threading.Thread(target=ex.spin, daemon=True)
     t.start()
     stop.wait()
-    srv.shutdown()
+    for sv in servers:
+        sv.shutdown()
     ex.shutdown()                 # no more timers (the process watchdog) before stopping nodes
     sim.shutdown()
     sim.destroy_node()

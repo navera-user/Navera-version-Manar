@@ -28,8 +28,19 @@ Only numbers produced this way, on representative data, go into docs/VALIDATION_
     source ~/navera_env.sh
     navera_tools/run_sim.sh
 
-Open **`http://<jetson-ip>:8190`** (control page) and, if wanted, `http://<jetson-ip>:8181/operator`
-(the product's own operator view, which shows a SIMULATION banner).
+Open **`http://<jetson-ip>:8190`** (dashboard), or **`https://<jetson-ip>:8443`** (same page over
+HTTPS with a self-signed certificate created at first start — browsers give a page the device's
+location only over HTTPS or on localhost). The product's own operator view is
+`http://<jetson-ip>:8181/operator` (SIMULATION banner).
+
+The dashboard follows the original NAVERA mission planner: a **pre-flight setup** (day / night,
+vehicle, speed and altitude, what gives the position when GPS is lost, whether vision positions
+go to the autopilot), then the **mission planner** on a world map (hybrid satellite + place names,
+satellite, street map, or the onboard map offline; switches to the onboard map by itself without
+internet), with **place search** (OpenStreetMap Nominatim) or typed coordinates, **My location**
+(the device's location, else the box's own position), A/B points (click, search result or drag),
+and the **Map** tab to prepare any route in the world (tiles the onboard map lacks are
+downloaded); then the **flight monitor**. English, French and Arabic.
 
 1. **Plan:** choose the vehicle (drone, boat, ground robot), click the map for the **start** and
    the **destination**, set speed and altitude (the camera footprint is shown). The page
