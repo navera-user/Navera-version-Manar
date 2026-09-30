@@ -7,7 +7,8 @@ The vehicle's autopilot treats whatever NAVERA sends as a GPS. The rules:
 * DEGRADED (vision / celestial: uncertainty unknown, or dead-reckoned) is NOT
   sent as a position unless the integrator explicitly enables it and declares
   the accuracy to report (degraded_sigma_m). It is then flagged "estimated"
-  (NMEA quality 6), never as a satellite fix.
+  (NMEA quality 6), never as a satellite fix. When the source states a worse
+  accuracy itself (e.g. celestial, tens of km), the worse one is sent.
 * Anything else — NO_FIX, INITIALIZING, the arbiter silent, the position
   stale, non-finite, or not from the active source — is sent as "no fix".
   A position is never repeated after it stops being current.
@@ -118,5 +119,8 @@ def decide(cfg: Config, state: Optional[int], status_age_s: Optional[float],
                       satellites=int(sats) if isinstance(sats, int) else None, **common)
     if not cfg.forward_degraded:
         return Output(KIND_NONE, "degraded position not forwarded (forward_degraded=false)")
-    return Output(KIND_ESTIMATED, "estimated", sigma_h_m=cfg.degraded_sigma_m,
+    known = getattr(pos, "position_covariance_type", 0) != 0          # 0 = UNKNOWN
+    stated = math.sqrt(max(cov[0], cov[4])) if known else math.nan
+    sigma = max(cfg.degraded_sigma_m, stated) if math.isfinite(stated) else cfg.degraded_sigma_m
+    return Output(KIND_ESTIMATED, "estimated", sigma_h_m=sigma,
                   sigma_v_m=math.nan, satellites=0, **common)

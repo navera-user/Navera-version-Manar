@@ -149,3 +149,14 @@ def test_no_velocity_without_gps_velocity_or_for_other_sources():
     assert o.kind == KIND_FIX and not o.has_velocity
     o = decide(Config(), STATE_FIX, 0.1, pos(), 0.1, GPS, (math.nan, 1.0))
     assert not o.has_velocity
+
+
+def test_forwarded_accuracy_never_better_than_the_source_states():
+    cfg = Config(forward_degraded=True, degraded_sigma_m=300.0)
+    cn = pos(source=4, var=(55_000.0 ** 2, 55_000.0 ** 2, 0.0))
+    cn.position_covariance_type = 1                         # APPROXIMATED
+    o = decide(cfg, STATE_DEGRADED, 0.1, cn, 0.1, 4)
+    assert o.kind == KIND_ESTIMATED and o.sigma_h_m == pytest.approx(55_000.0)
+    day = pos(source=DAY)                                  # unknown covariance → configured
+    day.position_covariance_type = 0
+    assert decide(cfg, STATE_DEGRADED, 0.1, day, 0.1, DAY).sigma_h_m == 300.0
