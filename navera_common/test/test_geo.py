@@ -60,3 +60,9 @@ def test_longitude_wraps_at_antimeridian():
     (None, 1.0, False), ("x", 1.0, False)])
 def test_is_finite_latlon(lat, lon, ok):
     assert is_finite_latlon(lat, lon) is ok
+
+
+def test_haversine():
+    from navera_common.geo import haversine_m
+    assert haversine_m(35.83, 10.64, 35.83, 10.64) == 0.0
+    assert haversine_m(0.0, 0.0, 1.0, 0.0) == pytest.approx(111_195, rel=1e-4)

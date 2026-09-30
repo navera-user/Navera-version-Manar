@@ -37,7 +37,7 @@ import cv2
 import numpy as np
 
 import rclpy
-from navera_common.geo import dead_reckon, is_finite_latlon
+from navera_common.geo import dead_reckon, haversine_m, is_finite_latlon
 from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
 from navera_common.pairing import FramePairer, exposure_stamp, stamp_ns
@@ -125,6 +125,12 @@ class NightSubscriber(Node):
         declare_float(self, "camera_hfov_deg", float("nan"))
         self.declare_parameter("imu_topic", "/navera/sensors/imu")
         declare_float(self, "imu_heading_timeout_s", 1.0)
+        # Motion gate: a fix farther from the last one than the vehicle can travel
+        # (max_speed_mps x elapsed + gate_margin_m) is rejected and the next frame
+        # retries from the last good position. STHN can lock onto a wrong place
+        # with a high consistency score; without this the track ran away (2.4 km).
+        declare_float(self, "max_speed_mps", 30.0)
+        declare_float(self, "gate_margin_m", 30.0)
 
         sthn_dir   = self.get_parameter("sthn_dir").value
         weights    = self.get_parameter("weights").value
@@ -142,6 +148,8 @@ class NightSubscriber(Node):
         ready_topic   = self.get_parameter("ready_topic").value
         self.max_dead_reckon_s = float(self.get_parameter("max_dead_reckon_s").value)
         self.camera_hfov_deg = float(self.get_parameter("camera_hfov_deg").value)
+        self.max_speed_mps = float(self.get_parameter("max_speed_mps").value)
+        self.gate_margin_m = float(self.get_parameter("gate_margin_m").value)
         self._imu_heading = None          # (heading_deg, monotonic time)
         self._imu_timeout = float(self.get_parameter("imu_heading_timeout_s").value)
         self._last_measured_time = None   # wall-clock of the last STHN / known fix
@@ -385,7 +393,18 @@ class NightSubscriber(Node):
                 f"raw_lat={result.get('raw_lat')} raw_lon={result.get('raw_lon')}"
             )
 
+            gated = None
             if (result.get("success") and conf >= self.conf_threshold
+                    and is_finite_latlon(result.get("lat"), result.get("lon"))
+                    and self._anchor_time is not None):
+                jump = haversine_m(self._anchor_lat, self._anchor_lon,
+                                   float(result["lat"]), float(result["lon"]))
+                reach = self.max_speed_mps * max(0.0, t_now - self._anchor_time) + self.gate_margin_m
+                if jump > reach:
+                    gated = (f"implausible jump {jump:.0f} m in {t_now - self._anchor_time:.1f} s "
+                             f"(max {reach:.0f} m) — rejected, retrying from the last position")
+                    result["reason"] = gated
+            if (gated is None and result.get("success") and conf >= self.conf_threshold
                     and is_finite_latlon(result.get("lat"), result.get("lon"))):
                 out_lat = float(result["lat"]); out_lon = float(result["lon"])
                 self._anchor_lat, self._anchor_lon, self._anchor_time = out_lat, out_lon, t_now

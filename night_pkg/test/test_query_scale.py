@@ -43,5 +43,5 @@ def test_turned_north_up_with_the_heading():
 
 
 def test_too_small_footprint_is_refused():
-    q, info = normalize_query(frame(), LAT, 17, 150.0, 84.0)
+    q, info = normalize_query(frame(), LAT, 17, 300.0, 84.0, heading_deg=45.0)
     assert q is None and info["coverage"] < MIN_QUERY_COVERAGE and "fly higher" in info["reason"]

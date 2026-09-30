@@ -52,3 +52,11 @@ def dead_reckon(lat: float, lon: float, heading_deg, speed_mps,
                          math.cos(d) - math.sin(p1) * math.sin(p2))
     lon2 = (math.degrees(l2) + 540.0) % 360.0 - 180.0
     return math.degrees(p2), lon2
+
+
+def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance in metres (spherical Earth, R = 6 371 km)."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    a = (math.sin((p2 - p1) / 2) ** 2
+         + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2)
+    return 2 * 6_371_000.0 * math.asin(math.sqrt(min(1.0, a)))

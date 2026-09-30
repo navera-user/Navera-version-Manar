@@ -34,7 +34,11 @@ STHN_CORR_LEVEL    = 4
 # (measured: 4.7 km median drift on the replay set, LOC-16), so every frame is
 # resampled to this footprint from the altitude and the camera field of view.
 STHN_QUERY_PX      = 512
-MIN_QUERY_COVERAGE = 0.6      # below: the camera sees too little ground — no fix
+# Share of the reference square the (rotated) frame must cover. Measured on
+# synthetic frames: at 0.77 (300 m, 84 deg camera, diagonal heading) tracking
+# ran away to 2.4 km while the consistency stayed ~0.9; >= 0.88 (350 m) held
+# at every heading.
+MIN_QUERY_COVERAGE = 0.85
 
 
 def ground_resolution_m(lat, zoom):
