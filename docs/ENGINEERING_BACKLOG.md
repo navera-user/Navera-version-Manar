@@ -26,7 +26,7 @@ Status: ✅ done · 🔧 in progress · ⬜ open
 | LOC-13 | H | Day: global search accepts anything (scores 0.92–0.97 even when km off) — confidence not discriminative | ✅ eaeeceb |
 | LOC-14 | H | Day: accuracy ~440 m median — matching method redesign (local features vs satellite around prior) | ⬜ |
 | LOC-15 | H | Image/meta paired as "latest of each" — pair by frame_id (day, night, cn) | ✅ 5b9d760 |
-| LOC-16 | H | Night: query not normalised for scale (altitude/FOV) or heading — confirmed blocker: 4.7 km drift on replay frames | ⬜ |
+| LOC-16 | H | Night: query not normalised for scale (altitude/FOV) or heading — frames now scaled + turned north-up; motion gate; min coverage 85 % | ✅ 9ba25cf, be9f35b |
 | LOC-17 | M | sensor_stamp = publication time; use image exposure stamp | ✅ 5b9d760 |
 | LOC-18 | M | Day: no coverage check (outside the tile set a Sousse tile is still returned) — closed by disabling whole-map search: outside coverage the circle has no tile → no position | ✅ eaeeceb |
 | LOC-19 | M | Day: unused NetVLAD/ResNet50 loaded and run at boot (VRAM, internet download) | ✅ d055bc0 |
@@ -132,7 +132,12 @@ Status: ✅ done · 🔧 in progress · ⬜ open
 | OUT-2 | H | Vision fix sent as 2D: ignored by ArduPilot / PX4 — `fix_type_without_alt` (default 3, altitude flagged ignored) | ✅ 2809ea0 |
 | OUT-3 | H | Same fix re-sent at 5 Hz with fresh timestamps ("stopped, then jumped") — each position now sent once | ✅ 2809ea0 |
 | OUT-4 | M | Validate on PX4 and on a real autopilot | ⬜ |
+| OUT-6 | M | Forwarded DEGRADED positions stated with the configured accuracy even when the source states a worse one (celestial ~55 km sent as 300 m) — the larger is sent | ✅ 3af4e62 |
+| CN-1 | C | Celestial never run end to end: solver fit anchored off-centre (~1°, 111 km), `--resort` 46′, astrometry Python helpers broken on NumPy 1.26 — fixed, 2.9′ | ✅ 11f5e6e |
+| CN-2 | H | Celestial attitude: IMU wired (mounting, declination), sampled at the frame's exposure (was at processing: degrees off in flight) | ✅ 11f5e6e, 84e9619 |
+| CN-3 | M | Celestial service conflicted with day/night: no fallback chain at night — now runs alongside | ✅ 11f5e6e |
 | OUT-5 | H | Output polled at 5 Hz while positions arrive at 5 Hz: dropped / doubled messages → ArduPilot "GPS not healthy", refused to arm (SITL) — now sent on arrival | ✅ 6fc5ff4 |
 | EST-13 | M | Estimator decided only on its 5 Hz tick: up to 200 ms added latency, a measurement skipped when two arrived between ticks — now decides on arrival too | ✅ 6fc5ff4 |
 | FEAT-6 | Mission area preparation from the MBTiles map (`prepare_area.py`: corridor tiles + DINOv2 descriptors, coverage report) | ✅ 173ca5d |
 | FEAT-7 | Simulator: plan → prepare map → fly, with the real day vision and its search circle on the map | ✅ 64db567 |
+| FEAT-8 | Simulator: night missions with the real night vision (search square, matched footprint) and the real celestial fix (star images from the Yale catalogue, ± stated accuracy); IMU error model | ✅ c85dc51 |

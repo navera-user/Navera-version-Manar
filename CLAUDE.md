@@ -165,15 +165,17 @@ Verified requirements are done. The roadmap = the not-yet-done items.
   Copter-4.5 SITL (`navera_tools/tests/sitl_ardupilot.py`).
 - STHN on the GPU (~225 ms/frame): on JetPack 6 the small homography solves run on the CPU
   automatically because the Jetson torch build cannot load CUDA linear algebra.
+- Night: frames scaled/oriented from altitude + `camera_hfov_deg` + heading, motion gate
+  (LOC-16). Celestial: solver fixed, IMU attitude at exposure (CN-1/2). Synthetic data only.
 
 ### Not yet done
 - **Validate on real data** (camera + GPS + IMU recorded together; real thermal for STHN;
   real sky for celestial). ← the blocker for every accuracy claim
 - **Day vision redesign** (local feature matching vs satellite around a prior) — current
   retrieval is ~440 m median.
-- **Wire the IMU** → dead-reckoning (heading/speed) and celestial attitude.
-- **Night scale normalisation** (LOC-16): STHN drifts (4.7 km median) on frames not at its
-  training scale, and its score does not flag it. Blocker for any night claim.
+- **Wire the IMU** → dead-reckoning (heading/speed); its attitude now feeds celestial and night heading.
+- **Real thermal and real sky data** for night and celestial (both now run end to end on
+  synthetic data: night 6–13 m, celestial 24–119 km, bounded by the IMU).
 - **Optimize** models with TensorRT (latency).
 - **Clean & document** (per-package READMEs, remove legacy/orphans).
 

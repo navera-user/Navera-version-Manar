@@ -1,6 +1,6 @@
 # NAVERA — Validation status and known limitations
 
-**Release 0.2 — field validation pending.** Last updated 2026-09-28.
+**Release 0.2 — field validation pending.** Last updated 2026-09-30.
 
 This document states what has been measured, how, and what still has to be validated in
 the field. Every number below comes from a run on the Jetson Orin Nano (bench, replay and
@@ -15,8 +15,8 @@ been measured. Open engineering items are tracked in
 | GPS pass-through, fix arbitration, operator display | Working, bench-tested | Scripted tests, virtual serial port, simulated sensors |
 | Automatic restart after a crash | Mechanism verified; not yet reboot-tested on a deployed unit | Node exit → launch exit, verified |
 | Day vision (DINOv2 tile retrieval) | **Not accurate enough to replace GPS** | Median 442 m on labelled replay frames |
-| Night vision (STHN homography) | Maths verified at the trained scale; **drifts on off-scale frames**; not validated on real thermal | 3–17 m on synthetic shifts; 4.7 km median on replayed frames |
-| Celestial (astrometry.net) | Geometry verified; **not run end to end** | 0 wrong positions in 20 000 simulated pointings |
+| Night vision (STHN homography) | Frames scaled and turned north-up from altitude, camera field of view and heading; motion gate; **not validated on real thermal** | 8–13 m median on synthetic frames (250–600 m, any heading); simulated night mission 6 m median |
+| Celestial (astrometry.net) | Run end to end on simulated star fields; **coarse: bounded by the IMU attitude (~111 km per degree)** | 5.5–6.5 km with a perfect attitude; 24–119 km with a BNO085-class IMU |
 | IMU dead-reckoning | **Not implemented** (IMU is liveness only) | — |
 
 ## Position output contract
@@ -73,17 +73,34 @@ prior) is required and is the main open development item.
 - GPU: ~225 ms per frame (fp32) vs ~1.5 s on CPU, identical positions (≤ 0.02 m). The Jetson
   PyTorch build cannot load CUDA linear algebra on JetPack 6, so the small homography
   solves run on the CPU automatically. fp16 brought no speed, memory or accuracy gain.
-- **Replayed "night" frames (30 frames, 1536×730, darkened satellite images — not thermal,
-  scale unknown, ~480 m apart), GPS for 3 frames then lost:** tracking **drifts** —
-  median error 4.7 km, max 9.7 km over 22 scored frames, the estimate advancing ~100 m per
-  frame while the vehicle moves ~480 m. The consistency score stayed at 0.90–0.94
-  throughout: **it cannot detect a drifting track.** Cause: the query is not rescaled to the
-  satellite scale STHN was trained on (backlog LOC-16).
+- **Scale (LOC-16, fixed 2026-09-30).** STHN expects the thermal image to cover 512 px of the
+  satellite map at map resolution, north-up. Each frame is now resampled from the altitude
+  (frame_meta) and the camera's horizontal field of view (`camera_hfov_deg`, required), turned
+  north-up with the heading (frame_meta, else the IMU) and cropped to that footprint. Synthetic
+  frames (grey renders of the map, 84° camera, prior 100–250 m off, 12 per case):
 
-**Not validated:** real thermal imagery, real altitudes and headings, and any
-confidence calibration. Night positions must not be trusted until the frame scale is
-normalised from altitude and field of view (LOC-16) and the result is measured on real
-thermal data.
+  | Altitude | Unscaled (before) | Scaled (now) |
+  |---|---|---|
+  | 250 m | 149–263 m median | 11–13 m median, p90 ≤ 32 m |
+  | 400 m | 11–215 m | 8–11 m |
+  | 600 m | 98–218 m | 8–11 m |
+
+- **Minimum ground coverage and motion gate.** Tracking along a route at 300 m with a
+  diagonal heading (the rotated frame covering 77 % of the reference) ran away to 2.4 km
+  while the consistency stayed ~0.9. Frames covering < 85 % of the reference are refused
+  ("fly higher": ≥ ~350 m with an 84° camera), and a fix implying a speed above
+  `max_speed_mps` (30) is rejected. At 400 m: worst 13 m over 5 headings × 30 frames.
+- **Mission simulator, drone at 400 m, night, GPS jammed:** 290 matches, median 6 m, p90
+  11 m, max 37 m; with its positions given to the autopilot the drone kept flying its
+  mission. Optimistic: the thermal images are grey renders of the same map.
+- **The replay set cannot be used for night vision.** Its frames cover only ~190–300 m of
+  ground, mostly sea (measured by correlation with the map at 0.12–0.2 m/px); the former
+  4.7 km "drift" came from feeding them at the wrong scale. The node now refuses them
+  ("footprint too small").
+
+**Not validated:** real thermal imagery (which differs from grey satellite images), real
+camera calibration, and any confidence calibration: the consistency score does not detect a
+wrong match, the motion gate does.
 
 ### Celestial (`cn_pkg`)
 
@@ -97,8 +114,27 @@ thermal data.
   attitude (from the IMU), it reports no position.
 - Round trip over 20 000 random camera pointings: 0 wrong positions, 1–2 % reported ambiguous.
 
-**Not validated:** real sky images. astrometry.net is not installed on the development
-unit, and the IMU attitude is not wired in yet.
+- **End to end, 2026-09-30** (astrometry.net 0.89, Tycho-2 index 10–19), on star fields drawn
+  from the Yale Bright Star Catalogue for a known position, time and attitude (60° camera):
+  - the solver's fit was anchored near an image edge and came out ~1° off at the centre
+    (111 km); `--resort` made it 46′. Now anchored at the centre, 4th-order fit: 2.9′;
+  - astrometry.net's Python helpers use `np.bool` (gone in NumPy 1.26): nothing was solved;
+    those steps are skipped;
+  - attitude now from the IMU **at the frame's exposure** (it was read at processing time:
+    degrees of error on a moving drone).
+
+  | Camera attitude | Position error |
+  |---|---|
+  | perfect, camera up / at 75° | 5.5 km / 6.5 km (solve 3–13 s) |
+  | tilt error 0.5° | 53 km |
+  | tilt 0.5° + heading 2° | 91 km |
+  | simulated BNO085-class IMU (0.3° / 1.5°), drone in flight | 24–119 km, ~50 km typical |
+
+  Each degree of attitude error costs ~111 km: **celestial is a coarse fix** (region,
+  GPS sanity), stated with `attitude_sigma_deg`, never a position to fly a mission on. A
+  levelled (gimballed) star camera and a better attitude source are what improve it.
+
+**Not validated:** real sky images (clouds, light pollution, lens), a real IMU.
 
 ### Robustness (bench)
 
