@@ -36,7 +36,11 @@ from day_pkg.prepare_area import plan_tiles, tile_nw
 HFOV_DEG = 84.0          # camera horizontal field of view
 FRAME_W, FRAME_H = 640, 480
 BUFFER_M = 1000.0        # corridor half-width around the route
-MAX_PREPARE_KM = 100.0   # longer routes: thousands of tiles (a 1700 km route = 74 000)
+MAX_PREPARE_KM = 1000.0  # ~40 000 tiles, ~40 min, ~800 MB (+ the same again in the dataset)
+# Measured on the Jetson (34.5 km route, 1411 tiles, 93 s): downloads ~25 tiles/s
+# (8 connections), DINOv2 descriptors ~50 tiles/s, a tile ~20 kB. Used for the
+# estimate shown before a preparation starts (kept slightly conservative).
+DL_TILES_S, DESC_TILES_S, TILE_KB = 22.0, 45.0, 20.0
 
 
 def _tile_xy(lat, lon, z):
@@ -109,7 +113,9 @@ class AreaManager:
                     tiles=len(p["needed"]), present=p["present"], missing=p["missing"],
                     in_base=p["in_base"], in_cache=p["in_cache"],
                     prepared=self.is_prepared(aid), max_prepare_km=MAX_PREPARE_KM,
-                    too_long=length > MAX_PREPARE_KM * 1000.0)
+                    too_long=length > MAX_PREPARE_KM * 1000.0,
+                    est_s=len(p["missing"]) / DL_TILES_S + len(p["needed"]) / DESC_TILES_S,
+                    est_mb=len(p["missing"]) * TILE_KB / 1024.0)
         with self.lock:
             self.plans[aid] = plan
             if len(self.plans) > 50:                   # keep memory bounded
@@ -148,7 +154,7 @@ class AreaManager:
                 raise ValueError("another map preparation is running" + pct + " — try again when it ends"
                                  if self._running != aid else "this map is already being prepared")
             self.preps[aid] = dict(stage="starting", done=0, total=plan["tiles"], status="running",
-                                   error=None)
+                                   error=None, t_start=time.time())
             self._running = aid
         cmd = ["ros2", "run", "day_pkg", "prepare_area.py", "--mbtiles", self.mbtiles,
                "--out", self.path(aid), "--buffer-m", str(plan["buffer_m"]),
@@ -200,6 +206,10 @@ class AreaManager:
             aid = self.current
             p = self.plans.get(aid) if aid else None
             plan = None if p is None else dict(p)
+        if plan and plan["tiles"] > 3000:            # polled every 0.6 s: counts only
+            plan.update(missing_n=len(plan["missing"]), present_n=len(plan["present"]),
+                        present=[], missing=[])
+        with self.lock:
             prep = dict(self.preps[aid]) if aid in self.preps else None
         return dict(plan=plan, prep=prep)
 

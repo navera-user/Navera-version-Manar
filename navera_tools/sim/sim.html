@@ -472,7 +472,8 @@ const I18N = {
     blocked:'Démarrage bloqué : remettez le récepteur GPS sur OK', mapReady:'carte prête pour la vision', notPrepared:'non préparée',
     noInternet:'Pas de connexion internet : carte embarquée affichée.', tooLong:'trajet trop long à préparer',
     checking:'Vérification de la couverture…', prepStarted:'Préparation de la carte lancée',
-    tooLongLaunch:'Trajet trop long pour la vraie vision : raccourcissez-le ou choisissez une vision simulée'},
+    tooLongLaunch:'Trajet trop long pour la vraie vision : raccourcissez-le ou choisissez une vision simulée',
+    toDownload:'à télécharger', elapsed:'écoulé', bigPrep:'Préparation importante', continueQ:'Continuer ?'},
   ar:{plannerBadge:'مخطط المهمة', flightBadge:'متابعة الطيران', simulation:'محاكاة', setup:'الإعداد', operatorView:'واجهة المشغل',
     launch:'إطلاق المهمة', end:'إنهاء', tabRoute:'المسار', tabMap:'الخريطة', tabMission:'المهمة', points:'النقاط', start:'الانطلاق',
     destination:'الوجهة', notSet:'غير محدد', useMyLocation:'موقعي كنقطة انطلاق', swap:'تبديل',
@@ -506,7 +507,8 @@ const I18N = {
     needPrepareNight:'خارج الخريطة المدمجة: حضّر الخريطة أولاً', blocked:'الإقلاع متوقف: أعد مستقبل GPS إلى الوضع السليم',
     mapReady:'الخريطة جاهزة للرؤية', notPrepared:'غير محضّرة', noInternet:'لا يوجد اتصال بالإنترنت: عرض الخريطة المدمجة.',
     tooLong:'المسار طويل جداً للتحضير', checking:'جارٍ التحقق من التغطية…', prepStarted:'بدأ تحضير الخريطة',
-    tooLongLaunch:'المسار طويل جداً للرؤية الحقيقية: اختصره أو اختر رؤية محاكاة'},
+    tooLongLaunch:'المسار طويل جداً للرؤية الحقيقية: اختصره أو اختر رؤية محاكاة',
+    toDownload:'للتحميل', elapsed:'مضى', bigPrep:'تحضير كبير', continueQ:'متابعة؟'},
 };
 const EN_EXTRA = {flightBadge:'Flight monitor', openPlanner:'Open the mission planner →'};
 let LANG = 'en';
@@ -875,6 +877,12 @@ function renderArea(d){
   const tooLong = plan && plan.too_long && !plan.prepared;
   $('prepBtn').disabled = !plan || !matches || plan.prepared || running || busyOther || tooLong || flying();
   if(tooLong) $('covNote').innerHTML += ` · <b class="bad">${esc(t('tooLong', 'route too long to prepare'))} (> ${plan.max_prepare_km} km)</b>`;
+  else if(plan && !plan.prepared && !running && plan.est_s != null)
+    $('covNote').innerHTML += ` · ≈ <b>${fmtDur(plan.est_s)}</b>` + (plan.est_mb >= 1 ? `, <b>${Math.round(plan.est_mb)} MB</b> ${esc(t('toDownload', 'to download'))}` : '');
+  if(running && prep.total && prep.done && prep.t_start){
+    const el = (Date.now() / 1000) - prep.t_start;
+    if(el > 5) $('prepStat').innerHTML += ` · ${esc(t('elapsed', 'elapsed'))} ${fmtDur(el)}`;
+  }
   if(own && A && B && !plan) $('covNote').textContent = t('checking', 'Checking map coverage…');
   if(busyOther && !plan.prepared) $('covNote').innerHTML += ' · <b class="warnc">another map is being prepared — wait</b>';
   const dl = plan && matches ? (plan.missing_n ?? plan.missing.length) : 0;
@@ -895,8 +903,12 @@ function renderArea(d){
   areaReady = !!(plan && plan.prepared && matches);
   areaCovered = !!(plan && matches && (plan.missing_n ?? plan.missing.length) === 0);
 }
+const fmtDur = s => s < 60 ? `${Math.max(1, Math.round(s))} s` : s < 3600 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`;
 $('prepBtn').onclick = async () => {
   if(!(A && B)) return;
+  const pl = PLANR && PLANR.plan;
+  if(pl && pl.tiles > 2000 && !confirm(`${t('bigPrep', 'Large preparation')}: ${pl.tiles} tiles, ≈ ${fmtDur(pl.est_s)}, ` +
+       `${Math.round(pl.est_mb)} MB ${t('toDownload', 'to download')}. ${t('continueQ', 'Continue?')}`)) return;
   $('prepBtn').disabled = true;
   const r = await post('prepare', {start:A, dest:B});
   planFetched = 0; await fetchPlan();
