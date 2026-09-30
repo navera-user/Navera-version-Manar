@@ -16,6 +16,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -32,6 +33,8 @@ def generate_launch_description():
         DeclareLaunchArgument('meta_topic',     default_value='/thermal/frame_meta'),
         DeclareLaunchArgument('fix_topic',      default_value='/night/position_estimate'),
         DeclareLaunchArgument('status_topic',   default_value='/night/night_status'),
+        DeclareLaunchArgument('camera_hfov_deg',
+            default_value=os.environ.get('NAVERA_THERMAL_HFOV_DEG', 'nan')),
 
         Node(
             package='night_pkg',
@@ -48,6 +51,8 @@ def generate_launch_description():
                 'meta_topic':      LaunchConfiguration('meta_topic'),
                 'fix_topic':       LaunchConfiguration('fix_topic'),
                 'status_topic':    LaunchConfiguration('status_topic'),
+                'camera_hfov_deg': ParameterValue(LaunchConfiguration('camera_hfov_deg'),
+                                                  value_type=float),
             }],
         ),
     ])

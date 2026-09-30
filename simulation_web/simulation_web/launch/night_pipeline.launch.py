@@ -61,6 +61,10 @@ def generate_launch_description():
         # B) fp16 sur le forward STHN (fnet1 + update_block_4, ~2× VRAM). 'false' pour désactiver.
         # fp16 measured on the Orin: same accuracy, no speed or memory gain → off.
         DeclareLaunchArgument('mixed_precision', default_value='false'),
+        # Thermal camera horizontal field of view (deg): with the frame altitude it
+        # brings each frame to STHN's scale. Unset = no night position (LOC-16).
+        DeclareLaunchArgument('camera_hfov_deg',
+            default_value=os.environ.get('NAVERA_THERMAL_HFOV_DEG', 'nan')),
         DeclareLaunchArgument('sthn_dir',
             default_value=os.environ.get('NAVERA_STHN_DIR', '/home/navera/isaac_ros_common/night_pkg/STHN')),
         DeclareLaunchArgument('weights',
@@ -105,6 +109,8 @@ def generate_launch_description():
                 # (qui déclare/parse mixed_precision en string) crashe au démarrage.
                 'mixed_precision': ParameterValue(
                     LaunchConfiguration('mixed_precision'), value_type=str),
+                'camera_hfov_deg': ParameterValue(
+                    LaunchConfiguration('camera_hfov_deg'), value_type=float),
                 'image_topic':    '/thermal/image_raw',
                 'meta_topic':     '/thermal/frame_meta',
                 'fix_topic':      '/night/position_estimate',

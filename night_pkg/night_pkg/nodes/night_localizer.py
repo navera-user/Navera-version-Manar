@@ -28,6 +28,79 @@ logger = logging.getLogger("night_localizer")
 STHN_RESIZE_WIDTH  = 256
 STHN_DATABASE_SIZE = 1536
 STHN_CORR_LEVEL    = 4
+# Ground footprint of the thermal query STHN was trained with: a 512 px crop at
+# the satellite resolution (then resized to RESIZE_WIDTH). A query at another
+# scale makes the prediction wrong while the consistency score stays high
+# (measured: 4.7 km median drift on the replay set, LOC-16), so every frame is
+# resampled to this footprint from the altitude and the camera field of view.
+STHN_QUERY_PX      = 512
+MIN_QUERY_COVERAGE = 0.6      # below: the camera sees too little ground — no fix
+
+
+def ground_resolution_m(lat, zoom):
+    """Metres per pixel of a 256 px Web Mercator tile at this latitude."""
+    return 40_075_016.686 * math.cos(math.radians(lat)) / (2 ** zoom) / 256.0
+
+
+def normalize_query(img_bgr, lat, zoom, altitude_m, hfov_deg, heading_deg=None):
+    """Thermal frame → north-up, satellite-resolution, STHN_QUERY_PX square.
+
+    altitude_m: height above ground; hfov_deg: horizontal field of view of the
+    (nadir) camera; heading_deg: direction of the image top, clockwise from
+    north (None = assume north-up). Returns (query_bgr, info) or (None, info)
+    with info["reason"] when the frame cannot be brought to scale.
+    """
+    info = {}
+    if altitude_m is None or not math.isfinite(altitude_m) or altitude_m <= 0:
+        info["reason"] = "altitude unknown — the thermal image cannot be scaled to the map"
+        return None, info
+    if hfov_deg is None or not (1.0 < hfov_deg < 170.0):
+        info["reason"] = "camera field of view not configured (camera_hfov_deg)"
+        return None, info
+    h, w = img_bgr.shape[:2]
+    footprint_w = 2.0 * altitude_m * math.tan(math.radians(hfov_deg) / 2.0)
+    gsd_cam = footprint_w / w
+    gsd_map = ground_resolution_m(lat, zoom)
+    scale = gsd_cam / gsd_map
+    info.update(footprint_w_m=footprint_w, footprint_h_m=footprint_w * h / w,
+                gsd_cam_m=gsd_cam, gsd_map_m=gsd_map, scale=scale,
+                heading_deg=heading_deg)
+    mask = np.full((h, w), 255, np.uint8)
+    if heading_deg is not None and math.isfinite(heading_deg) and abs(heading_deg) > 0.01:
+        # The image top points along the heading, i.e. the camera image is the
+        # north-up view turned counter-clockwise by the heading (OpenCV: positive
+        # angle = counter-clockwise on screen). Turning it back clockwise by the
+        # heading (negative angle) brings north to the top.
+        diag = int(math.ceil(math.hypot(w, h)))
+        M = cv2.getRotationMatrix2D((w / 2.0, h / 2.0), -float(heading_deg), 1.0)
+        M[0, 2] += (diag - w) / 2.0
+        M[1, 2] += (diag - h) / 2.0
+        img_bgr = cv2.warpAffine(img_bgr, M, (diag, diag), flags=cv2.INTER_LINEAR)
+        mask = cv2.warpAffine(mask, M, (diag, diag), flags=cv2.INTER_NEAREST)
+        h, w = diag, diag
+    nw, nh = max(1, int(round(w * scale))), max(1, int(round(h * scale)))
+    interp = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR
+    img = cv2.resize(img_bgr, (nw, nh), interpolation=interp)
+    mask = cv2.resize(mask, (nw, nh), interpolation=cv2.INTER_NEAREST)
+    q = STHN_QUERY_PX
+    out = np.zeros((q, q, 3), np.uint8)
+    out_mask = np.zeros((q, q), np.uint8)
+    sx, sy = (nw - q) // 2, (nh - q) // 2          # source crop origin (may be < 0)
+    x0, y0 = max(0, -sx), max(0, -sy)
+    x1, y1 = min(q, nw - sx), min(q, nh - sy)
+    out[y0:y1, x0:x1] = img[y0 + sy:y1 + sy, x0 + sx:x1 + sx]
+    out_mask[y0:y1, x0:x1] = mask[y0 + sy:y1 + sy, x0 + sx:x1 + sx]
+    coverage = float(np.count_nonzero(out_mask)) / (q * q)
+    info["coverage"] = coverage
+    if coverage < MIN_QUERY_COVERAGE:
+        info["reason"] = (f"camera footprint too small for night matching ({footprint_w:.0f} m wide "
+                          f"at {altitude_m:.0f} m, covers {coverage:.0%} of the {q * gsd_map:.0f} m "
+                          f"reference) — fly higher")
+        return None, info
+    if coverage < 0.999:                           # fill the uncovered border with the mean
+        mean = cv2.mean(out, mask=out_mask)[:3]
+        out[out_mask == 0] = np.array(mean, dtype=np.uint8)
+    return out, info
 
 
 # ─── Tile utilities (MBTiles → numpy) ────────────────────────────────────────
@@ -446,7 +519,9 @@ class NightLocalizer:
     # ── Main inference ────────────────────────────────────────────────────────
 
     @torch.no_grad()
-    def localize(self, query_bgr: np.ndarray, prior_lat: float, prior_lon: float) -> dict:
+    def localize(self, query_bgr: np.ndarray, prior_lat: float, prior_lon: float,
+                 altitude_m: float = None, hfov_deg: float = None,
+                 heading_deg: float = None, require_scale: bool = True) -> dict:
         """
         Run STHN inference.
 
@@ -455,6 +530,9 @@ class NightLocalizer:
         query_bgr  : drone camera frame (BGR, any size)
         prior_lat  : GPS prior latitude  (or dead-reckoning estimate)
         prior_lon  : GPS prior longitude
+        altitude_m, hfov_deg, heading_deg : camera geometry, used to resample the
+            frame to the scale STHN was trained on (normalize_query). With
+            require_scale and no altitude / field of view, no position is given.
 
         Returns
         -------
@@ -470,6 +548,19 @@ class NightLocalizer:
 
         _FAIL = {"success": False, "lat": prior_lat, "lon": prior_lon,
                  "conf": 0.0, "dt_ms": 0.0, "rms_px": 0.0}
+        span = STHN_DATABASE_SIZE * ground_resolution_m(prior_lat, self.zoom)
+        search = {"search_center": [prior_lat, prior_lon], "search_size_m": span}
+        _FAIL.update(search)
+
+        # 0. Bring the thermal frame to the map's scale and orientation
+        query, qinfo = normalize_query(query_bgr, prior_lat, self.zoom, altitude_m,
+                                       hfov_deg, heading_deg)
+        _FAIL["query"] = {k: v for k, v in qinfo.items() if k != "reason"}
+        if query is None:
+            if require_scale:
+                _FAIL["reason"] = qinfo["reason"]
+                return _FAIL
+            query = query_bgr                     # legacy: unscaled (known to drift)
 
         # 1. Satellite reference patch centred on the prior
         try:
@@ -487,7 +578,7 @@ class NightLocalizer:
         # 2. Preprocess: satellite RGB at full search size (STHN downsamples it
         #    itself), thermal as 3x grey at RESIZE_WIDTH, both in [0, 1]
         sat_t = self._preprocess(sat_patch, size=STHN_DATABASE_SIZE)
-        thr_t = self._preprocess(query_bgr, size=STHN_RESIZE_WIDTH, grey=True)
+        thr_t = self._preprocess(query, size=STHN_RESIZE_WIDTH, grey=True)
 
         # 3. Forward pass. STHN's contract is set_input(A=satellite, B=thermal).
         try:
@@ -524,7 +615,10 @@ class NightLocalizer:
                 f"centre {'inside' if inside else 'OUTSIDE'} patch, shift {disp_px:.1f}px")
             return {"success": False, "lat": prior_lat, "lon": prior_lon,
                     "conf": conf, "dt_ms": dt_ms, "rms_px": disp_px,
-                    "raw_lat": prior_lat, "raw_lon": prior_lon}
+                    "raw_lat": prior_lat, "raw_lon": prior_lon, **search,
+                    "query": _FAIL["query"],
+                    "reason": f"consistency {conf:.2f} < {self.conf_threshold:.2f}" if inside
+                    else "predicted centre outside the search area"}
 
         # 5. Patch pixels → geographic position (exact Web Mercator, 256 px/tile)
         raw_lat, raw_lon = _tile_frac_to_latlon(
@@ -538,7 +632,13 @@ class NightLocalizer:
             f"Night fix: ({corr_lat:.6f}, {corr_lon:.6f})  conf={conf:.2f}  dt={dt_ms:.1f}ms"
         )
 
+        quad = [list(_tile_frac_to_latlon(origin_x + (px + 0.5) * scale / 256.0,
+                                          origin_y + (py + 0.5) * scale / 256.0, self.zoom))
+                for px, py in corners]
         return {
+            **search,
+            "query":   _FAIL["query"],
+            "footprint_quad": quad,
             "success": True,
             "lat":     corr_lat,
             "lon":     corr_lon,

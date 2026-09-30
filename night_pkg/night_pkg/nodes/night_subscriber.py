@@ -46,7 +46,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
-from sensor_msgs.msg import Image, NavSatFix, NavSatStatus
+from sensor_msgs.msg import Image, Imu, NavSatFix, NavSatStatus
 from std_msgs.msg import String, Int32, Bool
 from cv_bridge import CvBridge
 
@@ -117,6 +117,14 @@ class NightSubscriber(Node):
         declare_float(self, "max_dead_reckon_s", 30.0)
         # fp16 au forward STHN (string pour un toggle 'false' fiable) — défaut activé.
         self.declare_parameter("mixed_precision", "false")
+        # Camera geometry (LOC-16): each thermal frame is resampled to the scale
+        # STHN was trained on from the altitude (frame_meta "altitude_m") and
+        # this horizontal field of view, and turned north-up with the heading
+        # (frame_meta "heading_deg", else the IMU). Without them there is no
+        # night position: an unscaled frame drifts while looking confident.
+        declare_float(self, "camera_hfov_deg", float("nan"))
+        self.declare_parameter("imu_topic", "/navera/sensors/imu")
+        declare_float(self, "imu_heading_timeout_s", 1.0)
 
         sthn_dir   = self.get_parameter("sthn_dir").value
         weights    = self.get_parameter("weights").value
@@ -133,6 +141,9 @@ class NightSubscriber(Node):
         done_topic    = self.get_parameter("done_topic").value
         ready_topic   = self.get_parameter("ready_topic").value
         self.max_dead_reckon_s = float(self.get_parameter("max_dead_reckon_s").value)
+        self.camera_hfov_deg = float(self.get_parameter("camera_hfov_deg").value)
+        self._imu_heading = None          # (heading_deg, monotonic time)
+        self._imu_timeout = float(self.get_parameter("imu_heading_timeout_s").value)
         self._last_measured_time = None   # wall-clock of the last STHN / known fix
 
         # ── State ───────────────────────────────────────────────
@@ -146,6 +157,7 @@ class NightSubscriber(Node):
         self._anchor_lat  = None
         self._anchor_lon  = None
         self._anchor_time = None
+        self._search = {}                # last search, for display in night_status
 
         # ── Banner (PRE-load) ──────────────────────────────────
         self.get_logger().info("=" * 60)
@@ -157,6 +169,9 @@ class NightSubscriber(Node):
         self.get_logger().info(f"  conf_threshold  : {self.conf_threshold:.2f}")
         self.get_logger().info(f"  max_dead_reckon : {self.max_dead_reckon_s:.0f} s")
         self.get_logger().info(f"  mixed_precision : {self.mixed_precision} (fp16 forward)")
+        self.get_logger().info(f"  camera_hfov_deg : {self.camera_hfov_deg}"
+                               + ("" if math.isfinite(self.camera_hfov_deg)
+                                  else "  ← NOT SET: no night position until configured"))
         self.get_logger().info("  policy          : strictly-serial, back-pressure (acks frame_done)")
         self.get_logger().info("=" * 60)
 
@@ -217,6 +232,8 @@ class NightSubscriber(Node):
             self.get_logger().warn("SHADOW MODE: vision runs while GPS is valid (test flights)")
         self.sub_gps   = self.create_subscription(
             PositionEstimate, self.get_parameter("gps_topic").value, self.on_gps, 10)
+        self.sub_imu   = self.create_subscription(
+            Imu, self.get_parameter("imu_topic").value, self.on_imu, 10)
         # Same latched QoS as the camera's gate (TRANSIENT_LOCAL, depth 1).
         start_qos = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
                                durability=DurabilityPolicy.TRANSIENT_LOCAL,
@@ -255,6 +272,26 @@ class NightSubscriber(Node):
             self._anchor_lat, self._anchor_lon = msg.latitude, msg.longitude
             self._anchor_time = time.time()
             self._last_measured_time = self._anchor_time
+
+    def on_imu(self, msg: Imu):
+        """Heading (deg clockwise from north) from the IMU orientation (ENU)."""
+        q = msg.orientation
+        if not all(math.isfinite(v) for v in (q.x, q.y, q.z, q.w)) or (q.x, q.y, q.z, q.w) == (0, 0, 0, 0):
+            return
+        yaw_enu = math.atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z))
+        self._imu_heading = ((90.0 - math.degrees(yaw_enu)) % 360.0, time.monotonic())
+
+    def _heading(self, meta):
+        """(heading_deg, source) for this frame: frame_meta, else a fresh IMU."""
+        h = meta.get("heading_deg")
+        if h is not None:
+            try:
+                return float(h), "frame"
+            except (TypeError, ValueError):
+                pass
+        if self._imu_heading and time.monotonic() - self._imu_heading[1] <= self._imu_timeout:
+            return self._imu_heading[0], "imu"
+        return None, "none (assumed north-up)"
 
     def on_start_cmd(self, msg: Bool):
         """Mission stop/rewind → forget the previous run's track (the next run
@@ -299,6 +336,7 @@ class NightSubscriber(Node):
 
     def _process_frame(self, seq_id, img, meta):
         try:
+            self._search = {}
             gps_valid = meta.get("gps_valid")
             lat = meta.get("lat"); lon = meta.get("lon")
 
@@ -311,6 +349,8 @@ class NightSubscriber(Node):
             if self._gps_prior.fresh() is not None and not self.shadow_mode:
                 self.pub_status.publish(String(data=json.dumps({
                     "frame_id": seq_id, "success": False, "source": "gps_active",
+                    "anchor": [self._anchor_lat, self._anchor_lon]
+                    if self._anchor_lat is not None else None,
                     "reason": "GPS valid — STHN idle, tracking GPS as prior"})))
                 return
 
@@ -327,7 +367,16 @@ class NightSubscriber(Node):
             self.get_logger().info(
                 f"[night] 🛰 STHN frame={seq_id} prior=anchor"
                 f"({self._anchor_lat:+.5f},{self._anchor_lon:+.5f})…")
-            result = self.localizer.localize(img, self._anchor_lat, self._anchor_lon)
+            heading, heading_src = self._heading(meta)
+            alt = meta.get("altitude_m")
+            result = self.localizer.localize(
+                img, self._anchor_lat, self._anchor_lon,
+                altitude_m=float(alt) if alt is not None else None,
+                hfov_deg=self.camera_hfov_deg if math.isfinite(self.camera_hfov_deg) else None,
+                heading_deg=heading)
+            result["heading_source"] = heading_src
+            self._search = {k: result.get(k) for k in (
+                "search_center", "search_size_m", "footprint_quad", "query", "heading_source")}
             conf   = float(result.get("conf", 0.0) or 0.0)
 
             self.get_logger().info(
@@ -347,7 +396,8 @@ class NightSubscriber(Node):
                 return
 
             # Rejected / failed: dead-reckon only from measured motion, and only for a while.
-            reason = f"STHN rejected (consistency {conf:.2f}, min {self.conf_threshold:.2f})"
+            reason = (result.get("reason") or
+                      f"STHN rejected (consistency {conf:.2f}, min {self.conf_threshold:.2f})")
             propagated = None
             if (self._last_measured_time is not None
                     and t_now - self._last_measured_time <= self.max_dead_reckon_s):
@@ -387,6 +437,8 @@ class NightSubscriber(Node):
             "score": score, "conf": conf,        # 'score' lu par navera_web_bridge
             "source": src, "reason": reason,
             "dt_ms": dt_ms, "rms_px": rms_px,
+            "threshold": self.conf_threshold,
+            **(self._search if src != "gps" else {}),
         }
         self.pub_status.publish(String(data=json.dumps(status)))
 
@@ -422,6 +474,7 @@ class NightSubscriber(Node):
         """Statut sans fix (ex. NOGPS sans anchor) — le bridge garde le dernier point."""
         self.pub_status.publish(String(data=json.dumps({
             "frame_id": seq_id, "success": False, "reason": reason, "source": "none",
+            "threshold": self.conf_threshold, **self._search,
         })))
         # Contract: an unusable frame is DECLARED, never swallowed (valid=False).
         now = self.get_clock().now().to_msg()
