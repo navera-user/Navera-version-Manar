@@ -100,7 +100,10 @@ class Proc:
 
     def start(self):
         self.stop()
-        self.p = subprocess.Popen(self.cmd, stdout=open(self.log_path, "w"), stderr=subprocess.STDOUT,
+        log = open(self.log_path, "a")                # kept across restarts, for diagnosis
+        log.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} start: {' '.join(self.cmd)}\n")
+        log.flush()
+        self.p = subprocess.Popen(self.cmd, stdout=log, stderr=subprocess.STDOUT,
                                   start_new_session=True,
                                   env=dict(os.environ, **self.env) if self.env else None)
 
@@ -146,6 +149,8 @@ class Simulator(Node):
         self._last_state = None
         self._last_source = None
         self._closing = False
+        self._had_gps = False             # a GPS fix was seen in this mission (vision prior)
+        self.phase_t0 = time.monotonic()
 
         env_note = ", ".join(f"{k}={os.environ.get(k)}" for k in ("ROS_DOMAIN_ID", "ROS_LOCALHOST_ONLY"))
         self.procs = {
@@ -214,6 +219,8 @@ class Simulator(Node):
             d = json.loads(m.details_json or "{}")
         except ValueError:
             d = {}
+        if m.valid:
+            self._had_gps = True
         with self.lock:
             self.gps_node_out = dict(valid=bool(m.valid), t=time.monotonic(), reason=m.reason,
                                      sats=d.get("num_sats"), hdop=d.get("hdop"))
@@ -294,7 +301,9 @@ class Simulator(Node):
 
     def _vision(self, truth, now):
         if self.cfg["vision"] == "real":
-            return                        # the real day_subscriber does it (DayCamera)
+            return                        # the real vision nodes do it (VisionCamera)
+        if not self._had_gps:
+            return                        # like the real nodes: no prior, no position
         lat, lon = truth[0], truth[1]
         night = self.faults["light"] == "night"
         if self.faults["camera"] != "ok":
@@ -394,6 +403,7 @@ class Simulator(Node):
     def _set_phase(self, phase, detail):
         with self.lock:
             self.phase, self.phase_detail = phase, detail
+            self.phase_t0 = time.monotonic()
         self.event("info", f"mission: {detail}")
 
     def _wait(self, cond, timeout, what):
@@ -409,7 +419,8 @@ class Simulator(Node):
     def _mission(self):
         c = self.cfg
         try:
-            self._set_phase("starting", f"starting the {c['vehicle']} autopilot (ArduPilot SITL)")
+            self._set_phase("starting", f"step 1/4 — starting the {c['vehicle']} autopilot "
+                                        f"(ArduPilot) and NAVERA")
             with self.lock:
                 old = self.procs.pop("vehicle_output", None)
             if old:
@@ -428,6 +439,7 @@ class Simulator(Node):
                 self.nav.update(state="—", source="—", reason="", lat=None, lon=None)
                 self._last_state = self._last_source = None
             self._stop_vision()
+            self._had_gps = False
             self.imu_bias = (self.rng.gauss(0, math.radians(0.3)), self.rng.gauss(0, math.radians(0.3)),
                              self.rng.gauss(0, math.radians(1.5)))
             self.event("info", "IMU (simulated, BNO085-class): attitude bias roll "
@@ -446,13 +458,14 @@ class Simulator(Node):
             vo.start()
             with self.lock:
                 self.procs["vehicle_output"] = vo
-            self._set_phase("waiting_gps", "waiting for the autopilot to accept NAVERA's position "
+            self._set_phase("waiting_gps", "step 2/4 — the autopilot is aligning its navigation "
+                                           "filter on NAVERA's GPS position "
                                            "(EKF alignment, ~30-60 s)")
             self._wait(lambda: self.ap.snapshot()["ekf_pos_ok"], 180,
                        "the autopilot never got a usable position from NAVERA (is GPS jammed?)")
             self.ap.set_speed(c["speed"])
             self.ap.set_mode("GUIDED")
-            self._set_phase("arming", "arming")
+            self._set_phase("arming", "step 3/4 — arming the motors")
 
             def armed():
                 if not self.ap.snapshot()["armed"]:
@@ -461,7 +474,7 @@ class Simulator(Node):
                 return self.ap.snapshot()["armed"]
             self._wait(armed, 60, "the autopilot refused to arm (see its messages)")
             if c["vehicle"] == "drone":
-                self._set_phase("takeoff", f"taking off to {c['alt']:.0f} m")
+                self._set_phase("takeoff", f"step 4/4 — taking off to {c['alt']:.0f} m")
                 self.ap.takeoff(c["alt"])
                 self._wait(lambda: (self.ap.snapshot()["truth"] or (0, 0, 0))[2] > 0.9 * c["alt"],
                            60 + c["alt"] / 2.0,
@@ -690,7 +703,8 @@ class Simulator(Node):
                 and nav["state"] in ("FIX", "DEGRADED")
             gps_out = dict(self.gps_node_out)
             out = dict(
-                phase=self.phase, detail=self.phase_detail, cfg=self.cfg, faults=self.faults,
+                phase=self.phase, detail=self._live_detail(s), cfg=self.cfg, faults=self.faults,
+                phase_elapsed_s=round(time.monotonic() - self.phase_t0),
                 truth=None, navera=nav, autopilot=None, sources=self.sources,
                 procs={n: p.alive() for n, p in list(self.procs.items())},
                 events=list(self.events)[-60:], series=list(self.series)[-600:],
@@ -718,6 +732,18 @@ class Simulator(Node):
                           node_age=round(time.monotonic() - gps_out["t"], 1) if gps_out["t"] else None,
                           sats=gps_out["sats"], hdop=gps_out["hdop"], reason=gps_out["reason"])
         return out
+
+    def _live_detail(self, s):
+        """Phase text with what the user needs to know right now."""
+        d = self.phase_detail
+        if self.phase in ("starting", "waiting_gps", "arming", "takeoff") and self.faults["gps"] != "ok":
+            return (d + f" — BLOCKED: the GPS receiver is set to '{self.faults['gps'].replace('_', ' ')}'. "
+                    "The autopilot needs one real GPS fix to start: set GPS back to OK.")
+        if self.phase == "waiting_gps":
+            return d + " (usually 30–50 s)"
+        if self.phase == "takeoff" and s.get("truth"):
+            return d + f" — climbing {max(0, s['truth'][2]):.0f} m"
+        return d
 
     def camera_jpeg(self):
         cam = self.nightcam if self.faults["light"] == "night" else self.daycam

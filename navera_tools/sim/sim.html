@@ -676,7 +676,9 @@ let S = null, series = [], areaReady = false, restored = false;
 const flying = () => S && ['starting','waiting_gps','arming','takeoff','enroute','arrived','rtl','landing','failsafe'].includes(S.phase);
 function updateHint(){
   let t;
-  if(S && ['starting','waiting_gps','arming'].includes(S.phase)) t = 'Mission starting… (click the map to change the destination)';
+  if(S && ['starting','waiting_gps','arming','takeoff'].includes(S.phase)){
+    $('startBtn').disabled = true; return;             // render() shows the start-up progress
+  }
   else if(flying()) t = 'Click the map to send the vehicle to a new destination';
   else if(!startPt) t = 'Click the map to place the START point';
   else if(!destPt) t = 'Click the map to place the DESTINATION';
@@ -692,7 +694,12 @@ const FIX = {0:'none',1:'no fix',2:'2D fix',3:'3D fix',4:'DGPS',5:'RTK float',6:
 function render(d){
   S = d;
   const pc = ['failsafe','error'].includes(d.phase) ? 'var(--bad)' : 'var(--text)';
-  $('phase').innerHTML = `<b style="color:${pc}">${d.phase.replace('_',' ').toUpperCase()}</b> · ${esc(d.detail)}`;
+  const busy = ['starting','waiting_gps','arming','takeoff'].includes(d.phase);
+  const blocked = d.detail.includes('BLOCKED');
+  $('phase').innerHTML = `<b style="color:${blocked ? 'var(--bad)' : pc}">${d.phase.replace('_',' ').toUpperCase()}</b>` +
+    (busy ? ` <span style="color:var(--mute)">${d.phase_elapsed_s} s</span>` : '') + ` · ${esc(d.detail)}`;
+  if(busy) $('maphint').textContent = blocked ? '⚠ Start-up blocked: set the GPS receiver back to OK'
+                                              : `Mission starting — ${d.detail.split(' — ')[0]} (${d.phase_elapsed_s} s)`;
   for(const k of ['gps','camera','light','imu']) setSeg('f_' + k, d.faults[k], true);
   const pl = d.area && d.area.plan;
   if(pl && !startPt && !destPt){                 // page reopened: restore the planned route
