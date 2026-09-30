@@ -53,7 +53,7 @@ from cv_bridge import CvBridge
 # Import the existing STHN wrapper (UNMODIFIED user code).
 # NightLocalizer.localize(query_bgr, prior_lat, prior_lon) -> dict
 from night_pkg.nodes.night_localizer import NightLocalizer
-from navera_msgs.msg import PositionEstimate
+from navera_msgs.msg import NavStatus, PositionEstimate
 
 # Typed source contract (estimator step 6) — mode is the HONESTY axis:
 # a replayed CSV point can NEVER pass itself off as a STHN measurement,
@@ -105,7 +105,7 @@ class NightSubscriber(Node):
         # Map calibration offset (deg), measured for the map in use; none by default.
         declare_float(self, "map_offset_lat_deg", 0.0)
         declare_float(self, "map_offset_lon_deg", 0.0)
-        self.declare_parameter("gps_topic",       "/navera/estimate/gps")
+        self.declare_parameter("gps_topic", "/navera/position")
         declare_float(self, "gps_prior_timeout_s", 2.0)
         # Mission start/stop gate of the camera: a stop (rewind) resets tracking.
         # Test flights only: run vision even while GPS is valid, to measure it
@@ -235,6 +235,8 @@ class NightSubscriber(Node):
         self.sub_image = self.create_subscription(Image, image_topic, self.on_image, image_qos)
         self.sub_meta  = self.create_subscription(String, meta_topic, self.on_meta, meta_qos)
         self._gps_prior = GpsPrior(float(self.get_parameter("gps_prior_timeout_s").value))
+        # The arbiter's decision: GPS is the prior only while it is the source in use.
+        self.create_subscription(NavStatus, "/navera/nav_status", self.on_nav_status, 10)
         self.shadow_mode = bool(self.get_parameter("shadow_mode").value)
         if self.shadow_mode:
             self.get_logger().warn("SHADOW MODE: vision runs while GPS is valid (test flights)")
@@ -270,9 +272,20 @@ class NightSubscriber(Node):
         if pair is not None:
             self._dispatch(*pair)
 
+    def on_nav_status(self, msg: NavStatus):
+        self._gps_prior.arbiter(msg.active_source == NavStatus.SOURCE_GPS
+                                and msg.state in (NavStatus.STATE_FIX, NavStatus.STATE_DEGRADED))
+
     def on_gps(self, msg: PositionEstimate):
-        """Valid measured GPS → it becomes the anchor (the prior for GPS loss).
+        """GPS position vetted by the arbiter → it becomes the anchor (the prior for GPS loss).
+
+        Read from the arbiter's output (/navera/position, GPS source only): a GPS
+        message the arbiter refuses (spoofed, implausible) never reaches it. Taken
+        from the raw GPS, the first spoofed fix of an attack became the search
+        centre, 2 km off (mission simulator). Any other source is ignored.
         In shadow mode it only seeds a missing anchor."""
+        if msg.source != PositionEstimate.SOURCE_GPS:
+            return
         if self._gps_prior.update(msg.latitude, msg.longitude, msg.valid,
                                   msg.mode == PositionEstimate.MODE_MEASURED):
             if self.shadow_mode and self._anchor_lat is not None:

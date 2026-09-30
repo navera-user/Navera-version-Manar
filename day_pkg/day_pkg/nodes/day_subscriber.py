@@ -44,7 +44,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPo
 from sensor_msgs.msg import Image, NavSatFix, NavSatStatus
 from std_msgs.msg import String, Int32, Bool
 from cv_bridge import CvBridge
-from navera_msgs.msg import PositionEstimate
+from navera_msgs.msg import NavStatus, PositionEstimate
 
 # Existing localization logic (UNMODIFIED user code).
 # DayLocalizer().predict(bgr_array, threshold=...) -> dict
@@ -96,7 +96,7 @@ class DaySubscriber(Node):
         self.declare_parameter("estimate_topic", "/navera/estimate/day")  # typed source contract
         # Live GPS, used as the search prior: while it is valid the anchor follows
         # it and inference is skipped; when it drops, vision starts from its last fix.
-        self.declare_parameter("gps_topic", "/navera/estimate/gps")
+        self.declare_parameter("gps_topic", "/navera/position")
         declare_float(self, "gps_prior_timeout_s", 2.0)
         # Mission start/stop gate of the camera: a stop (rewind) resets tracking.
         # Test flights only: run vision even while GPS is valid, to measure it
@@ -119,6 +119,13 @@ class DaySubscriber(Node):
         # bad ones (docs/VALIDATION_STATUS.md). Off: without a prior (GPS fix or
         # tracked match) day vision reports no position instead of a guess.
         self.declare_parameter("allow_global_search", False)
+        # Motion gate: a match farther from the last retained position than the
+        # vehicle can travel (max_speed_mps x elapsed + gate_margin_m) is rejected.
+        # The margin covers the tile quantisation (a match is a tile centre, tiles
+        # ~250 m). Without it the track jumped 554 m in 1 s and stayed on wrong
+        # tiles (0.4-1.1 km) in the mission simulator.
+        declare_float(self, "max_speed_mps", 30.0)
+        declare_float(self, "gate_margin_m", 250.0)
 
         self.conf_threshold = float(self.get_parameter("conf_threshold").value)
         image_topic   = self.get_parameter("image_topic").value
@@ -131,6 +138,8 @@ class DaySubscriber(Node):
         self.max_consecutive_rejects = int(self.get_parameter("max_consecutive_rejects").value)
         self.max_dead_reckon_s   = float(self.get_parameter("max_dead_reckon_s").value)
         self.allow_global_search = bool(self.get_parameter("allow_global_search").value)
+        self.max_speed_mps = float(self.get_parameter("max_speed_mps").value)
+        self.gate_margin_m = float(self.get_parameter("gate_margin_m").value)
 
         # ── State ───────────────────────────────────────────────
         self.bridge        = CvBridge()
@@ -209,6 +218,8 @@ class DaySubscriber(Node):
             String, meta_topic, self.on_meta, meta_qos
         )
         self._gps_prior = GpsPrior(float(self.get_parameter("gps_prior_timeout_s").value))
+        # The arbiter's decision: GPS is the prior only while it is the source in use.
+        self.create_subscription(NavStatus, "/navera/nav_status", self.on_nav_status, 10)
         self.shadow_mode = bool(self.get_parameter("shadow_mode").value)
         if self.shadow_mode:
             self.get_logger().warn("SHADOW MODE: vision runs while GPS is valid (test flights)")
@@ -247,9 +258,20 @@ class DaySubscriber(Node):
         if pair is not None:
             self._dispatch(*pair)
 
+    def on_nav_status(self, msg: NavStatus):
+        self._gps_prior.arbiter(msg.active_source == NavStatus.SOURCE_GPS
+                                and msg.state in (NavStatus.STATE_FIX, NavStatus.STATE_DEGRADED))
+
     def on_gps(self, msg: PositionEstimate):
-        """Valid measured GPS → it becomes the anchor (the prior for GPS loss).
+        """GPS position vetted by the arbiter → it becomes the anchor (the prior for GPS loss).
+
+        Read from the arbiter's output (/navera/position, GPS source only): a GPS
+        message the arbiter refuses (spoofed, implausible) never reaches it. Taken
+        from the raw GPS, the first spoofed fix of an attack became the search
+        centre, 2 km off (mission simulator). Any other source is ignored.
         In shadow mode it only seeds a missing anchor."""
+        if msg.source != PositionEstimate.SOURCE_GPS:
+            return
         if self._gps_prior.update(msg.latitude, msg.longitude, msg.valid,
                                   msg.mode == PositionEstimate.MODE_MEASURED):
             if self.shadow_mode and self._anchor_lat is not None:
@@ -563,6 +585,14 @@ class DaySubscriber(Node):
         t_now = time.time()
         spatial_empty = bool(result.get("spatial_empty"))
         measured = (not err) and accepted and not spatial_empty and is_finite_latlon(raw_lat, raw_lon)
+        gated = None
+        if measured and self._anchor_lat is not None and self._anchor_time is not None:
+            jump = haversine_m(self._anchor_lat, self._anchor_lon, float(raw_lat), float(raw_lon))
+            reach = self.max_speed_mps * max(0.0, t_now - self._anchor_time) + self.gate_margin_m
+            if jump > reach:
+                measured = False
+                gated = (f"implausible jump {jump:.0f} m in {t_now - self._anchor_time:.1f} s "
+                         f"(max {reach:.0f} m) — match rejected")
 
         if measured:
             # Accepted match: in spatial mode it lies within R of the anchor by
@@ -580,8 +610,13 @@ class DaySubscriber(Node):
             return
 
         # ── No usable match this frame ──
-        self._rejects_in_row += 1
-        if err:
+        # A motion-gate rejection keeps the (trusted) anchor: it does not count
+        # towards dropping it.
+        if not gated:
+            self._rejects_in_row += 1
+        if gated:
+            why = gated
+        elif err:
             why = str(err)
         elif spatial_empty:
             why = f"no tile within R={float(result.get('radius_m') or 0.0):.0f}m"
