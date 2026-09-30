@@ -470,7 +470,9 @@ const I18N = {
     hintReady:'Prêt : cliquez sur Lancer la mission', needRoute:"Placez le départ (A) et l'arrivée (B)",
     needPrepare:'Préparez la carte (onglet Carte)', needPrepareNight:'Hors de la carte embarquée : préparez la carte (onglet Carte)',
     blocked:'Démarrage bloqué : remettez le récepteur GPS sur OK', mapReady:'carte prête pour la vision', notPrepared:'non préparée',
-    noInternet:'Pas de connexion internet : carte embarquée affichée.'},
+    noInternet:'Pas de connexion internet : carte embarquée affichée.', tooLong:'trajet trop long à préparer',
+    checking:'Vérification de la couverture…', prepStarted:'Préparation de la carte lancée',
+    tooLongLaunch:'Trajet trop long pour la vraie vision : raccourcissez-le ou choisissez une vision simulée'},
   ar:{plannerBadge:'مخطط المهمة', flightBadge:'متابعة الطيران', simulation:'محاكاة', setup:'الإعداد', operatorView:'واجهة المشغل',
     launch:'إطلاق المهمة', end:'إنهاء', tabRoute:'المسار', tabMap:'الخريطة', tabMission:'المهمة', points:'النقاط', start:'الانطلاق',
     destination:'الوجهة', notSet:'غير محدد', useMyLocation:'موقعي كنقطة انطلاق', swap:'تبديل',
@@ -502,7 +504,9 @@ const I18N = {
     hintA:'انقر على الخريطة لتحديد نقطة الانطلاق (A)', hintB:'انقر على الخريطة لتحديد الوجهة (B)',
     hintReady:'جاهز: اضغط إطلاق المهمة', needRoute:'حدد نقطة الانطلاق (A) والوجهة (B)', needPrepare:'حضّر الخريطة (تبويب الخريطة)',
     needPrepareNight:'خارج الخريطة المدمجة: حضّر الخريطة أولاً', blocked:'الإقلاع متوقف: أعد مستقبل GPS إلى الوضع السليم',
-    mapReady:'الخريطة جاهزة للرؤية', notPrepared:'غير محضّرة', noInternet:'لا يوجد اتصال بالإنترنت: عرض الخريطة المدمجة.'},
+    mapReady:'الخريطة جاهزة للرؤية', notPrepared:'غير محضّرة', noInternet:'لا يوجد اتصال بالإنترنت: عرض الخريطة المدمجة.',
+    tooLong:'المسار طويل جداً للتحضير', checking:'جارٍ التحقق من التغطية…', prepStarted:'بدأ تحضير الخريطة',
+    tooLongLaunch:'المسار طويل جداً للرؤية الحقيقية: اختصره أو اختر رؤية محاكاة'},
 };
 const EN_EXTRA = {flightBadge:'Flight monitor', openPlanner:'Open the mission planner →'};
 let LANG = 'en';
@@ -694,8 +698,11 @@ function drawPlan(){
   } else { $('stDist').textContent = $('stEta').textContent = $('stBrg').textContent = '—'; }
 }
 let planTimer = null, planKey = null, PLANR = null, planFetched = 0;
+let fetching = false;
 async function fetchPlan(){
   if(!(A && B)){ PLANR = null; return; }
+  if(fetching) return;
+  fetching = true;
   const key = JSON.stringify([A, B]);
   try{
     const r = await fetch(`/api/plan?a=${A[0]},${A[1]}&b=${B[0]},${B[1]}`, {cache:'no-store'});
@@ -703,6 +710,7 @@ async function fetchPlan(){
     if(key === JSON.stringify([A, B])){ PLANR = r.ok ? d : null; planFetched = Date.now(); }
     if(!r.ok) toast(d.error || 'route refused');
   }catch(e){}
+  finally{ fetching = false; }
 }
 function routeChanged(){
   drawPlan();
@@ -854,8 +862,8 @@ function renderArea(d){
   if(plan && (matches || flying())){
     drawCorridor(plan);
     $('covBase').textContent = plan.in_base; $('covCache').textContent = plan.in_cache;
-    $('covMiss').textContent = plan.missing.length;
-    $('covMiss').className = plan.missing.length ? 'warnc' : 'ok';
+    $('covMiss').textContent = plan.missing_n ?? plan.missing.length;
+    $('covMiss').className = (plan.missing_n ?? plan.missing.length) ? 'warnc' : 'ok';
     $('covNote').innerHTML = `${m(plan.length_m)} · ±${plan.buffer_m / 1000} km · <b>${plan.tiles}</b> tiles · ` +
       (plan.prepared ? `<b class="ok">✓ ${esc(t('mapReady', 'map ready for vision'))}</b>` : `<b class="warnc">${esc(t('notPrepared', 'not prepared'))}</b>`);
   } else if(!flying()){
@@ -864,9 +872,12 @@ function renderArea(d){
   }
   const running = prep && prep.status === 'running';
   const busyOther = own && PLANR && PLANR.busy_other;
-  $('prepBtn').disabled = !plan || !matches || plan.prepared || running || busyOther || flying();
+  const tooLong = plan && plan.too_long && !plan.prepared;
+  $('prepBtn').disabled = !plan || !matches || plan.prepared || running || busyOther || tooLong || flying();
+  if(tooLong) $('covNote').innerHTML += ` · <b class="bad">${esc(t('tooLong', 'route too long to prepare'))} (> ${plan.max_prepare_km} km)</b>`;
+  if(own && A && B && !plan) $('covNote').textContent = t('checking', 'Checking map coverage…');
   if(busyOther && !plan.prepared) $('covNote').innerHTML += ' · <b class="warnc">another map is being prepared — wait</b>';
-  const dl = plan && matches ? plan.missing.length : 0;
+  const dl = plan && matches ? (plan.missing_n ?? plan.missing.length) : 0;
   $('prepBtn').textContent = running ? '…' : plan && plan.prepared && matches ? '✓ ' + t('mapReady', 'Map ready')
     : t('prepare', 'Prepare map') + (dl ? ` (${dl} ↓)` : '');
   $('prepBox').classList.toggle('hidden', !(prep && plan));
@@ -882,7 +893,7 @@ function renderArea(d){
       `Extracting tiles… ${prep.done}/${prep.total}`;
   }
   areaReady = !!(plan && plan.prepared && matches);
-  areaCovered = !!(plan && matches && plan.missing.length === 0);
+  areaCovered = !!(plan && matches && (plan.missing_n ?? plan.missing.length) === 0);
 }
 $('prepBtn').onclick = async () => {
   if(!(A && B)) return;
@@ -899,6 +910,8 @@ const flying = () => S && [...BUSY, 'enroute','arrived','rtl','landing','failsaf
 function launchBlocker(){
   if(!(A && B)) return t('needRoute', 'Place the start (A) and the destination (B)');
   const real = cfg.vision === 'real';
+  if(real && PLANR && PLANR.plan && PLANR.plan.too_long && !PLANR.plan.prepared)
+    return t('tooLongLaunch', 'Route too long for the real vision: shorten it or choose simulated vision');
   if(real && cfg.light === 'day' && !areaReady) return t('needPrepare', 'Prepare the map (tab Map)');
   if(real && cfg.light === 'night' && !(areaCovered || areaReady)) return t('needPrepareNight', 'Outside the onboard map: prepare the map first (tab Map)');
   return null;

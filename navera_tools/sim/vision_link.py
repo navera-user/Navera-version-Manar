@@ -36,6 +36,7 @@ from day_pkg.prepare_area import plan_tiles, tile_nw
 HFOV_DEG = 84.0          # camera horizontal field of view
 FRAME_W, FRAME_H = 640, 480
 BUFFER_M = 1000.0        # corridor half-width around the route
+MAX_PREPARE_KM = 100.0   # longer routes: thousands of tiles (a 1700 km route = 74 000)
 
 
 def _tile_xy(lat, lon, z):
@@ -107,7 +108,8 @@ class AreaManager:
         plan = dict(id=aid, route=route, buffer_m=buffer_m, zoom=17, length_m=length,
                     tiles=len(p["needed"]), present=p["present"], missing=p["missing"],
                     in_base=p["in_base"], in_cache=p["in_cache"],
-                    prepared=self.is_prepared(aid))
+                    prepared=self.is_prepared(aid), max_prepare_km=MAX_PREPARE_KM,
+                    too_long=length > MAX_PREPARE_KM * 1000.0)
         with self.lock:
             self.plans[aid] = plan
             if len(self.plans) > 50:                   # keep memory bounded
@@ -126,11 +128,18 @@ class AreaManager:
         with self.lock:
             prep = dict(self.preps[aid]) if aid in self.preps else None
             running = self._running
-        return dict(plan=plan, prep=prep, busy_other=running not in (None, aid))
+        out = dict(plan, missing_n=len(plan["missing"]), present_n=len(plan["present"]))
+        if plan["tiles"] > 3000:                  # too many to draw: counts only
+            out.update(present=[], missing=[])
+        return dict(plan=out, prep=prep, busy_other=running not in (None, aid))
 
     def start_prepare(self, route):
         plan = self.plan_for(route)["plan"]
         aid = plan["id"]
+        if plan["too_long"]:
+            raise ValueError(f"route too long to prepare: {plan['length_m'] / 1000:.0f} km "
+                             f"(max {MAX_PREPARE_KM:.0f} km, {plan['tiles']} tiles). Vision needs "
+                             f"the tiles along the whole route: shorten the mission")
         with self.lock:
             if self._proc and self._proc.poll() is None:
                 other = self.preps.get(self._running, {})
