@@ -66,3 +66,41 @@ def test_distance_to_route():
     lat, lon = ROUTE[0][0] + 1000 / 111320.0, ROUTE[0][1]      # 1 km north of the start
     assert 500 < _dist_to_route_m(lat, lon, ROUTE) <= 1000.5
     assert math.isfinite(_dist_to_route_m(35.0, 10.0, [ROUTE[0]]))
+
+
+def test_missing_tiles_are_downloaded_into_the_cache(tmp_path, mbtiles):
+    """A route partly outside the map: the missing tile comes from the tile server."""
+    import http.server
+    import threading
+    from day_pkg.prepare_area import download_missing
+
+    served = []
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            served.append(self.path)
+            body = _jpeg()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        path, needed = mbtiles
+        cache = str(tmp_path / "cache.mbtiles")
+        plan = plan_tiles(path, ROUTE, 1000.0, 17, cache)
+        assert plan["missing"] == [needed[0]] and plan["in_cache"] == 0
+        url = f"http://127.0.0.1:{srv.server_port}/{{z}}/{{y}}/{{x}}"
+        assert download_missing(plan, url, cache, path) == 0
+        assert served == [f"/17/{needed[0][1]}/{needed[0][0]}"]      # only the missing tile
+        after = plan_tiles(path, ROUTE, 1000.0, 17, cache)
+        assert after["missing"] == [] and after["in_cache"] == 1
+        # the cache alone now covers the whole corridor
+        assert plan_tiles(cache, ROUTE, 1000.0, 17)["missing"] == []
+    finally:
+        srv.shutdown()

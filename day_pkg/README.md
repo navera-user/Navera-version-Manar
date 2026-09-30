@@ -41,6 +41,11 @@ It extracts the z17 tiles of a corridor of `--buffer-m` around the route from th
 computes their DINOv2 descriptors (batched on the GPU) and writes a complete dataset directory
 (`images/`, `dataset.csv`, `descriptors_cache.npz`, `area.json` with the tiles the map lacks);
 point `DAY_DATASET_DIR` at it. Built in `<out>.partial` and moved into place only when complete.
+With `--fetch-url <XYZ template> --cache <file.mbtiles>`, tiles the onboard map lacks are
+downloaded into the cache (8 parallel requests), and the base map's corridor tiles are copied
+there too, so the cache alone covers the corridor (mission areas anywhere; measured: 195 tiles
+in Paris downloaded and prepared in 22 s). Storing online imagery offline in a product needs
+the imagery provider's licence.
 Measured on the Jetson: 249 tiles (4.8 km route, ±1 km) in 16 s; descriptors identical to the
 per-tile cache build (cosine ≥ 0.9996). Progress is printed as JSON lines.
 
