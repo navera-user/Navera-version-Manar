@@ -60,6 +60,10 @@ class Output:
 class Config:
     forward_degraded: bool = False
     degraded_sigma_m: float = math.nan  # required when forward_degraded
+    # A position coarser than this is never given to the autopilot, even with
+    # forward_degraded: a celestial fix (tens of km) moved a SITL autopilot's
+    # own position by 125 km.
+    max_forward_sigma_m: float = 1000.0
     position_timeout_s: float = 2.0
     nav_status_timeout_s: float = 2.0
 
@@ -122,5 +126,8 @@ def decide(cfg: Config, state: Optional[int], status_age_s: Optional[float],
     known = getattr(pos, "position_covariance_type", 0) != 0          # 0 = UNKNOWN
     stated = math.sqrt(max(cov[0], cov[4])) if known else math.nan
     sigma = max(cfg.degraded_sigma_m, stated) if math.isfinite(stated) else cfg.degraded_sigma_m
+    if sigma > cfg.max_forward_sigma_m:
+        return Output(KIND_NONE, f"position too coarse for the autopilot "
+                                 f"(±{sigma / 1000:.1f} km > {cfg.max_forward_sigma_m / 1000:.1f} km)")
     return Output(KIND_ESTIMATED, "estimated", sigma_h_m=sigma,
                   sigma_v_m=math.nan, satellites=0, **common)

@@ -24,6 +24,7 @@ Parameters:
     mavlink_component_id (191)
     forward_degraded     (False) send DEGRADED positions as "estimated"
     degraded_sigma_m     (NaN)   accuracy stated for them (required if forwarded)
+    max_forward_sigma_m  (1000)  a forwarded position coarser than this is withheld
     position_timeout_s   (2.0)   an older position is not current
     nav_status_timeout_s (2.0)   a silent arbiter means "no fix"
     gps_vel_timeout_s    (1.0)   the GPS velocity (/navera/sensors/gps_vel) sent with
@@ -72,6 +73,7 @@ class VehicleOutputNode(Node):
         declare_float(self, "position_timeout_s", 2.0)
         declare_float(self, "nav_status_timeout_s", 2.0)
         declare_float(self, "gps_vel_timeout_s", 1.0)
+        declare_float(self, "max_forward_sigma_m", 1000.0)
         self.declare_parameter("fix_type_without_alt", 3)
         self._fix_type_without_alt = int(self.get_parameter("fix_type_without_alt").value)
         if self._fix_type_without_alt not in (2, 3):
@@ -82,7 +84,8 @@ class VehicleOutputNode(Node):
             forward_degraded=bool(self.get_parameter("forward_degraded").value),
             degraded_sigma_m=float(self.get_parameter("degraded_sigma_m").value),
             position_timeout_s=float(self.get_parameter("position_timeout_s").value),
-            nav_status_timeout_s=float(self.get_parameter("nav_status_timeout_s").value))
+            nav_status_timeout_s=float(self.get_parameter("nav_status_timeout_s").value),
+            max_forward_sigma_m=float(self.get_parameter("max_forward_sigma_m").value))
         self.cfg.validate()
         rate = float(self.get_parameter("rate_hz").value)
         if rate <= 0:

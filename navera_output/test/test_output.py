@@ -155,8 +155,11 @@ def test_forwarded_accuracy_never_better_than_the_source_states():
     cfg = Config(forward_degraded=True, degraded_sigma_m=300.0)
     cn = pos(source=4, var=(55_000.0 ** 2, 55_000.0 ** 2, 0.0))
     cn.position_covariance_type = 1                         # APPROXIMATED
-    o = decide(cfg, STATE_DEGRADED, 0.1, cn, 0.1, 4)
+    o = decide(Config(forward_degraded=True, degraded_sigma_m=300.0, max_forward_sigma_m=1e6),
+               STATE_DEGRADED, 0.1, cn, 0.1, 4)
     assert o.kind == KIND_ESTIMATED and o.sigma_h_m == pytest.approx(55_000.0)
+    o = decide(cfg, STATE_DEGRADED, 0.1, cn, 0.1, 4)            # default limit 1 km
+    assert o.kind == KIND_NONE and "too coarse" in o.reason
     day = pos(source=DAY)                                  # unknown covariance → configured
     day.position_covariance_type = 0
     assert decide(cfg, STATE_DEGRADED, 0.1, day, 0.1, DAY).sigma_h_m == 300.0
