@@ -186,6 +186,15 @@ ArduPilot); the same fix repeated at 5 Hz; the spoofing gate above; positions fo
 "GPS not healthy" and refused to arm (the estimator and the output now act on arrival). The ArduPilot settings
 this requires are in navera_output/README.md.
 
+**QA campaign (2026-09-30)** — scripted missions with every fault, command and invalid input
+(backlog §7). Two critical product defects found and fixed: (1) with the real vision, a GPS
+spoof left NAVERA without any position and the drone landed — vision idled behind the spoofed
+GPS and took the first spoofed fix as its search centre; it now takes its GPS reference from
+the arbiter's vetted output and starts as soon as GPS is refused (re-test: 3/3 spoofs taken
+over by vision, median 59–129 m, mission continued); (2) a celestial fix (±55 km) forwarded to
+the autopilot moved its position by 125 km — positions coarser than `max_forward_sigma_m`
+(1 km) are no longer forwarded.
+
 ## Known limitations
 
 1. **Accuracy is not established on real data.** No real flight has been recorded with

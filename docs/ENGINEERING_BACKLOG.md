@@ -141,3 +141,20 @@ Status: ✅ done · 🔧 in progress · ⬜ open
 | FEAT-6 | Mission area preparation from the MBTiles map (`prepare_area.py`: corridor tiles + DINOv2 descriptors, coverage report) | ✅ 173ca5d |
 | FEAT-7 | Simulator: plan → prepare map → fly, with the real day vision and its search circle on the map | ✅ 64db567 |
 | FEAT-8 | Simulator: night missions with the real night vision (search square, matched footprint) and the real celestial fix (star images from the Yale catalogue, ± stated accuracy); IMU error model | ✅ c85dc51 |
+
+## 7. QA campaign on the mission simulator (2026-09-30)
+
+Scripted missions (drone, boat, robot) with every fault in flight, commands, start-up faults
+and invalid inputs; state sampled every second, anomalies flagged automatically.
+
+| ID | Sev. | Finding | Status |
+|---|---|---|---|
+| QA-1 | C | GPS spoofing with the real vision → NO FIX and the drone landed: vision idled behind the spoofed-but-"valid" GPS, then re-centred its search on the spoofed position (first spoofed fix raced the arbiter's decision). Vision now takes its GPS prior from the arbiter's output (`/navera/position`, GPS only) and starts as soon as the arbiter stops using GPS. Re-test: 3/3 spoofs taken over by vision (median 59–129 m), mission continued | ✅ 03f75fb |
+| QA-2 | C | With "forward degraded", a celestial fix (±55 km) reached the autopilot: its own position jumped 125 km. `max_forward_sigma_m` (default 1 km): coarser positions are never forwarded | ✅ 03f75fb |
+| QA-3 | M | Start → en route ~80 s (EKF alignment 40 s + climb) with little feedback ("the drone does not fly"). Steps 1/4–4/4 with elapsed time and climb progress; start-up with a GPS fault shows "BLOCKED: set GPS back to OK" | ✅ 03f75fb |
+| QA-4 | L | Night vision on the ground said "altitude unknown" → "vehicle on the ground" | ✅ 03f75fb |
+| QA-5 | L | Simulated-error vision published positions before any GPS fix (the real nodes cannot: no prior) | ✅ 03f75fb |
+| QA-6 | L | Simulator node logs overwritten on restart — now appended | ✅ 03f75fb |
+| QA-9 | H | Day vision had no motion gate: a match jumped 554 m in 1 s and the track stayed on wrong tiles (0.4–1.1 km). Gate added (max_speed_mps × elapsed + 250 m for the tile quantisation; a gated frame keeps the anchor). Re-test over 4 GPS losses: median 83 m, p90 258 m, max 448 m (was up to 1075 m); vision takes over in 0.5–2.7 s | ✅ 03f75fb |
+| QA-7 | — | Passed: jam / GPS off / camera failure / IMU failure / night switch in flight; goto, RTL, land, restart, end during take-off; boat and robot; invalid inputs refused, speed/altitude clamped; unprepared far route refused | — |
+| QA-8 | H | Known limit confirmed: a slow GPS drift (4 m/s) is not detected with day vision of unknown accuracy (reached 237 m) — needs vision with a stated accuracy (EST-8) | ⬜ |
