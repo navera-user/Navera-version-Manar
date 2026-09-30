@@ -459,8 +459,7 @@ class Simulator(Node):
             with self.lock:
                 self.procs["vehicle_output"] = vo
             self._set_phase("waiting_gps", "step 2/4 — the autopilot is aligning its navigation "
-                                           "filter on NAVERA's GPS position "
-                                           "(EKF alignment, ~30-60 s)")
+                                           "filter on NAVERA's GPS position")
             self._wait(lambda: self.ap.snapshot()["ekf_pos_ok"], 180,
                        "the autopilot never got a usable position from NAVERA (is GPS jammed?)")
             self.ap.set_speed(c["speed"])
