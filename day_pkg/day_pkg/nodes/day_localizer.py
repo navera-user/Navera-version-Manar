@@ -238,49 +238,88 @@ class DayLocalizer:
         if EMPTY_CACHE_AFTER_PREDICT and use_cuda:
             torch.cuda.empty_cache()      # rend la VRAM cachée entre deux frames
 
-        # ── Retrieval direct sur les 1120 tuiles ──
-        # cosine DINOv2 sur TOUT le dataset (descripteurs déjà L2-normalisés).
-        dino_sims = cosine_similarity(q_dino.reshape(1, -1), self.dino_descs)[0]
-        base = dino_sims
+        result = self.rank(q_dino, threshold=threshold, center=center, radius_m=radius_m)
+        result["total_ms"] = (time.time() - t0) * 1000
+        return result
 
-        # ── a priori spatial : restreindre les candidats au cercle autour de center ──
+    GRID_DEG = 0.01            # spatial index cell (~1.1 km of latitude)
+
+    def _grid_key(self, ilat, ilon):
+        ncol = int(round(360.0 / self.GRID_DEG))
+        return ilat.astype(np.int64) * ncol + np.mod(ilon, ncol).astype(np.int64)
+
+    def _tiles_in_circle(self, lat, lon, radius_m):
+        """Indices (ascending) of the tiles whose centre is within radius_m of (lat, lon).
+
+        The tiles are bucketed once in a grid of GRID_DEG cells; a query looks only at
+        the cells the circle touches, so the cost follows the circle, not the size of
+        the map — whatever the direction of the route."""
+        g = self.GRID_DEG
+        n = len(self.coords)
+        if getattr(self, "_grid_n", None) != n:                  # built once per map
+            keys = self._grid_key(np.floor((self.coords[:, 0] + 90.0) / g), np.floor((self.coords[:, 1] + 180.0) / g))
+            self._grid_order = np.argsort(keys, kind="stable")
+            self._grid_keys, self._grid_start = np.unique(keys[self._grid_order], return_index=True)
+            self._grid_end = np.r_[self._grid_start[1:], n]
+            self._grid_n = n
+        dlat = radius_m / 111_000.0                              # slightly more than the circle
+        dlon = min(180.0, dlat / max(cos(radians(lat)), 1e-6))
+        ilat = np.arange(np.floor((lat - dlat + 90.0) / g), np.floor((lat + dlat + 90.0) / g) + 1)
+        ilon = np.arange(np.floor((lon - dlon + 180.0) / g), np.floor((lon + dlon + 180.0) / g) + 1)
+        want = np.unique(self._grid_key(np.repeat(ilat, ilon.size), np.tile(ilon, ilat.size)))
+        pos = np.searchsorted(self._grid_keys, want)
+        ok = (pos < self._grid_keys.size) & (self._grid_keys[np.minimum(pos, self._grid_keys.size - 1)] == want)
+        pos = pos[ok]
+        if pos.size == 0:
+            return np.empty(0, dtype=np.int64)
+        near = np.concatenate([self._grid_order[a:b] for a, b in zip(self._grid_start[pos], self._grid_end[pos])])
+        c = self.coords[near]
+        la, lo = np.radians(c[:, 0]), np.radians(c[:, 1])
+        p1, l1 = radians(lat), radians(lon)
+        h = np.sin((la - p1) / 2) ** 2 + np.cos(p1) * np.cos(la) * np.sin((lo - l1) / 2) ** 2
+        d = 6_371_000.0 * 2 * np.arctan2(np.sqrt(h), np.sqrt(1 - h))
+        return np.sort(near[d <= radius_m])
+
+    def rank(self, q_dino, threshold=0.75, center=None, radius_m=None):
+        """Rank the map tiles against a query descriptor.
+
+        With center=(lat, lon) and radius_m, only the tiles whose centre lies in the
+        circle are compared: the circle is applied FIRST, so the cost per frame
+        follows the circle (a few hundred tiles), not the length of the route.
+        Without them, every tile is compared (global search)."""
         spatial = (center is not None and radius_m is not None)
         if spatial:
-            d_to_center = self._haversine_to_coords(center[0], center[1])   # (N,)
-            cand = np.where(d_to_center <= radius_m)[0]
+            cand = self._tiles_in_circle(center[0], center[1], radius_m)
             if cand.size == 0:
-                # aucune tuile dans le cercle → le subscriber fera du dead_reckon (étape 5)
+                # no tile in the circle → the subscriber dead-reckons
                 return {
                     "spatial": True, "spatial_empty": True,
                     "radius_m": float(radius_m), "n_candidates": 0,
                     "predicted_lat": None, "predicted_lon": None,
                     "score": None, "fused_score": None, "accepted": False,
-                    "match": None, "top5": [], "total_ms": (time.time() - t0) * 1000,
+                    "match": None, "top5": [],
                 }
-            order = cand[np.argsort(base[cand])[::-1]]   # top-1 DINOv2 PARMI le cercle
         else:
-            order = base.argsort()[::-1]                 # global (comportement inchangé)
-
-        top5_idx = order[:TOP5_N]
+            cand = np.arange(len(self.dino_descs))
+        # cosine DINOv2 against the candidates only
+        sims = cosine_similarity(q_dino.reshape(1, -1), self.dino_descs[cand])[0]
+        order = np.argsort(sims)[::-1]
         top5 = []
-        for rank, idx in enumerate(top5_idx):
-            idx = int(idx)
-            lat, lon = float(self.coords[idx][0]), float(self.coords[idx][1])
+        for rank, k in enumerate(order[:TOP5_N]):
+            idx = int(cand[k])
             top5.append({
                 "rank":    rank + 1,
                 "index":   idx,
                 "image":   str(self.df_valid.iloc[idx]["imageName"]),
-                "dino":    float(dino_sims[idx]),
-                "lat":     lat,
-                "lon":     lon,
+                "dino":    float(sims[k]),
+                "lat":     float(self.coords[idx][0]),
+                "lon":     float(self.coords[idx][1]),
             })
-
-        best  = int(top5_idx[0])
-        score = float(dino_sims[best])              # similarité du top-1 (métrique fiable)
-        gps   = self.coords[best]
+        best  = top5[0]["index"]
+        score = top5[0]["dino"]                      # top-1 similarity (the reliable metric)
         return {
-            "predicted_lat": float(gps[0]),
-            "predicted_lon": float(gps[1]),
+            "predicted_lat": top5[0]["lat"],
+            "predicted_lon": top5[0]["lon"],
             "score":         score,
             "fused_score":   score,
             "accepted":      score >= threshold,
@@ -289,6 +328,5 @@ class DayLocalizer:
             "spatial":       spatial,
             "spatial_empty": False,
             "radius_m":      float(radius_m) if spatial else None,
-            "n_candidates":  int(cand.size) if spatial else int(len(self.coords)),
-            "total_ms":      (time.time()-t0)*1000
+            "n_candidates":  int(cand.size),
         }
