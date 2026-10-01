@@ -141,45 +141,89 @@ input:focus{outline:2px solid #bfdbfe;border-color:var(--accent)}
   padding:10px 16px;font-weight:600;max-width:70%;display:none}
 #toast.info{background:#eff6ff;border-color:#bfdbfe;color:#1e3a8a}
 
-/* ── page 1: vehicle & parameters ── */
-#home{position:fixed;inset:0;z-index:2000;background:var(--bg);overflow-y:auto}
-.htop{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:12px;height:56px;padding:0 16px;background:var(--panel);
-  border-bottom:1px solid var(--line);box-shadow:0 1px 3px rgba(15,23,42,.05)}
-.hwrap{max-width:1120px;margin:0 auto;padding:26px 16px 0}
-.hwrap h1{font-size:24px;font-weight:800} .hwrap .sub{color:var(--mute);margin-top:4px;font-size:13.5px;line-height:1.45}
-.hsec{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:800;margin:26px 0 12px}
-.hsec .num{width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:13px}
-.hsec .vn{color:var(--accent)}
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
-.mcard{border:2px solid var(--line);border-radius:14px;padding:16px;cursor:pointer;text-align:center;position:relative;background:var(--panel)}
-.mcard:hover{border-color:#93c5fd}
-.mcard.on{border-color:var(--accent);background:#eff6ff}
-.mcard .e{font-size:34px} .mcard .n{font-weight:800;font-size:16px;margin:6px 0 4px} .mcard .d{color:var(--mute);font-size:12px;line-height:1.45}
-.mcard .tag{position:absolute;top:10px;right:10px;font-size:10px;font-weight:800;letter-spacing:1px;padding:2px 7px;border-radius:8px;background:#f1f5f9;color:var(--mute)}
+/* ── page 1: vehicle & mission (plain language; technical settings under "Advanced") ── */
+#home{position:fixed;inset:0;z-index:2000;background:#f1f5f9;overflow-y:auto;display:flex;flex-direction:column}
+.hero{background:radial-gradient(900px 260px at 15% -40%,rgba(59,130,246,.9) 0,transparent 70%),linear-gradient(135deg,#0b1736 0,#1e3a8a 100%);
+  color:#fff;padding-bottom:72px;flex:none}
+.htop{display:flex;align-items:center;gap:12px;height:60px;padding:0 20px}
+.htop .logo .ic{background:rgba(255,255,255,.14);box-shadow:inset 0 0 0 1px rgba(255,255,255,.2)}
+.htop .lang{border-color:rgba(255,255,255,.25)} .htop .lang button{color:#cbd5e1} .htop .lang button.on{background:#fff;color:#1e3a8a}
+.htop .simtag{background:rgba(254,226,226,.15);color:#fecaca}
+.hhead{max-width:980px;margin:0 auto;padding:22px 20px 0;width:100%}
+.hhead h1{font-size:31px;font-weight:800;letter-spacing:-.4px} .hhead p{color:#c7d2fe;margin-top:6px;font-size:15px}
+.stepper{list-style:none;display:flex;gap:8px;margin-top:22px;flex-wrap:wrap}
+.stepper li{display:flex;align-items:center;gap:8px;padding:5px 14px 5px 5px;border-radius:20px;background:rgba(255,255,255,.07);color:#a5b4fc;font-weight:600;font-size:12.5px}
+.stepper li b{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.12);font-size:12px}
+.stepper li.on{background:rgba(255,255,255,.16);color:#fff} .stepper li.on b{background:#fff;color:#1e3a8a}
+.hbody{max-width:980px;width:100%;margin:-52px auto 0;padding:0 20px 24px;display:flex;flex-direction:column;gap:16px;flex:1 0 auto}
+.q{background:#fff;border-radius:18px;padding:22px;box-shadow:0 10px 30px rgba(15,23,42,.08)}
+.q h2{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:800;margin-bottom:16px}
+.qn{width:28px;height:28px;border-radius:9px;background:#eff6ff;color:var(--accent);display:grid;place-items:center;font-size:14px;flex:none}
+.q h3{font-size:14px;font-weight:700;margin:20px 0 10px}
+.vt{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.vtile,.ltile{position:relative;border:2px solid transparent;border-radius:16px;cursor:pointer;text-align:start;padding:0;overflow:hidden;
+  background:#f8fafc;transition:transform .12s,box-shadow .12s,border-color .12s;font:inherit;color:inherit}
+.vtile:hover,.ltile:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(15,23,42,.12)}
+.vtile.on,.ltile.on{border-color:var(--accent);box-shadow:0 0 0 4px rgba(37,99,235,.16)}
+.vtile .art{height:120px;display:grid;place-items:center}
+.vtile .art svg{width:136px;height:90px}
+.vtile[data-v=drone] .art{background:linear-gradient(160deg,#e0f2fe,#93c5fd);color:#1e40af}
+.vtile[data-v=boat] .art{background:linear-gradient(160deg,#ccfbf1,#5eead4);color:#115e59}
+.vtile[data-v=robot] .art{background:linear-gradient(160deg,#fef3c7,#fbbf24);color:#78350f}
+.vtxt{padding:12px 14px 14px;display:flex;flex-direction:column;gap:2px} .vtxt b{font-size:16px} .vtxt span{color:var(--mute);font-size:12.5px}
+.ck{position:absolute;top:10px;right:10px;width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;display:none;
+  place-items:center;font-weight:800;font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,.25)}
+.on>.ck{display:grid}
+html[dir=rtl] .ck{right:auto;left:10px}
+.caps{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;align-items:center}
+.caps em{font-style:normal;color:var(--mute);font-size:12.5px;margin-inline-end:2px}
+.caps span{font-size:12px;font-weight:600;padding:5px 11px;border-radius:20px;cursor:help}
+.caps .ok{background:#dcfce7;color:#166534} .caps .no{background:#fee2e2;color:#991b1b} .caps .plan{background:#fef3c7;color:#92400e}
+.lt{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.ltile{padding:18px 20px;min-height:118px;display:flex;flex-direction:column;gap:4px}
+.ltile .sky{font-size:30px;line-height:1;margin-bottom:6px}
+.ltile b{font-size:16px} .ltile .ld{font-size:12.5px;line-height:1.45}
+.ltile.day{background:linear-gradient(150deg,#e0f2fe 0,#fef9c3 100%)} .ltile.day .ld{color:#475569}
+.ltile.night{background:radial-gradient(circle at 85% 15%,rgba(129,140,248,.55) 0,transparent 45%),linear-gradient(150deg,#0f172a,#312e81);color:#fff}
+.ltile.night .ld{color:#c7d2fe}
+.pills{display:flex;gap:10px;flex-wrap:wrap}
+.pill{flex:1;min-width:130px;border:2px solid var(--line);background:#fff;border-radius:14px;padding:12px 14px;cursor:pointer;text-align:start;font:inherit;color:inherit}
+.pill:hover{border-color:#93c5fd} .pill.on{border-color:var(--accent);background:#eff6ff}
+.pill b{display:block;font-size:14.5px} .pill small{color:var(--mute);font-size:12px}
+.warnTxt{color:var(--warn);font-weight:600;margin-top:10px}
+.adv{background:#fff;border-radius:18px;box-shadow:0 10px 30px rgba(15,23,42,.06)}
+.adv summary{cursor:pointer;padding:16px 22px;font-weight:700;display:flex;align-items:center;gap:10px;list-style:none;flex-wrap:wrap}
+.adv summary::-webkit-details-marker{display:none}
+.adv summary small{color:var(--mute);font-weight:500}
+.adv summary::after{content:'▾';margin-inline-start:auto;color:var(--mute)} .adv[open] summary::after{content:'▴'}
+.advbody{padding:0 22px 22px;display:flex;flex-direction:column;gap:8px;border-top:1px solid #f1f5f9}
+.advbody .sec{margin-top:14px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.mcard{border:2px solid var(--line);border-radius:12px;padding:12px;cursor:pointer;text-align:start;position:relative;background:var(--panel)}
+.mcard:hover{border-color:#93c5fd} .mcard.on{border-color:var(--accent);background:#eff6ff}
+.mcard .n{font-weight:800;font-size:13.5px;margin-bottom:4px} .mcard .d{color:var(--mute);font-size:12px;line-height:1.45}
 .mcard.disabled{opacity:.45;cursor:not-allowed}
-.vcards .mcard{padding:22px 18px;text-align:left}
-.vcards .mcard .e{font-size:46px;line-height:1.1}
-.vcards .mcard .spec{margin-top:10px;font-size:11.5px;font-weight:700;color:var(--accent)}
-.mcard .ck{position:absolute;top:12px;right:12px;width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;
-  display:none;place-items:center;font-size:13px;font-weight:800}
-.mcard.on .ck{display:grid}
-.hgrid{display:grid;grid-template-columns:1.45fr 1fr;gap:14px;align-items:start}
-.hcol{display:flex;flex-direction:column;gap:14px;min-width:0}
-.hgrid .cards{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
-.hgrid .mcard{padding:12px;text-align:left} .hgrid .mcard .e{font-size:24px} .hgrid .mcard .n{font-size:14px}
+.chk{display:flex;gap:9px;align-items:flex-start;cursor:pointer;margin-top:4px}
+.chk input{margin-top:3px}
+.sumrow{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9}
+.sumrow span{color:var(--mute)} .sumrow b{text-align:end}
 .cap{list-style:none;display:flex;flex-direction:column;gap:10px}
 .cap li{display:grid;grid-template-columns:22px 1fr;gap:8px;line-height:1.4;font-size:12.5px}
 .cap li .s{font-weight:800;text-align:center;border-radius:6px;font-size:11px;height:20px;line-height:20px}
 .cap li.ok .s{background:#dcfce7;color:var(--ok)} .cap li.no .s{background:#fee2e2;color:var(--bad)}
 .cap li.plan .s{background:#fef3c7;color:var(--warn)} .cap li.info .s{background:#dbeafe;color:var(--accent)}
 .cap li b{display:block} .cap li .d{color:var(--mute)}
-.hnav{position:sticky;bottom:0;display:flex;justify-content:flex-end;gap:10px;margin-top:10px;padding:16px 0 20px;
-  background:linear-gradient(rgba(238,242,247,0),var(--bg) 40%)}
-.btn.big{padding:12px 22px;font-size:14.5px;font-weight:700}
-.sumrow{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9}
-.sumrow span{color:var(--mute)} .sumrow b{text-align:right}
-.chk{display:flex;gap:9px;align-items:flex-start;cursor:pointer;margin-top:4px}
-.chk input{margin-top:3px}
+.hfoot{position:sticky;bottom:0;flex:none;background:#fff;box-shadow:0 -6px 20px rgba(15,23,42,.06);border-top:1px solid var(--line);padding:14px 20px;z-index:3}
+.hfoot .in{max-width:980px;margin:0 auto;display:flex;align-items:center;gap:14px}
+.sumline{flex:1;display:flex;flex-wrap:wrap;gap:8px}
+.sumline span{background:#f1f5f9;border-radius:20px;padding:6px 12px;font-weight:600;font-size:12.5px}
+.btn.big{padding:13px 24px;font-size:15px;font-weight:700;border-radius:12px;box-shadow:0 6px 16px rgba(37,99,235,.3)}
+.lastr{display:flex;align-items:center;gap:10px;justify-content:space-between;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:8px 10px;font-size:12.5px}
+@media (max-width:760px){
+  .vt,.lt{grid-template-columns:1fr} .vtile{display:grid;grid-template-columns:120px 1fr;align-items:center} .vtile .art{height:100%;min-height:90px}
+  .vtile .art svg{width:100px} .hhead h1{font-size:24px}
+  .hfoot .in{flex-direction:column;align-items:stretch}
+}
 #vehBtn{border-color:#bfdbfe;background:#eff6ff;color:var(--accent)}
 #vehBtn:disabled{opacity:.6;cursor:default}
 #vehBtn .vi{font-size:16px;line-height:1}
@@ -222,6 +266,8 @@ html[dir=rtl] .sec{border-left:0;border-right:3px solid var(--accent);padding-le
       <button data-v="mission">⚙ <span data-i18n="tabMission">Mission</span></button>
     </div>
     <div class="pane" id="pane-route">
+      <div class="lastr hidden" id="lastRoute"><span><b data-i18n="lastRoute">Last route</b> · <span id="lastRouteD"></span></span>
+        <button class="btn" id="useLast" data-i18n="useIt">Use it</button></div>
       <div class="sec" data-i18n="points">Points</div>
       <div class="pt on" id="ptA">
         <div class="dot" style="background:var(--gps)">A</div>
@@ -404,62 +450,71 @@ html[dir=rtl] .sec{border-left:0;border-right:3px solid var(--accent);padding-le
 </main>
 </div>
 
-<!-- ── page 1: vehicle & mission parameters ── -->
+<!-- ── page 1: vehicle & mission (three plain questions; technical settings under "Advanced") ── -->
 <div id="home" class="hidden">
-  <div class="htop">
-    <div class="logo"><div class="ic">✈</div>NAVERA</div>
-    <span class="simtag" data-i18n="simulation">SIMULATION</span>
-    <div style="flex:1"></div>
-    <div class="lang langsw"><button data-v="fr">FR</button><button data-v="en">EN</button><button data-v="ar">ع</button></div>
-  </div>
-  <div class="hwrap">
-    <h1 data-i18n="homeTitle">New mission</h1>
-    <div class="sub" data-i18n="homeSub">Choose the vehicle NAVERA is installed on, then set the mission parameters. The next page opens the workspace for that vehicle.</div>
-    <div class="hsec"><span class="num">1</span><span data-i18n="wizVehicle">Vehicle</span></div>
-    <div class="cards vcards" id="wVeh">
-      <div class="mcard" data-v="drone"><span class="ck">✓</span><div class="e">🚁</div><div class="n" data-i18n="drone">Drone</div>
-        <div class="d" data-i18n="droneD">Downward camera at altitude: NAVERA's satellite vision (day and night), the star fix and GPS protection.</div>
-        <div class="spec" data-i18n="droneS">ArduCopter · up to 20 m/s · 30–400 m</div></div>
-      <div class="mcard" data-v="boat"><span class="ck">✓</span><div class="e">🚤</div><div class="n" data-i18n="boat">Boat</div>
-        <div class="d" data-i18n="boatD">Camera at water level: GPS protection and the star fix at night. The vision position is simulated.</div>
-        <div class="spec" data-i18n="boatS">ArduPilot Rover (motorboat) · up to 15 m/s</div></div>
-      <div class="mcard" data-v="robot"><span class="ck">✓</span><div class="e">🤖</div><div class="n" data-i18n="robot">Ground robot</div>
-        <div class="d" data-i18n="robotD">Camera at ground level: GPS protection and the star fix at night. The vision position is simulated.</div>
-        <div class="spec" data-i18n="robotS">ArduPilot Rover · up to 8 m/s</div></div>
+  <div class="hero">
+    <div class="htop">
+      <div class="logo"><div class="ic">✈</div>NAVERA</div>
+      <span class="simtag" data-i18n="simulation">SIMULATION</span>
+      <div style="flex:1"></div>
+      <div class="lang langsw"><button data-v="fr">FR</button><button data-v="en">EN</button><button data-v="ar">ع</button></div>
     </div>
-    <div class="hsec"><span class="num">2</span><span data-i18n="params">Parameters</span><span>·</span><span class="vn" id="hVehName"></span></div>
-    <div class="hgrid">
-      <div class="hcol">
-        <div class="card"><h3 data-i18n="wizMode">Operating mode</h3>
-          <div class="cards" id="wMode">
-            <div class="mcard" data-v="day"><span class="tag" data-i18n="tagDay">DAY</span><div class="e">☀️</div><div class="n" data-i18n="dayMode">Day mode</div><div class="d" id="dayModeD"></div></div>
-            <div class="mcard" data-v="night"><span class="tag" data-i18n="tagNight">NIGHT</span><div class="e">🌙</div><div class="n" data-i18n="nightMode">Night mode</div><div class="d" id="nightModeD"></div></div>
-          </div></div>
-        <div class="card"><h3 data-i18n="motion">Motion</h3>
-          <div class="lbl"><span data-i18n="speed">Speed</span>: <b id="wSpdV">15</b> m/s</div>
-          <input type="range" id="wSpd" min="2" max="20" value="15">
-          <div id="wAltBox"><div class="lbl"><span data-i18n="altitude">Altitude</span>: <b id="wAltV">150</b> m · <span data-i18n="footprint">camera footprint</span> ≈ <b id="wFpV">270</b> m</div>
-          <input type="range" id="wAlt" min="30" max="400" step="10" value="150"></div>
-          <div class="note" id="wAltNote" style="color:var(--warn);font-weight:600"></div></div>
-        <div class="card"><h3 data-i18n="gpsLost">Position when GPS is lost</h3>
-          <div class="cards" id="wVision">
-            <div class="mcard" data-v="real"><div class="n" data-i18n="realVision">Real NAVERA vision</div><div class="d" data-i18n="realVisionD">The real software localises the simulated camera image (drone only).</div></div>
-            <div class="mcard" data-v="measured"><div class="n" data-i18n="simMeasured">Simulated — today's accuracy</div><div class="d" data-i18n="simMeasuredD">Error as measured on real frames (~440 m).</div></div>
-            <div class="mcard" data-v="target"><div class="n" data-i18n="simTarget">Simulated — target</div><div class="d" data-i18n="simTargetD">15 m: the goal, not a measured performance.</div></div>
-          </div>
-          <div class="note" id="wVisNote" style="margin-top:8px"></div></div>
-        <div class="card"><h3 data-i18n="autopilotOut">Autopilot output</h3>
-          <label class="chk"><input type="checkbox" id="wFwd"> <span><span data-i18n="fwd">Give vision positions to the autopilot, stated accuracy</span>
-            <input type="number" id="wSigma" value="300" min="5" max="1000" style="width:80px;display:inline-block;padding:4px 6px"> m</span></label>
-          <div class="note" style="margin-top:6px" data-i18n="fwdNote">NAVERA's default is off: vision positions are shown but the autopilot applies its own failsafe (land / hold) when GPS is lost.</div></div>
-      </div>
-      <div class="hcol">
-        <div class="card"><h3 data-i18n="capTitle">NAVERA on this vehicle</h3><ul class="cap" id="capHome"></ul></div>
-        <div class="card"><h3 data-i18n="summary">Summary</h3><div id="wSummary"></div></div>
-      </div>
+    <div class="hhead">
+      <h1 data-i18n="homeTitle">Plan a new mission</h1>
+      <p data-i18n="homeSub">Three quick choices, then you draw the route on the map.</p>
+      <ol class="stepper">
+        <li class="on"><b>1</b><span data-i18n="stVehicle">Vehicle</span></li>
+        <li class="on"><b>2</b><span data-i18n="stMission">Mission</span></li>
+        <li><b>3</b><span data-i18n="stRoute">Route on the map</span></li>
+      </ol>
     </div>
-    <div class="hnav"><button class="btn primary big" id="wNext">Open the workspace →</button></div>
   </div>
+  <div class="hbody">
+    <section class="q">
+      <h2><span class="qn">1</span><span data-i18n="qVehicle">Which vehicle carries NAVERA?</span></h2>
+      <div class="vt" id="wVeh">
+        <button class="vtile" data-v="drone"><div class="art"><svg viewBox="0 0 120 80" aria-hidden="true"><g stroke="currentColor" stroke-width="3.5" stroke-linecap="round"><line x1="32" y1="24" x2="88" y2="52"/><line x1="88" y1="24" x2="32" y2="52"/></g><g fill="none" stroke="currentColor" stroke-width="2.5"><ellipse cx="30" cy="22" rx="17" ry="5"/><ellipse cx="90" cy="22" rx="17" ry="5"/><ellipse cx="30" cy="54" rx="17" ry="5"/><ellipse cx="90" cy="54" rx="17" ry="5"/></g><rect x="46" y="29" width="28" height="18" rx="6" fill="currentColor"/><circle cx="60" cy="38" r="3.5" fill="#fff"/><path d="M50 74 60 50 70 74" fill="currentColor" opacity=".18"/></svg></div><div class="vtxt"><b data-i18n="drone">Drone</b><span data-i18n="droneP">Flies above the ground</span></div><span class="ck">✓</span></button>
+        <button class="vtile" data-v="boat"><div class="art"><svg viewBox="0 0 120 80" aria-hidden="true"><path d="M58 32V18" stroke="currentColor" stroke-width="2.5"/><circle cx="58" cy="16" r="3" fill="currentColor"/><path d="M38 46V33h32l12 13z" fill="currentColor" opacity=".7"/><rect x="44" y="36" width="9" height="6" rx="1.5" fill="#fff"/><rect x="57" y="36" width="9" height="6" rx="1.5" fill="#fff"/><path d="M12 46h96l-13 17H26z" fill="currentColor"/><path d="M4 70q8-6 16 0t16 0 16 0 16 0 16 0 16 0 16 0" fill="none" stroke="currentColor" stroke-width="2.5" opacity=".5"/></svg></div><div class="vtxt"><b data-i18n="boat">Boat</b><span data-i18n="boatP">Sails on water</span></div><span class="ck">✓</span></button>
+        <button class="vtile" data-v="robot"><div class="art"><svg viewBox="0 0 120 80" aria-hidden="true"><path d="M42 30V18" stroke="currentColor" stroke-width="2.5"/><circle cx="42" cy="16" r="3" fill="currentColor"/><rect x="62" y="17" width="22" height="13" rx="3" fill="currentColor" opacity=".7"/><circle cx="78" cy="23.5" r="3" fill="#fff"/><rect x="24" y="30" width="72" height="22" rx="7" fill="currentColor"/><g fill="#fff" stroke="currentColor" stroke-width="4.5"><circle cx="35" cy="58" r="9"/><circle cx="60" cy="58" r="9"/><circle cx="85" cy="58" r="9"/></g><path d="M8 72h104" stroke="currentColor" stroke-width="2.5" opacity=".35"/></svg></div><div class="vtxt"><b data-i18n="robot">Ground robot</b><span data-i18n="robotP">Drives on land</span></div><span class="ck">✓</span></button>
+      </div>
+      <div class="caps" id="capChips"></div>
+    </section>
+    <section class="q">
+      <h2><span class="qn">2</span><span data-i18n="qWhen">When does the mission take place?</span></h2>
+      <div class="lt" id="wMode">
+        <button class="ltile day" data-v="day"><span class="sky">☀️</span><b data-i18n="fDay">Day</b><span class="ld" id="dayModeD"></span><span class="ck">✓</span></button>
+        <button class="ltile night" data-v="night"><span class="sky">🌙</span><b data-i18n="fNight">Night</b><span class="ld" id="nightModeD"></span><span class="ck">✓</span></button>
+      </div>
+    </section>
+    <section class="q">
+      <h2><span class="qn">3</span><span data-i18n="qSpeed">How fast?</span></h2>
+      <div class="pills" id="wSpdP"></div>
+      <div id="wAltQ"><h3 data-i18n="qAlt">How high?</h3><div class="pills" id="wAltP"></div></div>
+      <div class="warnTxt" id="wAltNote"></div>
+    </section>
+    <details class="adv" id="adv">
+      <summary>⚙ <span data-i18n="advanced">Advanced settings</span> <small data-i18n="advSub">for engineers — the defaults are right for a demonstration</small></summary>
+      <div class="advbody">
+        <div class="sec" data-i18n="exactValues">Exact values</div>
+        <div class="lbl"><span data-i18n="speed">Speed</span>: <b id="wSpdV">15</b> m/s</div>
+        <input type="range" id="wSpd" min="2" max="20" value="15">
+        <div id="wAltBox"><div class="lbl"><span data-i18n="altitude">Altitude</span>: <b id="wAltV">150</b> m · <span data-i18n="footprint">camera footprint</span> ≈ <b id="wFpV">270</b> m</div>
+        <input type="range" id="wAlt" min="30" max="400" step="10" value="150"></div>
+        <div class="sec" data-i18n="gpsLost">Position when GPS is lost</div>
+        <div class="cards" id="wVision">
+          <div class="mcard" data-v="real"><div class="n" data-i18n="realVision">Real NAVERA vision</div><div class="d" data-i18n="realVisionD">The real software localises the simulated camera image (drone only).</div></div>
+          <div class="mcard" data-v="measured"><div class="n" data-i18n="simMeasured">Simulated — today's accuracy</div><div class="d" data-i18n="simMeasuredD">Error as measured on real frames (~440 m).</div></div>
+          <div class="mcard" data-v="target"><div class="n" data-i18n="simTarget">Simulated — target</div><div class="d" data-i18n="simTargetD">15 m: the goal, not a measured performance.</div></div>
+        </div>
+        <div class="note" id="wVisNote"></div>
+        <div class="sec" data-i18n="autopilotOut">Autopilot output</div>
+        <label class="chk"><input type="checkbox" id="wFwd"> <span><span data-i18n="fwd">Give vision positions to the autopilot, stated accuracy</span>
+          <input type="number" id="wSigma" value="300" min="5" max="1000" style="width:80px;display:inline-block;padding:4px 6px"> m</span></label>
+        <div class="note" data-i18n="fwdNote">NAVERA's default is off: vision positions are shown but the autopilot applies its own failsafe (land / hold) when GPS is lost.</div>
+      </div>
+    </details>
+  </div>
+  <div class="hfoot"><div class="in"><div class="sumline" id="wSummary"></div><button class="btn primary big" id="wNext">Continue →</button></div></div>
 </div>
 
 <script>
@@ -499,7 +554,7 @@ const I18N = {
     simMeasured:"Simulée — précision d'aujourd'hui", simMeasuredD:'Erreur mesurée sur de vraies images (~440 m).', simTarget:'Simulée — objectif',
     simTargetD:"15 m : l'objectif, pas une performance mesurée.", fwd:"Donner les positions vision à l'autopilote, précision annoncée",
     fwdNote:"Par défaut NAVERA ne le fait pas : les positions vision sont affichées mais l'autopilote applique son propre mode sécurité (atterrir / s'arrêter) quand le GPS est perdu.",
-    homeTitle:'Nouvelle mission', homeSub:"Choisissez le véhicule sur lequel NAVERA est installé, puis réglez les paramètres de la mission. La page suivante ouvre l'espace de travail de ce véhicule.",
+    homeTitle:'Planifier une nouvelle mission', homeSub:'Trois choix rapides, puis vous tracez le trajet sur la carte.',
     droneS:"ArduCopter · jusqu'à 20 m/s · 30–400 m", boatS:"ArduPilot Rover (bateau à moteur) · jusqu'à 15 m/s", robotS:"ArduPilot Rover · jusqu'à 8 m/s",
     params:'Paramètres', motion:'Déplacement', autopilotOut:"Sortie vers l'autopilote", capTitle:'NAVERA sur ce véhicule',
     capGps:'Protection GPS', capGpsD:"Brouillage et leurrage détectés, fausses positions refusées, l'autopilote prévenu quand le GPS n'est pas fiable.",
@@ -516,13 +571,13 @@ const I18N = {
     dayModeG:'De jour : protection GPS ; la position en cas de perte du GPS vient du profil de vision simulé.',
     nightModeG:'Vrai point céleste par les étoiles (cn_pkg) + le profil de vision simulé.',
     visNoteG:"La vraie vision NAVERA demande une caméra vers le bas en altitude : sur ce véhicule, la position en cas de perte du GPS est simulée avec le profil d'erreur choisi ici.",
-    altWarn:'La vision de nuit demande ≥ 350 m avec cette caméra de 84°.',
+    altWarn:'La nuit, le drone doit voler à 350 m ou plus : choisissez Haut.',
     openWork_drone:"Ouvrir l'espace de travail drone →", openWork_boat:"Ouvrir l'espace de travail bateau →", openWork_robot:"Ouvrir l'espace de travail robot →",
     routeNote_drone:"Le drone vole en ligne droite de A à B à l'altitude choisie. Avec la vraie vision, préparez la carte pour ce trajet (onglet Carte).",
     routeNote_boat:"Placez A et B sur l'eau : le bateau navigue en ligne droite de A à B (pas d'évitement de la côte dans cette simulation).",
     routeNote_robot:"Le robot roule en ligne droite de A à B (pas d'évitement d'obstacles ni de suivi de route dans cette simulation).",
     changeVeh:'Changer de véhicule et de paramètres', landOnly:'Atterrir', stopVeh:'Arrêter',
-    summary:'Résumé', prev:'← Retour', next:'Suivant →', openPlanner:'Ouvrir le planificateur →',
+    stVehicle:'Véhicule', stMission:'Mission', stRoute:'Trajet sur la carte', qVehicle:'Quel véhicule porte NAVERA ?', droneP:'Vole au-dessus du sol', boatP:'Navigue sur l\'eau', robotP:'Roule sur terre', qWhen:'Quand a lieu la mission ?', qSpeed:'À quelle vitesse ?', qAlt:'À quelle hauteur ?', advanced:'Réglages avancés', advSub:'pour ingénieurs — les valeurs par défaut conviennent à une démonstration', exactValues:'Valeurs exactes', capShort:'NAVERA sur ce véhicule :', dayPlain:'La caméra reconnaît le sol sur la carte satellite.', dayPlainG:'NAVERA protège le GPS ; la position sans GPS est simulée.', nightPlain:'Caméra thermique et étoiles. Le drone vole haut (≥ 350 m).', nightPlainG:'NAVERA protège le GPS et trouve sa position grâce aux étoiles.', slow:'Lent', normal:'Normal', fast:'Rapide', low:'Bas', high:'Haut', nightOk:'nécessaire la nuit', toRoute:'Continuer vers le trajet →', lastRoute:'Dernier trajet', useIt:'Le reprendre', summary:'Résumé', prev:'← Retour', next:'Suivant →', openPlanner:'Ouvrir le planificateur →',
     hintA:'Cliquez sur la carte pour placer le DÉPART (A)', hintB:"Cliquez sur la carte pour placer l'ARRIVÉE (B)",
     hintReady:'Prêt : cliquez sur Lancer la mission', needRoute:"Placez le départ (A) et l'arrivée (B)",
     needPrepare:'Préparez la carte (onglet Carte)', needPrepareNight:'Hors de la carte embarquée : préparez la carte (onglet Carte)',
@@ -559,7 +614,7 @@ const I18N = {
     realVision:'رؤية NAVERA الحقيقية', realVisionD:'البرنامج الحقيقي يحدد موقع صورة الكاميرا المحاكاة.', simMeasured:'محاكاة — دقة اليوم',
     simMeasuredD:'الخطأ المقاس على صور حقيقية (~440 م).', simTarget:'محاكاة — الهدف', simTargetD:'15 م: الهدف وليس أداءً مقاساً.',
     fwd:'إعطاء مواقع الرؤية للطيار الآلي، الدقة المعلنة', fwdNote:'افتراضياً لا يفعل NAVERA ذلك: يطبق الطيار الآلي وضع الأمان عند فقدان GPS.',
-    homeTitle:'مهمة جديدة', homeSub:'اختر المركبة المركّب عليها NAVERA ثم اضبط معايير المهمة. تفتح الصفحة التالية مساحة العمل الخاصة بهذه المركبة.',
+    homeTitle:'تخطيط مهمة جديدة', homeSub:'ثلاثة اختيارات سريعة، ثم ترسم المسار على الخريطة.',
     droneS:'ArduCopter · حتى 20 م/ث · 30–400 م', boatS:'ArduPilot Rover (قارب بمحرك) · حتى 15 م/ث', robotS:'ArduPilot Rover · حتى 8 م/ث',
     params:'المعايير', motion:'الحركة', autopilotOut:'الإخراج نحو الطيار الآلي', capTitle:'NAVERA على هذه المركبة',
     capGps:'حماية GPS', capGpsD:'كشف التشويش والخداع، رفض المواقع المزيفة، وتنبيه الطيار الآلي عندما لا يمكن الوثوق بـ GPS.',
@@ -576,13 +631,13 @@ const I18N = {
     dayModeG:'نهاراً: حماية GPS؛ الموقع عند فقدان GPS يأتي من ملف الرؤية المحاكى.',
     nightModeG:'موقع فلكي حقيقي بالنجوم (cn_pkg) + ملف الرؤية المحاكى.',
     visNoteG:'رؤية NAVERA الحقيقية تحتاج كاميرا سفلية على ارتفاع: على هذه المركبة يُحاكى الموقع عند فقدان GPS بملف الخطأ المختار هنا.',
-    altWarn:'الرؤية الليلية تحتاج ≥ 350 م مع هذه الكاميرا (84°).',
+    altWarn:'ليلاً يجب أن تطير الطائرة على 350 م أو أكثر: اختر مرتفع.',
     openWork_drone:'فتح مساحة عمل الطائرة ←', openWork_boat:'فتح مساحة عمل القارب ←', openWork_robot:'فتح مساحة عمل الروبوت ←',
     routeNote_drone:'تطير الطائرة في خط مستقيم من A إلى B على الارتفاع المختار. مع الرؤية الحقيقية، حضّر الخريطة لهذا المسار (تبويب الخريطة).',
     routeNote_boat:'ضع A وB على الماء: يبحر القارب في خط مستقيم من A إلى B (دون تفادي الساحل في هذه المحاكاة).',
     routeNote_robot:'يسير الروبوت في خط مستقيم من A إلى B (دون تفادي العوائق أو تتبع الطرق في هذه المحاكاة).',
     changeVeh:'تغيير المركبة والمعايير', landOnly:'هبوط', stopVeh:'توقف',
-    summary:'الملخص', prev:'→ رجوع', next:'التالي ←', openPlanner:'فتح المخطط ←',
+    stVehicle:'المركبة', stMission:'المهمة', stRoute:'المسار على الخريطة', qVehicle:'أي مركبة تحمل NAVERA؟', droneP:'تطير فوق الأرض', boatP:'يبحر على الماء', robotP:'يسير على اليابسة', qWhen:'متى تجري المهمة؟', qSpeed:'بأي سرعة؟', qAlt:'على أي ارتفاع؟', advanced:'إعدادات متقدمة', advSub:'للمهندسين — القيم الافتراضية مناسبة للعرض', exactValues:'القيم الدقيقة', capShort:'NAVERA على هذه المركبة:', dayPlain:'تتعرف الكاميرا على الأرض في خريطة الأقمار الصناعية.', dayPlainG:'يحمي NAVERA نظام GPS؛ الموقع دون GPS محاكى.', nightPlain:'كاميرا حرارية والنجوم. تطير الطائرة عالياً (≥ 350 م).', nightPlainG:'يحمي NAVERA نظام GPS ويحدد موقعه بالنجوم.', slow:'بطيء', normal:'عادي', fast:'سريع', low:'منخفض', high:'مرتفع', nightOk:'ضروري ليلاً', toRoute:'متابعة إلى المسار ←', lastRoute:'آخر مسار', useIt:'استعماله', summary:'الملخص', prev:'→ رجوع', next:'التالي ←', openPlanner:'فتح المخطط ←',
     hintA:'انقر على الخريطة لتحديد نقطة الانطلاق (A)', hintB:'انقر على الخريطة لتحديد الوجهة (B)',
     hintReady:'جاهز: اضغط إطلاق المهمة', needRoute:'حدد نقطة الانطلاق (A) والوجهة (B)', needPrepare:'حضّر الخريطة (تبويب الخريطة)',
     needPrepareNight:'خارج الخريطة المدمجة: حضّر الخريطة أولاً', blocked:'الإقلاع متوقف: أعد مستقبل GPS إلى الوضع السليم',
@@ -726,14 +781,31 @@ const ROUTE_NOTE = {
   robot:'The robot drives a straight line from A to B (no obstacle avoidance or road following in this simulation).'};
 const OPEN_WORK = {drone:'Open the drone workspace →', boat:'Open the boat workspace →', robot:'Open the ground robot workspace →'};
 function pickCard(id, v){ document.querySelectorAll(`#${id} .mcard`).forEach(c => c.classList.toggle('on', c.dataset.v === v)); }
+const SPEED_P = {drone:[8, 15, 20], boat:[4, 8, 15], robot:[2, 4, 8]};
+const ALT_P = [150, 400];
+const kmh = v => Math.round(v * 3.6);
+function pills(id, items, cur, onPick){
+  const el = $(id);
+  el.innerHTML = items.map(([v, name, sub]) => `<button class="pill${v === cur ? ' on' : ''}" data-v="${v}"><b>${esc(name)}</b><small>${esc(sub)}</small></button>`).join('');
+  el.querySelectorAll('.pill').forEach(b => b.onclick = () => onPick(+b.dataset.v));
+}
 function homeRender(){
   const drone = cfg.vehicle === 'drone';
-  pickCard('wMode', cfg.light); pickCard('wVeh', cfg.vehicle); pickCard('wVision', cfg.vision);
-  $('hVehName').textContent = `${VEH_IC[cfg.vehicle]} ${vehName()}`;
-  $('dayModeD').textContent = drone ? t('dayModeD', 'DINOv2 satellite tile matching (day_pkg). The map must be prepared for the route.')
-    : t('dayModeG', 'Daylight: GPS protection; the GPS-loss position comes from the simulated vision profile.');
-  $('nightModeD').textContent = drone ? t('nightModeD', 'STHN thermal alignment (night_pkg) + celestial star fix (cn_pkg). Needs ≥ 350 m altitude.')
-    : t('nightModeG', 'Real celestial star fix (cn_pkg) + the simulated vision profile.');
+  pickCard('wMode', cfg.light); pickCard('wVision', cfg.vision);
+  document.querySelectorAll('#wVeh .vtile, #wMode .ltile').forEach(c =>
+    c.classList.toggle('on', c.dataset.v === (c.classList.contains('vtile') ? cfg.vehicle : cfg.light)));
+  $('capChips').innerHTML = `<em>${esc(t('capShort', 'NAVERA on this vehicle:'))}</em>` + CAPS[cfg.vehicle].filter(c => c[0] !== 'info').map(([st, tk, tt, dk, dd]) =>
+    `<span class="${st}" title="${esc(t(dk, dd))}">${{ok:'✓', no:'✗', plan:'…'}[st]} ${esc(t(tk, tt))}</span>`).join('');
+  $('dayModeD').textContent = drone ? t('dayPlain', 'The camera recognises the ground on the satellite map.')
+    : t('dayPlainG', 'NAVERA protects the GPS; the position without GPS is simulated.');
+  $('nightModeD').textContent = drone ? t('nightPlain', 'Thermal camera and the stars. The drone flies high (≥ 350 m).')
+    : t('nightPlainG', 'NAVERA protects the GPS and finds its position from the stars.');
+  const [s1, s2, s3] = SPEED_P[cfg.vehicle];
+  pills('wSpdP', [[s1, t('slow', 'Slow'), `${s1} m/s · ${kmh(s1)} km/h`], [s2, t('normal', 'Normal'), `${s2} m/s · ${kmh(s2)} km/h`],
+                  [s3, t('fast', 'Fast'), `${s3} m/s · ${kmh(s3)} km/h`]], cfg.speed, v => { cfg.speed = v; homeRender(); });
+  $('wAltQ').classList.toggle('hidden', !drone);
+  pills('wAltP', [[ALT_P[0], t('low', 'Low'), `${ALT_P[0]} m`], [ALT_P[1], t('high', 'High'), `${ALT_P[1]} m · ${t('nightOk', 'needed at night')}`]],
+        cfg.alt, v => { cfg.alt = v; homeRender(); });
   document.querySelectorAll('#wVision .mcard').forEach(c => c.classList.toggle('disabled', c.dataset.v === 'real' && !drone));
   $('wVisNote').textContent = drone ? '' : t('visNoteG', 'Real NAVERA vision needs a downward camera at altitude: on this vehicle the GPS-loss position is simulated with the error profile chosen here.');
   $('wSpd').max = MAXSPD[cfg.vehicle]; $('wSpd').value = cfg.speed; $('wSpdV').textContent = cfg.speed;
@@ -741,11 +813,11 @@ function homeRender(){
   $('wAlt').value = cfg.alt; $('wAltV').textContent = cfg.alt;
   $('wFpV').textContent = Math.round(2 * cfg.alt * Math.tan(42 * Math.PI / 180));
   $('wAltNote').textContent = cfg.light === 'night' && drone && cfg.vision === 'real' && cfg.alt < 350
-    ? '⚠ ' + t('altWarn', 'Night vision needs ≥ 350 m with this 84° camera.') : '';
+    ? '⚠ ' + t('altWarn', 'At night the drone must fly at 350 m or higher: choose High.') : '';
   $('wFwd').checked = cfg.fwd; $('wSigma').value = cfg.sigma;
-  $('capHome').innerHTML = capHTML();
-  $('wSummary').innerHTML = summaryHTML();
-  $('wNext').textContent = t('openWork_' + cfg.vehicle, OPEN_WORK[cfg.vehicle]);
+  $('wSummary').innerHTML = [`${VEH_IC[cfg.vehicle]} ${vehName()}`, cfg.light === 'night' ? `🌙 ${t('fNight', 'Night')}` : `☀️ ${t('fDay', 'Day')}`,
+    `${cfg.speed} m/s · ${kmh(cfg.speed)} km/h`, ...(drone ? [`↑ ${cfg.alt} m`] : [])].map(x => `<span>${esc(x)}</span>`).join('');
+  $('wNext').textContent = t('toRoute', 'Continue to the route →');
 }
 function summaryHTML(){
   const vis = {real:t('realVision','Real NAVERA vision'), measured:t('simMeasured',"Simulated — today's accuracy"), target:t('simTarget','Simulated — target')}[cfg.vision];
@@ -777,16 +849,16 @@ function applyWorkspace(){
   $('altSpdK').textContent = drone ? t('altSpeed', 'Altitude / speed') : t('speed', 'Speed');
   renderSummary();
 }
-document.querySelectorAll('#wMode .mcard').forEach(c => c.onclick = () => {
+document.querySelectorAll('#wMode .ltile').forEach(c => c.onclick = () => {
   cfg.light = c.dataset.v;
   if(cfg.light === 'night' && cfg.vehicle === 'drone' && cfg.alt < 350) cfg.alt = 400;
   homeRender();
 });
-document.querySelectorAll('#wVeh .mcard').forEach(c => c.onclick = () => {
+document.querySelectorAll('#wVeh .vtile').forEach(c => c.onclick = () => {
   if(cfg.vehicle === c.dataset.v) return;
   cfg.vehicle = c.dataset.v; cfg.speed = DEF[cfg.vehicle][0];
   if(cfg.vehicle === 'drone') cfg.alt = cfg.light === 'night' ? 400 : DEF.drone[1];
-  if(cfg.vehicle !== 'drone' && cfg.vision === 'real') cfg.vision = 'measured';
+  cfg.vision = cfg.vehicle === 'drone' ? 'real' : 'measured';
   homeRender();
 });
 document.querySelectorAll('#wVision .mcard').forEach(c => c.onclick = () => {
@@ -798,10 +870,10 @@ $('wFwd').onchange = () => { cfg.fwd = $('wFwd').checked; homeRender(); };
 $('wSigma').onchange = () => { cfg.sigma = Math.max(5, Math.min(1000, +$('wSigma').value || 300)); homeRender(); };
 function openHome(){
   if(flying()) return;
-  homeRender(); $('home').classList.remove('hidden'); $('home').scrollTop = 0;
+  homeRender(); $('adv').open = false; $('home').classList.remove('hidden'); $('home').scrollTop = 0;
 }
 function openWorkspace(){
-  saveCfg(); $('home').classList.add('hidden');
+  saveCfg(); $('home').classList.add('hidden'); showLastRoute();
   applyWorkspace(); drawPlan(); updateUI();
   setTimeout(() => map.invalidateSize(), 50);
 }
@@ -854,7 +926,8 @@ async function fetchPlan(){
 }
 function routeChanged(){
   drawPlan();
-  try{ localStorage.setItem('navera.route', JSON.stringify([A, B])); }catch(e){}
+  if(A && B){ lastRoute = [A, B]; try{ localStorage.setItem('navera.route', JSON.stringify(lastRoute)); }catch(e){} }
+  showLastRoute();
   if(!(A && B)){ PLANR = null; return updateUI(); }
   const key = JSON.stringify([A, B]);
   if(key !== planKey){
@@ -864,7 +937,18 @@ function routeChanged(){
   }
   updateUI();
 }
-try{ const r = JSON.parse(localStorage.getItem('navera.route') || 'null'); if(r){ [A, B] = r; if(A && !B) pick = 'B'; } }catch(e){}
+// each visit starts with an empty route; the last complete route is offered (button "Use it")
+let lastRoute = null;
+try{ const r = JSON.parse(localStorage.getItem('navera.route') || 'null'); if(r && r[0] && r[1]) lastRoute = r; }catch(e){}
+function showLastRoute(){
+  const on = !!(lastRoute && !A && !B && !flying());
+  $('lastRoute').classList.toggle('hidden', !on);
+  if(on) $('lastRouteD').textContent = m(dist(lastRoute[0], lastRoute[1]));
+}
+$('useLast').onclick = () => {
+  [A, B] = lastRoute; pick = 'B'; routeChanged();
+  map.fitBounds(L.latLngBounds([A, B]).pad(0.3));
+};
 $('ptA').onclick = e => { if(e.target.id !== 'xA'){ pick = 'A'; drawPlan(); updateUI(); } };
 $('ptB').onclick = e => { if(e.target.id !== 'xB'){ pick = 'B'; drawPlan(); updateUI(); } };
 $('xA').onclick = () => { A = null; pick = 'A'; planKey = null; routeChanged(); };
