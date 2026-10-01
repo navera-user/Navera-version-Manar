@@ -106,6 +106,9 @@ sudo usermod -aG dialout,i2c,gpio navera
 # 0a) Pipeline céleste : résolveur astrometry.net + index Tycho-2 (champs 1°–33°+)
 sudo apt install astrometry.net astrometry-data-tycho2-10-19
 
+# 0a') Cap vrai (nord géographique) : modèle magnétique mondial WMM 2025 pour l'IMU
+sudo -u navera pip install --user pygeomag==1.1.0
+
 # 0b) Réglages du site : chemins des données, isolation réseau ROS 2
 sudo mkdir -p /etc/navera
 sudo cp /home/navera/isaac_ros_common/deploy/navera.env.example /etc/navera/navera.env

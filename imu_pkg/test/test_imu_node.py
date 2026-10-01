@@ -106,3 +106,44 @@ def test_reconnect_is_rate_limited(imu_module):
         assert FakeI2C.deinit_calls >= 1             # previous bus handle released
     finally:
         node.destroy_node()
+
+
+def _published_heading(imu_module, params):
+    from rclpy.parameter import Parameter
+    from imu_pkg.orientation import heading_deg
+    node = imu_module.IMUNode(parameter_overrides=[Parameter(k, value=v) for k, v in params.items()])
+    published = []
+    node.pub_imu.publish = published.append
+    try:
+        node.publish_imu()
+        m = published[-1]
+        q = (m.orientation.x, m.orientation.y, m.orientation.z, m.orientation.w)
+        return heading_deg(q), node, m
+    finally:
+        node.destroy_node()
+
+
+def test_declination_and_mounting_reach_the_published_message(imu_module):
+    """The fake sensor reads ENU yaw 0 = magnetic heading 90°."""
+    plain, _, _ = _published_heading(imu_module, {"auto_declination": False})
+    assert plain == pytest.approx(90.0, abs=0.1)
+    decl, _, _ = _published_heading(imu_module, {"auto_declination": False, "declination_deg": 10.0})
+    assert decl == pytest.approx(100.0, abs=0.1)                     # true = magnetic + declination
+    mounted, _, m = _published_heading(imu_module, {"auto_declination": False, "mount_yaw_deg": 90.0})
+    assert mounted == pytest.approx(180.0, abs=0.1)                  # IMU turned 90° left on the vehicle
+    assert (m.linear_acceleration.x, m.linear_acceleration.y) == pytest.approx((0.0, 0.0), abs=1e-3)
+
+
+def test_world_magnetic_model_follows_the_vehicle_position(imu_module):
+    from navera_msgs.msg import PositionEstimate
+    from rclpy.parameter import Parameter
+    node = imu_module.IMUNode(parameter_overrides=[Parameter("auto_declination", value=True)])
+    try:
+        if not node.wmm.available:
+            pytest.skip(node.wmm.error)
+        assert node.declination is None                            # no position yet: magnetic
+        p = PositionEstimate(); p.latitude, p.longitude = 35.83, 10.64
+        node._on_position(p)
+        assert node.declination == pytest.approx(3.3, abs=0.2)     # Sousse
+    finally:
+        node.destroy_node()

@@ -93,8 +93,10 @@ class CNSubscriber(Node):
         self.declare_parameter("rtc_topic", "/navera/sensors/rtc_time")
         declare_float(self, "prior_lon", float("nan"))
         # Camera attitude from the IMU (used when frame_meta has no tilt/azimuth):
-        # how the star camera is mounted on the vehicle, and the local magnetic
-        # declination (the IMU heading is magnetic). 90 / 0 = pointing up.
+        # how the star camera is mounted on the vehicle. 90 / 0 = pointing up.
+        # magnetic_declination_deg: leave 0 — imu_node already publishes a TRUE-north
+        # orientation (World Magnetic Model); set it only for an IMU source that
+        # reports magnetic north, or the declination would be applied twice.
         declare_float(self, "camera_mount_elevation_deg", 90.0)
         declare_float(self, "camera_mount_azimuth_deg", 0.0)
         declare_float(self, "magnetic_declination_deg", 0.0)

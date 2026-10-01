@@ -66,7 +66,7 @@ Status: ✅ done · 🔧 in progress · ⬜ open
 | GPS-5 | M | Invented HDOP when missing; gps_vel units/frame | ✅ 92bce23 |
 | IMU-1 | H | Possible stale data published forever (library caches last report) | ✅ 8050227 |
 | IMU-2 | M | Reconnect attempted every tick (50 Hz) on the shared I²C bus | ✅ 8050227 |
-| IMU-3 | M | Heading magnetic, not true; no mounting transform | ⬜ |
+| IMU-3 | M | Heading magnetic, not true; no mounting transform — done in code (WMM 2025 declination at the vehicle position, mounting roll/pitch/yaw); to confirm on the BNO085 with a known heading (its rotation-vector frame is taken as ENU / magnetic north) | 🔧 |
 | RTC-1 | M | Transient I²C error during connect can crash the node | ✅ 8050227 |
 | RTC-2 | M | valid:true regardless of drift vs system clock (local-time RTC = 1 h error) | ✅ 8050227 |
 

@@ -23,6 +23,20 @@ Parameters:
     orientation_stddev          (default 0.02)    — rad
     angular_velocity_stddev     (default 0.005)   — rad/s
     linear_acceleration_stddev  (default 0.08)    — m/s^2
+    mount_roll_deg / mount_pitch_deg / mount_yaw_deg (default 0) — how the IMU is
+                                  mounted on the vehicle (sensor axes in the body
+                                  frame, ROS fixed-axis roll/pitch/yaw). The published
+                                  orientation, rates and accelerations are the VEHICLE's.
+    auto_declination            (default True)    — turn the magnetic heading into a
+                                  TRUE heading with the World Magnetic Model at the
+                                  vehicle's position (/navera/position)
+    declination_deg             (default NaN)     — declination used until a position is
+                                  known (or always, if auto_declination is False);
+                                  NaN = none: the heading stays magnetic meanwhile
+
+Orientation frame: local ENU (REP-103), TRUE north once the declination is known.
+The BNO085 rotation vector is taken as ENU referenced to magnetic north (its
+datasheet frame) — to be confirmed on the hardware with a known heading.
 
 The BNO085 reports no uncertainty, so the *_stddev parameters are conservative
 datasheet-derived estimates, NOT values measured on NAVERA hardware. Re-characterize
@@ -32,6 +46,8 @@ Note on `gravity_compensated`: REP-145 expects Imu.linear_acceleration to includ
 gravity. NAVERA defaults to the gravity-free report because it feeds inertial
 dead-reckoning; set the parameter to False for any consumer that follows REP-145.
 """
+import math
+import time
 from typing import Optional, Tuple
 
 import rclpy
@@ -41,6 +57,9 @@ from navera_common.params import declare_float
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from sensor_msgs.msg import Imu
+from navera_msgs.msg import PositionEstimate
+
+from imu_pkg.orientation import Declination, OrientationCorrector
 
 import board
 import busio
@@ -73,8 +92,8 @@ _RECONNECT_PERIOD_S = 2.0
 class IMUNode(Node):
     """Publishes BNO085 orientation, angular velocity and linear acceleration."""
 
-    def __init__(self) -> None:
-        super().__init__("imu_node")
+    def __init__(self, **kwargs) -> None:
+        super().__init__("imu_node", **kwargs)          # kwargs: e.g. parameter_overrides (tests)
 
         self.declare_parameter("i2c_bus", 1)
         self.declare_parameter("i2c_address", 0x4A)
@@ -84,6 +103,11 @@ class IMUNode(Node):
         declare_float(self, "orientation_stddev", 0.02)
         declare_float(self, "angular_velocity_stddev", 0.005)
         declare_float(self, "linear_acceleration_stddev", 0.08)
+        declare_float(self, "mount_roll_deg", 0.0)
+        declare_float(self, "mount_pitch_deg", 0.0)
+        declare_float(self, "mount_yaw_deg", 0.0)
+        self.declare_parameter("auto_declination", True)
+        declare_float(self, "declination_deg", float("nan"))
 
         self.bus_num = int(self.get_parameter("i2c_bus").value)
         self.address = int(self.get_parameter("i2c_address").value)
@@ -103,6 +127,23 @@ class IMUNode(Node):
 
         self.pub_imu = self.create_publisher(Imu, "/navera/sensors/imu", 10)
 
+        # true north + vehicle frame
+        mount = tuple(float(self.get_parameter(f"mount_{a}_deg").value) for a in ("roll", "pitch", "yaw"))
+        self.corrector = OrientationCorrector(mount)
+        manual = float(self.get_parameter("declination_deg").value)
+        self.declination = manual if math.isfinite(manual) else None
+        self.wmm = Declination() if bool(self.get_parameter("auto_declination").value) else None
+        if self.wmm is not None:
+            if self.wmm.available:
+                self.create_subscription(PositionEstimate, "/navera/position", self._on_position, 10)
+            else:
+                self.get_logger().warn(f"{self.wmm.error}: heading uses declination_deg "
+                                       f"({'none — magnetic' if self.declination is None else self.declination})")
+        self.get_logger().info(
+            f"IMU mounting roll/pitch/yaw {mount} deg; heading reference: "
+            + ("true north (World Magnetic Model at the vehicle position)" if self.wmm and self.wmm.available
+               else f"declination_deg={self.declination}" if self.declination is not None else "MAGNETIC north"))
+
         self.bno: Optional[BNO08X_I2C] = None
         self.read_failures = 0
         self.sample_count = 0
@@ -116,6 +157,18 @@ class IMUNode(Node):
             f"IMU node running at {rate:.1f} Hz "
             f"(linear_acceleration = {'gravity-free' if self.gravity_compensated else 'raw, incl. gravity'})"
         )
+
+    def _on_position(self, msg: PositionEstimate) -> None:
+        """Keep the magnetic declination of the vehicle's area (recomputed every ~20 km)."""
+        now = time.gmtime()
+        year = now.tm_year + (now.tm_yday - 1) / 365.25
+        d = self.wmm.update(float(msg.latitude), float(msg.longitude), year)
+        if d is not None:
+            first = self.declination is None
+            self.declination = d
+            self.get_logger().info(f"magnetic declination {d:+.2f} deg at "
+                                   f"{msg.latitude:.3f}, {msg.longitude:.3f} (heading now true north)"
+                                   if first else f"magnetic declination updated: {d:+.2f} deg")
 
     @staticmethod
     def _diag(stddev: float) -> list:
@@ -219,6 +272,8 @@ class IMUNode(Node):
                 f"BNO085 data frozen ({_MAX_FROZEN_SAMPLES} identical samples) — reinitializing")
             self.bno = None
             return
+
+        quat, gyro, accel = self.corrector.apply(quat, gyro, accel, self.declination)
 
         msg = Imu()
         msg.header.stamp = self.get_clock().now().to_msg()

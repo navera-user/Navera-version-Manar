@@ -10,6 +10,7 @@
 
   <depend>rclpy</depend>
   <exec_depend>navera_common</exec_depend>
+  <depend>navera_msgs</depend>
   <depend>launch</depend>
   <depend>launch-ros</depend>
   <depend>sensor_msgs</depend>

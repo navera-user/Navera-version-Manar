@@ -17,3 +17,17 @@ imu_node:
     orientation_stddev: 0.02           # rad
     angular_velocity_stddev: 0.005     # rad/s
     linear_acceleration_stddev: 0.08   # m/s^2
+
+    # How the IMU is mounted on THIS vehicle (deg; sensor axes in the body frame,
+    # body x forward, y left, z up; ROS fixed-axis roll/pitch/yaw). 0/0/0 = IMU
+    # aligned with the vehicle. Example: IMU turned 90° to the left -> yaw 90.
+    mount_roll_deg: 0.0
+    mount_pitch_deg: 0.0
+    mount_yaw_deg: 0.0
+
+    # Heading: the BNO085 gives MAGNETIC north. auto_declination turns it into TRUE
+    # north with the World Magnetic Model (pygeomag) at the vehicle's position;
+    # declination_deg (east positive) is used until a position is known — e.g.
+    # +3.3 around Sousse in 2026; .nan = none (magnetic heading meanwhile).
+    auto_declination: true
+    declination_deg: .nan
