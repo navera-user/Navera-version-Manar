@@ -158,3 +158,17 @@ and invalid inputs; state sampled every second, anomalies flagged automatically.
 | QA-9 | H | Day vision had no motion gate: a match jumped 554 m in 1 s and the track stayed on wrong tiles (0.4–1.1 km). Gate added (max_speed_mps × elapsed + 250 m for the tile quantisation; a gated frame keeps the anchor). Re-test over 4 GPS losses: median 83 m, p90 258 m, max 448 m (was up to 1075 m); vision takes over in 0.5–2.7 s | ✅ 03f75fb |
 | QA-7 | — | Passed: jam / GPS off / camera failure / IMU failure / night switch in flight; goto, RTL, land, restart, end during take-off; boat and robot; invalid inputs refused, speed/altitude clamped; unprepared far route refused | — |
 | QA-8 | H | Known limit confirmed: a slow GPS drift (4 m/s) is not detected with day vision of unknown accuracy (reached 237 m) — needs vision with a stated accuracy (EST-8) | ⬜ |
+
+## 8. Review of 2026-10-01 (dashboard, long routes, vehicles)
+
+| ID | Sev. | Finding | Status |
+|---|---|---|---|
+| R-1 | H | The box had no vehicle speed setting: estimator 100 m/s, day/night vision gates 30 m/s, whatever the vehicle — a fixed-wing's real GPS would be refused, every vision position rejected. `NAVERA_MAX_SPEED_KMH` in navera.env feeds all three | ✅ 19fd1b7 |
+| R-2 | H | Long routes: the ±1 km map corridor followed the straight lat/lon line, ~17 km from the path a vehicle flies on Paris–Tunisia (871 of 20 675 downloaded tiles on the real path). Routes are mapped and flown as the same ≤ 10 km great-circle legs | ✅ a026805 |
+| R-3 | H | Day vision compared the camera with every tile of the map before applying the search circle: 289 ms/frame on an 80 000-tile route, 1.35 s on 400 000. Grid index, circle first: 3–11 ms, same ranking | ✅ 2664ad0 |
+| R-4 | M | Simulator lost its ROS link once, silently ("no output" while the autopilot flew). Watchdog thread + red banner | ✅ a12e09d |
+| R-5 | M | Test run hung 30 min with no failure reported (cause not found). Time limit per step, process group killed | ✅ c5a9654 |
+| R-6 | M | Route length on the server from a flat approximation (1750 instead of 1768 km); map limit 1000 km removed (disk-space check instead) | ✅ 2e5da03, 7d9b90a |
+| R-7 | — | Simulator: fixed-wing plane (ArduPlane jet model; DO_REPOSITION — ArduPlane ignores position targets), typed cruise speed / altitude, automatic maximum speed, start partway along a long route | ✅ a12e09d, a026805 |
+| R-8 | H | The box's own web page has no mission preparation (vehicle settings, route → map generation and activation): only the simulator has it. Design to agree (config file written by the web service, restart of the day pipeline, control token; the corridor must follow the autopilot mission's waypoints) | ⬜ |
+| R-9 | M | Camera navigation never tested above ~400 m (simulated plane capped at 1000 m); at 10 km altitude a frame covers ~18 km | ⬜ |
