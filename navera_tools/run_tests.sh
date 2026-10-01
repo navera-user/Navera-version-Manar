@@ -23,8 +23,29 @@ mapfile -t UNIT < <(find . -path ./build -prune -o -path ./install -prune -o \
       [ -e "$pkg/COLCON_IGNORE" ] || echo "$f"
     done | sort)
 
+# Every step has a time limit: a hang fails the run (TIMED OUT) instead of
+# blocking it. The step runs in its own process group, so the ROS nodes an
+# integration test started are stopped with it.
+UNIT_LIMIT_S="${NAVERA_TEST_UNIT_LIMIT_S:-600}"
+INTEGRATION_LIMIT_S="${NAVERA_TEST_INTEGRATION_LIMIT_S:-300}"
+run_limited() {   # run_limited <seconds> <command...>  → the command's exit code, 124 on timeout
+  local limit=$1; shift
+  setsid "$@" &
+  local pid=$! t=0
+  while kill -0 "$pid" 2>/dev/null; do
+    if [ "$t" -ge "$limit" ]; then
+      echo "TIMED OUT after ${limit} s: $*"
+      kill -TERM -- "-$pid" 2>/dev/null; sleep 5; kill -KILL -- "-$pid" 2>/dev/null
+      wait "$pid" 2>/dev/null
+      return 124
+    fi
+    sleep 1; t=$((t + 1))
+  done
+  wait "$pid"
+}
+
 echo "== unit tests (${#UNIT[@]} files)"
-python3 -m pytest -q -p no:cacheprovider "${UNIT[@]}"
+run_limited "$UNIT_LIMIT_S" python3 -m pytest -q -p no:cacheprovider "${UNIT[@]}"
 rc=$?
 [ "$rc" -eq 0 ] || echo "FAILED STEP: unit tests (exit $rc)"
 
@@ -33,7 +54,7 @@ if [ "${1:-}" = "--integration" ]; then
   export ROS_LOCALHOST_ONLY=1
   for t in navera_tools/tests/test_*.py; do
     echo "== integration: $t"
-    python3 "$t"
+    run_limited "$INTEGRATION_LIMIT_S" python3 "$t"
     code=$?
     if [ "$code" -ne 0 ]; then echo "FAILED STEP: $t (exit $code)"; rc=1; fi
   done
