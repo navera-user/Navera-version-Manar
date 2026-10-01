@@ -216,8 +216,20 @@ Gabès), GPS jammed: 185 matches, **median 351 m, p90 853 m**, 44 frames rejecte
 gate (jumps of 360–570 m). With vision forwarded at ±300 m, ArduCopter's EKF failed safe
 (LAND) after 45 s. Over textured ground (Sousse, same day) the median was 111 m and the
 drone flew on. **Day vision is unreliable over uniform terrain** (desert, sea) — consistent
-with the project report; the size of the map is not the cause (same candidates per frame),
-to confirm by the same flight on a small area of the same place.
+with the project report. Same 13 km, same protocol (GPS jammed 4 min):
+
+| Flight | Rejected frames | Samples with no position | Autopilot failsafe |
+|---|---|---|---|
+| 80 000-tile area, ±300 m | 44 | — | 45 s |
+| 536-tile area of the same place, ±300 m | 58 | 13 / 48 | 61 s |
+| 80 000-tile area, ±500 m | 40 | 18 / 48 | 91 s |
+
+The small area fails the same way: **the terrain is the cause, not the size of the map**. An
+honest ±500 m delays the failsafe but cannot prevent it: about a third of the time day vision
+has no acceptable match (jumps rejected by the motion gate) and nothing bridges the gaps —
+no inertial dead-reckoning yet (FEAT-2). Cures: LOC-14 (local features around the prior) and
+FEAT-2. (A first ±500 m run was discarded: an orphan estimator from the simulator was
+competing with the real one — fixed in 6bff3d6.)
 
 ## Hardware results recorded in the project report (2026-06-02)
 
