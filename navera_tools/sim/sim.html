@@ -141,27 +141,48 @@ input:focus{outline:2px solid #bfdbfe;border-color:var(--accent)}
   padding:10px 16px;font-weight:600;max-width:70%;display:none}
 #toast.info{background:#eff6ff;border-color:#bfdbfe;color:#1e3a8a}
 
-/* ── wizard ── */
-#wiz{position:fixed;inset:0;background:rgba(15,23,42,.72);z-index:2000;display:flex;align-items:center;justify-content:center;padding:18px;overflow-y:auto}
-.wbox{background:#fff;border-radius:18px;width:min(760px,100%);padding:26px 28px;box-shadow:0 20px 50px rgba(0,0,0,.35)}
-.wbox .top{text-align:center;margin-bottom:16px}
-.wbox .top .ic{width:54px;height:54px;border-radius:15px;margin:0 auto 10px;background:linear-gradient(135deg,var(--accent),var(--accent2));
-  display:grid;place-items:center;color:#fff;font-size:26px}
-.wbox h2{font-size:22px} .wbox .sub{color:var(--mute);margin-top:4px}
-.steps{display:flex;gap:6px;justify-content:center;margin:14px 0 18px}
-.steps span{width:34px;height:5px;border-radius:3px;background:#e2e8f0} .steps span.on{background:var(--accent)}
+/* ── page 1: vehicle & parameters ── */
+#home{position:fixed;inset:0;z-index:2000;background:var(--bg);overflow-y:auto}
+.htop{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:12px;height:56px;padding:0 16px;background:var(--panel);
+  border-bottom:1px solid var(--line);box-shadow:0 1px 3px rgba(15,23,42,.05)}
+.hwrap{max-width:1120px;margin:0 auto;padding:26px 16px 0}
+.hwrap h1{font-size:24px;font-weight:800} .hwrap .sub{color:var(--mute);margin-top:4px;font-size:13.5px;line-height:1.45}
+.hsec{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:800;margin:26px 0 12px}
+.hsec .num{width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:13px}
+.hsec .vn{color:var(--accent)}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
-.mcard{border:2px solid var(--line);border-radius:14px;padding:16px;cursor:pointer;text-align:center;position:relative}
+.mcard{border:2px solid var(--line);border-radius:14px;padding:16px;cursor:pointer;text-align:center;position:relative;background:var(--panel)}
 .mcard:hover{border-color:#93c5fd}
 .mcard.on{border-color:var(--accent);background:#eff6ff}
 .mcard .e{font-size:34px} .mcard .n{font-weight:800;font-size:16px;margin:6px 0 4px} .mcard .d{color:var(--mute);font-size:12px;line-height:1.45}
 .mcard .tag{position:absolute;top:10px;right:10px;font-size:10px;font-weight:800;letter-spacing:1px;padding:2px 7px;border-radius:8px;background:#f1f5f9;color:var(--mute)}
 .mcard.disabled{opacity:.45;cursor:not-allowed}
-.wnav{display:flex;justify-content:space-between;margin-top:22px;gap:10px}
-.sumrow{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9}
-.sumrow span{color:var(--mute)}
-.chk{display:flex;gap:9px;align-items:flex-start;cursor:pointer;margin-top:12px}
+.vcards .mcard{padding:22px 18px;text-align:left}
+.vcards .mcard .e{font-size:46px;line-height:1.1}
+.vcards .mcard .spec{margin-top:10px;font-size:11.5px;font-weight:700;color:var(--accent)}
+.mcard .ck{position:absolute;top:12px;right:12px;width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;
+  display:none;place-items:center;font-size:13px;font-weight:800}
+.mcard.on .ck{display:grid}
+.hgrid{display:grid;grid-template-columns:1.45fr 1fr;gap:14px;align-items:start}
+.hcol{display:flex;flex-direction:column;gap:14px;min-width:0}
+.hgrid .cards{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.hgrid .mcard{padding:12px;text-align:left} .hgrid .mcard .e{font-size:24px} .hgrid .mcard .n{font-size:14px}
+.cap{list-style:none;display:flex;flex-direction:column;gap:10px}
+.cap li{display:grid;grid-template-columns:22px 1fr;gap:8px;line-height:1.4;font-size:12.5px}
+.cap li .s{font-weight:800;text-align:center;border-radius:6px;font-size:11px;height:20px;line-height:20px}
+.cap li.ok .s{background:#dcfce7;color:var(--ok)} .cap li.no .s{background:#fee2e2;color:var(--bad)}
+.cap li.plan .s{background:#fef3c7;color:var(--warn)} .cap li.info .s{background:#dbeafe;color:var(--accent)}
+.cap li b{display:block} .cap li .d{color:var(--mute)}
+.hnav{position:sticky;bottom:0;display:flex;justify-content:flex-end;gap:10px;margin-top:10px;padding:16px 0 20px;
+  background:linear-gradient(rgba(238,242,247,0),var(--bg) 40%)}
+.btn.big{padding:12px 22px;font-size:14.5px;font-weight:700}
+.sumrow{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9}
+.sumrow span{color:var(--mute)} .sumrow b{text-align:right}
+.chk{display:flex;gap:9px;align-items:flex-start;cursor:pointer;margin-top:4px}
 .chk input{margin-top:3px}
+#vehBtn{border-color:#bfdbfe;background:#eff6ff;color:var(--accent)}
+#vehBtn:disabled{opacity:.6;cursor:default}
+#vehBtn .vi{font-size:16px;line-height:1}
 
 html[dir=rtl] aside{border-right:0;border-left:1px solid var(--line)}
 html[dir=rtl] .sec{border-left:0;border-right:3px solid var(--accent);padding-left:0;padding-right:8px}
@@ -173,6 +194,8 @@ html[dir=rtl] .sec{border-left:0;border-right:3px solid var(--accent);padding-le
   #searchBox{width:calc(100% - 70px)}
   #layers{top:62px}
   #mapbtns{top:106px}
+  .hgrid{grid-template-columns:1fr}
+  #vehTxt{display:none}
 }
 </style>
 </head>
@@ -183,7 +206,7 @@ html[dir=rtl] .sec{border-left:0;border-right:3px solid var(--accent);padding-le
   <span class="badge" id="viewBadge" data-i18n="plannerBadge">Mission Planner</span>
   <span class="simtag" data-i18n="simulation">SIMULATION</span>
   <div id="phase"></div>
-  <button class="hbtn" id="setupBtn">⚙ <span data-i18n="setup">Setup</span></button>
+  <button class="hbtn" id="vehBtn"><span class="vi" id="vehIc">🚁</span><span id="vehTxt">Drone</span> ✎</button>
   <a class="hbtn" id="oplink" target="_blank">↗ <span data-i18n="operatorView">Operator view</span></a>
   <div class="lang langsw" id="lang"><button data-v="fr">FR</button><button data-v="en" class="on">EN</button><button data-v="ar">ع</button></div>
   <button class="hbtn primary" id="launchBtn" disabled>🚀 <span data-i18n="launch">Launch mission</span></button>
@@ -217,6 +240,7 @@ html[dir=rtl] .sec{border-left:0;border-right:3px solid var(--accent);padding-le
         <button class="btn" id="swapBtn">⇅ <span data-i18n="swap">Swap</span></button>
       </div>
       <div class="note" data-i18n="routeHelp">Click the map: first the start, then the destination. Search any place in the box on the map, or type coordinates. Drag the markers to adjust.</div>
+      <div class="note" id="vehRouteNote" style="border-left:3px solid var(--accent);padding-left:8px"></div>
       <div class="sec" data-i18n="routeStats">Route</div>
       <div class="stats">
         <div><small data-i18n="distance">Distance</small><b id="stDist">—</b></div>
@@ -244,7 +268,8 @@ html[dir=rtl] .sec{border-left:0;border-right:3px solid var(--accent);padding-le
     <div class="pane hidden" id="pane-mission">
       <div class="sec" data-i18n="missionSettings">Mission settings</div>
       <div class="card" id="missionSummary"></div>
-      <button class="btn" id="editSetup">✎ <span data-i18n="editSetup">Edit setup</span></button>
+      <button class="btn" id="editSetup">✎ <span data-i18n="changeVeh">Change vehicle &amp; parameters</span></button>
+      <div class="card"><h3 data-i18n="capTitle">NAVERA on this vehicle</h3><ul class="cap" id="capWork"></ul></div>
       <div class="note" data-i18n="disclaimer">Simulation: the world, GPS receiver, IMU, clock and camera images are simulated; NAVERA's software and the ArduPilot autopilot are real. Camera images are cut from the same satellite map vision searches, so vision looks better than with a real camera.</div>
     </div>
   </div>
@@ -299,7 +324,7 @@ html[dir=rtl] .sec{border-left:0;border-right:3px solid var(--accent);padding-le
           <div><small data-i18n="gpsFromNavera">GPS from NAVERA</small><b id="apFix">—</b></div>
           <div><small data-i18n="itsError">Its position error</small><b id="apErr">—</b></div>
           <div><small data-i18n="navFilter">Navigation filter</small><b id="apEkf">—</b></div>
-          <div><small data-i18n="altSpeed">Altitude / speed</small><b id="apAlt">—</b></div>
+          <div><small id="altSpdK">Altitude / speed</small><b id="apAlt">—</b></div>
           <div><small data-i18n="toDest">To destination</small><b id="apDist">—</b></div>
         </div>
       </div>
@@ -325,7 +350,7 @@ html[dir=rtl] .sec{border-left:0;border-right:3px solid var(--accent);padding-le
       <div class="sec" style="margin-top:8px" data-i18n="commands">Commands</div>
       <div class="btns">
         <button class="btn" id="rtlBtn">↩ <span data-i18n="rtl">Return to start</span></button>
-        <button class="btn" id="landBtn">⤓ <span data-i18n="land">Land / stop</span></button>
+        <button class="btn" id="landBtn">⤓ <span id="landTxt">Land</span></button>
       </div>
       <div class="note" data-i18n="gotoHelp">Click the map to send the vehicle to a new destination.</div>
     </div>
@@ -371,7 +396,7 @@ html[dir=rtl] .sec{border-left:0;border-right:3px solid var(--accent);padding-le
       <div><i style="background:var(--gps)"></i>NAVERA — GPS · <i style="background:var(--day);margin-left:6px"></i><span data-i18n="legDay">day vision</span></div>
       <div><i style="background:var(--night)"></i><span data-i18n="legNight">night vision</span> · <i style="background:var(--deg);margin-left:6px"></i><span data-i18n="legDeg">degraded</span></div>
       <div><i style="background:var(--ap);border-radius:2px"></i><span data-i18n="legAp">Autopilot's belief</span></div>
-      <div><i style="border:2px dashed var(--day);background:none"></i><span data-i18n="legSearch">Vision search area</span> · <i style="border:2px solid var(--cn);background:none;margin-left:6px"></i><span data-i18n="legCn">Celestial ± accuracy</span></div>
+      <div id="legVis"><i style="border:2px dashed var(--day);background:none"></i><span data-i18n="legSearch">Vision search area</span> · <i style="border:2px solid var(--cn);background:none;margin-left:6px"></i><span data-i18n="legCn">Celestial ± accuracy</span></div>
     </div>
   </div>
   <div class="float" id="toast"></div>
@@ -379,53 +404,61 @@ html[dir=rtl] .sec{border-left:0;border-right:3px solid var(--accent);padding-le
 </main>
 </div>
 
-<!-- ── pre-flight wizard ── -->
-<div id="wiz" class="hidden">
-  <div class="wbox">
-    <div class="lang langsw" style="float:right"><button data-v="fr">FR</button><button data-v="en">EN</button><button data-v="ar">ع</button></div>
-    <div class="top"><div class="ic">✈</div><h2 data-i18n="wizTitle">Pre-flight setup</h2><div class="sub" data-i18n="wizSub">Configure the mission before planning the route</div></div>
-    <div class="steps" id="wSteps"><span></span><span></span><span></span><span></span><span></span></div>
-    <div class="wstep" data-s="0">
-      <div class="lbl" style="text-align:center" data-i18n="wizMode">Operating mode</div>
-      <div class="cards" id="wMode">
-        <div class="mcard" data-v="day"><span class="tag" data-i18n="tagDay">DAY</span><div class="e">☀️</div><div class="n" data-i18n="dayMode">Day mode</div><div class="d" data-i18n="dayModeD">DINOv2 satellite tile matching (day_pkg). The map must be prepared for the route.</div></div>
-        <div class="mcard" data-v="night"><span class="tag" data-i18n="tagNight">NIGHT</span><div class="e">🌙</div><div class="n" data-i18n="nightMode">Night mode</div><div class="d" data-i18n="nightModeD">STHN thermal alignment (night_pkg) + celestial star fix (cn_pkg). Needs ≥ 350 m altitude.</div></div>
+<!-- ── page 1: vehicle & mission parameters ── -->
+<div id="home" class="hidden">
+  <div class="htop">
+    <div class="logo"><div class="ic">✈</div>NAVERA</div>
+    <span class="simtag" data-i18n="simulation">SIMULATION</span>
+    <div style="flex:1"></div>
+    <div class="lang langsw"><button data-v="fr">FR</button><button data-v="en">EN</button><button data-v="ar">ع</button></div>
+  </div>
+  <div class="hwrap">
+    <h1 data-i18n="homeTitle">New mission</h1>
+    <div class="sub" data-i18n="homeSub">Choose the vehicle NAVERA is installed on, then set the mission parameters. The next page opens the workspace for that vehicle.</div>
+    <div class="hsec"><span class="num">1</span><span data-i18n="wizVehicle">Vehicle</span></div>
+    <div class="cards vcards" id="wVeh">
+      <div class="mcard" data-v="drone"><span class="ck">✓</span><div class="e">🚁</div><div class="n" data-i18n="drone">Drone</div>
+        <div class="d" data-i18n="droneD">Downward camera at altitude: NAVERA's satellite vision (day and night), the star fix and GPS protection.</div>
+        <div class="spec" data-i18n="droneS">ArduCopter · up to 20 m/s · 30–400 m</div></div>
+      <div class="mcard" data-v="boat"><span class="ck">✓</span><div class="e">🚤</div><div class="n" data-i18n="boat">Boat</div>
+        <div class="d" data-i18n="boatD">Camera at water level: GPS protection and the star fix at night. The vision position is simulated.</div>
+        <div class="spec" data-i18n="boatS">ArduPilot Rover (motorboat) · up to 15 m/s</div></div>
+      <div class="mcard" data-v="robot"><span class="ck">✓</span><div class="e">🤖</div><div class="n" data-i18n="robot">Ground robot</div>
+        <div class="d" data-i18n="robotD">Camera at ground level: GPS protection and the star fix at night. The vision position is simulated.</div>
+        <div class="spec" data-i18n="robotS">ArduPilot Rover · up to 8 m/s</div></div>
+    </div>
+    <div class="hsec"><span class="num">2</span><span data-i18n="params">Parameters</span><span>·</span><span class="vn" id="hVehName"></span></div>
+    <div class="hgrid">
+      <div class="hcol">
+        <div class="card"><h3 data-i18n="wizMode">Operating mode</h3>
+          <div class="cards" id="wMode">
+            <div class="mcard" data-v="day"><span class="tag" data-i18n="tagDay">DAY</span><div class="e">☀️</div><div class="n" data-i18n="dayMode">Day mode</div><div class="d" id="dayModeD"></div></div>
+            <div class="mcard" data-v="night"><span class="tag" data-i18n="tagNight">NIGHT</span><div class="e">🌙</div><div class="n" data-i18n="nightMode">Night mode</div><div class="d" id="nightModeD"></div></div>
+          </div></div>
+        <div class="card"><h3 data-i18n="motion">Motion</h3>
+          <div class="lbl"><span data-i18n="speed">Speed</span>: <b id="wSpdV">15</b> m/s</div>
+          <input type="range" id="wSpd" min="2" max="20" value="15">
+          <div id="wAltBox"><div class="lbl"><span data-i18n="altitude">Altitude</span>: <b id="wAltV">150</b> m · <span data-i18n="footprint">camera footprint</span> ≈ <b id="wFpV">270</b> m</div>
+          <input type="range" id="wAlt" min="30" max="400" step="10" value="150"></div>
+          <div class="note" id="wAltNote" style="color:var(--warn);font-weight:600"></div></div>
+        <div class="card"><h3 data-i18n="gpsLost">Position when GPS is lost</h3>
+          <div class="cards" id="wVision">
+            <div class="mcard" data-v="real"><div class="n" data-i18n="realVision">Real NAVERA vision</div><div class="d" data-i18n="realVisionD">The real software localises the simulated camera image (drone only).</div></div>
+            <div class="mcard" data-v="measured"><div class="n" data-i18n="simMeasured">Simulated — today's accuracy</div><div class="d" data-i18n="simMeasuredD">Error as measured on real frames (~440 m).</div></div>
+            <div class="mcard" data-v="target"><div class="n" data-i18n="simTarget">Simulated — target</div><div class="d" data-i18n="simTargetD">15 m: the goal, not a measured performance.</div></div>
+          </div>
+          <div class="note" id="wVisNote" style="margin-top:8px"></div></div>
+        <div class="card"><h3 data-i18n="autopilotOut">Autopilot output</h3>
+          <label class="chk"><input type="checkbox" id="wFwd"> <span><span data-i18n="fwd">Give vision positions to the autopilot, stated accuracy</span>
+            <input type="number" id="wSigma" value="300" min="5" max="1000" style="width:80px;display:inline-block;padding:4px 6px"> m</span></label>
+          <div class="note" style="margin-top:6px" data-i18n="fwdNote">NAVERA's default is off: vision positions are shown but the autopilot applies its own failsafe (land / hold) when GPS is lost.</div></div>
+      </div>
+      <div class="hcol">
+        <div class="card"><h3 data-i18n="capTitle">NAVERA on this vehicle</h3><ul class="cap" id="capHome"></ul></div>
+        <div class="card"><h3 data-i18n="summary">Summary</h3><div id="wSummary"></div></div>
       </div>
     </div>
-    <div class="wstep hidden" data-s="1">
-      <div class="lbl" style="text-align:center" data-i18n="wizVehicle">Vehicle</div>
-      <div class="cards" id="wVeh">
-        <div class="mcard" data-v="drone"><div class="e">🚁</div><div class="n" data-i18n="drone">Drone</div><div class="d" data-i18n="droneD">ArduCopter. Downward camera: real NAVERA vision.</div></div>
-        <div class="mcard" data-v="boat"><div class="e">🚤</div><div class="n" data-i18n="boat">Boat</div><div class="d" data-i18n="boatD">ArduPilot Rover (motorboat). Simulated vision error.</div></div>
-        <div class="mcard" data-v="robot"><div class="e">🤖</div><div class="n" data-i18n="robot">Ground robot</div><div class="d" data-i18n="robotD">ArduPilot Rover. Simulated vision error.</div></div>
-      </div>
-    </div>
-    <div class="wstep hidden" data-s="2">
-      <div class="lbl"><span data-i18n="speed">Speed</span>: <b id="wSpdV">15</b> m/s</div>
-      <input type="range" id="wSpd" min="2" max="20" value="15">
-      <div id="wAltBox"><div class="lbl"><span data-i18n="altitude">Altitude</span>: <b id="wAltV">150</b> m · <span data-i18n="footprint">camera footprint</span> ≈ <b id="wFpV">270</b> m</div>
-      <input type="range" id="wAlt" min="30" max="600" step="10" value="150"></div>
-      <div class="note" id="wAltNote"></div>
-    </div>
-    <div class="wstep hidden" data-s="3">
-      <div class="lbl" data-i18n="gpsLost">Position when GPS is lost</div>
-      <div class="cards" id="wVision">
-        <div class="mcard" data-v="real"><div class="n" data-i18n="realVision">Real NAVERA vision</div><div class="d" data-i18n="realVisionD">The real software localises the simulated camera image (drone only).</div></div>
-        <div class="mcard" data-v="measured"><div class="n" data-i18n="simMeasured">Simulated — today's accuracy</div><div class="d" data-i18n="simMeasuredD">Error as measured on real frames (~440 m).</div></div>
-        <div class="mcard" data-v="target"><div class="n" data-i18n="simTarget">Simulated — target</div><div class="d" data-i18n="simTargetD">15 m: the goal, not a measured performance.</div></div>
-      </div>
-      <label class="chk"><input type="checkbox" id="wFwd"> <span><span data-i18n="fwd">Give vision positions to the autopilot, stated accuracy</span>
-        <input type="number" id="wSigma" value="300" min="5" max="1000" style="width:80px;display:inline-block;padding:4px 6px"> m</span></label>
-      <div class="note" style="margin-top:6px" data-i18n="fwdNote">NAVERA's default is off: vision positions are shown but the autopilot applies its own failsafe (land / hold) when GPS is lost.</div>
-    </div>
-    <div class="wstep hidden" data-s="4">
-      <div class="lbl" data-i18n="summary">Summary</div>
-      <div id="wSummary"></div>
-    </div>
-    <div class="wnav">
-      <button class="btn" id="wPrev" data-i18n="prev">← Back</button>
-      <button class="btn primary" id="wNext" data-i18n="next">Next →</button>
-    </div>
+    <div class="hnav"><button class="btn primary big" id="wNext">Open the workspace →</button></div>
   </div>
 </div>
 
@@ -459,12 +492,36 @@ const I18N = {
     legSearch:'Zone de recherche vision', legCn:'Céleste ± précision', wizTitle:'Configuration pré-vol', wizSub:'Configurez la mission avant de planifier le trajet',
     wizMode:'Mode de fonctionnement', tagDay:'JOUR', tagNight:'NUIT', dayMode:'Mode jour', dayModeD:'Correspondance de tuiles satellite DINOv2 (day_pkg). La carte doit être préparée pour le trajet.',
     nightMode:'Mode nuit', nightModeD:"Alignement thermique STHN (night_pkg) + point céleste par les étoiles (cn_pkg). Altitude ≥ 350 m.",
-    wizVehicle:'Véhicule', drone:'Drone', droneD:'ArduCopter. Caméra vers le bas : vraie vision NAVERA.', boat:'Bateau', boatD:'ArduPilot Rover (bateau). Erreur de vision simulée.',
-    robot:'Robot terrestre', robotD:'ArduPilot Rover. Erreur de vision simulée.', speed:'Vitesse', altitude:'Altitude', footprint:'emprise caméra',
+    wizVehicle:'Véhicule', drone:'Drone', droneD:"Caméra vers le bas en altitude : vision satellite NAVERA (jour et nuit), point par les étoiles et protection GPS.", boat:'Bateau',
+    boatD:"Caméra au niveau de l'eau : protection GPS et point par les étoiles la nuit. La position vision est simulée.",
+    robot:'Robot terrestre', robotD:'Caméra au niveau du sol : protection GPS et point par les étoiles la nuit. La position vision est simulée.', speed:'Vitesse', altitude:'Altitude', footprint:'emprise caméra',
     gpsLost:'Position quand le GPS est perdu', realVision:'Vraie vision NAVERA', realVisionD:"Le vrai logiciel localise l'image caméra simulée (drone uniquement).",
     simMeasured:"Simulée — précision d'aujourd'hui", simMeasuredD:'Erreur mesurée sur de vraies images (~440 m).', simTarget:'Simulée — objectif',
     simTargetD:"15 m : l'objectif, pas une performance mesurée.", fwd:"Donner les positions vision à l'autopilote, précision annoncée",
     fwdNote:"Par défaut NAVERA ne le fait pas : les positions vision sont affichées mais l'autopilote applique son propre mode sécurité (atterrir / s'arrêter) quand le GPS est perdu.",
+    homeTitle:'Nouvelle mission', homeSub:"Choisissez le véhicule sur lequel NAVERA est installé, puis réglez les paramètres de la mission. La page suivante ouvre l'espace de travail de ce véhicule.",
+    droneS:"ArduCopter · jusqu'à 20 m/s · 30–400 m", boatS:"ArduPilot Rover (bateau à moteur) · jusqu'à 15 m/s", robotS:"ArduPilot Rover · jusqu'à 8 m/s",
+    params:'Paramètres', motion:'Déplacement', autopilotOut:"Sortie vers l'autopilote", capTitle:'NAVERA sur ce véhicule',
+    capGps:'Protection GPS', capGpsD:"Brouillage et leurrage détectés, fausses positions refusées, l'autopilote prévenu quand le GPS n'est pas fiable.",
+    capDay:'Vision de jour', capDayD:'Caméra comparée à la carte satellite (DINOv2) dans un cercle de recherche autour de la dernière position GPS. La carte doit être préparée pour le trajet.',
+    capNight:'Vision de nuit', capNightD:'Caméra thermique comparée à la carte (STHN). Il faut environ 350 m d\'altitude ou plus.',
+    capCn:'Céleste (étoiles)', capCnD:"La nuit : position par les étoiles. Grossière (dizaines de km), limitée par l'attitude de l'IMU.",
+    capCnBoatD:"La nuit : position par les étoiles. Grossière (dizaines de km), limitée par l'attitude de l'IMU.",
+    capAp:'Autopilote', capApCopter:'ArduCopter, qui reçoit NAVERA comme son GPS (MAVLink GPS_INPUT).',
+    capApBoat:'ArduPilot Rover (bateau à moteur), qui reçoit NAVERA comme son GPS.', capApRover:'ArduPilot Rover, qui reçoit NAVERA comme son GPS.',
+    capSat:'Vision satellite', capSatBoatD:"Une caméra au niveau de l'eau voit les vagues et l'horizon, pas une vue satellite, et la mer n'a pas de repères fixes. Non disponible : la position vision est simulée ici.",
+    capSatRobotD:"Une caméra au niveau du sol regarde devant, pas vers le bas : impossible de la comparer à une carte satellite. Non disponible : la position vision est simulée ici.",
+    capNext:'En développement', capNextBoatD:'Navigation à l\'estime (IMU + loch) et reconnaissance du trait de côte.',
+    capNextRobotD:"Navigation à l'estime (IMU + odométrie des roues) et odométrie visuelle.",
+    dayModeG:'De jour : protection GPS ; la position en cas de perte du GPS vient du profil de vision simulé.',
+    nightModeG:'Vrai point céleste par les étoiles (cn_pkg) + le profil de vision simulé.',
+    visNoteG:"La vraie vision NAVERA demande une caméra vers le bas en altitude : sur ce véhicule, la position en cas de perte du GPS est simulée avec le profil d'erreur choisi ici.",
+    altWarn:'La vision de nuit demande ≥ 350 m avec cette caméra de 84°.',
+    openWork_drone:"Ouvrir l'espace de travail drone →", openWork_boat:"Ouvrir l'espace de travail bateau →", openWork_robot:"Ouvrir l'espace de travail robot →",
+    routeNote_drone:"Le drone vole en ligne droite de A à B à l'altitude choisie. Avec la vraie vision, préparez la carte pour ce trajet (onglet Carte).",
+    routeNote_boat:"Placez A et B sur l'eau : le bateau navigue en ligne droite de A à B (pas d'évitement de la côte dans cette simulation).",
+    routeNote_robot:"Le robot roule en ligne droite de A à B (pas d'évitement d'obstacles ni de suivi de route dans cette simulation).",
+    changeVeh:'Changer de véhicule et de paramètres', landOnly:'Atterrir', stopVeh:'Arrêter',
     summary:'Résumé', prev:'← Retour', next:'Suivant →', openPlanner:'Ouvrir le planificateur →',
     hintA:'Cliquez sur la carte pour placer le DÉPART (A)', hintB:"Cliquez sur la carte pour placer l'ARRIVÉE (B)",
     hintReady:'Prêt : cliquez sur Lancer la mission', needRoute:"Placez le départ (A) et l'arrivée (B)",
@@ -496,11 +553,35 @@ const I18N = {
     legSearch:'منطقة بحث الرؤية', legCn:'فلكي ± الدقة', wizTitle:'إعداد ما قبل الطيران', wizSub:'اضبط المهمة قبل تخطيط المسار',
     wizMode:'وضع التشغيل', tagDay:'نهار', tagNight:'ليل', dayMode:'الوضع النهاري', dayModeD:'مطابقة صور الأقمار الصناعية DINOv2. يجب تحضير الخريطة.',
     nightMode:'الوضع الليلي', nightModeD:'محاذاة حرارية STHN + موقع فلكي بالنجوم. ارتفاع ≥ 350 م.', wizVehicle:'المركبة', drone:'طائرة مسيرة',
-    droneD:'ArduCopter. كاميرا سفلية: رؤية NAVERA الحقيقية.', boat:'قارب', boatD:'ArduPilot Rover. خطأ رؤية محاكى.', robot:'روبوت أرضي',
-    robotD:'ArduPilot Rover. خطأ رؤية محاكى.', speed:'السرعة', altitude:'الارتفاع', footprint:'مساحة رؤية الكاميرا', gpsLost:'الموقع عند فقدان GPS',
+    droneD:'كاميرا موجهة للأسفل على ارتفاع: رؤية NAVERA بالأقمار الصناعية (نهاراً وليلاً) والموقع بالنجوم وحماية GPS.', boat:'قارب',
+    boatD:'كاميرا على مستوى الماء: حماية GPS والموقع بالنجوم ليلاً. موقع الرؤية محاكى.', robot:'روبوت أرضي',
+    robotD:'كاميرا على مستوى الأرض: حماية GPS والموقع بالنجوم ليلاً. موقع الرؤية محاكى.', speed:'السرعة', altitude:'الارتفاع', footprint:'مساحة رؤية الكاميرا', gpsLost:'الموقع عند فقدان GPS',
     realVision:'رؤية NAVERA الحقيقية', realVisionD:'البرنامج الحقيقي يحدد موقع صورة الكاميرا المحاكاة.', simMeasured:'محاكاة — دقة اليوم',
     simMeasuredD:'الخطأ المقاس على صور حقيقية (~440 م).', simTarget:'محاكاة — الهدف', simTargetD:'15 م: الهدف وليس أداءً مقاساً.',
     fwd:'إعطاء مواقع الرؤية للطيار الآلي، الدقة المعلنة', fwdNote:'افتراضياً لا يفعل NAVERA ذلك: يطبق الطيار الآلي وضع الأمان عند فقدان GPS.',
+    homeTitle:'مهمة جديدة', homeSub:'اختر المركبة المركّب عليها NAVERA ثم اضبط معايير المهمة. تفتح الصفحة التالية مساحة العمل الخاصة بهذه المركبة.',
+    droneS:'ArduCopter · حتى 20 م/ث · 30–400 م', boatS:'ArduPilot Rover (قارب بمحرك) · حتى 15 م/ث', robotS:'ArduPilot Rover · حتى 8 م/ث',
+    params:'المعايير', motion:'الحركة', autopilotOut:'الإخراج نحو الطيار الآلي', capTitle:'NAVERA على هذه المركبة',
+    capGps:'حماية GPS', capGpsD:'كشف التشويش والخداع، رفض المواقع المزيفة، وتنبيه الطيار الآلي عندما لا يمكن الوثوق بـ GPS.',
+    capDay:'الرؤية النهارية', capDayD:'مقارنة الكاميرا بخريطة الأقمار الصناعية (DINOv2) داخل دائرة بحث حول آخر موقع GPS. يجب تحضير الخريطة للمسار.',
+    capNight:'الرؤية الليلية', capNightD:'مقارنة الكاميرا الحرارية بالخريطة (STHN). تحتاج ارتفاعاً بحوالي 350 م أو أكثر.',
+    capCn:'الملاحة الفلكية (النجوم)', capCnD:'ليلاً: الموقع من النجوم. تقريبي (عشرات الكيلومترات)، محدود بدقة اتجاه وحدة القياس.',
+    capCnBoatD:'ليلاً: الموقع من النجوم. تقريبي (عشرات الكيلومترات)، محدود بدقة اتجاه وحدة القياس.',
+    capAp:'الطيار الآلي', capApCopter:'ArduCopter، يستقبل NAVERA كـ GPS خاص به (MAVLink GPS_INPUT).',
+    capApBoat:'ArduPilot Rover (قارب بمحرك)، يستقبل NAVERA كـ GPS خاص به.', capApRover:'ArduPilot Rover، يستقبل NAVERA كـ GPS خاص به.',
+    capSat:'الرؤية بالأقمار الصناعية', capSatBoatD:'كاميرا على مستوى الماء ترى الأمواج والأفق لا منظراً من الأعلى، والبحر بلا معالم ثابتة. غير متاحة: موقع الرؤية محاكى هنا.',
+    capSatRobotD:'كاميرا على مستوى الأرض تنظر إلى الأمام لا إلى الأسفل: لا يمكن مقارنتها بخريطة الأقمار الصناعية. غير متاحة: موقع الرؤية محاكى هنا.',
+    capNext:'قيد التطوير', capNextBoatD:'الملاحة التقديرية (وحدة القياس + مقياس السرعة) ومطابقة خط الساحل.',
+    capNextRobotD:'الملاحة التقديرية (وحدة القياس + عداد العجلات) والقياس البصري للحركة.',
+    dayModeG:'نهاراً: حماية GPS؛ الموقع عند فقدان GPS يأتي من ملف الرؤية المحاكى.',
+    nightModeG:'موقع فلكي حقيقي بالنجوم (cn_pkg) + ملف الرؤية المحاكى.',
+    visNoteG:'رؤية NAVERA الحقيقية تحتاج كاميرا سفلية على ارتفاع: على هذه المركبة يُحاكى الموقع عند فقدان GPS بملف الخطأ المختار هنا.',
+    altWarn:'الرؤية الليلية تحتاج ≥ 350 م مع هذه الكاميرا (84°).',
+    openWork_drone:'فتح مساحة عمل الطائرة ←', openWork_boat:'فتح مساحة عمل القارب ←', openWork_robot:'فتح مساحة عمل الروبوت ←',
+    routeNote_drone:'تطير الطائرة في خط مستقيم من A إلى B على الارتفاع المختار. مع الرؤية الحقيقية، حضّر الخريطة لهذا المسار (تبويب الخريطة).',
+    routeNote_boat:'ضع A وB على الماء: يبحر القارب في خط مستقيم من A إلى B (دون تفادي الساحل في هذه المحاكاة).',
+    routeNote_robot:'يسير الروبوت في خط مستقيم من A إلى B (دون تفادي العوائق أو تتبع الطرق في هذه المحاكاة).',
+    changeVeh:'تغيير المركبة والمعايير', landOnly:'هبوط', stopVeh:'توقف',
     summary:'الملخص', prev:'→ رجوع', next:'التالي ←', openPlanner:'فتح المخطط ←',
     hintA:'انقر على الخريطة لتحديد نقطة الانطلاق (A)', hintB:'انقر على الخريطة لتحديد الوجهة (B)',
     hintReady:'جاهز: اضغط إطلاق المهمة', needRoute:'حدد نقطة الانطلاق (A) والوجهة (B)', needPrepare:'حضّر الخريطة (تبويب الخريطة)',
@@ -531,7 +612,7 @@ function applyLang(){
     el.placeholder = LANG === 'en' ? EN_TEXT['ph_' + k] : t(k, EN_TEXT['ph_' + k]);
   });
   document.querySelectorAll('.langsw button').forEach(b => b.classList.toggle('on', b.dataset.v === LANG));
-  renderSummary(); wizRender(); drawPlan(); updateUI();
+  homeRender(); applyWorkspace(); drawPlan(); updateUI();
 }
 document.querySelectorAll('.langsw button').forEach(b => b.onclick = () => {
   LANG = b.dataset.v; try{ localStorage.setItem('navera.lang', LANG); }catch(e){} applyLang();
@@ -606,36 +687,71 @@ async function post(action, body){
   }catch(e){ toast('simulator not reachable'); return {ok:false}; }
 }
 
-/* ───────────────────────────── settings (wizard) ───────────────────────────── */
+/* ───────────────────────────── page 1: vehicle & parameters ───────────────────────────── */
 const DEF = {drone:[15,150], boat:[8,0], robot:[4,0]};
 const MAXSPD = {drone:20, boat:15, robot:8};
+const VEH_IC = {drone:'🚁', boat:'🚤', robot:'🤖'};
+const VEH_NAME = {drone:'Drone', boat:'Boat', robot:'Ground robot'};
+const vehName = () => t(cfg.vehicle, VEH_NAME[cfg.vehicle]);
 const cfg = {light:'day', vehicle:'drone', speed:15, alt:150, vision:'real', fwd:true, sigma:300};
 try{ Object.assign(cfg, JSON.parse(localStorage.getItem('navera.cfg') || '{}')); }catch(e){}
+if(!DEF[cfg.vehicle]) cfg.vehicle = 'drone';
+cfg.alt = Math.max(30, Math.min(400, cfg.alt));
 const saveCfg = () => { try{ localStorage.setItem('navera.cfg', JSON.stringify(cfg)); }catch(e){} };
-let wStep = 0;
+// What NAVERA does on each vehicle: [state ok|no|plan|info, title key, title, detail key, detail]
+const CAP_GPS = ['ok', 'capGps', 'GPS protection', 'capGpsD', 'Jamming and spoofing detected, false positions refused, the autopilot warned when GPS cannot be trusted.'];
+const CAPS = {
+  drone:[CAP_GPS,
+    ['ok', 'capDay', 'Day vision', 'capDayD', 'Camera vs satellite map (DINOv2) within a search circle around the last GPS position. Needs the map prepared for the route.'],
+    ['ok', 'capNight', 'Night vision', 'capNightD', 'Thermal camera vs the map (STHN). Needs about 350 m altitude or more.'],
+    ['ok', 'capCn', 'Celestial (stars)', 'capCnD', 'At night: position from the stars. Coarse (tens of km), limited by the IMU attitude.'],
+    ['info', 'capAp', 'Autopilot', 'capApCopter', 'ArduCopter, which receives NAVERA as its GPS (MAVLink GPS_INPUT).']],
+  boat:[CAP_GPS,
+    ['no', 'capSat', 'Satellite vision', 'capSatBoatD', 'A camera at water level sees waves and the horizon, not a satellite view, and the sea has no fixed landmarks. Not available: the vision position is simulated here.'],
+    ['ok', 'capCn', 'Celestial (stars)', 'capCnBoatD', 'At night: position from the stars. Coarse (tens of km), limited by the IMU attitude.'],
+    ['plan', 'capNext', 'In development', 'capNextBoatD', 'Dead reckoning (IMU + speed log) and coastline matching.'],
+    ['info', 'capAp', 'Autopilot', 'capApBoat', 'ArduPilot Rover (motorboat), which receives NAVERA as its GPS.']],
+  robot:[CAP_GPS,
+    ['no', 'capSat', 'Satellite vision', 'capSatRobotD', 'A camera at ground level looks forward, not down: it cannot be matched with a satellite map. Not available: the vision position is simulated here.'],
+    ['ok', 'capCn', 'Celestial (stars)', 'capCnD', 'At night: position from the stars. Coarse (tens of km), limited by the IMU attitude.'],
+    ['plan', 'capNext', 'In development', 'capNextRobotD', 'Dead reckoning (IMU + wheel odometry) and visual odometry.'],
+    ['info', 'capAp', 'Autopilot', 'capApRover', 'ArduPilot Rover, which receives NAVERA as its GPS.']],
+};
+const CAP_SYM = {ok:'✓', no:'✗', plan:'…', info:'i'};
+const capHTML = () => CAPS[cfg.vehicle].map(([s, tk, tt, dk, dd]) =>
+  `<li class="${s}"><span class="s">${CAP_SYM[s]}</span><div><b>${esc(t(tk, tt))}</b><span class="d">${esc(t(dk, dd))}</span></div></li>`).join('');
+const ROUTE_NOTE = {
+  drone:'The drone flies a straight line from A to B at the chosen altitude. With the real vision, prepare the map for this route (tab Map).',
+  boat:'Place A and B on water: the boat sails a straight line from A to B (no coastline avoidance in this simulation).',
+  robot:'The robot drives a straight line from A to B (no obstacle avoidance or road following in this simulation).'};
+const OPEN_WORK = {drone:'Open the drone workspace →', boat:'Open the boat workspace →', robot:'Open the ground robot workspace →'};
 function pickCard(id, v){ document.querySelectorAll(`#${id} .mcard`).forEach(c => c.classList.toggle('on', c.dataset.v === v)); }
-function wizRender(){
-  document.querySelectorAll('.wstep').forEach(s => s.classList.toggle('hidden', +s.dataset.s !== wStep));
-  document.querySelectorAll('#wSteps span').forEach((s, i) => s.classList.toggle('on', i <= wStep));
-  pickCard('wMode', cfg.light); pickCard('wVeh', cfg.vehicle);
-  pickCard('wVision', cfg.vision);
-  document.querySelectorAll('#wVision .mcard').forEach(c => c.classList.toggle('disabled', c.dataset.v === 'real' && cfg.vehicle !== 'drone'));
+function homeRender(){
+  const drone = cfg.vehicle === 'drone';
+  pickCard('wMode', cfg.light); pickCard('wVeh', cfg.vehicle); pickCard('wVision', cfg.vision);
+  $('hVehName').textContent = `${VEH_IC[cfg.vehicle]} ${vehName()}`;
+  $('dayModeD').textContent = drone ? t('dayModeD', 'DINOv2 satellite tile matching (day_pkg). The map must be prepared for the route.')
+    : t('dayModeG', 'Daylight: GPS protection; the GPS-loss position comes from the simulated vision profile.');
+  $('nightModeD').textContent = drone ? t('nightModeD', 'STHN thermal alignment (night_pkg) + celestial star fix (cn_pkg). Needs ≥ 350 m altitude.')
+    : t('nightModeG', 'Real celestial star fix (cn_pkg) + the simulated vision profile.');
+  document.querySelectorAll('#wVision .mcard').forEach(c => c.classList.toggle('disabled', c.dataset.v === 'real' && !drone));
+  $('wVisNote').textContent = drone ? '' : t('visNoteG', 'Real NAVERA vision needs a downward camera at altitude: on this vehicle the GPS-loss position is simulated with the error profile chosen here.');
   $('wSpd').max = MAXSPD[cfg.vehicle]; $('wSpd').value = cfg.speed; $('wSpdV').textContent = cfg.speed;
-  $('wAltBox').classList.toggle('hidden', cfg.vehicle !== 'drone');
+  $('wAltBox').classList.toggle('hidden', !drone);
   $('wAlt').value = cfg.alt; $('wAltV').textContent = cfg.alt;
   $('wFpV').textContent = Math.round(2 * cfg.alt * Math.tan(42 * Math.PI / 180));
-  $('wAltNote').textContent = cfg.light === 'night' && cfg.vehicle === 'drone' && cfg.alt < 350
-    ? '⚠ Night vision needs ≥ 350 m with this 84° camera.' : '';
+  $('wAltNote').textContent = cfg.light === 'night' && drone && cfg.vision === 'real' && cfg.alt < 350
+    ? '⚠ ' + t('altWarn', 'Night vision needs ≥ 350 m with this 84° camera.') : '';
   $('wFwd').checked = cfg.fwd; $('wSigma').value = cfg.sigma;
-  $('wPrev').style.visibility = wStep === 0 ? 'hidden' : 'visible';
-  $('wNext').textContent = wStep === 4 ? t('openPlanner') : t('next', 'Next →');
-  if(wStep === 4) $('wSummary').innerHTML = summaryHTML();
+  $('capHome').innerHTML = capHTML();
+  $('wSummary').innerHTML = summaryHTML();
+  $('wNext').textContent = t('openWork_' + cfg.vehicle, OPEN_WORK[cfg.vehicle]);
 }
 function summaryHTML(){
   const vis = {real:t('realVision','Real NAVERA vision'), measured:t('simMeasured',"Simulated — today's accuracy"), target:t('simTarget','Simulated — target')}[cfg.vision];
   const rows = [
+    [t('wizVehicle','Vehicle'), `${VEH_IC[cfg.vehicle]} ${vehName()}`],
     [t('wizMode','Operating mode'), cfg.light === 'night' ? t('nightMode','Night mode') : t('dayMode','Day mode')],
-    [t('wizVehicle','Vehicle'), t(cfg.vehicle, cfg.vehicle)],
     [t('speed','Speed'), cfg.speed + ' m/s'],
     ...(cfg.vehicle === 'drone' ? [[t('altitude','Altitude'), cfg.alt + ' m']] : []),
     [t('gpsLost','Position when GPS is lost'), vis],
@@ -644,32 +760,55 @@ function summaryHTML(){
   return rows.map(([k, v]) => `<div class="sumrow"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('');
 }
 function renderSummary(){ $('missionSummary').innerHTML = summaryHTML(); }
+/* page 2: the workspace follows the vehicle */
+function applyWorkspace(){
+  const drone = cfg.vehicle === 'drone';
+  $('vehIc').textContent = VEH_IC[cfg.vehicle];
+  $('vehTxt').textContent = `${vehName()} · ${cfg.speed} m/s` + (drone ? ` · ${cfg.alt} m` : '') + (cfg.light === 'night' ? ' · 🌙' : ' · ☀️');
+  $('vehBtn').title = t('changeVeh', 'Change vehicle & parameters');
+  // the map is prepared for the drone's satellite vision only
+  const mapTab = document.querySelector('#ptabs button[data-v=map]');
+  mapTab.classList.toggle('hidden', !drone);
+  if(!drone && mapTab.classList.contains('on')) document.querySelector('#ptabs button[data-v=route]').click();
+  $('vehRouteNote').textContent = t('routeNote_' + cfg.vehicle, ROUTE_NOTE[cfg.vehicle]);
+  $('capWork').innerHTML = capHTML();
+  $('legVis').classList.toggle('hidden', !drone);
+  $('landTxt').textContent = drone ? t('landOnly', 'Land') : t('stopVeh', 'Stop');
+  $('altSpdK').textContent = drone ? t('altSpeed', 'Altitude / speed') : t('speed', 'Speed');
+  renderSummary();
+}
 document.querySelectorAll('#wMode .mcard').forEach(c => c.onclick = () => {
   cfg.light = c.dataset.v;
   if(cfg.light === 'night' && cfg.vehicle === 'drone' && cfg.alt < 350) cfg.alt = 400;
-  wizRender();
+  homeRender();
 });
 document.querySelectorAll('#wVeh .mcard').forEach(c => c.onclick = () => {
-  cfg.vehicle = c.dataset.v; cfg.speed = Math.min(DEF[cfg.vehicle][0], MAXSPD[cfg.vehicle]);
+  if(cfg.vehicle === c.dataset.v) return;
+  cfg.vehicle = c.dataset.v; cfg.speed = DEF[cfg.vehicle][0];
+  if(cfg.vehicle === 'drone') cfg.alt = cfg.light === 'night' ? 400 : DEF.drone[1];
   if(cfg.vehicle !== 'drone' && cfg.vision === 'real') cfg.vision = 'measured';
-  wizRender();
+  homeRender();
 });
 document.querySelectorAll('#wVision .mcard').forEach(c => c.onclick = () => {
-  if(c.classList.contains('disabled')) return; cfg.vision = c.dataset.v; wizRender();
+  if(c.classList.contains('disabled')) return; cfg.vision = c.dataset.v; homeRender();
 });
-$('wSpd').oninput = () => { cfg.speed = +$('wSpd').value; wizRender(); };
-$('wAlt').oninput = () => { cfg.alt = +$('wAlt').value; wizRender(); };
-$('wFwd').onchange = () => { cfg.fwd = $('wFwd').checked; };
-$('wSigma').onchange = () => { cfg.sigma = Math.max(5, Math.min(1000, +$('wSigma').value || 300)); };
-$('wPrev').onclick = () => { wStep = Math.max(0, wStep - 1); wizRender(); };
-$('wNext').onclick = () => {
-  if(wStep < 4){ wStep++; wizRender(); return; }
-  saveCfg(); $('wiz').classList.add('hidden'); renderSummary(); updateUI();
+$('wSpd').oninput = () => { cfg.speed = +$('wSpd').value; homeRender(); };
+$('wAlt').oninput = () => { cfg.alt = +$('wAlt').value; homeRender(); };
+$('wFwd').onchange = () => { cfg.fwd = $('wFwd').checked; homeRender(); };
+$('wSigma').onchange = () => { cfg.sigma = Math.max(5, Math.min(1000, +$('wSigma').value || 300)); homeRender(); };
+function openHome(){
+  if(flying()) return;
+  homeRender(); $('home').classList.remove('hidden'); $('home').scrollTop = 0;
+}
+function openWorkspace(){
+  saveCfg(); $('home').classList.add('hidden');
+  applyWorkspace(); drawPlan(); updateUI();
   try{ sessionStorage.setItem('navera.wiz', '1'); }catch(e){}
-};
-function openWizard(step){ wStep = step || 0; wizRender(); $('wiz').classList.remove('hidden'); }
-$('setupBtn').onclick = () => openWizard(0);
-$('editSetup').onclick = () => openWizard(0);
+  setTimeout(() => map.invalidateSize(), 50);
+}
+$('wNext').onclick = openWorkspace;
+$('vehBtn').onclick = openHome;
+$('editSetup').onclick = openHome;
 
 /* ───────────────────────────── route planning ───────────────────────────── */
 let A = null, B = null, pick = 'A';
@@ -1119,10 +1258,11 @@ function render(d){
     restored = true;
     Object.assign(cfg, {vehicle:d.cfg.vehicle, speed:d.cfg.speed, alt:d.cfg.alt, light:d.faults.light,
       vision:d.cfg.vision === 'real' ? 'real' : d.cfg.profile, fwd:!!d.cfg.forward_degraded, sigma:d.cfg.degraded_sigma_m});
-    A = d.cfg.start; B = d.cfg.dest; planKey = JSON.stringify([A, B]); renderSummary();
-    $('wiz').classList.add('hidden');
+    A = d.cfg.start; B = d.cfg.dest; planKey = JSON.stringify([A, B]); applyWorkspace();
   }
   if(!fl) restored = false;
+  if(fl) $('home').classList.add('hidden');
+  $('vehBtn').disabled = !!fl;
   if(fl && d.cfg.dest) B = d.cfg.dest;
   renderArea(d); drawPlan(); updateUI();
   if(!fl && view === 'planner'){ return; }
@@ -1149,7 +1289,7 @@ function render(d){
   $('apEkf').textContent = a.link ? (a.ekf_ok ? 'position OK' : 'NO POSITION') : '—';
   $('apEkf').style.color = a.link ? (a.ekf_ok ? 'var(--ok)' : 'var(--bad)') : '';
   const tr = d.truth;
-  $('apAlt').textContent = tr ? `${Math.round(tr.alt)} m · ${tr.speed.toFixed(1)} m/s` : '—';
+  $('apAlt').textContent = tr ? (d.cfg.vehicle === 'drone' ? `${Math.round(tr.alt)} m · ` : '') + `${tr.speed.toFixed(1)} m/s` : '—';
   const eta = tr && a.dist_to_dest_m != null && tr.speed > 0.5 ? ` · ${Math.round(a.dist_to_dest_m / tr.speed / 60)} min` : '';
   $('apDist').textContent = a.dist_to_dest_m != null ? m(a.dist_to_dest_m) + eta : '—';
   // sensors
@@ -1215,14 +1355,14 @@ async function poll(){
   catch(e){ $('phase').innerHTML = '<b style="color:var(--bad)">SIMULATOR NOT REACHABLE</b>'; }
   setTimeout(poll, 600);
 }
-applyLang(); renderSummary(); drawPlan();
+applyLang();
 if(A && B){ planKey = JSON.stringify([A, B]); fetchPlan(); map.fitBounds(L.latLngBounds([A, B]).pad(0.3)); }
 let wizDone = false; try{ wizDone = sessionStorage.getItem('navera.wiz') === '1'; }catch(e){}
 fetch('/api/state').then(r => r.json()).then(d => {
   const running = d && ['starting','waiting_gps','arming','takeoff','enroute','arrived','rtl','landing','failsafe'].includes(d.phase);
-  if(!running && !wizDone) openWizard(0);
+  if(!running && !wizDone) openHome();
   if(!running && window.isSecureContext && navigator.geolocation) locate(false);
-}).catch(() => { if(!wizDone) openWizard(0); });
+}).catch(() => { if(!wizDone) openHome(); });
 poll();
 </script>
 </body>
