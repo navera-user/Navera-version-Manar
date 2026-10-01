@@ -21,6 +21,7 @@ import io
 import json
 import math
 import os
+import shutil
 import subprocess
 import threading
 import time
@@ -37,11 +38,13 @@ from day_pkg.prepare_area import plan_tiles, tile_nw
 HFOV_DEG = 84.0          # camera horizontal field of view
 FRAME_W, FRAME_H = 640, 480
 BUFFER_M = 1000.0        # corridor half-width around the route
-MAX_PREPARE_KM = 1000.0  # ~40 000 tiles, ~40 min, ~800 MB (+ the same again in the dataset)
+# No route-length limit: a preparation is refused only when the disk cannot hold it.
+DISK_MARGIN_MB = 2048.0   # left free on the disk after a preparation
 # Measured on the Jetson (34.5 km route, 1411 tiles, 93 s): downloads ~25 tiles/s
 # (8 connections), DINOv2 descriptors ~50 tiles/s, a tile ~20 kB. Used for the
 # estimate shown before a preparation starts (kept slightly conservative).
 DL_TILES_S, DESC_TILES_S, TILE_KB = 22.0, 45.0, 20.0
+DESC_KB = 3.0            # a DINOv2 descriptor (768 float32)
 
 
 def _tile_xy(lat, lon, z):
@@ -109,11 +112,14 @@ class AreaManager:
         p = plan_tiles(self.mbtiles, route, buffer_m, 17, self.cache)
         aid = self.area_id(route, buffer_m)
         length = sum(haversine_m(a[0], a[1], b[0], b[1]) for a, b in zip(route, route[1:]))   # great circle, as the dashboard
+        # disk needed: downloaded tiles (cache) + the area's tile copy + its descriptors
+        need_mb = ((len(p["missing"]) + len(p["needed"])) * TILE_KB + len(p["needed"]) * DESC_KB) / 1024.0
+        free_mb = shutil.disk_usage(os.path.dirname(self.path(aid)) or ".").free / 2 ** 20
         plan = dict(id=aid, route=route, buffer_m=buffer_m, zoom=17, length_m=length,
                     tiles=len(p["needed"]), present=p["present"], missing=p["missing"],
                     in_base=p["in_base"], in_cache=p["in_cache"],
-                    prepared=self.is_prepared(aid), max_prepare_km=MAX_PREPARE_KM,
-                    too_long=length > MAX_PREPARE_KM * 1000.0,
+                    prepared=self.is_prepared(aid), need_mb=need_mb, free_mb=free_mb,
+                    no_space=need_mb + DISK_MARGIN_MB > free_mb,
                     est_s=len(p["missing"]) / DL_TILES_S + len(p["needed"]) / DESC_TILES_S,
                     est_mb=len(p["missing"]) * TILE_KB / 1024.0)
         with self.lock:
@@ -142,10 +148,9 @@ class AreaManager:
     def start_prepare(self, route):
         plan = self.plan_for(route)["plan"]
         aid = plan["id"]
-        if plan["too_long"]:
-            raise ValueError(f"route too long to prepare: {plan['length_m'] / 1000:.0f} km "
-                             f"(max {MAX_PREPARE_KM:.0f} km, {plan['tiles']} tiles). Vision needs "
-                             f"the tiles along the whole route: shorten the mission")
+        if plan["no_space"]:
+            raise ValueError(f"not enough disk space for this map: {plan['need_mb'] / 1024:.1f} GB needed "
+                             f"({plan['tiles']} tiles), {plan['free_mb'] / 1024:.1f} GB free")
         with self.lock:
             if self._proc and self._proc.poll() is None:
                 other = self.preps.get(self._running, {})
