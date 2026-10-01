@@ -803,7 +803,6 @@ function openHome(){
 function openWorkspace(){
   saveCfg(); $('home').classList.add('hidden');
   applyWorkspace(); drawPlan(); updateUI();
-  try{ sessionStorage.setItem('navera.wiz', '1'); }catch(e){}
   setTimeout(() => map.invalidateSize(), 50);
 }
 $('wNext').onclick = openWorkspace;
@@ -1357,12 +1356,13 @@ async function poll(){
 }
 applyLang();
 if(A && B){ planKey = JSON.stringify([A, B]); fetchPlan(); map.fitBounds(L.latLngBounds([A, B]).pad(0.3)); }
-let wizDone = false; try{ wizDone = sessionStorage.getItem('navera.wiz') === '1'; }catch(e){}
+// every page load starts on page 1 (vehicle & parameters), unless a mission is in progress
+openHome();
 fetch('/api/state').then(r => r.json()).then(d => {
   const running = d && ['starting','waiting_gps','arming','takeoff','enroute','arrived','rtl','landing','failsafe'].includes(d.phase);
-  if(!running && !wizDone) openHome();
-  if(!running && window.isSecureContext && navigator.geolocation) locate(false);
-}).catch(() => { if(!wizDone) openHome(); });
+  if(running) $('home').classList.add('hidden');
+  else if(window.isSecureContext && navigator.geolocation) locate(false);
+}).catch(() => {});
 poll();
 </script>
 </body>
