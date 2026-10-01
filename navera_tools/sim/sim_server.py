@@ -70,8 +70,14 @@ DAY_TARGET_SIGMA = 15.0
 NIGHT_TARGET_SIGMA = 25.0
 NIGHT_MEASURED_GAIN = 0.25
 DEFAULTS = {"drone": (15.0, 150.0), "boat": (8.0, 0.0), "robot": (4.0, 0.0)}
-# NAVERA's max_speed_mps (GPS plausibility gate), set per vehicle as in service.
+# Default top speed of each vehicle type (m/s): NAVERA's max_speed_mps — the GPS
+# plausibility gate and the vision motion gates. The operator sets the real
+# vehicle's top speed (a fast aircraft: hundreds of m/s).
 MAX_SPEED = {"drone": 30.0, "boat": 20.0, "robot": 10.0}
+MAX_SPEED_LIMIT = 350.0     # m/s (~1260 km/h): highest top speed accepted
+# What the simulated autopilot can actually fly (ArduCopter WPNAV_SPEED ≤ 20 m/s,
+# ArduPilot Rover models): the cruise speed is capped here, whatever the top speed.
+SIM_CRUISE_MAX = {"drone": 20.0, "boat": 15.0, "robot": 8.0}
 
 
 def _route_dist(p, route):
@@ -138,7 +144,7 @@ class Simulator(Node):
 
         self.cfg = dict(vehicle="drone", start=[35.8256, 10.6385], dest=None, speed=15.0,
                         alt=150.0, profile="measured", vision="real", area=None,
-                        forward_degraded=False, degraded_sigma_m=300.0)
+                        forward_degraded=False, degraded_sigma_m=300.0, max_speed_mps=MAX_SPEED["drone"])
         self.faults = dict(gps="ok", camera="ok", light="day", imu="ok")
         self.phase = "idle"                     # idle, starting, waiting_gps, takeoff, enroute, arrived, ...
         self.phase_detail = "Choose a start point and a destination on the map, then Start."
@@ -440,7 +446,7 @@ class Simulator(Node):
             # the new start with where the previous mission ended).
             self.procs["estimator"].cmd = [
                 "ros2", "run", "navera_estimator", "estimator_node.py", "--ros-args",
-                "-p", f"max_speed_mps:={MAX_SPEED[c['vehicle']]}"]
+                "-p", f"max_speed_mps:={c['max_speed_mps']}"]
             for name in ("estimator", "gps_node"):
                 self.procs[name].start()
             self.gps.set_mode(self.faults["gps"])
@@ -562,14 +568,16 @@ class Simulator(Node):
                 self.event("warn", "day vision: no prepared map area for this route — "
                                    "prepare the map to use day vision")
             else:
-                self._start_proc("day_vision", ["ros2", "run", "day_pkg", "day_subscriber.py"],
+                self._start_proc("day_vision", ["ros2", "run", "day_pkg", "day_subscriber.py", "--ros-args",
+                                                "-p", f"max_speed_mps:={self.cfg['max_speed_mps']}"],
                                  env={"DAY_DATASET_DIR": self.areas.path(area)})
                 self.daycam.start()
                 self.event("info", "day vision: loading DINOv2 and the prepared area…")
         if "night_vision" in want and "night_vision" not in running:
             self._start_proc("night_vision", [
                 "ros2", "run", "night_pkg", "night_subscriber.py", "--ros-args",
-                "-p", f"mbtiles:={self._night_map()}", "-p", "camera_hfov_deg:=84.0"])
+                "-p", f"mbtiles:={self._night_map()}", "-p", "camera_hfov_deg:=84.0",
+                "-p", f"max_speed_mps:={self.cfg['max_speed_mps']}"])
             self.nightcam.start()
             self.event("info", "night vision: loading the STHN network (thermal camera, "
                                "84° field of view)…")
@@ -650,6 +658,11 @@ class Simulator(Node):
                 if light == "night" and float(body.get("alt", 400)) < 350:
                     self.event("warn", "night vision needs about 350 m or more with this 84° "
                                        "camera: below, it will report 'fly higher'")
+            vmax = float(body.get("max_speed_mps", MAX_SPEED[vehicle]))
+            if not 1.0 <= vmax <= MAX_SPEED_LIMIT:
+                raise ValueError(f"maximum speed must be between 1 and {MAX_SPEED_LIMIT:.0f} m/s "
+                                 f"({MAX_SPEED_LIMIT * 3.6:.0f} km/h)")
+            cruise = max(1.0, min(SIM_CRUISE_MAX[vehicle], vmax, float(body.get("speed", spd))))
             self.faults["light"] = light
             self.areas.current = area
             self.start_mission(dict(
@@ -657,8 +670,7 @@ class Simulator(Node):
                 degraded_sigma_m=max(5.0, min(2000.0, float(body.get("degraded_sigma_m", 300.0)))),
                 vehicle=vehicle, start=[float(start[0]), float(start[1])],
                 dest=[float(dest[0]), float(dest[1])],
-                speed=max(1.0, min({"drone": 20.0, "boat": 15.0, "robot": 8.0}[vehicle],
-                                   float(body.get("speed", spd)))),
+                speed=cruise, max_speed_mps=vmax,
                 alt=max(30.0, min(400.0, float(body.get("alt", alt)))),
                 profile="target" if body.get("profile") == "target" else "measured",
                 forward_degraded=bool(body.get("forward_degraded", False))))
