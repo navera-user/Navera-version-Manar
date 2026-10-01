@@ -74,7 +74,7 @@ DEFAULTS = {"drone": (15.0, 150.0), "boat": (8.0, 0.0), "robot": (4.0, 0.0)}
 # plausibility gate and the vision motion gates. The operator sets the real
 # vehicle's top speed (a fast aircraft: hundreds of m/s).
 MAX_SPEED = {"drone": 30.0, "boat": 20.0, "robot": 10.0}
-MAX_SPEED_LIMIT = 350.0     # m/s (~1260 km/h): highest top speed accepted
+MAX_SPEED_LIMIT = 525.0     # m/s (1890 km/h = 1260 km/h cruise + 50 %): highest top speed accepted
 # What the simulated autopilot can actually fly (ArduCopter WPNAV_SPEED ≤ 20 m/s,
 # ArduPilot Rover models): the cruise speed is capped here, whatever the top speed.
 SIM_CRUISE_MAX = {"drone": 20.0, "boat": 15.0, "robot": 8.0}

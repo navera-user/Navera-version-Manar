@@ -467,9 +467,6 @@ header .hbtn.danger{background:#fff}
         <div class="lbl2"><label for="wCruise" data-i18n="cruiseT">Cruise speed</label></div>
         <div class="field"><div class="in"><input id="wCruise" type="number" min="1" max="1260" step="1" inputmode="numeric"><span class="unit">km/h</span></div></div>
         <p class="help" style="margin:8px 0 0" data-i18n="cruiseH">The speed at which the vehicle travels the route.</p>
-        <div class="lbl2"><label for="wVmax" data-i18n="vmaxT">Maximum speed of the vehicle</label></div>
-        <div class="field"><div class="in"><input id="wVmax" type="number" min="4" max="1260" step="1" inputmode="numeric"><span class="unit">km/h</span></div></div>
-        <p class="help" style="margin:8px 0 0" data-i18n="vmaxH">The highest speed your vehicle can reach — for example 900 km/h for a fast aircraft. NAVERA uses it to reject impossible positions (GPS spoofing, false matches).</p>
         <div class="notice info" id="wSpdNote"></div>
         <div id="wAltQ">
           <div class="lbl2"><label for="wAltIn" data-i18n="flightAlt">Flight altitude</label></div>
@@ -498,6 +495,10 @@ header .hbtn.danger{background:#fff}
       <details class="adv" id="adv">
         <summary>⚙ <span data-i18n="advanced">Advanced settings</span> <small data-i18n="advSub">for engineers — the defaults are right for a demonstration</small></summary>
         <div class="advbody">
+          <div class="sec" data-i18n="vmaxT">Maximum speed of the vehicle</div>
+          <label class="chk"><input type="checkbox" id="wVmaxAuto"> <span data-i18n="vmaxAuto">Automatic: cruise speed + 50 % (at least + 18 km/h)</span></label>
+          <div class="field"><div class="in"><input id="wVmax" type="number" min="4" max="1890" step="1" inputmode="numeric"><span class="unit">km/h</span></div></div>
+          <div class="note" data-i18n="vmaxH2">NAVERA rejects any position the vehicle could not reach at this speed (GPS spoofing, false matches). It must stay above the real ground speed, tailwind included.</div>
           <div class="sec" data-i18n="gpsLost">Position when GPS is lost</div>
           <div class="cards" id="wVision">
             <div class="mcard" data-v="real"><div class="n" data-i18n="realVision">Real NAVERA vision</div><div class="d" data-i18n="realVisionD">The real software localises the simulated camera image (drone only).</div></div>
@@ -582,7 +583,7 @@ const I18N = {
     hintReady:'Prêt : cliquez sur Lancer la mission', needRoute:"Placez le départ (A) et l'arrivée (B)",
     needPrepare:'Préparez la carte (onglet Carte)', needPrepareNight:'Hors de la carte embarquée : préparez la carte (onglet Carte)',
     blocked:'Démarrage bloqué : remettez le récepteur GPS sur OK', mapReady:'carte prête pour la vision', notPrepared:'non préparée',
-    noInternet:'Pas de connexion internet : carte embarquée affichée.', noSpace:'espace disque insuffisant', cruiseT:'Vitesse de croisière', cruiseH:'La vitesse à laquelle le véhicule parcourt le trajet.', altH:'Hauteur au-dessus du sol. Repères : drones 50–400 m, avions légers 1 000–3 000 m, avions de ligne 10 000–12 000 m, jets d\'affaires jusqu\'à environ 15 000 m.', fpLine:'La caméra voit environ {w} m de sol en largeur.', altCap:'Dans cette simulation, le drone monte au plus à {a} m.', cruiseBad:'Vitesse de croisière : entre 1 km/h et la vitesse maximale', altBad:'Altitude : entre 10 et 20 000 m', altWarn2:'La nuit, la caméra demande 350 m ou plus : augmentez l\'altitude.', vmaxT:'Vitesse maximale du véhicule', vmaxH:'La vitesse la plus élevée que votre véhicule peut atteindre — par exemple 900 km/h pour un avion rapide. NAVERA s\'en sert pour rejeter les positions impossibles (leurrage GPS, fausses correspondances).', vmaxBad:'Vitesse maximale : entre 4 et 1260 km/h', simCap:'Dans cette simulation, le {v} va au plus à {s} km/h (modèle ArduPilot) : les contrôles de NAVERA utilisent votre vitesse maximale, le véhicule simulé reste à sa propre limite.', noSpace2:'Espace disque insuffisant pour la carte satellite de ce trajet : libérez de la place, raccourcissez le trajet, ou choisissez une position simulée dans les réglages avancés', tooLong:'trajet trop long à préparer',
+    noInternet:'Pas de connexion internet : carte embarquée affichée.', noSpace:'espace disque insuffisant', vmaxAuto:'Automatique : vitesse de croisière + 50 % (au moins + 18 km/h)', vmaxH2:'NAVERA rejette toute position que le véhicule ne pourrait pas atteindre à cette vitesse (leurrage GPS, fausses correspondances). Elle doit rester au-dessus de la vitesse sol réelle, vent arrière compris.', vmaxBad2:'Vitesse maximale : au-dessus de la vitesse de croisière, au plus 1890 km/h', auto:'automatique', cruiseT:'Vitesse de croisière', cruiseH:'La vitesse à laquelle le véhicule parcourt le trajet.', altH:'Hauteur au-dessus du sol. Repères : drones 50–400 m, avions légers 1 000–3 000 m, avions de ligne 10 000–12 000 m, jets d\'affaires jusqu\'à environ 15 000 m.', fpLine:'La caméra voit environ {w} m de sol en largeur.', altCap:'Dans cette simulation, le drone monte au plus à {a} m.', cruiseBad:'Vitesse de croisière : entre 1 km/h et la vitesse maximale', altBad:'Altitude : entre 10 et 20 000 m', altWarn2:'La nuit, la caméra demande 350 m ou plus : augmentez l\'altitude.', vmaxT:'Vitesse maximale du véhicule', vmaxH:'La vitesse la plus élevée que votre véhicule peut atteindre — par exemple 900 km/h pour un avion rapide. NAVERA s\'en sert pour rejeter les positions impossibles (leurrage GPS, fausses correspondances).', vmaxBad:'Vitesse maximale : entre 4 et 1260 km/h', simCap:'Dans cette simulation, le {v} va au plus à {s} km/h (modèle ArduPilot) : les contrôles de NAVERA utilisent votre vitesse maximale, le véhicule simulé reste à sa propre limite.', noSpace2:'Espace disque insuffisant pour la carte satellite de ce trajet : libérez de la place, raccourcissez le trajet, ou choisissez une position simulée dans les réglages avancés', tooLong:'trajet trop long à préparer',
     checking:'Vérification de la couverture…', prepStarted:'Préparation de la carte lancée',
     tooLongLaunch:'Trajet trop long pour la vraie vision : raccourcissez-le ou choisissez une vision simulée',
     toDownload:'à télécharger', elapsed:'écoulé', bigPrep:'Préparation importante', continueQ:'Continuer ?'},
@@ -642,7 +643,7 @@ const I18N = {
     hintReady:'جاهز: اضغط إطلاق المهمة', needRoute:'حدد نقطة الانطلاق (A) والوجهة (B)', needPrepare:'حضّر الخريطة (تبويب الخريطة)',
     needPrepareNight:'خارج الخريطة المدمجة: حضّر الخريطة أولاً', blocked:'الإقلاع متوقف: أعد مستقبل GPS إلى الوضع السليم',
     mapReady:'الخريطة جاهزة للرؤية', notPrepared:'غير محضّرة', noInternet:'لا يوجد اتصال بالإنترنت: عرض الخريطة المدمجة.',
-    tooLong:'المسار طويل جداً للتحضير', noSpace:'مساحة القرص غير كافية', cruiseT:'سرعة التنقل', cruiseH:'السرعة التي تقطع بها المركبة المسار.', altH:'الارتفاع فوق الأرض. للمقارنة: الطائرات المسيرة 50–400 م، الطائرات الخفيفة 1000–3000 م، طائرات الركاب 10000–12000 م، طائرات رجال الأعمال حتى نحو 15000 م.', fpLine:'ترى الكاميرا نحو {w} م من الأرض عرضاً.', altCap:'في هذه المحاكاة لا تصعد الطائرة أكثر من {a} م.', cruiseBad:'سرعة التنقل: بين 1 كم/س والسرعة القصوى', altBad:'الارتفاع: بين 10 و20000 م', altWarn2:'ليلاً تحتاج الكاميرا 350 م أو أكثر: ارفع الارتفاع.', vmaxT:'السرعة القصوى للمركبة', vmaxH:'أعلى سرعة يمكن أن تبلغها مركبتك — مثلاً 900 كم/س لطائرة سريعة. يستعملها NAVERA لرفض المواقع المستحيلة (خداع GPS، مطابقات خاطئة).', vmaxBad:'السرعة القصوى: بين 4 و1260 كم/س', simCap:'في هذه المحاكاة لا تتجاوز سرعة {v} {s} كم/س (نموذج ArduPilot): فحوص NAVERA تستعمل سرعتك القصوى، والمركبة المحاكاة تبقى عند حدها.', noSpace2:'مساحة القرص غير كافية لخريطة هذا المسار: حرّر مساحة أو اختصر المسار أو اختر موقعاً محاكى في الإعدادات المتقدمة', checking:'جارٍ التحقق من التغطية…', prepStarted:'بدأ تحضير الخريطة',
+    tooLong:'المسار طويل جداً للتحضير', noSpace:'مساحة القرص غير كافية', vmaxAuto:'تلقائي: سرعة التنقل + 50 % (على الأقل + 18 كم/س)', vmaxH2:'يرفض NAVERA أي موقع لا يمكن للمركبة بلوغه بهذه السرعة (خداع GPS، مطابقات خاطئة). يجب أن تبقى فوق السرعة الأرضية الحقيقية، مع الرياح الخلفية.', vmaxBad2:'السرعة القصوى: فوق سرعة التنقل، 1890 كم/س على الأكثر', auto:'تلقائي', cruiseT:'سرعة التنقل', cruiseH:'السرعة التي تقطع بها المركبة المسار.', altH:'الارتفاع فوق الأرض. للمقارنة: الطائرات المسيرة 50–400 م، الطائرات الخفيفة 1000–3000 م، طائرات الركاب 10000–12000 م، طائرات رجال الأعمال حتى نحو 15000 م.', fpLine:'ترى الكاميرا نحو {w} م من الأرض عرضاً.', altCap:'في هذه المحاكاة لا تصعد الطائرة أكثر من {a} م.', cruiseBad:'سرعة التنقل: بين 1 كم/س والسرعة القصوى', altBad:'الارتفاع: بين 10 و20000 م', altWarn2:'ليلاً تحتاج الكاميرا 350 م أو أكثر: ارفع الارتفاع.', vmaxT:'السرعة القصوى للمركبة', vmaxH:'أعلى سرعة يمكن أن تبلغها مركبتك — مثلاً 900 كم/س لطائرة سريعة. يستعملها NAVERA لرفض المواقع المستحيلة (خداع GPS، مطابقات خاطئة).', vmaxBad:'السرعة القصوى: بين 4 و1260 كم/س', simCap:'في هذه المحاكاة لا تتجاوز سرعة {v} {s} كم/س (نموذج ArduPilot): فحوص NAVERA تستعمل سرعتك القصوى، والمركبة المحاكاة تبقى عند حدها.', noSpace2:'مساحة القرص غير كافية لخريطة هذا المسار: حرّر مساحة أو اختصر المسار أو اختر موقعاً محاكى في الإعدادات المتقدمة', checking:'جارٍ التحقق من التغطية…', prepStarted:'بدأ تحضير الخريطة',
     tooLongLaunch:'المسار طويل جداً للرؤية الحقيقية: اختصره أو اختر رؤية محاكاة',
     toDownload:'للتحميل', elapsed:'مضى', bigPrep:'تحضير كبير', continueQ:'متابعة؟'},
 };
@@ -751,10 +752,14 @@ const vehName = () => t(cfg.vehicle, VEH_NAME[cfg.vehicle]);
 // vmax: the vehicle's top speed (m/s), set by the operator — NAVERA's plausibility and motion gates
 const VMAX_DEF = {drone:30, boat:20, robot:10};
 const SIM_CRUISE_MAX = {drone:20, boat:15, robot:8};    // what the simulated autopilot can fly
-const cfg = {light:'day', vehicle:'drone', speed:15, alt:150, vision:'real', fwd:true, sigma:300, vmax:30};
+const cfg = {light:'day', vehicle:'drone', speed:15, alt:150, vision:'real', fwd:true, sigma:300, vmax:30, vmaxAuto:true};
+// automatic top speed: cruise + 50 %, and at least cruise + 5 m/s (slow vehicles keep a margin)
+const autoVmax = v => Math.max(v * 1.5, v + 5);
 try{ Object.assign(cfg, JSON.parse(localStorage.getItem('navera.cfg') || '{}')); }catch(e){}
 if(!DEF[cfg.vehicle]) cfg.vehicle = 'drone';
-if(!(cfg.vmax >= 1 && cfg.vmax <= 350)) cfg.vmax = VMAX_DEF[cfg.vehicle];
+if(!(cfg.vmax >= 1 && cfg.vmax <= 525)) cfg.vmax = VMAX_DEF[cfg.vehicle];
+if(cfg.vmaxAuto !== false) cfg.vmaxAuto = true;
+if(cfg.vmaxAuto) cfg.vmax = autoVmax(cfg.speed);
 cfg.alt = Math.max(10, Math.min(20000, cfg.alt));
 const saveCfg = () => { try{ localStorage.setItem('navera.cfg', JSON.stringify(cfg)); }catch(e){} };
 // What NAVERA does on each vehicle: [state ok|no|plan|info, title key, title, detail key, detail]
@@ -768,12 +773,10 @@ const CAPS = {
   boat:[CAP_GPS,
     ['no', 'capSat', 'Satellite vision', 'capSatBoatD', 'A camera at water level sees waves and the horizon, not a satellite view, and the sea has no fixed landmarks. Not available: the vision position is simulated here.'],
     ['ok', 'capCn', 'Celestial (stars)', 'capCnBoatD', 'At night: position from the stars. Coarse (tens of km), limited by the IMU attitude.'],
-    ['plan', 'capNext', 'In development', 'capNextBoatD', 'Dead reckoning (IMU + speed log) and coastline matching.'],
     ['info', 'capAp', 'Autopilot', 'capApBoat', 'ArduPilot Rover (motorboat), which receives NAVERA as its GPS.']],
   robot:[CAP_GPS,
     ['no', 'capSat', 'Satellite vision', 'capSatRobotD', 'A camera at ground level looks forward, not down: it cannot be matched with a satellite map. Not available: the vision position is simulated here.'],
     ['ok', 'capCn', 'Celestial (stars)', 'capCnD', 'At night: position from the stars. Coarse (tens of km), limited by the IMU attitude.'],
-    ['plan', 'capNext', 'In development', 'capNextRobotD', 'Dead reckoning (IMU + wheel odometry) and visual odometry.'],
     ['info', 'capAp', 'Autopilot', 'capApRover', 'ArduPilot Rover, which receives NAVERA as its GPS.']],
 };
 const CAP_SYM = {ok:'✓', no:'✗', plan:'…', info:'i'};
@@ -800,15 +803,17 @@ function homeRender(){
   document.querySelectorAll('#wVeh .opt').forEach(c => c.classList.toggle('on', c.dataset.v === cfg.vehicle));
   document.querySelectorAll('#wMode .opt').forEach(c => c.classList.toggle('on', c.dataset.v === cfg.light));
   $('capLine').innerHTML = CAPS[cfg.vehicle].filter(c => c[0] !== 'info').map(([st, tk, tt, dk, dd]) =>
-    `<span class="${st}" title="${esc(t(dk, dd))}">${{ok:'✓', no:'✗', plan:'…'}[st]} ${esc(t(tk, tt))}</span>`).join('');
+    `<span class="${st}" title="${esc(t(dk, dd))}">${{ok:'✓', no:'✗', plan:'…'}[st]} ${esc(t(tk, tt))}${st === 'plan' ? ': ' + esc(t(dk, dd)) : ''}</span>`).join('');
   $('dayModeD').textContent = drone ? t('dayPlain', 'The camera recognises the ground on the satellite map.')
     : t('dayPlainG', 'NAVERA protects the GPS; the position without GPS is simulated.');
   $('nightModeD').textContent = drone ? t('nightPlain', 'Thermal camera and the stars. The drone flies high (≥ 350 m).')
     : t('nightPlainG', 'NAVERA protects the GPS and finds its position from the stars.');
   if(document.activeElement !== $('wCruise')) $('wCruise').value = kmh(cfg.speed);
+  if(cfg.vmaxAuto) cfg.vmax = autoVmax(cfg.speed);
+  $('wVmaxAuto').checked = cfg.vmaxAuto; $('wVmax').disabled = cfg.vmaxAuto;
   if(document.activeElement !== $('wVmax')) $('wVmax').value = Math.round(cfg.vmax * 3.6);
   const simMax = SIM_CRUISE_MAX[cfg.vehicle];
-  $('wSpdNote').textContent = Math.max(cfg.vmax, cfg.speed) > simMax
+  $('wSpdNote').textContent = cfg.speed > simMax
     ? t('simCap', 'In this simulation the {v} moves at {s} km/h at most (the ArduPilot model): NAVERA’s checks use your speeds, the simulated vehicle stays at its own limit.')
         .replace('{v}', vehName().toLowerCase()).replace('{s}', kmh(simMax)) : '';
   $('wAltQ').classList.toggle('hidden', !drone);
@@ -842,7 +847,7 @@ function summaryHTML(){
     [t('travelTime', 'Travel time'), d ? fmtTime(d / Math.max(1, cfg.speed)) : '—'],
     [t('timeOfDay', 'Time of day'), cfg.light === 'night' ? t('fNight', 'Night') : t('fDay', 'Day')],
     [t('speed','Speed'), `${cfg.speed} m/s · ${kmh(cfg.speed)} km/h`],
-    [t('vmaxT', 'Maximum speed of the vehicle'), `${kmh(cfg.vmax)} km/h`],
+    [t('vmaxT', 'Maximum speed of the vehicle'), `${kmh(cfg.vmax)} km/h` + (cfg.vmaxAuto ? ` (${t('auto', 'automatic')})` : '')],
     ...(cfg.vehicle === 'drone' ? [[t('altitude','Altitude'), Math.round(cfg.alt).toLocaleString() + ' m']] : []),
     [t('satMap', 'Satellite map'), !needsMap() ? t('notNeeded', 'not needed') : (areaReady || (cfg.light === 'night' && areaCovered)) ? '✓ ' + t('ready', 'ready') : t('notPrepared', 'not prepared')],
     [t('gpsLost','Position when GPS is lost'), vis],
@@ -869,7 +874,7 @@ document.querySelectorAll('#wMode .opt').forEach(c => c.onclick = () => {
 });
 document.querySelectorAll('#wVeh .opt').forEach(c => c.onclick = () => {
   if(cfg.vehicle === c.dataset.v) return;
-  cfg.vehicle = c.dataset.v; cfg.speed = DEF[cfg.vehicle][0]; cfg.vmax = VMAX_DEF[cfg.vehicle];
+  cfg.vehicle = c.dataset.v; cfg.speed = DEF[cfg.vehicle][0]; cfg.vmaxAuto = true;
   if(cfg.vehicle === 'drone') cfg.alt = cfg.light === 'night' ? 400 : DEF.drone[1];
   cfg.vision = cfg.vehicle === 'drone' ? 'real' : 'measured';
   homeRender(); drawPlan();
@@ -886,14 +891,14 @@ const typedField = (id, lo, hi, msgKey, msg, apply) => {
 };
 typedField('wCruise', 1, 1260, 'cruiseBad', 'Cruise speed: between 1 km/h and the maximum speed', v => {
   cfg.speed = Math.round(v / 3.6 * 10) / 10;
-  if(cfg.speed > cfg.vmax) cfg.vmax = cfg.speed;            // a cruise above the top speed raises it
+  if(!cfg.vmaxAuto && cfg.vmax < autoVmax(cfg.speed) / 1.5) cfg.vmax = autoVmax(cfg.speed);   // never below the cruise
 });
 typedField('wAltIn', 10, 20000, 'altBad', 'Altitude: between 10 and 20 000 m', v => { cfg.alt = v; });
+$('wVmaxAuto').onchange = () => { cfg.vmaxAuto = $('wVmaxAuto').checked; homeRender(); };
 $('wVmax').onchange = () => {
   const v = +$('wVmax').value;
-  if(!(v >= 4 && v <= 1260)){ toast(t('vmaxBad', 'Maximum speed: between 4 and 1260 km/h')); $('wVmax').value = Math.round(cfg.vmax * 3.6); return; }
+  if(!(v >= 4 && v <= 1890 && v / 3.6 > cfg.speed)){ toast(t('vmaxBad2', 'Maximum speed: above the cruise speed, at most 1890 km/h')); $('wVmax').value = Math.round(cfg.vmax * 3.6); return; }
   cfg.vmax = v / 3.6;
-  if(cfg.speed > cfg.vmax) cfg.speed = Math.round(cfg.vmax * 10) / 10;
   homeRender(); drawPlan();
 };
 $('wFwd').onchange = () => { cfg.fwd = $('wFwd').checked; homeRender(); };
@@ -1442,7 +1447,7 @@ function render(d){
     restored = true;
     Object.assign(cfg, {vehicle:d.cfg.vehicle, speed:d.cfg.speed, alt:d.cfg.alt, light:d.faults.light,
       vision:d.cfg.vision === 'real' ? 'real' : d.cfg.profile, fwd:!!d.cfg.forward_degraded, sigma:d.cfg.degraded_sigma_m,
-      vmax:d.cfg.max_speed_mps || cfg.vmax});
+      vmax:d.cfg.max_speed_mps || cfg.vmax, vmaxAuto:false});
     if(d.cfg.req_alt) cfg.alt = d.cfg.req_alt;
     A = d.cfg.start; B = d.cfg.dest; planKey = JSON.stringify([A, B]); applyWorkspace();
   }
