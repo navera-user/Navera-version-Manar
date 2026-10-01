@@ -12,6 +12,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, Shutdown
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from navera_common.vehicle import imu_params
 
 
 def generate_launch_description():
@@ -38,6 +39,8 @@ def generate_launch_description():
                     'i2c_bus':      LaunchConfiguration('i2c_bus'),
                     'publish_rate': LaunchConfiguration('publish_rate'),
                 },
+                # installation settings (NAVERA_IMU_MOUNT_RPY, NAVERA_DECLINATION_DEG)
+                imu_params(),
             ],
         ),
     ])

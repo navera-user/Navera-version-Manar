@@ -12,6 +12,8 @@ Conflicts=navera-pipeline-day.service
 # Site settings shared by all NAVERA units (data paths, ROS_DOMAIN_ID...).
 # The leading "-" keeps the unit working if the file does not exist.
 EnvironmentFile=-/etc/navera/navera.env
+# Settings written by the web page (/mission), loaded after navera.env which they override.
+EnvironmentFile=-/var/lib/navera/settings.env
 Type=simple
 User=navera
 Group=navera

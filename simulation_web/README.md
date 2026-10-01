@@ -8,6 +8,24 @@
 Endpoints and security rules: [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) §6. The shared
 HTTP layer (token, JSON limits, tile bounds, static files) is `simulation_web/web_common.py`.
 
+## Mission preparation on the box (`/mission`)
+The page an operator uses on the vehicle, in three steps:
+1. **Vehicle** — type, maximum speed, thermal camera field of view, IMU mounting,
+   declination. Saved to `/var/lib/navera/settings.env` (validated keys only, atomic
+   write), which every NAVERA unit loads after `/etc/navera/navera.env`; **Apply**
+   try-restarts the running NAVERA units.
+2. **Route** — the autopilot's mission file (Mission Planner `.waypoints`, QGroundControl
+   `.plan`) or two clicks on the map; split into ≤ 10 km legs so the map follows the
+   flown path.
+3. **Satellite map** — generated with `prepare_area.py` into `$NAVERA_AREAS_DIR` (onboard
+   MBTiles, plus downloads when `NAVERA_TILE_URL` is set), then **Activate** points
+   `DAY_DATASET_DIR` at it and restarts the day pipeline.
+
+Every change needs the control code (`NAVERA_WEB_TOKEN`); without it the page is read-only.
+The only root action the web service may take is restarting NAVERA's units, through
+`deploy/sudoers/navera-web` (exact commands). Logic and tests: `mission_prep.py`,
+`test/test_mission_prep.py`.
+
 ## Launch files
 | File | Starts |
 |---|---|

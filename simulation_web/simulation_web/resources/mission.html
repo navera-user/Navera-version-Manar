@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NAVERA Mission Preparation</title>
+<link rel="stylesheet" href="/leaflet/leaflet.min.css"/>
+<script src="/leaflet/leaflet.min.js"></script>
+<style>
+:root{--navy:#0f2a4a;--accent:#1d4ed8;--ok:#15803d;--warn:#a16207;--bad:#b91c1c;--line:#cbd5e1;--mute:#475569;--bg:#f8fafc}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:#0f172a;font:16px/1.45 Inter,'Segoe UI',system-ui,-apple-system,sans-serif}
+button,input,select{font:inherit;color:inherit}
+.hidden{display:none!important}
+#app{display:grid;grid-template-rows:64px auto minmax(0,1fr);height:100%}
+header{background:var(--navy);color:#fff;display:flex;align-items:center;gap:16px;padding:0 24px}
+.logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:17px;letter-spacing:.5px}
+.logo i{width:32px;height:32px;border-radius:9px;background:rgba(255,255,255,.12);display:grid;place-items:center;font-style:normal}
+.sub{font-size:17px;font-weight:600;color:#cbd5e1;border-inline-start:1px solid rgba(255,255,255,.25);padding-inline-start:16px}
+header a{color:#e2e8f0;font-weight:600;text-decoration:none;border:1px solid rgba(255,255,255,.3);padding:7px 12px;border-radius:8px;font-size:14px}
+.lang{display:flex;border:1px solid rgba(255,255,255,.3);border-radius:8px;overflow:hidden}
+.lang button{border:0;background:none;padding:7px 11px;cursor:pointer;font-weight:700;font-size:13px;color:#e2e8f0}
+.lang button.on{background:#fff;color:var(--navy)}
+#auth{display:flex;align-items:center;gap:12px;padding:10px 24px;background:#fff;border-bottom:1px solid var(--line);font-size:15px;flex-wrap:wrap}
+#auth input{border:2px solid #94a3b8;border-radius:8px;padding:7px 10px;width:220px}
+#auth .st{font-weight:700}
+main{display:grid;grid-template-columns:minmax(420px,540px) minmax(0,1fr);min-height:0}
+.form{overflow-y:auto;padding:4px 26px 40px;background:#fff;border-inline-end:1px solid var(--line)}
+#map{height:100%;background:#dde3ea}
+.mapwrap{position:relative;min-height:0}
+#layers{position:absolute;z-index:900;right:12px;top:12px;background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(15,23,42,.2);display:flex;overflow:hidden}
+#layers button{border:0;background:none;padding:8px 12px;cursor:pointer;font-weight:600;font-size:13px}
+#layers button.on{background:var(--accent);color:#fff}
+.hs{padding:22px 0;border-bottom:1px solid #e2e8f0}
+.hs h2{font-size:21px;display:flex;gap:12px;align-items:center;margin-bottom:6px}
+.hs h2 .n{width:34px;height:34px;border-radius:50%;background:var(--navy);color:#fff;font-size:17px;display:grid;place-items:center;flex:none}
+.help{color:#334155;font-size:15px;margin-bottom:12px}
+.lbl{font-weight:700;margin:14px 0 6px;display:block}
+.in{display:flex;gap:8px;align-items:center}
+.in input,.in select{flex:1;min-width:0;font-size:17px;padding:11px 12px;border:2px solid #94a3b8;border-radius:10px;background:#fff}
+.in input:focus,.in select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(29,78,216,.18)}
+.unit{font-weight:700;color:#334155;min-width:46px}
+.rpy{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.rpy .unit{min-width:0}
+.rpy small{display:block;color:var(--mute);font-size:13px;margin-bottom:3px}
+.note{font-size:13.5px;color:var(--mute);margin-top:4px}
+.btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+.btn{font-size:16px;font-weight:700;padding:12px 18px;border-radius:10px;border:2px solid #94a3b8;background:#fff;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.go{background:var(--ok);border-color:var(--ok);color:#fff}
+.btn:disabled{background:#e2e8f0;border-color:#e2e8f0;color:#64748b;cursor:not-allowed}
+.notice{border-radius:10px;padding:11px 13px;font-size:15px;margin-top:12px}
+.notice:empty{display:none}
+.notice.ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#14532d} .notice.warn{background:#fffbeb;border:1px solid #fde68a;color:#78350f}
+.notice.bad{background:#fef2f2;border:1px solid #fecaca;color:#7f1d1d} .notice.info{background:#f8fafc;border:1px solid #e2e8f0;color:#334155}
+.facts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.facts div{background:#f1f5f9;border-radius:10px;padding:9px 11px} .facts small{display:block;color:var(--mute);font-size:13px} .facts b{font-size:18px}
+.bar{height:12px;background:#e2e8f0;border-radius:6px;overflow:hidden;margin-top:12px}
+.bar div{height:100%;width:0;background:var(--accent);transition:width .4s}
+.file{display:flex;align-items:center;gap:10px;border:2px dashed #94a3b8;border-radius:10px;padding:14px;cursor:pointer;background:#f8fafc}
+.file input{display:none}
+.or{text-align:center;color:var(--mute);margin:10px 0;font-size:14px}
+html[dir=rtl] .form{border-inline-end:0;border-inline-start:1px solid var(--line)}
+@media (max-width:1000px){main{grid-template-columns:1fr;grid-template-rows:auto 420px}#app{height:auto}.form{border:0}}
+</style>
+</head>
+<body>
+<div id="app">
+<header>
+  <div class="logo"><i>✈</i>NAVERA</div>
+  <span class="sub" data-i18n="title">Mission preparation</span>
+  <div style="flex:1"></div>
+  <a href="/operator" data-i18n="operator">Operator view</a>
+  <div class="lang"><button data-v="fr">FR</button><button data-v="en">EN</button><button data-v="ar">ع</button></div>
+</header>
+<div id="auth">
+  <span data-i18n="code">Control code</span>
+  <input type="password" id="token" autocomplete="off">
+  <span class="st" id="authSt"></span>
+</div>
+<main>
+<div class="form">
+  <section class="hs">
+    <h2><span class="n">1</span><span data-i18n="vehicle">Vehicle</span></h2>
+    <p class="help" data-i18n="vehicleH">Set once per vehicle. Empty fields keep the value of the installation file (shown in grey).</p>
+    <label class="lbl" for="sType" data-i18n="type">Vehicle type</label>
+    <div class="in"><select id="sType"><option value=""></option><option value="drone" data-i18n="drone">Drone</option><option value="plane" data-i18n="plane">Plane</option><option value="boat" data-i18n="boat">Boat</option><option value="robot" data-i18n="robot">Ground robot</option><option value="other" data-i18n="other">Other</option></select></div>
+    <label class="lbl" for="sVmax" data-i18n="vmax">Maximum speed of the vehicle</label>
+    <div class="in"><input id="sVmax" type="number" min="4" max="1890" step="1"><span class="unit">km/h</span></div>
+    <div class="note" data-i18n="vmaxH">Cruise speed + 50 %, tailwind included. NAVERA refuses any position the vehicle could not have reached at this speed.</div>
+    <label class="lbl" for="sHfov" data-i18n="hfov">Thermal camera field of view (horizontal)</label>
+    <div class="in"><input id="sHfov" type="number" min="5" max="180" step="0.1"><span class="unit">°</span></div>
+    <span class="lbl" data-i18n="mount">IMU mounting on the vehicle</span>
+    <div class="rpy">
+      <div><small data-i18n="roll">Roll</small><div class="in"><input id="sRoll" type="number" min="-180" max="180" step="0.1"><span class="unit">°</span></div></div>
+      <div><small data-i18n="pitch">Pitch</small><div class="in"><input id="sPitch" type="number" min="-180" max="180" step="0.1"><span class="unit">°</span></div></div>
+      <div><small data-i18n="yaw">Yaw</small><div class="in"><input id="sYaw" type="number" min="-180" max="180" step="0.1"><span class="unit">°</span></div></div>
+    </div>
+    <div class="note" data-i18n="mountH">0 / 0 / 0 = IMU aligned with the vehicle (x forward, y left, z up). IMU turned 90° to the left: yaw 90.</div>
+    <label class="lbl" for="sDecl" data-i18n="decl">Magnetic declination until the first position (optional)</label>
+    <div class="in"><input id="sDecl" type="number" min="-90" max="90" step="0.1"><span class="unit">°</span></div>
+    <div class="note" data-i18n="declH">East positive. Once a position is known, NAVERA computes it with the World Magnetic Model.</div>
+    <div class="btns"><button class="btn primary" id="save" data-i18n="save">Save</button><button class="btn" id="apply" data-i18n="apply">Apply now (restarts NAVERA, ~30 s)</button></div>
+    <div class="notice" id="setMsg"></div>
+  </section>
+  <section class="hs">
+    <h2><span class="n">2</span><span data-i18n="route">Route</span></h2>
+    <p class="help" data-i18n="routeH">Import the autopilot's mission (Mission Planner .waypoints or QGroundControl .plan): the satellite map then follows exactly the route it will fly.</p>
+    <label class="file"><input type="file" id="file" accept=".waypoints,.txt,.plan,.json"><span style="font-size:24px">📄</span><span><b data-i18n="import">Import a mission file</b><br><span class="note" id="fileName" data-i18n="noFile">No file chosen</span></span></label>
+    <div class="or" data-i18n="or">— or —</div>
+    <div class="help" data-i18n="drawH">Click on the map: first click = departure, second click = destination.</div>
+    <div class="btns" style="margin-top:0"><button class="btn" id="clear" data-i18n="clear">Clear the route</button></div>
+    <div class="facts"><div><small data-i18n="points">Points</small><b id="fPts">—</b></div><div><small data-i18n="length">Length</small><b id="fLen">—</b></div><div><small data-i18n="tiles">Map tiles</small><b id="fTiles">—</b></div></div>
+    <div class="notice" id="routeMsg"></div>
+  </section>
+  <section class="hs">
+    <h2><span class="n">3</span><span data-i18n="map">Satellite map</span></h2>
+    <p class="help" data-i18n="mapH">Day vision compares the camera with satellite images of a ±1 km corridor around the route. Generate them, then activate the map.</p>
+    <div class="notice info" id="cov"></div>
+    <div class="bar hidden" id="bar"><div></div></div>
+    <div class="note" id="prog"></div>
+    <div class="btns"><button class="btn primary" id="gen" disabled data-i18n="gen">Generate the map</button><button class="btn hidden" id="cancel" data-i18n="cancel">Cancel</button><button class="btn go" id="act" disabled data-i18n="act">Activate this map</button></div>
+    <div class="notice" id="mapMsg"></div>
+    <div class="notice info" id="activeMsg"></div>
+  </section>
+</div>
+<div class="mapwrap"><div id="map"></div><div id="layers"><button data-v="offline" class="on" data-i18n="lOff">Onboard map</button><button data-v="sat" data-i18n="lSat">Satellite (internet)</button></div></div>
+</main>
+</div>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const I18N = {
+  fr:{title:'Préparation de la mission', operator:'Vue opérateur', code:'Code de contrôle', vehicle:'Véhicule',
+    vehicleH:'À régler une fois par véhicule. Un champ vide garde la valeur du fichier d\'installation (en gris).', type:'Type de véhicule',
+    drone:'Drone', plane:'Avion', boat:'Bateau', robot:'Robot terrestre', other:'Autre', vmax:'Vitesse maximale du véhicule',
+    vmaxH:'Vitesse de croisière + 50 %, vent arrière compris. NAVERA refuse toute position que le véhicule n\'aurait pas pu atteindre à cette vitesse.',
+    hfov:'Champ de vision de la caméra thermique (horizontal)', mount:'Montage de l\'IMU sur le véhicule', roll:'Roulis', pitch:'Tangage', yaw:'Lacet',
+    mountH:'0 / 0 / 0 = IMU alignée avec le véhicule (x avant, y gauche, z haut). IMU tournée de 90° vers la gauche : lacet 90.',
+    decl:'Déclinaison magnétique jusqu\'à la première position (facultatif)', declH:'Est positif. Dès qu\'une position est connue, NAVERA la calcule avec le modèle magnétique mondial.',
+    save:'Enregistrer', apply:'Appliquer maintenant (redémarre NAVERA, ~30 s)', route:'Trajet',
+    routeH:'Importez la mission de l\'autopilote (.waypoints de Mission Planner ou .plan de QGroundControl) : la carte satellite suit alors exactement le trajet qu\'il volera.',
+    import:'Importer un fichier de mission', noFile:'Aucun fichier choisi', or:'— ou —', drawH:'Cliquez sur la carte : premier clic = départ, second clic = destination.',
+    clear:'Effacer le trajet', points:'Points', length:'Longueur', tiles:'Tuiles de carte', map:'Carte satellite',
+    mapH:'La vision de jour compare la caméra aux images satellite d\'un couloir de ±1 km autour du trajet. Générez-les, puis activez la carte.',
+    gen:'Générer la carte', cancel:'Annuler', act:'Activer cette carte', lOff:'Carte embarquée', lSat:'Satellite (internet)',
+    ro:'Lecture seule : aucun code de contrôle n\'est configuré sur le boîtier (NAVERA_WEB_TOKEN).', codeH:'Saisissez le code pour modifier.',
+    saved:'Enregistré. Appliquez pour que NAVERA l\'utilise.', applied:'Services NAVERA redémarrés.', ready:'Carte prête : activez-la.',
+    active:'Carte active de la vision de jour', activated:'Carte activée : la vision de jour a redémarré avec elle.', none:'aucune',
+    onboard:'dans la carte embarquée', downloaded:'déjà téléchargées', missing:'absentes', noDl:'aucune source de téléchargement configurée (NAVERA_TILE_URL) : la vision n\'aura pas d\'images là', disk:'disque'},
+  ar:{title:'تحضير المهمة', operator:'واجهة المشغل', code:'رمز التحكم', vehicle:'المركبة',
+    vehicleH:'يُضبط مرة لكل مركبة. الحقل الفارغ يحتفظ بقيمة ملف التثبيت (بالرمادي).', type:'نوع المركبة',
+    drone:'طائرة مسيرة', plane:'طائرة', boat:'قارب', robot:'روبوت أرضي', other:'أخرى', vmax:'السرعة القصوى للمركبة',
+    vmaxH:'سرعة التنقل + 50 %، مع الرياح الخلفية. يرفض NAVERA أي موقع لا يمكن للمركبة بلوغه بهذه السرعة.',
+    hfov:'زاوية رؤية الكاميرا الحرارية (أفقياً)', mount:'تركيب وحدة القياس على المركبة', roll:'الدوران', pitch:'الميل', yaw:'الاتجاه',
+    mountH:'0 / 0 / 0 = الوحدة موازية للمركبة (x إلى الأمام، y إلى اليسار، z إلى الأعلى). وحدة مدارة 90° إلى اليسار: الاتجاه 90.',
+    decl:'الانحراف المغناطيسي حتى أول موقع (اختياري)', declH:'الشرق موجب. بمجرد معرفة موقع، يحسبه NAVERA بالنموذج المغناطيسي العالمي.',
+    save:'حفظ', apply:'تطبيق الآن (يعيد تشغيل NAVERA، ~30 ث)', route:'المسار',
+    routeH:'استورد مهمة الطيار الآلي (.waypoints من Mission Planner أو .plan من QGroundControl): تتبع خريطة الأقمار الصناعية حينها المسار الذي سيطيره بالضبط.',
+    import:'استيراد ملف مهمة', noFile:'لم يُختر أي ملف', or:'— أو —', drawH:'انقر على الخريطة: النقرة الأولى = الانطلاق، الثانية = الوجهة.',
+    clear:'مسح المسار', points:'النقاط', length:'الطول', tiles:'مربعات الخريطة', map:'خريطة الأقمار الصناعية',
+    mapH:'تقارن الرؤية النهارية الكاميرا بصور الأقمار الصناعية لممر ±1 كم حول المسار. أنشئها ثم فعّل الخريطة.',
+    gen:'إنشاء الخريطة', cancel:'إلغاء', act:'تفعيل هذه الخريطة', lOff:'الخريطة المدمجة', lSat:'أقمار صناعية (إنترنت)',
+    ro:'للقراءة فقط: لا يوجد رمز تحكم مضبوط على الجهاز (NAVERA_WEB_TOKEN).', codeH:'أدخل الرمز للتعديل.',
+    saved:'تم الحفظ. طبّق ليستعمله NAVERA.', applied:'أُعيد تشغيل خدمات NAVERA.', ready:'الخريطة جاهزة: فعّلها.',
+    active:'الخريطة النشطة للرؤية النهارية', activated:'فُعّلت الخريطة: أُعيد تشغيل الرؤية النهارية بها.', none:'لا شيء',
+    onboard:'في الخريطة المدمجة', downloaded:'محمّلة مسبقاً', missing:'ناقصة', noDl:'لا يوجد مصدر تحميل مضبوط (NAVERA_TILE_URL): لن تجد الرؤية صوراً هناك', disk:'القرص'},
+};
+let LANG = 'en'; try{ LANG = localStorage.getItem('navera.lang') || 'en'; }catch(e){}
+const EN = {};
+const t = (k, en) => (I18N[LANG] && I18N[LANG][k]) || en || EN[k] || k;
+function applyLang(){
+  document.documentElement.lang = LANG; document.documentElement.dir = LANG === 'ar' ? 'rtl' : 'ltr';
+  document.querySelectorAll('[data-i18n]').forEach(el => { const k = el.dataset.i18n; if(!(k in EN)) EN[k] = el.textContent; el.textContent = LANG === 'en' ? EN[k] : t(k, EN[k]); });
+  document.querySelectorAll('.lang button').forEach(b => b.classList.toggle('on', b.dataset.v === LANG));
+  render();
+}
+document.querySelectorAll('.lang button').forEach(b => b.onclick = () => { LANG = b.dataset.v; try{ localStorage.setItem('navera.lang', LANG); }catch(e){} applyLang(); });
+
+/* ── control code ── */
+try{ $('token').value = sessionStorage.getItem('navera.token') || ''; }catch(e){}
+$('token').oninput = () => { try{ sessionStorage.setItem('navera.token', $('token').value); }catch(e){} render(); };
+async function post(action, body){
+  const r = await fetch('/api/mission/' + action, {method:'POST', headers:{'Content-Type':'application/json', 'X-Navera-Token':$('token').value}, body:JSON.stringify(body)});
+  let d = {}; try{ d = await r.json(); }catch(e){}
+  if(!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+  return d;
+}
+const say = (id, cls, msg) => { $(id).className = 'notice ' + cls; $(id).textContent = msg; };
+
+/* ── map ── */
+const map = L.map('map', {preferCanvas:true, worldCopyJump:true}).setView([35.83, 10.62], 11);
+const LAYERS = {
+  offline: L.tileLayer('/tiles/{z}/{x}/{y}.png', {maxZoom:20, maxNativeZoom:18, attribution:'Onboard map',
+    errorTileUrl:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'}),
+  sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom:19, attribution:'Imagery © Esri, Maxar'}),
+};
+function setLayer(v){ for(const l of Object.values(LAYERS)) map.removeLayer(l); LAYERS[v].addTo(map);
+  document.querySelectorAll('#layers button').forEach(b => b.classList.toggle('on', b.dataset.v === v)); }
+document.querySelectorAll('#layers button').forEach(b => b.onclick = () => setLayer(b.dataset.v));
+setLayer('offline');
+const line = L.polyline([], {color:'#1d4ed8', weight:4}).addTo(map), dots = L.layerGroup().addTo(map);
+
+/* ── state ── */
+let S = null, PLAN = null, drawn = [];
+const KEYS = {sType:'NAVERA_VEHICLE_TYPE', sVmax:'NAVERA_MAX_SPEED_KMH', sHfov:'NAVERA_THERMAL_HFOV_DEG', sDecl:'NAVERA_DECLINATION_DEG'};
+const km = m => m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`;
+function fillSettings(){
+  const cur = S.settings || {}, site = S.site || {};
+  for(const [id, k] of Object.entries(KEYS)){ if(document.activeElement !== $(id)) $(id).value = cur[k] ?? ''; $(id).placeholder = site[k] || ''; }
+  const rpy = (cur.NAVERA_IMU_MOUNT_RPY || '').split(','), srpy = (site.NAVERA_IMU_MOUNT_RPY || '').split(',');
+  ['sRoll', 'sPitch', 'sYaw'].forEach((id, i) => { if(document.activeElement !== $(id)) $(id).value = rpy[i] ?? ''; $(id).placeholder = srpy[i] || '0'; });
+}
+function render(){
+  const can = !!(S && S.control), coded = can && $('token').value.length > 0;
+  $('authSt').textContent = !S ? '' : !can ? t('ro', 'Read-only: no control code is configured on the box (NAVERA_WEB_TOKEN).') : coded ? '' : t('codeH', 'Enter the code to make changes.');
+  $('authSt').style.color = can ? 'var(--mute)' : 'var(--bad)';
+  for(const id of ['save', 'apply', 'clear']) $(id).disabled = !coded;
+  $('file').disabled = !coded;
+  const job = S && S.job, running = job && job.status === 'running' && PLAN && job.id === PLAN.id;
+  $('gen').disabled = !coded || !PLAN || PLAN.prepared || PLAN.no_space || !!(job && job.status === 'running');
+  $('act').disabled = !coded || !PLAN || !PLAN.prepared || PLAN.active;
+  $('cancel').classList.toggle('hidden', !running);
+  $('bar').classList.toggle('hidden', !running);
+  if(running){
+    const f = job.total ? job.done / job.total : 0;
+    const pct = job.stage === 'download' ? 45 * f : job.stage === 'tiles' ? 45 + 10 * f : job.stage === 'descriptors' ? 55 + 45 * f : 2;
+    $('bar').firstElementChild.style.width = pct.toFixed(0) + '%';
+    $('prog').textContent = `${job.stage} ${job.done}/${job.total}`;
+  } else $('prog').textContent = job && job.status === 'failed' ? '✗ ' + (job.error || '') : '';
+  if(PLAN){
+    $('cov').innerHTML = `<b>${PLAN.tiles}</b> ${esc(t('tiles', 'tiles').toLowerCase())}: ${PLAN.in_base} ${esc(t('onboard', 'in the onboard map'))} · ${PLAN.in_cache} ${esc(t('downloaded', 'already downloaded'))} · <b>${PLAN.missing_n}</b> ${esc(t('missing', 'missing'))}`
+      + ` · ${esc(t('disk', 'disk'))} ${PLAN.need_mb < 1024 ? Math.ceil(PLAN.need_mb) + ' MB' : (PLAN.need_mb / 1024).toFixed(1) + ' GB'} / ${(PLAN.free_mb / 1024).toFixed(0)} GB`
+      + (PLAN.missing_n && !PLAN.can_download ? `<br><b style="color:var(--warn)">⚠ ${esc(t('noDl', 'no download source is configured (NAVERA_TILE_URL): vision will have no images there'))}</b>` : '');
+    if(PLAN.prepared && !PLAN.active) say('mapMsg', 'ok', '✓ ' + t('ready', 'Map ready: activate it.'));
+  } else $('cov').textContent = '';
+  const act = S && S.active ? S.active.split('/').pop() : null;
+  $('activeMsg').textContent = `${t('active', 'Active map of day vision')}: ${act || t('none', 'none')}` + (PLAN && PLAN.active ? ' ✓' : '');
+}
+async function poll(){
+  try{
+    S = await (await fetch('/api/mission/state', {cache:'no-store'})).json();
+    if(!poll.filled){ fillSettings(); poll.filled = true; }
+    if(PLAN && S.job && S.job.id === PLAN.id && S.job.status === 'done' && !PLAN.prepared){ PLAN.prepared = true; }
+    render();
+  }catch(e){}
+  setTimeout(poll, 2000);
+}
+
+/* ── 1 vehicle settings ── */
+$('save').onclick = async () => {
+  const changes = {};
+  for(const [id, k] of Object.entries(KEYS)) changes[k] = $(id).value.trim();
+  const r = ['sRoll', 'sPitch', 'sYaw'].map(id => $(id).value.trim());
+  changes.NAVERA_IMU_MOUNT_RPY = r.every(v => v === '') ? '' : r.map(v => v || '0').join(',');
+  try{ const d = await post('settings', {changes}); S.settings = d.settings; say('setMsg', 'ok', '✓ ' + t('saved', 'Saved. Apply to make NAVERA use it.')); }
+  catch(e){ say('setMsg', 'bad', e.message); }
+};
+$('apply').onclick = async () => {
+  $('apply').disabled = true;
+  try{ await post('apply', {}); say('setMsg', 'ok', '✓ ' + t('applied', 'NAVERA services restarted.')); }
+  catch(e){ say('setMsg', 'bad', e.message); } finally{ render(); }
+};
+
+/* ── 2 route ── */
+async function plan(body){
+  say('routeMsg', 'info', '…');
+  try{
+    const d = await post('plan', body);
+    PLAN = d.plan; drawn = d.points;
+    line.setLatLngs(PLAN.route); dots.clearLayers();
+    d.points.forEach((p, i) => L.circleMarker(p, {radius:5, color:'#fff', weight:2, fillColor: i ? '#1d4ed8' : '#15803d', fillOpacity:1}).addTo(dots));
+    map.fitBounds(L.latLngBounds(PLAN.route).pad(0.2));
+    $('fPts').textContent = d.points.length; $('fLen').textContent = km(PLAN.length_m); $('fTiles').textContent = PLAN.tiles;
+    $('routeMsg').textContent = ''; $('mapMsg').textContent = '';
+  }catch(e){ PLAN = null; say('routeMsg', 'bad', e.message); }
+  render();
+}
+$('file').onchange = async () => {
+  const f = $('file').files[0]; if(!f) return;
+  $('fileName').textContent = f.name;
+  await plan({mission_text: await f.text()});
+  $('file').value = '';
+};
+map.on('click', e => {
+  if($('save').disabled) return;
+  const p = [e.latlng.lat, e.latlng.lng];
+  if(drawn.length >= 2 || PLAN) { drawn = []; PLAN = null; line.setLatLngs([]); dots.clearLayers(); }
+  drawn.push(p);
+  L.circleMarker(p, {radius:6, color:'#fff', weight:2, fillColor: drawn.length === 1 ? '#15803d' : '#b91c1c', fillOpacity:1}).addTo(dots);
+  if(drawn.length === 2) plan({route: drawn});
+});
+$('clear').onclick = () => { drawn = []; PLAN = null; line.setLatLngs([]); dots.clearLayers(); ['fPts', 'fLen', 'fTiles'].forEach(id => $(id).textContent = '—'); render(); };
+
+/* ── 3 map ── */
+$('gen').onclick = async () => { try{ await post('generate', {id:PLAN.id}); $('mapMsg').textContent = ''; }catch(e){ say('mapMsg', 'bad', e.message); } };
+$('cancel').onclick = async () => { try{ await post('cancel', {}); }catch(e){ say('mapMsg', 'bad', e.message); } };
+$('act').onclick = async () => {
+  $('act').disabled = true;
+  try{ await post('activate', {id:PLAN.id}); PLAN.active = true; say('mapMsg', 'ok', '✓ ' + t('activated', 'Map activated: day vision restarted with it.')); }
+  catch(e){ say('mapMsg', 'bad', e.message); } finally{ render(); }
+};
+
+applyLang(); poll();
+</script>
+</body>
+</html>

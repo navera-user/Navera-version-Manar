@@ -1,0 +1,134 @@
+"""Mission preparation on the box: settings file, mission files, map jobs (no ROS)."""
+import json
+import os
+import sqlite3
+import sys
+import time
+
+import pytest
+
+from simulation_web import mission_prep as mp
+
+WPL = """QGC WPL 110
+0\t1\t0\t16\t0\t0\t0\t0\t35.825600\t10.638500\t10.0\t1
+1\t0\t3\t22\t0\t0\t0\t0\t35.825600\t10.638500\t100.0\t1
+2\t0\t3\t16\t0\t0\t0\t0\t35.840000\t10.620000\t100.0\t1
+3\t0\t3\t178\t0\t20\t-1\t0\t0\t0\t0\t1
+4\t0\t3\t16\t0\t0\t0\t0\t35.856000\t10.601000\t100.0\t1
+5\t0\t3\t20\t0\t0\t0\t0\t0\t0\t0\t1
+"""
+
+PLAN = {"fileType": "Plan", "version": 1, "mission": {
+    "plannedHomePosition": [48.8534951, 2.3483915, 40],
+    "items": [
+        {"type": "SimpleItem", "command": 22, "params": [0, 0, 0, None, 48.8534951, 2.3483915, 50]},
+        {"type": "SimpleItem", "command": 16, "params": [0, 0, 0, None, 48.0, 3.0, 300]},
+        {"type": "SimpleItem", "command": 178, "params": [1, 30, -1, 0, 0, 0, 0]},
+        {"type": "ComplexItem", "complexItemType": "survey",
+         "TransectStyleComplexItem": {"VisualTransectPoints": [[47.9, 3.1], [47.8, 3.2]]}},
+        {"type": "SimpleItem", "command": 21, "params": [0, 0, 0, None, 47.5, 3.5, 0]},
+    ]}}
+
+
+def test_waypoints_file_keeps_home_and_flown_points():
+    assert mp.parse_mission(WPL) == [[35.8256, 10.6385], [35.84, 10.62], [35.856, 10.601]]
+
+
+def test_plan_file_with_survey_and_landing():
+    assert mp.parse_mission(json.dumps(PLAN)) == [
+        [48.8534951, 2.3483915], [48.0, 3.0], [47.9, 3.1], [47.8, 3.2], [47.5, 3.5]]
+
+
+@pytest.mark.parametrize("bad", ["hello", "QGC WPL 110\n1\t2\t3", "{}", '{"mission": {"items": []}}',
+                                 "QGC WPL 110\n0\t1\t0\t16\t0\t0\t0\t0\t35.8\t10.6\t10\t1\n"])
+def test_bad_mission_files_are_refused(bad):
+    with pytest.raises(ValueError):
+        mp.parse_mission(bad)
+
+
+def test_settings_are_validated_and_written_atomically(tmp_path):
+    f = str(tmp_path / "settings.env")
+    ok = mp.validate_settings({"NAVERA_MAX_SPEED_KMH": "900", "NAVERA_IMU_MOUNT_RPY": "0, 0, 90",
+                               "NAVERA_VEHICLE_TYPE": "plane", "NAVERA_THERMAL_HFOV_DEG": 84})
+    cur = mp.write_settings(ok, f)
+    assert cur == {"NAVERA_MAX_SPEED_KMH": "900", "NAVERA_IMU_MOUNT_RPY": "0,0,90",
+                   "NAVERA_VEHICLE_TYPE": "plane", "NAVERA_THERMAL_HFOV_DEG": "84"}
+    assert mp.read_settings(f) == cur
+    text = open(f).read()
+    assert text.startswith("#") and "NAVERA_MAX_SPEED_KMH=900\n" in text
+    # an empty value removes the key (navera.env applies again)
+    assert "NAVERA_THERMAL_HFOV_DEG" not in mp.write_settings(mp.validate_settings({"NAVERA_THERMAL_HFOV_DEG": ""}), f)
+    assert not [p for p in os.listdir(tmp_path) if ".tmp" in p]
+
+
+@pytest.mark.parametrize("key,value", [("NAVERA_MAX_SPEED_KMH", "2"), ("NAVERA_MAX_SPEED_KMH", "fast"),
+                                       ("NAVERA_IMU_MOUNT_RPY", "1,2"), ("NAVERA_VEHICLE_TYPE", "tank"),
+                                       ("DAY_DATASET_DIR", "/tmp"), ("ROS_DOMAIN_ID", "0"),
+                                       ("NAVERA_MAX_SPEED_KMH", "100\nROS_DOMAIN_ID=0")])
+def test_bad_settings_are_refused(key, value):
+    with pytest.raises(ValueError, match=key.split("=")[0]):
+        mp.validate_settings({key: value})
+
+
+def test_area_id_follows_the_legs():
+    long = [[48.8534951, 2.3483915], [33.8439408, 9.400138]]
+    assert mp.area_id(long) == mp.area_id(mp.parse_mission(json.dumps(
+        {"mission": {"plannedHomePosition": long[0], "items": [
+            {"type": "SimpleItem", "command": 16, "params": [0, 0, 0, 0, *long[1], 0]}]}})))
+
+
+FAKE_PREPARE = r'''
+import json, os, sys
+out = sys.argv[sys.argv.index("--out") + 1]
+for i in range(3):
+    print(json.dumps({"stage": "descriptors", "done": i + 1, "total": 3}), flush=True)
+os.makedirs(out, exist_ok=True)
+open(os.path.join(out, "descriptors_cache.npz"), "w").write("x")
+'''
+
+
+@pytest.fixture
+def jobs(tmp_path):
+    mb = tmp_path / "map.mbtiles"
+    con = sqlite3.connect(mb)
+    con.execute("CREATE TABLE tiles (zoom_level INT, tile_column INT, tile_row INT, tile_data BLOB)")
+    con.commit()
+    con.close()
+    script = tmp_path / "fake_prepare.py"
+    script.write_text(FAKE_PREPARE)
+    marker = tmp_path / "restarted"
+    logs = []
+    j = mp.AreaJobs(str(tmp_path / "areas"), str(mb), prepare_cmd=[sys.executable, str(script)],
+                    restart_cmd=[sys.executable, "-c", f"open({str(marker)!r}, 'w').write('ok')"],
+                    settings_file=str(tmp_path / "settings.env"), log=lambda lvl, txt: logs.append((lvl, txt)))
+    return j, marker, logs, tmp_path
+
+
+def test_plan_generate_activate(jobs):
+    j, marker, logs, tmp = jobs
+    plan = j.plan([[35.8256, 10.6385], [35.8560, 10.6010]])
+    assert plan["tiles"] > 100 and plan["missing_n"] == plan["tiles"] and not plan["prepared"]
+    with pytest.raises(ValueError):
+        j.activate(plan["id"])                         # not generated yet
+    j.start(plan["id"])
+    for _ in range(100):
+        if j.state()["job"]["status"] != "running":
+            break
+        time.sleep(0.05)
+    st = j.state()["job"]
+    assert st["status"] == "done" and st["done"] == 3
+    assert any("no download source" in t for _, t in logs)    # missing tiles reported
+    j.activate(plan["id"])
+    assert marker.read_text() == "ok"
+    assert mp.read_settings(j.settings_file)["DAY_DATASET_DIR"] == j.path(plan["id"])
+    assert j.plan([[35.8256, 10.6385], [35.8560, 10.6010]])["active"] is True
+
+
+def test_a_failed_restart_is_reported(jobs):
+    j, _, _, tmp = jobs
+    plan = j.plan([[35.8256, 10.6385], [35.8560, 10.6010]])
+    os.makedirs(j.path(plan["id"]))
+    open(os.path.join(j.path(plan["id"]), "descriptors_cache.npz"), "w").write("x")
+    j.restart_cmd = [sys.executable, "-c", "import sys; sys.exit('Access denied')"]
+    with pytest.raises(RuntimeError, match="restart"):
+        j.activate(plan["id"])

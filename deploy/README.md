@@ -109,6 +109,13 @@ sudo apt install astrometry.net astrometry-data-tycho2-10-19
 # 0a') Cap vrai (nord géographique) : modèle magnétique mondial WMM 2025 pour l'IMU
 sudo -u navera pip install --user pygeomag==1.1.0
 
+# 0a'') Page de préparation de mission (/mission) : réglages du véhicule écrits par la page,
+#       cartes de trajets générées, et le seul droit root accordé au service web :
+#       redémarrer les services NAVERA (commandes exactes, rien d'autre)
+sudo install -d -o navera -g navera /var/lib/navera /data/navera/areas
+sudo install -m 0440 /home/navera/isaac_ros_common/deploy/sudoers/navera-web /etc/sudoers.d/navera-web
+sudo visudo -c
+
 # 0b) Réglages du site : chemins des données, isolation réseau ROS 2
 sudo mkdir -p /etc/navera
 sudo cp /home/navera/isaac_ros_common/deploy/navera.env.example /etc/navera/navera.env

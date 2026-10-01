@@ -122,7 +122,7 @@ class BridgeHandler(BaseHTTPRequestHandler):
         self.send_body(code, "application/json", json.dumps(obj, allow_nan=False).encode())
 
     # ── control requests ───────────────────────────────────────────────
-    def read_control_json(self, token: str):
+    def read_control_json(self, token: str, max_body: int = None):
         """Authorise and parse a control POST. Returns the JSON object, or
         None after having sent the error response."""
         if not token:
@@ -140,7 +140,7 @@ class BridgeHandler(BaseHTTPRequestHandler):
         except ValueError:
             self.send_json(400, {"error": "bad Content-Length"})
             return None
-        if not 0 <= length <= MAX_BODY:
+        if not 0 <= length <= (max_body or MAX_BODY):
             self.send_json(413, {"error": "body too large"})
             return None
         try:

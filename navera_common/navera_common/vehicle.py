@@ -34,6 +34,37 @@ def max_speed_mps_from_env(environ=None) -> Optional[float]:
     return kmh / 3.6
 
 
+ENV_IMU_MOUNT_RPY = "NAVERA_IMU_MOUNT_RPY"          # "roll,pitch,yaw" deg
+ENV_DECLINATION_DEG = "NAVERA_DECLINATION_DEG"      # deg, east positive
+
+
+def imu_params(environ=None) -> dict:
+    """imu_node parameters from the installation's settings (mounting, declination),
+    or {} for what is unset (the yaml/node defaults apply). Raises ValueError."""
+    env = os.environ if environ is None else environ
+    out = {}
+    raw = str(env.get(ENV_IMU_MOUNT_RPY, "")).strip()
+    if raw:
+        parts = raw.split(",")
+        try:
+            r, p, y = (float(v) for v in parts)
+        except ValueError:
+            raise ValueError(f"{ENV_IMU_MOUNT_RPY}={raw!r}: expected roll,pitch,yaw in degrees") from None
+        if not all(-180.0 <= a <= 180.0 for a in (r, p, y)):
+            raise ValueError(f"{ENV_IMU_MOUNT_RPY}={raw!r}: angles must be within ±180°")
+        out.update(mount_roll_deg=r, mount_pitch_deg=p, mount_yaw_deg=y)
+    raw = str(env.get(ENV_DECLINATION_DEG, "")).strip()
+    if raw:
+        try:
+            d = float(raw)
+        except ValueError:
+            raise ValueError(f"{ENV_DECLINATION_DEG}={raw!r} is not a number") from None
+        if not -90.0 <= d <= 90.0:
+            raise ValueError(f"{ENV_DECLINATION_DEG}={d:g} is outside ±90°")
+        out["declination_deg"] = d
+    return out
+
+
 def max_speed_params(environ=None) -> dict:
     """{'max_speed_mps': value} for a launch file's parameters, or {} when unset
     (the node keeps its own default; the launch file warns)."""

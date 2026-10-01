@@ -1,0 +1,8 @@
+# /etc/sudoers.d/navera-web — what the NAVERA web service (user navera) may run as root.
+# Exactly these commands, with exactly these arguments: switching to a newly generated
+# map (restart of the day pipeline) and applying the vehicle settings (restart of the
+# running NAVERA units). Nothing else. Install (checked by visudo):
+#   sudo install -m 0440 deploy/sudoers/navera-web /etc/sudoers.d/navera-web
+#   sudo visudo -c
+navera ALL=(root) NOPASSWD: /usr/bin/systemctl restart navera-pipeline-day.service
+navera ALL=(root) NOPASSWD: /usr/bin/systemctl try-restart navera-estimator.service navera-imu.service navera-pipeline-day.service navera-pipeline-night.service navera-pipeline-cn.service

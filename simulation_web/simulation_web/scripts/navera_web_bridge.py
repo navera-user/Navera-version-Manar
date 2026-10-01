@@ -30,6 +30,15 @@ This bridge serves TWO surfaces with deliberately different sources:
     GET/POST /api/set_mission    → store Point A (map centring)
     GET  /api/cache_status, /api/precollect_progress, POST /api/precollect → benign stubs
     GET  /health                 → {ok:true}
+    GET  /mission                → mission.html — mission preparation on the box:
+                                   vehicle settings, route (autopilot mission file or
+                                   drawn), satellite map generation and activation
+    GET  /api/mission/state      → settings, map job, active map
+    POST /api/mission/settings   → {changes:{KEY:value}} validated, written to the
+                                   settings file (token)
+    POST /api/mission/apply      → restart the running NAVERA units (token)
+    POST /api/mission/plan       → {route:[[lat,lon],..]} or {mission_text:"..."} (token)
+    POST /api/mission/generate | /cancel | /activate  → {id} (token)
     (any other GET)              → static file from the resources/ dir
 
 Run standalone (test the bridge alone, no camera/subscriber needed):
@@ -58,6 +67,12 @@ from navera_msgs.msg import NavStatus, PositionEstimate
 
 from simulation_web.web_common import (BridgeHandler, MBTilesReader, parse_tile_path,
                                        start_server, valid_latlon)
+from simulation_web import mission_prep
+
+MISSION_FILE_MAX = 512 * 1024       # bytes: an imported autopilot mission file
+# NAVERA units restarted by "Apply settings" (try-restart: only those running)
+NAVERA_UNITS = ["navera-estimator.service", "navera-imu.service", "navera-pipeline-day.service",
+                "navera-pipeline-night.service", "navera-pipeline-cn.service"]
 
 try:
     from ament_index_python.packages import get_package_share_directory
@@ -480,6 +495,60 @@ class NaveraWebBridge(Node):
         }
 
     # ────────────────────────────────────────────────────────────
+    # Mission preparation (page /mission)
+    # ────────────────────────────────────────────────────────────
+    def _mission_jobs(self):
+        if getattr(self, "_jobs", None) is None:
+            areas = os.environ.get("NAVERA_AREAS_DIR", "/data/navera/areas")
+            self._jobs = mission_prep.AreaJobs(
+                areas, self.mbtiles_path, tile_url=os.environ.get("NAVERA_TILE_URL", ""),
+                cache=os.environ.get("NAVERA_TILE_CACHE", os.path.join(areas, "downloaded_tiles.mbtiles")),
+                log=lambda level, text: (self.get_logger().warn if level in ("warn", "error")
+                                         else self.get_logger().info)(text))
+        return self._jobs
+
+    def mission_state(self):
+        jobs = self._mission_jobs()
+        cur = mission_prep.read_settings()
+        return dict(settings=cur, keys={k: v[1] for k, v in mission_prep.SETTINGS.items()},
+                    site={k: os.environ.get(k, "") for k in mission_prep.SETTINGS},
+                    control=bool(self._control_token), **jobs.state())
+
+    def mission_action(self, action, d):
+        jobs = self._mission_jobs()
+        if action == "settings":
+            changes = d.get("changes")
+            if not isinstance(changes, dict):
+                raise ValueError("changes: object expected")
+            cur = mission_prep.write_settings(mission_prep.validate_settings(changes))
+            return {"ok": True, "settings": cur, "restart_needed": True}
+        if action == "apply":
+            import subprocess
+            # allowed by deploy/sudoers/navera-web (exact command)
+            r = subprocess.run(["sudo", "-n", "/usr/bin/systemctl", "try-restart"] + NAVERA_UNITS,
+                               capture_output=True, text=True, timeout=90)
+            if r.returncode != 0:
+                raise RuntimeError(f"restart refused: {(r.stderr or r.stdout).strip()[:200]}")
+            return {"ok": True}
+        if action == "plan":
+            if "mission_text" in d:
+                route = mission_prep.parse_mission(str(d["mission_text"]))
+            else:
+                route = d.get("route")
+                if not (isinstance(route, list) and len(route) >= 2 and all(
+                        isinstance(p, list) and len(p) == 2 and valid_latlon(*p) for p in route)):
+                    raise ValueError("route: at least two [lat, lon] points expected")
+            plan = jobs.plan(route)
+            return {"ok": True, "plan": plan, "points": route}
+        if action in ("generate", "activate"):
+            aid = str(d.get("id", ""))
+            (jobs.start if action == "generate" else jobs.activate)(aid)
+            return {"ok": True}
+        if action == "cancel":
+            return {"ok": True, "cancelled": jobs.cancel()}
+        raise ValueError(f"unknown action: {action}")
+
+    # ────────────────────────────────────────────────────────────
     # HTTP server
     # ────────────────────────────────────────────────────────────
     def _start_http_server(self):
@@ -524,10 +593,28 @@ class NaveraWebBridge(Node):
                 if path == "/health":
                     return self.send_json(200, {"ok": True})
 
+                if path == "/mission":
+                    return self.send_file(os.path.join(bridge.resources_dir, "mission.html"))
+
+                if path == "/api/mission/state":
+                    return self.send_json(200, bridge.mission_state())
+
                 return self.serve_static(bridge.resources_dir, path)
 
             def do_POST(self):
                 path = urlparse(self.path).path.rstrip("/")
+                if path.startswith("/api/mission/"):
+                    big = path == "/api/mission/plan"
+                    d = self.read_control_json(bridge._control_token,
+                                               max_body=MISSION_FILE_MAX if big else None)
+                    if d is None:
+                        return None
+                    try:
+                        return self.send_json(200, bridge.mission_action(path.rsplit("/", 1)[1], d))
+                    except ValueError as e:
+                        return self.send_json(400, {"error": str(e)})
+                    except RuntimeError as e:
+                        return self.send_json(500, {"error": str(e)})
                 if path == "/api/set_mission":
                     d = self.read_control_json(bridge._control_token)
                     if d is None:
