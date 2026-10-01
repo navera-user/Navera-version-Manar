@@ -33,7 +33,7 @@ from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPo
 from sensor_msgs.msg import Image
 from std_msgs.msg import Bool, Int32, String
 
-from day_pkg.prepare_area import plan_tiles, tile_nw
+from day_pkg.prepare_area import densify_route, plan_tiles, tile_nw
 
 HFOV_DEG = 84.0          # camera horizontal field of view
 FRAME_W, FRAME_H = 640, 480
@@ -98,6 +98,8 @@ class AreaManager:
 
     @staticmethod
     def area_id(route, buffer_m=BUFFER_M):
+        # the map of a route follows its legs (densify_route): short routes unchanged
+        route = densify_route([[float(a), float(b)] for a, b in route])
         key = json.dumps([[round(a, 5), round(b, 5)] for a, b in route] + [buffer_m])
         return hashlib.sha1(key.encode()).hexdigest()[:12]
 
@@ -108,7 +110,8 @@ class AreaManager:
         return os.path.exists(os.path.join(self.path(aid), "descriptors_cache.npz"))
 
     def make_plan(self, route, buffer_m=BUFFER_M):
-        route = [[float(a), float(b)] for a, b in route]
+        # long routes: the corridor follows the legs the vehicle flies (great circle)
+        route = densify_route([[float(a), float(b)] for a, b in route])
         p = plan_tiles(self.mbtiles, route, buffer_m, 17, self.cache)
         aid = self.area_id(route, buffer_m)
         length = sum(haversine_m(a[0], a[1], b[0], b[1]) for a, b in zip(route, route[1:]))   # great circle, as the dashboard

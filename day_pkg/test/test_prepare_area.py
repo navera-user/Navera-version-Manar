@@ -104,3 +104,43 @@ def test_missing_tiles_are_downloaded_into_the_cache(tmp_path, mbtiles):
         assert plan_tiles(cache, ROUTE, 1000.0, 17)["missing"] == []
     finally:
         srv.shutdown()
+
+
+# ── long routes: legs along the great circle ──
+from day_pkg.prepare_area import _dist_to_route_m, _haversine_m, densify_route, point_along  # noqa: E402
+
+PARIS, TUNISIA = [48.8534951, 2.3483915], [33.8439408, 9.400138]
+
+
+def test_short_routes_are_unchanged():
+    r = [[35.81, 10.59], [35.825, 10.615]]
+    assert densify_route(r) == r
+
+
+def test_long_route_legs_are_short_and_on_the_great_circle():
+    r = densify_route([PARIS, TUNISIA])
+    assert r[0] == PARIS and r[-1] == TUNISIA
+    legs = [_haversine_m(a, b) for a, b in zip(r, r[1:])]
+    assert max(legs) <= 10_000.0 + 1e-6 and sum(legs) == pytest.approx(_haversine_m(PARIS, TUNISIA), rel=1e-6)
+    # every leg is short: the straight line between two vertices (what the corridor
+    # follows) stays within metres of the great circle a vehicle flies leg by leg
+    mid_gap = max(_haversine_m(point_along([a, b], _haversine_m(a, b) / 2)[0],
+                               [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]) for a, b in zip(r, r[1:]))
+    assert mid_gap < 5.0
+
+
+def test_the_two_point_line_was_far_from_the_flown_path():
+    """Why: the old corridor line is ~35 km from the great circle at mid-route."""
+    mid = point_along(densify_route([PARIS, TUNISIA]), _haversine_m(PARIS, TUNISIA) / 2)[0]
+    assert _dist_to_route_m(mid[0], mid[1], [PARIS, TUNISIA]) > 20_000.0
+    assert _dist_to_route_m(mid[0], mid[1], densify_route([PARIS, TUNISIA])) < 10.0
+
+
+def test_point_along():
+    r = densify_route([PARIS, TUNISIA])
+    p, nxt = point_along(r, 0.0)
+    assert p == pytest.approx(PARIS) and nxt == 1
+    p, nxt = point_along(r, 1e9)
+    assert p == pytest.approx(TUNISIA) and nxt == len(r) - 1
+    p, nxt = point_along(r, 123_456.0)
+    assert _haversine_m(PARIS, p) == pytest.approx(123_456.0, rel=1e-4) and 0 < nxt < len(r)

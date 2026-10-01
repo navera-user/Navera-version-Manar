@@ -84,6 +84,11 @@ SIM_ALT_MAX = {"drone": 400.0, "plane": 1000.0}
 SIM_ALT_MIN = {"drone": 30.0, "plane": 100.0}
 
 
+def _legs(route):
+    from day_pkg.prepare_area import densify_route
+    return densify_route(route)
+
+
 def _route_dist(p, route):
     from day_pkg.prepare_area import _dist_to_route_m
     return _dist_to_route_m(p[0], p[1], route)
@@ -157,6 +162,7 @@ class Simulator(Node):
         self.nav = dict(state="—", source="—", reason="", lat=None, lon=None, mode="", t=0.0)
         # ROS link watchdog (a plain thread: it must not depend on the ROS executor it checks)
         self._last_status_t = None
+        self._wps, self._wp_i = [], 0              # the legs being flown
         self.ros_link = dict(ok=True, since=None, detail="")
         threading.Thread(target=self._watch_ros_link, daemon=True).start()
         self.gps_node_out = dict(valid=False, t=0.0, sats=0, hdop=None, reason="")
@@ -501,7 +507,8 @@ class Simulator(Node):
                                f"{math.degrees(self.imu_bias[1]):+.2f}°, heading "
                                f"{math.degrees(self.imu_bias[2]):+.2f}°")
             self._apply_pipelines()
-            self.ap.start(c["vehicle"], c["start"][0], c["start"][1], self._bearing(c["start"], c["dest"]))
+            first = (c.get("waypoints") or [c["dest"]])[0]          # face the first leg
+            self.ap.start(c["vehicle"], c["start"][0], c["start"][1], self._bearing(c["start"], first))
             self.ap.connect()
             vo_cmd = ["ros2", "run", "navera_output", "vehicle_output_node.py", "--ros-args",
                       "-p", f"mavlink_url:={NAVERA_URL}", "-p", "rate_hz:=5.0"]
@@ -534,10 +541,12 @@ class Simulator(Node):
                 self._wait(lambda: (self.ap.snapshot()["truth"] or (0, 0, 0))[2] > 0.9 * c["alt"],
                            (90 + c["alt"] / 5.0) if plane else (60 + c["alt"] / 2.0),
                            "takeoff did not complete")
-            self._fly_to(self.cfg["dest"])
+            self._fly_to(self.cfg["dest"], legs=self.cfg.get("waypoints"))
             while not self._abort.is_set():
                 time.sleep(0.5)
                 s = self.ap.snapshot()
+                if s["truth"] and self.phase == "enroute":
+                    self._next_leg(s["truth"])
                 if self.phase in ("enroute", "arrived") and s["armed"] and \
                         s["mode"] not in ("GUIDED", "—"):
                     why = ""
@@ -635,11 +644,28 @@ class Simulator(Node):
             self.event("info", f"celestial: star camera on (60°, pointing up); sky time "
                                f"{self._sky_utc()} UTC")
 
-    def _fly_to(self, dest):
+    WP_SWITCH_M = {"plane": 400.0, "drone": 60.0}    # next leg when this close (others: 25 m)
+
+    def _goto_wp(self):
+        wp = self._wps[self._wp_i]
+        self.ap.goto(wp[0], wp[1], self.cfg["alt"] if self.cfg["vehicle"] in FLYING else 0)
+
+    def _next_leg(self, truth):
+        """Leg by leg: when close to the current waypoint, go to the next one."""
+        if self._wp_i < len(self._wps) - 1 and \
+                haversine_m(truth, self._wps[self._wp_i]) < self.WP_SWITCH_M.get(self.cfg["vehicle"], 25.0):
+            self._wp_i += 1
+            self._goto_wp()
+
+    def _fly_to(self, dest, legs=None):
+        """Fly to dest along short great-circle legs (the map corridor follows the same legs)."""
         self.cfg["dest"] = dest
-        self.ap.set_mode("GUIDED")
-        self.ap.goto(dest[0], dest[1], self.cfg["alt"] if self.cfg["vehicle"] in FLYING else 0)
         s = self.ap.snapshot()
+        here = [s["truth"][0], s["truth"][1]] if s["truth"] else self.cfg["start"]
+        self._wps = legs if legs else _legs([here, dest])[1:]
+        self._wp_i = 0
+        self.ap.set_mode("GUIDED")
+        self._goto_wp()
         dist = haversine_m(s["truth"], dest) if s["truth"] else float("nan")
         plan = self.areas.state()["plan"]
         if self.cfg["vision"] == "real" and plan and _route_dist(dest, plan["route"]) > plan["buffer_m"]:
@@ -685,7 +711,16 @@ class Simulator(Node):
             route = [[float(start[0]), float(start[1])], [float(dest[0]), float(dest[1])]]
             area = self.areas.area_id(route)
             plan = self.areas.plan_for(route)["plan"]
-            covered_offline = not plan["missing"]
+            covered_offline = plan["missing_n"] == 0       # (the lists are trimmed on long routes)
+            # start partway along the route (long routes): same map, legs from that point
+            from day_pkg.prepare_area import point_along
+            legs = _legs(route)
+            start_km = max(0.0, float(body.get("start_km") or 0.0))
+            if start_km > 0:
+                if start_km * 1000.0 > plan["length_m"] - 100.0:
+                    raise ValueError("the start along the route is beyond the destination")
+                p, nxt = point_along(legs, start_km * 1000.0)
+                legs = [p] + legs[nxt:]
             if vision == "real":
                 if vehicle not in FLYING:
                     raise ValueError("real vision needs a downward camera at altitude: "
@@ -708,7 +743,7 @@ class Simulator(Node):
             self.start_mission(dict(
                 vision=vision, area=area,
                 degraded_sigma_m=max(5.0, min(2000.0, float(body.get("degraded_sigma_m", 300.0)))),
-                vehicle=vehicle, start=[float(start[0]), float(start[1])],
+                vehicle=vehicle, start=legs[0], waypoints=legs[1:], start_km=start_km,
                 dest=[float(dest[0]), float(dest[1])],
                 speed=cruise, max_speed_mps=vmax,
                 # the operator's altitude (any aircraft); the simulated drone flies up to SIM_ALT_MAX

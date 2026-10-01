@@ -458,6 +458,11 @@ header .hbtn.danger{background:#fff}
           <div><small data-i18n="travelTime">Travel time</small><b id="stEta">—</b></div>
           <div><small data-i18n="bearing">Bearing</small><b id="stBrg">—</b></div>
         </div>
+        <div id="skipBox" class="hidden">
+          <div class="lbl2"><label for="wSkip" data-i18n="skipT">Start the flight at</label></div>
+          <div class="field"><div class="in"><input id="wSkip" type="number" min="0" step="1" inputmode="numeric" value="0"><span class="unit" data-i18n="skipUnit">km from the departure</span></div></div>
+          <p class="help" style="margin:8px 0 0" data-i18n="skipH">To test the end of a long route without flying all of it. The vehicle starts at this point on the route; the satellite map of the whole route is used.</p>
+        </div>
         <div class="notice info" id="vehRouteNote"></div>
         <div class="mslot" id="mslot"></div>
       </section>
@@ -578,16 +583,16 @@ const I18N = {
     visNoteG:"La vraie vision NAVERA demande une caméra vers le bas en altitude : sur ce véhicule, la position en cas de perte du GPS est simulée avec le profil d'erreur choisi ici.",
     altWarn:'La nuit, le drone doit voler à 350 m ou plus : choisissez Haut.',
     openWork_drone:"Ouvrir l'espace de travail drone →", openWork_boat:"Ouvrir l'espace de travail bateau →", openWork_robot:"Ouvrir l'espace de travail robot →",
-    routeNote_drone:"Le drone vole en ligne droite de A à B à l'altitude choisie. Avec la vraie vision, préparez la carte pour ce trajet (onglet Carte).",
-    routeNote_boat:"Placez A et B sur l'eau : le bateau navigue en ligne droite de A à B (pas d'évitement de la côte dans cette simulation).",
-    routeNote_robot:"Le robot roule en ligne droite de A à B (pas d'évitement d'obstacles ni de suivi de route dans cette simulation).",
+    routeNote_drone:'Le drone vole vers B par le chemin le plus court, à l\'altitude choisie. Avec la navigation par caméra, générez la carte satellite du trajet (section 4).',
+    routeNote_boat:'Placez A et B sur l\'eau : le bateau navigue vers B par le chemin le plus court (pas d\'évitement de la côte dans cette simulation).',
+    routeNote_robot:'Le robot roule vers B par le chemin le plus court (pas d\'évitement d\'obstacles ni de suivi de route dans cette simulation).',
     changeVeh:'Changer de véhicule et de paramètres', landOnly:'Atterrir', stopVeh:'Arrêter',
     stVehicle:'Véhicule', stMission:'Mission', stRoute:'Trajet sur la carte', qVehicle:'Quel véhicule porte NAVERA ?', droneP:'Vole au-dessus du sol', boatP:'Navigue sur l\'eau', robotP:'Roule sur terre', qWhen:'Quand a lieu la mission ?', qSpeed:'À quelle vitesse ?', qAlt:'À quelle hauteur ?', advanced:'Réglages avancés', advSub:'pour ingénieurs — les valeurs par défaut conviennent à une démonstration', exactValues:'Valeurs exactes', capShort:'NAVERA sur ce véhicule :', dayPlain:'La caméra reconnaît le sol sur la carte satellite.', dayPlainG:'NAVERA protège le GPS ; la position sans GPS est simulée.', nightPlain:'Caméra thermique et étoiles. Le drone vole haut (≥ 350 m).', nightPlainG:'NAVERA protège le GPS et trouve sa position grâce aux étoiles.', slow:'Lent', normal:'Normal', fast:'Rapide', low:'Bas', high:'Haut', nightOk:'nécessaire la nuit', toRoute:'Continuer vers le trajet →', lastRoute:'Dernier trajet', useIt:'Le reprendre', hVehicle:'Choisissez le véhicule sur lequel NAVERA est installé.', routeTitle:'Trajet', hRoute:'Tapez une ville, une adresse ou des coordonnées (latitude, longitude) et choisissez-la dans la liste. Vous pouvez aussi cliquer sur la carte : le premier clic fixe le départ, le second la destination.', from:'Départ', to:'Destination', phA:'ex. Paris', phB:'ex. Tunis', myPos:'Ma position', travelTime:'Durée du trajet', condTitle:'Conditions', timeOfDay:'Moment de la journée', flightAlt:'Altitude de vol', satMap:'Carte satellite', genMap:'Générer la carte', mapNoSim:'Pas nécessaire : dans les réglages avancés, la position sans GPS est simulée.', mapNoVeh:'Pas nécessaire pour ce véhicule : sa position sans GPS est simulée.', mapNight:'La nuit, la caméra thermique est comparée à la carte satellite. Dans la carte embarquée, rien à faire ; ailleurs, générez la carte du trajet.', mapDay:'De jour, la caméra reconnaît le sol en le comparant aux images satellite du trajet. Générez-les avant le vol (quelques minutes, internet nécessaire).', toLaunch:'Continuer →', yourMission:'Votre mission', editMission:'Modifier la mission', notNeeded:'non nécessaire', ready:'prête', coords:'coordonnées', badCoords:'Coordonnées invalides', searching:'Recherche…', noPlace:'Aucun lieu trouvé', needNet:'La recherche de lieux demande internet ; tapez plutôt des coordonnées (ex. 48.8566, 2.3522).', editHint:'Pour changer le trajet, appuyez sur « Modifier la mission ».', needRoute2:'Indiquez le départ et la destination (section 2)', needGen:'Générez la carte satellite (section 4)', needGenNight:'Le trajet sort de la carte embarquée : générez la carte satellite (section 4)', allSet:'Tout est prêt.', allSetD:'Continuez pour lancer la mission.', summary:'Résumé', prev:'← Retour', next:'Suivant →', openPlanner:'Ouvrir le planificateur →',
     hintA:'Cliquez sur la carte pour placer le DÉPART (A)', hintB:"Cliquez sur la carte pour placer l'ARRIVÉE (B)",
     hintReady:'Prêt : cliquez sur Lancer la mission', needRoute:"Placez le départ (A) et l'arrivée (B)",
     needPrepare:'Préparez la carte (onglet Carte)', needPrepareNight:'Hors de la carte embarquée : préparez la carte (onglet Carte)',
     blocked:'Démarrage bloqué : remettez le récepteur GPS sur OK', mapReady:'carte prête pour la vision', notPrepared:'non préparée',
-    noInternet:'Pas de connexion internet : carte embarquée affichée.', noSpace:'espace disque insuffisant', plane:'Avion', planeP:'Avion rapide à voilure fixe', capApPlane:'ArduPlane, qui reçoit NAVERA comme son GPS (MAVLink GPS_INPUT).', routeNote_plane:'L\'avion décolle dans son axe, monte à l\'altitude choisie, vole en ligne droite vers B et tourne au-dessus. Avec la vraie vision, générez la carte du trajet.', circleHere:'Tourner ici', altCap2:'Dans cette simulation, le {v} monte au plus à {a} m.', altUntested:'La navigation par caméra de NAVERA n\'a été testée que jusqu\'à environ 400 m.', linkLost2:'NAVERA ne répond plus au simulateur (depuis {t}) : les positions affichées ne sont plus à jour. Redémarrez le simulateur.', vmaxAuto:'Automatique : vitesse de croisière + 50 % (au moins + 18 km/h)', vmaxH2:'NAVERA rejette toute position que le véhicule ne pourrait pas atteindre à cette vitesse (leurrage GPS, fausses correspondances). Elle doit rester au-dessus de la vitesse sol réelle, vent arrière compris.', vmaxBad2:'Vitesse maximale : au-dessus de la vitesse de croisière, au plus 1890 km/h', auto:'automatique', cruiseT:'Vitesse de croisière', cruiseH:'La vitesse à laquelle le véhicule parcourt le trajet.', altH:'Hauteur au-dessus du sol. Repères : drones 50–400 m, avions légers 1 000–3 000 m, avions de ligne 10 000–12 000 m, jets d\'affaires jusqu\'à environ 15 000 m.', fpLine:'La caméra voit environ {w} m de sol en largeur.', altCap:'Dans cette simulation, le drone monte au plus à {a} m.', cruiseBad:'Vitesse de croisière : entre 1 km/h et la vitesse maximale', altBad:'Altitude : entre 10 et 20 000 m', altWarn2:'La nuit, la caméra demande 350 m ou plus : augmentez l\'altitude.', vmaxT:'Vitesse maximale du véhicule', vmaxH:'La vitesse la plus élevée que votre véhicule peut atteindre — par exemple 900 km/h pour un avion rapide. NAVERA s\'en sert pour rejeter les positions impossibles (leurrage GPS, fausses correspondances).', vmaxBad:'Vitesse maximale : entre 4 et 1260 km/h', simCap:'Dans cette simulation, le {v} va au plus à {s} km/h (modèle ArduPilot) : les contrôles de NAVERA utilisent votre vitesse maximale, le véhicule simulé reste à sa propre limite.', noSpace2:'Espace disque insuffisant pour la carte satellite de ce trajet : libérez de la place, raccourcissez le trajet, ou choisissez une position simulée dans les réglages avancés', tooLong:'trajet trop long à préparer',
+    noInternet:'Pas de connexion internet : carte embarquée affichée.', noSpace:'espace disque insuffisant', skipT:'Commencer le vol à', skipUnit:'km du départ', skipH:'Pour tester la fin d\'un long trajet sans tout le parcourir. Le véhicule part de ce point du trajet ; la carte satellite de tout le trajet est utilisée.', skipBad:'Départ : entre 0 et {m} km', skipRow:'Part à', plane:'Avion', planeP:'Avion rapide à voilure fixe', capApPlane:'ArduPlane, qui reçoit NAVERA comme son GPS (MAVLink GPS_INPUT).', routeNote_plane:'L\'avion décolle dans son axe, monte à l\'altitude choisie, vole vers B par le chemin le plus court et tourne au-dessus. Avec la navigation par caméra, générez la carte satellite du trajet (section 4).', circleHere:'Tourner ici', altCap2:'Dans cette simulation, le {v} monte au plus à {a} m.', altUntested:'La navigation par caméra de NAVERA n\'a été testée que jusqu\'à environ 400 m.', linkLost2:'NAVERA ne répond plus au simulateur (depuis {t}) : les positions affichées ne sont plus à jour. Redémarrez le simulateur.', vmaxAuto:'Automatique : vitesse de croisière + 50 % (au moins + 18 km/h)', vmaxH2:'NAVERA rejette toute position que le véhicule ne pourrait pas atteindre à cette vitesse (leurrage GPS, fausses correspondances). Elle doit rester au-dessus de la vitesse sol réelle, vent arrière compris.', vmaxBad2:'Vitesse maximale : au-dessus de la vitesse de croisière, au plus 1890 km/h', auto:'automatique', cruiseT:'Vitesse de croisière', cruiseH:'La vitesse à laquelle le véhicule parcourt le trajet.', altH:'Hauteur au-dessus du sol. Repères : drones 50–400 m, avions légers 1 000–3 000 m, avions de ligne 10 000–12 000 m, jets d\'affaires jusqu\'à environ 15 000 m.', fpLine:'La caméra voit environ {w} m de sol en largeur.', altCap:'Dans cette simulation, le drone monte au plus à {a} m.', cruiseBad:'Vitesse de croisière : entre 1 km/h et la vitesse maximale', altBad:'Altitude : entre 10 et 20 000 m', altWarn2:'La nuit, la caméra demande 350 m ou plus : augmentez l\'altitude.', vmaxT:'Vitesse maximale du véhicule', vmaxH:'La vitesse la plus élevée que votre véhicule peut atteindre — par exemple 900 km/h pour un avion rapide. NAVERA s\'en sert pour rejeter les positions impossibles (leurrage GPS, fausses correspondances).', vmaxBad:'Vitesse maximale : entre 4 et 1260 km/h', simCap:'Dans cette simulation, le {v} va au plus à {s} km/h (modèle ArduPilot) : les contrôles de NAVERA utilisent votre vitesse maximale, le véhicule simulé reste à sa propre limite.', noSpace2:'Espace disque insuffisant pour la carte satellite de ce trajet : libérez de la place, raccourcissez le trajet, ou choisissez une position simulée dans les réglages avancés', tooLong:'trajet trop long à préparer',
     checking:'Vérification de la couverture…', prepStarted:'Préparation de la carte lancée',
     tooLongLaunch:'Trajet trop long pour la vraie vision : raccourcissez-le ou choisissez une vision simulée',
     toDownload:'à télécharger', elapsed:'écoulé', bigPrep:'Préparation importante', continueQ:'Continuer ?'},
@@ -638,16 +643,16 @@ const I18N = {
     visNoteG:'رؤية NAVERA الحقيقية تحتاج كاميرا سفلية على ارتفاع: على هذه المركبة يُحاكى الموقع عند فقدان GPS بملف الخطأ المختار هنا.',
     altWarn:'ليلاً يجب أن تطير الطائرة على 350 م أو أكثر: اختر مرتفع.',
     openWork_drone:'فتح مساحة عمل الطائرة ←', openWork_boat:'فتح مساحة عمل القارب ←', openWork_robot:'فتح مساحة عمل الروبوت ←',
-    routeNote_drone:'تطير الطائرة في خط مستقيم من A إلى B على الارتفاع المختار. مع الرؤية الحقيقية، حضّر الخريطة لهذا المسار (تبويب الخريطة).',
-    routeNote_boat:'ضع A وB على الماء: يبحر القارب في خط مستقيم من A إلى B (دون تفادي الساحل في هذه المحاكاة).',
-    routeNote_robot:'يسير الروبوت في خط مستقيم من A إلى B (دون تفادي العوائق أو تتبع الطرق في هذه المحاكاة).',
+    routeNote_drone:'تطير الطائرة المسيرة نحو B عبر أقصر مسار وعلى الارتفاع المختار. مع الملاحة بالكاميرا أنشئ خريطة الأقمار الصناعية للمسار (القسم 4).',
+    routeNote_boat:'ضع A وB على الماء: يبحر القارب نحو B عبر أقصر مسار (دون تفادي الساحل في هذه المحاكاة).',
+    routeNote_robot:'يسير الروبوت نحو B عبر أقصر مسار (دون تفادي العوائق أو تتبع الطرق في هذه المحاكاة).',
     changeVeh:'تغيير المركبة والمعايير', landOnly:'هبوط', stopVeh:'توقف',
     stVehicle:'المركبة', stMission:'المهمة', stRoute:'المسار على الخريطة', qVehicle:'أي مركبة تحمل NAVERA؟', droneP:'تطير فوق الأرض', boatP:'يبحر على الماء', robotP:'يسير على اليابسة', qWhen:'متى تجري المهمة؟', qSpeed:'بأي سرعة؟', qAlt:'على أي ارتفاع؟', advanced:'إعدادات متقدمة', advSub:'للمهندسين — القيم الافتراضية مناسبة للعرض', exactValues:'القيم الدقيقة', capShort:'NAVERA على هذه المركبة:', dayPlain:'تتعرف الكاميرا على الأرض في خريطة الأقمار الصناعية.', dayPlainG:'يحمي NAVERA نظام GPS؛ الموقع دون GPS محاكى.', nightPlain:'كاميرا حرارية والنجوم. تطير الطائرة عالياً (≥ 350 م).', nightPlainG:'يحمي NAVERA نظام GPS ويحدد موقعه بالنجوم.', slow:'بطيء', normal:'عادي', fast:'سريع', low:'منخفض', high:'مرتفع', nightOk:'ضروري ليلاً', toRoute:'متابعة إلى المسار ←', lastRoute:'آخر مسار', useIt:'استعماله', hVehicle:'اختر المركبة المركّب عليها NAVERA.', routeTitle:'المسار', hRoute:'اكتب مدينة أو عنواناً أو إحداثيات (خط العرض، خط الطول) واخترها من القائمة. يمكنك أيضاً النقر على الخريطة: النقرة الأولى تحدد الانطلاق والثانية الوجهة.', from:'الانطلاق', to:'الوجهة', phA:'مثلاً باريس', phB:'مثلاً تونس', myPos:'موقعي', travelTime:'مدة الرحلة', condTitle:'الظروف', timeOfDay:'وقت المهمة', flightAlt:'ارتفاع الطيران', satMap:'خريطة الأقمار الصناعية', genMap:'إنشاء الخريطة', mapNoSim:'غير ضرورية: في الإعدادات المتقدمة الموقع دون GPS محاكى.', mapNoVeh:'غير ضرورية لهذه المركبة: موقعها دون GPS محاكى.', mapNight:'ليلاً تُقارن الكاميرا الحرارية بخريطة الأقمار الصناعية. داخل الخريطة المدمجة لا شيء مطلوب؛ خارجها أنشئ خريطة المسار.', mapDay:'نهاراً تتعرف الكاميرا على الأرض بمقارنتها بصور الأقمار الصناعية للمسار. أنشئها قبل الطيران (بضع دقائق، يلزم الإنترنت).', toLaunch:'متابعة ←', yourMission:'مهمتك', editMission:'تعديل المهمة', notNeeded:'غير ضرورية', ready:'جاهزة', coords:'إحداثيات', badCoords:'إحداثيات غير صالحة', searching:'جارٍ البحث…', noPlace:'لم يُعثر على أي مكان', needNet:'البحث عن الأماكن يحتاج الإنترنت؛ اكتب الإحداثيات بدلاً من ذلك (مثلاً 36.8065, 10.1815).', editHint:'لتغيير المسار اضغط «تعديل المهمة».', needRoute2:'حدد الانطلاق والوجهة (القسم 2)', needGen:'أنشئ خريطة الأقمار الصناعية (القسم 4)', needGenNight:'المسار يخرج من الخريطة المدمجة: أنشئ خريطة الأقمار الصناعية (القسم 4)', allSet:'كل شيء جاهز.', allSetD:'تابع لإطلاق المهمة.', summary:'الملخص', prev:'→ رجوع', next:'التالي ←', openPlanner:'فتح المخطط ←',
     hintA:'انقر على الخريطة لتحديد نقطة الانطلاق (A)', hintB:'انقر على الخريطة لتحديد الوجهة (B)',
     hintReady:'جاهز: اضغط إطلاق المهمة', needRoute:'حدد نقطة الانطلاق (A) والوجهة (B)', needPrepare:'حضّر الخريطة (تبويب الخريطة)',
     needPrepareNight:'خارج الخريطة المدمجة: حضّر الخريطة أولاً', blocked:'الإقلاع متوقف: أعد مستقبل GPS إلى الوضع السليم',
     mapReady:'الخريطة جاهزة للرؤية', notPrepared:'غير محضّرة', noInternet:'لا يوجد اتصال بالإنترنت: عرض الخريطة المدمجة.',
-    tooLong:'المسار طويل جداً للتحضير', noSpace:'مساحة القرص غير كافية', plane:'طائرة', planeP:'طائرة سريعة ثابتة الجناح', capApPlane:'ArduPlane، يستقبل NAVERA كـ GPS خاص به (MAVLink GPS_INPUT).', routeNote_plane:'تقلع الطائرة في اتجاهها، تصعد إلى الارتفاع المختار، تطير في خط مستقيم نحو B وتدور فوقها. مع الرؤية الحقيقية أنشئ خريطة المسار.', circleHere:'الدوران هنا', altCap2:'في هذه المحاكاة لا تصعد {v} أكثر من {a} م.', altUntested:'لم تُختبر ملاحة NAVERA بالكاميرا إلا حتى نحو 400 م.', linkLost2:'لم يعد NAVERA يستجيب للمحاكي (منذ {t}): المواقع المعروضة لم تعد محدثة. أعد تشغيل المحاكي.', vmaxAuto:'تلقائي: سرعة التنقل + 50 % (على الأقل + 18 كم/س)', vmaxH2:'يرفض NAVERA أي موقع لا يمكن للمركبة بلوغه بهذه السرعة (خداع GPS، مطابقات خاطئة). يجب أن تبقى فوق السرعة الأرضية الحقيقية، مع الرياح الخلفية.', vmaxBad2:'السرعة القصوى: فوق سرعة التنقل، 1890 كم/س على الأكثر', auto:'تلقائي', cruiseT:'سرعة التنقل', cruiseH:'السرعة التي تقطع بها المركبة المسار.', altH:'الارتفاع فوق الأرض. للمقارنة: الطائرات المسيرة 50–400 م، الطائرات الخفيفة 1000–3000 م، طائرات الركاب 10000–12000 م، طائرات رجال الأعمال حتى نحو 15000 م.', fpLine:'ترى الكاميرا نحو {w} م من الأرض عرضاً.', altCap:'في هذه المحاكاة لا تصعد الطائرة أكثر من {a} م.', cruiseBad:'سرعة التنقل: بين 1 كم/س والسرعة القصوى', altBad:'الارتفاع: بين 10 و20000 م', altWarn2:'ليلاً تحتاج الكاميرا 350 م أو أكثر: ارفع الارتفاع.', vmaxT:'السرعة القصوى للمركبة', vmaxH:'أعلى سرعة يمكن أن تبلغها مركبتك — مثلاً 900 كم/س لطائرة سريعة. يستعملها NAVERA لرفض المواقع المستحيلة (خداع GPS، مطابقات خاطئة).', vmaxBad:'السرعة القصوى: بين 4 و1260 كم/س', simCap:'في هذه المحاكاة لا تتجاوز سرعة {v} {s} كم/س (نموذج ArduPilot): فحوص NAVERA تستعمل سرعتك القصوى، والمركبة المحاكاة تبقى عند حدها.', noSpace2:'مساحة القرص غير كافية لخريطة هذا المسار: حرّر مساحة أو اختصر المسار أو اختر موقعاً محاكى في الإعدادات المتقدمة', checking:'جارٍ التحقق من التغطية…', prepStarted:'بدأ تحضير الخريطة',
+    tooLong:'المسار طويل جداً للتحضير', noSpace:'مساحة القرص غير كافية', skipT:'بدء الرحلة عند', skipUnit:'كم من نقطة الانطلاق', skipH:'لاختبار نهاية مسار طويل دون قطعه كله. تنطلق المركبة من هذه النقطة من المسار؛ تُستعمل خريطة الأقمار الصناعية للمسار كله.', skipBad:'البداية: بين 0 و{m} كم', skipRow:'تنطلق عند', plane:'طائرة', planeP:'طائرة سريعة ثابتة الجناح', capApPlane:'ArduPlane، يستقبل NAVERA كـ GPS خاص به (MAVLink GPS_INPUT).', routeNote_plane:'تقلع الطائرة في اتجاهها، تصعد إلى الارتفاع المختار، تطير نحو B عبر أقصر مسار وتدور فوقها. مع الملاحة بالكاميرا أنشئ خريطة الأقمار الصناعية للمسار (القسم 4).', circleHere:'الدوران هنا', altCap2:'في هذه المحاكاة لا تصعد {v} أكثر من {a} م.', altUntested:'لم تُختبر ملاحة NAVERA بالكاميرا إلا حتى نحو 400 م.', linkLost2:'لم يعد NAVERA يستجيب للمحاكي (منذ {t}): المواقع المعروضة لم تعد محدثة. أعد تشغيل المحاكي.', vmaxAuto:'تلقائي: سرعة التنقل + 50 % (على الأقل + 18 كم/س)', vmaxH2:'يرفض NAVERA أي موقع لا يمكن للمركبة بلوغه بهذه السرعة (خداع GPS، مطابقات خاطئة). يجب أن تبقى فوق السرعة الأرضية الحقيقية، مع الرياح الخلفية.', vmaxBad2:'السرعة القصوى: فوق سرعة التنقل، 1890 كم/س على الأكثر', auto:'تلقائي', cruiseT:'سرعة التنقل', cruiseH:'السرعة التي تقطع بها المركبة المسار.', altH:'الارتفاع فوق الأرض. للمقارنة: الطائرات المسيرة 50–400 م، الطائرات الخفيفة 1000–3000 م، طائرات الركاب 10000–12000 م، طائرات رجال الأعمال حتى نحو 15000 م.', fpLine:'ترى الكاميرا نحو {w} م من الأرض عرضاً.', altCap:'في هذه المحاكاة لا تصعد الطائرة أكثر من {a} م.', cruiseBad:'سرعة التنقل: بين 1 كم/س والسرعة القصوى', altBad:'الارتفاع: بين 10 و20000 م', altWarn2:'ليلاً تحتاج الكاميرا 350 م أو أكثر: ارفع الارتفاع.', vmaxT:'السرعة القصوى للمركبة', vmaxH:'أعلى سرعة يمكن أن تبلغها مركبتك — مثلاً 900 كم/س لطائرة سريعة. يستعملها NAVERA لرفض المواقع المستحيلة (خداع GPS، مطابقات خاطئة).', vmaxBad:'السرعة القصوى: بين 4 و1260 كم/س', simCap:'في هذه المحاكاة لا تتجاوز سرعة {v} {s} كم/س (نموذج ArduPilot): فحوص NAVERA تستعمل سرعتك القصوى، والمركبة المحاكاة تبقى عند حدها.', noSpace2:'مساحة القرص غير كافية لخريطة هذا المسار: حرّر مساحة أو اختصر المسار أو اختر موقعاً محاكى في الإعدادات المتقدمة', checking:'جارٍ التحقق من التغطية…', prepStarted:'بدأ تحضير الخريطة',
     tooLongLaunch:'المسار طويل جداً للرؤية الحقيقية: اختصره أو اختر رؤية محاكاة',
     toDownload:'للتحميل', elapsed:'مضى', bigPrep:'تحضير كبير', continueQ:'متابعة؟'},
 };
@@ -795,10 +800,10 @@ const CAP_SYM = {ok:'✓', no:'✗', plan:'…', info:'i'};
 const capHTML = () => CAPS[cfg.vehicle].map(([s, tk, tt, dk, dd]) =>
   `<li class="${s}"><span class="s">${CAP_SYM[s]}</span><div><b>${esc(t(tk, tt))}</b><span class="d">${esc(t(dk, dd))}</span></div></li>`).join('');
 const ROUTE_NOTE = {
-  drone:'The drone flies a straight line from A to B at the chosen altitude. With the real vision, prepare the map for this route (tab Map).',
-  plane:'The plane takes off on its heading, climbs to the chosen altitude, flies straight to B and circles there. With the real vision, generate the map for this route.',
-  boat:'Place A and B on water: the boat sails a straight line from A to B (no coastline avoidance in this simulation).',
-  robot:'The robot drives a straight line from A to B (no obstacle avoidance or road following in this simulation).'};
+  drone:'The drone flies to B along the shortest path, at the chosen altitude. With the camera navigation, generate the satellite map of the route (section 4).',
+  plane:'The plane takes off on its heading, climbs to the chosen altitude, flies to B along the shortest path and circles there. With the camera navigation, generate the satellite map of the route (section 4).',
+  boat:'Place A and B on water: the boat sails to B along the shortest path (no coastline avoidance in this simulation).',
+  robot:'The robot drives to B along the shortest path (no obstacle avoidance or road following in this simulation).'};
 const OPEN_WORK = {drone:'Open the drone workspace →', boat:'Open the boat workspace →', robot:'Open the ground robot workspace →'};
 function pickCard(id, v){ document.querySelectorAll(`#${id} .mcard`).forEach(c => c.classList.toggle('on', c.dataset.v === v)); }
 const SIM_ALT_MAX = {drone:400, plane:1000};   // the simulated ceiling (m)
@@ -858,7 +863,8 @@ function summaryHTML(){
     [t('from', 'Departure'), nameA || '—'],
     [t('to', 'Destination'), nameB || '—'],
     [t('distance', 'Distance'), d ? m(d) : '—'],
-    [t('travelTime', 'Travel time'), d ? fmtTime(d / Math.max(1, cfg.speed)) : '—'],
+    ...(skipKm > 0 ? [[t('skipRow', 'Starts at'), `${Math.round(skipKm)} km ${t('skipUnit', 'from the departure')}`]] : []),
+    [t('travelTime', 'Travel time'), d ? fmtTime(Math.max(0, d - skipKm * 1000) / Math.max(1, cfg.speed)) : '—'],
     [t('timeOfDay', 'Time of day'), cfg.light === 'night' ? t('fNight', 'Night') : t('fDay', 'Day')],
     [t('speed','Speed'), `${cfg.speed} m/s · ${kmh(cfg.speed)} km/h`],
     [t('vmaxT', 'Maximum speed of the vehicle'), `${kmh(cfg.vmax)} km/h` + (cfg.vmaxAuto ? ` (${t('auto', 'automatic')})` : '')],
@@ -942,7 +948,31 @@ $('editSetup').onclick = openHome;
 $('launch2').onclick = () => $('launchBtn').click();
 
 /* ───────────────────────────── route planning ───────────────────────────── */
-let A = null, B = null, nameA = '', nameB = '', pick = 'A';
+let A = null, B = null, nameA = '', nameB = '', pick = 'A', skipKm = 0;
+// great-circle helpers (as day_pkg.prepare_area: densify_route / point_along)
+function gcPoint(a, b, f){
+  const r = Math.PI / 180, p1 = a[0] * r, l1 = a[1] * r, p2 = b[0] * r, l2 = b[1] * r, d = dist(a, b) / 6371000;
+  if(d < 1e-12) return a.slice();
+  const ka = Math.sin((1 - f) * d) / Math.sin(d), kb = Math.sin(f * d) / Math.sin(d);
+  const x = ka * Math.cos(p1) * Math.cos(l1) + kb * Math.cos(p2) * Math.cos(l2);
+  const y = ka * Math.cos(p1) * Math.sin(l1) + kb * Math.cos(p2) * Math.sin(l2), z = ka * Math.sin(p1) + kb * Math.sin(p2);
+  return [Math.atan2(z, Math.hypot(x, y)) / r, Math.atan2(y, x) / r];
+}
+function legsAB(){                      // the route as flown and mapped (legs of ≤ 10 km)
+  if(PLANR && PLANR.plan && PLANR.plan.route && planKey === JSON.stringify([A, B])) return PLANR.plan.route;
+  const n = Math.max(1, Math.ceil(dist(A, B) / 10000));
+  return Array.from({length:n + 1}, (_, k) => gcPoint(A, B, k / n));
+}
+function pointAlong(route, m){
+  for(let i = 0; i < route.length - 1; i++){
+    const seg = dist(route[i], route[i + 1]);
+    if(m <= seg && seg > 0) return gcPoint(route[i], route[i + 1], m / seg);
+    m -= seg;
+  }
+  return route[route.length - 1];
+}
+const mS = L.marker([0, 0], {interactive:false, zIndexOffset:900, icon:L.divIcon({className:'', iconSize:[22,22], iconAnchor:[11,11],
+  html:'<div style="width:22px;height:22px;border-radius:50%;background:#15803d;border:3px solid #fff;box-shadow:0 0 4px #000;color:#fff;font:800 11px sans-serif;display:grid;place-items:center">▶</div>'})});
 const mA = L.marker([0, 0], {icon:pin('#15803d', 'A'), draggable:true});
 const mB = L.marker([0, 0], {icon:pin('#b91c1c', 'B'), draggable:true});
 const routeLine = L.polyline([], {color:'#1d4ed8', weight:4, opacity:.9, dashArray:'10 8'}).addTo(map);
@@ -974,14 +1004,19 @@ function setPoint(which, p, name){
 function drawPlan(){
   if(A) mA.setLatLng(A).addTo(map); else mA.remove();
   if(B) mB.setLatLng(B).addTo(map); else mB.remove();
-  routeLine.setLatLngs(A && B ? [A, B] : []);
+  routeLine.setLatLngs(A && B ? legsAB() : []);
+  const long = !!(A && B && dist(A, B) >= 20000);
+  $('skipBox').classList.toggle('hidden', !long);
+  if(!long) skipKm = 0;
+  if(document.activeElement !== $('wSkip')) $('wSkip').value = Math.round(skipKm);
+  if(long && skipKm > 0) mS.setLatLng(pointAlong(legsAB(), skipKm * 1000)).addTo(map); else mS.remove();
   if(document.activeElement !== $('inA')) $('inA').value = A ? nameA : '';
   if(document.activeElement !== $('inB')) $('inB').value = B ? nameB : '';
   $('fA').classList.toggle('active', pick === 'A' && !A); $('fB').classList.toggle('active', pick === 'B' && !B);
   if(A && B){
     const d = dist(A, B);
     $('stDist').textContent = m(d);
-    $('stEta').textContent = fmtTime(d / Math.max(1, cfg.speed));
+    $('stEta').textContent = fmtTime(Math.max(0, d - skipKm * 1000) / Math.max(1, cfg.speed));
     $('stBrg').textContent = `${Math.round(bearing(A, B))}°`;
   } else { $('stDist').textContent = $('stEta').textContent = $('stBrg').textContent = '—'; }
 }
@@ -1007,7 +1042,7 @@ function routeChanged(){
   if(!(A && B)){ PLANR = null; return updateUI(); }
   const key = JSON.stringify([A, B]);
   if(key !== planKey){
-    planKey = key; PLANR = null;
+    planKey = key; PLANR = null; skipKm = 0;
     clearTimeout(planTimer);
     planTimer = setTimeout(fetchPlan, 250);
   }
@@ -1024,6 +1059,12 @@ function showLastRoute(){
 $('useLast').onclick = () => {
   [A, B] = lastRoute; nameA = lastRoute[2] || fmtLL(A); nameB = lastRoute[3] || fmtLL(B); pick = 'B'; routeChanged();
   map.fitBounds(L.latLngBounds([A, B]).pad(0.3));
+};
+$('wSkip').onchange = () => {
+  const v = +$('wSkip').value, max = A && B ? dist(A, B) / 1000 - 1 : 0;
+  if(!($('wSkip').value !== '' && v >= 0 && v <= max)){ toast(t('skipBad', 'Start: between 0 and {m} km').replace('{m}', Math.floor(max))); }
+  else skipKm = v;
+  drawPlan(); renderSummary();
 };
 $('swapAB').onclick = () => { [A, B, nameA, nameB] = [B, A, nameB, nameA]; routeChanged(); };
 $('meA').onclick = () => { pick = 'A'; locate(true); };
@@ -1269,7 +1310,8 @@ $('launchBtn').onclick = () => {
   clearTracks();
   post('mission', {vehicle:cfg.vehicle, start:A, dest:B, speed:cfg.speed, alt:cfg.alt,
                    vision:cfg.vision === 'real' ? 'real' : 'profile', profile:cfg.vision === 'target' ? 'target' : 'measured',
-                   light:cfg.light, forward_degraded:cfg.fwd, degraded_sigma_m:cfg.sigma, max_speed_mps:cfg.vmax});
+                   light:cfg.light, forward_degraded:cfg.fwd, degraded_sigma_m:cfg.sigma, max_speed_mps:cfg.vmax,
+                   start_km:skipKm});
   follow = true;
 };
 $('endBtn').onclick = () => post('stop');

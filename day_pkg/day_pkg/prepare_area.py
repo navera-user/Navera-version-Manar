@@ -137,6 +137,55 @@ def _present(path, zoom, tiles):
     return present
 
 
+LEG_M = 10_000.0   # long routes are flown and mapped as legs of at most this length
+
+
+def _gc_point(a, b, f):
+    """Point at fraction f of the great circle from a to b (lat, lon in degrees)."""
+    p1, l1, p2, l2 = (math.radians(v) for v in (a[0], a[1], b[0], b[1]))
+    d = 2 * math.asin(math.sqrt(min(1.0, math.sin((p2 - p1) / 2) ** 2
+                                     + math.cos(p1) * math.cos(p2) * math.sin((l2 - l1) / 2) ** 2)))
+    if d < 1e-12:
+        return [float(a[0]), float(a[1])]
+    ka, kb = math.sin((1 - f) * d) / math.sin(d), math.sin(f * d) / math.sin(d)
+    x = ka * math.cos(p1) * math.cos(l1) + kb * math.cos(p2) * math.cos(l2)
+    y = ka * math.cos(p1) * math.sin(l1) + kb * math.cos(p2) * math.sin(l2)
+    z = ka * math.sin(p1) + kb * math.sin(p2)
+    return [math.degrees(math.atan2(z, math.hypot(x, y))), math.degrees(math.atan2(y, x))]
+
+
+def densify_route(route, leg_m: float = LEG_M):
+    """The route with great-circle points added so that no leg is longer than leg_m.
+
+    A vehicle sent to a far waypoint does not follow the straight lat/lon line the
+    corridor is built on (Paris-Tunisia: ~17 km apart, for a ±1 km corridor). Flown
+    leg by leg along these points, path and corridor agree to metres. Routes whose
+    legs are already short are returned unchanged (same area id)."""
+    out = [[float(route[0][0]), float(route[0][1])]]
+    for a, b in zip(route, route[1:]):
+        n = max(1, int(math.ceil(_haversine_m(a, b) / leg_m)))
+        out += [_gc_point(a, b, k / n) for k in range(1, n)] + [[float(b[0]), float(b[1])]]
+    return out
+
+
+def point_along(route, dist_m: float):
+    """(point, index of the next vertex) at dist_m along the polyline (great circles)."""
+    left = max(0.0, float(dist_m))
+    for i, (a, b) in enumerate(zip(route, route[1:])):
+        seg = _haversine_m(a, b)
+        if left <= seg and seg > 0:
+            return _gc_point(a, b, left / seg), i + 1
+        left -= seg
+    return [float(route[-1][0]), float(route[-1][1])], len(route) - 1
+
+
+def _haversine_m(a, b) -> float:
+    p1, p2 = math.radians(a[0]), math.radians(b[0])
+    h = (math.sin((p2 - p1) / 2) ** 2
+         + math.cos(p1) * math.cos(p2) * math.sin(math.radians(b[1] - a[1]) / 2) ** 2)
+    return 2 * 6_371_000.0 * math.asin(math.sqrt(min(1.0, h)))
+
+
 def route_length_m(route) -> float:
     return sum(_dist_to_route_m(a[0], a[1], [b]) for a, b in zip(route, route[1:]))
 
