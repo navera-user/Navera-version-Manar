@@ -78,6 +78,7 @@ MAX_SPEED_LIMIT = 350.0     # m/s (~1260 km/h): highest top speed accepted
 # What the simulated autopilot can actually fly (ArduCopter WPNAV_SPEED ≤ 20 m/s,
 # ArduPilot Rover models): the cruise speed is capped here, whatever the top speed.
 SIM_CRUISE_MAX = {"drone": 20.0, "boat": 15.0, "robot": 8.0}
+SIM_ALT_MAX = 400.0         # the simulated drone's ceiling (m); the page states it
 
 
 def _route_dist(p, route):
@@ -671,7 +672,9 @@ class Simulator(Node):
                 vehicle=vehicle, start=[float(start[0]), float(start[1])],
                 dest=[float(dest[0]), float(dest[1])],
                 speed=cruise, max_speed_mps=vmax,
-                alt=max(30.0, min(400.0, float(body.get("alt", alt)))),
+                # the operator's altitude (any aircraft); the simulated drone flies up to SIM_ALT_MAX
+                req_alt=float(body.get("alt", alt)),
+                alt=max(30.0, min(SIM_ALT_MAX, float(body.get("alt", alt)))),
                 profile="target" if body.get("profile") == "target" else "measured",
                 forward_degraded=bool(body.get("forward_degraded", False))))
         elif action == "goto":
