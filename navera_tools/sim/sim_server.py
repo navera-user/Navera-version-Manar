@@ -155,7 +155,7 @@ class Simulator(Node):
 
         self.cfg = dict(vehicle="drone", start=[35.8256, 10.6385], dest=None, speed=15.0,
                         alt=150.0, profile="measured", vision="real", area=None,
-                        forward_degraded=False, degraded_sigma_m=300.0, max_speed_mps=MAX_SPEED["drone"])
+                        forward_degraded=False, degraded_sigma_m=500.0, max_speed_mps=MAX_SPEED["drone"])
         self.faults = dict(gps="ok", camera="ok", light="day", imu="ok")
         self.phase = "idle"                     # idle, starting, waiting_gps, takeoff, enroute, arrived, ...
         self.phase_detail = "Choose a start point and a destination on the map, then Start."
@@ -742,7 +742,7 @@ class Simulator(Node):
             self.areas.current = area
             self.start_mission(dict(
                 vision=vision, area=area,
-                degraded_sigma_m=max(5.0, min(2000.0, float(body.get("degraded_sigma_m", 300.0)))),
+                degraded_sigma_m=max(5.0, min(2000.0, float(body.get("degraded_sigma_m", 500.0)))),
                 vehicle=vehicle, start=legs[0], waypoints=legs[1:], start_km=start_km,
                 dest=[float(dest[0]), float(dest[1])],
                 speed=cruise, max_speed_mps=vmax,

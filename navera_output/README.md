@@ -27,6 +27,13 @@ GPS could fly far off course. Enable `forward_degraded` only with a `degraded_si
 you have measured for your vehicle and area — the autopilot will weight the position by it.
 The node refuses to start with `forward_degraded` and no sigma.
 
+Never state better than measured. Day vision: **500 m or more** (median 442 m on real
+frames). Measured in the simulator (2026-10-01): with ±300 m forwarded over uniform desert
+(median error 351 m, p90 853 m, jumps of 360–570 m rejected by the motion gate), ArduCopter's
+EKF reported "EKF variance" and switched to LAND after 45 s — an autopilot told a position
+is better than it is rejects it and fails safe. Over textured ground (Sousse, median 111 m)
+the same setting flew on.
+
 ## Configuration
 
 `config/vehicle_output.yaml`, or on the box `/etc/navera/navera.env`

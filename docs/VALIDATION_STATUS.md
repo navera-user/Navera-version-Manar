@@ -203,6 +203,22 @@ over by vision, median 59–129 m, mission continued); (2) a celestial fix (±55
 the autopilot moved its position by 125 km — positions coarser than `max_forward_sigma_m`
 (1 km) are no longer forwarded.
 
+### Long route (simulator, 2026-10-01)
+
+Paris → Tunisia, 1768 km, mapped as ≤ 10 km great-circle legs: 79 775 tiles generated in
+105 min (78 904 downloaded), 980 MB on disk. Day vision loads the model and the 80 000-tile
+area in 30 s; per frame it compares the 21 tiles of its 600 m circle, as on a small area
+(ranking 3–4 ms instead of 289 ms before the grid index); ~1.1 GB more memory in use (1.6 GB
+left available on the 8 GB Jetson with the simulator running).
+
+Flown with the real day vision from km 1755 (13 km before the end, uniform terrain near
+Gabès), GPS jammed: 185 matches, **median 351 m, p90 853 m**, 44 frames rejected by the motion
+gate (jumps of 360–570 m). With vision forwarded at ±300 m, ArduCopter's EKF failed safe
+(LAND) after 45 s. Over textured ground (Sousse, same day) the median was 111 m and the
+drone flew on. **Day vision is unreliable over uniform terrain** (desert, sea) — consistent
+with the project report; the size of the map is not the cause (same candidates per frame),
+to confirm by the same flight on a small area of the same place.
+
 ## Hardware results recorded in the project report (2026-06-02)
 
 The final project report (`rapport_vFinal_Navera.pdf`, 83 pages, found deleted on the data disk)
