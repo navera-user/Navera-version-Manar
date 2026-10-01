@@ -134,7 +134,15 @@ wrong match, the motion gate does.
   GPS sanity), stated with `attitude_sigma_deg`, never a position to fly a mission on. A
   levelled (gimballed) star camera and a better attitude source are what improve it.
 
-**Not validated:** real sky images (clouds, light pollution, lens), a real IMU.
+- **First real sky photo, 2026-10-01** (`ImageTest.jpeg`, 1200×1600, found on the data disk in an
+  earlier project; no date, place or attitude recorded): with NAVERA's solver settings the image
+  centre is identified in 20 s, **1.7′ from an independent earlier solution** (Siril/astrometry).
+  This checks star identification on a real photograph; it cannot check a position (no time,
+  place or attitude). It also exposed that the secondary `wcs` solver mode failed on real photos
+  (`np.bool` in astrometry.net's line removal) — fixed.
+
+**Not validated:** a real sky image with known time, place and attitude (position accuracy),
+clouds and light pollution, a real IMU.
 
 ### Robustness (bench)
 

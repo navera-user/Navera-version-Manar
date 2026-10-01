@@ -45,6 +45,9 @@ def solve_image_b64(image_b64: str) -> dict:
             '--scale-units', 'degwidth',
             '--scale-low', '50',
             '--scale-high', '70',
+            # astrometry.net's line removal runs a numpy.bool script that fails on
+            # NumPy >= 1.24 (found on a real sky photo); the geoloc path skips it too
+            '--no-remove-lines', '--uniformize', '0',
             img_path
         ]
         _, _, err, timed_out = _run_group(cmd, 300)
