@@ -14,7 +14,8 @@ been measured. Open engineering items are tracked in
 |---|---|---|
 | GPS pass-through, fix arbitration, operator display | Working, bench-tested | Scripted tests, virtual serial port, simulated sensors |
 | Automatic restart after a crash | Mechanism verified; not yet reboot-tested on a deployed unit | Node exit → launch exit, verified |
-| Day vision (DINOv2 tile retrieval) | **Not accurate enough to replace GPS** | Median 442 m on labelled replay frames |
+| Day vision — local feature matching (default since 2026-10-01) | **Accurate on aerial test frames; not yet measured with NAVERA's camera** | 32/33 frames within 9 m (median 4 m), no wrong position accepted, 0.16 s/frame |
+| Day vision — DINOv2 tile retrieval (former method, fallback) | **Not accurate enough to replace GPS** | Median 442 m on labelled replay frames |
 | Night vision (STHN homography) | Frames scaled and turned north-up from altitude, camera field of view and heading; motion gate; **not validated on real thermal** | 8–13 m median on synthetic frames (250–600 m, any heading); simulated night mission 6 m median |
 | Celestial (astrometry.net) | Run end to end on simulated star fields; **coarse: bounded by the IMU attitude (~111 km per degree)** | 5.5–6.5 km with a perfect attitude; 24–119 km with a BNO085-class IMU |
 | IMU dead-reckoning | **Not implemented** (IMU is liveness only) | — |
@@ -54,9 +55,37 @@ top-1/top-2 and top-1/top-5 gaps do no better than "always reject". **Whole-map 
 therefore disabled by default** (`allow_global_search: false`). Day vision reports no
 position until it has a prior (the last GPS fix, or its own tracked matches).
 
-**Conclusion:** the current day method must not be relied on as a GPS replacement. A
-different matching approach (local feature matching against the satellite image around a
-prior) is required and is the main open development item.
+**Conclusion:** the retrieval method must not be relied on as a GPS replacement. It is replaced
+by local feature matching (below) and kept as the fallback when the frame scale is unknown.
+
+#### Local feature matching (`day_pkg/local_matcher.py`, 2026-10-01)
+
+The frame is scaled to the map's resolution (altitude + `camera_hfov_deg`), its SIFT features
+are matched to those of the map tiles in the search circle, and a rotation + scale +
+translation is fitted (RANSAC). A match is accepted only if it has ≥ 6 inliers **and** the
+fitted scale is the one the altitude predicts (±15 %) — a wrong place almost never matches at
+the right scale. Same 33 frames and rule as above (search within 600 m of the previous true
+position):
+
+| Variant | Accepted | Error of accepted | Wrong (> 50 m) accepted | Time per frame (Jetson) |
+|---|---|---|---|---|
+| prototype, no scale check, ≥ 12 inliers | 10/33 | median 4 m, worst 1097 m | 1 | 4.7 s |
+| + scale check (frame scale known) | 21/33 | median 4 m, worst 5 m | 0 | 3.5 s |
+| + frame pre-scaled, map features per tile, margin 300 m | 32/33 | median 4 m, worst 9 m | 0 | 0.42 s (CPU) |
+| product module (`LocalMatcher`, ≥ 6 inliers, GPU matching) | 30/33 | median 4 m, worst 5 m | 0 | 0.11 s (GPU) |
+
+The frames are aerial images from another source and date than the map, rotated ~50° and at
+~3× the map's resolution: a fair test of cross-source matching, **not** frames from NAVERA's
+camera (lens, blur, haze, oblique view). The benchmark camera's scale (0.62 of a 768 px frame)
+is its calibration, as `camera_hfov_deg` is for a real camera. Positions are stated at 30 m
+(`local_sigma_m`) until measured with the real camera.
+
+In flight (simulator, desert near Gabès — where retrieval failed, see Long route): 147 matches
+in a row, 0 rejected, ~1 m (the simulated camera is cut from the map's own imagery:
+optimistic); day vision 0.16 s/frame; the autopilot flew 230 s of the 240 s test on vision
+alone (45–91 s with retrieval), its own position error 27 m median. Remaining gaps over 3 s
+came from the simulated camera's rendering under a CPU saturated by another simulation, not
+from day vision.
 
 > The replay frames in `camera_pkg/data/day` do not show the places their CSV labels
 > say. Earlier accuracy figures computed on them are not valid.
@@ -228,7 +257,8 @@ The small area fails the same way: **the terrain is the cause, not the size of t
 honest ±500 m delays the failsafe but cannot prevent it: about a third of the time day vision
 has no acceptable match (jumps rejected by the motion gate) and nothing bridges the gaps —
 no inertial dead-reckoning yet (FEAT-2). Cures: LOC-14 (local features around the prior) and
-FEAT-2. (A first ±500 m run was discarded: an orphan estimator from the simulator was
+FEAT-2. **Update — with local feature matching** (same flight): 147 matches, 0 rejected, the
+autopilot held 230 s (end of test); see Day vision. (A first ±500 m run was discarded: an orphan estimator from the simulator was
 competing with the real one — fixed in 6bff3d6.)
 
 ## Hardware results recorded in the project report (2026-06-02)

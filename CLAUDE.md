@@ -52,7 +52,7 @@ gps_node ───────────────────────�
 | Package | Executable | Role |
 |---------|-----------|------|
 | `camera_pkg` | `camera_publisher.py` | Frame source (CSV+image replay or live camera), sync protocol |
-| `day_pkg` | `day_subscriber.py` (+`day_localizer.py`) | Day localization — **DINOv2** retrieval vs satellite |
+| `day_pkg` | `day_subscriber.py` (+`local_matcher.py`, `day_localizer.py`) | Day localization — **local feature matching** vs satellite around the prior (DINOv2 retrieval as fallback) |
 | `night_pkg` | `night_subscriber.py` (+`night_localizer.py`) | Night localization — **STHN** homography |
 | `cn_pkg` | `cn_subscriber.py` | Celestial — astrometry.net plate-solving |
 | `gps_pkg` | `gps_node.py` | GPS driver (NMEA serial, checksummed) → estimator |
@@ -75,8 +75,10 @@ gps_node ───────────────────────�
 dead-reckoning is not implemented yet (the IMU is liveness only).
 
 ### Important truths (do not "fix" these without discussion)
-- **Measured accuracy lives in `docs/VALIDATION_STATUS.md`.** Day vision measured ~440 m median —
-  not a GPS replacement. Never quote a better number without a new measurement.
+- **Measured accuracy lives in `docs/VALIDATION_STATUS.md`.** Day vision: local feature matching
+  (default) 32/33 benchmark frames within 9 m — aerial frames from another source, NOT yet NAVERA's
+  camera; the former DINOv2 retrieval (fallback) ~440 m median. Never quote a better number
+  without a new measurement.
 - **NetVLAD is present but UNTRAINED** in the day pipeline — retrieval is **DINOv2-only**. Don't assume NetVLAD works.
 - **`vision_pkg/` is LEGACY** (old prototype). Treat as deprecated; do not build new work on it.
   Its `dataset/frames_gps/` frames ARE correctly labelled; `camera_pkg/data/day` frames are NOT.
@@ -171,8 +173,8 @@ Verified requirements are done. The roadmap = the not-yet-done items.
 ### Not yet done
 - **Validate on real data** (camera + GPS + IMU recorded together; real thermal for STHN;
   real sky for celestial). ← the blocker for every accuracy claim
-- **Day vision redesign** (local feature matching vs satellite around a prior) — current
-  retrieval is ~440 m median.
+- **Day vision redesign** — done in code (local feature matching, `day_pkg/local_matcher.py`):
+  32/33 benchmark frames within 9 m; **to measure with NAVERA's real camera**.
 - **Wire the IMU** → dead-reckoning (heading/speed); its attitude now feeds celestial and night heading.
 - **Real thermal and real sky data** for night and celestial (both now run end to end on
   synthetic data: night 6–13 m, celestial 24–119 km, bounded by the IMU).

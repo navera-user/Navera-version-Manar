@@ -1,17 +1,30 @@
 # day_pkg — day visual localization
 
-`day_subscriber` estimates the position by matching the camera frame against satellite
-tiles with DINOv2 (cosine similarity on GeM-pooled descriptors, `day_localizer.py`).
+`day_subscriber` estimates the position by matching the camera frame against the satellite
+map around the prior position, with **local feature matching** (`local_matcher.py`): the frame
+is scaled to the map's resolution (frame altitude + `camera_hfov_deg`), its SIFT features are
+matched to those of the map tiles in the search circle (GPU nearest neighbours), and a rotation
++ scale + translation is fitted with RANSAC. A match is accepted only with ≥ `local_min_inliers`
+inliers **and** the fitted scale within `local_scale_tol` of the one the altitude predicts.
 
-> Measured accuracy is **not sufficient to replace GPS** (median 442 m on labelled frames):
-> see [docs/VALIDATION_STATUS.md](../docs/VALIDATION_STATUS.md).
+> Benchmark: 32/33 labelled frames within 9 m (median 4 m), no wrong position accepted,
+> 0.11–0.16 s/frame — aerial frames from another source, **not yet NAVERA's camera**. The
+> former method, DINOv2 tile retrieval (`day_localizer.py`, median 442 m), is the fallback
+> when the frame scale is unknown. See [docs/VALIDATION_STATUS.md](../docs/VALIDATION_STATUS.md).
 
 ## Behaviour
 - While live GPS is valid, no inference: the last GPS fix is the prior.
-- Without GPS, the search is limited to a 600 m circle around the prior (last GPS fix or last
-  accepted match); a match must score ≥ `conf_threshold`.
+- While GPS is valid, the map features around the position are computed in the background
+  (and, after each match, ahead along the track), so frames never wait for new tiles.
+- Without GPS, the search is limited to a 400–600 m circle around the prior (last GPS fix or
+  last accepted match). Local matching widens it by `max_speed_mps` × the time since its last
+  match, up to `local_max_radius_m`, instead of dropping the prior; retrieval needs a score
+  ≥ `conf_threshold`.
+- Local matches are published with a stated accuracy of `local_sigma_m` (30 m, conservative
+  until measured with the real camera); retrieval positions with an unknown one.
 - No match: dead-reckoning from measured heading/speed only, for at most `max_dead_reckon_s`;
-  otherwise an explicit "no position". After `max_consecutive_rejects` the prior is dropped.
+  otherwise an explicit "no position". With retrieval, after `max_consecutive_rejects` the
+  prior is dropped.
 - Whole-map search (no prior) is disabled by default (`allow_global_search`): its score does
   not separate good from bad matches.
 
@@ -52,3 +65,13 @@ per-tile cache build (cosine ≥ 0.9996). Progress is printed as JSON lines.
 ## Run
 `ros2 launch simulation_web day_pipeline.launch.py` (camera + localizer) or `day_sim.launch.py`
 (+ web bridge).
+
+## Local matching parameters
+| Parameter | Default | Meaning |
+|---|---|---|
+| `matcher` | `local` | `local` or `retrieval` (former method) |
+| `camera_hfov_deg` | NaN (`NAVERA_DAY_HFOV_DEG`) | day camera horizontal field of view; unknown = retrieval |
+| `local_min_inliers` | 6 | geometric inliers required |
+| `local_scale_tol` | 0.15 | accepted deviation of the fitted scale from the altitude's |
+| `local_sigma_m` | 30 | stated accuracy (1 σ) of a local match |
+| `local_max_radius_m` | 1500 | largest search radius while widening after failed frames |

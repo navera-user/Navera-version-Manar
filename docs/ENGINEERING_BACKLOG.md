@@ -24,7 +24,7 @@ Status: ✅ done · 🔧 in progress · ⬜ open
 | LOC-11 | C | Camera invents speed 5 m/s, heading 0, altitude 400 m; live mode crashes | ✅ 2d4e5d1 |
 | LOC-12 | H | Day/night: first anchor only from replayed CSV — no prior in real operation (wire last valid GPS) | ✅ a2fd365 |
 | LOC-13 | H | Day: global search accepts anything (scores 0.92–0.97 even when km off) — confidence not discriminative | ✅ eaeeceb |
-| LOC-14 | H | Day: accuracy ~440 m median — matching method redesign (local features vs satellite around prior) | ⬜ |
+| LOC-14 | H | Day: accuracy ~440 m median — matching method redesign (local features vs satellite around prior). Done in code: `local_matcher.py`, 32/33 benchmark frames within 9 m, 0 wrong accepted; to measure with NAVERA's camera | 🔧 |
 | LOC-15 | H | Image/meta paired as "latest of each" — pair by frame_id (day, night, cn) | ✅ 5b9d760 |
 | LOC-16 | H | Night: query not normalised for scale (altitude/FOV) or heading — frames now scaled + turned north-up; motion gate; min coverage 85 % | ✅ 9ba25cf, be9f35b |
 | LOC-17 | M | sensor_stamp = publication time; use image exposure stamp | ✅ 5b9d760 |
@@ -172,6 +172,6 @@ and invalid inputs; state sampled every second, anomalies flagged automatically.
 | R-7 | — | Simulator: fixed-wing plane (ArduPlane jet model; DO_REPOSITION — ArduPlane ignores position targets), typed cruise speed / altitude, automatic maximum speed, start partway along a long route | ✅ a12e09d, a026805 |
 | R-8 | H | The box's own web page had no mission preparation. Page `/mission`: vehicle settings (written to /var/lib/navera/settings.env, loaded by every unit), route from the autopilot's mission file or drawn, map generation and activation, control code, restart only through `deploy/sudoers/navera-web`. Tested on this Jetson (endpoints, generation of a 256-tile area, day vision loading it); the restart through sudoers is to verify on an installed box | 🔧 |
 | R-10 | H | Forwarded vision stated ±300 m (dashboard default) while measured 442 m median: over uniform terrain the autopilot's EKF failed safe. Default 500 m, warning below 450 m, guidance in navera_output | ✅ 615b5e1 |
-| R-11 | H | Day vision over uniform terrain (desert near Gabès): ~20 % of frames rejected as jumps, no position ~1/3 of the time, autopilot failsafe in 45–91 s. Confirmed terrain, not map size (same result on a 536-tile area); ±500 m only delays it. Cures: LOC-14 and FEAT-2 (inertial dead-reckoning to bridge gaps) | ⬜ |
+| R-11 | H | Day vision over uniform terrain (desert near Gabès): retrieval rejected ~20 % of frames, autopilot failsafe in 45–91 s (terrain, not map size). With local matching (LOC-14): 147/147 matched, autopilot held 230 s. Remaining: FEAT-2 to bridge real gaps; measure with the real camera | 🔧 |
 | R-12 | H | Simulator: a mission start could leave an orphan estimator (start raced by the watchdog) — two arbiters, decisions interleaved | ✅ 6bff3d6 |
 | R-9 | M | Camera navigation never tested above ~400 m (simulated plane capped at 1000 m); at 10 km altitude a frame covers ~18 km | ⬜ |
