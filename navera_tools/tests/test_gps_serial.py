@@ -36,6 +36,12 @@ CASES = [
     ("receiver dead-reckoning (q=6)", nmea(GGA.format(q=6, hdop="0.9")), {"valid": False}),
     ("no HDOP", nmea(GGA.format(q=1, hdop="")),
      {"valid": True, "cov_type": PositionEstimate.COVARIANCE_TYPE_UNKNOWN}),
+    # The real receiver (u-blox Neo-M8N, multi-constellation: "GN" talker), position
+    # of its fix in the 2026 project report: $GNRMC,141621.00,A,3544.04006,N,
+    # 01034.55091,E,... read on /dev/ttyTHS1 at 9600 baud, M'saken (Sousse).
+    ("real Neo-M8N fix (GN talker)", nmea("GNGGA,141621.00,3544.04006,N,01034.55091,E,1,12,0.72,95.3,M,32.1,M,,"),
+     {"valid": True, "lat": 35.7340010, "lon": 10.5758485}),
+    ("real Neo-M8N RMC (velocity only)", nmea("GNRMC,141621.00,A,3544.04006,N,01034.55091,E,0.012,,011026,,,A"), None),
 ]
 
 
@@ -80,6 +86,9 @@ def main():
             failures.append(f"{name}: valid={m.valid}")
         if "alt" in expect and not math.isclose(m.altitude, expect["alt"], abs_tol=1e-6):
             failures.append(f"{name}: altitude {m.altitude}")
+        for k, v in (("lat", m.latitude), ("lon", m.longitude)):
+            if k in expect and not math.isclose(v, expect[k], abs_tol=1e-6):
+                failures.append(f"{name}: {k} {v}, expected {expect[k]}")
         if "cov_type" in expect and m.position_covariance_type != expect["cov_type"]:
             failures.append(f"{name}: covariance type {m.position_covariance_type}")
         if not m.valid and not math.isnan(m.latitude):

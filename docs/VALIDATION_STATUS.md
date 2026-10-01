@@ -203,6 +203,20 @@ over by vision, median 59–129 m, mission continued); (2) a celestial fix (±55
 the autopilot moved its position by 125 km — positions coarser than `max_forward_sigma_m`
 (1 km) are no longer forwarded.
 
+## Hardware results recorded in the project report (2026-06-02)
+
+The final project report (`rapport_vFinal_Navera.pdf`, 83 pages, found deleted on the data disk)
+holds the only results from the real sensors. No sensor recording (log, bag) was kept.
+
+| Sensor | What the report records | Used here |
+|---|---|---|
+| GPS u-blox Neo-M8N, `/dev/ttyTHS1`, 9600 baud | a valid fix, `$GNRMC,141621.00,A,3544.04006,N,01034.55091,E,…`: 35.734 N, 10.576 E, M'saken — the test site | the receiver's multi-constellation `GN` sentences, with that position, go through `gps_node` over a serial line in `test_gps_serial.py`: accepted, position exact (2026-10-01) |
+| Clock DS3231 | specifications only (±2 ppm); the reboot test of 2026-07-14 (−0.148 s vs NTP) is in the git history | — |
+| IMU **GY-87** (MPU6050 0x68, QMC5883L 0x0D, BMP180 0x77) on I²C bus 7 | wiring and addresses only, no measurement | **not the IMU the current driver reads**: `imu_node` was rewritten for a BNO085 (bus 1, 0x4A) on 2026-07-13 |
+| Camera Insta360 ONE R (nadir, fisheye corrected) | the 30-frame `sousse_flight` replay set (25 with GPS, 5 without) | the frames do not show the places their labels say (see Day vision) |
+| Celestial, the sky photo `ImageTest.jpeg` | RA 106.1123°, Dec 37.6187°, solve 13 s | NAVERA's solver today: centre RA 106.109°, Dec 37.606° — **0.8′ from the report**, 1.7′ from Siril |
+| Night (STHN) on the Jetson | 370 ms/frame (302–419), first 1030 ms, 0 CUDA crash on 5 frames — RGB frames, not thermal | consistent with the ~225 ms measured since on the GPU |
+
 ## Known limitations
 
 1. **Accuracy is not established on real data.** No real flight has been recorded with
