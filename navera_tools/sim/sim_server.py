@@ -105,29 +105,83 @@ def offset(lat, lon, east, north):
     return (lat + north / M_PER_DEG, lon + east / (M_PER_DEG * math.cos(math.radians(lat))))
 
 
+SIM_TAG = "NAVERA_SIM_CHILD"   # in the environment of every node the simulator starts
+
+
+def kill_leftover_nodes(log=print):
+    """Stop the NAVERA nodes a previous simulator left running (tagged with SIM_TAG):
+    an orphan estimator would compete with the new one ("2 publishers on
+    /navera/position") and its decisions would interleave with the real ones."""
+    me, killed = os.getpid(), []
+    for pid in (int(p) for p in os.listdir("/proc") if p.isdigit()):
+        if pid == me:
+            continue
+        try:
+            with open(f"/proc/{pid}/environ", "rb") as f:
+                if (SIM_TAG + "=1").encode() not in f.read().split(b"\0"):
+                    continue
+            os.kill(pid, signal.SIGTERM)
+            killed.append(pid)
+        except (OSError, PermissionError):
+            continue
+    if killed:
+        log(f"stopped {len(killed)} NAVERA process(es) left running by a previous simulator")
+        time.sleep(2.0)
+        for pid in killed:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except OSError:
+                pass
+
+
 class Proc:
-    """A NAVERA node run as in production, in its own process group."""
+    """A NAVERA node run as in production, in its own process group.
+
+    start/stop/restart_if_dead share one lock: the mission (which restarts the
+    estimator) and the process watchdog must never both start it — the second
+    start would replace the handle of the first and leave an orphan node."""
 
     def __init__(self, name, cmd, log_dir, env=None):
         self.name, self.cmd, self.env = name, cmd, env
         self.log_path = os.path.join(log_dir, f"{name}.log")
         self.p = None
         self.t_start = None
+        self.lock = threading.Lock()
 
     def start(self):
-        self.stop()
+        with self.lock:
+            self._start()
+
+    def restart_if_dead(self) -> bool:
+        """Start it again if it died (watchdog); False when it is running or busy."""
+        if not self.lock.acquire(blocking=False):
+            return False                       # being (re)started by the mission right now
+        try:
+            if self.p is not None and self.p.poll() is None:
+                return False
+            self._start()
+            return True
+        finally:
+            self.lock.release()
+
+    def _start(self):
+        self._stop()
         log = open(self.log_path, "a")                # kept across restarts, for diagnosis
         log.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} start: {' '.join(self.cmd)}\n")
         log.flush()
         self.t_start = time.monotonic()
         self.p = subprocess.Popen(self.cmd, stdout=log, stderr=subprocess.STDOUT,
                                   start_new_session=True,
-                                  env=dict(os.environ, **self.env) if self.env else None)
+                                  env=dict(os.environ, **(self.env or {}), **{SIM_TAG: "1"}))
 
     def alive(self):
         return self.p is not None and self.p.poll() is None
 
     def stop(self):
+        with self.lock:
+            self._stop()
+
+    def _stop(self):
         if self.alive():
             try:
                 os.killpg(self.p.pid, signal.SIGINT)
@@ -436,11 +490,8 @@ class Simulator(Node):
         for name, p in procs:
             if name == "vehicle_output":
                 continue
-            if not p.alive() and not getattr(p, "_reported", False):
-                self.event("error", f"{name} stopped — restarting (log: {p.log_path})")
-                p._reported = True
-                p.start()
-                p._reported = False
+            if not p.alive() and p.p is not None and p.restart_if_dead():
+                self.event("error", f"{name} stopped — restarted (log: {p.log_path})")
         with self.lock:
             vo = self.procs.get("vehicle_output")
         if vo is not None and self.phase not in ("idle", "starting") and not vo.alive():
@@ -1013,6 +1064,7 @@ def _clean(o):
 def main():
     work = os.environ.get("NAVERA_SIM_DIR", os.path.expanduser("~/.navera_sim"))
     os.makedirs(work, exist_ok=True)
+    kill_leftover_nodes()
     rclpy.init()
     sim = Simulator(work, os.environ["NAVERA_MBTILES"], os.environ.get("NAVERA_ARDUPILOT", "~/ardupilot"))
     port = int(os.environ.get("NAVERA_SIM_PORT", "8190"))
