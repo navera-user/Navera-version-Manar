@@ -50,7 +50,7 @@ from navera_msgs.msg import NavStatus, PositionEstimate  # noqa: E402
 from simulation_web.web_common import MBTilesReader, parse_tile_path  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from autopilot import NAVERA_URL, VEHICLES, Autopilot  # noqa: E402
+from autopilot import FLYING, NAVERA_URL, VEHICLES, Autopilot  # noqa: E402
 from camera_view import CameraView  # noqa: E402
 from nmea_gps import MODES as GPS_MODES, NmeaGps  # noqa: E402
 from vision_link import TILE_URL, AreaManager, MultiTiles, StarCamera, VisionCamera  # noqa: E402
@@ -69,16 +69,19 @@ DAY_MEASURED_SIGMA = 440.0 / math.sqrt(2.0 * math.log(2.0))
 DAY_TARGET_SIGMA = 15.0
 NIGHT_TARGET_SIGMA = 25.0
 NIGHT_MEASURED_GAIN = 0.25
-DEFAULTS = {"drone": (15.0, 150.0), "boat": (8.0, 0.0), "robot": (4.0, 0.0)}
+DEFAULTS = {"drone": (15.0, 150.0), "boat": (8.0, 0.0), "robot": (4.0, 0.0), "plane": (40.0, 300.0)}
 # Default top speed of each vehicle type (m/s): NAVERA's max_speed_mps — the GPS
 # plausibility gate and the vision motion gates. The operator sets the real
 # vehicle's top speed (a fast aircraft: hundreds of m/s).
-MAX_SPEED = {"drone": 30.0, "boat": 20.0, "robot": 10.0}
+MAX_SPEED = {"drone": 30.0, "boat": 20.0, "robot": 10.0, "plane": 100.0}
 MAX_SPEED_LIMIT = 525.0     # m/s (1890 km/h = 1260 km/h cruise + 50 %): highest top speed accepted
 # What the simulated autopilot can actually fly (ArduCopter WPNAV_SPEED ≤ 20 m/s,
 # ArduPilot Rover models): the cruise speed is capped here, whatever the top speed.
-SIM_CRUISE_MAX = {"drone": 20.0, "boat": 15.0, "robot": 8.0}
-SIM_ALT_MAX = 400.0         # the simulated drone's ceiling (m); the page states it
+SIM_CRUISE_MAX = {"drone": 20.0, "boat": 15.0, "robot": 8.0, "plane": 75.0}
+# the simulated ceiling (m); the page states it. The plane is capped where the simulated
+# camera still renders a sensible view (NAVERA's vision is tested up to ~400 m only).
+SIM_ALT_MAX = {"drone": 400.0, "plane": 1000.0}
+SIM_ALT_MIN = {"drone": 30.0, "plane": 100.0}
 
 
 def _route_dist(p, route):
@@ -104,12 +107,14 @@ class Proc:
         self.name, self.cmd, self.env = name, cmd, env
         self.log_path = os.path.join(log_dir, f"{name}.log")
         self.p = None
+        self.t_start = None
 
     def start(self):
         self.stop()
         log = open(self.log_path, "a")                # kept across restarts, for diagnosis
         log.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} start: {' '.join(self.cmd)}\n")
         log.flush()
+        self.t_start = time.monotonic()
         self.p = subprocess.Popen(self.cmd, stdout=log, stderr=subprocess.STDOUT,
                                   start_new_session=True,
                                   env=dict(os.environ, **self.env) if self.env else None)
@@ -150,6 +155,10 @@ class Simulator(Node):
         self.phase = "idle"                     # idle, starting, waiting_gps, takeoff, enroute, arrived, ...
         self.phase_detail = "Choose a start point and a destination on the map, then Start."
         self.nav = dict(state="—", source="—", reason="", lat=None, lon=None, mode="", t=0.0)
+        # ROS link watchdog (a plain thread: it must not depend on the ROS executor it checks)
+        self._last_status_t = None
+        self.ros_link = dict(ok=True, since=None, detail="")
+        threading.Thread(target=self._watch_ros_link, daemon=True).start()
         self.gps_node_out = dict(valid=False, t=0.0, sats=0, hdop=None, reason="")
         self.sources = {}
         self.night_est = None
@@ -207,6 +216,7 @@ class Simulator(Node):
     # ---------------- ROS inputs ----------------
     def _on_status(self, m):
         state, src = STATE_NAME.get(m.state, "?"), SRC_NAME.get(m.active_source, "—")
+        self._last_status_t = time.monotonic()
         with self.lock:
             self.nav.update(state=state, reason=m.reason, source=src if m.state in (
                 NavStatus.STATE_FIX, NavStatus.STATE_DEGRADED) else "—")
@@ -385,6 +395,33 @@ class Simulator(Node):
             self.series.append((round(time.monotonic() - self.t0, 1), ne, be,
                                 self.nav["source"] if nav_fresh else "—"))
 
+    LINK_GRACE_S = 10.0      # the estimator may take this long to publish after a (re)start
+    LINK_SILENCE_S = 5.0     # it publishes nav_status at 5 Hz: 5 s of silence is a lost link
+
+    def _watch_ros_link(self):
+        """Detect that this simulator no longer receives NAVERA's messages while the
+        estimator runs (seen once: a simulator process lost its ROS link silently and the
+        dashboard showed 'no output'). Reports it on the dashboard and in the log."""
+        while not getattr(self, "_closing", False):
+            time.sleep(1.0)
+            est = self.procs.get("estimator") if hasattr(self, "procs") else None
+            if est is None or not est.alive() or est.t_start is None:
+                continue
+            now = time.monotonic()
+            since_start = now - est.t_start
+            last = self._last_status_t
+            silent = now - (last if last is not None and last > est.t_start else est.t_start)
+            lost = since_start > self.LINK_GRACE_S and silent > self.LINK_SILENCE_S
+            if lost and self.ros_link["ok"]:
+                self.ros_link = dict(ok=False, since=time.strftime("%H:%M:%S"), detail=(
+                    f"no NAVERA status received for {silent:.0f} s although the estimator process runs — "
+                    "the estimator is stuck or the simulator lost its ROS link; restart the simulator "
+                    "(run_sim.sh)"))
+                self.event("error", "ROS link lost: " + self.ros_link["detail"])
+            elif not lost and not self.ros_link["ok"] and silent < 2.0:
+                self.ros_link = dict(ok=True, since=None, detail="")
+                self.event("ok", "ROS link back: NAVERA status received again")
+
     def _watch_procs(self):
         if self._closing:
             return
@@ -489,11 +526,13 @@ class Simulator(Node):
                     self.ap.arm()
                 return self.ap.snapshot()["armed"]
             self._wait(armed, 60, "the autopilot refused to arm (see its messages)")
-            if c["vehicle"] == "drone":
-                self._set_phase("takeoff", f"step 4/4 — taking off to {c['alt']:.0f} m")
+            if c["vehicle"] in FLYING:
+                plane = c["vehicle"] == "plane"
+                self._set_phase("takeoff", f"step 4/4 — {'take-off run and climb' if plane else 'taking off'} "
+                                           f"to {c['alt']:.0f} m")
                 self.ap.takeoff(c["alt"])
                 self._wait(lambda: (self.ap.snapshot()["truth"] or (0, 0, 0))[2] > 0.9 * c["alt"],
-                           60 + c["alt"] / 2.0,
+                           (90 + c["alt"] / 5.0) if plane else (60 + c["alt"] / 2.0),
                            "takeoff did not complete")
             self._fly_to(self.cfg["dest"])
             while not self._abort.is_set():
@@ -513,7 +552,7 @@ class Simulator(Node):
                     self._set_phase("failsafe", f"the autopilot left the mission: {s['mode']} "
                                                 f"(its own failsafe).{why} Click the map to resume.")
                 if s["truth"] and self.phase == "enroute" and self.cfg["dest"] and \
-                        haversine_m(s["truth"], self.cfg["dest"]) < 20:
+                        haversine_m(s["truth"], self.cfg["dest"]) < (300 if self.cfg["vehicle"] == "plane" else 20):
                     self._set_phase("arrived", "arrived at the destination — holding. "
                                                "Click the map for a new destination.")
                 if not s["link"]:
@@ -599,7 +638,7 @@ class Simulator(Node):
     def _fly_to(self, dest):
         self.cfg["dest"] = dest
         self.ap.set_mode("GUIDED")
-        self.ap.goto(dest[0], dest[1], self.cfg["alt"] if self.cfg["vehicle"] == "drone" else 0)
+        self.ap.goto(dest[0], dest[1], self.cfg["alt"] if self.cfg["vehicle"] in FLYING else 0)
         s = self.ap.snapshot()
         dist = haversine_m(s["truth"], dest) if s["truth"] else float("nan")
         plan = self.areas.state()["plan"]
@@ -607,7 +646,7 @@ class Simulator(Node):
             self.event("warn", "new destination is OUTSIDE the prepared map area: day vision has "
                                "no tiles there and will report no position if GPS is lost")
         self._set_phase("enroute", f"flying to the destination ({dist / 1000:.2f} km)"
-                        if self.cfg["vehicle"] == "drone" else f"heading to the destination ({dist / 1000:.2f} km)")
+                        if self.cfg["vehicle"] in FLYING else f"heading to the destination ({dist / 1000:.2f} km)")
 
     @staticmethod
     def _bearing(a, b):
@@ -648,9 +687,9 @@ class Simulator(Node):
             plan = self.areas.plan_for(route)["plan"]
             covered_offline = not plan["missing"]
             if vision == "real":
-                if vehicle != "drone":
+                if vehicle not in FLYING:
                     raise ValueError("real vision needs a downward camera at altitude: "
-                                     "use the drone, or the simulated vision profile")
+                                     "use the drone or the plane, or the simulated vision profile")
                 if light == "day" and not self.areas.is_prepared(area):
                     raise ValueError("prepare the map for this route first (Prepare map)")
                 if light == "night" and not (covered_offline or self.areas.is_prepared(area)):
@@ -674,7 +713,7 @@ class Simulator(Node):
                 speed=cruise, max_speed_mps=vmax,
                 # the operator's altitude (any aircraft); the simulated drone flies up to SIM_ALT_MAX
                 req_alt=float(body.get("alt", alt)),
-                alt=max(30.0, min(SIM_ALT_MAX, float(body.get("alt", alt)))),
+                alt=max(SIM_ALT_MIN.get(vehicle, 0.0), min(SIM_ALT_MAX.get(vehicle, 0.0), float(body.get("alt", alt)))),
                 profile="target" if body.get("profile") == "target" else "measured",
                 forward_degraded=bool(body.get("forward_degraded", False))))
         elif action == "goto":
@@ -691,8 +730,10 @@ class Simulator(Node):
             self.ap.set_mode("RTL")
             self._set_phase("rtl", "returning to the start point")
         elif action == "land":
-            self.ap.set_mode("LAND" if self.cfg["vehicle"] == "drone" else "HOLD")
-            self._set_phase("landing", "landing" if self.cfg["vehicle"] == "drone" else "stopping")
+            v = self.cfg["vehicle"]
+            # a plane cannot stop in the air: it circles where it is
+            self.ap.set_mode({"drone": "LAND", "plane": "LOITER"}.get(v, "HOLD"))
+            self._set_phase("landing", {"drone": "landing", "plane": "circling where it is"}.get(v, "stopping"))
         elif action == "stop":
             self._abort.set()
             self._stop_vision()
@@ -742,7 +783,7 @@ class Simulator(Node):
                 events=list(self.events)[-60:], series=list(self.series)[-600:],
                 area=self.areas.state(),
                 vision=(self.nightcam if self.faults["light"] == "night" else self.daycam).state(),
-                celestial=self.starcam.state(),
+                celestial=self.starcam.state(), ros_link=dict(self.ros_link),
                 imu_bias_deg=[round(math.degrees(b), 2) for b in self.imu_bias])
         nav["fresh"] = nav_fresh
         if truth:

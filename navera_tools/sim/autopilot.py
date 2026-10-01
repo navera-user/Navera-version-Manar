@@ -20,7 +20,10 @@ VEHICLES = {
     "drone": ("arducopter", "quad", ["copter.parm"], "WPNAV_SPEED", 100.0),
     "boat": ("ardurover", "motorboat", ["rover.parm", "motorboat.parm"], "WP_SPEED", 1.0),
     "robot": ("ardurover", "rover", ["rover.parm"], "WP_SPEED", 1.0),
+    # ArduPlane's 22 kg jet model (SIM_Plane): level top speed ~100 m/s, airspeed 25-80 m/s
+    "plane": ("arduplane", "plane-jet", ["../models/plane.parm", "plane-jet.parm"], "AIRSPEED_CRUISE", 1.0),
 }
+FLYING = ("drone", "plane")
 GCS_URL = "tcp:127.0.0.1:5760"            # SERIAL0
 NAVERA_URL = "tcp:127.0.0.1:5762"         # SERIAL1: NAVERA's GPS_INPUT
 EKF_POS_OK = 0x10                          # EKF_POS_HORIZ_ABS
@@ -76,6 +79,9 @@ class Autopilot:
             if vehicle == "drone":
                 f.write("ANGLE_MAX 4500\n")      # 30 deg caps the SITL quad at ~10 m/s
                 f.write("WPNAV_SPEED_UP 500\n")  # climb at 5 m/s (default 2.5): 400 m in ~80 s
+            if vehicle == "plane":
+                # loiter at the destination on a tighter circle than the jet's 180 m default
+                f.write("WP_LOITER_RAD 250\nRTL_AUTOLAND 0\n")
         files = ",".join([os.path.join(dp, d) for d in defaults] + [params])
         cmd = [os.path.join(self.dir, "build/sitl/bin", binary), "--model", model,
                "--home", f"{lat},{lon},10,{heading}", "--defaults", files, "-I0", "-w"]
@@ -190,9 +196,23 @@ class Autopilot:
         self._cmd(mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM, 1)
 
     def takeoff(self, alt):
+        if self.vehicle == "plane":
+            # a plane takes off in its TAKEOFF mode (runway, then climb on the heading)
+            self.set_param("TKOFF_ALT", alt)
+            self.set_mode("TAKEOFF")
+            return
         self._cmd(mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, 0, 0, 0, 0, 0, 0, alt)
 
     def goto(self, lat, lon, alt):
+        if self.vehicle == "plane":
+            # ArduPlane ignores SET_POSITION_TARGET_GLOBAL_INT: a guided waypoint is a
+            # DO_REPOSITION (flag 1 = switch to GUIDED); it then circles the point
+            self.mav.mav.command_int_send(
+                self.mav.target_system, self.mav.target_component,
+                mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
+                mavutil.mavlink.MAV_CMD_DO_REPOSITION, 0, 0,
+                -1, 1, 0, 0, int(lat * 1e7), int(lon * 1e7), float(alt))
+            return
         self.mav.mav.set_position_target_global_int_send(
             0, self.mav.target_system, self.mav.target_component,
             mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT, 0b110111111000,
@@ -201,4 +221,5 @@ class Autopilot:
     def set_speed(self, mps):
         _, _, _, pname, scale = VEHICLES[self.vehicle]
         self.set_param(pname, mps * scale)
-        self._cmd(mavutil.mavlink.MAV_CMD_DO_CHANGE_SPEED, 1, mps, -1)
+        # a plane flies an AIRSPEED (type 0); the others a ground speed (type 1)
+        self._cmd(mavutil.mavlink.MAV_CMD_DO_CHANGE_SPEED, 0 if self.vehicle == "plane" else 1, mps, -1)
