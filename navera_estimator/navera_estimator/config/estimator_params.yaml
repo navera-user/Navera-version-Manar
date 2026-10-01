@@ -30,8 +30,8 @@ estimator_node:
 
     # GPS kinematic plausibility gate (anti-jump / anti-spoofing). A GPS fix
     # farther from the last trusted fix than max_speed_mps x elapsed +
-    # gps_jump_margin_m is refused until it becomes reachable. SET PER VEHICLE
-    # (e.g. multirotor 25, fixed-wing 60, boat 20, ground robot 15 m/s).
+    # gps_jump_margin_m is refused until it becomes reachable. Set per vehicle
+    # with NAVERA_MAX_SPEED_KMH in /etc/navera/navera.env (km/h, overrides this).
     max_speed_mps: 100.0
     gps_jump_margin_m: 50.0
 

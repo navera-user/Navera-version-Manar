@@ -19,10 +19,11 @@ Examples:
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, Shutdown
+from launch.actions import LogInfo, DeclareLaunchArgument, IncludeLaunchDescription, Shutdown
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from navera_common.vehicle import max_speed_mps_from_env, max_speed_params
 from launch_ros.parameter_descriptions import ParameterValue
 
 
@@ -35,6 +36,7 @@ def generate_launch_description():
     conf_threshold = LaunchConfiguration('conf_threshold')
 
     return LaunchDescription([
+            LogInfo(msg='WARNING: NAVERA_MAX_SPEED_KMH is not set in /etc/navera/navera.env — night vision uses its default speed limit; set the vehicle\'s maximum speed (km/h).') if not max_speed_params() else LogInfo(msg=f'vehicle maximum speed: {max_speed_mps_from_env():.1f} m/s'),
         DeclareLaunchArgument('mbtiles_path',   default_value=default_mbtiles),
         DeclareLaunchArgument('conf_threshold', default_value='0.30'),   # seuil conf STHN
         DeclareLaunchArgument('max_dead_reckon_s', default_value='30.0'),
@@ -117,7 +119,7 @@ def generate_launch_description():
                 'status_topic':   '/night/night_status',
                 'done_topic':     '/thermal/frame_done',
                 'ready_topic':    '/night/localizer_ready',
-            }],
+            }, max_speed_params()],    # the vehicle's maximum speed: vision motion gate
             # CUDA_VISIBLE_DEVICES posé AVANT l'import torch du process →
             # '' rend torch.cuda.is_available()==False → night_localizer DEVICE/
             # self.device = cpu de façon cohérente (sans toucher network.py).

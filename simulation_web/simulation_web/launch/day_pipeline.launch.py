@@ -21,10 +21,11 @@ Examples:
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, Shutdown
+from launch.actions import LogInfo, DeclareLaunchArgument, IncludeLaunchDescription, Shutdown
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from navera_common.vehicle import max_speed_mps_from_env, max_speed_params
 
 
 def generate_launch_description():
@@ -34,6 +35,7 @@ def generate_launch_description():
     conf_threshold = LaunchConfiguration('conf_threshold')
 
     return LaunchDescription([
+            LogInfo(msg='WARNING: NAVERA_MAX_SPEED_KMH is not set in /etc/navera/navera.env — day vision uses its default speed limit; set the vehicle\'s maximum speed (km/h).') if not max_speed_params() else LogInfo(msg=f'vehicle maximum speed: {max_speed_mps_from_env():.1f} m/s'),
         DeclareLaunchArgument('conf_threshold', default_value='0.75'),
         # track filter — toggle/tune without rebuild
         DeclareLaunchArgument('antijump_enabled',    default_value='true'),
@@ -93,6 +95,6 @@ def generate_launch_description():
                 'max_dead_reckon_s':       LaunchConfiguration('max_dead_reckon_s'),
                 'shadow_mode':       LaunchConfiguration('shadow_mode'),
                 'allow_global_search':     LaunchConfiguration('allow_global_search'),
-            }],
+            }, max_speed_params()],    # the vehicle's maximum speed: vision motion gate
         ),
     ])

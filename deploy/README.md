@@ -110,6 +110,9 @@ sudo apt install astrometry.net astrometry-data-tycho2-10-19
 sudo mkdir -p /etc/navera
 sudo cp /home/navera/isaac_ros_common/deploy/navera.env.example /etc/navera/navera.env
 sudoedit /etc/navera/navera.env
+#     À régler pour CHAQUE véhicule : NAVERA_MAX_SPEED_KMH (vitesse maximale, km/h —
+#     ex. multirotor 108, bateau 72, robot 36, voilure fixe 250). NAVERA refuse toute
+#     position que le véhicule n'aurait pas pu atteindre à cette vitesse.
 
 cd /home/navera/isaac_ros_common
 

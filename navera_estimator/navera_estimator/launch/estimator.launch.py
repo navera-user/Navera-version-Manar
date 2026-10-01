@@ -9,9 +9,10 @@ Examples:
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, Shutdown
+from launch.actions import LogInfo, DeclareLaunchArgument, Shutdown
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from navera_common.vehicle import max_speed_mps_from_env, max_speed_params
 
 
 def generate_launch_description():
@@ -19,6 +20,7 @@ def generate_launch_description():
     cfg = os.path.join(pkg_share, 'config', 'estimator_params.yaml')
 
     return LaunchDescription([
+            LogInfo(msg='WARNING: NAVERA_MAX_SPEED_KMH is not set in /etc/navera/navera.env — the estimator uses its default speed limit; set the vehicle\'s maximum speed (km/h).') if not max_speed_params() else LogInfo(msg=f'vehicle maximum speed: {max_speed_mps_from_env():.1f} m/s'),
         DeclareLaunchArgument('publish_rate_hz', default_value='5.0'),
         DeclareLaunchArgument('gps_timeout_s',   default_value='3.0'),
         DeclareLaunchArgument('imu_timeout_s',   default_value='1.0'),
@@ -38,6 +40,8 @@ def generate_launch_description():
                     'gps_timeout_s':   LaunchConfiguration('gps_timeout_s'),
                     'imu_timeout_s':   LaunchConfiguration('imu_timeout_s'),
                 },
+                # the vehicle's maximum speed (NAVERA_MAX_SPEED_KMH): GPS plausibility gate
+                max_speed_params(),
             ],
         ),
     ])
