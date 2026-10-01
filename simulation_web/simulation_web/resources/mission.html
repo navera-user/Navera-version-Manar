@@ -88,6 +88,9 @@ html[dir=rtl] .form{border-inline-end:0;border-inline-start:1px solid var(--line
     <label class="lbl" for="sVmax" data-i18n="vmax">Maximum speed of the vehicle</label>
     <div class="in"><input id="sVmax" type="number" min="4" max="1890" step="1"><span class="unit">km/h</span></div>
     <div class="note" data-i18n="vmaxH">Cruise speed + 50 %, tailwind included. NAVERA refuses any position the vehicle could not have reached at this speed.</div>
+    <label class="lbl" for="sDayHfov" data-i18n="dayHfov">Day camera field of view (horizontal)</label>
+    <div class="in"><input id="sDayHfov" type="number" min="5" max="180" step="0.1"><span class="unit">°</span></div>
+    <div class="note" data-i18n="dayHfovH">Needed for the precise day vision (local matching): with the altitude it gives the image's scale.</div>
     <label class="lbl" for="sHfov" data-i18n="hfov">Thermal camera field of view (horizontal)</label>
     <div class="in"><input id="sHfov" type="number" min="5" max="180" step="0.1"><span class="unit">°</span></div>
     <span class="lbl" data-i18n="mount">IMU mounting on the vehicle</span>
@@ -136,7 +139,7 @@ const I18N = {
     vehicleH:'À régler une fois par véhicule. Un champ vide garde la valeur du fichier d\'installation (en gris).', type:'Type de véhicule',
     drone:'Drone', plane:'Avion', boat:'Bateau', robot:'Robot terrestre', other:'Autre', vmax:'Vitesse maximale du véhicule',
     vmaxH:'Vitesse de croisière + 50 %, vent arrière compris. NAVERA refuse toute position que le véhicule n\'aurait pas pu atteindre à cette vitesse.',
-    hfov:'Champ de vision de la caméra thermique (horizontal)', mount:'Montage de l\'IMU sur le véhicule', roll:'Roulis', pitch:'Tangage', yaw:'Lacet',
+    hfov:'Champ de vision de la caméra thermique (horizontal)', dayHfov:'Champ de vision de la caméra de jour (horizontal)', dayHfovH:'Nécessaire à la vision de jour précise (correspondance locale) : avec l\'altitude, il donne l\'échelle de l\'image.', mount:'Montage de l\'IMU sur le véhicule', roll:'Roulis', pitch:'Tangage', yaw:'Lacet',
     mountH:'0 / 0 / 0 = IMU alignée avec le véhicule (x avant, y gauche, z haut). IMU tournée de 90° vers la gauche : lacet 90.',
     decl:'Déclinaison magnétique jusqu\'à la première position (facultatif)', declH:'Est positif. Dès qu\'une position est connue, NAVERA la calcule avec le modèle magnétique mondial.',
     save:'Enregistrer', apply:'Appliquer maintenant (redémarre NAVERA, ~30 s)', route:'Trajet',
@@ -153,7 +156,7 @@ const I18N = {
     vehicleH:'يُضبط مرة لكل مركبة. الحقل الفارغ يحتفظ بقيمة ملف التثبيت (بالرمادي).', type:'نوع المركبة',
     drone:'طائرة مسيرة', plane:'طائرة', boat:'قارب', robot:'روبوت أرضي', other:'أخرى', vmax:'السرعة القصوى للمركبة',
     vmaxH:'سرعة التنقل + 50 %، مع الرياح الخلفية. يرفض NAVERA أي موقع لا يمكن للمركبة بلوغه بهذه السرعة.',
-    hfov:'زاوية رؤية الكاميرا الحرارية (أفقياً)', mount:'تركيب وحدة القياس على المركبة', roll:'الدوران', pitch:'الميل', yaw:'الاتجاه',
+    hfov:'زاوية رؤية الكاميرا الحرارية (أفقياً)', dayHfov:'زاوية رؤية الكاميرا النهارية (أفقياً)', dayHfovH:'ضرورية للرؤية النهارية الدقيقة (المطابقة المحلية): مع الارتفاع تعطي مقياس الصورة.', mount:'تركيب وحدة القياس على المركبة', roll:'الدوران', pitch:'الميل', yaw:'الاتجاه',
     mountH:'0 / 0 / 0 = الوحدة موازية للمركبة (x إلى الأمام، y إلى اليسار، z إلى الأعلى). وحدة مدارة 90° إلى اليسار: الاتجاه 90.',
     decl:'الانحراف المغناطيسي حتى أول موقع (اختياري)', declH:'الشرق موجب. بمجرد معرفة موقع، يحسبه NAVERA بالنموذج المغناطيسي العالمي.',
     save:'حفظ', apply:'تطبيق الآن (يعيد تشغيل NAVERA، ~30 ث)', route:'المسار',
@@ -204,7 +207,7 @@ const line = L.polyline([], {color:'#1d4ed8', weight:4}).addTo(map), dots = L.la
 
 /* ── state ── */
 let S = null, PLAN = null, drawn = [];
-const KEYS = {sType:'NAVERA_VEHICLE_TYPE', sVmax:'NAVERA_MAX_SPEED_KMH', sHfov:'NAVERA_THERMAL_HFOV_DEG', sDecl:'NAVERA_DECLINATION_DEG'};
+const KEYS = {sType:'NAVERA_VEHICLE_TYPE', sVmax:'NAVERA_MAX_SPEED_KMH', sDayHfov:'NAVERA_DAY_HFOV_DEG', sHfov:'NAVERA_THERMAL_HFOV_DEG', sDecl:'NAVERA_DECLINATION_DEG'};
 const km = m => m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`;
 function fillSettings(){
   const cur = S.settings || {}, site = S.site || {};

@@ -669,7 +669,8 @@ class Simulator(Node):
                                    "prepare the map to use day vision")
             else:
                 self._start_proc("day_vision", ["ros2", "run", "day_pkg", "day_subscriber.py", "--ros-args",
-                                                "-p", f"max_speed_mps:={self.cfg['max_speed_mps']}"],
+                                                "-p", f"max_speed_mps:={self.cfg['max_speed_mps']}",
+                                                "-p", "camera_hfov_deg:=84.0"],          # the simulated day camera
                                  env={"DAY_DATASET_DIR": self.areas.path(area)})
                 self.daycam.start()
                 self.event("info", "day vision: loading DINOv2 and the prepared area…")

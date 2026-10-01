@@ -235,7 +235,7 @@ TOPICS = {
                   done="/thermal/frame_done", status="/night/night_status",
                   frame="thermal_camera_link", name="night vision", model="STHN network"),
 }
-MATCH_SOURCES = ("visual_match", "predicted", "night_sthn")
+MATCH_SOURCES = ("visual_match", "local_match", "predicted", "night_sthn")
 
 
 class VisionCamera:

@@ -25,6 +25,7 @@ from launch.actions import LogInfo, DeclareLaunchArgument, IncludeLaunchDescript
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from navera_common.vehicle import max_speed_mps_from_env, max_speed_params
 
 
@@ -44,6 +45,9 @@ def generate_launch_description():
         # Test flights: vision runs while GPS is valid, for measurement.
         DeclareLaunchArgument('shadow_mode', default_value='false'),
         DeclareLaunchArgument('allow_global_search',     default_value='false'),
+        # Day camera horizontal field of view (deg), from NAVERA_DAY_HFOV_DEG: with the frame
+        # altitude it gives the frame scale local matching needs. Unset = DINOv2 retrieval.
+        DeclareLaunchArgument('camera_hfov_deg', default_value=os.environ.get('NAVERA_DAY_HFOV_DEG', 'nan')),
         # default_gps_valid: mirrors day.yaml ('true'), so this argument changes
         # nothing by itself — it forwards day.launch.py's argument up to this level,
         # which is what lets the GPS-denied regime be MEASURED without editing a
@@ -95,6 +99,8 @@ def generate_launch_description():
                 'max_dead_reckon_s':       LaunchConfiguration('max_dead_reckon_s'),
                 'shadow_mode':       LaunchConfiguration('shadow_mode'),
                 'allow_global_search':     LaunchConfiguration('allow_global_search'),
+                # day camera's horizontal field of view: the frame scale for local matching
+                'camera_hfov_deg': ParameterValue(LaunchConfiguration('camera_hfov_deg'), value_type=float),
             }, max_speed_params()],    # the vehicle's maximum speed: vision motion gate
         ),
     ])

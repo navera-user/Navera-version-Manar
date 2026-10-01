@@ -48,7 +48,8 @@ from navera_msgs.msg import NavStatus, PositionEstimate
 
 # Existing localization logic (UNMODIFIED user code).
 # DayLocalizer().predict(bgr_array, threshold=...) -> dict
-from day_pkg.nodes.day_localizer import DayLocalizer, haversine_m
+from day_pkg.nodes.day_localizer import IMAGES_DIR, DayLocalizer, haversine_m
+from day_pkg.local_matcher import LocalMatcher
 
 # ── A priori spatial GPS-denied (fix matching cross-source) ─────────────────
 # Sur une frame sans GPS, on restreint la recherche DINOv2 à un CERCLE autour du
@@ -74,12 +75,14 @@ _DAY_MODE_BY_SRC = {
     "predicted":    PositionEstimate.MODE_MEASURED,    # real DINOv2 inference (global/gate)
     "visual_match": PositionEstimate.MODE_MEASURED,    # real DINOv2 inference (spatial a-priori)
     "dead_reckon":  PositionEstimate.MODE_PROPAGATED,  # heading/speed bridge from anchor
+    "local_match":  PositionEstimate.MODE_MEASURED,    # local features vs the map (local_matcher)
 }
 _DAY_MODEL_BY_SRC = {
     "gps":          "csv_ground_truth",
     "predicted":    "dinov2_vits14+gem",
     "visual_match": "dinov2_vits14+gem",
     "dead_reckon":  "dead_reckon",
+    "local_match":  "sift_local+ransac",
 }
 
 
@@ -126,6 +129,21 @@ class DaySubscriber(Node):
         # tiles (0.4-1.1 km) in the mission simulator.
         declare_float(self, "max_speed_mps", 30.0)
         declare_float(self, "gate_margin_m", 250.0)
+        # Matching method. "local": local features vs the satellite map around the prior
+        # (local_matcher; needs the frame altitude and camera_hfov_deg to know the frame's
+        # scale — without them, falls back to "retrieval"); "retrieval": DINOv2 tile
+        # retrieval (the former method, ~440 m median).
+        self.declare_parameter("matcher", "local")
+        declare_float(self, "camera_hfov_deg", float("nan"))   # day camera horizontal field of view
+        self.declare_parameter("local_min_inliers", 6)
+        declare_float(self, "local_scale_tol", 0.15)
+        # Stated accuracy (1 sigma, m) of a local match. Benchmark median 4 m on aerial frames
+        # from another source; NOT yet measured with NAVERA's camera: stated conservatively.
+        declare_float(self, "local_sigma_m", 30.0)
+        # Local matching keeps its last position when frames fail (uniform ground, blur) and
+        # widens the search by max_speed_mps x the time since its last match, up to this
+        # radius, instead of dropping it after max_consecutive_rejects (a retrieval-era rule).
+        declare_float(self, "local_max_radius_m", 1500.0)
 
         self.conf_threshold = float(self.get_parameter("conf_threshold").value)
         image_topic   = self.get_parameter("image_topic").value
@@ -174,6 +192,20 @@ class DaySubscriber(Node):
         self.localizer.load_or_build_cache()
         self.localizer.warm_up()
         self.get_logger().info("✅ DayLocalizer ready, awaiting frames…")
+        self.matcher_mode = str(self.get_parameter("matcher").value)
+        self.camera_hfov_deg = float(self.get_parameter("camera_hfov_deg").value)
+        self.local_sigma_m = float(self.get_parameter("local_sigma_m").value)
+        self.local_max_radius_m = float(self.get_parameter("local_max_radius_m").value)
+        self.local = None
+        if self.matcher_mode == "local":
+            self.local = LocalMatcher(IMAGES_DIR,
+                                      min_inliers=int(self.get_parameter("local_min_inliers").value),
+                                      scale_tol=float(self.get_parameter("local_scale_tol").value))
+            self.get_logger().info(
+                f"matcher: local features vs the map ({'GPU' if self.local.torch else 'CPU'} matching), "
+                f"camera_hfov_deg={self.camera_hfov_deg}"
+                + ("" if math.isfinite(self.camera_hfov_deg) else
+                   " — UNKNOWN: the frame scale cannot be computed, retrieval is used instead"))
 
         # A signal (SIGINT/SIGTERM) during the multi-second DINOv2 load makes rclpy
         # close the context; the create_publisher/create_subscription calls below
@@ -342,6 +374,7 @@ class DaySubscriber(Node):
                     "anchor": [self._anchor_lat, self._anchor_lon]
                     if self._anchor_lat is not None else None,
                     "reason": "GPS valid — vision idle, tracking GPS as prior"})))
+                self._prewarm(img, meta)
                 return
             center, R = self._spatial_window(img, meta)
             if center is not None:
@@ -354,8 +387,15 @@ class DaySubscriber(Node):
                 return
             else:
                 self.get_logger().info(f"[day] 🔎 localizing frame={seq_id}… (pas d'anchor → recherche globale)")
-            result = self.localizer.predict(img, threshold=self.conf_threshold,
-                                            center=center, radius_m=R)
+            mpp, why_not = self._frame_m_per_px(img, meta)
+            if self.local is not None and center is not None and mpp is not None:
+                result = self.local.locate(img, center, R, mpp)
+                result["_frame_shape"], result["_frame_mpp"] = img.shape, mpp
+            else:
+                result = self.localizer.predict(img, threshold=self.conf_threshold,
+                                                center=center, radius_m=R)
+                if self.local is not None:
+                    result["matcher_note"] = why_not or "no prior: local matching needs a search centre"
             result["search_center"] = list(center) if center is not None else None
             self._log_top5(seq_id, result)
             self._publish_result(seq_id, meta, result)
@@ -424,6 +464,46 @@ class DaySubscriber(Node):
     # ────────────────────────────────────────────────────────────
     # Anti-jump helpers
     # ────────────────────────────────────────────────────────────
+    PREFETCH_AHEAD_S = 8.0          # how far ahead (in time) the map features are prepared
+
+    def _prefetch_ahead(self, lat, lon, t_now, img_shape=None, mpp=None):
+        """From the last two matches, prepare the map features where the vehicle will be."""
+        prev = (self._anchor_lat, self._anchor_lon, self._anchor_time)
+        alat, alon = lat, lon
+        if None not in prev and t_now > prev[2]:
+            dt = t_now - prev[2]
+            k = self.PREFETCH_AHEAD_S / dt
+            alat, alon = lat + (lat - prev[0]) * k, lon + (lon - prev[1]) * k
+        margin = 0.5 * math.hypot(*img_shape[:2]) * mpp if img_shape and mpp else 300.0
+        self.local.tiles.prefetch(alat, alon, R_MAX_M + margin)
+
+    def _prewarm(self, img, meta):
+        """While GPS is trusted, vision is idle: compute the map features around the current
+        position now, so that the first frames after a GPS loss find them ready (computed
+        on demand, the tiles of a whole search circle take seconds — stale positions).
+        Only the tiles not yet cached cost anything; a frame's time budget is respected."""
+        if self.local is None or self._anchor_lat is None:
+            return
+        mpp, _ = self._frame_m_per_px(img, meta)
+        if mpp is None:
+            return
+        _, R = self._spatial_window(img, meta)
+        margin = 0.5 * math.hypot(*img.shape[:2]) * mpp
+        self.local.tiles.prefetch(self._anchor_lat, self._anchor_lon, R + margin)
+
+    def _frame_m_per_px(self, img, meta):
+        """(metres per frame pixel, None) from the frame altitude and the camera's field of
+        view, or (None, why) when the scale of this frame cannot be known."""
+        if not math.isfinite(self.camera_hfov_deg) or not 1.0 < self.camera_hfov_deg < 179.0:
+            return None, "camera_hfov_deg unknown"
+        try:
+            alt = float(meta.get("altitude_m"))
+        except (TypeError, ValueError):
+            return None, "frame altitude unknown"
+        if not (math.isfinite(alt) and alt > 5.0):
+            return None, "frame altitude unknown or on the ground"
+        return LocalMatcher.frame_m_per_px(img.shape[1], alt, self.camera_hfov_deg), None
+
     def _spatial_window(self, img, meta):
         """Cercle de recherche pour une frame GPS-denied.
         Centre = dernier point retenu (anchor). Retourne (None, None) si aucun anchor.
@@ -444,6 +524,10 @@ class DaySubscriber(Node):
         altitude_m  = float(meta.get("altitude_m") or 0.0)
         R_theorique = max(footprint_m * FOOTPRINT_MULT, altitude_m * ALTITUDE_MULT)
         R           = min(max(R_theorique, R_MIN_M), R_MAX_M)
+        if self.local is not None and self._last_measured_time is not None:
+            # the vehicle may have gone this far since the last match: search that far
+            grown = R + self.max_speed_mps * max(0.0, time.time() - self._last_measured_time)
+            R = min(max(R, grown), max(R, self.local_max_radius_m))
         return (self._anchor_lat, self._anchor_lon), R
 
     def _emit_fix(self, now, seq_id, lat, lon, meta, status, src, score, jump_m, reason=None):
@@ -513,8 +597,14 @@ class DaySubscriber(Node):
         # same trap as null-island. Absent altitude_m must be NaN, never 0.0.
         _alt = meta.get("altitude_m")
         est.altitude  = float(_alt) if _alt is not None else math.nan
-        est.position_covariance      = [0.0] * 9
-        est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_UNKNOWN
+        if src == "local_match" and valid:
+            # stated, not measured with NAVERA's camera: local_sigma_m (conservative)
+            var = self.local_sigma_m ** 2
+            est.position_covariance = [var, 0.0, 0.0, 0.0, var, 0.0, 0.0, 0.0, 0.0]
+            est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_APPROXIMATED
+        else:
+            est.position_covariance      = [0.0] * 9
+            est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_UNKNOWN
         est.source     = PositionEstimate.SOURCE_DAY_VISION
         est.mode       = PositionEstimate.MODE_MEASURED if mode is None else mode
         est.valid      = valid
@@ -560,6 +650,11 @@ class DaySubscriber(Node):
             "threshold":       self.conf_threshold,
             "top5": [{"lat": c["lat"], "lon": c["lon"], "score": c["dino"], "image": c["image"]}
                      for c in (result.get("top5") or [])],
+            "matcher": result.get("matcher", "retrieval"),
+            "inliers": result.get("inliers"),
+            "scale_residual": result.get("scale_residual"),
+            "rotation_deg": result.get("rotation_deg"),
+            "matcher_note": result.get("matcher_note"),
         }
 
         # ───── filtre OFF → comportement BRUT historique (inchangé, pour comparaison) ─────
@@ -600,9 +695,13 @@ class DaySubscriber(Node):
             out_lat, out_lon = float(raw_lat), float(raw_lon)
             jump_m = (haversine_m(self._anchor_lat, self._anchor_lon, out_lat, out_lon)
                       if self._anchor_lat is not None else None)
-            src = "visual_match" if result.get("spatial") else "predicted"
+            src = ("local_match" if result.get("matcher") == "local" else
+                   "visual_match" if result.get("spatial") else "predicted")
             reason = (f"in-circle R={float(result.get('radius_m') or 0.0):.0f}m "
                       f"n={result.get('n_candidates')}") if result.get("spatial") else None
+            if self.local is not None and src == "local_match":
+                self._prefetch_ahead(out_lat, out_lon, t_now, img_shape=result.get("_frame_shape"),
+                                     mpp=result.get("_frame_mpp"))
             self._anchor_lat, self._anchor_lon, self._anchor_time = out_lat, out_lon, t_now
             self._last_measured_time = t_now
             self._rejects_in_row = 0
@@ -621,7 +720,8 @@ class DaySubscriber(Node):
         elif spatial_empty:
             why = f"no tile within R={float(result.get('radius_m') or 0.0):.0f}m"
         else:
-            why = f"score {score:.2f} < {self.conf_threshold:.2f}"
+            why = (result.get("reason") if result.get("matcher") == "local" and result.get("reason")
+                   else f"score {score:.2f} < {self.conf_threshold:.2f}")
 
         propagated = None
         if (self._anchor_lat is not None and self._last_measured_time is not None
@@ -643,7 +743,8 @@ class DaySubscriber(Node):
                 why += "; heading/speed unknown, cannot dead-reckon"
             self._publish_no_fix(now, seq_id, meta, status, score, why)
 
-        if self._anchor_lat is not None and self._rejects_in_row >= self.max_consecutive_rejects:
+        if (self._anchor_lat is not None and self._rejects_in_row >= self.max_consecutive_rejects
+                and self.local is None):           # local matching widens its search instead
             self.get_logger().warn(
                 f"[day] {self._rejects_in_row} frames without a match — dropping the anchor, "
                 "next frame searches the whole map")
