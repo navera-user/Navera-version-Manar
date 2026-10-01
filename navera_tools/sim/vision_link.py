@@ -26,6 +26,7 @@ import threading
 import time
 from collections import deque
 
+from navera_common.geo import haversine_m
 from PIL import Image as PILImage, ImageEnhance, ImageFilter, ImageOps
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Image
@@ -107,8 +108,7 @@ class AreaManager:
         route = [[float(a), float(b)] for a, b in route]
         p = plan_tiles(self.mbtiles, route, buffer_m, 17, self.cache)
         aid = self.area_id(route, buffer_m)
-        length = sum(math.hypot((b[1] - a[1]) * 111320 * math.cos(math.radians(a[0])),
-                                (b[0] - a[0]) * 111320) for a, b in zip(route, route[1:]))
+        length = sum(haversine_m(a[0], a[1], b[0], b[1]) for a, b in zip(route, route[1:]))   # great circle, as the dashboard
         plan = dict(id=aid, route=route, buffer_m=buffer_m, zoom=17, length_m=length,
                     tiles=len(p["needed"]), present=p["present"], missing=p["missing"],
                     in_base=p["in_base"], in_cache=p["in_cache"],
