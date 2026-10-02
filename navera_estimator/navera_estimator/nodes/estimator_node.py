@@ -149,6 +149,8 @@ class EstimatorNode(Node):
         declare_float(self, "switch_holdoff_s", 2.0)
         declare_float(self, "max_speed_mps", 100.0)
         declare_float(self, "gps_jump_margin_m", 50.0)
+        # the attitude NAVERA uses (box, vehicle or ROS IMU): liveness only
+        self.declare_parameter("imu_topic", "/navera/sensors/imu")
         declare_float(self, "gps_crosscheck_sigmas", 5.0)
         declare_float(self, "gps_crosscheck_persist_s", 3.0)
         # FIX also requires the stated horizontal sigma to be at most this.
@@ -200,7 +202,7 @@ class EstimatorNode(Node):
         self.sub_cn = self.create_subscription(
             PositionEstimate, "/navera/estimate/cn", self._on_cn, 10)
         self.sub_imu = self.create_subscription(
-            Imu, "/navera/sensors/imu", self._on_imu, 10)
+            Imu, str(self.get_parameter("imu_topic").value), self._on_imu, 10)
 
         self.pub_pos = self.create_publisher(PositionEstimate, "/navera/position", 10)
         self.pub_status = self.create_publisher(NavStatus, "/navera/nav_status", 10)

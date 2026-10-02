@@ -26,7 +26,8 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
-from navera_common.vehicle import max_speed_mps_from_env, max_speed_params
+from navera_common.vehicle import (imu_topic_params, max_speed_mps_from_env, max_speed_params,
+                                   shadow_mode_from_env)
 
 
 def generate_launch_description():
@@ -43,11 +44,11 @@ def generate_launch_description():
         DeclareLaunchArgument('max_consecutive_rejects', default_value='3'),
         DeclareLaunchArgument('max_dead_reckon_s',       default_value='30.0'),
         # Test flights: vision runs while GPS is valid, for measurement.
-        DeclareLaunchArgument('shadow_mode', default_value='false'),
+        DeclareLaunchArgument('shadow_mode', default_value=shadow_mode_from_env()),
         DeclareLaunchArgument('allow_global_search',     default_value='false'),
         # Day camera horizontal field of view (deg), from NAVERA_DAY_HFOV_DEG: with the frame
         # altitude it gives the frame scale local matching needs. Unset = DINOv2 retrieval.
-        DeclareLaunchArgument('camera_hfov_deg', default_value=os.environ.get('NAVERA_DAY_HFOV_DEG', 'nan')),
+        DeclareLaunchArgument('camera_hfov_deg', default_value=(os.environ.get('NAVERA_DAY_HFOV_DEG') or 'nan')),
         # default_gps_valid: mirrors day.yaml ('true'), so this argument changes
         # nothing by itself — it forwards day.launch.py's argument up to this level,
         # which is what lets the GPS-denied regime be MEASURED without editing a
@@ -70,7 +71,7 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(os.path.join(camera_share, 'launch', 'live.launch.py')),
             launch_arguments={'camera_type': 'day', 'ns': 'day',
                               'ready_topic': '/day/localizer_ready'}.items(),
-        ) if os.environ.get('NAVERA_CAMERA', 'replay') == 'live' else
+        ) if (os.environ.get('NAVERA_CAMERA') or 'replay') == 'live' else
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(camera_share, 'launch', 'day.launch.py')

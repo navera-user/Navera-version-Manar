@@ -32,7 +32,7 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    default_mbtiles = os.environ.get('NAVERA_MBTILES', '/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles')
+    default_mbtiles = (os.environ.get('NAVERA_MBTILES') or '/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles')
 
     return LaunchDescription([
         # Which bridge binary. navera_web_bridge serves day/night and renders the

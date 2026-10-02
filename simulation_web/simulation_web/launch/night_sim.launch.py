@@ -33,7 +33,7 @@ from launch.substitutions import LaunchConfiguration
 def generate_launch_description():
     web_share = get_package_share_directory('simulation_web')
 
-    default_mbtiles = os.environ.get('NAVERA_MBTILES', '/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles')
+    default_mbtiles = (os.environ.get('NAVERA_MBTILES') or '/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles')
 
     # Public interface: same argument names and same defaults as before the split, so
     # every existing invocation (docs, CLI overrides) keeps working. The STHN tuning
@@ -48,9 +48,9 @@ def generate_launch_description():
         DeclareLaunchArgument('cuda_alloc_conf', default_value='expandable_segments:True'),
         DeclareLaunchArgument('mixed_precision', default_value='false'),
         DeclareLaunchArgument('sthn_dir',
-            default_value=os.environ.get('NAVERA_STHN_DIR', '/home/navera/isaac_ros_common/night_pkg/STHN')),
+            default_value=(os.environ.get('NAVERA_STHN_DIR') or '/home/navera/isaac_ros_common/night_pkg/STHN')),
         DeclareLaunchArgument('weights',
-            default_value=os.environ.get('NAVERA_STHN_WEIGHTS', '/home/navera/isaac_ros_common/night_pkg/STHN/weights/one_stage/model.safetensors')),
+            default_value=(os.environ.get('NAVERA_STHN_WEIGHTS') or '/home/navera/isaac_ros_common/night_pkg/STHN/weights/one_stage/model.safetensors')),
 
         # 1) Localization pipeline: camera(thermal) + night_subscriber (STHN)
         IncludeLaunchDescription(

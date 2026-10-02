@@ -31,6 +31,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, Shutdown
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
+from navera_common.vehicle import imu_topic_params
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
@@ -54,10 +55,10 @@ def generate_launch_description():
         # Star-camera attitude from the IMU (when frame_meta has none): mounting,
         # magnetic declination, and the IMU's attitude accuracy (sets the stated
         # accuracy: ~111 km per degree). See cn_pkg/README.md.
-        DeclareLaunchArgument('camera_mount_elevation_deg', default_value=os.environ.get('NAVERA_STAR_CAMERA_ELEVATION_DEG', '90.0')),
-        DeclareLaunchArgument('camera_mount_azimuth_deg', default_value=os.environ.get('NAVERA_STAR_CAMERA_AZIMUTH_DEG', '0.0')),
-        DeclareLaunchArgument('magnetic_declination_deg', default_value=os.environ.get('NAVERA_MAGNETIC_DECLINATION_DEG', '0.0')),
-        DeclareLaunchArgument('attitude_sigma_deg', default_value=os.environ.get('NAVERA_ATTITUDE_SIGMA_DEG', 'nan')),
+        DeclareLaunchArgument('camera_mount_elevation_deg', default_value=(os.environ.get('NAVERA_STAR_CAMERA_ELEVATION_DEG') or '90.0')),
+        DeclareLaunchArgument('camera_mount_azimuth_deg', default_value=(os.environ.get('NAVERA_STAR_CAMERA_AZIMUTH_DEG') or '0.0')),
+        DeclareLaunchArgument('magnetic_declination_deg', default_value=(os.environ.get('NAVERA_MAGNETIC_DECLINATION_DEG') or '0.0')),
+        DeclareLaunchArgument('attitude_sigma_deg', default_value=(os.environ.get('NAVERA_ATTITUDE_SIGMA_DEG') or 'nan')),
 
         # 1) Camera publisher (celestial namespace, etoiles.jpeg + meta)
         IncludeLaunchDescription(
@@ -97,6 +98,6 @@ def generate_launch_description():
                 'camera_mount_azimuth_deg': ParameterValue(LaunchConfiguration('camera_mount_azimuth_deg'), value_type=float),
                 'magnetic_declination_deg': ParameterValue(LaunchConfiguration('magnetic_declination_deg'), value_type=float),
                 'attitude_sigma_deg': ParameterValue(LaunchConfiguration('attitude_sigma_deg'), value_type=float),
-            }],
+            }, imu_topic_params()],          # the star camera's attitude: box, vehicle or ROS IMU
         ),
     ])

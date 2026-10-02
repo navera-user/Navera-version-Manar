@@ -12,7 +12,7 @@ from launch import LaunchDescription
 from launch.actions import LogInfo, DeclareLaunchArgument, Shutdown
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-from navera_common.vehicle import max_speed_mps_from_env, max_speed_params
+from navera_common.vehicle import imu_topic_params, max_speed_mps_from_env, max_speed_params
 
 
 def generate_launch_description():
@@ -42,6 +42,8 @@ def generate_launch_description():
                 },
                 # the vehicle's maximum speed (NAVERA_MAX_SPEED_KMH): GPS plausibility gate
                 max_speed_params(),
+                # IMU liveness on the attitude NAVERA actually uses (box, vehicle or ROS)
+                imu_topic_params(),
             ],
         ),
     ])

@@ -23,14 +23,15 @@ from launch.actions import LogInfo, DeclareLaunchArgument, IncludeLaunchDescript
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-from navera_common.vehicle import max_speed_mps_from_env, max_speed_params
+from navera_common.vehicle import (imu_topic_params, max_speed_mps_from_env, max_speed_params,
+                                   shadow_mode_from_env)
 from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
     camera_share = get_package_share_directory('camera_pkg')
 
-    default_mbtiles = os.environ.get('NAVERA_MBTILES', '/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles')
+    default_mbtiles = (os.environ.get('NAVERA_MBTILES') or '/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles')
 
     mbtiles_path   = LaunchConfiguration('mbtiles_path')
     conf_threshold = LaunchConfiguration('conf_threshold')
@@ -41,7 +42,7 @@ def generate_launch_description():
         DeclareLaunchArgument('conf_threshold', default_value='0.30'),   # seuil conf STHN
         DeclareLaunchArgument('max_dead_reckon_s', default_value='30.0'),
         # Test flights: vision runs while GPS is valid, for measurement.
-        DeclareLaunchArgument('shadow_mode', default_value='false'),
+        DeclareLaunchArgument('shadow_mode', default_value=shadow_mode_from_env()),
         # Replay data ($NAVERA_THERMAL_CSV / $NAVERA_THERMAL_IMAGES_DIR, e.g. on the data disk)
         # and whether CSV lat/lon rows count as GPS (replay only).
         DeclareLaunchArgument('csv_path', default_value=os.environ.get(
@@ -66,11 +67,11 @@ def generate_launch_description():
         # Thermal camera horizontal field of view (deg): with the frame altitude it
         # brings each frame to STHN's scale. Unset = no night position (LOC-16).
         DeclareLaunchArgument('camera_hfov_deg',
-            default_value=os.environ.get('NAVERA_THERMAL_HFOV_DEG', 'nan')),
+            default_value=(os.environ.get('NAVERA_THERMAL_HFOV_DEG') or 'nan')),
         DeclareLaunchArgument('sthn_dir',
-            default_value=os.environ.get('NAVERA_STHN_DIR', '/home/navera/isaac_ros_common/night_pkg/STHN')),
+            default_value=(os.environ.get('NAVERA_STHN_DIR') or '/home/navera/isaac_ros_common/night_pkg/STHN')),
         DeclareLaunchArgument('weights',
-            default_value=os.environ.get('NAVERA_STHN_WEIGHTS', '/home/navera/isaac_ros_common/night_pkg/STHN/weights/one_stage/model.safetensors')),
+            default_value=(os.environ.get('NAVERA_STHN_WEIGHTS') or '/home/navera/isaac_ros_common/night_pkg/STHN/weights/one_stage/model.safetensors')),
 
         # 1) Camera publisher (thermal namespace, test images) — back-pressure + handshake
         # NAVERA_CAMERA=live: the real camera (camera_pkg live.launch.py, settings in
@@ -79,7 +80,7 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(os.path.join(camera_share, 'launch', 'live.launch.py')),
             launch_arguments={'camera_type': 'thermal', 'ns': 'thermal',
                               'ready_topic': '/night/localizer_ready'}.items(),
-        ) if os.environ.get('NAVERA_CAMERA', 'replay') == 'live' else
+        ) if (os.environ.get('NAVERA_CAMERA') or 'replay') == 'live' else
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(camera_share, 'launch', 'thermal.launch.py')
@@ -126,7 +127,7 @@ def generate_launch_description():
                 'status_topic':   '/night/night_status',
                 'done_topic':     '/thermal/frame_done',
                 'ready_topic':    '/night/localizer_ready',
-            }, max_speed_params()],    # the vehicle's maximum speed: vision motion gate
+            }, max_speed_params(), imu_topic_params()],    # max speed: motion gate; attitude: heading
             # CUDA_VISIBLE_DEVICES posé AVANT l'import torch du process →
             # '' rend torch.cuda.is_available()==False → night_localizer DEVICE/
             # self.device = cpu de façon cohérente (sans toucher network.py).
