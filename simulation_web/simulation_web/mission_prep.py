@@ -60,8 +60,9 @@ def _vehicle(v):
 SETTINGS = {
     "NAVERA_VEHICLE_TYPE": (_vehicle, "vehicle type (label)"),
     "NAVERA_MAX_SPEED_KMH": (_num(4, 1890), "vehicle maximum speed, km/h"),
-    "NAVERA_THERMAL_HFOV_DEG": (_num(5, 180), "thermal camera horizontal field of view, deg"),
-    "NAVERA_DAY_HFOV_DEG": (_num(5, 180), "day camera horizontal field of view, deg"),
+    # a straightened (pinhole) image cannot be 180 deg wide: same bounds as the box settings
+    "NAVERA_THERMAL_HFOV_DEG": (_num(5, 170), "thermal camera horizontal field of view, deg"),
+    "NAVERA_DAY_HFOV_DEG": (_num(5, 170), "day camera horizontal field of view, deg"),
     "NAVERA_IMU_MOUNT_RPY": (_rpy, "IMU mounting roll,pitch,yaw, deg"),
     "NAVERA_DECLINATION_DEG": (_num(-90, 90), "magnetic declination until a position is known, deg"),
 }

@@ -6,6 +6,7 @@ night vision motion gates. It is set once per installation, in km/h, by
 NAVERA_MAX_SPEED_KMH in /etc/navera/navera.env — a drone, a boat and an
 aircraft differ by an order of magnitude.
 """
+import math
 import os
 from typing import Optional
 
@@ -81,7 +82,7 @@ def sensor_topics(environ=None) -> dict:
     """Topics the live camera reads, by NAVERA_SENSOR_SOURCE:
       box      NAVERA's own BNO085 and Neo-M8N (imu_node, gps_node)
       vehicle  the autopilot's sensors over MAVLink (vehicle_link_node): attitude,
-               rangefinder, height above home; GPS from NAVERA's receiver if fitted
+               rangefinder, height above home (the GPS source is NAVERA_GPS_SOURCE)
       ros      the vehicle's ROS topics: NAVERA_ROS_IMU_TOPIC (sensor_msgs/Imu, ENU),
                NAVERA_ROS_GPS_TOPIC (NavSatFix), NAVERA_ROS_ALTITUDE_TOPIC (Range, AGL)
     Raises ValueError on an unknown source or a missing ROS IMU topic."""
@@ -120,11 +121,19 @@ def live_camera_params(environ=None) -> dict:
          "calibration_file": get("NAVERA_CAMERA_CALIBRATION"),
          "max_tilt_deg": float(get("NAVERA_CAMERA_MAX_TILT_DEG", "45")),
          "gimbal": get("NAVERA_CAMERA_GIMBAL", "false").lower() in ("1", "true", "yes")}
+    for key, k, lo, hi in (("NAVERA_CAMERA_SIZE", "width", 64, 8192), ("NAVERA_CAMERA_SIZE", "height", 64, 8192),
+                           ("NAVERA_CAMERA_FPS", "fps", 0.05, 30.0),
+                           ("NAVERA_CAMERA_LATENCY_S", "capture_latency_s", 0.0, 2.0),
+                           ("NAVERA_CAMERA_MAX_TILT_DEG", "max_tilt_deg", 5.0, 80.0)):
+        if not (math.isfinite(p[k]) and lo <= p[k] <= hi):
+            raise ValueError(f"{key}: {k} {p[k]:g} out of range [{lo:g}, {hi:g}]")
     if p["input"] not in ("usb", "csi", "ros"):
         raise ValueError(f"NAVERA_CAMERA_INPUT={p['input']!r}: expected usb, csi or ros")
     hfov = get("NAVERA_CAMERA_HFOV_DEG")
     if hfov:
         p["camera_hfov_deg"] = float(hfov)
+        if not (math.isfinite(p["camera_hfov_deg"]) and 5.0 <= p["camera_hfov_deg"] <= 170.0):
+            raise ValueError(f"NAVERA_CAMERA_HFOV_DEG={hfov}: expected 5-170 deg")
     if not p["calibration_file"] and not hfov:
         raise ValueError("set NAVERA_CAMERA_CALIBRATION (navera_tools/calibrate_camera.py) "
                          "or at least NAVERA_CAMERA_HFOV_DEG")
@@ -141,3 +150,49 @@ def live_camera_params(environ=None) -> dict:
     t = sensor_topics(env)
     p.update({k: v for k, v in t.items() if k != "sensor_source"})
     return p
+
+
+def camera_mount_advice(vehicle_type: str, max_speed_mps, gimbal: bool):
+    """None, or a warning when a FIXED camera will often be too tilted to use: a
+    multirotor leans forward to fly fast (the simulator's quad: 45 deg at 43 km/h), and
+    frames tilted over 45 deg are dropped. A plane banks in turns only; boats and
+    robots stay roughly level."""
+    if gimbal or str(vehicle_type).lower() != "drone" or not max_speed_mps:
+        return None
+    if max_speed_mps > 10.0:
+        return (f"fixed camera on a multirotor flying up to {max_speed_mps * 3.6:.0f} km/h: it leans "
+                f"30-45 deg at speed and frames over 45 deg are dropped — fit a gimbal, or cruise "
+                f"under ~36 km/h")
+    return None
+
+
+def camera_identity(device: str, by_id_dir: str = "/dev/v4l/by-id"):
+    """The stable name of a V4L2 camera (its /dev/v4l/by-id link: maker, model and
+    serial number), or None. /dev/videoN numbers change with plug order; a lens
+    calibration belongs to ONE camera."""
+    try:
+        target = os.path.realpath(device)
+        for name in sorted(os.listdir(by_id_dir)):
+            if os.path.realpath(os.path.join(by_id_dir, name)) == target:
+                return name
+    except OSError:
+        pass
+    return None
+
+
+def imu_topic_params(environ=None) -> dict:
+    """{"imu_topic": ...} for any node reading the attitude (night heading, star camera,
+    estimator liveness): the box's IMU, the vehicle's (MAVLink) or its ROS topic, by
+    NAVERA_SENSOR_SOURCE. A wrong setting is reported by the live camera; here the box
+    IMU is kept so these pipelines still start."""
+    try:
+        return {"imu_topic": sensor_topics(environ)["imu_topic"]}
+    except ValueError:
+        return {"imu_topic": "/navera/sensors/imu"}
+
+
+def shadow_mode_from_env(environ=None) -> str:
+    """'true' when NAVERA_SHADOW_MODE asks the pipelines to run beside a working GPS,
+    publishing their own positions for comparison (field recording)."""
+    env = os.environ if environ is None else environ
+    return "true" if str(env.get("NAVERA_SHADOW_MODE", "")).strip().lower() in ("1", "true", "yes") else "false"

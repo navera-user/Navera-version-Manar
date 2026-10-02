@@ -2,7 +2,7 @@
 """Calibrate NAVERA's camera lens (once per camera) — writes the file live_camera reads.
 
     # live, from the camera itself (e.g. the Insta360 ONE R in webcam mode):
-    python3 navera_tools/calibrate_camera.py --device /dev/video0 --size 1920x1080 \\
+    python3 navera_tools/calibrate_camera.py --device /dev/v4l/by-id/usb-<camera>-video-index0 --size 1920x1080 \\
         --board 9x6 --square-mm 25 --out /etc/navera/camera.yaml
     # or from photos already taken with the camera at that resolution:
     python3 navera_tools/calibrate_camera.py --images ./calib_photos --board 9x6 --square-mm 25 --out camera.yaml
@@ -141,6 +141,9 @@ def main():
     from navera_common.camera_model import CameraModel
     cam = CameraModel.from_calibration(calib)
     calib["out_hfov_deg"] = round(cam.out_hfov_deg, 2)
+    if a.device:
+        from navera_common.vehicle import camera_identity
+        calib["camera_id"] = camera_identity(a.device)       # live_camera checks it is this camera
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     with open(a.out, "w") as f:
         f.write("# NAVERA camera calibration (navera_tools/calibrate_camera.py) — NAVERA_CAMERA_CALIBRATION\n")

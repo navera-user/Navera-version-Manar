@@ -44,6 +44,7 @@ def check_settings():
     cam = None
     if os.environ.get("NAVERA_CAMERA", "replay") != "live":
         report(WARN, "camera", "NAVERA_CAMERA is not 'live': the pipelines replay recorded frames")
+        return t, None                                  # camera settings unused in replay
     try:
         cam = live_camera_params()
     except ValueError as e:
@@ -67,6 +68,14 @@ def check_settings():
         else:
             report(WARN, "lens calibration", "none: the lens is taken as distortion-free "
                                              "(navera_tools/calibrate_camera.py)")
+        from navera_common.vehicle import camera_mount_advice
+        try:
+            v = max_speed_mps_from_env()
+        except ValueError:
+            v = None
+        advice = camera_mount_advice(os.environ.get("NAVERA_VEHICLE_TYPE", ""), v, cam["gimbal"])
+        report(WARN if advice else OK, "camera mount",
+               advice or ("gimbal (level)" if cam["gimbal"] else "fixed: tilt fine for this vehicle and speed"))
     return t, cam
 
 
@@ -229,7 +238,7 @@ def main():
     print("NAVERA pre-flight check\n")
     topics, cam = check_settings()
     check_files()
-    if a.camera:
+    if a.camera and cam:
         check_camera_device(cam)
     if not a.no_ros:
         check_ros(topics, a.seconds)

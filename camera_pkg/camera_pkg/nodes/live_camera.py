@@ -137,6 +137,10 @@ class LiveCamera(Node):
         self._acked.set()
 
         self._latest = None                                     # (raw image, exposure time s)
+        # camera inputs: frames are grabbed (kept current, not decoded) at the camera's rate
+        # and only the one sent is decoded: a 1080p MJPEG decode measured 51 ms on the Orin
+        # Nano (under load) — 30 fps decoded was ~1.5 CPU cores for one frame used a second
+        self._want = threading.Event()
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self.count = 0
@@ -164,6 +168,12 @@ class LiveCamera(Node):
             if cam.size != (self.w, self.h):
                 raise ValueError(f"calibration {calib_file} is for {cam.size[0]}x{cam.size[1]}, "
                                  f"the camera is set to {self.w}x{self.h}")
+            if self.input == "usb" and d.get("camera_id"):
+                from navera_common.vehicle import camera_identity
+                here = camera_identity(str(self.get_parameter("device").value))
+                if here is not None and here != d["camera_id"]:
+                    raise ValueError(f"calibration {calib_file} was made with camera {d['camera_id']}, "
+                                     f"this one is {here}: calibrate this camera")
             return cam
         if not math.isfinite(hfov):
             raise ValueError("set calibration_file (navera_tools/calibrate_camera.py) or camera_hfov_deg")
@@ -225,8 +235,14 @@ class LiveCamera(Node):
             return
         fails = 0
         while not self._stop.is_set():
-            ok, frame = cap.read()                              # paced by the camera itself
+            ok = cap.grab()                                     # paced by the camera itself
             t = self.get_clock().now().nanoseconds * 1e-9 - self.latency_s
+            frame = None
+            if ok and self._want.is_set():
+                ok, frame = cap.retrieve()                      # decode only the frame to send
+            elif ok:
+                fails = 0
+                continue
             if not ok or frame is None:
                 fails += 1
                 if fails > 50:
@@ -242,6 +258,7 @@ class LiveCamera(Node):
                 continue
             with self._lock:
                 self._latest = (frame, t)
+            self._want.clear()
         cap.release()
 
     def _on_image(self, m: Image):
@@ -265,6 +282,7 @@ class LiveCamera(Node):
             if not self._acked.wait(self.ack_timeout_s) and self._awaiting is not None:
                 self.get_logger().warn(f"no ack for frame {self._awaiting} in {self.ack_timeout_s:.0f} s — sending the next")
             t0 = time.monotonic()
+            self._want.set()                                    # camera inputs: decode the next frame
             with self._lock:
                 item, self._latest = self._latest, None
             if item is None:
@@ -283,6 +301,7 @@ class LiveCamera(Node):
             self.pub_img.publish(msg)
             self.pub_meta.publish(String(data=json.dumps(meta)))
             self.pub_info.publish(self._camera_info(msg.header))
+            self._check_tilt(t, str(meta.get("reason", "")).startswith("camera tilted"))
             if self.count % 30 == 0:
                 self.get_logger().info(
                     f"frame {self.count}: altitude {meta.get('altitude_m')} m ({meta.get('altitude_source')}), "
@@ -290,6 +309,17 @@ class LiveCamera(Node):
                     + ("" if meta["usable"] else f" — {meta['reason']}"))
             self.count += 1
             time.sleep(max(0.0, self.period - (time.monotonic() - t0)))
+
+    def _check_tilt(self, t, too_tilted):
+        """A fixed camera too tilted for a large part of the last minute: say why vision is
+        missing positions, and what to change (gimbal, slower cruise)."""
+        self._tilt_log = [x for x in self._tilt_log if t - x[0] <= 60.0] + [(t, too_tilted)]
+        n = len(self._tilt_log)
+        bad = sum(1 for _, b in self._tilt_log if b)
+        if n >= 20 and bad > 0.3 * n:
+            self.get_logger().error(f"{100 * bad // n} % of the last minute's frames were too tilted to use: "
+                                    f"the vehicle leans too much for a fixed camera — fit a gimbal or fly slower",
+                                    throttle_duration_sec=30.0)
 
     def _camera_info(self, header) -> CameraInfo:
         K = self.builder.cam.K_out
