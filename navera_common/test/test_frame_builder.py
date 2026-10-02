@@ -44,10 +44,18 @@ def test_too_tilted_is_published_but_marked_unusable():
     assert meta["usable"] is False and "tilted 50" in meta["reason"]
 
 
-def test_without_attitude_the_frame_is_left_as_is():
+def test_without_attitude_a_fixed_camera_frame_is_unusable():
+    cam = CameraModel.ideal(84.0, (W, H_))
+    _, meta = FrameBuilder(cam).build(nadir_scene(), 1, 0, None)
+    assert meta["usable"] is False and "no attitude" in meta["reason"]
+    _, meta = FrameBuilder(cam, gimbal=True).build(nadir_scene(), 1, 0, None)
+    assert meta["usable"] is True                       # a level camera is straight down anyway
+
+
+def test_without_attitude_source_the_frame_is_left_as_is():
     cam = CameraModel.ideal(84.0, (W, H_))
     img = nadir_scene()
-    out, meta = FrameBuilder(cam).build(img, 1, 0, None, gps=(35.8, 10.6))
+    out, meta = FrameBuilder(cam, require_attitude=False).build(img, 1, 0, None, gps=(35.8, 10.6))
     assert out is img and meta["attitude_source"] == "none" and meta["heading_deg"] is None
     assert meta["altitude_m"] is None and meta["gps_lat"] == 35.8 and meta["gps_valid"] is False
 

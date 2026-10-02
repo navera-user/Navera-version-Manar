@@ -28,13 +28,18 @@ from navera_common.camera_model import (CameraModel, body_rpy_enu, camera_rotati
 
 class FrameBuilder:
     def __init__(self, camera: CameraModel, mount_rpy_deg: Sequence[float] = (0.0, 0.0, 0.0),
-                 max_tilt_deg: float = 45.0, camera_type: str = "day", gimbal: bool = False):
+                 max_tilt_deg: float = 45.0, camera_type: str = "day", gimbal: bool = False,
+                 require_attitude: bool = True):
         """max_tilt_deg: frames looking further from straight down are not compared (measured:
         straightened frames tilted 45 deg still matched 31/33 benchmark places, simulation).
         gimbal: the camera is held level by a stabiliser — only the vehicle's heading
         turns it; its roll and pitch are ignored."""
         self.cam, self.mount = camera, tuple(float(a) for a in mount_rpy_deg)
         self.max_tilt_deg, self.camera_type, self.gimbal = max_tilt_deg, camera_type, gimbal
+        # without an attitude at exposure a fixed camera's tilt is unknown: assuming it
+        # straight down puts the match tens of metres off, silently. A level (gimbal)
+        # camera is straight down by construction.
+        self.require_attitude = require_attitude and not gimbal
 
     def build(self, img: np.ndarray, frame_id: int, exposure_ns: int,
               q_body_enu: Optional[Sequence[float]] = None, attitude_source: str = "imu",
@@ -59,6 +64,10 @@ class FrameBuilder:
             meta.update(gps_lat=gps[0], gps_lon=gps[1])
         if utc:
             meta["utc_time"] = utc
+        if q_body_enu is None and self.require_attitude:
+            meta.update(usable=False, reason="no attitude at the frame's exposure (IMU or vehicle link "
+                                             "silent): the camera's tilt is unknown")
+            return out, meta
         if q_body_enu is not None:
             if self.gimbal:                            # level camera: keep the heading only
                 x, y, z, w = q_body_enu

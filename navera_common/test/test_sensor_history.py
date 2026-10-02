@@ -49,6 +49,14 @@ def test_out_of_order_samples_are_dropped():
     assert h.latest() == (1.0, 3.0)
 
 
+def test_a_clock_step_back_restarts_the_history():
+    h = History(max_gap_s=0.5)
+    h.add(1000.0, 1.0)
+    h.add(1000.5, 2.0)
+    h.add(10.0, 7.0)                                 # clock set back by ~990 s
+    assert h.at(10.0) == 7.0 and h.at(1000.2) is None
+
+
 def test_nearest_mode():
     h = History(max_gap_s=1.0, interp=None)
     h.add(0.0, "a")

@@ -70,6 +70,9 @@ class LiveCamera(Node):
         declare_float(self, "mount_yaw_deg", 0.0)
         declare_float(self, "max_tilt_deg", 45.0)
         self.declare_parameter("gimbal", False)                 # camera held level by a stabiliser
+        # frames with no attitude at exposure are marked unusable (fixed camera); false only
+        # for an installation with no attitude source at all
+        self.declare_parameter("require_attitude", True)
         self.declare_parameter("imu_topic", "/navera/sensors/imu")
         self.declare_parameter("attitude_source", "imu")        # label recorded in the meta
         self.declare_parameter("gps_topic", "/navera/sensors/gps_fix")
@@ -92,10 +95,12 @@ class LiveCamera(Node):
         self.latency_s = float(p("capture_latency_s"))
         cam = self._camera_model(p("calibration_file"), float(p("camera_hfov_deg")))
         self.builder = FrameBuilder(cam, (p("mount_roll_deg"), p("mount_pitch_deg"), p("mount_yaw_deg")),
-                                    float(p("max_tilt_deg")), p("camera_type"), bool(p("gimbal")))
+                                    float(p("max_tilt_deg")), p("camera_type"), bool(p("gimbal")),
+                                    bool(p("require_attitude")))
         self.attitude_source, self.frame_id = p("attitude_source"), p("frame_id")
         self.measured_sigma_m = float(p("measured_altitude_sigma_m"))
         self.att = History(maxlen=4000, max_gap_s=0.2, interp=slerp)
+        self._last_q, self._same, self._frozen_n = None, 0, 50     # 1 s at 50 Hz
         self.gps = History(maxlen=600, max_gap_s=1.5)
         g = float(p("ground_altitude_m"))
         self.alt = AltitudeEstimator(ground_altitude_m=g if math.isfinite(g) else None)
@@ -164,8 +169,17 @@ class LiveCamera(Node):
     # ── sensor inputs ─────────────────────────────────────────────────────
     def _on_imu(self, m: Imu):
         q = (m.orientation.x, m.orientation.y, m.orientation.z, m.orientation.w)
-        if any(math.isfinite(c) for c in q) and sum(c * c for c in q) > 0.5:
-            self.att.add(stamp_s(m.header.stamp), q)
+        if not (all(math.isfinite(c) for c in q) and abs(sum(c * c for c in q) - 1.0) < 0.1):
+            return
+        # a real attitude always carries a little noise: the very same value for a second
+        # means a frozen sensor or a stuck relay — not an attitude to straighten with
+        self._same = self._same + 1 if q == self._last_q else 0
+        self._last_q = q
+        if self._same >= self._frozen_n:
+            self.get_logger().error("attitude frozen (identical samples): frames not used until it moves",
+                                    throttle_duration_sec=10.0)
+            return
+        self.att.add(stamp_s(m.header.stamp), q)
 
     def _on_gps(self, m: NavSatFix):
         if m.status.status >= NavSatStatus.STATUS_FIX and math.isfinite(m.latitude):

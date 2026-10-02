@@ -99,7 +99,8 @@ def _run(proc):
         while state["run"]:
             st = now()
             imu = Imu(); imu.header.stamp = st
-            imu.orientation.x, imu.orientation.y, imu.orientation.z, imu.orientation.w = q
+            e = 1e-6 * (k % 7)                          # sensor noise: a real attitude never repeats exactly
+            imu.orientation.x, imu.orientation.y, imu.orientation.z, imu.orientation.w = q[0] + e, q[1], q[2], q[3]
             pub_imu.publish(imu)
             if k % 10 == 0:
                 fx = NavSatFix(); fx.header.stamp = st; fx.status.status = NavSatStatus.STATUS_FIX

@@ -48,6 +48,9 @@ class History:
 
     def add(self, t: float, value) -> None:
         with self._lock:
+            if self._t and t < self._t[-1] - 1.0:       # the clock stepped back (RTC/NTP set): restart
+                self._t.clear()
+                self._v.clear()
             if self._t and t <= self._t[-1]:            # out of order or duplicate: keep order
                 if t == self._t[-1]:
                     self._v[-1] = value
