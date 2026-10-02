@@ -163,3 +163,14 @@ def test_forwarded_accuracy_never_better_than_the_source_states():
     day = pos(source=DAY)                                  # unknown covariance → configured
     day.position_covariance_type = 0
     assert decide(cfg, STATE_DEGRADED, 0.1, day, 0.1, DAY).sigma_h_m == 300.0
+
+
+def test_old_measurements_are_withheld_and_the_rest_carry_their_age():
+    cfg = Config(forward_degraded=True, degraded_sigma_m=30.0)
+    o = decide(cfg, STATE_DEGRADED, 0.1, pos(source=DAY), 0.1, DAY, measured_age_s=0.8)
+    assert o.kind == KIND_ESTIMATED and o.age_s == pytest.approx(0.8)
+    o = decide(cfg, STATE_DEGRADED, 0.1, pos(source=DAY), 0.1, DAY, measured_age_s=2.6)
+    assert o.kind == KIND_NONE and "measured 2.6 s ago" in o.reason
+    o = decide(cfg, STATE_DEGRADED, 0.1, pos(source=DAY), 0.1, DAY, measured_age_s=-5.0)
+    assert o.kind == KIND_NONE and "future" in o.reason
+    assert decide(Config(), STATE_FIX, 0.1, pos(), 0.1, GPS).age_s == 0.0      # age unknown: now

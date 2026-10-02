@@ -12,6 +12,10 @@ The vehicle's autopilot treats whatever NAVERA sends as a GPS. The rules:
 * Anything else — NO_FIX, INITIALIZING, the arbiter silent, the position
   stale, non-finite, or not from the active source — is sent as "no fix".
   A position is never repeated after it stops being current.
+* A position is sent stamped with the instant it was MEASURED (the camera
+  exposure for vision), never the sending instant, and not at all when it was
+  measured more than max_measurement_age_s ago: a 3 s old vision fix sent as
+  current is 45 m wrong at 15 m/s, and the autopilot cannot know it.
 * Velocity is sent only with a GPS position, from the receiver's own velocity
   (RMC), and only while that velocity is current. Vision and celestial fixes
   carry no velocity.
@@ -42,6 +46,7 @@ class Output:
     sigma_h_m: float = math.nan         # 1-sigma horizontal accuracy
     sigma_v_m: float = math.nan
     satellites: Optional[int] = None    # None = unknown / not applicable
+    age_s: float = 0.0                  # measurement age when decided (stamp = now - age_s)
     vel_n_mps: float = math.nan         # ground velocity north / east, NaN if unknown
     vel_e_mps: float = math.nan
 
@@ -66,6 +71,8 @@ class Config:
     max_forward_sigma_m: float = 1000.0
     position_timeout_s: float = 2.0
     nav_status_timeout_s: float = 2.0
+    # older measurements are not sent (vision: image to position measured 0.3-1.5 s)
+    max_measurement_age_s: float = 2.0
 
     def validate(self) -> None:
         if self.forward_degraded and not (math.isfinite(self.degraded_sigma_m)
@@ -84,7 +91,7 @@ def _details(pos) -> dict:
 
 def decide(cfg: Config, state: Optional[int], status_age_s: Optional[float],
            pos, pos_age_s: Optional[float], active_source: Optional[int],
-           gps_vel_ne: Optional[tuple] = None) -> Output:
+           gps_vel_ne: Optional[tuple] = None, measured_age_s: Optional[float] = None) -> Output:
     """The output for this instant.
 
     state / status_age_s: last NavStatus state and its age (None = never heard).
@@ -92,6 +99,7 @@ def decide(cfg: Config, state: Optional[int], status_age_s: Optional[float],
     active_source: NavStatus.active_source (the position must come from it).
     gps_vel_ne: the GPS receiver's current (north, east) velocity in m/s, or
         None when it is not current. Used only with a GPS position.
+    measured_age_s: now - the position's measurement instant (None = unknown: 0).
     """
     if state is None or status_age_s is None or status_age_s > cfg.nav_status_timeout_s:
         return Output(KIND_NONE, "arbiter silent")
@@ -101,6 +109,12 @@ def decide(cfg: Config, state: Optional[int], status_age_s: Optional[float],
         return Output(KIND_NONE, "position not current")
     if pos.source != active_source:
         return Output(KIND_NONE, "position not from the active source")
+    age = 0.0 if measured_age_s is None or not math.isfinite(measured_age_s) else float(measured_age_s)
+    if age > cfg.max_measurement_age_s:
+        return Output(KIND_NONE, f"position measured {age:.1f} s ago (max {cfg.max_measurement_age_s:.1f} s)")
+    if age < -1.0:
+        return Output(KIND_NONE, f"position stamped {-age:.1f} s in the future: clocks disagree")
+    age = max(0.0, age)
     lat, lon = float(pos.latitude), float(pos.longitude)
     if not (math.isfinite(lat) and math.isfinite(lon)):
         return Output(KIND_NONE, "position not finite")
@@ -110,7 +124,7 @@ def decide(cfg: Config, state: Optional[int], status_age_s: Optional[float],
     details = _details(pos)
     sep = details.get("geo_sep_m")
     sats = details.get("num_sats")
-    common = dict(lat=lat, lon=lon, alt_ellipsoid_m=alt,
+    common = dict(lat=lat, lon=lon, alt_ellipsoid_m=alt, age_s=age,
                   geoid_sep_m=float(sep) if isinstance(sep, (int, float)) else math.nan)
 
     if (gps_vel_ne is not None and pos.source == SOURCE_GPS

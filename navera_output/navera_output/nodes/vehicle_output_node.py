@@ -29,6 +29,8 @@ Parameters:
     degraded_sigma_m     (NaN)   accuracy stated for them (required if forwarded)
     max_forward_sigma_m  (1000)  a forwarded position coarser than this is withheld
     position_timeout_s   (2.0)   an older position is not current
+    max_measurement_age_s (2.0)  a position measured longer ago is not sent; the rest
+                                 are sent stamped with their measurement instant
     nav_status_timeout_s (2.0)   a silent arbiter means "no fix"
     gps_vel_timeout_s    (1.0)   the GPS velocity (/navera/sensors/gps_vel) sent with
                                  a GPS position must be younger than this
@@ -48,7 +50,7 @@ service restarts it.
 import math
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import rclpy
 from navera_common.lifecycle import die_with_parent
@@ -76,6 +78,7 @@ class VehicleOutputNode(Node):
         self.declare_parameter("forward_degraded", False)
         declare_float(self, "degraded_sigma_m", float("nan"))
         declare_float(self, "position_timeout_s", 2.0)
+        declare_float(self, "max_measurement_age_s", 2.0)
         declare_float(self, "nav_status_timeout_s", 2.0)
         declare_float(self, "gps_vel_timeout_s", 1.0)
         declare_float(self, "max_forward_sigma_m", 1000.0)
@@ -90,6 +93,7 @@ class VehicleOutputNode(Node):
             forward_degraded=bool(self.get_parameter("forward_degraded").value),
             degraded_sigma_m=float(self.get_parameter("degraded_sigma_m").value),
             position_timeout_s=float(self.get_parameter("position_timeout_s").value),
+            max_measurement_age_s=float(self.get_parameter("max_measurement_age_s").value),
             nav_status_timeout_s=float(self.get_parameter("nav_status_timeout_s").value),
             max_forward_sigma_m=float(self.get_parameter("max_forward_sigma_m").value))
         self.cfg.validate()
@@ -154,7 +158,8 @@ class VehicleOutputNode(Node):
                      now - self._status_rx if st else None,
                      self._pos,
                      now - self._pos_rx if self._pos else None,
-                     st.active_source if st else None, vel)
+                     st.active_source if st else None, vel,
+                     self._measured_age(self._pos))
         if out.kind != self._last_kind:
             # Separate call sites: rclpy refuses one call site changing severity.
             if out.kind == KIND_NONE:
@@ -166,7 +171,8 @@ class VehicleOutputNode(Node):
             if self._pos is self._sent_pos:
                 return                    # already sent: wait for the next measurement
             self._sent_pos = self._pos
-        t_utc = datetime.now(timezone.utc)
+        # stamped with the measurement instant: GPS_INPUT time, NMEA time, NavSatFix stamp
+        t_utc = datetime.now(timezone.utc) - timedelta(seconds=out.age_s)
         try:
             if self._serial is not None:
                 spd = crs = math.nan
@@ -186,11 +192,20 @@ class VehicleOutputNode(Node):
             self.context.try_shutdown()
 
 
+    def _measured_age(self, pos):
+        """Seconds since the position was measured (sensor_stamp, else header stamp)."""
+        if pos is None:
+            return None
+        s = pos.sensor_stamp if (pos.sensor_stamp.sec or pos.sensor_stamp.nanosec) else pos.header.stamp
+        if not (s.sec or s.nanosec):
+            return None
+        return (self.get_clock().now().nanoseconds - (s.sec * 1_000_000_000 + s.nanosec)) / 1e9
+
     def _navsatfix(self, out) -> NavSatFix:
         """The output decision as a ROS GPS message: a fix with its stated accuracy as the
         covariance, or STATUS_NO_FIX with NaN position."""
         f = NavSatFix()
-        f.header.stamp = self.get_clock().now().to_msg()
+        f.header.stamp = (self.get_clock().now() - Duration(seconds=out.age_s)).to_msg()
         f.header.frame_id = "navera"
         f.status.service = NavSatStatus.SERVICE_GPS
         if out.kind == KIND_NONE:
