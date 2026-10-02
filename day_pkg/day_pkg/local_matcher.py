@@ -217,8 +217,11 @@ class LocalMatcher:
         return 2.0 * altitude_m * math.tan(math.radians(hfov_deg) / 2.0) / width_px
 
     def locate(self, frame, prior: Tuple[float, float], search_m: float, frame_m_per_px: float,
-               margin_m: Optional[float] = None) -> dict:
-        """Position of the frame centre near prior, as a result dict (see keys below)."""
+               margin_m: Optional[float] = None, scale_tol: Optional[float] = None) -> dict:
+        """Position of the frame centre near prior, as a result dict (see keys below).
+        scale_tol: accepted |fitted scale - 1| for this frame (default self.scale_tol) —
+        wider when the frame's altitude is uncertain."""
+        tol = self.scale_tol if scale_tol is None else float(scale_tol)
         t0 = time.time()
         res = dict(spatial=True, spatial_empty=False, radius_m=float(search_m), matcher="local",
                    predicted_lat=None, predicted_lon=None, accepted=False, score=0.0, fused_score=0.0,
@@ -265,8 +268,8 @@ class LocalMatcher:
                    score=float(n_in), fused_score=float(n_in), match=f"{n_in} inliers / {good} matches")
         if n_in < self.min_inliers:
             res["reason"] = f"{n_in} geometric inliers (min {self.min_inliers})"
-        elif abs(scale - 1.0) > self.scale_tol:
-            res["reason"] = (f"fitted scale {scale:.2f} ≠ 1 expected from the altitude (±{self.scale_tol:.0%}): "
+        elif abs(scale - 1.0) > tol:
+            res["reason"] = (f"fitted scale {scale:.2f} ≠ 1 expected from the altitude (±{tol:.0%}): "
                              "wrong place")
         else:
             res["accepted"] = True

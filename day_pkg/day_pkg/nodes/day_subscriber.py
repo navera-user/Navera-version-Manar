@@ -41,7 +41,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
-from sensor_msgs.msg import Image, NavSatFix, NavSatStatus
+from sensor_msgs.msg import Image, NavSatFix, NavSatStatus, Range
 from std_msgs.msg import String, Int32, Bool
 from cv_bridge import CvBridge
 from navera_msgs.msg import NavStatus, PositionEstimate
@@ -137,6 +137,10 @@ class DaySubscriber(Node):
         declare_float(self, "camera_hfov_deg", float("nan"))   # day camera horizontal field of view
         self.declare_parameter("local_min_inliers", 6)
         declare_float(self, "local_scale_tol", 0.15)
+        # widest scale window when the frame altitude is uncertain (frame_meta altitude_sigma_m)
+        declare_float(self, "local_scale_tol_max", 0.5)
+        # heights above ground measured by local matches (the camera uses them)
+        self.declare_parameter("vision_altitude_topic", "/navera/vision/altitude_agl")
         # Stated accuracy (1 sigma, m) of a local match. Benchmark median 4 m on aerial frames
         # from another source; NOT yet measured with NAVERA's camera: stated conservatively.
         declare_float(self, "local_sigma_m", 30.0)
@@ -196,6 +200,7 @@ class DaySubscriber(Node):
         self.camera_hfov_deg = float(self.get_parameter("camera_hfov_deg").value)
         self.local_sigma_m = float(self.get_parameter("local_sigma_m").value)
         self.local_max_radius_m = float(self.get_parameter("local_max_radius_m").value)
+        self.local_scale_tol_max = float(self.get_parameter("local_scale_tol_max").value)
         self.local = None
         if self.matcher_mode == "local":
             self.local = LocalMatcher(IMAGES_DIR,
@@ -231,6 +236,7 @@ class DaySubscriber(Node):
         # ── Publishers ──────────────────────────────────────────
         self.pub_fix    = self.create_publisher(NavSatFix, fix_topic,    10)
         self.pub_status = self.create_publisher(String,    status_topic, 10)
+        self.pub_vision_alt = self.create_publisher(Range, self.get_parameter("vision_altitude_topic").value, 10)
         # Additive: typed per-source estimate for navera_estimator. Same RELIABLE
         # depth-10 class as the fix/status topics. /day/* topics are UNTOUCHED.
         estimate_topic = self.get_parameter("estimate_topic").value
@@ -367,6 +373,12 @@ class DaySubscriber(Node):
             if meta.get("gps_valid") and meta.get("lat") is not None and meta.get("lon") is not None:
                 self._publish_known(seq_id, meta)
                 return
+            # A live frame the camera could not use (e.g. too tilted): say why, no inference.
+            if meta.get("usable") is False:
+                self.pub_status.publish(String(data=json.dumps({
+                    "frame_id": seq_id, "success": False, "source": "unusable",
+                    "reason": meta.get("reason") or "frame marked unusable by the camera"})))
+                return
             # Live GPS healthy → it is the position source; no inference needed.
             if self._gps_prior.fresh() is not None and not self.shadow_mode:
                 self.pub_status.publish(String(data=json.dumps({
@@ -389,7 +401,7 @@ class DaySubscriber(Node):
                 self.get_logger().info(f"[day] 🔎 localizing frame={seq_id}… (pas d'anchor → recherche globale)")
             mpp, why_not = self._frame_m_per_px(img, meta)
             if self.local is not None and center is not None and mpp is not None:
-                result = self.local.locate(img, center, R, mpp)
+                result = self.local.locate(img, center, R, mpp, scale_tol=self._scale_tol(meta))
                 result["_frame_shape"], result["_frame_mpp"] = img.shape, mpp
             else:
                 result = self.localizer.predict(img, threshold=self.conf_threshold,
@@ -491,10 +503,34 @@ class DaySubscriber(Node):
         margin = 0.5 * math.hypot(*img.shape[:2]) * mpp
         self.local.tiles.prefetch(self._anchor_lat, self._anchor_lon, R + margin)
 
+    def _hfov(self, meta):
+        """Field of view of this frame: the live camera states it (undistorted image),
+        else the camera_hfov_deg parameter."""
+        try:
+            v = float(meta.get("camera_hfov_deg"))
+            if 1.0 < v < 179.0:
+                return v
+        except (TypeError, ValueError):
+            pass
+        return self.camera_hfov_deg
+
+    def _scale_tol(self, meta):
+        """Accepted scale error: the configured one, widened to twice the frame's relative
+        altitude uncertainty (e.g. GPS altitude over unknown terrain), capped."""
+        tol = self.local.scale_tol
+        try:
+            rel = 2.0 * float(meta.get("altitude_sigma_m")) / float(meta.get("altitude_m"))
+            if math.isfinite(rel):
+                tol = min(max(tol, rel), self.local_scale_tol_max)
+        except (TypeError, ValueError, ZeroDivisionError):
+            pass
+        return tol
+
     def _frame_m_per_px(self, img, meta):
         """(metres per frame pixel, None) from the frame altitude and the camera's field of
         view, or (None, why) when the scale of this frame cannot be known."""
-        if not math.isfinite(self.camera_hfov_deg) or not 1.0 < self.camera_hfov_deg < 179.0:
+        hfov = self._hfov(meta)
+        if not math.isfinite(hfov) or not 1.0 < hfov < 179.0:
             return None, "camera_hfov_deg unknown"
         try:
             alt = float(meta.get("altitude_m"))
@@ -502,7 +538,7 @@ class DaySubscriber(Node):
             return None, "frame altitude unknown"
         if not (math.isfinite(alt) and alt > 5.0):
             return None, "frame altitude unknown or on the ground"
-        return LocalMatcher.frame_m_per_px(img.shape[1], alt, self.camera_hfov_deg), None
+        return LocalMatcher.frame_m_per_px(img.shape[1], alt, hfov), None
 
     def _spatial_window(self, img, meta):
         """Cercle de recherche pour une frame GPS-denied.
@@ -529,6 +565,24 @@ class DaySubscriber(Node):
             grown = R + self.max_speed_mps * max(0.0, time.time() - self._last_measured_time)
             R = min(max(R, grown), max(R, self.local_max_radius_m))
         return (self._anchor_lat, self._anchor_lon), R
+
+    def _publish_vision_altitude(self, meta, result, status):
+        """The height above ground this match measured: the frame was scaled for
+        meta altitude_m, the fitted scale says how much more ground it saw."""
+        try:
+            alt = float(meta.get("altitude_m")) * float(result.get("scale_residual"))
+        except (TypeError, ValueError):
+            return
+        if not (math.isfinite(alt) and alt > 5.0):
+            return
+        r = Range()
+        r.header.stamp = exposure_stamp(meta, self.get_clock().now().to_msg())
+        r.header.frame_id = "day_camera_link"
+        r.radiation_type = Range.INFRARED                     # (no "optical" type in the message)
+        r.min_range, r.max_range, r.range = 5.0, 20000.0, float(alt)
+        r.field_of_view = float(max(1.0, 0.03 * alt))         # 1-sigma of the measured height (m)
+        self.pub_vision_alt.publish(r)
+        status["altitude_measured_m"] = round(alt, 1)
 
     def _emit_fix(self, now, seq_id, lat, lon, meta, status, src, score, jump_m, reason=None):
         status["source"], status["lat"], status["lon"] = src, lat, lon
@@ -705,6 +759,8 @@ class DaySubscriber(Node):
             self._anchor_lat, self._anchor_lon, self._anchor_time = out_lat, out_lon, t_now
             self._last_measured_time = t_now
             self._rejects_in_row = 0
+            if src == "local_match":
+                self._publish_vision_altitude(meta, result, status)
             self._emit_fix(now, seq_id, out_lat, out_lon, meta, status, src, score, jump_m, reason)
             return
 

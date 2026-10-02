@@ -9,7 +9,8 @@ def test_gps_minus_the_ground_at_power_on():
     a.add_gps(0.0, 52.0)                            # on the ground at power-on
     a.add_gps(60.0, 202.0)
     agl, sigma, src = a.estimate(60.0)
-    assert (agl, src) == (150.0, "GPS - ground") and sigma == 10.0
+    assert (agl, src) == (150.0, "GPS - ground")
+    assert sigma == pytest.approx((10.0 ** 2 + (0.25 * 150.0) ** 2) ** 0.5)   # terrain unknown
     assert a.ground_source == "first GPS fix"
 
 

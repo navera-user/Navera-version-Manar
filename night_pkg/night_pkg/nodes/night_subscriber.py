@@ -355,6 +355,17 @@ class NightSubscriber(Node):
         with self._busy_lock:
             self._process_frame(seq_id, img, meta)
 
+    def _hfov(self, meta):
+        """The live camera states the field of view of its undistorted frames; else the
+        camera_hfov_deg parameter; None when neither is known."""
+        try:
+            v = float(meta.get("camera_hfov_deg"))
+            if 1.0 < v < 179.0:
+                return v
+        except (TypeError, ValueError):
+            pass
+        return self.camera_hfov_deg if math.isfinite(self.camera_hfov_deg) else None
+
     def _process_frame(self, seq_id, img, meta):
         try:
             self._search = {}
@@ -366,6 +377,11 @@ class NightSubscriber(Node):
                 self._publish_known(seq_id, meta)
                 return
 
+            # A live frame the camera could not use (e.g. too tilted): say why, no inference.
+            if meta.get("usable") is False:
+                self._publish_status_only(seq_id, reason=meta.get("reason") or "frame marked unusable",
+                                          meta=meta)
+                return
             # Live GPS healthy → it is the position source; no inference needed.
             if self._gps_prior.fresh() is not None and not self.shadow_mode:
                 self.pub_status.publish(String(data=json.dumps({
@@ -393,7 +409,7 @@ class NightSubscriber(Node):
             result = self.localizer.localize(
                 img, self._anchor_lat, self._anchor_lon,
                 altitude_m=float(alt) if alt is not None else None,
-                hfov_deg=self.camera_hfov_deg if math.isfinite(self.camera_hfov_deg) else None,
+                hfov_deg=self._hfov(meta),
                 heading_deg=heading)
             result["heading_source"] = heading_src
             self._search = {k: result.get(k) for k in (

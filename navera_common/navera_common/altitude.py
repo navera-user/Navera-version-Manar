@@ -19,13 +19,16 @@ from navera_common.sensor_history import History
 
 class AltitudeEstimator:
     def __init__(self, ground_altitude_m: Optional[float] = None, gps_sigma_m: float = 10.0,
+                 terrain_fraction: float = 0.25,
                  measured_timeout_s: float = 1.0, vision_hold_s: float = 120.0,
                  vision_drift_mps: float = 0.5):
         self.ground = ground_altitude_m if ground_altitude_m is not None and math.isfinite(ground_altitude_m) else None
         self.ground_source = "configured" if self.ground is not None else None
         self.gps = History(max_gap_s=1.5)              # GPS altitude above the ellipsoid
         self.measured = History(max_gap_s=measured_timeout_s)
-        self.gps_sigma_m = gps_sigma_m
+        # GPS - ground assumes the ground under the vehicle is at the take-off (or site)
+        # elevation: over hills that is wrong by a fraction of the height
+        self.gps_sigma_m, self.terrain_fraction = gps_sigma_m, terrain_fraction
         self.vision_hold_s, self.vision_drift_mps = vision_hold_s, vision_drift_mps
         self._vision: Optional[Tuple[float, float, float, Optional[float]]] = None   # t, agl, sigma, gps alt at t
 
@@ -56,5 +59,6 @@ class AltitudeEstimator:
                 return agl + (gps_t - gps_tv), math.hypot(sig, 2.0), "image + GPS"
             return agl, sig + self.vision_drift_mps * abs(t - tv), "image (held)"
         if gps_t is not None and self.ground is not None:
-            return gps_t - self.ground, self.gps_sigma_m, "GPS - ground"
+            agl = gps_t - self.ground
+            return agl, math.hypot(self.gps_sigma_m, self.terrain_fraction * abs(agl)), "GPS - ground"
         return None
