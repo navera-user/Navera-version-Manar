@@ -25,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'gps_node.py=gps_pkg.nodes.gps_node:main',
+            'ros_gps_node.py=gps_pkg.nodes.ros_gps_node:main',
         ],
     },
 )
