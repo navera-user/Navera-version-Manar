@@ -89,6 +89,7 @@ Parameters:
                      with that source this long is refused (gradual spoofing)
 """
 import math
+from collections import deque
 from typing import Optional
 
 import rclpy
@@ -130,6 +131,9 @@ _MODE_NAME = {
 }
 
 
+# distinct independent fixes in a row beyond 3 sigma that refuse GPS (chance: < 1e-12)
+STREAK_N = 5
+
 class EstimatorNode(Node):
     """Selects the winning position estimate and publishes the nav status."""
 
@@ -159,6 +163,12 @@ class EstimatorNode(Node):
         self._crosscheck_sigmas = float(self.get_parameter("gps_crosscheck_sigmas").value)
         self._crosscheck_persist = float(self.get_parameter("gps_crosscheck_persist_s").value)
         self._disagree_since: Optional[Time] = None   # trusted GPS vs independent source
+        self._disagree_refs = set()                    # distinct independent fixes disagreeing
+        self._confirm_needed_since: Optional[Time] = None  # refused by the cross-check
+        self._last_ref_at = Time(seconds=0, clock_type=self.get_clock().clock_type)
+        self._gps_hist = deque(maxlen=50)              # (stamp ns, lat, lon) of received GPS fixes
+        self._streak = set()                           # distinct fixes beyond 3 sigma in a row
+        self._agree_refs = set()                       # distinct fixes agreeing (re-acceptance)
         self._fix_max_sigma = float(self.get_parameter("fix_max_sigma_m").value)
         # Last GPS fix that passed the plausibility gate: (lat, lon, Time).
         self._gps_trusted = None
@@ -212,6 +222,8 @@ class EstimatorNode(Node):
 
     def _on_gps(self, msg: PositionEstimate) -> None:
         self._gps_last = msg
+        if msg.valid and self._sane(msg):
+            self._gps_hist.append((Time.from_msg(msg.header.stamp).nanoseconds, msg.latitude, msg.longitude))
         self._check_gps_plausibility(msg)
         self._tick()
 
@@ -223,22 +235,35 @@ class EstimatorNode(Node):
         continuous = (self._gps_trusted is not None and self._gps_suspect is None
                       and (stamp - self._gps_trusted[2]).nanoseconds / 1e9 <= self._gps_timeout)
         if not continuous:
-            ref = self._independent_reference(stamp)
+            ref = self._independent_reference(stamp, msg.latitude, msg.longitude)
             if ref is not None:
-                name, rlat, rlon, tol = ref
-                d = _haversine_m(rlat, rlon, msg.latitude, msg.longitude)
-                if d <= tol:
+                name, d, tol, ref_stamp, tol_strict = ref
+                # back only when it agrees within 3 sigma with two distinct independent
+                # fixes: the 5-sigma window would "confirm" a GPS refused moments ago
+                self._agree_refs = self._agree_refs | {ref_stamp} if d <= tol_strict else set()
+                if len(self._agree_refs) >= 2:
                     self.get_logger().warn(
-                        f"GPS confirmed by {name} ({d:.0f} m apart, tolerance {tol:.0f} m) — re-accepted")
+                        f"GPS confirmed by {name} ({d:.0f} m apart, 3 sigma {tol_strict:.0f} m, "
+                        f"2 fixes) — re-accepted")
+                    self._agree_refs = set()
+                    self._confirm_needed_since = None
                     self._gps_suspect = None
                     self._gps_trusted = (msg.latitude, msg.longitude, stamp)
-                else:
+                elif d > tol_strict:
                     if self._gps_suspect is None:
                         self.get_logger().error(
-                            f"GPS refused: {d:.0f} m from {name} (tolerance {tol:.0f} m)")
-                    self._gps_suspect = (f"GPS {d:.0f} m from {name} (tolerance {tol:.0f} m) "
+                            f"GPS refused: {d:.0f} m from {name} (3 sigma {tol_strict:.0f} m)")
+                    self._gps_suspect = (f"GPS {d:.0f} m from {name} (3 sigma {tol_strict:.0f} m) "
                                          f"— possible spoofing")
                 return
+            if self._confirm_needed_since is not None:
+                # caught drifting by an independent source: comparing GPS with its own last
+                # (already spoofed) position proves nothing — only an independent fix clears
+                # it, or 120 s without any (the source itself may have been the wrong one)
+                if (stamp - max(self._confirm_needed_since, self._last_ref_at)).nanoseconds / 1e9 < 120.0:
+                    return
+                self.get_logger().warn("no independent source for 120 s: GPS judged on its own again")
+                self._confirm_needed_since = None
         if self._gps_trusted is None:
             self._gps_trusted = (msg.latitude, msg.longitude, stamp)
             return
@@ -263,29 +288,66 @@ class EstimatorNode(Node):
     def _drifting_away(self, msg: PositionEstimate, stamp: Time) -> bool:
         """Trusted GPS vs an independent source of stated accuracy: True (and
         GPS refused) once they have disagreed for gps_crosscheck_persist_s."""
-        ref = self._independent_reference(stamp)
+        ref = self._independent_reference(stamp, msg.latitude, msg.longitude)
         if ref is None:
-            self._disagree_since = None
+            # between two independent fixes (vision checks every few seconds) the
+            # disagreement is kept: forgotten only when a fix agrees, or after 10 s
+            if self._disagree_since is not None and \
+                    (stamp - self._disagree_since).nanoseconds / 1e9 > 10.0 + self._crosscheck_persist:
+                self._disagree_since, self._disagree_refs = None, set()
             return False
-        name, rlat, rlon, tol = ref
-        d = _haversine_m(rlat, rlon, msg.latitude, msg.longitude)
+        name, d, tol, ref_stamp, tol_strict = ref
+        # slow drift: the same independent source disagreeing beyond 3 sigma at
+        # STREAK_N distinct measurements in a row does not happen by chance — caught
+        # before the 5-sigma gate, while the autopilot has followed the GPS less far
+        if d > tol_strict:
+            self._streak.add(ref_stamp)
+        else:
+            self._streak = set()
+        if len(self._streak) >= STREAK_N:
+            self._refuse(stamp, f"GPS drifting away from {name}: {STREAK_N} independent fixes in a row "
+                                f"beyond 3 sigma ({d:.0f} m apart now, 3 sigma {tol_strict:.0f} m) — possible spoofing")
+            return True
         if d <= tol:
             self._disagree_since = None
+            self._disagree_refs = set()
             return False
         if self._disagree_since is None:
             self._disagree_since = stamp
-        if (stamp - self._disagree_since).nanoseconds / 1e9 < self._crosscheck_persist:
+        self._disagree_refs.add(ref_stamp)
+        # one wrong vision fix stays "fresh" for seconds: never refuse GPS on a single
+        # measurement — at least two distinct ones must disagree
+        if (stamp - self._disagree_since).nanoseconds / 1e9 < self._crosscheck_persist \
+                or len(self._disagree_refs) < 2:
             return False
-        self._gps_suspect = (f"GPS drifting away from {name}: {d:.0f} m apart for "
-                             f"{self._crosscheck_persist:.0f} s (tolerance {tol:.0f} m) — possible spoofing")
-        self._disagree_since = None
-        self.get_logger().error(f"GPS refused: {self._gps_suspect}")
+        self._refuse(stamp, f"GPS drifting away from {name}: {d:.0f} m apart for "
+                            f"{self._crosscheck_persist:.0f} s (tolerance {tol:.0f} m) — possible spoofing")
         return True
 
-    def _independent_reference(self, gps_stamp: Time):
-        """(name, lat, lon, tolerance_m) from the most accurate fresh non-GPS
-        source with a STATED accuracy, or None. A source of unknown accuracy
-        cannot vouch for or against GPS."""
+    def _refuse(self, stamp: Time, reason: str) -> None:
+        """GPS refused by the cross-check: only an independent fix can clear it."""
+        self._gps_suspect = reason
+        self._disagree_since = None
+        self._disagree_refs = set()
+        self._streak = set()
+        self._confirm_needed_since = stamp
+        self.get_logger().error(f"GPS refused: {reason}")
+
+    def _gps_near(self, t_ns: int, max_dt_s: float = 0.3):
+        """(lat, lon, |dt| s) of the received GPS fix closest to t_ns, if within max_dt_s."""
+        best = None
+        for ts, lat, lon in self._gps_hist:
+            dt = abs(ts - t_ns) / 1e9
+            if dt <= max_dt_s and (best is None or dt < best[2]):
+                best = (lat, lon, dt)
+        return best
+
+    def _independent_reference(self, gps_stamp: Time, gps_lat: float, gps_lon: float):
+        """(name, distance_m, tolerance_m, ref_stamp_ns) between the most accurate fresh
+        non-GPS source with a STATED accuracy and GPS, or None. A source of unknown
+        accuracy cannot vouch for or against GPS. A vision fix describes the instant
+        its photo was taken (0.5-1.5 s ago): it is compared with the GPS fix of THAT
+        instant when one was received, else with this one plus max_speed x the gap."""
         now = self.get_clock().now()
         best = None
         for last, timeout in ((self._day_last, self._day_timeout),
@@ -296,10 +358,18 @@ class EstimatorNode(Node):
                     PositionEstimate.COVARIANCE_TYPE_UNKNOWN:
                 continue
             sigma = math.sqrt(max(last.position_covariance[0], last.position_covariance[4]))
-            gap = abs((gps_stamp - self._measured_at(last)).nanoseconds) / 1e9
+            t_ref = self._measured_at(last)
+            self._last_ref_at = now
+            same = self._gps_near(t_ref.nanoseconds)
+            if same is not None:
+                glat, glon, gap = same
+            else:
+                glat, glon, gap = gps_lat, gps_lon, abs((gps_stamp - t_ref).nanoseconds) / 1e9
             tol = self._crosscheck_sigmas * sigma + self._jump_margin + self._max_speed * gap
-            if best is None or tol < best[3]:
-                best = (_SOURCE_NAME.get(last.source, "source"), last.latitude, last.longitude, tol)
+            if best is None or tol < best[2]:
+                best = (_SOURCE_NAME.get(last.source, "source"),
+                        _haversine_m(last.latitude, last.longitude, glat, glon), tol, t_ref.nanoseconds,
+                        3.0 * sigma + self._max_speed * gap)
         return best
 
     def _on_day(self, msg: PositionEstimate) -> None:

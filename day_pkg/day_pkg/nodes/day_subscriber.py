@@ -146,9 +146,11 @@ class DaySubscriber(Node):
         self.declare_parameter("altitude_min_inliers", 20)
         # heights above ground measured by local matches (the camera uses them)
         self.declare_parameter("vision_altitude_topic", "/navera/vision/altitude_agl")
-        # while GPS is trusted, match one frame this often at the GPS position: the
-        # height above ground is then known (measured) when GPS is lost. 0 = off.
-        declare_float(self, "altitude_calibration_period_s", 10.0)
+        # while GPS is trusted, match a frame this often around the GPS position: an
+        # INDEPENDENT position for the estimator's GPS cross-check (a slow spoof drifts
+        # GPS away from it), and the height above ground known when GPS is lost. 0 = off.
+        declare_float(self, "gps_check_period_s", 2.0)
+        declare_float(self, "gps_check_radius_m", 600.0)   # covers a GPS drifted this far
         # Stated accuracy (1 sigma, m) of a local match. Benchmark median 4 m on aerial frames
         # from another source; NOT yet measured with NAVERA's camera: stated conservatively.
         declare_float(self, "local_sigma_m", 30.0)
@@ -212,7 +214,10 @@ class DaySubscriber(Node):
         self.local_heading_tol_deg = float(self.get_parameter("local_heading_tol_deg").value)
         self.alt_min_inliers = int(self.get_parameter("altitude_min_inliers").value)
         self._alt_candidate = None             # (height, time) of the last strong match
-        self.calib_period_s = float(self.get_parameter("altitude_calibration_period_s").value)
+        self._check_fix = None                 # (lat, lon, time) of the last GPS-check match
+        self._gps_was_trusted = False
+        self.calib_period_s = float(self.get_parameter("gps_check_period_s").value)
+        self.calib_radius_m = float(self.get_parameter("gps_check_radius_m").value)
         self._last_calib = 0.0
         self.local = None
         if self.matcher_mode == "local":
@@ -392,8 +397,14 @@ class DaySubscriber(Node):
                     "frame_id": seq_id, "success": False, "source": "unusable",
                     "reason": meta.get("reason") or "frame marked unusable by the camera"})))
                 return
+            # GPS just stopped being trusted: if our own last independent fix disagrees with
+            # the last GPS position (a spoofed GPS dragged the anchor away), start from ours
+            trusted = self._gps_prior.fresh() is not None
+            if self._gps_was_trusted and not trusted:
+                self._handover_from_gps()
+            self._gps_was_trusted = trusted
             # Live GPS healthy → it is the position source; no inference needed.
-            if self._gps_prior.fresh() is not None and not self.shadow_mode:
+            if trusted and not self.shadow_mode:
                 self.pub_status.publish(String(data=json.dumps({
                     "frame_id": seq_id, "success": False, "source": "gps_active",
                     "anchor": [self._anchor_lat, self._anchor_lon]
@@ -505,9 +516,26 @@ class DaySubscriber(Node):
         margin = 0.5 * math.hypot(*img_shape[:2]) * mpp if img_shape and mpp else 300.0
         self.local.tiles.prefetch(alat, alon, R_MAX_M + margin)
 
+    def _handover_from_gps(self):
+        """At GPS loss or refusal: the anchor is the last trusted GPS position, unless a
+        recent independent vision fix disagrees with it by more than 100 m (the GPS was
+        drifting: spoofing) — then the search starts from where vision last saw us."""
+        c = self._check_fix
+        if c is None or self._anchor_lat is None or time.time() - c[2] > 10.0:
+            return
+        d = haversine_m(self._anchor_lat, self._anchor_lon, c[0], c[1])
+        if d > 100.0:
+            self.get_logger().warn(f"[day] GPS lost/refused: starting from the last vision fix, "
+                                   f"{d:.0f} m from the last GPS position (GPS was drifting)")
+            self._anchor_lat, self._anchor_lon, self._anchor_time = c[0], c[1], c[2]
+            self._last_measured_time = c[2]
+
     def _calibrate_altitude(self, seq_id, img, meta):
-        """GPS trusted: every calib_period_s, match this frame around the GPS position and
-        publish the height above ground it measures — never a position."""
+        """GPS trusted: every gps_check_period_s, match this frame within gps_check_radius_m
+        of the GPS position. A match is published as an independent day-vision estimate
+        (the estimator never prefers it to a trusted GPS, but cross-checks GPS with it:
+        a slowly spoofed GPS drifts away and is refused) and gives the height above
+        ground. The tracking state (anchor) is not touched: GPS stays the prior."""
         if self.local is None or self.calib_period_s <= 0 or time.time() - self._last_calib < self.calib_period_s:
             return
         prior = self._gps_prior.fresh()
@@ -515,12 +543,21 @@ class DaySubscriber(Node):
         if prior is None or mpp is None:
             return
         self._last_calib = time.time()
-        res = self.local.locate(img, prior, 150.0, mpp, scale_tol=self._scale_tol(meta),
+        res = self.local.locate(img, prior, self.calib_radius_m, mpp, scale_tol=self._scale_tol(meta),
                                 heading_deg=self._heading_for_match(meta),
                                 heading_tol_deg=self.local_heading_tol_deg)
+        self.get_logger().info(
+            f"[day] GPS check frame={seq_id}: " + (f"vision {haversine_m(prior[0], prior[1], res['predicted_lat'], res['predicted_lon']):.0f} m from GPS "
+                                                  f"({res.get('inliers')} inliers)" if res.get("accepted") else f"no match ({res.get('reason')})"))
         if res.get("accepted"):
+            self._check_fix = (float(res["predicted_lat"]), float(res["predicted_lon"]), time.time())
             st = {}
             self._publish_vision_altitude(meta, res, st)
+            self._publish_estimate(exposure_stamp(meta, self.get_clock().now().to_msg()), seq_id, "local_match",
+                                   float(res["predicted_lat"]), float(res["predicted_lon"]), meta,
+                                   score=float(res.get("score") or 0.0),
+                                   details={"src": "local_match", "gps_check": True,
+                                            "inliers": res.get("inliers")})
             self.get_logger().info(f"[day] height above ground calibrated while GPS is good: "
                                    f"{st.get('altitude_measured_m')} m (frame said {meta.get('altitude_m')} m, "
                                    f"{res.get('inliers')} inliers)", throttle_duration_sec=30.0)

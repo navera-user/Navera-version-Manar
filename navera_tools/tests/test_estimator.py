@@ -183,12 +183,36 @@ def main():
         failures.append(f"gradual spoof never refused: {statuses[-1].reason}")
     elif refused_at > 400:
         failures.append(f"gradual spoof refused only at {refused_at:.0f} m")
+    # still spoofed, vision silent: the spoofed GPS must not come back on its own just
+    # because it moves smoothly from its own last (spoofed) position
+    for k in range(24, 30):
+        est(GPS, lat=35.83 + k * 20.0 / 111320.0)
+        time.sleep(0.5)
+    if statuses[-1].active_source == GPS:
+        failures.append(f"spoofed GPS re-accepted without an independent confirmation: {statuses[-1].reason}")
+    # vision back, GPS still 140 m off (inside 5 sigma + margin, outside 3 sigma): NOT confirmed
+    for _ in range(6):
+        est(DAY, var=15.0 ** 2)
+        time.sleep(0.02)
+        est(GPS, lat=35.83 + 140.0 / 111320.0)
+        time.sleep(0.5)
+    if statuses[-1].active_source == GPS:
+        failures.append(f"a GPS still 140 m off was 'confirmed' by vision: {statuses[-1].reason}")
     for _ in range(8):
         est(GPS)
         est(DAY, var=15.0 ** 2)
         time.sleep(0.5)
     if statuses[-1].active_source != GPS:
         failures.append(f"true GPS not re-accepted after the gradual spoof: {statuses[-1].reason}")
+
+    # One wrong vision fix (a mismatch 2 km away) while the true GPS goes on: GPS must
+    # NOT be refused — the cross-check needs several distinct disagreeing fixes.
+    est(DAY, lat=35.83 + 2000.0 / 111320.0, var=15.0 ** 2)
+    for _ in range(10):                      # 5 s of true GPS, the wrong fix "fresh" for 3 s
+        est(GPS)
+        time.sleep(0.5)
+    if statuses[-1].active_source != GPS:
+        failures.append(f"GPS refused because of a single wrong vision fix: {statuses[-1].reason}")
 
     proc.terminate()
     proc.wait(timeout=10)
