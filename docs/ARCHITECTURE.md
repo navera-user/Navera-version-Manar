@@ -134,8 +134,14 @@ gradual spoofer is not (VALIDATION_STATUS.md, known limitation 7).
 ## 5. The live camera — `camera_pkg/live_camera.py`
 
 Input (`NAVERA_CAMERA_INPUT`): **usb** (V4L2, e.g. Insta360 ONE R in webcam mode, addressed
-by `/dev/v4l/by-id/…`), **csi** (GStreamer `nvarguscamerasrc`), or **ros** (any
-`sensor_msgs/Image` topic, `NAVERA_CAMERA_TOPIC`). For every frame offered to vision:
+by `/dev/v4l/by-id/…`), **csi** (`nvarguscamerasrc`) or **gst** (any GStreamer pipeline,
+`NAVERA_CAMERA_GST_PIPELINE`) — both read through the system's GStreamer
+(`camera_pkg/gst_capture.py`) — or **ros** (any `sensor_msgs/Image` topic,
+`NAVERA_CAMERA_TOPIC`). Frames are grabbed at the camera's rate and only the one sent is
+decoded, always grabbed after the request. The same node, with the `NAVERA_STAR_CAMERA_*`
+settings and `camera_type=star`, is the celestial pipeline's live star camera (frames
+undistorted, not straightened; `cn_subscriber` takes the IMU attitude at each exposure).
+For every frame offered to day/night vision:
 
 1. **Exposure stamp:** grab time − `NAVERA_CAMERA_LATENCY_S` (ROS input: the image stamp −
    latency). Every sensor value below is taken at that instant.
@@ -161,6 +167,16 @@ by `/dev/v4l/by-id/…`), **csi** (GStreamer `nvarguscamerasrc`), or **ros** (an
    image, usable / reason, GPS for evaluation) and `<ns>/camera_info`, with the same start
    gate, handshake and back-pressure as the replay camera — but always the **newest** frame,
    never a queue.
+
+### Dead-reckoning (day vision)
+
+When a frame gives no match (sea, uniform ground, frame too tilted), day vision carries the
+last measured position along the ground velocity fitted to the measured fixes of the last
+20 s (`navera_common/track.py`: GPS while trusted, vision matches at their photo's instant),
+turned by the heading change the IMU measured since. It is published PROPAGATED with a
+stated accuracy that grows (velocity error × t + 5° heading error × distance), for at most
+`max_dead_reckon_s` (120 s) and `dead_reckon_max_sigma_m` (500 m); never used as an
+independent check of GPS.
 
 ## 6. Output to the vehicle — `navera_output`
 

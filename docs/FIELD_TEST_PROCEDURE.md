@@ -177,7 +177,10 @@ python3 navera_tools/evaluate_session.py /data/navera/rec/flight1
 ```
 
 It gives day vision's error against GPS per frame (median, p90, share within 50 / 100 /
-300 m) and the frames with no position. These figures replace the simulation ones in
+300 m), the frames with no position, and **whether the accuracy NAVERA states is honest**:
+how often the error is within 1 / 2 / 3 × the stated sigma (honest: ~39 / 86 / 99 %), and
+the sigma that would be honest. If it says "stated sigma too optimistic", use the honest
+value for `NAVERA_DEGRADED_SIGMA_M` (step 8) and for the matcher's `local_sigma_m`. These figures replace the simulation ones in
 `VALIDATION_STATUS.md`. At the end of the campaign set `NAVERA_SHADOW_MODE=false` (or
 remove it) and restart the pipeline.
 
@@ -192,7 +195,7 @@ With a safety pilot able to take manual control:
    autopilot without GPS unless forwarding is enabled**. In `/etc/navera/navera.env`:
    ```
    NAVERA_FORWARD_DEGRADED=true
-   NAVERA_DEGRADED_SIGMA_M=<accuracy measured in step 7, metres, 1 sigma — e.g. its p90>
+   NAVERA_DEGRADED_SIGMA_M=<the "honest sigma" evaluate_session.py gave in step 7, metres>
    ```
    then `sudo systemctl restart navera-output`. The output service refuses to start with
    forwarding and no accuracy. An autopilot told a position is better than it is rejects it

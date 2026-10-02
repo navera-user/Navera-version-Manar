@@ -37,7 +37,7 @@ the pipeline? unplugged?)`.
 | Camera not in webcam mode / unplugged | `ls /dev/v4l/by-id/` is empty | set the camera to USB webcam mode, replug |
 | `the camera stopped sending frames — exiting so the service restarts` | cable, power of the camera | — |
 | `camera gives 1280x720, set to 1920x1080` | the camera's supported modes | set `NAVERA_CAMERA_SIZE` to a mode it delivers (and calibrate at that size) |
-| CSI input does not open | `python3 -c "import cv2; print(cv2.getBuildInformation())" \| grep GStreamer` | the OpenCV in use must be built with GStreamer (the `opencv-python` wheel is not) |
+| CSI / gst input does not open | `gst-launch-1.0 nvarguscamerasrc num-buffers=10 ! fakesink` (CSI) or the `NAVERA_CAMERA_GST_PIPELINE` with `fakesink`; `python3 -c "import gi; gi.require_version('Gst','1.0')"` | the camera / pipeline must work in `gst-launch-1.0`; install `python3-gi gir1.2-gstreamer-1.0`; a gst pipeline must end in `appsink name=sink` with `format=BGR` |
 
 ### The pipeline does not start: camera settings
 

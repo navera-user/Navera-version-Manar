@@ -92,10 +92,28 @@ position are kept on disk (§9).
 > on 2026-07-15 (services up, bridge answering HTTP 200 on `:8181`, nodes running). That
 > was before `navera-estimator`, `navera-output`, `navera-vehicle-link`, `Restart=always` /
 > `on_exit=Shutdown` and `/etc/navera/navera.env` were added: **the reboot test must be
-> repeated** on a deployed unit (reboot, then kill a node, e.g. `sudo pkill -f gps_node`,
-> and check it is back within ~10 s).
+> repeated** on a deployed unit:
+>
+> ```bash
+> sudo reboot
+> /home/navera/isaac_ros_common/deploy/check_boot.sh   # every enabled unit active? restarts? pre-flight check
+> sudo pkill -f gps_node; sleep 15; deploy/check_boot.sh   # a killed node comes back
+> ```
 
 ## 3. Installation on a new Jetson
+
+**One command** does §3.1–§3.9 (safe to run again to update; `--dry-run` shows what it
+would do; `--help` for the options):
+
+```bash
+git clone <NAVERA repository> ~/Navera && cd ~/Navera
+sudo deploy/install.sh                 # typical units; --units "..." to choose, --start to start now
+sudoedit /etc/navera/navera.env        # first install: the site settings (below)
+```
+
+It never overwrites an existing `/etc/navera/navera.env`, and switches the Jetson to a
+headless boot only with `--headless` (that ends the desktop session). The steps it runs
+are detailed below, for a manual installation or a review.
 
 Run on the target Jetson, as an administrator account (commands that need root show `sudo`).
 
@@ -163,10 +181,10 @@ pip3 install --user -c ~/navera-constraints.txt \
 | `board`, `busio`, `adafruit_bno08x`, `adafruit_ds3231` (Blinka) | box IMU and clock drivers |
 | `yaml` | camera calibration files |
 
-> **CSI cameras:** the `opencv-python` wheel is built **without GStreamer**, which
-> `NAVERA_CAMERA_INPUT=csi` needs. Check with
-> `sudo -u navera -H python3 -c "import cv2; print(cv2.getBuildInformation())" | grep GStreamer`;
-> for a CSI camera use an OpenCV built with GStreamer instead of the wheel.
+> **CSI cameras:** the `opencv-python` wheel is built without GStreamer; NAVERA reads CSI
+> cameras (and `NAVERA_CAMERA_INPUT=gst` sources) through the system's GStreamer instead
+> (`camera_pkg/gst_capture.py`, needs `python3-gi` and `gir1.2-gstreamer-1.0`, installed by
+> `deploy/install.sh`).
 
 GPU check (must print `True`):
 
