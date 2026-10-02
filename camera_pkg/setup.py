@@ -38,6 +38,7 @@ setup(
     entry_points={
         'console_scripts': [
             'camera_publisher.py=camera_pkg.nodes.camera_publisher:main',
+            'live_camera.py=camera_pkg.nodes.live_camera:main',
         ],
     },
 )
