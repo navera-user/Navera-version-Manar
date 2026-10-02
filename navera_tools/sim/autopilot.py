@@ -68,6 +68,8 @@ class Autopilot:
         with open(params, "w") as f:
             f.write("GPS_TYPE 14\nSIM_GPS_DISABLE 1\nGPS_AUTO_CONFIG 0\n"
                     "SERIAL1_PROTOCOL 2\n"
+                    # SERIAL2 (tcp 5763): NAVERA's vehicle_link reads the vehicle's sensors
+                    "SERIAL2_PROTOCOL 2\n"
                     # GCS failsafe off: the simulator is the only ground station
                     "FS_GCS_ENABLE 0\n"
                     # no onboard flight log: SITL's logger thread stalls under load

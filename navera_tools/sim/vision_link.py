@@ -27,6 +27,7 @@ import threading
 import time
 from collections import deque
 
+import cv2
 from navera_common.geo import haversine_m
 from PIL import Image as PILImage, ImageEnhance, ImageFilter, ImageOps
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
@@ -227,10 +228,10 @@ class AreaManager:
 
 
 TOPICS = {
-    "day": dict(img="/day/image_raw", meta="/day/frame_meta", start="/day/camera/start",
+    "day": dict(raw="/sim/day_camera/image_raw", img="/day/image_raw", meta="/day/frame_meta", start="/day/camera/start",
                 ready="/day/localizer_ready", done="/day/frame_done", status="/day/day_status",
                 frame="day_camera_link", name="day vision", model="DINOv2 model and area descriptors"),
-    "night": dict(img="/thermal/image_raw", meta="/thermal/frame_meta",
+    "night": dict(raw="/sim/thermal_camera/image_raw", img="/thermal/image_raw", meta="/thermal/frame_meta",
                   start="/thermal/camera/start", ready="/night/localizer_ready",
                   done="/thermal/frame_done", status="/night/night_status",
                   frame="thermal_camera_link", name="night vision", model="STHN network"),
@@ -247,10 +248,22 @@ class VisionCamera:
            node scales it from the altitude and turns it north-up with the IMU.
     """
 
-    def __init__(self, node, tiles, truth_fn, log, kind="day"):
+    def __init__(self, node, tiles, truth_fn, log, kind="day", attitude_fn=None):
+        """attitude_fn() -> the TRUE body ENU quaternion (flight physics), or None. With it
+        the camera is physical (physical_camera.py): raw lens frames at the true attitude
+        are streamed on TOPICS[kind]['raw'] for NAVERA's live camera node; without it,
+        straight-down north-up frames go to the localizer directly (former behaviour)."""
         self.node, self.tiles, self.truth_fn, self.log = node, tiles, truth_fn, log
         self.kind = kind
         self.t = TOPICS[kind]
+        # physical: the camera is a separate process (sim_camera_node.py) streaming raw lens
+        # frames to NAVERA's live camera; this object keeps the truth of each frame and stats
+        self.physical = attitude_fn is not None
+        if self.physical:
+            from physical_camera import SIM_LENS, THERMAL_LENS
+            self.lens = THERMAL_LENS if kind == "night" else SIM_LENS
+        self.truth_at = deque(maxlen=200)          # (exposure stamp ns, lat, lon) of raw frames
+        self.stamp_of = {}                         # live camera frame_id -> exposure stamp ns
         latched = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
                              durability=DurabilityPolicy.TRANSIENT_LOCAL,
                              history=HistoryPolicy.KEEP_LAST, depth=1)
@@ -264,6 +277,12 @@ class VisionCamera:
                                  self._on_done, QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
                                                            history=HistoryPolicy.KEEP_LAST, depth=1))
         node.create_subscription(String, self.t["status"], self._on_status, 10)
+        if self.physical:
+            from sensor_msgs.msg import CompressedImage
+            node.create_subscription(String, self.t["meta"], self._on_meta, 10)
+            node.create_subscription(String, f"/navera/sim/{kind}_frame_truth", self._on_frame_truth, 50)
+            node.create_subscription(CompressedImage, f"/navera/sim/{kind}_preview",
+                                     lambda m: setattr(self, "last_jpeg", bytes(m.data)), 2)
         self.lock = threading.Lock()
         self.enabled = False
         self.ready = False
@@ -291,6 +310,33 @@ class VisionCamera:
             if self.in_flight and self.in_flight[0] == msg.data:
                 self.in_flight = None
 
+    def _on_frame_truth(self, msg):
+        d = json.loads(msg.data)
+        with self.lock:
+            self.truth_at.append((d["stamp_ns"], d["lat"], d["lon"]))
+            self.stats["frames"] += 1
+
+    def _on_meta(self, msg):
+        """Frames NAVERA's live camera made from our raw frames: frame_id -> exposure."""
+        try:
+            d = json.loads(msg.data)
+        except ValueError:
+            return
+        with self.lock:
+            self.stamp_of[d.get("frame_id")] = d.get("image_stamp_ns")
+            if len(self.stamp_of) > 100:
+                self.stamp_of.pop(next(iter(self.stamp_of)))
+
+    def _truth_of(self, fid):
+        """Truth at a frame's exposure (caller holds the lock)."""
+        if not self.physical:
+            return self.last_frame_truth.pop(fid, None)
+        ns = self.stamp_of.get(fid)
+        if ns is None or not self.truth_at:
+            return None
+        best = min(self.truth_at, key=lambda e: abs(e[0] - ns))
+        return (best[1], best[2]) if abs(best[0] - ns) < 50_000_000 else None
+
     def _on_status(self, msg):
         try:
             d = json.loads(msg.data)
@@ -298,7 +344,7 @@ class VisionCamera:
             return
         fid = d.get("frame_id")
         with self.lock:
-            truth = self.last_frame_truth.pop(fid, None)
+            truth = self._truth_of(fid)
             d["t"] = time.monotonic()
             src = d.get("source")
             if truth and d.get("lat") is not None and src in MATCH_SOURCES:
@@ -369,6 +415,8 @@ class VisionCamera:
 
     # ---- frame loop ----
     def _loop(self):
+        if self.physical:
+            return                        # the camera process streams
         last = 0.0
         while not self._stop.is_set():
             time.sleep(0.05)

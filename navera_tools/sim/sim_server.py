@@ -53,7 +53,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from autopilot import FLYING, NAVERA_URL, VEHICLES, Autopilot  # noqa: E402
 from camera_view import CameraView  # noqa: E402
 from nmea_gps import MODES as GPS_MODES, NmeaGps  # noqa: E402
-from vision_link import TILE_URL, AreaManager, MultiTiles, StarCamera, VisionCamera  # noqa: E402
+from vision_link import TILE_URL, TOPICS, AreaManager, MultiTiles, StarCamera, VisionCamera  # noqa: E402
 from cn_pkg.nodes.celestial_math import boresight_altaz  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -244,14 +244,16 @@ class Simulator(Node):
         self.event("info", f"NAVERA nodes started ({env_note}); GPS receiver on {self.gps.port}")
 
         self.areas = AreaManager(mbtiles, work_dir, self.event)
-        self.daycam = VisionCamera(self, self.tiles, self._truth, self.event, "day")
-        self.nightcam = VisionCamera(self, self.tiles, self._truth, self.event, "night")
+        # physical cameras: raw lens frames at the TRUE attitude, through NAVERA's live camera
+        self.daycam = VisionCamera(self, self.tiles, self._truth, self.event, "day", self._true_attitude)
+        self.nightcam = VisionCamera(self, self.tiles, self._truth, self.event, "night", self._true_attitude)
         self.starcam = StarCamera(self, work_dir, self._truth, self._true_boresight,
                                   self._sky_utc, self.event)
         self.sky_base = None                  # (utc epoch at switch, monotonic at switch)
         self.imu_bias = (0.0, 0.0, 0.0)       # roll, pitch, yaw (rad): drawn per mission
         self.pub_truth = self.create_publisher(NavSatFix, "/navera/sim/truth", 10)
         self.pub_imu = self.create_publisher(Imu, "/navera/sensors/imu", 10)
+        self.pub_state_true = self.create_publisher(String, "/navera/sim/state_true", 10)
         self.pub_rtc = self.create_publisher(TimeReference, "/navera/sensors/rtc_time", 10)
         self.pub_rtcs = self.create_publisher(String, "/navera/sensors/rtc_status", 10)
         self.pub_day = self.create_publisher(PositionEstimate, "/navera/estimate/day", 10)
@@ -330,6 +332,40 @@ class Simulator(Node):
         return (sr * cp * cy - cr * sp * sy, cr * sp * cy + sr * cp * sy,
                 cr * cp * sy - sr * sp * cy, cr * cp * cy + sr * sp * sy)
 
+    def _true_attitude(self):
+        """The vehicle's true attitude (flight physics), body ENU quaternion."""
+        s = self.ap.snapshot()
+        return self._quat_enu(*s["attitude"]) if s["link"] else None
+
+    def _live_camera_cmd(self, kind):
+        """NAVERA's live camera node fed by the simulated physical camera (box or vehicle
+        sensors, as NAVERA_SENSOR_SOURCE on the box)."""
+        import yaml
+        cam = self.nightcam if kind == "night" else self.daycam
+        calib = os.path.join(self.work, f"{kind}_lens.yaml")
+        with open(calib, "w") as f:
+            yaml.safe_dump(cam.lens, f)
+        ns, ready = ("thermal", "/night/localizer_ready") if kind == "night" else ("day", "/day/localizer_ready")
+        vehicle = self.cfg.get("sensor_source") == "vehicle"
+        return ["ros2", "run", "camera_pkg", "live_camera.py", "--ros-args", "-r", f"__ns:=/{ns}",
+                "-p", "input:=ros", "-p", f"input_topic:={TOPICS[kind]['raw']}",
+                "-p", f"width:={cam.lens['image_width']}", "-p", f"height:={cam.lens['image_height']}",
+                "-p", f"calibration_file:={calib}", "-p", "fps:=1.0",
+                "-p", f"camera_type:={'thermal' if kind == 'night' else 'day'}",
+                "-p", "wait_for_ready:=true", "-p", f"ready_topic:={ready}",
+                "-p", f"imu_topic:={'/navera/vehicle/imu' if vehicle else '/navera/sensors/imu'}",
+                "-p", f"attitude_source:={'vehicle' if vehicle else 'imu'}",
+                "-p", f"gimbal:={'true' if self.cfg.get('camera_mount') == 'gimbal' else 'false'}"]
+
+    def _sim_camera_cmd(self, kind):
+        """The simulated physical camera, its own process (sim_camera_node.py)."""
+        self._live_camera_cmd(kind)                    # writes the lens file
+        return [sys.executable, os.path.join(HERE, "sim_camera_node.py"), "--ros-args",
+                "-p", f"kind:={kind}", "-p", f"lens_file:={os.path.join(self.work, kind + '_lens.yaml')}",
+                "-p", f"raw_topic:={TOPICS[kind]['raw']}",
+                "-p", f"maps:={self.tiles.path}:{os.path.join(self.work, 'world_tiles.mbtiles')}",
+                "-p", f"day_camera_at_night:={'true' if kind == 'day' and self.faults['light'] == 'night' else 'false'}"]
+
     def _true_boresight(self):
         """True (alt, az) of the upward star camera, from the physics attitude."""
         s = self.ap.snapshot()
@@ -371,6 +407,13 @@ class Simulator(Node):
         imu.angular_velocity.x, imu.angular_velocity.y, imu.angular_velocity.z = gx, -gy, -gz
         imu.linear_acceleration.z = 9.81
         self.pub_imu.publish(imu)
+        tr = s["truth"]
+        if tr is not None:                     # the true state, for the camera process
+            gimbal = self.cfg.get("camera_mount") == "gimbal"   # a gimbal holds the camera level
+            q_cam_body = self._quat_enu(0.0, 0.0, yaw) if gimbal else self._quat_enu(roll, pitch, yaw)
+            self.pub_state_true.publish(String(data=json.dumps(dict(
+                lat=tr[0], lon=tr[1], agl=tr[2], heading=tr[3], speed=tr[4], vn=tr[6], ve=tr[7], vd=tr[8],
+                q=list(q_cam_body)))))
 
     def _tick_slow(self):
         now = self.get_clock().now().to_msg()
@@ -561,6 +604,15 @@ class Simulator(Node):
             first = (c.get("waypoints") or [c["dest"]])[0]          # face the first leg
             self.ap.start(c["vehicle"], c["start"][0], c["start"][1], self._bearing(c["start"], first))
             self.ap.connect()
+            # vehicle sensors: NAVERA's vehicle_link reads the autopilot on its SERIAL2
+            with self.lock:
+                old_link = self.procs.pop("vehicle_link", None)
+            if old_link:
+                old_link.stop()
+            if c.get("sensor_source") == "vehicle":
+                self._start_proc("vehicle_link", ["ros2", "run", "navera_output", "vehicle_link_node.py",
+                                                  "--ros-args", "-p", "mavlink_url:=tcp:127.0.0.1:5763"])
+                self.event("info", "sensors: the vehicle's own (autopilot attitude over MAVLink)")
             vo_cmd = ["ros2", "run", "navera_output", "vehicle_output_node.py", "--ros-args",
                       "-p", f"mavlink_url:={NAVERA_URL}", "-p", "rate_hz:=5.0"]
             if c["forward_degraded"]:
@@ -630,9 +682,11 @@ class Simulator(Node):
                 continue
             cam.stop()
             with self.lock:
-                vp = self.procs.pop(name, None)
-            if vp:
-                vp.stop()
+                vps = [self.procs.pop(n, None) for n in (name, name.replace("_vision", "_camera"),
+                                                         name.replace("_vision", "_simcam"))]
+            for vp in vps:
+                if vp:
+                    vp.stop()
 
     def _start_proc(self, name, cmd, env=None):
         vp = Proc(name, cmd, self.work, env=env)
@@ -668,6 +722,8 @@ class Simulator(Node):
                 self.event("warn", "day vision: no prepared map area for this route — "
                                    "prepare the map to use day vision")
             else:
+                self._start_proc("day_simcam", self._sim_camera_cmd("day"))
+                self._start_proc("day_camera", self._live_camera_cmd("day"))
                 self._start_proc("day_vision", ["ros2", "run", "day_pkg", "day_subscriber.py", "--ros-args",
                                                 "-p", f"max_speed_mps:={self.cfg['max_speed_mps']}",
                                                 "-p", "camera_hfov_deg:=84.0"],          # the simulated day camera
@@ -675,6 +731,8 @@ class Simulator(Node):
                 self.daycam.start()
                 self.event("info", "day vision: loading DINOv2 and the prepared area…")
         if "night_vision" in want and "night_vision" not in running:
+            self._start_proc("night_simcam", self._sim_camera_cmd("night"))
+            self._start_proc("night_camera", self._live_camera_cmd("night"))
             self._start_proc("night_vision", [
                 "ros2", "run", "night_pkg", "night_subscriber.py", "--ros-args",
                 "-p", f"mbtiles:={self._night_map()}", "-p", "camera_hfov_deg:=84.0",
@@ -802,6 +860,8 @@ class Simulator(Node):
                 req_alt=float(body.get("alt", alt)),
                 alt=max(SIM_ALT_MIN.get(vehicle, 0.0), min(SIM_ALT_MAX.get(vehicle, 0.0), float(body.get("alt", alt)))),
                 profile="target" if body.get("profile") == "target" else "measured",
+                sensor_source="vehicle" if body.get("sensor_source") == "vehicle" else "box",
+                camera_mount="gimbal" if body.get("camera_mount") == "gimbal" else "fixed",
                 forward_degraded=bool(body.get("forward_degraded", False))))
         elif action == "goto":
             dest = body.get("dest")
