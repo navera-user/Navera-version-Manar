@@ -28,9 +28,13 @@ from navera_common.camera_model import (CameraModel, body_rpy_enu, camera_rotati
 
 class FrameBuilder:
     def __init__(self, camera: CameraModel, mount_rpy_deg: Sequence[float] = (0.0, 0.0, 0.0),
-                 max_tilt_deg: float = 25.0, camera_type: str = "day"):
+                 max_tilt_deg: float = 45.0, camera_type: str = "day", gimbal: bool = False):
+        """max_tilt_deg: frames looking further from straight down are not compared (measured:
+        straightened frames tilted 45 deg still matched 31/33 benchmark places, simulation).
+        gimbal: the camera is held level by a stabiliser — only the vehicle's heading
+        turns it; its roll and pitch are ignored."""
         self.cam, self.mount = camera, tuple(float(a) for a in mount_rpy_deg)
-        self.max_tilt_deg, self.camera_type = max_tilt_deg, camera_type
+        self.max_tilt_deg, self.camera_type, self.gimbal = max_tilt_deg, camera_type, gimbal
 
     def build(self, img: np.ndarray, frame_id: int, exposure_ns: int,
               q_body_enu: Optional[Sequence[float]] = None, attitude_source: str = "imu",
@@ -56,6 +60,10 @@ class FrameBuilder:
         if utc:
             meta["utc_time"] = utc
         if q_body_enu is not None:
+            if self.gimbal:                            # level camera: keep the heading only
+                x, y, z, w = q_body_enu
+                yaw = math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
+                q_body_enu = (0.0, 0.0, math.sin(yaw / 2), math.cos(yaw / 2))
             R = camera_rotation(q_body_enu, self.mount)
             roll, pitch, _ = body_rpy_enu(q_body_enu)
             tilt = tilt_deg(R)

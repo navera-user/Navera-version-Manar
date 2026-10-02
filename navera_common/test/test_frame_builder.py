@@ -40,8 +40,8 @@ def test_a_tilted_frame_comes_out_as_the_straight_down_view(roll, up, hdg):
 
 def test_too_tilted_is_published_but_marked_unusable():
     cam = CameraModel.ideal(84.0, (W, H_))
-    out, meta = FrameBuilder(cam, max_tilt_deg=25.0).build(nadir_scene(), 1, 0, body_q(35, 0, 0))
-    assert meta["usable"] is False and "tilted 35" in meta["reason"]
+    out, meta = FrameBuilder(cam).build(nadir_scene(), 1, 0, body_q(50, 0, 0))
+    assert meta["usable"] is False and "tilted 50" in meta["reason"]
 
 
 def test_without_attitude_the_frame_is_left_as_is():
@@ -56,3 +56,11 @@ def test_mount_angles_are_applied():
     cam = CameraModel.ideal(84.0, (W, H_))
     _, meta = FrameBuilder(cam, mount_rpy_deg=(0, -15, 0)).build(nadir_scene(), 1, 0, body_q())
     assert meta["tilt_deg"] == pytest.approx(15.0, abs=0.01) and meta["straightened"]
+
+
+def test_gimbal_keeps_the_camera_level():
+    cam = CameraModel.ideal(84.0, (W, H_))
+    img = nadir_scene()
+    out, meta = FrameBuilder(cam, gimbal=True).build(img, 1, 0, body_q(15, -30, 120))
+    assert meta["tilt_deg"] == pytest.approx(0.0, abs=1e-6) and meta["heading_deg"] == pytest.approx(120.0)
+    assert np.array_equal(out, img)                   # nothing to straighten

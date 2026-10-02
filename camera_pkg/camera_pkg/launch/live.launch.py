@@ -12,7 +12,8 @@ Settings (environment, /etc/navera/navera.env or the web page's settings.env):
     NAVERA_CAMERA_HFOV_DEG     ideal lens, when not calibrated
     NAVERA_CAMERA_MOUNT_RPY    camera mounting roll,pitch,yaw (deg)
     NAVERA_CAMERA_LATENCY_S    exposure -> grab delay
-    NAVERA_CAMERA_MAX_TILT_DEG frames tilted more are not compared (default 25)
+    NAVERA_CAMERA_MAX_TILT_DEG frames tilted more are not compared (default 45)
+    NAVERA_CAMERA_GIMBAL       true: the camera is held level (only the heading is used)
     NAVERA_GROUND_ALTITUDE_M   site elevation (else the first GPS fix)
     NAVERA_SENSOR_SOURCE       box | vehicle | ros: where attitude / height / GPS come
                                from (navera_common.vehicle.sensor_topics)

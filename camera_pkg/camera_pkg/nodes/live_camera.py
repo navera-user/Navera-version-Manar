@@ -68,7 +68,8 @@ class LiveCamera(Node):
         declare_float(self, "mount_roll_deg", 0.0)
         declare_float(self, "mount_pitch_deg", 0.0)
         declare_float(self, "mount_yaw_deg", 0.0)
-        declare_float(self, "max_tilt_deg", 25.0)
+        declare_float(self, "max_tilt_deg", 45.0)
+        self.declare_parameter("gimbal", False)                 # camera held level by a stabiliser
         self.declare_parameter("imu_topic", "/navera/sensors/imu")
         self.declare_parameter("attitude_source", "imu")        # label recorded in the meta
         self.declare_parameter("gps_topic", "/navera/sensors/gps_fix")
@@ -91,7 +92,7 @@ class LiveCamera(Node):
         self.latency_s = float(p("capture_latency_s"))
         cam = self._camera_model(p("calibration_file"), float(p("camera_hfov_deg")))
         self.builder = FrameBuilder(cam, (p("mount_roll_deg"), p("mount_pitch_deg"), p("mount_yaw_deg")),
-                                    float(p("max_tilt_deg")), p("camera_type"))
+                                    float(p("max_tilt_deg")), p("camera_type"), bool(p("gimbal")))
         self.attitude_source, self.frame_id = p("attitude_source"), p("frame_id")
         self.measured_sigma_m = float(p("measured_altitude_sigma_m"))
         self.att = History(maxlen=4000, max_gap_s=0.2, interp=slerp)

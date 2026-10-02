@@ -118,7 +118,8 @@ def live_camera_params(environ=None) -> dict:
          "fps": float(get("NAVERA_CAMERA_FPS", "1.0")),
          "capture_latency_s": float(get("NAVERA_CAMERA_LATENCY_S", "0.0")),
          "calibration_file": get("NAVERA_CAMERA_CALIBRATION"),
-         "max_tilt_deg": float(get("NAVERA_CAMERA_MAX_TILT_DEG", "25"))}
+         "max_tilt_deg": float(get("NAVERA_CAMERA_MAX_TILT_DEG", "45")),
+         "gimbal": get("NAVERA_CAMERA_GIMBAL", "false").lower() in ("1", "true", "yes")}
     if p["input"] not in ("usb", "csi", "ros"):
         raise ValueError(f"NAVERA_CAMERA_INPUT={p['input']!r}: expected usb, csi or ros")
     hfov = get("NAVERA_CAMERA_HFOV_DEG")
