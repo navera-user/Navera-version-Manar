@@ -12,7 +12,8 @@ For each frame published, at the instant it was taken (grab time - capture_laten
                vehicle's IMU relayed by vehicle_link / remapped from the vehicle's ROS
     altitude   height above ground (navera_common.altitude): `altitude_topic`
                (sensor_msgs/Range: rangefinder or the vehicle's AGL), the image (map
-               matches, `vision_altitude_topic`), GPS altitude minus the ground
+               matches, `vision_altitude_topic`) carried by the vehicle's height above
+               home (`relative_altitude_topic`, barometer) or the GPS altitude
     GPS        `gps_topic` (NavSatFix), recorded in the meta for evaluation only
 The frame is undistorted (calibration file from navera_tools/calibrate_camera.py, or
 an ideal lens of `camera_hfov_deg`) and straightened to a level straight-down view
@@ -39,6 +40,7 @@ from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
+from geometry_msgs.msg import PointStamped
 from sensor_msgs.msg import CameraInfo, Image, Imu, NavSatFix, NavSatStatus, Range
 from std_msgs.msg import Bool, Int32, String
 
@@ -72,6 +74,8 @@ class LiveCamera(Node):
         self.declare_parameter("gps_topic", "/navera/sensors/gps_fix")
         self.declare_parameter("altitude_topic", "/navera/sensors/altitude_agl")
         self.declare_parameter("vision_altitude_topic", "/navera/vision/altitude_agl")
+        # the vehicle's height above home (barometer), from vehicle_link: survives GPS loss
+        self.declare_parameter("relative_altitude_topic", "/navera/vehicle/relative_alt")
         declare_float(self, "ground_altitude_m", float("nan"))  # site elevation (else first fix)
         declare_float(self, "measured_altitude_sigma_m", 1.0)   # 1-sigma of the altitude_topic source
         self.declare_parameter("start_paused", False)
@@ -105,6 +109,9 @@ class LiveCamera(Node):
         self.create_subscription(NavSatFix, p("gps_topic"), self._on_gps, 10, callback_group=sensors)
         self.create_subscription(Range, p("altitude_topic"), self._on_alt, 10, callback_group=sensors)
         self.create_subscription(Range, p("vision_altitude_topic"), self._on_vision_alt, 10, callback_group=sensors)
+        self.create_subscription(PointStamped, p("relative_altitude_topic"),
+                                 lambda m: self.alt.add_relative(stamp_s(m.header.stamp), m.point.z),
+                                 10, callback_group=sensors)
         self.create_subscription(Int32, p("ack_topic"), self._on_ack, 10)
         self._ready = threading.Event()
         self._go = threading.Event()

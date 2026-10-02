@@ -14,6 +14,8 @@
   <exec_depend>navera_common</exec_depend>
   <exec_depend>python3-serial</exec_depend>
   <!-- pymavlink: pip (not in rosdep for Humble) -->
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
   <test_depend>python3-pytest</test_depend>
 
   <export>

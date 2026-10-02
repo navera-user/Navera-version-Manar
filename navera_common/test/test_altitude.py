@@ -52,3 +52,22 @@ def test_a_measured_height_wins_while_fresh():
 
 def test_nothing_known():
     assert AltitudeEstimator().estimate(0.0) is None
+
+
+def test_vehicle_barometer_keeps_the_height_after_gps_loss():
+    a = AltitudeEstimator()
+    a.add_gps(0.0, 50.0)
+    a.add_relative(0.0, 0.0)
+    a.add_relative(10.0, 150.0)
+    a.add_vision(10.0, 135.0, 3.0)                  # the image: higher ground than home
+    a.add_relative(30.0, 160.0)                     # GPS lost since t=0, the barometer goes on
+    agl, sigma, src = a.estimate(30.0)
+    assert agl == pytest.approx(145.0) and src == "image + vehicle altitude" and sigma < 4.0
+
+
+def test_vehicle_altitude_above_home_without_image():
+    a = AltitudeEstimator()
+    a.add_relative(5.0, 120.0)
+    agl, sigma, src = a.estimate(5.0)
+    assert agl == 120.0 and src == "vehicle altitude above home"
+    assert sigma == pytest.approx((3.0 ** 2 + 30.0 ** 2) ** 0.5)

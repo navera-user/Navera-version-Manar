@@ -23,6 +23,7 @@ setup(
     entry_points={
         'console_scripts': [
             'vehicle_output_node.py=navera_output.nodes.vehicle_output_node:main',
+            'vehicle_link_node.py=navera_output.nodes.vehicle_link_node:main',
         ],
     },
 )
