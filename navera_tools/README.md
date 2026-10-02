@@ -107,7 +107,7 @@ against the truth. The terminal prints the output error per phase. Only one demo
 
 | Profile | Simulated vision error | What the operator sees during jamming | Measured on the bench (one cycle) |
 |---|---|---|---|
-| `measured` | matches today's day vision (median ~440 m, uncertainty unknown) | VISION · DEGRADED | 445 m median |
+| `measured` | matches the former DINOv2 retrieval (median ~440 m, uncertainty unknown); today's local matching: docs/VALIDATION_STATUS.md | VISION · DEGRADED | 445 m median |
 | `target` | the accuracy target, 15 m sigma per axis (**not measured**) | VISION · FIX | 17–21 m median |
 
 With GPS the output error is 3–5 m (simulated receiver, 1.5 m sigma). The demonstration shows

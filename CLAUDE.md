@@ -94,7 +94,7 @@ Deployment runs **on the host** (systemd services, `deploy/README.md`), not in a
 
 ```bash
 source /opt/ros/humble/setup.bash
-colcon build --symlink-install          # builds the 11 NAVERA packages (vendored/legacy dirs are COLCON_IGNOREd)
+colcon build --symlink-install          # builds the 12 NAVERA packages (vendored/legacy dirs are COLCON_IGNOREd)
 source install/setup.bash
 set -a; . /etc/navera/navera.env; set +a   # data paths, ROS_DOMAIN_ID, ROS_LOCALHOST_ONLY, token
 ros2 launch simulation_web day_sim.launch.py     # or night_sim / cn_sim
@@ -156,7 +156,7 @@ Verified requirements are done. The roadmap = the not-yet-done items.
   reboot on the Jetson (2026-07-14): the `navera-rtc` systemd service comes up on its own,
   the node reports `valid:true` and `lost_power:false` **after** the reboot (the CR2032 backup
   battery holds the clock through the power cut), and measured drift is **-0.148 s vs NTP**.
-- **Automatic startup** — 6 systemd services (validated by reboot 2026-07-15; the restart
+- **Automatic startup** — 6 systemd services then, 10 units today (validated by reboot 2026-07-15; the restart
   mechanism was reworked 2026-09-28 and needs a new reboot validation).
 
 ### Done — bench-verified 2026-09-28 (not on a vehicle)

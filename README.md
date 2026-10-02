@@ -58,7 +58,7 @@ On the Jetson (JetPack 6, ROS 2 Humble installed):
 source /opt/ros/humble/setup.bash
 colcon build --symlink-install --packages-up-to \
   navera_msgs navera_common navera_estimator gps_pkg imu_pkg rtc_pkg \
-  camera_pkg day_pkg night_pkg cn_pkg simulation_web
+  camera_pkg day_pkg night_pkg cn_pkg navera_output simulation_web
 source install/setup.bash
 ```
 
@@ -69,7 +69,10 @@ printf 'torch==2.8.0\ntorchvision==0.23.0\nnumpy<2\nsetuptools<80\n' > /tmp/cons
 pip3 install --user --no-deps --index-url https://pypi.jetson-ai-lab.io/jp6/cu126/+simple \
   torch==2.8.0 torchvision==0.23.0
 pip3 install --user -c /tmp/constraints.txt "numpy<2" "scipy>=1.11,<1.14" timm kornia \
-  safetensors einops huggingface_hub scikit-learn pandas flask flask-cors pyserial pynmea2 "astropy<7"
+  safetensors einops huggingface_hub scikit-learn pandas flask flask-cors pyserial pynmea2 "astropy<7" \
+  pymavlink pygeomag==1.1.0
+# box sensors (BNO085 IMU, DS3231 clock) — see deploy/README.md for the service user
+pip3 install --user adafruit-blinka adafruit-circuitpython-bno08x adafruit-circuitpython-ds3231
 ```
 
 ## Data (not in git)

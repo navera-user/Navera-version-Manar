@@ -7,7 +7,9 @@
 # chosen camera's frames — everything needed to replay the session and to
 # measure each source against GPS (navera_tools/evaluate_session.py).
 #
-# For a measurement session, start the vision pipeline in shadow mode so it
+# For a measurement session, set NAVERA_SHADOW_MODE=true in /etc/navera/navera.env and
+# restart the pipeline service (no second launch beside it), or by hand outside the
+# services: start the vision pipeline in shadow mode so it
 # runs while GPS is valid, e.g.:
 #   ros2 launch simulation_web day_pipeline.launch.py shadow_mode:=true default_gps_valid:=false
 #

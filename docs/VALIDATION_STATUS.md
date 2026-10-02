@@ -317,9 +317,17 @@ holds the only results from the real sensors. No sensor recording (log, bag) was
    per vehicle) is refused, and stays refused until an independent source with a **stated**
    accuracy (vision / celestial with a known covariance) confirms it. A GPS returning after an
    outage must agree with that source too ("jam, then spoof"), and a trusted GPS that drifts
-   away from it for 3 s is refused (gradual spoofing, detected beyond 5 σ + 50 m). **All three
-   protections need that independent source.** With vision of unknown accuracy — today's day
-   and night vision — the gate falls back to reachability from the last good fix: a sudden
-   jump is caught, but a patient or gradual spoofer is not.
+   away from it is refused (gradual spoofing: 5 distinct fixes in a row beyond 3 σ, or 2
+   beyond 5 σ + 50 m for 3 s; never on one fix). A refused GPS comes back only when 2
+   distinct independent fixes agree within 3 σ. **All three protections need that
+   independent source.** Day vision provides one while GPS is good (a local match every 2 s
+   around the GPS position, stated σ 30 m — not yet measured with NAVERA's camera).
+   Measured in the mission simulator (gimbal camera, GPS pulled away at 4 m/s): refused at
+   ~140 m and held; NAVERA error median 15 m, max 143 m (before: median 417 m, max 902 m,
+   never refused). The autopilot (ArduPilot SITL) absorbed the switch; its later failsafe
+   came from a stretch without vision fixes. Over terrain vision cannot match (sea,
+   uniform ground) there is no independent source and a gradual spoofer is not caught.
 8. **Security model:** DDS is limited to the box itself (`ROS_LOCALHOST_ONLY`). The web
-   control API needs a token. The web interface itself is plain HTTP (no TLS).
+   control API needs a token. The web interface is HTTPS when a certificate is configured
+   (NAVERA_TLS_CERT / NAVERA_TLS_KEY), plain HTTP otherwise. The /mission page refuses
+   restarts and map generation while the vehicle is armed or navigating without GPS.
