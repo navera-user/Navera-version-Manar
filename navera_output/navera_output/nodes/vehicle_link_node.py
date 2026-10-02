@@ -36,6 +36,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import Imu, NavSatFix, NavSatStatus, Range
 from std_msgs.msg import String
 
+from navera_output import mavlink_url
 from navera_output.mavlink_in import (attitude_euler, attitude_quaternion, downward_range_agl,
                                       rates_frd_to_flu)
 
@@ -49,10 +50,13 @@ class VehicleLink(Node):
         self.declare_parameter("mavlink_url", "")
         declare_float(self, "attitude_hz", 50.0)
         self.declare_parameter("source_system", 1)
-        self.declare_parameter("source_component", 191)        # MAV_COMP_ID_ONBOARD_COMPUTER
+        # MAV_COMP_ID_ONBOARD_COMPUTER2: vehicle_output is 191 — two NAVERA connections
+        # behind one mavlink-router must not share an identity
+        self.declare_parameter("source_component", 192)
         self.url = str(self.get_parameter("mavlink_url").value)
         if not self.url:
             raise ValueError("mavlink_url is not set (e.g. serial:/dev/ttyTHS2:921600)")
+        mavlink_url.parse(self.url)                  # a malformed address fails at start, not in the loop
         self.att_hz = float(self.get_parameter("attitude_hz").value)
         self.pub_imu = self.create_publisher(Imu, "/navera/vehicle/imu", 50)
         self.pub_agl = self.create_publisher(Range, "/navera/vehicle/altitude_agl", 10)
@@ -70,17 +74,8 @@ class VehicleLink(Node):
 
     # ── link ──────────────────────────────────────────────────────────────
     def _connect(self):
-        from pymavlink import mavutil
-        url = self.url[len("serial:"):] if self.url.startswith("serial:") else self.url
-        if self.url.startswith("serial:") and url.count(":") == 1:
-            dev, baud = url.split(":")
-            m = mavutil.mavlink_connection(dev, baud=int(baud),
-                                           source_system=int(self.get_parameter("source_system").value),
-                                           source_component=int(self.get_parameter("source_component").value))
-        else:
-            m = mavutil.mavlink_connection(url, source_system=int(self.get_parameter("source_system").value),
-                                           source_component=int(self.get_parameter("source_component").value))
-        return m
+        return mavlink_url.connect(self.url, int(self.get_parameter("source_system").value),
+                                   int(self.get_parameter("source_component").value))
 
     def _request_streams(self, m):
         from pymavlink import mavutil

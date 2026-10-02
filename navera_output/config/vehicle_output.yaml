@@ -4,7 +4,7 @@ vehicle_output:
     # NMEA GPS emulation on a serial port ("" = disabled), e.g. /dev/ttyUSB0
     nmea_port: ""
     nmea_baud: 9600
-    # MAVLink GPS_INPUT ("" = disabled), e.g. "/dev/ttyTHS2,57600" or "udpout:127.0.0.1:14550"
+    # MAVLink GPS_INPUT ("" = disabled), e.g. "serial:/dev/ttyTHS2:921600" or "udpout:127.0.0.1:14550"
     mavlink_url: ""
     mavlink_system_id: 1
     mavlink_component_id: 191

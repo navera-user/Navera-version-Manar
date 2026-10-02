@@ -20,7 +20,7 @@ Parameters:
     rate_hz              (5.0)   output rate
     nmea_port            ("")    serial device for NMEA, "" = disabled
     nmea_baud            (9600)
-    mavlink_url          ("")    pymavlink URL, e.g. "/dev/ttyTHS2,57600" or
+    mavlink_url          ("")    e.g. "serial:/dev/ttyTHS2:921600" (navera_output.mavlink_url) or
                                  "udpout:127.0.0.1:14550"; "" = disabled
     mavlink_system_id    (1)     MAVLink ids of this box (companion computer)
     mavlink_component_id (191)
@@ -56,10 +56,11 @@ from navera_common.params import declare_float
 from geometry_msgs.msg import TwistStamped
 from sensor_msgs.msg import NavSatFix, NavSatStatus
 from navera_msgs.msg import NavStatus, PositionEstimate
+from rclpy.duration import Duration
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
-from navera_output import mavlink_out, nmea
+from navera_output import mavlink_out, mavlink_url, nmea
 from navera_output.policy import KIND_NONE, Config, decide
 
 
@@ -105,10 +106,8 @@ class VehicleOutputNode(Node):
         self._mav = None
         url = str(self.get_parameter("mavlink_url").value)
         if url:
-            from pymavlink import mavutil
-            self._mav = mavutil.mavlink_connection(
-                url, source_system=int(self.get_parameter("mavlink_system_id").value),
-                source_component=int(self.get_parameter("mavlink_component_id").value))
+            self._mav = mavlink_url.connect(url, int(self.get_parameter("mavlink_system_id").value),
+                                            int(self.get_parameter("mavlink_component_id").value))
         topic = str(self.get_parameter("ros_fix_topic").value)
         self._pub_fix = self.create_publisher(NavSatFix, topic, 10) if topic else None
         if self._serial is None and self._mav is None and self._pub_fix is None:
