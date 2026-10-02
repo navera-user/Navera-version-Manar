@@ -72,3 +72,11 @@ def test_gimbal_keeps_the_camera_level():
     out, meta = FrameBuilder(cam, gimbal=True).build(img, 1, 0, body_q(15, -30, 120))
     assert meta["tilt_deg"] == pytest.approx(0.0, abs=1e-6) and meta["heading_deg"] == pytest.approx(120.0)
     assert np.array_equal(out, img)                   # nothing to straighten
+
+
+def test_a_star_camera_frame_is_undistorted_only():
+    cam = CameraModel.ideal(60.0, (W, H_))
+    img = nadir_scene()
+    out, meta = FrameBuilder(cam, camera_type="star").build(img, 1, 5, None, utc="2026-10-02T21:00:00")
+    assert meta["usable"] is True and meta["straightened"] is False and meta["utc_time"]
+    assert meta["camera_type"] == "star" and (out == img).all()

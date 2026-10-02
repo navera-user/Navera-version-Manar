@@ -64,6 +64,10 @@ class FrameBuilder:
             meta.update(gps_lat=gps[0], gps_lon=gps[1])
         if utc:
             meta["utc_time"] = utc
+        if self.camera_type == "star":
+            # a star camera looks UP: undistorted only (plate solving needs a pinhole image);
+            # the celestial pipeline takes the attitude at the exposure from the IMU itself
+            return out, meta
         if q_body_enu is None and self.require_attitude:
             meta.update(usable=False, reason="no attitude at the frame's exposure (IMU or vehicle link "
                                              "silent): the camera's tilt is unknown")

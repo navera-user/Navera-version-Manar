@@ -54,7 +54,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from sensor_msgs.msg import Image, Imu, NavSatFix, NavSatStatus, TimeReference
 from navera_msgs.msg import PositionEstimate
 import math
-from std_msgs.msg import String
+from std_msgs.msg import Int32, String
 from cv_bridge import CvBridge
 
 from cn_pkg.nodes import solver as cn_solver
@@ -129,7 +129,9 @@ class CNSubscriber(Node):
         # IMU history (stamp ns, quaternion): the attitude used is the one at the
         # frame's EXPOSURE, not at processing time — on a moving vehicle the
         # difference is degrees, i.e. hundreds of km (found in the simulator).
-        self._imu_hist = deque(maxlen=400)
+        # 60 s at 50 Hz: a frame that waited (solver busy, node starting) still finds the
+        # attitude of its exposure
+        self._imu_hist = deque(maxlen=3000)
         self._gps_prior = None    # last valid GPS fix (lat, lon)
         self.create_subscription(Imu, self.get_parameter("imu_topic").value, self._on_imu, 10)
         self.create_subscription(PositionEstimate, self.get_parameter("gps_topic").value,
@@ -169,6 +171,8 @@ class CNSubscriber(Node):
         self.pub_status = self.create_publisher(String,    status_topic, 10)
         # Typed source contract for navera_estimator (additive, estimator step 7).
         self.pub_est    = self.create_publisher(PositionEstimate, "/navera/estimate/cn", 10)
+        # solved (or failed): the live star camera may send the next frame
+        self.pub_done   = self.create_publisher(Int32, "/celestial/frame_done", 1)
 
         # ── Subscribers ─────────────────────────────────────────
         self.sub_image = self.create_subscription(
@@ -292,6 +296,10 @@ class CNSubscriber(Node):
             self.get_logger().warn(
                 f"[cn] ⏭  skipping frame={seq_id} (solver still busy)"
             )
+            try:
+                self.pub_done.publish(Int32(data=int(seq_id)))   # done with it: send the next
+            except (TypeError, ValueError):
+                pass
             return
 
         threading.Thread(
@@ -321,8 +329,18 @@ class CNSubscriber(Node):
                 meta["utc_source"] = utc_src
                 meta["utc_used"] = utc
                 if not (math.isfinite(tilt) and math.isfinite(azimuth)):
+                    exp = meta.get("image_stamp_ns")
+                    hist = list(self._imu_hist)
+                    near = None
+                    if hist and exp is not None:
+                        near = (min(abs(ts - int(exp)) for ts, _ in hist) / 1e9,
+                                (hist[0][0] - int(exp)) / 1e9, (hist[-1][0] - int(exp)) / 1e9)
                     result = {"success": False,
-                              "error": "camera attitude (tilt/azimuth) unknown — needs the IMU"}
+                              "error": "camera attitude (tilt/azimuth) unknown — needs the IMU "
+                                       f"({len(hist)} IMU samples on {self.get_parameter('imu_topic').value}"
+                                       + (f", nearest {near[0]:.2f} s from the exposure; they span "
+                                          f"{near[1]:+.1f} to {near[2]:+.1f} s around it" if near else "")
+                                       + ")"}
                 else:
                     t0 = time.monotonic()
                     result = cn_solver.solve_image_b64_geoloc(
@@ -336,6 +354,10 @@ class CNSubscriber(Node):
             self.get_logger().error(f"[cn] solver error frame={seq_id}: {e}")
         finally:
             self._busy_lock.release()
+            try:
+                self.pub_done.publish(Int32(data=int(seq_id)))
+            except (TypeError, ValueError):
+                pass
 
     # ────────────────────────────────────────────────────────────
     # Publish result

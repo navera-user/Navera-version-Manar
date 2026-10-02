@@ -101,7 +101,10 @@ def solve_image_b64_geoloc(image_b64: str, tilt: float, azimuth: float,
             f.write(img_bytes)
 
         try:
-            date_str, time_str = utc_time.split(' ')
+            # "YYYY-MM-DD HH:MM:SS", also ISO 8601 as the live camera writes it
+            # ("YYYY-MM-DDTHH:MM:SS[.fff][Z]"); whole seconds (0.5 s of sky turn = 230 m)
+            date_str, time_str = str(utc_time).strip().rstrip('Z').replace('T', ' ').split(' ')
+            time_str = time_str.split('.')[0]
         except ValueError:
             return {'success': False, 'error': f'bad utc_time: {utc_time!r}'}
 
