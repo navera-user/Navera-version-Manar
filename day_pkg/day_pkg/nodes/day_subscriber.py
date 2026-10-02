@@ -430,11 +430,15 @@ class DaySubscriber(Node):
                                            heading_deg=self._heading_for_match(meta),
                                            heading_tol_deg=self.local_heading_tol_deg)
                 result["_frame_shape"], result["_frame_mpp"] = img.shape, mpp
+            elif self.local is not None:
+                # retrieval (~440 m median on real frames) is no substitute for a local match
+                # that cannot run: published, its positions were 1.1 km off (sim, near the ground)
+                self._publish_no_fix(self.get_clock().now().to_msg(), seq_id, meta, {"frame_id": seq_id}, 0.0,
+                                     why_not or "no prior: local matching needs a search centre")
+                return
             else:
                 result = self.localizer.predict(img, threshold=self.conf_threshold,
                                                 center=center, radius_m=R)
-                if self.local is not None:
-                    result["matcher_note"] = why_not or "no prior: local matching needs a search centre"
             result["search_center"] = list(center) if center is not None else None
             self._log_top5(seq_id, result)
             self._publish_result(seq_id, meta, result)
