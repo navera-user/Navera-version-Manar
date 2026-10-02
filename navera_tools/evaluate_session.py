@@ -8,8 +8,12 @@ interpolated at each vision/celestial estimate's measurement instant
 (sensor_stamp). Estimates further than --max-gap seconds from a GPS fix are
 not scored. Reports, per source and per mode (measured / dead-reckoned):
 number of estimates, median / p90 / max error, share within 50 / 100 / 300 m,
-and how many frames produced no position. This is how accuracy claims in
-docs/VALIDATION_STATUS.md must be produced from real data.
+and how many frames produced no position. Then, for estimates that STATE an
+accuracy (vision matches, dead-reckoning): how often the true error is within 1, 2
+and 3 x that stated sigma (an honest Gaussian sigma: ~39 / 86 / 99 % for a 2-D error),
+and the sigma that WOULD be honest (p86 of error / 2) — the value to set as
+NAVERA_DEGRADED_SIGMA_M / the day matcher's local_sigma_m. This is how accuracy claims
+in docs/VALIDATION_STATUS.md must be produced from real data.
 """
 import argparse
 import bisect
@@ -88,7 +92,7 @@ def main():
     if len(gps) < 2:
         print("not enough valid GPS fixes in the session to use as ground truth")
         return 1
-    rows, groups, invalid = [], {}, {}
+    rows, groups, invalid, stated = [], {}, {}, {}
     for topic, t, m in est:
         src = SOURCES[topic]
         if not m.valid:
@@ -100,7 +104,11 @@ def main():
         err = haversine_m(truth[0], truth[1], m.latitude, m.longitude)
         mode = MODES.get(m.mode, str(m.mode))
         groups.setdefault((src, mode), []).append(err)
-        rows.append((src, mode, m.frame_index, f"{t:.3f}", f"{err:.1f}"))
+        sig = (math.sqrt(max(m.position_covariance[0], m.position_covariance[4]))
+               if m.position_covariance_type != PositionEstimate.COVARIANCE_TYPE_UNKNOWN else None)
+        if sig:
+            stated.setdefault((src, mode), []).append((err, sig))
+        rows.append((src, mode, m.frame_index, f"{t:.3f}", f"{err:.1f}", f"{sig:.1f}" if sig else ""))
 
     print(f"ground truth: {len(gps)} GPS fixes over {gps[-1][0] - gps[0][0]:.0f} s")
     print(f"{'source':10s} {'mode':14s} {'n':>5s} {'median':>8s} {'p90':>8s} {'max':>8s} "
@@ -111,10 +119,20 @@ def main():
               f"{max(errs):7.0f}m {within[0]:5.0f}% {within[1]:5.0f}% {within[2]:5.0f}%")
     for src, n in sorted(invalid.items()):
         print(f"{src:10s} no position  {n:5d}")
+    if stated:
+        print("\nstated accuracy vs truth (honest 2-D sigma: ~39 / 86 / 99 %)")
+        print(f"{'source':10s} {'mode':14s} {'n':>5s} {'stated':>8s} {'<1s':>6s} {'<2s':>6s} {'<3s':>6s} "
+              f"{'honest sigma':>13s}")
+        for (src, mode), es in sorted(stated.items()):
+            within = [100.0 * sum(e <= k * s for e, s in es) / len(es) for k in (1, 2, 3)]
+            honest = pct([e for e, _ in es], 86) / 2.0
+            print(f"{src:10s} {mode:14s} {len(es):5d} {pct([s for _, s in es], 50):7.0f}m "
+                  f"{within[0]:5.0f}% {within[1]:5.0f}% {within[2]:5.0f}% {honest:12.0f}m"
+                  + ("   <- stated sigma too optimistic" if within[1] < 80 else ""))
     if a.csv:
         with open(a.csv, "w", newline="") as f:
             w = csv.writer(f)
-            w.writerow(["source", "mode", "frame_index", "sensor_time_s", "error_m"])
+            w.writerow(["source", "mode", "frame_index", "sensor_time_s", "error_m", "stated_sigma_m"])
             w.writerows(rows)
     return 0
 
