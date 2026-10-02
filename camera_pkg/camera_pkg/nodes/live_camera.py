@@ -57,7 +57,10 @@ class LiveCamera(Node):
     def __init__(self, **kwargs):
         super().__init__("live_camera", **kwargs)
         self.declare_parameter("camera_type", "day")
-        self.declare_parameter("input", "usb")                 # usb | csi | ros
+        self.declare_parameter("input", "usb")                 # usb | csi | gst | ros
+        # input gst: any GStreamer pipeline ending in "appsink name=sink" giving BGR frames
+        # (an IP/RTSP camera, a gimbal's video stream...)
+        self.declare_parameter("gst_pipeline", "")
         self.declare_parameter("device", "/dev/video0")
         self.declare_parameter("input_topic", "/vehicle/camera/image_raw")
         self.declare_parameter("width", 1920)
@@ -217,11 +220,15 @@ class LiveCamera(Node):
     # ── image inputs ──────────────────────────────────────────────────────
     def _grab_loop(self, device: str):
         import cv2
-        if self.input == "csi":
-            pipe = (f"nvarguscamerasrc ! video/x-raw(memory:NVMM),width={self.w},height={self.h},"
-                    f"framerate=30/1 ! nvvidconv ! video/x-raw,format=BGRx ! videoconvert ! "
-                    f"video/x-raw,format=BGR ! appsink drop=true max-buffers=1")
-            cap = cv2.VideoCapture(pipe, cv2.CAP_GSTREAMER)
+        if self.input == "gst":
+            from camera_pkg.gst_capture import GstCapture
+            cap = GstCapture(str(self.get_parameter("gst_pipeline").value))
+        elif self.input == "csi":
+            # through GStreamer directly: the box's OpenCV has no GStreamer support.
+            # device: the CSI sensor id ("0", "1"), default 0
+            from camera_pkg.gst_capture import GstCapture, csi_pipeline
+            sensor = int(device) if str(device).isdigit() else 0
+            cap = GstCapture(csi_pipeline(self.w, self.h, sensor))
         else:
             cap = cv2.VideoCapture(device, cv2.CAP_V4L2)
             cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
@@ -275,6 +282,7 @@ class LiveCamera(Node):
     def _send_loop(self):
         from cv_bridge import CvBridge
         bridge = CvBridge()
+        requested = False
         while not self._stop.is_set():
             if not (self._ready.is_set() and self._go.is_set()):
                 time.sleep(0.1)
@@ -282,12 +290,19 @@ class LiveCamera(Node):
             if not self._acked.wait(self.ack_timeout_s) and self._awaiting is not None:
                 self.get_logger().warn(f"no ack for frame {self._awaiting} in {self.ack_timeout_s:.0f} s — sending the next")
             t0 = time.monotonic()
-            self._want.set()                                    # camera inputs: decode the next frame
+            if self.input != "ros" and not requested:
+                # camera inputs: a frame decoded for an earlier request (while this loop
+                # slept for the frame rate) is up to one period old — ask for a new one
+                with self._lock:
+                    self._latest = None
+                self._want.set()
+                requested = True
             with self._lock:
                 item, self._latest = self._latest, None
             if item is None:
                 time.sleep(0.02)
                 continue
+            requested = False
             raw, t = item
             out, meta = self.builder.build(raw, self.count, int(t * 1e9), self.att.at(t), self.attitude_source,
                                            self.alt.estimate(t), self.gps.at(t),

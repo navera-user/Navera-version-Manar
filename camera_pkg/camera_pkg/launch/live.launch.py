@@ -3,7 +3,7 @@
 live.launch.py — the live camera (live_camera.py) configured from the installation.
 
 Settings (environment, /etc/navera/navera.env or the web page's settings.env):
-    NAVERA_CAMERA_INPUT        usb | csi | ros                    (default usb)
+    NAVERA_CAMERA_INPUT        usb | csi | gst | ros              (default usb)
     NAVERA_CAMERA_DEVICE       /dev/videoN for usb                 (default /dev/video0)
     NAVERA_CAMERA_TOPIC        sensor_msgs/Image topic for ros
     NAVERA_CAMERA_SIZE         WIDTHxHEIGHT                        (default 1920x1080)
@@ -18,7 +18,9 @@ Settings (environment, /etc/navera/navera.env or the web page's settings.env):
     NAVERA_SENSOR_SOURCE       box | vehicle | ros: where attitude / height / GPS come
                                from (navera_common.vehicle.sensor_topics)
 
-Arguments: camera_type (day|thermal), ns (topic namespace), ready_topic.
+Arguments: camera_type (day|thermal|star), ns (topic namespace), ready_topic,
+settings (NAVERA_CAMERA_ or NAVERA_STAR_CAMERA_), wait_for_ready.
+NAVERA_CAMERA_INPUT may also be gst (NAVERA_CAMERA_GST_PIPELINE: any GStreamer source).
 """
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, LogInfo, OpaqueFunction, Shutdown
@@ -28,9 +30,10 @@ from navera_common.vehicle import live_camera_params
 
 
 def _nodes(context):
-    params = live_camera_params()
+    params = live_camera_params(prefix=LaunchConfiguration('settings').perform(context))
     params.update(camera_type=LaunchConfiguration('camera_type').perform(context),
                   ready_topic=LaunchConfiguration('ready_topic').perform(context),
+                  wait_for_ready=LaunchConfiguration('wait_for_ready').perform(context) == 'true',
                   frame_id=f"{LaunchConfiguration('ns').perform(context)}_camera_link")
     return [
         LogInfo(msg=f"live camera: {params['input']} {params.get('device') if params['input'] == 'usb' else ''} "
@@ -48,5 +51,8 @@ def generate_launch_description():
         DeclareLaunchArgument('camera_type', default_value='day'),
         DeclareLaunchArgument('ns', default_value='day'),
         DeclareLaunchArgument('ready_topic', default_value='/day/localizer_ready'),
+        # NAVERA_STAR_CAMERA_ for the celestial pipeline's star camera
+        DeclareLaunchArgument('settings', default_value='NAVERA_CAMERA_'),
+        DeclareLaunchArgument('wait_for_ready', default_value='true'),
         OpaqueFunction(function=_nodes),
     ])

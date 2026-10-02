@@ -106,43 +106,48 @@ def sensor_topics(environ=None) -> dict:
     return t
 
 
-def live_camera_params(environ=None) -> dict:
-    """live_camera parameters from the installation settings (NAVERA_CAMERA_*)."""
+def live_camera_params(environ=None, prefix: str = "NAVERA_CAMERA_") -> dict:
+    """live_camera parameters from the installation settings (NAVERA_CAMERA_*; the star
+    camera of the celestial pipeline: prefix NAVERA_STAR_CAMERA_)."""
     env = os.environ if environ is None else environ
     get = lambda k, d="": str(env.get(k, "") or d).strip()     # noqa: E731
-    size = get("NAVERA_CAMERA_SIZE", "1920x1080").lower().split("x")
+    size = get(prefix + "SIZE", "1920x1080").lower().split("x")
     if len(size) != 2 or not all(s.isdigit() for s in size):
-        raise ValueError(f"NAVERA_CAMERA_SIZE={get('NAVERA_CAMERA_SIZE')!r}: expected WIDTHxHEIGHT, e.g. 1920x1080")
-    p = {"input": get("NAVERA_CAMERA_INPUT", "usb"), "device": get("NAVERA_CAMERA_DEVICE", "/dev/video0"),
-         "input_topic": get("NAVERA_CAMERA_TOPIC", "/vehicle/camera/image_raw"),
+        raise ValueError(f"{prefix}SIZE={get(prefix + 'SIZE')!r}: expected WIDTHxHEIGHT, e.g. 1920x1080")
+    p = {"input": get(prefix + "INPUT", "usb"), "device": get(prefix + "DEVICE", "/dev/video0"),
+         "input_topic": get(prefix + "TOPIC", "/vehicle/camera/image_raw"),
          "width": int(size[0]), "height": int(size[1]),
-         "fps": float(get("NAVERA_CAMERA_FPS", "1.0")),
-         "capture_latency_s": float(get("NAVERA_CAMERA_LATENCY_S", "0.0")),
-         "calibration_file": get("NAVERA_CAMERA_CALIBRATION"),
-         "max_tilt_deg": float(get("NAVERA_CAMERA_MAX_TILT_DEG", "45")),
-         "gimbal": get("NAVERA_CAMERA_GIMBAL", "false").lower() in ("1", "true", "yes")}
-    for key, k, lo, hi in (("NAVERA_CAMERA_SIZE", "width", 64, 8192), ("NAVERA_CAMERA_SIZE", "height", 64, 8192),
-                           ("NAVERA_CAMERA_FPS", "fps", 0.05, 30.0),
-                           ("NAVERA_CAMERA_LATENCY_S", "capture_latency_s", 0.0, 2.0),
-                           ("NAVERA_CAMERA_MAX_TILT_DEG", "max_tilt_deg", 5.0, 80.0)):
+         "fps": float(get(prefix + "FPS", "1.0")),
+         "capture_latency_s": float(get(prefix + "LATENCY_S", "0.0")),
+         "calibration_file": get(prefix + "CALIBRATION"),
+         "max_tilt_deg": float(get(prefix + "MAX_TILT_DEG", "45")),
+         "gimbal": get(prefix + "GIMBAL", "false").lower() in ("1", "true", "yes")}
+    for key, k, lo, hi in ((prefix + "SIZE", "width", 64, 8192), (prefix + "SIZE", "height", 64, 8192),
+                           (prefix + "FPS", "fps", 0.05, 30.0),
+                           (prefix + "LATENCY_S", "capture_latency_s", 0.0, 2.0),
+                           (prefix + "MAX_TILT_DEG", "max_tilt_deg", 5.0, 80.0)):
         if not (math.isfinite(p[k]) and lo <= p[k] <= hi):
             raise ValueError(f"{key}: {k} {p[k]:g} out of range [{lo:g}, {hi:g}]")
-    if p["input"] not in ("usb", "csi", "ros"):
-        raise ValueError(f"NAVERA_CAMERA_INPUT={p['input']!r}: expected usb, csi or ros")
-    hfov = get("NAVERA_CAMERA_HFOV_DEG")
+    if p["input"] not in ("usb", "csi", "gst", "ros"):
+        raise ValueError(f"{prefix}INPUT={p['input']!r}: expected usb, csi, gst or ros")
+    p["gst_pipeline"] = get(prefix + "GST_PIPELINE")
+    if p["input"] == "gst" and "name=sink" not in p["gst_pipeline"]:
+        raise ValueError(f"{prefix}INPUT=gst needs {prefix}GST_PIPELINE ending in "
+                         "'appsink name=sink' (BGR frames)")
+    hfov = get(prefix + "HFOV_DEG")
     if hfov:
         p["camera_hfov_deg"] = float(hfov)
         if not (math.isfinite(p["camera_hfov_deg"]) and 5.0 <= p["camera_hfov_deg"] <= 170.0):
-            raise ValueError(f"NAVERA_CAMERA_HFOV_DEG={hfov}: expected 5-170 deg")
+            raise ValueError(f"{prefix}HFOV_DEG={hfov}: expected 5-170 deg")
     if not p["calibration_file"] and not hfov:
-        raise ValueError("set NAVERA_CAMERA_CALIBRATION (navera_tools/calibrate_camera.py) "
-                         "or at least NAVERA_CAMERA_HFOV_DEG")
-    rpy = get("NAVERA_CAMERA_MOUNT_RPY")
+        raise ValueError(f"set {prefix}CALIBRATION (navera_tools/calibrate_camera.py) "
+                         f"or at least {prefix}HFOV_DEG")
+    rpy = get(prefix + "MOUNT_RPY")
     if rpy:
         try:
             r, pi, y = (float(v) for v in rpy.split(","))
         except ValueError:
-            raise ValueError(f"NAVERA_CAMERA_MOUNT_RPY={rpy!r}: expected roll,pitch,yaw in degrees") from None
+            raise ValueError(f"{prefix}MOUNT_RPY={rpy!r}: expected roll,pitch,yaw in degrees") from None
         p.update(mount_roll_deg=r, mount_pitch_deg=pi, mount_yaw_deg=y)
     g = get("NAVERA_GROUND_ALTITUDE_M")
     if g:
