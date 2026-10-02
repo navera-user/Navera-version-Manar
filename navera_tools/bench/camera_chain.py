@@ -32,7 +32,7 @@ for i, (lat, lon) in enumerate(truth):
     if not meta["usable"]: continue
     if i == 5: cv2.imwrite('/tmp/claude-1000/-home-shadow-team/9c5e54c8-7738-4a52-b6e1-799f1d7c83b3/scratchpad/raw.jpg', raw); cv2.imwrite('/tmp/claude-1000/-home-shadow-team/9c5e54c8-7738-4a52-b6e1-799f1d7c83b3/scratchpad/built.jpg', out)
     mpp = 2 * agl * math.tan(math.radians(meta['camera_hfov_deg']) / 2) / out.shape[1]
-    r = M.locate(out, (lat + 0.002, lon - 0.002), 600.0, mpp, scale_tol=0.15)
+    r = M.locate(out, (lat + 0.002, lon - 0.002), 600.0, mpp, scale_tol=0.15, heading_deg=meta.get("heading_deg"))
     if r['accepted']:
         e = hav((r['predicted_lat'], r['predicted_lon']), (lat, lon)); res['err'].append(e); res['ok'] += 1; res['wrong'] += e > 50
 e = sorted(res['err'])

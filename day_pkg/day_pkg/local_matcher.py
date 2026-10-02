@@ -170,7 +170,7 @@ class LocalMatcher:
 
     GPU_BLOCK = 20000                 # map descriptors per GPU distance block (~120 MB)
 
-    def __init__(self, images_dir: str, zoom: int = 17, min_inliers: int = 6, scale_tol: float = 0.15,
+    def __init__(self, images_dir: str, zoom: int = 17, min_inliers: int = 8, scale_tol: float = 0.15,
                  query_features: int = 1500, ratio: float = 0.8, ransac_px: float = 6.0, device: str = "auto"):
         self.tiles = TileFeatures(images_dir, zoom)
         self.z, self.min_inliers, self.scale_tol = zoom, min_inliers, scale_tol
@@ -217,10 +217,14 @@ class LocalMatcher:
         return 2.0 * altitude_m * math.tan(math.radians(hfov_deg) / 2.0) / width_px
 
     def locate(self, frame, prior: Tuple[float, float], search_m: float, frame_m_per_px: float,
-               margin_m: Optional[float] = None, scale_tol: Optional[float] = None) -> dict:
+               margin_m: Optional[float] = None, scale_tol: Optional[float] = None,
+               heading_deg: Optional[float] = None, heading_tol_deg: float = 20.0) -> dict:
         """Position of the frame centre near prior, as a result dict (see keys below).
         scale_tol: accepted |fitted scale - 1| for this frame (default self.scale_tol) —
-        wider when the frame's altitude is uncertain."""
+        wider when the frame's altitude is uncertain.
+        heading_deg: azimuth of the frame's top from the attitude (live camera): the fitted
+        rotation must agree within heading_tol_deg — a wrong place rarely fits with both
+        the right scale and the right rotation."""
         tol = self.scale_tol if scale_tol is None else float(scale_tol)
         t0 = time.time()
         res = dict(spatial=True, spatial_empty=False, radius_m=float(search_m), matcher="local",
@@ -268,6 +272,9 @@ class LocalMatcher:
                    score=float(n_in), fused_score=float(n_in), match=f"{n_in} inliers / {good} matches")
         if n_in < self.min_inliers:
             res["reason"] = f"{n_in} geometric inliers (min {self.min_inliers})"
+        elif heading_deg is not None and abs((res["rotation_deg"] - heading_deg + 180) % 360 - 180) > heading_tol_deg:
+            res["reason"] = (f"fitted rotation {res['rotation_deg']:.0f} deg ≠ heading {heading_deg:.0f} deg "
+                             f"(±{heading_tol_deg:.0f}): wrong place")
         elif abs(scale - 1.0) > tol:
             res["reason"] = (f"fitted scale {scale:.2f} ≠ 1 expected from the altitude (±{tol:.0%}): "
                              "wrong place")

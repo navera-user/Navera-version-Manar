@@ -135,10 +135,15 @@ class DaySubscriber(Node):
         # retrieval (the former method, ~440 m median).
         self.declare_parameter("matcher", "local")
         declare_float(self, "camera_hfov_deg", float("nan"))   # day camera horizontal field of view
-        self.declare_parameter("local_min_inliers", 6)
+        # wrong places measured at <= 5 inliers on real aerial frames; correct ones 3-73
+        self.declare_parameter("local_min_inliers", 8)
         declare_float(self, "local_scale_tol", 0.15)
         # widest scale window when the frame altitude is uncertain (frame_meta altitude_sigma_m)
-        declare_float(self, "local_scale_tol_max", 0.5)
+        declare_float(self, "local_scale_tol_max", 0.35)
+        declare_float(self, "local_heading_tol_deg", 20.0)
+        # a height measured by a match is trusted only from a strong match confirmed by
+        # the next one (a wrong match must not set the altitude the next frames are judged by)
+        self.declare_parameter("altitude_min_inliers", 20)
         # heights above ground measured by local matches (the camera uses them)
         self.declare_parameter("vision_altitude_topic", "/navera/vision/altitude_agl")
         # while GPS is trusted, match one frame this often at the GPS position: the
@@ -204,6 +209,9 @@ class DaySubscriber(Node):
         self.local_sigma_m = float(self.get_parameter("local_sigma_m").value)
         self.local_max_radius_m = float(self.get_parameter("local_max_radius_m").value)
         self.local_scale_tol_max = float(self.get_parameter("local_scale_tol_max").value)
+        self.local_heading_tol_deg = float(self.get_parameter("local_heading_tol_deg").value)
+        self.alt_min_inliers = int(self.get_parameter("altitude_min_inliers").value)
+        self._alt_candidate = None             # (height, time) of the last strong match
         self.calib_period_s = float(self.get_parameter("altitude_calibration_period_s").value)
         self._last_calib = 0.0
         self.local = None
@@ -407,7 +415,9 @@ class DaySubscriber(Node):
                 self.get_logger().info(f"[day] 🔎 localizing frame={seq_id}… (pas d'anchor → recherche globale)")
             mpp, why_not = self._frame_m_per_px(img, meta)
             if self.local is not None and center is not None and mpp is not None:
-                result = self.local.locate(img, center, R, mpp, scale_tol=self._scale_tol(meta))
+                result = self.local.locate(img, center, R, mpp, scale_tol=self._scale_tol(meta),
+                                           heading_deg=self._heading_for_match(meta),
+                                           heading_tol_deg=self.local_heading_tol_deg)
                 result["_frame_shape"], result["_frame_mpp"] = img.shape, mpp
             else:
                 result = self.localizer.predict(img, threshold=self.conf_threshold,
@@ -505,7 +515,9 @@ class DaySubscriber(Node):
         if prior is None or mpp is None:
             return
         self._last_calib = time.time()
-        res = self.local.locate(img, prior, 150.0, mpp, scale_tol=self._scale_tol(meta))
+        res = self.local.locate(img, prior, 150.0, mpp, scale_tol=self._scale_tol(meta),
+                                heading_deg=self._heading_for_match(meta),
+                                heading_tol_deg=self.local_heading_tol_deg)
         if res.get("accepted"):
             st = {}
             self._publish_vision_altitude(meta, res, st)
@@ -590,15 +602,30 @@ class DaySubscriber(Node):
             R = min(max(R, grown), max(R, self.local_max_radius_m))
         return (self._anchor_lat, self._anchor_lon), R
 
+    def _heading_for_match(self, meta):
+        """The frame top's azimuth when the live camera measured it (straightened frames),
+        else None (no rotation check)."""
+        if meta.get("attitude_source") in (None, "none") or meta.get("heading_deg") is None:
+            return None
+        try:
+            return float(meta["heading_deg"])
+        except (TypeError, ValueError):
+            return None
+
     def _publish_vision_altitude(self, meta, result, status):
         """The height above ground this match measured: the frame was scaled for
-        meta altitude_m, the fitted scale says how much more ground it saw."""
+        meta altitude_m, the fitted scale says how much more ground it saw. Published only
+        from a strong match (altitude_min_inliers) agreeing within 5 % with the previous
+        strong match of the last 10 s: one wrong match cannot set the altitude."""
         try:
             alt = float(meta.get("altitude_m")) * float(result.get("scale_residual"))
         except (TypeError, ValueError):
             return
-        if not (math.isfinite(alt) and alt > 5.0):
+        if not (math.isfinite(alt) and alt > 5.0) or int(result.get("inliers") or 0) < self.alt_min_inliers:
             return
+        prev, self._alt_candidate = self._alt_candidate, (alt, time.time())
+        if prev is None or time.time() - prev[1] > 10.0 or abs(alt - prev[0]) > 0.05 * prev[0]:
+            return                                          # not confirmed yet
         r = Range()
         r.header.stamp = exposure_stamp(meta, self.get_clock().now().to_msg())
         r.header.frame_id = "day_camera_link"
