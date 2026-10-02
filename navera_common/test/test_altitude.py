@@ -82,3 +82,27 @@ def test_after_gps_loss_without_image_the_last_height_is_held():
     assert agl == 150.0 and src == "GPS - ground (held)"
     assert sigma == pytest.approx((10.0 ** 2 + 37.5 ** 2) ** 0.5 + 0.5 * 60.0)
     assert a.estimate(400.0) is None                # held too long: unknown
+
+
+def test_restart_in_the_air_uses_the_ground_saved_before():
+    saved = []
+    a = AltitudeEstimator(on_ground=saved.append)
+    a.add_gps(0.0, 40.0, 35.80, 10.60)                       # power-on on the ground
+    assert saved == [dict(altitude_m=40.0, lat=35.80, lon=10.60)]
+    b = AltitudeEstimator(saved_ground=saved[0])             # restarted at 150 m above it
+    b.add_gps(500.0, 190.0, 35.81, 10.61)
+    assert b.ground == 40.0 and b.ground_source == "saved ground (restart)"
+    assert b.estimate(500.0)[0] == 150.0
+    c = AltitudeEstimator(saved_ground=saved[0])             # another site: not reused
+    c.add_gps(500.0, 300.0, 36.50, 10.10)
+    assert c.ground == 300.0 and c.ground_source == "first GPS fix"
+
+
+def test_ground_from_gps_and_height_above_home_even_in_the_air():
+    a = AltitudeEstimator()
+    a.add_relative(10.0, 120.0)
+    a.add_gps(10.0, 165.0, 35.8, 10.6)                       # NAVERA started at 120 m
+    assert a.ground == 45.0 and a.ground_source == "GPS - height above home"
+    a.add_gps(20.0, 175.0, 35.8, 10.6)
+    a.add_relative(20.0, 130.0)
+    assert a.ground == 45.0

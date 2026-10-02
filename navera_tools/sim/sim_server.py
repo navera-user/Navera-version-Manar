@@ -549,6 +549,8 @@ class Simulator(Node):
         if self.mission_thread:
             self.mission_thread.join(timeout=20)
         self._abort.clear()
+        # what the nodes remember across a restart (state_store) belongs to one mission
+        shutil.rmtree(os.environ["NAVERA_STATE_DIR"], ignore_errors=True)
         self.cfg.update(cfg)
         self.series.clear()
         self.mission_thread = threading.Thread(target=self._mission, daemon=True)
@@ -1127,6 +1129,7 @@ def main():
     os.makedirs(work, exist_ok=True)
     kill_leftover_nodes()
     rclpy.init()
+    os.environ["NAVERA_STATE_DIR"] = os.path.join(work, "state")     # inherited by every node
     sim = Simulator(work, os.environ["NAVERA_MBTILES"], os.environ.get("NAVERA_ARDUPILOT", "~/ardupilot"))
     port = int(os.environ.get("NAVERA_SIM_PORT", "8190"))
     srv = serve(sim, "0.0.0.0", port)

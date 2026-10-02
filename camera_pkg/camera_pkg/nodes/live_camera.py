@@ -30,6 +30,7 @@ import time
 
 import numpy as np
 import rclpy
+from navera_common import state_store
 from navera_common.altitude import AltitudeEstimator
 from navera_common.camera_model import CameraModel
 from navera_common.frame_builder import FrameBuilder
@@ -101,9 +102,13 @@ class LiveCamera(Node):
         self.measured_sigma_m = float(p("measured_altitude_sigma_m"))
         self.att = History(maxlen=4000, max_gap_s=0.2, interp=slerp)
         self._last_q, self._same, self._frozen_n = None, 0, 50     # 1 s at 50 Hz
+        self._tilt_log = []                     # (time, too tilted) of the last minute's frames
         self.gps = History(maxlen=600, max_gap_s=1.5)
         g = float(p("ground_altitude_m"))
-        self.alt = AltitudeEstimator(ground_altitude_m=g if math.isfinite(g) else None)
+        # the ground taken at power-on survives a restart of this service (12 h, same site)
+        self.alt = AltitudeEstimator(ground_altitude_m=g if math.isfinite(g) else None,
+                                     saved_ground=state_store.load("ground", 12 * 3600.0),
+                                     on_ground=lambda d: state_store.save("ground", d))
 
         qos_img = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE, history=HistoryPolicy.KEEP_LAST)
         self.pub_img = self.create_publisher(Image, "image_raw", qos_img)
@@ -185,10 +190,10 @@ class LiveCamera(Node):
         if m.status.status >= NavSatStatus.STATUS_FIX and math.isfinite(m.latitude):
             t = stamp_s(m.header.stamp)
             self.gps.add(t, (m.latitude, m.longitude))
-            self.alt.add_gps(t, m.altitude)
+            self.alt.add_gps(t, m.altitude, m.latitude, m.longitude)
 
     def _on_alt(self, m: Range):
-        if m.min_range <= m.range <= m.max_range:
+        if m.min_range < m.range < m.max_range:                 # at a limit = no echo (REP 117: ±inf)
             self.alt.add_measured(stamp_s(m.header.stamp), m.range, self.measured_sigma_m)
 
     def _on_vision_alt(self, m: Range):

@@ -32,6 +32,7 @@ import time
 import cv2
 
 import rclpy
+from navera_common import state_store
 from navera_common.geo import dead_reckon, is_finite_latlon
 from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
@@ -64,6 +65,7 @@ GSD_M_PER_PX   = 0.967    # mesuré au diagnostic : tuile z17 = 248 m / 256 px
 FOOTPRINT_MULT = 3.0
 ALTITUDE_MULT  = 2.0
 R_MIN_M        = 400.0    # plancher : ~1 pas inter-frame (frames à ~480 m)
+ANCHOR_MEMORY_S = 300.0  # a saved position older than this is not reused after a restart
 R_MAX_M        = 600.0    # PLAFOND décisif : garde R dans la bande validée
 
 # ── source contract for navera_estimator (additive; see step 4) ──────────────
@@ -187,6 +189,15 @@ class DaySubscriber(Node):
         self._anchor_time = None   # wall-clock (time.time()) of last retained frame
         self._last_measured_time = None   # wall-clock of the last MEASURED/known fix
         self._rejects_in_row     = 0
+        self._anchor_saved_at    = 0.0
+        # restarted (in flight): start from the last position this node was sure of, if
+        # recent — the search circle grows with its age like after any gap
+        saved = state_store.load("day_anchor", ANCHOR_MEMORY_S)
+        if saved is not None and is_finite_latlon(saved.get("lat"), saved.get("lon")):
+            self._anchor_lat, self._anchor_lon = float(saved["lat"]), float(saved["lon"])
+            self._anchor_time = self._last_measured_time = float(saved["saved_at"])
+            self.get_logger().warn(f"[day] restart: last known position {time.time() - saved['saved_at']:.0f} s "
+                                   f"ago reused as the search centre")
 
         # ── Banner (PRE-load) ──────────────────────────────────
         self.get_logger().info("=" * 60)
@@ -336,6 +347,7 @@ class DaySubscriber(Node):
             self._anchor_time = time.time()
             self._last_measured_time = self._anchor_time
             self._rejects_in_row = 0
+            self._remember_anchor()
 
     def on_start_cmd(self, msg: Bool):
         """Mission stop/rewind → forget the previous run's track (the next run
@@ -344,6 +356,7 @@ class DaySubscriber(Node):
             return
         self._anchor_lat = self._anchor_lon = self._anchor_time = None
         self._last_measured_time = None
+        state_store.save("day_anchor", {"lat": None, "lon": None})   # forgotten too
         self._rejects_in_row = 0
         self.get_logger().info("[day] mission rewind — tracking state reset")
 
@@ -643,6 +656,12 @@ class DaySubscriber(Node):
             R = min(max(R, grown), max(R, self.local_max_radius_m))
         return (self._anchor_lat, self._anchor_lon), R
 
+    def _remember_anchor(self):
+        """Persist the anchor (at most once a second) for a restart in flight."""
+        if time.time() - self._anchor_saved_at >= 1.0 and self._anchor_lat is not None:
+            self._anchor_saved_at = time.time()
+            state_store.save("day_anchor", {"lat": self._anchor_lat, "lon": self._anchor_lon})
+
     def _heading_for_match(self, meta):
         """The frame top's azimuth when the live camera measured it (straightened frames),
         else None (no rotation check)."""
@@ -851,6 +870,7 @@ class DaySubscriber(Node):
             self._anchor_lat, self._anchor_lon, self._anchor_time = out_lat, out_lon, t_now
             self._last_measured_time = t_now
             self._rejects_in_row = 0
+            self._remember_anchor()
             if src == "local_match":
                 self._publish_vision_altitude(meta, result, status)
             self._emit_fix(now, seq_id, out_lat, out_lon, meta, status, src, score, jump_m, reason)

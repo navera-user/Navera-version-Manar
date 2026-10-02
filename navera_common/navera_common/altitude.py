@@ -16,8 +16,9 @@ Sources, best first:
 `estimate(t)` returns (agl_m, sigma_m, source) or None.
 """
 import math
-from typing import Dict, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
+from navera_common.geo import haversine_m
 from navera_common.sensor_history import History
 
 REF_LABEL = {"vehicle": "vehicle altitude above home", "gps": "GPS - ground"}
@@ -28,9 +29,14 @@ class AltitudeEstimator:
     def __init__(self, ground_altitude_m: Optional[float] = None, gps_sigma_m: float = 10.0,
                  relative_sigma_m: float = 3.0, terrain_fraction: float = 0.25,
                  measured_timeout_s: float = 1.0, vision_hold_s: float = 120.0,
-                 vision_drift_mps: float = 0.5, ref_hold_s: float = 300.0):
+                 vision_drift_mps: float = 0.5, ref_hold_s: float = 300.0,
+                 saved_ground: Optional[dict] = None, on_ground: Optional[Callable[[dict], None]] = None):
+        """saved_ground: {altitude_m, lat, lon} written by a previous run (on_ground is
+        called with that dict whenever the ground altitude is (re)determined): reused after
+        a restart in the same place — in the air the first fix is NOT the ground."""
         self.ground = ground_altitude_m if ground_altitude_m is not None and math.isfinite(ground_altitude_m) else None
         self.ground_source = "configured" if self.ground is not None else None
+        self._saved_ground, self._on_ground = saved_ground, on_ground
         self.gps = History(max_gap_s=1.5)              # GPS altitude above the ellipsoid
         self.relative = History(max_gap_s=1.5)         # vehicle height above its home
         self.measured = History(max_gap_s=measured_timeout_s)
@@ -44,16 +50,39 @@ class AltitudeEstimator:
         self.ref_hold_s = ref_hold_s
         self._vision: Optional[Tuple[float, float, float, Dict[str, float]]] = None  # t, agl, sigma, refs at t
 
-    def add_gps(self, t: float, altitude_m: float) -> None:
+    def add_gps(self, t: float, altitude_m: float, lat: Optional[float] = None,
+                lon: Optional[float] = None) -> None:
         if not math.isfinite(altitude_m):
             return
-        if self.ground is None:                         # power-on on the ground
-            self.ground, self.ground_source = altitude_m, "first GPS fix"
         self.gps.add(t, altitude_m)
+        if self._ground_from_home(t):
+            return
+        if self.ground is None:
+            s = self._saved_ground
+            if s is not None and lat is not None and lon is not None and \
+                    haversine_m(lat, lon, s["lat"], s["lon"]) < 2000.0:
+                # a restart (in the air or not) near where the ground was taken
+                self.ground, self.ground_source = float(s["altitude_m"]), "saved ground (restart)"
+            else:                                       # power-on on the ground
+                self.ground, self.ground_source = altitude_m, "first GPS fix"
+                if self._on_ground and lat is not None and lon is not None:
+                    self._on_ground(dict(altitude_m=altitude_m, lat=lat, lon=lon))
 
     def add_relative(self, t: float, height_above_home_m: float) -> None:
         if math.isfinite(height_above_home_m):
             self.relative.add(t, height_above_home_m)
+            self._ground_from_home(t)
+
+    def _ground_from_home(self, t: float) -> bool:
+        """With the vehicle's height above its home AND a GPS altitude at the same instant,
+        the home ground is GPS - height, right even when NAVERA starts in the air."""
+        if self.ground_source == "configured":
+            return False
+        g, r = self.gps.at(t), self.relative.at(t)
+        if g is None or r is None:
+            return False
+        self.ground, self.ground_source = g - r, "GPS - height above home"
+        return True
 
     def add_measured(self, t: float, agl_m: float, sigma_m: float = 1.0) -> None:
         if math.isfinite(agl_m) and agl_m > 0:
