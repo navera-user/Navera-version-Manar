@@ -261,6 +261,31 @@ FEAT-2. **Update — with local feature matching** (same flight): 147 matches, 0
 autopilot held 230 s (end of test); see Day vision. (A first ±500 m run was discarded: an orphan estimator from the simulator was
 competing with the real one — fixed in 6bff3d6.)
 
+## Real camera chain in simulation (2026-10-02)
+
+The simulated camera is now physical (`navera_tools/sim/physical_camera.py`): fisheye
+lens of the Insta360 4K wide-angle class, the TRUE attitude from ArduPilot's flight
+physics, the mission's light, motion blur, noise, JPEG. Its raw frames go through
+NAVERA's real `live_camera` (undistortion, straightening with the simulated BNO085 —
+biased — or the autopilot's attitude, height above ground) to the real day vision.
+GPS jammed 240 s at cruise, Sousse, Jetson heavily loaded by another simulation:
+
+| Configuration | Matches | Vision error | Autopilot's error | Outcome |
+|---|---|---|---|---|
+| gimbal, 72 km/h, box sensors | 190, 0 rejected | < 1 m | median 11 m, max 23 m | arrived |
+| gimbal, 72 km/h, vehicle sensors (MAVLink) | 168, 0 rejected | < 1 m | median 10 m, max 19 m | arrived |
+| fixed camera, 43 km/h | frames at the 45° tilt limit | — | — | EKF failsafe after 40 s |
+
+Offline, 33 places, random tilts ≤ 12°, heights 120–250 m, IMU bias 0.3°/1.5°
+(`navera_tools/bench/camera_chain.py`): straightened 33/33 within 2.6 m (median 1.1 m);
+without straightening (the former nadir assumption) median 28 m, 1 wrong. Forward tilts
+25 / 35 / 45°: 33 / 33 / 31 of 33. Wrong altitude by +40 % (hills): 0/33 before the
+altitude-uncertainty window, 27/33 after (`navera_tools/bench/day_wrong_altitude.py`,
+real aerial frames), the measured height within 0.4 % of the truth.
+
+**Optimistic:** the simulated camera sees the map's own imagery over flat ground. A
+fixed camera on a multirotor at speed exceeds the tilt limit: use a gimbal.
+
 ## Hardware results recorded in the project report (2026-06-02)
 
 The final project report (`rapport_vFinal_Navera.pdf`, 83 pages, found deleted on the data disk)

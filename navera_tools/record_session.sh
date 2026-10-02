@@ -27,7 +27,11 @@ topics=(
   /navera/sensors/rtc_time /navera/sensors/rtc_status
   /navera/estimate/gps /navera/estimate/day /navera/estimate/night /navera/estimate/cn
   /navera/position /navera/nav_status
-  "/$ns/image_raw" "/$ns/frame_meta" "/$ns/frame_done" "/$ns/camera/start"
+  "/$ns/image_raw" "/$ns/frame_meta" "/$ns/frame_done" "/$ns/camera/start" "/$ns/camera_info"
+  /navera/vision/altitude_agl /navera/sensors/altitude_agl
+  /navera/vehicle/imu /navera/vehicle/altitude_agl /navera/vehicle/relative_alt
+  /navera/vehicle/gps2 /navera/vehicle/status /navera/fix
+  /day/day_status /night/night_status /cn/cn_status
 )
 echo "recording ${#topics[@]} topics to $out (camera: /$ns) — Ctrl-C to stop"
 exec ros2 bag record -o "$out" "${topics[@]}"
