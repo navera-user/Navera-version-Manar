@@ -37,7 +37,8 @@ def test_after_gps_loss_the_image_height_is_held_with_growing_uncertainty():
     a.add_vision(10.0, 150.0, 3.0)
     agl, sigma, src = a.estimate(40.0)              # GPS silent since t=10
     assert agl == 150.0 and src == "image (held)" and sigma == pytest.approx(3.0 + 0.5 * 30)
-    assert a.estimate(200.0) is None                # too old: unknown
+    assert a.estimate(200.0)[2] == "GPS - ground (held)"   # image too old: the held GPS height
+    assert a.estimate(400.0) is None                # everything too old: unknown
 
 
 def test_a_measured_height_wins_while_fresh():
@@ -71,3 +72,13 @@ def test_vehicle_altitude_above_home_without_image():
     agl, sigma, src = a.estimate(5.0)
     assert agl == 120.0 and src == "vehicle altitude above home"
     assert sigma == pytest.approx((3.0 ** 2 + 30.0 ** 2) ** 0.5)
+
+
+def test_after_gps_loss_without_image_the_last_height_is_held():
+    a = AltitudeEstimator()
+    a.add_gps(0.0, 50.0)
+    a.add_gps(10.0, 200.0)                          # then jammed
+    agl, sigma, src = a.estimate(70.0)
+    assert agl == 150.0 and src == "GPS - ground (held)"
+    assert sigma == pytest.approx((10.0 ** 2 + 37.5 ** 2) ** 0.5 + 0.5 * 60.0)
+    assert a.estimate(400.0) is None                # held too long: unknown

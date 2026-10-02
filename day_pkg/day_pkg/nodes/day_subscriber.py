@@ -141,6 +141,9 @@ class DaySubscriber(Node):
         declare_float(self, "local_scale_tol_max", 0.5)
         # heights above ground measured by local matches (the camera uses them)
         self.declare_parameter("vision_altitude_topic", "/navera/vision/altitude_agl")
+        # while GPS is trusted, match one frame this often at the GPS position: the
+        # height above ground is then known (measured) when GPS is lost. 0 = off.
+        declare_float(self, "altitude_calibration_period_s", 10.0)
         # Stated accuracy (1 sigma, m) of a local match. Benchmark median 4 m on aerial frames
         # from another source; NOT yet measured with NAVERA's camera: stated conservatively.
         declare_float(self, "local_sigma_m", 30.0)
@@ -201,6 +204,8 @@ class DaySubscriber(Node):
         self.local_sigma_m = float(self.get_parameter("local_sigma_m").value)
         self.local_max_radius_m = float(self.get_parameter("local_max_radius_m").value)
         self.local_scale_tol_max = float(self.get_parameter("local_scale_tol_max").value)
+        self.calib_period_s = float(self.get_parameter("altitude_calibration_period_s").value)
+        self._last_calib = 0.0
         self.local = None
         if self.matcher_mode == "local":
             self.local = LocalMatcher(IMAGES_DIR,
@@ -387,6 +392,7 @@ class DaySubscriber(Node):
                     if self._anchor_lat is not None else None,
                     "reason": "GPS valid — vision idle, tracking GPS as prior"})))
                 self._prewarm(img, meta)
+                self._calibrate_altitude(seq_id, img, meta)
                 return
             center, R = self._spatial_window(img, meta)
             if center is not None:
@@ -488,6 +494,24 @@ class DaySubscriber(Node):
             alat, alon = lat + (lat - prev[0]) * k, lon + (lon - prev[1]) * k
         margin = 0.5 * math.hypot(*img_shape[:2]) * mpp if img_shape and mpp else 300.0
         self.local.tiles.prefetch(alat, alon, R_MAX_M + margin)
+
+    def _calibrate_altitude(self, seq_id, img, meta):
+        """GPS trusted: every calib_period_s, match this frame around the GPS position and
+        publish the height above ground it measures — never a position."""
+        if self.local is None or self.calib_period_s <= 0 or time.time() - self._last_calib < self.calib_period_s:
+            return
+        prior = self._gps_prior.fresh()
+        mpp, _ = self._frame_m_per_px(img, meta)
+        if prior is None or mpp is None:
+            return
+        self._last_calib = time.time()
+        res = self.local.locate(img, prior, 150.0, mpp, scale_tol=self._scale_tol(meta))
+        if res.get("accepted"):
+            st = {}
+            self._publish_vision_altitude(meta, res, st)
+            self.get_logger().info(f"[day] height above ground calibrated while GPS is good: "
+                                   f"{st.get('altitude_measured_m')} m (frame said {meta.get('altitude_m')} m, "
+                                   f"{res.get('inliers')} inliers)", throttle_duration_sec=30.0)
 
     def _prewarm(self, img, meta):
         """While GPS is trusted, vision is idle: compute the map features around the current

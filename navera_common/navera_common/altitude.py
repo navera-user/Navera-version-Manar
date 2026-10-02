@@ -28,7 +28,7 @@ class AltitudeEstimator:
     def __init__(self, ground_altitude_m: Optional[float] = None, gps_sigma_m: float = 10.0,
                  relative_sigma_m: float = 3.0, terrain_fraction: float = 0.25,
                  measured_timeout_s: float = 1.0, vision_hold_s: float = 120.0,
-                 vision_drift_mps: float = 0.5):
+                 vision_drift_mps: float = 0.5, ref_hold_s: float = 300.0):
         self.ground = ground_altitude_m if ground_altitude_m is not None and math.isfinite(ground_altitude_m) else None
         self.ground_source = "configured" if self.ground is not None else None
         self.gps = History(max_gap_s=1.5)              # GPS altitude above the ellipsoid
@@ -39,6 +39,9 @@ class AltitudeEstimator:
         self.sigma = {"gps": gps_sigma_m, "vehicle": relative_sigma_m}
         self.terrain_fraction = terrain_fraction
         self.vision_hold_s, self.vision_drift_mps = vision_hold_s, vision_drift_mps
+        # a reference that stops (GPS jammed, box without barometer) is held: vehicles
+        # mostly keep their altitude; the uncertainty grows like an image height held
+        self.ref_hold_s = ref_hold_s
         self._vision: Optional[Tuple[float, float, float, Dict[str, float]]] = None  # t, agl, sigma, refs at t
 
     def add_gps(self, t: float, altitude_m: float) -> None:
@@ -86,4 +89,22 @@ class AltitudeEstimator:
             if kind in refs:
                 agl = refs[kind]
                 return agl, math.hypot(self.sigma[kind], self.terrain_fraction * abs(agl)), REF_LABEL[kind]
+        held = self._held_ref(t)
+        if held is not None:
+            agl, age, kind = held
+            sigma = math.hypot(self.sigma[kind], self.terrain_fraction * abs(agl)) + self.vision_drift_mps * age
+            return agl, sigma, REF_LABEL[kind] + " (held)"
         return None
+
+    def _held_ref(self, t: float):
+        """The last reference value before t, if not older than ref_hold_s."""
+        best = None
+        for kind, hist, offset in (("vehicle", self.relative, 0.0),
+                                   ("gps", self.gps, self.ground if self.ground is not None else None)):
+            last = hist.latest()
+            if last is None or offset is None or not (0.0 <= t - last[0] <= self.ref_hold_s):
+                continue
+            cand = (last[1] - offset, t - last[0], kind)
+            if best is None or cand[1] < best[1]:
+                best = cand
+        return best
