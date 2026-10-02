@@ -357,8 +357,9 @@ class EstimatorNode(Node):
                               (self._cn_last, self._cn_timeout)):
             _, eligible, _ = self._eval_source(now, last, timeout)
             if not eligible or last.position_covariance_type == \
-                    PositionEstimate.COVARIANCE_TYPE_UNKNOWN:
-                continue
+                    PositionEstimate.COVARIANCE_TYPE_UNKNOWN \
+                    or last.mode != PositionEstimate.MODE_MEASURED:
+                continue                   # a propagated position partly comes from GPS itself
             sigma = math.sqrt(max(last.position_covariance[0], last.position_covariance[4]))
             t_ref = self._measured_at(last)
             self._last_ref_at = now

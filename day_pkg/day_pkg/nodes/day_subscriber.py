@@ -33,7 +33,8 @@ import cv2
 
 import rclpy
 from navera_common import state_store
-from navera_common.geo import dead_reckon, is_finite_latlon
+from navera_common.geo import is_finite_latlon
+from navera_common.track import TrackVelocity
 from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
 from navera_common.pairing import FramePairer, exposure_stamp, stamp_ns
@@ -118,7 +119,11 @@ class DaySubscriber(Node):
         # confine the search forever.
         self.declare_parameter("max_consecutive_rejects", 3)
         # Dead-reckoning from the last accepted fix is only published for this long.
-        declare_float(self, "max_dead_reckon_s", 30.0)
+        # without a match, the last measured position is carried along the velocity of the
+        # last measured fixes (turned by the IMU heading change) this long, while its stated
+        # uncertainty stays under dead_reckon_max_sigma_m
+        declare_float(self, "max_dead_reckon_s", 120.0)
+        declare_float(self, "dead_reckon_max_sigma_m", 500.0)
         # Whole-map search (no prior). Measured on labelled frames: 12 % within
         # 300 m, and the similarity score does not separate good matches from
         # bad ones (docs/VALIDATION_STATUS.md). Off: without a prior (GPS fix or
@@ -171,6 +176,10 @@ class DaySubscriber(Node):
         self.antijump_enabled    = bool(self.get_parameter("antijump_enabled").value)
         self.max_consecutive_rejects = int(self.get_parameter("max_consecutive_rejects").value)
         self.max_dead_reckon_s   = float(self.get_parameter("max_dead_reckon_s").value)
+        self.dr_max_sigma_m      = float(self.get_parameter("dead_reckon_max_sigma_m").value)
+        self.track = TrackVelocity()           # measured fixes -> ground velocity
+        self._track_heading = None             # frame heading (IMU) at the last measured fix
+        self._dr_sigma = None
         self.allow_global_search = bool(self.get_parameter("allow_global_search").value)
         self.max_speed_mps = float(self.get_parameter("max_speed_mps").value)
         self.gate_margin_m = float(self.get_parameter("gate_margin_m").value)
@@ -348,6 +357,9 @@ class DaySubscriber(Node):
             self._last_measured_time = self._anchor_time
             self._rejects_in_row = 0
             self._remember_anchor()
+            cov = list(msg.position_covariance)
+            self.track.add(self._anchor_time, msg.latitude, msg.longitude,
+                           math.sqrt(max(cov[0], cov[4])) if cov[0] > 0 else 5.0)
 
     def on_start_cmd(self, msg: Bool):
         """Mission stop/rewind → forget the previous run's track (the next run
@@ -356,6 +368,7 @@ class DaySubscriber(Node):
             return
         self._anchor_lat = self._anchor_lon = self._anchor_time = None
         self._last_measured_time = None
+        self.track.reset()
         state_store.save("day_anchor", {"lat": None, "lon": None})   # forgotten too
         self._rejects_in_row = 0
         self.get_logger().info("[day] mission rewind — tracking state reset")
@@ -406,9 +419,12 @@ class DaySubscriber(Node):
                 return
             # A live frame the camera could not use (e.g. too tilted): say why, no inference.
             if meta.get("usable") is False:
+                why = meta.get("reason") or "frame marked unusable by the camera"
+                if self._gps_prior.fresh() is None and \
+                        self._dead_reckon(self.get_clock().now().to_msg(), seq_id, meta, {}, 0.0, why):
+                    return
                 self.pub_status.publish(String(data=json.dumps({
-                    "frame_id": seq_id, "success": False, "source": "unusable",
-                    "reason": meta.get("reason") or "frame marked unusable by the camera"})))
+                    "frame_id": seq_id, "success": False, "source": "unusable", "reason": why})))
                 return
             # GPS just stopped being trusted: if our own last independent fix disagrees with
             # the last GPS position (a spoofed GPS dragged the anchor away), start from ours
@@ -546,6 +562,8 @@ class DaySubscriber(Node):
                                    f"{d:.0f} m from the last GPS position (GPS was drifting)")
             self._anchor_lat, self._anchor_lon, self._anchor_time = c[0], c[1], c[2]
             self._last_measured_time = c[2]
+            self.track.reset()                      # its GPS points were the spoofed ones
+            self.track.add(c[2], c[0], c[1], self.local_sigma_m)
 
     def _calibrate_altitude(self, seq_id, img, meta):
         """GPS trusted: every gps_check_period_s, match this frame within gps_check_radius_m
@@ -656,6 +674,36 @@ class DaySubscriber(Node):
             R = min(max(R, grown), max(R, self.local_max_radius_m))
         return (self._anchor_lat, self._anchor_lon), R
 
+    def _dead_reckon(self, now, seq_id, meta, status, score, why) -> bool:
+        """No measurement this frame: publish the last measured position carried along the
+        measured track (PROPAGATED, with its growing stated uncertainty). False, with
+        self._dr_why set, when it cannot be done honestly."""
+        t_now = time.time()
+        t_last = self.track.last_time()
+        if t_last is None:
+            self._dr_why = "no measured track to continue"
+            return False
+        if t_now - t_last > self.max_dead_reckon_s:
+            self._dr_why = f"dead-reckoning limit {self.max_dead_reckon_s:.0f}s reached"
+            return False
+        turn = 0.0
+        h = self._heading_for_match(meta)
+        if h is not None and self._track_heading is not None:
+            turn = (h - self._track_heading + 180.0) % 360.0 - 180.0
+        p = self.track.propagate(t_now, turn)
+        if p is None:
+            self._dr_why = "velocity unknown (too few measured fixes), cannot dead-reckon"
+            return False
+        lat, lon, sigma = p
+        if sigma > self.dr_max_sigma_m:
+            self._dr_why = f"dead-reckoning uncertainty {sigma:.0f} m > {self.dr_max_sigma_m:.0f} m"
+            return False
+        self._anchor_lat, self._anchor_lon, self._anchor_time = lat, lon, t_now
+        self._dr_sigma = sigma
+        self._emit_fix(now, seq_id, lat, lon, meta, status, "dead_reckon", score, None,
+                       reason=f"{why}; carried {t_now - t_last:.0f} s, ±{sigma:.0f} m")
+        return True
+
     def _remember_anchor(self):
         """Persist the anchor (at most once a second) for a restart in flight."""
         if time.time() - self._anchor_saved_at >= 1.0 and self._anchor_lat is not None:
@@ -762,9 +810,10 @@ class DaySubscriber(Node):
         # same trap as null-island. Absent altitude_m must be NaN, never 0.0.
         _alt = meta.get("altitude_m")
         est.altitude  = float(_alt) if _alt is not None else math.nan
-        if src == "local_match" and valid:
-            # stated, not measured with NAVERA's camera: local_sigma_m (conservative)
-            var = self.local_sigma_m ** 2
+        if src in ("local_match", "dead_reckon") and valid:
+            # stated, not measured with NAVERA's camera: local_sigma_m (conservative);
+            # dead-reckoning: that plus the growth along the track (TrackVelocity)
+            var = (self.local_sigma_m if src == "local_match" else self._dr_sigma) ** 2
             est.position_covariance = [var, 0.0, 0.0, 0.0, var, 0.0, 0.0, 0.0, 0.0]
             est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_APPROXIMATED
         else:
@@ -872,6 +921,10 @@ class DaySubscriber(Node):
             self._rejects_in_row = 0
             self._remember_anchor()
             if src == "local_match":
+                ns = meta.get("image_stamp_ns")         # the photo's instant, not the processing's
+                self.track.add(int(ns) / 1e9 if ns else t_now, out_lat, out_lon, self.local_sigma_m)
+                self._track_heading = self._heading_for_match(meta)
+            if src == "local_match":
                 self._publish_vision_altitude(meta, result, status)
             self._emit_fix(now, seq_id, out_lat, out_lon, meta, status, src, score, jump_m, reason)
             return
@@ -891,25 +944,8 @@ class DaySubscriber(Node):
             why = (result.get("reason") if result.get("matcher") == "local" and result.get("reason")
                    else f"score {score:.2f} < {self.conf_threshold:.2f}")
 
-        propagated = None
-        if (self._anchor_lat is not None and self._last_measured_time is not None
-                and t_now - self._last_measured_time <= self.max_dead_reckon_s):
-            propagated = dead_reckon(self._anchor_lat, self._anchor_lon,
-                                     meta.get("heading_deg"), meta.get("speed_mps"),
-                                     t_now - self._anchor_time)
-        if propagated is not None:
-            self._anchor_lat, self._anchor_lon = propagated
-            self._anchor_time = t_now
-            self._emit_fix(now, seq_id, propagated[0], propagated[1], meta, status,
-                           "dead_reckon", score, None, reason=why)
-        else:
-            if self._anchor_lat is None:
-                why += "; no previous fix"
-            elif t_now - (self._last_measured_time or t_now) > self.max_dead_reckon_s:
-                why += f"; dead-reckoning limit {self.max_dead_reckon_s:.0f}s reached"
-            else:
-                why += "; heading/speed unknown, cannot dead-reckon"
-            self._publish_no_fix(now, seq_id, meta, status, score, why)
+        if not self._dead_reckon(now, seq_id, meta, status, score, why):
+            self._publish_no_fix(now, seq_id, meta, status, score, why + "; " + self._dr_why)
 
         if (self._anchor_lat is not None and self._rejects_in_row >= self.max_consecutive_rejects
                 and self.local is None):           # local matching widens its search instead
