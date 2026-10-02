@@ -64,6 +64,13 @@ def generate_launch_description():
             'NAVERA_DAY_IMAGES_DIR', day_data)),
 
         # 1) Camera publisher (day namespace, test images)
+        # NAVERA_CAMERA=live: the real camera (camera_pkg live.launch.py, settings in
+        # navera.env); otherwise the replay camera below (recorded frames).
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(os.path.join(camera_share, 'launch', 'live.launch.py')),
+            launch_arguments={'camera_type': 'day', 'ns': 'day',
+                              'ready_topic': '/day/localizer_ready'}.items(),
+        ) if os.environ.get('NAVERA_CAMERA', 'replay') == 'live' else
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(camera_share, 'launch', 'day.launch.py')

@@ -1,0 +1,21 @@
+[Unit]
+Description=NAVERA vehicle link (the autopilot's attitude, rangefinder, barometer over MAVLink)
+After=local-fs.target
+StartLimitIntervalSec=0
+
+[Service]
+EnvironmentFile=-/etc/navera/navera.env
+# Settings written by the web page (/mission), loaded after navera.env which they override.
+EnvironmentFile=-/var/lib/navera/settings.env
+Type=simple
+User=navera
+Group=navera
+# serial links to the autopilot are root:dialout 0660 on JetPack
+SupplementaryGroups=dialout
+WorkingDirectory=/home/navera/isaac_ros_common
+ExecStart=/home/navera/navera_boot_vehicle_link.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

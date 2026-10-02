@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Integration test: sensor_sim GPS -> estimator -> vehicle_output -> "autopilot".
 
-The test plays the autopilot: it reads the NMEA stream from a pseudo-terminal
-and MAVLink GPS_INPUT from UDP. While GPS is simulated the output must be a fix
+The test plays the autopilot: it reads the NMEA stream from a pseudo-terminal,
+MAVLink GPS_INPUT from UDP and the ROS NavSatFix on /navera/fix. While GPS is simulated the output must be a fix
 at the simulated position; once GPS stops, the output must become "no fix"
 (never the last position repeated). Exit code 0 = pass.
 """
@@ -14,8 +14,14 @@ import subprocess
 import sys
 import time
 
+import threading
+
 import pynmea2
+import rclpy
 from pymavlink import mavutil
+from rclpy.executors import SingleThreadedExecutor
+from rclpy.node import Node
+from sensor_msgs.msg import NavSatFix, NavSatStatus
 
 UDP_PORT = 14577
 
@@ -74,6 +80,14 @@ def main():
                     "-p", f"nmea_port:={os.ttyname(slave)}",
                     "-p", f"mavlink_url:=udpout:127.0.0.1:{UDP_PORT}"])]
     sim = start([sys.executable, "navera_tools/sensor_sim.py"], env=env)
+    rclpy.init()
+    node = Node("vehicle_output_test")
+    ros_fix = []
+    node.create_subscription(NavSatFix, "/navera/fix", ros_fix.append, 50)
+    ex = SingleThreadedExecutor()
+    ex.add_node(node)
+    spinner = threading.Thread(target=ex.spin, daemon=True)
+    spinner.start()
     try:
         # 1) GPS simulated: expect fixes near the simulated circle (Sousse).
         deadline, fixes = time.time() + 30, []
@@ -88,6 +102,12 @@ def main():
         m = mav_in.recv_match(type="GPS_INPUT", blocking=True, timeout=5)
         if m is None or m.fix_type not in (2, 3) or abs(m.lat / 1e7 - 35.8288) > 0.02:
             failures.append(f"MAVLink GPS_INPUT fix wrong: {m}")
+        good = [f for f in ros_fix if f.status.status == NavSatStatus.STATUS_FIX]
+        if not good:
+            failures.append("no ROS fix on /navera/fix while GPS was simulated")
+        elif abs(good[-1].latitude - 35.8288) > 0.02 or \
+                good[-1].position_covariance_type == NavSatFix.COVARIANCE_TYPE_UNKNOWN:
+            failures.append(f"ROS fix wrong: {good[-1].latitude} cov type {good[-1].position_covariance_type}")
 
         # 2) GPS stops: within a few seconds the output must be "no fix".
         stop(sim)
@@ -100,11 +120,18 @@ def main():
         m = mav_in.recv_match(type="GPS_INPUT", blocking=True, timeout=3)
         if m is None or m.fix_type != 1 or m.lat != 0:
             failures.append(f"after GPS loss MAVLink still reports a position: {m}")
+        last = ros_fix[-1] if ros_fix else None
+        if last is None or last.status.status != NavSatStatus.STATUS_NO_FIX or not math.isnan(last.latitude):
+            failures.append("after GPS loss the ROS output still reports a position")
     finally:
         for p in procs + [sim]:
             if p.poll() is None:
                 stop(p)
         mav_in.close()
+        ex.shutdown()
+        spinner.join(timeout=5)
+        node.destroy_node()
+        rclpy.shutdown()
 
     for f in failures:
         print("FAIL", f)

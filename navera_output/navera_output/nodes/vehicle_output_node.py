@@ -7,7 +7,9 @@ an autopilot understands as a GPS:
 
   * NMEA 0183 (GGA + RMC) on a serial port — any system that takes a GPS
     receiver (drones, boats, ground robots);
-  * MAVLink GPS_INPUT — PX4 / ArduPilot with GPS_TYPE = MAV.
+  * MAVLink GPS_INPUT — PX4 / ArduPilot with GPS_TYPE = MAV;
+  * ROS: sensor_msgs/NavSatFix on ros_fix_topic (default /navera/fix), for vehicles
+    whose software runs on ROS — the same decision, accuracy as the covariance.
 
 What is sent, and when a position is NOT sent, is decided in
 navera_output.policy (see its docstring): FIX is a fix; DEGRADED is withheld
@@ -22,6 +24,7 @@ Parameters:
                                  "udpout:127.0.0.1:14550"; "" = disabled
     mavlink_system_id    (1)     MAVLink ids of this box (companion computer)
     mavlink_component_id (191)
+    ros_fix_topic        ("/navera/fix")  "" = disabled
     forward_degraded     (False) send DEGRADED positions as "estimated"
     degraded_sigma_m     (NaN)   accuracy stated for them (required if forwarded)
     max_forward_sigma_m  (1000)  a forwarded position coarser than this is withheld
@@ -51,6 +54,7 @@ import rclpy
 from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
 from geometry_msgs.msg import TwistStamped
+from sensor_msgs.msg import NavSatFix, NavSatStatus
 from navera_msgs.msg import NavStatus, PositionEstimate
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
@@ -75,6 +79,7 @@ class VehicleOutputNode(Node):
         declare_float(self, "gps_vel_timeout_s", 1.0)
         declare_float(self, "max_forward_sigma_m", 1000.0)
         self.declare_parameter("fix_type_without_alt", 3)
+        self.declare_parameter("ros_fix_topic", "/navera/fix")
         self._fix_type_without_alt = int(self.get_parameter("fix_type_without_alt").value)
         if self._fix_type_without_alt not in (2, 3):
             raise ValueError("fix_type_without_alt must be 2 or 3")
@@ -104,8 +109,10 @@ class VehicleOutputNode(Node):
             self._mav = mavutil.mavlink_connection(
                 url, source_system=int(self.get_parameter("mavlink_system_id").value),
                 source_component=int(self.get_parameter("mavlink_component_id").value))
-        if self._serial is None and self._mav is None:
-            self.get_logger().warn("no output enabled (nmea_port and mavlink_url are empty)")
+        topic = str(self.get_parameter("ros_fix_topic").value)
+        self._pub_fix = self.create_publisher(NavSatFix, topic, 10) if topic else None
+        if self._serial is None and self._mav is None and self._pub_fix is None:
+            self.get_logger().warn("no output enabled (nmea_port, mavlink_url and ros_fix_topic are empty)")
 
         self._status = None
         self._status_rx = None
@@ -121,7 +128,7 @@ class VehicleOutputNode(Node):
         self.create_subscription(TwistStamped, "/navera/sensors/gps_vel", self._on_gps_vel, 10)
         self.create_timer(1.0 / rate, self._tick)
         self.get_logger().info(
-            f"vehicle output: nmea={port or 'off'} mavlink={url or 'off'} rate={rate:.1f}Hz "
+            f"vehicle output: nmea={port or 'off'} mavlink={url or 'off'} ros={topic or 'off'} rate={rate:.1f}Hz "
             f"forward_degraded={self.cfg.forward_degraded}")
 
     def _on_status(self, msg: NavStatus) -> None:
@@ -172,10 +179,35 @@ class VehicleOutputNode(Node):
             if self._mav is not None:
                 self._mav.mav.gps_input_send(**mavlink_out.gps_input_fields(
                     out, t_utc, self._fix_type_without_alt))
+            if self._pub_fix is not None:
+                self._pub_fix.publish(self._navsatfix(out))
         except Exception as e:     # serial unplugged, socket error...
             self.get_logger().fatal(f"output failed: {e} — exiting so the service restarts")
             self.failed = True
             self.context.try_shutdown()
+
+
+    def _navsatfix(self, out) -> NavSatFix:
+        """The output decision as a ROS GPS message: a fix with its stated accuracy as the
+        covariance, or STATUS_NO_FIX with NaN position."""
+        f = NavSatFix()
+        f.header.stamp = self.get_clock().now().to_msg()
+        f.header.frame_id = "navera"
+        f.status.service = NavSatStatus.SERVICE_GPS
+        if out.kind == KIND_NONE:
+            f.status.status = NavSatStatus.STATUS_NO_FIX
+            f.latitude = f.longitude = f.altitude = math.nan
+            f.position_covariance_type = NavSatFix.COVARIANCE_TYPE_UNKNOWN
+            return f
+        f.status.status = NavSatStatus.STATUS_FIX
+        f.latitude, f.longitude, f.altitude = out.lat, out.lon, out.alt_ellipsoid_m
+        if math.isfinite(out.sigma_h_m):
+            v = out.sigma_v_m if math.isfinite(out.sigma_v_m) else 10.0 * out.sigma_h_m
+            f.position_covariance = [out.sigma_h_m ** 2, 0.0, 0.0, 0.0, out.sigma_h_m ** 2, 0.0, 0.0, 0.0, v ** 2]
+            f.position_covariance_type = NavSatFix.COVARIANCE_TYPE_DIAGONAL_KNOWN
+        else:
+            f.position_covariance_type = NavSatFix.COVARIANCE_TYPE_UNKNOWN
+        return f
 
 
 def main(args=None) -> None:

@@ -73,6 +73,13 @@ def generate_launch_description():
             default_value=os.environ.get('NAVERA_STHN_WEIGHTS', '/home/navera/isaac_ros_common/night_pkg/STHN/weights/one_stage/model.safetensors')),
 
         # 1) Camera publisher (thermal namespace, test images) — back-pressure + handshake
+        # NAVERA_CAMERA=live: the real camera (camera_pkg live.launch.py, settings in
+        # navera.env); otherwise the replay camera below (recorded frames).
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(os.path.join(camera_share, 'launch', 'live.launch.py')),
+            launch_arguments={'camera_type': 'thermal', 'ns': 'thermal',
+                              'ready_topic': '/night/localizer_ready'}.items(),
+        ) if os.environ.get('NAVERA_CAMERA', 'replay') == 'live' else
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(camera_share, 'launch', 'thermal.launch.py')
