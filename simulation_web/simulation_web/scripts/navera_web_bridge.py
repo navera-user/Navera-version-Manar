@@ -39,6 +39,7 @@ This bridge serves TWO surfaces with deliberately different sources:
     POST /api/mission/apply      → restart the running NAVERA units (token)
     POST /api/mission/plan       → {route:[[lat,lon],..]} or {mission_text:"..."} (token)
     POST /api/mission/generate | /cancel | /activate  → {id} (token)
+    POST /api/mission/save_mission | /delete_mission → {name, route} (token): named routes
     (any other GET)              → static file from the resources/ dir
 
 Run standalone (test the bridge alone, no camera/subscriber needed):
@@ -197,6 +198,7 @@ class NaveraWebBridge(Node):
         self._nav_status_rx = None
         self._position = None        # last winning PositionEstimate
         self._position_rx = None
+        self._armed, self._armed_rx = None, None   # from vehicle_link (/navera/vehicle/status)
 
         # ── Tile DB (lazy, read-only, thread-safe) ──────────────
         self._tiles = MBTilesReader(self.mbtiles_path, self.get_logger())
@@ -209,6 +211,7 @@ class NaveraWebBridge(Node):
         self.create_subscription(Bool, self.get_parameter("ready_topic").value,
                                  self._on_ready, ready_qos)
         self.create_subscription(NavSatFix, fix_topic,    self._on_fix,    10)
+        self.create_subscription(String, "/navera/vehicle/status", self._on_vehicle_status, 10)
 
         # ── ROS subscriptions: the arbiter's decision, for "/operator" ──
         # RELIABLE depth 10 — matches navera_estimator's publishers.
@@ -514,8 +517,27 @@ class NaveraWebBridge(Node):
                     site={k: os.environ.get(k, "") for k in mission_prep.SETTINGS},
                     control=bool(self._control_token), **jobs.state())
 
+    def _on_vehicle_status(self, msg):
+        try:
+            armed = json.loads(msg.data).get("armed")
+        except (ValueError, AttributeError):
+            return
+        self._armed, self._armed_rx = armed, time.monotonic()
+
+    def _in_flight_refusal(self):
+        now = time.monotonic()
+        armed = self._armed if self._armed_rx is not None and now - self._armed_rx < 5.0 else None
+        st = self._nav_status
+        state = (st.state if st is not None and self._nav_status_rx is not None
+                 and now - self._nav_status_rx < self._nav_status_timeout else None)
+        return mission_prep.in_flight_refusal(armed, state)
+
     def mission_action(self, action, d):
         jobs = self._mission_jobs()
+        if action in ("apply", "activate", "generate"):
+            why = self._in_flight_refusal()
+            if why:
+                raise ValueError(f"refused: {why}")
         if action == "settings":
             changes = d.get("changes")
             if not isinstance(changes, dict):
@@ -546,6 +568,10 @@ class NaveraWebBridge(Node):
             return {"ok": True}
         if action == "cancel":
             return {"ok": True, "cancelled": jobs.cancel()}
+        if action == "save_mission":
+            return {"ok": True, "missions": jobs.save_mission(d.get("name"), d.get("route"))}
+        if action == "delete_mission":
+            return {"ok": True, "missions": jobs.delete_mission(d.get("name"))}
         raise ValueError(f"unknown action: {action}")
 
     # ────────────────────────────────────────────────────────────

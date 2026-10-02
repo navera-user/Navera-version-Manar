@@ -260,6 +260,51 @@ def plan_tiles(mbtiles: str, route, buffer_m: float, zoom: int = 17, cache: str 
             "in_base": len(in_base), "in_cache": len(in_cache)}
 
 
+# a map tile with fewer SIFT keypoints than this cannot be matched (measured: sea and
+# uniform tiles 0, land 900-1600 at zoom 17)
+FEATURELESS_KEYPOINTS = 50
+
+
+def texture_profile(images_dir: str, route, zoom: int = 17, step_m: float = None):
+    """Where along the route the map has nothing to match (sea, lakes, uniform sand):
+    vision gives no position there and the vehicle flies on its own navigation.
+    Returns {"featureless_km", "longest_km", "stretches": [[from_km, to_km], ...],
+    "unknown_km"} — sampled on the route's centre line, one tile at a time."""
+    import cv2
+    sift = cv2.SIFT_create(contrastThreshold=0.02)
+    step = step_m or _tile_m(route, zoom) / 2.0
+    total = route_length_m(route)
+    memo, flags = {}, []
+    d = 0.0
+    while d <= total:
+        p, _ = point_along(route, d)
+        x, y = (int(v) for v in tile_xy(p[0], p[1], zoom))
+        if (x, y) not in memo:
+            g = cv2.imread(os.path.join(images_dir, f"tile_{zoom}_{x}_{y}.jpg"), cv2.IMREAD_GRAYSCALE)
+            if g is None:
+                memo[(x, y)] = None                         # tile missing from the map
+            elif g.std() > 25.0:                            # textured: no need to count
+                memo[(x, y)] = False
+            else:
+                memo[(x, y)] = len(sift.detect(g, None)) < FEATURELESS_KEYPOINTS
+        flags.append((d, memo[(x, y)]))
+        d += step
+    stretches, unknown, start = [], 0.0, None
+    for i, (d, f) in enumerate(flags):
+        if f is None:
+            unknown += step
+        if f and start is None:
+            start = d
+        if (not f or i == len(flags) - 1) and start is not None:
+            end = d if not f else min(d + step, total)
+            if end - start >= 200.0:
+                stretches.append([round(start / 1000, 2), round(end / 1000, 2)])
+            start = None
+    lengths = [b - a for a, b in stretches]
+    return {"featureless_km": round(sum(lengths), 2), "longest_km": round(max(lengths, default=0.0), 2),
+            "stretches": stretches[:50], "unknown_km": round(min(unknown, total) / 1000, 2)}
+
+
 def _progress(stage, done, total, **extra):
     print(json.dumps(dict(stage=stage, done=done, total=total, **extra)), flush=True)
 
@@ -364,7 +409,10 @@ def prepare(mbtiles, out_dir, route, buffer_m, zoom=17, fetch_url=None, cache=No
     np.savez(os.path.join(tmp, "descriptors_cache.npz"),
              dinov2_descriptors=np.array(descs, dtype=np.float32),
              coords=np.array(coords, dtype=float), valid_indices=np.array(valid))
+    _progress("terrain", 0, 1)
+    terrain = texture_profile(os.path.join(tmp, "images"), densify_route(route), zoom)
     info = {"route": route, "buffer_m": buffer_m, "zoom": zoom, "mbtiles": os.path.abspath(source),
+            "terrain": terrain,
             "tiles": len(plan["needed"]), "prepared": len(valid),
             "missing": plan["missing"], "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "build_s": round(time.time() - t0, 1), "device": device}
@@ -373,7 +421,7 @@ def prepare(mbtiles, out_dir, route, buffer_m, zoom=17, fetch_url=None, cache=No
     shutil.rmtree(out_dir, ignore_errors=True)
     os.replace(tmp, out_dir)
     _progress("done", len(valid), len(plan["needed"]), missing=len(plan["missing"]),
-              build_s=info["build_s"])
+              build_s=info["build_s"], terrain=terrain)
     return info
 
 

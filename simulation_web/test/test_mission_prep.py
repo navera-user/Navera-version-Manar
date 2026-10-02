@@ -132,3 +132,52 @@ def test_a_failed_restart_is_reported(jobs):
     j.restart_cmd = [sys.executable, "-c", "import sys; sys.exit('Access denied')"]
     with pytest.raises(RuntimeError, match="restart"):
         j.activate(plan["id"])
+
+
+@pytest.mark.parametrize("aid", ["../../etc", "abc", "0123456789ab\nNAVERA_X=1", "/tmp/x", None, "0123456789AB"])
+def test_a_forged_map_id_is_refused(jobs, aid):
+    j, marker, _, _ = jobs
+    for call in (j.activate, j.start):
+        with pytest.raises(ValueError):
+            call(aid)
+    assert not marker.exists()
+
+
+def test_a_line_break_cannot_inject_a_setting(tmp_path):
+    with pytest.raises(ValueError):
+        mp.write_settings({"DAY_DATASET_DIR": "/x\nNAVERA_WEB_TOKEN="}, str(tmp_path / "s.env"))
+    with pytest.raises(ValueError):
+        mp.write_settings({"bad key": "1"}, str(tmp_path / "s.env"))
+
+
+def test_services_are_not_restarted_in_flight():
+    assert "armed" in mp.in_flight_refusal(True, 2)
+    assert "without GPS" in mp.in_flight_refusal(None, mp.STATE_DEGRADED)
+    assert mp.in_flight_refusal(False, 2) is None          # disarmed, GPS fix
+    assert mp.in_flight_refusal(None, None) is None        # no vehicle link, arbiter silent
+
+
+def test_terrain_of_a_generated_map_is_shown_in_its_plan(jobs):
+    j, _, _, _ = jobs
+    route = [[35.8256, 10.6385], [35.8560, 10.6010]]
+    aid = j.plan(route)["id"]
+    os.makedirs(j.path(aid))
+    terrain = {"featureless_km": 12.4, "longest_km": 12.4, "stretches": [[1.36, 13.76]], "unknown_km": 0.0}
+    with open(os.path.join(j.path(aid), "area.json"), "w") as f:
+        json.dump({"terrain": terrain}, f)
+    assert j.plan(route)["terrain"] == terrain
+
+
+def test_named_missions_are_saved_replaced_and_deleted(jobs):
+    j, _, _, _ = jobs
+    r1 = [[35.8256, 10.6385], [35.84, 10.62], [35.8560, 10.6010]]
+    m = j.save_mission("Sousse coast", r1)
+    assert m[0]["name"] == "Sousse coast" and len(m[0]["route"]) == 3 and m[0]["length_km"] > 3
+    j.save_mission("Other", r1[:2])
+    m = j.save_mission("Sousse coast", r1[:2])                 # same name: replaced, newest first
+    assert [x["name"] for x in m] == ["Sousse coast", "Other"] and len(m[0]["route"]) == 2
+    assert j.state()["missions"] == m
+    assert [x["name"] for x in j.delete_mission("Other")] == ["Sousse coast"]
+    for name, route in (("", r1), ("x" * 61, r1), ("<script>", r1), ("ok", [[35.8, 10.6]]), ("ok", [[95, 10], [35, 10]])):
+        with pytest.raises(ValueError):
+            j.save_mission(name, route)

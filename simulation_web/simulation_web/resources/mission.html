@@ -59,6 +59,9 @@ main{display:grid;grid-template-columns:minmax(420px,540px) minmax(0,1fr);min-he
 .bar div{height:100%;width:0;background:var(--accent);transition:width .4s}
 .file{display:flex;align-items:center;gap:10px;border:2px dashed #94a3b8;border-radius:10px;padding:14px;cursor:pointer;background:#f8fafc}
 .file input{display:none}
+#mName{flex:1;min-width:0;border:2px solid #94a3b8;border-radius:8px;padding:9px 10px;font-size:17px}
+.row{display:flex;gap:8px;align-items:center}
+.mrow{display:flex;gap:6px;margin-top:6px}.mrow .btn:first-child{flex:1;text-align:left}
 .or{text-align:center;color:var(--mute);margin:10px 0;font-size:14px}
 html[dir=rtl] .form{border-inline-end:0;border-inline-start:1px solid var(--line)}
 @media (max-width:1000px){main{grid-template-columns:1fr;grid-template-rows:auto 420px}#app{height:auto}.form{border:0}}
@@ -111,10 +114,13 @@ html[dir=rtl] .form{border-inline-end:0;border-inline-start:1px solid var(--line
     <p class="help" data-i18n="routeH">Import the autopilot's mission (Mission Planner .waypoints or QGroundControl .plan): the satellite map then follows exactly the route it will fly.</p>
     <label class="file"><input type="file" id="file" accept=".waypoints,.txt,.plan,.json"><span style="font-size:24px">📄</span><span><b data-i18n="import">Import a mission file</b><br><span class="note" id="fileName" data-i18n="noFile">No file chosen</span></span></label>
     <div class="or" data-i18n="or">— or —</div>
-    <div class="help" data-i18n="drawH">Click on the map: first click = departure, second click = destination.</div>
-    <div class="btns" style="margin-top:0"><button class="btn" id="clear" data-i18n="clear">Clear the route</button></div>
+    <div class="help" data-i18n="drawH">Click on the map in order: departure, then each waypoint, then the destination. Then press "Use this route".</div>
+    <div class="btns" style="margin-top:0"><button class="btn primary" id="useRoute" disabled data-i18n="useRoute">Use this route</button><button class="btn" id="undo" disabled data-i18n="undo">Remove the last point</button><button class="btn" id="clear" data-i18n="clear">Clear the route</button></div>
     <div class="facts"><div><small data-i18n="points">Points</small><b id="fPts">—</b></div><div><small data-i18n="length">Length</small><b id="fLen">—</b></div><div><small data-i18n="tiles">Map tiles</small><b id="fTiles">—</b></div></div>
     <div class="notice" id="routeMsg"></div>
+    <div class="row" style="margin-top:10px"><input id="mName" maxlength="60" data-i18n-ph="mNamePh" placeholder="Mission name, e.g. Sousse coast survey"><button class="btn" id="mSave" disabled data-i18n="mSave">Save this mission</button></div>
+    <div class="note" data-i18n="mList">Saved missions (click to load):</div>
+    <div id="missions"></div>
   </section>
   <section class="hs">
     <h2><span class="n">3</span><span data-i18n="map">Satellite map</span></h2>
@@ -144,14 +150,18 @@ const I18N = {
     decl:'Déclinaison magnétique jusqu\'à la première position (facultatif)', declH:'Est positif. Dès qu\'une position est connue, NAVERA la calcule avec le modèle magnétique mondial.',
     save:'Enregistrer', apply:'Appliquer maintenant (redémarre NAVERA, ~30 s)', route:'Trajet',
     routeH:'Importez la mission de l\'autopilote (.waypoints de Mission Planner ou .plan de QGroundControl) : la carte satellite suit alors exactement le trajet qu\'il volera.',
-    import:'Importer un fichier de mission', noFile:'Aucun fichier choisi', or:'— ou —', drawH:'Cliquez sur la carte : premier clic = départ, second clic = destination.',
+    import:'Importer un fichier de mission', noFile:'Aucun fichier choisi', or:'— ou —', drawH:'Cliquez sur la carte dans l\'ordre : départ, puis chaque point de passage, puis la destination. Appuyez ensuite sur « Utiliser ce trajet ».',
+    useRoute:'Utiliser ce trajet', undo:'Retirer le dernier point', mNamePh:'Nom de la mission, ex. relevé côte de Sousse', mSave:'Enregistrer cette mission',
+    mList:'Missions enregistrées (cliquez pour charger) :', mSaved:'Mission enregistrée.', mDel:'Supprimer',
     clear:'Effacer le trajet', points:'Points', length:'Longueur', tiles:'Tuiles de carte', map:'Carte satellite',
     mapH:'La vision de jour compare la caméra aux images satellite d\'un couloir de ±1 km autour du trajet. Générez-les, puis activez la carte.',
     gen:'Générer la carte', cancel:'Annuler', act:'Activer cette carte', lOff:'Carte embarquée', lSat:'Satellite (internet)',
     ro:'Lecture seule : aucun code de contrôle n\'est configuré sur le boîtier (NAVERA_WEB_TOKEN).', codeH:'Saisissez le code pour modifier.',
     saved:'Enregistré. Appliquez pour que NAVERA l\'utilise.', applied:'Services NAVERA redémarrés.', ready:'Carte prête : activez-la.',
     active:'Carte active de la vision de jour', activated:'Carte activée : la vision de jour a redémarré avec elle.', none:'aucune',
-    onboard:'dans la carte embarquée', downloaded:'déjà téléchargées', missing:'absentes', noDl:'aucune source de téléchargement configurée (NAVERA_TILE_URL) : la vision n\'aura pas d\'images là', disk:'disque'},
+    onboard:'dans la carte embarquée', downloaded:'déjà téléchargées', missing:'absentes', noDl:'aucune source de téléchargement configurée (NAVERA_TILE_URL) : la vision n\'aura pas d\'images là', disk:'disque',
+    noLandmarks:'Aucun repère pour la vision', longest:'le plus long', atLeast:'au moins',
+    noLandmarksWhy:'Mer, lacs ou sol uniforme : NAVERA n\'y donne pas de position et le véhicule vole sur sa propre navigation. Préférez un trajet le long de la côte ou au-dessus d\'un sol varié.'},
   ar:{title:'تحضير المهمة', operator:'واجهة المشغل', code:'رمز التحكم', vehicle:'المركبة',
     vehicleH:'يُضبط مرة لكل مركبة. الحقل الفارغ يحتفظ بقيمة ملف التثبيت (بالرمادي).', type:'نوع المركبة',
     drone:'طائرة مسيرة', plane:'طائرة', boat:'قارب', robot:'روبوت أرضي', other:'أخرى', vmax:'السرعة القصوى للمركبة',
@@ -161,14 +171,18 @@ const I18N = {
     decl:'الانحراف المغناطيسي حتى أول موقع (اختياري)', declH:'الشرق موجب. بمجرد معرفة موقع، يحسبه NAVERA بالنموذج المغناطيسي العالمي.',
     save:'حفظ', apply:'تطبيق الآن (يعيد تشغيل NAVERA، ~30 ث)', route:'المسار',
     routeH:'استورد مهمة الطيار الآلي (.waypoints من Mission Planner أو .plan من QGroundControl): تتبع خريطة الأقمار الصناعية حينها المسار الذي سيطيره بالضبط.',
-    import:'استيراد ملف مهمة', noFile:'لم يُختر أي ملف', or:'— أو —', drawH:'انقر على الخريطة: النقرة الأولى = الانطلاق، الثانية = الوجهة.',
+    import:'استيراد ملف مهمة', noFile:'لم يُختر أي ملف', or:'— أو —', drawH:'انقر على الخريطة بالترتيب: الانطلاق، ثم كل نقطة عبور، ثم الوجهة. ثم اضغط «استعمال هذا المسار».',
+    useRoute:'استعمال هذا المسار', undo:'حذف آخر نقطة', mNamePh:'اسم المهمة، مثلاً مسح ساحل سوسة', mSave:'حفظ هذه المهمة',
+    mList:'المهام المحفوظة (انقر للتحميل):', mSaved:'تم حفظ المهمة.', mDel:'حذف',
     clear:'مسح المسار', points:'النقاط', length:'الطول', tiles:'مربعات الخريطة', map:'خريطة الأقمار الصناعية',
     mapH:'تقارن الرؤية النهارية الكاميرا بصور الأقمار الصناعية لممر ±1 كم حول المسار. أنشئها ثم فعّل الخريطة.',
     gen:'إنشاء الخريطة', cancel:'إلغاء', act:'تفعيل هذه الخريطة', lOff:'الخريطة المدمجة', lSat:'أقمار صناعية (إنترنت)',
     ro:'للقراءة فقط: لا يوجد رمز تحكم مضبوط على الجهاز (NAVERA_WEB_TOKEN).', codeH:'أدخل الرمز للتعديل.',
     saved:'تم الحفظ. طبّق ليستعمله NAVERA.', applied:'أُعيد تشغيل خدمات NAVERA.', ready:'الخريطة جاهزة: فعّلها.',
     active:'الخريطة النشطة للرؤية النهارية', activated:'فُعّلت الخريطة: أُعيد تشغيل الرؤية النهارية بها.', none:'لا شيء',
-    onboard:'في الخريطة المدمجة', downloaded:'محمّلة مسبقاً', missing:'ناقصة', noDl:'لا يوجد مصدر تحميل مضبوط (NAVERA_TILE_URL): لن تجد الرؤية صوراً هناك', disk:'القرص'},
+    onboard:'في الخريطة المدمجة', downloaded:'محمّلة مسبقاً', missing:'ناقصة', noDl:'لا يوجد مصدر تحميل مضبوط (NAVERA_TILE_URL): لن تجد الرؤية صوراً هناك', disk:'القرص',
+    noLandmarks:'لا معالم للرؤية', longest:'الأطول', atLeast:'على الأقل',
+    noLandmarksWhy:'بحر أو بحيرات أو أرض متجانسة: لا يعطي NAVERA موقعاً هناك وتعتمد المركبة على ملاحتها الخاصة. فضّل مساراً على طول الساحل أو فوق أرض متنوعة.'},
 };
 let LANG = 'en'; try{ LANG = localStorage.getItem('navera.lang') || 'en'; }catch(e){}
 const EN = {};
@@ -176,6 +190,7 @@ const t = (k, en) => (I18N[LANG] && I18N[LANG][k]) || en || EN[k] || k;
 function applyLang(){
   document.documentElement.lang = LANG; document.documentElement.dir = LANG === 'ar' ? 'rtl' : 'ltr';
   document.querySelectorAll('[data-i18n]').forEach(el => { const k = el.dataset.i18n; if(!(k in EN)) EN[k] = el.textContent; el.textContent = LANG === 'en' ? EN[k] : t(k, EN[k]); });
+  document.querySelectorAll('[data-i18n-ph]').forEach(el => { const k = el.dataset.i18nPh; if(!(k in EN)) EN[k] = el.placeholder; el.placeholder = LANG === 'en' ? EN[k] : t(k, EN[k]); });
   document.querySelectorAll('.lang button').forEach(b => b.classList.toggle('on', b.dataset.v === LANG));
   render();
 }
@@ -220,6 +235,9 @@ function render(){
   $('authSt').textContent = !S ? '' : !can ? t('ro', 'Read-only: no control code is configured on the box (NAVERA_WEB_TOKEN).') : coded ? '' : t('codeH', 'Enter the code to make changes.');
   $('authSt').style.color = can ? 'var(--mute)' : 'var(--bad)';
   for(const id of ['save', 'apply', 'clear']) $(id).disabled = !coded;
+  $('useRoute').disabled = !coded || drawn.length < 2 || !!PLAN;
+  $('undo').disabled = !coded || !drawn.length || !!PLAN;
+  renderMissions();
   $('file').disabled = !coded;
   const job = S && S.job, running = job && job.status === 'running' && PLAN && job.id === PLAN.id;
   $('gen').disabled = !coded || !PLAN || PLAN.prepared || PLAN.no_space || !!(job && job.status === 'running');
@@ -228,7 +246,7 @@ function render(){
   $('bar').classList.toggle('hidden', !running);
   if(running){
     const f = job.total ? job.done / job.total : 0;
-    const pct = job.stage === 'download' ? 45 * f : job.stage === 'tiles' ? 45 + 10 * f : job.stage === 'descriptors' ? 55 + 45 * f : 2;
+    const pct = job.stage === 'download' ? 45 * f : job.stage === 'tiles' ? 45 + 10 * f : job.stage === 'descriptors' ? 55 + 43 * f : job.stage === 'terrain' ? 98 : 2;
     $('bar').firstElementChild.style.width = pct.toFixed(0) + '%';
     $('prog').textContent = `${job.stage} ${job.done}/${job.total}`;
   } else $('prog').textContent = job && job.status === 'failed' ? '✗ ' + (job.error || '') : '';
@@ -236,6 +254,15 @@ function render(){
     $('cov').innerHTML = `<b>${PLAN.tiles}</b> ${esc(t('tiles', 'tiles').toLowerCase())}: ${PLAN.in_base} ${esc(t('onboard', 'in the onboard map'))} · ${PLAN.in_cache} ${esc(t('downloaded', 'already downloaded'))} · <b>${PLAN.missing_n}</b> ${esc(t('missing', 'missing'))}`
       + ` · ${esc(t('disk', 'disk'))} ${PLAN.need_mb < 1024 ? Math.ceil(PLAN.need_mb) + ' MB' : (PLAN.need_mb / 1024).toFixed(1) + ' GB'} / ${(PLAN.free_mb / 1024).toFixed(0)} GB`
       + (PLAN.missing_n && !PLAN.can_download ? `<br><b style="color:var(--warn)">⚠ ${esc(t('noDl', 'no download source is configured (NAVERA_TILE_URL): vision will have no images there'))}</b>` : '');
+    const tr = PLAN.terrain;
+    if(tr && tr.featureless_km > 0){
+      const kmh = S && S.settings && parseFloat(S.settings.NAVERA_MAX_SPEED_KMH || (S.site || {}).NAVERA_MAX_SPEED_KMH);
+      const mins = kmh ? Math.ceil(tr.longest_km / kmh * 60) : null;
+      const where = tr.stretches.slice(0, 6).map(s => `${s[0]}–${s[1]} km`).join(', ');
+      $('cov').innerHTML += `<br><b style="color:var(--warn)">⚠ ${esc(t('noLandmarks', 'No landmarks for vision'))}: ${tr.featureless_km} km `
+        + `(${esc(t('longest', 'longest'))} ${tr.longest_km} km${mins ? ', ' + esc(t('atLeast', 'at least')) + ' ' + mins + ' min' : ''}) — ${esc(where)}. `
+        + `${esc(t('noLandmarksWhy', 'Sea, lakes or uniform ground: NAVERA gives no position there and the vehicle relies on its own navigation. Prefer a route along the coast or over varied ground.'))}</b>`;
+    }
     if(PLAN.prepared && !PLAN.active) say('mapMsg', 'ok', '✓ ' + t('ready', 'Map ready: activate it.'));
   } else $('cov').textContent = '';
   const act = S && S.active ? S.active.split('/').pop() : null;
@@ -286,15 +313,46 @@ $('file').onchange = async () => {
   await plan({mission_text: await f.text()});
   $('file').value = '';
 };
+function drawPoints(){
+  dots.clearLayers();
+  drawn.forEach((p, i) => L.circleMarker(p, {radius:6, color:'#fff', weight:2,
+    fillColor: i === 0 ? '#15803d' : '#1d4ed8', fillOpacity:1}).addTo(dots));
+  line.setLatLngs(drawn);
+  $('fPts').textContent = drawn.length || '—';
+  $('useRoute').disabled = $('save').disabled || drawn.length < 2 || !!PLAN;
+  $('undo').disabled = $('save').disabled || !drawn.length || !!PLAN;
+}
 map.on('click', e => {
   if($('save').disabled) return;
-  const p = [e.latlng.lat, e.latlng.lng];
-  if(drawn.length >= 2 || PLAN) { drawn = []; PLAN = null; line.setLatLngs([]); dots.clearLayers(); }
-  drawn.push(p);
-  L.circleMarker(p, {radius:6, color:'#fff', weight:2, fillColor: drawn.length === 1 ? '#15803d' : '#b91c1c', fillOpacity:1}).addTo(dots);
-  if(drawn.length === 2) plan({route: drawn});
+  if(PLAN) { drawn = []; PLAN = null; render(); }          // a new route
+  drawn.push([e.latlng.lat, e.latlng.lng]);
+  drawPoints();
 });
-$('clear').onclick = () => { drawn = []; PLAN = null; line.setLatLngs([]); dots.clearLayers(); ['fPts', 'fLen', 'fTiles'].forEach(id => $(id).textContent = '—'); render(); };
+$('useRoute').onclick = () => { if(drawn.length >= 2) plan({route: drawn}); };
+$('undo').onclick = () => { drawn.pop(); drawPoints(); };
+$('clear').onclick = () => { drawn = []; PLAN = null; line.setLatLngs([]); dots.clearLayers(); ['fPts', 'fLen', 'fTiles'].forEach(id => $(id).textContent = '—'); drawPoints(); render(); };
+
+/* saved missions */
+function renderMissions(){
+  const list = (S && S.missions) || [], box = $('missions');
+  box.innerHTML = '';
+  list.forEach(m => {
+    const row = document.createElement('div'); row.className = 'mrow';
+    const b = document.createElement('button'); b.className = 'btn';
+    b.textContent = `${m.name} — ${m.length_km} km, ${m.route.length} ${t('points', 'Points').toLowerCase()} (${m.saved})`;
+    b.onclick = () => { $('mName').value = m.name; drawn = m.route.slice(); PLAN = null; plan({route: m.route}); };
+    const del = document.createElement('button'); del.className = 'btn'; del.textContent = t('mDel', 'Delete');
+    del.disabled = $('save').disabled;
+    del.onclick = async () => { try{ S.missions = (await post('delete_mission', {name: m.name})).missions; renderMissions(); }catch(e){ say('routeMsg', 'bad', e.message); } };
+    row.append(b, del); box.append(row);
+  });
+  $('mSave').disabled = $('save').disabled || drawn.length < 2;
+}
+$('mSave').onclick = async () => {
+  try{ S.missions = (await post('save_mission', {name: $('mName').value, route: drawn})).missions;
+       say('routeMsg', 'ok', '✓ ' + t('mSaved', 'Mission saved.')); renderMissions(); }
+  catch(e){ say('routeMsg', 'bad', e.message); }
+};
 
 /* ── 3 map ── */
 $('gen').onclick = async () => { try{ await post('generate', {id:PLAN.id}); $('mapMsg').textContent = ''; }catch(e){ say('mapMsg', 'bad', e.message); } };

@@ -18,6 +18,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -105,6 +106,9 @@ def write_settings(changes: Dict[str, Optional[str]], path: str = SETTINGS_FILE)
     """Apply validated changes (None removes a key); atomic replace. Returns the new settings."""
     cur = read_settings(path)
     for k, v in changes.items():
+        # one KEY=value per line: a line break in a value would inject another setting
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]*", k) or (v is not None and re.search(r"[\x00-\x1f\x7f]", str(v))):
+            raise ValueError(f"invalid setting {k!r}")
         if v is None:
             cur.pop(k, None)
         else:
@@ -177,11 +181,36 @@ def parse_mission(text: str) -> List[List[float]]:
     return route
 
 
+MAX_ROUTE_POINTS = 500     # waypoints of one saved route
+
+# ── in-flight lock ──────────────────────────────────────────────────────────
+STATE_DEGRADED = 3          # navera_msgs/NavStatus: navigating without GPS
+
+
+def in_flight_refusal(armed: Optional[bool], nav_state: Optional[int]) -> Optional[str]:
+    """Why restarting NAVERA's services (or loading the CPU with a map generation) must
+    be refused now, or None. armed: from the autopilot (None = no vehicle link);
+    nav_state: the arbiter's current state (None = not heard)."""
+    if armed:
+        return "the vehicle is armed: disarm it before changing NAVERA"
+    if nav_state == STATE_DEGRADED:
+        return "NAVERA is navigating without GPS right now: a restart would interrupt it"
+    return None
+
+
 # ── areas (satellite map of a route) ─────────────────────────────────────────
 def area_id(route) -> str:
     legs = densify_route(route)
     key = json.dumps([[round(a, 5), round(b, 5)] for a, b in legs] + [BUFFER_M])
     return hashlib.sha1(key.encode()).hexdigest()[:12]
+
+
+def check_area_id(aid) -> str:
+    """An area id from a request: exactly what area_id() produces, nothing that could
+    reach another folder ('../', '/', a line break in the settings file)."""
+    if not isinstance(aid, str) or not re.fullmatch(r"[0-9a-f]{12}", aid):
+        raise ValueError("invalid map id")
+    return aid
 
 
 class AreaJobs:
@@ -204,7 +233,7 @@ class AreaJobs:
         self._proc = None
 
     def path(self, aid):
-        return os.path.join(self.dir, aid)
+        return os.path.join(self.dir, check_area_id(aid))
 
     def is_prepared(self, aid):
         return os.path.exists(os.path.join(self.path(aid), "descriptors_cache.npz"))
@@ -220,10 +249,18 @@ class AreaJobs:
                     in_base=p["in_base"], in_cache=p["in_cache"], missing_n=len(p["missing"]),
                     can_download=bool(self.tile_url), need_mb=need_mb, free_mb=free_mb,
                     no_space=need_mb + DISK_MARGIN_MB > free_mb, prepared=self.is_prepared(aid),
-                    active=self.active_dir() == self.path(aid))
+                    active=self.active_dir() == self.path(aid), terrain=self._terrain(aid))
         with self.lock:
             self.plans[aid] = plan
         return plan
+
+    def _terrain(self, aid):
+        """Stretches of the route without landmarks, measured when its map was generated."""
+        try:
+            with open(os.path.join(self.path(aid), "area.json")) as f:
+                return json.load(f).get("terrain")
+        except (OSError, ValueError):
+            return None
 
     def active_dir(self) -> str:
         return read_settings(self.settings_file).get("DAY_DATASET_DIR") or os.environ.get("DAY_DATASET_DIR", "")
@@ -265,6 +302,8 @@ class AreaJobs:
             if "stage" in d and d["stage"] != "warning":
                 with self.lock:
                     self.job.update(stage=d["stage"], done=d.get("done", 0), total=d.get("total", 0))
+                    if d.get("terrain") and aid in self.plans:
+                        self.plans[aid]["terrain"] = d["terrain"]
         ok = proc.wait() == 0 and self.is_prepared(aid)
         with self.lock:
             self.job.update(status="done" if ok else "failed", error=None if ok else " / ".join(tail))
@@ -295,4 +334,45 @@ class AreaJobs:
     def state(self) -> dict:
         with self.lock:
             job = dict(self.job) if self.job else None
-        return dict(job=job, active=self.active_dir())
+        return dict(job=job, active=self.active_dir(), missions=self.missions())
+
+    # ── saved missions (a named route, to prepare or reuse later) ───────────
+    def _missions_file(self):
+        return os.path.join(self.dir, "missions.json")
+
+    def missions(self) -> List[dict]:
+        try:
+            with open(self._missions_file()) as f:
+                m = json.load(f)
+            return m if isinstance(m, list) else []
+        except (OSError, ValueError):
+            return []
+
+    def save_mission(self, name, route) -> List[dict]:
+        """Save (or replace, same name) a named route; returns the list, newest first."""
+        name = str(name or "").strip()
+        if not (1 <= len(name) <= 60) or re.search(r"[\x00-\x1f\x7f<>]", name):
+            raise ValueError("mission name: 1 to 60 characters, no < >")
+        if not (isinstance(route, list) and 2 <= len(route) <= MAX_ROUTE_POINTS and all(
+                isinstance(p, (list, tuple)) and len(p) == 2 and _valid(float(p[0]), float(p[1])) for p in route)):
+            raise ValueError(f"route: 2 to {MAX_ROUTE_POINTS} [lat, lon] points expected")
+        entry = dict(name=name, route=[[round(float(a), 6), round(float(b), 6)] for a, b in route],
+                     length_km=round(route_length_m(densify_route(route)) / 1000.0, 1),
+                     saved=time.strftime("%Y-%m-%d %H:%M"))
+        with self.lock:
+            out = [entry] + [m for m in self.missions() if m.get("name") != name]
+            os.makedirs(self.dir, exist_ok=True)
+            tmp = f"{self._missions_file()}.tmp{os.getpid()}"
+            with open(tmp, "w") as f:
+                json.dump(out[:200], f)
+            os.replace(tmp, self._missions_file())
+        return out
+
+    def delete_mission(self, name) -> List[dict]:
+        with self.lock:
+            out = [m for m in self.missions() if m.get("name") != str(name)]
+            tmp = f"{self._missions_file()}.tmp{os.getpid()}"
+            with open(tmp, "w") as f:
+                json.dump(out, f)
+            os.replace(tmp, self._missions_file())
+        return out
