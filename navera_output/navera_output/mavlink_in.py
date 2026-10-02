@@ -84,7 +84,9 @@ def downward_range_agl(current_distance_cm: int, min_cm: int, max_cm: int, orien
     tilt when the attitude is known; None if not pointing down or out of range."""
     if orientation != MAV_SENSOR_ROTATION_PITCH_270:
         return None
-    if not (min_cm <= current_distance_cm <= max_cm) or current_distance_cm <= 0:
+    # at its limits a rangefinder reports "no echo" (many give exactly max, or min, when
+    # nothing comes back — over water, at the edge of range): not a height
+    if not (min_cm < current_distance_cm < max_cm) or current_distance_cm <= 0:
         return None
     d = current_distance_cm / 100.0
     if q_enu_flu is not None:

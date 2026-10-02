@@ -37,5 +37,7 @@ def test_downward_rangefinder():
     assert downward_range_agl(15000, 20, 40000, 25) == 150.0
     assert downward_range_agl(15000, 20, 40000, 0) is None          # pointing forward
     assert downward_range_agl(50000, 20, 40000, 25) is None         # out of range
+    assert downward_range_agl(40000, 20, 40000, 25) is None         # at max: no echo
+    assert downward_range_agl(20, 20, 40000, 25) is None            # at min: too close / no echo
     tilted = attitude_euler(math.radians(20), 0.0, 0.0)
     assert downward_range_agl(15000, 20, 40000, 25, tilted) == pytest.approx(150.0 * math.cos(math.radians(20)))

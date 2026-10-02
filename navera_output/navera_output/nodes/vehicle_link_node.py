@@ -9,7 +9,7 @@ its own: any MAVLink autopilot (ArduPilot, PX4, ...). Publishes, stamped on rece
     /navera/vehicle/altitude_agl   sensor_msgs/Range        downward rangefinder, tilt-corrected
     /navera/vehicle/relative_alt   geometry_msgs/PointStamped  z = height above home (barometer)
     /navera/vehicle/gps2           sensor_msgs/NavSatFix    the vehicle's second GPS, if any
-    /navera/vehicle/status         std_msgs/String (JSON)   link, autopilot, message rates
+    /navera/vehicle/status         std_msgs/String (JSON)   link, autopilot, armed, message rates
 
 The live camera takes its attitude from /navera/vehicle/imu when NAVERA_SENSOR_SOURCE
 is "vehicle" (camera_pkg live_camera.launch.py). The autopilot's own GPS position is
@@ -20,7 +20,7 @@ Parameters:
                     (one port of the autopilot for NAVERA's reading; mavlink-router can
                     share one link between vehicle_output and this node)
     attitude_hz     requested attitude rate (default 50)
-    source_system   NAVERA's MAVLink system id (default 1 = the vehicle's; component 191)
+    source_system   NAVERA's MAVLink system id (default 1 = the vehicle's; component 192)
 """
 import json
 import math
@@ -64,8 +64,9 @@ class VehicleLink(Node):
         self.pub_gps2 = self.create_publisher(NavSatFix, "/navera/vehicle/gps2", 10)
         self.pub_status = self.create_publisher(String, "/navera/vehicle/status", 10)
         self.counts, self.last_hb, self.autopilot = {}, 0.0, None
-        self.q_last = None
-        self.have_quat = False
+        self.armed = None                  # from the autopilot heartbeat (None = unknown)
+        self.q_last, self.q_t = None, 0.0
+        self.quat_t = 0.0                  # last ATTITUDE_QUATERNION (monotonic); ATTITUDE used without it
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -94,7 +95,7 @@ class VehicleLink(Node):
         while not self._stop.is_set():
             try:
                 m = self._connect()
-                hb = m.wait_heartbeat(timeout=10)
+                hb = self._wait_autopilot(m, timeout=10.0)
                 if hb is None:
                     self.get_logger().warn(f"no heartbeat from an autopilot on {self.url} — retrying",
                                            throttle_duration_sec=30.0)
@@ -103,6 +104,7 @@ class VehicleLink(Node):
                 self.autopilot = {mavutil.mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA: "ArduPilot",
                                   mavutil.mavlink.MAV_AUTOPILOT_PX4: "PX4"}.get(hb.autopilot, f"MAVLink autopilot {hb.autopilot}")
                 self.get_logger().info(f"connected to {self.autopilot} (system {m.target_system})")
+                self.last_hb, self.quat_t, self.q_last = time.monotonic(), 0.0, None
                 self._request_streams(m)
                 t_hb = 0.0
                 while not self._stop.is_set():
@@ -120,6 +122,24 @@ class VehicleLink(Node):
                 self.get_logger().error(f"vehicle link: {e} — reconnecting", throttle_duration_sec=10.0)
                 time.sleep(2.0)
 
+    @staticmethod
+    def _wait_autopilot(m, timeout):
+        """The first heartbeat FROM AN AUTOPILOT (a ground station, camera or another
+        companion on a shared link also sends heartbeats): sets the link's target to it."""
+        from pymavlink import mavutil
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            hb = m.recv_match(type="HEARTBEAT", blocking=True, timeout=max(0.1, end - time.monotonic()))
+            if hb is None:
+                return None
+            if hb.autopilot == mavutil.mavlink.MAV_AUTOPILOT_INVALID or hb.type in (
+                    mavutil.mavlink.MAV_TYPE_GCS, mavutil.mavlink.MAV_TYPE_ONBOARD_CONTROLLER,
+                    mavutil.mavlink.MAV_TYPE_GIMBAL, mavutil.mavlink.MAV_TYPE_CAMERA):
+                continue
+            m.target_system, m.target_component = hb.get_srcSystem(), hb.get_srcComponent()
+            return hb
+        return None
+
     # ── messages ──────────────────────────────────────────────────────────
     def _handle(self, msg, target_system):
         t = msg.get_type()
@@ -128,17 +148,23 @@ class VehicleLink(Node):
         self.counts[t] = self.counts.get(t, 0) + 1
         now = self.get_clock().now().to_msg()
         if t == "HEARTBEAT":
-            self.last_hb = time.monotonic()
+            if msg.autopilot != 8:                          # not MAV_AUTOPILOT_INVALID (a GCS on the same id)
+                self.last_hb = time.monotonic()
+                self.armed = bool(msg.base_mode & 128)      # MAV_MODE_FLAG_SAFETY_ARMED
         elif t == "ATTITUDE_QUATERNION":
-            self.have_quat = True
+            self.quat_t = time.monotonic()
             self._publish_imu(now, attitude_quaternion(msg.q1, msg.q2, msg.q3, msg.q4),
                               rates_frd_to_flu(msg.rollspeed, msg.pitchspeed, msg.yawspeed))
-        elif t == "ATTITUDE" and not self.have_quat:
+        elif t == "ATTITUDE" and time.monotonic() - self.quat_t > 1.0:     # no quaternion stream
             self._publish_imu(now, attitude_euler(msg.roll, msg.pitch, msg.yaw),
                               rates_frd_to_flu(msg.rollspeed, msg.pitchspeed, msg.yawspeed))
         elif t == "DISTANCE_SENSOR":
+            # tilt-corrected with a CURRENT attitude only (a stale one would mis-correct)
+            q = self.q_last if time.monotonic() - self.q_t <= 0.5 else None
             agl = downward_range_agl(msg.current_distance, msg.min_distance, msg.max_distance,
-                                     msg.orientation, self.q_last)
+                                     msg.orientation, q)
+            if q is None and self.q_last is not None:
+                agl = None                                  # tilt unknown now: not a height
             if agl is not None:
                 r = Range()
                 r.header.stamp, r.header.frame_id = now, "vehicle_rangefinder"
@@ -160,7 +186,7 @@ class VehicleLink(Node):
     def _publish_imu(self, stamp, q, rates):
         if not all(math.isfinite(c) for c in q):
             return
-        self.q_last = q
+        self.q_last, self.q_t = q, time.monotonic()
         m = Imu()
         m.header.stamp, m.header.frame_id = stamp, "vehicle_base_link"
         m.orientation.x, m.orientation.y, m.orientation.z, m.orientation.w = q
@@ -172,7 +198,8 @@ class VehicleLink(Node):
         alive = time.monotonic() - self.last_hb < 3.0 if self.last_hb else False
         rates, self.counts = dict(self.counts), {}
         self.pub_status.publish(String(data=json.dumps(
-            {"link": alive, "autopilot": self.autopilot, "url": self.url, "rates_hz": rates})))
+            {"link": alive, "autopilot": self.autopilot, "armed": self.armed if alive else None,
+             "url": self.url, "rates_hz": rates})))
 
     def destroy_node(self):
         self._stop.set()
