@@ -171,7 +171,8 @@ const I18N = {
     active:'Carte active de la vision de jour', activated:'Carte activée : la vision de jour a redémarré avec elle.', none:'aucune',
     onboard:'dans la carte embarquée', downloaded:'déjà téléchargées', missing:'absentes', noDl:'aucune source de téléchargement configurée (NAVERA_TILE_URL) : la vision n\'aura pas d\'images là', disk:'disque',
     noLandmarks:'Aucun repère pour la vision', longest:'le plus long', atLeast:'au moins',
-    noLandmarksWhy:'Mer, lacs ou sol uniforme : NAVERA n\'y donne pas de position et le véhicule vole sur sa propre navigation. Préférez un trajet le long de la côte ou au-dessus d\'un sol varié.'},
+    noLandmarksWhy2:'Mer, lacs ou sol uniforme : la vision n\'y trouve rien à comparer. NAVERA continue sur sa route mesurée jusqu\'à 2 minutes (sa précision annoncée se dégradant), puis ne donne plus de position et le véhicule vole sur sa propre navigation. Préférez un trajet le long de la côte ou au-dessus d\'un sol varié.',
+    estimate:'estimation d\'après la carte ; mesurée à la génération de la carte'},
   ar:{title:'تحضير المهمة', operator:'واجهة المشغل', code:'رمز التحكم', vehicle:'المركبة',
     vehicleH:'يُضبط مرة لكل مركبة. الحقل الفارغ يحتفظ بقيمة ملف التثبيت (بالرمادي).', type:'نوع المركبة',
     drone:'طائرة مسيرة', plane:'طائرة', boat:'قارب', robot:'روبوت أرضي', other:'أخرى', vmax:'السرعة القصوى للمركبة',
@@ -194,7 +195,8 @@ const I18N = {
     active:'الخريطة النشطة للرؤية النهارية', activated:'فُعّلت الخريطة: أُعيد تشغيل الرؤية النهارية بها.', none:'لا شيء',
     onboard:'في الخريطة المدمجة', downloaded:'محمّلة مسبقاً', missing:'ناقصة', noDl:'لا يوجد مصدر تحميل مضبوط (NAVERA_TILE_URL): لن تجد الرؤية صوراً هناك', disk:'القرص',
     noLandmarks:'لا معالم للرؤية', longest:'الأطول', atLeast:'على الأقل',
-    noLandmarksWhy:'بحر أو بحيرات أو أرض متجانسة: لا يعطي NAVERA موقعاً هناك وتعتمد المركبة على ملاحتها الخاصة. فضّل مساراً على طول الساحل أو فوق أرض متنوعة.'},
+    noLandmarksWhy2:'بحر أو بحيرات أو أرض متجانسة: لا تجد الرؤية ما تقارنه هناك. يواصل NAVERA على مساره المقاس حتى دقيقتين (مع تدهور الدقة المعلنة)، ثم لا يعطي موقعاً وتعتمد المركبة على ملاحتها الخاصة. فضّل مساراً على طول الساحل أو فوق أرض متنوعة.',
+    estimate:'تقدير من الخريطة؛ يُقاس عند إنشاء الخريطة'},
 };
 let LANG = 'en'; try{ LANG = localStorage.getItem('navera.lang') || 'en'; }catch(e){}
 const EN = {};
@@ -274,7 +276,8 @@ function render(){
       const where = tr.stretches.slice(0, 6).map(s => `${s[0]}–${s[1]} km`).join(', ');
       $('cov').innerHTML += `<br><b style="color:var(--warn)">⚠ ${esc(t('noLandmarks', 'No landmarks for vision'))}: ${tr.featureless_km} km `
         + `(${esc(t('longest', 'longest'))} ${tr.longest_km} km${mins ? ', ' + esc(t('atLeast', 'at least')) + ' ' + mins + ' min' : ''}) — ${esc(where)}. `
-        + `${esc(t('noLandmarksWhy', 'Sea, lakes or uniform ground: NAVERA gives no position there and the vehicle relies on its own navigation. Prefer a route along the coast or over varied ground.'))}</b>`;
+        + `${esc(t('noLandmarksWhy2', 'Sea, lakes or uniform ground: vision has nothing to match there. NAVERA carries on along its measured course for up to 2 minutes (its stated accuracy growing), then gives no position and the vehicle relies on its own navigation. Prefer a route along the coast or over varied ground.'))}`
+        + (tr.estimate ? ` <i>(${esc(t('estimate', 'estimate from the map; measured when the map is generated'))})</i>` : '') + `</b>`;
     }
     if(PLAN.prepared && !PLAN.active) say('mapMsg', 'ok', '✓ ' + t('ready', 'Map ready: activate it.'));
   } else $('cov').textContent = '';

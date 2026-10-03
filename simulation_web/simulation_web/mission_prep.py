@@ -26,7 +26,7 @@ import time
 from collections import deque
 from typing import Callable, Dict, List, Optional
 
-from day_pkg.prepare_area import densify_route, plan_tiles, route_length_m
+from day_pkg.prepare_area import densify_route, plan_tiles, quick_texture_profile, route_length_m
 
 SETTINGS_FILE = os.environ.get("NAVERA_SETTINGS_FILE", "/var/lib/navera/settings.env")
 BUFFER_M = 1000.0
@@ -256,10 +256,20 @@ class AreaJobs:
                     in_base=p["in_base"], in_cache=p["in_cache"], missing_n=len(p["missing"]),
                     can_download=bool(self.tile_url), need_mb=need_mb, free_mb=free_mb,
                     no_space=need_mb + DISK_MARGIN_MB > free_mb, prepared=self.is_prepared(aid),
-                    active=self.active_dir() == self.path(aid), terrain=self._terrain(aid))
+                    active=self.active_dir() == self.path(aid),
+                    terrain=self._terrain(aid) or self._quick_terrain(legs))
         with self.lock:
             self.plans[aid] = plan
         return plan
+
+    def _quick_terrain(self, legs):
+        """Before generation: the featureless stretches seen in the map files (fast)."""
+        try:
+            t = quick_texture_profile([self.mbtiles, self.cache], legs)
+        except Exception:                                  # noqa: BLE001 — a hint, never a blocker
+            return None
+        t["estimate"] = True
+        return t
 
     def _terrain(self, aid):
         """Stretches of the route without landmarks, measured when its map was generated."""

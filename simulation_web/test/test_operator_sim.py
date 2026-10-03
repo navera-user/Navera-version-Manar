@@ -6,6 +6,7 @@ import json
 import threading
 import time
 
+from navera_common.track import TrackVelocity
 from simulation_web.scripts.navera_web_bridge import NaveraWebBridge
 
 from navera_msgs.msg import NavStatus, PositionEstimate
@@ -15,6 +16,7 @@ class _Stub:
     operator_position = NaveraWebBridge.operator_position
     operator_decision = NaveraWebBridge.operator_decision
     _source_label = NaveraWebBridge._source_label
+    _camera_warning = NaveraWebBridge._camera_warning
 
     def __init__(self, details=""):
         now = time.monotonic()
@@ -33,6 +35,8 @@ class _Stub:
         self._position, self._position_rx = pos, now
         self._sim_truth = None
         self._sim_truth_rx = None
+        self._frames = []
+        self._track = TrackVelocity()
 
     def get_logger(self):
         class _L:
@@ -74,3 +78,14 @@ def test_no_fix_still_carries_truth():
     b._sim_truth, b._sim_truth_rx = (35.831, 10.631), time.monotonic()
     out = b.operator_position()
     assert out["valid"] is False and out["simulated"] is True
+
+
+def test_operator_sees_the_accuracy_the_source_and_camera_warnings():
+    b = _Stub()
+    b._position.position_covariance = [100.0, 0.0, 0.0, 0.0, 100.0, 0.0, 0.0, 0.0, 0.0]
+    b._position.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_APPROXIMATED
+    d = b.operator_decision()
+    assert d["accuracy_m"] == 10 and d["source_name"] == "GPS"
+    now = time.monotonic()
+    b._frames = [(now, False, "camera tilted 52 deg from vertical (max 45)")] * 8 + [(now, True, "")] * 4
+    assert "too tilted" in b.operator_decision()["camera_warning"]

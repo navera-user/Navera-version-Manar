@@ -68,6 +68,7 @@ from navera_msgs.msg import NavStatus, PositionEstimate
 
 from simulation_web.web_common import (BridgeHandler, MBTilesReader, parse_tile_path,
                                        start_server, valid_latlon)
+from navera_common.geo import dead_reckon
 from navera_common.track import TrackVelocity
 from simulation_web import mission_prep
 
@@ -115,6 +116,7 @@ _SOURCE_LABEL = {
     NavStatus.SOURCE_NIGHT_VISION: "NIGHT",
     NavStatus.SOURCE_CELESTIAL: "CELESTIAL",
 }
+_SOURCE_NAME = {"GPS": "GPS", "VISION": "day vision", "NIGHT": "night vision", "CELESTIAL": "celestial"}
 
 
 def _resolve_resources_dir():
@@ -207,6 +209,10 @@ class NaveraWebBridge(Node):
 
         # ── ROS subscriptions: pipeline detail, for the "/" dashboard ──
         self.create_subscription(String,    status_topic, self._on_status, 10)
+        # the live cameras' frame verdicts: why frames are not used (too tilted, turning)
+        self._frames = []                       # (monotonic, usable, reason) of the last minute
+        for ns in ("day", "thermal"):
+            self.create_subscription(String, f"/{ns}/frame_meta", self._on_frame_meta, 10)
         ready_qos = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
                                durability=DurabilityPolicy.TRANSIENT_LOCAL,
                                history=HistoryPolicy.KEEP_LAST, depth=1)
@@ -497,15 +503,67 @@ class NaveraWebBridge(Node):
             return {"valid": False, "state": state_name,
                     "reason": f"{state_name} declared but position is not finite"}
 
-        return {
+        label = self._source_label(pos.source)
+        out = {
             "lat": lat, "lon": lon,
-            "source": self._source_label(pos.source),
+            "source": label,
+            "source_name": _SOURCE_NAME.get(label, label.lower()),
             "valid": True,
             "state": state_name,
             "mode": _MODE_NAME.get(pos.mode, "UNKNOWN"),
             "reason": status.reason,
             "age_s": round(now - pos_rx, 1),     # since this measurement was published
         }
+        # the stated accuracy, and a vision position carried from its photo's instant to
+        # now (as navera_output does for the autopilot): the operator sees where the
+        # vehicle is, not where it was 1-2.5 s ago
+        cov = list(pos.position_covariance)
+        sigma = math.sqrt(max(cov[0], cov[4])) if pos.position_covariance_type and cov[0] > 0 else None
+        s = pos.sensor_stamp if (pos.sensor_stamp.sec or pos.sensor_stamp.nanosec) else pos.header.stamp
+        measured_age = max(0.0, time.time() - (s.sec + s.nanosec * 1e-9))
+        out["measured_age_s"] = round(measured_age, 1)
+        if pos.source != PositionEstimate.SOURCE_GPS and 0.0 < measured_age < 30.0:
+            v = self._track.velocity(time.time()) if self._track.last_time() else None
+            if v is not None and math.hypot(v[0], v[1]) > 0.05:
+                carried = dead_reckon(lat, lon, math.degrees(math.atan2(v[0], v[1])) % 360.0,
+                                      math.hypot(v[0], v[1]), measured_age)
+                if carried:
+                    out["measured_lat"], out["measured_lon"] = lat, lon
+                    out["lat"], out["lon"] = carried
+                    out["carried_s"] = round(measured_age, 1)
+                if sigma is not None:
+                    sigma += v[2] * measured_age
+        if sigma is not None:
+            out["accuracy_m"] = round(sigma)
+        warn = self._camera_warning()
+        if warn:
+            out["camera_warning"] = warn
+        return out
+
+    def _on_frame_meta(self, msg):
+        try:
+            m = json.loads(msg.data)
+        except ValueError:
+            return
+        now = time.monotonic()
+        with self._state_lock:
+            self._frames = [f for f in self._frames if now - f[0] < 60.0] + \
+                [(now, m.get("usable", True) is not False, str(m.get("reason") or ""))]
+
+    def _camera_warning(self):
+        """A plain sentence when many of the last minute's frames could not be used."""
+        with self._state_lock:
+            frames = list(self._frames)
+        if len(frames) < 10:
+            return None
+        bad = [r for _, ok, r in frames if not ok]
+        if len(bad) < 0.3 * len(frames):
+            return None
+        kinds = {"tilted": "the camera is too tilted (fit a gimbal or fly smoother)",
+                 "turning": "the vehicle turns too fast for a fixed camera",
+                 "attitude": "no attitude (IMU / vehicle link)"}
+        why = next((v for k, v in kinds.items() if any(k in r for r in bad)), bad[-1][:80])
+        return f"{100 * len(bad) // len(frames)} % of the last minute's frames unusable: {why}"
 
     # ────────────────────────────────────────────────────────────
     # Mission preparation (page /mission)

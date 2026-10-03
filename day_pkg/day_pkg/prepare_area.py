@@ -265,14 +265,9 @@ def plan_tiles(mbtiles: str, route, buffer_m: float, zoom: int = 17, cache: str 
 FEATURELESS_KEYPOINTS = 50
 
 
-def texture_profile(images_dir: str, route, zoom: int = 17, step_m: float = None):
-    """Where along the route the map has nothing to match (sea, lakes, uniform sand):
-    vision gives no position there and the vehicle flies on its own navigation.
-    Returns {"featureless_km", "longest_km", "stretches": [[from_km, to_km], ...],
-    "unknown_km"} — sampled on the route's centre line, one tile at a time."""
-    import cv2
-    sift = cv2.SIFT_create(contrastThreshold=0.02)
-    step = step_m or _tile_m(route, zoom) / 2.0
+def _profile(route, zoom, step, classify):
+    """Featureless stretches along the route's centre line; classify(x, y) -> True
+    (featureless), False (textured) or None (tile missing)."""
     total = route_length_m(route)
     memo, flags = {}, []
     d = 0.0
@@ -280,13 +275,7 @@ def texture_profile(images_dir: str, route, zoom: int = 17, step_m: float = None
         p, _ = point_along(route, d)
         x, y = (int(v) for v in tile_xy(p[0], p[1], zoom))
         if (x, y) not in memo:
-            g = cv2.imread(os.path.join(images_dir, f"tile_{zoom}_{x}_{y}.jpg"), cv2.IMREAD_GRAYSCALE)
-            if g is None:
-                memo[(x, y)] = None                         # tile missing from the map
-            elif g.std() > 25.0:                            # textured: no need to count
-                memo[(x, y)] = False
-            else:
-                memo[(x, y)] = len(sift.detect(g, None)) < FEATURELESS_KEYPOINTS
+            memo[(x, y)] = classify(x, y)
         flags.append((d, memo[(x, y)]))
         d += step
     stretches, unknown, start = [], 0.0, None
@@ -303,6 +292,58 @@ def texture_profile(images_dir: str, route, zoom: int = 17, step_m: float = None
     lengths = [b - a for a, b in stretches]
     return {"featureless_km": round(sum(lengths), 2), "longest_km": round(max(lengths, default=0.0), 2),
             "stretches": stretches[:50], "unknown_km": round(min(unknown, total) / 1000, 2)}
+
+
+def texture_profile(images_dir: str, route, zoom: int = 17, step_m: float = None):
+    """Where along the route the map has nothing to match (sea, lakes, uniform sand):
+    vision gives no position there and the vehicle flies on NAVERA's dead-reckoning (up to
+    2 min), then on its own navigation. Returns {"featureless_km", "longest_km",
+    "stretches": [[from_km, to_km], ...], "unknown_km"} — sampled on the route's centre
+    line, one tile at a time (SIFT keypoints of the prepared tiles)."""
+    import cv2
+    sift = cv2.SIFT_create(contrastThreshold=0.02)
+
+    def classify(x, y):
+        g = cv2.imread(os.path.join(images_dir, f"tile_{zoom}_{x}_{y}.jpg"), cv2.IMREAD_GRAYSCALE)
+        if g is None:
+            return None                                     # tile missing from the map
+        if g.std() > 25.0:                                  # textured: no need to count
+            return False
+        return len(sift.detect(g, None)) < FEATURELESS_KEYPOINTS
+    return _profile(route, zoom, step_m or _tile_m(route, zoom) / 2.0, classify)
+
+
+def quick_texture_profile(sources, route, zoom: int = 17, max_samples: int = 600):
+    """The same, BEFORE generation, from the map files themselves (onboard map, download
+    cache): a tile of nearly uniform grey levels (sea, lakes: std < 6) is featureless —
+    fast (no feature extraction), coarser; tiles not yet downloaded are "unknown"."""
+    import sqlite3
+    import cv2
+    import numpy as np
+    cons = []
+    for src in sources:
+        if src and os.path.exists(src):
+            try:
+                cons.append(sqlite3.connect(f"file:{src}?mode=ro", uri=True))
+            except sqlite3.Error:
+                pass
+    n = 2 ** zoom
+
+    def classify(x, y):
+        for c in cons:
+            r = c.execute("SELECT tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?",
+                          (zoom, x, n - 1 - y)).fetchone()
+            if r:
+                g = cv2.imdecode(np.frombuffer(r[0], np.uint8), cv2.IMREAD_GRAYSCALE)
+                return None if g is None else bool(g.std() < 6.0)
+        return None
+    total = route_length_m(route)
+    step = max(_tile_m(route, zoom) / 2.0, total / max_samples)
+    try:
+        return _profile(route, zoom, step, classify)
+    finally:
+        for c in cons:
+            c.close()
 
 
 def _progress(stage, done, total, **extra):

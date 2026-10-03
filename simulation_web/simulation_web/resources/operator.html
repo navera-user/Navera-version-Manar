@@ -171,9 +171,12 @@ function setBadge(cls, text){
 function showPosition(d){
   const fix = d.state === 'FIX';
   const cls = !fix ? 'degraded' : (d.source === 'GPS' ? 'gps' : 'vision');
-  setBadge(cls, `${d.source || 'UNKNOWN'} · ${fix ? 'FIX' : 'DEGRADED'}`);
-  const age = Number.isFinite(Number(d.age_s)) ? `${Number(d.age_s).toFixed(1)} s ago` : '';
-  elDetail.textContent = [MODE_TXT[d.mode] || d.mode, age, d.reason].filter(Boolean).join(' · ');
+  const acc = Number.isFinite(Number(d.accuracy_m)) ? ` · ±${Number(d.accuracy_m)} m` : '';
+  setBadge(cls, `${(d.source_name || d.source || 'UNKNOWN').toUpperCase()} · ${fix ? 'FIX' : 'DEGRADED'}${acc}`);
+  const age = Number.isFinite(Number(d.carried_s)) ? `photo ${Number(d.carried_s).toFixed(1)} s old, carried to now`
+            : Number.isFinite(Number(d.measured_age_s)) ? `measured ${Number(d.measured_age_s).toFixed(1)} s ago` : '';
+  elDetail.textContent = [MODE_TXT[d.mode] || d.mode, age, d.reason, d.camera_warning ? '⚠ ' + d.camera_warning : '']
+    .filter(Boolean).join(' · ');
   elLat.textContent = Number(d.lat).toFixed(6);
   elLon.textContent = Number(d.lon).toFixed(6);
   elCoords.classList.remove('stale');
