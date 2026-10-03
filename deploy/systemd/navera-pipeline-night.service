@@ -2,7 +2,9 @@
 Description=NAVERA night localization pipeline (thermal camera + STHN, GPU)
 # No network dependency: a vehicle in the field often has none, and all
 # NAVERA nodes talk over loopback DDS.
-After=local-fs.target
+After=local-fs.target navera-discover.service
+# what is connected is found first (navera-discover); a failed search does not block
+Wants=navera-discover.service
 # Never give up restarting (the default limit stops after 5 fast failures).
 StartLimitIntervalSec=0
 # One vision pipeline at a time (GPU memory): starting another stops this one.
@@ -14,6 +16,8 @@ Conflicts=navera-pipeline-day.service
 EnvironmentFile=-/etc/navera/navera.env
 # Settings written by the web page (/mission), loaded after navera.env which they override.
 EnvironmentFile=-/var/lib/navera/settings.env
+# What navera-discover found at boot, for the settings left to "auto" (loaded last).
+EnvironmentFile=-/var/lib/navera/discovered.env
 Type=simple
 User=navera
 Group=navera

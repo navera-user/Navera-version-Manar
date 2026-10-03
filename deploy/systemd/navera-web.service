@@ -1,7 +1,9 @@
 [Unit]
 Description=NAVERA web bridge (ROS→HTTP dashboard :8181, drives the day pipeline over DDS)
 # Binds a port: needs the network stack, not a network connection.
-After=network.target
+After=network.target navera-discover.service
+# what is connected is found first (navera-discover); a failed search does not block
+Wants=navera-discover.service
 # Never give up restarting (the default limit stops after 5 fast failures).
 StartLimitIntervalSec=0
 # No ordering vs navera-pipeline-day: bridge↔pipeline talk over DDS (discovery-based,
@@ -13,6 +15,8 @@ StartLimitIntervalSec=0
 EnvironmentFile=-/etc/navera/navera.env
 # Settings written by the web page (/mission), loaded after navera.env which they override.
 EnvironmentFile=-/var/lib/navera/settings.env
+# What navera-discover found at boot, for the settings left to "auto" (loaded last).
+EnvironmentFile=-/var/lib/navera/discovered.env
 Type=simple
 User=navera
 Group=navera

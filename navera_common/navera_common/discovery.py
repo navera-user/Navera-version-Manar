@@ -1,0 +1,417 @@
+"""What is connected to this NAVERA box, and which source to use for what.
+
+At every boot (navera-discover.service, before the other units) NAVERA looks for:
+  * its own sensors: IMU (BNO085, I2C 0x4A/0x4B) and clock (DS3231, I2C 0x68) on I2C
+    buses 1 and 7, a GPS receiver (checksummed NMEA) on the serial ports;
+  * an autopilot: MAVLink heartbeats on the serial ports and the network (UDP 14550/14551);
+    it is asked which data it streams (attitude, rangefinder, second GPS);
+  * a ROS vehicle: IMU / GPS / camera / height topics on the ROS domains;
+  * cameras: USB (/dev/v4l/by-id) and CSI (Jetson video inputs).
+then decides, for each need, the best source found (decide()): attitude box IMU >
+autopilot > ROS; GPS box receiver > autopilot's second GPS > ROS; camera USB > CSI > ROS;
+outputs: MAVLink to the autopilot when one answers (through vehicle_link's relay when it is
+the same link), /navera/fix on ROS when a ROS vehicle is there.
+
+Only settings left to "auto" (or unset) are decided: a value written in navera.env always
+wins. The result is an env file read by the services after navera.env, and a JSON report.
+Probing only READS serial ports, except an identified autopilot, which is asked for its
+data streams; a port another process holds open is never touched.
+"""
+import glob
+import json
+import os
+import re
+import threading
+import time
+from typing import Dict, List, Optional
+
+I2C_SLAVE = 0x0703
+IMU_ADDRS, RTC_ADDR = (0x4A, 0x4B), 0x68
+SERIAL_GLOBS = ("/dev/ttyTHS*", "/dev/ttyUSB*", "/dev/ttyACM*")
+SERIAL_BAUDS = (9600, 38400, 57600, 115200, 230400, 460800, 921600)
+NMEA_RE = re.compile(rb"\$([A-Z]{2}[A-Z]{3}),[^*\r\n]*\*([0-9A-F]{2})")
+NAVERA_NS = ("/navera", "/day", "/night", "/thermal", "/celestial", "/cn", "/rosout", "/parameter_events")
+AUTO_KEYS = ("NAVERA_SENSOR_SOURCE", "NAVERA_GPS_SOURCE", "NAVERA_CAMERA_INPUT")
+
+
+# ── probes (each returns plain data; never raises) ─────────────────────────
+def probe_i2c(buses=(1, 7)) -> Dict[str, dict]:
+    """{"imu": {"bus", "address"}, "rtc": {...}} for the chips that answer (or are held by a
+    kernel driver, which proves they are there)."""
+    import errno
+    import fcntl
+    found = {}
+    for bus in buses:
+        path = f"/dev/i2c-{bus}"
+        if not os.path.exists(path):
+            continue
+        for name, addrs in (("imu", IMU_ADDRS), ("rtc", (RTC_ADDR,))):
+            for a in addrs:
+                if name in found:
+                    break
+                try:
+                    fd = os.open(path, os.O_RDWR)
+                except OSError:
+                    continue
+                try:
+                    fcntl.ioctl(fd, I2C_SLAVE, a)
+                    os.read(fd, 1)
+                    found[name] = {"bus": bus, "address": hex(a)}
+                except OSError as e:
+                    if e.errno == errno.EBUSY:          # a kernel driver owns it: present
+                        found[name] = {"bus": bus, "address": hex(a), "kernel_driver": True}
+                finally:
+                    os.close(fd)
+    return found
+
+
+def nmea_valid(data: bytes) -> int:
+    """Number of NMEA sentences with a correct checksum in data."""
+    n = 0
+    for m in NMEA_RE.finditer(data):
+        body = m.group(0)[1:m.group(0).index(b"*")]
+        c = 0
+        for b in body:
+            c ^= b
+        n += c == int(m.group(2), 16)
+    return n
+
+
+def mavlink_heartbeats(data: bytes) -> List[dict]:
+    """Heartbeats parsed from raw bytes: [{"sysid", "compid", "type", "autopilot"}]."""
+    from pymavlink.dialects.v20 import common as mav
+    p = mav.MAVLink(None)
+    p.robust_parsing = True
+    out = []
+    try:
+        msgs = p.parse_buffer(data) or []
+    except Exception:                                     # noqa: BLE001 — garbage at a wrong baud
+        return out
+    for m in msgs:
+        if m.get_type() == "HEARTBEAT":
+            out.append(dict(sysid=m.get_srcSystem(), compid=m.get_srcComponent(), type=m.type,
+                            autopilot=m.autopilot))
+    return out
+
+
+def is_autopilot(hb: dict) -> bool:
+    # MAV_AUTOPILOT_INVALID (8): ground station, camera, companion; MAV_TYPE 6 GCS, 18 onboard, 26 gimbal, 30 camera
+    return hb["autopilot"] != 8 and hb["type"] not in (6, 18, 26, 30)
+
+
+def port_in_use(path: str) -> bool:
+    real = os.path.realpath(path)
+    for fd in glob.glob("/proc/[0-9]*/fd/*"):
+        try:
+            if os.readlink(fd) == real:
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def probe_serial_port(path: str, bauds=SERIAL_BAUDS, listen_s: float = 2.2) -> Optional[dict]:
+    """{"port", "baud", "kind": "nmea"|"mavlink", ...} for what talks on this port, or None."""
+    try:
+        import serial
+    except ImportError:
+        return None
+    if port_in_use(path):
+        return {"port": path, "kind": "busy"}
+    for baud in bauds:
+        try:
+            s = serial.Serial(path, baud, timeout=0.2)
+        except Exception:                                 # noqa: BLE001 — no such port / no access
+            return None
+        data, t0 = b"", time.time()
+        try:
+            while time.time() - t0 < listen_s:
+                data += s.read(4096)
+                if nmea_valid(data) >= 2:
+                    return {"port": path, "baud": baud, "kind": "nmea"}
+                hbs = [h for h in mavlink_heartbeats(data) if is_autopilot(h)]
+                if hbs:
+                    return {"port": path, "baud": baud, "kind": "mavlink", "url": f"serial:{path}:{baud}",
+                            **hbs[0]}
+        finally:
+            s.close()
+    return None
+
+
+def serial_ports() -> List[str]:
+    ports = sorted({p for g in SERIAL_GLOBS for p in glob.glob(g)})
+    return [p for p in ports if os.access(p, os.R_OK | os.W_OK)]
+
+
+def probe_mavlink_url(url: str, wait_s: float = 3.0) -> Optional[dict]:
+    """An autopilot on a network URL (udpin:0.0.0.0:14550, tcp:host:port)."""
+    try:
+        from pymavlink import mavutil
+        m = mavutil.mavlink_connection(url, source_system=1, source_component=192)
+    except Exception:                                     # noqa: BLE001
+        return None
+    try:
+        end = time.time() + wait_s
+        while time.time() < end:
+            hb = m.recv_match(type="HEARTBEAT", blocking=True, timeout=0.5)
+            if hb is not None:
+                d = dict(sysid=hb.get_srcSystem(), compid=hb.get_srcComponent(), type=hb.type,
+                         autopilot=hb.autopilot)
+                if is_autopilot(d):
+                    return {"kind": "mavlink", "url": url, **d}
+    finally:
+        m.close()
+    return None
+
+
+def autopilot_streams(url: str, wait_s: float = 4.0) -> Dict[str, bool]:
+    """Ask an identified autopilot for attitude, rangefinder, second GPS and its height
+    above home; report which arrive."""
+    want = {"ATTITUDE": 30, "DISTANCE_SENSOR": 132, "GPS2_RAW": 124, "GLOBAL_POSITION_INT": 33}
+    seen = {k: False for k in want}
+    try:
+        from pymavlink import mavutil
+        from navera_output.mavlink_url import connect
+        m = connect(url, 1, 192)
+    except Exception:                                     # noqa: BLE001
+        return seen
+    try:
+        hb = m.wait_heartbeat(timeout=3)
+        if hb is None:
+            return seen
+        for mid in want.values():
+            m.mav.command_long_send(m.target_system, m.target_component,
+                                    mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, 0, mid, 500000, 0, 0, 0, 0, 0)
+        end = time.time() + wait_s
+        while time.time() < end and not all(seen.values()):
+            msg = m.recv_match(blocking=True, timeout=0.5)
+            if msg is not None and msg.get_type() in seen:
+                if msg.get_type() == "GPS2_RAW" and msg.fix_type < 2:
+                    continue                              # declared but no receiver / no fix
+                seen[msg.get_type()] = True
+    finally:
+        m.close()
+    return seen
+
+
+def probe_cameras() -> Dict[str, list]:
+    usb = sorted(p for p in glob.glob("/dev/v4l/by-id/*-video-index0"))
+    csi = []
+    for d in sorted(glob.glob("/sys/class/video4linux/video*")):
+        try:
+            name = open(os.path.join(d, "name")).read().strip()
+        except OSError:
+            continue
+        if "vi-output" in name or re.search(r"\b(imx|ov)\d", name, re.I):
+            csi.append(name)
+    return {"usb": usb, "csi": csi}
+
+
+def probe_ros(domains, wait_s: float = 3.0) -> Dict[int, Dict[str, List[str]]]:
+    """{domain: {message type: [topics]}} of the vehicle's topics (NAVERA's own excluded)."""
+    out = {}
+    os.environ["ROS_LOCALHOST_ONLY"] = "0"                # a vehicle is another computer
+    try:
+        import rclpy
+    except ImportError:
+        return out
+    for d in domains:
+        ctx = rclpy.Context()
+        try:
+            rclpy.init(context=ctx, domain_id=int(d))
+            node = rclpy.create_node("navera_discovery", context=ctx)
+            time.sleep(wait_s)
+            types = {}
+            for name, tys in node.get_topic_names_and_types():
+                if name.startswith(NAVERA_NS):
+                    continue
+                for ty in tys:
+                    types.setdefault(ty, []).append(name)
+            out[int(d)] = types
+            node.destroy_node()
+        except Exception:                                 # noqa: BLE001
+            continue
+        finally:
+            try:
+                rclpy.shutdown(context=ctx)
+            except Exception:                             # noqa: BLE001
+                pass
+    return out
+
+
+def discover(env=None, ros_wait_s: float = 8.0) -> dict:
+    """Everything found (probes run in parallel: ~20 s)."""
+    env = os.environ if env is None else env
+    found = {"time": time.strftime("%Y-%m-%dT%H:%M:%S"), "i2c": {}, "serial": [], "network": [],
+             "cameras": {}, "ros": {}}
+    threads = []
+
+    def run(key, fn, *a):
+        def w():
+            r = fn(*a)
+            if isinstance(found[key], list):
+                if r:
+                    found[key].append(r)
+            else:
+                found[key] = r
+        threads.append(threading.Thread(target=w, daemon=True))
+
+    run("i2c", probe_i2c)
+    run("cameras", probe_cameras)
+    for p in serial_ports():
+        run("serial", probe_serial_port, p)
+    extra = [u.strip() for u in str(env.get("NAVERA_DISCOVER_MAVLINK", "")).split(",") if u.strip()]
+    for url in ["udpin:0.0.0.0:14550", "udpin:0.0.0.0:14551"] + extra:
+        run("network", probe_mavlink_url, url)
+    domains = sorted({0, int(env.get("ROS_DOMAIN_ID", "0") or 0)} |
+                     {int(x) for x in str(env.get("NAVERA_DISCOVER_ROS_DOMAINS", "")).split(",") if x.strip().isdigit()})
+    run("ros", probe_ros, domains, ros_wait_s)
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=60)
+    ap = next((x for x in found["serial"] + found["network"] if x.get("kind") == "mavlink"), None)
+    if ap:
+        found["autopilot_streams"] = autopilot_streams(ap["url"])
+    return found
+
+
+# ── decision (pure) ─────────────────────────────────────────────────────────
+def _pick(topics: List[str], words) -> Optional[str]:
+    if not topics:
+        return None
+    return sorted(topics, key=lambda t: (-sum(w in t.lower() for w in words), len(t), t))[0]
+
+
+def decide(found: dict, env) -> dict:
+    """{"settings": {KEY: value}, "report": [lines]} — values only for settings left to
+    "auto" or unset in env; the report says what was found and why each choice."""
+    auto = lambda k: str(env.get(k, "") or "auto").strip().lower() == "auto"     # noqa: E731
+    out, rep = {}, []
+    i2c = found.get("i2c") or {}
+    serial = found.get("serial") or []
+    gps_port = next((s for s in serial if s.get("kind") == "nmea"), None)
+    ap = next((x for x in serial + (found.get("network") or []) if x.get("kind") == "mavlink"), None)
+    streams = found.get("autopilot_streams") or {}
+    ros = {}
+    ros_domain = None
+    for d, types in sorted((found.get("ros") or {}).items(), key=lambda kv: -len(kv[1])):
+        if any(t in types for t in ("sensor_msgs/msg/Imu", "sensor_msgs/msg/NavSatFix", "sensor_msgs/msg/Image")):
+            ros, ros_domain = types, int(d)
+            break
+    ros_imu = _pick(ros.get("sensor_msgs/msg/Imu", []), ("imu", "data"))
+    ros_gps = _pick([t for t in ros.get("sensor_msgs/msg/NavSatFix", []) if t != "/navera/fix"], ("gps", "fix"))
+    ros_cam = _pick([t for t in ros.get("sensor_msgs/msg/Image", [])
+                     if not re.search(r"depth|disparity|thermal|ir/|compressed", t)],
+                    ("down", "nadir", "bottom", "camera", "image_raw"))
+    ros_alt = _pick(ros.get("sensor_msgs/msg/Range", []), ("down", "altitude", "range"))
+    cams = found.get("cameras") or {}
+
+    rep.append("found: " + (", ".join(filter(None, [
+        "box IMU" if "imu" in i2c else None, "box clock" if "rtc" in i2c else None,
+        f"GPS receiver {gps_port['port']} @{gps_port['baud']}" if gps_port else None,
+        f"autopilot {ap['url']} (system {ap['sysid']})" if ap else None,
+        f"ROS vehicle on domain {ros_domain}" if ros_domain is not None else None,
+        f"USB camera {os.path.basename(cams['usb'][0])}" if cams.get("usb") else None,
+        f"CSI camera {cams['csi'][0]}" if cams.get("csi") else None])) or "nothing"))
+    for s in serial:
+        if s.get("kind") == "busy":
+            rep.append(f"  {s['port']} is held by another program: not probed")
+
+    # attitude (and with it the height sources)
+    if auto("NAVERA_SENSOR_SOURCE"):
+        if "imu" in i2c:
+            out["NAVERA_SENSOR_SOURCE"], why = "box", "the box's own IMU (rigid with the camera)"
+        elif ap and streams.get("ATTITUDE", True):
+            out["NAVERA_SENSOR_SOURCE"], why = "vehicle", "no box IMU; the autopilot's attitude"
+        elif ros_imu:
+            out["NAVERA_SENSOR_SOURCE"], why = "ros", f"no box IMU, no autopilot; ROS {ros_imu}"
+            out["NAVERA_ROS_IMU_TOPIC"] = ros_imu
+            if ros_alt:
+                out["NAVERA_ROS_ALTITUDE_TOPIC"] = ros_alt
+        else:
+            out["NAVERA_SENSOR_SOURCE"], why = "box", "NO attitude source found (frames will be unusable)"
+        rep.append(f"attitude: {out['NAVERA_SENSOR_SOURCE']} — {why}")
+    # GPS (the start position and the cross-check)
+    if auto("NAVERA_GPS_SOURCE"):
+        if gps_port:
+            out.update(NAVERA_GPS_SOURCE="serial", NAVERA_GPS_PORT=gps_port["port"],
+                       NAVERA_GPS_BAUD=str(gps_port["baud"]))
+            why = f"the box's receiver on {gps_port['port']}"
+        elif ap and streams.get("GPS2_RAW"):
+            out["NAVERA_GPS_SOURCE"], why = "vehicle", "the autopilot's second GPS"
+        elif ros_gps:
+            out.update(NAVERA_GPS_SOURCE="ros", NAVERA_ROS_GPS_TOPIC=ros_gps)
+            why = f"ROS {ros_gps}"
+        else:
+            out["NAVERA_GPS_SOURCE"], why = "serial", "NO GPS found — NAVERA needs one fix at start"
+        rep.append(f"GPS: {out['NAVERA_GPS_SOURCE']} — {why}")
+    # camera
+    if auto("NAVERA_CAMERA_INPUT"):
+        if cams.get("usb"):
+            out.update(NAVERA_CAMERA_INPUT="usb", NAVERA_CAMERA_DEVICE=cams["usb"][0])
+            why = f"USB {os.path.basename(cams['usb'][0])}"
+        elif cams.get("csi"):
+            out.update(NAVERA_CAMERA_INPUT="csi", NAVERA_CAMERA_DEVICE="0")
+            why = f"CSI {cams['csi'][0]}"
+        elif ros_cam:
+            out.update(NAVERA_CAMERA_INPUT="ros", NAVERA_CAMERA_TOPIC=ros_cam)
+            why = (f"ROS {ros_cam} — CHECK it looks at the ground (else set NAVERA_CAMERA_MOUNT_RPY, "
+                   f"or fit NAVERA's camera)")
+        else:
+            out["NAVERA_CAMERA_INPUT"], why = "usb", "NO camera found"
+        rep.append(f"camera: {out['NAVERA_CAMERA_INPUT']} — {why}")
+    # the autopilot link: read its sensors and give it NAVERA's position
+    if ap:
+        if not str(env.get("NAVERA_VEHICLE_MAVLINK_URL", "")).strip():
+            out["NAVERA_VEHICLE_MAVLINK_URL"] = ap["url"]
+        if not str(env.get("NAVERA_MAVLINK_URL", "")).strip():
+            # one link: vehicle_link owns it and relays NAVERA's GPS_INPUT
+            out["NAVERA_MAVLINK_URL"] = "udpout:127.0.0.1:14650"
+        rep.append(f"output: NAVERA's position to the autopilot over MAVLink ({ap['url']})")
+    # ROS vehicle: join its graph, publish /navera/fix
+    if ros_domain is not None:
+        if not str(env.get("NAVERA_ROS_DOMAIN_LOCKED", "")).strip():
+            out.update(ROS_DOMAIN_ID=str(ros_domain), ROS_LOCALHOST_ONLY="0")
+        out.setdefault("NAVERA_ROS_FIX_TOPIC", str(env.get("NAVERA_ROS_FIX_TOPIC", "") or "/navera/fix"))
+        rep.append(f"output: /navera/fix (sensor_msgs/NavSatFix) on ROS domain {ros_domain}")
+    if not ap and ros_domain is None:
+        rep.append("output: no autopilot and no ROS vehicle found — set NAVERA_NMEA_PORT for an NMEA GPS input")
+    return {"settings": out, "report": rep}
+
+
+def write_env(settings: dict, path: str) -> None:
+    tmp = f"{path}.tmp{os.getpid()}"
+    with open(tmp, "w") as f:
+        f.write("# Written at boot by navera-discover (navera_common.discovery): what was found.\n"
+                "# Only for settings left to auto in /etc/navera/navera.env. Do not edit.\n")
+        for k in sorted(settings):
+            v = str(settings[k])
+            if not re.fullmatch(r"[A-Z][A-Z0-9_]*", k) or re.search(r"[\x00-\x1f\x7f]", v):
+                continue
+            f.write(f"{k}={v}\n")
+    os.replace(tmp, path)
+
+
+def main(argv=None) -> int:
+    import argparse
+    ap = argparse.ArgumentParser(description="Find what is connected to this NAVERA box.")
+    ap.add_argument("--env-out", help="write the decided settings here (e.g. /var/lib/navera/discovered.env)")
+    ap.add_argument("--json-out", help="write the full report here")
+    ap.add_argument("--ros-wait", type=float, default=8.0)      # DDS discovery: seconds; ports take ~15 s anyway
+    a = ap.parse_args(argv)
+    found = discover(ros_wait_s=a.ros_wait)
+    d = decide(found, os.environ)
+    print("\n".join(d["report"]))
+    if a.env_out:
+        write_env(d["settings"], a.env_out)
+    if a.json_out:
+        tmp = f"{a.json_out}.tmp"
+        with open(tmp, "w") as f:
+            json.dump(dict(found=found, settings=d["settings"], report=d["report"]), f, indent=1, default=str)
+        os.replace(tmp, a.json_out)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

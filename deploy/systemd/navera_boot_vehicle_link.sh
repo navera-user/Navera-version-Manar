@@ -7,9 +7,12 @@ source "$(dirname "$(readlink -f "$0")")/navera_boot_lib.sh"
 
 navera_env
 navera_prune_logs
-if [ -z "${NAVERA_VEHICLE_MAVLINK_URL}" ]; then
-    navera_log "NAVERA_VEHICLE_MAVLINK_URL is not set (see /etc/navera/navera.env)"
-    exit 1
+if [ -z "${NAVERA_VEHICLE_MAVLINK_URL:-}" ]; then
+    # no autopilot found at boot (navera-discover) nor configured: wait quietly instead of
+    # restarting every 10 s; a reboot or `systemctl restart navera-discover
+    # navera-vehicle-link` after connecting one picks it up
+    navera_log "no autopilot found or configured (NAVERA_VEHICLE_MAVLINK_URL): vehicle link idle"
+    exec sleep infinity
 fi
 exec ros2 run navera_output vehicle_link_node.py --ros-args \
     -p mavlink_url:="${NAVERA_VEHICLE_MAVLINK_URL}"

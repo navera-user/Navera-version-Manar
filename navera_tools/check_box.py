@@ -27,6 +27,21 @@ def report(level, what, detail=""):
     print(f"{level:4s}  {what}" + (f" — {detail}" if detail else ""))
 
 
+def check_discovery():
+    """What navera-discover found at the last boot (settings left to "auto")."""
+    from navera_common.state_store import state_dir
+    path = os.path.join(state_dir(), "discovery.json")
+    try:
+        d = json.load(open(path))
+    except (OSError, ValueError):
+        report(WARN, "discovery", f"no report ({path}): navera-discover has not run — "
+                                  "`sudo systemctl restart navera-discover` or set the sources by hand")
+        return
+    for line in d.get("report", []):
+        missing = " NO " in f" {line} " or "CHECK" in line
+        report(WARN if missing else OK, "discovery", line)
+
+
 def check_settings():
     from navera_common.vehicle import live_camera_params, max_speed_mps_from_env, sensor_topics
     try:
@@ -236,6 +251,7 @@ def main():
     ap.add_argument("--no-ros", action="store_true", help="settings and files only")
     a = ap.parse_args()
     print("NAVERA pre-flight check\n")
+    check_discovery()
     topics, cam = check_settings()
     check_files()
     if a.camera and cam:

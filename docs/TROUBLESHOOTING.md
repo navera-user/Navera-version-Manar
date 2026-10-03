@@ -230,3 +230,14 @@ the vehicle's computer does not see `/navera/fix`, or NAVERA does not see the ve
 | `ROS_LOCALHOST_ONLY=1`: NAVERA's DDS stays on the box (template default) | navera.env | for a ROS vehicle: `ROS_LOCALHOST_ONLY=0` and the vehicle's `ROS_DOMAIN_ID`, then restart all NAVERA units (deploy/README.md §6) |
 | Different domain id on the vehicle | `echo $ROS_DOMAIN_ID` on both machines | same id |
 | Different ROS 2 distribution or RMW on the vehicle | `echo $RMW_IMPLEMENTATION` on both | align them |
+
+## Automatic detection (navera-discover)
+
+| Symptom | Check | Fix |
+|---|---|---|
+| A sensor / autopilot / camera is not used | `navera_tools/check_box.py` (first lines) or `cat /var/lib/navera/discovery.json`; `journalctl -b -u navera-discover` | connected after boot: `sudo systemctl restart navera-discover` then the units concerned; else impose it in `navera.env` instead of `auto` |
+| "is held by another program: not probed" | `fuser <port>` | another program opened the port at boot (modem manager, a console on `ttyTHS0`): stop it, or impose the source |
+| Autopilot not found on a serial port | its telemetry port must send MAVLink (ArduPilot `SERIALn_PROTOCOL=2`) at a standard baud | or set `NAVERA_DISCOVER_MAVLINK=serial:/dev/ttyXXX:921600` / `NAVERA_VEHICLE_MAVLINK_URL` |
+| ROS vehicle not found | `ros2 topic list` with the vehicle's `ROS_DOMAIN_ID` and `ROS_LOCALHOST_ONLY=0` | add its domain to `NAVERA_DISCOVER_ROS_DOMAINS`; check the network (same subnet, multicast allowed) |
+| ROS camera chosen but it looks forward | discovery cannot know a camera's direction | fit NAVERA's downward camera (found first), or impose `NAVERA_CAMERA_INPUT` |
+

@@ -25,6 +25,7 @@ discovery-based, and the camera ↔ localizer handshake uses latched topics).
 
 | Unit | Started by | Runs | Enable it when |
 |---|---|---|---|
+| `navera-discover` | `navera_boot_discover.sh` | Once per boot, before the others: finds what is connected and decides the sources left to `auto` (§5) → `/var/lib/navera/discovered.env`, report `/var/lib/navera/discovery.json` | Always |
 | `navera-estimator` | `navera_boot_estimator.sh` | Position arbiter: GPS > day > night > celestial → `/navera/position`, `/navera/nav_status` | Always |
 | `navera-gps` | `navera_boot_gps.sh` | NAVERA's GPS source, per `NAVERA_GPS_SOURCE` (box receiver, autopilot's 2nd GPS, or a ROS topic) | Always (NAVERA needs a GPS fix at start, in every mode — see §5) |
 | `navera-pipeline-day` | `navera_boot_pipeline_day.sh` | Day camera + day vision (GPU) | Day operation (default) |
@@ -324,12 +325,44 @@ calibration — none" with the field of view only.
 
 ## 5. Sensor and GPS sources
 
+### Automatic detection (default: `auto`)
+
+With `NAVERA_SENSOR_SOURCE`, `NAVERA_GPS_SOURCE` and `NAVERA_CAMERA_INPUT` set to `auto`
+(the template's default), **navera-discover** looks at every boot (~20 s, before the other
+units) for:
+
+| What | How it is found |
+|---|---|
+| The box's IMU and clock | I²C buses 1 and 7: BNO085 at 0x4A/0x4B, DS3231 at 0x68 |
+| A GPS receiver | checksummed NMEA on `/dev/ttyTHS*`, `/dev/ttyUSB*`, `/dev/ttyACM*` (4800–921600 baud) |
+| An autopilot (any MAVLink) | an autopilot heartbeat on those serial ports, on UDP 14550/14551, or on `NAVERA_DISCOVER_MAVLINK`; it is then asked for attitude, rangefinder, second GPS, height above home |
+| A ROS vehicle | `sensor_msgs` Imu / NavSatFix / Image / Range topics on ROS domain 0, `ROS_DOMAIN_ID` and `NAVERA_DISCOVER_ROS_DOMAINS` |
+| Cameras | USB (`/dev/v4l/by-id/*-video-index0`), CSI (Jetson video inputs) |
+
+and chooses: **attitude** box IMU > autopilot > ROS; **GPS** box receiver > autopilot's 2nd GPS
+> ROS; **camera** USB > CSI > ROS (depth images excluded; a ROS camera is flagged "check it
+looks at the ground"). **Outputs:** an autopilot found → NAVERA's position over MAVLink —
+on the same link, relayed by `navera-vehicle-link` (local UDP 14650), no mavlink-router
+needed; a ROS vehicle found → `/navera/fix`, NAVERA joining its ROS domain (unless
+`NAVERA_ROS_DOMAIN_LOCKED=1`). A port another program holds is never probed; only an
+identified autopilot is written to (its data-stream requests).
+
+A value written in `navera.env` instead of `auto` is always kept. See what was found:
+`navera_tools/check_box.py` (first lines) or `/var/lib/navera/discovery.json`. After
+connecting something new: reboot, or `sudo systemctl restart navera-discover` then the
+units concerned. Verified: this Jetson's bench (a ROS robot simulation found, no box
+sensors), virtual serial GPS/autopilot ports (unit tests), ArduPilot SITL with a second
+GPS (`navera_tools/tests/sitl_discovery.py`: autopilot found, attitude and GPS taken from
+it, NAVERA's messages relayed). Not yet with real box sensors or a real autopilot.
+
+### Imposing a source
+
 **Attitude and height — `NAVERA_SENSOR_SOURCE`** (read by the live camera, the night and
 celestial pipelines and the estimator's IMU liveness check; `navera_common/vehicle.py`):
 
 | Value | Attitude | Height above ground | Needs |
 |---|---|---|---|
-| `box` (default) | `/navera/sensors/imu` (BNO085) | from the GPS altitude and the image | `navera-imu` |
+| `box` (auto finds nothing) | `/navera/sensors/imu` (BNO085) | from the GPS altitude and the image | `navera-imu` |
 | `vehicle` | `/navera/vehicle/imu` (autopilot attitude) | `/navera/vehicle/altitude_agl` (downward rangefinder), `/navera/vehicle/relative_alt` (barometric height above home) | `navera-vehicle-link`, `NAVERA_VEHICLE_MAVLINK_URL` |
 | `ros` | `NAVERA_ROS_IMU_TOPIC` (sensor_msgs/Imu, ENU) — required | `NAVERA_ROS_ALTITUDE_TOPIC` (sensor_msgs/Range), optional | the vehicle's ROS graph (§6) |
 
@@ -338,7 +371,7 @@ celestial pipelines and the estimator's IMU liveness check; `navera_common/vehic
 
 | Value | GPS | Node |
 |---|---|---|
-| `serial` (default) | the box's receiver, NMEA on `NAVERA_GPS_PORT` (default `/dev/ttyTHS1`) at `NAVERA_GPS_BAUD` (default 9600) | `gps_node` |
+| `serial` (auto finds nothing) | the box's receiver, NMEA on `NAVERA_GPS_PORT` (default `/dev/ttyTHS1`) at `NAVERA_GPS_BAUD` (default 9600) | `gps_node` |
 | `vehicle` | the autopilot's **second** GPS (`GPS2_RAW`), read by `navera-vehicle-link` and republished from `/navera/vehicle/gps2` | `ros_gps_node` |
 | `ros` | the vehicle's `sensor_msgs/NavSatFix` topic `NAVERA_ROS_GPS_TOPIC` (required) | `ros_gps_node` |
 

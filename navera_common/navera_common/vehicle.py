@@ -88,6 +88,8 @@ def sensor_topics(environ=None) -> dict:
     Raises ValueError on an unknown source or a missing ROS IMU topic."""
     env = os.environ if environ is None else environ
     src = str(env.get(ENV_SENSOR_SOURCE, "") or "box").strip().lower()
+    if src == "auto":                       # not decided by navera-discover: the box's sensors
+        src = "box"
     if src not in SENSOR_SOURCES:
         raise ValueError(f"{ENV_SENSOR_SOURCE}={src!r}: expected one of {', '.join(SENSOR_SOURCES)}")
     t = {"sensor_source": src, "imu_topic": "/navera/sensors/imu", "gps_topic": "/navera/sensors/gps_fix",
@@ -114,7 +116,7 @@ def live_camera_params(environ=None, prefix: str = "NAVERA_CAMERA_") -> dict:
     size = get(prefix + "SIZE", "1920x1080").lower().split("x")
     if len(size) != 2 or not all(s.isdigit() for s in size):
         raise ValueError(f"{prefix}SIZE={get(prefix + 'SIZE')!r}: expected WIDTHxHEIGHT, e.g. 1920x1080")
-    p = {"input": get(prefix + "INPUT", "usb"), "device": get(prefix + "DEVICE", "/dev/video0"),
+    p = {"input": get(prefix + "INPUT", "usb").lower().replace("auto", "usb"), "device": get(prefix + "DEVICE", "/dev/video0"),
          "input_topic": get(prefix + "TOPIC", "/vehicle/camera/image_raw"),
          "width": int(size[0]), "height": int(size[1]),
          "fps": float(get(prefix + "FPS", "1.0")),

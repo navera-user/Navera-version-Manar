@@ -20,7 +20,7 @@ set -euo pipefail
 
 SRC="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 WS=/home/navera/isaac_ros_common
-UNITS="navera-estimator navera-gps navera-imu navera-rtc navera-pipeline-day navera-output navera-web"
+UNITS="navera-discover navera-estimator navera-gps navera-imu navera-rtc navera-vehicle-link navera-pipeline-day navera-output navera-web"
 DRY=0; PIP=1; APT=1; START=0; HEADLESS=0
 
 while [ $# -gt 0 ]; do

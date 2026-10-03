@@ -2,7 +2,9 @@
 Description=NAVERA position arbiter (per-source PositionEstimate → /navera/position + /navera/nav_status)
 # No network dependency: a vehicle in the field often has none, and all
 # NAVERA nodes talk over loopback DDS.
-After=local-fs.target
+After=local-fs.target navera-discover.service
+# what is connected is found first (navera-discover); a failed search does not block
+Wants=navera-discover.service
 # Never give up restarting (the default limit stops after 5 fast failures).
 StartLimitIntervalSec=0
 # No ordering vs the source services (navera-gps, navera-pipeline-day, navera-imu…):
@@ -17,6 +19,8 @@ StartLimitIntervalSec=0
 EnvironmentFile=-/etc/navera/navera.env
 # Settings written by the web page (/mission), loaded after navera.env which they override.
 EnvironmentFile=-/var/lib/navera/settings.env
+# What navera-discover found at boot, for the settings left to "auto" (loaded last).
+EnvironmentFile=-/var/lib/navera/discovered.env
 Type=simple
 User=navera
 Group=navera

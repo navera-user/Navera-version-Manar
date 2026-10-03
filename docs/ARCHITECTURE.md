@@ -178,6 +178,15 @@ stated accuracy that grows (velocity error × t + 5° heading error × distance)
 `max_dead_reckon_s` (120 s) and `dead_reckon_max_sigma_m` (500 m); never used as an
 independent check of GPS.
 
+### What is connected — `navera_common/discovery.py`
+
+`navera-discover` (once per boot, before the other units) probes I²C, the serial ports
+(NMEA, MAVLink heartbeats), UDP 14550/14551, the ROS graph and the cameras, and decides
+the sources left to `auto`: attitude box IMU > autopilot > ROS; GPS box receiver >
+autopilot's 2nd GPS > ROS; camera USB > CSI > ROS; MAVLink output relayed by
+`vehicle_link` (UDP 14650) on the autopilot link it owns; `/navera/fix` on a ROS
+vehicle's domain. Written settings always win.
+
 ## 6. Output to the vehicle — `navera_output`
 
 `vehicle_output` sends the arbiter's decision as NMEA (GGA + RMC), MAVLink `GPS_INPUT` and a
