@@ -21,9 +21,14 @@ Parameters:
                     share one link between vehicle_output and this node)
     attitude_hz     requested attitude rate (default 50)
     source_system   NAVERA's MAVLink system id (default 1 = the vehicle's; component 192)
+    relay_port      local UDP port (default 14650; 0 = off) whose MAVLink packets are passed
+                    on to the autopilot: with a single autopilot port, vehicle_output sends
+                    its GPS_INPUT to udpout:127.0.0.1:14650 and this node, which owns the
+                    link, relays it (no mavlink-router needed)
 """
 import json
 import math
+import socket
 import threading
 import time
 
@@ -53,6 +58,7 @@ class VehicleLink(Node):
         # MAV_COMP_ID_ONBOARD_COMPUTER2: vehicle_output is 191 — two NAVERA connections
         # behind one mavlink-router must not share an identity
         self.declare_parameter("source_component", 192)
+        self.declare_parameter("relay_port", 14650)
         self.url = str(self.get_parameter("mavlink_url").value)
         if not self.url:
             raise ValueError("mavlink_url is not set (e.g. serial:/dev/ttyTHS2:921600)")
@@ -68,6 +74,18 @@ class VehicleLink(Node):
         self.q_last, self.q_t = None, 0.0
         self.quat_t = 0.0                  # last ATTITUDE_QUATERNION (monotonic); ATTITUDE used without it
         self._stop = threading.Event()
+        self._link, self._write_lock, self.relayed = None, threading.Lock(), 0
+        self._relay_sock = None
+        port = int(self.get_parameter("relay_port").value)
+        if port:
+            try:
+                self._relay_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                self._relay_sock.bind(("127.0.0.1", port))
+                self._relay_sock.settimeout(0.5)
+                threading.Thread(target=self._relay, daemon=True).start()
+            except OSError as e:
+                self.get_logger().error(f"relay port {port} unavailable ({e}): no relay")
+                self._relay_sock = None
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
         self.create_timer(1.0, self._status)
@@ -104,6 +122,10 @@ class VehicleLink(Node):
                 self.autopilot = {mavutil.mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA: "ArduPilot",
                                   mavutil.mavlink.MAV_AUTOPILOT_PX4: "PX4"}.get(hb.autopilot, f"MAVLink autopilot {hb.autopilot}")
                 self.get_logger().info(f"connected to {self.autopilot} (system {m.target_system})")
+                raw_write = m.write
+                # two writers (this loop's heartbeats, the relay): never interleave packets
+                m.write = lambda b, _w=raw_write: self._locked_write(_w, b)
+                self._link = m
                 self.last_hb, self.quat_t, self.q_last = time.monotonic(), 0.0, None
                 self._request_streams(m)
                 t_hb = 0.0
@@ -119,8 +141,31 @@ class VehicleLink(Node):
                         continue
                     self._handle(msg, m.target_system)
             except Exception as e:                               # noqa: BLE001 — reconnect on anything
+                self._link = None
                 self.get_logger().error(f"vehicle link: {e} — reconnecting", throttle_duration_sec=10.0)
                 time.sleep(2.0)
+
+    def _locked_write(self, write, data):
+        with self._write_lock:
+            return write(data)
+
+    def _relay(self):
+        """Pass MAVLink packets from local NAVERA nodes (vehicle_output's GPS_INPUT) to the
+        autopilot over this node's link."""
+        while not self._stop.is_set():
+            try:
+                data, _ = self._relay_sock.recvfrom(4096)
+            except socket.timeout:
+                continue
+            except OSError:
+                return
+            link = self._link
+            if link is not None and data:
+                try:
+                    link.write(data)
+                    self.relayed += 1
+                except Exception as e:                           # noqa: BLE001 — the link loop reconnects
+                    self.get_logger().warn(f"relay: {e}", throttle_duration_sec=10.0)
 
     @staticmethod
     def _wait_autopilot(m, timeout):
@@ -199,7 +244,7 @@ class VehicleLink(Node):
         rates, self.counts = dict(self.counts), {}
         self.pub_status.publish(String(data=json.dumps(
             {"link": alive, "autopilot": self.autopilot, "armed": self.armed if alive else None,
-             "url": self.url, "rates_hz": rates})))
+             "url": self.url, "rates_hz": rates, "relayed_packets": self.relayed})))
 
     def destroy_node(self):
         self._stop.set()
