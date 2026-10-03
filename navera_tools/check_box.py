@@ -116,6 +116,8 @@ def check_files():
             report(WARN, var, "not set")
         elif not os.path.exists(p):
             report(FAIL, var, f"{p} does not exist (data disk mounted?)")
+        elif var == "NAVERA_MBTILES":
+            report(*mbtiles_verdict(p))
         else:
             report(OK, var, p)
     d = os.environ.get("DAY_DATASET_DIR", "")
@@ -126,6 +128,86 @@ def check_files():
     free = shutil.disk_usage(os.environ.get("NAVERA_AREAS_DIR", "/") if os.path.exists(
         os.environ.get("NAVERA_AREAS_DIR", "/")) else "/").free / 2 ** 30
     report(OK if free > 5 else WARN, "free disk space", f"{free:.0f} GB")
+
+
+def mbtiles_verdict(path):
+    """(level, what, detail) for the satellite map file: it must open and hold tiles."""
+    import sqlite3
+    try:
+        con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            n, zmin, zmax = con.execute("SELECT count(*), min(zoom_level), max(zoom_level) FROM tiles").fetchone()
+        finally:
+            con.close()
+    except sqlite3.Error as e:
+        return FAIL, "NAVERA_MBTILES", f"{path}: not a readable map ({e})"
+    if not n:
+        return FAIL, "NAVERA_MBTILES", f"{path}: no tiles"
+    return OK, "NAVERA_MBTILES", f"{path}: {n} tiles, zoom {zmin}-{zmax}"
+
+
+def config_findings(env):
+    """Static mistakes in the settings, as [(level, what, detail)] (no hardware needed)."""
+    out = []
+    get = lambda k: str(env.get(k, "") or "").strip()                       # noqa: E731
+    from navera_output import mavlink_url
+    ports = {}
+
+    def port_of(key, url):
+        try:
+            dev, baud = mavlink_url.parse(url)
+        except ValueError as e:
+            out.append((FAIL, key, str(e)))
+            return
+        if baud is not None:
+            ports.setdefault(os.path.realpath(dev), []).append(key)
+    for key in ("NAVERA_MAVLINK_URL", "NAVERA_VEHICLE_MAVLINK_URL"):
+        if get(key) and get(key).lower() not in ("off", "none"):
+            port_of(key, get(key))
+    if get("NAVERA_GPS_SOURCE") == "serial":
+        ports.setdefault(os.path.realpath(get("NAVERA_GPS_PORT") or "/dev/ttyTHS1"), []).append("NAVERA_GPS_PORT")
+    if get("NAVERA_NMEA_PORT"):
+        ports.setdefault(os.path.realpath(get("NAVERA_NMEA_PORT")), []).append("NAVERA_NMEA_PORT")
+    for dev, keys in ports.items():
+        if len(keys) > 1:
+            out.append((FAIL, "serial ports", f"{dev} is used by {', '.join(keys)}: one program per port "
+                                              "(one autopilot port: NAVERA_MAVLINK_URL=udpout:127.0.0.1:14650)"))
+    url = get("NAVERA_MAVLINK_URL")
+    if url.startswith("udpout:127.0.0.1:") and not get("NAVERA_VEHICLE_MAVLINK_URL"):
+        out.append((FAIL, "MAVLink output", "goes to navera-vehicle-link's relay, but NAVERA_VEHICLE_MAVLINK_URL "
+                                            "is empty: the autopilot would receive nothing"))
+    fwd = get("NAVERA_FORWARD_DEGRADED").lower()
+    if fwd in ("1", "true", "yes", "on"):
+        try:
+            sigma = float(get("NAVERA_DEGRADED_SIGMA_M"))
+        except ValueError:
+            out.append((FAIL, "forwarding", "NAVERA_FORWARD_DEGRADED without NAVERA_DEGRADED_SIGMA_M: the output "
+                                            "will not start"))
+        else:
+            if sigma > 1000:
+                out.append((FAIL, "forwarding", f"NAVERA_DEGRADED_SIGMA_M {sigma:g} m > 1000 m: nothing would be sent"))
+            elif sigma > 100:
+                out.append((WARN, "forwarding", f"NAVERA_DEGRADED_SIGMA_M {sigma:g} m: ArduPilot's EKF caps an "
+                                                "accuracy at 100 m and will trust these positions more than stated"))
+    elif fwd and fwd not in ("0", "false", "no", "off"):
+        out.append((FAIL, "forwarding", f"NAVERA_FORWARD_DEGRADED={fwd!r}: expected true or false"))
+    if get("NAVERA_NMEA_PORT") and get("NAVERA_NMEA_FORWARD_DEGRADED").lower() in ("1", "true", "yes", "on"):
+        out.append((WARN, "forwarding", "NAVERA_NMEA_FORWARD_DEGRADED: NMEA carries no accuracy — the autopilot "
+                                        "will trust vision positions as a precise GPS"))
+    uses_ros = get("NAVERA_SENSOR_SOURCE") == "ros" or get("NAVERA_GPS_SOURCE") == "ros" or \
+        get("NAVERA_CAMERA_INPUT") == "ros"
+    if uses_ros and get("ROS_LOCALHOST_ONLY") == "1":
+        out.append((FAIL, "ROS network", "ROS sources with ROS_LOCALHOST_ONLY=1: NAVERA cannot hear the "
+                                         "vehicle's computer (set 0 and the vehicle's ROS_DOMAIN_ID)"))
+    return out
+
+
+def check_config():
+    findings = config_findings(os.environ)
+    for f in findings:
+        report(*f)
+    if not findings:
+        report(OK, "settings", "no conflict found (ports, outputs, forwarding, ROS network)")
 
 
 def check_camera_device(cam):
@@ -268,6 +350,7 @@ def main():
     print("NAVERA pre-flight check\n")
     load_discovered()
     check_discovery()
+    check_config()
     topics, cam = check_settings()
     check_files()
     if a.camera and cam:

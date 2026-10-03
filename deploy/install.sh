@@ -31,7 +31,7 @@ while [ $# -gt 0 ]; do
     --start) START=1 ;;
     --headless) HEADLESS=1 ;;
     --units) shift; UNITS="$1" ;;
-    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,/^set -euo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1 (--help)" >&2; exit 2 ;;
   esac
   shift

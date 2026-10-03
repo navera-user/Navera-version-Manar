@@ -9,6 +9,9 @@
 # active, how many times systemd restarted it, and its last error lines; then the clock
 # (RTC), and NAVERA's own pre-flight check (navera_tools/check_box.py) when ROS is there.
 set -u
+case "${1:-}" in
+  -h|--help) sed -n '2,/^set -u/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; exit 0 ;;
+esac
 WS=/home/navera/isaac_ros_common
 fail=0
 boot_s=$(cut -d. -f1 /proc/uptime)
