@@ -124,6 +124,10 @@ class NightSubscriber(Node):
         # (frame_meta "heading_deg", else the IMU). Without them there is no
         # night position: an unscaled frame drifts while looking confident.
         declare_float(self, "camera_hfov_deg", float("nan"))
+        # night matching scales the frame from the height above ground: refused when its
+        # stated uncertainty exceeds this fraction of it (a held height, no barometer)
+        declare_float(self, "max_altitude_rel_sigma", 0.15)
+        self.max_alt_rel_sigma = float(self.get_parameter("max_altitude_rel_sigma").value)
         self.declare_parameter("imu_topic", "/navera/sensors/imu")
         declare_float(self, "imu_heading_timeout_s", 1.0)
         # Motion gate: a fix farther from the last one than the vehicle can travel
@@ -407,6 +411,20 @@ class NightSubscriber(Node):
                 f"({self._anchor_lat:+.5f},{self._anchor_lon:+.5f})…")
             heading, heading_src = self._heading(meta)
             alt = meta.get("altitude_m")
+            # STHN scales the frame from this height and cannot measure it: a height held
+            # since GPS was lost (no barometer, vehicle descending) mis-scales every frame
+            # and wrong matches pass — refused past max_altitude_rel_sigma
+            try:
+                rel = float(meta.get("altitude_sigma_m")) / float(alt)
+            except (TypeError, ValueError, ZeroDivisionError):
+                rel = None
+            if rel is not None and rel > self.max_alt_rel_sigma:
+                self._publish_status_only(
+                    seq_id, meta=meta,
+                    reason=(f"height above ground too uncertain (±{100 * rel:.0f} %, "
+                            f"{meta.get('altitude_source', '?')}): night matching needs it within "
+                            f"±{100 * self.max_alt_rel_sigma:.0f} %"))
+                return
             result = self.localizer.localize(
                 img, self._anchor_lat, self._anchor_lon,
                 altitude_m=float(alt) if alt is not None else None,
