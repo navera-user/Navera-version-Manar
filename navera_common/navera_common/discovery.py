@@ -77,6 +77,31 @@ def nmea_valid(data: bytes) -> int:
     return n
 
 
+def nmea_info(data: bytes) -> dict:
+    """What the checksummed NMEA sentences in data say: {"valid", "satellites" (GSV/GSA
+    seen: a receiver tracking satellites — an autopilot's NMEA output sends none), "fix"
+    (GGA quality 1/2/4/5 or RMC status A)}."""
+    info = {"valid": 0, "satellites": False, "fix": False}
+    for m in NMEA_RE.finditer(data):
+        raw = m.group(0)
+        body = raw[1:raw.index(b"*")]
+        c = 0
+        for b in body:
+            c ^= b
+        if c != int(m.group(2), 16):
+            continue
+        info["valid"] += 1
+        kind = m.group(1)[2:]
+        f = body.split(b",")
+        if kind in (b"GSV", b"GSA"):
+            info["satellites"] = True
+        elif kind == b"GGA" and len(f) > 6 and f[6] in (b"1", b"2", b"4", b"5"):
+            info["fix"] = True
+        elif kind == b"RMC" and len(f) > 2 and f[2] == b"A":
+            info["fix"] = True
+    return info
+
+
 def mavlink_heartbeats(data: bytes) -> List[dict]:
     """Heartbeats parsed from raw bytes: [{"sysid", "compid", "type", "autopilot"}]."""
     from pymavlink.dialects.v20 import common as mav
@@ -99,6 +124,27 @@ def is_autopilot(hb: dict) -> bool:
     return hb["autopilot"] != 8 and hb["type"] not in (6, 18, 26, 30)
 
 
+def system_reserved(path: str) -> Optional[str]:
+    """Why the system keeps this port for itself (kernel console, a login terminal), or None.
+    Root's processes cannot be seen in /proc as the navera user: these are checked instead."""
+    name = os.path.basename(os.path.realpath(path))
+    try:
+        cmdline = open("/proc/cmdline").read()
+        if re.search(rf"\bconsole={re.escape(name)}\b", cmdline):
+            return "kernel console"
+    except OSError:
+        pass
+    import subprocess
+    try:
+        r = subprocess.run(["systemctl", "is-active", f"serial-getty@{name}.service"],
+                           capture_output=True, text=True, timeout=3)
+        if r.stdout.strip() == "active":
+            return "login terminal (serial-getty)"
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return None
+
+
 def port_in_use(path: str) -> bool:
     real = os.path.realpath(path)
     for fd in glob.glob("/proc/[0-9]*/fd/*"):
@@ -118,6 +164,9 @@ def probe_serial_port(path: str, bauds=SERIAL_BAUDS, listen_s: float = 2.2) -> O
         return None
     if port_in_use(path):
         return {"port": path, "kind": "busy"}
+    why = system_reserved(path)
+    if why:
+        return {"port": path, "kind": "busy", "why": why}
     for baud in bauds:
         try:
             s = serial.Serial(path, baud, timeout=0.2)
@@ -127,12 +176,17 @@ def probe_serial_port(path: str, bauds=SERIAL_BAUDS, listen_s: float = 2.2) -> O
         try:
             while time.time() - t0 < listen_s:
                 data += s.read(4096)
-                if nmea_valid(data) >= 2:
-                    return {"port": path, "baud": baud, "kind": "nmea"}
+                n = nmea_info(data)
+                if n["valid"] >= 2 and n["satellites"] and n["fix"]:
+                    break                                 # all there is to know
                 hbs = [h for h in mavlink_heartbeats(data) if is_autopilot(h)]
                 if hbs:
                     return {"port": path, "baud": baud, "kind": "mavlink", "url": f"serial:{path}:{baud}",
                             **hbs[0]}
+            n = nmea_info(data)
+            if n["valid"] >= 2:
+                return {"port": path, "baud": baud, "kind": "nmea", "satellites": n["satellites"],
+                        "fix": n["fix"]}
         finally:
             s.close()
     return None
@@ -164,11 +218,17 @@ def probe_mavlink_url(url: str, wait_s: float = 3.0) -> Optional[dict]:
     return None
 
 
-def autopilot_streams(url: str, wait_s: float = 4.0) -> Dict[str, bool]:
+GPS_TYPE_PARAMS = ("GPS_TYPE", "GPS_TYPE2", "GPS1_TYPE", "GPS2_TYPE")   # ArduPilot 4.5 / 4.6+
+
+
+def autopilot_streams(url: str, wait_s: float = 4.0) -> dict:
     """Ask an identified autopilot for attitude, rangefinder, second GPS and its height
-    above home; report which arrive."""
+    above home, and for its GPS receiver types; report what arrives:
+    {"ATTITUDE": bool, ..., "GPS2_RAW": bool (sent, any fix), "gps1_type", "gps2_type"}.
+    GPS type 14 (MAV) is a GPS fed over MAVLink — NAVERA's own GPS_INPUT, never a source."""
     want = {"ATTITUDE": 30, "DISTANCE_SENSOR": 132, "GPS2_RAW": 124, "GLOBAL_POSITION_INT": 33}
     seen = {k: False for k in want}
+    seen.update(gps1_type=None, gps2_type=None)
     try:
         from pymavlink import mavutil
         from navera_output.mavlink_url import connect
@@ -182,13 +242,22 @@ def autopilot_streams(url: str, wait_s: float = 4.0) -> Dict[str, bool]:
         for mid in want.values():
             m.mav.command_long_send(m.target_system, m.target_component,
                                     mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, 0, mid, 500000, 0, 0, 0, 0, 0)
+        for p in GPS_TYPE_PARAMS:
+            m.mav.param_request_read_send(m.target_system, m.target_component, p.encode(), -1)
         end = time.time() + wait_s
-        while time.time() < end and not all(seen.values()):
+        while time.time() < end and not (all(seen[k] for k in want) and seen["gps2_type"] is not None):
             msg = m.recv_match(blocking=True, timeout=0.5)
-            if msg is not None and msg.get_type() in seen:
-                if msg.get_type() == "GPS2_RAW" and msg.fix_type < 2:
-                    continue                              # declared but no receiver / no fix
-                seen[msg.get_type()] = True
+            if msg is None:
+                continue
+            t = msg.get_type()
+            if t in want:
+                seen[t] = True
+            elif t == "PARAM_VALUE":
+                pid = msg.param_id.rstrip("\x00") if isinstance(msg.param_id, str) else msg.param_id
+                if pid in ("GPS_TYPE", "GPS1_TYPE"):
+                    seen["gps1_type"] = int(msg.param_value)
+                elif pid in ("GPS_TYPE2", "GPS2_TYPE"):
+                    seen["gps2_type"] = int(msg.param_value)
     finally:
         m.close()
     return seen
@@ -283,40 +352,82 @@ def _pick(topics: List[str], words) -> Optional[str]:
     return sorted(topics, key=lambda t: (-sum(w in t.lower() for w in words), len(t), t))[0]
 
 
+def _port_rank(p: str) -> int:
+    """Wired UARTs first (an autopilot TELEM port, the box's GPS), then USB."""
+    return 0 if "ttyTHS" in p else 1 if "ttyACM" in p else 2
+
+
 def decide(found: dict, env) -> dict:
     """{"settings": {KEY: value}, "report": [lines]} — values only for settings left to
-    "auto" or unset in env; the report says what was found and why each choice."""
-    auto = lambda k: str(env.get(k, "") or "auto").strip().lower() == "auto"     # noqa: E731
+    "auto" or unset in env; the report says what was found and why each choice. Lines
+    with "NO " or "CHECK" are warnings (check_box)."""
+    get = lambda k: str(env.get(k, "") or "").strip()                       # noqa: E731
+    auto = lambda k: get(k).lower() in ("", "auto")                         # noqa: E731
     out, rep = {}, []
     i2c = found.get("i2c") or {}
     serial = found.get("serial") or []
-    gps_port = next((s for s in serial if s.get("kind") == "nmea"), None)
-    ap = next((x for x in serial + (found.get("network") or []) if x.get("kind") == "mavlink"), None)
+    cams = found.get("cameras") or {}
     streams = found.get("autopilot_streams") or {}
-    ros = {}
-    ros_domain = None
+
+    # GPS receivers: they track satellites (GSV/GSA) — an autopilot's NMEA output does not
+    receivers = sorted((s for s in serial if s.get("kind") == "nmea" and s.get("satellites")),
+                       key=lambda s: (not s.get("fix"), _port_rank(s["port"]), s["port"]))
+    gps_port = receivers[0] if receivers else None
+    for s in serial:
+        if s.get("kind") == "nmea" and not s.get("satellites"):
+            rep.append(f"  {s['port']}: NMEA without satellite data (an autopilot's NMEA output?) — "
+                       f"not used as a GPS")
+    # autopilots: one per system id, its wired port preferred
+    aps = [x for x in serial + (found.get("network") or []) if x.get("kind") == "mavlink"]
+    aps.sort(key=lambda x: (_port_rank(x["url"]), x["url"]))
+    ap = aps[0] if aps else None
+    if len({x["sysid"] for x in aps}) > 1:
+        rep.append("CHECK several autopilots answer (" + ", ".join(f"{x['url']} system {x['sysid']}" for x in aps)
+                   + f"): using {ap['url']} — set NAVERA_VEHICLE_MAVLINK_URL to choose")
+    elif len(aps) > 1:
+        rep.append(f"  the autopilot answers on {len(aps)} links; using {ap['url']}")
+    # ROS vehicle, usable only on NAVERA's domain or with ROS_DOMAIN_ID=auto
+    ros, ros_domain = {}, None
     for d, types in sorted((found.get("ros") or {}).items(), key=lambda kv: -len(kv[1])):
         if any(t in types for t in ("sensor_msgs/msg/Imu", "sensor_msgs/msg/NavSatFix", "sensor_msgs/msg/Image")):
             ros, ros_domain = types, int(d)
             break
+    join_domain = False
+    if ros_domain is not None:
+        dom, local = get("ROS_DOMAIN_ID").lower() or "0", get("ROS_LOCALHOST_ONLY")   # ROS default: 0
+        if dom == "auto":
+            join_domain = True
+        elif dom.isdigit() and int(dom) == ros_domain and local != "1":
+            pass
+        else:
+            rep.append(f"CHECK a ROS vehicle is on domain {ros_domain}, NAVERA is on domain {dom or 0}"
+                       f"{' (loopback only)' if local == '1' else ''} as written in navera.env: not used "
+                       f"— set ROS_DOMAIN_ID=auto (or {ros_domain}) and ROS_LOCALHOST_ONLY=0 to use it")
+            ros, ros_domain = {}, None
     ros_imu = _pick(ros.get("sensor_msgs/msg/Imu", []), ("imu", "data"))
     ros_gps = _pick([t for t in ros.get("sensor_msgs/msg/NavSatFix", []) if t != "/navera/fix"], ("gps", "fix"))
     ros_cam = _pick([t for t in ros.get("sensor_msgs/msg/Image", [])
                      if not re.search(r"depth|disparity|thermal|ir/|compressed", t)],
                     ("down", "nadir", "bottom", "camera", "image_raw"))
     ros_alt = _pick(ros.get("sensor_msgs/msg/Range", []), ("down", "altitude", "range"))
-    cams = found.get("cameras") or {}
+    # cameras: the star camera and an imposed device are not candidates for the day camera
+    taken = {os.path.realpath(get(k)) for k in ("NAVERA_STAR_CAMERA_DEVICE",) if get(k)}
+    usb = [c for c in cams.get("usb") or [] if os.path.realpath(c) not in taken and c not in taken]
 
-    rep.append("found: " + (", ".join(filter(None, [
+    rep.insert(0, "found: " + (", ".join(filter(None, [
         "box IMU" if "imu" in i2c else None, "box clock" if "rtc" in i2c else None,
-        f"GPS receiver {gps_port['port']} @{gps_port['baud']}" if gps_port else None,
+        f"GPS receiver {gps_port['port']} @{gps_port['baud']}{'' if gps_port.get('fix') else ' (no fix yet)'}"
+        if gps_port else None,
         f"autopilot {ap['url']} (system {ap['sysid']})" if ap else None,
         f"ROS vehicle on domain {ros_domain}" if ros_domain is not None else None,
-        f"USB camera {os.path.basename(cams['usb'][0])}" if cams.get("usb") else None,
+        f"USB camera {os.path.basename(usb[0])}" if usb else None,
         f"CSI camera {cams['csi'][0]}" if cams.get("csi") else None])) or "nothing"))
     for s in serial:
         if s.get("kind") == "busy":
-            rep.append(f"  {s['port']} is held by another program: not probed")
+            rep.append(f"  {s['port']} is held by {s.get('why') or 'another program'}: not probed")
+    if len(receivers) > 1:
+        rep.append("CHECK several GPS receivers (" + ", ".join(r["port"] for r in receivers)
+                   + f"): using {gps_port['port']} — set NAVERA_GPS_PORT to choose")
 
     # attitude (and with it the height sources)
     if auto("NAVERA_SENSOR_SOURCE"):
@@ -334,23 +445,35 @@ def decide(found: dict, env) -> dict:
         rep.append(f"attitude: {out['NAVERA_SENSOR_SOURCE']} — {why}")
     # GPS (the start position and the cross-check)
     if auto("NAVERA_GPS_SOURCE"):
+        g2 = streams.get("gps2_type")
         if gps_port:
             out.update(NAVERA_GPS_SOURCE="serial", NAVERA_GPS_PORT=gps_port["port"],
                        NAVERA_GPS_BAUD=str(gps_port["baud"]))
-            why = f"the box's receiver on {gps_port['port']}"
-        elif ap and streams.get("GPS2_RAW"):
-            out["NAVERA_GPS_SOURCE"], why = "vehicle", "the autopilot's second GPS"
+            why = f"the box's receiver on {gps_port['port']}" + ("" if gps_port.get("fix") else " (no fix yet)")
+        elif ap and g2 not in (None, 0, 14):
+            out["NAVERA_GPS_SOURCE"], why = "vehicle", f"the autopilot's second GPS (type {g2})"
         elif ros_gps:
             out.update(NAVERA_GPS_SOURCE="ros", NAVERA_ROS_GPS_TOPIC=ros_gps)
             why = f"ROS {ros_gps}"
         else:
-            out["NAVERA_GPS_SOURCE"], why = "serial", "NO GPS found — NAVERA needs one fix at start"
+            out["NAVERA_GPS_SOURCE"] = "none"
+            why = "NO GPS found — NAVERA needs one fix at start"
+            if ap and g2 == 14:
+                why += " (the autopilot's second GPS is fed over MAVLink — NAVERA's own output: never used)"
+            elif ap and g2 is None:
+                why += " (the autopilot's GPS types could not be read: its second GPS is not trusted)"
         rep.append(f"GPS: {out['NAVERA_GPS_SOURCE']} — {why}")
     # camera
     if auto("NAVERA_CAMERA_INPUT"):
-        if cams.get("usb"):
-            out.update(NAVERA_CAMERA_INPUT="usb", NAVERA_CAMERA_DEVICE=cams["usb"][0])
-            why = f"USB {os.path.basename(cams['usb'][0])}"
+        written = get("NAVERA_CAMERA_DEVICE")
+        if written:
+            out["NAVERA_CAMERA_INPUT"], why = "usb", f"the device written in navera.env ({written})"
+        elif usb:
+            out.update(NAVERA_CAMERA_INPUT="usb", NAVERA_CAMERA_DEVICE=usb[0])
+            why = f"USB {os.path.basename(usb[0])}"
+            if len(usb) > 1:
+                why += (" — CHECK several cameras (" + ", ".join(os.path.basename(c) for c in usb)
+                        + "): set NAVERA_CAMERA_DEVICE to the one looking down")
         elif cams.get("csi"):
             out.update(NAVERA_CAMERA_INPUT="csi", NAVERA_CAMERA_DEVICE="0")
             why = f"CSI {cams['csi'][0]}"
@@ -361,19 +484,26 @@ def decide(found: dict, env) -> dict:
         else:
             out["NAVERA_CAMERA_INPUT"], why = "usb", "NO camera found"
         rep.append(f"camera: {out['NAVERA_CAMERA_INPUT']} — {why}")
-    # the autopilot link: read its sensors and give it NAVERA's position
+    # the autopilot link: read its sensors and give it NAVERA's position, as its companion
     if ap:
-        if not str(env.get("NAVERA_VEHICLE_MAVLINK_URL", "")).strip():
+        if not get("NAVERA_VEHICLE_MAVLINK_URL"):
             out["NAVERA_VEHICLE_MAVLINK_URL"] = ap["url"]
-        if not str(env.get("NAVERA_MAVLINK_URL", "")).strip():
-            # one link: vehicle_link owns it and relays NAVERA's GPS_INPUT
-            out["NAVERA_MAVLINK_URL"] = "udpout:127.0.0.1:14650"
-        rep.append(f"output: NAVERA's position to the autopilot over MAVLink ({ap['url']})")
-    # ROS vehicle: join its graph, publish /navera/fix
+        if not get("NAVERA_MAVLINK_SYSID"):
+            out["NAVERA_MAVLINK_SYSID"] = str(ap["sysid"])
+        url = get("NAVERA_MAVLINK_URL").lower()
+        if url in ("off", "none"):
+            rep.append("output: MAVLink to the autopilot turned off (NAVERA_MAVLINK_URL=off)")
+        else:
+            if not url:
+                # one link: vehicle_link owns it and relays NAVERA's GPS_INPUT
+                out["NAVERA_MAVLINK_URL"] = "udpout:127.0.0.1:14650"
+            rep.append(f"output: NAVERA's position to the autopilot over MAVLink ({ap['url']}, system {ap['sysid']})")
+    # ROS vehicle: publish /navera/fix on its graph
     if ros_domain is not None:
-        if not str(env.get("NAVERA_ROS_DOMAIN_LOCKED", "")).strip():
+        if join_domain:
             out.update(ROS_DOMAIN_ID=str(ros_domain), ROS_LOCALHOST_ONLY="0")
-        out.setdefault("NAVERA_ROS_FIX_TOPIC", str(env.get("NAVERA_ROS_FIX_TOPIC", "") or "/navera/fix"))
+        if "NAVERA_ROS_FIX_TOPIC" not in env:
+            out["NAVERA_ROS_FIX_TOPIC"] = "/navera/fix"
         rep.append(f"output: /navera/fix (sensor_msgs/NavSatFix) on ROS domain {ros_domain}")
     if not ap and ros_domain is None:
         rep.append("output: no autopilot and no ROS vehicle found — set NAVERA_NMEA_PORT for an NMEA GPS input")

@@ -62,7 +62,7 @@ def main(ardupilot):
         env = dict(os.environ, NAVERA_DISCOVER_MAVLINK=LINK, ROS_DOMAIN_ID="78")
         t0 = time.time()
         found = discover(env, ros_wait_s=1.0)
-        d = decide(found, {})
+        d = decide(found, {"ROS_DOMAIN_ID": "78"})
         print(f"discovery ({time.time() - t0:.0f} s):\n  " + "\n  ".join(d["report"]))
         s = d["settings"]
         checks = [(s.get("NAVERA_SENSOR_SOURCE") == "vehicle", f"attitude source {s.get('NAVERA_SENSOR_SOURCE')}"),
@@ -70,6 +70,17 @@ def main(ardupilot):
                   (s.get("NAVERA_VEHICLE_MAVLINK_URL") == LINK, f"vehicle link {s.get('NAVERA_VEHICLE_MAVLINK_URL')}"),
                   (s.get("NAVERA_MAVLINK_URL") == "udpout:127.0.0.1:14650", f"output {s.get('NAVERA_MAVLINK_URL')}")]
         failures += [why for ok, why in checks if not ok]
+        # the second GPS switched to type 14 (MAVLink-fed: NAVERA's own GPS_INPUT would feed
+        # it) must never be taken as the vehicle's GPS — a loop
+        gcs.mav.param_set_send(gcs.target_system, gcs.target_component, b"GPS_TYPE2", 14,
+                               mavutil.mavlink.MAV_PARAM_TYPE_INT8)
+        time.sleep(2)
+        from navera_common.discovery import autopilot_streams
+        d14 = decide({"network": [x for x in found["network"] if x.get("url") == LINK],
+                      "autopilot_streams": autopilot_streams(LINK)}, {"ROS_DOMAIN_ID": "78"})
+        print("  with GPS_TYPE2=14: " + next(r for r in d14["report"] if r.startswith("GPS")))
+        if d14["settings"].get("NAVERA_GPS_SOURCE") != "none":
+            failures.append(f"a MAVLink-fed second GPS was taken: {d14['settings'].get('NAVERA_GPS_SOURCE')}")
         # relay: through vehicle_link, which owns the link discovery chose
         os.environ["ROS_DOMAIN_ID"] = "78"
         link = subprocess.Popen(["ros2", "run", "navera_output", "vehicle_link_node.py", "--ros-args",

@@ -2,7 +2,7 @@
 """Pre-flight check of a NAVERA box: is everything a test needs present and alive?
 
     source /opt/ros/humble/setup.bash; source install/setup.bash
-    set -a; . /etc/navera/navera.env; . /var/lib/navera/settings.env 2>/dev/null; set +a
+    set -a; . /etc/navera/navera.env; . /var/lib/navera/settings.env 2>/dev/null; . /var/lib/navera/discovered.env 2>/dev/null; set +a
     python3 navera_tools/check_box.py            # services running: checks for 15 s
     python3 navera_tools/check_box.py --camera   # also opens the camera itself (stop navera-pipeline-* first)
 
@@ -25,6 +25,21 @@ results = []
 def report(level, what, detail=""):
     results.append(level)
     print(f"{level:4s}  {what}" + (f" — {detail}" if detail else ""))
+
+
+def load_discovered():
+    """The services read /var/lib/navera/discovered.env after navera.env: so does this check
+    (else it would judge settings the box does not run with)."""
+    from navera_common.state_store import state_dir
+    path = os.path.join(state_dir(), "discovered.env")
+    try:
+        for line in open(path):
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                os.environ[k] = v
+    except OSError:
+        pass
 
 
 def check_discovery():
@@ -251,6 +266,7 @@ def main():
     ap.add_argument("--no-ros", action="store_true", help="settings and files only")
     a = ap.parse_args()
     print("NAVERA pre-flight check\n")
+    load_discovered()
     check_discovery()
     topics, cam = check_settings()
     check_files()

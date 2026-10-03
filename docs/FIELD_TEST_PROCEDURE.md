@@ -19,7 +19,7 @@ environment as the services. Open it with:
 sudo -u navera -H bash
 source /opt/ros/humble/setup.bash
 source /home/navera/isaac_ros_common/install/setup.bash
-set -a; . /etc/navera/navera.env; . /var/lib/navera/settings.env 2>/dev/null; set +a
+set -a; . /etc/navera/navera.env; . /var/lib/navera/settings.env 2>/dev/null; . /var/lib/navera/discovered.env 2>/dev/null; set +a
 cd /home/navera/isaac_ros_common
 ```
 

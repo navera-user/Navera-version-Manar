@@ -12,7 +12,13 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, Shutdown
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from navera_common.vehicle import max_speed_params
+
+
+def _mavlink_url():
+    url = (os.environ.get('NAVERA_MAVLINK_URL') or '').strip()
+    return '' if url.lower() in ('off', 'none', 'false', '0') else url
 
 
 def _bool(key, value):
@@ -35,6 +41,8 @@ def _env_overrides():
                        ('NAVERA_MAX_MEASUREMENT_AGE_S', 'max_measurement_age_s')):
         if env.get(key):
             out[param] = float(env[key])
+    if (env.get('NAVERA_MAVLINK_SYSID') or '').strip().isdigit():
+        out['mavlink_system_id'] = int(env['NAVERA_MAVLINK_SYSID'])     # the autopilot's own id
     if 'NAVERA_ROS_FIX_TOPIC' in env:                  # set but empty: no ROS output
         out['ros_fix_topic'] = env['NAVERA_ROS_FIX_TOPIC'].strip()
     return out
@@ -46,7 +54,8 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('nmea_port', default_value=(os.environ.get('NAVERA_NMEA_PORT') or '')),
         DeclareLaunchArgument('nmea_baud', default_value=(os.environ.get('NAVERA_NMEA_BAUD') or '9600')),
-        DeclareLaunchArgument('mavlink_url', default_value=(os.environ.get('NAVERA_MAVLINK_URL') or '')),
+        # "off" / "none": no MAVLink output (also when navera-discover found an autopilot)
+        DeclareLaunchArgument('mavlink_url', default_value=_mavlink_url()),
         Node(
             package='navera_output',
             executable='vehicle_output_node.py',
@@ -55,9 +64,10 @@ def generate_launch_description():
             # Any node exiting ends the launch, so the systemd unit restarts it.
             on_exit=Shutdown(reason='node exited'),
             parameters=[cfg, {
-                'nmea_port': LaunchConfiguration('nmea_port'),
+                # text, always: launch would read "off" / "no" as booleans
+                'nmea_port': ParameterValue(LaunchConfiguration('nmea_port'), value_type=str),
                 'nmea_baud': LaunchConfiguration('nmea_baud'),
-                'mavlink_url': LaunchConfiguration('mavlink_url'),
+                'mavlink_url': ParameterValue(LaunchConfiguration('mavlink_url'), value_type=str),
             }, _env_overrides(), max_speed_params()],
         ),
     ])

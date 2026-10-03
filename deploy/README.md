@@ -334,18 +334,24 @@ units) for:
 | What | How it is found |
 |---|---|
 | The box's IMU and clock | I²C buses 1 and 7: BNO085 at 0x4A/0x4B, DS3231 at 0x68 |
-| A GPS receiver | checksummed NMEA on `/dev/ttyTHS*`, `/dev/ttyUSB*`, `/dev/ttyACM*` (4800–921600 baud) |
-| An autopilot (any MAVLink) | an autopilot heartbeat on those serial ports, on UDP 14550/14551, or on `NAVERA_DISCOVER_MAVLINK`; it is then asked for attitude, rangefinder, second GPS, height above home |
+| A GPS receiver | checksummed NMEA **with satellite data** (GSV/GSA: an autopilot's NMEA output has none) on `/dev/ttyTHS*`, `/dev/ttyUSB*`, `/dev/ttyACM*` (4800–921600 baud); several: the one with a fix, wired UART first, and a warning |
+| An autopilot (any MAVLink) | an autopilot heartbeat (ground stations, cameras, companions ignored) on those serial ports, on UDP 14550/14551, or on `NAVERA_DISCOVER_MAVLINK`; it is then asked for attitude, rangefinder, height above home and its GPS receiver types (`GPS_TYPE`/`GPS_TYPE2`). Several: its wired TELEM port first, and a warning when they are different autopilots |
 | A ROS vehicle | `sensor_msgs` Imu / NavSatFix / Image / Range topics on ROS domain 0, `ROS_DOMAIN_ID` and `NAVERA_DISCOVER_ROS_DOMAINS` |
-| Cameras | USB (`/dev/v4l/by-id/*-video-index0`), CSI (Jetson video inputs) |
+| Cameras | USB (`/dev/v4l/by-id/*-video-index0`, except the star camera), CSI (Jetson video inputs); several: a warning — set `NAVERA_CAMERA_DEVICE` |
 
 and chooses: **attitude** box IMU > autopilot > ROS; **GPS** box receiver > autopilot's 2nd GPS
 > ROS; **camera** USB > CSI > ROS (depth images excluded; a ROS camera is flagged "check it
-looks at the ground"). **Outputs:** an autopilot found → NAVERA's position over MAVLink —
-on the same link, relayed by `navera-vehicle-link` (local UDP 14650), no mavlink-router
-needed; a ROS vehicle found → `/navera/fix`, NAVERA joining its ROS domain (unless
-`NAVERA_ROS_DOMAIN_LOCKED=1`). A port another program holds is never probed; only an
-identified autopilot is written to (its data-stream requests).
+looks at the ground"). The autopilot's second GPS is used only when `GPS_TYPE2` says it is
+a real receiver (fix or not yet) — never type 14, the MAVLink-fed GPS that NAVERA itself
+feeds (a loop), and not when the types cannot be read. **No GPS found: the GPS service
+stays idle** — no default port is ever opened. **Outputs:** an autopilot found → NAVERA's
+position over MAVLink, as the autopilot's companion (its system id), on the same link,
+relayed by `navera-vehicle-link` (local UDP 14650), no mavlink-router needed
+(`NAVERA_MAVLINK_URL=off` to never send it); a ROS vehicle → `/navera/fix`. A ROS vehicle
+is used only on NAVERA's ROS domain, or with `ROS_DOMAIN_ID=auto` (NAVERA then joins it);
+written ROS network settings are never changed. A port another program holds, the kernel
+console and a login terminal are never probed; only an identified autopilot is written to
+(its data-stream and parameter requests).
 
 A value written in `navera.env` instead of `auto` is always kept. See what was found:
 `navera_tools/check_box.py` (first lines) or `/var/lib/navera/discovery.json`. After
@@ -543,7 +549,7 @@ A shell that inspects the live system must load the same environment as the serv
 sudo -u navera -H bash        # or any account in the navera group
 source /opt/ros/humble/setup.bash
 source /home/navera/isaac_ros_common/install/setup.bash
-set -a; . /etc/navera/navera.env; . /var/lib/navera/settings.env 2>/dev/null; set +a
+set -a; . /etc/navera/navera.env; . /var/lib/navera/settings.env 2>/dev/null; . /var/lib/navera/discovered.env 2>/dev/null; set +a
 ```
 
 Then:

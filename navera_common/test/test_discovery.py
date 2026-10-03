@@ -19,8 +19,20 @@ def test_nmea_and_mavlink_recognised_in_raw_bytes():
     assert mavlink_heartbeats(data) == [{"sysid": 1, "compid": 1, "type": 2, "autopilot": 3}]
 
 
+GSV = b"$GPGSV,1,1,04,05,63,180,45,12,50,060,40,17,30,240,38,19,20,300,35*76\r\n"
+RECEIVER = {"kind": "nmea", "port": "/dev/ttyTHS1", "baud": 9600, "satellites": True, "fix": True}
+STREAMS = {"ATTITUDE": True, "GPS2_RAW": True, "gps1_type": 1, "gps2_type": 1}
+
+
+def test_nmea_info_tells_a_receiver_from_an_autopilot_output():
+    from navera_common.discovery import nmea_info
+    assert nmea_info(GGA + RMC) == {"valid": 2, "satellites": False, "fix": True}
+    no_fix = b"$GPGGA,,,,,,0,00,99.99,,,,,,*48\r\n"
+    assert nmea_info(no_fix)["fix"] is False
+
+
 def test_the_box_alone():
-    d = decide({"i2c": {"imu": {}, "rtc": {}}, "serial": [{"kind": "nmea", "port": "/dev/ttyTHS1", "baud": 9600}],
+    d = decide({"i2c": {"imu": {}, "rtc": {}}, "serial": [RECEIVER],
                 "cameras": {"usb": ["/dev/v4l/by-id/usb-Insta360-video-index0"], "csi": []}}, {})
     s = d["settings"]
     assert s["NAVERA_SENSOR_SOURCE"] == "box" and s["NAVERA_GPS_SOURCE"] == "serial"
@@ -31,43 +43,95 @@ def test_the_box_alone():
 
 def test_a_drone_with_an_autopilot_and_no_box_sensors():
     d = decide({"serial": [AP], "cameras": {"usb": ["/dev/v4l/by-id/cam-video-index0"]},
-                "autopilot_streams": {"ATTITUDE": True, "GPS2_RAW": True}}, {})
+                "autopilot_streams": STREAMS}, {})
     s = d["settings"]
     assert s["NAVERA_SENSOR_SOURCE"] == "vehicle" and s["NAVERA_GPS_SOURCE"] == "vehicle"
-    assert s["NAVERA_VEHICLE_MAVLINK_URL"] == AP["url"]
+    assert s["NAVERA_VEHICLE_MAVLINK_URL"] == AP["url"] and s["NAVERA_MAVLINK_SYSID"] == "1"
     assert s["NAVERA_MAVLINK_URL"] == "udpout:127.0.0.1:14650"     # relayed by vehicle_link
 
 
+def test_navera_never_reads_its_own_output_back_as_a_gps():
+    for g2, word in ((14, "NAVERA's own output"), (None, "could not be read"), (0, "NO GPS")):
+        d = decide({"serial": [AP], "autopilot_streams": dict(STREAMS, gps2_type=g2)}, {})
+        assert d["settings"]["NAVERA_GPS_SOURCE"] == "none"
+        assert any(word in r for r in d["report"]), d["report"]
+
+
+def test_a_second_gps_without_a_fix_yet_is_still_the_vehicles_gps():
+    d = decide({"serial": [AP], "autopilot_streams": dict(STREAMS, GPS2_RAW=False)}, {})
+    assert d["settings"]["NAVERA_GPS_SOURCE"] == "vehicle"
+
+
+def test_nmea_without_satellites_is_not_a_receiver_and_a_fix_wins():
+    ap_nmea = {"kind": "nmea", "port": "/dev/ttyTHS2", "baud": 115200, "satellites": False, "fix": True}
+    modem = {"kind": "nmea", "port": "/dev/ttyUSB2", "baud": 115200, "satellites": True, "fix": False}
+    d = decide({"serial": [ap_nmea, modem, dict(RECEIVER, port="/dev/ttyUSB0")]}, {})
+    s = d["settings"]
+    assert s["NAVERA_GPS_PORT"] == "/dev/ttyUSB0"                 # the receiver with a fix
+    text = "\n".join(d["report"])
+    assert "not used as a GPS" in text and "CHECK several GPS receivers" in text
+
+
 def test_box_sensors_win_but_the_autopilot_still_gets_the_position():
-    d = decide({"i2c": {"imu": {}}, "serial": [AP, {"kind": "nmea", "port": "/dev/ttyUSB0", "baud": 38400}],
-                "autopilot_streams": {"ATTITUDE": True, "GPS2_RAW": True}}, {})
+    d = decide({"i2c": {"imu": {}}, "serial": [AP, RECEIVER], "autopilot_streams": STREAMS}, {})
     s = d["settings"]
     assert s["NAVERA_SENSOR_SOURCE"] == "box" and s["NAVERA_GPS_SOURCE"] == "serial"
     assert s["NAVERA_MAVLINK_URL"] == "udpout:127.0.0.1:14650"
 
 
-def test_a_ros_boat():
+def test_a_ros_boat_on_the_default_domain():
     d = decide({"ros": ROS, "cameras": {}}, {})
     s = d["settings"]
     assert s["NAVERA_SENSOR_SOURCE"] == "ros" and s["NAVERA_ROS_IMU_TOPIC"] == "/boat/imu/data"
     assert s["NAVERA_GPS_SOURCE"] == "ros" and s["NAVERA_ROS_GPS_TOPIC"] == "/boat/gps/fix"
     assert s["NAVERA_CAMERA_INPUT"] == "ros" and s["NAVERA_CAMERA_TOPIC"] == "/boat/cam_down/image_raw"
-    assert s["ROS_DOMAIN_ID"] == "0" and s["ROS_LOCALHOST_ONLY"] == "0" and s["NAVERA_ROS_FIX_TOPIC"] == "/navera/fix"
+    assert "ROS_DOMAIN_ID" not in s and s["NAVERA_ROS_FIX_TOPIC"] == "/navera/fix"
+
+
+def test_written_ros_network_settings_are_never_replaced():
+    env = {"ROS_DOMAIN_ID": "42", "ROS_LOCALHOST_ONLY": "1"}
+    d = decide({"ros": ROS}, env)
+    s = d["settings"]
+    assert "ROS_DOMAIN_ID" not in s and "ROS_LOCALHOST_ONLY" not in s
+    assert s.get("NAVERA_SENSOR_SOURCE") != "ros" and "NAVERA_ROS_FIX_TOPIC" not in s
+    assert any("ROS_DOMAIN_ID=auto" in r for r in d["report"])
+    s = decide({"ros": ROS}, {"ROS_DOMAIN_ID": "auto"})["settings"]          # opted in: joins it
+    assert s["ROS_DOMAIN_ID"] == "0" and s["ROS_LOCALHOST_ONLY"] == "0" and s["NAVERA_SENSOR_SOURCE"] == "ros"
 
 
 def test_written_settings_always_win():
     env = {"NAVERA_SENSOR_SOURCE": "box", "NAVERA_GPS_SOURCE": "serial", "NAVERA_CAMERA_INPUT": "csi",
-           "NAVERA_VEHICLE_MAVLINK_URL": "udpin:0.0.0.0:14551"}
-    s = decide({"ros": ROS, "serial": [AP]}, env)["settings"]
-    for k in ("NAVERA_SENSOR_SOURCE", "NAVERA_GPS_SOURCE", "NAVERA_CAMERA_INPUT", "NAVERA_VEHICLE_MAVLINK_URL"):
+           "NAVERA_VEHICLE_MAVLINK_URL": "udpin:0.0.0.0:14551", "NAVERA_MAVLINK_URL": "off"}
+    s = decide({"ros": ROS, "serial": [AP], "autopilot_streams": STREAMS}, env)["settings"]
+    for k in ("NAVERA_SENSOR_SOURCE", "NAVERA_GPS_SOURCE", "NAVERA_CAMERA_INPUT", "NAVERA_VEHICLE_MAVLINK_URL",
+              "NAVERA_MAVLINK_URL"):
         assert k not in s
-    assert decide({"ros": ROS}, {"NAVERA_SENSOR_SOURCE": "auto"})["settings"]["NAVERA_SENSOR_SOURCE"] == "ros"
+
+
+def test_cameras_the_star_camera_and_a_written_device_are_respected():
+    usb = ["/dev/v4l/by-id/usb-Arducam_StarCam-video-index0", "/dev/v4l/by-id/usb-Insta360_ONE_R-video-index0"]
+    env = {"NAVERA_STAR_CAMERA_DEVICE": usb[0]}
+    s = decide({"cameras": {"usb": usb}}, env)["settings"]
+    assert s["NAVERA_CAMERA_DEVICE"] == usb[1]
+    d = decide({"cameras": {"usb": usb}}, {})
+    assert any("CHECK several cameras" in r for r in d["report"])
+    s = decide({"cameras": {"usb": usb}}, {"NAVERA_CAMERA_DEVICE": "/dev/v4l/by-id/mine"})["settings"]
+    assert s["NAVERA_CAMERA_INPUT"] == "usb" and "NAVERA_CAMERA_DEVICE" not in s
+
+
+def test_two_autopilots_the_wired_port_and_a_warning():
+    usb_ap = dict(AP, url="serial:/dev/ttyACM0:115200")
+    other = dict(AP, url="udpin:0.0.0.0:14550", sysid=2)
+    d = decide({"serial": [usb_ap, AP], "network": [other], "autopilot_streams": STREAMS}, {})
+    assert d["settings"]["NAVERA_VEHICLE_MAVLINK_URL"] == AP["url"]
+    assert any("several autopilots" in r for r in d["report"])
 
 
 def test_nothing_found_is_said_plainly():
     d = decide({}, {})
     text = "\n".join(d["report"])
     assert "found: nothing" in text and "NO attitude" in text and "NO GPS" in text and "NO camera" in text
+    assert d["settings"]["NAVERA_GPS_SOURCE"] == "none"            # never a default port
 
 
 def test_env_file_never_carries_an_injection(tmp_path):
@@ -108,12 +172,12 @@ def test_a_gps_receiver_and_an_autopilot_are_recognised_on_serial_ports():
     hb_gcs = g.heartbeat_encode(6, 8, 0, 0, 0).pack(g)           # a ground station only
     ports = []
     try:
-        for payload in (GGA + RMC, hb_ap, hb_gcs):
+        for payload in (GGA + RMC + GSV, hb_ap, hb_gcs):
             ports.append(_fake_port(payload))
         gps = probe_serial_port(ports[0][0], bauds=(9600,), listen_s=1.0)
         ap = probe_serial_port(ports[1][0], bauds=(57600,), listen_s=1.5)
         gcs = probe_serial_port(ports[2][0], bauds=(57600,), listen_s=1.5)
-        assert gps == {"port": ports[0][0], "baud": 9600, "kind": "nmea"}
+        assert gps == {"port": ports[0][0], "baud": 9600, "kind": "nmea", "satellites": True, "fix": True}
         assert ap["kind"] == "mavlink" and ap["url"] == f"serial:{ports[1][0]}:57600" and ap["sysid"] == 1
         assert gcs is None                                       # not an autopilot
         # another program has it (O_NOCTTY: never become this process's terminal — closing

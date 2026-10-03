@@ -15,4 +15,4 @@ if [ -z "${NAVERA_VEHICLE_MAVLINK_URL:-}" ]; then
     exec sleep infinity
 fi
 exec ros2 run navera_output vehicle_link_node.py --ros-args \
-    -p mavlink_url:="${NAVERA_VEHICLE_MAVLINK_URL}"
+    -p mavlink_url:="${NAVERA_VEHICLE_MAVLINK_URL}" -p source_system:="${NAVERA_MAVLINK_SYSID:-1}"

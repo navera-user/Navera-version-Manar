@@ -15,6 +15,11 @@ navera_log() { echo "[navera-boot] $*" >&2; }
 # Enter the workspace and source ROS 2 + the NAVERA overlay.
 navera_env() {
     cd "$NAVERA_WS" || { navera_log "workspace $NAVERA_WS not found"; exit 1; }
+    # ROS_DOMAIN_ID=auto: join a ROS vehicle navera-discover found (discovered.env sets the
+    # number); none found: NAVERA stays on its own isolated domain
+    if [[ ! "${ROS_DOMAIN_ID:-0}" =~ ^[0-9]+$ ]]; then
+        export ROS_DOMAIN_ID=42 ROS_LOCALHOST_ONLY=1
+    fi
     source /opt/ros/humble/setup.bash
     source install/setup.bash
 }

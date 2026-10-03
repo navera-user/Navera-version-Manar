@@ -35,7 +35,8 @@ if [ -f "$WS/install/setup.bash" ]; then
   echo
   # shellcheck disable=SC1091
   ( source /opt/ros/humble/setup.bash; source "$WS/install/setup.bash"
-    set -a; . /etc/navera/navera.env 2>/dev/null; . /var/lib/navera/settings.env 2>/dev/null; set +a
+    set -a; . /etc/navera/navera.env 2>/dev/null; . /var/lib/navera/settings.env 2>/dev/null
+    . /var/lib/navera/discovered.env 2>/dev/null; set +a
     python3 "$WS/navera_tools/check_box.py" --seconds 10 ) || fail=1
 fi
 echo
