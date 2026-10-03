@@ -88,6 +88,7 @@ Parameters:
     gps_crosscheck_persist_s (default 3.0) — a trusted GPS that keeps disagreeing
                      with that source this long is refused (gradual spoofing)
 """
+import copy
 import math
 from collections import deque
 from typing import Optional
@@ -133,6 +134,9 @@ _MODE_NAME = {
 }
 
 
+# a GPS in doubt (vision disagrees) gets an accuracy no better than the gap, up to this
+# gap; beyond it a wrong vision match is more likely than a spoofer this patient
+DOUBT_MAX_M = 500.0
 # a stated horizontal accuracy below this is not one (0 = "not filled"); RTK is ~1 cm
 MIN_STATED_SIGMA_M = 0.01
 # distinct independent fixes in a row beyond 3 sigma that refuse GPS (chance: < 1e-12)
@@ -174,6 +178,7 @@ class EstimatorNode(Node):
         self._last_ref_at = Time(seconds=0, clock_type=self.get_clock().clock_type)
         self._gps_hist = deque(maxlen=50)              # (stamp ns, lat, lon) of received GPS fixes
         self._streak = set()                           # distinct fixes beyond 3 sigma in a row
+        self._gps_doubt = None                         # (gap m, source) while GPS is in doubt
         self._agree_refs = set()                       # distinct fixes agreeing (re-acceptance)
         self._fix_max_sigma = float(self.get_parameter("fix_max_sigma_m").value)
         # Last GPS fix that passed the plausibility gate: (lat, lon, Time).
@@ -319,6 +324,11 @@ class EstimatorNode(Node):
             self._streak.add(ref_stamp)
         else:
             self._streak = set()
+        # two independent fixes in a row beyond 3 sigma: GPS is in doubt — still used, but
+        # with an accuracy no better than the gap (the operator sees it, the autopilot
+        # weighs it less, and a later switch to vision is no jump outside its accuracy).
+        # A gap over DOUBT_MAX_M is more likely a wrong vision match: not applied.
+        self._gps_doubt = (d, name) if len(self._streak) >= 2 and d <= DOUBT_MAX_M else None
         if len(self._streak) >= STREAK_N:
             self._refuse(stamp, f"GPS drifting away from {name}: {STREAK_N} independent fixes in a row "
                                 f"beyond 3 sigma ({d:.0f} m apart now, 3 sigma {tol_strict:.0f} m) — possible spoofing")
@@ -345,6 +355,7 @@ class EstimatorNode(Node):
         self._disagree_since = None
         self._disagree_refs = set()
         self._streak = set()
+        self._gps_doubt = None
         self._confirm_needed_since = stamp
         self.get_logger().error(f"GPS refused: {reason}")
 
@@ -554,8 +565,13 @@ class EstimatorNode(Node):
             (PositionEstimate.SOURCE_CELESTIAL, cn_eligible, self._cn_last),
         ])
 
+        if winner is not None and winner.source == PositionEstimate.SOURCE_GPS and self._gps_doubt:
+            winner = self._in_doubt(winner, *self._gps_doubt)
         if winner is not None:
             state, reason = self._classify(winner)
+            if winner.source == PositionEstimate.SOURCE_GPS and self._gps_doubt:
+                reason = (f"{reason} — GPS IN DOUBT: {self._gps_doubt[1]} disagrees by "
+                          f"{self._gps_doubt[0]:.0f} m (possible slow spoofing)")
             if winner.source != PositionEstimate.SOURCE_GPS and gps_alive and self._gps_suspect:
                 # The operator must see WHY GPS is not used while it is still talking.
                 reason = f"{reason} — GPS refused: {self._gps_suspect}"
@@ -568,10 +584,25 @@ class EstimatorNode(Node):
 
         self._publish_status(now, state, winner, imu_alive, reason)
         if winner is not None:
-            key = (winner.source, winner.header.stamp.sec, winner.header.stamp.nanosec)
+            # one publication per measurement: its stamps AND its content (a source holding
+            # its header stamp while its position changes must not freeze the output)
+            key = (winner.source, winner.header.stamp.sec, winner.header.stamp.nanosec,
+                   winner.sensor_stamp.sec, winner.sensor_stamp.nanosec, winner.latitude,
+                   winner.longitude, winner.position_covariance[0])
             if key != self._last_published_key:
                 self._last_published_key = key
                 self._publish_position(now, winner)
+
+    @staticmethod
+    def _in_doubt(msg: PositionEstimate, gap_m: float, name: str) -> PositionEstimate:
+        """A copy of a GPS estimate whose horizontal accuracy is no better than gap_m."""
+        out = copy.deepcopy(msg)
+        cov = list(out.position_covariance)
+        cov[0], cov[4] = max(cov[0], gap_m ** 2), max(cov[4], gap_m ** 2)
+        out.position_covariance = cov
+        if out.position_covariance_type == PositionEstimate.COVARIANCE_TYPE_UNKNOWN:
+            out.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_APPROXIMATED
+        return out
 
     def _no_fix_reason(self, gps_age, day_age, night_age, cn_age) -> str:
         """Why no source is usable — one clause per watched estimate source."""

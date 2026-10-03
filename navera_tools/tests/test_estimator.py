@@ -196,7 +196,7 @@ def main():
 
     # Gradual spoof: GPS pulled away at 40 m/s (well under max_speed, so the
     # jump gate never fires) while vision (15 m) stays on the true position.
-    refused_at = None
+    refused_at, doubt_at = None, None
     # (vision is sent just before each GPS fix: the tolerance includes
     # max_speed x the time between the two, 500 m/s in this test)
     for k in range(24):
@@ -206,10 +206,16 @@ def main():
         time.sleep(0.5)
         if refused_at is None and statuses[-1].active_source == DAY:
             refused_at = k * 20.0
+        if doubt_at is None and statuses[-1].active_source == GPS and "IN DOUBT" in statuses[-1].reason:
+            doubt_at = k * 20.0
+            if statuses[-1].state != NavStatus.STATE_DEGRADED:
+                failures.append(f"GPS in doubt still shown FIX: {statuses[-1].reason}")
     if refused_at is None:
         failures.append(f"gradual spoof never refused: {statuses[-1].reason}")
     elif refused_at > 400:
         failures.append(f"gradual spoof refused only at {refused_at:.0f} m")
+    if doubt_at is None or (refused_at is not None and doubt_at >= refused_at):
+        failures.append(f"no 'GPS in doubt' warning before the refusal (doubt {doubt_at}, refused {refused_at})")
     # still spoofed, vision silent: the spoofed GPS must not come back on its own just
     # because it moves smoothly from its own last (spoofed) position
     for k in range(24, 30):
