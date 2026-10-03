@@ -50,13 +50,18 @@ def main():
         return 1
     time.sleep(1.0)
 
-    def est(src, lat=35.83, lon=10.64, valid=True, ahead_s=0.0, known_cov=True, var=4.0):
+    def est(src, lat=35.83, lon=10.64, valid=True, ahead_s=0.0, known_cov=True, var=4.0,
+            cov=None, cov_type=None):
         m = PositionEstimate()
         m.header.stamp = (n.get_clock().now() + Duration(seconds=ahead_s)).to_msg()
         m.latitude, m.longitude, m.altitude = lat, lon, math.nan
         if known_cov:
             m.position_covariance = [var, 0.0, 0.0, 0.0, var, 0.0, 0.0, 0.0, 4 * var]
             m.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_APPROXIMATED
+        if cov is not None:
+            m.position_covariance = [float(c) for c in cov]
+        if cov_type is not None:
+            m.position_covariance_type = cov_type
         m.source, m.mode, m.valid = src, PositionEstimate.MODE_MEASURED, valid
         pub[src].publish(m)
 
@@ -73,6 +78,18 @@ def main():
     if statuses[-1].state != NavStatus.STATE_FIX:
         failures.append("valid GPS with known covariance is not FIX")
     settle()
+
+    # a stated accuracy must be one: zero, an undefined type or an impossible matrix are not
+    for what, kw, expect in (("zero covariance", dict(var=0.0), NavStatus.STATE_DEGRADED),
+                             ("undefined covariance type", dict(cov_type=200), NavStatus.STATE_DEGRADED),
+                             ("non-PSD covariance", dict(cov=[4, -1e6, 0, -1e6, 4, 0, 0, 0, 16]),
+                              NavStatus.STATE_NO_FIX)):
+        est(GPS, **kw)
+        time.sleep(1.0)
+        if statuses[-1].state != expect:
+            failures.append(f"GPS with {what}: state {statuses[-1].state} ({statuses[-1].reason}), "
+                            f"expected {expect}")
+        settle()
 
     est(GPS, ahead_s=60.0)
     time.sleep(1.0)

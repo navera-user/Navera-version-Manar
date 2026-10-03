@@ -31,3 +31,11 @@ def test_no_fix_or_null_island_is_invalid():
 def test_unknown_accuracy_stays_unknown():
     e = estimate_from_fix(fix(cov_type=NavSatFix.COVARIANCE_TYPE_UNKNOWN))
     assert e.valid and e.position_covariance_type == PositionEstimate.COVARIANCE_TYPE_UNKNOWN
+
+
+def test_a_zero_or_undefined_covariance_is_not_an_accuracy():
+    m = fix()
+    m.position_covariance = [0.0] * 9
+    assert estimate_from_fix(m).position_covariance_type == PositionEstimate.COVARIANCE_TYPE_UNKNOWN
+    m = fix(cov_type=7)
+    assert estimate_from_fix(m).position_covariance_type == PositionEstimate.COVARIANCE_TYPE_UNKNOWN

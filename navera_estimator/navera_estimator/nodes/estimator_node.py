@@ -131,6 +131,8 @@ _MODE_NAME = {
 }
 
 
+# a stated horizontal accuracy below this is not one (0 = "not filled"); RTK is ~1 cm
+MIN_STATED_SIGMA_M = 0.01
 # distinct independent fixes in a row beyond 3 sigma that refuse GPS (chance: < 1e-12)
 STREAK_N = 5
 
@@ -356,11 +358,9 @@ class EstimatorNode(Node):
                               (self._night_last, self._night_timeout),
                               (self._cn_last, self._cn_timeout)):
             _, eligible, _ = self._eval_source(now, last, timeout)
-            if not eligible or last.position_covariance_type == \
-                    PositionEstimate.COVARIANCE_TYPE_UNKNOWN \
-                    or last.mode != PositionEstimate.MODE_MEASURED:
+            sigma = self._stated_sigma(last) if eligible else None
+            if sigma is None or last.mode != PositionEstimate.MODE_MEASURED:
                 continue                   # a propagated position partly comes from GPS itself
-            sigma = math.sqrt(max(last.position_covariance[0], last.position_covariance[4]))
             t_ref = self._measured_at(last)
             self._last_ref_at = now
             same = self._gps_near(t_ref.nanoseconds)
@@ -419,13 +419,32 @@ class EstimatorNode(Node):
 
     @staticmethod
     def _sane(msg: PositionEstimate) -> bool:
-        """A usable position: finite and in range, finite non-negative variances."""
+        """A usable position: finite and in range, and a covariance that is one: finite,
+        non-negative variances, symmetric, horizontal block positive semi-definite (a
+        consumer's filter would break on anything else)."""
         if not is_finite_latlon(msg.latitude, msg.longitude):
             return False
         cov = list(msg.position_covariance)
         if not all(math.isfinite(c) for c in cov):
             return False
-        return all(cov[i] >= 0.0 for i in (0, 4, 8))
+        if not all(cov[i] >= 0.0 for i in (0, 4, 8)):
+            return False
+        tol = 1e-9 * max(1.0, cov[0], cov[4], cov[8])
+        if any(abs(cov[i] - cov[j]) > tol for i, j in ((1, 3), (2, 6), (5, 7))):
+            return False
+        return cov[0] * cov[4] - cov[1] * cov[3] >= -tol
+
+    @staticmethod
+    def _stated_sigma(msg: PositionEstimate) -> Optional[float]:
+        """The horizontal 1-sigma the source STATES, or None when it states none: covariance
+        type not one of the defined bounded types (a garbage byte must not promote a
+        position), or a sigma under 1 cm (zero is no accuracy, it is a missing one)."""
+        if msg.position_covariance_type not in (PositionEstimate.COVARIANCE_TYPE_APPROXIMATED,
+                                                PositionEstimate.COVARIANCE_TYPE_DIAGONAL_KNOWN,
+                                                PositionEstimate.COVARIANCE_TYPE_KNOWN):
+            return None
+        sigma = math.sqrt(max(msg.position_covariance[0], msg.position_covariance[4]))
+        return sigma if sigma >= MIN_STATED_SIGMA_M else None
 
     def _eval_source(self, now, last, timeout):
         """(alive, eligible, age) for a stored PositionEstimate, or (F, F, None).
@@ -482,7 +501,7 @@ class EstimatorNode(Node):
         make FIX unreachable while exactly one source contributes; see .msg).
         """
         name = _SOURCE_NAME.get(winner.source, "source")
-        bounded = winner.position_covariance_type != PositionEstimate.COVARIANCE_TYPE_UNKNOWN
+        bounded = self._stated_sigma(winner) is not None
         sigma = math.sqrt(max(winner.position_covariance[0], winner.position_covariance[4]))
         if winner.mode == PositionEstimate.MODE_MEASURED and bounded and sigma > self._fix_max_sigma:
             return (NavStatus.STATE_DEGRADED,

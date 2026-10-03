@@ -35,8 +35,13 @@ def estimate_from_fix(m: NavSatFix) -> PositionEstimate:
     est.latitude = float(m.latitude) if valid else math.nan
     est.longitude = float(m.longitude) if valid else math.nan
     est.altitude = float(m.altitude) if valid and math.isfinite(m.altitude) else math.nan
-    if valid and m.position_covariance_type != NavSatFix.COVARIANCE_TYPE_UNKNOWN \
-            and all(math.isfinite(c) and c >= 0.0 for c in m.position_covariance):
+    # a stated accuracy only when it is one: a defined type, finite, and a horizontal
+    # variance above (1 cm)^2 — zeros mean "not filled" (gps_node's HDOP > 0 rule)
+    if valid and m.position_covariance_type in (NavSatFix.COVARIANCE_TYPE_APPROXIMATED,
+                                                NavSatFix.COVARIANCE_TYPE_DIAGONAL_KNOWN,
+                                                NavSatFix.COVARIANCE_TYPE_KNOWN) \
+            and all(math.isfinite(c) for c in m.position_covariance) \
+            and min(m.position_covariance[0], m.position_covariance[4]) >= 1e-4:
         est.position_covariance = list(m.position_covariance)
         est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_APPROXIMATED
     else:
