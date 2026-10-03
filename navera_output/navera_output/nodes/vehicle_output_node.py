@@ -26,6 +26,10 @@ Parameters:
     mavlink_component_id (191)
     ros_fix_topic        ("/navera/fix")  "" = disabled
     forward_degraded     (False) send DEGRADED positions as "estimated"
+    nmea_forward_degraded (False) ALSO over NMEA. NMEA carries no accuracy an autopilot
+                                 uses (ArduPilot fuses GGA/RMC with its own ~0.5 m GPS
+                                 noise): a 30 m vision position would be trusted as a
+                                 0.5 m GPS. Off: NMEA says "no fix" for them.
     degraded_sigma_m     (NaN)   accuracy stated for them (required if forwarded)
     max_forward_sigma_m  (1000)  a forwarded position coarser than this is withheld
     position_timeout_s   (2.0)   an older position is not current
@@ -63,7 +67,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
 from navera_output import mavlink_out, mavlink_url, nmea
-from navera_output.policy import KIND_NONE, Config, decide
+from navera_output.policy import KIND_NONE, Config, decide, for_nmea
 
 
 class VehicleOutputNode(Node):
@@ -76,6 +80,7 @@ class VehicleOutputNode(Node):
         self.declare_parameter("mavlink_system_id", 1)
         self.declare_parameter("mavlink_component_id", 191)
         self.declare_parameter("forward_degraded", False)
+        self.declare_parameter("nmea_forward_degraded", False)
         declare_float(self, "degraded_sigma_m", float("nan"))
         declare_float(self, "position_timeout_s", 2.0)
         declare_float(self, "max_measurement_age_s", 2.0)
@@ -133,6 +138,14 @@ class VehicleOutputNode(Node):
         self.get_logger().info(
             f"vehicle output: nmea={port or 'off'} mavlink={url or 'off'} ros={topic or 'off'} rate={rate:.1f}Hz "
             f"forward_degraded={self.cfg.forward_degraded}")
+        self._nmea_degraded = bool(self.get_parameter("nmea_forward_degraded").value)
+        if self._serial is not None and self.cfg.forward_degraded:
+            if self._nmea_degraded:
+                self.get_logger().warn("nmea_forward_degraded: vision positions go out over NMEA, which "
+                                       "carries no accuracy — the autopilot will trust them as a precise GPS")
+            else:
+                self.get_logger().info("degraded positions: MAVLink/ROS only; NMEA says 'no fix' for them "
+                                       "(NMEA carries no accuracy)")
 
     def _on_status(self, msg: NavStatus) -> None:
         self._status, self._status_rx = msg, time.monotonic()
@@ -175,11 +188,12 @@ class VehicleOutputNode(Node):
         t_utc = datetime.now(timezone.utc) - timedelta(seconds=out.age_s)
         try:
             if self._serial is not None:
+                nmea_out = for_nmea(out, self._nmea_degraded)
                 spd = crs = math.nan
                 if out.has_velocity:
                     spd = math.hypot(out.vel_n_mps, out.vel_e_mps)
                     crs = math.degrees(math.atan2(out.vel_e_mps, out.vel_n_mps)) % 360.0
-                self._serial.write((nmea.gga(out, t_utc) + nmea.rmc(out, t_utc, spd, crs))
+                self._serial.write((nmea.gga(nmea_out, t_utc) + nmea.rmc(nmea_out, t_utc, spd, crs))
                                    .encode("ascii"))
             if self._mav is not None:
                 self._mav.mav.gps_input_send(**mavlink_out.gps_input_fields(

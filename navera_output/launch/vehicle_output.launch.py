@@ -14,11 +14,22 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
+def _bool(key, value):
+    v = value.strip().lower()
+    if v in ('1', 'true', 'yes', 'on'):
+        return True
+    if v in ('0', 'false', 'no', 'off'):
+        return False
+    raise ValueError(f"{key}={value!r}: expected true or false")    # never a silent false
+
+
 def _env_overrides():
     """Installation settings (/etc/navera/navera.env) that override the YAML defaults."""
     out, env = {}, os.environ
-    if env.get('NAVERA_FORWARD_DEGRADED'):
-        out['forward_degraded'] = env['NAVERA_FORWARD_DEGRADED'].strip().lower() in ('1', 'true', 'yes')
+    for key, param in (('NAVERA_FORWARD_DEGRADED', 'forward_degraded'),
+                       ('NAVERA_NMEA_FORWARD_DEGRADED', 'nmea_forward_degraded')):
+        if env.get(key):
+            out[param] = _bool(key, env[key])
     for key, param in (('NAVERA_DEGRADED_SIGMA_M', 'degraded_sigma_m'),
                        ('NAVERA_MAX_MEASUREMENT_AGE_S', 'max_measurement_age_s')):
         if env.get(key):

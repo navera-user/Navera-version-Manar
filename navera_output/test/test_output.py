@@ -174,3 +174,20 @@ def test_old_measurements_are_withheld_and_the_rest_carry_their_age():
     o = decide(cfg, STATE_DEGRADED, 0.1, pos(source=DAY), 0.1, DAY, measured_age_s=-5.0)
     assert o.kind == KIND_NONE and "future" in o.reason
     assert decide(Config(), STATE_FIX, 0.1, pos(), 0.1, GPS).age_s == 0.0      # age unknown: now
+
+
+def test_a_forwarded_sigma_above_the_ceiling_is_refused_at_start():
+    with pytest.raises(ValueError, match="nothing would ever be forwarded"):
+        Config(forward_degraded=True, degraded_sigma_m=5000.0).validate()
+    Config(forward_degraded=True, degraded_sigma_m=30.0).validate()
+
+
+def test_a_vision_position_never_goes_out_over_nmea_unless_allowed():
+    from navera_output.policy import for_nmea
+    cfg = Config(forward_degraded=True, degraded_sigma_m=30.0)
+    est = decide(cfg, STATE_DEGRADED, 0.1, pos(source=DAY), 0.1, DAY)
+    assert est.kind == KIND_ESTIMATED
+    assert for_nmea(est).kind == KIND_NONE and "NMEA" in for_nmea(est).reason
+    assert for_nmea(est, allow_degraded=True) is est
+    fix = decide(Config(), STATE_FIX, 0.1, pos(), 0.1, GPS)
+    assert for_nmea(fix) is fix

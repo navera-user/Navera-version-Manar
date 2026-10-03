@@ -79,6 +79,9 @@ class Config:
                                           and self.degraded_sigma_m > 0):
             raise ValueError("forward_degraded requires degraded_sigma_m > 0: the accuracy "
                              "sent to the vehicle must be stated, not invented")
+        if self.forward_degraded and self.degraded_sigma_m > self.max_forward_sigma_m:
+            raise ValueError(f"degraded_sigma_m {self.degraded_sigma_m:g} m > max_forward_sigma_m "
+                             f"{self.max_forward_sigma_m:g} m: nothing would ever be forwarded")
 
 
 def _details(pos) -> dict:
@@ -145,3 +148,12 @@ def decide(cfg: Config, state: Optional[int], status_age_s: Optional[float],
                                  f"(±{sigma / 1000:.1f} km > {cfg.max_forward_sigma_m / 1000:.1f} km)")
     return Output(KIND_ESTIMATED, "estimated", sigma_h_m=sigma,
                   sigma_v_m=math.nan, satellites=0, **common)
+
+
+def for_nmea(out: Output, allow_degraded: bool = False) -> Output:
+    """What goes out over NMEA. NMEA carries no accuracy an autopilot uses (ArduPilot fuses
+    GGA/RMC with its own ~0.5 m GPS noise): an estimated (vision) position is sent as
+    "no fix" unless explicitly allowed."""
+    if out.kind == KIND_ESTIMATED and not allow_degraded:
+        return Output(KIND_NONE, "degraded position not sent over NMEA (no accuracy field)")
+    return out
