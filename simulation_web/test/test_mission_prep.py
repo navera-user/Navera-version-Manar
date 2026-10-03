@@ -155,6 +155,8 @@ def test_services_are_not_restarted_in_flight():
     assert "without GPS" in mp.in_flight_refusal(None, mp.STATE_DEGRADED)
     assert mp.in_flight_refusal(False, 2) is None          # disarmed, GPS fix
     assert mp.in_flight_refusal(None, None) is None        # no vehicle link, arbiter silent
+    assert "moving" in mp.in_flight_refusal(None, 2, speed_mps=12.0)   # no link, but NAVERA sees it move
+    assert mp.in_flight_refusal(None, 2, speed_mps=0.3) is None
 
 
 def test_terrain_of_a_generated_map_is_shown_in_its_plan(jobs):

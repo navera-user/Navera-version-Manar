@@ -68,6 +68,7 @@ from navera_msgs.msg import NavStatus, PositionEstimate
 
 from simulation_web.web_common import (BridgeHandler, MBTilesReader, parse_tile_path,
                                        start_server, valid_latlon)
+from navera_common.track import TrackVelocity
 from simulation_web import mission_prep
 
 MISSION_FILE_MAX = 512 * 1024       # bytes: an imported autopilot mission file
@@ -199,6 +200,7 @@ class NaveraWebBridge(Node):
         self._position = None        # last winning PositionEstimate
         self._position_rx = None
         self._armed, self._armed_rx = None, None   # from vehicle_link (/navera/vehicle/status)
+        self._track = TrackVelocity(window_s=10.0, min_span_s=3.0)   # NAVERA's own recent track
 
         # ── Tile DB (lazy, read-only, thread-safe) ──────────────
         self._tiles = MBTilesReader(self.mbtiles_path, self.get_logger())
@@ -332,6 +334,10 @@ class NaveraWebBridge(Node):
         with self._state_lock:
             self._position = msg
             self._position_rx = time.monotonic()
+            # NAVERA's own track: the in-flight lock knows the vehicle moves even without
+            # an autopilot link telling it is armed
+            if msg.valid and msg.latitude == msg.latitude:
+                self._track.add(time.time(), msg.latitude, msg.longitude, 10.0)
 
     def set_point_a(self, pa):
         """Anchor the trajectory at the user-entered Point A.
@@ -530,7 +536,13 @@ class NaveraWebBridge(Node):
         st = self._nav_status
         state = (st.state if st is not None and self._nav_status_rx is not None
                  and now - self._nav_status_rx < self._nav_status_timeout else None)
-        return mission_prep.in_flight_refusal(armed, state)
+        moving = None
+        last = self._track.last_time()
+        if last is not None and time.time() - last < 10.0:
+            v = self._track.velocity(time.time())
+            if v is not None:
+                moving = math.hypot(v[0], v[1])
+        return mission_prep.in_flight_refusal(armed, state, moving)
 
     def mission_action(self, action, d):
         jobs = self._mission_jobs()

@@ -187,12 +187,19 @@ MAX_ROUTE_POINTS = 500     # waypoints of one saved route
 STATE_DEGRADED = 3          # navera_msgs/NavStatus: navigating without GPS
 
 
-def in_flight_refusal(armed: Optional[bool], nav_state: Optional[int]) -> Optional[str]:
+MOVING_MPS = 1.5            # faster than this, the vehicle is under way
+
+
+def in_flight_refusal(armed: Optional[bool], nav_state: Optional[int],
+                      speed_mps: Optional[float] = None) -> Optional[str]:
     """Why restarting NAVERA's services (or loading the CPU with a map generation) must
     be refused now, or None. armed: from the autopilot (None = no vehicle link);
-    nav_state: the arbiter's current state (None = not heard)."""
+    nav_state: the arbiter's current state (None = not heard); speed_mps: NAVERA's own
+    measured ground speed (None = unknown) — the lock without an autopilot link."""
     if armed:
         return "the vehicle is armed: disarm it before changing NAVERA"
+    if speed_mps is not None and speed_mps > MOVING_MPS:
+        return f"the vehicle is moving ({speed_mps:.0f} m/s): stop it before changing NAVERA"
     if nav_state == STATE_DEGRADED:
         return "NAVERA is navigating without GPS right now: a restart would interrupt it"
     return None
