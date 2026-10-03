@@ -31,6 +31,7 @@ import time
 import numpy as np
 import rclpy
 from navera_common import state_store
+from navera_common.qos import SENSOR_QOS
 from navera_common.altitude import AltitudeEstimator
 from navera_common.camera_model import CameraModel
 from navera_common.frame_builder import FrameBuilder
@@ -120,13 +121,14 @@ class LiveCamera(Node):
         self.pub_info = self.create_publisher(CameraInfo, "camera_info", qos_img)
         # sensors in their own callback group: converting images never delays them
         sensors = MutuallyExclusiveCallbackGroup()
-        self.create_subscription(Imu, p("imu_topic"), self._on_imu, 100, callback_group=sensors)
-        self.create_subscription(NavSatFix, p("gps_topic"), self._on_gps, 10, callback_group=sensors)
-        self.create_subscription(Range, p("altitude_topic"), self._on_alt, 10, callback_group=sensors)
+        # the vehicle's sensors may publish BEST_EFFORT (navera_common.qos)
+        self.create_subscription(Imu, p("imu_topic"), self._on_imu, SENSOR_QOS, callback_group=sensors)
+        self.create_subscription(NavSatFix, p("gps_topic"), self._on_gps, SENSOR_QOS, callback_group=sensors)
+        self.create_subscription(Range, p("altitude_topic"), self._on_alt, SENSOR_QOS, callback_group=sensors)
         self.create_subscription(Range, p("vision_altitude_topic"), self._on_vision_alt, 10, callback_group=sensors)
         self.create_subscription(PointStamped, p("relative_altitude_topic"),
                                  lambda m: self.alt.add_relative(stamp_s(m.header.stamp), m.point.z),
-                                 10, callback_group=sensors)
+                                 SENSOR_QOS, callback_group=sensors)
         self.create_subscription(Int32, p("ack_topic"), self._on_ack, 10)
         self._ready = threading.Event()
         self._go = threading.Event()

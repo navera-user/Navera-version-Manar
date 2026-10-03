@@ -37,6 +37,7 @@ import cv2
 import numpy as np
 
 import rclpy
+from navera_common.qos import SENSOR_QOS
 from navera_common.geo import dead_reckon, haversine_m, is_finite_latlon
 from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
@@ -243,7 +244,7 @@ class NightSubscriber(Node):
         self.sub_gps   = self.create_subscription(
             PositionEstimate, self.get_parameter("gps_topic").value, self.on_gps, 10)
         self.sub_imu   = self.create_subscription(
-            Imu, self.get_parameter("imu_topic").value, self.on_imu, 10)
+            Imu, self.get_parameter("imu_topic").value, self.on_imu, SENSOR_QOS)
         # Same latched QoS as the camera's gate (TRANSIENT_LOCAL, depth 1).
         start_qos = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
                                durability=DurabilityPolicy.TRANSIENT_LOCAL,

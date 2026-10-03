@@ -98,6 +98,7 @@ from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from navera_common.qos import SENSOR_QOS
 from rclpy.duration import Duration
 from rclpy.time import Time
 from sensor_msgs.msg import Imu
@@ -205,7 +206,7 @@ class EstimatorNode(Node):
         self.sub_cn = self.create_subscription(
             PositionEstimate, "/navera/estimate/cn", self._on_cn, 10)
         self.sub_imu = self.create_subscription(
-            Imu, str(self.get_parameter("imu_topic").value), self._on_imu, 10)
+            Imu, str(self.get_parameter("imu_topic").value), self._on_imu, SENSOR_QOS)
 
         self.pub_pos = self.create_publisher(PositionEstimate, "/navera/position", 10)
         self.pub_status = self.create_publisher(NavStatus, "/navera/nav_status", 10)

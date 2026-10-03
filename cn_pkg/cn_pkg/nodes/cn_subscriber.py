@@ -44,6 +44,7 @@ import cv2
 import numpy as np
 
 import rclpy
+from navera_common.qos import SENSOR_QOS
 from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
 from navera_common.pairing import FramePairer, exposure_stamp, stamp_ns
@@ -133,7 +134,7 @@ class CNSubscriber(Node):
         # attitude of its exposure
         self._imu_hist = deque(maxlen=3000)
         self._gps_prior = None    # last valid GPS fix (lat, lon)
-        self.create_subscription(Imu, self.get_parameter("imu_topic").value, self._on_imu, 10)
+        self.create_subscription(Imu, self.get_parameter("imu_topic").value, self._on_imu, SENSOR_QOS)
         self.create_subscription(PositionEstimate, self.get_parameter("gps_topic").value,
                                  self._on_gps, 10)
         self._rtc_sample = None   # (rtc_epoch, system_epoch_at_read)
