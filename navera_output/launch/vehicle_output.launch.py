@@ -34,7 +34,8 @@ def _env_overrides():
     """Installation settings (/etc/navera/navera.env) that override the YAML defaults."""
     out, env = {}, os.environ
     for key, param in (('NAVERA_FORWARD_DEGRADED', 'forward_degraded'),
-                       ('NAVERA_NMEA_FORWARD_DEGRADED', 'nmea_forward_degraded')):
+                       ('NAVERA_NMEA_FORWARD_DEGRADED', 'nmea_forward_degraded'),
+                       ('NAVERA_ROS_FORWARD_DEGRADED', 'ros_forward_degraded')):
         if env.get(key):
             out[param] = _bool(key, env[key])
     for key, param in (('NAVERA_DEGRADED_SIGMA_M', 'degraded_sigma_m'),
@@ -43,6 +44,8 @@ def _env_overrides():
             out[param] = float(env[key])
     if (env.get('NAVERA_MAVLINK_SYSID') or '').strip().isdigit():
         out['mavlink_system_id'] = int(env['NAVERA_MAVLINK_SYSID'])     # the autopilot's own id
+    if (env.get('NAVERA_ROS_FIX_FRAME_ID') or '').strip():
+        out['ros_fix_frame_id'] = env['NAVERA_ROS_FIX_FRAME_ID'].strip()
     if 'NAVERA_ROS_FIX_TOPIC' in env:                  # set but empty: no ROS output
         out['ros_fix_topic'] = env['NAVERA_ROS_FIX_TOPIC'].strip()
     return out

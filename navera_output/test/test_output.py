@@ -207,3 +207,14 @@ def test_a_vision_position_is_carried_to_now_with_an_honest_accuracy():
     # GPS is never carried (its latency is small and the autopilot's own)
     g = decide(Config(), STATE_FIX, 0.1, pos(), 0.1, GPS, measured_age_s=0.2, ground_vel=(0.0, 40.0, 1.0))
     assert g.lat == 35.8288 and g.sigma_h_m == 2.0
+
+
+def test_a_degraded_position_needs_a_stated_accuracy_somewhere():
+    cfg = Config(forward_degraded=True)                       # no degraded_sigma_m (the ROS case)
+    unknown = pos(source=DAY)
+    unknown.position_covariance_type = 0
+    assert decide(cfg, STATE_DEGRADED, 0.1, unknown, 0.1, DAY).kind == KIND_NONE
+    stated = pos(source=DAY, var=(900.0, 900.0, 0.0))
+    stated.position_covariance_type = 1
+    o = decide(cfg, STATE_DEGRADED, 0.1, stated, 0.1, DAY)
+    assert o.kind == KIND_ESTIMATED and o.sigma_h_m == 30.0

@@ -166,8 +166,10 @@ def decide(cfg: Config, state: Optional[int], status_age_s: Optional[float],
         return Output(KIND_NONE, "degraded position not forwarded (forward_degraded=false)")
     known = getattr(pos, "position_covariance_type", 0) != 0          # 0 = UNKNOWN
     stated = math.sqrt(max(cov[0], cov[4])) if known else math.nan
-    sigma = max(cfg.degraded_sigma_m, stated) if math.isfinite(stated) else cfg.degraded_sigma_m
-    sigma += lag_sigma
+    candidates = [x for x in (cfg.degraded_sigma_m, stated) if math.isfinite(x) and x > 0]
+    if not candidates:
+        return Output(KIND_NONE, "degraded position with no stated accuracy")
+    sigma = max(candidates) + lag_sigma
     if sigma > cfg.max_forward_sigma_m:
         return Output(KIND_NONE, f"position too coarse for the autopilot "
                                  f"(±{sigma / 1000:.1f} km > {cfg.max_forward_sigma_m / 1000:.1f} km)")

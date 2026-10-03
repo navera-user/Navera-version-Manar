@@ -51,6 +51,7 @@ hears from NAVERA.
 If an enabled output cannot be opened, the node exits with code 1 so the
 service restarts it.
 """
+import dataclasses
 import json
 import math
 import sys
@@ -70,7 +71,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
 from navera_output import mavlink_out, mavlink_url, nmea
-from navera_output.policy import KIND_NONE, Config, decide, for_nmea
+from navera_output.policy import KIND_FIX, KIND_NONE, Config, decide, for_nmea
 
 
 class VehicleOutputNode(Node):
@@ -95,6 +96,12 @@ class VehicleOutputNode(Node):
         declare_float(self, "max_forward_sigma_m", 1000.0)
         self.declare_parameter("fix_type_without_alt", 3)
         self.declare_parameter("ros_fix_topic", "/navera/fix")
+        # the frame of the vehicle's TF tree the fix refers to (robot_localization's
+        # navsat_transform needs one it knows), and whether a ROS consumer gets the vision
+        # positions: it reads their accuracy in the message itself, so by default it does —
+        # only with a stated accuracy, never an invented one
+        self.declare_parameter("ros_fix_frame_id", "navera")
+        self.declare_parameter("ros_forward_degraded", True)
         self._fix_type_without_alt = int(self.get_parameter("fix_type_without_alt").value)
         if self._fix_type_without_alt not in (2, 3):
             raise ValueError("fix_type_without_alt must be 2 or 3")
@@ -234,7 +241,7 @@ class VehicleOutputNode(Node):
                 self._mav.mav.gps_input_send(**mavlink_out.gps_input_fields(
                     out, t_utc, self._fix_type_without_alt))
             if self._pub_fix is not None:
-                self._pub_fix.publish(self._navsatfix(out))
+                self._pub_fix.publish(self._navsatfix(self._ros_output(out)))
         except Exception as e:     # serial unplugged, socket error...
             self.get_logger().fatal(f"output failed: {e} — exiting so the service restarts")
             self.failed = True
@@ -257,13 +264,28 @@ class VehicleOutputNode(Node):
             return None
         return (self.get_clock().now().nanoseconds - (s.sec * 1_000_000_000 + s.nanosec)) / 1e9
 
+    def _ros_output(self, out):
+        """The decision for ROS: as for the autopilot, plus degraded positions with their
+        stated accuracy when ros_forward_degraded (independent of forward_degraded)."""
+        if out.kind != KIND_NONE or self.cfg.forward_degraded or \
+                not bool(self.get_parameter("ros_forward_degraded").value):
+            return out
+        st = self._status
+        now = time.monotonic()
+        return decide(dataclasses.replace(self.cfg, forward_degraded=True),
+                      st.state if st else None, now - self._status_rx if st else None,
+                      self._pos, now - self._pos_rx if self._pos else None,
+                      st.active_source if st else None, None,
+                      self._measured_age(self._pos), self._ground_velocity())
+
     def _navsatfix(self, out) -> NavSatFix:
         """The output decision as a ROS GPS message: a fix with its stated accuracy as the
         covariance, or STATUS_NO_FIX with NaN position."""
         f = NavSatFix()
         f.header.stamp = (self.get_clock().now() - Duration(seconds=out.age_s)).to_msg()
-        f.header.frame_id = "navera"
-        f.status.service = NavSatStatus.SERVICE_GPS
+        f.header.frame_id = str(self.get_parameter("ros_fix_frame_id").value)
+        # a vision / celestial position is no satellite service: a consumer can tell
+        f.status.service = NavSatStatus.SERVICE_GPS if out.kind == KIND_FIX and out.satellites != 0 else 0
         if out.kind == KIND_NONE:
             f.status.status = NavSatStatus.STATUS_NO_FIX
             f.latitude = f.longitude = f.altitude = math.nan
