@@ -17,10 +17,14 @@ EARTH_R = 6371000.0
 
 class TrackVelocity:
     def __init__(self, window_s: float = 20.0, min_span_s: float = 4.0, min_points: int = 3,
-                 heading_sigma_deg: float = 5.0, speed_sigma_floor_mps: float = 0.5):
+                 heading_sigma_deg: float = 5.0, speed_sigma_floor_mps: float = 0.5,
+                 accel_mps2: float = 0.5):
         self.window_s, self.min_span_s, self.min_points = window_s, min_span_s, min_points
         self.heading_sigma = math.radians(heading_sigma_deg)
         self.speed_floor = speed_sigma_floor_mps
+        # speed changes NAVERA does not see (a drone speeding up / slowing, a curve): the
+        # error grows like 1/2 a t^2 — measured ~0.27 m/s^2 in the simulator (F6b), 0.5 kept
+        self.accel = accel_mps2
         self._pts = deque(maxlen=200)                  # (t, lat, lon, sigma_m)
 
     def reset(self) -> None:
@@ -83,7 +87,7 @@ class TrackVelocity:
         p = dead_reckon(lat, lon, math.degrees(math.atan2(ve, vn)) % 360.0, speed, dt) if speed > 0.05 else (lat, lon)
         if p is None:
             return None
-        sigma = sig0 + sig_v * dt + self.heading_sigma * speed * dt
+        sigma = sig0 + sig_v * dt + self.heading_sigma * speed * dt + 0.5 * self.accel * dt * dt
         return p[0], p[1], sigma
 
     def last_time(self) -> Optional[float]:

@@ -56,3 +56,12 @@ def test_a_noisy_track_states_a_larger_speed_error():
     fixes(clean)
     fixes(noisy, noise=[(30.0 * (-1) ** i, -20.0 * (-1) ** i) for i in range(10)])
     assert noisy.velocity(9.0)[2] > 3 * clean.velocity(9.0)[2]
+
+
+def test_unseen_acceleration_is_in_the_stated_accuracy():
+    tr = TrackVelocity(accel_mps2=0.5)
+    fixes(tr)
+    sig_10 = tr.propagate(19.0)[2]
+    sig_37 = tr.propagate(46.0)[2]
+    # the simulator's camera-failure run: true error 15 m at 10 s, 153 m at 37 s
+    assert sig_10 > 15.0 and sig_37 > 153.0

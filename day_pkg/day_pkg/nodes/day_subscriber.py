@@ -124,6 +124,8 @@ class DaySubscriber(Node):
         # uncertainty stays under dead_reckon_max_sigma_m
         declare_float(self, "max_dead_reckon_s", 120.0)
         declare_float(self, "dead_reckon_max_sigma_m", 500.0)
+        # unseen acceleration allowed for in the stated accuracy (1/2 a t^2)
+        declare_float(self, "dead_reckon_accel_mps2", 0.5)
         # Whole-map search (no prior). Measured on labelled frames: 12 % within
         # 300 m, and the similarity score does not separate good matches from
         # bad ones (docs/VALIDATION_STATUS.md). Off: without a prior (GPS fix or
@@ -177,7 +179,7 @@ class DaySubscriber(Node):
         self.max_consecutive_rejects = int(self.get_parameter("max_consecutive_rejects").value)
         self.max_dead_reckon_s   = float(self.get_parameter("max_dead_reckon_s").value)
         self.dr_max_sigma_m      = float(self.get_parameter("dead_reckon_max_sigma_m").value)
-        self.track = TrackVelocity()           # measured fixes -> ground velocity
+        self.track = TrackVelocity(accel_mps2=float(self.get_parameter("dead_reckon_accel_mps2").value))
         self._track_heading = None             # frame heading (IMU) at the last measured fix
         self._dr_sigma = None
         self.allow_global_search = bool(self.get_parameter("allow_global_search").value)
