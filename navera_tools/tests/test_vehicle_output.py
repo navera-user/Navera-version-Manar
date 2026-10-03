@@ -90,8 +90,11 @@ def main():
     spinner.start()
     try:
         # 1) GPS simulated: expect fixes near the simulated circle (Sousse).
+        # (and a ROS fix: on an idle machine 5 NMEA fixes come before ROS has matched
+        # this test's /navera/fix subscription — the phase must not end before it)
         deadline, fixes = time.time() + 30, []
-        while time.time() < deadline and len(fixes) < 5:
+        while time.time() < deadline and (len(fixes) < 5 or not any(
+                f.status.status == NavSatStatus.STATUS_FIX for f in ros_fix)):
             fixes += [g for g in read_gga(master, 1.0) if g.gps_qual == 1]
         if len(fixes) < 5:
             failures.append(f"only {len(fixes)} NMEA fixes while GPS was simulated")
