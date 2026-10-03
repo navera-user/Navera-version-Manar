@@ -127,7 +127,7 @@ link needs its own port.
 A vision position describes the instant the photo was taken, 0.3–1.5 s before it is sent
 (`navera_output/policy.py`). NAVERA stamps every position with its **measurement instant**
 (camera exposure for vision; `GPS_INPUT` `time_week` / `time_week_ms`, NMEA time) and does
-not send one measured more than `NAVERA_MAX_MEASUREMENT_AGE_S` (2 s) ago.
+not send one measured more than `NAVERA_MAX_MEASUREMENT_AGE_S` (5 s) ago; a vision position younger than that is carried to the present along the measured ground velocity, its accuracy grown by its age.
 
 What ArduPilot does with it (*Source*, 4.5.7, MAVLink GPS): the `GPS_INPUT` time is mapped onto
 the autopilot's clock by a transport-jitter correction that assumes the least-delayed of the

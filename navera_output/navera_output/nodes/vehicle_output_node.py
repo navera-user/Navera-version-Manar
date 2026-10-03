@@ -32,8 +32,8 @@ Parameters:
                                  0.5 m GPS. Off: NMEA says "no fix" for them.
     degraded_sigma_m     (NaN)   accuracy stated for them (required if forwarded)
     max_forward_sigma_m  (1000)  a forwarded position coarser than this is withheld
-    position_timeout_s   (2.0)   an older position is not current
-    max_measurement_age_s (2.0)  a position measured longer ago is not sent; the rest
+    position_timeout_s   (5.0)   an older position is not current
+    max_measurement_age_s (5.0)  a position measured longer ago is not sent; the rest
                                  are sent stamped with their measurement instant
     nav_status_timeout_s (2.0)   a silent arbiter means "no fix"
     gps_vel_timeout_s    (1.0)   the GPS velocity (/navera/sensors/gps_vel) sent with
@@ -85,8 +85,8 @@ class VehicleOutputNode(Node):
         self.declare_parameter("forward_degraded", False)
         self.declare_parameter("nmea_forward_degraded", False)
         declare_float(self, "degraded_sigma_m", float("nan"))
-        declare_float(self, "position_timeout_s", 2.0)
-        declare_float(self, "max_measurement_age_s", 2.0)
+        declare_float(self, "position_timeout_s", 5.0)
+        declare_float(self, "max_measurement_age_s", 5.0)
         # the vehicle's maximum speed (NAVERA_MAX_SPEED_KMH): a position whose ground velocity
         # is unknown grows its accuracy by this speed x its age
         declare_float(self, "max_speed_mps", 30.0)

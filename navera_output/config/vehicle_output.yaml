@@ -13,5 +13,5 @@ vehicle_output:
     # (docs/VALIDATION_STATUS.md): the autopilot will trust this number.
     forward_degraded: false
     degraded_sigma_m: .nan
-    position_timeout_s: 2.0
+    position_timeout_s: 5.0
     nav_status_timeout_s: 2.0

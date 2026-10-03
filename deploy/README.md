@@ -440,7 +440,7 @@ receives "no fix" and its own failsafe acts — unless forwarding is enabled exp
 |---|---|---|
 | `NAVERA_FORWARD_DEGRADED` | false | `true`: send vision / celestial positions, flagged "estimated" |
 | `NAVERA_DEGRADED_SIGMA_M` | none | the accuracy (m, 1 σ) the autopilot must assume — **required** with forwarding (the node refuses to start without it); use a value you have measured |
-| `NAVERA_MAX_MEASUREMENT_AGE_S` | 2.0 | a position measured longer ago is not sent; the others are sent stamped with their measurement instant |
+| `NAVERA_MAX_MEASUREMENT_AGE_S` | 5.0 | a position measured longer ago is not sent; a younger vision position is carried to the present along the measured ground velocity, its accuracy grown by its age |
 
 A position coarser than 1 km is never forwarded (`max_forward_sigma_m`). Full rules:
 [navera_output/README.md](../navera_output/README.md). MAVLink addresses: one format

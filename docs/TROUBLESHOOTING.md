@@ -147,7 +147,7 @@ enabled. Fix (only with a measured accuracy): `NAVERA_FORWARD_DEGRADED=true` and
 | Message | Meaning |
 |---|---|
 | `forward_degraded requires degraded_sigma_m > 0: the accuracy sent to the vehicle must be stated, not invented` (service restarting) | forwarding enabled without `NAVERA_DEGRADED_SIGMA_M` |
-| `position measured 2.4 s ago (max 2.0 s)` | the position is older than `NAVERA_MAX_MEASUREMENT_AGE_S` (slow vision, loaded CPU) |
+| `position measured 5.4 s ago (max 5.0 s)` | the position is older than `NAVERA_MAX_MEASUREMENT_AGE_S` (slow vision, loaded CPU) |
 | `position too coarse for the autopilot (±55.0 km > 1.0 km)` | celestial fix: never forwarded |
 | `arbiter silent` | `navera-estimator` not running or not visible (domain) |
 | `output failed: … — exiting so the service restarts` | serial port unplugged / network error |

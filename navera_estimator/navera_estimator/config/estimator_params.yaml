@@ -16,7 +16,10 @@ estimator_node:
 
     # Vision / celestial freshness windows (starting points, to be measured
     # under the real frame cadence of each pipeline).
-    day_timeout_s: 3.0
+    # a vision position stays usable 5 s after its photo: frames come every 1-4 s under
+    # load, and a 3 s window made NAVERA flicker NO_FIX between good fixes (autopilot LAND).
+    # The output carries it to the present with its accuracy grown by its age.
+    day_timeout_s: 5.0
     night_timeout_s: 5.0
     cn_timeout_s: 45.0
 

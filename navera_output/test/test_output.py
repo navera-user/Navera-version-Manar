@@ -49,7 +49,7 @@ def test_degraded_forwarded_only_with_a_stated_sigma():
     (STATE_FIX, 5.0, pos(), 0.1, GPS, "arbiter silent"),          # nav_status stale
     (1, 0.1, pos(), 0.1, GPS, "no fix"),                           # NO_FIX
     (STATE_FIX, 0.1, None, None, GPS, "position not current"),
-    (STATE_FIX, 0.1, pos(), 3.0, GPS, "position not current"),     # stale position
+    (STATE_FIX, 0.1, pos(), 6.0, GPS, "position not current"),     # stale position (> 5 s)
     (STATE_FIX, 0.1, pos(source=DAY), 0.1, GPS, "not from the active source"),
     (STATE_FIX, 0.1, pos(lat=math.nan), 0.1, GPS, "not finite"),
 ])
@@ -169,8 +169,8 @@ def test_old_measurements_are_withheld_and_the_rest_carry_their_age():
     cfg = Config(forward_degraded=True, degraded_sigma_m=30.0)
     o = decide(cfg, STATE_DEGRADED, 0.1, pos(source=DAY), 0.1, DAY, measured_age_s=0.8)
     assert o.kind == KIND_ESTIMATED and o.age_s == pytest.approx(0.8)
-    o = decide(cfg, STATE_DEGRADED, 0.1, pos(source=DAY), 0.1, DAY, measured_age_s=2.6)
-    assert o.kind == KIND_NONE and "measured 2.6 s ago" in o.reason
+    o = decide(cfg, STATE_DEGRADED, 0.1, pos(source=DAY), 0.1, DAY, measured_age_s=5.6)
+    assert o.kind == KIND_NONE and "measured 5.6 s ago" in o.reason
     o = decide(cfg, STATE_DEGRADED, 0.1, pos(source=DAY), 0.1, DAY, measured_age_s=-5.0)
     assert o.kind == KIND_NONE and "future" in o.reason
     assert decide(Config(), STATE_FIX, 0.1, pos(), 0.1, GPS).age_s == 0.0      # age unknown: now

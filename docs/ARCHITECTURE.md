@@ -194,7 +194,7 @@ ROS `NavSatFix` on `/navera/fix` (`NAVERA_ROS_FIX_TOPIC`). FIX is sent as a fix 
 accuracy; DEGRADED is withheld unless `NAVERA_FORWARD_DEGRADED=true` with a stated
 `NAVERA_DEGRADED_SIGMA_M`; everything else is an explicit "no fix". Each position is sent
 once, stamped with its measurement instant, and not at all if measured more than
-`NAVERA_MAX_MEASUREMENT_AGE_S` (2 s) ago. Details:
+`NAVERA_MAX_MEASUREMENT_AGE_S` (5 s) ago; a vision position is carried to the present along the measured ground velocity (accuracy grown by its age). Details:
 [navera_output/README.md](../navera_output/README.md), autopilot setup:
 [ARDUPILOT_INTEGRATION.md](ARDUPILOT_INTEGRATION.md).
 

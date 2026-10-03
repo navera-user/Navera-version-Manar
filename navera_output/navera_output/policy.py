@@ -71,10 +71,11 @@ class Config:
     # forward_degraded: a celestial fix (tens of km) moved a SITL autopilot's
     # own position by 125 km.
     max_forward_sigma_m: float = 1000.0
-    position_timeout_s: float = 2.0
+    position_timeout_s: float = 5.0
     nav_status_timeout_s: float = 2.0
-    # older measurements are not sent (vision: image to position measured 0.3-1.5 s)
-    max_measurement_age_s: float = 2.0
+    # older measurements are not sent (vision: photo to position 0.5-2.5 s; a non-GPS one
+    # is carried to the present with its accuracy grown by its age)
+    max_measurement_age_s: float = 5.0
     # a non-GPS position is carried to the present along the measured ground velocity;
     # without one, its accuracy grows by this speed x its age
     max_speed_mps: float = 30.0

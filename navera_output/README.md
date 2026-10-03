@@ -19,7 +19,7 @@ Wiring and autopilot parameters: [docs/ARDUPILOT_INTEGRATION.md](../docs/ARDUPIL
 | FIX (GPS; or a source with a stated σ ≤ 25 m) | GGA quality 1, HDOP = σ/2 m, satellites, altitude; RMC status A, mode A, speed and course from the receiver | fix_type 3, horiz/vert accuracy = σ, horizontal velocity from the receiver | status FIX, covariance from σ |
 | FIX without altitude (vision / celestial) | GGA quality 1, no altitude | fix_type 3 with the altitude flagged ignored (`fix_type_without_alt`), no velocity | |
 | DEGRADED (vision, celestial, dead-reckoned) | **no fix by default**; with `forward_degraded`: quality 6 (estimated), HDOP from `degraded_sigma_m`, RMC mode E | **no fix by default**; with `forward_degraded`: accuracy = `degraded_sigma_m`, 0 satellites | no fix by default; with `forward_degraded`: status FIX too — the accuracy is only in the covariance |
-| NO_FIX; arbiter silent > 2 s; position older than 2 s; measured more than `max_measurement_age_s` ago; coarser than `max_forward_sigma_m` | GGA quality 0 with empty position, RMC status V | fix_type 1, no position | STATUS_NO_FIX, NaN position |
+| NO_FIX; arbiter silent > 2 s; no new position for 5 s; measured more than `max_measurement_age_s` ago; coarser than `max_forward_sigma_m` | GGA quality 0 with empty position, RMC status V | fix_type 1, no position | STATUS_NO_FIX, NaN position |
 
 Today **every vision and celestial position is DEGRADED** (the estimator gives FIX only with
 a stated σ ≤ `fix_max_sigma_m` = 25 m; day vision states 30 m until measured with NAVERA's
@@ -61,7 +61,7 @@ On the box: `/etc/navera/navera.env`, read by `navera-output.service` and
 | `NAVERA_ROS_FIX_TOPIC` | `ros_fix_topic` | `/navera/fix` | NavSatFix output; the node default is always on |
 | `NAVERA_FORWARD_DEGRADED` | `forward_degraded` | false | send DEGRADED positions as "estimated" |
 | `NAVERA_DEGRADED_SIGMA_M` | `degraded_sigma_m` | NaN | accuracy stated for them (m, 1 σ); required with forwarding. When the source states a worse one, the worse is sent |
-| `NAVERA_MAX_MEASUREMENT_AGE_S` | `max_measurement_age_s` | 2.0 | older measurements are not sent |
+| `NAVERA_MAX_MEASUREMENT_AGE_S` | `max_measurement_age_s` | 5.0 | older measurements are not sent; younger vision positions are carried to the present, accuracy grown by their age |
 | — | `max_forward_sigma_m` | 1000 | a forwarded position coarser than this is withheld (a celestial fix moved a SITL autopilot by 125 km) |
 | — | `mavlink_system_id` / `mavlink_component_id` | 1 / 191 | this box's MAVLink identity (onboard computer) |
 | — | `rate_hz` | 5.0 | "no fix" rate |
