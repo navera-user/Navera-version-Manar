@@ -40,6 +40,7 @@ if os.environ.get("NAVERA_ALLOW_SIM") != "1":
     sys.exit("refusing to run: the simulator publishes simulated data on the NAVERA topics. "
              "Start it with navera_tools/run_sim.sh.")
 
+from ament_index_python.packages import get_package_share_directory
 import rclpy  # noqa: E402
 from rclpy.executors import MultiThreadedExecutor  # noqa: E402
 from rclpy.node import Node  # noqa: E402
@@ -105,6 +106,9 @@ def offset(lat, lon, east, north):
     return (lat + north / M_PER_DEG, lon + east / (M_PER_DEG * math.cos(math.radians(lat))))
 
 
+# the product's own arbiter settings (freshness windows...), as the service runs it
+ESTIMATOR_PARAMS = os.path.join(get_package_share_directory("navera_estimator"), "config",
+                                "estimator_params.yaml")
 SIM_TAG = "NAVERA_SIM_CHILD"   # in the environment of every node the simulator starts
 
 
@@ -233,7 +237,8 @@ class Simulator(Node):
         env_note = ", ".join(f"{k}={os.environ.get(k)}" for k in ("ROS_DOMAIN_ID", "ROS_LOCALHOST_ONLY"))
         self.procs = {
             "estimator": Proc("estimator", ["ros2", "run", "navera_estimator", "estimator_node.py",
-                                            "--ros-args", "-p", "max_speed_mps:=60.0"], work_dir),
+                                            "--ros-args", "--params-file", ESTIMATOR_PARAMS,
+                                            "-p", "max_speed_mps:=60.0"], work_dir),
             "gps_node": Proc("gps_node", ["ros2", "run", "gps_pkg", "gps_node.py", "--ros-args",
                                           "-p", f"serial_port:={self.gps.port}"], work_dir),
             "web_bridge": Proc("web_bridge", ["ros2", "run", "simulation_web", "navera_web_bridge.py",
@@ -589,7 +594,7 @@ class Simulator(Node):
             # the new start with where the previous mission ended).
             self.procs["estimator"].cmd = [
                 "ros2", "run", "navera_estimator", "estimator_node.py", "--ros-args",
-                "-p", f"max_speed_mps:={c['max_speed_mps']}"]
+                "--params-file", ESTIMATOR_PARAMS, "-p", f"max_speed_mps:={c['max_speed_mps']}"]
             for name in ("estimator", "gps_node"):
                 self.procs[name].start()
             self.gps.set_mode(self.faults["gps"])
