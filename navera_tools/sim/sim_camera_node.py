@@ -32,6 +32,30 @@ from physical_camera import PhysicalCamera  # noqa: E402
 from vision_link import MultiTiles  # noqa: E402
 
 
+
+def _qmul(a, b):
+    ax, ay, az, aw = a
+    bx, by, bz, bw = b
+    return (aw * bx + ax * bw + ay * bz - az * by, aw * by - ax * bz + ay * bw + az * bx,
+            aw * bz + ax * by - ay * bx + az * bw, aw * bw - ax * bx - ay * by - az * bz)
+
+
+def predict_attitude(q, rates, dt, gimbal=False):
+    """The attitude dt seconds on, at constant body rates (FLU, rad/s): the view is drawn
+    for the instant it is stamped with — the position was already moved there, the
+    attitude must be too (a plane rolling into a turn changes bank by tens of degrees in
+    the 1-4 s a render takes under load)."""
+    if not rates or dt <= 0:
+        return q
+    wx, wy, wz = rates
+    ang = math.sqrt(wx * wx + wy * wy + wz * wz) * dt
+    if ang < 1e-9:
+        return q
+    k = math.sin(ang / 2) / (ang / dt)
+    dq = (wx * k, wy * k, wz * k, math.cos(ang / 2))
+    # gimbal: yaw only, about the world vertical (left product); else body rates (right)
+    return _qmul(dq, q) if gimbal else _qmul(q, dq)
+
 class SimCamera(Node):
     def __init__(self):
         super().__init__("sim_camera")
@@ -74,8 +98,9 @@ class SimCamera(Node):
             lat = s["lat"] + s["vn"] * d / 111_320.0
             lon = s["lon"] + s["ve"] * d / (111_320.0 * math.cos(math.radians(s["lat"])))
             agl = max(s["agl"] - s["vd"] * d, 1.0)
+            q = predict_attitude(s["q"], s.get("rates"), d, s.get("gimbal", False))
             try:
-                img = self.cam.render(lat, lon, agl, s["q"], speed_mps=s["speed"], heading_deg=s["heading"],
+                img = self.cam.render(lat, lon, agl, q, speed_mps=s["speed"], heading_deg=s["heading"],
                                       night_day_camera=self.dark)
             except Exception as e:                            # noqa: BLE001
                 self.get_logger().error(f"render: {e}", throttle_duration_sec=10.0)

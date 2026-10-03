@@ -411,9 +411,12 @@ class Simulator(Node):
         if tr is not None:                     # the true state, for the camera process
             gimbal = self.cfg.get("camera_mount") == "gimbal"   # a gimbal holds the camera level
             q_cam_body = self._quat_enu(0.0, 0.0, yaw) if gimbal else self._quat_enu(roll, pitch, yaw)
+            # body rates (FLU, rad/s): the camera process predicts the attitude, like the
+            # position, to the instant its picture will be stamped with
+            rates = (0.0, 0.0, -gz) if gimbal else (gx, -gy, -gz)
             self.pub_state_true.publish(String(data=json.dumps(dict(
                 lat=tr[0], lon=tr[1], agl=tr[2], heading=tr[3], speed=tr[4], vn=tr[6], ve=tr[7], vd=tr[8],
-                q=list(q_cam_body)))))
+                q=list(q_cam_body), rates=list(rates), gimbal=gimbal))))
 
     def _tick_slow(self):
         now = self.get_clock().now().to_msg()
