@@ -54,7 +54,9 @@ brackets), [~] mitigated / partly, [ ] open. Commits on branch fix/acceptance.
 - [x] I-D10 EK3_SRC velocity documented
 
 ## Block 5 — simulator, UX, docs, tools
-- [x] O-F4 night altitude advice from the thermal camera's real field of view (~480 m)
+- [~] O-F4 night: the simulated thermal camera (57 deg) needed ~480 m, above the simulated
+      drone's 400 m ceiling: now ~75 deg (from ~350 m); advice from its field of view —
+      night re-verification pending
 - [x] O-F5 sim "camera failed" stops the camera process
 - [x] O-F6 sim default forwarded sigma 30 m
 - [x] O-UX operator accuracy / source / carried position / camera warnings; failsafe banner;

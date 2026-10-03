@@ -779,8 +779,8 @@ const cfg = {light:'day', vehicle:'drone', speed:15, alt:150, vision:'real', fwd
 // stated accuracy of forwarded vision positions: never better than measured (day: 442 m median on real frames)
 const MEASURED_SIGMA_M = 450;
 // night matching needs the camera's ground footprint to cover 85 % of the ~500 m map
-// reference; the simulated thermal camera (640x512, 56.7 x 48 deg) does from ~480 m
-const NIGHT_MIN_ALT = 480;
+// reference; the simulated thermal camera (640x512, ~75 x 63 deg) does from ~350 m
+const NIGHT_MIN_ALT = 360;
 // automatic top speed: cruise + 50 %, and at least cruise + 5 m/s (slow vehicles keep a margin)
 const autoVmax = v => Math.max(v * 1.5, v + 5);
 try{ Object.assign(cfg, JSON.parse(localStorage.getItem('navera.cfg') || '{}')); }catch(e){}

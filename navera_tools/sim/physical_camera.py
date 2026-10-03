@@ -30,8 +30,11 @@ from navera_common.camera_model import camera_rotation
 SIM_LENS = dict(model="fisheye", image_width=960, image_height=540,
                 camera_matrix=[525.0, 0.0, 480.0, 0.0, 525.0, 270.0, 0.0, 0.0, 1.0],
                 distortion=[0.02, -0.01, 0.003, -0.0005])
+# ~75 x 63 deg: night matching needs a footprint covering 85 % of the ~500 m reference,
+# reached from ~350 m — under the simulated drone's 400 m ceiling (a 57 deg lens needed
+# ~480 m: no night position was possible with the simulated drone)
 THERMAL_LENS = dict(model="pinhole", image_width=640, image_height=512,
-                    camera_matrix=[570.0, 0.0, 320.0, 0.0, 570.0, 256.0, 0.0, 0.0, 1.0],
+                    camera_matrix=[420.0, 0.0, 320.0, 0.0, 420.0, 256.0, 0.0, 0.0, 1.0],
                     distortion=[-0.12, 0.05, 0.0, 0.0, 0.0])
 
 

@@ -860,8 +860,8 @@ class Simulator(Node):
                     raise ValueError("this route is outside the onboard map: prepare the map "
                                      "first (its tiles are downloaded)")
                 if light == "night" and float(body.get("alt", 400)) < 350:
-                    self.event("warn", "night vision needs about 350 m or more with this 84° "
-                                       "camera: below, it will report 'fly higher'")
+                    self.event("warn", "night vision needs about 350 m or more with the simulated "
+                                       "~75° thermal camera: below, it will report 'fly higher'")
             vmax = float(body.get("max_speed_mps", MAX_SPEED[vehicle]))
             if not 1.0 <= vmax <= MAX_SPEED_LIMIT:
                 raise ValueError(f"maximum speed must be between 1 and {MAX_SPEED_LIMIT:.0f} m/s "

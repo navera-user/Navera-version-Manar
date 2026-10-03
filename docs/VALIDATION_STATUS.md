@@ -145,9 +145,10 @@ from day vision.
 - **Mission simulator, drone at 400 m, night, GPS jammed:** 290 matches, median 6 m, p90
   11 m, max 37 m; with its positions given to the autopilot the drone kept flying its
   mission. Optimistic: the thermal images are grey renders of the same map. Measured with
-  an 84° thermal view; the simulator's physical thermal camera (640×512, 56.7° × 48°)
-  covers 85 % of the reference only from ~480 m: at 400 m it gives no night position
-  (acceptance test R12, 2026-10-03). The minimum height depends on the thermal camera's
+  an 84° thermal view. The simulator's physical thermal camera was 56.7° × 48°: it covers
+  85 % of the reference only from ~480 m, above the simulated drone's 400 m ceiling — no
+  night position was possible (acceptance test R12, 2026-10-03); it is now ~75° × 63°
+  (from ~350 m). The minimum height depends on the thermal camera's
   field of view: footprint ≥ ~500 m × 425 m.
 - **The replay set cannot be used for night vision.** Its frames cover only ~190–300 m of
   ground, mostly sea (measured by correlation with the map at 0.12–0.2 m/px); the former

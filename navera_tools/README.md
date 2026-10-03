@@ -118,7 +118,7 @@ elapsed). The map shows the night search square and matched footprint, and the c
 with its stated accuracy circle. The simulated IMU has BNO085-class attitude errors (0.3° tilt,
 1.5° heading, drawn per mission), which set the celestial error (tens of km). Night vision
 needs the thermal footprint to cover ~500 m × 425 m: with the simulator's physical thermal
-camera (640×512, 56.7° × 48°) that means flying at ~480 m or higher — at 400 m every frame
+camera (640×512, ~75° × 63°) that means flying at ~350 m or higher — below, every frame
 is refused ("fly higher"). For development without root, astrometry.net can
 be unpacked from the Ubuntu packages into `~/.navera_sim/astrometry/` (`solve-field` wrapper +
 `astrometry.cfg`); the simulator uses it when no `solve-field` is installed.
