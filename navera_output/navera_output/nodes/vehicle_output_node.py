@@ -51,6 +51,7 @@ hears from NAVERA.
 If an enabled output cannot be opened, the node exits with code 1 so the
 service restarts it.
 """
+import json
 import math
 import sys
 import time
@@ -62,6 +63,7 @@ from navera_common.params import declare_float
 from navera_common.track import TrackVelocity
 from geometry_msgs.msg import TwistStamped
 from sensor_msgs.msg import NavSatFix, NavSatStatus
+from std_msgs.msg import String
 from navera_msgs.msg import NavStatus, PositionEstimate
 from rclpy.duration import Duration
 from rclpy.executors import ExternalShutdownException
@@ -120,6 +122,11 @@ class VehicleOutputNode(Node):
         self._mav = None
         url = str(self.get_parameter("mavlink_url").value)
         if url:
+            if url.startswith("udpout:127.0.0.1:") or url.startswith("udpout:localhost:"):
+                # to vehicle_link's relay: only useful while vehicle_link holds the autopilot link
+                self._relay_link_rx = None
+                self.create_subscription(String, "/navera/vehicle/status", self._on_link_status, 10)
+                self.create_timer(5.0, self._check_relay)
             self._mav = mavlink_url.connect(url, int(self.get_parameter("mavlink_system_id").value),
                                             int(self.get_parameter("mavlink_component_id").value))
         topic = str(self.get_parameter("ros_fix_topic").value)
@@ -152,6 +159,21 @@ class VehicleOutputNode(Node):
             else:
                 self.get_logger().info("degraded positions: MAVLink/ROS only; NMEA says 'no fix' for them "
                                        "(NMEA carries no accuracy)")
+
+    def _on_link_status(self, msg) -> None:
+        try:
+            if json.loads(msg.data).get("link"):
+                self._relay_link_rx = time.monotonic()
+        except (ValueError, AttributeError):
+            pass
+
+    def _check_relay(self) -> None:
+        rx = self._relay_link_rx
+        if rx is None or time.monotonic() - rx > 10.0:
+            self.get_logger().error(
+                "MAVLink output goes to navera-vehicle-link's relay, but no vehicle link is connected "
+                "to an autopilot: the autopilot receives NOTHING from NAVERA (enable navera-vehicle-link, "
+                "check NAVERA_VEHICLE_MAVLINK_URL / the autopilot port)", throttle_duration_sec=30.0)
 
     def _on_status(self, msg: NavStatus) -> None:
         self._status, self._status_rx = msg, time.monotonic()
