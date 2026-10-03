@@ -79,6 +79,16 @@ def main():
         failures.append("valid GPS with known covariance is not FIX")
     settle()
 
+    # a late (out-of-order) fix, 60 m behind a moving vehicle, is not a spoofing jump
+    for k in range(6):
+        est(GPS, lat=35.83 + k * 15.0 / 111320.0)
+        time.sleep(0.2)
+    est(GPS, lat=35.83 + 1 * 15.0 / 111320.0, ahead_s=-0.8)
+    time.sleep(0.3)
+    if statuses[-1].state != NavStatus.STATE_FIX or "spoof" in statuses[-1].reason:
+        failures.append(f"a late GPS fix was taken for spoofing: {statuses[-1].reason}")
+    settle()
+
     # a stated accuracy must be one: zero, an undefined type or an impossible matrix are not
     for what, kw, expect in (("zero covariance", dict(var=0.0), NavStatus.STATE_DEGRADED),
                              ("undefined covariance type", dict(cov_type=200), NavStatus.STATE_DEGRADED),

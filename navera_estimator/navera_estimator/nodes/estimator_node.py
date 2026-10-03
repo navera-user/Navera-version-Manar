@@ -98,6 +98,7 @@ from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from rclpy.duration import Duration
 from rclpy.time import Time
 from sensor_msgs.msg import Imu
 
@@ -225,6 +226,15 @@ class EstimatorNode(Node):
     # ---------- inputs (store only; all decisions happen in _tick) ----------
 
     def _on_gps(self, msg: PositionEstimate) -> None:
+        # a fix stamped before the newest one received (link buffering, DDS reordering) is
+        # old news: dropped — scored against the newer trusted fix with dt clamped to 0 it
+        # looked like a jump ("possible spoofing") and refused a good GPS
+        last = Time.from_msg(self._gps_last.header.stamp) if self._gps_last is not None else None
+        if last is not None and Time.from_msg(msg.header.stamp) < last and \
+                last <= self.get_clock().now() + Duration(seconds=0.5):   # a future stamp sets no order
+            self.get_logger().info("GPS fix older than the last one received: dropped",
+                                   throttle_duration_sec=10.0)
+            return
         self._gps_last = msg
         if msg.valid and self._sane(msg):
             self._gps_hist.append((Time.from_msg(msg.header.stamp).nanoseconds, msg.latitude, msg.longitude))
