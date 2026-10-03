@@ -15,6 +15,7 @@ API on the vehicle's network, so the security rules live here, once:
 """
 import hmac
 import json
+import time
 import math
 import os
 import sqlite3
@@ -63,6 +64,36 @@ def parse_tile_path(path: str) -> Optional[Tuple[int, int, int]]:
         return None
     return z, x, y
 
+
+
+class _CodeGuard:
+    """Wrong control codes: after FAILS_ALLOWED in WINDOW_S from one address, that address
+    is refused for LOCK_S (a code cannot be guessed by trying them all)."""
+    FAILS_ALLOWED, WINDOW_S, LOCK_S = 5, 60.0, 60.0
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._fails = {}                      # address -> [times]
+        self._until = {}                      # address -> locked until (monotonic)
+
+    def blocked_for(self, addr):
+        with self._lock:
+            return max(0.0, self._until.get(addr, 0.0) - time.monotonic())
+
+    def failed(self, addr):
+        now = time.monotonic()
+        with self._lock:
+            ts = [t for t in self._fails.get(addr, []) if now - t < self.WINDOW_S] + [now]
+            self._fails[addr] = ts
+            if len(ts) >= self.FAILS_ALLOWED:
+                self._until[addr], self._fails[addr] = now + self.LOCK_S, []
+
+    def succeeded(self, addr):
+        with self._lock:
+            self._fails.pop(addr, None)
+
+
+_GUARD = _CodeGuard()
 
 class MBTilesReader:
     """Thread-safe, read-only access to an MBTiles file (TMS rows)."""
@@ -128,10 +159,17 @@ class BridgeHandler(BaseHTTPRequestHandler):
         if not token:
             self.send_json(403, {"error": "control disabled: set NAVERA_WEB_TOKEN"})
             return None
+        client = self.client_address[0] if self.client_address else "?"
+        wait = _GUARD.blocked_for(client)
+        if wait > 0:
+            self.send_json(429, {"error": f"too many wrong codes from this address: wait {wait:.0f} s"})
+            return None
         given = self.headers.get("X-Navera-Token", "")
         if not hmac.compare_digest(given.encode(), token.encode()):
+            _GUARD.failed(client)
             self.send_json(401, {"error": "missing or wrong X-Navera-Token"})
             return None
+        _GUARD.succeeded(client)
         if "application/json" not in self.headers.get("Content-Type", ""):
             self.send_json(415, {"error": "Content-Type must be application/json"})
             return None

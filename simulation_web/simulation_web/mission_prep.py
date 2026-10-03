@@ -191,7 +191,7 @@ MOVING_MPS = 1.5            # faster than this, the vehicle is under way
 
 
 def in_flight_refusal(armed: Optional[bool], nav_state: Optional[int],
-                      speed_mps: Optional[float] = None) -> Optional[str]:
+                      speed_mps: Optional[float] = None, action: str = "apply") -> Optional[str]:
     """Why restarting NAVERA's services (or loading the CPU with a map generation) must
     be refused now, or None. armed: from the autopilot (None = no vehicle link);
     nav_state: the arbiter's current state (None = not heard); speed_mps: NAVERA's own
@@ -201,6 +201,9 @@ def in_flight_refusal(armed: Optional[bool], nav_state: Optional[int],
     if speed_mps is not None and speed_mps > MOVING_MPS:
         return f"the vehicle is moving ({speed_mps:.0f} m/s): stop it before changing NAVERA"
     if nav_state == STATE_DEGRADED:
+        if action == "generate":
+            return ("NAVERA is navigating without GPS right now: generating a map would take the "
+                    "processor vision needs")
         return "NAVERA is navigating without GPS right now: a restart would interrupt it"
     return None
 

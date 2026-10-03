@@ -592,7 +592,7 @@ class NaveraWebBridge(Node):
             return
         self._armed, self._armed_rx = armed, time.monotonic()
 
-    def _in_flight_refusal(self):
+    def _in_flight_refusal(self, action="apply"):
         now = time.monotonic()
         armed = self._armed if self._armed_rx is not None and now - self._armed_rx < 5.0 else None
         st = self._nav_status
@@ -604,12 +604,12 @@ class NaveraWebBridge(Node):
             v = self._track.velocity(time.time())
             if v is not None:
                 moving = math.hypot(v[0], v[1])
-        return mission_prep.in_flight_refusal(armed, state, moving)
+        return mission_prep.in_flight_refusal(armed, state, moving, action)
 
     def mission_action(self, action, d):
         jobs = self._mission_jobs()
         if action in ("apply", "activate", "generate"):
-            why = self._in_flight_refusal()
+            why = self._in_flight_refusal(action)
             if why:
                 raise ValueError(f"refused: {why}")
         if action == "settings":

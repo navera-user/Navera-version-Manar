@@ -183,3 +183,18 @@ def test_named_missions_are_saved_replaced_and_deleted(jobs):
     for name, route in (("", r1), ("x" * 61, r1), ("<script>", r1), ("ok", [[35.8, 10.6]]), ("ok", [[95, 10], [35, 10]])):
         with pytest.raises(ValueError):
             j.save_mission(name, route)
+
+
+def test_wrong_codes_lock_the_address_for_a_while():
+    from simulation_web.web_common import _CodeGuard
+    g = _CodeGuard()
+    for _ in range(4):
+        g.failed("10.0.0.9")
+    assert g.blocked_for("10.0.0.9") == 0.0
+    g.failed("10.0.0.9")
+    assert g.blocked_for("10.0.0.9") > 50 and g.blocked_for("10.0.0.8") == 0.0
+
+
+def test_generate_refusal_says_why():
+    assert "processor" in mp.in_flight_refusal(None, mp.STATE_DEGRADED, action="generate")
+    assert "restart" in mp.in_flight_refusal(None, mp.STATE_DEGRADED, action="apply")

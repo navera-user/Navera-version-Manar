@@ -161,6 +161,7 @@ const I18N = {
     import:'Importer un fichier de mission', noFile:'Aucun fichier choisi', or:'— ou —', drawH:'Cliquez sur la carte dans l\'ordre : départ, puis chaque point de passage, puis la destination. Appuyez ensuite sur « Utiliser ce trajet ».',
     useRoute:'Utiliser ce trajet', undo:'Retirer le dernier point', mNamePh:'Nom de la mission, ex. relevé côte de Sousse', mSave:'Enregistrer cette mission',
     mList:'Missions enregistrées (cliquez pour charger) :', mSaved:'Mission enregistrée.', mDel:'Supprimer',
+    mReplace:'Une mission porte déjà ce nom : remplacer son trajet ?',
     startT:'Départ sans GPS', startH:'Seulement s\'il n\'y a aucun GPS au départ : indiquez à NAVERA où se trouve le véhicule, pour que la vision sache où chercher. C\'est une zone de recherche, jamais envoyée à l\'autopilote comme position.',
     spLat:'Latitude', spLon:'Longitude', spFromRoute:'Utiliser le départ du trajet', spSend:'Envoyer la position de départ', spSent:'Position de départ envoyée à la vision.',
     clear:'Effacer le trajet', points:'Points', length:'Longueur', tiles:'Tuiles de carte', map:'Carte satellite',
@@ -185,6 +186,7 @@ const I18N = {
     import:'استيراد ملف مهمة', noFile:'لم يُختر أي ملف', or:'— أو —', drawH:'انقر على الخريطة بالترتيب: الانطلاق، ثم كل نقطة عبور، ثم الوجهة. ثم اضغط «استعمال هذا المسار».',
     useRoute:'استعمال هذا المسار', undo:'حذف آخر نقطة', mNamePh:'اسم المهمة، مثلاً مسح ساحل سوسة', mSave:'حفظ هذه المهمة',
     mList:'المهام المحفوظة (انقر للتحميل):', mSaved:'تم حفظ المهمة.', mDel:'حذف',
+    mReplace:'توجد مهمة بهذا الاسم: استبدال مسارها؟',
     startT:'الانطلاق دون GPS', startH:'فقط إذا لم يكن هناك أي GPS عند الانطلاق: أخبر NAVERA بمكان المركبة لكي تعرف الرؤية أين تبحث. إنها منطقة بحث، لا تُرسل أبداً إلى الطيار الآلي كموقع.',
     spLat:'خط العرض', spLon:'خط الطول', spFromRoute:'استعمال نقطة انطلاق المسار', spSend:'إرسال موقع الانطلاق', spSent:'أُرسل موقع الانطلاق إلى الرؤية.',
     clear:'مسح المسار', points:'النقاط', length:'الطول', tiles:'مربعات الخريطة', map:'خريطة الأقمار الصناعية',
@@ -371,6 +373,9 @@ $('spSend').onclick = async () => {
   catch(e){ say('spMsg', 'bad', e.message); }
 };
 $('mSave').onclick = async () => {
+  const name = $('mName').value.trim();
+  if(((S && S.missions) || []).some(m => m.name === name) &&
+     !confirm(t('mReplace', 'A mission with this name exists: replace its route?'))) return;
   try{ S.missions = (await post('save_mission', {name: $('mName').value, route: drawn})).missions;
        say('routeMsg', 'ok', '✓ ' + t('mSaved', 'Mission saved.')); renderMissions(); }
   catch(e){ say('routeMsg', 'bad', e.message); }
