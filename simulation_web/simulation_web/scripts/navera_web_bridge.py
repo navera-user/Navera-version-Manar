@@ -214,6 +214,10 @@ class NaveraWebBridge(Node):
                                  self._on_ready, ready_qos)
         self.create_subscription(NavSatFix, fix_topic,    self._on_fix,    10)
         self.create_subscription(String, "/navera/vehicle/status", self._on_vehicle_status, 10)
+        # the operator's start position (page /mission), latched for vision restarted later
+        self._pub_start = self.create_publisher(
+            PositionEstimate, "/navera/operator/start_position",
+            QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE, durability=DurabilityPolicy.TRANSIENT_LOCAL))
 
         # ── ROS subscriptions: the arbiter's decision, for "/operator" ──
         # RELIABLE depth 10 — matches navera_estimator's publishers.
@@ -580,6 +584,24 @@ class NaveraWebBridge(Node):
             return {"ok": True}
         if action == "cancel":
             return {"ok": True, "cancelled": jobs.cancel()}
+        if action == "start_position":
+            lat, lon = float(d.get("lat", "nan")), float(d.get("lon", "nan"))
+            acc = float(d.get("accuracy_m", "nan"))
+            if not valid_latlon(lat, lon):
+                raise ValueError("start position: valid latitude and longitude expected")
+            if not (math.isfinite(acc) and 5.0 <= acc <= 20000.0):
+                raise ValueError("start position accuracy: 5 to 20000 m")
+            m = PositionEstimate()
+            m.header.stamp = m.sensor_stamp = self.get_clock().now().to_msg()
+            m.header.frame_id = "operator"
+            m.latitude, m.longitude, m.altitude = lat, lon, math.nan
+            m.position_covariance = [acc * acc, 0.0, 0.0, 0.0, acc * acc, 0.0, 0.0, 0.0, 0.0]
+            m.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_APPROXIMATED
+            m.source, m.mode, m.valid = PositionEstimate.SOURCE_EXTERNAL, PositionEstimate.MODE_MEASURED, True
+            m.producer, m.reason = "operator", "start position entered on /mission (a search centre, not a fix)"
+            self._pub_start.publish(m)
+            self.get_logger().warn(f"operator start position {lat:.5f}, {lon:.5f} ±{acc:.0f} m sent to vision")
+            return {"ok": True}
         if action == "save_mission":
             return {"ok": True, "missions": jobs.save_mission(d.get("name"), d.get("route"))}
         if action == "delete_mission":

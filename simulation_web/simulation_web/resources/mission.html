@@ -59,6 +59,7 @@ main{display:grid;grid-template-columns:minmax(420px,540px) minmax(0,1fr);min-he
 .bar div{height:100%;width:0;background:var(--accent);transition:width .4s}
 .file{display:flex;align-items:center;gap:10px;border:2px dashed #94a3b8;border-radius:10px;padding:14px;cursor:pointer;background:#f8fafc}
 .file input{display:none}
+#spLat,#spLon,#spAcc{flex:1;min-width:0;border:2px solid #94a3b8;border-radius:8px;padding:9px 10px;font-size:17px}
 #mName{flex:1;min-width:0;border:2px solid #94a3b8;border-radius:8px;padding:9px 10px;font-size:17px}
 .row{display:flex;gap:8px;align-items:center}
 .mrow{display:flex;gap:6px;margin-top:6px}.mrow .btn:first-child{flex:1;text-align:left}
@@ -132,6 +133,13 @@ html[dir=rtl] .form{border-inline-end:0;border-inline-start:1px solid var(--line
     <div class="notice" id="mapMsg"></div>
     <div class="notice info" id="activeMsg"></div>
   </section>
+  <section class="hs">
+    <h2><span class="n">4</span><span data-i18n="startT">Start without GPS</span></h2>
+    <p class="help" data-i18n="startH">Only when there is no GPS at all at start: tell NAVERA where the vehicle is, so vision knows where to search. It is a search area, never sent to the autopilot as a position.</p>
+    <div class="row"><input id="spLat" data-i18n-ph="spLat" placeholder="Latitude"><input id="spLon" data-i18n-ph="spLon" placeholder="Longitude"><input id="spAcc" value="200" style="max-width:90px"> m</div>
+    <div class="btns"><button class="btn" id="spFromRoute" data-i18n="spFromRoute">Use the route's departure</button><button class="btn primary" id="spSend" disabled data-i18n="spSend">Send the start position</button></div>
+    <div class="notice" id="spMsg"></div>
+  </section>
 </div>
 <div class="mapwrap"><div id="map"></div><div id="layers"><button data-v="offline" class="on" data-i18n="lOff">Onboard map</button><button data-v="sat" data-i18n="lSat">Satellite (internet)</button></div></div>
 </main>
@@ -153,6 +161,8 @@ const I18N = {
     import:'Importer un fichier de mission', noFile:'Aucun fichier choisi', or:'— ou —', drawH:'Cliquez sur la carte dans l\'ordre : départ, puis chaque point de passage, puis la destination. Appuyez ensuite sur « Utiliser ce trajet ».',
     useRoute:'Utiliser ce trajet', undo:'Retirer le dernier point', mNamePh:'Nom de la mission, ex. relevé côte de Sousse', mSave:'Enregistrer cette mission',
     mList:'Missions enregistrées (cliquez pour charger) :', mSaved:'Mission enregistrée.', mDel:'Supprimer',
+    startT:'Départ sans GPS', startH:'Seulement s\'il n\'y a aucun GPS au départ : indiquez à NAVERA où se trouve le véhicule, pour que la vision sache où chercher. C\'est une zone de recherche, jamais envoyée à l\'autopilote comme position.',
+    spLat:'Latitude', spLon:'Longitude', spFromRoute:'Utiliser le départ du trajet', spSend:'Envoyer la position de départ', spSent:'Position de départ envoyée à la vision.',
     clear:'Effacer le trajet', points:'Points', length:'Longueur', tiles:'Tuiles de carte', map:'Carte satellite',
     mapH:'La vision de jour compare la caméra aux images satellite d\'un couloir de ±1 km autour du trajet. Générez-les, puis activez la carte.',
     gen:'Générer la carte', cancel:'Annuler', act:'Activer cette carte', lOff:'Carte embarquée', lSat:'Satellite (internet)',
@@ -174,6 +184,8 @@ const I18N = {
     import:'استيراد ملف مهمة', noFile:'لم يُختر أي ملف', or:'— أو —', drawH:'انقر على الخريطة بالترتيب: الانطلاق، ثم كل نقطة عبور، ثم الوجهة. ثم اضغط «استعمال هذا المسار».',
     useRoute:'استعمال هذا المسار', undo:'حذف آخر نقطة', mNamePh:'اسم المهمة، مثلاً مسح ساحل سوسة', mSave:'حفظ هذه المهمة',
     mList:'المهام المحفوظة (انقر للتحميل):', mSaved:'تم حفظ المهمة.', mDel:'حذف',
+    startT:'الانطلاق دون GPS', startH:'فقط إذا لم يكن هناك أي GPS عند الانطلاق: أخبر NAVERA بمكان المركبة لكي تعرف الرؤية أين تبحث. إنها منطقة بحث، لا تُرسل أبداً إلى الطيار الآلي كموقع.',
+    spLat:'خط العرض', spLon:'خط الطول', spFromRoute:'استعمال نقطة انطلاق المسار', spSend:'إرسال موقع الانطلاق', spSent:'أُرسل موقع الانطلاق إلى الرؤية.',
     clear:'مسح المسار', points:'النقاط', length:'الطول', tiles:'مربعات الخريطة', map:'خريطة الأقمار الصناعية',
     mapH:'تقارن الرؤية النهارية الكاميرا بصور الأقمار الصناعية لممر ±1 كم حول المسار. أنشئها ثم فعّل الخريطة.',
     gen:'إنشاء الخريطة', cancel:'إلغاء', act:'تفعيل هذه الخريطة', lOff:'الخريطة المدمجة', lSat:'أقمار صناعية (إنترنت)',
@@ -236,6 +248,7 @@ function render(){
   $('authSt').style.color = can ? 'var(--mute)' : 'var(--bad)';
   for(const id of ['save', 'apply', 'clear']) $(id).disabled = !coded;
   $('useRoute').disabled = !coded || drawn.length < 2 || !!PLAN;
+  $('spSend').disabled = !coded;
   $('undo').disabled = !coded || !drawn.length || !!PLAN;
   renderMissions();
   $('file').disabled = !coded;
@@ -348,6 +361,12 @@ function renderMissions(){
   });
   $('mSave').disabled = $('save').disabled || drawn.length < 2;
 }
+$('spFromRoute').onclick = () => { if(drawn.length){ $('spLat').value = drawn[0][0].toFixed(6); $('spLon').value = drawn[0][1].toFixed(6); } };
+$('spSend').onclick = async () => {
+  try{ await post('start_position', {lat: +$('spLat').value, lon: +$('spLon').value, accuracy_m: +$('spAcc').value});
+       say('spMsg', 'ok', '✓ ' + t('spSent', 'Start position sent to vision.')); }
+  catch(e){ say('spMsg', 'bad', e.message); }
+};
 $('mSave').onclick = async () => {
   try{ S.missions = (await post('save_mission', {name: $('mName').value, route: drawn})).missions;
        say('routeMsg', 'ok', '✓ ' + t('mSaved', 'Mission saved.')); renderMissions(); }

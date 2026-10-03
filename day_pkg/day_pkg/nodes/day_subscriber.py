@@ -301,6 +301,11 @@ class DaySubscriber(Node):
             self.get_logger().warn("SHADOW MODE: vision runs while GPS is valid (test flights)")
         self.sub_gps = self.create_subscription(
             PositionEstimate, self.get_parameter("gps_topic").value, self.on_gps, 10)
+        # a start position entered by the operator (page /mission) when there is no GPS:
+        # where to search first — never published as a position (latched: heard on restart)
+        self.create_subscription(
+            PositionEstimate, "/navera/operator/start_position", self.on_operator_position,
+            QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         # Same latched QoS as the camera's gate (TRANSIENT_LOCAL, depth 1).
         start_qos = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
                                durability=DurabilityPolicy.TRANSIENT_LOCAL,
@@ -360,6 +365,21 @@ class DaySubscriber(Node):
             cov = list(msg.position_covariance)
             self.track.add(self._anchor_time, msg.latitude, msg.longitude,
                            math.sqrt(max(cov[0], cov[4])) if cov[0] > 0 else 5.0)
+
+    def on_operator_position(self, msg: PositionEstimate):
+        """The operator's start position: the search centre while no GPS is trusted, the
+        search circle as wide as its stated accuracy (the circle grows with time since)."""
+        if self._gps_prior.fresh() is not None or not is_finite_latlon(msg.latitude, msg.longitude):
+            return
+        acc = math.sqrt(max(msg.position_covariance[0], msg.position_covariance[4], 1.0))
+        now = time.time()
+        self._anchor_lat, self._anchor_lon, self._anchor_time = msg.latitude, msg.longitude, now
+        # the search circle grows by max_speed x the time since the last measurement:
+        # start it as wide as the operator's accuracy
+        self._last_measured_time = now - acc / max(self.max_speed_mps, 1.0)
+        self.track.reset()
+        self.get_logger().warn(f"[day] operator start position {msg.latitude:.5f}, {msg.longitude:.5f} "
+                               f"(±{acc:.0f} m): searching there (no GPS)")
 
     def on_start_cmd(self, msg: Bool):
         """Mission stop/rewind → forget the previous run's track (the next run
