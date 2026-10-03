@@ -225,7 +225,22 @@ class VehicleLink(Node):
             f = NavSatFix()
             f.header.stamp, f.header.frame_id = now, "vehicle_gps2"
             f.status.status = NavSatStatus.STATUS_FIX
-            f.latitude, f.longitude, f.altitude = msg.lat / 1e7, msg.lon / 1e7, msg.alt / 1000.0
+            f.latitude, f.longitude = msg.lat / 1e7, msg.lon / 1e7
+            # NavSatFix altitude is above the WGS84 ellipsoid; GPS2_RAW.alt is above mean sea
+            # level (tens of metres apart): the ellipsoid one when the autopilot gives it
+            alt_e = getattr(msg, "alt_ellipsoid", 0) or 0
+            if alt_e:
+                f.altitude = alt_e / 1000.0
+            else:
+                f.altitude = msg.alt / 1000.0
+                self.get_logger().warn("second GPS gives its altitude above sea level only: heights from "
+                                       "it are MSL (set NAVERA_GROUND_ALTITUDE_M as MSL too)",
+                                       throttle_duration_sec=600.0)
+            h_acc, v_acc = getattr(msg, "h_acc", 0) or 0, getattr(msg, "v_acc", 0) or 0
+            if h_acc > 0:                                   # mm: the receiver's own accuracy
+                hv, vv = (h_acc / 1000.0) ** 2, (v_acc / 1000.0) ** 2 if v_acc > 0 else 4 * (h_acc / 1000.0) ** 2
+                f.position_covariance = [hv, 0.0, 0.0, 0.0, hv, 0.0, 0.0, 0.0, vv]
+                f.position_covariance_type = NavSatFix.COVARIANCE_TYPE_DIAGONAL_KNOWN
             self.pub_gps2.publish(f)
 
     def _publish_imu(self, stamp, q, rates):
