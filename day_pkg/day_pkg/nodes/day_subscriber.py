@@ -187,6 +187,10 @@ class DaySubscriber(Node):
         # ── State ───────────────────────────────────────────────
         self.bridge        = CvBridge()
         self._busy_lock    = threading.Lock()
+        # without frames at all (camera failed, unplugged), the measured track is still
+        # carried on (1 Hz) — the case dead-reckoning matters most for
+        self._last_frame = (time.time(), {})
+        self.create_timer(1.0, self._dead_reckon_without_frames)
         self._pairer       = FramePairer()   # image/meta matched on the image stamp
         self._frame_count   = 0
         self._success_count = 0
@@ -418,6 +422,7 @@ class DaySubscriber(Node):
             self._publish_done(seq_id)
             return
         self._frame_count += 1
+        self._last_frame = (time.time(), meta)
         self.get_logger().info(
             f"[day] 📷 paired frame={seq_id}  "
             f"shape={img.shape}  gps_valid={meta.get('gps_valid')}"
@@ -693,6 +698,20 @@ class DaySubscriber(Node):
             grown = R + self.max_speed_mps * max(0.0, time.time() - self._last_measured_time)
             R = min(max(R, grown), max(R, self.local_max_radius_m))
         return (self._anchor_lat, self._anchor_lon), R
+
+    def _dead_reckon_without_frames(self):
+        t_frame, meta = self._last_frame
+        if time.time() - t_frame < 2.5 or self._gps_prior.fresh() is not None:
+            return
+        if not self._busy_lock.acquire(blocking=False):
+            return                                          # a frame is being processed
+        try:
+            m = dict(meta)
+            m.pop("image_stamp_ns", None)                   # this is no frame: stamped now
+            self._dead_reckon(self.get_clock().now().to_msg(), m.get("frame_id", -1), m, {}, 0.0,
+                              f"no camera frame for {time.time() - t_frame:.0f} s")
+        finally:
+            self._busy_lock.release()
 
     def _dead_reckon(self, now, seq_id, meta, status, score, why) -> bool:
         """No measurement this frame: publish the last measured position carried along the
