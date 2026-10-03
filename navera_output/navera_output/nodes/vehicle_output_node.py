@@ -285,7 +285,7 @@ class VehicleOutputNode(Node):
         f.header.stamp = (self.get_clock().now() - Duration(seconds=out.age_s)).to_msg()
         f.header.frame_id = str(self.get_parameter("ros_fix_frame_id").value)
         # a vision / celestial position is no satellite service: a consumer can tell
-        f.status.service = NavSatStatus.SERVICE_GPS if out.kind == KIND_FIX and out.satellites != 0 else 0
+        f.status.service = NavSatStatus.SERVICE_GPS if out.gnss else 0
         if out.kind == KIND_NONE:
             f.status.status = NavSatStatus.STATUS_NO_FIX
             f.latitude = f.longitude = f.altitude = math.nan

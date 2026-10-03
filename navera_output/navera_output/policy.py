@@ -49,6 +49,7 @@ class Output:
     sigma_v_m: float = math.nan
     satellites: Optional[int] = None    # None = unknown / not applicable
     age_s: float = 0.0                  # measurement age when decided (stamp = now - age_s)
+    gnss: bool = False                  # the position comes from a satellite receiver
     vel_n_mps: float = math.nan         # ground velocity north / east, NaN if unknown
     vel_e_mps: float = math.nan
 
@@ -151,7 +152,7 @@ def decide(cfg: Config, state: Optional[int], status_age_s: Optional[float],
             lag_sigma, age = sig_v * age, 0.0                  # now a position of the present
         else:
             lag_sigma = cfg.max_speed_mps * age
-    common = dict(lat=lat, lon=lon, alt_ellipsoid_m=alt, age_s=age,
+    common = dict(lat=lat, lon=lon, alt_ellipsoid_m=alt, age_s=age, gnss=pos.source == SOURCE_GPS,
                   geoid_sep_m=float(sep) if isinstance(sep, (int, float)) else math.nan)
 
     if (gps_vel_ne is not None and pos.source == SOURCE_GPS

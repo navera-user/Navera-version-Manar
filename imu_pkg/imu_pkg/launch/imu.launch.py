@@ -12,6 +12,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, Shutdown
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from navera_common.vehicle import imu_params
 
 
@@ -24,6 +25,8 @@ def generate_launch_description():
                               description='I2C bus: 1 (pins 27/28) or 7 (pins 3/5)'),
         DeclareLaunchArgument('publish_rate', default_value='50.0',
                               description='Publication rate in Hz'),
+        DeclareLaunchArgument('i2c_address', default_value='74',
+                              description='BNO085 address: 74 (0x4A) or 75 (0x4B, address pin high)'),
 
         Node(
             package='imu_pkg',
@@ -38,6 +41,7 @@ def generate_launch_description():
                 {
                     'i2c_bus':      LaunchConfiguration('i2c_bus'),
                     'publish_rate': LaunchConfiguration('publish_rate'),
+                    'i2c_address':  ParameterValue(LaunchConfiguration('i2c_address'), value_type=int),
                 },
                 # installation settings (NAVERA_IMU_MOUNT_RPY, NAVERA_DECLINATION_DEG)
                 imu_params(),

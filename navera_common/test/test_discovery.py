@@ -194,3 +194,24 @@ def test_a_gps_receiver_and_an_autopilot_are_recognised_on_serial_ports():
             stop.set()
             for fd in fds:
                 os.close(fd)
+
+
+def test_discovery_runs_with_ros_domain_auto(monkeypatch):
+    import navera_common.discovery as dsc
+    seen = {}
+    monkeypatch.setattr(dsc, "probe_i2c", lambda: {})
+    monkeypatch.setattr(dsc, "probe_cameras", lambda: {})
+    monkeypatch.setattr(dsc, "serial_ports", lambda: [])
+    monkeypatch.setattr(dsc, "probe_mavlink_url", lambda url, *a: None)
+    monkeypatch.setattr(dsc, "probe_ros", lambda domains, wait: seen.setdefault("d", domains) and {})
+    dsc.discover({"ROS_DOMAIN_ID": "auto"}, ros_wait_s=0.1)       # crashed: int("auto")
+    assert seen["d"] == [0]
+    dsc.discover({"ROS_DOMAIN_ID": "42", "NAVERA_DISCOVER_ROS_DOMAINS": "7"}, ros_wait_s=0.1)
+
+
+def test_px4_gets_no_mavlink_output_and_the_imu_address_is_kept():
+    px4 = dict(AP, autopilot=12)
+    d = decide({"serial": [px4], "i2c": {"imu": {"bus": 1, "address": "0x4b"}},
+                "autopilot_streams": STREAMS}, {})
+    assert "NAVERA_MAVLINK_URL" not in d["settings"] and any("PX4" in r for r in d["report"])
+    assert d["settings"]["NAVERA_BOX_IMU_ADDR"] == "0x4b"

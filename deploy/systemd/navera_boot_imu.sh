@@ -11,4 +11,5 @@ if [ "${NAVERA_BOX_IMU:-1}" = "0" ]; then
     navera_log "no box IMU found at boot (NAVERA_BOX_IMU=0): IMU service idle"
     exec sleep infinity
 fi
-exec ros2 launch imu_pkg imu.launch.py i2c_bus:="${NAVERA_BOX_IMU_BUS:-1}" publish_rate:=50.0
+exec ros2 launch imu_pkg imu.launch.py i2c_bus:="${NAVERA_BOX_IMU_BUS:-1}" \
+    i2c_address:="$((${NAVERA_BOX_IMU_ADDR:-0x4A}))" publish_rate:=50.0

@@ -3,7 +3,7 @@
 
     # live, from the camera itself (e.g. the Insta360 ONE R in webcam mode):
     python3 navera_tools/calibrate_camera.py --device /dev/v4l/by-id/usb-<camera>-video-index0 --size 1920x1080 \\
-        --board 9x6 --square-mm 25 --out /etc/navera/camera.yaml
+        --board 9x6 --square-mm 25 --out /var/lib/navera/camera.yaml
     # or from photos already taken with the camera at that resolution:
     python3 navera_tools/calibrate_camera.py --images ./calib_photos --board 9x6 --square-mm 25 --out camera.yaml
 

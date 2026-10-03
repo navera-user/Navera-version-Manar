@@ -332,7 +332,8 @@ def discover(env=None, ros_wait_s: float = 8.0) -> dict:
     extra = [u.strip() for u in str(env.get("NAVERA_DISCOVER_MAVLINK", "")).split(",") if u.strip()]
     for url in ["udpin:0.0.0.0:14550", "udpin:0.0.0.0:14551"] + extra:
         run("network", probe_mavlink_url, url)
-    domains = sorted({0, int(env.get("ROS_DOMAIN_ID", "0") or 0)} |
+    written = str(env.get("ROS_DOMAIN_ID", "") or "").strip()     # a number, or "auto"
+    domains = sorted({0} | ({int(written)} if written.isdigit() else set()) |
                      {int(x) for x in str(env.get("NAVERA_DISCOVER_ROS_DOMAINS", "")).split(",") if x.strip().isdigit()})
     run("ros", probe_ros, domains, ros_wait_s)
     for t in threads:
@@ -434,6 +435,8 @@ def decide(found: dict, env) -> dict:
     out["NAVERA_BOX_RTC"] = "1" if "rtc" in i2c else "0"
     if "imu" in i2c:
         out["NAVERA_BOX_IMU_BUS"] = str(i2c["imu"]["bus"])
+        if i2c["imu"].get("address"):
+            out["NAVERA_BOX_IMU_ADDR"] = i2c["imu"]["address"]           # 0x4A, or 0x4B
     if "rtc" in i2c:
         out["NAVERA_BOX_RTC_BUS"] = str(i2c["rtc"]["bus"])
     # attitude (and with it the height sources)
@@ -500,6 +503,9 @@ def decide(found: dict, env) -> dict:
         url = get("NAVERA_MAVLINK_URL").lower()
         if url in ("off", "none"):
             rep.append("output: MAVLink to the autopilot turned off (NAVERA_MAVLINK_URL=off)")
+        elif ap.get("autopilot") == 12 and not url:                     # MAV_AUTOPILOT_PX4
+            rep.append("CHECK output: the autopilot is PX4, which ignores MAVLink GPS_INPUT — NAVERA's "
+                       "position is NOT sent over MAVLink (see docs/PX4_INTEGRATION.md)")
         else:
             if not url:
                 # one link: vehicle_link owns it and relays NAVERA's GPS_INPUT

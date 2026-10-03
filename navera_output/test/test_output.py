@@ -218,3 +218,9 @@ def test_a_degraded_position_needs_a_stated_accuracy_somewhere():
     stated.position_covariance_type = 1
     o = decide(cfg, STATE_DEGRADED, 0.1, stated, 0.1, DAY)
     assert o.kind == KIND_ESTIMATED and o.sigma_h_m == 30.0
+
+
+def test_only_a_satellite_position_is_labelled_gnss():
+    assert decide(Config(), STATE_FIX, 0.1, pos(), 0.1, GPS).gnss is True
+    p = pos(source=DAY, details={})
+    assert decide(Config(), STATE_FIX, 0.1, p, 0.1, DAY).gnss is False        # a future vision FIX
