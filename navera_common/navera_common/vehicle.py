@@ -123,11 +123,13 @@ def live_camera_params(environ=None, prefix: str = "NAVERA_CAMERA_") -> dict:
          "capture_latency_s": float(get(prefix + "LATENCY_S", "0.0")),
          "calibration_file": get(prefix + "CALIBRATION"),
          "max_tilt_deg": float(get(prefix + "MAX_TILT_DEG", "45")),
+         "max_rate_dps": float(get(prefix + "MAX_RATE_DPS", "30")),
          "gimbal": get(prefix + "GIMBAL", "false").lower() in ("1", "true", "yes")}
     for key, k, lo, hi in ((prefix + "SIZE", "width", 64, 8192), (prefix + "SIZE", "height", 64, 8192),
                            (prefix + "FPS", "fps", 0.05, 30.0),
                            (prefix + "LATENCY_S", "capture_latency_s", 0.0, 2.0),
-                           (prefix + "MAX_TILT_DEG", "max_tilt_deg", 5.0, 80.0)):
+                           (prefix + "MAX_TILT_DEG", "max_tilt_deg", 5.0, 80.0),
+                           (prefix + "MAX_RATE_DPS", "max_rate_dps", 1.0, 360.0)):
         if not (math.isfinite(p[k]) and lo <= p[k] <= hi):
             raise ValueError(f"{key}: {k} {p[k]:g} out of range [{lo:g}, {hi:g}]")
     if p["input"] not in ("usb", "csi", "gst", "ros"):

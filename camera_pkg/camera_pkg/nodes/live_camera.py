@@ -73,6 +73,7 @@ class LiveCamera(Node):
         declare_float(self, "mount_pitch_deg", 0.0)
         declare_float(self, "mount_yaw_deg", 0.0)
         declare_float(self, "max_tilt_deg", 45.0)
+        declare_float(self, "max_rate_dps", 30.0)              # fixed camera: rotation rate limit
         self.declare_parameter("gimbal", False)                 # camera held level by a stabiliser
         # frames with no attitude at exposure are marked unusable (fixed camera); false only
         # for an installation with no attitude source at all
@@ -100,7 +101,7 @@ class LiveCamera(Node):
         cam = self._camera_model(p("calibration_file"), float(p("camera_hfov_deg")))
         self.builder = FrameBuilder(cam, (p("mount_roll_deg"), p("mount_pitch_deg"), p("mount_yaw_deg")),
                                     float(p("max_tilt_deg")), p("camera_type"), bool(p("gimbal")),
-                                    bool(p("require_attitude")))
+                                    bool(p("require_attitude")), float(p("max_rate_dps")))
         self.attitude_source, self.frame_id = p("attitude_source"), p("frame_id")
         self.measured_sigma_m = float(p("measured_altitude_sigma_m"))
         self.att = History(maxlen=4000, max_gap_s=0.2, interp=slerp)
@@ -306,7 +307,8 @@ class LiveCamera(Node):
             raw, t = item
             out, meta = self.builder.build(raw, self.count, int(t * 1e9), self.att.at(t), self.attitude_source,
                                            self.alt.estimate(t), self.gps.at(t),
-                                           time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(t)))
+                                           time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(t)),
+                                           self._rate_dps(t))
             msg = bridge.cv2_to_imgmsg(np.ascontiguousarray(out), "bgr8")
             msg.header.stamp.sec, msg.header.stamp.nanosec = int(t), int((t % 1) * 1e9)
             meta["image_stamp_ns"] = msg.header.stamp.sec * 1_000_000_000 + msg.header.stamp.nanosec
@@ -324,6 +326,15 @@ class LiveCamera(Node):
                     + ("" if meta["usable"] else f" — {meta['reason']}"))
             self.count += 1
             time.sleep(max(0.0, self.period - (time.monotonic() - t0)))
+
+    def _rate_dps(self, t):
+        """The vehicle's rotation rate around the exposure (deg/s, from the attitude 0.2 s
+        before it), or None when the attitude is not known then."""
+        a, b = self.att.at(t - 0.2), self.att.at(t)
+        if a is None or b is None:
+            return None
+        dot = min(1.0, abs(sum(x * y for x, y in zip(a, b))))
+        return math.degrees(2.0 * math.acos(dot)) / 0.2
 
     def _check_tilt(self, t, too_tilted):
         """A fixed camera too tilted for a large part of the last minute: say why vision is

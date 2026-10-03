@@ -80,3 +80,14 @@ def test_a_star_camera_frame_is_undistorted_only():
     out, meta = FrameBuilder(cam, camera_type="star").build(img, 1, 5, None, utc="2026-10-02T21:00:00")
     assert meta["usable"] is True and meta["straightened"] is False and meta["utc_time"]
     assert meta["camera_type"] == "star" and (out == img).all()
+
+
+def test_a_fixed_camera_turning_fast_is_not_used_a_gimbal_is():
+    cam = CameraModel.ideal(84.0, (W, H_))
+    q = (0.0, 0.0, 0.0, 1.0)
+    _, meta = FrameBuilder(cam).build(nadir_scene(), 1, 0, q, rate_dps=45.0)
+    assert meta["usable"] is False and "turning 45 deg/s" in meta["reason"] and meta["rate_dps"] == 45.0
+    _, meta = FrameBuilder(cam).build(nadir_scene(), 1, 0, q, rate_dps=10.0)
+    assert meta["usable"] is True
+    _, meta = FrameBuilder(cam, gimbal=True).build(nadir_scene(), 1, 0, q, rate_dps=45.0)
+    assert meta["usable"] is True
