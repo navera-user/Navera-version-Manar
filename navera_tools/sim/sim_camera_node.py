@@ -90,7 +90,7 @@ class SimCamera(Node):
     def _loop(self):
         while rclpy.ok():
             s = self.state
-            if s is None or s.get("q") is None:
+            if s is None or s.get("q") is None or s.get("failed"):
                 time.sleep(0.1)
                 continue
             d = self.render_s

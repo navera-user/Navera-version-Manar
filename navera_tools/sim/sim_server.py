@@ -421,7 +421,9 @@ class Simulator(Node):
             rates = (0.0, 0.0, -gz) if gimbal else (gx, -gy, -gz)
             self.pub_state_true.publish(String(data=json.dumps(dict(
                 lat=tr[0], lon=tr[1], agl=tr[2], heading=tr[3], speed=tr[4], vn=tr[6], ve=tr[7], vd=tr[8],
-                q=list(q_cam_body), rates=list(rates), gimbal=gimbal))))
+                q=list(q_cam_body), rates=list(rates), gimbal=gimbal,
+                # the "camera failed" fault: the camera process stops sending, as a dead camera
+                failed=self.faults["camera"] != "ok"))))
 
     def _tick_slow(self):
         now = self.get_clock().now().to_msg()
@@ -660,19 +662,26 @@ class Simulator(Node):
                 s = self.ap.snapshot()
                 if s["truth"] and self.phase == "enroute":
                     self._next_leg(s["truth"])
-                if self.phase in ("enroute", "arrived") and s["armed"] and \
-                        s["mode"] not in ("GUIDED", "—"):
-                    why = ""
+                if (self.phase in ("enroute", "arrived") and s["armed"] and s["mode"] not in ("GUIDED", "—")) \
+                        or self.phase == "failsafe":
+                    # said again whenever NAVERA's state changes: the message must stay true
                     with self.lock:
                         nav_state = self.nav["state"]
-                    if nav_state == "DEGRADED" and not self.cfg["forward_degraded"]:
-                        why = (" NAVERA still has a vision position (DEGRADED) but, by default, does "
-                               "not give it to the autopilot — tick 'Give vision positions to the "
-                               "autopilot' to let it continue.")
-                    elif nav_state == "NO FIX":
-                        why = " NAVERA has no position to give (no GPS, no vision)."
-                    self._set_phase("failsafe", f"the autopilot left the mission: {s['mode']} "
-                                                f"(its own failsafe).{why} Click the map to resume.")
+                    if nav_state == "FIX":
+                        why = (" NAVERA has a fix again; an autopilot does not resume its mission by "
+                               "itself after a failsafe —")
+                    elif nav_state == "DEGRADED" and not self.cfg["forward_degraded"]:
+                        why = (" NAVERA has a vision position (DEGRADED) but, by default, does not give "
+                               "it to the autopilot — tick 'Give vision positions to the autopilot' to "
+                               "let it continue;")
+                    elif nav_state == "DEGRADED":
+                        why = " NAVERA gives it vision positions again;"
+                    else:
+                        why = " NAVERA has no position to give (no GPS, no vision);"
+                    detail = (f"the autopilot left the mission: {s['mode']} (its own failsafe).{why} "
+                              f"click the map to resume.")
+                    if self.phase != "failsafe" or detail != self.phase_detail:
+                        self._set_phase("failsafe", detail)
                 if s["truth"] and self.phase == "enroute" and self.cfg["dest"] and \
                         haversine_m(s["truth"], self.cfg["dest"]) < (300 if self.cfg["vehicle"] == "plane" else 20):
                     self._set_phase("arrived", "arrived at the destination — holding. "

@@ -527,7 +527,7 @@ header .hbtn.danger{background:#fff}
           <div class="note" id="wVisNote"></div>
           <div class="sec" data-i18n="autopilotOut">Autopilot output</div>
           <label class="chk"><input type="checkbox" id="wFwd"> <span><span data-i18n="fwd">Give vision positions to the autopilot, stated accuracy</span>
-            <input type="number" id="wSigma" value="500" min="5" max="1000" style="width:80px;display:inline-block;padding:4px 6px"> m</span></label>
+            <input type="number" id="wSigma" value="30" min="5" max="1000" style="width:80px;display:inline-block;padding:4px 6px"> m</span></label>
           <div class="notice warn" id="wSigmaWarn"></div>
           <div class="note" data-i18n="fwdNote">NAVERA's default is off: vision positions are shown but the autopilot applies its own failsafe (land / hold) when GPS is lost.</div>
         </div>
@@ -775,7 +775,7 @@ const vehName = () => t(cfg.vehicle, VEH_NAME[cfg.vehicle]);
 // vmax: the vehicle's top speed (m/s), set by the operator — NAVERA's plausibility and motion gates
 const VMAX_DEF = {drone:30, boat:20, robot:10, plane:100};
 const SIM_CRUISE_MAX = {drone:20, boat:15, robot:8, plane:75};    // what the simulated autopilot can fly
-const cfg = {light:'day', vehicle:'drone', speed:15, alt:150, vision:'real', fwd:true, sigma:500, vmax:30, vmaxAuto:true, mount:'gimbal', sensors:'box'};
+const cfg = {light:'day', vehicle:'drone', speed:15, alt:150, vision:'real', fwd:true, sigma:30, vmax:30, vmaxAuto:true, mount:'gimbal', sensors:'box'};
 // stated accuracy of forwarded vision positions: never better than measured (day: 442 m median on real frames)
 const MEASURED_SIGMA_M = 450;
 // automatic top speed: cruise + 50 %, and at least cruise + 5 m/s (slow vehicles keep a margin)
@@ -945,7 +945,7 @@ $('wVmax').onchange = () => {
   homeRender(); drawPlan();
 };
 $('wFwd').onchange = () => { cfg.fwd = $('wFwd').checked; homeRender(); };
-$('wSigma').onchange = () => { cfg.sigma = Math.max(5, Math.min(1000, +$('wSigma').value || 500)); homeRender(); };
+$('wSigma').onchange = () => { cfg.sigma = Math.max(5, Math.min(1000, +$('wSigma').value || 30)); homeRender(); };
 /* the one map moves between page 1 (right column, or inside "Route" on a phone) and page 2 */
 const isPhone = () => window.matchMedia('(max-width:1000px)').matches;
 function placeMap(){

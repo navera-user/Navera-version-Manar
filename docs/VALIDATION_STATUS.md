@@ -203,7 +203,7 @@ results, not accuracy results.
 | Boat, 2 km GPS spoof for 150 s | Refused within 1 s; boat continues on vision (3–21 m) |
 | Drone, GPS jammed 30 s then spoofed 2 km for 30 s | Spoof refused throughout; true GPS re-accepted 3 s after it returns |
 | Drone, GPS spoofed by a slow drift (4 m/s) | Refused at ~160–200 m offset; the autopilot followed the drift to ~200 m, then recovered on vision without failsafe |
-| Robot, GPS jammed, vision at today's measured accuracy (DEGRADED, withheld) | Autopilot loses its position → its own failsafe (HOLD); resumes when GPS returns |
+| Robot, GPS jammed, vision at today's measured accuracy (DEGRADED, withheld) | Autopilot loses its position → its own failsafe (HOLD); stays in it when GPS returns (an autopilot does not resume a mission by itself after a failsafe): the operator resumes it |
 | GPS jammed + camera failed | NAVERA: NO FIX → autopilot failsafe (Copter LAND, Rover HOLD) |
 
 **With the real day vision** (`day_subscriber`, DINOv2) on simulated camera images, drone at
