@@ -32,13 +32,15 @@ def test_nmea_info_tells_a_receiver_from_an_autopilot_output():
 
 
 def test_the_box_alone():
-    d = decide({"i2c": {"imu": {}, "rtc": {}}, "serial": [RECEIVER],
+    d = decide({"i2c": {"imu": {"bus": 1}, "rtc": {"bus": 1}}, "serial": [RECEIVER],
                 "cameras": {"usb": ["/dev/v4l/by-id/usb-Insta360-video-index0"], "csi": []}}, {})
     s = d["settings"]
     assert s["NAVERA_SENSOR_SOURCE"] == "box" and s["NAVERA_GPS_SOURCE"] == "serial"
     assert s["NAVERA_GPS_PORT"] == "/dev/ttyTHS1" and s["NAVERA_GPS_BAUD"] == "9600"
     assert s["NAVERA_CAMERA_INPUT"] == "usb" and s["NAVERA_CAMERA_DEVICE"].endswith("index0")
     assert "NAVERA_MAVLINK_URL" not in s and any("NMEA" in r for r in d["report"])
+    assert s["NAVERA_BOX_IMU"] == "1" and s["NAVERA_BOX_RTC"] == "1"
+    assert decide({}, {})["settings"]["NAVERA_BOX_IMU"] == "0"      # services idle, no restart loop
 
 
 def test_a_drone_with_an_autopilot_and_no_box_sensors():
@@ -73,7 +75,7 @@ def test_nmea_without_satellites_is_not_a_receiver_and_a_fix_wins():
 
 
 def test_box_sensors_win_but_the_autopilot_still_gets_the_position():
-    d = decide({"i2c": {"imu": {}}, "serial": [AP, RECEIVER], "autopilot_streams": STREAMS}, {})
+    d = decide({"i2c": {"imu": {"bus": 7}}, "serial": [AP, RECEIVER], "autopilot_streams": STREAMS}, {})
     s = d["settings"]
     assert s["NAVERA_SENSOR_SOURCE"] == "box" and s["NAVERA_GPS_SOURCE"] == "serial"
     assert s["NAVERA_MAVLINK_URL"] == "udpout:127.0.0.1:14650"

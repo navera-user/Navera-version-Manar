@@ -429,6 +429,13 @@ def decide(found: dict, env) -> dict:
         rep.append("CHECK several GPS receivers (" + ", ".join(r["port"] for r in receivers)
                    + f"): using {gps_port['port']} — set NAVERA_GPS_PORT to choose")
 
+    # which box chips are fitted (the IMU and clock services idle without them)
+    out["NAVERA_BOX_IMU"] = "1" if "imu" in i2c else "0"
+    out["NAVERA_BOX_RTC"] = "1" if "rtc" in i2c else "0"
+    if "imu" in i2c:
+        out["NAVERA_BOX_IMU_BUS"] = str(i2c["imu"]["bus"])
+    if "rtc" in i2c:
+        out["NAVERA_BOX_RTC_BUS"] = str(i2c["rtc"]["bus"])
     # attitude (and with it the height sources)
     if auto("NAVERA_SENSOR_SOURCE"):
         if "imu" in i2c:
