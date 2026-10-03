@@ -191,3 +191,19 @@ def test_a_vision_position_never_goes_out_over_nmea_unless_allowed():
     assert for_nmea(est, allow_degraded=True) is est
     fix = decide(Config(), STATE_FIX, 0.1, pos(), 0.1, GPS)
     assert for_nmea(fix) is fix
+
+
+def test_a_vision_position_is_carried_to_now_with_an_honest_accuracy():
+    cfg = Config(forward_degraded=True, degraded_sigma_m=30.0, max_speed_mps=60.0)
+    p = pos(source=DAY, lat=35.8, lon=10.6)
+    # 1.5 s old photo, flying north at 40 m/s (speed known to +-1 m/s)
+    o = decide(cfg, STATE_DEGRADED, 0.1, p, 0.1, DAY, measured_age_s=1.5, ground_vel=(0.0, 40.0, 1.0))
+    north_m = (o.lat - 35.8) * 111195.0
+    assert north_m == pytest.approx(60.0, abs=0.5) and o.age_s == 0.0
+    assert o.sigma_h_m == pytest.approx(31.5)                     # 30 + 1 m/s x 1.5 s
+    # speed unknown: not moved, stamped when measured, accuracy grown by max speed x age
+    o = decide(cfg, STATE_DEGRADED, 0.1, p, 0.1, DAY, measured_age_s=1.5)
+    assert o.lat == 35.8 and o.age_s == pytest.approx(1.5) and o.sigma_h_m == pytest.approx(30.0 + 90.0)
+    # GPS is never carried (its latency is small and the autopilot's own)
+    g = decide(Config(), STATE_FIX, 0.1, pos(), 0.1, GPS, measured_age_s=0.2, ground_vel=(0.0, 40.0, 1.0))
+    assert g.lat == 35.8288 and g.sigma_h_m == 2.0

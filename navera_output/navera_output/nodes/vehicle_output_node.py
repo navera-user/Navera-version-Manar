@@ -59,6 +59,7 @@ from datetime import datetime, timedelta, timezone
 import rclpy
 from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
+from navera_common.track import TrackVelocity
 from geometry_msgs.msg import TwistStamped
 from sensor_msgs.msg import NavSatFix, NavSatStatus
 from navera_msgs.msg import NavStatus, PositionEstimate
@@ -84,6 +85,9 @@ class VehicleOutputNode(Node):
         declare_float(self, "degraded_sigma_m", float("nan"))
         declare_float(self, "position_timeout_s", 2.0)
         declare_float(self, "max_measurement_age_s", 2.0)
+        # the vehicle's maximum speed (NAVERA_MAX_SPEED_KMH): a position whose ground velocity
+        # is unknown grows its accuracy by this speed x its age
+        declare_float(self, "max_speed_mps", 30.0)
         declare_float(self, "nav_status_timeout_s", 2.0)
         declare_float(self, "gps_vel_timeout_s", 1.0)
         declare_float(self, "max_forward_sigma_m", 1000.0)
@@ -99,6 +103,7 @@ class VehicleOutputNode(Node):
             degraded_sigma_m=float(self.get_parameter("degraded_sigma_m").value),
             position_timeout_s=float(self.get_parameter("position_timeout_s").value),
             max_measurement_age_s=float(self.get_parameter("max_measurement_age_s").value),
+            max_speed_mps=float(self.get_parameter("max_speed_mps").value),
             nav_status_timeout_s=float(self.get_parameter("nav_status_timeout_s").value),
             max_forward_sigma_m=float(self.get_parameter("max_forward_sigma_m").value))
         self.cfg.validate()
@@ -125,6 +130,7 @@ class VehicleOutputNode(Node):
         self._status = None
         self._status_rx = None
         self._pos = None
+        self._track = TrackVelocity(window_s=20.0)   # ground velocity of the recent positions
         self._pos_rx = None
         self._last_kind = None
         self._sent_pos = None             # the last position message sent (sent once)
@@ -152,6 +158,13 @@ class VehicleOutputNode(Node):
 
     def _on_position(self, msg: PositionEstimate) -> None:
         self._pos, self._pos_rx = msg, time.monotonic()
+        # the ground velocity of the recent positions (any source), to carry a vision
+        # position from its photo's instant to now
+        age = self._measured_age(msg)
+        if age is not None and msg.valid and math.isfinite(msg.latitude):
+            cov = list(msg.position_covariance)
+            sig = math.sqrt(max(cov[0], cov[4])) if msg.position_covariance_type and cov[0] > 0 else 30.0
+            self._track.add(time.time() - age, msg.latitude, msg.longitude, sig)
         # Forward at once: waiting for the next timer tick adds latency and, with
         # both at 5 Hz, drops or doubles messages — an irregular stream that
         # ArduPilot reports as "GPS not healthy" and refuses to arm on (SITL).
@@ -172,7 +185,7 @@ class VehicleOutputNode(Node):
                      self._pos,
                      now - self._pos_rx if self._pos else None,
                      st.active_source if st else None, vel,
-                     self._measured_age(self._pos))
+                     self._measured_age(self._pos), self._ground_velocity())
         if out.kind != self._last_kind:
             # Separate call sites: rclpy refuses one call site changing severity.
             if out.kind == KIND_NONE:
@@ -205,6 +218,13 @@ class VehicleOutputNode(Node):
             self.failed = True
             self.context.try_shutdown()
 
+
+    def _ground_velocity(self):
+        """(east, north, sigma) m/s from the positions of the last 20 s, or None."""
+        last = self._track.last_time()
+        if last is None or time.time() - last > 5.0:
+            return None
+        return self._track.velocity(time.time())
 
     def _measured_age(self, pos):
         """Seconds since the position was measured (sensor_stamp, else header stamp)."""

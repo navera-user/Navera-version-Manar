@@ -12,6 +12,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, Shutdown
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from navera_common.vehicle import max_speed_params
 
 
 def _bool(key, value):
@@ -57,6 +58,6 @@ def generate_launch_description():
                 'nmea_port': LaunchConfiguration('nmea_port'),
                 'nmea_baud': LaunchConfiguration('nmea_baud'),
                 'mavlink_url': LaunchConfiguration('mavlink_url'),
-            }, _env_overrides()],
+            }, _env_overrides(), max_speed_params()],
         ),
     ])

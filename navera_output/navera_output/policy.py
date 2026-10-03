@@ -22,6 +22,8 @@ The vehicle's autopilot treats whatever NAVERA sends as a GPS. The rules:
 """
 import json
 import math
+
+from navera_common.geo import dead_reckon
 from dataclasses import dataclass
 from typing import Optional
 
@@ -73,6 +75,9 @@ class Config:
     nav_status_timeout_s: float = 2.0
     # older measurements are not sent (vision: image to position measured 0.3-1.5 s)
     max_measurement_age_s: float = 2.0
+    # a non-GPS position is carried to the present along the measured ground velocity;
+    # without one, its accuracy grows by this speed x its age
+    max_speed_mps: float = 30.0
 
     def validate(self) -> None:
         if self.forward_degraded and not (math.isfinite(self.degraded_sigma_m)
@@ -94,7 +99,8 @@ def _details(pos) -> dict:
 
 def decide(cfg: Config, state: Optional[int], status_age_s: Optional[float],
            pos, pos_age_s: Optional[float], active_source: Optional[int],
-           gps_vel_ne: Optional[tuple] = None, measured_age_s: Optional[float] = None) -> Output:
+           gps_vel_ne: Optional[tuple] = None, measured_age_s: Optional[float] = None,
+           ground_vel: Optional[tuple] = None) -> Output:
     """The output for this instant.
 
     state / status_age_s: last NavStatus state and its age (None = never heard).
@@ -103,6 +109,11 @@ def decide(cfg: Config, state: Optional[int], status_age_s: Optional[float],
     gps_vel_ne: the GPS receiver's current (north, east) velocity in m/s, or
         None when it is not current. Used only with a GPS position.
     measured_age_s: now - the position's measurement instant (None = unknown: 0).
+    ground_vel: (east m/s, north m/s, 1-sigma speed error) measured from the recent
+        positions, or None. A vision / celestial position describes where its photo was
+        taken (0.5-2.5 s ago): it is carried to now along it (its accuracy grows by the
+        speed error x age), or, without it, sent stamped when measured with its accuracy
+        grown by max_speed_mps x age — never presented as current and as accurate.
     """
     if state is None or status_age_s is None or status_age_s > cfg.nav_status_timeout_s:
         return Output(KIND_NONE, "arbiter silent")
@@ -127,6 +138,18 @@ def decide(cfg: Config, state: Optional[int], status_age_s: Optional[float],
     details = _details(pos)
     sep = details.get("geo_sep_m")
     sats = details.get("num_sats")
+    lag_sigma = 0.0
+    if pos.source != SOURCE_GPS and age > 0.0:
+        if ground_vel is not None and all(math.isfinite(v) for v in ground_vel):
+            ve, vn, sig_v = ground_vel
+            speed = math.hypot(ve, vn)
+            if speed > 0.05:
+                carried = dead_reckon(lat, lon, math.degrees(math.atan2(ve, vn)) % 360.0, speed, age)
+                if carried is not None:
+                    lat, lon = carried
+            lag_sigma, age = sig_v * age, 0.0                  # now a position of the present
+        else:
+            lag_sigma = cfg.max_speed_mps * age
     common = dict(lat=lat, lon=lon, alt_ellipsoid_m=alt, age_s=age,
                   geoid_sep_m=float(sep) if isinstance(sep, (int, float)) else math.nan)
 
@@ -135,7 +158,7 @@ def decide(cfg: Config, state: Optional[int], status_age_s: Optional[float],
         common.update(vel_n_mps=float(gps_vel_ne[0]), vel_e_mps=float(gps_vel_ne[1]))
 
     if state == STATE_FIX:
-        return Output(KIND_FIX, "fix", sigma_h_m=math.sqrt(max(cov[0], cov[4])),
+        return Output(KIND_FIX, "fix", sigma_h_m=math.sqrt(max(cov[0], cov[4])) + lag_sigma,
                       sigma_v_m=math.sqrt(cov[8]) if cov[8] > 0 else math.nan,
                       satellites=int(sats) if isinstance(sats, int) else None, **common)
     if not cfg.forward_degraded:
@@ -143,6 +166,7 @@ def decide(cfg: Config, state: Optional[int], status_age_s: Optional[float],
     known = getattr(pos, "position_covariance_type", 0) != 0          # 0 = UNKNOWN
     stated = math.sqrt(max(cov[0], cov[4])) if known else math.nan
     sigma = max(cfg.degraded_sigma_m, stated) if math.isfinite(stated) else cfg.degraded_sigma_m
+    sigma += lag_sigma
     if sigma > cfg.max_forward_sigma_m:
         return Output(KIND_NONE, f"position too coarse for the autopilot "
                                  f"(±{sigma / 1000:.1f} km > {cfg.max_forward_sigma_m / 1000:.1f} km)")
