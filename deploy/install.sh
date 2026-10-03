@@ -89,7 +89,9 @@ as_navera "cd $WS && source /opt/ros/humble/setup.bash && colcon build --symlink
     camera_pkg day_pkg night_pkg cn_pkg simulation_web 2>&1 | tail -3"
 
 say "directories and settings"
-run install -d -o navera -g navera /var/lib/navera /data/navera/areas
+# each level owned by navera (install -d leaves created parents root-owned: the model
+# cache in /data/navera then could not be written)
+run install -d -o navera -g navera /var/lib/navera /data/navera /data/navera/areas
 run install -d -m 0755 /etc/navera
 if [ -f /etc/navera/navera.env ]; then
   echo "  /etc/navera/navera.env exists: kept (compare with deploy/navera.env.example)"
