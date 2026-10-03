@@ -1,6 +1,6 @@
 # NAVERA — Validation status and known limitations
 
-**Release 0.2 — field validation pending.** Last updated 2026-09-30.
+**Release 0.2 — field validation pending.** Last updated 2026-10-03.
 
 This document states what has been measured, how, and what still has to be validated in
 the field. Every number below comes from a run on the Jetson Orin Nano (bench, replay and
@@ -18,16 +18,21 @@ been measured. Open engineering items are tracked in
 | Day vision — DINOv2 tile retrieval (former method, fallback) | **Not accurate enough to replace GPS** | Median 442 m on labelled replay frames |
 | Night vision (STHN homography) | Frames scaled and turned north-up from altitude, camera field of view and heading; motion gate; **not validated on real thermal** | 8–13 m median on synthetic frames (250–600 m, any heading); simulated night mission 6 m median |
 | Celestial (astrometry.net) | Run end to end on simulated star fields; **coarse: bounded by the IMU attitude (~111 km per degree)** | 5.5–6.5 km with a perfect attitude; 24–119 km with a BNO085-class IMU |
-| IMU dead-reckoning | **Not implemented** (IMU is liveness only) | — |
+| Day vision dead-reckoning along the measured track (no match: sea, uniform ground, frame unusable) | Implemented 2026-10-02; **simulator only** | Land route: no failsafe, error median 10 m, max 33 m; across the bay: carried 90 s over the sea stating ±300 m, true error at most 146 m |
+| Vision position carried to the present (output, operator view) | Implemented; unit tests and simulator only | 1.5 s old photo at 40 m/s: moved 60 m, stated ±31.5 m |
+| Inertial navigation (integrating the IMU) | **Not implemented** — the IMU gives attitude and heading changes | — |
+| Vehicle outputs | ArduPilot SITL only; **PX4 not tested** (and PX4 ignores `GPS_INPUT`) | below; PX4_INTEGRATION.md |
 
 ## Position output contract
 
 Every position NAVERA publishes carries its source, whether it was measured or
 dead-reckoned, and whether its uncertainty is known:
 
-- **FIX**: a fresh measured position with a known uncertainty. Today only GPS reaches it.
-- **DEGRADED**: a position is available, but its uncertainty is unknown or it is dead-reckoned.
-  All vision and celestial positions are reported as DEGRADED.
+- **FIX**: a fresh measured position with a stated uncertainty of at most 25 m (a defined
+  covariance type and a sigma of at least 1 cm). Today only GPS reaches it.
+- **DEGRADED**: a position is available, but its uncertainty is unknown or above 25 m, or
+  it is dead-reckoned. All vision and celestial positions are reported as DEGRADED, and so
+  is a GPS "in doubt" (vision contradicts it).
 - **NO_FIX**: no source is usable. No old position is re-sent as current.
 - **OFFLINE**: on the operator view, the arbiter itself is not answering.
 
@@ -79,6 +84,24 @@ The frames are aerial images from another source and date than the map, rotated 
 camera (lens, blur, haze, oblique view). The benchmark camera's scale (0.62 of a 768 px frame)
 is its calibration, as `camera_hfov_deg` is for a real camera. Positions are stated at 30 m
 (`local_sigma_m`) until measured with the real camera.
+
+**Dead-reckoning along the measured track (2026-10-02, simulator only).** When a frame
+gives no match (sea, uniform ground, frame too tilted), day vision carries its last measured
+position along the ground velocity fitted to the measured fixes of the last 20 s (GPS while
+trusted, vision matches at their photo's instant), turned by the heading change the IMU
+measures, published PROPAGATED with a stated accuracy that grows (velocity error × t + 5°
+heading error × distance), for at most 120 s / 500 m. Mission simulator, GPS jammed, gimbal
+camera: land route — no failsafe (before: EKF failsafe), error median 10 m, max 33 m;
+across the bay — carried 90 s over the sea stating ±300 m with a true error of at most
+146 m, no failsafe within the 240 s run (before: failsafe at t+97 s). Not measured with a
+real camera or a real IMU. Never used as an independent check of GPS.
+
+**Rotation-rate gate (fixed camera).** Straightening itself is right at plane conditions
+(benchmark, 300 m, roll 0 / 10 / 18°, BNO085-class noise: 33/33 within 2.9 m). The
+simulator's fixed-camera plane runs were taken during a ±26° roll oscillation of the
+simulated plane (also with GPS working: a simulator issue, tracked): those frames are now
+refused (144–185°/s against the 30°/s limit). Fixed-camera plane results from the simulator
+are therefore not representative.
 
 In flight (simulator, desert near Gabès — where retrieval failed, see Long route): 147 matches
 in a row, 0 rejected, ~1 m (the simulated camera is cut from the map's own imagery:
@@ -191,7 +214,13 @@ clouds and light pollution, a real IMU.
 | Estimator: GPS silent 4 s (jammed), then back 2 km away while vision (stated accuracy) disagrees ("jam, then spoof") | Refused; true GPS accepted as soon as it agrees with vision |
 | Estimator: GPS pulled away gradually (40 m/s bench, 4 m/s simulator) while vision (stated accuracy) stays on the truth | Refused once it has disagreed beyond 5 σ + 50 m for 3 s (simulator: at ~160–200 m); status says "GPS refused: … drifting away" |
 | Estimator: GPS jumps 2 km and stays there, vision with a stated accuracy sees the true position | Refused for as long as it lasts (150 s tested); the true GPS re-accepted 2 s after it returns. Before the fix the spoof was accepted after offset / max speed (33 s) and then the true GPS was locked out |
+| Estimator: GPS drifting from vision (estimator test) | Shown "GPS IN DOUBT" (DEGRADED) before it is refused, never FIX meanwhile |
+| Estimator: GPS fix 0.8 s late, 60 m behind a vehicle at 75 m/s | Dropped as old news; GPS stays FIX (before: refused as "possible spoofing") |
+| Estimator: GPS with an all-zero covariance, an undefined covariance type, a non-PSD covariance | DEGRADED "uncertainty unknown" / DEGRADED / not used (before: FIX with accuracy 0, FIX, republished) |
+| Vehicle sensors published BEST_EFFORT (integrator's script, boat IMU) | Received: 3/3 frames usable (before: 4/4 unusable, "no attitude") |
+| Output: forwarding switch `enabled` / `on`, sigma above 1000 m | Refused at start with the reason (before: silently false / accepted) |
 | Web: control without token / cross-site request / bad input | Refused (401 / 415 / 400) |
+| Web: 100 wrong control codes in a row | After 5 wrong codes in 60 s the address is refused (429) for 60 s (before: no delay) |
 
 ### Autopilot in the loop (ArduPilot SITL — simulation)
 
@@ -209,6 +238,15 @@ results, not accuracy results.
 | Drone, GPS spoofed by a slow drift (4 m/s) | Refused at ~160–200 m offset; the autopilot followed the drift to ~200 m, then recovered on vision without failsafe |
 | Robot, GPS jammed, vision at today's measured accuracy (DEGRADED, withheld) | Autopilot loses its position → its own failsafe (HOLD); stays in it when GPS returns (an autopilot does not resume a mission by itself after a failsafe): the operator resumes it |
 | GPS jammed + camera failed | NAVERA: NO FIX → autopilot failsafe (Copter LAND, Rover HOLD) |
+
+**Vision positions carried to the present (2026-10-03).** Before: a vision position was sent
+as it was, describing the photo's instant 1–2.5 s earlier while stating the matcher's ±30 m —
+plane at 40 m/s with a gimbal: match error 0–1 m, output error 83 m median (0 % within the
+stated sigma); drone at 15 m/s: 12–23 m. Now carried along the measured ground velocity,
+its accuracy grown by the lag (unit tests: a 1.5 s old photo at 40 m/s is moved 60 m and
+stated ±31.5 m; with no velocity known, ±120 m, stamped as measured). The day-vision
+freshness window is 5 s (it was 3 s: under load NAVERA alternated FIX / NO_FIX on 20–60 %
+of samples and the autopilot landed during a 6.7–9.2 s gap). **Simulator only.**
 
 **With the real day vision** (`day_subscriber`, DINOv2) on simulated camera images, drone at
 150 m (≈270 m footprint), 7.5 km route prepared with `prepare_area.py` (356 tiles), GPS jammed
@@ -309,22 +347,32 @@ holds the only results from the real sensors. No sensor recording (log, bag) was
 1. **Accuracy is not established on real data.** No real flight has been recorded with
    camera, GPS and IMU together. This is the first thing to do with a vehicle.
 2. **Day vision is not accurate enough** (see above).
-3. **The IMU is not used for navigation** (liveness only). Dead-reckoning needs a heading
-   and speed source.
+3. **No inertial navigation.** The IMU gives the camera's attitude and heading changes;
+   it is not integrated into a position. Without vision matches, day vision dead-reckons
+   along the track measured before the gap for at most 2 minutes / 500 m (simulator figures
+   above), then NAVERA gives no position.
 4. **One pipeline at a time.** Day and night cannot both be loaded within 8 GB.
-5. **Map coverage is Sousse only** (z13–z19 MBTiles). Other areas need their own map and
-   tile cache. The imagery licence must allow offline commercial use.
+5. **Map coverage is Sousse only** (z13–z19 MBTiles). Other areas need their own map, or
+   tiles downloaded through `NAVERA_TILE_URL` when a route is generated on `/mission`
+   (deploy/README.md §8). The imagery licence must allow offline commercial use.
+   **At sea** there are no landmarks: away from the coast vision gives nothing beyond the
+   2-minute dead-reckoning; a low camera on a boat (a few metres above the water) has not
+   been tested at all. The boat results above are simulator runs with simulated vision.
 6. **Vehicle output validated in simulation only** (ArduPilot SITL, above); not yet on a real
-   autopilot, and not on PX4. ArduPilot needs `EK3_SRC1_VELXY = 0` / `EK3_SRC1_VELZ = 0` and
-   one real GPS fix at power-on (navera_output/README.md).
+   autopilot, and not on PX4 — which does not handle the `GPS_INPUT` message NAVERA sends
+   (PX4_INTEGRATION.md; no PX4 SITL run). ArduPilot needs `EK3_SRC1_VELXY = 0` /
+   `EK3_SRC1_VELZ = 0` (which also removes GPS velocity fusion while GPS is good) and one
+   real GPS fix at power-on (navera_output/README.md); it caps a stated accuracy at 100 m.
+   NMEA carries no accuracy: vision positions are not sent over it by default.
 7. **GPS spoofing:** a sudden jump beyond the vehicle's maximum speed (`max_speed_mps`, set
    per vehicle) is refused, and stays refused until an independent source with a **stated**
    accuracy (vision / celestial with a known covariance) confirms it. A GPS returning after an
    outage must agree with that source too ("jam, then spoof"), and a trusted GPS that drifts
    away from it is refused (gradual spoofing: 5 distinct fixes in a row beyond 3 σ, or 2
    beyond 5 σ + 50 m for 3 s; never on one fix). A refused GPS comes back only when 2
-   distinct independent fixes agree within 3 σ. **All three protections need that
-   independent source.** Day vision provides one while GPS is good (a local match every 2 s
+   distinct independent fixes agree within 3 σ. From 2 fixes in a row beyond 3 σ the GPS is
+   shown and sent **"in doubt"** (DEGRADED, accuracy no better than the gap, up to 500 m)
+   before it is refused. **All these protections need that independent source.** Day vision provides one while GPS is good (a local match every 2 s
    around the GPS position, stated σ 30 m — not yet measured with NAVERA's camera).
    Measured in the mission simulator (gimbal camera, GPS pulled away at 4 m/s): refused at
    ~140 m and held; NAVERA error median 15 m, max 143 m (before: median 417 m, max 902 m,
@@ -333,5 +381,12 @@ holds the only results from the real sensors. No sensor recording (log, bag) was
    uniform ground) there is no independent source and a gradual spoofer is not caught.
 8. **Security model:** DDS is limited to the box itself (`ROS_LOCALHOST_ONLY`). The web
    control API needs a token. The web interface is HTTPS when a certificate is configured
-   (NAVERA_TLS_CERT / NAVERA_TLS_KEY), plain HTTP otherwise. The /mission page refuses
-   restarts and map generation while the vehicle is armed or navigating without GPS.
+   (NAVERA_TLS_CERT / NAVERA_TLS_KEY), plain HTTP otherwise; 5 wrong codes in 60 s lock an
+   address out for 60 s. The /mission page refuses restarts and map generation while the
+   vehicle is armed, moving faster than 1.5 m/s, or navigating without GPS. The mission
+   simulator (`navera_tools/run_sim.sh`, a development tool) listens on all interfaces
+   (ports 8190 / 8443) with **no authentication**: never run it on a networked vehicle.
+9. **Start without GPS.** NAVERA needs one GPS fix at start, or an operator start position
+   (`/mission`, a search area for day vision only — never a published position). Verified:
+   accepted, a bad latitude refused, a vision node started later receives it (latched);
+   not tested in flight.

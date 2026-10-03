@@ -5,10 +5,11 @@ position when GPS fails, is jammed or has no coverage. It works by matching the 
 camera against an onboard satellite map, with night (thermal) and celestial (star camera)
 fallbacks. It is vehicle-agnostic (UAV, USV, UGV). By IRIS Systems.
 
-> **Release 0.2 — field validation pending.** Positioning accuracy is measured on bench and
-> replay data only; day vision is not yet accurate enough to replace GPS. See
-> [docs/VALIDATION_STATUS.md](docs/VALIDATION_STATUS.md) for every measured number and
-> [docs/ENGINEERING_BACKLOG.md](docs/ENGINEERING_BACKLOG.md) for open work.
+> **Release 0.2 — field validation pending.** Positioning accuracy is measured on bench,
+> replay and simulator data only, never with NAVERA's own camera on a real vehicle: day
+> vision's accuracy as a GPS replacement is therefore not established. The vehicle outputs
+> are verified in ArduPilot SITL only; PX4 is not tested. See
+> [docs/VALIDATION_STATUS.md](docs/VALIDATION_STATUS.md) for every measured number.
 
 ## How it works
 
@@ -25,10 +26,16 @@ IMU, RTC (liveness, time)                                            │
   its covariance, **which source it came from** and **whether it was measured,
   dead-reckoned or replayed**.
 - `navera_estimator` picks one winner with priority GPS > day > night > celestial. It
-  rejects stale, future-stamped or non-finite estimates, and publishes each measurement once.
-- **FIX** is only given when the uncertainty is known (today, only GPS). Vision and
-  celestial positions are **DEGRADED**. With no usable source, the state is **NO_FIX**,
-  and no old position is re-sent as current.
+  rejects stale, future-stamped or non-finite estimates and impossible covariances, drops a
+  GPS fix older than the last one received, and publishes each measurement once.
+- **FIX** is only given when the uncertainty is stated (a defined covariance type, sigma
+  ≥ 1 cm) and at most 25 m — today, only GPS. Vision and celestial positions are
+  **DEGRADED**. With no usable source, the state is **NO_FIX**, and no old position is
+  re-sent as current.
+- GPS is protected against spoofing: an impossible jump is refused; a GPS that day vision
+  contradicts is first shown and sent **"in doubt"** (DEGRADED, its accuracy no better than
+  the gap), then refused; it is re-accepted only when independent fixes agree again
+  ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §3).
 
 ## Packages
 
@@ -36,16 +43,17 @@ IMU, RTC (liveness, time)                                            │
 |---|---|
 | `navera_msgs` | `PositionEstimate`, `NavStatus`, `SourceHealth` message contracts |
 | `navera_estimator` | Position arbiter → `/navera/position`, `/navera/nav_status` |
-| `navera_common` | Shared helpers (process lifecycle, geodesy / dead-reckoning) |
+| `navera_common` | Shared helpers (process lifecycle, geodesy, track velocity, QoS, boot discovery) |
 | `gps_pkg` | GPS driver (NMEA over serial, checksummed, auto-restart on port loss) |
-| `imu_pkg` | IMU driver (BNO085, I²C) — liveness only for now |
+| `imu_pkg` | Box IMU driver (BNO085, I²C): attitude for the camera, true north |
 | `rtc_pkg` | Real-time clock (DS3231, I²C) |
 | `camera_pkg` | Frame source (live camera or CSV + image replay) with start/ack protocol |
-| `day_pkg` | Day localization (DINOv2 retrieval against satellite tiles) |
+| `day_pkg` | Day localization (local feature matching against satellite tiles around the prior; DINOv2 retrieval as fallback; dead-reckoning along the measured track) |
 | `night_pkg` | Night localization (STHN thermal-to-satellite homography) |
 | `cn_pkg` | Celestial localization (astrometry.net plate solving) |
-| `simulation_web` | Web bridge: operator view, dashboard, map tiles, launch files |
-| `navera_tools` | Bench tools (`sensor_sim.py`, scenario scripts) — test machines only |
+| `navera_output` | Output to the vehicle (NMEA, MAVLink `GPS_INPUT`, ROS `/navera/fix`) and the vehicle link (autopilot → NAVERA) |
+| `simulation_web` | Web bridge: operator view, dashboard, `/mission` page, map tiles, launch files |
+| `navera_tools` | Field tools (`check_box.py`, `record_session.sh`, `evaluate_session.py`, `calibrate_camera.py`) and bench / simulation tools (`sensor_sim.py`, mission simulator, demo) — see [navera_tools/README.md](navera_tools/README.md) |
 
 `vision_pkg/` is legacy (the first prototype) and is not used. The `isaac_ros_*` and
 `isaac_common*` folders are vendored NVIDIA packages; no NAVERA package depends on them.
@@ -62,17 +70,18 @@ colcon build --symlink-install --packages-up-to \
 source install/setup.bash
 ```
 
-Python dependencies (user install, pinned to the Jetson PyTorch build):
+Python dependencies — the same list as [deploy/README.md §3.3](deploy/README.md) (which
+installs them for the `navera` service user), pinned to the Jetson PyTorch build:
 
 ```bash
-printf 'torch==2.8.0\ntorchvision==0.23.0\nnumpy<2\nsetuptools<80\n' > /tmp/constraints.txt
+printf 'torch==2.8.0\ntorchvision==0.23.0\nnumpy<2\nsetuptools<80\n' > ~/navera-constraints.txt
 pip3 install --user --no-deps --index-url https://pypi.jetson-ai-lab.io/jp6/cu126/+simple \
   torch==2.8.0 torchvision==0.23.0
-pip3 install --user -c /tmp/constraints.txt "numpy<2" "scipy>=1.11,<1.14" timm kornia \
-  safetensors einops huggingface_hub scikit-learn pandas flask flask-cors pyserial pynmea2 "astropy<7" \
-  pymavlink pygeomag==1.1.0
-# box sensors (BNO085 IMU, DS3231 clock) — see deploy/README.md for the service user
-pip3 install --user adafruit-blinka adafruit-circuitpython-bno08x adafruit-circuitpython-ds3231
+pip3 install --user -c ~/navera-constraints.txt \
+  "numpy<2" "scipy>=1.11,<1.14" timm kornia safetensors einops huggingface_hub \
+  scikit-learn pandas "astropy<7" opencv-python==4.11.0.86 \
+  pyserial pynmea2 pymavlink pygeomag==1.1.0 \
+  Jetson.GPIO adafruit-blinka adafruit-circuitpython-bno08x adafruit-circuitpython-ds3231
 ```
 
 ## Data (not in git)
@@ -84,7 +93,10 @@ pip3 install --user adafruit-blinka adafruit-circuitpython-bno08x adafruit-circu
 | `NAVERA_STHN_DIR`, `NAVERA_STHN_WEIGHTS` | STHN code and `one_stage/model.safetensors` (HuggingFace `xjh19972/STHN`) |
 | `TORCH_HOME` | DINOv2 weights cache (pre-fill it: the vehicle may have no internet) |
 
-Set these in `/etc/navera/navera.env` (see [deploy/navera.env.example](deploy/navera.env.example)).
+Set these in `/etc/navera/navera.env` (see [deploy/navera.env.example](deploy/navera.env.example));
+the data disk and how the files get onto it: [deploy/README.md §3.10](deploy/README.md). Maps
+of other areas are generated on the `/mission` page (deploy/README.md §8; check the imagery
+licence).
 
 ## Run
 
@@ -100,7 +112,7 @@ ros2 launch simulation_web day_sim.launch.py          # day pipeline + web bridg
 # Operator view:  http://<jetson-ip>:8181/operator
 ```
 
-Bench test without any hardware (test machine only):
+Bench test without any hardware (a test machine, never a box on a vehicle):
 
 ```bash
 NAVERA_ALLOW_SIM=1 python3 navera_tools/sensor_sim.py
@@ -108,17 +120,25 @@ NAVERA_ALLOW_SIM=1 python3 navera_tools/sensor_sim.py
 
 ## Web interface
 
-- `/operator`: the operator view. It shows the arbiter's decision (source, FIX /
-  DEGRADED / NO FIX / OFFLINE, age, reason). The vehicle marker disappears whenever
-  there is no valid position.
+- `/operator`: the operator view. It shows the arbiter's decision (source, e.g.
+  `DAY VISION · DEGRADED · ±34 m`, age, reason); a vision position is shown carried to now
+  along NAVERA's track ("photo 1.8 s old, carried to now"), and a warning appears when 30 %
+  of the last minute's camera frames could not be used (too tilted, turning too fast, no
+  attitude). The vehicle marker disappears whenever there is no valid position.
+- `/mission`: mission preparation — vehicle settings, route maps, terrain warning, start
+  without GPS (deploy/README.md §8).
 - `/`: the mission planner and replay dashboard.
-- Starting a mission (`POST /api/set_mission`) needs the `X-Navera-Token` header
-  (`NAVERA_WEB_TOKEN`). Without a token the interface is read-only.
+- Every control action needs the `X-Navera-Token` header (`NAVERA_WEB_TOKEN`); without a
+  token the interface is read-only. After 5 wrong codes in 60 s an address is refused for
+  60 s.
 
 ## Documentation
 
 - [docs/VALIDATION_STATUS.md](docs/VALIDATION_STATUS.md): what is measured, how, and the known limitations
-- [deploy/README.md](deploy/README.md): boot services, installation (in French)
-- [CLAUDE.md](CLAUDE.md): engineering rules for this codebase
+- [deploy/README.md](deploy/README.md): installation, boot services, sources, outputs, data disk, `/mission`
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): data flow, topics, the position contract, protocols, web API
-- [AUDIT.md](AUDIT.md): codebase audit (2026-06-30, historical)
+- [docs/ARDUPILOT_INTEGRATION.md](docs/ARDUPILOT_INTEGRATION.md): wiring and ArduPilot parameters
+- [docs/PX4_INTEGRATION.md](docs/PX4_INTEGRATION.md): PX4 — what is and is not possible (not tested)
+- [docs/FIELD_TEST_PROCEDURE.md](docs/FIELD_TEST_PROCEDURE.md): the first real test
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): symptom → cause → fix
+- Package READMEs: [navera_output](navera_output/README.md), [imu_pkg](imu_pkg/README.md), [navera_tools](navera_tools/README.md)

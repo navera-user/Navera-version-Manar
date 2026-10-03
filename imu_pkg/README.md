@@ -3,12 +3,19 @@
 `imu_node` reads the BNO085 (9-DoF with on-chip fusion) over I²C and publishes
 `/navera/sensors/imu` (sensor_msgs/Imu) — by default on bus 1 (header pins 27 SDA / 28 SCL)
 at address 0x4A, 50 Hz. Started at boot by `navera-imu.service`
-(`ros2 launch imu_pkg imu.launch.py i2c_bus:=1 publish_rate:=50.0`).
+(`ros2 launch imu_pkg imu.launch.py i2c_bus:=<bus> publish_rate:=50.0`, the bus where
+navera-discover found the chip, `NAVERA_BOX_IMU_BUS`, default 1). When navera-discover found
+no BNO085 on I²C buses 1 and 7 (`NAVERA_BOX_IMU=0`), the service stays idle ("no box IMU
+found at boot … IMU service idle") instead of restarting in a loop.
 
-Used when `NAVERA_SENSOR_SOURCE=box` (the default): the live camera straightens frames with
-its attitude, the night pipeline takes its heading, the celestial pipeline the star camera's
-attitude, and the estimator checks its liveness. With `vehicle` or `ros` those nodes read the
-vehicle's attitude instead, and this service is not needed.
+Used when `NAVERA_SENSOR_SOURCE=box` (chosen first by `auto` when the chip is found, and
+used when the key is absent): the live camera straightens frames with its attitude and
+checks the rotation rate, day vision's dead-reckoning turns with the heading change it
+measures, the night pipeline takes its heading, the celestial pipeline the star camera's
+attitude, and the estimator checks its liveness. With `vehicle` or `ros` those nodes read
+the vehicle's attitude instead, and this service is not needed. (A vehicle ROS IMU must
+itself give yaw from true north: NAVERA converts only this box IMU —
+deploy/README.md §6.)
 
 ## Orientation
 
@@ -65,10 +72,15 @@ A sensor that stops reporting is detected (1 s of bit-identical samples) and
 re-initialised; reconnection is attempted at most every 2 s. Initialisation errors are
 logged as "BNO085 init failed on I2C bus 1 @ 0x4A: …".
 
-The IMU is not yet used for dead-reckoning (no inertial navigation).
+The IMU gives attitude and heading changes only: there is no inertial navigation
+(accelerations are not integrated into a position). Day vision's dead-reckoning carries its
+last position along the velocity measured from recent fixes, turned by the heading change
+this IMU measures (docs/ARCHITECTURE.md §5).
 
 ## Requirements
 
 The Adafruit Blinka stack (`board`, `busio`, `adafruit_bno08x`: pip packages
 `adafruit-blinka`, `adafruit-circuitpython-bno08x`), `pygeomag==1.1.0` for true north, and
-the service user in the `i2c` group (see deploy/README.md §3).
+the service user in the `i2c` group (see deploy/README.md §3). Subscriptions to this topic
+are BEST_EFFORT (depth 50) in NAVERA's nodes; this node publishes RELIABLE, which they
+receive.

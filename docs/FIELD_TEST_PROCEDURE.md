@@ -8,7 +8,8 @@ mode* beside it. A GPS-denied flight comes only after the recordings show vision
 working (step 8).
 
 Prerequisite: the box is installed as described in [deploy/README.md](../deploy/README.md)
-(workspace `/home/navera/isaac_ros_common`, services installed, `/etc/navera/navera.env`).
+(workspace `/home/navera/isaac_ros_common`, services installed, `/etc/navera/navera.env`,
+the data disk mounted on `/data` with the map — deploy/README.md §3.10).
 
 ## 0. The NAVERA shell
 
@@ -36,11 +37,11 @@ sudo install -d -o navera -g navera /data/navera/rec
 |---|---|
 | Camera | Insta360 ONE R, **4K wide-angle module**, **USB webcam mode**. Address it by its stable name `/dev/v4l/by-id/usb-…-video-index0` (`ls -l /dev/v4l/by-id/`), not `/dev/videoN` |
 | Mount, multirotor | **on a gimbal** holding it straight down (`NAVERA_CAMERA_GIMBAL=true`). A fixed camera leans with the drone: 45° at speed in simulation, the limit (`NAVERA_CAMERA_MAX_TILT_DEG`, default 45) |
-| Mount, plane / boat / robot | fixed, looking straight down, image top towards the nose (`NAVERA_CAMERA_MOUNT_RPY=0,0,0`; otherwise measure and enter the angles) |
+| Mount, plane / boat / robot | fixed, looking straight down, image top towards the nose (`NAVERA_CAMERA_MOUNT_RPY=0,0,0`; otherwise measure and enter the angles). A fixed camera's frames taken while the vehicle rotates faster than `NAVERA_CAMERA_MAX_RATE_DPS` (30°/s) are not used: fly smooth turns on the recording legs |
 | IMU | BNO085 on I²C bus 1 (0x4A), rigidly fixed. Mounting angles: `NAVERA_IMU_MOUNT_RPY` (roll,pitch,yaw in degrees) in `/etc/navera/navera.env` or on the `/mission` page |
 | GPS | Neo-M8N on `/dev/ttyTHS1`, 9600 baud (`NAVERA_GPS_SOURCE=serial`), antenna with a clear sky view, away from the Jetson |
 | Clock | DS3231 on I²C bus 1 (0x68), backup cell fitted |
-| Vehicle link (if used) | one autopilot port for NAVERA's reading (`NAVERA_VEHICLE_MAVLINK_URL`), one for NAVERA's GPS output (`NAVERA_MAVLINK_URL`), or one shared through mavlink-router — see [ARDUPILOT_INTEGRATION.md](ARDUPILOT_INTEGRATION.md) |
+| Vehicle link (if used) | one autopilot port, owned by `navera-vehicle-link` (`NAVERA_VEHICLE_MAVLINK_URL`), which relays NAVERA's GPS output (`NAVERA_MAVLINK_URL=udpout:127.0.0.1:14650` — what navera-discover sets up); or two ports; or mavlink-router — see [ARDUPILOT_INTEGRATION.md](ARDUPILOT_INTEGRATION.md). PX4: [PX4_INTEGRATION.md](PX4_INTEGRATION.md) (not tested; no MAVLink output) |
 
 ## 2. Lens calibration (once per camera and resolution)
 
@@ -87,24 +88,34 @@ NAVERA_GPS_SOURCE=serial             # or vehicle (autopilot's 2nd GPS), or ros 
 NAVERA_GROUND_ALTITUDE_M=<site elevation above the WGS84 ellipsoid, if known>
 ```
 
+(Writing the sources, as above, makes the test independent of what navera-discover finds;
+`auto` also works — check its choices in the first lines of `check_box.py`.)
+
 The vehicle settings can be set either there or on the `/mission` page (port 8181):
 `NAVERA_MAX_SPEED_KMH=<cruise + 50 %>`, `NAVERA_VEHICLE_TYPE`, `NAVERA_IMU_MOUNT_RPY`,
-`NAVERA_DECLINATION_DEG`. Then restart:
+`NAVERA_DECLINATION_DEG`. Then restart every NAVERA unit you have enabled (one command:
+systemd runs navera-discover first; drop the units you have not enabled):
 
 ```bash
-sudo systemctl restart navera-estimator navera-imu navera-gps navera-pipeline-day navera-web
+sudo systemctl restart navera-discover navera-estimator navera-gps navera-imu navera-rtc \
+    navera-vehicle-link navera-pipeline-day navera-output navera-web
 ```
 
 Whatever the sources, NAVERA needs a GPS fix when the test starts: it is the first
-position day vision searches around.
+position day vision searches around. (Where there is no GPS at all, the `/mission` page's
+"Start without GPS" gives day vision a search area instead — not needed for these tests.)
 
 ## 4. Map of the test area
 
 Page `/mission` (`http://<jetson-ip>:8181/mission`, with the control token): import the
 autopilot's mission file (or click the route), **Generate the map**, then **Activate this
 map**. Day vision only matches against the activated map: without it, it reports no
-position. Generating and activating are refused while the vehicle is armed or NAVERA is
-navigating without GPS — prepare on the ground.
+position. Generating and activating are refused while the vehicle is armed, moving
+(faster than 1.5 m/s) or NAVERA is navigating without GPS — prepare on the ground. Outside
+the delivered Sousse map, tiles must come from `NAVERA_TILE_URL` (internet while
+generating; check the imagery licence — deploy/README.md §8). Read the page's terrain
+warning: route the recording legs over textured ground, with leg 5 as the only deliberate
+uniform stretch.
 
 ## 5. Pre-flight check (every time)
 
@@ -199,19 +210,27 @@ With a safety pilot able to take manual control:
    ```
    then `sudo systemctl restart navera-output`. The output service refuses to start with
    forwarding and no accuracy. An autopilot told a position is better than it is rejects it
-   and fails safe (measured in simulation, `navera_output/README.md`).
+   and fails safe (measured in simulation, `navera_output/README.md`). ArduPilot caps a
+   stated accuracy at 100 m (it would trust a larger value more than stated; `check_box.py`
+   WARNs). Forward over **MAVLink**: NMEA carries no accuracy, and vision positions are not
+   sent over it (`NAVERA_NMEA_FORWARD_DEGRADED` stays off).
 3. **Lose GPS** at cruise, over the recorded route — unplug the receiver, or cut it in
    software on the box:
    ```bash
    sudo systemctl stop navera-gps
    ```
    and `sudo systemctl start navera-gps` to restore it.
-4. Abort on the first autopilot failsafe or position jump.
+4. Abort on the first autopilot failsafe or position jump. An autopilot does not resume its
+   mission by itself after a failsafe: the safety pilot takes over.
 
 ## What the simulation already shows (not a substitute for steps 6–8)
 
 Simulated physical camera (lens, true attitude, light) through NAVERA's real chain,
 GPS jammed 240 s: gimbal at 72 km/h — 190 matches, vision < 1 m, autopilot error
 median 11 m, mission completed; fixed camera — frames at the 45° tilt limit, autopilot
-failsafe. The simulated camera sees the map's own imagery over flat ground: real
-frames will match less often and less accurately.
+failsafe (such frames are now also refused when the vehicle turns faster than 30°/s).
+With day vision's dead-reckoning along the measured track (simulator, GPS jammed, gimbal):
+land route without failsafe, error median 10 m, max 33 m; across the bay, carried 90 s
+over the sea stating ±300 m with a true error of at most 146 m. The simulated camera sees
+the map's own imagery over flat ground: real frames will match less often and less
+accurately.

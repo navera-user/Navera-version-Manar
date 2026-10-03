@@ -52,7 +52,11 @@ GPS is in use the pipelines stay idle (except in shadow mode, `NAVERA_SHADOW_MOD
 keep tracking it; when the arbiter stops using GPS they continue from its last vetted
 position (day vision starts from its own last fix instead when that fix shows the GPS was
 drifting away). **NAVERA therefore needs one
-GPS fix at start, whatever its sources.** After a service restart, day vision reuses its
+GPS fix at start, whatever its sources** — or, for day vision, an operator start position
+(`/navera/operator/start_position`, latched, sent by the `/mission` page's "Start without
+GPS"): while no GPS is trusted, day vision searches there in a circle as wide as the stated
+accuracy (5–20000 m). That message is a search area, never published on
+`/navera/position` nor sent to the vehicle. After a service restart, day vision reuses its
 last position if it is less than 5 minutes old (`navera_common/state_store.py`,
 `NAVERA_STATE_DIR`). The celestial node uses its `prior_lat` / `prior_lon` parameters, else
 the last valid `/navera/estimate/gps` fix.
@@ -76,12 +80,26 @@ Every source publishes the same message on `/navera/estimate/<source>`:
 
 - Priority: GPS > day > night > celestial. A source is eligible when `valid`, `mode` is
   MEASURED or PROPAGATED, its stamp is fresh (per-source timeout, not more than 0.5 s in the
-  future), and its position and covariance are finite.
+  future), its position is finite and in range, and its covariance is one: finite,
+  non-negative variances, symmetric, horizontal block positive semi-definite (a covariance
+  that is not would break a consumer's filter: the estimate is not used at all).
+- Freshness windows (production config `navera_estimator/config/estimator_params.yaml`):
+  GPS 3 s, day vision 5 s (frames come every 1–4 s under load; the node's own default is
+  3 s), night 5 s, celestial 45 s.
+- **Stated accuracy.** An accuracy counts only with a defined bounded covariance type
+  (approximated, diagonal known, known) and a horizontal sigma of at least 1 cm. Otherwise
+  (type unknown or undefined, all-zero covariance) the position is DEGRADED "uncertainty
+  unknown" and is never used as an independent reference.
+- **A late GPS fix** (stamped before the newest one received: serial / MAVLink buffering,
+  DDS reordering) is dropped, not scored as a jump. A fix stamped in the future does not set
+  the order; it is refused by eligibility.
 - A higher-priority source must stay usable for `switch_holdoff_s` (2 s) before it takes over.
-- `/navera/position`: the winning estimate, published once per new measurement.
+- `/navera/position`: the winning estimate, published once per new measurement
+  (de-duplicated on its stamps **and** content: a source holding its header stamp while its
+  position changes does not freeze the output).
 - `/navera/nav_status` (5 Hz): the state, the active source and mode, the health of each
   source, and the reason in plain words. The states are:
-  - **FIX:** measured, with a known σ ≤ `fix_max_sigma_m` (25 m) — today only GPS;
+  - **FIX:** measured, with a stated σ ≤ `fix_max_sigma_m` (25 m) — today only GPS;
   - **DEGRADED:** a position with an unknown or larger uncertainty, or dead-reckoned — every
     vision and celestial position today (day vision states 30 m until measured);
   - **NO_FIX:** no usable source;
@@ -96,18 +114,26 @@ Every source publishes the same message on `/navera/estimate/<source>`:
 2. **Cross-check against vision while GPS is good.** While GPS is trusted, day vision still
    matches one frame around the GPS position every 2 s (`gps_check_period_s`, within
    `gps_check_radius_m` 600 m) and publishes it as an independent estimate with its stated
-   accuracy. The estimator compares every GPS fix with the freshest independent source of
-   **stated** accuracy (vision or celestial with a known covariance), at the instant that
-   source measured. GPS is refused ("GPS drifting away from …") when either:
-   - it disagrees beyond 5 σ (+ 50 m + max speed × time gap) for 3 s
-     (`gps_crosscheck_sigmas`, `gps_crosscheck_persist_s`), with at least **2 distinct**
-     independent fixes disagreeing (one wrong vision fix never refuses GPS); or
-   - **5 distinct independent fixes in a row** disagree beyond 3 σ (+ max speed × time gap)
-     — a slow drift, caught before the 5 σ gate.
+   accuracy. The estimator compares every GPS fix with the most accurate fresh independent
+   source of **stated** accuracy (a MEASURED vision or celestial position — never a
+   dead-reckoned one), at the instant that source measured. σ below is that source's stated
+   accuracy; "time gap" is the time between the two measurements.
+   - **In doubt.** From **2 distinct independent fixes in a row** beyond 3 σ (+ max speed ×
+     time gap), GPS is still used but **"in doubt"**: its published accuracy is made no
+     better than the gap (which makes it DEGRADED: in practice the gap exceeds 25 m), and
+     the reason reads `GPS IN DOUBT: day vision disagrees by N m (possible slow spoofing)`.
+     The operator sees it and the autopilot already weighs GPS less before any switch to
+     vision. A gap above 500 m is more likely a wrong vision match: then no doubt is applied.
+   - **Refused** ("GPS drifting away from …") when either **5 distinct independent fixes in
+     a row** disagree beyond 3 σ (+ max speed × time gap) — a slow drift; or it disagrees
+     beyond 5 σ + 50 m (+ max speed × time gap) for 3 s (`gps_crosscheck_sigmas`,
+     `gps_crosscheck_persist_s`) with at least **2 distinct** independent fixes disagreeing
+     (one wrong vision fix never refuses GPS).
 3. **Re-acceptance.** A GPS refused by the cross-check, or returning after an outage ("jam,
-   then spoof"), is re-accepted **only when it agrees with an independent fix** (within the
-   5 σ tolerance: "GPS confirmed by … — re-accepted"). Only if no independent source of
-   stated accuracy has been heard for 120 s is GPS judged on its own again (kinematic gate).
+   then spoof"), is re-accepted **only when 2 distinct independent fixes agree with it
+   within 3 σ** (+ max speed × time gap): "GPS confirmed by … (2 fixes) — re-accepted". An
+   independent fix beyond 3 σ keeps it refused. Only if no independent source of stated
+   accuracy has been heard for 120 s is GPS judged on its own again (kinematic gate).
 
 All three protections need an independent source with a stated accuracy. With vision of
 unknown accuracy only the kinematic gate applies: a sudden jump is caught, a patient or
@@ -146,9 +172,15 @@ For every frame offered to day/night vision:
 1. **Exposure stamp:** grab time − `NAVERA_CAMERA_LATENCY_S` (ROS input: the image stamp −
    latency). Every sensor value below is taken at that instant.
 2. **Attitude** at the exposure, interpolated from the `imu_topic` history (box IMU, vehicle
-   link or the vehicle's ROS IMU, per `NAVERA_SENSOR_SOURCE`). No attitude → the frame is
-   marked unusable ("no attitude at the frame's exposure …"); a frozen attitude (1 s of
-   identical samples) is not used.
+   link or the vehicle's ROS IMU, per `NAVERA_SENSOR_SOURCE`; received BEST_EFFORT, depth 50,
+   so BEST_EFFORT and RELIABLE publishers both work — the GPS and rangefinder subscriptions
+   too). The orientation is read as ENU with yaw from true north (no declination is applied
+   here). No attitude within 0.2 s of the exposure → the frame is marked unusable ("no
+   attitude at the frame's exposure …"); a frozen attitude (50 identical samples in a row)
+   is not used. **Rotation rate:** the rotation between the attitude 0.2 s before the
+   exposure and at it gives `rate_dps` (in the frame meta); with a fixed camera a frame
+   taken while rotating faster than `NAVERA_CAMERA_MAX_RATE_DPS` (30°/s) is marked unusable
+   (never with a gimbal).
 3. **Undistortion** with the lens calibration (`NAVERA_CAMERA_CALIBRATION`, from
    `navera_tools/calibrate_camera.py`; refused if made at another resolution or, for USB, with
    another camera), or an ideal lens of `NAVERA_CAMERA_HFOV_DEG`.
@@ -185,18 +217,43 @@ independent check of GPS.
 the sources left to `auto`: attitude box IMU > autopilot > ROS; GPS box receiver >
 autopilot's 2nd GPS > ROS; camera USB > CSI > ROS; MAVLink output relayed by
 `vehicle_link` (UDP 14650) on the autopilot link it owns; `/navera/fix` on a ROS
-vehicle's domain. Written settings always win.
+vehicle's domain. Written settings always win. Rules:
+
+- a GPS receiver must send checksummed NMEA **with satellite data** (GSV/GSA; an
+  autopilot's NMEA output has none); several: the one with a fix, wired UART first, a
+  warning;
+- the autopilot's second GPS only when `GPS_TYPE2` / `GPS2_TYPE` (read from it) says it is
+  a real receiver — never type 14 (the MAVLink-fed GPS that NAVERA's own `GPS_INPUT`
+  feeds), never when the types cannot be read;
+- no GPS found: `NAVERA_GPS_SOURCE=none`, the GPS service idles (no default port opened);
+- several autopilots: the wired port first, a warning when they are different systems;
+  `NAVERA_MAVLINK_SYSID` = the autopilot's system id;
+- `ROS_DOMAIN_ID` / `ROS_LOCALHOST_ONLY` written in navera.env are never changed; a ROS
+  vehicle on another domain is reported; `ROS_DOMAIN_ID=auto` joins it (deploy/README.md §6);
+- cameras: the star camera is not a candidate, a written `NAVERA_CAMERA_DEVICE` is kept,
+  several → a warning;
+- ports held by another program, the kernel console and serial-getty ports are never
+  probed;
+- `NAVERA_BOX_IMU` / `NAVERA_BOX_RTC` record whether the chips answer; `navera-imu` /
+  `navera-rtc` idle without them.
 
 ## 6. Output to the vehicle — `navera_output`
 
 `vehicle_output` sends the arbiter's decision as NMEA (GGA + RMC), MAVLink `GPS_INPUT` and a
 ROS `NavSatFix` on `/navera/fix` (`NAVERA_ROS_FIX_TOPIC`). FIX is sent as a fix with its
-accuracy; DEGRADED is withheld unless `NAVERA_FORWARD_DEGRADED=true` with a stated
-`NAVERA_DEGRADED_SIGMA_M`; everything else is an explicit "no fix". Each position is sent
-once, stamped with its measurement instant, and not at all if measured more than
-`NAVERA_MAX_MEASUREMENT_AGE_S` (5 s) ago; a vision position is carried to the present along the measured ground velocity (accuracy grown by its age). Details:
+accuracy. DEGRADED is withheld from the autopilot unless `NAVERA_FORWARD_DEGRADED=true`
+with a stated `NAVERA_DEGRADED_SIGMA_M`, and then goes over MAVLink only — NMEA carries no
+accuracy, so it says "no fix" for it unless `NAVERA_NMEA_FORWARD_DEGRADED=true`. ROS gets
+DEGRADED positions by default (`NAVERA_ROS_FORWARD_DEGRADED`), with `status.service` 0 and
+the stated accuracy in the covariance. Everything else is an explicit "no fix". Each
+position is sent once, stamped with its measurement instant, and not at all if measured
+more than `NAVERA_MAX_MEASUREMENT_AGE_S` (5 s) ago; a position older than
+`position_timeout_s` (5 s) is no longer current. A vision / celestial position is carried
+to the present along the ground velocity fitted to the recent positions (20 s), its
+accuracy grown by the speed error × its age; with no velocity known it is sent stamped when
+measured, its accuracy grown by the maximum speed × its age. Details:
 [navera_output/README.md](../navera_output/README.md), autopilot setup:
-[ARDUPILOT_INTEGRATION.md](ARDUPILOT_INTEGRATION.md).
+[ARDUPILOT_INTEGRATION.md](ARDUPILOT_INTEGRATION.md), [PX4_INTEGRATION.md](PX4_INTEGRATION.md).
 
 ## 7. Topics
 
@@ -208,7 +265,8 @@ once, stamped with its measurement instant, and not at all if measured more than
 | `/navera/sensors/rtc_time`, `rtc_status` | TimeReference, String (JSON) | rtc_node | cn_subscriber, check_box |
 | `/navera/vehicle/imu`, `altitude_agl`, `relative_alt` | Imu, Range, PointStamped | vehicle_link_node | live camera and pipelines (`vehicle`) |
 | `/navera/vehicle/gps2` | sensor_msgs/NavSatFix | vehicle_link_node | ros_gps_node (`NAVERA_GPS_SOURCE=vehicle`) |
-| `/navera/vehicle/status` | String (JSON) | vehicle_link_node | web bridge (armed lock), check_box |
+| `/navera/vehicle/status` | String (JSON) | vehicle_link_node | web bridge (armed lock), vehicle_output (relay check), check_box |
+| `/navera/operator/start_position` | navera_msgs/PositionEstimate (latched; source EXTERNAL) | web bridge (`/mission`) | day_subscriber (search area only) |
 | `/navera/vision/altitude_agl` | sensor_msgs/Range | day_subscriber | live camera (height from the image) |
 | `/navera/estimate/{gps,day,night,cn}` | navera_msgs/PositionEstimate | sources | estimator |
 | `/navera/position` | navera_msgs/PositionEstimate | estimator | vehicle_output, web bridge, day/night prior, imu_node (declination) |
@@ -239,17 +297,18 @@ once, stamped with its measurement instant, and not at all if measured more than
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /operator` | Operator view: the arbiter's decision (FIX / DEGRADED / NO FIX / OFFLINE / LINK LOST). The vehicle marker is removed whenever there is no valid position |
-| `GET /api/operator_position` | That decision as JSON (`valid`, `state`, `source`, `mode`, `age_s`, `reason`) |
+| `GET /operator` | Operator view: the arbiter's decision (FIX / DEGRADED / NO FIX / OFFLINE / LINK LOST) with the source and stated accuracy; a vision position carried to now; a camera warning when 30 % of the last minute's frames were unusable. The vehicle marker is removed whenever there is no valid position |
+| `GET /api/operator_position` | That decision as JSON (`valid`, `state`, `source`, `source_name`, `mode`, `age_s`, `reason`, and when known `accuracy_m`, `measured_age_s`, `carried_s`, `measured_lat`/`measured_lon`, `camera_warning`) |
 | `GET /` | Mission planner and replay dashboard |
 | `GET /mission`, `GET /api/mission/state` | Mission preparation: vehicle settings, route, route map |
-| `POST /api/mission/{settings,apply,plan,generate,activate,cancel}` | Mission preparation actions; token required |
+| `POST /api/mission/{settings,apply,plan,generate,activate,cancel,start_position,save_mission,delete_mission}` | Mission preparation actions; token required |
 | `GET /tiles/{z}/{x}/{y}` | Satellite tiles from the MBTiles map (read-only, bounded) |
 | `POST /api/set_mission` | Start/rewind the mission; token required |
 | `GET /health` | Liveness of the bridge process |
 
 Control endpoints require the `X-Navera-Token` header equal to `NAVERA_WEB_TOKEN` (none
-configured = read-only). No CORS headers are sent; request bodies are limited to 4 KiB of
+configured = read-only, 403); a wrong code gets 401, and after 5 wrong codes within 60 s the
+address gets 429 for 60 s. No CORS headers are sent; request bodies are limited to 4 KiB of
 JSON (512 KiB for an imported mission file); idle connections time out. With `NAVERA_TLS_CERT` / `NAVERA_TLS_KEY` set, the bridge
 serves HTTPS only (TLS ≥ 1.2).
 
@@ -258,10 +317,13 @@ serves HTTPS only (TLS ≥ 1.2).
 `NAVERA_IMU_MOUNT_RPY`, `NAVERA_DECLINATION_DEG` (validated, written to
 `/var/lib/navera/settings.env`) and, through "Activate", `DAY_DATASET_DIR`. It plans a route
 from an autopilot mission file (`.waypoints`, `.plan`) or a drawn route, generates its
-corridor map (`day_pkg/prepare_area.py`) and activates it. "Apply", "Activate" and
-"Generate" are refused while the vehicle is armed (from `/navera/vehicle/status`) or NAVERA
-is navigating without GPS (`nav_status` DEGRADED). The only root rights are the exact
-`systemctl` commands in `deploy/sudoers/navera-web`.
+corridor map (`day_pkg/prepare_area.py`) and activates it; it estimates the stretches
+without landmarks at planning and measures them at generation. "Apply", "Activate" and
+"Generate" are refused while the vehicle is armed (from `/navera/vehicle/status`), while
+NAVERA's own track (`/navera/position`) moves faster than 1.5 m/s, or while NAVERA is
+navigating without GPS (`nav_status` DEGRADED). "Start without GPS" publishes the operator
+start position (§1). The only root rights are the exact `systemctl` commands in
+`deploy/sudoers/navera-web`.
 
 ## 10. Deployment
 

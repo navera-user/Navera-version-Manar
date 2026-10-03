@@ -14,7 +14,8 @@ below is marked:
 - **Source** — read in the ArduPilot 4.5.7 source code, not exercised.
 - **Not verified** — recommendation to be confirmed on the real vehicle.
 
-PX4: not tested.
+PX4: not tested, and NAVERA's MAVLink output (`GPS_INPUT`) is not a message PX4 handles —
+see [PX4_INTEGRATION.md](PX4_INTEGRATION.md).
 
 ## 1. The two connections
 
@@ -23,9 +24,20 @@ PX4: not tested.
 | Output: NAVERA as a GPS | NAVERA → autopilot | `navera-output` | `NAVERA_MAVLINK_URL` (MAVLink `GPS_INPUT`) or `NAVERA_NMEA_PORT` (NMEA) |
 | Vehicle link | autopilot → NAVERA | `navera-vehicle-link` | `NAVERA_VEHICLE_MAVLINK_URL` |
 
-**One autopilot port per NAVERA connection**: the output and the vehicle link each open
-their own serial port or network connection. Either wire **two TELEM ports**, or run
-`mavlink-router` on the Jetson to share one autopilot port (§6).
+**One program per serial port.** Three ways to connect:
+
+- **One TELEM port (what navera-discover sets up):** `navera-vehicle-link` owns the port
+  (`NAVERA_VEHICLE_MAVLINK_URL`) and relays the output, which sends to it locally
+  (`NAVERA_MAVLINK_URL=udpout:127.0.0.1:14650`). The output then depends on the vehicle
+  link: while no vehicle link is connected to an autopilot, `navera-output` logs every 30 s
+  that "the autopilot receives NOTHING from NAVERA", and `check_box.py` FAILs this setting
+  when `NAVERA_VEHICLE_MAVLINK_URL` is empty. *Verified in ArduPilot SITL only*
+  (`navera_tools/tests/sitl_discovery.py`).
+- **Two TELEM ports:** the output and the vehicle link each open their own.
+- **mavlink-router** on the Jetson shares one port (§6, *not verified*).
+
+`check_box.py` FAILs a serial port named by two settings (GPS, NMEA output, MAVLink
+output, vehicle link). `NAVERA_MAVLINK_URL=off` turns the MAVLink output off.
 
 MAVLink addresses use one format everywhere (`navera_output/mavlink_url.py`):
 `serial:/dev/ttyTHS2:921600` (documented form; `/dev/ttyTHS2,921600` is also accepted),
@@ -72,10 +84,31 @@ Autopilot parameters (names as in ArduPilot 4.5: `GPS_TYPE`, `GPS_TYPE2`, `GPS_D
 | `SERIALn_BAUD` | the NAVERA baud: 921 = 921600, 115 = 115200, 57 = 57600 | | Not verified (SITL used TCP) |
 | `GPS_AUTO_CONFIG` | 0 | no receiver configuration sent to a "GPS" that is NAVERA | SITL |
 | `EK3_SRC1_POSXY` | 3 (GPS, default) | position from NAVERA | SITL (default) |
-| `EK3_SRC1_VELXY` | **0** | vision fixes carry no velocity, and ArduPilot kept fusing the *last* GPS velocity received: after GPS loss that stale velocity caused a glitch and an EKF failsafe (LAND) within 40 s. Velocity then comes from the autopilot's own IMU | SITL |
+| `EK3_SRC1_VELXY` | **0** | vision fixes carry no velocity, and ArduPilot kept fusing the *last* GPS velocity received: after GPS loss that stale velocity caused a glitch and an EKF failsafe (LAND) within 40 s. Cost: see below | SITL |
 | `EK3_SRC1_VELZ` | **0** | same | SITL |
 | `EK3_SRC1_POSZ` | 1 (barometer, default) | vision fixes carry no altitude | SITL (default) |
 | `GPS_DELAY_MS` (`GPS1_DELAY_MS`) | see §5 | lag compensation | Not verified |
+
+**What `EK3_SRC1_VELXY = 0` / `EK3_SRC1_VELZ = 0` cost.** These settings remove GPS velocity
+fusion **at all times, also while the GPS is healthy** and NAVERA passes it through with the
+receiver's velocity (*Source*: with the velocity source set to none, the EKF does not fuse
+GPS velocity). The EKF then gets its velocity from integrating the IMU, corrected only
+through position (and barometric height) fusion: velocity estimates are noisier and lag
+more, which typically shows in position hold, wind estimation and the EKF's ability to
+reject a GPS glitch by its velocity innovation. How much this matters for your vehicle has
+**not been measured** with NAVERA; in SITL with GPS the autopilot's position error stayed at
+1–3 m with these settings ([VALIDATION_STATUS.md](VALIDATION_STATUS.md), "Autopilot in the
+loop"). Weigh it against the stale-velocity failsafe above. ArduPilot's alternative source
+sets (`EK3_SRC2_*`, switched by an RC option or a script, §8) could keep GPS velocity while
+GPS is good: *not tested with NAVERA*.
+
+**Stated accuracy above 100 m.** ArduPilot's EKF3 limits the accuracy it uses for a GPS
+position: R = constrain(reported accuracy, `EK3_POSNE_M_NSE`, 100 m)²
+(`AP_NavEKF3_PosVelFusion.cpp`; `AP_NavEKF3_Measurements.cpp` also caps it at 100 m —
+*Source*). A forwarded `NAVERA_DEGRADED_SIGMA_M` above 100 m (or a source's own accuracy,
+plus its lag) is therefore trusted **as 100 m**, i.e. more than stated. `check_box.py`
+WARNs above 100 m. With forwarding, state at most what you measured, and remember that
+above 100 m the autopilot does not know how bad the position is.
 
 **GPS 1 or GPS 2.** NAVERA sends `GPS_INPUT` with `gps_id = 0`. In ArduPilot 4.5.7 every GPS
 instance of type 14 receives every `GPS_INPUT`, whatever its `gps_id` (*Source*), so
@@ -91,10 +124,18 @@ vehicle with GPS (NAVERA forwards it as a FIX), or set the origin explicitly
 
 **What the autopilot receives when GPS is lost.** Vision positions are DEGRADED and are
 **not sent** unless `NAVERA_FORWARD_DEGRADED=true` with `NAVERA_DEGRADED_SIGMA_M` (the
-accuracy the EKF must assume — use a measured value). Without it the autopilot receives
-"no fix" and its own failsafe acts (Copter LAND, Rover/boat HOLD in SITL). With it, positions
-are sent with 0 satellites: arming checks that require satellites must be adapted by the
-integrator, knowingly. See [navera_output/README.md](../navera_output/README.md).
+accuracy the EKF must assume — use a measured value, at most 100 m as above). Without it
+the autopilot receives "no fix" and its own failsafe acts (Copter LAND, Rover/boat HOLD in
+SITL); an autopilot does not resume its mission by itself after a failsafe, even when
+NAVERA has positions again. With it, positions are sent with 0 satellites, carried to the
+present along the measured ground velocity and their accuracy grown by the lag
+([navera_output/README.md](../navera_output/README.md)): arming checks that require
+satellites must be adapted by the integrator, knowingly.
+
+**GPS in doubt.** When day vision contradicts the GPS (2 fixes in a row beyond 3 σ),
+NAVERA keeps passing the GPS on but states its accuracy no better than the gap (up to
+500 m — so possibly above ArduPilot's 100 m cap) before it refuses it: the autopilot
+already weighs it less when vision takes over ([ARCHITECTURE.md](ARCHITECTURE.md) §3).
 
 Measured in SITL (simulated vision, not real accuracy): drone at 120 m, 10–15 m/s, GPS
 jammed in flight, vision at the *target* accuracy (15 m σ): the autopilot flew the mission
@@ -118,16 +159,30 @@ NAVERA_NMEA_BAUD=9600
 | `GPS_AUTO_CONFIG` | 0 | SITL |
 | `EK3_SRC1_VELXY`, `EK3_SRC1_VELZ` | 0, 0 | as above (SITL with MAVLink) |
 
-NAVERA sends GGA + RMC. ArduPilot treats GGA quality 6 (estimated — how forwarded vision
-positions are flagged) as a 3D fix. With NMEA the output port carries no MAVLink: the vehicle
-link needs its own port.
+NAVERA sends GGA + RMC. **NMEA carries no accuracy ArduPilot uses**: it fuses an NMEA GPS
+with its own position noise (`EK3_POSNE_M_NSE`, 0.5 m by default; accuracy is read only
+from a vendor-specific sentence NAVERA does not send — *Source*, `AP_GPS_NMEA`). A 30 m
+vision position sent over NMEA would be trusted as a 0.5 m GPS. So with
+`NAVERA_FORWARD_DEGRADED=true`, degraded positions go over MAVLink and ROS only, and the
+NMEA output says "no fix" for them, unless `NAVERA_NMEA_FORWARD_DEGRADED=true` (a warning
+is logged and `check_box.py` WARNs; not recommended). **Use NMEA for GPS pass-through
+only**; forward vision over MAVLink. (Were it forwarded, ArduPilot treats GGA quality 6 —
+how NAVERA flags an estimated position — as a 3D fix.) With NMEA the output port carries no
+MAVLink: the vehicle link needs its own port.
 
 ## 5. Latency: `GPS_DELAY_MS`
 
-A vision position describes the instant the photo was taken, 0.3–1.5 s before it is sent
-(`navera_output/policy.py`). NAVERA stamps every position with its **measurement instant**
-(camera exposure for vision; `GPS_INPUT` `time_week` / `time_week_ms`, NMEA time) and does
-not send one measured more than `NAVERA_MAX_MEASUREMENT_AGE_S` (5 s) ago; a vision position younger than that is carried to the present along the measured ground velocity, its accuracy grown by its age.
+A vision position describes the instant the photo was taken, 1–2.5 s before it reaches the
+output under load (`navera_output/policy.py`). NAVERA stamps every position it sends
+(`GPS_INPUT` `time_week` / `time_week_ms`, NMEA time) and does not send one measured more
+than `NAVERA_MAX_MEASUREMENT_AGE_S` (5 s) ago:
+
+- **GPS** positions are sent stamped with their measurement instant (not carried);
+- **vision / celestial** positions are carried to the present along the ground velocity
+  fitted to NAVERA's recent positions, their accuracy grown by the speed error × their age,
+  and sent stamped **now**; when no velocity is known they are sent stamped with their
+  measurement instant, their accuracy grown by the maximum speed (`NAVERA_MAX_SPEED_KMH`) ×
+  their age.
 
 What ArduPilot does with it (*Source*, 4.5.7, MAVLink GPS): the `GPS_INPUT` time is mapped onto
 the autopilot's clock by a transport-jitter correction that assumes the least-delayed of the
@@ -138,8 +193,8 @@ the EKF then places the fix `GPS_DELAY_MS` earlier still. Consequences:
 - the **common, minimum delay is invisible to the autopilot**: only `GPS_DELAY_MS`
   (`GPS1_DELAY_MS`) compensates it. Range 0–250 ms, reboot required; 0 = the driver's
   default, 0.2 s for a MAVLink GPS. While NAVERA passes GPS through, that minimum is the GPS
-  latency; after a long period on vision alone it becomes vision's minimum latency, which can
-  exceed 250 ms.
+  latency; carried vision positions are stamped at the instant they are sent, so their
+  remaining delay is the short output path.
 
 Recommendation (*not verified*): measure the latency on your box — in the NAVERA shell,
 `ros2 topic echo /navera/position` shows `sensor_stamp` (measurement) and `header.stamp`
@@ -193,7 +248,9 @@ NAVERA_MAVLINK_URL=tcp:127.0.0.1:5760
 NAVERA_VEHICLE_MAVLINK_URL=tcp:127.0.0.1:5760
 ```
 
-Both NAVERA nodes use MAVLink system 1, component 191 by default (onboard computer).
+Both NAVERA nodes use the autopilot's own MAVLink system id (`NAVERA_MAVLINK_SYSID`,
+written by navera-discover when it finds the autopilot, default 1); the output uses
+component 191, the vehicle link component 192.
 
 ## 7. The autopilot's second GPS as NAVERA's GPS (`NAVERA_GPS_SOURCE=vehicle`)
 
@@ -202,11 +259,19 @@ For a vehicle whose real GPS receiver is wired to the autopilot rather than to N
 - NAVERA feeds **GPS 1** (`GPS_TYPE = 14`, §3);
 - the real receiver is **GPS 2** (`GPS_TYPE2` / `GPS2_TYPE` = its type, e.g. 1 auto);
 - vehicle_link reads it from `GPS2_RAW` (3D fix or better) → `/navera/vehicle/gps2` →
-  NAVERA's GPS source.
+  NAVERA's GPS source. The altitude is `alt_ellipsoid` when the autopilot sends it (NAVERA's
+  altitudes are above the WGS84 ellipsoid); otherwise `alt` (above mean sea level) with a
+  warning — then set `NAVERA_GROUND_ALTITUDE_M` as MSL too, or heights above ground are off
+  by the geoid separation (tens of metres). The receiver's `h_acc` / `v_acc` become the
+  accuracy; without `h_acc` the GPS is DEGRADED ("uncertainty unknown") and cannot be
+  cross-checked.
 
-NAVERA must never read back a GPS fed by its own output, nor the autopilot's fused position
-— vehicle_link does not read them. **Not verified in SITL** (the SITL runs used NAVERA's own
-or a simulated serial receiver).
+navera-discover selects this source only when `GPS_TYPE2` / `GPS2_TYPE` (read from the
+autopilot) is a real receiver type — fix or not yet — never 14 (MAV, the GPS NAVERA's own
+`GPS_INPUT` feeds: a loop), and not when the parameters cannot be read. NAVERA must never
+read back a GPS fed by its own output, nor the autopilot's fused position — vehicle_link
+does not read them. *Discovery verified in SITL* (`sitl_discovery.py`: `GPS_TYPE2` 1 used,
+14 refused); flying on the second GPS has not been run in SITL.
 
 Consider (*not verified*): with automatic GPS switching (`GPS_AUTO_SWITCH`, default 1 = use
 best), the autopilot may switch to GPS 2 by itself — for example when NAVERA reports "no fix"
@@ -227,6 +292,7 @@ In the NAVERA shell (deploy/README.md §11):
 journalctl -u navera-output -n 20          # "vehicle output: nmea=… mavlink=… ros=/navera/fix …",
                                            # then "output → fix (fix)" with GPS
 journalctl -u navera-vehicle-link -n 20    # "connected to ArduPilot (system 1)"
+journalctl -u navera-output -n 20 | grep -i nothing   # empty: the relay reaches the autopilot
 ros2 topic echo /navera/vehicle/status --once
 python3 /home/navera/isaac_ros_common/navera_tools/check_box.py
 ```
