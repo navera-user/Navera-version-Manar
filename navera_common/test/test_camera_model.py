@@ -133,3 +133,14 @@ def test_altitude_from_scale():
 def test_rpy_matrix_is_a_rotation():
     R = rpy_to_matrix(0.3, -0.2, 1.1)
     assert np.allclose(R @ R.T, np.eye(3)) and np.linalg.det(R) == pytest.approx(1.0)
+
+
+def test_crop_one_lens_of_a_360_camera():
+    from navera_common.camera_model import parse_crop
+    assert parse_crop("", 1920, 1080) is None
+    assert parse_crop("bottom", 1920, 1080) == (0, 540, 1920, 540)
+    assert parse_crop("top", 1920, 1080) == (0, 0, 1920, 540)
+    assert parse_crop("100,50,800,600", 1920, 1080) == (100, 50, 800, 600)
+    for bad in ("middle", "0,0,3000,100", "0,0,10,10"):
+        with pytest.raises(ValueError):
+            parse_crop(bad, 1920, 1080)

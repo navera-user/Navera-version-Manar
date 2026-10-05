@@ -33,7 +33,7 @@ import rclpy
 from navera_common import state_store
 from navera_common.qos import SENSOR_QOS
 from navera_common.altitude import AltitudeEstimator
-from navera_common.camera_model import CameraModel
+from navera_common.camera_model import CameraModel, parse_crop
 from navera_common.frame_builder import FrameBuilder
 from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
@@ -75,6 +75,7 @@ class LiveCamera(Node):
         declare_float(self, "mount_yaw_deg", 0.0)
         declare_float(self, "max_tilt_deg", 45.0)
         declare_float(self, "max_rate_dps", 30.0)              # fixed camera: rotation rate limit
+        self.declare_parameter("crop", "")                      # "", top/bottom/left/right, x,y,w,h
         self.declare_parameter("gimbal", False)                 # camera held level by a stabiliser
         # frames with no attitude at exposure are marked unusable (fixed camera); false only
         # for an installation with no attitude source at all
@@ -97,6 +98,10 @@ class LiveCamera(Node):
         p = lambda n: self.get_parameter(n).value               # noqa: E731
 
         self.input, self.w, self.h = p("input"), int(p("width")), int(p("height"))
+        # the part of the picture that looks at the ground (a 360 camera: one lens' half);
+        # the calibration, the frames and every size below are of that part
+        self.crop = parse_crop(p("crop"), self.w, self.h)
+        self.cw, self.ch = (self.crop[2], self.crop[3]) if self.crop else (self.w, self.h)
         self.period = 1.0 / max(float(p("fps")), 1e-3)
         self.latency_s = float(p("capture_latency_s"))
         cam = self._camera_model(p("calibration_file"), float(p("camera_hfov_deg")))
@@ -171,9 +176,13 @@ class LiveCamera(Node):
             with open(calib_file) as f:
                 d = yaml.safe_load(f)
             cam = CameraModel.from_calibration(d)
-            if cam.size != (self.w, self.h):
+            if cam.size != (self.cw, self.ch):
                 raise ValueError(f"calibration {calib_file} is for {cam.size[0]}x{cam.size[1]}, "
-                                 f"the camera is set to {self.w}x{self.h}")
+                                 f"the camera gives {self.cw}x{self.ch}"
+                                 + (f" (crop {list(self.crop)})" if self.crop else ""))
+            if list(d.get("crop") or []) != list(self.crop or []):
+                raise ValueError(f"calibration {calib_file} was made with crop {d.get('crop')}, the camera "
+                                 f"uses {list(self.crop) if self.crop else 'the whole picture'}: calibrate again")
             if self.input == "usb" and d.get("camera_id"):
                 from navera_common.vehicle import camera_identity
                 here = camera_identity(str(self.get_parameter("device").value))
@@ -185,7 +194,7 @@ class LiveCamera(Node):
             raise ValueError("set calibration_file (navera_tools/calibrate_camera.py) or camera_hfov_deg")
         self.get_logger().warn("no calibration file: the lens is taken as distortion-free — "
                                "calibrate it (navera_tools/calibrate_camera.py) before a real test")
-        return CameraModel.ideal(hfov, (self.w, self.h))
+        return CameraModel.ideal(hfov, (self.cw, self.ch))
 
     # ── sensor inputs ─────────────────────────────────────────────────────
     def _on_imu(self, m: Imu):
@@ -266,6 +275,9 @@ class LiveCamera(Node):
                 self.get_logger().error(f"camera gives {frame.shape[1]}x{frame.shape[0]}, set to {self.w}x{self.h}",
                                         throttle_duration_sec=10.0)
                 continue
+            if self.crop:
+                x, y, w, h = self.crop
+                frame = frame[y:y + h, x:x + w]
             with self._lock:
                 self._latest = (frame, t)
             self._want.clear()
@@ -278,6 +290,9 @@ class LiveCamera(Node):
             self.get_logger().error(f"{self.get_parameter('input_topic').value} is {img.shape[1]}x{img.shape[0]}, "
                                     f"set to {self.w}x{self.h}", throttle_duration_sec=10.0)
             return
+        if self.crop:
+            x, y, w, h = self.crop
+            img = img[y:y + h, x:x + w]
         with self._lock:
             self._latest = (img, stamp_s(m.header.stamp) - self.latency_s)
 

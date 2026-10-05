@@ -87,6 +87,10 @@ def main():
     src.add_argument("--device", help="camera device, e.g. /dev/video0")
     src.add_argument("--images", help="folder of photos taken with the camera")
     ap.add_argument("--size", default="1920x1080", help="WIDTHxHEIGHT (live mode)")
+    ap.add_argument("--crop", default="", help="the part of the picture NAVERA uses: top, bottom, left, "
+                                                "right or x,y,w,h (as NAVERA_CAMERA_CROP; a 360 camera's "
+                                                "downward lens)")
+    ap.add_argument("--preview", action="store_true", help="live mode: show the camera and the board found")
     ap.add_argument("--board", default="9x6", help="inner corners, columns x rows")
     ap.add_argument("--square-mm", type=float, required=True)
     ap.add_argument("--model", choices=["fisheye", "pinhole"], default="fisheye")
@@ -94,13 +98,25 @@ def main():
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     cols, rows = (int(v) for v in a.board.lower().split("x"))
-    views, size = [], None
+    views, size, crop = [], None, None
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "navera_common"))
+    from navera_common.camera_model import parse_crop
+
+    def cut(img):
+        nonlocal crop
+        if a.crop and crop is None:
+            crop = parse_crop(a.crop, img.shape[1], img.shape[0])
+        if crop:
+            x, y, w_, h_ = crop
+            return img[y:y + h_, x:x + w_]
+        return img
     if a.images:
         files = sorted(f for f in glob.glob(os.path.join(a.images, "*")) if f.lower().endswith((".jpg", ".jpeg", ".png")))
         for f in files:
             img = cv2.imread(f)
             if img is None:
                 continue
+            img = cut(img)
             if size is None:
                 size = (img.shape[1], img.shape[0])
             elif (img.shape[1], img.shape[0]) != size:
@@ -118,29 +134,45 @@ def main():
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
         if not cap.isOpened():
             sys.exit(f"cannot open {a.device}")
-        size = (w, h)
+        size = None
         print(f"show the board to the camera — {a.views} views to collect (Ctrl-C to stop early)")
         try:
             while len(views) < a.views:
                 ok, img = cap.read()
                 if not ok:
                     continue
-                if (img.shape[1], img.shape[0]) != size:
+                if (img.shape[1], img.shape[0]) != (w, h):
                     sys.exit(f"the camera gives {img.shape[1]}x{img.shape[0]}, not {w}x{h}: check --size")
+                img = cut(img)
+                size = (img.shape[1], img.shape[0])
                 c = find(img, cols, rows)
-                if c is not None and far_from(c, views, 0.08 * w):
+                kept = c is not None and far_from(c, views, 0.08 * size[0])
+                if kept:
                     views.append(c)
                     print(f"view {len(views)}/{a.views} kept")
+                if a.preview:
+                    show = img.copy()
+                    if c is not None:
+                        cv2.drawChessboardCorners(show, (cols, rows), c.astype(np.float32), True)
+                    for k in views:                                  # where views were kept
+                        cv2.circle(show, tuple(int(v) for v in k.reshape(-1, 2).mean(axis=0)), 12, (0, 200, 0), 3)
+                    cv2.putText(show, f"{len(views)}/{a.views}", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.5,
+                                (0, 0, 255), 3)
+                    scale = min(1.0, 1280.0 / show.shape[1])
+                    cv2.imshow("NAVERA calibration", cv2.resize(show, None, fx=scale, fy=scale))
+                    if cv2.waitKey(1) == 27:
+                        break
         except KeyboardInterrupt:
             pass
         cap.release()
     if len(views) < 8:
         sys.exit(f"only {len(views)} views with the board: at least 8 needed (20-40 recommended)")
     calib, rms = calibrate(views, size, cols, rows, a.square_mm / 1000.0, a.model)
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "navera_common"))
     from navera_common.camera_model import CameraModel
     cam = CameraModel.from_calibration(calib)
     calib["out_hfov_deg"] = round(cam.out_hfov_deg, 2)
+    if crop:
+        calib["crop"] = list(crop)                    # live_camera checks it uses the same part
     if a.device:
         from navera_common.vehicle import camera_identity
         calib["camera_id"] = camera_identity(a.device)       # live_camera checks it is this camera

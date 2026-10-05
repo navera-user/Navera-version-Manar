@@ -124,7 +124,9 @@ def live_camera_params(environ=None, prefix: str = "NAVERA_CAMERA_") -> dict:
          "calibration_file": get(prefix + "CALIBRATION"),
          "max_tilt_deg": float(get(prefix + "MAX_TILT_DEG", "45")),
          "max_rate_dps": float(get(prefix + "MAX_RATE_DPS", "30")),
-         "gimbal": get(prefix + "GIMBAL", "false").lower() in ("1", "true", "yes")}
+         "gimbal": get(prefix + "GIMBAL", "false").lower() in ("1", "true", "yes"),
+         # only part of the picture looks at the ground (a 360 camera's two lenses)
+         "crop": get(prefix + "CROP")}
     for key, k, lo, hi in ((prefix + "SIZE", "width", 64, 8192), (prefix + "SIZE", "height", 64, 8192),
                            (prefix + "FPS", "fps", 0.05, 30.0),
                            (prefix + "LATENCY_S", "capture_latency_s", 0.0, 2.0),
@@ -132,6 +134,11 @@ def live_camera_params(environ=None, prefix: str = "NAVERA_CAMERA_") -> dict:
                            (prefix + "MAX_RATE_DPS", "max_rate_dps", 1.0, 360.0)):
         if not (math.isfinite(p[k]) and lo <= p[k] <= hi):
             raise ValueError(f"{key}: {k} {p[k]:g} out of range [{lo:g}, {hi:g}]")
+    from navera_common.camera_model import parse_crop
+    try:
+        parse_crop(p["crop"], p["width"], p["height"])
+    except ValueError as e:
+        raise ValueError(f"{prefix}CROP: {e}") from None
     if p["input"] not in ("usb", "csi", "gst", "ros"):
         raise ValueError(f"{prefix}INPUT={p['input']!r}: expected usb, csi, gst or ros")
     p["gst_pipeline"] = get(prefix + "GST_PIPELINE")

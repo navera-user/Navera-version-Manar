@@ -187,3 +187,24 @@ def altitude_from_scale(predicted_altitude_m: float, fitted_scale: float) -> flo
     predicted_altitude_m; a fitted scale s (frame ground size / predicted) means the
     camera saw s times more ground: it was s times higher."""
     return predicted_altitude_m * fitted_scale
+
+
+def parse_crop(spec, width: int, height: int):
+    """The part of the camera's picture NAVERA uses, as (x, y, w, h), or None for all of it.
+    spec: "" (all), "top" / "bottom" / "left" / "right" (that half — a 360 camera's two
+    lenses side by side or one above the other), or "x,y,w,h" in pixels.
+    Raises ValueError for a region outside the picture."""
+    s = str(spec or "").strip().lower()
+    if not s:
+        return None
+    halves = {"top": (0, 0, width, height // 2), "bottom": (0, height // 2, width, height - height // 2),
+              "left": (0, 0, width // 2, height), "right": (width // 2, 0, width - width // 2, height)}
+    if s in halves:
+        return halves[s]
+    try:
+        x, y, w, h = (int(v) for v in s.split(","))
+    except ValueError:
+        raise ValueError(f"crop {spec!r}: expected top, bottom, left, right or x,y,w,h") from None
+    if x < 0 or y < 0 or w < 64 or h < 64 or x + w > width or y + h > height:
+        raise ValueError(f"crop {spec!r} is not inside the {width}x{height} picture")
+    return x, y, w, h
