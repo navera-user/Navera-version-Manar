@@ -63,6 +63,7 @@ class LearnedMatcher(LocalMatcher):
         self._gpu = threading.Lock()
         self._tiles = {}
         self._heading = None          # (rotation deg, time) of the last learned match
+        self._no_fallback = False     # inside locate_any_height: no SIFT per height tried
         # the day node asks the SIFT tiles to prefetch around where the vehicle goes: the
         # learned map chunks are computed there too, in the background
         self._want, self._wake = None, threading.Event()
@@ -221,7 +222,7 @@ class LearnedMatcher(LocalMatcher):
                     abs((res["rotation_deg"] - heading_deg + 180) % 360 - 180) > heading_tol_deg:
                 res.update(accepted=False, reason=f"fitted rotation {res['rotation_deg']:.0f} deg ≠ heading "
                                                   f"{heading_deg:.0f} deg (±{heading_tol_deg:.0f}): wrong place")
-        if res is None or not res["accepted"]:
+        if (res is None or not res["accepted"]) and not (self._no_fallback and res is not None):
             learned = res
             res = super().locate(frame, prior, search_m, frame_m_per_px, margin_m=margin_m, scale_tol=scale_tol,
                                  heading_deg=heading_deg, heading_tol_deg=heading_tol_deg)
@@ -232,6 +233,18 @@ class LearnedMatcher(LocalMatcher):
             self._heading = (float(res["rotation_deg"]), time.time())
         res["total_ms"] = (time.time() - t0) * 1000.0
         return res
+
+    def locate_any_height(self, frame, prior, search_m, hfov_deg, *args, heading_deg=None, **kw) -> dict:
+        """As LocalMatcher.locate_any_height. With a heading, only the learned matcher runs
+        at each height tried (SIFT at each of them doubled the time: 27 s for a first fix);
+        without one, SIFT does the search (rotation invariant)."""
+        if heading_deg is None and not (self._heading and time.time() - self._heading[1] < self.HEADING_MEMORY_S):
+            return super().locate_any_height(frame, prior, search_m, hfov_deg, *args, heading_deg=heading_deg, **kw)
+        self._no_fallback = True
+        try:
+            return super().locate_any_height(frame, prior, search_m, hfov_deg, *args, heading_deg=heading_deg, **kw)
+        finally:
+            self._no_fallback = False
 
     def _locate_learned(self, frame, prior, search_m, frame_m_per_px, margin_m, scale_tol, hdg) -> dict:
         tol = self.scale_tol if scale_tol is None else float(scale_tol)
