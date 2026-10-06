@@ -52,6 +52,27 @@ def map_m_per_px(lat: float, z: int) -> float:
     return EQUATOR_M * math.cos(math.radians(lat)) / 2 ** z / 256.0
 
 
+def inlier_spread(pts: np.ndarray, shape) -> float:
+    """How much of the frame the inliers cover: the share of a 4 x 2 grid of cells holding
+    at least 3 of them. A fix whose inliers sit on one strip (a shoreline, a road) is poorly
+    conditioned in scale and rotation."""
+    h, w = shape[:2]
+    if len(pts) == 0:
+        return 0.0
+    cx = np.clip((pts[:, 0] / max(w, 1) * 4).astype(int), 0, 3)
+    cy = np.clip((pts[:, 1] / max(h, 1) * 2).astype(int), 0, 1)
+    counts = np.bincount(cy * 4 + cx, minlength=8)
+    return float((counts >= 3).sum()) / 8.0
+
+
+def fix_sigma_m(inliers: int, map_mpp: float) -> float:
+    """1-sigma error of a fix from its inlier count, in map pixels times their size —
+    campaign 2026-10-06 (2-3 years between map and ground, ~0.97 m map pixels): >= 100
+    inliers p95 7.6 m, 50-99 about 15 m, 20-49 p95 29-34 m, fewer p95 up to 47 m."""
+    px = 4.0 if inliers >= 100 else 8.0 if inliers >= 50 else 15.0 if inliers >= 20 else 25.0
+    return px * float(map_mpp)
+
+
 class TileFeatures:
     """SIFT features of the map tiles of an area, computed lazily and cached."""
 
@@ -219,17 +240,28 @@ class LocalMatcher:
     def locate_any_height(self, frame, prior: Tuple[float, float], search_m: float, hfov_deg: float,
                           min_alt_m: float = 30.0, max_alt_m: float = 1500.0, step: float = 1.5,
                           min_inliers: int = 15, heading_deg: Optional[float] = None,
-                          heading_tol_deg: float = 20.0, max_margin_m: float = 1000.0) -> dict:
+                          heading_tol_deg: float = 20.0, max_margin_m: float = 1000.0,
+                          start_alt_m: Optional[float] = None, enough_inliers: int = 80) -> dict:
         """The frame's position AND the camera's height above the ground, with no height
         known (no GPS, no barometer): heights from min_alt_m to max_alt_m, each step x the
         previous, are tried with a +-30 % scale window around each (the windows overlap), and
         the strongest match wins. The fitted scale then measures the height:
         h = h_tried x scale (the ground width seen grows with the height).
+        start_alt_m (the likeliest height: the last known one, the planned one): the ladder
+        is tried from it outward, and stops at the first match with enough_inliers — a
+        right place gives hundreds with the learned matcher, a wrong one a few dozen at most
+        (campaign 2026-10-06: every fix wrong by > 20 m had <= 81 inliers).
         More scales tried = more chances of a match by accident at a wrong place: this needs
         min_inliers (15) instead of the usual 8. Adds "altitude_m" and "heights_tried"."""
         width = frame.shape[1]
-        best, tried, h = None, [], float(min_alt_m)
+        best, tried = None, []
+        ladder, h = [], float(min_alt_m)
         while h <= max_alt_m * 1.0001:
+            ladder.append(h)
+            h *= step
+        if start_alt_m and math.isfinite(start_alt_m) and start_alt_m > 0:
+            ladder.sort(key=lambda x: abs(math.log(x / start_alt_m)))
+        for h in ladder:
             mpp = 2.0 * h * math.tan(math.radians(hfov_deg) / 2.0) / width
             # the map loaded: the search circle + at most max_margin_m (half a high frame's
             # footprint would load several km of map per height tried)
@@ -240,7 +272,8 @@ class LocalMatcher:
             if r.get("accepted") and int(r.get("inliers") or 0) >= min_inliers and \
                     (best is None or r["inliers"] > best["inliers"]):
                 best = dict(r, altitude_m=h * float(r["scale_residual"]), height_tried_m=h)
-            h *= step
+                if start_alt_m and best["inliers"] >= enough_inliers:
+                    break
         if best is None:
             return {"accepted": False, "predicted_lat": None, "predicted_lon": None, "heights_tried": tried,
                     "reason": f"no match at any height {tried[0]}-{tried[-1]} m (min {min_inliers} inliers)"}
@@ -300,7 +333,8 @@ class LocalMatcher:
         lat, lon = tile_px_to_latlon(float(px), float(py), self.z)
         res.update(predicted_lat=lat, predicted_lon=lon, inliers=n_in, matches=good,
                    scale_residual=round(scale, 3), rotation_deg=round(math.degrees(math.atan2(A[1, 0], A[0, 0])), 1),
-                   score=float(n_in), fused_score=float(n_in), match=f"{n_in} inliers / {good} matches")
+                   score=float(n_in), fused_score=float(n_in), match=f"{n_in} inliers / {good} matches",
+                   spread=inlier_spread(src[inl.ravel() > 0], q.shape), sigma_m=fix_sigma_m(n_in, mpp_map))
         if n_in < self.min_inliers:
             res["reason"] = f"{n_in} geometric inliers (min {self.min_inliers})"
         elif heading_deg is not None and abs((res["rotation_deg"] - heading_deg + 180) % 360 - 180) > heading_tol_deg:

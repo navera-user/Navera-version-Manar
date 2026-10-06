@@ -24,7 +24,8 @@ from typing import Optional, Tuple
 import cv2
 import numpy as np
 
-from day_pkg.local_matcher import LocalMatcher, map_m_per_px, tile_px_to_latlon, tile_xy
+from day_pkg.local_matcher import (LocalMatcher, fix_sigma_m, inlier_spread, map_m_per_px, tile_px_to_latlon,
+                                   tile_xy)
 
 
 def north_up(img: np.ndarray, heading_deg: float) -> np.ndarray:
@@ -42,11 +43,12 @@ def north_up(img: np.ndarray, heading_deg: float) -> np.ndarray:
 class LearnedMatcher(LocalMatcher):
     """DISK + LightGlue against the map around a prior; SIFT (LocalMatcher) as the fallback."""
 
-    CHUNK, OVERLAP, PER_CHUNK = 640, 64, 1024
+    CHUNK, OVERLAP = 640, 64
     MIN_INLIERS = 12                  # LightGlue gives hundreds of inliers on a right place
     HEADING_MEMORY_S = 10.0           # a measured rotation stands in for the heading this long
 
-    def __init__(self, images_dir: str, zoom: int = 17, keypoints: int = 2048, cache_dir: Optional[str] = None,
+    def __init__(self, images_dir: str, zoom: int = 17, keypoints: int = 1024, cache_dir: Optional[str] = None,
+                 per_chunk: int = 512, half: bool = True,
                  **kw):
         super().__init__(images_dir, zoom=zoom, **kw)
         import torch
@@ -56,7 +58,10 @@ class LearnedMatcher(LocalMatcher):
         self._t, self._KF = torch, KF
         self.dev = torch.device("cuda")
         self.disk = KF.DISK.from_pretrained("depth").to(self.dev).eval()
-        self.lg = KF.LightGlueMatcher("disk").to(self.dev).eval()
+        # half: DISK and LightGlue in fp16 on the GPU's tensor cores (LightGlue's own
+        # mixed precision, "mp"); per_chunk: map keypoints per 640 px chunk
+        self.half, self.PER_CHUNK = bool(half), int(per_chunk)
+        self.lg = KF.LightGlueMatcher("disk", params={"mp": self.half}).to(self.dev).eval()
         self.keypoints = int(keypoints)
         self.cache_dir = cache_dir or os.path.join(os.path.dirname(os.path.abspath(images_dir)), "learned_features")
         self._grid = {}
@@ -138,15 +143,16 @@ class LearnedMatcher(LocalMatcher):
         t = self._t
         x = t.from_numpy(cv2.cvtColor(img, cv2.COLOR_BGR2RGB)).permute(2, 0, 1).float().div(255)[None].to(self.dev)
         with self._gpu, t.inference_mode():
-            f = self.disk(x, n, pad_if_not_divisible=True)[0]
-        return f.keypoints, f.descriptors
+            with t.autocast("cuda", dtype=t.float16, enabled=self.half):
+                f = self.disk(x, n, pad_if_not_divisible=True)[0]
+        return f.keypoints.float(), f.descriptors.float()
 
     def _chunk(self, gx: int, gy: int):
         """Features of grid chunk (gx, gy): global map pixels (N,2) and descriptors, on the CPU."""
         key = (gx, gy)
         if key in self._grid:
             return self._grid[key]
-        path = os.path.join(self.cache_dir, f"{self.z}_{gx}_{gy}.npz")
+        path = os.path.join(self.cache_dir, f"{self.z}_{gx}_{gy}_k{self.PER_CHUNK}{'h' if self.half else ''}.npz")
         out = None
         try:
             with np.load(path) as d:
@@ -301,7 +307,8 @@ class LearnedMatcher(LocalMatcher):
         rot = (hdg + math.degrees(math.atan2(A[1, 0], A[0, 0])) + 180.0) % 360.0 - 180.0
         res.update(predicted_lat=lat, predicted_lon=lon, inliers=n_in, matches=good, scale_residual=round(scale, 3),
                    rotation_deg=round(rot, 1), score=float(n_in), fused_score=float(n_in),
-                   match=f"{n_in} inliers / {good} matches (DISK+LightGlue)")
+                   match=f"{n_in} inliers / {good} matches (DISK+LightGlue)",
+                   spread=inlier_spread(src[inl.ravel() > 0], q.shape), sigma_m=fix_sigma_m(n_in, mpp_map))
         if n_in < need:
             res["reason"] = f"{n_in} geometric inliers (min {need})"
         elif abs(scale - 1.0) > tol:
