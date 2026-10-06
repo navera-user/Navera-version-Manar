@@ -9,7 +9,8 @@ matcher locates each one. GPS phases: good, then drifting (spoofed), then lost.
 The truth at each frame is the map point under the screen centre at the frame's time plus
 the camera axis offset, measured during the good-GPS phase (with the height and the
 rotation). Afterwards nothing from the truth is used: the prior is NAVERA's own position.
-Limits: the screen shows the map itself (no season, shadow or sensor differences), the
+Limits: with --area = NAVERA's own map tiles the screen shows the map itself (no season,
+shadow or sensor differences): show other imagery (another date) for a real test. The
 flight is north-up (no rotation) at one height.
 """
 import argparse
@@ -45,10 +46,17 @@ ap.add_argument("--match-area", help="tiles NAVERA matches against (default --ar
 ap.add_argument("--match-zoom", type=int, default=17)
 ap.add_argument("--matcher", choices=["sift", "learned"], default="learned",
                 help="NAVERA's day matcher: learned (DISK + LightGlue, SIFT fallback) or sift")
+ap.add_argument("--display-zoom", type=int, default=17,
+                help="zoom of the --area tiles shown on the screen (18: twice the detail, a lower flight)")
+ap.add_argument("--min-alt", type=float, default=300.0, help="m: the no-height search's lowest height")
+ap.add_argument("--max-alt", type=float, default=2000.0)
+ap.add_argument("--height", type=float,
+                help="m: the height is known from the start (GPS altitude while it works): no search")
+ap.add_argument("--save-frame", help="write the latest camera frame (undistorted) here, for checks")
 ap.add_argument("--out", default="screen_flight.csv")
 a = ap.parse_args()
 
-Z = 17
+Z = a.display_zoom
 MPP = map_m_per_px(a.lat, Z)                                  # ground metres per map/screen pixel
 SW, SH = 1920, 1080
 
@@ -109,7 +117,7 @@ cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 if a.matcher == "learned":
     from day_pkg.learned_matcher import LearnedMatcher
     M = LearnedMatcher(a.match_area or a.area, zoom=a.match_zoom)
-    M.warm(a.lat, a.lon, a.radius * 2 + 1500)                 # the mission area, before the flight
+    M.warm(a.lat, a.lon, a.radius * 2 + 1000)                 # the mission area, before the flight
 else:
     M = LocalMatcher(a.match_area or a.area, zoom=a.match_zoom)
 shown = []                                 # (time shown, map px, map py): what the screen showed
@@ -165,7 +173,7 @@ def worker():
     pos, pos_t, sigma = None, None, 30.0                       # NAVERA's position (output)
     vis_last, vis_vel = None, (0.0, 0.0)
     doubt, gps_refused, refused_at = 0, False, None
-    height, axis, rot = None, None, 0.0
+    height, axis, rot = a.height, None, 0.0
     src_prev = "gps"
     first = []                                                 # unconfirmed no-height matches
     while not stop.is_set():
@@ -182,10 +190,13 @@ def worker():
         phase = "gps" if t < a.gps_drift_at else ("drift" if t < a.gps_lost_at else "lost")
         drift = 0.0 if phase == "gps" else a.gps_drift_rate * (t - a.gps_drift_at)
         gps = None if phase == "lost" else offset(centre if axis is None else offset(centre, *axis), drift, 0.0)
+        if a.save_frame:
+            cv2.imwrite(a.save_frame, img)
         t0 = time.time()
         if height is None:
             # no height known (no GPS altitude, no barometer): the multi-height search
-            r = M.locate_any_height(img, gps or centre, 600.0, a.hfov, min_alt_m=300, max_alt_m=2000)
+            r = M.locate_any_height(img, gps or centre, 600.0, a.hfov, min_alt_m=a.min_alt, max_alt_m=a.max_alt,
+                                    heading_deg=0.0)   # north-up display: the IMU heading
             used_h = r.get("height_tried_m")
             if r["accepted"]:
                 # a match found with no height known can be an accident (blur, repeated
