@@ -51,7 +51,9 @@ from navera_msgs.msg import NavStatus, PositionEstimate
 # Existing localization logic (UNMODIFIED user code).
 # DayLocalizer().predict(bgr_array, threshold=...) -> dict
 from day_pkg.nodes.day_localizer import IMAGES_DIR, DayLocalizer, haversine_m
+from day_pkg.frame_odometry import FrameOdometry
 from day_pkg.local_matcher import LocalMatcher
+from day_pkg.vision_nav import VisionNavigator, _en, _move
 
 # ── A priori spatial GPS-denied (fix matching cross-source) ─────────────────
 # Sur une frame sans GPS, on restreint la recherche DINOv2 à un CERCLE autour du
@@ -146,6 +148,18 @@ class DaySubscriber(Node):
         # load (GPU, kornia, weights), else "local"; "retrieval": DINOv2 tile retrieval
         # (the former method, ~440 m median).
         self.declare_parameter("matcher", "auto")
+        # Between map matches (bench campaign 2026-10-06, day_pkg/vision_nav.py): the search
+        # circle is k sigma of the carried position, never under local_min_radius_m; a fix
+        # far from the prediction (gate_k sigma) is rejected unless it has strong_inliers,
+        # one whose inliers cover < min_inlier_spread of the frame too (if < 50 inliers);
+        # after height_retry_after failures in a row, the frame is also tried 20 % lower
+        # and 25 % higher (a stale height makes every match fail).
+        declare_float(self, "local_min_radius_m", 80.0)
+        declare_float(self, "search_k_sigma", 3.0)
+        declare_float(self, "gate_k_sigma", 3.0)
+        self.declare_parameter("strong_inliers", 100)
+        declare_float(self, "min_inlier_spread", 0.25)
+        self.declare_parameter("height_retry_after", 3)
         declare_float(self, "camera_hfov_deg", float("nan"))   # day camera horizontal field of view
         # wrong places measured at <= 5 inliers on real aerial frames; correct ones 3-73
         self.declare_parameter("local_min_inliers", 8)
@@ -185,6 +199,16 @@ class DaySubscriber(Node):
         self.track = TrackVelocity(accel_mps2=float(self.get_parameter("dead_reckon_accel_mps2").value))
         self._track_heading = None             # frame heading (IMU) at the last measured fix
         self._dr_sigma = None
+        p_ = lambda n: self.get_parameter(n).value               # noqa: E731
+        self.local_min_radius_m, self.search_k = float(p_("local_min_radius_m")), float(p_("search_k_sigma"))
+        self.gate_k, self.strong_inliers = float(p_("gate_k_sigma")), int(p_("strong_inliers"))
+        self.min_spread, self.height_retry_after = float(p_("min_inlier_spread")), int(p_("height_retry_after"))
+        # the map's offset from the ground (registration, camera boresight), learned from the
+        # GPS-check matches while GPS is good and removed from the fixes after its loss
+        self.map_bias = VisionNavigator()
+        # frame-to-frame visual odometry: the displacement through gaps in map matching
+        self.vo = FrameOdometry()
+        self._vo_step = None
         self.allow_global_search = bool(self.get_parameter("allow_global_search").value)
         self.max_speed_mps = float(self.get_parameter("max_speed_mps").value)
         self.gate_margin_m = float(self.get_parameter("gate_margin_m").value)
@@ -495,11 +519,22 @@ class DaySubscriber(Node):
             else:
                 self.get_logger().info(f"[day] 🔎 localizing frame={seq_id}… (pas d'anchor → recherche globale)")
             mpp, why_not = self._frame_m_per_px(img, meta)
+            self._vo_step = None
+            if mpp is not None:
+                ns = meta.get("image_stamp_ns")
+                self._vo_step = self.vo.step(img, self._heading_for_match(meta), mpp,
+                                             int(ns) / 1e9 if ns else time.time())
             if self.local is not None and center is not None and mpp is not None:
-                result = self.local.locate(img, center, R, mpp, scale_tol=self._scale_tol(meta),
-                                           heading_deg=self._heading_for_match(meta),
-                                           heading_tol_deg=self.local_heading_tol_deg)
-                result["_frame_shape"], result["_frame_mpp"] = img.shape, mpp
+                # after height_retry_after failures, 20 % lower and 25 % higher too
+                factors = [1.0] + ([0.8, 1.25] if self._rejects_in_row + 1 >= self.height_retry_after else [])
+                for f in factors:
+                    result = self.local.locate(img, center, R, mpp * f, scale_tol=self._scale_tol(meta),
+                                               heading_deg=self._heading_for_match(meta),
+                                               heading_tol_deg=self.local_heading_tol_deg)
+                    if result.get("accepted"):
+                        break
+                result["_frame_shape"], result["_frame_mpp"] = img.shape, mpp * f
+                result["_height_factor"] = f
             elif self.local is not None:
                 # retrieval (~440 m median on real frames) is no substitute for a local match
                 # that cannot run: published, its positions were 1.1 km off (sim, near the ground)
@@ -627,6 +662,7 @@ class DaySubscriber(Node):
                                                   f"({res.get('inliers')} inliers)" if res.get("accepted") else f"no match ({res.get('reason')})"))
         if res.get("accepted"):
             self._check_fix = (float(res["predicted_lat"]), float(res["predicted_lon"]), time.time())
+            self.map_bias.bias_sample(self._check_fix[:2], prior)
             st = {}
             self._publish_vision_altitude(meta, res, st)
             self._publish_estimate(exposure_stamp(meta, self.get_clock().now().to_msg()), seq_id, "local_match",
@@ -709,11 +745,30 @@ class DaySubscriber(Node):
         altitude_m  = float(meta.get("altitude_m") or 0.0)
         R_theorique = max(footprint_m * FOOTPRINT_MULT, altitude_m * ALTITUDE_MULT)
         R           = min(max(R_theorique, R_MIN_M), R_MAX_M)
-        if self.local is not None and self._last_measured_time is not None:
-            # the vehicle may have gone this far since the last match: search that far
-            grown = R + self.max_speed_mps * max(0.0, time.time() - self._last_measured_time)
-            R = min(max(R, grown), max(R, self.local_max_radius_m))
+        if self.local is not None:
+            pred = self._predicted(meta)
+            if pred is not None:
+                # the carried position and k sigma of it: the window follows the uncertainty
+                # (a lost vehicle is searched for wider, a tracked one cheaply)
+                return (pred[0], pred[1]), min(max(self.search_k * pred[2], self.local_min_radius_m),
+                                               self.local_max_radius_m)
+            if self._last_measured_time is not None:
+                # the vehicle may have gone this far since the last match: search that far
+                grown = R + self.max_speed_mps * max(0.0, time.time() - self._last_measured_time)
+                R = min(max(R, grown), max(R, self.local_max_radius_m))
         return (self._anchor_lat, self._anchor_lon), R
+
+    def _predicted(self, meta):
+        """(lat, lon, sigma_m) of the last measured fix carried to now along the track
+        (turned with the IMU heading), or None."""
+        t_last = self.track.last_time()
+        if t_last is None:
+            return None
+        turn = 0.0
+        h = self._heading_for_match(meta)
+        if h is not None and self._track_heading is not None:
+            turn = (h - self._track_heading + 180.0) % 360.0 - 180.0
+        return self.track.propagate(time.time(), turn)
 
     def _dead_reckon_without_frames(self):
         t_frame, meta = self._last_frame
@@ -741,11 +796,22 @@ class DaySubscriber(Node):
         if t_now - t_last > self.max_dead_reckon_s:
             self._dr_why = f"dead-reckoning limit {self.max_dead_reckon_s:.0f}s reached"
             return False
-        turn = 0.0
-        h = self._heading_for_match(meta)
-        if h is not None and self._track_heading is not None:
-            turn = (h - self._track_heading + 180.0) % 360.0 - 180.0
-        p = self.track.propagate(t_now, turn)
+        vo, self._vo_step = self._vo_step, None
+        if vo is not None and self._anchor_lat is not None and self._dr_sigma is not None:
+            # visual odometry measured this frame's displacement: carry the last position by it
+            # (and add it to the track: the velocity follows the turns)
+            de, dn, dt, q = vo
+            lat, lon = _move((self._anchor_lat, self._anchor_lon), de, dn)
+            sigma = self._dr_sigma + 0.1 * math.hypot(de, dn) + 1.0
+            if sigma <= self.dr_max_sigma_m:
+                self.track.add(t_now, lat, lon, sigma)
+                self._anchor_lat, self._anchor_lon, self._anchor_time = lat, lon, t_now
+                self._dr_sigma = sigma
+                self._emit_fix(now, seq_id, lat, lon, meta, status, "dead_reckon", score, None,
+                               reason=f"{why}; visual odometry {math.hypot(de, dn):.0f} m in {dt:.1f} s, "
+                                      f"±{sigma:.0f} m")
+                return True
+        p = self._predicted(meta)
         if p is None:
             self._dr_why = "velocity unknown (too few measured fixes), cannot dead-reckon"
             return False
@@ -781,7 +847,8 @@ class DaySubscriber(Node):
         from a strong match (altitude_min_inliers) agreeing within 5 % with the previous
         strong match of the last 10 s: one wrong match cannot set the altitude."""
         try:
-            alt = float(meta.get("altitude_m")) * float(result.get("scale_residual"))
+            alt = float(meta.get("altitude_m")) * float(result.get("_height_factor", 1.0)) * \
+                float(result.get("scale_residual"))
         except (TypeError, ValueError):
             return
         if not (math.isfinite(alt) and alt > 5.0) or int(result.get("inliers") or 0) < self.alt_min_inliers:
@@ -892,6 +959,27 @@ class DaySubscriber(Node):
     # ────────────────────────────────────────────────────────────
     # Publish result
     # ────────────────────────────────────────────────────────────
+    def _check_local_fix(self, result, meta, lat, lon, status):
+        """A local match before it is believed: the map bias removed, then the quality gates.
+        (lat, lon, None) when it passes, (lat, lon, why) when rejected."""
+        de, dn = self.map_bias.bias((lat, lon))
+        if de or dn:
+            lat, lon = _move((lat, lon), de, dn)
+            status["map_bias_m"] = [round(de, 1), round(dn, 1)]
+            status["lat"], status["lon"] = lat, lon
+        inl = int(result.get("inliers") or 0)
+        if inl < 50 and float(result.get("spread", 1.0)) < self.min_spread:
+            return lat, lon, (f"inliers cover {float(result.get('spread', 0)):.0%} of the frame ({inl}): "
+                              "poorly conditioned — match rejected")
+        pred = self._predicted(meta)
+        if pred is not None and inl < self.strong_inliers:
+            d = math.hypot(*_en((lat, lon), pred[:2]))
+            lim = self.gate_k * math.hypot(pred[2], float(result.get("sigma_m") or self.local_sigma_m))
+            if d > lim:
+                return lat, lon, (f"{d:.0f} m from the carried position (> {lim:.0f} m, {inl} inliers) — "
+                                  "match rejected")
+        return lat, lon, None
+
     def _publish_result(self, seq_id, meta, result):
         now      = self.get_clock().now().to_msg()
         score    = float(result.get("score") or 0.0)
@@ -950,6 +1038,9 @@ class DaySubscriber(Node):
         spatial_empty = bool(result.get("spatial_empty"))
         measured = (not err) and accepted and not spatial_empty and is_finite_latlon(raw_lat, raw_lon)
         gated = None
+        if measured and result.get("matcher") == "local":
+            raw_lat, raw_lon, gated = self._check_local_fix(result, meta, float(raw_lat), float(raw_lon), status)
+            measured = gated is None
         if measured and self._anchor_lat is not None and self._anchor_time is not None:
             jump = haversine_m(self._anchor_lat, self._anchor_lon, float(raw_lat), float(raw_lon))
             reach = self.max_speed_mps * max(0.0, t_now - self._anchor_time) + self.gate_margin_m
@@ -973,11 +1064,13 @@ class DaySubscriber(Node):
                                      mpp=result.get("_frame_mpp"))
             self._anchor_lat, self._anchor_lon, self._anchor_time = out_lat, out_lon, t_now
             self._last_measured_time = t_now
+            self._dr_sigma = max(self.local_sigma_m, float(result.get("sigma_m") or 0.0))
             self._rejects_in_row = 0
             self._remember_anchor()
             if src == "local_match":
                 ns = meta.get("image_stamp_ns")         # the photo's instant, not the processing's
-                self.track.add(int(ns) / 1e9 if ns else t_now, out_lat, out_lon, self.local_sigma_m)
+                self.track.add(int(ns) / 1e9 if ns else t_now, out_lat, out_lon,
+                               max(self.local_sigma_m, float(result.get("sigma_m") or 0.0)))
                 self._track_heading = self._heading_for_match(meta)
             if src == "local_match":
                 self._publish_vision_altitude(meta, result, status)
