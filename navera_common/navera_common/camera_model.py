@@ -67,7 +67,8 @@ class CameraModel:
     for images of `size` (w, h). `ideal(hfov_deg, size)` is a distortion-free lens.
     The undistorted image keeps the same size; its horizontal field of view is
     `out_hfov_deg` (default: the field of view of the central row, slightly
-    cropped so no black border shows)."""
+    cropped so no black border shows; never wider than max_out_hfov_deg(), which keeps
+    the lens' resolution at the centre)."""
 
     def __init__(self, K, D, size: Tuple[int, int], model: str = "pinhole",
                  out_hfov_deg: Optional[float] = None, balance: float = 0.0):
@@ -80,6 +81,12 @@ class CameraModel:
         w, h = self.size
         if out_hfov_deg is None:
             out_hfov_deg = self._native_hfov_deg() * (1.0 - 0.06 * (1.0 - balance) if self.D.any() else 1.0)
+        if self.D.any():
+            # a straight (pinhole) image of a very wide lens stretches its edges and shrinks
+            # its centre: wider than 2 atan(w/2 / fx), the centre has fewer pixels per degree
+            # than the lens gives (a 166 deg fisheye shown 169 deg wide: 7x fewer) — the
+            # matcher needs the centre's detail more than the far edges
+            out_hfov_deg = min(float(out_hfov_deg), self.max_out_hfov_deg())
         f = (w / 2.0) / math.tan(math.radians(out_hfov_deg) / 2.0)
         self.K_out = np.array([[f, 0.0, w / 2.0], [0.0, f, h / 2.0], [0.0, 0.0, 1.0]])
         self.out_hfov_deg = float(out_hfov_deg)
@@ -100,6 +107,10 @@ class CameraModel:
                        d.get("out_hfov_deg"))
         except KeyError as e:
             raise ValueError(f"calibration file: missing {e}") from None
+
+    def max_out_hfov_deg(self) -> float:
+        """The widest undistorted view keeping the lens' own resolution at the centre."""
+        return math.degrees(2.0 * math.atan((self.size[0] / 2.0) / self.K[0, 0]))
 
     def _native_hfov_deg(self) -> float:
         """Horizontal field of view of the lens along the central image row."""

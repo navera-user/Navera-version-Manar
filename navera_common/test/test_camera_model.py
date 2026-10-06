@@ -144,3 +144,17 @@ def test_crop_one_lens_of_a_360_camera():
     for bad in ("middle", "0,0,3000,100", "0,0,10,10"):
         with pytest.raises(ValueError):
             parse_crop(bad, 1920, 1080)
+
+
+def test_wide_fisheye_keeps_its_centre_resolution():
+    """The Insta360 One R top lens (calibrated 2026-10-06): 1920x540, fx 660. A straight view
+    169 deg wide would give the centre 7x fewer pixels per degree than the lens: capped at
+    2 atan(960 / 660) = 111 deg, even when an old calibration file asks for more."""
+    K = [660.48, 0, 937.06, 0, 721.40, 317.66, 0, 0, 1]
+    D = [0.2319, -0.4170, 0.5338, -0.2386]
+    for asked in (None, 169.2):
+        cam = CameraModel(K, D, (1920, 540), "fisheye", asked)
+        assert abs(cam.out_hfov_deg - 111.0) < 0.5
+        assert cam.K_out[0, 0] >= 660.0 - 1e-6          # centre: at least the lens' pixels per radian
+    narrow = CameraModel(K, D, (1920, 540), "fisheye", 90.0)
+    assert narrow.out_hfov_deg == 90.0                     # a narrower request is kept
