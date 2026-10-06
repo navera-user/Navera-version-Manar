@@ -38,7 +38,8 @@ def board_points(cols, rows, square_m):
 
 def find(img, cols, rows):
     grey = img if img.ndim == 2 else cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    ok, corners = cv2.findChessboardCornersSB(grey, (cols, rows), cv2.CALIB_CB_EXHAUSTIVE | cv2.CALIB_CB_ACCURACY)
+    ok, corners = cv2.findChessboardCornersSB(grey, (cols, rows),
+                                              flags=cv2.CALIB_CB_EXHAUSTIVE | cv2.CALIB_CB_ACCURACY)
     return corners.astype(np.float64).reshape(-1, 1, 2) if ok else None
 
 
@@ -91,6 +92,8 @@ def main():
                                                 "right or x,y,w,h (as NAVERA_CAMERA_CROP; a 360 camera's "
                                                 "downward lens)")
     ap.add_argument("--preview", action="store_true", help="live mode: show the camera and the board found")
+    ap.add_argument("--progress", help="live mode: write 'kept/target [found]' to this file after each frame "
+                                       "(screen_target.py --progress shows it on the board)")
     ap.add_argument("--board", default="9x6", help="inner corners, columns x rows")
     ap.add_argument("--square-mm", type=float, required=True)
     ap.add_argument("--model", choices=["fisheye", "pinhole"], default="fisheye")
@@ -150,6 +153,10 @@ def main():
                 if kept:
                     views.append(c)
                     print(f"view {len(views)}/{a.views} kept")
+                if a.progress:
+                    with open(a.progress + ".tmp", "w") as pf:
+                        pf.write(f"{len(views)}/{a.views} {'board seen' if c is not None else 'no board'}")
+                    os.replace(a.progress + ".tmp", a.progress)
                 if a.preview:
                     show = img.copy()
                     if c is not None:
@@ -167,6 +174,9 @@ def main():
         cap.release()
     if len(views) < 8:
         sys.exit(f"only {len(views)} views with the board: at least 8 needed (20-40 recommended)")
+    if a.progress:
+        with open(a.progress, "w") as pf:
+            pf.write("done")
     calib, rms = calibrate(views, size, cols, rows, a.square_mm / 1000.0, a.model)
     from navera_common.camera_model import CameraModel
     cam = CameraModel.from_calibration(calib)
