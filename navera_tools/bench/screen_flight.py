@@ -43,6 +43,8 @@ ap.add_argument("--latency", type=float, default=0.14,
                 help="s, the camera delay (camera_latency.py): a frame is dated arrival - latency")
 ap.add_argument("--match-area", help="tiles NAVERA matches against (default --area)")
 ap.add_argument("--match-zoom", type=int, default=17)
+ap.add_argument("--matcher", choices=["sift", "learned"], default="learned",
+                help="NAVERA's day matcher: learned (DISK + LightGlue, SIFT fallback) or sift")
 ap.add_argument("--out", default="screen_flight.csv")
 a = ap.parse_args()
 
@@ -104,7 +106,12 @@ cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
-M = LocalMatcher(a.match_area or a.area, zoom=a.match_zoom)
+if a.matcher == "learned":
+    from day_pkg.learned_matcher import LearnedMatcher
+    M = LearnedMatcher(a.match_area or a.area, zoom=a.match_zoom)
+    M.warm(a.lat, a.lon, a.radius * 2 + 1500)                 # the mission area, before the flight
+else:
+    M = LocalMatcher(a.match_area or a.area, zoom=a.match_zoom)
 shown = []                                 # (time shown, map px, map py): what the screen showed
 M.tiles.around(a.lat, a.lon, a.radius + 1500)                  # warm the map features
 stop = threading.Event()
