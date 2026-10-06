@@ -189,6 +189,11 @@ class LiveCamera(Node):
                 if here is not None and here != d["camera_id"]:
                     raise ValueError(f"calibration {calib_file} was made with camera {d['camera_id']}, "
                                      f"this one is {here}: calibrate this camera")
+            if self.latency_s == 0.0 and d.get("latency_s"):
+                # measured with the camera (navera_tools/bench/camera_latency.py --calib):
+                # NAVERA_CAMERA_LATENCY_S, when set, wins
+                self.latency_s = float(d["latency_s"])
+                self.get_logger().info(f"camera delay {self.latency_s:.3f} s (from {calib_file})")
             return cam
         if not math.isfinite(hfov):
             raise ValueError("set calibration_file (navera_tools/calibrate_camera.py) or camera_hfov_deg")

@@ -2,7 +2,7 @@
 """Camera delay for NAVERA_CAMERA_LATENCY_S: the screen flashes white, the camera (facing
 the screen) sees it some time later; the median of N flashes is printed.
 
-    python3 navera_tools/bench/camera_latency.py [--device ...] [--crop top] [--flashes 20]
+    python3 navera_tools/bench/camera_latency.py [--device ...] [--crop top] [--flashes 20] [--calib camera.yaml]
 
 What is measured is screen + camera + USB + decoding: the screen's own delay (typically
 10-30 ms for a desktop monitor) is included, so the camera's delay is at most the result.
@@ -19,6 +19,8 @@ ap.add_argument("--device", default="/dev/v4l/by-id/usb-Amba_Insta360_One_R-vide
 ap.add_argument("--size", default="1920x1080")
 ap.add_argument("--crop", default="top", help="top / bottom / none: the half facing the screen")
 ap.add_argument("--flashes", type=int, default=20)
+ap.add_argument("--calib", help="write the result into this camera calibration file (latency_s): "
+                                "live_camera then uses it when NAVERA_CAMERA_LATENCY_S is not set")
 a = ap.parse_args()
 w, h = (int(v) for v in a.size.split("x"))
 cap = cv2.VideoCapture(a.device, cv2.CAP_V4L2)
@@ -76,3 +78,11 @@ if delays:
     print(f"delay screen -> NAVERA: median {1000 * np.median(delays):.0f} ms "
           f"(min {1000 * min(delays):.0f}, max {1000 * max(delays):.0f}, {len(delays)} flashes) — "
           f"NAVERA_CAMERA_LATENCY_S={np.median(delays):.2f} (includes the screen's own delay)")
+    if a.calib:
+        import yaml
+        with open(a.calib) as f:
+            d = yaml.safe_load(f)
+        d["latency_s"] = round(float(np.median(delays)), 3)
+        with open(a.calib, "w") as f:
+            yaml.safe_dump(d, f, sort_keys=False)
+        print(f"latency_s {d['latency_s']} written to {a.calib}")
