@@ -39,6 +39,10 @@ ap.add_argument("--gps-drift-rate", type=float, default=3.0, help="m/s of drift"
 ap.add_argument("--gps-lost-at", type=float, default=75.0, help="s: GPS lost")
 ap.add_argument("--screen-mm", type=float, default=527.0)
 ap.add_argument("--hfov", type=float, default=100.0, help="undistorted view width, deg")
+ap.add_argument("--latency", type=float, default=0.14,
+                help="s, the camera delay (camera_latency.py): a frame is dated arrival - latency")
+ap.add_argument("--match-area", help="tiles NAVERA matches against (default --area)")
+ap.add_argument("--match-zoom", type=int, default=17)
 ap.add_argument("--out", default="screen_flight.csv")
 a = ap.parse_args()
 
@@ -100,7 +104,8 @@ cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
-M = LocalMatcher(a.area)
+M = LocalMatcher(a.match_area or a.area, zoom=a.match_zoom)
+shown = []                                 # (time shown, map px, map py): what the screen showed
 M.tiles.around(a.lat, a.lon, a.radius + 1500)                  # warm the map features
 stop = threading.Event()
 hud = {}
@@ -140,7 +145,7 @@ def grab():
         if time.time() - t0 > 0.02:                            # waited for a new frame: fresh
             break
     ok, f = cap.retrieve()
-    t = time.time() - t_start[0]
+    t = time.time() - t_start[0] - a.latency                   # when the frame was taken
     if not ok:
         return None, t
     img = f[cy0:cy0 + ch, cx0:cx0 + cw]
@@ -159,7 +164,12 @@ def worker():
         img, t = grab()
         if img is None:
             continue
-        tpx, tpy, vel = route(t)
+        # the truth: what the screen showed when the frame was taken (not the route at t:
+        # the display falls behind while NAVERA computes)
+        past = [x for x in list(shown) if x[0] <= t]
+        if not past:
+            continue
+        _, tpx, tpy = past[-1]
         centre = latlon(tpx, tpy)
         phase = "gps" if t < a.gps_drift_at else ("drift" if t < a.gps_lost_at else "lost")
         drift = 0.0 if phase == "gps" else a.gps_drift_rate * (t - a.gps_drift_at)
@@ -244,7 +254,10 @@ while True:
     view = mosaic[my:my + SH, mx:mx + SW].copy()
     draw_hud(view, t)
     cv2.imshow("NAVERA flight", view)
-    if cv2.waitKey(15) in (27, ord("q")):
+    key = cv2.waitKey(1)
+    shown.append((time.time() - t_start[0], px, py))
+    del shown[:-400]
+    if key in (27, ord("q")):
         break
 stop.set()
 th.join(10)
