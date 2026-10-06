@@ -81,12 +81,24 @@ class TrackVelocity:
         dt = t_now - t_last
         if dt <= 0:
             return lat, lon, sig0
-        a = math.radians(heading_change_deg or 0.0)
-        ve, vn = ve * math.cos(a) + vn * math.sin(a), -ve * math.sin(a) + vn * math.cos(a)
         speed = math.hypot(ve, vn)
-        p = dead_reckon(lat, lon, math.degrees(math.atan2(ve, vn)) % 360.0, speed, dt) if speed > 0.05 else (lat, lon)
-        if p is None:
-            return None
+        if speed <= 0.05:
+            p = (lat, lon)
+        else:
+            # a turn of heading_change_deg since the last fix, taken at a constant rate: the
+            # path is an arc (integrated in <= 5 deg steps) — rotating the whole carry by the
+            # final turn put a quarter turn's position ~1/3 of its length off the track
+            a = math.radians(heading_change_deg or 0.0)
+            steps = max(1, int(abs(a) / math.radians(5.0)))
+            de = dn = 0.0
+            for i in range(steps):
+                ai = a * (i + 0.5) / steps
+                de += (ve * math.cos(ai) + vn * math.sin(ai)) * dt / steps
+                dn += (-ve * math.sin(ai) + vn * math.cos(ai)) * dt / steps
+            dist = math.hypot(de, dn)
+            p = dead_reckon(lat, lon, math.degrees(math.atan2(de, dn)) % 360.0, dist / dt, dt)
+            if p is None:
+                return None
         sigma = sig0 + sig_v * dt + self.heading_sigma * speed * dt + 0.5 * self.accel * dt * dt
         return p[0], p[1], sigma
 

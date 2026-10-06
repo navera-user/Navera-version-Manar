@@ -39,7 +39,9 @@ def test_a_turn_measured_by_the_imu_turns_the_velocity():
     lat, lon, _ = tr.propagate(19.0, heading_change_deg=90.0)   # then turned to the east
     north = (lat - (35.8 + 90 * M_LAT)) / M_LAT
     east = (lon - 10.6) / (M_LAT / math.cos(math.radians(35.8)))
-    assert north == pytest.approx(0.0, abs=1.0) and east == pytest.approx(100.0, abs=1.0)
+    # turned at a constant rate over the 10 s: a quarter circle of 100 m, radius 63.7 m
+    r = 100.0 / (math.pi / 2)
+    assert north == pytest.approx(r, abs=1.0) and east == pytest.approx(r, abs=1.0)
 
 
 def test_too_few_or_too_short_gives_nothing():
