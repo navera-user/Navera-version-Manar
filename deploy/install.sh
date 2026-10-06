@@ -88,6 +88,13 @@ as_navera "cd $WS && source /opt/ros/humble/setup.bash && colcon build --symlink
     --packages-up-to navera_msgs navera_common navera_estimator navera_output gps_pkg imu_pkg rtc_pkg \
     camera_pkg day_pkg night_pkg cn_pkg simulation_web 2>&1 | tail -3"
 
+if [ "$PIP" = 1 ]; then
+  say "learned day matcher models (DISK, LightGlue) into TORCH_HOME: the box flies offline"
+  as_navera "set -a; . /etc/navera/navera.env 2>/dev/null || . $SRC/deploy/navera.env.example; set +a
+python3 -c 'import kornia.feature as KF; KF.DISK.from_pretrained(\"depth\"); KF.LightGlueMatcher(\"disk\"); print(\"models ready\")' \
+    || echo 'WARNING: DISK/LightGlue models not downloaded: day vision uses SIFT (NAVERA_DAY_MATCHER=auto)'"
+fi
+
 say "directories and settings"
 # each level owned by navera (install -d leaves created parents root-owned: the model
 # cache in /data/navera then could not be written)

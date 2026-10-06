@@ -49,6 +49,8 @@ def generate_launch_description():
         # Day camera horizontal field of view (deg), from NAVERA_DAY_HFOV_DEG: with the frame
         # altitude it gives the frame scale local matching needs. Unset = DINOv2 retrieval.
         DeclareLaunchArgument('camera_hfov_deg', default_value=(os.environ.get('NAVERA_DAY_HFOV_DEG') or 'nan')),
+        # NAVERA_DAY_MATCHER: auto (DISK + LightGlue when it loads, else SIFT) | learned | local | retrieval
+        DeclareLaunchArgument('matcher', default_value=(os.environ.get('NAVERA_DAY_MATCHER') or 'auto')),
         # default_gps_valid: mirrors day.yaml ('true'), so this argument changes
         # nothing by itself — it forwards day.launch.py's argument up to this level,
         # which is what lets the GPS-denied regime be MEASURED without editing a
@@ -109,6 +111,7 @@ def generate_launch_description():
                 'allow_global_search':     LaunchConfiguration('allow_global_search'),
                 # day camera's horizontal field of view: the frame scale for local matching
                 'camera_hfov_deg': ParameterValue(LaunchConfiguration('camera_hfov_deg'), value_type=float),
+                'matcher': LaunchConfiguration('matcher'),
             }, max_speed_params()],    # the vehicle's maximum speed: vision motion gate
         ),
     ])

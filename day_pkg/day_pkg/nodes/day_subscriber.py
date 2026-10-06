@@ -139,10 +139,13 @@ class DaySubscriber(Node):
         declare_float(self, "max_speed_mps", 30.0)
         declare_float(self, "gate_margin_m", 250.0)
         # Matching method. "local": local features vs the satellite map around the prior
-        # (local_matcher; needs the frame altitude and camera_hfov_deg to know the frame's
-        # scale — without them, falls back to "retrieval"); "retrieval": DINOv2 tile
-        # retrieval (the former method, ~440 m median).
-        self.declare_parameter("matcher", "local")
+        # (local_matcher, SIFT; needs the frame altitude and camera_hfov_deg to know the
+        # frame's scale — without them, falls back to "retrieval"); "learned": the same with
+        # DISK + LightGlue (learned_matcher, GPU; SIFT as its fallback) — 31/33 real aerial
+        # frames vs SIFT's 27/33, 0 wrong, twice as fast; "auto": "learned" when its models
+        # load (GPU, kornia, weights), else "local"; "retrieval": DINOv2 tile retrieval
+        # (the former method, ~440 m median).
+        self.declare_parameter("matcher", "auto")
         declare_float(self, "camera_hfov_deg", float("nan"))   # day camera horizontal field of view
         # wrong places measured at <= 5 inliers on real aerial frames; correct ones 3-73
         self.declare_parameter("local_min_inliers", 8)
@@ -246,10 +249,21 @@ class DaySubscriber(Node):
         self.calib_radius_m = float(self.get_parameter("gps_check_radius_m").value)
         self._last_calib = 0.0
         self.local = None
-        if self.matcher_mode == "local":
-            self.local = LocalMatcher(IMAGES_DIR,
-                                      min_inliers=int(self.get_parameter("local_min_inliers").value),
-                                      scale_tol=float(self.get_parameter("local_scale_tol").value))
+        kw = dict(min_inliers=int(self.get_parameter("local_min_inliers").value),
+                  scale_tol=float(self.get_parameter("local_scale_tol").value))
+        if self.matcher_mode in ("learned", "auto"):
+            try:
+                from day_pkg.learned_matcher import LearnedMatcher
+                self.local = LearnedMatcher(IMAGES_DIR, **kw)
+                self.get_logger().info(f"matcher: DISK + LightGlue vs the map (GPU), SIFT as fallback, "
+                                       f"camera_hfov_deg={self.camera_hfov_deg}")
+            except Exception as e:                     # noqa: BLE001 — no GPU / kornia / weights
+                if self.matcher_mode == "learned":
+                    raise
+                self.get_logger().warn(f"learned matcher unavailable ({e}): SIFT local matching instead")
+            self.matcher_mode = "local"
+        if self.matcher_mode == "local" and self.local is None:
+            self.local = LocalMatcher(IMAGES_DIR, **kw)
             self.get_logger().info(
                 f"matcher: local features vs the map ({'GPU' if self.local.torch else 'CPU'} matching), "
                 f"camera_hfov_deg={self.camera_hfov_deg}"
