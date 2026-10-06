@@ -216,6 +216,37 @@ class LocalMatcher:
         """Ground resolution of a nadir frame: its footprint width over its pixel width."""
         return 2.0 * altitude_m * math.tan(math.radians(hfov_deg) / 2.0) / width_px
 
+    def locate_any_height(self, frame, prior: Tuple[float, float], search_m: float, hfov_deg: float,
+                          min_alt_m: float = 30.0, max_alt_m: float = 1500.0, step: float = 1.5,
+                          min_inliers: int = 15, heading_deg: Optional[float] = None,
+                          heading_tol_deg: float = 20.0, max_margin_m: float = 1000.0) -> dict:
+        """The frame's position AND the camera's height above the ground, with no height
+        known (no GPS, no barometer): heights from min_alt_m to max_alt_m, each step x the
+        previous, are tried with a +-30 % scale window around each (the windows overlap), and
+        the strongest match wins. The fitted scale then measures the height:
+        h = h_tried x scale (the ground width seen grows with the height).
+        More scales tried = more chances of a match by accident at a wrong place: this needs
+        min_inliers (15) instead of the usual 8. Adds "altitude_m" and "heights_tried"."""
+        width = frame.shape[1]
+        best, tried, h = None, [], float(min_alt_m)
+        while h <= max_alt_m * 1.0001:
+            mpp = 2.0 * h * math.tan(math.radians(hfov_deg) / 2.0) / width
+            # the map loaded: the search circle + at most max_margin_m (half a high frame's
+            # footprint would load several km of map per height tried)
+            margin = min(0.5 * math.hypot(*frame.shape[:2]) * mpp, max_margin_m)
+            r = self.locate(frame, prior, search_m, mpp, margin_m=margin, scale_tol=0.3,
+                            heading_deg=heading_deg, heading_tol_deg=heading_tol_deg)
+            tried.append(round(h))
+            if r.get("accepted") and int(r.get("inliers") or 0) >= min_inliers and \
+                    (best is None or r["inliers"] > best["inliers"]):
+                best = dict(r, altitude_m=h * float(r["scale_residual"]), height_tried_m=h)
+            h *= step
+        if best is None:
+            return {"accepted": False, "predicted_lat": None, "predicted_lon": None, "heights_tried": tried,
+                    "reason": f"no match at any height {tried[0]}-{tried[-1]} m (min {min_inliers} inliers)"}
+        best["heights_tried"] = tried
+        return best
+
     def locate(self, frame, prior: Tuple[float, float], search_m: float, frame_m_per_px: float,
                margin_m: Optional[float] = None, scale_tol: Optional[float] = None,
                heading_deg: Optional[float] = None, heading_tol_deg: float = 20.0) -> dict:
