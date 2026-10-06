@@ -160,6 +160,7 @@ def worker():
     doubt, gps_refused, refused_at = 0, False, None
     height, axis, rot = None, None, 0.0
     src_prev = "gps"
+    first = []                                                 # unconfirmed no-height matches
     while not stop.is_set():
         img, t = grab()
         if img is None:
@@ -179,9 +180,20 @@ def worker():
             # no height known (no GPS altitude, no barometer): the multi-height search
             r = M.locate_any_height(img, gps or centre, 600.0, a.hfov, min_alt_m=300, max_alt_m=2000)
             used_h = r.get("height_tried_m")
+            if r["accepted"]:
+                # a match found with no height known can be an accident (blur, repeated
+                # texture): kept only when a second frame agrees (height within 5 %, the same
+                # place within 50 m once the motion is removed)
+                _, de, dn = metres((r["predicted_lat"], r["predicted_lon"]), centre)
+                cand = (r["altitude_m"], de, dn)
+                agree = [c for c in first if abs(c[0] / cand[0] - 1) < 0.05 and math.hypot(c[1] - de, c[2] - dn) < 50]
+                first.append(cand)
+                if not agree:
+                    r = dict(r, accepted=False, reason="first match, waiting for a second frame to confirm it")
         else:
-            prior = gps if src_prev == "gps" else pos
-            if prior is not None and src_prev != "gps" and pos_t is not None:   # carried along the velocity
+            use_gps = src_prev == "gps" and gps is not None
+            prior = gps if use_gps else pos
+            if prior is not None and not use_gps and pos_t is not None:   # carried along the velocity
                 dt = t - pos_t
                 prior = offset(prior, vis_vel[0] * dt, vis_vel[1] * dt)
             mpp = 2 * height * math.tan(math.radians(a.hfov / 2)) / OW
