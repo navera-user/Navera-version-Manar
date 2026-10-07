@@ -81,10 +81,11 @@ def _angular_dist_deg(lat1, lon1, lat2, lon2):
 
 def choose_candidate(cands: List[Tuple[float, float]], prior_lat: Optional[float],
                      prior_lon: Optional[float] = None,
-                     tolerance_deg: float = 5.0) -> Optional[Tuple[float, float]]:
+                     tolerance_deg: float = 2.0) -> Optional[Tuple[float, float]]:
     """Pick the solution consistent with the prior position, or None.
 
-    A candidate is consistent when it lies within ``tolerance_deg`` of the
+    A candidate is consistent when it lies within ``tolerance_deg`` (2 deg = 222 km; 5 deg
+    let attitude-transient fixes 555 km off through) of the
     prior (great-circle distance with a prior longitude, latitude difference
     otherwise). Exactly one consistent candidate → returned. Zero (the prior
     is wrong or absent) or two (the prior cannot tell them apart) → None:

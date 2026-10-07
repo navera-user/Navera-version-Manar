@@ -59,3 +59,21 @@ def test_precession_moves_j2000_coordinates():
     ra, dec = apparent_radec(83.6331, 22.0145, UTC)
     assert 0.3 < ra - 83.6331 < 0.5
     assert abs(dec - 22.0145) < 0.1
+
+
+def test_rotation_rate_between_two_attitudes():
+    """The celestial frame gate: 30 deg/s of roll is far above 3 deg/s; 0 when still."""
+    import math
+    from cn_pkg.nodes.cn_subscriber import _rate_dps
+    q0 = (0.0, 0.0, 0.0, 1.0)
+    a = math.radians(3.0) / 2                                    # 3 deg about x in 0.1 s
+    q1 = (math.sin(a), 0.0, 0.0, math.cos(a))
+    assert abs(_rate_dps(q0, q1, 0.1) - 30.0) < 1e-6
+    assert _rate_dps(q0, q0, 0.1) == 0.0
+
+
+def test_a_candidate_far_from_the_prior_is_not_chosen():
+    """5 deg let attitude-transient fixes 555 km off through; 2 deg (222 km) does not."""
+    from cn_pkg.nodes.celestial_math import choose_candidate
+    assert choose_candidate([(39.0, 10.6), (-30.0, 50.0)], 35.8, 10.6) is None
+    assert choose_candidate([(36.5, 10.6), (-30.0, 50.0)], 35.8, 10.6) == (36.5, 10.6)

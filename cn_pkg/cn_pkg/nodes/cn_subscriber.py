@@ -48,6 +48,8 @@ from navera_common.qos import SENSOR_QOS
 from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
 from navera_common.pairing import FramePairer, exposure_stamp, stamp_ns
+from navera_common.geo import haversine_m
+from navera_common.sensor_history import slerp
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
@@ -60,6 +62,14 @@ from cv_bridge import CvBridge
 
 from cn_pkg.nodes import solver as cn_solver
 from cn_pkg.nodes.celestial_math import boresight_altaz
+
+
+def _rate_dps(q0, q1, dt_s: float) -> float:
+    """Rotation rate (deg/s) between two orientations dt_s apart."""
+    if dt_s <= 0:
+        return 0.0
+    dot = abs(sum(a * b for a, b in zip(q0, q1)))
+    return math.degrees(2.0 * math.acos(min(1.0, dot))) / dt_s
 
 
 class CNSubscriber(Node):
@@ -107,6 +117,11 @@ class CNSubscriber(Node):
         # error moves the fix by ~111 km, so it sets the stated accuracy; NaN =
         # unknown (the fix is then published with an unknown covariance).
         declare_float(self, "attitude_sigma_deg", float("nan"))
+        # frames taken while the vehicle rotates faster than this (deg/s) are not solved: a
+        # 50 ms attitude error at 20-60 deg/s is degrees, i.e. hundreds of km (simulator
+        # 2026-10-07: 122-517 km spikes in climbs and turns, stated 55 km)
+        declare_float(self, "max_rotation_dps", 3.0)
+        declare_float(self, "imu_max_gap_s", 0.1)
         # Without prior_lat/lon, the last valid GPS fix is the prior.
         self.declare_parameter("gps_topic", "/navera/estimate/gps")
 
@@ -126,6 +141,10 @@ class CNSubscriber(Node):
         self.mount_az    = float(self.get_parameter("camera_mount_azimuth_deg").value)
         self.declination = float(self.get_parameter("magnetic_declination_deg").value)
         self.imu_timeout = float(self.get_parameter("imu_timeout_s").value)
+        self.max_rot_dps = float(self.get_parameter("max_rotation_dps").value)
+        self.imu_max_gap = float(self.get_parameter("imu_max_gap_s").value)
+        self._rate_dps = 0.0                  # rotation rate at the last exposure
+        self._recent = deque(maxlen=5)        # (t, lat, lon): accepted fixes, consistency check
         self.attitude_sigma_deg = float(self.get_parameter("attitude_sigma_deg").value)
         # IMU history (stamp ns, quaternion): the attitude used is the one at the
         # frame's EXPOSURE, not at processing time — on a moving vehicle the
@@ -223,11 +242,22 @@ class CNSubscriber(Node):
             self._imu_hist.append((stamp_ns(msg.header.stamp), (q.x, q.y, q.z, q.w)))
 
     def _imu_at(self, t_ns):
-        """IMU orientation nearest to t_ns, if within imu_timeout_s of it."""
-        if not self._imu_hist:
+        """(orientation at t_ns, rotation rate deg/s): interpolated between the IMU samples
+        around it (no more than imu_max_gap_s apart), else the nearest within imu_timeout_s
+        (rate from the two last samples); None without one."""
+        hist = list(self._imu_hist)
+        if not hist:
             return None
-        ts, q = min(list(self._imu_hist), key=lambda s: abs(s[0] - t_ns))
-        return q if abs(ts - t_ns) <= self.imu_timeout * 1e9 else None
+        for (t0, q0), (t1, q1) in zip(hist, hist[1:]):
+            if t0 <= t_ns <= t1 and t1 > t0:
+                if (t1 - t0) / 1e9 > self.imu_max_gap:
+                    break
+                return slerp(q0, q1, (t_ns - t0) / (t1 - t0)), _rate_dps(q0, q1, (t1 - t0) / 1e9)
+        ts, q = min(hist, key=lambda s: abs(s[0] - t_ns))
+        if abs(ts - t_ns) > self.imu_timeout * 1e9:
+            return None
+        rate = _rate_dps(hist[-2][1], hist[-1][1], (hist[-1][0] - hist[-2][0]) / 1e9) if len(hist) > 1 else 0.0
+        return q, rate
 
     def _on_gps(self, msg: PositionEstimate):
         if msg.valid and msg.mode == PositionEstimate.MODE_MEASURED and \
@@ -239,8 +269,11 @@ class CNSubscriber(Node):
         if meta.get("tilt") is not None and meta.get("azimuth") is not None:
             return float(meta["tilt"]), float(meta["azimuth"]), "frame"
         exp = meta.get("image_stamp_ns")
-        q = self._imu_at(int(exp) if exp is not None else self.get_clock().now().nanoseconds)
-        if q is not None:
+        got = self._imu_at(int(exp) if exp is not None else self.get_clock().now().nanoseconds)
+        if got is not None:
+            q, self._rate_dps = got
+            if self._rate_dps > self.max_rot_dps:
+                return float("nan"), float("nan"), f"imu: rotating {self._rate_dps:.1f} deg/s (max {self.max_rot_dps:.0f})"
             alt, az = boresight_altaz(q, self.mount_el, self.mount_az, self.declination)
             return alt, az, "imu (at exposure)" if exp is not None else "imu (latest)"
         return self.tilt, self.azimuth, "parameter"
@@ -329,7 +362,9 @@ class CNSubscriber(Node):
                     utc, utc_src = self._utc_now()
                 meta["utc_source"] = utc_src
                 meta["utc_used"] = utc
-                if not (math.isfinite(tilt) and math.isfinite(azimuth)):
+                if att_src.startswith("imu: rotating"):
+                    result = {"success": False, "error": f"frame not solved: {att_src}"}
+                elif not (math.isfinite(tilt) and math.isfinite(azimuth)):
                     exp = meta.get("image_stamp_ns")
                     hist = list(self._imu_hist)
                     near = None
@@ -393,6 +428,24 @@ class CNSubscriber(Node):
             status["reason"]    = f"star match log-odds {log_odds} < {self.min_log_odds:.1f}"
             self.get_logger().warn(f"[cn] ⚠  frame={seq_id} REJECTED ({status['reason']})")
 
+        if status["success"]:
+            # a fix far from the median of the last ones (beyond 3 sigma) is an attitude
+            # transient, not where the vehicle is
+            lat, lon = float(result["predicted_lat"]), float(result["predicted_lon"])
+            t_now = time.monotonic()
+            recent = [r for r in self._recent if t_now - r[0] <= 600.0]
+            sig = status["sigma_m"]
+            if len(recent) >= 3 and sig:
+                mlat = sorted(r[1] for r in recent)[len(recent) // 2]
+                mlon = sorted(r[2] for r in recent)[len(recent) // 2]
+                d = haversine_m(lat, lon, mlat, mlon)
+                if d > 3.0 * sig:
+                    status["success"], status["rejected"] = False, True
+                    status["reason"] = (f"{d / 1000:.0f} km from the median of the last {len(recent)} fixes "
+                                        f"(> 3 sigma = {3 * sig / 1000:.0f} km)")
+                    self._reject_count += 1
+            self._recent.append((t_now, lat, lon))
+
         self.pub_status.publish(String(data=json.dumps(status)))
 
         if not status["success"]:
@@ -434,9 +487,11 @@ class CNSubscriber(Node):
 
 
     def _sigma_m(self):
-        """Stated 1-sigma horizontal accuracy: attitude error x ~111 km/deg (NaN = unknown)."""
+        """Stated 1-sigma horizontal accuracy: (attitude error + the attitude change during the
+        IMU's own timing error, ~50 ms at the exposure's rotation rate) x ~111 km/deg (None =
+        unknown)."""
         s = self.attitude_sigma_deg
-        return s * 111_195.0 if math.isfinite(s) and s > 0 else None
+        return (s + 0.05 * self._rate_dps) * 111_195.0 if math.isfinite(s) and s > 0 else None
 
     def _publish_estimate(self, now, seq_id, lat, lon, meta, valid, reason, details):
         """Additive: emit the typed source contract on /navera/estimate/cn."""
