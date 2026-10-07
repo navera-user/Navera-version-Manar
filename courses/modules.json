@@ -1,7 +1,7 @@
 [
  {
-  "title": "Welcome aboard",
-  "desc": "What NAVERA is, and the tools every robot engineer uses: the terminal, Python and git.",
+  "title": "Foundations",
+  "desc": "GNSS and its threats, then the engineer's toolkit: Linux, Python with classes and NumPy, data analysis and git.",
   "lessons": [
    "01-welcome",
    "02-terminal",
@@ -14,8 +14,8 @@
   "leg": "Leg 1 · Out of the nest"
  },
  {
-  "title": "Where am I? Coordinates, maps and images",
-  "desc": "How a position is written, how the Earth is cut into map tiles, and why a photo is just numbers.",
+  "title": "Geodesy, maps and images",
+  "desc": "WGS84, ECEF and ENU frames, Web Mercator tiles and MBTiles, and images as arrays: filters and affine warps.",
   "lessons": [
    "06-coordinates",
    "07-map-tiles",
@@ -26,8 +26,8 @@
   "leg": "Leg 2 · Reading the land"
  },
  {
-  "title": "Robots talk: ROS 2",
-  "desc": "Nodes, topics and messages — how the parts of NAVERA talk to each other — and how engineers test them.",
+  "title": "ROS 2: nodes, topics and contracts",
+  "desc": "The DDS graph and QoS, publishers and subscribers as classes, NAVERA's position contract, launch files and testing.",
   "lessons": [
    "09-ros-intro",
    "10-publisher",
@@ -41,8 +41,8 @@
   "leg": "Leg 3 · Flying in a flock"
  },
  {
-  "title": "Sensors",
-  "desc": "GPS, the IMU and the camera: what each one measures and how NAVERA reads it.",
+  "title": "Sensors and their models",
+  "desc": "NMEA and DOP, attitude with quaternions, the camera matrix, fisheye calibration and timing a live camera.",
   "lessons": [
    "15-gps-nmea",
    "16-imu",
@@ -55,8 +55,8 @@
   "leg": "Leg 4 · A bird's senses"
  },
  {
-  "title": "Seeing the way: vision navigation",
-  "desc": "Find a drone photo on a satellite map, follow the motion between photos, and navigate at night and by the stars.",
+  "title": "Vision-based navigation",
+  "desc": "Features, homographies with RANSAC, locating a photo on the map, visual odometry, and navigating by heat and stars.",
   "lessons": [
    "20-features",
    "21-matching",
@@ -69,8 +69,8 @@
   "leg": "Leg 5 · Eyes on the ground"
  },
  {
-  "title": "Fusion and safety",
-  "desc": "How NAVERA chooses between its sources, how sure it is, and how it catches a fake GPS.",
+  "title": "Fusion, uncertainty and integrity",
+  "desc": "The arbiter as a state machine, covariance and Kalman filtering, and spoofing detection as hypothesis testing.",
   "lessons": [
    "25-arbiter",
    "26-uncertainty",
@@ -81,8 +81,8 @@
   "leg": "Leg 6 · Who to trust?"
  },
  {
-  "title": "The whole system",
-  "desc": "Fly full missions in the simulator, measure honestly, and build your own improvement.",
+  "title": "System, measurement and project",
+  "desc": "Fault injection in SITL, honest statistics with confidence intervals, and your own measured improvement to NAVERA.",
   "lessons": [
    "28-simulator",
    "29-measuring",
