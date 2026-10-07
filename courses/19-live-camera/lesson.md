@@ -1,111 +1,111 @@
-# The real camera
+# Live camera: frames, delay and the attitude at the exposure
 
-Until now, every picture you worked with was a **file**: a satellite tile, a saved drone photo,
-a chessboard image. A file waits patiently on the disk. You can open it twice, take your time,
-and it never changes.
+A survey drone flies 150 m above the Al Batinah coast near Sohar. Its GPS has just been jammed,
+so NAVERA must find each camera picture on its satellite map. The drone is rolling into a turn
+at 25° per second. The picture that reaches the computer **now** was taken about **0.14 s
+ago**. In that time the drone rolled about 3.5°. If NAVERA straightens the picture with the
+attitude it has *now*, the centre of the picture lands about **9 m** away from where it should
+be. That is as large as the error of the map matching itself.
 
-A real camera on a flying drone is the opposite. It throws about **thirty new pictures every
-second** at the computer, whether the computer is ready or not. Each picture is already a little
-old when it arrives. And while the picture was travelling, the drone kept moving and turning.
-
-On the NAVERA bench box, the camera is an **Insta360 ONE R** (its 360° module), plugged into the
-Jetson by USB. In this lesson you will learn how a program reads such a camera, why NAVERA
-cares about *when* each picture was taken, and how NAVERA's own node, `live_camera.py`, turns
-the raw pictures into the clean, straight-down views that day vision compares with the map.
+So a live camera is not only "a stream of images". Each image is a **measurement taken at a
+precise instant**, and every other quantity (attitude, height, position) must be read **at that
+instant**. This lesson covers the whole chain from the sensor to NAVERA's `live_camera.py`:
+how Linux delivers frames (V4L2, MJPG, GStreamer), how to describe their timing with
+statistics, how to measure a camera's delay, and how to compute the attitude at the exposure
+with **slerp**.
 
 ![From the lens to day vision](assets/pipeline.svg)
 
-## Frames and frames per second
+## 1. The camera on the NAVERA bench
 
-A video camera is a camera that never stops taking photos. Each photo is called a **frame**.
-The number of frames per second is the **frame rate**, written **fps**.
+The bench box uses an **Insta360 ONE R** (360° module) as a USB webcam. These are measured
+facts about it:
 
-The Insta360 gives **28.8 fps** at its largest size, 1920 × 1080 pixels. So a new frame arrives
-every
-
-```
-1 / 28.8 = 0.0347 s   ≈ 35 milliseconds
-```
-
-How do you measure a frame rate? Note the time at which each frame arrives — its **grab time**.
-If 5 frames arrive at 0.0, 0.1, 0.2, 0.3 and 0.4 s, there are **4 gaps** in 0.4 s, so the rate
-is 4 / 0.4 = 10 fps. Careful: 5 frames, but only 4 gaps — like 5 fence posts hold 4 fence
-panels. You will program exactly this in the lab.
-
-> [!NOTE]
-> NAVERA does not *use* 28.8 frames per second. Comparing one picture with the map takes a
-> while, so the live camera **offers** the localizer about one frame per second (the setting
-> `NAVERA_CAMERA_FPS`, default 1). But it must still read all 28.8, as you will see.
-
-## How Linux sees a camera: V4L2 and /dev/video0
-
-On Linux, every piece of hardware appears as a special file in the folder `/dev` ("devices").
-A camera is handled by a **driver** — a small program inside the operating system that knows how
-to talk to it. For cameras, that family of drivers is called **V4L2** (*Video for Linux, version 2*).
-
-When the Insta360 is plugged in, V4L2 creates two device files:
-
-| File | What it is |
+| Property | Value |
 |---|---|
-| `/dev/video0` | the pictures |
-| `/dev/video1` | a second door of the same camera (extra information, not the pictures we read) |
+| Format | MJPG, 1920 × 1080 at most |
+| Frame rate | 28.8 frames per second (fps) |
+| Picture | two fisheye images stacked: top lens rows 0–539, bottom lens rows 540–1079 |
+| Lens used by NAVERA | the top lens: fisheye about 166° × 43°, straightened view capped at 111° (lesson 18) |
+| Exposure control | none from Linux (no V4L2 controls): the camera chooses exposure itself |
+| Delay | 0.138 s, measured with the screen-flash method (section 5) |
 
-There is a catch: the numbers depend on the order in which devices were plugged in. Plug a second
-camera first, and the Insta360 may become `/dev/video2`. That is why Linux also makes **stable
-names**, built from the maker and the model, in `/dev/v4l/by-id/`:
+A **frame** is one picture of the stream. The **frame period** is T = 1/28.8 = 34.72 ms.
+
+## 2. How Linux delivers frames: V4L2
+
+On Linux, a camera is handled by a **driver** inside the kernel. USB webcams use the
+`uvcvideo` driver (USB Video Class), and every video driver offers the same programming
+interface: **V4L2** (*Video for Linux, version 2*). The camera appears as a device file:
 
 ```
-/dev/v4l/by-id/usb-Amba_Insta360_One_R-video-index0  ->  ../../video0
+/dev/video0                                            first video device (number = plug-in order)
+/dev/v4l/by-id/usb-Amba_Insta360_One_R-video-index0 -> ../../video0     stable name (maker + model)
 ```
 
-("Amba" is Ambarella, the maker of the chip inside the camera.) NAVERA's settings use this kind of
-name (`NAVERA_CAMERA_DEVICE=/dev/v4l/by-id/…`), so the right camera is opened even after a
-reboot or a re-plug.
+NAVERA's settings use the stable **by-id** name, so a re-plug or a second camera does not
+change which device is opened.
+
+A program streams frames from V4L2 with a small **ring of buffers** in memory:
+
+1. It asks for a format: size and **FOURCC** (four-character code of the pixel format:
+   `MJPG`, `YUYV`…).
+2. It asks for N buffers (`VIDIOC_REQBUFS`), gives them all to the driver (`VIDIOC_QBUF`) and
+   starts the stream (`VIDIOC_STREAMON`).
+3. The driver fills one buffer per frame. The program takes a full buffer (`VIDIOC_DQBUF`),
+   uses it, and gives it back.
+
+Each filled buffer also carries a **sequence number** and a **timestamp** set by the driver.
+OpenCV hides all of this behind `cv2.VideoCapture`, and NAVERA stamps a frame with its own
+clock at the moment `grab()` returns.
+
+**Why the number of buffers matters.** If the program is slower than the camera, full
+buffers wait in a **queue**. The frame you take is then not the newest one. It can be several
+periods old. For navigation this is harmful: a frame that waited 2 s at 20 m/s shows the ground
+40 m behind the drone. NAVERA therefore asks for one buffer (`CAP_PROP_BUFFERSIZE = 1`), so the
+driver keeps only the newest frame.
 
 > [!WARNING]
-> **One program at a time.** While a program is streaming from `/dev/video0`, nobody else can.
-> The camera on the box is shared by the whole class and by the engineers' bench tests — that
-> is why you **book** it in the dashboard, and why every program in this lesson also works with
-> **recorded frames** when the camera is not yours.
+> **One program at a time.** While a program streams from `/dev/video0`, no other program can.
+> On a shared box, check first with `fuser /dev/video0`: if it prints a process number, the camera
+> is in use. Never open it then. The lab's programs check this and use recorded frames instead.
 
-## MJPG: why the frames are compressed
+## 3. Bandwidth: why MJPG
 
-How big is one frame? 1920 × 1080 pixels, 3 bytes (blue, green, red) per pixel:
+Uncompressed frames would need this data rate:
 
 ```
-1920 × 1080 × 3 = 6 220 800 bytes ≈ 6.2 MB per frame
-6.2 MB × 28.8 fps ≈ 179 MB every second
+YUYV (2 bytes per pixel):  1920 × 1080 × 2 B × 28.8 /s ≈ 119 MB/s
+BGR  (3 bytes per pixel):  1920 × 1080 × 3 B × 28.8 /s ≈ 179 MB/s
+USB 2.0 High Speed:        480 Mbit/s = 60 MB/s on the wire (the usable part is less)
 ```
 
-A USB 2 link, the kind most webcams use, carries 480 megabits per second — at best about 40 MB
-of pictures per second. 179 MB/s
-does not fit! So the camera **compresses** every frame as a small JPEG photo before sending it.
-A stream of JPEG photos is called **MJPG** (*Motion JPEG*). Each frame becomes ten or more times
-smaller.
+So the camera **compresses** every frame as a JPEG, and the stream of JPEGs is called **MJPG**
+(Motion JPEG). Each frame is compressed **alone** (no motion prediction), so any frame can be
+decoded without the previous ones. The recorded Insta360 frames of this lesson are about
+160 kB each, roughly 40 times smaller than BGR.
 
-The price: the computer must **decode** each JPEG back into pixels before it can use them, and
-that costs processor time. The NAVERA engineers measured it on the box: **about 51 ms to decode
-one 1080p frame** on the Orin Nano under load. Decoding all 28.8 frames every second would keep
-about one and a half processor cores busy — for one frame used per second. Remember this number:
-it explains a clever trick below.
+The price is **decoding**. NAVERA's engineers measured about **51 ms** to decode one 1080p
+MJPG frame on the Orin Nano under load. Decoding all 28.8 frames every second would use
+28.8 × 0.051 ≈ 1.5 CPU cores, while day vision uses about one frame per second. OpenCV splits
+reading in two steps, and NAVERA uses this split:
 
-With OpenCV, you ask for MJPG and the size when you open the camera:
+| Call | What it does | Cost |
+|---|---|---|
+| `cap.grab()` | waits for the next frame and keeps it **compressed** | small |
+| `cap.retrieve()` | **decodes** the last grabbed frame into a numpy BGR image | ≈ 51 ms at 1080p |
+| `cap.read()` | `grab()` + `retrieve()` | both |
 
-```python
-cap = cv2.VideoCapture("/dev/v4l/by-id/usb-Amba_Insta360_One_R-video-index0", cv2.CAP_V4L2)
-cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
-```
+NAVERA calls `grab()` for **every** frame. This keeps the newest frame and its time. It calls
+`retrieve()` **only** for the frame it will send.
 
-**FOURCC** ("four character code") is the four-letter name of a picture format: `MJPG`, `YUYV`…
+## 4. GStreamer pipelines
 
-## GStreamer: pipes for video
-
-Not every camera is a USB webcam. The Jetson's own small cameras plug into a ribbon connector
-called **CSI**, and they are only reachable through **GStreamer**. GStreamer builds a video
-**pipeline**: a chain of blocks joined by `!`, like water pipes. Here is the one NAVERA builds for
-a CSI camera (`camera_pkg/gst_capture.py`, function `csi_pipeline`):
+The Jetson's own cameras (CSI ribbon connector), network cameras and many video sources can
+only be reached through **GStreamer**, a library that builds a **pipeline** of **elements**
+joined by `!`. Between two elements, **caps** (capabilities) fix the format, for example
+`video/x-raw,width=1920,height=1080,framerate=30/1`. Here is NAVERA's CSI pipeline
+(`camera_pkg/gst_capture.py`, `csi_pipeline`):
 
 ```
 nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM),width=1920,height=1080,framerate=30/1
@@ -113,89 +113,195 @@ nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM),width=1920,height=1080,f
   ! appsink name=sink drop=true max-buffers=1 sync=false
 ```
 
-Read it left to right: *take pictures from the CSI camera → convert them → into BGR (OpenCV's
-colour order) → give them to our program (`appsink`), keeping only the newest (`max-buffers=1`,
-`drop=true`)*. The OpenCV installed on the box was built without GStreamer, so NAVERA talks to
-GStreamer directly and wraps it in a small class, `GstCapture`, that has the same methods as
-`cv2.VideoCapture` (`grab`, `retrieve`, `read`, `release`). The rest of the code does not care
-which kind of camera it reads. The same trick reads network cameras (`NAVERA_CAMERA_INPUT=gst`).
+- `nvarguscamerasrc`: the CSI camera, through NVIDIA's Argus daemon. `nvvidconv` converts in
+  GPU memory (`NVMM`). `videoconvert` produces **BGR**, the colour order of OpenCV.
+- `appsink`: hands frames to our program. `max-buffers=1 drop=true` keeps only the newest frame,
+  like `BUFFERSIZE 1` in V4L2. `sync=false` delivers frames immediately, without waiting for a
+  playback clock.
+- Frame rates are fractions: 28.8 fps is written `framerate=144/5`.
 
-## One picture, two lenses
+The OpenCV on the box was built without GStreamer, so NAVERA wraps GStreamer's Python bindings in
+a class `GstCapture` with the same methods as `cv2.VideoCapture` (`isOpened`, `grab`,
+`retrieve`, `read`, `release`). In the lab you will run this real class on a live test source
+(`videotestsrc is-live=true`) and measure its timing.
 
-The Insta360 ONE R 360 module has **two fisheye lenses, back to back**, each seeing a half of
-the world. In webcam mode it sends both in **one** 1920 × 1080 frame, stacked: the top lens
-in the upper half, the bottom lens in the lower half.
+## 5. Describing frame timing with statistics
 
-![The two halves of an Insta360 frame](assets/two_halves.svg)
+Let the grab times be t₀, t₁, …, t₍ₙ₋₁₎. The **intervals** are dᵢ = tᵢ − tᵢ₋₁ (n − 1 of them).
 
-Each half is 1920 × 540 pixels. Cutting them apart is just array slicing (lesson 8):
-
-```python
-top = frame[:540]       # rows 0 to 539
-bottom = frame[540:]    # rows 540 to 1079
+```
+mean frame rate      fps = (n − 1) / (t₍ₙ₋₁₎ − t₀)        (n frames, but n − 1 intervals)
+nominal period       m   = median(dᵢ)                        (robust to outliers)
+jitter               σ   = std(dᵢ)                           (np.std, ddof = 0)
+largest gap          max(dᵢ)
+dropped frames       Σ over dᵢ > 1.5 m  of  round(dᵢ / m) − 1
 ```
 
-On the bench box, NAVERA uses the **top lens**. Its lens was calibrated (lesson 18) as a fisheye
-that sees about **166° × 43°**; its calibration file was made with the crop `[0, 0, 1920, 540]`.
-The live camera's setting `crop` says which part to keep: `"top"`, `"bottom"`, `"left"`,
-`"right"` or `"x,y,w,h"` (function `parse_crop` in `navera_common/camera_model.py`). The node
-even refuses to start if the crop is not the one the calibration was made with — a calibration of
-the top lens is worthless on the bottom one.
+**Jitter** is the variation of the intervals. Its causes are USB transfer scheduling, the
+operating system's scheduler, and other programs that use the CPU. **Dropped frames** appear as
+intervals of about 2m, 3m…: an interval of 3m means 2 missing frames.
+
+**Worked example.** Grab times 0, 0.1, 0.2, 0.4, 0.5 s give intervals 0.1, 0.1, 0.2, 0.1 s.
+Then fps = 4 / 0.5 = 8.0, m = 0.1 s, mean period = 0.125 s, σ = 0.0433 s, largest gap 0.2 s,
+and one dropped frame (round(0.2/0.1) − 1 = 1).
 
 > [!NOTE]
-> The Insta360 has **no manual exposure** in webcam mode: it chooses by itself how long each
-> picture is exposed and how bright it is. Point it at a bright window and the rest of the room
-> goes dark. NAVERA has to live with this; a camera for a production installation would let NAVERA
-> fix a short exposure time to avoid motion blur.
+> The standard deviation is very sensitive to rare large values. One 0.35 s stall among 1700
+> normal 35 ms intervals multiplies σ by several times. Report it, but also look at the histogram
+> or at percentiles: σ describes the **risk**, the median describes the **normal** behaviour.
 
-## The delay: every picture is already old
+## 6. The delay, and how to measure it
 
-Between the moment the light hits the sensor (the **exposure**) and the moment your program gets
-the frame (the **grab**), many things happen: the camera reads its sensor, compresses the JPEG,
-sends it over USB, the driver stores it… That takes time: the **latency** (or delay).
-
-How do you measure it? NAVERA has a bench tool for that, `navera_tools/bench/camera_latency.py`.
-The camera looks at a screen. The program turns the screen **white** and notes the time; then it
-watches the frames until one of them becomes bright. The difference is the delay. It repeats 20
-flashes and keeps the median. On the bench with the Insta360 it measured **0.138 s** — and that
-includes the screen's own delay (10–30 ms for a desktop monitor), so the camera's real delay is at
-most that. The value is stored in the calibration file:
-
-```yaml
-latency_s: 0.138
-```
-
-Why does 0.138 s matter? Because NAVERA uses the vehicle's **attitude** (its roll, pitch and
-heading, from the IMU — lesson 16) to straighten each picture. It must use the attitude **of the
-instant the picture was taken**, not of the instant it arrived.
-
-![Exposure, grab and the stamp](assets/timeline.svg)
-
-A drone turning at 30° per second turns 30 × 0.138 ≈ **4°** during the delay. Straightening the
-picture with an attitude 4° wrong, at 150 m above the ground, places the match about
-150 × tan(4°) ≈ **11 m** off. So NAVERA stamps every frame with:
+Between the **exposure** (light reaches the sensor) and the **grab** (the program receives
+the frame), several things happen: sensor read-out, JPEG compression in the camera, USB
+transfer, the driver, and the buffer queue. Their total time is the **latency** L. For every frame:
 
 ```
-exposure time = grab time − latency
+exposure time   tₑ = t_g − L
 ```
 
-and reads the IMU at *that* time. The IMU sends 50 samples per second, so NAVERA keeps a short
-history and **interpolates** between the two samples around the exposure.
+**The screen-flash method** (`navera_tools/bench/camera_latency.py`). The camera faces a
+screen. The program turns the screen white at time t₀ and watches the brightness of the
+centre of each frame. The first frame brighter than the midpoint between "black" and "white"
+arrives at time t, and the program records d = t − t₀. It repeats this 20 times and keeps the
+median.
 
-## Grab, retrieve, and always the newest frame
+![Measuring the delay with a screen flash](assets/flash.svg)
 
-OpenCV can read a frame in two steps:
+What does d contain? The screen needs s seconds to show white (10–30 ms for a desktop monitor).
+The next exposure starts w seconds later, where w is between 0 and one frame period T. Then the
+camera needs L. So
 
-| Call | What it does | Cost |
-|---|---|---|
-| `cap.grab()` | waits for the next frame to arrive, keeps it **compressed** | tiny |
-| `cap.retrieve()` | **decodes** the last grabbed frame into a numpy image | ≈ 51 ms |
+```
+d = s + w + L,     w uniform in [0, T)  →  mean(w) = T/2 ≈ 17 ms,  std(w) = T/√12 ≈ 10 ms
+```
 
-(`cap.read()` is simply both.) NAVERA's trick: it calls `grab()` for **every** frame — so it always
-knows the newest one and its exact grab time — but `retrieve()` **only** for the frame it is about
-to send. Here is the heart of `_grab_loop` in `camera_pkg/nodes/live_camera.py`:
+Three consequences, which you will verify in the lab on a simulated bench:
+
+1. The delays spread over about **one frame period** (≈ 35 ms), even with a perfect clock.
+2. The median **over-estimates** L by about s + T/2. The **smallest** value is close to s + L.
+3. With 20 flashes, the standard error of the mean is about 10 ms / √20 ≈ 2 ms.
+
+The value NAVERA uses for the Insta360, **0.138 s**, is the median from this tool. Its
+documentation states that it includes the screen's own delay, so **the camera's delay is at
+most 0.138 s**. It is stored in the calibration file as `latency_s: 0.138`.
+
+**Exposure time is not an instant.** The sensor collects light for the exposure time (a few
+ms in daylight). Many CMOS sensors also read their rows one after another (**rolling
+shutter**), so the top and bottom rows are exposed at slightly different times. NAVERA uses one
+stamp per frame. The error of that simplification is small compared to 138 ms, but it grows with
+the rotation rate.
+
+## 7. Error budget: why a few hundredths of a second matter
+
+If the attitude has an angle error δθ, a camera looking down from height H places the image
+centre about
+
+```
+Δx ≈ H · tan(δθ)            and with a rotation rate ω and a time error δt:   δθ ≈ ω · δt
+```
+
+**Worked example (Sohar coast).** H = 150 m, roll rate ω = 25 °/s, and NAVERA uses the attitude
+of the grab instead of the exposure, so δt = 0.138 s:
+
+```
+δθ = 25 × 0.138 = 3.45°      Δx = 150 × tan(3.45°) = 150 × 0.0603 ≈ 9.0 m
+```
+
+For comparison: on aerial test frames, NAVERA's local feature matching placed 32 of 33 frames
+within 9 m, with a median of 4 m (NAVERA's validation document, measured on replayed frames,
+not in flight). A 9 m error from timing alone would cancel that precision. With the correct
+exposure time, the IMU sampling (50 Hz) leaves a residual of half a sample period at most
+if we only take the **nearest** sample: δt ≤ 10 ms → 0.25° → 0.65 m. Interpolation removes
+most of that residual.
+
+## 8. Attitude at the exposure: slerp
+
+The IMU (lesson 16) gives attitude quaternions q at 50 Hz. The exposure time tₑ almost never
+falls exactly on a sample. Take the samples around it, (t₀, q₀) and (t₁, q₁), with
+t₀ ≤ tₑ ≤ t₁, and the fraction
+
+```
+f = (tₑ − t₀) / (t₁ − t₀)          0 ≤ f ≤ 1
+```
+
+Unit quaternions lie on a 4-D sphere. **Slerp** (spherical linear interpolation) moves along
+the great circle between them at constant angular speed:
+
+```
+cos Ω = q₀ · q₁                               (dot product of the 4 components)
+slerp(q₀, q₁, f) = sin((1 − f) Ω) / sin Ω · q₀  +  sin(f Ω) / sin Ω · q₁
+```
+
+Three practical rules:
+
+1. **Shortest path.** q and −q are the same rotation. If q₀ · q₁ < 0, use −q₁ (and −dot);
+   otherwise slerp takes the long way round, through a 360° − θ rotation.
+2. **Almost equal quaternions.** When the dot product is above 0.9995, sin Ω is close to 0 and
+   the formula divides by almost zero. Use linear interpolation q₀ + f (q₁ − q₀) instead. At
+   50 Hz this is the normal case.
+3. **Normalise** the result, q / |q|.
+
+If the vehicle turns at a constant angular velocity between two samples, slerp is **exact**.
+A constant rotation rate is a great circle on the quaternion sphere. Linear interpolation of
+Euler angles is not exact, and it fails when an angle wraps from 179° to −179°.
+
+The angle between two attitudes, which you will use to measure errors, is
+
+```
+angle(q₀, q₁) = 2 · acos(|q₀ · q₁|)
+```
+
+The absolute value is there because q and −q are the same attitude. Clip the dot product to
+1.0 before `acos`, because rounding can give 1.0000000002.
+
+**Worked example.** Samples yaw 0° at t₀ = 0 and yaw 20° at t₁ = 0.2 s, exposure at 0.05 s:
+f = 0.25 → yaw 5°. As quaternions (w, x, y, z): q₀ = (1, 0, 0, 0), q₁ = (cos 10°, 0, 0, sin 10°);
+q₀ · q₁ = 0.9848 → Ω = 10°; the result is (cos 2.5°, 0, 0, sin 2.5°), a yaw of 5°.
+
+> [!WARNING]
+> **Order of the components.** In lesson 16 and in this lab, a quaternion is a numpy array
+> **(w, x, y, z)**. ROS messages (`sensor_msgs/Imu`) and NAVERA's `sensor_history.py` store
+> **(x, y, z, w)**. Reordering them is a classic bug: a level attitude (0, 0, 0, 1) read in the
+> wrong order becomes a 180° rotation. The lab's comparison script reorders explicitly.
+
+**When there is no sample.** If the IMU is silent around tₑ, an interpolated value would be a
+guess. NAVERA's rule (`History.at`, `max_gap_s = 0.2`): no value when tₑ is more than 0.2 s
+before the first sample or after the last sample, or inside a hole longer than 0.4 s and more
+than 0.2 s from both of its sides. The frame is then marked **unusable**.
+
+![Which attitude belongs to this picture?](assets/timeline.svg)
+
+## 🐦 How birds do it
+
+No eye is instant. Light changes the photoreceptors, the retina processes the signal, and nerves
+carry it to the brain. Every animal sees the world a little late, and fast fliers have fast
+eyes. Scientists measure this with the **flicker fusion frequency**, the rate at which a
+flickering light starts to look steady. For humans it is typically around 50–60 Hz. In the pied
+flycatcher, a small insect-hunting songbird, it was measured at up to about **146 Hz**. Navi the
+swallow catches insects in flight, and her eyes "sample" the world at a high rate too.
+
+Sampling fast is not enough. A hunter must also **compensate for the delay**. High-speed films of
+peregrine falcons attacking showed that they steer with **proportional navigation**, the
+guidance law of many missiles: they turn in proportion to how fast the line of sight to the
+prey rotates. In effect they aim at where the prey **will be**, not at the old image of where
+it was. In Oman, the **sooty falcon** shows how much timing matters. It breeds on islands off
+the coast, such as the Daymaniyat Islands near Muscat. It raises its chicks late in the summer,
+when small songbirds migrate across the sea in autumn, and it catches them in flight over the
+water.
+
+NAVERA's problem is the same, only slower. Each picture is about 0.14 s old when it arrives. NAVERA
+remembers when the picture was **really** taken and reads the attitude of **that** instant,
+just as the falcon does not trust the old image.
+
+## In NAVERA
+
+The node is `camera_pkg/camera_pkg/nodes/live_camera.py` (see also `docs/ARCHITECTURE.md`,
+"The live camera"). Its grab loop for a USB camera:
 
 ```python
+cap = cv2.VideoCapture(device, cv2.CAP_V4L2)
+cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)                 # newest frame, not a queue
 ...
 while not self._stop.is_set():
@@ -207,104 +313,86 @@ while not self._stop.is_set():
     elif ok:
         fails = 0
         continue
-    ...
-    if self.crop:
-        x, y, w, h = self.crop
-        frame = frame[y:y + h, x:x + w]
-    with self._lock:
-        self._latest = (frame, t)
 ```
 
-Find in it: the stamp `t = now − latency`, the decode only when a frame is wanted (`_want`), the
-crop of the top half. And `BUFFERSIZE 1`: the driver must not keep a **queue** of old frames. A
-frame that waited two seconds in a queue shows where the vehicle *was* two seconds ago — at
-20 m/s, 40 m away. For navigation, the newest frame always wins.
+`t` is the **exposure stamp**. The delay comes from the parameter `capture_latency_s`
+(`NAVERA_CAMERA_LATENCY_S`), or from `latency_s` in the calibration file. With the `ros` input
+(any `sensor_msgs/Image` topic), the image's own stamp minus the delay is used. The attitude
+history and its use:
 
-## 🐦 How birds do it
+```python
+self.att = History(maxlen=4000, max_gap_s=0.2, interp=slerp)    # in __init__
+...
+def _on_imu(self, m: Imu):
+    q = (m.orientation.x, m.orientation.y, m.orientation.z, m.orientation.w)
+    ...                                    # 50 identical samples in a row = frozen IMU: ignored
+    self.att.add(stamp_s(m.header.stamp), q)
+...
+out, meta = self.builder.build(raw, self.count, int(t * 1e9), self.att.at(t), ...)
+```
 
-No eye is instant. Light hits the retina, the cells react, the signal travels along nerves, the brain
-works on it: every animal sees the world **a little late**. Birds are often fast at this. Many birds
-can see flickering light that is far too fast for us. In experiments, some small, quick-flying
-songbirds noticed flashes coming well over a hundred times per second, while a human sees a smooth,
-steady light far below that. A film that looks smooth to you might look like a slideshow to them.
+`History.at(t)` and `slerp` live in `navera_common/navera_common/sensor_history.py`, and your
+`attitude_at()` must give the same results. `FrameBuilder.build` (`navera_common/frame_builder.py`)
+then undistorts the frame, straightens it to a level, straight-down view, and marks it
+**unusable** in three cases: no attitude at the exposure, a tilt above `max_tilt_deg` (45°), or
+a rotation rate above `max_rate_dps` (30 °/s) for a fixed camera. In that last case the tilt at the
+exposure is too uncertain. The node then publishes `/day/image_raw`, `/day/frame_meta` (JSON:
+`image_stamp_ns`, tilt, heading, field of view, usable, reason) and `/day/camera_info`. It
+offers day vision only the **newest** frame, about once per second (`fps`), and waits for its
+acknowledgement (`frame_done`) before sending the next.
 
-Fast eyes matter when you hunt something that moves. Navi catches flying insects, and a peregrine
-falcon catches flying birds. Scientists who filmed peregrines attacking found that they steer with a
-rule very similar to the one used to guide missiles: they keep adjusting their turn so they head for
-where the prey **will be**, not where it was. Aiming at the old picture means missing.
+## Glossary
 
-NAVERA has exactly the same problem, only slower. Each photo arrives about 0.14 s after it was
-taken. In that time a drone at 15 m/s has moved about 2 m and may have turned a little. That is why
-NAVERA must remember **when the picture was really taken** and use the attitude and position of that
-instant — not of the moment the frame reached the computer.
-
-## In NAVERA: what live_camera.py does with each frame
-
-The node is described in `docs/ARCHITECTURE.md`, section 5 "The live camera". For every frame it
-offers to day vision:
-
-1. **Exposure stamp**: grab time − `NAVERA_CAMERA_LATENCY_S` (or the `latency_s` of the
-   calibration file). With a ROS image input, the image's own stamp − latency.
-2. **Attitude at the exposure**, interpolated from the IMU history. No IMU sample within 0.2 s
-   → the frame is marked **unusable**. An IMU sending exactly the same value 50 times in a row is
-   considered **frozen** (a real sensor always has a little noise) and is not used.
-3. **Undistortion** with the lens calibration (lesson 18): the fisheye picture becomes a
-   straight "pinhole" picture, **111°** wide for the Insta360 top lens.
-4. **Straightening** into the view of a level camera looking straight down, with the same
-   heading (`navera_common/frame_builder.py`). A frame tilted more than 45° is marked unusable;
-   so is a frame taken while the vehicle turns faster than 30° per second.
-5. **Height above ground** (`navera_common/altitude.py`) for the scale (lesson 17).
-6. **Publishes** `/day/image_raw` (the picture), `/day/frame_meta` (a JSON description: stamp,
-   attitude, tilt, heading of the image top, field of view, usable or not and why) and
-   `/day/camera_info`.
-
-The same node reads four kinds of input (`input` parameter): `usb` (V4L2, like the Insta360),
-`csi` and `gst` (GStreamer), and `ros` — *any* ROS image topic, for example a vehicle that already
-has its own camera. In the lab you will use that last one to run NAVERA's real node on recorded
-Insta360 frames, without touching the camera.
-
-## Words you met
-
-| Word | Meaning |
+| Term | Meaning |
 |---|---|
-| **frame** | one picture of a video stream |
-| **fps** (frame rate) | frames per second; the Insta360 gives 28.8 at 1920 × 1080 |
-| **grab time** | when the program received the frame |
-| **exposure** | the moment the light hit the sensor: when the picture was really taken |
-| **latency** (delay) | exposure → grab; 0.138 s measured on the bench for the Insta360 |
-| **driver** | the part of the operating system that talks to a device |
-| **V4L2** | *Video for Linux 2*, the Linux camera drivers; cameras appear as `/dev/videoN` |
-| **MJPG** | Motion JPEG: every frame compressed as a JPEG photo |
-| **decode** | turn a compressed JPEG back into pixels (≈ 51 ms for 1080p on the box) |
-| **FOURCC** | the four-letter name of a picture format (`MJPG`, `YUYV`) |
-| **GStreamer** | a toolkit that builds video pipelines from blocks (`a ! b ! c`) |
-| **CSI** | the ribbon connector of the Jetson's own cameras |
-| **crop** | keep only part of a picture (here, the top lens' half) |
+| **frame / frame period T** | one picture of the stream / time between two frames (1/28.8 s = 34.7 ms) |
+| **V4L2** | Video for Linux 2: the kernel interface for cameras (`/dev/videoN`) |
+| **uvcvideo** | the Linux driver for USB Video Class cameras (webcams) |
+| **FOURCC** | four-character code of a pixel format: `MJPG`, `YUYV` |
+| **MJPG** | Motion JPEG: every frame compressed alone as a JPEG |
+| **grab / retrieve** | take the next frame (compressed) / decode it into pixels |
+| **GStreamer, element, caps** | pipeline library; one processing block; the format agreed between two blocks |
+| **appsink** | GStreamer element that gives frames to the application |
+| **jitter** | variation of the intervals between frames (here: their standard deviation) |
+| **dropped frame** | a frame that the camera produced but the program never received |
+| **latency L** | time from exposure to grab (≤ 0.138 s for the Insta360) |
+| **exposure stamp** | tₑ = t_g − L, the instant the picture was taken |
+| **rolling shutter** | sensor rows exposed one after another, not all at once |
+| **slerp** | spherical linear interpolation between unit quaternions |
+| **proportional navigation** | steering in proportion to the rotation rate of the line of sight |
 
-## Check what you learned
+## Self-check
 
-<details><summary>1. The camera gives 28.8 fps. How many milliseconds between two frames?</summary>
-1 / 28.8 = 0.0347 s ≈ 35 ms.
+<details><summary>1. 30 frames arrive between t = 10.000 s and t = 11.050 s. What is the mean frame rate? Why is it not 30/1.05?</summary>
+29 intervals in 1.05 s: 29 / 1.05 = 27.6 fps. 30 frames have only 29 intervals between them
+(like fence posts and fence panels).
 </details>
 
-<details><summary>2. Why does the Insta360 send MJPG instead of raw pixels?</summary>
-Raw 1080p at 28.8 fps is about 179 MB per second — far more than USB 2 can carry (≈ 40 MB/s).
-JPEG compression makes each frame ten or more times smaller.
+<details><summary>2. In a grab log the median interval is 34.7 ms and one interval is 140 ms. How many frames were dropped there?</summary>
+140 / 34.7 = 4.03 → round = 4 periods → 4 − 1 = 3 dropped frames.
 </details>
 
-<details><summary>3. A frame is grabbed at t = 1000.500 s. What is its exposure stamp?</summary>
-1000.500 − 0.138 = 1000.362 s. NAVERA reads the IMU attitude of that instant to straighten it.
+<details><summary>3. A latency bench gives delays from 125 ms to 158 ms, median 141 ms. The camera runs at 28.8 fps. What is the best estimate of screen delay + camera latency, and why?</summary>
+About 125 ms, the minimum. Every measurement is s + L + w, where the wait w for the next exposure is
+between 0 and T = 34.7 ms. The spread (33 ms) is about one period, and the median contains about T/2 = 17 ms
+of waiting: 141 − 17 ≈ 124 ms, which agrees.
 </details>
 
-<details><summary>4. Why is <code>/dev/v4l/by-id/usb-Amba_Insta360_One_R-video-index0</code> better than <code>/dev/video0</code> in a configuration file?</summary>
-The number of <code>/dev/videoN</code> depends on the order the devices were plugged in; the by-id name is
-built from the camera's maker and model, so it always points to the right camera.
+<details><summary>4. A frame is grabbed at t = 500.300 s; IMU samples are at 500.140 s (yaw 30°) and 500.180 s (yaw 32°). With L = 0.138 s, what yaw does slerp give?</summary>
+tₑ = 500.300 − 0.138 = 500.162 s; f = (500.162 − 500.140) / 0.040 = 0.55 → yaw 30 + 0.55 × 2 = 31.1°
+(for a pure yaw rotation, slerp is linear in the angle).
 </details>
 
-<details><summary>5. What happens to a frame taken while the IMU is silent?</summary>
-No attitude within 0.2 s of its exposure: the frame's tilt is unknown, so live_camera marks it
-unusable ("no attitude at the frame's exposure") instead of guessing — a guess could put the match
-tens of metres off.
+<details><summary>5. Why must slerp use −q₁ when q₀ · q₁ < 0?</summary>
+q₁ and −q₁ are the same rotation, but on the quaternion sphere they are opposite points. With a negative
+dot product the great circle from q₀ to q₁ is the long way (a rotation of 360° − θ). Using −q₁ gives the
+short way, the physical motion between two samples 20 ms apart.
+</details>
+
+<details><summary>6. The IMU is silent from 17.0 s to 17.8 s. Is a frame exposed at 17.1 s usable? And at 17.4 s? (max_gap_s = 0.2)</summary>
+At 17.1 s: the last sample is 0.1 s before, so the hole test does not apply (min distance 0.1 ≤ 0.2): the value is
+interpolated, so the frame is usable. At 17.4 s: the hole is 0.8 s > 0.4 s and the exposure is 0.4 s from both sides,
+so there is no attitude and the frame is unusable.
 </details>
 
 Now open the **🛠️ Lab** tab.

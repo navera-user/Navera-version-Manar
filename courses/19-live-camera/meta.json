@@ -1,3 +1,3 @@
-{"number": "19", "title": "The real camera", "module": 4, "duration": "2 h",
- "summary": "Read NAVERA's Insta360 camera: devices, frames, fps, MJPG, the two lenses, the 0.14 s delay — then run NAVERA's own live camera node.",
- "resources": ["camera"], "open": ["camera_tools.py", "capture.py"], "check_timeout_s": 120}
+{"number": "19", "title": "Live camera: frames, delay and the attitude at the exposure", "module": 4, "duration": "3 h",
+ "summary": "V4L2, MJPG and GStreamer; frame-rate and jitter statistics; measuring the camera delay; stamping each frame at its exposure and interpolating the IMU attitude with slerp — then NAVERA's live_camera.py on recorded Insta360 frames.",
+ "resources": ["camera"], "open": ["camera_tools.py", "report.md"], "check_timeout_s": 150}

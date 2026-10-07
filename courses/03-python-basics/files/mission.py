@@ -1,17 +1,74 @@
-# Warm-up: variables, numbers, strings and print.
-# Run it with:   python3 mission.py
+"""mission.py — use navlib to answer the mission planner's questions (lab 3, Step 6).
 
-drone_name = "NAVERA-1"
-cruise_speed_kmh = 54          # how fast the drone flies, in km/h
-mission_distance_km = 12       # how far it has to go, in km
+Scenario (synthetic numbers): an inspection of a point 9 km from the take-off site, on a
+port of the Batinah coast, along the ground track 030° (north-north-east), and back.
+Wind: 5 m/s blowing TOWARDS the south-west, i.e. wind_east = -3 m/s, wind_north = -4 m/s.
 
-print("Drone:", drone_name)
-print("Speed:", cruise_speed_kmh, "km/h")
+Run:   python3 mission.py        -> prints a summary and writes results.json
+"""
+import json
 
-# TODO A: compute the flight time in MINUTES from the two variables above.
-#         (time in hours = distance / speed, and 1 hour = 60 minutes)
-mission_time_min = 0
+import numpy as np
 
-# TODO B: print ONE sentence built with an f-string, using the variables, for example:
-#         NAVERA-1 flies 12 km at 54 km/h: 13.3 minutes
-#         (the :.1f inside the braces rounds to 1 decimal)
+from navlib import FixedWing, Vehicle, enu_from_latlon, great_circle_m, load_track, wind_correction
+
+LEG_M = 9000.0
+TRACK_OUT_DEG = 30.0
+WIND_E, WIND_N = -3.0, -4.0
+
+# Approximate coordinates (deg) of Omani cities; the reference point is Muscat.
+MUSCAT = (23.588, 58.383)
+CITIES = {"Sohar": (24.347, 56.709), "Nizwa": (22.933, 57.533),
+          "Sur": (22.567, 59.529), "Salalah": (17.019, 54.089)}
+
+
+def round_trip_min(vehicle):
+    """Minutes to fly LEG_M out along TRACK_OUT_DEG and back, with the wind."""
+    # TODO B1: two calls of wind_correction() (out: TRACK_OUT_DEG, back: the opposite track,
+    #          kept in [0, 360) with % 360), then time = distance / ground speed for each leg.
+    raise NotImplementedError("mission TODO B1")
+
+
+def main():
+    results = {}
+
+    # TODO A — the wind triangle for the quad (airspeed 12 m/s) on the OUTBOUND leg:
+    #          store the heading to fly and the ground speed.
+    quad = Vehicle("quad", 12.0, 160.0, 350.0)
+    results["out_heading_deg"] = None
+    results["out_ground_speed_ms"] = None
+
+    # TODO B2 — for the quad AND this fixed wing, store (use v.name in the key):
+    #   "<name>_endurance_min", "<name>_round_trip_min", "<name>_can_do_it" (a bool)
+    #   then "wing_turn_radius_m" for a 30° bank.
+    wing = FixedWing("wing", 20.0, 150.0, 220.0, 12.0)
+
+    # TODO C — the recorded survey track (file sohar_track.csv): load it with load_track(),
+    #   then store "track_points", "track_length_m", "track_max_speed_ms",
+    #   "track_median_speed_ms", "track_max_dist_m" (from the take-off point 0, 0) and
+    #   "glitch_time_s": the time t of the FIRST point reached at more than 25 m/s
+    #   (a boolean mask on the speeds, np.argmax, and mind the index shift: speed i ends at point i+1).
+    #   Convert NumPy numbers with float(...) so that json can write them.
+
+    # TODO D — flat-Earth projection error for the 4 cities, all at once (arrays, no loop):
+    #   east, north = enu_from_latlon(lats, lons, *MUSCAT); flat = np.hypot(...);
+    #   true = great_circle_m(...); error % = (flat - true) / true × 100.
+    #   Store "projection_error_pct" as a dict {city: float}, plus "salalah_flat_km" and
+    #   "salalah_great_circle_km".
+
+    # ---- you don't need to change anything below this line ----
+    with open("results.json", "w") as f:
+        json.dump(results, f, indent=2)
+    for k, v in results.items():
+        if isinstance(v, float):
+            print(f"{k:<26} {v:12.3f}")
+        else:
+            print(f"{k:<26} {v!s:>12}")
+    print("-> results.json written")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except NotImplementedError as e:
+        print(f"{e} is not written yet — finish it first (python3 navlib.py shows where you are in navlib.py).")

@@ -1,11 +1,32 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 260" font-family="sans-serif" font-size="13">
-  <rect width="520" height="260" fill="#f7fafc"/>
-  <path d="M0 230 Q260 200 520 230 L520 260 L0 260 Z" fill="#cde6c8"/>
-  <g fill="#0b6e8a"><rect x="60" y="30" width="26" height="14" rx="2"/><rect x="246" y="14" width="26" height="14" rx="2"/><rect x="420" y="40" width="26" height="14" rx="2"/></g>
-  <g fill="#9cc7d6"><rect x="46" y="34" width="12" height="6"/><rect x="88" y="34" width="12" height="6"/><rect x="232" y="18" width="12" height="6"/><rect x="274" y="18" width="12" height="6"/><rect x="406" y="44" width="12" height="6"/><rect x="448" y="44" width="12" height="6"/></g>
-  <g stroke="#f2a33a" stroke-width="2" stroke-dasharray="6 5"><line x1="73" y1="44" x2="250" y2="210"/><line x1="259" y1="28" x2="252" y2="208"/><line x1="433" y1="54" x2="256" y2="210"/></g>
-  <circle cx="253" cy="212" r="8" fill="#d64545"/>
-  <text x="268" y="216" fill="#1d2733">you are here</text>
-  <text x="20" y="22" fill="#1d2733">satellite A</text><text x="292" y="25" fill="#1d2733">satellite B</text><text x="402" y="32" fill="#1d2733">satellite C</text>
-  <text x="88" y="140" fill="#a8680d">distance A</text><text x="354" y="140" fill="#a8680d">distance C</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 330" font-family="sans-serif" font-size="13">
+  <rect width="640" height="330" fill="#f7fafc"/>
+  <path d="M0 290 Q320 255 640 290 L640 330 L0 330 Z" fill="#e9d8b4"/>
+  <text x="560" y="318" fill="#7a5c2e" font-size="12">Earth</text>
+  <!-- satellites: body + panels -->
+  <g id="sats">
+    <g transform="translate(70,60)"><rect x="-13" y="-7" width="26" height="14" rx="2" fill="#0b6e8a"/><rect x="-27" y="-3" width="12" height="6" fill="#9cc7d6"/><rect x="15" y="-3" width="12" height="6" fill="#9cc7d6"/></g>
+    <g transform="translate(230,35)"><rect x="-13" y="-7" width="26" height="14" rx="2" fill="#0b6e8a"/><rect x="-27" y="-3" width="12" height="6" fill="#9cc7d6"/><rect x="15" y="-3" width="12" height="6" fill="#9cc7d6"/></g>
+    <g transform="translate(390,45)"><rect x="-13" y="-7" width="26" height="14" rx="2" fill="#0b6e8a"/><rect x="-27" y="-3" width="12" height="6" fill="#9cc7d6"/><rect x="15" y="-3" width="12" height="6" fill="#9cc7d6"/></g>
+    <g transform="translate(560,95)"><rect x="-13" y="-7" width="26" height="14" rx="2" fill="#0b6e8a"/><rect x="-27" y="-3" width="12" height="6" fill="#9cc7d6"/><rect x="15" y="-3" width="12" height="6" fill="#9cc7d6"/></g>
+  </g>
+  <text x="40" y="35" fill="#1d2733">satellite 1</text>
+  <text x="200" y="20" fill="#1d2733">satellite 2</text>
+  <text x="410" y="30" fill="#1d2733">satellite 3</text>
+  <text x="530" y="75" fill="#1d2733">satellite 4</text>
+  <g stroke="#f2a33a" stroke-width="2" stroke-dasharray="6 5">
+    <line x1="76" y1="68" x2="296" y2="262"/>
+    <line x1="233" y1="44" x2="299" y2="258"/>
+    <line x1="386" y1="54" x2="304" y2="258"/>
+    <line x1="552" y1="102" x2="308" y2="262"/>
+  </g>
+  <text x="150" y="170" fill="#a8680d">ρ1</text>
+  <text x="246" y="150" fill="#a8680d">ρ2</text>
+  <text x="352" y="150" fill="#a8680d">ρ3</text>
+  <text x="484" y="136" fill="#a8680d">ρ4</text>
+  <circle cx="302" cy="264" r="8" fill="#d64545"/>
+  <text x="318" y="278" fill="#1d2733">receiver: x, y, z unknown</text>
+  <rect x="14" y="215" width="212" height="62" rx="6" fill="#ffffff" stroke="#cbd5e0"/>
+  <text x="24" y="236" fill="#1d2733">ρi = ‖si − r‖ + c·b + noise</text>
+  <text x="24" y="254" fill="#1d2733">4 unknowns: x, y, z and the</text>
+  <text x="24" y="270" fill="#1d2733">clock bias b → ≥ 4 satellites</text>
 </svg>

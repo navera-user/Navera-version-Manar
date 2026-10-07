@@ -1,18 +1,89 @@
-# Warm-up: variables, numbers, strings and print.
-# Run it with:   python3 mission.py
+"""mission.py — use navlib to answer the mission planner's questions (lab 3, Step 6).
 
-drone_name = "NAVERA-1"
-cruise_speed_kmh = 54          # how fast the drone flies, in km/h
-mission_distance_km = 12       # how far it has to go, in km
+Scenario (synthetic numbers): an inspection of a point 9 km from the take-off site, on a
+port of the Batinah coast, along the ground track 030° (north-north-east), and back.
+Wind: 5 m/s blowing TOWARDS the south-west, i.e. wind_east = -3 m/s, wind_north = -4 m/s.
 
-print("Drone:", drone_name)
-print("Speed:", cruise_speed_kmh, "km/h")
+Run:   python3 mission.py        -> prints a summary and writes results.json
+"""
+import json
 
-# TODO A: compute the flight time in MINUTES from the two variables above.
-#         (time in hours = distance / speed, and 1 hour = 60 minutes)
-mission_time_min = mission_distance_km / cruise_speed_kmh * 60
+import numpy as np
 
-# TODO B: print ONE sentence built with an f-string, using the variables, for example:
-#         NAVERA-1 flies 12 km at 54 km/h: 13.3 minutes
-#         (the :.1f inside the braces rounds to 1 decimal)
-print(f"{drone_name} flies {mission_distance_km} km at {cruise_speed_kmh} km/h: {mission_time_min:.1f} minutes")
+from navlib import FixedWing, Vehicle, enu_from_latlon, great_circle_m, load_track, wind_correction
+
+LEG_M = 9000.0
+TRACK_OUT_DEG = 30.0
+WIND_E, WIND_N = -3.0, -4.0
+
+# Approximate coordinates (deg) of Omani cities; the reference point is Muscat.
+MUSCAT = (23.588, 58.383)
+CITIES = {"Sohar": (24.347, 56.709), "Nizwa": (22.933, 57.533),
+          "Sur": (22.567, 59.529), "Salalah": (17.019, 54.089)}
+
+
+def round_trip_min(vehicle):
+    """Minutes to fly LEG_M out along TRACK_OUT_DEG and back, with the wind."""
+    _, gs_out = wind_correction(vehicle.cruise_ms, TRACK_OUT_DEG, WIND_E, WIND_N)
+    _, gs_back = wind_correction(vehicle.cruise_ms, (TRACK_OUT_DEG + 180.0) % 360.0, WIND_E, WIND_N)
+    return (LEG_M / gs_out + LEG_M / gs_back) / 60.0
+
+
+def main():
+    results = {}
+
+    # TODO A — the wind triangle for the quad (airspeed 12 m/s) on the outbound leg
+    quad = Vehicle("quad", 12.0, 160.0, 350.0)
+    heading, gs = wind_correction(quad.cruise_ms, TRACK_OUT_DEG, WIND_E, WIND_N)
+    results["out_heading_deg"] = heading
+    results["out_ground_speed_ms"] = gs
+
+    # TODO B — endurance and round trip for the quad and for the fixed wing
+    wing = FixedWing("wing", 20.0, 150.0, 220.0, 12.0)
+    for v in (quad, wing):
+        endurance = v.endurance_s() / 60.0
+        trip = round_trip_min(v)
+        results[f"{v.name}_endurance_min"] = endurance
+        results[f"{v.name}_round_trip_min"] = trip
+        results[f"{v.name}_can_do_it"] = trip <= endurance
+    results["wing_turn_radius_m"] = wing.turn_radius_m(30.0)
+
+    # TODO C — the recorded survey track
+    track = load_track("sohar_track.csv", "survey")
+    t, _, _ = track.arrays()
+    speeds = track.speeds_ms()
+    results["track_points"] = len(track)
+    results["track_length_m"] = track.length_m()
+    results["track_max_speed_ms"] = float(np.max(speeds))
+    results["track_median_speed_ms"] = float(np.median(speeds))
+    results["track_max_dist_m"] = track.max_distance_from(0.0, 0.0)
+    results["glitch_time_s"] = float(t[np.argmax(speeds > 25.0) + 1])
+
+    # TODO D — flat-Earth projection error, all cities at once (arrays, no loop)
+    names = list(CITIES)
+    lats = np.array([CITIES[k][0] for k in names])
+    lons = np.array([CITIES[k][1] for k in names])
+    east, north = enu_from_latlon(lats, lons, MUSCAT[0], MUSCAT[1])
+    flat = np.hypot(east, north)
+    true = great_circle_m(MUSCAT[0], MUSCAT[1], lats, lons)
+    err_pct = (flat - true) / true * 100.0
+    results["projection_error_pct"] = {k: float(e) for k, e in zip(names, err_pct)}
+    results["salalah_flat_km"] = float(flat[names.index("Salalah")] / 1000.0)
+    results["salalah_great_circle_km"] = float(true[names.index("Salalah")] / 1000.0)
+
+    # ---- you don't need to change anything below this line ----
+    with open("results.json", "w") as f:
+        json.dump(results, f, indent=2)
+    for k, v in results.items():
+        if isinstance(v, float):
+            print(f"{k:<26} {v:12.3f}")
+        else:
+            print(f"{k:<26} {v!s:>12}")
+    print("-> results.json written")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except NotImplementedError as e:
+        print(f"{e} is not written yet — finish it first (python3 navlib.py shows where you are in navlib.py).")

@@ -1,60 +1,71 @@
-# Lab 19 — Read the real camera
+# Lab 19 — Timing a live camera
 
-**Goal:** read frames from NAVERA's Insta360 (or from recorded frames when it is not yours), measure
-the frame rate, stamp each frame with its exposure time, cut out the two lenses — then run NAVERA's
-**own** live camera node and look at what it publishes.
-**Time:** about 1 h 15.
+**Goal:** write the timing tools of a live camera: frame statistics, the camera delay from a
+flash bench, and the attitude at the exposure with slerp. Check that your attitude function
+matches NAVERA's own code, measure a live GStreamer source, run NAVERA's `live_camera.py` on
+recorded Insta360 frames, and write a short technical report.
+**Time:** about 3 h.
+
+**What is graded:** `camera_tools.py` (8 functions), `results.json` (made by `analyse.py`), the
+files in `out/`, and `report.md`.
 
 > [!NOTE]
-> **Camera or no camera?** The camera is shared. If you have **booked** it in the dashboard (and
-> nobody's test is using it), the programs read the real camera. Otherwise they automatically read
-> **recorded frames** of the same camera, in `/data/academy/19-live-camera/`. Everything in this lab
-> works both ways, and **✔ Check my work** can pass without the camera (the camera-only check is then
-> skipped).
+> **Camera or no camera?** The camera is shared by the class and by NAVERA's engineers. This lab
+> does **not** need it. Every program uses **recorded frames** of the Insta360
+> (`/data/academy/19-live-camera/`) when the camera is not booked, absent, or busy. The programs
+> check `fuser` first and never open a busy camera. The camera check is skipped when no camera
+> was used.
 
 > [!WARNING]
-> **Privacy.** The recorded frames were saved while the camera's top lens looked at a calibration
-> chessboard — and its bottom lens filmed the people sitting in the room. That is why the **bottom
-> half of every recorded frame is pixelated**. When you use the real camera, remember it films
-> both sides: don't save or share pictures of people who did not agree.
+> **Privacy.** The recorded frames were saved while the top lens looked at a calibration board
+> and the bottom lens filmed people in the room. That is why the **bottom half of every recorded
+> frame is pixelated**. If you use the real camera, remember that it films both sides: do not
+> save or share pictures of people who did not agree.
 
-## Step 1 — Is there a camera?
+The data of this lab:
 
-Cameras live in `/dev`. Ask for the stable names:
+| File in `/data/academy/19-live-camera/` | Real or synthetic | What |
+|---|---|---|
+| `frames/frame_*.jpg`, `insta360_top.yaml` | **real** (NAVERA bench) | 30 Insta360 frames, the top lens calibration with `latency_s: 0.138` |
+| `grab_log.csv` | synthetic | 60 s of grab times at nominal 28.8 fps: jitter, drops, one stall |
+| `flashes.csv`, `flash_frames.csv` | synthetic | a simulated flash bench (screen delay 20 ms, latency 105 ms — **chosen values, not the Insta360's**) |
+| `turn_imu.csv`, `turn_frames.csv` | synthetic | a drone turning 150 m above the coast near Sohar: IMU at 50 Hz with an 0.8 s dropout, frames with the **true** attitude at each exposure |
+
+The synthetic files have an exact ground truth, so you can measure the error of each
+method. NAVERA's real flight data and test map cover Sousse, Tunisia, where NAVERA is
+developed. The Sohar flight here is simulated.
+
+## Step 1 — Find the camera (or see that it is not yours)
 
 ```bash
 ls -l /dev/v4l/by-id/
 ```
 
-- **Camera booked:** you see `usb-Amba_Insta360_One_R-video-index0 -> ../../video0` (and `index1`).
-- **Not booked:** `No such file or directory`. Your sandbox only contains the devices you booked —
-  that is how the dashboard shares one camera between a whole class.
+- **Camera booked:** you see `usb-Amba_Insta360_One_R-video-index0 -> ../../video0`.
+- **Not booked:** `No such file or directory`. Your sandbox contains only the devices you booked.
 
-Also try:
+If the camera is there, check whether another program is using it before you do anything else:
 
 ```bash
-ls /dev/video*
+fuser /dev/video0 /dev/video1
 ```
 
-## Step 2 — Write the four camera tools
+No output means that it is free. A process number means that it is busy: do not open it.
 
-Open [camera_tools.py](file:./camera_tools.py). Read the class `FrameSource` at the bottom first:
-it opens the camera exactly like NAVERA does (`CAP_V4L2`, `MJPG`, 1920 × 1080, `BUFFERSIZE 1`), and
-when the camera is missing or busy it plays the recorded frames **at the rhythm of the camera**
-instead. Like `live_camera.py`, it splits reading into `grab()` (cheap, gives the grab time) and
-`retrieve()` (decodes the picture).
+## Step 2 — Part A: frames, statistics and the stamp (TODO 1–4)
 
-Now the TODOs:
+Open [camera_tools.py](file:./camera_tools.py). Read the conventions at the top and the class
+`FrameSource` at the bottom. `FrameSource` opens the camera exactly like NAVERA does (`CAP_V4L2`,
+`MJPG`, 1920 × 1080, `BUFFERSIZE 1`), or replays the recorded frames at the camera's rhythm.
 
 > [!TASK]
-> In `camera_tools.py`:
-> 1. `split_halves(frame)` returns `(top, bottom)`: the upper and lower halves of the picture.
->    Compute the half from `frame.shape[0]` — don't write 540, it must work for any size.
-> 2. `measure_fps(grab_times)` returns `(number of times − 1) / (last time − first time)`, and `0.0`
->    when there are fewer than 2 times.
-> 3. `exposure_time(grab_time_s, latency_s)` returns when the picture was really taken.
-> 4. `load_latency(calib_file)` returns the `latency_s` of the calibration file as a float, `0.0` when
->    the key is missing (use `calib.get(...)`).
+> In `camera_tools.py`, write:
+> 1. `split_halves(frame)` → `(top, bottom)`. Compute the half from `frame.shape[0]` (do not write 540).
+> 2. `frame_stats(grab_times)` → a dict with exactly the keys `n, fps, period_ms, median_ms,
+>    jitter_ms, max_gap_ms, dropped` as defined in its docstring (lesson, section 5). Use
+>    `np.diff`, `np.median`, `np.std` (ddof = 0). For fewer than 2 times, return zeros.
+> 3. `exposure_time(grab_time_s, latency_s)`.
+> 4. `load_latency(calib_file)` → `latency_s` as a float, `0.0` when the key is missing.
 
 Test them:
 
@@ -62,8 +73,13 @@ Test them:
 python3 camera_tools.py
 ```
 
-You should see the top half black (mean 0.0), the bottom white (mean 255.0), `10.0`, `99.862`
-and `0.138`.
+Lines 1–4 must show the expected values written next to them. The worked example of the lesson
+(`[0, .1, .2, .4, .5]`) must give `fps 8.0`, `median_ms 100.0`, `jitter_ms 43.3`, `dropped 1`.
+
+> [!TIP]
+> Common errors: `np.std` of a Python list works, but `d.std()` needs a numpy array; the times
+> are in **seconds** and the dict wants **milliseconds** (× 1000); `round()` returns an int in
+> Python 3, which is what `dropped` needs.
 
 ## Step 3 — Capture frames
 
@@ -71,69 +87,144 @@ and `0.138`.
 python3 capture.py
 ```
 
-The program says where its frames come from, then grabs 60 of them (about 2 seconds), decodes
-**only the last one**, and saves everything in `out/`:
+The program says where its frames come from. It grabs 60 frames (about 2 s), decodes **only the
+last one**, and writes `out/`:
 
 ```
 🎞️  no camera: no /dev/v4l/by-id/usb-Amba_Insta360_One_R-video-index0 (camera not booked, or unplugged)
-   -> reading the recorded frames of /data/academy/19-live-camera
+   -> replaying the recorded frames of /data/academy/19-live-camera
 camera delay from the calibration file: 0.138 s
-60 frames in 2.05 s -> 28.8 fps
-saved out/full.jpg 1920x1080, out/top.jpg 1920x540, out/bottom.jpg 1920x540, out/stamps.csv, ...
+60 frames: 28.8 fps, median period 34.7 ms, jitter ...
 ```
 
-Open the pictures in the editor (click them in the file list): [out/full.jpg](file:./out/full.jpg),
-[out/top.jpg](file:./out/top.jpg), [out/bottom.jpg](file:./out/bottom.jpg). In `top.jpg` you see the
-office through the fisheye: the edges of the screen are **curved**, the room looks stretched on the
-sides. That is the 166°-wide top lens NAVERA uses.
-
-> [!TASK]
-> Run `python3 capture.py` once your four functions are done, so that `out/top.jpg`,
-> `out/bottom.jpg` (1920 × 540 each), `out/stamps.csv` and `out/capture_info.json` exist.
-
-## Step 4 — Look at the stamps
+Open [out/top.jpg](file:./out/top.jpg) and [out/bottom.jpg](file:./out/bottom.jpg). The top half is
+the fisheye view that NAVERA uses: straight edges look **curved**. Then look at the stamps:
 
 ```bash
-head -5 out/stamps.csv
+head -4 out/stamps.csv
 ```
 
-```
-frame,grab_time_s,exposure_time_s
-0,1791366581.5235,1791366581.3855
-1,1791366581.5582,1791366581.4202
-...
-```
-
-The times are in seconds since 1 January 1970 (the usual computer clock). Check two things with your
-own eyes: two grab times are about **0.035 s** apart (28.8 fps), and each exposure is exactly
-**0.138 s** before its grab. That second column is what NAVERA uses to pick the attitude of the
-picture.
+Each `exposure_time_s` must be exactly 0.138 s before its `grab_time_s`.
 
 > [!NOTE]
-> With the recorded frames, the rhythm comes from `/data/academy/19-live-camera/grab_times.csv`.
-> Be aware: those grab times are **simulated** at the 28.8 fps the camera gives — the calibration tool
-> that saved these frames did not record when each one arrived. With the real camera, the rhythm is
-> the camera's own.
+> In replay mode the rhythm comes from `grab_times.csv` (synthetic, 28.8 fps). The sleeping of the
+> replay adds the jitter of your sandbox, so your fps is close to, but not exactly, 28.8.
 
-## Step 5 — With the real camera (only if you booked it)
+## Step 4 — MJPG and GStreamer, live
 
-If step 1 showed the camera, grab 150 frames (about 5 s):
+An MJPG stream is just a sequence of independent JPEG files. Make one with GStreamer from a
+live test source at 28.8 fps (`framerate=144/5`):
 
 ```bash
-python3 capture.py 150
+mkdir -p out/mjpg && gst-launch-1.0 -q videotestsrc num-buffers=58 pattern=ball ! video/x-raw,width=960,height=540,framerate=144/5 ! jpegenc quality=85 ! multifilesink location=out/mjpg/frame_%03d.jpg
 ```
 
-Read the frame rate. Is it 28.8? Then open `out/top.jpg` and `out/bottom.jpg`: you see both sides of
-the camera, right now. Wave your hand in front of one lens and capture again.
+```bash
+ls -l out/mjpg | head -5
+```
 
-If it prints *"the camera is there but sends nothing (busy?)"*, someone else's program is streaming
-from it (one program at a time!). The recorded frames are used instead — that's fine for the lab.
+Each frame is a JPEG of about 15 kB. A raw 960 × 540 BGR frame is 1.5 MB. You can open
+`out/mjpg/frame_000.jpg` in the editor.
 
-## Step 6 — Run NAVERA's live camera node
+> [!NOTE]
+> GStreamer may print `(Argus) Error FileOperationFailed ...`. It looks for the daemon of the
+> Jetson's CSI cameras, which does not run in your sandbox. You can ignore this message.
 
-Now the real thing: `camera_pkg/nodes/live_camera.py` from **your NAVERA copy**. Without the camera, we
-feed it the recorded frames through a ROS topic — its `input:=ros` mode, the one a vehicle with its own
-camera uses. One command starts three programs:
+Now measure frame timing on a live source with **NAVERA's own `GstCapture` class**. The script
+uses your `frame_stats()`:
+
+```bash
+python3 gst_timing.py
+```
+
+Then simulate a slow consumer that needs 50 ms of processing per frame:
+
+```bash
+python3 gst_timing.py --work-ms 50
+```
+
+Compare the two runs. Without work you should measure about 28.8 fps with a jitter of a few
+ms. With 50 ms of work the rate falls to about 19–20 fps, and the script reports how many
+source frames were **never grabbed**. The appsink (`drop=true max-buffers=1`) threw away the old
+frames and always gave you the newest one. This is exactly what NAVERA wants. Look also at
+`dropped` from your `frame_stats()`. Why is it 0 in the second run? (Hint: what is the median
+interval now?)
+
+## Step 5 — Part B: the delay (TODO 5)
+
+Read section 6 of the lesson and look at the figure of the flash bench again.
+
+> [!TASK]
+> Write `latency_from_flashes(flash_times, frame_times, brightness)` as specified in its docstring.
+> It follows the method of `navera_tools/bench/camera_latency.py`: a "black" level before
+> each flash, a "white" level after it, and the first frame above the midpoint.
+
+```bash
+python3 camera_tools.py
+```
+
+Line 5 must print `[0.15...]`. The check also tests a half-lit frame (brightness below the
+midpoint) and a flash that the camera never sees, which you must skip.
+
+## Step 6 — Part C: the attitude at the exposure (TODO 6–8)
+
+> [!TASK]
+> Write, with quaternions as numpy arrays **(w, x, y, z)**:
+> 6. `quat_angle_deg(q0, q1)` = 2·acos(min(1, |q0·q1|)) in degrees.
+> 7. `slerp(q0, q1, f)`: shortest path, the linear branch for a dot product above 0.9995, normalised.
+>    You wrote it in lesson 16 (`quaternions.py`). Write it again here, so this file is complete.
+> 8. `attitude_at(t, imu_times, imu_quats, max_gap_s=0.2)` with **NAVERA's rules** (docstring),
+>    using `bisect.bisect_left`.
+
+```bash
+python3 camera_tools.py
+```
+
+Lines 6–8 must give 30.0, the yaw-45° quaternion `[0.924 0 0 0.383]` and the yaw-10° quaternion.
+Now compare your `attitude_at()` with NAVERA's `History.at()` on the whole turn
+(663 exposures):
+
+```bash
+python3 compare_with_navera.py
+```
+
+Read [compare_with_navera.py](file:./compare_with_navera.py): it converts each sample to NAVERA's
+**(x, y, z, w)** order before giving it to `History.add`. You must get
+`✔ your attitude_at() gives NAVERA's attitude at every exposure` and 12 exposures without
+attitude on both sides. A difference of about 1e-6° is only rounding in `acos`.
+
+## Step 7 — The experiment: analyse.py
+
+```bash
+python3 analyse.py
+```
+
+Read [analyse.py](file:./analyse.py) while it runs. It is the experiment:
+
+1. `frame_stats()` on the 60 s grab log.
+2. `latency_from_flashes()` on the simulated bench: median, min, max, standard deviation, and
+   the frame period.
+3. For each frame of the turn, three ways to choose the attitude, each compared with the truth:
+   - `latest_at_grab`: the last IMU sample received before the grab (a naive program),
+   - `nearest_at_exposure`: the sample nearest to tₑ = t_g − 0.138 s,
+   - `slerp_at_exposure`: your `attitude_at(tₑ)`.
+
+   The errors are turned into metres at 150 m with H·tan(δθ).
+4. Your GStreamer runs, and the time to decode one recorded 1080p JPEG on this machine.
+
+It writes `results.json` and three plots. Open [out/attitude_error.png](file:./out/attitude_error.png),
+[out/jitter.png](file:./out/jitter.png) and [out/latency.png](file:./out/latency.png).
+
+> [!QUESTION]
+> In `attitude_error.png`, the red points (latest at grab) peak at about 4–5.5 s and 15–16.5 s.
+> What does the drone do then? Use δθ ≈ ω·δt to check the size of the peak. Why does slerp have
+> its largest errors just before and after the gap at 17–17.8 s?
+
+## Step 8 — NAVERA's live camera node
+
+Now run the real node, `camera_pkg/nodes/live_camera.py` from your NAVERA copy. Without the
+camera we feed it the recorded frames through a ROS topic, its `input:=ros` mode. A vehicle with
+its own camera uses the same mode. One command starts three programs:
 
 ```bash
 bash live_demo.sh
@@ -141,89 +232,80 @@ bash live_demo.sh
 
 | Program | Role |
 |---|---|
-| [replay_camera.py](file:./replay_camera.py) | publishes the recorded frames (2 per second) on `/vehicle/camera/image_raw`, and a fake **level** IMU on `/navera/sensors/imu` |
-| `live_camera.py` (NAVERA) | grabs, stamps (− 0.138 s), crops the top half, undistorts, straightens, publishes on `/day/...` |
-| [watch_live.py](file:./watch_live.py) | receives 3 frames like day vision does, sends the "done" acknowledgement, saves the last one in `out/` |
+| [replay_camera.py](file:./replay_camera.py) | publishes the recorded frames (2 per second) on `/vehicle/camera/image_raw` and a simulated IMU at 50 Hz on `/navera/sensors/imu` |
+| `live_camera.py` (NAVERA) | stamps (− 0.138 s), crops the top half, interpolates the attitude, undistorts, straightens, publishes `/day/...` |
+| [watch_live.py](file:./watch_live.py) | receives 3 frames like day vision does, sends the `frame_done` acknowledgement, saves the last one in `out/` |
 
-Open [live_demo.sh](file:./live_demo.sh) to see how NAVERA's node is started:
-
-```
-ros2 run camera_pkg live_camera.py --ros-args -r __ns:=/day \
-    -p input:=ros -p input_topic:=/vehicle/camera/image_raw \
-    -p width:=1920 -p height:=1080 -p crop:=top \
-    -p calibration_file:=/data/academy/19-live-camera/insta360_top.yaml -p wait_for_ready:=false -p fps:=1.0
-```
-
-You should see, among NAVERA's log lines:
-
-```
-[day.live_camera]: camera delay 0.138 s (from /data/academy/19-live-camera/insta360_top.yaml)
-[day.live_camera]: live camera: input=ros 1920x1080, lens calibrated (fisheye), published field of view 110.9 deg ...
-frame 0: usable=True straightened=True tilt=0.0 deg  heading=0.0 deg  field of view=110.944 deg  attitude=imu
-...
-camera message stamped 1791366585.259 s -> exposure stamp 1791366585.121 s : 0.138 s earlier
-saved out/live_view.jpg (1920x540) and out/live_meta.json
-```
-
-NAVERA found the delay in the calibration file by itself, and moved every stamp 0.138 s back.
-(A heading of `360.0` is the same direction as `0.0`: north.)
-
-Now compare [out/top.jpg](file:./out/top.jpg) (the raw top lens) with
-[out/live_view.jpg](file:./out/live_view.jpg) (what NAVERA publishes): the curved edges of the screen are
-**straight** now, and the picture is 111° wide instead of 166°. Then read the description:
+You should see NAVERA's log `camera delay 0.138 s (from .../insta360_top.yaml)`, three lines
+`frame N: usable=True straightened=True tilt=0.0 deg ...` and
+`camera message stamped ... -> exposure stamp ... : 0.138 s earlier`. (A heading of 360.0 is
+north, the same as 0.0.) Compare [out/top.jpg](file:./out/top.jpg) (raw fisheye) with
+[out/live_view.jpg](file:./out/live_view.jpg) (what NAVERA publishes: undistorted, 111° wide).
 
 ```bash
 cat out/live_meta.json
 ```
 
-Find `image_stamp_ns` (the exposure stamp, in nanoseconds), `camera_hfov_deg`, `tilt_deg`,
-`straightened`, `attitude_source`, and `altitude_m: null` — no height source is running, so a real
-day vision would not know the scale of this frame yet (lesson 17).
+Find `image_stamp_ns`, `source_stamp_ns`, `tilt_deg`, `rate_dps`, `camera_hfov_deg` and
+`attitude_source`.
 
-> [!TASK]
-> Run `bash live_demo.sh` so that `out/live_meta.json` (straightened, 111° wide, attitude from the IMU)
-> and `out/live_view.jpg` (1920 × 540) exist.
-
-## Step 7 — Tilt the vehicle
-
-`replay_camera.py` can pretend the vehicle is tilted. Nose 15° up:
+Now make the vehicle turn at 40 °/s:
 
 ```bash
-bash live_demo.sh --pitch 15
+bash live_demo.sh --turn-rate 40
 ```
 
-The meta now says `tilt=15.0 deg`, and `out/live_view.jpg` is **warped**: NAVERA turned the picture into
-the view of a level camera looking straight down (here the camera really looks at a wall, so the result
-looks strange — on a drone looking at the ground, it makes the picture match the map).
-
-Run the level version again before checking, so your saved files are the straight ones:
+Every frame is now `usable=False`, with the reason `vehicle turning 40 deg/s at the exposure (max 30)`.
+For a fixed camera NAVERA refuses frames taken during fast rotations. Your error analysis shows
+why: at 40 °/s, even a 25 ms timing error is 1°. Finally run the level version again, so that
+your saved files are the usable ones that the check reads:
 
 ```bash
 bash live_demo.sh
 ```
 
-## Step 8 — Quiz
+> [!TASK]
+> `out/live_meta.json` must describe a **usable, straightened** frame, 111° wide, with an IMU
+> attitude, and `out/live_view.jpg` must be 1920 × 540.
 
-Open [answers.py](file:./answers.py) and answer the four questions.
+## Step 9 — The report
 
 > [!TASK]
-> Answer Q1–Q4 in `answers.py`. The course tab has everything you need.
+> Complete [report.md](file:./report.md): keep its four sections (`## Frame timing`,
+> `## Camera delay`, `## Attitude at the exposure`, `## Recommendation`), replace every TODO, and
+> write at least 250 words. Quote numbers from `results.json` with units. The check looks for
+> these numbers: the grab-log **fps** (2 decimals), the **median delay** of the bench (ms or s), the
+> **median ground error of `latest_at_grab`** (m), and **your own GStreamer fps** without work.
+
+If you run `gst_timing.py` again later, run `analyse.py` again and update the fps in your
+report.
+
+## Step 10 — With the real camera (only if you booked it and it is free)
+
+If step 1 showed the camera and `fuser` showed no process, grab 150 frames (about 5 s):
+
+```bash
+python3 capture.py 150
+```
+
+Is the frame rate 28.8? What are the jitter and the time of `retrieve()` (the MJPG decode)?
+Write these numbers in your report. If the program says that the camera is used by another
+program, it replays the recorded frames instead. That is fine for the lab.
 
 Press **✔ Check my work**.
 
 ## Going further (optional)
 
-- **Too tilted.** Run `bash live_demo.sh --pitch 60`. What do `usable` and the reason say? Which setting
-  of NAVERA decides the limit? (Look for `max_tilt_deg` in `live_camera.py`.) Run `bash live_demo.sh`
-  again afterwards.
-- **What does decoding cost?** Time the decoding of one recorded JPEG frame and compare with the 51 ms
-  measured on the box (our file was re-saved as JPEG for this lab, so its size is not exactly what the camera sends):
-
-  ```bash
-  python3 -c "import cv2, numpy as np, time; b = np.fromfile('/data/academy/19-live-camera/frames/frame_000.jpg', np.uint8); t = time.time(); [cv2.imdecode(b, 1) for _ in range(20)]; print(len(b) // 1000, 'kB, decode', round((time.time() - t) / 20 * 1000, 1), 'ms')"
-  ```
-
-  How many processor-seconds per second would decoding all 28.8 frames cost?
-- **A frozen IMU.** In `replay_camera.py`, the IMU adds a tiny noise to every sample. Find in
-  `live_camera.py` (`_on_imu`) what NAVERA does when 50 samples in a row are *exactly* the same, and why
-  a real sensor never does that.
+- **Robust jitter.** Add `p99_ms` and a robust spread to `frame_stats()`:
+  MAD = median(|dᵢ − m|) × 1.4826. Compare MAD and σ on `grab_log.csv`. Which one would you use to
+  set an alarm for a "stuttering camera"?
+- **How many flashes?** Draw 5, 10 and 20 flashes at random from the bench (many times) and plot
+  the spread of the median. Is the √N rule of the lesson right? What would you change in
+  `camera_latency.py` to estimate L + s and not L + s + T/2?
+- **Clock offset from data.** The camera and the IMU may use different clocks. Shift the IMU
+  times of `turn_imu.csv` by −50…+50 ms, and for each shift compute the median slerp error against
+  the truth. The minimum gives the offset. On a real drone, without truth, the same search can
+  compare the image rotation measured by vision (lessons 21–23) with the gyroscope.
+- **Decode cost.** `results.json` contains `mjpg_decode_ms` measured in your sandbox. How many CPU
+  cores would decoding every frame at 28.8 fps use? Compare with the 51 ms that NAVERA's engineers
+  measured on the box.

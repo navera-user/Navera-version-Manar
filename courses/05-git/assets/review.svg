@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 260" font-family="sans-serif" font-size="13">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#4a5866"/></marker>
+  </defs>
+  <rect width="700" height="260" fill="#f7fafc"/>
+  <text x="20" y="26" fill="#1d2733" font-weight="bold">Reviewing a patch: check it, read it, apply only what is safe</text>
+  <rect x="20" y="45" width="230" height="190" rx="8" fill="#ffffff" stroke="#8aa3b8"/>
+  <text x="35" y="68" font-family="monospace" font-weight="bold" fill="#1d2733">review_me.patch</text>
+  <text x="35" y="88" font-size="11" fill="#4a5866">From: Khalid Al Rawahi</text>
+  <text x="35" y="102" font-size="11" fill="#4a5866">Subject: fewer false GPS refusals;</text>
+  <text x="35" y="116" font-size="11" fill="#4a5866">geo: use EARTH_RADIUS_M</text>
+  <rect x="32" y="126" width="206" height="54" rx="4" fill="#e6f4e3" stroke="#4e9a44"/>
+  <text x="40" y="141" font-size="11" font-family="monospace" fill="#1d2733">geo.py</text>
+  <text x="40" y="156" font-size="11" font-family="monospace" fill="#a93226">- 2 * 6_371_000.0 * …</text>
+  <text x="40" y="171" font-size="11" font-family="monospace" fill="#2f6b2a">+ 2 * EARTH_RADIUS_M * …</text>
+  <rect x="32" y="186" width="206" height="42" rx="4" fill="#fbe4e4" stroke="#c0392b"/>
+  <text x="40" y="201" font-size="11" font-family="monospace" fill="#1d2733">estimator_params.yaml</text>
+  <text x="40" y="218" font-size="11" font-family="monospace" fill="#a93226">margin 50.0 → 5000.0</text>
+  <line x1="255" y1="140" x2="300" y2="140" stroke="#4a5866" stroke-width="2" marker-end="url(#ar)"/>
+  <rect x="305" y="85" width="170" height="110" rx="8" fill="#eef1f4" stroke="#8aa3b8"/>
+  <text x="390" y="108" text-anchor="middle" font-weight="bold" fill="#1d2733">1. git apply --stat</text>
+  <text x="390" y="132" text-anchor="middle" font-weight="bold" fill="#1d2733">2. git apply --check</text>
+  <text x="390" y="156" text-anchor="middle" font-weight="bold" fill="#1d2733">3. read every line</text>
+  <text x="390" y="180" text-anchor="middle" font-size="11" fill="#4a5866">does it fit? is it safe?</text>
+  <line x1="480" y1="120" x2="520" y2="90" stroke="#4e9a44" stroke-width="2" marker-end="url(#ar)"/>
+  <line x1="480" y1="160" x2="520" y2="190" stroke="#c0392b" stroke-width="2" marker-end="url(#ar)"/>
+  <rect x="525" y="55" width="160" height="70" rx="8" fill="#e6f4e3" stroke="#4e9a44"/>
+  <text x="605" y="78" text-anchor="middle" font-weight="bold" fill="#2f6b2a">apply + commit</text>
+  <text x="605" y="96" text-anchor="middle" font-size="11" fill="#1d2733">same result, one constant</text>
+  <text x="605" y="112" text-anchor="middle" font-size="11" fill="#1d2733">instead of two literals</text>
+  <rect x="525" y="155" width="160" height="80" rx="8" fill="#fbe4e4" stroke="#c0392b"/>
+  <text x="605" y="178" text-anchor="middle" font-weight="bold" fill="#a93226">reject (--exclude)</text>
+  <text x="605" y="196" text-anchor="middle" font-size="11" fill="#1d2733">anti-spoofing gate</text>
+  <text x="605" y="212" text-anchor="middle" font-size="11" fill="#1d2733">weakened 100×;</text>
+  <text x="605" y="228" text-anchor="middle" font-size="11" fill="#1d2733">two concerns in one patch</text>
+</svg>

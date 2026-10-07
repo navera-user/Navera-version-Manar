@@ -2,23 +2,63 @@
  "camera": {
   "width_px": 960,
   "height_px": 540,
-  "hfov_deg": 90.0
+  "hfov_deg": 90.0,
+  "f_px": 480.00000000000006
  },
  "pad_size_m": 12.0,
+ "map": "NAVERA satellite map, Sousse (Tunisia), zoom 19",
+ "conventions": "ENU world, origin on the ground under the drone; heading cw from north, pitch + nose up, roll + right wing down",
  "photos": {
   "photo_A.png": {
    "lat": 35.8262,
    "lon": 10.6395,
    "height_m": 120.0,
-   "m_per_px": 0.25,
-   "pad_px": 48
+   "heading_deg": 0.0,
+   "pitch_deg": 0.0,
+   "roll_deg": 0.0,
+   "pad_centre_en_m": [
+    28.75,
+    13.5
+   ],
+   "pad_centre_px": [
+    595.0,
+    216.0
+   ],
+   "nadir_m_per_px": 0.25
   },
   "photo_B.png": {
    "lat": 35.819,
    "lon": 10.631,
    "height_m": 210.0,
-   "m_per_px": 0.4375,
-   "pad_px": 27
+   "heading_deg": 0.0,
+   "pitch_deg": 0.0,
+   "roll_deg": 0.0,
+   "pad_centre_en_m": [
+    50.31,
+    23.63
+   ],
+   "pad_centre_px": [
+    595.0,
+    216.0
+   ],
+   "nadir_m_per_px": 0.4375
+  },
+  "photo_T.png": {
+   "lat": 35.8231,
+   "lon": 10.6352,
+   "height_m": 150.0,
+   "heading_deg": 30.0,
+   "pitch_deg": -12.0,
+   "roll_deg": 4.0,
+   "pad_centre_en_m": [
+    38.0,
+    -92.0
+   ],
+   "pad_centre_px": [
+    761.0,
+    358.1
+   ],
+   "nadir_m_per_px": 0.3125
   }
  }
 }

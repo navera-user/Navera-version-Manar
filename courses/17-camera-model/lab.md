@@ -1,209 +1,208 @@
 # Lab 17 — Measure the world with a camera
 
-**Goal:** write the camera formulas NAVERA uses (focal length, footprint, meters per pixel, map
-scale, tilt), check them against NAVERA's own code, and find the height of a drone from one of its
-photos.
-**Time:** about 1 hour.
-
-Your files:
+**Goal:** implement the pinhole camera model (K, projection, back-projection onto the ground,
+footprint, GSD, map zoom, error propagation), verify it against NAVERA's own code, use it on three
+synthetic drone photos, and write a short analysis.
+**Time:** about 3 hours.
 
 | File | What you do with it |
 |---|---|
-| [camera_math.py](file:./camera_math.py) | the formulas — **TODO 1 to 4** |
-| [measure_pad.py](file:./measure_pad.py) | measure a landing pad in two photos — **TODO 5** |
-| [compare_with_navera.py](file:./compare_with_navera.py) | compares your formulas with NAVERA's (nothing to change) |
-| [plot_scale.py](file:./plot_scale.py) | draws a chart (nothing to change) |
-| [answers.py](file:./answers.py) | three quiz questions |
+| [camera_math.py](file:./camera_math.py) | the model — **TODO 1 to 6** |
+| [measure_pad.py](file:./measure_pad.py) | measure a landing pad in the photos — **TODO 7** |
+| [compare_with_navera.py](file:./compare_with_navera.py) | compares your functions with NAVERA's (nothing to change) |
+| [experiments.py](file:./experiments.py) | runs all experiments, writes `results.json` and two charts (nothing to change) |
+| [report.md](file:./report.md) | your key numbers and analysis — graded |
 
-## Step 1 — Run the starter
+The photos in `/data/academy/17-camera-model/` are made from NAVERA's satellite map, which covers
+**Sousse, Tunisia** (NAVERA's test area). They are what an ideal camera would see over flat ground,
+so we know the exact truth. Numerical scenarios in this lab use Omani places.
+
+## Step 1 — Run the starter and read the conventions
 
 ```bash
 python3 camera_math.py
 ```
 
-Every line says `TODO not done yet`. The program already knows what to print: you only have to write
-the formulas inside the functions.
+Every line says `TODO not done yet`. Read the comment block at the top of
+[camera_math.py](file:./camera_math.py) (world ENU with the origin on the ground under the drone,
+camera axes OpenCV, `R_wc` maps camera → world), then scroll below the line
+`you don't need to change anything below` and read `camera_rotation()`: it builds R_wc from
+heading, pitch and roll exactly like NAVERA (lesson 16).
 
 > [!TIP]
-> Python's `math.tan()` and `math.cos()` want the angle in **radians**. Always write
-> `math.tan(math.radians(angle_deg))`. Forgetting this is the number-one bug of this lab:
-> `math.tan(45)` is 1.62, not 1!
+> Test small pieces in the Python shell: type `python3`, then for example
+> `from camera_math import *` and `camera_rotation(0, 0, 0)`. Leave with `exit()`. After you edit
+> the file, restart the shell — Python does not reload a module by itself.
 
-## Step 2 — Focal length, footprint, meters per pixel
-
-Open [camera_math.py](file:./camera_math.py). Each function has its formula in its docstring
-(the text between `"""`). For example, the footprint:
-
-```python
-def footprint(height_m, hfov_deg):
-    return 2.0 * height_m * math.tan(math.radians(hfov_deg) / 2.0)
-```
+## Step 2 — Intrinsics (TODO 1)
 
 > [!TASK]
-> **TODO 1:** write `focal_px(hfov_deg, width_px)`, `footprint(height_m, hfov_deg)` and
-> `meters_per_pixel(height_m, hfov_deg, width_px)` (use `footprint()` inside it). Save, run
-> `python3 camera_math.py` again.
+> **TODO 1:** write `focal_px(hfov_deg, width_px)`, `intrinsic_matrix(hfov_deg, width_px, height_px)`
+> (a 3×3 **numpy array of floats**, principal point at the image centre, fx = fy, skew 0) and
+> `fov_deg(f_px, size_px)` (the inverse relation, in degrees).
 
-You should now see the Insta360 lines filled in:
+Run `python3 camera_math.py` again. You should see `focal length f 659.790 px`, `vertical FOV
+44.511 deg` and
 
 ```
-  focal length                                   659.790 px
-  footprint at 50 m                              145.501 m
-  ...
-  meters per pixel at 150 m                      0.227 m/px
+  K =
+    [[659.8   0.  960. ]
+     [  0.  659.8 270. ]
+     [  0.    0.    1. ]]
 ```
 
-659.8 px: that is the **fx ≈ 660** that the real calibration of NAVERA's Insta360 found (lesson 18).
-An ideal lens of 111° on 1920 pixels has exactly that focal length — this is why NAVERA caps the
-straightened view at 111°.
+659.8 px is the fx ≈ 660 px found by the real calibration of NAVERA's Insta360 (lesson 18).
 
-## Step 3 — Height from a known object
-
-If you know the real size of something on the ground, the pinhole rule tells you the height:
-`size_px / f = size_m / h`.
+## Step 3 — Projection (TODO 2)
 
 > [!TASK]
-> **TODO 2:** write `height_from_object(size_m, size_px, hfov_deg, width_px)`. Use your
-> `focal_px()`. A 12 m pad seen as 48 px by a 960 px, 90° camera must give **120 m**.
+> **TODO 2:** write `project(K, R_wc, C, X)`: camera coordinates `x_cam = R_wc.T @ (X - C)`,
+> return `None` if `x_cam[2] <= 0` (behind the camera), otherwise `p = K @ x_cam` and the pixel
+> `p[:2] / p[2]` (a numpy array of 2 floats).
 
-Run `python3 camera_math.py` again and check the line "height when a 12 m pad is 48 px".
+Convert inputs with `np.asarray(X, float)` so that lists work too. Run the program: the line
+`pixel of the ground point (30 m E, 45 m N)` must be `[576. 126.]` — worked example 1 of the lesson.
 
-## Step 4 — Map zoom and scale
+> [!WARNING]
+> `R_wc @ v` and `R_wc.T @ v` are different rotations. With a nadir camera and heading 0 both give
+> the same result for some points (the matrix is symmetric!), so a mistake can hide. The check
+> uses a tilted camera too.
 
-Now connect the camera to the map of lesson 7. The map's meters per pixel at zoom `z` is
-`40075016.7 · cos(latitude) / 2**z / 256`.
+## Step 4 — Back-projection onto the ground (TODO 3)
 
 > [!TASK]
-> **TODO 3:** write
-> - `map_meters_per_pixel(lat_deg, zoom)`,
-> - `scale_factor(...)` = photo meters per pixel / map meters per pixel (the resize NAVERA applies),
-> - `best_zoom(...)`: try every zoom in `zooms`, and return the one where
->   `abs(math.log(map_mpp / photo_mpp))` is the smallest. Return the **zoom number** (an int).
+> **TODO 3:** write `ground_point(K, R_wc, C, u, v)`: the ray direction
+> `d = R_wc @ K⁻¹ @ [u, v, 1]`, `None` if `d[2] >= 0`, otherwise `lam = -C[2] / d[2]` and the
+> **[east, north]** of `C + lam * d`.
 
-Why the `log`? A map twice too fine and a map twice too coarse are equally bad.
-`log(2)` and `log(1/2)` have the same size (0.69), so `abs(log(ratio))` treats them the same.
-
-A loop that keeps the best value looks like this:
-
-```python
-best, best_err = None, None
-for z in zooms:
-    err = ...                      # how far this zoom is
-    if best_err is None or err < best_err:
-        best, best_err = z, err
-return best
-```
-
-Run the program: at 300 m the best zoom is **18**, and the scale for the zoom-17 map is **0.469**.
-
-Then draw the picture of it all:
-
-```bash
-python3 plot_scale.py
-```
-
-Open [scale.png](file:./scale.png) in the editor. The blue line is the photo's meters per pixel; the
-grey dashed lines are the map zoom levels. Where the blue line crosses a grey line, the photo and
-that zoom have the same resolution.
+`np.linalg.inv(K) @ x` and `np.linalg.solve(K, x)` both work (solve is more precise). Run the
+program: pixel (0, 0) of the nadir camera at 150 m is at `[-150. 84.38]` (north-west corner), and
+the tilted camera (heading 30°, pitch −12°, roll 4°) sees at its image centre `[-25.23 -22.25]`.
 
 > [!QUESTION]
-> NAVERA's prepared map area uses zoom 17 (0.97 m/px). At what height does the Insta360 view have
-> the same resolution? Read it on the chart, then compute it: h = 0.97 · 1920 / (2 · tan 55.5°).
-> (About 640 m. Lower, NAVERA shrinks the photo; higher, it enlarges it.)
+> The drone heads 30° (north-north-east) and pitches nose down. Why is the image centre
+> **south-west** of the drone? Draw the side view of lesson section 3 before you answer.
 
-## Step 5 — Tilt
-
-> [!TASK]
-> **TODO 4:** write `tilt_shift_m(height_m, tilt_deg)` = h · tan(tilt) and
-> `tilted_extent(height_m, fov_deg, tilt_deg)` which returns a **tuple** `(near, far)`:
-> `near = h·tan(tilt − fov/2)`, `far = h·tan(tilt + fov/2)`, and `far = math.inf` when
-> `tilt + fov/2 >= 90`.
-
-Run `python3 camera_math.py`: a 10° tilt at 150 m moves the centre of the picture by **26.4 m**, and
-at 100 m with a 60° field of view and a 20° tilt the picture covers the ground from 17.6 m behind
-to 119.2 m in front — almost 7 times more ground in front than behind.
-
-Try it yourself in the Python shell (type `python3`, then the lines, then `exit()`):
+A good test of TODO 2 and 3 together: project a ground point, back-project the pixel, and you must
+get the point back. Try it in the Python shell:
 
 ```python
-from camera_math import tilted_extent
-for tilt in (0, 10, 20, 40, 59, 60):
-    print(tilt, tilted_extent(100, 60, tilt))
+from camera_math import *
+K = intrinsic_matrix(90, 960, 540); R = camera_rotation(30, -12, 4); C = [0, 0, 150]
+uv = project(K, R, C, [38, -92, 0]); print(uv, ground_point(K, R, C, *uv))
 ```
 
-At a tilt of 60°, the top edge of the picture looks at the horizon.
+## Step 5 — Footprint and area (TODO 4)
 
-## Step 6 — Compare with NAVERA
+> [!TASK]
+> **TODO 4:** write `footprint_polygon(K, R_wc, C, width_px, height_px)` (the 4 corners
+> (0,0), (w,0), (w,h), (0,h) on the ground, a (4, 2) array, `None` if one corner sees the sky) and
+> `polygon_area(pts)` with the shoelace formula.
 
-Your copy of NAVERA (`~/navera`) has the same formulas, in `navera_common/camera_model.py` and
-`day_pkg/local_matcher.py`. This script imports both yours and NAVERA's and compares them:
+Run the program: the tilted footprint area is about **56 669 m²**. A quick test of the shoelace
+formula: a 4 × 3 rectangle must give 12, in both vertex orders (that is why there is an `abs`).
+
+## Step 6 — GSD and map zoom (TODO 5)
+
+> [!TASK]
+> **TODO 5:** write `meters_per_pixel(height_m, hfov_deg, width_px)` (nadir GSD),
+> `map_m_per_px(lat_deg, zoom)` (`EQUATOR_M * cos(lat) / 2**zoom / TILE_PX`) and
+> `best_zoom(height_m, hfov_deg, width_px, lat_deg, zooms=range(13, 20))`: the zoom **number**
+> (int) that minimises `abs(math.log(map_mpp / photo_mpp))`, chosen only from `zooms`.
+
+Expected: GSD 0.227 m/px at 150 m, zoom 17 is 1.095 m/px in Muscat and 0.968 m/px in Sousse, the
+best zoom at 300 m over Muscat is 18. `min(zooms, key=lambda z: ...)` is a compact way to write
+the search, but an ordinary loop that keeps the best value is fine.
+
+## Step 7 — Measurements and errors (TODO 6)
+
+> [!TASK]
+> **TODO 6:** write `height_from_object(size_m, size_px, f_px)` (pinhole: size_px / f = size_m / h),
+> `fitted_scale(h_believed_m, h_true_m)` (the scale a map match would measure) and
+> `tilt_position_error(height_m, tilt_deg, dtilt_deg)` = h·(tan(θ + δθ) − tan θ).
+
+Expected: 120 m for a 12 m pad seen as 48 px with f = 480; scale 1.333 when NAVERA believes 150 m
+and the drone is at 200 m; 2.708 m of ground error for 1° of tilt error at 150 m and 10° tilt.
+
+## Step 8 — Compare with NAVERA
 
 ```bash
 python3 compare_with_navera.py
 ```
 
-Every line should start with ✔ and the last line should say `ALL MATCH`. If a line says ✘, the
-numbers next to it show what you got and what NAVERA gets — find the difference in your formula.
+This script imports **your** functions and NAVERA's (`navera_common.camera_model`,
+`day_pkg.local_matcher`) and compares them: GSD, map resolution, K of `CameraModel.ideal()`, and —
+the strongest test — it projects the point under the drone with **your** `project()` through
+NAVERA's `nadir_homography()`: for any attitude, the straightened image must put that point exactly
+at the image centre (480, 270). It also checks that your `ground_point()` of the image centre is
+h·tan(tilt) away, with NAVERA's `tilt_deg()`. Every line must start with ✔ and the last line must
+say `ALL MATCH`.
 
-Want to see NAVERA's code? Open
-[camera_model.py](file:navera/navera_common/navera_common/camera_model.py) and search (`Ctrl+F`)
-for `ground_m_per_px`, then [local_matcher.py](file:navera/day_pkg/day_pkg/local_matcher.py) and
-search for `map_m_per_px`.
+## Step 9 — Measure the photos (TODO 7)
 
-## Step 7 — How high was the drone?
-
-In `/data/academy/17-camera-model/` there are two photos taken by a straight-down camera
-(960 px wide, 90° field of view) above the old town of Sousse. Each shows an orange landing pad
-**12 m × 12 m**. Look at one:
+Copy two photos into your folder to look at them:
 
 ```bash
-cp /data/academy/17-camera-model/photo_A.png .
+cp /data/academy/17-camera-model/photo_A.png /data/academy/17-camera-model/photo_T.png .
 ```
 
-and open [photo_A.png](file:./photo_A.png) in the editor.
-
-> [!NOTE]
-> These photos are made from the satellite map (as if a perfect camera flew there) and the orange
-> pad was painted on them, so we know the exact truth. Real photos also need lesson 18 (the lens)
-> and lesson 16 (the tilt) first.
-
-Open [measure_pad.py](file:./measure_pad.py). The function `orange_mask(img)` already gives a
-**mask**: an array of True/False, True where the pixel is orange (you met masks in lesson 8).
+Open [photo_A.png](file:./photo_A.png) (nadir, height unknown) and [photo_T.png](file:./photo_T.png)
+(tilted: 150 m, heading 30°, pitch −12°, roll +4°). Each has a 12 m × 12 m orange pad on the ground.
+In [measure_pad.py](file:./measure_pad.py), `orange_mask(img)` already returns a boolean array,
+True on the pad's orange pixels.
 
 > [!TASK]
-> **TODO 5:** write `pad_size_px(img)`: the number of columns from the leftmost to the rightmost
-> orange pixel, both included. `rows, cols = np.nonzero(mask)` gives the row and column of every
-> True pixel. Return `None` if there is no orange pixel.
+> **TODO 7:** write `pad_size_px(img)` — the number of columns from the leftmost to the rightmost
+> orange pixel, both included, as an int — and `pad_centre_px(img)` — `(u, v)` = (mean column,
+> mean row) of the orange pixels. Both return `None` when no pixel is orange.
 
 ```bash
 python3 measure_pad.py
 ```
 
-You should see something like:
+You should see heights near 120 m (A) and 213 m (B, truth 210 m) with their ±1 px range, and the
+pad of photo T at about **37.6 m east, −91.8 m north** of the point under the drone (the truth is
+38.0, −92.0). Remember: `np.nonzero(mask)` returns `(rows, cols)` and a pixel is `(u, v) = (col, row)`
+— swapping them is the classic bug here. Open `mask_photo_A.png` to see what the mask found.
 
+## Step 10 — Run all experiments
+
+```bash
+python3 experiments.py
 ```
-photo_A.png: the 12 m pad is 48 px wide -> the drone was at 120 m
-photo_B.png: the 12 m pad is 27 px wide -> the drone was at 213 m
-```
 
-Photo B was really taken at 210 m. Why 213? The pad is about 27.4 px wide, but a pixel count is a
-whole number: 1 px of error on a 27 px object is almost 4 % of height. **Big objects measure
-heights better** — that is why NAVERA measures the height from the scale of the *whole* photo
-matched to the map, not from one small object.
+It writes `results.json` and two charts. Open [footprint.png](file:./footprint.png): the four
+footprints at 150 m for pitch 0°, −10°, −20°, −30°, with their image-centre points. Open
+[scale.png](file:./scale.png): the Insta360 GSD against height, with the map zoom levels of Muscat
+(solid) and Sousse (dotted). Where the blue line crosses a zoom line, the photo has exactly that
+map's resolution.
 
-Open `mask_photo_A.png` to see what the mask found.
+## Step 11 — Write the report
 
-## Step 8 — Quiz and check
+> [!TASK]
+> Fill in [report.md](file:./report.md):
+> - the **Key numbers** table, rows A to M — one number per row (most are in `results.json`;
+>   D is a positive distance; for **M**, read `_scale_tol()` in the lesson: when does 2·σh/h become
+>   larger than 0.15?);
+> - the four analysis sections (**Tilt**, **Muscat and Sousse**, **Measuring the height with an
+>   object**, **Height uncertainty**), each at least 40 words, with your own explanation and
+>   numbers. Delete the TODO lines.
 
-Answer the three questions in [answers.py](file:./answers.py), then press **✔ Check my work**.
+Then press **✔ Check my work**. The check runs your functions on new inputs, runs
+`measure_pad.py` and `compare_with_navera.py`, reads `results.json` and checks the report.
 
 ## Going further (optional)
 
-1. **Your phone.** Find your phone camera's horizontal field of view (often 65–75°). Stand 3 m from
-   a door (about 0.9 m wide), take a photo, measure the door's width in pixels and compute the
-   distance with `height_from_object()`. How close do you get?
-2. **The height that matches.** Write `height_for_zoom(zoom, lat, hfov_deg, width_px)` that returns
-   the height at which the photo has exactly the map's meters per pixel. Check it with the chart.
-3. **The 45° limit.** NAVERA refuses frames tilted more than 45°. With the Insta360 view
-   (111°, so 55.5° each side), what does `tilted_extent(150, 111, 45)` give? Why does straightening
-   such a frame make little sense?
+1. **Heading from the image.** NAVERA's `heading_of_image_up_deg(R)` gives the azimuth of the image's
+   top on the ground. Compute it yourself: project two pixels of the image's centre column with
+   `ground_point()` and take `atan2(ΔE, ΔN)`. Compare for photo T.
+2. **Straighten photo T.** Build NAVERA's homography with
+   `from navera_common.camera_model import nadir_homography`, warp photo T with
+   `cv2.warpPerspective(img, H, (960, 540))` and save the result. Is the pad now square? Where is
+   the point under the drone?
+3. **Uncertainty by simulation.** Draw 10 000 random heights h ~ N(300, 30²) m and tilts
+   θ ~ N(10°, 1°²) and compute the ground position of the image centre for each. Compare the
+   standard deviation with the linear estimate √((tan θ · σh)² + (h σθ / cos²θ)²).
+4. **Oblique GSD.** Check numerically that at the image centre of a camera tilted by θ, one pixel
+   covers h/(f cos θ) across and h/(f cos² θ) along the tilt (back-project pixels (480, 270) and
+   (481, 270), then (480, 271)).

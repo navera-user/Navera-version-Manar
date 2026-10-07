@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 300" font-family="sans-serif" font-size="13">
+  <rect width="760" height="300" fill="#f7fafc"/>
+  <text x="380" y="24" text-anchor="middle" fill="#1d2733" font-weight="bold" font-size="15">Zhang's method: from photos of a flat board to K and D</text>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#5a6b7d"/>
+    </marker>
+  </defs>
+  <!-- step boxes -->
+  <g stroke="#0b6e8a" stroke-width="1.6">
+    <rect x="12" y="48" width="132" height="150" rx="8" fill="#e3f2f7"/>
+    <rect x="164" y="48" width="132" height="150" rx="8" fill="#e3f2f7"/>
+    <rect x="316" y="48" width="132" height="150" rx="8" fill="#e3f2f7"/>
+    <rect x="468" y="48" width="132" height="150" rx="8" fill="#fdf0dc" stroke="#a8680d"/>
+    <rect x="620" y="48" width="128" height="150" rx="8" fill="#e6f4e6" stroke="#2e7d32"/>
+  </g>
+  <g fill="#1d2733" text-anchor="middle">
+    <text x="78" y="70" font-weight="bold">1. Views</text>
+    <text x="230" y="70" font-weight="bold">2. Corners</text>
+    <text x="382" y="70" font-weight="bold">3. One H per view</text>
+    <text x="534" y="70" font-weight="bold">4. Closed form</text>
+    <text x="684" y="70" font-weight="bold">5. Refine (LM)</text>
+  </g>
+  <!-- 1: tilted boards -->
+  <g stroke="#1d2733" stroke-width="1.2" fill="#fff">
+    <polygon points="30,92 80,86 84,120 34,128"/>
+    <polygon points="92,98 128,94 126,132 90,134"/>
+    <polygon points="44,140 98,140 92,170 50,172"/>
+  </g>
+  <g fill="#1d2733">
+    <rect x="40" y="96" width="9" height="9"/><rect x="58" y="94" width="9" height="9"/><rect x="49" y="106" width="9" height="9"/><rect x="67" y="104" width="9" height="9"/>
+    <rect x="98" y="102" width="8" height="8"/><rect x="113" y="100" width="8" height="8"/><rect x="106" y="114" width="8" height="8"/>
+    <rect x="54" y="146" width="9" height="8"/><rect x="72" y="146" width="9" height="8"/><rect x="63" y="156" width="9" height="8"/>
+  </g>
+  <text x="78" y="190" text-anchor="middle" fill="#3f4d5c" font-size="12">N ≥ 3 poses</text>
+  <!-- 2: corner grid -->
+  <g fill="#d64545">
+    <circle cx="196" cy="96" r="3"/><circle cx="216" cy="94" r="3"/><circle cx="236" cy="93" r="3"/><circle cx="256" cy="94" r="3"/>
+    <circle cx="195" cy="116" r="3"/><circle cx="216" cy="115" r="3"/><circle cx="237" cy="114" r="3"/><circle cx="258" cy="115" r="3"/>
+    <circle cx="196" cy="136" r="3"/><circle cx="217" cy="136" r="3"/><circle cx="238" cy="135" r="3"/><circle cx="258" cy="137" r="3"/>
+  </g>
+  <text x="230" y="166" text-anchor="middle" fill="#3f4d5c" font-size="12">54 corners (u, v)</text>
+  <text x="230" y="182" text-anchor="middle" fill="#3f4d5c" font-size="12">to 0.1 px</text>
+  <!-- 3: homography -->
+  <text x="382" y="104" text-anchor="middle" fill="#1d2733" font-size="14">s·u = H·(X, Y, 1)</text>
+  <text x="382" y="130" text-anchor="middle" fill="#1d2733" font-size="14">H = K [r1 r2 t]</text>
+  <text x="382" y="166" text-anchor="middle" fill="#3f4d5c" font-size="12">board plane Z = 0</text>
+  <text x="382" y="182" text-anchor="middle" fill="#3f4d5c" font-size="12">8 numbers per view</text>
+  <!-- 4: closed form -->
+  <text x="534" y="98" text-anchor="middle" fill="#1d2733" font-size="12.5">h1ᵀ B h2 = 0</text>
+  <text x="534" y="118" text-anchor="middle" fill="#1d2733" font-size="12.5">h1ᵀ B h1 = h2ᵀ B h2</text>
+  <text x="534" y="140" text-anchor="middle" fill="#1d2733" font-size="12.5">B = K⁻ᵀ K⁻¹</text>
+  <text x="534" y="166" text-anchor="middle" fill="#3f4d5c" font-size="12">2 equations per view</text>
+  <text x="534" y="182" text-anchor="middle" fill="#3f4d5c" font-size="12">→ first guess of K</text>
+  <!-- 5: refine -->
+  <text x="684" y="98" text-anchor="middle" fill="#1d2733" font-size="12.5">minimise</text>
+  <text x="684" y="116" text-anchor="middle" fill="#1d2733" font-size="12">Σ ‖u − π(K, D,</text>
+  <text x="684" y="132" text-anchor="middle" fill="#1d2733" font-size="12">Rᵢ, tᵢ, X)‖²</text>
+  <text x="684" y="152" text-anchor="middle" fill="#3f4d5c" font-size="12">K, D and every</text>
+  <text x="684" y="167" text-anchor="middle" fill="#3f4d5c" font-size="12">pose together</text>
+  <text x="684" y="186" text-anchor="middle" fill="#2e7d32" font-size="12" font-weight="bold">→ RMS (px)</text>
+  <!-- arrows -->
+  <g stroke="#5a6b7d" stroke-width="2" marker-end="url(#ar)">
+    <line x1="145" y1="123" x2="161" y2="123"/>
+    <line x1="297" y1="123" x2="313" y2="123"/>
+    <line x1="449" y1="123" x2="465" y2="123"/>
+    <line x1="601" y1="123" x2="617" y2="123"/>
+  </g>
+  <text x="380" y="232" text-anchor="middle" fill="#1d2733">Steps 3–4 are linear (no distortion, solved with an SVD); step 5 is non-linear and adds the distortion D.</text>
+  <text x="380" y="254" text-anchor="middle" fill="#1d2733">Unknowns: 4 + 4 intrinsics (fx, fy, cx, cy, k1…k4) + 6 per view.  Data: 54 × 2 = 108 numbers per view.</text>
+  <text x="380" y="280" text-anchor="middle" fill="#3f4d5c" font-size="12">OpenCV: cv2.calibrateCamera (pinhole + Brown–Conrady) · cv2.fisheye.calibrate (fisheye, same idea)</text>
+</svg>

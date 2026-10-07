@@ -1,25 +1,24 @@
 # Write the letter of your answer between the quotes, e.g.  Q1 = "b"
 
-# Q1. The Insta360 top lens sees about 166 degrees, but NAVERA publishes a straightened
-#     picture only 111 degrees wide. Why?
-#   a) wider than that, a straight picture stretches the edges so much that the centre gets
-#      FEWER pixels per degree than the lens gives (and the calibration is not trusted
-#      far out at the edges)
-#   b) the Jetson is too slow to compute more than 111 degrees
-#   c) satellite map tiles are only 111 degrees wide
+# Q1. Zhang's method needs several views of the board because...
+#   a) one view gives one homography H, i.e. only 2 equations on the 5 unknowns of K
+#      (fx, fy, cx, cy, skew): at least 3 views are needed, and many more to beat noise
+#   b) OpenCV crashes with fewer than 8 photos
+#   c) each view measures a different distortion coefficient
 Q1 = ""
 
-# Q2. The calibration file was made for the 1920x540 top half. Someone sets the camera to
-#     1280x720. What happens?
-#   a) nothing, the lens is the same so the file still works
-#   b) the numbers in K are in pixels of 1920x540, so they are wrong now: live_camera.py
-#      refuses the file and the camera must be calibrated again at the new size
-#   c) NAVERA divides everything by 2 automatically
+# Q2. Your calibration has a train RMS of 0.5 px. On views it has never seen, the error is
+#     larger. What does this tell you?
+#   a) the calibration is wrong and must be thrown away
+#   b) the train RMS is optimistic: the parameters were tuned on those very corners; the error
+#      on new views is the honest estimate of the model's accuracy
+#   c) the test views were taken with another camera
 Q2 = ""
 
-# Q3. The calibration reports "RMS 0.525 px". It means:
-#   a) NAVERA's position will be wrong by about 0.5 meters
-#   b) on average, the corners the lens model predicts land about half a pixel away from
-#      where the camera really saw them
-#   c) half of the photos of the chessboard were thrown away
+# Q3. The calibration file was made for the 1920x540 top half. Someone sets the camera to
+#     1280x720. What happens?
+#   a) nothing, the lens is the same so the file still works
+#   b) K is in pixels of 1920x540, so it is wrong now: live_camera.py refuses the file and the
+#      camera must be calibrated again at the new size
+#   c) NAVERA divides everything by 2 automatically
 Q3 = ""

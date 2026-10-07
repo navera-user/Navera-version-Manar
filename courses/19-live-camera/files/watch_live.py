@@ -54,7 +54,8 @@ class Watch(Node):
         self.ack.publish(Int32(data=int(meta["frame_id"])))       # "done, send the next"
         print(f"frame {meta['frame_id']}: usable={meta['usable']} straightened={meta['straightened']} "
               f"tilt={meta.get('tilt_deg')} deg  heading={meta.get('heading_deg')} deg  "
-              f"field of view={meta['camera_hfov_deg']} deg  attitude={meta['attitude_source']}"
+              f"rate={meta.get('rate_dps')} deg/s  field of view={meta['camera_hfov_deg']} deg  "
+              f"attitude={meta['attitude_source']}"
               + ("" if meta["usable"] else f"  ({meta.get('reason')})"))
 
 

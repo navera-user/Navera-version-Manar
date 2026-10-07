@@ -1,0 +1,22 @@
+{
+ "place": "near Nizwa, Oman (synthetic flight)",
+ "lat": 22.93,
+ "lon": 57.53,
+ "decimal_year": 2026.79,
+ "date": "2026-10-15",
+ "rate_hz": 50.0,
+ "duration_s": 300.0,
+ "simulated": true,
+ "note": "simulated log; the BNO085 of the NAVERA box is not connected",
+ "sensor_model": {
+  "gyro_bias_deg_s": [
+   0.01,
+   -0.01,
+   0.03
+  ],
+  "gyro_noise_rad_s": 0.005,
+  "accel_noise_m_s2": 0.3,
+  "mag_noise_uT": 0.4,
+  "quat_noise_deg": 0.2
+ }
+}

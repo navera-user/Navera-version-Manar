@@ -1,102 +1,203 @@
-# Lesson 17 — the camera as a measuring tool.
+# Lesson 17 — the camera as a measuring instrument (ideal pinhole camera).
 # Fill in the TODOs, save (Ctrl+S), then run:   python3 camera_math.py
 #
-# Angles are given in DEGREES. Python's math.tan() wants RADIANS: use math.radians(deg).
-# Heights and sizes are in meters, image sizes in pixels.
+# Conventions (the same as NAVERA's navera_common/camera_model.py):
+#   world  : ENU, metres — x east, y north, z up. Origin ON THE GROUND under the drone,
+#            so the camera centre is C = (0, 0, h). The ground is the plane z = 0.
+#   camera : OpenCV — x to the image right, y to the image bottom, z along the optical axis.
+#   R_wc   : 3x3 rotation that maps a CAMERA vector to a WORLD vector:  v_world = R_wc @ v_cam.
+#            Its inverse is its transpose:                               v_cam = R_wc.T @ v_world.
+# Angles are given in DEGREES; math.tan() / np.tan() want RADIANS: use math.radians(deg).
 import math
 
-EARTH_CIRCUMFERENCE_M = 40075016.7     # the same constant as NAVERA's day_pkg (EQUATOR_M)
-TILE_PX = 256                          # a map tile is 256 x 256 pixels (lesson 7)
+import numpy as np
+
+EQUATOR_M = 40075016.7      # NAVERA's day_pkg constant: Earth's circumference at the equator (m)
+TILE_PX = 256               # a map tile is 256 x 256 pixels (lesson 07)
 
 
-# ---------------------------------------------------------------- TODO 1
+# ---------------------------------------------------------------- TODO 1 — intrinsics
 def focal_px(hfov_deg, width_px):
-    """Focal length in pixels of a pinhole camera that sees hfov_deg across width_px pixels.
-    f = (width_px / 2) / tan(hfov / 2)"""
+    """Focal length (pixels) of a pinhole camera that sees hfov_deg across width_px pixels.
+        f = (width_px / 2) / tan(hfov / 2)"""
     return (width_px / 2.0) / math.tan(math.radians(hfov_deg) / 2.0)
 
 
-def footprint(height_m, hfov_deg):
-    """Width (m) of the ground seen by a camera looking straight down from height_m.
-    W = 2 * h * tan(hfov / 2)"""
-    return 2.0 * height_m * math.tan(math.radians(hfov_deg) / 2.0)
+def intrinsic_matrix(hfov_deg, width_px, height_px):
+    """The 3x3 intrinsic matrix K (numpy array, float) of an ideal camera: square pixels
+    (fx = fy = f), no skew, principal point at the image centre (width/2, height/2)."""
+    f = focal_px(hfov_deg, width_px)
+    return np.array([[f, 0.0, width_px / 2.0],
+                     [0.0, f, height_px / 2.0],
+                     [0.0, 0.0, 1.0]])
 
 
+def fov_deg(f_px, size_px):
+    """Field of view (degrees) seen across size_px pixels by a camera of focal length f_px.
+    (Use it for the vertical FOV: fov_deg(f, height_px).)"""
+    return math.degrees(2.0 * math.atan((size_px / 2.0) / f_px))
+
+
+# ---------------------------------------------------------------- TODO 2 — projection
+def project(K, R_wc, C, X):
+    """Pixel (u, v) — a numpy array of 2 floats — where the world point X (3 values, metres)
+    appears, for a camera with intrinsics K, orientation R_wc and centre C.
+        x_cam = R_wc.T @ (X - C)          (world -> camera frame)
+        p = K @ x_cam ;  u = p[0]/p[2],  v = p[1]/p[2]
+    Return None if the point is behind the camera (x_cam[2] <= 0)."""
+    x_cam = np.asarray(R_wc, float).T @ (np.asarray(X, float) - np.asarray(C, float))
+    if x_cam[2] <= 0:
+        return None
+    p = np.asarray(K, float) @ x_cam
+    return p[:2] / p[2]
+
+
+# ---------------------------------------------------------------- TODO 3 — back-projection
+def ground_point(K, R_wc, C, u, v):
+    """Where the ray of pixel (u, v) hits the flat ground z = 0: numpy array [east, north] (m).
+        d = R_wc @ K^-1 @ [u, v, 1]      (ray direction in the world)
+        X = C + lam * d   with lam chosen so that X_z = 0  ->  lam = -C_z / d_z
+    Return None when the ray does not go down (d_z >= 0: sky or horizon)."""
+    d = np.asarray(R_wc, float) @ np.linalg.solve(np.asarray(K, float), np.array([u, v, 1.0]))
+    if d[2] >= 0:
+        return None
+    C = np.asarray(C, float)
+    lam = -C[2] / d[2]
+    return (C + lam * d)[:2]
+
+
+# ---------------------------------------------------------------- TODO 4 — footprint
+def footprint_polygon(K, R_wc, C, width_px, height_px):
+    """The ground footprint: a (4, 2) numpy array of the [east, north] ground points of the
+    four image corners, in this order: (0, 0), (width, 0), (width, height), (0, height).
+    Return None if any corner does not hit the ground."""
+    pts = []
+    for u, v in ((0, 0), (width_px, 0), (width_px, height_px), (0, height_px)):
+        g = ground_point(K, R_wc, C, u, v)
+        if g is None:
+            return None
+        pts.append(g)
+    return np.array(pts)
+
+
+def polygon_area(pts):
+    """Area (m^2) of a simple polygon given as an (N, 2) array of vertices in order
+    (shoelace formula):  A = 1/2 |sum_i (x_i * y_(i+1) - x_(i+1) * y_i)|"""
+    p = np.asarray(pts, float)
+    x, y = p[:, 0], p[:, 1]
+    return 0.5 * abs(float(np.dot(x, np.roll(y, -1)) - np.dot(np.roll(x, -1), y)))
+
+
+# ---------------------------------------------------------------- TODO 5 — resolution and map
 def meters_per_pixel(height_m, hfov_deg, width_px):
-    """Ground meters covered by one pixel (the footprint spread over the picture width)."""
-    return footprint(height_m, hfov_deg) / width_px
+    """Ground sampling distance (m/px) of a NADIR camera: footprint width / image width.
+        GSD = 2 h tan(hfov/2) / width_px   (= h / f)"""
+    return 2.0 * height_m * math.tan(math.radians(hfov_deg) / 2.0) / width_px
 
 
-# ---------------------------------------------------------------- TODO 2
-def height_from_object(size_m, size_px, hfov_deg, width_px):
-    """Height (m) of a straight-down camera that sees an object of size_m meters
-    as size_px pixels.  Pinhole rule:  size_px / f = size_m / h"""
-    return size_m * focal_px(hfov_deg, width_px) / size_px
-
-
-# ---------------------------------------------------------------- TODO 3
-def map_meters_per_pixel(lat_deg, zoom):
-    """Meters per pixel of the satellite map at this latitude and zoom (lesson 7):
-    circumference * cos(latitude) / 2**zoom / 256"""
-    return EARTH_CIRCUMFERENCE_M * math.cos(math.radians(lat_deg)) / 2 ** zoom / TILE_PX
-
-
-def scale_factor(height_m, hfov_deg, width_px, lat_deg, zoom):
-    """How much NAVERA must resize the photo so it has the map's meters per pixel:
-    photo meters per pixel / map meters per pixel."""
-    return meters_per_pixel(height_m, hfov_deg, width_px) / map_meters_per_pixel(lat_deg, zoom)
+def map_m_per_px(lat_deg, zoom):
+    """Metres per pixel of a Web-Mercator map tile at this latitude and zoom (lesson 07):
+        EQUATOR_M * cos(lat) / 2**zoom / 256"""
+    return EQUATOR_M * math.cos(math.radians(lat_deg)) / 2 ** zoom / TILE_PX
 
 
 def best_zoom(height_m, hfov_deg, width_px, lat_deg, zooms=range(13, 20)):
-    """The zoom level (from `zooms`) whose map meters per pixel is the closest to the photo's.
-    "Closest" means the smallest RATIO difference: compare abs(math.log(map_mpp / photo_mpp)),
-    so 2x too big and 2x too small count the same."""
-    photo = meters_per_pixel(height_m, hfov_deg, width_px)
-    return min(zooms, key=lambda z: abs(math.log(map_meters_per_pixel(lat_deg, z) / photo)))
+    """The zoom (an int from `zooms`) whose map m/px is closest to the photo's GSD, closest
+    in RATIO: minimise abs(math.log(map_mpp / photo_mpp))."""
+    g = meters_per_pixel(height_m, hfov_deg, width_px)
+    return min(zooms, key=lambda z: abs(math.log(map_m_per_px(lat_deg, z) / g)))
 
 
-# ---------------------------------------------------------------- TODO 4
-def tilt_shift_m(height_m, tilt_deg):
-    """Distance (m) on the ground between the point under the drone and the centre of the
-    picture of a camera tilted by tilt_deg from straight down:  h * tan(tilt)"""
-    return height_m * math.tan(math.radians(tilt_deg))
+# ---------------------------------------------------------------- TODO 6 — measuring and errors
+def height_from_object(size_m, size_px, f_px):
+    """Height (m) of a nadir camera that sees a ground object of size_m metres as size_px
+    pixels. Pinhole: size_px / f = size_m / h."""
+    return size_m * f_px / size_px
 
 
-def tilted_extent(height_m, fov_deg, tilt_deg):
-    """(near_m, far_m): where the two edges of the picture touch the ground, measured from the
-    point under the drone, along the tilt direction (negative = behind).
-        near = h * tan(tilt - fov/2)      far = h * tan(tilt + fov/2)
-    If tilt + fov/2 >= 90 deg, the far edge sees the sky/horizon: far = math.inf."""
-    near = height_m * math.tan(math.radians(tilt_deg - fov_deg / 2.0))
-    if tilt_deg + fov_deg / 2.0 >= 90.0:
-        return near, math.inf
-    return near, height_m * math.tan(math.radians(tilt_deg + fov_deg / 2.0))
+def fitted_scale(h_believed_m, h_true_m):
+    """The scale a map match measures when the photo was resized for h_believed but taken at
+    h_true (1.0 = height right). The ground width seen grows linearly with the height."""
+    return h_true_m / h_believed_m
 
 
-# ---- you don't need to change anything below this line (but you can read it!) ----
+def tilt_position_error(height_m, tilt_deg, dtilt_deg):
+    """Ground error (m) of the point seen along the optical axis when the tilt is wrong by
+    dtilt_deg:  h * (tan(tilt + dtilt) - tan(tilt))."""
+    return height_m * (math.tan(math.radians(tilt_deg + dtilt_deg)) - math.tan(math.radians(tilt_deg)))
+
+
+# ---- you don't need to change anything below this line (but read it!) ----
+R_BODY_NADIR_CAM = np.array([[0.0, -1.0, 0.0],      # camera axes in the body (FLU) frame:
+                             [-1.0, 0.0, 0.0],      # image right = body right, image down = body back,
+                             [0.0, 0.0, -1.0]])     # optical axis = body down (NAVERA's constant)
+
+
+def rot_x(a):
+    c, s = math.cos(a), math.sin(a)
+    return np.array([[1.0, 0, 0], [0, c, -s], [0, s, c]])
+
+
+def rot_y(a):
+    c, s = math.cos(a), math.sin(a)
+    return np.array([[c, 0, s], [0, 1.0, 0], [-s, 0, c]])
+
+
+def rot_z(a):
+    c, s = math.cos(a), math.sin(a)
+    return np.array([[c, -s, 0], [s, c, 0], [0, 0, 1.0]])
+
+
+def camera_rotation(heading_deg=0.0, pitch_deg=0.0, roll_deg=0.0):
+    """R_wc of a camera fixed under the drone, looking down (lesson 16's angles):
+    heading clockwise from north, pitch positive NOSE UP, roll positive RIGHT WING DOWN.
+    Same as NAVERA: R_world_body = Rz(yaw_enu) Ry(-pitch) Rx(roll), then the nadir mount."""
+    R_wb = rot_z(math.radians(90.0 - heading_deg)) @ rot_y(math.radians(-pitch_deg)) @ rot_x(math.radians(roll_deg))
+    return R_wb @ R_BODY_NADIR_CAM
+
+
 def _show(label, value, unit=""):
     if value is None:
-        print(f"  {label:<46} TODO not done yet")
-    elif isinstance(value, tuple):
-        print(f"  {label:<46} near {value[0]:.1f} m, far {value[1]:.1f} m")
+        print(f"  {label:<48} TODO not done yet (or None)")
+    elif isinstance(value, np.ndarray):
+        print(f"  {label:<48} {np.array2string(value, precision=2, suppress_small=True)} {unit}")
     else:
-        print(f"  {label:<46} {value:.3f} {unit}")
+        print(f"  {label:<48} {value:.3f} {unit}")
 
 
 if __name__ == "__main__":
-    print("Insta360 top lens, straightened view: 1920 px, 111 deg")
-    _show("focal length", focal_px(111, 1920), "px")
-    for h in (50, 100, 150, 300):
-        _show(f"footprint at {h} m", footprint(h, 111), "m")
-    _show("meters per pixel at 150 m", meters_per_pixel(150, 111, 1920), "m/px")
-    print("\nThis lab's photos: 960 px, 90 deg")
-    _show("height when a 12 m pad is 48 px", height_from_object(12, 48, 90, 960), "m")
-    print("\nThe map around Sousse (latitude 35.8)")
-    for z in (17, 18, 19):
-        _show(f"map meters per pixel at zoom {z}", map_meters_per_pixel(35.8, z), "m/px")
-    _show("scale for the zoom-17 map at 300 m", scale_factor(300, 111, 1920, 35.8, 17))
-    bz = best_zoom(300, 111, 1920, 35.8)
-    print(f"  {'best zoom at 300 m':<46} {bz if bz is not None else 'TODO not done yet'}")
-    print("\nTilt")
-    _show("picture centre shift, 150 m, tilt 10 deg", tilt_shift_m(150, 10), "m")
-    _show("near/far edges, 100 m, fov 60, tilt 20", tilted_extent(100, 60, 20))
+    print("Insta360 top lens, straightened view: 1920 x 540 px, HFOV 111 deg")
+    f = focal_px(111, 1920)
+    _show("focal length f", f, "px")
+    _show("vertical FOV", fov_deg(f, 540) if f else None, "deg")
+    K = intrinsic_matrix(111, 1920, 540)
+    if K is None:
+        print("  K                                                TODO not done yet")
+    else:
+        print("  K =\n    " + np.array2string(np.asarray(K, float), precision=1, suppress_small=True, prefix="    "))
+
+    print("\nThe lab's camera: 960 x 540 px, HFOV 90 deg, at 150 m")
+    K = intrinsic_matrix(90, 960, 540)
+    C = np.array([0.0, 0.0, 150.0])
+    R0 = camera_rotation(0, 0, 0)
+    if K is not None:
+        _show("pixel of the ground point (30 m E, 45 m N)", project(K, R0, C, [30.0, 45.0, 0.0]), "px")
+        _show("ground point of pixel (0, 0)", ground_point(K, R0, C, 0, 0), "m (E, N)")
+        R = camera_rotation(30, -12, 4)
+        _show("tilted (hdg 30, pitch -12, roll 4): centre hits", ground_point(K, R, C, 480, 270), "m (E, N)")
+        poly = footprint_polygon(K, R, C, 960, 540)
+        _show("tilted footprint area", polygon_area(poly) if poly is not None else None, "m^2")
+    else:
+        print("  (needs TODO 1 first)")
+
+    print("\nResolution and map (Muscat 23.59 N, Sousse 35.83 N)")
+    _show("GSD of the Insta360 view at 150 m", meters_per_pixel(150, 111, 1920), "m/px")
+    for name, lat in (("Muscat", 23.59), ("Sousse", 35.83)):
+        _show(f"map m/px at zoom 17, {name}", map_m_per_px(lat, 17), "m/px")
+    bz = best_zoom(300, 111, 1920, 23.59)
+    print(f"  {'best zoom at 300 m over Muscat':<48} {bz if bz is not None else 'TODO not done yet'}")
+
+    print("\nMeasuring and errors")
+    _show("height when a 12 m pad is 48 px (f = 480)", height_from_object(12, 48, 480), "m")
+    _show("fitted scale: believed 150 m, true 200 m", fitted_scale(150, 200))
+    _show("error from 1 deg of tilt error (150 m, 10 deg)", tilt_position_error(150, 10, 1), "m")

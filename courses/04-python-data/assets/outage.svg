@@ -1,31 +1,102 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 225" font-family="sans-serif" font-size="13">
-  <rect width="700" height="225" fill="#f7fafc"/>
-  <text x="20" y="26" font-weight="bold" fill="#1d2733">Longest GPS outage: walk through the rows with two counters</text>
-  <g font-family="monospace" font-size="14" text-anchor="middle">
-    <text x="72" y="70" fill="#4a5866" font-size="11" text-anchor="end">gps_valid</text>
-    <text x="72" y="118" fill="#a8680d" font-size="12" text-anchor="end">run</text>
-    <text x="72" y="160" fill="#0b6e8a" font-size="12" text-anchor="end">best</text>
-  </g>
-  <g font-family="monospace" font-size="15" text-anchor="middle">
-    <!-- sequence 1 1 0 0 0 1 0 0 1 -->
-    <rect x="80"  y="48" width="56" height="34" rx="4" fill="#d7e8f5" stroke="#8aa3b8"/><text x="108" y="71">1</text>
-    <rect x="144" y="48" width="56" height="34" rx="4" fill="#d7e8f5" stroke="#8aa3b8"/><text x="172" y="71">1</text>
-    <rect x="208" y="48" width="56" height="34" rx="4" fill="#f6d2d2" stroke="#d64545"/><text x="236" y="71">0</text>
-    <rect x="272" y="48" width="56" height="34" rx="4" fill="#f6d2d2" stroke="#d64545"/><text x="300" y="71">0</text>
-    <rect x="336" y="48" width="56" height="34" rx="4" fill="#f6d2d2" stroke="#d64545"/><text x="364" y="71">0</text>
-    <rect x="400" y="48" width="56" height="34" rx="4" fill="#d7e8f5" stroke="#8aa3b8"/><text x="428" y="71">1</text>
-    <rect x="464" y="48" width="56" height="34" rx="4" fill="#f6d2d2" stroke="#d64545"/><text x="492" y="71">0</text>
-    <rect x="528" y="48" width="56" height="34" rx="4" fill="#f6d2d2" stroke="#d64545"/><text x="556" y="71">0</text>
-    <rect x="592" y="48" width="56" height="34" rx="4" fill="#d7e8f5" stroke="#8aa3b8"/><text x="620" y="71">1</text>
-    <g fill="#a8680d">
-      <text x="108" y="118">0</text><text x="172" y="118">0</text><text x="236" y="118">1</text><text x="300" y="118">2</text>
-      <text x="364" y="118">3</text><text x="428" y="118">0</text><text x="492" y="118">1</text><text x="556" y="118">2</text><text x="620" y="118">0</text>
-    </g>
-    <g fill="#0b6e8a">
-      <text x="108" y="160">0</text><text x="172" y="160">0</text><text x="236" y="160">1</text><text x="300" y="160">2</text>
-      <text x="364" y="160" font-weight="bold">3</text><text x="428" y="160">3</text><text x="492" y="160">3</text><text x="556" y="160">3</text><text x="620" y="160" font-weight="bold">3</text>
-    </g>
-  </g>
-  <text x="80" y="194" fill="#4a5866">On a 0: run grows by 1, and best keeps the biggest run seen so far.</text>
-  <text x="80" y="212" fill="#4a5866">On a 1: run goes back to 0.   At the end, the answer is best = 3.</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 330" font-family="sans-serif" font-size="13">
+<rect width="700" height="330" fill="#f7fafc"/>
+<text x="20" y="26" font-size="15" font-weight="bold" fill="#1d2733">Finding outages without a loop: pad, np.diff, np.flatnonzero</text>
+<g transform="translate(-25,0) scale(0.92,1)">
+<text x="225" y="50" text-anchor="middle" fill="#718096" font-size="11">0</text>
+<text x="277" y="50" text-anchor="middle" fill="#718096" font-size="11">1</text>
+<text x="329" y="50" text-anchor="middle" fill="#718096" font-size="11">2</text>
+<text x="381" y="50" text-anchor="middle" fill="#718096" font-size="11">3</text>
+<text x="433" y="50" text-anchor="middle" fill="#718096" font-size="11">4</text>
+<text x="485" y="50" text-anchor="middle" fill="#718096" font-size="11">5</text>
+<text x="537" y="50" text-anchor="middle" fill="#718096" font-size="11">6</text>
+<text x="589" y="50" text-anchor="middle" fill="#718096" font-size="11">7</text>
+<text x="641" y="50" text-anchor="middle" fill="#718096" font-size="11">8</text>
+<text x="138" y="50" text-anchor="end" fill="#718096" font-size="11">row index</text>
+<text x="190" y="79" text-anchor="end" fill="#1d2733" font-family="monospace" font-size="12">gps_valid</text>
+<rect x="202" y="58" width="46" height="30" rx="4" fill="#dbeaf5" stroke="#a0aec0"/>
+<text x="225.0" y="78" text-anchor="middle" fill="#1d2733" font-family="monospace">1</text>
+<rect x="254" y="58" width="46" height="30" rx="4" fill="#dbeaf5" stroke="#a0aec0"/>
+<text x="277.0" y="78" text-anchor="middle" fill="#1d2733" font-family="monospace">1</text>
+<rect x="306" y="58" width="46" height="30" rx="4" fill="#f7d4d4" stroke="#a0aec0"/>
+<text x="329.0" y="78" text-anchor="middle" fill="#1d2733" font-family="monospace">0</text>
+<rect x="358" y="58" width="46" height="30" rx="4" fill="#f7d4d4" stroke="#a0aec0"/>
+<text x="381.0" y="78" text-anchor="middle" fill="#1d2733" font-family="monospace">0</text>
+<rect x="410" y="58" width="46" height="30" rx="4" fill="#f7d4d4" stroke="#a0aec0"/>
+<text x="433.0" y="78" text-anchor="middle" fill="#1d2733" font-family="monospace">0</text>
+<rect x="462" y="58" width="46" height="30" rx="4" fill="#dbeaf5" stroke="#a0aec0"/>
+<text x="485.0" y="78" text-anchor="middle" fill="#1d2733" font-family="monospace">1</text>
+<rect x="514" y="58" width="46" height="30" rx="4" fill="#f7d4d4" stroke="#a0aec0"/>
+<text x="537.0" y="78" text-anchor="middle" fill="#1d2733" font-family="monospace">0</text>
+<rect x="566" y="58" width="46" height="30" rx="4" fill="#f7d4d4" stroke="#a0aec0"/>
+<text x="589.0" y="78" text-anchor="middle" fill="#1d2733" font-family="monospace">0</text>
+<rect x="618" y="58" width="46" height="30" rx="4" fill="#dbeaf5" stroke="#a0aec0"/>
+<text x="641.0" y="78" text-anchor="middle" fill="#1d2733" font-family="monospace">1</text>
+<text x="190" y="119" text-anchor="end" fill="#1d2733" font-family="monospace" font-size="12">lost (==0)</text>
+<rect x="202" y="98" width="46" height="30" rx="4" fill="#ffffff" stroke="#a0aec0"/>
+<text x="225.0" y="118" text-anchor="middle" fill="#1d2733" font-family="monospace">0</text>
+<rect x="254" y="98" width="46" height="30" rx="4" fill="#ffffff" stroke="#a0aec0"/>
+<text x="277.0" y="118" text-anchor="middle" fill="#1d2733" font-family="monospace">0</text>
+<rect x="306" y="98" width="46" height="30" rx="4" fill="#f7d4d4" stroke="#a0aec0"/>
+<text x="329.0" y="118" text-anchor="middle" fill="#1d2733" font-family="monospace">1</text>
+<rect x="358" y="98" width="46" height="30" rx="4" fill="#f7d4d4" stroke="#a0aec0"/>
+<text x="381.0" y="118" text-anchor="middle" fill="#1d2733" font-family="monospace">1</text>
+<rect x="410" y="98" width="46" height="30" rx="4" fill="#f7d4d4" stroke="#a0aec0"/>
+<text x="433.0" y="118" text-anchor="middle" fill="#1d2733" font-family="monospace">1</text>
+<rect x="462" y="98" width="46" height="30" rx="4" fill="#ffffff" stroke="#a0aec0"/>
+<text x="485.0" y="118" text-anchor="middle" fill="#1d2733" font-family="monospace">0</text>
+<rect x="514" y="98" width="46" height="30" rx="4" fill="#f7d4d4" stroke="#a0aec0"/>
+<text x="537.0" y="118" text-anchor="middle" fill="#1d2733" font-family="monospace">1</text>
+<rect x="566" y="98" width="46" height="30" rx="4" fill="#f7d4d4" stroke="#a0aec0"/>
+<text x="589.0" y="118" text-anchor="middle" fill="#1d2733" font-family="monospace">1</text>
+<rect x="618" y="98" width="46" height="30" rx="4" fill="#ffffff" stroke="#a0aec0"/>
+<text x="641.0" y="118" text-anchor="middle" fill="#1d2733" font-family="monospace">0</text>
+<text x="138" y="159" text-anchor="end" fill="#1d2733" font-family="monospace" font-size="12">padded</text>
+<rect x="150" y="138" width="46" height="30" rx="4" fill="#ffffff" stroke="#a0aec0"/>
+<text x="173.0" y="158" text-anchor="middle" fill="#1d2733" font-family="monospace">0</text>
+<rect x="202" y="138" width="46" height="30" rx="4" fill="#ffffff" stroke="#a0aec0"/>
+<text x="225.0" y="158" text-anchor="middle" fill="#1d2733" font-family="monospace">0</text>
+<rect x="254" y="138" width="46" height="30" rx="4" fill="#ffffff" stroke="#a0aec0"/>
+<text x="277.0" y="158" text-anchor="middle" fill="#1d2733" font-family="monospace">0</text>
+<rect x="306" y="138" width="46" height="30" rx="4" fill="#f7d4d4" stroke="#a0aec0"/>
+<text x="329.0" y="158" text-anchor="middle" fill="#1d2733" font-family="monospace">1</text>
+<rect x="358" y="138" width="46" height="30" rx="4" fill="#f7d4d4" stroke="#a0aec0"/>
+<text x="381.0" y="158" text-anchor="middle" fill="#1d2733" font-family="monospace">1</text>
+<rect x="410" y="138" width="46" height="30" rx="4" fill="#f7d4d4" stroke="#a0aec0"/>
+<text x="433.0" y="158" text-anchor="middle" fill="#1d2733" font-family="monospace">1</text>
+<rect x="462" y="138" width="46" height="30" rx="4" fill="#ffffff" stroke="#a0aec0"/>
+<text x="485.0" y="158" text-anchor="middle" fill="#1d2733" font-family="monospace">0</text>
+<rect x="514" y="138" width="46" height="30" rx="4" fill="#f7d4d4" stroke="#a0aec0"/>
+<text x="537.0" y="158" text-anchor="middle" fill="#1d2733" font-family="monospace">1</text>
+<rect x="566" y="138" width="46" height="30" rx="4" fill="#f7d4d4" stroke="#a0aec0"/>
+<text x="589.0" y="158" text-anchor="middle" fill="#1d2733" font-family="monospace">1</text>
+<rect x="618" y="138" width="46" height="30" rx="4" fill="#ffffff" stroke="#a0aec0"/>
+<text x="641.0" y="158" text-anchor="middle" fill="#1d2733" font-family="monospace">0</text>
+<rect x="670" y="138" width="46" height="30" rx="4" fill="#ffffff" stroke="#a0aec0"/>
+<text x="693.0" y="158" text-anchor="middle" fill="#1d2733" font-family="monospace">0</text>
+<text x="164" y="199" text-anchor="end" fill="#1d2733" font-family="monospace" font-size="12">np.diff</text>
+<rect x="176" y="178" width="46" height="30" rx="4" fill="#ffffff" stroke="#a0aec0"/>
+<text x="199.0" y="198" text-anchor="middle" fill="#1d2733" font-family="monospace">0</text>
+<rect x="228" y="178" width="46" height="30" rx="4" fill="#ffffff" stroke="#a0aec0"/>
+<text x="251.0" y="198" text-anchor="middle" fill="#1d2733" font-family="monospace">0</text>
+<rect x="280" y="178" width="46" height="30" rx="4" fill="#fdf0e2" stroke="#a0aec0"/>
+<text x="303.0" y="198" text-anchor="middle" fill="#1d2733" font-family="monospace" font-weight="bold">+1</text>
+<rect x="332" y="178" width="46" height="30" rx="4" fill="#ffffff" stroke="#a0aec0"/>
+<text x="355.0" y="198" text-anchor="middle" fill="#1d2733" font-family="monospace">0</text>
+<rect x="384" y="178" width="46" height="30" rx="4" fill="#ffffff" stroke="#a0aec0"/>
+<text x="407.0" y="198" text-anchor="middle" fill="#1d2733" font-family="monospace">0</text>
+<rect x="436" y="178" width="46" height="30" rx="4" fill="#fdf0e2" stroke="#a0aec0"/>
+<text x="459.0" y="198" text-anchor="middle" fill="#1d2733" font-family="monospace" font-weight="bold">−1</text>
+<rect x="488" y="178" width="46" height="30" rx="4" fill="#fdf0e2" stroke="#a0aec0"/>
+<text x="511.0" y="198" text-anchor="middle" fill="#1d2733" font-family="monospace" font-weight="bold">+1</text>
+<rect x="540" y="178" width="46" height="30" rx="4" fill="#ffffff" stroke="#a0aec0"/>
+<text x="563.0" y="198" text-anchor="middle" fill="#1d2733" font-family="monospace">0</text>
+<rect x="592" y="178" width="46" height="30" rx="4" fill="#fdf0e2" stroke="#a0aec0"/>
+<text x="615.0" y="198" text-anchor="middle" fill="#1d2733" font-family="monospace" font-weight="bold">−1</text>
+<rect x="644" y="178" width="46" height="30" rx="4" fill="#ffffff" stroke="#a0aec0"/>
+<text x="667.0" y="198" text-anchor="middle" fill="#1d2733" font-family="monospace">0</text>
+</g>
+<text x="20" y="244" fill="#1d2733">np.diff(padded)[i] = padded[i+1] − padded[i]: <tspan font-weight="bold">+1</tspan> where a run of 0 starts (at row i),</text>
+<text x="20" y="262" fill="#1d2733"><tspan font-weight="bold">−1</tspan> where it stops (row i is the first row with GPS again, or the end).</text>
+<text x="20" y="290" fill="#1d2733" font-family="monospace">starts = [2, 6]   stops = [5, 8]   →   runs [(2, 5), (6, 8)]</text>
+<text x="20" y="314" fill="#555">duration of a run = time_s[stop − 1] − time_s[start] + DT_S   (rows 2–4 at 2 s: 4 + 2 = 6 s)</text>
 </svg>

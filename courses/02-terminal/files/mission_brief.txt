@@ -1,20 +1,20 @@
-MISSION BRIEF — terminal training
-=================================
+MISSION BRIEF — ground engineer, NAVERA training flights in Oman
+================================================================
 
-Your NAVERA computer has just come back from two test flights.
-All the files of those flights were dumped, in a mess, into the folder "inbox".
+The NAVERA box came back from two training flights (Sohar and Nizwa).
+All their files were copied, in a mess, into the folder "inbox".
 
-Your job, as the new ground engineer:
+  1. Build the mission folder:  mission/photos  mission/logs  mission/docs  mission/bin
+  2. Sort the inbox: photos, logs, the pilot's notes (renamed notes.txt),
+     the pre-flight script (in mission/bin, made executable); delete the .tmp files
+  3. Copy NAVERA's GPS settings file into mission/docs, for the record
+  4. Record the ROS environment of the box in ros_env.txt
+  5. Start fake_node.sh in the background and stop it with a signal, by its PID
+  6. Write mission/bin/log_report.sh: one summary for any NAVERA log
+  7. Use it on both flights, explore ~/navera, fill in answers.py
+  8. Write mission/docs/flight_report.md for the test team
 
-  1. Build a clean mission folder:   mission/photos   mission/logs   mission/docs
-  2. Put every photo (.jpg) in mission/photos
-  3. Put every flight log (.log) in mission/logs
-  4. Move the pilot's notes to mission/docs and call them notes.txt
-  5. Delete the temporary files (.tmp) and the empty inbox folder
-  6. Copy NAVERA's GPS settings file into mission/docs, for the record
-  7. Explore your NAVERA copy and answer the questions in answers.py
-
+Every step is done in the terminal. No mouse needed.
 This brief is exactly 20 lines long (check it with: wc -l mission_brief.txt).
-You only need the terminal for all of it.
 
-Good luck, engineer!
+Good luck, engineer.

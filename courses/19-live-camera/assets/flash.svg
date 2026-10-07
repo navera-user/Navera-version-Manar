@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 330" font-family="sans-serif" font-size="12">
+  <rect width="720" height="330" fill="#f7fafc"/>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#1d2733"/></marker>
+  </defs>
+  <text x="20" y="24" font-size="15" font-weight="bold" fill="#1d2733">Measuring the delay with a screen flash</text>
+  <!-- scale: x = 130 + 2.6 * ms ; t0 = 0 ms -->
+  <!-- row labels -->
+  <text x="20" y="72" fill="#1d2733" font-weight="bold">screen</text>
+  <text x="20" y="133" fill="#1d2733" font-weight="bold">exposures</text>
+  <text x="20" y="193" fill="#1d2733" font-weight="bold">frames</text>
+  <text x="20" y="207" fill="#5a6775">arrive (grab)</text>
+
+  <!-- t0 line -->
+  <line x1="130" y1="40" x2="130" y2="270" stroke="#d64545" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <text x="130" y="288" text-anchor="middle" fill="#d64545" font-weight="bold">t₀</text>
+  <text x="130" y="302" text-anchor="middle" fill="#d64545">program: "white!"</text>
+
+  <!-- screen: black until 20 ms (x=182), then white -->
+  <rect x="100" y="55" width="82" height="26" fill="#1d2733"/>
+  <rect x="182" y="55" width="510" height="26" fill="#ffffff" stroke="#1d2733"/>
+  <text x="300" y="72" fill="#1d2733">white</text>
+
+  <!-- exposures every T = 34.7 ms (90 px); mids at -5, 29.7, 64.4, 99.1, 133.8, 168.5 ms; 10 ms wide = 26 px -->
+  <g stroke="#0b6e8a" stroke-width="1.5">
+    <rect x="104" y="118" width="26" height="22" fill="#1d2733"/>
+    <rect x="194" y="118" width="26" height="22" fill="#ffffff"/>
+    <rect x="284" y="118" width="26" height="22" fill="#ffffff"/>
+    <rect x="374" y="118" width="26" height="22" fill="#ffffff"/>
+    <rect x="464" y="118" width="26" height="22" fill="#ffffff"/>
+    <rect x="554" y="118" width="26" height="22" fill="#ffffff"/>
+  </g>
+  <text x="625" y="133" fill="#5a6775">every T</text>
+
+  <!-- the frame that saw white first: exposure mid at x=207, arrives at +105 ms (273 px) -> x=480 -->
+  <line x1="207" y1="140" x2="476" y2="186" stroke="#0b6e8a" stroke-width="1.5" marker-end="url(#a)"/>
+  <circle cx="480" cy="190" r="7" fill="#0b6e8a"/>
+  <text x="492" y="194" fill="#0b6e8a" font-weight="bold">first bright frame</text>
+  <circle cx="390" cy="190" r="5" fill="#8a96a3"/>
+  <circle cx="300" cy="190" r="5" fill="#8a96a3"/>
+  <circle cx="210" cy="190" r="5" fill="#8a96a3"/>
+
+  <!-- braces -->
+  <line x1="130" y1="232" x2="182" y2="232" stroke="#1d2733" stroke-width="1.5"/>
+  <line x1="130" y1="226" x2="130" y2="238" stroke="#1d2733"/><line x1="182" y1="226" x2="182" y2="238" stroke="#1d2733"/>
+  <text x="156" y="252" text-anchor="middle" fill="#1d2733">s</text>
+  <line x1="182" y1="232" x2="207" y2="232" stroke="#b5651d" stroke-width="3"/>
+  <text x="195" y="252" text-anchor="middle" fill="#b5651d">w</text>
+  <line x1="207" y1="232" x2="480" y2="232" stroke="#0b6e8a" stroke-width="1.5"/>
+  <line x1="207" y1="226" x2="207" y2="238" stroke="#0b6e8a"/><line x1="480" y1="226" x2="480" y2="238" stroke="#0b6e8a"/>
+  <text x="343" y="252" text-anchor="middle" fill="#0b6e8a">L (exposure → grab)</text>
+
+  <text x="300" y="288" fill="#1d2733">measured delay  d = s + w + L</text>
+  <text x="300" y="306" fill="#5a6775">s: screen delay · w: wait for the next exposure, 0 ≤ w &lt; T</text>
+  <text x="300" y="322" fill="#5a6775">so the median of d over-estimates L by about s + T/2</text>
+</svg>

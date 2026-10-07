@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 470" font-family="sans-serif" font-size="13">
+  <rect width="760" height="470" fill="#f7fafc"/>
+  <text x="380" y="24" text-anchor="middle" font-size="15" fill="#1d2733">Same receiver, two skies: geometry decides the error</text>
+
+  <!-- ===== left: worked example of the course ===== -->
+  <g transform="translate(190,160)">
+    <circle r="95" fill="#fff" stroke="#9cc7d6"/>
+    <circle r="63.3" fill="none" stroke="#e1edf2"/>
+    <circle r="31.7" fill="none" stroke="#e1edf2"/>
+    <line x1="-95" y1="0" x2="95" y2="0" stroke="#e1edf2"/>
+    <line x1="0" y1="-95" x2="0" y2="95" stroke="#e1edf2"/>
+    <text y="-100" text-anchor="middle" fill="#5a6b7b" font-size="11">N</text>
+    <text x="101" y="4" fill="#5a6b7b" font-size="11">E</text>
+    <text x="66" y="-46" fill="#9aaab8" font-size="10">30°</text>
+    <g fill="#0b6e8a">
+      <circle cx="0" cy="-63.3" r="7"/><circle cx="63.3" cy="0" r="7"/><circle cx="0" cy="63.3" r="7"/>
+      <circle cx="-63.3" cy="0" r="7"/><circle cx="0" cy="0" r="7"/>
+    </g>
+  </g>
+  <text x="190" y="285" text-anchor="middle" fill="#1d2733">4 satellites at 30° (N, E, S, W) + 1 overhead</text>
+  <text x="190" y="305" text-anchor="middle" fill="#2f7a2f" font-weight="bold">HDOP 1.15   VDOP 2.24   PDOP 2.52</text>
+
+  <!-- ===== right: bunched in the north-east ===== -->
+  <g transform="translate(570,160)">
+    <circle r="95" fill="#fff" stroke="#9cc7d6"/>
+    <circle r="63.3" fill="none" stroke="#e1edf2"/>
+    <circle r="31.7" fill="none" stroke="#e1edf2"/>
+    <line x1="-95" y1="0" x2="95" y2="0" stroke="#e1edf2"/>
+    <line x1="0" y1="-95" x2="0" y2="95" stroke="#e1edf2"/>
+    <text y="-100" text-anchor="middle" fill="#5a6b7b" font-size="11">N</text>
+    <text x="101" y="4" fill="#5a6b7b" font-size="11">E</text>
+    <g fill="#0b6e8a">
+      <circle cx="25.3" cy="-69.4" r="7"/><circle cx="44.1" cy="-52.6" r="7"/><circle cx="54.8" cy="-31.7" r="7"/>
+      <circle cx="18.2" cy="-25.9" r="7"/><circle cx="36.4" cy="-30.5" r="7"/>
+    </g>
+    <path d="M -95 0 A 95 95 0 0 1 0 -95" fill="none" stroke="#b07a3a" stroke-width="5" stroke-opacity="0.35"/>
+    <path d="M 0 95 A 95 95 0 0 1 -95 0" fill="none" stroke="#b07a3a" stroke-width="5" stroke-opacity="0.35"/>
+    <path d="M 95 0 A 95 95 0 0 1 0 95" fill="none" stroke="#b07a3a" stroke-width="5" stroke-opacity="0.35"/>
+  </g>
+  <text x="570" y="285" text-anchor="middle" fill="#1d2733">5 satellites in the north-east (buildings hide the rest)</text>
+  <text x="570" y="305" text-anchor="middle" fill="#d64545" font-weight="bold">HDOP 16.2   VDOP 12.8   PDOP 20.6</text>
+
+  <!-- ===== error ellipses, same scale ===== -->
+  <rect x="40" y="325" width="300" height="105" fill="#fff" stroke="#d5e2ea"/>
+  <rect x="420" y="325" width="300" height="105" fill="#fff" stroke="#d5e2ea"/>
+  <g transform="translate(190,377)">
+    <line x1="-8" y1="0" x2="8" y2="0" stroke="#c7d3dc"/><line x1="0" y1="-8" x2="0" y2="8" stroke="#c7d3dc"/>
+    <circle r="2.4" fill="#3a8d3a" fill-opacity="0.45" stroke="#2f7a2f"/>
+    <text x="14" y="-12" fill="#2f7a2f" font-size="12">σE = σN = 1.6 m</text>
+  </g>
+  <g transform="translate(570,377)">
+    <line x1="-8" y1="0" x2="8" y2="0" stroke="#c7d3dc"/><line x1="0" y1="-8" x2="0" y2="8" stroke="#c7d3dc"/>
+    <ellipse rx="48" ry="6.9" transform="rotate(-57)" fill="#d64545" fill-opacity="0.25" stroke="#d64545"/>
+    <text x="44" y="-18" fill="#d64545" font-size="12">32 m along the</text>
+    <text x="44" y="-3" fill="#d64545" font-size="12">satellite direction,</text>
+    <text x="44" y="12" fill="#d64545" font-size="12">4.6 m across</text>
+  </g>
+  <g transform="translate(60,418)">
+    <line x1="0" y1="0" x2="15" y2="0" stroke="#1d2733" stroke-width="2"/>
+    <text x="21" y="4" font-size="11" fill="#5a6b7b">10 m</text>
+  </g>
+  <g transform="translate(440,418)">
+    <line x1="0" y1="0" x2="15" y2="0" stroke="#1d2733" stroke-width="2"/>
+    <text x="21" y="4" font-size="11" fill="#5a6b7b">10 m</text>
+  </g>
+  <text x="50" y="342" font-size="11" fill="#5a6b7b">1-σ horizontal error (UERE = 2 m)</text>
+  <text x="430" y="342" font-size="11" fill="#5a6b7b">1-σ horizontal error (UERE = 2 m)</text>
+  <text x="710" y="420" text-anchor="end" font-size="11" fill="#b07a3a">brown arcs: sky hidden</text>
+  <text x="380" y="458" text-anchor="middle" fill="#5a6b7b" font-size="11">Sky plots seen from above: centre = straight up (90°), outer circle = horizon (0°). Ellipse = UERE² · (GᵀG)⁻¹, East-North block.</text>
+</svg>

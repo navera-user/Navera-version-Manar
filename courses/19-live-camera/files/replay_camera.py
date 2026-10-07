@@ -9,6 +9,7 @@
 #
 #     python3 replay_camera.py                 # level
 #     python3 replay_camera.py --pitch 15      # nose 15 degrees up
+#     python3 replay_camera.py --turn-rate 40  # turning right at 40 deg/s
 # Stop with Ctrl+C. You don't need to change this file.
 import argparse
 import glob
@@ -30,6 +31,7 @@ ap.add_argument("--rate", type=float, default=2.0, help="pictures per second")
 ap.add_argument("--roll", type=float, default=0.0, help="deg, right wing down")
 ap.add_argument("--pitch", type=float, default=0.0, help="deg, nose up")
 ap.add_argument("--heading", type=float, default=0.0, help="deg clockwise from north")
+ap.add_argument("--turn-rate", type=float, default=0.0, help="deg/s: the heading turns at this rate")
 a = ap.parse_args()
 
 
@@ -55,19 +57,22 @@ class Replay(Node):
         # ROS body frame (REP-103): x forward, y LEFT, z up. Nose up = negative rotation
         # about y; right wing down = positive rotation about x. ENU yaw is counter-clockwise
         # from EAST: heading 0 (north) = yaw 90 deg.
-        self.q = quat_from_rpy(math.radians(a.roll), -math.radians(a.pitch), math.radians(90.0 - a.heading))
+        self.t_start = self.get_clock().now().nanoseconds * 1e-9
         self.create_timer(1.0 / 50.0, self.send_imu)
         self.create_timer(1.0 / a.rate, self.send_image)
         self.get_logger().info(f"{len(self.files)} recorded frames at {a.rate} /s, IMU roll {a.roll} "
-                               f"pitch {a.pitch} heading {a.heading} deg")
+                               f"pitch {a.pitch} heading {a.heading} deg, turning {a.turn_rate} deg/s")
 
     def send_imu(self):
         m = Imu()
-        m.header.stamp = self.get_clock().now().to_msg()
+        now = self.get_clock().now()
+        heading = a.heading + a.turn_rate * (now.nanoseconds * 1e-9 - self.t_start)
+        q = quat_from_rpy(math.radians(a.roll), -math.radians(a.pitch), math.radians(90.0 - heading))
+        m.header.stamp = now.to_msg()
         m.header.frame_id = "imu_link"
         # a REAL sensor is never perfectly still: live_camera.py treats 50 identical
         # samples in a row as a frozen IMU and stops using it. So: a tiny noise.
-        x, y, z, w = (c + random.gauss(0.0, 1e-5) for c in self.q)
+        x, y, z, w = (c + random.gauss(0.0, 1e-5) for c in q)
         n = math.sqrt(x * x + y * y + z * z + w * w)
         m.orientation.x, m.orientation.y, m.orientation.z, m.orientation.w = x / n, y / n, z / n, w / n
         self.pub_imu.publish(m)

@@ -1,386 +1,551 @@
-# Python first steps
+# Python for engineers: functions, classes and NumPy
 
-A drone is 12 km from its landing point. It flies at 54 km/h. Its battery holds 100 Wh, it burns
-400 W, and the rules say: *always keep 20 % for landing*. Will it make it?
+A survey drone takes off from a port on the Batinah coast, near Sohar. It must inspect a point
+9 km away on the track 030° and come back. The wind blows at 5 m/s towards the south-west.
+The drone flies at 12 m/s through the air, its battery holds 160 Wh, it uses 350 W, and the rules
+say: **keep 20 % in reserve**. Can it do the mission? Which heading must it fly so that the wind
+does not push it off its track?
 
-You could take a pencil and work it out in five minutes. A computer does it in a millionth of a
-second, a thousand times per second, for every vehicle of a fleet, without ever getting tired —
-**if you tell it exactly how**. Writing those instructions is **programming**, and the language
-NAVERA is written in is **Python**.
-
-In this lesson you learn the first half of Python: storing values, computing, writing text,
-making decisions and building your own **functions**. Every example is a real navigation question.
-
-## Running Python
-
-A Python **program** (or **script**) is a text file whose name ends in `.py`. You run it in the
-terminal with:
-
-```
-python3 mission.py
-```
-
-Python reads the file **from top to bottom** and does each line in order. When it reaches the end,
-the program stops.
-
-You can also talk to Python directly, line by line. Type `python3` alone in the terminal: the prompt
-becomes `>>>`. Type `2 + 3`, press `Enter`, Python answers `5`. This **interactive mode** is a perfect
-calculator and the best place to try things out. Leave it with `exit()` (or `Ctrl+D`).
-
-> [!TIP]
-> Lines starting with `#` are **comments**: Python ignores them. They are notes for humans.
-> NAVERA's code is full of them — they explain *why* the code does what it does.
-
-## Variables: boxes with a name
-
-A **variable** is a name that holds a value, like a labelled box:
-
-```python
-drone_name = "NAVERA-1"
-cruise_speed_kmh = 54
-battery_percent = 35
-```
-
-The `=` sign does **not** mean "equal" as in maths. It means "**put** the value on the right into the
-box on the left". So this is fine:
-
-```python
-battery_percent = 35
-battery_percent = battery_percent - 5     # now 30
-```
-
-Rules for names: letters, digits and `_`, no spaces, not starting with a digit. Upper and lower case
-are different (`Speed` and `speed` are two boxes). Python programmers write names in
-`lower_case_with_underscores`.
+A mission planner answers these questions in code, for every vehicle and every flight. NAVERA is
+written in **Python**, and this lesson gives you the Python an engineer needs to read and write it:
+the core language (fast), **functions**, **modules**, **exceptions**, **classes** (every ROS node
+of lesson 10 is a class) and **NumPy** (arrays: the way to compute on thousands of numbers at once).
+You will meet real maths on the way: the **wind triangle**, battery endurance and the turn radius
+of an aircraft.
 
 > [!NOTE]
-> NAVERA engineers put the **unit at the end of the name**: `radius_m`, `speed_mps`
-> (metres per second), `dt_s`, `altitude_m`, `heading_deg`. A speed of `15` means nothing; a variable
-> called `speed_mps = 15` cannot be mistaken for km/h. Many real accidents came from mixing units —
-> do as the professionals do.
+> This lesson is dense on purpose. If a Python feature is new to you, try it in the interactive
+> interpreter (`python3`, prompt `>>>`) right away. The official tutorial
+> (docs.python.org/3/tutorial) covers every point in more detail; the sandbox has Python 3.10.
 
-## Numbers and arithmetic
+## 1. The core language in ten minutes
 
-Python has two kinds of numbers: **integers** (`int`, whole numbers like `54`, `-3`) and
-**floats** (`float`, numbers with a decimal point like `3.6`, `0.5`). They mix freely.
+A Python **script** is a `.py` file that `python3 file.py` runs from top to bottom. Lines that
+start with `#` are **comments**. Blocks are defined by **indentation** (4 spaces) after a line
+that ends with `:`.
 
-| Operator | Means | Example | Result |
-|---|---|---|---|
-| `+` `-` | add, subtract | `600 - 450` | `150` |
-| `*` | multiply | `15 * 60` | `900` |
-| `/` | divide (always gives a float) | `900 / 15` | `60.0` |
-| `//` | whole division | `130 // 60` | `2` |
-| `%` | remainder | `130 % 60` | `10` |
-| `**` | power | `300 ** 2` | `90000` |
+| Type | Examples | Notes |
+|---|---|---|
+| `int` | `54`, `-3`, `10**6` | whole numbers, no size limit |
+| `float` | `3.6`, `1e-3`, `float("nan")` | 64-bit IEEE 754: `0.1 + 0.2` is `0.30000000000000004` |
+| `str` | `"GPS"`, `'day'` | text; `+` joins strings, `len(s)` counts characters |
+| `bool` | `True`, `False` | result of comparisons `==  !=  <  <=  >  >=`, combined with `and`, `or`, `not` |
+| `None` | `None` | "no value"; what a function without `return` returns |
 
-`130 // 60` and `130 % 60` together turn 130 seconds into "2 min 10 s".
+Operators: `+ - * /` (`/` always gives a float), `//` (integer division), `%` (remainder),
+`**` (power). `130 // 60` is `2` and `130 % 60` is `10`: 130 s = 2 min 10 s.
 
-Python follows the usual priorities: `**` first, then `*` `/`, then `+` `-`. Use parentheses
-whenever in doubt: `(100 - 20) / 100` is not the same as `100 - 20 / 100`.
+> [!TIP]
+> NAVERA puts the **unit at the end of every name**: `speed_mps`, `dt_s`, `heading_deg`,
+> `radius_m`. A variable `speed = 15` can be km/h or m/s; `speed_mps = 15` cannot. Unit mix-ups
+> have destroyed real spacecraft. Do the same in your code.
 
-### Speeds: km/h and m/s
+Because floats are binary approximations, **never compare floats with `==`**: test
+`abs(a - b) < 1e-9` instead. You will see `6.123e-17` where you expect `0` (the cosine of 90°):
+that is rounding, not a bug.
 
-People say km/h; robots compute in **m/s** (metres per second), because their sensors measure
-metres and seconds. One kilometre is 1000 m and one hour is 3600 s, so:
+### Strings and f-strings
 
-```
-1 km/h = 1000 m / 3600 s = 1 / 3.6 m/s        →   m/s = km/h ÷ 3.6   and   km/h = m/s × 3.6
-```
+An **f-string** puts values inside text: `f"{name} flies at {speed_mps} m/s"`. After the value,
+a colon starts a **format specification**:
 
-54 km/h is `54 / 3.6 = 15` m/s: in one second the drone moves 15 metres.
+| Code | Result | Meaning |
+|---|---|---|
+| `f"{7.02098:.1f}"` | `7.0` | fixed point, 1 decimal |
+| `f"{7.02098:8.2f}"` | `    7.02` | **width** 8 characters, 2 decimals (aligned columns) |
+| `f"{'quad':<10}|"` | `quad      \|` | text left-aligned in 10 characters (`>` right, `^` centre) |
+| `f"{263:5d}"` | `  263` | an integer in 5 characters |
+| `f"{0.004712:.2e}"` | `4.71e-03` | scientific notation |
+| `f"{-0.597:+.2f} %"` | `-0.60 %` | always show the sign |
 
-### Distance, speed, time
+`round(x, n)` rounds a number to `n` decimals and returns a number (format specs return text).
+Python rounds exact halves to the even neighbour: `round(2.5)` is `2`, `round(3.5)` is `4`.
 
-The three are linked by one rule you already know:
+> [!WARNING]
+> **Quotes inside f-strings.** In Python 3.10, the expression inside `{ }` may not use the same
+> quote as the f-string itself:
+> ```
+> print(f"{row["alt_m"]}")      →  SyntaxError: f-string: unmatched '['
+> ```
+> Use the other kind of quote inside: `f"{row['alt_m']}"`, or compute the value in a variable
+> first. The error message does not mention quotes, so remember this one.
 
-| You know | You compute |
-|---|---|
-| speed and time | **distance = speed × time** |
-| distance and speed | **time = distance ÷ speed** |
-
-At 15 m/s for 60 s the drone covers `15 * 60 = 900` m. To cover 12 km = 12 000 m at 15 m/s it needs
-`12000 / 15 = 800` s, a bit more than 13 minutes.
-
-### Battery: energy and power
-
-A battery stores **energy**, counted in **watt-hours** (Wh). A drone uses energy at a certain rate,
-its **power**, in **watts** (W). Like water in a tank and the flow of a tap:
-
-```
-flight time (hours) = usable energy (Wh) ÷ power (W)
-```
-
-With 100 Wh, a 20 % reserve leaves `100 * (100 - 20) / 100 = 80` Wh usable. At 400 W that is
-`80 / 400 = 0.2` h, which is `0.2 * 60 = 12` minutes. Our drone needs 13.3 minutes for 12 km…
-it would **not** make it! This is exactly the kind of check a mission planner does before take-off.
-
-## Text: strings and `print`
-
-Text in Python is a **string** (`str`): characters between quotes, `"like this"` or `'like this'`.
+### Collections and loops
 
 ```python
-name = "NAVERA-1"
-print("Hello", name)              # Hello NAVERA-1   (print puts a space between its items)
-print("Status: " + "OK")          # Status: OK      (+ glues two strings together)
+alts = [0.0, 8.0, 120.5]          # list: ordered, changeable   alts[0], alts[-1], alts[1:3]
+fix = (23.588, 58.383)            # tuple: ordered, fixed        lat, lon = fix   (unpacking)
+row = {"t_s": 40.0, "src": "gps"} # dict: key -> value           row["src"], row.get("hdop", None)
+
+for a in alts:                    # every item
+    print(a)
+for i, a in enumerate(alts):      # index and item
+    print(i, a)
+for t, a in zip([0, 2, 4], alts): # two lists side by side
+    print(t, a)
+while battery_wh > reserve_wh:    # repeat while a condition is true
+    battery_wh -= 1.0
 ```
 
-`+` only glues strings to strings. `"Battery: " + 35` is an error (`TypeError`): Python refuses to
-guess whether you wanted text or a sum. Convert with `str(35)`, or better, use an f-string.
+A **list comprehension** builds a list in one line:
+`high = [a for a in alts if a > 100]`. NAVERA uses them everywhere, for example in
+`day_pkg/vision_nav.py`:
+`pts = [p for p in self._bias if math.hypot(*_en(p[:2], near)) <= self.bias_radius_m]`.
 
-### f-strings: text with values inside
-
-Put an `f` before the opening quote, and write variables (or whole calculations) between `{ }`:
+## 2. Functions
 
 ```python
-speed_kmh = 54
-time_min = 13.3333333
-print(f"{name} flies at {speed_kmh} km/h for {time_min:.1f} minutes")
-# NAVERA-1 flies at 54 km/h for 13.3 minutes
+import math
+
+def heading_vector(heading_deg):
+    """Unit vector (east, north) of a heading clockwise from north."""
+    h = math.radians(heading_deg)
+    return math.sin(h), math.cos(h)
+
+east, north = heading_vector(30)    # 0.5, 0.866…
 ```
 
-The `:.1f` after the value means "as a number with **1** digit after the point". `:.0f` rounds to a
-whole number, `:.2f` keeps two digits. You will see f-strings everywhere in NAVERA, for example in
-its error messages: `f"{kmh:g} km/h is outside {lo:g}-{hi:g} km/h"`.
+- `def name(parameters):` then an indented **body**. The string under the `def` is the
+  **docstring**: what the function does, its units, an example.
+- `return` ends the function and hands back a value. `return a, b` returns a **tuple**, and the
+  caller can **unpack** it: `east, north = …`.
+- **Default values**: `def flight_time_min(battery_wh, power_w, reserve_frac=0.2)`. Callers may
+  pass arguments by position (`flight_time_min(100, 400)`) or by **keyword**
+  (`flight_time_min(100, 400, reserve_frac=0.0)`).
+- `print` is not `return`: `print` shows a value to a human, `return` gives it to the code that
+  called the function. The checks of this course test what your functions **return**.
 
-## Decisions: `if`, `elif`, `else`
+### Scope: variables live inside their function
 
-A **comparison** gives a **boolean** (`bool`): `True` or `False`.
-
-| Comparison | Means |
-|---|---|
-| `a == b` | equal (two `=`! one `=` is "put in the box") |
-| `a != b` | not equal |
-| `a < b`, `a <= b` | less than, less than or equal |
-| `a > b`, `a >= b` | greater than, greater than or equal |
-
-`if` runs some lines **only when** a condition is `True`:
+A variable created inside a function is **local**: it exists only while that function runs.
 
 ```python
-if battery_percent >= 50:
-    print("OK")
-elif battery_percent >= 20:
-    print("LOW")
-else:
-    print("LAND NOW")
+def distance(...):
+    dl = math.radians(lon2 - lon1)     # local to distance()
+    ...
+def bearing(...):
+    return math.atan2(math.sin(dl), …) # NameError: name 'dl' is not defined
 ```
 
-Python checks the conditions **from top to bottom** and runs only the **first** block whose
-condition is true. `elif` means "else, if…"; `else` catches everything left. With 35 %: the first
-test is false, the second is true → `LOW`, and Python skips the rest.
+`bearing()` cannot see the `dl` of `distance()`: each function must compute what it needs, or
+receive it as a parameter. A function reads **global** constants (written at the top level of the
+file, in CAPITALS by convention: `EARTH_RADIUS_M = 6_371_000.0`), but should never change them.
 
-Look carefully at the shape:
+## 3. Modules
 
-- a **colon** `:` at the end of the `if`, `elif` and `else` lines;
-- the lines that belong to a block are **indented** (pushed right) by 4 spaces.
-
-**Indentation** is not decoration in Python: it is how Python knows which lines are inside the `if`.
-The editor indents for you after a `:`; `Tab` adds 4 spaces, `Shift+Tab` removes them.
-
-## Functions: your own commands
-
-A **function** is a named piece of code that you can use again and again. You already used one:
-`print(...)`. Here is how you make your own:
+A **module** is a `.py` file. `import math` loads the standard maths module; `math.sqrt`,
+`math.atan2`, `math.radians` live in it. Your own file is a module too:
 
 ```python
-def kmh_to_ms(speed_kmh):
-    return speed_kmh / 3.6
+from navlib import Vehicle, wind_correction    # navlib.py in the same folder
 ```
 
-- `def` starts the **definition**, then the name, then the **parameters** between parentheses
-  (the inputs), then `:`;
-- the indented lines are the **body**;
-- `return` gives the answer back and **ends** the function.
-
-Defining a function does nothing visible. It is **called** later:
+When Python imports a file, it **runs** it from top to bottom. That is why scripts end with:
 
 ```python
-speed = kmh_to_ms(36)       # speed is now 10.0
-print(kmh_to_ms(54))        # 15.0
+if __name__ == "__main__":
+    main()          # runs with "python3 navlib.py", NOT when another file imports navlib
 ```
 
-![A function is a machine: arguments in, return value out](assets/function.svg)
+`__name__` is `"__main__"` only for the file you started. In NAVERA, every node file ends this
+way, and `setup.py` turns its `main()` into a ROS command (lesson 9).
 
-The value you give when calling (`36`) is an **argument**; inside the function it lands in the
-parameter `speed_kmh`.
+## 4. Exceptions: refusing bad input loudly
 
-### `print` is not `return`
-
-This is the most common beginner bug. `print` shows a value **on the screen, for a human**.
-`return` hands the value **back to the code that called the function**, so it can keep computing.
-A function without `return` returns `None` — Python's word for "nothing":
+When something is impossible, Python **raises an exception**: the normal flow stops, and the error
+travels up to the caller. If nobody **catches** it, the program stops with a **traceback** (read
+its **last line** first, then the line number just above it).
 
 ```python
-def bad(speed_kmh):
-    print(speed_kmh / 3.6)        # shows 10.0 ... and returns None
-
-x = bad(36) * 2                   # TypeError: None cannot be multiplied
-```
-
-The automatic checks of this course call your functions and look at what they **return**.
-
-### Default values and functions calling functions
-
-A parameter can have a **default value**, used when the caller does not give one:
-
-```python
-def flight_time_min(battery_wh, power_w, reserve_percent=20):
+def flight_time_min(battery_wh, power_w, reserve_frac=0.2):
+    if power_w <= 0:
+        raise ValueError(f"power_w must be positive, got {power_w}")
     ...
 
-flight_time_min(100, 400)          # reserve_percent is 20
-flight_time_min(100, 400, 0)       # reserve_percent is 0
+try:
+    t = flight_time_min(100, 0)
+except ValueError as e:
+    print("refused:", e)        # refused: power_w must be positive, got 0
 ```
 
-And functions can call other functions — that is how big programs are built from small, tested
-pieces. Your `inside_circle()` will call your `distance_from_home_m()`.
+A safety-critical program **refuses** an impossible value instead of computing nonsense. NAVERA
+does exactly this when the installer gives the vehicle's maximum speed
+(`navera_common/vehicle.py`, see "In NAVERA" below): a wrong limit could let a spoofed GPS in.
 
-### Modules: functions other people wrote
+Errors you will meet in this course, with their usual cause:
 
-`import math` gives you the **math module**: `math.sqrt(x)` (square root), `math.pi`,
-`math.cos(...)`, `math.hypot(x, y)`… NAVERA imports `math` in almost every file.
-
-## The 600 m circle
-
-Navigation code is full of the same question: **is this point close enough?**
-
-When NAVERA's day vision looks for the drone on the satellite map, it does not search the whole
-map. It searches inside a **circle around the last known position**, whose radius is at most 600 m
-(that is the constant `R_MAX_M = 600.0` in `day_pkg/day_pkg/nodes/day_subscriber.py`). Further away,
-too many places look alike and the risk of a wrong match grows.
-
-To answer "inside or outside?", put the centre at `(0, 0)` and measure positions in metres: `x` to
-the **east**, `y` to the **north** (negative values mean west or south). The straight-line
-distance is the long side of a right triangle — **Pythagoras**:
-
-![Pythagoras gives the distance from home; compare it with the radius](assets/circle.svg)
-
-```
-distance = √(x² + y²)            in Python:   math.sqrt(x ** 2 + y ** 2)
-inside   = distance <= 600
-```
-
-`distance <= 600` is already `True` or `False`, so a function can simply
-`return distance_from_home_m(x_m, y_m) <= radius_m` — no `if` needed.
-
-## Reading error messages
-
-Errors are normal: professionals get them all day. The trick is to **read the last line** of the
-message, and the line number above it.
-
-| Error | Usual reason |
+| Last line of the traceback | Usual cause |
 |---|---|
-| `SyntaxError` | a missing `:`, quote or parenthesis |
-| `IndentationError` | the spaces at the start of a line are wrong |
-| `NameError: name 'sped' is not defined` | a typo in a name, or using a variable before creating it |
-| `TypeError` | mixing types: `"text" + 5`, or doing maths with `None` |
-| `ZeroDivisionError` | dividing by 0 — test the value with an `if` before dividing |
+| `SyntaxError: invalid syntax` / `expected ':'` | a missing `:`, quote or parenthesis |
+| `SyntaxError: f-string: unmatched '['` | same quote inside and outside an f-string (see above) |
+| `IndentationError: unexpected indent` | wrong spaces at the start of a line |
+| `NameError: name 'dl' is not defined` | a typo, or a variable of another function (scope) |
+| `TypeError: can only concatenate str (not "int") to str` | `"Battery: " + 35`: use an f-string |
+| `TypeError: unsupported operand type(s) for *: 'NoneType' and 'int'` | a function that forgot `return` |
+| `ValueError: math domain error` | `math.asin(1.2)`, `math.sqrt(-1)`: often degrees given instead of radians |
+| `TypeError: only length-1 arrays can be converted to Python scalars` | `math.cos(array)`: use `np.cos` |
+| `ValueError: operands could not be broadcast together with shapes (3,2) (3,)` | array shapes that do not fit (section 7) |
+| `ZeroDivisionError`, `IndexError`, `KeyError` | divide by 0, index past the end, missing dict key |
 | `NotImplementedError: TODO 3` | in this course: a TODO you have not written yet |
+
+## 5. Classes and objects
+
+A function computes; it forgets everything when it returns. Many things in a robot have a
+**state** that lives on: a vehicle has a speed and a battery, a track has a list of positions, a
+ROS node has publishers and timers. A **class** groups the state (**attributes**) and the
+functions that use it (**methods**). An **object** (or **instance**) is one value of that class.
+
+![A class is a blueprint; objects are built from it; a subclass inherits and extends](assets/classes.svg)
+
+```python
+class Vehicle:
+    def __init__(self, name, cruise_ms, battery_wh, power_w):
+        self.name = name                 # attributes: stored IN the object
+        self.cruise_ms = cruise_ms
+        self.battery_wh = battery_wh
+        self.power_w = power_w
+
+    def endurance_s(self, reserve_frac=0.2):
+        usable_wh = self.battery_wh * (1 - reserve_frac)
+        return usable_wh / self.power_w * 3600
+
+quad = Vehicle("quad", 12.0, 160.0, 350.0)    # calls __init__
+print(quad.cruise_ms)                         # 12.0
+print(quad.endurance_s())                     # 1316.6 s
+```
+
+- `class Vehicle:` defines the class (names in `CamelCase`).
+- `__init__` is the **constructor**: Python calls it when you write `Vehicle(...)`. Its job is to
+  check the arguments and store them as attributes.
+- `self` is the object being built or used. `quad.endurance_s()` is really
+  `Vehicle.endurance_s(quad)`: Python passes the object as the first argument. Inside a method,
+  `self.battery_wh` is **this** vehicle's battery. Forgetting `self.` in front of an attribute
+  creates a local variable that disappears at the end of the method — a classic bug.
+- Two objects of the same class have their own attributes:
+  `Vehicle("wing", 20, 150, 220, …)` does not change `quad`.
+
+### Inheritance and `super()`
+
+A **subclass** takes everything from its **parent class** and adds or changes some of it. A
+fixed-wing aircraft *is a* vehicle, with one more property: a stall speed under which it falls.
+
+```python
+class FixedWing(Vehicle):                       # FixedWing inherits from Vehicle
+    def __init__(self, name, cruise_ms, battery_wh, power_w, stall_ms):
+        super().__init__(name, cruise_ms, battery_wh, power_w)   # let Vehicle do its part
+        if cruise_ms <= stall_ms:
+            raise ValueError("cruise speed below stall speed")
+        self.stall_ms = stall_ms
+
+    def turn_radius_m(self, bank_deg=30.0):
+        ...
+
+wing = FixedWing("wing", 20.0, 150.0, 220.0, 12.0)
+wing.endurance_s()          # inherited from Vehicle: no need to write it again
+isinstance(wing, Vehicle)   # True
+```
+
+`super().__init__(...)` calls the parent's constructor, so the attributes `name`, `cruise_ms`…
+are set exactly as for any vehicle. This is precisely the first line of every ROS node in lesson
+10, and of NAVERA's arbiter:
+
+```python
+class EstimatorNode(Node):                    # a ROS 2 node IS a Node, plus NAVERA's logic
+    def __init__(self) -> None:
+        super().__init__("estimator_node")    # rclpy's Node sets up the node's name, clock…
+```
+
+## 6. Three pieces of flight physics
+
+### The wind triangle
+
+An aircraft moves through the air; the air moves over the ground. The **ground velocity** is the
+vector sum of the **air velocity** (airspeed `V` along the heading `ψ`) and the **wind** `w`:
+
+```
+v_ground = V · (sin ψ, cos ψ) + (w_east, w_north)          (east, north components)
+```
+
+Headings are measured **clockwise from north** (0° = north, 90° = east), so east uses `sin` and
+north uses `cos` — the opposite of the maths convention. In this course a wind vector points
+where the air **goes** (weather reports give where it comes **from**: a "north wind" blows
+towards the south).
+
+![The wind triangle: fly a heading into the crosswind to keep the track](assets/wind_triangle.svg)
+
+To follow a ground **track** `T`, split the wind into a component **along** the track and a
+component **across** it (positive to the right of the track):
+
+```
+w_along = w_east · sin T + w_north · cos T
+w_cross = w_east · cos T − w_north · sin T
+```
+
+The aircraft must cancel `w_cross` with its own velocity: it points into the wind by the
+**crab angle** `c`, with `V · sin c = w_cross`. Then:
+
+```
+c = asin(w_cross / V)           (impossible if |w_cross| > V: no heading works)
+ψ = T − c                       heading to fly
+GS = V · cos c + w_along        ground speed along the track (must be > 0)
+```
+
+**Worked example.** Track `T = 030°`, `V = 12 m/s`, wind 5 m/s towards the south-west:
+`w = (−3, −4)` m/s.
+
+```
+w_along = −3 · sin 30° + (−4) · cos 30° = −1.5 − 3.464 = −4.964 m/s   (a headwind)
+w_cross = −3 · cos 30° − (−4) · sin 30° = −2.598 + 2.0  = −0.598 m/s   (pushes to the left)
+c  = asin(−0.598 / 12) = −2.86°
+ψ  = 30° − (−2.86°)    = 32.86°        → fly 2.9° to the RIGHT of the track
+GS = 12 · cos(2.86°) − 4.964 = 7.02 m/s
+```
+
+On the way back (`T = 210°`) the headwind becomes a tailwind: `GS = 16.95 m/s`. The round trip
+of 2 × 9 km takes `9000/7.02 + 9000/16.95 = 1282 + 531 = 1813 s = 30.2 min`.
+
+### Battery endurance
+
+A battery stores **energy** in watt-hours (1 Wh = 3600 J; a phone battery holds about 15 Wh).
+A vehicle draws **power** in watts. With a reserve fraction `r` kept for landing:
+
+```
+endurance (h) = battery_Wh · (1 − r) / power_W
+```
+
+160 Wh, 350 W, `r = 0.2`: `128 / 350 = 0.366 h = 21.9 min`. The round trip needs 30.2 min:
+**the quad cannot do this mission**, although 18 km at 12 m/s takes only 25 min in still air. The
+wind costs more on the way out than it gives back on the way home.
+
+### Turn radius of a fixed wing
+
+A multirotor can stop and turn on the spot; an aircraft turns by **banking** (rolling) by an
+angle `φ`. In a level turn, the horizontal component of the lift gives the centripetal force:
+
+```
+m · v² / r = m · g · tan φ      →      r = v² / (g · tan φ)
+```
+
+At 20 m/s and 30° of bank: `r = 400 / (9.81 × 0.577) = 70.6 m`. A day-vision search circle of
+a few hundred metres is therefore much wider than the aircraft's turns — and the camera tilts
+with the bank, which lesson 17 deals with.
+
+## 7. NumPy: computing on whole arrays
+
+A flight log has thousands of positions. A Python loop over them works, but it is slow and long to
+write. **NumPy** (`import numpy as np`) stores numbers in **arrays** of one type and applies
+operations to all elements at once, in compiled code — typically 10–100× faster. This style is
+called **vectorised** code.
+
+```python
+import numpy as np
+t = np.array([0.0, 1.0, 2.0, 3.0])          # shape (4,), dtype float64
+e = np.array([0.0, 12.1, 24.3, 36.0])
+n = np.array([0.0, 0.5, 0.9, 1.2])
+
+e.shape, e.dtype, len(e)        # (4,), dtype('float64'), 4
+e[0], e[-1], e[1:3]             # 0.0, 36.0, array([12.1, 24.3])  (slices like lists)
+e * 2                           # every element × 2
+np.diff(e)                      # [12.1, 12.2, 11.7]  : the n−1 differences
+np.hypot(np.diff(e), np.diff(n))            # segment lengths, all at once
+np.hypot(np.diff(e), np.diff(n)) / np.diff(t)   # segment speeds (element by element)
+e.sum(), e.mean(), e.max(), np.median(e)    # reductions
+```
+
+**Boolean masks** select elements with a condition, with no loop:
+
+```python
+speeds = np.array([12.0, 11.8, 54.3, 40.1, 12.2])
+fast = speeds > 25            # array([False, False, True, True, False])
+speeds[fast]                  # array([54.3, 40.1])
+fast.sum()                    # 2   (True counts as 1)
+np.argmax(fast)               # 2   (index of the FIRST True)
+```
+
+**Use the `np.` functions on arrays**: `math.cos(array)` fails with
+`TypeError: only length-1 arrays can be converted to Python scalars`; `np.cos(array)` works, and
+also works on a plain number. A function written with `np.radians`, `np.cos`, `np.hypot` therefore
+accepts a number **or** an array of any shape.
+
+### Broadcasting
+
+When two arrays of different shapes meet in an operation, NumPy **broadcasts** them: a size-1
+(or missing) dimension is stretched to match the other one. The simplest case: an array and a
+number.
+
+![Broadcasting: an (N,) array minus a number, and an (N, 2) array minus a (2,) vector](assets/broadcasting.svg)
+
+```python
+e - 100.0                          # 100 subtracted from every element
+P = np.array([[0, 0], [12, 1], [24, 1]])   # shape (3, 2): one (east, north) per row
+home = np.array([5, 1])                     # shape (2,)
+P - home                           # shape (3, 2): home subtracted from EVERY row
+np.hypot(*(P - home).T)            # distance of every point to home: [5.10, 7.0, 19.0]
+P.mean(axis=0)                     # column means: the centre of the points, shape (2,)
+P[:, 0]                            # first column (all east values), shape (3,)
+```
+
+(`.T` **transposes** the array: rows become columns, so `*` passes the east column and the north
+column as the two arguments of `np.hypot`. `axis=0` means "along the rows", i.e. one result per
+column.)
+
+Rule: compare the shapes from the **right**; two sizes fit when they are equal or one of them is
+1. `(3, 2)` with `(2,)` fits; `(3, 2)` with `(3,)` does not:
+`ValueError: operands could not be broadcast together with shapes (3,2) (3,)`.
+
+### Worked example: Omani cities in a local frame
+
+Near a reference point `(φ0, λ0)`, latitude and longitude can be turned into metres east and north
+with a **flat-Earth** (equirectangular) approximation (lesson 6 derives it; angles in radians,
+`R = 6 371 000 m`):
+
+```
+east  = R · (λ − λ0) · cos φ0
+north = R · (φ − φ0)
+```
+
+With Muscat (23.588° N, 58.383° E) as the reference, Nizwa (22.933° N, 57.533° E) is at
+`east = 6 371 000 × (−0.850 × π/180) × cos 23.588° = −86.6 km` and
+`north = 6 371 000 × (−0.655 × π/180) = −72.8 km`: 113.2 km away. The great-circle (exact
+spherical) distance is 113.3 km, so the flat formula is wrong by only 0.14 %. For Salalah,
+857 km away, the error grows to 0.6 % (5 km). With NumPy, all cities are computed in one call —
+you will do it in the lab.
 
 ## 🐦 How birds do it
 
-In October 2022, a young **bar-tailed godwit** — a long-billed shorebird — took off from Alaska with a
-tiny satellite tag on its back. It landed in Tasmania, south of Australia, about **11 days** later.
-It never landed on the way: it flew across the whole Pacific Ocean, about **13 560 km**, the longest
-non-stop bird flight ever recorded.
+Every winter, Barr Al Hikman, on Oman's central coast facing Masirah Island, holds hundreds of
+thousands of shorebirds: crab plovers, greater flamingos, bar-tailed godwits and many sandpipers.
+Many of them breed in Siberia and fly thousands of kilometres to reach this coast; the site is one
+of the most important wetlands of the whole region.
 
-You already know enough Python to do what the scientists did:
+The bar-tailed godwit holds the record for non-stop flight. In 2022 a young godwit with a
+satellite tag flew from Alaska to Tasmania, about 13 560 km, in about 11 days, without landing
+once. Its average ground speed was `13560 / (11 × 24) = 51 km/h`. Scientists found that godwits
+choose their departure day when the winds are favourable: with a tailwind, the same fat reserve
+carries them much further — exactly the asymmetry of our quad, which loses more time in the
+headwind than it wins back in the tailwind. A godwit even "plans a reserve": it leaves with a large
+part of its body weight as fat, more than the trip strictly needs.
 
-```python
-distance_km = 13560
-hours = 11 * 24
-speed_kmh = distance_km / hours
-print(f"Average speed: {speed_kmh:.1f} km/h")   # Average speed: 51.4 km/h
-```
-
-About **51 km/h**, day and night, for eleven days. That is almost the speed of NAVERA-1 in this
-lesson (54 km/h)! The big difference is the "battery". A drone carries energy for minutes; a godwit
-eats so much before it leaves that a large part of its body weight is fat — its fuel for the trip.
-
-Navi asks the same `if` question as the drone: *will I make it?* A swallow does not cross an ocean in
-one go; it stops to feed on insects along the way. A godwit cannot stop over open sea, so it has to
-get its numbers right before take-off. Distance, speed, time, energy, and a safety margin: the four
-lines of physics are the same for a bird and for a drone.
-
-That is why NAVERA computes these values again and again, in code that looks just like yours.
+Navi the swallow does it differently: she cannot store that much fuel, so she feeds on insects
+along the way. Two engineering answers to one equation — endurance = energy ÷ power — like the
+quad and the fixed wing of this lesson.
 
 ## In NAVERA
 
-Everything in this lesson is in NAVERA's real code. Open
-[navera_common/navera_common/vehicle.py](file:navera/navera_common/navera_common/vehicle.py): the
-installer gives the vehicle's top speed in km/h, and NAVERA converts it exactly as you will:
+Everything in this lesson is in NAVERA's code. Open
+[navera_common/track.py](file:navera/navera_common/navera_common/track.py): the class that
+estimates the ground velocity used to dead-reckon when vision loses the map.
 
 ```python
-def max_speed_mps_from_env(environ=None) -> Optional[float]:
-    ...
+class TrackVelocity:
+    def __init__(self, window_s: float = 20.0, min_span_s: float = 4.0, min_points: int = 3,
+                 heading_sigma_deg: float = 5.0, speed_sigma_floor_mps: float = 0.5,
+                 accel_mps2: float = 0.5):
+        self.window_s, self.min_span_s, self.min_points = window_s, min_span_s, min_points
+        self.heading_sigma = math.radians(heading_sigma_deg)
+        ...
+        self._pts = deque(maxlen=200)                  # (t, lat, lon, sigma_m)
+
+    def add(self, t: float, lat: float, lon: float, sigma_m: float) -> None:
+        if self._pts and t <= self._pts[-1][0]:
+            if t < self._pts[-1][0] - 1.0:              # clock stepped back
+                self._pts.clear()
+            else:
+                return
+        self._pts.append((t, lat, lon, max(1.0, sigma_m)))
+```
+
+A constructor with default values, attributes with units in their names, and an `add()` method
+that refuses a time that does not increase — the `Track.add()` you will write. (The `: float`
+and `-> None` are **type hints**: documentation for humans and tools, ignored when the code runs.)
+
+[navera_common/vehicle.py](file:navera/navera_common/navera_common/vehicle.py) refuses a bad
+installation value with an exception:
+
+```python
+    try:
+        kmh = float(raw)
+    except ValueError:
+        raise ValueError(f"{ENV_MAX_SPEED_KMH}={raw!r} is not a number (km/h)") from None
     lo, hi = MAX_SPEED_KMH_RANGE
     if not lo <= kmh <= hi:
         raise ValueError(f"{ENV_MAX_SPEED_KMH}={kmh:g} km/h is outside {lo:g}-{hi:g} km/h")
     return kmh / 3.6
 ```
 
-An `if` that refuses an impossible value, an f-string message, and `return kmh / 3.6`.
-
-In [navera_common/navera_common/geo.py](file:navera/navera_common/navera_common/geo.py), the
-function `dead_reckon()` moves a position forward when nothing better is known. Its heart is
-distance = speed × time:
+And day vision computes the distance from a position to **all** 1120 map tiles in one vectorised
+NumPy expression ([day_localizer.py](file:navera/day_pkg/day_pkg/nodes/day_localizer.py)):
 
 ```python
-    d = spd * dt / EARTH_RADIUS_M
+    def _haversine_to_coords(self, lat, lon):
+        R   = 6_371_000.0
+        la  = np.radians(self.coords[:, 0]); lo = np.radians(self.coords[:, 1])
+        p1  = radians(lat);                  l1 = radians(lon)
+        dp  = la - p1; dl = lo - l1
+        a   = np.sin(dp / 2) ** 2 + np.cos(p1) * np.cos(la) * np.sin(dl / 2) ** 2
+        return R * 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
 ```
 
-(`spd * dt` is the distance in metres; dividing by the Earth's radius turns it into an angle on the
-globe — lesson 6 explains why.)
+`self.coords[:, 0]` is the first **column** of an `(N, 2)` array (all latitudes); `la - p1` is
+broadcasting (an array minus a number); the result is an array of N distances. Elsewhere the same
+file keeps only the tiles inside the search circle with a boolean mask: `near[d <= radius_m]`.
 
-And in [day_pkg/day_pkg/vision_nav.py](file:navera/day_pkg/day_pkg/vision_nav.py), day vision keeps
-only the past measurements that are **inside a circle** around the drone:
-
-```python
-pts = [p for p in self._bias if math.hypot(*_en(p[:2], near)) <= self.bias_radius_m]
-```
-
-`_en()` gives the (east, north) metres between two positions — your `x` and `y` — and
-`math.hypot(x, y)` is exactly `math.sqrt(x ** 2 + y ** 2)`. You will be able to read the rest of
-that line (a *list comprehension*) after lesson 4.
-
-## Words of this lesson
+## Glossary
 
 | Word | Meaning |
 |---|---|
-| **program / script** | a `.py` file Python runs from top to bottom |
-| **variable** | a name that holds a value (`speed_kmh = 54`) |
-| **int / float** | whole number / number with a decimal point |
-| **string (`str`)** | text between quotes |
-| **f-string** | `f"...{value}..."`: text with values inside; `{x:.1f}` = 1 decimal |
-| **boolean (`bool`)** | `True` or `False` |
-| **condition** | a comparison that is True or False, used by `if` |
-| **indentation** | the spaces at the start of a line; they make the blocks |
-| **function** | named, reusable code: `def name(parameters):` … `return value` |
-| **parameter / argument** | the input's name inside the function / the value given when calling |
-| **return value** | what a function hands back to its caller |
-| **`None`** | Python's "nothing"; what a function without `return` returns |
-| **module** | a file of ready-made functions, loaded with `import` (`math`) |
+| **format specification** | the part after `:` in `{x:8.2f}`: width, decimals, alignment |
+| **tuple / unpacking** | a fixed sequence `(a, b)`; `a, b = f()` takes its items apart |
+| **list comprehension** | `[expr for x in seq if cond]`: builds a list in one line |
+| **scope / local variable** | where a name exists; a local exists only inside its function |
+| **module** | a `.py` file loaded with `import` |
+| **exception** | an error object that stops the normal flow (`raise`), caught with `try`/`except` |
+| **traceback** | the error report Python prints; read its last line first |
+| **class / object (instance)** | a blueprint / one value built from it |
+| **attribute / method** | data stored in an object (`self.x`) / a function defined in a class |
+| **constructor (`__init__`)** | the method Python calls to build a new object |
+| **`self`** | the object a method works on |
+| **inheritance / subclass** | a class built on another one, inheriting its methods |
+| **`super()`** | access to the parent class, e.g. `super().__init__(...)` |
+| **array / dtype / shape** | NumPy's block of numbers / their type / their size per dimension |
+| **vectorised** | written as operations on whole arrays, without a Python loop |
+| **boolean mask** | an array of `True`/`False` used to select elements |
+| **broadcasting** | NumPy's rule to combine arrays of different shapes |
+| **crab angle** | angle between heading and track, flown to cancel the crosswind |
+| **endurance** | how long a vehicle can fly; **range**: how far |
 
 ## Check what you learned
 
-<details><summary>1. What is the value of <code>x</code> after <code>x = 10</code> then <code>x = x * 3 + 1</code>?</summary>
-<code>31</code>. The right side is computed first with the old value (10 × 3 + 1), then put back into <code>x</code>.
+<details><summary>1. What does <code>f"{3.14159:7.2f}|"</code> print, and why does <code>print(f"{r["alt_m"]}")</code> fail in Python 3.10?</summary>
+<code>   3.14|</code>: width 7, 2 decimals, right-aligned. The second one uses double quotes inside a
+double-quoted f-string: <code>SyntaxError: f-string: unmatched '['</code>. Write <code>f"{r['alt_m']}"</code>.
 </details>
 
-<details><summary>2. A rover drives at 7.2 km/h for 5 minutes. How far does it go?</summary>
-7.2 km/h = 2 m/s. 5 minutes = 300 s. Distance = 2 × 300 = <b>600 m</b> — just on the edge of the circle!
+<details><summary>2. A method writes <code>battery_wh = battery_wh - 10</code> instead of <code>self.battery_wh = self.battery_wh - 10</code>. What happens?</summary>
+Python looks for a local variable <code>battery_wh</code> that does not exist yet:
+<code>UnboundLocalError</code> (a kind of NameError). Even without the error, a local variable would vanish at the
+end of the method: the object's battery would not change. Attributes always go through <code>self.</code>.
 </details>
 
-<details><summary>3. What does <code>print(f"{707.1068:.0f} m")</code> show?</summary>
-<code>707 m</code> — <code>:.0f</code> rounds to a whole number.
+<details><summary>3. Why must <code>FixedWing.__init__</code> call <code>super().__init__(...)</code>?</summary>
+Defining <code>__init__</code> in the subclass replaces the parent's one. Without the <code>super()</code> call,
+<code>Vehicle.__init__</code> never runs: no <code>self.name</code>, <code>self.cruise_ms</code>… and the inherited
+<code>endurance_s()</code> fails with <code>AttributeError</code>.
 </details>
 
-<details><summary>4. With <code>battery_percent = 20</code>, what does the if/elif/else of the course print? And with 50?</summary>
-20 → <code>LOW</code> (20 >= 20 is True). 50 → <code>OK</code>: the first condition (50 >= 50) is already True,
-so Python never looks at the others.
+<details><summary>4. Same aircraft (20 m/s), track 090°, wind 5 m/s towards the north. Heading and ground speed?</summary>
+w_cross = 0·cos 90° − 5·sin 90° = −5 (to the left), w_along = 0. c = asin(−5/20) = −14.48°, so ψ = 90° + 14.48° =
+104.5° (turn right, into the wind), GS = 20·cos 14.48° = 19.36 m/s.
 </details>
 
-<details><summary>5. Is the point (−360, 480) inside the 600 m circle?</summary>
-√(360² + 480²) = √(129600 + 230400) = √360000 = 600. Exactly on the circle: with <code>&lt;=</code> it counts as
-<b>inside</b>. The minus sign does not matter, because squaring makes it positive.
+<details><summary>5. <code>P</code> has shape (100, 2) and <code>v = np.array([3.0, 4.0, 5.0])</code>. Does <code>P - v</code> work? And <code>P - v[:2]</code>?</summary>
+No: (100, 2) and (3,) do not fit from the right (2 ≠ 3), so NumPy raises "operands could not be broadcast together".
+<code>v[:2]</code> has shape (2,), which fits: the vector (3, 4) is subtracted from every row.
+</details>
+
+<details><summary>6. A track has 263 positions. How many elements do <code>np.diff(t)</code> and the speed array have, and why does that matter for the index of a glitch?</summary>
+262: one per segment. Speed <code>i</code> is the segment from point <code>i</code> to point <code>i+1</code>, so the point reached
+at a speed <code>speeds[i]</code> is <code>t[i + 1]</code>.
 </details>
 
 Now open the **🛠️ Lab** tab.

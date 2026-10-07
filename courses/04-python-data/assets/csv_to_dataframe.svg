@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 330" font-family="sans-serif" font-size="13">
+<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#0b6e8a"/></marker></defs>
+<rect width="700" height="330" fill="#f7fafc"/>
+<text x="20" y="26" font-size="15" font-weight="bold" fill="#1d2733">campaign.csv (text)</text>
+<rect x="20" y="38" width="250" height="118" rx="4" fill="#fff" stroke="#cbd5e0"/>
+<text x="30" y="60" font-family="monospace" font-size="11.5" fill="#b7791f">flight_id,time_s,lat,…,state</text>
+<text x="30" y="81" font-family="monospace" font-size="11.5" fill="#1d2733">muscat_coast,0,23.614,…,FIX</text>
+<text x="30" y="102" font-family="monospace" font-size="11.5" fill="#1d2733">muscat_coast,2,23.614,…,FIX</text>
+<text x="30" y="123" font-family="monospace" font-size="11.5" fill="#1d2733">sohar_port,480,,,…,NO_FIX</text>
+<text x="30" y="144" font-family="monospace" font-size="11.5" fill="#1d2733">… 1556 rows</text>
+<text x="20" y="180" fill="#555" font-size="12">every value is TEXT; an empty cell is ""</text>
+<line x1="275" y1="80" x2="380" y2="80" stroke="#0b6e8a" stroke-width="2.5" marker-end="url(#ar)"/>
+<text x="278" y="98" fill="#0b6e8a" font-family="monospace" font-size="11">csv.DictReader</text>
+<line x1="275" y1="230" x2="380" y2="230" stroke="#0b6e8a" stroke-width="2.5" marker-end="url(#ar)"/>
+<text x="282" y="248" fill="#0b6e8a" font-family="monospace" font-size="11">pd.read_csv</text>
+<text x="385" y="50" font-weight="bold" fill="#1d2733">a list of dicts (row by row)</text>
+<rect x="385" y="60" width="295" height="70" rx="4" fill="#eaf6ee" stroke="#2e8b57"/>
+<text x="395" y="80" font-family="monospace" font-size="11" fill="#1d2733">rows[0] = {"flight_id": "muscat_coast",</text>
+<text x="395" y="96" font-family="monospace" font-size="11" fill="#1d2733">  "time_s": "0", "lat": "23.614", …}</text>
+<text x="395" y="118" fill="#555" font-size="12">strings: you convert with float(), int()</text>
+<text x="385" y="168" font-weight="bold" fill="#1d2733">a DataFrame (column by column, typed)</text>
+<rect x="385" y="178" width="30" height="22" fill="#e2e8f0" stroke="#a0aec0"/>
+<text x="389" y="193" font-size="11" font-family="monospace" font-weight="bold" fill="#1d2733"></text>
+<rect x="385" y="200" width="30" height="22" fill="#fff" stroke="#a0aec0"/>
+<text x="389" y="215" font-size="11" font-family="monospace" fill="#1d2733">0</text>
+<rect x="385" y="222" width="30" height="22" fill="#fff" stroke="#a0aec0"/>
+<text x="389" y="237" font-size="11" font-family="monospace" fill="#1d2733">1</text>
+<rect x="385" y="244" width="30" height="22" fill="#fff" stroke="#a0aec0"/>
+<text x="389" y="259" font-size="11" font-family="monospace" fill="#1d2733">…</text>
+<rect x="415" y="178" width="95" height="22" fill="#e2e8f0" stroke="#a0aec0"/>
+<text x="419" y="193" font-size="11" font-family="monospace" font-weight="bold" fill="#1d2733">flight_id</text>
+<rect x="415" y="200" width="95" height="22" fill="#fff" stroke="#a0aec0"/>
+<text x="419" y="215" font-size="11" font-family="monospace" fill="#1d2733">muscat_coast</text>
+<rect x="415" y="222" width="95" height="22" fill="#fff" stroke="#a0aec0"/>
+<text x="419" y="237" font-size="11" font-family="monospace" fill="#1d2733">muscat_coast</text>
+<rect x="415" y="244" width="95" height="22" fill="#fff" stroke="#a0aec0"/>
+<text x="419" y="259" font-size="11" font-family="monospace" fill="#1d2733">sohar_port</text>
+<rect x="510" y="178" width="55" height="22" fill="#e2e8f0" stroke="#a0aec0"/>
+<text x="514" y="193" font-size="11" font-family="monospace" font-weight="bold" fill="#1d2733">time_s</text>
+<rect x="510" y="200" width="55" height="22" fill="#fff" stroke="#a0aec0"/>
+<text x="514" y="215" font-size="11" font-family="monospace" fill="#1d2733">0</text>
+<rect x="510" y="222" width="55" height="22" fill="#fff" stroke="#a0aec0"/>
+<text x="514" y="237" font-size="11" font-family="monospace" fill="#1d2733">2</text>
+<rect x="510" y="244" width="55" height="22" fill="#fff" stroke="#a0aec0"/>
+<text x="514" y="259" font-size="11" font-family="monospace" fill="#1d2733">480</text>
+<rect x="565" y="178" width="60" height="22" fill="#e2e8f0" stroke="#a0aec0"/>
+<text x="569" y="193" font-size="11" font-family="monospace" font-weight="bold" fill="#1d2733">lat</text>
+<rect x="565" y="200" width="60" height="22" fill="#fff" stroke="#a0aec0"/>
+<text x="569" y="215" font-size="11" font-family="monospace" fill="#1d2733">23.614</text>
+<rect x="565" y="222" width="60" height="22" fill="#fff" stroke="#a0aec0"/>
+<text x="569" y="237" font-size="11" font-family="monospace" fill="#1d2733">23.614</text>
+<rect x="565" y="244" width="60" height="22" fill="#fff" stroke="#a0aec0"/>
+<text x="569" y="259" font-size="11" font-family="monospace" fill="#c53030">NaN</text>
+<rect x="625" y="178" width="55" height="22" fill="#e2e8f0" stroke="#a0aec0"/>
+<text x="629" y="193" font-size="11" font-family="monospace" font-weight="bold" fill="#1d2733">state</text>
+<rect x="625" y="200" width="55" height="22" fill="#fff" stroke="#a0aec0"/>
+<text x="629" y="215" font-size="11" font-family="monospace" fill="#1d2733">FIX</text>
+<rect x="625" y="222" width="55" height="22" fill="#fff" stroke="#a0aec0"/>
+<text x="629" y="237" font-size="11" font-family="monospace" fill="#1d2733">FIX</text>
+<rect x="625" y="244" width="55" height="22" fill="#fff" stroke="#a0aec0"/>
+<text x="629" y="259" font-size="11" font-family="monospace" fill="#1d2733">NO_FIX</text>
+<text x="385" y="290" fill="#555" font-size="12">dtypes: object · int64 · float64 · object</text>
+<text x="385" y="308" fill="#555" font-size="12">empty cell → NaN (float); df["lat"] is a whole column</text>
+</svg>

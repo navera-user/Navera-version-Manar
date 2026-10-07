@@ -1,3 +1,3 @@
-{"number": "15", "title": "How GPS talks: NMEA sentences", "module": 4, "duration": "1 h 45",
- "summary": "Read the text lines a GPS receiver sends, check their checksum, turn them into positions and measure a drive — then compare with NAVERA's own GPS driver.",
- "resources": [], "open": ["nmea_tools.py", "drive.nmea", "answers.py"], "check_timeout_s": 60}
+{"number": "15", "title": "GNSS receivers and NMEA 0183: from satellites to a trusted fix", "module": 4, "duration": "3 h",
+ "summary": "Parse NMEA 0183 robustly (checksum, GGA, GSA, GSV), recompute PDOP/HDOP/VDOP from the satellite geometry with (GᵀG)⁻¹, estimate the range error UERE on a synthetic Sohar drive, and test NAVERA's real GPS driver against corrupted lines and an outage.",
+ "resources": [], "open": ["nmea_tools.py", "dop.py", "gps_filter.py", "report.md"], "check_timeout_s": 60}

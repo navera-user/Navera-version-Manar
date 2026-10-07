@@ -1,280 +1,416 @@
-# Git: your time machine (and the Reset button)
+# Git and the engineering workflow
 
-Friday evening, an engineer changes one number in NAVERA's day vision to "make it a bit faster".
-On Monday, the test drone drifts 200 m away from its route. What changed? Which file? Which line?
-Who did it, and what was the number before? Without help, the team could search for days.
+Friday evening, an engineer raises one number in NAVERA's arbiter configuration "to stop false GPS
+refusals". On Monday, a spoofing test in the simulator fails: a GPS position that jumps 2 km in one
+second is accepted. What changed? Which file, which line, who, when, and why? With **git**, the team
+answers in one command: `git log -p` shows the exact line, in red and green, with the author, the
+date and the reason given. A second command puts the old version back. And if a colleague had
+**reviewed** the change before it entered the main line, it would never have been accepted.
 
-With **git**, they type one command and see, in red and green, the exact line that changed on
-Friday, with the author, the date and the reason. A second command puts the old version back.
-Git is a **time machine for files** — and every professional software team uses it, NAVERA's
-included. In this lesson you make your own commits in your NAVERA copy, travel in its history,
-undo a disaster, and understand what the dashboard's **Reset** button really does.
+Every professional software team works this way, NAVERA's included. In this lesson you learn how git
+stores history (and why that makes it reliable), the daily commands, branches, tags, merges and
+**patches**, and the engineering habits around them: small commits with clear messages, and code
+review. You also learn exactly what the dashboard's **Reset** button does to your work.
 
-## Version control
+## 1. What git stores: the object model
 
-Without a tool, people keep versions like this:
+A **repository** is a project folder whose history git keeps, in a hidden folder `.git`. Git
+stores four kinds of **objects**, each one named by the **SHA-1 hash** of its content (40
+hexadecimal characters):
 
-```
-gps_node.py   gps_node_old.py   gps_node_v2.py   gps_node_v2_FINAL.py   gps_node_v2_FINAL_fixed.py
-```
-
-Nobody knows which one is used, what the differences are, or why. A **version control system**
-replaces that mess with a **history**: a list of **snapshots** of the whole project, each with a
-message that explains it. Git is the most used one in the world.
-
-| Word | Meaning |
+| Object | Contains |
 |---|---|
-| **repository** (repo) | a project folder whose history git keeps. The history is stored in a hidden folder `.git` inside it |
-| **commit** | one snapshot of the project, with an author, a date, a message, and a link to the commit before it (its **parent**) |
-| **hash** | the unique name of a commit, like `ac803d2` (the short form of a 40-character code) |
-| **branch** | a named line of work: a label that points at its latest commit |
-| **tag** | a fixed label on one commit, that never moves (like `base`) |
+| **blob** | the content of one file (no name, no date) |
+| **tree** | a folder: a list of names, each pointing to a blob or another tree |
+| **commit** | one tree (the whole project at that moment), its **parent** commit(s), author, committer, date and message |
+| **tag** (annotated) | a pointer to a commit, with its own author, date and message |
 
-Your `~/navera` is a git repository. Run `ls -a ~/navera` and you will see the `.git` folder.
-(Never edit what is inside it by hand.)
-
-## Who are you?
-
-Every commit records its **author**. So before your first commit, tell git your name and e-mail —
-once, for all your projects (`--global`):
+A hash is a fingerprint: the same content always gives the same hash, and any change — one byte —
+gives a completely different one. You can compute a blob's hash yourself: git hashes the text
+`blob <size>\0` followed by the file content.
 
 ```
-git config --global user.name "Sarra Ben Ali"
-git config --global user.email "sarra@example.com"
+$ echo 'hello' | git hash-object --stdin
+ce013625030ba8dba906f756967f9e9ca394464a
+python: hashlib.sha1(b"blob 6\x00hello\n").hexdigest()   → the same 40 characters
 ```
 
-If you forget, git refuses to commit and says *Please tell me who you are*. The settings are
-stored in the file `~/.gitconfig`.
+Because a commit contains the hash of its tree **and** of its parent, the hash of the newest commit
+depends on the entire history: nobody can change an old commit without changing every hash after
+it. This is why a hash quoted in a test report (`docs/VALIDATION_STATUS.md` does this) identifies
+exactly the code that was measured.
 
-## The three areas: edit, choose, save
+Look at a real commit object of your copy:
 
-This is the most important picture of the lesson. Git sees your work in three places:
+```
+$ git cat-file -p HEAD
+tree 51f0b82a62b6a67b748e6e8b0602d3db6519ec95
+author NAVERA Academy <academy@localhost> 1791366291 +0100
+committer NAVERA Academy <academy@localhost> 1791366291 +0100
+
+NAVERA base — fa775cd fix(bench): screen_mission mirrors the product (re-match, …)
+```
+
+(This first commit has no `parent` line: it is the root of your history. The number after the
+e-mail is the time in seconds since 1 January 1970, then the time zone.)
+
+### Short hashes and their collisions
+
+People write only the first 7 characters (`b0e06dc`). That gives `16⁷ = 2²⁸ ≈ 2.7 × 10⁸`
+possible values. With `n` commits, the probability that two share the same 7-character prefix is
+about `n² / (2 · 2²⁸)` (the "birthday" approximation): for 1000 commits, `10⁶ / 5.4 × 10⁸ ≈ 0.2 %`.
+Small, but not zero for big projects — so git prints more characters when a short hash would be
+ambiguous, and scripts should use the full hash.
+
+### The DAG and the refs
+
+Each commit points to its parent: the history is a **directed acyclic graph** (DAG) — usually a
+line, with forks for branches and joins for merges. Names that point into the graph are **refs**:
+
+- a **branch** (`work`, `my-first-change`) is a movable name: when you commit on it, it moves to the
+  new commit;
+- a **tag** (`base`) is a fixed name on one commit;
+- **HEAD** says where you are: normally it points to a branch ("on branch my-first-change").
+
+![The DAG of your copy at the end of the lab: commits, parents, branches, tags and HEAD](assets/branches.svg)
+
+## 2. Who are you?
+
+Every commit records an author. Set your identity once (`--global` writes it into `~/.gitconfig`):
+
+```
+git config --global user.name "Aisha Al Balushi"
+git config --global user.email "aisha@example.com"
+```
+
+These are **examples**: write **your own** name. The e-mail may be invented — it is only written into
+your commits. Without an identity, `git commit` refuses with *Please tell me who you are*.
+
+## 3. The three areas: edit, stage, commit
 
 ![Working folder, staging area, history](assets/three_areas.svg)
 
-1. The **working folder**: the real files that you edit with the editor. When you save a file,
-   git notices it is **modified** — but nothing is in the history yet.
-2. The **staging area**: the changes you have **chosen** to put in the next snapshot. `git add file`
-   puts a file's current changes there. It is like arranging people before taking a group photo.
-3. The **history**: `git commit -m "message"` takes the photo. Everything that was in the staging
-   area becomes a new commit, for ever.
+1. The **working folder**: the files you edit. After a save, git sees the file as **modified**.
+2. The **staging area** (or **index**): the changes you have **chosen** for the next commit
+   (`git add file`).
+3. The **history**: `git commit -m "message"` turns the staging area into a new commit.
 
-Why two steps (`add`, then `commit`)? Because you often change several things at once, and a good
-commit holds **one** idea. With `add` you choose what goes together.
-
-### The commands of the daily loop
+Why two steps? A concrete case: while fixing a log message in `gps_node.py`, you also added a
+`print()` in `geo.py` to debug something. The fix is ready; the debug line must never enter the
+product. `git add gps_pkg/gps_pkg/nodes/gps_node.py` then `git commit` records **only** the fix.
+Staging is how you make each commit hold **one** idea. (`git add -p file` even lets you choose
+part of a file, hunk by hunk.)
 
 | Command | What it does |
 |---|---|
-| `git status` | **the most useful command**: on which branch you are, which files are modified, which are staged |
-| `git diff` | the exact lines changed in the working folder and not staged yet: `-` in red = removed, `+` in green = added |
-| `git diff --staged` | what is staged, i.e. what the next commit will contain |
-| `git add file` | stage the changes of this file |
-| `git commit -m "Add my name to the README"` | make the commit, with its message |
+| `git status` | branch, modified files, staged files — run it all the time |
+| `git diff` | changes in the working folder not staged yet |
+| `git diff --staged` | what is staged: what the next commit will contain |
+| `git add <file>` | stage the current changes of a file |
+| `git commit -m "…"` | create the commit |
+| `git restore --staged <file>` | unstage (the edits stay in the file) |
 
-A `git diff` looks like this:
+### Reading a diff
 
 ```
+diff --git a/gps_pkg/gps_pkg/nodes/gps_node.py b/gps_pkg/gps_pkg/nodes/gps_node.py
+index f3fcce3..5002890 100755
 --- a/gps_pkg/gps_pkg/nodes/gps_node.py
 +++ b/gps_pkg/gps_pkg/nodes/gps_node.py
-@@ -78,7 +78,7 @@
+@@ -78,7 +78,7 @@ class GPSNode(Node):
+
          self.running = True
          threading.Thread(target=self._read_loop, daemon=True).start()
 -        self.get_logger().info("Read thread started")
 +        self.get_logger().info("Read thread started, listening to the GPS receiver")
+
+     def _read_loop(self):
+         self.get_logger().info("READ LOOP RUNNING")
 ```
 
-The lines without `-` or `+` are context, so you can see where the change is. `@@ -78,7 +78,7 @@`
-says it is around line 78.
+This is the **unified diff** format. `a/` is the old version, `b/` the new one; the `index` line gives
+the two blob hashes (and the file mode: `100755` = an executable file). The **hunk header**
+`@@ -78,7 +78,7 @@` means: in the old file, 7 lines starting at line 78; in the new file, 7 lines
+starting at line 78 (after it, git shows the enclosing function or class, here `class GPSNode`). Lines with `-` are removed, `+` added, a space = unchanged **context** (3 lines
+around each change by default; the first one here is an empty line), which lets a tool find the right place even if the line numbers moved.
 
-### A good commit message
+### Two dots and three dots
 
-The message is for the person who reads the history in six months — maybe you. It says **what**
-changed and, if not obvious, **why**, in one short sentence: *"gps_node: clearer start-up log
-message"*. Not *"update"*, not *"stuff"*, not *"asdf"*.
-
-## Reading the history
-
-| Command | Shows |
+| Form | Meaning |
 |---|---|
-| `git log` | every commit: hash, author, date, message (newest first) |
-| `git log --oneline` | one line per commit: short hash + message |
-| `git log --oneline --graph --all` | all the branches, drawn as a little tree |
-| `git show ac803d2` | one commit and its diff |
-| `git show base:ACADEMY_README.md` | a file **as it was** in another commit (here: the tag `base`) |
-| `git diff base` | everything that differs between `base` and your working folder now |
+| `git diff base` | `base` against your **working folder** now |
+| `git diff base my-first-change` (= `base..my-first-change`) | the two commits' snapshots, compared directly |
+| `git diff base...my-first-change` | from the **merge base** (the commit where the branch left `base`) to the branch tip: only what the branch did |
+| `git log base..my-first-change` | the commits reachable from the branch but not from `base`: your commits |
+
+For a branch that started at `base`, two and three dots give the same diff. They differ as soon as
+the main line moves on: three dots then show only **your** work, which is what a reviewer wants.
+
+## 4. Reading the history
+
+```
+git log --oneline --graph --all --decorate
+* 3c4d5e6 (HEAD -> my-first-change, tag: lab5) refactor(geo): use EARTH_RADIUS_M in haversine_m
+* 9a8b7c6 fix(gps): clearer start-up log message
+* 1f2e3d4 docs(academy): add my name to the academy README
+* b0e06dc (tag: base, base/work, work) NAVERA base — fa775cd fix(bench): screen_mission …
+```
+
+`--decorate` adds the ref names in brackets. **Read the last line carefully: it contains two hashes.**
+The **first word** (`b0e06dc` here; yours may differ) is the hash of that commit **in your
+repository**. The second hash, `fa775cd`, is **part of the message**: the academy wrote it to say
+which commit of the real NAVERA repository your copy was taken from. When the lab asks for the hash
+of *your* commit, it is always the **first word** of the line that shows *your* message.
+
+Other useful forms: `git show <hash>` (one commit and its diff), `git show base:ACADEMY_README.md`
+(a file as it was in another commit), `git log -p -- <file>` (every change to one file),
+`git blame <file>` (who last changed each line).
 
 > [!TIP]
-> When a git output is longer than the screen, git shows it in a viewer: you see `:` or `(END)` at
-> the bottom. Scroll with the arrow keys or `Space`, and press **`q`** to quit.
+> When the output is longer than the screen, git opens a viewer (`:` or `(END)` at the bottom).
+> Scroll with the arrows or `Space`, quit with **`q`**.
 
-## Undo: the time machine
+## 5. Undo
 
 | Situation | Command |
 |---|---|
-| I changed (or deleted!) a file and I want it back as in the last commit (or as I last `git add`-ed it) | `git restore file` |
-| I staged a file by mistake (`git add`) and want to unstage it (the edits stay) | `git restore --staged file` |
-| I want a file as it was in an older commit | `git restore --source=base file` |
+| I changed or **deleted** a file; I want it back as in the last commit | `git restore <file>` |
+| I staged a file by mistake | `git restore --staged <file>` |
+| I want a file as it was in another commit | `git restore --source=base <file>` |
+| My last commit's message is bad, and I have not shared the commit | `git commit --amend -m "…"` |
+| A shared commit was wrong: undo it with a new commit | `git revert <hash>` |
 
-`git restore` brings back a file **even after `rm`** — remember lesson 2: "the terminal has no
-recycle bin". In a git repository, every committed file is safe: git has a copy in its history.
+`git restore` brings back a file even after `rm` — lesson 2 said "the shell has no recycle bin", but
+every **committed** version is in `.git`. Uncommitted changes are the only thing git cannot give
+back: **commit small, commit often.** (`--amend` replaces a commit by a new one with a new hash: never
+amend a commit that others already have. You may meet the older forms `git checkout -- <file>` for
+restore and `git checkout -b <name>` for `git switch -c <name>`; they do the same.)
 
-> [!WARNING]
-> `git restore file` **throws away** the changes you did not commit in that file. That is what you
-> want after a mistake — but it cannot be undone itself. Changes that were never committed are the
-> only ones git cannot give back. Hence the golden rule: **commit small, commit often.**
+## 6. Branches and merges
 
-You may also meet the older form `git checkout -- file`: it does the same as `git restore file`.
-
-## Branches: try things without fear
-
-A **branch** is a separate line of commits. You start a branch, try your idea there, and the main
-line stays untouched. If the idea works, it can be merged later; if not, you just leave the branch.
-
-![Branches: work stays at base, my-first-change gets your commits](assets/branches.svg)
+A **branch** is a separate line of commits: try an idea there, while the main line stays untouched.
 
 | Command | What it does |
 |---|---|
-| `git branch` | lists the branches; `*` marks the one you are on |
-| `git switch -c my-idea` | **c**reates the branch `my-idea` here and moves onto it |
-| `git switch work` | moves onto the existing branch `work`: your files change to its version! |
+| `git branch -vv` | lists branches, the commit of each, and what it tracks |
+| `git switch -c my-idea` | creates `my-idea` at the current commit and moves onto it (older: `git checkout -b my-idea`) |
+| `git switch work` | moves onto `work`: **the files in your folder change** to that branch's version |
+| `git merge my-idea` | brings the commits of `my-idea` into the current branch |
 
-When you switch branches, git **changes the files in your folder** to match that branch. Commit
-(or restore) your changes before switching, otherwise git may refuse to switch, to protect them.
-The name of the branch you are on is called **HEAD** in git's messages.
+Git refuses to switch if it would overwrite uncommitted changes: commit or restore first.
 
-> [!NOTE]
-> In the real NAVERA team, nobody works directly on the main line. Each task gets its own branch,
-> like `fix/acceptance` (that name appears in `docs/ACCEPTANCE_FINDINGS_2026-10-03.md`), and only tested
-> work joins the main line.
+**Merging.** Suppose `work` has no new commit since `my-idea` started. Then `git merge my-idea` (run
+on `work`) is a **fast-forward**: git just moves the `work` label forward to the last commit of
+`my-idea`; no new commit is made. If both branches have new commits, git makes a **merge commit**
+with **two parents**, combining the two sets of changes (a **three-way merge**: it compares both
+tips with their merge base). If both changed the same lines, git stops with a **conflict**, marks
+the lines with `<<<<<<<`, `=======`, `>>>>>>>`, and a human decides. In the lab you will **not**
+merge into `work`: it must stay equal to `base`.
 
-## Your copy of NAVERA
+## 7. Tags
 
-When your account was created, the academy made `~/navera` like this:
+A **tag** fixes a name on one commit, for ever — releases are tagged (`v0.2.0`).
 
-- it took **one commit** of the real NAVERA repository (you can read which in your first
-  `git log` line: `NAVERA base — <hash> <message>`), and saved it as **one commit** tagged **`base`**;
-- your copy is a **clone** of that: a full repository of its own, with a branch called **`work`**;
-- the place it was cloned from is registered as a **remote** called `base` (`git remote -v`).
+- A **lightweight** tag (`git tag name`) is only a name pointing at a commit.
+- An **annotated** tag (`git tag -a name -m "message"`) is an object of its own, with author, date
+  and message — what a release should use. `git show name` displays it; `git cat-file -t name`
+  says `tag` for annotated, `commit` for lightweight.
 
-When you type `git diff base`, git uses the **tag** `base`, which is exactly what you want:
-"my copy as I received it".
+## 8. Patches and code review
 
-Your copy has no link to the real product: you can commit, branch, break and fix anything. Nothing
-you do in `~/navera` ever reaches the real NAVERA repository.
+A **patch** is a diff saved in a file. It is how changes travel between repositories by e-mail or
+for review, and how you can move work between copies that do not share a remote.
 
-## The Reset button
+| Command | Purpose |
+|---|---|
+| `git diff base my-first-change > my.patch` | the plain diff between two commits, in a file (lesson 2's `>`) |
+| `git format-patch base --stdout > my.patch` | your commits as patches, with author, date and message (mail format) |
+| `git apply --stat my.patch` | which files and how many lines a patch changes |
+| `git apply --check my.patch` | would it apply cleanly here? (changes nothing) |
+| `git apply my.patch` | apply it to the working folder (then you `add` and `commit`) |
+| `git apply --exclude=<path> my.patch` | apply it, except the changes to that file |
+| `git am my.patch` | apply mail-format patches **as commits**, keeping their author |
 
-In the 👤 menu, **Reset my NAVERA copy** gives you a brand new `~/navera`. It does **not** simply
-delete your work. In order, the server:
+**Code review** is reading someone else's change before it enters the main line. A reviewer asks:
 
-1. stages and commits everything you left uncommitted, with the message `auto-save before reset`;
-2. packs your **whole repository** — all branches, all commits — into a single file called a
-   **git bundle**, kept on the server in your backup folder (`navera-<date>-<time>.bundle`);
-3. deletes `~/navera` and clones a fresh copy of the base (with its build).
+1. Does it do what the message says, and only that (**one concern per commit**)?
+2. Is it correct? Does it still build, do the tests pass, are the units right?
+3. Is it **safe**? In navigation code: does it weaken a check that protects the vehicle (a timeout,
+   a gate, an uncertainty threshold)? Is the claim **measured**?
+4. Is the message clear enough for someone who reads it in a year?
 
-So nothing is lost: your teacher can open the bundle and give you back any commit. But after a
-reset, your branches are **not in `~/navera` any more** — for this lesson, that means its checks
-would fail. Reset only when you really want a clean start.
+![Reviewing a patch: check it, read it, apply only what is safe](assets/review.svg)
 
-The other button, **↺ Reset lab files**, is different: it only puts back the files of the current
-lesson in `~/lessons/<lesson>/` (keeping a backup copy). It never touches `~/navera`.
+In the lab you review a patch that mixes a harmless clean-up with a change of
+`gps_jump_margin_m` from 50 m to 5000 m. Recall the arbiter's gate of lesson 1:
+`refuse if distance > v_max · Δt + margin`. With `v_max = 100 m/s` and fixes 1 s apart, the limit
+grows from 150 m to 5100 m: a spoofer could move the vehicle by 5 km in one step without being
+refused.
+
+## 9. Your copy of NAVERA
+
+When your account was created, the academy:
+
+- took **one commit** of the real NAVERA repository (`fa775cd`), saved its files as **one** commit
+  in a separate repository — the **academy base**, tagged `base`, branch `work` — and built it;
+- **cloned** that base into your `~/navera`. A clone is a complete repository with all the history;
+- renamed the clone's source, normally called `origin`, to **`base`**: it is a **remote**.
+
+`git remote -v` therefore shows a path like `/home/shadow-team/navera-academy/base`: the folder of
+the academy base **on the server**, outside your sandbox. You cannot reach it from your terminal, and
+you never need to: nothing you do is ever **pushed** (sent) anywhere.
+
+A clone also keeps **remote-tracking branches**: read-only copies of the remote's branches as they
+were when you cloned, named `<remote>/<branch>` — here `base/work`. When `git status` says
+*"Your branch is up to date with 'base/work'"*, it only compares your `work` with that local copy:
+they point at the same commit. Nothing was sent or received.
+
+Your copy has no link to the real product: commit, branch, break and fix anything.
+
+## 10. What the Reset button does
+
+**Reset my NAVERA copy** (👤 menu) runs this on the server (`server/workspaces.py`):
+
+1. `git add -A` and a commit `auto-save before reset` (author "NAVERA Academy") — your uncommitted
+   work, staged or not, becomes a commit;
+2. `git bundle create …/backups/navera-<date>-<time>.bundle --all` — the **whole** repository, all
+   branches and tags, packed into **one file** kept in your backup folder;
+3. deletes `~/navera`, clones the academy base again, renames the remote to `base`, and copies the
+   build.
+
+Nothing is lost — a teacher can clone the bundle (`git clone navera-….bundle`) and recover any
+commit — but the new `~/navera` no longer contains your branches. **↺ Reset lab files** is
+different: it only restores `~/lessons/<lesson>/` and never touches `~/navera`.
+
+## 11. Commit messages that help
+
+NAVERA uses a short conventional style: **`type(scope): summary`**, under 72 characters, then
+optionally a blank line and a body explaining *why*.
+
+| Type | Use |
+|---|---|
+| `feat` | a new capability |
+| `fix` | a correction |
+| `refactor` | same behaviour, cleaner code |
+| `docs`, `test` | documentation, tests |
+
+Real example — the commit your copy comes from:
+`fix(bench): screen_mission mirrors the product (re-match, odometry prediction); thin HUD strip`.
+Bad messages: `update`, `fix`, `wip`, `asdf` — they say nothing to the person who must find, in a
+year, why the gate margin changed.
 
 ## 🐦 How birds do it
 
-A young **common cuckoo** never meets its parents. Its mother laid the egg in another bird's nest — a
-reed warbler's, for example — and the foster parents raised it. When the young cuckoo is ready to
-leave Europe, the adult cuckoos have usually already gone. Nobody shows it the way. And yet it flies
-alone to Africa, to the same region as the adults. Scientists who followed young cuckoos with small
-satellite tags watched them do it.
+A young **common cuckoo** never meets its parents: its mother laid the egg in the nest of another
+species, and foster parents raised it. When it leaves Europe, the adult cuckoos have usually gone
+already. Yet it flies alone to Africa, to the wintering region of its population; satellite tags on
+young cuckoos have shown it. The route — roughly *which direction* and *for how long* — is
+**inherited**: every chick starts with a copy of its population's "program", like a clone.
 
-So where is the route stored? **Inside the bird.** Scientists have shown that a migration "program" —
-roughly *which direction* to fly and *for how long* — is **inherited**: passed from one generation to
-the next, like a repository that every new bird clones when it hatches.
+And the program can **branch**. Blackcaps from Central Europe traditionally winter around the
+Mediterranean, flying south-west. From the second half of the 20th century, more and more of them
+wintered in Britain instead, flying north-west. Peter Berthold's team raised the young of these
+birds far from any adult, and in autumn the young oriented north-west too (published in 1992): a new
+branch, tested by real winters, then passed on.
 
-And, like code, the program can get a new **branch**. Blackcaps (small grey warblers) from Central
-Europe used to winter around the Mediterranean, flying south-west. In the second half of the 20th
-century, more and more of them started to winter in Britain instead — north-west. Peter Berthold's
-team in Germany raised the young of these "British" blackcaps in cages, far from any adult, and in
-autumn the young birds wanted to fly **north-west** too (published in 1992). A new route had been
-created, tested by real winters, and passed on.
-
-Navi's family has its own habit: barn swallows often come back to the same farm year after year. A
-known good place — a stable version — is worth returning to.
-
-Git gives you what evolution never had: a clear history, branches you can try without risk, and a
-Reset button.
+Navi's own species shows the other half of the idea: barn swallows often return to the same
+building year after year — a known good version, like a tag you can always come back to. Birds that
+pass through Oman in spring and autumn follow such inherited programs too, adjusted by experience.
+Git gives engineers what evolution never had: a history you can read, branches you can try without
+risk, review before a change spreads, and a Reset button.
 
 ## In NAVERA
 
-The NAVERA team writes its working rules in [CLAUDE.md](file:navera/CLAUDE.md), at the root of the
-repository. Three of its "golden rules" are about git:
+The team's rules are in [CLAUDE.md](file:navera/CLAUDE.md), at the root of your copy:
 
 ```text
-2. Always work on a git branch, never directly on main. Commit small, commit often.
-3. Never commit large files. No .mbtiles, .npz, .pth, ... The .gitignore already
-   excludes these — keep it that way.
-5. One concern per commit. Cleaning, refactor, optimization, and new features go in
-   separate commits.
+2. **Always work on a git branch**, never directly on `main`. Commit small, commit often.
+3. **Never commit large files.** No `.mbtiles`, `.npz`, `.pth`, `.safetensors`, `.engine`, `.so`,
+   `.whl`, model caches, ... The `.gitignore` already excludes these — keep it that way.
+5. **One concern per commit.** Cleaning, refactor, optimization, and new features go in separate commits.
+6. **Measure, don't guess.** For any performance/accuracy claim, run a measurement and report the number.
 ```
 
-and its workflow for every task is: understand → **branch** → change → verify → **commit** with a
-clear message → report. That is exactly what you will do in the lab.
+and the workflow for every task:
 
-Rule 3 explains a file you can open: [.gitignore](file:navera/.gitignore) lists what git must
-**ignore** — the 10 GB satellite map, the neural network weights, and the `build/`, `install/`,
-`log/` folders made by the build. Those are too big or can be re-made, so they are never committed.
-That is why `git status` does not show them.
+```text
+1. **Understand:** read the relevant files before changing anything.
+2. **Branch:** `git checkout -b <task-name>` off `main`.
+3. **Change:** make the smallest coherent change.
+4. **Verify:** does it still build? does the pipeline still launch? (run it if possible).
+5. **Commit:** clear message, one concern.
+6. **Report:** summarize what changed, what was verified, what's the risk, what's next.
+```
 
-The product's real history is full of messages like `fix(day): height filter, odometry gate,
-heading-aware map bias, re-acquisition` or `feat(bench): screen_mission — …`: a type
-(`feat` = new feature, `fix` = correction), the part of the product in brackets, and what changed.
-Even the accuracy documents point to commits: `docs/VALIDATION_STATUS.md` cites a commit hash as
-proof of when the IMU was verified.
+Rule 3 explains [.gitignore](file:navera/.gitignore): patterns of files git must **ignore**, so
+`git status` never shows them and `git add -A` never stages them:
 
-## Words of this lesson
+```text
+build/
+install/
+log/
+*.npz
+*.mbtiles
+*.safetensors
+*.pth
+```
 
-| Word | Meaning |
+The 10 GB satellite map and the neural-network weights are data, not source code; `build/` and
+`install/` are re-made by `colcon`. Rules 5 and 6 are exactly the two problems of the patch you
+will review.
+
+## Glossary
+
+| Term | Meaning |
 |---|---|
-| **git** | the version control tool: it keeps the history of a folder |
-| **repository** | a folder with its history (in `.git`) |
-| **commit** | a snapshot of the project, with author, date and message |
-| **hash** | the unique name of a commit (`ac803d2`) |
-| **working folder** | the files as they are on disk now |
-| **staging area** | the changes chosen for the next commit (`git add`) |
-| **diff** | the list of changed lines between two versions |
-| **branch** | a named line of commits (`work`, `my-first-change`) |
-| **HEAD** | the branch / commit you are on now |
-| **tag** | a fixed label on one commit (`base`) |
-| **clone** | a complete copy of a repository |
-| **remote** | another repository your clone knows by a name (`base`) |
-| **bundle** | a whole repository packed into one file (the Reset backup) |
+| **repository** | a folder with its history in `.git` |
+| **object / blob / tree** | what git stores, named by hash / a file's content / a folder listing |
+| **commit** | a snapshot (tree) + parent(s) + author, date, message |
+| **hash (SHA-1)** | 40-hex fingerprint of an object; the short form has 7 characters |
+| **DAG** | directed acyclic graph: commits linked to their parents |
+| **ref / branch / tag / HEAD** | a name pointing at a commit / movable / fixed / "where you are" |
+| **working folder / staging area (index)** | files on disk / changes chosen for the next commit |
+| **diff / hunk** | list of changed lines / one block of it, with its `@@` header |
+| **merge base** | the last common commit of two branches |
+| **fast-forward / merge commit** | the label just moves / a commit with two parents |
+| **annotated tag** | a tag object with author, date and message |
+| **patch** | a diff saved in a file, applied with `git apply` or `git am` |
+| **code review** | reading a change for correctness and safety before accepting it |
+| **clone / remote / remote-tracking branch** | full copy / another repository known by a name / `base/work` |
+| **push** | sending commits to a remote (never done in this course) |
+| **bundle** | a whole repository packed in one file (the Reset backup) |
 
 ## Check what you learned
 
-<details><summary>1. You edited three files but want only one of them in the next commit. How?</summary>
-<code>git add</code> only that file, then <code>git commit</code>. The two others stay modified in the working folder,
-for a later commit.
+<details><summary>1. You fixed a log message in gps_node.py and left a debug print in geo.py. How do you commit only the fix?</summary>
+<code>git add gps_pkg/gps_pkg/nodes/gps_node.py</code>, then <code>git commit -m "fix(gps): …"</code>. geo.py stays modified
+but unstaged; <code>git restore navera_common/navera_common/geo.py</code> removes the debug line afterwards.
 </details>
 
-<details><summary>2. What is the difference between <code>git diff</code> and <code>git diff --staged</code>?</summary>
-<code>git diff</code> shows the changes not staged yet; <code>git diff --staged</code> shows what is staged, i.e. what the
-next commit will contain.
+<details><summary>2. Your log shows <code>b0e06dc (tag: base, work) NAVERA base — fa775cd fix(bench): …</code> and above it <code>1f2e3d4 docs(academy): add my name…</code>. What is the hash of your first commit?</summary>
+<code>1f2e3d4</code>: the first word of the line with your message. <code>b0e06dc</code> is the base commit in your
+repository, and <code>fa775cd</code> is only text inside its message (the real NAVERA commit it came from).
 </details>
 
-<details><summary>3. You ran <code>rm geo.py</code> by mistake in your NAVERA copy. Is it lost?</summary>
-No: it was committed in <code>base</code>, so <code>git restore navera_common/navera_common/geo.py</code> brings it back.
-Only changes that were never committed cannot be recovered.
+<details><summary>3. Why can nobody change an old commit's message without anybody noticing?</summary>
+A commit's hash covers its message, its tree and its parent's hash. Changing anything gives a new hash for that
+commit, so every later commit (which contains its parent's hash) gets a new hash too.
 </details>
 
-<details><summary>4. You commit on branch <code>my-first-change</code>, then run <code>git switch work</code>. Where is your change?</summary>
-Still in the history, on <code>my-first-change</code>. The files in the folder now show the <code>work</code> version (without
-your change). <code>git switch my-first-change</code> brings them back.
+<details><summary>4. What is the difference between a fast-forward and a merge commit?</summary>
+Fast-forward: the target branch has no own commits since the split, so its label just moves to the other branch's
+tip — no new commit. Otherwise git creates a merge commit with two parents, combining both lines of work.
 </details>
 
-<details><summary>5. What does the Reset button keep, and where?</summary>
-Everything: it commits what was uncommitted, then saves the whole repository (all branches) as a git bundle
-in your backup folder on the server, before giving you a fresh copy.
+<details><summary>5. A patch changes <code>gps_jump_margin_m</code> from 50 to 5000 "to avoid false refusals". With <code>v_max = 100 m/s</code> and Δt = 1 s, what does it change?</summary>
+The largest accepted jump grows from 100 + 50 = 150 m to 100 + 5000 = 5100 m: a spoofer can move the position
+by about 5 km in one step. The claim is not measured (rule 6). Reject it and ask for a measured, targeted change.
+</details>
+
+<details><summary>6. What does Reset keep, where, and what does your new ~/navera contain?</summary>
+It commits any uncommitted work ("auto-save before reset"), packs the whole repository (all branches and tags) into a
+git bundle in your backup folder, then makes a fresh clone of the academy base: branch <code>work</code> and tag
+<code>base</code> only.
 </details>
 
 Now open the **🛠️ Lab** tab.

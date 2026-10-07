@@ -1,263 +1,380 @@
-# How GPS talks: NMEA sentences
+# GNSS receivers and NMEA 0183: from satellites to a trusted fix
 
-Inside the NAVERA box there is a small GPS receiver, about the size of a coin. It listens to the
-satellites (lesson 1) and computes a position. But how does it **tell** that position to the
-computer? There is no screen, no app — just two thin wires. Every second, the receiver sends a few
-**lines of text** down those wires, like a radio operator reading a report:
+A survey drone flies along the Batinah coast, from Sohar Port towards Sohar Fort. Its GPS receiver
+sends a short line of text to the flight computer every second. One second, a motor starts,
+one bit flips on the cable, and the latitude in that line changes from `2426` to `2462`. Read
+naively, the drone has jumped **67 km** north in one second. Another second, the drone passes
+under a long bridge: the receiver loses the satellites and starts to *guess* positions. Later, in
+the old town, the buildings hide most of the sky: the receiver still gives a "fix", but it can be
+wrong by tens of metres.
+
+A navigation computer must handle all three cases correctly. To do that, it must understand what
+the receiver says (the **NMEA 0183** text protocol), how much each position can be trusted (the
+**geometry** of the satellites, measured by **DOP**), and which lines must never become a position.
+This lesson gives you the theory; in the lab you will build a robust parser, recompute the DOPs
+from the satellite geometry, and test NAVERA's real GPS driver on a damaged log.
+
+## 1. How a GNSS receiver finds its position
+
+**GNSS** (*Global Navigation Satellite System*) is the general name. **GPS** (USA) is one GNSS;
+the others are **GLONASS** (Russia), **Galileo** (Europe) and **BeiDou** (China). Each satellite
+transmits its own position (the **ephemeris**) and the exact time of transmission.
+
+The receiver measures the time the signal took to arrive and multiplies by the speed of light
+*c*. But the receiver's clock is a cheap quartz clock, not an atomic clock: it has an unknown
+offset *b* (in seconds). So the measured distance is not the true range. It is called a
+**pseudorange**:
 
 ```
-$GNGGA,141621.00,3544.04006,N,01034.55091,E,1,12,0.72,95.3,M,32.1,M,,*70
-$GNRMC,141621.00,A,3544.04006,N,01034.55091,E,0.012,,011026,,,A*62
+rho_i = || s_i - x ||  +  c*b  +  eps_i
 ```
 
-These two lines are real: they were read from NAVERA's own receiver (a u-blox Neo-M8N) on the
-Jetson's serial port, in M'saken near Sousse. By the end of this lesson you will read them as easily
-as a bus timetable — and you will understand why NAVERA throws away every line that has even one
-damaged character.
+- `s_i` — position of satellite *i* (known, from the ephemeris)
+- `x`   — position of the receiver (unknown: 3 numbers)
+- `c*b` — receiver clock error in metres (unknown: 1 number)
+- `eps_i` — the measurement error of this pseudorange (ionosphere, troposphere, multipath, noise…)
 
-## A receiver that speaks text
+There are **4 unknowns** (x, y, z and *b*), so the receiver needs **at least 4 satellites**.
+With 3 it can only make a **2D fix** (it assumes an altitude). In the lab log you will see the
+receiver report "no fix" when buildings leave it only 2 or 3 satellites.
 
-The receiver and the Jetson are joined by a **serial port**: one wire sends bits one after the
-other, like Morse code. On the Jetson it is the file `/dev/ttyTHS1`. Both sides must agree on the
-speed — **9600 baud** (about 960 characters per second) is the classic speed for a GPS, and it is
-NAVERA's default (`gps_pkg/gps_pkg/config/gps_params.yaml`).
+The receiver gives its time in **UTC** (world time). GPS has its own time scale, **GPS time**, which
+does not have leap seconds: since January 2017, GPS time is **18 s ahead** of UTC. The receiver
+corrects this for you. Oman uses **UTC+4** all year, so `051200` in a sentence means 09:12 in Muscat.
 
-What travels on the wire follows a standard called **NMEA 0183**, written in 1983 by the National
-Marine Electronics Association so that a ship's GPS, compass and autopilot could talk to each other.
-Forty years later almost every GPS receiver in the world still speaks it. The rules are simple:
+## 2. The serial link and the NMEA 0183 grammar
 
-| Rule | Example |
-|---|---|
-| One message = one line of text, called a **sentence** | `$GNGGA,141621.00,…*70` |
-| It starts with `$` and ends with the two characters "carriage return, new line" (`\r\n`) | |
-| The first word says **who** talks and **what** the message is | `GN` + `GGA` |
-| Then come **fields**, separated by commas. An empty field is just `,,` | `…,M,,*70` |
-| At the end, `*` and two characters: the **checksum** | `*70` |
+The receiver is connected to the Jetson by a **serial port** (UART), `/dev/ttyTHS1` on NAVERA. A
+**baud** rate of 9600 means 9600 bits per second. Each character costs 10 bits (1 start bit,
+8 data bits, 1 stop bit), so the link carries at most **960 characters per second**.
 
-The first two letters are the **talker**: `GP` means "GPS satellites only", `GL` the Russian
-GLONASS, `GA` the European Galileo, and `GN` means "a mix of several systems" — NAVERA's receiver
-uses several, so it says `GN`. The next three letters are the **sentence type**. A receiver sends
-many types every second; two of them are all a navigation computer really needs:
+> [!NOTE]
+> **Worked example — data budget.** The lab log has 433 865 bytes for 1053 seconds: 412 bytes/s,
+> that is 43 % of a 9600-baud link. At 5 fixes per second the receiver would need 2060 bytes/s,
+> twice what the link can carry: lines would be lost. This is why receivers are configured to send
+> only the sentences you need, or to use a higher baud rate.
 
-| Type | Name | What it tells |
-|---|---|---|
-| **GGA** | Global positioning fix data | position, altitude, fix quality, number of satellites, HDOP |
-| **RMC** | Recommended minimum data | position, speed, direction of travel, date |
-| GSA, GSV | satellites | which satellites are used, where they are in the sky |
-| VTG | track and speed | direction and speed again |
+The text format is **NMEA 0183** (National Marine Electronics Association, first published 1983).
+Almost every GNSS receiver speaks it. One message is one line, called a **sentence**:
 
-A program that wants GGA and RMC must simply **skip** the other types.
+```
+sentence  = "$" address { "," field } "*" checksum "\r\n"
+address   = talker(2 letters) type(3 letters)        e.g. GP + GGA
+field     = any printable ASCII except "$", "*", "," (may be EMPTY)
+checksum  = 2 hexadecimal digits (upper case)
+length    = at most 82 characters, including "$" and "\r\n"
+```
 
-## The GGA sentence, field by field
+The **talker** says which system speaks: `GP` = GPS only, `GL` = GLONASS, `GA` = Galileo,
+`GB` = BeiDou, `GN` = a combination of several systems. Sentences that start with `$P` are
+**proprietary** (each manufacturer defines its own). An **empty field** (`,,`) means "no value",
+which is different from a zero.
 
-Split a GGA sentence on the commas and number the pieces from 0 — exactly what Python's
-`body.split(",")` does:
+## 3. The checksum
+
+The checksum is the **XOR** (`^` in Python) of the codes of all the characters **between `$` and
+`*`**, written as 2 hexadecimal digits. XOR compares bits: same bits give 0, different bits give 1.
+
+> [!NOTE]
+> **Worked example.** Body `GPGSA,A,1`:
+>
+> | char | code | bits | running XOR |
+> |---|---|---|---|
+> | G | 71 | 0100 0111 | 0100 0111 = `47` |
+> | P | 80 | 0101 0000 | 0001 0111 = `17` |
+> | G | 71 | 0100 0111 | 0101 0000 = `50` |
+> | S | 83 | 0101 0011 | 0000 0011 = `03` |
+> | A | 65 | 0100 0001 | 0100 0010 = `42` |
+> | , | 44 | 0010 1100 | 0110 1110 = `6E` |
+> | A | 65 | 0100 0001 | 0010 1111 = `2F` |
+> | , | 44 | 0010 1100 | 0000 0011 = `03` |
+> | 1 | 49 | 0011 0001 | 0011 0010 = `32` |
+>
+> The sentence is `$GPGSA,A,1*32`. In Python: `ord("G")` is 71 and `f"{50:02X}"` is `"32"`.
+> The format `02X` matters: 13 must be written `0D`, not `D`.
+
+What can this 8-bit checksum detect? Think of it as the XOR of all the bytes:
+
+- **Any single changed character** is always detected: at least one bit is different, and nothing
+  else can cancel it.
+- **Two changed characters** are missed if their two changes cancel (the same bit pattern changed
+  in both). For random damage, this happens with probability about **1/256**.
+- **Two swapped characters are never detected.** XOR is commutative: `a ^ b == b ^ a`. A latitude
+  `2426.56` written `2462.56` has exactly the same checksum. The lab log contains two such lines.
+
+So a correct checksum means "probably not damaged", not "correct". A robust receiver chain adds
+**field checks** (for example, minutes must be below 60) and **plausibility checks** (the vehicle
+cannot move 67 km in one second).
+
+## 4. The sentences a navigation computer needs
+
+### GGA — the fix
 
 ![The fields of a GGA sentence](assets/gga.svg)
 
-| # | Field | In the example | Meaning |
-|---|---|---|---|
-| 0 | talker + type | `GNGGA` | |
-| 1 | time | `141621.00` | 14:16:21.00 **UTC** (world time, not Tunisian time) |
-| 2, 3 | latitude | `3544.04006`, `N` | 35 degrees 44.04006 minutes North |
-| 4, 5 | longitude | `01034.55091`, `E` | 10 degrees 34.55091 minutes East |
-| 6 | fix quality | `1` | 1 = a normal GPS fix (see below) |
-| 7 | satellites | `12` | how many satellites were used |
-| 8 | HDOP | `0.72` | how good the satellites' geometry is (see below) |
-| 9, 10 | altitude | `95.3`, `M` | 95.3 metres above **mean sea level** |
-| 11, 12 | geoid separation | `32.1`, `M` | see "Two kinds of altitude" |
-| 13, 14 | (differential data) | empty | only used with correction stations |
-
-### Degrees and minutes — the classic trap
-
-You learned in lesson 6 that a position is written in **decimal degrees**, like `35.734001`. NMEA
-does not do that. It writes **degrees and minutes** glued together: `3544.04006` means
-**35 degrees** and **44.04006 minutes**. A **minute** (of angle) is 1/60 of a degree, exactly like a
-minute is 1/60 of an hour.
-
-```
-3544.04006  →  degrees = 35,  minutes = 44.04006
-            →  35 + 44.04006 / 60  =  35.734001°
-```
-
-The degrees are everything **before the last two digits in front of the dot**. Longitudes have
-three digits of degrees (`01034.55091` → 10°), latitudes two — but the rule "the last two digits
-before the dot are the minutes" works for both. In Python: `degrees = int(value // 100)` and
-`minutes = value - degrees * 100`.
-
-Then the letter gives the sign: **N** and **E** are positive, **S** and **W** are negative.
-A position in Brazil would be `2254.0,S,04312.0,W` → −22.9°, −43.2°.
-
-> [!WARNING]
-> The trap: reading `3544.04006` as `35.4404006°`. That is wrong by 0.29° of latitude — about
-> **33 km**. A beginner's bug that would put a drone over the sea instead of over Sousse.
-
-### Fix quality — can I believe this position?
-
-Field 6 is a single digit that says **how** the receiver got its position:
-
-| Quality | Meaning | NAVERA |
-|---|---|---|
-| 0 | no fix — not enough satellites yet | not a fix |
-| 1 | GPS fix | ✅ used |
-| 2 | DGPS: GPS improved by a correction station | ✅ used |
-| 4 | RTK fixed (centimetre precision) | ✅ used |
-| 5 | RTK float (decimetre precision) | ✅ used |
-| 6 | **estimated** — the receiver's own **dead reckoning** | ❌ refused |
-| 7 | manual input — someone typed a position | ❌ refused |
-| 8 | simulator mode | ❌ refused |
-
-Quality 6 deserves a second look. Some receivers, when they lose the satellites (in a tunnel, under
-a bridge), keep inventing positions by continuing in the same direction at the same speed — that is
-called **dead reckoning** ("counting steps blindfolded", lesson 1). The position looks perfect, with
-a nice latitude and longitude, but **no satellite measured it**. NAVERA has its own, better
-sources for that situation (vision, lessons 20–24), so it refuses quality 6, 7 and 8:
-`gps_node.py` keeps only `_VALID_GPS_QUAL = {1, 2, 4, 5}`.
-
-### HDOP in simple words
-
-Imagine you stand in a field and three friends shout their distance to you. If your friends stand
-all around you (north, south-east, south-west), their three circles cross at a sharp point: you know
-exactly where you are. If they all stand in a little group to the north, their circles cross at a
-very flat angle: you could be anywhere along a long thin zone.
-
-Satellites are the same. **HDOP** (*Horizontal Dilution Of Precision*) is a number that says how
-well the satellites are spread around the sky:
-
-![HDOP: satellites spread or bunched](assets/hdop.svg)
-
-| HDOP | In words |
-|---|---|
-| below 1 | excellent — open sky |
-| 1 to 2 | good |
-| 2 to 5 | moderate — buildings, trees |
-| above 5 | poor — take the position with care |
-| 99.99 | receivers write this when they have no fix at all |
-
-HDOP has **no unit**: it is a multiplier. The receiver's error is roughly *HDOP × the error on one
-satellite distance*. NAVERA assumes 2 m for that single-distance error, so in `gps_node.py`:
-
-```python
-# sigma = HDOP x 2 m (assumed user range error); vertical ~2x horizontal.
-cov = (hdop * 2.0) ** 2
-```
-
-With HDOP 0.72 NAVERA says "this fix is good to about 1.4 m (one sigma)". You will meet **sigma**
-and **covariance** properly in lesson 26; for now, read it as "how far off it may be". Note that
-this is an *assumption* written in the code, not a measured figure — the code says so too.
-
-### Two kinds of altitude
-
-Field 9 is the height above **mean sea level** — the level the sea would have if it went under the
-land. But the Earth is a bit lumpy, so GPS maths use a smooth mathematical egg called the
-**ellipsoid** (WGS84). Field 11, the **geoid separation**, is the distance between the two (32.1 m
-around Sousse). NAVERA's position contract uses the ellipsoid, so `gps_node` adds them:
-
-```
-ellipsoid height = 95.3 + 32.1 = 127.4 m
-```
-
-## The RMC sentence
-
-```
-$GNRMC,141621.00,A,3544.04006,N,01034.55091,E,0.012,,011026,,,A*62
-```
+The line in the figure was read from NAVERA's own receiver (a u-blox NEO-M8N, `GN` talker) near
+Sousse, Tunisia, where NAVERA is developed. **NAVERA's real recorded data and its test map cover
+Sousse**; the lab log of this lesson is a synthetic drive in Oman.
 
 | # | Field | Example | Meaning |
 |---|---|---|---|
-| 1 | time | `141621.00` | UTC |
-| 2 | status | `A` | **A** = active (valid), **V** = void (no fix) |
-| 3–6 | position | | same format as GGA |
-| 7 | speed | `0.012` | in **knots** (sea miles per hour): 1 knot = 0.514444 m/s |
-| 8 | course | empty | direction of travel, degrees clockwise from true north |
-| 9 | date | `011026` | 1 October 2026 (day, month, year) |
+| 1 | UTC time | `141621.00` | hhmmss.ss |
+| 2, 3 | latitude | `3544.04006`, `N` | ddmm.mmmmm, hemisphere |
+| 4, 5 | longitude | `01034.55091`, `E` | dddmm.mmmmm, hemisphere |
+| 6 | fix quality | `1` | see the table below |
+| 7 | satellites used | `12` | |
+| 8 | HDOP | `0.72` | horizontal dilution of precision (section 5) |
+| 9, 10 | altitude | `95.3`, `M` | above **mean sea level** (the geoid) |
+| 11, 12 | geoid separation | `32.1`, `M` | ellipsoid height − MSL height |
+| 13, 14 | DGPS age, station | empty | only with differential corrections |
 
-The course is empty here because the receiver was standing still — you cannot have a direction when
-you don't move. NAVERA reads RMC only for the **velocity**: in `_publish_vel` it turns knots into m/s
-and the course into "metres per second towards east" and "towards north" with sin and cos:
-
-```python
-v = spd * KNOTS_TO_MPS
-vel.twist.linear.x = v * math.sin(math.radians(course))   # east
-vel.twist.linear.y = v * math.cos(math.radians(course))   # north
-```
-
-## The checksum
-
-A serial wire is not perfect. A motor starting nearby, a loose connector, a buffer that overflows —
-and a character arrives wrong, or a line is cut in half. The **checksum** lets the computer notice.
-
-The receiver takes every character **between `$` and `*`** and combines them with an operation called
-**XOR** (written `^` in Python). XOR works on the **bits** — every character is stored as a number, and every number as 0s and
-1s. For each bit position: **same bits → 0, different bits → 1**.
+**Degrees and minutes.** NMEA writes angles as degrees and **minutes** (1/60 of a degree) glued
+together. The last two digits before the decimal point are the minutes:
 
 ```
-'G' = 71 = 0100 0111
-'N' = 78 = 0100 1110
-XOR      = 0000 1001  = 9
+2429.39522,N   ->  24 + 29.39522/60  =  24.489920 deg  (near Sohar Port)
+05637.20466,E  ->  56 + 37.20466/60  =  56.620078 deg
+degrees = int(v // 100);  minutes = v - 100*degrees;  S and W are negative
 ```
 
-XOR-ing all the characters one after the other gives one number between 0 and 255. It is written in
-**hexadecimal** (base 16: digits 0–9 then A–F), always with **two** digits: 9 → `09`, 112 → `70`,
-13 → `0D`. In Python, `ord("G")` gives 71, and `f"{112:02X}"` gives `70`.
+Reading `2429.39522` as `24.2939522` is wrong by 0.196°, about 22 km. A robust parser also
+rejects **minutes ≥ 60**: `2462.56214` is not a valid angle, even with a correct checksum.
 
-The computer does the same calculation on what it **received** and compares with the two characters
-after `*`. If one character changed on the way, at least one bit is different, and the result is
-different: the line is refused.
+**Fix quality** (field 6):
+
+| Value | Meaning | NAVERA |
+|---|---|---|
+| 0 | no fix | invalid |
+| 1 | GPS fix (standard positioning) | **used** |
+| 2 | differential GPS (DGPS, SBAS) | **used** |
+| 4 | RTK fixed (cm level) | **used** |
+| 5 | RTK float (dm level) | **used** |
+| 6 | estimated: the receiver's own **dead reckoning** | invalid |
+| 7 | manual input | invalid |
+| 8 | simulator mode | invalid |
+
+Quality 6 is the dangerous one: in a tunnel, some receivers continue the last motion and print a
+nice position with quality 6. No satellite measured it. NAVERA has better sources for that
+situation (vision, lessons 20–24), so it refuses quality 6, 7 and 8.
+
+**Two altitudes.** GNSS computes heights above the **WGS84 ellipsoid** (a smooth mathematical
+shape). Maps and pilots use height above **mean sea level**, which follows the **geoid** (the
+shape of the sea surface extended under the land). The receiver writes the MSL altitude in field 9
+and the **geoid separation** *N* in field 11:
 
 ```
-sent:     $GNGGA,…,3544.04006,N,…*70     → computed 70, written 70  ✔
-received: $GNGGA,…,3574.04006,N,…*70     → computed 73, written 70  ✘ refused
+h_ellipsoid = H_msl + N
+Sousse (real receiver):     95.3 + 32.1  = 127.4 m
+lab log (synthetic, Sohar):  8.8 + (-30.0) = -21.2 m
 ```
+
+A negative ellipsoidal height is normal where the geoid is below the ellipsoid: the car is not
+under the sea. The value −30.0 m is the one written by the synthetic receiver of the lab.
+
+### RMC — speed, course and date
+
+`$GPRMC,051217.00,A,2429.39522,N,05637.20466,E,11.88,137.7,121026,,,A*59`
+
+Fields: time, **status** (`A` active, `V` void), position, **speed over ground in knots**
+(1 kn = 0.514444 m/s), **course over ground** (degrees clockwise from **true** north; empty when
+not moving), **date** (ddmmyy). Here 11.88 kn = 6.11 m/s towards 137.7° (south-east).
+
+### GSA — which satellites, and the DOPs
+
+`$GPGSA,A,3,02,05,07,09,13,20,23,24,30,,,,1.98,1.15,1.61*0C`
+
+| # | Field | Meaning |
+|---|---|---|
+| 1 | `A` | mode selection: A = automatic, M = manual |
+| 2 | `3` | fix type: 1 = none, 2 = 2D, 3 = 3D |
+| 3–14 | `02,05,…,,,` | the **PRNs** (satellite numbers) **used** in the fix; 12 slots, empty slots `,,` |
+| 15, 16, 17 | `1.98,1.15,1.61` | **PDOP, HDOP, VDOP** |
+
+NMEA 4.10 and later add an 18th field, the system ID (1 = GPS, 2 = GLONASS, 3 = Galileo…); a `GN` receiver
+then sends one GSA per system. A robust parser must accept both versions.
+
+### GSV — satellites in view
+
+`$GPGSV,3,1,12,02,61,008,45,05,31,051,38,07,20,097,34,09,45,130,41*7F`
+
+Fields: number of GSV sentences in this group (3), this sentence's number (1), satellites in view
+(12), then **blocks of 4** fields: PRN, **elevation** (°, 0–90), **azimuth** (°, clockwise from
+north), **SNR** (signal-to-noise ratio, dB-Hz; empty when the satellite is in view but not tracked).
+Four satellites per sentence, so 12 satellites need 3 sentences. **GSV + GSA together give the
+geometry**: GSV says where each satellite is, GSA says which ones were used.
+
+## 5. Dilution of precision: geometry in a matrix
+
+Why does the same receiver give 1.5 m in the open desert and 30 m in a street? The
+pseudorange errors `eps_i` are similar. What changes is the **geometry**.
+
+**Linearisation.** Start from an approximate solution `x0, b0` and write `x = x0 + dx`,
+`c*b = c*b0 + db`. To first order:
+
+```
+d rho_i  =  -u_i . dx  +  db  +  eps_i
+u_i = unit vector from the receiver to satellite i, in local East, North, Up (ENU):
+u_i = ( cos(el_i) sin(az_i),  cos(el_i) cos(az_i),  sin(el_i) )
+```
+
+Stack the *n* satellites into one matrix equation:
+
+```
+d rho = G [dE, dN, dU, db]^T + eps        G (n x 4), row i = [ -uE_i, -uN_i, -uU_i, 1 ]
+```
+
+**Least squares** (the receiver's solution when n > 4):
+
+```
+[dE, dN, dU, db]^T = (G^T G)^-1 G^T d rho
+```
+
+If the errors `eps_i` are independent, with zero mean and the same standard deviation
+`sigma_UERE`, the covariance of the solution is (covariance propagation, lesson 26):
+
+```
+Cov = sigma_UERE^2 * Q          Q = (G^T G)^-1   (4 x 4, depends ONLY on geometry)
+```
+
+The **DOPs** are the square roots of parts of the diagonal of Q:
+
+```
+GDOP = sqrt(Q_EE + Q_NN + Q_UU + Q_bb)     geometric (everything)
+PDOP = sqrt(Q_EE + Q_NN + Q_UU)            position (3D)
+HDOP = sqrt(Q_EE + Q_NN)                   horizontal
+VDOP = sqrt(Q_UU)                          vertical
+TDOP = sqrt(Q_bb)                          time (clock)
+```
+
+So a DOP is a **multiplier with no unit**: error in metres ≈ DOP × UERE.
 
 > [!NOTE]
-> A checksum of only 8 bits has 256 possible values. A **single** changed character is always
-> caught, but a line mangled at random has about **1 chance in 256** to still match by luck. You
-> will find exactly such a line in the lab's log — and see how NAVERA survives it anyway.
+> **Worked example (by hand).** Four satellites at elevation 30° towards N, E, S, W, plus one
+> straight overhead. With cos 30° = 0.866 and sin 30° = 0.5:
+>
+> ```
+> G = [  0     -0.866  -0.5   1 ]      (az 0,   el 30)
+>     [ -0.866  0      -0.5   1 ]      (az 90,  el 30)
+>     [  0      0.866  -0.5   1 ]      (az 180, el 30)
+>     [  0.866  0      -0.5   1 ]      (az 270, el 30)
+>     [  0      0      -1     1 ]      (overhead)
+>
+> G^T G = [ 1.5  0    0    0 ]
+>         [ 0    1.5  0    0 ]
+>         [ 0    0    2   -3 ]
+>         [ 0    0   -3    5 ]
+> ```
+>
+> The matrix is block-diagonal. The East-North block inverts to 1/1.5 = 0.667 on each axis. The
+> Up-clock block has determinant 2·5 − 9 = 1, so its inverse is `[[5, 3], [3, 2]]`. Then:
+>
+> ```
+> HDOP = sqrt(0.667 + 0.667) = 1.155     VDOP = sqrt(5) = 2.236
+> PDOP = sqrt(0.667 + 0.667 + 5) = 2.517 TDOP = sqrt(2) = 1.414    GDOP = 2.887
+> ```
+>
+> With UERE = 2 m: σ_E = σ_N = 2 × 0.816 = 1.63 m, σ_U = 2 × 2.236 = 4.47 m.
 
-## Why NAVERA checks the checksum
+Three lessons from this example:
 
-Look again at the damaged line above: `3544` became `3574`. That is 30 minutes of latitude — the
-vehicle would suddenly be **55 km** further north. An autopilot that believes it would turn around
-and fly away. Worse, NAVERA's arbiter watches the GPS for **spoofing** (lesson 27): a position that
-jumps 55 km looks exactly like an attack. One bad character could trigger a false alarm, or hide a
-real one.
+1. **VDOP > HDOP** almost always. All satellites are **above** you, never below, so the "up" and
+   "clock" columns of G are strongly correlated (look at the −3 in `G^T G`). Vertical GNSS is
+   typically 1.5–2 times worse than horizontal.
+2. **Remove the overhead satellite** and the four remaining satellites all have the same
+   elevation. Then the Up column is exactly −0.5 × the clock column: `G^T G` is **singular**, it
+   cannot be inverted, and height and clock cannot be separated. Geometry, not the number of
+   satellites, decides.
+3. **Bunched satellites are bad.** In a street, only satellites along the street axis and near
+   the zenith are visible. The error ellipse becomes long in the direction where no satellite
+   constrains the position:
 
-So the rule in NAVERA is strict: **a sentence without a correct checksum never becomes a position**.
-A missing checksum is treated like a wrong one — a cut line has no checksum at all.
+![Two skies: good and bad geometry](assets/dop_sky.svg)
+
+In the lab log you will recompute PDOP, HDOP and VDOP of every second from the GSV azimuths and
+elevations and the GSA list of used satellites, and compare with what the receiver wrote.
+
+## 6. From DOP to metres: UERE and accuracy measures
+
+**UERE** (*User Equivalent Range Error*) is the standard deviation of one pseudorange error. It is
+a sum of independent sources. Typical orders of magnitude for a single-frequency receiver in open
+sky (they vary a lot with the receiver, the place and the time):
+
+| Source | Typical size (1 σ) | Note |
+|---|---|---|
+| satellite clock and orbit (broadcast) | about 0.5–1 m | |
+| ionosphere, after the broadcast model | about 1–5 m | larger by day and near solar maximum |
+| troposphere, after the model | a few decimetres | |
+| multipath (reflections) | 0.2 m to many metres | worst in streets, ports, near metal |
+| receiver noise | about 0.1–0.5 m | |
+
+Oman lies close to the northern crest of the **equatorial ionisation anomaly**, a band where the
+ionospheric delay is among the largest on Earth, especially in the evening. Single-frequency
+receivers there should not assume a small UERE.
+
+If the horizontal errors are Gaussian, standard accuracy measures follow from UERE × HDOP:
+
+| Measure | Formula | Probability (circular case) |
+|---|---|---|
+| **DRMS** (distance RMS) | sqrt(σ_E² + σ_N²) = UERE × HDOP | about 63 % |
+| **CEP** (circular error probable) | ≈ 0.83 × DRMS | 50 % |
+| **2DRMS** | 2 × UERE × HDOP | about 95–98 % |
+
+> [!NOTE]
+> **Worked example.** HDOP 1.15, UERE 2 m: DRMS = 2.3 m, CEP ≈ 1.9 m, 2DRMS = 4.6 m.
+> In the old town, HDOP 16.35: DRMS = 33 m, 2DRMS = 65 m — with the same receiver.
+
+**Estimating UERE from data.** For each fix, `E[e_h^2] = UERE^2 × HDOP^2`, where `e_h` is the
+horizontal error. When the truth is known, `UERE_est = sqrt(mean((e_h / HDOP)^2))`. You will do
+this in the lab on a synthetic drive whose truth is known. On a real vehicle this needs a reference
+(an RTK receiver or a surveyed point); NAVERA has not measured its own UERE yet.
+
+**NAVERA's choice.** `gps_node` writes `sigma = 2 m × HDOP` on **each** horizontal axis. Theory
+with UERE = 2 m gives `sqrt(σ_E² + σ_N²) = 2 × HDOP`, so about `1.41 × HDOP` per axis. NAVERA's
+per-axis sigma is therefore **√2 larger** than this theory: a conservative choice, written in the
+code as an assumption, not a measurement.
+
+## 7. Robust parsing: never crash, never invent
+
+A parser that reads a serial line in a flying vehicle must follow simple rules:
+
+1. **Validate before parsing**: `$` at the start, `*` + exactly 2 hex digits, correct checksum,
+   at most 82 characters, no second `$` inside (two sentences glued together).
+2. **Every field can be empty or wrong.** Convert with functions that return `None` instead of
+   raising (`to_float("")` → `None`). Check ranges (minutes < 60, quality 0–8, elevation 0–90).
+3. **Never fill a missing value with a default that looks real** (no "0.0 latitude" — that is a
+   real place in the Gulf of Guinea).
+4. **Decode bytes defensively**: `bytes.decode("ascii", errors="replace")` turns a damaged byte into
+   `'�'` instead of crashing; the checksum then fails.
+5. **One line is not enough**: compare with the previous fix (a jump gate) and with other sources.
+
+The lab log `sohar_drive.nmea` contains every kind of damage that a real serial line produces:
+a flipped character, a cut line, a missing checksum, garbage, two glued sentences, a non-ASCII
+byte, and two lines with swapped digits that pass the checksum.
 
 ## 🐦 How birds do it
 
-Long before GPS, how did scientists find out where birds went? In 1899 a Danish school teacher, Hans
-Christian Cornelius Mortensen, put light metal **rings** on the legs of starlings, each with a number
-and his address. If somebody found a ringed bird, they could send the number back to him. **Bird
-ringing** (called *banding* in America) is still used today, all over the world, and millions of birds have been ringed.
+Oman is one of the best places in the world to watch bird **migration**, and much of what we know
+about it comes from GNSS tags. **Sooty falcons** breed in summer on islands and cliffs along the
+Omani coast and spend the winter in **Madagascar**; satellite tracking has shown them crossing
+East Africa on the way. **Steppe eagles** that winter in Dhofar breed thousands of kilometres north,
+in Russia and Kazakhstan, and GPS tags have mapped their routes. At **Barr Al Hikman**, one of the
+most important wetlands for shorebirds in western Asia, scientists have tagged waders to learn how
+they use the tidal flats.
 
-A ring is a tiny message with fixed fields: *who* to tell, and *which* bird. But it gives only two
-points: where the bird was ringed, and where it was found — often years later. Everything in between
-is unknown.
+A modern tag is a tiny GNSS receiver plus a battery and a radio. It faces the same problems as
+NAVERA: a bird under a rock ledge or in dense mangroves sees part of the sky only, and the fix has
+a large HDOP. Biologists therefore **filter** the fixes before they draw a route: a common rule is
+to drop fixes with a high HDOP or with too few satellites, and fixes that would need an impossible
+flight speed. That is exactly the quality filter and the jump gate you will write in the lab.
 
-Then the technology flew forward:
-
-| Era | Tool | What you learn |
-|---|---|---|
-| from 1899 | numbered rings | start and end points |
-| 1960s | radio tags | where the bird is now — if you follow it with an antenna |
-| from the 1980s–90s | satellite tags, then geolocators | rough positions, anywhere on Earth |
-| today | GPS tags | positions as often as every few minutes, to a few metres |
-
-A GPS tag on a stork contains the same kind of receiver as NAVERA's, listening to the same satellites.
-
-And Navi has one warning for you: a ring number read wrong — one digit changed — points to the
-**wrong bird**, maybe on another continent. That is why ringers read rings very carefully, and why
-NAVERA checks the checksum of every NMEA line: a single damaged character can move a position by
-kilometres.
+The birds themselves do not need any of this: they combine the Sun, the stars, the Earth's magnetic
+field and landmarks. Navi, our swallow, would say that a navigator who trusts one single sense
+blindly is soon lost.
 
 ## In NAVERA
 
-The GPS driver is [gps_node.py](file:navera/gps_pkg/gps_pkg/nodes/gps_node.py). It opens the serial
-port with the `pyserial` library, reads one line at a time in a thread, and hands each line to the
-**pynmea2** library:
+The GPS driver is [gps_node.py](file:navera/gps_pkg/gps_pkg/nodes/gps_node.py). A thread reads
+the serial port line by line and hands each line to the **pynmea2** library:
 
 ```python
 raw = self.ser.readline().decode("ascii", errors="replace").strip()
@@ -275,74 +392,101 @@ elif isinstance(msg, pynmea2.types.talker.RMC):
     self._publish_vel(msg)
 ```
 
-`_publish_fix` then checks the quality (`_VALID_GPS_QUAL = {1, 2, 4, 5}`), computes the ellipsoid
-altitude and the HDOP covariance, and publishes on three topics (lesson 12):
+`_publish_fix` applies the quality filter (`_VALID_GPS_QUAL = {1, 2, 4, 5}`), converts the
+altitude to the ellipsoid, and turns HDOP into a covariance:
 
-| Topic | Type | What |
-|---|---|---|
-| `/navera/sensors/gps_fix` | `sensor_msgs/NavSatFix` | the standard ROS GPS message |
-| `/navera/sensors/gps_vel` | `geometry_msgs/TwistStamped` | velocity from RMC (east, north) |
-| `/navera/estimate/gps` | `navera_msgs/PositionEstimate` | NAVERA's source contract, for the arbiter |
+```python
+hdop = _field_float(msg.horizontal_dil)
+if hdop is not None and hdop > 0:
+    # sigma = HDOP x 2 m (assumed user range error); vertical ~2x horizontal.
+    cov = (hdop * 2.0) ** 2
+    fix.position_covariance = [cov, 0.0, 0.0, 0.0, cov, 0.0, 0.0, 0.0, cov * 4]
+```
 
-Notice one important design choice: when there is **no** usable fix, `gps_node` does not stay silent.
-It publishes a `PositionEstimate` with `valid = False`, a NaN position and a **reason**, such as
-`"receiver reports a non-satellite position (qual=6) — not used"`. The arbiter then *knows* that
-GPS is missing, instead of guessing from silence.
+![What gps_node does with one line](assets/gps_node_flow.svg)
 
-Two more places speak NMEA in NAVERA:
+Important design choices:
 
-- `navera_tools/sim/nmea_gps.py` — the **simulated** receiver of the simulator. It writes real NMEA
-  sentences on a fake serial port, so the real `gps_node` is tested exactly as in flight. Its
-  checksum function is only 4 lines — compare it with yours after the lab.
-- `navera_tools/tests/test_gps_serial.py` — the automatic test that feeds good, cut and corrupted
-  lines to `gps_node` and checks that only the good ones become fixes.
+- **An invalid fix is published, not swallowed.** Without a usable fix, `gps_node` publishes a
+  `PositionEstimate` with `valid = False`, a NaN position and a **reason**, e.g.
+  `"receiver reports a non-satellite position (qual=6) — not used"`. The estimator then *knows*
+  that GPS is missing.
+- **gps_node does not check plausibility.** A swapped-digit line with a correct checksum becomes a
+  valid fix. The plausibility gate lives in the estimator
+  ([estimator_node.py](file:navera/navera_estimator/navera_estimator/nodes/estimator_node.py),
+  lesson 25): a fix farther from the last trusted fix than
+  `max_speed_mps × elapsed + gps_jump_margin_m` (defaults 100 m/s and 50 m) is refused as
+  "possible spoofing".
+- **Timing is not finished.** The code says `# TODO(step 6): true measurement instant = GGA UTC +
+  date(RMC)/RTC`: today `sensor_stamp` is the publication time. Lesson 19 explains why the true
+  measurement instant matters.
 
-## Words you met
+The topics: `/navera/sensors/gps_fix` (`sensor_msgs/NavSatFix`), `/navera/sensors/gps_vel`
+(`geometry_msgs/TwistStamped`, east/north velocity from RMC) and `/navera/estimate/gps`
+(`navera_msgs/PositionEstimate`). Two more files speak NMEA: `navera_tools/sim/nmea_gps.py` (the
+simulator's receiver, which writes real NMEA on a pseudo-terminal) and
+`navera_tools/tests/test_gps_serial.py` (the integration test that feeds good, cut and corrupted
+lines to the real node). `docs/VALIDATION_STATUS.md` lists these behaviours as **bench-tested**;
+none of them has been validated in flight yet (Release 0.x — field validation pending).
 
-| Word | Meaning |
+## Glossary
+
+| Term | Meaning |
 |---|---|
-| **serial port** | a wire that sends bits one after the other; `/dev/ttyTHS1` on the Jetson |
-| **baud** | the speed of a serial port (9600 baud ≈ 960 characters per second) |
-| **NMEA 0183** | the text standard GPS receivers use |
-| **sentence** | one line of NMEA text, from `$` to `*hh` |
-| **talker** | the two letters after `$`: GP, GN, GL, GA… |
-| **GGA / RMC** | the sentence types with the position (GGA) and the speed and date (RMC) |
-| **degrees-minutes** | NMEA's way to write angles: `3544.04006` = 35° 44.04006′ |
-| **UTC** | world time, the same everywhere on Earth |
-| **fix quality** | how the receiver got the position (0 none, 1 GPS, 6 its own guess…) |
-| **dead reckoning** | continuing from the last known position with the speed and direction |
-| **HDOP** | how well the satellites are spread; small is good |
-| **geoid separation** | distance between sea level and the WGS84 ellipsoid |
-| **knot** | a sea mile per hour = 0.514444 m/s |
-| **XOR** | bit operation: same → 0, different → 1 |
-| **checksum** | a small number computed from a message to detect damage |
-| **hexadecimal** | base 16, digits 0–9 and A–F |
+| **GNSS** | Global Navigation Satellite System: GPS, GLONASS, Galileo, BeiDou |
+| **pseudorange** | measured distance to a satellite, including the receiver clock error |
+| **ephemeris** | the orbit data a satellite broadcasts, to compute its position |
+| **UTC / GPS time** | world time / the GPS time scale (18 s ahead of UTC since 2017) |
+| **baud** | bits per second on a serial line (9600 baud ≈ 960 characters/s) |
+| **NMEA 0183** | text protocol of GNSS receivers: `$`, fields, `*hh` |
+| **talker / sentence type** | `GP`, `GN`… / `GGA`, `RMC`, `GSA`, `GSV` |
+| **checksum (XOR)** | 8-bit XOR of the body; detects single errors, not swaps |
+| **fix quality** | GGA field 6: 0 none, 1 GPS, 2 DGPS, 4/5 RTK, 6 dead reckoning… |
+| **dead reckoning** | continuing a position from the last speed and heading, without measurement |
+| **PRN** | the number that identifies a GPS satellite |
+| **elevation / azimuth** | angle above the horizon / clockwise from north |
+| **SNR (C/N0)** | signal strength in dB-Hz |
+| **geometry matrix G** | n × 4 matrix of the linearised pseudorange equations |
+| **DOP** (G/P/H/V/T) | square roots of diagonal terms of (GᵀG)⁻¹; error multipliers |
+| **UERE** | standard deviation of one pseudorange error (metres) |
+| **DRMS, 2DRMS, CEP** | horizontal accuracy measures (≈ 63 %, ≈ 95–98 %, 50 %) |
+| **geoid / ellipsoid** | mean-sea-level surface / WGS84 mathematical surface |
+| **geoid separation N** | ellipsoid height − MSL height |
+| **jump gate** | rejects a fix that would need an impossible speed |
 
-## Check what you learned
+## Check your understanding
 
-<details><summary>1. Convert <code>4807.038,N,01131.000,E</code> to decimal degrees.</summary>
-48 + 7.038/60 = <b>48.1173°</b> and 11 + 31.000/60 = <b>11.516667°</b>. (This is the famous example of
-the NMEA documentation: Munich.)
+<details><summary>1. Convert <code>2338.90000,N,05824.60000,E</code> (Muscat) to decimal degrees.</summary>
+23 + 38.9/60 = <b>23.648333°</b> N and 58 + 24.6/60 = <b>58.410000°</b> E.
 </details>
 
-<details><summary>2. A GGA says quality 6 with a perfect-looking position. What does NAVERA publish?</summary>
-A <code>PositionEstimate</code> with <code>valid = False</code> and the reason "receiver reports a
-non-satellite position (qual=6) — not used". The position was invented by the receiver, not measured.
+<details><summary>2. Why can the checksum not detect <code>2426.56</code> written as <code>2462.56</code>? Name two other checks that catch it.</summary>
+XOR is commutative, so swapping two characters does not change the XOR of the body. The field
+check "minutes &lt; 60" catches it (62 minutes is impossible), and a jump gate catches it (a 67 km
+jump in 1 s). NAVERA's gps_node does neither; its estimator has the jump gate.
 </details>
 
-<details><summary>3. Two fixes have HDOP 0.8 and 3.2. What sigma does NAVERA give each?</summary>
-HDOP × 2 m: <b>1.6 m</b> and <b>6.4 m</b>. The second one is four times less sure.
+<details><summary>3. Four satellites all at elevation 40°, at azimuths 0°, 90°, 180°, 270°. What happens to the DOPs?</summary>
+The Up column of G is −sin 40° for every row, which is a constant multiple of the clock column (all
+ones). The columns are linearly dependent, GᵀG is singular and the DOPs are infinite: height and
+clock cannot be separated. A fifth satellite at another elevation fixes it.
 </details>
 
-<details><summary>4. Why must the checksum always have two characters, even when it is 13?</summary>
-Because the receiver always writes two hexadecimal digits: 13 is written <code>0D</code>. Comparing
-"D" with "0D" would say the line is broken when it is fine.
+<details><summary>4. HDOP = 3.0 and UERE = 2.5 m. Give DRMS and 2DRMS. What sigma does NAVERA write?</summary>
+DRMS = 3.0 × 2.5 = <b>7.5 m</b>, 2DRMS = <b>15 m</b>. NAVERA writes σ = 2 m × 3.0 = <b>6 m</b> on each
+horizontal axis (variance 36 m²) and 12 m vertically — it uses its assumed 2 m, not 2.5 m.
 </details>
 
-<details><summary>5. Can the checksum catch every damaged line?</summary>
-No. It always catches one changed character, but a badly mangled line still has about 1 chance in
-256 to match by luck. That is why NAVERA also checks the fields themselves (the quality must be 1, 2,
-4 or 5).
+<details><summary>5. Why is VDOP usually larger than HDOP?</summary>
+All satellites are above the horizon. The Up component of every line of sight has the same sign,
+so it is correlated with the clock column of G; the estimate of height is mixed with the estimate
+of the clock. Horizontally, satellites can surround the receiver on all sides.
+</details>
+
+<details><summary>6. A GGA has quality 6, 0 satellites and a perfect-looking position. What does gps_node publish?</summary>
+A <code>PositionEstimate</code> with <code>valid = False</code>, NaN position, covariance UNKNOWN and
+the reason "receiver reports a non-satellite position (qual=6) — not used". The position is the
+receiver's own dead reckoning, not a measurement.
 </details>
 
 Now open the **🛠️ Lab** tab.

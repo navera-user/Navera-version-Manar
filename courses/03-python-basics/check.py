@@ -1,5 +1,9 @@
 import contextlib
 import io
+import json
+import math
+import os
+import re
 
 from academy_check import CheckFailed, Checker, load_student, need, sh
 
@@ -13,7 +17,7 @@ def quiet_load(name):
 
 
 def nav(*names):
-    return need(quiet_load("nav_math.py"), *names)
+    return need(quiet_load("navlib.py"), *names)
 
 
 def call(fn, *args, **kw):
@@ -21,136 +25,287 @@ def call(fn, *args, **kw):
     try:
         return fn(*args, **kw)
     except NotImplementedError as e:
-        raise CheckFailed(f"{fn.__name__}() is not written yet ({e})")
+        raise CheckFailed(f"{getattr(fn, '__name__', 'this code')} is not written yet ({e})")
 
 
-# ---------------------------------------------------------------- warm-up: mission.py
-@c.test("mission.py runs without errors",
-        hint="Run `python3 mission.py` in the terminal and read the last line of the error.")
+def raises_value_error(fn, *args, what=""):
+    try:
+        call(fn, *args)
+    except ValueError:
+        return
+    except CheckFailed:
+        raise
+    except Exception as e:
+        raise CheckFailed(f"{what} raised {type(e).__name__}: {e} — it should raise ValueError")
+    raise CheckFailed(f"{what} did not raise ValueError")
+
+
+def pair(r, what):
+    c.ok(isinstance(r, tuple) and len(r) == 2, f"{what} returned {r!r} — expected a tuple of 2 numbers")
+    return r
+
+
+def near_angle(got, want, tol, what):
+    d = (float(got) - want + 180.0) % 360.0 - 180.0
+    c.ok(abs(d) <= tol, f"{what} is {float(got):.4g}°, expected {want:.4g}° (± {tol:g})")
+
+
+# ---------------------------------------------------------------- Part A
+@c.test("TODO 1: heading_vector() — (east, north), clockwise from north",
+        hint="Headings are in degrees: convert with math.radians. East is sin(heading), north is cos(heading).")
 def _():
-    code, out = sh("python3 mission.py", timeout=20)
-    c.ok(code == 0, "mission.py stopped with an error:\n" + out[-600:])
+    (f,) = nav("heading_vector")
+    for h, (e, n) in ((0, (0.0, 1.0)), (90, (1.0, 0.0)), (225, (-0.70711, -0.70711)), (330, (-0.5, 0.86603))):
+        r = pair(call(f, h), f"heading_vector({h})")
+        c.near(r[0], e, 1e-4, f"east of heading_vector({h})")
+        c.near(r[1], n, 1e-4, f"north of heading_vector({h})")
 
 
-@c.test("TODO A: mission_time_min is computed from the variables",
-        hint="hours = distance / speed; minutes = hours × 60. Use the variable names, not the numbers.")
+@c.test("TODO 2: ground_velocity() = air velocity + wind",
+        hint="Multiply the unit vector of the heading by the airspeed, then add the wind components one by one.")
 def _():
-    m = quiet_load("mission.py")
-    d, v, t = need(m, "mission_distance_km", "cruise_speed_kmh", "mission_time_min")
-    c.ok(t != 0, "mission_time_min is still 0")
-    c.near(t, d / v * 60, tol=0.01, what="mission_time_min")
+    (f,) = nav("ground_velocity")
+    for args, (e, n) in (((15, 0, 4, 0), (4.0, 15.0)), ((20, 135, 1, 2), (15.14214, -12.14214)),
+                         ((10, 270), (-10.0, 0.0))):
+        r = pair(call(f, *args), f"ground_velocity{args}")
+        c.near(r[0], e, 1e-3, f"east of ground_velocity{args}")
+        c.near(r[1], n, 1e-3, f"north of ground_velocity{args}")
 
 
-@c.test("TODO B: mission.py prints a sentence with the name and the time",
-        hint='print(f"{drone_name} flies ... {mission_time_min:.1f} minutes") — the variables go between { }.')
+@c.test("TODO 3: wind_correction() — heading to fly and ground speed",
+        hint="Project the wind on the track (along) and on the direction 90° to its right (cross). "
+             "crab = asin(cross / airspeed); heading = track − crab (degrees, then % 360).")
 def _():
-    m = quiet_load("mission.py")
-    name, t = need(m, "drone_name", "mission_time_min")
-    _, out = sh("python3 mission.py", timeout=20)
-    lines = [l for l in out.splitlines() if not l.startswith(("Drone:", "Speed:"))]
-    text = "\n".join(lines)
-    c.ok(str(name) in text, f"I can't find a new line with the drone name ({name}) in what mission.py prints")
-    c.ok(f"{t:.1f}" in text, f"I can't find the time rounded to 1 decimal ({t:.1f}) in what mission.py prints")
-    c.ok("min" in text, 'say the unit: the sentence should contain "minutes"')
+    (f,) = nav("wind_correction")
+    for args, (h, gs) in (((15, 0, 4, 0), (344.534, 14.4568)), ((12, 30, -3, -4), (32.8568, 7.02099)),
+                          ((12, 210, -3, -4), (207.143, 16.9492)), ((20, 90, 0, 5), (104.478, 19.3649)),
+                          ((18, 300, 6, -2), (295.961, 11.7591))):
+        r = pair(call(f, *args), f"wind_correction{args}")
+        near_angle(r[0], h, 0.01, f"the heading of wind_correction{args}")
+        c.ok(0 <= r[0] < 360, f"the heading of wind_correction{args} is {r[0]:.4g}: keep it in [0, 360) with % 360")
+        c.near(r[1], gs, 1e-3, f"the ground speed of wind_correction{args}")
 
 
-# ---------------------------------------------------------------- Part 1
-@c.test("TODO 1-2: kmh_to_ms() and ms_to_kmh()",
-        hint="m/s = km/h ÷ 3.6 and km/h = m/s × 3.6. Use the parameter, not a fixed number.")
+@c.test("TODO 3: wind_correction() raises ValueError when no heading works",
+        hint="Two cases: |cross| > airspeed (asin would fail with 'math domain error'), and a ground speed <= 0.")
 def _():
-    to_ms, to_kmh = nav("kmh_to_ms", "ms_to_kmh")
-    for kmh, ms in ((36, 10.0), (54, 15.0), (90, 25.0), (0, 0.0), (7.2, 2.0)):
-        c.near(call(to_ms, kmh), ms, tol=1e-6, what=f"kmh_to_ms({kmh})")
-        c.near(call(to_kmh, ms), kmh, tol=1e-6, what=f"ms_to_kmh({ms})")
+    (f,) = nav("wind_correction")
+    raises_value_error(f, 15, 0, 20, 0, what="wind_correction(15, 0, 20, 0) (crosswind 20 m/s)")
+    raises_value_error(f, 15, 0, 0, -20, what="wind_correction(15, 0, 0, -20) (headwind 20 m/s)")
 
 
-@c.test("TODO 3: distance_m()", hint="distance = speed × time, with the two parameters.")
-def _():
-    (f,) = nav("distance_m")
-    for v, t, want in ((15, 60, 900), (2.5, 10, 25), (0, 100, 0), (12, 0.5, 6)):
-        c.near(call(f, v, t), want, tol=1e-6, what=f"distance_m({v}, {t})")
-
-
-@c.test("TODO 4: travel_time_s() for a normal speed", hint="time = distance ÷ speed.")
-def _():
-    (f,) = nav("travel_time_s")
-    for d, v, want in ((900, 15, 60), (1000, 4, 250), (50, 2.5, 20)):
-        c.near(call(f, d, v), want, tol=1e-6, what=f"travel_time_s({d}, {v})")
-
-
-@c.test("TODO 4: travel_time_s() returns None when the speed is 0 or negative",
-        hint="Start the function with:  if speed_ms <= 0:  and return None inside it (indented!).")
-def _():
-    (f,) = nav("travel_time_s")
-    for v in (0, -3):
-        try:
-            r = call(f, 900, v)
-        except ZeroDivisionError:
-            raise CheckFailed(f"travel_time_s(900, {v}) divides by zero — test the speed BEFORE dividing")
-        c.ok(r is None, f"travel_time_s(900, {v}) returned {r!r}, expected None")
-
-
-# ---------------------------------------------------------------- Part 2
-@c.test("TODO 5: flight_time_min()",
-        hint="usable = battery × (100 − reserve) ÷ 100; hours = usable ÷ power; minutes = hours × 60.")
+@c.test("TODO 4: flight_time_min() — values and ValueError on bad inputs",
+        hint="usable = battery × (1 − reserve_frac); minutes = usable / power × 60. Check the inputs FIRST.")
 def _():
     (f,) = nav("flight_time_min")
-    c.near(call(f, 100, 400), 12.0, tol=1e-6, what="flight_time_min(100, 400)")
-    c.near(call(f, 77, 154), 24.0, tol=1e-6, what="flight_time_min(77, 154)")
-    c.near(call(f, 100, 400, 0), 15.0, tol=1e-6, what="flight_time_min(100, 400, 0)")
-    c.near(call(f, 100, 400, reserve_percent=50), 7.5, tol=1e-6,
-           what="flight_time_min(100, 400, reserve_percent=50)")
+    for args, want in (((100, 400), 12.0), ((50, 400), 6.0), ((77, 154), 24.0), ((100, 400, 0.0), 15.0),
+                       ((120, 300, 0.25), 18.0)):
+        c.near(call(f, *args), want, 1e-6, f"flight_time_min{args}")
+    raises_value_error(f, 100, 0, what="flight_time_min(100, 0)")
+    raises_value_error(f, -5, 400, what="flight_time_min(-5, 400)")
+    raises_value_error(f, 100, 400, 1.0, what="flight_time_min(100, 400, 1.0)")
+    raises_value_error(f, 100, 400, -0.1, what="flight_time_min(100, 400, -0.1)")
 
 
-@c.test("TODO 6: battery_status() — including the limits 50 and 20",
-        hint='50 is "OK" and 20 is "LOW": use >= (or <) carefully, and check the biggest value first.')
+# ---------------------------------------------------------------- Part B
+@c.test("TODO 5: Vehicle.__init__ stores its attributes and refuses cruise_ms <= 0",
+        hint="self.name = name, and the same for cruise_ms, battery_wh and power_w. Check cruise_ms first.")
 def _():
-    (f,) = nav("battery_status")
-    for p, want in ((100, "OK"), (50, "OK"), (49.9, "LOW"), (35, "LOW"), (20, "LOW"), (19.9, "LAND NOW"), (0, "LAND NOW")):
-        c.eq(call(f, p), want, what=f"battery_status({p})")
+    (V,) = nav("Vehicle")
+    v = call(V, "quad", 12, 100, 400)
+    for attr, want in (("name", "quad"), ("cruise_ms", 12), ("battery_wh", 100), ("power_w", 400)):
+        c.ok(hasattr(v, attr), f"a Vehicle has no attribute {attr} — write self.{attr} = {attr}")
+        c.eq(getattr(v, attr), want, f"Vehicle(...).{attr}")
+    raises_value_error(V, "bad", 0, 100, 400, what='Vehicle("bad", 0, 100, 400)')
 
 
-# ---------------------------------------------------------------- Part 3
-@c.test("TODO 7: distance_from_home_m()",
-        hint="Pythagoras: math.sqrt(x ** 2 + y ** 2). A negative x or y gives the same distance.")
+@c.test("TODO 6: Vehicle.endurance_s() and range_m()",
+        hint="endurance_s() reuses flight_time_min() (minutes → seconds). range_m(): (cruise + wind_along) × "
+             "endurance; 0.0 when that ground speed is <= 0.")
 def _():
-    (f,) = nav("distance_from_home_m")
-    for x, y, want in ((300, 400, 500), (0, 0, 0), (-600, 0, 600), (0, -250, 250), (500, -500, 707.1068), (-5, -12, 13)):
-        c.near(call(f, x, y), want, tol=1e-3, what=f"distance_from_home_m({x}, {y})")
+    (V,) = nav("Vehicle")
+    v = call(V, "quad", 12, 100, 400)
+    c.near(call(v.endurance_s), 720.0, 1e-6, "Vehicle('quad', 12, 100, 400).endurance_s()")
+    c.near(call(v.endurance_s, 0.0), 900.0, 1e-6, "endurance_s(0.0)")
+    c.near(call(v.range_m), 8640.0, 1e-6, "range_m()")
+    c.near(call(v.range_m, 0.0, 4), 14400.0, 1e-6, "range_m(0.0, 4) (tailwind 4 m/s, no reserve)")
+    c.near(call(v.range_m, wind_along_ms=-12), 0.0, 1e-9, "range_m(wind_along_ms=-12) (headwind = airspeed)")
 
 
-@c.test("TODO 8: inside_circle() — 600 m by default, ON the circle counts as inside",
-        hint="return distance_from_home_m(x_m, y_m) <= radius_m  — a comparison already IS True or False.")
+@c.test("TODO 7: FixedWing(Vehicle) — super().__init__, stall check, turn radius",
+        hint="First line of __init__: super().__init__(name, cruise_ms, battery_wh, power_w). "
+             "Turn radius r = v² / (g · tan(bank)), bank in radians.")
 def _():
-    (f,) = nav("inside_circle")
-    for args, want in (((300, 400), True), ((500, -500), False), ((600, 0), True), ((0, -601), False),
-                       ((-360, 480), True), ((300, 400, 450), False), ((300, 400, 500), True)):
-        r = call(f, *args)
-        c.ok(isinstance(r, bool), f"inside_circle{args} returned {r!r} — it should be True or False")
-        c.eq(r, want, what=f"inside_circle{args}")
+    V, F = nav("Vehicle", "FixedWing")
+    w = call(F, "wing", 25, 200, 300, 14)
+    c.ok(isinstance(w, V), "a FixedWing should also be a Vehicle (class FixedWing(Vehicle))")
+    for attr, want in (("name", "wing"), ("cruise_ms", 25), ("battery_wh", 200), ("power_w", 300), ("stall_ms", 14)):
+        c.ok(hasattr(w, attr), f"a FixedWing has no attribute {attr} — did you call super().__init__(...)?")
+        c.eq(getattr(w, attr), want, f"FixedWing(...).{attr}")
+    c.near(call(w.endurance_s, 0.1), 2160.0, 1e-6, "FixedWing(...).endurance_s(0.1) (inherited)")
+    c.near(call(w.turn_radius_m), 110.350, 1e-2, "turn_radius_m() (25 m/s, 30° bank)")
+    c.near(call(w.turn_radius_m, 45), 63.710, 1e-2, "turn_radius_m(45)")
+    raises_value_error(F, "slow", 12, 150, 200, 14, what='FixedWing("slow", 12, 150, 200, 14) (cruise below stall)')
+    raises_value_error(F, "zero", 0, 150, 200, 14, what='FixedWing("zero", 0, ...) (Vehicle should refuse it)')
 
 
-@c.test("TODO 9: status_line() text, exactly as in the example",
-        hint='return f"{name} is {d:.0f} m from home: {where}" — where is "INSIDE" or "OUTSIDE".')
+@c.test("TODO 8: Track.add() appends, and refuses a time that does not increase",
+        hint="Compare t with self.t[-1] only when the list is not empty; raise ValueError for t <= last time.")
 def _():
-    (f,) = nav("status_line")
-    for args, want in (
-        (("drone-1", 300, 400), "drone-1 is 500 m from home: INSIDE"),
-        (("drone-2", 500, -500), "drone-2 is 707 m from home: OUTSIDE"),
-        (("rover", 0, 600), "rover is 600 m from home: INSIDE"),
-        (("boat", -1000, 20), "boat is 1000 m from home: OUTSIDE"),
-    ):
-        r = call(f, *args)
-        c.ok(r is not None, "status_line() returned None — use return, not print")
-        c.eq(r, want, what=f"status_line{args}")
+    (T,) = nav("Track")
+    tr = T("x")
+    for p in ((0, 0, 0), (2, 6, 8), (3, 6, 8)):
+        call(tr.add, *p)
+    c.eq(len(tr), 3, "len(track) after 3 add()")
+    c.eq(list(tr.t), [0.0, 2.0, 3.0], "track.t")
+    c.eq(list(tr.east), [0.0, 6.0, 6.0], "track.east")
+    raises_value_error(tr.add, 3, 1, 1, what="add() with the same time as the last point")
+    raises_value_error(tr.add, 1, 1, 1, what="add() with a time in the past")
+    c.eq(len(tr), 3, "len(track) after two refused add()")
 
 
-@c.test("nav_math.py runs its demo without errors", hint="Run `python3 nav_math.py` and read the error.")
+@c.test("TODO 9: Track.length_m() and speeds_ms() with NumPy",
+        hint="np.diff gives the n−1 differences; np.hypot(de, dn) the segment lengths; divide by np.diff(t) "
+             "for the speeds. Fewer than 2 points: length 0.0 and an empty array.")
 def _():
-    code, out = sh("python3 nav_math.py", timeout=20)
-    c.ok(code == 0, "nav_math.py stopped with an error:\n" + out[-600:])
-    todo = sorted({l.split("(")[-1].rstrip(")") for l in out.splitlines() if "not written yet" in l})
-    c.ok(not todo, "still not written: " + ", ".join(todo))
+    import numpy as np
+    (T,) = nav("Track")
+    tr = T("x")
+    for p in ((0, 0, 0), (2, 6, 8), (3, 6, 8), (5, 0, 0)):
+        call(tr.add, *p)
+    c.near(call(tr.length_m), 20.0, 1e-9, "length_m() of (0,0)→(6,8)→(6,8)→(0,0)")
+    s = call(tr.speeds_ms)
+    c.ok(isinstance(s, np.ndarray), f"speeds_ms() returned {type(s).__name__} — it should return a NumPy array")
+    c.eq([round(float(x), 6) for x in s], [5.0, 0.0, 5.0], "speeds_ms()")
+    one = T("one")
+    call(one.add, 0, 1, 1)
+    c.near(call(one.length_m), 0.0, 1e-12, "length_m() of a 1-point track")
+    c.eq(len(call(one.speeds_ms)), 0, "len(speeds_ms()) of a 1-point track")
+
+
+@c.test("TODO 10: Track.max_distance_from() — broadcasting",
+        hint="e − east0 subtracts a number from every element of an array; np.hypot, then np.max. Empty track → 0.0.")
+def _():
+    (T,) = nav("Track")
+    tr = T("x")
+    for p in ((0, 0, 0), (2, 6, 8), (3, 6, 8), (5, 0, 0)):
+        call(tr.add, *p)
+    c.near(call(tr.max_distance_from), 10.0, 1e-9, "max_distance_from() (from 0, 0)")
+    c.near(call(tr.max_distance_from, 3, -4), 12.36932, 1e-4, "max_distance_from(3, -4)")
+    c.near(call(T("empty").max_distance_from), 0.0, 1e-12, "max_distance_from() of an empty track")
+
+
+@c.test("TODO 11: enu_from_latlon() for numbers AND for NumPy arrays of any shape",
+        hint="Use np.radians and np.cos (math.cos refuses arrays: 'only length-1 arrays can be converted'). "
+             "east = R·Δλ·cos(φ0), north = R·Δφ, angles in radians.")
+def _():
+    import numpy as np
+    (f,) = nav("enu_from_latlon")
+    r = call(f, 22.933, 57.533, 23.588, 58.383)
+    c.ok(isinstance(r, tuple) and len(r) == 2, f"enu_from_latlon(...) returned {r!r}, expected (east, north)")
+    c.near(r[0], -86618.58, 0.5, "east of Nizwa from Muscat")
+    c.near(r[1], -72832.68, 0.5, "north of Nizwa from Muscat")
+    lats = np.array([[23.588, 23.688], [23.488, 24.347]])
+    lons = np.array([[58.383, 58.383], [58.483, 56.709]])
+    e, n = call(f, lats, lons, 23.588, 58.383)
+    c.ok(np.shape(e) == (2, 2) and np.shape(n) == (2, 2),
+         f"with 2×2 arrays the results should be 2×2 arrays, got shapes {np.shape(e)} and {np.shape(n)}")
+    c.near(e[0][0], 0.0, 1e-6, "east of the reference itself")
+    c.near(n[0][1], 11119.49, 0.05, "north of a point 0.1° north")
+    c.near(e[1][0], 10190.43, 0.05, "east of a point 0.1° east")
+
+
+# ---------------------------------------------------------------- mission.py and the report
+EXPECTED = {
+    "out_heading_deg": (32.857, 0.01), "out_ground_speed_ms": (7.0210, 0.001),
+    "quad_endurance_min": (21.943, 0.001), "quad_round_trip_min": (30.215, 0.005),
+    "wing_endurance_min": (32.727, 0.001), "wing_round_trip_min": (15.993, 0.005),
+    "wing_turn_radius_m": (70.624, 0.01),
+    "track_points": (263, 0), "track_length_m": (3270.14, 0.05), "track_max_speed_ms": (54.340, 0.005),
+    "track_median_speed_ms": (12.052, 0.005), "track_max_dist_m": (1362.04, 0.05),
+    "glitch_time_s": (150, 0),
+    "salalah_flat_km": (851.478, 0.01), "salalah_great_circle_km": (856.592, 0.01),
+}
+BOOLS = {"quad_can_do_it": False, "wing_can_do_it": True}
+PCT = {"Sohar": 0.23599, "Nizwa": -0.14453, "Sur": -0.19658, "Salalah": -0.59697}
+
+
+def results():
+    c.file_exists("results.json")
+    try:
+        with open("results.json") as f:
+            return json.load(f)
+    except ValueError as e:
+        raise CheckFailed(f"results.json is not valid JSON: {e}")
+
+
+@c.test("mission.py runs and writes results.json",
+        hint="Run `python3 mission.py`. If it says a TODO is not written yet, finish navlib.py first.")
+def _():
+    if os.path.exists("results.json"):
+        os.remove("results.json")
+    code, out = sh("python3 mission.py", timeout=30)
+    if "not written yet" in out:
+        raise CheckFailed(out.strip().splitlines()[-1])
+    if code != 0:
+        last = [l for l in out.strip().splitlines() if l.strip()][-1:] or ["(no output)"]
+        raise CheckFailed("mission.py stopped with an error — run it and read the last line: " + last[0])
+    results()
+
+
+@c.test("results.json: wind triangle, endurance and round trips (TODO A, B)",
+        hint="Each key named in mission.py must hold a number (or a bool for *_can_do_it). "
+             "Round trip = out leg / ground speed out + back leg / ground speed back.")
+def _():
+    r = results()
+    for k in ("out_heading_deg", "out_ground_speed_ms", "quad_endurance_min", "quad_round_trip_min",
+              "wing_endurance_min", "wing_round_trip_min", "wing_turn_radius_m"):
+        c.ok(r.get(k) is not None, f'results.json has no value for "{k}"')
+        want, tol = EXPECTED[k]
+        c.near(r[k], want, tol, k)
+    for k, want in BOOLS.items():
+        c.ok(isinstance(r.get(k), bool), f'"{k}" should be true or false (a bool), got {r.get(k)!r}')
+        c.eq(r[k], want, k)
+
+
+@c.test("results.json: the survey track and the projection error (TODO C, D)",
+        hint="Use your Track methods on load_track('sohar_track.csv'). glitch: the first speed > 25 m/s; "
+             "speed i ends at point i+1. Projection: vectorised enu_from_latlon + np.hypot vs great_circle_m.")
+def _():
+    r = results()
+    for k in ("track_points", "track_length_m", "track_max_speed_ms", "track_median_speed_ms",
+              "track_max_dist_m", "glitch_time_s", "salalah_flat_km", "salalah_great_circle_km"):
+        c.ok(r.get(k) is not None, f'results.json has no value for "{k}"')
+        want, tol = EXPECTED[k]
+        c.near(r[k], want, max(tol, 1e-9), k)
+    p = r.get("projection_error_pct")
+    c.ok(isinstance(p, dict), '"projection_error_pct" should be a dict {city: error in %}')
+    for city, want in PCT.items():
+        c.ok(city in p, f'"projection_error_pct" has no entry "{city}"')
+        c.near(p[city], want, 0.001, f"projection_error_pct[{city!r}]")
+
+
+def numbers_in(text):
+    return [float(x) for x in re.findall(r"-?\d+(?:\.\d+)?", text.replace(",", ""))]
+
+
+@c.test("report.md: four sections, your own words, with the key numbers",
+        hint="Keep the four ## headings, replace every '(write here)' by 2–4 sentences. Quote the quad's round "
+             "trip in minutes, the glitch time in s and Salalah's projection error in %.")
+def _():
+    c.file_exists("report.md")
+    with open("report.md") as f:
+        text = f.read()
+    low = text.lower()
+    for h in ("## wind", "## endurance", "## track", "## projection"):
+        c.ok(h in low, f'report.md has no section starting with "{h}"')
+    c.ok("(write here)" not in low, 'report.md still contains "(write here)"')
+    words = len(re.findall(r"[A-Za-z]{2,}", text))
+    c.ok(words >= 120, f"report.md has about {words} words — write at least 120")
+    nums = numbers_in(text)
+    c.ok(any(abs(x - 30.2) <= 0.15 for x in nums), "I can't find the quad's round-trip time (about 30.2 min) in report.md")
+    c.ok(any(abs(x - 150) < 0.5 for x in nums), "I can't find the glitch time (in s) in report.md")
+    c.ok(any(abs(abs(x) - 0.6) <= 0.05 for x in nums), "I can't find Salalah's projection error (in %) in report.md")
 
 
 c.run()

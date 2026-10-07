@@ -3,7 +3,7 @@
 
 PILOT_NAME = "???"
 FAVOURITE_VEHICLE = "???"     # drone, car, boat or robot
-CITY = "???"
+CITY = "???"                  # your home town, e.g. Nizwa
 
 
 # ---- you don't need to change anything below this line (but you can read it!) ----
@@ -13,14 +13,16 @@ ICONS = {"drone": "🚁", "car": "🚗", "boat": "🚤", "robot": "🤖"}
 def mission_card(name, vehicle, city):
     icon = ICONS.get(vehicle.lower(), "❓")
     lines = [
-        "+--------------------------------------------+",
-        "|          NAVERA  —  MISSION CARD           |",
-        "+--------------------------------------------+",
+        "+" + "-" * 64 + "+",
+        "|" + "NAVERA  —  MISSION CARD".center(64) + "|",
+        "+" + "-" * 64 + "+",
         f"  Pilot    : {name}",
         f"  Vehicle  : {icon} {vehicle}",
         f"  Home     : {city}",
-        "  Sources  : GPS, day camera, night camera, stars",
-        "+--------------------------------------------+",
+        "  Sources  : GPS, day vision, night vision, celestial",
+        "  Arbiter  : estimator_node  (GPS > day > night > celestial)",
+        "  Output   : vehicle_output_node -> autopilot (NMEA / MAVLink)",
+        "+" + "-" * 64 + "+",
     ]
     if name == "???":
         lines.append("  (Edit PILOT_NAME at the top of the file!)")

@@ -1,45 +1,36 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 250" font-family="sans-serif" font-size="13">
-  <rect width="700" height="250" fill="#f7fafc"/>
-  <defs>
-    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
-      <path d="M0 0 L10 5 L0 10 Z" fill="#0b6e8a"/>
-    </marker>
-  </defs>
-  <text x="20" y="28" font-family="monospace" font-size="15" fill="#1d2733">cat mission/logs/*.log  |  grep "match OK"  |  wc -l</text>
-  <!-- boxes -->
-  <rect x="20" y="50" width="170" height="44" rx="6" fill="#d7e3ee" stroke="#8aa3b8"/>
-  <text x="105" y="70" text-anchor="middle" font-weight="bold" fill="#1d2733">cat</text>
-  <text x="105" y="86" text-anchor="middle" fill="#4a5866">prints all the lines</text>
-  <rect x="265" y="50" width="170" height="44" rx="6" fill="#fde7c5" stroke="#d6a65c"/>
-  <text x="350" y="70" text-anchor="middle" font-weight="bold" fill="#1d2733">grep "match OK"</text>
-  <text x="350" y="86" text-anchor="middle" fill="#4a5866">keeps matching lines</text>
-  <rect x="510" y="50" width="170" height="44" rx="6" fill="#cde6c8" stroke="#86b67d"/>
-  <text x="595" y="70" text-anchor="middle" font-weight="bold" fill="#1d2733">wc -l</text>
-  <text x="595" y="86" text-anchor="middle" fill="#4a5866">counts the lines</text>
-  <line x1="192" y1="72" x2="262" y2="72" stroke="#0b6e8a" stroke-width="3" marker-end="url(#ar)"/>
-  <line x1="437" y1="72" x2="507" y2="72" stroke="#0b6e8a" stroke-width="3" marker-end="url(#ar)"/>
-  <text x="227" y="64" text-anchor="middle" fill="#0b6e8a" font-weight="bold">|</text>
-  <text x="472" y="64" text-anchor="middle" fill="#0b6e8a" font-weight="bold">|</text>
-  <!-- what flows -->
-  <g font-family="monospace" font-size="10.5" fill="#1d2733">
-    <rect x="20" y="108" width="245" height="120" fill="#ffffff" stroke="#c9d3dc"/>
-    <text x="26" y="124">[09:30:00] navera: box started</text>
-    <text x="26" y="139">[09:31:10] camera: streaming</text>
-    <text x="26" y="154" fill="#0b6e8a">[09:32:40] day_vision: map match OK</text>
-    <text x="26" y="169">[09:33:15] gps: GPS LOST</text>
-    <text x="26" y="184" fill="#0b6e8a">[09:35:02] day_vision: map match OK</text>
-    <text x="26" y="199">[09:36:30] gps: GPS LOST</text>
-    <text x="26" y="214">… 37 lines in all</text>
-  <rect x="275" y="108" width="232" height="104" fill="#ffffff" stroke="#c9d3dc"/>
-    <text x="281" y="124" fill="#0b6e8a">[09:32:40] day_vision: map match OK</text>
-    <text x="281" y="139" fill="#0b6e8a">[09:35:02] day_vision: map match OK</text>
-    <text x="281" y="154" fill="#0b6e8a">[09:37:58] day_vision: map match OK</text>
-    <text x="281" y="169" fill="#0b6e8a">[09:38:41] day_vision: map match OK</text>
-    <text x="281" y="184" fill="#0b6e8a">[14:19:30] day_vision: map match OK</text>
-    <text x="281" y="199" fill="#0b6e8a">[14:21:02] day_vision: map match OK</text>
-  </g>
-  <rect x="560" y="108" width="70" height="40" fill="#ffffff" stroke="#c9d3dc"/>
-  <text x="595" y="135" text-anchor="middle" font-family="monospace" font-size="20" font-weight="bold" fill="#1d2733">6</text>
-  <text x="532" y="180" fill="#4a5866">only this reaches</text>
-  <text x="532" y="196" fill="#4a5866">your screen</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 330" font-family="sans-serif" font-size="13">
+<rect width="760" height="330" fill="#f7fafc"/>
+<text x="20" y="28" font-family="monospace" font-size="14" fill="#1d2733">grep "^\[WARN\]" sohar.log | cut -d' ' -f3 | sort | uniq -c</text>
+<defs><marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#0b6e8a"/></marker>
+<marker id="r" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#c0392b"/></marker></defs>
+<g font-weight="bold" text-anchor="middle" fill="#1d2733">
+<rect x="20" y="60" width="150" height="48" rx="8" fill="#d7e3ee" stroke="#9fb3c8"/><text x="95" y="80">grep "^\[WARN\]"</text>
+<rect x="215" y="60" width="130" height="48" rx="8" fill="#ffe9c7" stroke="#e0b878"/><text x="280" y="80">cut -d' ' -f3</text>
+<rect x="390" y="60" width="110" height="48" rx="8" fill="#e8e3f3" stroke="#b9acd6"/><text x="445" y="80">sort</text>
+<rect x="545" y="60" width="120" height="48" rx="8" fill="#cfe8cf" stroke="#8fbf8f"/><text x="605" y="80">uniq -c</text>
+</g>
+<g font-size="12" text-anchor="middle" fill="#4a5866">
+<text x="95" y="98">keep WARN lines</text><text x="280" y="98">keep the node field</text><text x="445" y="98">same names together</text><text x="605" y="98">count each name</text>
+</g>
+<g stroke="#0b6e8a" stroke-width="3" marker-end="url(#a)"><line x1="170" y1="84" x2="210" y2="84"/><line x1="345" y1="84" x2="385" y2="84"/><line x1="500" y1="84" x2="540" y2="84"/><line x1="665" y1="84" x2="705" y2="84"/></g>
+<text x="712" y="80" font-size="12" fill="#0b6e8a">stdout</text><text x="712" y="95" font-size="12" fill="#0b6e8a">screen</text>
+<g font-family="monospace" font-size="11" fill="#1d2733" xml:space="preserve" style="white-space:pre">
+<rect x="40" y="130" width="310" height="92" fill="#fff" stroke="#ccd6e0"/>
+<text x="46" y="148">[WARN] [1789958102.2] [gps_node]: no fix…</text>
+<text x="46" y="164">[WARN] [1789958103.1] [estimator_node]: …</text>
+<text x="46" y="180">[WARN] [1789958104.1] [day_subscriber]: …</text>
+<text x="46" y="196">[WARN] [1789958112.1] [gps_node]: no fix…</text>
+<text x="46" y="212">… 84 lines</text>
+<rect x="370" y="130" width="150" height="92" fill="#fff" stroke="#ccd6e0"/>
+<text x="378" y="148">[day_subscriber]:</text><text x="378" y="164">[day_subscriber]:</text><text x="378" y="180">[estimator_node]:</text><text x="378" y="196">[gps_node]:</text><text x="378" y="212">…</text>
+<rect x="540" y="130" width="200" height="92" fill="#fff" stroke="#ccd6e0"/>
+<text x="548" y="148">     61 [day_subscriber]:</text><text x="548" y="164">      5 [estimator_node]:</text><text x="548" y="180">     18 [gps_node]:</text>
+</g>
+<text x="185" y="236" font-size="12" text-anchor="middle" fill="#4a5866">what flows into the first pipe</text>
+<text x="445" y="236" font-size="12" text-anchor="middle" fill="#4a5866">after cut</text>
+<text x="640" y="236" font-size="12" text-anchor="middle" fill="#4a5866">final output (stdout)</text>
+<path d="M28 108 V270 H690" fill="none" stroke="#c0392b" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#r)"/>
+<text x="40" y="262" font-size="12" fill="#c0392b">stderr (grep's error messages) does NOT go into the pipe: it goes to the screen, or to a file with 2&gt;</text>
+<text x="20" y="306" font-size="12" fill="#4a5866">Every program has 3 streams: 0 = stdin (input), 1 = stdout (normal output), 2 = stderr (errors).</text>
+<text x="20" y="322" font-size="12" fill="#4a5866">A pipe | connects stdout of the left program to stdin of the right program.</text>
 </svg>

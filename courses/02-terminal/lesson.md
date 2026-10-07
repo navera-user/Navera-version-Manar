@@ -1,286 +1,375 @@
-# The terminal: your robot's control room
+# Linux and the shell for robotics
 
-A NAVERA box is bolted inside a drone, on a field outside Sousse. It has **no screen, no mouse and
-no keyboard**. The test flight is over and the engineer wants to know: *did the GPS drop out? Did
-day vision take over? Where are the camera photos?* She plugs her laptop into the box, opens a
-window full of text… and types. In ten seconds she has her answers.
+A survey drone lands on a beach north of Sohar port after a training flight. Inside it, a NAVERA box:
+no screen, no keyboard, no mouse. The test engineer has three questions. *Did the GPS drop out? Did
+the arbiter switch to day vision, and for how long? Did any node report an error?* She connects her
+laptop to the box over the network, opens a **terminal**, and types four short commands joined by
+`|`. Twenty seconds later she has the answers, with exact times.
 
-That window is the **terminal**. Every robot engineer lives in it, because a robot's computer is
-almost never in front of you: it is in a drone, in a boat, on a rover, or in a data centre. Typing
-commands is the one way of working that is the same everywhere. In this lesson you learn the
-twenty commands that do 95 % of the job.
+Every robot computer works like this. The computer is inside a drone, a boat or a rover, or in a
+server room. It runs **Linux**, and engineers talk to it in text. This lesson gives you the working
+knowledge of Linux that a robotics engineer uses every day: the file system, permissions, processes
+and signals, environment variables, streams and pipes, the text tools, and small **bash** scripts. In
+the lab you will use them on two (synthetic) NAVERA flight logs from Sohar and Nizwa, and you will
+write a log-report script that works on any NAVERA log.
 
-## What is the terminal?
+> [!NOTE]
+> You do not have to memorise every option. Professionals look things up all the time:
+> `man grep` opens the manual of `grep` (quit with `q`), and `grep --help` prints a short summary.
 
-The **terminal** is a window where you type **commands** instead of clicking. The program that reads
-what you type and runs it is called the **shell** (ours is called `bash`). When it is ready, the
-shell shows a **prompt**:
+## 1. The shell and the anatomy of a command
+
+The **terminal** is the window. The **shell** is the program inside it that reads your line, runs it
+and shows the result. Ours is **bash**. When it waits for you, it shows a **prompt**:
 
 ```
 student@navera:~/lessons/02-terminal$
 ```
 
-| Part | Meaning |
-|---|---|
-| `student` | who you are (your user name) |
-| `navera` | the name of the computer |
-| `~/lessons/02-terminal` | the folder you are in right now |
-| `$` | "I'm ready, type a command" |
-
-A command is a line of words separated by spaces:
+This means: user `student`, on the computer (host) `navera`, in the folder `~/lessons/02-terminal`,
+and `$` = "ready". A command line is a list of words separated by spaces:
 
 ```
-ls  -l  ~/navera
-│    │    └── argument: WHAT to work on (here, a folder)
-│    └─────── option:   HOW to do it (here, "long" format) — starts with -
-└──────────── command:  WHAT to do (here, "list")
+grep  -c  "state NO_FIX"  mission/logs/sohar_2026-09-21.log
+│     │   │               └── argument 2: a file
+│     │   └── argument 1: the pattern (quotes keep the two words together)
+│     └── option: "count the matching lines" (options start with -)
+└── the command (a program on the disk: /usr/bin/grep)
 ```
 
-You type the line, press `Enter`, the shell runs it, prints the result, and shows a new prompt.
-If nothing is printed, that usually means **it worked**: Linux commands are quiet when all is well.
+Spaces separate words, so a file name with a space must be quoted (`"my file.txt"`). Case matters:
+`Notes.txt` and `notes.txt` are two different files. A command that succeeds usually prints
+**nothing**: in Linux, silence means success.
 
-> [!TIP]
-> Spaces matter. `ls -l` works, `ls-l` does not ("command not found"). Upper and lower case matter
-> too: `Ls` is not `ls`, and `Notes.txt` is not `notes.txt`.
+## 2. The file system
 
-## Where am I? Folders and paths
+Linux has **one tree** of folders (also called **directories**). Its top is the **root**, written
+`/`. Disks, USB sticks and even devices appear somewhere inside this tree.
 
-Your files are organised like a tree of folders inside folders. The very top is called the
-**root** and is written `/`. Your own space is your **home folder**, `/home/student`, which has a
-short name: `~` (the *tilde*).
+![The Linux tree, from / down to your lesson folder](assets/tree.svg)
 
-![The tree of folders: from the root / down to your lesson folder](assets/tree.svg)
-
-A **path** is the list of folders to cross to reach a file, separated by `/`.
-For example `/home/student/navera/navera_msgs/msg/PositionEstimate.msg`.
-
-Three commands are your compass:
-
-| Command | Means | Example |
-|---|---|---|
-| `pwd` | **p**rint **w**orking **d**irectory: where am I? | `/home/student/lessons/02-terminal` |
-| `ls` | **l**i**s**t what is here | `answers.py  inbox  mission_brief.txt` |
-| `cd` | **c**hange **d**irectory: go somewhere | `cd ~/navera` |
-
-### Absolute and relative paths
-
-- An **absolute path** starts with `/` (or `~`): it works from anywhere, like a full postal address.
-  `cd /home/student/navera` always goes to the same place.
-- A **relative path** starts from where you are, like "the second door on the left".
-  If you are in `~/navera`, then `cd day_pkg` goes to `~/navera/day_pkg`.
-
-Some special names:
-
-| Name | Means |
+| Folder | What it holds |
 |---|---|
-| `~` | your home folder, `/home/student` |
-| `.` | "here", the current folder |
-| `..` | the folder **above** (the parent) |
-| `cd` alone | go home |
-| `cd -` | go back to the folder you were in before |
+| `/etc` | system settings (text files). A NAVERA box keeps its site settings in `/etc/navera/navera.env` |
+| `/dev` | **devices as files**: `/dev/ttyTHS1` is the Jetson serial port of the GPS receiver, `/dev/video0` a camera |
+| `/proc` | live information about running programs: `/proc/<PID>/` for each process |
+| `/tmp` | temporary files, deleted at reboot |
+| `/usr/bin` | the programs themselves (`ls`, `grep`, `python3`…) |
+| `/home/student` | **your home folder**, written `~` for short |
+| `/data` | read-only course data in this academy (the satellite map, datasets) |
 
-So `cd ..` climbs one level, and `cd ../..` climbs two.
+A **path** names a file by the folders to cross: `/home/student/navera/navera_msgs/msg/PositionEstimate.msg`.
 
-### Useful options of `ls`
+- An **absolute path** starts at the root `/`. It means the same thing from anywhere.
+- A **relative path** starts from the **current folder** (the **working directory**). If you are in
+  `/home/student/navera`, the relative path `navera_msgs/msg` means `/home/student/navera/navera_msgs/msg`.
+- `~` is replaced by the shell with `/home/student`. So **`~/navera/day_pkg` and
+  `/home/student/navera/day_pkg` are exactly the same folder**. Commands like `find` print the long
+  form; you may type the short one.
+- `.` is the current folder and `..` its parent. `cd ..` climbs one level, `cd -` goes back to the
+  previous folder, `cd` alone goes home.
 
-| Command | Shows |
+| Command | Does |
 |---|---|
-| `ls` | the names |
-| `ls -l` | one per line, with size, date and permissions (a `d` at the start = a folder) |
-| `ls -a` | also the **hidden** files, whose names start with a dot (`.bashrc`, `.git`) |
-| `ls -la` (or `ll`) | both |
-| `ls ~/navera/day_pkg` | the contents of another folder, without going there |
+| `pwd` | print the working directory |
+| `ls`, `ls -l`, `ls -la` | list; long format; include hidden files (names starting with `.`) |
+| `cd path` | change directory |
+| `cat`, `head -n 5`, `tail -n 5`, `wc -l` | show a file; its first / last 5 lines; count its lines |
+| `less file` | scroll a long file (`q` quits) |
+| `mkdir -p a/b` | make folders, with parents |
+| `cp a b`, `cp -r dir1 dir2` | copy a file; copy a folder and everything in it (**recursive**) |
+| `mv a b` | move or rename |
+| `rm file`, `rmdir dir` | delete a file; delete an **empty** folder |
 
-## Looking inside files
+> [!WARNING]
+> `rm` has no recycle bin. Before `rm pattern`, run `ls pattern` with exactly the same pattern and
+> read the list. In lesson 5 you will see how git can bring back a committed file — but on a real
+> box, a deleted map or log is gone.
 
-| Command | What it does |
-|---|---|
-| `cat file` | prints the **whole** file (great for short files) |
-| `head file` | the first 10 lines; `head -n 3 file` the first 3 |
-| `tail file` | the last 10 lines; `tail -n 3 file` the last 3 |
-| `wc -l file` | counts the lines (**w**ord **c**ount, `-l` = lines) |
+### Wildcards (globbing)
 
-A long file printed with `cat` scrolls off the screen in a flash. Engineers use `head` and `tail`
-instead — for example `tail -n 20` on a log shows **what happened last**, which is usually what you
-want after a problem.
+`*` (any characters), `?` (exactly one character) and `[12]` (one of the listed characters) are
+**wildcards**. The **shell** replaces the pattern with the matching names **before** the command
+runs: `mv inbox/*.log mission/logs/` becomes `mv inbox/nizwa_2026-09-22.log
+inbox/sohar_2026-09-21.log mission/logs/`. The command itself never sees the `*`. This is also why
+you write `find . -name "*.py"` **with quotes**: you want `find` to receive the `*` and apply it in
+every sub-folder, not the shell to expand it in the current folder only.
+
+## 3. Users, groups and permissions
+
+Linux is multi-user. Every file has an **owner** (a user), a **group**, and three sets of
+**permissions**: for the owner (**u**), for the members of the group (**g**), and for all others
+(**o**). Each set has three bits: **r** read, **w** write, **x** execute (for a folder, x means
+"may enter it").
+
+```
+-rwxr-x---  1  student  dialout  1203  Oct  7 10:39  preflight.sh
+│└┬┘└┬┘└┬┘     │        │
+│ u  g  o      owner    group
+└ type: - file, d directory, l link, c character device
+```
+
+Each set is also written as one **octal** digit: r = 4, w = 2, x = 1, added together.
+
+| Symbols | Sum | Octal | Typical use |
+|---|---|---|---|
+| `rwx r-x r-x` | 4+2+1, 4+0+1, 4+0+1 | **755** | a program or script everyone may run |
+| `rw- r-- r--` | 6, 4, 4 | **644** | a normal text file |
+| `rw- rw- ---` | 6, 6, 0 | **660** | a device shared by one group, e.g. a serial port |
+| `rwx --- ---` | 7, 0, 0 | **700** | private to the owner |
+
+**Worked example.** `rw-r-----` → owner `rw-` = 4+2+0 = 6, group `r--` = 4, others `---` = 0 →
+**640**. Conversely `chmod 750 file` gives `rwxr-x---`.
+
+`chmod` changes permissions, symbolically (`chmod u+x file`, `chmod go-w file`) or in octal
+(`chmod 755 file`). Only the owner (or the administrator, **root**) may do it.
 
 > [!NOTE]
-> There is also `less file`, a viewer that lets you scroll with the arrow keys. It takes over the
-> terminal until you press `q` to quit. If you ever feel "stuck" in a screen like that, press `q`.
-> In this course `head`, `tail` and the **📝 Code** editor are all you need.
+> In this academy, `ls -l` may show a strange group name in the group column (for example
+> `shadow-team`). It is only the name of a group on the host computer that runs the sandboxes.
+> It changes nothing for you: ignore it.
 
-## Making, copying, moving and deleting
+### Why robots care: devices and the execute bit
 
-| Command | What it does |
+On the Jetson, the GPS serial port `/dev/ttyTHS1` is owned by `root`, group `dialout`, mode `0660`.
+A program can read the GPS only if its user is in the group `dialout`. That is why NAVERA's GPS
+service declares `SupplementaryGroups=dialout` (see "In NAVERA"). "Permission denied" on a device
+almost always means a missing group, never a broken sensor.
+
+A text file becomes a runnable program in two steps:
+
+1. Its first line is a **shebang**, `#!/bin/bash`: it tells Linux which interpreter must read the file.
+2. It has the **x** bit: `chmod +x script.sh`. Then `./script.sh` runs it. (`./` is needed because
+   the current folder is not in the `PATH`, see section 5.) Without the x bit you get
+   `Permission denied`; `bash script.sh` still works, because then `bash` is the program and the
+   script is only a file it reads.
+
+## 4. Processes and signals
+
+A running program is a **process**. Each one has a number, the **PID** (process ID), and a parent
+(the process that started it, often your shell).
+
+| Command | Does |
 |---|---|
-| `mkdir photos` | **m**a**k**e a **dir**ectory (folder) |
-| `mkdir -p mission/photos` | make it **and** its parents if they don't exist yet |
-| `cp a.txt b.txt` | **c**o**p**y a file (you now have two) |
-| `cp a.txt docs/` | copy into a folder (same name) |
-| `cp -r folder/ backup/` | copy a whole folder (`-r` = recursive: everything inside) |
-| `mv a.txt docs/` | **m**o**v**e a file into a folder (you still have one) |
-| `mv old.txt new.txt` | rename (a rename is just a move in the same folder) |
-| `mv inbox/old.txt docs/new.txt` | move **and** rename in one go |
-| `rm file` | **r**e**m**ove (delete) a file |
-| `rmdir folder` | remove an **empty** folder |
-| `rm -r folder` | remove a folder and everything in it |
+| `ps -f` | the processes of this terminal, with PID and parent PID (PPID) |
+| `ps -ef` | all processes of the machine |
+| `pgrep -a -f fake_node` | **search**: PID and full command line of the processes whose command contains `fake_node` |
+| `top` | live table of processes by CPU use (`q` quits) |
+| `cmd &` | start `cmd` in the **background**: the prompt comes back at once; the shell prints `[1] 4321` (job number, PID) |
+| `jobs`, `fg %1` | list this shell's background jobs; bring job 1 back to the foreground |
+| `echo $!` | the PID of the last background process |
+
+A **signal** is a short message from the system to a process. A program can **catch** most signals
+and react (for example, close its files cleanly), except `SIGKILL`.
+
+| Signal | Number | Sent by | Effect |
+|---|---|---|---|
+| `SIGINT` | 2 | **Ctrl+C**, to the foreground program | "interrupt" — ROS 2 nodes catch it and shut down cleanly |
+| `SIGTERM` | 15 | `kill PID` (the default) | "please terminate" — the polite way; systemd uses it to stop a service |
+| `SIGKILL` | 9 | `kill -9 PID` | immediate death; **cannot be caught**: no clean-up, files may stay half-written |
+
+Good practice is a **ladder**: Ctrl+C (or `kill PID`), wait a few seconds, and only then `kill -9 PID`.
+NAVERA's own test runner does exactly this (see "In NAVERA").
 
 > [!WARNING]
-> **The terminal has no recycle bin.** `rm` deletes for good, straight away, without asking.
-> Two habits keep you safe:
-> 1. Before `rm something`, run `ls something` with **exactly the same words** and read what it lists.
-> 2. Prefer `rmdir` for folders: it refuses to delete a folder that is not empty.
->
-> (Your NAVERA copy can be rebuilt with the Reset button, and lesson 5 shows how git protects you —
-> but on a real box, a deleted map is gone.)
+> **Kill exact PIDs, never by name pattern.** `pkill python3` or `killall ros2` stop *every*
+> matching process you are allowed to stop — on a shared robot or a shared lab computer, that can be
+> a colleague's node or the simulator of the whole class. First **find** the PID (`pgrep -a -f …`,
+> `ps -ef`), read the full command line, then `kill <that PID>`.
 
-## Wildcards: one name for many files
+When a process ends, it returns an **exit code**: `0` = success, anything else = failure. The shell
+keeps the code of the last command in `$?`:
 
-A **wildcard** is a special character that matches many names. The shell replaces the pattern by
-every name that fits, **before** running the command.
+```
+$ grep -q "state NO_FIX" mission/logs/sohar_2026-09-21.log ; echo $?
+0
+```
 
-| Pattern | Matches | Example in your inbox |
+`-q` makes grep quiet: only its exit code answers ("found" = 0, "not found" = 1, error = 2). A process
+stopped by a signal returns 128 + the signal number: 130 after Ctrl+C, 143 after `SIGTERM`,
+137 after `SIGKILL`.
+
+## 5. Environment variables
+
+Every process carries a small dictionary of **environment variables**: names with text values. A
+child process receives a **copy** of its parent's environment. This is how settings reach programs
+without changing their code.
+
+| Command | Does |
+|---|---|
+| `env` | print all environment variables |
+| `echo $ROS_DOMAIN_ID` | print one value (the shell replaces `$NAME` by its value) |
+| `MY_VAR=12` | a **shell variable**: only this shell sees it |
+| `export MY_VAR=12` | also give it to every program started **from now on** in this shell |
+| `NAME=value cmd` | set it for that one command only |
+| `echo ${MY_VAR:-none}` | the value, or `none` if it is unset or empty |
+
+Because a child gets a copy, a program can never change the environment of the shell that started
+it. And a value you `export` in one terminal does not exist in another terminal.
+
+**`PATH`** is the list of folders where the shell looks for commands, separated by `:`.
+`which grep` shows which file runs when you type `grep`.
+
+### ROS 2 uses the environment
+
+ROS 2 programs (nodes) find each other with a discovery protocol (DDS). Two variables decide who can
+see whom:
+
+- **`ROS_DOMAIN_ID`** (an integer): nodes only talk to nodes with the **same** domain ID. DDS turns it
+  into network port numbers. The discovery port is `7400 + 250 × domain`: for domain 42,
+  `7400 + 250 × 42 = 17 900`. Two different domains use different ports, so their traffic never
+  meets. The ROS 2 documentation recommends values from 0 to 101 on Linux.
+- **`ROS_LOCALHOST_ONLY=1`**: talk only inside this computer, never on the network.
+
+In this academy, each student has their own `ROS_DOMAIN_ID`: this is why you never see the topics of
+your neighbours. NAVERA's own settings are also environment variables, read by its code with
+`os.environ`. In your sandbox you can see some of them: `env | grep ^NAVERA_` shows, for example,
+`NAVERA_MBTILES` (the path of the satellite map).
+
+## 6. Streams, redirection and pipes
+
+Every process has three **streams**, numbered by **file descriptors**: **0 = stdin** (input),
+**1 = stdout** (normal output), **2 = stderr** (error messages). By default all three are the
+terminal. Redirection sends them elsewhere:
+
+| Syntax | Meaning |
+|---|---|
+| `cmd > out.txt` | stdout into a file (the file is **emptied first**) |
+| `cmd >> out.txt` | stdout appended at the end of the file |
+| `cmd 2> err.txt` | stderr into a file |
+| `cmd > all.txt 2>&1` | stdout into the file, **then** stderr to "where stdout goes now" (the same file) |
+| `cmd 2> /dev/null` | throw the error messages away (`/dev/null` swallows everything) |
+| `cmd < in.txt` | stdin from a file |
+| `a \| b` | a **pipe**: stdout of `a` becomes stdin of `b` |
+
+![A pipeline: each program does one small job; stderr bypasses the pipe](assets/pipe.svg)
+
+Order matters in `> file 2>&1`: the shell reads left to right. `2>&1 > file` would send stderr to the
+**old** stdout (the screen). And never redirect into the file you are reading: `sort a.txt > a.txt`
+empties `a.txt` before `sort` reads it.
+
+## 7. The text tools
+
+Logs and settings are text, so a handful of small tools answers most questions.
+
+| Tool | Example | Does |
 |---|---|---|
-| `*` | any characters (even none) | `*.jpg` → all the photos |
-| `?` | exactly one character | `cache_0?.tmp` → `cache_01.tmp`, `cache_02.tmp`, `cache_03.tmp` |
-| `[12]` | one of the characters listed | `frame_000[12].jpg` → frames 1 and 2 |
+| `grep` | `grep -c "^\[WARN\]" f.log` | lines matching a pattern; `-c` count, `-v` invert, `-n` line numbers, `-i` ignore case, `-r` recursive, `-l` file names only, `-q` quiet, `-m 1` stop after the first match |
+| `cut` | `cut -d' ' -f3` | keep field 3, fields separated by a space |
+| `sort` | `sort`, `sort -n`, `sort -rn` | sort lines (text order, numeric, reverse numeric) |
+| `uniq -c` | `sort \| uniq -c` | count runs of identical lines (so **sort first**) |
+| `wc -l` | `wc -l < f.log` | count lines (with `<`, only the number is printed, not the file name) |
+| `find` | `find ~/navera -name "*.py" -type f` | files by name, type, size, date |
+| `xargs` | `find … \| xargs wc -l` | turn input lines into **arguments** of a command |
+| `date` | `date -d @1789958724` | turn a Unix time (seconds since 1970-01-01 UTC) into a date |
 
-So `mv inbox/*.jpg mission/photos/` is really `mv inbox/frame_0001.jpg inbox/frame_0002.jpg
-inbox/frame_0003.jpg mission/photos/` — the shell typed the long version for you.
-That is also why the "`ls` first, then `rm`" habit works so well: `ls inbox/*.tmp` shows exactly
-the files that `rm inbox/*.tmp` would delete.
+`grep` patterns are **regular expressions**: `^` means "start of the line", `$` "end of the line",
+`.` "any character". Square brackets have a special meaning (a set of characters), so to match a
+real `[` you write `\[`. Hence `"^\[WARN\]"`: lines that **start** with `[WARN]`. Without `^`, a line
+like `[INFO] … previous WARN cleared` would also be counted.
 
-## Typing less: the four keys of a pro
+**Time zones.** Logs store time in **UTC**; Oman is **UTC+4** all year (no daylight saving).
+`TZ=Asia/Muscat date -d @1789958724 +%T` prints the Oman wall-clock time `06:45:24`.
 
-| Key | What it does |
-|---|---|
-| `Tab` | **completes** the name you are typing. Type `cd ~/nav` then `Tab` → `cd ~/navera/`. If nothing happens, press `Tab` twice: the shell shows all the possibilities. |
-| `↑` / `↓` | brings back your previous commands, to run them again or fix a typo |
-| `Ctrl+C` | **stops** the command that is running (a program that never ends, a mistake…) |
-| `Ctrl+L` | clears the screen (same as the command `clear`) |
+**`xargs`** solves a common problem: `wc -l` wants file names as arguments, but `find` prints them on
+stdout. `find ~/navera/navera_estimator -name "*.py" | xargs wc -l` builds the command
+`wc -l file1 file2 …` for you; its last line is the total. (`xargs cat | wc -l` gives the same total.)
 
-`history` prints the list of everything you typed, with a number in front of each line.
+### Reading a ROS 2 log line
 
-Tab completion is not just lazy: it **prevents mistakes**. If `Tab` does not complete a name, the
-name is wrong or the file is not where you think — you know it before running anything.
-
-> [!TIP]
-> Because `Ctrl+C` means "stop" in a terminal, copy and paste are different there. In most
-> terminals, select the text with the mouse and use **right-click → Copy / Paste**, or
-> `Ctrl+Shift+C` / `Ctrl+Shift+V`. The **▶ Run** buttons in the lessons do the typing for you.
-
-## Searching: `find` for names, `grep` for contents
-
-NAVERA has hundreds of files. Nobody remembers where everything is — engineers **search**.
-
-**`find`** looks for files by their **name**, in a folder and all its sub-folders:
+NAVERA's nodes write their messages in the ROS 2 console format:
 
 ```
-find ~/navera -name "gps_params.yaml"         a file with exactly this name
-find ~/navera/day_pkg -name "*.py"            every Python file in day_pkg
-find ~/navera -type d -name "test"            only folders (-type d) called test
+[WARN] [1789958724.123456789] [estimator_node]: state NO_FIX: no source usable
+ │      │                      │                 └── the message
+ │      │                      └── the node that wrote it
+ │      └── time: Unix seconds . nanoseconds (UTC)
+ └── severity: DEBUG, INFO, WARN, ERROR, FATAL
 ```
 
-Put the pattern in quotes (`"*.py"`): then `find` receives the star itself and searches every
-sub-folder, instead of the shell replacing it right away with the names of the current folder.
+Split on spaces, the severity is field 1, the time field 2, the node field 3. The arbiter
+(`estimator_node`) reports its state — **FIX**, **DEGRADED** or **NO_FIX** — and the active source.
 
-**`grep`** looks **inside** files for a line containing a word:
-
-```
-grep "GPS LOST" flight.log                    the lines of flight.log that contain GPS LOST
-grep -n "winner" flight.log                   -n: with the line numbers
-grep -i "gps" flight.log                      -i: ignore upper/lower case
-grep -c "GPS LOST" flight.log                 -c: only the number of matching lines
-grep -r "haversine_m" ~/navera/navera_common  -r: in every file of every sub-folder
-grep -rl "PositionEstimate" ~/navera/day_pkg  -l: only the names of the files that match
-```
-
-| You know… | Use |
-|---|---|
-| the file's **name** (or part of it) | `find` |
-| a **word** that is written in the file | `grep` |
-
-A typical engineer's question: "*which files use the message `PositionEstimate`?*" — that is a word
-inside files, so: `grep -rl PositionEstimate ~/navera/day_pkg`. And "*where is
-`PositionEstimate.msg`?*" — that is a name, so: `find ~/navera -name "PositionEstimate.msg"`.
-
-## Pipes and redirection: plugging commands together
-
-Every command prints its result on the screen — that is its **output**. Two symbols let you send
-that output somewhere else.
-
-**The pipe `|`** sends the output of one command **into** the next one, like a water pipe between
-two machines. Each command does one small job; together they answer a real question.
-
-![A pipe: cat → grep → wc, only the final number reaches the screen](assets/pipe.svg)
+**Worked example.** "Which node complained most during the Sohar flight?"
 
 ```
-cat mission/logs/*.log | grep "match OK" | wc -l
+grep "^\[WARN\]" sohar.log | cut -d' ' -f3 | sort | uniq -c | sort -rn | head -n 1
 ```
 
-reads: "print every line of the logs, keep only those with *match OK*, count them".
-More examples:
+grep keeps the WARN lines (84), cut keeps `[day_subscriber]:` etc., sort groups equal names, uniq -c
+counts each group, `sort -rn` puts the biggest count first, head keeps one line: `61 [day_subscriber]:`.
 
+## 8. Bash scripts
+
+A **script** is a file of commands. Bash adds variables, tests and loops:
+
+```bash
+#!/bin/bash
+# count_level.sh — how many lines of a log have a given severity
+# usage: ./count_level.sh LOGFILE LEVEL
+set -e                                  # stop at the first command that fails
+
+if [ $# -ne 2 ]; then                   # $# = number of arguments
+    echo "usage: $0 LOGFILE LEVEL" >&2  # message on stderr (>&2)
+    exit 2
+fi
+log="$1"                                # $1, $2 = the arguments; NO spaces around =
+level="$2"
+if [ ! -f "$log" ]; then                # -f: "is a regular file"; ! = not
+    echo "no such file: $log" >&2
+    exit 1
+fi
+n=$(grep -c "^\[$level\]" "$log" || true)   # $(...) = the output of a command
+echo "$level: $n"
 ```
-ls ~/navera | wc -l                           how many names in ~/navera?
-find ~/navera/day_pkg -name "*.py" | wc -l    how many Python files in day_pkg?
-history | tail -n 5                           your last 5 commands
-grep -r "import" ~/navera/gps_pkg | head -n 3 only the first 3 results
+
+```bash
+for f in mission/logs/*.log; do         # a loop over the files of a pattern
+    echo "$(basename "$f"): $(wc -l < "$f") lines"
+done
 ```
 
-**Redirection `>`** sends the output **into a file** instead of the screen:
+Rules that avoid 90 % of script bugs:
 
-```
-ls ~/navera > packages.txt         creates packages.txt (or REPLACES it!) with the list
-echo "flight checked" >> notes.txt ADDS a line at the end of notes.txt
-```
-
-| Symbol | Means |
-|---|---|
-| `a \| b` | the output of `a` becomes the input of `b` |
-| `a > file` | write the output of `a` into `file` — **erases** what was in it |
-| `a >> file` | **add** the output of `a` at the end of `file` |
-
-`echo` simply prints its words: `echo hello` prints `hello`. With `>>` it is the quickest way to
-add a line to a file.
-
-> [!WARNING]
-> `>` empties the file **first**. `grep word notes.txt > notes.txt` destroys `notes.txt` before grep
-> even reads it. Always write into a **new** file name.
+- **No spaces around `=`** in an assignment: `n=3`, not `n = 3` (that runs a command called `n`).
+- **Quote variables**: `"$log"`. Without quotes, a value with spaces becomes several words.
+- In `[ … ]` you **need** the spaces: `[ "$n" -gt 0 ]`. Numbers: `-eq -ne -lt -le -gt -ge`;
+  text: `=` and `!=`; files: `-f` (file), `-d` (folder), `-e` (exists), `-x` (executable).
+- `set -e` stops the script at the first failing command. Careful: **`grep` exits with 1 when it
+  finds nothing**, so under `set -e` an assignment `n=$(grep -c …)` that counts 0 matches stops your
+  script silently. `|| true` ("or else do nothing, successfully") keeps it going; grep still prints `0`.
+- Errors and usage messages go to **stderr** (`>&2`) and the script ends with a **non-zero exit
+  code**. Normal results go to stdout. Then other programs can pipe your output safely.
+- `basename path` prints the last part of a path: `basename mission/logs/sohar_2026-09-21.log`
+  → `sohar_2026-09-21.log`.
 
 ## 🐦 How birds do it
 
-A NAVERA box has no screen. Neither does the tiny backpack that scientists fit on a bird.
+You cannot ask a falcon over the Gulf of Oman where it went. Ornithologists do the next best thing:
+they fit a tiny solar-powered tag that records GPS positions and sends them by satellite or by the
+mobile-phone network. Tagged birds include **sooty falcons**, which breed on rocky islands off the Omani
+coast — the Daymaniyat Islands among them — and spend the northern winter in Madagascar; and
+**steppe eagles**, which breed in the steppes of Central Asia, many of which spend the winter in
+Dhofar, around Salalah. The tags showed routes that nobody could have followed with binoculars: long
+journeys over sea and desert, with stopovers.
 
-To study migration, ornithologists (bird scientists) put small **tracking tags** on birds. Some tags,
-used on large birds like **white storks**, contain a GPS receiver and a mobile-phone chip: from time
-to time they send the bird's latest positions through the phone network. The scientist reads them on
-a computer far away, without ever touching the bird again. It is the same situation as the engineer
-in the field: the machine is somewhere you cannot click, so you talk to it in **text**.
+What reaches the scientist is **text**: one line per position, like
+`2025-10-14T06:30:00Z,17.02,54.09,eagle_07` (time in UTC, latitude, longitude, bird). A season of
+tracking is tens of thousands of such lines. The first tools are the ones of this lesson:
+`grep eagle_07 tracks.csv` keeps one bird, `cut -d, -f1` keeps the times, `| wc -l` counts the fixes,
+`> eagle_07.csv` saves them. Like the NAVERA box, the tag is far away and has no screen; the only way
+to know what happened is to read its log.
 
-What arrives is text, too — thousands of lines, one per position. A line might look like
-`2025-09-14 07:30:00,36.85,10.32,stork_17`: date, time, latitude, longitude, bird. Big public
-databases such as Movebank hold millions of such lines, for thousands of animals. And the first tools
-a scientist reaches for are the ones of this lesson: `grep stork_17 tracks.csv` keeps one bird,
-`| wc -l` counts its positions, `> stork_17.csv` saves them in a new file.
-
-Navi likes the storks' story because of Tunisia. Storks are **soaring** birds: they glide on rising
-warm air, called *thermals*, to save energy. Thermals form over land, not over cold sea, so storks
-avoid long sea crossings and squeeze through narrow places such as the Strait of Gibraltar. Plot their
-lines of text on a map and you see that funnel appear.
-
-NAVERA's flight logs are no different: lines of text that you search, cut, count and save from the
-terminal.
+Navi, the swallow of this course, has no tag — barn swallows are too light for a GPS-satellite tag,
+so they are studied with even smaller **geolocators** that log only light levels. But the method is the
+same: a device records, the engineer reads lines of text, and a short pipeline turns them into an answer.
 
 ## In NAVERA
 
-The real NAVERA box is installed and started from the terminal: the installer
-`deploy/install.sh`, the pre-flight check `navera_tools/check_box.py`, the simulator
-`navera_tools/run_sim.sh` and the test suite `navera_tools/run_tests.sh` are all commands you
-type. Open [run_tests.sh](file:navera/navera_tools/run_tests.sh) and look near the top: the very
-tools of this lesson, chained with pipes, are how NAVERA finds its own tests.
+**Finding the tests with a pipeline.** [run_tests.sh](file:navera/navera_tools/run_tests.sh) is how
+NAVERA runs its test suite. It builds its list of test files with `find`, `grep -v`, `cut` and `sort`:
 
-```text
+```bash
 mapfile -t UNIT < <(find . -path ./build -prune -o -path ./install -prune -o \
     -path '*/test/test_*.py' -print \
   | grep -vE 'test_(flake8|pep257|copyright)\.py$' \
@@ -290,63 +379,95 @@ mapfile -t UNIT < <(find . -path ./build -prune -o -path ./install -prune -o \
     done | sort)
 ```
 
-You don't need to understand every symbol yet, but you can already read the idea:
+`find` lists the test files but skips (`-prune`) the generated folders `build/` and `install/`;
+`grep -v` removes the style checkers; `cut -d/ -f2` extracts the package name from `./pkg/test/…`;
+the `[ -e … ] ||` test drops packages that contain a `COLCON_IGNORE` file; `sort` orders the list.
 
-1. `find .` lists every file whose path looks like `*/test/test_*.py` (it skips `build` and
-   `install`, the copies made by the build — exactly like you will in the lab);
-2. `| grep -v …` **removes** (`-v` = invert) the style-checking tests;
-3. `| while read … echo` keeps only files of packages that are not switched off;
-4. `| sort` puts the list in alphabetical order.
+**Signals, the polite way first.** The same file stops a test that hangs with the signal ladder of
+section 4 — SIGTERM to the whole process group, 5 s of patience, then SIGKILL:
 
-The same goes for the box's logs, its map files and its settings: on a real vehicle, the terminal
-is how you inspect and fix NAVERA.
+```bash
+      echo "TIMED OUT after ${limit} s: $*"
+      kill -TERM -- "-$pid" 2>/dev/null; sleep 5; kill -KILL -- "-$pid" 2>/dev/null
+```
+
+**Environment and permissions in a service.** On a deployed box, systemd starts each NAVERA part as a
+service. [navera-gps.service](file:navera/deploy/systemd/navera-gps.service) loads the site settings
+as environment variables and gives the service the group that may open the GPS serial port:
+
+```ini
+# Site settings shared by all NAVERA units (data paths, ROS_DOMAIN_ID...).
+# The leading "-" keeps the unit working if the file does not exist.
+EnvironmentFile=-/etc/navera/navera.env
+User=navera
+Group=navera
+# /dev/ttyTHS1 is root:dialout 0660 on JetPack.
+SupplementaryGroups=dialout
+Restart=always
+```
+
+**The ROS domain.** [navera_boot_lib.sh](file:navera/deploy/systemd/navera_boot_lib.sh) makes sure
+`ROS_DOMAIN_ID` is a number before it sources ROS; otherwise NAVERA isolates itself on domain 42,
+loopback only. `${ROS_DOMAIN_ID:-0}` and `export` are exactly the syntax of section 5:
+
+```bash
+    if [[ ! "${ROS_DOMAIN_ID:-0}" =~ ^[0-9]+$ ]]; then
+        export ROS_DOMAIN_ID=42 ROS_LOCALHOST_ONLY=1
+    fi
+    source /opt/ros/humble/setup.bash
+```
 
 > [!NOTE]
-> Your copy has two folders that the code does not live in: `build/` and `install/`. They are made
-> by the build tool (`colcon`, lesson 9) and contain **copies and links** of the source files.
-> When you search, the file you want to read or change is almost always the one **outside** them.
+> Your copy has two folders that the source code does not live in: `build/` and `install/`. The
+> build tool `colcon` (lesson 9) makes them; they hold copies and links of the sources. When you search,
+> the file to read or change is the one **outside** them — exactly what `-prune` does above.
 
-## Words of this lesson
+## Glossary
 
-| Word | Meaning |
+| Term | Meaning |
 |---|---|
-| **terminal** | the window where you type commands |
-| **shell** | the program that runs your commands (`bash`) |
-| **prompt** | the text before the cursor; it shows who and where you are |
-| **command / option / argument** | what to do / how (`-l`) / on what (`~/navera`) |
-| **folder (directory)** | a container of files and other folders |
-| **path** | the folders to cross to reach a file, separated by `/` |
-| **absolute / relative path** | from the root `/` (or `~`) / from where you are |
-| **home (`~`)** | your own folder, `/home/student` |
-| **wildcard** | `*`, `?`: a pattern that matches many names |
-| **output** | what a command prints |
-| **pipe (`\|`)** | sends one command's output into the next command |
-| **redirection (`>`, `>>`)** | sends a command's output into a file (replace / add) |
+| **shell / bash** | the program that reads and runs your command lines |
+| **working directory** | the current folder; relative paths start there (`pwd`) |
+| **absolute / relative path** | starts at `/` / starts at the working directory |
+| **`~` (home)** | `/home/student`; `~/navera` = `/home/student/navera` |
+| **wildcard (glob)** | `*`, `?`, `[…]`, expanded by the shell into matching names |
+| **permission bits** | r, w, x for owner, group, others; octal r=4 w=2 x=1 |
+| **shebang** | first line `#!/bin/bash`: which interpreter runs the file |
+| **process / PID** | a running program / its number |
+| **signal** | a message to a process: SIGINT (2, Ctrl+C), SIGTERM (15, `kill`), SIGKILL (9, cannot be caught) |
+| **exit code** | the number a process returns; 0 = success; in `$?` |
+| **environment variable** | named text value inherited by child processes (`export`) |
+| **`ROS_DOMAIN_ID`** | integer that separates ROS 2 networks; same ID = can talk |
+| **stdin / stdout / stderr** | streams 0 / 1 / 2 of a process |
+| **redirection** | `>`, `>>`, `2>`, `2>&1`, `<`: connect a stream to a file |
+| **pipe** | `\|`: stdout of one command into stdin of the next |
+| **regular expression** | a text pattern: `^` start, `$` end, `.` any character, `\[` a real bracket |
+| **Unix time** | seconds since 1970-01-01 00:00 UTC |
 
 ## Check what you learned
 
-<details><summary>1. You are in <code>~/navera/day_pkg/day_pkg</code>. Where does <code>cd ../..</code> take you?</summary>
-Two levels up: <code>~/navera</code>. (<code>..</code> → <code>~/navera/day_pkg</code>, then <code>..</code> again → <code>~/navera</code>.)
+<details><summary>1. You are in <code>/home/student/navera/day_pkg/day_pkg</code>. Write two other forms of the path <code>../../navera_msgs</code>.</summary>
+<code>/home/student/navera/navera_msgs</code> (absolute) and <code>~/navera/navera_msgs</code> (with the tilde). All three name the same folder.
 </details>
 
-<details><summary>2. What is the difference between <code>cp a.txt docs/</code> and <code>mv a.txt docs/</code>?</summary>
-After <code>cp</code> you have two files (the original and the copy in docs/). After <code>mv</code> you have only
-one, now in docs/.
+<details><summary>2. <code>ls -l</code> shows <code>-rw-r--r-- preflight.sh</code>. Why does <code>./preflight.sh</code> fail, and which command fixes it? What is the octal mode afterwards?</summary>
+There is no x bit, so Linux refuses to execute the file ("Permission denied"). <code>chmod u+x preflight.sh</code> gives <code>rwxr--r--</code> = 744; <code>chmod +x</code> gives <code>rwxr-xr-x</code> = 755. (<code>bash preflight.sh</code> would work without x.)
 </details>
 
-<details><summary>3. You want every Python file that contains the word <code>haversine_m</code>. find or grep?</summary>
-<code>grep</code>, because the word is <i>inside</i> the files: <code>grep -rl haversine_m ~/navera --include="*.py"</code>.
-<code>find</code> only looks at names.
+<details><summary>3. A node does not stop with Ctrl+C. What do you do, in order — and why not <code>pkill python3</code>?</summary>
+Find its PID (<code>pgrep -a -f name</code> or <code>ps -ef</code>), read the command line, then <code>kill PID</code> (SIGTERM). If it is still alive after a few seconds, <code>kill -9 PID</code> (SIGKILL, no clean-up). <code>pkill python3</code> would also stop every other Python program you own — on a shared machine, possibly other people's work.
 </details>
 
-<details><summary>4. What does <code>ls ~/navera | wc -l</code> print?</summary>
-One number: how many names <code>ls</code> listed in <code>~/navera</code>. The list itself never reaches the screen:
-it goes through the pipe into <code>wc -l</code>, which counts its lines.
+<details><summary>4. In terminal A you type <code>export ROS_DOMAIN_ID=7</code>. A node started in terminal B does not see the nodes of terminal A. Why?</summary>
+An exported variable is copied only to processes started from <b>that</b> shell. Terminal B has its own environment, with its own ROS_DOMAIN_ID; different domains use different ports (7400 + 250 × domain), so the nodes never discover each other.
 </details>
 
-<details><summary>5. Why is <code>sort notes.txt > notes.txt</code> a bad idea?</summary>
-<code>></code> empties notes.txt before <code>sort</code> reads it: you end up with an empty file. Write into a new
-name: <code>sort notes.txt > sorted.txt</code>.
+<details><summary>5. What do <code>cmd > out.txt 2>&1</code> and <code>cmd 2>&1 > out.txt</code> do?</summary>
+The first sends stdout to out.txt, then stderr to the same place: both in the file. The second first sends stderr to where stdout is <i>at that moment</i> (the screen), then stdout to the file: errors still appear on the screen.
+</details>
+
+<details><summary>6. A script with <code>set -e</code> contains <code>n=$(grep -c "^\[ERROR\]" "$1")</code>. It stops silently on a log with no ERROR line. Why, and how do you fix it?</summary>
+grep exits with code 1 when it finds no match (it still prints 0). Under <code>set -e</code> that non-zero code stops the script. Write <code>n=$(grep -c "^\[ERROR\]" "$1" || true)</code>.
 </details>
 
 Now open the **🛠️ Lab** tab.

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 300" font-family="sans-serif" font-size="13">
+  <rect width="700" height="300" fill="#f7fafc"/>
+  <defs><marker id="k" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#1d2733"/></marker></defs>
+  <text x="350" y="26" text-anchor="middle" font-weight="bold" fill="#1d2733" font-size="15">Complementary filter (one angle, e.g. roll)</text>
+  <!-- gyro path -->
+  <rect x="20" y="60" width="120" height="48" rx="6" fill="#e3f0f5" stroke="#0b6e8a"/>
+  <text x="80" y="80" text-anchor="middle" fill="#0b6e8a" font-weight="bold">gyroscope</text>
+  <text x="80" y="98" text-anchor="middle" fill="#0b6e8a" font-size="12">rate ω (rad/s)</text>
+  <rect x="190" y="60" width="170" height="48" rx="6" fill="#fff" stroke="#1d2733"/>
+  <text x="275" y="80" text-anchor="middle" fill="#1d2733">predict</text>
+  <text x="275" y="98" text-anchor="middle" fill="#1d2733" font-size="12">φ_pred = φ_prev + (dφ/dt)·dt</text>
+  <line x1="140" y1="84" x2="188" y2="84" stroke="#1d2733" stroke-width="1.5" marker-end="url(#k)"/>
+  <!-- accel path -->
+  <rect x="20" y="190" width="120" height="48" rx="6" fill="#fbeedd" stroke="#a8680d"/>
+  <text x="80" y="210" text-anchor="middle" fill="#a8680d" font-weight="bold">accelerometer</text>
+  <text x="80" y="228" text-anchor="middle" fill="#a8680d" font-size="12">specific force f</text>
+  <rect x="190" y="190" width="170" height="48" rx="6" fill="#fff" stroke="#1d2733"/>
+  <text x="275" y="210" text-anchor="middle" fill="#1d2733">tilt from gravity</text>
+  <text x="275" y="228" text-anchor="middle" fill="#1d2733" font-size="12">φ_acc = atan2(f_y, f_z)</text>
+  <line x1="140" y1="214" x2="188" y2="214" stroke="#1d2733" stroke-width="1.5" marker-end="url(#k)"/>
+  <!-- blend -->
+  <circle cx="450" cy="150" r="26" fill="#fff" stroke="#1d2733" stroke-width="1.5"/>
+  <text x="450" y="155" text-anchor="middle" fill="#1d2733" font-size="16">Σ</text>
+  <line x1="360" y1="84" x2="430" y2="133" stroke="#0b6e8a" stroke-width="1.5" marker-end="url(#k)"/>
+  <text x="398" y="94" fill="#0b6e8a" font-size="12">× α</text>
+  <line x1="360" y1="214" x2="430" y2="167" stroke="#a8680d" stroke-width="1.5" marker-end="url(#k)"/>
+  <text x="398" y="214" fill="#a8680d" font-size="12">× (1 − α)</text>
+  <line x1="476" y1="150" x2="560" y2="150" stroke="#1d2733" stroke-width="1.5" marker-end="url(#k)"/>
+  <text x="566" y="146" fill="#1d2733" font-weight="bold">φ (estimate)</text>
+  <text x="566" y="164" fill="#1d2733" font-size="12">α = τ / (τ + dt)</text>
+  <!-- feedback -->
+  <path d="M520 150 L520 275 L170 275 L170 98 L188 98" fill="none" stroke="#888" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#k)"/>
+  <text x="345" y="268" text-anchor="middle" fill="#666" font-size="12">φ_prev (next step)</text>
+  <!-- notes -->
+  <text x="566" y="196" fill="#0b6e8a" font-size="12">gyro: smooth,</text>
+  <text x="566" y="212" fill="#0b6e8a" font-size="12">but drifts</text>
+  <text x="566" y="234" fill="#a8680d" font-size="12">accel: no drift, but</text>
+  <text x="566" y="250" fill="#a8680d" font-size="12">noisy, wrong in turns</text>
+</svg>

@@ -1,0 +1,47 @@
+# Lab 16 — report
+
+## 1. Gyroscope drift
+
+After 300 s the gyroscope-only heading is wrong by -9.42 degrees. The z bias of the log is
+0.03 deg/s, so I predicted 0.03 × 300 = 9.0 degrees. The difference of about 0.4 degrees comes
+from the white noise (a random walk) and from the small biases on x and y, which leak into the
+heading when the drone is tilted. The error only grows: nothing in the gyroscope can correct it.
+
+## 2. Tilt: accelerometer and complementary filter
+
+The accelerometer alone has a roll error of up to 19.3 degrees. It happens in the turns: the
+drone banks about 14 degrees, but in a coordinated turn the specific force stays along the body
+z axis, so the accelerometer believes the drone is level. Its RMS roll error is 4.82 degrees.
+The best time constant of my sweep is tau = 30 s (roll RMS 0.53 degrees, pitch RMS 1.32 degrees).
+A very small tau trusts the accelerometer, so the filter copies its noise and its errors in
+turns and accelerations. A very large tau trusts the gyroscope, so the bias error b × tau grows
+and the filter needs a long time to recover from a wrong start.
+
+## 3. Compass and true north
+
+The declination at the place of the log (near Nizwa, October 2026) is +1.62 degrees. My true
+heading (tilt-compensated magnetic heading + declination) has an RMS error of 0.92 degrees.
+Without tilt compensation the RMS error is 2.95 degrees. The field in Oman dips about 36 degrees
+below the horizon, so a vertical component leaks into the horizontal axes as soon as the drone
+pitches or rolls, and the heading moves even when the drone does not turn.
+
+## 4. Declination in Oman
+
+| Place | Declination (deg, east +) |
+|---|---|
+| Muscat | +1.67 |
+| Sohar | +1.95 |
+| Nizwa | +1.62 |
+| Salalah | +0.96 |
+| Masirah | +1.11 |
+
+If the declination of Muscat is ignored, the side error after 10 km is
+10000 × tan(1.67°) = 291 m. This is much larger than the accuracy that a navigation system wants.
+
+## 5. Comparison with NAVERA
+
+NAVERA's `quat_to_matrix` in navera_common/camera_model.py does the same job as my
+`quat_to_matrix`, and `slerp` in navera_common/sensor_history.py does the same job as my `slerp`.
+NAVERA (like ROS) stores a quaternion as (x, y, z, w), with the scalar LAST; my code uses
+(w, x, y, z), with the scalar FIRST. I must convert with xyzw_to_wxyz before I compare them,
+otherwise the numbers are silently wrong.

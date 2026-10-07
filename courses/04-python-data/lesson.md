@@ -1,365 +1,380 @@
-# Lists, loops and files: reading a flight log
+# Data analysis: reading a flight-test campaign
 
-The drone has landed. During its 9-minute flight, its computer wrote one line every two seconds:
-the time, the position, the altitude, the speed, the battery, and whether the GPS was working.
-That makes 278 lines. The test engineer has four questions before the next flight:
+A test week is over. Four drone flights were logged in Oman: along the Muscat coast, around a port
+near Sohar, over the foothills near Nizwa, and a survey line pattern near Barr Al Hikman. The logger
+wrote one row every 2 seconds per flight: 1556 rows, ten columns. The test engineer must answer
+before the next campaign:
 
-- How **high** did it go?
-- How **fast** did it fly, on average?
-- **How often**, and for **how long**, was the GPS lost?
-- What did the **track** look like?
+- Is the data clean? (Loggers write rows twice; sensors glitch; cells stay empty.)
+- How long, how far, how high did each flight go?
+- **How often and how long was GPS lost**, and what did NAVERA report meanwhile?
+- How noisy is each position source?
 
-Reading 278 lines by hand would take an hour and you would make mistakes. With what you learn
-today, Python answers in a few milliseconds — and the same program works on a log of a million
-lines. You need four new tools: **lists**, **loops**, **dictionaries** and **files**.
+You will answer with the standard tools of every data engineer: the `csv` module, **pandas**,
+**NumPy**, **matplotlib** and **json**. The campaign is **synthetic** (generated for this course,
+with realistic errors); NAVERA's real recordings cover Sousse, Tunisia, where it is developed. The
+methods are the same ones NAVERA's team uses to produce the numbers in
+`docs/VALIDATION_STATUS.md`.
 
-## Lists: many values in one variable
+## 1. The file: CSV
 
-A **list** is an ordered collection of values, written between square brackets:
+A **CSV** (comma-separated values) file is text: a **header** line with the column names, then one
+line per row.
+
+```
+flight_id,time_s,lat,lon,alt_m,speed_mps,battery_pct,gps_valid,source,state
+muscat_coast,0,23.614003,58.590012,0.0,0.52,99.9,1,gps,FIX
+sohar_port,480,,,120.6,13.71,74.1,0,none,NO_FIX
+```
+
+The second line has **empty cells**: during that moment no source gave a position. Every value in
+the file is text; the program decides what is a number.
+
+### Opening a file: `with`
 
 ```python
-altitudes = [0.0, 8.0, 16.0, 24.0, 120.5]
-sources = ["gps", "gps", "day_vision"]
-empty = []
+with open("campaign.csv") as f:      # f is the open file
+    header = f.readline()
+# here the file is closed again, even if an error happened inside the block
 ```
 
-Each value has a position called its **index**. Indexes **start at 0**:
+`with` is a **context manager**: it opens the file, runs the indented block, and **always closes**
+the file at the end — also when an exception stops the block. Without it, an error could leave the
+file open (and, when writing, data not saved). Write files with `open(path, "w")`: `"w"` empties
+the file first, `"a"` appends.
 
-| Code | Result | Why |
-|---|---|---|
-| `altitudes[0]` | `0.0` | the first item |
-| `altitudes[2]` | `16.0` | the third item |
-| `altitudes[-1]` | `120.5` | negative index = from the end: the last item |
-| `len(altitudes)` | `5` | how many items |
-| `altitudes[1:3]` | `[8.0, 16.0]` | a **slice**: from index 1 up to (not including) 3 |
-| `"gps" in sources` | `True` | is this value in the list? |
-
-Lists can change:
-
-```python
-altitudes.append(130.0)     # add at the end -> 6 items
-altitudes[0] = 1.5          # replace the first item
-```
-
-`altitudes[10]` on a 6-item list is an `IndexError`: there is no item number 10.
-
-## `for` loops: do something for every item
-
-A **loop** repeats some lines. The `for` loop takes the items of a list **one by one**:
-
-```python
-for alt in altitudes:
-    print("altitude:", alt)
-```
-
-The variable `alt` holds the first item, the indented lines run; then `alt` holds the second item,
-the lines run again… until the list is finished. Like `if`, the loop line ends with `:` and its
-body is indented.
-
-### Three patterns you will use all your life
-
-**1. Add up (the accumulator).** Start a total at 0, add each item:
-
-```python
-total = 0
-for alt in altitudes:
-    total = total + alt         # or: total += alt
-average = total / len(altitudes)
-```
-
-**2. Count.** Start a counter at 0, add 1 when a condition is true:
-
-```python
-lost = 0
-for s in sources:
-    if s != "gps":
-        lost += 1
-```
-
-**3. Keep the best so far.** Start with the **first item** (not 0!), replace it when you find better:
-
-```python
-highest = altitudes[0]
-for alt in altitudes:
-    if alt > highest:
-        highest = alt
-```
-
-Why not start at 0? Because if all the values are negative (a boat below the dock, a drone that
-took off from a hill and flew down into a valley), the answer would wrongly be 0.
-
-> [!TIP]
-> Python has these three built in: `sum(altitudes)`, `max(altitudes)`, `min(altitudes)`,
-> `len(altitudes)`. Use them in real life — but write the loops once yourself, so that you
-> understand what they do. The lab asks for both.
-
-### `range()`: counting numbers
-
-`range(5)` gives `0, 1, 2, 3, 4`. `range(2, 10, 3)` gives `2, 5, 8` (start, stop before, step).
-It is how you loop over **positions** instead of values:
-
-```python
-for i in range(0, len(altitudes), 2):      # every other row: 0, 2, 4…
-    print(i, altitudes[i])
-```
-
-## `while` loops: repeat as long as…
-
-A `while` loop repeats **as long as a condition is true**. It is the loop to use when you don't
-know in advance how many turns you need:
-
-```python
-x = 450.0               # metres east of home
-seconds = 0
-while x <= 600:         # still inside the 600 m circle (lesson 3)
-    x = x + 12          # flying east at 12 m/s
-    seconds += 1
-print("leaves the circle after", seconds, "s")
-```
-
-> [!WARNING]
-> If the condition never becomes false, the loop never ends (an **infinite loop**): the program
-> seems frozen. Press `Ctrl+C` in the terminal to stop it, then fix the condition.
-
-## Dictionaries: values with names
-
-A list finds values by **position**. A **dictionary** (`dict`) finds them by **name**. It stores
-pairs **key → value**, between curly braces:
-
-```python
-row = {"time_s": 40.0, "alt_m": 121.3, "speed_mps": 14.2, "source": "gps"}
-```
-
-| Code | Result |
-|---|---|
-| `row["alt_m"]` | `121.3` |
-| `row["battery_pct"] = 92.5` | adds a new key (or replaces its value) |
-| `"source" in row` | `True` — is this **key** in the dict? |
-| `row.get("heading_deg", 0)` | the value, or `0` if the key is missing (no error) |
-| `row["heading"]` | `KeyError` — the key does not exist |
-| `for key, value in row.items():` | loops over every pair |
-
-A dictionary is also the perfect tool to **count things by name**:
-
-```python
-counts = {}
-for s in ["gps", "gps", "day_vision", "gps"]:
-    counts[s] = counts.get(s, 0) + 1
-# counts is {"gps": 3, "day_vision": 1}
-```
-
-The first time a name is seen, `counts.get(s, 0)` gives 0, so it becomes 1. The next times, it
-grows.
-
-## A table = a list of dicts
-
-Put the two together and you have a table, exactly like a spreadsheet: a **list** of rows, and each
-row a **dict** whose keys are the column names.
-
-![A CSV file becomes a list of dicts](assets/csv_to_dicts.svg)
-
-```python
-rows[0]["alt_m"]        # altitude of the first row
-rows[-1]["time_s"]      # time of the last row
-for r in rows:          # every row...
-    print(r["time_s"], r["alt_m"])
-```
-
-## Files
-
-A program forgets everything when it stops. To keep results, or to read data recorded by someone
-else, you use **files**.
-
-```python
-with open("notes.txt", "w") as f:       # "w" = write: creates the file, or EMPTIES it
-    f.write("flight checked\n")
-    f.write(f"max altitude: {151.4:.1f}\n")
-
-with open("notes.txt", "a") as f:       # "a" = append: adds at the end
-    f.write("second line\n")
-
-with open("notes.txt") as f:            # (default) "r" = read
-    for line in f:
-        print(line.strip())             # strip() removes the "\n" at the end
-```
-
-- `with open(...) as f:` opens the file and **closes it automatically** at the end of the block.
-- `write()` does **not** go to a new line by itself: add `"\n"` (the **newline** character).
-- `"w"` destroys what was in the file — the same trap as `>` in the terminal (lesson 2).
-
-## CSV files and the `csv` module
-
-**CSV** (*comma-separated values*) is the simplest table format: plain text, one row per line,
-values separated by commas, and usually the **column names on the first line** (the **header**).
-Every spreadsheet can open and save it, and NAVERA uses it for flight logs, datasets and results.
-
-```
-time_s,lat,lon,alt_m,speed_mps,battery_pct,gps_valid,source
-0,35.824514,10.633998,0.0,0.3,99.8,1,gps
-2,35.824460,10.633995,8.0,0.5,100.0,1,gps
-```
-
-Python's **`csv` module** reads it for you. `csv.DictReader` gives each row as a dict whose keys
-come from the header:
+### The `csv` module: rows as dicts
 
 ```python
 import csv
-
-with open("flight_log.csv", newline="") as f:
-    for line in csv.DictReader(f):
-        print(line["alt_m"])
+with open("campaign.csv", newline="") as f:
+    rows = list(csv.DictReader(f))          # a list of dicts, one per row
+rows[0]["flight_id"]                        # 'muscat_coast'
+rows[0]["alt_m"]                            # '0.0'   ← a string!
+alts = [float(r["alt_m"]) for r in rows if r["flight_id"] == "sohar_port"]   # list comprehension
 ```
 
-> [!WARNING]
-> A CSV file is **text**. `line["alt_m"]` is the **string** `"8.0"`, not the number `8.0`.
-> `"8.0" + 1` is an error and `"9.0" > "10.0"` is `True` (strings compare letter by letter)!
-> Convert each value as you read it: `float(line["alt_m"])`, `int(line["gps_valid"])`.
+`csv.DictReader` gives each row as a **dict** whose keys are the column names (lesson 3). Every value
+is a **string**: you convert with `float()` or `int()`, and `float("")` on an empty cell raises
+`ValueError: could not convert string to float: ''`. This is enough for small scripts — NAVERA's
+own `evaluate_session.py` writes its results with the `csv` module. For analysis, pandas does the
+conversions, the missing values and the grouping for you.
 
-## Drawing the data
+![The same CSV read as a list of dicts (csv module) and as a typed DataFrame (pandas)](assets/csv_to_dataframe.svg)
 
-Numbers are good, a picture is better. **matplotlib** is Python's most famous drawing library.
-On this computer there is no screen for Python windows, so we tell matplotlib to draw **into a
-PNG file** (the `Agg` backend), and open the image in the editor:
+## 2. pandas: tables of typed columns
+
+```python
+import pandas as pd
+df = pd.read_csv("campaign.csv")
+df.shape            # (1556, 10): rows, columns
+df.head(3)          # the first 3 rows
+df.dtypes           # the type of each column
+df.info()           # columns, non-null counts, dtypes
+df.describe()       # count, mean, std, min, quartiles, max of the numeric columns
+```
+
+A **DataFrame** is a table; each column is a **Series** (a 1-D labelled array, built on a NumPy
+array). `read_csv` guesses a **dtype** per column: `int64` for `time_s` and `gps_valid`, `float64`
+for `lat`, `alt_m`…, and `object` (Python strings) for `flight_id`, `source`, `state`. An empty cell
+becomes **NaN** ("not a number"), which is a float — that is why `lat` is `float64` even with empty
+cells.
+
+| Code | Gives |
+|---|---|
+| `df["alt_m"]` | one column (a Series) |
+| `df[["time_s", "alt_m"]]` | several columns (a DataFrame) — note the double brackets |
+| `df.loc[5, "alt_m"]` | one value: row **label** 5, column `alt_m` |
+| `df.iloc[0]`, `df.iloc[-1]` | first / last row by **position** |
+| `df["alt_m"].max()`, `.mean()`, `.median()`, `.std()`, `.quantile(0.95)` | statistics |
+| `df["state"].value_counts()` | how many rows of each value |
+| `df["alt_m"].to_numpy()` | the underlying NumPy array |
+
+### Filtering with boolean masks
+
+Exactly like NumPy masks (lesson 3): a comparison on a column gives a Series of `True`/`False`, and
+indexing with it keeps the `True` rows.
+
+```python
+lost = df["gps_valid"] == 0                       # a boolean Series
+df[lost]                                          # rows without GPS
+df[(df["flight_id"] == "sohar_port") & lost]      # AND: &   OR: |   NOT: ~
+df[~df["source"].isin(["gps", "day_vision"])]     # rows whose source is something else
+```
+
+Use `&`, `|`, `~` (not `and`, `or`, `not`), and put **parentheses** around each comparison:
+`&` binds more strongly than `==`.
+
+### Missing values
+
+| Code | Meaning |
+|---|---|
+| `df["lat"].isna()` | `True` where the cell is empty |
+| `df.isna().sum()` | number of empty cells per column |
+| `df.dropna(subset=["lat", "lon"])` | drop rows with an empty `lat` or `lon` |
+| `df["battery_pct"].fillna(method="ffill")` | fill a gap with the previous value |
+
+NaN **propagates** through arithmetic: `NaN + 1` is `NaN`, and `np.mean([1.0, np.nan, 3.0])` is
+`nan`. pandas statistics **skip** NaN by default: `pd.Series([1.0, np.nan, 3.0]).mean()` is `2.0`.
+Before you drop or fill, ask what the empty cell **means**. Here an empty position means NO_FIX: the
+row is real and belongs to an outage; dropping it would make the outage look shorter.
+
+### Duplicates, new columns, sorting
+
+```python
+df.duplicated().sum()                 # rows identical to an earlier row
+df = df.drop_duplicates()             # returns a NEW DataFrame (the old one is unchanged)
+df["alt_km"] = df["alt_m"] / 1000     # a new column, computed on the whole column at once
+df = df.sort_values(["flight_id", "time_s"]).reset_index(drop=True)   # sort, then renumber 0..n−1
+```
+
+Most pandas methods return a **new** object. If a function receives a DataFrame and must not change
+it, start with `out = df.copy()`.
+
+### groupby: one answer per flight
+
+**groupby** splits the table into groups, applies a function to each group, and combines the
+results ("split–apply–combine"):
+
+```python
+df.groupby("flight_id")["alt_m"].max()            # a Series: max altitude per flight
+df.groupby("flight_id").agg(                      # named aggregations: new_name=(column, function)
+    rows=("time_s", "size"),
+    t_last=("time_s", "max"),
+    mean_speed_mps=("speed_mps", "mean"),
+)
+pd.crosstab(df["flight_id"], df["state"], normalize="index") * 100   # % of each state per flight
+```
+
+`shift()` inside a group gives the **previous row of the same flight** — and NaN on the first row
+of each flight, so a flight never borrows the last position of the flight before it:
+
+```python
+g = df.groupby("flight_id")
+df["dt_s"] = df["time_s"] - g["time_s"].shift()
+```
+
+## 3. Distances and speeds from positions
+
+The speed logged by the autopilot and the speed computed from two consecutive positions should
+agree. Comparing them measures the **noise of each position source**. For the distance between
+consecutive fixes we use the **haversine** formula (lesson 3 gave it as a ready-made function; lesson
+6 derives it), written with NumPy so that it works on whole columns:
+
+```
+a = sin²(Δφ/2) + cos φ1 · cos φ2 · sin²(Δλ/2)        d = 2 R · asin(√a)        R = 6 371 000 m
+```
+
+**Worked example.** Muscat (23.588° N, 58.383° E) to Nizwa (22.933° N, 57.533° E):
+`Δφ = −0.655° = −0.011432 rad`, `Δλ = −0.850° = −0.014835 rad`,
+`a = sin²(−0.005716) + cos(23.588°)·cos(22.933°)·sin²(−0.007418) = 3.267e−5 + 0.9164 × 0.9210 × 5.502e−5
+= 7.911e−5`, `d = 2 × 6 371 000 × asin(0.008894) = 113.3 km`.
+
+With NumPy the same lines compute 1500 distances at once: `np.radians`, `np.sin`, `np.cos`,
+`np.arcsin` work element by element on Series and arrays, and NaN in gives NaN out.
+
+**How noisy will the speed be?** If each position has an independent error of standard deviation
+`σ` per axis, the difference of two positions has `σ·√2` (variances add: `Var(a − b) = Var a + Var b`).
+Divided by `Δt = 2 s`:
+
+```
+σ_speed ≈ √2 · σ / Δt         GPS, σ = 1.5 m  →  1.1 m/s        day vision, σ = 6 m  →  4.2 m/s
+```
+
+A speed computed from vision fixes 2 s apart is four times noisier than from GPS, even if each
+vision fix is "only" 6 m off. You will measure this in the lab.
+
+## 4. Outages: run-length logic
+
+An **outage** is a run of consecutive rows with `gps_valid == 0`. A loop with a counter works, but
+NumPy finds every run at once: mark the lost rows with 1, pad with a 0 at both ends, and take
+`np.diff`. It is `+1` where a run **starts** and `−1` just after it **stops**.
+
+![Finding the runs of 0 with np.diff on the padded array](assets/outage.svg)
+
+```python
+lost = (gps_valid == 0).astype(int)            # [0 0 1 1 1 0 1 1 0]
+edges = np.diff(np.concatenate([[0], lost, [0]]))
+starts = np.flatnonzero(edges == 1)            # [2 6]
+stops = np.flatnonzero(edges == -1)            # [5 8]   (stop is excluded, like a slice)
+```
+
+`np.flatnonzero(mask)` gives the indices where the mask is `True`. A run of rows `start … stop−1`
+lasts `time_s[stop−1] − time_s[start] + Δt`: one lost row = one logging period of 2 s. Padding at the
+end makes an outage that lasts **until the last row** close correctly — the classic bug of the loop
+version.
+
+## 5. Statistics that survive bad data
+
+| Statistic | Definition | Sensitive to one wild value? |
+|---|---|---|
+| mean | `Σx / n` | yes |
+| median | middle value of the sorted data | no |
+| standard deviation | `√( Σ(x − mean)² / (n − 1) )` (pandas default) | yes, a lot |
+| p-th **percentile** | value below which p % of the data lies | the high ones yes, the median no |
+
+**Worked example.** Speed errors (m/s) `[2, 4, 4, 5, 7, 9, 30]` — one wild value. Mean `8.71`,
+median `5`, standard deviation `9.66`. The 90th percentile with pandas' linear interpolation: position
+`0.9 × (7 − 1) = 5.4` in the sorted list, so `9 + 0.4 × (30 − 9) = 17.4`. One glitch moves the mean
+and the standard deviation a lot and the median not at all. That is why NAVERA's validation tables
+report **median, p90 and max**, never only a mean: the median tells the typical case, p90 and the
+maximum the bad cases.
+
+> [!NOTE]
+> Percentile definitions differ slightly between tools (`numpy.percentile`, `pandas.quantile`,
+> a hand-written "nearest rank" like NAVERA's `pct()`). On large samples the difference is tiny; on
+> 7 values it is not. Say which definition you used.
+
+## 6. Plots with matplotlib (no screen)
+
+The sandbox has no display, so matplotlib must draw into a file. Select the **Agg** backend before
+importing `pyplot`, draw on an **axes** object, and save:
 
 ```python
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-times = [r["time_s"] for r in rows]
-alts = [r["alt_m"] for r in rows]
-plt.plot(times, alts)
-plt.xlabel("time (s)")
-plt.ylabel("altitude (m)")
-plt.savefig("altitude.png")
+fig, ax = plt.subplots(figsize=(9, 3.5))       # a figure with one axes
+ax.plot(t, alt, label="altitude")              # a line
+ax.scatter(east, north, s=4, color="tab:orange")   # points
+ax.axvspan(560, 976, color="tab:red", alpha=0.2)   # a shaded time interval
+ax.set_xlabel("time (s)"); ax.set_ylabel("altitude (m)"); ax.set_title("nizwa_foothills")
+ax.legend()
+fig.savefig("altitude.png", dpi=100)
+plt.close(fig)                                 # free the memory
 ```
 
-`[r["alt_m"] for r in rows]` is a **list comprehension**: a one-line loop that builds a list — "the
-`alt_m` of each `r` in `rows`". It is the same as an empty list plus a `for` loop with `append`.
+`plt.show()` would try to open a window: do not use it here. The **📝 Code** editor displays PNG
+files: open them from the file list.
 
-Without any library, you can even draw with text: `"#" * 12` gives `############`. One `#` per
-10 m of altitude makes a little chart right in the terminal — you will build one in the lab.
+## 7. Saving results: json
 
-## The longest GPS outage
+```python
+import json
+results = {"rows_clean": int(len(df)), "longest_outage": {"flight_id": "x", "duration_s": 416.0}}
+with open("results.json", "w") as f:
+    json.dump(results, f, indent=2)
+```
 
-The hardest question of the lab is "*how long was the longest GPS outage?*". The log has a column
-`gps_valid`: `1` when the GPS works, `0` when it is lost. We want the longest run of `0`s in a row.
-The trick is to carry **two** variables through the loop:
+JSON holds dicts, lists, strings, numbers, `true`/`false` and `null`. As in lesson 3, convert
+NumPy/pandas scalars with `int()`, `float()`, `bool()` first.
 
-![Two counters: the current run and the best run](assets/outage.svg)
+## Errors you will meet
 
-- `run` — how many `0`s in a row **right now**: it grows on a `0` and drops back to 0 on a `1`;
-- `best` — the biggest `run` seen so far.
-
-Check your idea on the tricky cases: the GPS is never lost (answer 0), or it is lost until the very
-last row (the run must still count).
+| Message (last line) | Meaning |
+|---|---|
+| `KeyError: 'alt'` | no column with that name: check `df.columns` (spelling, spaces) |
+| `ValueError: could not convert string to float: ''` | `float()` on an empty CSV cell (csv module) |
+| `TypeError: unsupported operand type(s) for -: 'str' and 'int'` | a column is `object` (text): look at `df.dtypes` |
+| `ValueError: The truth value of a Series is ambiguous` | `and`/`or`/`if` used on a Series: use `&`, `\|` and parentheses |
+| `SettingWithCopyWarning` | you changed a filtered **view**; build a new DataFrame (`.copy()`) or use `.loc[mask, "col"] = …` |
+| a result is `nan` | NaN propagated: a NumPy function on data with empty cells; use pandas methods or drop NaN first |
+| `SyntaxError: f-string: unmatched '['` | `f"{r["alt_m"]}"`: use the other quote inside (lesson 3) |
 
 ## 🐦 How birds do it
 
-Scientists read flight logs too — written by birds.
+Bird scientists are data engineers too. The shorebirds that winter at Barr Al Hikman — bar-tailed
+godwits, crab plovers, sandpipers — have been counted and tracked there for years. A satellite or
+GPS tag on a godwit produces exactly our kind of file: one row per fix, with time, latitude,
+longitude, sometimes altitude and battery voltage, and **gaps** when the tag could not get a fix or
+had too little solar energy to send it. Before any conclusion, the scientists remove duplicate
+transmissions and impossible positions (a "fix" 500 km away for a few minutes), then group the rows
+per bird and per season — the same cleaning and groupby of this lesson.
 
-In 2007, a team led by the Danish biologist Carsten Egevang fitted **Arctic terns** nesting in
-Greenland and Iceland with **geolocators**: tiny loggers on a leg ring. A geolocator has no GPS. It
-only writes, again and again, two columns: the **time** and **how bright the light is**. From those
-two columns alone, scientists compute where the bird was each day. The time of local noon gives the
-longitude; the length of the day gives the latitude. It is rough — a couple of hundred kilometres —
-but over a whole ocean, that is enough.
+Tiny birds are tracked differently. A **light-level geolocator** of about one gram records only the
+light intensity and the time. From the times of sunrise and sunset the scientists compute, once per
+day, the length of the day (which gives the latitude) and the time of local noon (which gives the
+longitude). These positions are coarse — typically 100–200 km — and the latitude is unusable around
+the equinoxes, when day length is the same everywhere. With such tags, Arctic terns were shown in
+2010 to fly about 70 000 km per year between the Arctic and the Antarctic. Good analysis means knowing
+the **error of each source**, exactly like comparing GPS and day vision in our speed check.
 
-One year later the team caught the same birds, downloaded the logs and drew the tracks. The terns had
-flown from Greenland down to the seas near Antarctica and back, on a long S-shaped route: on average
-about **70 900 km in one year** (published in 2010, in the journal *PNAS*). It was the longest
-migration ever measured for any animal.
-
-Look at what the scientists did with the data: a **list** of rows, a **loop** over every row, a
-**dictionary** per day, and questions like "where was the bird furthest south?" or "how long did it
-stop over the North Atlantic?" — the same pattern as finding the longest GPS outage.
-
-Arctic terns can live 30 years. With Python: `30 * 70900` is more than **2 million km** in a
-lifetime — enough to go to the Moon and back almost three times.
-
-NAVERA's CSV flight log is the same idea, with one row every two seconds instead of one per day.
+Navi has never carried a tag, but ringing and tracking studies of her species show that barn swallows
+from Europe spread over a large part of Africa for the winter — a result that only exists because
+thousands of messy records were cleaned and grouped.
 
 ## In NAVERA
 
-NAVERA reads flight CSV files exactly like this. When the camera package **replays** a recorded
-flight (instead of a live camera), [camera_publisher.py](file:navera/camera_pkg/camera_pkg/nodes/camera_publisher.py)
-does:
+NAVERA's day vision reads its map tile table with pandas
+([day_localizer.py](file:navera/day_pkg/day_pkg/nodes/day_localizer.py)):
 
 ```python
-            with open(self.csv_path, newline="") as fp:
-                reader = csv.DictReader(fp)
-                for idx, row in enumerate(reader):
-                    ...
-                    lat = _to_float_or_none(row.get("lat"))
-                    lon = _to_float_or_none(row.get("lon"))
-                    alt = _to_float_or_none(row.get("altitude_m"))
-                    ...
-                    # GPS rule: must be valid in CSV AND allowed by config
-                    gps_valid = (lat is not None) and (lon is not None) and self.default_gps_valid
+        df    = pd.read_csv(CSV_PATH)
+        df    = df.rename(columns={"filename": "imageName"})
+        total = len(df)
 ```
 
-`csv.DictReader`, a `for` loop over the rows, `row.get(...)`, and a conversion to `float`.
-Its helper `_to_float_or_none()` turns an **empty** cell into `None` instead of crashing — because
-in NAVERA's logs, a missing GPS is written as empty `lat` and `lon` cells. Look at a real one:
+and keeps only the rows whose image exists with `df.iloc[valid_idx].reset_index(drop=True)` — the
+same `reset_index` you use after cleaning.
 
-```bash
-head -6 ~/navera/camera_pkg/camera_pkg/data/thermal/flight_ready.csv
+The tool that measures each source against GPS in a recorded session,
+[evaluate_session.py](file:navera/navera_tools/evaluate_session.py), reports exactly the
+statistics of section 5, with its own nearest-rank percentile:
+
+```python
+def pct(v, q):
+    s = sorted(v)
+    return s[min(len(s) - 1, int(round(q / 100.0 * (len(s) - 1))))]
+...
+    for (src, mode), errs in sorted(groups.items()):
+        within = [100.0 * sum(e < d for e in errs) / len(errs) for d in (50, 100, 300)]
+        print(f"{src:10s} {mode:14s} {len(errs):5d} {pct(errs, 50):7.0f}m {pct(errs, 90):7.0f}m "
+              f"{max(errs):7.0f}m {within[0]:5.0f}% {within[1]:5.0f}% {within[2]:5.0f}%")
 ```
 
-Frame 4 is called `…NOGPS…` and its `lat,lon` cells are empty. (The comment in the code says why
-NAVERA never puts a made-up number there: "*Unknown stays unknown (None): a default would be read
-downstream as a measured altitude*". An invented value is worse than no value.)
+A group per (source, mode), the median, p90, maximum, and the share of errors below 50, 100 and
+300 m — printed with the format widths of lesson 3. Its docstring states the rule of the team: "This
+is how accuracy claims in docs/VALIDATION_STATUS.md must be produced from real data."
 
-After a real test session, the engineers run `navera_tools/evaluate_session.py`, which measures
-each source against GPS and prints the median and the worst errors, and can save them as CSV
-(`--csv out.csv`) — the same loops, counts and files as today, on bigger data.
+## Glossary
 
-> [!NOTE]
-> The log of this lab is **synthetic**: it was generated by a program
-> (`/data/academy/04-python-data/make_flight_log.py`) to look like a real flight, with exactly known
-> values. That is common practice: you test your analysis tools on data whose answers you know,
-> before trusting them on real flights.
-
-## Words of this lesson
-
-| Word | Meaning |
+| Term | Meaning |
 |---|---|
-| **list** | an ordered collection: `[1, 2, 3]` |
-| **index** | the position of an item, starting at 0; `-1` is the last |
-| **slice** | a part of a list: `rows[10:20]` |
-| **loop** | lines that repeat: `for` (for each item) or `while` (as long as…) |
-| **accumulator** | a variable that collects a result through a loop (a total, a count, a best) |
-| **dictionary (`dict`)** | pairs key → value: `{"alt_m": 120.0}` |
-| **key** | the name used to find a value in a dict |
-| **file** | data kept on disk; `open(path, "r" / "w" / "a")` |
-| **newline (`\n`)** | the invisible character that ends a line of text |
-| **CSV** | a text table: one row per line, values separated by commas, header first |
-| **header** | the first line of a CSV, with the column names |
-| **list comprehension** | a one-line loop that builds a list: `[r["alt_m"] for r in rows]` |
-| **matplotlib** | Python's drawing library; with `Agg` it draws into image files |
+| **CSV** | text table: a header line, then one line per row, values separated by commas |
+| **context manager (`with`)** | runs a block and always cleans up after it (closes the file) |
+| **DataFrame / Series** | pandas table / one labelled column |
+| **dtype** | the type of a column: `int64`, `float64`, `object` (text), `bool` |
+| **NaN** | "not a number": pandas' marker for a missing value |
+| **boolean mask** | a Series of True/False used to select rows |
+| **groupby / aggregation** | split rows into groups, compute one value per group |
+| **shift** | the value of the previous (or next) row |
+| **run-length** | describing a sequence by its runs of equal values |
+| **percentile (p90, p95)** | the value below which 90 % (95 %) of the data lies |
+| **median** | the 50th percentile: robust to outliers |
+| **outlier / glitch** | a value far outside the plausible range, usually an error |
+| **Agg backend** | matplotlib drawing into files, without a window |
 
 ## Check what you learned
 
-<details><summary>1. <code>gps = [1, 1, 0, 1]</code>. What are <code>gps[0]</code>, <code>gps[-1]</code> and <code>len(gps)</code>?</summary>
-<code>1</code> (the first), <code>1</code> (the last), <code>4</code>.
+<details><summary>1. <code>df["lat"]</code> has dtype float64 although some cells are empty. Why, and what does <code>df["lat"].mean()</code> do with them?</summary>
+An empty cell becomes NaN, which is a float, so the column stays float64. pandas statistics skip NaN by default:
+the mean is computed over the non-empty cells only (NumPy's <code>np.mean</code> would return nan).
 </details>
 
-<details><summary>2. Why is <code>highest = 0</code> a bad start to find the maximum altitude?</summary>
-If every altitude is negative, nothing is ever bigger than 0 and the function answers 0 — a value that
-is not even in the data. Start with the first row's altitude.
+<details><summary>2. Why <code>(df.a == 0) &amp; (df.b == 0)</code> and not <code>df.a == 0 and df.b == 0</code>?</summary>
+<code>and</code> needs one True/False, but a Series holds many: Python raises "The truth value of a Series is ambiguous".
+<code>&amp;</code> combines element by element. The parentheses are needed because <code>&amp;</code> binds more strongly than <code>==</code>.
 </details>
 
-<details><summary>3. <code>line["speed_mps"]</code> from a <code>csv.DictReader</code> is <code>"14.2"</code>. What happens with <code>total += line["speed_mps"]</code> when total is 0?</summary>
-A <code>TypeError</code>: you cannot add a string to a number. Convert first: <code>float(line["speed_mps"])</code>.
+<details><summary>3. Two flights are stored one after the other. What goes wrong if you compute <code>df["lat"].shift()</code> without groupby?</summary>
+The first row of the second flight gets the last position of the first flight as its "previous" position: a step of
+hundreds of kilometres and an absurd speed. <code>df.groupby("flight_id")["lat"].shift()</code> gives NaN there instead.
 </details>
 
-<details><summary>4. What does <code>counts</code> contain after counting <code>["gps", "day_vision", "gps"]</code> with the dict pattern?</summary>
-<code>{"gps": 2, "day_vision": 1}</code>.
+<details><summary>4. <code>gps_valid = [0, 0, 1, 1, 0, 0, 0]</code>, one row every 2 s. Runs and durations?</summary>
+Padded lost array <code>[0, 1, 1, 0, 0, 1, 1, 1, 0]</code>; diff is +1 at 0 and 4, −1 at 2 and 7: runs (0, 2) and (4, 7).
+Durations: (2 − 0) + 2 = 4 s and (12 − 8) + 2 = 6 s. The second one lasts until the end of the log.
 </details>
 
-<details><summary>5. gps_valid is <code>1 0 0 1 0 0 0</code>. What are <code>run</code> and <code>best</code> after the last row?</summary>
-<code>run = 3</code> (the outage is still going on) and <code>best = 3</code>: the longest outage is 3 rows, even though
-it never ended with a 1.
+<details><summary>5. Positions have σ = 3 m per axis, one row per second. Rough noise of the speed computed from them?</summary>
+√2 × 3 / 1 ≈ 4.2 m/s. Halving the rate (Δt = 2 s) halves it to about 2.1 m/s; averaging over a longer window
+reduces it further — that is why NAVERA fits a velocity over 20 s of fixes instead of using two.
+</details>
+
+<details><summary>6. A validation report gives only "mean error 12 m". What is missing?</summary>
+The distribution: one bad fix of 1 km among good ones changes the mean a lot. Report median, p90 (or p95) and the
+maximum, the number of samples, and the conditions (bench, simulation, flight).
 </details>
 
 Now open the **🛠️ Lab** tab.

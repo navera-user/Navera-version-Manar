@@ -1,269 +1,280 @@
-# Lab 15 — Read a GPS log like NAVERA does
+# Lab 15 — A robust NMEA reader, DOP from geometry, and NAVERA's GPS driver
 
-**Goal:** write your own NMEA reader — checksum, GGA parser, degrees-minutes conversion — check it
-against the parser NAVERA really uses, find the damaged lines of a real-looking log, measure the length
-of the drive, and finally watch NAVERA's own GPS driver read the same log.
-**Time:** about 1 hour 15 minutes.
+**Goal:** build a robust NMEA 0183 parser (checksum, GGA, GSA, GSV), recompute the receiver's
+PDOP/HDOP/VDOP from the satellite geometry, reproduce the decisions of NAVERA's `gps_node`, estimate
+the range error (UERE) of a drive whose truth is known, replay the log into NAVERA's real driver,
+and write a short engineering report.
+**Time:** about 3 hours.
 
-Your files:
+## The data
+
+`/data/academy/15-gps-nmea/` (read only):
 
 | File | What |
 |---|---|
-| [nmea_tools.py](file:./nmea_tools.py) | **your work**: 6 functions with `TODO`s |
-| [drive.nmea](file:./drive.nmea) | the log: a car driving a 3 km loop in M'saken, 287 seconds, 1 report per second |
-| `compare_with_navera.py` | compares your parser with NAVERA's (ready, don't change) |
-| `track_report.py` | a report and a map of the drive made with your functions (ready) |
-| `play_to_gps_node.py` | plays the log into NAVERA's real GPS driver (ready) |
-| [answers.py](file:./answers.py) | 4 quiz questions |
+| `sohar_drive.nmea` | a **synthetic** NMEA log, 1 Hz, GPS-only receiver (`GP` talker): a car drives about 19 km from the Sohar Port area to Sohar Fort along the coast. 6318 lines, 1053 s. |
+| `truth.csv` | the true position of the car every second (`utc,lat,lon,alt_msl`) |
+| `make_dataset.py` | the script that generated both (read it after the lab, not before!) |
 
-> [!NOTE]
-> `drive.nmea` was made by a **simulated** receiver (written the same way as NAVERA's simulator,
-> `navera_tools/sim/nmea_gps.py`), so we know exactly what is inside. The format is exactly what a real
-> u-blox receiver sends — the first lines of the course were read from NAVERA's real one.
+The places are real; the roads are approximate and the underpass is invented. The log is synthetic
+so that we know the truth exactly. It contains on purpose: a cold start, an underpass (outage),
+a town centre with high buildings, and damaged lines.
 
-## Step 1 — Look at the raw log
+Your files:
 
-```bash
-head -12 drive.nmea
-```
+| File | What you do |
+|---|---|
+| [nmea_tools.py](file:./nmea_tools.py) | TODO 1–6: checksum, validation, degrees-minutes, GGA, GSA, GSV |
+| [dop.py](file:./dop.py) | TODO 7–8: geometry matrix G and the DOPs |
+| [gps_filter.py](file:./gps_filter.py) | TODO 9–11: gps_node's decision, its covariance, a jump gate |
+| [analyze_drive.py](file:./analyze_drive.py) | TODO 12–13: UERE estimate, longest gap; then it writes `results.json` and 2 plots |
+| `compare_with_navera.py` | compares your parser with pynmea2 (ready) |
+| `play_to_gps_node.py` | plays the log into NAVERA's real `gps_node` (ready) |
+| [report.md](file:./report.md) | your written analysis (template) |
 
-You see the first seconds: GGA sentences with **empty** positions and quality `0`, and RMC sentences
-with status `V` — the receiver has just been switched on and is still looking for satellites. Every
-five seconds a GSA and a GSV sentence (satellite lists) come too.
+> [!TIP]
+> Run each file after each TODO: every file has a small demo at the bottom (`python3 dop.py`…).
+> A TODO that is not done returns `None`; the demos and `analyze_drive.py` say which one is missing.
 
-How many sentences of each kind? `grep -c` counts the lines that contain a word:
-
-```bash
-grep -c GGA drive.nmea
-```
+## Step 1 — Look at the raw log (10 min)
 
 ```bash
-grep -c RMC drive.nmea
+head -n 14 /data/academy/15-gps-nmea/sohar_drive.nmea
 ```
 
-Now look at a few lines once the car moves (line 40 to 46):
+The first seconds: `GPGGA` with quality `0` and empty positions, `GPRMC` with status `V`, a `GPGSA`
+with mode `1`, and 3 `GPGSV` sentences listing 12 satellites. The receiver has just started.
+
+Count the sentence types. The log contains one non-ASCII byte, so `grep` needs `-a` (treat the file
+as text):
 
 ```bash
-sed -n 40,46p drive.nmea
+grep -a -c GGA /data/academy/15-gps-nmea/sohar_drive.nmea
 ```
-
-Find the fields of the course in them: the time goes up by one second per GGA, the quality is `1`, the
-HDOP is below 1.1. Open [drive.nmea](file:./drive.nmea) in the editor and scroll a little.
-
-## Step 2 — The checksum (TODO 1)
-
-Open [nmea_tools.py](file:./nmea_tools.py). First, play with the three Python tools you need, in the
-terminal:
 
 ```bash
-python3 -c "print(ord('G'), ord('N'), ord('G') ^ ord('N'), f'{9:02X}', f'{112:02X}')"
+grep -a -c GSV /data/academy/15-gps-nmea/sohar_drive.nmea
 ```
-
-`ord` gives the number of a character, `^` is XOR, `:02X` writes a number in hexadecimal with 2 digits.
-You should see `71 78 9 09 70`.
-
-> [!TASK]
-> **TODO 1** — write `nmea_checksum(body)`: start with `c = 0`, XOR every character's `ord()` into it,
-> and return `f"{c:02X}"`. The body is the text **between** `$` and `*` (without them).
-
-Run the demo at the bottom of the file:
 
 ```bash
-python3 nmea_tools.py
+wc -c /data/academy/15-gps-nmea/sohar_drive.nmea
 ```
 
-The first line must say `checksum of the textbook example: 47 (should be 47)`.
-
-## Step 3 — Accept or refuse a line (TODO 2)
-
-A line from the wire still has its `$`, its `*hh` and its `\r\n`. `is_valid(line)` must:
-
-1. remove spaces and `\r\n` at both ends: `line = line.strip()`;
-2. refuse (return `False`) a line that does not start with `$` or has no `*`;
-3. cut it in two at the first `*`: `body, given = line[1:].split("*", 1)`;
-4. refuse it if `given` is not exactly 2 characters long;
-5. return whether `nmea_checksum(body) == given.upper()`.
-
-> [!TASK]
-> **TODO 2** — write `is_valid(line)`. It must return `True` or `False` — never `None`, never crash.
-
-Now hunt the damaged lines of the log. This one-line program prints how many lines are refused, then
-the refused lines themselves:
+Divide the size by 1053 s: this is the data rate of the course's worked example (412 bytes/s,
+43 % of a 9600-baud link). Now look at one second in the middle of the drive:
 
 ```bash
-python3 -c "import nmea_tools as t; bad = [l for l in open('drive.nmea').read().splitlines() if not t.is_valid(l)]; print(len(bad)); print(*bad, sep='\n')"
+sed -n 1985,1990p /data/academy/15-gps-nmea/sohar_drive.nmea
 ```
 
-You should find **6** lines. Look at each one and say what went wrong on the wire:
+Compare the latitude of the GGA (`2462.56214`) with the RMC of the same second (`2426.56214`).
+Keep this in mind.
 
-- a line **cut** after 31 characters — the rest never arrived;
-- a line with **no `*hh`** at the end — the checksum was lost;
-- a line with `*ZZ` — not even hexadecimal: **garbage**;
-- **three** lines that look complete — but one character changed on the way, so the checksum doesn't
-  match. In one of them you can see the damage. Print the GGA and the RMC of that second:
+## Step 2 — Checksum and validation (TODO 1–2, 20 min)
+
+Try the three Python tools you need:
 
 ```bash
-grep -n 093221 drive.nmea
+python3 -c "print(ord('G'), ord('P'), ord('G') ^ ord('P'), f'{23:02X}', f'{13:02X}')"
 ```
 
-The RMC (same second, line 474) says `3544.38407`, the GGA says `3544738407`: the dot became a `7`.
-For the two others, compare each GGA with the RMC just below it:
-
-```bash
-sed -n 72,73p drive.nmea
-```
-
-On line 72 the latitude `3544.04329` became `3544.74329`: 0.7 minute of latitude, a jump of **1.3 km**
-in one second. Without the checksum, the car would have "teleported". (Line 737 has the same kind of
-damage — find it.)
-
-### The line that fools the checksum
-
-Now look at line 327:
-
-```bash
-sed -n 327p drive.nmea
-```
-
-Two sentences are **glued** together: the end of a GGA was lost, and the RMC that followed was stuck on
-it. Yet `is_valid` says `True`! By pure luck the XOR of the lost part is zero, so the checksum still
-matches — the **1-in-256** case of the course. Keep this line in mind for step 5.
-
-## Step 4 — Degrees and minutes (TODO 3)
-
-> [!TASK]
-> **TODO 3** — write `dm_to_deg(value, hemisphere)`:
-> `"3544.04006", "N"` → `35.734001`; `"01034.55091", "E"` → `10.5758485`; `S` and `W` give negative
-> numbers; an empty or unreadable value gives `None`.
-> Use `to_float(value)` (already written below the line) to read the number: it returns `None` for
-> `""` or garbage. Then `degrees = int(v // 100)`, `minutes = v - degrees * 100`.
-
-Try it:
-
-```bash
-python3 -c "import nmea_tools as t; print(t.dm_to_deg('3544.04006','N'), t.dm_to_deg('4807.038','S'), t.dm_to_deg('','N'))"
-```
-
-Expected: `35.734001 -48.1173 None` (Python may print a few more digits, like `35.73400100000001` —
-that is normal: computers store decimals with tiny rounding errors).
-
-## Step 5 — Read a whole GGA sentence (TODO 4)
-
-`parse_gga(line)` returns a **dictionary** (lesson 4) with the keys listed above TODO 4:
-`time, lat, lon, quality, sats, hdop, alt_msl, geo_sep`.
-
-1. If the line is not valid (TODO 2), return `None`.
-2. Take the body between `$` and `*`, split it on `","` → a list `f`.
-3. If `f[0]` does not end with `"GGA"` (it can be `GPGGA`, `GNGGA`…), return `None`.
-4. Build the dictionary: `"lat": dm_to_deg(f[2], f[3])`, `"quality": to_int(f[6])`,
-   `"hdop": to_float(f[8])`… (field numbers are in the comment and in the course's table).
-
-> [!TASK]
-> **TODO 4** — write `parse_gga(line)`. A "no fix" sentence such as
-> `$GNGGA,093000.00,,,,,0,00,99.99,,,,,,*72` must give a dictionary with `quality` 0 and
-> `lat`/`lon` `None` — not a crash.
-
-Test it on the real receiver's sentence (the demo does it) and on the tricky glued line 327:
+You should see `71 80 23 17 0D`. Write `nmea_checksum(body)` and `is_valid(line)` in
+[nmea_tools.py](file:./nmea_tools.py). The rules of `is_valid` are listed above TODO 2 (and in
+section 7 of the course). It must return `True` or `False` — never `None`, never an exception,
+even for `None` or an empty string.
 
 ```bash
 python3 nmea_tools.py
 ```
 
+Then list the damaged lines of the log:
+
 ```bash
-python3 -c "import nmea_tools as t; print(t.parse_gga(open('drive.nmea').read().splitlines()[326]))"
+python3 -c "import nmea_tools as t; bad = [(i + 1, l) for i, l in enumerate(t.read_log('/data/academy/15-gps-nmea/sohar_drive.nmea')) if not t.is_valid(l)]; print(len(bad)); [print(n, repr(l[:72])) for n, l in bad]"
 ```
 
-Look at the glued line's dictionary: the longitude field contained `01035.1016$GNRMC`, which is not a
-number → `None`; the quality field contained `A` → `None`. Your parser did not crash, and this line
-will never count as a usable fix. NAVERA's driver survives it the same way: its `int(msg.gps_qual)`
-fails on `"A"`, so the quality becomes 0 and the line is published as "no fix".
+You must find **7** lines. For each one, decide what happened on the wire (cut, flipped character,
+missing checksum, garbage, two glued sentences, a non-ASCII byte shown as `�`). You will
+describe them in section 1 of the report.
 
-## Step 6 — Compare with NAVERA's parser
+> [!TASK]
+> **TODO 1–2** — `nmea_checksum(body)` returns 2 upper-case hex digits; `is_valid(line)` returns
+> `True`/`False` and finds exactly 7 damaged lines in the log. The two swapped-digit lines (UTC
+> 051731 and 052423) must be **accepted**: the checksum cannot see them.
 
-NAVERA does not use a home-made parser: `gps_node.py` uses the **pynmea2** library with `check=True`
-and keeps qualities 1, 2, 4 and 5. Open [gps_node.py](file:navera/gps_pkg/gps_pkg/nodes/gps_node.py)
-and find `_read_loop` and `_publish_fix`. The script `compare_with_navera.py` does exactly what they do,
-next to your functions, for every line of the log:
+## Step 3 — Degrees-minutes and GGA (TODO 3–4, 25 min)
+
+`dm_to_deg(value, hemisphere)` converts `"2429.39522", "N"` into `24.489920`. It returns `None` for
+an unreadable value, an unknown hemisphere, or minutes outside `[0, 60)`. Use `to_float()` (already
+written, below the line).
+
+```bash
+python3 -c "import nmea_tools as t; print(t.dm_to_deg('2429.39522', 'N'), t.dm_to_deg('05637.20466', 'E'), t.dm_to_deg('2462.56214', 'N'), t.dm_to_deg('', 'N'))"
+```
+
+Expected: `24.4899203… 56.6200776… None None` (Python may print more digits: floating-point rounding).
+
+`parse_gga(line)` returns a dictionary with the keys `time, lat, lon, quality, sats, hdop, alt_msl,
+geo_sep` (field numbers above TODO 4 and in the course). Use the helper `fields(line)`: it returns
+the list of fields of a valid sentence, or `None`.
+
+> [!TASK]
+> **TODO 3–4** — `dm_to_deg` with the range checks, and `parse_gga`. A no-fix sentence gives a
+> dictionary with `quality` 0 and `lat`/`lon`/`alt_msl` = `None`; the 62-minute line gives
+> `lat = None`; an RMC or a damaged line gives `None`.
+
+## Step 4 — GSA and GSV (TODO 5–6, 25 min)
+
+These two sentences give the **geometry**. GSA: fix mode, the PRNs used (12 slots, some empty) and
+PDOP/HDOP/VDOP. GSV: blocks of 4 fields `prn, elevation, azimuth, snr`, up to 4 satellites per
+sentence. The exact output format is written above TODO 5 and TODO 6.
+
+```bash
+python3 nmea_tools.py
+```
+
+> [!WARNING]
+> Common mistakes: forgetting that an empty SNR (`,,`) means "in view but not tracked" (it must give
+> `None`, not crash); requiring exactly 18 GSA fields (NMEA 4.10 adds a 19th); reading a last GSV
+> block that has fewer than 4 fields.
+
+> [!TASK]
+> **TODO 5–6** — `parse_gsa(line)` and `parse_gsv(line)` as specified in the file.
+
+## Step 5 — Compare with NAVERA's parser (10 min)
+
+`gps_node` uses the **pynmea2** library. This script runs pynmea2 and your functions on every line
+and lists every disagreement:
 
 ```bash
 python3 compare_with_navera.py
 ```
 
-Goal: **6** lines rejected and **261** usable fixes on both sides, a largest difference around
-`1e-14` degrees (a rounding error, a few billionths of a millimetre), and the message
-"No difference". If there are differences, the script prints the first lines where you disagree — fix
-your code and run it again.
+You should see 7 rejected lines on both sides, 991 usable fixes for NAVERA and **990 for you**, and
+one disagreement: line 1988 (UTC 051731). pynmea2 accepts `2462.56214` and computes 25.0427° N —
+about 67 km north of the road. Your parser refuses it because 62 minutes is impossible. Who is
+right? Note the answer for section 4 of the report.
 
-## Step 7 — Usable fixes and the length of the drive (TODO 5 and 6)
+## Step 6 — The geometry matrix and the DOPs (TODO 7–8, 30 min)
 
-> [!TASK]
-> **TODO 5** — `usable_fixes(path)`: open the file, run `parse_gga` on every line, and keep `(lat, lon)`
-> only when the result is not `None`, its quality is in `USABLE_QUALITIES` and lat/lon are not `None`.
-> **TODO 6** — `track_length_m(points)`: add the `haversine_m` distances (lesson 6) between each point
-> and the next. With 0 or 1 point the length is 0.
-
-Tip for TODO 6: `zip(points, points[1:])` gives the pairs (point 0, point 1), (point 1, point 2), …
+Implement `geometry_matrix(az_deg, el_deg)` and `dops(az_deg, el_deg)` in [dop.py](file:./dop.py)
+with numpy. Follow the equations of section 5 of the course. Remember `np.radians`: `np.sin(30)`
+is the sine of 30 **radians**.
 
 ```bash
-python3 track_report.py
+python3 dop.py
 ```
 
-You should read **261 usable fixes** and a track of about **3034.6 m**. Open `track.png` in the file
-list: blue dots are GPS fixes, green dots DGPS fixes (quality 2), and on the east side you see **red**
-dots: 12 seconds where the car drove under a bridge and the receiver *guessed* (quality 6). They are
-drawn so you can see them, but they are **not** in the track: the grey line jumps straight across.
+The worked example must give exactly the numbers of the course (HDOP 1.155, VDOP 2.236, PDOP 2.517,
+TDOP 1.414, GDOP 2.887). Two experiments to understand the matrix:
 
-> [!QUESTION]
-> If you added the red points, the track would be about 3052 m — 17 m longer. Which number is closer
-> to the truth? Here the guesses happen to be good; but a receiver's guess can also be very wrong, and
-> NAVERA has no way to check it. That is why it refuses them.
+1. Four satellites at the **same** elevation make `GᵀG` singular (the course explains why). Check
+   its rank — 3 instead of 4:
 
-## Step 8 — Watch NAVERA's real GPS driver read your log
+```bash
+python3 -c "import numpy as np, dop; G = dop.geometry_matrix([0, 90, 180, 270], [40, 40, 40, 40]); print(np.linalg.matrix_rank(G.T @ G))"
+```
 
-Now the best part: the **real** `gps_node` from your NAVERA copy will read `drive.nmea` as if a receiver
-were plugged in. The script creates a fake serial port (a "pseudo-terminal" — NAVERA's own test
-`test_gps_serial.py` uses the same trick), starts `ros2 run gps_pkg gps_node.py` on it, writes the log
-into it 25 times faster than real time, and counts the `PositionEstimate` messages on
-`/navera/estimate/gps`. It takes about 20 seconds:
+2. Turn the whole sky by 37° in azimuth: HDOP and VDOP must not change (a rotation about the
+   vertical axis does not change the geometry, only the direction of the error ellipse):
+
+```bash
+python3 -c "import dop; a = [10, 80, 150, 200, 300]; e = [15, 50, 35, 70, 25]; print(dop.dops(a, e)['HDOP'], dop.dops([x + 37 for x in a], e)['HDOP'])"
+```
+
+> [!TASK]
+> **TODO 7–8** — `geometry_matrix` returns an n × 4 numpy array; `dops` returns the dictionary
+> `{"GDOP", "PDOP", "HDOP", "VDOP", "TDOP"}` and raises `ValueError` with fewer than 4 satellites.
+
+## Step 7 — NAVERA's decisions (TODO 9–11, 25 min)
+
+Open [gps_node.py](file:navera/gps_pkg/gps_pkg/nodes/gps_node.py) beside
+[gps_filter.py](file:./gps_filter.py). Find `_VALID_GPS_QUAL`, the `reason = (...)` lines and the
+covariance in `_publish_fix`. Then write:
+
+- `navera_decision(gga)` → `(valid, reason)` with **exactly** the reason texts of gps_node (copy the
+  em dash `—` from the file; a normal `-` is a different character);
+- `navera_covariance(hdop)` → the 9 numbers gps_node writes, or `None`;
+- `jump_ok(prev, cur, dt, slack_m)` → a plausibility gate: the distance must be at most
+  `v_max × dt + slack_m`. NAVERA's **estimator** has the same idea with 100 m/s and 50 m (see
+  `max_speed_mps` and `gps_jump_margin_m` in
+  [estimator_node.py](file:navera/navera_estimator/navera_estimator/nodes/estimator_node.py)).
+
+```bash
+python3 gps_filter.py
+```
+
+> [!TASK]
+> **TODO 9–11** — the three functions of `gps_filter.py`, as specified above each TODO.
+
+## Step 8 — Analyse the drive (TODO 12–13, 30 min)
+
+Two last functions in [analyze_drive.py](file:./analyze_drive.py):
+
+- `estimate_uere(err_h, hdop)` = `sqrt(mean((e_h / HDOP)²))` (course, section 6);
+- `longest_gap(times)` → `(gap_s, t_before, t_after)` over consecutive accepted fixes.
+
+The rest is ready: it groups the sentences into seconds, recomputes the DOPs of every second from
+GSV + GSA with **your** `dops()`, applies your decision and your jump gate (60 m/s + 3 σ of the
+fix), compares the accepted fixes with `truth.csv`, and writes `results.json`, `drive.png` and
+`dop_timeline.png`.
+
+```bash
+python3 analyze_drive.py
+```
+
+Expected: 7 rejected lines; DOP recomputed on 992 seconds with a largest difference of about 0.005
+(rounding to 2 decimals); one jump rejected at 052423; a longest gap of 33 s; a UERE estimate close
+to 1.9 m and about 98 % of fixes inside 2DRMS. Open `dop_timeline.png` and `drive.png` (click them
+in the file list) and find the port area, the underpass and the town centre.
+
+> [!TASK]
+> **TODO 12–13** — then `results.json` must contain the values above (the check compares them).
+
+## Step 9 — Replay the log into NAVERA's real driver (10 min)
+
+The script creates a fake serial port (a **pseudo-terminal**, the same trick as NAVERA's test
+`navera_tools/tests/test_gps_serial.py`), starts `ros2 run gps_pkg gps_node.py` on it, writes the
+log into it about 40 times faster than real time, and counts the `PositionEstimate` messages on
+`/navera/estimate/gps`. It takes about 40 seconds:
 
 ```bash
 python3 play_to_gps_node.py
 ```
 
-Expected result:
+Expected: 1050 messages, **991 valid**, 59 invalid (54 × "no GPS fix (qual=0)", 5 × "receiver
+reports a non-satellite position (qual=6) — not used"), and a largest jump between consecutive
+valid fixes of about 67 km. The counts are saved in `gps_node_counts.json`. The first valid fix shows
+an ellipsoidal altitude near −24 m: the GGA altitude (about 6 m above sea level) plus the geoid
+separation −30.0 m of this synthetic receiver.
 
-```
-gps_node published 282 PositionEstimate messages:
-  valid (usable fix): 261
-  invalid           : 21
-       12 x  receiver reports a non-satellite position (qual=6) — not used
-        9 x  no GPS fix (qual=0)
-```
+> [!QUESTION]
+> gps_node published the 67 km jump as a **valid** fix with a sigma of 1.7 m. Which part of NAVERA
+> stops it before it reaches the autopilot, and with which rule?
 
-Compare with your own report: the **same 261** fixes. 282 is the number of GGA sentences that passed
-the checksum (281 good ones + the glued line). The 9 "no fix" are the 8 seconds at power-on **plus**
-the glued line. The 6 broken lines produced nothing at all — they never left `_read_loop`.
+## Step 10 — Write the report (30 min)
 
-> [!TIP]
-> The first valid fix shows `altitude 127.5 m (ellipsoid)`: the GGA said 95.4 m above sea level, and
-> `gps_node` added the geoid separation 32.1 m — the "two kinds of altitude" of the course.
-
-## Step 9 — Quiz
+Fill [report.md](file:./report.md): 5 sections, at least 250 words, your own sentences. Quote
+your numbers from `results.json` and `gps_node_counts.json`. The check looks for: the number of
+rejected lines, the UTC times of the two swapped-digit lines, the outage length, your UERE
+estimate and gps_node's valid count.
 
 > [!TASK]
-> Answer the 4 questions in [answers.py](file:./answers.py).
-
-Press **✔ Check my work**. Each red line has a hint; fix, save and check again.
+> **report.md** — every `TODO` line replaced, the 5 headings kept. Then press **✔ Check my work**.
+> Each red line has a hint; fix, save, run the script again, and check again.
 
 ## Going further (optional)
 
-1. **Speed from RMC.** Write `parse_rmc(line)` that returns the speed in m/s (knots × 0.514444) and the
-   course. Then compute the velocity towards east and north like `_publish_vel` in `gps_node.py`. Is
-   the RMC speed the same as the distance between two consecutive fixes divided by 1 second?
-2. **Break it yourself.** Copy a good GGA line, change one digit of the latitude, and give it to
-   `pynmea2.parse(line, check=True)` in Python. Which error does it raise? Then change **two**
-   characters so that the checksum still matches (hint: XOR of the two changes must be 0 — for
-   example `'1'`→`'3'` in one place and `'3'`→`'1'` in another).
-3. **Read the simulator's receiver.** Open `~/navera/navera_tools/sim/nmea_gps.py`: find its checksum
-   function `_cs` and its `_lat` function. How does it write degrees-minutes — the opposite of your
-   `dm_to_deg`? What does it send when the mode is `jammed`?
+1. **Elevation weighting.** Real receivers trust high satellites more (less atmosphere, less
+   multipath). Use a weight matrix `W = diag(sin²(el_i))` and `Q_w = (Gᵀ W G)⁻¹`. How does HDOP
+   change in the town centre? (The DOPs in the log are unweighted, so they will no longer match.)
+2. **Property test.** With `hypothesis` (installed) and `pytest` (lesson 14), write a test that
+   changes one random character of a valid sentence and asserts `is_valid` is `False`, and another
+   that swaps two different neighbouring characters of the body and asserts it stays `True`.
+   Explain both results with the XOR algebra.
+3. **RMC cross-check.** Write `parse_rmc(line)` and compare the GGA and RMC positions of the same
+   second. Which damaged lines does this catch that the checksum and the jump gate do not? Could
+   gps_node do this cheaply?
+4. **The simulator's receiver.** Open `~/navera/navera_tools/sim/nmea_gps.py`. What does it send in
+   the `jammed` mode? How many decimals of minutes does it write, and what resolution in metres is
+   that?

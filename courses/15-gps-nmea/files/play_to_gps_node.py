@@ -1,13 +1,17 @@
 """Feed an NMEA log to NAVERA's REAL GPS driver, as if a GPS receiver were plugged in.
 
-    python3 play_to_gps_node.py                (uses drive.nmea, about 15 seconds)
+    python3 play_to_gps_node.py                (the Sohar drive, about 40 seconds)
+    python3 play_to_gps_node.py other.nmea
 
 How it works: a "pseudo-terminal" is a fake serial port. We start NAVERA's gps_node
 (ros2 run gps_pkg gps_node.py) on it, write the log into it line by line, and count
 the messages gps_node publishes on /navera/estimate/gps (navera_msgs/PositionEstimate):
 valid ones (a usable fix) and invalid ones (no fix, or a fix NAVERA does not trust).
 The same trick is used by NAVERA's own test navera_tools/tests/test_gps_serial.py.
+The counts are saved in gps_node_counts.json (the check reads them).
 """
+import json
+import math
 import os
 import pty
 import signal
@@ -21,12 +25,20 @@ import rclpy
 from navera_msgs.msg import PositionEstimate
 from rclpy.executors import SingleThreadedExecutor
 
-PATH = sys.argv[1] if len(sys.argv) > 1 else "drive.nmea"
-PAUSE_S = 0.012                     # between two lines: the 287 s drive plays in ~12 s
+PATH = sys.argv[1] if len(sys.argv) > 1 else "/data/academy/15-gps-nmea/sohar_drive.nmea"
+PAUSE_S = 0.004                     # between two lines: the 1053 s drive plays in ~25 s
+
+
+def haversine_m(lat1, lon1, lat2, lon2):
+    R = 6371000.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    a = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2
+    return 2 * R * math.asin(math.sqrt(a))
 
 
 def main():
-    lines = open(PATH, errors="replace").read().splitlines()
+    with open(PATH, "rb") as f:
+        lines = f.read().splitlines()          # raw bytes: a damaged byte stays damaged
     master, slave = pty.openpty()
     tty.setraw(slave)
     port = os.ttyname(slave)
@@ -56,9 +68,9 @@ def main():
         time.sleep(1.0)
         print(f"playing {len(lines)} lines of {PATH} into gps_node…")
         for i, ln in enumerate(lines):
-            os.write(master, (ln + "\r\n").encode("ascii", errors="replace"))
+            os.write(master, ln + b"\r\n")
             time.sleep(PAUSE_S)
-            if i % 150 == 0:
+            if i % 1000 == 0:
                 print(f"  line {i:4d}: {len(got)} estimates received so far")
         time.sleep(1.5)
     finally:
@@ -81,6 +93,18 @@ def main():
     print(f"  invalid           : {len(invalid)}")
     for r, n in sorted(reasons.items(), key=lambda x: -x[1]):
         print(f"      {n:3d} x  {r}")
+    jump, at = 0.0, None                 # largest distance between two consecutive valid fixes
+    for a, b in zip(valid, valid[1:]):
+        d = haversine_m(a.latitude, a.longitude, b.latitude, b.longitude)
+        if d > jump:
+            jump, at = d, (b.latitude, b.longitude)
+    if at:
+        print(f"largest jump between two consecutive valid fixes: {jump / 1000:.1f} km "
+              f"(to lat {at[0]:.5f}, lon {at[1]:.5f})")
+    with open("gps_node_counts.json", "w") as f:
+        json.dump({"log": PATH, "published": len(got), "valid": len(valid), "invalid": len(invalid),
+                   "reasons": reasons, "max_jump_m": round(jump, 1)}, f, indent=2, ensure_ascii=False)
+    print("saved gps_node_counts.json")
     if valid:
         m = valid[0]
         print(f"first valid fix: lat {m.latitude:.6f}, lon {m.longitude:.6f}, "
