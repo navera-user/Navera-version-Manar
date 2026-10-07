@@ -383,6 +383,10 @@ class EstimatorNode(Node):
             sigma = self._stated_sigma(last) if eligible else None
             if sigma is None or last.mode != PositionEstimate.MODE_MEASURED:
                 continue                   # a propagated position partly comes from GPS itself
+            if sigma > 1000.0:
+                # a celestial fix (tens of km) "agrees" with a GPS spoofed by 100+ km: too
+                # coarse to vouch for or against GPS
+                continue
             t_ref = self._measured_at(last)
             self._last_ref_at = now
             same = self._gps_near(t_ref.nanoseconds)
