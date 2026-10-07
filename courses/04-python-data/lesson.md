@@ -254,6 +254,31 @@ The trick is to carry **two** variables through the loop:
 Check your idea on the tricky cases: the GPS is never lost (answer 0), or it is lost until the very
 last row (the run must still count).
 
+## 🐦 How birds do it
+
+Scientists read flight logs too — written by birds.
+
+In 2007, a team led by the Danish biologist Carsten Egevang fitted **Arctic terns** nesting in
+Greenland and Iceland with **geolocators**: tiny loggers on a leg ring. A geolocator has no GPS. It
+only writes, again and again, two columns: the **time** and **how bright the light is**. From those
+two columns alone, scientists compute where the bird was each day. The time of local noon gives the
+longitude; the length of the day gives the latitude. It is rough — a couple of hundred kilometres —
+but over a whole ocean, that is enough.
+
+One year later the team caught the same birds, downloaded the logs and drew the tracks. The terns had
+flown from Greenland down to the seas near Antarctica and back, on a long S-shaped route: on average
+about **70 900 km in one year** (published in 2010, in the journal *PNAS*). It was the longest
+migration ever measured for any animal.
+
+Look at what the scientists did with the data: a **list** of rows, a **loop** over every row, a
+**dictionary** per day, and questions like "where was the bird furthest south?" or "how long did it
+stop over the North Atlantic?" — the same pattern as finding the longest GPS outage.
+
+Arctic terns can live 30 years. With Python: `30 * 70900` is more than **2 million km** in a
+lifetime — enough to go to the Moon and back almost three times.
+
+NAVERA's CSV flight log is the same idea, with one row every two seconds instead of one per day.
+
 ## In NAVERA
 
 NAVERA reads flight CSV files exactly like this. When the camera package **replays** a recorded

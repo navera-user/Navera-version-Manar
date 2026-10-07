@@ -158,6 +158,34 @@ ROS comes with a command, `ros2`, to look inside a running system. These are the
 Two topics appear even when you start nothing special: `/rosout` (every node's log messages) and
 `/parameter_events` (changes of settings, lesson 13). You can ignore them today.
 
+## 🐦 How birds do it
+
+On winter evenings, thousands of starlings swirl over their roost before night. The flock twists,
+splits and joins again like smoke — a **murmuration**. There is no leader, no bird giving orders.
+How do they stay together without crashing?
+
+In 2008, a team of Italian physicists (Michele Ballerini and colleagues, in the journal *PNAS*)
+filmed starling flocks over Rome with several cameras at once and rebuilt the 3D position of every
+bird. Their discovery: each starling pays attention to about **six or seven nearest neighbours** — not
+to the whole flock, and not to the birds within a fixed distance, but to a fixed *number* of
+neighbours, near or far.
+
+That is very close to publish/subscribe:
+
+| Starling flock | ROS 2 |
+|---|---|
+| each bird shows its movement just by flying | a node **publishes** messages |
+| each bird watches a few neighbours, not everyone | a node **subscribes** only to the topics it needs |
+| no bird needs to know the whole flock | no node needs to know all the others |
+| a bird can join or leave; the others just carry on | a node can start or stop; nothing else changes |
+
+One honest difference: a starling chooses its neighbours by looking around, while a ROS node chooses
+by **topic name**. But the result is the same: many small, simple programs that together do something
+none of them could do alone.
+
+NAVERA is a calm flock of about ten nodes: no single node knows everything, and each one listens only
+to the few topics it needs.
+
 ## In NAVERA
 
 The whole NAVERA graph is drawn in `docs/ARCHITECTURE.md` of your copy

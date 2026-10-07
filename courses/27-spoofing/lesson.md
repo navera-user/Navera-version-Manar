@@ -134,6 +134,30 @@ vision is within 10 m or 500 m, a 100 m disagreement proves nothing. So:
 That is why lesson 26 insisted on honest σ, and why VALIDATION_STATUS.md lists GPS spoofing as *known
 limitation 7*. Day vision states σ 30 m today, **not yet measured with NAVERA's camera**.
 
+## 🐦 How birds do it
+
+Birds can be fooled too — and the ways they are fooled look a lot like jamming and spoofing.
+
+**False light.** Many songbirds migrate at night. Brightly lit towers, buildings and even strong
+light beams can **attract and trap** them: birds circle around the lights for hours, wasting energy,
+and many crash into lit glass. This is very well documented, and it is why some cities now switch
+off decorative lights during migration nights. To the bird, the light is a **false signal**, much
+stronger than the faint stars it should read — just like a spoofer's signal is stronger than the
+real satellites.
+
+**Radio noise.** In 2014, researchers in Oldenburg (Germany) found that European robins on their
+university campus could not use their magnetic compass. The cause was weak, human-made radio-frequency
+noise from electronic devices. Inside huts screened with grounded aluminium, the robins oriented again.
+That is a kind of **jamming** of a natural sensor.
+
+**Magnetic storms.** Some homing pigeon races have had unusually poor returns on days of strong solar
+and geomagnetic activity. Scientists suspect the disturbed magnetic field confused the birds, but
+this is **debated** and not proven.
+
+What saves birds is the same thing that saves NAVERA: **more than one sense**. A bird with stars,
+sunset, landmarks and a magnetic compass can notice when one of them disagrees with the others. A
+single fooled sense is dangerous; a cross-checked one is much harder to fool.
+
 ## 5. In NAVERA
 
 | What | Where in your copy |

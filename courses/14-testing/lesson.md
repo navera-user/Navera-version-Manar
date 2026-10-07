@@ -145,6 +145,32 @@ A **unit test** checks one small unit. An **integration test** checks that the u
 (the arbiter receiving a real GPS node's messages, for example). You need both — but most tests should
 be unit tests, because they are fast and they point at the exact place of a bug.
 
+## 🐦 How birds do it
+
+How do you ask a bird *"which way do you want to go?"* In the 1960s, Stephen Emlen and his father John
+Emlen built a simple, clever instrument: the **Emlen funnel**. It is a paper funnel with an ink pad at
+the bottom. A migratory bird is put inside at night; it keeps hopping toward the direction it wants to
+fly, and its inky footprints mark the paper. In the morning, the scientist counts the marks. It is an
+**automatic measurement**: it runs while the scientist sleeps, and it gives the same kind of answer
+every time.
+
+Then Emlen tested ideas, one at a time, in a **planetarium**, with indigo buntings (small night
+migrants):
+
+1. Show the real star sky → the birds hop in their migration direction.
+2. Turn the projected sky → the birds turn with it. *They use the stars.*
+3. Raise young birds under a sky that turns around a different star (Betelgeuse) → as adults, they
+   treat Betelgeuse as their "north". *They are not born knowing the constellations: they learn the
+   centre of rotation of the sky.*
+
+In the 1960s and 1970s, Wolfgang and Roswitha Wiltschko did the same with robins and magnets: turn the
+magnetic field with coils, and the robins' preferred direction turns too.
+
+A good experiment is a good test: **change one thing, keep everything else the same, repeat many
+times** — and design it so that it **fails** if your idea is wrong.
+
+NAVERA's tests follow the same rules, and run in seconds instead of migration seasons.
+
 ## In NAVERA
 
 Open [navera_common/test/test_geo.py](file:navera/navera_common/test/test_geo.py), the tests of the

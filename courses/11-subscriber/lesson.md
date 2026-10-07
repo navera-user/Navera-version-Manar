@@ -166,6 +166,27 @@ what: `GPS: stale (3.2s>3.0s); day: none received; …`. NAVERA never keeps send
 it were current — an old position presented as new is how vehicles get lost. You will see this
 yourself in the lab by stopping the GPS.
 
+## 🐦 How birds do it
+
+Remember the chickadee's alarm call from lesson 10? Somebody listens. **Red-breasted nuthatches**,
+another small bird of the same forests, react to chickadee alarms. In 2007, Christopher Templeton and
+Erick Greene showed that the nuthatches don't just react to *any* call: they react more strongly to the
+"dangerous predator" version, with more "dee" notes. They **read the value inside the message** and
+decide what to do. That is a subscriber with a callback.
+
+Birds also **keep state**. The **Clark's nutcracker**, a bird of the mountains of North America, hides
+thousands of pine seeds in autumn, a few at a time, in many small hiding places in the ground. Months
+later, sometimes under snow, it comes back and finds a large part of them — using the landmarks
+around each hiding place. Every seed it hides is like one message stored in the node's memory, to be
+used much later.
+
+And Navi adds one more thing: **freshness**. An alarm call is useful *now*. A swallow that panics
+because of a cat that left ten minutes ago wastes its energy; one that ignores a fresh alarm may be
+eaten. The age of a message matters as much as its content.
+
+That is exactly what NAVERA's arbiter does in its callbacks: it **stores** each new position with its
+time, then decides in `_tick()` — and a source that has gone silent for too long is no longer trusted.
+
 ## In NAVERA
 
 Open [estimator_node.py](file:navera/navera_estimator/navera_estimator/nodes/estimator_node.py) and

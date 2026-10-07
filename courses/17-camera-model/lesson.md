@@ -184,6 +184,27 @@ That is why NAVERA reads the drone's attitude (lesson 16) at the instant of each
 **straightens** the picture into the view of a level camera looking straight down before matching.
 Frames tilted more than 45° are not used.
 
+## 🐦 How birds do it
+
+High above the coast, Navi sees a huge piece of the world: the beach, the port, the patchwork of
+olive groves. Down low, skimming a field to catch flies, she sees only a small patch of grass — but
+every insect in it. That is this lesson's rule, applied to an eye: **higher means a wider footprint,
+but fewer details per metre of ground**. No eye can escape geometry.
+
+Birds of prey push detail to the extreme. Their retina has a **fovea** (the sharpest spot) packed
+with light sensors, and the best eagles see fine detail about twice as well as a human. It is a
+little like having a long-focal-length camera in the centre of the eye: they can hunt from high up
+and still see small things.
+
+Now watch a **kestrel** hunting beside a road. It **hovers**, facing the wind. Its wings and tail
+work hard all the time, and its body moves with every gust — but its **head stays almost perfectly
+still**, as if pinned in the air. A still head means a steady picture: the kestrel can compare one
+view with the next and spot the tiny movement of a vole in the grass.
+
+NAVERA has the same two needs as the kestrel. It must know **how much ground each pixel covers**
+(so it must know its height), and it wants pictures taken from a **known, steady** viewpoint — which
+is why height and tilt matter so much.
+
 ## In NAVERA
 
 The formulas of this lesson are in the real code, almost word for word.

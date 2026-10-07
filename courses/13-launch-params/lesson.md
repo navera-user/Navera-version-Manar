@@ -125,6 +125,38 @@ When you press `Ctrl+C`, `ros2 launch` stops every process it started. All their
 the same terminal, each line starting with the process name in brackets, like
 `[estimator_node.py-1]`.
 
+## 🐦 How birds do it
+
+In autumn, caged migratory birds become restless at night: they hop and flutter in the direction they
+would fly. Scientists call it *Zugunruhe*, German for "migratory restlessness". In birds that migrate
+far, it lasts longer than in birds that migrate a short way.
+
+In the late 1970s, Peter Berthold and Ulrich Querner crossed **blackcaps** from southern Germany, which
+migrate all the way to Africa or the Mediterranean, with blackcaps from the Canary Islands, which hardly
+migrate. The hybrid young showed an amount of restlessness **in between** their parents' (published
+1981). The same bird, the same body, the same "code" — but different inherited **settings**: how far
+to fly.
+
+Different species tune their settings too. If birds had parameter files, they might look like this
+(a joke, but the facts in it are real):
+
+```yaml
+white_stork:
+  flight: soaring            # glides on rising warm air (thermals)
+  long_sea_crossing: avoid   # thermals form over land, not over the sea
+barn_swallow:                # Navi!
+  flight: flapping
+  long_sea_crossing: ok      # crosses the Mediterranean and the Sahara
+  food: insects_caught_in_flight
+```
+
+That is why storks funnel through Gibraltar, while swallows cross the Mediterranean on a broad front.
+Even soaring birds of prey such as honey buzzards take the shortest sea crossing they can find —
+and one of them is **Cap Bon**, in Tunisia, the jump to Sicily.
+
+NAVERA follows the same rule: one program for the drone, the car and the boat — and a few parameters
+that say what kind of "bird" this vehicle is.
+
 ## In NAVERA
 
 Open NAVERA's arbiter launch file,

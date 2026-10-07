@@ -129,6 +129,11 @@ now = self.get_clock().now()     # a ROS Time
 msg.header.stamp = now.to_msg()  # converted into the message's format (sec + nanosec)
 ```
 
+> [!BIRD] A pigeon's sun compass needs a correct **clock**: the sun moves across the sky all day, so
+> the bird must know the time to turn the sun's position into a direction. In classic "clock-shift"
+> experiments, pigeons kept for days with lights switched on and off 6 hours too early flew off in a
+> wrong direction — often roughly a quarter turn (about 90°) away, as a 6-hour error predicts. A wrong time stamp gives a wrong answer — for birds and for robots.
+
 ### Covariance in one picture
 
 No GPS is perfect. A receiver says "I am here, **give or take 3 metres**". That "give or take" is
@@ -177,6 +182,29 @@ A `BEST_EFFORT` subscriber can listen to both kinds of publishers, but a `RELIAB
 common reasons why "my node receives nothing". NAVERA writes this rule down in
 [navera_common/…/qos.py](file:navera/navera_common/navera_common/qos.py) and listens to other
 people's sensors in `BEST_EFFORT` so that it works with both. For your fake GPS, the default is fine.
+
+## 🐦 How birds do it
+
+When a **black-capped chickadee** — a small North American bird — spots a predator, it calls
+*"chick-a-dee-dee-dee"*. It does not know who is listening: its mate, other chickadees, birds of
+other species, maybe nobody. It just **broadcasts** the message. That is a publisher.
+
+And the call carries **data**. In 2005, Christopher Templeton and colleagues showed (in the journal
+*Science*) that chickadees add more "dee" notes when the predator is more dangerous. A small, agile
+pygmy owl — a real threat to a chickadee — gets more "dee"s than a big great horned owl, which is too
+slow to catch such a small bird. For a hawk in flight, chickadees use a different call: a soft, high
+*"seet"*. Different situations, different message types — and inside each message, a value.
+
+So a chickadee's alarm is like your fake GPS:
+
+- it publishes on a "channel" everyone nearby can hear;
+- it does not wait for an answer and does not care who listens;
+- its message has a fixed shape with values inside (how many "dee"s = how dangerous).
+
+Navi's family has alarm calls too: when a cat or a hawk comes near the nest, barn swallows call
+loudly and the other swallows nearby gather to chase it away. One publisher, many subscribers.
+
+Your node does the same thing, twice per second, in a language the whole of NAVERA understands.
 
 ## In NAVERA
 

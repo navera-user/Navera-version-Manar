@@ -226,6 +226,33 @@ real one.
 So the rule in NAVERA is strict: **a sentence without a correct checksum never becomes a position**.
 A missing checksum is treated like a wrong one — a cut line has no checksum at all.
 
+## 🐦 How birds do it
+
+Long before GPS, how did scientists find out where birds went? In 1899 a Danish school teacher, Hans
+Christian Cornelius Mortensen, put light metal **rings** on the legs of starlings, each with a number
+and his address. If somebody found a ringed bird, they could send the number back to him. **Bird
+ringing** (called *banding* in America) is still used today, all over the world, and millions of birds have been ringed.
+
+A ring is a tiny message with fixed fields: *who* to tell, and *which* bird. But it gives only two
+points: where the bird was ringed, and where it was found — often years later. Everything in between
+is unknown.
+
+Then the technology flew forward:
+
+| Era | Tool | What you learn |
+|---|---|---|
+| from 1899 | numbered rings | start and end points |
+| 1960s | radio tags | where the bird is now — if you follow it with an antenna |
+| from the 1980s–90s | satellite tags, then geolocators | rough positions, anywhere on Earth |
+| today | GPS tags | positions as often as every few minutes, to a few metres |
+
+A GPS tag on a stork contains the same kind of receiver as NAVERA's, listening to the same satellites.
+
+And Navi has one warning for you: a ring number read wrong — one digit changed — points to the
+**wrong bird**, maybe on another continent. That is why ringers read rings very carefully, and why
+NAVERA checks the checksum of every NMEA line: a single damaged character can move a position by
+kilometres.
+
 ## In NAVERA
 
 The GPS driver is [gps_node.py](file:navera/gps_pkg/gps_pkg/nodes/gps_node.py). It opens the serial

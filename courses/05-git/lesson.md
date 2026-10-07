@@ -180,6 +180,31 @@ would fail. Reset only when you really want a clean start.
 The other button, **↺ Reset lab files**, is different: it only puts back the files of the current
 lesson in `~/lessons/<lesson>/` (keeping a backup copy). It never touches `~/navera`.
 
+## 🐦 How birds do it
+
+A young **common cuckoo** never meets its parents. Its mother laid the egg in another bird's nest — a
+reed warbler's, for example — and the foster parents raised it. When the young cuckoo is ready to
+leave Europe, the adult cuckoos have usually already gone. Nobody shows it the way. And yet it flies
+alone to Africa, to the same region as the adults. Scientists who followed young cuckoos with small
+satellite tags watched them do it.
+
+So where is the route stored? **Inside the bird.** Scientists have shown that a migration "program" —
+roughly *which direction* to fly and *for how long* — is **inherited**: passed from one generation to
+the next, like a repository that every new bird clones when it hatches.
+
+And, like code, the program can get a new **branch**. Blackcaps (small grey warblers) from Central
+Europe used to winter around the Mediterranean, flying south-west. In the second half of the 20th
+century, more and more of them started to winter in Britain instead — north-west. Peter Berthold's
+team in Germany raised the young of these "British" blackcaps in cages, far from any adult, and in
+autumn the young birds wanted to fly **north-west** too (published in 1992). A new route had been
+created, tested by real winters, and passed on.
+
+Navi's family has its own habit: barn swallows often come back to the same farm year after year. A
+known good place — a stable version — is worth returning to.
+
+Git gives you what evolution never had: a clear history, branches you can try without risk, and a
+Reset button.
+
 ## In NAVERA
 
 The NAVERA team writes its working rules in [CLAUDE.md](file:navera/CLAUDE.md), at the root of the

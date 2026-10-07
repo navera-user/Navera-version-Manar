@@ -191,6 +191,8 @@ function renderMarkdown(el, md) {
     d.innerHTML = `<div class="ct">${labels[kind]}</div>` + bq.innerHTML;
     bq.replaceWith(d);
   });
+  // headings that already start with an emoji get no extra feather
+  el.querySelectorAll('h2').forEach(h => { if (/^\p{Extended_Pictographic}/u.test(h.textContent.trim())) h.classList.add('nofeather'); });
   el.querySelectorAll('pre code').forEach(code => {
     const pre = code.parentElement;
     const lang = (code.className.match(/language-(\S+)/) || [])[1] || '';

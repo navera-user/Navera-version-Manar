@@ -195,6 +195,26 @@ drone IMU is good to a few tenths of a degree in tilt and one or two degrees in 
 tens of kilometers. The celestial node states its accuracy exactly like that:
 `attitude_sigma_deg × 111 195 m` (`_sigma_m` in `cn_subscriber.py`).
 
+## 🐦 How birds do it
+
+Many songbirds — warblers, thrushes, buntings — migrate **at night**. How do they find their way in
+the dark? In the 1960s and 70s, the American biologist **Stephen Emlen** brought **indigo buntings**
+into a **planetarium**, under an artificial starry sky. He discovered that young buntings **learn**
+the night sky: they watch which part of it **turns around a fixed point** — the area around the pole
+star — and remember that point as "north". Emlen even raised young birds under a sky that turned
+around a different star, Betelgeuse; they then treated Betelgeuse as north! Like NAVERA's star
+camera, the birds read a **pattern** of stars, not one single star.
+
+By day, many birds (pigeons, starlings) use the **sun** as a compass. But the sun moves across the
+sky by about 15° every hour on average, so a sun compass only works with an **internal clock**. Scientists
+proved it with "clock-shift" experiments: they kept pigeons for days under lights switched on and
+off six hours late. Released under the real sun, the pigeons flew off at a large angle from the right
+direction — close to the **90°** that a six-hour clock error predicts.
+
+That is the lesson of this module for NAVERA too: celestial navigation is only as good as its
+**clock** and its sense of **which way is up**. A bird with a wrong clock, or a star camera with a
+tilted IMU, sees a perfect sky and still draws the wrong conclusion.
+
 ## What NAVERA measured
 
 All from `docs/VALIDATION_STATUS.md` — none of these comes from a real flight.

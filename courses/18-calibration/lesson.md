@@ -176,6 +176,27 @@ uses the same f as the lens, one degree near the centre covers the same number o
 no detail lost, none invented.
 </details>
 
+## 🐦 How birds do it
+
+Look at a pigeon's head. Its eyes are on the **sides**, not in front. Together they see a huge part
+of the world at once — more than 300 degrees around in a pigeon, and a woodcock sees almost all the
+way round. That is a bird with two built-in fisheye lenses! It is perfect for spotting a hawk coming
+from almost any direction. The price: a small **blind spot behind the head**, and only a narrow zone
+in front where both eyes see the same thing.
+
+An **owl** made the opposite choice. Its eyes face **forward**, so both eyes see a much larger part
+of the scene together. With two views of the same thing, the brain can judge **distance** — very
+useful to land on a mouse in the dark. But the owl's field of view is much narrower, and its big
+tube-shaped eyes can hardly move in their sockets. So the owl turns its whole head instead, up to
+about three-quarters of a full turn.
+
+Navi, a swallow catching insects in flight, sits somewhere in between: wide side vision to stay
+safe, plus sharp zones to aim at a fly.
+
+Nature has no single "best" lens: **wide** to see everything, or **narrow** to measure well. NAVERA
+makes the same trade-off. Its Insta360 lens sees 166° like a pigeon, but for measuring, NAVERA
+straightens and keeps the central 111°, where every pixel can be trusted.
+
 ## In NAVERA
 
 **Calibrating.** The tool is

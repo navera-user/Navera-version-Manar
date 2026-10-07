@@ -172,6 +172,28 @@ Visual odometry needs **fixed, textured ground** that both photos share:
 
 That is why the **response** matters: a careful program uses a step only when it is sure.
 
+## 🐦 How birds do it
+
+Counting your own motion to know where you are is called **path integration** — dead reckoning.
+Animals do it, and it has the same weakness as visual odometry: small errors add up.
+
+You met it in lesson 6: the famous experiment of the Dutch scientist **A. C. Perdeck**,
+published in 1958. Look at it again with visual odometry in mind. Every autumn, starlings from around the Baltic fly south-west across the
+Netherlands to spend the winter in Belgium, northern France and southern England. Perdeck caught
+thousands of them in the Netherlands, put a ring on each one, carried them by plane to
+**Switzerland** and released them there. Rings found later told where they had gone.
+
+- The **young** starlings, on their first migration, simply kept flying **south-west**, the same
+  direction and roughly the same distance as before. They ended up in **Spain and southern France**
+  — the wrong place. They had only a "compass and distance" program, like pure dead reckoning.
+- The **adults** corrected: many flew **north-west**, back towards their usual wintering areas.
+  They had something the young ones did not: a **map** learned from experience.
+
+That is visual odometry versus a map fix. Counting steps alone can take you far, but if something
+moves you (wind, a wrong start, a bad step), nothing brings you back. A map fix now and then resets
+the error to zero. Navi, a young swallow on her first trip, would do well to grow up into an "adult"
+navigator — and so does NAVERA, which mixes both.
+
 ## In NAVERA
 
 ### `day_pkg/day_pkg/frame_odometry.py` — the visual odometry

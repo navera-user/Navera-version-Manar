@@ -160,6 +160,11 @@ is always between 0 and 360.
 > navigators measure from **north**, clockwise. That is why we write `atan2(east, north)` and not
 > `atan2(north, east)`.
 
+> [!BIRD] European robins have a real **magnetic compass**: in 1972, Wolfgang and Roswitha Wiltschko
+> showed that robins in a cage change their preferred direction when the magnetic field around them is
+> turned. Strangely, the robin's compass does not tell magnetic north from south like a needle: it
+> feels the **tilt** of the Earth's field lines, which tells "toward the pole" from "toward the equator".
+
 On the round Earth, the bearing of the great circle uses the same idea with a few more cos and sin:
 
 ```python
@@ -201,6 +206,32 @@ How far can you go before the "flat Earth" breaks? Compared with the haversine, 
 by about 1 m at 1 km, 6 m at 5 km and 30 m at 20 km (mostly the 0.1 % effect above, then the curve
 of the Earth). For one city that is fine; for a flight across the country, the software must use
 the round-Earth formulas or move its home point along the way.
+
+## 🐦 How birds do it
+
+In the 1950s, the Dutch biologist **Albert Perdeck** ran one of the most famous experiments about
+bird navigation. Every autumn, starlings from the north-east of Europe pass through the Netherlands,
+flying **west-south-west** to spend the winter in north-west France and southern England. Perdeck
+caught thousands of them, put a numbered ring on each leg, flew them by plane to **Switzerland** and
+released them there. Then he waited for people to find the rings and report where (published 1958).
+
+The adults and the young birds did different things:
+
+| Birds | What they did | What they had |
+|---|---|---|
+| **Adults** | flew **north-west**, back toward their usual winter area | a **map** *and* a compass |
+| **Juveniles** (first migration) | kept flying **west-south-west**, as if nothing had happened, and ended up in southern France and Spain | only a **compass** |
+
+The young birds only knew a **direction** (a bearing) and, roughly, a distance. Moved hundreds of
+kilometres to the side, they missed their target by about the same distance. The adults knew *where they were*, so they
+computed a **new bearing** from their new position to their goal — exactly what `bearing()` does in
+this lesson.
+
+Navi learned the lesson: a compass alone is not enough. You also need a **position**.
+
+NAVERA is built the same way. The IMU's compass gives a heading, but only a position source — GPS, day
+vision, the stars — gives the "map". After a GPS jam, NAVERA finds itself again, then computes the new
+distance and bearing to the goal, like an adult starling.
 
 ## In NAVERA
 

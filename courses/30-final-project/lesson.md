@@ -134,6 +134,28 @@ are not that simple); a real receiver with 3 satellites and a good geometry may 
 loses 45 seconds of GPS in this file — would vision cover them? Notice also what the median *hides*:
 it barely moves (3.3 → 3.1 m), while the max drops from 151 m to 11 m. Always look at the worst case.
 
+## 🐦 How birds do it
+
+Navi the swallow has made it. She spent the winter in Africa south of the Sahara, crossed the desert and
+the sea over Tunisia in spring, found her barn in Europe, raised her young and flew back south in autumn. Next spring she will try to come
+back to the **same barn** — barn swallows are famous for returning to the same nest sites year after
+year.
+
+Her first journey was the hardest. Young birds start with an **inherited program**: a direction and
+roughly how long to fly. Perdeck's starlings (lesson 23) showed what that is worth alone: moved to
+Switzerland, the young ones kept their direction and ended up in the wrong country, while the adults
+**corrected**, because experience had given them a map. Many studies find the same pattern: first-time
+migrants make more mistakes, and birds become **better navigators with experience**, adding landmarks,
+calibrating their compasses, learning what works.
+
+No bird gets it right in one go, and neither does a navigation system. NAVERA was not born perfect
+either: the arbiter's rules, the honest σ, the spoofing checks, each came from one measured
+improvement after another — exactly the loop of this lesson. Change **one** thing, measure it against
+a baseline, keep it only if it is really better, and write down its limits.
+
+Like the birds that inspired it, NAVERA combines several senses and cross-checks them. Your project is
+one more step on that migration. Bon voyage!
+
 ## Glossary
 
 | Word | Meaning |

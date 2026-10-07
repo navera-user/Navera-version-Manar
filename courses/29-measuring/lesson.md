@@ -113,6 +113,30 @@ camera, GPS and IMU together."*
 So when you write a result, always say **where** it was measured: *on the bench*, *in simulation*, *on
 synthetic data*, *in flight*. The same "6 m median" means very different things.
 
+## 🐦 How birds do it
+
+Ornithologists measure bird journeys with the same honesty problems you met in this lesson.
+
+**Rings.** Since 1899, when the Danish teacher Hans Christian Mortensen ringed starlings, scientists
+have put small numbered rings on birds' legs. But only a small fraction of ringed birds are ever
+found and reported again. A ring that never comes back is not a bird that went nowhere — it is
+**missing data**, like a position you didn't get.
+
+**Geolocators and GPS tags.** A geolocator is a tiny light logger: from the time of sunrise and
+sunset it estimates the bird's position, but with errors that are often over 100 km. A GPS tag is
+much more precise, but heavier. The tool decides the error bars.
+
+Even so, the results are amazing. In 2010, Carsten Egevang and his colleagues fitted geolocators
+to **Arctic terns** breeding in Greenland and Iceland. The birds flew to the seas around Antarctica
+and back: on **average about 70,900 km per year**, the longest migration ever recorded at the time.
+In 2022, a young **bar-tailed godwit** with a satellite tag flew **non-stop** from Alaska to
+Tasmania: about **13,560 km in about 11 days**, without landing once.
+
+**Compared with what?** In experiments, biologists always keep a **control group**: birds handled the
+same way but not changed — same day, same release site. Perdeck's displaced starlings (lesson 23)
+only mean something compared with the normal route of starlings that were not moved. That control
+group is a **baseline**, exactly like the "before" column in NAVERA's measurements.
+
 ## 7. In NAVERA: `evaluate_session.py`
 
 For real data, the product has its own tool. The recipe (`navera_tools/README.md`, *Measuring accuracy

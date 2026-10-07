@@ -225,6 +225,27 @@ are much stronger:
 
 In the lab, your `trust()` function applies the first two rules, like NAVERA.
 
+## 🐦 How birds do it
+
+How does a homing pigeon recognise the way home? In 2004, Dora Biro, Jessica Meade and Tim Guilford,
+at the University of Oxford, put tiny GPS loggers on homing pigeons and released them again and again
+from the same places. Each pigeon slowly built **its own route** home. The routes were often not the
+shortest — but every bird stayed loyal to its own, flight after flight, passing over the same fields,
+hedges and villages.
+
+The best explanation is **visual pilotage**: the bird has learned what the ground along its route
+looks like and, during each flight, **pairs what it sees now with what it remembers**. That is this
+lesson in one sentence: pair fingerprints from the photo with fingerprints from the map, then check
+that the pairs agree.
+
+Pigeons are also good at the "picture memory" part. In laboratory experiments, pigeons have learned
+to recognise **hundreds** of different photographs.
+
+A sensible pigeon also does not trust one lonely landmark: one white house can look like another
+white house. It is the **pattern** of many features, all in the right places, that says "I know where
+I am". NAVERA thinks the same way: one pair of keypoints proves nothing, many pairs that agree on one
+homography — the **inliers** — do.
+
 ## In NAVERA
 
 All of this lives in [day_pkg/local_matcher.py](file:navera/day_pkg/day_pkg/local_matcher.py),

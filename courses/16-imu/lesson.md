@@ -196,6 +196,28 @@ it gives the declination anywhere. In Python, the small library **pygeomag** com
 Does 3.3° matter? After 1 km of flight, a heading wrong by 3.3° puts you about 58 m to the side
 (1000 × tan 3.3°). For a navigation system that wants an accuracy of tens of metres, yes, it matters.
 
+## 🐦 How birds do it
+
+Navi the swallow has no BNO085 chip. She carries something older and just as clever: an IMU inside her
+head.
+
+Deep in a bird's inner ear — like in yours — sits the **vestibular system**. Three tiny curved tubes
+filled with liquid, the **semicircular canals**, stand at right angles to each other. When the head
+turns, the liquid lags behind and bends little sensory hairs. That is a **gyroscope**, one per axis:
+roll, pitch and yaw. Next to the canals, small organs with tiny crystals resting on hairs, the
+**otolith organs**, feel gravity and every push forward or sideways. That is an **accelerometer**.
+
+And the magnetometer? In 1972, Wolfgang and Roswitha Wiltschko put European robins in a cage
+surrounded by electric coils that could turn the magnetic field. When they turned the field, the
+robins turned the direction they tried to fly. Birds have a **magnetic compass**! It is a strange
+one: it does not read "north" or "south" but the **tilt of the field lines** compared with gravity,
+"towards the pole" or "towards the equator". A magnetic sense working together with a sense of
+"down" — that is sensor fusion again.
+
+Birds even meet our declination problem: their magnetic compass does not point to true north either.
+Many of them correct it with the sky (lesson 25 tells how), just as NAVERA adds the declination from
+the World Magnetic Model.
+
 ## How NAVERA uses the attitude: straightening the photo
 
 Back to our drone over Sousse. The camera is fixed under it, looking down. When the drone flies
@@ -222,6 +244,11 @@ If the tilt is too large (more than **45°**), the photo is marked *unusable*: t
 too obliquely. If there is **no attitude** at the instant of the photo (IMU silent), the photo is
 marked unusable too: guessing "straight down" could silently put the position tens of metres off.
 Honest "I don't know" is better than a confident wrong answer.
+
+> [!BIRD] Hold a chicken gently and move its body up, down or sideways: its head stays almost still
+> in space, as if fixed on an invisible rail. Birds steady their head with reflexes driven by the inner
+> ear and the eyes, so the picture on the retina does not shake. NAVERA cannot move its camera, so it
+> does the same job afterwards, in software: it uses the attitude to "hold the picture level".
 
 ## In NAVERA
 

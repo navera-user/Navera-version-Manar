@@ -183,6 +183,28 @@ And `/navera/position` carries each winning measurement **once**: the same fix i
 at every tick (a filter downstream would count it many times). Bench result: *"Estimator: one
 measurement → Published once (it was re-published at 5 Hz)"*.
 
+## 🐦 How birds do it
+
+A migrating bird has several "sources", just like NAVERA: a **sun compass** by day, a **star
+compass** at night, a **magnetic compass** at any time, plus landmarks. Which one does it trust?
+Birds have their own arbiter, and scientists have studied it for decades.
+
+One beautiful experiment was published in 2004 by William Cochran, Henrik Mouritsen and Martin
+Wikelski. They put tiny radio transmitters on wild **thrushes** in North America and followed them
+by car, sometimes for hundreds of kilometres. Before some birds took off, the
+scientists placed them, during the sunset, in a magnetic field turned to the east. That night the
+birds flew in the **wrong direction**, as if their compass had been turned. The next night, after
+seeing a normal sunset, they flew correctly again.
+
+What does it mean? During the night the thrushes steered with their **magnetic compass**, but
+**every evening they recalibrated it** using the sunset. The sky was the reference; the magnetic
+compass was the everyday tool, checked against the reference once a day.
+
+Different species may rank their compasses in different orders, and scientists still debate the
+details. But the idea is clear: a good navigator does not only pick one source — it knows **which
+source is the reference**, and when another one must be checked or ignored. NAVERA's arbiter writes
+that idea down as rules: eligibility first, then priority.
+
 ## 6. In NAVERA
 
 | What | Where in your copy (`~/navera/…`) |

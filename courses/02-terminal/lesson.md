@@ -248,6 +248,30 @@ add a line to a file.
 > `>` empties the file **first**. `grep word notes.txt > notes.txt` destroys `notes.txt` before grep
 > even reads it. Always write into a **new** file name.
 
+## 🐦 How birds do it
+
+A NAVERA box has no screen. Neither does the tiny backpack that scientists fit on a bird.
+
+To study migration, ornithologists (bird scientists) put small **tracking tags** on birds. Some tags,
+used on large birds like **white storks**, contain a GPS receiver and a mobile-phone chip: from time
+to time they send the bird's latest positions through the phone network. The scientist reads them on
+a computer far away, without ever touching the bird again. It is the same situation as the engineer
+in the field: the machine is somewhere you cannot click, so you talk to it in **text**.
+
+What arrives is text, too — thousands of lines, one per position. A line might look like
+`2025-09-14 07:30:00,36.85,10.32,stork_17`: date, time, latitude, longitude, bird. Big public
+databases such as Movebank hold millions of such lines, for thousands of animals. And the first tools
+a scientist reaches for are the ones of this lesson: `grep stork_17 tracks.csv` keeps one bird,
+`| wc -l` counts its positions, `> stork_17.csv` saves them in a new file.
+
+Navi likes the storks' story because of Tunisia. Storks are **soaring** birds: they glide on rising
+warm air, called *thermals*, to save energy. Thermals form over land, not over cold sea, so storks
+avoid long sea crossings and squeeze through narrow places such as the Strait of Gibraltar. Plot their
+lines of text on a map and you see that funnel appear.
+
+NAVERA's flight logs are no different: lines of text that you search, cut, count and save from the
+terminal.
+
 ## In NAVERA
 
 The real NAVERA box is installed and started from the terminal: the installer

@@ -220,6 +220,24 @@ crop of the top half. And `BUFFERSIZE 1`: the driver must not keep a **queue** o
 frame that waited two seconds in a queue shows where the vehicle *was* two seconds ago — at
 20 m/s, 40 m away. For navigation, the newest frame always wins.
 
+## 🐦 How birds do it
+
+No eye is instant. Light hits the retina, the cells react, the signal travels along nerves, the brain
+works on it: every animal sees the world **a little late**. Birds are often fast at this. Many birds
+can see flickering light that is far too fast for us. In experiments, some small, quick-flying
+songbirds noticed flashes coming well over a hundred times per second, while a human sees a smooth,
+steady light far below that. A film that looks smooth to you might look like a slideshow to them.
+
+Fast eyes matter when you hunt something that moves. Navi catches flying insects, and a peregrine
+falcon catches flying birds. Scientists who filmed peregrines attacking found that they steer with a
+rule very similar to the one used to guide missiles: they keep adjusting their turn so they head for
+where the prey **will be**, not where it was. Aiming at the old picture means missing.
+
+NAVERA has exactly the same problem, only slower. Each photo arrives about 0.14 s after it was
+taken. In that time a drone at 15 m/s has moved about 2 m and may have turned a little. That is why
+NAVERA must remember **when the picture was really taken** and use the attitude and position of that
+instant — not of the moment the frame reached the computer.
+
 ## In NAVERA: what live_camera.py does with each frame
 
 The node is described in `docs/ARCHITECTURE.md`, section 5 "The live camera". For every frame it

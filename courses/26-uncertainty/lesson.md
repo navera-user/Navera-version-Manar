@@ -165,6 +165,28 @@ warnings, though:
   150 m away, fused with weight, moves the answer. That is why NAVERA today chooses **one** winner, and
   why it checks GPS against vision before trusting it (lesson 27).
 
+## 🐦 How birds do it
+
+Release one homing pigeon and watch which direction it vanishes in. Release another, then another.
+Even from the same place, on the same day, the directions are **scattered** — the bird's estimate of
+"home is that way" is noisy. Biologists measure this spread with exactly the tools of this lesson:
+an average direction and how tightly the birds cluster around it.
+
+So what happens when birds travel **together**? Biologists call one idea the **"many wrongs"**
+principle: if each bird's sense of direction is a bit wrong, but in a different, random way, a group
+that averages its members' opinions can be **more accurate** than any one of them. That is the
+weighted average of section 6, done by a flock in the air. Some experiments with homing pigeons have
+found that small flocks fly home on straighter routes than birds flying alone.
+
+But studies of pigeon **pairs** add an important twist. When the two birds' preferred routes were
+close, they flew a **compromise** between them. When their routes were very different, they did not
+average: one bird **led** and the other followed. Averaging two very different opinions would have
+sent them both somewhere neither believed in.
+
+That is exactly the warning at the end of section 6. Averaging is great for honest, independent,
+similar measurements. When two sources strongly disagree, you must **choose**, not average — which
+is what NAVERA's arbiter does today.
+
 ## 7. In NAVERA
 
 | What | Where in your copy (`~/navera/…`) |

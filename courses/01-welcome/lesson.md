@@ -36,6 +36,37 @@ That makes them easy to lose:
 For a person with a phone, losing GPS is annoying. For a drone carrying a parcel, it can mean a crash.
 So engineers ask: **how can a vehicle keep knowing where it is when GPS is gone?**
 
+## Where the idea came from: birds
+
+Every spring, small birds fly over Sousse heading north. Every autumn, they come back heading south.
+Many of them are **barn swallows**: they raise their young in Europe in summer and spend the winter in
+Africa, south of the Sahara. That is thousands of kilometres over sea and desert — with no phone, no
+map and no GPS. And yet many of them come back the next year to the same farm, sometimes to the very
+same nest.
+
+How do they do it? Scientists have studied that question for more than a hundred years, and the
+answer surprised them: a bird does not have *one* magic sense. It has **several**, and it
+**compares** them. That is exactly the idea the founders of NAVERA borrowed.
+
+Meet **Navi**, a young barn swallow. Navi will fly with you through this course and show you how birds
+solve the same problems as NAVERA.
+
+![Navi's senses, and the NAVERA source each one inspired](assets/bird_senses.svg)
+
+| What the bird uses | What it gives the bird | NAVERA's version |
+|---|---|---|
+| **Eyes + landmarks** (coasts, rivers, mountains, roads) | "I know this place!" | **day vision**: camera + satellite map |
+| **The stars** (some night migrants learn the part of the sky that turns around the pole star) | a direction at night | **celestial**: a star camera |
+| **The sun + an inner clock** | a direction by day — the sun moves, so the bird must know the time | the **exact time** that GPS and the star camera both need |
+| **A magnetic sense** | a compass, even under clouds | the **magnetometer** (compass) of the IMU |
+| **The inner ear: balance** | which way is up, how fast it turns | the **IMU** (gyroscopes, accelerometers) |
+| **A sense of its own motion** ("so far, in that direction") | where it is now, from where it started | **dead reckoning** and visual odometry |
+| **Cross-checking all of these** | which sense to trust when they disagree | the **arbiter** |
+
+Scientists still argue about *how much* birds rely on each sense — and the last-but-one line, the sense
+of their own motion, is the least understood. But the big idea is solid: **many senses, checked
+against each other**, are much harder to fool than one.
+
 ## The NAVERA answer: look, compare, double-check
 
 **NAVERA** is a navigation box made by IRIS Systems. It sits on a vehicle (a drone, a car, a ground
@@ -63,6 +94,27 @@ catch a **fake GPS** by comparing it with what the camera sees. *(Lessons 25–2
 > [!NOTE]
 > NAVERA is a real commercial product, still being validated in the field. The code you will work with
 > is a **copy** of the real code. You can change anything in your copy — you cannot break the product.
+
+## 🐦 How birds do it
+
+Navi has a confession: not one of a bird's senses is perfect. Clouds hide the sun and the stars.
+Fog hides the landmarks. And the magnetic sense can be confused: homing pigeons released at places
+where the rocks disturb the Earth's magnetic field (a *magnetic anomaly*) often fly off in confused
+directions at first.
+
+So birds cross-check. In 2004, American scientists (William Cochran and colleagues, in the journal
+*Science*) followed migrating thrushes through the night with small radio transmitters — driving
+behind them in a car with an antenna on the roof. Just before take-off, at sunset, they placed some of
+the birds in an artificial magnetic field, turned to point the wrong way. That night, those birds flew
+in the wrong direction. The next night, back in the normal field, they flew the right way again.
+
+What does that tell us? The thrushes **re-set their magnetic compass every evening** using the sunset
+sky. One sense calibrates another. When the scientists fooled the magnetic sense *at the moment of
+calibration*, the error went straight into the flight.
+
+That is exactly the job of NAVERA's **arbiter**: never trust a single source blindly, compare it with
+the others, and notice when one of them starts telling a different story — like a GPS that says
+"Tunis" while the camera sees the roofs of Sousse.
 
 ## Your workspace
 

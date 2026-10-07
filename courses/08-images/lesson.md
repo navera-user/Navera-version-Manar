@@ -56,6 +56,10 @@ The aerial test frames you will use in the lab are 1536 × 730 pixels × 3 chann
 On the disk, the JPEG format squeezes it to a few hundred kilobytes by throwing away details the eye
 does not notice.
 
+> [!BIRD] If Navi's eye were a camera, its images would have **four** channels, not three. Most birds
+> have four kinds of colour cells in the eye, one of them sensitive to violet or **ultraviolet** light
+> that we cannot see. Many feathers, flowers and berries look different to a bird than to us.
+
 ### From colour to grey
 
 To turn a colour pixel into one grey value, you take a **weighted average** of its three channels:
@@ -195,6 +199,27 @@ For example, a camera with an 84° field of view, 300 m above the ground, sees 2
 must be shrunk by **0.35 / 0.97 ≈ 0.36**. In general:
 
 scale factor = photo meters per pixel / map meters per pixel
+
+## 🐦 How birds do it
+
+Birds are champions of vision, and they solve some of the problems of this lesson with their bodies.
+
+**Sharpness.** Eagles and other birds of prey have some of the sharpest eyes of all animals — roughly
+twice as sharp as ours. In the words of this lesson: more pixels per degree. Their retina packs light
+cells very densely in a small spot, and many raptors have two such sharp spots in each eye.
+
+**Field of view.** A pigeon's eyes sit on the sides of its head. Together they see almost all the way
+around — a panorama — while only a narrow strip in front is seen by both eyes at once.
+
+**A steady picture.** Watch a kestrel hovering over a field in the wind: its body and wings move all
+the time, but its **head stays perfectly still**. A walking pigeon does something similar: its head
+"bobs" because, for a moment at every step, it holds the head still relative to the ground while the
+body catches up. Both birds keep the image steady before they try to recognise anything in it.
+
+That is the lesson's big idea. Before NAVERA compares a camera photo with the map, it **makes them
+comparable**: it rotates the photo so north is up, scales it to the map's meters per pixel, and evens
+out the brightness. A bird stabilises its picture with its neck; NAVERA does it with a few lines of
+code.
 
 ## In NAVERA
 

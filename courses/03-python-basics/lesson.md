@@ -275,6 +275,33 @@ message, and the line number above it.
 | `ZeroDivisionError` | dividing by 0 — test the value with an `if` before dividing |
 | `NotImplementedError: TODO 3` | in this course: a TODO you have not written yet |
 
+## 🐦 How birds do it
+
+In October 2022, a young **bar-tailed godwit** — a long-billed shorebird — took off from Alaska with a
+tiny satellite tag on its back. It landed in Tasmania, south of Australia, about **11 days** later.
+It never landed on the way: it flew across the whole Pacific Ocean, about **13 560 km**, the longest
+non-stop bird flight ever recorded.
+
+You already know enough Python to do what the scientists did:
+
+```python
+distance_km = 13560
+hours = 11 * 24
+speed_kmh = distance_km / hours
+print(f"Average speed: {speed_kmh:.1f} km/h")   # Average speed: 51.4 km/h
+```
+
+About **51 km/h**, day and night, for eleven days. That is almost the speed of NAVERA-1 in this
+lesson (54 km/h)! The big difference is the "battery". A drone carries energy for minutes; a godwit
+eats so much before it leaves that a large part of its body weight is fat — its fuel for the trip.
+
+Navi asks the same `if` question as the drone: *will I make it?* A swallow does not cross an ocean in
+one go; it stops to feed on insects along the way. A godwit cannot stop over open sea, so it has to
+get its numbers right before take-off. Distance, speed, time, energy, and a safety margin: the four
+lines of physics are the same for a bird and for a drone.
+
+That is why NAVERA computes these values again and again, in code that looks just like yours.
+
 ## In NAVERA
 
 Everything in this lesson is in NAVERA's real code. Open

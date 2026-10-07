@@ -132,6 +132,28 @@ Reading logs is half of an engineer's job: when a test fails, the first question
 the log say, and at what time?"*. In the lab, you will write a few small functions that answer such
 questions automatically.
 
+## 🐦 How birds do it
+
+Biologists cannot ask a bird how it navigates. So, like NAVERA's engineers, they build **controlled
+worlds** where they decide what the bird senses — and watch what it does.
+
+- **The Emlen funnel** (1966). A migrating songbird held in captivity becomes restless at migration
+  time and keeps trying to fly in its migration direction. Put it in a paper funnel with an **ink
+  pad** at the bottom: every hop up the sloping wall leaves a footprint. In the morning, the inky
+  marks show which way the bird wanted to go. A cheap, simple "log file"!
+- **The planetarium.** Stephen Emlen projected artificial skies over buntings, then **changed the
+  sky** — rotated it, hid some stars — and watched whether the birds changed direction (lesson 24).
+- **Magnetic coils.** The Wiltschkos surrounded robins' cages with large coils that can **turn the
+  Earth's magnetic field** by any angle, or switch parts of it off (lesson 16).
+
+Each of these is a **fault injection**: change **one** thing the bird senses, keep everything else
+the same, and see how the "system" reacts. That is exactly what you do in the simulator when you jam
+the GPS but leave the camera running.
+
+And biologists know the limit of their simulators too. A bird in a funnel is not a bird in the sky,
+so the big results are checked later on wild, free-flying birds — with radio tags and GPS loggers.
+Simulation first, reality after: the same rule as NAVERA's.
+
 ## 6. In NAVERA
 
 | What | Where in your copy |

@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 640" width="800" height="640" font-family="sans-serif">
+  <!-- sky and ground -->
+  <rect width="800" height="640" rx="18" fill="#e8f6fd"/>
+  <path d="M0 585 Q200 560 400 578 T800 570 L800 622 Q800 640 782 640 L18 640 Q0 640 0 622 Z" fill="#7ccf6a"/>
+  <!-- sun -->
+  <circle cx="740" cy="58" r="26" fill="#ffc94d"/>
+  <g stroke="#ffc94d" stroke-width="4" stroke-linecap="round">
+    <line x1="740" y1="16" x2="740" y2="24"/><line x1="740" y1="92" x2="740" y2="100"/>
+    <line x1="698" y1="58" x2="706" y2="58"/><line x1="774" y1="58" x2="782" y2="58"/>
+    <line x1="710" y1="28" x2="716" y2="34"/><line x1="764" y1="82" x2="770" y2="88"/>
+    <line x1="770" y1="28" x2="764" y2="34"/><line x1="710" y1="88" x2="716" y2="82"/>
+  </g>
+  <!-- small stars -->
+  <g fill="#ffc94d" stroke="#243447" stroke-width="1" stroke-linejoin="round">
+    <path d="M60 30 l3 7 7 1 -5 5 1 7 -6 -3 -6 3 1 -7 -5 -5 7 -1 Z"/>
+    <path d="M104 64 l2 5 5 .7 -3.6 3.5 .8 5 -4.2 -2.3 -4.2 2.3 .8 -5 -3.6 -3.5 5 -.7 Z"/>
+  </g>
+  <!-- title -->
+  <text x="400" y="44" text-anchor="middle" font-size="26" font-weight="bold" fill="#243447">Navi's senses → NAVERA's sources</text>
+  <text x="400" y="72" text-anchor="middle" font-size="16" fill="#243447">A swallow crosses continents without GPS. NAVERA copies the trick.</text>
+
+  <!-- connectors from bird to cards -->
+  <g stroke="#243447" stroke-width="2.5" stroke-dasharray="3 7" stroke-linecap="round" fill="none" opacity="0.45">
+    <path d="M352 260 Q300 160 262 152"/>
+    <path d="M340 300 L262 287"/>
+    <path d="M352 340 Q300 420 262 422"/>
+    <path d="M448 260 Q500 160 538 152"/>
+    <path d="M460 300 L538 287"/>
+    <path d="M448 340 Q500 420 538 422"/>
+    <path d="M400 372 L400 488"/>
+  </g>
+
+  <!-- the bird (barn swallow, flying right) -->
+  <circle cx="400" cy="300" r="92" fill="#ffffff" stroke="#243447" stroke-width="3"/>
+  <g transform="translate(400 300)">
+    <!-- far wing -->
+    <path d="M-6 -6 Q8 -48 52 -66 Q24 -36 18 -6 Z" fill="#3c5170"/>
+    <!-- forked tail -->
+    <path d="M-34 4 L-84 -10 L-52 8 L-86 26 L-34 14 Z" fill="#243447"/>
+    <!-- body -->
+    <path d="M-40 6 Q-20 -14 18 -14 Q46 -14 58 -2 Q46 14 16 18 Q-16 20 -40 6 Z" fill="#243447"/>
+    <!-- belly -->
+    <path d="M-34 8 Q-8 2 26 2 Q44 2 52 4 Q42 18 14 19 Q-14 20 -34 8 Z" fill="#fff4e0"/>
+    <!-- red throat -->
+    <path d="M44 -4 Q54 -2 58 -1 Q52 6 42 8 Q40 2 44 -4 Z" fill="#ff7a59"/>
+    <!-- beak -->
+    <path d="M58 -4 L70 -1 L58 2 Z" fill="#ffc94d"/>
+    <!-- eye -->
+    <circle cx="48" cy="-7" r="3.6" fill="#ffffff"/><circle cx="49" cy="-7" r="2" fill="#243447"/>
+    <!-- near wing -->
+    <path d="M-4 0 Q-10 46 -50 72 Q-6 60 24 4 Z" fill="#3c5170" stroke="#243447" stroke-width="1.5"/>
+  </g>
+  <text x="400" y="368" text-anchor="middle" font-size="15" font-weight="bold" fill="#243447">Navi</text>
+
+  <!-- left cards -->
+  <g>
+    <rect x="22" y="112" width="240" height="80" rx="16" fill="#ffffff" stroke="#7ccf6a" stroke-width="3"/>
+    <text x="40" y="142" font-size="17" font-weight="bold" fill="#243447">👁 Eyes + landmarks</text>
+    <text x="40" y="172" font-size="15" fill="#d9532f">→ day vision (map)</text>
+
+    <rect x="22" y="247" width="240" height="80" rx="16" fill="#ffffff" stroke="#7ccf6a" stroke-width="3"/>
+    <text x="40" y="277" font-size="17" font-weight="bold" fill="#243447">🧲 Magnetic sense</text>
+    <text x="40" y="307" font-size="15" fill="#d9532f">→ magnetometer (IMU)</text>
+
+    <rect x="22" y="382" width="240" height="80" rx="16" fill="#ffffff" stroke="#7ccf6a" stroke-width="3"/>
+    <text x="40" y="412" font-size="17" font-weight="bold" fill="#243447">⚖ Inner ear, balance</text>
+    <text x="40" y="442" font-size="15" fill="#d9532f">→ IMU (gyros, accel.)</text>
+  </g>
+
+  <!-- right cards -->
+  <g>
+    <rect x="538" y="112" width="240" height="80" rx="16" fill="#ffffff" stroke="#ffc94d" stroke-width="3"/>
+    <text x="556" y="142" font-size="17" font-weight="bold" fill="#243447">✦ Stars at night</text>
+    <text x="556" y="172" font-size="15" fill="#d9532f">→ celestial camera</text>
+
+    <rect x="538" y="247" width="240" height="80" rx="16" fill="#ffffff" stroke="#ffc94d" stroke-width="3"/>
+    <text x="556" y="277" font-size="17" font-weight="bold" fill="#243447">☀ Sun + body clock</text>
+    <text x="556" y="307" font-size="15" fill="#d9532f">→ exact time, sky</text>
+
+    <rect x="538" y="382" width="240" height="80" rx="16" fill="#ffffff" stroke="#ffc94d" stroke-width="3"/>
+    <text x="556" y="412" font-size="17" font-weight="bold" fill="#243447">〰 Sense of own motion</text>
+    <text x="556" y="442" font-size="15" fill="#d9532f">→ dead reckoning</text>
+  </g>
+
+  <!-- arbiter card -->
+  <rect x="230" y="488" width="340" height="80" rx="20" fill="#ff7a59"/>
+  <text x="400" y="520" text-anchor="middle" font-size="18" font-weight="bold" fill="#ffffff">🧠 Cross-checking the senses</text>
+  <text x="400" y="550" text-anchor="middle" font-size="16" fill="#ffffff">→ the ARBITER (who do I trust?)</text>
+  <!-- note on the grass -->
+  <text x="400" y="614" text-anchor="middle" font-size="15" fill="#243447">NAVERA's thermal camera adds a sense no bird has: seeing heat at night.</text>
+</svg>

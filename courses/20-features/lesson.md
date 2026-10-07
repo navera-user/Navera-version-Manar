@@ -178,6 +178,30 @@ matchability = min(1, number of keypoints / 300)  ×  spread
 
 A city photo scores near 1, the open sea 0, and a photo that is half city, half sea about 0.5.
 
+## 🐦 How birds do it
+
+Birds that find their way home use **landmarks** too. Homing pigeons released near their loft fly
+home better over a landscape they know: a river bend, a hill, a group of buildings — features that
+stay put, exactly what a good keypoint should be.
+
+Now look at a map of bird migration around the Mediterranean. Every autumn and spring, huge numbers
+of **white storks** and **birds of prey** do not fly straight across the sea. They gather where the
+sea is narrowest: the **Strait of Gibraltar** (about 14 km wide), the **Bosphorus**, and — right
+here in Tunisia — between **Cap Bon and Sicily**, where honey buzzards, black kites and harriers
+cross in spring.
+
+Be careful with the reason. The main one is **not** landmarks. Storks and big raptors are **soaring**
+birds: they climb in **thermals**, columns of rising warm air, then glide to the next one. Thermals
+form over sun-warmed land, hardly over cool water, so a long sea crossing means tiring flapping. A
+smaller, extra reason is the one you can guess from this lesson: the open sea is nearly featureless,
+with no landmark to check your position.
+
+Navi is different: swallows flap all the way, so they cross the Mediterranean and even the Sahara on
+a broad front, snapping up insects as they go.
+
+NAVERA cannot "choose" a short crossing on its own, but it can do the next best thing: **measure**
+how much texture a picture has, and admit that over the sea, day vision has nothing to hold on to.
+
 ## In NAVERA
 
 Open [local_matcher.py](file:navera/day_pkg/day_pkg/local_matcher.py) in your NAVERA copy. This is

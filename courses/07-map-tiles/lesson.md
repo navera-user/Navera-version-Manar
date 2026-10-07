@@ -183,6 +183,29 @@ The `tile_data` is the picture itself, as **bytes** (the content of a `.jpg` fil
 with the bytes `FF D8 FF` — a handy way to check you got a picture and not garbage. OpenCV can
 **decode** those bytes into pixels (lesson 8 is about pixels).
 
+## 🐦 How birds do it
+
+A homing pigeon released far from home flies back to its loft. Far away, it relies mostly on its
+compasses (the sun, the magnetic field). Close to home, it uses something else: **what it sees**.
+
+In the early 2000s, scientists at Oxford (Tim Guilford, Dora Biro and their colleagues) fixed tiny GPS
+loggers on homing pigeons and released them again and again from the same places. Each pigeon
+slowly developed its **own favourite route** home and then followed it flight after flight, very
+precisely. Many of those routes ran along roads, railways, rivers and field edges — lines that are
+easy to see from above. Some even seemed to follow a main road and change direction at its
+junctions, like a driver who knows the way.
+
+Think of it in tiles. From high up, a bird sees only big shapes — a coast, a river, a mountain range:
+that is a **low zoom level**. Lower down, it sees single roads, roofs and trees: a **high zoom level**.
+And a pigeon does not "carry" the whole world in its head — only the area it has flown over, and the
+area around home best of all.
+
+Navi does the same when she comes back from Africa: first the shape of the Tunisian coast, then the
+town, then the farm, then the barn door.
+
+NAVERA's map file works the same way: only the region of the mission, cut into tiles, at the zoom
+levels it needs — and the right tile picked in an instant from a latitude and a longitude.
+
 ## In NAVERA
 
 **Reading tiles — `simulation_web/simulation_web/web_common.py`**

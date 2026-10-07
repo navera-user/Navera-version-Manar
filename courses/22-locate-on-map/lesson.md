@@ -180,6 +180,26 @@ quotes.
 > Measure on **accepted** photos only, but always report **how many** were accepted. "Median 1 m"
 > on 2 photos out of 13 is not the same result as "median 1 m" on 12 out of 13.
 
+## 🐦 How birds do it
+
+In the 1950s the German biologist Gustav Kramer proposed a simple idea that is still used today: the
+**"map and compass"** model. To fly home, a bird needs two things. A **map** answers "where am I?"
+and a **compass** answers "which way is that?". A compass alone is not enough: if you do not know
+where you are, you do not know which direction to fly.
+
+NAVERA's day vision is built the same way. The **compass** is the IMU heading, which turns the photo
+north-up (lesson 16). The **map** is the satellite map, and this lesson finds the photo on it.
+
+The Oxford pigeon studies gave a surprising picture of how a bird can read a "map" from above. GPS
+tracks of homing pigeons around Oxford showed that, near home, many birds **followed roads and
+motorways** for long stretches, rather than flying in a perfectly straight line. Another team, in a
+separate study, saw pigeons following highways too. Long, straight, contrasting lines are easy to recognise
+from the air — for a pigeon and for a camera.
+
+And when do pigeons rely most on what they see? Mainly in **familiar** country, close to home. That
+is NAVERA's search strategy too: it does not search the whole map, it searches **around the prior**,
+the place where it believes it is. A bird does not scan all of Europe to find its loft.
+
 ## In NAVERA
 
 The real code is [local_matcher.py](file:navera/day_pkg/day_pkg/local_matcher.py), class

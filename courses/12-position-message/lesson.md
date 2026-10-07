@@ -125,6 +125,31 @@ change — the new source only has to fill the form honestly.
 > does not state an accuracy until it is measured (`docs/VALIDATION_STATUS.md` shows which numbers
 > are measured, and how). Honesty is not a decoration of the contract — it is what makes it work.
 
+## 🐦 How birds do it
+
+Bird scientists face the jury's problem every day. Their positions come from very different
+"sources": a numbered ring found on a beach, a geolocator good to a couple of hundred kilometres
+(lesson 4), a GPS tag good to a few metres. To put all of them in the same database and compare
+them fairly, every record must answer the same questions:
+
+| The question | In a bird-tracking record |
+|---|---|
+| **WHERE?** | latitude and longitude |
+| **HOW PRECISE?** | for a GPS fix: the number of satellites or the HDOP (lesson 15); for a geolocator, a much bigger error |
+| **WHO? HOW?** | which bird, which tag, which kind of sensor |
+| **WHEN?** | the exact date and time of the fix |
+
+Before drawing a bird's track, scientists usually **filter out** the bad fixes — for example a fix
+computed from too few satellites, or one that would need the bird to fly at an impossible speed. A
+position without its accuracy and time is not just useless: it is dangerous, because it can draw a
+false route.
+
+Navi puts it simply: *"I was at Cap Bon"* is a nice story. *"I was at Cap Bon, give or take 10 m, at
+06:12 on 3 April, measured by GPS"* is data.
+
+That is exactly the contract of `PositionEstimate`: the same boxes for every source, filled in
+honestly, so the arbiter can be a fair jury.
+
 ## In NAVERA
 
 The rule lives in [estimator_node.py](file:navera/navera_estimator/navera_estimator/nodes/estimator_node.py).
