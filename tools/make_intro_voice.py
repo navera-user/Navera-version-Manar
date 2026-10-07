@@ -97,16 +97,39 @@ def warm(x):
     return y / (np.abs(y).max() + 1e-9) * 0.8
 
 
+def kokoro_phrases(a, phrases):
+    """Natural voice: Kokoro in its isolated package folder; returns arrays at SR."""
+    with tempfile.TemporaryDirectory() as tmp:
+        job = os.path.join(tmp, "job.json")
+        json.dump({"voice": a.voice, "speed": a.speed, "phrases": phrases}, open(job, "w"))
+        env = dict(os.environ, PYTHONPATH=os.path.join(STATE, "tts-lib"))
+        subprocess.run([sys.executable, "-s", os.path.join(ROOT, "tools", "kokoro_say.py"), job, tmp], check=True, env=env,
+                       stderr=subprocess.DEVNULL)
+        out = []
+        for i in range(len(phrases)):
+            with wave.open(os.path.join(tmp, f"{i:03d}.wav")) as w:
+                x = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32) / 32768
+                out.append(to_rate(x, w.getframerate(), SR))
+        return out
+
+
 def plan(a):
-    from piper import PiperVoice
-    voice = PiperVoice.load(os.path.join(STATE, "voices", a.voice + ".onnx"))
+    kokoro = not a.voice.startswith(("en_", "ar_"))           # Piper voice names start with a language code
+    if kokoro:
+        spoken = kokoro_phrases(a, [ph for _, _, phs in SCENES for ph in phs])
+    else:
+        from piper import PiperVoice
+        voice = PiperVoice.load(os.path.join(STATE, "voices", a.voice + ".onnx"))
     pieces, starts, t = [], {}, 0.0
     for sid, min_s, phrases in SCENES:
         starts[sid] = round(t, 2)
         clip = [np.zeros(int(LEAD * SR))]
         for k, ph in enumerate(phrases):
-            x, rate = synth(voice, ph, a.length_scale)
-            clip.append(to_rate(x, rate, SR, a.pitch))
+            if kokoro:
+                clip.append(spoken.pop(0))
+            else:
+                x, rate = synth(voice, ph, a.length_scale)
+                clip.append(to_rate(x, rate, SR, a.pitch))
             if k < len(phrases) - 1:
                 clip.append(np.zeros(int(PAUSE * SR)))
         clip = np.concatenate(clip)
@@ -118,7 +141,7 @@ def plan(a):
     track = np.zeros(int(total * SR))
     for t0, clip in pieces:
         i = int(t0 * SR); track[i:i + len(clip)] += clip
-    track = warm(track)
+    track = track / (np.abs(track).max() + 1e-9) * 0.8 if kokoro else warm(track)   # Kokoro: keep it natural
     with wave.open(os.path.join(STATE, f"intro-voice-{a.voice}.wav"), "wb") as w:
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR); w.writeframes((track * 32767).astype(np.int16).tobytes())
     with open(os.path.join(MEDIA, "intro-timing.json"), "w") as f:
@@ -172,7 +195,8 @@ def mux(a):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("step", choices=["plan", "record", "mux", "all"])
-    ap.add_argument("--voice", default="en_US-norman-medium")
+    ap.add_argument("--voice", default="am_michael", help="Kokoro (am_michael, am_onyx, bm_george…) or Piper (en_US-…)")
+    ap.add_argument("--speed", type=float, default=0.95, help="Kokoro speed (1 = normal)")
     ap.add_argument("--length-scale", type=float, default=1.2, help=">1 = slower speech")
     ap.add_argument("--pitch", type=float, default=-1.5, help="semitones (negative = deeper)")
     ap.add_argument("--music-level", type=float, default=0.30)
