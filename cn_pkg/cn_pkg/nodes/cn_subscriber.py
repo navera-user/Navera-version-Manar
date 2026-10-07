@@ -68,8 +68,14 @@ def _rate_dps(q0, q1, dt_s: float) -> float:
     """Rotation rate (deg/s) between two orientations dt_s apart."""
     if dt_s <= 0:
         return 0.0
-    dot = abs(sum(a * b for a, b in zip(q0, q1)))
-    return math.degrees(2.0 * math.acos(min(1.0, dot))) / dt_s
+    # the angle of q1 relative to q0 by atan2 (acos is noisy near identity)
+    w = sum(a * b for a, b in zip(q0, q1))
+    x0, y0, z0, w0 = q0
+    x1, y1, z1, w1 = q1
+    vx = w0 * x1 - x0 * w1 - (y0 * z1 - z0 * y1)
+    vy = w0 * y1 - y0 * w1 - (z0 * x1 - x0 * z1)
+    vz = w0 * z1 - z0 * w1 - (x0 * y1 - y0 * x1)
+    return math.degrees(2.0 * math.atan2(math.sqrt(vx * vx + vy * vy + vz * vz), abs(w))) / dt_s
 
 
 class CNSubscriber(Node):
@@ -152,6 +158,7 @@ class CNSubscriber(Node):
         # 60 s at 50 Hz: a frame that waited (solver busy, node starting) still finds the
         # attitude of its exposure
         self._imu_hist = deque(maxlen=3000)
+        self._gyro = deque(maxlen=3000)       # (t_ns, |angular velocity| deg/s) when the IMU gives it
         self._gps_prior = None    # last valid GPS fix (lat, lon)
         self.create_subscription(Imu, self.get_parameter("imu_topic").value, self._on_imu, SENSOR_QOS)
         self.create_subscription(PositionEstimate, self.get_parameter("gps_topic").value,
@@ -240,24 +247,44 @@ class CNSubscriber(Node):
         q = msg.orientation
         if (q.x, q.y, q.z, q.w) != (0.0, 0.0, 0.0, 0.0):
             self._imu_hist.append((stamp_ns(msg.header.stamp), (q.x, q.y, q.z, q.w)))
+        w = msg.angular_velocity
+        if msg.angular_velocity_covariance[0] != -1.0 and (w.x, w.y, w.z) != (0.0, 0.0, 0.0):
+            self._gyro.append((stamp_ns(msg.header.stamp), math.degrees(math.sqrt(w.x * w.x + w.y * w.y + w.z * w.z))))
 
     def _imu_at(self, t_ns):
         """(orientation at t_ns, rotation rate deg/s): interpolated between the IMU samples
-        around it (no more than imu_max_gap_s apart), else the nearest within imu_timeout_s
-        (rate from the two last samples); None without one."""
+        around it (no more than imu_max_gap_s apart), else the nearest within imu_timeout_s;
+        the rate from _rate_at; None without one."""
         hist = list(self._imu_hist)
         if not hist:
             return None
+        q = None
         for (t0, q0), (t1, q1) in zip(hist, hist[1:]):
             if t0 <= t_ns <= t1 and t1 > t0:
-                if (t1 - t0) / 1e9 > self.imu_max_gap:
-                    break
-                return slerp(q0, q1, (t_ns - t0) / (t1 - t0)), _rate_dps(q0, q1, (t1 - t0) / 1e9)
-        ts, q = min(hist, key=lambda s: abs(s[0] - t_ns))
-        if abs(ts - t_ns) > self.imu_timeout * 1e9:
-            return None
-        rate = _rate_dps(hist[-2][1], hist[-1][1], (hist[-1][0] - hist[-2][0]) / 1e9) if len(hist) > 1 else 0.0
-        return q, rate
+                if (t1 - t0) / 1e9 <= self.imu_max_gap:
+                    q = slerp(q0, q1, (t_ns - t0) / (t1 - t0))
+                break
+        if q is None:
+            ts, q = min(hist, key=lambda s: abs(s[0] - t_ns))
+            if abs(ts - t_ns) > self.imu_timeout * 1e9:
+                return None
+        return q, self._rate_at(t_ns, hist)
+
+    def _rate_at(self, t_ns, hist) -> float:
+        """Rotation rate around the exposure (deg/s): the gyro (80th percentile of its
+        magnitude within +-0.25 s), else the attitude change over a 0.5 s baseline. Two
+        attitude samples a few ms apart are no rate: autopilot messages arrive in bursts
+        stamped at reception (0.01-0.05 deg over ~1 ms read 10-90 deg/s, 2026-10-07)."""
+        win = 0.25e9
+        g = sorted(r for t, r in self._gyro if abs(t - t_ns) <= win)
+        if g:
+            return g[min(len(g) - 1, int(0.8 * len(g)))]
+        before = [x for x in hist if x[0] <= t_ns - win]
+        after = [x for x in hist if x[0] >= t_ns + win]
+        a = before[-1] if before else hist[0]
+        b = after[0] if after else hist[-1]
+        dt = (b[0] - a[0]) / 1e9
+        return _rate_dps(a[1], b[1], dt) if dt >= 0.3 else 0.0
 
     def _on_gps(self, msg: PositionEstimate):
         if msg.valid and msg.mode == PositionEstimate.MODE_MEASURED and \
