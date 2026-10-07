@@ -1,0 +1,15 @@
+
+===== 2026-10-07 12:44:04 start: ros2 run navera_estimator estimator_node.py --ros-args --params-file /home/student/navera/install/navera_estimator/share/navera_estimator/config/estimator_params.yaml -p max_speed_mps:=60.0
+[INFO] [1791373447.159555021] [estimator_node]: estimator up (v3 GPS>day>night>cn): rate=5.0Hz gps_timeout=3.0s day_timeout=5.0s night_timeout=5.0s cn_timeout=45.0s imu_timeout=1.0s
+
+===== 2026-10-07 12:44:08 start: ros2 run navera_estimator estimator_node.py --ros-args --params-file /home/student/navera/install/navera_estimator/share/navera_estimator/config/estimator_params.yaml -p max_speed_mps:=30.0
+[INFO] [1791373449.836111985] [estimator_node]: estimator up (v3 GPS>day>night>cn): rate=5.0Hz gps_timeout=3.0s day_timeout=5.0s night_timeout=5.0s cn_timeout=45.0s imu_timeout=1.0s
+[ERROR] [1791373576.473547807] [estimator_node]: GPS refused: GPS drifting away from day vision: 5 independent fixes in a row beyond 3 sigma (99 m apart now, 3 sigma 45 m) — possible spoofing
+[WARN] [1791373639.267819739] [estimator_node]: GPS confirmed by day vision (17 m apart, 3 sigma 45 m, 2 fixes) — re-accepted
+
+===== 2026-10-07 12:48:09 start: ros2 run navera_estimator estimator_node.py --ros-args --params-file /home/student/navera/install/navera_estimator/share/navera_estimator/config/estimator_params.yaml -p max_speed_mps:=30.0
+[INFO] [1791373694.936374981] [estimator_node]: estimator up (v3 GPS>day>night>cn): rate=5.0Hz gps_timeout=3.0s day_timeout=5.0s night_timeout=5.0s cn_timeout=45.0s imu_timeout=1.0s
+
+===== 2026-10-07 12:51:36 start: ros2 run navera_estimator estimator_node.py --ros-args --params-file /home/student/navera/install/navera_estimator/share/navera_estimator/config/estimator_params.yaml -p max_speed_mps:=30.0
+[INFO] [1791373901.032904779] [estimator_node]: estimator up (v3 GPS>day>night>cn): rate=5.0Hz gps_timeout=3.0s day_timeout=5.0s night_timeout=5.0s cn_timeout=45.0s imu_timeout=1.0s
+[WARN] [1791374046.473413358] [estimator_node]: GPS confirmed by day vision (12 m apart, 3 sigma 45 m, 2 fixes) — re-accepted

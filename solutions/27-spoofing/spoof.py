@@ -3,7 +3,7 @@
 Positions are in METRES on a flat local map: x = east, y = north (lesson 6), so the maths
 stays simple. Times are in seconds.
 
-    python3 spoof.py            # plays the three attacks of scenarios.py through your guard
+    python3 spoof.py            # plays the seven attacks of scenarios.py through your guard
 
 The real code: ~/navera/navera_estimator/navera_estimator/nodes/estimator_node.py
 (_check_gps_plausibility, _drifting_away, _independent_reference).

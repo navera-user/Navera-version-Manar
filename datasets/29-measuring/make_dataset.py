@@ -13,7 +13,12 @@
    true track of the target flight (en route part): /navera/estimate/gps (valid, sigma 1.5 m,
    noise 1.5 m per axis) and /navera/estimate/day (1 per second, STATING sigma 15 m while its
    real errors are drawn with 22 m per axis — an over-optimistic source, on purpose).
-Needs a sourced ROS 2 + NAVERA workspace (run it in a sandbox).
+3. flight_selective.csv: SYNTHETIC, derived from flight_measured.csv (no simulator needed):
+   every DAY VISION position more than 300 m from the truth is removed (state "NO FIX", no
+   position), as if a perfect "am I wrong?" test existed. It shows the availability trap:
+   a smaller error, computed on fewer seconds.
+       python3 make_dataset.py --derive <out_dir>      (re-makes only this file)
+Steps 1-2 need a sourced ROS 2 + NAVERA workspace (run them in a sandbox).
 """
 import csv
 import math
@@ -75,7 +80,37 @@ def make_bag(rows, out):
     del w
 
 
+def haversine_m(lat1, lon1, lat2, lon2):
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    a = (math.sin((p2 - p1) / 2) ** 2
+         + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2)
+    return 2 * 6_371_000.0 * math.asin(math.sqrt(min(1.0, a)))
+
+
+def derive_selective(out, limit_m=300.0):
+    src, dst = os.path.join(out, "flight_measured.csv"), os.path.join(out, "flight_selective.csv")
+    with open(src, newline="") as f:
+        rows = list(csv.DictReader(f))
+    n = 0
+    for r in rows:
+        if r["navera_source"] == "DAY VISION" and r["navera_lat"] and r["truth_lat"]:
+            e = haversine_m(float(r["truth_lat"]), float(r["truth_lon"]),
+                            float(r["navera_lat"]), float(r["navera_lon"]))
+            if e > limit_m:
+                r.update(navera_state="NO FIX", navera_source="\u2014", navera_lat="", navera_lon="",
+                         reason="synthetic: vision position withheld (more than 300 m from the truth)")
+                n += 1
+    with open(dst, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        w.writeheader()
+        w.writerows(rows)
+    print(f"flight_selective.csv: {n} vision positions withheld")
+
+
 def main():
+    if len(sys.argv) == 3 and sys.argv[1] == "--derive":
+        derive_selective(sys.argv[2])
+        return
     if len(sys.argv) != 4:
         sys.exit(__doc__)
     target, measured, out = sys.argv[1:]
@@ -83,6 +118,7 @@ def main():
     rows = copy_flight(target, os.path.join(out, "flight_target.csv"))
     copy_flight(measured, os.path.join(out, "flight_measured.csv"))
     make_bag(rows, os.path.join(out, "shadow_bag"))
+    derive_selective(out)
     print("written:", sorted(os.listdir(out)))
 
 

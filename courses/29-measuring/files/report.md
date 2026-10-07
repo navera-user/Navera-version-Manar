@@ -1,22 +1,38 @@
-# Results — NAVERA during a GPS jam (my measurement)
+# Results — NAVERA during a 60 s GPS jam (simulated flights)
 
-Replace every line in parentheses. Use YOUR numbers from results_flight_target.json and
-results_flight_measured.json (rounded: "21 m", not "20.837 m").
+Replace every "(fill in …)" paragraph and every cell in parentheses or brackets with YOUR numbers
+(from results_flight_*.json, rounded to the metre: "20 m", not "20.45 m"; CIs as "[18, 23]").
 
 ## What was measured
 
-(Which flights, where they come from, how long the GPS was jammed, how many seconds of data —
-the sample size.)
+(fill in: which flights, where they come from and where they were flown, how long the GPS was
+jammed, how many seconds of data — the sample size — and what is the truth.)
+
+## Method
+
+(fill in: the metrics you report and how they are computed — horizontal error, CEP50 / CEP95 by the
+nearest-rank rule, RMSE, availability, longest gap — the baseline, and how the 95 % confidence
+intervals were obtained: bootstrap, block length, paired or not, B, seed.)
 
 ## Results
 
-| Flight (vision profile) | NAVERA median during the jam | p90 | max | Baseline median | Availability during the jam |
-|---|---|---|---|---|---|
-| target (15 m, not measured) | (m) | (m) | (m) | (m) | (%) |
-| measured (former day vision) | (m) | (m) | (m) | (m) | (%) |
+| Flight | n (jam, s) | NAVERA CEP50 [95 % CI] | CEP95 | RMSE | max | Baseline CEP50 | CEP50 NAVERA − baseline [95 % CI] | Availability (jam) | Longest gap |
+|---|---|---|---|---|---|---|---|---|---|
+| target (15 m profile, not measured) | (s) | (m) [lo, hi] | (m) | (m) | (m) | (m) | [lo, hi] | (%) | (s) |
+| measured (former day vision) | (s) | (m) [lo, hi] | (m) | (m) | (m) | (m) | [lo, hi] | (%) | (s) |
+| selective (synthetic) | (s) | (m) [lo, hi] | (m) | (m) | (m) | (m) | [lo, hi] | (%) | (s) |
+
+## Is the difference real?
+
+(fill in: for each flight, does the CI of the difference exclude 0? What does that allow you to
+write? Why a paired, block bootstrap? What does the coverage experiment say about trusting it?)
+
+## Validity: simulation vs field
+
+(fill in, 60 words or more: what these flights can and cannot show; where they were flown; what is
+simulated; what a field test would need.)
 
 ## Conclusion
 
-(One honest paragraph, 80 words or more: does NAVERA beat the "repeat the last position" baseline in
-each flight, by how much, and how should a reader use these numbers? Say where they were measured and
-what they do NOT prove.)
+(fill in, 100 words or more: what is better, by how much, compared with what, on how much data,
+measured where — and what it does NOT prove.)

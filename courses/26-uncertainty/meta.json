@@ -1,3 +1,3 @@
-{"number": "26", "title": "How sure are we? Errors, sigma and covariance", "module": 6, "duration": "1 h 45",
- "summary": "Error vs uncertainty, mean vs median, standard deviation, the 1-2-3 sigma circles, covariance as an ellipse, and the weighted average that starts sensor fusion.",
- "resources": [], "open": ["uncertainty.py", "analyse.py"], "check_timeout_s": 60}
+{"number": "26", "title": "How sure are we? Covariance, gating and the Kalman filter", "module": 6, "duration": "3 h",
+ "summary": "Random variables and covariance matrices, error ellipses by eigen-decomposition, J P Jᵀ propagation, Mahalanobis distance and the chi-square gate, inverse-variance fusion, and a Kalman filter you build, test for consistency (NEES) and prove identical to NAVERA's own height filter.",
+ "resources": [], "open": ["uncertainty.py", "kalman.py"], "check_timeout_s": 90}

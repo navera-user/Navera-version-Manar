@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""compare_real.py — play a scripted scenario to NAVERA's REAL arbiter, then to yours.
+"""compare_real.py — race your arbiter against NAVERA's REAL one on the same inputs.
 
     python3 compare_real.py            # ~35 s: starts the real estimator_node, plays, compares
+    python3 compare_real.py --replay   # no ROS: re-compare with the last real_run.json
 
 What it does:
   1. starts the real `estimator_node.py` from YOUR NAVERA copy (~/navera), with the
      product's own settings file estimator_params.yaml, on your private ROS domain;
   2. publishes scripted navera_msgs/PositionEstimate messages on /navera/estimate/gps,
      /day, /night, /cn (the same contract every NAVERA source uses — lesson 12);
-  3. at 10 chosen moments, writes down what the real arbiter said on /navera/nav_status;
-  4. replays exactly the same inputs through YOUR arbiter.py and prints both side by side.
+  3. records EVERY /navera/nav_status the real arbiter publishes (state, source, reason);
+  4. replays exactly the same inputs through YOUR arbiter.py (class Arbiter: receive() on
+     each arrival, step() on each arrival and on a 5 Hz clock — like the real node) and
+     compares (a) the decisions at 11 moments and (b) the instants of every source switch.
 
 Everything is saved in real_run.json (the check uses it).
 You don't need to change this file — but read SCENARIO below: it is the story you play.
@@ -22,6 +25,10 @@ import signal
 import subprocess
 import sys
 import time
+
+TICK_S = 0.2                 # the real node decides at publish_rate_hz = 5 Hz (+ on each arrival)
+SWITCH_TOLERANCE_S = 0.35    # a switch instant may differ by one tick + scheduling jitter
+
 
 # ---------------------------------------------------------------- the scenario
 # (time s, source, what) — every row is ONE published estimate. Times are seconds after
@@ -57,7 +64,15 @@ SAMPLES = [(0.5, "nothing published yet"),
            (27.8, "day stopped 5.8 s ago"),
            (30.5, "everything old or wrong")]
 END_S = 31.0
+# (The positions are NAVERA's test area, Sousse, Tunisia: the real node does not care.)
 BASE = dict(valid=True, mode="MEASURED", lat=35.8256, lon=10.6385, sigma=None, age=0.0)
+
+
+def _cov(sigma):
+    if sigma is None:
+        return [0.0] * 9, "UNKNOWN"
+    v = float(sigma) ** 2
+    return [v, 0.0, 0.0, 0.0, v, 0.0, 0.0, 0.0, 4.0 * v], "APPROXIMATED"
 
 
 def events():
@@ -67,45 +82,36 @@ def events():
         e = dict(BASE, **kw)
         e["source"] = src
         e["stamp"] = round(t - e.pop("age"), 6)
+        e["cov"], e["cov_type"] = _cov(e.pop("sigma"))
         out.append((t, e))
     return out
 
 
 # ---------------------------------------------------------------- your arbiter, replayed
-def run_timeline(arb, evs, sample_times, step=0.05):
-    """Feed timed estimates to arbiter.py like the real node does: keep the latest
-    estimate of each source, re-decide every `step` s, remember `active` and
-    `eligible_since`. Returns the decision at each sample time."""
-    latest, since, active = {}, {}, None
-    out, i, k = {}, 0, 0
-    ts = sorted(sample_times)
-    t = 0.0
-    end = max(ts + [e[0] for e in evs]) + step
-    while t <= end + 1e-9:
-        while i < len(evs) and evs[i][0] <= t + 1e-9:
-            e = evs[i][1]
-            old = latest.get(e["source"])
-            if not (e["source"] == "gps" and old is not None and e["stamp"] < old["stamp"]):
-                latest[e["source"]] = e
-            i += 1
-        while k < len(ts) and ts[k] <= t + 1e-9:
-            out[ts[k]] = _decide(arb, latest, since, active, ts[k])
-            k += 1
-        for src in arb.PRIORITY:
-            if src in latest and arb.is_eligible(latest[src], t):
-                since.setdefault(src, t)
-            else:
-                since.pop(src, None)
-        d = _decide(arb, latest, since, active, t)
-        active = d.get("source") if isinstance(d, dict) else None
-        t = round(t + step, 6)
-    return out
+def run_timeline(arb_module, evs, sample_times, holdoff_s=None, end_s=None):
+    """Feed timed estimates to arb_module.Arbiter like the real node does: receive() + step()
+    on each arrival, step() on a 5 Hz clock, and a step() at each sample time.
+    Returns (decisions at the sample times, the Arbiter object)."""
+    kw = {} if holdoff_s is None else {"holdoff_s": holdoff_s}
+    a = arb_module.Arbiter(**kw)
+    end = max(list(sample_times) + [e[0] for e in evs] + [end_s or 0.0])
+    moments = [(t, 0, i) for i, (t, _) in enumerate(evs)]                     # arrivals first
+    moments += [(round(k * TICK_S, 6), 1, None) for k in range(int(end / TICK_S) + 2)]
+    moments += [(t, 2, None) for t in sample_times]
+    moments.sort(key=lambda m: (m[0], m[1]))
+    out = {}
+    for t, kind, i in moments:
+        if kind == 0:
+            a.receive(evs[i][1])
+        d = _step(a, t)
+        if kind == 2:
+            out[t] = d
+    return out, a
 
 
-def _decide(arb, latest, since, active, t):
-    ests = [latest[s] for s in arb.PRIORITY if s in latest]
+def _step(a, t):
     try:
-        d = arb.decide(ests, t, active, dict(since))
+        d = a.step(t)
     except Exception as e:                      # your code crashed: show it, keep going
         return {"state": "ERROR", "source": None, "reason": f"{type(e).__name__}: {e}"}
     return d if isinstance(d, dict) else {"state": None, "source": None, "reason": repr(d)}
@@ -119,6 +125,16 @@ def same_words(a, b):
     """Reasons compared without their numbers (ages differ by a few ms between runs)."""
     strip = lambda s: re.sub(r"[-0-9.]+", "#", s or "")      # noqa: E731
     return strip(a) == strip(b)
+
+
+def switches_of(history):
+    """[(t, old, new)] from a list of (t, state, source): every change of the source."""
+    out, prev = [], None
+    for t, _state, src in history:
+        if src != prev:
+            out.append((t, prev, src))
+            prev = src
+    return out
 
 
 # ---------------------------------------------------------------- the real arbiter
@@ -139,10 +155,12 @@ def play_real(log=print):
               "night": "/navera/estimate/night", "cn": "/navera/estimate/cn"}
     pubs = {s: node.create_publisher(PositionEstimate, t, 10) for s, t in topics.items()}
     status = []
-    node.create_subscription(NavStatus, "/navera/nav_status", status.append, 10)
+    node.create_subscription(NavStatus, "/navera/nav_status", status.append, 50)
     srcconst = {"gps": PositionEstimate.SOURCE_GPS, "day": PositionEstimate.SOURCE_DAY_VISION,
                 "night": PositionEstimate.SOURCE_NIGHT_VISION, "cn": PositionEstimate.SOURCE_CELESTIAL}
     modeconst = {"MEASURED": 0, "PROPAGATED": 1, "HELD": 2, "REPLAYED": 3}
+    typeconst = {"UNKNOWN": PositionEstimate.COVARIANCE_TYPE_UNKNOWN,
+                 "APPROXIMATED": PositionEstimate.COVARIANCE_TYPE_APPROXIMATED}
     try:
         end = time.time() + 30
         while not status and time.time() < end:
@@ -154,6 +172,7 @@ def play_real(log=print):
         for _ in range(5):
             rclpy.spin_once(node, timeout_sec=0.05)
         t0 = node.get_clock().now()
+        status.clear()
         rel = lambda: (node.get_clock().now() - t0).nanoseconds / 1e9      # noqa: E731
         evs = events()
         i, k, results = 0, 0, []
@@ -167,13 +186,8 @@ def play_real(log=print):
                 m.sensor_stamp = m.header.stamp
                 m.header.frame_id = "academy"
                 m.latitude, m.longitude, m.altitude = float(e["lat"]), float(e["lon"]), math.nan
-                if e["sigma"] is None:
-                    m.position_covariance = [0.0] * 9
-                    m.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_UNKNOWN
-                else:
-                    v = float(e["sigma"]) ** 2
-                    m.position_covariance = [v, 0.0, 0.0, 0.0, v, 0.0, 0.0, 0.0, 4 * v]
-                    m.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_APPROXIMATED
+                m.position_covariance = [float(x) for x in e["cov"]]
+                m.position_covariance_type = typeconst[e["cov_type"]]
                 m.source, m.mode, m.valid = srcconst[e["source"]], modeconst[e["mode"]], bool(e["valid"])
                 m.producer = "academy_scenario"
                 m.frame_index = -1
@@ -189,7 +203,13 @@ def play_real(log=print):
                 log(f"  t={SAMPLES[k][0]:5.1f} s  real: {results[-1]['state']:12s} "
                     f"{str(results[-1]['source']):6s} {s.reason}")
                 k += 1
-        return results
+        history = []
+        for s in status:
+            st = (Time.from_msg(s.header.stamp) - t0).nanoseconds / 1e9
+            if st >= 0.0:
+                history.append([round(st, 4), STATE.get(s.state, str(s.state)), SRC.get(s.active_source)])
+        history.sort(key=lambda h: h[0])
+        return results, history
     finally:
         try:
             os.killpg(proc.pid, signal.SIGINT)
@@ -204,7 +224,8 @@ def play_real(log=print):
 
 
 def compare(arb, real):
-    mine = run_timeline(arb, events(), [r["status_t"] for r in real])
+    """Decisions at the 11 moments: real vs yours."""
+    mine, _ = run_timeline(arb, events(), [r["status_t"] for r in real])
     rows = []
     for r in real:
         d = mine[r["status_t"]]
@@ -214,17 +235,43 @@ def compare(arb, real):
     return rows
 
 
+def compare_switches(arb, history):
+    """Switch instants: real (from the recorded nav_status) vs yours. Returns rows
+    (real_t, mine_t, old, new, ok) and a list of problems (empty = identical)."""
+    real = switches_of([tuple(h) for h in history])
+    _, a = run_timeline(arb, events(), [], end_s=END_S)
+    mine = [tuple(s) for s in getattr(a, "switches", [])]
+    rows, problems = [], []
+    for k in range(max(len(real), len(mine))):
+        r = real[k] if k < len(real) else None
+        m = mine[k] if k < len(mine) else None
+        ok = (r is not None and m is not None and r[1:] == tuple(m[1:])
+              and abs(r[0] - m[0]) <= SWITCH_TOLERANCE_S)
+        rows.append(dict(real_t=r and r[0], mine_t=m and m[0], real=r and f"{r[1]}->{r[2]}",
+                         mine=m and f"{m[1]}->{m[2]}", ok=ok))
+        if not ok:
+            problems.append(f"switch {k + 1}: real {r and f'{r[1]}->{r[2]} at {r[0]:.2f} s'}, "
+                            f"yours {m and f'{m[1]}->{m[2]} at {m[0]:.2f} s'}")
+    return rows, problems
+
+
 def main():
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     quiet = "--quiet" in sys.argv
-    real = play_real(log=(lambda *a: None) if quiet else print)
-    with open("real_run.json", "w") as f:
-        json.dump({"samples": real, "scenario": [[t, s, {k: (None if isinstance(v, float) and math.isnan(v) else v)
-                                                         for k, v in kw.items()}] for t, s, kw in SCENARIO]},
-                  f, indent=1)
+    if "--replay" in sys.argv:
+        with open("real_run.json") as f:
+            data = json.load(f)
+        real, history = data["samples"], data["history"]
+    else:
+        real, history = play_real(log=(lambda *a: None) if quiet else print)
+        with open("real_run.json", "w") as f:
+            json.dump({"samples": real, "history": history,
+                       "scenario": [[t, s, {k: (None if isinstance(v, float) and math.isnan(v) else v)
+                                            for k, v in kw.items()}] for t, s, kw in SCENARIO]},
+                      f, indent=1)
     import arbiter
     rows = compare(arbiter, real)
-    print("\n  t (s)  moment                          REAL arbiter                 YOUR arbiter")
+    print("\n  t (s)  moment                          REAL arbiter            YOUR arbiter")
     for r in rows:
         mark = "✔" if r["same"] else "✘"
         print(f"  {r['t']:5.1f}  {r['label']:30s}  {r['state']:12s} {str(r['source']):6s}  "
@@ -232,7 +279,15 @@ def main():
         if not r["same_reason"]:
             print(f"         real reason: {r['reason']}\n         your reason: {r['mine_reason']}")
     n = sum(r["same"] for r in rows)
-    print(f"\n{n} of {len(rows)} decisions identical. Saved: real_run.json")
+    print(f"\n{n} of {len(rows)} decisions identical.")
+    srows, problems = compare_switches(arbiter, history)
+    print("\n  source switches     REAL t (s)   YOUR t (s)")
+    for s in srows:
+        rt = f"{s['real_t']:.2f}" if s["real_t"] is not None else "-"
+        mt = f"{s['mine_t']:.2f}" if s["mine_t"] is not None else "-"
+        print(f"  {str(s['real'] or s['mine']):16s}  {rt:>10s}   {mt:>10s}  {'✔' if s['ok'] else '✘'}")
+    print(f"\n{sum(s['ok'] for s in srows)} of {len(srows)} switches identical "
+          f"(same order, within {SWITCH_TOLERANCE_S} s). Saved: real_run.json")
 
 
 if __name__ == "__main__":

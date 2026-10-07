@@ -1,35 +1,39 @@
-"""arbiter.py — your own (simplified) NAVERA arbiter.
+"""arbiter.py — your own NAVERA arbiter: eligibility predicates, priority selection with
+hold-off (hysteresis), and the FIX / DEGRADED / NO_FIX / INITIALIZING classification.
 
 The real one is ~/navera/navera_estimator/navera_estimator/nodes/estimator_node.py.
-Yours follows the same rules, written as plain functions you can test without ROS.
+Yours follows the same rules, written as plain functions and one small class that you can
+test without ROS.
 
-An ESTIMATE is a Python dict, one per source, the latest one we received:
+An ESTIMATE is a Python dict with the information of a navera_msgs/PositionEstimate:
 
-    {"source": "gps",          # "gps", "day", "night" or "cn" (celestial)
-     "stamp": 12.0,            # when it was MEASURED (seconds, same clock as `now`)
-     "valid": True,            # the source says: "you may use this position"
-     "mode": "MEASURED",       # "MEASURED", "PROPAGATED", "HELD" or "REPLAYED"
-     "lat": 35.83, "lon": 10.64,
-     "sigma": 3.0}             # stated accuracy (1 sigma, metres), or None = unknown
+    {"source": "gps",            # "gps", "day", "night" or "cn" (celestial)
+     "stamp": 12.0,              # when it was MEASURED (seconds, same clock as `now`)
+     "valid": True,              # the source says: "you may use this position"
+     "mode": "MEASURED",         # "MEASURED", "PROPAGATED", "HELD" or "REPLAYED"
+     "lat": 23.5880, "lon": 58.3829,
+     "cov": [9.0, 0, 0,  0, 9.0, 0,  0, 0, 36.0],   # 3x3 covariance, row-major, m^2 (E, N, Up)
+     "cov_type": "APPROXIMATED"} # "UNKNOWN", "APPROXIMATED", "DIAGONAL_KNOWN" or "KNOWN"
 
 Run the demo:   python3 arbiter.py
 """
 import math
 
 # The same numbers as ~/navera/navera_estimator/navera_estimator/config/estimator_params.yaml
-TIMEOUTS = {"gps": 3.0, "day": 5.0, "night": 5.0, "cn": 45.0}   # freshness window (s)
+TIMEOUTS = {"gps": 3.0, "day": 5.0, "night": 5.0, "cn": 45.0}   # freshness windows T_s (s)
 FUTURE_TOLERANCE_S = 0.5      # a stamp further than this in the FUTURE is refused
-SWITCH_HOLDOFF_S = 2.0        # a better source must stay usable this long before it takes over
+SWITCH_HOLDOFF_S = 2.0        # a better source must stay eligible this long before it takes over
 FIX_MAX_SIGMA_M = 25.0        # largest stated sigma still reported as FIX
 MIN_STATED_SIGMA_M = 0.01     # a sigma below 1 cm is "not filled in", not an accuracy
 
-PRIORITY = ["gps", "day", "night", "cn"]          # first usable source wins
+PRIORITY = ["gps", "day", "night", "cn"]          # first eligible source wins
 NAMES = {"gps": "GPS", "day": "day vision", "night": "night vision", "cn": "celestial"}
 USABLE_MODES = ("MEASURED", "PROPAGATED")
+BOUNDED_TYPES = ("APPROXIMATED", "DIAGONAL_KNOWN", "KNOWN")
 
 
 def is_fresh(est, now):
-    """True when the estimate is young enough to be used.
+    """True when the estimate is young enough to describe the present.
 
     age = now - est["stamp"].  Fresh means:  -FUTURE_TOLERANCE_S <= age < TIMEOUTS[source]
     (a stamp far in the future means a clock problem: its age cannot be trusted).
@@ -38,13 +42,53 @@ def is_fresh(est, now):
     return -FUTURE_TOLERANCE_S <= age < TIMEOUTS[est["source"]]
 
 
+def cov_ok(cov):
+    """True when `cov` (9 numbers, a 3x3 matrix in row-major order) IS a covariance matrix:
+
+      1. it has 9 elements, all finite (no nan, no inf)
+      2. the variances (diagonal: indices 0, 4, 8) are >= 0
+      3. it is symmetric: cov[1]==cov[3], cov[2]==cov[6], cov[5]==cov[7], within
+         tol = 1e-9 * max(1, cov[0], cov[4], cov[8])
+      4. the horizontal 2x2 block [[cov[0], cov[1]], [cov[3], cov[4]]] is positive
+         semi-definite: with 1. and 2. true, that means its determinant >= -tol
+    """
+    try:
+        cov = [float(c) for c in cov]
+    except (TypeError, ValueError):
+        return False
+    if len(cov) != 9 or not all(math.isfinite(c) for c in cov):
+        return False
+    if not all(cov[i] >= 0.0 for i in (0, 4, 8)):
+        return False
+    tol = 1e-9 * max(1.0, cov[0], cov[4], cov[8])
+    if any(abs(cov[i] - cov[j]) > tol for i, j in ((1, 3), (2, 6), (5, 7))):
+        return False
+    return cov[0] * cov[4] - cov[1] * cov[3] >= -tol
+
+
+def stated_sigma(est):
+    """The horizontal 1-sigma (m) the source STATES, or None when it states none.
+
+      - cov_type not in BOUNDED_TYPES             -> None (UNKNOWN or garbage)
+      - sigma = sqrt(max(cov[0], cov[4]))          (the worse of East and North)
+      - sigma < MIN_STATED_SIGMA_M                 -> None (zero is a missing value)
+    """
+    if est.get("cov_type") not in BOUNDED_TYPES:
+        return None
+    cov = est["cov"]
+    sigma = math.sqrt(max(cov[0], cov[4]))
+    return sigma if sigma >= MIN_STATED_SIGMA_M else None
+
+
 def is_eligible(est, now):
     """True when the arbiter may use this estimate at all. ALL of these must hold:
       1. est["valid"] is True
       2. est["mode"] is MEASURED or PROPAGATED (a HELD echo or REPLAYED data never wins)
       3. it is fresh (is_fresh)
-      4. lat and lon are finite numbers, in range, and not exactly (0, 0)
-      5. sigma is None (unknown is allowed — it will just be DEGRADED) or a finite number >= 0
+      4. position_ok(lat, lon): finite, in range, not exactly (0, 0)
+      5. cov_ok(est["cov"])
+    An UNKNOWN covariance type is allowed (it will be DEGRADED), but its numbers must
+    still form a covariance (all zeros is fine).
     """
     if est.get("valid") is not True:
         return False
@@ -54,49 +98,46 @@ def is_eligible(est, now):
         return False
     if not position_ok(est.get("lat"), est.get("lon")):
         return False
-    sigma = est.get("sigma")
-    if sigma is not None and not (isinstance(sigma, (int, float)) and math.isfinite(sigma) and sigma >= 0):
-        return False
-    return True
+    return cov_ok(est.get("cov"))
 
 
 def classify(est):
-    """(state, reason) for the WINNING estimate. Exactly the real _classify() rules:
+    """(state, reason) for the WINNING estimate. Exactly the real _classify() rules, in order:
 
-      MEASURED, stated sigma (>= 1 cm) above 25 m -> ("DEGRADED", "GPS fix, uncertainty 40 m > 25 m")
-      MEASURED, stated sigma (>= 1 cm) <= 25 m    -> ("FIX",      "GPS fix")
-      MEASURED, sigma unknown (None or < 1 cm)    -> ("DEGRADED", "day vision fix, uncertainty unknown")
-      anything else (PROPAGATED)                  -> ("DEGRADED", "night vision solution is propagated (dead-reckoned)")
+      MEASURED, stated sigma above 25 m  -> ("DEGRADED", "GPS fix, uncertainty 40 m > 25 m")
+      MEASURED, stated sigma <= 25 m     -> ("FIX",      "GPS fix")
+      MEASURED, no stated sigma          -> ("DEGRADED", "day vision fix, uncertainty unknown")
+      anything else (PROPAGATED)         -> ("DEGRADED", "night vision solution is propagated (dead-reckoned)")
 
-    Use NAMES[est["source"]] for the name, and f"{sigma:.0f}" for the numbers.
+    Use NAMES[est["source"]] for the name, stated_sigma(est), and f"{x:.0f}" for the numbers.
     """
     name = NAMES[est["source"]]
-    sigma = est.get("sigma")
-    bounded = sigma is not None and sigma >= MIN_STATED_SIGMA_M
-    if est["mode"] == "MEASURED" and bounded and sigma > FIX_MAX_SIGMA_M:
+    sigma = stated_sigma(est)
+    measured = est["mode"] == "MEASURED"
+    if measured and sigma is not None and sigma > FIX_MAX_SIGMA_M:
         return "DEGRADED", f"{name} fix, uncertainty {sigma:.0f} m > {FIX_MAX_SIGMA_M:.0f} m"
-    if est["mode"] == "MEASURED" and bounded:
+    if measured and sigma is not None:
         return "FIX", f"{name} fix"
-    if est["mode"] == "MEASURED":
+    if measured:
         return "DEGRADED", f"{name} fix, uncertainty unknown"
     return "DEGRADED", f"{name} solution is propagated (dead-reckoned)"
 
 
-def decide(estimates, now, active=None, eligible_since=None):
-    """The arbiter's decision: {"state": ..., "source": ..., "reason": ...}.
+def decide(estimates, now, active=None, eligible_since=None, holdoff_s=SWITCH_HOLDOFF_S):
+    """The arbiter's decision: {"state": ..., "source": ..., "reason": ...}. Pure function.
 
     estimates       list of the latest estimate of each source heard so far (maybe empty)
     now             the current time (s)
     active          the source that won last time (or None)
-    eligible_since  {source: time it became continuously eligible}
+    eligible_since  {source: time since which it has been CONTINUOUSLY eligible}
+    holdoff_s       the hold-off (s)
 
-      - no estimate at all            -> state "INITIALIZING", source None, reason "waiting for first source message"
-      - none eligible                 -> state "NO_FIX", source None,
-                                         reason = the why_not() clauses of each source in PRIORITY order
-                                         (only the sources heard), joined with "; "
-      - otherwise the first eligible source in PRIORITY wins, EXCEPT (hold-off): if the active
-        source is still eligible and the best one has been eligible for less than
-        SWITCH_HOLDOFF_S, keep the active one.  state/reason come from classify(winner).
+      - no estimate at all  -> "INITIALIZING", source None, reason "waiting for first source message"
+      - none eligible       -> "NO_FIX", source None, reason = the why_not() clauses of the
+                               sources heard, in PRIORITY order, joined with "; "
+      - otherwise best = the first eligible source in PRIORITY. Hold-off: if `active` is
+        eligible, best != active, and now - eligible_since[best] < holdoff_s, the winner
+        stays `active`. state/reason = classify(winner).
     """
     eligible_since = eligible_since or {}
     if not estimates:
@@ -110,11 +151,58 @@ def decide(estimates, now, active=None, eligible_since=None):
     best = usable[0]
     winner = best
     if active in usable and best != active:
-        dwell = now - eligible_since.get(best, now)
-        if dwell < SWITCH_HOLDOFF_S:
+        if now - eligible_since.get(best, now) < holdoff_s:
             winner = active
     state, reason = classify(by_source[winner])
     return {"state": state, "source": winner, "reason": reason}
+
+
+class Arbiter:
+    """The arbiter as a STATE MACHINE: it remembers what decide() needs between two calls.
+
+        arb = Arbiter()
+        arb.receive(estimate)      # a message arrives
+        d = arb.step(now)          # decide now (on every arrival AND on a 5 Hz clock)
+    """
+
+    def __init__(self, holdoff_s=SWITCH_HOLDOFF_S):
+        self.holdoff_s = holdoff_s
+        self.latest = {}            # source -> latest estimate received
+        self.active = None          # source that won the last step (or None)
+        self.eligible_since = {}    # source -> time since which it is continuously eligible
+        self.switches = []          # (time, old source, new source) each time the winner changes
+        self.decision = None        # the last decision dict
+
+    def receive(self, est):
+        """Store `est` as the latest of its source, EXCEPT a late GPS fix: a GPS estimate whose
+        stamp is older than the GPS estimate already stored is dropped (old news from a buffer)."""
+        old = self.latest.get(est["source"])
+        if est["source"] == "gps" and old is not None and est["stamp"] < old["stamp"]:
+            return
+        self.latest[est["source"]] = est
+
+    def step(self, now):
+        """One decision at time `now`, in this order (the real _select() does the same):
+          1. for every source in PRIORITY: if it has an estimate and it is eligible now,
+             eligible_since.setdefault(source, now); otherwise eligible_since.pop(source, None)
+          2. d = decide(latest estimates in PRIORITY order, now, self.active,
+                        self.eligible_since, self.holdoff_s)
+          3. if d["source"] != self.active: append (now, self.active, d["source"]) to
+             self.switches (None counts: losing every source is a change too)
+          4. self.active = d["source"]; self.decision = d; return d
+        """
+        for src in PRIORITY:
+            if src in self.latest and is_eligible(self.latest[src], now):
+                self.eligible_since.setdefault(src, now)
+            else:
+                self.eligible_since.pop(src, None)
+        ests = [self.latest[s] for s in PRIORITY if s in self.latest]
+        d = decide(ests, now, self.active, self.eligible_since, self.holdoff_s)
+        if d["source"] != self.active:
+            self.switches.append((now, self.active, d["source"]))
+        self.active = d["source"]
+        self.decision = d
+        return d
 
 
 # ---- you don't need to change anything below this line (but you can read it!) ----
@@ -151,15 +239,28 @@ def why_not(est, now):
     return ""
 
 
+def make_est(source, stamp, sigma=None, **kw):
+    """An estimate dict. sigma=None -> covariance type UNKNOWN (all zeros);
+    otherwise East/North variance sigma^2 and Up variance (2 sigma)^2, type APPROXIMATED."""
+    if sigma is None:
+        cov, ctype = [0.0] * 9, "UNKNOWN"
+    else:
+        v = float(sigma) ** 2
+        cov, ctype = [v, 0.0, 0.0, 0.0, v, 0.0, 0.0, 0.0, 4.0 * v], "APPROXIMATED"
+    est = dict(source=source, stamp=stamp, valid=True, mode="MEASURED",
+               lat=23.5880, lon=58.3829, cov=cov, cov_type=ctype)   # Muscat (example only)
+    est.update(kw)
+    return est
+
+
 def gps(stamp, sigma=3.0, **kw):
     """A quick GPS estimate for the demo and your own tests."""
-    return dict(dict(source="gps", stamp=stamp, valid=True, mode="MEASURED", lat=35.8256, lon=10.6385,
-                     sigma=sigma), **kw)
+    return make_est("gps", stamp, sigma, **kw)
 
 
 def day(stamp, sigma=None, **kw):
-    return dict(dict(source="day", stamp=stamp, valid=True, mode="MEASURED", lat=35.8259, lon=10.6390,
-                     sigma=sigma), **kw)
+    """A quick day-vision estimate (default: uncertainty unknown)."""
+    return make_est("day", stamp, sigma, **dict(dict(lat=23.5884, lon=58.3836), **kw))
 
 
 if __name__ == "__main__":
@@ -170,8 +271,17 @@ if __name__ == "__main__":
         ("GPS + day vision", [gps(99.5), day(99.0)]),
         ("GPS 4 s old, day vision fresh", [gps(96.0), day(99.0)]),
         ("GPS with HDOP 20 (sigma 40 m)", [gps(99.5, sigma=40.0)]),
+        ("GPS with an all-zero covariance", [gps(99.5, sigma=0.0)]),
         ("everything old", [gps(90.0), day(90.0)]),
     ]
     for title, ests in cases:
-        d = decide(ests, now)
-        print(f"{title:32s} -> {d}")
+        print(f"{title:34s} -> {decide(ests, now)}")
+    print("\nThe state machine: day vision active, GPS comes back at t = 10 s")
+    arb = Arbiter()
+    for k in range(0, 30):
+        t = 0.5 * k
+        arb.receive(day(t))
+        if t >= 10.0:
+            arb.receive(gps(t))
+        arb.step(t)
+    print("switches:", arb.switches, "(expected: None->day at 0.0, day->gps at 12.0)")

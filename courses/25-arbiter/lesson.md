@@ -1,106 +1,323 @@
-# Who to believe? The NAVERA arbiter
+# Who to trust? The arbiter as a state machine
 
-A drone flies along the coast near Sousse. Its GPS says *"you are here, ±3 m"*. Its day camera,
-matching the ground with the satellite map, says *"you are 40 m further north, accuracy unknown"*.
-The star camera, pointed at the sky, says *"you are somewhere in this 50 km circle"*. Then a truck
-with a jammer drives by and the GPS goes quiet…
+A survey drone flies north along the Batinah coast towards Sohar port at 40 m/s. Its GPS says
+*"you are here, σ = 3 m"*. Its day camera, matching the ground against a satellite map, says
+*"you are 40 m further inland, σ = 30 m"*. The star camera says *"you are somewhere in a circle
+of tens of kilometres"*. Then the GPS starts to drop out: valid, invalid, valid, every second or two.
 
-The autopilot cannot fly on four opinions. It needs **one** position, now, and an honest idea of how
-much to trust it. In NAVERA, the part that decides is called the **arbiter** (the package
-`navera_estimator`). It is like the referee of a football match: it does not play, it does not
-measure anything itself — it watches the players (the sources) and applies **the same written rules
-every time**.
+The autopilot cannot fly on four opinions. Every 0.2 s it needs **one** position and an honest
+statement of how much to trust it. In NAVERA the component that decides is the **arbiter**
+(ROS 2 package `navera_estimator`, node `estimator_node`). It measures nothing itself. It applies
+a written **decision policy** to the messages of the sources, the same way every time.
 
-In this lesson you will learn those rules, write your own arbiter in Python, and race it against the
-real one.
+In this lesson you treat the arbiter as an engineer would: as a **state machine** with inputs,
+memory and outputs; with **eligibility predicates**, a **priority** rule, **hysteresis**, and
+**freshness** windows chosen by measuring trade-offs. You will also see why NAVERA **selects** one
+source instead of **fusing** them all.
 
-## 1. The players: four sources, one contract
+> [!NOTE]
+> NAVERA's recorded data and its simulator area cover **Sousse, Tunisia**, where NAVERA is
+> developed. The examples in this lesson use Omani places; the code does not care where it flies.
 
-You met them all in modules 4 and 5. Each one is a ROS 2 node that publishes the **same message**,
-`navera_msgs/PositionEstimate` (lesson 12), on its own topic:
+## 1. The problem, stated precisely
 
-| Source | Topic | Typical accuracy today |
+Four sources publish the same message type, `navera_msgs/PositionEstimate` (lesson 12), each on
+its own topic:
+
+| Source | Topic | Accuracy it states today |
 |---|---|---|
-| GPS (`gps_node`) | `/navera/estimate/gps` | a few metres, **stated** from the HDOP |
-| Day vision (`day_subscriber`) | `/navera/estimate/day` | states 30 m (`local_sigma_m`) until measured with NAVERA's camera |
-| Night vision (`night_subscriber`) | `/navera/estimate/night` | not validated on real thermal images |
-| Celestial (`cn_subscriber`) | `/navera/estimate/cn` | coarse: tens of km (bounded by the IMU attitude) |
+| GPS (`gps_node`) | `/navera/estimate/gps` | from the HDOP: a few metres |
+| Day vision | `/navera/estimate/day` | 30 m, until measured with NAVERA's own camera |
+| Night vision | `/navera/estimate/night` | not validated on real thermal images |
+| Celestial | `/navera/estimate/cn` | tens of km (bounded by the IMU attitude) |
 
-Because every source speaks the same language, the arbiter has **no special case** for any of them.
-It reads the same fields from everybody: `valid`, `mode`, `header.stamp` / `sensor_stamp`, `latitude`,
-`longitude`, `position_covariance` and `position_covariance_type`. One rule for all — that is what
-makes it testable, and what lets a new source be added tomorrow without touching the arbiter.
+Let `z_s` be the **latest** message received from source `s`, and `t` the current time. The
+arbiter computes an output
+
+```
+y(t) = ( state, active source, reason )        state ∈ {INITIALIZING, NO_FIX, DEGRADED, FIX}
+```
+
+If `y(t)` depended only on the current inputs, the arbiter would be a pure function. It does not:
+it also depends on a small **memory** `m` — which source won last time, and since when each source
+has been usable. A system whose output depends on its inputs *and* a memory that the inputs
+update is a **state machine** (more precisely a *Mealy machine*):
+
+```
+y_k     = g(m_k, z_k, t_k)        (decide)
+m_{k+1} = f(m_k, z_k, t_k)        (remember)
+```
+
+Every NAVERA rule below is either part of `g` (eligibility, priority, classification) or of `f`
+(active source, `eligible_since`). Keeping the memory **small and explicit** is what makes the
+arbiter testable: you can replay the same inputs and must get the same outputs — which is
+exactly what you will do in the lab against the real node.
 
 ![The two questions of the arbiter](assets/arbiter.svg)
 
-## 2. Question one: is this source usable? (eligibility)
+## 2. Eligibility predicates
 
-A source that talks is not automatically a source you can use. A message is **eligible** only when
-*all* of these are true:
+A **predicate** is a function that returns true or false. For each source the arbiter evaluates
 
-1. **`valid` is true.** The source itself says "use me". The GPS driver, for example, publishes
-   `valid=false` when the receiver has no satellite fix — it does not stay silent, it says *"I have
-   nothing"*. That is honest, and the arbiter respects it.
-2. **The mode is `MEASURED` or `PROPAGATED`.** A `HELD` message (the last value repeated, no new
-   information) or a `REPLAYED` one (test data from a file) can never win.
-3. **It is fresh.** Its *age* — now minus the instant it was measured — must be smaller than the
-   source's **freshness window**. A position from 10 seconds ago describes where the drone *was*,
-   not where it *is*.
-4. **The position is a real position:** finite numbers (no `NaN`, no infinity), latitude within ±90°,
-   longitude within ±180°, and not exactly (0, 0) — the famous "Null Island" in the Atlantic where
-   broken software puts things.
-5. **The covariance is a real covariance:** finite, no negative variance, symmetric. You will learn
-   what that means in lesson 26; for now: *if the error description is impossible, the whole message
-   is thrown away*, because the autopilot's filter would break on it.
+```
+E_s(t) = V_s ∧ M_s ∧ F_s(t) ∧ P_s ∧ C_s
+```
 
-### Freshness windows
+(`∧` = logical AND). All five must be true:
 
-Each source has its own window, in `navera_estimator/config/estimator_params.yaml`:
-
-| Source | Window | Why |
+| Symbol | Condition | Why |
 |---|---|---|
-| GPS | 3 s | the receiver sends 1 fix per second (measured: 1.000 Hz); 3 s tolerates 2–3 lost fixes |
+| `V_s` | `valid == true` | the source itself says "use me" (a GPS without lock sends `valid=false`) |
+| `M_s` | `mode` is MEASURED or PROPAGATED | a HELD echo or REPLAYED test data must never win |
+| `F_s(t)` | `−τ ≤ a_s(t) < T_s` | fresh: see §3 |
+| `P_s` | latitude/longitude finite, in range, not (0, 0) | (0, 0) is "Null Island", where broken software puts things |
+| `C_s` | the covariance is a covariance | a consumer's filter would break on anything else |
+
+The same five conditions apply to **every** source. There is no `if source == "day"` anywhere in
+the arbiter. That is a design rule: a new source can be added without touching the decision code.
+
+### Is a 3×3 matrix really a covariance?
+
+The message carries `position_covariance`, 9 numbers (row-major, East/North/Up, in m²). A
+**covariance matrix** must be symmetric and **positive semi-definite** (PSD): `vᵀ P v ≥ 0` for
+every vector `v` (a variance can never be negative, in any direction). For the horizontal block
+
+```
+P_h = | a  c |        a = σ_E² ,  b = σ_N² ,  c = ρ σ_E σ_N
+      | c  b |
+```
+
+the eigenvalues are `λ = ( (a+b) ± sqrt((a−b)² + 4c²) ) / 2`. Both are ≥ 0 exactly when
+`a ≥ 0`, `b ≥ 0` and `det P_h = a·b − c² ≥ 0`. The last condition is the same as `|ρ| ≤ 1`: a
+correlation can never exceed 1. NAVERA's `_sane()` checks precisely this, with a small numerical
+tolerance `tol = 1e-9 · max(1, a, b, P_33)`:
+
+1. all 9 numbers finite;  2. diagonal ≥ 0;  3. symmetric within `tol`;  4. `a·b − c² ≥ −tol`.
+
+**Worked example.** `a = 9`, `b = 4`, `c = 7` m². Then `det = 36 − 49 = −13 < 0`, so
+`ρ = 7 / (3·2) = 1.17`: impossible. The message is **not eligible at all** — not just
+"degraded". A wrong error description is treated as a wrong message.
+
+### The stated accuracy σ
+
+From a valid covariance the arbiter derives one number, the **stated horizontal σ**:
+
+```
+σ = sqrt( max(P_11, P_22) )      only if covariance_type ∈ {APPROXIMATED, DIAGONAL_KNOWN, KNOWN}
+                                 and σ ≥ 1 cm;  otherwise σ is "unknown"
+```
+
+Why is σ = 0 "unknown"? A zero would mean *perfect*, and nothing is perfect: an all-zero
+covariance almost always means "nobody filled the field". On the bench, a GPS with an all-zero
+covariance used to be reported FIX "with accuracy 0"; it is now DEGRADED "uncertainty unknown"
+(`docs/VALIDATION_STATUS.md`, *Robustness*).
+
+> [!NOTE]
+> `max(P_11, P_22)` is the larger *diagonal* variance. When East and North errors are correlated,
+> the largest eigenvalue `λ_max` is larger still (lesson 26 draws it as an error ellipse). For the
+> diagonal covariances NAVERA's sources publish today, the two are equal.
+
+## 3. Freshness, latency and staleness error
+
+The **age** of a message is measured from the instant of the *measurement*, not of the publication:
+
+```
+a_s(t) = t − t_meas         t_meas = sensor_stamp (photo exposure, NMEA sentence),
+                            or header.stamp if the producer did not fill sensor_stamp
+```
+
+A fix computed slowly from an old photo is as old as the photo. A stamp more than `τ = 0.5 s` in
+the **future** (`a < −τ`) is refused: a clock is wrong, so the age cannot be trusted.
+
+Each source has its own **freshness window** `T_s` (`estimator_params.yaml`):
+
+| Source | `T_s` | Reason |
+|---|---|---|
+| GPS | 3 s | the receiver sends 1 fix per second (measured 1.000 Hz); tolerates 2 lost fixes |
 | Day vision | 5 s | frames come every 1–4 s under load |
 | Night vision | 5 s | same idea |
 | Celestial | 45 s | a star solve takes ~15 s and fixes are rare |
 
-The day window used to be 3 s. In the mission simulator, under load, NAVERA then flickered between
-FIX and NO FIX on 20–60 % of samples and the autopilot landed during a 6.7–9.2 s gap; it is 5 s since
-(docs/VALIDATION_STATUS.md, **simulator only**). A good example of a number that was *measured*, not
-decided.
+Choosing `T_s` is a **trade-off** between two errors:
 
-> [!NOTE]
-> **"Age" is measured from the instant of the measurement**, the field `sensor_stamp` (the photo's
-> exposure, the NMEA sentence). A fix computed slowly from an old photo is as old as the photo.
-> And a stamp more than **0.5 s in the future** is refused: it means a clock went wrong, so its age
-> cannot be trusted. The reason then reads *"timestamp 60.0s in the future (clock problem)"*.
+- **Staleness error.** Using a fix of age `a` while flying at speed `v` puts the position up to
+  `e = v · a` behind the vehicle. At 40 m/s with `T = 5 s`, `e` can reach **200 m**.
+- **Availability.** A short window turns every slow frame into a gap (NO_FIX if nothing else is
+  available).
 
-## 3. Question two: who wins? (priority)
+**A model of availability.** Suppose the gaps `G` between frames are independent with the same
+distribution. In each gap the source is fresh for `min(G, T)` seconds, so (renewal theory)
 
-Among the usable sources, the arbiter takes the **first one in a fixed order**:
+```
+availability(T) = E[min(G, T)] / E[G]
+```
 
-**GPS > day vision > night vision > celestial**
+**Worked example.** Gaps uniform between 1 and 4 s: `E[G] = 2.5 s`. For `T = 3 s`,
+`E[min(G,3)] = (1/3)·( ∫₁³ g dg + ∫₃⁴ 3 dg ) = (1/3)·(4 + 3) = 2.33 s`, so the availability is
+`2.33 / 2.5 = 93 %`. For `T = 2 s`: `(1/3)·(1.5 + 4) = 1.83 s`, only **73 %**. The day window
+used to be 3 s; in the mission simulator, under load, NAVERA then alternated FIX / NO_FIX on
+20–60 % of samples and the autopilot landed during a 6.7–9.2 s gap. It is 5 s since
+(`VALIDATION_STATUS.md`, **simulator only**). The staleness error is handled elsewhere: the output
+carries a vision fix to the present and grows its stated accuracy with its age.
 
-Why this order? Because it is the order of how good each source is *when it works*: a GPS lock is a
-few metres; day vision is the next best; night vision works on fewer landmarks; celestial is a
-coarse fix (tens of km). There is exactly **one winner**, or none. NAVERA does not average sources
-today: it is a *single-winner* arbiter (lesson 26 shows the maths that a future fusion would use).
+**Detection latency.** A source that goes *silent* sends no message to say so. The arbiter
+therefore decides on **two triggers**: on every arrival (no added delay), and on a clock at
+`f = 5 Hz` (`publish_rate_hz`). A silent GPS is noticed at most `T_gps + 1/f = 3 + 0.2 = 3.2 s`
+after its last measurement.
 
-### The hold-off: no zig-zag
+## 4. Priority: a lexicographic choice
 
-Imagine a GPS that keeps flapping: valid, invalid, valid, invalid, every half second (a bad cable,
-a jammer at the edge of its range). With the pure priority rule, the output would jump between the
-GPS position and a vision position maybe hundreds of metres away, twice a second. The autopilot would
-see its position teleport back and forth.
+Among the eligible sources, the winner is the **first** one in a fixed order:
 
-So there is a **switch hold-off** (`switch_holdoff_s`, 2 s): *while the active source stays usable,
-a better source must have been usable **continuously** for 2 s before it takes over.* Losing the
-active source, on the other hand, switches **immediately** — you never keep a source that is gone.
+```
+w(t) = first s in (gps, day, night, cn) such that E_s(t)          (none → NO_FIX)
+```
 
-Measured on the bench (VALIDATION_STATUS.md, *Robustness*): with a GPS flapping every 0.5 s, the
-output made **one source switch in 8 s, no zig-zag**.
+This is a **lexicographic** policy: GPS always beats day vision when both are eligible, whatever
+their stated σ. The order is the order of quality *when the source works*: a GPS lock is metres,
+day vision tens of metres (stated), night vision fewer landmarks, celestial tens of km.
 
-Here is the real code, `_select()` in `estimator_node.py` (shortened):
+## 5. Hysteresis: the hold-off
+
+Pure priority has a weakness. A GPS at the edge of a jammer's range flips valid / invalid every
+second. The output jumps between GPS and a vision fix maybe 50 m away, twice a second, and the
+autopilot sees its position teleport. This rapid switching is called **chattering**. The classic
+cure is **hysteresis**: the condition to *enter* a state is stricter than the condition to stay.
+(An electronic Schmitt trigger and a home thermostat use the same idea.)
+
+NAVERA's rule, with hold-off `h = switch_holdoff_s = 2 s`:
+
+```
+the active source a stays the winner while E_a(t) is true, UNLESS a higher-priority source b
+has been eligible CONTINUOUSLY on [t − h, t];   if E_a(t) is false, switch at once.
+```
+
+The memory needed is one time per source, `eligible_since[s]`: set when `s` becomes eligible,
+deleted as soon as it is not. In Python, `dict.setdefault(s, now)` keeps the *first* time and
+`dict.pop(s, None)` forgets it — that is how "continuously" is implemented.
+
+![Hold-off timing](assets/holdoff.svg)
+
+**Why asymmetric?** Keeping a source that is *gone* means flying on nothing. Keeping a worse but
+*valid* source for `h` more seconds only costs some accuracy. So losses switch immediately and
+gains wait.
+
+**How much does it help?** Model a flapping GPS whose "on" periods are exponential with mean `μ`.
+GPS takes over only if an on-period lasts longer than `h`, which happens with probability
+
+```
+P(D_on > h) = exp(−h / μ)
+```
+
+With `μ = 2 s` and `h = 2 s`, only `e⁻¹ = 37 %` of the returns produce a switch. And a GPS that
+flaps every 0.5 s (`D_on = 0.5 s < h`) never takes over: on the bench, a GPS flapping every 0.5 s
+gave **one source switch in 8 s, no zig-zag** (`VALIDATION_STATUS.md`, *Robustness*). The cost:
+after each real return, `h` seconds of good GPS are not used. In the lab you will measure both
+sides of this trade-off on a simulated 10-minute flight.
+
+## 6. From winner to state
+
+The `state` tells the operator and the autopilot how much to trust the position.
+
+![The output state machine](assets/states.svg)
+
+`_classify()` applies these rules **in this order** to the winner:
+
+| Winner | State | Reason (real text) |
+|---|---|---|
+| MEASURED, stated σ > 25 m | DEGRADED | `GPS fix, uncertainty 40 m > 25 m` |
+| MEASURED, stated σ ≤ 25 m | **FIX** | `GPS fix` |
+| MEASURED, σ unknown | DEGRADED | `day vision fix, uncertainty unknown` |
+| PROPAGATED (dead-reckoned) | DEGRADED | `night vision solution is propagated (dead-reckoned)` |
+| no eligible source | **NO_FIX** | `GPS: stale (4.2s>3.0s); day: none received; …` |
+| nothing ever received | INITIALIZING | `waiting for first source message` |
+
+The threshold is `fix_max_sigma_m = 25 m`. A GPS with poor satellite geometry (HDOP 20) states
+σ ≈ 40 m: it still wins, but it is DEGRADED. The rule is **self-correcting**: the day day-vision
+accuracy is measured and stated below 25 m, day vision becomes FIX without changing one line of
+the arbiter. Promotion is the reward for *measuring*, never a decision.
+
+The `reason` is for humans (the operator view shows it). Programs never parse it; they use the
+typed fields. For NO_FIX it gives one clause per source, in priority order — one line that tells an
+engineer what went wrong:
+
+```
+GPS: stale (10.8s>3.0s); day: stale (8.3s>5.0s); night: stale (6.3s>5.0s); cn: timestamp 54.7s in the future (clock problem)
+```
+
+## 7. Selection or fusion?
+
+Why choose **one** source? Two independent measurements `x₁, x₂` of the same quantity, with
+standard deviations `σ₁, σ₂`, can be combined with the **inverse-variance** (minimum-variance)
+weights (lesson 26 derives them):
+
+```
+x̂ = (x₁/σ₁² + x₂/σ₂²) / (1/σ₁² + 1/σ₂²)          σ̂² = 1 / (1/σ₁² + 1/σ₂²)
+```
+
+**Worked example.** GPS `σ₁ = 3 m`, vision `σ₂ = 30 m`. Weights: `w₁ = 100/101 = 0.990`,
+`w₂ = 0.010`. Fused `σ̂ = 2.985 m` — a gain of **0.5 %** over GPS alone. Now three problems:
+
+1. **Correlation.** NAVERA's vision takes its search prior from the arbiter's output while GPS is
+   active (`docs/ARCHITECTURE.md`), so the two errors are not independent. With correlation `ρ`
+   the true variance of the same `x̂` is
+   `var = w₁²σ₁² + w₂²σ₂² + 2 w₁ w₂ ρ σ₁ σ₂`. For `ρ = 0.8` you will find σ ≈ 3.2 m: **worse
+   than GPS alone**, while the formula claims 2.985 m. The fused output is over-confident.
+2. **Unknown σ.** Day vision's accuracy is not yet validated with NAVERA's camera. A weight
+   built from a guessed σ is a guess presented as a measurement.
+3. **Faults spread.** If GPS is spoofed 2 km away, the fused position moves `0.99 × 2000 = 1980 m`
+   with it. Fusion needs consistency tests *before* it fuses (lessons 26–27). A single winner can be
+   checked, refused and explained in one `reason` line.
+
+Finally, the autopilot downstream (ArduPilot's EKF) already fuses NAVERA's position with its IMU.
+NAVERA's job is to deliver **one honest measurement** with its covariance, not a second filter
+with hidden correlations. Fusion may come later — when the σ of each source is measured and the
+correlations are known.
+
+## 🐦 How birds do it
+
+A migrating bird also has several sources: a **sun compass** by day, a **star compass** at night,
+a **magnetic compass** at any time, and landmarks. Every autumn many songbirds that breed in Europe
+and Asia cross the Arabian Peninsula, Oman included, on their way to Africa — long flights over
+desert and sea where landmarks are few. Which compass do they trust?
+
+A classic field experiment (Cochran, Mouritsen and Wikelski, *Science*, 2004) followed wild
+**thrushes** in North America with small radio transmitters. Before departure, some birds were
+exposed at sunset to a magnetic field turned towards the east. That night they flew in the wrong
+direction, as if their compass had been rotated. The next night, after a normal sunset, they flew
+correctly again. The interpretation: the birds steered with their **magnetic compass** during the
+night, but **recalibrated it every evening against the sunset**. One cue was the reference; the
+other was the everyday tool, checked once a day.
+
+Researchers still debate how the cue hierarchy differs between species and seasons. The
+engineering lesson is the same as NAVERA's: a navigator needs an explicit rule for **which source
+is the reference**, and for when another one must be checked or ignored. Navi the swallow would
+not change her heading at every flicker of one cue — that is hysteresis too.
+
+## 8. In NAVERA
+
+| What | Where in your copy (`~/navera/…`) |
+|---|---|
+| The node | `navera_estimator/navera_estimator/nodes/estimator_node.py` |
+| Its settings | `navera_estimator/navera_estimator/config/estimator_params.yaml` |
+| Integration test (real node, scripted inputs) | `navera_tools/tests/test_estimator.py` |
+| The documented rules | `docs/ARCHITECTURE.md` §3 |
+| The messages | `navera_msgs/msg/PositionEstimate.msg`, `NavStatus.msg` |
+
+Eligibility, one rule for every source (`_eval_source`):
+
+```python
+def _eval_source(self, now, last, timeout):
+    if last is None:
+        return False, False, None
+    age = self._age_s(now, self._measured_at(last))
+    alive = -self._future_tol <= age < timeout
+    eligible = (alive and last.valid and last.mode in _ELIGIBLE_MODES
+                and self._sane(last))
+    return alive, eligible, age
+```
+
+Priority and hold-off (`_select`) — the memory `m` of §1 is `_eligible_since` and `_active_source`:
 
 ```python
 def _select(self, now, candidates):
@@ -123,140 +340,64 @@ def _select(self, now, candidates):
     return best_msg
 ```
 
-`setdefault` keeps the *first* time a source became usable; `pop` forgets it as soon as it stops.
-That is how "continuously usable" is measured.
-
-## 4. How good is the winner? The four states
-
-Choosing a winner is half the job. The operator — and the autopilot — also need to know **how much
-to trust it**. That is the `state` field of `/navera/nav_status`:
-
-![The four states](assets/states.svg)
-
-The rule (`_classify()`) is short and strict:
-
-| The winner is… | State | Reason (examples of the real text) |
-|---|---|---|
-| MEASURED, stated σ between 1 cm and 25 m | **FIX** | `GPS fix` |
-| MEASURED, stated σ above 25 m | **DEGRADED** | `GPS fix, uncertainty 40 m > 25 m` |
-| MEASURED, uncertainty unknown (type UNKNOWN, or σ below 1 cm) | **DEGRADED** | `day vision fix, uncertainty unknown` |
-| PROPAGATED (dead-reckoned) | **DEGRADED** | `day vision solution is propagated (dead-reckoned)` |
-| no usable source | **NO_FIX** | `GPS: stale (4.2s>3.0s); day: none received; …` |
-| nothing ever received | **INITIALIZING** | `waiting for first source message` |
-
-**σ** ("sigma") is the source's own statement of its accuracy, in metres — lesson 26 explains it
-properly. A GPS with a bad satellite geometry (HDOP 20) states σ ≈ 40 m: it still wins, but it is
-DEGRADED, not FIX.
-
-Why is a σ of **0** "unknown"? Because 0 m would mean *perfect* — and nothing is perfect. A zero
-almost always means *"somebody forgot to fill the field"*. On the bench, a GPS with an all-zero
-covariance used to be reported FIX "with accuracy 0"; it is now DEGRADED "uncertainty unknown"
-(VALIDATION_STATUS.md, *Robustness*).
-
-> [!TIP]
-> This rule is **self-correcting**: the day the day-vision accuracy is measured with NAVERA's real
-> camera and stated honestly below 25 m, day vision becomes FIX **without changing one line** of the
-> arbiter. Promotion to green is the reward for measuring, never a decision.
-
-### The reason string
-
-Every status carries a `reason` in plain English: *why* this state. It is written for humans (the
-operator view shows it), **never parsed by a program** — decisions use the typed fields only. For
-NO_FIX it lists one clause per source, in priority order:
-
-```
-GPS: stale (10.8s>3.0s); day: stale (8.3s>5.0s); night: stale (6.3s>5.0s); cn: timestamp 54.7s in the future (clock problem)
-```
-
-That line alone tells an engineer what went wrong in a flight. When GPS is still talking but has been
-refused (lesson 27), the reason says so: `day vision fix, uncertainty unknown — GPS refused: …`.
-
-## 5. When does the arbiter decide?
-
-Two moments:
-
-- **when a message arrives** (no added delay: a new GPS fix is passed on at once), and
-- **on a 5 Hz clock** (`publish_rate_hz`), even if nothing arrives. Why? Because a source that goes
-  *silent* sends no message to say so! Only a clock can notice that the GPS has said nothing for 3 s.
-
-And `/navera/position` carries each winning measurement **once**: the same fix is never re-published
-at every tick (a filter downstream would count it many times). Bench result: *"Estimator: one
-measurement → Published once (it was re-published at 5 Hz)"*.
-
-## 🐦 How birds do it
-
-A migrating bird has several "sources", just like NAVERA: a **sun compass** by day, a **star
-compass** at night, a **magnetic compass** at any time, plus landmarks. Which one does it trust?
-Birds have their own arbiter, and scientists have studied it for decades.
-
-One beautiful experiment was published in 2004 by William Cochran, Henrik Mouritsen and Martin
-Wikelski. They put tiny radio transmitters on wild **thrushes** in North America and followed them
-by car, sometimes for hundreds of kilometres. Before some birds took off, the
-scientists placed them, during the sunset, in a magnetic field turned to the east. That night the
-birds flew in the **wrong direction**, as if their compass had been turned. The next night, after
-seeing a normal sunset, they flew correctly again.
-
-What does it mean? During the night the thrushes steered with their **magnetic compass**, but
-**every evening they recalibrated it** using the sunset. The sky was the reference; the magnetic
-compass was the everyday tool, checked against the reference once a day.
-
-Different species may rank their compasses in different orders, and scientists still debate the
-details. But the idea is clear: a good navigator does not only pick one source — it knows **which
-source is the reference**, and when another one must be checked or ignored. NAVERA's arbiter writes
-that idea down as rules: eligibility first, then priority.
-
-## 6. In NAVERA
-
-| What | Where in your copy (`~/navera/…`) |
-|---|---|
-| The node | `navera_estimator/navera_estimator/nodes/estimator_node.py` |
-| Its settings | `navera_estimator/navera_estimator/config/estimator_params.yaml` |
-| How it is started | `navera_estimator/navera_estimator/launch/estimator.launch.py` |
-| Its integration test (real node, scripted inputs) | `navera_tools/tests/test_estimator.py` |
-| The documented rules | `docs/ARCHITECTURE.md` §3 |
-| The messages | `navera_msgs/msg/PositionEstimate.msg`, `NavStatus.msg` |
-
-The methods to know: `_eval_source()` (fresh / eligible), `_sane()` (position and covariance),
-`_select()` (priority + hold-off), `_classify()` (FIX / DEGRADED), `_no_fix_reason()` and
-`_source_reason()` (the reason text), `_tick()` (puts it all together, 5 times a second).
+Other methods to know: `_sane()` (§2), `_stated_sigma()` and `_classify()` (§6),
+`_source_reason()` and `_no_fix_reason()` (the reason text), `_on_gps()` (drops a GPS fix older
+than the newest one received — buffering, DDS reordering), and `_tick()`, called by the 5 Hz
+timer **and** at the end of every `_on_*` callback. `/navera/position` carries each winning
+measurement **once** (bench: "one measurement → published once; it was re-published at 5 Hz"),
+because a downstream filter would otherwise fuse the same fix many times. The real node also
+protects GPS against spoofing (kinematic gate, vision cross-check): that is lesson 27.
 
 ## Glossary
 
-| Word | Meaning |
+| Term | Meaning |
 |---|---|
-| **arbiter** | the part that elects one position among several sources (`navera_estimator`) |
-| **eligible** | usable right now: valid, right mode, fresh, sane |
-| **freshness window** | the maximum age of a message before it is "stale" |
-| **stale** | too old to describe the present |
-| **priority** | the fixed order GPS > day > night > celestial |
-| **hold-off** | the 2 s a better source must stay usable before it takes over (anti zig-zag) |
-| **flapping** | a source that keeps going on and off |
-| **σ (sigma)** | the accuracy a source states, in metres (lesson 26) |
+| **arbiter** | the component that elects one position among several sources (`navera_estimator`) |
+| **state machine** | a system whose output depends on its inputs and on a memory that the inputs update |
+| **predicate** | a function that returns true or false |
+| **eligible** | usable now: valid, usable mode, fresh, sane position, sane covariance |
+| **positive semi-definite (PSD)** | a symmetric matrix with `vᵀPv ≥ 0` for all `v`; every covariance is PSD |
+| **stated σ** | the horizontal 1-sigma accuracy the source declares (m) |
+| **age / freshness window** | time since the measurement / the largest age still accepted |
+| **staleness error** | distance moved since the measurement, `v · age` |
+| **availability** | fraction of time a source (or the output) is usable |
+| **lexicographic priority** | a fixed order: the first eligible source wins, whatever the others |
+| **chattering / flapping** | rapid back-and-forth switching / a source going on and off |
+| **hysteresis, hold-off** | a stricter condition to switch than to stay; NAVERA: 2 s of continuous eligibility |
+| **inverse-variance fusion** | the weighted mean with weights `1/σ²`; optimal only for independent errors |
 | **FIX / DEGRADED / NO_FIX / INITIALIZING** | the four states of `/navera/nav_status` |
-| **reason** | the plain-English explanation of the state, for humans only |
 
 ## Check what you learned
 
-<details><summary>1. GPS (σ 3 m) and day vision (σ unknown) are both fresh and valid. Who wins, and what is the state?</summary>
-GPS wins (first in the priority order) and the state is <b>FIX</b>, reason "GPS fix".
+<details><summary>1. A GPS message has P_11 = 16, P_22 = 9, P_12 = P_21 = 13 (m²), type APPROXIMATED. Eligible? If yes, which σ does it state?</summary>
+Not eligible: det = 16·9 − 13² = 144 − 169 = −25 &lt; 0, so ρ = 13/12 &gt; 1. The matrix is not a
+covariance; the whole message is refused (no σ is computed).
 </details>
 
-<details><summary>2. The GPS stopped talking 4 s ago. Day vision is fresh. What happens?</summary>
-GPS is stale (4 s ≥ 3 s), so day vision wins at once (losing the active source switches immediately).
-The state is <b>DEGRADED</b>: "day vision fix, uncertainty unknown".
+<details><summary>2. Day-vision frame gaps are uniform between 2 and 6 s. What availability does a 5 s window give (model of §3)?</summary>
+E[G] = 4 s. E[min(G,5)] = (1/4)(∫₂⁵ g dg + ∫₅⁶ 5 dg) = (1/4)(10.5 + 5) = 3.875 s.
+Availability = 3.875 / 4 = 96.9 %.
 </details>
 
-<details><summary>3. Day vision is active. GPS comes back, valid and fresh. Why does NAVERA wait before using it?</summary>
-The hold-off: GPS must stay usable continuously for 2 s before it takes over, so that a flapping GPS
-cannot make the position zig-zag between GPS and vision.
+<details><summary>3. The GPS goes silent at t = 20.0 s (last measurement). The clock ticks at 5 Hz. When, at the latest, does the arbiter stop using it?</summary>
+At 20.0 + 3.0 + 0.2 = 23.2 s: the window is 3 s, and the next tick can come up to 0.2 s later.
 </details>
 
-<details><summary>4. A GPS message says σ = 0 m. FIX or DEGRADED?</summary>
-DEGRADED, "uncertainty unknown": a σ below 1 cm is not an accuracy, it is a missing one.
+<details><summary>4. Day vision is active. GPS becomes eligible at 50.0 s, invalid at 51.5 s, eligible again at 52.0 s and stays. When does GPS take over?</summary>
+At 54.0 s. The invalid message at 51.5 s removed eligible_since["gps"]; it restarts at 52.0 s, and
+the hold-off needs 2 s of continuous eligibility.
 </details>
 
-<details><summary>5. Why does the arbiter also decide on a clock, and not only when a message arrives?</summary>
-Because a source that goes silent sends no message: only a clock can notice that nothing arrived for 3 s.
+<details><summary>5. With on-periods exponential of mean 4 s, what fraction of GPS returns still cause a switch with h = 2 s?</summary>
+exp(−2/4) = e^(−0.5) ≈ 0.61, so about 61 %. The hold-off helps less when the on-periods are long
+— but then the GPS is genuinely usable most of the time.
+</details>
+
+<details><summary>6. Give two reasons why fusing GPS (σ 3 m) and day vision (σ 30 m) would not improve NAVERA today.</summary>
+The gain is only 0.5 % even if both σ were right; vision's σ is not validated; the errors are
+correlated (vision's prior comes from the arbiter output), so the fused σ would be over-confident;
+a spoofed GPS would drag the fused position with weight 0.99; and the autopilot's EKF already fuses
+NAVERA's output with the IMU.
 </details>
 
 Now open the **🛠️ Lab** tab.

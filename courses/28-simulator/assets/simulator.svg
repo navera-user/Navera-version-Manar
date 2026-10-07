@@ -1,50 +1,71 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 400" font-family="Helvetica, Arial, sans-serif" font-size="13">
-  <rect width="780" height="400" rx="12" fill="#f8fafc"/>
-  <text x="390" y="26" text-anchor="middle" font-size="17" font-weight="bold" fill="#0f172a">The mission simulator: what is real, what is simulated</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 490" font-family="Helvetica, Arial, sans-serif" font-size="13">
+  <rect width="820" height="490" rx="12" fill="#f8fafc"/>
+  <text x="410" y="26" text-anchor="middle" font-size="17" font-weight="bold" fill="#0f172a">NAVERA's mission simulator: a closed loop</text>
   <defs><marker id="a" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker></defs>
   <!-- simulated world -->
-  <rect x="20" y="45" width="220" height="300" rx="10" fill="#fef3c7" stroke="#d97706"/>
-  <text x="130" y="68" text-anchor="middle" font-weight="bold" fill="#92400e">SIMULATED world</text>
-  <text x="130" y="84" text-anchor="middle" font-size="11" fill="#92400e">sim_server.py</text>
-  <rect x="35" y="98" width="190" height="40" rx="6" fill="#fff" stroke="#d97706"/>
-  <text x="130" y="115" text-anchor="middle">GPS receiver (NMEA)</text><text x="130" y="131" text-anchor="middle" font-size="11">jam / spoof / off</text>
-  <rect x="35" y="148" width="190" height="34" rx="6" fill="#fff" stroke="#d97706"/>
-  <text x="130" y="170" text-anchor="middle">IMU, clock samples</text>
-  <rect x="35" y="192" width="190" height="40" rx="6" fill="#fff" stroke="#d97706"/>
-  <text x="130" y="209" text-anchor="middle">camera images, or</text><text x="130" y="225" text-anchor="middle" font-size="11">a vision error profile</text>
-  <rect x="35" y="242" width="190" height="40" rx="6" fill="#fff" stroke="#d97706"/>
-  <text x="130" y="259" text-anchor="middle">the vehicle's true motion</text><text x="130" y="275" text-anchor="middle" font-size="11">(ArduPilot's physics)</text>
-  <text x="130" y="312" text-anchor="middle" fill="#334155">control page :8190</text>
-  <text x="130" y="330" text-anchor="middle" fill="#334155">(🛩️ Simulator tab)</text>
+  <rect x="16" y="44" width="230" height="330" rx="10" fill="#fef3c7" stroke="#d97706"/>
+  <text x="131" y="66" text-anchor="middle" font-weight="bold" fill="#92400e">SIMULATED (sim_server.py)</text>
+  <rect x="30" y="80" width="202" height="46" rx="6" fill="#fff" stroke="#d97706"/>
+  <text x="131" y="98" text-anchor="middle">GNSS receiver (nmea_gps.py)</text>
+  <text x="131" y="116" text-anchor="middle" font-size="11">noise · jammed · spoof · off</text>
+  <rect x="30" y="136" width="202" height="46" rx="6" fill="#fff" stroke="#d97706"/>
+  <text x="131" y="154" text-anchor="middle">vision error profile</text>
+  <text x="131" y="172" text-anchor="middle" font-size="11">target σ 15 m · measured</text>
+  <rect x="30" y="192" width="202" height="34" rx="6" fill="#fff" stroke="#d97706"/>
+  <text x="131" y="214" text-anchor="middle">IMU (bias per mission)</text>
+  <rect x="30" y="236" width="202" height="46" rx="6" fill="#fff" stroke="#d97706"/>
+  <text x="131" y="254" text-anchor="middle">fault injection</text>
+  <text x="131" y="272" text-anchor="middle" font-size="11">HTTP :8190 /api/fault</text>
+  <rect x="30" y="292" width="202" height="68" rx="6" fill="#fff" stroke="#d97706"/>
+  <text x="131" y="311" text-anchor="middle">truth and errors</text>
+  <text x="131" y="329" text-anchor="middle" font-size="11">SIM_STATE vs NAVERA</text>
+  <text x="131" y="345" text-anchor="middle" font-size="11">and vs the autopilot's belief</text>
   <!-- NAVERA -->
-  <rect x="290" y="45" width="220" height="300" rx="10" fill="#dcfce7" stroke="#16a34a"/>
-  <text x="400" y="68" text-anchor="middle" font-weight="bold" fill="#166534">REAL NAVERA nodes</text>
-  <text x="400" y="84" text-anchor="middle" font-size="11" fill="#166534">from ~/navera, as on the box</text>
-  <rect x="305" y="98" width="190" height="34" rx="6" fill="#fff" stroke="#16a34a"/><text x="400" y="120" text-anchor="middle">gps_node</text>
-  <rect x="305" y="142" width="190" height="34" rx="6" fill="#fff" stroke="#16a34a"/><text x="400" y="164" text-anchor="middle">day vision (optional)</text>
-  <rect x="305" y="186" width="190" height="34" rx="6" fill="#fff" stroke="#16a34a"/><text x="400" y="208" text-anchor="middle" font-weight="bold">estimator (arbiter)</text>
-  <rect x="305" y="230" width="190" height="34" rx="6" fill="#fff" stroke="#16a34a"/><text x="400" y="252" text-anchor="middle">vehicle_output (MAVLink)</text>
-  <rect x="305" y="274" width="190" height="34" rx="6" fill="#fff" stroke="#16a34a"/><text x="400" y="296" text-anchor="middle">web bridge → :8181</text>
-  <text x="400" y="330" text-anchor="middle" fill="#334155">(🧭 Operator view tab)</text>
+  <rect x="296" y="44" width="230" height="330" rx="10" fill="#dcfce7" stroke="#16a34a"/>
+  <text x="411" y="66" text-anchor="middle" font-weight="bold" fill="#166534">REAL NAVERA nodes (~/navera)</text>
+  <rect x="310" y="80" width="202" height="46" rx="6" fill="#fff" stroke="#16a34a"/>
+  <text x="411" y="98" text-anchor="middle">gps_node</text>
+  <text x="411" y="116" text-anchor="middle" font-size="11">reads NMEA from /dev/pts/N</text>
+  <rect x="310" y="166" width="202" height="46" rx="6" fill="#fff" stroke="#16a34a"/>
+  <text x="411" y="184" text-anchor="middle" font-weight="bold">estimator_node (arbiter)</text>
+  <text x="411" y="202" text-anchor="middle" font-size="11">/navera/estimate/* → nav_status</text>
+  <rect x="310" y="236" width="202" height="46" rx="6" fill="#fff" stroke="#16a34a"/>
+  <text x="411" y="254" text-anchor="middle">vehicle_output</text>
+  <text x="411" y="272" text-anchor="middle" font-size="11">MAVLink GPS_INPUT, 5 Hz</text>
+  <rect x="310" y="306" width="202" height="46" rx="6" fill="#fff" stroke="#16a34a"/>
+  <text x="411" y="324" text-anchor="middle">web bridge</text>
+  <text x="411" y="342" text-anchor="middle" font-size="11">operator view :8181</text>
   <!-- autopilot -->
-  <rect x="560" y="45" width="200" height="300" rx="10" fill="#dbeafe" stroke="#2563eb"/>
-  <text x="660" y="68" text-anchor="middle" font-weight="bold" fill="#1e40af">REAL autopilot</text>
-  <text x="660" y="84" text-anchor="middle" font-size="11" fill="#1e40af">ArduPilot SITL (Copter / Rover)</text>
-  <text x="660" y="130" text-anchor="middle">its ONLY position input</text>
-  <text x="660" y="148" text-anchor="middle">is NAVERA's output</text>
-  <text x="660" y="166" text-anchor="middle" font-size="11">(GPS_INPUT on port 5762)</text>
-  <text x="660" y="210" text-anchor="middle">flies the mission:</text>
-  <text x="660" y="228" text-anchor="middle">align, arm, take off,</text>
-  <text x="660" y="246" text-anchor="middle">go to the destination</text>
-  <text x="660" y="290" text-anchor="middle" font-size="11">ground-station link :5760</text>
-  <text x="660" y="306" text-anchor="middle" font-size="11">(truth + its own belief)</text>
+  <rect x="576" y="44" width="228" height="330" rx="10" fill="#dbeafe" stroke="#2563eb"/>
+  <text x="690" y="66" text-anchor="middle" font-weight="bold" fill="#1e40af">REAL autopilot firmware</text>
+  <text x="690" y="84" text-anchor="middle" font-size="11" fill="#1e40af">ArduPilot SITL (arducopter, quad)</text>
+  <rect x="590" y="236" width="200" height="46" rx="6" fill="#fff" stroke="#2563eb"/>
+  <text x="690" y="254" text-anchor="middle">SERIAL1 · TCP 5762</text>
+  <text x="690" y="272" text-anchor="middle" font-size="11">GPS_TYPE 14: GPS = MAVLink</text>
+  <rect x="590" y="166" width="200" height="46" rx="6" fill="#fff" stroke="#2563eb"/>
+  <text x="690" y="184" text-anchor="middle">EKF3 + controllers</text>
+  <text x="690" y="202" text-anchor="middle" font-size="11">GUIDED · LAND (failsafe)</text>
+  <rect x="590" y="96" width="200" height="46" rx="6" fill="#fff" stroke="#2563eb"/>
+  <text x="690" y="114" text-anchor="middle">physics model</text>
+  <text x="690" y="132" text-anchor="middle" font-size="11">x[k+1] = f(x[k], u[k], Δt)</text>
+  <rect x="590" y="306" width="200" height="46" rx="6" fill="#fff" stroke="#2563eb"/>
+  <text x="690" y="324" text-anchor="middle">SERIAL0 · TCP 5760</text>
+  <text x="690" y="342" text-anchor="middle" font-size="11">ground-station link</text>
   <!-- arrows -->
-  <path d="M225 118 H303" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
-  <path d="M225 212 Q265 190 303 160" stroke="#475569" stroke-width="2" fill="none" marker-end="url(#a)"/>
-  <path d="M495 115 H503 V203 H497" stroke="#475569" stroke-width="2" fill="none" marker-end="url(#a)"/>
-  <path d="M495 159 H503" stroke="#475569" stroke-width="2"/>
-  <path d="M400 220 V229" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
-  <path d="M495 247 H558" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
-  <path d="M660 345 V358 H130 V347" stroke="#475569" stroke-width="2" fill="none" stroke-dasharray="5 4" marker-end="url(#a)"/>
-  <text x="400" y="381" text-anchor="middle" font-size="11" fill="#475569">the autopilot moves the simulated vehicle → new GPS, camera, IMU samples → …</text>
+  <path d="M232 103 H308" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <text x="270" y="96" text-anchor="middle" font-size="10" fill="#475569">NMEA</text>
+  <path d="M411 126 V164" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M232 159 H270 V189 H308" stroke="#475569" stroke-width="2" fill="none" marker-end="url(#a)"/>
+  <text x="270" y="152" text-anchor="middle" font-size="10" fill="#475569">ROS 2</text>
+  <path d="M411 212 V234" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M512 259 H588" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <text x="550" y="251" text-anchor="middle" font-size="10" fill="#475569">id 232</text>
+  <path d="M690 236 V214" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M690 166 V144" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M590 329 H560 V390 H131 V362" stroke="#475569" stroke-width="2" fill="none" marker-end="url(#a)"/>
+  <text x="345" y="384" text-anchor="middle" font-size="10" fill="#475569">MAVLink: SIM_STATE (truth) · GLOBAL_POSITION_INT (belief)</text>
+  <!-- loop -->
+  <path d="M790 119 H808 V412 H8 V103 H28" stroke="#d97706" stroke-width="2" fill="none" stroke-dasharray="6 4" marker-end="url(#a)"/>
+  <text x="410" y="430" text-anchor="middle" font-size="12" fill="#92400e">the vehicle moves → new true position → new GNSS / vision / IMU samples → …</text>
+  <text x="410" y="466" text-anchor="middle" font-size="12" fill="#334155">NAVERA's output is the autopilot's ONLY position input (SIM_GPS_DISABLE 1)</text>
 </svg>

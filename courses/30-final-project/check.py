@@ -1,15 +1,23 @@
+import json
+import math
 import os
 import re
+import shutil
+import tempfile
 
-from academy_check import CheckFailed, Checker, sh
+import numpy as np
+
+from academy_check import CheckFailed, Checker, load_student, need, sh
 
 c = Checker()
 NAV = os.path.expanduser("~/navera")
-SECTIONS = ["Idea", "Change", "Test", "Measurement", "Result", "Limits"]
-# folders of the copy whose files are never part of a project (build products)
-IGNORED = ("build/", "install/", "log/")
+DATA = "/data/academy/30-final-project"
+SECTIONS = ["Proposal", "Change", "Test", "Measurement", "Result", "Limits"]
+LABELS = ["Problem", "Hypothesis", "Metric", "Acceptance criterion"]
+IGNORED = ("build/", "install/", "log/")          # build products are never part of a project
 
 
+# ---------------------------------------------------------------- helpers
 def git(args, timeout=30):
     code, out = sh(f"git -C {NAV} {args}", timeout=timeout)
     if code != 0:
@@ -21,12 +29,15 @@ def sections():
     if not os.path.exists("PROJECT.md"):
         raise CheckFailed("PROJECT.md is missing — did you rename or delete it? (↺ Reset lab files gives it back)")
     text = open("PROJECT.md", encoding="utf-8", errors="replace").read()
-    parts = re.split(r"^##\s+", text, flags=re.M)
     out = {}
-    for p in parts[1:]:
+    for p in re.split(r"^##\s+", text, flags=re.M)[1:]:
         title, _, body = p.partition("\n")
         out[title.strip()] = body.strip()
     return out
+
+
+def no_placeholder(text):
+    return re.sub(r"\((?:[^()]|\([^()]*\))*\)", "", text).strip()     # "(…)" placeholders removed
 
 
 def changed_files():
@@ -34,31 +45,247 @@ def changed_files():
     return [f for f in out.splitlines() if f and not f.startswith(IGNORED)]
 
 
+def tests_changed():
+    return [f for f in changed_files() if re.search(r"(^|/)test_[^/]*\.py$", f)
+            and os.path.exists(os.path.join(NAV, f))]
+
+
+def results():
+    if not os.path.exists("results.json"):
+        raise CheckFailed("results.json does not exist yet (the example writes it in TODO 5; for another "
+                          "project use write_results() from stats_tools.py)")
+    try:
+        return json.load(open("results.json"))
+    except ValueError as e:
+        raise CheckFailed(f"results.json is not valid JSON: {e}")
+
+
+def stats():
+    return load_student("stats_tools.py")
+
+
+def ar1(n, rho, seed):
+    rng = np.random.default_rng(seed)
+    e = np.empty(n)
+    e[0] = rng.normal()
+    for k in range(1, n):
+        e[k] = rho * e[k - 1] + math.sqrt(1 - rho ** 2) * rng.normal()
+    return e
+
+
+def pair(r, what):
+    c.ok(isinstance(r, (tuple, list)) and len(r) == 2, f"{what} should return (lo, hi), got {r!r}")
+    lo, hi = float(r[0]), float(r[1])
+    c.ok(math.isfinite(lo) and math.isfinite(hi) and lo <= hi, f"{what} returned lo={lo}, hi={hi}")
+    return lo, hi
+
+
+# ---------------------------------------------------------------- the statistics
+@c.test("stats_tools.percentile() uses linear interpolation (same as numpy's default)",
+        hint="h = (n - 1) * q / 100; take x[floor(h)] and move the fraction h - floor(h) towards the next "
+             "sorted value. q = 100 has no next value; an empty list gives nan.")
+def _():
+    (percentile,) = need(stats(), "percentile")
+    rng = np.random.default_rng(3)
+    for n in (1, 2, 7, 50):
+        x = rng.exponential(5.0, n)
+        for q in (0, 5, 50, 90, 95, 100):
+            c.near(percentile(list(x), q), float(np.percentile(x, q)), 1e-9, what=f"percentile(n={n}, q={q})")
+    r = percentile([], 50)
+    c.ok(isinstance(r, float) and math.isnan(r), f"percentile([], 50) should be nan, got {r!r}")
+
+
+@c.test("bootstrap_ci(): (lo, hi), reproducible with a seed, about 2 x 1.96 sigma / sqrt(n) wide for a mean",
+        hint="Create ONE generator rng = np.random.default_rng(seed) before the loop; each resample draws n "
+             "indices with replacement; the CI is the alpha/2 and 1 - alpha/2 percentiles of the statistics.")
+def _():
+    (bci,) = need(stats(), "bootstrap_ci")
+    x = np.random.default_rng(7).normal(10.0, 1.0, 400)
+    r1 = pair(bci(x, np.mean, n_boot=1000, alpha=0.05, seed=1), "bootstrap_ci")
+    r2 = pair(bci(x, np.mean, n_boot=1000, alpha=0.05, seed=1), "bootstrap_ci")
+    c.ok(r1 == r2, "two calls with the same seed give different intervals: is the seed used?")
+    c.ok(r1[0] < x.mean() < r1[1], f"the CI {r1} does not contain the sample mean {x.mean():.3f}")
+    w, theory = r1[1] - r1[0], 2 * 1.96 * x.std() / math.sqrt(len(x))
+    c.ok(0.8 * theory < w < 1.2 * theory, f"CI width {w:.3f}, expected about {theory:.3f} (2 x 1.96 sigma/sqrt n)")
+
+
+@c.test("bootstrap_ci(): alpha changes the level, any statistic works (median, p95)",
+        hint="alpha = 0.20 is an 80 % interval: narrower than the 95 % one. `stat` is a function you call "
+             "on each resample — do not hard-code np.mean.")
+def _():
+    (bci,) = need(stats(), "bootstrap_ci")
+    x = np.random.default_rng(8).exponential(3.0, 300)
+    w95 = np.subtract(*pair(bci(x, np.median, n_boot=800, alpha=0.05, seed=2), "bootstrap_ci")[::-1])
+    w80 = np.subtract(*pair(bci(x, np.median, n_boot=800, alpha=0.20, seed=2), "bootstrap_ci")[::-1])
+    c.ok(w80 < w95, f"the 80 % CI ({w80:.3f} wide) should be narrower than the 95 % CI ({w95:.3f})")
+    lo, hi = pair(bci(x, lambda v: float(np.percentile(v, 95)), n_boot=800, alpha=0.05, seed=2), "bootstrap_ci")
+    c.ok(lo < np.percentile(x, 95) < hi, "the CI of the p95 does not contain the sample p95: is `stat` used?")
+
+
+@c.test("block_bootstrap_ci(): resamples whole blocks — honest (wider) intervals on correlated errors",
+        hint="Each resample is idx = block_indices(n, block_len, rng) and its value is metric(idx). On a "
+             "correlated series (rho = 0.9) the block CI must be several times wider than the iid one; "
+             "with block_len = 1 it must be about the iid width.")
+def _():
+    m = stats()
+    bci, bbci = need(m, "bootstrap_ci", "block_bootstrap_ci")
+    e = ar1(1800, 0.9, seed=4)
+    seen = []
+
+    def metric(idx):
+        seen.append(idx)
+        return float(np.mean(e[idx]))
+    r = pair(bbci(len(e), metric, block_len=60, n_boot=300, alpha=0.05, seed=5), "block_bootstrap_ci")
+    c.ok(len(seen) == 300, f"metric() was called {len(seen)} times for n_boot=300")
+    idx = np.asarray(seen[0])
+    c.ok(idx.dtype.kind in "iu" and len(idx) == 1800 and idx.min() >= 0 and idx.max() < 1800,
+         "metric() should receive an integer array of 1800 epoch indices between 0 and 1799")
+    c.ok(np.sum(np.diff(idx) == 1) > 1700, "the indices are not in consecutive blocks — use block_indices()")
+    w_block = r[1] - r[0]
+    w_iid = np.subtract(*pair(bci(e, np.mean, n_boot=300, alpha=0.05, seed=5), "bootstrap_ci")[::-1])
+    c.ok(w_block > 2.5 * w_iid, f"block CI width {w_block:.3f} is not much wider than iid {w_iid:.3f}")
+    w1 = np.subtract(*pair(bbci(len(e), lambda i: float(np.mean(e[i])), block_len=1, n_boot=300, seed=5),
+                           "block_bootstrap_ci")[::-1])
+    c.ok(0.75 * w_iid < w1 < 1.33 * w_iid, f"block_len=1 gives width {w1:.3f}, expected about {w_iid:.3f}")
+
+
+@c.test("measure_project.summary(): availability, CEP50, p95 and max of the accepted epochs",
+        hint="Keep errors[accepted] only; availability = accepted / all epochs (rejected epochs count!); "
+             "use percentile() for CEP50 (q=50) and p95; nan everywhere when nothing is accepted.")
+def _():
+    (summary,) = need(load_student("measure_project.py"), "summary")
+    acc = [True, True, False, True, True, False, True, True, True, True]
+    err = [1.0, 2.0, 99.0, 3.0, 4.0, float("nan"), 5.0, 6.0, 7.0, 50.0]
+    s = summary(acc, err)
+    c.ok(isinstance(s, dict), f"summary() should return a dict, got {s!r}")
+    for k, v in (("n_epochs", 10), ("n_accepted", 8), ("availability", 0.8),
+                 ("cep50", float(np.percentile([1, 2, 3, 4, 5, 6, 7, 50], 50))),
+                 ("p95", float(np.percentile([1, 2, 3, 4, 5, 6, 7, 50], 95))), ("max", 50.0)):
+        c.ok(k in s, f"the dict has no key '{k}'")
+        c.near(s[k], v, 1e-9, what=f"summary(...)['{k}']")
+    z = summary([False, False], [1.0, 2.0])
+    c.ok(isinstance(z, dict) and math.isnan(float(z.get("p95", 0.0))) and z.get("n_accepted") == 0,
+         "with nothing accepted: n_accepted 0 and p95 nan")
+
+
+# ---------------------------------------------------------------- the report and the numbers
 @c.test("PROJECT.md has its six sections, each one written by you",
-        hint="Keep the headings ## Idea, ## Change, ## Test, ## Measurement, ## Result, ## Limits and "
+        hint="Keep the headings ## Proposal, ## Change, ## Test, ## Measurement, ## Result, ## Limits and "
              "replace every '(…)' placeholder by your own text — a few sentences each.")
 def _():
     s = sections()
     missing = [h for h in SECTIONS if h not in s]
     c.ok(not missing, "missing heading(s): " + ", ".join("## " + h for h in missing))
-    todo = []
-    for h in SECTIONS:
-        body = re.sub(r"\((?:[^()]|\([^()]*\))*\)", "", s[h]).strip()   # placeholders "(…)" removed
-        if len(body.split()) < 8:
-            todo.append(h)
+    todo = [h for h in SECTIONS if len(no_placeholder(s[h]).split()) < 15]
     c.ok(not todo, "still empty or only the placeholder: " + ", ".join(todo) + " (at least a few sentences each)")
 
 
-@c.test("PROJECT.md: the measurement has numbers, before and after",
-        hint="Write the numbers of your measurement (before AND after) in ## Measurement, e.g. a small table.")
+@c.test("PROJECT.md: a real proposal (problem, hypothesis, metric, acceptance criterion) and a measurement with CIs",
+        hint="Under ## Proposal keep the four bold labels and write after each one. ## Measurement needs the "
+             "numbers before AND after and their 95 % confidence intervals (write 'CI' or 'confidence').")
 def _():
     s = sections()
+    prop = s.get("Proposal", "")
+    for lab in LABELS:
+        mt = re.search(r"\*\*" + lab + r":?\*\*:?(.*?)(?=\*\*[A-Z][a-z ]+:?\*\*|\Z)", prop, re.S)
+        c.ok(mt, f"## Proposal has no **{lab}:** label")
+        c.ok(len(no_placeholder(mt.group(1)).split()) >= 6, f"**{lab}:** is still empty or only the placeholder")
     m = s.get("Measurement", "")
-    c.ok(len(re.findall(r"\d", m)) >= 4, "## Measurement contains (almost) no numbers")
+    c.ok(len(re.findall(r"\d", m)) >= 8, "## Measurement contains (almost) no numbers")
     c.ok(re.search(r"before", m, re.I) and re.search(r"after", m, re.I),
          "## Measurement should show the result BEFORE and AFTER your change")
+    c.ok(re.search(r"\bCIs?\b|confidence", m, re.I), "## Measurement should give the 95 % confidence intervals")
+    c.ok(re.search(r"\b(accept|reject|inconclusive)", s.get("Result", ""), re.I),
+         "## Result should state the decision: accept, reject or inconclusive")
 
 
+@c.test("results.json: complete and self-consistent (values inside their CIs, difference = after - before)",
+        hint="Write it with write_results() (stats_tools.py). Each of before / after / difference has a value and "
+             "a ci95 [lo, hi] with lo <= value <= hi; at least 1000 resamples; n = number of samples.")
+def _():
+    r = results()
+    for k in ("metric", "unit", "better", "n", "before", "after", "difference", "bootstrap", "acceptance", "decision"):
+        c.ok(k in r, f"results.json has no key '{k}'")
+    c.ok(r["better"] in ("lower", "higher"), "'better' must be \"lower\" or \"higher\"")
+    c.ok(isinstance(r["n"], int) and r["n"] >= 20, "'n' should be the number of samples (at least 20)")
+    for k in ("before", "after", "difference"):
+        v, ci = r[k].get("value"), r[k].get("ci95")
+        c.ok(isinstance(ci, list) and len(ci) == 2, f"{k}.ci95 should be [lo, hi]")
+        c.ok(ci[0] - 1e-6 <= v <= ci[1] + 1e-6, f"{k}: value {v} is outside its CI {ci}")
+    c.near(r["difference"]["value"], r["after"]["value"] - r["before"]["value"], 1e-3,
+           what="difference.value (should be after - before)")
+    b = r["bootstrap"]
+    c.ok(b.get("method") in ("moving-block", "iid") and int(b.get("n_boot", 0)) >= 1000 and "seed" in b,
+         "bootstrap should say method (moving-block or iid), n_boot >= 1000 and the seed")
+
+
+@c.test("results.json: the decision follows from the CI of the difference",
+        hint="'accept' only when the whole CI of the difference is on the 'better' side of 0; when the CI "
+             "contains 0 (or a guard-rail CI crosses its limit) the honest answer is 'inconclusive'.")
+def _():
+    r = results()
+    d = r.get("decision")
+    c.ok(d in ("accept", "reject", "inconclusive"), f"decision is {d!r}: use accept, reject or inconclusive")
+    lo, hi = r["difference"]["ci95"]
+    good = hi < 0 if r["better"] == "lower" else lo > 0
+    bad = lo > 0 if r["better"] == "lower" else hi < 0
+    if d == "accept":
+        c.ok(good, f"'accept' but the CI of the difference [{lo}, {hi}] is not entirely on the "
+                   f"{r['better']} side of 0")
+    if bad:
+        c.ok(d == "reject", f"the CI [{lo}, {hi}] says the change makes the metric worse, but decision is {d!r}")
+
+
+def reference_example():
+    import pynmea2
+    truth = json.load(open(f"{DATA}/truth.json"))
+    m_lat = 111_195.0
+    acc_b, acc_a, err = [], [], []
+    for line in open(f"{DATA}/nmea_bench.txt"):
+        line = line.strip()
+        if not line.startswith("$GPGGA"):
+            continue
+        try:
+            m = pynmea2.parse(line, check=True)
+        except pynmea2.ParseError:
+            acc_b.append(False), acc_a.append(False), err.append(math.nan)
+            continue
+        pos = bool(m.lat) and bool(m.lon)
+        q = int(m.gps_qual or 0)
+        sats = int(m.num_sats) if m.num_sats else None
+        ok = pos and q in (1, 2, 4, 5)
+        acc_b.append(ok)
+        acc_a.append(ok and (sats is None or sats >= 4))
+        err.append(math.hypot((m.latitude - truth["lat"]) * m_lat,
+                              (m.longitude - truth["lon"]) * m_lat * math.cos(math.radians(truth["lat"])))
+                   if pos else math.nan)
+    err, acc_b, acc_a = np.array(err), np.array(acc_b), np.array(acc_a)
+    return (float(np.percentile(err[acc_b], 95)), float(np.percentile(err[acc_a], 95)),
+            float(acc_b.mean()), float(acc_a.mean()), len(err))
+
+
+@c.test("example project: results.json agrees with a re-measurement of nmea_bench.txt",
+        hint="Run python3 measure_project.py again after your last change; the p95 values and the availability "
+             "must come from the 1800 epochs of the file (corrupted lines count as epochs, not accepted).")
+def _():
+    r = results()
+    if r.get("project") != "min-satellites":
+        c.skip("your project is not the example (project != 'min-satellites')")
+    p_b, p_a, a_b, a_a, n = reference_example()
+    c.eq(r["n"], n, "results.json n (epochs)")
+    c.near(r["before"]["value"], p_b, 0.05, what="before.value (p95, m)")
+    c.near(r["after"]["value"], p_a, 0.05, what="after.value (p95, m)")
+    av = r.get("secondary", {}).get("availability")
+    c.ok(av, "secondary.availability is missing (the guard-rail metric)")
+    c.near(av["before"]["value"], a_b, 0.002, what="availability before")
+    c.near(av["after"]["value"], a_a, 0.002, what="availability after")
+    w = r["difference"]["ci95"][1] - r["difference"]["ci95"][0]
+    c.ok(r["bootstrap"].get("method") == "moving-block" and w > 30,
+         f"the p95-difference CI is only {w:.1f} m wide: the errors are correlated in time, use the "
+         f"moving-block bootstrap (60 s blocks) as in the proposal")
+
+
+# ---------------------------------------------------------------- the engineering part
 @c.test("you work on a project branch in ~/navera",
         hint="cd ~/navera && git checkout -b project/<short-name>   (the check looks at the branch you are on)")
 def _():
@@ -79,12 +306,7 @@ def _():
     c.ok(changed_files(), "your commits change no file compared with base")
 
 
-def tests_changed():
-    return [f for f in changed_files() if re.search(r"(^|/)test_[^/]*\.py$", f)
-            and os.path.exists(os.path.join(NAV, f))]
-
-
-@c.test("your project adds or changes a test, and it passes",
+@c.test("your project adds or changes a test, and it passes on your branch",
         hint="Add a test_*.py file (e.g. in <package>/test/) to your commits. Run it: "
              "cd ~/navera && python3 -m pytest -q <the file>")
 def _():
@@ -100,6 +322,33 @@ def _():
         c.ok(code == 0, f"{t} fails:\n" + out[-900:])
 
 
+@c.test("your test detects the problem: it FAILS on the base code",
+        hint="A good test fails before the change and passes after. The check copies your test next to the "
+             "base version of the package: if it still passes there, it does not test your change.")
+def _():
+    tests = tests_changed()
+    c.ok(tests, "no test_*.py file among your committed changes yet")
+    unit = [t for t in tests if "/test/" in "/" + t]
+    if not unit:
+        c.skip("no unit test in <package>/test/ (integration scripts are not re-run on base)")
+    pkgs = sorted({t.split("/")[0] for t in unit} | {f.split("/")[0] for f in changed_files() if "/" in f})
+    tmp = tempfile.mkdtemp(prefix="base_")
+    try:
+        code, out = sh(f"git -C {NAV} archive base {' '.join(pkgs)} | tar -x -C {tmp}", timeout=60)
+        c.ok(code == 0, "could not extract the base version of your package(s):\n" + out[-300:])
+        for t in unit:
+            os.makedirs(os.path.dirname(os.path.join(tmp, t)), exist_ok=True)
+            shutil.copy(os.path.join(NAV, t), os.path.join(tmp, t))
+        pp = ":".join(os.path.join(tmp, p) for p in pkgs)
+        code, out = sh(f"cd {tmp} && PYTHONPATH={pp}:$PYTHONPATH python3 -m pytest -q -p no:cacheprovider "
+                       + " ".join(unit), timeout=240)
+        c.ok(code != 0, "your test(s) also PASS on the base code — they do not detect the problem your "
+                        "change solves")
+        c.ok(code != 5, "pytest collected no test on the base code — are your tests named test_*?")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 @c.test("NAVERA's own unit tests still pass in every package you touched",
         hint="cd ~/navera && python3 -m pytest -q <package>/test — read the first failure: did your change "
              "break something that worked?")
@@ -108,7 +357,7 @@ def _():
     c.ok(pkgs, "your commits do not change any NAVERA package yet")
     with_tests = [p for p in pkgs if os.path.isdir(os.path.join(NAV, p, "test"))]
     if not with_tests:
-        c.skip(f"the package(s) you touched ({', '.join(pkgs) or 'none'}) have no unit-test folder")
+        c.skip(f"the package(s) you touched ({', '.join(pkgs)}) have no unit-test folder")
     files = []
     for p in with_tests:
         for f in sorted(os.listdir(os.path.join(NAV, p, "test"))):
