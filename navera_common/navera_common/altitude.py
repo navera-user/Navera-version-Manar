@@ -27,7 +27,8 @@ CARRY_LABEL = {"vehicle": "image + vehicle altitude", "gps": "image + GPS"}
 
 class AltitudeEstimator:
     def __init__(self, ground_altitude_m: Optional[float] = None, gps_sigma_m: float = 10.0,
-                 relative_sigma_m: float = 3.0, terrain_fraction: float = 0.25,
+                 relative_sigma_m: float = 3.0, terrain_fraction: float = 0.02,
+                 terrain_sigma_m: float = 30.0,
                  measured_timeout_s: float = 1.0, vision_hold_s: float = 120.0,
                  vision_drift_mps: float = 0.5, ref_hold_s: float = 300.0,
                  saved_ground: Optional[dict] = None, on_ground: Optional[Callable[[dict], None]] = None):
@@ -41,9 +42,11 @@ class AltitudeEstimator:
         self.relative = History(max_gap_s=1.5)         # vehicle height above its home
         self.measured = History(max_gap_s=measured_timeout_s)
         # a reference altitude assumes the ground under the vehicle is at the reference's
-        # level: over hills that is wrong by a fraction of the height
+        # level: over hills that is wrong by the relief (terrain_sigma_m, metres — relief does
+        # not grow with the flight height) plus a small fraction of the height. (It was 25 %
+        # of the height: no reference could ever pass night vision's 15 % gate — 2026-10-07.)
         self.sigma = {"gps": gps_sigma_m, "vehicle": relative_sigma_m}
-        self.terrain_fraction = terrain_fraction
+        self.terrain_fraction, self.terrain_sigma_m = terrain_fraction, terrain_sigma_m
         self.vision_hold_s, self.vision_drift_mps = vision_hold_s, vision_drift_mps
         # a reference that stops (GPS jammed, box without barometer) is held: vehicles
         # mostly keep their altitude; the uncertainty grows like an image height held
@@ -117,13 +120,16 @@ class AltitudeEstimator:
         for kind in ("vehicle", "gps"):
             if kind in refs:
                 agl = refs[kind]
-                return agl, math.hypot(self.sigma[kind], self.terrain_fraction * abs(agl)), REF_LABEL[kind]
+                return agl, self._ref_sigma(kind, agl), REF_LABEL[kind]
         held = self._held_ref(t)
         if held is not None:
             agl, age, kind = held
-            sigma = math.hypot(self.sigma[kind], self.terrain_fraction * abs(agl)) + self.vision_drift_mps * age
+            sigma = self._ref_sigma(kind, agl) + self.vision_drift_mps * age
             return agl, sigma, REF_LABEL[kind] + " (held)"
         return None
+
+    def _ref_sigma(self, kind: str, agl: float) -> float:
+        return math.sqrt(self.sigma[kind] ** 2 + self.terrain_sigma_m ** 2 + (self.terrain_fraction * agl) ** 2)
 
     def _held_ref(self, t: float):
         """The last reference value before t, if not older than ref_hold_s."""

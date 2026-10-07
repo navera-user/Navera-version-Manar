@@ -10,7 +10,7 @@ def test_gps_minus_the_ground_at_power_on():
     a.add_gps(60.0, 202.0)
     agl, sigma, src = a.estimate(60.0)
     assert (agl, src) == (150.0, "GPS - ground")
-    assert sigma == pytest.approx((10.0 ** 2 + (0.25 * 150.0) ** 2) ** 0.5)   # terrain unknown
+    assert sigma == pytest.approx(_ref(10.0, 150.0))                      # terrain unknown
     assert a.ground_source == "first GPS fix"
 
 
@@ -71,7 +71,7 @@ def test_vehicle_altitude_above_home_without_image():
     a.add_relative(5.0, 120.0)
     agl, sigma, src = a.estimate(5.0)
     assert agl == 120.0 and src == "vehicle altitude above home"
-    assert sigma == pytest.approx((3.0 ** 2 + 30.0 ** 2) ** 0.5)
+    assert sigma == pytest.approx(_ref(3.0, 120.0))
 
 
 def test_after_gps_loss_without_image_the_last_height_is_held():
@@ -80,7 +80,7 @@ def test_after_gps_loss_without_image_the_last_height_is_held():
     a.add_gps(10.0, 200.0)                          # then jammed
     agl, sigma, src = a.estimate(70.0)
     assert agl == 150.0 and src == "GPS - ground (held)"
-    assert sigma == pytest.approx((10.0 ** 2 + 37.5 ** 2) ** 0.5 + 0.5 * 60.0)
+    assert sigma == pytest.approx(_ref(10.0, 150.0) + 0.5 * 60.0)
     assert a.estimate(400.0) is None                # held too long: unknown
 
 
@@ -106,3 +106,18 @@ def test_ground_from_gps_and_height_above_home_even_in_the_air():
     a.add_gps(20.0, 175.0, 35.8, 10.6)
     a.add_relative(20.0, 130.0)
     assert a.ground == 45.0
+
+
+def _ref(sigma_ref, agl, relief=30.0, frac=0.02):
+    """A reference height's sigma: its own, the terrain relief (metres), a little of the height."""
+    return (sigma_ref ** 2 + relief ** 2 + (frac * agl) ** 2) ** 0.5
+
+
+def test_a_barometer_height_at_400_m_passes_the_night_gate():
+    """Night matching needs the height within 15 %: with 25 % of the height for the terrain
+    no reference could ever pass (2026-10-07, simulator: night refused every frame)."""
+    a = AltitudeEstimator()
+    a.add_relative(0.0, 400.0)
+    agl, sigma, _ = a.estimate(0.0)
+    assert sigma / agl < 0.15
+
