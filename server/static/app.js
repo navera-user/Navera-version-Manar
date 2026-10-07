@@ -702,12 +702,15 @@ const Intro = {
   show(then) {
     try { localStorage.setItem(this.key(), '1'); } catch (e) {}
     const bg = document.createElement('div'); bg.className = 'intro-bg';
-    bg.innerHTML = `<div class="intro-box"><video src="/static/media/navera-intro.webm" controls autoplay muted playsinline></video>
-      <div class="intro-bar"><b>Welcome to NAVERA Academy</b><span>80 seconds · no sound</span>
+    bg.innerHTML = `<div class="intro-box"><video src="/static/media/navera-intro.webm" controls playsinline></video>
+      <div class="intro-bar"><b>Welcome to NAVERA Academy</b><span>80 seconds · with narration — turn your sound on 🔊</span>
       <a href="/static/media/navera-intro.webm" download>Download</a><button class="go">Start the expedition →</button></div></div>`;
     const done = () => { bg.remove(); if (then) then(); };
     bg.querySelector('button').onclick = done;
-    bg.querySelector('video').onended = () => { bg.querySelector('button').focus(); };
+    const v = bg.querySelector('video');
+    v.onended = () => { bg.querySelector('button').focus(); };
+    // browsers block autoplay with sound until the user clicks: try with sound, else start muted with a hint
+    v.play().catch(() => { v.muted = true; v.play().catch(() => {}); bg.querySelector('.intro-bar span').textContent = 'Muted by your browser — click 🔊 in the player for the voice'; });
     bg.addEventListener('click', (e) => { if (e.target === bg) done(); });
     document.body.appendChild(bg);
   },
