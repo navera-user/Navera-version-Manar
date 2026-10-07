@@ -156,12 +156,20 @@ T0 = [None]
 
 
 def grab():
-    while True:                                                # drain: a fresh frame
+    for _ in range(200):                                       # drain: a fresh frame
         t0 = time.time()
-        cap.grab()
+        if not cap.grab():
+            break
         if time.time() - t0 > 0.02:
             break
     ok, f = cap.retrieve()
+    if not ok or f is None:
+        grab.dead = getattr(grab, "dead", 0) + 1
+        if grab.dead > 20:                                     # the camera stopped answering: stop
+            stop.set()
+            raise SystemExit("the camera stopped giving frames (unplug / replug it)")
+        return None, time.time() - T0[0]
+    grab.dead = 0
     t = time.time() - T0[0] - a.latency
     return (cv2.remap(f[cy0:cy0 + ch, cx0:cx0 + cw], m1, m2, cv2.INTER_LINEAR) if ok else None), t
 
@@ -240,7 +248,7 @@ def worker(axis_w, h0):
                 if r["accepted"]:
                     break
             sc = float(r.get("scale_residual") or 1.0)
-            if r.get("accepted") and abs(sc - 1.0) > 0.04:
+            if r.get("accepted") and abs(sc - 1.0) > 0.10:
                 # the fitted scale answers ~half of a height error: match again at the corrected height
                 again = M.locate(img, centre, R, frame_mpp(used * sc, img.shape[1]), scale_tol=tol,
                                  heading_deg=imu, heading_tol_deg=20.0)
@@ -306,7 +314,7 @@ th_ = threading.Thread(target=worker, args=(axis_w, h0), daemon=True)
 th_.start()
 while True:
     t = time.time() - T0[0]
-    if t > a.minutes * 60:
+    if t > a.minutes * 60 or stop.is_set():
         break
     p, hdg, k = route(t)
     v = view(p, hdg, k)
