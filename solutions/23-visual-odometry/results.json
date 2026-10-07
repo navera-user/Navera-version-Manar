@@ -1,0 +1,45 @@
+{
+ "fft_vs_opencv": {
+  "mean_px": 0.171,
+  "max_px": 0.6257
+ },
+ "other_height": {
+  "drift_per_100m": 2.586,
+  "height_m": 114.25
+ },
+ "navera": {
+  "drift_per_100m": 3.568,
+  "refused": 0
+ },
+ "drift_sim": {
+  "exponent_random": 0.5,
+  "exponent_bias": 1.0,
+  "rms_random_100": 7.094,
+  "rms_bias_100": 10.0
+ },
+ "navigator": {
+  "A_with_fixes": {
+   "first_unavailable": null,
+   "worst_error_m": 20.66,
+   "inside_2sigma": 0.988,
+   "gate_agree": 76
+  },
+  "B_no_fixes": {
+   "first_unavailable": 29,
+   "worst_error_m": 149.12,
+   "inside_2sigma": 1.0,
+   "gate_agree": 76
+  }
+ },
+ "barometer": {
+  "height_m": 110.8,
+  "m_per_px": 0.48489,
+  "final_error_vo_m": 54.26,
+  "worst_error_vo_m": 54.26,
+  "drift_per_100m": 3.434,
+  "worst_error_fused_m": 10.32,
+  "final_error_fused_m": 6.81,
+  "max_sigma_fused_m": 30.45,
+  "inside_2sigma": 0.987
+ }
+}

@@ -9,7 +9,10 @@ from features import DATA, detect_keypoints
 
 city = cv2.imread(os.path.join(DATA, "terrain_city.jpg"))
 for method in ("ORB", "SIFT"):
-    kps, des = detect_keypoints(city, method)
+    try:
+        kps, des = detect_keypoints(city, method)
+    except NotImplementedError:
+        raise SystemExit("TODO 5 (detect_keypoints) is not done yet.")
     print(f"\n{method}: {len(kps)} keypoints, descriptor array shape {des.shape}, type {des.dtype}")
     k = kps[0]
     print(f"  keypoint 0 at x={k.pt[0]:.1f}, y={k.pt[1]:.1f}, size {k.size:.1f} px, angle {k.angle:.0f}°")

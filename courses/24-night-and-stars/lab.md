@@ -1,202 +1,262 @@
-# Lab 24 — The sky above Sousse, and a night frame
+# Lab 24 — The sky over Jebel Shams, and an honest look at night data
 
-**Goal:** compute where the bright stars are above Sousse tonight with NAVERA's celestial code,
-find your latitude from Polaris, measure what an attitude error costs, and look at a night frame
-next to the map like NAVERA's night localizer prepares it.
-**Time:** about 1 h 15.
-
-You will work in three files:
+**Goal:** build the celestial chain yourself (Julian date → sidereal time → alt/az), check it
+against astropy and NAVERA's `cn_pkg`, measure what clock and attitude errors cost a celestial fix
+with a Monte Carlo on NAVERA's own solver; then re-implement the geometry of NAVERA's night
+localizer (scale, coverage, minimum height, motion gate) and test whether the night replay frames
+can be trusted.
+**Time:** 2 h 30 – 3 h.
 
 | File | What you do |
 |---|---|
-| [stars.py](file:./stars.py) | TODO 1–4: stars in your sky, Polaris, attitude error |
-| [thermal.py](file:./thermal.py) | TODO 5–6: read a night frame's label, scale it to the map |
-| [answers.py](file:./answers.py) | 4 quiz questions |
+| [stars.py](file:./stars.py) | TODO 1–8: the sky, Polaris, the error budget, the Monte Carlo |
+| [thermal.py](file:./thermal.py) | TODO 9–15: night geometry, the motion gate, the data check |
+| [compare_navera.py](file:./compare_navera.py) | given: your coverage against NAVERA's `normalize_query` |
+| [report.md](file:./report.md) | your written analysis (5 sections) |
 
-## Step 1 — Meet the star catalogue
+Both programs write their numbers into `results.json`; the check reads it, and so should you when
+you write the report.
 
-NAVERA's star catalogue is a plain text file, one star per line, with fixed columns. Look at the
-line of Polaris (its catalogue name is "Alp UMi": alpha of the Little Bear):
+> [!WARNING]
+> Common errors in this lab: `math.sin` wants **radians** (use `np.radians` / `math.radians`);
+> `math.sin` refuses numpy arrays (use `np.sin`); pictures read by OpenCV are **uint8**, so
+> `255 - a` or `a * b` overflow unless you convert to float first.
+
+## Part A — the sky
+
+### Step 1 — The star catalogue
 
 ```bash
 grep "Alp UMi" /data/bsc5.dat
 ```
 
-You see `023148.7+891551` in the middle: right ascension **02 h 31 min 48.7 s**, declination
-**+89° 15′ 51″** — less than 1° from the pole (90°). Right ascension is written in hours: one hour
-= 15°. The given function `load_bright_stars` (bottom of `stars.py`) turns these columns into
-degrees for you. Then, a few columns later, `2.02` is its **magnitude** (brightness: the
-*smaller*, the brighter; the brightest star, Sirius, is −1.46).
+This is Polaris (alpha of the Little Bear). In the middle of the line, `023148.7+891551` is its J2000
+position: α = 02 h 31 min 48.7 s (1 h = 15°), δ = +89° 15′ 51″. A few columns later `2.02` is its
+visual **magnitude** (smaller = brighter). `load_bright_stars()` at the bottom of `stars.py` reads
+these fixed columns for you.
 
-## Step 2 — Run the program before changing it
-
-```bash
-python3 stars.py
-```
-
-It finds 92 stars brighter than magnitude 2.5, then asks NAVERA's
-[celestial_math.py](file:navera/cn_pkg/cn_pkg/nodes/celestial_math.py) for the Greenwich sidereal
-time at 2026-10-07 20:00 UTC (21:00 in Tunisia): about **316.48°**. Everything else says
-"TODO … is not done yet". (It takes a few seconds: *astropy*, the astronomy library NAVERA uses,
-is big.)
-
-> [!NOTE]
-> The box has no internet in flight. `navera_sky_clock` tells astropy not to download its Earth
-> rotation tables and to use the ones it ships with: the sidereal time is then right to about
-> 0.004°, plenty for us.
-
-## Step 3 — TODO 1: altitude and azimuth of a star
-
-Open [stars.py](file:./stars.py). Fill in `star_altaz(ra_deg, dec_deg, lat_deg, lon_deg, gast_deg)`
-following the four steps written above it. Remember that `math.sin` and `math.cos` want
-**radians**: convert with `math.radians(...)`, and convert the result of `math.asin` / `math.atan2`
-back with `math.degrees(...)`.
-
-Test it on Vega (RA 279.2346°, Dec 38.7837°) seen from Sousse at our time:
-
-```bash
-python3 -c "from stars import star_altaz; print(star_altaz(279.2346, 38.7837, 35.83, 10.64, 316.48))"
-```
-
-You should see about `(52.23, 289.24)`: Vega is 52° high, towards the west-north-west (azimuth
-270° is west). Go outside on a clear October evening at 21:00 and look: it is there.
-
-> [!TASK]
-> **TODO 1** — `star_altaz` returns `(altitude, azimuth)` in degrees, azimuth between 0 and 360.
-> The check compares it with NAVERA's own inverse function `local_to_radec` on 20 random stars.
-
-## Step 4 — TODO 2: which stars are up tonight?
-
-Fill in `visible_stars(stars, lat_deg, lon_deg, gast_deg, min_alt_deg=0.0)`: loop over the stars,
-compute `(alt, az)` with your `star_altaz`, keep the stars **above** `min_alt_deg`, and return a
-list of dicts `{"name", "mag", "alt", "az"}` sorted from the brightest (smallest `mag`) to the
-faintest. Then:
+Run the program once before changing anything:
 
 ```bash
 python3 stars.py
 ```
 
-You get a table — Vega, Capella, Altair, Aldebaran just rising in the east (0.1° high!),
-Fomalhaut low in the south… — and **sky.png**. Open [sky.png](file:./sky.png): it is the sky
-as a round map, the zenith in the middle and the horizon on the edge, like when you lie on your
-back with your head to the north (so east is on the **left**). Polaris is the orange dot.
+It stops at `(TODO 1 is not done yet)`. Read `offline_astropy()` at the bottom of the file: these
+lines stop astropy from trying to download the IERS tables (there is no internet here, and none on
+a drone). Keep them.
 
-Notice the line in `__main__` that calls NAVERA's `to_date` (`apparent_radec`) on every star before
-your function: it moves the catalogue's year-2000 addresses to 2026 (**precession**). Polaris'
-right ascension moves from 37.95° to 47.09°! Near the pole, a small wobble is a big change of
-right ascension.
+### Step 2 — The clock of the sky (TODO 1, 2)
 
 > [!TASK]
-> **TODO 2** — `visible_stars` returns the stars above the horizon, brightest first.
-> 40 stars brighter than 2.5 are above Sousse at our time.
+> **TODO 1.** `julian_date(year, month, day, hour=0, minute=0, second=0.0)` with Meeus' algorithm
+> (the comment above the function gives it). Use `math.floor`, not `int()` (they differ for
+> negative numbers).
+>
+> **TODO 2.** `gmst_deg(jd)`: the IAU 1982 GMST formula, result in 0…360.
 
-## Step 5 — TODO 3 and 4: Polaris and the price of a degree
+Test with the epoch J2000.0 (must be exactly 2451545.0) and with Meeus' example 12.a
+(1987-04-10 0h UT → GMST 197.693195°):
 
-**TODO 3.** `latitude_from_polaris(polaris_alt_deg)` returns your latitude. (One line! Look at the
-picture "The altitude of Polaris equals your latitude" in the course.)
+```bash
+python3 -c "from stars import julian_date; print(julian_date(2000, 1, 1, 12))"
+```
 
-**TODO 4.** `position_error_km(attitude_error_deg)` returns how far a celestial fix moves when the
-camera's attitude is wrong by that many degrees: one degree of the Earth's circle is
-`EARTH_KM_PER_DEG` = 111.195 km. Use `abs()` — an error of −2° is still 222 km away.
+```bash
+python3 -c "from stars import julian_date, gmst_deg; print(gmst_deg(julian_date(1987, 4, 10)))"
+```
+
+Then run `python3 stars.py` again. It prints your JD and GMST next to astropy's, and NAVERA's GAST.
+Your GMST should agree with astropy to a small fraction of an arcsecond. GAST is about 0.5 s of time
+later: the equation of the equinoxes (nutation).
+
+### Step 3 — Equatorial to horizontal (TODO 3, 4)
+
+> [!TASK]
+> **TODO 3.** `radec_to_altaz(ra_deg, dec_deg, lat_deg, lon_deg, gst_deg)` — **vectorised**: it
+> must accept one star or numpy arrays of stars. Formulas in the course (section 2.3) and above the
+> function.
+>
+> **TODO 4.** `visible_stars(stars, lat_deg, lon_deg, gst_deg, min_alt_deg=0.0)` with **one** call
+> of `radec_to_altaz` on arrays; return dicts `{"name", "mag", "alt", "az"}`, brightest first.
+
+Check the worked example of the course (Vega from Jebel Shams, apparent coordinates, GAST):
+
+```bash
+python3 -c "from stars import radec_to_altaz; print(radec_to_altaz(279.45963, 38.81076, 23.24, 57.26, 271.35683))"
+```
+
+You should get about `(45.689, 302.450)`. Run `python3 stars.py`: it now compares your alt/az of the
+10 brightest stars with astropy's full `AltAz` transformation (worst difference: about half an
+arcsecond), lists the 37 stars brighter than 2.5 above Jebel Shams and draws **sky.png**. Open
+[sky.png](file:./sky.png): zenith in the centre, horizon on the edge, north at the top and east on
+the **left** (you lie on your back, head to the north). Polaris is the orange dot.
+
+> [!QUESTION]
+> The program moves every catalogue position to the date with NAVERA's `apparent_radec` before
+> calling your function. Polaris' right ascension moves by more than 9°, Vega's by 0.2°. Why is the
+> change so large near the pole? (Think of how lines of longitude meet at the Earth's poles.)
+
+### Step 4 — Polaris and the zenith fix (TODO 5, 6)
+
+> [!TASK]
+> **TODO 5.** `polaris_latitude(alt_deg, ha_deg=None, polar_dist_deg=None)`: the altitude itself
+> without the optional arguments; `alt − p·cos(H)` with them.
+>
+> **TODO 6.** `zenith_fix(ra_deg, dec_deg, gst_deg)`: the position of a camera pointing exactly
+> up, from its plate-solved centre (course, section 2.6). Longitude in −180…180.
+
+`python3 stars.py` now follows Polaris from Muscat during a whole sidereal day (every 15 min) and
+prints the worst latitude error with and without the correction (about 70 km → 0.2 km). It also
+"plate-solves" a perfect zenith camera at Jebel Shams and gets the site back.
+
+### Step 5 — The error budget (TODO 7)
+
+> [!TASK]
+> **TODO 7.** `attitude_error_km(error_deg)` and `clock_error_km(dt_s, lat_deg)` — both ≥ 0.
+> Use the constants `EARTH_KM_PER_DEG` and `SIDEREAL_DEG_PER_S` at the top of the file.
+
+Check yourself: 4 s of clock error at the equator must be about 1.86 km — one nautical mile, the
+old navigators' rule of thumb ("4 seconds, one mile").
+
+### Step 6 — Monte Carlo on NAVERA's solver (TODO 8)
+
+This is the important measurement of Part A. You will use NAVERA's **own** functions
+(`observer_candidates`, `choose_candidate`, `local_to_radec`, passed to you as `cn`) as a black box,
+and feed them a noisy attitude.
+
+> [!TASK]
+> **TODO 8.** `monte_carlo_fix(cn, site, gst, cam_alt, cam_az, sigma_tilt_deg, sigma_heading_deg,
+> n=2000, seed=24)`:
+> 1. `rng = np.random.default_rng(seed)`;
+> 2. the camera really points at (`cam_alt`, `cam_az`): compute once the (α, δ) it sees with
+>    `cn.local_to_radec(site[0], site[1], cam_alt, cam_az, gst)` — this is what the plate solver
+>    would report;
+> 3. for each of the n draws, the IMU reports `cam_alt + rng.normal(0, sigma_tilt_deg)` and
+>    `cam_az + rng.normal(0, sigma_heading_deg)` (draw the tilt first, then the heading); solve with
+>    `cn.observer_candidates(...)` and `cn.choose_candidate(cands, site[0], site[1])`;
+> 4. return `(np.array(errors_km), number_of_None_results)`, the errors measured with
+>    `haversine_km(site, fix)`.
 
 ```bash
 python3 stars.py
 ```
 
-At the end you now read:
+The end of the output gives the median and p90 for a camera at 75° (towards the north-east) and at
+90°, with a BNO085-class IMU (0.3° tilt, 1.5° heading). Compare with the course: about 55 km RMS
+predicted for 75°; NAVERA measured 24–119 km, ~50 km typical. Why is the 90° camera so much better?
 
+The program writes the `"stars"` section of **results.json**. Open it.
+
+## Part B — night vision
+
+### Step 7 — The night replay frames (TODO 9, 10)
+
+```bash
+head -5 /data/navera_data/camera_pkg/camera_pkg/data/thermal/flight_ready.csv
 ```
-Polaris: altitude 35.94°, azimuth 0.76°
-Latitude from Polaris: 35.94°  (true: 35.83°, off by 0.11° = 12 km)
-Round trip through NAVERA's local_to_radec: RA 47.091° (star 47.091°), Dec 89.374° (star 89.374°)
-```
 
-Two things to see:
-
-- Polaris is 0.63° from the pole, so "latitude = altitude of Polaris" is wrong by up to 0.63°
-  (70 km), depending on where Polaris is in its little daily circle around the pole. Tonight at
-  21:00 it is only 0.11° off. Sailors used a small correction table for that.
-- NAVERA's `local_to_radec` takes your altitude and azimuth and gives the star's address back:
-  your code and NAVERA's agree.
-
-And the table of attitude errors: 0.5° → 55.6 km. Compare with the course: in simulation, a 0.5°
-tilt error gave a **53 km** error. Your one-line formula predicts what NAVERA measured.
+Each frame's file name holds a position and a height, e.g.
+`frame_0002_lat35.83026_lon10.64111_alt400m.jpg`; five frames say `NOGPS`.
 
 > [!TASK]
-> **TODO 3 and 4** — `latitude_from_polaris` and `position_error_km`. Then run `python3 stars.py`
-> once more so that **sky.png** is up to date.
+> **TODO 9.** `parse_thermal_name(filename)` → `(lat, lon, alt)` floats, or `None` without a
+> position. It must accept a full path and negative numbers (`lat-12.5`).
+>
+> **TODO 10.** `scale_to_map(altitude_m, hfov_deg, width_px, lat_deg, zoom=17)`: the resize factor of
+> `normalize_query` (course, section 1.5). `m_per_px` is imported from `navmap.py` (lesson 7).
 
-## Step 6 — A night frame next to the map
+### Step 8 — Coverage and minimum height (TODO 11, 12)
 
-Now the night side. Open [thermal.py](file:./thermal.py).
+> [!TASK]
+> **TODO 11.** `query_coverage(width_px, height_px, altitude_m, hfov_deg, heading_deg, lat_deg)`:
+> the share of the 512 × 512 reference square covered by the scaled frame turned by its heading.
+> Sample the square at its pixel centres with `np.meshgrid`, rotate the samples into the frame's
+> axes (formula above the function), test the two half-sizes, take the mean. No loops.
+>
+> **TODO 12.** `min_altitude(width_px, height_px, hfov_deg, heading_deg, lat_deg, need=0.85)` by
+> **bisection** between 50 m and 2000 m, to 0.5 m. Coverage only grows with height: that is what
+> makes bisection valid.
 
-**TODO 5.** `parse_thermal_name(filename)` reads the position written in the file name:
-`frame_0002_lat35.83026_lon10.64111_alt400m.jpg` → `(35.83026, 10.64111, 400.0)`, and
-`frame_0004_NOGPS_alt400m.jpg` → `None` (no position recorded). Use `os.path.basename`,
-`os.path.splitext`, `.split("_")`, `.startswith("lat")`, and `float(...)`. It must also work with
-negative numbers like `lat-12.5`.
+Now compare your coverage with NAVERA's real `normalize_query` (it imports PyTorch: ~10 s):
 
-**TODO 6.** `scale_to_map(altitude_m, hfov_deg, width_px, lat_deg, zoom=17)` is the very first
-calculation of NAVERA's night localizer (`normalize_query` in
-[night_localizer.py](file:navera/night_pkg/night_pkg/nodes/night_localizer.py)): footprint,
-meters per pixel of the frame, meters per pixel of the map (`m_per_px` from `navmap.py`), and their
-ratio. Then:
+```bash
+python3 compare_navera.py
+```
+
+The two columns must agree to about 0.001. NAVERA counts pixels of a warped mask; you count
+sample points of an exact rectangle: small differences come from pixel rounding.
+
+### Step 9 — The motion gate (TODO 13)
+
+> [!TASK]
+> **TODO 13.** `motion_gate(anchor, t_anchor, fix, t, max_speed_mps=30.0, margin_m=30.0)` →
+> `(accepted, jump_m, reach_m)`, as in `night_subscriber.py` (course, section 1.6). A clock that
+> goes backwards must not make `reach` smaller than the margin.
+
+### Step 10 — Can we trust the night frames? (TODO 14, 15)
+
+Before you use a dataset to measure accuracy, check that it is what it claims to be. Here, a
+quantitative check: compare each night frame with each of the 30 **day** replay frames.
+
+> [!TASK]
+> **TODO 14.** `ncc(a, b)`: the normalised cross-correlation of two equal-size pictures
+> (−1…1; 0.0 for a uniform picture). Convert to float first.
+>
+> **TODO 15.** `find_day_twin(thermal_path, day_paths, size=(192, 91))`: the basename of the day
+> frame with the highest NCC, that NCC, and the second-best NCC. Work on grey thumbnails
+> (`cv2.IMREAD_GRAYSCALE`, `cv2.resize(..., size, interpolation=cv2.INTER_AREA)`).
 
 ```bash
 python3 thermal.py
 ```
 
-It lists the 30 night frames, 5 of them without a position, prints
-`scale 0.484 -> 744x354 px at map resolution`, and saves **thermal_vs_map.png**. Open
-[thermal_vs_map.png](file:./thermal_vs_map.png). Three pictures at the same scale:
+It takes about 30 s (30 × 30 comparisons). It prints the scale of a replay frame, the coverage table
+of a 640 × 480 thermal camera (84°), the minimum heights, the gate decisions on a run-away track,
+then the twin of every night frame, and draws **thermal_vs_map.png**: the night frame at map scale,
+the map at the position of its label, and that map in grey (what NAVERA's synthetic night tests
+fed to STHN). Open [thermal_vs_map.png](file:./thermal_vs_map.png).
 
-1. the night frame (brightened so you can see it),
-2. the z17 map at the position written in its name,
-3. that map in grey — the "fake thermal" images NAVERA's synthetic night tests used.
+> [!QUESTION]
+> Look at the twin table. Is there a pattern between the night frame number and its day twin's
+> number? What does a best NCC of ~0.9 against a second best of ~0.1 tell you? What do you conclude
+> about the positions written in the night frames' names, given that the day frames' positions are
+> already known to be wrong (`docs/VALIDATION_STATUS.md`)?
 
-Look hard. Same streets? Same blocks? Same direction of the roads?
+## Step 11 — Write the report
 
-> [!WARNING]
-> They are **not** the same place. The streets of the night frame run up and down; those of the
-> map run diagonally. These "thermal" frames are in fact darkened grey copies of the day replay
-> frames (we measured a correlation of ~0.88 between each one and a day frame), and the day frames'
-> positions are known to be wrong. That is exactly why `VALIDATION_STATUS.md` says the replay set
-> cannot be used for night vision, and why NAVERA's night results were measured on synthetic frames
-> and in the simulator. Lesson: **always look at your test data before trusting a number computed
-> on it.**
+Open [report.md](file:./report.md) and answer the questions in each of its five sections, in your
+own words, with the numbers from `results.json` (at least 40 words per section).
 
 > [!TASK]
-> **TODO 5 and 6** — `parse_thermal_name` and `scale_to_map`, then `python3 thermal.py` draws
-> `thermal_vs_map.png`.
+> **report.md** — five sections: *Sidereal time*, *Polaris*, *Error budget*, *Night geometry*,
+> *The night replay set*. The check verifies that each section exists and is long enough, and that
+> you quote your Monte Carlo median (Error budget), your minimum height at heading 45° (Night
+> geometry) and the frame-number offset you found (The night replay set).
 
-## Step 7 — The quiz
+## Step 12 — Check your work
 
-Open [answers.py](file:./answers.py) and answer the four questions (Q2 needs your picture from
-step 6).
-
-> [!TASK]
-> Answer Q1–Q4 in `answers.py`.
-
-## Step 8 — Check your work
-
-Press **✔ Check my work**. The check runs `stars.py` and `thermal.py` itself, so they must run
-without errors. Read the hints of any red line, fix, save, check again.
+Press **✔ Check my work**. The check calls your functions with its own inputs, then runs
+`stars.py` and `thermal.py` itself (about one minute in total) and reads `results.json` and
+`report.md`. Read the hint of any red line, fix, save, check again.
 
 ## Going further (optional)
 
-- **The other half of the night.** Change `WHEN_UTC` to `"2026-10-08 03:00:00"` (04:00 in Tunisia)
-  and run `python3 stars.py` again. Orion's stars (Betelgeuse, Rigel) and Sirius are up; Vega has set.
-  Then put it back to `"2026-10-07 20:00:00"` before you check your work.
-- **Two answers.** NAVERA's `observer_candidates` finds the places that see a given star at a
-  given altitude and azimuth. Ask it for the star seen from Sousse at altitude 45°, azimuth 0° (due north):
+- **Two answers.** Ask NAVERA which places see a given star at altitude 45°, azimuth 0° (due north)
+  at our instant, when that star is the one seen from Muscat in that direction:
 
   ```bash
-  python3 -W ignore -c "from cn_pkg.nodes.celestial_math import local_to_radec as l2r, observer_candidates as oc; ra, dec = l2r(35.83, 10.64, 45, 0, 316.48); print(oc(45, 0, ra, dec, 316.48))"
+  python3 -W ignore -c "from cn_pkg.nodes.celestial_math import local_to_radec as l2r, observer_candidates as oc; ra, dec = l2r(23.59, 58.41, 45, 0, 271.35683); print(oc(45, 0, ra, dec, 271.35683))"
   ```
 
-  You get **two** positions: Sousse, and a place in the far north of the Pacific Ocean. Both see
-  that star at exactly that altitude and azimuth! This is why NAVERA needs a prior
-  (`choose_candidate`). Try azimuth 180° too: not every direction has a second answer.
-- **A better Polaris.** The correction sailors used: latitude ≈ altitude − p·cos(H), where p is
-  Polaris' distance from the pole (90° − its declination) and H its hour angle. Add it to your
-  `latitude_from_polaris` as an optional argument and see the 0.11° shrink.
+  You get two positions: Muscat and a second, far-away place. Both are exact solutions of
+  equation (1). Try azimuth 180°: is there still a second solution? Explain with the triangle PZX.
+- **Second-order Polaris.** Derive the next term of the Polaris correction from
+  sin a = sin δ sin φ + cos δ cos φ cos H with δ = 90° − p, and show that it removes most of the
+  remaining 0.2 km. Then add Bennett's refraction R = 1′ · cot(a + 7.31/(a + 4.4)) (a in degrees)
+  and compute the error of an uncorrected measurement at Muscat.
+- **A better IMU.** Change the Monte Carlo to a tactical-grade attitude (0.05° tilt, 0.2° heading)
+  and to a gimballed camera pointing at the zenith. What position accuracy would make celestial
+  useful as more than a "which region am I in" check?
+- **Your own evening.** Change `WHEN` to tonight's date at 21:00 Oman time (UTC + 4: subtract 4 h)
+  and your own town, run `python3 stars.py`, and go outside to check sky.png against the real
+  sky. Put the original values back before you press ✔ Check.

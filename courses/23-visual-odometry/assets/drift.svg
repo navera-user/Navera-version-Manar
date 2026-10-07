@@ -1,17 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 250" font-family="sans-serif" font-size="13">
-  <rect width="560" height="250" fill="#f7fafc"/>
-  <line x1="50" y1="200" x2="540" y2="200" stroke="#1d2733"/>
-  <line x1="50" y1="200" x2="50" y2="20" stroke="#1d2733"/>
-  <text x="380" y="225" fill="#1d2733">distance flown →</text>
-  <text x="56" y="16" fill="#1d2733">error (m)</text>
-  <!-- VO only: grows -->
-  <path d="M50 200 L540 40" stroke="#d64545" stroke-width="3" fill="none"/>
-  <text x="470" y="48" fill="#d64545" text-anchor="end">odometry only: the error keeps growing</text>
-  <!-- with fixes: sawtooth -->
-  <path d="M50 200 L148 168 L148 192 L246 160 L246 194 L344 162 L344 190 L442 158 L442 193 L540 161"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 300" width="640" height="300" font-family="sans-serif" font-size="13">
+  <rect width="640" height="300" fill="#f7fafc"/>
+  <text x="320" y="22" text-anchor="middle" fill="#1d2733" font-weight="bold">How the error of n added steps grows</text>
+  <line x1="60" y1="250" x2="610" y2="250" stroke="#1d2733"/>
+  <line x1="60" y1="250" x2="60" y2="40" stroke="#1d2733"/>
+  <text x="610" y="272" text-anchor="end" fill="#1d2733">number of steps n →</text>
+  <text x="66" y="48" fill="#1d2733">RMS error</text>
+  <!-- bias: b n, b chosen so that it crosses the random curve at n = 50 (x = 60 + 50*2.5 = 185) -->
+  <path d="M60 250 L610 30" stroke="#d64545" stroke-width="3" fill="none"/>
+  <!-- random: sigma sqrt(2n), scaled to meet the line at x=185 (n=50): y_line = 250-0.4*125 = 200 -->
+  <path d="M60 250 L72 236 L85 229 L110 221 L135 214 L160 209 L185 200 L235 191 L285 184 L335 177 L385 171 L435 166 L485 161 L535 156 L585 152 L610 150"
         stroke="#0b6e8a" stroke-width="3" fill="none"/>
-  <g fill="#f2a33a"><circle cx="148" cy="192" r="6"/><circle cx="246" cy="194" r="6"/><circle cx="344" cy="190" r="6"/><circle cx="442" cy="193" r="6"/></g>
-  <text x="300" y="134" fill="#0b6e8a">odometry + a map fix now and then:</text>
-  <text x="300" y="150" fill="#0b6e8a">the error falls back at each fix <tspan fill="#f2a33a">●</tspan></text>
-  <text x="150" y="240" fill="#a8680d">● map fix (lesson 22): an absolute position, a few meters off</text>
+  <line x1="185" y1="250" x2="185" y2="200" stroke="#5b6773" stroke-dasharray="4 3"/>
+  <text x="185" y="290" text-anchor="middle" fill="#5b6773">n* = 2σ²/b²</text>
+  <text x="185" y="268" text-anchor="middle" fill="#5b6773">|</text>
+  <text x="150" y="80" fill="#d64545">bias b per step: error = b·n</text>
+  <text x="150" y="98" fill="#d64545">(height, heading, scale errors)</text>
+  <text x="380" y="196" fill="#0b6e8a">random σ per axis: error = σ·√(2n)</text>
+  <text x="380" y="214" fill="#0b6e8a">(pixel noise, blur, JPEG)</text>
+  <text x="200" y="232" fill="#5b6773" font-size="12">beyond n*, the bias dominates</text>
 </svg>

@@ -1,239 +1,319 @@
-# Counting your steps with a camera: visual odometry
+# Visual odometry: phase correlation, drift and fusion
 
-A drone has lost its GPS over the edge of Sousse. Until now, NAVERA's day vision found it on the
-satellite map every second or two (lesson 22). Then the drone flies over a building site: the map
-photo was taken years ago, the ground has changed, and **no match is accepted for 30 seconds**.
-At 15 m/s, that is 450 m flown "blind". Where is the drone now?
+A survey drone flies along the Muscat Expressway at 120 m, 20 m/s. Its GPS is jammed. Until now
+NAVERA's day vision found the drone on the satellite map every second or two (lesson 22). Then the
+drone crosses a new housing area in Al Mabelah: the map imagery is three years old, the ground has
+changed, and **no map match is accepted for 30 s**. That is 600 m flown without an absolute position.
+Where is the drone now?
 
-Close your eyes and walk across your classroom. You can still say roughly where you are: you
-**count your steps** and you know which way you turned. That is **odometry** (from Greek *hodos*,
-the way, and *metron*, measure). A car counts the turns of its wheels. A drone has no wheels — but
-it has a camera looking at the ground. If it can measure how far the ground moved between two photos,
-it can count its "steps" with its eyes. That is **visual odometry** (VO).
+The camera still sees the ground. Two frames taken one second apart show mostly the **same** ground,
+slightly moved. If we measure that motion in pixels, convert it to metres and add the steps, we can
+carry the position through the gap. This is **visual odometry** (VO): estimating the camera's own
+motion from consecutive images. It tells you **how you moved**, never **where you are**, and its error
+always grows. This lesson gives you the maths of all three parts:
 
-In this lesson you will learn how it works, why it is never perfect, and how NAVERA uses it **only
-between two map fixes**.
-
-## Two photos, one step
-
-A camera looking straight down takes a photo every second. If the drone moves 20 m between two
-photos and each photo covers 160 m × 120 m of ground, the two photos show **mostly the same ground**:
-they **overlap**. The houses of photo 1 are still in photo 2 — only a bit lower, a bit to the side.
-
-![The drone flies north-east: the ground in its photo slides south-west](assets/slide.svg)
-
-The key idea fits in one sentence:
-
-> **The ground slides in the picture the opposite way to the drone.**
-
-Think of looking out of a train window: the trees rush backwards while you go forwards. If the drone
-flies north (towards the top of a north-up photo), the houses slide **down** the picture; if it flies
-east (right), they slide **left**.
-
-So visual odometry has three small jobs:
-
-1. measure the **shift** of the picture between two photos, in pixels: `(dx, dy)`;
-2. turn pixels into meters with the **meters per pixel** of the camera (lesson 17);
-3. turn "the ground slid left and down" into "the drone moved east and north", and **add** this
-   step to the position.
-
-## Measuring the slide: phase correlation
-
-How do you measure how much a picture slid? A simple (but slow) way: put photo 2 on top of photo 1,
-then try every possible shift — 1 px right, 2 px right, 1 px up… — and for each shift measure how
-well the two pictures agree. The best shift is the slide.
-
-OpenCV does exactly this, but smartly, with a trick called **phase correlation**. It uses the
-**Fourier transform** (a mathematical tool that describes a picture as a sum of waves) to test
-**all shifts at once**, in a few milliseconds. You don't need the maths: you need to know what goes
-in and what comes out.
-
-```python
-(dx, dy), response = cv2.phaseCorrelate(a, b, window)
-```
-
-| What | Meaning |
-|---|---|
-| `a`, `b` | the previous and the current photo, in grey, as `float32` numbers (lesson 8) |
-| `window` | a **Hanning window**: a mask that fades the picture to black near its edges, so the borders (which never match) do not confuse the result |
-| `dx`, `dy` | how many pixels the content of `b` moved compared to `a`: `dx > 0` means **right**, `dy > 0` means **down** (the image y axis points down!) |
-| `response` | how sure it is, from 0 to 1. Two photos of the same textured ground give a high response; two photos of the sea give a very low one |
-
-Phase correlation is very precise — a fraction of a pixel — but it only measures a **slide**
-(a translation). If the picture is also turned or zoomed between the two photos, it gets confused.
-That is why NAVERA first turns and scales the previous photo to match the new one, using the heading
-change from the IMU and the height change (see "In NAVERA" below).
+1. **measure** the image shift with **phase correlation** (an FFT method you will write in numpy);
+2. **convert** pixels to metres east/north (pinhole scale + heading rotation);
+3. **model** the error growth (a **random walk** plus a **bias**) and **bound** it with map fixes
+   (a scalar **Kalman update**).
 
 > [!NOTE]
-> Another way to measure the motion is with the **features** of lessons 20 and 21: find keypoints
-> in both photos, match them, and fit a transformation with RANSAC (`cv2.estimateAffinePartial2D`).
-> It also measures rotation and scale, and works with less overlap, but it is slower. Both are
-> good tools; NAVERA uses phase correlation for odometry because it is fast and the IMU already
-> knows the rotation.
+> The lab flight is synthetic: 80 frames cut from NAVERA's satellite map, with exact ground truth.
+> NAVERA's test map covers **Sousse, Tunisia**, where NAVERA is developed, so the flight is over
+> Sousse. The examples in this text use Omani places; the method is the same everywhere.
 
-## From pixels to meters
+## 1. Two frames, one step
 
-The camera's **meters per pixel** come from lesson 17. A camera at height *h* with a horizontal
-field of view *hfov* sees a strip of ground
-
-  footprint width = 2 × h × tan(hfov / 2)
-
-wide; divide by the image width in pixels and you have the ground size of one pixel. Our drone flies
-at about 114 m with a 70° camera and 320 px wide photos: 2 × 114 × tan(35°) / 320 ≈ **0.50 m per
-pixel**.
-
-Now the signs. The photos are **north-up**: the top of the picture points north (NAVERA turns every
-photo that way using the heading measured by the IMU, lesson 16). Then:
-
-| The ground in the picture slid… | so the drone moved… | in numbers |
-|---|---|---|
-| left (`dx < 0`) | **east** | east = −dx × m_per_px |
-| right (`dx > 0`) | west | |
-| down (`dy > 0`) | **north** | north = +dy × m_per_px |
-| up (`dy < 0`) | south | |
-
-Example: the ground slid `dx = −10` px and `dy = +40` px, at 0.5 m per pixel. The drone moved
-5 m east and 20 m north.
-
-## Adding up the steps
-
-One step tells you how far the drone moved in one second. To know **where** it is, you start from a
-known position and add the steps one after the other:
+A **nadir** camera (looking straight down) at height *h* above the ground, with horizontal field of
+view HFOV and an image *W* pixels wide, sees a strip of ground (lesson 17)
 
 ```
-position[0] = start
-position[1] = position[0] + step[0]
-position[2] = position[1] + step[1]
-...
+footprint width  = 2 h tan(HFOV / 2)
+m_per_px         = 2 h tan(HFOV / 2) / W
 ```
 
-The list of positions is the **track**. Sailors did exactly this for centuries with a compass, a
-clock and a log line to measure the speed: they called it **dead reckoning**.
+Worked example (the lab camera): h = 114.25 m, HFOV = 70°, W = 320 px →
+2 × 114.25 × tan 35° / 320 = 2 × 114.25 × 0.7002 / 320 = **0.500 m per pixel**. A frame of
+320 × 240 px covers 160 m × 120 m. At 20 m/s and one frame per second, consecutive frames move
+20 m = 40 px: they **overlap** by about 75 % in the direction of flight. The more overlap, the
+easier the measurement; below about 50 % it becomes unreliable.
 
-![Visual odometry, one photo after the other](assets/chain.svg)
+![The camera flies north-east: the ground in its photo slides south-west](assets/slide.svg)
 
-## Drift: why counting steps always goes wrong in the end
+The key fact: **the ground slides in the image the opposite way to the camera.** If the camera flies
+towards the top of the image, the ground slides down.
 
-Walk across the classroom blindfolded, then open your eyes: you are close, but not exactly where you
-thought. And the longer you walk, the farther off you are. Every step adds a small error, and
-**the errors add up — they never cancel by themselves**. This growing error is called **drift**.
-You met it in lesson 16: integrating a gyroscope gives a heading that slowly drifts away. Visual
-odometry drifts too, for the same reason: it **integrates** (adds up) small measurements.
+## 2. Measuring the slide: phase correlation
 
-Where do the small errors come from?
+### 2.1 Brute force is too slow
 
-| Cause | What it does | Example |
+The direct method: for every candidate shift (dx, dy), overlay the two frames and compute a
+similarity (for example the correlation). With N = 320 × 240 = 76 800 pixels and all N possible
+shifts that is N² ≈ 5.9 × 10⁹ multiplications per frame pair — far too slow for a Jetson at 1 Hz.
+
+### 2.2 The Fourier shift theorem
+
+The **discrete Fourier transform** (DFT) writes an image as a sum of 2-D waves. For an image a(x, y)
+of size W × H:
+
+```
+A(u, v) = Σx Σy a(x, y) · exp(−i 2π (u x / W + v y / H))
+```
+
+If b is a shifted copy of a, b(x, y) = a(x − dx, y − dy), the **shift theorem** says that only the
+**phase** of each wave changes, by an amount proportional to the frequency:
+
+```
+B(u, v) = A(u, v) · exp(−i 2π (u dx / W + v dy / H))
+```
+
+So the shift is hidden in the phase difference between B and A. Build the **normalised cross-power
+spectrum**:
+
+```
+R(u, v) = B(u, v) · A*(u, v) / | B(u, v) · A*(u, v) |   =  exp(−i 2π (u dx / W + v dy / H))
+```
+
+(A* is the complex conjugate.) Dividing by the magnitude keeps only the phase: every frequency gets
+the same weight (this is called **whitening**). The inverse DFT of a pure phase ramp is a single
+spike:
+
+```
+r(x, y) = IDFT(R) = δ(x − dx, y − dy)
+```
+
+The position of the maximum of r **is** the shift. With the **Fast Fourier Transform** (FFT) each
+transform costs about N log₂N ≈ 76 800 × 16.2 ≈ 1.2 × 10⁶ operations; three transforms are ≈ 3.7 × 10⁶,
+about **1600 times** less than brute force. That is why phase correlation tests "all shifts at once".
+
+![Phase correlation and the rest of the visual-odometry chain](assets/chain.svg)
+
+### 2.3 A tiny worked example (1-D)
+
+Take a = [0, 0, 1, 3, 1, 0, 0, 0] (8 samples) and b = a shifted right by 2:
+b = [0, 0, 0, 0, 1, 3, 1, 0]. Then R(u) = exp(−i 2π u · 2 / 8) = exp(−i u π/2), i.e. the phases
+0°, −90°, −180°, −270°, … The inverse DFT of this ramp is [0, 0, **1**, 0, 0, 0, 0, 0]: a spike at
+index 2. Try it in Python:
+
+```python
+import numpy as np
+a = np.array([0, 0, 1, 3, 1, 0, 0, 0], float); b = np.roll(a, 2)
+R = np.fft.fft(b) * np.conj(np.fft.fft(a)); R /= np.abs(R)
+print(np.round(np.real(np.fft.ifft(R)), 3))      # [0. 0. 1. 0. 0. 0. 0. 0.]
+```
+
+### 2.4 Three practical details
+
+1. **Circularity and negative shifts.** The DFT treats the image as if it repeated forever, so a
+   shift of −3 px appears at index W − 3. Rule: an index above W/2 (or H/2) means `index − W`
+   (or `index − H`).
+2. **The window.** A real frame does not repeat: its left and right borders do not match, and the
+   jump at the border is a strong false "edge". Multiply both images by a **Hanning window**
+   w(x, y) = hann(x) · hann(y), with hann(k) = 0.5 − 0.5 cos(2πk / (n − 1)), which fades the image to
+   zero at its borders. In numpy: `np.outer(np.hanning(H), np.hanning(W))`. In OpenCV:
+   `cv2.createHanningWindow((W, H), cv2.CV_32F)` — note **(width, height)**, the opposite order of
+   a numpy shape.
+3. **Sub-pixel refinement.** The peak lies between pixels when the shift is not an integer. Fit a
+   parabola through the peak value c₀ and its two neighbours c₋ and c₊ (separately in x and y):
+
+   ```
+   δ = (c₋ − c₊) / (2 (c₋ − 2 c₀ + c₊))        (−0.5 ≤ δ ≤ 0.5)
+   ```
+
+   Example: c₋ = 0.20, c₀ = 0.60, c₊ = 0.40 → δ = (0.20 − 0.40) / (2 × (0.20 − 1.20 + 0.40)) =
+   −0.20 / −1.20 = **+0.167 px**: the true peak is a sixth of a pixel to the right. OpenCV uses a
+   weighted centroid around the peak instead. Both are approximations of a sinc-shaped peak, so
+   they agree only to about 0.1–0.3 px; you will measure this.
+
+The **peak value** (the **response**, between 0 and 1) says how much of the image moved together.
+Two frames of the same textured ground give a clear peak; two frames of open sea, of uniform sand or
+of pure noise give a low, flat correlation.
+
+> [!WARNING]
+> Phase correlation measures **only a translation**. If the second frame is also rotated or scaled
+> (the drone turned, or climbed), the peak becomes weak or wrong. NAVERA therefore first turns the
+> previous frame by the heading change (from the IMU) and rescales it by the height change, so that
+> only a translation remains. (Rotation and scale can also be measured with phase correlation in
+> **log-polar** coordinates — the Fourier–Mellin method — but NAVERA does not need it.)
+
+> [!NOTE]
+> The features of lessons 20–21 (keypoints + RANSAC + `cv2.estimateAffinePartial2D`) can also measure
+> the motion between frames, including rotation and scale. They are slower. NAVERA uses phase
+> correlation for odometry because it is fast (a few ms) and the IMU already gives the rotation.
+
+## 3. From pixels to metres east and north
+
+Phase correlation gives (dx, dy): dx > 0 means the content moved **right**, dy > 0 means it moved
+**down** (the image y axis points down). The camera moved the other way. In the camera's own frame:
+
+```
+right   = −dx · m_per_px
+forward = +dy · m_per_px          (forward = towards the top of the image)
+```
+
+The top of the image points to the azimuth θ (the **heading**, from the IMU; θ = 0 for a north-up
+image). A rotation by θ gives the ground motion:
+
+```
+| east  |   |  cos θ   sin θ | | right   |        east  = forward·sin θ + right·cos θ
+| north | = | −sin θ   cos θ | | forward |        north = forward·cos θ − right·sin θ
+```
+
+![Image axes and the rotation by the heading](assets/axes.svg)
+
+Check with θ = 90° (the top of the image points east): forward motion becomes pure east. ✔
+
+**Worked example** (frames 10 → 11 of the lab flight, north-up, θ = 0): phase correlation gives
+dx = +15.73 px, dy = +36.89 px. With the barometer height 110.8 m, m_per_px = 0.4849:
+right = −7.63 m, forward = +17.89 m → east = −7.63 m, north = +17.89 m. The truth is −7.33 m,
++18.60 m: the step is 0.8 m off — mostly because the barometer is 3 % low (next section).
+
+> [!TIP]
+> Typical mistakes: `math.tan` takes **radians** (`math.radians(hfov / 2)`); swapping the frames in
+> `phaseCorrelate(cur, prev)` flips every sign; `cv2.phaseCorrelate` needs `float32` or `float64`
+> images — a `uint8` image raises an OpenCV assertion error.
+
+## 4. Adding up the steps: drift
+
+The **track** is the running sum of the steps: p₀ = start, pₙ = pₙ₋₁ + sₙ. Sailors called this
+**dead reckoning**. Each measured step sᵢ has an error εᵢ, so the position error after n steps is
+
+```
+eₙ = ε₁ + ε₂ + … + εₙ
+```
+
+Model each step error as a constant part (a **bias** b, the same at every step) plus a random part
+wᵢ (independent, zero mean, standard deviation σ per axis): εᵢ = b + wᵢ. Then
+
+```
+E[ |eₙ|² ] = n² |b|²  +  2 n σ²        (2-D: σ² per axis)
+RMS(eₙ)    = √( n² b² + 2 n σ² )
+```
+
+- With random errors only, RMS(eₙ) = σ √(2n): the error grows like **√n**. This is a **random walk**.
+- With a bias only, RMS(eₙ) = b·n: the error grows **linearly**.
+- The bias dominates after n* = 2σ² / b² steps. Example: σ = 0.5 m, b = 0.1 m → n* = 50 steps.
+
+On a log-log plot, error ∝ nᵖ is a straight line of slope p: p = 0.5 for a random walk, p = 1 for a
+bias. In the lab you will simulate both and fit p.
+
+![Random errors grow like √n, a bias like n](assets/drift.svg)
+
+### Where the bias comes from — an error budget
+
+| Cause | Effect on each step | Error per 100 m flown |
 |---|---|---|
-| **wrong height** | every step is too short or too long by the same percentage | the barometer says 110.8 m, the truth is 114.25 m: every step is 3 % too short → 3 m of error per 100 m |
-| **wrong heading** | every step is turned a little | a 2° compass error moves you sideways by sin 2° ≈ 0.035 → 3.5 m per 100 m |
-| **noise, blur, light changes** | each shift is off by a fraction of a pixel, randomly | small; random errors partly cancel |
-| **bad frames** | a cloud, the sea, a blurry photo: no shift can be measured | the step is missing, or wrong |
+| height (scale) error Δh/h | every step too short/long by Δh/h | 100 × Δh/h m (3 % → 3 m) |
+| heading error δψ | every step turned by δψ | 100 × sin δψ m sideways (2° → 3.5 m) |
+| pixel noise, blur, JPEG | ~0.1–0.3 px random per step | small: grows like √n |
+| frames without texture | step missing or wrong | depends on the gap |
 
-The first two are **systematic** errors: the same mistake at every step, so the error grows in
-proportion to the distance. That is why engineers measure odometry in **meters of error per 100 m
-flown** (or "percent of the distance"). A good visual odometry drifts a few meters per 100 m — fine
-for 200 m, useless for 20 km.
+The lab flight has exactly the first two: a barometer 3 % low and a 2° heading bias. On a straight
+line they combine to √(3² + 3.5²) ≈ 4.6 m per 100 m; on the lab's curved path they partly cancel and
+you will measure about 3.4 m per 100 m. Because these errors are **systematic**, VO quality is quoted
+in **metres of error per 100 m flown** (or % of distance). A few % is good — fine for 500 m, useless
+for 50 km (a 3 % drift gives 1.5 km).
 
-> [!QUESTION]
-> A drone drifts 3 m per 100 m. How far off is it after 1.5 km? After 50 km?
+Over the Hajar mountains there is one more problem: the ground is not flat. A ridge 300 m below the
+drone and a wadi 600 m below it have different m_per_px in the **same** frame, so one scale is wrong
+for part of the image. Over Wahiba Sands the dunes repeat and look alike; over the Gulf of Oman near
+Sohar the water moves. In all three cases the VO error grows faster, or the response drops.
 
-<details><summary>Answer</summary>About 45 m after 1.5 km, and about 1.5 km after 50 km —
-no longer useful to land on a parcel locker.</details>
+## 5. Bounding the drift: fusion with map fixes
 
-## The cure: a map fix now and then
+Map matching (lesson 22) gives an **absolute** position with an error that does **not** grow (a few
+metres), but only sometimes. VO gives a **relative** motion at every frame, with an error that grows.
+Combine them with the simplest Kalman filter: one position x and one scalar variance P = σ².
 
-Visual odometry tells you **how you moved**, not **where you are**. Map matching (lesson 22) tells
-you where you are, with an error of a few meters that **does not grow** — but it fails sometimes
-(changed ground, uniform terrain, a bad frame).
+**Predict** (each VO step s):
 
-So NAVERA uses both, like a hiker who counts steps between the signposts:
+```
+x ← x + s
+σ ← σ + k·|s| + c          (NAVERA's day node: k = 0.1, c = 1 m)
+```
 
-- when the map gives a **fix** (a matched position), the position **is** that fix: the drift is
-  thrown away and the counting starts again from there;
-- between two fixes, visual odometry carries the position forward, step by step, and the
-  uncertainty grows with the distance.
+NAVERA grows σ **linearly** with distance — the bias model, the cautious choice: random errors alone
+would grow only like √n.
 
-![The error with odometry alone, and with a map fix now and then](assets/drift.svg)
+**Update** (a map fix z with standard deviation R):
 
-The error then looks like a **saw**: it grows a little, falls back at each fix, grows again. Its worst
-value depends on how long the drone flies between two fixes — not on the length of the whole flight.
-In the lab you will measure both curves on a synthetic flight over Sousse.
+```
+K = P / (P + R²)           (Kalman gain, 0 … 1)
+x ← x + K (z − x)
+P ← (1 − K) P
+```
 
-## When visual odometry cannot work
+Worked example: after 10 steps of 20 m, σ = 10 × (0.1 × 20 + 1) = 30 m. A fix arrives with R = 4 m:
+K = 900 / (900 + 16) = 0.983, so x moves 98 % of the way to the fix, and σ = √(0.0175 × 900) = 3.97 m.
+When the odometry is much less certain than the fix, the update is almost a **reset**; when both are
+similar (K ≈ 0.5) it is an average weighted by the variances.
 
-Visual odometry needs **fixed, textured ground** that both photos share:
+![Odometry between fixes: a saw-tooth error](assets/fusion.svg)
 
-- **over the sea** there is nothing fixed to follow: the waves move and look all alike, the response
-  stays low and the result must not be used;
-- **uniform ground** (sand, a big field, a snow-white roof) gives a weak, unreliable peak;
-- **too fast or too low**: if two photos overlap by less than about half, there is not enough
-  common ground;
-- **turns**: if the picture turns between two photos and nobody corrects it, phase correlation is lost.
-
-That is why the **response** matters: a careful program uses a step only when it is sure.
+The error becomes a **saw-tooth**: it grows between fixes and falls back at each one. Its maximum
+depends on the distance **between fixes**, not on the length of the flight. Design rule: to stay
+within 30 m with a 3.5 m / 100 m drift, you need a fix at least every ~850 m. A stated σ is
+**honest** when the true error stays inside ±2σ about 95 % of the time; you will measure that too.
 
 ## 🐦 How birds do it
 
-Counting your own motion to know where you are is called **path integration** — dead reckoning.
-Animals do it, and it has the same weakness as visual odometry: small errors add up.
+Counting your own motion to know where you are is **path integration**. Animals do it, and it has
+the same weakness as visual odometry: small errors add up.
 
-You met it in lesson 6: the famous experiment of the Dutch scientist **A. C. Perdeck**,
-published in 1958. Look at it again with visual odometry in mind. Every autumn, starlings from around the Baltic fly south-west across the
-Netherlands to spend the winter in Belgium, northern France and southern England. Perdeck caught
-thousands of them in the Netherlands, put a ring on each one, carried them by plane to
-**Switzerland** and released them there. Rings found later told where they had gone.
+How do they measure the motion? Partly with their eyes, exactly like VO. The world sliding past the
+eye is called **optic flow**. Honeybees measure the distance to a food source by the amount of image
+motion they experience on the way: in experiments by Mandyam Srinivasan's group, bees that flew
+through a narrow tunnel lined with a dense pattern "reported" (in their waggle dance) a much longer
+distance than they had really flown — their visual odometer was fooled by the close, textured walls.
+Budgerigars flying through tunnels keep to the middle by balancing the optic flow on their left and
+right. A bird over the open sea has the same problem as NAVERA: no fixed texture, no flow.
 
-- The **young** starlings, on their first migration, simply kept flying **south-west**, the same
-  direction and roughly the same distance as before. They ended up in **Spain and southern France**
-  — the wrong place. They had only a "compass and distance" program, like pure dead reckoning.
-- The **adults** corrected: many flew **north-west**, back towards their usual wintering areas.
-  They had something the young ones did not: a **map** learned from experience.
+Then the map fix. In the classic experiment of **A. C. Perdeck** (published 1958), thousands of
+starlings caught in the Netherlands on autumn migration were moved by plane to Switzerland and
+released. The **young** birds kept flying in their usual direction (south-west) for their usual
+distance and ended up in Spain and southern France: pure dead reckoning, uncorrected. The **adults**
+corrected towards their normal wintering area: they had a learned **map**.
 
-That is visual odometry versus a map fix. Counting steps alone can take you far, but if something
-moves you (wind, a wrong start, a bad step), nothing brings you back. A map fix now and then resets
-the error to zero. Navi, a young swallow on her first trip, would do well to grow up into an "adult"
-navigator — and so does NAVERA, which mixes both.
+Barn swallows pass through Oman every spring and autumn on their way between Africa and Asia. Navi,
+a young swallow on her first migration, flies like Perdeck's young starlings; as an adult she will
+correct her course with a map. NAVERA does both from the first flight.
 
 ## In NAVERA
 
 ### `day_pkg/day_pkg/frame_odometry.py` — the visual odometry
 
-Open [frame_odometry.py](file:navera/day_pkg/day_pkg/frame_odometry.py). It is only 56 lines and you
-can now read all of it. The heart of `FrameOdometry.step()`:
+Open [frame_odometry.py](file:navera/day_pkg/day_pkg/frame_odometry.py) (71 lines). The heart of
+`FrameOdometry.step()`:
 
 ```python
-# the previous frame turned into this one's orientation and scale (heading change, height change)
+g = cv2.resize(g, None, fx=self.scale, fy=self.scale, interpolation=cv2.INTER_AREA).astype(np.float32)
+g = g - cv2.GaussianBlur(g, (0, 0), 8)            # high-pass: brightness gradients do not lock
+...
 dturn = (hdg - phdg + 180.0) % 360.0 - 180.0
 R = cv2.getRotationMatrix2D((w / 2.0, h / 2.0), dturn, pmpp / m_per_px)
-pg = cv2.warpAffine(pg, R, (w, h), flags=cv2.INTER_LINEAR)
 ...
+pg = cv2.warpAffine(pg, R, (w, h), flags=cv2.INTER_LINEAR)
 (dx, dy), resp = cv2.phaseCorrelate(a, b, self._win)
-if resp < self.min_response or abs(dx) > w / 3 or abs(dy) > h / 3:
+if resp < self.min_response or abs(dx) > w / 4 or abs(dy) > h / 4:
     return None
-mpp = m_per_px / self.scale
+dx, dy = dx + px0, dy + py0
 right, fwd = -dx * mpp, dy * mpp                  # the ground moved the other way
-th = math.radians(hdg)
 de = fwd * math.sin(th) + right * math.cos(th)
 dn = fwd * math.cos(th) - right * math.sin(th)
 ```
 
-You will recognise every line:
+You can now read every line: the frame is halved (`scale = 0.5`) for speed; a **high-pass** filter
+(the image minus its blur) removes slow brightness changes that would otherwise "lock" the peak at
+zero; the previous frame is turned by the heading change and scaled by the height change; the step is
+refused when the response is below `min_response` (**0.15**) or the shift exceeds a quarter of the
+image; and the last two lines are your rotation by θ. The optional `predicted_en` argument shifts the
+previous frame by the expected motion first, so that things that do not move in the image (the
+vehicle's own legs, lens dirt) end up far from zero and are rejected.
 
-- the previous photo is first **turned by the heading change** measured by the IMU and **scaled by
-  the height change**, so that only a slide remains;
-- `cv2.phaseCorrelate` with a Hanning window (`self._win`), exactly as in your lab;
-- a step is refused when the **response is below `min_response` (0.08)** — over open water — or
-  when the slide is more than a third of the picture;
-- `right, fwd = -dx * mpp, dy * mpp`: the same sign rule as yours ("the ground moved the other way");
-- NAVERA's photos are not always north-up (the top of the photo points where the drone flies), so the
-  last two lines turn (right, forward) into (east, north) with the heading, using sin and cos —
-  with a heading of 0° (photo top = north) they give back exactly your rule.
+### `day_pkg/day_pkg/nodes/day_subscriber.py` — carrying the anchor
 
-### `day_pkg/day_pkg/nodes/day_subscriber.py` — between two map fixes
-
-When a frame gives no map match, the day node calls `_dead_reckon()`. If visual odometry measured
-this frame's step, the last position (the **anchor**) is moved by it, and the stated uncertainty
-grows:
+When a frame gives no map match, `_dead_reckon()` moves the last position (the **anchor**) by the VO
+step and grows the stated σ exactly like your `fuse_with_fixes()`:
 
 ```python
 de, dn, dt, q = vo
@@ -241,78 +321,95 @@ lat, lon = _move((self._anchor_lat, self._anchor_lon), de, dn)
 sigma = self._dr_sigma + 0.1 * math.hypot(de, dn) + 1.0
 if sigma <= self.dr_max_sigma_m:
     ...
-    self._emit_fix(now, seq_id, lat, lon, meta, status, "dead_reckon", ...)
 ```
 
-So each step **adds 10 % of its length plus 1 m** to the uncertainty (σ, "sigma") — a careful
-guess, larger than the 3–4 m per 100 m you will measure, because real flights are worse than a
-synthetic one. These positions are published as **PROPAGATED** (dead-reckoned), never as measured.
-Dead-reckoning stops after `max_dead_reckon_s` (**120 s**) or when the uncertainty passes
-`dead_reckon_max_sigma_m` (**500 m**): then NAVERA says "no position" rather than a wrong one.
-When a map match is accepted again, the anchor jumps to it and `_dr_sigma` is reset to the match's
-own small sigma: **the drift is thrown away at each map fix**.
+The positions are published as **PROPAGATED**, never as measured. Dead-reckoning stops after
+`max_dead_reckon_s` (**120 s**) or when σ exceeds `dead_reckon_max_sigma_m` (**500 m**). After an
+accepted map match `_dr_sigma` is reset to the match's own σ — the update with K ≈ 1.
 
-### `day_pkg/day_pkg/vision_nav.py` — the search follows the uncertainty
+### `day_pkg/day_pkg/vision_nav.py` — the odometry gate and the growing search
 
-[vision_nav.py](file:navera/day_pkg/day_pkg/vision_nav.py) holds the rules between matches
-(`VisionNavigator`). `odometry()` turns each visual-odometry step into a **measured velocity**;
-`predict()` carries the last fix along that velocity and grows its sigma with time; `search()`
-makes the next map search circle **3 sigma** wide (never less than 80 m, never more than 1500 m).
-A lost drone is searched for in a wider circle — and as soon as a match is found, the circle
-shrinks again.
+[vision_nav.py](file:navera/day_pkg/day_pkg/vision_nav.py) (`VisionNavigator`) uses VO differently:
+as a **velocity** measurement, accepted only if it agrees with the velocity the map fixes measured:
+
+```python
+v = (de / dt, dn / dt)
+if self.vel is not None:
+    dv = math.hypot(v[0] - self.vel[0], v[1] - self.vel[1])
+    if dv > max(3.0 * self.vel_sigma, 0.3 * math.hypot(*self.vel), 3.0):
+        self.vo_rejected += 1
+        return False
+```
+
+This **gate** exists because phase correlation can lock onto something that does not move in the
+image and report zero motion. `predict()` carries the last fix along the velocity (turning it with
+the heading in a turn) and grows σ with time:
+`sig + vel_sigma·dt + radians(5°)·speed·dt + ½·accel·dt²` (velocity error, 5° heading error, unseen
+accelerations). `search()` makes the next map search circle 3σ wide (80 m … 1500 m), and `output()`
+says **"unavailable"** when the fix is older than `max_dr_s` (120 s) or σ exceeds `max_sigma_m`
+(300 m): no position is better than a wrong one. In the lab you will drive this class with your own
+VO and watch it give up.
 
 ### What has been measured
 
-From `docs/VALIDATION_STATUS.md`, for day vision carrying its position along the measured track when
-no frame matches (**simulator only**, mission simulator with GPS jammed): on a land route the error
-stayed at a **median of 10 m, max 33 m**, with no autopilot failsafe; across the bay, the position
-was carried **90 s over the sea stating ±300 m, with a true error of at most 146 m**. Those
-numbers are for carrying the position along the velocity measured before the gap; the frame-to-frame
-odometry of `frame_odometry.py` was added after (bench campaign of 2026-10-06), and no separate
-figure for it is listed yet. None of this has been measured on a real flight.
+From `docs/VALIDATION_STATUS.md`, dead-reckoning along the measured track when no frame matches
+(**simulator only**, GPS jammed): land route, error **median 10 m, max 33 m**, no autopilot failsafe;
+across the bay, carried **90 s over the sea stating ±300 m, true error at most 146 m**. Those figures
+are for carrying the position along the measured velocity; the frame-to-frame odometry was added
+after them (bench campaign of 2026-10-06) and has no separate figure in the document yet. Nothing
+here has been measured on a real flight — NAVERA is Release 0.x, field validation pending.
 
-## Words to remember
+## Glossary
 
-| Word | Meaning |
+| Term | Meaning |
 |---|---|
-| **odometry** | measuring your own movement step by step (wheels, steps, camera) |
-| **visual odometry (VO)** | odometry from the slide of the ground between consecutive photos |
-| **overlap** | the part of the ground two photos both show |
-| **phase correlation** | a fast way to find the slide between two pictures, testing all shifts at once |
-| **Hanning window** | a mask that fades the picture near its edges before phase correlation |
-| **response** | how sure phase correlation is (0–1); low over the sea |
-| **track** | the list of positions, one per photo |
-| **dead reckoning** | carrying a position forward from known movements, without seeing where you are |
-| **drift** | the error of dead reckoning, growing with time / distance |
-| **systematic error** | the same mistake at every step (wrong height, wrong heading): it adds up |
-| **map fix** | an absolute position from the map (lesson 22); it resets the drift |
-| **PROPAGATED** | NAVERA's label for a dead-reckoned (not measured) position |
+| **visual odometry (VO)** | estimating the camera's own motion from consecutive images |
+| **nadir camera** | a camera looking straight down |
+| **overlap** | the part of the ground two consecutive frames both show |
+| **DFT / FFT** | discrete Fourier transform (an image as a sum of waves) / the fast algorithm for it, O(N log N) |
+| **shift theorem** | a translation changes only the phases of the DFT, proportionally to the frequency |
+| **cross-power spectrum** | B·A* / \|B·A*\|: the phase difference of two images, whose inverse FFT peaks at the shift |
+| **Hanning window** | a weight that fades an image to zero at its borders before the FFT |
+| **response** | the height of the correlation peak (0–1): how much of the image moved together |
+| **sub-pixel refinement** | locating the peak between pixels, here with a parabola through 3 values |
+| **dead reckoning** | carrying a position forward by adding measured motions |
+| **drift** | the growing error of dead reckoning, usually quoted in m per 100 m flown |
+| **random walk** | a sum of independent random steps; its spread grows like √n |
+| **bias (systematic error)** | the same error at every step; its effect grows like n |
+| **Kalman gain K** | the weight P/(P + R²) given to a new measurement against the prediction |
+| **gate** | a test that refuses a measurement that disagrees too much with the prediction |
+| **PROPAGATED** | NAVERA's label for a carried (not measured) position |
 
 ## Check what you learned
 
-<details><summary>1. The ground slides UP in a north-up photo. Which way did the drone go?</summary>
-South. The ground slides the opposite way to the drone; up in the picture is north, so the drone went south.
+<details><summary>1. Phase correlation of two frames gives a peak at index (x = 310, y = 5) in a 320 × 240 array. What is the shift?</summary>
+x = 310 is above W/2 = 160, so dx = 310 − 320 = −10 px; y = 5 is below H/2, so dy = +5 px. The content moved 10 px left and 5 px down.
 </details>
 
-<details><summary>2. Why does the error of visual odometry keep growing, even if each step is measured well?</summary>
-Because the position is a <b>sum</b> of steps: every small error is added to the previous ones and
-nothing removes it. Systematic errors (a wrong height, a wrong heading) grow in proportion to the
-distance flown.
+<details><summary>2. Why do we divide the cross-power spectrum by its magnitude, and why do we multiply by a Hanning window first?</summary>
+Dividing keeps only the phase, where the shift is encoded; every frequency gets the same weight, which makes the peak sharp
+(a plain correlation would be dominated by the strong low frequencies and give a broad peak). The window removes the false
+edges created by the FFT's assumption that the image repeats: without it the borders correlate with themselves at zero shift.
 </details>
 
-<details><summary>3. The barometer reads 5 % too low. What happens to the track?</summary>
-The meters per pixel are 5 % too small, so every step is 5 % too short: the track has the right shape
-but falls short — about 5 m of error per 100 m flown.
+<details><summary>3. The camera's heading is θ = 90° and the ground slid dy = +20 px, dx = 0, at 0.5 m/px. Where did the camera go?</summary>
+forward = +10 m, right = 0. With θ = 90°: east = 10 · sin 90° = 10 m, north = 10 · cos 90° = 0. The camera moved 10 m east.
 </details>
 
-<details><summary>4. Why can't visual odometry work over the open sea?</summary>
-There is nothing fixed and textured to follow: the waves move and all look alike. Phase correlation
-gives a low response, and NAVERA (`min_response` 0.08) does not use the result.
+<details><summary>4. Per-step random error 0.4 m per axis, no bias. What is the RMS error after 100 steps? After 400 steps?</summary>
+σ√(2n): 0.4 × √200 ≈ 5.7 m after 100 steps, 0.4 × √800 ≈ 11.3 m after 400 steps — four times more steps, only twice the error.
+With a bias the error would be four times larger instead.
 </details>
 
-<details><summary>5. What does NAVERA do with the drift when a map match is accepted again?</summary>
-It throws it away: the anchor jumps to the matched position and the uncertainty is reset to the
-match's own sigma. Visual odometry only bridges the gaps between map fixes.
+<details><summary>5. The barometer reads 5 % too low. What happens to the track, and can more careful phase correlation fix it?</summary>
+m_per_px is 5 % too small, so every step is 5 % short: the track has the right shape but is 5 % too small, about 5 m of
+error per 100 m. No: the pixels are measured correctly; the error is in the scale, a bias. Only a better height (or a map fix,
+which also measures the scale) can remove it.
+</details>
+
+<details><summary>6. Odometry σ = 12 m when a map fix with R = 12 m arrives. What are K, the new position and the new σ?</summary>
+K = 144 / (144 + 144) = 0.5: the new position is half-way between the prediction and the fix, and σ = √(0.5 × 144) ≈ 8.5 m —
+smaller than both. With σ = 30 m and R = 4 m instead, K ≈ 0.98: almost a reset.
 </details>
 
 Now open the **🛠️ Lab** tab.

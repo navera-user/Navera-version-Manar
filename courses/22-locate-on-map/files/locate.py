@@ -1,4 +1,4 @@
-# Lesson 22 — find a drone photo on the satellite map.
+# Lesson 22 — find a drone photo on the satellite map (NAVERA's test map covers Sousse, Tunisia).
 # Run the demo:  python3 locate.py            (locates photo p01 and draws locate_demo.png)
 #                python3 locate.py p05_farms  (another photo of the dataset)
 import math
@@ -10,24 +10,25 @@ import numpy as np
 import navmap
 
 Z = 17                 # the zoom NAVERA's day vision matches against (about 0.97 m per pixel here)
-RATIO = 0.8            # ratio test (lesson 21)
-MIN_INLIERS = 8        # like NAVERA's local_min_inliers
-SCALE_TOL = 0.15       # the fitted scale must be 1 ± 15 % (NAVERA's local_scale_tol)
+RATIO = 0.8            # ratio test (lesson 21), NAVERA's value
+MIN_INLIERS = 8        # gate 1, like NAVERA's local_min_inliers
+SCALE_TOL = 0.15       # gate 2: the fitted scale must be 1 ± 15 % (NAVERA's local_scale_tol)
+RANSAC_PX = 6.0        # RANSAC inlier threshold in map pixels (NAVERA's ransac_px)
 
 
 def photo_m_per_px(width_px, altitude_m, hfov_deg):
-    """Ground size of one photo pixel, in meters (lesson 17): footprint width / pixel width."""
-    # TODO 1: the footprint width on the ground is 2 * altitude * tan(hfov / 2).
+    """Ground size of one photo pixel, in metres (lesson 17): footprint width / pixel width."""
+    # TODO 1: the footprint width on the ground is W = 2 * altitude * tan(hfov / 2).
     #         hfov_deg is in DEGREES: math.tan wants radians (math.radians).
-    #         Return the footprint width divided by the photo's width in pixels.
+    #         Return W divided by the photo's width in pixels.
     raise NotImplementedError("TODO 1 (photo_m_per_px)")
 
 
 def build_search_patch(prior_lat, prior_lon, search_m, margin_m, z=Z):
     """The piece of map where the photo can be: a square centred on the prior, of half-width
-    search_m + margin_m (in meters). Returns (patch BGR image, (x0, y0) its top-left global
-    pixel, meters per map pixel)."""
-    # TODO 2: 1) mpp = meters per map pixel at the prior (navmap.m_per_px)
+    search_m + margin_m (in metres). Returns (patch BGR image, (x0, y0) its top-left global
+    pixel, metres per map pixel)."""
+    # TODO 2: 1) mpp = metres per map pixel at the prior (navmap.m_per_px)
     #         2) half = (search_m + margin_m) converted to pixels, rounded UP to an int (math.ceil)
     #         3) patch, origin = navmap.map_patch(prior_lat, prior_lon, z, 2 * half, 2 * half)
     #         4) return patch, origin, mpp
@@ -43,9 +44,9 @@ def match_features(photo_grey, patch_grey):
     if d1 is None or d2 is None or len(kp1) < 2 or len(kp2) < 2:
         return np.zeros((0, 2), np.float32), np.zeros((0, 2), np.float32)
     # TODO 3: the ratio test of lesson 21.
-    #         pairs = cv2.BFMatcher(cv2.NORM_L2).knnMatch(d1, d2, k=2) gives, for each photo keypoint,
-    #         its best and second-best map neighbour. Keep the best one (p[0]) only when
-    #         p[0].distance < RATIO * p[1].distance (and the pair really has 2 elements).
+    #         cv2.BFMatcher(cv2.NORM_L2).knnMatch(d1, d2, k=2) gives, for each photo keypoint, its
+    #         best and second-best map neighbour. Keep the best one (p[0]) only when the pair has
+    #         2 elements and p[0].distance < RATIO * p[1].distance.
     good = []
     src = np.float32([kp1[m.queryIdx].pt for m in good]).reshape(-1, 2)
     dst = np.float32([kp2[m.trainIdx].pt for m in good]).reshape(-1, 2)
@@ -61,7 +62,7 @@ def locate(photo, prior_lat, prior_lon, alt_m, hfov_deg, search_m=300.0):
     mpp_photo = photo_m_per_px(grey.shape[1], alt_m, hfov_deg)
     mpp_map = navmap.m_per_px(prior_lat, Z)
     s = mpp_photo / mpp_map
-    small = cv2.resize(grey, None, fx=s, fy=s, interpolation=cv2.INTER_AREA)
+    small = cv2.resize(grey, None, fx=s, fy=s, interpolation=cv2.INTER_AREA if s < 1 else cv2.INTER_LINEAR)
     # 2. the map around the prior: the search circle + half the photo's diagonal on the ground
     margin = 0.5 * math.hypot(*grey.shape[:2]) * mpp_photo
     patch, (x0, y0), _ = build_search_patch(prior_lat, prior_lon, search_m, margin)
@@ -71,18 +72,18 @@ def locate(photo, prior_lat, prior_lon, alt_m, hfov_deg, search_m=300.0):
     if len(src) < MIN_INLIERS:
         res["reason"] = f"only {len(src)} feature matches (min {MIN_INLIERS})"
         return res
-    # TODO 4: (lesson 21 + the course, section "From a match to a position")
-    #   a) A, inl = cv2.estimateAffinePartial2D(src, dst, method=cv2.RANSAC, ransacReprojThreshold=6.0,
-    #                                           maxIters=5000, confidence=0.999)
-    #      If A is None: reason "no consistent geometry", return res.
-    #   b) n_in = number of inliers (inl is a column of 0/1), scale = math.hypot(A[0, 0], A[1, 0]),
-    #      rot = the angle in degrees of (A[0, 0], A[1, 0]) (math.atan2 + math.degrees).
-    #      res.update(inliers=n_in, scale=..., rotation_deg=...)
-    #   c) gates: fewer than MIN_INLIERS inliers -> a reason, return res;
-    #      abs(scale - 1) > SCALE_TOL -> reason "wrong place", return res.
-    #   d) the photo centre (small.shape[1] / 2, small.shape[0] / 2) carried by A gives (u, v) in the
-    #      patch: A @ np.array([cx, cy, 1.0]). Global pixel = (x0 + u, y0 + v) -> navmap.pixel_to_latlon.
-    #   e) res.update(accepted=True, lat=lat, lon=lon, reason="ok", _A=A, _patch=patch, _small=small)
+    # TODO 4: (the course, sections 4 to 6)
+    #   a) A, inl = cv2.estimateAffinePartial2D(src, dst, method=cv2.RANSAC,
+    #                  ransacReprojThreshold=RANSAC_PX, maxIters=5000, confidence=0.999)
+    #      If A is None: res["reason"] = "no consistent geometry", return res.
+    #   b) n_in = number of inliers (inl is a column of 0/1); scale s = hypot(A[0,0], A[1,0]);
+    #      rotation = degrees(atan2(A[1,0], A[0,0])).
+    #      res.update(inliers=n_in, scale=round(s, 3), rotation_deg=round(rotation, 1))
+    #   c) gate 1: n_in < MIN_INLIERS          -> res["reason"] = "... inliers (min 8)", return res
+    #      gate 2: abs(s - 1) > SCALE_TOL      -> res["reason"] = "... wrong place ...",  return res
+    #   d) the centre of `small` (width / 2, height / 2) carried by A: (u, v) = A @ [cx, cy, 1]
+    #      (PATCH pixels). Global pixel = (x0 + u, y0 + v) -> navmap.pixel_to_latlon(..., Z).
+    #   e) res.update(accepted=True, lat=lat, lon=lon, reason="ok", _A=A, _small=small); return res
     res["reason"] = "TODO 4: not written yet"
     return res
 

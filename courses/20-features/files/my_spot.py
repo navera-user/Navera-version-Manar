@@ -1,7 +1,7 @@
 """Score any place of the map.   python3 my_spot.py LAT LON
 Example:  python3 my_spot.py 35.8256 10.6370
 Cuts a 512 x 512 patch of the satellite map at zoom 17 around (LAT, LON), saves it with its
-keypoints as my_spot.png and prints its matchability (your TODO 5)."""
+keypoints as my_spot.png and prints its matchability (your TODO 8)."""
 import sys
 
 import cv2

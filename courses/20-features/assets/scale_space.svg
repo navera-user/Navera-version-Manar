@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" font-family="sans-serif" font-size="13">
+  <defs>
+    <g id="scene">
+      <rect width="60" height="60" fill="#e8dcc4"/>
+      <circle cx="20" cy="22" r="9" fill="#7a5c3e"/>
+      <circle cx="44" cy="40" r="4" fill="#7a5c3e"/>
+      <rect x="30" y="8" width="20" height="12" fill="#7a5c3e"/>
+      <rect x="8" y="42" width="14" height="10" fill="#7a5c3e"/>
+    </g>
+    <filter id="b1"><feGaussianBlur stdDeviation="0.6"/></filter>
+    <filter id="b2"><feGaussianBlur stdDeviation="1.4"/></filter>
+    <filter id="b3"><feGaussianBlur stdDeviation="2.4"/></filter>
+    <filter id="b4"><feGaussianBlur stdDeviation="3.6"/></filter>
+    <clipPath id="c"><rect width="60" height="60"/></clipPath>
+  </defs>
+  <rect width="640" height="400" fill="#f7fafc"/>
+  <text x="320" y="22" text-anchor="middle" fill="#1d2733" font-weight="bold">Scale space, difference of Gaussians (DoG) and the 26 neighbours</text>
+  <!-- octave 1: four blurred images -->
+  <text x="20" y="52" fill="#1d2733" font-weight="bold">Octave 1</text>
+  <g transform="translate(20,62)"><g clip-path="url(#c)"><use href="#scene" filter="url(#b1)"/></g></g>
+  <g transform="translate(95,62)"><g clip-path="url(#c)"><use href="#scene" filter="url(#b2)"/></g></g>
+  <g transform="translate(170,62)"><g clip-path="url(#c)"><use href="#scene" filter="url(#b3)"/></g></g>
+  <g transform="translate(245,62)"><g clip-path="url(#c)"><use href="#scene" filter="url(#b4)"/></g></g>
+  <g fill="#1d2733" font-size="12" text-anchor="middle">
+    <text x="50" y="140">σ</text><text x="125" y="140">kσ</text><text x="200" y="140">k²σ</text><text x="275" y="140">k³σ</text>
+  </g>
+  <!-- minus signs between, and DoG row -->
+  <g fill="#0b6e8a" font-size="12" text-anchor="middle">
+    <text x="87" y="166">−</text><text x="162" y="166">−</text><text x="237" y="166">−</text>
+  </g>
+  <g fill="#ffffff" stroke="#0b6e8a" stroke-width="1.5">
+    <rect x="62" y="174" width="50" height="40"/><rect x="137" y="174" width="50" height="40"/><rect x="212" y="174" width="50" height="40"/>
+  </g>
+  <g fill="#0b6e8a" font-size="12" text-anchor="middle">
+    <text x="87" y="199">D₁</text><text x="162" y="199">D₂</text><text x="237" y="199">D₃</text>
+  </g>
+  <text x="20" y="234" fill="#1d2733" font-size="12">D = L(kσ) − L(σ) ≈ (k − 1)·σ²·∇²L</text><text x="20" y="251" fill="#1d2733" font-size="12">3 intervals per octave: k = 2^(1/3) ≈ 1.26</text>
+  <!-- octave 2: half-size images -->
+  <text x="20" y="284" fill="#1d2733" font-weight="bold">Octave 2</text>
+  <text x="20" y="300" fill="#5a6573" font-size="12">σ doubled → picture halved</text>
+  <g transform="translate(20,310) scale(0.5)"><g clip-path="url(#c)"><use href="#scene" filter="url(#b3)"/></g></g>
+  <g transform="translate(60,310) scale(0.5)"><g clip-path="url(#c)"><use href="#scene" filter="url(#b4)"/></g></g>
+  <g transform="translate(100,310) scale(0.5)"><g clip-path="url(#c)"><rect width="60" height="60" fill="#d8ccb4"/></g></g>
+  <g transform="translate(140,310) scale(0.5)"><g clip-path="url(#c)"><rect width="60" height="60" fill="#d4c8b0"/></g></g>
+  <text x="185" y="330" fill="#5a6573" font-size="12">… and so on</text>
+  <!-- right: 26 neighbours -->
+  <text x="470" y="52" text-anchor="middle" fill="#1d2733" font-weight="bold">Is it an extremum?</text>
+  <g stroke="#1d2733" stroke-width="1" fill="#eef3f7">
+    <rect x="360" y="80" width="60" height="60"/><rect x="440" y="80" width="60" height="60"/><rect x="520" y="80" width="60" height="60"/>
+  </g>
+  <g stroke="#1d2733" stroke-width="1">
+    <line x1="380" y1="80" x2="380" y2="140"/><line x1="400" y1="80" x2="400" y2="140"/>
+    <line x1="360" y1="100" x2="420" y2="100"/><line x1="360" y1="120" x2="420" y2="120"/>
+    <line x1="460" y1="80" x2="460" y2="140"/><line x1="480" y1="80" x2="480" y2="140"/>
+    <line x1="440" y1="100" x2="500" y2="100"/><line x1="440" y1="120" x2="500" y2="120"/>
+    <line x1="540" y1="80" x2="540" y2="140"/><line x1="560" y1="80" x2="560" y2="140"/>
+    <line x1="520" y1="100" x2="580" y2="100"/><line x1="520" y1="120" x2="580" y2="120"/>
+  </g>
+  <rect x="460" y="100" width="20" height="20" fill="#d64545"/>
+  <g fill="#1d2733" font-size="12" text-anchor="middle">
+    <text x="390" y="158">D₁ (smaller σ)</text><text x="470" y="158">D₂</text><text x="550" y="158">D₃ (larger σ)</text>
+  </g>
+  <g fill="#1d2733" font-size="12">
+    <text x="350" y="190">The red pixel is a keypoint if it is larger</text>
+    <text x="350" y="207">(or smaller) than all 26 neighbours:</text>
+    <text x="350" y="224">8 in its own DoG image + 9 + 9 in the</text>
+    <text x="350" y="241">images just below and above in scale.</text>
+    <text x="350" y="271">Its σ is the keypoint's scale: SIFT then</text>
+    <text x="350" y="288">describes a window proportional to σ,</text>
+    <text x="350" y="305">turned to the dominant gradient direction.</text>
+    <text x="350" y="335" fill="#a8680d">A disk of radius r peaks at σ* = r/√2:</text>
+    <text x="350" y="352" fill="#a8680d">twice the size → twice the scale.</text>
+  </g>
+</svg>

@@ -1,14 +1,14 @@
-photo,source,accepted,inliers,scale,prior_error_m,error_m,time_ms,reason
-p01_medina,map,True,953,1.0,144.1,0.2,2041,ok
-p02_port,map,True,749,1.0,161.4,0.2,1763,ok
-p03_khezama,map,True,580,1.0,183.3,0.4,1221,ok
-p04_olives,map,True,1013,1.0,208.6,0.0,2267,ok
-p05_farms,map,True,770,1.0,203.7,0.2,2696,ok
-p06_hills,map,True,625,1.0,169.5,0.3,2094,ok
-p07_msaken,map,True,953,1.001,235.1,0.4,1886,ok
-p08_hammam,map,True,406,1.0,221.8,0.1,1384,ok
-p09_kalaa22,wb2022,True,17,0.999,184.2,1.2,2157,ok
-p10_kalaa22,wb2022,True,16,1.0,180.0,0.7,2179,ok
-p11_kalaa17,wb2017,False,3,3.58,170.7,,1754,3 inliers (min 8)
-p12_sea,map,False,0,,141.2,,598,only 0 feature matches (min 8)
-p13_lost,map,False,2,2.205,1200.7,,1669,2 inliers (min 8)
+photo,source,accepted,inliers,scale,error_m,time_ms,reason,navera_accepted,navera_inliers,navera_error_m,navera_time_ms,navera_reason
+p01_medina,map,True,953,1.0,0.17,2240,ok,True,197,0.21,2483,
+p02_port,map,True,749,1.0,0.22,2624,ok,True,209,0.25,1320,
+p03_khezama,map,True,580,1.0,0.4,2182,ok,True,95,0.39,3316,
+p04_olives,map,True,1013,1.0,0.03,3135,ok,True,154,0.12,2581,
+p05_farms,map,True,770,1.0,0.23,4347,ok,True,179,0.21,4581,
+p06_hills,map,True,625,1.0,0.3,5052,ok,True,313,0.28,5322,
+p07_msaken,map,True,953,1.001,0.39,2900,ok,True,125,0.37,2933,
+p08_hammam,map,True,406,1.0,0.14,2028,ok,True,70,0.21,2421,
+p09_kalaa22,wb2022,True,17,0.999,1.16,2405,ok,False,2,,2483,2 geometric inliers (min 8)
+p10_kalaa22,wb2022,True,16,1.0,0.66,3416,ok,False,5,,2187,5 geometric inliers (min 8)
+p11_kalaa17,wb2017,False,3,3.58,,2608,3 inliers (min 8),False,3,,1203,3 geometric inliers (min 8)
+p12_sea,map,False,0,,,810,only 0 feature matches (min 8),False,0,,2501,no map tiles (or no texture) in the search circle
+p13_lost,map,False,2,2.205,,3374,2 inliers (min 8),False,0,,3517,7 feature matches (min 8)

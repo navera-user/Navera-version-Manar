@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 290" width="640" height="290" font-family="sans-serif" font-size="13">
+  <rect width="640" height="290" fill="#f7fafc"/>
+  <text x="320" y="22" text-anchor="middle" fill="#1d2733" font-weight="bold">Odometry between map fixes: error and stated σ</text>
+  <line x1="60" y1="230" x2="610" y2="230" stroke="#1d2733"/>
+  <line x1="60" y1="230" x2="60" y2="40" stroke="#1d2733"/>
+  <text x="610" y="252" text-anchor="end" fill="#1d2733">distance flown →</text>
+  <text x="66" y="48" fill="#1d2733">metres</text>
+  <!-- odometry only -->
+  <path d="M60 230 L610 60" stroke="#d64545" stroke-width="2.5" fill="none"/>
+  <text x="604" y="54" text-anchor="end" fill="#d64545">odometry only</text>
+  <!-- 2 sigma band, sawtooth: fixes at x=170,280,390,500 -->
+  <path d="M60 226 L170 150 L170 222 L280 146 L280 222 L390 146 L390 222 L500 146 L500 222 L610 146"
+        stroke="#0b6e8a" stroke-width="1.5" stroke-dasharray="6 4" fill="none"/>
+  <!-- true error with fixes -->
+  <path d="M60 230 L170 198 L170 224 L280 194 L280 225 L390 196 L390 223 L500 193 L500 224 L610 195"
+        stroke="#0b6e8a" stroke-width="3" fill="none"/>
+  <g fill="#f2a33a"><circle cx="170" cy="224" r="5"/><circle cx="280" cy="225" r="5"/><circle cx="390" cy="223" r="5"/><circle cx="500" cy="224" r="5"/></g>
+  <text x="80" y="66" fill="#0b6e8a">dashed: stated 2σ (grows, then K ≈ 1 at a fix)</text>
+  <text x="80" y="86" fill="#0b6e8a">solid: true error with the fixes</text>
+  <text x="60" y="272" fill="#a8680d">● map fix (lesson 22): σ ≈ 4 m, it does not grow with distance</text>
+</svg>

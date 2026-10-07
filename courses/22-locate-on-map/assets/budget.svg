@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 360" font-family="sans-serif" font-size="13">
+  <rect width="760" height="360" fill="#f7fafc"/>
+  <defs>
+    <marker id="ab" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#1d2733"/>
+    </marker>
+  </defs>
+  <text x="380" y="24" text-anchor="middle" font-size="15" font-weight="bold" fill="#1d2733">Two error sources with simple geometry</text>
+
+  <!-- left panel: tilt -->
+  <text x="190" y="52" text-anchor="middle" font-weight="bold" fill="#0b6e8a">A. Camera tilted by θ, treated as straight down</text>
+  <line x1="30" y1="300" x2="350" y2="300" stroke="#8a7a55" stroke-width="3"/>
+  <text x="40" y="320" fill="#8a7a55">ground</text>
+  <!-- camera -->
+  <rect x="112" y="76" width="36" height="20" rx="4" fill="#1d2733"/>
+  <!-- vertical -->
+  <line x1="130" y1="96" x2="130" y2="300" stroke="#2f7d32" stroke-width="2" stroke-dasharray="6 4"/>
+  <circle cx="130" cy="300" r="6" fill="#2f7d32"/>
+  <text x="70" y="290" fill="#2f7d32">P: truth</text>
+  <!-- tilted axis: angle about 20 deg drawn -->
+  <line x1="130" y1="96" x2="204" y2="300" stroke="#d64545" stroke-width="2.5"/>
+  <circle cx="204" cy="300" r="6" fill="#d64545"/>
+  <text x="212" y="290" fill="#d64545">Q: photo centre</text>
+  <!-- angle arc -->
+  <path d="M130 146 A50 50 0 0 0 147 143" fill="none" stroke="#1d2733" stroke-width="1.5"/>
+  <text x="138" y="170" fill="#1d2733">θ</text>
+  <!-- height label -->
+  <line x1="98" y1="100" x2="98" y2="296" stroke="#1d2733" stroke-width="1.2" marker-start="url(#ab)" marker-end="url(#ab)"/>
+  <text x="90" y="200" text-anchor="end" fill="#1d2733">h</text>
+  <!-- offset -->
+  <line x1="134" y1="330" x2="200" y2="330" stroke="#1d2733" stroke-width="1.2" marker-start="url(#ab)" marker-end="url(#ab)"/>
+  <text x="167" y="350" text-anchor="middle" fill="#1d2733">d = h·tan θ</text>
+  <text x="250" y="120" fill="#1d2733">h = 200 m:</text>
+  <text x="250" y="140" fill="#1d2733">θ = 1° → d = 3.5 m</text>
+  <text x="250" y="160" fill="#1d2733">θ = 5° → d = 17.5 m</text>
+  <text x="250" y="180" fill="#1d2733">θ = 10° → d = 35 m</text>
+
+  <line x1="380" y1="44" x2="380" y2="350" stroke="#cbd5df" stroke-width="1.5"/>
+
+  <!-- right panel: height -->
+  <text x="570" y="52" text-anchor="middle" font-weight="bold" fill="#0b6e8a">B. Wrong height → wrong scale</text>
+  <line x1="400" y1="300" x2="740" y2="300" stroke="#8a7a55" stroke-width="3"/>
+  <!-- true camera (higher) -->
+  <rect x="502" y="76" width="36" height="20" rx="4" fill="#1d2733"/>
+  <line x1="520" y1="96" x2="410" y2="300" stroke="#0b6e8a" stroke-width="2"/>
+  <line x1="520" y1="96" x2="630" y2="300" stroke="#0b6e8a" stroke-width="2"/>
+  <line x1="540" y1="86" x2="618" y2="86" stroke="#0b6e8a" stroke-width="1"/>
+  <text x="622" y="90" fill="#0b6e8a">true h = 200 m</text>
+  <!-- assumed camera (lower) -->
+  <rect x="510" y="133" width="20" height="12" rx="3" fill="#f2a33a"/>
+  <line x1="520" y1="145" x2="432" y2="300" stroke="#f2a33a" stroke-width="2" stroke-dasharray="6 4"/>
+  <line x1="520" y1="145" x2="608" y2="300" stroke="#f2a33a" stroke-width="2" stroke-dasharray="6 4"/>
+  <line x1="532" y1="139" x2="618" y2="139" stroke="#a8680d" stroke-width="1"/>
+  <text x="622" y="143" fill="#a8680d">assumed 160 m</text>
+  <!-- footprints -->
+  <line x1="410" y1="318" x2="630" y2="318" stroke="#0b6e8a" stroke-width="3"/>
+  <line x1="432" y1="308" x2="608" y2="308" stroke="#f2a33a" stroke-width="3"/>
+  <text x="520" y="338" text-anchor="middle" fill="#0b6e8a">ground seen: 25 % wider than assumed</text>
+  <g font-size="11.5" fill="#1d2733">
+    <text x="634" y="200">fitted scale</text>
+    <text x="634" y="218">= h_true / h_assumed</text>
+    <text x="634" y="236">= 200 / 160 = 1.25</text>
+    <text x="634" y="254">→ refused by the</text>
+    <text x="634" y="272">gate 1 ± 0.15</text>
+  </g>
+</svg>

@@ -18,8 +18,9 @@
   <!-- zenith -->
   <line x1="110" y1="222" x2="110" y2="40" stroke="#1d2733" stroke-dasharray="3 4"/>
   <text x="82" y="34" fill="#1d2733">zenith (straight up)</text>
-  <text x="300" y="120" fill="#1d2733" font-size="12">Tunis 36.8° N → Polaris 36.8° high</text>
-  <text x="300" y="138" fill="#1d2733" font-size="12">Sousse 35.8° N → 35.8° high</text>
-  <text x="300" y="156" fill="#1d2733" font-size="12">North Pole 90° → straight up</text>
-  <text x="300" y="174" fill="#1d2733" font-size="12">Equator 0° → on the horizon</text>
+  <text x="300" y="104" fill="#1d2733" font-size="12">Khasab 26.2° N → Polaris ≈ 26° high</text>
+  <text x="300" y="122" fill="#1d2733" font-size="12">Muscat 23.6° N → ≈ 23.6° high</text>
+  <text x="300" y="140" fill="#1d2733" font-size="12">Salalah 17.0° N → ≈ 17° high</text>
+  <text x="300" y="158" fill="#1d2733" font-size="12">Equator 0° → on the horizon</text>
+  <text x="300" y="176" fill="#1d2733" font-size="12">(± 0.63°: Polaris is not exactly at the pole)</text>
 </svg>

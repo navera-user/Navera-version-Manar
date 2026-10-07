@@ -1,0 +1,152 @@
+[
+ {
+  "name": "city_rot35",
+  "map": "terrain_city.jpg",
+  "photo": "pair_city_rot35.jpg",
+  "heading_deg": 35.0,
+  "scale": 0.9983,
+  "what": "rotation 35 deg, same scale",
+  "H": [
+   [
+    0.817771,
+    0.572609,
+    -35.651011
+   ],
+   [
+    -0.572609,
+    0.817771,
+    177.647533
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "city_zoom2",
+  "map": "terrain_city.jpg",
+  "photo": "pair_city_zoom2.jpg",
+  "heading_deg": 0.0,
+  "scale": 1.9966,
+  "what": "same orientation, 2x closer (scale change x2)",
+  "H": [
+   [
+    1.996628,
+    0.0,
+    -190.887116
+   ],
+   [
+    0.0,
+    1.996628,
+    -270.387959
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "city_zoom4",
+  "map": "terrain_city.jpg",
+  "photo": "pair_city_zoom4.jpg",
+  "heading_deg": 0.0,
+  "scale": 3.8735,
+  "what": "same orientation, 4x closer (scale change x4)",
+  "H": [
+   [
+    3.873458,
+    0.0,
+    -671.121005
+   ],
+   [
+    0.0,
+    3.873458,
+    -750.152641
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "city_rot35_zoom",
+  "map": "terrain_city.jpg",
+  "photo": "pair_city_rot35_zoom.jpg",
+  "heading_deg": 35.0,
+  "scale": 1.6139,
+  "what": "rotation 35 deg and scale x1.6 (like drone_city.jpg)",
+  "H": [
+   [
+    1.322063,
+    0.925718,
+    -254.919592
+   ],
+   [
+    -0.925718,
+    1.322063,
+    138.915873
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "olives_rot35_zoom",
+  "map": "terrain_olives.jpg",
+  "photo": "pair_olives_rot35_zoom.jpg",
+  "heading_deg": 35.0,
+  "scale": 1.6166,
+  "what": "olive groves, rotation 35 deg and scale x1.6",
+  "H": [
+   [
+    1.324268,
+    0.927262,
+    -256.060761
+   ],
+   [
+    -0.927262,
+    1.324268,
+    138.134754
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "hills_rot35_zoom",
+  "map": "terrain_hills.jpg",
+  "photo": "pair_hills_rot35_zoom.jpg",
+  "heading_deg": 35.0,
+  "scale": 1.6145,
+  "what": "dry hills, rotation 35 deg and scale x1.6",
+  "H": [
+   [
+    1.322489,
+    0.926017,
+    -254.956297
+   ],
+   [
+    -0.926017,
+    1.322489,
+    138.040088
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ }
+]

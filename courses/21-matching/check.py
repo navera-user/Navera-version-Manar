@@ -1,10 +1,12 @@
 import json
+import math
 import os
+import re
 
 import cv2
 import numpy as np
 
-from academy_check import Checker, load_student, need
+from academy_check import Checker, load_student, need, sh
 
 c = Checker()
 DATA = "/data/academy/21-matching"
@@ -12,165 +14,298 @@ TRUTH = json.load(open(os.path.join(DATA, "truth.json")))
 _cache = {}
 
 
+def G():
+    return load_student("geometry.py")
+
+
+def M():
+    return load_student("matching.py")
+
+
 def pair(name):
     return (cv2.imread(os.path.join(DATA, f"view_{name}.jpg")), cv2.imread(os.path.join(DATA, f"patch_{name}.jpg")))
 
 
-def matched(name):
-    """match_views() of the student on one pair (computed once)."""
-    if name not in _cache:
-        (match_views,) = need(load_student("matching.py"), "match_views")
-        r = match_views(*pair(name))
+def matched(name, method):
+    if (name, method) not in _cache:
+        (mv,) = need(M(), "match_views")
+        r = mv(*pair(name), method=method)
         c.ok(isinstance(r, tuple) and len(r) == 3, f"match_views() should return (H, inliers, details), got {r!r}")
-        _cache[name] = r
-    return _cache[name]
+        _cache[(name, method)] = r
+    return _cache[(name, method)]
+
+
+def H_sim(rot_deg, scale, tx=100.0, ty=50.0, persp=(0.0, 0.0)):
+    a = math.radians(rot_deg)
+    return np.array([[scale * math.cos(a), -scale * math.sin(a), tx],
+                     [scale * math.sin(a), scale * math.cos(a), ty], [persp[0], persp[1], 1.0]])
 
 
 def angle_diff(a, b):
     return abs((a - b + 180.0) % 360.0 - 180.0)
 
 
-def check_pair(name, rot_tol, scale_tol, min_inl, centre_tol):
-    H, inl, _ = matched(name)
-    c.ok(H is not None, f"no homography found for the '{name}' pair — is TODO 3 complete?")
-    c.ok(int(inl) >= min_inl, f"only {inl} inliers on the '{name}' pair (expected at least {min_inl})")
-    m = load_student("matching.py")
-    rotation_and_scale, where_is_centre = need(m, "rotation_and_scale", "where_is_centre")
-    rs = rotation_and_scale(H)
-    c.ok(rs is not None and len(rs) == 2, "rotation_and_scale() should return (rotation, scale)")
+def check_pair(name, method, rot_tol, scale_tol, centre_tol, min_inl):
+    H, inl, _ = matched(name, method)
+    c.ok(H is not None, f"no homography found on '{name}' with method '{method}'")
+    c.ok(int(inl) >= min_inl, f"only {inl} inliers on '{name}' ({method}); expected at least {min_inl}")
+    (sp,) = need(G(), "similarity_params")
+    p = sp(H)
     t = TRUTH[name]
-    c.ok(angle_diff(float(rs[0]), t["rotation_deg"]) <= rot_tol,
-         f"rotation {float(rs[0]):.1f}° but the view was turned by {t['rotation_deg']:.0f}° (± {rot_tol}°)")
-    c.near(rs[1], t["scale"], tol=scale_tol * t["scale"], what=f"the scale of '{name}'")
-    p = where_is_centre(H, pair(name)[0])
-    c.ok(p is not None and len(p) == 2, "where_is_centre() should return (x, y)")
-    d = float(np.hypot(p[0] - t["centre"][0], p[1] - t["centre"][1]))
-    c.ok(d <= centre_tol, f"the centre lands {d:.1f} px from the truth (max {centre_tol} px)")
+    c.ok(angle_diff(p["rotation_deg"], t["rotation_deg"]) <= rot_tol,
+         f"'{name}' ({method}): rotation {p['rotation_deg']:.2f}°, truth {t['rotation_deg']:.0f}° (± {rot_tol}°)")
+    c.near(p["scale"], t["scale"], tol=scale_tol * t["scale"], what=f"the scale of '{name}' ({method})")
+    w, h = 480, 360
+    q = H @ np.array([w / 2.0, h / 2.0, 1.0])
+    d = math.hypot(q[0] / q[2] - t["centre"][0], q[1] / q[2] - t["centre"][1])
+    c.ok(d <= centre_tol, f"'{name}' ({method}): the view centre lands {d:.1f} px from the truth (max {centre_tol})")
 
 
-@c.test("ransac_line.py: fit_line_ransac() finds the true line (slope 0.6, intercept 12) despite the outliers",
-        hint="Each try: the line through 2 random points, count the points closer than `threshold`, keep the "
-             "best try, then refit on its inliers with least_squares_line(). Run `python3 ransac_line.py`.")
+@c.test("geometry.py runs its self-test without errors",
+        hint="Run `python3 geometry.py` and read the last lines of the output.")
 def _():
-    (fit,) = need(load_student("ransac_line.py"), "fit_line_ransac")
-    pts = np.loadtxt(os.path.join(DATA, "points.csv"), delimiter=",", skiprows=1)
-    r = fit(pts)
-    c.ok(r is not None and len(r) == 3, f"fit_line_ransac() should return (slope, intercept, inlier_mask), got {r!r}")
-    c.near(r[0], 0.6, tol=0.05, what="the slope")
-    c.near(r[1], 12.0, tol=2.0, what="the intercept")
+    code, out = sh("python3 geometry.py", timeout=60)
+    c.ok(code == 0, "geometry.py stopped with an error:\n" + out[-600:])
+    c.ok("not done yet" not in out, "geometry.py says some TODOs are not done yet:\n" + out[-600:])
 
 
-@c.test("fit_line_ransac(): the inlier mask marks the ~70 good points and leaves the outliers out",
-        hint="The mask is a numpy array of True/False, one per point: True when the point is close to the line.")
+@c.test("TODO 1 — apply_homography() divides by w'; reprojection_errors() gives one distance per pair",
+        hint="Homogeneous coordinates: append a 1 to each point, multiply by H, divide x' and y' by w'.")
 def _():
-    (fit,) = need(load_student("ransac_line.py"), "fit_line_ransac")
-    pts = np.loadtxt(os.path.join(DATA, "points.csv"), delimiter=",", skiprows=1)
-    r = fit(pts)
-    c.ok(r is not None and len(r) == 3, "fit_line_ransac() returns nothing yet")
-    mask = np.asarray(r[2]).astype(bool)
-    c.ok(mask.shape == (len(pts),), f"the mask should have one value per point ({len(pts)}), it has shape {mask.shape}")
-    c.ok(65 <= mask.sum() <= 76, f"{mask.sum()} inliers — the data has 70 points on the line (+ a few outliers "
-                                 "that happen to fall close to it)")
+    apply_h, rep = need(G(), "apply_homography", "reprojection_errors")
+    H = H_sim(30, 2.0, persp=(1e-3, -2e-3))
+    pts = np.array([[0.0, 0.0], [10.0, 20.0], [300.0, -40.0]])
+    ph = np.c_[pts, np.ones(3)] @ H.T
+    want = ph[:, :2] / ph[:, 2:]
+    got = np.asarray(apply_h(H, pts), float)
+    c.ok(got.shape == (3, 2), f"apply_homography should return shape (3, 2), got {got.shape}")
+    c.ok(np.allclose(got, want, atol=1e-6), f"apply_homography gives {got.round(3).tolist()}, expected "
+                                            f"{want.round(3).tolist()} — did you divide by the third coordinate?")
+    e = np.asarray(rep(H, pts, want + [[3.0, 4.0], [0, 0], [0, -2.0]]), float)
+    c.ok(e.shape == (3,) and np.allclose(e, [5.0, 0.0, 2.0], atol=1e-6),
+         f"reprojection_errors should be [5, 0, 2] here, got {e}")
 
 
-@c.test("ratio_test() keeps a clear match and drops an ambiguous one",
-        hint="Keep `best` only when best.distance < ratio * second.distance.")
+@c.test("TODO 2 — normalise_points(): centroid at 0, mean distance √2, and T does the same thing",
+        hint="T = [[s, 0, -s·cx], [0, s, -s·cy], [0, 0, 1]] with s = √2 / (mean distance to the centroid).")
 def _():
-    (ratio_test,) = need(load_student("matching.py"), "ratio_test")
-    clear = [cv2.DMatch(0, 5, 100.0), cv2.DMatch(0, 9, 300.0)]      # 100 < 0.8 x 300 → keep
-    ambiguous = [cv2.DMatch(1, 2, 200.0), cv2.DMatch(1, 3, 210.0)]  # 200 > 0.8 x 210 → drop
-    alone = [cv2.DMatch(2, 4, 50.0)]                                # no second candidate → drop
-    out = ratio_test([clear, ambiguous, alone], 0.8)
-    c.ok(isinstance(out, list), f"ratio_test() should return a list, got {out!r}")
-    c.eq(len(out), 1, "the number of matches kept")
-    c.eq((out[0].queryIdx, out[0].trainIdx), (0, 5), "the match kept (queryIdx, trainIdx)")
+    (norm,) = need(G(), "normalise_points")
+    rng = np.random.default_rng(5)
+    pts = rng.uniform([3.55e7, 2.6e7], [3.55e7 + 800, 2.6e7 + 800], (30, 2))
+    r = norm(pts)
+    c.ok(isinstance(r, tuple) and len(r) == 2, "normalise_points should return (pts_n, T)")
+    pn, T = np.asarray(r[0], float), np.asarray(r[1], float)
+    c.ok(pn.shape == (30, 2) and T.shape == (3, 3), f"shapes {pn.shape} and {T.shape}, expected (30, 2) and (3, 3)")
+    c.ok(np.allclose(pn.mean(0), 0, atol=1e-6), f"the centroid of pts_n is {pn.mean(0)}, expected (0, 0)")
+    c.near(np.linalg.norm(pn, axis=1).mean(), math.sqrt(2), tol=1e-6, what="the mean distance to the origin")
+    viaT = (np.c_[pts, np.ones(30)] @ T.T)[:, :2]
+    c.ok(np.allclose(viaT, pn, atol=1e-5), "T applied to pts does not give pts_n")
 
 
-@c.test("ratio_test() on the real 'city' pair keeps a few hundred matches",
-        hint="Use the `ratio` argument, not a fixed number; a match passes when it is clearly better than the second.")
+@c.test("TODO 3a — build_dlt_matrix(): two rows per pair, 9 columns, the rows of the course",
+        hint="For (x, y) → (u, v): [-x, -y, -1, 0, 0, 0, u·x, u·y, u] and [0, 0, 0, -x, -y, -1, v·x, v·y, v].")
 def _():
-    m = load_student("matching.py")
-    ratio_test, features = need(m, "ratio_test", "features")
-    v, p = pair("city")
-    _, dv = features(v)
-    _, dp = features(p)
-    pairs = cv2.BFMatcher(cv2.NORM_L2).knnMatch(dv, dp, k=2)
-    n8, n6 = len(ratio_test(pairs, 0.8)), len(ratio_test(pairs, 0.6))
-    c.ok(150 <= n8 <= 400, f"{n8} matches kept with ratio 0.8 (expected about 250)")
-    c.ok(n6 < n8, f"a stricter ratio (0.6) should keep fewer matches: {n6} vs {n8}")
+    (b,) = need(G(), "build_dlt_matrix")
+    A = np.asarray(b(np.array([[2.0, 3.0], [1.0, 1.0]]), np.array([[5.0, 7.0], [0.0, 1.0]])), float)
+    c.ok(A.shape == (4, 9), f"A has shape {A.shape}, expected (4, 9) for 2 pairs")
+    c.ok(np.allclose(A[0], [-2, -3, -1, 0, 0, 0, 10, 15, 5]) and np.allclose(A[1], [0, 0, 0, -2, -3, -1, 14, 21, 7]),
+         f"the two rows of the pair (2, 3) → (5, 7) are {A[:2].tolist()}")
 
 
-@c.test("rotation_and_scale() and where_is_centre() on a known matrix",
-        hint="rotation = atan2(H[1,0], H[0,0]) in degrees, scale = the length of (H[0,0], H[1,0]); "
-             "the centre: cv2.perspectiveTransform on an array of shape (1, 1, 2).")
+@c.test("TODO 3b — dlt_homography(): exact from 4 noise-free pairs (with and without normalisation); "
+        "ValueError with 3", hint="h is the LAST row of Vt from np.linalg.svd(A); reshape to 3x3; de-normalise "
+                                  "with inv(T_dst) @ Hn @ T_src; divide by H[2, 2].")
 def _():
-    m = load_student("matching.py")
-    rotation_and_scale, where_is_centre = need(m, "rotation_and_scale", "where_is_centre")
-    a = np.radians(40.0)
-    H = np.array([[2 * np.cos(a), -2 * np.sin(a), 100.0], [2 * np.sin(a), 2 * np.cos(a), 50.0], [0, 0, 1.0]])
-    rs = rotation_and_scale(H)
-    c.ok(rs is not None and len(rs) == 2, f"rotation_and_scale() should return (rotation, scale), got {rs!r}")
-    c.near(rs[0], 40.0, tol=0.01, what="the rotation (degrees)")
-    c.near(rs[1], 2.0, tol=0.001, what="the scale")
-    p = where_is_centre(H, np.zeros((100, 200, 3), np.uint8))    # centre (100, 50)
-    want = H[:2, :2] @ np.array([100.0, 50.0]) + H[:2, 2]
-    c.ok(p is not None and len(p) == 2, f"where_is_centre() should return (x, y), got {p!r}")
-    c.near(p[0], want[0], tol=0.01, what="x of the centre")
-    c.near(p[1], want[1], tol=0.01, what="y of the centre")
+    (dlt,) = need(G(), "dlt_homography")
+    H = H_sim(-50, 1.3, 400, -80, (2e-4, 1e-4))
+    src = np.array([[0.0, 0.0], [640.0, 0.0], [640.0, 480.0], [0.0, 480.0]])
+    ph = np.c_[src, np.ones(4)] @ H.T
+    dst = ph[:, :2] / ph[:, 2:]
+    for norm in (True, False):
+        He = np.asarray(dlt(src, dst, normalise=norm), float)
+        c.ok(He.shape == (3, 3), f"dlt_homography should return a 3x3 matrix, got shape {He.shape}")
+        c.ok(np.allclose(He / He[2, 2], H, atol=1e-6, rtol=1e-6),
+             f"normalise={norm}: H found\n{np.round(He, 5)}\nexpected\n{np.round(H, 5)}")
+        c.near(He[2, 2], 1.0, tol=1e-9, what="H[2, 2]")
+    try:
+        dlt(src[:3], dst[:3])
+    except ValueError:
+        return
+    c.ok(False, "dlt_homography with 3 pairs should raise ValueError")
 
 
-@c.test("match_views() on the 'city' pair: rotation 30° (±1°), scale 0.80 (±2 %), centre within 3 px",
-        hint="TODO 3: ratio_test → the (x, y) of each good match in both pictures → cv2.findHomography with "
-             "cv2.RANSAC and 5.0 → count the 1s in the mask.")
+@c.test("TODO 3b — with normalisation the DLT stays accurate in global map pixels (~3.55e7)",
+        hint="Normalise BOTH point sets with their own T, and de-normalise at the end. Without it, A is "
+             "hopelessly ill-conditioned at these coordinates.")
 def _():
-    check_pair("city", 1.0, 0.02, 100, 3.0)
+    dlt, sp = need(G(), "dlt_homography", "synthetic_pairs")
+    src, dst, H_true, _ = sp(n=300, outlier_ratio=0.0, noise_px=1.0, seed=3)
+    grid = np.stack(np.meshgrid(np.linspace(0, 640, 9), np.linspace(0, 480, 7)), -1).reshape(-1, 2)
+    rng = np.random.default_rng(0)
+    errs = []
+    off = 3.55e7
+    for _ in range(40):
+        i = rng.choice(300, 8, replace=False)
+        He = np.asarray(dlt(src[i], dst[i] + off), float)
+        a = np.c_[grid, np.ones(len(grid))]
+        p, q = a @ He.T, a @ H_true.T
+        errs.append(np.linalg.norm(p[:, :2] / p[:, 2:] - (q[:, :2] / q[:, 2:] + off), axis=1).mean())
+    c.ok(np.median(errs) < 3.0, f"median error {np.median(errs):.1f} px at global coordinates (expected ~1.3 px)")
 
 
-@c.test("match_views() on the 'olives' pair: rotation −60° (±1°), scale 1.20 (±2 %), centre within 3 px",
-        hint="Same function as for the city: if the city works, look at how you count the inliers.")
+@c.test("TODO 4 — ransac_iterations(): N = ⌈log(1−p) / log(1−wˢ)⌉ and its special cases",
+        hint="Round UP (math.ceil) and return an int; w = 1 needs 1 sample; w = 0 (or p not in (0, 1)) is a "
+             "ValueError.")
 def _():
-    check_pair("olives", 1.0, 0.02, 100, 3.0)
+    (ri,) = need(G(), "ransac_iterations")
+    for (p, w, s), want in (((0.99, 0.5, 4), 72), ((0.99, 0.5, 2), 17), ((0.999, 0.5, 4), 108),
+                            ((0.99, 0.3, 4), 567), ((0.99, 0.9, 2), 3)):
+        got = ri(p, w, s)
+        c.ok(isinstance(got, (int, np.integer)), f"ransac_iterations should return an int, got {got!r}")
+        c.eq(int(got), want, f"ransac_iterations(p={p}, w={w}, s={s})")
+    c.eq(int(ri(0.99, 1.0, 4)), 1, "ransac_iterations(0.99, 1.0, 4)")
+    try:
+        ri(0.99, 0.0, 4)
+    except ValueError:
+        return
+    c.ok(False, "ransac_iterations(0.99, 0.0, 4) should raise ValueError (no inlier: no N is enough)")
 
 
-@c.test("match_views() on the 'otherdate' pair (2022 photo vs today's map): rotation 120° (±4°), scale 1.5 (±6 %)",
-        hint="Keep the ratio 0.8 and the RANSAC threshold 5.0: a different date leaves far fewer good matches.")
+@c.test("TODO 5 — ransac_homography(): finds the true H among 30 % outliers, same result every run",
+        hint="Use rng = np.random.default_rng(seed). Inliers: reprojection error < threshold. Refit on all the "
+             "inliers of the best sample at the end.")
 def _():
-    check_pair("otherdate", 4.0, 0.06, 10, 8.0)
+    rh, sp = need(G(), "ransac_homography", "synthetic_pairs")
+    src, dst, H_true, is_in = sp()
+    r = rh(src, dst, 3.0)
+    c.ok(isinstance(r, tuple) and len(r) == 2, "ransac_homography should return (H, mask)")
+    H, mask = r
+    c.ok(H is not None, "no homography found")
+    mask = np.asarray(mask).astype(bool)
+    c.ok(mask.shape == (len(src),), f"the mask should have shape ({len(src)},), got {mask.shape}")
+    agree = (mask == is_in).mean()
+    c.ok(agree >= 0.97, f"the mask agrees with the true inliers on only {agree:.0%} of the pairs")
+    grid = np.c_[np.stack(np.meshgrid(np.linspace(0, 640, 5), np.linspace(0, 480, 5)), -1).reshape(-1, 2), np.ones(25)]
+    p, q = grid @ np.asarray(H, float).T, grid @ H_true.T
+    e = np.linalg.norm(p[:, :2] / p[:, 2:] - q[:, :2] / q[:, 2:], axis=1).max()
+    c.ok(e < 1.5, f"H is up to {e:.1f} px away from the true H on the image (expected < 1.5 px)")
+    H2, m2 = rh(src, dst, 3.0)
+    c.ok(np.array_equal(np.asarray(m2).astype(bool), mask), "two runs with the same seed gave different inliers")
+    H3, m3 = rh(src[:3], dst[:3], 3.0)
+    c.ok(H3 is None, "with 3 pairs there is no homography: H should be None")
 
 
-@c.test("match_views() on the 'sea' pair finds nothing — and does not crash",
-        hint="Open water has no keypoints: match_views() must return (None, 0, details) instead of failing.")
+@c.test("TODO 6 — similarity_params(): rotation, scale, anisotropy, perspective of known matrices",
+        hint="SVD of A = H[:2, :2]: R = U @ Vt, scale = √|det A|, anisotropy = S[0] / S[1], perspective = "
+             "length of (H[2, 0], H[2, 1]) after dividing H by H[2, 2].")
 def _():
-    H, inl, _ = matched("sea")
+    (sp,) = need(G(), "similarity_params")
+    p = sp(3.0 * H_sim(140.0, 2.0))
+    for k, want in (("rotation_deg", 140.0), ("scale", 2.0), ("anisotropy", 1.0), ("perspective", 0.0), ("tx", 100.0)):
+        c.ok(k in p, f"the dict has no key '{k}'")
+        c.near(p[k], want, tol=1e-6 if k != "rotation_deg" else 1e-4, what=k)
+    stretched = H_sim(0, 1.0) @ np.diag([2.0, 1.0, 1.0])
+    q = sp(stretched)
+    c.near(q["anisotropy"], 2.0, tol=1e-6, what="anisotropy of a 2:1 stretch")
+    c.near(q["scale"], math.sqrt(2.0), tol=1e-6, what="scale of a 2:1 stretch (√det)")
+
+
+@c.test("TODO 7 — ratio_test(): keeps a clear match, drops an ambiguous one and a lonely one",
+        hint="Keep `best` only when best.distance < ratio * second.distance — use the `ratio` argument.")
+def _():
+    (rt,) = need(M(), "ratio_test")
+    clear = [cv2.DMatch(0, 5, 100.0), cv2.DMatch(0, 9, 300.0)]
+    ambiguous = [cv2.DMatch(1, 2, 200.0), cv2.DMatch(1, 3, 210.0)]
+    alone = [cv2.DMatch(2, 4, 50.0)]
+    out = rt([clear, ambiguous, alone], 0.8)
+    c.ok(isinstance(out, list), f"ratio_test should return a list, got {out!r}")
+    c.eq([(m.queryIdx, m.trainIdx) for m in out], [(0, 5)], "the matches kept with ratio 0.8")
+    c.eq(len(rt([clear, ambiguous], 0.97)), 2, "the number kept with ratio 0.97")
+
+
+@c.test("TODO 8 — match_views(method='opencv') on 'city' and 'olives': rotation ±0.5°, scale ±1 %, centre ±2 px",
+        hint="ratio_test → (N, 2) float32 src/dst → cv2.findHomography(..., cv2.RANSAC, threshold) → boolean mask.")
+def _():
+    check_pair("city", "opencv", 0.5, 0.01, 2.0, 150)
+    check_pair("olives", "opencv", 0.5, 0.01, 2.0, 150)
+    _, _, det = matched("city", "opencv")
+    c.ok(det.get("mask") is not None and np.asarray(det["mask"]).dtype == bool and len(det["mask"]) == len(det["good"]),
+         "details['mask'] should be a boolean array with one value per good match")
+    c.ok(np.asarray(det.get("src")).shape == (len(det["good"]), 2), "details['src'] should be an (N, 2) array")
+
+
+@c.test("TODO 8 — match_views(method='mine') uses YOUR RANSAC: 'city', 'otherdate' right, 'sea' refused",
+        hint="method 'mine' calls geometry.ransac_homography(src, dst, threshold). The sea has no keypoints: "
+             "return (None, 0, details).")
+def _():
+    check_pair("city", "mine", 0.5, 0.01, 2.0, 150)
+    check_pair("otherdate", "mine", 3.0, 0.05, 6.0, 10)
+    H, inl, _ = matched("sea", "mine")
     c.ok(H is None or int(inl) < 8, f"a match on open water with {inl} inliers? It cannot be right")
 
 
-@c.test("trust(): believes the city match, refuses the sea and a wrong scale",
-        hint="False when H is None, when inliers < min_inliers, or when |scale / expected_scale − 1| > scale_tol.")
+@c.test("TODO 9 — trust(): NAVERA's gates, each with its own reason",
+        hint="In order: no H → inliers < min_inliers → rotation (wrapped difference) → |scale/expected − 1| → "
+             "inlier_spread(). Return (False, reason) or (True, 'ok').")
 def _():
-    (trust,) = need(load_student("matching.py"), "trust")
-    H, inl, _ = matched("city")
-    c.ok(H is not None, "match_views() finds no homography on the city pair yet")
-    c.ok(trust(H, inl, 0.8) is True, "trust() should say True for the city match (expected scale 0.8)")
-    c.ok(trust(H, inl, 1.2) is False, "trust() should say False when the scale is 0.8 but 1.2 was expected")
-    c.ok(trust(H, 5, 0.8) is False, "trust() should say False with only 5 inliers")
-    c.ok(trust(None, 0, 1.0) is False, "trust() should say False when there is no homography")
+    (tr,) = need(M(), "trust")
+    shape = (360, 480, 3)
+    everywhere = np.array([[x, y] for x in range(30, 480, 60) for y in range(30, 360, 60)], float)
+    one_strip = np.array([[x, 10.0] for x in range(5, 120, 5)], float)
+    H = H_sim(30.0, 0.8)
+    cases = [((None, everywhere, shape, 0.8), False, "homography"),
+             ((H, everywhere[:5], shape, 0.8), False, "inliers"),
+             ((H, everywhere, shape, 0.8, -150.0), False, "rotation"),
+             ((H, everywhere, shape, 1.2), False, "scale"),
+             ((H, one_strip, shape, 0.8), False, "spread"),
+             ((H, everywhere, shape, 0.8, 30.0), True, ""),
+             ((H, everywhere, shape, 0.8, 30.0 + 350.0), True, "")]       # 380° wraps to 20°: 10° away
+    for args, ok, word in cases:
+        r = tr(*args)
+        c.ok(isinstance(r, tuple) and len(r) == 2, f"trust() should return (ok, reason), got {r!r}")
+        c.ok(bool(r[0]) is ok, f"trust{('(H=None' if args[0] is None else '(H')}, {len(args[1])} inliers, "
+                               f"expected scale {args[3]}{', heading ' + str(args[4]) if len(args) > 4 else ''}) "
+                               f"returned {r[0]!r}, expected {ok}")
+        c.ok(word.lower() in str(r[1]).lower(), f"the reason {r[1]!r} should mention '{word}'")
 
 
-@c.test("draw_inlier_matches() saves a picture with the inlier matches only",
-        hint="Keep the matches whose mask value is True, cv2.drawMatches(...), cv2.imwrite(path, img), return path.")
+@c.test("results.json was written by experiments.py and holds your measurements",
+        hint="Run `python3 experiments.py` once every TODO works (about 30 s).")
 def _():
-    (draw,) = need(load_student("matching.py"), "draw_inlier_matches")
-    H, inl, details = matched("city")
-    c.ok(H is not None, "match_views() finds no homography on the city pair yet")
-    path = "_check_matches.png"
-    if os.path.exists(path):
-        os.remove(path)
-    draw(*pair("city"), details, path)
-    c.file_exists(path)
-    img = cv2.imread(path)
-    os.remove(path)
-    c.ok(img is not None and img.shape[1] == 480 + 800, "the picture should hold the view and the patch side by side")
+    c.file_exists("results.json")
+    r = json.load(open("results.json"))
+    for k in ("ransac_N", "monte_carlo", "normalisation", "pairs", "ratio_sweep"):
+        c.ok(k in r, f"results.json has no '{k}' — run experiments.py again")
+    c.eq(r["ransac_N"]["s4"]["0.5"], 72, "ransac_N s4 w=0.5")
+    c.ok(abs(r["monte_carlo"]["success_rate"] - 0.99) < 0.01, f"monte_carlo success_rate {r['monte_carlo']['success_rate']}")
+    g = r["normalisation"]["global_px"]
+    c.ok(g["median_err_normalised_px"] < 3 < g["median_err_raw_px"],
+         f"normalisation in global pixels: {g['median_err_normalised_px']} px normalised vs "
+         f"{g['median_err_raw_px']} px raw — expected the normalised one small and the raw one large")
+    c.ok(r["pairs"]["city"]["mine"].get("centre_error_px", 99) < 2, "your RANSAC misses the city centre in results.json")
+    c.ok(r["ratio_sweep"]["1.0"]["trusted"] is False, "with ratio 1.0 the 'otherdate' match should not be trusted")
+
+
+@c.test("analysis.md: five sections of at least 40 words, with the RANSAC numbers",
+        hint="Replace every line starting with '>' by your own text. Section 3 must quote N for s = 4 and s = 2 "
+             "(p = 0.99, w = 0.5).")
+def _():
+    c.file_exists("analysis.md")
+    txt = open("analysis.md", encoding="utf-8").read()
+    parts = re.split(r"^##\s+", txt, flags=re.M)[1:]
+    want = ["ratio test", "normalisation", "ransac iterations", "opencv vs mine", "trust gates"]
+    found = {}
+    for p in parts:
+        title, _, body = p.partition("\n")
+        for w in want:
+            if w in title.lower().replace("normalization", "normalisation"):
+                found[w] = "\n".join(l for l in body.splitlines() if not l.lstrip().startswith(">"))
+    for w in want:
+        c.ok(w in found, f"no section '## … {w.title()}' in analysis.md")
+        n = len(re.findall(r"[A-Za-z0-9.,%²√≈]+", found[w]))
+        c.ok(n >= 40, f"the section '{w}' has {n} words of your own (min 40)")
+    nums = re.findall(r"\d+", found["ransac iterations"])
+    c.ok("72" in nums and "17" in nums, "the section 'RANSAC iterations' should give N = 72 (s = 4) and N = 17 (s = 2)")
 
 
 c.run()

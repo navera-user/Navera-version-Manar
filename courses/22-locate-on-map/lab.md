@@ -1,16 +1,25 @@
-# Lab 22 — Find the drone on the map
+# Lab 22 — From a photo to latitude and longitude, with an error budget
 
-**Goal:** write the whole day-vision chain — scale, search patch, matching, RANSAC, gates, latitude and
-longitude — then measure its error on 13 drone photos whose true position is known exactly.
-**Time:** about 1 h 30.
+**Goal:** build the complete day-vision localisation chain (scale, search patch, matching, RANSAC
+similarity, gates, centre → lat/lon), measure two error sources experimentally (wrong height,
+tilted camera), evaluate your pipeline and NAVERA's own `LocalMatcher` on the same 13 photos, and
+write a short engineering report.
+**Time:** 2 h 30 – 3 h.
 
-You work in two files: [locate.py](file:./locate.py) (one photo) and [evaluate.py](file:./evaluate.py)
-(all the photos). [navmap.py](file:./navmap.py) holds the map helpers of lesson 7 (`map_patch`,
-`latlon_to_pixel`, `pixel_to_latlon`, `m_per_px`, `haversine_m`): use them, don't change them.
+| File | What you do in it |
+|---|---|
+| [locate.py](file:./locate.py) | TODOs 1–4: the chain for one photo |
+| [budget.py](file:./budget.py) | TODOs 5–8: error-budget formulas, then two experiments |
+| [evaluate.py](file:./evaluate.py) | TODOs 9–11: error, percentile, summary; runs both pipelines on all photos |
+| [report.md](file:./report.md) | TODO 12: your written analysis (graded) |
+| [navmap.py](file:./navmap.py) | map helpers of lesson 7 (`map_patch`, `latlon_to_pixel`, `pixel_to_latlon`, `m_per_px`, `haversine_m`): use, don't change |
 
-## Step 1 — Meet the photos
+The constants at the top of `locate.py` are NAVERA's values: `Z = 17`, `RATIO = 0.8`,
+`MIN_INLIERS = 8`, `SCALE_TOL = 0.15`, `RANSAC_PX = 6.0`.
 
-The dataset is in `/data/academy/22-locate-on-map/`. List the photos:
+## Step 1 — Meet the data
+
+All the data comes from NAVERA's test map, which covers **Sousse, Tunisia**. List the photos:
 
 ```bash
 ls /data/academy/22-locate-on-map/photos
@@ -22,30 +31,31 @@ and read the truth table:
 column -s, -t /data/academy/22-locate-on-map/truth.csv
 ```
 
-Each row gives the true centre of the photo (`true_lat`, `true_lon`), the height (`altitude_m`), the
-lens (`hfov_deg`), the heading of the photo's top (`heading_deg`), where the photo comes from
-(`source`) and the **prior** your code receives (`prior_lat`, `prior_lon`), a few hundred meters from
-the truth, with the search radius `search_m` = 300 m.
-
-Copy the overview picture here so you can open it in the editor:
+Each row gives the true centre of the photo (`true_lat`, `true_lon`), the height above the ground
+(`altitude_m`), the lens (`hfov_deg`), the heading of the photo's top (`heading_deg`), where the
+photo comes from (`source`), and the **prior** your code receives (`prior_lat`, `prior_lon`) with
+the search radius `search_m` = 300 m. Copy the overview picture here and open it in the editor:
 
 ```bash
 cp /data/academy/22-locate-on-map/overview.jpg .
 ```
 
-Open [overview.jpg](file:./overview.jpg). How were these "drone photos" made? By the script
-`/data/academy/22-locate-on-map/make_dataset.py`: it cuts a piece of map around a known point, turns
-it by the heading, scales it to what the camera would see from that height (lesson 17), then blurs
-it, changes its brightness and adds noise and JPEG artefacts. Because we chose the point, we know the
-**exact** truth — something a real flight log never gives so easily.
+How were these photos made? `/data/academy/22-locate-on-map/make_dataset.py` cuts a piece of map
+around a chosen point, turns it by the heading, scales it to the camera's GSD, then blurs it,
+changes its exposure, adds noise and JPEG artefacts. Because we chose the point, the truth is
+**exact** — a real flight log never gives that.
 
 | Photos | Source | What to expect |
 |---|---|---|
-| p01–p08 | cut from **the map itself** (city, port, olives, farms, hills…) | easy: the same picture as the map |
+| p01–p08 | cut from **the map itself** (medina, port, olives, farms, hills…) | easy: the same imagery as the map |
 | p09, p10 | **2022** imagery of Kalâa Kebira (another date, other shadows) | harder |
 | p11 | **2017** imagery of the same town | much harder |
 | p12 | open sea | nothing to match: the right answer is "no fix" |
 | p13 | the prior is **1.2 km** off: the true place is not in the searched map | "no fix" too |
+
+> [!QUESTION]
+> Before you code: for p13, what is the smallest `search_m` for which the true position is inside
+> the search circle? What would that cost in patch area compared with 300 m (course, section 3)?
 
 ## Step 2 — Run the demo
 
@@ -53,28 +63,29 @@ it, changes its brightness and adds noise and JPEG artefacts. Because we chose t
 python3 locate.py
 ```
 
-It says `Not written yet: TODO 1 (photo_m_per_px)`. Normal: let's write it.
+It says `Not written yet: TODO 1 (photo_m_per_px)`. Normal: the chain is yours to write.
 
-## Step 3 — The photo's scale (TODO 1)
+## Step 3 — GSD of the photo (TODO 1)
 
 > [!TASK]
 > In `locate.py`, write `photo_m_per_px(width_px, altitude_m, hfov_deg)`: the footprint width
-> `2 × altitude × tan(hfov / 2)` divided by the width in pixels. The angle is in **degrees**.
+> `2 · h · tan(hfov / 2)` divided by the width in pixels. The angle is in **degrees**.
 
-Test it (the course's example):
+Test it with the course's example:
 
 ```bash
 python3 -c "from locate import photo_m_per_px; print(photo_m_per_px(640, 200, 75))"
 ```
 
-You should see `0.4795…`. If you see a negative or huge number, you forgot `math.radians`.
+You should see `0.4795…`. A negative or huge number means you forgot `math.radians`.
 
-## Step 4 — Cut the map around the prior (TODO 2)
+## Step 4 — The search patch (TODO 2)
 
 > [!TASK]
 > Write `build_search_patch(prior_lat, prior_lon, search_m, margin_m, z=Z)`. It returns
-> `(patch, (x0, y0), mpp)`: the map piece centred on the prior, of half-width `search_m + margin_m`
-> meters, its top-left corner in global pixels, and the meters per map pixel.
+> `(patch, (x0, y0), mpp)`: the map square centred on the prior with half-width
+> `ceil((search_m + margin_m) / mpp)` pixels, its top-left corner in **global** pixels, and the
+> metres per map pixel.
 
 Try it around the old town of Sousse and save the patch:
 
@@ -82,137 +93,191 @@ Try it around the old town of Sousse and save the patch:
 python3 -c "import cv2; from locate import build_search_patch; p, o, m = build_search_patch(35.8256, 10.6370, 300, 200); print(p.shape, o, m); cv2.imwrite('patch.png', p)"
 ```
 
-Expected: `(1034, 1034, 3) (17768139, 13195900) 0.968…`. 500 m / 0.968 m per pixel = 516.3, rounded
-up to 517 pixels on each side of the centre. The corner's numbers are big because they are **global**
-pixels: counted from the corner of the whole world map at zoom 17 (lesson 7). Open [patch.png](file:./patch.png): the walled medina with the port on the right.
+Expected: `(1034, 1034, 3) (17768139, 13195900) 0.968…` — 500 m / 0.968 m = 516.3, rounded up
+to 517 pixels on each side. Open [patch.png](file:./patch.png): the walled medina and the port.
 
-## Step 5 — Matches with the ratio test (TODO 3)
+## Step 5 — Ratio test (TODO 3)
 
-`match_features()` already computes SIFT keypoints in both pictures (up to 1 500 in the photo, no limit
-in the map piece, which is much bigger). You add the **ratio test** of lesson 21.
+`match_features()` already computes SIFT in both images (≤ 1 500 keypoints in the photo, no limit in
+the patch). You add the ratio test of lesson 21.
 
 > [!TASK]
-> In `match_features()`, replace `good = []` by the ratio test: `knnMatch(d1, d2, k=2)`, and keep
-> `p[0]` when `p[0].distance < RATIO * p[1].distance`.
+> Replace `good = []` by the ratio test: `knnMatch(d1, d2, k=2)`, keep `p[0]` when the pair has two
+> elements and `p[0].distance < RATIO * p[1].distance`.
 
-Without the test you would keep all 1 500 photo keypoints, most of them matched to a random look-alike.
+## Step 6 — Similarity, gates, position (TODO 4)
 
-## Step 6 — Fit, gates, position (TODO 4)
-
-Now the heart of the chain. Read the comments of TODO 4 in `locate()` and the course section
-"Step 5 — From the photo centre to latitude and longitude". In short:
-
-1. `cv2.estimateAffinePartial2D(src, dst, method=cv2.RANSAC, …)` → the matrix `A` and the inliers;
-2. read the **scale** and the **rotation** from `A`, count the inliers;
-3. the **gates**: at least `MIN_INLIERS` inliers, and `|scale − 1| ≤ SCALE_TOL`; otherwise return the
-   result with `accepted=False` and a clear `reason`;
-4. the photo centre through `A`, plus `(x0, y0)`, through `navmap.pixel_to_latlon`.
+Read the comments of TODO 4 in `locate()` and sections 4–6 of the course. You fit the similarity
+with `cv2.estimateAffinePartial2D(..., method=cv2.RANSAC, ...)`, read `s` and `θ` from the first
+column of `A`, apply the two gates, and carry the centre to latitude/longitude.
 
 > [!TASK]
 > Complete `locate()` so that it returns `accepted=True` with `lat`, `lon`, `inliers`, `scale` and
 > `rotation_deg` for a good match, and `accepted=False`, `lat=None` and a `reason` otherwise.
 
-Run the demo on the first photo:
+Run the demo on photo p01:
 
 ```bash
 python3 locate.py
 ```
 
-You should see about 950 inliers, a scale of `1.0`, a rotation of `30.0` (the photo's heading!) and an
-error well under a meter. It takes one or two seconds: SIFT on a 1 000 × 1 000 map piece is real work.
-Open [locate_demo.png](file:./locate_demo.png): the blue circle is the search area around the prior
-(blue cross), the green ring is the truth, the red outline is where your code placed the photo.
-
-Now the hard ones. The sea:
+Expect about 950 inliers, scale `1.0`, rotation `30.0` (the heading of the photo) and an error
+well under a metre, in 1–3 s. Open [locate_demo.png](file:./locate_demo.png): blue = prior and
+search circle, green = truth, red = your answer and the photo outline. Now the hard cases. The sea:
 
 ```bash
 python3 locate.py p12_sea
 ```
 
-It must say `accepted: False` — there is not a single keypoint on calm water. The lost drone:
+It must say `accepted: False` — calm water has no keypoints. The lost drone:
 
 ```bash
 python3 locate.py p13_lost
 ```
 
-The true place is outside the map piece, so RANSAC can only find nonsense: the gates must refuse it.
-And a photo from another year:
+The true place is outside the patch; whatever RANSAC fits there must be refused by the gates. And a
+photo from another year:
 
 ```bash
 python3 locate.py p09_kalaa22
 ```
 
-Only a handful of inliers this time (around 15–20 instead of hundreds): roofs were repainted, shadows
-fall elsewhere, cars moved. It is still enough — just.
+Only 15–20 inliers instead of hundreds: roofs repainted, shadows elsewhere, cars moved. Just enough.
 
 > [!QUESTION]
-> In `p13_lost`, what would happen without the gates? Look at the inliers and scale your code
-> printed, and imagine the autopilot receiving that position.
+> For p13, write down the inliers and the scale your code printed. Which gate refused it? Would
+> the other gate alone have been enough?
 
-## Step 7 — Measure honestly (TODO 5 and 6)
+## Step 7 — The error budget (TODOs 5–8)
+
+Open [budget.py](file:./budget.py). Four small formulas from section 7 of the course:
 
 > [!TASK]
-> In `evaluate.py`, write `error_m(res, row)` (`None` for a refused photo, else the haversine distance
-> to the truth in meters) and `median(values)` (`None` for an empty list). Then run the evaluation:
+> - **TODO 5** `expected_scale(h_true, h_assumed)` — the scale RANSAC fits when the photo was
+>   resized with the wrong height.
+> - **TODO 6** `tilt_offset_m(height_m, tilt_deg)` — `h · tan θ`.
+> - **TODO 7** `tilt_homography(width, height, hfov_deg, tilt_deg)` — `H = K R K⁻¹`, with the focal
+>   length in pixels `f = (width / 2) / tan(hfov / 2)`, `K = [[f, 0, w/2], [0, f, h/2], [0, 0, 1]]`
+>   and `R` the rotation by `tilt_deg` about the x axis. A pure rotation of the camera around its
+>   lens moves every image point by this homography (lesson 21): it lets you make a "tilted" photo
+>   from a straight-down one.
+> - **TODO 8** `rss(terms)` and `error_budget(...)` — the four terms in metres (tilt, matcher =
+>   pixels × map metres per pixel, lag = speed × lag, map) and `total_m` = their RSS.
+
+Quick tests (the expected values are in the course):
+
+```bash
+python3 -c "from budget import *; print(expected_scale(200, 160), tilt_offset_m(200, 5), rss([3, 4]))"
+```
+
+You should see `1.25 17.49… 5.0`. Then run the two experiments with **your** `locate()`:
+
+```bash
+python3 budget.py
+```
+
+It takes about 30 s. Part 1 locates photo p01 with heights from 0.7 × to 1.3 × the truth; part 2
+re-renders p01 as if the camera were pitched by 0°, 2°, 5° and 10°, and locates it while believing
+it looks straight down. It writes `budget.json` and [tilted_photo.png](file:./tilted_photo.png)
+(the 10° photo: notice the trapezoid of black borders). Compare the fitted scale with the expected
+one, and the measured error with `h · tan θ`.
+
+> [!QUESTION]
+> With a wrong height the error stays under a metre when the photo is accepted. With a tilt it
+> grows steadily. Why is one an **availability** problem and the other an **accuracy** problem?
+
+## Step 8 — Evaluate both pipelines (TODOs 9–11)
+
+> [!TASK]
+> In `evaluate.py`, write:
+> - **TODO 9** `error_m(res, lat_key, lon_key, row)` — `None` for a refused photo, else the haversine
+>   distance to the truth. The keys differ: your `locate()` says `"lat"`, NAVERA says `"predicted_lat"`.
+> - **TODO 10** `percentile(values, q)` — linear interpolation, like `np.percentile` (course, section 8).
+> - **TODO 11** `summarise(errors)` — `n`, `accepted`, `availability`, `median_m`, `p90_m`, `worst_m`,
+>   `wrong_accepted` (error > 50 m).
+
+Then run the evaluation:
 
 ```bash
 python3 evaluate.py
 ```
 
-It locates all 13 photos (about 30 seconds), prints a table, and writes `results.csv` and
-[errors.png](file:./errors.png). With a correct solution you should get:
+It takes about 1 min 30 s: for each of the 13 photos it runs **your** pipeline and NAVERA's
+`LocalMatcher`, imported from your NAVERA copy (`~/navera/day_pkg/day_pkg/local_matcher.py`), on the
+CPU, with the map tiles saved in the dataset (`images/tile_17_x_y.jpg`, NAVERA's layout). It prints
+both results side by side and writes `results.csv`, `results.json` and [errors.png](file:./errors.png).
 
-- p01–p08 (cut from the map): all accepted, hundreds of inliers, errors **under half a meter**;
-- p09–p10 (2022 imagery): accepted with 15–20 inliers, about 1 m off;
-- p11 (2017), p12 (sea), p13 (lost): **no fix**;
-- in total 10/13 accepted, a median error of about 0.2–0.3 m, and **no wrong position**.
+With a correct solution you should get, for your pipeline, about 10/13 accepted, a median of about
+0.3 m and 0 wrong; for `LocalMatcher`, fewer accepted photos with similar errors. Look carefully at
+p09 and p10: your pipeline accepts them, NAVERA refuses them (2–5 inliers). Find the reason in the
+course ("In NAVERA") — it is a design trade-off, not a bug.
 
-Now be critical. Is NAVERA's day vision accurate to 30 cm? **No.** Photos p01–p08 are cut from the
-very picture we match against: of course they match. Look at how the inlier count collapses when the
-photo comes from another date (p09–p11): that, not the 0.3 m, is the lesson. Real flights add a lens,
-haze, a tilted camera and an imprecise height. That is why `docs/VALIDATION_STATUS.md` quotes NAVERA's
-bench result on real aerial frames from another source (median 4 m, 32/33 within 9 m) and marks the
-simulator's ~1 m as **optimistic**: its camera, like our p01–p08, is cut from the map's own imagery.
+> [!WARNING]
+> Is NAVERA's day vision accurate to 30 cm? **No.** Photos p01–p08 are cut from the very imagery you
+> match against. The inlier count collapsing on 2022 and 2017 imagery is the real lesson. Real
+> flights add lens distortion, haze, blur, tilt and an imperfect height.
 
-## Step 8 — Check your work
+## Step 9 — Write the report (TODO 12)
 
-Press **✔ Check my work**. The check runs your `locate()` on every photo (it takes about a minute), and
-tests `photo_m_per_px`, the patch, the ratio test, the rotation and scale, the refusals and your
-`results.csv`.
+> [!TASK]
+> Fill in [report.md](file:./report.md): keep the four headings, replace every `TODO` line, about
+> 300 words or more. The check verifies that you quote **your** numbers: your result as `a/13`,
+> NAVERA's as `b/13`, your measured error for the 5° tilt and the Nizwa total from `budget.json`
+> (one decimal is enough), and that no `TODO` is left.
+
+To print the numbers you need:
+
+```bash
+python3 -c "import json; d = json.load(open('results.json')); print(d['student']); print(d['navera'])"
+```
+
+```bash
+python3 -c "import json; b = json.load(open('budget.json')); print(b['tilt_sweep']); print(b['nizwa_case'])"
+```
+
+## Step 10 — Check your work
+
+Press **✔ Check my work**. It tests every function with known values, runs your `locate()` on the
+13 photos (about a minute), and reads `budget.json`, `results.json` and `report.md`. Read the hint of
+any red line, fix, re-run the program that writes the file, and check again.
 
 ## Going further (optional)
 
-1. **NAVERA's own matcher on your photos.** `compare_navera.py` imports `LocalMatcher` from
-   your NAVERA copy (`~/navera/day_pkg/day_pkg/local_matcher.py`) and runs it, on the CPU, on the same
-   13 photos, with the map tiles saved in the dataset (`images/tile_17_x_y.jpg`, NAVERA's layout):
-
-   ```bash
-   python3 compare_navera.py
-   ```
-
-   Compare its table with yours. On these photos NAVERA's SIFT matcher accepts the 8 map-cut photos
-   with the same sub-meter error, but **refuses** the 2022 photos (2–5 inliers). Why? It keeps only 300
-   keypoints per map tile (to stay fast in flight), you kept them all. Speed against sensitivity is a
-   real engineering trade-off; on the Jetson, NAVERA's default is the learned matcher (DISK + LightGlue)
-   precisely because it does better on such cross-date photos.
-2. **Remove a gate.** Make a copy without the scale gate and with a minimum of 3 inliers:
+1. **Remove the gates.** Make a copy without the scale gate and with a minimum of 3 inliers:
 
    ```bash
    sed 's/^MIN_INLIERS = 8 /MIN_INLIERS = 3 /; s/^SCALE_TOL = 0.15 /SCALE_TOL = 100 /' locate.py > locate_nogate.py
    ```
 
-   then locate the 2017 photo with it:
+   then locate the 2017 photo and the lost drone with it:
 
    ```bash
    python3 locate_nogate.py p11_kalaa17
    ```
 
-   Look at the scale it accepts, and at the error. This is exactly the "prototype, no scale check" row
-   of the course.
-3. **A bigger search.** The prior of `p13_lost` is 1.2 km off. Write a small script that calls
-   `locate()` on that photo with `search_m=1000` (the square map piece then reaches the true place).
-   Does it find the drone? How long does it take compared with `search_m=300`? Try 1500 too: in your
-   sandbox (1.8 GB of memory) the program is probably **killed** — the map piece is 3 500 pixels wide
-   and holds hundreds of thousands of keypoints. Time, memory and the risk of look-alikes all grow
-   with the search area: that is why NAVERA caps its search circle at 1 500 m and keeps only 300
-   keypoints per tile.
+   ```bash
+   python3 locate_nogate.py p13_lost
+   ```
+
+   The 2017 photo is now "accepted" with 3 inliers, a scale of about 3.6 and an error of about
+   150 m; p13 is still refused, but only because RANSAC found 2 inliers. This is the "prototype, no
+   scale check" row of the course.
+2. **No height at all.** NAVERA's `locate_any_height()` tries a ladder of heights and measures the
+   height from the fitted scale (`h = h_tried × s`). Run it on p01 with no height given:
+
+   ```bash
+   python3 -c "import sys, os, cv2; sys.path.insert(0, os.path.expanduser('~/navera/day_pkg')); from day_pkg.local_matcher import LocalMatcher; m = LocalMatcher('/data/academy/22-locate-on-map/images', device='cpu'); r = m.locate_any_height(cv2.imread('/data/academy/22-locate-on-map/photos/p01_medina.jpg'), (35.824881, 10.638330), 300, 75, min_alt_m=60, max_alt_m=600); print(r['accepted'], r.get('altitude_m'), r['heights_tried'], r['inliers'])"
+   ```
+
+   (OpenCV may print `WARN … can't open/read file` for map tiles outside the dataset: harmless.)
+   The true height is 200 m. How close is the measured one? Why does this search need 15 inliers
+   instead of 8?
+3. **A bigger search.** Call your `locate()` on p13 with `search_m=1000`. Does it find the drone?
+   How long does it take compared with 300 m? Try 1 500 m: in the sandbox (about 1.8 GB of memory)
+   the program will probably be **killed** — the patch is 3 500 pixels wide with hundreds of
+   thousands of keypoints. This is why NAVERA caches at most 300 features per tile and caps its
+   search radius at 1 500 m.
+4. **Oman.** Using only formulas: a drone 150 m above the mudflats of Barr Al Hikman with a 90°
+   camera. What is its GSD, the zoom-17 GSD at latitude 20.6°, and the resize factor? Would you
+   expect enough features on wet, uniform mudflats (lesson 20)? What does that mean for the
+   availability of day vision on a coastal survey there?

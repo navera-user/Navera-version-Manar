@@ -1,4 +1,4 @@
-# Lesson 22 — find a drone photo on the satellite map.
+# Lesson 22 — find a drone photo on the satellite map (NAVERA's test map covers Sousse, Tunisia).
 # Run the demo:  python3 locate.py            (locates photo p01 and draws locate_demo.png)
 #                python3 locate.py p05_farms  (another photo of the dataset)
 import math
@@ -10,23 +10,24 @@ import numpy as np
 import navmap
 
 Z = 17                 # the zoom NAVERA's day vision matches against (about 0.97 m per pixel here)
-RATIO = 0.8            # ratio test (lesson 21)
-MIN_INLIERS = 8        # like NAVERA's local_min_inliers
-SCALE_TOL = 0.15       # the fitted scale must be 1 ± 15 % (NAVERA's local_scale_tol)
+RATIO = 0.8            # ratio test (lesson 21), NAVERA's value
+MIN_INLIERS = 8        # gate 1, like NAVERA's local_min_inliers
+SCALE_TOL = 0.15       # gate 2: the fitted scale must be 1 ± 15 % (NAVERA's local_scale_tol)
+RANSAC_PX = 6.0        # RANSAC inlier threshold in map pixels (NAVERA's ransac_px)
 
 
 def photo_m_per_px(width_px, altitude_m, hfov_deg):
-    """Ground size of one photo pixel, in meters (lesson 17): footprint width / pixel width."""
-    # TODO 1: the footprint width is 2 * altitude * tan(hfov / 2)  (hfov in DEGREES: convert!)
+    """Ground size of one photo pixel, in metres (lesson 17): footprint width / pixel width."""
+    # TODO 1: footprint width W = 2 * altitude * tan(hfov / 2)   (hfov in DEGREES: convert!)
     footprint = 2.0 * altitude_m * math.tan(math.radians(hfov_deg) / 2.0)
     return footprint / width_px
 
 
 def build_search_patch(prior_lat, prior_lon, search_m, margin_m, z=Z):
     """The piece of map where the photo can be: a square centred on the prior, of half-width
-    search_m + margin_m (in meters). Returns (patch BGR image, (x0, y0) its top-left global
-    pixel, meters per map pixel)."""
-    # TODO 2: meters per map pixel at the prior, half-width in pixels, then navmap.map_patch
+    search_m + margin_m (in metres). Returns (patch BGR image, (x0, y0) its top-left global
+    pixel, metres per map pixel)."""
+    # TODO 2: metres per map pixel at the prior, half-width in pixels (rounded UP), navmap.map_patch
     mpp = navmap.m_per_px(prior_lat, z)
     half = int(math.ceil((search_m + margin_m) / mpp))
     patch, origin = navmap.map_patch(prior_lat, prior_lon, z, 2 * half, 2 * half)
@@ -41,7 +42,7 @@ def match_features(photo_grey, patch_grey):
     kp2, d2 = cv2.SIFT_create(nfeatures=0, contrastThreshold=0.02).detectAndCompute(patch_grey, None)
     if d1 is None or d2 is None or len(kp1) < 2 or len(kp2) < 2:
         return np.zeros((0, 2), np.float32), np.zeros((0, 2), np.float32)
-    # TODO 3: knnMatch with k=2, keep a match when best.distance < RATIO * second.distance
+    # TODO 3: the ratio test (lesson 21)
     pairs = cv2.BFMatcher(cv2.NORM_L2).knnMatch(d1, d2, k=2)
     good = [p[0] for p in pairs if len(p) == 2 and p[0].distance < RATIO * p[1].distance]
     src = np.float32([kp1[m.queryIdx].pt for m in good]).reshape(-1, 2)
@@ -58,7 +59,7 @@ def locate(photo, prior_lat, prior_lon, alt_m, hfov_deg, search_m=300.0):
     mpp_photo = photo_m_per_px(grey.shape[1], alt_m, hfov_deg)
     mpp_map = navmap.m_per_px(prior_lat, Z)
     s = mpp_photo / mpp_map
-    small = cv2.resize(grey, None, fx=s, fy=s, interpolation=cv2.INTER_AREA)
+    small = cv2.resize(grey, None, fx=s, fy=s, interpolation=cv2.INTER_AREA if s < 1 else cv2.INTER_LINEAR)
     # 2. the map around the prior: the search circle + half the photo's diagonal on the ground
     margin = 0.5 * math.hypot(*grey.shape[:2]) * mpp_photo
     patch, (x0, y0), _ = build_search_patch(prior_lat, prior_lon, search_m, margin)
@@ -68,9 +69,8 @@ def locate(photo, prior_lat, prior_lon, alt_m, hfov_deg, search_m=300.0):
     if len(src) < MIN_INLIERS:
         res["reason"] = f"only {len(src)} feature matches (min {MIN_INLIERS})"
         return res
-    # TODO 4: fit rotation + scale + shift with RANSAC, read the scale and rotation,
-    #         apply the gates, carry the photo centre to the map and then to lat/lon
-    A, inl = cv2.estimateAffinePartial2D(src, dst, method=cv2.RANSAC, ransacReprojThreshold=6.0,
+    # TODO 4: similarity with RANSAC, scale and rotation, the two gates, centre -> lat/lon
+    A, inl = cv2.estimateAffinePartial2D(src, dst, method=cv2.RANSAC, ransacReprojThreshold=RANSAC_PX,
                                          maxIters=5000, confidence=0.999)
     if A is None:
         res["reason"] = "no consistent geometry"
@@ -83,11 +83,11 @@ def locate(photo, prior_lat, prior_lon, alt_m, hfov_deg, search_m=300.0):
         res["reason"] = f"{n_in} inliers (min {MIN_INLIERS})"
         return res
     if abs(scale - 1.0) > SCALE_TOL:
-        res["reason"] = f"fitted scale {scale:.2f}, expected 1 ± {SCALE_TOL}: wrong place"
+        res["reason"] = f"fitted scale {scale:.2f}, expected 1 ± {SCALE_TOL}: wrong place or wrong height"
         return res
     u, v = A @ np.array([small.shape[1] / 2.0, small.shape[0] / 2.0, 1.0])
     lat, lon = navmap.pixel_to_latlon(x0 + u, y0 + v, Z)
-    res.update(accepted=True, lat=lat, lon=lon, reason="ok", _A=A, _patch=patch, _small=small)
+    res.update(accepted=True, lat=lat, lon=lon, reason="ok", _A=A, _small=small)
     return res
 
 

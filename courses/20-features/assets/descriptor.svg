@@ -6,7 +6,7 @@
   <circle cx="90" cy="110" r="52" fill="none" stroke="#d64545" stroke-width="3"/>
   <line x1="90" y1="110" x2="138" y2="92" stroke="#d64545" stroke-width="3"/>
   <circle cx="90" cy="110" r="4" fill="#d64545"/>
-  <text x="90" y="30" text-anchor="middle" fill="#1d2733">a keypoint: place, size, angle</text>
+  <text x="90" y="30" text-anchor="middle" fill="#1d2733" font-size="12">keypoint (x, y), σ, θ</text>
   <!-- arrow -->
   <path d="M175 110 L215 110" stroke="#1d2733" stroke-width="2"/><path d="M215 104 L225 110 L215 116 z" fill="#1d2733"/>
   <!-- SIFT grid of histograms -->
@@ -21,8 +21,8 @@
     <line x1="349" y1="159" x2="338" y2="159"/><line x1="284" y1="159" x2="293" y2="150"/>
     <line x1="349" y1="61" x2="360" y2="66"/>
   </g>
-  <text x="300" y="30" text-anchor="middle" fill="#1d2733">SIFT: 4×4 cells × 8 directions</text>
-  <text x="300" y="195" text-anchor="middle" fill="#0b6e8a">= 128 numbers</text>
+  <text x="300" y="30" text-anchor="middle" fill="#1d2733">SIFT: 4×4 cells × 8 orientations</text>
+  <text x="300" y="195" text-anchor="middle" fill="#0b6e8a">= 128 floats, normalised</text>
   <!-- arrow -->
   <path d="M380 110 L420 110" stroke="#1d2733" stroke-width="2"/><path d="M420 104 L430 110 L420 116 z" fill="#1d2733"/>
   <!-- fingerprint -->
@@ -33,6 +33,6 @@
     <text x="440" y="142">     10111101 … (256 bits</text>
     <text x="440" y="158">      = 32 bytes)</text>
   </g>
-  <text x="525" y="30" text-anchor="middle" fill="#1d2733">the "fingerprint"</text>
-  <text x="310" y="232" text-anchor="middle" fill="#a8680d">Same place seen in another photo → almost the same fingerprint. Another place → a very different one.</text>
+  <text x="525" y="30" text-anchor="middle" fill="#1d2733">the descriptor vector</text>
+  <text x="310" y="222" text-anchor="middle" fill="#a8680d">Same ground point in two photos → small distance (L2 for SIFT, Hamming for ORB).</text><text x="310" y="240" text-anchor="middle" fill="#a8680d">Unrelated points → large distance (ORB: about 128 of 256 bits differ).</text>
 </svg>

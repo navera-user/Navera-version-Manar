@@ -1,0 +1,176 @@
+{
+ "ransac_N": {
+  "s2": {
+   "0.9": 3,
+   "0.7": 7,
+   "0.5": 17,
+   "0.3": 49,
+   "0.1": 459
+  },
+  "s4": {
+   "0.9": 5,
+   "0.7": 17,
+   "0.5": 72,
+   "0.3": 567,
+   "0.1": 46050
+  }
+ },
+ "monte_carlo": {
+  "w": 0.5,
+  "s": 4,
+  "N": 72,
+  "runs": 20000,
+  "success_rate": 0.9899,
+  "predicted": 0.99
+ },
+ "normalisation": {
+  "patch_px": {
+   "cond_raw": 106069322.21777993,
+   "cond_normalised": 570.5506389591667,
+   "median_err_raw_px": 1.355,
+   "median_err_normalised_px": 1.345
+  },
+  "global_px": {
+   "cond_raw": 8.500411177894317e+17,
+   "cond_normalised": 570.5506388526516,
+   "median_err_raw_px": 25.286,
+   "median_err_normalised_px": 1.345
+  }
+ },
+ "pairs": {
+  "city": {
+   "opencv": {
+    "good": 253,
+    "inliers": 241,
+    "ms": 1249,
+    "rotation_deg": 29.957,
+    "scale": 0.8002,
+    "anisotropy": 1.0013,
+    "perspective": 1.292436368817797e-06,
+    "centre_error_px": 0.188,
+    "trusted": true,
+    "reason": "ok"
+   },
+   "mine": {
+    "good": 253,
+    "inliers": 241,
+    "ms": 1581,
+    "rotation_deg": 29.959,
+    "scale": 0.8002,
+    "anisotropy": 1.0012,
+    "perspective": 1.1888710066718323e-06,
+    "centre_error_px": 0.189,
+    "trusted": true,
+    "reason": "ok"
+   }
+  },
+  "olives": {
+   "opencv": {
+    "good": 360,
+    "inliers": 327,
+    "ms": 1195,
+    "rotation_deg": -59.974,
+    "scale": 1.1994,
+    "anisotropy": 1.0019,
+    "perspective": 2.7964661827527867e-06,
+    "centre_error_px": 0.381,
+    "trusted": true,
+    "reason": "ok"
+   },
+   "mine": {
+    "good": 360,
+    "inliers": 341,
+    "ms": 1380,
+    "rotation_deg": -59.981,
+    "scale": 1.1993,
+    "anisotropy": 1.0016,
+    "perspective": 2.2984723925406555e-06,
+    "centre_error_px": 0.4,
+    "trusted": true,
+    "reason": "ok"
+   }
+  },
+  "otherdate": {
+   "opencv": {
+    "good": 37,
+    "inliers": 19,
+    "ms": 1307,
+    "rotation_deg": 119.832,
+    "scale": 1.5184,
+    "anisotropy": 1.024,
+    "perspective": 4.965890849978551e-05,
+    "centre_error_px": 1.014,
+    "trusted": true,
+    "reason": "ok"
+   },
+   "mine": {
+    "good": 37,
+    "inliers": 22,
+    "ms": 2968,
+    "rotation_deg": 119.662,
+    "scale": 1.5253,
+    "anisotropy": 1.0384,
+    "perspective": 7.339819003387601e-05,
+    "centre_error_px": 1.339,
+    "trusted": true,
+    "reason": "ok"
+   }
+  },
+  "sea": {
+   "opencv": {
+    "good": 0,
+    "inliers": 0,
+    "ms": 354,
+    "trusted": false,
+    "reason": "no homography"
+   },
+   "mine": {
+    "good": 0,
+    "inliers": 0,
+    "ms": 436,
+    "trusted": false,
+    "reason": "no homography"
+   }
+  }
+ },
+ "ratio_sweep": {
+  "0.6": {
+   "good": 2,
+   "inliers": 0,
+   "trusted": false,
+   "reason": "no homography"
+  },
+  "0.7": {
+   "good": 11,
+   "inliers": 11,
+   "centre_error_px": 3.76,
+   "inlier_ratio": 1.0,
+   "trusted": true,
+   "reason": "ok"
+  },
+  "0.8": {
+   "good": 37,
+   "inliers": 19,
+   "centre_error_px": 1.01,
+   "inlier_ratio": 0.514,
+   "trusted": true,
+   "reason": "ok"
+  },
+  "0.9": {
+   "good": 246,
+   "inliers": 44,
+   "centre_error_px": 4.08,
+   "inlier_ratio": 0.179,
+   "trusted": true,
+   "reason": "ok"
+  },
+  "1.0": {
+   "good": 2000,
+   "inliers": 11,
+   "centre_error_px": 363.97,
+   "inlier_ratio": 0.005,
+   "trusted": false,
+   "reason": "fitted rotation 173 deg, expected 120"
+  }
+ }
+}

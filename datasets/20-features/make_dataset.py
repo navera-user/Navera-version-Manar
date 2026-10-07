@@ -6,8 +6,11 @@
 - six 512x512 map patches at zoom 17 (~0.97 m/px, the zoom NAVERA's day vision matches against),
   one per kind of ground, read from the satellite map (MBTiles);
 - two synthetic "drone views" of the city: a clear one and a blurry, dark one;
-- one real aerial frame (a picture only: its flight_log GPS labels are WRONG).
+- one real aerial frame (a picture only: its flight_log GPS labels are WRONG);
+- pairs.json + pair_*.jpg: synthetic drone views with the EXACT 3x3 transform H that maps a
+  pixel (u, v) of the map patch terrain_<name>.jpg to the drone view (for repeatability).
 """
+import json
 import csv
 import math
 import os
@@ -33,13 +36,15 @@ Z, SIZE = 17, 512
 REAL = os.path.expanduser("~/navera_data/camera_pkg/camera_pkg/data/day/frame_0010.jpeg")
 
 
-def drone_view(lat, lon, heading_deg, m_per_px, w=640, h=480, blur=0.0, gain=1.0, offset=0.0, seed=0):
-    """A synthetic nadir photo: the z18 map around (lat, lon), turned by heading_deg, at m_per_px."""
-    z = 18
+def drone_view(lat, lon, heading_deg, m_per_px, w=640, h=480, blur=0.0, gain=1.0, offset=0.0, seed=0,
+               with_h=False, z=18):
+    """A synthetic nadir photo: the zoom-z map around (lat, lon), turned by heading_deg, at m_per_px.
+    with_h: also return H (3x3) mapping a pixel of the z17 512x512 patch centred on (lat, lon)
+    (terrain_*.jpg) to a pixel of this photo."""
     mpp_map = navmap.m_per_px(lat, z)
     s = m_per_px / mpp_map                         # map pixels per photo pixel
     big = int(math.hypot(w, h) * s) + 8
-    patch, _ = navmap.map_patch(lat, lon, z, big, big)
+    patch, (x18, y18) = navmap.map_patch(lat, lon, z, big, big)   # x18, y18: patch corner at zoom z
     c = (big / 2.0, big / 2.0)
     R = cv2.getRotationMatrix2D(c, heading_deg, 1.0 / s)
     R[0, 2] += w / 2.0 - c[0]
@@ -49,7 +54,42 @@ def drone_view(lat, lon, heading_deg, m_per_px, w=640, h=480, blur=0.0, gain=1.0
         img = cv2.GaussianBlur(img, (0, 0), blur)
     rng = np.random.default_rng(seed)
     img = img.astype(np.float32) * gain + offset + rng.normal(0, 3, img.shape)
-    return np.clip(img, 0, 255).astype(np.uint8)
+    img = np.clip(img, 0, 255).astype(np.uint8)
+    if not with_h:
+        return img
+    _, (x17, y17) = navmap.map_patch(lat, lon, Z, SIZE, SIZE)
+    # z17 patch pixel u -> global z17 (u + x17) -> global z pixel f(u + x17 + 0.5) - 0.5 -> z patch
+    f = 2.0 ** (z - Z)
+    T = np.array([[f, 0, f * (x17 + 0.5) - 0.5 - x18], [0, f, f * (y17 + 0.5) - 0.5 - y18], [0, 0, 1]])
+    H = np.vstack([R, [0, 0, 1]]) @ T
+    return img, H
+
+
+PAIRS = [  # name, terrain patch, heading deg, m/px of the photo, source zoom, what changes
+    # (zoom 19 = 0.24 m/px: real finer detail for the close-up photos; the map has no z19 imagery
+    #  over the hills, so z18 there)
+    ("city_rot35", "city", 35.0, 0.97, 19, "rotation 35 deg, same scale"),
+    ("city_zoom2", "city", 0.0, 0.485, 19, "same orientation, 2x closer (scale change x2)"),
+    ("city_zoom4", "city", 0.0, 0.25, 19, "same orientation, 4x closer (scale change x4)"),
+    ("city_rot35_zoom", "city", 35.0, 0.6, 19, "rotation 35 deg and scale x1.6 (like drone_city.jpg)"),
+    ("olives_rot35_zoom", "olives", 35.0, 0.6, 19, "olive groves, rotation 35 deg and scale x1.6"),
+    ("hills_rot35_zoom", "hills", 35.0, 0.6, 18, "dry hills, rotation 35 deg and scale x1.6"),
+]
+
+
+def make_pairs():
+    out = []
+    terr = {t[0]: t for t in TERRAINS}
+    for i, (name, t, hdg, mpp, zsrc, what) in enumerate(PAIRS):
+        _, lat, lon, _ = terr[t]
+        img, H = drone_view(lat, lon, hdg, mpp, blur=0.8, gain=1.1, offset=5, seed=10 + i, with_h=True, z=zsrc)
+        fn = f"pair_{name}.jpg"
+        cv2.imwrite(os.path.join(HERE, fn), img, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        out.append(dict(name=name, map=f"terrain_{t}.jpg", photo=fn, heading_deg=hdg,
+                        scale=round(navmap.m_per_px(lat, Z) / mpp, 4), what=what,
+                        H=[[round(v, 6) for v in row] for row in H.tolist()]))
+    with open(os.path.join(HERE, "pairs.json"), "w") as f:
+        json.dump(out, f, indent=1)
 
 
 def main():
@@ -69,6 +109,7 @@ def main():
                 drone_view(lat, lon, 35.0, 0.6, blur=0.8, gain=1.1, offset=5, seed=1), [cv2.IMWRITE_JPEG_QUALITY, 88])
     cv2.imwrite(os.path.join(HERE, "drone_city_blurry_dark.jpg"),
                 drone_view(lat, lon, 35.0, 0.6, blur=6.0, gain=0.25, offset=0, seed=2), [cv2.IMWRITE_JPEG_QUALITY, 88])
+    make_pairs()
     if os.path.exists(REAL):
         shutil.copy(REAL, os.path.join(HERE, "real_aerial_frame.jpeg"))
     print("done:", sorted(os.listdir(HERE)))
