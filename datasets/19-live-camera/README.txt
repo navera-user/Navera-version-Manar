@@ -13,6 +13,6 @@ grab_log.csv               60 s of grab times, nominal 28.8 fps, jitter, drops, 
 flashes.csv                simulated latency bench: when the program turned the screen white.
 flash_frames.csv           simulated latency bench: grab time and centre brightness of each frame.
                            Simulator values: screen delay 20 ms, latency 105 ms, exposure 10 ms.
-turn_imu.csv               50 Hz attitude (w,x,y,z) of a drone turning near Sohar, with a dropout.
+turn_imu.csv               50 Hz attitude (w,x,y,z) of a drone turning near Sousse, with a dropout.
 turn_frames.csv            frames of that flight: grab time + TRUE attitude at the exposure
                            (exposure = grab - 0.138 s exactly).

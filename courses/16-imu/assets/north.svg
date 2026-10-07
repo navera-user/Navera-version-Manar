@@ -10,7 +10,7 @@
   <text x="262" y="40" fill="#d64545" font-weight="bold">magnetic north</text>
   <text x="262" y="56" fill="#d64545" font-size="12">(where a compass points)</text>
   <text x="218" y="100" fill="#a8680d" text-anchor="end">declination</text>
-  <text x="218" y="116" fill="#a8680d" font-size="12" text-anchor="end">(Muscat, 2026: +1.7°, east)</text>
+  <text x="218" y="116" fill="#a8680d" font-size="12" text-anchor="end">(Sousse, 2026: +3.3°, east)</text>
   <text x="340" y="170" fill="#1d2733">true heading =</text>
   <text x="340" y="188" fill="#1d2733">magnetic heading</text>
   <text x="340" y="206" fill="#1d2733">+ declination</text>

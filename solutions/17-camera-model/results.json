@@ -107,11 +107,11 @@
   }
  },
  "map": {
-  "muscat_z17_mpp": 1.0945,
+  "reykjavik_z17_mpp": 0.5207,
   "sousse_z17_mpp": 0.9683,
-  "best_zoom_300m_muscat": 18,
+  "best_zoom_300m_reykjavik": 17,
   "best_zoom_300m_sousse": 18,
-  "h_equal_z17_muscat_m": 722.2,
+  "h_equal_z17_reykjavik_m": 343.6,
   "h_equal_z17_sousse_m": 638.9
  },
  "pads": {
@@ -143,9 +143,9 @@
   }
  },
  "errors": {
-  "jebel_akhdar_believed_agl_m": 1800.0,
-  "jebel_akhdar_true_agl_m": 300.0,
-  "jebel_akhdar_fitted_scale": 0.1667,
+  "mountain_believed_agl_m": 1800.0,
+  "mountain_true_agl_m": 300.0,
+  "mountain_fitted_scale": 0.1667,
   "tilt_error_1deg_at_150m_tilt10_m": 2.708,
   "tilt_error_1deg_at_150m_tilt30_m": 3.527
  }

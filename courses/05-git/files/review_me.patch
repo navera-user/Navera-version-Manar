@@ -4,7 +4,7 @@ Date: Thu, 1 Oct 2026 10:00:00 +0100
 Subject: [PATCH] fix(estimator): fewer false GPS refusals; geo: use
  EARTH_RADIUS_M
 
-Flight tests near Sohar showed the GPS gate refusing good fixes after
+Flight tests near Monastir showed the GPS gate refusing good fixes after
 short outages. Raise the jump margin. Also use the module constant in
 haversine_m() instead of a repeated literal.
 ---

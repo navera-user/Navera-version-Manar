@@ -3,7 +3,7 @@
 
 PILOT_NAME = "Test Pilot"
 FAVOURITE_VEHICLE = "drone"     # drone, car, boat or robot
-CITY = "Sohar"                  # your home town, e.g. Nizwa
+CITY = "Sousse"                 # your home town, e.g. Nairobi
 
 
 # ---- you don't need to change anything below this line (but you can read it!) ----

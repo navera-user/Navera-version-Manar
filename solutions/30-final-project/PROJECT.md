@@ -8,7 +8,7 @@ Name: Example Student          Branch: project/min-satellites          Date: 202
 whose fix quality is 1, 2, 4 or 5. With only 3 satellites a receiver cannot solve a 3-D position; it
 extrapolates or assumes an altitude, and its position can be tens of metres wrong while it still
 reports a fix. NAVERA passes it to the arbiter and to the autopilot as a normal GPS fix. This happens
-near buildings and under roofs, for example in the narrow streets of Muttrah.
+near buildings and under roofs, for example in the narrow streets of an old town.
 
 **Hypothesis:** Refusing GGA fixes from fewer than 4 satellites lowers the p95 horizontal error of
 the GPS fixes NAVERA accepts, at a cost in GPS availability of less than 10 percentage points.
@@ -42,12 +42,12 @@ exist); on my branch it passes. Command: python3 -m pytest -q gps_pkg/test — r
 ## Measurement
 
 `python3 measure_project.py` on /data/academy/30-final-project/nmea_bench.txt: 1800 s of a simulated
-receiver standing still near Sultan Qaboos University (truth known), 1800 epochs, 1780 with a valid
+receiver standing still at a point in Sousse, Tunisia (truth known), 1800 epochs, 1780 with a valid
 checksum. 95 % CIs: moving-block bootstrap, block 60 s, 2000 resamples, seed 30.
 
 | | Before (quality only) | After (at least 4 satellites) | Difference (after - before) |
 |---|---|---|---|
-| p95 error (m) | 43.33 [5.76, 71.88] | 5.27 [4.57, 6.24] | -38.07 [-66.59, -0.72] |
+| p95 error (m) | 43.33 [5.76, 71.88] | 5.26 [4.57, 6.24] | -38.07 [-66.59, -0.72] |
 | availability | 96.4 % [92.4, 99.0] | 89.1 % [81.9, 94.7] | -7.3 points [-13.9, -2.0] |
 | CEP50 (m) | 2.28 | 2.13 | |
 | max (m) | 146.7 | 24.1 | |

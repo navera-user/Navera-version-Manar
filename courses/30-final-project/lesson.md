@@ -12,8 +12,8 @@
 > - You finish with a commit, a patch and a report; the guided example changes the GPS driver
 >   (`gps_node.py`).
 
-A NAVERA box is installed on a survey drone in Muscat. The operator reports that, near the tall
-buildings of Al Khuwair and in the narrow streets of Muttrah, the GPS position sometimes jumps by
+A NAVERA box is installed on a survey drone in a large coastal city. The operator reports that, near
+the tall buildings of the business district and in the narrow streets of the old town, the GPS position sometimes jumps by
 tens of metres for half a minute — while the receiver still says "fix". A colleague proposes a
 one-line fix: *"refuse GPS fixes computed from fewer than 4 satellites"*.
 
@@ -282,7 +282,7 @@ Choose **one**. ★ a few lines, ★★ an afternoon, ★★★ a real challenge
 | 2 | **"NO FIX since 12 s"** in the operator view, so the operator knows how long the gap is | ★ | `simulation_web/simulation_web/resources/operator.html` (`showNoPosition`), tests in `simulation_web/test/test_operator_sim.py` | correctness of the shown duration on scripted gaps |
 | 3 | **Is the GPS σ honest?** gps_node states σ = 2 m × HDOP. On the bench file (truth known), measure the fraction of errors inside 1σ and 2σ (an honest 2-D Gaussian gives 39 % and 86 %), propose a value with a CI. **The change** = a named constant (e.g. `UERE_M`) + a unit test; change its *value* only if the CI of the fitted value excludes the current 2.0 m. Metric: distance of the 2σ coverage to 86 % (`better="closer"`) | ★★ | `gps_pkg/gps_pkg/nodes/gps_node.py` (the `cov = (hdop * 2.0) ** 2` line) | coverage at 1σ / 2σ |
 | 4 | **HDOP-aware jump margin**: the kinematic gate allows a fixed 50 m of GPS noise; make it `max(50, 3 × stated σ)` as a pure function with unit tests | ★★ | `navera_estimator/navera_estimator/nodes/estimator_node.py` (`_check_gps_plausibility`, `gps_jump_margin_m`); pure function + test in `navera_common/navera_common/` and `navera_common/test/` | false alarms on noisy-but-honest GPS vs detection of jumps |
-| 5 | **Skip featureless frames** (sea, the sand of Wahiba Sands, blur) before the expensive search, with a clear reason | ★★ | `day_pkg/day_pkg/local_matcher.py` (`locate`, "too few features…"), tests in `day_pkg/test/test_local_matcher.py` | time per frame, good frames lost |
+| 5 | **Skip featureless frames** (sea, the uniform sand of a desert, blur) before the expensive search, with a clear reason | ★★ | `day_pkg/day_pkg/local_matcher.py` (`locate`, "too few features…"), tests in `day_pkg/test/test_local_matcher.py` | time per frame, good frames lost |
 | 6 | **Dead-reckoning drift alarm**: how far has a propagated position travelled since its last measured fix? Warn past a threshold | ★★ | `navera_common/navera_common/track.py` (`TrackVelocity.propagate`), `navera_common/test/test_track.py` | alarm delay vs false alarms on a recorded track |
 | 7 | **A "GPS frozen" fault** in the simulated receiver (same position, still "fix"): add the mode and its unit test; then (simulator booked) observe what NAVERA does | ★★ | `navera_tools/sim/nmea_gps.py` (`MODES`, `reported`), `navera_tools/sim/sim.html` | detection: does anything notice? |
 | 8 | **A "GPS frozen" detector** in the arbiter: refuse a GPS whose position does not change for N fixes while another source says the vehicle moves | ★★★ | `estimator_node.py` (`_on_gps`, `_check_gps_plausibility`); integration test in `navera_tools/tests/test_estimator.py` | ROC: N vs false alarms / detections |
@@ -353,13 +353,13 @@ Other places you will use:
 
 NAVERA's real data — the satellite map, the recorded frames and the simulator area — covers
 **Sousse, Tunisia**, where NAVERA is developed. The bench file of this lab is **synthetic**: a simulated
-receiver standing near Sultan Qaboos University in Muscat. Say so in your report.
+receiver standing still at a point in Sousse. Say so in your report.
 
 ## 🐦 How birds do it
 
-Every autumn, barn swallows from Europe and western Asia cross the Arabian Peninsula on their way to
-Africa, and many pass through Oman; flamingos and very large numbers of shorebirds spend the winter on
-the mudflats of Barr Al Hikman. Navi the swallow is one of those travellers. Her first journey was
+Every autumn, barn swallows from Europe cross the Mediterranean Sea and the Sahara on their way to
+Africa south of the desert, and fly back north every spring; white storks take the short sea crossing
+at the Strait of Gibraltar. Navi the swallow is one of those travellers. Her first journey was
 the hardest.
 
 Young birds start with an **inherited programme**: roughly a direction and a duration of flight. In a

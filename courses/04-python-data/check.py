@@ -13,20 +13,20 @@ warnings.filterwarnings("ignore")
 c = Checker()
 LESSON = os.path.dirname(os.path.abspath(__file__))
 ORIGINAL_CSV = os.path.join(LESSON, "files", "campaign.csv")       # the untouched data
-FLIGHTS = ["barr_al_hikman", "muscat_coast", "nizwa_foothills", "sohar_port"]
+FLIGHTS = ["grid_survey", "monastir_coast", "sahel_hills", "sousse_port"]
 
 # Expected values, computed once from the deterministic campaign.csv.
 SUMMARY = {   # rows, duration_s, distance_km, max_alt_m, mean_speed_mps, min_battery_pct
-    "barr_al_hikman": (361, 720, 13.0354, 151.5, 18.0526, 54.9),
-    "muscat_coast": (341, 682, 7.80654, 101.5, 11.2099, 54.9),
-    "nizwa_foothills": (487, 974, 9.05311, 251.5, 8.83621, 55.0),
-    "sohar_port": (362, 722, 8.78555, 121.5, 12.9319, 54.8),
+    "grid_survey": (361, 720, 13.0348, 151.5, 18.0526, 54.9),
+    "monastir_coast": (341, 682, 7.80672, 101.5, 11.2099, 54.9),
+    "sahel_hills": (487, 974, 9.05302, 251.5, 8.83621, 55.0),
+    "sousse_port": (362, 722, 8.78543, 121.5, 12.9319, 54.8),
 }
-OUTAGES = {"barr_al_hikman": (1, 16.0, 16.0), "muscat_coast": (1, 60.0, 60.0),
-           "nizwa_foothills": (1, 416.0, 416.0), "sohar_port": (2, 100.0, 160.0)}
-SHARES = {"barr_al_hikman": (97.7839, 2.21607, 0.0), "muscat_coast": (91.2023, 8.79765, 0.0),
-          "nizwa_foothills": (57.2895, 40.4518, 2.25873), "sohar_port": (77.9006, 16.5746, 5.52486)}
-SPEED_ERR = {"gps": (0.769304, 2.27378), "day_vision": (3.25246, 7.79998)}
+OUTAGES = {"grid_survey": (1, 16.0, 16.0), "monastir_coast": (1, 60.0, 60.0),
+           "sahel_hills": (1, 416.0, 416.0), "sousse_port": (2, 100.0, 160.0)}
+SHARES = {"grid_survey": (97.7839, 2.21607, 0.0), "monastir_coast": (91.2023, 8.79765, 0.0),
+          "sahel_hills": (57.2895, 40.4517, 2.25873), "sousse_port": (77.9006, 16.5746, 5.52486)}
+SPEED_ERR = {"gps": (0.770217, 2.28175), "day_vision": (3.25810, 7.79917)}
 
 
 def fa(*names):
@@ -96,11 +96,11 @@ def _():
 def _():
     import numpy as np
     (h,) = fa("haversine_m")
-    c.near(call(h, 23.588, 58.383, 22.933, 57.533), 113333.49, 0.5, "haversine_m(Muscat, Nizwa)")
-    r = call(h, np.array([23.588, 24.347]), np.array([58.383, 56.709]), 23.588, 58.383)
+    c.near(call(h, 51.507, -0.128, 48.857, 2.352), 343479.77, 0.5, "haversine_m(London, Paris)")
+    r = call(h, np.array([51.507, 52.370]), np.array([-0.128, 4.895]), 51.507, -0.128)
     c.ok(np.shape(r) == (2,), f"with arrays of 2 points the result should have shape (2,), got {np.shape(r)}")
-    c.near(r[0], 0.0, 1e-6, "distance of Muscat to itself")
-    c.near(r[1], 189875.29, 0.5, "haversine_m(Sohar, Muscat)")
+    c.near(r[0], 0.0, 1e-6, "distance of London to itself")
+    c.near(r[1], 357375.95, 0.5, "haversine_m(Amsterdam, London)")
     c.ok(math.isnan(float(call(h, float("nan"), 58.0, 23.0, 58.0))), "a NaN latitude should give NaN")
 
 
@@ -272,12 +272,12 @@ def _():
     r = results()
     for k, want in (("rows_raw", 1556), ("duplicates_removed", 3), ("glitches_removed", 2), ("rows_clean", 1551)):
         c.eq(r.get(k), want, k)
-    c.eq(r.get("longest_outage", {}).get("flight_id"), "nizwa_foothills", "longest_outage.flight_id")
+    c.eq(r.get("longest_outage", {}).get("flight_id"), "sahel_hills", "longest_outage.flight_id")
     c.near(r["longest_outage"].get("duration_s"), 416.0, 1e-6, "longest_outage.duration_s")
     fl = r.get("flights", {})
     c.eq(sorted(fl), FLIGHTS, "the flights in results.json")
-    c.near(fl["sohar_port"].get("total_outage_s"), 160.0, 1e-6, "flights.sohar_port.total_outage_s")
-    c.near(fl["barr_al_hikman"].get("distance_km"), 13.0354, 1e-3, "flights.barr_al_hikman.distance_km")
+    c.near(fl["sousse_port"].get("total_outage_s"), 160.0, 1e-6, "flights.sousse_port.total_outage_s")
+    c.near(fl["grid_survey"].get("distance_km"), 13.0348, 1e-3, "flights.grid_survey.distance_km")
 
 
 def numbers_in(text):
@@ -298,11 +298,11 @@ def _():
     words = len(re.findall(r"[A-Za-z]{2,}", text))
     c.ok(words >= 150, f"report.md has about {words} words — write at least 150")
     nums = numbers_in(text)
-    c.ok("nizwa" in low and any(abs(x - 416) < 0.5 for x in nums),
+    c.ok("sahel" in low and any(abs(x - 416) < 0.5 for x in nums),
          "I can't find the longest outage (flight name and duration in s) in report.md")
     c.ok(any(abs(x - 5) < 0.01 for x in nums) or any(abs(x - 1551) < 0.5 for x in nums),
          "I can't find how many rows cleaning removed (or how many are left) in report.md")
-    c.ok(any(abs(x - 0.77) <= 0.02 for x in nums) and any(abs(x - 3.25) <= 0.02 for x in nums),
+    c.ok(any(abs(x - 0.77) <= 0.02 for x in nums) and any(abs(x - 3.26) <= 0.02 for x in nums),
          "I can't find the median speed errors of GPS and of day vision (m/s, 2 decimals) in report.md")
 
 

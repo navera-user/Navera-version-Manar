@@ -1,4 +1,4 @@
-"""Lab 24, part A — the sky above Jebel Shams, computed from first principles.
+"""Lab 24, part A — the sky above Tenerife, computed from first principles.
 
 Run:  python3 stars.py
 You implement the chain  calendar date -> Julian date -> sidereal time -> hour angle ->
@@ -10,9 +10,9 @@ import math
 
 import numpy as np
 
-JEBEL_SHAMS = (23.24, 57.26)                # observing site in the Hajar mountains (deg N, deg E)
-MUSCAT = (23.59, 58.41)
-WHEN = (2026, 10, 7, 17, 0, 0.0)            # UTC: 21:00 in Oman (UTC+4)
+TEIDE = (28.30, -16.51)                     # observing site: Teide Observatory, Tenerife (deg N, deg E; west < 0)
+NEW_YORK = (40.71, -74.01)
+WHEN = (2026, 10, 7, 20, 0, 0.0)            # UTC: 21:00 in Tenerife (UTC+1 in October)
 EARTH_KM_PER_DEG = 111.195                  # 2*pi*6371 km / 360: one degree of a great circle
 SIDEREAL_DEG_PER_S = 360.98564736629 / 86400.0   # how fast the sky turns (deg per second of UT)
 
@@ -237,7 +237,7 @@ def _do(fn, *a, **k):
 def main():
     res = {}
     when_s = utc_string(WHEN)
-    print(f"Time: {when_s} UTC (21:00 in Oman). Site: Jebel Shams {JEBEL_SHAMS}.\n")
+    print(f"Time: {when_s} UTC (21:00 in Tenerife). Site: Teide Observatory {TEIDE}.\n")
     ap = offline_astropy()
     t = ap.Time(when_s, scale="utc")
     cn = navera_cn()
@@ -261,8 +261,8 @@ def main():
         s["ra"], s["dec"] = cn.apparent_radec(s["ra"], s["dec"], when_s)
     top = sorted(stars, key=lambda s: s["mag"])[:10]
     alt, az = _do(radec_to_altaz, np.array([s["ra"] for s in top]), np.array([s["dec"] for s in top]),
-                  JEBEL_SHAMS[0], JEBEL_SHAMS[1], gast)
-    loc = ap.EarthLocation(lat=JEBEL_SHAMS[0] * ap.u.deg, lon=JEBEL_SHAMS[1] * ap.u.deg, height=0 * ap.u.m)
+                  TEIDE[0], TEIDE[1], gast)
+    loc = ap.EarthLocation(lat=TEIDE[0] * ap.u.deg, lon=TEIDE[1] * ap.u.deg, height=0 * ap.u.m)
     cat = ap.SkyCoord(ra=[s["ra"] for s in top] * ap.u.deg, dec=[s["dec"] for s in top] * ap.u.deg,
                       frame=ap.TETE(obstime=t))
     ref = cat.transform_to(ap.AltAz(obstime=t, location=loc))
@@ -273,24 +273,24 @@ def main():
     res["altaz_worst_diff_arcsec"] = worst * 3600.0
 
     # 4. what is up tonight
-    vis = _do(visible_stars, stars, JEBEL_SHAMS[0], JEBEL_SHAMS[1], gast)
-    print(f"\n{len(vis)} of {len(stars)} stars brighter than 2.5 are above the horizon of Jebel Shams:")
+    vis = _do(visible_stars, stars, TEIDE[0], TEIDE[1], gast)
+    print(f"\n{len(vis)} of {len(stars)} stars brighter than 2.5 are above the horizon of Teide Observatory:")
     for v in vis[:10]:
         print(f"  {v['name']:16s} mag {v['mag']:5.2f}  alt {v['alt']:5.1f}°  az {v['az']:5.1f}°")
-    sky_plot(vis, "sky.png", f"Jebel Shams, {when_s[:16]} UTC — {len(vis)} stars brighter than 2.5")
+    sky_plot(vis, "sky.png", f"Teide Observatory, {when_s[:16]} UTC — {len(vis)} stars brighter than 2.5")
     print("Saved sky.png")
     res["n_visible"] = len(vis)
     res["brightest_visible"] = vis[0]["name"] if vis else None
 
-    # 5. Polaris from Muscat, over a whole sidereal day
+    # 5. Polaris from New York, over a whole sidereal day
     pol = next(s for s in stars if s["name"] == "Polaris")
     p = 90.0 - pol["dec"]
     gs = (gast + np.arange(0, 360, 3.75))            # the sky every ~15 min of a sidereal day
-    a_pol, _ = radec_to_altaz(np.full(gs.size, pol["ra"]), np.full(gs.size, pol["dec"]), MUSCAT[0], MUSCAT[1], gs)
-    ha = gs + MUSCAT[1] - pol["ra"]
-    plain = np.array([_do(polaris_latitude, a) for a in a_pol]) - MUSCAT[0]
-    corr = np.array([_do(polaris_latitude, a, h, p) for a, h in zip(a_pol, ha)]) - MUSCAT[0]
-    print(f"\nPolaris from Muscat: polar distance p = {p:.3f}°")
+    a_pol, _ = radec_to_altaz(np.full(gs.size, pol["ra"]), np.full(gs.size, pol["dec"]), NEW_YORK[0], NEW_YORK[1], gs)
+    ha = gs + NEW_YORK[1] - pol["ra"]
+    plain = np.array([_do(polaris_latitude, a) for a in a_pol]) - NEW_YORK[0]
+    corr = np.array([_do(polaris_latitude, a, h, p) for a, h in zip(a_pol, ha)]) - NEW_YORK[0]
+    print(f"\nPolaris from New York: polar distance p = {p:.3f}°")
     print(f"  latitude = altitude           worst error {np.abs(plain).max():.3f}° = "
           f"{np.abs(plain).max() * EARTH_KM_PER_DEG:.0f} km")
     print(f"  latitude = altitude - p cos H worst error {np.abs(corr).max():.4f}° = "
@@ -298,24 +298,24 @@ def main():
     res.update(polaris_polar_distance_deg=p, polaris_max_err_plain_km=float(np.abs(plain).max() * EARTH_KM_PER_DEG),
                polaris_max_err_corrected_km=float(np.abs(corr).max() * EARTH_KM_PER_DEG))
 
-    # 6. the zenith fix: what the solver would say for a perfectly levelled camera at Jebel Shams
-    ra_z, dec_z = cn.local_to_radec(JEBEL_SHAMS[0], JEBEL_SHAMS[1], 90.0, 0.0, gast)
+    # 6. the zenith fix: what the solver would say for a perfectly levelled camera at Teide Observatory
+    ra_z, dec_z = cn.local_to_radec(TEIDE[0], TEIDE[1], 90.0, 0.0, gast)
     zf = _do(zenith_fix, ra_z, dec_z, gast)
     print(f"\nZenith fix from the plate-solved centre RA {ra_z:.3f}°, Dec {dec_z:.3f}°: "
-          f"({zf[0]:.3f}, {zf[1]:.3f}) — {haversine_km(JEBEL_SHAMS, zf):.3f} km from the truth")
+          f"({zf[0]:.3f}, {zf[1]:.3f}) — {haversine_km(TEIDE, zf):.3f} km from the truth")
 
     # 7. error budget
     print("\nError budget:")
     for e in (0.1, 0.3, 0.5, 1.0):
         print(f"  attitude {e:3.1f}°  -> {_do(attitude_error_km, e):6.1f} km")
     for dt in (1.0, 4.0, 60.0):
-        print(f"  clock {dt:4.0f} s   -> {_do(clock_error_km, dt, MUSCAT[0]):6.2f} km (at Muscat's latitude)")
+        print(f"  clock {dt:4.0f} s   -> {_do(clock_error_km, dt, NEW_YORK[0]):6.2f} km (at New York's latitude)")
     res["attitude_km_per_deg"] = attitude_error_km(1.0)
-    res["clock_km_per_s_muscat"] = clock_error_km(1.0, MUSCAT[0])
+    res["clock_km_per_s_new_york"] = clock_error_km(1.0, NEW_YORK[0])
 
     # 8. Monte Carlo with a BNO085-class IMU (0.3° tilt, 1.5° heading), camera 75° up towards the north-east
-    errs, amb = _do(monte_carlo_fix, cn, JEBEL_SHAMS, gast, 75.0, 45.0, 0.3, 1.5)
-    errs0, _ = monte_carlo_fix(cn, JEBEL_SHAMS, gast, 90.0, 0.0, 0.3, 1.5)
+    errs, amb = _do(monte_carlo_fix, cn, TEIDE, gast, 75.0, 45.0, 0.3, 1.5)
+    errs0, _ = monte_carlo_fix(cn, TEIDE, gast, 90.0, 0.0, 0.3, 1.5)
     print(f"\nMonte Carlo, 2000 fixes, IMU 0.3° tilt / 1.5° heading:")
     print(f"  camera 75° up : median {np.median(errs):.1f} km, p90 {np.percentile(errs, 90):.1f} km, "
           f"ambiguous {amb}")

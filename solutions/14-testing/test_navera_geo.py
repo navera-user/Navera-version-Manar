@@ -8,8 +8,8 @@ from navera_common.geo import dead_reckon, haversine_m, is_finite_latlon
 M_PER_DEG = 2 * math.pi * 6_371_000.0 / 360.0
 
 
-def test_muscat_is_a_position():
-    assert is_finite_latlon(23.588, 58.3829) is True
+def test_london_is_a_position():
+    assert is_finite_latlon(51.5007, -0.1246) is True
 
 
 @pytest.mark.parametrize("lat, lon", [(0.0, 0.0), (math.nan, 10.0), (None, 10.0), (95.0, 10.0)])
@@ -22,11 +22,11 @@ def test_one_degree_of_latitude():
 
 
 def test_dead_reckon_100_m_east():
-    lat, lon = dead_reckon(23.588, 58.3829, 90.0, 10.0, 10.0)
-    assert haversine_m(23.588, 58.3829, lat, lon) == pytest.approx(100.0, abs=0.01)
-    assert lon > 58.3829
+    lat, lon = dead_reckon(51.5007, -0.1246, 90.0, 10.0, 10.0)
+    assert haversine_m(51.5007, -0.1246, lat, lon) == pytest.approx(100.0, abs=0.01)
+    assert lon > -0.1246
 
 
 @pytest.mark.parametrize("speed, dt", [(-1.0, 10.0), (10.0, 0.0)])
 def test_dead_reckon_refuses_unknown_motion(speed, dt):
-    assert dead_reckon(23.588, 58.3829, 90.0, speed, dt) is None
+    assert dead_reckon(51.5007, -0.1246, 90.0, speed, dt) is None

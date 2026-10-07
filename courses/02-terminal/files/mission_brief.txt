@@ -1,7 +1,7 @@
-MISSION BRIEF — ground engineer, NAVERA training flights in Oman
-================================================================
+MISSION BRIEF — ground engineer, NAVERA training flights
+========================================================
 
-The NAVERA box came back from two training flights (Sohar and Nizwa).
+The NAVERA box came back from two training flights (Sousse and the desert range).
 All their files were copied, in a mess, into the folder "inbox".
 
   1. Build the mission folder:  mission/photos  mission/logs  mission/docs  mission/bin

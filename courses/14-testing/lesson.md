@@ -7,7 +7,7 @@
 > - You will measure the quality of your tests with **mutants** (wrong copies of the code).
 > - You will run NAVERA's 359 unit tests and write a **launch test** that starts NAVERA's real arbiter.
 
-A NAVERA box flies over the sea off Duqm. Yesterday an engineer made a small change to the function
+A NAVERA box flies over the sea off a coastal city. Yesterday an engineer made a small change to the function
 that checks whether a position is real. He tried it on his desk: it worked. He did not notice that it
 now accepts (0, 0) — the "Null Island" value of a GNSS field nobody filled. Today a sensor glitch sends
 (0, 0)… and the arbiter believes it.

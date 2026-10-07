@@ -3,7 +3,7 @@
 # of geodesic_ref.py. Writes results.json and error_study.png.
 #     python3 error_study.py
 #
-# Method (home = Muscat, height 0):
+# Method (home = Sousse, NAVERA's test area, height 0):
 #   for each distance d (10 m ... 300 km, log-spaced) and each of 8 bearings:
 #     1. the "true" point is (east, north, up) = (d sin θ, d cos θ, 0) in the EXACT ENU frame
 #        -> enu_to_geodetic() gives its (lat, lon)
@@ -21,8 +21,8 @@ import numpy as np
 from geo_lab import EARTH_RADIUS_M, M_PER_DEG, bearing, enu_to_geodetic, flat_en, haversine, radii
 from geodesic_ref import vincenty
 
-HOME = (23.5839, 58.3875)                         # Muscat, Sultan Qaboos Grand Mosque
-SALALAH = (17.0194, 54.0897)
+HOME = (35.8277, 10.6388)                         # Sousse (medina), NAVERA's test area
+ROME = (41.8902, 12.4922)                         # Rome, the Colosseum
 DISTANCES = [float(d) for d in np.round(np.logspace(1, math.log10(300_000), 41), 1)]
 BEARINGS = range(0, 360, 45)
 
@@ -62,10 +62,10 @@ def at(errors, d):
     return errors[DISTANCES.index(d)] if d in DISTANCES else float(np.interp(math.log(d), np.log(DISTANCES), errors))
 
 
-s_ell, az1, _ = vincenty(*HOME, *SALALAH)
-s_hav = haversine(*HOME, *SALALAH)
+s_ell, az1, _ = vincenty(*HOME, *ROME)
+s_hav = haversine(*HOME, *ROME)
 results = {
-    "home": "Muscat (Sultan Qaboos Grand Mosque)",
+    "home": "Sousse (medina)",
     "home_latlon": list(HOME),
     "constants": {"EARTH_RADIUS_M": EARTH_RADIUS_M, "M_PER_DEG": M_PER_DEG,
                   "M_home_m": round(m0, 1), "N_home_m": round(n0, 1)},
@@ -79,11 +79,11 @@ results = {
     "navera_flat_error_at_1km_m": round(at(flat_navera, 1000.0), 3),
     "navera_flat_error_at_10km_m": round(at(flat_navera, 10000.0), 3),
     "wgs84_flat_error_at_10km_m": round(at(flat_wgs84, 10000.0), 4),
-    "muscat_salalah": {"haversine_km": round(s_hav / 1000.0, 3), "ellipsoid_km": round(s_ell / 1000.0, 3),
-                       "difference_m": round(s_hav - s_ell, 1),
-                       "difference_percent": round((s_hav - s_ell) / s_ell * 100.0, 3),
-                       "bearing_sphere_deg": round(bearing(*HOME, *SALALAH), 2),
-                       "bearing_ellipsoid_deg": round(az1, 2)},
+    "sousse_rome": {"haversine_km": round(s_hav / 1000.0, 3), "ellipsoid_km": round(s_ell / 1000.0, 3),
+                    "difference_m": round(s_hav - s_ell, 1),
+                    "difference_percent": round((s_hav - s_ell) / s_ell * 100.0, 3),
+                    "bearing_sphere_deg": round(bearing(*HOME, *ROME), 2),
+                    "bearing_ellipsoid_deg": round(az1, 2)},
 }
 with open("results.json", "w") as f:
     json.dump(results, f, indent=1)
@@ -96,8 +96,8 @@ for i in range(0, len(DISTANCES), 4):
 print("\nNAVERA flat error reaches 1 m at", results["navera_flat_d_1m_m"], "m and 10 m at",
       results["navera_flat_d_10m_m"], "m")
 print("WGS84-radii flat error reaches 1 m at", results["wgs84_flat_d_1m_m"], "m")
-ms = results["muscat_salalah"]
-print(f"Muscat -> Salalah: haversine {ms['haversine_km']} km, ellipsoid {ms['ellipsoid_km']} km, "
+ms = results["sousse_rome"]
+print(f"Sousse -> Rome: haversine {ms['haversine_km']} km, ellipsoid {ms['ellipsoid_km']} km, "
       f"difference {ms['difference_m']} m ({ms['difference_percent']} %)")
 
 import matplotlib                                   # noqa: E402  (plotting comes last)
@@ -114,7 +114,7 @@ for y in (1.0, 10.0):
     ax.axhline(y, color="grey", lw=0.8, ls="--")
 ax.set_xlabel("distance from home (m)")
 ax.set_ylabel("worst horizontal error over 8 bearings (m)")
-ax.set_title("Muscat: error of the shortcuts against exact WGS84 geometry")
+ax.set_title("Sousse: error of the shortcuts against exact WGS84 geometry")
 ax.grid(True, which="both", alpha=0.25)
 ax.legend(fontsize=8)
 fig.savefig("error_study.png", dpi=90, bbox_inches="tight")

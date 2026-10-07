@@ -7,21 +7,21 @@
 >   rate.
 > - **Parameters** let you change settings, such as speed and heading, while the node runs.
 > - A `NavSatFix` message carries the position and its uncertainty (the covariance, in m²).
-> - In the lab you build a fake GNSS node that drives from Muscat, measure its timing, and measure
+> - In the lab you build a fake GNSS node that drives from Sousse, measure its timing, and measure
 >   the error of the flat-Earth model.
 > - NAVERA's `sensor_sim.py` does the same job to test the whole chain on a bench.
 
 Before a NAVERA box flies, it spends many hours on a **test bench**: a table, a Jetson, cables —
 and no aircraft. The arbiter still needs GNSS positions that *move*, as if the box were flying
-along the Batinah coast. So the engineers write a program that **pretends to be a GNSS receiver**:
+along a coast. So the engineers write a program that **pretends to be a GNSS receiver**:
 it publishes the same message type, at the same rate, with the same honest uncertainty as a real
 receiver. Because of publish/subscribe (lesson 09), the rest of the graph cannot tell the
 difference.
 
-Today you write such a node: a **fake GNSS receiver** that drives from near the Sultan Qaboos Grand
-Mosque in Muscat (about 23.5880 N, 58.3829 E) with a speed and a heading you can change while it
+Today you write such a node: a **fake GNSS receiver** that drives from near the Ribat of Sousse,
+in NAVERA's test area (35.8277 N, 10.6388 E), with a speed and a heading you can change while it
 runs. (NAVERA's own recorded data and map cover Sousse, Tunisia, where it is developed; this lab
-uses synthetic data, so we can drive anywhere.) On the way you will learn how an `rclpy` node is
+uses synthetic data, so a parameter lets you start anywhere in the world.) On the way you will learn how an `rclpy` node is
 built, how timers and clocks behave, what every field of `sensor_msgs/NavSatFix` means — and how
 large the error of a "flat Earth" is.
 
@@ -169,14 +169,14 @@ Every GNSS driver in the ROS world publishes **`sensor_msgs/msg/NavSatFix`**. It
 | `position_covariance_type` | uint8 | `UNKNOWN` (0), `APPROXIMATED` (1), `DIAGONAL_KNOWN` (2), `KNOWN` (3) |
 
 Recall from lesson 06: WGS84 models the Earth as an **ellipsoid** (a slightly flattened sphere); GPS
-altitude is measured from that mathematical surface. In Muscat the sea surface (the geoid) is a few
+altitude is measured from that mathematical surface. In most places the sea surface (the geoid) is a few
 tens of metres away from the ellipsoid, so "altitude 40 m" in NavSatFix is not "40 m above the sea".
 
 A message is filled like any Python object; a nested message uses two dots:
 
 ```python
 msg = NavSatFix()
-msg.latitude = 23.5880
+msg.latitude = 35.8277
 msg.status.status = NavSatStatus.STATUS_FIX
 ```
 
@@ -242,8 +242,10 @@ This is the **equirectangular** (local flat) approximation.
 > Do not mix it up with lesson 6. There, NAVERA's day vision uses the shortcut
 > `M_PER_DEG = 111 320.0` m per degree (the WGS84 equator radius a·π/180). Here, the node uses the
 > sphere of radius R = 6 371 000 m, as `navera_common/geo.py` does: 111 195 m per degree. The two
-> models differ by 0.1 % (about 125 m per degree); use one model consistently in one program. In Muscat, cos(23.588°) = 0.9165, so one
-degree of longitude is 101 910 m. How wrong is it? Compare with a **great circle**, the true
+> models differ by 0.1 % (about 125 m per degree); use one model consistently in one program.
+
+The flat-Earth step of the node treats north and east as a flat grid. In Sousse, cos(35.8277°) =
+0.8108, so one degree of longitude is 90 155 m. How wrong is it? Compare with a **great circle**, the true
 "straight line" on a sphere, which NAVERA computes in `navera_common/geo.py` (`dead_reckon`).
 
 Worked example: drive **due east** for d metres from latitude φ0. A great circle that starts towards
@@ -254,8 +256,8 @@ from the parallel is about
 y ≈ d² · tan(φ0) / (2R)
 ```
 
-At Muscat, tan(23.588°) = 0.4366. For d = 10 km: y ≈ 10⁸ × 0.4366 / (2 × 6.371 × 10⁶) ≈ **3.4 m**.
-For d = 100 km: about **343 m** — the error grows with d², so 10 times farther means 100 times
+In Sousse, tan(35.8277°) = 0.7220. For d = 10 km: y ≈ 10⁸ × 0.7220 / (2 × 6.371 × 10⁶) ≈ **5.7 m**.
+For d = 100 km: about **567 m** — the error grows with d², so 10 times farther means 100 times
 larger. For other headings a second term appears (the length of a degree of longitude changes as
 the latitude changes), and the lab measures the total with NAVERA's own function. Conclusion: the
 flat model is excellent for a bench test of a few kilometres, and unacceptable for a 100 km flight
@@ -263,9 +265,9 @@ plan. NAVERA uses the spherical formula wherever a position is carried far.
 
 ## 🐦 How birds do it
 
-The **Arabian babbler** lives in dry wadis and scrub in Oman and across Arabia. Its groups feed on the
-ground, where they cannot see much — so one bird often climbs to a high perch and keeps watch: a
-**sentinel**. Studies of this species (Jonathan Wright and colleagues, 2001) found that sentinels go
+**Babblers** are songbirds of dry scrub in Africa and Asia. Their groups feed on the ground, where
+they cannot see much — so one bird often climbs to a high perch and keeps watch: a **sentinel**.
+Studies of Arabian babblers in the Negev desert (Jonathan Wright and colleagues, 2001) found that sentinels go
 on guard mostly after they have fed well, and that the sentinel is the first to call when a raptor
 appears. In a related species, the southern pied babbler of the Kalahari, the sentinel also gives a
 quiet, regular **"watchman's song"** while on duty; Linda Hollén, Matthew Bell and Andrew Radford
@@ -369,8 +371,9 @@ Each interval differs from 0.5 s (jitter). Integrating <code>v × 0.5</code> wou
 wrong place for the stamp it carries; <code>v × dt</code> with dt from the clock keeps position and stamp consistent.
 </details>
 
-<details><summary>4. Using the formula y ≈ d² tan φ0 / (2R), estimate the flat-Earth error after 50 km due east from Salalah (17.02° N).</summary>
-tan(17.02°) ≈ 0.306; y ≈ (5 × 10⁴)² × 0.306 / (2 × 6.371 × 10⁶) ≈ 2.5 × 10⁹ × 0.306 / 1.274 × 10⁷ ≈ 60 m.
+<details><summary>4. Using the formula y ≈ d² tan φ0 / (2R), estimate the flat-Earth error after 50 km due east from Reykjavik (64.14° N).</summary>
+tan(64.14°) ≈ 2.063; y ≈ (5 × 10⁴)² × 2.063 / (2 × 6.371 × 10⁶) ≈ 2.5 × 10⁹ × 2.063 / 1.274 × 10⁷ ≈ 405 m
+(near the equator, in Quito, it would be almost 0: tan φ0 ≈ 0).
 </details>
 
 <details><summary>5. You forget to fill latitude and longitude. What do subscribers receive, and how does NAVERA protect itself?</summary>

@@ -15,7 +15,7 @@ M_PER_DEG = 2 * math.pi * 6_371_000.0 / 360.0
 
 
 # TODO 6: at least 4 tests:
-#   - is_finite_latlon accepts Muscat and refuses (0, 0), NaN, None and a latitude of 95
+#   - is_finite_latlon accepts London and refuses (0, 0), NaN, None and a latitude of 95
 #   - haversine_m gives M_PER_DEG for 1 degree of latitude
 #   - dead_reckon(lat, lon, heading 90, speed 10, dt 10) ends 100 m from the start (use haversine_m)
 #     and further EAST; dead_reckon refuses (returns None) a negative speed or dt = 0

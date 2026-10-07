@@ -12,7 +12,7 @@ your code with NAVERA's and write a short report.
 
 > [!NOTE]
 > The BNO085 of the NAVERA box is **not connected**, so you work on a **simulated** 5-minute log of a
-> flight near Nizwa (50 Hz). Simulated data has one big advantage: it contains the **true** attitude,
+> flight near Monastir, in NAVERA's test area in Tunisia (50 Hz). Simulated data has one big advantage: it contains the **true** attitude,
 > so every method can be measured. The numbers of the sensor model (bias, noise) are chosen for
 > teaching; they are not measurements of NAVERA hardware.
 
@@ -35,13 +35,13 @@ head -3 /data/academy/16-imu/imu_log.csv
 cat /data/academy/16-imu/imu_log_meta.json
 ```
 
-The place (lat 22.93, lon 57.53), the date (decimal year 2026.79) and the sensor model.
+The place (lat 35.76, lon 10.75), the date (decimal year 2026.79) and the sensor model.
 
 > [!QUESTION]
 > In the first row, `az` ≈ 9.81 and `ax`, `ay` ≈ 0. What does this say about the attitude? And
-> `qz` ≈ 0.512, `qw` ≈ 0.859: what is the yaw? (2·acos(0.859) ≈ 61.6°, so the **magnetic** heading
-> is 90 − 61.6 = 28.4°. The true heading column says 30.0°. The difference, 1.6°, is the declination
-> near Nizwa — you will compute it in Step 7.)
+> `qz` ≈ 0.525, `qw` ≈ 0.851: what is the yaw? (2·acos(0.851) ≈ 63.4°, so the **magnetic** heading
+> is 90 − 63.4 = 26.6°. The true heading column says 30.0°. The difference, 3.4°, is the declination
+> near Monastir — you will compute it in Step 7.)
 
 ## Step 2 — Euler angles and rotation matrices
 
@@ -199,20 +199,21 @@ section 2 of the report.
 python3 imu_filters.py
 ```
 
-The program now runs to the end. It prints the declination at the place of the log (≈ +1.62°),
+The program now runs to the end. It prints the declination at the place of the log (≈ +3.35°),
 the mean error of the magnetic heading (≈ −D: the compass is "wrong" by exactly the declination),
 the RMS error of your true heading with and without tilt compensation, the error of the BNO085's own
-fused quaternion, and the declination of five Omani places. It saves **results.json** and
+fused quaternion, and the declination of five places around the world (London, Reykjavik, Cape Town, Sydney,
+Singapore). It saves **results.json** and
 **attitude.png** — click them in the file list.
 
 ```bash
 cat results.json
 ```
 
-Try a place of your choice (lat, lon, decimal year), e.g. Khasab in Musandam and Duqm:
+Try a place of your choice (lat, lon, decimal year), e.g. New York and Quito (on the equator):
 
 ```bash
-python3 -c "from imu_filters import declination_at; print(declination_at(26.18, 56.25, 2026.79), declination_at(19.67, 57.70, 2026.79))"
+python3 -c "from imu_filters import declination_at; print(declination_at(40.71, -74.01, 2026.79), declination_at(-0.18, -78.47, 2026.79))"
 ```
 
 ## Step 8 — NAVERA's tests
@@ -238,8 +239,8 @@ gyro step on the **right**. Make sure you can explain why.
 > 2. the largest accelerometer roll error and when it happens, the best τ of the sweep (30 s), the
 >    τ trade-off, and what you found when you extended the sweep;
 > 3. the declination at the log's place, the true-heading RMS with and without tilt compensation;
-> 4. a table of the declination in Muscat, Sohar, Nizwa, Salalah and Masirah (2 decimals), and the
->    side error after 10 km from Muscat if D is ignored (in metres);
+> 4. a table of the declination in London, Reykjavik, Cape Town, Sydney and Singapore (2 decimals),
+>    and the side error after 10 km from London if D is ignored (in metres);
 > 5. the NAVERA functions equivalent to your `quat_to_matrix` and `slerp` (file names), and the
 >    quaternion order difference.
 

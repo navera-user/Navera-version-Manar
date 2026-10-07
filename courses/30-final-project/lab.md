@@ -23,7 +23,7 @@ head -4 /data/academy/30-final-project/nmea_bench.txt
 cat /data/academy/30-final-project/truth.json
 ```
 
-30 minutes of a **simulated** receiver standing still near Sultan Qaboos University, Muscat, one GGA
+30 minutes of a **simulated** receiver standing still at a point in Sousse, Tunisia (NAVERA's test area), one GGA
 and one RMC sentence per second. The truth is known, so every fix has an exact error. The file
 contains degraded episodes (3 satellites, 4 satellites, no fix, the receiver's own dead-reckoning) and
 about 1 % corrupted lines. Its errors are **correlated in time** (AR(1), ρ = 0.9), like real

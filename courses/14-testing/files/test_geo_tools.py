@@ -16,15 +16,15 @@ M_PER_DEG = 2 * math.pi * 6_371_000.0 / 360.0      # 111 195 m: an INDEPENDENT e
 # ---------- a fixture: a value prepared for any test that asks for it by name ----------
 
 @pytest.fixture
-def muscat():
-    """Near the Sultan Qaboos Grand Mosque, Muscat."""
-    return (23.5880, 58.3829)
+def london():
+    """Near Big Ben, London."""
+    return (51.5007, -0.1246)
 
 
 # ---------- examples, already written ----------
 
-def test_distance_from_a_point_to_itself_is_zero(muscat):
-    assert haversine_m(*muscat, *muscat) == pytest.approx(0.0, abs=1e-6)
+def test_distance_from_a_point_to_itself_is_zero(london):
+    assert haversine_m(*london, *london) == pytest.approx(0.0, abs=1e-6)
 
 
 @pytest.mark.parametrize("dt", [0.0, -1.0])
@@ -44,7 +44,7 @@ def test_speed_without_time_is_none(dt):
 
 # ---------- TODO 3: is_valid_position (one parametrized test with at least 6 cases) ----------
 # Use @pytest.mark.parametrize("lat, lon, ok", [...]) with valid AND invalid positions:
-# Muscat (True), (0, 0), latitude 91 and -91, longitude 181, math.nan, math.inf (False).
+# London (True), (0, 0), latitude 91 and -91, longitude 181, math.nan, math.inf (False).
 
 
 # ---------- TODO 4: speed_mps (at least 2 more tests) ----------

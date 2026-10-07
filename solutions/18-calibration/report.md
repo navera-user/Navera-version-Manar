@@ -38,8 +38,8 @@ the angles where the calibration is measured.
 
 ## 5. Recommendation
 
-For a new unit calibrated in a workshop in Muscat: (1) use a rigid flat board or a screen, measure
-the square size with a ruler and give it in mm; (2) collect 30 or more sharp views, with the board
+For a new unit calibrated in a partner's workshop in Singapore: (1) use a rigid flat board or a
+screen, measure the square size with a ruler and give it in mm; (2) collect 30 or more sharp views, with the board
 near every edge and corner of the picture and tilted up to about 45 degrees; (3) accept the result
 only if the RMS is below 0.5 px and a hold-out test stays below 1 px; (4) calibrate at the exact
 resolution and crop that NAVERA uses (--crop top for the Insta360), and (5) recalibrate after any

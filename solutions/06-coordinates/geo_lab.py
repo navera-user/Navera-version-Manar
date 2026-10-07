@@ -124,13 +124,13 @@ def flat_move(lat, lon, de, dn):
 # ---- you don't need to change anything below this line (but you can read it!) ----
 
 PLACES = {                                  # approximate coordinates (degrees), height above the ellipsoid (m)
-    "Muscat (Grand Mosque)": (23.5839, 58.3875, 0.0),
-    "Sohar": (24.3470, 56.7090, 0.0),
-    "Nizwa (fort)": (22.9333, 57.5300, 500.0),
-    "Jebel Shams (summit)": (23.2375, 57.2636, 3000.0),
-    "Salalah": (17.0194, 54.0897, 0.0),
+    "Sousse (medina)": (35.8277, 10.6388, 0.0),          # NAVERA's test area (Tunisia)
+    "Monastir": (35.7643, 10.8113, 0.0),
+    "Kairouan (Great Mosque)": (35.6812, 10.1036, 100.0),
+    "Rome (Colosseum)": (41.8902, 12.4922, 0.0),
+    "Kilimanjaro (summit)": (-3.0674, 37.3556, 5895.0),
 }
-HOME = "Muscat (Grand Mosque)"
+HOME = "Sousse (medina)"
 
 
 def _fmt(v, width=0, decimals=1):
@@ -157,21 +157,21 @@ if __name__ == "__main__":
 
     hlat, hlon, hh = PLACES[HOME]
     print(f"\nFrom {HOME}:")
-    print(f"{'place':<24}{'haversine (m)':>14}{'bearing':>9}{'ENU east':>11}{'north':>11}{'up':>9}")
+    print(f"{'place':<24}{'haversine (m)':>14}{'bearing':>9}{'ENU east':>11}{'north':>11}{'up':>11}")
     for name, (lat, lon, h) in PLACES.items():
         if name == HOME:
             continue
         enu = geodetic_to_enu(lat, lon, h, hlat, hlon, hh)
         e, n, u = (None, None, None) if enu is None else enu
         print(f"{name:<24}{_fmt(haversine(hlat, hlon, lat, lon), 14)}{_fmt(bearing(hlat, hlon, lat, lon), 9)}"
-              f"{_fmt(e, 11)}{_fmt(n, 11)}{_fmt(u, 9)}")
+              f"{_fmt(e, 11)}{_fmt(n, 11)}{_fmt(u, 11)}")
 
-    x = geodetic_to_ecef(*PLACES["Jebel Shams (summit)"])
-    print("\nJebel Shams ECEF (m):", "TODO 2" if x is None else "(%.1f, %.1f, %.1f)" % tuple(x))
+    x = geodetic_to_ecef(*PLACES["Kilimanjaro (summit)"])
+    print("\nKilimanjaro ECEF (m):", "TODO 2" if x is None else "(%.1f, %.1f, %.1f)" % tuple(x))
     if x is not None:
         back = ecef_to_geodetic(*x)
-        print("  ... and back      :", "TODO 3" if back is None else "(%.7f, %.7f, %.3f)" % tuple(back))
-    fe = flat_en(23.6, 58.4, hlat, hlon)
-    print("\nflat_en of (23.6, 58.4) from home:", "TODO 9" if fe is None else "(%.1f, %.1f) m" % tuple(fe))
+        print("  ... and back       :", "TODO 3" if back is None else "(%.7f, %.7f, %.3f)" % tuple(back))
+    fe = flat_en(35.8, 10.7, hlat, hlon)
+    print("\nflat_en of (35.8, 10.7) from home:", "TODO 9" if fe is None else "(%.1f, %.1f) m" % tuple(fe))
     fm = flat_move(hlat, hlon, 1000.0, 0.0)
     print("1 km east of home (flat_move)     :", "TODO 10" if fm is None else "(%.6f, %.6f)" % tuple(fm))

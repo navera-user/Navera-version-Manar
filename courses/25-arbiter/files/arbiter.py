@@ -11,7 +11,7 @@ An ESTIMATE is a Python dict with the information of a navera_msgs/PositionEstim
      "stamp": 12.0,              # when it was MEASURED (seconds, same clock as `now`)
      "valid": True,              # the source says: "you may use this position"
      "mode": "MEASURED",         # "MEASURED", "PROPAGATED", "HELD" or "REPLAYED"
-     "lat": 23.5880, "lon": 58.3829,
+     "lat": 35.8250, "lon": 10.6380,
      "cov": [9.0, 0, 0,  0, 9.0, 0,  0, 0, 36.0],   # 3x3 covariance, row-major, m^2 (E, N, Up)
      "cov_type": "APPROXIMATED"} # "UNKNOWN", "APPROXIMATED", "DIAGONAL_KNOWN" or "KNOWN"
 
@@ -195,7 +195,7 @@ def make_est(source, stamp, sigma=None, **kw):
         v = float(sigma) ** 2
         cov, ctype = [v, 0.0, 0.0, 0.0, v, 0.0, 0.0, 0.0, 4.0 * v], "APPROXIMATED"
     est = dict(source=source, stamp=stamp, valid=True, mode="MEASURED",
-               lat=23.5880, lon=58.3829, cov=cov, cov_type=ctype)   # Muscat (example only)
+               lat=35.8250, lon=10.6380, cov=cov, cov_type=ctype)   # Sousse, Tunisia (example only)
     est.update(kw)
     return est
 
@@ -207,7 +207,7 @@ def gps(stamp, sigma=3.0, **kw):
 
 def day(stamp, sigma=None, **kw):
     """A quick day-vision estimate (default: uncertainty unknown)."""
-    return make_est("day", stamp, sigma, **dict(dict(lat=23.5884, lon=58.3836), **kw))
+    return make_est("day", stamp, sigma, **dict(dict(lat=35.8254, lon=10.6387), **kw))
 
 
 if __name__ == "__main__":

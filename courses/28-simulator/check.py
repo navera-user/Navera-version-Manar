@@ -85,7 +85,7 @@ def pymav_frame(msg_kwargs, seq=7):
 
 
 GPS_KW = dict(time_usec=1791368008123456, gps_id=0, ignore_flags=57, time_week_ms=123456789, time_week=2439,
-              fix_type=3, lat=233456789, lon=581234567, alt=0.0, hdop=7.5, vdop=15.0, vn=0.0, ve=0.0, vd=0.0,
+              fix_type=3, lat=358256789, lon=106234567, alt=0.0, hdop=7.5, vdop=15.0, vn=0.0, ve=0.0, vd=0.0,
               speed_accuracy=0.0, horiz_accuracy=15.0, vert_accuracy=30.0, satellites_visible=0)
 
 
@@ -145,8 +145,8 @@ def _():
     c.ok(len(payload) < 65, "test set-up: the payload should be truncated")
     d = dec(payload)
     c.ok(isinstance(d, dict), f"decode_gps_input() should return a dict, got {type(d).__name__}")
-    c.near(d.get("lat"), 23.3456789, 1e-9, "lat (degrees) of a truncated frame")
-    c.near(d.get("lon"), 58.1234567, 1e-9, "lon (degrees)")
+    c.near(d.get("lat"), 35.8256789, 1e-9, "lat (degrees) of a truncated frame")
+    c.near(d.get("lon"), 10.6234567, 1e-9, "lon (degrees)")
     c.eq((d.get("fix_type"), d.get("ignore_flags"), d.get("satellites_visible")), (3, 57, 0),
          "(fix_type, ignore_flags, satellites_visible)")
     c.near(d.get("horiz_accuracy"), 15.0, 1e-6, "horiz_accuracy")

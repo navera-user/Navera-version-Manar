@@ -7,8 +7,8 @@ from academy_check import Background, Checker, load_student, need, sh, wait_for_
 
 c = Checker()
 R = 6_371_000.0
-MUSCAT = (23.5880, 58.3829)
-SALALAH = (17.02, 54.09)
+SOUSSE = (35.8277, 10.6388)       # the fake GPS's default start
+MONASTIR = (35.78, 10.83)
 
 
 def dist_m(lat1, lon1, lat2, lon2):
@@ -53,9 +53,9 @@ def _():
         hint="lat = lat0 + degrees(north / R); lon = lon0 + degrees(east / (R·cos(lat0))), cos in radians.")
 def _():
     (f,) = need(mod(), "offset_to_latlon")
-    lat, lon = f(*MUSCAT, 2 * math.pi * R / 360.0, 0.0)
-    c.near(lat, MUSCAT[0] + 1.0, 1e-6, "latitude after 111 195 m north")
-    c.near(lon, MUSCAT[1], 1e-9, "longitude after a move north")
+    lat, lon = f(*SOUSSE, 2 * math.pi * R / 360.0, 0.0)
+    c.near(lat, SOUSSE[0] + 1.0, 1e-6, "latitude after 111 195 m north")
+    c.near(lon, SOUSSE[1], 1e-9, "longitude after a move north")
     lat, lon = f(60.0, 10.0, 0.0, 2 * math.pi * R / 360.0)
     c.near(lon, 12.0, 1e-6, "longitude after 111 195 m east at latitude 60° (cos 60° = 0.5)")
     c.near(lat, 60.0, 1e-9, "latitude after a move east")
@@ -124,7 +124,7 @@ def _():
     c.ok(not missing, f"`ros2 param list /fake_gps` does not show: {missing}\n{r['params'][-300:]}")
 
 
-@c.test("default run — 2 Hz, current stamps, a valid fix that starts near Muscat",
+@c.test("default run — 2 Hz, current stamps, a valid fix that starts near Sousse",
         hint="Timer period 1.0 / rate_hz; header.stamp = now.to_msg(); start_lat/start_lon read from the parameters.")
 def _():
     from sensor_msgs.msg import NavSatStatus
@@ -134,8 +134,8 @@ def _():
     age = time.time() - stamp(msgs[-1])
     c.ok(abs(age) < 30, f"header.stamp is {age:.0f} s away from the current time")
     c.eq(msgs[-1].status.status, NavSatStatus.STATUS_FIX, "status.status of a published fix")
-    c.ok(dist_m(msgs[0].latitude, msgs[0].longitude, *MUSCAT) < 300,
-         f"the first fix ({msgs[0].latitude:.5f}, {msgs[0].longitude:.5f}) is not near the Muscat start {MUSCAT}")
+    c.ok(dist_m(msgs[0].latitude, msgs[0].longitude, *SOUSSE) < 300,
+         f"the first fix ({msgs[0].latitude:.5f}, {msgs[0].longitude:.5f}) is not near the Sousse start {SOUSSE}")
 
 
 @c.test("TODO 7 — the vehicle drives at 5 m/s on heading 30° (measured between the published fixes)",
@@ -164,21 +164,21 @@ def _():
 SAL = {}
 
 
-@c.test("parameters from the command line: 4 Hz, 10 m/s due east, starting in Salalah",
+@c.test("parameters from the command line: 4 Hz, 10 m/s due east, starting in Monastir",
         hint="Start the node with  --ros-args -p rate_hz:=4.0 -p speed_mps:=10.0 -p heading_deg:=90.0 "
-             "-p start_lat:=17.02 -p start_lon:=54.09  — rate, start and speed must all come from the parameters.")
+             "-p start_lat:=35.78 -p start_lon:=10.83  — rate, start and speed must all come from the parameters.")
 def _():
     from sensor_msgs.msg import NavSatFix
     if "msgs" not in SAL:
         cmd = ("python3 -u fake_gps.py --ros-args -p rate_hz:=4.0 -p speed_mps:=10.0 -p heading_deg:=90.0 "
-               "-p start_lat:=17.02 -p start_lon:=54.09")
+               "-p start_lat:=35.78 -p start_lon:=10.83")
         with Background(cmd, settle=3.0):
             SAL["msgs"] = wait_for_messages("/fake_gps/fix", NavSatFix, count=1, timeout=12) and \
                 wait_for_messages("/fake_gps/fix", NavSatFix, count=12, timeout=8)
     msgs = SAL["msgs"] or []
     c.ok(len(msgs) >= 5, f"only {len(msgs)} messages with these parameters")
-    c.ok(dist_m(msgs[0].latitude, msgs[0].longitude, *SALALAH) < 300,
-         f"the first fix ({msgs[0].latitude:.4f}, {msgs[0].longitude:.4f}) is not near Salalah {SALALAH}")
+    c.ok(dist_m(msgs[0].latitude, msgs[0].longitude, *MONASTIR) < 300,
+         f"the first fix ({msgs[0].latitude:.4f}, {msgs[0].longitude:.4f}) is not near Monastir {MONASTIR}")
     dt = stamp(msgs[-1]) - stamp(msgs[0])
     c.near((len(msgs) - 1) / dt, 4.0, 0.5, "the rate (Hz)")
     c.near(dist_m(msgs[0].latitude, msgs[0].longitude, msgs[-1].latitude, msgs[-1].longitude) / dt, 10.0, 0.8,
@@ -187,7 +187,7 @@ def _():
 
 def reference_error(d, h):
     from navera_common.geo import dead_reckon
-    lat0, lon0 = MUSCAT
+    lat0, lon0 = SOUSSE
     n, e = d * math.cos(math.radians(h)), d * math.sin(math.radians(h))
     flat = (lat0 + math.degrees(n / R), lon0 + math.degrees(e / (R * math.cos(math.radians(lat0)))))
     sph = dead_reckon(lat0, lon0, h, d, 1.0)
@@ -209,8 +209,8 @@ def _():
     a = load_student("analysis.py")
     (fe, pe) = need(a, "flat_error_m", "predicted_due_east_m")
     c.near(fe(10_000.0, 30.0), reference_error(10_000.0, 30.0), 0.01, "flat_error_m(10 km, 30°) (m)")
-    c.near(pe(10_000.0, MUSCAT[0]), 1e8 * math.tan(math.radians(MUSCAT[0])) / (2 * R), 1e-3,
-           "predicted_due_east_m(10 km, 23.588°) (m)")
+    c.near(pe(10_000.0, SOUSSE[0]), 1e8 * math.tan(math.radians(SOUSSE[0])) / (2 * R), 1e-3,
+           "predicted_due_east_m(10 km, 35.8277°) (m)")
     r = results()
     for key, h in (("flat_error_heading30_m", 30.0), ("flat_error_east_m", 90.0)):
         for d in ("1000", "10000", "100000"):

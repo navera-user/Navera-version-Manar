@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """gps_track_player.py — a ready-made GNSS source for this lab (you don't need to change it).
 
-It drives a pretend vehicle around a loop near the Sultan Qaboos Grand Mosque, Muscat, at a known
+It drives a pretend vehicle around a loop near the Ribat of Sousse (NAVERA's test area), at a known
 speed and publishes sensor_msgs/NavSatFix on /fake_gps/fix (2 Hz) — the same topic and message as
 your fake GPS of lesson 10. Parameters (doubles unless noted):
 
@@ -24,7 +24,7 @@ from sensor_msgs.msg import NavSatFix, NavSatStatus
 
 TOPIC = "/fake_gps/fix"
 R = 6_371_000.0
-START = (23.5880, 58.3829)                 # near the Sultan Qaboos Grand Mosque, Muscat
+START = (35.8277, 10.6388)                 # near the Ribat of Sousse, NAVERA's test area
 # The loop: (north, east) in metres from START, corner after corner (2 400 m in total).
 ROUTE_M = [(0, 0), (0, 400), (300, 400), (300, 900), (0, 900), (0, 0)]
 SIGMA_STATED_M = 3.0                       # the accuracy the receiver states in its covariance
@@ -70,7 +70,7 @@ class TrackPlayer(Node):
         self.n = 0
         self.prev_stamp = None
         self.create_timer(1.0 / rate, self.tick)
-        self.get_logger().info(f"playing a {self.speed:.1f} m/s drive around Muscat on {TOPIC} at {rate:.1f} Hz"
+        self.get_logger().info(f"playing a {self.speed:.1f} m/s drive around Sousse on {TOPIC} at {rate:.1f} Hz"
                                f" (noise {self.noise:.1f} m, faults {'on' if self.faults else 'off'})")
 
     def tick(self):

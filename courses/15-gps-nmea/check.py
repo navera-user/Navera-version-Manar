@@ -6,12 +6,12 @@ import re
 from academy_check import Checker, load_student, need
 
 c = Checker()
-LOG = "/data/academy/15-gps-nmea/sohar_drive.nmea"
+LOG = "/data/academy/15-gps-nmea/sousse_drive.nmea"
 TEXTBOOK = "GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,"
 NEO = "$GNGGA,141621.00,3544.04006,N,01034.55091,E,1,12,0.72,95.3,M,32.1,M,,*70"   # NAVERA's real receiver
-RMC = "$GPRMC,051217.00,A,2429.39522,N,05637.20466,E,11.88,137.7,121026,,,A*59"
+RMC = "$GPRMC,051217.00,A,3549.61531,N,01038.52535,E,11.88,136.6,121026,,,A*5F"
 NOFIX = "$GPGGA,052009.00,,,,,0,00,99.99,,,,,,*68"
-SWAP60 = "$GPGGA,051731.00,2462.56214,N,05639.75460,E,1,11,0.85,10.9,M,-30.0,M,,*49"
+SWAP60 = "$GPGGA,051731.00,3574.17098,N,01041.88184,E,1,11,0.85,10.9,M,32.0,M,,*62"
 GSA = "$GPGSA,A,3,02,05,07,09,13,20,23,24,30,,,,1.98,1.15,1.61*0C"
 GSA_NOFIX = "$GPGSA,A,1,,,,,,,,,,,,,99.99,99.99,99.99*30"
 GSV = "$GPGSV,3,2,12,13,72,160,48,15,24,200,,18,12,225,,20,40,253,42*7C"
@@ -73,7 +73,7 @@ def _():
            "a checksum that is not hex": "$GP#@!~~,,0,12,,1.0*ZZ",
            "a 1-digit checksum": NEO[:-1],
            "an empty line": "",
-           "two glued sentences": "$GPGGA,052040.00,2425.14618,N,05641.33" + RMC,
+           "two glued sentences": "$GPGGA,052040.00,3546.15064,N,01044.0170" + RMC,
            f"a line of {len(long_line)} characters": long_line,
            "a non-ASCII character": NEO.replace("3544", "35�4"),
            "None": None}
@@ -85,14 +85,14 @@ def _():
         c.ok(got is False, f"is_valid should be False for {why}, got {got!r}")
 
 
-@c.test("is_valid() finds the 7 damaged lines of the Sohar log",
+@c.test("is_valid() finds the 7 damaged lines of the Sousse log",
         hint="Read the log with read_log() (it decodes like gps_node). 7 lines fail; the two swapped-digit "
              "lines PASS the checksum — that is expected (XOR cannot see the order).")
 def _():
     m = nt()
     f, read_log = need(m, "is_valid", "read_log")
     lines = read_log(LOG)
-    c.eq(len(lines), 6318, "number of lines in the log")
+    c.eq(len(lines), 6414, "number of lines in the log")
     n = sum(1 for ln in lines if f(ln) is not True)
     c.eq(n, 7, "number of lines refused by is_valid")
 
@@ -102,12 +102,12 @@ def _():
              "None for an unreadable value, an unknown hemisphere or minutes outside [0, 60).")
 def _():
     (f,) = need(nt(), "dm_to_deg")
-    c.near(f("2429.39522", "N"), 24.4899203, 1e-7, "dm_to_deg('2429.39522', 'N')")
-    c.near(f("05637.20466", "E"), 56.6200777, 1e-7, "dm_to_deg('05637.20466', 'E')")
+    c.near(f("3549.61531", "N"), 35.8269218, 1e-7, "dm_to_deg('3549.61531', 'N')")
+    c.near(f("01038.52535", "E"), 10.6420892, 1e-7, "dm_to_deg('01038.52535', 'E')")
     c.near(f("4807.038", "S"), -48.1173, 1e-7, "dm_to_deg('4807.038', 'S')")
     c.near(f("12224.000", "W"), -122.4, 1e-7, "dm_to_deg('12224.000', 'W')")
     c.near(f("0030.000", "N"), 0.5, 1e-7, "dm_to_deg('0030.000', 'N')")
-    for v, h in (("", "N"), ("abc", "N"), (None, "N"), ("2462.56214", "N"), ("2429.3", "X"), ("2429.3", "")):
+    for v, h in (("", "N"), ("abc", "N"), (None, "N"), ("3574.17098", "N"), ("3549.6", "X"), ("3549.6", "")):
         got = f(v, h)
         c.ok(got is None, f"dm_to_deg({v!r}, {h!r}) should be None, got {got!r}")
 
@@ -133,7 +133,7 @@ def _():
          "lat, lon and alt_msl of the no-fix sentence should be None")
     s = f(SWAP60)
     c.ok(isinstance(s, dict) and s.get("lat") is None and s.get("lon") is not None,
-         f"in {SWAP60[:32]}… the minutes are 62: lat must be None (lon is fine), got {s!r}")
+         f"in {SWAP60[:32]}… the minutes are 74: lat must be None (lon is fine), got {s!r}")
 
 
 @c.test("parse_gsa(): mode, used PRNs and the three DOPs (NMEA 4.10 system id accepted)",
@@ -221,7 +221,7 @@ def _():
              "6, 7, 8 get the 'non-satellite position' reason (with the em dash —), others 'no GPS fix'.")
 def _():
     (f,) = need(load_student("gps_filter.py"), "navera_decision")
-    base = {"time": "051217.00", "lat": 24.49, "lon": 56.62, "sats": 9, "hdop": 1.15, "alt_msl": 8.8, "geo_sep": -30.0}
+    base = {"time": "051217.00", "lat": 35.83, "lon": 10.64, "sats": 9, "hdop": 1.15, "alt_msl": 8.8, "geo_sep": 32.0}
     cases = [(1, True, ""), (2, True, ""), (4, True, ""), (5, True, ""),
              (0, False, "no GPS fix (qual=0)"), (3, False, "no GPS fix (qual=3)"),
              (6, False, "receiver reports a non-satellite position (qual=6) — not used"),
@@ -248,26 +248,26 @@ def _():
     want = [5.29, 0, 0, 0, 5.29, 0, 0, 0, 21.16]
     c.ok(all(abs(a - b) < 1e-9 for a, b in zip(got, want)), f"navera_covariance(1.15) = {got}, expected {want}")
     c.ok(cov(None) is None and cov(0.0) is None, "navera_covariance(None) and (0.0) should be None")
-    p = (24.40, 56.70)
+    p = (35.80, 10.70)
     c.ok(jump(None, p, 1.0) is True, "jump_ok(None, ...) should be True (first fix)")
-    c.ok(jump(p, (24.4005, 56.70), 1.0) is True, "55 m in 1 s is plausible (<= 60 m/s)")
-    c.ok(jump(p, (24.4120, 56.70), 1.0) is False, "1.33 km in 1 s is a jump")
-    c.ok(jump(p, (24.4120, 56.70), 30.0) is True, "1.33 km in 30 s is plausible")
-    c.ok(jump(p, (24.4007, 56.70), 1.0, 30.0) is True, "78 m in 1 s with a slack of 30 m is plausible")
-    c.ok(jump(p, (24.4005, 56.70), 0.0) is False, "dt = 0 must give False")
+    c.ok(jump(p, (35.8005, 10.70), 1.0) is True, "55 m in 1 s is plausible (<= 60 m/s)")
+    c.ok(jump(p, (35.8120, 10.70), 1.0) is False, "1.33 km in 1 s is a jump")
+    c.ok(jump(p, (35.8120, 10.70), 30.0) is True, "1.33 km in 30 s is plausible")
+    c.ok(jump(p, (35.8007, 10.70), 1.0, 30.0) is True, "78 m in 1 s with a slack of 30 m is plausible")
+    c.ok(jump(p, (35.8005, 10.70), 0.0) is False, "dt = 0 must give False")
 
 
 @c.test("results.json — data quality: rejected lines, qualities, NAVERA decisions, jump gate",
         hint="Run python3 analyze_drive.py after TODO 1-13. 7 lines rejected; the jump gate must catch the "
-             "swapped-digit line at 052423, and your parser must refuse the 62-minute line at 051731.")
+             "swapped-digit line at 052421, and your parser must refuse the 74-minute line at 051731.")
 def _():
     r = results()
-    c.eq(r.get("lines_total"), 6318, "lines_total")
+    c.eq(r.get("lines_total"), 6414, "lines_total")
     c.eq(r.get("lines_rejected"), 7, "lines_rejected")
-    c.eq(r.get("gga_by_quality"), {"0": 54, "1": 991, "6": 5}, "gga_by_quality")
-    c.eq(r.get("navera_valid"), 990, "navera_valid (your decision with your stricter parser)")
-    c.eq(r.get("jump_rejected_utc"), ["052423"], "jump_rejected_utc")
-    c.eq(r.get("fixes_accepted"), 989, "fixes_accepted")
+    c.eq(r.get("gga_by_quality"), {"0": 54, "1": 1007, "6": 5}, "gga_by_quality")
+    c.eq(r.get("navera_valid"), 1006, "navera_valid (your decision with your stricter parser)")
+    c.eq(r.get("jump_rejected_utc"), ["052421"], "jump_rejected_utc")
+    c.eq(r.get("fixes_accepted"), 1005, "fixes_accepted")
 
 
 @c.test("results.json — geometry, outage and accuracy",
@@ -275,14 +275,14 @@ def _():
              "largest gap between accepted fixes. UERE = sqrt(mean((e_h / HDOP)^2)).")
 def _():
     r = results()
-    c.eq(r.get("dop_epochs_compared"), 992, "dop_epochs_compared")
+    c.eq(r.get("dop_epochs_compared"), 1008, "dop_epochs_compared")
     c.near(r.get("dop_max_abs_diff"), 0.003, 0.0031, "dop_max_abs_diff")
     c.near(r.get("outage_s"), 33.0, 0.01, "outage_s")
     c.eq((r.get("outage_from_utc"), r.get("outage_to_utc")), ("052003", "052036"), "outage from/to")
-    c.near(r.get("hdop_max"), 16.35, 0.001, "hdop_max")
-    c.near(r.get("uere_est_m"), 1.88, 0.015, "uere_est_m")
-    c.near(r.get("frac_within_2drms"), 0.9798, 0.002, "frac_within_2drms")
-    c.near(r.get("track_length_m"), 19829.2, 1.0, "track_length_m")
+    c.near(r.get("hdop_max"), 5.69, 0.001, "hdop_max")
+    c.near(r.get("uere_est_m"), 1.87, 0.015, "uere_est_m")
+    c.near(r.get("frac_within_2drms"), 0.9831, 0.002, "frac_within_2drms")
+    c.near(r.get("track_length_m"), 19578.4, 1.0, "track_length_m")
 
 
 @c.test("gps_node_counts.json — NAVERA's real driver read the log",
@@ -292,9 +292,9 @@ def _():
         c.ok(False, "gps_node_counts.json does not exist yet — run python3 play_to_gps_node.py")
     with open("gps_node_counts.json") as f:
         g = json.load(f)
-    c.ok(g.get("log", "").endswith("sohar_drive.nmea"), f"the replay used {g.get('log')!r}, not the Sohar log")
-    c.eq(g.get("published"), 1050, "PositionEstimate messages published (one per valid-checksum GGA)")
-    c.eq(g.get("valid"), 991, "valid estimates")
+    c.ok(g.get("log", "").endswith("sousse_drive.nmea"), f"the replay used {g.get('log')!r}, not the Sousse log")
+    c.eq(g.get("published"), 1066, "PositionEstimate messages published (one per valid-checksum GGA)")
+    c.eq(g.get("valid"), 1007, "valid estimates")
     c.eq(g.get("invalid"), 59, "invalid estimates")
 
 
@@ -310,8 +310,8 @@ def _():
     c.ok("TODO" not in text, "report.md still contains 'TODO' lines from the template")
     words = len(re.findall(r"[A-Za-z]+", text))
     c.ok(words >= 250, f"report.md has {words} words; write at least 250")
-    for token, what in (("051731", "the UTC time of the 62-minute line"), ("052423", "the UTC time of the jump"),
-                        ("33", "the outage length (s)"), ("991", "gps_node's valid count"),
+    for token, what in (("051731", "the UTC time of the 74-minute line"), ("052421", "the UTC time of the jump"),
+                        ("33", "the outage length (s)"), ("1007", "gps_node's valid count"),
                         ("7", "the number of rejected lines")):
         c.ok(token in text, f"report.md does not mention {what} ({token})")
     uere = None

@@ -10,12 +10,13 @@ M_PER_DEG = 2 * math.pi * 6_371_000.0 / 360.0
 
 
 @pytest.fixture
-def muscat():
-    return (23.5880, 58.3829)
+def london():
+    """Near Big Ben, London."""
+    return (51.5007, -0.1246)
 
 
-def test_distance_from_a_point_to_itself_is_zero(muscat):
-    assert haversine_m(*muscat, *muscat) == pytest.approx(0.0, abs=1e-6)
+def test_distance_from_a_point_to_itself_is_zero(london):
+    assert haversine_m(*london, *london) == pytest.approx(0.0, abs=1e-6)
 
 
 @pytest.mark.parametrize("dt", [0.0, -1.0])
@@ -34,8 +35,9 @@ def test_one_degree_of_longitude_on_the_equator_and_at_60():
     assert haversine_m(60.0, 10.0, 60.0, 11.0) == pytest.approx(M_PER_DEG / 2, rel=1e-3)
 
 
-def test_muscat_to_nizwa_is_about_113_km(muscat):
-    assert haversine_m(*muscat, 22.9333, 57.5333) == pytest.approx(113_281, abs=50)
+def test_london_to_paris_is_about_341_km(london):
+    # Big Ben -> Eiffel Tower, computed independently: 340 539 m
+    assert haversine_m(*london, 48.8584, 2.2945) == pytest.approx(340_539, abs=50)
 
 
 # ---------- meters_to_degrees / offset_to_latlon ----------
@@ -52,21 +54,21 @@ def test_east_move_at_60_degrees_is_twice_as_many_degrees():
     assert dlon == pytest.approx(2.0, rel=1e-9)
 
 
-def test_offset_to_latlon_moves_north_only(muscat):
-    lat, lon = offset_to_latlon(*muscat, 1000.0, 0.0)
-    assert lat > muscat[0]
-    assert lon == pytest.approx(muscat[1], abs=1e-12)
+def test_offset_to_latlon_moves_north_only(london):
+    lat, lon = offset_to_latlon(*london, 1000.0, 0.0)
+    assert lat > london[0]
+    assert lon == pytest.approx(london[1], abs=1e-12)
 
 
-def test_round_trip_example(muscat):
-    n, e = latlon_to_offset(*muscat, *offset_to_latlon(*muscat, 2500.0, -1200.0))
+def test_round_trip_example(london):
+    n, e = latlon_to_offset(*london, *offset_to_latlon(*london, 2500.0, -1200.0))
     assert (n, e) == (pytest.approx(2500.0, abs=1e-6), pytest.approx(-1200.0, abs=1e-6))
 
 
 # ---------- is_valid_position ----------
 
 @pytest.mark.parametrize("lat, lon, ok", [
-    (23.588, 58.3829, True), (-89.9, 179.9, True), (0.0, 0.0, False), (91.0, 10.0, False),
+    (51.5007, -0.1246, True), (-89.9, 179.9, True), (0.0, 0.0, False), (91.0, 10.0, False),
     (-91.0, 10.0, False), (23.0, 181.0, False), (math.nan, 10.0, False), (23.0, math.inf, False)])
 def test_is_valid_position(lat, lon, ok):
     assert is_valid_position(lat, lon) is ok

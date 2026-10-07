@@ -117,7 +117,7 @@ def build_mosaic(db_path, lat, lon, z, radius=1):
 
 if __name__ == "__main__":
     print("Mercator ordinate y = ln(tan(pi/4 + lat/2)):")
-    for lat in (0.0, 17.0194, 23.5839, 35.8277, 60.0, MAX_LAT):
+    for lat in (0.0, 1.2834, 35.8277, 51.5007, 64.1417, MAX_LAT):
         y = mercator_y(lat)
         y = None if y is None else round(y, 12) + 0.0
         back = None if y is None else inverse_mercator_y(y)

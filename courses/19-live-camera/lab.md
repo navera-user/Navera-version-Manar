@@ -34,11 +34,11 @@ The data of this lab:
 | `frames/frame_*.jpg`, `insta360_top.yaml` | **real** (NAVERA bench) | 30 Insta360 frames, the top lens calibration with `latency_s: 0.138` |
 | `grab_log.csv` | synthetic | 60 s of grab times at nominal 28.8 fps: jitter, drops, one stall |
 | `flashes.csv`, `flash_frames.csv` | synthetic | a simulated flash bench (screen delay 20 ms, latency 105 ms — **chosen values, not the Insta360's**) |
-| `turn_imu.csv`, `turn_frames.csv` | synthetic | a drone turning 150 m above the coast near Sohar: IMU at 50 Hz with an 0.8 s dropout, frames with the **true** attitude at each exposure |
+| `turn_imu.csv`, `turn_frames.csv` | synthetic | a drone turning 150 m above a coastline: IMU at 50 Hz with an 0.8 s dropout, frames with the **true** attitude at each exposure |
 
 The synthetic files have an exact ground truth, so you can measure the error of each
 method. NAVERA's real flight data and test map cover Sousse, Tunisia, where NAVERA is
-developed. The Sohar flight here is simulated.
+developed. The turning flight here is simulated.
 
 ## Step 1 — Find the camera (or see that it is not yours)
 

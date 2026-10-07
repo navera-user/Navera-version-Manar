@@ -15,7 +15,7 @@ import numpy as np
 import camera_math as cm
 import measure_pad as mp
 
-MUSCAT_LAT, SOUSSE_LAT = 23.59, 35.83
+REYKJAVIK_LAT, SOUSSE_LAT = 64.15, 35.83
 INSTA = dict(hfov=111.0, w=1920, h=540)          # NAVERA's straightened Insta360 view
 LAB = dict(hfov=90.0, w=960, h=540)              # the lab photos' camera
 
@@ -61,14 +61,14 @@ fig.savefig("footprint.png", dpi=90)
 plt.close(fig)
 res["footprint_150m"] = fp
 
-# 3. map zoom: Muscat vs Sousse
+# 3. map zoom: Reykjavik vs Sousse
 res["map"] = {
-    "muscat_z17_mpp": round(need(cm.map_m_per_px(MUSCAT_LAT, 17), "map_m_per_px()"), 4),
+    "reykjavik_z17_mpp": round(need(cm.map_m_per_px(REYKJAVIK_LAT, 17), "map_m_per_px()"), 4),
     "sousse_z17_mpp": round(cm.map_m_per_px(SOUSSE_LAT, 17), 4),
-    "best_zoom_300m_muscat": need(cm.best_zoom(300, INSTA["hfov"], INSTA["w"], MUSCAT_LAT), "best_zoom()"),
+    "best_zoom_300m_reykjavik": need(cm.best_zoom(300, INSTA["hfov"], INSTA["w"], REYKJAVIK_LAT), "best_zoom()"),
     "best_zoom_300m_sousse": cm.best_zoom(300, INSTA["hfov"], INSTA["w"], SOUSSE_LAT),
     # GSD is proportional to h: the height where it equals the zoom-17 map
-    "h_equal_z17_muscat_m": round(cm.map_m_per_px(MUSCAT_LAT, 17) / cm.meters_per_pixel(1.0, INSTA["hfov"], INSTA["w"]), 1),
+    "h_equal_z17_reykjavik_m": round(cm.map_m_per_px(REYKJAVIK_LAT, 17) / cm.meters_per_pixel(1.0, INSTA["hfov"], INSTA["w"]), 1),
     "h_equal_z17_sousse_m": round(cm.map_m_per_px(SOUSSE_LAT, 17) / cm.meters_per_pixel(1.0, INSTA["hfov"], INSTA["w"]), 1),
 }
 hs = np.arange(20, 1001, 10)
@@ -76,10 +76,10 @@ fig, ax = plt.subplots(figsize=(8, 5))
 ax.plot(hs, [cm.meters_per_pixel(h, INSTA["hfov"], INSTA["w"]) for h in hs], lw=2,
         label="Insta360 straightened view (111°, 1920 px)")
 for z in range(16, 20):
-    ax.axhline(cm.map_m_per_px(MUSCAT_LAT, z), color="grey", ls="-", lw=1)
+    ax.axhline(cm.map_m_per_px(REYKJAVIK_LAT, z), color="grey", ls="-", lw=1)
     ax.axhline(cm.map_m_per_px(SOUSSE_LAT, z), color="grey", ls=":", lw=1)
-    ax.text(1010, cm.map_m_per_px(MUSCAT_LAT, z), f"z{z}", va="bottom", fontsize=9)
-ax.plot([], [], color="grey", ls="-", label="map zoom levels, Muscat (23.6° N)")
+    ax.text(1010, cm.map_m_per_px(REYKJAVIK_LAT, z), f"z{z}", va="bottom", fontsize=9)
+ax.plot([], [], color="grey", ls="-", label="map zoom levels, Reykjavik (64.2° N)")
 ax.plot([], [], color="grey", ls=":", label="map zoom levels, Sousse (35.8° N)")
 ax.set_xlim(0, 1080)
 ax.set_xlabel("height above ground (m)")
@@ -103,12 +103,12 @@ if t is not None:
 res["pads"] = pads
 
 # 5. errors
-# Take-off at Nizwa (ground about 500 m above sea level), climb to 2300 m GPS altitude, fly to the
-# Saiq plateau of Jebel Akhdar (ground about 2000 m). "GPS altitude - take-off ground" says 1800 m.
+# Take-off in a mountain valley (ground about 500 m above sea level), climb to 2300 m GPS altitude,
+# fly over a high plateau (ground about 2000 m). "GPS altitude - take-off ground" says 1800 m.
 believed, true = 2300.0 - 500.0, 2300.0 - 2000.0
 res["errors"] = {
-    "jebel_akhdar_believed_agl_m": believed, "jebel_akhdar_true_agl_m": true,
-    "jebel_akhdar_fitted_scale": round(need(cm.fitted_scale(believed, true), "fitted_scale()"), 4),
+    "mountain_believed_agl_m": believed, "mountain_true_agl_m": true,
+    "mountain_fitted_scale": round(need(cm.fitted_scale(believed, true), "fitted_scale()"), 4),
     "tilt_error_1deg_at_150m_tilt10_m": round(need(cm.tilt_position_error(150, 10, 1), "tilt_position_error()"), 3),
     "tilt_error_1deg_at_150m_tilt30_m": round(cm.tilt_position_error(150, 30, 1), 3),
 }

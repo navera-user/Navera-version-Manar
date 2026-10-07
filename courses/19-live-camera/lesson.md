@@ -7,7 +7,7 @@
 > - You will compute the vehicle's attitude at the exposure instant with **slerp**, using NAVERA's own rules.
 > - In the lab you build the timing tools, check them against NAVERA's code, and run NAVERA's live camera node. The camera is **not** needed.
 
-A survey drone flies 150 m above the Al Batinah coast near Sohar. Its GPS has just been jammed,
+A survey drone flies 150 m above a sandy coastline. Its GPS has just been jammed,
 so NAVERA must find each camera picture on its satellite map. The drone is rolling into a turn
 at 25° per second. The picture that reaches the computer **now** was taken about **0.14 s
 ago**. In that time the drone rolled about 3.5°. If NAVERA straightens the picture with the
@@ -208,7 +208,7 @@ centre about
 Δx ≈ H · tan(δθ)            and with a rotation rate ω and a time error δt:   δθ ≈ ω · δt
 ```
 
-**Worked example (Sohar coast).** H = 150 m, roll rate ω = 25 °/s, and NAVERA uses the attitude
+**Worked example (coastal survey).** H = 150 m, roll rate ω = 25 °/s, and NAVERA uses the attitude
 of the grab instead of the exposure, so δt = 0.138 s:
 
 ```
@@ -292,10 +292,10 @@ Sampling fast is not enough. A hunter must also **compensate for the delay**. Hi
 peregrine falcons attacking showed that they steer with **proportional navigation**, the
 guidance law of many missiles: they turn in proportion to how fast the line of sight to the
 prey rotates. In effect they aim at where the prey **will be**, not at the old image of where
-it was. In Oman, the **sooty falcon** shows how much timing matters. It breeds on islands off
-the coast, such as the Daymaniyat Islands near Muscat. It raises its chicks late in the summer,
-when small songbirds migrate across the sea in autumn, and it catches them in flight over the
-water.
+it was. **Eleonora's falcon** shows how much timing matters. It breeds on small islands in the
+Mediterranean, from Greece to the Canary Islands. It raises its chicks late in the summer,
+when small songbirds migrate across the sea from Europe to Africa in autumn, and it catches
+them in flight over the water.
 
 NAVERA's problem is the same, only slower. Each picture is about 0.14 s old when it arrives. NAVERA
 remembers when the picture was **really** taken and reads the attitude of **that** instant,

@@ -1,6 +1,6 @@
 """flight_analysis.py — analyse a flight-test campaign with pandas, NumPy and matplotlib (lab 4).
 
-The data, campaign.csv, is a SYNTHETIC campaign of four test flights in Oman, one row every 2 s:
+The data, campaign.csv, is a SYNTHETIC campaign of four test flights near Sousse, one row every 2 s:
     flight_id, time_s, lat, lon, alt_m, speed_mps, battery_pct, gps_valid, source, state
 It is messy on purpose (duplicates, glitches, empty cells). Clean it, measure it, plot it.
 

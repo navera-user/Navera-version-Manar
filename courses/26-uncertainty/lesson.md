@@ -12,7 +12,7 @@
 > - In the lab you build a 2-D Kalman filter with a chi-square gate, and prove that your 1-D
 >   filter is NAVERA's real height filter.
 
-A survey drone leaves Mutrah and flies west along the Muscat coast. Every second its GPS says
+A survey drone leaves Monastir harbour and flies west-north-west along the coast towards Sousse. Every second its GPS says
 *"you are here, ±5 m"*. Then, near the port, a jammer silences the GPS for 40 seconds. When the
 fixes come back, the first one is 150 m away from where the drone thinks it is. Is the drone lost,
 or is this fix wrong? To answer, the navigation software needs more than positions: it needs to
@@ -128,7 +128,7 @@ If f is **non-linear**, we linearise it around the estimate with its **Jacobian*
 (the matrix of first derivatives) and use the same formula, `P_y ≈ J P Jᵀ`. This is first-order
 error propagation; it is good when the errors are small compared with the curvature of f.
 
-**Worked example — a coastal radar.** Imagine a radar station near Ras al Hadd that measures a boat at range
+**Worked example — a coastal radar.** Imagine a radar station on a headland that measures a boat at range
 r = 2000 m (σr = 5 m) and bearing b = 60° from north, clockwise (σb = 0.5°). Then
 `east = r sin b`, `north = r cos b`, and
 
@@ -301,8 +301,9 @@ first test. The same idea, with real flights, is what `evaluate_session.py` does
 
 ## 🐦 How birds do it
 
-Every winter, Barr Al Hikman on Oman's central coast hosts very large numbers of migrating
-shorebirds and flamingos; it is one of the most important wintering wetlands of the region. Many of
+Every spring and autumn, the Wadden Sea on the North Sea coast of the Netherlands, Germany and
+Denmark hosts millions of migrating shorebirds; it is one of the most important stopover wetlands
+in the world. Many of
 these birds arrive in flocks after flights of thousands of kilometres. How precise is one bird?
 
 Release homing pigeons one by one from the same place and their vanishing directions are
@@ -325,7 +326,7 @@ cannot both be right" — choose. Navi, NAVERA's swallow, would agree.
 ## 8. In NAVERA
 
 NAVERA's real data covers **Sousse, Tunisia**, where NAVERA is developed; the data of this lab is
-simulated in Oman. The ideas are the same.
+simulated, and placed in the same test area. The ideas are the same.
 
 | What | Where in your copy (`~/navera/…`) |
 |---|---|

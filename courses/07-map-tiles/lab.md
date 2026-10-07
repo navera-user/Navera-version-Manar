@@ -2,7 +2,7 @@
 
 **Goal:** implement the Web Mercator tile mathematics (projection, tile numbers, inverse, scale,
 zoom choice, mosaic pixels), read real tiles out of NAVERA's 10 GB MBTiles file with SQL, verify
-everything against NAVERA's own code, then compute scales for Oman and write a short report.
+everything against NAVERA's own code, then compute scales for cities around the world and write a short report.
 **Time:** about 3 hours.
 
 | File | Role |
@@ -11,7 +11,7 @@ everything against NAVERA's own code, then compute scales for Oman and write a s
 | `explore_db.py` | looks inside an MBTiles file, or runs your SQL (ready) |
 | `get_tile.py`, `mosaic.py` | read one tile / build a mosaic with your functions (ready) |
 | `compare_navera.py` | your functions against NAVERA's (ready) |
-| `analysis.py` | Oman scales, map facts, corner bug → `results.json` (ready) |
+| `analysis.py` | world scales, map facts, corner bug → `results.json` (ready) |
 | [report.md](file:./report.md), [answers.py](file:./answers.py) | **your work**: report and quiz |
 
 Two maps, both read-only:
@@ -21,7 +21,8 @@ Two maps, both read-only:
 | `/data/map.mbtiles` | NAVERA's test map: Sousse region, Tunisia, zoom 13–19, 1.15 million tiles |
 | `/data/academy/07-map-tiles/sousse_small.mbtiles` | 88 tiles copied from it (Ribat of Sousse, Monastir marina), 2 MB — used by **✔ Check my work** |
 
-There is no imagery of Oman in the academy: Omani places are used for computations only.
+NAVERA's test map covers Sousse, Tunisia. The other cities of this lab (Singapore, Reykjavik…) are used
+for computations only: there is no imagery of them.
 
 ## Step 1 — Look inside the map
 
@@ -59,10 +60,10 @@ radians (`math.log`, `math.tan`, `math.pi`, `math.radians`). **TODO 2** `inverse
 2·atan(eʸ) − π/2 (`math.exp`, `math.atan`), returned in **degrees**.
 
 ```bash
-python3 -c "from tiles_lab import *; print(mercator_y(23.5839), inverse_mercator_y(mercator_y(23.5839)), mercator_y(MAX_LAT))"
+python3 -c "from tiles_lab import *; print(mercator_y(51.5007), inverse_mercator_y(mercator_y(51.5007)), mercator_y(MAX_LAT))"
 ```
 
-Expected: 0.4237578881, 23.5839 (to ~10⁻¹⁴) and π = 3.14159… — the latitude where Web Mercator stops.
+Expected: 1.0520853127, 51.5007 (to ~10⁻¹⁴) and π = 3.14159… — the latitude where Web Mercator stops.
 
 > [!WARNING]
 > `ValueError: math domain error` here means `math.log()` received a number ≤ 0: you passed degrees
@@ -81,17 +82,17 @@ python3 tiles_lab.py
 ```
 
 The table shows the Ribat of Sousse at every zoom of NAVERA's map: from one zoom to the next, x and y
-double (each tile is cut into 2 × 2). Now the worked example of the course, the Grand Mosque in Muscat:
+double (each tile is cut into 2 × 2). Now the worked example of the course, Marina Bay Sands in Singapore:
 
 ```bash
-python3 -c "from tiles_lab import *; print(tile_xy(23.5839, 58.3875, 17), latlon_to_tile(23.5839, 58.3875, 17))"
+python3 -c "from tiles_lab import *; print(tile_xy(1.2834, 103.8607, 17), latlon_to_tile(1.2834, 103.8607, 17))"
 ```
 
-You must find (86794.24, 56696.09…) and tile (86794, 56696).
+You must find (103350.53…, 65068.69…) and tile (103350, 65068).
 
 > [!TASK]
 > **TODO 1–5 done** means: `mercator_y(35.8277)` = 0.670562, `mercator_y(85.0511287798)` = π, the
-> inverse is exact; the Ribat is in 17/69409/51547; Muscat in 17/86794/56696; the NW corner of
+> inverse is exact; the Ribat is in 17/69409/51547; Singapore in 17/103350/65068; the NW corner of
 > 17/69388/51536 is (35.8534396195918, 10.579833984375) — the value of NAVERA's unit test; every point
 > lies inside the tile you compute for it.
 
@@ -102,14 +103,14 @@ gsd_m, zmin, zmax)`: `math.floor(math.log2(...))`, then clamp with `max(zmin, mi
 return an `int`.
 
 ```bash
-python3 -c "from tiles_lab import *; print(meters_per_pixel(23.5839, 17), meters_per_pixel(17.0194, 17), zoom_for_gsd(23.5839, 0.352, 13, 19))"
+python3 -c "from tiles_lab import *; print(meters_per_pixel(1.2834, 17), meters_per_pixel(64.1417, 17), zoom_for_gsd(1.2834, 0.352, 13, 19))"
 ```
 
-Expected: 1.0946 m (Muscat), 1.1420 m (Salalah), zoom 18.
+Expected: 1.1940 m (Singapore), 0.5209 m (Reykjavik), zoom 18.
 
 > [!TASK]
-> **TODO 6–7 done** means: 156 543.03 m/px at zoom 0 on the equator, Muscat 1.0946 and Salalah 1.1420
-> m/px at zoom 17, zoom 18 exactly half of zoom 17; `zoom_for_gsd()` returns the right integer zoom,
+> **TODO 6–7 done** means: 156 543.03 m/px at zoom 0 on the equator, Singapore 1.1940 and Reykjavik
+> 0.5209 m/px at zoom 17, zoom 18 exactly half of zoom 17; `zoom_for_gsd()` returns the right integer zoom,
 > clamped to [zmin, zmax].
 
 ## Step 5 — Read a tile with SQL (TODO 8)
@@ -126,13 +127,13 @@ Expected: 1.0946 m (Muscat), 1.1420 m (Salalah), zoom 18.
 python3 get_tile.py 35.8277 10.6388 19
 ```
 
-Open `tile_19_277637_206190.png`: the Ribat of Sousse seen from above, 62 m wide. Now ask for Muscat:
+Open `tile_19_277637_206190.png`: the Ribat of Sousse seen from above, 62 m wide. Now ask for Singapore:
 
 ```bash
-python3 get_tile.py 23.5839 58.3875 17
+python3 get_tile.py 1.2834 103.8607 17
 ```
 
-The tile number is computed, but `read_tile()` returns `None`: NAVERA's map has no tile of Oman.
+The tile number is computed, but `read_tile()` returns `None`: NAVERA's map has no tile of Singapore.
 
 > [!TASK]
 > **TODO 8 done** means: `read_tile()` returns the exact JPEG bytes (checked by md5) of three tiles at
@@ -184,24 +185,25 @@ Every pair of numbers must be identical: your `tile_xy` and `meters_per_pixel` a
 python3 analysis.py
 ```
 
-It prints and saves to `results.json`: for eight places (seven in Oman, plus Sousse) the zoom-17
+It prints and saves to `results.json`: for eight places (seven cities on five continents, plus Sousse) the zoom-17
 pixel and tile size, the scale factor 1/cos φ, the EPSG:3857 − EPSG:3395 offset, and the zoom your
 `zoom_for_gsd()` picks for an example camera (84°, 1536 px, 300 m); the zoom by flying height over
-Muscat next to the map's own `altitude_zoom_map`; the corner-bug size in Sousse and Muscat; the
+Singapore next to the map's own `altitude_zoom_map`; the corner-bug size in Sousse, Singapore and
+Reykjavik; the
 pixel round-trip error; and the map-file facts.
 
 Write [report.md](file:./report.md) (150–400 words, your own words, three headings):
 
-- **## Oman scales** — zoom-17 m/px in Muscat and Salalah and why they differ; your zoom rule against
+- **## World scales** — zoom-17 m/px in Singapore and Reykjavik and why they differ; your zoom rule against
   `altitude_zoom_map`: which would you use, and why?
 - **## The map file** — the real size in GB, the metadata's `estimated_size_mb`, which you trust and
   why; how a tile is found among a million (index, query plan).
-- **## The corner bug** — what was wrong, 175 m in Sousse, how much in Muscat, and why different.
+- **## The corner bug** — what was wrong, 175 m in Sousse, how much in Singapore, and why different.
 
 > [!TASK]
 > `results.json` exists and is right (the check verifies it), and `report.md` has the three headings,
-> at least 150 words, and quotes: Muscat's and Salalah's zoom-17 m/px, the real size in GB, the
-> 36467 MB estimate, and the corner error in Muscat in meters. Then press **✔ Check my work**.
+> at least 150 words, and quotes: Singapore's and Reykjavik's zoom-17 m/px, the real size in GB, the
+> 36467 MB estimate, and the corner error in Singapore in meters. Then press **✔ Check my work**.
 
 ## Going further (optional)
 

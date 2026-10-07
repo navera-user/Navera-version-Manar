@@ -9,9 +9,9 @@
 >   **complementary filter** keeps the good part of each.
 > - A compass gives **magnetic** north. Add the **declination** (World Magnetic Model) to get true north.
 > - In the lab you write the rotation toolbox, then estimate the attitude of a simulated flight near
->   Nizwa and compare with NAVERA's code.
+>   Monastir and compare with NAVERA's code.
 
-A NAVERA drone flies at 150 m above the wadis south of Nizwa, towards the slopes of Jebel Akhdar.
+A NAVERA drone flies at 150 m above the olive groves south of Monastir, in NAVERA's test area in Tunisia.
 The GPS signal is jammed. The downward camera takes a photo and NAVERA wants to find that photo on
 its satellite map. Before any image processing can start, three questions need numbers:
 
@@ -27,7 +27,7 @@ The sensor that answers the first two questions is the **IMU**. This lesson give
 mathematics engineers use to describe an orientation — rotation matrices, Euler angles and
 quaternions — and the classical algorithms that turn raw IMU samples into an orientation:
 gyroscope integration, accelerometer tilt, the complementary filter and the magnetic compass with
-the **declination** of Oman.
+the **declination** (the angle between magnetic and true north), which changes around the world.
 
 ## 1. The sensors and what they really measure
 
@@ -54,7 +54,7 @@ magnetometer    m_m = Rᵀ m_w + n_m               (µT)     Earth's field seen 
 - The accelerometer measures the **specific force**: acceleration *minus* gravity. A drone at rest
   measures `Rᵀ (0, 0, +9.81)`: "up", with the size of g. This is how it finds **down**. But any
   real acceleration (speeding up, turning) is mixed into the same number.
-- The **magnetometer** measures the local magnetic field vector (about 44 µT near Nizwa). Its
+- The **magnetometer** measures the local magnetic field vector (about 44 µT near Monastir, between about 25 µT and 65 µT around the world). Its
   horizontal part points to **magnetic** north. Motors, cables and steel disturb it.
 
 **R** in these equations is the attitude: the rotation from the body frame to the world frame.
@@ -337,7 +337,7 @@ Production systems (the BNO085's own fusion, ArduPilot's EKF) use **Kalman filte
 this weighting automatically from the noise statistics (lesson 26). The complementary filter is the
 same idea with a fixed gain.
 
-## 10. The compass and the declination of Oman
+## 10. The compass and the declination
 
 **Tilt-compensated heading.** Remove roll and pitch from the measured field to get the field a
 **level** body would see, then take its angle:
@@ -347,8 +347,8 @@ m_h = Ry(θ) · Rx(φ) · m_b
 magnetic heading = atan2(m_h,y , m_h,x)        (deg, then mod 360)
 ```
 
-Why compensate? The Earth's field is not horizontal: it dips by the **inclination** I (about 37° in
-Muscat, 24° in Salalah). Without compensation, a few degrees of roll mixes the large vertical
+Why compensate? The Earth's field is not horizontal: it dips by the **inclination** I (about 50° in
+Monastir, 66° in London, −13° in Singapore: negative means the field points up). Without compensation, a few degrees of roll mixes the large vertical
 component into the horizontal axes and the heading moves even though the drone does not turn.
 
 **True vs magnetic north.** The horizontal field points to **magnetic** north. The angle from
@@ -368,16 +368,17 @@ for mid-October 2026 (WMM2025, sea level):
 
 | Place | Latitude, longitude | Declination D | Inclination I |
 |---|---|---|---|
-| Muscat | 23.59 N, 58.38 E | +1.67° | 37.1° |
-| Sohar | 24.35 N, 56.71 E | +1.95° | 38.4° |
-| Nizwa | 22.93 N, 57.53 E | +1.62° | 35.9° |
-| Masirah | 20.67 N, 58.87 E | +1.11° | 31.6° |
-| Salalah | 17.02 N, 54.09 E | +0.96° | 24.1° |
+| London | 51.50 N, 0.12 W | +1.21° | 66.5° |
+| Reykjavik | 64.15 N, 21.94 W | −11.05° | 75.4° |
+| Cape Town | 33.92 S, 18.42 E | −26.81° | −64.6° |
+| Sydney | 33.87 S, 151.21 E | +12.83° | −64.4° |
+| Singapore | 1.29 N, 103.85 E | +0.24° | −12.9° |
 | Sousse (Tunisia) | 35.83 N, 10.64 E | +3.33° | 50.6° |
 
-In Oman the declination is small (about +1° to +2° east) and changes slowly (Muscat: +1.65° in 2025,
-+1.69° in 2030). Small does not mean negligible: if you ignore 1.67° in Muscat, after 10 km of
-flight you are 10 000 × tan(1.67°) ≈ **291 m** to the side. Sousse is in the table because NAVERA's
+The declination can be large (−26.8° in Cape Town: a compass there points more than a quarter of
+a right angle west of true north) or small, and it changes with time (London: +0.91° in 2025,
++1.76° in 2030). Small does not mean negligible: if you ignore 1.21° in London, after 10 km of
+flight you are 10 000 × tan(1.21°) ≈ **212 m** to the side. Sousse is in the table because NAVERA's
 real test data (map, frames, simulator area) covers Sousse, Tunisia, where NAVERA is developed.
 
 ## 11. Straightening the photo
@@ -406,7 +407,7 @@ exactly the same ambiguity between tilt and acceleration that you met in section
 resolves it as a complementary filter does: it combines the canals (fast) with the otoliths and with
 vision (slow and absolute).
 
-Birds also **stabilise the head**. A falcon hovering over the Hajar foothills, or a kestrel hanging
+Birds also **stabilise the head**. A falcon hovering over a cliff, or a kestrel hanging
 in the wind, keeps its head almost fixed in space while the body moves: reflexes driven by the
 vestibular system and the eyes keep the image on the retina still. NAVERA cannot move its camera, so
 it does the same job in software, by straightening the photo with the attitude.
@@ -414,10 +415,11 @@ it does the same job in software, by straightening the photo with the attitude.
 And the compass? In 1972 Wolfgang and Roswitha Wiltschko showed that European robins in an
 orientation cage changed their chosen direction when coils changed the magnetic field around them.
 The bird compass is an **inclination compass**: it uses the angle between the field lines and
-gravity ("towards the pole" vs "towards the equator"), not the polarity. Oman's inclination of 24° to
-38° is easy to read; at the magnetic equator, where the field is horizontal, such a compass cannot
-tell the two directions apart. Millions of migrants cross Oman every spring and autumn — barn swallows,
-steppe eagles that winter in Dhofar, the waders that spend the winter at Barr Al Hikman — and like NAVERA they
+gravity ("towards the pole" vs "towards the equator"), not the polarity. In Europe the
+field dips steeply (66° in London) and is easy to read; at the magnetic equator, where the field is
+horizontal, such a compass cannot tell the two directions apart. Yet millions of migrants cross the
+magnetic equator every year — barn swallows from Europe to southern Africa, Arctic terns from the
+Arctic to the Antarctic, bar-tailed godwits from Alaska to New Zealand — and like NAVERA they
 cannot trust one sensor alone: they cross-check the magnetic field with the sun and the stars
 (lesson 24).
 
@@ -541,8 +543,8 @@ True bank = atan(v ω / g) = atan(12 × 0.349 / 9.81) = 23°. In a coordinated t
 stays along the body z axis, so the accelerometer reports a roll of about 0° — an error of 23°.
 </details>
 
-<details><summary>6. A compass reads 359° in Sohar (D = +1.95°). What is the true heading? What side error after 5 km if D is ignored?</summary>
-359 + 1.95 = 360.95 → 0.95° (mod 360): just east of north. Side error 5000 × tan(1.95°) ≈ 170 m.
+<details><summary>6. A compass reads 359° in Sydney (D = +12.83°). What is the true heading? What side error after 5 km if D is ignored?</summary>
+359 + 12.83 = 371.83 → 11.83° (mod 360): north-north-east. Side error 5000 × tan(12.83°) ≈ 1139 m.
 </details>
 
 Now open the **🛠️ Lab** tab.

@@ -4,8 +4,10 @@
 The logs imitate the ROS 2 console format of NAVERA's nodes:
     [LEVEL] [epoch_seconds.nanoseconds] [node_name]: message
 Two training flights, invented for the lab (the GPS losses are simulated):
-  sohar_2026-09-21.log   coast near Sohar: a jammed stretch over land, then a long one over the sea
-  nizwa_2026-09-22.log   foothills near Nizwa: a GPS jump (spoofing test) refused by the arbiter
+  sousse_2026-09-21.log  coast near Sousse (NAVERA's test area): a jammed stretch over land, then a
+                         long one over the sea
+  range_2026-09-22.log   rocky hills of a desert test range: a GPS jump (spoofing test) refused by
+                         the arbiter
 
     python3 make_dataset.py ../../courses/02-terminal/files/inbox
 """
@@ -16,8 +18,8 @@ import sys
 
 
 def epoch(y, mo, d, h, mi, s=0):
-    """Oman time (UTC+4) -> Unix seconds."""
-    tz = datetime.timezone(datetime.timedelta(hours=4))
+    """Tunisian time (UTC+1, no daylight saving) -> Unix seconds."""
+    tz = datetime.timezone(datetime.timedelta(hours=1))
     return datetime.datetime(y, mo, d, h, mi, s, tzinfo=tz).timestamp()
 
 
@@ -43,7 +45,7 @@ def routine(log, duration, lost, sats=(10, 13), heading=300.0):
     r = log.rnd
     log.add(0.0, "INFO", "estimator_node", "arbiter started: priority GPS > day > night > cn")
     log.add(0.4, "INFO", "gps_node", "serial port /dev/ttyTHS1 open at 9600 baud")
-    log.add(0.6, "INFO", "imu_node", "IMU ready, declination 1.6 deg")
+    log.add(0.6, "INFO", "imu_node", "IMU ready, declination 3.3 deg")
     log.add(0.8, "INFO", "live_camera", "day camera streaming, 2 frames per second")
     log.add(1.0, "INFO", "day_subscriber", "map loaded, search radius 600 m")
     log.add(1.2, "INFO", "vehicle_output_node", "MAVLink link to autopilot up")
@@ -65,8 +67,8 @@ def gps_outage(log, a, b, why):
     log.add(b, "INFO", "gps_node", "fix OK, 9 satellites, hdop 1.6")
 
 
-def sohar():
-    log = Log(epoch(2026, 9, 21, 6, 30), 2026_0921)
+def sousse():
+    log = Log(epoch(2026, 9, 21, 8, 30), 2026_0921)
     r = log.rnd
     lost = [(300, 420), (800, 1010)]
     routine(log, 1260, lost, heading=315.0)
@@ -100,7 +102,7 @@ def sohar():
     return log
 
 
-def nizwa():
+def desert_range():
     log = Log(epoch(2026, 9, 22, 16, 5), 2026_0922)
     r = log.rnd
     lost = [(610, 700)]
@@ -116,7 +118,7 @@ def nizwa():
             log.add(t, "WARN", "day_subscriber", "no match: scale check failed")
     log.add(520.0, "INFO", "estimator_node", "GPS agrees with day vision (gap 21 m): accepted")
     log.add(522.1, "INFO", "estimator_node", "state FIX source=GPS")
-    # an outage in a wadi between ridges (sky partly hidden)
+    # an outage in a dry valley between ridges (sky partly hidden)
     gps_outage(log, 610, 700, "few satellites in view")
     log.add(613.0, "WARN", "estimator_node", "state DEGRADED source=day vision (GPS lost)")
     for t in range(614, 700, 2):
@@ -136,6 +138,6 @@ def nizwa():
 if __name__ == "__main__":
     out = sys.argv[1] if len(sys.argv) > 1 else "."
     os.makedirs(out, exist_ok=True)
-    for name, fn in (("sohar_2026-09-21.log", sohar), ("nizwa_2026-09-22.log", nizwa)):
+    for name, fn in (("sousse_2026-09-21.log", sousse), ("range_2026-09-22.log", desert_range)):
         n = fn().write(os.path.join(out, name))
         print(name, n, "lines")

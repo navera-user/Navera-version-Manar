@@ -1,3 +1,3 @@
 {"number": "16", "title": "Attitude: rotations, quaternions and the IMU", "module": 4, "duration": "3 h",
- "summary": "Rotation matrices, ZYX Euler angles and gimbal lock, quaternions and SLERP; integrate a gyroscope, get the tilt from gravity, fuse them with a complementary filter, and correct a compass to true north with the World Magnetic Model (declination in Oman).",
+ "summary": "Rotation matrices, ZYX Euler angles and gimbal lock, quaternions and SLERP; integrate a gyroscope, get the tilt from gravity, fuse them with a complementary filter, and correct a compass to true north with the World Magnetic Model (declination around the world).",
  "resources": [], "open": ["quaternions.py", "imu_filters.py", "report.md"], "check_timeout_s": 150}

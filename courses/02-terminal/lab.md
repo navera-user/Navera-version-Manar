@@ -1,11 +1,11 @@
-# Lab 2 — Ground engineer for the Oman training flights
+# Lab 2 — Ground engineer for the NAVERA training flights
 
 **Goal:** process the files of two training flights entirely from the terminal: tidy them, fix a
 permission, record the environment, stop a running process cleanly, write a reusable bash script
 that summarises any NAVERA log, explore the NAVERA code, and write a short flight report.
 **Time:** about 3 hours.
 
-**The data.** The two logs (`sohar_2026-09-21.log`, `nizwa_2026-09-22.log`) are **synthetic**: they
+**The data.** The two logs (`sousse_2026-09-21.log`, `range_2026-09-22.log`) are **synthetic**: they
 were generated for this lab in the exact format of NAVERA's ROS 2 nodes, and the GPS losses in them
 are simulated. The three photos are real aerial frames from NAVERA's test data, which covers
 **Sousse, Tunisia**, where NAVERA is developed.
@@ -55,11 +55,11 @@ Ten files: three photos, two logs, three temporary files, the pilot's notes and 
 start and the end of a log, and count its lines:
 
 ```bash
-head -n 8 inbox/sohar_2026-09-21.log
+head -n 8 inbox/sousse_2026-09-21.log
 ```
 
 ```bash
-tail -n 3 inbox/sohar_2026-09-21.log
+tail -n 3 inbox/sousse_2026-09-21.log
 ```
 
 ```bash
@@ -67,17 +67,17 @@ wc -l inbox/*.log
 ```
 
 Each line is `[LEVEL] [unix_seconds.nanoseconds] [node]: message` (course, section 7). Convert the
-time of the first line into a date — first in UTC, then in Oman time:
+time of the first line into a date — first in UTC, then in Tunisian time:
 
 ```bash
-date -u -d @1789957800
+date -u -d @1789975800
 ```
 
 ```bash
-TZ=Asia/Muscat date -d @1789957800
+TZ=Africa/Tunis date -d @1789975800
 ```
 
-The flight started at 06:30 in Sohar, which is 02:30 UTC (Oman = UTC+4).
+The flight started at 08:30 in Sousse, which is 07:30 UTC (Tunisia = UTC+1).
 
 ## Step 3 — Walk around your NAVERA copy
 
@@ -341,21 +341,21 @@ must print nothing at the end.)
 
 ## Step 10 — Reading the logs with pipelines
 
-Count the WARN lines of the Sohar flight in two ways:
+Count the WARN lines of the Sousse flight in two ways:
 
 ```bash
-grep -c WARN mission/logs/sohar_2026-09-21.log
+grep -c WARN mission/logs/sousse_2026-09-21.log
 ```
 
 ```bash
-grep -c "^\[WARN\]" mission/logs/sohar_2026-09-21.log
+grep -c "^\[WARN\]" mission/logs/sousse_2026-09-21.log
 ```
 
 The numbers differ by one. Which line is counted by the first command and not by the second?
 `-v` inverts a match — the second grep keeps the lines that do **not** start with `[WARN]`:
 
 ```bash
-grep WARN mission/logs/sohar_2026-09-21.log | grep -v "^\[WARN\]"
+grep WARN mission/logs/sousse_2026-09-21.log | grep -v "^\[WARN\]"
 ```
 
 An INFO line that only *mentions* WARN. A severity is the **first field**, so anchor your patterns.
@@ -364,26 +364,26 @@ Which nodes complained? Build the pipeline of the course step by step — run it
 add the next stage each time:
 
 ```bash
-grep "^\[WARN\]" mission/logs/sohar_2026-09-21.log | cut -d' ' -f3 | sort | uniq -c | sort -rn
+grep "^\[WARN\]" mission/logs/sousse_2026-09-21.log | cut -d' ' -f3 | sort | uniq -c | sort -rn
 ```
 
 When did the arbiter first lose every source? `-m 1` stops at the first match:
 
 ```bash
-grep -m 1 "state NO_FIX" mission/logs/sohar_2026-09-21.log
+grep -m 1 "state NO_FIX" mission/logs/sousse_2026-09-21.log
 ```
 
-Keep only the time field, then only the whole seconds (characters 2 to 11 of `[1789958724.070430279]`):
+Keep only the time field, then only the whole seconds (characters 2 to 11 of `[1789976724.070430279]`):
 
 ```bash
-grep -m 1 "state NO_FIX" mission/logs/sohar_2026-09-21.log | cut -d' ' -f2 | cut -c2-11
+grep -m 1 "state NO_FIX" mission/logs/sousse_2026-09-21.log | cut -d' ' -f2 | cut -c2-11
 ```
 
-Convert that number to Oman time with `TZ=Asia/Muscat date -d @NUMBER +%T` (replace NUMBER).
+Convert that number to Tunisian time with `TZ=Africa/Tunis date -d @NUMBER +%T` (replace NUMBER).
 
 > [!TASK]
-> In `answers.py`: **Q6** = the node with the most WARN lines in the Sohar log (just its name, without
-> brackets), **Q7** = the Oman time of the first `state NO_FIX` in the Sohar log, as `"HH:MM:SS"`.
+> In `answers.py`: **Q6** = the node with the most WARN lines in the Sousse log (just its name, without
+> brackets), **Q7** = the Tunisian time of the first `state NO_FIX` in the Sousse log, as `"HH:MM:SS"`.
 
 ## Step 11 — Exploring the NAVERA code with find, grep and xargs
 
@@ -441,10 +441,10 @@ Open [mission/bin/log_report.sh](file:./mission/bin/log_report.sh). The specific
 - First line `#!/bin/bash`, then `set -e`.
 - Without an argument: a usage message on **stderr**, nothing on stdout, exit code 2.
   If the file does not exist: a message on stderr and exit code 1.
-- Otherwise print **exactly these 7 lines** (here for the Sohar log; your numbers come from the file):
+- Otherwise print **exactly these 7 lines** (here for the Sousse log; your numbers come from the file):
 
   ```text
-  file: sohar_2026-09-21.log
+  file: sousse_2026-09-21.log
   lines: …
   INFO: …
   WARN: …
@@ -460,7 +460,7 @@ Open [mission/bin/log_report.sh](file:./mission/bin/log_report.sh). The specific
 Make it executable, then test it — on a log, without an argument, and on a missing file:
 
 ```bash
-./mission/bin/log_report.sh mission/logs/sohar_2026-09-21.log
+./mission/bin/log_report.sh mission/logs/sousse_2026-09-21.log
 ```
 
 ```bash
@@ -490,7 +490,7 @@ head mission/docs/report_*.txt
 > [!TASK]
 > `mission/bin/log_report.sh` has a shebang, is executable, fails correctly without an argument or
 > with a missing file, and prints the exact 7-line summary for any log;
-> `mission/docs/report_sohar_2026-09-21.txt` and `mission/docs/report_nizwa_2026-09-22.txt` hold its
+> `mission/docs/report_sousse_2026-09-21.txt` and `mission/docs/report_range_2026-09-22.txt` hold its
 > output for the two flights.
 
 ## Step 13 — The flight report
@@ -498,17 +498,17 @@ head mission/docs/report_*.txt
 Write `mission/docs/flight_report.md` for the test team (create it with `touch`, edit it in the
 editor). It must have three sections with these headings:
 
-- `## Sohar` — the numbers of the flight from your report (lines, WARN, ERROR, **number of NO_FIX
-  events**), the **Oman time of the first NO_FIX** (`HH:MM:SS`), and in one or two sentences what
+- `## Sousse` — the numbers of the flight from your report (lines, WARN, ERROR, **number of NO_FIX
+  events**), the **Tunisian time of the first NO_FIX** (`HH:MM:SS`), and in one or two sentences what
   happened (look at the WARN messages around it: where was the drone, why did vision fail?).
-- `## Nizwa` — the same numbers (**NO_FIX** and **ERROR** counts), and what the arbiter did with the
-  GPS jump (`grep -n "jump" mission/logs/nizwa_2026-09-22.log`).
+- `## Range` — the same numbers (**NO_FIX** and **ERROR** counts), and what the arbiter did with the
+  GPS jump (`grep -n "jump" mission/logs/range_2026-09-22.log`).
 - `## Conclusion` — at least 40 words: what the two flights show about day vision as a backup of GPS,
   and one recommendation for the next test.
 
 > [!TASK]
 > `mission/docs/flight_report.md` has the three sections; each flight section gives its NO_FIX and
-> ERROR counts, the Sohar section the Oman time of the first NO_FIX, and the conclusion has at least 40 words.
+> ERROR counts, the Sousse section the Tunisian time of the first NO_FIX, and the conclusion has at least 40 words.
 
 ## Step 14 — Check your work
 
@@ -522,9 +522,9 @@ Press **✔ Check my work**. Each red line names what is missing and gives a hin
 
 - **awk**, the next tool after `cut`: `awk '{print $3}' mission/logs/*.log | sort | uniq -c` does the
   node count without `cut`, and `awk '$1=="[ERROR]"' mission/logs/*.log` prints the ERROR lines. Add a
-  line `first_no_fix: HH:MM:SS` (Oman time, or `-` when there is none) to a copy of your script.
+  line `first_no_fix: HH:MM:SS` (Tunisian time, or `-` when there is none) to a copy of your script.
 - **Durations.** With the Unix times of the `state DEGRADED` and the next `state FIX` lines, compute
-  how long each GPS loss lasted, with shell arithmetic: `echo $(( 1789958223 - 1789958103 ))`.
+  how long each GPS loss lasted, with shell arithmetic: `echo $(( 1789976223 - 1789976103 ))`.
 - **History.** `history | tail -n 20` lists your last commands. (In a brand-new terminal the history
   can be empty: it is saved when a shell exits.) Turn the commands of Steps 4–6 into a script
   `mission/bin/tidy.sh` that does the whole tidy-up on a fresh copy of the inbox.

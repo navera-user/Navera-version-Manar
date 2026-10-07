@@ -24,8 +24,8 @@ measures the true height: 160 m x 1.25 = 200 m.
 by about 3.5 m per degree at 200 m, so the attitude from the IMU must be good to a fraction of a
 degree, and the frame must be straightened before matching.
 
-(c) Nizwa case at 300 m: tilt 1.6 m, matcher 8.8 m, lag 2.0 m, map registration 5.0 m, total
-10.4 m (root sum of squares). The matcher term dominates. More inliers (a learned matcher, a sharper
+(c) Worked case near Bangkok at 300 m: tilt 1.6 m, matcher 9.3 m, lag 2.0 m, map registration 5.0 m,
+total 10.8 m (root sum of squares). The matcher term dominates. More inliers (a learned matcher, a sharper
 map, zoom 18) would reduce it; the map term could be learned while GPS is still good, as
 vision_nav.py does with its bias estimate.
 

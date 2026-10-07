@@ -11,7 +11,7 @@
 In lesson 10 your fake receiver published its position into `/fake_gps/fix`. Publishing is half of
 a conversation. The other half is harder: a **subscriber** must react to every message, **remember**
 what came before, **refuse** bad data, and do it all without blocking the rest of the node. A trip
-computer on the Muscat Expressway does not only show where you are: it shows how far you drove and
+computer on a motorway does not only show where you are: it shows how far you drove and
 how fast — and to know your speed, it must remember where you were a moment ago, and how sure it
 was.
 
@@ -174,8 +174,8 @@ silence between 3.0 and about 3.2 s after the last fix was measured — a number
 Birds are good subscribers. In 2007, Christopher Templeton and Erick Greene showed in *PNAS* that
 red-breasted nuthatches listen to (**eavesdrop** on) the alarm calls of chickadees, a different species, and
 react more strongly to the calls that signal a more dangerous predator. They read the value inside
-the message and decide what to do — a callback with state. In Muscat's gardens you can watch the same
-behaviour: when one bird starts a harsh alarm at a cat or an owl, bulbuls and other small birds arrive
+the message and decide what to do — a callback with state. In any city park you can watch the same
+behaviour: when one bird starts a harsh alarm at a cat or an owl, blackbirds, tits and other small birds arrive
 to attack the predator together (biologists call this **mobbing**).
 
 Birds also filter. A good listener ignores old news: Navi does not panic about a cat that left ten

@@ -1,3 +1,3 @@
 {"number": "04", "title": "Data analysis: reading a flight-test campaign", "module": 1, "duration": "5 h",
- "summary": "Clean a messy four-flight test campaign in Oman with pandas, compute distances and speeds with vectorised NumPy, find every GPS outage, compare GPS and day-vision noise, plot with matplotlib and write a test report.",
+ "summary": "Clean a messy four-flight test campaign near Sousse, Tunisia with pandas, compute distances and speeds with vectorised NumPy, find every GPS outage, compare GPS and day-vision noise, plot with matplotlib and write a test report.",
  "resources": [], "open": ["flight_analysis.py", "campaign.csv", "report.md"], "check_timeout_s": 180}

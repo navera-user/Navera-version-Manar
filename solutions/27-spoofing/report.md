@@ -43,7 +43,7 @@ different.
 
 First, every statistical test needs an independent source with a stated, honest sigma. With vision
 of unknown accuracy only the kinematic gate remains, and a patient or slow spoofer is not caught.
-Second, over the sea near Masirah or over uniform sand in Wahiba Sands, vision has no landmark, so
+Second, over the open sea or over the uniform sand of a large desert, vision has no landmark, so
 there is no independent source at all. Third, a spoofer who knows the threshold can stay under about
 3 sigma (45 m here) and is never detected: the test bounds the error, it does not remove it. Fourth,
 correlated vision errors make false alarms much more frequent than the formula says, and a vision

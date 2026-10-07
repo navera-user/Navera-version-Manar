@@ -135,23 +135,23 @@ def _():
     for h, fov, w in ((150, 111, 1920), (120, 90, 960), (400, 60, 1280)):
         want = 2.0 * h * math.tan(math.radians(fov) / 2.0) / w          # navera_common.camera_model
         c.near(mpp(h, fov, w), want, tol=want * 1e-6, what=f"meters_per_pixel({h}, {fov}, {w})")
-    for lat, z in ((23.59, 17), (35.83, 17), (17.02, 19), (0.0, 0)):
+    for lat, z in ((64.15, 17), (35.83, 17), (1.29, 19), (0.0, 0)):
         want = 40075016.7 * math.cos(math.radians(lat)) / 2 ** z / 256.0   # day_pkg.local_matcher
         c.near(mmpp(lat, z), want, tol=want * 1e-6, what=f"map_m_per_px({lat}, {z})")
 
 
-@c.test("TODO 5 — best_zoom() picks the map zoom closest in ratio, in Muscat and in Sousse",
+@c.test("TODO 5 — best_zoom() picks the map zoom closest in ratio, in Reykjavik and in Sousse",
         hint="For each z in `zooms` compute abs(math.log(map_mpp / photo_mpp)) and return the z (an int) "
              "with the smallest value; only choose among `zooms`.")
 def _():
     (bz,) = need(cm(), "best_zoom")
-    cases = (((300, 111, 1920, 23.59), 18), ((300, 111, 1920, 35.83), 18), ((150, 111, 1920, 23.59), 19),
-             ((1200, 111, 1920, 23.59), 16), ((640, 111, 1920, 23.59), 17), ((20000, 111, 1920, 35.8), 13),
+    cases = (((300, 111, 1920, 64.15), 17), ((300, 111, 1920, 35.83), 18), ((150, 111, 1920, 64.15), 18),
+             ((1200, 111, 1920, 64.15), 15), ((640, 111, 1920, 64.15), 16), ((20000, 111, 1920, 35.8), 13),
              ((5, 90, 960, 35.8), 19))
     for args, want in cases:
         got = bz(*args)
         c.ok(got == want, f"best_zoom{args} is {got!r}, expected {want}")
-    c.ok(bz(300, 111, 1920, 23.59, zooms=[15, 16, 17]) == 17, "best_zoom must only choose among `zooms`")
+    c.ok(bz(300, 111, 1920, 64.15, zooms=[18, 19]) == 18, "best_zoom must only choose among `zooms`")
 
 
 @c.test("TODO 6 — height_from_object(), fitted_scale(), tilt_position_error()",
@@ -217,21 +217,21 @@ def _():
     try:
         r = json.load(open("results.json"))
         got = {"f": r["insta360"]["f_px"], "vfov": r["insta360"]["vfov_deg"],
-               "area20": r["footprint_150m"]["-20"]["area_m2"], "e": r["map"]["h_equal_z17_muscat_m"],
-               "zm": r["map"]["best_zoom_300m_muscat"], "L": r["errors"]["jebel_akhdar_fitted_scale"],
+               "area20": r["footprint_150m"]["-20"]["area_m2"], "e": r["map"]["h_equal_z17_reykjavik_m"],
+               "zm": r["map"]["best_zoom_300m_reykjavik"], "L": r["errors"]["mountain_fitted_scale"],
                "T": r["pads"]["photo_T.png"]["pad_en_m"]}
     except (KeyError, TypeError, ValueError) as e:
         raise CheckFailed(f"results.json is incomplete ({e}) — run python3 experiments.py to the end")
     c.near(got["f"], 659.79, 0.01, "insta360 f_px")
     c.near(got["vfov"], 44.511, 0.01, "insta360 vfov_deg")
     c.near(got["area20"], 66466.1, 1.0, "footprint area at pitch -20")
-    c.near(got["e"], 722.2, 0.2, "h_equal_z17_muscat_m")
-    c.eq(got["zm"], 18, "best_zoom_300m_muscat")
-    c.near(got["L"], 0.1667, 0.0005, "jebel_akhdar_fitted_scale")
+    c.near(got["e"], 343.6, 0.2, "h_equal_z17_reykjavik_m")
+    c.eq(got["zm"], 17, "best_zoom_300m_reykjavik")
+    c.near(got["L"], 0.1667, 0.0005, "mountain_fitted_scale")
     c.ok(math.hypot(got["T"][0] - 38.0, got["T"][1] + 92.0) <= 1.5, f"photo_T pad_en_m {got['T']} is too far from the truth")
 
 
-KEY = {"A": (659.79, 0.05), "B": (44.51, 0.05), "C": (66466.1, 5.0), "D": (54.6, 0.2), "E": (722.2, 1.0),
+KEY = {"A": (659.79, 0.05), "B": (44.51, 0.05), "C": (66466.1, 5.0), "D": (54.6, 0.2), "E": (343.6, 1.0),
        "F": (638.9, 1.0), "G": (213.3, 0.6), "H": (205.7, 0.6), "I": (221.5, 0.6), "J": (37.6, 1.5),
        "K": (-91.8, 1.5), "L": (0.1667, 0.001), "M": (7.5, 0.05)}
 
@@ -262,7 +262,7 @@ def _():
     c.ok(not wrong, "; ".join(wrong))
 
 
-SECTIONS = {"1. Tilt": ("behind", "back"), "2. Muscat and Sousse": ("cos", "latitude"),
+SECTIONS = {"1. Tilt": ("behind", "back"), "2. Reykjavik and Sousse": ("cos", "latitude"),
             "3. Measuring the height with an object": ("pixel", "px"), "4. Height uncertainty": ("scale",)}
 
 

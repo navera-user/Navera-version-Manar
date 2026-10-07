@@ -1,6 +1,6 @@
 """gnss_fix.py — how a GNSS receiver turns pseudoranges into a position (lab 1).
 
-The scene is simulated: a receiver on the coast at Muscat sees up to 8 satellites. Each
+The scene is simulated: a receiver on the coast at Sousse (Tunisia) sees up to 8 satellites. Each
 satellite gives a PSEUDORANGE, the distance measured with the receiver's own (wrong) clock:
 
     rho_i = |s_i - r| + c * b + noise          s_i: satellite position, r: receiver position,
@@ -25,7 +25,7 @@ SPOOF_EAST_M = 0.0        # a spoofer fakes every signal to move you this many m
 C_MPS = 299_792_458.0                       # speed of light (m/s)
 EARTH_R_M = 6_371_000.0                     # spherical Earth
 ORBIT_R_M = 26_560_000.0                    # GPS orbit radius (about 20 200 km altitude)
-TRUE_LAT, TRUE_LON, TRUE_ALT_M = 23.588, 58.383, 15.0      # Muscat, on the coast
+TRUE_LAT, TRUE_LON, TRUE_ALT_M = 35.825, 10.640, 15.0      # Sousse, on the coast
 SKY = [(10, 70), (80, 35), (150, 50), (200, 20),            # (azimuth, elevation) in degrees
        (260, 40), (320, 25), (40, 15), (120, 18)]
 
@@ -45,7 +45,7 @@ def position_ecef(lat_deg, lon_deg, alt_m):
 
 
 def satellites(n_sats):
-    """Earth-centred positions (n, 3) of the first n satellites of SKY, seen from Muscat."""
+    """Earth-centred positions (n, 3) of the first n satellites of SKY, seen from Sousse."""
     r = position_ecef(TRUE_LAT, TRUE_LON, TRUE_ALT_M)
     e, n, u = enu_axes(TRUE_LAT, TRUE_LON)
     out = []

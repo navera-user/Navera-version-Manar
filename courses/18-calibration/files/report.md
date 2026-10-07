@@ -30,6 +30,6 @@
 
 ## 5. Recommendation
 
-<!-- You must calibrate a new NAVERA unit before a field test (for example in a workshop in
-     Muscat). Give 3–5 concrete rules: board, number and placement of views, what to check
+<!-- You must calibrate a new NAVERA unit before a field test (for example in a partner's workshop
+     in Singapore). Give 3–5 concrete rules: board, number and placement of views, what to check
      in the result, and when to recalibrate. -->

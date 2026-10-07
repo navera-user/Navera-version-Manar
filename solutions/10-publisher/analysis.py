@@ -14,7 +14,7 @@ from navera_common.geo import dead_reckon, haversine_m
 
 from fake_gps import EARTH_RADIUS_M, offset_to_latlon, velocity_ne
 
-START = (23.5880, 58.3829)          # Muscat, the fake GPS's default start
+START = (35.8277, 10.6388)          # Sousse, the fake GPS's default start
 DISTANCES_M = [1_000.0, 10_000.0, 100_000.0]
 
 # ---- Part 2: copy YOUR measurements here (lab, step 6). Numbers, without quotes.

@@ -15,7 +15,8 @@ synthetic drone photos, and write a short analysis.
 
 The photos in `/data/academy/17-camera-model/` are made from NAVERA's satellite map, which covers
 **Sousse, Tunisia** (NAVERA's test area). They are what an ideal camera would see over flat ground,
-so we know the exact truth. Numerical scenarios in this lab use Omani places.
+so we know the exact truth. Numerical scenarios in this lab use places at different latitudes (Reykjavik, Sousse)
+and a generic mountain range.
 
 ## Step 1 — Run the starter and read the conventions
 
@@ -111,8 +112,8 @@ formula: a 4 × 3 rectangle must give 12, in both vertex orders (that is why the
 > (int) from `zooms` whose map resolution is closest **in ratio** to the photo's
 > (the smallest `abs(math.log(map_mpp / photo_mpp))`).
 
-Expected: GSD 0.227 m/px at 150 m, zoom 17 is 1.095 m/px in Muscat and 0.968 m/px in Sousse, the
-best zoom at 300 m over Muscat is 18. An ordinary loop that keeps the best value is fine.
+Expected: GSD 0.227 m/px at 150 m, zoom 17 is 0.521 m/px in Reykjavik and 0.968 m/px in Sousse, the
+best zoom at 300 m over Reykjavik is 17 (over Sousse it is 18). An ordinary loop that keeps the best value is fine.
 
 ## Step 7 — Measurements and errors (TODO 6)
 
@@ -176,7 +177,7 @@ python3 experiments.py
 It writes `results.json` and two charts. It also runs your `measure_pad.py` again, so the
 lines about photo A, B and T appear a second time — that is normal. Open [footprint.png](file:./footprint.png): the four
 footprints at 150 m for pitch 0°, −10°, −20°, −30°, with their image-centre points. Open
-[scale.png](file:./scale.png): the Insta360 GSD against height, with the map zoom levels of Muscat
+[scale.png](file:./scale.png): the Insta360 GSD against height, with the map zoom levels of Reykjavik
 (solid) and Sousse (dotted). Where the blue line crosses a zoom line, the photo has exactly that
 map's resolution.
 
@@ -187,7 +188,7 @@ map's resolution.
 > - the **Key numbers** table, rows A to M — one number per row (most are in `results.json`;
 >   D is a positive distance; for **M**, read `_scale_tol()` in the lesson: when does 2·σh/h become
 >   larger than 0.15?);
-> - the four analysis sections (**Tilt**, **Muscat and Sousse**, **Measuring the height with an
+> - the four analysis sections (**Tilt**, **Reykjavik and Sousse**, **Measuring the height with an
 >   object**, **Height uncertainty**), each at least 40 words, with your own explanation and
 >   numbers. Delete the TODO lines.
 

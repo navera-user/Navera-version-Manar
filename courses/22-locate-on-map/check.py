@@ -174,7 +174,7 @@ def _():
     c.near(p[0], 320.0, tol=0.01, what="x of the image centre after a pitch (px)")
 
 
-@c.test("TODO 8 — rss() and error_budget() (the Nizwa case)",
+@c.test("TODO 8 — rss() and error_budget()",
         hint="rss = square root of the sum of the squares. error_budget returns the four terms in metres "
              "(tilt, matcher pixels × map metres per pixel, speed × lag, map) and total_m = their rss.")
 def _():
@@ -291,7 +291,7 @@ def _():
 
 @c.test("report.md — quotes your measured numbers",
         hint="Section 1: your 'a/13'. Section 3: NAVERA's 'b/13'. Section 2: the 5° tilt error (m) and the "
-             "Nizwa total (m), as budget.json gives them (one decimal is fine).")
+             "worked-case total (Bangkok, m), as budget.json gives them (one decimal is fine).")
 def _():
     t = open("report.md", encoding="utf-8").read() if os.path.exists("report.md") else ""
     d = load_json("results.json")
@@ -301,9 +301,9 @@ def _():
     a2 = (d.get("navera") or {}).get("accepted")
     c.ok(f"{a1}/13" in t.replace(" / ", "/"), f"report.md does not quote your result as '{a1}/13'")
     c.ok(f"{a2}/13" in t.replace(" / ", "/"), f"report.md does not quote NAVERA's result as '{a2}/13'")
-    tot = (b.get("nizwa_case") or {}).get("total_m")
+    tot = (b.get("worked_case") or {}).get("total_m")
     c.ok(tot is not None and any(abs(x - tot) <= 0.15 for x in nums),
-         f"report.md does not quote the Nizwa total ({tot} m)")
+         f"report.md does not quote the worked-case total ({tot} m)")
     five = [x for x in b.get("tilt_sweep", []) if abs(x["tilt_deg"] - 5.0) < 1e-6 and x["error_m"] is not None]
     c.ok(five and any(abs(x - five[0]["error_m"]) <= 0.15 for x in nums),
          "report.md does not quote your measured error for the 5° tilt")

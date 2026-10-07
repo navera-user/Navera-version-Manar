@@ -9,10 +9,10 @@
 >   longitude.
 > - NAVERA's map is an **MBTiles** file: an SQLite database that you can read with SQL.
 > - In the lab you implement the tile maths, read real tiles from NAVERA's map of Sousse, and
->   compute scales for Oman.
+>   compute scales for cities from the equator to the Arctic Circle.
 > - You also study a real NAVERA bug: the tile corner instead of its centre cost 175 m per fix.
 
-A drone flying over **Muscat** at 300 m takes a photo every second. To find where it is without GPS,
+A drone flying over a **coastal city** at 300 m takes a photo every second. To find where it is without GPS,
 NAVERA must compare that photo with the satellite map of the area — not the whole map, but the few
 map squares around its last known position, read **now**. NAVERA's map of its test area is one file
 of more than a million small pictures. You cannot search a million pictures for every photo; you
@@ -20,14 +20,15 @@ must **compute** which ones you need from a latitude and a longitude, and read o
 
 Every web map works this way: the world is flattened with the **Web Mercator** projection, cut into
 a **pyramid of 256 × 256 tiles**, and each tile has an address z/x/y that is a simple function of
-(lat, lon). In this lesson you derive the projection, compute scales for Omani latitudes, open the
+(lat, lon). In this lesson you derive the projection, compute scales from Singapore to Reykjavik, open the
 map file (an **SQLite** database) yourself, and meet a real NAVERA bug that cost 175 m per fix.
 
 > [!NOTE]
 > **The data.** NAVERA's satellite map, `/data/map.mbtiles`, covers the region of **Sousse,
 > Tunisia** — NAVERA's test map, because NAVERA is developed there. There is **no satellite
-> imagery of Oman** in the academy. All formulas work everywhere, so you will compute scales,
-> zooms and tile numbers for Oman, and read real pictures only for Sousse.
+> imagery of other places** in the academy. All formulas work everywhere, so you will compute
+> scales, zooms and tile numbers for cities on several continents, and read real pictures only for
+> Sousse.
 
 ## 1. Why a projection, and why Mercator?
 
@@ -70,8 +71,8 @@ ln tan(π/4 + φ/2)  =  ln(tan φ + sec φ)  =  asinh(tan φ)
 φ = 2·atan(e^y) − π/2  =  atan(sinh y)            (y on the unit sphere, φ in radians)
 ```
 
-The **scale factor** is k = 1/cos φ: at Salalah (17.0°) k = 1.046, at Muscat (23.6°) 1.091, at
-Sousse (35.8°) 1.233, at 60° it is 2. Areas are scaled by k², which is why Greenland looks as big as
+The **scale factor** is k = 1/cos φ: at Singapore (1.3°) k = 1.000, at Sousse (35.8°) 1.233, at
+London (51.5°) 1.606, at 60° it is 2 and at Reykjavik (64.1°) 2.293. Areas are scaled by k², which is why Greenland looks as big as
 Africa on a web map although it is 14 times smaller. At the pole k is infinite: y → ∞.
 
 **Web Mercator** cuts the map at the latitude where y = π (on the unit sphere), which makes the
@@ -80,10 +81,10 @@ a web map.
 
 > [!WARNING]
 > **`ValueError: math domain error`** means you gave a function a value outside its domain — here
-> `math.log()` of a number ≤ 0. Forget `math.radians()` and Salalah (17.0194) gives
-> tan(π/4 + 8.51) = −0.13: `math.log` fails with this error. Muscat (23.5839) gives tan(…) = +0.011:
-> no error at all, just y = −4.5 instead of 0.42 and a tile row outside the map. A crash
-> is the lucky case. Always convert with `math.radians()` first.
+> `math.log()` of a number ≤ 0. Forget `math.radians()` and Sousse (35.8277) gives
+> tan(π/4 + 17.91) = −0.15: `math.log` fails with this error. Singapore (1.2834) gives tan(…) = +6.91:
+> no error at all, just y = 1.93 instead of 0.022 — a tile near 73.5° N, in the Arctic Ocean. A
+> crash is the lucky case. Always convert with `math.radians()` first.
 
 ### Web Mercator is not quite Mercator
 
@@ -94,10 +95,11 @@ Web Mercator (EPSG:3857) applies the **sphere** formula above, with R = a = 6 37
 y_3395 = a·[ln tan(π/4 + φ/2) − e·atanh(e·sin φ)]
 ```
 
-At Muscat the two disagree by **a·e·atanh(e sin φ) ≈ 17.1 km** in y. Mixing tiles or coordinates from
+At Sousse the two disagree by **a·e·atanh(e sin φ) ≈ 25.0 km** in y (1.0 km in Singapore, 38.5 km
+in Reykjavik). Mixing tiles or coordinates from
 the two systems is a classic bug (a whole city shifted north). Web Mercator is also not perfectly
-conformal: at Muscat its north–south scale differs from its east–west scale by about 0.5 %
-(N/M = 1.0057) — the same 0.5 % you met with the radii M and N in lesson 6. For matching photos,
+conformal: at Sousse its north–south scale differs from its east–west scale by about 0.4 %
+(N/M = 1.0044; 0.7 % on the equator) — the ratio of the radii N and M you met in lesson 6. For matching photos,
 this is negligible; for surveying, Web Mercator is the wrong tool.
 
 ## 2. The tile pyramid
@@ -122,11 +124,11 @@ The **whole parts** are the tile; the **fractional parts** times 256 are the pix
 Multiplying by 256 directly gives **global pixel coordinates**: the pixel (0, 0) is the north-west
 corner of the world, and at zoom 17 the world is 2^17 · 256 = 33 554 432 pixels wide.
 
-**Worked example — the Sultan Qaboos Grand Mosque, Muscat (23.5839°, 58.3875°), zoom 17.**
-n = 131 072. x = (58.3875 + 180)/360 · 131 072 = **86 794.24**. ln tan(π/4 + φ/2) = 0.423758, so
-y = (1 − 0.423758/π)/2 · 131 072 = **56 696.09**. The mosque is in tile **17 / 86794 / 56696**, at pixel
-(0.24 · 256, 0.09 · 256) ≈ (61, 23) inside it. Sanity check: Muscat is east of Greenwich (x > n/2 =
-65 536) and north of the equator (y < n/2). ✔
+**Worked example — Marina Bay Sands, Singapore (1.2834°, 103.8607°), zoom 17.**
+n = 131 072. x = (103.8607 + 180)/360 · 131 072 = **103 350.53**. ln tan(π/4 + φ/2) = 0.022401, so
+y = (1 − 0.022401/π)/2 · 131 072 = **65 068.69**. The building is in tile **17 / 103350 / 65068**, at
+pixel (0.53 · 256, 0.69 · 256) ≈ (135, 176) inside it. Sanity check: Singapore is east of Greenwich
+(x > n/2 = 65 536) and just north of the equator (y a little less than n/2: only 467 tile rows). ✔
 
 **Inverse — tile to lat/lon.** For any (fractional) x, y:
 
@@ -149,16 +151,17 @@ equator, the map is stretched by 1/cos φ, so a pixel covers less ground:
 meters per pixel = 2πa · cos φ / (256 · 2^z) = 156 543.03 · cos φ / 2^z
 ```
 
-| Zoom | Salalah (17.0°) | Muscat (23.6°) | Khasab (26.2°) | Sousse (35.8°) |
+| Zoom | Singapore (1.3°) | Sousse (35.8°) | London (51.5°) | Reykjavik (64.1°) |
 |---|---|---|---|---|
-| 13 | 18.27 m | 17.51 m | 17.15 m | 15.49 m |
-| 15 | 4.568 m | 4.378 m | 4.287 m | 3.873 m |
-| 17 | 1.142 m | 1.095 m | 1.072 m | 0.968 m |
-| 19 | 0.286 m | 0.274 m | 0.268 m | 0.242 m |
+| 13 | 19.10 m | 15.49 m | 11.90 m | 8.33 m |
+| 15 | 4.776 m | 3.873 m | 2.974 m | 2.084 m |
+| 17 | 1.194 m | 0.968 m | 0.743 m | 0.521 m |
+| 19 | 0.299 m | 0.242 m | 0.186 m | 0.130 m |
 
-So the "same" zoom-17 map is 18 % coarser in Salalah than in Sousse. A zoom-17 tile is 292 m wide in
-Salalah, 280 m in Muscat and 248 m in Sousse. (Precisely, this formula is the east–west pixel size;
-north–south, Web Mercator's pixel at Muscat is 0.5 % smaller, as explained above.)
+So the "same" zoom-17 map is 23 % coarser in Singapore than in Sousse, and 2.3 times coarser than in
+Reykjavik. A zoom-17 tile is 306 m wide in Singapore, 248 m in Sousse and 133 m in Reykjavik.
+(Precisely, this formula is the east–west pixel size; north–south, Web Mercator's pixel at Sousse is
+0.4 % smaller, as explained above.)
 
 **Choosing a zoom.** A downward camera at height H with horizontal field of view α and W pixels
 across sees ground pixels of size GSD = 2H·tan(α/2)/W (the **ground sample distance**; lesson 8).
@@ -170,7 +173,7 @@ still at least the camera's GSD**:
 z = floor( log2( 156 543.03 · cos φ / GSD ) )
 ```
 
-For a camera with α = 84° and W = 1536 px at 300 m over Muscat, GSD = 0.352 m and z = 18. NAVERA's map
+For a camera with α = 84° and W = 1536 px at 300 m over Singapore, GSD = 0.352 m and z = 18 (over Reykjavik, z = 17). NAVERA's map
 file carries its own table, `altitude_zoom_map`, which chooses a coarser zoom (17 at 300 m): coarser
 tiles are faster to match and less sensitive to small changes on the ground. You will compare both
 in the lab.
@@ -240,7 +243,7 @@ Each level has about 4 times more tiles than the previous one; zoom 19 alone hol
 
 ## 6. Mosaics and pixel ↔ lat/lon
 
-One tile is small (280 m at zoom 17 in Muscat), and the drone may be near its edge. NAVERA always
+One tile is small (248 m at zoom 17 in Sousse), and the drone may be near its edge. NAVERA always
 works on a **mosaic**: the (2r + 1)² tiles around the position, glued into one picture. If the
 mosaic's top-left tile is (x0, y0), a point and a pixel are related by:
 
@@ -260,8 +263,8 @@ The day-vision dataset of NAVERA stores, for each zoom-17 tile, the latitude and
 **north-west corner** (the value `tile_to_latlon(x, y)` returns). For a while, when a camera photo
 matched a tile, NAVERA published that corner as the drone's position. But the photo matched the
 **whole** tile, so the right answer is its **centre**. Every fix was off by half the tile diagonal,
-towards the north-west: **175 m** at zoom 17 in Sousse. In Muscat, where zoom-17 tiles are larger,
-the same bug would cost 198 m. The fix adds 0.5 to x and y; a unit test keeps it fixed.
+towards the north-west: **175 m** at zoom 17 in Sousse. In Singapore, where zoom-17 tiles are
+larger, the same bug would cost 216 m; in Reykjavik, 94 m. The fix adds 0.5 to x and y; a unit test keeps it fixed.
 
 ## 🐦 How birds do it
 
@@ -375,18 +378,18 @@ map must scale all directions equally at a point, so dy = R dφ / cos φ, which 
 R ln tan(π/4 + φ/2).
 </details>
 
-<details><summary>2. At zoom 17, how wide is a tile in Salalah and in Sousse, and why is Salalah's larger?</summary>
-256 × 156 543.03 · cos φ / 2^17: 292 m in Salalah, 248 m in Sousse. Closer to the equator, cos φ is
+<details><summary>2. At zoom 17, how wide is a tile in Singapore and in Sousse, and why is Singapore's larger?</summary>
+256 × 156 543.03 · cos φ / 2^17: 306 m in Singapore, 248 m in Sousse. Closer to the equator, cos φ is
 larger, the Mercator stretch smaller, so one pixel covers more ground.
 </details>
 
-<details><summary>3. The tile 17/86794/56696 contains the Grand Mosque. Which tile_row do you query in the MBTiles file?</summary>
-131 071 − 56 696 = 74 375 (TMS rows count from the south).
+<details><summary>3. The tile 17/103350/65068 contains Marina Bay Sands. Which tile_row do you query in the MBTiles file?</summary>
+131 071 − 65 068 = 66 003 (TMS rows count from the south).
 </details>
 
-<details><summary>4. Your code computes math.log(math.tan(math.pi / 4 + 17.0194 / 2)) and crashes with "math domain error". Why?</summary>
-17.0194 is in degrees but used as radians: tan(π/4 + 8.51 rad) = −0.13 is negative, and the log of a
-negative number is undefined. Use math.radians(17.0194). (With Muscat's 23.5839 the same mistake does
+<details><summary>4. Your code computes math.log(math.tan(math.pi / 4 + 35.8277 / 2)) and crashes with "math domain error". Why?</summary>
+35.8277 is in degrees but used as radians: tan(π/4 + 17.91 rad) = −0.15 is negative, and the log of a
+negative number is undefined. Use math.radians(35.8277). (With Singapore's 1.2834 the same mistake does
 not crash — it silently gives a wrong tile.)
 </details>
 
@@ -395,9 +398,9 @@ The measurement: os.path.getsize (or PRAGMA page_count × page_size). Metadata i
 a tool and can be wrong.
 </details>
 
-<details><summary>6. Why does the corner bug cost more meters in Muscat than in Sousse, at the same zoom?</summary>
-The error is half the tile diagonal. Tiles cover more ground at lower latitude (cos φ larger): 280 m
-in Muscat against 248 m in Sousse, so 198 m against 175 m.
+<details><summary>6. Why does the corner bug cost more meters in Singapore than in Sousse, at the same zoom?</summary>
+The error is half the tile diagonal. Tiles cover more ground at lower latitude (cos φ larger): 306 m
+in Singapore against 248 m in Sousse, so 216 m against 175 m (and only 94 m in Reykjavik).
 </details>
 
 Now open the **🛠️ Lab** tab.

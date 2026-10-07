@@ -2,13 +2,13 @@
 
 **Goal:** write `navlib.py`, a small navigation library with functions, exceptions, two classes
 with inheritance and a `Track` class computed with NumPy; then use it in `mission.py` to decide
-whether two vehicles can fly an inspection on the Batinah coast and to analyse a recorded survey
+whether two vehicles can fly an inspection on a desert coast and to analyse a recorded survey
 track. You finish with a short written report.
 **Time:** about 3–4 hours (more if Python classes are new to you — that is normal).
 
 Your files (already open): [navlib.py](file:./navlib.py) (TODO 1–9),
 [mission.py](file:./mission.py) (TODO A–C), [report.md](file:./report.md), and the data
-[sohar_track.csv](file:./sohar_track.csv) (synthetic: one position per second, in metres east and
+[harbour_track.csv](file:./harbour_track.csv) (synthetic: one position per second, in metres east and
 north of the take-off point).
 
 Work in small steps: write one TODO, save (`Ctrl+S`), run the demo, compare with the docstring
@@ -161,7 +161,7 @@ The demo track `(0,0) → (3,4) → (3,10)` must give `length_m() → 11` and `s
 (compare with the worked example at the end of the course, section 7). Then load the real file and look at the speeds:
 
 ```bash
-python3 -c "from navlib import load_track; import numpy as np; tr = load_track('sohar_track.csv'); s = tr.speeds_ms(); print(len(tr), tr.length_m(), np.median(s), s.max(), np.round(s[145:152], 1))"
+python3 -c "from navlib import load_track; import numpy as np; tr = load_track('harbour_track.csv'); s = tr.speeds_ms(); print(len(tr), tr.length_m(), np.median(s), s.max(), np.round(s[145:152], 1))"
 ```
 
 The median speed is close to the 12 m/s cruise, but the maximum is above 50 m/s, and two speeds
@@ -225,7 +225,7 @@ value you returned: run that same call with `python3 -c "…"` to see it yoursel
 
 - **Farthest point from home.** Add a method `Track.max_distance_from(east0=0.0, north0=0.0)` that
   returns the largest distance between the track and the point `(east0, north0)`, with NumPy and no
-  loop (`e - east0` subtracts a number from every element). For `sohar_track.csv` and the take-off
+  loop (`e - east0` subtracts a number from every element). For `harbour_track.csv` and the take-off
   point `(0, 0)` you should find about 1362 m. Lesson 4 then shows **broadcasting**, the general
   rule behind `e - east0`.
 

@@ -38,16 +38,16 @@ def _():
 def _():
     m = listener()
     t = m.Tracker()
-    c.eq(t.check(23.6, 58.4, 10.0), "", "check(a good fix)")
-    c.eq(t.check(23.6, 58.4, 10.0, -1), m.NO_FIX, "check(status -1)")
-    c.eq(t.check(float("nan"), 58.4, 10.0), m.NOT_FINITE, "check(NaN latitude)")
-    c.eq(t.check(23.6, 58.4, float("inf")), m.NOT_FINITE, "check(infinite time)")
+    c.eq(t.check(35.8, 10.6, 10.0), "", "check(a good fix)")
+    c.eq(t.check(35.8, 10.6, 10.0, -1), m.NO_FIX, "check(status -1)")
+    c.eq(t.check(float("nan"), 10.6, 10.0), m.NOT_FINITE, "check(NaN latitude)")
+    c.eq(t.check(35.8, 10.6, float("inf")), m.NOT_FINITE, "check(infinite time)")
     c.eq(t.check(0.0, 0.0, 10.0), m.NULL_ISLAND, "check(0.0, 0.0)")
     c.eq(t.check(0.0, 0.0, 10.0, -1), m.NO_FIX, "check(0, 0 AND no fix) — the first reason wins")
-    t.last = (23.6, 58.4, 10.0)
-    c.eq(t.check(23.6, 58.4, 10.0), m.NOT_NEWER, "check(same time as the last fix)")
-    c.eq(t.check(23.6, 58.4, 9.5), m.NOT_NEWER, "check(older than the last fix)")
-    c.eq(t.check(23.6, 58.4, 10.5), "", "check(newer than the last fix)")
+    t.last = (35.8, 10.6, 10.0)
+    c.eq(t.check(35.8, 10.6, 10.0), m.NOT_NEWER, "check(same time as the last fix)")
+    c.eq(t.check(35.8, 10.6, 9.5), m.NOT_NEWER, "check(older than the last fix)")
+    c.eq(t.check(35.8, 10.6, 10.5), "", "check(newer than the last fix)")
 
 
 @c.test("TODO 2 — update(): count, distance and instantaneous speed",
@@ -55,10 +55,10 @@ def _():
              "distance += step, speed = step / dt; remember the fix in self.last.")
 def _():
     t = tracker()
-    v = t.update(23.588, 58.38, 100.0)
+    v = t.update(35.828, 10.64, 100.0)
     c.ok(v is None, f"update() returned {v!r} for the first fix — no speed yet, return None")
     c.eq(t.count, 1, "count after one fix")
-    v = t.update(23.588 + 100 / M_PER_DEG, 58.38, 110.0)
+    v = t.update(35.828 + 100 / M_PER_DEG, 10.64, 110.0)
     c.near(v, 10.0, 0.05, "speed returned by the second update()")
     c.near(t.speed_mps, 10.0, 0.05, "self.speed_mps")
     c.near(t.distance_m, 100.0, 0.5, "self.distance_m")
@@ -72,12 +72,12 @@ def _():
     (T,) = need(listener(), "Tracker")
     t = T(window=3)
     for i in range(5):                                   # 4 steps of 50 m north, 5 s apart
-        t.update(23.588 + i * 50 / M_PER_DEG, 58.38, 5.0 * i)
+        t.update(35.828 + i * 50 / M_PER_DEG, 10.64, 5.0 * i)
     c.near(t.distance_m, 200.0, 1.0, "distance after 4 steps of 50 m")
     c.near(t.window_speed_mps, 10.0, 0.05, "window speed (3 fixes: 100 m in 10 s)")
     c.eq(len(t.history), 3, "len(history) with window=3")
     before = (t.count, t.distance_m, t.last)
-    for bad in ((0.0, 0.0, 99.0, 0), (23.7, 58.4, 1.0, 0), (23.7, 58.4, 99.0, -1), (math.nan, 58.4, 99.0, 0)):
+    for bad in ((0.0, 0.0, 99.0, 0), (35.9, 10.6, 1.0, 0), (35.9, 10.6, 99.0, -1), (math.nan, 10.6, 99.0, 0)):
         c.ok(t.update(*bad) is None, f"update{bad} should be rejected and return None")
     c.eq((t.count, t.distance_m, t.last), before, "the state after 4 rejected fixes")
     c.eq(sum(t.rejected.values()), 4, "the total of self.rejected")

@@ -10,8 +10,8 @@ matches the time stamp it carries, even when a tick is late.
 
 ## Flat Earth
 
-For heading 30° the flat-Earth end point is 0.031 m from the great circle after 1 km, 3.09 m after
-10 km and 312 m after 100 km: ten times the distance gives about one hundred times the error, the
-d² law. The due-east column (0.034, 3.43, 343 m) agrees with d² tan(φ)/(2R) to better than 0.1 %.
+For heading 30° the flat-Earth end point is 0.051 m from the great circle after 1 km, 5.11 m after
+10 km and 514 m after 100 km: ten times the distance gives about one hundred times the error, the
+d² law. The due-east column (0.057, 5.67, 567 m) agrees with d² tan(φ)/(2R) to better than 0.1 %.
 For a bench test of a few kilometres the flat model is accurate to centimetres or decimetres,
 much better than the 3 m the receiver states; beyond about 10 km I would use the spherical formula.

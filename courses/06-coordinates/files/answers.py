@@ -1,6 +1,6 @@
 # Write your answers, then save. The course and the lab have everything you need.
 
-# Q1. How many KILOMETERS long is 1 degree of LONGITUDE at Muscat (latitude 23.5839°),
+# Q1. How many KILOMETERS long is 1 degree of LONGITUDE at Sousse (latitude 35.8277°),
 #     on the WGS84 ellipsoid?  (N · cos(lat) · π / 180, in km — a number, e.g.  Q1 = 50.0)
 Q1 = 0
 
@@ -12,7 +12,7 @@ Q1 = 0
 #   c) (0, 0) is the North Pole, where longitude is not defined
 Q2 = ""
 
-# Q3. At Muscat, NAVERA's haversine_m() uses a sphere of radius 6 371 000 m. For which direction
-#     of travel is its distance the MOST wrong?
+# Q3. On the equator (for example at Quito or Singapore), NAVERA's haversine_m() uses a sphere of
+#     radius 6 371 000 m. For which direction of travel is its distance the MOST wrong?
 #   a) east-west      b) north-south      c) the same error in every direction
 Q3 = ""

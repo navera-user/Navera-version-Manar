@@ -1,7 +1,7 @@
 # Lesson 16 — from raw IMU samples to an attitude: gyro integration, accelerometer tilt,
 # complementary filter, tilt-compensated compass and true north.
 # Fill in TODOs 8–12, save, then run:   python3 imu_filters.py
-# It reads the simulated log /data/academy/16-imu/imu_log.csv (a flight near Nizwa), writes
+# It reads the simulated log /data/academy/16-imu/imu_log.csv (a flight near Monastir), writes
 # results.json (graded) and attitude.png (click it in the file list to open it).
 #
 # Conventions: the same as quaternions.py — radians inside the functions, quaternions (w, x, y, z),
@@ -60,8 +60,8 @@ def declination_at(lat, lon, year):
 LOG = "/data/academy/16-imu/imu_log.csv"
 META = "/data/academy/16-imu/imu_log_meta.json"
 TAUS = (0.1, 0.3, 1.0, 3.0, 10.0, 30.0)
-OMAN = {"Muscat": (23.588, 58.383), "Sohar": (24.347, 56.709), "Nizwa": (22.933, 57.533),
-        "Salalah": (17.019, 54.089), "Masirah": (20.670, 58.870)}
+WORLD = {"London": (51.501, -0.125), "Reykjavik": (64.147, -21.943), "Cape Town": (-33.925, 18.424),
+         "Sydney": (-33.869, 151.209), "Singapore": (1.290, 103.852)}
 
 
 def load_log(path=LOG):
@@ -186,9 +186,9 @@ def main():
     res["fused_true_heading_rms_deg"] = rms(wrap180(fh - t_head))
     print(f"BNO085 fused quaternion + D: heading RMS {res['fused_true_heading_rms_deg']:.2f} deg")
 
-    # 6. declination around Oman
-    res["oman_declination_deg"] = {k: round(declination_at(la, lo, 2026.79), 3) for k, (la, lo) in OMAN.items()}
-    print("declination, October 2026:", ", ".join(f"{k} {v:+.2f}" for k, v in res["oman_declination_deg"].items()))
+    # 6. declination around the world
+    res["world_declination_deg"] = {k: round(declination_at(la, lo, 2026.79), 3) for k, (la, lo) in WORLD.items()}
+    print("declination, October 2026:", ", ".join(f"{k} {v:+.2f}" for k, v in res["world_declination_deg"].items()))
 
     with open("results.json", "w") as f:
         json.dump(res, f, indent=1)
@@ -200,7 +200,7 @@ def main():
     ax[0].plot(t, np.degrees(c_roll), "-", color="#0b6e8a", lw=1.2, label=f"complementary, tau={best[0]} s")
     ax[0].set_ylabel("roll (deg)")
     ax[0].legend(loc="upper right", fontsize=8)
-    ax[0].set_title("Lesson 16 — attitude from a simulated IMU log (flight near Nizwa)")
+    ax[0].set_title("Lesson 16 — attitude from a simulated IMU log (flight near Monastir)")
     ax[1].plot(t, wrap180(true_h - t_head), "-", color="#0b6e8a", lw=0.6, label="compass + declination: error")
     ax[1].plot(t, err, "r-", lw=1.5, label="gyro only: heading error")
     ax[1].axhline(0, color="k", lw=0.5)

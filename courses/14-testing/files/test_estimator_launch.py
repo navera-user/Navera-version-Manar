@@ -27,7 +27,7 @@ def generate_test_description():
     return launch.LaunchDescription([arbiter, launch_testing.actions.ReadyToTest()]), {"arbiter": arbiter}
 
 
-def gps_estimate(node, lat=23.588, lon=58.3829):
+def gps_estimate(node, lat=35.825, lon=10.595):
     """A complete, honest GPS PositionEstimate stamped now (sigma 3 m)."""
     m = PositionEstimate()
     m.header.stamp = node.get_clock().now().to_msg()

@@ -9,11 +9,11 @@
 >   formula are faster shortcuts.
 > - The key question for an engineer: how big is the error of each shortcut?
 > - In the lab you implement the conversions, check them against NAVERA's code, and measure the
->   error of the shortcuts around Muscat.
+>   error of the shortcuts around Sousse (Tunisia), NAVERA's test area.
 
-A survey drone takes off from the port of **Sohar** and flies down the Batinah coast towards
-**Muscat**. Halfway, its GPS is jammed. NAVERA's camera matches the ground with the on-board
-map and reports *"you are at 23.9120° N, 57.6050° E"*. The flight controller does not think in
+A survey drone takes off from **Monastir** and flies up the coast towards **Sousse**, in Tunisia
+(NAVERA's test map covers Sousse). Halfway, its GPS is jammed. NAVERA's camera matches the ground
+with the on-board map and reports *"you are at 35.7960° N, 10.7250° E"*. The flight controller does not think in
 degrees: it needs **meters** — how far to the next waypoint, in which direction, how fast the
 drone drifts east. Every second, NAVERA converts between three ways of writing the same point:
 
@@ -34,23 +34,24 @@ most important for an engineer — **how big the error of each shortcut is**.
 
 ![Latitude, longitude and the length of one degree of longitude](assets/globe.svg)
 
-Software writes positions in **decimal degrees**, latitude first: the Sultan Qaboos Grand Mosque in
-Muscat is (23.5839, 58.3875). Oman is north of the equator and east of Greenwich, so both numbers
-are positive. Old notation uses degrees, minutes and seconds: 23° 35′ 02″ N = 23 + 35/60 + 2/3600 =
-23.5839°.
+Software writes positions in **decimal degrees**, latitude first: the Eiffel Tower in Paris is
+(48.8584, 2.2945). Paris is north of the equator and east of Greenwich, so both numbers are
+positive. Cape Town is (−33.9249, 18.4241): south of the equator, so its latitude is negative.
+New York (40.7128, −74.0060) is west of Greenwich, so its longitude is negative. Old notation uses
+degrees, minutes and seconds: 48° 51′ 30″ N = 48 + 51/60 + 30/3600 = 48.8583°.
 
 > [!WARNING]
 > **Order and units.** NAVERA always writes (lat, lon). GeoJSON and some web tools write
-> (lon, lat): Muscat written the wrong way round, (58.3875, 23.5839), falls near the west coast of Estonia,
-> 4 700 km away. And Python's `math.sin`, `math.cos`, `math.tan` take **radians**: `math.cos(23.58)` is
-> 0.018, not 0.917. Convert with `math.radians()` and back with `math.degrees()`.
+> (lon, lat): the Eiffel Tower written the wrong way round, (2.2945, 48.8584), falls in the Indian
+> Ocean off the coast of Somalia, 6 800 km away. And Python's `math.sin`, `math.cos`, `math.tan` take
+> **radians**: `math.cos(35.83)` is −0.294, not 0.811. Convert with `math.radians()` and back with `math.degrees()`.
 
 > [!NOTE]
 > **Null Island.** The point (0°, 0°) lies in the open Atlantic Ocean, in the Gulf of Guinea, about
 > 600 km south of the coast of Ghana. There is no island there — only a weather buoy. Mapping
 > people call it "Null Island" because it is where data with **missing coordinates** lands: a
 > GPS receiver that has no fix yet, a variable left at its default value 0, a failed conversion.
-> A drone in Oman that suddenly "is" at (0, 0) has a software problem, not a 7000 km jump. That is
+> A drone over Sousse that suddenly "is" at (0, 0) has a software problem, not a 4 100 km jump. That is
 > why NAVERA's `is_finite_latlon()` refuses exactly (0, 0) as well as NaN, infinity and out-of-range
 > values.
 
@@ -113,16 +114,18 @@ meters per degree of longitude = N(φ) · cos φ · π / 180
 | Place | φ | M (km) | N (km) | 1° latitude | 1° longitude |
 |---|---|---|---|---|---|
 | Equator | 0° | 6335.4 | 6378.1 | 110.574 km | 111.319 km |
-| Salalah | 17.02° | 6340.9 | 6380.0 | 110.669 km | 106.475 km |
-| Nizwa | 22.93° | 6345.1 | 6381.4 | 110.743 km | 102.573 km |
-| Muscat | 23.58° | 6345.6 | 6381.6 | 110.752 km | 102.076 km |
-| Sohar | 24.35° | 6346.3 | 6381.8 | 110.763 km | 101.477 km |
-| Khasab (Musandam) | 26.18° | 6347.8 | 6382.3 | 110.791 km | 99.965 km |
+| Cape Town | −33.92° | 6355.3 | 6384.8 | 110.921 km | 92.466 km |
 | Sousse (NAVERA's test area) | 35.83° | 6357.3 | 6385.5 | 110.956 km | 90.359 km |
+| Rome | 41.89° | 6363.9 | 6387.7 | 111.071 km | 82.993 km |
+| London | 51.51° | 6374.6 | 6391.3 | 111.258 km | 69.429 km |
+| Reykjavik | 64.15° | 6387.3 | 6395.5 | 111.480 km | 48.675 km |
+| North Pole | 90° | 6399.6 | 6399.6 | 111.694 km | 0 km |
 
-Two things to notice. First, **longitude shrinks with cos φ**: in Salalah one degree east is
-106.5 km, in Muscat 102.1 km, 4.4 km less. A program that forgets the cosine makes east–west
-distances 9 % too long in Muscat and 23 % too long in Sousse. Second, a degree of **latitude is not
+Two things to notice. First, **longitude shrinks with cos φ**: in Sousse one degree east is
+90.4 km, in London 69.4 km, in Reykjavik only 48.7 km. A program that forgets the cosine makes
+east–west distances 23 % too long in Sousse and 129 % too long (more than double) in Reykjavik.
+The sign of the latitude does not matter: Cape Town (34° S) and Sousse (36° N) have almost the same
+values. Second, a degree of **latitude is not
 constant**: 110.57 km at the equator, 111.69 km at the poles — because the ellipsoid is *flatter*
 near the poles, its curvature radius M is *larger* there.
 
@@ -153,7 +156,7 @@ repeat:  N = N(φ);   h = p / cos φ − N;   φ = atan2(Z, p (1 − e² N / (N 
 Each iteration reduces the error by a factor of the order of e² ≈ 0.007, so 5–6 iterations give
 sub-millimeter accuracy for any point near the Earth. (Closed-form solutions exist, for example
 Bowring's method, but the iteration is easier to read and to test.) Because the formula divides by
-cos φ, it would fail exactly at the poles — not a problem for a drone in Oman. You do not need to prove
+cos φ, it would fail exactly at the poles — not a problem for our drones, which do not fly there. You do not need to prove
 that the iteration converges: the lab checks it with a **round-trip test** (geodetic → ECEF →
 geodetic must give back the same point to a millimeter).
 
@@ -188,25 +191,26 @@ X = X0 + Rᵀ · [e, n, u]ᵀ          then ECEF → (φ, λ, h) with the iterat
 ![The local ENU frame is a tangent plane](assets/enu_frame.svg)
 
 The ENU plane **touches** the Earth at home. A point on the ground d meters away is below the
-plane: u ≈ −d² / (2R). That is −8 cm at 1 km, −7.8 m at 10 km, and −57 km for Salalah seen from
-Muscat. ENU is exact everywhere (it is just a rotation and a translation of ECEF), but its
+plane: u ≈ −d² / (2R). That is −8 cm at 1 km, −7.8 m at 10 km, and −38 km for Rome seen from
+Sousse. ENU is exact everywhere (it is just a rotation and a translation of ECEF), but its
 horizontal (e, n) is a "flat picture" of a curved surface, so it is most meaningful near home.
 
-### Worked example: Nizwa fort seen from Muscat
+### Worked example: Kairouan seen from Sousse
 
-Home: Muscat (23.5839°, 58.3875°, h0 = 0). Target: Nizwa fort (22.9333°, 57.5300°, h = 500 m).
+Home: Sousse (35.8277°, 10.6388°, h0 = 0). Target: the Great Mosque of Kairouan, inland
+(35.6812°, 10.1036°, h = 100 m).
 
-1. ECEF of Muscat: X0 = (3 065 638.6, 4 980 689.3, 2 536 114.8) m.
-   ECEF of Nizwa: X = (3 155 356.4, 4 958 645.0, 2 470 113.1) m.
-2. Difference: X − X0 = (89 717.8, −22 044.3, −66 001.7) m.
-3. R at Muscat (rounded): E = (−0.8516, 0.5242, 0), N = (−0.2097, −0.3407, 0.9165),
-   U = (0.4804, 0.7805, 0.4001).
-4. e = E·(X − X0) = −87 959.8 m, n = N·(X − X0) = −71 793.2 m, u = U·(X − X0) = −512.4 m.
+1. ECEF of Sousse: X0 = (5 088 219.3, 955 801.2, 3 712 708.0) m.
+   ECEF of Kairouan: X = (5 106 355.9, 909 911.6, 3 699 575.1) m.
+2. Difference: X − X0 = (18 136.6, −45 889.6, −13 132.9) m.
+3. R at Sousse (rounded): E = (−0.1846, 0.9828, 0), N = (−0.5753, −0.1081, 0.8108),
+   U = (0.7968, 0.1497, 0.5853).
+4. e = E·(X − X0) = −48 449.1 m, n = N·(X − X0) = −16 122.6 m, u = U·(X − X0) = −104.2 m.
 
-Nizwa is 88 km west and 72 km south of Muscat. Although the fort is 500 m above the ellipsoid, it is
-512 m **below** Muscat's tangent plane: at 113.5 km, the curvature term d²/(2R) ≈ 1010 m is larger
-than its height. The horizontal ENU distance is √(e² + n²) = 113 539 m; the distance along the
-ellipsoid (Vincenty's formula) is 113 536 m.
+Kairouan is 48 km west and 16 km south of Sousse. Although the mosque is 100 m above the ellipsoid,
+it is 104 m **below** Sousse's tangent plane: at 51 km, the curvature term d²/(2R) ≈ 205 m is larger
+than its height. The horizontal ENU distance is √(e² + n²) = 51 061.3 m; the distance along the
+ellipsoid (Vincenty's formula) is 51 061.0 m.
 
 ## 5. The spherical shortcuts: haversine and bearing
 
@@ -239,17 +243,19 @@ to choose the right quadrant. Mathematicians measure from the x axis counter-clo
 measure from **north**, clockwise — so the east component goes **first**: `atan2(east, north)`.
 `% 360` maps −90° to 270°.
 
-From Muscat, Salalah is at a bearing of **212.3°** (south-south-west) and 856.4 km away on the
-sphere. The way back is **30.8°**, not 212.3° − 180° = 32.3°: on a great circle the bearing changes
+From Sousse, Rome is at a bearing of **12.8°** (north-north-east) and 692.9 km away on the
+sphere. The way back is **194.0°**, not 12.8° + 180° = 192.8°: on a great circle the bearing changes
 along the way.
 
 ### How wrong is the sphere?
 
-On the WGS84 ellipsoid, Muscat → Salalah is **854.017 km**; the sphere says **856.375 km**,
-2.36 km (0.28 %) too long. The reason is the radii table: at Muscat a north–south distance really
-curves with M = 6345.6 km, but the sphere uses 6371 km — **0.40 % too large**. East–west
-(N = 6381.6 km) the sphere is 0.17 % too small. So the haversine error depends on the direction,
-between about −0.2 % and +0.4 % in Oman: **2–4 m per km**. It is fine for "how far is the next
+On the WGS84 ellipsoid, Sousse → Rome is **691.924 km**; the sphere says **692.906 km**,
+0.98 km (0.14 %) too long. The reason is the radii table: at Sousse a north–south distance really
+curves with M = 6357.3 km, but the sphere uses 6371 km — **0.22 % too large**. East–west
+(N = 6385.5 km) the sphere is 0.23 % too small. (The route to Rome is not due north, and M grows on
+the way, so the final error is a little smaller than 0.22 %.) So the haversine error depends on the
+direction and on the latitude: about ±0.2 % around Sousse, but between −0.1 % and +0.6 % on the
+equator, where M = 6335.4 km: **1 to 6 m per km**. It is fine for "how far is the next
 waypoint"; it is not fine for surveying.
 
 ## 6. The flat-Earth shortcut and its error
@@ -266,20 +272,20 @@ and the inverse (`flat_move` in the lab, `_move` in NAVERA) divides instead of m
 two kinds of error:
 
 1. **Scale error (first order, proportional to distance).** 111 320 m is a·π/180, the length of a
-   degree *of the equator*. At Muscat a degree of latitude is 110 752 m (M·π/180), so every
-   north displacement is **0.51 % too long** — 5 m per km. East is almost right (−0.05 %), because
-   N·π/180 ≈ 111 380 m is close to 111 320 m.
+   degree *of the equator*. At Sousse a degree of latitude is 110 956 m (M·π/180), so every
+   north displacement is **0.33 % too long** — 3.3 m per km. East is almost right (−0.11 %), because
+   N·π/180 ≈ 111 448 m is close to 111 320 m.
 2. **Curvature and convergence of the meridians (second order, proportional to d²).** Using the
    cosine of the home latitude for all points ignores that meridians get closer as you go north:
    the east error is about e·n·tan φ0 / R (e, n: the east and north distances in meters). Example
-   at Muscat (φ0 = 23.6°, tan φ0 = 0.436), a point 10 km east and 10 km north:
-   `10 000 × 10 000 × 0.436 / 6 371 000 ≈ 6.8 m`. Twice farther (20 km, 20 km) gives four times
-   more, 27 m: that is "proportional to d²". With the exact radii M and N instead of 111 320 m, this
-   is all that remains: a few meters at 10 km.
+   at Sousse (φ0 = 35.8°, tan φ0 = 0.722), a point 10 km east and 10 km north:
+   `10 000 × 10 000 × 0.722 / 6 371 000 ≈ 11.3 m`. Twice farther (20 km, 20 km) gives four times
+   more, 45 m: that is "proportional to d²". With the exact radii M and N instead of 111 320 m, this
+   is all that remains: a few meters at 10 km (6.5 m at Sousse, in the worst direction).
 
 In the lab you will measure both curves. For the worked example above, the flat formula puts
-Nizwa at (−87 484, −72 425) m instead of (−87 960, −71 793) m: **791 m wrong** at 113 km.
-A flat frame is a tool for a few kilometers, not for a flight across the Hajar mountains.
+Kairouan at (−48 305, −16 308) m instead of (−48 449, −16 123) m: **235 m wrong** at 51 km.
+A flat frame is a tool for a few kilometers, not for a flight across a whole country.
 
 > [!TIP]
 > **Python and numpy notes for this lab.**
@@ -315,10 +321,10 @@ The young birds behaved like a vehicle with heading but no position: displaced s
 the same bearing and missed by the size of the displacement. The adults behaved like a navigation
 computer: they knew where they were and computed a **new bearing** to the goal.
 
-Long-distance migrants in Oman face the same problem at a larger scale. **Sooty falcons** that
-breed on islands off the coast of Oman, such as the Daymaniyat islands, spend the northern winter
-in Madagascar, and satellite-tracking studies have followed sooty falcons across thousands of kilometers.
-For trips of that length the difference between a flat map, a sphere and the real Earth is not
+Long-distance migrants face the same problem at a larger scale. **Bar-tailed godwits** fly from
+Alaska to New Zealand in one non-stop flight of more than 11 000 km over the Pacific, and
+**Arctic terns** travel between the Arctic and the Antarctic every year; satellite and geolocator
+tracking studies have followed both across the globe. For trips of that length the difference between a flat map, a sphere and the real Earth is not
 an academic detail. Navi, our swallow, prefers the version of the story where she knows her
 position *and* the shape of the Earth.
 
@@ -326,7 +332,7 @@ position *and* the shape of the Earth.
 
 NAVERA's real data — its satellite map, recorded frames and simulator area — cover **Sousse,
 Tunisia**, where NAVERA is developed. The code below works the same anywhere on Earth; the lab uses
-Omani places.
+Sousse as home and a few places in Africa and Europe.
 
 **`navera_common/navera_common/geo.py`** ([open it](file:navera/navera_common/navera_common/geo.py))
 — the geodesy helpers shared by all localizers. They work on a sphere:
@@ -366,7 +372,7 @@ def _move(p, de, dn):
 
 Day vision measures its **velocity** from two map fixes with `_en()` (meters per second) and later
 carries the position along that velocity with `_move()`, for example over the sea where the camera
-finds nothing to match. Because the same constant is used in both directions, the 0.5 % scale
+finds nothing to match. Because the same constant is used in both directions, the 0.33 % scale
 error **cancels** in the carried position; it only affects numbers expressed in meters, such as
 the distance gates and the stated uncertainty. You will quantify this in the lab and decide whether
 it matters.
@@ -397,8 +403,8 @@ separation).
 
 ## Check what you learned
 
-<details><summary>1. How many kilometers is 1° of longitude in Salalah and in Muscat, and why do they differ?</summary>
-N(φ)·cos φ·π/180: 106.5 km at Salalah (17.0°) and 102.1 km at Muscat (23.6°). Parallels are
+<details><summary>1. How many kilometers is 1° of longitude in Sousse and in London, and why do they differ?</summary>
+N(φ)·cos φ·π/180: 90.4 km at Sousse (35.8°) and 69.4 km at London (51.5°). Parallels are
 circles of radius N cos φ, which shrink as cos φ decreases away from the equator.
 </details>
 
@@ -407,8 +413,8 @@ The rows of R are orthonormal unit vectors (E, N, U), so R·Rᵀ = I. Inverting 
 costs more and loses precision; with a rotation, X = X0 + Rᵀ·[e, n, u] is exact and cheap.
 </details>
 
-<details><summary>3. Your function returns math.cos(23.58) = 0.018 for Muscat. What happened, and what would happen in asin?</summary>
-The angle was passed in degrees; math.cos expects radians (use math.radians(23.58) → cos = 0.917).
+<details><summary>3. Your function returns math.cos(35.83) = −0.294 for Sousse. What happened, and what would happen in asin?</summary>
+The angle was passed in degrees; math.cos expects radians (use math.radians(35.83) → cos = 0.811).
 With asin or sqrt, a wrong unit or rounding can give a value outside the domain and the error
 "ValueError: math domain error".
 </details>
@@ -418,13 +424,13 @@ No. ENU is an exact Cartesian frame (rotation of ECEF): the ground curves away f
 plane by about d²/(2R). A program that assumes "ground = u = 0" far from home makes that error.
 </details>
 
-<details><summary>5. NAVERA's flat shortcut is 0.5 % too long in the north direction at Muscat. Give one case where it matters and one where it cancels.</summary>
+<details><summary>5. NAVERA's flat shortcut is 0.33 % too long in the north direction at Sousse. Give one case where it matters and one where it cancels.</summary>
 It cancels when a velocity measured with _en() is applied with _move() (same constant both ways).
 It matters when the result is compared with true meters: a distance gate, a stated uncertainty, a
-speed from another sensor (airspeed, IMU) — about 5 m per km.
+speed from another sensor (airspeed, IMU) — about 3.3 m per km.
 </details>
 
-<details><summary>6. Why is the bearing from Salalah back to Muscat (30.8°) not 212.3° − 180°?</summary>
+<details><summary>6. Why is the bearing from Rome back to Sousse (194.0°) not 12.8° + 180°?</summary>
 A great circle is not a line of constant bearing: the direction relative to the local meridian
 changes along the path, so the final bearing of A→B differs from the initial bearing of B→A + 180°.
 </details>

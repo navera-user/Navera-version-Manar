@@ -8,8 +8,8 @@
 > - You will see how a height error becomes a **scale** error, and a tilt error becomes a position error.
 > - In the lab you build these functions, compare them with NAVERA's code, and measure a landing pad in drone photos.
 
-A survey drone flies at 300 m over the coast between Muscat and Sohar. Its GPS is jammed. The
-camera under the drone takes a photo of roads, date palms and roofs, and NAVERA must find this
+A survey drone flies at 300 m over a coastal city. Its GPS is jammed. The
+camera under the drone takes a photo of roads, trees and roofs, and NAVERA must find this
 photo on its satellite map. Before any image matching can start, NAVERA needs to answer three
 geometric questions:
 
@@ -158,7 +158,7 @@ X_ground = C + λ · d
 
 If d_z ≥ 0 the ray goes to the horizon or the sky and never touches the ground. This is a
 **ray–plane intersection**; for a general plane n·X = c, λ = (c − n·C) / (n·d). We assume flat
-ground; over the Hajar mountains that is a strong assumption (a digital elevation model would
+ground; over mountains that is a strong assumption (a digital elevation model would
 be needed).
 
 ![A nose-down drone: the down-looking camera sees the ground behind it](assets/tilt.svg)
@@ -240,13 +240,14 @@ map_mpp(φ, z) = 40 075 016.7 · cos φ / (256 · 2^z)       (metres per pixel)
 
 | zoom | 15 | 16 | 17 | 18 | 19 |
 |---|---|---|---|---|---|
-| Salalah (17.0° N) | 4.57 | 2.28 | 1.14 | 0.571 | 0.286 |
-| Muscat (23.6° N) | 4.38 | 2.19 | 1.09 | 0.547 | 0.274 |
+| Singapore (1.3° N) | 4.78 | 2.39 | 1.19 | 0.597 | 0.299 |
 | Sousse (35.8° N) | 3.87 | 1.94 | 0.968 | 0.484 | 0.242 |
+| Reykjavik (64.2° N) | 2.08 | 1.04 | 0.521 | 0.260 | 0.130 |
 
-The same zoom level is **coarser in Oman than in Tunisia**, because Oman is closer to the equator.
-NAVERA's test map covers Sousse, Tunisia (where NAVERA is developed), so the lab photos come from
-there; the formulas are the same for a Muscat map.
+The same zoom level is **coarse near the equator and fine near the poles**: a zoom-17 pixel covers
+1.19 m in Singapore but only 0.52 m in Reykjavik. NAVERA's test map covers Sousse, Tunisia (where
+NAVERA is developed), so the lab photos come from there; the formulas are the same for a map of
+any other place.
 
 To compare a photo with the map, both must have the same metres per pixel. NAVERA keeps the map
 and **resizes the photo** by
@@ -258,8 +259,9 @@ s = GSD_photo / map_mpp        (s < 1: the photo is shrunk)
 The **best zoom** for a given height is the one closest in **ratio** — minimise |log(map_mpp / GSD)|,
 because a map twice too fine and a map twice too coarse are equally bad. Equivalently,
 z* ≈ log₂(40 075 016.7 · cos φ / (256 · GSD)), rounded. At 300 m the Insta360 GSD is 0.455 m/px:
-zoom 18 in Muscat (0.547) and in Sousse (0.484). The height at which the photo has exactly the
-zoom-17 resolution is h = f · map_mpp: 722 m over Muscat, 639 m over Sousse.
+zoom 18 in Singapore (0.597) and in Sousse (0.484), but zoom 17 in Reykjavik (0.521). The height at
+which the photo has exactly the zoom-17 resolution is h = f · map_mpp: 788 m over Singapore, 639 m
+over Sousse, 344 m over Reykjavik.
 
 ## 7. Uncertainty: from height error to scale error
 
@@ -284,8 +286,9 @@ best), then the height measured by earlier matches, then a reference altitude mi
 height at take-off (barometer or GPS), whose uncertainty grows with height because the terrain
 changes. When the height is uncertain, NAVERA widens the gate to 2·σh/h, at most 35 %.
 
-**An Omani example.** A drone takes off at Nizwa (ground about 500 m above sea level), climbs to
-2 300 m GPS altitude and flies to the Saiq plateau of Jebel Akhdar (ground about 2 000 m). "GPS
+**A mountain example.** A drone takes off in a mountain valley, for example in the Alps (ground
+about 500 m above sea level), climbs to 2 300 m GPS altitude and flies over a high plateau (ground
+about 2 000 m). "GPS
 altitude − take-off ground" says 1 800 m AGL; the truth is 300 m. The photo shows 6 times less
 ground than predicted: the matcher would need a scale of 0.17, far outside any gate. Only a
 rangefinder, a terrain model or a height measured from the image can save this flight.
@@ -296,17 +299,17 @@ on the ground. Lesson 16's IMU accuracy limits the position accuracy.
 
 ## 8. 🐦 How birds do it
 
-From high above Barr Al Hikman, a flock of flamingos sees kilometres of mudflat; low over the
-water, a tern sees a few square metres — but every small fish in them. That is this lesson's rule
+From high above a coastal lagoon such as the Camargue in France, a flock of flamingos sees
+kilometres of mudflat; low over the water, a tern sees a few square metres — but every small fish in them. That is this lesson's rule
 for any eye: **footprint and detail trade against each other**, and the trade is set by height.
 
 Birds of prey push the detail. Their retina has a deep central **fovea** packed with
 photoreceptors (many raptors have a second, shallower one for looking sideways), and the best
-eagles resolve detail roughly twice as fine as a person. Steppe eagles that winter in Dhofar
-scan the ground from great heights and still spot small prey: like a camera with a long focal
+eagles resolve detail roughly twice as fine as a person. Golden eagles, from the Alps to the
+Rocky Mountains, scan the ground from great heights and still spot small prey: like a camera with a long focal
 length in the middle of a wide field of view.
 
-The **common kestrel**, seen across Oman, solves the other problem of this lesson — the pose.
+The **common kestrel**, seen from Europe to Africa and Asia, solves the other problem of this lesson — the pose.
 When it **hovers** into the wind, its wings and tail work constantly, but its **head stays almost
 perfectly still** in space. A fixed viewpoint means a stable projection: any small movement in the
 image is the prey, not the bird. NAVERA cannot hold its camera still, so it measures the pose with
@@ -432,9 +435,9 @@ u = 480·(−20)/200 + 480 = <b>432</b>, v = 480·10/200 + 270 = <b>294</b>.
 Behind the drone: 200 · tan 15° ≈ <b>54 m west</b> of the point under the drone (the belly turns backwards).
 </details>
 
-<details><summary>5. Which zoom matches the Insta360 view (f = 659.8 px) at 600 m over Muscat?</summary>
-GSD = 600 / 659.8 = 0.909 m/px. Zoom 17 is 1.095 m/px (ratio 1.20), zoom 18 is 0.547 (ratio 0.60):
-|log 1.20| = 0.18 < |log 0.60| = 0.51, so <b>zoom 17</b>.
+<details><summary>5. Which zoom matches the Insta360 view (f = 659.8 px) at 600 m over Reykjavik?</summary>
+GSD = 600 / 659.8 = 0.909 m/px. Zoom 16 is 1.041 m/px (ratio 1.15), zoom 17 is 0.521 (ratio 0.57):
+|log 1.15| = 0.14 < |log 0.57| = 0.56, so <b>zoom 16</b> (over Sousse it would be zoom 17).
 </details>
 
 <details><summary>6. NAVERA assumes 250 m, the fitted scale is 0.92 and the gate is 15 %. Accepted? What height does it measure?</summary>

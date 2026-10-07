@@ -48,5 +48,5 @@
     <text x="400" y="324" font-size="12">the photo → get φ, λ</text>
     <text x="400" y="342" font-size="12">(celestial fix, NAVERA cn_pkg).</text>
   </g>
-  <text x="20" y="408" fill="#1d2733" font-size="12">Drawn for φ = 35° to keep the picture readable; in Muscat φ ≈ 23.6°.</text>
+  <text x="20" y="408" fill="#1d2733" font-size="12">Drawn for φ = 35° to keep the picture readable; on Tenerife φ ≈ 28.3°.</text>
 </svg>

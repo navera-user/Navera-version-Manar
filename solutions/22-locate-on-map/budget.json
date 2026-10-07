@@ -90,18 +90,18 @@
    "predicted_m": 35.27
   }
  ],
- "nizwa_case": {
+ "worked_case": {
   "height_m": 300.0,
   "tilt_sigma_deg": 0.3,
   "matcher_px": 8.0,
-  "map_mpp": 1.09995455666067,
+  "map_mpp": 1.1601015826815075,
   "speed_mps": 20.0,
   "lag_s": 0.1,
   "map_bias_m": 5.0,
   "tilt_m": 1.571,
-  "matcher_m": 8.8,
+  "matcher_m": 9.281,
   "lag_m": 2.0,
   "map_m": 5.0,
-  "total_m": 10.436
+  "total_m": 10.844
  }
 }

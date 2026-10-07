@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Make imu_log.csv + imu_log_meta.json for lesson 16 (run on the host: python3 make_dataset.py).
 
-A SIMULATED 5-minute IMU log of a multirotor flying near Nizwa, at the foot of Jebel Akhdar
-(Oman), sampled at 50 Hz (the rate of NAVERA's imu_node). The BNO085 of the NAVERA box is not
+A SIMULATED 5-minute IMU log of a multirotor flying near Monastir, in NAVERA's test area
+(Tunisia), sampled at 50 Hz (the rate of NAVERA's imu_node). The BNO085 of the NAVERA box is not
 connected, so the lab works on this log. Being simulated, it also contains the TRUTH.
 
 Columns of imu_log.csv
@@ -36,7 +36,7 @@ import numpy as np
 from pygeomag import GeoMag
 
 RATE_HZ, DURATION_S = 50.0, 300.0
-LAT, LON, YEAR = 22.930, 57.530, 2026.79          # near Nizwa, 15 October 2026 (synthetic)
+LAT, LON, YEAR = 35.760, 10.750, 2026.79          # near Monastir, 15 October 2026 (synthetic)
 G = 9.80665
 GYRO_BIAS = np.radians([0.01, -0.01, 0.03])        # rad/s
 GYRO_NOISE = 0.005                                  # rad/s
@@ -128,7 +128,7 @@ def main():
                        + [f"{v:.3f}" for v in m_b]
                        + [f"{math.degrees(roll[i]):.4f}", f"{math.degrees(pitch[i]):.4f}",
                           f"{math.degrees(hdg[i]) % 360.0:.4f}"])
-    meta = {"place": "near Nizwa, Oman (synthetic flight)", "lat": LAT, "lon": LON,
+    meta = {"place": "near Monastir, Tunisia (synthetic flight)", "lat": LAT, "lon": LON,
             "decimal_year": YEAR, "date": "2026-10-15", "rate_hz": RATE_HZ, "duration_s": DURATION_S,
             "simulated": True,
             "note": "simulated log; the BNO085 of the NAVERA box is not connected",

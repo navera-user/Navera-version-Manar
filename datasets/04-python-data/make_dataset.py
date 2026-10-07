@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Make the synthetic flight-test campaign of lesson 04 (deterministic: same file every time).
 
-Four flights in Oman (SYNTHETIC numbers, made for the course; NAVERA's real recordings cover
-Sousse, Tunisia). One row every 2 s per flight. Columns:
+Four flights in NAVERA's test area around Sousse and Monastir, Tunisia (SYNTHETIC numbers, made
+for the course; NAVERA's real recordings also cover Sousse). One row every 2 s per flight. Columns:
     flight_id, time_s, lat, lon, alt_m, speed_mps, battery_pct, gps_valid, source, state
 The log is deliberately messy, like real logs:
   * exact duplicate rows (the logger wrote a line twice),
@@ -23,13 +23,13 @@ DT = 2.0
 
 FLIGHTS = [
     # id, home (lat, lon), waypoints (east, north m), cruise m/s, alt m, outages [(t0, t1, kind)]
-    ("muscat_coast", (23.6140, 58.5900), [(0, 0), (2500, 600), (3200, 1800), (0, 0)], 12.0, 100.0,
+    ("monastir_coast", (35.7700, 10.8300), [(0, 0), (2500, 600), (3200, 1800), (0, 0)], 12.0, 100.0,
      [(300, 360, "day_vision")]),
-    ("sohar_port", (24.3600, 56.7400), [(0, 0), (1800, 2200), (3500, 2000), (1500, -400), (0, 0)], 14.0, 120.0,
+    ("sousse_port", (35.8250, 10.6400), [(0, 0), (1800, 2200), (3500, 2000), (1500, -400), (0, 0)], 14.0, 120.0,
      [(200, 260, "day_vision"), (420, 480, "day_vision"), (480, 520, "none")]),
-    ("nizwa_foothills", (22.9300, 57.5300), [(0, 0), (-1200, 2600), (800, 3400), (0, 0)], 10.0, 250.0,
+    ("sahel_hills", (35.6800, 10.5500), [(0, 0), (-1200, 2600), (800, 3400), (0, 0)], 10.0, 250.0,
      [(560, 1e9, "day_vision")]),
-    ("barr_al_hikman", (20.6000, 58.4000),
+    ("grid_survey", (35.6500, 10.9000),
      [(0, 0), (3000, 0), (3000, 400), (0, 400), (0, 800), (3000, 800), (0, 0)], 20.0, 150.0,
      [(600, 616, "day_vision")]),
 ]
@@ -66,7 +66,7 @@ def main(out):
         total = len(rows)
         for k, (t, e, n, a, v) in enumerate(rows):
             kind = next((kd for t0, t1, kd in outages if t0 <= t < t1), None)
-            if kind == "day_vision" and fid == "nizwa_foothills" and t >= rows[-1][0] - 20:
+            if kind == "day_vision" and fid == "sahel_hills" and t >= rows[-1][0] - 20:
                 kind = "none"                         # vision gives up over the landing site
             sig = 1.5 if kind is None else 6.0
             e += rnd.gauss(0, sig); n += rnd.gauss(0, sig)
@@ -82,13 +82,13 @@ def main(out):
                 valid, src, state = 0, "none", "NO_FIX"
             slat, slon = (f"{lat:.6f}", f"{lon:.6f}") if src != "none" else ("", "")
             alt_s = f"{a:.1f}"
-            if fid == "muscat_coast" and t == 100.0:
+            if fid == "monastir_coast" and t == 100.0:
                 slat, slon = "0.000000", "0.000000"    # glitch: Null Island
-            if fid == "nizwa_foothills" and t == 200.0:
+            if fid == "sahel_hills" and t == 200.0:
                 alt_s = "9999.0"                        # glitch: impossible altitude
             line = [fid, f"{t:.0f}", slat, slon, alt_s, speed, battery, valid, src, state]
             lines.append(line)
-            if (fid, t) in (("muscat_coast", 50.0), ("sohar_port", 150.0), ("sohar_port", 700.0)):
+            if (fid, t) in (("monastir_coast", 50.0), ("sousse_port", 150.0), ("sousse_port", 700.0)):
                 lines.append(list(line))               # the logger wrote it twice
     with open(out, "w", newline="") as f:
         w = csv.writer(f)

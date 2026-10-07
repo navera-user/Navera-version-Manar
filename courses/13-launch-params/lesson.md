@@ -7,8 +7,8 @@
 > - You will learn **namespaces** and **remapping**, then write one **launch file** that starts a car, a boat and NAVERA.
 > - In the lab you also change one of NAVERA's own settings and see its verdict change.
 
-The same NAVERA software runs on a survey drone over Jebel Akhdar, on a delivery car in Muscat and on
-a patrol boat off Sohar. The drone flies at 30 m/s, the boat at 15 m/s. One box reads its GNSS on a
+The same NAVERA software runs on a survey drone over a mountain range, on a delivery car in a city and
+on a patrol boat in a harbour. The drone flies at 30 m/s, the boat at 15 m/s. One box reads its GNSS on a
 serial cable, another from the autopilot, a third from the vehicle's own ROS topic. IRIS Systems does
 not write three programs: the **code** stays identical and only the **configuration** changes. In
 ROS 2 the configuration of a node is its **parameters**; the description of *which* nodes run, in
@@ -182,9 +182,10 @@ In autumn, caged migratory birds become restless at night and hop in the directi
 hardly migrate; the hybrid young showed an amount of restlessness **in between** their parents'
 (published 1981). The same species, the same body plan — different inherited **settings**.
 
-Oman has a striking example of settings tuned to a schedule. The **sooty falcon** breeds on islands
-such as the Daymaniyat, off the Batinah coast, unusually late — in late summer — so that its chicks
-are fed when small songbirds migrate across the sea in autumn; then it winters in Madagascar. Other
+The Mediterranean has a striking example of settings tuned to a schedule. **Eleonora's falcon**
+breeds on rocky islands — in the Aegean Sea, off Sardinia, off the coast of Morocco — unusually
+late, in late summer, so that its chicks are fed when small songbirds migrate across the sea in
+autumn; then it flies to Madagascar for the winter. Other
 falcons nest in spring. One "code" (a falcon), different parameters: timing, route, destination.
 If birds had parameter files, they might read (a joke — but the facts are real):
 
@@ -192,7 +193,7 @@ If birds had parameter files, they might read (a joke — but the facts are real
 /**:
   ros__parameters:
     flight: flapping
-/oman/sooty_falcon:
+/mediterranean/eleonoras_falcon:
   ros__parameters:
     breeding_season: late_summer      # chicks fed on autumn migrants
     winter_quarters: madagascar

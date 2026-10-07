@@ -48,7 +48,7 @@ Expected: `True (15.0, 6.0, 30.0)` (with tiny rounding), then `False False` — 
 own** `_sane` (imported from your NAVERA copy) on the same matrix:
 
 ```bash
-python3 -c "from navera_estimator.nodes.estimator_node import EstimatorNode as E; from navera_msgs.msg import PositionEstimate as P; m = P(latitude=23.588, longitude=58.3829, position_covariance=[100.0, 120.0, 0.0, 120.0, 100.0, 0.0, 0.0, 0.0, 0.0]); print(E._sane(m))"
+python3 -c "from navera_estimator.nodes.estimator_node import EstimatorNode as E; from navera_msgs.msg import PositionEstimate as P; m = P(latitude=35.8277, longitude=10.6388, position_covariance=[100.0, 120.0, 0.0, 120.0, 100.0, 0.0, 0.0, 0.0, 0.0]); print(E._sane(m))"
 ```
 
 `False`: the arbiter applies exactly the criterion of the course.

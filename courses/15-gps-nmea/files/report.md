@@ -1,4 +1,4 @@
-# Lab 15 report — the synthetic Sohar drive
+# Lab 15 report — the synthetic Sousse drive
 
 Name:
 

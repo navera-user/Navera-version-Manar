@@ -124,7 +124,7 @@ def _():
 
 @c.test("test_geo_tools.py: at least 10 tests, a fixture and a parametrize, all passing on the correct code",
         hint="Run `python3 -m pytest -v test_geo_tools.py`. A test that fails on correct code is a wrong test: check "
-             "the expected value (metres? degrees?) and the tolerance. Use the fixture `muscat` in a test of yours.")
+             "the expected value (metres? degrees?) and the tolerance. Use the fixture `london` in a test of yours.")
 def _():
     code, out = good(["test_geo_tools.py"])
     c.ok(code == 0, "pytest says:\n" + out[-900:])
@@ -132,7 +132,7 @@ def _():
     c.ok(n >= 10, f"pytest ran {n} tests in test_geo_tools.py — write at least 10 (parametrized cases count)")
     src = open("test_geo_tools.py").read()
     c.ok(src.count("@pytest.mark.parametrize") >= 2, "use @pytest.mark.parametrize for is_valid_position (TODO 3)")
-    c.ok(len(re.findall(r"def test_\w+\([^)]*muscat", src)) >= 2, "use the `muscat` fixture in at least one test of yours")
+    c.ok(len(re.findall(r"def test_\w+\([^)]*london", src)) >= 2, "use the `london` fixture in at least one test of yours")
 
 
 for func, mutants in MUTANTS.items():

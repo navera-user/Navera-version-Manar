@@ -13,8 +13,8 @@
 >   photo to the map's orientation and scale.
 > - NAVERA's night vision prepares every thermal frame with the same steps.
 
-A drone flies over the old town of **Nizwa** at 300 m. Its camera looks straight down and sends a
-photo of 1536 × 730 pixels every second. You see the fort, the souq, the palm gardens. The computer
+A drone flies over the old town (medina) of **Sousse** at 300 m. Its camera looks straight down and
+sends a photo of 1536 × 730 pixels every second. You see the fort, the market streets, the harbour. The computer
 sees **3 363 840 numbers** of type `uint8`. To find its position without GPS, NAVERA must compare
 those numbers with another array of numbers — the satellite map, taken by another camera, on another
 day, from far above (satellite or survey aircraft), with north at the top and about 1 m per pixel.
@@ -27,7 +27,7 @@ resampling. Each one is something NAVERA does to every frame.
 > [!NOTE]
 > **The data.** The lab uses a real aerial frame recorded for NAVERA and a map patch of NAVERA's
 > test map, which covers **Sousse, Tunisia** (Port El Kantaoui marina), plus a simulated drone photo
-> made from that map with known heading and scale. There is no imagery of Oman in the academy.
+> made from that map with known heading and scale. The academy has no imagery of other regions.
 
 ## 1. An image is an array
 
@@ -121,7 +121,7 @@ vegetation or water — but grey is enough for geometric matching, and it is all
 ## 4. Histograms and contrast
 
 The **histogram** h(v) counts the pixels of each grey value v = 0…255; the cumulative histogram
-**CDF**(v) = h(0) + … + h(v) counts the pixels ≤ v. A dull photo (morning haze over the Batinah coast)
+**CDF**(v) = h(0) + … + h(v) counts the pixels ≤ v. A dull photo (morning haze over a flat coast)
 uses only a narrow band of values. Three ways to stretch it:
 
 1. **Min–max normalisation**: g' = (g − min)/(max − min) · 255. Linear, keeps the shape of the
@@ -238,8 +238,8 @@ and to put the photo centre at the centre of the 397 × 298 output, add ((397 �
 
 The **ground sample distance** of a downward camera at height H above ground, with horizontal field
 of view α and W pixels across, is GSD = 2H·tan(α/2)/W. At 300 m with α = 84° and W = 1536:
-2·300·tan 42°/1536 = 0.352 m/px. To compare with a zoom-17 map at Muscat (1.095 m/px, lesson 7) the
-photo is shrunk by 0.32.
+2·300·tan 42°/1536 = 0.352 m/px. To compare with a zoom-17 map at Sousse (0.968 m/px, lesson 7) the
+photo is shrunk by 0.352/0.968 = 0.36.
 
 The **heading sign**: the heading is the direction of the photo's top, clockwise from north (a
 bearing, lesson 6). With heading 35°, north appears 35° counter-clockwise from the photo's top; to

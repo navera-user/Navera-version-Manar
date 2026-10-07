@@ -5,7 +5,7 @@
     python3 measure_project.py
 
 Plays /data/academy/30-final-project/nmea_bench.txt (1800 s of a SIMULATED receiver standing
-still near Sultan Qaboos University, Muscat) through the same parsing as gps_node (pynmea2,
+still at a point in Sousse, Tunisia) through the same parsing as gps_node (pynmea2,
 checksum required) and compares two acceptance rules on the SAME epochs:
   BEFORE  the base rule: checksum OK, GGA quality 1, 2, 4 or 5 and a position
   AFTER   gps_node.fix_problem() from your project branch returns "" (usable fix)

@@ -65,5 +65,5 @@ if __name__ == "__main__":
         decision = navera_decision(g)
         cov = navera_covariance(g["hdop"]) if decision and decision[0] else "UNKNOWN (no fix: no covariance)"
         print("TODO 9 ", decision, "  TODO 10", cov)
-    print("TODO 9  quality 6:", navera_decision({"quality": 6, "lat": 24.4, "lon": 56.6, "hdop": None}))
-    print("TODO 11 jump 830 m in 1 s ok?", jump_ok((24.40, 56.70), (24.4075, 56.70), 1.0), "(should be False)")
+    print("TODO 9  quality 6:", navera_decision({"quality": 6, "lat": 35.8, "lon": 10.7, "hdop": None}))
+    print("TODO 11 jump 830 m in 1 s ok?", jump_ok((35.80, 10.70), (35.8075, 10.70), 1.0), "(should be False)")

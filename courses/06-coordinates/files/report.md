@@ -10,10 +10,10 @@
 ## Results
 
 <!-- The distances where NAVERA's flat error reaches 1 m and 10 m; the same for the WGS84-radii
-     version; the Muscat -> Salalah difference between the sphere and the ellipsoid. -->
+     version; the Sousse -> Rome difference between the sphere and the ellipsoid. -->
 
 ## Discussion
 
 <!-- Where does the NAVERA error come from (look at its size at 10 m: it is proportional to the
      distance)? Is the shortcut good enough for day-vision dead-reckoning over 2 km? For a
-     300 km route from Muscat to Duqm? What would you change, and what would it cost? -->
+     300 km survey flight with a single home point? What would you change, and what would it cost? -->

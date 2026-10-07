@@ -220,11 +220,11 @@ the SIFT counts per terrain and the matchability scores. Open `results.json` too
 > 2. **Descriptors** — quote both Hamming medians (same point, random) and explain the random value.
 > 3. **Terrain** — which terrains are easy or hopeless, with numbers; why the olive grove is a trap; what
 >    CLAHE did on water.
-> 4. **Oman** — discuss at least two Omani places (Batinah coast, Muscat, Hajar mountains, Wahiba Sands,
->    the sea off Masirah, Barr Al Hikman…): what would the camera see, what would SIFT and the
->    matchability score do?
+> 4. **World** — discuss at least two real places on Earth (a city such as Paris or Singapore, the Sahara
+>    or Namib dunes, the Alps or Andes, the open ocean, the Wadden Sea, the Salar de Uyuni, Greenland…):
+>    what would the camera see, what would SIFT and the matchability score do?
 >
-> The check verifies the four headings, the word counts, the quoted numbers and the Omani places — and it
+> The check verifies the four headings, the word counts, the quoted numbers and the named places — and it
 > recomputes one repeatability value with your code, so run `measure.py` again after any change.
 
 ## Step 10 — Check your work

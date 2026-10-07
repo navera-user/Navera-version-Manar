@@ -141,7 +141,7 @@ def flapping_gps_events(duration_s=DURATION_S, mean_on_s=2.0, mean_off_s=1.0, se
         on = next(s[2] for s in segments if s[0] <= tg < s[1])
         evs.append((tg, arbiter.make_est("gps", tg, 3.0, valid=on)))
     for k in range(int(duration_s)):
-        evs.append((float(k) + 0.25, arbiter.make_est("day", float(k) + 0.25, 30.0, lat=23.5884, lon=58.3836)))
+        evs.append((float(k) + 0.25, arbiter.make_est("day", float(k) + 0.25, 30.0, lat=35.8254, lon=10.6387)))
     evs.sort(key=lambda e: e[0])
     return evs
 

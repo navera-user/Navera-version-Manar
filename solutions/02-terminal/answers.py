@@ -10,7 +10,7 @@ Q4 = 11
 Q5 = "navera_output"
 
 Q6 = "day_subscriber"
-Q7 = "06:45:24"
+Q7 = "08:45:24"
 
 Q8 = 640
 Q9 = "SIGINT"

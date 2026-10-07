@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Make the synthetic survey track of lesson 03 (deterministic: same file every time).
 
-A multirotor inspects the breakwater of a port on the Batinah coast (Sohar-like layout,
-synthetic numbers, local east/north metres from the take-off point). One row per second:
+A multirotor inspects the breakwater of a small harbour on a desert coast
+(synthetic numbers, local east/north metres from the take-off point). One row per second:
 t_s, east_m, north_m. Flight: 1200 m north at ~12 m/s, 600 m east, then straight home.
 Position noise 1.5 m (GPS-like), plus one 40 m glitch at t = 150 s.
 
-    python3 make_track.py ../../courses/03-python-basics/files/sohar_track.csv
+    python3 make_track.py ../../courses/03-python-basics/files/harbour_track.csv
 """
 import math
 import random
@@ -41,4 +41,4 @@ def main(out):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "sohar_track.csv")
+    main(sys.argv[1] if len(sys.argv) > 1 else "harbour_track.csv")

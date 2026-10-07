@@ -4,8 +4,8 @@
     python3 analyse.py        # prints the numbers, writes results.json, ellipse.png, track.png, nees.png
 
 Data (/data/academy/26-uncertainty/, SIMULATED by make_dataset.py):
-  static_fixes.csv  a receiver standing still on a surveyed point in Sohar port (error in metres)
-  track.csv         a drone flying west from Mutrah along the Muscat coast, truth + noisy fixes,
+  static_fixes.csv  a receiver standing still on a surveyed point in Sousse harbour (error in metres)
+  track.csv         a drone flying west-north-west from Monastir along the coast, truth + noisy fixes,
                     a 40 s gap (GPS jammed) and 6 outliers (wrong matches)
 """
 import csv
@@ -96,7 +96,7 @@ def main():
                          share_1s=float(np.mean([d <= 1.0 for d in d2])),
                          share_95=float(np.mean([d <= chi2_threshold(0.95, 2) for d in d2])))
 
-    # ---- 2. Propagation J P J^T: a coastal radar near Ras al Hadd, checked by Monte Carlo
+    # ---- 2. Propagation J P J^T: a coastal radar on a headland, checked by Monte Carlo
     en, Pp = polar_to_en(2000.0, 60.0, 5.0, 0.5)
     rng = np.random.default_rng(26)
     r_s = 2000.0 + 5.0 * rng.standard_normal(20000)
@@ -194,7 +194,7 @@ def plots(pts, P, times, zs, truth, outlier, run, nees_g, band):
     ax.grid(alpha=0.3)
     ax.set_xlabel("east error (m)")
     ax.set_ylabel("north error (m)")
-    ax.set_title("Receiver standing still, Sohar port (simulated)")
+    ax.set_title("Receiver standing still, Sousse harbour (simulated)")
     ax.legend(loc="upper left", fontsize=8)
     fig.tight_layout()
     fig.savefig("ellipse.png", dpi=100)
@@ -214,9 +214,9 @@ def plots(pts, P, times, zs, truth, outlier, run, nees_g, band):
         ax.add_patch(Ellipse(est[i], 2 * a, 2 * b, angle=ang, fill=False, color="#2563eb", lw=0.8, alpha=0.7))
     ax.set_aspect("equal")
     ax.grid(alpha=0.3)
-    ax.set_xlabel("east (m) from the start, near Mutrah")
+    ax.set_xlabel("east (m) from the start, near Monastir")
     ax.set_ylabel("north (m)")
-    ax.set_title("Coastal flight west of Mutrah (simulated): 3-sigma ellipses every 20 s")
+    ax.set_title("Coastal flight from Monastir (simulated): 3-sigma ellipses every 20 s")
     ax.legend(fontsize=8)
     fig.tight_layout()
     fig.savefig("track.png", dpi=100)

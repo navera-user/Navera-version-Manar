@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """fake_gps_node.py — lesson 10's fake GNSS receiver, made configurable like a product node.
 
-    python3 fake_gps_node.py                                           defaults (Muscat, a car)
+    python3 fake_gps_node.py                                           defaults (Sousse, a car)
     python3 fake_gps_node.py --ros-args -p speed_mps:=12.0             one parameter
     python3 fake_gps_node.py --ros-args -r __ns:=/car --params-file my_gps.yaml
     ros2 param describe /fake_gps speed_mps                            its description and range
@@ -27,8 +27,8 @@ SPECS = {
     "rate_hz":     (2.0, "messages per second (fixed at start: the timer period)", 0.1, 50.0, True),
     "speed_mps":   (5.0, "ground speed, m/s", 0.0, 60.0, False),
     "heading_deg": (30.0, "direction of motion, degrees clockwise from north", 0.0, 360.0, False),
-    "start_lat":   (23.5880, "start latitude, degrees WGS84", -90.0, 90.0, True),
-    "start_lon":   (58.3829, "start longitude, degrees WGS84", -180.0, 180.0, True),
+    "start_lat":   (35.8250, "start latitude, degrees WGS84", -90.0, 90.0, True),
+    "start_lon":   (10.5950, "start longitude, degrees WGS84", -180.0, 180.0, True),
     "sigma_m":     (3.0, "stated horizontal 1-sigma accuracy, m", 0.01, 1000.0, False),
     "vehicle":     ("car", "kind of vehicle: car, drone or boat (limits the speed)", None, None, False),
 }

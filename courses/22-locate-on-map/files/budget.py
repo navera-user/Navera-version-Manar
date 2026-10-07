@@ -46,9 +46,9 @@ def error_budget(height_m, tilt_sigma_deg, matcher_px, map_mpp, speed_mps, lag_s
 
 
 # ---- you don't need to change anything below this line ----
-# A worked case for the report: a survey drone 300 m above the date gardens of Nizwa.
+# A worked case for the report: a survey drone 300 m above the rice fields near Bangkok.
 # (The map and the photos of this lab are of Sousse; this case only uses the formulas.)
-NIZWA = dict(height_m=300.0, tilt_sigma_deg=0.3, matcher_px=8.0, map_mpp=navmap.m_per_px(22.93, 17),
+WORKED_CASE = dict(height_m=300.0, tilt_sigma_deg=0.3, matcher_px=8.0, map_mpp=navmap.m_per_px(13.75, 17),
              speed_mps=20.0, lag_s=0.1, map_bias_m=5.0)
 
 
@@ -105,14 +105,14 @@ def tilt_sweep(name="p01_medina", tilts=(0.0, 2.0, 5.0, 10.0)):
 
 if __name__ == "__main__":
     try:
-        print("Error budget, Nizwa case:", {k: round(v, 2) for k, v in error_budget(**NIZWA).items()})
+        print("Error budget, worked case (Bangkok):", {k: round(v, 2) for k, v in error_budget(**WORKED_CASE).items()})
         print("\n1) Wrong height (photo p01, true height 200 m):")
         hs = height_sweep()
         print("\n2) Tilted camera treated as straight down (photo p01, 200 m):")
         ts = tilt_sweep()
         with open("budget.json", "w") as f:
             json.dump(dict(height_sweep=hs, tilt_sweep=ts,
-                           nizwa_case=dict(NIZWA, **{k: round(v, 3) for k, v in error_budget(**NIZWA).items()})),
+                           worked_case=dict(WORKED_CASE, **{k: round(v, 3) for k, v in error_budget(**WORKED_CASE).items()})),
                       f, indent=1)
         print("\nwritten: budget.json and tilted_photo.png (the 10 deg photo)")
     except NotImplementedError as e:

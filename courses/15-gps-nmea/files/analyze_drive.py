@@ -1,4 +1,4 @@
-"""Lesson 15 — analyse the Sohar drive with YOUR functions, write results.json and 2 plots.
+"""Lesson 15 — analyse the Sousse drive with YOUR functions, write results.json and 2 plots.
 
     python3 analyze_drive.py
     python3 analyze_drive.py other.nmea other_truth.csv
@@ -18,7 +18,7 @@ import dop
 import gps_filter as gf
 import nmea_tools as nt
 
-LOG = "/data/academy/15-gps-nmea/sohar_drive.nmea"
+LOG = "/data/academy/15-gps-nmea/sousse_drive.nmea"
 TRUTH = "/data/academy/15-gps-nmea/truth.csv"
 
 
@@ -250,8 +250,8 @@ def plots(accepted, dop_rows, jumps, ggas, gap):
         a = next(g for g in accepted if nt.utc_seconds(g["time"]) == gap[1])
         ax.annotate(f"longest gap {gap[0]:.0f} s", (a["lon"], a["lat"]), xytext=(15, -25),
                     textcoords="offset points", arrowprops={"arrowstyle": "->"})
-    ax.plot(lon[0], lat[0], "k*", ms=12, label="start (Sohar Port area)")
-    ax.plot(lon[-1], lat[-1], "ks", ms=8, label="end (Sohar Fort)")
+    ax.plot(lon[0], lat[0], "k*", ms=12, label="start (port of Sousse)")
+    ax.plot(lon[-1], lat[-1], "ks", ms=8, label="end (Ribat of Monastir)")
     ax.set_aspect(1 / k)
     ax.set_xlabel("longitude (deg)")
     ax.set_ylabel("latitude (deg)")

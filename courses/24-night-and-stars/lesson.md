@@ -13,16 +13,16 @@
 >   re-implement the geometry of NAVERA's night localizer.
 > - NAVERA's night vision is **not yet validated** on real thermal images.
 
-It is 21:00 in October. A survey drone flies over the foothills of the Hajar mountains, between
-Nizwa and Jebel Shams. GPS has been jammed for ten minutes. In lessons 20–23 the drone found
+It is 21:00 in October. A survey drone flies over the foothills of a desert mountain range, far
+from any city. GPS has been jammed for ten minutes. In lessons 20–23 the drone found
 itself by matching its camera picture with the satellite map. Now it is **dark**: the day camera
 sees nothing. Two things still carry information about position:
 
 1. **Heat.** Roads, roofs, rock, sand and water keep different temperatures after sunset. A
    **thermal camera** sees them, so the shapes on the ground are still there — with different
    brightness.
-2. **The stars.** Arab and Omani navigators crossed the Indian Ocean by measuring the altitude of
-   stars above the horizon. Much later, accurate clocks and printed star tables made this method
+2. **The stars.** For centuries, sailors crossed the Indian Ocean, the Atlantic and the Pacific by
+   measuring the altitude of stars above the horizon. Much later, accurate clocks and printed star tables made this method
    precise. A camera pointed at the sky can do the same.
 
 NAVERA has one source for each: **night vision** (`night_pkg`, a learned thermal-to-map matcher
@@ -32,8 +32,8 @@ and the second gives tens of kilometres.
 
 > [!NOTE]
 > NAVERA's test map and recorded frames cover **Sousse, Tunisia**, where NAVERA is developed. The
-> lab uses them as they are. The star computations use Omani sites (Muscat, Jebel Shams), because
-> the sky works the same everywhere.
+> lab uses them as they are. The star computations use sites on several continents (Teide
+> Observatory on Tenerife, New York, London, Paris), because the sky works the same everywhere.
 
 > [!TIP]
 > **How to study this lesson.** It has two independent parts: **Part 1, night vision** (about 1 h of
@@ -79,11 +79,11 @@ material, the hour and the weather.
 | What a pixel means | reflected sunlight (colour) | emitted radiance (temperature × emissivity) |
 | Shadows | sharp sun shadows beside every building | none, but "heat shadows" can remain after sunset |
 | A road | grey | bright at noon (hot asphalt), medium at night |
-| Water, a falaj or a pool | dark blue | cold at noon, **warmer** than the ground at night |
-| Date palms in a wadi | dark green | cooler than bare soil by day, often warmer at night |
+| Water, a canal or a pool | dark blue | cold at noon, **warmer** than the ground at night |
+| Trees along a river | dark green | cooler than bare soil by day, often warmer at night |
 
 Twice a day, near dawn and dusk, warm and cold materials pass through the **same** temperature:
-the **thermal crossover**. The contrast then nearly disappears. In the Wahiba Sands the dunes are
+the **thermal crossover**. The contrast then nearly disappears. In the sand seas of the Sahara the dunes are
 almost uniform in temperature and texture: like the open sea, they give a thermal matcher very
 little to hold on to.
 
@@ -234,11 +234,12 @@ difference UT1 − UTC is kept below 0.9 s by leap seconds and is published by t
 >    For a very small triangle, cos x ≈ 1 − x²/2 and sin x ≈ x, and this becomes the flat cosine
 >    rule c² = a² + b² − 2ab cos C that you know from school.
 >
-> Example, Muscat (23.59° N, 58.41° E) to Salalah (17.02° N, 54.09° E): take the triangle North
-> pole – Muscat – Salalah. Its sides from the pole are a = 90° − 23.59° = 66.41° and
-> b = 90° − 17.02° = 72.98°, and the angle at the pole is the longitude difference C = 4.32°.
-> cos c = 0.4002 · 0.2927 + 0.9164 · 0.9562 · 0.9972 = 0.9909, so c = 7.72° = **858 km** — the
-> great-circle distance Muscat–Salalah. The navigational triangle below is the same idea with the
+> Example, London (51.51° N, 0.13° W) to Paris (48.86° N, 2.35° E): take the triangle North
+> pole – London – Paris. Its sides from the pole are a = 90° − 51.51° = 38.49° and
+> b = 90° − 48.86° = 41.14°, and the angle at the pole is the longitude difference
+> C = 2.35° − (−0.13°) = 2.48°.
+> cos c = 0.7827 · 0.7531 + 0.6224 · 0.6579 · 0.9991 = 0.99855, so c = 3.09° = **343 km** — the
+> great-circle distance London–Paris. The navigational triangle below is the same idea with the
 > pole, your zenith and a star.
 
 Three points on the sphere — the celestial **pole** P, the **zenith** Z and the star X — form the
@@ -258,22 +259,23 @@ A     = atan2( −cos δ · sin H ,  sin δ · cos φ − cos δ · sin φ · co
 Equivalently, this is a rotation of the unit vector of the star by the matrix R_y(90° − φ) · R_z(H)
 (lesson 16): the code with `atan2` keeps the right quadrant automatically.
 
-**Worked example — Vega from Jebel Shams (φ = 23.24° N, λ = 57.26° E), 2026-10-07 17:00 UTC
-(21:00 in Oman).**
+**Worked example — Vega from Teide Observatory, Tenerife (φ = 28.30° N, λ = 16.51° W, so
+λ = −16.51°), 2026-10-07 20:00 UTC (21:00 local time on Tenerife).**
 
 ```
-JD   = 2461321.208333
-GMST = 271.35465°     GAST (NAVERA gast_deg) = 271.35683°   (+0.52 s of time)
-Vega, apparent of date: α = 279.45963°, δ = 38.81076°
-LST  = 271.35683 + 57.26 = 328.61683°        H = 328.61683 − 279.45963 = 49.1572°
-sin a = 0.62675 · 0.39458 + 0.77922 · 0.91886 · 0.65399 = 0.24731 + 0.46825 = 0.71556
-a = 45.69°
-A = atan2(−0.77922 · 0.75651, 0.62675 · 0.91886 − 0.77922 · 0.39458 · 0.65399)
-  = atan2(−0.58949, 0.37482) = −57.55°  →  302.45°   (west-north-west)
+JD   = 2461321.333333
+GMST = 316.47786°     GAST (NAVERA gast_deg) = 316.48003°   (+0.52 s of time)
+Vega, apparent of date: α = 279.45960°, δ = 38.81067°
+LST  = 316.48003 + (−16.51) = 299.97003°      H = 299.97003 − 279.45960 = 20.5104°
+sin a = 0.62675 · 0.47409 + 0.77922 · 0.88048 · 0.93661 = 0.29713 + 0.64259 = 0.93973
+a = 70.01°
+A = atan2(−0.77922 · 0.35038, 0.62675 · 0.88048 − 0.77922 · 0.47409 · 0.93661)
+  = atan2(−0.27302, 0.20584) = −52.99°  →  307.01°   (north-west)
 ```
 
-astropy gives 45.68874° and 302.44975°: the same to better than one arcsecond. Look up at
-21:00 in October from Jebel Shams and Vega is there, half way up in the north-west.
+astropy gives 70.00612° and 307.01331°: the same to better than one arcsecond. Look up at
+21:00 in October from Tenerife and Vega is there, high in the north-west. Note the sign: a
+place **west** of Greenwich has a **negative** longitude, so its LST is smaller than GAST.
 
 ### 2.4 Catalogue positions, precession and the offline IERS problem — 📖 Read, do not memorise
 
@@ -307,9 +309,10 @@ is p = 90° − δ = 0.626°. As the sky turns it describes a small circle aroun
 ```
 
 Without the correction, "latitude = altitude of Polaris" is wrong by up to p = 0.626° = 70 km. With
-it, the remaining error is of order p² (you will measure about 0.2 km at most).
-In Muscat (23.6° N), Polaris is low, about 23.6° up, and a real measurement also needs the
-**atmospheric refraction** correction (about 1′ · cot a ≈ 2.3′ ≈ 4 km at 23°) and, with a sextant,
+it, the remaining error is of order p² (you will measure about 0.3 km at most from New York).
+In New York (40.7° N), Polaris is about 40.7° up, and a real measurement also needs the
+**atmospheric refraction** correction (about 1′ · cot a ≈ 1.2′ ≈ 2 km at 41°; much more for a
+low star, about 4 km at 23°) and, with a sextant,
 the dip of the horizon.
 
 ![The altitude of Polaris equals your latitude](assets/polaris.svg)
@@ -364,7 +367,7 @@ Earth's surface:
 |---|---|---|
 | tilt (pitch/roll) error of the IMU | 0.3° | 33 km |
 | heading error, camera at altitude a | 1.5° | 1.5° · cos a · 111 km = 43 km at a = 75°, 0 at the zenith |
-| clock error | 1 s | 15.04″ of longitude = 0.464 km · cos φ = 0.43 km at Muscat |
+| clock error | 1 s | 15.04″ of longitude = 0.464 km · cos φ = 0.35 km at New York |
 | UT1 ignored (offline IERS) | < 0.9 s | < 0.4 km |
 | plate solution | ~3′ (measured, VALIDATION_STATUS) | ~5.5 km |
 
@@ -382,8 +385,8 @@ autopilot's position by 125 km.
 ## 🐦 How birds do it
 
 Many songbirds migrate **at night**. Each autumn, warblers, shrikes, flycatchers and wheatears
-from Europe and Central Asia cross the Arabian Peninsula towards Africa, and many of them pass
-over Oman in the dark. How do they keep their direction?
+from Europe and Central Asia cross the Mediterranean and the Sahara towards Africa, and most of
+them fly in the dark. How do they keep their direction?
 
 In the 1960s and 1970s the biologist **Stephen Emlen** placed young **indigo buntings** (a North
 American night migrant) under the artificial sky of a **planetarium**. The birds did not use one
@@ -479,13 +482,14 @@ the 85 % limit, so the frame is refused ("fly higher"). At about 335 m the cover
 every heading.
 </details>
 
-<details><summary>3. Compute the hour angle of a star with α = 100° seen from Muscat (λ = 58.41° E) when GAST = 200°.</summary>
-LST = 200 + 58.41 = 258.41°, H = 258.41 − 100 = 158.41°: the star is far west of the meridian,
-probably low or below the horizon.
+<details><summary>3. Compute the hour angle of a star with α = 100° seen from New York (λ = 74.01° W) when GAST = 200°.</summary>
+West longitudes are negative: λ = −74.01°. LST = 200 − 74.01 = 125.99°, H = 125.99 − 100 = 25.99°:
+the star is a little west of the meridian (it crossed it about 1 h 44 min ago), so it is probably
+high in the sky.
 </details>
 
-<details><summary>4. Polaris is measured at 23.10° from Muscat while its hour angle is 0° (p = 0.626°). What latitude do you get with and without the correction?</summary>
-Without: 23.10°. With: 23.10 − 0.626 · cos 0° = 22.47°. The correction is largest when Polaris is
+<details><summary>4. Polaris is measured at 41.30° from New York while its hour angle is 0° (p = 0.626°). What latitude do you get with and without the correction?</summary>
+Without: 41.30°. With: 41.30 − 0.626 · cos 0° = 40.67° (New York is at 40.71° N). The correction is largest when Polaris is
 on the meridian (H = 0° or 180°) and zero when H = ±90°.
 </details>
 
@@ -495,8 +499,8 @@ direction unchanged (it only turns the picture). At altitude a, the boresight mo
 (heading error) · cos a: 87 % of the heading error at a = 30°, 26 % at 75°, 0 at 90°.
 </details>
 
-<details><summary>6. Your clock is 10 s wrong. How large is the celestial error at Muscat, and is it the main problem?</summary>
-10 s × 15.04″/s = 150″ = 2.5′ of longitude, i.e. 2.5 · 1.852 · cos 23.6° ≈ 4.3 km. It is much smaller
+<details><summary>6. Your clock is 10 s wrong. How large is the celestial error at New York, and is it the main problem?</summary>
+10 s × 15.04″/s = 150″ = 2.5′ of longitude, i.e. 2.5 · 1.852 · cos 40.7° ≈ 3.5 km. It is much smaller
 than the 30–50 km from a typical IMU attitude error: the attitude is the main problem.
 </details>
 

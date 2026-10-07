@@ -1,7 +1,7 @@
 # Simulation and fault injection: SITL, MAVLink and NAVERA's mission simulator
 
 > [!NOTE] In short
-> - You cannot jam GPS over Oman to test NAVERA, so you test it in a **simulator**, where you can
+> - You cannot jam GPS over a real city to test NAVERA, so you test it in a **simulator**, where you can
 >   repeat a failure safely.
 > - NAVERA's mission simulator joins ArduPilot **SITL**, **MAVLink** and simulated sensors in a
 >   closed loop.
@@ -13,13 +13,13 @@
 > - In the lab you decode MAVLink messages, check the sensor models, and analyse a campaign of
 >   five flights.
 
-A survey drone leaves Sohar to inspect the coast towards Shinas. Halfway, its GPS stops giving a fix.
+A survey drone leaves a harbour to inspect a long stretch of coast. Halfway, its GPS stops giving a fix.
 GNSS interference is a known problem for aviation and shipping in several regions of the world, so
 this is not science fiction: the question is what the whole system does at that moment. Does NAVERA
 switch to vision? How fast? Does the autopilot keep flying, or does it land in the sea? And when the
 GPS comes back, but 2 km wrong, does NAVERA accept it?
 
-You cannot answer these questions by jamming GPS over Oman: transmitting on GNSS frequencies is
+You cannot answer these questions by jamming GPS over a real coast: transmitting on GNSS frequencies is
 illegal in most countries, and a crash is expensive. You answer them in a **simulator**, where you
 can inject the same failure a hundred times, measure the reaction, and nobody is in danger. This
 lesson explains how NAVERA's mission simulator is built (ArduPilot **SITL**, **MAVLink**, simulated
@@ -29,7 +29,7 @@ and cannot prove.
 
 > [!NOTE]
 > NAVERA's test map covers **Sousse, Tunisia**, where NAVERA is developed, so every recorded flight
-> in this lesson flies over Sousse. The examples in the text use Omani places; the physics and the
+> in this lesson flies over Sousse. The examples in the text use generic places; the physics and the
 > software are the same.
 
 ## 1. The test ladder
@@ -394,9 +394,8 @@ worlds** where they decide what the bird senses, and they inject "faults".
 
 Each experiment changes **one** input, keeps the others, and records the reaction — exactly the
 method of a fault-injection campaign. And biologists know the limit of their simulators: a bird in
-a funnel is not a bird crossing the Arabian Sea. Many birds that migrate between Central Asia and
-East Africa pass through Oman — at Barr Al Hikman and on Masirah the shorebirds stop in their
-thousands — and the big laboratory results have to be checked on free-flying birds with radio tags
+a funnel is not a bird crossing the Sahara. Millions of birds migrate between Europe and Africa —
+white storks cross at the Strait of Gibraltar in their thousands — and the big laboratory results have to be checked on free-flying birds with radio tags
 and GPS loggers. Simulation first, reality after: the same rule as NAVERA's. Navi, our swallow, would
 add that she prefers the real sky — but she also prefers not to be jammed over the sea.
 

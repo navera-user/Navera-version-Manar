@@ -7,7 +7,7 @@
 > - You will learn the two time stamps (measured when, published when) and the arbiter's rule.
 > - In the lab you build a source, publish it to NAVERA's real arbiter and inject 13 faults.
 
-A drone flies over the Wahiba Sands. Its GNSS is jammed. Three NAVERA sources still produce positions:
+A drone flies over a desert test range. Its GNSS is jammed. Three NAVERA sources still produce positions:
 day vision matched a photo against the satellite map 0.6 s ago, celestial navigation solved a star
 field 20 s ago, and a dead-reckoned position is carried forward from the last good fix. Which one
 should the autopilot follow — and how much should it trust it?
@@ -220,11 +220,11 @@ from 250 to 500 m, class 1 from 500 to 1500 m, class 0 worse than 1500 m — and
 which are positions **without** an accuracy estimate, and Z, which is invalid. That is
 `position_covariance_type` and a stated σ, decades before ROS.
 
-Researchers who follow raptors such as the steppe eagles that winter in large numbers around Salalah
-use exactly this information: before drawing a migration route, they **filter** positions by class,
+Researchers who follow migrating birds — white storks crossing from Europe to Africa at Gibraltar,
+ospreys flying from Scandinavia to West Africa — use exactly this information: before drawing a migration route, they **filter** positions by class,
 and they remove fixes that would need an impossible flight speed. A position without its accuracy and
 its time is worse than no position: it can draw a false route. Navi puts it simply: *"I was near
-Masirah"* is a story; *"I was at 20.6 N, 58.9 E, give or take 10 m, at 06:12 UTC on 3 April, by GPS"*
+Gibraltar"* is a story; *"I was at 36.0 N, 5.6 W, give or take 10 m, at 06:12 UTC on 3 April, by GPS"*
 is data.
 
 ## In NAVERA

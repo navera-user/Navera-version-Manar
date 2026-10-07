@@ -5,68 +5,50 @@
   "width_px": 1536,
   "gsd_m": 0.3517
  },
- "oman": [
+ "world": [
   {
-   "place": "Salalah",
-   "lat": 17.0194,
-   "m_per_px_z17": 1.142,
-   "tile_width_z17_m": 292.4,
-   "scale_factor": 1.0458,
-   "web_vs_ellipsoidal_mercator_km": 12.5,
+   "place": "Quito",
+   "lat": -0.1807,
+   "m_per_px_z17": 1.1943,
+   "tile_width_z17_m": 305.7,
+   "scale_factor": 1.0,
+   "web_vs_ellipsoidal_mercator_km": -0.13,
    "zoom_for_camera": 18
   },
   {
-   "place": "Duqm",
-   "lat": 19.66,
-   "m_per_px_z17": 1.1247,
-   "tile_width_z17_m": 287.9,
-   "scale_factor": 1.0619,
-   "web_vs_ellipsoidal_mercator_km": 14.37,
+   "place": "Singapore",
+   "lat": 1.2834,
+   "m_per_px_z17": 1.194,
+   "tile_width_z17_m": 305.7,
+   "scale_factor": 1.0003,
+   "web_vs_ellipsoidal_mercator_km": 0.96,
    "zoom_for_camera": 18
   },
   {
-   "place": "Masirah",
-   "lat": 20.67,
-   "m_per_px_z17": 1.1174,
-   "tile_width_z17_m": 286.1,
-   "scale_factor": 1.0688,
-   "web_vs_ellipsoidal_mercator_km": 15.08,
+   "place": "Mexico City",
+   "lat": 19.4326,
+   "m_per_px_z17": 1.1263,
+   "tile_width_z17_m": 288.3,
+   "scale_factor": 1.0604,
+   "web_vs_ellipsoidal_mercator_km": 14.21,
    "zoom_for_camera": 18
   },
   {
-   "place": "Nizwa",
-   "lat": 22.9333,
-   "m_per_px_z17": 1.0999,
-   "tile_width_z17_m": 281.6,
-   "scale_factor": 1.0858,
-   "web_vs_ellipsoidal_mercator_km": 16.64,
+   "place": "Cape Town",
+   "lat": -33.9249,
+   "m_per_px_z17": 0.991,
+   "tile_width_z17_m": 253.7,
+   "scale_factor": 1.2052,
+   "web_vs_ellipsoidal_mercator_km": -23.85,
    "zoom_for_camera": 18
   },
   {
-   "place": "Muscat",
-   "lat": 23.5839,
-   "m_per_px_z17": 1.0946,
-   "tile_width_z17_m": 280.2,
-   "scale_factor": 1.0911,
-   "web_vs_ellipsoidal_mercator_km": 17.09,
-   "zoom_for_camera": 18
-  },
-  {
-   "place": "Sohar",
-   "lat": 24.347,
-   "m_per_px_z17": 1.0881,
-   "tile_width_z17_m": 278.6,
-   "scale_factor": 1.0976,
-   "web_vs_ellipsoidal_mercator_km": 17.61,
-   "zoom_for_camera": 18
-  },
-  {
-   "place": "Khasab",
-   "lat": 26.18,
-   "m_per_px_z17": 1.0718,
-   "tile_width_z17_m": 274.4,
-   "scale_factor": 1.1143,
-   "web_vs_ellipsoidal_mercator_km": 18.85,
+   "place": "Sydney",
+   "lat": -33.8568,
+   "m_per_px_z17": 0.9918,
+   "tile_width_z17_m": 253.9,
+   "scale_factor": 1.2042,
+   "web_vs_ellipsoidal_mercator_km": -23.8,
    "zoom_for_camera": 18
   },
   {
@@ -77,21 +59,40 @@
    "scale_factor": 1.2334,
    "web_vs_ellipsoidal_mercator_km": 25.01,
    "zoom_for_camera": 18
+  },
+  {
+   "place": "London",
+   "lat": 51.5007,
+   "m_per_px_z17": 0.7435,
+   "tile_width_z17_m": 190.3,
+   "scale_factor": 1.6064,
+   "web_vs_ellipsoidal_mercator_km": 33.46,
+   "zoom_for_camera": 18
+  },
+  {
+   "place": "Reykjavik",
+   "lat": 64.1417,
+   "m_per_px_z17": 0.5209,
+   "tile_width_z17_m": 133.4,
+   "scale_factor": 2.2928,
+   "web_vs_ellipsoidal_mercator_km": 38.49,
+   "zoom_for_camera": 17
   }
  ],
  "corner_bug_m": {
   "Sousse (NAVERA test map)": 175.1,
-  "Muscat": 197.9
+  "Singapore": 215.9,
+  "Reykjavik": 94.2
  },
- "pixel_round_trip_max_error_deg": 4.263256414560601e-14,
- "muscat_zoom_by_altitude": {
+ "pixel_round_trip_max_error_deg": 3.552713678800501e-14,
+ "singapore_zoom_by_altitude": {
   "150": 19,
   "200": 19,
   "300": 18,
-  "500": 17,
-  "1000": 16,
+  "500": 18,
+  "1000": 17,
   "1500": 16,
-  "2000": 15
+  "2000": 16
  },
  "map": {
   "file_bytes": 10286944256,

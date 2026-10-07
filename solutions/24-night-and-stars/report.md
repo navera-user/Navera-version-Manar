@@ -2,7 +2,7 @@
 
 ## Sidereal time
 
-My GMST from the Meeus formula is 271.35464 degrees, only 0.04 arcseconds from astropy's mean
+My GMST from the Meeus formula is 316.47785 degrees, only 0.04 arcseconds from astropy's mean
 sidereal time, so the formula and my Julian date are right. NAVERA's gast_deg gives the apparent
 sidereal time, 0.52 seconds of time later: that is the equation of the equinoxes, caused by
 nutation (the small nodding of the Earth's axis). 0.52 s of time is 7.8 arcseconds of rotation,
@@ -11,20 +11,20 @@ uses GAST with apparent star positions.
 
 ## Polaris
 
-From Muscat over a whole sidereal day, "latitude = altitude of Polaris" is wrong by up to 0.626
+From New York over a whole sidereal day, "latitude = altitude of Polaris" is wrong by up to 0.626
 degrees, about 70 km, because Polaris turns around the pole on a small circle. With the first-order
-correction altitude minus p cos(H) the worst error drops to 0.0015 degrees, 0.17 km. A real
-measurement would also need the atmospheric refraction correction (about 2 arcminutes at 23 degrees
-altitude, so about 4 km) and the dip of the horizon for a sextant.
+correction altitude minus p cos(H) the worst error drops to 0.0029 degrees, 0.33 km. A real
+measurement would also need the atmospheric refraction correction (about 1.2 arcminutes at 41 degrees
+altitude, so about 2 km) and the dip of the horizon for a sextant.
 
 ## Error budget
 
 With a BNO085-class IMU (0.3 degrees tilt, 1.5 degrees heading) and the camera at 75 degrees, the
-Monte Carlo median error is 46.9 km and the p90 is 90.9 km, with no ambiguous fix. With the camera
+Monte Carlo median error is 47.4 km and the p90 is 92.6 km, with no ambiguous fix. With the camera
 straight up the median is 22.6 km: a heading error only rotates the picture around the zenith, so
 the pointing direction does not change and only the tilt counts. This agrees with
-VALIDATION_STATUS.md (24-119 km, about 50 km typical). The clock costs 0.43 km per second at
-Muscat, so a clock good to one second (the DS3231 RTC) is far from being the limit.
+VALIDATION_STATUS.md (24-119 km, about 50 km typical). The clock costs 0.35 km per second at
+New York, so a clock good to one second (the DS3231 RTC) is far from being the limit.
 
 ## Night geometry
 

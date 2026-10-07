@@ -20,7 +20,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
 TOPIC = "/navera/estimate/day"
-LAT, LON = 23.5880, 58.3829          # where our pretend camera says we are (Muscat)
+LAT, LON = 35.8277, 10.6388          # where our pretend camera says we are (Sousse, NAVERA's test area)
 SIGMA_ALONG_M = 15.0                 # 1-sigma error along the track
 SIGMA_CROSS_M = 6.0                  # 1-sigma error across the track
 HEADING_DEG = 30.0                   # direction of the track, clockwise from north

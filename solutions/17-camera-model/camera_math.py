@@ -190,12 +190,12 @@ if __name__ == "__main__":
     else:
         print("  (needs TODO 1 first)")
 
-    print("\nResolution and map (Muscat 23.59 N, Sousse 35.83 N)")
+    print("\nResolution and map (Reykjavik 64.15 N, Sousse 35.83 N)")
     _show("GSD of the Insta360 view at 150 m", meters_per_pixel(150, 111, 1920), "m/px")
-    for name, lat in (("Muscat", 23.59), ("Sousse", 35.83)):
+    for name, lat in (("Reykjavik", 64.15), ("Sousse", 35.83)):
         _show(f"map m/px at zoom 17, {name}", map_m_per_px(lat, 17), "m/px")
-    bz = best_zoom(300, 111, 1920, 23.59)
-    print(f"  {'best zoom at 300 m over Muscat':<48} {bz if bz is not None else 'TODO not done yet'}")
+    bz = best_zoom(300, 111, 1920, 64.15)
+    print(f"  {'best zoom at 300 m over Reykjavik':<48} {bz if bz is not None else 'TODO not done yet'}")
 
     print("\nMeasuring and errors")
     _show("height when a 12 m pad is 48 px (f = 480)", height_from_object(12, 48, 480), "m")

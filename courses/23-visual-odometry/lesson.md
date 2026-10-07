@@ -12,9 +12,9 @@
 > - In the lab you follow a drone through 80 frames, measure the drift, and run NAVERA's
 >   `FrameOdometry` and `VisionNavigator` on the same flight.
 
-A survey drone flies along the Muscat Expressway at 120 m, 20 m/s. Its GPS is jammed. Until now
+A survey drone flies along a city ring road at 120 m, 20 m/s. Its GPS is jammed. Until now
 NAVERA's day vision found the drone on the satellite map every second or two (lesson 22). Then the
-drone crosses a new housing area in Al Mabelah: the map imagery is three years old, the ground has
+drone crosses a new housing area on the edge of the city: the map imagery is three years old, the ground has
 changed, and **no map match is accepted for 30 s**. That is 600 m flown without an absolute position.
 Where is the drone now?
 
@@ -32,7 +32,7 @@ always grows. This lesson gives you the maths of all three parts:
 > [!NOTE]
 > The lab flight is synthetic: 80 frames cut from NAVERA's satellite map, with exact ground truth.
 > NAVERA's test map covers **Sousse, Tunisia**, where NAVERA is developed, so the flight is over
-> Sousse. The examples in this text use Omani places; the method is the same everywhere.
+> Sousse. The examples in this text use places from around the world; the method is the same everywhere.
 
 ## 1. Two frames, one step
 
@@ -245,10 +245,10 @@ you will measure about 3.4 m per 100 m. Because these errors are **systematic**,
 in **metres of error per 100 m flown** (or % of distance). A few % is good — fine for 500 m, useless
 for 50 km (a 3 % drift gives 1.5 km).
 
-Over the Hajar mountains there is one more problem: the ground is not flat. A ridge 300 m below the
-drone and a wadi 600 m below it have different m_per_px in the **same** frame, so one scale is wrong
-for part of the image. Over Wahiba Sands the dunes repeat and look alike; over the Gulf of Oman near
-Sohar the water moves. In all three cases the VO error grows faster, or the response drops.
+Over mountains such as the Alps or the Andes there is one more problem: the ground is not flat. A ridge 300 m below the
+drone and a valley 600 m below it have different m_per_px in the **same** frame, so one scale is wrong
+for part of the image. Over the Sahara's sand seas the dunes repeat and look alike; over the open sea
+the water moves. In all three cases the VO error grows faster, or the response drops.
 
 ## 5. Bounding the drift: fusion with map fixes
 
@@ -305,7 +305,7 @@ released. The **young** birds kept flying in their usual direction (south-west) 
 distance and ended up in Spain and southern France: pure dead reckoning, uncorrected. The **adults**
 corrected towards their normal wintering area: they had a learned **map**.
 
-Barn swallows pass through Oman every spring and autumn on their way between Africa and Asia. Navi,
+Barn swallows from Europe fly to Africa every autumn, some as far as South Africa, and back every spring. Navi,
 a young swallow on her first migration, flies like Perdeck's young starlings; as an adult she will
 correct her course with a map. NAVERA does both from the first flight.
 

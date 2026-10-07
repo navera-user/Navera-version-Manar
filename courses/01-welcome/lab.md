@@ -116,7 +116,7 @@ head -n 22 ~/navera/docs/VALIDATION_STATUS.md
 
 ## Step 4 — A GNSS solver: four unknowns
 
-[gnss_fix.py](file:./gnss_fix.py) simulates a receiver at Muscat that sees up to 8 satellites,
+[gnss_fix.py](file:./gnss_fix.py) simulates a receiver on the coast at Sousse (Tunisia) that sees up to 8 satellites,
 computes their pseudoranges (with a clock bias and noise) and solves for `x, y, z` and the clock
 bias with Gauss–Newton least squares, as explained in the course. Read the settings at the top of
 the file, then run it:

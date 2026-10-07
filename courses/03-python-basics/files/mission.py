@@ -1,7 +1,7 @@
 """mission.py — use navlib to answer the mission planner's questions (lab 3, Step 6).
 
-Scenario (synthetic numbers): an inspection of a point 9 km from the take-off site, on a
-port of the Batinah coast, along the ground track 030° (north-north-east), and back.
+Scenario (synthetic numbers): an inspection of a point 9 km from the take-off site, from a
+small harbour on a desert coast, along the ground track 030° (north-north-east), and back.
 Wind: 5 m/s blowing TOWARDS the south-west, i.e. wind_east = -3 m/s, wind_north = -4 m/s.
 
 Run:   python3 mission.py        -> prints a summary and writes results.json
@@ -38,7 +38,7 @@ def main():
     #   then "wing_turn_radius_m" for a 30° bank.
     wing = FixedWing("wing", 20.0, 150.0, 220.0, 12.0)
 
-    # TODO C — the recorded survey track (file sohar_track.csv): load it with load_track(),
+    # TODO C — the recorded survey track (file harbour_track.csv): load it with load_track(),
     #   then store "track_points", "track_length_m", "track_max_speed_ms",
     #   "track_median_speed_ms" and
     #   "glitch_time_s": the time t of the FIRST point reached at more than 25 m/s

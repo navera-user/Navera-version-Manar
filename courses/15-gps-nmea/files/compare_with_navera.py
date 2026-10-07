@@ -6,7 +6,7 @@ and keeps a GGA as a fix only when its quality is 1, 2, 4 or 5 and lat/lon are n
 This script does the same thing next to your functions and lists every disagreement.
 A disagreement is not always YOUR bug: read each one and decide who is right.
 
-    python3 compare_with_navera.py                 (the Sohar drive)
+    python3 compare_with_navera.py                 (the Sousse drive)
     python3 compare_with_navera.py other.nmea
 """
 import sys
@@ -16,7 +16,7 @@ import pynmea2
 import gps_filter as gf
 import nmea_tools as mine
 
-LOG = "/data/academy/15-gps-nmea/sohar_drive.nmea"
+LOG = "/data/academy/15-gps-nmea/sousse_drive.nmea"
 VALID_GPS_QUAL = {1, 2, 4, 5}          # gps_node.py: _VALID_GPS_QUAL
 
 
@@ -54,7 +54,7 @@ def main(path):
     lines = mine.read_log(path)
     if mine.is_valid(lines[0]) is None:
         print("TODO 1-2 not done yet (is_valid returns None): the 'yours' column means nothing.\n")
-    has_decision = my_decision({"quality": 1, "lat": 24.4, "lon": 56.6, "hdop": 1.0}) is not None
+    has_decision = my_decision({"quality": 1, "lat": 35.8, "lon": 10.7, "hdop": 1.0}) is not None
     if not has_decision:
         print("TODO 9 not done yet (navera_decision returns None) — skipping the decision column.")
         print("Run this script again after Step 7 to compare the usable fixes.\n")

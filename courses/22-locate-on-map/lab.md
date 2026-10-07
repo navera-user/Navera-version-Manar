@@ -222,7 +222,7 @@ course ("In NAVERA") — it is a design trade-off, not a bug.
 > [!TASK]
 > Fill in [report.md](file:./report.md): keep the four headings, replace every `TODO` line, about
 > 300 words or more. The check verifies that you quote **your** numbers: your result as `a/13`,
-> NAVERA's as `b/13`, your measured error for the 5° tilt and the Nizwa total from `budget.json`
+> NAVERA's as `b/13`, your measured error for the 5° tilt and the worked-case total (Bangkok) from `budget.json`
 > (one decimal is enough), and that no `TODO` is left.
 
 To print the numbers you need:
@@ -232,7 +232,7 @@ python3 -c "import json; d = json.load(open('results.json')); print(d['student']
 ```
 
 ```bash
-python3 -c "import json; b = json.load(open('budget.json')); print(b['tilt_sweep']); print(b['nizwa_case'])"
+python3 -c "import json; b = json.load(open('budget.json')); print(b['tilt_sweep']); print(b['worked_case'])"
 ```
 
 ## Step 10 — Check your work
@@ -277,7 +277,7 @@ any red line, fix, re-run the program that writes the file, and check again.
    the program will probably be **killed** — the patch is 3 500 pixels wide with hundreds of
    thousands of keypoints. This is why NAVERA caches at most 300 features per tile and caps its
    search radius at 1 500 m.
-4. **Oman.** Using only formulas: a drone 150 m above the mudflats of Barr Al Hikman with a 90°
-   camera. What is its GSD, the zoom-17 GSD at latitude 20.6°, and the resize factor? Would you
+4. **Tidal flats.** Using only formulas: a drone 150 m above the mudflats of the Wadden Sea
+   (Netherlands/Germany) with a 90° camera. What is its GSD, the zoom-17 GSD at latitude 53.4°, and the resize factor? Would you
    expect enough features on wet, uniform mudflats (lesson 20)? What does that mean for the
    availability of day vision on a coastal survey there?

@@ -1,35 +1,35 @@
 {
-  "lines_total": 6318,
+  "lines_total": 6414,
   "lines_rejected": 7,
-  "gga_valid": 1050,
+  "gga_valid": 1066,
   "gga_by_quality": {
     "0": 54,
-    "1": 991,
+    "1": 1007,
     "6": 5
   },
-  "navera_valid": 990,
+  "navera_valid": 1006,
   "navera_invalid_reasons": {
     "no GPS fix (qual=0)": 54,
     "no GPS fix (qual=1)": 1,
     "receiver reports a non-satellite position (qual=6) — not used": 5
   },
   "jump_rejected_utc": [
-    "052423"
+    "052421"
   ],
-  "fixes_accepted": 989,
+  "fixes_accepted": 1005,
   "outage_s": 33.0,
   "outage_from_utc": "052003",
   "outage_to_utc": "052036",
-  "dop_epochs_compared": 992,
+  "dop_epochs_compared": 1008,
   "dop_max_abs_diff": 0.005,
   "hdop_median": 0.85,
-  "hdop_max": 16.35,
-  "frac_hdop_over_5": 0.0293,
+  "hdop_max": 5.69,
+  "frac_hdop_over_5": 0.0279,
   "horiz_err_median_m": 1.45,
-  "horiz_err_p95_m": 4.54,
-  "vert_err_rms_m": 4.16,
-  "uere_est_m": 1.88,
-  "frac_within_2drms": 0.9798,
-  "frac_within_navera_sigma": 0.6754,
-  "track_length_m": 19829.2
+  "horiz_err_p95_m": 3.55,
+  "vert_err_rms_m": 3.25,
+  "uere_est_m": 1.87,
+  "frac_within_2drms": 0.9831,
+  "frac_within_navera_sigma": 0.6736,
+  "track_length_m": 19578.4
 }

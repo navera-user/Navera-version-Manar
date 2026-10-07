@@ -1,4 +1,4 @@
-# Lab 24 — The sky over Jebel Shams, and an honest look at night data
+# Lab 24 — The sky over Tenerife, and an honest look at night data
 
 **Goal:** build the celestial chain yourself (Julian date → sidereal time → alt/az), check it
 against astropy and NAVERA's `cn_pkg`, measure what clock and attitude errors cost a celestial fix
@@ -81,15 +81,17 @@ later: the equation of the equinoxes (nutation).
 `radec_to_altaz` **once** on arrays of all the stars (no Python loop over the stars for the maths)
 and sorts the visible ones, brightest first. This is the pattern "vectorise, then filter".
 
-Check the worked example of the course (Vega from Jebel Shams, apparent coordinates, GAST):
+Check the worked example of the course (Vega from Teide Observatory on Tenerife, apparent coordinates, GAST —
+note the negative longitude, because the site is west of Greenwich):
 
 ```bash
-python3 -c "from stars import radec_to_altaz; print(radec_to_altaz(279.45963, 38.81076, 23.24, 57.26, 271.35683))"
+python3 -c "from stars import radec_to_altaz; print(radec_to_altaz(279.45960, 38.81067, 28.30, -16.51, 316.48003))"
 ```
 
-You should get about `(45.689, 302.450)`. Run `python3 stars.py`: it now compares your alt/az of the
+You should get about `(70.006, 307.013)`. Run `python3 stars.py`: it now compares your alt/az of the
 10 brightest stars with astropy's full `AltAz` transformation (worst difference: about half an
-arcsecond), lists the 37 stars brighter than 2.5 above Jebel Shams and draws **sky.png**. Open
+arcsecond), lists the 44 stars brighter than 2.5 above Teide Observatory (the
+brightest is Arcturus, low in the west) and draws **sky.png**. Open
 [sky.png](file:./sky.png): zenith in the centre, horizon on the edge, north at the top and east on
 the **left** (you lie on your back, head to the north). Polaris is the orange dot.
 
@@ -107,9 +109,9 @@ the **left** (you lie on your back, head to the north). Polaris is the orange do
 > **TODO 6.** `zenith_fix(ra_deg, dec_deg, gst_deg)`: the position of a camera pointing exactly
 > up, from its plate-solved centre (course, section 2.6). Longitude in −180…180.
 
-`python3 stars.py` now follows Polaris from Muscat during a whole sidereal day (every 15 min) and
-prints the worst latitude error with and without the correction (about 70 km → 0.2 km). It also
-"plate-solves" a perfect zenith camera at Jebel Shams and gets the site back.
+`python3 stars.py` now follows Polaris from New York during a whole sidereal day (every 15 min) and
+prints the worst latitude error with and without the correction (about 70 km → 0.3 km). It also
+"plate-solves" a perfect zenith camera at Teide Observatory and gets the site back.
 
 ### Step 5 — The error budget (TODO 7)
 
@@ -247,21 +249,22 @@ Press **✔ Check my work**. The check calls your functions with its own inputs,
 ## Going further (optional)
 
 - **Two answers.** Ask NAVERA which places see a given star at altitude 45°, azimuth 0° (due north)
-  at our instant, when that star is the one seen from Muscat in that direction:
+  at our instant, when that star is the one seen from New York in that direction:
 
   ```bash
-  python3 -W ignore -c "from cn_pkg.nodes.celestial_math import local_to_radec as l2r, observer_candidates as oc; ra, dec = l2r(23.59, 58.41, 45, 0, 271.35683); print(oc(45, 0, ra, dec, 271.35683))"
+  python3 -W ignore -c "from cn_pkg.nodes.celestial_math import local_to_radec as l2r, observer_candidates as oc; ra, dec = l2r(40.71, -74.01, 45, 0, 316.48003); print(oc(45, 0, ra, dec, 316.48003))"
   ```
 
-  You get two positions: Muscat and a second, far-away place. Both are exact solutions of
+  You get two positions: New York and a second place on the other side of the world (in
+  Mongolia). Both are exact solutions of
   equation (1). Try azimuth 180°: is there still a second solution? Explain with the triangle PZX.
 - **Second-order Polaris.** Derive the next term of the Polaris correction from
   sin a = sin δ sin φ + cos δ cos φ cos H with δ = 90° − p, and show that it removes most of the
-  remaining 0.2 km. Then add Bennett's refraction R = 1′ · cot(a + 7.31/(a + 4.4)) (a in degrees)
-  and compute the error of an uncorrected measurement at Muscat.
+  remaining 0.3 km. Then add Bennett's refraction R = 1′ · cot(a + 7.31/(a + 4.4)) (a in degrees)
+  and compute the error of an uncorrected measurement at New York.
 - **A better IMU.** Change the Monte Carlo to a tactical-grade attitude (0.05° tilt, 0.2° heading)
   and to a gimballed camera pointing at the zenith. What position accuracy would make celestial
   useful as more than a "which region am I in" check?
-- **Your own evening.** Change `WHEN` to tonight's date at 21:00 Oman time (UTC + 4: subtract 4 h)
-  and your own town, run `python3 stars.py`, and go outside to check sky.png against the real
+- **Your own evening.** Change `WHEN` to tonight's date at 21:00 of your local time, written in UTC
+  (for example UTC + 1: subtract 1 h), and the site to your own town (west longitudes negative), run `python3 stars.py`, and go outside to check sky.png against the real
   sky. Put the original values back before you press ✔ Check.

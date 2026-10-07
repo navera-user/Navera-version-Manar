@@ -1,7 +1,7 @@
 # Lab 10 — Build a fake GNSS receiver, measure it, and test the flat Earth
 
 **Goal:** complete [fake_gps.py](file:./fake_gps.py), a node that publishes a `NavSatFix` on
-`/fake_gps/fix` for a vehicle driving from Muscat with a speed and a heading you can change while it
+`/fake_gps/fix` for a vehicle driving from Sousse with a speed and a heading you can change while it
 runs; measure its timing and message size; then compute, with NAVERA's own spherical code, how wrong
 the flat-Earth conversion becomes with distance ([analysis.py](file:./analysis.py),
 [report.md](file:./report.md)).
@@ -16,7 +16,7 @@ Then run it:
 python3 fake_gps.py
 ```
 
-It logs `fake GPS on /fake_gps/fix at 2.0 Hz from (23.588, 58.3829)` and then nothing. In
+It logs `fake GPS on /fake_gps/fix at 2.0 Hz from (35.8277, 10.6388)` and then nothing. In
 **Terminal 2**:
 
 ```bash
@@ -44,11 +44,11 @@ Expected: about `(10.0, 0.0)`, `(0.0, 10.0)` (a tiny `6e-16` instead of 0 is nor
 `(4.33, 2.5)`.
 
 ```bash
-python3 -c "from fake_gps import *; print(offset_to_latlon(23.588, 58.3829, 111195, 0)); print(offset_to_latlon(23.588, 58.3829, 0, 101910))"
+python3 -c "from fake_gps import *; print(offset_to_latlon(35.8277, 10.6388, 111195, 0)); print(offset_to_latlon(35.8277, 10.6388, 0, 90155))"
 ```
 
-Expected: about `(24.588, 58.3829)` — one degree north — and `(23.588, 59.3829)`: in Muscat one
-degree of longitude is only 101 910 m (cos 23.588° = 0.9165).
+Expected: about `(36.8277, 10.6388)` — one degree north — and `(35.8277, 11.6388)`: in Sousse one
+degree of longitude is only 90 155 m (cos 35.8277° = 0.8108).
 
 > [!TASK]
 > **TODO 3** — `make_covariance(sigma_h_m, sigma_v_m)` returns the 9 **floats** of the ENU,
@@ -59,7 +59,7 @@ python3 -c "from fake_gps import *; print(make_covariance(3.0, 6.0))"
 ```
 
 ```bash
-python3 -c "from fake_gps import *; from builtin_interfaces.msg import Time; print(make_fix(23.588, 58.3829, 40.0, 3.0, Time()))"
+python3 -c "from fake_gps import *; from builtin_interfaces.msg import Time; print(make_fix(35.8277, 10.6388, 40.0, 3.0, Time()))"
 ```
 
 (`Time()` is an empty stamp, good enough to print.) Find `status=…status=0, service=1`, your
@@ -199,7 +199,7 @@ python3 analysis.py
 ```
 
 It prints a table for 1, 10 and 100 km, and writes `results.json`. Check yourself: for 10 km due
-east, your error and the formula must agree to about 0.01 m (the course computed 3.4 m). If the
+east, your error and the formula must agree to about 0.01 m (the course computed 5.7 m). If the
 "heading 30" and "due east" columns are identical, look at how you computed the offset.
 
 ## Step 8 — Write the analysis

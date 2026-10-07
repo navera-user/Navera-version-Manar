@@ -14,7 +14,7 @@ that were refused and say, for each one, whether refusing it was the right answe
 TODO: (a) Height sweep: which assumed heights were accepted? Compare the fitted and the expected
 scale. Explain why a wrong height costs availability, not accuracy.
 (b) Tilt sweep: the measured error at 5° next to h·tan(5°). What does this tell you about the IMU?
-(c) The Nizwa case: each term in metres and the total. Which term dominates, and what would you
+(c) The worked case (Bangkok): each term in metres and the total. Which term dominates, and what would you
 change to make it smaller?
 
 ## 3. My pipeline vs NAVERA's LocalMatcher

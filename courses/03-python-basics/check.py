@@ -235,7 +235,7 @@ def _():
 
 
 @c.test("results.json: the survey track (TODO C)",
-        hint="Use your Track methods on load_track('sohar_track.csv'). glitch: the first speed > 25 m/s "
+        hint="Use your Track methods on load_track('harbour_track.csv'). glitch: the first speed > 25 m/s "
              "(a boolean mask, then np.argmax); speed i ends at point i+1, so the time is t[i + 1].")
 def _():
     r = results()

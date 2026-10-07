@@ -6,7 +6,7 @@ noise of GPS and day vision, draw two figures, and write a short test report.
 **Time:** about 4–5 hours (pandas is new for most students: take your time in Step 3).
 
 Your files (already open): [flight_analysis.py](file:./flight_analysis.py) (TODO 1–9),
-[campaign.csv](file:./campaign.csv) (the data: 1556 rows, synthetic, four flights in Oman) and
+[campaign.csv](file:./campaign.csv) (the data: 1556 rows, synthetic, four flights near Sousse, Tunisia) and
 [report.md](file:./report.md).
 
 > [!NOTE]
@@ -118,10 +118,10 @@ Expected: `1551 251.5 31 [0, 1, 2]`. If you get 1520, you dropped the NO_FIX row
 >   **within each flight** (`groupby("flight_id")` then `.shift()`).
 
 ```bash
-python3 -c "from flight_analysis import haversine_m; print(haversine_m(23.588, 58.383, 22.933, 57.533))"
+python3 -c "from flight_analysis import haversine_m; print(haversine_m(51.507, -0.128, 48.857, 2.352))"
 ```
 
-Expected: `113333.48…` m (Muscat–Nizwa, the worked example of the course). Then:
+Expected: `343479.76…` m (London–Paris, the worked example of the course). Then:
 
 ```bash
 python3 -c "from flight_analysis import *; df = add_motion(clean(load_log('campaign.csv'))); print(df[['flight_id', 'time_s', 'dt_s', 'step_m', 'gs_mps']].iloc[[0, 1, 2, 361, 362]])"
@@ -142,7 +142,7 @@ has a step of hundreds of kilometres, your `shift()` crossed from one flight int
 python3 -c "from flight_analysis import *; print(flight_summary(add_motion(clean(load_log('campaign.csv')))).round(2).to_string())"
 ```
 
-The Barr Al Hikman survey should show `13.04` km in `720` s.
+The `grid_survey` flight should show `13.03` km in `720` s.
 
 ## Step 7 — Outages (TODO 5–6)
 
@@ -210,7 +210,7 @@ cat results.json
 
 Open [tracks.png](file:./tracks.png) and [altitude.png](file:./altitude.png) in the editor (click
 the file in the list if the view does not refresh). In tracks.png, the orange parts were flown on day
-vision. Look at the Sohar panel: there is a **hole** in the track — where is it, and which state
+vision. Look at the `sousse_port` panel: there is a **hole** in the track — where is it, and which state
 explains it?
 
 ## Step 10 — The report
@@ -234,17 +234,19 @@ check fails on a small table, its message describes the table: rebuild it in `py
 
 ## Going further (optional)
 
-- **How wrong is the flat Earth across Oman?** Write `enu_from_latlon(lat, lon, lat0, lon0)` with the
-  flat-Earth formulas of the course (section 3, with `np.radians` and `np.cos`, so that it accepts
-  numbers **and** arrays). With Muscat as the reference, compute `np.hypot(east, north)` for Sohar
-  (24.347, 56.709), Nizwa (22.933, 57.533), Sur (22.567, 59.529) and Salalah (17.019, 54.089) in
-  **one** call on arrays, and compare with your `haversine_m()`. You should find about +0.24 %,
-  −0.14 %, −0.20 % and −0.60 %. Up to what distance would you trust the flat formula?
+- **How wrong is the flat Earth across Europe?** Write `enu_from_latlon(lat, lon, lat0, lon0)` with
+  the flat-Earth formulas of the course (section 3, with `np.radians` and `np.cos`, so that it
+  accepts numbers **and** arrays). With London (51.507, −0.128) as the reference, compute
+  `np.hypot(east, north)` for Paris (48.857, 2.352), Amsterdam (52.370, 4.895), Edinburgh
+  (55.953, −3.188) and Madrid (40.417, −3.704) in **one** call on arrays, and compare with your
+  `haversine_m()`. You should find about −0.72 %, +0.91 %, +0.78 % and −0.44 % (−2.5, +3.3, +4.2 and
+  −5.6 km). Why is the error positive for some cities and negative for others? (Hint: which
+  latitude does `cos φ0` use?) Up to what distance would you trust the flat formula?
 
 - **Smoother speeds.** Compute a speed over a 10 s window instead of 2 s
   (`groupby(...)["lat"].shift(5)`). How much smaller is the day-vision error? This is the idea behind
   NAVERA's 20 s velocity fit in `navera_common/track.py`.
-- **Distance without the noise.** Recompute the Nizwa distance using only GPS rows. How much of the
+- **Distance without the noise.** Recompute the `sahel_hills` distance using only GPS rows. How much of the
   "extra" kilometres came from the vision noise?
 - **Battery model.** Fit a straight line to `battery_pct` against `time_s` for each flight
   (`np.polyfit(t, b, 1)`, dropping NaN first). What is the consumption in % per minute, and how

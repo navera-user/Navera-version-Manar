@@ -24,24 +24,26 @@ and the filter needs a long time to recover from a wrong start.
 
 ## 3. Compass and true north
 
-The declination at the place of the log (near Nizwa, October 2026) is +1.62 degrees. My true
-heading (tilt-compensated magnetic heading + declination) has an RMS error of 0.92 degrees.
-Without tilt compensation the RMS error is 2.95 degrees. The field in Oman dips about 36 degrees
-below the horizon, so a vertical component leaks into the horizontal axes as soon as the drone
-pitches or rolls, and the heading moves even when the drone does not turn.
+The declination at the place of the log (near Monastir, October 2026) is +3.35 degrees. My true
+heading (tilt-compensated magnetic heading + declination) has an RMS error of 1.37 degrees.
+Without tilt compensation the RMS error is 4.92 degrees. Near Monastir the field dips about 50 degrees
+below the horizon, so a large vertical component leaks into the horizontal axes as soon as the
+drone pitches or rolls, and the heading moves even when the drone does not turn.
 
-## 4. Declination in Oman
+## 4. Declination around the world
 
 | Place | Declination (deg, east +) |
 |---|---|
-| Muscat | +1.67 |
-| Sohar | +1.95 |
-| Nizwa | +1.62 |
-| Salalah | +0.96 |
-| Masirah | +1.11 |
+| London | +1.21 |
+| Reykjavik | -11.05 |
+| Cape Town | -26.81 |
+| Sydney | +12.83 |
+| Singapore | +0.24 |
 
-If the declination of Muscat is ignored, the side error after 10 km is
-10000 × tan(1.67°) = 291 m. This is much larger than the accuracy that a navigation system wants.
+If the declination of London is ignored, the side error after 10 km is
+10000 × tan(1.21°) = 212 m. This is much larger than the accuracy that a navigation system wants.
+In Cape Town the error would be 10000 × tan(26.81°) = 5053 m: there a compass without the
+declination is useless for navigation.
 
 ## 5. Comparison with NAVERA
 

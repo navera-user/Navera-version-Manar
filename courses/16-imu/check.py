@@ -13,10 +13,10 @@ rng = np.random.default_rng(16)
 
 # Expected values for the dataset (computed with the reference solution; tolerances allow
 # small differences between correct implementations).
-EXP = {"gyro_heading_error_end_deg": (-9.42, 0.35), "declination_deg": (1.619, 0.01),
-       "accel_roll_max_deg": (19.3, 0.6), "true_heading_rms_deg": (0.92, 0.15),
-       "no_tilt_comp_rms_deg": (2.95, 0.3), "fused_true_heading_rms_deg": (0.20, 0.05)}
-OMAN = {"Muscat": 1.668, "Sohar": 1.949, "Nizwa": 1.619, "Salalah": 0.960, "Masirah": 1.106}
+EXP = {"gyro_heading_error_end_deg": (-9.42, 0.35), "declination_deg": (3.348, 0.01),
+       "accel_roll_max_deg": (19.3, 0.6), "true_heading_rms_deg": (1.37, 0.2),
+       "no_tilt_comp_rms_deg": (4.92, 0.4), "fused_true_heading_rms_deg": (0.20, 0.05)}
+WORLD = {"London": 1.213, "Reykjavik": -11.049, "Cape Town": -26.808, "Sydney": 12.827, "Singapore": 0.240}
 
 
 def arr(x, shape, what):
@@ -221,13 +221,13 @@ def _():
     c.near(er30, 0.53, 0.15, what="roll RMS error (deg) with tau = 30 s")
 
 
-@c.test("mag_heading is tilt-compensated (field of Nizwa, drone tilted 15°/−10°, 8 headings)",
+@c.test("mag_heading is tilt-compensated (field of Monastir, drone tilted 15°/−10°, 8 headings)",
         hint="m_h = Ry(pitch) @ Rx(roll) @ m_body, then atan2(m_h[1], m_h[0]) in degrees, % 360.")
 def _():
     m = load_student("imu_filters.py")
     (f,) = need(m, "mag_heading")
     from navera_common.camera_model import rpy_to_matrix as e2m
-    m_enu = np.array([0.999, 35.365, -25.593])          # WMM near Nizwa, microtesla (E, N, U)
+    m_enu = np.array([1.650, 28.202, -34.298])          # WMM near Monastir, microtesla (E, N, U)
     D = math.degrees(math.atan2(m_enu[0], m_enu[1]))
     heads = np.arange(0, 360, 45.0)
     r, p = math.radians(15), math.radians(-10)
@@ -242,11 +242,11 @@ def _():
         c.ok(abs(d) < 1e-6, f"true heading {h:.0f}° (magnetic {(h - D) % 360:.2f}°): you give {got:.2f}°")
 
 
-@c.test("declination_at matches the World Magnetic Model in Muscat, Salalah and Sousse",
+@c.test("declination_at matches the World Magnetic Model in Cape Town, Sydney and Sousse",
         hint="Two lines, as in NAVERA's class Declination: GeoMag().calculate(glat=…, glon=…, alt=0, time=year).d")
 def _():
     (f,) = need(load_student("imu_filters.py"), "declination_at")
-    for lat, lon, year, want in ((23.588, 58.383, 2026.79, 1.668), (17.019, 54.089, 2026.79, 0.960),
+    for lat, lon, year, want in ((-33.925, 18.424, 2026.79, -26.808), (-33.869, 151.209, 2026.79, 12.827),
                                  (35.8256, 10.636, 2026.75, 3.333)):
         got = f(lat, lon, year)
         c.ok(got is not None, "declination_at() still returns None")
@@ -270,8 +270,8 @@ def _():
         c.ok(k in res, f"results.json has no '{k}' (did the program stop early?)")
         c.near(res[k], want, tol, what=f"results.json {k}")
     c.eq(float(res.get("best_tau_s", -1)), 30.0, what="best_tau_s")
-    for k, want in OMAN.items():
-        c.near(res.get("oman_declination_deg", {}).get(k), want, 0.01, what=f"declination in {k}")
+    for k, want in WORLD.items():
+        c.near(res.get("world_declination_deg", {}).get(k), want, 0.01, what=f"declination in {k}")
 
 
 def sections():
@@ -306,7 +306,7 @@ def _():
 
 @c.test("report.md: the numbers match your results (drift, best tau, declinations, side error)",
         hint="Section 1: the 300 s heading error; 2: the best tau; 3: the declination of the log; "
-             "4: Muscat and Salalah declinations (2 decimals) and the side error after 10 km (m).")
+             "4: London and Cape Town declinations (2 decimals) and the side error after 10 km from London (m).")
 def _():
     _, sec = sections()
     for k in "1234":
@@ -314,10 +314,10 @@ def _():
     c.ok(has_near(sec["1"], 9.42, 0.3), "section 1 does not give the gyroscope heading error after 300 s")
     c.ok(has_near(sec["1"], 9.0, 0.05), "section 1 does not give the bias × time prediction")
     c.ok(has_near(sec["2"], 30, 0.01), "section 2 does not give the best tau of the sweep")
-    c.ok(has_near(sec["3"], 1.62, 0.02), "section 3 does not give the declination at the log's place")
-    c.ok(has_near(sec["4"], 1.67, 0.011), "section 4 does not give the declination in Muscat")
-    c.ok(has_near(sec["4"], 0.96, 0.011), "section 4 does not give the declination in Salalah")
-    c.ok(has_near(sec["4"], 291, 6), "section 4 does not give the side error after 10 km from Muscat (m)")
+    c.ok(has_near(sec["3"], 3.35, 0.02), "section 3 does not give the declination at the log's place")
+    c.ok(has_near(sec["4"], 1.21, 0.011), "section 4 does not give the declination in London")
+    c.ok(has_near(sec["4"], 26.81, 0.011), "section 4 does not give the declination in Cape Town")
+    c.ok(has_near(sec["4"], 212, 6), "section 4 does not give the side error after 10 km from London (m)")
     s5 = sec.get("5", "")
     c.ok("sensor_history" in s5 or "camera_model" in s5,
          "section 5 should name the NAVERA files/functions (camera_model, sensor_history)")

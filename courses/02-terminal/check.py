@@ -10,7 +10,7 @@ NAV = os.path.expanduser("~/navera")
 LESSON = os.path.dirname(os.path.abspath(__file__))       # /academy/courses/02-terminal
 STARTER = os.path.join(LESSON, "files")
 PHOTOS = ["frame_0001.jpg", "frame_0002.jpg", "frame_0003.jpg"]
-LOGS = ["sohar_2026-09-21.log", "nizwa_2026-09-22.log"]
+LOGS = ["sousse_2026-09-21.log", "range_2026-09-22.log"]
 TMPS = ["cache_01.tmp", "cache_02.tmp", "cache_03.tmp"]
 SCRIPT = "mission/bin/log_report.sh"
 
@@ -256,13 +256,13 @@ def _():
     c.ok(code != 0, "with a file that does not exist the script exits with code 0 — it should fail")
 
 
-@c.test("log_report.sh gives the exact 7-line summary of the Sohar log",
+@c.test("log_report.sh gives the exact 7-line summary of the Sousse log",
         hint="Count the level at the START of the line (^ and \\[ in grep), nodes = field 3 with cut, sort -u, wc -l. "
              "Print the name with basename, not the whole path.")
 def _():
     code, out, err = run_script(f"mission/logs/{LOGS[0]}")
     c.ok(code == 0, f"the script failed (exit code {code}):\n{(err or out)[-400:]}")
-    compare(lines_of(out), report(log_lines(LOGS[0]), LOGS[0]), "Sohar log")
+    compare(lines_of(out), report(log_lines(LOGS[0]), LOGS[0]), "Sousse log")
 
 
 @c.test("log_report.sh is right on a log it has never seen (no ERROR line, tricky messages)",
@@ -271,12 +271,12 @@ def _():
 def _():
     lines = hidden_log()
     with tempfile.TemporaryDirectory() as d:
-        p = os.path.join(d, "muscat_2026-10-01.log")
+        p = os.path.join(d, "monastir_2026-10-01.log")
         with open(p, "w") as f:
             f.write("\n".join(lines) + "\n")
         code, out, err = run_script(p)
     c.ok(code == 0, f"the script failed on the new log (exit code {code}):\n{(err or out)[-400:]}")
-    compare(lines_of(out), report(lines, "muscat_2026-10-01.log"), "new log")
+    compare(lines_of(out), report(lines, "monastir_2026-10-01.log"), "new log")
 
 
 @c.test("the two reports are saved in mission/docs/report_<flight>.txt",
@@ -324,7 +324,7 @@ def _():
 
 @c.test("Q6–Q9: logs, permissions, signals",
         hint="Q6: grep the WARN lines, cut the node field, sort | uniq -c | sort -rn. Q7: grep -m 1, take the "
-             "seconds, TZ=Asia/Muscat date -d @SECONDS +%T. Q8: r=4 w=2 x=1. Q9: the course's signal table.")
+             "seconds, TZ=Africa/Tunis date -d @SECONDS +%T. Q8: r=4 w=2 x=1. Q9: the course's signal table.")
 def _():
     lines = log_lines(LOGS[0])
     counts = {}
@@ -338,10 +338,10 @@ def _():
     first = next(l for l in lines if "state NO_FIX" in l)
     secs = int(first.split(" ")[1].strip("[]").split(".")[0])
     r = subprocess.run(["date", "-d", f"@{secs}", "+%T"], capture_output=True, text=True,
-                       env=dict(os.environ, TZ="Asia/Muscat"))
+                       env=dict(os.environ, TZ="Africa/Tunis"))
     q7 = str(answer("Q7")).strip()
     c.ok(q7 != "", "Q7 is still empty")
-    c.ok(q7 == r.stdout.strip(), f"Q7 = {q7!r} is not right — Oman time is UTC+4, "
+    c.ok(q7 == r.stdout.strip(), f"Q7 = {q7!r} is not right — Tunisian time is UTC+1, "
                                  "and the format is HH:MM:SS")
     q8 = as_int(answer("Q8"), "Q8")
     c.ok(q8 == 640, f"Q8 = {q8} is not the octal form of rw-r-----")
@@ -349,15 +349,15 @@ def _():
     c.ok(q9 in ("SIGINT", "INT"), f"Q9 = {q9!r} is not the signal of Ctrl+C")
 
 
-@c.test("mission/docs/flight_report.md: Sohar, Nizwa and Conclusion sections with the right numbers",
-        hint="Three headings (## Sohar, ## Nizwa, ## Conclusion). In each flight section, write its number of "
-             "NO_FIX events and of ERROR lines; in Sohar, the Oman time of the first NO_FIX; "
+@c.test("mission/docs/flight_report.md: Sousse, Range and Conclusion sections with the right numbers",
+        hint="Three headings (## Sousse, ## Range, ## Conclusion). In each flight section, write its number of "
+             "NO_FIX events and of ERROR lines; in Sousse, the Tunisian time of the first NO_FIX; "
              "a conclusion of at least 40 words.")
 def _():
     p = "mission/docs/flight_report.md"
     c.ok(os.path.isfile(p), f"{p} does not exist yet")
     text = open(p).read()
-    for name, title in ((LOGS[0], "Sohar"), (LOGS[1], "Nizwa")):
+    for name, title in ((LOGS[0], "Sousse"), (LOGS[1], "Range")):
         body = section(text, title)
         c.ok(body is not None, f"no '## {title}' section in {p}")
         lines = log_lines(name)
@@ -369,8 +369,8 @@ def _():
     first = next(l for l in lines if "state NO_FIX" in l)
     secs = int(first.split(" ")[1].strip("[]").split(".")[0])
     t = subprocess.run(["date", "-d", f"@{secs}", "+%T"], capture_output=True, text=True,
-                       env=dict(os.environ, TZ="Asia/Muscat")).stdout.strip()
-    c.ok(t in section(text, "Sohar"), "the Sohar section does not give the Oman time of the first NO_FIX (HH:MM:SS)")
+                       env=dict(os.environ, TZ="Africa/Tunis")).stdout.strip()
+    c.ok(t in section(text, "Sousse"), "the Sousse section does not give the Tunisian time of the first NO_FIX (HH:MM:SS)")
     concl = section(text, "Conclusion")
     c.ok(concl is not None, f"no '## Conclusion' section in {p}")
     words = len(re.findall(r"[A-Za-z]+", concl))

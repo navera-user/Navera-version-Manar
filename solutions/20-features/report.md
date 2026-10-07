@@ -29,12 +29,12 @@ is hard despite its thousands of keypoints because the trees all look alike and 
 texture gives descriptors with near twins. CLAHE raised the keypoints on the coast water a lot, but they
 sit on ripples and seagrass shadows that move and are not on the map.
 
-## 4. Oman: where would day vision struggle?
+## 4. World: where would day vision struggle?
 
-Over Muscat, Sohar and the farms and palm groves of the Batinah coast the camera sees roofs, walls, roads
-and field borders, like the Sousse medina: thousands of SIFT keypoints and a matchability near 1. The date
-palms are a risk of repetitive texture, as the olives were. Over Wahiba Sands the dune ridges are low
+Over Paris, Singapore and the farms of the Nile delta the camera sees roofs, walls, roads
+and field borders, like the Sousse medina: thousands of SIFT keypoints and a matchability near 1. The orchards
+and plantations are a risk of repetitive texture, as the olives were. Over the Sahara and Namib sand seas the dune ridges are low
 contrast, repetitive and moving, and the map may be years old: few distinct keypoints, and the ones found
-may not match. Over the sea off Masirah the score would be 0, like terrain_sea, and the coastline alone
-gives an edge, not corners. In the Hajar mountains there is strong texture but the height above ground
-changes quickly, so the scale is uncertain. Barr Al Hikman's mudflats are flat and change with the tide.
+may not match. Over the open Atlantic the score would be 0, like terrain_sea, and the coastline alone
+gives an edge, not corners. In the Alps and the Andes there is strong texture but the height above ground
+changes quickly, so the scale is uncertain. The mudflats of the Wadden Sea are flat and change with the tide.

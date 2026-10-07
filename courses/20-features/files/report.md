@@ -19,8 +19,8 @@ the value for random pairs (why near 128?). Would a threshold separate them?
 TODO: which terrains of the dataset are easy, which are hopeless (numbers)? Why can the olive grove be
 hard even with thousands of keypoints? What did CLAHE do on the coast water?
 
-## 4. Oman: where would day vision struggle?
+## 4. World: where would day vision struggle?
 
-TODO: a drone must fly across Oman by camera only. Discuss at least two Omani places (for example the
-Batinah coast, Muscat, the Hajar mountains, Wahiba Sands, the sea off Masirah, Barr Al Hikman): what
-texture would the camera see, and what would you expect from SIFT and from the matchability score?
+TODO: a drone must fly across several continents by camera only. Discuss at least two real places (for
+example Paris or Singapore, the Sahara or Namib dunes, the Alps or Andes, the open ocean, the Wadden Sea,
+the Salar de Uyuni, Greenland): what texture would the camera see, and what would you expect from SIFT and from the matchability score?

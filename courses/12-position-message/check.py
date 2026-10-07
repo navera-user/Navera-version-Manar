@@ -24,7 +24,7 @@ def build(cov=None):
     from builtin_interfaces.msg import Time
     from navera_msgs.msg import PositionEstimate as P
     (b, ec) = need(src(), "build_estimate", "enu_covariance")
-    m = b(23.5880, 58.3829, cov if cov is not None else ec(15.0, 6.0, 30.0, 6.0),
+    m = b(35.8277, 10.6388, cov if cov is not None else ec(15.0, 6.0, 30.0, 6.0),
           P.COVARIANCE_TYPE_APPROXIMATED, Time(sec=STAMP[0], nanosec=STAMP[1]))
     c.ok(isinstance(m, P), f"build_estimate should return a PositionEstimate, got {type(m).__name__}")
     return m
@@ -71,7 +71,7 @@ def _():
              [4.0, 1.0, 0.0, 2.0, 4.0, 0.0, 0.0, 0.0, 0.0], [-1.0, 0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 0.0],
              [4.0, 2.0, 0.0, 2.0, 1.0, 0.0, 0.0, 0.0, 0.0], [math.nan, 0.0, 0.0, 0.0, 4.0, 0.0, 0.0, 0.0, 0.0]]
     for cov in cases:
-        m = P(latitude=23.588, longitude=58.3829, position_covariance=[float(x) for x in cov])
+        m = P(latitude=35.8277, longitude=10.6388, position_covariance=[float(x) for x in cov])
         c.eq(bool(f(cov)), E()._sane(m), f"is_psd_2x2({cov[:5]}…) compared with NAVERA's _sane")
 
 
@@ -107,7 +107,7 @@ def _():
 def _():
     m = build()
     c.ok(math.isnan(m.altitude), f"altitude is {m.altitude} — unknown must be math.nan (0.0 is sea level)")
-    c.near(m.latitude, 23.588, 1e-9, "latitude")
+    c.near(m.latitude, 35.8277, 1e-9, "latitude")
     c.near(m.position_covariance[1], REF_COV[1], 1e-3, "position_covariance[1]")
     c.ok(E()._sane(m), "NAVERA's EstimatorNode._sane(your message) is False")
     c.near(E()._stated_sigma(m), math.sqrt(177.75), 1e-6, "NAVERA's _stated_sigma(your message)")
@@ -218,8 +218,8 @@ def _():
     st, pos = status_of("none")
     c.ok(st.state == NavStatus.STATE_FIX and st.active_source == NavStatus.SOURCE_DAY_VISION,
          f"state {st.state}, source {st.active_source}, reason: {st.reason!r}")
-    c.ok(pos and abs(pos[0].latitude - 23.5880) < 1e-6 and pos[0].producer == "navera_estimator",
-         "no /navera/position with your latitude (23.5880) re-signed by navera_estimator")
+    c.ok(pos and abs(pos[0].latitude - 35.8277) < 1e-6 and pos[0].producer == "navera_estimator",
+         "no /navera/position with your latitude (35.8277) re-signed by navera_estimator")
 
 
 @c.test("live — stale is refused, latency is not: freshness is judged on sensor_stamp",

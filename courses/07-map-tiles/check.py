@@ -11,8 +11,8 @@ c = Checker()
 SMALL = "/data/academy/07-map-tiles/sousse_small.mbtiles"   # 88 tiles copied from the real map
 SOUSSE = (35.8277, 10.6388)        # Ribat of Sousse
 MONASTIR = (35.7795, 10.8320)      # Monastir marina
-MUSCAT = (23.5839, 58.3875)
-SALALAH = (17.0194, 54.0897)
+SINGAPORE = (1.2834, 103.8607)     # Marina Bay Sands
+REYKJAVIK = (64.1417, -21.9266)    # Hallgrimskirkja
 
 
 def lab():
@@ -38,7 +38,7 @@ def _():
     c.near(num(f(0.0), "mercator_y()"), 0.0, tol=1e-12, what="mercator_y(0)")
     c.near(f(SOUSSE[0]), 0.67056242035, tol=1e-9, what="mercator_y(35.8277)")
     c.near(f(85.0511287798), math.pi, tol=1e-8, what="mercator_y(85.0511287798)")
-    c.near(f(-23.5839), -f(23.5839), tol=1e-12, what="mercator_y(-23.5839) (it should be -mercator_y(23.5839))")
+    c.near(f(-51.5007), -f(51.5007), tol=1e-12, what="mercator_y(-51.5007) (it should be -mercator_y(51.5007))")
 
 
 @c.test("inverse_mercator_y() undoes mercator_y() (to 10⁻¹⁰ degree) and returns degrees",
@@ -46,7 +46,7 @@ def _():
 def _():
     f, g = need(lab(), "mercator_y", "inverse_mercator_y")
     c.near(num(g(math.pi), "inverse_mercator_y()"), 85.0511287798, tol=1e-8, what="inverse_mercator_y(π)")
-    for lat in (-60.0, -17.0194, 0.0, 23.5839, 35.8277, 80.0):
+    for lat in (-60.0, -33.9249, 0.0, 1.2834, 35.8277, 64.1417, 80.0):
         c.near(g(f(lat)), lat, tol=1e-10, what=f"inverse_mercator_y(mercator_y({lat}))")
 
 
@@ -63,13 +63,13 @@ def _():
     c.near(pair(f(0.0, -180.0, 3), "tile_xy()")[0], 0.0, tol=1e-9, what="x at longitude -180")
 
 
-@c.test("latlon_to_tile(): whole tile numbers for Sousse (z13, 17, 19), Monastir, Muscat and Cape Town",
+@c.test("latlon_to_tile(): whole tile numbers for Sousse (z13, 17, 19), Monastir, Singapore and Cape Town",
         hint="int(math.floor(x)) and int(math.floor(y)) of tile_xy(). Return a pair of int.")
 def _():
     (f,) = need(lab(), "latlon_to_tile")
     for (lat, lon), z, want in [(SOUSSE, 13, (4338, 3221)), (SOUSSE, 17, (69409, 51547)),
                                 (SOUSSE, 19, (277637, 206190)), (MONASTIR, 17, (69479, 51569)),
-                                (MUSCAT, 17, (86794, 56696)), ((-33.9, 18.4), 15, (18058, 19667))]:
+                                (SINGAPORE, 17, (103350, 65068)), (REYKJAVIK, 17, (57552, 34838)), ((-33.9, 18.4), 15, (18058, 19667))]:
         got = pair(f(lat, lon, z), "latlon_to_tile()")
         c.ok(all(isinstance(v, int) for v in got), f"tile numbers must be int, got {got!r}")
         c.eq(tuple(got), want, what=f"latlon_to_tile({lat}, {lon}, {z})")
@@ -85,7 +85,7 @@ def _():
     c.near(lon, 10.579833984375, tol=1e-9, what="longitude of the NW corner")
     lat, lon = pair(f(69409.5, 51547.5, 17), "tile_to_latlon()")
     c.near(lat, 35.8278347177, tol=1e-9, what="latitude of the centre of tile 17/69409/51547")
-    for (la, lo) in (SOUSSE, MUSCAT, SALALAH):
+    for (la, lo) in (SOUSSE, SINGAPORE, REYKJAVIK, (-33.9249, 18.4241)):
         for z in (13, 16, 19):
             x, y = pair(to_tile(la, lo, z), "latlon_to_tile()")
             n_lat, w_lon = pair(f(x, y, z), "tile_to_latlon()")
@@ -93,13 +93,13 @@ def _():
             c.ok(s_lat <= la <= n_lat and w_lon <= lo <= e_lon, f"({la}, {lo}) is not inside its own tile at zoom {z}")
 
 
-@c.test("meters_per_pixel(): 156 543.03 m at zoom 0 on the equator; Muscat 1.0946, Salalah 1.1420 m at zoom 17",
+@c.test("meters_per_pixel(): 156 543.03 m at zoom 0 on the equator; Singapore 1.1940, Reykjavik 0.5209 m at zoom 17",
         hint="EQUATOR_M · cos(lat in radians) / 2**z / TILE_PX. Each zoom level halves it.")
 def _():
     (f,) = need(lab(), "meters_per_pixel")
     c.near(num(f(0.0, 0), "meters_per_pixel()"), 156543.034, tol=0.01, what="meters_per_pixel(0, 0)")
-    c.near(f(MUSCAT[0], 17), 1.09457250, tol=1e-6, what="meters_per_pixel(Muscat, 17)")
-    c.near(f(SALALAH[0], 17), 1.14202379, tol=1e-6, what="meters_per_pixel(Salalah, 17)")
+    c.near(f(SINGAPORE[0], 17), 1.19402896, tol=1e-6, what="meters_per_pixel(Singapore, 17)")
+    c.near(f(REYKJAVIK[0], 17), 0.52090279, tol=1e-6, what="meters_per_pixel(Reykjavik, 17)")
     c.near(f(SOUSSE[0], 18), f(SOUSSE[0], 17) / 2, tol=1e-12, what="zoom 18 at Sousse (half of zoom 17)")
 
 
@@ -108,8 +108,9 @@ def _():
              "max(zmin, min(zmax, z)). Return an int.")
 def _():
     (f,) = need(lab(), "zoom_for_gsd")
-    for args, want in [((0.0, 1.0), 17), ((MUSCAT[0], 0.352, 13, 19), 18), ((MUSCAT[0], 0.7, 13, 19), 17),
-                       ((MUSCAT[0], 100.0, 13, 19), 13), ((MUSCAT[0], 0.01, 13, 19), 19), ((SALALAH[0], 2.3), 15)]:
+    for args, want in [((0.0, 1.0), 17), ((SINGAPORE[0], 0.352, 13, 19), 18), ((SINGAPORE[0], 0.7, 13, 19), 17),
+                       ((SINGAPORE[0], 100.0, 13, 19), 13), ((SINGAPORE[0], 0.01, 13, 19), 19), ((REYKJAVIK[0], 2.3), 14),
+                       ((REYKJAVIK[0], 0.352, 13, 19), 17)]:
         z = num(f(*args), "zoom_for_gsd()")
         c.ok(isinstance(z, int), f"zoom_for_gsd{args} should be an int, got {z!r}")
         c.eq(z, want, what=f"zoom_for_gsd{args}")
@@ -181,19 +182,21 @@ def _():
 RES = {}
 
 
-@c.test("results.json (from python3 analysis.py): Oman scales, zoom by altitude, corner bug, map file facts",
+@c.test("results.json (from python3 analysis.py): world scales, zoom by altitude, corner bug, map file facts",
         hint="Run `python3 analysis.py` after your last change (it takes ~20 s). If the numbers are wrong while "
              "the function checks pass, run it again.")
 def _():
     c.ok(os.path.exists("results.json"), "results.json is missing: run python3 analysis.py")
     RES.update(json.load(open("results.json")))
-    rows = {r["place"]: r for r in RES.get("oman", [])}
-    c.ok("Muscat" in rows and "Salalah" in rows, "results.json has no Oman table")
-    c.near(rows["Muscat"]["m_per_px_z17"], 1.0946, tol=1e-4, what="m_per_px_z17 of Muscat")
-    c.near(rows["Salalah"]["m_per_px_z17"], 1.1420, tol=1e-4, what="m_per_px_z17 of Salalah")
-    c.eq(RES.get("muscat_zoom_by_altitude"), {"150": 19, "200": 19, "300": 18, "500": 17, "1000": 16,
-                                              "1500": 16, "2000": 15}, what="muscat_zoom_by_altitude")
-    c.near(RES.get("corner_bug_m", {}).get("Muscat", 0), 197.9, tol=0.2, what="corner_bug_m for Muscat")
+    rows = {r["place"]: r for r in RES.get("world", [])}
+    c.ok("Singapore" in rows and "Reykjavik" in rows,
+         "results.json has no 'world' table with Singapore and Reykjavik: run the current analysis.py")
+    c.near(rows["Singapore"]["m_per_px_z17"], 1.1940, tol=1e-4, what="m_per_px_z17 of Singapore")
+    c.near(rows["Reykjavik"]["m_per_px_z17"], 0.5209, tol=1e-4, what="m_per_px_z17 of Reykjavik")
+    c.eq(RES.get("singapore_zoom_by_altitude"), {"150": 19, "200": 19, "300": 18, "500": 18, "1000": 17,
+                                                 "1500": 16, "2000": 16}, what="singapore_zoom_by_altitude")
+    c.near(RES.get("corner_bug_m", {}).get("Singapore", 0), 215.9, tol=0.2, what="corner_bug_m for Singapore")
+    c.near(RES.get("corner_bug_m", {}).get("Reykjavik", 0), 94.2, tol=0.2, what="corner_bug_m for Reykjavik")
     c.near(RES.get("corner_bug_m", {}).get("Sousse (NAVERA test map)", 0), 175.1, tol=0.2, what="corner_bug_m for Sousse")
     m = RES.get("map", {})
     c.eq(m.get("file_bytes"), 10286944256, what="map.file_bytes")
@@ -206,19 +209,19 @@ def numbers(text):
 
 
 @c.test("report.md: three sections, at least 150 words, and the key numbers quoted",
-        hint="Headings '## Oman scales', '## The map file', '## The corner bug'. Quote the zoom-17 m/px of Muscat "
-             "and Salalah, the real file size in GB and the metadata estimate in MB, and the corner error at Muscat in m.")
+        hint="Headings '## World scales', '## The map file', '## The corner bug'. Quote the zoom-17 m/px of Singapore "
+             "and Reykjavik, the real file size in GB and the metadata estimate in MB, and the corner error at Singapore in m.")
 def _():
     c.file_exists("report.md")
     text = re.sub(r"<!--.*?-->", "", open("report.md", encoding="utf-8").read(), flags=re.S)
-    for h in ("## Oman scales", "## The map file", "## The corner bug"):
+    for h in ("## World scales", "## The map file", "## The corner bug"):
         c.ok(re.search(r"^" + re.escape(h), text, re.M | re.I) is not None, f"report.md has no '{h}' heading")
     words = re.findall(r"[A-Za-z]{2,}", text)
     c.ok(len(words) >= 150, f"report.md has only {len(words)} words of your own (at least 150 expected)")
     found = numbers(text)
-    for want, tol, name in [(1.0946, 0.006, "Muscat's m/px at zoom 17 (≈ 1.09)"), (1.142, 0.006, "Salalah's m/px at zoom 17 (≈ 1.14)"),
+    for want, tol, name in [(1.194, 0.006, "Singapore's m/px at zoom 17 (≈ 1.19)"), (0.521, 0.006, "Reykjavik's m/px at zoom 17 (≈ 0.52)"),
                             (10.29, 0.02, "the real file size in GB (≈ 10.29)"), (36467, 0.5, "the metadata estimate (36467 MB)"),
-                            (197.9, 1.0, "the corner error at Muscat (≈ 198 m)")]:
+                            (215.9, 1.0, "the corner error at Singapore (≈ 216 m)")]:
         c.ok(any(abs(v - want) <= tol for v in found), f"report.md does not quote {name}")
 
 

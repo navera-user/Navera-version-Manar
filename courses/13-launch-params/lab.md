@@ -16,7 +16,7 @@ trap on purpose, and change one of NAVERA's own settings. Record measurements in
 python3 fake_gps_node.py
 ```
 
-It logs `fake GPS (car) on /fake_gps/fix at 2.0 Hz from (23.588, 58.3829)`. **Terminal 2**:
+It logs `fake GPS (car) on /fake_gps/fix at 2.0 Hz from (35.825, 10.595)`. **Terminal 2**:
 
 ```bash
 ros2 param describe /fake_gps speed_mps
@@ -91,8 +91,8 @@ python3 fake_gps_node.py --ros-args -p vehicle:=boat -p speed_mps:=20.0
 > [!TASK]
 > **TODO 3** — complete `my_gps.yaml`:
 > - `/**` (first!): `rate_hz` **1.0** (like NAVERA's real receiver), `sigma_m` **3.0**;
-> - `/car/fake_gps`: vehicle `"car"`, start **23.5880 / 58.3829** (Muscat), speed **12.0**, heading **90.0**;
-> - `/boat/fake_gps`: vehicle `"boat"`, start **24.3500 / 56.7500** (off Sohar), speed **5.0**, heading **45.0**.
+> - `/car/fake_gps`: vehicle `"car"`, start **35.8250 / 10.5950** (Sousse), speed **12.0**, heading **90.0**;
+> - `/boat/fake_gps`: vehicle `"boat"`, start **35.7800 / 10.8600** (off Monastir), speed **5.0**, heading **45.0**.
 
 Start the boat: a namespace (`-r __ns:=/boat`), a remapping that makes the absolute topic relative
 (`-r /fake_gps/fix:=fix`) and the file:
@@ -101,7 +101,7 @@ Start the boat: a namespace (`-r __ns:=/boat`), a remapping that makes the absol
 python3 fake_gps_node.py --ros-args -r __ns:=/boat -r /fake_gps/fix:=fix --params-file my_gps.yaml
 ```
 
-It logs `fake GPS (boat) on /boat/fix at 1.0 Hz from (24.35, 56.75)`. In Terminal 2:
+It logs `fake GPS (boat) on /boat/fix at 1.0 Hz from (35.78, 10.86)`. In Terminal 2:
 
 ```bash
 ros2 topic list
@@ -197,7 +197,7 @@ message.)
 ros2 topic echo --once /navera/position --field latitude
 ```
 
-About 23.588: the car in Muscat. Stop the launch, then try the two arguments:
+About 35.825: the car in Sousse. Stop the launch, then try the two arguments:
 
 ```bash
 ros2 launch ./my_navera.launch.py with_boat:=false
@@ -209,8 +209,8 @@ ros2 launch ./my_navera.launch.py with_boat:=false
 ros2 launch ./my_navera.launch.py gps_source:=boat
 ```
 
-`ros2 topic echo --once /navera/position --field latitude` now says about 24.35: NAVERA follows the
-boat off Sohar. Stop the launch.
+`ros2 topic echo --once /navera/position --field latitude` now says about 35.78: NAVERA follows the
+boat off Monastir. Stop the launch.
 
 ## Step 7 — NAVERA's order trap
 
@@ -299,5 +299,5 @@ YAML. About two minutes.
 - **Dynamic typing.** Replace the `speed_mps` declaration by NAVERA's `declare_float`
   (`from navera_common.params import declare_float`) and check that `-p speed_mps:=12` (an integer)
   is accepted. What do you lose? (Hint: can a descriptor with dynamic typing still have a range?)
-- **A third vehicle.** Add a drone over Jebel Akhdar (about 23.07 N, 57.66 E) with one more launch
+- **A third vehicle.** Add a drone over the olive groves west of Sousse (about 35.80 N, 10.45 E) with one more launch
   argument `with_drone`, and make `gps_source:=drone` work. How many lines did you change?

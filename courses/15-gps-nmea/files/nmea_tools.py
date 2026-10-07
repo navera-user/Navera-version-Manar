@@ -30,7 +30,7 @@ def is_valid(line):
 
 
 # TODO 3: NMEA "degrees and minutes" text -> decimal degrees (float).
-#   Course: section 4, GGA (the ddmm.mmmmm format). Example: "2425.14618", "N" -> 24.419103.
+#   Course: section 4, GGA (the ddmm.mmmmm format). Example: "3546.15064", "N" -> 35.769177.
 #   S and W give negative degrees. Return None when: the value is unreadable (use to_float),
 #   the hemisphere is not one of N, S, E, W, or the minutes are not in [0, 60).
 def dm_to_deg(value, hemisphere):
@@ -132,8 +132,8 @@ if __name__ == "__main__":
     good = "$" + example + "*47"
     print("TODO 2  is_valid(good):", is_valid(good), "  is_valid(changed digit):",
           is_valid(good.replace("545", "546")), "(should be True False)")
-    print("TODO 3  dm_to_deg('2425.14618', 'N') =", dm_to_deg("2425.14618", "N"),
-          "(should be 24.419103)   dm_to_deg('2472.1', 'N') =", dm_to_deg("2472.1", "N"), "(None)")
+    print("TODO 3  dm_to_deg('3546.15064', 'N') =", dm_to_deg("3546.15064", "N"),
+          "(should be 35.769177)   dm_to_deg('3572.1', 'N') =", dm_to_deg("3572.1", "N"), "(None)")
     print("TODO 4  parse_gga:", parse_gga("$GNGGA,141621.00,3544.04006,N,01034.55091,E,1,12,0.72,"
                                           "95.3,M,32.1,M,,*70"))
     print("TODO 5  parse_gsa:", parse_gsa("$GPGSA,A,3,02,05,09,13,15,20,23,24,30,,,,1.53,0.85,1.27*02"))

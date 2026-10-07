@@ -7,7 +7,7 @@
 > - **Straightening** turns the fisheye picture into the picture of a perfect pinhole camera; NAVERA keeps a 111° view.
 > - In the lab you write the fisheye model by hand, calibrate the real Insta360 lens from 36 views, and compare with NAVERA's tool.
 
-A survey drone flies along the coast road from Sohar to Shinas at 150 m. The GPS signal is jammed,
+A survey drone flies along a straight coast road at 150 m. The GPS signal is jammed,
 and NAVERA must find the drone's position by matching the camera picture with a satellite map. The
 road is perfectly straight on the map. In the camera picture it is **curved**, like a reflection in
 a spoon. A curved road will never match a straight one.
@@ -24,7 +24,7 @@ measurement is called **calibration**. In this lesson you will:
 
 Everything uses the **real** calibration of NAVERA's real camera, made on the bench on
 6 October 2026. (NAVERA is developed in Sousse, Tunisia: its test map and recordings come from
-there; the Omani places in this course are examples.)
+there; the other places in this course are examples from around the world.)
 
 ## 1. From the ideal pinhole to a real lens
 
@@ -359,7 +359,7 @@ straightened picture covers 2 · 150 · tan(55.5°) = 436 m across, i.e. **0.23 
 
 ## 🐦 How birds do it
 
-Look at a rock dove — the feral pigeon of every Muscat corniche. Its eyes are on the **sides** of
+Look at a rock dove — the feral pigeon of every city square, from London to Cape Town. Its eyes are on the **sides** of
 the head. Together they cover more than 300° around the bird, with only a narrow zone in front seen
 by both eyes and a small blind sector behind. That is a bird with two built-in fisheye lenses:
 perfect to spot a falcon coming from almost any direction.
@@ -368,13 +368,13 @@ The falcons themselves made a cleverer choice, the same one as NAVERA. A falcon'
 foveae** — small regions packed with photoreceptors. The deep central fovea looks sideways and gives
 some of the sharpest vision in the animal world for distant targets; a second, shallower fovea looks forward, where
 the two eyes overlap, for judging distance during the final attack. The rest of the retina still
-sees a wide field, but at lower resolution. Owls, like the Pharaoh eagle-owl of Oman's rocky wadis,
+sees a wide field, but at lower resolution. Owls, like the Eurasian eagle-owl of rocky cliffs,
 went further towards "narrow and precise": their tube-shaped eyes face forward, the visual field is
 about 200° with roughly 50° seen by both eyes, and the eyes barely move — so the owl turns its whole
 head, up to about 270°.
 
-Navi the swallow sits in between: a wide view to stay safe while she hunts insects over the Batinah
-farms, plus a sharp zone to aim. Nature has no single best lens: **wide** to see everything, or
+Navi the swallow sits in between: a wide view to stay safe while she hunts insects over the
+fields, plus a sharp zone to aim. Nature has no single best lens: **wide** to see everything, or
 **sharp** to measure well. NAVERA makes the falcon's trade-off: the Insta360 sees 166°, but for
 measuring, NAVERA keeps the central 111° at full resolution.
 

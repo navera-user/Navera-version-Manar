@@ -1,6 +1,6 @@
 """Feed an NMEA log to NAVERA's REAL GPS driver, as if a GPS receiver were plugged in.
 
-    python3 play_to_gps_node.py                (the Sohar drive, about 40 seconds)
+    python3 play_to_gps_node.py                (the Sousse drive, about 40 seconds)
     python3 play_to_gps_node.py other.nmea
 
 How it works: a "pseudo-terminal" is a fake serial port. We start NAVERA's gps_node
@@ -25,8 +25,8 @@ import rclpy
 from navera_msgs.msg import PositionEstimate
 from rclpy.executors import SingleThreadedExecutor
 
-PATH = sys.argv[1] if len(sys.argv) > 1 else "/data/academy/15-gps-nmea/sohar_drive.nmea"
-PAUSE_S = 0.004                     # between two lines: the 1053 s drive plays in ~25 s
+PATH = sys.argv[1] if len(sys.argv) > 1 else "/data/academy/15-gps-nmea/sousse_drive.nmea"
+PAUSE_S = 0.004                     # between two lines: the 1069 s drive plays in ~25 s
 
 
 def haversine_m(lat1, lon1, lat2, lon2):

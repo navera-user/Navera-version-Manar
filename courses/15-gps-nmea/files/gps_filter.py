@@ -19,7 +19,7 @@ V_MAX_MPS = 60.0                      # jump gate of this lab (NOT in gps_node):
 #   Valid fix -> (True, ""). A missing quality counts as 0, like in gps_node.
 #   Note: gps_node judges the position AND the quality. A GGA with quality 1 but no position
 #   is not a fix, and gps_node's reason is then "no GPS fix (qual=1)". Your parser gives
-#   lat = None for the 62-minute line, so you will see this strange-looking text. It is correct.
+#   lat = None for the 74-minute line, so you will see this strange-looking text. It is correct.
 def navera_decision(gga):
     return None  # TODO 9: replace this line with your code
 
@@ -49,5 +49,5 @@ if __name__ == "__main__":
         decision = navera_decision(g)
         cov = navera_covariance(g["hdop"]) if decision and decision[0] else "UNKNOWN (no fix: no covariance)"
         print("TODO 9 ", decision, "  TODO 10", cov)
-    print("TODO 9  quality 6:", navera_decision({"quality": 6, "lat": 24.4, "lon": 56.6, "hdop": None}))
-    print("TODO 11 jump 830 m in 1 s ok?", jump_ok((24.40, 56.70), (24.4075, 56.70), 1.0), "(should be False)")
+    print("TODO 9  quality 6:", navera_decision({"quality": 6, "lat": 35.8, "lon": 10.7, "hdop": None}))
+    print("TODO 11 jump 830 m in 1 s ok?", jump_ok((35.80, 10.70), (35.8075, 10.70), 1.0), "(should be False)")

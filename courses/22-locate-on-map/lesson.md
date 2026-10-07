@@ -12,7 +12,7 @@
 > - In the lab you build the full chain, measure the errors of a wrong height and a tilted camera,
 >   and test NAVERA's `LocalMatcher` on the same 13 photos.
 
-A survey drone flies 250 m above the coastal road between Muscat and Sohar. Near Barka its GPS
+A survey drone flies 250 m above a coastal road between two port cities. Halfway, its GPS
 receiver starts to report nonsense: somebody is jamming the signal. The drone still has a camera
 that looks down, an IMU that measures its attitude, a barometer, and — on its NAVERA box — a
 satellite map of the area. Its last good GPS fix is 20 seconds old. The question of this lesson is
@@ -27,8 +27,8 @@ and shows how to **evaluate** such a system honestly.
 
 > [!NOTE]
 > NAVERA's test map covers **Sousse, Tunisia**, where NAVERA is developed. All the photos and map
-> tiles of the lab come from that map. The examples in the text use Omani places; the formulas are
-> the same everywhere (only the map changes).
+> tiles of the lab come from that map. The examples in the text use places from around the world; the
+> formulas are the same everywhere (only the map changes).
 
 ## 1. The problem, stated precisely
 
@@ -73,7 +73,7 @@ s         = 0.4796 / 0.9684                            = 0.495
 ```
 
 The photo is resized to 49.5 % of its size: then a house 10 map pixels wide is also about 10 pixels
-wide in the photo. Over Muscat (lat 23.6°) the same zoom gives 1.094 m/px, because `cos(lat)` is
+wide in the photo. Over Singapore (lat 1.35°) the same zoom gives 1.194 m/px, because `cos(lat)` is
 larger near the equator: Web Mercator pixels cover more ground there.
 
 Why resize at all, if SIFT is scale invariant? Two reasons. First, descriptors match best when both
@@ -250,9 +250,9 @@ height: `h_t = h_a · s_fit`. NAVERA uses this: `locate_any_height()` tries a la
 when none is known, and the height filter in `vision_nav.py` is updated with `h · s_fit`.
 
 > [!WARNING]
-> Over the Hajar mountains this is the classic mistake. A drone at 2 300 m above sea level over the
-> Saiq plateau of Jebel Akhdar (about 2 000 m high) is only about 300 m above the ground. If the
-> code used the altitude above the sea, it would expect a footprint 7.7 times too large and every
+> Over high ground this is the classic mistake. A drone at 4 100 m above sea level over the
+> Altiplano near La Paz, Bolivia (about 3 800 m high) is only about 300 m above the ground. If the
+> code used the altitude above the sea, it would expect a footprint 13.7 times too large and every
 > match would fail the scale gate. NAVERA needs the **height above the ground**.
 
 **c) Latency → along-track offset.** A photo processed `Δt` seconds after its exposure describes
@@ -268,12 +268,12 @@ measured velocity (from `docs/VALIDATION_STATUS.md`: a photo processed 1.5 s aft
 shifted by a few metres. `vision_nav.py` learns this bias while GPS is still good (GPS minus vision,
 sampled over several headings) and removes it afterwards, capped at 30 m.
 
-**Worked budget — a survey drone 300 m above the date gardens of Nizwa** (lat 22.93°, `GSD_map` =
-1.10 m at z17): tilt σ 0.3° → 1.6 m; matcher 8 px × 1.10 m → 8.8 m; residual lag 0.1 s × 20 m/s →
+**Worked budget — a survey drone 300 m above the rice fields near Bangkok** (lat 13.75°, `GSD_map` =
+1.16 m at z17): tilt σ 0.3° → 1.6 m; matcher 8 px × 1.16 m → 9.3 m; residual lag 0.1 s × 20 m/s →
 2.0 m; map registration → 5.0 m.
 
 ```
-σ_total = sqrt(1.6² + 8.8² + 2.0² + 5.0²) = sqrt(2.5 + 77.4 + 4.0 + 25.0) = 10.4 m
+σ_total = sqrt(1.6² + 9.3² + 2.0² + 5.0²) = sqrt(2.5 + 86.1 + 4.0 + 25.0) = 10.8 m
 ```
 
 The matcher term dominates: improving it (more inliers, a learned matcher) pays more than a better
@@ -345,9 +345,9 @@ photo on it.
 GPS tracking of homing pigeons near Oxford showed that, in familiar country, many birds follow
 roads, rivers and field edges for long stretches instead of flying in a straight line: long,
 contrasting lines are easy to recognise from above. Many migrating birds also follow **leading
-lines** — coastlines and mountain ridges. Oman lies on a flyway between Asia and Africa, and its
-coast and the line of the Hajar mountains are such features. Navi the swallow does the same as
-NAVERA: she does not scan all of Arabia to recognise the place below her — she looks **around
+lines** — coastlines and mountain ridges. Birds flying between Europe and Africa follow the
+Atlantic coast of France, Spain and Morocco, or the line of the Alps and the Pyrenees. Navi the
+swallow does the same as NAVERA: she does not scan a whole continent to recognise the place below her — she looks **around
 where she believes she is**, in country she knows. That is the prior.
 
 ## In NAVERA
@@ -402,9 +402,10 @@ Differences with your lab pipeline:
 
 ## Check what you learned
 
-<details><summary>1. A 1 000-pixel-wide photo is taken from 100 m with a 90° lens over Salalah (lat 17.0°). What is its GSD, and by how much must it be resized to match zoom 17?</summary>
-GSD = 2 × 100 × tan(45°) / 1000 = 0.2 m/px. GSD_map = 40 075 016.7 × cos(17°) / (2^17 × 256) =
-1.142 m/px. Resize factor s = 0.2 / 1.142 = 0.175: the photo is shrunk to 17.5 % of its size.
+<details><summary>1. A 1 000-pixel-wide photo is taken from 100 m with a 90° lens over Reykjavik (lat 64.15°). What is its GSD, and by how much must it be resized to match zoom 17?</summary>
+GSD = 2 × 100 × tan(45°) / 1000 = 0.2 m/px. GSD_map = 40 075 016.7 × cos(64.15°) / (2^17 × 256) =
+0.521 m/px. Resize factor s = 0.2 / 0.521 = 0.384: the photo is shrunk to 38.4 % of its size (near
+the equator the same photo would be shrunk much more, because map pixels are larger there).
 </details>
 
 <details><summary>2. The prior has σ = 120 m. What search radius does NAVERA use, and how many times larger is the patch area than with σ = 50 m (margin 190 m)?</summary>

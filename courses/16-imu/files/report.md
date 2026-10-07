@@ -21,11 +21,11 @@ tau = 100 s and 300 s, and why a very small tau and a very large tau are both ba
 TODO: the declination at the place of the log, the RMS error of your true heading, the RMS
 error without tilt compensation, and one sentence on why tilt compensation matters here.
 
-## 4. Declination in Oman
+## 4. Declination around the world
 
-TODO: a small table with the declination (October 2026) in Muscat, Sohar, Nizwa, Salalah and
-Masirah, and the side error after 10 km flown from Muscat if the declination of Muscat is
-ignored (metres).
+TODO: a small table with the declination (October 2026) in London, Reykjavik, Cape Town,
+Sydney and Singapore, and the side error after 10 km flown from London if the declination of
+London is ignored (metres).
 
 ## 5. Comparison with NAVERA
 

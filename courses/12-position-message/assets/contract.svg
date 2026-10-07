@@ -5,7 +5,7 @@
   <rect x="16" y="40" width="320" height="126" rx="10" fill="#ffffff" stroke="#0b6e8a" stroke-width="2"/>
   <text x="28" y="60" font-weight="bold" fill="#0b6e8a">WHERE?</text>
   <g font-family="monospace" font-size="11" fill="#1d2733">
-    <text x="28" y="82">latitude, longitude 23.5880, 58.3829</text>
+    <text x="28" y="82">latitude, longitude 35.8277, 10.6388</text>
     <text xml:space="preserve" x="28" y="100">altitude            nan  (unknown)</text>
     <text x="28" y="118">position_covariance [83.25, 81.84, …]</text>
     <text x="28" y="136">position_covariance_type 1 (APPROXIMATED)</text>

@@ -12,8 +12,8 @@
 > - In the lab you build a GPS guard, measure its ROC curve, and attack NAVERA's real arbiter with
 >   a scripted fake GPS.
 
-A survey drone flies along the Batinah coast, north of the port of Sohar, at 15 m/s. At t = 20 s its
-GPS suddenly reports a position **2 km north, over the Gulf of Oman**. Nothing else changed: the
+A survey drone flies east along a straight coastline, with the sea to the north, at 15 m/s. At t = 20 s its
+GPS suddenly reports a position **2 km north, over the open sea**. Nothing else changed: the
 motors, the wind, the camera picture of the coast below. If the autopilot believes the GPS, it will
 "correct" its course and fly 2 km the wrong way, sure that it is going home.
 
@@ -33,7 +33,7 @@ probabilities, and learn their limits honestly.
 
 > [!NOTE]
 > NAVERA's test data and its simulator area cover **Sousse, Tunisia**, where NAVERA is developed. The
-> lab's scripted attacks use Sousse coordinates; the examples in this text use Omani places.
+> lab's scripted attacks use Sousse coordinates; the examples in this text use generic places.
 
 ## 1. Threat model: jamming vs spoofing
 
@@ -108,7 +108,7 @@ This is not a statistical threshold but a **bound**: under H0 a fix can only fai
 error exceeds m, so P_FA ≈ 0 when m is generous (NAVERA: m = `gps_jump_margin_m` = 50 m). v_max is
 set **per vehicle** (`NAVERA_MAX_SPEED_KMH`): a boat, a drone and an aircraft differ by ten times.
 
-**Worked example (drone near Sohar).** v_max = 30 m/s, m = 50 m, one fix per second. A good fix
+**Worked example (coastal survey drone).** v_max = 30 m/s, m = 50 m, one fix per second. A good fix
 1 s after the last one: R = 30 · 1 + 50 = 80 m, and the drone moved 15 m → accepted. The spoofed fix
 2 km north: d ≈ 2 000 m > 80 m → refused, with the reason
 `implausible jump 2002 m in 1.0 s (max 80 m at 30 m/s) — possible spoofing`.
@@ -234,8 +234,8 @@ From ARCHITECTURE.md: *"All three protections need an independent source with a 
 vision of unknown accuracy only the kinematic gate applies: a sudden jump is caught, a patient or
 gradual spoofer is not."*
 
-- **No landmark, no test.** Over the open sea east of Masirah, or over the uniform dunes of the Wahiba
-  Sands, vision cannot match the map: there is no independent source, only the gate.
+- **No landmark, no test.** Over the open sea far from the coast, or over the uniform dunes of a sand
+  desert such as the Sahara, vision cannot match the map: there is no independent source, only the gate.
 - **Unknown or dishonest σ.** If vision does not state its σ, a 100 m disagreement proves nothing. If
   it states a σ that is too small, the test refuses a **good** GPS (P_FA explodes). Day vision states
   σ 30 m today — **not yet measured with NAVERA's camera** (VALIDATION_STATUS.md, limitation 7).
@@ -250,8 +250,8 @@ gradual spoofer is not."*
 
 Birds can be fooled too, and the ways look a lot like jamming and spoofing.
 
-**False light (spoofing).** Many songbirds migrate at night — Oman lies on a migration route between
-Eurasia and Africa, and many of the small birds that cross it fly in the dark. Bright artificial
+**False light (spoofing).** Many songbirds migrate at night — on the routes between Europe and Africa,
+most of the small birds that cross the Mediterranean fly in the dark. Bright artificial
 lights (lit towers, buildings, offshore platforms) are well documented to **attract and trap** night
 migrants: birds circle the lights for hours, lose energy, or hit lit glass. To the bird the light is a
 false signal much stronger than the faint stars — like a spoofer's signal above the real satellites.
@@ -263,7 +263,7 @@ correctly again: a natural sensor jammed, and restored.
 
 **Cross-checking.** Experiments with conflicting cues (a turned magnetic field at sunset, as in the
 thrush study of lesson 25) show that birds compare their compasses and recalibrate one against
-another. A swallow like Navi, crossing the Hajar mountains at dawn, has the sun, the magnetic field
+another. A swallow like Navi, crossing the Pyrenees at dawn, has the sun, the magnetic field
 and landmarks: one fooled sense is dangerous; three senses that must agree are much harder to fool.
 That is the residual test.
 
@@ -355,7 +355,7 @@ misalignment), one bad error produces several "beyond 3σ" fixes in a row: the s
 with probability close to p, not p^n.
 </details>
 
-<details><summary>6. Over the sea east of Masirah, which protection is left, and which attacks get through?</summary>
+<details><summary>6. Over the open sea far from the coast, which protection is left, and which attacks get through?</summary>
 Vision has no landmark, so there is no independent source: only the kinematic gate. A sudden jump is caught;
 a slow drift, a patient spoofer and jam-then-spoof are not. This is documented (VALIDATION_STATUS.md, limitation 7).
 </details>

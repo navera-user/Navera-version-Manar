@@ -5,12 +5,12 @@
 >   **terminal**.
 > - You learn the file system, permissions, processes and signals, and environment variables.
 > - You learn **pipes** (`|`), text tools such as `grep`, and short **bash** scripts.
-> - In the lab you study two synthetic NAVERA flight logs (Sohar and Nizwa) and write a script
->   that summarises any NAVERA log.
+> - In the lab you study two synthetic NAVERA flight logs (Sousse and a desert range) and write a
+>   script that summarises any NAVERA log.
 > - NAVERA's own test script uses the same pipes, and the same signals: SIGTERM first, then
 >   SIGKILL.
 
-A survey drone lands on a beach north of Sohar port after a training flight. Inside it, a NAVERA box:
+A survey drone lands on a beach north of Sousse port after a training flight. Inside it, a NAVERA box:
 no screen, no keyboard, no mouse. The test engineer has three questions. *Did the GPS drop out? Did
 the arbiter switch to day vision, and for how long? Did any node report an error?* She connects her
 laptop to the box over the network, opens a **terminal**, and types four short commands joined by
@@ -19,9 +19,9 @@ laptop to the box over the network, opens a **terminal**, and types four short c
 Every robot computer works like this. The computer is inside a drone, a boat or a rover, or in a
 server room. It runs **Linux**, and engineers talk to it in text. This lesson gives you the working
 knowledge of Linux that a robotics engineer uses every day: the file system, permissions, processes
-and signals, environment variables, streams and pipes, the text tools, and small **bash** scripts. In
-the lab you will use them on two (synthetic) NAVERA flight logs from Sohar and Nizwa, and you will
-write a log-report script that works on any NAVERA log.
+and signals, environment variables, streams and pipes, the text tools, and small **bash** scripts.
+In the lab you will use them on two (synthetic) NAVERA flight logs from Sousse and a desert test
+range, and you will write a log-report script that works on any NAVERA log.
 
 > [!NOTE]
 > You do not have to memorise every option. Professionals look things up all the time:
@@ -40,7 +40,7 @@ This means: user `student`, on the computer (host) `navera`, in the folder `~/le
 and `$` = "ready". A command line is a list of words separated by spaces:
 
 ```
-grep  -c  "state NO_FIX"  mission/logs/sohar_2026-09-21.log
+grep  -c  "state NO_FIX"  mission/logs/sousse_2026-09-21.log
 │     │   │               └── argument 2: a file
 │     │   └── argument 1: the pattern (quotes keep the two words together)
 │     └── option: "count the matching lines" (options start with -)
@@ -100,8 +100,8 @@ A **path** names a file by the folders to cross: `/home/student/navera/navera_ms
 
 `*` (any characters), `?` (exactly one character) and `[12]` (one of the listed characters) are
 **wildcards**. The **shell** replaces the pattern with the matching names **before** the command
-runs: `mv inbox/*.log mission/logs/` becomes `mv inbox/nizwa_2026-09-22.log
-inbox/sohar_2026-09-21.log mission/logs/`. The command itself never sees the `*`. This is also why
+runs: `mv inbox/*.log mission/logs/` becomes `mv inbox/range_2026-09-22.log
+inbox/sousse_2026-09-21.log mission/logs/`. The command itself never sees the `*`. This is also why
 you write `find . -name "*.py"` **with quotes**: you want `find` to receive the `*` and apply it in
 every sub-folder, not the shell to expand it in the current folder only.
 
@@ -191,7 +191,7 @@ When a process ends, it returns an **exit code**: `0` = success, anything else =
 keeps the code of the last command in `$?`:
 
 ```
-$ grep -q "state NO_FIX" mission/logs/sohar_2026-09-21.log ; echo $?
+$ grep -q "state NO_FIX" mission/logs/sousse_2026-09-21.log ; echo $?
 0
 ```
 
@@ -271,15 +271,16 @@ Logs and settings are text, so a handful of small tools answers most questions.
 | `wc -l` | `wc -l < f.log` | count lines (with `<`, only the number is printed, not the file name) |
 | `find` | `find ~/navera -name "*.py" -type f` | files by name, type, size, date |
 | `xargs` | `find … \| xargs wc -l` | turn input lines into **arguments** of a command |
-| `date` | `date -d @1789958724` | turn a Unix time (seconds since 1970-01-01 UTC) into a date |
+| `date` | `date -d @1789976724` | turn a Unix time (seconds since 1970-01-01 UTC) into a date |
 
 `grep` patterns are **regular expressions**: `^` means "start of the line", `$` "end of the line",
 `.` "any character". Square brackets have a special meaning (a set of characters), so to match a
 real `[` you write `\[`. Hence `"^\[WARN\]"`: lines that **start** with `[WARN]`. Without `^`, a line
 like `[INFO] … previous WARN cleared` would also be counted.
 
-**Time zones.** Logs store time in **UTC**; Oman is **UTC+4** all year (no daylight saving).
-`TZ=Asia/Muscat date -d @1789958724 +%T` prints the Oman wall-clock time `06:45:24`.
+**Time zones.** Logs store time in **UTC**; Tunisia is **UTC+1** all year (no daylight saving).
+`TZ=Africa/Tunis date -d @1789976724 +%T` prints the Tunisian wall-clock time `08:45:24`.
+(Other zones: `TZ=Asia/Singapore` is UTC+8, `TZ=America/New_York` changes with daylight saving.)
 
 **`xargs`** solves a common problem: `wc -l` wants file names as arguments, but `find` prints them on
 stdout. `find ~/navera/navera_estimator -name "*.py" | xargs wc -l` builds the command
@@ -290,7 +291,7 @@ stdout. `find ~/navera/navera_estimator -name "*.py" | xargs wc -l` builds the c
 NAVERA's nodes write their messages in the ROS 2 console format:
 
 ```
-[WARN] [1789958724.123456789] [estimator_node]: state NO_FIX: no source usable
+[WARN] [1789976724.123456789] [estimator_node]: state NO_FIX: no source usable
  │      │                      │                 └── the message
  │      │                      └── the node that wrote it
  │      └── time: Unix seconds . nanoseconds (UTC)
@@ -300,10 +301,10 @@ NAVERA's nodes write their messages in the ROS 2 console format:
 Split on spaces, the severity is field 1, the time field 2, the node field 3. The arbiter
 (`estimator_node`) reports its state — **FIX**, **DEGRADED** or **NO_FIX** — and the active source.
 
-**Worked example.** "Which node complained most during the Sohar flight?"
+**Worked example.** "Which node complained most during the Sousse flight?"
 
 ```
-grep "^\[WARN\]" sohar.log | cut -d' ' -f3 | sort | uniq -c | sort -rn | head -n 1
+grep "^\[WARN\]" sousse.log | cut -d' ' -f3 | sort | uniq -c | sort -rn | head -n 1
 ```
 
 grep keeps the WARN lines (84), cut keeps `[day_subscriber]:` etc., sort groups equal names, uniq -c
@@ -358,21 +359,21 @@ Rules that avoid 90 % of script bugs:
   nothing**, inside `$( )` or not.
 - Errors and usage messages go to **stderr** (`>&2`) and the script ends with a **non-zero exit
   code**. Normal results go to stdout. Then other programs can pipe your output safely.
-- `basename path` prints the last part of a path: `basename mission/logs/sohar_2026-09-21.log`
-  → `sohar_2026-09-21.log`.
+- `basename path` prints the last part of a path: `basename mission/logs/sousse_2026-09-21.log`
+  → `sousse_2026-09-21.log`.
 
 ## 🐦 How birds do it
 
-You cannot ask a falcon over the Gulf of Oman where it went. Ornithologists do the next best thing:
+You cannot ask a falcon over the Mediterranean where it went. Ornithologists do the next best thing:
 they fit a tiny solar-powered tag that records GPS positions and sends them by satellite or by the
-mobile-phone network. Tagged birds include **sooty falcons**, which breed on rocky islands off the Omani
-coast — the Daymaniyat Islands among them — and spend the northern winter in Madagascar; and
-**steppe eagles**, which breed in the steppes of Central Asia, many of which spend the winter in
-Dhofar, around Salalah. The tags showed routes that nobody could have followed with binoculars: long
+mobile-phone network. Tagged birds include **Eleonora's falcons**, which breed on rocky islands of the
+Mediterranean — in Greece, Sardinia and off the coast of Morocco — and spend the northern winter in
+Madagascar; and **steppe eagles**, which breed in the steppes of Central Asia, many of which spend
+the winter in East Africa. The tags showed routes that nobody could have followed with binoculars: long
 journeys over sea and desert, with stopovers.
 
 What reaches the scientist is **text**: one line per position, like
-`2025-10-14T06:30:00Z,17.02,54.09,eagle_07` (time in UTC, latitude, longitude, bird). A season of
+`2025-10-14T06:30:00Z,9.03,38.74,eagle_07` (time in UTC, latitude, longitude, bird). A season of
 tracking is tens of thousands of such lines. The first tools are the ones of this lesson:
 `grep eagle_07 tracks.csv` keeps one bird, `cut -d, -f1` keeps the times, `| wc -l` counts the fixes,
 `> eagle_07.csv` saves them. Like the NAVERA box, the tag is far away and has no screen; the only way

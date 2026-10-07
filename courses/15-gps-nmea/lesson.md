@@ -6,12 +6,12 @@
 > - **DOP** measures the satellite geometry: you will compute it from a 4-column matrix G.
 > - Error in metres ≈ DOP × **UERE** (the error of one range measurement).
 > - In the lab you build a robust parser, recompute the DOPs, estimate the UERE of a synthetic drive
->   in Sohar, and test NAVERA's real GPS driver on a damaged log.
+>   near Sousse, and test NAVERA's real GPS driver on a damaged log.
 
-A survey drone flies along the Batinah coast, from Sohar Port towards Sohar Fort. Its GPS receiver
+A survey drone flies along a coast, from a port towards an old town. Its GPS receiver
 sends a short line of text to the flight computer every second. One second, a motor starts,
-one bit flips on the cable, and the latitude in that line changes from `2426` to `2462`. Read
-naively, the drone has jumped **67 km** north in one second. Another second, the drone passes
+one bit flips on the cable, and the latitude in that line changes from `3547` to `3574`. Read
+naively, the drone has jumped **50 km** north in one second. Another second, the drone passes
 under a long bridge: the receiver loses the satellites and starts to *guess* positions. Later, in
 the old town, the buildings hide most of the sky: the receiver still gives a "fix", but it can be
 wrong by tens of metres.
@@ -48,7 +48,8 @@ receiver report "no fix" when buildings leave it only 2 or 3 satellites.
 
 The receiver gives its time in **UTC** (world time). GPS has its own time scale, **GPS time**, which
 does not have leap seconds: since January 2017, GPS time is **18 s ahead** of UTC. The receiver
-corrects this for you. Oman uses **UTC+4** all year, so `051200` in a sentence means 09:12 in Muscat.
+corrects this for you. Tunisia uses **UTC+1** all year, so `051200` in a sentence means 06:12 in Sousse; in Singapore
+(UTC+8) it would be 13:12.
 
 ## 2. The serial link and the NMEA 0183 grammar
 
@@ -57,8 +58,8 @@ The receiver is connected to the Jetson by a **serial port** (UART), `/dev/ttyTH
 8 data bits, 1 stop bit), so the link carries at most **960 characters per second**.
 
 > [!NOTE]
-> **Worked example — data budget.** The lab log has 433 865 bytes for 1053 seconds: 412 bytes/s,
-> that is 43 % of a 9600-baud link. At 5 fixes per second the receiver would need 2060 bytes/s,
+> **Worked example — data budget.** The lab log has 439 301 bytes for 1069 seconds: 411 bytes/s,
+> that is 43 % of a 9600-baud link. At 5 fixes per second the receiver would need 2055 bytes/s,
 > twice what the link can carry: lines would be lost. This is why receivers are configured to send
 > only the sentences you need, or to use a higher baud rate.
 
@@ -108,11 +109,11 @@ What can this 8-bit checksum detect? Think of it as the XOR of all the bytes:
 - **Two changed characters** are missed if their two changes cancel (the same bit pattern changed
   in both). For random damage, this happens with probability about **1/256**.
 - **Two swapped characters are never detected.** XOR is commutative: `a ^ b == b ^ a`. A latitude
-  `2426.56` written `2462.56` has exactly the same checksum. The lab log contains two such lines.
+  `3547.17` written `3574.17` has exactly the same checksum. The lab log contains two such lines.
 
 So a correct checksum means "probably not damaged", not "correct". A robust receiver chain adds
 **field checks** (for example, minutes must be below 60) and **plausibility checks** (the vehicle
-cannot move 67 km in one second).
+cannot move 50 km in one second).
 
 ## 4. The sentences a navigation computer needs
 
@@ -122,7 +123,8 @@ cannot move 67 km in one second).
 
 The line in the figure was read from NAVERA's own receiver (a u-blox NEO-M8N, `GN` talker) near
 Sousse, Tunisia, where NAVERA is developed. **NAVERA's real recorded data and its test map cover
-Sousse**; the lab log of this lesson is a synthetic drive in Oman.
+Sousse**; the lab log of this lesson is a synthetic drive in the same area, from the port of Sousse to
+Monastir.
 
 | # | Field | Example | Meaning |
 |---|---|---|---|
@@ -140,13 +142,13 @@ Sousse**; the lab log of this lesson is a synthetic drive in Oman.
 together. The last two digits before the decimal point are the minutes:
 
 ```
-2429.39522,N   ->  24 + 29.39522/60  =  24.489920 deg  (near Sohar Port)
-05637.20466,E  ->  56 + 37.20466/60  =  56.620078 deg
+3549.61531,N   ->  35 + 49.61531/60  =  35.826922 deg  (near the port of Sousse)
+01038.52535,E  ->  10 + 38.52535/60  =  10.642089 deg
 degrees = int(v // 100);  minutes = v - 100*degrees;  S and W are negative
 ```
 
-Reading `2429.39522` as `24.2939522` is wrong by 0.196°, about 22 km. A robust parser also
-rejects **minutes ≥ 60**: `2462.56214` is not a valid angle, even with a correct checksum.
+Reading `3549.61531` as `35.4961531` is wrong by 0.331°, about 37 km. A robust parser also
+rejects **minutes ≥ 60**: `3574.17098` is not a valid angle, even with a correct checksum.
 
 **Fix quality** (field 6):
 
@@ -173,19 +175,22 @@ and the **geoid separation** *N* in field 11:
 ```
 h_ellipsoid = H_msl + N
 Sousse (real receiver):     95.3 + 32.1  = 127.4 m
-lab log (synthetic, Sohar):  8.8 + (-30.0) = -21.2 m
+lab log (synthetic, Sousse):  8.8 + 32.0  =  40.8 m
 ```
 
-A negative ellipsoidal height is normal where the geoid is below the ellipsoid: the car is not
-under the sea. The value −30.0 m is the one written by the synthetic receiver of the lab.
+Around Sousse the geoid is about 32 m above the ellipsoid, so a car near sea level has an
+ellipsoidal height of about +40 m. In other places the geoid is below the ellipsoid (its lowest
+point, about −106 m, is in the Indian Ocean south of India): there a **negative** ellipsoidal
+height is normal — the vehicle is not under the sea. The value 32.0 m is the one written by the
+synthetic receiver of the lab.
 
 ### RMC — speed, course and date
 
-`$GPRMC,051217.00,A,2429.39522,N,05637.20466,E,11.88,137.7,121026,,,A*59`
+`$GPRMC,051217.00,A,3549.61531,N,01038.52535,E,11.88,136.6,121026,,,A*5F`
 
 Fields: time, **status** (`A` active, `V` void), position, **speed over ground in knots**
 (1 kn = 0.514444 m/s), **course over ground** (degrees clockwise from **true** north; empty when
-not moving), **date** (ddmmyy). Here 11.88 kn = 6.11 m/s towards 137.7° (south-east).
+not moving), **date** (ddmmyy). Here 11.88 kn = 6.11 m/s towards 136.6° (south-east).
 
 ### GSA — which satellites, and the DOPs
 
@@ -315,9 +320,9 @@ sky (they vary a lot with the receiver, the place and the time):
 | multipath (reflections) | 0.2 m to many metres | worst in streets, ports, near metal |
 | receiver noise | about 0.1–0.5 m | |
 
-Oman lies close to the northern crest of the **equatorial ionisation anomaly**, a band where the
-ionospheric delay is among the largest on Earth, especially in the evening. Single-frequency
-receivers there should not assume a small UERE.
+The ionospheric delay is largest in two bands about 15° north and south of the magnetic equator,
+the **equatorial ionisation anomaly** (for example over India, Taiwan, West Africa and Brazil),
+especially in the evening. Single-frequency receivers there should not assume a small UERE.
 
 If the horizontal errors are Gaussian, standard accuracy measures follow from UERE × HDOP:
 
@@ -329,7 +334,7 @@ If the horizontal errors are Gaussian, standard accuracy measures follow from UE
 
 > [!NOTE]
 > **Worked example.** HDOP 1.15, UERE 2 m: DRMS = 2.3 m, CEP ≈ 1.9 m, 2DRMS = 4.6 m.
-> In the old town, HDOP 16.35: DRMS = 33 m, 2DRMS = 65 m — with the same receiver.
+> In the old town of the lab log, HDOP 5.69: DRMS = 11.4 m, 2DRMS = 22.8 m — with the same receiver.
 
 **Estimating UERE from data.** For each fix, `E[e_h^2] = UERE^2 × HDOP^2`, where `e_h` is the
 horizontal error. When the truth is known, `UERE_est = sqrt(mean((e_h / HDOP)^2))`. You will do
@@ -355,19 +360,19 @@ A parser that reads a serial line in a flying vehicle must follow simple rules:
    `'�'` instead of crashing; the checksum then fails.
 5. **One line is not enough**: compare with the previous fix (a jump gate) and with other sources.
 
-The lab log `sohar_drive.nmea` contains every kind of damage that a real serial line produces:
+The lab log `sousse_drive.nmea` contains every kind of damage that a real serial line produces:
 a flipped character, a cut line, a missing checksum, garbage, two glued sentences, a non-ASCII
 byte, and two lines with swapped digits that pass the checksum.
 
 ## 🐦 How birds do it
 
-Oman is one of the best places in the world to watch bird **migration**, and much of what we know
-about it comes from GNSS tags. **Sooty falcons** breed in summer on islands and cliffs along the
-Omani coast and spend the winter in **Madagascar**; satellite tracking has shown them crossing
-East Africa on the way. **Steppe eagles** that winter in Dhofar breed thousands of kilometres north,
-in Russia and Kazakhstan, and GPS tags have mapped their routes. At **Barr Al Hikman**, one of the
-most important wetlands for shorebirds in western Asia, scientists have tagged waders to learn how
-they use the tidal flats.
+Much of what we know today about bird **migration** comes from tracking tags. In 2007 a satellite
+tag showed that a female **bar-tailed godwit** (known as "E7") flew non-stop from Alaska to New
+Zealand, about 11 700 km in 8 days, without eating or drinking. Light-level loggers of a few grams
+showed that **Arctic terns** breeding in Greenland and Iceland fly about 70 000 km a year, to the
+Antarctic and back. GPS tags on young **white storks** from Europe showed exactly where they cross
+into Africa — over the Strait of Gibraltar or around the eastern Mediterranean — because storks
+glide on warm air and avoid long flights over the sea.
 
 A modern tag is a tiny GNSS receiver plus a battery and a radio. It faces the same problems as
 NAVERA: a bird under a rock ledge or in dense mangroves sees part of the sky only, and the fix has
@@ -464,13 +469,13 @@ none of them has been validated in flight yet (Release 0.x — field validation 
 
 ## Check your understanding
 
-<details><summary>1. Convert <code>2338.90000,N,05824.60000,E</code> (Muscat) to decimal degrees.</summary>
-23 + 38.9/60 = <b>23.648333°</b> N and 58 + 24.6/60 = <b>58.410000°</b> E.
+<details><summary>1. Convert <code>3355.50000,S,01825.40000,E</code> (Cape Town) to decimal degrees.</summary>
+−(33 + 55.5/60) = <b>−33.925000°</b> (south is negative) and 18 + 25.4/60 = <b>18.423333°</b> E.
 </details>
 
-<details><summary>2. Why can the checksum not detect <code>2426.56</code> written as <code>2462.56</code>? Name two other checks that catch it.</summary>
+<details><summary>2. Why can the checksum not detect <code>3547.17</code> written as <code>3574.17</code>? Name two other checks that catch it.</summary>
 XOR is commutative, so swapping two characters does not change the XOR of the body. The field
-check "minutes &lt; 60" catches it (62 minutes is impossible), and a jump gate catches it (a 67 km
+check "minutes &lt; 60" catches it (74 minutes is impossible), and a jump gate catches it (a 50 km
 jump in 1 s). NAVERA's gps_node does neither; its estimator has the jump gate.
 </details>
 

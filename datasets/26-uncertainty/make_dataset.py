@@ -3,12 +3,12 @@
 
     python3 make_dataset.py      # writes static_fixes.csv, track.csv, heights.csv, truth.json here
 
-static_fixes.csv  A receiver standing still for 400 s on a surveyed point in Sohar port.
+static_fixes.csv  A receiver standing still for 400 s on a surveyed point in Sousse harbour.
                   Its error is CORRELATED (cranes and containers hide part of the sky, so the
                   satellite geometry is poor in one direction): 1-sigma 4.0 m along an axis
                   30 deg north of east, 1.5 m across it. Columns: t_s, east_m, north_m (error
                   from the surveyed point, metres).
-track.csv         A drone flying 360 s along the Muscat coast, westwards from Mutrah.
+track.csv         A drone flying 360 s along the coast, west-north-west from Monastir.
                   Truth follows the constant-velocity model with white-noise acceleration
                   (q_true = 0.3 m^2/s^3, exact discrete Q), dt = 1 s. Position measurements
                   every second with sigma 5 m per axis (independent), EXCEPT:
@@ -97,7 +97,7 @@ def main():
     track(rng)
     heights(rng)
     with open(os.path.join(HERE, "truth.json"), "w") as f:
-        json.dump({"static_cov_m2": P.round(6).tolist(), "static_point": "surveyed point, Sohar port (simulated)",
+        json.dump({"static_cov_m2": P.round(6).tolist(), "static_point": "surveyed point, Sousse harbour (simulated)",
                    "track_q_true": Q_TRUE, "track_sigma_z_m": SIGMA_Z, "track_outliers_t_s": list(OUTLIERS),
                    "track_gap_t_s": list(GAP), "note": "SIMULATED data for lesson 26"}, f, indent=1)
 

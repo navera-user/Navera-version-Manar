@@ -12,7 +12,7 @@ if you ignored it? -->
 
 ## Polaris
 
-<!-- Worst latitude error over a whole night from Muscat with "latitude = altitude", and with the
+<!-- Worst latitude error over a whole night from New York with "latitude = altitude", and with the
 p·cos(H) correction. What else would a real sextant or camera measurement need to correct
 (hint: the atmosphere bends light near the horizon)? -->
 

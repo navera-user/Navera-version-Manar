@@ -138,11 +138,11 @@ def _():
         from navera_estimator.nodes.estimator_node import EstimatorNode as E
     except ImportError as e:
         c.skip(f"NAVERA's estimator cannot be imported here ({e})")
-    m = msg_of(24.36, 56.74, P0)
+    m = msg_of(35.76, 10.81, P0)
     c.ok(E._sane(m), "the real arbiter's _sane() refuses this covariance: " + str(list(m.position_covariance)))
     s = E._stated_sigma(m)
     c.ok(s is not None and abs(s - math.sqrt(12.0)) < 1e-9, f"the real arbiter reads a stated sigma of {s}, expected sqrt(12)")
-    m = msg_of(24.36, 56.74, None)
+    m = msg_of(35.76, 10.81, None)
     c.ok(E._sane(m) and E._stated_sigma(m) is None, "with P2 None the arbiter must see 'uncertainty unknown'")
 
 
@@ -199,7 +199,7 @@ def track():
     return times, zs, truth, [r["outlier"] == "1" for r in rows]
 
 
-@c.test("run_filter(): the 2-D Kalman filter with a chi-square gate on the Muscat track",
+@c.test("run_filter(): the 2-D Kalman filter with a chi-square gate on the coastal track",
         hint="Follow the docstring exactly: start from the first fix, predict every step, gate with "
              "mahalanobis2(nu, S) <= chi2_threshold(gate_p, 2), update only when accepted, append one entry per time.")
 def _():

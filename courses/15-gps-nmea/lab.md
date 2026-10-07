@@ -12,7 +12,7 @@ and write a short engineering report.
 
 | File | What |
 |---|---|
-| `sohar_drive.nmea` | a **synthetic** NMEA log, 1 Hz, GPS-only receiver (`GP` talker): a car drives about 19 km from the Sohar Port area to Sohar Fort along the coast. 6318 lines, 1053 s. |
+| `sousse_drive.nmea` | a **synthetic** NMEA log, 1 Hz, GPS-only receiver (`GP` talker): a car drives about 19 km along the coast from the port of Sousse to the Ribat of Monastir, in NAVERA's test area (Tunisia). 6414 lines, 1069 s. |
 | `truth.csv` | the true position of the car every second (`utc,lat,lon,alt_msl`) |
 | `make_dataset.py` | the script that generated both (read it after the lab, not before!) |
 
@@ -39,7 +39,7 @@ Your files:
 ## Step 1 — Look at the raw log (10 min)
 
 ```bash
-head -n 14 /data/academy/15-gps-nmea/sohar_drive.nmea
+head -n 14 /data/academy/15-gps-nmea/sousse_drive.nmea
 ```
 
 The first seconds: `GPGGA` with quality `0` and empty positions, `GPRMC` with status `V`, a `GPGSA`
@@ -49,25 +49,25 @@ Count the sentence types. The log contains one non-ASCII byte, so `grep` needs `
 as text):
 
 ```bash
-grep -a -c GGA /data/academy/15-gps-nmea/sohar_drive.nmea
+grep -a -c GGA /data/academy/15-gps-nmea/sousse_drive.nmea
 ```
 
 ```bash
-grep -a -c GSV /data/academy/15-gps-nmea/sohar_drive.nmea
+grep -a -c GSV /data/academy/15-gps-nmea/sousse_drive.nmea
 ```
 
 ```bash
-wc -c /data/academy/15-gps-nmea/sohar_drive.nmea
+wc -c /data/academy/15-gps-nmea/sousse_drive.nmea
 ```
 
-Divide the size by 1053 s: this is the data rate of the course's worked example (412 bytes/s,
+Divide the size by 1069 s: this is the data rate of the course's worked example (411 bytes/s,
 43 % of a 9600-baud link). Now look at one second in the middle of the drive:
 
 ```bash
-sed -n 1985,1990p /data/academy/15-gps-nmea/sohar_drive.nmea
+sed -n 1985,1990p /data/academy/15-gps-nmea/sousse_drive.nmea
 ```
 
-Compare the latitude of the GGA (`2462.56214`) with the RMC of the same second (`2426.56214`).
+Compare the latitude of the GGA (`3574.17098`) with the RMC of the same second (`3547.17098`).
 Keep this in mind.
 
 ## Step 2 — Checksum and validation (TODO 1–2, 20 min)
@@ -90,7 +90,7 @@ python3 nmea_tools.py
 Then list the damaged lines of the log:
 
 ```bash
-python3 -c "import nmea_tools as t; bad = [(i + 1, l) for i, l in enumerate(t.read_log('/data/academy/15-gps-nmea/sohar_drive.nmea')) if not t.is_valid(l)]; print(len(bad)); [print(n, repr(l[:72])) for n, l in bad]"
+python3 -c "import nmea_tools as t; bad = [(i + 1, l) for i, l in enumerate(t.read_log('/data/academy/15-gps-nmea/sousse_drive.nmea')) if not t.is_valid(l)]; print(len(bad)); [print(n, repr(l[:72])) for n, l in bad]"
 ```
 
 You must find **7** lines. For each one, decide what happened on the wire (cut, flipped character,
@@ -107,19 +107,19 @@ One character changed: the decimal point became a `9` (the real value was `1.06`
 > [!TASK]
 > **TODO 1–2** — `nmea_checksum(body)` returns 2 upper-case hex digits; `is_valid(line)` returns
 > `True`/`False` and finds exactly 7 damaged lines in the log. The two swapped-digit lines (UTC
-> 051731 and 052423) must be **accepted**: the checksum cannot see them.
+> 051731 and 052421) must be **accepted**: the checksum cannot see them.
 
 ## Step 3 — Degrees-minutes and GGA (TODO 3–4, 25 min)
 
-`dm_to_deg(value, hemisphere)` converts `"2429.39522", "N"` into `24.489920`. It returns `None` for
+`dm_to_deg(value, hemisphere)` converts `"3549.61531", "N"` into `35.826922`. It returns `None` for
 an unreadable value, an unknown hemisphere, or minutes outside `[0, 60)`. Use `to_float()` (already
 written, below the line).
 
 ```bash
-python3 -c "import nmea_tools as t; print(t.dm_to_deg('2429.39522', 'N'), t.dm_to_deg('05637.20466', 'E'), t.dm_to_deg('2462.56214', 'N'), t.dm_to_deg('', 'N'))"
+python3 -c "import nmea_tools as t; print(t.dm_to_deg('3549.61531', 'N'), t.dm_to_deg('01038.52535', 'E'), t.dm_to_deg('3574.17098', 'N'), t.dm_to_deg('', 'N'))"
 ```
 
-Expected: `24.4899203… 56.6200776… None None` (Python may print more digits: floating-point rounding).
+Expected: `35.8269218… 10.6420891… None None` (Python may print more digits: floating-point rounding).
 
 `parse_gga(line)` returns a dictionary with the keys `time, lat, lon, quality, sats, hdop, alt_msl,
 geo_sep` (field numbers above TODO 4 and in the course). Use the helper `fields(line)`: it returns
@@ -127,7 +127,7 @@ the list of fields of a valid sentence, or `None`.
 
 > [!TASK]
 > **TODO 3–4** — `dm_to_deg` with the range checks, and `parse_gga`. A no-fix sentence gives a
-> dictionary with `quality` 0 and `lat`/`lon`/`alt_msl` = `None`; the 62-minute line gives
+> dictionary with `quality` 0 and `lat`/`lon`/`alt_msl` = `None`; the 74-minute line gives
 > `lat = None`; an RMC or a damaged line gives `None`.
 
 ## Step 4 — GSA and GSV (TODO 5–6, 25 min)
@@ -161,9 +161,9 @@ Now (before Step 7) you should see 7 rejected lines on both sides and no disagre
 fixes" column of your side shows `—`, with the message "TODO 9 not done yet": this column needs
 your `navera_decision()` from Step 7. That is normal. **Run the script again after Step 7.**
 
-After Step 7 you should see 991 usable fixes for NAVERA and **990 for you**, and
-one disagreement: line 1988 (UTC 051731). pynmea2 accepts `2462.56214` and computes 25.0427° N —
-about 67 km north of the road. Your parser refuses it because 62 minutes is impossible. Who is
+After Step 7 you should see 1007 usable fixes for NAVERA and **1006 for you**, and
+one disagreement: line 1988 (UTC 051731). pynmea2 accepts `3574.17098` and computes 36.2362° N —
+about 50 km north of the road. Your parser refuses it because 74 minutes is impossible. Who is
 right? Note the answer for section 4 of the report.
 
 ## Step 6 — The geometry matrix and the DOPs (TODO 7–8, 30 min)
@@ -240,8 +240,8 @@ fix), compares the accepted fixes with `truth.csv`, and writes `results.json`, `
 python3 analyze_drive.py
 ```
 
-Expected: 7 rejected lines; DOP recomputed on 992 seconds with a largest difference of about 0.005
-(rounding to 2 decimals); one jump rejected at 052423; a longest gap of 33 s; a UERE estimate close
+Expected: 7 rejected lines; DOP recomputed on 1008 seconds with a largest difference of about 0.005
+(rounding to 2 decimals); one jump rejected at 052421; a longest gap of 33 s; a UERE estimate close
 to 1.9 m and about 98 % of fixes inside 2DRMS. Open `dop_timeline.png` and `drive.png` (click them
 in the file list) and find the port area, the underpass and the town centre.
 
@@ -259,14 +259,14 @@ log into it about 40 times faster than real time, and counts the `PositionEstima
 python3 play_to_gps_node.py
 ```
 
-Expected: 1050 messages, **991 valid**, 59 invalid (54 × "no GPS fix (qual=0)", 5 × "receiver
+Expected: 1066 messages, **1007 valid**, 59 invalid (54 × "no GPS fix (qual=0)", 5 × "receiver
 reports a non-satellite position (qual=6) — not used"), and a largest jump between consecutive
-valid fixes of about 67 km. The counts are saved in `gps_node_counts.json`. The first valid fix shows
-an ellipsoidal altitude near −24 m: the GGA altitude (about 6 m above sea level) plus the geoid
-separation −30.0 m of this synthetic receiver.
+valid fixes of about 50 km. The counts are saved in `gps_node_counts.json`. The first valid fix shows
+an ellipsoidal altitude near +38 m: the GGA altitude (about 6 m above sea level) plus the geoid
+separation +32.0 m of this synthetic receiver.
 
 > [!QUESTION]
-> gps_node published the 67 km jump as a **valid** fix with a sigma of 1.7 m. Which part of NAVERA
+> gps_node published the 50 km jump as a **valid** fix with a sigma of 1.7 m. Which part of NAVERA
 > stops it before it reaches the autopilot, and with which rule?
 
 ## Step 10 — Write the report (30 min)

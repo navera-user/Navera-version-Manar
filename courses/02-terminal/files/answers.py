@@ -23,9 +23,9 @@ Q4 = 0
 Q5 = ""
 
 # ---- Reading the flight logs ----
-# Q6. In the Sohar log, which node wrote the most WARN lines? Just the name, e.g. "imu_node".
+# Q6. In the Sousse log, which node wrote the most WARN lines? Just the name, e.g. "imu_node".
 Q6 = ""
-# Q7. In the Sohar log, at what time (Oman time, "HH:MM:SS") did the arbiter FIRST report
+# Q7. In the Sousse log, at what time (Tunisian time, "HH:MM:SS") did the arbiter FIRST report
 #     "state NO_FIX"?
 Q7 = ""
 

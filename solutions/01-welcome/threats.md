@@ -1,4 +1,4 @@
-# Threat analysis — a coastal survey drone, Muscat to Barka
+# Threat analysis — a coastal survey drone, harbour to harbour
 
 ## Outage
 

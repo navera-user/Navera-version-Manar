@@ -124,7 +124,7 @@ python3 -m pytest -v test_geo_tools.py
 > [!TASK]
 > In `test_geo_tools.py`, write the tests of TODO 1–4: at least 3 for `haversine_m`, 3 for
 > `meters_to_degrees` / `offset_to_latlon`, one **parametrized** test with 6+ cases for
-> `is_valid_position`, and 2 more for `speed_mps`. Use the `muscat` **fixture** in at least one test of
+> `is_valid_position`, and 2 more for `speed_mps`. Use the `london` **fixture** in at least one test of
 > yours. In total at least 10 tests, all passing on the correct code.
 
 ```bash

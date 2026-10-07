@@ -11,8 +11,8 @@
 > - In the lab you measure three flights, compare NAVERA with the baseline, and check a stated σ
 >   with NAVERA's `evaluate_session.py`.
 
-At a technology fair in Muscat, a company presents a navigation box for drones: *"Accuracy: 4 m
-without GPS!"* A logistics company that wants to fly medicine from Sohar to villages in the Hajar
+At an international technology fair, a company presents a navigation box for drones: *"Accuracy: 4 m
+without GPS!"* A logistics company that wants to fly medicine from a coastal city to villages in the
 mountains asks you, the engineer, whether to buy it.
 
 Before you answer, you ask five questions. **4 m — the mean, the median, or the best case?**
@@ -91,7 +91,7 @@ but two reports that use different rules cannot be compared at the last decimal.
 used. One more trap: Python's `round()` rounds halves to the **even** integer (`round(4.5) == 4`,
 `round(5.5) == 6`). That is the rule NAVERA's code uses, so use `round()`, not `math.ceil()`.
 
-### Worked example (a test drive near Nizwa)
+### Worked example (a test drive on a desert test range)
 
 Ten errors (m) from a test drive: `2.1 3.4 1.8 4.6 2.9 3.1 12.5 2.4 3.8 2.6`.
 Sorted: `1.8 2.1 2.4 2.6 2.9 3.1 3.4 3.8 4.6 12.5`, n = 10.
@@ -269,8 +269,8 @@ against, the ground is flat, and the GPS noise is a formula. VALIDATION_STATUS.m
 **"simulator only"** or **"optimistic"**, and its summary lists *"field validation pending"*.
 
 Statisticians call this **external validity**: does the result transfer to the real conditions? A
-number measured in Sousse with simulated images says little about a flight over the sand of Wahiba,
-the dark rock of the Hajar mountains, or the sea near Masirah — different texture, haze, heat shimmer,
+number measured in Sousse with simulated images says little about a flight over the sand of the Sahara,
+the dark rock of the Andes, or the open sea off Cape Town — different texture, haze, heat shimmer,
 lighting. A confidence interval only covers the *sampling* noise of *this* experiment; it says nothing
 about such differences. So always write **where** a number comes from — *bench*, *replay*,
 *synthetic data*, *simulation*, *flight* — and on **how much** data.
@@ -290,9 +290,9 @@ times of sunrise and sunset; its errors are often more than 100 km. Researchers 
 geolocators at a known place for some days (a calibration period) and measure their error before
 they trust the tracks. A GPS tag is far more precise but heavier. The tool sets the error bars.
 
-**Oman's coast.** Barr Al Hikman, on Oman's Arabian Sea coast, is one of the most important wintering
-sites for shorebirds in the region: hundreds of thousands of waders feed on its tidal flats in
-winter. Teams of Omani and international researchers have counted and tagged birds there for years.
+**Counting a tidal flat.** The Banc d'Arguin, on the Atlantic coast of Mauritania, is one of the most
+important wintering sites for shorebirds in the world: more than two million waders feed on its tidal
+flats in winter. International teams of researchers have counted and tagged birds there for decades.
 Counting birds on a tidal flat is a measurement too: different observers and different tides give
 different numbers, so counts are repeated and compared before a trend is announced.
 

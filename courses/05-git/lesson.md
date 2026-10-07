@@ -65,7 +65,7 @@ NAVERA base — fa775cd fix(bench): screen_mission mirrors the product (re-match
 
 (This first commit has no `parent` line: it is the root of your history. The number after the
 e-mail is the time in seconds since 1 January 1970, then the time zone. `+0100` is the time zone of
-the academy computer's clock, one hour ahead of UTC; a laptop in Oman would write `+0400`. The
+the academy computer's clock, one hour ahead of UTC; a laptop in Singapore would write `+0800`. The
 number of seconds is the same everywhere: only the display changes.)
 
 ### Short hashes and their collisions
@@ -345,8 +345,9 @@ birds far from any adult, and in autumn the young oriented north-west too (publi
 branch, tested by real winters, then passed on.
 
 Navi's own species shows the other half of the idea: barn swallows often return to the same
-building year after year — a known good version, like a tag you can always come back to. Birds that
-pass through Oman in spring and autumn follow such inherited programs too, adjusted by experience.
+building year after year — a known good version, like a tag you can always come back to. White storks
+that cross the Strait of Gibraltar each spring and autumn follow such inherited programs too,
+adjusted by experience.
 Git gives engineers what evolution never had: a history you can read, branches you can try without
 risk, review before a change spreads, and a Reset button.
 

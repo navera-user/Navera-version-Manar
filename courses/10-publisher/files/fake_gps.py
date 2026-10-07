@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""fake_gps.py — your first ROS 2 publisher: a fake GNSS receiver driving from Muscat.
+"""fake_gps.py — your first ROS 2 publisher: a fake GNSS receiver driving from Sousse.
 
 When it is finished, it publishes sensor_msgs/NavSatFix on /fake_gps/fix (2 Hz by default) for a
 vehicle that drives with a speed and a heading you can change while it runs:
@@ -27,8 +27,8 @@ DEFAULTS = {
     "rate_hz": 2.0,               # messages per second
     "speed_mps": 5.0,             # ground speed, metres per second
     "heading_deg": 30.0,          # direction of motion, clockwise from north (90 = east)
-    "start_lat": 23.5880,         # near the Sultan Qaboos Grand Mosque, Muscat
-    "start_lon": 58.3829,
+    "start_lat": 35.8277,         # near the Ribat of Sousse (NAVERA's test area)
+    "start_lon": 10.6388,
     "sigma_m": 3.0,               # horizontal 1-sigma accuracy the receiver states, metres
 }
 

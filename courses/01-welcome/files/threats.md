@@ -1,6 +1,6 @@
-# Threat analysis — a coastal survey drone, Muscat to Barka
+# Threat analysis — a coastal survey drone, harbour to harbour
 
-Scenario: a multirotor flies a 40 km survey along the Batinah coast at 120 m, mostly over the
+Scenario: a multirotor flies a 40 km survey along a sandy coast at 120 m, mostly over the
 beach and the first houses, with NAVERA connected to its autopilot.
 
 For each threat, write 3–5 sentences in your own words: (1) what happens to the GNSS receiver,

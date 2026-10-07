@@ -1,4 +1,4 @@
-# Lab 7 analysis: scales and zooms for Oman, facts about NAVERA's map file, the corner bug.
+# Lab 7 analysis: scales and zooms around the world, facts about NAVERA's map file, the corner bug.
 # Uses YOUR functions of tiles_lab.py (finish TODO 1-10 first). Writes results.json.
 #     python3 analysis.py                (about 20 s: it counts the tiles of the 10 GB map)
 import json
@@ -9,9 +9,10 @@ import sqlite3
 from tiles_lab import (MAP, TILE_PX, latlon_to_pixel, latlon_to_tile, meters_per_pixel, pixel_to_latlon,
                        tile_to_latlon, zoom_for_gsd)
 
-PLACES = {"Salalah": (17.0194, 54.0897), "Duqm": (19.6600, 57.7000), "Masirah": (20.6700, 58.8700),
-          "Nizwa": (22.9333, 57.5300), "Muscat": (23.5839, 58.3875), "Sohar": (24.3470, 56.7090),
-          "Khasab": (26.1800, 56.2500), "Sousse (NAVERA test map)": (35.8277, 10.6388)}
+PLACES = {"Quito": (-0.1807, -78.4678), "Singapore": (1.2834, 103.8607), "Mexico City": (19.4326, -99.1332),
+          "Cape Town": (-33.9249, 18.4241), "Sydney": (-33.8568, 151.2153),
+          "Sousse (NAVERA test map)": (35.8277, 10.6388), "London": (51.5007, -0.1246),
+          "Reykjavik": (64.1417, -21.9266)}
 CAMERA = {"altitude_m": 300.0, "hfov_deg": 84.0, "width_px": 1536}     # an example nadir camera
 A, E2 = 6378137.0, 0.0066943799901414   # WGS84
 
@@ -35,7 +36,7 @@ for name, v in (("meters_per_pixel", meters_per_pixel(0.0, 0)), ("zoom_for_gsd",
         raise SystemExit(f"{name}() still returns None: finish its TODO in tiles_lab.py first")
 
 gsd = 2.0 * CAMERA["altitude_m"] * math.tan(math.radians(CAMERA["hfov_deg"]) / 2.0) / CAMERA["width_px"]
-oman = []
+world = []
 print(f"camera example: {CAMERA}, ground sample distance {gsd:.3f} m/px\n")
 print(f"{'place':<26}{'lat':>8}{'m/px z17':>10}{'tile z17 (m)':>13}{'1/cos':>7}{'3857-3395 (km)':>15}{'zoom':>6}")
 for name, (lat, lon) in PLACES.items():
@@ -44,19 +45,19 @@ for name, (lat, lon) in PLACES.items():
            "scale_factor": round(1.0 / math.cos(math.radians(lat)), 4),
            "web_vs_ellipsoidal_mercator_km": round(web_vs_ellipsoidal_km(lat), 2),
            "zoom_for_camera": zoom_for_gsd(lat, gsd, 13, 19)}
-    oman.append(row)
+    world.append(row)
     print(f"{name:<26}{lat:8.3f}{row['m_per_px_z17']:10.4f}{row['tile_width_z17_m']:13.1f}{row['scale_factor']:7.3f}"
           f"{row['web_vs_ellipsoidal_mercator_km']:15.2f}{row['zoom_for_camera']:6d}")
 
 alt_zoom = {}
-lat_m = PLACES["Muscat"][0]
+lat_m = PLACES["Singapore"][0]
 for alt in (150, 200, 300, 500, 1000, 1500, 2000):
     g = 2.0 * alt * math.tan(math.radians(CAMERA["hfov_deg"]) / 2.0) / CAMERA["width_px"]
     alt_zoom[str(alt)] = zoom_for_gsd(lat_m, g, 13, 19)
-print("\nMuscat, same camera: zoom_for_gsd() by flying height:", alt_zoom)
+print("\nSingapore, same camera: zoom_for_gsd() by flying height:", alt_zoom)
 
 corner = {}
-for name in ("Sousse (NAVERA test map)", "Muscat"):
+for name in ("Sousse (NAVERA test map)", "Singapore", "Reykjavik"):
     lat, lon = PLACES[name]
     x, y = latlon_to_tile(lat, lon, 17)
     nw, ce = tile_to_latlon(x, y, 17), tile_to_latlon(x + 0.5, y + 0.5, 17)
@@ -65,12 +66,12 @@ print("\nNW corner -> centre of a zoom-17 tile (the size of the corner bug):", c
 
 worst = 0.0
 for k in range(200):                                               # pixel <-> lat/lon round trip
-    lat, lon = 17.0 + 9.0 * ((k * 37) % 200) / 200.0, 54.0 + 5.0 * ((k * 91) % 200) / 200.0
+    lat, lon = -70.0 + 140.0 * ((k * 37) % 200) / 200.0, -170.0 + 340.0 * ((k * 91) % 200) / 200.0
     x, y = latlon_to_tile(lat, lon, 18)
     px, py = latlon_to_pixel(lat, lon, 18, x - 1, y - 1)
     la, lo = pixel_to_latlon(px, py, 18, x - 1, y - 1)
     worst = max(worst, abs(la - lat), abs(lo - lon))
-print(f"pixel <-> lat/lon round trip over 200 Omani points: worst error {worst:.2e} degrees")
+print(f"pixel <-> lat/lon round trip over 200 points around the world: worst error {worst:.2e} degrees")
 
 db = sqlite3.connect("file:" + MAP + "?mode=ro", uri=True)
 meta = dict(db.execute("SELECT name, value FROM metadata"))
@@ -87,8 +88,8 @@ print(f"\nmap file: {size} bytes = {mapinfo['file_gb']} GB ({page_count} pages x
 print("tiles per zoom:", counts, " total", mapinfo["total_tiles"])
 print("the map's own altitude_zoom_map:", meta.get("altitude_zoom_map"))
 
-results = {"camera": dict(CAMERA, gsd_m=round(gsd, 4)), "oman": oman, "corner_bug_m": corner,
-           "pixel_round_trip_max_error_deg": worst, "muscat_zoom_by_altitude": alt_zoom, "map": mapinfo}
+results = {"camera": dict(CAMERA, gsd_m=round(gsd, 4)), "world": world, "corner_bug_m": corner,
+           "pixel_round_trip_max_error_deg": worst, "singapore_zoom_by_altitude": alt_zoom, "map": mapinfo}
 with open("results.json", "w") as f:
     json.dump(results, f, indent=1)
 print("\nSaved results.json")

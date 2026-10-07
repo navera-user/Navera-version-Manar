@@ -38,32 +38,33 @@
 <polyline points="234.4,58.2 228.9,56.0 223.3,54.0 217.5,52.5 211.7,51.3 205.7,50.5 199.7,50.0 193.6,49.9 187.4,50.2 181.2,50.8 175.0,51.9" fill="none" stroke="#7fb3c8" stroke-width="1"/>
 <polyline points="209.2,49.4 204.5,48.6 199.7,48.2 194.9,48.2 189.9,48.5 185.0,49.3 180.0,50.4 175.0,51.9" fill="none" stroke="#7fb3c8" stroke-width="1"/>
 <circle cx="109.3" cy="223.2" r="4.5" fill="#1d2733" stroke="white" stroke-width="1"/><text x="101.3" y="241.2" fill="#1d2733" font-size="12" stroke="#f7fafc" stroke-width="3" paint-order="stroke" text-anchor="start">(0°, 0°) Null Island</text>
-<circle cx="239.9" cy="165.9" r="4.5" fill="#2f855a" stroke="white" stroke-width="1"/><text x="247.9" y="161.9" fill="#2f855a" font-size="12" stroke="#f7fafc" stroke-width="3" paint-order="stroke" text-anchor="start">Muscat</text>
-<circle cx="233.9" cy="183.2" r="4.5" fill="#2f855a" stroke="white" stroke-width="1"/><text x="241.9" y="195.2" fill="#2f855a" font-size="12" stroke="#f7fafc" stroke-width="3" paint-order="stroke" text-anchor="start">Salalah</text>
+<circle cx="155.7" cy="294.7" r="4.5" fill="#2f855a" stroke="white" stroke-width="1"/><text x="163.7" y="298.7" fill="#2f855a" font-size="12" stroke="#f7fafc" stroke-width="3" paint-order="stroke" text-anchor="start">Cape Town</text>
+<circle cx="133.9" cy="104.5" r="4.5" fill="#2f855a" stroke="white" stroke-width="1"/><text x="141.9" y="108.5" fill="#2f855a" font-size="12" stroke="#f7fafc" stroke-width="3" paint-order="stroke" text-anchor="start">London</text>
+<circle cx="128.3" cy="77.3" r="4.5" fill="#2f855a" stroke="white" stroke-width="1"/><text x="136.3" y="81.3" fill="#2f855a" font-size="12" stroke="#f7fafc" stroke-width="3" paint-order="stroke" text-anchor="start">Reykjavik</text>
 <circle cx="141.1" cy="140.5" r="4.5" fill="#0b6e8a" stroke="white" stroke-width="1"/><text x="133.1" y="134.5" fill="#0b6e8a" font-size="12" stroke="#f7fafc" stroke-width="3" paint-order="stroke" text-anchor="end">Sousse</text>
 <text x="45" y="195" fill="#d64545" font-size="12" stroke="#f7fafc" stroke-width="3" paint-order="stroke">equator (lat 0°)</text>
 <text x="20" y="340" fill="#a8680d" font-size="12">orange: Greenwich meridian (lon 0°)</text>
 <text x="20" y="358" fill="#555" font-size="12">grid lines every 15° · north and east are positive</text>
 <text x="360" y="52" fill="#1d2733" font-weight="bold">1° of longitude on WGS84 = N·cos φ·π/180</text>
 <text x="360" y="85" fill="#1d2733" font-size="12">equator, 0°</text>
-<rect x="465" y="73" width="200.0" height="16" fill="#0b6e8a" opacity="0.8"/>
-<text x="670.0" y="85" fill="#1d2733" font-size="12">111.3 km</text>
-<text x="360" y="119" fill="#1d2733" font-size="12">Salalah, 17.0°</text>
-<rect x="465" y="107" width="191.3" height="16" fill="#2f855a" opacity="0.8"/>
-<text x="661.3" y="119" fill="#1d2733" font-size="12">106.5 km</text>
-<text x="360" y="153" fill="#1d2733" font-size="12">Muscat, 23.6°</text>
-<rect x="465" y="141" width="183.4" height="16" fill="#2f855a" opacity="0.8"/>
-<text x="653.4" y="153" fill="#1d2733" font-size="12">102.1 km</text>
-<text x="360" y="187" fill="#1d2733" font-size="12">Khasab, 26.2°</text>
-<rect x="465" y="175" width="179.6" height="16" fill="#2f855a" opacity="0.8"/>
-<text x="649.6" y="187" fill="#1d2733" font-size="12">100.0 km</text>
-<text x="360" y="221" fill="#1d2733" font-size="12">Sousse, 35.8°</text>
-<rect x="465" y="209" width="162.3" height="16" fill="#0b6e8a" opacity="0.8"/>
-<text x="632.3" y="221" fill="#1d2733" font-size="12">90.4 km</text>
-<text x="360" y="255" fill="#1d2733" font-size="12">60° N (Oslo)</text>
-<rect x="465" y="243" width="100.3" height="16" fill="#0b6e8a" opacity="0.8"/>
-<text x="570.3" y="255" fill="#1d2733" font-size="12">55.8 km</text>
+<rect x="485" y="73" width="175.0" height="16" fill="#0b6e8a" opacity="0.8"/>
+<text x="665.0" y="85" fill="#1d2733" font-size="12">111.3 km</text>
+<text x="360" y="119" fill="#1d2733" font-size="12">Cape Town, 33.9° S</text>
+<rect x="485" y="107" width="145.3" height="16" fill="#2f855a" opacity="0.8"/>
+<text x="635.3" y="119" fill="#1d2733" font-size="12">92.5 km</text>
+<text x="360" y="153" fill="#1d2733" font-size="12">Sousse, 35.8° N</text>
+<rect x="485" y="141" width="142.0" height="16" fill="#0b6e8a" opacity="0.8"/>
+<text x="632.0" y="153" fill="#1d2733" font-size="12">90.4 km</text>
+<text x="360" y="187" fill="#1d2733" font-size="12">Rome, 41.9° N</text>
+<rect x="485" y="175" width="130.5" height="16" fill="#2f855a" opacity="0.8"/>
+<text x="620.5" y="187" fill="#1d2733" font-size="12">83.0 km</text>
+<text x="360" y="221" fill="#1d2733" font-size="12">London, 51.5° N</text>
+<rect x="485" y="209" width="109.1" height="16" fill="#2f855a" opacity="0.8"/>
+<text x="599.1" y="221" fill="#1d2733" font-size="12">69.4 km</text>
+<text x="360" y="255" fill="#1d2733" font-size="12">Reykjavik, 64.1° N</text>
+<rect x="485" y="243" width="76.6" height="16" fill="#2f855a" opacity="0.8"/>
+<text x="566.6" y="255" fill="#1d2733" font-size="12">48.7 km</text>
 <text x="360" y="288" fill="#555" font-size="12">1° of latitude is almost constant:</text>
-<text x="360" y="305" fill="#555" font-size="12">110.57 km at the equator → 110.75 km at Muscat</text>
+<text x="360" y="305" fill="#555" font-size="12">110.57 km at the equator → 110.96 km at Sousse</text>
 <text x="360" y="322" fill="#555" font-size="12">→ 111.69 km at the poles (M·π/180).</text>
 </svg>

@@ -16,7 +16,7 @@ def est(source, stamp, sigma=None, **kw):
     else:
         v = float(sigma) ** 2
         cov, ctype = [v, 0.0, 0.0, 0.0, v, 0.0, 0.0, 0.0, 4.0 * v], "APPROXIMATED"
-    e = dict(source=source, stamp=stamp, valid=True, mode="MEASURED", lat=23.588, lon=58.383,
+    e = dict(source=source, stamp=stamp, valid=True, mode="MEASURED", lat=35.825, lon=10.638,
              cov=cov, cov_type=ctype)
     e.update(kw)
     return e
@@ -27,7 +27,7 @@ def G(stamp, sigma=3.0, **kw):
 
 
 def D(stamp, sigma=None, src="day", **kw):
-    return est(src, stamp, sigma, **dict(dict(lat=23.5884, lon=58.3836), **kw))
+    return est(src, stamp, sigma, **dict(dict(lat=35.8254, lon=10.6387), **kw))
 
 
 def arb():
@@ -155,7 +155,7 @@ def _():
     (A,) = need(a_mod, "Arbiter")
     a = A()
     a.receive(G(10.0))
-    a.receive(G(9.0, lat=24.0))
+    a.receive(G(9.0, lat=36.0))
     c.ok(isinstance(getattr(a, "latest", None), dict) and a.latest.get("gps", {}).get("stamp") == 10.0,
          "a late GPS fix (stamp 9.0 after 10.0) should be dropped by receive()")
     a.receive(D(10.0))

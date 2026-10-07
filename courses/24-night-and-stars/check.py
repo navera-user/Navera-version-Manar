@@ -11,11 +11,11 @@ from academy_check import Checker, load_student, need, sh
 
 c = Checker()
 
-SITE = (23.24, 57.26)          # Jebel Shams
-GAST = 271.35683               # NAVERA gast_deg("2026-10-07 17:00:00") (astropy, offline)
-GMST_ASTROPY = 271.354654      # astropy GMST at the same instant
-VEGA_APP = (279.45963, 38.81076)          # Vega, true equator and equinox of date (TETE)
-VEGA_ASTROPY_ALTAZ = (45.68874, 302.44975)  # astropy AltAz of Vega from Jebel Shams at that instant
+SITE = (28.30, -16.51)         # Teide Observatory, Tenerife
+GAST = 316.48003               # NAVERA gast_deg("2026-10-07 20:00:00") (astropy, offline)
+GMST_ASTROPY = 316.477860      # astropy GMST at the same instant
+VEGA_APP = (279.45960, 38.81067)          # Vega, true equator and equinox of date (TETE)
+VEGA_ASTROPY_ALTAZ = (70.00612, 307.01331)  # astropy AltAz of Vega from Teide Observatory at that instant
 THERMAL = "/data/navera_data/camera_pkg/camera_pkg/data/thermal"
 DAY = "/data/navera_data/camera_pkg/camera_pkg/data/day"
 # NAVERA normalize_query() coverage: (w, h, hfov, heading, altitude) -> coverage (lat 35.83)
@@ -60,7 +60,7 @@ def _():
     c.near(jd(2000, 1, 1, 12), 2451545.0, 1e-6, "julian_date(2000, 1, 1, 12)")
     c.near(jd(1987, 1, 27), 2446822.5, 1e-6, "julian_date(1987, 1, 27) (a January date)")
     c.near(jd(1957, 10, 4, 19, 26, 24), 2436116.31, 1e-5, "julian_date(1957, 10, 4, 19:26:24) (Sputnik 1)")
-    c.near(jd(2026, 10, 7, 17, 0, 0.0), 2461321.208333, 1e-5, "julian_date(2026, 10, 7, 17:00)")
+    c.near(jd(2026, 10, 7, 20, 0, 0.0), 2461321.333333, 1e-5, "julian_date(2026, 10, 7, 20:00)")
 
 
 @c.test("TODO 2 — gmst_deg() agrees with Meeus and with astropy to better than 1 arcsecond",
@@ -70,12 +70,12 @@ def _():
     s = S()
     jd, g = need(s, "julian_date", "gmst_deg")
     c.near(g(jd(1987, 4, 10)), 197.693195, 1e-4, "gmst_deg on 1987-04-10 0h UT (Meeus example 12.a)")
-    got = g(jd(2026, 10, 7, 17, 0, 0.0))
+    got = g(jd(2026, 10, 7, 20, 0, 0.0))
     c.ok(0.0 <= got < 360.0, f"gmst_deg should be in 0..360, got {got}")
-    c.near(got, GMST_ASTROPY, 3e-4, "gmst_deg at 2026-10-07 17:00 UTC (astropy: 271.354654)")
+    c.near(got, GMST_ASTROPY, 3e-4, "gmst_deg at 2026-10-07 20:00 UTC (astropy: 316.477860)")
 
 
-@c.test("TODO 3 — radec_to_altaz(): a star at the zenith, and Vega from Jebel Shams like astropy",
+@c.test("TODO 3 — radec_to_altaz(): a star at the zenith, and Vega from Teide Observatory like astropy",
         hint="H = gst + lon - RA. np.sin/np.cos need radians (np.radians), np.arcsin/np.arctan2 give radians "
              "(np.degrees). Azimuth: % 360.")
 def _():
@@ -84,8 +84,8 @@ def _():
     c.ok(isinstance(r, (tuple, list)) and len(r) == 2, f"radec_to_altaz should return (alt, az), got {r!r}")
     c.near(float(r[0]), 90.0, 0.01, "altitude of a star at the zenith")
     alt, az = f(VEGA_APP[0], VEGA_APP[1], SITE[0], SITE[1], GAST)
-    c.near(float(alt), VEGA_ASTROPY_ALTAZ[0], 0.01, "Vega's altitude (astropy 45.68874)")
-    c.near(float(az), VEGA_ASTROPY_ALTAZ[1], 0.01, "Vega's azimuth (astropy 302.44975)")
+    c.near(float(alt), VEGA_ASTROPY_ALTAZ[0], 0.01, "Vega's altitude (astropy 70.00612)")
+    c.near(float(az), VEGA_ASTROPY_ALTAZ[1], 0.01, "Vega's azimuth (astropy 307.01331)")
 
 
 @c.test("TODO 3 — radec_to_altaz() works on numpy arrays and NAVERA's local_to_radec turns it back",
@@ -97,7 +97,7 @@ def _():
     rnd = random.Random(24)
     ra = np.array([rnd.uniform(0, 360) for _ in range(30)])
     dec = np.array([rnd.uniform(-60, 85) for _ in range(30)])
-    lat, lon, g = 17.02, 54.09, 123.4                         # Salalah
+    lat, lon, g = -33.92, 18.42, 123.4                        # Cape Town
     alt, az = f(ra, dec, lat, lon, g)
     alt, az = np.asarray(alt, float), np.asarray(az, float)
     c.ok(alt.shape == (30,) and az.shape == (30,), f"for 30 stars expected 30 altitudes and azimuths, got "
@@ -109,11 +109,11 @@ def _():
         ra2, dec2 = l2r(lat, lon, float(alt[i]), float(az[i]), g)
         dra = (ra2 - ra[i] + 180) % 360 - 180
         c.ok(abs(dec2 - dec[i]) < 0.01 and abs(dra) * math.cos(math.radians(dec[i])) < 0.01,
-             f"RA {ra[i]:.1f}°, Dec {dec[i]:.1f}° from Salalah: you give alt {alt[i]:.2f}°, az {az[i]:.2f}° — "
+             f"RA {ra[i]:.1f}°, Dec {dec[i]:.1f}° from Cape Town: you give alt {alt[i]:.2f}°, az {az[i]:.2f}° — "
              f"NAVERA turns that back into RA {ra2:.2f}°, Dec {dec2:.2f}°")
 
 
-@c.test("Given code 4 — visible_stars() (uses your TODO 3): 37 bright stars above Jebel Shams, brightest first",
+@c.test("Given code 4 — visible_stars() (uses your TODO 3): 44 bright stars above Teide Observatory, brightest first",
         hint="One radec_to_altaz call on arrays of all RA and Dec; keep alt > min_alt_deg; dicts with name, mag, "
              "alt, az; sorted(..., key=lambda v: v['mag']).")
 def _():
@@ -123,10 +123,10 @@ def _():
     c.ok(all(isinstance(x, dict) and {"name", "mag", "alt", "az"} <= set(x) for x in v),
          "each item should be a dict with the keys name, mag, alt, az")
     c.ok(all(float(x["alt"]) > 0 for x in v), "a star at or below the horizon is in the list")
-    c.ok(abs(len(v) - 37) <= 1, f"{len(v)} stars above the horizon, expected 37")
+    c.ok(abs(len(v) - 44) <= 1, f"{len(v)} stars above the horizon, expected 44")
     mags = [x["mag"] for x in v]
     c.ok(mags == sorted(mags), "the list is not sorted from the brightest (smallest mag) to the faintest")
-    c.eq(v[0]["name"], "Vega", "the brightest star above the horizon")
+    c.eq(v[0]["name"], "Arcturus", "the brightest star above the horizon")
     v20 = vis(load(max_mag=2.5), SITE[0], SITE[1], GAST, 20.0)
     c.ok(all(float(x["alt"]) > 20 for x in v20) and len(v20) < len(v), "min_alt_deg=20 is not respected")
 
@@ -141,9 +141,9 @@ def _():
     c.near(pl(24.0, 0.0, 0.626), 23.374, 1e-6, "polaris_latitude(24.0, H=0, p=0.626)")
     c.near(pl(24.0, 90.0, 0.626), 24.0, 1e-6, "polaris_latitude(24.0, H=90, p=0.626)")
     c.near(pl(22.8, 180.0, 0.626), 23.426, 1e-6, "polaris_latitude(22.8, H=180, p=0.626)")
-    lat, lon = zf(328.617, 23.24, 271.357)
-    c.near(lat, 23.24, 1e-6, "zenith_fix latitude")
-    c.near(lon, 57.26, 1e-6, "zenith_fix longitude")
+    lat, lon = zf(299.970, 28.30, 316.480)
+    c.near(lat, 28.30, 1e-6, "zenith_fix latitude")
+    c.near(lon, -16.51, 1e-6, "zenith_fix longitude")
     c.near(zf(300.0, -10.0, 10.0)[1], -70.0, 1e-6, "zenith_fix(300, -10, 10) longitude (must be in -180..180)")
 
 
@@ -172,7 +172,7 @@ def _():
     e = np.asarray(e, float)
     c.ok(e.size + int(amb) == 600, f"{e.size} errors + {amb} ambiguous ≠ 600 draws")
     med = float(np.median(e))
-    c.ok(38.0 <= med <= 56.0, f"median error {med:.1f} km with 0.3° tilt / 1.5° heading at 75°, expected ~47 km")
+    c.ok(38.0 <= med <= 56.0, f"median error {med:.1f} km with 0.3° tilt / 1.5° heading at 75°, expected ~50 km")
     e2, _ = mc(cn, SITE, GAST, 75.0, 45.0, 0.3, 1.5, n=50, seed=7)
     e3, _ = mc(cn, SITE, GAST, 75.0, 45.0, 0.3, 1.5, n=50, seed=7)
     c.ok(np.allclose(np.asarray(e2, float), np.asarray(e3, float)), "the same seed must give the same errors "

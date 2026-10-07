@@ -13,8 +13,8 @@
 >   NAVERA's trust gates.
 > - NAVERA's `LocalMatcher.locate()` uses the same ratio test (0.8) and RANSAC.
 
-A survey drone flies along the coast north of Sohar at 300 m. Ships and aircraft in the Gulf of Oman
-and the Strait of Hormuz regularly report **GNSS interference**, and today the drone's GPS receiver
+A survey drone flies along a coast at 300 m. Ships and aircraft in the Baltic Sea and the eastern
+Mediterranean regularly report **GNSS interference**, and today the drone's GPS receiver
 shows nonsense. The camera still works. NAVERA has the satellite map on board, and lesson 20 gave
 you keypoints and descriptors in both the camera frame and the map. Two questions remain:
 
@@ -29,7 +29,7 @@ implement the DLT and RANSAC yourself with numpy, compare them with OpenCV, and 
 
 > [!NOTE]
 > NAVERA's test map covers **Sousse, Tunisia**, where NAVERA is developed. The lab pictures are cut
-> from that map. The maths is the same over Sohar, Nizwa or Salalah — only the map changes.
+> from that map. The maths is the same over Cape Town, Singapore or Reykjavik — only the map changes.
 
 ## 1. Nearest neighbours in descriptor space
 
@@ -112,7 +112,7 @@ Each pair (x, y) ↔ (u, v) gives two equations, so the minimal sample is ⌈DOF
 ![A homography lays the drone view onto the map](assets/homography.svg)
 
 **When is a homography the right model?** Exactly when the scene is a **plane** (or the camera only
-rotates). Seen from 300 m, the ground around Sohar is nearly a plane: a 20 m building is 7 % of the
+rotates). Seen from 300 m, flat coastal ground (like Sousse) is nearly a plane: a 20 m building is 7 % of the
 height, so its roof is displaced in the image, but most of the frame follows a homography. For a
 camera looking **straight down** (after NAVERA straightens the frame with the IMU, lessons 16–18),
 the homography reduces to a **similarity**: rotation θ, scale s, shift (tx, ty), with h20 = h21 = 0.
@@ -323,8 +323,8 @@ with remembered landmarks along the route.
 Notice the logic. One white house could be any white house: a single landmark is the ratio-test
 problem of section 2. What tells the pigeon "I am on my route" is a **configuration** of several
 landmarks in the right relative positions — the consensus of section 5. The same holds for a bird
-following the Omani coast on migration: a coastline alone is a long, featureless line (the spread
-problem of section 7); a coastline **plus** a headland, a wadi mouth and a town is a fix. Navi the swallow would say it simply: trust the pattern, not the
+following a coast on migration, such as the Atlantic coast of Morocco: a coastline alone is a long, featureless line (the spread
+problem of section 7); a coastline **plus** a headland, a river mouth and a town is a fix. Navi the swallow would say it simply: trust the pattern, not the
 single clue.
 
 ## In NAVERA

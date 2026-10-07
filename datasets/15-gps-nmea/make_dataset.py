@@ -4,11 +4,11 @@
     python3 datasets/15-gps-nmea/make_dataset.py
 
 Writes, next to this script:
-  sohar_drive.nmea   a SYNTHETIC NMEA 0183 log (GPS-only receiver, talker "GP", 1 Hz)
+  sousse_drive.nmea  a SYNTHETIC NMEA 0183 log (GPS-only receiver, talker "GP", 1 Hz)
   truth.csv          the true position of the car every second (utc,lat,lon,alt_msl)
 
-The drive: a car leaves the Sohar Port area and drives south-east along the coast to Sohar
-Fort (about 19 km, roads approximate). The places are real; the log is invented, so that we
+The drive: a car leaves the Sousse port area and drives south-east along the coast to the
+Ribat of Monastir (about 19 km, roads approximate), in NAVERA's test area (Tunisia). The places are real; the log is invented, so that we
 know the truth exactly. What the synthetic receiver does, on purpose:
   * cold start: 12 s without a fix (GGA quality 0, RMC status V, GSA mode 1)
   * satellites move slowly across the sky (12 GPS satellites, integer az/el in GSV)
@@ -24,7 +24,8 @@ know the truth exactly. What the synthetic receiver does, on purpose:
   * corrupted lines: flipped characters, a cut line, a missing checksum, garbage, two lines
     glued together, a non-ASCII byte, and TWO swapped-digit lines whose checksum is still
     correct (XOR does not see the order of characters): one with minutes >= 60, one with a
-    plausible-looking latitude 0.72' (about 1.3 km) off.
+    plausible-looking latitude a few tenths of a minute off
+    (in this log 0.36', about 0.67 km).
 Deterministic (fixed seeds). check.py of lesson 15 holds numbers computed from this output:
 if you change anything here, recompute them with the solution (analyze_drive.py).
 """
@@ -35,18 +36,19 @@ import random
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT_LOG = os.path.join(HERE, "sohar_drive.nmea")
+OUT_LOG = os.path.join(HERE, "sousse_drive.nmea")
 OUT_TRUTH = os.path.join(HERE, "truth.csv")
 
 R_EARTH = 6371000.0
-WAYPOINTS = [(24.4900, 56.6200),     # near Sohar Port
-             (24.4700, 56.6400), (24.4450, 56.6600), (24.4200, 56.6880),
-             (24.3950, 56.7120), (24.3750, 56.7350),
-             (24.3637, 56.7468)]     # Sohar Fort
-T0 = 5 * 3600 + 12 * 60              # 05:12:00 UTC = 09:12 in Oman (UTC+4)
+WAYPOINTS = [(35.8270, 10.6420),     # near the port of Sousse
+             (35.8150, 10.6560), (35.8000, 10.6750), (35.7850, 10.7000),
+             (35.7700, 10.7300), (35.7620, 10.7650), (35.7650, 10.7950),
+             (35.7720, 10.8150),
+             (35.7780, 10.8265)]     # Ribat of Monastir
+T0 = 5 * 3600 + 12 * 60              # 05:12:00 UTC = 06:12 in Tunisia (UTC+1)
 DATE = "121026"                       # 12 October 2026
 COLD = 12                             # seconds without a fix at start (car parked)
-GEO_SEP = -30.0                       # value written by this synthetic receiver
+GEO_SEP = 32.0                        # value written by this synthetic receiver (geoid near Sousse)
 MASK_USE = 10.0                       # elevation mask for use (deg)
 MASK_LIST = 5.0                       # satellites listed in GSV above this
 

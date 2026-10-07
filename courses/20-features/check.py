@@ -262,7 +262,7 @@ def quotes(text, v):
 
 
 @c.test("report.md — four sections, each answered with your own numbers",
-        hint="Use the template of Step 8: '## 1. Scale', '## 2. Descriptors', '## 3. Terrain', '## 4. Oman'. "
+        hint="Use the template of Step 8: '## 1. Scale', '## 2. Descriptors', '## 3. Terrain', '## 4. World'. "
              "Each section needs at least 40 words; quote the numbers from YOUR results.json "
              "(e.g. 0.32 or 32 %).")
 def _():
@@ -270,7 +270,7 @@ def _():
     t = open("report.md", encoding="utf-8").read()
     r = results()
     secs = {}
-    for key, words in (("scale", ["scale"]), ("desc", ["descriptor"]), ("terrain", ["terrain"]), ("oman", ["oman"])):
+    for key, words in (("scale", ["scale"]), ("desc", ["descriptor"]), ("terrain", ["terrain"]), ("world", ["world"])):
         s = section(t, words)
         c.ok(s is not None, f"report.md has no section '## … {words[0].capitalize()} …'")
         n = len(re.findall(r"[A-Za-z]{2,}", s))
@@ -283,11 +283,13 @@ def _():
     hm = r["hamming_orb"]
     c.ok(str(int(round(hm["median_same_point"]))) in secs["desc"] and str(int(round(hm["median_random"]))) in secs["desc"],
          f"section Descriptors: quote both Hamming medians ({hm['median_same_point']:.0f} and {hm['median_random']:.0f} bits)")
-    places = ("wahiba", "sharqiya", "rub al khali", "empty quarter", "masirah", "barr al hikman", "muscat", "hajar",
-              "salalah", "sohar", "nizwa", "duqm", "jebel", "dhofar", "batinah")
-    o = secs["oman"].lower()
-    c.ok(sum(p in o for p in places) >= 2, "section Oman: discuss at least two Omani places (e.g. Wahiba Sands, "
-                                            "the sea off Muscat, the Hajar mountains)")
+    places = ("sahara", "namib", "atacama", "gobi", "kalahari", "greenland", "antarctic", "amazon", "atlantic",
+              "pacific", "indian ocean", "mediterranean", "alps", "andes", "himalaya", "rockies", "wadden", "uyuni",
+              "nile", "paris", "london", "singapore", "tokyo", "new york", "sydney", "cape town", "cairo", "sousse",
+              "iceland", "siberia", "arctic")
+    o = secs["world"].lower()
+    c.ok(sum(p in o for p in places) >= 2, "section World: discuss at least two real places (e.g. the Sahara dunes, "
+                                            "the open Atlantic, the Alps)")
 
 
 c.run()

@@ -11,8 +11,8 @@ def show(v, fmt):
     return "TODO" if v is None else fmt % tuple(v) if isinstance(v, (tuple, list)) else fmt % v
 
 
-home = PLACES["Muscat (Grand Mosque)"][:2]
-print("1) Distances from Muscat: your haversine() against NAVERA's haversine_m()")
+home = PLACES["Sousse (medina)"][:2]
+print("1) Distances from Sousse: your haversine() against NAVERA's haversine_m()")
 print(f"{'place':<24}{'yours (m)':>14}{'NAVERA (m)':>14}{'difference':>12}")
 for name, (lat, lon, _h) in PLACES.items():
     mine, theirs = haversine(*home, lat, lon), haversine_m(*home, lat, lon)
@@ -29,8 +29,8 @@ mine, theirs = flat_move(home[0], home[1], 500.0, -300.0), _move(home, 500.0, -3
 print("   yours ", show(mine, "(%.9f, %.9f)"))
 print("   NAVERA (%.9f, %.9f)" % theirs)
 
-print("\n4) NAVERA's dead_reckon(): fly 20 m/s for 600 s on bearing 212.3 deg (towards Salalah)")
-end = dead_reckon(home[0], home[1], 212.3, 20.0, 600.0)
+print("\n4) NAVERA's dead_reckon(): fly 20 m/s for 600 s on bearing 12.8 deg (towards Rome)")
+end = dead_reckon(home[0], home[1], 12.8, 20.0, 600.0)
 print("   NAVERA lands at (%.6f, %.6f)" % end)
 d, b = haversine(*home, *end), bearing(*home, *end)
 print("   your haversine() says", show(d, "%.1f m"), " and your bearing() says", show(b, "%.2f deg"))

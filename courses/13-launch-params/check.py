@@ -8,7 +8,7 @@ from academy_check import Background, Checker, load_student, need, sh, wait_for_
 c = Checker()
 R = 6_371_000.0
 NAVERA_YAML = os.path.expanduser("~/navera/navera_estimator/navera_estimator/config/estimator_params.yaml")
-MUSCAT, SOHAR = (23.5880, 58.3829), (24.35, 56.75)
+SOUSSE, MONASTIR = (35.8250, 10.5950), (35.78, 10.86)
 
 
 def dist_m(lat1, lon1, lat2, lon2):
@@ -108,16 +108,16 @@ def _():
 
 
 @c.test("TODO 3 — my_gps.yaml: /** first, then the car and the boat",
-        hint="/**: rate_hz 1.0, sigma_m 3.0 — FIRST. /car/fake_gps: car, 23.5880 / 58.3829, 12.0, 90.0. "
-             "/boat/fake_gps: boat, 24.3500 / 56.7500, 5.0, 45.0. Decimals with a dot, text in quotes.")
+        hint="/**: rate_hz 1.0, sigma_m 3.0 — FIRST. /car/fake_gps: car, 35.8250 / 10.5950, 12.0, 90.0. "
+             "/boat/fake_gps: boat, 35.7800 / 10.8600, 5.0, 45.0. Decimals with a dot, text in quotes.")
 def _():
     d = load_yaml("my_gps.yaml")
     c.ok(isinstance(d, dict), "my_gps.yaml should be a mapping of node names")
     keys = list(d)
     c.ok(keys and keys[0] == "/**", f"the first section must be /** (the last match wins), got {keys}")
     want = {"/**": {"rate_hz": 1.0, "sigma_m": 3.0},
-            "/car/fake_gps": {"vehicle": "car", "start_lat": 23.588, "start_lon": 58.3829, "speed_mps": 12.0, "heading_deg": 90.0},
-            "/boat/fake_gps": {"vehicle": "boat", "start_lat": 24.35, "start_lon": 56.75, "speed_mps": 5.0, "heading_deg": 45.0}}
+            "/car/fake_gps": {"vehicle": "car", "start_lat": 35.825, "start_lon": 10.595, "speed_mps": 12.0, "heading_deg": 90.0},
+            "/boat/fake_gps": {"vehicle": "boat", "start_lat": 35.78, "start_lon": 10.86, "speed_mps": 5.0, "heading_deg": 45.0}}
     for sect, vals in want.items():
         p = (d.get(sect) or {}).get("ros__parameters")
         c.ok(isinstance(p, dict), f"section {sect} → ros__parameters is missing (two underscores, indented)")
@@ -130,7 +130,7 @@ def _():
                 c.eq(p[k], v, f"{sect}: {k}")
 
 
-@c.test("live — the boat from the file: /boat/fix at 1 Hz, from Sohar, 5 m/s towards the north-east",
+@c.test("live — the boat from the file: /boat/fix at 1 Hz, from off Monastir, 5 m/s towards the north-east",
         hint="python3 fake_gps_node.py --ros-args -r __ns:=/boat -r /fake_gps/fix:=fix --params-file my_gps.yaml")
 def _():
     from sensor_msgs.msg import NavSatFix
@@ -142,7 +142,7 @@ def _():
     c.ok(len(msgs) >= 4, f"only {len(msgs)} messages on /boat/fix." + (f" The node printed:\n{bg.output()[-400:]}"))
     dt = stamp(msgs[-1]) - stamp(msgs[0])
     c.near((len(msgs) - 1) / dt, 1.0, 0.15, "the boat's rate (Hz)")
-    c.ok(dist_m(msgs[0].latitude, msgs[0].longitude, *SOHAR) < 100, "the boat does not start off Sohar")
+    c.ok(dist_m(msgs[0].latitude, msgs[0].longitude, *MONASTIR) < 100, "the boat does not start off Monastir")
     a, b = msgs[0], msgs[-1]
     c.near(dist_m(a.latitude, a.longitude, b.latitude, b.longitude) / dt, 5.0, 0.5, "the boat's speed (m/s)")
     c.near(bearing_deg(a.latitude, a.longitude, b.latitude, b.longitude), 45.0, 5.0, "the boat's direction (°)")
@@ -195,8 +195,8 @@ def _():
         c.ok(n in r["nodes"], f"node {n} is missing from `ros2 node list`:\n{r['nodes']}")
     c.ok("GPS from /car/fix" in r["out"], "ros_gps does not listen to /car/fix (TODO 6)")
     c.ok(r["status"][-1].active_source == NavStatus.SOURCE_GPS, f"NAVERA does not use the GPS: {r['status'][-1].reason!r}")
-    c.ok(r["pos"] and dist_m(r["pos"][0].latitude, r["pos"][0].longitude, *MUSCAT) < 2000,
-         "no /navera/position near the car in Muscat")
+    c.ok(r["pos"] and dist_m(r["pos"][0].latitude, r["pos"][0].longitude, *SOUSSE) < 2000,
+         "no /navera/position near the car in Sousse")
 
 
 @c.test("TODO 7 — the included estimator.launch.py receives gps_timeout_s := 2.0",
@@ -217,8 +217,8 @@ def _():
          f"with_boat:=false — node list:\n{r['nodes']}")
     r = launch("gps_source:=boat")
     c.ok("GPS from /boat/fix" in r["out"], "with gps_source:=boat, ros_gps does not listen to /boat/fix")
-    c.ok(r["pos"] and dist_m(r["pos"][0].latitude, r["pos"][0].longitude, *SOHAR) < 2000,
-         "with gps_source:=boat, /navera/position is not near the boat off Sohar")
+    c.ok(r["pos"] and dist_m(r["pos"][0].latitude, r["pos"][0].longitude, *MONASTIR) < 2000,
+         "with gps_source:=boat, /navera/position is not near the boat off Monastir")
 
 
 @c.test("NAVERA copy — fix_max_sigma_m is 2.0 and gps_timeout_s is back to 3.0; the order trap measured",

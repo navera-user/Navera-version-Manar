@@ -7,13 +7,14 @@
 >   `groupby`.
 > - You compute distances and speeds with NumPy, find GPS outages with **run-length** logic, and
 >   use statistics that survive bad data.
-> - In the lab you analyse four synthetic flights in Oman, draw two figures with matplotlib and
+> - In the lab you analyse four synthetic flights near Sousse, Tunisia, draw two figures with matplotlib and
 >   write a short test report.
 > - NAVERA's tools use the same methods: pandas for the map tile table, and the same statistics in
 >   `evaluate_session.py`.
 
-A test week is over. Four drone flights were logged in Oman: along the Muscat coast, around a port
-near Sohar, over the foothills near Nizwa, and a survey line pattern near Barr Al Hikman. The logger
+A test week is over. Four drone flights were logged in NAVERA's test area in Tunisia: along the
+coast near Monastir, around the port of Sousse, over the hills of the Sahel inland, and a survey line
+pattern (a grid) over the sea shore. The logger
 wrote one row every 2 seconds per flight: 1556 rows, ten columns. The test engineer must answer
 before the next campaign:
 
@@ -24,7 +25,8 @@ before the next campaign:
 
 You will answer with the standard tools of every data engineer: the `csv` module, **pandas**,
 **NumPy**, **matplotlib** and **json**. The campaign is **synthetic** (generated for this course,
-with realistic errors); NAVERA's real recordings cover Sousse, Tunisia, where it is developed. The
+with realistic errors) but placed in NAVERA's test area: NAVERA's real recordings cover Sousse,
+Tunisia, where it is developed. The
 methods are the same ones NAVERA's team uses to produce the numbers in
 `docs/VALIDATION_STATUS.md`.
 
@@ -35,8 +37,8 @@ line per row.
 
 ```
 flight_id,time_s,lat,lon,alt_m,speed_mps,battery_pct,gps_valid,source,state
-muscat_coast,0,23.614003,58.590012,0.0,0.52,99.9,1,gps,FIX
-sohar_port,480,,,120.6,13.71,74.1,0,none,NO_FIX
+monastir_coast,0,35.769986,10.829994,0.0,0.44,100.0,1,gps,FIX
+sousse_port,480,,,118.6,14.76,70.1,0,none,NO_FIX
 ```
 
 The second line has **empty cells**: during that moment no source gave a position. Every value in
@@ -61,9 +63,9 @@ the file first, `"a"` appends.
 import csv
 with open("campaign.csv", newline="") as f:
     rows = list(csv.DictReader(f))          # a list of dicts, one per row
-rows[0]["flight_id"]                        # 'muscat_coast'
+rows[0]["flight_id"]                        # 'monastir_coast'
 rows[0]["alt_m"]                            # '0.0'   ← a string!
-alts = [float(r["alt_m"]) for r in rows if r["flight_id"] == "sohar_port"]   # list comprehension
+alts = [float(r["alt_m"]) for r in rows if r["flight_id"] == "sousse_port"]   # list comprehension
 ```
 
 `csv.DictReader` gives each row as a **dict** whose keys are the column names (lesson 3). Every value
@@ -110,7 +112,7 @@ indexing with it keeps the `True` rows.
 ```python
 lost = df["gps_valid"] == 0                       # a boolean Series
 df[lost]                                          # rows without GPS
-df[(df["flight_id"] == "sohar_port") & lost]      # AND: &   OR: |   NOT: ~
+df[(df["flight_id"] == "sousse_port") & lost]      # AND: &   OR: |   NOT: ~
 df[~df["source"].isin(["gps", "day_vision"])]     # rows whose source is something else
 ```
 
@@ -217,10 +219,10 @@ it works on whole columns:
 a = sin²(Δφ/2) + cos φ1 · cos φ2 · sin²(Δλ/2)        d = 2 R · asin(√a)        R = 6 371 000 m
 ```
 
-**Worked example.** Muscat (23.588° N, 58.383° E) to Nizwa (22.933° N, 57.533° E):
-`Δφ = −0.655° = −0.011432 rad`, `Δλ = −0.850° = −0.014835 rad`,
-`a = sin²(−0.005716) + cos(23.588°)·cos(22.933°)·sin²(−0.007418) = 3.267e−5 + 0.9164 × 0.9210 × 5.502e−5
-= 7.911e−5`, `d = 2 × 6 371 000 × asin(0.008894) = 113.3 km`.
+**Worked example.** London (51.507° N, 0.128° W, so longitude −0.128°) to Paris (48.857° N,
+2.352° E): `Δφ = −2.650° = −0.046251 rad`, `Δλ = 2.480° = 0.043284 rad`,
+`a = sin²(−0.023126) + cos(51.507°)·cos(48.857°)·sin²(0.021642) = 5.347e−4 + 0.6223 × 0.6581 × 4.683e−4
+= 7.265e−4`, `d = 2 × 6 371 000 × asin(0.026953) = 343.5 km`.
 
 With NumPy the same lines compute 1500 distances at once: `np.radians`, `np.sin`, `np.cos`,
 `np.arcsin` work element by element on Series and arrays, and NaN in gives NaN out.
@@ -277,12 +279,12 @@ east  = R · (λ − λ0) · cos φ0
 north = R · (φ − φ0)
 ```
 
-With Muscat (23.588° N, 58.383° E) as the reference, Nizwa (22.933° N, 57.533° E) is at
-`east = 6 371 000 × (−0.850 × π/180) × cos 23.588° = −86.6 km` and
-`north = 6 371 000 × (−0.655 × π/180) = −72.8 km`: 113.2 km away. The haversine distance above is
-113.3 km, so the flat formula is wrong by only 0.14 %. For Salalah, 857 km away, the error grows to
-0.6 % (5 km). With broadcasting, `lat` and `lon` can be whole columns and `φ0`, `λ0` single numbers:
-the helper `plot_tracks()` of the lab draws every flight in metres exactly like this.
+With London (51.507° N, −0.128°) as the reference, Paris (48.857° N, 2.352° E) is at
+`east = 6 371 000 × (2.480 × π/180) × cos 51.507° = 171.6 km` and
+`north = 6 371 000 × (−2.650 × π/180) = −294.7 km`: 341.0 km away. The haversine distance above is
+343.5 km, so the flat formula is wrong by 0.7 % (2.5 km). For Madrid, 1263 km away, the error grows
+to 5.6 km. Over the few kilometres of a test flight it stays around one metre. With broadcasting,
+`lat` and `lon` can be whole columns and `φ0`, `λ0` single numbers: the helper `plot_tracks()` of the lab draws every flight in metres exactly like this.
 
 ## 4. Outages: run-length logic
 
@@ -339,7 +341,7 @@ fig, ax = plt.subplots(figsize=(9, 3.5))       # a figure with one axes
 ax.plot(t, alt, label="altitude")              # a line
 ax.scatter(east, north, s=4, color="tab:orange")   # points
 ax.axvspan(560, 976, color="tab:red", alpha=0.2)   # a shaded time interval
-ax.set_xlabel("time (s)"); ax.set_ylabel("altitude (m)"); ax.set_title("nizwa_foothills")
+ax.set_xlabel("time (s)"); ax.set_ylabel("altitude (m)"); ax.set_title("sahel_hills")
 ax.legend()
 fig.savefig("altitude.png", dpi=100)
 plt.close(fig)                                 # free the memory
@@ -375,8 +377,10 @@ NumPy/pandas scalars with `int()`, `float()`, `bool()` first.
 
 ## 🐦 How birds do it
 
-Bird scientists are data engineers too. The shorebirds that winter at Barr Al Hikman — bar-tailed
-godwits, crab plovers, sandpipers — have been counted and tracked there for years. A satellite or
+Bird scientists are data engineers too. Shorebirds such as bar-tailed godwits, knots and
+sandpipers have been counted and tracked for decades on the great tidal flats where they stop or
+winter — the Wadden Sea in Europe, the Yellow Sea in Asia, the coasts of New Zealand and Australia.
+In 2022 a tagged young godwit flew non-stop from Alaska to Tasmania, about 13 500 km in 11 days. A satellite or
 GPS tag on a godwit produces exactly our kind of file: one row per fix, with time, latitude,
 longitude, sometimes altitude and battery voltage, and **gaps** when the tag could not get a fix or
 had too little solar energy to send it. Before any conclusion, the scientists remove duplicate

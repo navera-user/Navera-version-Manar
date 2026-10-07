@@ -56,8 +56,8 @@ def speed_mps(distance_m, dt_s):
 
 
 if __name__ == "__main__":
-    print("Muscat -> Nizwa:", round(haversine_m(23.5880, 58.3829, 22.9333, 57.5333)), "m")
-    print("100 m north, 100 m east at Muscat:", meters_to_degrees(100, 100, 23.588))
-    print("round trip:", latlon_to_offset(23.588, 58.3829, *offset_to_latlon(23.588, 58.3829, 250.0, -120.0)))
+    print("London -> Paris:", round(haversine_m(51.5007, -0.1246, 48.8584, 2.2945)), "m")
+    print("100 m north, 100 m east in London:", meters_to_degrees(100, 100, 51.5007))
+    print("round trip:", latlon_to_offset(51.5007, -0.1246, *offset_to_latlon(51.5007, -0.1246, 250.0, -120.0)))
     print("(0, 0) valid?", is_valid_position(0.0, 0.0))
     print("speed for 100 m in 20 s:", speed_mps(100, 20), "m/s")

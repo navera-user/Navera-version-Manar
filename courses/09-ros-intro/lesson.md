@@ -12,7 +12,7 @@
 > - In NAVERA, every source publishes the same message type on its own topic, and the arbiter
 >   subscribes to all of them.
 
-A NAVERA box is mounted on a survey drone that flies along the coast from Muscat to Sur. Inside
+A NAVERA box is mounted on a survey drone that flies a coastal survey, 100 km along the shore. Inside
 the box, about **ten programs run at the same time**: one reads the GPS receiver, one reads the
 attitude sensor, one takes camera frames, one matches them against the satellite map, one decides
 which position to trust, one sends that position to the autopilot, one serves the operator's web
@@ -238,10 +238,10 @@ result in *PNAS*: each starling reacts to about **six or seven nearest neighbour
 *number* of neighbours, not to every bird within a fixed distance. They called it a
 **topological** interaction.
 
-Oman has its own great gatherings. In winter, the mudflats of **Barr Al Hikman**, on the coast
-facing Masirah Island, hold hundreds of thousands of shorebirds — waders such as crab plovers,
-sandpipers and godwits — and their dense flocks wheel together in the same leaderless way when a
-falcon passes.
+Coasts have their own great gatherings. During migration, the tidal mudflats of the **Wadden Sea**
+(Netherlands, Germany, Denmark) hold millions of shorebirds — waders such as red knots, dunlins and
+bar-tailed godwits — and their dense flocks wheel together in the same leaderless way when a
+peregrine falcon passes.
 
 | A flock | A ROS 2 graph |
 |---|---|

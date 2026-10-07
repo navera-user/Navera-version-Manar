@@ -8,7 +8,7 @@ a silent GNSS). You write the analysis in [report.md](file:./report.md).
 **Time:** about 3 h. You need up to **four terminals** (**＋ new**); `Ctrl+C` stops a node.
 
 Your folder also contains [gps_track_player.py](file:./gps_track_player.py), a ready-made GNSS source
-that drives a loop near the Grand Mosque in Muscat at **6 m/s** and publishes on `/fake_gps/fix` at
+that drives a loop near the Ribat of Sousse (NAVERA's test area) at **6 m/s** and publishes on `/fake_gps/fix` at
 2 Hz. You don't need to change it. Its parameters `noise_m` and `faults` add Gaussian noise or bad
 fixes on purpose. (Your own `~/lessons/10-publisher/fake_gps.py` publishes on the same topic and also
 works — but the checker uses the player, because it knows its exact behaviour.)
@@ -24,7 +24,7 @@ Open `gps_listener.py`. The class `Tracker` contains no ROS: you can test it wit
 > reason that applies, in this order: `NO_FIX`, `NOT_FINITE`, `NULL_ISLAND`, `NOT_NEWER`.
 
 ```bash
-python3 -c "from gps_listener import *; t = Tracker(); print(repr(t.check(23.6, 58.4, 10.0)), t.check(23.6, 58.4, 10.0, -1), t.check(float('nan'), 58.4, 10.0), t.check(0.0, 0.0, 10.0))"
+python3 -c "from gps_listener import *; t = Tracker(); print(repr(t.check(35.8, 10.6, 10.0)), t.check(35.8, 10.6, 10.0, -1), t.check(float('nan'), 10.6, 10.0), t.check(0.0, 0.0, 10.0))"
 ```
 
 Expected: `'' no fix not finite null island`. (`NOT_NEWER` needs a previous fix: step 2 tests it.)
@@ -38,7 +38,7 @@ Expected: `'' no fix not finite null island`. (`NOT_NEWER` needs a previous fix:
 Three fixes 0.001° of latitude apart (111.2 m) and 10 s apart, then two bad ones:
 
 ```bash
-python3 -c "from gps_listener import *; t = Tracker(); print(t.update(23.588, 58.38, 0), t.update(23.589, 58.38, 10), t.update(23.590, 58.38, 20)); print(t.update(23.591, 58.38, 15), t.update(0.0, 0.0, 30)); w = t.window_speed_mps; print(t.count, round(t.distance_m, 1), w if w is None else round(w, 3), t.rejected)"
+python3 -c "from gps_listener import *; t = Tracker(); print(t.update(35.828, 10.64, 0), t.update(35.829, 10.64, 10), t.update(35.830, 10.64, 20)); print(t.update(35.831, 10.64, 15), t.update(0.0, 0.0, 30)); w = t.window_speed_mps; print(t.count, round(t.distance_m, 1), w if w is None else round(w, 3), t.rejected)"
 ```
 
 Expected: `None 11.119… 11.119…`, then `None None`, then `3 222.4 11.119 {'not newer': 1, 'null island': 1}`.

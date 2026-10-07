@@ -11,8 +11,8 @@
 > - In the lab you run your first commands on the Jetson, run a GNSS solver, break it on purpose,
 >   and apply the arbiter's jump gate.
 
-A survey drone flies along the coast between Muscat and Barka. Its autopilot holds the route with
-a position from **GPS**, updated five times per second. Suddenly the receiver reports
+A survey drone flies along a coastline, from one harbour town to the next. Its autopilot holds
+the route with a position from **GPS**, updated five times per second. Suddenly the receiver reports
 "no fix" — or worse, it keeps reporting a position that is calm, precise… and 2 km out at sea,
 while the drone is still over the beach. The autopilot cannot see the difference. It will either
 land where it is, fly a "return home" towards a wrong home, or follow the fake position.
@@ -81,7 +81,7 @@ the lab you run such a solver and watch the clock bias come out of it.
 The noise `ε` of a few metres becomes a position error multiplied by a **dilution of precision**
 (DOP) that depends only on the geometry: satellites spread over the whole sky give a small DOP
 (1–2); satellites bunched in one direction, or only four of them, give a larger one. That is why the
-same receiver is precise in the open desert and poor in a narrow street of Muttrah between houses
+same receiver is precise in the open desert and poor in a narrow old-town street between tall houses
 and hills.
 
 ## 2. Why GNSS is fragile
@@ -134,10 +134,11 @@ something that does not use radio signals: the camera, the stars, the vehicle's 
 
 ## Where the idea came from: birds
 
-Twice a year, millions of birds cross the Arabian Peninsula on one of the great migration routes
-between Europe and Central Asia in the north, and Africa in the south. Oman is on that route:
-barn swallows, wheatears, warblers and birds of prey pass over Musandam, the Batinah coast and
-Dhofar in spring and in autumn, many of them flying at night. A barn swallow that breeds in Europe
+Twice a year, billions of birds travel between their breeding grounds and their winter quarters.
+White storks cross from Europe to Africa over the Strait of Gibraltar; bar-tailed godwits fly
+non-stop from Alaska to New Zealand; Arctic terns go from the Arctic to the Antarctic and back.
+Barn swallows, wheatears, warblers and birds of prey cross the Mediterranean and the Sahara in
+spring and in autumn, many of them flying at night. A barn swallow that breeds in Europe
 or Central Asia winters in Africa and often comes back to the same building, sometimes to the same
 nest, after a journey of thousands of kilometres over sea and desert — with no GPS.
 
@@ -217,7 +218,8 @@ Every position NAVERA publishes carries its **source**, whether it was **measure
 > their conditions, never alone. You will do the same in this course.
 
 NAVERA's test map and recorded data cover the region of **Sousse, Tunisia**, where NAVERA is
-developed. The examples of this course use Omani places; the real data stays where it was recorded.
+developed. Other examples of this course use well-known places around the world; the real data stays
+where it was recorded.
 
 ## 🐦 How birds do it
 
@@ -237,8 +239,8 @@ calibration goes straight into the flight.
 
 That is the arbiter's job: never trust one source blindly, compare it with an independent one, and
 notice when one starts telling a different story — a GPS that puts the drone 2 km out at sea while
-the camera sees the roofs of Sohar. It is also the arbiter's main risk: if a spoofer manages to
-"calibrate" NAVERA with a false position, the error propagates. Lesson 27 returns to this.
+the camera sees the roofs of the harbour town. It is also the arbiter's main risk: if a spoofer
+manages to "calibrate" NAVERA with a false position, the error propagates. Lesson 27 returns to this.
 
 ## 4. Your workspace
 

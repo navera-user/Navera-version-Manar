@@ -12,7 +12,7 @@
 > - In the lab you build the arbiter as a `decide()` function, prove it matches the real
 >   `estimator_node`, and measure its trade-offs.
 
-A survey drone flies north along the Batinah coast towards Sohar port at 40 m/s. Its GPS says
+A survey drone flies north along a coast towards a harbour at 40 m/s. Its GPS says
 *"you are here, σ = 3 m"*. Its day camera, matching the ground against a satellite map, says
 *"you are 40 m further inland, σ = 30 m"*. The star camera says *"you are somewhere in a circle
 of tens of kilometres"*. Then the GPS starts to drop out: valid, invalid, valid, every second or two.
@@ -29,7 +29,7 @@ source instead of **fusing** them all.
 
 > [!NOTE]
 > NAVERA's recorded data and its simulator area cover **Sousse, Tunisia**, where NAVERA is
-> developed. The examples in this lesson use Omani places; the code does not care where it flies.
+> developed. The examples in this lesson use generic places; the code does not care where it flies.
 
 ## 1. The problem, stated precisely
 
@@ -292,7 +292,7 @@ correlations are known.
 
 A migrating bird also has several sources: a **sun compass** by day, a **star compass** at night,
 a **magnetic compass** at any time, and landmarks. Every autumn many songbirds that breed in Europe
-and Asia cross the Arabian Peninsula, Oman included, on their way to Africa — long flights over
+cross the Mediterranean Sea and the Sahara on their way to Africa — long flights over
 desert and sea where landmarks are few. Which compass do they trust?
 
 A classic field experiment (Cochran, Mouritsen and Wikelski, *Science*, 2004) followed wild

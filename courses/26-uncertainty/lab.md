@@ -17,10 +17,9 @@ Your files:
 | [report.md](file:./report.md) | your written analysis (4 sections) |
 
 The data in `/data/academy/26-uncertainty/` is **simulated** (`make_dataset.py` in the same folder
-makes it): a receiver standing still in Sohar port with a correlated error, a 6-minute drone flight
-west of Mutrah with a 40 s GPS outage and 6 wrong fixes, and 104 height measurements from three
-sources. NAVERA's own recorded data is from Sousse, Tunisia; here we use Omani places for a
-simulated scenario.
+makes it): a receiver standing still in Sousse harbour with a correlated error, a 6-minute drone flight
+from Monastir along the coast with a 40 s GPS outage and 6 wrong fixes, and 104 height measurements from three
+sources. NAVERA's own recorded data is from Sousse, Tunisia; the simulated scenario of this lab is placed in the same test area.
 
 > [!TIP]
 > Every function has a docstring with the exact formula and return type. Read it first. All vectors
@@ -84,7 +83,7 @@ floats: a ROS `float64[9]` field refuses numpy values and integers (`9.0`, not `
 Then ask NAVERA's real arbiter — its `_sane()` and `_stated_sigma()` are static methods you can call:
 
 ```bash
-python3 -c "from uncertainty import estimate_message as m; from navera_estimator.nodes.estimator_node import EstimatorNode as E; x = m(24.36, 56.74, [[12.0, 5.0], [5.0, 6.0]]); print(list(x.position_covariance), x.position_covariance_type, E._sane(x), E._stated_sigma(x))"
+python3 -c "from uncertainty import estimate_message as m; from navera_estimator.nodes.estimator_node import EstimatorNode as E; x = m(35.76, 10.81, [[12.0, 5.0], [5.0, 6.0]]); print(list(x.position_covariance), x.position_covariance_type, E._sane(x), E._stated_sigma(x))"
 ```
 
 You should see your 9 numbers, type `3`, `True` and `3.464…` (√12). Compare with a = 3.85 m from
@@ -114,7 +113,7 @@ The demo is the worked example of the course: after the barometer update you mus
 
 > [!TASK]
 > Complete TODO 8 to 12. "Done" means checks 8–11 are green: one step by hand matches the course,
-> and on the Muscat track your gated filter refuses the 6 outliers, makes exactly 3 false alarms,
+> and on the coastal track your gated filter refuses the 6 outliers, makes exactly 3 false alarms,
 > reaches an RMSE of 4.48 m on the measured steps, and its σ grows to about 92 m at the end of the
 > outage.
 
@@ -193,7 +192,7 @@ cat race.json
 ```
 
 For section 4 you need two numbers you compute yourself: the probability of NAVERA's 3-sigma vision
-gate for a round 2-D error, `1 − exp(−9/2)`, and the σ that `_stated_sigma()` reads for the Sohar
+gate for a round 2-D error, `1 − exp(−9/2)`, and the σ that `_stated_sigma()` reads for the harbour
 covariance (`static.navera_stated_sigma_m` in `results.json`), compared with the semi-major axis a.
 
 ```bash

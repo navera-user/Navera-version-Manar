@@ -7,8 +7,8 @@
 > - You will measure **repeatability** (does the detector find the same points again after a turn or a zoom?).
 > - In the lab you build Harris from scratch, use OpenCV's ORB and SIFT, and score which terrains can be matched.
 
-A survey drone leaves Sohar and flies south-east along the Batinah coast towards Muscat at 300 m.
-Near Barka its GPS receiver is jammed. The camera still works: it sees roofs, roads, palm groves,
+A survey drone flies along a busy coast at 300 m, from one harbour town to the next.
+Halfway, its GPS receiver is jammed. The camera still works: it sees roofs, roads, palm groves,
 the beach. On board, NAVERA has a satellite map of the area. The question of this module ("Eyes on
 the ground") is easy to say and hard to answer: **where on the map is this photo?**
 
@@ -24,8 +24,8 @@ This lesson is about finding them (**detection**) and summarising each one with 
 
 > [!NOTE]
 > NAVERA's test map and recorded frames cover **Sousse, Tunisia**, where NAVERA is developed. All the
-> pictures in the lab come from that map. The examples in the text use Omani places; the method is the
-> same everywhere.
+> pictures in the lab come from that map. The examples in the text use places from around the world; the
+> method is the same everywhere.
 
 ## 1. Image gradients
 
@@ -264,7 +264,7 @@ Read it carefully — it is more interesting than the textbook story:
   you could not *match* its corners between a map at 0.97 m/px and a photo at 0.25 m/px. Repeatable
   positions are necessary, not sufficient.
 
-## 6. Texture and matchability: Batinah, Wahiba, the open sea
+## 6. Texture and matchability: cities, dunes, the open sea
 
 A picture with many distinct, well-spread features has rich **texture**. The lab counts SIFT keypoints in
 six 512 × 512 patches of the Sousse map at zoom 17 (0.97 m per pixel, about 500 m × 500 m of ground):
@@ -276,26 +276,27 @@ gives **0**, and the coast with water (`terrain_coast_water`) only about **4**. 
 default `contrastThreshold` of 0.04. With NAVERA's lower value, 0.02, the same coast patch gives about
 68 — still very few, and mostly on the shoreline.
 
-Now think about Oman:
+Now think about the whole world:
 
-- **Towns and farms** (Muscat, Sohar, the palm groves of the Batinah plain): roofs, walls, roads and
+- **Towns and farms** (Paris, Singapore, the farmland of the Nile delta): roofs, walls, roads and
   field borders — thousands of corners and blobs, like the Sousse medina. The best case.
-- **Date palm and olive-like plantations**: many blobs, but all alike and in rows. Many keypoints is not
+- **Palm, olive and orange plantations**: many blobs, but all alike and in rows. Many keypoints is not
   the same as many *distinct* keypoints: this is **repetitive texture**. A tree in the photo can be
   matched to the wrong tree on the map (lesson 21's ratio test exists for this).
-- **Wahiba Sands** (Ramlat al-Wahiba, roughly 180 km north–south): long dune ridges, low contrast,
+- **The Sahara's sand seas** and the **Namib** dunes: long dune ridges, low contrast,
   repetitive, and the dunes move with the wind — the satellite map may be several years old. Few
   keypoints, and the ones found may not be on the map any more.
-- **The Hajar mountains, Jebel Akhdar, Jebel Shams**: wadis, ridges and terraces give strong texture; the
+- **Mountains** (the Alps, the Andes, the Himalaya): valleys, ridges and terraces give strong texture; the
   difficulty there is relief — the camera's height above the ground changes fast, so the scale changes
   (lesson 22).
-- **The sea** off Muscat, the Arabian Sea off Masirah: nearly uniform, with waves that change every
+- **The sea** (the Mediterranean off Sousse, the open Atlantic or Pacific): nearly uniform, with waves that change every
   second. Zero useful keypoints. The **coastline** gives an edge, not corners: positions along it are
   badly constrained.
-- **Barr Al Hikman** and the sabkhas (salt flats): wide, flat, and changed by tides — few features.
+- **Tidal flats and salt flats** (the Wadden Sea in Europe, the Salar de Uyuni in Bolivia): wide, flat,
+  and changed by tides or flooding — few features. Snow and ice (Greenland, Antarctica) are even worse.
 
 Three more enemies of texture come from the camera: **blur** (vibration, speed), **darkness** (dusk,
-shadows) and **haze** (dust in the air, very common in summer over the Gulf of Oman). All three remove the small
+shadows) and **haze** (dust or smog in the air, very common over deserts and big cities). All three remove the small
 brightness changes detectors need.
 
 **CLAHE** (*Contrast Limited Adaptive Histogram Equalisation*) stretches the contrast in small tiles,
@@ -326,9 +327,9 @@ routes, they follow roads, rivers and field borders — long, stable, high-contr
 turning at the same motorway junctions each time (Lipp et al., 2004; Biro et al., 2004). Like a good
 keypoint, a good landmark is distinctive and stays put.
 
-Oman sits on a major migration route. **Steppe eagles** from Central Asia spend the winter in Arabia, and
-many gather in **Dhofar** around Salalah. Large soaring raptors avoid long sea crossings: between Arabia
-and Africa many cross at **Bab-el-Mandeb**, where the Red Sea is only about 30 km wide. Be careful with
+Large soaring birds avoid long sea crossings. Every autumn, hundreds of thousands of **white storks** and
+raptors flying from Europe to Africa gather at the **Strait of Gibraltar**, where the sea is only about
+14 km wide, or at the **Bosphorus** in Istanbul, instead of crossing the Mediterranean directly. Be careful with
 the reason. The main one is energy: soaring birds climb in **thermals** (rising warm air), which form over
 sun-heated land, not over the sea, so a long crossing means tiring flapping. A small extra reason is the
 one from this lesson: the open sea has no landmarks.
@@ -433,7 +434,7 @@ median of about 73 bits. 121 is in the "random" range.
 No. Random points would score about 1 − exp(−1000·π·9/307 200) ≈ 9 %. 12 % is barely above chance.
 </details>
 
-<details><summary>6. Over Wahiba Sands the camera finds 2000 SIFT keypoints. Give two reasons why matching may still fail.</summary>
+<details><summary>6. Over the Sahara's sand dunes the camera finds 2000 SIFT keypoints. Give two reasons why matching may still fail.</summary>
 Repetitive texture (dune ridges look alike, so descriptors have near-twins), and change (dunes move with the wind and
 the map may be years old, so the keypoints are not where the map shows them). Low contrast and haze make it worse.
 </details>

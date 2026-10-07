@@ -245,7 +245,7 @@ in full sentences, with **your** numbers.
 4. **The 111° crop** — f_new at 111°, 150° and 166°, centre detail kept, edge stretch, ground sampling
    distance at 150 m.
 5. **Recommendation** — 3–5 concrete rules for calibrating a new NAVERA unit before a field test (for
-   example in a workshop in Muscat).
+   example in a partner's workshop in Singapore).
 
 Then answer the three questions in [answers.py](file:./answers.py).
 

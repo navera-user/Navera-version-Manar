@@ -140,7 +140,7 @@ if __name__ == "__main__":
     print("P =\n", P)
     print("1-sigma ellipse (a, b, angle from east):", error_ellipse(P))
     print("chi-square 2 dof, 95 %:", chi2_threshold(0.95, 2))
-    print("radar at Ras al Hadd: 2000 m, bearing 60 deg, sigma 5 m and 0.5 deg ->", polar_to_en(2000.0, 60.0, 5.0, 0.5))
+    print("radar on a headland: 2000 m, bearing 60 deg, sigma 5 m and 0.5 deg ->", polar_to_en(2000.0, 60.0, 5.0, 0.5))
     print("Mahalanobis^2 of (6, -2):", mahalanobis2([6.0, -2.0], P), " gate 99 %:", chi2_gate([6.0, -2.0], P))
     print("fuse 100 m (var 100) and 110 m (var 25):", fuse(100.0, 100.0, 110.0, 25.0))
     print("PositionEstimate covariance:", make_covariance(P))

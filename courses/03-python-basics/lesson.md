@@ -8,10 +8,10 @@
 > - With **NumPy** you compute on whole arrays of numbers at once, without loops.
 > - You also use flight physics: the wind triangle, battery endurance and the turn radius.
 > - In the lab you write a small navigation library and a mission planner for an inspection on the
->   Batinah coast.
+>   coast.
 > - NAVERA's `TrackVelocity` class is built like the `Track` class you write.
 
-A survey drone takes off from a port on the Batinah coast, near Sohar. It must inspect a point
+A survey drone takes off from a small harbour on a desert coast. It must inspect a point
 9 km away on the track 030° and come back. The wind blows at 5 m/s towards the south-west.
 The drone flies at 12 m/s through the air, its battery holds 160 Wh, it uses 350 W, and the rules
 say: **keep 20 % in reserve**. Can it do the mission? Which heading must it fly so that the wind
@@ -414,10 +414,10 @@ at speed `i` is point `i + 1`: keep this in mind when you look for the time of a
 
 ## 🐦 How birds do it
 
-Every winter, Barr Al Hikman, on Oman's central coast facing Masirah Island, holds hundreds of
-thousands of shorebirds: crab plovers, greater flamingos, bar-tailed godwits and many sandpipers.
-Many of them breed in Siberia and fly thousands of kilometres to reach this coast; the site is one
-of the most important wetlands of the whole region.
+Every winter, the Wadden Sea on the coasts of the Netherlands, Germany and Denmark, and the Banc
+d'Arguin in Mauritania hold millions of shorebirds: knots, oystercatchers, bar-tailed godwits and
+many sandpipers. Many of them breed in Siberia or in the Arctic and fly thousands of kilometres to
+reach these coasts; they are among the most important wetlands on the planet.
 
 The bar-tailed godwit holds the record for non-stop flight. In 2022 a young godwit with a
 satellite tag flew from Alaska to Tasmania, about 13 560 km, in about 11 days, without landing
