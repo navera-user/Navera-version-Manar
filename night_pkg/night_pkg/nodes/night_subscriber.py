@@ -96,6 +96,10 @@ class NightSubscriber(Node):
             os.environ.get("NAVERA_MBTILES", "/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles"))
         self.declare_parameter("zoom",            17)
         declare_float(self, "conf_threshold",  0.30)
+        # night fixes state an accuracy only when this is true: it is calibrated on the
+        # mission simulator's thermal rendering (2026-10-07, 245 fixes: sigma below gives 86 %
+        # within 1 sigma, 100 % within 3) — not measured on a real thermal camera yet
+        self.declare_parameter("state_sim_calibrated_sigma", False)
         self.declare_parameter("image_topic",     "/thermal/image_raw")
         self.declare_parameter("meta_topic",      "/thermal/frame_meta")
         self.declare_parameter("fix_topic",       "/night/position_estimate")
@@ -128,6 +132,9 @@ class NightSubscriber(Node):
         # stated uncertainty exceeds this fraction of it (a held height, no barometer)
         declare_float(self, "max_altitude_rel_sigma", 0.15)
         self.max_alt_rel_sigma = float(self.get_parameter("max_altitude_rel_sigma").value)
+        self.state_sigma = bool(self.get_parameter("state_sim_calibrated_sigma").value)
+        self._gps_lost_at = None              # when GPS stopped being the anchor (wall time)
+        self._fix_sigma = None                # the sigma of the night fix being published
         self.declare_parameter("imu_topic", "/navera/sensors/imu")
         declare_float(self, "imu_heading_timeout_s", 1.0)
         # Motion gate: a fix farther from the last one than the vehicle can travel
@@ -298,6 +305,7 @@ class NightSubscriber(Node):
             self._anchor_lat, self._anchor_lon = msg.latitude, msg.longitude
             self._anchor_time = time.time()
             self._last_measured_time = self._anchor_time
+            self._gps_lost_at = None
 
     def on_imu(self, msg: Imu):
         """Heading (deg clockwise from north) from the IMU orientation (ENU)."""
@@ -405,10 +413,22 @@ class NightSubscriber(Node):
                 return
 
             t_now = time.time()
+            if self._gps_lost_at is None:
+                self._gps_lost_at = t_now
+
+            # the search centre: the anchor carried to the frame's exposure along the
+            # measured motion (the anchor was ~3 s stale at GPS loss: first matches 29 m off)
+            c_lat, c_lon = self._anchor_lat, self._anchor_lon
+            ns = meta.get("image_stamp_ns")
+            if ns and self._anchor_time is not None:
+                carried = dead_reckon(c_lat, c_lon, meta.get("heading_deg"), meta.get("speed_mps"),
+                                      max(0.0, int(ns) / 1e9 - self._anchor_time))
+                if carried is not None:
+                    c_lat, c_lon = carried
 
             self.get_logger().info(
                 f"[night] 🛰 STHN frame={seq_id} prior=anchor"
-                f"({self._anchor_lat:+.5f},{self._anchor_lon:+.5f})…")
+                f"({c_lat:+.5f},{c_lon:+.5f})…")
             heading, heading_src = self._heading(meta)
             alt = meta.get("altitude_m")
             # STHN scales the frame from this height and cannot measure it: a height held
@@ -426,7 +446,7 @@ class NightSubscriber(Node):
                             f"±{100 * self.max_alt_rel_sigma:.0f} %"))
                 return
             result = self.localizer.localize(
-                img, self._anchor_lat, self._anchor_lon,
+                img, c_lat, c_lon,
                 altitude_m=float(alt) if alt is not None else None,
                 hfov_deg=self._hfov(meta),
                 heading_deg=heading)
@@ -457,6 +477,18 @@ class NightSubscriber(Node):
                 out_lat = float(result["lat"]); out_lon = float(result["lon"])
                 self._anchor_lat, self._anchor_lon, self._anchor_time = out_lat, out_lon, t_now
                 self._last_measured_time = t_now
+                # sigma (simulator-calibrated): 2.5 % of the height (8 m min), x2.5 for a weak
+                # match (consistency < 0.995 or shift > 20 px) or in the first 10 s after GPS loss
+                h = float(alt) if alt is not None else 400.0
+                sig = max(8.0, 0.025 * h)
+                shift = result.get("rms_px")
+                if conf < 0.995 or (shift is not None and float(shift) > 20.0) or t_now - self._gps_lost_at < 10.0:
+                    sig *= 2.5
+                try:
+                    sig = math.hypot(sig, 0.1 * float(meta.get("altitude_sigma_m")))
+                except (TypeError, ValueError):
+                    pass
+                self._fix_sigma = sig
                 self._publish_fix(seq_id, out_lat, out_lon, meta, "night_sthn",
                                   score=conf, conf=conf,
                                   dt_ms=result.get("dt_ms"), rms_px=result.get("rms_px"))
@@ -584,6 +616,10 @@ class NightSubscriber(Node):
         est.altitude  = float(_alt) if _alt is not None else math.nan
         est.position_covariance      = [0.0] * 9
         est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_UNKNOWN
+        if self.state_sigma and src == "night_sthn" and self._fix_sigma:
+            v = self._fix_sigma ** 2
+            est.position_covariance = [v, 0.0, 0.0, 0.0, v, 0.0, 0.0, 0.0, 0.0]
+            est.position_covariance_type = PositionEstimate.COVARIANCE_TYPE_APPROXIMATED
         est.source     = PositionEstimate.SOURCE_NIGHT_VISION
         est.mode       = PositionEstimate.MODE_MEASURED if mode is None else mode
         est.valid      = valid

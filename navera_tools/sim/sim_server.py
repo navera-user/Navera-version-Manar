@@ -755,7 +755,9 @@ class Simulator(Node):
             self._start_proc("night_vision", [
                 "ros2", "run", "night_pkg", "night_subscriber.py", "--ros-args",
                 "-p", f"mbtiles:={self._night_map()}", "-p", "camera_hfov_deg:=84.0",
-                "-p", f"max_speed_mps:={self.cfg['max_speed_mps']}"])
+                "-p", f"max_speed_mps:={self.cfg['max_speed_mps']}",
+                # the simulator's thermal rendering is what night's sigma was calibrated on
+                "-p", "state_sim_calibrated_sigma:=true"])
             self.nightcam.start()
             self.event("info", "night vision: loading the STHN network (thermal camera, "
                                "84° field of view)…")
