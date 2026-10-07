@@ -54,7 +54,6 @@
     <line x1="636" y1="160" x2="664" y2="128"/>
     <line x1="636" y1="180" x2="664" y2="212"/>
   </g>
-  <text x="168" y="196" fill="#a8680d" font-size="11">size of the</text>
-  <text x="168" y="208" fill="#a8680d" font-size="11">margin</text>
+  <text x="176" y="182" fill="#a8680d" font-size="11">size of the margin</text>
   <text x="380" y="282" text-anchor="middle" fill="#1d2733">The photo centre, carried through the fitted transformation, lands on a map pixel: that pixel is the position.</text>
 </svg>

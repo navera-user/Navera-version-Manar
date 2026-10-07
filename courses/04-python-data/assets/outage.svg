@@ -2,9 +2,9 @@
   <rect width="700" height="225" fill="#f7fafc"/>
   <text x="20" y="26" font-weight="bold" fill="#1d2733">Longest GPS outage: walk through the rows with two counters</text>
   <g font-family="monospace" font-size="14" text-anchor="middle">
-    <text x="60" y="70" fill="#4a5866" font-size="12" text-anchor="end">gps_valid</text>
-    <text x="60" y="118" fill="#a8680d" font-size="12" text-anchor="end">run</text>
-    <text x="60" y="160" fill="#0b6e8a" font-size="12" text-anchor="end">best</text>
+    <text x="72" y="70" fill="#4a5866" font-size="11" text-anchor="end">gps_valid</text>
+    <text x="72" y="118" fill="#a8680d" font-size="12" text-anchor="end">run</text>
+    <text x="72" y="160" fill="#0b6e8a" font-size="12" text-anchor="end">best</text>
   </g>
   <g font-family="monospace" font-size="15" text-anchor="middle">
     <!-- sequence 1 1 0 0 0 1 0 0 1 -->

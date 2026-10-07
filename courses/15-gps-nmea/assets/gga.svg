@@ -36,9 +36,9 @@
   </g>
   <!-- labels below -->
   <g font-family="sans-serif" font-size="12" fill="#1d2733">
-    <line x1="384" y1="128" x2="384" y2="160" stroke="#3a8d3a"/><text x="300" y="175" fill="#2f7a2f">fix quality (1 = GPS)</text>
+    <line x1="384" y1="128" x2="384" y2="160" stroke="#3a8d3a"/><text x="400" y="175" fill="#2f7a2f" text-anchor="end">fix quality (1 = GPS)</text>
     <line x1="408" y1="128" x2="408" y2="195" stroke="#5a6b7b"/><text x="360" y="210">satellites used</text>
-    <line x1="443" y1="128" x2="443" y2="160" stroke="#3a8d3a"/><text x="450" y="175" fill="#2f7a2f">HDOP</text>
+    <line x1="443" y1="128" x2="443" y2="160" stroke="#3a8d3a"/><text x="424" y="175" fill="#2f7a2f">HDOP</text>
     <line x1="485" y1="128" x2="485" y2="195" stroke="#5a6b7b"/><text x="470" y="210">altitude above sea level (m)</text>
     <line x1="547" y1="128" x2="547" y2="148" stroke="#5a6b7b"/><text x="555" y="152">geoid separation (m)</text>
     <text x="10" y="160">$ = start</text>

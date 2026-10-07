@@ -2,7 +2,7 @@
   <rect width="640" height="300" fill="#f7fafc"/>
   <text x="20" y="24" fill="#1d2733" font-weight="bold">A homography lays the drone view onto the map</text>
   <!-- drone view -->
-  <text x="30" y="56" fill="#1d2733">drone view (480 × 360 px)</text>
+  <text x="30" y="56" fill="#1d2733">drone view</text>
   <rect x="30" y="66" width="160" height="120" fill="#e8dcc4" stroke="#0b6e8a" stroke-width="3"/>
   <path d="M30 140 L190 100 M110 66 L130 186" stroke="#6b5a3e" stroke-width="5"/>
   <rect x="60" y="80" width="22" height="18" fill="#ffffff" stroke="#6b5a3e"/>
@@ -14,7 +14,7 @@
   <path d="M205 126 H275" stroke="#1d2733" stroke-width="2"/><path d="M275 120 L287 126 L275 132 Z" fill="#1d2733"/>
   <text x="212" y="114" fill="#1d2733" font-weight="bold">H</text>
   <!-- map patch -->
-  <text x="300" y="56" fill="#1d2733">map patch (800 × 800 px)</text>
+  <text x="300" y="56" fill="#1d2733">map patch</text>
   <rect x="300" y="66" width="200" height="200" fill="#d8ccb0" stroke="#1d2733"/>
   <!-- the view laid on the map: rotated 30 deg, scaled 0.8 -->
   <g transform="translate(410 170) rotate(30)">
@@ -34,5 +34,5 @@
   <text x="520" y="216" fill="#a8680d">4 corners (orange)</text>
   <text x="520" y="234" fill="#a8680d">are enough to</text>
   <text x="520" y="252" fill="#a8680d">define it.</text>
-  <text x="300" y="288" fill="#1d2733">centre on the map → map pixel → latitude/longitude (lesson 22)</text>
+  <text x="630" y="288" fill="#1d2733" text-anchor="end">centre on the map → map pixel → latitude/longitude (lesson 22)</text>
 </svg>

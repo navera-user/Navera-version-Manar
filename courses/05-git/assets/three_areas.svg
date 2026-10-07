@@ -32,5 +32,5 @@
   <!-- restore arrow -->
   <path d="M585 162 C585 230 115 230 115 164" fill="none" stroke="#d64545" stroke-width="2.5" stroke-dasharray="6 4" marker-end="url(#ar2)"/>
   <text x="350" y="238" text-anchor="middle" font-family="monospace" font-weight="bold" fill="#d64545">git restore file</text>
-  <text x="350" y="258" text-anchor="middle" fill="#d64545">throws away your edits: the file comes back as in the last commit</text>
+  <text x="350" y="258" text-anchor="middle" fill="#d64545">throws away your edits: back to the last commit (or your last git add)</text>
 </svg>

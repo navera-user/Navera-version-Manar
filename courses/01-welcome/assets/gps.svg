@@ -6,6 +6,6 @@
   <g stroke="#f2a33a" stroke-width="2" stroke-dasharray="6 5"><line x1="73" y1="44" x2="250" y2="210"/><line x1="259" y1="28" x2="252" y2="208"/><line x1="433" y1="54" x2="256" y2="210"/></g>
   <circle cx="253" cy="212" r="8" fill="#d64545"/>
   <text x="268" y="216" fill="#1d2733">you are here</text>
-  <text x="20" y="22" fill="#1d2733">satellite A</text><text x="230" y="10" fill="#1d2733">satellite B</text><text x="402" y="32" fill="#1d2733">satellite C</text>
-  <text x="105" y="140" fill="#a8680d">distance A</text><text x="340" y="140" fill="#a8680d">distance C</text>
+  <text x="20" y="22" fill="#1d2733">satellite A</text><text x="292" y="25" fill="#1d2733">satellite B</text><text x="402" y="32" fill="#1d2733">satellite C</text>
+  <text x="88" y="140" fill="#a8680d">distance A</text><text x="354" y="140" fill="#a8680d">distance C</text>
 </svg>

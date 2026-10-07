@@ -19,7 +19,7 @@
   <line x1="50" y1="40" x2="262" y2="40" stroke="#d64545" stroke-width="2" marker-end="url(#a)"/>
   <text x="266" y="44" fill="#d64545">x (column)</text>
   <line x1="40" y1="50" x2="40" y2="222" stroke="#d64545" stroke-width="2" marker-end="url(#a)"/>
-  <text x="14" y="240" fill="#d64545">y (row)</text>
+  <text x="30" y="136" fill="#d64545" text-anchor="middle" transform="rotate(-90 30 136)">y (row)</text>
   <text x="50" y="250" fill="#1d2733">shape = (4, 5)  →  4 rows (height), 5 columns (width)</text>
   <text x="50" y="270" fill="#1d2733">img[2, 3] = 160  ← row 2, column 3 (counting from 0)</text>
   <text x="50" y="290" fill="#555" font-size="12">0 = black … 255 = white</text>
@@ -30,7 +30,7 @@
   <rect x="480" y="50" width="160" height="128" fill="#c6d6f6" stroke="#2b5cb8" stroke-width="2"/>
   <text x="490" y="72" fill="#2b5cb8">channel 0: BLUE</text>
   <text x="565" y="214" fill="#d64545">channel 2: RED</text>
-  <text x="646" y="150" fill="#2f855a" font-size="12">1: GREEN</text>
+  <text x="553" y="193" fill="#2f855a" font-size="12">channel 1: GREEN</text>
   <text x="460" y="250" fill="#1d2733">shape = (height, width, 3)</text>
   <text x="460" y="270" fill="#1d2733">img[y, x] = [blue, green, red]</text>
   <text x="460" y="290" fill="#555" font-size="12">OpenCV order is B, G, R — not R, G, B!</text>

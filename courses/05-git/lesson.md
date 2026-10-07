@@ -112,7 +112,7 @@ message"*. Not *"update"*, not *"stuff"*, not *"asdf"*.
 
 | Situation | Command |
 |---|---|
-| I changed (or deleted!) a file and I want it back as in the last commit | `git restore file` |
+| I changed (or deleted!) a file and I want it back as in the last commit (or as I last `git add`-ed it) | `git restore file` |
 | I staged a file by mistake (`git add`) and want to unstage it (the edits stay) | `git restore --staged file` |
 | I want a file as it was in an older commit | `git restore --source=base file` |
 

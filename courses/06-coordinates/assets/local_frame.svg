@@ -26,6 +26,6 @@
   <!-- bearing arc -->
   <path d="M220 130 A60 60 0 0 1 274 163" fill="none" stroke="#2f855a" stroke-width="2" marker-end="url(#a)"/>
   <text x="150" y="122" fill="#2f855a">bearing ≈ 63°</text>
-  <text x="70" y="290" fill="#555" font-size="12">bearing = angle from NORTH, turning clockwise</text>
-  <text x="70" y="306" fill="#555" font-size="12">= atan2(east, north) → 0° north, 90° east, 180° south, 270° west</text>
+  <text x="232" y="290" fill="#555" font-size="12">bearing = angle from NORTH, turning clockwise</text>
+  <text x="232" y="306" fill="#555" font-size="12">= atan2(east, north) → 0° north, 90° east, 180° south, 270° west</text>
 </svg>
