@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """status_listener.py — listen to NAVERA's arbiter and say, in words, what it decided.
 
-It subscribes to /navera/nav_status (navera_msgs/NavStatus, 5 times per second) and prints
-a line ONLY when the decision (the state or the active source) changes — not 5 lines per second.
+It subscribes to /navera/nav_status (navera_msgs/NavStatus, 5 times per second) and logs a line
+ONLY when the decision (the state or the active source) changes. When GPS goes silent and the
+arbiter falls to NO_FIX, it also logs how long GPS had been silent.
 
     python3 status_listener.py       (with NAVERA's estimator running)
 """
 import rclpy
-from navera_msgs.msg import NavStatus
+from navera_msgs.msg import NavStatus, SourceHealth
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
@@ -16,8 +17,8 @@ TOPIC = "/navera/nav_status"
 
 def state_name(state):
     """The name of a NavStatus state number: "INITIALIZING", "NO_FIX", "FIX" or "DEGRADED"."""
-    # TODO 4: return the right name for each of the 4 states. Use the constants of the message,
-    #         NavStatus.STATE_INITIALIZING, NavStatus.STATE_NO_FIX, ... — never the bare numbers.
+    # TODO 5: return the right name for each of the 4 states, using the constants of the message
+    #         (NavStatus.STATE_INITIALIZING, NavStatus.STATE_NO_FIX, ...) — never the bare numbers.
     #         For any other number, return f"UNKNOWN STATE {state}".
     return "?"
 
@@ -37,16 +38,34 @@ def describe(msg):
     return f"{state_name(msg.state)} | source: {source} | {msg.reason}"
 
 
+def to_s(stamp):
+    """A builtin_interfaces/Time in seconds (float)."""
+    return stamp.sec + stamp.nanosec * 1e-9
+
+
+def gps_silence_s(msg):
+    """How long GPS has been silent when this status was computed: header.stamp minus the
+    last_seen of the GPS entry of msg.sources. None if GPS was never heard (last_seen is 0)."""
+    # TODO 6: find the entry of msg.sources whose .source == SourceHealth.SOURCE_GPS; if its
+    #         last_seen is zero (never heard) or there is none, return None; else return
+    #         to_s(msg.header.stamp) - to_s(entry.last_seen).
+    return None
+
+
 class StatusListener(Node):
     def __init__(self):
         super().__init__("status_listener")
-        self.last_key = None            # (state, active_source) of the last line printed
-        # TODO 5: subscribe to NavStatus messages on TOPIC (queue depth 10), callback self.on_status
+        self.last_key = None            # (state, active_source) of the last line logged
+        # TODO 7a: subscribe to NavStatus on TOPIC (depth 10) with the callback self.on_status
         self.get_logger().info(f"listening to {TOPIC}")
 
     def on_status(self, msg):
-        # TODO 6: log describe(msg) ONLY when the state or the active source changed since the
-        #         last line you printed. Keep (msg.state, msg.active_source) in self.last_key.
+        # TODO 7b: when (msg.state, msg.active_source) differs from self.last_key:
+        #            - log describe(msg)
+        #            - if the new state is NO_FIX and gps_silence_s(msg) is not None, also log
+        #              exactly:  GPS silent for 3.12 s      (two decimals)
+        #            - store the new key in self.last_key
+        #          Otherwise do nothing: NAVERA publishes 5 statuses per second.
         pass
 
 

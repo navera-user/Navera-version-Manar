@@ -1,243 +1,262 @@
-# Listening: a subscriber
+# Subscribers, callbacks and executors: listening with memory
 
-In lesson 10 your fake GPS shouted its position into the topic `/fake_gps/fix`, twice per second.
-But shouting is only half of a conversation. Somebody has to **listen** — and not just listen, but
-**remember**: a car's trip computer does not only show where you are now, it shows how far you have
-driven since the start and how fast you are going. To know your speed, you must remember where you
-were a moment ago.
+In lesson 10 your fake receiver published its position into `/fake_gps/fix`. Publishing is half of
+a conversation. The other half is harder: a **subscriber** must react to every message, **remember**
+what came before, **refuse** bad data, and do it all without blocking the rest of the node. A trip
+computer on the Muscat Expressway does not only show where you are: it shows how far you drove and
+how fast — and to know your speed, it must remember where you were a moment ago, and how sure it
+was.
 
-That is today's lesson: **subscribers**, the **callbacks** ROS calls when a message arrives, and how a
-node **keeps state** between two messages. At the end of the lab, a node you wrote will listen to the
-decisions of NAVERA's real arbiter — fed by a GPS that *you* control, and that you will switch off to
-see how NAVERA reacts.
+This lesson covers the mechanics of subscriptions and callbacks, what an **executor** does with
+them, how a node keeps **state** and filters messages, and what GNSS noise does to a speed computed
+from positions. In the lab, your listener will also follow the decisions of NAVERA's real arbiter —
+fed by a GNSS source that you will switch off.
 
-## A subscriber: your node's ear
-
-To receive messages, a node creates a **subscription**:
-
-```python
-self.create_subscription(NavSatFix, "/fake_gps/fix", self.on_fix, 10)
-```
-
-Four things, in this order:
-
-1. **the message type** — it must be the type published on the topic, or nothing will connect;
-2. **the topic name**;
-3. **the callback** — the method ROS must call for every message (without parentheses, as for the
-   timer in lesson 10);
-4. **the queue depth** (or a QoS profile, see below).
-
-Then you write the callback. ROS gives it **one argument: the message**.
+## 1. Subscriptions and callbacks
 
 ```python
-def on_fix(self, msg):
-    print(msg.latitude, msg.longitude)
-```
+self.create_subscription(NavSatFix, "/fake_gps/fix", self.on_fix, qos_profile_sensor_data)
 
-You never call `on_fix` yourself. While `rclpy.spin(node)` runs, ROS waits; when a message arrives on
-`/fake_gps/fix`, ROS calls `on_fix(msg)` with it. When the callback returns, ROS goes back to waiting.
-This style of programming — "when this happens, do that" — is called **event-driven**. Your phone
-works the same way: an app does nothing until you touch the screen or a notification arrives.
-
-> [!WARNING]
-> A callback must be **quick**. While it runs, the node cannot handle anything else: no other
-> message, no timer. If a callback needs 3 seconds, the 6 messages that arrived meanwhile wait in the
-> queue — and if the queue (depth 10) is full, the oldest are thrown away.
-
-## Keeping state: the node's memory
-
-Here is a callback that tries to compute the distance travelled:
-
-```python
-def on_fix(self, msg):
-    distance = 0.0
-    distance = distance + 3.0      # pretend we moved 3 m
-    print(distance)                 # always prints 3.0 !
-```
-
-It always prints `3.0`. Why? Every call of a function starts fresh: `distance` is a **local
-variable**, created when the function starts and **forgotten** when it ends. Between two messages,
-the callback remembers nothing.
-
-To remember, store the value **in the object**, with `self` — the node's backpack from lesson 10:
-
-```python
-def __init__(self):
+def on_fix(self, msg):              # called by ROS, once per message, with the message
     ...
-    self.distance_m = 0.0          # created once, when the node starts
-
-def on_fix(self, msg):
-    self.distance_m += 3.0         # still there at the next call
-    print(self.distance_m)         # 3.0, 6.0, 9.0, ...
 ```
 
-What a program remembers between two events is called its **state**. Our trip computer's state is:
-how many fixes it received, the total distance, and **the previous fix** (latitude, longitude, time).
-With the previous fix and the new one you can compute:
+Four arguments: the **message type** (it must equal the publisher's type, or the endpoints never
+match), the **topic**, the **callback** (a bound method, without parentheses — lesson 10), and the
+**QoS** (a depth or a profile). `qos_profile_sensor_data` is BEST_EFFORT with a small depth; as
+lesson 09 showed, a BEST_EFFORT subscriber matches **both** RELIABLE and BEST_EFFORT publishers, so a
+node that reads other people's sensors should use it. NAVERA does exactly that for an external GNSS.
 
-- the **step**: the distance between them, with the haversine formula of lesson 6;
-- the **time between them**, `dt`, from the two time stamps;
-- the **speed** = step ÷ dt.
+You never call `on_fix` yourself. When a message arrives, the middleware stores it in the
+subscription's queue (at most `depth` messages; the oldest are dropped when it is full). The
+**executor** later takes it from the queue and calls your callback. That is **event-driven**
+programming: the code reacts to events instead of running from top to bottom.
 
-![Two consecutive fixes give a step and a time: speed = step / dt](assets/two_fixes.svg)
+## 2. Executors: who runs the callbacks
 
-### Which time?
+An **executor** is the loop inside `rclpy.spin()`. Repeatedly, it waits until something is ready —
+a timer expired, a message is in a queue, a service request arrived — then runs the ready callbacks.
 
-Use the **time stamp in the message** (`msg.header.stamp`), not the clock of your computer when the
-message arrives. The stamp says when the GPS *measured* the position. Messages can be delayed by the
-network or wait in a queue: two fixes measured 0.5 s apart may arrive 0.1 s apart. With arrival
-times your speed would jump around; with measurement times it is right. NAVERA follows this rule
-everywhere — it even has two different stamps for it (lesson 12).
+- `SingleThreadedExecutor` (what `rclpy.spin(node)` uses): **one** thread. Callbacks run one after
+  the other; while one runs, everything else waits.
+- `MultiThreadedExecutor(num_threads=n)`: a pool of n threads; callbacks may run in parallel —
+  but only if their **callback groups** allow it.
 
-A ROS time stamp has two whole numbers: `sec` (seconds since 1 January 1970) and `nanosec`
-(billionths of a second). In seconds: `t = stamp.sec + stamp.nanosec * 1e-9`.
+A **callback group** is a rule attached to callbacks:
 
-### A class without ROS inside
-
-In the lab, the trip computer is a small class, `Tracker`, with **no ROS inside**: its method
-`update(lat, lon, t)` takes three plain numbers. The ROS node only unpacks each message and gives the
-numbers to the tracker. Why bother? Because you can test `Tracker` with three lines of Python, without
-starting any node, any GPS, any topic — and you will (lesson 14 is all about this). Engineers call
-this **separating the logic from the plumbing**. NAVERA does it all the time: its GPS code has a
-function `estimate_from_fix(m)` that turns one NavSatFix into a PositionEstimate, tested on its own
-in `gps_pkg/test/test_ros_gps.py`.
-
-## Talking to NAVERA
-
-Now the exciting part. NAVERA's arbiter does not read NavSatFix messages: it reads the NAVERA
-**contract**, `PositionEstimate`, on `/navera/estimate/gps`. Between the two, NAVERA has a small
-node exactly for this job: **`ros_gps_node`**, in your copy at
-[gps_pkg/…/ros_gps_node.py](file:navera/gps_pkg/gps_pkg/nodes/ros_gps_node.py). It exists so that
-NAVERA can use the GPS of a vehicle that already publishes a NavSatFix (a boat, a ground robot):
-
-```python
-self.create_subscription(NavSatFix, topic, self._on_fix, qos_profile_sensor_data)
-...
-def _on_fix(self, m: NavSatFix):
-    ...
-    self.pub_est.publish(estimate_from_fix(m))
-```
-
-A subscriber whose callback publishes: it **listens on one topic and speaks on another**. Many ROS
-nodes are like that — they are links in a chain.
-
-Which topic does it listen to? By default `/navera/vehicle/gps2` (the autopilot's second GPS), but
-it has a **parameter** called `fix_topic` that you can change when you start it:
-
-```bash
-ros2 run gps_pkg ros_gps_node.py --ros-args -p fix_topic:=/fake_gps/fix
-```
-
-`--ros-args -p name:=value` sets a parameter — lesson 13 explains them in detail. With this one
-command, NAVERA listens to **your** GPS.
-
-![The chain: your GPS → ros_gps_node → the arbiter → your status listener](assets/chain.svg)
-
-Notice the QoS: `qos_profile_sensor_data` is a **BEST_EFFORT** profile. As you learned in lesson 10,
-a best-effort subscriber receives from both kinds of publishers — so NAVERA works with any GPS
-driver, whatever QoS it uses.
-
-### What the arbiter says
-
-The arbiter answers on `/navera/nav_status` with a `NavStatus` message, 5 times per second. The
-fields you need today:
-
-| Field | Meaning |
+| Group | Rule |
 |---|---|
-| `state` | `STATE_INITIALIZING` (0), `STATE_NO_FIX` (1), `STATE_FIX` (2) or `STATE_DEGRADED` (3) |
-| `active_source` | who provides the position: `SOURCE_GPS` (1), `SOURCE_DAY_VISION` (2)… or `SOURCE_UNKNOWN` (0) |
-| `active_mode` | measured, propagated… (lesson 12) |
-| `sources` | one line per source: `alive`, `last_seen`, `contributing` |
-| `reason` | one sentence for humans, e.g. `GPS fix` |
+| `MutuallyExclusiveCallbackGroup` | callbacks of this group never run at the same time |
+| `ReentrantCallbackGroup` | callbacks of this group may run in parallel, even the same one twice |
 
-Use the **constants** in your code (`NavStatus.STATE_FIX`), never the bare numbers: `if msg.state == 2`
-means nothing to the next reader, `if msg.state == NavStatus.STATE_FIX` explains itself.
+By default, every callback of a node belongs to the node's **one default mutually-exclusive group**.
+So a `MultiThreadedExecutor` alone changes nothing: you must also put the callbacks that should run
+in parallel into **different** groups.
 
-The `reason` is for humans: NAVERA's rule, written at the top of `NavStatus.msg`, is that **no program
-may make a decision on that text** — decisions are taken on the typed fields. Your status listener
-will *print* the reason, but decide on `state` and `active_source`.
+![One thread: the timer waits for the slow callback. Two threads and two groups: it runs on time.](assets/executors.svg)
 
-### Freshness: what happens when the GPS stops
+### A worked example: utilisation and queues
 
-The arbiter only trusts a **fresh** position. When it starts with `ros2 run`, its GPS window is
-3 seconds (`gps_timeout_s`): if the newest GPS fix was measured more than 3 s ago, GPS is not usable
-anymore. With no other source, the state goes to `NO_FIX`, and the reason explains which source said
-what: `GPS: stale (3.2s>3.0s); day: none received; …`. NAVERA never keeps sending an old position as if
-it were current — an old position presented as new is how vehicles get lost. You will see this
-yourself in the lab by stopping the GPS.
+A fix arrives every T = 0.5 s (2 Hz) and its callback takes S = 0.3 s (say, image matching). The
+**utilisation** of the single thread is ρ = S / T = 0.6: busy 60 % of the time. A 10 Hz control timer
+in the same thread will sometimes wait up to 0.3 s: its period jumps from 0.1 s to about 0.4 s,
+and some ticks are simply lost.
+
+If S grows to 0.6 s, ρ = 1.2 > 1: messages arrive faster than they are processed. The queue grows by
+1/T − 1/S = 2 − 1.67 = 0.33 messages per second, so a depth-10 queue is full after about 30 s;
+after that the oldest messages are **dropped**, and the node processes data that is 10 × 0.6 = 6 s
+old. Rule: keep ρ well below 1, keep callbacks short, and move heavy work out of the way of
+time-critical callbacks.
+
+> [!NOTE]
+> Python threads share one interpreter lock (the **GIL**). Two threads really run in parallel only
+> while one of them waits (I/O, `time.sleep`, or a C library such as OpenCV or PyTorch that releases
+> the lock). Pure-Python number crunching in two threads is not faster. And with a
+> `ReentrantCallbackGroup`, two callbacks may modify the same attribute at the same time: protect
+> shared state with a `threading.Lock`, or keep mutually-exclusive groups.
+
+## 3. State: what a node remembers
+
+A local variable inside a callback is created at each call and forgotten at the end. To remember,
+store it in the object — `self.distance_m`, `self.last` — as you did with `self.count` in lesson 10.
+What a node remembers between events is its **state**. A good design keeps the state and the logic
+in a small **plain class with no ROS inside** (the lab's `Tracker`), and keeps the ROS node thin: it
+unpacks each message and calls the plain class. The plain class can then be tested in one line of
+Python, without any node or topic (lesson 14). NAVERA is built this way: `ros_gps_node.py` calls a
+pure function `estimate_from_fix(m)` that has its own unit tests.
+
+### Which time? The stamp, not the arrival
+
+Compute times from the **message stamp** (`msg.header.stamp`, the measurement instant), never from
+the arrival time. Two fixes measured 0.5 s apart may arrive 0.1 s apart after waiting in a queue
+(section 2): with arrival times, the speed would be 5 times too large.
+
+```python
+t = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9     # seconds, float
+```
+
+### Filtering: refuse what cannot be used
+
+Real data contains bad messages, and a subscriber must refuse them **before** they touch its state:
+
+| Problem | Test | Why it happens |
+|---|---|---|
+| no fix | `msg.status.status < 0` | receiver lost the satellites (tunnel, jamming) |
+| not finite | `not math.isfinite(x)` | a driver writes NaN for "unknown" |
+| Null Island | `lat == 0.0 and lon == 0.0` | a field nobody filled (lesson 10) |
+| not newer | `t <= t_last` | a late or duplicated message (buffering, network reordering) |
+
+The last rule protects the state: a fix older than the previous one would give a negative or zero
+dt, and a speed of ±∞. Count the rejections by reason: a counter that grows tells an engineer more
+than a silent drop.
+
+## 4. Speed from positions, and what noise does to it
+
+From two accepted fixes p₁ (at t₁) and p₂ (at t₂):
+
+```
+step = haversine(p1, p2)        dt = t2 − t1        v = step / dt
+```
+
+Now add GNSS noise. Each position has an error of standard deviation σ in east and in north,
+independent from fix to fix. The difference of two positions then has an error of √2·σ per axis
+(variances add: σ² + σ² = 2σ²). When the noise is small compared with the step, the speed error is
+about
+
+```
+σ_v ≈ √2 · σ / dt
+```
+
+Worked example: σ = 3 m and dt = 0.5 s give σ_v ≈ 1.414 × 3 / 0.5 = **8.5 m/s** for a vehicle
+driving at 6 m/s. The instantaneous speed is useless. Worse, here the noise (4.2 m per axis) is
+larger than the true step (3 m), so the approximation breaks down and the result is also **biased**:
+the length of a 2-D vector of pure noise has a mean of about 1.77 σ (a Rayleigh distribution), so a
+**parked** car would show 1.77 × 3 / 0.5 ≈ 10.6 m/s — 38 km/h — on average. The same bias makes a sum
+of noisy steps much longer than the real path.
+
+The remedy is to measure over a longer baseline. With a **window** of N fixes, use the straight
+distance from the oldest to the newest fix divided by their time span (N − 1)·dt:
+
+```
+σ_v,window ≈ √2 · σ / ((N − 1) · dt)
+```
+
+For N = 10: √2 × 3 / 4.5 ≈ **0.94 m/s**. The price is **lag** (the value describes the last 4.5 s)
+and **corner cutting** (in a turn, the chord is shorter than the arc). Every estimator chooses a
+trade-off between noise and delay; the Kalman-style filters of lesson 26 make that choice
+optimally. In the lab you will measure all of this with a seeded simulation.
+
+![Instantaneous steps zig-zag with the noise; the window's chord follows the true path](assets/two_fixes.svg)
+
+## 5. Silence is also information
+
+A subscription only runs when something **arrives**. If the GNSS receiver stops, no callback is
+called at all — the node cannot notice silence with a subscription alone. The pattern is a
+**subscription plus a timer**: the callback stores the last message; the timer regularly checks its
+age. NAVERA's arbiter does exactly this: its callbacks store each estimate and call `_tick()`, and a
+5 Hz timer also calls `_tick()`. A GNSS estimate older than `gps_timeout_s` (3 s) is **stale**; with
+no other source, the state becomes `NO_FIX`. Because the timer runs at 5 Hz, the arbiter detects the
+silence between 3.0 and about 3.2 s after the last fix was measured — a number you will measure.
 
 ## 🐦 How birds do it
 
-Remember the chickadee's alarm call from lesson 10? Somebody listens. **Red-breasted nuthatches**,
-another small bird of the same forests, react to chickadee alarms. In 2007, Christopher Templeton and
-Erick Greene showed that the nuthatches don't just react to *any* call: they react more strongly to the
-"dangerous predator" version, with more "dee" notes. They **read the value inside the message** and
-decide what to do. That is a subscriber with a callback.
+Birds are good subscribers. In 2007, Christopher Templeton and Erick Greene showed in *PNAS* that
+red-breasted nuthatches **eavesdrop** on the alarm calls of chickadees, a different species, and
+react more strongly to the calls that signal a more dangerous predator. They read the value inside
+the message and decide what to do — a callback with state. In Muscat's gardens you can watch the same
+behaviour: when one bird starts a harsh alarm at a cat or an owl, bulbuls and other small birds arrive
+to join the mob.
 
-Birds also **keep state**. The **Clark's nutcracker**, a bird of the mountains of North America, hides
-thousands of pine seeds in autumn, a few at a time, in many small hiding places in the ground. Months
-later, sometimes under snow, it comes back and finds a large part of them — using the landmarks
-around each hiding place. Every seed it hides is like one message stored in the node's memory, to be
-used much later.
-
-And Navi adds one more thing: **freshness**. An alarm call is useful *now*. A swallow that panics
-because of a cat that left ten minutes ago wastes its energy; one that ignores a fresh alarm may be
-eaten. The age of a message matters as much as its content.
-
-That is exactly what NAVERA's arbiter does in its callbacks: it **stores** each new position with its
-time, then decides in `_tick()` — and a source that has gone silent for too long is no longer trusted.
+Birds also filter. A good listener ignores old news: Navi does not panic about a cat that left ten
+minutes ago (a **stale** message), and she does not count the same alarm twice when it echoes from a
+wall (a **duplicate**). And she knows that one alarm call means little: several calls from different
+birds over a few seconds — a **window** of evidence — are worth a reaction. That is the noise
+trade-off of section 4, solved by evolution.
 
 ## In NAVERA
 
-Open [estimator_node.py](file:navera/navera_estimator/navera_estimator/nodes/estimator_node.py) and
-look at the callbacks of the arbiter. They are short — they **store**, and the decision happens in
-`_tick()`:
+NAVERA's GNSS bridge, [ros_gps_node.py](file:navera/gps_pkg/gps_pkg/nodes/ros_gps_node.py), is a
+subscriber whose callback publishes — a link in a chain. It reads any vehicle's `NavSatFix` with the
+best-effort profile:
 
 ```python
-def _on_day(self, msg: PositionEstimate) -> None:
-    self._day_last = msg
+self.declare_parameter("fix_topic", "/navera/vehicle/gps2")
+topic = str(self.get_parameter("fix_topic").value)
+self.pub_est = self.create_publisher(PositionEstimate, "/navera/estimate/gps", 10)
+self.create_subscription(NavSatFix, topic, self._on_fix, qos_profile_sensor_data)
+```
+
+The arbiter's GNSS callback, in
+[estimator_node.py](file:navera/navera_estimator/navera_estimator/nodes/estimator_node.py), applies
+the "not newer" rule before it touches its state:
+
+```python
+def _on_gps(self, msg: PositionEstimate) -> None:
+    # a fix stamped before the newest one received (link buffering, DDS reordering) is
+    # old news: dropped — scored against the newer trusted fix with dt clamped to 0 it
+    # looked like a jump ("possible spoofing") and refused a good GPS
+    last = Time.from_msg(self._gps_last.header.stamp) if self._gps_last is not None else None
+    if last is not None and Time.from_msg(msg.header.stamp) < last and \
+            last <= self.get_clock().now() + Duration(seconds=0.5):   # a future stamp sets no order
+        self.get_logger().info("GPS fix older than the last one received: dropped",
+                               throttle_duration_sec=10.0)
+        return
+    self._gps_last = msg
+    ...
     self._tick()
 ```
 
-`self._day_last` is state: the latest day-vision estimate, kept between messages. `_tick()` is also
-called by a **timer** 5 times per second — so the arbiter notices a source that went silent even when
-no message arrives at all. A subscriber alone could never notice silence: its callback is only called
-when something *arrives*. Combining a subscription (to receive) and a timer (to check regularly) is a
-classic pattern you now know.
+Read the comment: before this rule, a late fix was compared with a newer one, looked like an
+impossible jump, and a good GNSS was refused as "possible spoofing". `docs/VALIDATION_STATUS.md`
+records the bench test "GPS fix 0.8 s late, 60 m behind a vehicle at 75 m/s": "Dropped as old news;
+GPS stays FIX". Filtering is not a detail.
 
-## Words to remember
+The status the arbiter publishes, `NavStatus`, carries a `sources` list: one `SourceHealth` per
+source with `alive`, `last_seen` (the stamp of its last message) and `contributing`. Your status
+listener will compute "GPS silent for … s" from `header.stamp − last_seen`.
 
-| Word | Meaning |
+## Glossary
+
+| Term | Meaning |
 |---|---|
-| **subscription / subscriber** | the object (and the node) that receives the messages of a topic |
-| **callback** | the method ROS calls for each message, with the message as argument |
-| **event-driven** | a program that waits and reacts to events (messages, timers) |
-| **local variable** | a variable inside a function, forgotten when it returns |
-| **state** | what a node remembers between events, stored in `self` |
-| **step / dt / speed** | distance between two fixes / time between them / step ÷ dt |
-| **fresh / stale** | recent enough to be used / too old |
-| **parameter** | a setting of a node that you can change when you start it (`-p name:=value`) |
+| **subscription / callback** | receives a topic's messages / the method ROS calls for each one |
+| **queue depth** | how many received messages wait for the callback; the oldest are dropped beyond it |
+| **executor** | the loop that waits for ready events and runs their callbacks |
+| **Single / MultiThreadedExecutor** | one thread / a pool of threads |
+| **callback group** | rule saying which callbacks may run in parallel (mutually exclusive, reentrant) |
+| **utilisation ρ** | processing time ÷ time between messages; must stay below 1 |
+| **GIL** | Python's interpreter lock: one thread runs Python code at a time |
+| **state** | what a node remembers between events (`self.…`) |
+| **filtering** | refusing unusable messages before they change the state |
+| **stale / duplicate / out of order** | too old / sent twice / older than one already received |
+| **Rayleigh bias** | the mean length of a noisy 2-D step is larger than the true step |
+| **window, lag** | the last N samples used together / the delay this averaging introduces |
 
 ## Check what you learned
 
-<details><summary>1. Who calls your callback <code>on_fix</code>, and when?</summary>
-ROS calls it, during <code>rclpy.spin(node)</code>, each time a message arrives on the topic. You never
-call it yourself.
+<details><summary>1. You use a MultiThreadedExecutor, but the timer still waits for the slow callback. Why?</summary>
+Both callbacks are still in the node's default mutually-exclusive group: they can never run at the
+same time, whatever the number of threads. Put them in two different groups.
 </details>
 
-<details><summary>2. Your callback computes <code>count = count + 1</code> with <code>count = 0</code> at its first line. It always prints 1. Why, and how do you fix it?</summary>
-<code>count</code> is a local variable, recreated at every call. Store it in the node:
-<code>self.count = 0</code> in <code>__init__</code>, and <code>self.count += 1</code> in the callback.
+<details><summary>2. Fixes arrive at 5 Hz and each callback takes 0.25 s. What is ρ, and what happens to a depth-10 queue?</summary>
+ρ = 0.25 / 0.2 = 1.25 &gt; 1. The queue grows by 5 − 4 = 1 message per second, is full after about
+10 s, then the oldest messages are dropped and the processed data is about 10 × 0.25 = 2.5 s old.
 </details>
 
-<details><summary>3. Why compute the speed with the message time stamps instead of the arrival times?</summary>
-The stamps say when the positions were measured. Arrival times include network and queue delays,
-which would make the speed jump.
+<details><summary>3. Why compute the speed with stamps rather than arrival times?</summary>
+The stamps are the measurement instants. Arrival times include network and queue delays, which vary
+from message to message and would make the speed jump.
 </details>
 
-<details><summary>4. The GPS stops publishing. Can a node that only has a subscription notice it?</summary>
-No: its callback is only called when a message arrives, so silence calls nothing. You need a timer
-that regularly checks the age of the last message — exactly what the arbiter's <code>_tick()</code> does.
+<details><summary>4. σ = 2 m, fixes at 1 Hz. Estimate σ_v for consecutive fixes and for a window of 6 fixes.</summary>
+Consecutive: √2 × 2 / 1 ≈ 2.8 m/s. Window of 6 (span 5 s): √2 × 2 / 5 ≈ 0.57 m/s (valid while the
+noise is small compared with the distance travelled).
+</details>
+
+<details><summary>5. A node with only a subscription must report when the GNSS stops. Why can't it, and what is the fix?</summary>
+Its callback is only called when a message arrives; silence calls nothing. Add a timer that checks
+the age of the last message, as the arbiter's <code>_tick()</code> does.
 </details>
 
 Now open the **🛠️ Lab** tab.

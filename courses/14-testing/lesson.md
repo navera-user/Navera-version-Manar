@@ -1,85 +1,58 @@
-# Testing code like an engineer
+# Testing robotics code: examples, properties, mutants and launch tests
 
-Imagine: a drone flies over the sea with NAVERA on board. Yesterday, an engineer made a small change to a
-function that checks whether a position is real. He tried it on his desk: it worked. But he did not
-notice that the function now accepts the position (0, 0) — the "Null Island" value of a GPS field
-nobody filled. Today, a sensor glitch sends (0, 0)… and NAVERA believes it.
+A NAVERA box flies over the sea off Duqm. Yesterday an engineer made a small change to the function
+that checks whether a position is real. He tried it on his desk: it worked. He did not notice that it
+now accepts (0, 0) — the "Null Island" value of a GNSS field nobody filled. Today a sensor glitch sends
+(0, 0)… and the arbiter believes it.
 
-How do you make sure that a change in one place does not break something somewhere else — in a
-program of tens of thousands of lines, written by several people, over years? You cannot try
-everything by hand after every change. You write **tests**: small programs that check your program,
-automatically, in seconds, every time. NAVERA has **359 of them** for its non-ROS logic alone (you
-will run them all in the lab), and they would have caught yesterday's bug in under one second.
+How do you make sure that a change in one place breaks nothing elsewhere, in a product of tens of
+thousands of lines written by several people over years? You cannot re-try everything by hand after
+every change. You write **tests**: small programs that check the program automatically, in seconds,
+every time. NAVERA has **359 unit tests** for its logic (you will run them all in the lab), plus
+integration tests that start real nodes. This lesson covers how to write tests that actually find
+bugs: example tests with pytest, **property-based** tests with hypothesis, **mutation** thinking to
+measure test quality, and **launch tests** for ROS nodes.
 
-## What a test is
+## 1. Why, what and where
 
-A **test** is a function that runs a piece of your code with a known input and checks the result:
+| Level | Tests | Speed | NAVERA |
+|---|---|---|---|
+| **unit** | one function or class, alone | milliseconds | `<package>/test/test_*.py`, run by `navera_tools/run_tests.sh` |
+| **integration** | several real nodes talking over ROS | seconds | `navera_tools/tests/test_*.py`, `run_tests.sh --integration` |
+| **system / simulation** | the whole box with a simulated vehicle | minutes | the simulator (lesson 28), `docs/VALIDATION_STATUS.md` |
+| **field** | the real vehicle | hours, money | "field validation pending" |
+
+Most tests should be unit tests: fast, precise about *where* a bug is, and runnable before every
+commit. That is only possible if the logic is **separated** from the ROS plumbing — the `Tracker`
+of lesson 11 and NAVERA's `estimate_from_fix()` are pure functions tested without any node. A test
+pyramid that is mostly field tests is a slow, expensive way to find a sign error.
+
+## 2. pytest in practice
+
+pytest finds files `test_*.py`, runs functions `test_*`, and reports each as passed or failed.
 
 ```python
 def test_one_degree_of_latitude():
-    d = haversine_m(35.0, 10.0, 36.0, 10.0)    # run the code
-    assert d == pytest.approx(111_195, rel=1e-3)   # check the result
+    assert haversine_m(23.0, 58.0, 24.0, 58.0) == pytest.approx(M_PER_DEG, rel=1e-6)
 ```
 
-`assert` is a Python keyword: `assert condition` does nothing if the condition is true, and stops
-with an **AssertionError** if it is false. A test **passes** when it reaches its end without error,
-and **fails** otherwise.
+`assert` stops the test with an AssertionError when its condition is false; pytest **rewrites** the
+assert to show the values involved. Tools you will use:
 
-Good tests check what the code **promises**, with values you know independently: 1 degree of
-latitude is about 111 195 m (you computed it in lesson 6), (0, 0) must be refused (it is written in
-the function's docstring), 100 m in 20 s is 5 m/s (a child can check it).
+- **`pytest.approx`** — never compare floats with `==`: `0.1 + 0.2 == 0.3` is False (binary rounding).
+  `approx(x, abs=…)` or `rel=…` sets an explicit tolerance. Choose it like an engineer: tighter than
+  the bug you want to catch (a missing cos(φ) at 60° is a factor 2), looser than honest rounding
+  (≈ 1e-12 relative for double precision after a few operations).
+- **`is`** for exact objects: `assert speed_mps(100, 0) is None`, `assert is_valid(0, 0) is False`
+  (with `== False`, a function returning `0` would pass).
+- **`pytest.raises(ValueError)`** — a test that an error *is* raised.
+- **`@pytest.mark.parametrize("lat, lon, ok", [...])`** — one test function, many cases; each case is
+  reported separately, e.g. `test_is_valid_position[0.0-0.0-False]`.
+- **fixtures** — `@pytest.fixture` functions prepare a value (a start point, a temporary folder
+  `tmp_path`, a running node) for every test that names it as an argument; with `yield`, the code
+  after it runs as clean-up.
 
-## pytest
-
-**pytest** is the tool that finds and runs tests. Its rules are simple:
-
-- test files are named `test_something.py`;
-- test functions are named `test_something()`;
-- you run `python3 -m pytest` followed by a file or a folder.
-
-```bash
-python3 -m pytest -v test_geo_tools.py
-```
-
-`-v` (*verbose*) prints one line per test with `PASSED` or `FAILED`; `-q` (*quiet*) prints one dot
-per passing test and an `F` per failure. At the end, a summary: `9 passed in 0.12s`.
-
-### Comparing decimal numbers
-
-Never compare floats with `==`. Computers store decimals with tiny rounding errors:
-`0.1 + 0.2 == 0.3` is **False** in Python! Use `pytest.approx`:
-
-```python
-assert 0.1 + 0.2 == pytest.approx(0.3)                 # True
-assert d == pytest.approx(111_195, abs=50)             # within ± 50 m
-assert d == pytest.approx(111_195, rel=1e-3)           # within ± 0.1 %
-```
-
-Choose the tolerance like an engineer: tight enough to catch a real mistake (a missing `cos()` is a
-20 % error), loose enough to accept honest rounding.
-
-### Checking None, True, False
-
-`is` checks that it is *exactly* that object: `assert speed_mps(100, 0) is None`,
-`assert is_valid_position(0.0, 0.0) is False`. (With `== False`, a function returning `0` would pass.)
-
-### Many cases, one test
-
-When the same check applies to many inputs, `@pytest.mark.parametrize` runs the test once per case:
-
-```python
-@pytest.mark.parametrize("lat, lon", [(0.0, 0.0), (91.0, 10.0), (math.nan, 10.0)])
-def test_invalid_positions(lat, lon):
-    assert is_valid_position(lat, lon) is False
-```
-
-pytest counts this as 3 tests, and if one fails, its name tells you which case:
-`test_invalid_positions[0.0-0.0]`.
-
-## Reading a failing test
-
-When a test fails, pytest shows you exactly what went wrong. Here is a real failure from NAVERA's
-own tests (you will produce it yourself in the lab):
+### Reading a failure
 
 ```
 _____________________ test_is_finite_latlon[0.0-0.0-False] _____________________
@@ -92,21 +65,56 @@ E        +  where True = is_finite_latlon(0.0, 0.0)
 navera_common/test/test_geo.py:62: AssertionError
 ```
 
-Read it from top to bottom:
+From top to bottom: the test and its **case**, the inputs, the failing line (`>`), the explanation
+(`E`: the function returned True where False was expected), the file and line. A failing test is good
+news delivered early: the bug was found on a desk, in one second, not over the sea.
 
-1. **The name** — `test_is_finite_latlon` with the case `[0.0-0.0-False]`: the inputs were (0, 0)
-   and the expected answer `False`.
-2. **The `>` line** — the line of the test that failed.
-3. **The `E` lines** — the explanation: the function returned `True` where `False` was expected,
-   and pytest even shows the call: `is_finite_latlon(0.0, 0.0)`.
-4. **The file and line** — where to look.
+## 3. Property-based testing
 
-A failing test is not bad news: it is **good news delivered early**. The bug was found on your desk,
-in one second, instead of over the sea.
+An example test checks a few points chosen by a human — who tends to choose the easy ones. A
+**property** states what must hold for **all** inputs of a domain, and a tool generates the inputs.
+With **hypothesis**:
 
-## A test suite must catch bugs
+```python
+from hypothesis import given, settings, strategies as st
+LAT = st.floats(min_value=-90.0, max_value=90.0, allow_nan=False)
+LON = st.floats(min_value=-180.0, max_value=180.0, allow_nan=False)
 
-Here is a trap: a test that checks nothing useful still passes. This test of `meters_to_degrees`
+@settings(deadline=None)
+@given(LAT, LON, LAT, LON)
+def test_distance_is_symmetric(lat1, lon1, lat2, lon2):
+    assert haversine_m(lat1, lon1, lat2, lon2) == pytest.approx(haversine_m(lat2, lon2, lat1, lon1), abs=1e-6)
+```
+
+hypothesis runs the test with 100 generated inputs (more with `max_examples`), deliberately including
+edge values (0, ±90, ±180, tiny and huge numbers). When one fails it **shrinks** it — simplifies it
+step by step while it still fails — and prints a minimal `Falsifying example`. It stores failing
+examples in a local database (`.hypothesis/`) and replays them first next time.
+
+Good properties for navigation code are mathematical facts:
+
+| Property | Statement |
+|---|---|
+| identity | d(A, A) = 0 |
+| symmetry | d(A, B) = d(B, A) |
+| bounds | 0 ≤ d(A, B) ≤ πR (half the circumference) |
+| triangle inequality | d(A, C) ≤ d(A, B) + d(B, C) |
+| round trip | `latlon_to_offset(offset_to_latlon(p)) = p` (inverse functions) |
+| invariant | a valid start and a small move give a valid position |
+
+**Worked example — a property that finds a real limit.** "From a valid start, a move of at most
+50 km gives a valid position" sounds obvious. hypothesis answers with something like
+`lat0=86.61, lon0=173.23, north=0.0, east=44488.5`: near the pole, 44 km east is several degrees of
+longitude (1/cos φ is large), so the flat-Earth helper returns a longitude above 180° — invalid,
+because it never **wraps** longitude. No human chose that example. The fix is either to restrict the
+helper's documented **domain** (far from the poles and the antimeridian) or to wrap the result. NAVERA's
+`dead_reckon` wraps (`lon2 = (degrees(l2) + 540.0) % 360.0 - 180.0`) and has a test for it:
+`test_longitude_wraps_at_antimeridian`. Because generation is random, a run can also miss a rare
+counterexample: raise `max_examples` for exploration, and keep the database.
+
+## 4. Are the tests any good? Mutation thinking
+
+All tests pass. Does that prove anything? Only that the code does what the tests check. This test
 passes on correct code…
 
 ```python
@@ -115,66 +123,65 @@ def test_meters_to_degrees():
     assert dlat == 0 and dlon == 0
 ```
 
-…but it also passes if someone forgets the `cos(latitude)`, or swaps north and east. It gives a
-**false feeling of safety**. How do you know your tests are good? You break the code on purpose and
-check that a test fails. A wrong copy of the code is called a **mutant**; a mutant that no test
-detects has **survived**. This is **mutation testing**, and it is exactly what the checker of this
-lesson does with your tests.
+…and also on code that forgets cos(φ) or swaps north and east. To measure a test suite, **break the
+code on purpose** and see whether a test fails. Each broken copy is a **mutant**; a mutant that no
+test detects **survives**. The **mutation score** = killed mutants / total mutants. Two subtleties:
+
+- an **equivalent mutant** changes the code without changing its behaviour (for example removing
+  `min(1.0, a)` in haversine, which only matters when rounding pushes `a` above 1) — no test can kill
+  it, and that is fine;
+- some mutants are invisible to examples but obvious to properties: a haversine that uses
+  `cos(p1)²` instead of `cos(p1)·cos(p2)` gives correct results whenever both points share a
+  latitude — but symmetry fails at once.
+
+The checker of this lab applies 12 mutants to `geo_tools.py` and 4 to NAVERA's `geo.py`, and tells
+you which ones survived. Ask, for every test you write: **which bug would this catch?**
 
 ![The checker runs your tests on the correct code and on wrong copies of it](assets/mutants.svg)
 
-A useful habit: for every test you write, ask "**which mistake would this test catch?**" If you can't
-name one, the test is decoration.
+## 5. Testing ROS nodes: launch_testing
 
-## Separate the logic, test the logic
+Unit tests cover the logic; an **integration test** checks that the real nodes, with their real QoS,
+topics and timers, behave together. ROS 2 provides **launch_testing**: a test file declares
+`generate_test_description()`, which returns a `LaunchDescription` (the nodes under test plus a
+`ReadyToTest()` action); `launch_test file.py` starts them, runs the `unittest` test classes **while
+they run** (your test node publishes inputs and subscribes to outputs), then stops them and runs the
+classes marked `@launch_testing.post_shutdown_test()` — typically checking that every process exited
+cleanly (exit code 0).
 
-In lesson 11, you put the trip computer's logic in a class `Tracker` with **no ROS inside**. Now you
-see why: a function that takes numbers and returns numbers can be tested in a millisecond, without
-starting nodes, waiting for messages or running a simulator. NAVERA is built this way: almost every
-decision lives in a plain function, and the ROS node around it is thin. That is why its tests are
-split in two groups (see [navera_tools/run_tests.sh](file:navera/navera_tools/run_tests.sh)):
+```python
+@pytest.mark.launch_test
+def generate_test_description():
+    arbiter = launch_ros.actions.Node(package="navera_estimator", executable="estimator_node.py")
+    return launch.LaunchDescription([arbiter, launch_testing.actions.ReadyToTest()]), {"arbiter": arbiter}
+```
 
-| | Unit tests | Integration tests |
-|---|---|---|
-| What | one function or class, alone | real nodes started together, talking over ROS |
-| Where | `<package>/test/test_*.py` | `navera_tools/tests/test_*.py` |
-| Speed | about one minute for all of them | longer: real nodes must start and talk |
-| Run with | `navera_tools/run_tests.sh` | `navera_tools/run_tests.sh --integration` |
-
-A **unit test** checks one small unit. An **integration test** checks that the units work together
-(the arbiter receiving a real GPS node's messages, for example). You need both — but most tests should
-be unit tests, because they are fast and they point at the exact place of a bug.
+Integration tests are slower and more fragile (discovery takes time, timing varies with machine load),
+so they test **behaviour at the interfaces**: "one GNSS estimate → FIX, and exactly one position
+published", "a NaN position → NO_FIX, nothing published". NAVERA's own
+`navera_tools/tests/test_estimator.py` does exactly this with a subprocess and a scripted test node.
 
 ## 🐦 How birds do it
 
-How do you ask a bird *"which way do you want to go?"* In the 1960s, Stephen Emlen and his father John
-Emlen built a simple, clever instrument: the **Emlen funnel**. It is a paper funnel with an ink pad at
-the bottom. A migratory bird is put inside at night; it keeps hopping toward the direction it wants to
-fly, and its inky footprints mark the paper. In the morning, the scientist counts the marks. It is an
-**automatic measurement**: it runs while the scientist sleeps, and it gives the same kind of answer
-every time.
+How do you ask a bird which way it wants to go? In the 1960s Stephen Emlen and his father John Emlen
+built the **Emlen funnel**: a paper funnel with an ink pad at the bottom. A migratory bird placed
+inside at night hops towards its preferred direction, and its inky footprints record it — an
+**automatic, repeatable measurement**. Emlen then tested hypotheses one at a time in a planetarium with
+indigo buntings: rotate the projected sky and the birds' direction rotates with it; raise young birds
+under a sky turning around a different star (Betelgeuse) and, as adults, they treat that star as north
+— they learn the **centre of rotation** of the sky. In the 1960s and 1970s Wolfgang and Roswitha
+Wiltschko did the same with European robins and magnetic coils: turn the field, and the birds' choice
+turns.
 
-Then Emlen tested ideas, one at a time, in a **planetarium**, with indigo buntings (small night
-migrants):
-
-1. Show the real star sky → the birds hop in their migration direction.
-2. Turn the projected sky → the birds turn with it. *They use the stars.*
-3. Raise young birds under a sky that turns around a different star (Betelgeuse) → as adults, they
-   treat Betelgeuse as their "north". *They are not born knowing the constellations: they learn the
-   centre of rotation of the sky.*
-
-In the 1960s and 1970s, Wolfgang and Roswitha Wiltschko did the same with robins and magnets: turn the
-magnetic field with coils, and the robins' preferred direction turns too.
-
-A good experiment is a good test: **change one thing, keep everything else the same, repeat many
-times** — and design it so that it **fails** if your idea is wrong.
-
-NAVERA's tests follow the same rules, and run in seconds instead of migration seasons.
+These are **property tests** of a navigation system: "for any rotation of the sky, the chosen
+direction rotates by the same angle". And they are designed to be able to **fail** — the essential
+quality of a test. The same logic is applied today to satellite-tagged birds crossing Arabia: a
+hypothesis about how they navigate is only useful if it predicts tracks that the measured ones could
+contradict.
 
 ## In NAVERA
 
-Open [navera_common/test/test_geo.py](file:navera/navera_common/test/test_geo.py), the tests of the
-geography helpers that every NAVERA pipeline shares. Look at how they are written:
+Open [navera_common/test/test_geo.py](file:navera/navera_common/test/test_geo.py):
 
 ```python
 @pytest.mark.parametrize("lat, lon, ok", [
@@ -183,61 +190,66 @@ geography helpers that every NAVERA pipeline shares. Look at how they are writte
     (None, 1.0, False), ("x", 1.0, False)])
 def test_is_finite_latlon(lat, lon, ok):
     assert is_finite_latlon(lat, lon) is ok
-```
 
-Eight cases in five lines — including strange inputs like `None` and `"x"`, because a function that
-receives data from sensors must survive anything. And this one:
 
-```python
 def test_stationary_vehicle_does_not_move():
     # The old code floored every step at 120 m.
     out = dead_reckon(35.83, 10.64, 45.0, 0.0, 30.0)
     assert haversine_m(35.83, 10.64, *out) < 1e-6
 ```
 
-Read the comment: **the old code had a bug** (a stopped vehicle was moved 120 m at every step). When
-the bug was fixed, a test was added so that it can **never come back** unnoticed. Such a test is called
-a **regression test** — a *regression* is a bug that returns. Many tests in NAVERA tell a story like
-this one; reading them is a great way to learn what can go wrong in navigation.
+(The coordinates 35.8 N, 10.6 E are in Sousse, Tunisia, where NAVERA is developed and where its
+test data and map come from.) Eight cases in five lines — including absurd inputs (`None`, `"x"`) because sensor data must never
+crash the arbiter. The second test is a **regression test**: its comment records a real bug (a stopped
+vehicle was moved 120 m at every step); the test makes sure it can never come back unnoticed. The file
+also defines its own `haversine_m` at the top: expected values are computed **independently** of the
+code under test — testing a function with itself proves nothing.
 
-Finally, notice that `test_geo.py` has its own small copy of `haversine_m` at the top, to compute the
-expected distances **independently** of the code under test. Testing a function with itself proves
-nothing!
+The test runner, [navera_tools/run_tests.sh](file:navera/navera_tools/run_tests.sh), shows two
+engineering habits: every step has a **time limit** ("a hang fails the run instead of blocking it"),
+and integration tests run on their **own ROS domain** with `ROS_LOCALHOST_ONLY=1` "so they never talk
+to a live NAVERA system on the same machine" — lesson 09's domains, applied to testing.
 
-## Words to remember
+## Glossary
 
-| Word | Meaning |
+| Term | Meaning |
 |---|---|
-| **test** | a small function that runs code with known inputs and checks the result |
-| **assert** | "this must be true" — stops with an AssertionError when it is false |
-| **pytest** | the tool that finds `test_*.py` files and runs their `test_*` functions |
-| **pass / fail** | the test reached its end / an assert (or an error) stopped it |
-| **pytest.approx** | compare decimal numbers with a tolerance |
-| **parametrize** | run one test with many cases |
-| **unit / integration test** | one piece alone / several pieces working together |
+| **unit / integration / system test** | one piece alone / several nodes together / the whole system |
+| **assert, pytest.approx, pytest.raises** | must be true / equal within a tolerance / must raise |
+| **parametrize** | one test function, many cases |
+| **fixture** | a prepared value or resource injected into tests by name (`tmp_path`, `yield` clean-up) |
+| **property-based test** | a statement checked on many generated inputs (hypothesis `@given`) |
+| **strategy / shrinking** | how inputs are generated / reducing a failing input to a minimal one |
+| **domain** | the set of inputs a function is designed for |
+| **mutant / mutation score** | a deliberately broken copy / fraction of mutants the tests detect |
+| **equivalent mutant** | a change that does not alter behaviour: undetectable by design |
 | **regression test** | a test written after a bug, so that it can never return unnoticed |
-| **mutant / mutation testing** | a wrong copy of the code / checking that the tests catch such copies |
+| **launch_testing** | ROS 2 framework: start nodes, test them live, check their exit codes |
 
 ## Check what you learned
 
 <details><summary>1. Why is <code>assert haversine_m(...) == 111195.0</code> a bad test?</summary>
-Decimal results carry tiny rounding errors, and 1° of latitude is only <i>about</i> 111 195 m. Use
-<code>pytest.approx(111_195, rel=1e-3)</code>.
+Floats carry rounding errors, and 1° of latitude is only about 111 195 m. Use
+<code>pytest.approx(M_PER_DEG, rel=1e-6)</code> with an independently computed expected value.
 </details>
 
-<details><summary>2. All your tests pass. Does that prove your code has no bug?</summary>
-No. It proves the code does what your tests check — nothing more. If no test checks (0, 0), a bug
-with (0, 0) passes. Mutation testing measures how many bugs your tests would catch.
+<details><summary>2. All 30 of your tests pass and 4 of 12 mutants survive. What is the mutation score, and what do you do?</summary>
+8/12 ≈ 67 %. For each surviving mutant, write a test that passes on the correct code and fails on the
+mutant (unless it is equivalent).
 </details>
 
-<details><summary>3. In NAVERA, breaking <code>is_finite_latlon</code> also made a test of <code>dead_reckon</code> fail. Why?</summary>
-<code>dead_reckon</code> calls <code>is_finite_latlon</code> to refuse an invalid start. One bug in a
-shared helper can break every function that uses it — which is why shared code needs good tests.
+<details><summary>3. Which mutant is invisible to "1° of latitude along a meridian" and "1° of longitude on the equator", but caught by symmetry?</summary>
+A haversine using <code>cos(p1)²</code> instead of <code>cos(p1)·cos(p2)</code>: both examples have equal latitudes (or no
+longitude change), where the two expressions agree; swapping two points at different latitudes exposes it.
 </details>
 
-<details><summary>4. What is a regression test? Find one in test_geo.py.</summary>
-A test added after fixing a bug, so the bug cannot return unnoticed:
-<code>test_stationary_vehicle_does_not_move</code> ("The old code floored every step at 120 m").
+<details><summary>4. hypothesis prints <code>Falsifying example: lat0=86.6, …, east=44488.5</code>. Is the code wrong?</summary>
+It is outside the domain the flat-Earth helper can handle (near a pole the longitude exceeds 180°). Either
+restrict and document the domain, or fix the function (wrap the longitude, as NAVERA's dead_reckon does).
+</details>
+
+<details><summary>5. Why does NAVERA's run_tests.sh run integration tests on their own ROS domain?</summary>
+So the test nodes never discover — or publish to — a real NAVERA running on the same machine or network.
 </details>
 
 Now open the **🛠️ Lab** tab.

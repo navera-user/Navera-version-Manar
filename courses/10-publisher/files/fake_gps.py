@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""fake_gps.py — your first ROS 2 publisher: a pretend GPS receiver.
+"""fake_gps.py — your first ROS 2 publisher: a fake GNSS receiver driving from Muscat.
 
-When it is finished, it publishes a sensor_msgs/NavSatFix on the topic /fake_gps/fix,
-2 times per second, for a vehicle that drives in a straight line from a start point.
+When it is finished, it publishes sensor_msgs/NavSatFix on /fake_gps/fix (2 Hz by default) for a
+vehicle that drives with a speed and a heading you can change while it runs:
 
-Run it:                   python3 fake_gps.py
-Watch it (2nd terminal):  ros2 topic echo /fake_gps/fix
-Stop it:                  Ctrl+C
+    python3 fake_gps.py                                        default settings
+    python3 fake_gps.py --ros-args -p speed_mps:=12.0          another speed (write 12.0, not 12!)
+    ros2 param set /fake_gps heading_deg 90.0                  turn east while it runs
+    ros2 topic echo /fake_gps/fix                              watch it (another terminal)
 
-Do the TODOs in order (1 → 5). After each one, run the file again.
+Do the TODOs in order (1 -> 7). TODO 1-4 are plain Python: test them without ROS (see the lab).
 """
 import math
 
@@ -17,71 +18,90 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from sensor_msgs.msg import NavSatFix, NavSatStatus
 
-# ---- the settings of our pretend drive ----
 TOPIC = "/fake_gps/fix"
-RATE_HZ = 2.0                         # messages per second
-START_LAT = 35.8256                   # start point: Sousse (degrees)
-START_LON = 10.6084
-ALTITUDE_M = 40.0                     # above the WGS84 ellipsoid
-EAST_SPEED_MPS = 3.0                  # metres per second towards the east
-NORTH_SPEED_MPS = 4.0                 # metres per second towards the north (so 5 m/s in total)
-SIGMA_M = 3.0                         # how precise our pretend GPS says it is (1 sigma, metres)
+EARTH_RADIUS_M = 6_371_000.0      # the same value as NAVERA's navera_common/geo.py
+ALTITUDE_M = 40.0                 # metres above the WGS84 ellipsoid
 
-EARTH_RADIUS_M = 6_371_000.0          # the same value as NAVERA's navera_common/geo.py
+# Default values of the node's parameters (TODO 5 turns them into ROS parameters).
+DEFAULTS = {
+    "rate_hz": 2.0,               # messages per second
+    "speed_mps": 5.0,             # ground speed, metres per second
+    "heading_deg": 30.0,          # direction of motion, clockwise from north (90 = east)
+    "start_lat": 23.5880,         # near the Sultan Qaboos Grand Mosque, Muscat
+    "start_lon": 58.3829,
+    "sigma_m": 3.0,               # horizontal 1-sigma accuracy the receiver states, metres
+}
 
 
-def meters_to_degrees(north_m, east_m, lat_deg):
-    """Turn a small move in metres (north, east) into (dlat, dlon) in degrees.
-
-    1 degree of latitude is always the same length: 2*pi*R / 360 = about 111 195 m.
-    1 degree of longitude gets shorter towards the poles: multiply by cos(latitude).
-    """
-    # TODO 1: compute and return (dlat, dlon). You did this in lesson 6.
-    #   m_per_deg_lat = ...
-    #   m_per_deg_lon = ...   (do not forget math.radians() inside math.cos())
+def velocity_ne(speed_mps, heading_deg):
+    """Velocity components (v_north, v_east) in m/s for a speed and a heading (clockwise from north)."""
+    # TODO 1: v_north = speed * cos(heading), v_east = speed * sin(heading).
+    #         math.cos / math.sin want RADIANS: use math.radians(heading_deg).
     return 0.0, 0.0
 
 
-def position_at(t_s):
-    """Where the vehicle is t_s seconds after the start: (lat, lon) in degrees."""
-    # TODO 2: distance travelled north and east = speed x time, then use meters_to_degrees()
-    #         and add the result to START_LAT / START_LON.
-    return START_LAT, START_LON
+def offset_to_latlon(lat0_deg, lon0_deg, north_m, east_m):
+    """Local flat-Earth (equirectangular) conversion: a (north, east) offset in metres from
+    (lat0, lon0) -> (lat, lon) in degrees. R = EARTH_RADIUS_M; longitude metres shrink by cos(lat0)."""
+    # TODO 2: lat = lat0 + degrees(north / R)
+    #         lon = lon0 + degrees(east / (R * cos(lat0)))      (cos of lat0 in RADIANS)
+    return lat0_deg, lon0_deg
 
 
-def make_fix(lat, lon, stamp):
-    """Fill one NavSatFix message. `stamp` is a builtin_interfaces/Time (from the node's clock)."""
+def make_covariance(sigma_h_m, sigma_v_m):
+    """The 9 numbers of an ENU, row-major covariance with independent errors (FLOATS, in m^2):
+    sigma_h^2 for East and North, sigma_v^2 for Up, 0.0 elsewhere."""
+    # TODO 3: return a list of 9 floats. Indices 0, 4, 8 are the diagonal.
+    return []
+
+
+def make_fix(lat, lon, alt_m, sigma_m, stamp):
+    """One complete NavSatFix. `stamp` is a builtin_interfaces/Time (now.to_msg())."""
     msg = NavSatFix()
     msg.header.stamp = stamp
     msg.header.frame_id = "gps"
-    # TODO 3: fill the message (see the lesson's NavSatFix table):
-    #   - status.status  = we have a fix         (NavSatStatus.STATUS_FIX)
-    #   - status.service = the American GPS      (NavSatStatus.SERVICE_GPS)
-    #   - latitude, longitude, altitude (ALTITUDE_M)
-    #   - position_covariance: 9 numbers, SIGMA_M squared for east and north (places 0 and 4),
-    #     (2 * SIGMA_M) squared for up (place 8), 0.0 everywhere else
-    #   - position_covariance_type = NavSatFix.COVARIANCE_TYPE_DIAGONAL_KNOWN
+    # TODO 4: fill the message (the lesson's NavSatFix table lists every field):
+    #   status.status = NavSatStatus.STATUS_FIX        status.service = NavSatStatus.SERVICE_GPS
+    #   latitude, longitude, altitude
+    #   position_covariance = make_covariance(sigma_m, 2 * sigma_m)   (vertical: twice the horizontal)
+    #   position_covariance_type = NavSatFix.COVARIANCE_TYPE_DIAGONAL_KNOWN
     return msg
 
 
 class FakeGps(Node):
     def __init__(self):
-        super().__init__("fake_gps")             # the node's name in the ROS graph
-        # TODO 4: create a publisher of NavSatFix on TOPIC (queue depth 10) -> self.pub
+        super().__init__("fake_gps")              # the node's name in the ROS graph
+        # TODO 5: declare the 6 parameters of DEFAULTS with self.declare_parameter(name, default)
+        #         (a loop over DEFAULTS.items() is fine), then READ rate_hz, start_lat and start_lon
+        #         with self.get_parameter(name).value instead of the fixed values below.
+        rate = DEFAULTS["rate_hz"]
+        self.lat0 = DEFAULTS["start_lat"]
+        self.lon0 = DEFAULTS["start_lon"]
+
+        # TODO 6: create the publisher (NavSatFix, TOPIC, depth 10) in self.pub, and a timer that
+        #         calls self.on_timer every 1.0 / rate seconds.
         self.pub = None
-        # TODO 5: create a timer that calls self.on_timer every 1.0 / RATE_HZ seconds
-        self.start_time = self.get_clock().now()
+
+        self.north_m = 0.0                         # offset from the start, metres
+        self.east_m = 0.0
+        self.last_t = None                         # time of the previous tick (seconds), None at first
         self.count = 0
-        self.get_logger().info(f"fake GPS publishing on {TOPIC} at {RATE_HZ} Hz")
+        self.get_logger().info(f"fake GPS on {TOPIC} at {rate} Hz from ({self.lat0}, {self.lon0})")
 
     def on_timer(self):
-        """Called by the timer: compute where we are now and publish it."""
+        """Called by the timer: move the vehicle by v * dt, then publish where it is now."""
         now = self.get_clock().now()
-        t = (now - self.start_time).nanoseconds / 1e9      # seconds since the start
-        lat, lon = position_at(t)
-        self.pub.publish(make_fix(lat, lon, now.to_msg()))
+        t = now.nanoseconds / 1e9
+        # TODO 7: dt = t - self.last_t (0.0 on the very first tick), and remember t in self.last_t.
+        #         Read speed_mps and heading_deg with self.get_parameter(...).value HERE, at every
+        #         tick (so `ros2 param set` works while the node runs), then add v_north * dt to
+        #         self.north_m and v_east * dt to self.east_m, using velocity_ne().
+
+        lat, lon = offset_to_latlon(self.lat0, self.lon0, self.north_m, self.east_m)
+        sigma = self.get_parameter("sigma_m").value if self.has_parameter("sigma_m") else DEFAULTS["sigma_m"]
+        self.pub.publish(make_fix(lat, lon, ALTITUDE_M, sigma, now.to_msg()))
         self.count += 1
-        if self.count % 10 == 1:
+        if self.count % 10 == 1:                   # log one fix in ten, not to flood the terminal
             self.get_logger().info(f"fix {self.count}: lat {lat:.6f}  lon {lon:.6f}")
 
 
@@ -90,7 +110,7 @@ def main():
     rclpy.init()
     node = FakeGps()
     try:
-        rclpy.spin(node)                         # wait for timers / messages, forever
+        rclpy.spin(node)
     except (KeyboardInterrupt, ExternalShutdownException):     # Ctrl+C
         pass
     finally:

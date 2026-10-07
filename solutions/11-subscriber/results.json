@@ -1,0 +1,24 @@
+{
+  "noise": {
+    "sigma_0m": {
+      "fixes": 240,
+      "true_distance_m": 717.0,
+      "distance_m": 715.4717907774382,
+      "distance_ratio": 0.9978686063841536,
+      "instant_mean_mps": 5.987211638304935,
+      "instant_std_mps": 0.13918283901406672,
+      "window_mean_mps": 5.921650106479406,
+      "window_std_mps": 0.32473111097467433
+    },
+    "sigma_3m": {
+      "fixes": 240,
+      "true_distance_m": 717.0,
+      "distance_m": 1501.1656820413448,
+      "distance_ratio": 2.093675986110662,
+      "instant_mean_mps": 12.562055916663965,
+      "instant_std_mps": 6.133837407808501,
+      "window_mean_mps": 5.991276516500937,
+      "window_std_mps": 1.0032636589313901
+    }
+  }
+}

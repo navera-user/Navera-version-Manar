@@ -1,3 +1,3 @@
-{"number": "10", "title": "Your first publisher: a fake GPS", "module": 3, "duration": "1 h 30",
- "summary": "Write a ROS 2 node that publishes a GPS position twice a second, moving along a straight line — exactly the kind of message NAVERA's GPS source reads.",
- "resources": [], "open": ["fake_gps.py"], "check_timeout_s": 120}
+{"number": "10", "title": "Your first publisher: a fake GNSS receiver", "module": 3, "duration": "3 h",
+ "summary": "Write an rclpy node class with parameters, a timer and a publisher: a fake GNSS receiver driving from Muscat. Fill NavSatFix honestly (covariance in m², as floats), measure timer jitter and message size, and quantify the error of a flat Earth.",
+ "resources": [], "open": ["fake_gps.py", "analysis.py", "report.md"], "check_timeout_s": 180}

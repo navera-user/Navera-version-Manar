@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-14 -34 228 194">
+  <!-- Navi the swallow: NAVERA Academy mascot -->
+  <defs>
+    <linearGradient id="nb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f5bb7"/><stop offset="1" stop-color="#1f3f8f"/></linearGradient>
+    <linearGradient id="nw" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b6fd6"/><stop offset="1" stop-color="#1c3577"/></linearGradient>
+  </defs>
+  <!-- forked tail -->
+  <path d="M70 96 C50 92 28 80 6 66 C26 86 40 96 54 102 C38 110 24 122 12 136 C34 124 52 114 74 106 Z" fill="#1c3577"/>
+  <!-- body -->
+  <ellipse cx="102" cy="98" rx="46" ry="30" fill="url(#nb)"/>
+  <!-- belly -->
+  <path d="M70 104 C86 128 128 132 146 108 C130 116 92 118 70 104 Z" fill="#fff6e6"/>
+  <ellipse cx="116" cy="110" rx="30" ry="14" fill="#fff6e6"/>
+  <!-- back wing -->
+  <path d="M92 86 C76 60 58 40 30 26 C58 30 92 46 118 80 Z" fill="#183068"/>
+  <!-- aviator scarf -->
+  <path d="M128 92 C110 96 92 90 74 84 C84 94 100 100 116 102 C104 108 92 116 84 126 C102 118 118 110 132 100 Z" fill="#ff8c42"/>
+  <path d="M128 92 C114 95 100 92 88 88" stroke="#e86f22" stroke-width="2" fill="none"/>
+  <!-- head -->
+  <circle cx="146" cy="74" r="28" fill="url(#nb)"/>
+  <!-- red throat and forehead -->
+  <path d="M150 86 C156 96 168 96 173 84 C166 88 158 89 150 86 Z" fill="#e8553f"/>
+  <path d="M158 50 C166 52 172 58 174 64 C168 62 162 58 158 50 Z" fill="#e8553f"/>
+  <!-- aviator goggles on the forehead -->
+  <path d="M120 58 C134 46 158 44 172 54" stroke="#6b3e1f" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <circle cx="146" cy="50" r="8.5" fill="#ffd166" stroke="#6b3e1f" stroke-width="3"/>
+  <circle cx="163" cy="54" r="7.5" fill="#ffd166" stroke="#6b3e1f" stroke-width="3"/>
+  <circle cx="143.5" cy="47.5" r="2.4" fill="#fff" opacity=".85"/>
+  <circle cx="161" cy="51.5" r="2" fill="#fff" opacity=".85"/>
+  <!-- cheek -->
+  <ellipse cx="149" cy="81" rx="6" ry="3.6" fill="#ff9aa2" opacity=".8"/>
+  <!-- eye -->
+  <circle cx="156" cy="68" r="9" fill="#fff"/>
+  <circle cx="158.5" cy="67" r="5.5" fill="#1b1f2a"/>
+  <circle cx="160.5" cy="64.5" r="2" fill="#fff"/>
+  <!-- beak -->
+  <path d="M172 74 L188 77 L172 81 Z" fill="#2a2a2a"/>
+  <!-- front wing -->
+  <path d="M96 92 C84 66 70 44 44 22 C80 32 112 56 128 90 C118 96 106 96 96 92 Z" fill="url(#nw)"/>
+  <path d="M100 88 C92 72 82 58 66 42" stroke="#5f8ef0" stroke-width="2.5" fill="none" stroke-linecap="round" opacity=".7"/>
+  <path d="M110 88 C104 74 96 62 84 50" stroke="#5f8ef0" stroke-width="2.5" fill="none" stroke-linecap="round" opacity=".55"/>
+  <!-- little compass badge on the chest -->
+  <circle cx="128" cy="112" r="9" fill="#ffc94d" stroke="#e0a21f" stroke-width="1.5"/>
+  <path d="M128 105 L131 112 L128 119 L125 112 Z" fill="#e8553f"/>
+  <circle cx="128" cy="112" r="1.6" fill="#243447"/>
+  <!-- sparkles -->
+  <path d="M190 19 L193.3 26.7 L201 30 L193.3 33.3 L190 41 L186.7 33.3 L179 30 L186.7 26.7 Z" fill="#ffc94d"/><path d="M206 55 L208.1 59.9 L213 62 L208.1 64.1 L206 69 L203.9 64.1 L199 62 L203.9 59.9 Z" fill="#ff7a1a"/><path d="M108 10 L110.4 15.6 L116 18 L110.4 20.4 L108 26 L105.6 20.4 L100 18 L105.6 15.6 Z" fill="#ffc94d"/><path d="M30 34 L31.8 38.2 L36 40 L31.8 41.8 L30 46 L28.2 41.8 L24 40 L28.2 38.2 Z" fill="#1fa5a0"/><circle cx="60" cy="10" r="3" fill="#ff7a1a"/><circle cx="176" cy="4" r="3" fill="#1fa5a0"/><circle cx="205" cy="104" r="3" fill="#8b5cf6"/>
+</svg>

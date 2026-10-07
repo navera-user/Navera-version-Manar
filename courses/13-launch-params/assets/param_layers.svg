@@ -10,19 +10,19 @@
   <g fill="#1d2733">
     <text x="44" y="66" font-weight="bold">1. the default in the code</text>
     <text x="44" y="83" font-family="monospace" font-size="12">declare_parameter("day_timeout_s", 3.0)</text>
-    <text x="64" y="120" font-weight="bold">2. a YAML parameters file</text>
-    <text x="64" y="137" font-family="monospace" font-size="12">estimator_params.yaml: day_timeout_s: 5.0</text>
-    <text x="84" y="174" font-weight="bold">3. the command line / the launch file</text>
-    <text xml:space="preserve" x="84" y="191" font-family="monospace" font-size="12">-p gps_timeout_s:=2.0    or  {'gps_timeout_s': ...}</text>
+    <text x="64" y="120" font-weight="bold">2. files and -p overrides, in the order written</text>
+    <text x="64" y="137" font-family="monospace" font-size="12">--params-file my_gps.yaml -p rate_hz:=4.0 → 4.0</text>
+    <text x="84" y="174" font-weight="bold">3. a launch file: parameters=[…], later items win</text>
+    <text xml:space="preserve" x="84" y="191" font-family="monospace" font-size="12">[estimator_params.yaml, {'gps_timeout_s': …}]</text>
     <text x="104" y="228" font-weight="bold">4. while running: ros2 param set</text>
     <text x="104" y="245" font-family="monospace" font-size="12">changes the value… used only if the node reads it again</text>
   </g>
   <g fill="#56606b" font-size="12">
     <text x="546" y="72">written by the</text>
     <text x="546" y="88">developer</text>
-    <text x="546" y="126">written by the</text>
-    <text x="546" y="142">integrator</text>
-    <text x="546" y="180">chosen at start-up</text>
+    <text x="546" y="126">chosen at</text>
+    <text x="546" y="142">start-up</text>
+    <text x="546" y="180">the integrator</text>
     <text x="546" y="234">changed live</text>
   </g>
   <text xml:space="preserve" x="340" y="284" text-anchor="middle" fill="#1d2733">ros2 run → day_timeout_s = 3.0      NAVERA's launch file (with the YAML) → 5.0</text>

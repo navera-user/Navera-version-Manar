@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 440" font-family="sans-serif" font-size="12">
+  <rect width="720" height="440" fill="#f7fafc"/>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#0b6e8a"/>
+    </marker>
+    <marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#b3261e"/>
+    </marker>
+    <marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2e7d32"/>
+    </marker>
+  </defs>
+  <text x="360" y="24" text-anchor="middle" font-size="14" font-weight="bold" fill="#1d2733">Discovery between a publisher and a subscriber (time goes down)</text>
+  <!-- participants -->
+  <rect x="120" y="40" width="150" height="40" rx="8" fill="#ffffff" stroke="#0b6e8a" stroke-width="2"/>
+  <text x="195" y="58" text-anchor="middle" font-weight="bold" fill="#1d2733">participant A</text>
+  <text x="195" y="73" text-anchor="middle" fill="#56606b">publisher /chatter</text>
+  <rect x="450" y="40" width="150" height="40" rx="8" fill="#ffffff" stroke="#0b6e8a" stroke-width="2"/>
+  <text x="525" y="58" text-anchor="middle" font-weight="bold" fill="#1d2733">participant B</text>
+  <text x="525" y="73" text-anchor="middle" fill="#56606b">subscriber /chatter</text>
+  <!-- life lines -->
+  <line x1="195" y1="80" x2="195" y2="362" stroke="#9aa5b1" stroke-width="2" stroke-dasharray="5 4"/>
+  <line x1="525" y1="80" x2="525" y2="362" stroke="#9aa5b1" stroke-width="2" stroke-dasharray="5 4"/>
+  <!-- phase labels -->
+  <text x="18" y="112" font-weight="bold" fill="#0b6e8a">1. SPDP</text>
+  <text x="18" y="128" fill="#56606b" font-size="11">participants</text>
+  <text x="18" y="190" font-weight="bold" fill="#0b6e8a">2. SEDP</text>
+  <text x="18" y="206" fill="#56606b" font-size="11">endpoints</text>
+  <text x="18" y="320" font-weight="bold" fill="#0b6e8a">3. data</text>
+  <!-- SPDP -->
+  <g stroke="#0b6e8a" stroke-width="2" fill="none" marker-end="url(#a)">
+    <path d="M195 105 L523 115"/>
+    <path d="M525 128 L197 138"/>
+  </g>
+  <text x="360" y="102" text-anchor="middle" fill="#1d2733">"I am A, reach me here"</text>
+  <text x="360" y="148" text-anchor="middle" fill="#1d2733">"I am B, reach me here"</text>
+  <!-- SEDP -->
+  <g stroke="#0b6e8a" stroke-width="2" fill="none" marker-end="url(#a)">
+    <path d="M525 172 L197 184"/>
+    <path d="M195 212 L523 262"/>
+  </g>
+  <text x="360" y="168" text-anchor="middle" fill="#1d2733">B: subscriber, /chatter, String, RELIABLE</text>
+  <text x="300" y="268" text-anchor="middle" fill="#1d2733">A: publisher, /chatter, String</text>
+  <text x="300" y="282" text-anchor="middle" fill="#56606b" font-size="11">(this description arrives later)</text>
+  <!-- A matched -->
+  <rect x="205" y="186" width="122" height="22" rx="5" fill="#e8f5e9" stroke="#2e7d32"/>
+  <text x="266" y="201" text-anchor="middle" fill="#2e7d32" font-weight="bold">A: matched ✔</text>
+  <!-- message 1 lost -->
+  <path d="M195 222 L452 226" stroke="#b3261e" stroke-width="2" fill="none" stroke-dasharray="6 3" marker-end="url(#r)"/>
+  <text x="462" y="231" fill="#b3261e" font-weight="bold">✘</text>
+  <text x="560" y="205" fill="#b3261e" font-size="11">message 1 arrives</text>
+  <text x="560" y="219" fill="#b3261e" font-size="11">before B has matched A:</text>
+  <text x="560" y="233" fill="#b3261e" font-size="11">dropped (VOLATILE)</text>
+  <!-- B matched -->
+  <rect x="535" y="262" width="122" height="22" rx="5" fill="#e8f5e9" stroke="#2e7d32"/>
+  <text x="596" y="277" text-anchor="middle" fill="#2e7d32" font-weight="bold">B: matched ✔</text>
+  <!-- message 2 delivered -->
+  <g stroke="#2e7d32" stroke-width="2" fill="none" marker-end="url(#g)">
+    <path d="M195 312 L523 320"/>
+    <path d="M195 346 L523 354"/>
+  </g>
+  <text x="360" y="308" text-anchor="middle" fill="#2e7d32">message 2: delivered</text>
+  <text x="360" y="342" text-anchor="middle" fill="#2e7d32">message 3: delivered</text>
+  <text x="360" y="392" text-anchor="middle" fill="#1d2733">Each side decides "matched" on its own. A single message sent too early is lost:</text>
+  <text x="360" y="412" text-anchor="middle" fill="#1d2733">publish a few times (-t 3), keep the publisher alive, or use a latched topic.</text>
+</svg>

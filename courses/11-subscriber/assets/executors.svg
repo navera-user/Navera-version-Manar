@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 330" font-family="sans-serif" font-size="12">
+  <rect width="720" height="330" fill="#f7fafc"/>
+  <text x="360" y="22" text-anchor="middle" font-size="14" font-weight="bold" fill="#1d2733">A 10 Hz timer and a 0.3 s fix callback (fixes at 2 Hz)</text>
+  <!-- time axis labels -->
+  <g fill="#56606b" font-size="11" text-anchor="middle">
+    <text x="150" y="44">0 s</text><text x="250" y="44">0.2</text><text x="350" y="44">0.4</text>
+    <text x="450" y="44">0.6</text><text x="550" y="44">0.8</text><text x="650" y="44">1.0 s</text>
+  </g>
+  <g stroke="#d5dde5" stroke-width="1">
+    <path d="M150 50 V300"/><path d="M250 50 V300"/><path d="M350 50 V300"/>
+    <path d="M450 50 V300"/><path d="M550 50 V300"/><path d="M650 50 V300"/>
+  </g>
+  <!-- single threaded -->
+  <text x="14" y="78" font-weight="bold" fill="#b3261e">Single-</text>
+  <text x="14" y="94" font-weight="bold" fill="#b3261e">Threaded</text>
+  <text x="14" y="110" fill="#56606b" font-size="11">1 thread</text>
+  <rect x="150" y="70" width="150" height="34" rx="4" fill="#fde7c8" stroke="#a8680d"/>
+  <text x="225" y="92" text-anchor="middle" fill="#1d2733">on_fix (0.3 s)</text>
+  <rect x="400" y="70" width="150" height="34" rx="4" fill="#fde7c8" stroke="#a8680d"/>
+  <text x="475" y="92" text-anchor="middle" fill="#1d2733">on_fix (0.3 s)</text>
+  <g fill="#0b6e8a">
+    <rect x="300" y="70" width="8" height="34"/><rect x="350" y="70" width="8" height="34"/>
+    <rect x="550" y="70" width="8" height="34"/><rect x="600" y="70" width="8" height="34"/>
+    <rect x="650" y="70" width="8" height="34"/>
+  </g>
+  <text x="150" y="128" fill="#b3261e">timer due at 0.1, 0.2, 0.3 s: waits, runs once at 0.3 s → gap 0.3 s, ticks lost</text>
+  <!-- multi threaded -->
+  <text x="14" y="178" font-weight="bold" fill="#2e7d32">Multi-</text>
+  <text x="14" y="194" font-weight="bold" fill="#2e7d32">Threaded</text>
+  <text x="14" y="210" fill="#56606b" font-size="11">2 threads,</text>
+  <text x="14" y="224" fill="#56606b" font-size="11">2 groups</text>
+  <text x="90" y="186" fill="#56606b" font-size="11">thread 1</text>
+  <text x="90" y="226" fill="#56606b" font-size="11">thread 2</text>
+  <rect x="150" y="166" width="150" height="30" rx="4" fill="#fde7c8" stroke="#a8680d"/>
+  <text x="225" y="186" text-anchor="middle" fill="#1d2733">on_fix (0.3 s)</text>
+  <rect x="400" y="166" width="150" height="30" rx="4" fill="#fde7c8" stroke="#a8680d"/>
+  <text x="475" y="186" text-anchor="middle" fill="#1d2733">on_fix (0.3 s)</text>
+  <g fill="#0b6e8a">
+    <rect x="150" y="208" width="8" height="30"/><rect x="200" y="208" width="8" height="30"/>
+    <rect x="250" y="208" width="8" height="30"/><rect x="300" y="208" width="8" height="30"/>
+    <rect x="350" y="208" width="8" height="30"/><rect x="400" y="208" width="8" height="30"/>
+    <rect x="450" y="208" width="8" height="30"/><rect x="500" y="208" width="8" height="30"/>
+    <rect x="550" y="208" width="8" height="30"/><rect x="600" y="208" width="8" height="30"/>
+    <rect x="650" y="208" width="8" height="30"/>
+  </g>
+  <text x="150" y="258" fill="#2e7d32">the timer runs on thread 2 every 0.1 s while thread 1 is busy</text>
+  <!-- legend -->
+  <rect x="150" y="282" width="14" height="14" fill="#0b6e8a"/>
+  <text x="170" y="294" fill="#1d2733">timer callback (10 Hz, short)</text>
+  <rect x="380" y="282" width="14" height="14" fill="#fde7c8" stroke="#a8680d"/>
+  <text x="400" y="294" fill="#1d2733">fix callback (slow work)</text>
+</svg>

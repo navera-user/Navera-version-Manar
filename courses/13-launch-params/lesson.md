@@ -1,171 +1,205 @@
-# Launch files and parameters
+# Launch files and parameters: configuring a system without touching its code
 
-The same NAVERA software runs on a small drone, on a delivery car and on a boat. A drone may fly at
-100 km/h; a boat crawls at 20 km/h. One box reads its GPS on a serial cable, another gets it from the
-autopilot. Should IRIS Systems write a different program for each vehicle? Of course not. The code
-stays the same; only the **settings** change. In ROS, a node's settings are called **parameters**.
+The same NAVERA software runs on a survey drone over Jebel Akhdar, on a delivery car in Muscat and on
+a patrol boat off Sohar. The drone flies at 30 m/s, the boat at 15 m/s. One box reads its GNSS on a
+serial cable, another from the autopilot, a third from the vehicle's own ROS topic. IRIS Systems does
+not write three programs: the **code** stays identical and only the **configuration** changes. In
+ROS 2 the configuration of a node is its **parameters**; the description of *which* nodes run, in
+which **namespace**, with which parameters and **remappings**, is a **launch file**.
 
-And how many programs did you start by hand in lesson 11 to get a FIX? Four, in four terminals. A
-real NAVERA box starts about ten, every time it boots. Nobody types ten commands: they write a
-**launch file**, and start the whole system with one command.
+In lesson 11 you started four programs in four terminals to get a FIX. A NAVERA box starts about ten
+at every boot — with one command. Today you learn how: parameters in depth (types, descriptors,
+validation, precedence), YAML parameter files, names and namespaces, and the Python launch API. Then
+you change one of NAVERA's own settings and watch its verdict change.
 
-Today you learn both: parameters, YAML files to store them, and Python launch files. And you will
-change, for the first time, a setting of NAVERA itself — and watch its decisions change.
+## 1. Parameters in depth
 
-## Parameters: a node's settings
+Lesson 10 introduced `declare_parameter(name, default)` and `get_parameter(name).value`. A parameter
+has a **type**, fixed at declaration by the default: `2.0` → double, `2` → integer, `"car"` → string,
+`True` → bool, `[1.0, 2.0]` → double array. A later value of another type is refused:
 
-A **parameter** is a named value that belongs to one node: `rate_hz = 2.0`,
-`topic = "/fake_gps/fix"`, `gps_timeout_s = 3.0`. A node **declares** each parameter with a default
-value, then **reads** it:
+```
+-p rate_hz:=5          → InvalidParameterTypeException … of type 'INTEGER', expecting type 'DOUBLE'
+ros2 param set … 5     → Setting parameter failed: Wrong parameter type, expected 'Type.DOUBLE' got 'Type.INTEGER'
+```
+
+NAVERA's engineers met this trap with launch files written by integrators (`max_speed_mps:=25`) and
+wrote a helper, `declare_float`, that declares a double with **dynamic typing** so that an integer is
+accepted ([navera_common/params.py](file:navera/navera_common/navera_common/params.py)):
 
 ```python
-self.declare_parameter("rate_hz", 2.0)            # name, default value
-rate = self.get_parameter("rate_hz").value        # the value actually in use
+def declare_float(node, name: str, default: float, description: str = "") -> None:
+    """…with a float default, a launch override written without a decimal point
+    (`max_speed_mps:=25`) is an INTEGER and crashes the node with
+    InvalidParameterTypeException. Dynamic typing accepts both; read the value back with float(...)."""
+    node.declare_parameter(
+        name, float(default),
+        ParameterDescriptor(description=description, dynamic_typing=True))
 ```
 
-Why not just a Python variable at the top of the file, as in lesson 10? Because a parameter can be
-changed **without touching the code**: when you start the node, from a file, from a launch file, or
-even while it runs. The person who installs NAVERA on a boat never opens a `.py` file.
+### Descriptors: describe and constrain
 
-Each parameter has a **type**, fixed by its default: `2.0` makes a decimal number (a *double*),
-`2` a whole number (an *integer*), `"text"` a *string*, `True` a *bool*.
+The third argument of `declare_parameter` is a **ParameterDescriptor**. It documents the parameter
+(`ros2 param describe /node name` prints it) and constrains it:
 
-### Setting parameters when you start a node
-
-After the program's name, `--ros-args` opens the ROS options, and `-p name:=value` sets one parameter:
-
-```bash
-python3 fake_gps_params.py --ros-args -p rate_hz:=5.0 -p topic:=/test/fix
-ros2 run gps_pkg ros_gps_node.py --ros-args -p fix_topic:=/fake_gps/fix
-```
-
-You already used the second one in lesson 11!
-
-> [!WARNING]
-> **The type trap.** `-p rate_hz:=5` (without `.0`) is an *integer*, and `rate_hz` was declared as a
-> double: the node crashes with `InvalidParameterTypeException: … of type 'INTEGER', expecting type
-> 'DOUBLE'`. Always write decimals with a dot. NAVERA's engineers met this trap too, and wrote a
-> helper that accepts both — look at `declare_float` in
-> [navera_common/…/params.py](file:navera/navera_common/navera_common/params.py) and its comment.
-
-### Looking at parameters while a node runs
-
-| Command | What it does |
+| Field | Effect |
 |---|---|
-| `ros2 param list /node` | the names of all its parameters |
-| `ros2 param get /node name` | the current value |
-| `ros2 param set /node name value` | change it now |
-| `ros2 param dump /node` | all values, written as YAML |
+| `description` | a sentence for humans |
+| `read_only=True` | may be set at start (file, `-p`, launch), never changed while running |
+| `floating_point_range` / `integer_range` | [from_value, to_value] (and a step); out-of-range values are refused |
+| `dynamic_typing=True` | the type may change (NAVERA's `declare_float`) |
 
-A subtle point about `ros2 param set`: it changes the value stored in the node, but the node only
-**uses** the new value if it reads it again. A node that reads its parameters once in `__init__`
-(like NAVERA's arbiter, which copies them into variables at start-up) keeps behaving as before: you
-must restart it. A node that calls `get_parameter()` at every tick (like your fake GPS will, for its
-speed) changes behaviour immediately. Neither is wrong — but you must know which one you have.
+A timer period is fixed when the timer is created, so `rate_hz` should be **read-only**: a
+`ros2 param set` that "succeeds" but changes nothing would be a lie.
 
-## YAML parameter files
+### Validation callbacks: rules a range cannot express
 
-Ten parameters on a command line are unreadable. Instead, you write them in a **YAML** file. YAML
-("YAML Ain't Markup Language") is a simple text format for settings: `name: value` lines, and
-**indentation with spaces** to show what belongs to what. A ROS parameters file always has the same
-shape:
+Some rules involve **several** parameters: a boat cannot be set to 20 m/s, a car can. A node registers
+a callback that ROS calls **before** applying new values:
+
+```python
+self.add_on_set_parameters_callback(self.on_set_parameters)
+
+def on_set_parameters(self, params):          # the list of parameters about to change
+    new = {p.name: p.value for p in params}
+    vehicle = new.get("vehicle", self.get_parameter("vehicle").value)
+    ...
+    return SetParametersResult(successful=False, reason="speed 20.0 m/s too fast for a boat (max 15.0)")
+```
+
+If it returns `successful=False`, nothing is changed and the caller receives the reason. The callback
+must be fast and must not change other parameters itself.
+
+### Read once, or read every time?
+
+`ros2 param set` changes the stored value; the node **uses** it only if it reads it again. NAVERA's
+arbiter copies its parameters into attributes in `__init__` (`self._fix_max_sigma = …`), so a live
+change is stored but ignored until a restart. Your fake GNSS reads `speed_mps` at every tick, so a
+live change takes effect at once. Neither design is wrong — but each node should say which it is;
+`read_only` is the honest way to say "this one needs a restart".
+
+## 2. YAML parameter files
+
+Twenty parameters on a command line are unreadable. A **parameters file** in YAML lists them:
 
 ```yaml
-fake_gps:                      # the NODE name
-  ros__parameters:             # always this word (two underscores!)
-    rate_hz: 1.0               # name: value
-    topic: "/fake_gps/fix"
+/**:                          # every node (wildcard)
+  ros__parameters:            # always this key: two underscores
+    rate_hz: 1.0
+/car/fake_gps:                # the FULLY QUALIFIED node name: namespace + name
+  ros__parameters:
+    vehicle: "car"
+    speed_mps: 12.0
 ```
 
-and you give it to the node with `--params-file`:
+and a node loads it with `--ros-args --params-file my_gps.yaml`. YAML rules that bite: spaces, never
+tabs; equal indentation for equal levels; `1.0` is a double, `1` an integer, `"car"` or `car` a
+string, `true` a bool; `#` starts a comment. A section applies to a node when its key matches the node's
+full name (`/car/fake_gps`) or a wildcard (`/**` = every node, `/car/*` = every node directly in
+`/car`). A key without the leading slash, `fake_gps:`, means `/fake_gps`: it does **not** match the
+same node started in a namespace — a frequent surprise (measured: the node keeps its code default).
 
-```bash
-python3 fake_gps_params.py --ros-args --params-file my_gps.yaml
-```
+## 3. Who wins? Precedence, measured
 
-YAML rules that bite beginners: spaces, never tabs; the same number of spaces for things at the same
-level; `1.0` is a double, `1` an integer, `"text"` or `text` a string; `#` starts a comment.
+A parameter can receive values from several places. The rule is **"the last value applied wins"**,
+and the lab measures it. In order of application:
 
-## Who wins?
+1. the **default** in the code (`declare_parameter`);
+2. the `--params-file` files and `-p name:=value` overrides of the command line, **in the order they
+   are written** — `--params-file f.yaml -p rate_hz:=4.0` gives 4.0, but
+   `-p rate_hz:=4.0 --params-file f.yaml` gives the file's value;
+3. inside one file, the **later** matching section wins — even a `/**` section placed after a specific
+   one. Put the wildcard first;
+4. in a launch file, the items of `parameters=[…]`, from first to last;
+5. at run time, `ros2 param set` (if the node accepts it and reads it again).
 
-A parameter can get a value from several places. The rule: **the last one applied wins**.
+![Where a parameter's value comes from: the last layer applied wins](assets/param_layers.svg)
 
-![The layers of a parameter: code default, YAML file, command line or launch file, ros2 param set](assets/param_layers.svg)
+## 4. Names: namespaces and remapping
 
-You saw it in lesson 11 without noticing: `ros2 run navera_estimator estimator_node.py` printed
-`day_timeout=3.0s`, the default **in the code**. NAVERA's real launch file loads its YAML file, which
-says `day_timeout_s: 5.0` — and the YAML's comment explains why: frames come every 1–4 s under load,
-and a 3 s window made NAVERA flicker between FIX and NO_FIX. The code's default and the product's
-setting are different on purpose, and the YAML file documents the product's choice.
+Every node and topic name is resolved into a **fully qualified name**:
 
-## Launch files
-
-A **launch file** describes a set of programs to start together, with their parameters. In ROS 2 it
-is a Python file with a function `generate_launch_description()` that returns a
-`LaunchDescription`: a list of **actions**. You start it with `ros2 launch`:
-
-```bash
-ros2 launch navera_estimator estimator.launch.py      # a launch file installed in a package
-ros2 launch ./my_navera.launch.py                     # a launch file in this folder
-```
-
-The three actions you will use:
-
-| Action | Starts | Example |
+| Written in the code | Node namespace `/car` | Resolved |
 |---|---|---|
-| `Node(package=…, executable=…, parameters=[…])` | a node installed in a ROS package | NAVERA's `ros_gps_node.py` |
-| `ExecuteProcess(cmd=[…])` | any command, like in a terminal | your own `python3 fake_gps_params.py` |
-| `IncludeLaunchDescription(…)` | another launch file, with all its actions | NAVERA's `estimator.launch.py` |
+| `"/fake_gps/fix"` (absolute: starts with `/`) | — | `/fake_gps/fix` (the namespace is ignored) |
+| `"fix"` (relative) | `/car` | `/car/fix` |
+| `"~/fix"` (private) | `/car`, node `fake_gps` | `/car/fake_gps/fix` |
 
-`parameters=[…]` is a list: a YAML file path, and/or a Python dict `{"name": value}`. Later items win.
+A **namespace** groups the nodes and topics of one subsystem — `/car` and `/boat` can run identical
+nodes without collision. It is set without changing code: `--ros-args -r __ns:=/car` on the command
+line, `namespace="car"` in a launch file. A **remapping** replaces one name by another at start:
+`-r /fake_gps/fix:=fix` makes the absolute topic relative, so it lands in the namespace. NAVERA's
+`ros_gps_node` does the same with a *parameter* (`fix_topic`), which is more explicit when the name
+comes from an installation's settings.
 
-![my_navera.launch.py starts three things; one of them is NAVERA's own launch file](assets/launch_tree.svg)
+Worked example: node `fake_gps`, namespace `/boat`, remapping `/fake_gps/fix → fix`: the publisher
+writes `/fake_gps/fix`, the remapping turns it into `fix`, and resolution in `/boat` gives
+**`/boat/fix`**. Without the remapping it would stay `/fake_gps/fix`, and two vehicles would publish on
+the same topic — a serious bug in a multi-vehicle bench.
 
-When you press `Ctrl+C`, `ros2 launch` stops every process it started. All their outputs appear in
-the same terminal, each line starting with the process name in brackets, like
-`[estimator_node.py-1]`.
+## 5. Launch files: the Python API
+
+A ROS 2 launch file is a Python module with a function `generate_launch_description()` that returns a
+`LaunchDescription`: a **list of actions**. It is **declarative**: the function does not start
+anything; it describes what `ros2 launch` will do.
+
+| Action | Does |
+|---|---|
+| `Node(package=…, executable=…, name=…, namespace=…, parameters=[…], remappings=[…])` | start a ROS node (a script path also works: `executable=path`) |
+| `ExecuteProcess(cmd=[…])` | start any command |
+| `IncludeLaunchDescription(source, launch_arguments={…}.items())` | include another launch file |
+| `DeclareLaunchArgument(name, default_value=…)` | an argument: `ros2 launch file.py name:=value` |
+| `GroupAction([...])`, `PushRosNamespace(ns)` | group actions, e.g. under one namespace |
+| `LogInfo(msg=…)`, `TimerAction(period=…, actions=[…])` | log, act after a delay |
+
+Values that are only known at launch time are **substitutions**: `LaunchConfiguration("gps_source")`
+is *not* a string in Python — it is an object that `ros2 launch` replaces by the argument's value
+later. A **list** mixing strings and substitutions is concatenated:
+`["/", LaunchConfiguration("gps_source"), "/fix"]` becomes `/car/fix`. Writing
+`"/" + LaunchConfiguration(...)` fails with a TypeError — a classic mistake. **Conditions**
+(`condition=IfCondition(LaunchConfiguration("with_boat"))`) start an action only if the argument is
+true. When you press `Ctrl+C`, `ros2 launch` stops every process it started; their outputs share one
+terminal, each line prefixed with the process name in brackets.
+
+![my_navera.launch.py: arguments, two namespaced fake receivers, NAVERA's bridge and NAVERA's own launch file](assets/launch_tree.svg)
 
 ## 🐦 How birds do it
 
-In autumn, caged migratory birds become restless at night: they hop and flutter in the direction they
-would fly. Scientists call it *Zugunruhe*, German for "migratory restlessness". In birds that migrate
-far, it lasts longer than in birds that migrate a short way.
+In autumn, caged migratory birds become restless at night and hop in the direction they would fly —
+*Zugunruhe*, "migratory restlessness". In the late 1970s Peter Berthold and Ulrich Querner crossed
+**blackcaps** from southern Germany, which migrate far, with blackcaps from the Canary Islands, which
+hardly migrate; the hybrid young showed an amount of restlessness **in between** their parents'
+(published 1981). The same species, the same body plan — different inherited **settings**.
 
-In the late 1970s, Peter Berthold and Ulrich Querner crossed **blackcaps** from southern Germany, which
-migrate all the way to Africa or the Mediterranean, with blackcaps from the Canary Islands, which hardly
-migrate. The hybrid young showed an amount of restlessness **in between** their parents' (published
-1981). The same bird, the same body, the same "code" — but different inherited **settings**: how far
-to fly.
-
-Different species tune their settings too. If birds had parameter files, they might look like this
-(a joke, but the facts in it are real):
+Oman has a striking example of settings tuned to a schedule. The **sooty falcon** breeds on islands
+such as the Daymaniyat, off the Batinah coast, unusually late — in late summer — so that its chicks
+are fed when small songbirds migrate across the sea in autumn; then it winters in Madagascar. Other
+falcons nest in spring. One "code" (a falcon), different parameters: timing, route, destination.
+If birds had parameter files, they might read (a joke — but the facts are real):
 
 ```yaml
-white_stork:
-  flight: soaring            # glides on rising warm air (thermals)
-  long_sea_crossing: avoid   # thermals form over land, not over the sea
-barn_swallow:                # Navi!
-  flight: flapping
-  long_sea_crossing: ok      # crosses the Mediterranean and the Sahara
-  food: insects_caught_in_flight
+/**:
+  ros__parameters:
+    flight: flapping
+/oman/sooty_falcon:
+  ros__parameters:
+    breeding_season: late_summer      # chicks fed on autumn migrants
+    winter_quarters: madagascar
 ```
 
-That is why storks funnel through Gibraltar, while swallows cross the Mediterranean on a broad front.
-Even soaring birds of prey such as honey buzzards take the shortest sea crossing they can find —
-and one of them is **Cap Bon**, in Tunisia, the jump to Sicily.
-
-NAVERA follows the same rule: one program for the drone, the car and the boat — and a few parameters
-that say what kind of "bird" this vehicle is.
+NAVERA follows the same idea: one program for the drone, the car and the boat — and a few parameters
+that say which "bird" this vehicle is.
 
 ## In NAVERA
 
-Open NAVERA's arbiter launch file,
-[estimator.launch.py](file:navera/navera_estimator/navera_estimator/launch/estimator.launch.py).
-Its heart:
+NAVERA's arbiter launch file,
+[estimator.launch.py](file:navera/navera_estimator/navera_estimator/launch/estimator.launch.py):
 
 ```python
 pkg_share = get_package_share_directory('navera_estimator')
 cfg = os.path.join(pkg_share, 'config', 'estimator_params.yaml')
+...
+DeclareLaunchArgument('gps_timeout_s',   default_value='3.0'),
 ...
 Node(
     package='navera_estimator',
@@ -186,68 +220,74 @@ Node(
 ),
 ```
 
-Read it with your new eyes:
+Read it with section 3 in mind:
 
-- `get_package_share_directory('navera_estimator')` finds where the package is **installed**; the
-  YAML file is installed there by `setup.py`. Because your copy was built with `--symlink-install`,
-  that installed file is a **link** to the file in your source folder: edit
-  `navera_estimator/navera_estimator/config/estimator_params.yaml` and the next launch uses it,
-  no rebuild needed.
-- `parameters=[cfg, {...}, ...]`: first the YAML file, then a dict that **overrides** three of its
-  values with **launch arguments** (`DeclareLaunchArgument('gps_timeout_s', default_value='3.0')`). So
-  `ros2 launch navera_estimator estimator.launch.py gps_timeout_s:=2.0` changes the GPS window — and
-  a change of `gps_timeout_s` in the YAML file alone has **no effect** with this launch file, because
-  the dict comes after it. Order matters!
+- `get_package_share_directory` finds the **installed** package; the YAML is installed there by
+  `setup.py`. Your copy was built with `--symlink-install`, so the installed file is a link to the
+  source file: edit `navera_estimator/navera_estimator/config/estimator_params.yaml` and the next launch
+  uses it, without rebuilding.
+- `parameters=[cfg, {...}, ...]`: the YAML first, then a dict that **overrides** three of its values
+  with launch arguments. So a change of `gps_timeout_s` **in the YAML alone has no effect** with this
+  launch file — the dict comes later and wins (default `'3.0'`). Use
+  `ros2 launch navera_estimator estimator.launch.py gps_timeout_s:=2.0`, or an include with
+  `launch_arguments`. You will measure this **order trap**.
 - `max_speed_params()` reads the vehicle's maximum speed from the installation's settings
-  (`NAVERA_MAX_SPEED_KMH`), so one value serves every node. When it is not set, the launch prints a
-  warning — you will see it.
-- `on_exit=Shutdown(...)`: if the arbiter crashes, the whole launch stops, and the system service
-  restarts everything cleanly. A half-running navigation system is worse than a restart.
+  (`NAVERA_MAX_SPEED_KMH`); without it, the launch prints a warning (you will see it).
+- `on_exit=Shutdown(...)`: if the arbiter dies, the whole launch stops and the system service restarts
+  everything cleanly — a half-running navigation system is worse than a restart.
 
-Now open [estimator_params.yaml](file:navera/navera_estimator/navera_estimator/config/estimator_params.yaml).
-Every value has a comment explaining **why** it is what it is — sometimes with the measurement behind
-it (`ros2 topic hz /navera/sensors/gps_fix = 1.000 Hz`). That is the habit of a good engineer: a
-setting without a reason is a setting nobody dares to change. In the lab you will change
-`fix_max_sigma_m`, the largest stated uncertainty that still counts as a FIX.
+Then open [estimator_params.yaml](file:navera/navera_estimator/navera_estimator/config/estimator_params.yaml):
+every value carries a comment explaining *why* — sometimes with the measurement behind it
+(`ros2 topic hz /navera/sensors/gps_fix = 1.000 Hz, std 0.148 s`), sometimes with the incident that
+changed it (day vision's 5 s window: "a 3 s window made NAVERA flicker NO_FIX between good fixes").
+A setting without a reason is a setting nobody dares to change. In the lab you will change
+`fix_max_sigma_m`, the largest stated σ that still counts as FIX.
 
-## Words to remember
+## Glossary
 
-| Word | Meaning |
+| Term | Meaning |
 |---|---|
-| **parameter** | a named setting of a node, with a type and a value |
-| **declare / get** | create a parameter with its default / read its current value |
-| **`--ros-args -p name:=value`** | set a parameter when starting a node |
-| **YAML** | a text format for settings, with indentation |
-| **params file** | a YAML file `node: ros__parameters: name: value` |
-| **launch file** | a Python file that starts several programs with their parameters |
-| **action** | one thing a launch file does: `Node`, `ExecuteProcess`, `IncludeLaunchDescription` |
-| **launch argument** | a setting of a launch file itself: `ros2 launch pkg file.py name:=value` |
+| **parameter type** | fixed by the default value: bool, integer, double, string, arrays |
+| **ParameterDescriptor** | description, read_only, ranges, dynamic typing of a parameter |
+| **validation callback** | `add_on_set_parameters_callback`: accept or refuse new values, with a reason |
+| **parameters file** | YAML: `<node name or /**>: ros__parameters: name: value` |
+| **fully qualified name** | namespace + name, e.g. `/car/fake_gps`, `/car/fix` |
+| **absolute / relative / private name** | starts with `/` / resolved in the namespace / `~` = under the node |
+| **namespace** | a prefix that groups the nodes and topics of a subsystem |
+| **remapping** | replacing one name by another at start (`-r old:=new`) |
+| **launch file / action** | Python description of what to start / one element of it |
+| **launch argument / substitution** | `name:=value` on `ros2 launch` / a value resolved at launch time |
+| **condition** | `IfCondition(...)`: start an action only when true |
 | **share directory** | where a package's installed files (launch, config) live |
 
 ## Check what you learned
 
-<details><summary>1. You start a node with <code>-p rate_hz:=10</code> and it crashes. Why?</summary>
-<code>10</code> is an integer, and the parameter was declared with a double default (<code>2.0</code>).
-Write <code>10.0</code>.
+<details><summary>1. <code>-p rate_hz:=4.0 --params-file my_gps.yaml</code> and the file says 1.0. Which value does the node use?</summary>
+1.0: command-line items are applied in order and the file comes last. Swap them to get 4.0.
 </details>
 
-<details><summary>2. <code>ros2 param set /estimator_node fix_max_sigma_m 1.0</code> answers "Set parameter successful", but NAVERA's decisions do not change. Why?</summary>
-The arbiter reads its parameters once, at start-up, into its own variables. The new value is stored
-but never read again: restart the node (with the value in the YAML file or on the command line).
+<details><summary>2. A file contains <code>/car/fake_gps:</code> with rate_hz 3.0, then <code>/**:</code> with rate_hz 1.0. Value for /car/fake_gps?</summary>
+1.0: the later matching section wins inside one file. Put <code>/**</code> first.
 </details>
 
-<details><summary>3. In a YAML params file, what are the first two levels?</summary>
-The node name, then <code>ros__parameters:</code>. The parameters come under it, indented.
+<details><summary>3. Node <code>fake_gps</code> in namespace <code>/boat</code> publishes on <code>"/fake_gps/fix"</code>. Where do messages go? How do you get <code>/boat/fix</code>?</summary>
+On <code>/fake_gps/fix</code>: absolute names ignore the namespace. Remap <code>/fake_gps/fix:=fix</code> (or write a
+relative name in the code).
 </details>
 
-<details><summary>4. You change <code>gps_timeout_s</code> in estimator_params.yaml and launch NAVERA's estimator.launch.py. The value used is still 3.0. Why?</summary>
-The launch file passes a dict after the YAML file, with <code>gps_timeout_s</code> taken from a launch
-argument (default 3.0). Later items win. Use <code>gps_timeout_s:=…</code> on the launch command instead.
+<details><summary>4. You change <code>gps_timeout_s</code> to 1.0 in estimator_params.yaml and run <code>ros2 launch navera_estimator estimator.launch.py</code>. The arbiter uses 3.0. Why?</summary>
+The launch file passes a dict after the YAML, with <code>gps_timeout_s</code> taken from a launch argument whose
+default is '3.0'. Later items win. Pass <code>gps_timeout_s:=1.0</code> to the launch instead.
 </details>
 
-<details><summary>5. Why does your launch file include NAVERA's <code>estimator.launch.py</code> instead of starting the estimator with its own <code>Node</code> action?</summary>
-To reuse everything NAVERA's own launch does: its YAML, its overrides, the vehicle speed, the
-shutdown rule. Copying it would drift away from the product over time.
+<details><summary>5. Why is <code>["/", LaunchConfiguration("gps_source"), "/fix"]</code> right and <code>"/" + LaunchConfiguration("gps_source")</code> wrong?</summary>
+A LaunchConfiguration is a substitution object resolved later by <code>ros2 launch</code>, not a string; Python
+cannot add it to a string. A list of strings and substitutions is concatenated at launch time.
+</details>
+
+<details><summary>6. Why should <code>rate_hz</code> be read-only, and how is that better than ignoring a change?</summary>
+The timer period is fixed when the timer is created. A read-only parameter makes <code>ros2 param set</code> fail with
+a clear message, instead of reporting success while nothing changes.
 </details>
 
 Now open the **🛠️ Lab** tab.

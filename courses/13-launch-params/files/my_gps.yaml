@@ -1,12 +1,23 @@
-# Settings of the fake GPS node, for:  python3 fake_gps_params.py --ros-args --params-file my_gps.yaml
+# Parameters of TWO fake GNSS receivers, for:
+#   python3 fake_gps_node.py --ros-args -r __ns:=/car  --params-file my_gps.yaml
+#   python3 fake_gps_node.py --ros-args -r __ns:=/boat --params-file my_gps.yaml
 #
-# TODO 3: complete this file (the lab gives the values). The structure is ALWAYS:
-#
-#   <node name>:
-#     ros__parameters:
+# Structure of a ROS 2 parameters file:
+#   <fully qualified node name, or /** for every node>:
+#     ros__parameters:              (two underscores)
 #       <parameter>: <value>
+# Indent with spaces, never tabs. Decimal numbers WITH a dot (1.0, not 1); text between quotes.
+# When several sections match a node, the LAST one in the file wins: put /** first.
 #
-# Indent with spaces (2 per level), never with tabs. Write decimal numbers with a dot: 1.0, not 1.
-fake_gps:
+# TODO 3: complete the three sections with the values of the lab (step 4).
+/**:
   ros__parameters:
-    topic: "/fake_gps/fix"
+    rate_hz: 2.0
+
+/car/fake_gps:
+  ros__parameters:
+    vehicle: "car"
+
+/boat/fake_gps:
+  ros__parameters:
+    vehicle: "boat"

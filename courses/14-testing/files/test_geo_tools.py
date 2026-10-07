@@ -1,36 +1,51 @@
-"""Tests for geo_tools.py — run them with:   python3 -m pytest -v test_geo_tools.py
+"""Example-based tests for geo_tools.py — run them with:   python3 -m pytest -v test_geo_tools.py
 
-Each test is a function whose name starts with test_. Inside, `assert` what must be true.
-Compare decimal numbers with pytest.approx(expected, abs=...) — never with == .
+A test is a function whose name starts with test_. Inside, `assert` what must be true.
+Compare decimals with pytest.approx(expected, abs=... or rel=...), exact values with `is` / `==`.
 """
 import math
 
 import pytest
 
-from geo_tools import haversine_m, is_valid_position, meters_to_degrees, speed_mps
+from geo_tools import (haversine_m, is_valid_position, latlon_to_offset, meters_to_degrees,
+                       offset_to_latlon, speed_mps)
+
+M_PER_DEG = 2 * math.pi * 6_371_000.0 / 360.0      # 111 195 m: an INDEPENDENT expected value
 
 
-# ---------- an example, already written ----------
+# ---------- a fixture: a value prepared for any test that asks for it by name ----------
 
-def test_distance_from_a_point_to_itself_is_zero():
-    assert haversine_m(35.8256, 10.6084, 35.8256, 10.6084) == pytest.approx(0.0, abs=1e-6)
-
-
-# ---------- TODO 1: haversine_m ----------
-# Write at least 2 more tests. Ideas: one degree of latitude is about 111 195 m (on the same
-# longitude); the distance A->B equals the distance B->A; a known distance from lesson 6.
+@pytest.fixture
+def muscat():
+    """Near the Sultan Qaboos Grand Mosque, Muscat."""
+    return (23.5880, 58.3829)
 
 
-# ---------- TODO 2: meters_to_degrees ----------
-# Write at least 2 tests. Ideas: 111 195 m north is about 1 degree of latitude; at latitude 60°,
-# 111 195 m east is about 2 degrees of longitude (cos 60° = 0.5); a move north does not change
-# the longitude.
+# ---------- examples, already written ----------
+
+def test_distance_from_a_point_to_itself_is_zero(muscat):
+    assert haversine_m(*muscat, *muscat) == pytest.approx(0.0, abs=1e-6)
 
 
-# ---------- TODO 3: is_valid_position ----------
-# Write tests for: a normal position (True), (0, 0) (False), a latitude of 91 (False),
-# a longitude of 181 (False), math.nan (False).
+@pytest.mark.parametrize("dt", [0.0, -1.0])
+def test_speed_without_time_is_none(dt):
+    assert speed_mps(100.0, dt) is None
 
 
-# ---------- TODO 4: speed_mps ----------
-# Write tests for: 100 m in 20 s is 5 m/s; dt = 0 gives None (`assert speed_mps(...) is None`).
+# ---------- TODO 1: haversine_m (at least 3 tests) ----------
+# Ideas: one degree of latitude along a meridian is M_PER_DEG metres; one degree of longitude on
+# the equator too, and at 60° only half (cos 60° = 0.5); a known distance from lesson 06.
+
+
+# ---------- TODO 2: meters_to_degrees and offset_to_latlon (at least 3 tests) ----------
+# Ideas: M_PER_DEG metres north is 1 degree of latitude AND 0 of longitude; at latitude 60°,
+# M_PER_DEG metres east is 2 degrees of longitude; a move north does not change the longitude.
+
+
+# ---------- TODO 3: is_valid_position (one parametrized test with at least 6 cases) ----------
+# Use @pytest.mark.parametrize("lat, lon, ok", [...]) with valid AND invalid positions:
+# Muscat (True), (0, 0), latitude 91 and -91, longitude 181, math.nan, math.inf (False).
+
+
+# ---------- TODO 4: speed_mps (at least 2 more tests) ----------
+# Ideas: 100 m in 20 s is 5 m/s; 0 m in 10 s is 0 m/s (and not None!).

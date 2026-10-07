@@ -1,10 +1,21 @@
-# Settings of the fake GPS node, for:  python3 fake_gps_params.py --ros-args --params-file my_gps.yaml
-fake_gps:                       # the NODE name (super().__init__("fake_gps"))
-  ros__parameters:              # always this line, with two underscores
-    topic: "/fake_gps/fix"
-    rate_hz: 1.0                # one fix per second, like NAVERA's real GPS receiver
-    start_lat: 35.8300          # a start point in the west of Sousse
-    start_lon: 10.5900
-    speed_mps: 8.0
-    heading_deg: 90.0           # due east
+# Parameters of TWO fake GNSS receivers (teacher solution).
+/**:                                 # every node: put the common values FIRST (the last match wins)
+  ros__parameters:
+    rate_hz: 1.0                    # like NAVERA's real receiver (1.000 Hz measured)
     sigma_m: 3.0
+
+/car/fake_gps:
+  ros__parameters:
+    vehicle: "car"
+    start_lat: 23.5880              # near the Sultan Qaboos Grand Mosque, Muscat
+    start_lon: 58.3829
+    speed_mps: 12.0
+    heading_deg: 90.0               # due east
+
+/boat/fake_gps:
+  ros__parameters:
+    vehicle: "boat"
+    start_lat: 24.3500              # off Sohar
+    start_lon: 56.7500
+    speed_mps: 5.0
+    heading_deg: 45.0               # north-east, out to sea

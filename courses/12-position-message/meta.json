@@ -1,3 +1,3 @@
-{"number": "12", "title": "The NAVERA position contract", "module": 3, "duration": "1 h 30",
- "summary": "PositionEstimate field by field: source, mode, validity, covariance and the two time stamps. You become a position source and watch NAVERA's arbiter accept — or refuse — your messages.",
- "resources": [], "open": ["my_source.py", "verdicts.py"], "check_timeout_s": 180}
+{"number": "12", "title": "The position contract: covariance, stamps and honest uncertainty", "module": 3, "duration": "3 h",
+ "summary": "NAVERA's PositionEstimate in depth: ENU covariance matrices, positive semi-definiteness, error ellipses and their probabilities, measurement versus publication stamps. You become a source, inject thirteen faults into the real arbiter and judge one of its design choices.",
+ "resources": [], "open": ["my_source.py", "probability.py", "verdicts.py", "report.md"], "check_timeout_s": 240}

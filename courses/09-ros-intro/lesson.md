@@ -1,263 +1,338 @@
-# Nodes and topics: how robot programs talk
+# The ROS 2 graph: nodes, topics, discovery and QoS
 
-Open the NAVERA box on a drone and count the programs running inside. One reads the GPS receiver.
-One reads the attitude sensor. One grabs pictures from the camera. One compares those pictures with
-the satellite map. One decides which position to trust. One sends that position to the autopilot.
-One shows it on the operator's screen. That is about **ten programs, all running at the same time**,
-and all of them need information from the others — many times per second.
+A NAVERA box is mounted on a survey drone that flies along the coast from Muscat to Sur. Inside
+the box, about **ten programs run at the same time**: one reads the GPS receiver, one reads the
+attitude sensor, one takes camera frames, one matches them against the satellite map, one decides
+which position to trust, one sends that position to the autopilot, one serves the operator's web
+page. Each of them needs data from the others, many times per second, and any of them may crash
+and restart in the middle of a flight.
 
-How do they talk to each other? If every program had to know every other program ("hey, camera
-program, send your picture to the vision program and to the screen program and…"), adding one new
-program would mean changing all the others. Robot engineers solved this problem years ago with a
-tool called **ROS**. In this lesson you will learn its four key words — **node, topic, message,
-publish/subscribe** — and you will look at a live ROS system with your own eyes.
+How do these programs find each other, agree on the format of the data, and decide what happens
+when a message is late or lost? NAVERA uses **ROS 2** (*Robot Operating System 2*) for this. ROS 2
+is not an operating system: it is a **middleware** — a software layer between your programs and
+the network — plus a set of tools and conventions. This lesson explains the model behind it (the
+**graph**), the protocol underneath (**DDS**), and the delivery rules (**QoS**). In the lab you
+will measure all of it on a live system, then question NAVERA's real arbiter.
 
-## ROS 2: a post office for robot programs
+## 1. The computation graph
 
-**ROS** means *Robot Operating System*. Despite the name, it is not an operating system like Linux
-or Windows: it is a **toolkit** that runs on top of Linux and gives robot programs a common way to
-exchange data. NAVERA uses **ROS 2 Humble**, a version released in 2022 that is used by thousands of
-companies and universities. If you work on robots one day, you will very likely meet it again.
+A running ROS 2 system is described as a **graph**:
 
-The best picture of ROS is a **post office**:
+- the vertices are **nodes** — processes (or parts of a process) with one job and a unique name,
+  such as `/estimator_node`;
+- the edges are **communication channels** between them.
 
-- the programs are the **people** who send and receive letters;
-- each kind of news has its own **mailbox**, with a name written on it;
-- every letter follows a **form** with fixed boxes to fill in;
-- the post office delivers each letter to everybody who asked to receive that mailbox's news.
+ROS 2 offers four kinds of channels. Choosing the right one is a design decision:
 
-In ROS words, the people are **nodes**, the mailboxes are **topics**, the forms are **message types**,
-and the delivery rule is **publish/subscribe**. Let's take them one by one.
+| Pattern | Shape | Use it for | NAVERA example |
+|---|---|---|---|
+| **topic** | one-to-many stream, publish / subscribe | data that keeps coming | `/navera/estimate/gps`, `/navera/nav_status` (5 Hz) |
+| **service** | request → one response | a quick question or command | every node's `get_parameters` service |
+| **action** | goal → feedback … → result, can be cancelled | long tasks | (not used by NAVERA; the lab uses a demo) |
+| **parameter** | a named setting stored in a node | configuration | `fix_max_sigma_m = 25.0` in the arbiter |
 
-## Nodes: one program, one job
-
-A **node** is a running program that does one job and is connected to ROS. Each node has a name.
-In NAVERA:
-
-| Node name | Its one job |
-|---|---|
-| `gps_node` | read the GPS receiver on the serial port |
-| `imu_node` | read the attitude sensor (which way the box is tilted and turned) |
-| `day_subscriber` | find the drone's position from a day camera picture |
-| `estimator_node` | the **arbiter**: decide which position to trust |
-| `vehicle_output` | send the chosen position to the autopilot |
-
-Small nodes with one job each are easier to write, to test, and to replace. When IRIS Systems added
-night vision, nobody had to change the GPS node: they added a new node.
-
-## Topics: named mailboxes
-
-A **topic** is a named channel where data flows. Its name looks like a folder path:
-`/navera/position`, `/navera/sensors/imu`, `/chatter`. A node can **publish** (send) on a topic,
-**subscribe** (listen) to a topic, or both.
-
-The important idea: **nodes never talk to each other directly — they only talk to topics.**
-The GPS node does not know that the arbiter exists. It just publishes its positions on
-`/navera/estimate/gps`. The arbiter does not know where the GPS positions come from: it subscribes
-to `/navera/estimate/gps` and receives whatever is published there.
+The key property of a topic is **decoupling**: a publisher does not know who subscribes, and a
+subscriber does not know who publishes. The GPS source publishes on `/navera/estimate/gps`; it does
+not know that the arbiter exists. You can add a logger, a debugging tool or a second consumer
+without changing the publisher. You can also **replace** a publisher: in lesson 10 you will write a
+fake GPS, and the rest of the graph cannot tell the difference. That is exactly how NAVERA is
+tested on a bench without a real receiver.
 
 ![A talker publishes on /chatter; every subscriber receives every message](assets/pubsub.svg)
 
-This is called **publish/subscribe**. It is like a newspaper: the newspaper prints one edition, and
-every subscriber gets a copy. The newspaper does not phone each reader. If 3 people subscribe, 3
-copies are delivered; if nobody subscribes, the paper is printed anyway and nobody reads it. It has
-three big advantages for a robot:
+Parameters are also implemented with services: each node offers services such as
+`/estimator_node/get_parameters` and `/estimator_node/set_parameters`. This is why `ros2 node info`
+prints a long list of "Service Servers" for every node — they are mostly this standard parameter
+machinery, and you can ignore them until lesson 13.
 
-1. **Adding a listener changes nothing for the sender.** You can plug a debugging tool on any topic
-   while the robot runs.
-2. **A sender can be replaced.** In the lab of lesson 10 you will write a *fake* GPS. As long as it
-   publishes the same message type on the same topic, the rest of the system cannot tell the
-   difference — that is exactly how NAVERA is tested on a bench without a real GPS.
-3. **Programs can crash and restart** without bringing the others down.
+## 2. Messages: a typed contract
 
-> [!NOTE]
-> Your computer finds the other nodes **automatically**. When a node starts, it announces itself
-> ("I am `talker`, I publish `/chatter`"); the others hear it and connect. This is called
-> **discovery**. The software doing the delivery underneath is called **DDS** — you will see this
-> word in error messages, but you never have to use it directly.
+Every topic carries exactly one **message type**. A type is defined in a small text file in the
+ROS **interface definition language** (a `.msg` file); at build time ROS generates a Python class
+and a C++ class from it. The full name has three parts, `package/msg/Name`, for example
+`std_msgs/msg/String`, `sensor_msgs/msg/NavSatFix` or NAVERA's own `navera_msgs/msg/PositionEstimate`.
 
-## Messages: a form with fixed boxes
-
-A **message** is one piece of data sent on a topic. Every topic has exactly one **message type**,
-and a message type is a fixed list of **fields**, each with a name and a type — like a form with
-labelled boxes. The simplest one, `std_msgs/msg/String`, has a single field:
+Here is the beginning of NAVERA's most important message (lesson 12 studies it field by field):
 
 ```
-string data
-```
-
-A message type's full name has three parts: `package/msg/Name`. `std_msgs` is the package of
-standard messages that comes with ROS; `sensor_msgs` has messages for sensors (GPS, IMU, camera…);
-`navera_msgs` is **NAVERA's own package** of messages.
-
-Here is the beginning of NAVERA's most important message, `navera_msgs/msg/PositionEstimate`
-(you will study it field by field in lesson 12):
-
-```
-std_msgs/Header header        # when it was published, from which sensor
+std_msgs/Header header        # stamp = publication instant
 float64 latitude              # deg, WGS84
 float64 longitude             # deg, WGS84
 float64 altitude              # m above the WGS84 ellipsoid; NaN if unknown
-...
+float64[9] position_covariance
 uint8 source
 uint8 SOURCE_UNKNOWN=0
 uint8 SOURCE_GPS=1
-uint8 SOURCE_DAY_VISION=2
 ...
 ```
 
-Read it like this:
+**WGS84** is the reference ellipsoid and coordinate system that GPS uses — you met it in lesson
+06: latitude and longitude are angles on that ellipsoid, and altitude is measured from its surface.
 
-- `float64 latitude` — a field called `latitude` holding a decimal number (a `float64` is a Python
-  `float`).
-- `uint8 source` — a field called `source` holding a small whole number from 0 to 255 (`uint8` =
-  "unsigned integer on 8 bits").
-- `uint8 SOURCE_GPS=1` — with an `=` sign, it is **not** a field but a **constant**: a name for a
-  value. It says "in the `source` field, **1 means GPS**". Constants make code readable:
-  `msg.source == PositionEstimate.SOURCE_GPS` instead of a mysterious `msg.source == 1`.
-- `std_msgs/Header header` — a field whose type is another message: messages can contain messages.
+| In the `.msg` file | Python type | Remark |
+|---|---|---|
+| `float64` | `float` | an `int` is **refused** (lesson 10 shows the error) |
+| `uint8`, `int32`, … | `int` | range checked: a `uint8` holds 0…255 |
+| `bool`, `string` | `bool`, `str` | |
+| `float64[9]` | sequence of exactly 9 floats | fixed-size array |
+| `SourceHealth[]` | list | unbounded array of another message |
+| `std_msgs/Header header` | a nested message | messages contain messages |
+| `uint8 SOURCE_GPS=1` | class constant | **not** a field: a name for a value |
 
-Because the format is fixed, every node that uses `PositionEstimate` agrees on what each number
-means. No node can "invent its own format" — that is what makes it safe for the arbiter to compare
-positions coming from very different sources.
+Constants make code readable: `msg.source == PositionEstimate.SOURCE_GPS` instead of a mysterious
+`msg.source == 1`. Because the format is fixed and typed, every node that uses `PositionEstimate`
+agrees on what each number means, in which unit. That is what allows the arbiter to compare
+positions coming from very different sources with one single rule.
 
-## Your own private ROS: ROS_DOMAIN_ID
+### How big is a message?
 
-Discovery is automatic… so what stops your talker from talking to the student next to you, who is
-working on the same computer? The **ROS_DOMAIN_ID**: a number between 0 and 232, like the
-**channel of a walkie-talkie**. Nodes only discover nodes that use the same domain number.
+On the wire, a message is **serialised** with CDR (*Common Data Representation*): fields one after
+the other, each aligned to its own size, plus a 4-byte header. A `std_msgs/String` holding
+`"Hello World: 12"` (15 characters) takes 4 (header) + 4 (string length) + 16 (characters and the
+final zero) = **24 bytes**. A `NavSatFix` is about 120 bytes: 12 float64 (96 bytes) plus the
+header and status fields. So a GPS at 5 Hz uses about 600 B/s, while one colour camera frame of
+1536 × 730 pixels is 1536 × 730 × 3 ≈ 3.4 MB. Two orders of magnitude matter when you design a
+system: this is why NAVERA's cameras and localisers run on the same box and never send raw frames
+over a radio link. You will measure message sizes with `ros2 topic bw`.
 
-- In this academy, **every student has their own domain**. You will never see another student's
-  topics, and they will never see yours.
-- A NAVERA box runs on its own domain too, and with `ROS_LOCALHOST_ONLY=1` its messages never
-  leave the box: operators reach it through a web page, not through ROS. (Both are written in the
-  box's settings — `docs/ARCHITECTURE.md` §1 explains it.)
+## 3. Under the hood: DDS and discovery
 
-Your terminal already has both settings. You will print them in the lab.
+ROS 2 does not move the bytes itself. It uses **DDS** (*Data Distribution Service*), an industry
+standard for publish/subscribe also used in ships, aircraft and factories. DDS implementations talk
+to each other with the **RTPS** protocol (*Real-Time Publish-Subscribe*) over UDP. Each ROS process
+creates one DDS **participant**; each publisher and subscriber is an **endpoint** of that
+participant.
 
-## The ros2 command: a stethoscope for robots
+There is no central server. Nodes find each other by **discovery**, in two phases:
 
-ROS comes with a command, `ros2`, to look inside a running system. These are the ones you need today:
+1. **Participant discovery (SPDP).** Each participant announces itself periodically on a
+   well-known port: "I exist, here is how to reach me."
+2. **Endpoint discovery (SEDP).** Participants that know each other exchange the list of their
+   endpoints: topic name, type and QoS of each publisher and subscriber.
+
+A publisher and a subscriber are **matched** when the topic name and the type are equal and their
+QoS are **compatible** (section 4). Only then do messages flow.
+
+![Discovery: participants announce themselves, then exchange endpoints; each side matches on its own](assets/discovery.svg)
+
+Discovery is **asymmetric**: the publisher's side and the subscriber's side each decide "matched"
+when *they* have received the other's description. There is a short moment when the publisher
+already knows the subscriber, but the subscriber does not yet know the publisher. A message sent
+in that moment is lost for a subscriber with VOLATILE durability. This explains a classic
+surprise: `ros2 topic pub --once` waits until it sees one subscriber, publishes immediately, and
+exits — and the listener sometimes prints nothing. It is not your mistake; it is discovery. The
+robust ways: publish a few times (`-t 3`), or keep the publisher alive, or use a TRANSIENT_LOCAL
+("latched") topic.
+
+### Domains and ports
+
+The **ROS_DOMAIN_ID** separates independent systems on the same network or computer: participants
+only discover participants of the same domain. Each domain uses its own UDP ports. The RTPS
+standard gives the formula (default constants PB = 7400, DG = 250, PG = 2):
+
+```
+discovery multicast port  = PB + DG * domain              = 7400 + 250 * domain
+discovery unicast port    = PB + DG * domain + 10 + PG * p  (p = participant index 0, 1, 2 ...)
+user data unicast port    = PB + DG * domain + 11 + PG * p
+```
+
+Worked example: in domain 42, the discovery port is 7400 + 250 × 42 = **17 900**; the first
+participant (p = 0) receives its user data on 17 900 + 11 = 17 911, the second (p = 1) on 17 913.
+
+The largest port number is 65 535, so the domain can be at most 232. On Linux, ports 32 768 to
+60 999 are **ephemeral ports** that the system gives to any program that asks for "a free port".
+Domains 102 to 214 put DDS ports in that range, where they may collide with another program; this is
+why the ROS documentation recommends **0–101** (and 215–232). In this academy every student has a
+private domain between 1 and 101, and NAVERA itself avoids 77–79 for student use. One more setting
+narrows discovery further: `ROS_LOCALHOST_ONLY=1` keeps all ROS traffic on the loopback interface
+(127.0.0.1), so it never leaves the computer. A NAVERA box runs this way: operators reach it through
+a web page, not through ROS (docs/ARCHITECTURE.md §1).
+
+## 4. Quality of Service
+
+Every publisher **offers** a QoS profile and every subscriber **requests** one. The main policies:
+
+| Policy | Values | Meaning |
+|---|---|---|
+| **reliability** | `RELIABLE` / `BEST_EFFORT` | resend lost samples until acknowledged / send once |
+| **durability** | `TRANSIENT_LOCAL` / `VOLATILE` | keep the last samples for subscribers that join later / do not |
+| **history + depth** | `KEEP_LAST` n / `KEEP_ALL` | how many samples are kept in the queue |
+| deadline, lifespan, liveliness | durations | advanced: maximum period, maximum age, "still alive?" |
+
+The compatibility rule is **"offered ≥ requested"**: the publisher must give at least what the
+subscriber asks for.
+
+| Publisher offers → / subscriber requests ↓ | RELIABLE | BEST_EFFORT |
+|---|---|---|
+| **RELIABLE** | ✔ | ✘ no connection |
+| **BEST_EFFORT** | ✔ | ✔ |
+
+| Publisher offers → / subscriber requests ↓ | TRANSIENT_LOCAL | VOLATILE |
+|---|---|---|
+| **TRANSIENT_LOCAL** | ✔ (gets the stored samples) | ✘ no connection |
+| **VOLATILE** | ✔ (live samples only) | ✔ |
+
+An incompatible pair is simply **not matched**: no error in your code, no message. The subscriber's
+side only logs a warning such as `offering incompatible QoS … Last incompatible policy:
+RELIABILITY`. This is one of the most common reasons why "my node receives nothing". Many sensor
+drivers publish BEST_EFFORT (a fresh IMU sample is worth more than an old one re-sent), so a
+subscriber that wants to work with *any* driver should request BEST_EFFORT: it accepts both.
+
+### Choosing a depth: a worked example
+
+With `KEEP_LAST`, the depth must cover the worst burst the consumer cannot process. NAVERA reads the
+vehicle's IMU at about 200 Hz. If the callback thread is blocked for 0.25 s (a heavy computation, a
+burst after a network hiccup), 200 × 0.25 = **50 samples** arrive meanwhile. With depth 10, the 40
+oldest are dropped; with depth 50, none is. This is exactly the comment in NAVERA's `qos.py`
+(below). For a 5 Hz status topic, depth 10 covers 2 s of stall — plenty.
+
+### Latched topics
+
+`TRANSIENT_LOCAL` with depth 1 is called a **latched** topic: the publisher keeps its last message
+and gives it to every subscriber that joins later — if the subscriber also requests
+TRANSIENT_LOCAL, and is RELIABLE (DDS delivers stored samples only through its reliable protocol). NAVERA uses it for one-time commands and states: the camera's
+`camera/start` gate, the localiser's `localizer_ready` flag and the operator's start position
+(docs/ARCHITECTURE.md §7–8). A localiser that restarts in flight immediately receives "the mission
+has started" without anybody sending it again.
+
+## 5. Tools: the ros2 command
 
 | Command | What it shows |
 |---|---|
-| `ros2 run <package> <program>` | start a node |
-| `ros2 node list` | the names of all running nodes |
-| `ros2 node info /name` | what one node publishes and subscribes to |
-| `ros2 topic list` | the names of all topics |
-| `ros2 topic info /topic` | the topic's type, how many publishers and subscribers |
-| `ros2 topic echo /topic` | print every message as it arrives (`Ctrl+C` to stop) |
-| `ros2 topic hz /topic` | how many messages per second (**hertz**, Hz) |
-| `ros2 topic pub /topic <type> "<data>"` | publish a message by hand |
-| `ros2 interface show <type>` | the fields of a message type |
+| `ros2 node list` / `ros2 node info /n` | nodes / what one node publishes, subscribes, serves |
+| `ros2 topic list` / `ros2 topic info -v /t` | topics / type, endpoints **and their QoS** |
+| `ros2 topic echo /t` / `ros2 topic hz /t` / `ros2 topic bw /t` | messages / rate / bandwidth |
+| `ros2 topic pub -t 3 /t <type> "<yaml>"` | publish by hand (3 times) |
+| `ros2 interface show <type>` | the fields of a type |
+| `ros2 service list` / `ros2 service call` | services / call one |
+| `ros2 action list` / `ros2 action send_goal` | actions / send a goal |
+| `ros2 param list` / `ros2 param get` | parameters of a node |
 
-> [!TIP]
-> `ros2` has an autocompletion: type `ros2 topic ec` then press `Tab`. Press `Tab` twice to see
-> the choices. It also completes topic names!
-
-Two topics appear even when you start nothing special: `/rosout` (every node's log messages) and
-`/parameter_events` (changes of settings, lesson 13). You can ignore them today.
+The command-line tools use a background helper, the **ros2 daemon**, which keeps a cache of the
+graph so that commands answer quickly. In your terminal it is started for you. If a `ros2` command
+ever fails with a long error ending in `!rclpy.ok()`, run `ros2 daemon stop` and try again.
 
 ## 🐦 How birds do it
 
-On winter evenings, thousands of starlings swirl over their roost before night. The flock twists,
-splits and joins again like smoke — a **murmuration**. There is no leader, no bird giving orders.
-How do they stay together without crashing?
+In winter, starlings gather in flocks of thousands that twist and turn like smoke above their roost
+— a **murmuration**. There is no leader. In 2008, Michele Ballerini and colleagues filmed flocks over
+Rome with several synchronised cameras, rebuilt the 3D position of every bird, and published the
+result in *PNAS*: each starling reacts to about **six or seven nearest neighbours**, a fixed
+*number* of neighbours, not to every bird within a fixed distance. They called it a
+**topological** interaction.
 
-In 2008, a team of Italian physicists (Michele Ballerini and colleagues, in the journal *PNAS*)
-filmed starling flocks over Rome with several cameras at once and rebuilt the 3D position of every
-bird. Their discovery: each starling pays attention to about **six or seven nearest neighbours** — not
-to the whole flock, and not to the birds within a fixed distance, but to a fixed *number* of
-neighbours, near or far.
+Oman has its own great gatherings. In winter, the mudflats of **Barr Al Hikman**, on the coast
+facing Masirah Island, hold hundreds of thousands of shorebirds — waders such as crab plovers,
+sandpipers and godwits — and their dense flocks wheel together in the same leaderless way when a
+falcon passes.
 
-That is very close to publish/subscribe:
-
-| Starling flock | ROS 2 |
+| A flock | A ROS 2 graph |
 |---|---|
-| each bird shows its movement just by flying | a node **publishes** messages |
-| each bird watches a few neighbours, not everyone | a node **subscribes** only to the topics it needs |
-| no bird needs to know the whole flock | no node needs to know all the others |
-| a bird can join or leave; the others just carry on | a node can start or stop; nothing else changes |
+| each bird shows its movement just by flying | a node **publishes**; it does not address anyone |
+| each bird watches a few neighbours, not the whole flock | a node **subscribes** only to the topics it needs |
+| a bird finds its neighbours by looking around | participants find each other by **discovery** |
+| a bird can join or leave; the others carry on | a node can start, stop or crash; the graph adapts |
 
-One honest difference: a starling chooses its neighbours by looking around, while a ROS node chooses
-by **topic name**. But the result is the same: many small, simple programs that together do something
-none of them could do alone.
-
-NAVERA is a calm flock of about ten nodes: no single node knows everything, and each one listens only
-to the few topics it needs.
+The analogy has limits, and an engineer should say so: a bird chooses its neighbours by distance
+and sight, while a ROS node chooses by **topic name, type and QoS**. Navi the swallow would add that
+a flock has no `ROS_DOMAIN_ID` — swallows and starlings ignore each other mostly because they fly
+in different places at different times.
 
 ## In NAVERA
 
-The whole NAVERA graph is drawn in `docs/ARCHITECTURE.md` of your copy
-([open it](file:navera/docs/ARCHITECTURE.md)). Here is the heart of it, simplified:
+The whole graph is drawn in `docs/ARCHITECTURE.md` of your copy
+([open it](file:navera/docs/ARCHITECTURE.md)). Here is its heart:
 
 ![NAVERA's ROS graph: sources publish estimates, the arbiter publishes position and status](assets/navera_graph.svg)
 
-Every position source publishes the **same message type**, `PositionEstimate`, on its own topic
-`/navera/estimate/<source>`. The arbiter subscribes to all of them. In
-[navera_estimator/…/estimator_node.py](file:navera/navera_estimator/navera_estimator/nodes/estimator_node.py)
-you can find these lines:
+Every position source publishes the **same message type** on its own topic
+`/navera/estimate/<source>`, and the arbiter subscribes to all of them. In
+[estimator_node.py](file:navera/navera_estimator/navera_estimator/nodes/estimator_node.py):
 
 ```python
+# RELIABLE depth 10, matching the sensor/estimate data topics (CLAUDE.md).
 self.sub_gps = self.create_subscription(
     PositionEstimate, "/navera/estimate/gps", self._on_gps, 10)
 self.sub_day = self.create_subscription(
     PositionEstimate, "/navera/estimate/day", self._on_day, 10)
 ...
+self.sub_imu = self.create_subscription(
+    Imu, str(self.get_parameter("imu_topic").value), self._on_imu, SENSOR_QOS)
+
 self.pub_pos = self.create_publisher(PositionEstimate, "/navera/position", 10)
 self.pub_status = self.create_publisher(NavStatus, "/navera/nav_status", 10)
 ```
 
-Even without knowing Python ROS yet, you can read them: "subscribe to `PositionEstimate` messages on
-`/navera/estimate/gps` and call the function `_on_gps` for each one", and "I will publish
-`PositionEstimate` on `/navera/position` and `NavStatus` on `/navera/nav_status`". You will write
-lines exactly like these in lessons 10 and 11.
+A plain number `10` means "the default profile — RELIABLE, VOLATILE, KEEP_LAST — with depth 10". The
+IMU, which comes from other people's drivers, is read with `SENSOR_QOS`, defined in
+[navera_common/qos.py](file:navera/navera_common/navera_common/qos.py):
 
-The arbiter publishes two answers:
+```python
+"""Most ROS sensor drivers (IMU drivers, MAVROS, GPS drivers) publish BEST_EFFORT
+(rclpy.qos.qos_profile_sensor_data). A RELIABLE subscription never receives from a
+BEST_EFFORT publisher; a BEST_EFFORT subscription receives from both. Depth 50: an IMU
+at 200 Hz arriving in bursts under load is not cut to its last sample."""
+SENSOR_QOS = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT, durability=DurabilityPolicy.VOLATILE,
+                        history=HistoryPolicy.KEEP_LAST, depth=50)
+```
 
-- `/navera/position` — the winning position, only when there is one;
-- `/navera/nav_status` — 5 times per second, the **state** of navigation: `INITIALIZING` (nothing
-  heard yet), `NO_FIX` (no usable source), `FIX` (a measured position with a known accuracy) or
-  `DEGRADED` (a position, but with reduced trust), plus the reason in plain words. In the message,
-  the state is a number — the constants of `navera_msgs/msg/NavStatus` tell you which number is which.
+`docs/VALIDATION_STATUS.md` records why this matters: with an integrator's IMU published
+BEST_EFFORT on a boat, frames went from "4/4 unusable, no attitude" to "3/3 frames usable" after
+this change. One QoS policy, a whole navigation pipeline.
 
-In the lab you will start the real arbiter of your NAVERA copy and ask it these questions yourself.
+The arbiter publishes two answers: `/navera/position` (the winning estimate, only when there is one)
+and `/navera/nav_status` (5 times per second: the state `INITIALIZING`, `NO_FIX`, `FIX` or
+`DEGRADED`, the active source, the health of each source and a reason in plain words). In the lab
+you will start this node from your NAVERA copy and question it with the tools of section 5.
 
-## Words to remember
+## Glossary
 
-| Word | Meaning |
+| Term | Meaning |
 |---|---|
-| **ROS 2** | a toolkit that lets robot programs exchange data; NAVERA uses ROS 2 Humble |
-| **node** | a running program connected to ROS, with one job and a name |
-| **topic** | a named channel (`/navera/position`) where messages flow |
-| **message** | one piece of data sent on a topic |
-| **message type** | the fixed list of fields of a message, e.g. `std_msgs/msg/String` |
-| **field** | one named box of a message (`latitude`, `source`…) |
-| **constant** | a name for a value in a message type (`SOURCE_GPS=1`) |
-| **publish / subscribe** | send to a topic / receive everything sent to a topic |
-| **discovery** | nodes finding each other automatically |
-| **ROS_DOMAIN_ID** | the "walkie-talkie channel": only nodes with the same number see each other |
-| **Hz (hertz)** | "times per second" |
+| **middleware** | software between applications and the network that moves data for them |
+| **graph** | the nodes of a running system and the channels between them |
+| **node** | a named unit of computation connected to the graph |
+| **topic / service / action / parameter** | stream / request-response / long goal with feedback / stored setting |
+| **message type (.msg, IDL)** | the typed list of fields a topic carries |
+| **serialisation (CDR)** | turning a message into bytes for the network |
+| **DDS / RTPS** | the publish/subscribe standard ROS 2 uses / its wire protocol over UDP |
+| **participant / endpoint** | one process in DDS / one publisher or subscriber |
+| **discovery (SPDP, SEDP)** | finding participants, then their endpoints, with no central server |
+| **ROS_DOMAIN_ID** | number that separates independent graphs (different UDP ports) |
+| **ephemeral port** | a port the OS hands out on demand (32 768–60 999 on Linux) |
+| **QoS** | delivery rules: reliability, durability, history and depth… |
+| **latched topic** | TRANSIENT_LOCAL, depth 1: late subscribers get the last message |
 
 ## Check what you learned
 
-<details><summary>1. The GPS node publishes on /navera/estimate/gps. Does it need to know the name of the arbiter node?</summary>
-No. Publishers only know the topic. Any node that subscribes to <code>/navera/estimate/gps</code>
-receives the messages — the arbiter, a logging tool, or <code>ros2 topic echo</code>.
+<details><summary>1. Compute the discovery multicast port of domain 7, and the user-data port of the third participant (p = 2).</summary>
+7400 + 250 × 7 = 9150. User data: 9150 + 11 + 2 × 2 = 9165.
 </details>
 
-<details><summary>2. In a message type, what is the difference between <code>uint8 source</code> and <code>uint8 SOURCE_GPS=1</code>?</summary>
-The first is a field: a box that each message fills with a value. The second is a constant: a
-readable name for the value 1 in that box. It is not sent in the message.
+<details><summary>2. A camera driver publishes BEST_EFFORT. Your subscriber uses the default profile (depth 10). What happens, and what is the fix?</summary>
+The default profile requests RELIABLE; a BEST_EFFORT publisher offers less than that, so the pair is
+not matched and nothing arrives (only a QoS warning). Request BEST_EFFORT, e.g.
+<code>qos_profile_sensor_data</code> or NAVERA's <code>SENSOR_QOS</code>: it accepts both kinds of publishers.
 </details>
 
-<details><summary>3. You run <code>ros2 topic list</code> and see nothing of your friend's NAVERA, although you are on the same computer. Why?</summary>
-You have different ROS_DOMAIN_ID numbers, so your nodes never discover each other.
+<details><summary>3. <code>ros2 topic pub --once</code> found the listener, published, and the listener printed nothing. Explain.</summary>
+Discovery is asymmetric: the publisher had matched the subscriber, but the subscriber had not yet
+matched the publisher when the single message was sent. A VOLATILE subscriber does not get messages
+sent before it matched. Publish a few times (<code>-t 3</code>) or use a latched topic.
 </details>
 
-<details><summary>4. Why do all NAVERA sources publish the same message type?</summary>
-So the arbiter can compare them with one single rule, whatever the source: same fields, same units,
-same meaning. Lesson 12 is all about this "contract".
+<details><summary>4. An IMU publishes at 400 Hz and your callback can be blocked for 0.1 s. What depth avoids losing samples?</summary>
+400 × 0.1 = 40 samples: a depth of at least 40 (NAVERA uses 50 for 200 Hz bursts of 0.25 s).
+</details>
+
+<details><summary>5. Why is <code>/camera/start</code> latched, and what must a late subscriber request to get it?</summary>
+It is a one-time command; a node that (re)starts later must still learn that the mission started.
+The subscriber must request TRANSIENT_LOCAL durability (and the publisher must offer it with depth ≥ 1).
+</details>
+
+<details><summary>6. Why do all NAVERA sources publish the same message type?</summary>
+So the arbiter can judge them with one rule: same fields, same units (degrees WGS84, m² in ENU), same
+meaning of validity and mode. A new source only has to fill the same form honestly (lesson 12).
 </details>
 
 Now open the **🛠️ Lab** tab.

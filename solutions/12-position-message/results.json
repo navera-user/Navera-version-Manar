@@ -1,0 +1,29 @@
+{
+  "probability": {
+    "theory": {
+      "1.0": 0.3934693402873666,
+      "2.0": 0.8646647167633873,
+      "2.448": 0.9500309767227619
+    },
+    "sampled": {
+      "1.0": 0.39389,
+      "2.0": 0.86476,
+      "2.448": 0.94995
+    },
+    "east_within_1sigma": 0.68227
+  },
+  "stated_vs_max": {
+    "default": {
+      "stated_sigma_m": 13.332291625973385,
+      "sigma_max_m": 15.0,
+      "sigma_min_m": 6.0,
+      "major_axis_heading_deg": 29.999999999999993
+    },
+    "tilted": {
+      "stated_sigma_m": 21.50581316760657,
+      "sigma_max_m": 30.0,
+      "sigma_min_m": 5.0,
+      "major_axis_heading_deg": 44.99999999999999
+    }
+  }
+}

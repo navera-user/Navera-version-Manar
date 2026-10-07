@@ -1,5 +1,6 @@
 import math
 import os
+import re
 import time
 
 from academy_check import Background, Checker, load_student, need, sh, wait_for_messages
@@ -7,8 +8,7 @@ from academy_check import Background, Checker, load_student, need, sh, wait_for_
 c = Checker()
 R = 6_371_000.0
 NAVERA_YAML = os.path.expanduser("~/navera/navera_estimator/navera_estimator/config/estimator_params.yaml")
-WANT_YAML = {"topic": "/fake_gps/fix", "rate_hz": 1.0, "start_lat": 35.83, "start_lon": 10.59,
-             "speed_mps": 8.0, "heading_deg": 90.0, "sigma_m": 3.0}
+MUSCAT, SOHAR = (23.5880, 58.3829), (24.35, 56.75)
 
 
 def dist_m(lat1, lon1, lat2, lon2):
@@ -17,31 +17,24 @@ def dist_m(lat1, lon1, lat2, lon2):
     return 2 * R * math.asin(math.sqrt(min(1.0, a)))
 
 
+def bearing_deg(lat1, lon1, lat2, lon2):
+    p1, p2, dl = math.radians(lat1), math.radians(lat2), math.radians(lon2 - lon1)
+    return math.degrees(math.atan2(math.sin(dl) * math.cos(p2),
+                                   math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dl))) % 360
+
+
 def stamp(m):
     return m.header.stamp.sec + m.header.stamp.nanosec * 1e-9
 
 
-def rate_of(msgs):
-    return (len(msgs) - 1) / (stamp(msgs[-1]) - stamp(msgs[0])) if len(msgs) > 1 and stamp(msgs[-1]) > stamp(msgs[0]) else 0
+def node_mod():
+    return load_student("fake_gps_node.py")
 
 
-def speed_of(msgs):
-    a, b = msgs[0], msgs[-1]
-    return dist_m(a.latitude, a.longitude, b.latitude, b.longitude) / max(1e-6, stamp(b) - stamp(a))
-
-
-def collect(cmd, topic, count, timeout=15, extra=None):
-    """Run cmd, collect `count` NavSatFix on topic; extra(bg) runs while it is alive."""
-    from sensor_msgs.msg import NavSatFix
-    with Background(cmd, settle=2.5) as bg:
-        first = wait_for_messages(topic, NavSatFix, count=1, timeout=timeout)
-        msgs = wait_for_messages(topic, NavSatFix, count=count, timeout=timeout) if first else []
-        more = extra(bg) if (extra and msgs) else None
-    if len(msgs) < 3:
-        out = bg.output()
-        c.ok(False, f"only {len(msgs)} messages on {topic} with `{cmd}`." +
-             (f" The node printed:\n{out[-600:]}" if out.strip() else ""))
-    return msgs, more
+def ans(name):
+    (v,) = need(load_student("answers.py"), name)
+    c.ok(v is not None, f"{name} has no answer yet")
+    return v
 
 
 def load_yaml(path):
@@ -55,137 +48,223 @@ def load_yaml(path):
         c.ok(False, f"{os.path.basename(path)} is not valid YAML: {str(e)[:300]}")
 
 
-@c.test("fake_gps_params.py loads", hint="Run `python3 fake_gps_params.py` and read the error.")
+@c.test("fake_gps_node.py, my_navera.launch.py and answers.py load",
+        hint="Run `python3 fake_gps_node.py` and `python3 answers.py`, and read the error (line number!).")
 def _():
-    need(load_student("fake_gps_params.py"), "FakeGps")
+    need(node_mod(), "make_descriptor", "check_settings", "FakeGps", "SPECS")
+    need(load_student("my_navera.launch.py"), "generate_launch_description", "fake_gps")
+    load_student("answers.py")
 
 
-@c.test("TODO 1 — the node's settings are parameters (topic, rate_hz, start_lat, start_lon)",
-        hint="declare_parameter(name, default) for each setting, then get_parameter(name).value. Try "
-             "`python3 fake_gps_params.py --ros-args -p rate_hz:=4.0 -p topic:=/test/fix`.")
+@c.test("TODO 1 — make_descriptor(): description, read_only and a floating-point range",
+        hint="ParameterDescriptor(description=..., read_only=...); if lo is not None: "
+             "floating_point_range=[FloatingPointRange(from_value=lo, to_value=hi, step=0.0)].")
 def _():
-    msgs, _ = collect("python3 fake_gps_params.py --ros-args -p topic:=/check/fix -p rate_hz:=4.0 "
-                      "-p start_lat:=36.0 -p start_lon:=10.0", "/check/fix", count=9)
-    c.near(rate_of(msgs), 4.0, 0.5, "the rate with -p rate_hz:=4.0")
-    c.ok(dist_m(msgs[0].latitude, msgs[0].longitude, 36.0, 10.0) < 200,
-         f"with -p start_lat:=36.0 -p start_lon:=10.0 the first fix is at "
-         f"({msgs[0].latitude:.5f}, {msgs[0].longitude:.5f})")
+    (f,) = need(node_mod(), "make_descriptor")
+    d = f("ground speed, m/s", 0.0, 60.0, False)
+    c.eq(d.description, "ground speed, m/s", "description")
+    c.eq(d.read_only, False, "read_only")
+    c.ok(len(d.floating_point_range) == 1, "floating_point_range should hold one FloatingPointRange")
+    r = d.floating_point_range[0]
+    c.eq((r.from_value, r.to_value), (0.0, 60.0), "(from_value, to_value)")
+    d = f("kind of vehicle", None, None, True)
+    c.ok(d.read_only is True and len(d.floating_point_range) == 0, "no range when lo is None, and read_only kept")
 
 
-@c.test("TODO 1/2 — the defaults stay the same, and `ros2 param set` changes the speed while it runs",
-        hint="Defaults: rate_hz 2.0, speed_mps 5.0… TODO 2: read speed_mps with get_parameter() INSIDE on_timer, "
-             "not only in __init__.")
+@c.test("TODO 2a — check_settings(): the vehicle / speed rule, with the exact messages",
+        hint="Unknown vehicle → \"unknown vehicle 'tank' (car, drone or boat)\"; too fast → "
+             "\"speed 20.0 m/s too fast for a boat (max 15.0)\" (one decimal); otherwise \"\".")
 def _():
-    def change(bg):
-        code, out = sh("ros2 param get /fake_gps rate_hz", timeout=20)
-        before = wait_for_messages("/fake_gps/fix", __import__("sensor_msgs.msg", fromlist=["NavSatFix"]).NavSatFix,
-                                   count=4, timeout=6)
-        sh("ros2 param set /fake_gps speed_mps 20.0", timeout=20)
-        time.sleep(1.0)
-        after = wait_for_messages("/fake_gps/fix", __import__("sensor_msgs.msg", fromlist=["NavSatFix"]).NavSatFix,
-                                  count=5, timeout=6)
-        return out, before, after
-    msgs, (got, before, after) = collect("python3 fake_gps_params.py", "/fake_gps/fix", count=4, extra=change)
-    c.ok("2.0" in got, f"`ros2 param get /fake_gps rate_hz` said: {got.strip()[:200]!r} — expected 2.0")
-    c.near(rate_of(msgs), 2.0, 0.3, "the default rate")
-    c.ok(dist_m(msgs[0].latitude, msgs[0].longitude, 35.8256, 10.6084) < 300, "the default start is not Sousse")
-    c.near(speed_of(before), 5.0, 0.6, "the default speed (m/s)")
-    c.ok(len(after) >= 3, "too few messages after `ros2 param set`")
-    c.near(speed_of(after), 20.0, 2.5, "the speed after `ros2 param set /fake_gps speed_mps 20.0`")
+    (f,) = need(node_mod(), "check_settings")
+    c.eq(f("car", 12.0), "", "check_settings('car', 12.0)")
+    c.eq(f("boat", 15.0), "", "check_settings('boat', 15.0) (the maximum is allowed)")
+    c.eq(f("boat", 20.0), "speed 20.0 m/s too fast for a boat (max 15.0)", "check_settings('boat', 20.0)")
+    c.eq(f("tank", 1.0), "unknown vehicle 'tank' (car, drone or boat)", "check_settings('tank', 1.0)")
 
 
-@c.test("TODO 3 — my_gps.yaml holds the settings of the lab",
-        hint="fake_gps: → ros__parameters: → one `name: value` per line, indented with spaces. "
-             "Values: rate 1.0, start 35.8300 / 10.5900, speed 8.0, heading 90.0, sigma 3.0.")
+LIVE = {}
+
+
+@c.test("live — descriptors and the validation callback refuse bad changes, accept good ones",
+        hint="TODO 1 makes rate_hz read-only and speed_mps limited to [0, 60]. TODO 2b: combine the new values "
+             "(p.name, p.value) with the current ones and return SetParametersResult(successful=..., reason=...).")
+def _():
+    if not LIVE:
+        with Background("python3 -u fake_gps_node.py", settle=3.0):
+            wait_for_messages("/fake_gps/fix", __import__("sensor_msgs.msg", fromlist=["NavSatFix"]).NavSatFix, 1, 10)
+            for k, cmd in (("describe", "ros2 param describe /fake_gps speed_mps"),
+                           ("rate", "ros2 param set /fake_gps rate_hz 5.0"),
+                           ("s500", "ros2 param set /fake_gps speed_mps 500.0"),
+                           ("s45", "ros2 param set /fake_gps speed_mps 45.0"),
+                           ("drone", "ros2 param set /fake_gps vehicle drone"),
+                           ("s45d", "ros2 param set /fake_gps speed_mps 25.0")):
+                LIVE[k] = sh(cmd, timeout=25)[1]
+    c.ok("Max value: 60.0" in LIVE["describe"], "`ros2 param describe /fake_gps speed_mps` shows no range:\n" + LIVE["describe"][-300:])
+    c.ok("read-only" in LIVE["rate"], f"rate_hz should be read-only, `ros2 param set` said: {LIVE['rate'].strip()[:200]}")
+    c.ok("out of range" in LIVE["s500"], f"speed 500 should be out of range, got: {LIVE['s500'].strip()[:200]}")
+    c.ok("too fast for a car" in LIVE["s45"], f"speed 45 for a car should be refused by your callback, got: {LIVE['s45'].strip()[:200]}")
+    c.ok("successful" in LIVE["drone"] and "successful" in LIVE["s45d"],
+         f"vehicle drone then speed 25.0 should both be accepted, got: {LIVE['drone'].strip()[:100]} / {LIVE['s45d'].strip()[:100]}")
+
+
+@c.test("TODO 3 — my_gps.yaml: /** first, then the car and the boat",
+        hint="/**: rate_hz 1.0, sigma_m 3.0 — FIRST. /car/fake_gps: car, 23.5880 / 58.3829, 12.0, 90.0. "
+             "/boat/fake_gps: boat, 24.3500 / 56.7500, 5.0, 45.0. Decimals with a dot, text in quotes.")
 def _():
     d = load_yaml("my_gps.yaml")
-    c.ok(isinstance(d, dict) and "fake_gps" in d, "the first line must be `fake_gps:` (the node name)")
-    p = (d["fake_gps"] or {}).get("ros__parameters")
-    c.ok(isinstance(p, dict), "under fake_gps: you need `ros__parameters:` (two underscores), indented")
-    for k, v in WANT_YAML.items():
-        c.ok(k in p, f"`{k}` is missing in my_gps.yaml")
-        if isinstance(v, float):
-            c.ok(isinstance(p[k], float), f"{k}: {p[k]!r} — write it as a decimal number with a dot (e.g. {v})")
-            c.near(p[k], v, 1e-6, k)
-        else:
-            c.eq(p[k], v, k)
+    c.ok(isinstance(d, dict), "my_gps.yaml should be a mapping of node names")
+    keys = list(d)
+    c.ok(keys and keys[0] == "/**", f"the first section must be /** (the last match wins), got {keys}")
+    want = {"/**": {"rate_hz": 1.0, "sigma_m": 3.0},
+            "/car/fake_gps": {"vehicle": "car", "start_lat": 23.588, "start_lon": 58.3829, "speed_mps": 12.0, "heading_deg": 90.0},
+            "/boat/fake_gps": {"vehicle": "boat", "start_lat": 24.35, "start_lon": 56.75, "speed_mps": 5.0, "heading_deg": 45.0}}
+    for sect, vals in want.items():
+        p = (d.get(sect) or {}).get("ros__parameters")
+        c.ok(isinstance(p, dict), f"section {sect} → ros__parameters is missing (two underscores, indented)")
+        for k, v in vals.items():
+            c.ok(k in p, f"{sect}: `{k}` is missing")
+            if isinstance(v, float):
+                c.ok(isinstance(p[k], float), f"{sect}: {k}: {p[k]!r} — write a decimal number with a dot")
+                c.near(p[k], v, 1e-6, f"{sect}: {k}")
+            else:
+                c.eq(p[k], v, f"{sect}: {k}")
 
 
-@c.test("my_gps.yaml is used: 1 fix per second, from 35.83 / 10.59, 8 m/s towards the east",
-        hint="Try `python3 fake_gps_params.py --ros-args --params-file my_gps.yaml` and watch "
-             "`ros2 topic echo /fake_gps/fix --field longitude`.")
+@c.test("live — the boat from the file: /boat/fix at 1 Hz, from Sohar, 5 m/s towards the north-east",
+        hint="python3 fake_gps_node.py --ros-args -r __ns:=/boat -r /fake_gps/fix:=fix --params-file my_gps.yaml")
 def _():
-    msgs, _ = collect("python3 fake_gps_params.py --ros-args --params-file my_gps.yaml", "/fake_gps/fix",
-                      count=5, timeout=12)
-    c.near(rate_of(msgs), 1.0, 0.2, "the rate")
-    c.ok(dist_m(msgs[0].latitude, msgs[0].longitude, 35.83, 10.59) < 200, "the first fix is not near 35.83 / 10.59")
-    c.near(speed_of(msgs), 8.0, 1.0, "the speed (m/s)")
-    c.ok(msgs[-1].longitude > msgs[0].longitude and abs(msgs[-1].latitude - msgs[0].latitude) < 1e-5,
-         "the vehicle should go due east (longitude grows, latitude stays)")
+    from sensor_msgs.msg import NavSatFix
+    with Background("python3 -u fake_gps_node.py --ros-args -r __ns:=/boat -r /fake_gps/fix:=fix "
+                    "--params-file my_gps.yaml", settle=3.0) as bg:
+        msgs = wait_for_messages("/boat/fix", NavSatFix, count=1, timeout=10) and \
+            wait_for_messages("/boat/fix", NavSatFix, count=6, timeout=9)
+    msgs = msgs or []
+    c.ok(len(msgs) >= 4, f"only {len(msgs)} messages on /boat/fix." + (f" The node printed:\n{bg.output()[-400:]}"))
+    dt = stamp(msgs[-1]) - stamp(msgs[0])
+    c.near((len(msgs) - 1) / dt, 1.0, 0.15, "the boat's rate (Hz)")
+    c.ok(dist_m(msgs[0].latitude, msgs[0].longitude, *SOHAR) < 100, "the boat does not start off Sohar")
+    a, b = msgs[0], msgs[-1]
+    c.near(dist_m(a.latitude, a.longitude, b.latitude, b.longitude) / dt, 5.0, 0.5, "the boat's speed (m/s)")
+    c.near(bearing_deg(a.latitude, a.longitude, b.latitude, b.longitude), 45.0, 5.0, "the boat's direction (°)")
 
 
-@c.test("NAVERA copy — fix_max_sigma_m changed to 2.0 in estimator_params.yaml",
-        hint="Edit ~/navera/navera_estimator/navera_estimator/config/estimator_params.yaml: the line "
-             "`fix_max_sigma_m: 25.0` becomes `fix_max_sigma_m: 2.0`. Keep the indentation.")
+@c.test("answers.py — runtime changes and the four precedence measurements",
+        hint="Steps 2–5: what `ros2 param set` answered, and `ros2 param get /car/fake_gps rate_hz` in the four runs. "
+             "Remember: command-line items are applied in the order they are written.")
 def _():
-    d = load_yaml(NAVERA_YAML)
-    try:
-        v = d["estimator_node"]["ros__parameters"]["fix_max_sigma_m"]
-    except (KeyError, TypeError):
-        c.ok(False, "the file's structure is broken: estimator_node → ros__parameters → fix_max_sigma_m. "
-                    "`git -C ~/navera diff` shows what you changed.")
-    c.near(v, 2.0, 1e-6, "fix_max_sigma_m in your NAVERA copy")
+    for k, v in (("RATE_SET_ACCEPTED", False), ("SPEED_500_ACCEPTED", False), ("BOAT_FAST_ACCEPTED", False)):
+        got = ans(k)
+        c.ok(got is v, f"{k} = {got!r} — run the command of the lab again and read the answer")
+    for k, v in (("RATE_CODE_DEFAULT", 2.0), ("RATE_FROM_FILE", 1.0), ("RATE_FILE_THEN_P", 4.0), ("RATE_P_THEN_FILE", 1.0)):
+        c.near(ans(k), v, 1e-9, k)
 
 
 LAUNCH = {}
 
 
-def run_launch():
-    if "status" not in LAUNCH:
-        from navera_msgs.msg import NavStatus
-        from sensor_msgs.msg import NavSatFix
-        LAUNCH["status"], LAUNCH["fixes"], LAUNCH["param"], LAUNCH["out"] = [], [], "", ""
+def launch(args=""):
+    if args not in LAUNCH:
+        from navera_msgs.msg import NavStatus, PositionEstimate
+        res = {"nodes": "", "status": [], "pos": [], "out": ""}
         try:
-            with Background("ros2 launch ./my_navera.launch.py", settle=4.0) as bg:
-                LAUNCH["fixes"] = wait_for_messages("/fake_gps/fix", NavSatFix, count=3, timeout=15)
+            with Background(f"ros2 launch ./my_navera.launch.py {args}", settle=5.0) as bg:
                 end = time.time() + 15
                 while time.time() < end:
-                    LAUNCH["status"] = wait_for_messages("/navera/nav_status", NavStatus, count=3, timeout=3)
-                    if LAUNCH["status"] and LAUNCH["status"][-1].active_source == NavStatus.SOURCE_GPS:
+                    res["status"] = wait_for_messages("/navera/nav_status", NavStatus, count=2, timeout=3)
+                    if res["status"] and res["status"][-1].active_source == NavStatus.SOURCE_GPS:
                         break
-                LAUNCH["param"] = sh("ros2 param get /estimator_node fix_max_sigma_m", timeout=20)[1]
-            LAUNCH["out"] = bg.output()
-        except Exception as e:            # the launch stopped right away
-            LAUNCH["out"] = str(e)
-    if not LAUNCH["status"]:
-        c.ok(False, "no /navera/nav_status: the launch did not start NAVERA's estimator. Output:\n" + LAUNCH["out"][-800:])
-    return LAUNCH
+                res["pos"] = wait_for_messages("/navera/position", PositionEstimate, count=1, timeout=4)
+                res["nodes"] = sh("ros2 node list --no-daemon --spin-time 3", timeout=25)[1]
+            res["out"] = bg.output()
+        except Exception as e:                     # the launch stopped right away
+            res["out"] = str(e)
+        LAUNCH[args] = res
+    r = LAUNCH[args]
+    c.ok(r["status"], f"no /navera/nav_status with `ros2 launch ./my_navera.launch.py {args}`: did it include NAVERA's "
+                      "estimator.launch.py (TODO 7)? Output:\n" + r["out"][-800:])
+    return r
 
 
-@c.test("TODO 4–7 — `ros2 launch ./my_navera.launch.py` starts the fake GPS (with my_gps.yaml), the bridge "
-        "and NAVERA's arbiter", hint="Run the launch yourself and read its output: each node prints a line "
-             "with its name in [brackets]. Did you put the three actions in the LaunchDescription list?")
+@c.test("TODO 4–8 — `ros2 launch ./my_navera.launch.py`: car, boat, bridge and arbiter, NAVERA follows the car",
+        hint="Read the launch output: one [bracketed] line per process. Are the four actions (and the arguments) in "
+             "the LaunchDescription list? Does ros_gps say `GPS from /car/fix`?")
 def _():
     from navera_msgs.msg import NavStatus
-    L = run_launch()
-    c.ok(len(L["fixes"]) >= 2, "no messages on /fake_gps/fix during the launch (TODO 4)")
-    c.near(rate_of(L["fixes"]), 1.0, 0.25, "the fake GPS rate in the launch (from my_gps.yaml)")
-    st = L["status"][-1]
-    c.ok(st.active_source == NavStatus.SOURCE_GPS,
-         f"NAVERA does not use the GPS (state {st.state}, reason {st.reason!r}) — is ros_gps listening to "
-         f"/fake_gps/fix? (TODO 5)")
+    r = launch()
+    for n in ("/car/fake_gps", "/boat/fake_gps", "/ros_gps", "/estimator_node"):
+        c.ok(n in r["nodes"], f"node {n} is missing from `ros2 node list`:\n{r['nodes']}")
+    c.ok("GPS from /car/fix" in r["out"], "ros_gps does not listen to /car/fix (TODO 6)")
+    c.ok(r["status"][-1].active_source == NavStatus.SOURCE_GPS, f"NAVERA does not use the GPS: {r['status'][-1].reason!r}")
+    c.ok(r["pos"] and dist_m(r["pos"][0].latitude, r["pos"][0].longitude, *MUSCAT) < 2000,
+         "no /navera/position near the car in Muscat")
 
 
-@c.test("the launched arbiter uses your NAVERA setting: GPS with 3 m is now DEGRADED",
-        hint="The launch must include NAVERA's estimator.launch.py (which loads estimator_params.yaml), and "
-             "fix_max_sigma_m must be 2.0 in that file.")
+@c.test("TODO 7 — the included estimator.launch.py receives gps_timeout_s := 2.0",
+        hint="IncludeLaunchDescription(PythonLaunchDescriptionSource(path), launch_arguments={\"gps_timeout_s\": "
+             "\"2.0\"}.items()). The arbiter logs its windows when it starts: look for gps_timeout=2.0s.")
+def _():
+    r = launch()
+    c.ok("gps_timeout=2.0s" in r["out"], "the arbiter did not start with gps_timeout=2.0s:\n" +
+         "\n".join(l for l in r["out"].splitlines() if "estimator up" in l)[-300:])
+
+
+@c.test("launch arguments — with_boat:=false starts no boat; gps_source:=boat makes NAVERA follow the boat",
+        hint="TODO 5: DeclareLaunchArgument(\"with_boat\", default_value=\"true\") and (\"gps_source\", \"car\"). "
+             "TODO 8: condition=IfCondition(LaunchConfiguration(\"with_boat\")) on the boat.")
+def _():
+    r = launch("with_boat:=false")
+    c.ok("/car/fake_gps" in r["nodes"] and "/boat/fake_gps" not in r["nodes"],
+         f"with_boat:=false — node list:\n{r['nodes']}")
+    r = launch("gps_source:=boat")
+    c.ok("GPS from /boat/fix" in r["out"], "with gps_source:=boat, ros_gps does not listen to /boat/fix")
+    c.ok(r["pos"] and dist_m(r["pos"][0].latitude, r["pos"][0].longitude, *SOHAR) < 2000,
+         "with gps_source:=boat, /navera/position is not near the boat off Sohar")
+
+
+@c.test("NAVERA copy — fix_max_sigma_m is 2.0 and gps_timeout_s is back to 3.0; the order trap measured",
+        hint="Edit ~/navera/navera_estimator/navera_estimator/config/estimator_params.yaml (keep the indentation); "
+             "`git -C ~/navera diff` must show only fix_max_sigma_m. Answers: plain launch 3.0, ros2 run with the "
+             "YAML 1.0, your launch 2.0.")
+def _():
+    d = load_yaml(NAVERA_YAML)
+    try:
+        p = d["estimator_node"]["ros__parameters"]
+    except (KeyError, TypeError):
+        c.ok(False, "the file's structure is broken: estimator_node → ros__parameters → … (see `git -C ~/navera diff`)")
+    c.near(p.get("fix_max_sigma_m"), 2.0, 1e-9, "fix_max_sigma_m in your NAVERA copy")
+    c.near(p.get("gps_timeout_s"), 3.0, 1e-9, "gps_timeout_s in your NAVERA copy (put it back to 3.0)")
+    for k, v in (("GPS_TIMEOUT_YAML_1_PLAIN_LAUNCH", 3.0), ("GPS_TIMEOUT_YAML_1_RUN", 1.0), ("GPS_TIMEOUT_MY_LAUNCH", 2.0)):
+        c.near(ans(k), v, 1e-9, k)
+
+
+@c.test("live — with fix_max_sigma_m = 2.0, the launched arbiter says DEGRADED: GPS 3 m > 2 m",
+        hint="Your launch includes NAVERA's estimator.launch.py, which loads estimator_params.yaml; the fake "
+             "receivers state sigma_m 3.0.")
 def _():
     from navera_msgs.msg import NavStatus
-    L = run_launch()
-    st = L["status"][-1]
-    c.ok("2.0" in L["param"], f"`ros2 param get /estimator_node fix_max_sigma_m` said {L['param'].strip()!r}")
+    st = launch()["status"][-1]
     c.ok(st.state == NavStatus.STATE_DEGRADED and "uncertainty 3 m > 2 m" in st.reason,
          f"state {st.state}, reason {st.reason!r} — expected DEGRADED, `GPS fix, uncertainty 3 m > 2 m`")
+
+
+@c.test("report.md — Precedence, Validation and NAVERA, with your measurements",
+        hint="Keep the three headings, at least 40 words each. Validation must quote a refusal message "
+             "(e.g. `too fast for a`); NAVERA must quote the three gps_timeout_s values and `3 m > 2 m`.")
+def _():
+    c.file_exists("report.md")
+    txt = open("report.md", encoding="utf-8", errors="replace").read()
+    secs = {}
+    for title in ("Precedence", "Validation", "NAVERA"):
+        m = re.search(r"^##\s*" + title + r"\s*$(.*?)(?=^##\s|\Z)", txt, re.M | re.S)
+        c.ok(m is not None, f"the heading `## {title}` is missing")
+        body = re.sub(r"^\*(?=\S)[^*]+?\*\s*$", "", m.group(1), flags=re.M | re.S)
+        words = len(re.findall(r"[A-Za-z0-9_.]+", body))
+        c.ok(words >= 40, f"section {title} has {words} words of yours — write at least 40")
+        secs[title] = body
+    c.ok("too fast for a" in secs["Validation"] or "read-only" in secs["Validation"],
+         "the Validation section quotes no refusal message")
+    c.ok(all(x in secs["NAVERA"] for x in ("3.0", "1.0", "2.0")) and "3 m > 2 m" in secs["NAVERA"],
+         "the NAVERA section must quote 3.0, 1.0, 2.0 and `3 m > 2 m`")
 
 
 c.run()

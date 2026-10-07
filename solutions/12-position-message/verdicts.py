@@ -1,11 +1,20 @@
 # Lab 12 — what did the jury say? (teacher solution)
-REASON_GOOD = "day vision fix"
-REASON_NAN = "day: non-finite position or covariance"
-REASON_BAD_COV = "day: non-finite position or covariance"
-REASON_STALE = "day: stale (11.4s>3.0s)"
-REASON_INVALID = "day: invalid (lens covered)"
-REASON_REPLAYED = "day: replayed not usable"
-REASON_UNKNOWN_COV = "day vision fix, uncertainty unknown"
-REASON_SIGMA_40 = "day vision fix, uncertainty 40 m > 25 m"
+
+VERDICTS = {
+    "none":        (2, "day vision fix"),
+    "nan":         (1, "day: non-finite position or covariance"),
+    "not_psd":     (1, "day: non-finite position or covariance"),
+    "stale":       (1, "day: stale (10.0s>3.0s)"),
+    "latency":     (2, "day vision fix"),
+    "future":      (1, "day: timestamp 5.0s in the future (clock problem)"),
+    "invalid":     (1, "day: invalid (lens covered)"),
+    "replayed":    (1, "day: replayed not usable"),
+    "held":        (1, "day: held not usable"),
+    "propagated":  (3, "day vision solution is propagated (dead-reckoned)"),
+    "unknown_cov": (3, "day vision fix, uncertainty unknown"),
+    "big_sigma":   (3, "day vision fix, uncertainty 30 m > 25 m"),
+    "tilted":      (2, "day vision fix"),
+}
+
 Q1 = "b"
 Q2 = "b"

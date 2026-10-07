@@ -1,3 +1,3 @@
-{"number": "14", "title": "Testing code like an engineer", "module": 3, "duration": "1 h 45",
- "summary": "Why engineers write tests, how pytest works, and how NAVERA's own tests catch a bug. You write tests strong enough to catch wrong code — the checker will try to fool them.",
- "resources": [], "open": ["geo_tools.py", "test_geo_tools.py", "test_navera_geo.py"], "check_timeout_s": 180}
+{"number": "14", "title": "Testing robotics code: examples, properties, mutants and launch tests", "module": 3, "duration": "3 h",
+ "summary": "pytest with fixtures and parametrize, property-based tests with hypothesis, mutation thinking to measure your tests, and a launch_testing test of NAVERA's real arbiter. You also run NAVERA's 359 unit tests, break NAVERA on purpose and restore it with git.",
+ "resources": [], "open": ["test_geo_tools.py", "test_properties.py", "test_navera_geo.py", "test_estimator_launch.py", "report.md"], "check_timeout_s": 300}

@@ -9,7 +9,7 @@
   <!-- tests box -->
   <rect x="20" y="110" width="150" height="70" rx="10" fill="#1d2733"/>
   <text x="95" y="140" text-anchor="middle" fill="#ffffff" font-weight="bold">your tests</text>
-  <text x="95" y="160" text-anchor="middle" fill="#c8d3dc" font-family="monospace" font-size="12">test_geo_tools.py</text>
+  <text x="95" y="160" text-anchor="middle" fill="#c8d3dc" font-family="monospace" font-size="12">test_*.py</text>
   <g stroke="#56606b" stroke-width="2" fill="none" marker-end="url(#h)">
     <path d="M170 130 L250 66"/>
     <path d="M170 145 L250 145"/>
@@ -38,5 +38,5 @@
     <text x="490" y="223" fill="#d64545">all tests pass…</text>
     <text x="490" y="240" fill="#d64545" font-weight="normal" font-size="12">✘ the bug survived!</text>
   </g>
-  <text x="340" y="282" text-anchor="middle" fill="#56606b">A test suite is only as good as the bugs it catches. Engineers call this mutation testing.</text>
+  <text x="340" y="282" text-anchor="middle" fill="#56606b">mutation score = killed mutants / all mutants — a suite is only as good as the bugs it catches</text>
 </svg>

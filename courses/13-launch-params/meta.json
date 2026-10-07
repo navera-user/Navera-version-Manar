@@ -1,3 +1,3 @@
-{"number": "13", "title": "Launch files and parameters", "module": 3, "duration": "1 h 45",
- "summary": "Settings without editing code: ROS parameters, YAML files and launch files that start a whole system with one command. You change one of NAVERA's own settings and watch its decision change.",
- "resources": [], "open": ["fake_gps_params.py", "my_gps.yaml", "my_navera.launch.py"], "check_timeout_s": 240}
+{"number": "13", "title": "Launch files and parameters: configuring a system without touching its code", "module": 3, "duration": "3 h",
+ "summary": "Parameter types, descriptors and validation callbacks; YAML files, namespaces and remapping; measured precedence rules; a Python launch file that starts two vehicles and NAVERA's own launch — then NAVERA's order trap, and one of its settings changed.",
+ "resources": [], "open": ["fake_gps_node.py", "my_gps.yaml", "my_navera.launch.py", "answers.py", "report.md"], "check_timeout_s": 300}
