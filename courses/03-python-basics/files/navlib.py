@@ -1,8 +1,8 @@
 """navlib.py — a small navigation library (lab 3).
 
 Part A  functions          heading vectors, wind triangle, battery endurance
-Part B  classes            Vehicle, FixedWing(Vehicle), Track
-Part C  NumPy              vectorised local east/north projection
+Part B  classes            Vehicle, FixedWing(Vehicle)
+Part C  NumPy              the Track class: lengths and speeds without a Python loop
 
 Conventions used everywhere in this file (and in NAVERA):
   * angles in DEGREES at the interface, converted to radians inside;
@@ -17,7 +17,6 @@ import math
 
 import numpy as np
 
-EARTH_RADIUS_M = 6_371_000.0      # same value as navera_common/geo.py
 G_MPS2 = 9.81                     # gravity (m/s²)
 
 # ---------------------------------------------------------------------------
@@ -88,6 +87,8 @@ class Vehicle:
         raise NotImplementedError("TODO 6b")
 
     def __repr__(self):
+        # __repr__ is the text Python shows when you print() the object (course, section 5).
+        # {self.name!r} inserts repr(self.name): the name WITH its quotes, e.g. 'quad'.
         return f"{type(self).__name__}({self.name!r}, cruise {self.cruise_ms} m/s)"
 
 
@@ -114,6 +115,11 @@ class FixedWing(Vehicle):
         """Radius of a level turn: r = v² / (g · tan(bank))."""
         # TODO 7b: the formula of the docstring (G_MPS2 is defined at the top; bank in radians!)
         raise NotImplementedError("TODO 7b")
+
+
+# ---------------------------------------------------------------------------
+# Part C — NumPy: the Track class
+# ---------------------------------------------------------------------------
 
 
 class Track:
@@ -148,37 +154,8 @@ class Track:
         # TODO 9b: segment lengths / segment durations, element by element (an array)
         raise NotImplementedError("TODO 9b")
 
-    def max_distance_from(self, east0=0.0, north0=0.0):
-        """Largest distance (m) between the track and the point (east0, north0)."""
-        # TODO 10: broadcasting — an array minus a number; then the maximum (0.0 for an empty track)
-        raise NotImplementedError("TODO 10")
-
-
-# ---------------------------------------------------------------------------
-# Part C — NumPy
-# ---------------------------------------------------------------------------
-
-
-def enu_from_latlon(lat_deg, lon_deg, lat0_deg, lon0_deg):
-    """Local (east, north) metres of (lat, lon) around the reference (lat0, lon0).
-
-    Flat-Earth (equirectangular) approximation, good to well under 1 % within ~100 km:
-        east  = R · Δλ · cos(φ0)        north = R · Δφ          (angles in radians)
-    Must work for floats AND for NumPy arrays of any shape (use np.radians, np.cos)."""
-    # TODO 11: the two formulas of the docstring, with np.radians and np.cos (not math.*)
-    raise NotImplementedError("TODO 11")
-
 
 # ---- you don't need to change anything below this line (but read it!) ----
-
-
-def great_circle_m(lat1, lon1, lat2, lon2):
-    """Haversine distance (m) on a sphere — the reference for Part C (lesson 6 explains it).
-    Vectorised like day_pkg's _haversine_to_coords()."""
-    p1, p2 = np.radians(lat1), np.radians(lat2)
-    a = (np.sin((p2 - p1) / 2) ** 2
-         + np.cos(p1) * np.cos(p2) * np.sin(np.radians(np.asarray(lon2) - np.asarray(lon1)) / 2) ** 2)
-    return 2 * EARTH_RADIUS_M * np.arcsin(np.sqrt(np.minimum(1.0, a)))
 
 
 def load_track(path, name="track"):
@@ -191,6 +168,7 @@ def load_track(path, name="track"):
 
 
 def _try(label, fn, *args):
+    # *args collects any extra arguments in a tuple; fn(*args) unpacks them again (course, section 2).
     try:
         r = fn(*args)
         if isinstance(r, tuple):
@@ -205,6 +183,7 @@ def _try(label, fn, *args):
 
 
 if __name__ == "__main__":
+    # "lambda: ..." below is a small function without a name, run later by _try() (lesson 4 explains it).
     print("Part A — functions")
     _try("heading_vector(90)", heading_vector, 90)
     _try("ground_velocity(15, 0, 4, 0)", ground_velocity, 15, 0, 4, 0)
@@ -219,13 +198,9 @@ if __name__ == "__main__":
     _try('...range_m(wind_along_ms=-3)', lambda: Vehicle("quad", 12, 100, 400).range_m(wind_along_ms=-3))
     _try('FixedWing("wing", 20, 150, 250, 12)', FixedWing, "wing", 20, 150, 250, 12)
     _try('...turn_radius_m(30)', lambda: FixedWing("wing", 20, 150, 250, 12).turn_radius_m(30))
+    print("Part C — NumPy: the Track class")
     tr = Track("demo")
     _try("Track.add(0, 0, 0); add(1, 3, 4); add(2, 3, 10)",
          lambda: [tr.add(0, 0, 0), tr.add(1, 3, 4), tr.add(2, 3, 10), len(tr)][-1])
     _try("Track.length_m()", tr.length_m)
     _try("Track.speeds_ms()", tr.speeds_ms)
-    _try("Track.max_distance_from(0, 0)", tr.max_distance_from, 0, 0)
-    print("Part C — NumPy")
-    _try("enu_from_latlon(24.347, 56.709, 23.588, 58.383)", enu_from_latlon, 24.347, 56.709, 23.588, 58.383)
-    _try("enu_from_latlon(array of 3 lats, ...)",
-         lambda: enu_from_latlon(np.array([23.6, 23.7, 23.8]), np.array([58.4, 58.4, 58.4]), 23.588, 58.383))

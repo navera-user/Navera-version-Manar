@@ -142,7 +142,9 @@ repeat:  N = N(φ);   h = p / cos φ − N;   φ = atan2(Z, p (1 − e² N / (N 
 Each iteration reduces the error by a factor of the order of e² ≈ 0.007, so 5–6 iterations give
 sub-millimeter accuracy for any point near the Earth. (Closed-form solutions exist, for example
 Bowring's method, but the iteration is easier to read and to test.) Because the formula divides by
-cos φ, it would fail exactly at the poles — not a problem for a drone in Oman.
+cos φ, it would fail exactly at the poles — not a problem for a drone in Oman. You do not need to prove
+that the iteration converges: the lab checks it with a **round-trip test** (geodetic → ECEF →
+geodetic must give back the same point to a millimeter).
 
 ## 4. ENU: the local tangent frame
 
@@ -258,7 +260,10 @@ two kinds of error:
    N·π/180 ≈ 111 380 m is close to 111 320 m.
 2. **Curvature and convergence of the meridians (second order, proportional to d²).** Using the
    cosine of the home latitude for all points ignores that meridians get closer as you go north:
-   the east error is about e·n·tan φ0 / R. With the exact radii M and N instead of 111 320 m, this
+   the east error is about e·n·tan φ0 / R (e, n: the east and north distances in meters). Example
+   at Muscat (φ0 = 23.6°, tan φ0 = 0.436), a point 10 km east and 10 km north:
+   `10 000 × 10 000 × 0.436 / 6 371 000 ≈ 6.8 m`. Twice farther (20 km, 20 km) gives four times
+   more, 27 m: that is "proportional to d²". With the exact radii M and N instead of 111 320 m, this
    is all that remains: a few meters at 10 km.
 
 In the lab you will measure both curves. For the worked example above, the flat formula puts
@@ -274,6 +279,8 @@ A flat frame is a tool for a few kilometers, not for a flight across the Hajar m
 >   Using one anyway gives `NameError: name 'dl' is not defined` (Python may then suggest a
 >   similar name such as `'d'` — ignore the suggestion and define the variable).
 > - Use the constant names of the file: the sphere radius is `EARTH_RADIUS_M`, not `R`.
+> - A `*` in front of a tuple in a call **unpacks** it into separate arguments (lesson 3):
+>   `ecef_to_geodetic(*x)` is `ecef_to_geodetic(x[0], x[1], x[2])`.
 > - Tuples do not do arithmetic: `(1, 2) - (1, 1)` raises `TypeError: unsupported operand type(s)`.
 >   Make numpy arrays, `np.array(geodetic_to_ecef(...))`, then `-` works element by element,
 >   `R @ d` is the matrix–vector product and `R.T` is the transpose.

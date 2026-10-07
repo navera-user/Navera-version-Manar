@@ -98,6 +98,24 @@ def _():
         c.ok(d <= 1, f"equalise() differs from cv2.equalizeHist by up to {d} grey levels")
 
 
+@c.test("equalise(): a uniform picture (one grey value) comes back unchanged, with no warning",
+        hint="In a uniform picture every pixel has the same value, so cdf_min == N and (cdf − cdf_min) / (N − cdf_min) "
+             "is 0 / 0 (RuntimeWarning: invalid value encountered in divide). Test N == cdf_min first and "
+             "return a copy of the picture, as normalise() does when max == min.")
+def _():
+    import warnings
+    (f,) = need(lab(), "equalise")
+    flat = np.full((4, 5), 90, np.uint8)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with np.errstate(all="warn"):
+            r = u8(f(flat.copy()), "equalise(uniform)")
+    c.ok(np.array_equal(r, flat), f"equalise() of a 4 × 5 picture full of 90 gave {np.unique(r).tolist()} — "
+                                  "a uniform picture should come back unchanged (all 90)")
+    bad = [str(w.message) for w in caught if issubclass(w.category, RuntimeWarning)]
+    c.ok(not bad, f"equalise() of a uniform picture printed a RuntimeWarning: {bad[0] if bad else ''}")
+
+
 @c.test("convolve2d(): identity kernel, TRUE convolution (flipped kernel), reflect-101 border, float32, = OpenCV",
         hint="np.pad(img, ((r, r), (r, r)), mode='reflect') is OpenCV's BORDER_REFLECT_101. Flip with kernel[::-1, ::-1], "
              "then add k[i, j] · padded[i:i+H, j:j+W] for every (i, j). With a 1 on the LEFT of the centre, a true "

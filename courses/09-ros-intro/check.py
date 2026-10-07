@@ -181,12 +181,23 @@ def _():
 
 
 @c.test("Step 8 — FIRST_STATE, NAV_STATUS_HZ and FIX_MAX_SIGMA_M",
-        hint="With only the estimator running, `state:` of /navera/nav_status is the INITIALIZING constant; "
+        hint="FIRST_STATE is the NUMBER printed after `state:` by `ros2 topic echo --once /navera/nav_status` "
+             "(the constants are in NavStatus.msg: 0 = STATE_INITIALIZING, 1 = STATE_NO_FIX…); "
              "`ros2 topic hz` gives about 5; the service call returns double_value=25.0.")
 def _():
     from navera_msgs.msg import NavStatus
     st = live_estimator()["msgs"][-1]
-    c.eq(answered("FIRST_STATE"), st.state, "FIRST_STATE")
+    fs = answered("FIRST_STATE")
+    if isinstance(fs, str):          # a name is accepted too: "INITIALIZING" or "STATE_INITIALIZING"
+        names = {k[len("STATE_"):]: getattr(NavStatus, k) for k in dir(NavStatus)
+                 if k.startswith("STATE_") and isinstance(getattr(NavStatus, k), int)}
+        key = fs.strip().upper()
+        key = key[len("STATE_"):] if key.startswith("STATE_") else key
+        c.ok(key in names, f"FIRST_STATE = {fs!r} is not a state name — write the number printed after `state:`, without quotes")
+        fs = names[key]
+    c.ok(isinstance(fs, int) and not isinstance(fs, bool),
+         f"FIRST_STATE should be the number printed after `state:` (no quotes), got {fs!r}")
+    c.eq(fs, st.state, "FIRST_STATE (the number after `state:`)")
     c.ok(st.state == NavStatus.STATE_INITIALIZING, "unexpected estimator state — tell your teacher")
     c.near(answered("NAV_STATUS_HZ"), 5.0, 0.7, "NAV_STATUS_HZ")
     c.near(answered("FIX_MAX_SIGMA_M"), 25.0, 1e-6, "FIX_MAX_SIGMA_M")

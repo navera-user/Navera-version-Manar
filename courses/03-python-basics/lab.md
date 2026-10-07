@@ -1,14 +1,13 @@
 # Lab 3 — A navigation library and a mission planner
 
 **Goal:** write `navlib.py`, a small navigation library with functions, exceptions, two classes
-with inheritance, a `Track` class computed with NumPy, and a vectorised projection; then use it in
-`mission.py` to decide whether two vehicles can fly an inspection on the Batinah coast, analyse a
-recorded survey track, and measure the error of the flat-Earth formula across Oman. You finish with
-a short written report.
-**Time:** about 3 hours.
+with inheritance and a `Track` class computed with NumPy; then use it in `mission.py` to decide
+whether two vehicles can fly an inspection on the Batinah coast and to analyse a recorded survey
+track. You finish with a short written report.
+**Time:** about 3–4 hours (more if Python classes are new to you — that is normal).
 
-Your files (already open): [navlib.py](file:./navlib.py) (TODO 1–11),
-[mission.py](file:./mission.py) (TODO A–D), [report.md](file:./report.md), and the data
+Your files (already open): [navlib.py](file:./navlib.py) (TODO 1–9),
+[mission.py](file:./mission.py) (TODO A–C), [report.md](file:./report.md), and the data
 [sohar_track.csv](file:./sohar_track.csv) (synthetic: one position per second, in metres east and
 north of the take-off point).
 
@@ -102,10 +101,14 @@ Expected: `12.0 6.0 24.0 15.0`. Then see your exception being **caught** by a ca
 ```bash
 python3 -c "from navlib import flight_time_min as f
 try:
-    f(100, 400, 1.0)
+    print('NOT refused (bug):', f(100, 400, 1.0))
 except ValueError as e:
     print('refused:', e)"
 ```
+
+Expected: `refused: …` followed by **your own** error message. If you see
+`NOT refused (bug): 0.0`, your test lets `reserve_frac = 1.0` pass: the interval `[0, 1)` excludes 1,
+so the test must be `>= 1` (or `not 0 <= reserve_frac < 1`), not `> 1`.
 
 ## Step 4 — Classes and inheritance (TODO 5–7)
 
@@ -138,7 +141,7 @@ python3 -c "from navlib import *; w = FixedWing('wing', 20, 150, 220, 12); print
 > battery value does it use? What would happen if you deleted the `super().__init__(...)` line?
 > (Try it, run the command above, read the error, then put the line back.)
 
-## Step 5 — The Track class with NumPy (TODO 8–10)
+## Step 5 — The Track class with NumPy (TODO 8–9)
 
 The class `Track` keeps three lists `t`, `east`, `north`. `arrays()` (already written) turns them
 into NumPy arrays: from there, **no Python loop** is needed.
@@ -149,15 +152,13 @@ into NumPy arrays: from there, **no Python loop** is needed.
 > - **TODO 9a** `length_m()`: total length with `np.diff`, `np.hypot`, `np.sum` (`0.0` with fewer
 >   than 2 points). **TODO 9b** `speeds_ms()`: the array of the `n − 1` segment speeds (an empty
 >   array with fewer than 2 points).
-> - **TODO 10** `max_distance_from(east0=0.0, north0=0.0)`: broadcasting, then the maximum
->   (`0.0` for an empty track).
 
 ```bash
 python3 navlib.py
 ```
 
-The demo track `(0,0) → (3,4) → (3,10)` must give `length_m() → 11`, `speeds_ms() → [5. 6.]` and
-`max_distance_from(0, 0) → 10.44`. Then load the real file and look at the speeds:
+The demo track `(0,0) → (3,4) → (3,10)` must give `length_m() → 11` and `speeds_ms() → [5. 6.]`
+(compare with the worked example at the end of the course, section 7). Then load the real file and look at the speeds:
 
 ```bash
 python3 -c "from navlib import load_track; import numpy as np; tr = load_track('sohar_track.csv'); s = tr.speeds_ms(); print(len(tr), tr.length_m(), np.median(s), s.max(), np.round(s[145:152], 1))"
@@ -165,22 +166,9 @@ python3 -c "from navlib import load_track; import numpy as np; tr = load_track('
 
 The median speed is close to the 12 m/s cruise, but the maximum is above 50 m/s, and two speeds
 (index 149 and 150) are far too high. A multirotor does not do that: a **glitch** — one wrong GPS
-fix — hides in the data. You will find its time in Step 7.
+fix — hides in the data. You will find its time in Step 6.
 
-## Step 6 — Vectorised projection (TODO 11)
-
-> [!TASK]
-> **TODO 11** `enu_from_latlon(lat_deg, lon_deg, lat0_deg, lon0_deg)` returns `(east, north)` in
-> metres with the flat-Earth formulas of the course. It must work with plain numbers **and** with
-> NumPy arrays of any shape — use `np.radians` and `np.cos`, not `math.*`.
-
-```bash
-python3 navlib.py
-```
-
-Sohar seen from Muscat should be about `(-1.706e+05, 8.44e+04)` m: 171 km west, 84 km north.
-
-## Step 7 — The mission planner (TODO A–D)
+## Step 6 — The mission planner (TODO A–C)
 
 Open [mission.py](file:./mission.py). It imports your library. Read the scenario at the top: 9 km
 out on track 030°, back on 210°, wind `(-3, -4)` m/s.
@@ -199,11 +187,8 @@ As long as a TODO of `navlib.py` is missing, `mission.py` tells you which one.
 >   `<name>_endurance_min`, `<name>_round_trip_min`, `<name>_can_do_it` (a `bool`), and
 >   `wing_turn_radius_m` (30° bank);
 > - **TODO C** `track_points`, `track_length_m`, `track_max_speed_ms`, `track_median_speed_ms`,
->   `track_max_dist_m`, `glitch_time_s` (the time of the **first** point reached at more than
->   25 m/s — a boolean mask and `np.argmax`; remember that speed `i` ends at point `i + 1`);
-> - **TODO D** `projection_error_pct` (a dict `{city: error in %}` for the four cities, computed
->   with **one** call of `enu_from_latlon` on arrays), `salalah_flat_km`,
->   `salalah_great_circle_km`.
+>   `glitch_time_s` (the time of the **first** point reached at more than 25 m/s — a boolean mask
+>   and `np.argmax`; remember that speed `i` ends at point `i + 1`).
 
 ```bash
 python3 mission.py
@@ -217,31 +202,32 @@ cat results.json
 `bool(...)`. If you see `TypeError: Object of type int64 is not JSON serializable` (or `bool_`),
 that is the reason.
 
-> [!TIP]
-> To build the dict of errors from two sequences, `zip` them:
-> `{name: float(e) for name, e in zip(names, err_pct)}` — a **dict comprehension**, the cousin of
-> the list comprehension.
-
-## Step 8 — Write the report
+## Step 7 — Write the report
 
 > [!TASK]
-> Fill [report.md](file:./report.md): keep the four `##` headings, replace each "(write here)" by
-> 2–4 sentences of your own (at least 120 words in total), with numbers and units from
-> results.json. The check looks for the quad's **round-trip time** (min), the **glitch time** (s)
-> and **Salalah's projection error** (%), and for the four headings.
+> Fill [report.md](file:./report.md): keep the three `##` headings, replace each "(write here)" by
+> 2–4 sentences of your own (at least 100 words in total), with numbers and units from
+> results.json. The check looks for the quad's **round-trip time** (min) and the **glitch time**
+> (s), and for the three headings.
 
 Questions to answer in it: why the heading is not 030°; why a 25-minute trip in still air does not
 fit in 21.9 minutes of endurance with this wind; why the **median** speed describes the track
-better than the mean or the maximum; up to what distance the flat-Earth formula is good enough.
+better than the mean or the maximum.
 
-## Step 9 — Check your work
+## Step 8 — Check your work
 
 Press **✔ Check my work**. The checker calls your functions with other values than the demo
-(other headings, winds, batteries, a 2×2 array of positions…), checks your exceptions, builds your
+(other headings, winds, batteries, other tracks…), checks your exceptions, builds your
 classes, runs `mission.py` and reads `results.json` and `report.md`. Each ✘ shows the call and the
 value you returned: run that same call with `python3 -c "…"` to see it yourself.
 
 ## Going further (optional)
+
+- **Farthest point from home.** Add a method `Track.max_distance_from(east0=0.0, north0=0.0)` that
+  returns the largest distance between the track and the point `(east0, north0)`, with NumPy and no
+  loop (`e - east0` subtracts a number from every element). For `sohar_track.csv` and the take-off
+  point `(0, 0)` you should find about 1362 m. Lesson 4 then shows **broadcasting**, the general
+  rule behind `e - east0`.
 
 - **Best heading for a round trip.** For the fixed wing, which outbound track (0°–359°, step 1°)
   gives the **longest** round trip with this wind, and which the shortest? Do it with NumPy:

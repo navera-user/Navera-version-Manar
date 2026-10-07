@@ -19,10 +19,3 @@ The survey track has 263 points and is 3270 m long. The median speed is 12.1 m/s
 the real cruise speed, but the maximum is 54.3 m/s: impossible for this quad. It comes from
 a glitch at t = 150 s, a fix about 40 m off the route. The glitch adds roughly 80 m to the
 length and makes the maximum speed useless, so the median is the better summary.
-
-## Projection error
-
-The flat-Earth projection around Muscat is wrong by 0.24 % for Sohar, -0.14 % for Nizwa,
--0.20 % for Sur and -0.60 % for Salalah (5.1 km on 857 km). Within about 100–200 km the
-error stays below a quarter of a percent, so I would use it for local maths only and the
-great-circle formula for long distances.

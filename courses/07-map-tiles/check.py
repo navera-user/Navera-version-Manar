@@ -159,7 +159,7 @@ def _():
     c.near(lon, 10.6385877728, tol=1e-9, what="longitude of that pixel")
 
 
-@c.test("mosaic.py builds a 768 × 768 mosaic.png (Monastir marina, zoom 17, small map)",
+@c.test("mosaic.py builds a 768 × 768 mosaic (the checker's own test: Monastir marina, zoom 17, small map)",
         hint="Run `python3 mosaic.py 35.7795 10.8320 17 --map /data/academy/07-map-tiles/sousse_small.mbtiles` "
              "and read the error, if any.")
 def _():

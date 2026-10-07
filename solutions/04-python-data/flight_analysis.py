@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt          # noqa: E402
 import numpy as np                       # noqa: E402
 import pandas as pd                      # noqa: E402
 
-EARTH_RADIUS_M = 6_371_000.0             # same value as lesson 3 and navera_common/geo.py
+EARTH_RADIUS_M = 6_371_000.0             # same value as navera_common/geo.py
 DT_S = 2.0                               # logging period: one row every 2 s
 ALT_MIN_M, ALT_MAX_M = -100.0, 5000.0    # a plausible altitude for these vehicles
 STATES = ["FIX", "DEGRADED", "NO_FIX"]
@@ -77,6 +77,7 @@ def flight_summary(df):
     """One row per flight (index: flight_id, sorted), columns:
       rows, duration_s, distance_km (sum of step_m / 1000), max_alt_m,
       mean_speed_mps (the LOGGED speed_mps), min_battery_pct.
+    duration_s = last time_s - first time_s of the flight (NO extra + DT_S here).
     df already has the columns of add_motion()."""
     s = df.groupby("flight_id").agg(
         rows=("time_s", "size"),
@@ -166,7 +167,7 @@ COLORS = {"gps": "tab:blue", "day_vision": "tab:orange"}
 
 
 def plot_tracks(df, path):
-    """Every flight in its own panel, local east/north metres (flat-Earth formula of lesson 3)."""
+    """Every flight in its own panel, local east/north metres (flat-Earth formula, course section 3)."""
     flights = sorted(df["flight_id"].unique())
     fig, axes = plt.subplots(2, 2, figsize=(10, 9))
     for ax, fid in zip(axes.ravel(), flights):

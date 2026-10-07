@@ -89,11 +89,11 @@ The two 40-character hashes are identical: `ce01362…`.
 address (it may be invented). The names below are only examples — do not copy them:
 
 ```text
-git config --global user.name "Salim Al Harthy"
+git config --global user.name "Navi Swallow"
 ```
 
 ```text
-git config --global user.email "salim.alharthy@example.com"
+git config --global user.email "navi.swallow@example.com"
 ```
 
 ```bash
@@ -316,7 +316,14 @@ grep -n -B 5 "gps_jump_margin_m" navera_estimator/navera_estimator/config/estima
 > measurement? Which rules of `CLAUDE.md` (course, "In NAVERA") does the patch break?
 
 Decision: the `geo.py` change (a literal replaced by the module's constant, same value) is safe;
-the margin change is not. Apply the patch **except** the parameter file:
+the margin change is not. Before you apply anything, measure the Muscat → Sohar distance with the
+current `geo.py`, so that you can compare after the patch:
+
+```bash
+python3 -c "from navera_common.geo import haversine_m; print(round(haversine_m(23.588, 58.383, 24.347, 56.709)))"
+```
+
+It prints `189875` (metres). Now apply the patch **except** the parameter file:
 
 ```bash
 git apply --exclude=navera_estimator/navera_estimator/config/estimator_params.yaml ~/lessons/05-git/review_me.patch
@@ -327,7 +334,7 @@ git diff
 ```
 
 Only `geo.py` changed. Verify it: it compiles, and the Muscat → Sohar distance is unchanged
-(lesson 3 found 189 875 m with the same formula):
+(it must still print `189875`, the value before the patch):
 
 ```bash
 python3 -m py_compile navera_common/navera_common/geo.py

@@ -319,7 +319,7 @@ if [ ! -f "$log" ]; then                # -f: "is a regular file"; ! = not
     echo "no such file: $log" >&2
     exit 1
 fi
-n=$(grep -c "^\[$level\]" "$log" || true)   # $(...) = the output of a command
+n=$(grep -c "^\[$level\]" "$log" || true)   # $(...): see below
 echo "$level: $n"
 ```
 
@@ -328,6 +328,10 @@ for f in mission/logs/*.log; do         # a loop over the files of a pattern
     echo "$(basename "$f"): $(wc -l < "$f") lines"
 done
 ```
+
+**Command substitution** `$(command)`: bash runs the command and puts its **output** (the text it
+prints) in place of the `$( )`. `n=$(grep -c …)` stores the count in `n`; `echo "lines: $(wc -l < f)"`
+prints the text with the number inside. Try it: `echo "I am $(whoami)"`.
 
 Rules that avoid 90 % of script bugs:
 
@@ -338,6 +342,10 @@ Rules that avoid 90 % of script bugs:
 - `set -e` stops the script at the first failing command. Careful: **`grep` exits with 1 when it
   finds nothing**, so under `set -e` an assignment `n=$(grep -c …)` that counts 0 matches stops your
   script silently. `|| true` ("or else do nothing, successfully") keeps it going; grep still prints `0`.
+  Bash is not consistent here: in `echo "x: $(grep -c …)"` the script does **not** stop (the exit
+  code of `echo` counts, and echo succeeds), but in `n=$(grep -c …)` it **does**. Do not try to
+  remember which case is which. **The rule: always write `|| true` after a grep that may find
+  nothing**, inside `$( )` or not.
 - Errors and usage messages go to **stderr** (`>&2`) and the script ends with a **non-zero exit
   code**. Normal results go to stdout. Then other programs can pipe your output safely.
 - `basename path` prints the last part of a path: `basename mission/logs/sohar_2026-09-21.log`

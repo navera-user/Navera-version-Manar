@@ -14,8 +14,9 @@ You will meet real maths on the way: the **wind triangle**, battery endurance an
 of an aircraft.
 
 > [!NOTE]
-> This lesson is dense on purpose. If a Python feature is new to you, try it in the interactive
-> interpreter (`python3`, prompt `>>>`) right away. The official tutorial
+> This lesson covers a lot of Python. Plan about 4–5 hours for the course and the lab together if
+> you have done only one programming course. If a Python feature is new to you, try it in the
+> interactive interpreter (`python3`, prompt `>>>`) right away. The official tutorial
 > (docs.python.org/3/tutorial) covers every point in more detail; the sandbox has Python 3.10.
 
 ## 1. The core language in ten minutes
@@ -90,7 +91,8 @@ while battery_wh > reserve_wh:    # repeat while a condition is true
 A **list comprehension** builds a list in one line:
 `high = [a for a in alts if a > 100]`. NAVERA uses them everywhere, for example in
 `day_pkg/vision_nav.py`:
-`pts = [p for p in self._bias if math.hypot(*_en(p[:2], near)) <= self.bias_radius_m]`.
+`pts = [p for p in self._bias if math.hypot(*_en(p[:2], near)) <= self.bias_radius_m]`
+(the `*` in front of `_en(...)` is explained at the end of section 2).
 
 ## 2. Functions
 
@@ -114,6 +116,17 @@ east, north = heading_vector(30)    # 0.5, 0.866…
   (`flight_time_min(100, 400, reserve_frac=0.0)`).
 - `print` is not `return`: `print` shows a value to a human, `return` gives it to the code that
   called the function. The checks of this course test what your functions **return**.
+
+> [!NOTE]
+> **Python note — `*` unpacking.** A `*` in front of a list or tuple **in a function call** passes
+> its items as separate arguments:
+> ```python
+> math.hypot(*[3, 4])          # the same as math.hypot(3, 4)  → 5.0
+> v = heading_vector(30)       # a tuple (east, north)
+> print(*v)                    # the same as print(v[0], v[1])
+> ```
+> In a `def`, `*args` does the opposite: it collects any extra arguments into one tuple
+> (`def f(*args):`). You will see both in NAVERA and in the lab files.
 
 ### Scope: variables live inside their function
 
@@ -184,7 +197,6 @@ Errors you will meet in this course, with their usual cause:
 | `TypeError: unsupported operand type(s) for *: 'NoneType' and 'int'` | a function that forgot `return` |
 | `ValueError: math domain error` | `math.asin(1.2)`, `math.sqrt(-1)`: often degrees given instead of radians |
 | `TypeError: only length-1 arrays can be converted to Python scalars` | `math.cos(array)`: use `np.cos` |
-| `ValueError: operands could not be broadcast together with shapes (3,2) (3,)` | array shapes that do not fit (section 7) |
 | `ZeroDivisionError`, `IndexError`, `KeyError` | divide by 0, index past the end, missing dict key |
 | `NotImplementedError: TODO 3` | in this course: a TODO you have not written yet |
 
@@ -223,6 +235,10 @@ print(quad.endurance_s())                     # 1316.6 s
   creates a local variable that disappears at the end of the method — a classic bug.
 - Two objects of the same class have their own attributes:
   `Vehicle("wing", 20, 150, 220, …)` does not change `quad`.
+- Names with two underscores on each side (`__init__`, `__len__`, `__repr__`) are **special
+  methods**: Python calls them for you. `len(track)` calls `track.__len__()`, and `print(quad)`
+  shows the text returned by `quad.__repr__()`. In an f-string, `{name!r}` inserts `repr(name)`:
+  the text **with** its quotes (`'quad'`), useful in messages.
 
 ### Inheritance and `super()`
 
@@ -367,49 +383,23 @@ np.argmax(fast)               # 2   (index of the FIRST True)
 also works on a plain number. A function written with `np.radians`, `np.cos`, `np.hypot` therefore
 accepts a number **or** an array of any shape.
 
-### Broadcasting
+An operation between an array and a **number** applies the number to **every** element:
+`e - 100.0` subtracts 100 from each east value, `t / 60` turns all the times into minutes. (Lesson 4
+shows the general rule, **broadcasting**, for arrays of different shapes; you do not need it here.)
 
-When two arrays of different shapes meet in an operation, NumPy **broadcasts** them: a size-1
-(or missing) dimension is stretched to match the other one. The simplest case: an array and a
-number.
-
-![Broadcasting: an (N,) array minus a number, and an (N, 2) array minus a (2,) vector](assets/broadcasting.svg)
+**Worked example: the speeds of a track.** Four positions, one per second:
 
 ```python
-e - 100.0                          # 100 subtracted from every element
-P = np.array([[0, 0], [12, 1], [24, 1]])   # shape (3, 2): one (east, north) per row
-home = np.array([5, 1])                     # shape (2,)
-P - home                           # shape (3, 2): home subtracted from EVERY row
-np.hypot(*(P - home).T)            # distance of every point to home: [5.10, 7.0, 19.0]
-P.mean(axis=0)                     # column means: the centre of the points, shape (2,)
-P[:, 0]                            # first column (all east values), shape (3,)
+t = np.array([0.0, 1.0, 2.0, 3.0])
+e = np.array([0.0, 3.0, 3.0, 9.0])
+n = np.array([0.0, 4.0, 10.0, 18.0])
+seg = np.hypot(np.diff(e), np.diff(n))      # [5., 6., 10.]   three segment lengths (m)
+seg.sum()                                   # 21.0            the path length (m)
+seg / np.diff(t)                            # [5., 6., 10.]   three speeds (m/s)
 ```
 
-(`.T` **transposes** the array: rows become columns, so `*` passes the east column and the north
-column as the two arguments of `np.hypot`. `axis=0` means "along the rows", i.e. one result per
-column.)
-
-Rule: compare the shapes from the **right**; two sizes fit when they are equal or one of them is
-1. `(3, 2)` with `(2,)` fits; `(3, 2)` with `(3,)` does not:
-`ValueError: operands could not be broadcast together with shapes (3,2) (3,)`.
-
-### Worked example: Omani cities in a local frame
-
-Near a reference point `(φ0, λ0)`, latitude and longitude can be turned into metres east and north
-with a **flat-Earth** (equirectangular) approximation (lesson 6 derives it; angles in radians,
-`R = 6 371 000 m`):
-
-```
-east  = R · (λ − λ0) · cos φ0
-north = R · (φ − φ0)
-```
-
-With Muscat (23.588° N, 58.383° E) as the reference, Nizwa (22.933° N, 57.533° E) is at
-`east = 6 371 000 × (−0.850 × π/180) × cos 23.588° = −86.6 km` and
-`north = 6 371 000 × (−0.655 × π/180) = −72.8 km`: 113.2 km away. The great-circle (exact
-spherical) distance is 113.3 km, so the flat formula is wrong by only 0.14 %. For Salalah,
-857 km away, the error grows to 0.6 % (5 km). With NumPy, all cities are computed in one call —
-you will do it in the lab.
+4 points give 3 segments. Speed `0` is the segment from point 0 to point 1, so the **point reached**
+at speed `i` is point `i + 1`: keep this in mind when you look for the time of a glitch.
 
 ## 🐦 How birds do it
 
@@ -486,8 +476,9 @@ NumPy expression ([day_localizer.py](file:navera/day_pkg/day_pkg/nodes/day_local
         return R * 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
 ```
 
-`self.coords[:, 0]` is the first **column** of an `(N, 2)` array (all latitudes); `la - p1` is
-broadcasting (an array minus a number); the result is an array of N distances. Elsewhere the same
+`self.coords` is a 2-D array with one row per tile; `self.coords[:, 0]` is its first **column**
+(all latitudes). `la - p1` is an array minus a number (every element); the result is an array of N
+distances. Elsewhere the same
 file keeps only the tiles inside the search circle with a boolean mask: `near[d <= radius_m]`.
 
 ## Glossary
@@ -496,6 +487,7 @@ file keeps only the tiles inside the search circle with a boolean mask: `near[d 
 |---|---|
 | **format specification** | the part after `:` in `{x:8.2f}`: width, decimals, alignment |
 | **tuple / unpacking** | a fixed sequence `(a, b)`; `a, b = f()` takes its items apart |
+| **`*` unpacking** | `f(*seq)` passes the items of `seq` as separate arguments |
 | **list comprehension** | `[expr for x in seq if cond]`: builds a list in one line |
 | **scope / local variable** | where a name exists; a local exists only inside its function |
 | **module** | a `.py` file loaded with `import` |
@@ -507,10 +499,10 @@ file keeps only the tiles inside the search circle with a boolean mask: `near[d 
 | **`self`** | the object a method works on |
 | **inheritance / subclass** | a class built on another one, inheriting its methods |
 | **`super()`** | access to the parent class, e.g. `super().__init__(...)` |
+| **special method** | `__init__`, `__len__`, `__repr__`…: methods Python calls for you |
 | **array / dtype / shape** | NumPy's block of numbers / their type / their size per dimension |
 | **vectorised** | written as operations on whole arrays, without a Python loop |
 | **boolean mask** | an array of `True`/`False` used to select elements |
-| **broadcasting** | NumPy's rule to combine arrays of different shapes |
 | **crab angle** | angle between heading and track, flown to cancel the crosswind |
 | **endurance** | how long a vehicle can fly; **range**: how far |
 
@@ -538,9 +530,9 @@ w_cross = 0·cos 90° − 5·sin 90° = −5 (to the left), w_along = 0. c = asi
 104.5° (turn right, into the wind), GS = 20·cos 14.48° = 19.36 m/s.
 </details>
 
-<details><summary>5. <code>P</code> has shape (100, 2) and <code>v = np.array([3.0, 4.0, 5.0])</code>. Does <code>P - v</code> work? And <code>P - v[:2]</code>?</summary>
-No: (100, 2) and (3,) do not fit from the right (2 ≠ 3), so NumPy raises "operands could not be broadcast together".
-<code>v[:2]</code> has shape (2,), which fits: the vector (3, 4) is subtracted from every row.
+<details><summary>5. <code>s = np.array([12.0, 30.5, 11.9, 40.2])</code>. What are <code>s &gt; 25</code>, <code>(s &gt; 25).sum()</code> and <code>np.argmax(s &gt; 25)</code>? What does <code>math.hypot(*[6, 8])</code> return?</summary>
+<code>array([False, True, False, True])</code>, <code>2</code> (True counts as 1) and <code>1</code> (the index of the first True).
+<code>math.hypot(*[6, 8])</code> is <code>math.hypot(6, 8)</code> = <code>10.0</code>: the <code>*</code> unpacks the list into two arguments.
 </details>
 
 <details><summary>6. A track has 263 positions. How many elements do <code>np.diff(t)</code> and the speed array have, and why does that matter for the index of a glitch?</summary>

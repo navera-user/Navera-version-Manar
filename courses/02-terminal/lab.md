@@ -29,7 +29,8 @@ pwd
 ls -la
 ```
 
-You see `answers.py`, `fake_node.sh`, `inbox/` and `mission_brief.txt`, plus `.` and `..`. Read the
+You see `answers.py`, `fake_node.sh`, `inbox/` and `mission_brief.txt`, plus `.`, `..` and
+`.academy_version` (a file the academy uses: ignore it). Read the
 first column of `ls -la`: `d` for a folder, `-` for a file, then the 9 permission bits. `fake_node.sh`
 has `x` bits; the other files do not. The third and fourth columns are the owner (`student`) and the
 group — the group may show a name of the host computer, such as `shadow-team`; ignore it.
@@ -412,6 +413,13 @@ Which file decides the ROS domain on a deployed box? Search **inside** files wit
 grep -rn "ROS_DOMAIN_ID=42" ~/navera/deploy
 ```
 
+<details><summary>Answer (not graded)</summary>
+Three files contain it. <code>deploy/navera.env.example</code> is the template of <code>/etc/navera/navera.env</code>, the
+settings file of a deployed box: the line <code>ROS_DOMAIN_ID=42</code> written there <b>decides</b> the domain (the systemd
+units load it with <code>EnvironmentFile=</code>). <code>deploy/systemd/navera_boot_lib.sh</code> is only the safety net: it
+uses 42 when the value is not a number. <code>deploy/README.md</code> is documentation.
+</details>
+
 and for the theory questions: **Q8** is the octal form of `rw-r-----` and **Q9** the name of the
 signal sent by Ctrl+C (both in the course).
 
@@ -465,7 +473,8 @@ Make it executable, then test it — on a log, without an argument, and on a mis
 
 Compare your WARN count with Step 10. The checker will also run your script on a **log it has never
 seen**: it has no ERROR line at all, and an INFO message that contains the words WARN and ERROR.
-Re-read the `set -e` rule of the course before you press Check.
+Re-read the `set -e` rule of the course before you press Check: **every** `grep -c` in your script
+needs `|| true`, also the ones inside `echo "…$(…)"`.
 
 Finally, save one report per flight with a `for` loop. `basename "$f" .log` also removes the `.log`
 ending:

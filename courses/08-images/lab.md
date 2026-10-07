@@ -4,7 +4,7 @@
 histogram, normalisation and equalisation, a true 2-D convolution, Gaussian and Sobel kernels, the
 rotation–scale matrix and a bilinear affine warp — verify each one against OpenCV, then use them to
 bring a drone photo to the map's orientation and scale, and measure how sensitive the comparison is.
-**Time:** about 3 hours.
+**Time:** 4–6 hours (TODO 10, the warp, is the longest step: plan an hour for it).
 
 | File | Role |
 |---|---|
@@ -68,7 +68,11 @@ The maximum difference must be 0 or 1 (rounding).
   why. A uniform picture (max = min) is returned unchanged.
 - **TODO 5** `equalise(gray)`: CDF with `np.cumsum`, `cdf_min` = the first non-zero value
   (`cdf[np.nonzero(cdf)[0][0]]`), a lookup table `lut` of 256 uint8 values, then `lut[gray]` — numpy
-  replaces every pixel value v by `lut[v]` in one operation.
+  replaces every pixel value v by `lut[v]` in one operation. A uniform picture (one grey value) is
+  returned **unchanged, as a uint8 copy** (`gray.copy()`), exactly like `normalise()`: there every
+  pixel has the same value, `N == cdf_min`, and the formula would divide 0 by 0
+  (`RuntimeWarning: invalid value encountered in divide`). `analysis.py` calls `equalise()` on such a
+  picture, so you will see this warning if you forget the test.
 
 ```bash
 python3 demo.py
@@ -81,7 +85,8 @@ OpenCV error you get when CLAHE receives a float64 picture: now you know what it
 
 > [!TASK]
 > **TODO 3–5 done** means: 256 counts summing to the pixel count; `normalise()` returns uint8 with
-> [[50, 100], [150, 50]] → [[0, 128], [255, 0]]; `equalise()` equals `cv2.equalizeHist` to ± 1.
+> [[50, 100], [150, 50]] → [[0, 128], [255, 0]]; `equalise()` equals `cv2.equalizeHist` to ± 1;
+> both return a uniform picture unchanged, without any warning.
 
 ## Step 4 — Convolution, Gaussian and Sobel (TODO 6, 7, 8)
 
@@ -124,6 +129,13 @@ building outline and road edge is bright.
   every output pixel; compute x and y for all of them at once with A⁻¹; `np.floor` → integer arrays
   `x0`, `y0`; read the 4 neighbours with the helper `_get(gray, ys, xs)` (it returns 0 outside). The
   result is float32.
+
+> [!NOTE]
+> **Python note.** TODO 10 needs two numpy tools from the box "numpy in ten lines" of the course
+> (section 1): `np.mgrid` (the row and column of every output pixel) and **integer-array indexing**
+> (`gray[ys, xs]` with integer arrays `ys`, `xs` reads one pixel per pair, all at once). Try them in
+> `python3` on a 2 × 3 array before you write the warp: `v, u = np.mgrid[0:2, 0:3]`, then
+> `a = np.arange(6).reshape(2, 3)` and `a[v, u]` (the whole array again) or `a[v, 2 - u]` (mirrored).
 
 ```bash
 python3 -c "import cv2, numpy as np; from images_lab import *; print(rotation_scale_matrix(320, 240, -35, 0.6201)); print(cv2.getRotationMatrix2D((320, 240), -35, 0.6201))"

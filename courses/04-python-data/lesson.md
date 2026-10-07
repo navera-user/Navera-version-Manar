@@ -112,7 +112,7 @@ Use `&`, `|`, `~` (not `and`, `or`, `not`), and put **parentheses** around each 
 | `df["lat"].isna()` | `True` where the cell is empty |
 | `df.isna().sum()` | number of empty cells per column |
 | `df.dropna(subset=["lat", "lon"])` | drop rows with an empty `lat` or `lon` |
-| `df["battery_pct"].fillna(method="ffill")` | fill a gap with the previous value |
+| `df["battery_pct"].ffill()` | fill a gap with the previous value ("forward fill") |
 
 NaN **propagates** through arithmetic: `NaN + 1` is `NaN`, and `np.mean([1.0, np.nan, 3.0])` is
 `nan`. pandas statistics **skip** NaN by default: `pd.Series([1.0, np.nan, 3.0]).mean()` is `2.0`.
@@ -146,6 +146,46 @@ df.groupby("flight_id").agg(                      # named aggregations: new_name
 pd.crosstab(df["flight_id"], df["state"], normalize="index") * 100   # % of each state per flight
 ```
 
+In a named aggregation, the function is a **name** that pandas knows (`"size"`, `"min"`, `"max"`,
+`"mean"`, `"median"`, `"sum"`, `"std"`) **or** a Python function. A percentile needs a parameter
+(0.95), so you give it as a small function written with `lambda`:
+
+```python
+df.groupby("source").agg(
+    median_mps=("err", "median"),
+    p95_mps=("err", lambda x: x.quantile(0.95)),    # x is the column of ONE group
+)
+```
+
+> [!NOTE]
+> **Python note — `lambda`.** `lambda x: x.quantile(0.95)` is a function without a name, written
+> in one expression. It is exactly the same as
+> ```python
+> def p95(x):
+>     return x.quantile(0.95)
+> ```
+> and you could write `p95_mps=("err", p95)` instead. pandas calls it once per group, with that
+> group's values as `x`. Example: `square = lambda v: v * v`, then `square(3)` is `9`.
+
+### A table from a dict
+
+When a loop computes several values per flight, collect them in a **dict of dicts**
+`{row label: {column: value}}`, then turn it into a DataFrame in one call:
+
+```python
+rows = {
+    "flight_a": {"n_outages": 3, "longest_outage_s": 40.0},
+    "flight_b": {"n_outages": 0, "longest_outage_s": 0.0},
+}
+table = pd.DataFrame.from_dict(rows, orient="index")    # the outer keys become the row index
+#           n_outages  longest_outage_s
+# flight_a          3              40.0
+# flight_b          0               0.0
+```
+
+`orient="index"` says "the outer keys are the rows". (Without it, the outer keys would become the
+columns.) Add `.sort_index()` to sort the rows by their label.
+
 `shift()` inside a group gives the **previous row of the same flight** — and NaN on the first row
 of each flight, so a flight never borrows the last position of the flight before it:
 
@@ -158,8 +198,8 @@ df["dt_s"] = df["time_s"] - g["time_s"].shift()
 
 The speed logged by the autopilot and the speed computed from two consecutive positions should
 agree. Comparing them measures the **noise of each position source**. For the distance between
-consecutive fixes we use the **haversine** formula (lesson 3 gave it as a ready-made function; lesson
-6 derives it), written with NumPy so that it works on whole columns:
+consecutive fixes we use the **haversine** formula (lesson 6 derives it), written with NumPy so that
+it works on whole columns:
 
 ```
 a = sin²(Δφ/2) + cos φ1 · cos φ2 · sin²(Δλ/2)        d = 2 R · asin(√a)        R = 6 371 000 m
@@ -183,6 +223,54 @@ Divided by `Δt = 2 s`:
 
 A speed computed from vision fixes 2 s apart is four times noisier than from GPS, even if each
 vision fix is "only" 6 m off. You will measure this in the lab.
+
+### NumPy broadcasting
+
+In lesson 3, an array and a number met in one operation: `e - 100.0` subtracted 100 from every
+element. This is the simplest case of **broadcasting**, NumPy's rule to combine arrays of different
+shapes: a size-1 (or missing) dimension is stretched to match the other one. It is why the haversine
+above works with a whole column `lat2` and a single number `lat1`.
+
+![Broadcasting: an (N,) array minus a number, and an (N, 2) array minus a (2,) vector](assets/broadcasting.svg)
+
+```python
+e = np.array([0.0, 12.1, 24.3])
+e - 100.0                          # [-100., -87.9, -75.7]: 100 subtracted from every element
+P = np.array([[0, 0], [12, 1], [24, 1]])   # shape (3, 2): one (east, north) point per row
+home = np.array([5, 1])                     # shape (2,)
+d = P - home                       # shape (3, 2): home subtracted from EVERY row
+d[:, 0]                            # first column (all east values), shape (3,)
+np.hypot(d[:, 0], d[:, 1])         # distance of every point to home: [5.10, 7.0, 19.0]
+P.mean(axis=0)                     # column means: the centre of the points, shape (2,)
+```
+
+`d[:, 0]` means "all rows, column 0". `axis=0` means "along the rows", i.e. one result per column.
+You will also meet a shorter form of the distance line: `np.hypot(*d.T)`. `.T` **transposes** the
+array (rows become columns: shape (2, 3)), and `*` unpacks its two rows into the two arguments of
+`np.hypot` (the `*` unpacking of lesson 3, section 2). Both forms give the same result; use the
+one you can read.
+
+Rule: compare the shapes from the **right**; two sizes fit when they are equal or one of them is
+1. `(3, 2)` with `(2,)` fits; `(3, 2)` with `(3,)` does not:
+`ValueError: operands could not be broadcast together with shapes (3,2) (3,)`.
+
+### Worked example: from lat/lon to metres
+
+Near a reference point `(φ0, λ0)`, latitude and longitude can be turned into metres east and north
+with a **flat-Earth** (equirectangular) approximation (lesson 6 derives it; angles in radians,
+`R = 6 371 000 m`):
+
+```
+east  = R · (λ − λ0) · cos φ0
+north = R · (φ − φ0)
+```
+
+With Muscat (23.588° N, 58.383° E) as the reference, Nizwa (22.933° N, 57.533° E) is at
+`east = 6 371 000 × (−0.850 × π/180) × cos 23.588° = −86.6 km` and
+`north = 6 371 000 × (−0.655 × π/180) = −72.8 km`: 113.2 km away. The haversine distance above is
+113.3 km, so the flat formula is wrong by only 0.14 %. For Salalah, 857 km away, the error grows to
+0.6 % (5 km). With broadcasting, `lat` and `lon` can be whole columns and `φ0`, `λ0` single numbers:
+the helper `plot_tracks()` of the lab draws every flight in metres exactly like this.
 
 ## 4. Outages: run-length logic
 
@@ -267,6 +355,7 @@ NumPy/pandas scalars with `int()`, `float()`, `bool()` first.
 | `KeyError: 'alt'` | no column with that name: check `df.columns` (spelling, spaces) |
 | `ValueError: could not convert string to float: ''` | `float()` on an empty CSV cell (csv module) |
 | `TypeError: unsupported operand type(s) for -: 'str' and 'int'` | a column is `object` (text): look at `df.dtypes` |
+| `ValueError: operands could not be broadcast together with shapes (3,2) (3,)` | array shapes that do not fit the broadcasting rule (section 3) |
 | `ValueError: The truth value of a Series is ambiguous` | `and`/`or`/`if` used on a Series: use `&`, `\|` and parentheses |
 | `SettingWithCopyWarning` | you changed a filtered **view**; build a new DataFrame (`.copy()`) or use `.loc[mask, "col"] = …` |
 | a result is `nan` | NaN propagated: a NumPy function on data with empty cells; use pandas methods or drop NaN first |
@@ -338,6 +427,8 @@ is how accuracy claims in docs/VALIDATION_STATUS.md must be produced from real d
 | **NaN** | "not a number": pandas' marker for a missing value |
 | **boolean mask** | a Series of True/False used to select rows |
 | **groupby / aggregation** | split rows into groups, compute one value per group |
+| **`lambda`** | a small function without a name: `lambda x: x.quantile(0.95)` |
+| **broadcasting** | NumPy's rule to combine arrays of different shapes |
 | **shift** | the value of the previous (or next) row |
 | **run-length** | describing a sequence by its runs of equal values |
 | **percentile (p90, p95)** | the value below which 90 % (95 %) of the data lies |
@@ -375,6 +466,11 @@ reduces it further — that is why NAVERA fits a velocity over 20 s of fixes ins
 <details><summary>6. A validation report gives only "mean error 12 m". What is missing?</summary>
 The distribution: one bad fix of 1 km among good ones changes the mean a lot. Report median, p90 (or p95) and the
 maximum, the number of samples, and the conditions (bench, simulation, flight).
+</details>
+
+<details><summary>7. <code>P</code> has shape (100, 2) and <code>v = np.array([3.0, 4.0, 5.0])</code>. Does <code>P - v</code> work? And <code>P - v[:2]</code>?</summary>
+No: (100, 2) and (3,) do not fit from the right (2 ≠ 3), so NumPy raises "operands could not be broadcast together".
+<code>v[:2]</code> has shape (2,), which fits: the vector (3, 4) is subtracted from every row.
 </details>
 
 Now open the **🛠️ Lab** tab.

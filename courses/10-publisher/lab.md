@@ -86,8 +86,9 @@ is TODO 7. In Terminal 2, list its parameters:
 ros2 param list /fake_gps
 ```
 
-Besides your six parameters you see `use_sim_time`: every node has it (course, section 2). Stop the
-node.
+If it says `Node not found`, wait two seconds and run it again: a new node needs a moment to be
+discovered (discovery, lesson 9, section 3). Besides your six parameters you see `use_sim_time`: every
+node has it (course, section 2). Stop the node.
 
 ## Step 4 — Make it move (TODO 7)
 
@@ -171,8 +172,13 @@ lines, then `Ctrl+C`):
 ros2 topic bw /fake_gps/fix
 ```
 
-`Message size mean` is the serialised size of one `NavSatFix`. Compare with the course's estimate
-(12 float64 = 96 bytes, plus header and status fields). Stop the node in Terminal 1.
+`Message size mean` is the serialised size of one `NavSatFix`. You should read about **128 B**, more
+than the 96 B of its 12 float64 (latitude, longitude, altitude and the 9 covariance values). The
+other bytes are the rest of the message: the time stamp of the header (8 B), the `frame_id` string
+`"gps"` (4 B for its length + 4 B for the text and its end byte), `status` (4 B), `covariance_type`
+(1 B), a 4 B header that DDS puts in front of every message, and a few **padding** bytes (empty bytes
+that keep every float64 at an address that is a multiple of 8). That makes 125 B; the tool reports
+the size rounded up to 128 B. Stop the node in Terminal 1.
 
 > [!TASK]
 > Copy the five numbers into `MEASURED` at the top of `analysis.py`.

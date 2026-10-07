@@ -36,7 +36,7 @@ mounts = [(os.path.join(config.COURSES, "_lib"), "/academy/lib")] + \
 check = cmd == "--check"
 inner = (f"PYTHONPATH=/academy/lib:$PYTHONPATH python3 /academy/courses/{lid}/check.py" if check else cmd)
 argv = sandbox.bwrap_argv(name, workspaces.student_home(name), users[name]["index"],
-                          ["bash", "-lc", f"source ~/.bashrc >/dev/null 2>&1; cd ~/lessons/{lid} && {inner}"],
+                          ["bash", "-lc", f"source ~/.bashrc >/dev/null 2>&1; cd ~/lessons/{lid} || exit 1; {inner}"],
                           extra_ro=mounts)
 reset = lambda: [signal.signal(s, signal.SIG_DFL) for s in (signal.SIGINT, signal.SIGTERM)]
 try:

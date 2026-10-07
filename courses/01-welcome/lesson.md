@@ -41,7 +41,8 @@ distance is therefore called a **pseudorange**:
 ```
 
 There are **four unknowns**: `x, y, z` and `b`. Each satellite gives one equation, so a 3-D fix needs
-**at least four satellites**. With more than four, the receiver solves a **least-squares** problem:
+**at least four satellites**. With more than four, the receiver solves a **least-squares** problem (it
+chooses the position that makes the sum of the squared errors of all equations as small as possible):
 the extra equations average the noise and make it possible to detect a measurement that disagrees.
 
 ![Four satellites, four pseudoranges: three unknown coordinates plus the clock bias](assets/gps.svg)
@@ -60,7 +61,7 @@ really at `(3, 4)`, and its clock is 1 µs late, so every pseudorange is 0.3 km 
 Draw three circles with the pseudoranges as radii: they do **not** meet in one point. In 2-D the
 unknowns are `x, y, b`: three unknowns, three equations. Find the `b` that makes the circles
 **shrink** (radius `ρ_i − c·b`) until they meet in a single point: with `c·b = 0.3 km` they meet at
-`(3, 4)`. In 3-D the same idea needs four satellites. A real receiver does it numerically: it
+`(3, 4)`. (You do not have to solve this by hand; the lab's solver does it.) In 3-D the same idea needs four satellites. A real receiver does it numerically: it
 **linearises** the equations around a guess and improves the guess a few times (Gauss–Newton). In
 the lab you run such a solver and watch the clock bias come out of it.
 
@@ -79,8 +80,10 @@ A GPS satellite transmits about 25–50 W from 20 000 km away. On the ground the
 thermal noise of the receiver over the signal's 2 MHz bandwidth is about **−111 dBm**: the signal
 is roughly **50 times weaker than the noise** (−17 dB). The receiver can still use it because it
 knows the satellite's spreading code and **correlates** for a millisecond or more, which gains about
-30 dB. But any transmitter on the same frequency competes with a signal that is already below the
-noise.
+30 dB. (Why 30 dB? The GPS code has 1023 **chips** (code bits) per millisecond. Correlating adds
+about 1000 chips together: the signal parts add in step, the random noise does not, so the
+signal-to-noise ratio improves about 1000 times: `10·log10(1000) = 30 dB`.) But any transmitter on the same frequency competes with a signal
+that is already below the noise.
 
 > [!NOTE]
 > **Decibels.** Engineers compare powers on a log scale: `P_dBm = 10·log10(P / 1 mW)`. +10 dB = ×10,

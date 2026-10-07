@@ -85,6 +85,12 @@ ss -uln | awk -v lo=$((7400 + 250 * ROS_DOMAIN_ID)) '{n = split($4, a, ":"); p =
 You should find your discovery port, then pairs `lo + 10 + 2p` / `lo + 11 + 2p` for each
 participant p (the talker, the ros2 daemon, …). The formula of the course is in front of you.
 
+How the command works: `ss -uln` lists the UDP ports that are open on this machine (column 4 is
+`address:port`); `awk` reads it line by line, keeps the number after the last `:` (`split` cuts the
+text at each `:`, `a[n]` is the last piece) and prints it only if it is inside your domain's range
+`lo … lo + 249`; `sort -nu` sorts the numbers and removes duplicates. You do not need to write such a
+line yourself.
+
 > [!TASK]
 > Copy the port numbers into `DDS_PORTS` (a list of numbers).
 
@@ -267,7 +273,10 @@ Compare `Subscribers:` and `Publishers:` with the course's picture. Its status, 
 ros2 topic echo --once /navera/nav_status
 ```
 
-No source runs, so it has heard nothing: read `state:` and `reason:`. Its rate (`Ctrl+C` after a
+No source runs, so it has heard nothing: read `state:` and `reason:`. `state:` is printed as a
+**number**, not a name: the names are constants of the message (`ros2 interface show
+navera_msgs/msg/NavStatus` lists them: `STATE_INITIALIZING=0`, `STATE_NO_FIX=1`…). `FIRST_STATE` is that
+number. Its rate (`Ctrl+C` after a
 few lines):
 
 ```bash
@@ -292,7 +301,7 @@ it never repeats an old one as if it were new.
 
 > [!TASK]
 > Fill `ESTIMATOR_SUBSCRIBES` (5 topics), `ESTIMATOR_PUBLISHES` (the 2 topics starting with
-> `/navera`), `FIRST_STATE`, `NAV_STATUS_HZ` and `FIX_MAX_SIGMA_M`. Answer the quiz `Q1`–`Q3`.
+> `/navera`), `FIRST_STATE` (the number after `state:`), `NAV_STATUS_HZ` and `FIX_MAX_SIGMA_M`. Answer the quiz `Q1`–`Q3`.
 > Stop the arbiter.
 
 ## Step 9 — Write the analysis

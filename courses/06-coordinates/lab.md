@@ -64,7 +64,7 @@ python3 -c "from geo_lab import *; x = geodetic_to_ecef(23.2375, 57.2636, 3000.0
 
 Jebel Shams summit (3000 m) must give (3 172 476.1, 4 934 740.5, 2 502 092.8) and come back as
 (23.2375, 57.2636, 3000.0) to better than a millimeter. `*x` unpacks the tuple into three
-arguments.
+arguments (lesson 3): `ecef_to_geodetic(*x)` is `ecef_to_geodetic(x[0], x[1], x[2])`.
 
 > [!WARNING]
 > If the height comes back kilometers (or thousands of kilometers) wrong, a latitude was used in
@@ -103,6 +103,13 @@ python3 -c "from geo_lab import *; print(enu_to_geodetic(-87959.818, -71793.198,
 > Check that your R is a rotation: in `python3`, `R = enu_matrix(23.5839, 58.3875)`, then
 > `print(R @ R.T)` and `print(np.linalg.det(R))`. What do you expect? If the determinant is −1,
 > which mistake gives that?
+
+<details><summary>Answer to the question above</summary>
+R·Rᵀ must print the identity matrix (with tiny numbers like 1e-17 instead of 0) and det R must be
++1. A determinant of −1 means a <b>reflection</b> (a mirror), not a rotation: two rows are in the
+wrong order (for example east and north swapped) or one row has the wrong sign (for example
+<code>-sin λ</code> written <code>sin λ</code>). R·Rᵀ is still the identity, so only the determinant shows the mistake.
+</details>
 
 > [!TASK]
 > **TODO 4–6 done** means: R·Rᵀ = I and det R = +1, with the east and up rows of the course; the ENU

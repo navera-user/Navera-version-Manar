@@ -63,10 +63,10 @@ def _():
     _, name = git("config", "--global", "user.name")
     _, email = git("config", "--global", "user.email")
     c.ok(name != "", "user.name is not set")
-    c.ok(name not in (ACADEMY_ID[0], "Your Name", "Salim Al Harthy", "Aisha Al Balushi"),
+    c.ok(name not in (ACADEMY_ID[0], "Your Name", "Navi Swallow", "Salim Al Harthy", "Aisha Al Balushi"),
          f"user.name is {name!r}: use your own name")
     c.ok("@" in email and "." in email.split("@")[-1], f"user.email = {email!r} does not look like an e-mail address")
-    c.ok(email not in ("you@example.com", "salim.alharthy@example.com", "aisha@example.com"),
+    c.ok(email not in ("you@example.com", "navi.swallow@example.com", "salim.alharthy@example.com", "aisha@example.com"),
          "user.email is still the example of the course: write your own (it can be invented)")
 
 

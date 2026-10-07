@@ -85,6 +85,7 @@ You see about forty names. Don't worry: most are support. These are the ones thi
 | `navera_tools`, `simulation_web` | simulator, test and operator tools |
 | `docs` | the product documentation (architecture, validation status) |
 | `build`, `install`, `log` | made by the build tool (lesson 9): never edit them |
+| other files (`CLAUDE.md`, `AUDIT.md`, `camera_pkg`, `rtc_pkg`…) | not used in this course: you can ignore them |
 
 The `isaac_ros_*` folders are interface packages from NVIDIA; `deploy`, `docker`, `scripts` install
 the product on a real box.

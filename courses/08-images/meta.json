@@ -1,3 +1,3 @@
-{"number": "08", "title": "Digital images: arrays, filters and geometric transforms", "module": 2, "duration": "3 h",
+{"number": "08", "title": "Digital images: arrays, filters and geometric transforms", "module": 2, "duration": "6 h",
  "summary": "dtypes and their traps, colour and histograms (normalise, equalise, CLAHE), convolution with Gaussian and Sobel kernels, 2 × 3 affine warps with bilinear resampling — implemented in numpy, checked against OpenCV, and used to bring a drone photo to the map.",
  "resources": [], "open": ["images_lab.py", "report.md"], "check_timeout_s": 150}

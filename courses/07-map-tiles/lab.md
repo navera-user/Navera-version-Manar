@@ -151,16 +151,21 @@ python3 mosaic.py 35.8277 10.6388 17
 Open `mosaic.png`: the red circle must sit on the Ribat (the square fort in the medina), the yellow
 mark is the NW corner of its tile and the green mark the tile's centre — the 175 m of the corner bug,
 visible on the ground. The program also converts the red pixel back to lat/lon: it must give the
-input again. Then a larger view (5 × 5 tiles at zoom 15) of Monastir marina:
+input again. Then a larger view (5 × 5 tiles at zoom 15) of Monastir marina, written to **another
+file** with `--out` so that your `mosaic.png` of the Ribat stays as it is:
 
 ```bash
-python3 mosaic.py 35.7795 10.8320 15 --radius 2
+python3 mosaic.py 35.7795 10.8320 15 --radius 2 --out mosaic_monastir.png
 ```
+
+Open `mosaic_monastir.png`: 1280 × 1280 pixels, the marina in the middle.
 
 > [!TASK]
 > **TODO 9–10 done** means: the Ribat is at pixel (376.03, 399.49) of the mosaic whose top-left tile
 > is (69408, 51546); pixel → lat/lon is the exact inverse; pixel (100.25, 37.5) of tile 17/69409/51547
-> gives NAVERA's value; `mosaic.py` writes a 768 × 768 `mosaic.png`.
+> gives NAVERA's value; `mosaic.py` writes a 768 × 768 `mosaic.png` (radius 1 = 3 × 3 tiles).
+> The checker builds its **own** test mosaic (Monastir marina, zoom 17, from the small map) and then
+> puts your `mosaic.png` back: you do not need to prepare a particular picture.
 
 ## Step 7 — Compare with NAVERA
 

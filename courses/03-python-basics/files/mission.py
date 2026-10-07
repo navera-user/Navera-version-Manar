@@ -10,16 +10,11 @@ import json
 
 import numpy as np
 
-from navlib import FixedWing, Vehicle, enu_from_latlon, great_circle_m, load_track, wind_correction
+from navlib import FixedWing, Vehicle, load_track, wind_correction
 
 LEG_M = 9000.0
 TRACK_OUT_DEG = 30.0
 WIND_E, WIND_N = -3.0, -4.0
-
-# Approximate coordinates (deg) of Omani cities; the reference point is Muscat.
-MUSCAT = (23.588, 58.383)
-CITIES = {"Sohar": (24.347, 56.709), "Nizwa": (22.933, 57.533),
-          "Sur": (22.567, 59.529), "Salalah": (17.019, 54.089)}
 
 
 def round_trip_min(vehicle):
@@ -45,16 +40,10 @@ def main():
 
     # TODO C — the recorded survey track (file sohar_track.csv): load it with load_track(),
     #   then store "track_points", "track_length_m", "track_max_speed_ms",
-    #   "track_median_speed_ms", "track_max_dist_m" (from the take-off point 0, 0) and
+    #   "track_median_speed_ms" and
     #   "glitch_time_s": the time t of the FIRST point reached at more than 25 m/s
     #   (a boolean mask on the speeds, np.argmax, and mind the index shift: speed i ends at point i+1).
     #   Convert NumPy numbers with float(...) so that json can write them.
-
-    # TODO D — flat-Earth projection error for the 4 cities, all at once (arrays, no loop):
-    #   east, north = enu_from_latlon(lats, lons, *MUSCAT); flat = np.hypot(...);
-    #   true = great_circle_m(...); error % = (flat - true) / true × 100.
-    #   Store "projection_error_pct" as a dict {city: float}, plus "salalah_flat_km" and
-    #   "salalah_great_circle_km".
 
     # ---- you don't need to change anything below this line ----
     with open("results.json", "w") as f:

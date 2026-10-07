@@ -183,38 +183,6 @@ def _():
     c.eq(len(call(one.speeds_ms)), 0, "len(speeds_ms()) of a 1-point track")
 
 
-@c.test("TODO 10: Track.max_distance_from() — broadcasting",
-        hint="e − east0 subtracts a number from every element of an array; np.hypot, then np.max. Empty track → 0.0.")
-def _():
-    (T,) = nav("Track")
-    tr = T("x")
-    for p in ((0, 0, 0), (2, 6, 8), (3, 6, 8), (5, 0, 0)):
-        call(tr.add, *p)
-    c.near(call(tr.max_distance_from), 10.0, 1e-9, "max_distance_from() (from 0, 0)")
-    c.near(call(tr.max_distance_from, 3, -4), 12.36932, 1e-4, "max_distance_from(3, -4)")
-    c.near(call(T("empty").max_distance_from), 0.0, 1e-12, "max_distance_from() of an empty track")
-
-
-@c.test("TODO 11: enu_from_latlon() for numbers AND for NumPy arrays of any shape",
-        hint="Use np.radians and np.cos (math.cos refuses arrays: 'only length-1 arrays can be converted'). "
-             "east = R·Δλ·cos(φ0), north = R·Δφ, angles in radians.")
-def _():
-    import numpy as np
-    (f,) = nav("enu_from_latlon")
-    r = call(f, 22.933, 57.533, 23.588, 58.383)
-    c.ok(isinstance(r, tuple) and len(r) == 2, f"enu_from_latlon(...) returned {r!r}, expected (east, north)")
-    c.near(r[0], -86618.58, 0.5, "east of Nizwa from Muscat")
-    c.near(r[1], -72832.68, 0.5, "north of Nizwa from Muscat")
-    lats = np.array([[23.588, 23.688], [23.488, 24.347]])
-    lons = np.array([[58.383, 58.383], [58.483, 56.709]])
-    e, n = call(f, lats, lons, 23.588, 58.383)
-    c.ok(np.shape(e) == (2, 2) and np.shape(n) == (2, 2),
-         f"with 2×2 arrays the results should be 2×2 arrays, got shapes {np.shape(e)} and {np.shape(n)}")
-    c.near(e[0][0], 0.0, 1e-6, "east of the reference itself")
-    c.near(n[0][1], 11119.49, 0.05, "north of a point 0.1° north")
-    c.near(e[1][0], 10190.43, 0.05, "east of a point 0.1° east")
-
-
 # ---------------------------------------------------------------- mission.py and the report
 EXPECTED = {
     "out_heading_deg": (32.857, 0.01), "out_ground_speed_ms": (7.0210, 0.001),
@@ -222,12 +190,10 @@ EXPECTED = {
     "wing_endurance_min": (32.727, 0.001), "wing_round_trip_min": (15.993, 0.005),
     "wing_turn_radius_m": (70.624, 0.01),
     "track_points": (263, 0), "track_length_m": (3270.14, 0.05), "track_max_speed_ms": (54.340, 0.005),
-    "track_median_speed_ms": (12.052, 0.005), "track_max_dist_m": (1362.04, 0.05),
+    "track_median_speed_ms": (12.052, 0.005),
     "glitch_time_s": (150, 0),
-    "salalah_flat_km": (851.478, 0.01), "salalah_great_circle_km": (856.592, 0.01),
 }
 BOOLS = {"quad_can_do_it": False, "wing_can_do_it": True}
-PCT = {"Sohar": 0.23599, "Nizwa": -0.14453, "Sur": -0.19658, "Salalah": -0.59697}
 
 
 def results():
@@ -268,44 +234,37 @@ def _():
         c.eq(r[k], want, k)
 
 
-@c.test("results.json: the survey track and the projection error (TODO C, D)",
-        hint="Use your Track methods on load_track('sohar_track.csv'). glitch: the first speed > 25 m/s; "
-             "speed i ends at point i+1. Projection: vectorised enu_from_latlon + np.hypot vs great_circle_m.")
+@c.test("results.json: the survey track (TODO C)",
+        hint="Use your Track methods on load_track('sohar_track.csv'). glitch: the first speed > 25 m/s "
+             "(a boolean mask, then np.argmax); speed i ends at point i+1, so the time is t[i + 1].")
 def _():
     r = results()
-    for k in ("track_points", "track_length_m", "track_max_speed_ms", "track_median_speed_ms",
-              "track_max_dist_m", "glitch_time_s", "salalah_flat_km", "salalah_great_circle_km"):
+    for k in ("track_points", "track_length_m", "track_max_speed_ms", "track_median_speed_ms", "glitch_time_s"):
         c.ok(r.get(k) is not None, f'results.json has no value for "{k}"')
         want, tol = EXPECTED[k]
         c.near(r[k], want, max(tol, 1e-9), k)
-    p = r.get("projection_error_pct")
-    c.ok(isinstance(p, dict), '"projection_error_pct" should be a dict {city: error in %}')
-    for city, want in PCT.items():
-        c.ok(city in p, f'"projection_error_pct" has no entry "{city}"')
-        c.near(p[city], want, 0.001, f"projection_error_pct[{city!r}]")
 
 
 def numbers_in(text):
     return [float(x) for x in re.findall(r"-?\d+(?:\.\d+)?", text.replace(",", ""))]
 
 
-@c.test("report.md: four sections, your own words, with the key numbers",
-        hint="Keep the four ## headings, replace every '(write here)' by 2–4 sentences. Quote the quad's round "
-             "trip in minutes, the glitch time in s and Salalah's projection error in %.")
+@c.test("report.md: three sections, your own words, with the key numbers",
+        hint="Keep the three ## headings, replace every '(write here)' by 2–4 sentences. Quote the quad's round "
+             "trip in minutes and the glitch time in s.")
 def _():
     c.file_exists("report.md")
     with open("report.md") as f:
         text = f.read()
     low = text.lower()
-    for h in ("## wind", "## endurance", "## track", "## projection"):
+    for h in ("## wind", "## endurance", "## track"):
         c.ok(h in low, f'report.md has no section starting with "{h}"')
     c.ok("(write here)" not in low, 'report.md still contains "(write here)"')
     words = len(re.findall(r"[A-Za-z]{2,}", text))
-    c.ok(words >= 120, f"report.md has about {words} words — write at least 120")
+    c.ok(words >= 100, f"report.md has about {words} words — write at least 100")
     nums = numbers_in(text)
     c.ok(any(abs(x - 30.2) <= 0.15 for x in nums), "I can't find the quad's round-trip time (about 30.2 min) in report.md")
     c.ok(any(abs(x - 150) < 0.5 for x in nums), "I can't find the glitch time (in s) in report.md")
-    c.ok(any(abs(abs(x) - 0.6) <= 0.05 for x in nums), "I can't find Salalah's projection error (in %) in report.md")
 
 
 c.run()

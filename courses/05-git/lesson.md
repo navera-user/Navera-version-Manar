@@ -52,7 +52,9 @@ NAVERA base — fa775cd fix(bench): screen_mission mirrors the product (re-match
 ```
 
 (This first commit has no `parent` line: it is the root of your history. The number after the
-e-mail is the time in seconds since 1 January 1970, then the time zone.)
+e-mail is the time in seconds since 1 January 1970, then the time zone. `+0100` is the time zone of
+the academy computer's clock, one hour ahead of UTC; a laptop in Oman would write `+0400`. The
+number of seconds is the same everywhere: only the display changes.)
 
 ### Short hashes and their collisions
 
@@ -145,6 +147,23 @@ around each change by default; the first one here is an empty line), which lets 
 
 For a branch that started at `base`, two and three dots give the same diff. They differ as soon as
 the main line moves on: three dots then show only **your** work, which is what a reviewer wants.
+
+A small example. You branch `my-fix` from `main` at commit B and commit `F` (you change `gps.py`).
+Meanwhile a colleague commits `C` on `main` (she changes `README.md`):
+
+```
+A ── B ── C          main         (C changes README.md)
+      \
+       F             my-fix       (F changes gps.py)
+```
+
+| Command | Shows | Why |
+|---|---|---|
+| `git diff main..my-fix` | `gps.py` **and** `README.md` (C's change, reversed) | snapshot C against snapshot F |
+| `git diff main...my-fix` | `gps.py` only | from the merge base B to F: your work only |
+| `git log main..my-fix` | `F` | commits on `my-fix` that `main` does not have |
+
+Two dots compare two snapshots; three dots ask "what did this branch do since it left?".
 
 ## 4. Reading the history
 

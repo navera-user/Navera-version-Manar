@@ -38,6 +38,23 @@ A grey image is a 2-D array: `img[y, x]` is the brightness of the pixel in row y
 > a.ravel(), np.bincount(a.ravel(), minlength=256)   # flatten; count each value
 > img[..., 0]        # "..." = all the other axes: the first channel of a colour image
 > ```
+>
+> Three more tools, used in the equalisation and the warp of the lab:
+> ```python
+> lut = np.array([0, 50, 100, 255], np.uint8)
+> lut[np.array([[3, 0], [1, 1]])]   # [[255, 0], [50, 50]]: an ARRAY of indices gives an array
+>                                   # of the same shape — each value v is replaced by lut[v]
+> a = np.array([[10, 11, 12], [20, 21, 22]])
+> a[np.array([0, 1]), np.array([2, 0])]   # [12, 20]: picks a[0, 2] and a[1, 0] —
+>                                         # one row index and one column index per result
+> v, u = np.mgrid[0:2, 0:3]         # the row (v) and the column (u) of every pixel of a 2 × 3 image:
+> v                                 # [[0, 0, 0],
+>                                   #  [1, 1, 1]]
+> u                                 # [[0, 1, 2],
+>                                   #  [0, 1, 2]]
+> ```
+> This is **integer-array indexing** ("fancy indexing"): with integer arrays as indices, numpy
+> reads many pixels in one operation, without a loop.
 
 ## 2. dtypes: the most common source of image bugs
 

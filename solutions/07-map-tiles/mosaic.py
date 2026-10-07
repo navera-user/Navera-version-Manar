@@ -2,6 +2,7 @@
 # and saves mosaic.png. Usage:
 #     python3 mosaic.py LAT LON ZOOM [--radius 1]      e.g.  python3 mosaic.py 35.8277 10.6388 17
 #     python3 mosaic.py LAT LON ZOOM --map /data/academy/07-map-tiles/sousse_small.mbtiles
+#     python3 mosaic.py LAT LON ZOOM --out other.png   (write another file instead of mosaic.png)
 import sys
 
 import cv2
@@ -10,17 +11,19 @@ from tiles_lab import (MAP, TILE_PX, build_mosaic, latlon_to_pixel, latlon_to_ti
                        pixel_to_latlon, tile_to_latlon)
 
 args = sys.argv[1:]
-path, radius = MAP, 1
-for flag in ("--map", "--radius"):
+path, radius, out_png = MAP, 1, "mosaic.png"
+for flag in ("--map", "--radius", "--out"):
     if flag in args:
         i = args.index(flag)
         if flag == "--map":
             path = args[i + 1]
+        elif flag == "--out":
+            out_png = args[i + 1]
         else:
             radius = int(args[i + 1])
         del args[i:i + 2]
 if len(args) != 3:
-    raise SystemExit("usage: python3 mosaic.py LAT LON ZOOM [--radius R] [--map FILE]")
+    raise SystemExit("usage: python3 mosaic.py LAT LON ZOOM [--radius R] [--map FILE] [--out FILE.png]")
 lat, lon, z = float(args[0]), float(args[1]), int(args[2])
 for name, result in (("latlon_to_tile", latlon_to_tile(lat, lon, z)), ("meters_per_pixel", meters_per_pixel(lat, z)),
                      ("latlon_to_pixel", latlon_to_pixel(lat, lon, z, 0, 0)),
@@ -55,9 +58,9 @@ bar = int(round(length_m / mpp))
 cv2.rectangle(img, (14, size - 34), (30 + bar, size - 8), (255, 255, 255), -1)
 cv2.line(img, (22, size - 20), (22 + bar, size - 20), (0, 0, 0), 3)
 cv2.putText(img, f"{length_m} m", (24, size - 25), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 0, 0), 1)
-cv2.imwrite("mosaic.png", img)
+cv2.imwrite(out_png, img)
 print(f"top-left tile ({x0}, {y0}), centre tile ({tx}, {ty}); the point is at pixel ({px:.1f}, {py:.1f})")
 print(f"pixel -> lat/lon gives back ({back[0]:.8f}, {back[1]:.8f})")
 print(f"the mosaic covers {size * mpp:.0f} m x {size * mpp:.0f} m ({mpp:.3f} m per pixel)")
 print("red = the point, yellow = NW corner of its tile, green = centre of its tile")
-print("saved mosaic.png — click it in the file list to see it.")
+print(f"saved {out_png} — click it in the file list to see it.")

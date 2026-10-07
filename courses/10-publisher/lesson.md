@@ -225,7 +225,13 @@ longitude is shorter by cos φ0. So:
 λ = λ0 + east / (R · cos φ0)    [radians]   →  in degrees: λ0 + degrees(east / (R cos φ0))
 ```
 
-This is the **equirectangular** (local flat) approximation. In Muscat, cos(23.588°) = 0.9165, so one
+This is the **equirectangular** (local flat) approximation.
+
+> [!NOTE]
+> Do not mix it up with lesson 6. There, NAVERA's day vision uses the shortcut
+> `M_PER_DEG = 111 320.0` m per degree (the WGS84 equator radius a·π/180). Here, the node uses the
+> sphere of radius R = 6 371 000 m, as `navera_common/geo.py` does: 111 195 m per degree. The two
+> models differ by 0.1 % (about 125 m per degree); use one model consistently in one program. In Muscat, cos(23.588°) = 0.9165, so one
 degree of longitude is 101 910 m. How wrong is it? Compare with a **great circle**, the true
 "straight line" on a sphere, which NAVERA computes in `navera_common/geo.py` (`dead_reckon`).
 

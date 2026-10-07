@@ -195,7 +195,9 @@ CREATE TABLE tiles (zoom_level INTEGER NOT NULL, tile_column INTEGER NOT NULL,
 A **BLOB** is raw bytes — here the content of a JPEG file, which always starts with the bytes
 `FF D8 FF`. The **primary key** creates an **index**: a B-tree sorted by (zoom, column, row). Finding
 one tile among 1.15 million is a search in a tree of depth 3–4, i.e. a few page reads, not a scan
-of the table. SQLite tells you which strategy it uses:
+of the table. (NAVERA's file also has an extra index, `tile_index`, on the same three columns: it duplicates the
+primary key's index and changes nothing for you — `explore_db.py` will list it.) SQLite tells you
+which strategy it uses:
 
 ```sql
 EXPLAIN QUERY PLAN SELECT tile_data FROM tiles WHERE zoom_level=17 AND tile_column=69409 AND tile_row=79524
@@ -340,6 +342,7 @@ extracts the zoom-17 tiles along a planned route, so the drone carries only what
 | **conformal** | keeps angles and local shapes (Mercator is conformal on the sphere) |
 | **scale factor k** | map length / ground length; Mercator: k = 1/cos φ |
 | **Web Mercator (EPSG:3857)** | spherical Mercator applied to WGS84 latitudes, cut at ±85.0511° |
+| **ordinate** | the y coordinate of a point (here, y on the map); x is the abscissa |
 | **Gudermannian** | φ = atan(sinh y), the inverse of the Mercator ordinate |
 | **tile pyramid** | the world cut into 4^z tiles of 256 × 256 px at each zoom z |
 | **XYZ / TMS** | tile numbering with rows from the north / from the south; row = 2^z − 1 − y |

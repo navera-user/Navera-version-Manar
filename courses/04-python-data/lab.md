@@ -3,7 +3,7 @@
 **Goal:** clean a messy flight-test log of four flights, compute per-flight statistics with pandas,
 distances and speeds with vectorised NumPy, find every GPS outage with run-length logic, compare the
 noise of GPS and day vision, draw two figures, and write a short test report.
-**Time:** about 3 hours.
+**Time:** about 4–5 hours (pandas is new for most students: take your time in Step 3).
 
 Your files (already open): [flight_analysis.py](file:./flight_analysis.py) (TODO 1–9),
 [campaign.csv](file:./campaign.csv) (the data: 1556 rows, synthetic, four flights in Oman) and
@@ -136,6 +136,7 @@ has a step of hundreds of kilometres, your `shift()` crossed from one flight int
 > **TODO 4** `flight_summary(df)`: one row per flight (index `flight_id`) with the columns
 > `rows`, `duration_s`, `distance_km`, `max_alt_m`, `mean_speed_mps` (the logged speed) and
 > `min_battery_pct`. Use one `groupby(...).agg(...)` with named aggregations.
+> `duration_s` is the **last `time_s` minus the first `time_s`** of the flight (no `+ Δt`).
 
 ```bash
 python3 -c "from flight_analysis import *; print(flight_summary(add_motion(clean(load_log('campaign.csv')))).round(2).to_string())"
@@ -158,6 +159,12 @@ python3 -c "from flight_analysis import outage_runs; print(outage_runs([1, 0, 0,
 
 Expected: `[(1, 3), (4, 5)] [] [(0, 2), (3, 6)]` — the last outage reaches the end of the list.
 
+> [!NOTE]
+> **Python note.** For TODO 6, collect one dict per flight in a dict
+> `rows[fid] = {"n_outages": …, "longest_outage_s": …, "total_outage_s": …}`, then build the table
+> with `pd.DataFrame.from_dict(rows, orient="index")` (course, section 2, "A table from a dict").
+> `max(durations, default=0.0)` gives `0.0` for an empty list instead of an error.
+
 ```bash
 python3 -c "from flight_analysis import *; print(outage_table(add_motion(clean(load_log('campaign.csv')))))"
 ```
@@ -169,6 +176,11 @@ python3 -c "from flight_analysis import *; print(outage_table(add_motion(clean(l
 >   `FIX, DEGRADED, NO_FIX` (0.0 when a state never occurs).
 > - **TODO 8** `speed_error(df)`: `|gs_mps − speed_mps|` per row, rows with NaN dropped, grouped
 >   by `source`: columns `median_mps` and `p95_mps`.
+
+> [!NOTE]
+> **Python note.** `"median"` can be written as a name inside `.agg()`, but the 95th percentile
+> needs a parameter: give a `lambda`, as in the course (section 2):
+> `p95_mps=("err", lambda x: x.quantile(0.95))`.
 
 ```bash
 python3 -c "from flight_analysis import *; df = add_motion(clean(load_log('campaign.csv'))); print(state_shares(df).round(1)); print(speed_error(df).round(2))"
@@ -221,6 +233,13 @@ then on the campaign, then runs `flight_analysis.py` and reads results.json and 
 check fails on a small table, its message describes the table: rebuild it in `python3` and test.
 
 ## Going further (optional)
+
+- **How wrong is the flat Earth across Oman?** Write `enu_from_latlon(lat, lon, lat0, lon0)` with the
+  flat-Earth formulas of the course (section 3, with `np.radians` and `np.cos`, so that it accepts
+  numbers **and** arrays). With Muscat as the reference, compute `np.hypot(east, north)` for Sohar
+  (24.347, 56.709), Nizwa (22.933, 57.533), Sur (22.567, 59.529) and Salalah (17.019, 54.089) in
+  **one** call on arrays, and compare with your `haversine_m()`. You should find about +0.24 %,
+  −0.14 %, −0.20 % and −0.60 %. Up to what distance would you trust the flat formula?
 
 - **Smoother speeds.** Compute a speed over a 10 s window instead of 2 s
   (`groupby(...)["lat"].shift(5)`). How much smaller is the day-vision error? This is the idea behind

@@ -10,16 +10,11 @@ import json
 
 import numpy as np
 
-from navlib import FixedWing, Vehicle, enu_from_latlon, great_circle_m, load_track, wind_correction
+from navlib import FixedWing, Vehicle, load_track, wind_correction
 
 LEG_M = 9000.0
 TRACK_OUT_DEG = 30.0
 WIND_E, WIND_N = -3.0, -4.0
-
-# Approximate coordinates (deg) of Omani cities; the reference point is Muscat.
-MUSCAT = (23.588, 58.383)
-CITIES = {"Sohar": (24.347, 56.709), "Nizwa": (22.933, 57.533),
-          "Sur": (22.567, 59.529), "Salalah": (17.019, 54.089)}
 
 
 def round_trip_min(vehicle):
@@ -56,20 +51,7 @@ def main():
     results["track_length_m"] = track.length_m()
     results["track_max_speed_ms"] = float(np.max(speeds))
     results["track_median_speed_ms"] = float(np.median(speeds))
-    results["track_max_dist_m"] = track.max_distance_from(0.0, 0.0)
     results["glitch_time_s"] = float(t[np.argmax(speeds > 25.0) + 1])
-
-    # TODO D — flat-Earth projection error, all cities at once (arrays, no loop)
-    names = list(CITIES)
-    lats = np.array([CITIES[k][0] for k in names])
-    lons = np.array([CITIES[k][1] for k in names])
-    east, north = enu_from_latlon(lats, lons, MUSCAT[0], MUSCAT[1])
-    flat = np.hypot(east, north)
-    true = great_circle_m(MUSCAT[0], MUSCAT[1], lats, lons)
-    err_pct = (flat - true) / true * 100.0
-    results["projection_error_pct"] = {k: float(e) for k, e in zip(names, err_pct)}
-    results["salalah_flat_km"] = float(flat[names.index("Salalah")] / 1000.0)
-    results["salalah_great_circle_km"] = float(true[names.index("Salalah")] / 1000.0)
 
     # ---- you don't need to change anything below this line ----
     with open("results.json", "w") as f:

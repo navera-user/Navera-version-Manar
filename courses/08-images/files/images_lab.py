@@ -43,8 +43,11 @@ def normalise(gray):
 
 
 def equalise(gray):
-    """Histogram equalisation of a grey uint8 picture (the same result as cv2.equalizeHist, ± 1)."""
+    """Histogram equalisation of a grey uint8 picture (the same result as cv2.equalizeHist, ± 1).
+    A uniform picture (one grey value) is returned unchanged, as a uint8 copy: there N == cdf_min,
+    and the formula would divide 0 by 0."""
     # TODO 5: cdf = cumulative sum of histogram(); cdf_min = first non-zero value of cdf;
+    #         if N == cdf_min (uniform picture): return gray.copy()
     #         lut = to_uint8((cdf - cdf_min) / (N - cdf_min) * 255) with N = number of pixels; return lut[gray]
     return None
 

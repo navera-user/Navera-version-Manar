@@ -17,8 +17,3 @@ Give its round-trip time and its endurance in minutes. What about the fixed wing
 
 (write here) Length, median and maximum speed of the survey track. At what time is the
 glitch, and how does it change the length and the maximum speed?
-
-## Projection error
-
-(write here) How large is the flat-Earth error for Sohar, Nizwa, Sur and Salalah (in %)?
-Up to what distance would you use it?

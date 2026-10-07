@@ -38,7 +38,8 @@ STATE_FIX = None             # in navera_msgs/msg/NavStatus
 # ---- Step 8 — NAVERA's arbiter
 ESTIMATOR_SUBSCRIBES = []    # its 5 subscriptions (leave out /parameter_events and /rosout)
 ESTIMATOR_PUBLISHES = []     # its 2 /navera/... publications
-FIRST_STATE = None           # `state` in /navera/nav_status with no source running
+FIRST_STATE = None           # `state` in /navera/nav_status with no source running: the NUMBER
+                             # printed after `state:` (0 = STATE_INITIALIZING, 1 = STATE_NO_FIX…)
 NAV_STATUS_HZ = None         # average rate of /navera/nav_status
 FIX_MAX_SIGMA_M = None       # double_value returned by the get_parameters service call
 

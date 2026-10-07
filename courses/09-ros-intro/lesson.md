@@ -139,13 +139,18 @@ user data unicast port    = PB + DG * domain + 11 + PG * p
 Worked example: in domain 42, the discovery port is 7400 + 250 × 42 = **17 900**; the first
 participant (p = 0) receives its user data on 17 900 + 11 = 17 911, the second (p = 1) on 17 913.
 
-The largest port number is 65 535, so the domain can be at most 232. On Linux, ports 32 768 to
-60 999 are **ephemeral ports** that the system gives to any program that asks for "a free port".
-Domains 102 to 214 put DDS ports in that range, where they may collide with another program; this is
-why the ROS documentation recommends **0–101** (and 215–232). In this academy every student has a
-private domain between 1 and 101, and NAVERA itself avoids 77–79 for student use. One more setting
-narrows discovery further: `ROS_LOCALHOST_ONLY=1` keeps all ROS traffic on the loopback interface
-(127.0.0.1), so it never leaves the computer. A NAVERA box runs this way: operators reach it through
+In this academy every student has a private domain between 1 and 101, and NAVERA itself avoids
+77–79 for student use.
+
+> [!NOTE]
+> **For the curious: why domains 0–101?** The largest port number is 65 535, so the domain can be
+> at most 232. On Linux, ports 32 768 to 60 999 are **ephemeral ports** that the system gives to any
+> program that asks for "a free port". Domains 102 to 214 put DDS ports in that range, where they
+> may collide with another program; this is why the ROS documentation recommends **0–101** (and
+> 215–232). You do not need this for the lab.
+
+One more setting narrows discovery further: `ROS_LOCALHOST_ONLY=1` keeps all ROS traffic on the
+loopback interface (127.0.0.1), so it never leaves the computer. A NAVERA box runs this way: operators reach it through
 a web page, not through ROS (docs/ARCHITECTURE.md §1).
 
 ## 4. Quality of Service
