@@ -45,6 +45,12 @@ class TrackVelocity:
             return None
         t_end = self._pts[-1][0]
         pts = [p for p in self._pts if t_end - p[0] <= self.window_s]
+        # never across a gap of more than 5 s between fixes: a line through the fixes on
+        # both sides of a gap with a turn in it is a chord, not the velocity (2026-10-07)
+        for i in range(len(pts) - 1, 0, -1):
+            if pts[i][0] - pts[i - 1][0] > 5.0:
+                pts = pts[i:]
+                break
         if len(pts) < self.min_points or pts[-1][0] - pts[0][0] < self.min_span_s:
             return None
         lat0, lon0 = pts[-1][1], pts[-1][2]
@@ -99,7 +105,9 @@ class TrackVelocity:
             p = dead_reckon(lat, lon, math.degrees(math.atan2(de, dn)) % 360.0, dist / dt, dt)
             if p is None:
                 return None
-        sigma = sig0 + sig_v * dt + self.heading_sigma * speed * dt + 0.5 * self.accel * dt * dt
+        # a turn: when it started and at what rate are not known — half its sideways reach
+        sigma = (sig0 + sig_v * dt + self.heading_sigma * speed * dt + 0.5 * self.accel * dt * dt
+                 + 0.5 * abs(math.radians(heading_change_deg or 0.0)) * speed * dt)
         return p[0], p[1], sigma
 
     def last_time(self) -> Optional[float]:

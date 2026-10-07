@@ -67,3 +67,15 @@ def test_unseen_acceleration_is_in_the_stated_accuracy():
     sig_37 = tr.propagate(46.0)[2]
     # the simulator's camera-failure run: true error 15 m at 10 s, 153 m at 37 s
     assert sig_10 > 15.0 and sig_37 > 153.0
+
+
+def test_no_velocity_across_a_gap_and_the_turn_widens_the_sigma():
+    tr = TrackVelocity()
+    fixes(tr, ve=0.0, vn=10.0)                              # flying north, fixes 0..9 s
+    lat, lon = 35.8 + 300 * M_LAT, 10.6                     # 20 s later, one fix further north
+    tr.add(29.0, lat, lon, 5.0)
+    assert tr.velocity(29.0) is None                        # one fix after the gap: no velocity yet
+    tr2 = TrackVelocity()
+    fixes(tr2, ve=0.0, vn=10.0)
+    s0 = tr2.propagate(19.0)[2]
+    assert tr2.propagate(19.0, heading_change_deg=90.0)[2] > s0 + 70.0
