@@ -182,7 +182,7 @@ async function showHome() {
   let h = `<header class="hhero">${heroScene()}<div class="hwrap"><div class="hgrid">
       <div><div class="kicker">${next ? `${esc(moduleOf(next.id).leg || '')} · Mission ${esc(next.number)}` : 'Expedition complete'}</div>
         <h1>${headline}</h1><p>${text}</p>
-        ${next ? `<button class="go hbtn" id="goNext">${passed ? `Continue mission ${+next.number}` : 'Start mission 1'} →</button>` : ''}<button class="hbtn line" id="goMap">Open the expedition map</button></div>
+        ${next ? `<button class="go hbtn" id="goNext">${passed ? `Continue mission ${+next.number}` : 'Start mission 1'} →</button>` : ''}<button class="hbtn line" id="goMap">Open the expedition map</button><button class="hbtn line" id="goIntro">▶ Watch the intro</button></div>
       <div class="glass"><div class="rank"><div class="medal">${icon(r.icon)}</div><div><b>${esc(r.name)}</b><span>Rank ${r.idx + 1} of ${RANKS.length} · ${xp} XP</span></div></div>
         <div class="bar"><i style="width:${pct}%"></i></div>
         <div class="row"><span>Missions</span><b>${passed} / ${COURSES.length}</b></div>
@@ -219,6 +219,7 @@ async function showHome() {
   $('home').querySelectorAll('.mitem').forEach(c => c.onclick = () => { location.hash = 'lesson/' + c.dataset.id; });
   ['goNext', 'goNext2'].forEach(id => { if ($(id)) $(id).onclick = () => { location.hash = 'lesson/' + next.id; }; });
   $('goMap').onclick = () => $('mapHead').scrollIntoView({behavior: 'smooth'});
+  $('goIntro').onclick = () => Intro.show();
   $('home').onscroll = () => document.body.classList.toggle('scrolled', $('home').scrollTop > 40);
   Intro.maybe(() => Tour.maybe('home'));
 }

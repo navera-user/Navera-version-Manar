@@ -724,6 +724,9 @@ def page_teacher():
 def no_cache(r):
     if request.path.startswith("/api/"):
         r.headers["Cache-Control"] = "no-store"
+    elif request.path == "/" or request.path == "/teacher" or request.path.endswith((".html", ".js", ".css")):
+        # the dashboard changes often: browsers must re-check (they still reuse an unchanged file)
+        r.headers["Cache-Control"] = "no-cache"
     return r
 
 
