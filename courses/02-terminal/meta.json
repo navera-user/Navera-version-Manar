@@ -1,0 +1,3 @@
+{"number": "02", "title": "The terminal: your robot's control room", "module": 1, "duration": "1 h 30",
+ "summary": "Move around, look inside files, tidy a messy flight folder and search the whole NAVERA code — with nothing but the keyboard.",
+ "resources": [], "open": ["answers.py", "mission_brief.txt"], "check_timeout_s": 60}

@@ -109,6 +109,8 @@ def create_student(name):
 def _clone(nav):
     _run(["git", "clone", "-q", "--no-hardlinks", config.BASE, nav])
     _run(["git", "-C", nav, "remote", "rename", "origin", "base"])
+    # Without base/HEAD, "base" means only the tag: no "refname 'base' is ambiguous" warning.
+    _run(["git", "-C", nav, "remote", "set-head", "base", "-d"])
     _copy_build(nav)
 
 

@@ -1,0 +1,20 @@
+MISSION BRIEF — terminal training
+=================================
+
+Your NAVERA computer has just come back from two test flights.
+All the files of those flights were dumped, in a mess, into the folder "inbox".
+
+Your job, as the new ground engineer:
+
+  1. Build a clean mission folder:   mission/photos   mission/logs   mission/docs
+  2. Put every photo (.jpg) in mission/photos
+  3. Put every flight log (.log) in mission/logs
+  4. Move the pilot's notes to mission/docs and call them notes.txt
+  5. Delete the temporary files (.tmp) and the empty inbox folder
+  6. Copy NAVERA's GPS settings file into mission/docs, for the record
+  7. Explore your NAVERA copy and answer the questions in answers.py
+
+This brief is exactly 20 lines long (check it with: wc -l mission_brief.txt).
+You only need the terminal for all of it.
+
+Good luck, engineer!

@@ -1,0 +1,22 @@
+[09:30:00] INFO  navera: box started, 4 sources configured
+[09:30:02] INFO  gps: fix OK, 11 satellites
+[09:30:05] INFO  estimator: winner = GPS
+[09:31:10] INFO  camera: day camera streaming, 2 frames per second
+[09:32:40] INFO  day_vision: map match OK
+[09:33:15] WARN  gps: GPS LOST (no fix for 2.0 s)
+[09:33:15] INFO  estimator: winner = DAY_VISION
+[09:33:47] INFO  gps: fix OK, 9 satellites
+[09:33:47] INFO  estimator: winner = GPS
+[09:35:02] INFO  day_vision: map match OK
+[09:36:30] WARN  gps: GPS LOST (no fix for 2.0 s)
+[09:36:30] INFO  estimator: winner = DAY_VISION
+[09:37:58] INFO  day_vision: map match OK
+[09:38:20] WARN  day_vision: no match (uniform ground: sea)
+[09:38:41] INFO  day_vision: map match OK
+[09:39:05] INFO  gps: fix OK, 10 satellites
+[09:39:05] INFO  estimator: winner = GPS
+[09:41:12] WARN  gps: GPS LOST (no fix for 2.0 s)
+[09:41:12] INFO  estimator: winner = DAY_VISION
+[09:42:00] INFO  gps: fix OK, 11 satellites
+[09:42:00] INFO  estimator: winner = GPS
+[09:44:30] INFO  navera: landing detected, recording stopped

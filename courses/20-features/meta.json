@@ -1,0 +1,3 @@
+{"number": "20", "title": "Finding interesting points", "module": 5, "duration": "1 h 30",
+ "summary": "Corners, blobs and their 'fingerprints': the keypoints a camera picture is matched with. Why a city is easy to recognise and the sea is not.",
+ "resources": [], "open": ["features.py"], "check_timeout_s": 90}

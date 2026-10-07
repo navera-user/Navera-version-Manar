@@ -1,0 +1,3 @@
+{"number": "05", "title": "Git: your time machine (and the Reset button)", "module": 1, "duration": "1 h 30",
+ "summary": "Save snapshots of your work, see exactly what changed, undo mistakes and work on a branch — in your own copy of NAVERA.",
+ "resources": [], "open": ["answers.py"], "check_timeout_s": 60}

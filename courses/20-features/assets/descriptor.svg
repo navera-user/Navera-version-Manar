@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 250" font-family="sans-serif" font-size="13">
+  <rect width="620" height="250" fill="#f7fafc"/>
+  <!-- keypoint neighbourhood -->
+  <rect x="20" y="40" width="140" height="140" fill="#e8dcc4"/>
+  <polygon points="60,180 160,180 160,90 95,120" fill="#7a5c3e"/>
+  <circle cx="90" cy="110" r="52" fill="none" stroke="#d64545" stroke-width="3"/>
+  <line x1="90" y1="110" x2="138" y2="92" stroke="#d64545" stroke-width="3"/>
+  <circle cx="90" cy="110" r="4" fill="#d64545"/>
+  <text x="90" y="30" text-anchor="middle" fill="#1d2733">a keypoint: place, size, angle</text>
+  <!-- arrow -->
+  <path d="M175 110 L215 110" stroke="#1d2733" stroke-width="2"/><path d="M215 104 L225 110 L215 116 z" fill="#1d2733"/>
+  <!-- SIFT grid of histograms -->
+  <g stroke="#0b6e8a" fill="none">
+    <rect x="235" y="45" width="130" height="130"/>
+    <line x1="267.5" y1="45" x2="267.5" y2="175"/><line x1="300" y1="45" x2="300" y2="175"/><line x1="332.5" y1="45" x2="332.5" y2="175"/>
+    <line x1="235" y1="77.5" x2="365" y2="77.5"/><line x1="235" y1="110" x2="365" y2="110"/><line x1="235" y1="142.5" x2="365" y2="142.5"/>
+  </g>
+  <g stroke="#0b6e8a" stroke-width="2">
+    <line x1="251" y1="61" x2="262" y2="61"/><line x1="251" y1="61" x2="251" y2="52"/>
+    <line x1="284" y1="94" x2="296" y2="88"/><line x1="316" y1="126" x2="316" y2="114"/>
+    <line x1="349" y1="159" x2="338" y2="159"/><line x1="284" y1="159" x2="293" y2="150"/>
+    <line x1="349" y1="61" x2="360" y2="66"/>
+  </g>
+  <text x="300" y="30" text-anchor="middle" fill="#1d2733">SIFT: 4×4 cells × 8 directions</text>
+  <text x="300" y="195" text-anchor="middle" fill="#0b6e8a">= 128 numbers</text>
+  <!-- arrow -->
+  <path d="M380 110 L420 110" stroke="#1d2733" stroke-width="2"/><path d="M420 104 L430 110 L420 116 z" fill="#1d2733"/>
+  <!-- fingerprint -->
+  <g font-family="monospace" font-size="12" fill="#1d2733">
+    <text x="440" y="70">SIFT [146, 17, 0, 1,</text>
+    <text x="440" y="86">      4, 0, 1, 8, …]</text>
+    <text x="440" y="126">ORB  01000100 10001001</text>
+    <text x="440" y="142">     10111101 … (256 bits</text>
+    <text x="440" y="158">      = 32 bytes)</text>
+  </g>
+  <text x="525" y="30" text-anchor="middle" fill="#1d2733">the "fingerprint"</text>
+  <text x="310" y="232" text-anchor="middle" fill="#a8680d">Same place seen in another photo → almost the same fingerprint. Another place → a very different one.</text>
+</svg>

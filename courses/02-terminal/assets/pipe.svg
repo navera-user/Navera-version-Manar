@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 250" font-family="sans-serif" font-size="13">
+  <rect width="700" height="250" fill="#f7fafc"/>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#0b6e8a"/>
+    </marker>
+  </defs>
+  <text x="20" y="28" font-family="monospace" font-size="15" fill="#1d2733">cat mission/logs/*.log  |  grep "match OK"  |  wc -l</text>
+  <!-- boxes -->
+  <rect x="20" y="50" width="170" height="44" rx="6" fill="#d7e3ee" stroke="#8aa3b8"/>
+  <text x="105" y="70" text-anchor="middle" font-weight="bold" fill="#1d2733">cat</text>
+  <text x="105" y="86" text-anchor="middle" fill="#4a5866">prints all the lines</text>
+  <rect x="265" y="50" width="170" height="44" rx="6" fill="#fde7c5" stroke="#d6a65c"/>
+  <text x="350" y="70" text-anchor="middle" font-weight="bold" fill="#1d2733">grep "match OK"</text>
+  <text x="350" y="86" text-anchor="middle" fill="#4a5866">keeps matching lines</text>
+  <rect x="510" y="50" width="170" height="44" rx="6" fill="#cde6c8" stroke="#86b67d"/>
+  <text x="595" y="70" text-anchor="middle" font-weight="bold" fill="#1d2733">wc -l</text>
+  <text x="595" y="86" text-anchor="middle" fill="#4a5866">counts the lines</text>
+  <line x1="192" y1="72" x2="262" y2="72" stroke="#0b6e8a" stroke-width="3" marker-end="url(#ar)"/>
+  <line x1="437" y1="72" x2="507" y2="72" stroke="#0b6e8a" stroke-width="3" marker-end="url(#ar)"/>
+  <text x="227" y="64" text-anchor="middle" fill="#0b6e8a" font-weight="bold">|</text>
+  <text x="472" y="64" text-anchor="middle" fill="#0b6e8a" font-weight="bold">|</text>
+  <!-- what flows -->
+  <g font-family="monospace" font-size="10.5" fill="#1d2733">
+    <rect x="20" y="108" width="245" height="120" fill="#ffffff" stroke="#c9d3dc"/>
+    <text x="26" y="124">[09:30:00] navera: box started</text>
+    <text x="26" y="139">[09:31:10] camera: streaming</text>
+    <text x="26" y="154" fill="#0b6e8a">[09:32:40] day_vision: map match OK</text>
+    <text x="26" y="169">[09:33:15] gps: GPS LOST</text>
+    <text x="26" y="184" fill="#0b6e8a">[09:35:02] day_vision: map match OK</text>
+    <text x="26" y="199">[09:36:30] gps: GPS LOST</text>
+    <text x="26" y="214">… 37 lines in all</text>
+  <rect x="275" y="108" width="232" height="104" fill="#ffffff" stroke="#c9d3dc"/>
+    <text x="281" y="124" fill="#0b6e8a">[09:32:40] day_vision: map match OK</text>
+    <text x="281" y="139" fill="#0b6e8a">[09:35:02] day_vision: map match OK</text>
+    <text x="281" y="154" fill="#0b6e8a">[09:37:58] day_vision: map match OK</text>
+    <text x="281" y="169" fill="#0b6e8a">[09:38:41] day_vision: map match OK</text>
+    <text x="281" y="184" fill="#0b6e8a">[14:19:30] day_vision: map match OK</text>
+    <text x="281" y="199" fill="#0b6e8a">[14:21:02] day_vision: map match OK</text>
+  </g>
+  <rect x="560" y="108" width="70" height="40" fill="#ffffff" stroke="#c9d3dc"/>
+  <text x="595" y="135" text-anchor="middle" font-family="monospace" font-size="20" font-weight="bold" fill="#1d2733">6</text>
+  <text x="532" y="180" fill="#4a5866">only this reaches</text>
+  <text x="532" y="196" fill="#4a5866">your screen</text>
+</svg>

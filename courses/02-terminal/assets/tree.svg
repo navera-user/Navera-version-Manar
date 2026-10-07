@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 390" font-family="sans-serif" font-size="13">
+<rect width="680" height="390" fill="#f7fafc"/>
+<rect x="16" y="24" width="22" height="24" rx="4" fill="#d7e3ee" stroke="#b6c2cc"/>
+<text x="23" y="41" fill="#1d2733" font-family="monospace">/</text>
+<text x="50" y="41" fill="#4a5866">the root: the very top of the disk</text>
+<path d="M26 48 V70 H50" fill="none" stroke="#7a8794" stroke-width="1.5"/>
+<rect x="50" y="58" width="118" height="24" rx="4" fill="#d7e3ee" stroke="#b6c2cc"/>
+<text x="57" y="75" fill="#1d2733" font-family="monospace">home/student/</text>
+<text x="180" y="75" fill="#4a5866">your home folder, written  ~  for short</text>
+<path d="M60 82 V104 H84" fill="none" stroke="#7a8794" stroke-width="1.5"/>
+<rect x="84" y="92" width="70" height="24" rx="4" fill="#cde6c8" stroke="#b6c2cc"/>
+<text x="91" y="109" fill="#1d2733" font-family="monospace">navera/</text>
+<text x="166" y="109" fill="#4a5866">your own copy of NAVERA</text>
+<path d="M94 116 V138 H118" fill="none" stroke="#7a8794" stroke-width="1.5"/>
+<rect x="118" y="126" width="78" height="24" rx="4" fill="#e9f3e6" stroke="#b6c2cc"/>
+<text x="125" y="143" fill="#1d2733" font-family="monospace">day_pkg/</text>
+<text x="208" y="143" fill="#4a5866">day vision package</text>
+<path d="M94 116 V172 H118" fill="none" stroke="#7a8794" stroke-width="1.5"/>
+<rect x="118" y="160" width="78" height="24" rx="4" fill="#e9f3e6" stroke="#b6c2cc"/>
+<text x="125" y="177" fill="#1d2733" font-family="monospace">gps_pkg/</text>
+<text x="208" y="177" fill="#4a5866">GPS package  (… and many more folders)</text>
+<path d="M94 116 V206 H118" fill="none" stroke="#7a8794" stroke-width="1.5"/>
+<rect x="118" y="194" width="110" height="24" rx="4" fill="#e9f3e6" stroke="#b6c2cc"/>
+<text x="125" y="211" fill="#1d2733" font-family="monospace">navera_msgs/</text>
+<text x="240" y="211" fill="#4a5866">the messages the packages exchange</text>
+<path d="M128 218 V240 H152" fill="none" stroke="#7a8794" stroke-width="1.5"/>
+<rect x="152" y="228" width="46" height="24" rx="4" fill="#ffffff" stroke="#b6c2cc"/>
+<text x="159" y="245" fill="#1d2733" font-family="monospace">msg/</text>
+<path d="M162 252 V274 H186" fill="none" stroke="#7a8794" stroke-width="1.5"/>
+<rect x="186" y="262" width="174" height="24" rx="4" fill="#ffffff" stroke="#b6c2cc"/>
+<text x="193" y="279" fill="#1d2733" font-family="monospace">PositionEstimate.msg</text>
+<text x="372" y="279" fill="#4a5866">a file (not a folder: no / at the end)</text>
+<path d="M60 82 V308 H84" fill="none" stroke="#7a8794" stroke-width="1.5"/>
+<rect x="84" y="296" width="78" height="24" rx="4" fill="#fde7c5" stroke="#b6c2cc"/>
+<text x="91" y="313" fill="#1d2733" font-family="monospace">lessons/</text>
+<text x="174" y="313" fill="#4a5866">one folder per lesson</text>
+<path d="M94 320 V342 H118" fill="none" stroke="#7a8794" stroke-width="1.5"/>
+<rect x="118" y="330" width="110" height="24" rx="4" fill="#fff3df" stroke="#b6c2cc"/>
+<text x="125" y="347" fill="#1d2733" font-family="monospace">02-terminal/</text>
+<circle cx="244" cy="342" r="7" fill="#d64545"/>
+<text x="258" y="347" fill="#a12d2d" font-weight="bold">you start here: ~/lessons/02-terminal</text>
+</svg>

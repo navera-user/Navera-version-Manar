@@ -1,0 +1,3 @@
+{"number": "23", "title": "Counting your steps with a camera: visual odometry", "module": 5, "duration": "1 h 30",
+ "summary": "Follow the ground sliding from one photo to the next, add up the steps, watch the error grow — and see how NAVERA resets it with map fixes.",
+ "resources": [], "open": ["vo.py"], "check_timeout_s": 120}

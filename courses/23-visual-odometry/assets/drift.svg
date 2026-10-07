@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 250" font-family="sans-serif" font-size="13">
+  <rect width="560" height="250" fill="#f7fafc"/>
+  <line x1="50" y1="200" x2="540" y2="200" stroke="#1d2733"/>
+  <line x1="50" y1="200" x2="50" y2="20" stroke="#1d2733"/>
+  <text x="380" y="225" fill="#1d2733">distance flown →</text>
+  <text x="56" y="16" fill="#1d2733">error (m)</text>
+  <!-- VO only: grows -->
+  <path d="M50 200 L540 40" stroke="#d64545" stroke-width="3" fill="none"/>
+  <text x="400" y="62" fill="#d64545">odometry only: the error keeps growing</text>
+  <!-- with fixes: sawtooth -->
+  <path d="M50 200 L148 168 L148 192 L246 160 L246 194 L344 162 L344 190 L442 158 L442 193 L540 161"
+        stroke="#0b6e8a" stroke-width="3" fill="none"/>
+  <g fill="#f2a33a"><circle cx="148" cy="192" r="6"/><circle cx="246" cy="194" r="6"/><circle cx="344" cy="190" r="6"/><circle cx="442" cy="193" r="6"/></g>
+  <text x="70" y="148" fill="#0b6e8a">odometry + a map fix now and then:</text>
+  <text x="70" y="164" fill="#0b6e8a">the error falls back at each fix ●</text>
+  <text x="150" y="240" fill="#a8680d">● map fix (lesson 22): an absolute position, a few meters off</text>
+</svg>

@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 300" font-family="sans-serif" font-size="13">
+  <rect width="760" height="300" fill="#f7fafc"/>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#1d2733"/>
+    </marker>
+  </defs>
+  <text x="380" y="24" text-anchor="middle" font-size="15" font-weight="bold" fill="#1d2733">Day vision: from a photo to a position</text>
+
+  <!-- inputs -->
+  <g>
+    <rect x="16" y="50" width="130" height="58" rx="8" fill="#ffffff" stroke="#0b6e8a" stroke-width="2"/>
+    <text x="81" y="73" text-anchor="middle" fill="#1d2733" font-weight="bold">1. the photo</text>
+    <text x="81" y="93" text-anchor="middle" fill="#1d2733">camera, looking down</text>
+    <rect x="16" y="122" width="130" height="58" rx="8" fill="#ffffff" stroke="#0b6e8a" stroke-width="2"/>
+    <text x="81" y="145" text-anchor="middle" fill="#1d2733" font-weight="bold">2. height + lens</text>
+    <text x="81" y="165" text-anchor="middle" fill="#1d2733">altitude, hfov</text>
+    <rect x="16" y="194" width="130" height="58" rx="8" fill="#ffffff" stroke="#0b6e8a" stroke-width="2"/>
+    <text x="81" y="217" text-anchor="middle" fill="#1d2733" font-weight="bold">3. the prior</text>
+    <text x="81" y="237" text-anchor="middle" fill="#1d2733">last known position</text>
+  </g>
+
+  <!-- steps -->
+  <rect x="190" y="86" width="140" height="58" rx="8" fill="#e3f1f5" stroke="#0b6e8a"/>
+  <text x="260" y="109" text-anchor="middle" fill="#1d2733" font-weight="bold">scale the photo</text>
+  <text x="260" y="129" text-anchor="middle" fill="#1d2733">to the map's m/px</text>
+  <rect x="190" y="194" width="140" height="58" rx="8" fill="#e3f1f5" stroke="#0b6e8a"/>
+  <text x="260" y="217" text-anchor="middle" fill="#1d2733" font-weight="bold">cut the map</text>
+  <text x="260" y="237" text-anchor="middle" fill="#1d2733">around the prior</text>
+
+  <rect x="372" y="140" width="130" height="58" rx="8" fill="#fdebd3" stroke="#f2a33a" stroke-width="2"/>
+  <text x="437" y="163" text-anchor="middle" fill="#1d2733" font-weight="bold">match + RANSAC</text>
+  <text x="437" y="183" text-anchor="middle" fill="#1d2733">SIFT, ratio test</text>
+
+  <rect x="540" y="140" width="96" height="58" rx="8" fill="#fdebd3" stroke="#f2a33a" stroke-width="2"/>
+  <text x="588" y="163" text-anchor="middle" fill="#1d2733" font-weight="bold">gates</text>
+  <text x="588" y="183" text-anchor="middle" fill="#1d2733">inliers, scale</text>
+
+  <rect x="666" y="96" width="82" height="50" rx="8" fill="#cde6c8" stroke="#2f7d32" stroke-width="2"/>
+  <text x="707" y="117" text-anchor="middle" fill="#1d2733" font-weight="bold">lat, lon</text>
+  <text x="707" y="135" text-anchor="middle" fill="#1d2733">accepted</text>
+  <rect x="666" y="196" width="82" height="50" rx="8" fill="#f8d7d7" stroke="#d64545" stroke-width="2"/>
+  <text x="707" y="217" text-anchor="middle" fill="#1d2733" font-weight="bold">no fix</text>
+  <text x="707" y="235" text-anchor="middle" fill="#1d2733">+ a reason</text>
+
+  <g stroke="#1d2733" stroke-width="1.6" fill="none" marker-end="url(#ar)">
+    <line x1="146" y1="79" x2="188" y2="105"/>
+    <line x1="146" y1="151" x2="188" y2="125"/>
+    <line x1="146" y1="223" x2="188" y2="223"/>
+    <line x1="146" y1="160" x2="188" y2="210"/>
+    <line x1="330" y1="115" x2="370" y2="158"/>
+    <line x1="330" y1="223" x2="370" y2="182"/>
+    <line x1="502" y1="169" x2="538" y2="169"/>
+    <line x1="636" y1="160" x2="664" y2="128"/>
+    <line x1="636" y1="180" x2="664" y2="212"/>
+  </g>
+  <text x="168" y="196" fill="#a8680d" font-size="11">size of the</text>
+  <text x="168" y="208" fill="#a8680d" font-size="11">margin</text>
+  <text x="380" y="282" text-anchor="middle" fill="#1d2733">The photo centre, carried through the fitted transformation, lands on a map pixel: that pixel is the position.</text>
+</svg>

@@ -1,0 +1,3 @@
+{"number": "21", "title": "Matching two pictures", "module": 5, "duration": "2 h",
+ "summary": "Pair up the fingerprints of a drone photo and a map, throw away the liars with the ratio test and RANSAC, and find the transformation that lays one picture onto the other.",
+ "resources": [], "open": ["ransac_line.py", "matching.py"], "check_timeout_s": 120}
