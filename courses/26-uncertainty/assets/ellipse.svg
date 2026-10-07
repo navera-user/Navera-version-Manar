@@ -7,23 +7,23 @@
     <circle r="50" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
     <text x="80" y="-6" font-size="11" fill="#64748b">east</text><text x="4" y="-80" font-size="11" fill="#64748b">north</text>
   </g>
-  <text x="130" y="250" text-anchor="middle" font-family="monospace">[ 9  0 ]</text>
-  <text x="130" y="266" text-anchor="middle" font-family="monospace">[ 0  9 ]</text>
+  <text xml:space="preserve" x="130" y="250" text-anchor="middle" font-family="monospace">[ 9  0 ]</text>
+  <text xml:space="preserve" x="130" y="266" text-anchor="middle" font-family="monospace">[ 0  9 ]</text>
   <text x="130" y="284" text-anchor="middle" fill="#334155">3 m both ways: a circle</text>
   <!-- stretched -->
   <g transform="translate(380,140)">
     <line x1="-90" y1="0" x2="90" y2="0" stroke="#cbd5e1"/><line x1="0" y1="-90" x2="0" y2="90" stroke="#cbd5e1"/>
     <ellipse rx="85" ry="34" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
   </g>
-  <text x="380" y="250" text-anchor="middle" font-family="monospace">[ 25  0 ]</text>
-  <text x="380" y="266" text-anchor="middle" font-family="monospace">[  0  4 ]</text>
+  <text xml:space="preserve" x="380" y="250" text-anchor="middle" font-family="monospace">[ 25  0 ]</text>
+  <text xml:space="preserve" x="380" y="266" text-anchor="middle" font-family="monospace">[  0  4 ]</text>
   <text x="380" y="284" text-anchor="middle" fill="#334155">5 m east, 2 m north: stretched</text>
   <!-- tilted -->
   <g transform="translate(630,140)">
     <line x1="-90" y1="0" x2="90" y2="0" stroke="#cbd5e1"/><line x1="0" y1="-90" x2="0" y2="90" stroke="#cbd5e1"/>
     <ellipse rx="85" ry="36" transform="rotate(-32)" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
   </g>
-  <text x="630" y="250" text-anchor="middle" font-family="monospace">[ 19  9 ]</text>
-  <text x="630" y="266" text-anchor="middle" font-family="monospace">[  9 10 ]</text>
+  <text xml:space="preserve" x="630" y="250" text-anchor="middle" font-family="monospace">[ 19  9 ]</text>
+  <text xml:space="preserve" x="630" y="266" text-anchor="middle" font-family="monospace">[  9 10 ]</text>
   <text x="630" y="284" text-anchor="middle" fill="#334155">errors east and north linked: tilted</text>
 </svg>

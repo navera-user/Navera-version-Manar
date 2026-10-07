@@ -8,7 +8,7 @@
   <text x="350" y="24" text-anchor="middle" font-size="15" font-weight="bold" fill="#1d2733">Inside the fake_gps node</text>
   <!-- node box -->
   <rect x="16" y="40" width="470" height="270" rx="14" fill="#e6f2f6" stroke="#0b6e8a" stroke-width="2"/>
-  <text x="30" y="62" font-weight="bold" fill="#0b6e8a">node "fake_gps"   (rclpy.spin keeps it alive)</text>
+  <text xml:space="preserve" x="30" y="62" font-weight="bold" fill="#0b6e8a">node "fake_gps"   (rclpy.spin keeps it alive)</text>
   <!-- timer -->
   <circle cx="80" cy="140" r="38" fill="#ffffff" stroke="#56606b" stroke-width="2"/>
   <line x1="80" y1="140" x2="80" y2="112" stroke="#1d2733" stroke-width="3"/>

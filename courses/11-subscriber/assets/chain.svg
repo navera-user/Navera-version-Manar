@@ -30,7 +30,7 @@
     <text x="181" y="140">/fake_gps/fix</text>
   </g>
   <g fill="#56606b" font-size="10">
-    <text x="170" y="94">NavSatFix</text>
+    <text x="182" y="94">NavSatFix</text>
     <text x="406" y="94">PositionEstimate</text>
     <text x="490" y="140" text-anchor="end">NavStatus, 5 Hz</text>
   </g>

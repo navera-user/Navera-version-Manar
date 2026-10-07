@@ -2,52 +2,52 @@
   <rect width="680" height="400" fill="#f7fafc"/>
   <text x="340" y="24" text-anchor="middle" font-size="15" font-weight="bold" fill="#1d2733">navera_msgs/PositionEstimate — one form, five questions</text>
   <!-- WHERE -->
-  <rect x="16" y="40" width="320" height="120" rx="10" fill="#ffffff" stroke="#0b6e8a" stroke-width="2"/>
+  <rect x="16" y="40" width="320" height="126" rx="10" fill="#ffffff" stroke="#0b6e8a" stroke-width="2"/>
   <text x="28" y="60" font-weight="bold" fill="#0b6e8a">WHERE?</text>
   <g font-family="monospace" font-size="11" fill="#1d2733">
     <text x="28" y="82">latitude, longitude 35.8256, 10.6084</text>
-    <text x="28" y="100">altitude            nan  (unknown)</text>
+    <text xml:space="preserve" x="28" y="100">altitude            nan  (unknown)</text>
     <text x="28" y="118">position_covariance [225,0,0,0,225,0,0,0,0]</text>
     <text x="28" y="136">position_covariance_type 1 (APPROXIMATED)</text>
   </g>
-  <text x="28" y="153" fill="#56606b" font-size="11">"I am here, give or take 15 m (225 = 15²)"</text>
+  <text x="28" y="154" fill="#56606b" font-size="11">"I am here, give or take 15 m (225 = 15²)"</text>
   <!-- WHO -->
   <rect x="348" y="40" width="316" height="70" rx="10" fill="#ffffff" stroke="#3a8a4a" stroke-width="2"/>
   <text x="360" y="60" font-weight="bold" fill="#3a8a4a">WHO?</text>
   <g font-family="monospace" fill="#1d2733">
-    <text x="360" y="82">source   2 (DAY_VISION)</text>
+    <text xml:space="preserve" x="360" y="82">source   2 (DAY_VISION)</text>
   </g>
   <text x="360" y="100" fill="#56606b" font-size="11">GPS, day vision, night vision, stars…</text>
   <!-- HOW -->
   <rect x="348" y="120" width="316" height="70" rx="10" fill="#ffffff" stroke="#3a8a4a" stroke-width="2"/>
   <text x="360" y="140" font-weight="bold" fill="#3a8a4a">HOW?</text>
   <g font-family="monospace" fill="#1d2733">
-    <text x="360" y="162">mode     0 (MEASURED)</text>
+    <text xml:space="preserve" x="360" y="162">mode     0 (MEASURED)</text>
   </g>
   <text x="360" y="180" fill="#56606b" font-size="11">measured, propagated, held, replayed</text>
   <!-- WORTH -->
-  <rect x="16" y="172" width="320" height="88" rx="10" fill="#ffffff" stroke="#d64545" stroke-width="2"/>
-  <text x="28" y="192" font-weight="bold" fill="#d64545">MAY I USE IT?</text>
+  <rect x="16" y="180" width="320" height="88" rx="10" fill="#ffffff" stroke="#d64545" stroke-width="2"/>
+  <text x="28" y="200" font-weight="bold" fill="#d64545">MAY I USE IT?</text>
   <g font-family="monospace" fill="#1d2733">
-    <text x="28" y="214">valid       true</text>
-    <text x="28" y="232">reason      ""   (why not, for humans)</text>
-    <text x="28" y="250">confidence  0.0  (local, not comparable)</text>
+    <text xml:space="preserve" x="28" y="222">valid       true</text>
+    <text xml:space="preserve" x="28" y="240">reason      ""   (why not, for humans)</text>
+    <text xml:space="preserve" x="28" y="258">confidence  0.0  (local, not comparable)</text>
   </g>
   <!-- WHEN -->
-  <rect x="348" y="200" width="316" height="80" rx="10" fill="#ffffff" stroke="#a8680d" stroke-width="2"/>
+  <rect x="348" y="200" width="316" height="86" rx="10" fill="#ffffff" stroke="#a8680d" stroke-width="2"/>
   <text x="360" y="220" font-weight="bold" fill="#a8680d">WHEN?</text>
   <g font-family="monospace" fill="#1d2733">
-    <text x="360" y="242">sensor_stamp   12:00:00.000</text>
-    <text x="360" y="260">header.stamp   12:00:00.640</text>
+    <text xml:space="preserve" x="360" y="242">sensor_stamp   12:00:00.000</text>
+    <text xml:space="preserve" x="360" y="260">header.stamp   12:00:00.640</text>
   </g>
   <text x="360" y="275" fill="#56606b" font-size="11">measured… then published 0.64 s later</text>
   <!-- TRACE -->
-  <rect x="16" y="272" width="320" height="88" rx="10" fill="#ffffff" stroke="#56606b" stroke-width="2"/>
-  <text x="28" y="292" font-weight="bold" fill="#56606b">TRACEABILITY (never decides anything)</text>
+  <rect x="16" y="286" width="320" height="88" rx="10" fill="#ffffff" stroke="#56606b" stroke-width="2"/>
+  <text x="28" y="306" font-weight="bold" fill="#56606b">TRACEABILITY (never decides anything)</text>
   <g font-family="monospace" fill="#1d2733">
-    <text x="28" y="314">producer "day_subscriber"  model_id …</text>
-    <text x="28" y="332">frame_index 1234</text>
-    <text x="28" y="350">details_json "{...}"</text>
+    <text xml:space="preserve" x="28" y="328">producer "day_subscriber"  model_id …</text>
+    <text x="28" y="346">frame_index 1234</text>
+    <text x="28" y="364">details_json "{...}"</text>
   </g>
   <text x="506" y="320" text-anchor="middle" fill="#1d2733" font-size="13">Every source fills the same form,</text>
   <text x="506" y="338" text-anchor="middle" fill="#1d2733" font-size="13">so the arbiter judges them all</text>

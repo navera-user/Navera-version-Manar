@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 400" font-family="Helvetica, Arial, sans-serif" font-size="13">
   <rect width="780" height="400" rx="12" fill="#f8fafc"/>
   <text x="390" y="26" text-anchor="middle" font-size="17" font-weight="bold" fill="#0f172a">The mission simulator: what is real, what is simulated</text>
-  <defs><marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker></defs>
+  <defs><marker id="a" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker></defs>
   <!-- simulated world -->
   <rect x="20" y="45" width="220" height="300" rx="10" fill="#fef3c7" stroke="#d97706"/>
   <text x="130" y="68" text-anchor="middle" font-weight="bold" fill="#92400e">SIMULATED world</text>
@@ -40,10 +40,11 @@
   <text x="660" y="306" text-anchor="middle" font-size="11">(truth + its own belief)</text>
   <!-- arrows -->
   <path d="M225 118 H303" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
-  <path d="M225 212 Q265 190 303 160" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
-  <path d="M400 132 V184" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
-  <path d="M400 220 V228" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M225 212 Q265 190 303 160" stroke="#475569" stroke-width="2" fill="none" marker-end="url(#a)"/>
+  <path d="M495 115 H503 V203 H497" stroke="#475569" stroke-width="2" fill="none" marker-end="url(#a)"/>
+  <path d="M495 159 H503" stroke="#475569" stroke-width="2"/>
+  <path d="M400 220 V229" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
   <path d="M495 247 H558" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
-  <path d="M560 270 Q400 380 230 262" stroke="#475569" stroke-width="2" fill="none" stroke-dasharray="5 4" marker-end="url(#a)"/>
-  <text x="400" y="375" text-anchor="middle" font-size="11" fill="#475569">the autopilot moves the simulated vehicle → new GPS, camera, IMU samples → …</text>
+  <path d="M660 345 V358 H130 V347" stroke="#475569" stroke-width="2" fill="none" stroke-dasharray="5 4" marker-end="url(#a)"/>
+  <text x="400" y="381" text-anchor="middle" font-size="11" fill="#475569">the autopilot moves the simulated vehicle → new GPS, camera, IMU samples → …</text>
 </svg>

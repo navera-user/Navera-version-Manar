@@ -19,11 +19,11 @@
   <rect x="420" y="50" width="204" height="150" rx="10" fill="#ffffff" stroke="#0b6e8a" stroke-width="2"/>
   <text x="432" y="72" font-weight="bold" fill="#0b6e8a">self (the backpack)</text>
   <g font-family="monospace" font-size="12" fill="#1d2733">
-    <text x="432" y="98">count      = 12</text>
-    <text x="432" y="120">distance_m = 66.0</text>
-    <text x="432" y="142">speed_mps  = 6.0</text>
-    <text x="432" y="164">last = (35.82…,</text>
-    <text x="432" y="182">        10.63…, t)</text>
+    <text xml:space="preserve" x="432" y="98">count      = 12</text>
+    <text xml:space="preserve" x="432" y="120">distance_m = 66.0</text>
+    <text xml:space="preserve" x="432" y="142">speed_mps  = 6.0</text>
+    <text xml:space="preserve" x="432" y="164">last = (35.82…,</text>
+    <text xml:space="preserve" x="432" y="182">        10.63…, t)</text>
   </g>
-  <text x="320" y="238" text-anchor="middle" fill="#1d2733">step = haversine(previous, new)    dt = t_new − t_previous    speed = step / dt</text>
+  <text x="320" y="238" text-anchor="middle" fill="#1d2733" xml:space="preserve">step = haversine(previous, new)    dt = t_new − t_previous    speed = step / dt</text>
 </svg>

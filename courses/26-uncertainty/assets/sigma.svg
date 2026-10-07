@@ -9,14 +9,15 @@
   <text x="250" y="248" text-anchor="middle">+1σ</text><text x="150" y="248" text-anchor="middle">−1σ</text>
   <text x="300" y="248" text-anchor="middle">+2σ</text><text x="100" y="248" text-anchor="middle">−2σ</text>
   <text x="350" y="248" text-anchor="middle">+3σ</text><text x="50" y="248" text-anchor="middle">−3σ</text>
-  <text x="200" y="270" text-anchor="middle" fill="#334155">within ±1σ: 68 %   ±2σ: 95 %   ±3σ: 99.7 %</text>
+  <text xml:space="preserve" x="200" y="270" text-anchor="middle" fill="#334155">within ±1σ: 68 %   ±2σ: 95 %   ±3σ: 99.7 %</text>
   <text x="575" y="26" text-anchor="middle" font-size="16" font-weight="bold" fill="#0f172a">Two axes (a map): circles</text>
   <circle cx="575" cy="150" r="105" fill="#fee2e2" stroke="#dc2626" stroke-width="2"/>
   <circle cx="575" cy="150" r="70" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
   <circle cx="575" cy="150" r="35" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
   <path d="M569 150 h12 M575 144 v12" stroke="#dc2626" stroke-width="3"/>
-  <text x="575" y="122" text-anchor="middle" font-weight="bold" fill="#166534">1σ: 39 %</text>
-  <text x="575" y="90" text-anchor="middle" font-weight="bold" fill="#92400e">2σ: 86 %</text>
-  <text x="575" y="57" text-anchor="middle" font-weight="bold" fill="#991b1b">3σ: 99 %</text>
-  <text x="575" y="282" text-anchor="middle" fill="#334155">on a map the error has two directions: fewer fixes fall in each circle</text>
+  <text x="575" y="138" text-anchor="middle" font-size="12" font-weight="bold" fill="#166534">1σ: 39 %</text>
+  <text x="575" y="103" text-anchor="middle" font-weight="bold" fill="#92400e">2σ: 86 %</text>
+  <text x="575" y="68" text-anchor="middle" font-weight="bold" fill="#991b1b">3σ: 99 %</text>
+  <text x="575" y="274" text-anchor="middle" fill="#334155">on a map the error has two directions:</text>
+  <text x="575" y="291" text-anchor="middle" fill="#334155">fewer fixes fall in each circle</text>
 </svg>

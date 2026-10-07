@@ -31,7 +31,7 @@
   <line x1="406" y1="142" x2="472" y2="142" stroke="#0b6e8a" stroke-width="2.5" marker-end="url(#a)"/>
   <line x1="404" y1="156" x2="472" y2="210" stroke="#0b6e8a" stroke-width="2.5" marker-end="url(#a)"/>
   <!-- message -->
-  <rect x="172" y="200" width="160" height="40" rx="4" fill="#ffffff" stroke="#56606b"/>
+  <rect x="154" y="200" width="196" height="40" rx="4" fill="#ffffff" stroke="#56606b"/>
   <text x="252" y="217" text-anchor="middle" fill="#1d2733">message</text>
   <text x="252" y="233" text-anchor="middle" font-family="monospace" fill="#1d2733">data: 'Hello World: 7'</text>
   <line x1="220" y1="198" x2="220" y2="150" stroke="#56606b" stroke-dasharray="3 3"/>

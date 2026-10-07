@@ -24,7 +24,7 @@
   <text x="540" y="88" text-anchor="middle" font-weight="bold" fill="#d64545">now</text>
   <!-- age -->
   <line x1="120" y1="168" x2="536" y2="168" stroke="#d64545" stroke-width="1.5" marker-end="url(#f)"/>
-  <text x="330" y="188" text-anchor="middle" fill="#d64545">age of the position = now − sensor_stamp   (NAVERA's freshness rule)</text>
+  <text xml:space="preserve" x="330" y="188" text-anchor="middle" fill="#d64545">age of the position = now − sensor_stamp   (NAVERA's freshness rule)</text>
   <text x="252" y="156" text-anchor="middle" fill="#56606b" font-size="12">latency = header.stamp − sensor_stamp</text>
   <text x="330" y="210" text-anchor="middle" fill="#56606b" font-size="12">The drone kept flying during the latency: a position is as old as its photo, not as its message.</text>
 </svg>

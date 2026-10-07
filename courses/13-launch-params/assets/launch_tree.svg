@@ -22,7 +22,7 @@
   </g>
   <g text-anchor="middle" fill="#1d2733">
     <text x="120" y="156" font-weight="bold">ExecuteProcess</text>
-    <text x="120" y="173" font-size="12">fake_gps_params.py + my_gps.yaml</text>
+    <text x="120" y="173" font-size="11">fake_gps_params.py + my_gps.yaml</text>
     <text x="340" y="156" font-weight="bold">Node (gps_pkg)</text>
     <text x="340" y="173" font-size="12">ros_gps_node, fix_topic param</text>
     <text x="560" y="156" font-weight="bold">IncludeLaunchDescription</text>

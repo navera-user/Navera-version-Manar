@@ -13,26 +13,27 @@
     <text x="95" y="256" text-anchor="middle" font-weight="bold">4. celestial</text><text x="95" y="273" text-anchor="middle" font-size="12">window 45 s</text>
   </g>
   <!-- question 1 -->
-  <rect x="205" y="70" width="210" height="200" rx="10" fill="#fff" stroke="#334155"/>
-  <text x="310" y="95" text-anchor="middle" font-weight="bold" fill="#0f172a">① Is it usable? (eligible)</text>
+  <rect x="205" y="70" width="230" height="210" rx="10" fill="#fff" stroke="#334155"/>
+  <text x="320" y="95" text-anchor="middle" font-weight="bold" fill="#0f172a">① Is it usable? (eligible)</text>
   <text x="222" y="125" fill="#334155">✔ valid = true</text>
-  <text x="222" y="150" fill="#334155">✔ MEASURED or PROPAGATED</text>
+  <text x="222" y="150" fill="#334155" font-size="13">✔ MEASURED or PROPAGATED</text>
   <text x="222" y="175" fill="#334155">✔ fresh (age &lt; window,</text>
   <text x="240" y="193" fill="#334155">not &gt; 0.5 s in the future)</text>
   <text x="222" y="218" fill="#334155">✔ finite, in-range position</text>
   <text x="222" y="243" fill="#334155">✔ a real covariance</text>
   <!-- arrows -->
   <path d="M170 78 H205 M170 138 H205 M170 198 H205 M170 258 H205" stroke="#64748b" stroke-width="2"/>
-  <path d="M415 170 H455" stroke="#64748b" stroke-width="3" marker-end="url(#a)"/>
+  <path d="M435 175 H464" stroke="#64748b" stroke-width="3" marker-end="url(#a)"/>
   <defs><marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#64748b"/></marker></defs>
   <!-- question 2 -->
-  <rect x="460" y="70" width="280" height="200" rx="10" fill="#fff" stroke="#334155"/>
-  <text x="600" y="95" text-anchor="middle" font-weight="bold" fill="#0f172a">② Who wins?</text>
-  <text x="476" y="125" fill="#334155">The first usable source in the order</text>
-  <text x="476" y="145" fill="#334155">GPS → day → night → celestial …</text>
-  <text x="476" y="175" fill="#334155">… unless the active source is still</text>
-  <text x="476" y="195" fill="#334155">usable and the better one has been</text>
-  <text x="476" y="215" fill="#334155">usable for less than <tspan font-weight="bold">2 s</tspan> (hold-off).</text>
-  <text x="476" y="250" fill="#0f172a" font-weight="bold">→ /navera/position + /navera/nav_status</text>
+  <rect x="470" y="70" width="280" height="210" rx="10" fill="#fff" stroke="#334155"/>
+  <text x="610" y="95" text-anchor="middle" font-weight="bold" fill="#0f172a">② Who wins?</text>
+  <text x="486" y="125" fill="#334155">The first usable source in the order</text>
+  <text x="486" y="145" fill="#334155">GPS → day → night → celestial …</text>
+  <text x="486" y="175" fill="#334155">… unless the active source is still</text>
+  <text x="486" y="195" fill="#334155">usable and the better one has been</text>
+  <text x="486" y="215" fill="#334155">usable for less than <tspan font-weight="bold">2 s</tspan> (hold-off).</text>
+  <text x="486" y="248" fill="#0f172a" font-weight="bold">→ /navera/position</text>
+  <text x="502" y="267" fill="#0f172a" font-weight="bold">+ /navera/nav_status</text>
   <text x="380" y="310" text-anchor="middle" font-size="12" fill="#64748b">navera_estimator/nodes/estimator_node.py — _eval_source(), _sane(), _select(), _classify()</text>
 </svg>
