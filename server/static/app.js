@@ -220,7 +220,7 @@ async function showHome() {
   ['goNext', 'goNext2'].forEach(id => { if ($(id)) $(id).onclick = () => { location.hash = 'lesson/' + next.id; }; });
   $('goMap').onclick = () => $('mapHead').scrollIntoView({behavior: 'smooth'});
   $('home').onscroll = () => document.body.classList.toggle('scrolled', $('home').scrollTop > 40);
-  Tour.maybe('home');
+  Intro.maybe(() => Tour.maybe('home'));
 }
 
 /* ------------------------------------------------------------------ lesson */
@@ -695,6 +695,24 @@ $('mResetNavera').onclick = async () => {
     toast('NAVERA is back to the original. Backup: ' + (r.backup || 'none'), 5000);
   } catch (e) { toast(e.message); }
 };
+const Intro = {
+  key: () => `academy:${ME.name}:intro`,
+  seen() { try { return localStorage.getItem(this.key()) === '1'; } catch (e) { return false; } },
+  show(then) {
+    try { localStorage.setItem(this.key(), '1'); } catch (e) {}
+    const bg = document.createElement('div'); bg.className = 'intro-bg';
+    bg.innerHTML = `<div class="intro-box"><video src="/static/media/navera-intro.webm" controls autoplay muted playsinline></video>
+      <div class="intro-bar"><b>Welcome to NAVERA Academy</b><span>80 seconds · no sound</span>
+      <a href="/static/media/navera-intro.webm" download>Download</a><button class="go">Start the expedition →</button></div></div>`;
+    const done = () => { bg.remove(); if (then) then(); };
+    bg.querySelector('button').onclick = done;
+    bg.querySelector('video').onended = () => { bg.querySelector('button').focus(); };
+    bg.addEventListener('click', (e) => { if (e.target === bg) done(); });
+    document.body.appendChild(bg);
+  },
+  maybe(then) { if (this.seen() || AS) { if (then) then(); } else this.show(then); },
+};
+$('mIntro').onclick = () => { $('userMenu').classList.remove('open'); Intro.show(); };
 $('mTour').onclick = () => { $('userMenu').classList.remove('open'); Tour.reset(); Tour.start($('work').style.display === 'none' ? 'home' : 'mission'); };
 $('mPw').onclick = async () => {
   const bg = await modal('Change password', `<p>Current password</p><input type="password" style="width:100%"><p>New password (6+ characters)</p><input type="password" style="width:100%">`,
