@@ -1,0 +1,3 @@
+{"number": "15", "title": "How GPS talks: NMEA sentences", "module": 4, "duration": "1 h 45",
+ "summary": "Read the text lines a GPS receiver sends, check their checksum, turn them into positions and measure a drive — then compare with NAVERA's own GPS driver.",
+ "resources": [], "open": ["nmea_tools.py", "drive.nmea", "answers.py"], "check_timeout_s": 60}

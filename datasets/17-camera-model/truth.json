@@ -1,0 +1,24 @@
+{
+ "camera": {
+  "width_px": 960,
+  "height_px": 540,
+  "hfov_deg": 90.0
+ },
+ "pad_size_m": 12.0,
+ "photos": {
+  "photo_A.png": {
+   "lat": 35.8262,
+   "lon": 10.6395,
+   "height_m": 120.0,
+   "m_per_px": 0.25,
+   "pad_px": 48
+  },
+  "photo_B.png": {
+   "lat": 35.819,
+   "lon": 10.631,
+   "height_m": 210.0,
+   "m_per_px": 0.4375,
+   "pad_px": 27
+  }
+ }
+}

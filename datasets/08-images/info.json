@@ -1,0 +1,21 @@
+{
+ "place": "Port El Kantaoui marina",
+ "lat": 35.8942,
+ "lon": 10.5979,
+ "photo": {
+  "file": "drone_photo.jpg",
+  "width": 640,
+  "height": 480,
+  "heading_deg": 35.0,
+  "m_per_px": 0.6,
+  "centre": "the photo centre is exactly (lat, lon)"
+ },
+ "map": {
+  "file": "map_patch.png",
+  "zoom": 17,
+  "size": 512,
+  "m_per_px": 0.967527,
+  "centre": "pixel (256, 256) is exactly (lat, lon); north is up"
+ },
+ "made_by": "make_dataset.py (synthetic photo from zoom-18 tiles of /data/map.mbtiles)"
+}

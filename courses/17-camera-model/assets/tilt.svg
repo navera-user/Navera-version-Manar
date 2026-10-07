@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 300" font-family="sans-serif" font-size="13">
+  <rect width="600" height="300" fill="#f7fafc"/>
+  <rect x="0" y="240" width="600" height="60" fill="#cde6c8"/>
+  <text x="14" y="22" fill="#1d2733" font-weight="bold">A tilted camera: the picture slides forward and stretches</text>
+  <!-- level fov -->
+  <polygon points="180,60 100,240 260,240" fill="#0b6e8a" fill-opacity="0.12" stroke="#0b6e8a" stroke-dasharray="5 4"/>
+  <!-- tilted fov: tilt 25deg, half fov 24deg -> near tan(1deg)~0, far tan(49deg)=1.15 x 180 -->
+  <polygon points="180,60 183,240 387,240" fill="#f2a33a" fill-opacity="0.22" stroke="#f2a33a" stroke-width="2"/>
+  <line x1="180" y1="60" x2="180" y2="240" stroke="#1d2733" stroke-width="1.5" stroke-dasharray="3 3"/>
+  <line x1="180" y1="60" x2="264" y2="240" stroke="#d64545" stroke-width="2"/>
+  <circle cx="180" cy="240" r="5" fill="#1d2733"/>
+  <circle cx="264" cy="240" r="5" fill="#d64545"/>
+  <text x="120" y="262" fill="#1d2733">under the drone</text>
+  <text x="246" y="262" fill="#d64545">picture centre</text>
+  <line x1="180" y1="280" x2="264" y2="280" stroke="#d64545" stroke-width="2"/>
+  <text x="140" y="296" fill="#d64545">shift = h · tan(tilt)</text>
+  <path d="M180 110 A50 50 0 0 0 201 105" fill="none" stroke="#1d2733"/>
+  <text x="186" y="128" fill="#1d2733">tilt</text>
+  <rect x="160" y="46" width="40" height="14" rx="4" fill="#1d2733"/>
+  <text x="96" y="160" fill="#0b6e8a">level</text>
+  <text x="300" y="200" fill="#a8680d">tilted: far edge = h · tan(tilt + FOV/2)</text>
+  <rect x="410" y="60" width="176" height="110" rx="8" fill="#fff" stroke="#7a8794"/>
+  <text x="422" y="82" fill="#1d2733" font-weight="bold">h = 150 m, tilt 10°</text>
+  <text x="422" y="104" fill="#1d2733">shift = 150 · tan 10°</text>
+  <text x="422" y="124" fill="#1d2733">      ≈ 26 m</text>
+  <text x="422" y="150" fill="#7a8794">NAVERA straightens</text>
+  <text x="422" y="164" fill="#7a8794">the picture first</text>
+</svg>

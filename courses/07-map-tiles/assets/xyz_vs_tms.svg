@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 260" font-family="sans-serif" font-size="13">
+  <rect width="600" height="260" fill="#f7fafc"/>
+  <text x="40" y="28" fill="#1d2733" font-weight="bold">XYZ (NAVERA, web maps)</text>
+  <text x="340" y="28" fill="#1d2733" font-weight="bold">TMS (inside the MBTiles file)</text>
+  <g stroke="#0b6e8a" stroke-width="1.5" fill="#d7ecf5">
+    <rect x="60" y="45" width="160" height="40"/><rect x="60" y="85" width="160" height="40"/>
+    <rect x="60" y="125" width="160" height="40"/><rect x="60" y="165" width="160" height="40"/>
+    <rect x="360" y="45" width="160" height="40"/><rect x="360" y="85" width="160" height="40"/>
+    <rect x="360" y="125" width="160" height="40"/><rect x="360" y="165" width="160" height="40"/>
+  </g>
+  <rect x="60" y="85" width="160" height="40" fill="#f2a33a" stroke="#0b6e8a" stroke-width="1.5"/>
+  <rect x="360" y="85" width="160" height="40" fill="#f2a33a" stroke="#0b6e8a" stroke-width="1.5"/>
+  <g fill="#1d2733">
+    <text x="115" y="70">y = 0</text><text x="115" y="110">y = 1</text><text x="115" y="150">y = 2</text><text x="115" y="190">y = 3</text>
+    <text x="405" y="70">row = 3</text><text x="405" y="110">row = 2</text><text x="405" y="150">row = 1</text><text x="405" y="190">row = 0</text>
+  </g>
+  <text x="20" y="70" fill="#555" font-size="12">north</text><text x="20" y="190" fill="#555" font-size="12">south</text>
+  <text x="530" y="70" fill="#555" font-size="12">north</text><text x="530" y="190" fill="#555" font-size="12">south</text>
+  <defs><marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#d64545"/></marker></defs>
+  <path d="M222 105 C290 105 290 105 358 105" fill="none" stroke="#d64545" stroke-width="2" marker-end="url(#b)"/>
+  <text x="262" y="96" fill="#d64545" font-size="12">same tile</text>
+  <text x="30" y="232" fill="#1d2733">zoom 2 has 2² = 4 rows.  row = (2^z − 1) − y  →  y = 1 is row 4 − 1 − 1 = 2.</text>
+  <text x="30" y="250" fill="#555" font-size="12">Columns (x) are the same in both. Only the rows are counted from the other end.</text>
+</svg>

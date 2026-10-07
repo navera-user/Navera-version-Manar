@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" font-family="sans-serif" font-size="13">
+  <rect width="720" height="300" fill="#f7fafc"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#d64545"/></marker></defs>
+  <text x="30" y="24" fill="#1d2733" font-weight="bold">A grey image = a table of numbers</text>
+  <!-- grey grid 5 x 4 -->
+  <g stroke="#888" stroke-width="1">
+    <rect x="50" y="50" width="40" height="40" fill="rgb(20,20,20)"/><rect x="90" y="50" width="40" height="40" fill="rgb(60,60,60)"/><rect x="130" y="50" width="40" height="40" fill="rgb(120,120,120)"/><rect x="170" y="50" width="40" height="40" fill="rgb(200,200,200)"/><rect x="210" y="50" width="40" height="40" fill="rgb(250,250,250)"/>
+    <rect x="50" y="90" width="40" height="40" fill="rgb(40,40,40)"/><rect x="90" y="90" width="40" height="40" fill="rgb(90,90,90)"/><rect x="130" y="90" width="40" height="40" fill="rgb(160,160,160)"/><rect x="170" y="90" width="40" height="40" fill="rgb(230,230,230)"/><rect x="210" y="90" width="40" height="40" fill="rgb(200,200,200)"/>
+    <rect x="50" y="130" width="40" height="40" fill="rgb(70,70,70)"/><rect x="90" y="130" width="40" height="40" fill="rgb(140,140,140)"/><rect x="130" y="130" width="40" height="40" fill="rgb(210,210,210)"/><rect x="170" y="130" width="40" height="40" fill="rgb(160,160,160)"/><rect x="210" y="130" width="40" height="40" fill="rgb(100,100,100)"/>
+    <rect x="50" y="170" width="40" height="40" fill="rgb(110,110,110)"/><rect x="90" y="170" width="40" height="40" fill="rgb(190,190,190)"/><rect x="130" y="170" width="40" height="40" fill="rgb(150,150,150)"/><rect x="170" y="170" width="40" height="40" fill="rgb(90,90,90)"/><rect x="210" y="170" width="40" height="40" fill="rgb(30,30,30)"/>
+  </g>
+  <g font-size="12" text-anchor="middle">
+    <text x="70" y="75" fill="#fff">20</text><text x="110" y="75" fill="#fff">60</text><text x="150" y="75" fill="#fff">120</text><text x="190" y="75" fill="#000">200</text><text x="230" y="75" fill="#000">250</text>
+    <text x="70" y="115" fill="#fff">40</text><text x="110" y="115" fill="#fff">90</text><text x="150" y="115" fill="#000">160</text><text x="190" y="115" fill="#000">230</text><text x="230" y="115" fill="#000">200</text>
+    <text x="70" y="155" fill="#fff">70</text><text x="110" y="155" fill="#000">140</text><text x="150" y="155" fill="#000">210</text><text x="190" y="155" fill="#000">160</text><text x="230" y="155" fill="#fff">100</text>
+    <text x="70" y="195" fill="#fff">110</text><text x="110" y="195" fill="#000">190</text><text x="150" y="195" fill="#000">150</text><text x="190" y="195" fill="#fff">90</text><text x="230" y="195" fill="#fff">30</text>
+  </g>
+  <rect x="170" y="130" width="40" height="40" fill="none" stroke="#d64545" stroke-width="3"/>
+  <line x1="50" y1="40" x2="262" y2="40" stroke="#d64545" stroke-width="2" marker-end="url(#a)"/>
+  <text x="266" y="44" fill="#d64545">x (column)</text>
+  <line x1="40" y1="50" x2="40" y2="222" stroke="#d64545" stroke-width="2" marker-end="url(#a)"/>
+  <text x="14" y="240" fill="#d64545">y (row)</text>
+  <text x="50" y="250" fill="#1d2733">shape = (4, 5)  →  4 rows (height), 5 columns (width)</text>
+  <text x="50" y="270" fill="#1d2733">img[2, 3] = 160  ← row 2, column 3 (counting from 0)</text>
+  <text x="50" y="290" fill="#555" font-size="12">0 = black … 255 = white</text>
+  <!-- colour stack -->
+  <text x="450" y="24" fill="#1d2733" font-weight="bold">A colour image = 3 tables stacked</text>
+  <rect x="520" y="90" width="160" height="128" fill="#f6c6c6" stroke="#d64545" stroke-width="2"/>
+  <rect x="500" y="70" width="160" height="128" fill="#c9e8c3" stroke="#2f855a" stroke-width="2"/>
+  <rect x="480" y="50" width="160" height="128" fill="#c6d6f6" stroke="#2b5cb8" stroke-width="2"/>
+  <text x="490" y="72" fill="#2b5cb8">channel 0: BLUE</text>
+  <text x="565" y="214" fill="#d64545">channel 2: RED</text>
+  <text x="646" y="150" fill="#2f855a" font-size="12">1: GREEN</text>
+  <text x="460" y="250" fill="#1d2733">shape = (height, width, 3)</text>
+  <text x="460" y="270" fill="#1d2733">img[y, x] = [blue, green, red]</text>
+  <text x="460" y="290" fill="#555" font-size="12">OpenCV order is B, G, R — not R, G, B!</text>
+</svg>

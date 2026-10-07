@@ -1,0 +1,23 @@
+# NAVERA camera calibration (navera_tools/calibrate_camera.py) — NAVERA_CAMERA_CALIBRATION
+model: fisheye
+image_width: 1920
+image_height: 540
+camera_matrix:
+- 664.1859795016309
+- 0.0
+- 924.4735336198509
+- 0.0
+- 727.9038956200226
+- 314.42011003977495
+- 0.0
+- 0.0
+- 1.0
+distortion:
+- 0.204090330005939
+- -0.3219697457324658
+- 0.3550322385856243
+- -0.0942719693169056
+rms_px: 0.572
+views: 13
+created: '2026-10-07T09:44:11Z'
+out_hfov_deg: 110.64

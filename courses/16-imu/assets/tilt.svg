@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 300" font-family="sans-serif" font-size="13">
+  <rect width="600" height="300" fill="#f7fafc"/>
+  <rect x="0" y="240" width="600" height="60" fill="#cde6c8"/>
+  <g transform="translate(200 50) rotate(-12)">
+    <rect x="-40" y="-5" width="80" height="10" rx="3" fill="#0b6e8a"/>
+    <rect x="-8" y="5" width="16" height="10" fill="#1d2733"/>
+  </g>
+  <line x1="200" y1="60" x2="200" y2="240" stroke="#1d2733" stroke-dasharray="6 5" stroke-width="2"/>
+  <line x1="202" y1="60" x2="244" y2="240" stroke="#d64545" stroke-width="2.5"/>
+  <circle cx="200" cy="240" r="6" fill="#1d2733"/>
+  <circle cx="244" cy="240" r="6" fill="#d64545"/>
+  <line x1="200" y1="252" x2="200" y2="262" stroke="#1d2733"/>
+  <text x="190" y="276" fill="#1d2733" text-anchor="end">really under the drone</text>
+  <line x1="244" y1="252" x2="244" y2="262" stroke="#d64545"/>
+  <text x="254" y="276" fill="#d64545">centre of the tilted photo</text>
+  <path d="M200 110 A50 50 0 0 0 214 108" fill="none" stroke="#a8680d" stroke-width="2"/>
+  <text x="214" y="100" fill="#a8680d">tilt</text>
+  <text x="188" y="160" fill="#1d2733" text-anchor="end">height h</text>
+  <text x="310" y="40" fill="#1d2733">offset on the ground = h × tan(tilt)</text>
+  <text x="310" y="60" fill="#1d2733">150 m high, 10° tilt → about 26 m</text>
+  <text x="310" y="100" fill="#0b6e8a">NAVERA turns the photo into the view</text>
+  <text x="310" y="118" fill="#0b6e8a">of a level camera looking straight</text>
+  <text x="310" y="136" fill="#0b6e8a">down ("straightening"), using the</text>
+  <text x="310" y="154" fill="#0b6e8a">IMU attitude at the exposure instant.</text>
+</svg>

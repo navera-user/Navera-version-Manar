@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 330" font-family="sans-serif" font-size="13">
+  <rect width="720" height="330" fill="#f7fafc"/>
+  <!-- globe -->
+  <defs><clipPath id="g"><circle cx="165" cy="165" r="135"/></clipPath></defs>
+  <circle cx="165" cy="165" r="135" fill="#d7ecf5" stroke="#0b6e8a" stroke-width="2"/>
+  <g clip-path="url(#g)" fill="none" stroke="#7fb3c8" stroke-width="1">
+    <!-- parallels (latitude) -->
+    <ellipse cx="165" cy="58" rx="80" ry="12"/>
+    <ellipse cx="165" cy="100" rx="118" ry="18"/>
+    <ellipse cx="165" cy="230" rx="118" ry="18"/>
+    <ellipse cx="165" cy="272" rx="80" ry="12"/>
+    <!-- meridians (longitude) -->
+    <ellipse cx="165" cy="165" rx="45" ry="135"/>
+    <ellipse cx="165" cy="165" rx="95" ry="135"/>
+    <line x1="165" y1="30" x2="165" y2="300"/>
+  </g>
+  <ellipse cx="165" cy="165" rx="135" ry="22" fill="none" stroke="#d64545" stroke-width="2"/>
+  <path d="M165 30 A45 135 0 0 1 165 300" fill="none" stroke="#2f855a" stroke-width="2.5"/>
+  <circle cx="198" cy="96" r="5" fill="#f2a33a" stroke="#1d2733"/>
+  <text x="206" y="92" fill="#1d2733">Sousse</text>
+  <text x="206" y="106" fill="#1d2733" font-size="11">35.8° N, 10.6° E</text>
+  <text x="45" y="205" fill="#d64545">equator, lat 0°</text>
+  <text x="120" y="320" fill="#2f855a">Greenwich meridian, lon 0°</text>
+  <text x="150" y="22" fill="#1d2733">North Pole 90° N</text>
+  <!-- right: shrinking circles -->
+  <text x="350" y="30" fill="#1d2733" font-weight="bold">Once around the Earth along a parallel</text>
+  <g fill="#1d2733" font-size="12">
+    <rect x="350" y="55" width="270" height="18" fill="#d64545"/>
+    <text x="350" y="50">equator (0°): 40 075 km → 1° lon = 111.3 km</text>
+    <rect x="350" y="105" width="219" height="18" fill="#f2a33a"/>
+    <text x="350" y="100">Sousse (35.8°): 32 500 km → 1° lon = 90.3 km</text>
+    <rect x="350" y="155" width="135" height="18" fill="#7fb3c8"/>
+    <text x="350" y="150">Oslo (60°): 20 040 km → 1° lon = 55.7 km</text>
+    <rect x="350" y="205" width="3" height="18" fill="#1d2733"/>
+    <text x="350" y="200">pole (90°): 0 km → 1° lon = 0 km</text>
+  </g>
+  <text x="350" y="255" fill="#1d2733" font-size="12">length of a parallel = 40 075 km × cos(latitude)</text>
+  <text x="350" y="280" fill="#1d2733" font-size="12">but 1° of LATITUDE is always ≈ 111.3 km</text>
+  <text x="350" y="300" fill="#555" font-size="11">(the meridians all have the same length)</text>
+</svg>

@@ -1,0 +1,3 @@
+{"number": "17", "title": "The camera as a measuring tool", "module": 4, "duration": "1 h 30",
+ "summary": "The pinhole model, field of view, footprint and meters per pixel: how NAVERA knows how much ground a photo shows, and why the height matters so much.",
+ "resources": [], "open": ["camera_math.py", "measure_pad.py", "answers.py"], "check_timeout_s": 90}

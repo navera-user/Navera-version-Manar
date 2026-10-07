@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 300" font-family="sans-serif" font-size="13">
+  <rect width="600" height="300" fill="#f7fafc"/>
+  <text x="150" y="22" text-anchor="middle" fill="#1d2733" font-weight="bold">Pinhole: r = f × tan(angle)</text>
+  <line x1="40" y1="70" x2="260" y2="70" stroke="#1d2733" stroke-width="3"/>
+  <text x="150" y="58" text-anchor="middle" fill="#1d2733">sensor</text>
+  <line x1="150" y1="170" x2="150" y2="70" stroke="#999" stroke-dasharray="4 4"/>
+  <text x="156" y="125" fill="#555" font-size="12">f</text>
+  <g stroke="#f2a33a" stroke-width="2">
+    <line x1="150" y1="285" x2="150" y2="70"/>
+    <line x1="205" y1="285" x2="100" y2="70"/>
+    <line x1="255" y1="280" x2="58" y2="70"/>
+  </g>
+  <line x1="270" y1="240" x2="5" y2="110" stroke="#d64545" stroke-width="2" stroke-dasharray="6 4"/>
+  <circle cx="150" cy="170" r="5" fill="#d64545"/>
+  <text x="80" y="190" fill="#d64545">pinhole</text>
+  <text x="10" y="232" fill="#a8680d">a ray from far to the side</text>
+  <text x="10" y="248" fill="#a8680d">never reaches the sensor</text>
+  <line x1="300" y1="40" x2="300" y2="290" stroke="#d8dee6"/>
+  <text x="450" y="22" text-anchor="middle" fill="#1d2733" font-weight="bold">Fisheye: r ≈ f × angle</text>
+  <line x1="340" y1="70" x2="560" y2="70" stroke="#1d2733" stroke-width="3"/>
+  <text x="450" y="58" text-anchor="middle" fill="#1d2733">sensor</text>
+  <path d="M395 175 Q450 120 505 175 Z" fill="#cfe7f0" stroke="#0b6e8a" stroke-width="2"/>
+  <text x="450" y="195" text-anchor="middle" fill="#0b6e8a">curved glass</text>
+  <g stroke="#f2a33a" stroke-width="2" fill="none">
+    <line x1="450" y1="285" x2="450" y2="70"/>
+    <path d="M330 280 L425 150 L395 70"/>
+    <path d="M570 280 L475 150 L505 70"/>
+    <path d="M310 185 L410 162 L352 70"/>
+    <path d="M590 185 L490 162 L548 70"/>
+  </g>
+  <text x="450" y="240" text-anchor="middle" fill="#a8680d">rays from the side are bent</text>
+  <text x="450" y="256" text-anchor="middle" fill="#a8680d">and still land on the sensor</text>
+</svg>

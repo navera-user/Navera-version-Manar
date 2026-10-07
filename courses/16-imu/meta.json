@@ -1,0 +1,3 @@
+{"number": "16", "title": "Which way am I facing? The IMU", "module": 4, "duration": "1 h 45",
+ "summary": "Accelerometer, gyroscope and magnetometer; roll, pitch, yaw and quaternions; why a gyroscope drifts, true vs magnetic north, and how NAVERA uses the attitude to straighten its photos.",
+ "resources": [], "open": ["attitude.py", "gyro_drift.py", "answers.py"], "check_timeout_s": 90}
