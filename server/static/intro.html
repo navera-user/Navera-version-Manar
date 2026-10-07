@@ -128,8 +128,8 @@
   <div class="scene" id="s1">
     <div class="flock" id="flock"><svg style="left:0;top:0;width:70px;height:70px"><use href="#b"/></svg><svg style="left:90px;top:40px;width:46px;height:46px"><use href="#b"/></svg>
       <svg style="left:40px;top:70px;width:38px;height:38px"><use href="#b"/></svg><svg style="left:150px;top:10px;width:34px;height:34px"><use href="#b"/></svg></div>
-    <div class="cap"><div class="kick">Oman · every autumn</div><h2>Swallows cross Oman<br><i>without a single satellite.</i></h2>
-      <p>Thousands of kilometres from Europe to Africa — no GPS, no map on a screen.</p></div>
+    <div class="cap"><div class="kick">Every autumn</div><h2>Long before satellites,<br><i>there were birds.</i></h2>
+      <p>A small swallow flies thousands of kilometres, across seas and deserts, without a map.</p></div>
   </div>
   <!-- 2 -->
   <div class="scene" id="s2">
@@ -175,17 +175,17 @@
   <div class="scene" id="s6">
     <div class="ws">
       <div class="pnl doc" id="p1"><div class="hd"><small>Leg III · Mission 10</small><b>Your first publisher</b></div>
-        <p>Read the briefing, then do the lab step by step. Every mission ends on NAVERA's real code.</p><div class="task">Task · make the fake receiver drive from Muscat at 5 m/s.</div></div>
+        <p>Read the briefing, then do the lab step by step. Every mission ends on NAVERA's real code.</p><div class="task">Task · make the fake receiver drive along the coast at 5 m/s.</div></div>
       <div class="pnl code" id="p2"><span class="k">class</span> FakeGnss(Node):<br>&nbsp;&nbsp;<span class="k">def</span> tick(self):<br>&nbsp;&nbsp;&nbsp;&nbsp;lat, lon = self.position_at(t)<br>&nbsp;&nbsp;&nbsp;&nbsp;msg.latitude = lat<br>&nbsp;&nbsp;&nbsp;&nbsp;msg.position_covariance = [<span class="n">9.0</span>, <span class="n">0.0</span>, …]<br>&nbsp;&nbsp;&nbsp;&nbsp;self.pub.publish(msg)<br><br><span class="c"># ✔ 13 / 13 checks passed</span></div>
     </div>
     <div class="check" id="chk"><div class="medal"><svg viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z" fill="currentColor" stroke="none"/></g></svg></div><div><b>Mission complete</b><span>+100 XP · New rank: Wayfinder</span></div></div>
-    <div class="cap"><div class="kick">Your expedition</div><h2>30 missions. <i>Real code. Real checks.</i></h2>
+    <div class="cap"><div class="kick">Now it is your turn</div><h2>30 missions. <i>Real code. Real tests.</i></h2>
       <p>Your own copy of NAVERA, a terminal, a simulator — and a field report after every attempt.</p></div>
   </div>
   <!-- 7 -->
   <div class="scene" id="s7">
     <div class="mid t7"><svg><use href="#b"/></svg><h1>NAVERA Academy</h1><div class="sub">Find your way when the sky goes quiet</div></div>
-    <div class="cap"><p>Your first mission is ready.</p></div>
+    <div class="cap"><p>Your journey begins now.</p></div>
   </div>
 </div>
 <div class="ui"><button id="replay">↺ Replay</button><button id="skip">Close ✕</button></div>
@@ -194,16 +194,20 @@
 const REC = new URLSearchParams(location.search).has('rec');
 if (REC) document.body.classList.add('rec');
 const $ = (id) => document.getElementById(id);
-// [start s, scene, actions]
-const T = [
-  [0.4, 's1'], [12, 's2'], [13.5, () => document.querySelectorAll('.sense').forEach((e, i) => setTimeout(() => e.classList.add('on'), i * 900))],
-  [24, 's3'], [28.5, () => $('s3').classList.add('lost')],
-  [36, 's4'], [37.2, () => $('match').classList.add('go')], [39, () => $('match').classList.add('snap')],
-  [49, 's5'], [50, () => document.querySelectorAll('.src').forEach((e, i) => setTimeout(() => e.classList.add('on'), i * 700))], [54, () => $('arb').classList.add('on')],
-  [61, 's6'], [62, () => $('p1').classList.add('on')], [63, () => $('p2').classList.add('on')], [66, () => $('chk').classList.add('on')],
-  [72, 's7'],
-];
-const TOTAL = 80;
+// scene start times come from the narration plan (tools/make_intro_voice.py → media/intro-timing.json)
+let START = {s1: 0.4, s2: 12, s3: 24, s4: 36, s5: 49, s6: 61, s7: 72}, TOTAL = 80;
+let T = [];
+function buildTimeline() {
+  const S = START;
+  T = [
+    [S.s1 + 0.4, 's1'], [S.s2, 's2'], [S.s2 + 1.5, () => document.querySelectorAll('.sense').forEach((e, i) => setTimeout(() => e.classList.add('on'), i * 1100))],
+    [S.s3, 's3'], [S.s3 + 5.0, () => $('s3').classList.add('lost')],
+    [S.s4, 's4'], [S.s4 + 1.2, () => $('match').classList.add('go')], [S.s4 + 3.5, () => $('match').classList.add('snap')],
+    [S.s5, 's5'], [S.s5 + 1.0, () => document.querySelectorAll('.src').forEach((e, i) => setTimeout(() => e.classList.add('on'), i * 800))], [S.s5 + 5.5, () => $('arb').classList.add('on')],
+    [S.s6, 's6'], [S.s6 + 1.0, () => $('p1').classList.add('on')], [S.s6 + 2.0, () => $('p2').classList.add('on')], [S.s6 + 5.5, () => $('chk').classList.add('on')],
+    [S.s7, 's7'],
+  ];
+}
 let timers = [];
 function play() {
   timers.forEach(clearTimeout); timers = [];
@@ -222,7 +226,10 @@ function play() {
 }
 $('replay').onclick = play;
 $('skip').onclick = () => { if (window.parent !== window) window.parent.postMessage('intro-done', '*'); else history.back(); };
-play();
+fetch('/static/media/intro-timing.json', {cache: 'no-store'}).then(r => r.ok ? r.json() : null).catch(() => null).then(j => {
+  if (j) { START = j.scenes; TOTAL = j.total; }
+  buildTimeline(); play();
+});
 </script>
 </body>
 </html>

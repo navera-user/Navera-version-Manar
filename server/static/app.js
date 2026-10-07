@@ -176,7 +176,7 @@ async function showHome() {
   const b = badgesHTML(COURSES);
   const headline = passed === 0 ? `Find your way<br>when the <i>sky goes quiet.</i>` : `Welcome back,<br><i>${esc(first)}.</i>`;
   const text = passed === 0
-    ? `Every autumn, swallows cross Oman without a single satellite — landmarks, the sun, the stars and an inner compass, each checked against the others. In ${COURSES.length} missions you will build the same skills for machines, on NAVERA's real code.`
+    ? `Every autumn, swallows cross seas and deserts without a single satellite — landmarks, the sun, the stars and an inner compass, each checked against the others. In ${COURSES.length} missions you will build the same skills for machines, on NAVERA's real code.`
     : passed === COURSES.length ? `All ${COURSES.length} missions complete — ${xp} XP. You have rebuilt the ideas behind NAVERA one by one.`
     : `${passed} of ${COURSES.length} missions complete. Next on your route: <b>${esc(next.title)}</b>. Your NAVERA copy is your own aircraft: change it freely, Reset brings back the factory version.`;
   let h = `<header class="hhero">${heroScene()}<div class="hwrap"><div class="hgrid">
@@ -703,7 +703,7 @@ const Intro = {
     try { localStorage.setItem(this.key(), '1'); } catch (e) {}
     const bg = document.createElement('div'); bg.className = 'intro-bg';
     bg.innerHTML = `<div class="intro-box"><video src="/static/media/navera-intro.webm" controls playsinline></video>
-      <div class="intro-bar"><b>Welcome to NAVERA Academy</b><span>80 seconds · with narration — turn your sound on 🔊</span>
+      <div class="intro-bar"><b>Welcome to NAVERA Academy</b><span>A short film · with narration — turn your sound on 🔊</span>
       <a href="/static/media/navera-intro.webm" download>Download</a><button class="go">Start the expedition →</button></div></div>`;
     const done = () => { bg.remove(); if (then) then(); };
     bg.querySelector('button').onclick = done;

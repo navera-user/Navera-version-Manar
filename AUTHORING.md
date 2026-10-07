@@ -6,11 +6,11 @@ NAVERA (`~/navera`, reset button) and their own lesson files (`~/lessons/<id>/`)
 
 ## Audience — read this twice
 
-- **University students in Oman** (engineering / computer science, years 1–3). English is their
-  second language (Arabic first): write clear, direct English — short sentences, no idioms, define
-  every technical term the first time (bold it). They know school maths (trigonometry, vectors,
-  matrices, derivatives, basic probability) and may have done one programming course; some never used
-  Linux, git or ROS.
+- **International university students** (engineering / computer science, years 1–3), from any
+  country. For many, English is a second language: write clear, direct English — short sentences, no
+  idioms, define every technical term the first time (bold it). They know school maths (trigonometry,
+  vectors, matrices, derivatives, basic probability) and may have done one programming course; some
+  never used Linux, git or ROS.
 - **University level**: real maths where it matters (rotation matrices, quaternions, the pinhole
   model with K, homography and DLT, RANSAC probability, covariance propagation, Kalman-style fusion,
   time-compensated celestial navigation…), with a worked numeric example and the code that implements
@@ -19,14 +19,15 @@ NAVERA (`~/navera`, reset button) and their own lesson files (`~/lessons/<id>/`)
 - Labs are substantial (2–4 h): implement, test, measure, compare with NAVERA's real code, and a short
   written analysis (results.json / report.md that the check verifies). Each lab ends with
   "Going further" challenges for strong students.
-- **Oman context**: examples, exercises and stories use Omani places (Muscat, Sohar, Nizwa, Salalah,
-  the Hajar mountains, Jebel Akhdar, Wahiba Sands, Masirah, Barr Al Hikman…) and birds seen in Oman
-  (flamingos and shorebirds at Barr Al Hikman, steppe eagles in Dhofar, falcons, migrating swallows…)
-  — accurate facts only. NAVERA's **real data** (satellite map, recorded frames, simulator area) covers
-  **Sousse, Tunisia**, where NAVERA is developed: use it as is and say so once ("NAVERA's test map
-  covers Sousse, Tunisia"); do not pretend it is Oman.
+- **International context**: no single country is the setting. Worked examples use well-known places
+  on several continents (e.g. London–Paris, Singapore, Cape Town, Sydney, Reykjavik, Quito on the
+  equator, high latitudes for map-projection effects) when geography matters, and generic settings
+  otherwise ("a coastal city", "a desert test range", "a harbour"). NAVERA's **real data**
+  (satellite map, recorded frames, simulator area) covers its test area around **Sousse/Monastir
+  (Tunisia)**: use it as is and say so once ("NAVERA's test map covers Sousse, Tunisia"); synthetic
+  data (tracks, logs) may be placed in that test area or at clearly fictional/generic sites.
 - **Birds are the origin of the NAVERA idea**: each lesson keeps a `## 🐦 How birds do it` section
-  (adapt it to the new level; Omani birds welcome). The mascot **Navi the swallow** ("she") may appear
+  (global migration examples: Arctic tern, bar-tailed godwit, homing pigeons, European robins, storks, swallows…). The mascot **Navi the swallow** ("she") may appear
   lightly; the tone is friendly but adult — no baby talk.
 - Honesty: NAVERA is a **commercial product, "Release 0.x — field validation pending"**. Never call it
   a prototype, a school project or a toy. Never invent accuracy numbers; quote only figures written
