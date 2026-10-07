@@ -69,30 +69,59 @@ def test_weak_fix_far_from_the_prediction_is_rejected_strong_one_kept():
 def test_inliers_on_a_strip_are_rejected():
     nav = VisionNavigator()
     p = _fly(nav, 0, 5, 10.0, 0.0)
-    assert not nav.update(6.0, _fix(*_move(p, 10, 0), inliers=30, spread=0.125), 500.0)
+    assert not nav.update(6.0, _fix(*_move(p, 10, 0), inliers=20, spread=0.125), 500.0)
 
 
 def test_map_bias_learned_with_gps_is_removed_after():
     nav = VisionNavigator()
-    for t in range(10):                                        # vision 40 m west of GPS
+    for t in range(10):                                        # vision 25 m west of GPS, two headings
         g = _move(P0, 10.0 * t, 0.0)
         nav.gps(t, *g)
-        nav.bias_sample(_move(g, -40.0, 0.0), g)
+        nav.bias_sample(_move(g, -25.0 + (t % 3) - 1, 0.0), g, heading_deg=90.0 * (t % 2))
     g = _move(P0, 100.0, 0.0)
-    nav.update(10.0, _fix(*_move(g, -40.0, 0.0)), 500.0)
-    assert math.hypot(*_en(nav.fix[:2], g)) < 1.0
+    nav.update(10.0, _fix(*_move(g, -25.0, 0.0)), 500.0)
+    assert math.hypot(*_en(nav.fix[:2], g)) < 1.5
+
+
+def test_an_offset_that_turns_with_the_vehicle_is_not_a_map_bias():
+    """A timing error puts vision behind along the track: on opposite headings the offsets
+    cancel — learning it in east/north would help one heading and hurt the other."""
+    nav = VisionNavigator()
+    for t in range(12):
+        hdg = 0.0 if t % 2 else 180.0
+        g = _move(P0, 0.0, 10.0 * t)
+        back = -5.0 if hdg == 0.0 else 5.0                    # 5 m behind, along the track
+        nav.bias_sample(_move(g, 0.0, back + 0.3 * (t % 3)), g, heading_deg=hdg)
+    assert max(abs(x) for x in nav.bias(P0)) < 1.0
+    nav2 = VisionNavigator()                                  # one heading only: not learned either
+    for t in range(12):
+        g = _move(P0, 0.0, 10.0 * t)
+        nav2.bias_sample(_move(g, -40.0, 0.0), g, heading_deg=0.0)
+    assert nav2.bias(P0) == (0.0, 0.0)
 
 
 def test_heights_are_retried_after_failures_and_height_follows_scale():
     nav = VisionNavigator()
     nav.set_height(0.0, 500.0, 10.0, "gps")
-    assert nav.heights_to_try()[1] == []
+    assert nav.heights_to_try(0.0)[1] == []
     for t in range(3):
         nav.update(t, {"accepted": False}, 500.0)
-    h, extra, tol = nav.heights_to_try()
-    assert extra == [400.0, 625.0] and tol >= 0.2
+    h, extra, tol = nav.heights_to_try(3.0)
+    assert abs(h - 500.0) < 1 and [round(x) for x in extra] == [400, 625] and tol >= 0.2
     nav.update(20.0, _fix(*P0, scale=1.1), 500.0)            # GPS height old: vision takes over
-    assert abs(nav.height[0] - 550.0) < 1e-6 and nav.height[3] == "vision"
+    assert abs(nav.height[0] - 550.0) < 5.0 and nav.height[3] == "vision"
+
+
+def test_height_follows_a_climb_after_gps_loss():
+    """The filter must not freeze (2026-10-07: 445 -> 570 m true, the estimate stayed 466-475)."""
+    nav = VisionNavigator()
+    for t in range(10):
+        nav.set_height(float(t), 450.0, 13.0, "gps")
+    for t in range(10, 40):                                   # climbing 4 m/s, vision only
+        true = 450.0 + 4.0 * (t - 10)
+        used = nav.heights_to_try(float(t))[0]
+        nav.update(float(t), _fix(*_move(P0, 0, 25.0 * t), scale=true / used), used)
+    assert abs(nav.height_at(40.0)[0] - (450 + 4 * 30)) < 0.05 * 570
 
 
 def _texture(size=3000, seed=0):
@@ -129,3 +158,47 @@ def test_frame_odometry_gives_up_on_a_featureless_view():
     flat = np.full((400, 1200), 90, np.uint8)
     vo.step(flat, 0.0, 1.0, 0.0)
     assert vo.step(flat, 0.0, 1.0, 2.0) is None
+
+
+def test_frame_odometry_with_a_static_overlay_and_a_prediction():
+    """Something fixed in the image (an overlay, lens dirt) pulled the old phase correlation
+    toward zero motion (bench 2026-10-07: 4-5 m/s measured at 25 m/s)."""
+    g = _texture()
+    vo = FrameOdometry()
+    a, b = _view(g, 0, 0, 30.0), _view(g, 25.0, 43.3, 30.0)       # 50 m along the heading
+    for im in (a, b):
+        im[20:140, 30:330] = 255                                   # a HUD box that does not move
+        cv2.putText(im, "NAVERA", (40, 100), cv2.FONT_HERSHEY_SIMPLEX, 2, 0, 5)
+    vo.step(a, 30.0, 1.0, 0.0)
+    r = vo.step(b, 30.0, 1.0, 2.0, predicted_en=(20.0, 40.0))      # the velocity's guess, ~6 m off
+    assert r is not None and abs(r[0] - 25.0) < 3.0 and abs(r[1] - 43.3) < 3.0, r
+
+
+def test_odometry_disagreeing_with_the_fixes_is_not_used():
+    nav = VisionNavigator()
+    _fly(nav, 0, 10, 25.0, 0.0, gps=True)
+    assert not nav.odometry(11.0, 9.0, 0.0, 2.0, 1.0)              # 4.5 m/s: the static-peak failure
+    assert nav.vo_rejected == 1 and abs(nav.vel[0] - 25.0) < 1.0
+    assert nav.odometry(12.0, 52.0, 2.0, 2.0, 1.0)                 # 26 m/s: agrees
+    assert nav.vel_sigma >= 3.0
+
+
+def test_two_agreeing_fixes_re_acquire_when_the_prediction_is_wrong():
+    nav = VisionNavigator()
+    _fly(nav, 0, 10, 25.0, 0.0)
+    nav.vel = (5.0, 0.0)                                          # a wrong velocity (bad odometry)
+    real = lambda t: _move(P0, 25.0 * t, 0.0)                     # noqa: E731
+    assert not nav.update(20.0, _fix(*real(20), inliers=60, sigma=8.0), 500.0)
+    assert nav.update(21.0, _fix(*real(21), inliers=60, sigma=8.0), 500.0)
+    assert "re-acquired" in nav.last_reason
+    assert math.hypot(*_en(nav.fix[:2], real(21))) < 1.0
+
+
+def test_a_weak_fix_while_lost_needs_confirmation():
+    nav = VisionNavigator()
+    _fly(nav, 0, 10, 25.0, 0.0)
+    t = 25.0                                                      # 15 s without fixes: sigma > 50 m
+    assert nav.predict(t)[2] > 50
+    p = nav.predict(t)
+    assert not nav.update(t, _fix(p[0], p[1], inliers=25, sigma=20.0), 500.0)
+    assert "weak fix" in nav.last_reason

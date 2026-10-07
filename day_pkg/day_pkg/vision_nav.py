@@ -55,9 +55,18 @@ class VisionNavigator:
         self.vel = None               # (east, north) m/s
         self.vel_sigma = 5.0          # m/s
         self._fixes = deque(maxlen=8)  # (t, lat, lon) of recent fixes: the velocity
-        self.height = None            # (m above ground, sigma_m, t, source)
+        # height above ground: a Kalman filter on (height, climb rate) — process noise for
+        # climbs the vehicle makes, updated by independent heights (GPS - ground, baro) and by
+        # vision (the height the frame was matched at x the fitted scale)
+        self._h = None                # [height, climb rate], 2x2 covariance, time
+        self.height_source = None     # where the last independent height came from
+        self.climb_accel = 0.5        # m/s^2: climb-rate changes the filter allows
+        self.height = None            # (m above ground, sigma_m, t, source): the filter's state
         self.fails = 0                # matches failed in a row
-        self._bias = deque(maxlen=30)  # (lat, lon, de, dn): GPS minus vision, while GPS is good
+        self._bias = deque(maxlen=40)  # (lat, lon, de, dn, heading): GPS minus vision, while GPS is good
+        self.max_bias_m = 30.0
+        self.vo_rejected = 0
+        self._pending = None          # (t, lat, lon, sigma) of a fix the gate doubted
         self.last_reason = ""
 
     # ── inputs ───────────────────────────────────────────────────────────
@@ -69,34 +78,101 @@ class VisionNavigator:
     def set_height(self, t: float, height_m: float, sigma_m: float, source: str) -> None:
         """An independent height above the ground (GPS - ground elevation, barometer, rangefinder)."""
         if height_m and height_m > 0:
-            self.height = (float(height_m), float(sigma_m), t, source)
+            self._height_update(t, float(height_m), float(sigma_m), source)
+            self.height_source = source
 
-    def bias_sample(self, vision: Tuple[float, float], gps: Tuple[float, float]) -> None:
-        """While GPS is good: where vision put the frame vs where GPS says the camera points."""
-        de, dn = _en(gps, vision)
-        self._bias.append((vision[0], vision[1], de, dn))
+    def _height_predict(self, t: float):
+        if self._h is None:
+            return None
+        (h, v), P, th = self._h
+        dt = max(0.0, t - th)
+        q = self.climb_accel ** 2
+        P = [[P[0][0] + dt * (P[0][1] + P[1][0]) + dt * dt * P[1][1] + q * dt ** 4 / 4,
+              P[0][1] + dt * P[1][1] + q * dt ** 3 / 2],
+             [P[1][0] + dt * P[1][1] + q * dt ** 3 / 2, P[1][1] + q * dt * dt]]
+        return (h + v * dt, v), P, t
 
-    def odometry(self, t: float, de: float, dn: float, dt: float, quality: float) -> None:
-        """Frame-to-frame displacement (visual odometry, metres over dt): a measured velocity."""
-        if dt <= 0 or quality <= 0:
-            return
-        v = (de / dt, dn / dt)
-        if self.vel is None:
-            self.vel = v
+    def _height_update(self, t: float, z: float, sigma: float, source: str) -> None:
+        pred = self._height_predict(t)
+        if pred is None:
+            self._h = ((z, 0.0), [[sigma * sigma, 0.0], [0.0, 4.0]], t)
         else:
-            w = min(0.7, quality)
+            (h, v), P, _ = pred
+            S = P[0][0] + sigma * sigma
+            k0, k1 = P[0][0] / S, P[1][0] / S
+            r = z - h
+            self._h = ((h + k0 * r, v + k1 * r),
+                       [[(1 - k0) * P[0][0], (1 - k0) * P[0][1]],
+                        [P[1][0] - k1 * P[0][0], P[1][1] - k1 * P[0][1]]], t)
+        (h, _), P, _ = self._h
+        self.height = (h, math.sqrt(max(P[0][0], 1e-6)), t, source)
+
+    def height_at(self, t: float) -> Optional[Tuple[float, float]]:
+        """(height, sigma) predicted at t (the climb rate carried), or None."""
+        p = self._height_predict(t)
+        return None if p is None else (p[0][0], math.sqrt(max(p[1][0][0], 1e-6)))
+
+    def bias_sample(self, vision: Tuple[float, float], gps: Tuple[float, float],
+                    heading_deg: Optional[float] = None) -> None:
+        """While GPS is good: where vision put the frame vs where GPS (at the frame's
+        instant) says the camera points."""
+        de, dn = _en(gps, vision)
+        self._bias.append((vision[0], vision[1], de, dn, heading_deg))
+
+    def odometry(self, t: float, de: float, dn: float, dt: float, quality: float) -> bool:
+        """Frame-to-frame displacement (visual odometry, metres over dt): a velocity
+        measurement, used only when it agrees with the velocity the map fixes measured
+        (phase correlation can lock on what does not move in the image and under-measure)."""
+        if dt <= 0 or quality <= 0:
+            return False
+        v = (de / dt, dn / dt)
+        if self.vel is not None:
+            dv = math.hypot(v[0] - self.vel[0], v[1] - self.vel[1])
+            if dv > max(3.0 * self.vel_sigma, 0.3 * math.hypot(*self.vel), 3.0):
+                self.vo_rejected += 1
+                return False
+            w = min(0.5, quality)
             self.vel = ((1 - w) * self.vel[0] + w * v[0], (1 - w) * self.vel[1] + w * v[1])
-        self.vel_sigma = min(self.vel_sigma, 2.0)
+        else:
+            self.vel = v
+        self.vel_sigma = max(self.vel_sigma, 3.0)          # never more certain than the VO itself
+        return True
 
     # ── prediction and search ────────────────────────────────────────────
     def bias(self, near: Tuple[float, float]) -> Tuple[float, float]:
-        """The map bias (east, north m) learned within bias_radius_m of near: median of samples."""
-        pts = [(de, dn) for lat, lon, de, dn in self._bias
-               if math.hypot(*_en((lat, lon), near)) <= self.bias_radius_m]
-        if len(pts) < 3:
+        """The map bias (east, north m) learned within bias_radius_m of near, or (0, 0).
+        Only a significant one: samples from at least two headings 60 deg apart (an offset
+        from timing or camera mounting turns with the vehicle and averages out over
+        headings, a map shift does not), median beyond 2 standard errors, capped."""
+        pts = [p for p in self._bias if math.hypot(*_en(p[:2], near)) <= self.bias_radius_m]
+        if len(pts) < 5:
             return 0.0, 0.0
-        des, dns = sorted(p[0] for p in pts), sorted(p[1] for p in pts)
-        return des[len(des) // 2], dns[len(dns) // 2]
+        hd = [p[4] for p in pts if p[4] is not None]
+        if not hd or max(abs(_wrap(a - b)) for a in hd for b in hd) < 60.0:
+            return 0.0, 0.0
+        # per heading sector (45 deg) a median, then the mean of the sectors: an offset that
+        # turns with the vehicle cancels, a map shift stays
+        sectors = {}
+        for p in pts:
+            if p[4] is not None:
+                sectors.setdefault(int(((p[4] % 360.0) + 22.5) // 45.0) % 8, []).append(p)
+        out = []
+        for i in (2, 3):
+            meds, resid = [], []
+            for grp in sectors.values():
+                xs = sorted(p[i] for p in grp)
+                m = xs[len(xs) // 2]
+                meds.append(m)
+                resid += [x - m for x in xs]
+            mean = sum(meds) / len(meds)
+            sd = math.sqrt(sum(r * r for r in resid) / max(len(resid) - 1, 1))
+            spread = max(meds) - min(meds)                  # sectors disagree: not a map shift
+            se = 1.2533 * sd / math.sqrt(len(pts)) + 0.5 * spread
+            out.append(mean if abs(mean) > 2.0 * se else 0.0)
+        n = math.hypot(*out)
+        if n > self.max_bias_m:
+            out = [x * self.max_bias_m / n for x in out]
+        return out[0], out[1]
 
     def predict(self, t: float, heading_deg: Optional[float] = None) -> Optional[Tuple[float, float, float]]:
         """(lat, lon, sigma_m) at t: the last fix carried along the velocity. With a heading
@@ -122,7 +198,9 @@ class VisionNavigator:
         else:
             de, dn = ve * dt, vn * dt
         p = _move((lat, lon), de, dn)
-        return p[0], p[1], sig + self.vel_sigma * dt + 0.5 * self.accel * dt * dt
+        speed = math.hypot(ve, vn)
+        # speed error, heading error (5 deg) and unseen accelerations, as TrackVelocity
+        return p[0], p[1], sig + self.vel_sigma * dt + math.radians(5.0) * speed * dt + 0.5 * self.accel * dt * dt
 
     def search(self, t: float, heading_deg: Optional[float] = None, footprint_m: float = 0.0):
         """(centre, radius_m) to search the next frame in: the prediction and k sigma of it
@@ -133,12 +211,13 @@ class VisionNavigator:
         r = min(max(self.search_k * p[2], self.min_search_m), self.max_search_m)
         return (p[0], p[1]), r
 
-    def heights_to_try(self) -> Tuple[Optional[float], list, float]:
-        """(height, extra heights to try, scale tolerance): after retry_after failures in a
-        row, the neighbouring heights too (a stale height makes every match fail)."""
-        if self.height is None:
+    def heights_to_try(self, t: Optional[float] = None) -> Tuple[Optional[float], list, float]:
+        """(height, extra heights to try, scale tolerance) at t: after retry_after failures
+        in a row, the neighbouring heights too (a stale height makes every match fail)."""
+        hs = self.height_at(t) if t is not None else (self.height[:2] if self.height else None)
+        if hs is None:
             return None, [], 0.3
-        h, sig = self.height[0], self.height[1]
+        h, sig = hs
         tol = min(0.35, max(0.15, 2.0 * sig / h))
         if self.fails >= self.retry_after:
             return h, [h * 0.8, h * 1.25], max(tol, 0.2)
@@ -159,27 +238,41 @@ class VisionNavigator:
             lat, lon = _move((lat, lon), de, dn)
         sig = float(res.get("sigma_m") or 30.0)
         pred = self.predict(t, heading_deg)
+        if inl < 30 and float(res.get("spread", 1.0)) < self.min_spread:
+            # (campaign 2: of 35 fixes refused on spread < 25 % with < 50 inliers, 27 were right)
+            self.fails += 1
+            self.last_reason = f"inliers on {res.get('spread', 0):.0%} of the frame ({inl}): rejected"
+            return False
+        doubt = None
         if not gps_valid and pred is not None and inl < self.strong_inliers:
             d = math.hypot(*_en((lat, lon), pred[:2]))
             lim = self.gate_k * math.hypot(pred[2], sig)
             if d > lim:
+                doubt = f"{d:.0f} m from the prediction (> {lim:.0f} m, {inl} inliers)"
+            elif pred[2] > 50.0 and inl < 40:
+                # lost enough that the gate is wide: a weak fix alone could be anywhere in it
+                doubt = f"weak fix ({inl} inliers) while the position is uncertain (±{pred[2]:.0f} m)"
+        if doubt is not None:
+            # two fixes in a row that agree with each other (carried by the velocity) and not
+            # with the prediction: the prediction is what is wrong — re-acquired
+            pend, self._pending = self._pending, (t, lat, lon, sig)
+            ok = False
+            if pend is not None and 0 < t - pend[0] <= 6.0:
+                ve, vn = self.vel if self.vel is not None else (0.0, 0.0)
+                carried = _move(pend[1:3], ve * (t - pend[0]), vn * (t - pend[0]))
+                gap = math.hypot(*_en((lat, lon), carried))
+                ok = gap <= max(3.0 * math.hypot(sig, pend[3]), 15.0) + 0.3 * math.hypot(ve, vn) * (t - pend[0])
+            if not ok:
                 self.fails += 1
-                self.last_reason = f"{d:.0f} m from the prediction (> {lim:.0f} m, {inl} inliers): rejected"
+                self.last_reason = doubt + ": rejected (a second agreeing fix would confirm it)"
                 return False
-        if inl < 50 and float(res.get("spread", 1.0)) < self.min_spread:
-            self.fails += 1
-            self.last_reason = f"inliers on {res.get('spread', 0):.0%} of the frame ({inl}): rejected"
-            return False
+            self.last_reason = doubt + ": confirmed by the previous fix — re-acquired"
+        self._pending = None
         self.fails = 0
         if height_used and res.get("scale_residual"):
             hv = height_used * float(res["scale_residual"])
-            sv = max(0.03 * hv, sig)                         # vision height: ~3 % (campaign median)
-            if self.height is None or t - self.height[2] > 5.0 or self.height[3] == "vision":
-                self.height = (hv, sv, t, "vision")
-            else:                                           # an independent height is fresher: blend
-                h, s = self.height[0], self.height[1]
-                w = s * s / (s * s + sv * sv)
-                self.height = (h + w * (hv - h), math.sqrt(1.0 / (1.0 / (s * s) + 1.0 / (sv * sv))), t, self.height[3])
+            # vision height: ~3 % (campaign median), worse with few inliers
+            self._height_update(t, hv, max(0.03 * hv, 0.05 * hv if inl < 50 else 0.0), "vision")
         if not gps_valid:
             self._set_fix(t, lat, lon, sig, heading_deg)
         return True
@@ -198,7 +291,9 @@ class VisionNavigator:
                 self.vel = v
             else:
                 self.vel = (0.5 * self.vel[0] + 0.5 * v[0], 0.5 * self.vel[1] + 0.5 * v[1])
-            self.vel_sigma = 1.0 + sigma_m / max(t - t0, 1.0)
+            # few fixes or a turn since: the velocity is less sure
+            floor = 3.0 if len(self._fixes) < 4 else 0.0
+            self.vel_sigma = max(floor, 1.0 + sigma_m / max(t - t0, 1.0))
         self.fix = (lat, lon, t, sigma_m, heading_deg)
 
     # ── output ───────────────────────────────────────────────────────────
