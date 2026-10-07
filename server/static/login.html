@@ -9,7 +9,7 @@
   body { display: flex; align-items: center; justify-content: center; min-height: 100%; overflow: hidden; position: relative;
     background: linear-gradient(180deg, #4fb3f5 0%, #8fd6ff 55%, #dff3ff 100%); }
   .sun { position: absolute; top: 7%; right: 9%; width: 110px; height: 110px; border-radius: 50%; background: #ffd25e;
-    box-shadow: 0 0 0 22px rgba(255, 210, 94, .25), 0 0 0 48px rgba(255, 210, 94, .12); }
+    box-shadow: 0 0 0 18px rgba(255, 210, 94, .18); }
   .cl { position: absolute; background: #fff; border-radius: 999px; opacity: .92; }
   .cl::before, .cl::after { content: ""; position: absolute; background: #fff; border-radius: 50%; }
   .cl.a { width: 200px; height: 52px; top: 16%; left: -220px; animation: sail 60s linear infinite; }
@@ -27,7 +27,7 @@
   .box { position: relative; z-index: 2; background: #fff; border-radius: 30px; padding: 26px 30px 22px; width: min(400px, 92vw);
     box-shadow: 0 30px 80px rgba(15, 47, 99, .3); border: 4px solid #ffe7a3; }
   .box .navi { width: 132px; display: block; margin: -86px auto 0; animation: flap 3s ease-in-out infinite; filter: drop-shadow(0 10px 8px rgba(15,47,99,.2)); }
-  .box h1 { margin: 6px 0 2px; font-size: 32px; text-align: center; color: #0f2f63; }
+  .box h1 { margin: 6px 0 2px; font-size: 28px; font-family: "Nunito", sans-serif; font-weight: 800; text-align: center; color: #0f2f63; }
   .box h1 span { color: #ff9f43; }
   .box p { color: var(--muted); margin: 0 0 14px; line-height: 1.5; font-size: 15px; text-align: center; font-weight: 600; }
   label { display: block; font-size: 14px; color: var(--muted); margin: 10px 0 4px; font-weight: 800; }
@@ -39,15 +39,15 @@
 <body>
 <div class="sun"></div>
 <div class="cl a"></div><div class="cl b"></div><div class="cl c"></div>
-<div class="flock"><img src="/static/img/navi.svg" style="left:0;top:0" alt=""><img src="/static/img/navi.svg" style="left:40px;top:22px;width:28px" alt=""><img src="/static/img/navi.svg" style="left:76px;top:4px;width:24px" alt=""></div>
+<div class="flock" style="opacity:.75"><img src="/static/img/navi.svg" style="left:0;top:0" alt=""><img src="/static/img/navi.svg" style="left:40px;top:22px;width:28px" alt=""><img src="/static/img/navi.svg" style="left:76px;top:4px;width:24px" alt=""></div>
 <div class="ground"></div>
 <form class="box" id="f">
   <img class="navi" src="/static/img/navi.svg" alt="Navi the swallow">
   <h1>NAVERA <span>Academy</span></h1>
-  <p>Hi, I'm <b>Navi</b>! Birds cross whole continents without GPS.<br>Come and learn how robots can do it too. 🐦</p>
-  <label for="n">Your name</label><input id="n" autocomplete="username" autofocus>
+  <p>GPS-denied navigation, inspired by the way birds find their way.<br>Sign in to your workspace.</p>
+  <label for="n">Username</label><input id="n" autocomplete="username" autofocus>
   <label for="p">Password</label><input id="p" type="password" autocomplete="current-password">
-  <button class="go">Take off! ✈</button>
+  <button class="go">Sign in</button>
   <div class="err" id="e"></div>
 </form>
 <script>

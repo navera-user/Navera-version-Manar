@@ -104,16 +104,16 @@ async function showHome() {
   const passed = COURSES.filter(l => l.progress.status === 'passed').length;
   const next = COURSES.find(l => l.progress.status !== 'passed');
   const first = ME.display.split(' ')[0];
-  const line = passed === 0 ? `I'm <b>Navi</b>, a little swallow. Every year I fly from Europe to Africa without any GPS — I use my eyes,
-      the sun, the stars and my inner compass. NAVERA was born from that idea: a vehicle that finds its way like a bird.
-      Fly with me through ${COURSES.length} lessons and you will build it yourself!`
-    : passed === COURSES.length ? `We made it to Africa! 🎉 You finished all ${COURSES.length} lessons. You now know how NAVERA finds its way like a bird.`
-    : `Great flying! ${passed} of ${COURSES.length} stops done. Next stop: <b>${esc(next.title)}</b>${/[.?!]$/.test(next.title) ? '' : '.'} Your NAVERA copy is yours — break it, fix it, and press Reset whenever you want.`;
+  const line = passed === 0 ? `NAVERA began with a question: how does a swallow like <b>Navi</b> fly from Europe to Africa every year
+      without GPS? She uses landmarks, the sun, the stars and an inner compass — and checks them against each other.
+      In ${COURSES.length} lessons you will learn the engineering behind each of those ideas and work on NAVERA's real code.`
+    : passed === COURSES.length ? `All ${COURSES.length} lessons completed — the migration is over. Your NAVERA copy and your project are ready to show.`
+    : `${passed} of ${COURSES.length} lessons completed. Next: <b>${esc(next.title)}</b>${/[.?!]$/.test(next.title) ? '' : '.'} Your NAVERA copy is yours — change it freely; Reset restores the original.`;
   let h = `<div class="hero"><div class="cloud c1"></div><div class="cloud c2"></div>
     <img class="navi" src="/static/img/navi.svg" alt="Navi the swallow">
-    <div class="say"><h1>Hi ${esc(first)}! 👋</h1><p>${line}</p></div>
-    <div class="score"><b>${passed}/${COURSES.length}</b><span>stops reached</span>${next ? `<div style="margin-top:8px"><button class="go" id="goNext">Fly on ➜</button></div>` : ''}</div></div>
-    <div class="route"><h2>🗺️ Navi's migration route</h2><p>Each stop is a lesson. Pass its lab to fill it in — click any stop to fly there.</p>${routeSVG(COURSES)}</div>`;
+    <div class="say"><h1>Welcome back, ${esc(first)}</h1><p>${line}</p></div>
+    <div class="score"><b>${passed}/${COURSES.length}</b><span>lessons passed</span>${next ? `<div style="margin-top:8px"><button class="go" id="goNext">Continue ➜</button></div>` : ''}</div></div>
+    <div class="route"><h2>Course route</h2><p>Each stop is a lesson, following Navi's migration. Passed labs fill in; click a stop to open it.</p>${routeSVG(COURSES)}</div>`;
   const mods = MODULES.length ? MODULES : [{title: 'Lessons', lessons: COURSES.map(l => l.id)}];
   const byId = Object.fromEntries(COURSES.map(l => [l.id, l]));
   for (const m of mods) {
@@ -184,7 +184,7 @@ function renderMarkdown(el, md) {
     const m = first.innerHTML.match(/^\s*\[!(NOTE|TIP|WARNING|TASK|QUESTION|BIRD)\]\s*(.*)/is);
     if (!m) return;
     const kind = m[1].toLowerCase();
-    const labels = {note: 'ℹ️ Note', tip: '💡 Tip', warning: '⚠️ Careful', task: '🎯 Your turn', question: '❓ Think', bird: "🐦 Bird's-eye view"};
+    const labels = {note: 'Note', tip: 'Tip', warning: 'Careful', task: 'Task', question: 'Question', bird: "🐦 Bird's-eye view"};
     first.innerHTML = m[2];
     if (!first.innerHTML.trim()) first.remove();
     const d = document.createElement('div'); d.className = 'callout ' + kind;
@@ -225,12 +225,12 @@ function runInTerminal(cmd) {
 
 $('checkBtn').onclick = async () => {
   await Editor.saveAll();
-  const b = $('checkBtn'); b.disabled = true; b.textContent = '🐦 Navi is checking…';
+  const b = $('checkBtn'); b.disabled = true; b.textContent = '⏳ Checking…';
   try {
     const r = await api(`/api/lesson/${LESSON.id}/check`, {method: 'POST', body: {}});
     $('result').className = 'result show ' + (r.passed ? 'ok' : 'bad');
     const sc = r.score ? ` — ${r.score.passed}/${r.score.total}` : '';
-    $('rhead').textContent = r.passed ? `🎉 Well done, all checks pass${sc}` : `Not yet${sc} — read Navi's hints below and try again`;
+    $('rhead').textContent = r.passed ? `🎉 Well done, all checks pass${sc}` : `Not yet${sc} — read the hints below and try again`;
     $('rout').textContent = r.output.trim() || '(no output)';
     if (r.passed) celebrate();
     const l = await api('/api/lesson/' + LESSON.id); LESSON.progress = l.progress; setStatus(l.progress);
@@ -239,17 +239,7 @@ $('checkBtn').onclick = async () => {
 };
 function celebrate() {
   const p = document.createElement('div'); p.className = 'party';
-  const icons = ['🪶', '🪶', '🪶', '⭐', '✨', '🪶'];
-  for (let i = 0; i < 34; i++) {
-    const f = document.createElement('div'); f.className = 'feather';
-    f.textContent = icons[i % icons.length];
-    f.style.left = (Math.random() * 100) + 'vw';
-    f.style.animationDuration = (2.2 + Math.random() * 2) + 's';
-    f.style.animationDelay = (Math.random() * .8) + 's';
-    p.appendChild(f);
-  }
-  const lines = ['Great flying!', 'Perfect landing!', 'You found the way!', 'Navi is proud of you!'];
-  p.insertAdjacentHTML('beforeend', `<div class="cheer"><img src="/static/img/navi.svg" alt=""><div><b>${lines[Math.floor(Math.random() * lines.length)]}</b><span>Lab passed — one more stop on the route.</span></div></div>`);
+  p.innerHTML = `<div class="cheer"><img src="/static/img/navi.svg" alt=""><div><b>Lab passed ✔</b><span>One more stop on the route.</span></div></div>`;
   document.body.appendChild(p);
   setTimeout(() => p.remove(), 4200);
 }

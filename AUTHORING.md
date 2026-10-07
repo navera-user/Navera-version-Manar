@@ -6,17 +6,34 @@ NAVERA (`~/navera`, reset button) and their own lesson files (`~/lessons/<id>/`)
 
 ## Audience — read this twice
 
-- **Beginners**: high-school level. They may never have programmed. Lessons 1–5 teach the terminal,
-  Python and git from zero; later lessons may assume only what earlier lessons taught.
-- **English**, short sentences, friendly tone, "you". Explain every new word the first time
-  (bold it). Use everyday analogies (a map in your pocket, counting steps blindfolded…).
-- Maths: only what a 16-year-old knows (Pythagoras, angles, sin/cos introduced gently, averages).
-  When something needs more (homography, quaternions, covariance), give the intuition and a picture,
-  and let the code do the heavy lifting.
-- Always connect to the real product: "this is exactly what `gps_pkg/gps_pkg/nmea.py` does".
+- **University students in Oman** (engineering / computer science, years 1–3). English is their
+  second language (Arabic first): write clear, direct English — short sentences, no idioms, define
+  every technical term the first time (bold it). They know school maths (trigonometry, vectors,
+  matrices, derivatives, basic probability) and may have done one programming course; some never used
+  Linux, git or ROS.
+- **University level**: real maths where it matters (rotation matrices, quaternions, the pinhole
+  model with K, homography and DLT, RANSAC probability, covariance propagation, Kalman-style fusion,
+  time-compensated celestial navigation…), with a worked numeric example and the code that implements
+  it. Basics (terminal, Python, git) go fast and assume they will look things up — but never use a
+  concept before it is introduced (e.g. Python classes before the ROS publisher lesson).
+- Labs are substantial (2–4 h): implement, test, measure, compare with NAVERA's real code, and a short
+  written analysis (results.json / report.md that the check verifies). Each lab ends with
+  "Going further" challenges for strong students.
+- **Oman context**: examples, exercises and stories use Omani places (Muscat, Sohar, Nizwa, Salalah,
+  the Hajar mountains, Jebel Akhdar, Wahiba Sands, Masirah, Barr Al Hikman…) and birds seen in Oman
+  (flamingos and shorebirds at Barr Al Hikman, steppe eagles in Dhofar, falcons, migrating swallows…)
+  — accurate facts only. NAVERA's **real data** (satellite map, recorded frames, simulator area) covers
+  **Sousse, Tunisia**, where NAVERA is developed: use it as is and say so once ("NAVERA's test map
+  covers Sousse, Tunisia"); do not pretend it is Oman.
+- **Birds are the origin of the NAVERA idea**: each lesson keeps a `## 🐦 How birds do it` section
+  (adapt it to the new level; Omani birds welcome). The mascot **Navi the swallow** ("she") may appear
+  lightly; the tone is friendly but adult — no baby talk.
 - Honesty: NAVERA is a **commercial product, "Release 0.x — field validation pending"**. Never call it
   a prototype, a school project or a toy. Never invent accuracy numbers; quote only figures written
   in `docs/VALIDATION_STATUS.md` (and say "measured in simulation / on the bench" when that is the case).
+- Python details that tripped testers: ROS float fields need floats (`9.0`, not `9`); show the exact
+  names the lab files use (constants, functions) in the course; prepare students for the common
+  error messages they will meet (radians vs degrees, f-string quotes, dtype/uint8 in OpenCV).
 
 ## Folder of a lesson
 
