@@ -44,7 +44,7 @@ class VisionNavigator:
     """Position, velocity, height and map bias of a vehicle navigating by map matches."""
 
     def __init__(self, max_dr_s: float = 120.0, max_sigma_m: float = 300.0, accel_mps2: float = 0.5,
-                 search_k: float = 3.0, min_search_m: float = 80.0, max_search_m: float = 1500.0,
+                 search_k: float = 3.0, min_search_m: float = 80.0, max_search_m: float = 600.0,
                  gate_k: float = 3.0, strong_inliers: int = 100, min_spread: float = 0.25,
                  retry_after: int = 3, bias_radius_m: float = 3000.0):
         self.max_dr_s, self.max_sigma_m, self.accel = max_dr_s, max_sigma_m, accel_mps2
@@ -86,6 +86,10 @@ class VisionNavigator:
             return None
         (h, v), P, th = self._h
         dt = max(0.0, t - th)
+        # a climb is not carried forever: the rate decays (10 s) — extrapolated through
+        # 15-30 s gaps it put the height 7-26 % off (campaign 3)
+        decay = math.exp(-dt / 10.0)
+        h, v = h + v * 10.0 * (1.0 - decay), v * decay
         q = self.climb_accel ** 2
         P = [[P[0][0] + dt * (P[0][1] + P[1][0]) + dt * dt * P[1][1] + q * dt ** 4 / 4,
               P[0][1] + dt * P[1][1] + q * dt ** 3 / 2],
@@ -128,7 +132,7 @@ class VisionNavigator:
         v = (de / dt, dn / dt)
         if self.vel is not None:
             dv = math.hypot(v[0] - self.vel[0], v[1] - self.vel[1])
-            if dv > max(3.0 * self.vel_sigma, 0.3 * math.hypot(*self.vel), 3.0):
+            if dv > max(3.0 * min(self.vel_sigma, 5.0), 0.3 * math.hypot(*self.vel), 3.0):
                 self.vo_rejected += 1
                 return False
             w = min(0.5, quality)
@@ -238,8 +242,11 @@ class VisionNavigator:
             lat, lon = _move((lat, lon), de, dn)
         sig = float(res.get("sigma_m") or 30.0)
         pred = self.predict(t, heading_deg)
-        if inl < 30 and float(res.get("spread", 1.0)) < self.min_spread:
-            # (campaign 2: of 35 fixes refused on spread < 25 % with < 50 inliers, 27 were right)
+        spread = float(res.get("spread", 1.0))
+        if (inl < 30 and spread < self.min_spread) or (inl < 50 and spread <= 0.125):
+            # (campaign 2: of 35 fixes refused on spread < 25 % with < 50 inliers, 27 were
+            # right; campaign 3: the wrong ones that slipped through had their inliers in one
+            # cell of eight)
             self.fails += 1
             self.last_reason = f"inliers on {res.get('spread', 0):.0%} of the frame ({inl}): rejected"
             return False
@@ -274,11 +281,16 @@ class VisionNavigator:
             # vision height: ~3 % (campaign median), worse with few inliers
             self._height_update(t, hv, max(0.03 * hv, 0.05 * hv if inl < 50 else 0.0), "vision")
         if not gps_valid:
-            self._set_fix(t, lat, lon, sig, heading_deg)
+            # a weak fix places the vehicle but does not set its velocity (one 38 m fix with
+            # 18 inliers turned into a 9-16 m/s velocity error: campaign 3)
+            self._set_fix(t, lat, lon, sig, heading_deg, velocity=inl >= 30)
         return True
 
-    def _set_fix(self, t, lat, lon, sigma_m, heading_deg):
+    def _set_fix(self, t, lat, lon, sigma_m, heading_deg, velocity: bool = True):
         if self.fix is not None and t < self.fix[2]:
+            return
+        if not velocity:
+            self.fix = (lat, lon, t, sigma_m, heading_deg)
             return
         self._fixes.append((t, lat, lon))
         # the velocity: from the latest fix at least 2 s older (else the oldest >= 1 s older)

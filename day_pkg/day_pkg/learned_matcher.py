@@ -45,6 +45,13 @@ class LearnedMatcher(LocalMatcher):
 
     CHUNK, OVERLAP = 640, 64
     MIN_INLIERS = 12                  # LightGlue gives hundreds of inliers on a right place
+    # memory (campaign 3, 2026-10-07: a lost vehicle's 1-1.5 km search window grew the
+    # process to 4.2-4.9 GB and the 8 GB Jetson killed it): chunks kept in memory (~0.4 MB
+    # each at 768 keypoints), map keypoints matched at once, and no SIFT fallback over a
+    # window wider than this (it doubled the time of every failed frame: 33-64 s)
+    MAX_CHUNKS = 1200
+    MAX_MAP_KEYPOINTS = 24000
+    SIFT_FALLBACK_MAX_M = 300.0
     HEADING_MEMORY_S = 10.0           # a measured rotation stands in for the heading this long
 
     def __init__(self, images_dir: str, zoom: int = 17, keypoints: int = 1536, cache_dir: Optional[str] = None,
@@ -64,7 +71,8 @@ class LearnedMatcher(LocalMatcher):
         self.lg = KF.LightGlueMatcher("disk", params={"mp": self.half}).to(self.dev).eval()
         self.keypoints = int(keypoints)
         self.cache_dir = cache_dir or os.path.join(os.path.dirname(os.path.abspath(images_dir)), "learned_features")
-        self._grid = {}
+        from collections import OrderedDict
+        self._grid = OrderedDict()    # chunk -> features, least recently used dropped first
         self._gpu = threading.Lock()
         self._tiles = {}
         self._heading = None          # (rotation deg, time) of the last learned match
@@ -151,6 +159,7 @@ class LearnedMatcher(LocalMatcher):
         """Features of grid chunk (gx, gy): global map pixels (N,2) and descriptors, on the CPU."""
         key = (gx, gy)
         if key in self._grid:
+            self._grid.move_to_end(key)
             return self._grid[key]
         path = os.path.join(self.cache_dir, f"{self.z}_{gx}_{gy}_k{self.PER_CHUNK}{'h' if self.half else ''}.npz")
         out = None
@@ -172,9 +181,9 @@ class LearnedMatcher(LocalMatcher):
                 os.replace(path + ".tmp.npz", path)
             except OSError:
                 pass                                         # read-only area: memory only
-        if len(self._grid) > 4000:
-            self._grid.clear()
         self._grid[key] = out
+        while len(self._grid) > self.MAX_CHUNKS:      # a memory budget, not a wipe
+            self._grid.popitem(last=False)
         return out
 
     def map_features(self, x0: int, y0: int, w: int, h: int):
@@ -192,8 +201,12 @@ class LearnedMatcher(LocalMatcher):
             return t.zeros((0, 2), device=self.dev), t.zeros((0, 128), device=self.dev)
         k, d = t.cat(ks), t.cat(ds)
         inside = (k[:, 0] >= x0) & (k[:, 0] < x0 + w) & (k[:, 1] >= y0) & (k[:, 1] < y0 + h)
-        k = k[inside].to(self.dev) - t.tensor([x0, y0], device=self.dev, dtype=k.dtype)
-        return k, d[inside].to(self.dev)
+        k, d = k[inside], d[inside]
+        if len(k) > self.MAX_MAP_KEYPOINTS:          # evenly thinned: memory of the matching
+            keep = t.linspace(0, len(k) - 1, self.MAX_MAP_KEYPOINTS).long()
+            k, d = k[keep], d[keep]
+        k = k.to(self.dev) - t.tensor([x0, y0], device=self.dev, dtype=k.dtype)
+        return k, d.to(self.dev)
 
     def warm(self, lat: float, lon: float, radius_m: float) -> int:
         """Compute (and save) the map features within radius_m of (lat, lon): before a flight."""
@@ -228,7 +241,8 @@ class LearnedMatcher(LocalMatcher):
                     abs((res["rotation_deg"] - heading_deg + 180) % 360 - 180) > heading_tol_deg:
                 res.update(accepted=False, reason=f"fitted rotation {res['rotation_deg']:.0f} deg ≠ heading "
                                                   f"{heading_deg:.0f} deg (±{heading_tol_deg:.0f}): wrong place")
-        if (res is None or not res["accepted"]) and not (self._no_fallback and res is not None):
+        if (res is None or not res["accepted"]) and not (self._no_fallback and res is not None) \
+                and (res is None or search_m <= self.SIFT_FALLBACK_MAX_M):
             learned = res
             res = super().locate(frame, prior, search_m, frame_m_per_px, margin_m=margin_m, scale_tol=scale_tol,
                                  heading_deg=heading_deg, heading_tol_deg=heading_tol_deg)

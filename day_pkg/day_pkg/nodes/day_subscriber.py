@@ -183,7 +183,7 @@ class DaySubscriber(Node):
         # Local matching keeps its last position when frames fail (uniform ground, blur) and
         # widens the search by max_speed_mps x the time since its last match, up to this
         # radius, instead of dropping it after max_consecutive_rejects (a retrieval-era rule).
-        declare_float(self, "local_max_radius_m", 1500.0)
+        declare_float(self, "local_max_radius_m", 600.0)   # wider: memory and 30-60 s frames (campaign 3)
 
         self.conf_threshold = float(self.get_parameter("conf_threshold").value)
         image_topic   = self.get_parameter("image_topic").value
@@ -554,7 +554,7 @@ class DaySubscriber(Node):
                     if result.get("accepted"):
                         break
                 sc = float(result.get("scale_residual") or 1.0)
-                if result.get("accepted") and abs(sc - 1.0) > 0.04:
+                if result.get("accepted") and abs(sc - 1.0) > 0.10:
                     # the fitted scale answers only ~half of a height error (campaign 2: slope
                     # 0.45-0.6): match again at the corrected height, keep it if it holds
                     again = self.local.locate(img, center, R, mpp * f * sc, scale_tol=self._scale_tol(meta),
@@ -1000,7 +1000,8 @@ class DaySubscriber(Node):
             status["map_bias_m"] = [round(de, 1), round(dn, 1)]
             status["lat"], status["lon"] = lat, lon
         inl = int(result.get("inliers") or 0)
-        if inl < 30 and float(result.get("spread", 1.0)) < self.min_spread:
+        spread = float(result.get("spread", 1.0))
+        if (inl < 30 and spread < self.min_spread) or (inl < 50 and spread <= 0.125):
             return lat, lon, (f"inliers cover {float(result.get('spread', 0)):.0%} of the frame ({inl}): "
                               "poorly conditioned — match rejected")
         pred = self._predicted(meta)

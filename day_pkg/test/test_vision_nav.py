@@ -202,3 +202,27 @@ def test_a_weak_fix_while_lost_needs_confirmation():
     p = nav.predict(t)
     assert not nav.update(t, _fix(p[0], p[1], inliers=25, sigma=20.0), 500.0)
     assert "weak fix" in nav.last_reason
+
+
+def test_a_climb_is_not_extrapolated_through_a_long_gap():
+    nav = VisionNavigator()
+    for t in range(20):                                          # climbing 4 m/s, GPS height
+        nav.set_height(float(t), 400.0 + 4.0 * t, 5.0, "gps")
+    h30 = nav.height_at(19.0 + 30.0)[0]                           # 30 s without any height
+    assert h30 < 476.0 + 4.0 * 30 * 0.5                           # the rate decayed (no +120 m)
+    assert h30 > 476.0                                            # but the climb was not ignored
+
+
+def test_a_weak_fix_does_not_set_the_velocity():
+    nav = VisionNavigator()
+    _fly(nav, 0, 10, 25.0, 0.0)
+    p = nav.predict(11.0)
+    off = _move(p[:2], 0.0, 20.0)                                 # 20 m off, 25 inliers: accepted...
+    assert nav.update(11.0, _fix(*off, inliers=25, sigma=15.0), 500.0)
+    assert abs(nav.vel[0] - 25.0) < 0.5 and abs(nav.vel[1]) < 0.5  # ...but the velocity kept
+
+
+def test_the_search_window_is_capped():
+    nav = VisionNavigator()
+    _fly(nav, 0, 10, 25.0, 0.0)
+    assert nav.search(100.0)[1] == 600.0
