@@ -221,7 +221,7 @@ def worker(axis_w, h0):
             nav.set_height(t, h_true * (1 + rng.normal(0, 0.02)), 0.03 * h_true, "gps")
         elif a.baro:
             nav.set_height(t, h_true * (1 + rng.normal(0, 0.01)), 0.02 * h_true, "baro")
-        h, extra, tol = nav.heights_to_try()
+        h, extra, tol = nav.heights_to_try(t)
         if gps_on:
             centre, R = truth, 150.0
         else:
@@ -239,13 +239,23 @@ def worker(axis_w, h0):
                 used = hh
                 if r["accepted"]:
                     break
+            sc = float(r.get("scale_residual") or 1.0)
+            if r.get("accepted") and abs(sc - 1.0) > 0.04:
+                # the fitted scale answers ~half of a height error: match again at the corrected height
+                again = M.locate(img, centre, R, frame_mpp(used * sc, img.shape[1]), scale_tol=tol,
+                                 heading_deg=imu, heading_tol_deg=20.0)
+                if again.get("accepted") and int(again.get("inliers") or 0) >= int(r.get("inliers") or 0) // 2:
+                    r, used = again, used * sc
         ms = (time.time() - t1) * 1000
         vis = (r["predicted_lat"], r["predicted_lon"]) if r.get("accepted") else None
         if vis and gps_on:
-            nav.bias_sample(vis, truth)
+            nav.bias_sample(vis, truth, imu)
         ok = nav.update(t, r, used, imu, gps_valid=gps_on)
         if nav.height is not None:
-            d = vo.step(img, imu, frame_mpp(nav.height[0], img.shape[1]), t)
+            pred = None
+            if nav.vel is not None and vo._prev is not None:
+                pred = (nav.vel[0] * (t - vo._prev[3]), nav.vel[1] * (t - vo._prev[3]))
+            d = vo.step(img, imu, frame_mpp(nav.height[0], img.shape[1]), t, pred)
             if d is not None and not gps_on and not ok:
                 nav.odometry(t, *d)
         lat, lon, sig, mode = nav.output(t, imu)
@@ -276,19 +286,16 @@ def worker(axis_w, h0):
 
 
 def draw_hud(img, t):
+    """The operator line: a thin strip at the bottom edge (the camera sees the whole screen:
+    a big fixed box pulls the visual odometry toward zero motion)."""
     h = dict(hud)
-    cv2.rectangle(img, (20, 20), (560, 250), (30, 30, 30), -1)
-    lines = [(f"t {t / 60:5.1f} min  speed {a.speed:.0f} m/s  heading {h.get('hdg', 0):3.0f}", (255, 255, 255)),
-             (("GPS: ON" if t < a.gps_s else "GPS: OFF (jammed)"), (0, 200, 0) if t < a.gps_s else (0, 0, 255)),
-             (f"height (image): {h['height']:.0f} m  (true {h['h_true']:.0f})" if h.get("height") and h.get("h_true")
-              else "height: searching...", (255, 255, 255)),
-             ("NAVERA: " + {"gps": "GPS", "measured": "VISION (map match)", "propagated": "carried (no match)",
-                            "unavailable": "NO POSITION (honest)"}.get(h.get("src"), "-")
-              + (f"  +-{h['sigma']:.0f} m" if h.get("sigma") and h.get("src") != "gps" else ""),
-              (0, 200, 0) if h.get("src") == "gps" else ((255, 200, 0) if h.get("src") == "measured" else (0, 0, 255))),
-             ("error vs truth: " + ("-" if h.get("err") is None else f"{h['err']:.1f} m"), (255, 255, 255))]
-    for i, (txt, col) in enumerate(lines):
-        cv2.putText(img, txt, (32, 56 + i * 42), cv2.FONT_HERSHEY_SIMPLEX, 0.8, col, 2)
+    src = {"gps": "GPS", "measured": "VISION", "propagated": "carried", "unavailable": "NO POSITION"}.get(h.get("src"), "-")
+    txt = (f"t {t / 60:4.1f} min | {'GPS ON' if t < a.gps_s else 'GPS OFF'} | NAVERA {src}"
+           + (f" +-{h['sigma']:.0f} m" if h.get("sigma") and h.get("src") != "gps" else "")
+           + (f" | err {h['err']:.0f} m" if h.get("err") is not None else "")
+           + (f" | height {h['height']:.0f}/{h['h_true']:.0f} m" if h.get("height") and h.get("h_true") else ""))
+    cv2.rectangle(img, (0, SH - 26), (SW, SH), (20, 20, 20), -1)
+    cv2.putText(img, txt, (10, SH - 7), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
 
 
 cv2.namedWindow("NAVERA mission", cv2.WND_PROP_FULLSCREEN)
