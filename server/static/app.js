@@ -65,37 +65,76 @@ function moduleOf(id) {
   const i = MODULES.findIndex(m => (m.lessons || []).includes(id));
   return i < 0 ? {color: '#3b8ff0', icon: '🐦', leg: '', idx: 0} : {...MODULES[i], idx: i};
 }
-function routeSVG(lessons) {
-  // Navi's migration: one stop per lesson along a wavy flight path.
-  const W = 1000, H = 250, x0 = 95, x1 = 905, n = lessons.length;
-  const pt = (t) => [x0 + (x1 - x0) * t, 128 + 52 * Math.sin(t * Math.PI * 4.4)];
+const XP_PER_MISSION = 100;
+const RANKS = [  // [missions passed, name, icon]
+  [0, 'Fledgling', '🥚'], [3, 'Glider', '🪁'], [8, 'Wayfinder', '🧭'],
+  [15, 'Navigator', '🗺️'], [22, 'Falcon', '🦅'], [30, 'Migration Master', '🏆']];
+function rankFor(passed) {
+  let i = 0;
+  RANKS.forEach((r, k) => { if (passed >= r[0]) i = k; });
+  const next = RANKS[i + 1];
+  return {name: RANKS[i][1], icon: RANKS[i][2], from: RANKS[i][0], next: next ? next[0] : null, nextName: next ? next[1] : null};
+}
+function expeditionSVG(lessons) {
+  // An expedition map: sea, dunes, the Hajar mountains and Navi's flight path with one waypoint per mission.
+  const W = 1000, H = 290, x0 = 80, x1 = 920, n = lessons.length;
+  const pt = (t) => [x0 + (x1 - x0) * t, 150 + 50 * Math.sin(t * Math.PI * 4.2 + .3)];
   let d = '';
   for (let k = 0; k <= 200; k++) { const [x, y] = pt(k / 200); d += (k ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1); }
   const next = lessons.findIndex(l => l.progress.status !== 'passed');
-  let g = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Navi's migration route">
-    <defs><linearGradient id="skyg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#dff3ff"/><stop offset="1" stop-color="#f6fcff"/></linearGradient></defs>
-    <rect x="0" y="0" width="${W}" height="${H}" rx="22" fill="url(#skyg)"/>
-    <circle cx="955" cy="40" r="26" fill="#ffd25e"/><circle cx="955" cy="40" r="36" fill="#ffd25e" opacity=".25"/>
-    <g fill="#fff" opacity=".9"><ellipse cx="190" cy="40" rx="46" ry="13"/><ellipse cx="208" cy="31" rx="22" ry="15"/>
-      <ellipse cx="610" cy="222" rx="54" ry="13"/><ellipse cx="630" cy="212" rx="24" ry="15"/></g>
-    <path d="${d}" fill="none" stroke="#9fc9ee" stroke-width="5" stroke-dasharray="2 12" stroke-linecap="round"/>
-    <text x="${x0 - 22}" y="${pt(0)[1] + 5}" text-anchor="end" font-size="15" fill="#5f7187">🪺 nest</text>
-    <text x="${x1 + 22}" y="${pt(1)[1] + 5}" font-size="15" fill="#5f7187">🌍 Africa!</text>`;
+  let g = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Expedition map">
+    <defs>
+      <linearGradient id="dusk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd8b0"/><stop offset=".55" stop-color="#fff0dc"/><stop offset="1" stop-color="#fff7ec"/></linearGradient>
+      <linearGradient id="sea" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#1fa5a0"/><stop offset="1" stop-color="#7fd4c9"/></linearGradient>
+    </defs>
+    <rect width="${W}" height="${H}" fill="url(#dusk)"/>
+    <circle cx="840" cy="70" r="34" fill="#ffb347" opacity=".9"/><circle cx="840" cy="70" r="52" fill="#ffb347" opacity=".18"/>
+    <path d="M300 205 L360 120 L395 150 L450 95 L505 160 L560 110 L620 175 L680 135 L740 205 Z" fill="#c9a6c9" opacity=".55"/>
+    <path d="M330 215 L390 150 L430 178 L480 128 L540 190 L600 150 L660 210 Z" fill="#a983b0" opacity=".55"/>
+    <text x="470" y="88" font-size="12" fill="#8a6a93" text-anchor="middle">Hajar mountains</text>
+    <path d="M0 236 Q90 208 190 232 T420 246 L430 290 L0 290 Z" fill="url(#sea)" opacity=".9"/>
+    <text x="70" y="270" font-size="12" fill="#ffffff">Gulf of Oman</text>
+    <path d="M330 290 Q360 252 470 232 Q560 224 620 246 T820 238 T1000 244 L1000 290 Z" fill="#f1c98f"/>
+    <path d="M520 262 Q620 236 720 262 T920 260 L1000 266 L1000 290 L520 290 Z" fill="#e8b46e"/>
+    <text x="790" y="280" font-size="12" fill="#8a5a1f">Wahiba Sands</text>
+    <g fill="#fff" opacity=".85"><ellipse cx="200" cy="58" rx="44" ry="12"/><ellipse cx="216" cy="49" rx="20" ry="13"/>
+      <ellipse cx="620" cy="44" rx="40" ry="11"/><ellipse cx="634" cy="36" rx="18" ry="12"/></g>
+    <path d="${d}" fill="none" stroke="#14213d" stroke-opacity=".35" stroke-width="3" stroke-dasharray="1 10" stroke-linecap="round"/>
+    <text x="${x0 - 24}" y="${pt(0)[1] + 4}" text-anchor="end" font-size="14" fill="#65748b">🪺 start</text>
+    <text x="${x1 + 26}" y="${pt(1)[1] + 4}" font-size="14" fill="#65748b">🏁</text>`;
   lessons.forEach((l, i) => {
     const [x, y] = pt(n > 1 ? i / (n - 1) : 0);
     const m = moduleOf(l.id), done = l.progress.status === 'passed', started = l.progress.status === 'started';
-    const fill = done ? m.color : '#fff';
-    g += `<g class="stop" data-id="${esc(l.id)}"><title>Lesson ${esc(l.number)} · ${esc(l.title)}${done ? ' — passed' : ''}</title>
-      <circle class="ring" cx="${x}" cy="${y}" r="13" fill="${fill}" stroke="${m.color}" stroke-width="3.5" ${started ? 'stroke-dasharray="5 3"' : ''}/>
-      <text x="${x}" y="${y + 5}" text-anchor="middle" font-size="${done ? 14 : 12}" fill="${done ? '#fff' : m.color}">${done ? '✓' : (+l.number)}</text></g>`;
+    const title = `Mission ${l.number} · ${l.title}${done ? ' — complete' : started ? ' — in progress' : ''}`;
+    if (done) {
+      g += `<g class="wp" data-id="${esc(l.id)}"><title>${esc(title)}</title><g class="pin">
+        <line x1="${x}" y1="${y}" x2="${x}" y2="${y - 26}" stroke="#14213d" stroke-width="2.5"/>
+        <path d="M${x} ${y - 26} L${x + 17} ${y - 20} L${x} ${y - 14} Z" fill="${m.color}"/>
+        <circle cx="${x}" cy="${y}" r="6" fill="${m.color}" stroke="#fff" stroke-width="2"/></g></g>`;
+    } else {
+      g += `<g class="wp" data-id="${esc(l.id)}"><title>${esc(title)}</title><g class="pin">
+        <circle cx="${x}" cy="${y}" r="12" fill="#fff" stroke="${m.color}" stroke-width="3" ${started ? 'stroke-dasharray="4 3"' : ''}/>
+        <text x="${x}" y="${y + 4.5}" text-anchor="middle" font-size="11.5" fill="${m.color}">${+l.number}</text></g></g>`;
+    }
   });
   if (next >= 0) {
     const [x, y] = pt(n > 1 ? next / (n - 1) : 0);
-    g += `<image href="/static/img/navi.svg" x="${x - 34}" y="${y - 70}" width="64" height="52"><animateTransform attributeName="transform" type="translate" values="0 0; 0 -6; 0 0" dur="1.6s" repeatCount="indefinite"/></image>`;
+    g += `<image href="/static/img/navi-pilot.svg" x="${x - 36}" y="${y - 78}" width="70" height="56"><animateTransform attributeName="transform" type="translate" values="0 0; 0 -6; 0 0" dur="1.8s" repeatCount="indefinite"/></image>`;
   } else {
-    g += `<image href="/static/img/navi.svg" x="${x1 - 30}" y="${pt(1)[1] - 72}" width="70" height="56"/>`;
+    g += `<image href="/static/img/navi-pilot.svg" x="${x1 - 10}" y="${pt(1)[1] - 80}" width="76" height="60"/>`;
   }
   return g + '</svg>';
+}
+function achievements(lessons) {
+  const st = Object.fromEntries(lessons.map(l => [l.id, l.progress.status]));
+  const passed = lessons.filter(l => l.progress.status === 'passed').length;
+  const list = MODULES.map(m => ({icon: m.icon || '🏅', name: m.leg ? m.leg.replace(/^Leg \d+ · /, '') : m.title,
+    hint: (m.leg || '').split(' · ')[0] || 'Leg', color: m.color, on: (m.lessons || []).length > 0 && (m.lessons || []).every(id => st[id] === 'passed')}));
+  list.unshift({icon: '🛫', name: 'First flight', hint: 'pass 1 mission', color: '#ff7a1a', on: passed >= 1});
+  list.push({icon: '🌓', name: 'Halfway there', hint: '15 missions', color: '#1fa5a0', on: passed >= 15});
+  list.push({icon: '🕵️', name: 'Spoof hunter', hint: 'mission 27', color: '#8b5cf6', on: st['27-spoofing'] === 'passed'});
+  list.push({icon: '🌌', name: 'Star reader', hint: 'mission 24', color: '#1f3a68', on: st['24-night-and-stars'] === 'passed'});
+  return list.map(b => `<div class="bdg ${b.on ? 'on' : ''}" style="--bc:${b.color}"><div class="m">${b.icon}</div><b>${esc(b.name)}</b><span>${b.on ? 'unlocked' : esc(b.hint)}</span></div>`).join('');
 }
 async function showHome() {
   try { const c = await api('/api/courses'); COURSES = c.lessons; MODULES = c.modules; } catch (e) {}
@@ -104,35 +143,45 @@ async function showHome() {
   const passed = COURSES.filter(l => l.progress.status === 'passed').length;
   const next = COURSES.find(l => l.progress.status !== 'passed');
   const first = ME.display.split(' ')[0];
-  const line = passed === 0 ? `NAVERA began with a question: how does a swallow like <b>Navi</b> fly from Europe to Africa every year
-      without GPS? She uses landmarks, the sun, the stars and an inner compass — and checks them against each other.
-      In ${COURSES.length} lessons you will learn the engineering behind each of those ideas and work on NAVERA's real code.`
-    : passed === COURSES.length ? `All ${COURSES.length} lessons completed — the migration is over. Your NAVERA copy and your project are ready to show.`
-    : `${passed} of ${COURSES.length} lessons completed. Next: <b>${esc(next.title)}</b>${/[.?!]$/.test(next.title) ? '' : '.'} Your NAVERA copy is yours — change it freely; Reset restores the original.`;
-  let h = `<div class="hero"><div class="cloud c1"></div><div class="cloud c2"></div>
-    <img class="navi" src="/static/img/navi.svg" alt="Navi the swallow">
-    <div class="say"><h1>Welcome back, ${esc(first)}</h1><p>${line}</p></div>
-    <div class="score"><b>${passed}/${COURSES.length}</b><span>lessons passed</span>${next ? `<div style="margin-top:8px"><button class="go" id="goNext">Continue ➜</button></div>` : ''}</div></div>
-    <div class="route"><h2>Course route</h2><p>Each stop is a lesson, following Navi's migration. Passed labs fill in; click a stop to open it.</p>${routeSVG(COURSES)}</div>`;
-  const mods = MODULES.length ? MODULES : [{title: 'Lessons', lessons: COURSES.map(l => l.id)}];
+  const r = rankFor(passed), xp = passed * XP_PER_MISSION;
+  const pct = r.next === null ? 100 : Math.round(100 * (passed - r.from) / (r.next - r.from));
+  const brief = passed === 0
+    ? `Every year a swallow like <b>Navi</b> flies thousands of kilometres with no GPS — landmarks, the sun, the stars and an inner compass,
+       each checked against the others. NAVERA does the same for drones and vehicles. ${COURSES.length} missions stand between you and
+       the engineering behind it. Your first mission is ready.`
+    : passed === COURSES.length
+    ? `Expedition complete. ${COURSES.length} missions, ${xp} XP. You have rebuilt the ideas behind NAVERA one by one — time to show your final project.`
+    : `${passed} of ${COURSES.length} missions complete. Next on the map: <b>${esc(next.title)}</b>${/[.?!]$/.test(next.title) ? '' : '.'}
+       Your NAVERA copy is your own aircraft — modify it freely; Reset brings back the factory version.`;
+  let h = `<div class="hq"><div class="row">
+      <img class="navi" src="/static/img/navi-pilot.svg" alt="Navi the swallow, pilot">
+      <div class="brief"><div class="over">Expedition HQ · mission briefing</div><h1>Welcome aboard, ${esc(first)}</h1><p>${brief}</p></div>
+      <div class="stats"><div class="rank"><div class="medal">${r.icon}</div><div><b>${esc(r.name)}</b><span>rank · ${xp} XP</span></div></div>
+        <div class="xpbar"><i style="width:${pct}%"></i></div>
+        <div class="xptext"><span>${passed}/${COURSES.length} missions</span><span>${r.next === null ? 'max rank' : `${r.next - passed} to ${esc(r.nextName)}`}</span></div>
+        ${next ? `<button class="go" id="goNext">${passed ? 'Next mission ➜' : 'Start mission 1 ➜'}</button>` : ''}</div>
+    </div></div>
+    <div class="expmap"><div class="head"><h2>🗺️ Expedition map</h2><span>Flags mark completed missions · click any waypoint</span></div>${expeditionSVG(COURSES)}</div>
+    <div class="ach"><div class="head"><h2>🏅 Achievements</h2><span>Complete a whole leg to earn its badge</span></div><div class="badges">${achievements(COURSES)}</div></div>`;
+  const mods = MODULES.length ? MODULES : [{title: 'Missions', lessons: COURSES.map(l => l.id)}];
   const byId = Object.fromEntries(COURSES.map(l => [l.id, l]));
   for (const m of mods) {
-    const color = m.color || '#3b8ff0';
+    const color = m.color || '#ff7a1a';
     h += `<div class="module" style="--mcolor:${color}"><div class="mhead"><div class="micon" style="background:${color}22">${m.icon || '🐦'}</div>
       <div><div class="mtag" style="color:${color}">${esc(m.leg || '')}</div><h2>${esc(m.title)}</h2>${m.desc ? `<p class="mdesc">${esc(m.desc)}</p>` : ''}</div></div><div class="cards">`;
     for (const id of (m.lessons || [])) {
       const l = byId[id]; if (!l) continue;
       const st = l.progress.status;
-      const badge = st === 'passed' ? '<span class="badge passed">✔ passed</span>' :
-        st === 'started' ? '<span class="badge started">in progress</span>' : '';
+      const badge = st === 'passed' ? '<span class="badge passed">✔ complete</span>' :
+        st === 'started' ? '<span class="badge started">in progress</span>' : `<span class="xp">+${XP_PER_MISSION} XP</span>`;
       const res = (l.resources || []).map(r => `<span class="badge res">${r === 'sim' ? '🛩️ simulator' : r === 'camera' ? '📷 camera' : '🔌 sensors'}</span>`).join(' ');
-      h += `<div class="card" data-id="${esc(id)}"><div class="num"><span><span class="bubble">${esc(+l.number)}</span>${esc(l.duration || '')}</span>${badge}</div>
+      h += `<div class="card" data-id="${esc(id)}"><div class="num"><span class="mission">Mission ${esc(l.number)} · ${esc(l.duration || '')}</span>${badge}</div>
         <div class="title">${esc(l.title)}</div><div class="sum">${esc(l.summary || '')}</div><div>${res}</div></div>`;
     }
     h += '</div></div>';
   }
   $('home').innerHTML = h;
-  $('home').querySelectorAll('.card, .stop').forEach(c => c.onclick = () => { location.hash = 'lesson/' + c.dataset.id; });
+  $('home').querySelectorAll('.card, .wp').forEach(c => c.onclick = () => { location.hash = 'lesson/' + c.dataset.id; });
   if ($('goNext')) $('goNext').onclick = () => { location.hash = 'lesson/' + next.id; };
 }
 
@@ -143,7 +192,7 @@ async function openLesson(id) {
   const switched = !LESSON || LESSON.id !== l.id;
   LESSON = l;
   $('home').style.display = 'none'; $('work').style.display = '';
-  $('crumb').innerHTML = `Lesson ${esc(l.number)} · <b>${esc(l.title)}</b>`;
+  $('crumb').innerHTML = `Mission ${esc(l.number)} · <b>${esc(l.title)}</b>`;
   $('checkBtn').style.display = l.has_check ? '' : 'none';
   setStatus(l.progress);
   const idx = COURSES.findIndex(c => c.id === id);
@@ -232,16 +281,23 @@ $('checkBtn').onclick = async () => {
     const sc = r.score ? ` — ${r.score.passed}/${r.score.total}` : '';
     $('rhead').textContent = r.passed ? `🎉 Well done, all checks pass${sc}` : `Not yet${sc} — read the hints below and try again`;
     $('rout').textContent = r.output.trim() || '(no output)';
-    if (r.passed) celebrate();
+    if (r.passed && !(LESSON.progress && LESSON.progress.status === 'passed')) {
+      const before = COURSES.filter(c => c.progress.status === 'passed').length;
+      try { const c = await api('/api/courses'); COURSES = c.lessons; } catch (e) {}
+      celebrate(before, COURSES.filter(c => c.progress.status === 'passed').length);
+    }
     const l = await api('/api/lesson/' + LESSON.id); LESSON.progress = l.progress; setStatus(l.progress);
   } catch (e) { toast(e.message); }
   b.disabled = false; b.textContent = '✔ Check my work';
 };
-function celebrate() {
+function celebrate(before, after) {
   const p = document.createElement('div'); p.className = 'party';
-  p.innerHTML = `<div class="cheer"><img src="/static/img/navi.svg" alt=""><div><b>Lab passed ✔</b><span>One more stop on the route.</span></div></div>`;
+  const r0 = rankFor(before), r1 = rankFor(after);
+  const up = r1.name !== r0.name ? `<span class="rankup">${r1.icon} Rank up: ${esc(r1.name)}!</span>` : '';
+  const lines = ['Mission complete!', 'Clean landing!', 'Waypoint reached!', 'Navigation confirmed!'];
+  p.innerHTML = `<div class="cheer"><img src="/static/img/navi-pilot.svg" alt=""><div><b>${lines[Math.floor(Math.random() * lines.length)]}</b><span>+${XP_PER_MISSION} XP · ${after}/${COURSES.length} missions</span>${up}</div></div>`;
   document.body.appendChild(p);
-  setTimeout(() => p.remove(), 4200);
+  setTimeout(() => p.remove(), up ? 5200 : 4200);
 }
 $('rclose').onclick = () => $('result').className = 'result';
 $('resetLesson').onclick = async () => {

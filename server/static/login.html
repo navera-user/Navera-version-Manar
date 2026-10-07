@@ -7,47 +7,49 @@
 <link rel="stylesheet" href="/static/style.css">
 <style>
   body { display: flex; align-items: center; justify-content: center; min-height: 100%; overflow: hidden; position: relative;
-    background: linear-gradient(180deg, #4fb3f5 0%, #8fd6ff 55%, #dff3ff 100%); }
-  .sun { position: absolute; top: 7%; right: 9%; width: 110px; height: 110px; border-radius: 50%; background: #ffd25e;
-    box-shadow: 0 0 0 18px rgba(255, 210, 94, .18); }
-  .cl { position: absolute; background: #fff; border-radius: 999px; opacity: .92; }
-  .cl::before, .cl::after { content: ""; position: absolute; background: #fff; border-radius: 50%; }
-  .cl.a { width: 200px; height: 52px; top: 16%; left: -220px; animation: sail 60s linear infinite; }
-  .cl.a::before { width: 84px; height: 84px; left: 34px; top: -42px; } .cl.a::after { width: 60px; height: 60px; left: 104px; top: -28px; }
-  .cl.b { width: 150px; height: 40px; top: 68%; left: -170px; animation: sail 80s linear infinite 12s; opacity: .8; }
-  .cl.b::before { width: 60px; height: 60px; left: 26px; top: -30px; } .cl.b::after { width: 46px; height: 46px; left: 76px; top: -20px; }
-  .cl.c { width: 120px; height: 32px; top: 38%; left: -140px; animation: sail 70s linear infinite 30s; opacity: .7; }
-  .cl.c::before { width: 48px; height: 48px; left: 20px; top: -24px; } .cl.c::after { width: 36px; height: 36px; left: 60px; top: -16px; }
-  @keyframes sail { to { transform: translateX(calc(100vw + 400px)); } }
-  .flock { position: absolute; top: 24%; left: -120px; width: 120px; animation: sail 26s linear infinite; }
-  .flock img { position: absolute; width: 34px; }
-  .ground { position: absolute; bottom: 0; left: 0; right: 0; height: 16%; background:
-    radial-gradient(120% 140% at 20% 100%, #7ccf6a 50%, transparent 51%),
-    radial-gradient(120% 160% at 85% 100%, #6cc35a 50%, transparent 51%); }
-  .box { position: relative; z-index: 2; background: #fff; border-radius: 30px; padding: 26px 30px 22px; width: min(400px, 92vw);
-    box-shadow: 0 30px 80px rgba(15, 47, 99, .3); border: 4px solid #ffe7a3; }
-  .box .navi { width: 132px; display: block; margin: -86px auto 0; animation: flap 3s ease-in-out infinite; filter: drop-shadow(0 10px 8px rgba(15,47,99,.2)); }
-  .box h1 { margin: 6px 0 2px; font-size: 28px; font-family: "Nunito", sans-serif; font-weight: 800; text-align: center; color: #0f2f63; }
-  .box h1 span { color: #ff9f43; }
-  .box p { color: var(--muted); margin: 0 0 14px; line-height: 1.5; font-size: 15px; text-align: center; font-weight: 600; }
-  label { display: block; font-size: 14px; color: var(--muted); margin: 10px 0 4px; font-weight: 800; }
+    background: linear-gradient(180deg, #14213d 0%, #2a4f86 38%, #e98a5a 72%, #ffc98f 100%); }
+  .stars { position: absolute; inset: 0 0 45% 0; background-image:
+    radial-gradient(1.5px 1.5px at 12% 18%, #fff, transparent), radial-gradient(1px 1px at 28% 8%, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 47% 22%, #fff, transparent), radial-gradient(1px 1px at 63% 12%, #fff, transparent),
+    radial-gradient(1.5px 1.5px at 78% 26%, #fff, transparent), radial-gradient(1px 1px at 88% 6%, #fff, transparent),
+    radial-gradient(1px 1px at 6% 34%, #fff, transparent), radial-gradient(1px 1px at 38% 36%, #fff, transparent); opacity: .8; }
+  .sun { position: absolute; bottom: 23%; left: 62%; width: 120px; height: 120px; border-radius: 50%;
+    background: radial-gradient(circle, #ffe08a 0%, #ffb347 60%, #ff8c42 100%); box-shadow: 0 0 80px 30px rgba(255, 160, 80, .45); }
+  .land { position: absolute; left: 0; right: 0; bottom: 0; height: 42%; }
+  .land svg { width: 100%; height: 100%; display: block; }
+  .flock { position: absolute; top: 20%; left: -140px; width: 140px; animation: sail 30s linear infinite; }
+  .flock img { position: absolute; width: 38px; filter: brightness(.25); }
+  @keyframes sail { to { transform: translateX(calc(100vw + 300px)); } }
+  .box { position: relative; z-index: 2; background: #fff; border-radius: 26px; padding: 26px 30px 22px; width: min(400px, 92vw);
+    box-shadow: 0 30px 80px rgba(10, 20, 40, .45); border-top: 6px solid var(--brand); }
+  .box .navi { width: 140px; display: block; margin: -92px auto 0; animation: flap 3.5s ease-in-out infinite; filter: drop-shadow(0 12px 10px rgba(0,0,0,.3)); }
+  .box .over { text-align: center; font-family: var(--head); font-weight: 700; color: var(--brand); letter-spacing: 1.6px; text-transform: uppercase; font-size: 12.5px; margin-top: 4px; }
+  .box h1 { margin: 2px 0 4px; font-size: 30px; text-align: center; color: var(--navy); letter-spacing: .3px; word-spacing: 4px; }
+  .box p { color: var(--muted); margin: 0 0 12px; line-height: 1.5; font-size: 15px; text-align: center; font-weight: 600; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; font-weight: 800; letter-spacing: .3px; text-transform: uppercase; }
   input { width: 100%; font-size: 16px; }
   button { width: 100%; margin-top: 18px; padding: 11px; font-size: 17px; }
   .err { color: var(--bad); font-size: 14px; min-height: 20px; margin-top: 10px; text-align: center; font-weight: 700; }
 </style>
 </head>
 <body>
+<div class="stars"></div>
 <div class="sun"></div>
-<div class="cl a"></div><div class="cl b"></div><div class="cl c"></div>
-<div class="flock" style="opacity:.75"><img src="/static/img/navi.svg" style="left:0;top:0" alt=""><img src="/static/img/navi.svg" style="left:40px;top:22px;width:28px" alt=""><img src="/static/img/navi.svg" style="left:76px;top:4px;width:24px" alt=""></div>
-<div class="ground"></div>
+<div class="land"><svg viewBox="0 0 1200 400" preserveAspectRatio="none">
+  <path d="M0 210 L110 120 L190 170 L300 70 L400 160 L480 110 L560 180 L650 90 L760 170 L860 120 L960 190 L1060 100 L1200 170 L1200 400 L0 400 Z" fill="#5b4a7a"/>
+  <path d="M0 250 L130 180 L240 230 L360 150 L470 220 L590 170 L700 240 L820 180 L940 245 L1060 190 L1200 240 L1200 400 L0 400 Z" fill="#3f3561"/>
+  <path d="M0 300 Q200 255 400 300 T800 296 T1200 300 L1200 400 L0 400 Z" fill="#d99a5b"/>
+  <path d="M0 340 Q250 300 520 338 T1200 330 L1200 400 L0 400 Z" fill="#c4823f"/>
+</svg></div>
+<div class="flock"><img src="/static/img/navi.svg" style="left:0;top:0" alt=""><img src="/static/img/navi.svg" style="left:44px;top:24px;width:30px" alt=""><img src="/static/img/navi.svg" style="left:84px;top:6px;width:26px" alt=""></div>
 <form class="box" id="f">
-  <img class="navi" src="/static/img/navi.svg" alt="Navi the swallow">
-  <h1>NAVERA <span>Academy</span></h1>
-  <p>GPS-denied navigation, inspired by the way birds find their way.<br>Sign in to your workspace.</p>
+  <img class="navi" src="/static/img/navi-pilot.svg" alt="Navi the swallow, pilot">
+  <div class="over">GPS-denied navigation</div>
+  <h1>NAVERA Academy</h1>
+  <p>Birds cross continents without GPS.<br>So will your code. 🐦</p>
   <label for="n">Username</label><input id="n" autocomplete="username" autofocus>
   <label for="p">Password</label><input id="p" type="password" autocomplete="current-password">
-  <button class="go">Sign in</button>
+  <button class="go">Start the expedition ➜</button>
   <div class="err" id="e"></div>
 </form>
 <script>
