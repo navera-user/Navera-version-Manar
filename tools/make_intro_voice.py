@@ -57,6 +57,9 @@ def main():
     ap.add_argument("--voice", default="en_US-ryan-high")
     ap.add_argument("--out", default=os.path.join(MEDIA, "navera-intro.webm"))
     ap.add_argument("--speed", type=float, default=1.0, help="length scale: >1 slower, <1 faster")
+    ap.add_argument("--music", default=os.path.join(ROOT, "state", "intro-music.wav"),
+                    help="background music wav (tools/make_intro_music.py); 'none' for voice only")
+    ap.add_argument("--music-level", type=float, default=0.32, help="music level when nobody speaks (0-1)")
     a = ap.parse_args()
     from piper import PiperVoice
     import imageio_ffmpeg
@@ -79,6 +82,23 @@ def main():
         i = int(start * rate)
         track[i:i + len(audio)] += audio[:len(track) - i]
         print(f"{start:5.1f}s  {dur:4.1f}s / {end - start:4.1f}s window  scale {scale:.2f}  {text[:48]}…")
+    if a.music != "none" and os.path.exists(a.music):
+        with wave.open(a.music) as w:
+            mrate = w.getframerate()
+            music = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32)
+        # bring the voice to the music's rate, then duck the music under the voice
+        tv = np.arange(len(track)) / rate
+        out_n = int(len(track) / rate * mrate)
+        voice = np.interp(np.arange(out_n) / mrate, tv, track)
+        music = np.resize(music, out_n) if len(music) < out_n else music[:out_n]
+        env = np.abs(voice)
+        k = int(0.25 * mrate)                                   # 0.25 s smoothing
+        env = np.convolve(env, np.ones(k) / k, mode="same")
+        speaking = np.clip(env / (env.max() * 0.15 + 1e-9), 0, 1)
+        gain = a.music_level * (1 - 0.65 * speaking)            # music -9 dB under the voice
+        mix = voice + music * gain
+        track, rate = mix * (30000 / max(1.0, np.abs(mix).max())), mrate
+        print(f"music mixed: level {a.music_level}, ducked under the voice")
     track = np.clip(track, -32767, 32767).astype(np.int16)
     with tempfile.TemporaryDirectory() as tmp:
         wav = os.path.join(tmp, "voice.wav")
