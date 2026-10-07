@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 340" font-family="sans-serif" font-size="13">
+<rect width="720" height="340" fill="#f7fafc"/>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="context-stroke"/></marker></defs>
+<text x="20" y="24" fill="#1d2733" font-weight="bold">The local ENU frame: a plane that touches the Earth at home</text>
+<clipPath id="left"><rect x="0" y="0" width="440" height="340"/></clipPath><circle cx="220" cy="560" r="420" fill="#d7ecf5" stroke="#0b6e8a" stroke-width="2" clip-path="url(#left)"/>
+<rect x="0" y="338" width="720" height="2" fill="#f7fafc"/>
+<text x="220" y="300" fill="#0b6e8a" font-size="12" text-anchor="middle">Earth, cut along the meridian of home</text>
+<line x1="30" y1="140" x2="425" y2="140" stroke="#555" stroke-width="1.5" stroke-dasharray="7 4"/>
+<text x="30" y="132" fill="#555" font-size="12" stroke="#f7fafc" stroke-width="3" paint-order="stroke">tangent plane (u = 0)</text>
+<line x1="220" y1="140" x2="220" y2="65" stroke="#d64545" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="228" y="78" fill="#d64545" font-weight="bold">U (up)</text>
+<line x1="220" y1="140" x2="305" y2="140" stroke="#2f855a" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="260" y="132" fill="#2f855a" font-weight="bold" stroke="#f7fafc" stroke-width="3" paint-order="stroke">N (north)</text>
+<circle cx="220" cy="140" r="9" fill="white" stroke="#a8680d" stroke-width="2"/><circle cx="220" cy="140" r="2.5" fill="#a8680d"/>
+<text x="206" y="166" fill="#a8680d" font-weight="bold" text-anchor="end" stroke="#f7fafc" stroke-width="3" paint-order="stroke">E (out of the page)</text>
+<text x="206" y="132" fill="#1d2733" font-size="12" text-anchor="end" stroke="#f7fafc" stroke-width="3" paint-order="stroke">home</text>
+<line x1="377.3" y1="140" x2="377.3" y2="170.6" stroke="#d64545" stroke-width="1.5" stroke-dasharray="3 3"/>
+<circle cx="377.3" cy="170.6" r="5" fill="#0b6e8a"/>
+<text x="385.3" y="159.3" fill="#d64545" font-size="12">u &lt; 0</text>
+<text x="377.3" y="192.6" fill="#0b6e8a" font-size="12" text-anchor="middle">a point on the ground</text>
+<text x="460" y="58" fill="#1d2733" font-size="12.5" font-weight="bold">ENU at home (φ0, λ0)</text>
+<text x="460" y="79" fill="#1d2733" font-size="12.5">E = (−sin λ0, cos λ0, 0)</text>
+<text x="460" y="100" fill="#1d2733" font-size="12.5">N = (−sin φ0 cos λ0, −sin φ0 sin λ0, cos φ0)</text>
+<text x="460" y="121" fill="#1d2733" font-size="12.5">U = (cos φ0 cos λ0, cos φ0 sin λ0, sin φ0)</text>
+<text x="460" y="163" fill="#1d2733" font-size="12.5" font-weight="bold">[e, n, u] = R · (X − X0)</text>
+<text x="460" y="184" fill="#1d2733" font-size="12.5">R has the rows E, N, U (orthonormal)</text>
+<text x="460" y="205" fill="#1d2733" font-size="12.5">back:  X = X0 + Rᵀ · [e, n, u]</text>
+<text x="460" y="247" fill="#1d2733" font-size="12.5" font-weight="bold">The ground drops below the plane:</text>
+<text x="460" y="268" fill="#1d2733" font-size="12.5">u ≈ −d² / (2R)</text>
+<text x="460" y="289" fill="#1d2733" font-size="12.5">1 km → −8 cm,  10 km → −7.8 m</text>
+<text x="460" y="310" fill="#1d2733" font-size="12.5">Salalah seen from Muscat: u = −57 km</text>
+</svg>

@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 740 345" font-family="sans-serif" font-size="13">
+<rect width="740" height="345" fill="#f7fafc"/>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="context-stroke"/></marker></defs>
+<text x="20" y="26" fill="#1d2733" font-weight="bold">A 3 × 3 filter slides over the picture: one output pixel = Σ kernel × neighbourhood</text>
+<text x="30" y="56" fill="#1d2733" font-size="12">picture (grey values)</text>
+<rect x="30" y="64" width="38" height="38" fill="rgb(20,20,20)" stroke="#999"/><text x="49.0" y="88.0" fill="white" font-size="12" text-anchor="middle">10</text>
+<rect x="68" y="64" width="38" height="38" fill="rgb(20,20,20)" stroke="#999"/><text x="87.0" y="88.0" fill="white" font-size="12" text-anchor="middle">10</text>
+<rect x="106" y="64" width="38" height="38" fill="rgb(20,20,20)" stroke="#999"/><text x="125.0" y="88.0" fill="white" font-size="12" text-anchor="middle">10</text>
+<rect x="144" y="64" width="38" height="38" fill="rgb(160,160,160)" stroke="#999"/><text x="163.0" y="88.0" fill="#1d2733" font-size="12" text-anchor="middle">80</text>
+<rect x="182" y="64" width="38" height="38" fill="rgb(160,160,160)" stroke="#999"/><text x="201.0" y="88.0" fill="#1d2733" font-size="12" text-anchor="middle">80</text>
+<rect x="30" y="102" width="38" height="38" fill="rgb(20,20,20)" stroke="#999"/><text x="49.0" y="126.0" fill="white" font-size="12" text-anchor="middle">10</text>
+<rect x="68" y="102" width="38" height="38" fill="rgb(20,20,20)" stroke="#999"/><text x="87.0" y="126.0" fill="white" font-size="12" text-anchor="middle">10</text>
+<rect x="106" y="102" width="38" height="38" fill="rgb(20,20,20)" stroke="#999"/><text x="125.0" y="126.0" fill="white" font-size="12" text-anchor="middle">10</text>
+<rect x="144" y="102" width="38" height="38" fill="rgb(160,160,160)" stroke="#999"/><text x="163.0" y="126.0" fill="#1d2733" font-size="12" text-anchor="middle">80</text>
+<rect x="182" y="102" width="38" height="38" fill="rgb(160,160,160)" stroke="#999"/><text x="201.0" y="126.0" fill="#1d2733" font-size="12" text-anchor="middle">80</text>
+<rect x="30" y="140" width="38" height="38" fill="rgb(20,20,20)" stroke="#999"/><text x="49.0" y="164.0" fill="white" font-size="12" text-anchor="middle">10</text>
+<rect x="68" y="140" width="38" height="38" fill="rgb(20,20,20)" stroke="#999"/><text x="87.0" y="164.0" fill="white" font-size="12" text-anchor="middle">10</text>
+<rect x="106" y="140" width="38" height="38" fill="rgb(20,20,20)" stroke="#999"/><text x="125.0" y="164.0" fill="white" font-size="12" text-anchor="middle">10</text>
+<rect x="144" y="140" width="38" height="38" fill="rgb(160,160,160)" stroke="#999"/><text x="163.0" y="164.0" fill="#1d2733" font-size="12" text-anchor="middle">80</text>
+<rect x="182" y="140" width="38" height="38" fill="rgb(160,160,160)" stroke="#999"/><text x="201.0" y="164.0" fill="#1d2733" font-size="12" text-anchor="middle">80</text>
+<rect x="30" y="178" width="38" height="38" fill="rgb(20,20,20)" stroke="#999"/><text x="49.0" y="202.0" fill="white" font-size="12" text-anchor="middle">10</text>
+<rect x="68" y="178" width="38" height="38" fill="rgb(20,20,20)" stroke="#999"/><text x="87.0" y="202.0" fill="white" font-size="12" text-anchor="middle">10</text>
+<rect x="106" y="178" width="38" height="38" fill="rgb(20,20,20)" stroke="#999"/><text x="125.0" y="202.0" fill="white" font-size="12" text-anchor="middle">10</text>
+<rect x="144" y="178" width="38" height="38" fill="rgb(160,160,160)" stroke="#999"/><text x="163.0" y="202.0" fill="#1d2733" font-size="12" text-anchor="middle">80</text>
+<rect x="182" y="178" width="38" height="38" fill="rgb(160,160,160)" stroke="#999"/><text x="201.0" y="202.0" fill="#1d2733" font-size="12" text-anchor="middle">80</text>
+<rect x="30" y="216" width="38" height="38" fill="rgb(20,20,20)" stroke="#999"/><text x="49.0" y="240.0" fill="white" font-size="12" text-anchor="middle">10</text>
+<rect x="68" y="216" width="38" height="38" fill="rgb(20,20,20)" stroke="#999"/><text x="87.0" y="240.0" fill="white" font-size="12" text-anchor="middle">10</text>
+<rect x="106" y="216" width="38" height="38" fill="rgb(20,20,20)" stroke="#999"/><text x="125.0" y="240.0" fill="white" font-size="12" text-anchor="middle">10</text>
+<rect x="144" y="216" width="38" height="38" fill="rgb(160,160,160)" stroke="#999"/><text x="163.0" y="240.0" fill="#1d2733" font-size="12" text-anchor="middle">80</text>
+<rect x="182" y="216" width="38" height="38" fill="rgb(160,160,160)" stroke="#999"/><text x="201.0" y="240.0" fill="#1d2733" font-size="12" text-anchor="middle">80</text>
+<rect x="68" y="102" width="114" height="114" fill="none" stroke="#d64545" stroke-width="3"/>
+<text x="30" y="274" fill="#d64545" font-size="12">red: neighbourhood of (y=2, x=2)</text>
+<text x="280" y="56" fill="#1d2733" font-size="12">kernel k (Sobel x, as cv2.Sobel uses it)</text>
+<rect x="280" y="64" width="38" height="38" fill="#fbe6c8" stroke="#a8680d"/><text x="299.0" y="88.0" fill="#1d2733" font-size="13" text-anchor="middle">-1</text>
+<rect x="318" y="64" width="38" height="38" fill="#fbe6c8" stroke="#a8680d"/><text x="337.0" y="88.0" fill="#1d2733" font-size="13" text-anchor="middle">0</text>
+<rect x="356" y="64" width="38" height="38" fill="#fbe6c8" stroke="#a8680d"/><text x="375.0" y="88.0" fill="#1d2733" font-size="13" text-anchor="middle">1</text>
+<rect x="280" y="102" width="38" height="38" fill="#fbe6c8" stroke="#a8680d"/><text x="299.0" y="126.0" fill="#1d2733" font-size="13" text-anchor="middle">-2</text>
+<rect x="318" y="102" width="38" height="38" fill="#fbe6c8" stroke="#a8680d"/><text x="337.0" y="126.0" fill="#1d2733" font-size="13" text-anchor="middle">0</text>
+<rect x="356" y="102" width="38" height="38" fill="#fbe6c8" stroke="#a8680d"/><text x="375.0" y="126.0" fill="#1d2733" font-size="13" text-anchor="middle">2</text>
+<rect x="280" y="140" width="38" height="38" fill="#fbe6c8" stroke="#a8680d"/><text x="299.0" y="164.0" fill="#1d2733" font-size="13" text-anchor="middle">-1</text>
+<rect x="318" y="140" width="38" height="38" fill="#fbe6c8" stroke="#a8680d"/><text x="337.0" y="164.0" fill="#1d2733" font-size="13" text-anchor="middle">0</text>
+<rect x="356" y="140" width="38" height="38" fill="#fbe6c8" stroke="#a8680d"/><text x="375.0" y="164.0" fill="#1d2733" font-size="13" text-anchor="middle">1</text>
+<text x="280" y="200" fill="#1d2733" font-size="12.5">correlation (cv2.filter2D, cv2.Sobel):</text>
+<text x="280" y="218" fill="#1d2733" font-size="12.5">out(y,x) = Σ k(i,j)·img(y+i, x+j)</text>
+<text x="280" y="240" fill="#1d2733" font-size="12.5">true convolution flips the kernel:</text>
+<text x="280" y="258" fill="#1d2733" font-size="12.5">out(y,x) = Σ k(i,j)·img(y−i, x−j)</text>
+<text x="280" y="276" fill="#555" font-size="12">(same thing for symmetric kernels: Gaussian)</text>
+<text x="540" y="70" fill="#1d2733" font-size="12.5" font-weight="bold">Result at (2, 2):</text>
+<text x="540" y="90" fill="#1d2733" font-size="12.5">(−1)·10 + 0·10 + 1·80</text>
+<text x="540" y="110" fill="#1d2733" font-size="12.5">+ (−2)·10 + 0·10 + 2·80</text>
+<text x="540" y="130" fill="#1d2733" font-size="12.5">+ (−1)·10 + 0·10 + 1·80</text>
+<text x="540" y="150" fill="#1d2733" font-size="12.5" font-weight="bold">= 280  > 0</text>
+<text x="540" y="170" fill="#1d2733" font-size="12.5">brighter to the right:</text>
+<text x="540" y="190" fill="#1d2733" font-size="12.5">a vertical edge</text>
+<text x="540" y="230" fill="#1d2733" font-size="12.5">Gaussian blur: all weights > 0,</text>
+<text x="540" y="250" fill="#1d2733" font-size="12.5">sum = 1 → local average</text>
+<text x="540" y="270" fill="#1d2733" font-size="12.5">Sobel: weights sum to 0 →</text>
+<text x="540" y="290" fill="#1d2733" font-size="12.5">0 on flat areas, large on edges</text>
+<text x="20" y="331" fill="#555" font-size="12">At the border the neighbourhood leaves the picture: OpenCV mirrors it ("reflect 101": … c b | a b c …) = np.pad(mode="reflect").</text>
+</svg>

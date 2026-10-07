@@ -1,27 +1,43 @@
 # Compares YOUR functions (geo_lab.py) with the ones inside NAVERA.
 #     python3 compare_navera.py
-from geo_lab import PLACES, distance, from_local_xy, to_local_xy
-from navera_common.geo import haversine_m        # ~/navera/navera_common/navera_common/geo.py
-from day_pkg.vision_nav import _en, _move          # ~/navera/day_pkg/day_pkg/vision_nav.py
+import math
 
-home = PLACES["Ribat of Sousse"]
-print("Distances from the Ribat of Sousse")
-print(f"{'place':<25}{'yours (m)':>12}{'NAVERA (m)':>12}{'difference':>12}")
-for name, (lat, lon) in PLACES.items():
-    mine = distance(home[0], home[1], lat, lon)
-    theirs = haversine_m(home[0], home[1], lat, lon)
-    diff = "TODO" if mine is None else f"{abs(mine - theirs):.3f}"
-    print(f"{name:<25}{'TODO' if mine is None else f'{mine:.1f}':>12}{theirs:12.1f}{diff:>12}")
+from geo_lab import PLACES, bearing, flat_en, flat_move, geodetic_to_enu, haversine
+from navera_common.geo import dead_reckon, haversine_m    # ~/navera/navera_common/navera_common/geo.py
+from day_pkg.vision_nav import _en, _move                  # ~/navera/day_pkg/day_pkg/vision_nav.py
 
-print("\nLocal frame (east, north) in meters")
-for name, (lat, lon) in PLACES.items():
-    mine = to_local_xy(lat, lon, home[0], home[1])
-    theirs = _en((lat, lon), home)
-    m = "TODO" if mine is None else f"({mine[0]:9.1f}, {mine[1]:9.1f})"
-    print(f"{name:<25} yours {m}   NAVERA ({theirs[0]:9.1f}, {theirs[1]:9.1f})")
 
-mine = from_local_xy(500.0, -300.0, home[0], home[1])
-theirs = _move(home, 500.0, -300.0)
-print("\n500 m east and 300 m south of home:")
-print("  yours ", "TODO" if mine is None else f"({mine[0]:.7f}, {mine[1]:.7f})")
-print(f"  NAVERA ({theirs[0]:.7f}, {theirs[1]:.7f})")
+def show(v, fmt):
+    return "TODO" if v is None else fmt % tuple(v) if isinstance(v, (tuple, list)) else fmt % v
+
+
+home = PLACES["Muscat (Grand Mosque)"][:2]
+print("1) Distances from Muscat: your haversine() against NAVERA's haversine_m()")
+print(f"{'place':<24}{'yours (m)':>14}{'NAVERA (m)':>14}{'difference':>12}")
+for name, (lat, lon, _h) in PLACES.items():
+    mine, theirs = haversine(*home, lat, lon), haversine_m(*home, lat, lon)
+    diff = "TODO" if mine is None else f"{abs(mine - theirs):.6f}"
+    print(f"{name:<24}{show(mine, '%.3f'):>14}{theirs:14.3f}{diff:>12}")
+
+print("\n2) Flat shortcut: your flat_en() against NAVERA's _en()   (points are (lat, lon) pairs)")
+for name, (lat, lon, _h) in PLACES.items():
+    mine, theirs = flat_en(lat, lon, *home), _en((lat, lon), home)
+    print(f"{name:<24} yours {show(mine, '(%11.3f, %11.3f)')}   NAVERA ({theirs[0]:11.3f}, {theirs[1]:11.3f})")
+
+print("\n3) Moving 500 m east and 300 m south: your flat_move() against NAVERA's _move()")
+mine, theirs = flat_move(home[0], home[1], 500.0, -300.0), _move(home, 500.0, -300.0)
+print("   yours ", show(mine, "(%.9f, %.9f)"))
+print("   NAVERA (%.9f, %.9f)" % theirs)
+
+print("\n4) NAVERA's dead_reckon(): fly 20 m/s for 600 s on bearing 212.3 deg (towards Salalah)")
+end = dead_reckon(home[0], home[1], 212.3, 20.0, 600.0)
+print("   NAVERA lands at (%.6f, %.6f)" % end)
+d, b = haversine(*home, *end), bearing(*home, *end)
+print("   your haversine() says", show(d, "%.1f m"), " and your bearing() says", show(b, "%.2f deg"))
+enu = geodetic_to_enu(end[0], end[1], 0.0, home[0], home[1], 0.0)
+if enu is not None:
+    print("   exact WGS84 ENU of that point: east %.1f m, north %.1f m (horizontal %.1f m)"
+          % (enu[0], enu[1], math.hypot(enu[0], enu[1])))
+    flown = math.hypot(enu[0], enu[1])
+    print("   -> on the ellipsoid the spherical dead_reckon() covered %.1f m instead of 12 000 m (%+.2f %%)"
+          % (flown, (flown - 12000.0) / 120.0))

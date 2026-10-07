@@ -1,216 +1,276 @@
-# How the world is cut into map tiles
+# Map projections and tiles: Web Mercator, the tile pyramid and MBTiles
 
-NAVERA flies with a satellite map of the whole Sousse region on board: from Hergla to Monastir,
-from the sea to the olive groves inland. On the box it is one file of **10 GB** — more than a million
-small pictures. When the camera takes a photo, NAVERA must compare it with the right piece of map,
-**now**, many times per minute. It cannot load 10 GB each time; it cannot even search through a
-million pictures one by one.
+A drone flying over **Muscat** at 300 m takes a photo every second. To find where it is without GPS,
+NAVERA must compare that photo with the satellite map of the area — not the whole map, but the few
+map squares around its last known position, read **now**. NAVERA's map of its test area is one file
+of more than a million small pictures. You cannot search a million pictures for every photo; you
+must **compute** which ones you need from a latitude and a longitude, and read only those.
 
-The trick is old and simple: cut the world into a **grid of squares** with a clear numbering rule, so
-that from a latitude and a longitude you can **compute** the number of the square you need, and read
-only that one. Every web map (the one in your phone too) works like that. In this lesson you learn the
-rule and you read NAVERA's map yourself.
-
-## Step 1 — flatten the Earth: Web Mercator
-
-A map is flat, the Earth is round. You cannot flatten an orange peel without stretching or tearing
-it, so every flat map stretches something. Web maps all use the same stretching, called
-**Web Mercator**:
-
-- the meridians become **vertical straight lines**, evenly spaced: longitude becomes the **x** axis;
-- the parallels become **horizontal straight lines**, but they are pulled further and further apart
-  as you go towards the poles: latitude becomes the **y** axis, stretched.
-
-The stretch is chosen so that **shapes stay right** locally: a round roundabout stays round, a square
-building stays square, north stays up. That is exactly what we want to compare a photo with a map.
-The price: **sizes** are wrong far from the equator (on a world map Greenland looks as big as Africa;
-it is 14 times smaller), and the poles cannot be drawn at all — the map stops at 85.05° north and south.
+Every web map works this way: the world is flattened with the **Web Mercator** projection, cut into
+a **pyramid of 256 × 256 tiles**, and each tile has an address z/x/y that is a simple function of
+(lat, lon). In this lesson you derive the projection, compute scales for Omani latitudes, open the
+map file (an **SQLite** database) yourself, and meet a real NAVERA bug that cost 175 m per fix.
 
 > [!NOTE]
-> The stretch at a latitude is 1 / cos(latitude) — the same cosine as in lesson 6! At Sousse
-> (35.8°) things on the map look 1.23 times bigger than at the equator. We will need this in a moment.
+> **The data.** NAVERA's satellite map, `/data/map.mbtiles`, covers the region of **Sousse,
+> Tunisia** — NAVERA's test map, because NAVERA is developed there. There is **no satellite
+> imagery of Oman** in the academy. All formulas work everywhere, so you will compute scales,
+> zooms and tile numbers for Oman, and read real pictures only for Sousse.
 
-## Step 2 — cut the square into tiles: zoom levels
+## 1. Why a projection, and why Mercator?
 
-After flattening, the whole world is a **square**. Now:
+A **map projection** is a function (φ, λ) → (x, y) from the curved Earth to a plane. No projection
+keeps everything: a sphere cannot be flattened without stretching. You must choose what to keep:
 
-- at **zoom 0**, the whole world is **one tile**, a picture of 256 × 256 pixels;
-- at **zoom 1**, the square is cut into 2 × 2 = 4 tiles, each again 256 × 256 pixels (so twice more detail);
-- at **zoom 2**, 4 × 4 = 16 tiles;
-- at **zoom z**, 2^z × 2^z tiles.
+- **conformal** projections keep **angles and shapes locally** (a small circle stays a circle);
+- **equal-area** projections keep **areas**;
+- none keeps all distances.
+
+For image matching, shapes matter most: a roundabout in the photo must be round on the map, a
+right-angled building corner must stay 90°, north must stay "up". So web maps chose a conformal
+projection: **Mercator** (Gerardus Mercator, 1569).
+
+### Deriving the Mercator formula
+
+Take a small patch on a sphere of radius R at latitude φ: its north–south side is R·dφ and its
+east–west side is R·cos φ·dλ (the parallel is a circle of radius R cos φ). Mercator decides that
+meridians are vertical, equally spaced lines: **x = R·λ**. The east–west side on the map is then
+R·dλ, so east–west is stretched by a factor **1/cos φ**.
+
+To keep the shape, north–south must be stretched by the **same** factor:
+
+```
+dy = R·dφ / cos φ        →        y(φ) = R ∫₀^φ dθ / cos θ = R · ln tan(π/4 + φ/2)
+```
+
+![Mercator stretches north–south exactly as much as east–west](assets/mercator.svg)
+
+The integral of sec θ has several equal forms, which you will meet in different code:
+
+```
+ln tan(π/4 + φ/2)  =  ln(tan φ + sec φ)  =  asinh(tan φ)
+```
+
+(NAVERA's `local_matcher.py` writes `math.log(math.tan(r) + 1.0 / math.cos(r))`.) The inverse is the
+**Gudermannian function**:
+
+```
+φ = 2·atan(e^y) − π/2  =  atan(sinh y)            (y on the unit sphere, φ in radians)
+```
+
+The **scale factor** is k = 1/cos φ: at Salalah (17.0°) k = 1.046, at Muscat (23.6°) 1.091, at
+Sousse (35.8°) 1.233, at 60° it is 2. Areas are scaled by k², which is why Greenland looks as big as
+Africa on a web map although it is 14 times smaller. At the pole k is infinite: y → ∞.
+
+**Web Mercator** cuts the map at the latitude where y = π (on the unit sphere), which makes the
+world an exact square: φ_max = atan(sinh π) = **85.0511°**. Nothing north or south of that exists in
+a web map.
+
+> [!WARNING]
+> **`ValueError: math domain error`** means you gave a function a value outside its domain — here
+> `math.log()` of a number ≤ 0. Forget `math.radians()` and Salalah (17.0194) gives
+> tan(π/4 + 8.51) = −0.13: `math.log` fails with this error. Muscat (23.5839) gives tan(…) = +0.011:
+> no error at all, just y = −4.5 instead of 0.42 and a tile row outside the map. A crash
+> is the lucky case. Always convert with `math.radians()` first.
+
+### Web Mercator is not quite Mercator
+
+Web Mercator (EPSG:3857) applies the **sphere** formula above, with R = a = 6 378 137 m, directly to
+**WGS84 ellipsoidal** latitudes. The true Mercator of the ellipsoid (EPSG:3395) has an extra term:
+
+```
+y_3395 = a·[ln tan(π/4 + φ/2) − e·atanh(e·sin φ)]
+```
+
+At Muscat the two disagree by **a·e·atanh(e sin φ) ≈ 17.1 km** in y. Mixing tiles or coordinates from
+the two systems is a classic bug (a whole city shifted north). Web Mercator is also not perfectly
+conformal: at Muscat its north–south scale differs from its east–west scale by about 0.5 %
+(N/M = 1.0057) — the same 0.5 % you met with the radii M and N in lesson 6. For matching photos,
+this is negligible; for surveying, Web Mercator is the wrong tool.
+
+## 2. The tile pyramid
+
+After projection, the world (up to ±85.05°) is a square. Cut it:
+
+- **zoom 0**: the whole world is one tile of 256 × 256 pixels;
+- **zoom 1**: 2 × 2 tiles; **zoom z**: n = 2^z tiles in each direction, 4^z tiles in total.
 
 ![Zoom levels: each tile is cut into four at the next level](assets/zoom_pyramid.svg)
 
-Each tile has an address of three numbers, written **z / x / y**:
+A tile's address is **z / x / y**: x counts columns from 0 at λ = −180° towards the **east**, y counts
+rows from 0 at the **north** edge (85.05° N) towards the **south**. This is the **XYZ** or
+"slippy map" convention. In fractional tile coordinates:
 
-- **z**: the zoom level;
-- **x**: the column, from 0 at longitude −180° (the far west), growing to the **east**;
-- **y**: the row, from 0 at the **top** (the far north), growing to the **south**.
+```
+x = (λ + 180) / 360 · n                          (direct proportion: λ from −180..180 to 0..n)
+y = (1 − ln tan(π/4 + φ/2) / π) / 2 · n          (φ in radians)
+```
 
-This numbering is called **XYZ** (or "slippy map" tiles). NAVERA's map holds zoom 13 to zoom 19:
+The **whole parts** are the tile; the **fractional parts** times 256 are the pixel inside it.
+Multiplying by 256 directly gives **global pixel coordinates**: the pixel (0, 0) is the north-west
+corner of the world, and at zoom 17 the world is 2^17 · 256 = 33 554 432 pixels wide.
 
-| Zoom | Tiles across the world | 1 pixel at the equator | 1 pixel at Sousse | 1 tile at Sousse |
+**Worked example — the Sultan Qaboos Grand Mosque, Muscat (23.5839°, 58.3875°), zoom 17.**
+n = 131 072. x = (58.3875 + 180)/360 · 131 072 = **86 794.24**. ln tan(π/4 + φ/2) = 0.423758, so
+y = (1 − 0.423758/π)/2 · 131 072 = **56 696.09**. The mosque is in tile **17 / 86794 / 56696**, at pixel
+(0.24 · 256, 0.09 · 256) ≈ (61, 23) inside it. Sanity check: Muscat is east of Greenwich (x > n/2 =
+65 536) and north of the equator (y < n/2). ✔
+
+**Inverse — tile to lat/lon.** For any (fractional) x, y:
+
+```
+λ = x / n · 360 − 180
+φ = Gudermannian(π · (1 − 2y / n))
+```
+
+With whole x, y you get the tile's **north-west corner**; with x + 0.5, y + 0.5 its **centre**.
+Python note: use `int(math.floor(x))` for the tile number. `int()` truncates towards zero, which is
+the same for positive numbers but wrong for negative offsets (for example a pixel at −0.3 in a
+mosaic is in the tile to the left, not in tile 0).
+
+## 3. How big is a pixel?
+
+The equator, 2πa = 40 075 016.7 m (`EQUATOR_M`), is cut into 2^z · 256 pixels. Away from the
+equator, the map is stretched by 1/cos φ, so a pixel covers less ground:
+
+```
+meters per pixel = 2πa · cos φ / (256 · 2^z) = 156 543.03 · cos φ / 2^z
+```
+
+| Zoom | Salalah (17.0°) | Muscat (23.6°) | Khasab (26.2°) | Sousse (35.8°) |
 |---|---|---|---|---|
-| 13 | 8 192 | 19.1 m | 15.5 m | 3.97 km |
-| 15 | 32 768 | 4.78 m | 3.87 m | 992 m |
-| 17 | 131 072 | 1.19 m | 0.97 m | 248 m |
-| 18 | 262 144 | 0.60 m | 0.48 m | 124 m |
-| 19 | 524 288 | 0.30 m | 0.24 m | 62 m |
+| 13 | 18.27 m | 17.51 m | 17.15 m | 15.49 m |
+| 15 | 4.568 m | 4.378 m | 4.287 m | 3.873 m |
+| 17 | 1.142 m | 1.095 m | 1.072 m | 0.968 m |
+| 19 | 0.286 m | 0.274 m | 0.268 m | 0.242 m |
 
-Each zoom level has **4 times** more tiles than the previous one, and each pixel is **half** the size.
-That is why zoom 19 alone has 865 375 tiles in NAVERA's file, while zoom 13 has only 240.
+So the "same" zoom-17 map is 18 % coarser in Salalah than in Sousse. A zoom-17 tile is 292 m wide in
+Salalah, 280 m in Muscat and 248 m in Sousse. (Precisely, this formula is the east–west pixel size;
+north–south, Web Mercator's pixel at Muscat is 0.5 % smaller, as explained above.)
 
-## Step 3 — from latitude/longitude to a tile number
-
-Let **n = 2^z** be the number of tiles across.
-
-**x** is easy, because longitudes are evenly spaced. Longitude goes from −180 to +180 (a range of 360);
-shift it to 0…360 and take the fraction:
-
-```
-x = (lon + 180) / 360 × n
-```
-
-**y** follows the Mercator stretch. You don't need to understand where it comes from; just copy it
-carefully (it uses the latitude in **radians**, `ln` is `math.log`):
+**Choosing a zoom.** A downward camera at height H with horizontal field of view α and W pixels
+across sees ground pixels of size GSD = 2H·tan(α/2)/W (the **ground sample distance**; lesson 8).
+NAVERA scales the photo to the map's meters per pixel before matching. Shrinking a photo is safe;
+enlarging it invents nothing but blur. So a simple rule is: take the **highest zoom whose pixel is
+still at least the camera's GSD**:
 
 ```
-y = (1 − ln(tan(lat) + 1 / cos(lat)) / π) / 2 × n
+z = floor( log2( 156 543.03 · cos φ / GSD ) )
 ```
 
-For the Ribat of Sousse (35.8277, 10.6388) at zoom 17 this gives **x = 69409.47, y = 51547.56**.
+For a camera with α = 84° and W = 1536 px at 300 m over Muscat, GSD = 0.352 m and z = 18. NAVERA's map
+file carries its own table, `altitude_zoom_map`, which chooses a coarser zoom (17 at 300 m): coarser
+tiles are faster to match and less sensitive to small changes on the ground. You will compare both
+in the lab.
 
-- The **whole parts** (69409, 51547) are the tile: the Ribat is in tile **17 / 69409 / 51547**.
-- The **fractions** (0.47, 0.56) say where it is *inside* the tile: 0.47 × 256 = pixel 120 from the
-  left, 0.56 × 256 = pixel 143 from the top.
+## 4. XYZ rows and TMS rows
 
-Check in your head: Sousse is a bit east of the middle of the world (x slightly above n / 2 = 65 536)
-and north of the equator (y below n / 2). ✔
-
-## Step 4 — and back: from a tile to latitude/longitude
-
-The opposite formulas give the **north-west corner** (top-left) of tile x, y:
+The tile file format comes from an older standard, **TMS** (Tile Map Service), that numbers rows
+from the **south**. Columns are identical; rows are flipped:
 
 ```
-lon = x / n × 360 − 180
-lat = atan(sinh(π × (1 − 2 × y / n)))      (in radians → convert to degrees)
+tms_row = (2^z − 1) − y
 ```
-
-`sinh` and `atan` are two more calculator buttons (`math.sinh`, `math.atan`); together they undo the
-`ln(tan + 1/cos)` of step 3. To get the **centre** of a tile, use x + 0.5 and y + 0.5.
-
-> [!WARNING]
-> **Corner or centre?** This tiny detail caused a real bug in NAVERA. The day-vision dataset stores,
-> for every tile, the latitude/longitude of its **north-west corner**. For a while, when the camera
-> matched a tile, NAVERA published that corner as the drone's position — but the photo's centre is the
-> tile's **centre**. Every position was wrong by half a tile: about **175 m** towards the north-west at
-> zoom 17. The fix and a test that keeps it fixed are in the code (see "In NAVERA" below).
-
-## Step 5 — how big is a pixel?
-
-The equator is 40 075 017 m long. At zoom z it is cut into n tiles of 256 pixels, so on the equator
-one pixel covers 40 075 017 / n / 256 meters. Away from the equator the map is stretched by
-1 / cos(latitude), so a pixel covers **less** ground:
-
-```
-meters per pixel = 40 075 017 × cos(lat) / 2^z / 256
-```
-
-At Sousse, zoom 17: 40 075 017 × 0.811 / 131 072 / 256 ≈ **0.968 m**. A car (4 m) is 4 pixels long.
-
-This number is essential for vision navigation: to compare a camera photo with the map, NAVERA must
-first make both pictures have the **same meters per pixel** (lesson 8). It is also why the map file
-recommends a zoom for each flying height (`altitude_zoom_map` in its metadata): the higher the drone,
-the more ground each camera pixel covers, and the lower the zoom that matches it.
-
-## Step 6 — the MBTiles file
-
-How do you store a million tiles? Not as a million files (slow to copy, hard to manage), but in **one
-file**: an **MBTiles** file. Inside, it is an **SQLite database**.
-
-A **database** is a program that stores tables — think of the CSV files of lesson 4, but with millions of
-rows and an index to find one row instantly. **SQLite** keeps a whole database in one ordinary file;
-Python can read it with the built-in module `sqlite3`. An MBTiles file has two tables:
-
-**`metadata`** — two columns, `name` and `value`: what the map is.
-
-| name | value (NAVERA's map) |
-|---|---|
-| name | Sousse Governorate Satellite |
-| format | jpg |
-| bounds | 10.3,35.55,10.9,36.1 (west, south, east, north) |
-| minzoom / maxzoom | 13 / 19 |
-| altitude_zoom_map | which zoom to use at which flying height |
-
-**`tiles`** — one row per tile:
-
-| zoom_level | tile_column | tile_row | tile_data |
-|---|---|---|---|
-| 17 | 69409 | 79524 | (27 295 bytes of JPEG picture) |
-
-To ask a database for something you use **SQL**, a little language made of English-like sentences:
-
-```sql
-SELECT tile_data FROM tiles WHERE zoom_level = 17 AND tile_column = 69409 AND tile_row = 79524
-```
-
-"Give me the column `tile_data` from the table `tiles`, for the row where zoom is 17, and column is…".
-
-### The upside-down rows (TMS)
-
-Look again at the table above: the Ribat's tile is y = **51547**, but its `tile_row` is **79524**. The
-MBTiles format comes from an older standard called **TMS**, which counts rows **from the south**
-(from the bottom), while XYZ counts from the north (the top). Columns are the same. To convert:
-
-```
-tile_row = (2^z − 1) − y
-```
-
-At zoom 17: 131 071 − 51 547 = 79 524. ✔
 
 ![XYZ rows count from the north, TMS rows from the south](assets/xyz_vs_tms.svg)
 
-Forget the flip and you read the tile at the mirror latitude, about 35.8° **south** — in the middle of
-the ocean, where NAVERA's file has nothing.
+The Ribat of Sousse is in XYZ tile 17/69409/51547, stored as tile_row 131 071 − 51 547 = 79 524.
+Forget the flip and you read the tile at the mirror latitude, about 35.8° **south** — in the ocean,
+where NAVERA's file has nothing.
 
-> [!WARNING]
-> NAVERA's map is shared by the whole class and by the product itself. Always open it **read-only**:
-> `sqlite3.connect("file:/data/map.mbtiles?mode=ro", uri=True)`. The `file:…?mode=ro` form is called a
-> **URI**; `uri=True` tells Python to read the `mode=ro` part ("read only") instead of treating it as a
-> file name. A read-only connection cannot change or damage the file, even by mistake.
+## 5. Inside an MBTiles file
 
-The `tile_data` is the picture itself, as **bytes** (the content of a `.jpg` file). Every JPEG starts
-with the bytes `FF D8 FF` — a handy way to check you got a picture and not garbage. OpenCV can
-**decode** those bytes into pixels (lesson 8 is about pixels).
+**MBTiles** stores a whole tile pyramid in **one SQLite database file**. **SQLite** is a database
+engine that keeps tables, indexes and everything else in a single ordinary file, organised in fixed
+**pages** (4096 bytes here); Python reads it with the standard module `sqlite3`. NAVERA's map
+contains two tables:
+
+```sql
+CREATE TABLE metadata (name TEXT PRIMARY KEY, value TEXT)
+CREATE TABLE tiles (zoom_level INTEGER NOT NULL, tile_column INTEGER NOT NULL,
+                    tile_row INTEGER NOT NULL, tile_data BLOB NOT NULL,
+                    PRIMARY KEY (zoom_level, tile_column, tile_row))
+```
+
+A **BLOB** is raw bytes — here the content of a JPEG file, which always starts with the bytes
+`FF D8 FF`. The **primary key** creates an **index**: a B-tree sorted by (zoom, column, row). Finding
+one tile among 1.15 million is a search in a tree of depth 3–4, i.e. a few page reads, not a scan
+of the table. SQLite tells you which strategy it uses:
+
+```sql
+EXPLAIN QUERY PLAN SELECT tile_data FROM tiles WHERE zoom_level=17 AND tile_column=69409 AND tile_row=79524
+-- SEARCH tiles USING INDEX sqlite_autoindex_tiles_1 (zoom_level=? AND tile_column=? AND tile_row=?)
+```
+
+**SQL in five words.** `SELECT` columns `FROM` a table `WHERE` a condition; `COUNT(*)` with
+`GROUP BY zoom_level` counts rows per zoom; `length(tile_data)` is the size of a BLOB in bytes. In
+Python, never paste numbers into the SQL text; write `?` **placeholders** and pass the values as a
+tuple — `sqlite3` inserts them safely and the same query plan is reused.
+
+**Read-only.** The map is shared by the whole class and by the product. Always open it with a URI:
+`sqlite3.connect("file:/data/map.mbtiles?mode=ro", uri=True)`. `uri=True` tells Python to parse the
+`?mode=ro` option instead of treating it as part of the file name; a read-only connection cannot
+modify the file, even by mistake.
+
+**Metadata is not a measurement.** NAVERA's map says, in its own metadata, `bounds 10.3,35.55,
+10.9,36.1`, `minzoom 13`, `maxzoom 19`, `altitude_zoom_map {...}` and `estimated_size_mb 36467`.
+The file on disk is **10 286 944 256 bytes = 10.29 GB** (2 511 461 pages × 4096 bytes). The
+"estimated size" is a number written by the tool that created the file, and it is wrong by a factor
+of 3.5. An engineer measures (`os.path.getsize`, `PRAGMA page_count`) and does not trust a label.
+
+| Zoom | 13 | 14 | 15 | 16 | 17 | 18 | 19 |
+|---|---|---|---|---|---|---|---|
+| Tiles in NAVERA's map | 240 | 928 | 3 528 | 13 750 | 54 312 | 216 810 | 865 375 |
+
+Each level has about 4 times more tiles than the previous one; zoom 19 alone holds 75 % of the tiles.
+
+## 6. Mosaics and pixel ↔ lat/lon
+
+One tile is small (280 m at zoom 17 in Muscat), and the drone may be near its edge. NAVERA always
+works on a **mosaic**: the (2r + 1)² tiles around the position, glued into one picture. If the
+mosaic's top-left tile is (x0, y0), a point and a pixel are related by:
+
+```
+px = (x_frac − x0) · 256          py = (y_frac − y0) · 256
+lat, lon = tile_to_latlon(x0 + px/256, y0 + py/256, z)
+```
+
+![Pixels of a mosaic, and the corner bug](assets/mosaic_pixels.svg)
+
+These two lines are what turns "the photo centre matched pixel (412.6, 377.1) of the mosaic" into
+a latitude and a longitude — the output of day vision.
+
+### A real bug: corner or centre?
+
+The day-vision dataset of NAVERA stores, for each zoom-17 tile, the latitude and longitude of its
+**north-west corner** (the value `tile_to_latlon(x, y)` returns). For a while, when a camera photo
+matched a tile, NAVERA published that corner as the drone's position. But the photo matched the
+**whole** tile, so the right answer is its **centre**. Every fix was off by half the tile diagonal,
+towards the north-west: **175 m** at zoom 17 in Sousse. In Muscat, where zoom-17 tiles are larger,
+the same bug would cost 198 m. The fix adds 0.5 to x and y; a unit test keeps it fixed.
 
 ## 🐦 How birds do it
 
-A homing pigeon released far from home flies back to its loft. Far away, it relies mostly on its
-compasses (the sun, the magnetic field). Close to home, it uses something else: **what it sees**.
+Homing pigeons released far from their loft first rely on compass mechanisms (the sun, the Earth's
+magnetic field). Close to home, they also use what they see. In the early 2000s, Tim Guilford, Dora
+Biro and colleagues at Oxford fitted small GPS loggers to homing pigeons and released them many
+times from the same sites. Each bird gradually developed its **own route**, then repeated it very
+precisely, flight after flight. Many of these routes followed linear features visible from the air —
+roads, railways, rivers, hedgerows. In 2004 another team (Hans-Peter Lipp and colleagues, Zurich)
+reported pigeons that followed motorways and even changed direction at motorway junctions.
 
-In the early 2000s, scientists at Oxford (Tim Guilford, Dora Biro and their colleagues) fixed tiny GPS
-loggers on homing pigeons and released them again and again from the same places. Each pigeon
-slowly developed its **own favourite route** home and then followed it flight after flight, very
-precisely. Many of those routes ran along roads, railways, rivers and field edges — lines that are
-easy to see from above. Some even seemed to follow a main road and change direction at its
-junctions, like a driver who knows the way.
-
-Think of it in tiles. From high up, a bird sees only big shapes — a coast, a river, a mountain range:
-that is a **low zoom level**. Lower down, it sees single roads, roofs and trees: a **high zoom level**.
-And a pigeon does not "carry" the whole world in its head — only the area it has flown over, and the
-area around home best of all.
-
-Navi does the same when she comes back from Africa: first the shape of the Tunisian coast, then the
-town, then the farm, then the barn door.
-
-NAVERA's map file works the same way: only the region of the mission, cut into tiles, at the zoom
-levels it needs — and the right tile picked in an instant from a latitude and a longitude.
+In tile language: a bird at high altitude sees only large structures, a coastline or a mountain
+ridge — a **low zoom**. Lower down it resolves single roads and buildings — a **high zoom**. And it does
+not carry "the world" in memory, only the area it has flown over, in most detail near home — exactly
+how NAVERA prepares a mission: only the tiles along the route, at the zoom levels it needs. Navi, our
+swallow, uses the same pyramid when she returns to the same nest: first the coast, then the town,
+then the roof.
 
 ## In NAVERA
 
 **Reading tiles — `simulation_web/simulation_web/web_common.py`**
-([open it](file:navera/simulation_web/simulation_web/web_common.py)). The operator view and the
-simulator's camera read the map with `MBTilesReader`:
+([open it](file:navera/simulation_web/simulation_web/web_common.py)), class `MBTilesReader`, used by the
+operator view and by the simulator's camera:
 
 ```python
 def get(self, z: int, x: int, y: int) -> Optional[bytes]:
@@ -228,13 +288,12 @@ def get(self, z: int, x: int, y: int) -> Optional[bytes]:
     return bytes(row[0]) if row else None
 ```
 
-Read-only URI, the SQL sentence, the TMS flip `(2 ** z - 1) - y`, and `None` when the tile is missing:
-everything you will write in the lab. (`quote()` protects file names with spaces; the `?` in the SQL
-are placeholders that `sqlite3` fills safely with the values of the tuple.) It also keeps the
-connection open between calls and uses a lock, because several web requests can arrive at once.
+Read-only URI, placeholders, the TMS flip and `None` for a missing tile. (`quote()` escapes special
+characters in the path; the real method also holds a lock, because several web requests may read at
+the same time.)
 
 **Tile geometry — `day_pkg/day_pkg/local_matcher.py`**
-([open it](file:navera/day_pkg/day_pkg/local_matcher.py)). Day vision needs the same three formulas:
+([open it](file:navera/day_pkg/day_pkg/local_matcher.py)):
 
 ```python
 EQUATOR_M = 40075016.7
@@ -245,61 +304,85 @@ def tile_xy(lat, lon, z):
     r = math.radians(lat)
     return (lon + 180.0) / 360.0 * n, (1.0 - math.log(math.tan(r) + 1.0 / math.cos(r)) / math.pi) / 2.0 * n
 
+def tile_px_to_latlon(px, py, z):
+    """(lat, lon) of a global tile-pixel position (256 px per tile) at zoom z."""
+    n = 2 ** z
+    x, y = px / 256.0, py / 256.0
+    return math.degrees(math.atan(math.sinh(math.pi * (1.0 - 2.0 * y / n)))), x / n * 360.0 - 180.0
+
 def map_m_per_px(lat, z):
     return EQUATOR_M * math.cos(math.radians(lat)) / 2 ** z / 256.0
 ```
 
-**The corner bug and its test — `day_pkg/day_pkg/nodes/day_localizer.py` and
-`day_pkg/test/test_tile_geometry.py`.** The function `tile_center_latlon()` turns a tile name such as
-`tile_17_69388_51536.jpg` into the tile's **centre**, with `x + 0.5` and `y + 0.5`. Its docstring tells
-the story: *"publishing that [corner] as the position biases every fix by half a tile (~175 m at z17,
-to the NW)"*. The test checks the north-west corner of that tile is (35.8534396195918, 10.579833984375)
-— your lab's `tile_to_latlon()` must give exactly the same numbers.
+`tile_px_to_latlon` is your `pixel_to_latlon` with x0 = y0 = 0 (global pixels).
 
-**Preparing a mission area — `day_pkg/day_pkg/prepare_area.py`** extracts from the MBTiles map the
-zoom-17 tiles along a planned route (`tile_nw()`, `tile_center()`), so the drone carries only the
-tiles it may need.
+**The corner bug and its test — `day_pkg/day_pkg/nodes/day_localizer.py`, `tile_center_latlon()`**:
 
-## New words
+```python
+    The dataset CSV stores each tile's NORTH-WEST CORNER (the value
+    tile_to_latlon(x, y) returns), not its centre: publishing that as the
+    position biases every fix by half a tile (~175 m at z17, to the NW).
+    ...
+    lon = (x + 0.5) / n * 360.0 - 180.0
+    lat = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * (y + 0.5) / n))))
+```
 
-| Word | Meaning |
+`day_pkg/test/test_tile_geometry.py` checks that the NW corner of tile 17/69388/51536 is
+(35.8534396195918, 10.579833984375) and that the centre is 175 ± 1 m away — your functions must
+reproduce these numbers. **`day_pkg/day_pkg/prepare_area.py`** (`tile_nw()`, `tile_center()`)
+extracts the zoom-17 tiles along a planned route, so the drone carries only what it needs.
+
+## Glossary
+
+| Term | Meaning |
 |---|---|
-| **Web Mercator** | the way web maps flatten the Earth: north up, shapes kept, sizes stretched towards the poles |
-| **tile** | one 256 × 256 pixel square picture of the map |
-| **zoom level (z)** | how many times the world square was cut in 4: 2^z × 2^z tiles |
-| **XYZ (slippy map)** | numbering of tiles: x to the east, y to the **south**, from the top-left |
-| **TMS** | older numbering where rows count from the **south**: row = 2^z − 1 − y |
-| **meters per pixel** | the ground size of one pixel (also called ground resolution) |
-| **MBTiles** | a single file holding all the tiles of a map, in an SQLite database |
-| **SQLite / database** | a program (and file) that stores tables and finds rows fast |
-| **SQL** | the language to ask a database: `SELECT … FROM … WHERE …` |
-| **URI, mode=ro** | a way to open a file with options; `mode=ro` = read only |
-| **JPEG** | a compressed picture format; its bytes start with FF D8 FF |
+| **map projection** | a function (φ, λ) → (x, y) from the Earth to a plane |
+| **conformal** | keeps angles and local shapes (Mercator is conformal on the sphere) |
+| **scale factor k** | map length / ground length; Mercator: k = 1/cos φ |
+| **Web Mercator (EPSG:3857)** | spherical Mercator applied to WGS84 latitudes, cut at ±85.0511° |
+| **Gudermannian** | φ = atan(sinh y), the inverse of the Mercator ordinate |
+| **tile pyramid** | the world cut into 4^z tiles of 256 × 256 px at each zoom z |
+| **XYZ / TMS** | tile numbering with rows from the north / from the south; row = 2^z − 1 − y |
+| **global pixel** | tile coordinate × 256; (0, 0) is the world's NW corner |
+| **ground sample distance (GSD)** | ground size of one camera pixel |
+| **MBTiles** | a tile pyramid stored in one SQLite file (tables metadata and tiles) |
+| **SQLite, page** | a database engine in one file; the file is made of fixed-size pages |
+| **index, B-tree** | sorted search structure that finds one row in a few reads |
+| **BLOB** | a column holding raw bytes (here, a JPEG file) |
+| **placeholder `?`** | a slot in an SQL query, filled safely by sqlite3 with a value |
+| **URI, mode=ro** | `file:...?mode=ro` opens the database read-only |
 
 ## Check what you learned
 
-<details><summary>1. At zoom 18, how many tiles are there across the world, and how many in total?</summary>
-2^18 = 262 144 across, and 262 144 × 262 144 ≈ 68.7 billion in total. That is why a map only stores the
-tiles of its region.
+<details><summary>1. Derive the scale factor of Mercator and say why it must be the same north–south and east–west.</summary>
+x = Rλ makes the east–west map length R·dλ for a ground length R cos φ dλ: scale 1/cos φ. A conformal
+map must scale all directions equally at a point, so dy = R dφ / cos φ, which integrates to
+R ln tan(π/4 + φ/2).
 </details>
 
-<details><summary>2. You go from zoom 17 to zoom 18. What happens to the meters per pixel?</summary>
-It is divided by 2: each tile is cut into 4 (2 × 2), each new tile still has 256 × 256 pixels.
-At Sousse: 0.968 m → 0.484 m.
+<details><summary>2. At zoom 17, how wide is a tile in Salalah and in Sousse, and why is Salalah's larger?</summary>
+256 × 156 543.03 · cos φ / 2^17: 292 m in Salalah, 248 m in Sousse. Closer to the equator, cos φ is
+larger, the Mercator stretch smaller, so one pixel covers more ground.
 </details>
 
-<details><summary>3. Tile 17/69409/51547 — is tile 17/69410/51547 east or west of it? And 17/69409/51548?</summary>
-69410 is one column further east. 51548 is one row further <b>south</b> (XYZ rows grow to the south).
+<details><summary>3. The tile 17/86794/56696 contains the Grand Mosque. Which tile_row do you query in the MBTiles file?</summary>
+131 071 − 56 696 = 74 375 (TMS rows count from the south).
 </details>
 
-<details><summary>4. Why does the MBTiles query use tile_row = 2^z − 1 − y?</summary>
-MBTiles follows the TMS convention, where rows are counted from the south, while XYZ (used by NAVERA
-and web maps) counts from the north. The formula flips the row number.
+<details><summary>4. Your code computes math.log(math.tan(math.pi / 4 + 17.0194 / 2)) and crashes with "math domain error". Why?</summary>
+17.0194 is in degrees but used as radians: tan(π/4 + 8.51 rad) = −0.13 is negative, and the log of a
+negative number is undefined. Use math.radians(17.0194). (With Muscat's 23.5839 the same mistake does
+not crash — it silently gives a wrong tile.)
 </details>
 
-<details><summary>5. Day vision matched a photo to a tile and published the tile's north-west corner. What is wrong?</summary>
-The photo's centre is at the tile's centre, half a tile south-east of the corner: about 175 m of error at
-zoom 17. Use x + 0.5, y + 0.5.
+<details><summary>5. The metadata says 36467 MB, the file system says 10.29 GB. Which do you report, and how do you check it?</summary>
+The measurement: os.path.getsize (or PRAGMA page_count × page_size). Metadata is free text written by
+a tool and can be wrong.
+</details>
+
+<details><summary>6. Why does the corner bug cost more meters in Muscat than in Sousse, at the same zoom?</summary>
+The error is half the tile diagonal. Tiles cover more ground at lower latitude (cos φ larger): 280 m
+in Muscat against 248 m in Sousse, so 198 m against 175 m.
 </details>
 
 Now open the **🛠️ Lab** tab.

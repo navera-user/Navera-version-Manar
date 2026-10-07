@@ -1,13 +1,24 @@
-# Lab 6 — From degrees to meters
+# Lab 6 — Geodetic, ECEF, ENU: implement, verify, measure the error
 
-**Goal:** write the four geography functions every navigation system needs — `distance()`, `bearing()`,
-`to_local_xy()`, `from_local_xy()` — check them against NAVERA's own code, and measure the length of
-the loop NAVERA's demo mission flies over Sousse.
-**Time:** about 1 hour.
+**Goal:** implement the WGS84 conversions geodetic ↔ ECEF ↔ ENU, the spherical haversine and
+bearing, and NAVERA's flat shortcut; prove they agree with NAVERA's own code; then run an error
+study around Muscat and write a short engineering report on how far the shortcuts can be trusted.
+**Time:** about 3 hours.
 
-You work in two files: [geo_lab.py](file:./geo_lab.py) (the functions) and [answers.py](file:./answers.py)
-(a short quiz). The other files (`route.py`, `compare_navera.py`, `route.csv`) are ready: they *use*
-your functions.
+Files in your lesson folder:
+
+| File | Role |
+|---|---|
+| [geo_lab.py](file:./geo_lab.py) | **your work**: ten functions marked `TODO` |
+| [compare_navera.py](file:./compare_navera.py) | compares your functions with NAVERA's (ready) |
+| [error_study.py](file:./error_study.py) | the error study: writes `results.json` and `error_study.png` (ready) |
+| [geodesic_ref.py](file:./geodesic_ref.py) | reference distance on the ellipsoid (Vincenty), used as "truth" (ready) |
+| [report.md](file:./report.md) | **your work**: the written analysis |
+| [answers.py](file:./answers.py) | **your work**: three quiz answers |
+
+Conventions in `geo_lab.py`: angles in **degrees** at the interface, radians inside `math.sin/cos`;
+heights in meters above the ellipsoid; several results are returned as a **tuple**
+(`return x, y, z`) except the ENU vector, which is a numpy array.
 
 ## Step 1 — Run the starter
 
@@ -15,150 +26,184 @@ your functions.
 python3 geo_lab.py
 ```
 
-You see a table of four places around Sousse, full of `TODO`. Each `TODO` is a function that still
-returns `None` ("nothing"). Open [geo_lab.py](file:./geo_lab.py): at the top you find two constants,
-`EARTH_RADIUS_M` and `M_PER_DEG`, then five functions with a `# TODO` comment and `return None`.
-Your job is to replace each `return None` by real code.
+Every value prints `TODO`. Read the top of the file: the constants `WGS84_A`, `WGS84_F`, `WGS84_B`,
+`WGS84_E2`, `EARTH_RADIUS_M` and `M_PER_DEG`, then the ten functions. Below the line
+`# ---- you don't need to change anything below this line ----` is the demo and the list `PLACES`
+(Muscat, Sohar, Nizwa, Jebel Shams, Salalah).
 
 > [!TIP]
-> Before writing a formula, try it by hand in Python. Type `python3` in the terminal to open the
-> interactive Python, then for example `import math` and `math.cos(math.radians(35.8))`. Type `exit()`
-> to leave.
+> Test small pieces with `python3 -c "..."` (one command) or in the interactive interpreter
+> (`python3`, then `from geo_lab import *`). After editing the file, start the interpreter again:
+> an import is done only once per session.
 
-## Step 2 — distance()
+## Step 2 — Radii of curvature (TODO 1)
 
-`distance(lat1, lon1, lat2, lon2)` must return the great-circle distance in meters. Write the
-haversine formula of the course, line by line:
-
-1. convert `lat1`, `lat2`, `lat2 - lat1` and `lon2 - lon1` to radians (`math.radians`);
-2. compute `a` (the long line with `sin` and `cos`);
-3. return `2 * EARTH_RADIUS_M * math.asin(math.sqrt(a))`.
-
-Like NAVERA, use `min(1.0, a)` inside the `sqrt` to be safe.
-
-> [!TASK]
-> Finish **TODO 1** `distance()` in `geo_lab.py`. Done means: 0 m between a point and itself,
-> ≈ 111 195 m for one degree of latitude, ≈ 18 229 m from the Ribat of Sousse to Monastir marina,
-> the same result both ways.
-
-Run the program again:
+Write `radii(lat)`: compute `w = 1 - WGS84_E2 * sin²(lat)` (latitude in radians!), then M and N
+(course, section 2), and `return m, n`.
 
 ```bash
-python3 geo_lab.py
+python3 -c "from geo_lab import radii; print(radii(0.0)); print(radii(23.5839))"
 ```
 
-The `distance (m)` column is filled. Port El Kantaoui marina should be about **8 262 m** away.
+At the equator you must get (6 335 439.327, 6 378 137.0) — N equals a. At Muscat
+(6 345 636.5, 6 381 557.1). Run `python3 geo_lab.py`: the first table now shows km per degree;
+compare it with the table of the course.
 
-## Step 3 — bearing()
+## Step 3 — Geodetic ↔ ECEF (TODO 2 and TODO 3)
 
-`bearing(lat1, lon1, lat2, lon2)` returns the direction from point 1 to point 2, in degrees,
-clockwise from north, **between 0 and 360**. Use the three lines from the course (`y`, `x`, then
-`atan2(y, x)`), convert the result to degrees with `math.degrees`, and finish with `% 360`.
+**TODO 2** `geodetic_to_ecef(lat, lon, h)`: the three formulas, with N from your `radii()`
+(`_, n = radii(lat)` keeps only the second value). Return `x, y, z`.
+
+**TODO 3** `ecef_to_geodetic(x, y, z)`: the iteration of the course. Keep `lat` in **degrees**
+between iterations (because `radii()` takes degrees) and convert to radians only inside `cos` and
+`atan2` calls. Six iterations are plenty; compute h once more with the final latitude.
+
+```bash
+python3 -c "from geo_lab import *; x = geodetic_to_ecef(23.2375, 57.2636, 3000.0); print(x); print(ecef_to_geodetic(*x))"
+```
+
+Jebel Shams summit (3000 m) must give (3 172 476.1, 4 934 740.5, 2 502 092.8) and come back as
+(23.2375, 57.2636, 3000.0) to better than a millimeter. `*x` unpacks the tuple into three
+arguments.
 
 > [!WARNING]
-> `math.atan2(y, x)` takes the **east** part (`y`) first. If you swap them, north and east are swapped:
-> a point due east would come out at 0°.
-
-Test it with points you can check in your head: from Sousse, a point 0.01° north should be at 0°,
-0.01° east at 90°, 0.01° west at 270°. In the interactive Python (`python3`), type:
-
-```python
-from geo_lab import bearing
-bearing(35.8277, 10.6388, 35.8277, 10.6288)
-```
-
-You should get about `270.0`. (`from geo_lab import bearing` loads your function from your file.
-If you change the file, `exit()` and start `python3` again.)
+> If the height comes back kilometers (or thousands of kilometers) wrong, a latitude was used in
+> degrees inside `cos`, or in radians inside `radii()`. If you see `ZeroDivisionError`, the first guess or `cos(lat)`
+> is wrong.
 
 > [!TASK]
-> Finish **TODO 2** `bearing()`. Done means: 0 / 90 / 180 / 270 for points due north / east / south /
-> west, ≈ 107.0° from the Ribat of Sousse to Monastir marina, ≈ 287.2° back, never negative.
+> **TODO 1–3 done** means: `radii()` returns (M, N) to 1 cm at 0°, 90° and Muscat;
+> `geodetic_to_ecef()` gives (a, 0, 0) at (0°, 0°), (0, 0, b) at the pole and the Jebel Shams
+> values above; `ecef_to_geodetic()` inverts it to 10⁻⁸ degree and 1 mm, also for a point at
+> 10 km height, a point below the ellipsoid (h = −45 m) and a point in the south-west quadrant.
 
-## Step 4 — the local frame: to_local_xy() and from_local_xy()
+## Step 4 — ENU (TODO 4, 5, 6)
 
-Now take the **Ribat of Sousse** as home. `to_local_xy(lat, lon, home_lat, home_lon)` returns a pair
-`(east, north)` in meters. Use `M_PER_DEG` (111 320) and the **cosine of the home latitude** for east.
-Return the two numbers with `return east, north`.
+**TODO 4** `enu_matrix(lat0, lon0)`: return `np.array([[...], [...], [...]])` whose rows are E, N, U.
 
-`from_local_xy(east, north, home_lat, home_lon)` does the opposite and returns `(lat, lon)`.
+**TODO 5** `geodetic_to_enu(lat, lon, h, lat0, lon0, h0)`: ECEF of both points as numpy arrays,
+difference, then `enu_matrix(lat0, lon0) @ d`.
+
+**TODO 6** `enu_to_geodetic(e, n, u, lat0, lon0, h0)`: `X = X0 + R.T @ np.array([e, n, u])`, then
+your `ecef_to_geodetic()` (give it three floats: `float(X[0])`, …).
+
+Reproduce the worked example of the course (Nizwa fort from Muscat):
 
 ```bash
-python3 geo_lab.py
+python3 -c "from geo_lab import *; print(geodetic_to_enu(22.9333, 57.53, 500.0, 23.5839, 58.3875, 0.0))"
 ```
 
-Check the table: Port El Kantaoui marina is at **east ≈ −3692 m, north ≈ 7403 m** (west and north of
-the Ribat: does that match the map in your head?). The last lines show the point 1 km east of home:
-the latitude must not change, the longitude grows by about 0.0111°.
+Expected: about `[-87959.818 -71793.198 -512.350]` (numpy prints more digits). And back:
+
+```bash
+python3 -c "from geo_lab import *; print(enu_to_geodetic(-87959.818, -71793.198, -512.35, 23.5839, 58.3875, 0.0))"
+```
+
+> [!QUESTION]
+> Check that your R is a rotation: in `python3`, `R = enu_matrix(23.5839, 58.3875)`, then
+> `print(R @ R.T)` and `print(np.linalg.det(R))`. What do you expect? If the determinant is −1,
+> which mistake gives that?
 
 > [!TASK]
-> Finish **TODO 3** `to_local_xy()` and **TODO 4** `from_local_xy()`. Done means: home is (0, 0),
-> 0.01° north is 1113.2 m north, 0.01° east is ≈ 902.6 m east, and going to the local frame and
-> back gives the same point again (to the millimeter).
+> **TODO 4–6 done** means: R·Rᵀ = I and det R = +1, with the east and up rows of the course; the ENU
+> of the origin is (0, 0, 0), a point 100 m above it has u = 100, Nizwa is at the values above
+> (± 1 cm); ENU → geodetic → ENU returns the same vector to 1 mm.
 
-## Step 5 — compare with NAVERA
+## Step 5 — Haversine and bearing (TODO 7 and TODO 8)
 
-Your functions should give the same answers as NAVERA's. The script `compare_navera.py` imports
-NAVERA's `haversine_m()` (from `navera_common/geo.py`) and `_en()` / `_move()` (from
-`day_pkg/vision_nav.py`) and prints both side by side:
+**TODO 7** `haversine()`: the formula of the course with `EARTH_RADIUS_M` (that is the name in this
+file) and `min(1.0, a)` before the square root.
+
+**TODO 8** `bearing()`: it needs its **own** `p1`, `p2`, `dl` — the variables of `haversine()` are
+local to that function. Then `atan2(east, north)`, `math.degrees`, `% 360`.
+
+```bash
+python3 -c "from geo_lab import *; print(haversine(23.5839, 58.3875, 17.0194, 54.0897), bearing(23.5839, 58.3875, 17.0194, 54.0897))"
+```
+
+Muscat → Salalah: 856 375.2 m and 212.32°. Try the way back too (30.83°), and the four cardinal
+directions: a point 0.01° north of Muscat must give 0°, 0.01° east 90°, and so on.
+
+## Step 6 — NAVERA's flat shortcut and the comparison (TODO 9 and TODO 10)
+
+**TODO 9** `flat_en(lat, lon, lat0, lon0)` and **TODO 10** `flat_move(lat, lon, de, dn)`: the
+formulas of section 6 of the course. Read NAVERA's version first:
+
+```bash
+sed -n 25,37p ~/navera/day_pkg/day_pkg/vision_nav.py
+```
+
+Note one detail: `_move()` divides by the cosine of the **current** latitude `p[0]`, not of a fixed
+home. Your `flat_move()` must do the same. Then compare everything:
 
 ```bash
 python3 compare_navera.py
 ```
 
-The `difference` column should be `0.000` everywhere, and the local-frame numbers identical. If not,
-read NAVERA's version and find what differs from yours:
+Part 1 must show differences of `0.000000` m; parts 2 and 3 identical numbers. Part 4 flies NAVERA's
+spherical `dead_reckon()` 12 km towards Salalah and measures the result with **your** exact ENU:
+read how many meters the sphere loses or gains, and compare with the 0.40 % of the course.
+
+> [!TASK]
+> **TODO 7–10 done** means: `haversine()` equals NAVERA's `haversine_m()` (to 1 mm) and gives
+> 856 375.2 m Muscat → Salalah; `bearing()` gives 0/90/180/270 for due N/E/S/W, 212.32° and 30.83°
+> for Muscat ↔ Salalah; `flat_en()` and `flat_move()` equal NAVERA's `_en()` and `_move()`.
+
+## Step 7 — The error study
+
+Read the header of [error_study.py](file:./error_study.py): it explains the method. In short,
+around Muscat, for 41 distances from 10 m to 300 km and 8 bearings, it places an exact point in the
+ENU frame, converts it to (lat, lon) with **your** `enu_to_geodetic()`, and measures how far the
+shortcuts put it. It also compares your `haversine()` with the ellipsoid distance.
 
 ```bash
-cat ~/navera/navera_common/navera_common/geo.py
+python3 error_study.py
 ```
+
+Open **error_study.png** (log–log axes). Look at the slopes: on a log–log plot, an error proportional
+to d is a line of slope 1, an error proportional to d² a line of slope 2. Then open
+[results.json](file:./results.json) and find `navera_flat_d_1m_m`, `navera_flat_d_10m_m`,
+`wgs84_flat_d_1m_m` and the `muscat_salalah` block.
 
 > [!QUESTION]
-> In the same file, read `is_finite_latlon()`. It refuses `(0, 0)` even though it is a valid position
-> on Earth. Find (0°, 0°) on the globe in the course: what is there? Why would a sensor send exactly
-> (0, 0)? You will answer this in the quiz.
-
-## Step 6 — the length of a route
-
-Open [route.csv](file:./route.csv). It is the loop of `navera_tools/demo_mission.py`, the route NAVERA's
-demonstration flies over Sousse, with the start written again at the end to close the loop. Like in
-lesson 4, each row is a `name,lat,lon`.
-
-`route_length(points)` receives a **list of (lat, lon) pairs** and must return the sum of the distances
-of all the legs: point 0 → 1, 1 → 2, … , last-but-one → last. A `for` loop over the indexes
-`range(len(points) - 1)` does it. With one point (or none) there is no leg: the answer is 0.
+> The NAVERA curve starts at 5 cm for 10 m. A curvature effect would be far smaller at 10 m
+> (d²/(2R) ≈ 8 µm). So what is it? Compute 111 320 / (M·π/180) − 1 with the M of Muscat.
 
 > [!TASK]
-> Finish **TODO 5** `route_length()`, then run `python3 route.py`. Done means: the total is
-> ≈ 14 198.7 m (14.2 km), and the program saves `route.png`.
+> `python3 error_study.py` runs without error and writes **results.json** and **error_study.png**.
+> The check recomputes the expected values: if your functions are right, your results.json is right.
 
-```bash
-python3 route.py
-```
+## Step 8 — The report
 
-You see each leg with its length and bearing, then the total and the flight time at 20 m/s. Click
-**route.png** in the file list to see the loop drawn in meters around the start point. Look at the
-bearings: does the drawing turn the way the numbers say (322° = towards the north-west…)?
+Write [report.md](file:./report.md) (150–400 words, your own words, keep the three headings):
 
-## Step 7 — the quiz
-
-Open [answers.py](file:./answers.py) and answer the three questions (Q1 is a number in **kilometers**;
-you can compute it in `python3`).
+- **## Method** — what is the reference ("truth"), what are the two shortcuts, what is measured.
+- **## Results** — quote, in meters, the distance where NAVERA's flat error reaches **1 m** and
+  **10 m** (`navera_flat_d_1m_m`, `navera_flat_d_10m_m`), the same 1 m distance for the WGS84-radii
+  version, and the Muscat → Salalah **difference** between sphere and ellipsoid (`difference_m`).
+- **## Discussion** — where the NAVERA error comes from (scale or curvature? use the slopes); why
+  it cancels when day vision measures a velocity with `_en()` and applies it with `_move()`, and
+  where it does *not* cancel; whether the shortcut is acceptable for 2 km of dead-reckoning and for
+  a 300 km flight Muscat → Duqm; what you would change in NAVERA and at what cost.
 
 > [!TASK]
-> Answer Q1, Q2 and Q3 in `answers.py` and save.
+> report.md has the headings `## Method`, `## Results`, `## Discussion`, at least 150 words of your
+> own, and quotes the three numbers (1 m distance, 10 m distance, Muscat–Salalah difference in m).
 
-Press **✔ Check my work**. Every red line comes with a hint; fix, save and check again.
+## Step 9 — Quiz
+
+Answer Q1–Q3 in [answers.py](file:./answers.py) (Q1 is a number in **kilometers**).
+
+> [!TASK]
+> Q1, Q2 and Q3 answered. Then press **✔ Check my work**. Every red line has a hint; fix, save, check again.
 
 ## Going further (optional)
 
-- **Flat or round?** In the interactive Python, compute the Sousse → Monastir marina distance twice:
-  with your `distance()`, and with Pythagoras on the `(east, north)` of `to_local_xy()`
-  (`math.hypot(east, north)`). How many meters apart are they? Try a far place, Tunis
-  (36.8065, 10.1815), then Paris (48.8566, 2.3522). When does the flat frame become a bad idea?
-- **Dead reckoning.** NAVERA's `dead_reckon(lat, lon, heading_deg, speed_mps, dt_s)` in `geo.py`
-  answers: "flying on this heading at this speed for this time, where am I?". Import it
-  (`from navera_common.geo import dead_reckon`), fly from the Ribat of Sousse on bearing 107° at 20 m/s
-  for 900 s, and check with your `distance()` and `bearing()` where you land. How close are you to
-  Monastir marina?
-- **Your own route.** Add a few points of your own neighbourhood to a copy of `route.csv`
-  (find the coordinates with a map application) and change `route.py` to read your file.
+- **Bowring's closed form.** Implement ECEF → geodetic with Bowring's formula (one step, no loop)
+  and compare it with your iteration for heights from −500 m to 20 km. How large is the difference?
+- **Ellipsoidal dead reckoning.** Write `destination(lat, lon, bearing, dist)` that walks in small
+  ENU steps (re-centring the frame every 1 km) and compare its end point with NAVERA's spherical
+  `dead_reckon()` for 50 km towards Duqm (19.66° N, 57.70° E). Plot the difference against distance.
+- **A better flat frame for NAVERA.** Write `flat_en_wgs84()` with M and N of the home latitude.
+  Run the error study with it in place of `flat_en()`. What would the change cost per call (time it
+  with `timeit`), and which NAVERA tests would you add before proposing it?

@@ -1,74 +1,136 @@
-# Lab 6 — Latitude, longitude and meters
+# Lab 6 — Geodesy for navigation: WGS84, ECEF, ENU and the flat-Earth shortcut
 #
-# Fill in the five functions marked TODO, save (Ctrl+S), then run:
+# Fill in the ten functions marked TODO, save (Ctrl+S), then run:
 #     python3 geo_lab.py
-# Angles are in DEGREES everywhere in this file (like a GPS gives them).
-# Python's math.sin / math.cos want RADIANS: convert with math.radians(angle).
+# Conventions used everywhere in this file:
+#   * latitudes / longitudes / bearings are in DEGREES (like a GPS gives them);
+#     math.sin / math.cos / math.atan2 work in RADIANS: convert with math.radians() / math.degrees();
+#   * heights h are in meters above the WGS84 ellipsoid;
+#   * a function that returns several numbers returns a tuple:  return east, north
+#     and the caller unpacks it:                                e, n = flat_en(...)
 
 import math
 
-EARTH_RADIUS_M = 6_371_000.0   # mean radius of the Earth, in meters (the same value NAVERA uses)
-M_PER_DEG = 111_320.0          # meters in one degree of latitude (NAVERA's value, day_pkg/vision_nav.py)
+import numpy as np
+
+# --- the WGS84 ellipsoid (the reference surface of GPS) -------------------------------------
+WGS84_A = 6_378_137.0                    # semi-major axis a (equatorial radius), meters — exact by definition
+WGS84_F = 1.0 / 298.257223563            # flattening f = (a - b) / a — exact by definition
+WGS84_B = WGS84_A * (1.0 - WGS84_F)      # semi-minor axis b (polar radius) = 6 356 752.314 m
+WGS84_E2 = WGS84_F * (2.0 - WGS84_F)     # first eccentricity squared e² = (a² - b²) / a² = 0.00669438
+
+# --- the two constants NAVERA uses -----------------------------------------------------------
+EARTH_RADIUS_M = 6_371_000.0             # mean radius of a SPHERICAL Earth (navera_common/geo.py)
+M_PER_DEG = 111_320.0                    # meters per degree, flat shortcut (day_pkg/vision_nav.py)
 
 
-def distance(lat1, lon1, lat2, lon2):
-    """Distance in meters between two points, along the Earth's surface (haversine formula)."""
-    # TODO 1: the haversine formula (see the course, section "Long distances: the haversine formula")
-    p1 = math.radians(lat1)
-    p2 = math.radians(lat2)
-    dp = math.radians(lat2 - lat1)
+def radii(lat):
+    """(M, N) in meters at geodetic latitude `lat` (degrees):
+    M = meridian radius of curvature (north-south), N = prime-vertical radius (east-west)."""
+    # TODO 1: w = 1 - e² sin²(lat);  M = a (1 - e²) / w^1.5 ;  N = a / sqrt(w)
+    s = math.sin(math.radians(lat))
+    w = 1.0 - WGS84_E2 * s * s
+    m = WGS84_A * (1.0 - WGS84_E2) / w ** 1.5
+    n = WGS84_A / math.sqrt(w)
+    return m, n
+
+
+def geodetic_to_ecef(lat, lon, h=0.0):
+    """(X, Y, Z) in meters, Earth-centred Earth-fixed, of the point (lat, lon, h)."""
+    # TODO 2: the three formulas of the course, with N from radii()
+    p, l = math.radians(lat), math.radians(lon)
+    _, n = radii(lat)
+    x = (n + h) * math.cos(p) * math.cos(l)
+    y = (n + h) * math.cos(p) * math.sin(l)
+    z = (n * (1.0 - WGS84_E2) + h) * math.sin(p)
+    return x, y, z
+
+
+def ecef_to_geodetic(x, y, z):
+    """(lat, lon, h) of an ECEF point — the inverse of geodetic_to_ecef (iterative, < 0.1 mm)."""
+    # TODO 3: lon = atan2(Y, X); p = sqrt(X² + Y²); start with lat = atan2(Z, p (1 - e²));
+    #         repeat 6 times: N from radii(), h = p / cos(lat) - N, lat = atan2(Z, p (1 - e² N / (N + h)))
+    lon = math.degrees(math.atan2(y, x))
+    p = math.hypot(x, y)
+    lat = math.degrees(math.atan2(z, p * (1.0 - WGS84_E2)))
+    h = 0.0
+    for _ in range(6):
+        _, n = radii(lat)
+        h = p / math.cos(math.radians(lat)) - n
+        lat = math.degrees(math.atan2(z, p * (1.0 - WGS84_E2 * n / (n + h))))
+    _, n = radii(lat)
+    h = p / math.cos(math.radians(lat)) - n
+    return lat, lon, h
+
+
+def enu_matrix(lat0, lon0):
+    """3 x 3 numpy rotation matrix R that turns an ECEF difference into (east, north, up) at (lat0, lon0)."""
+    # TODO 4: the matrix of the course (rows = the unit vectors east, north, up written in ECEF)
+    p, l = math.radians(lat0), math.radians(lon0)
+    sp, cp, sl, cl = math.sin(p), math.cos(p), math.sin(l), math.cos(l)
+    return np.array([[-sl, cl, 0.0],
+                     [-sp * cl, -sp * sl, cp],
+                     [cp * cl, cp * sl, sp]])
+
+
+def geodetic_to_enu(lat, lon, h, lat0, lon0, h0):
+    """numpy array [east, north, up] in meters of (lat, lon, h) seen from the origin (lat0, lon0, h0)."""
+    # TODO 5: ECEF of both points, difference, multiply by enu_matrix (R @ d)
+    d = np.array(geodetic_to_ecef(lat, lon, h)) - np.array(geodetic_to_ecef(lat0, lon0, h0))
+    return enu_matrix(lat0, lon0) @ d
+
+
+def enu_to_geodetic(e, n, u, lat0, lon0, h0):
+    """(lat, lon, h) of the point (e, n, u) meters from the origin — the inverse of geodetic_to_enu."""
+    # TODO 6: R is orthonormal, so its inverse is its transpose: X = X0 + R.T @ [e, n, u]
+    x = np.array(geodetic_to_ecef(lat0, lon0, h0)) + enu_matrix(lat0, lon0).T @ np.array([e, n, u], float)
+    return ecef_to_geodetic(float(x[0]), float(x[1]), float(x[2]))
+
+
+def haversine(lat1, lon1, lat2, lon2):
+    """Great-circle distance in meters on a sphere of radius EARTH_RADIUS_M."""
+    # TODO 7: the haversine formula (clip a to 1.0 before the square root, like NAVERA)
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = p2 - p1
     dl = math.radians(lon2 - lon1)
     a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
-    return 2 * EARTH_RADIUS_M * math.asin(math.sqrt(min(1.0, a)))
+    return 2.0 * EARTH_RADIUS_M * math.asin(math.sqrt(min(1.0, a)))
 
 
 def bearing(lat1, lon1, lat2, lon2):
-    """Direction to go from point 1 to point 2, in degrees clockwise from north, between 0 and 360."""
-    # TODO 2: the bearing formula with atan2, then bring the angle into 0..360 with % 360
-    p1 = math.radians(lat1)
-    p2 = math.radians(lat2)
+    """Initial great-circle bearing from point 1 to point 2, degrees clockwise from north, in [0, 360)."""
+    # TODO 8: atan2(east part, north part), then % 360
+    p1, p2 = math.radians(lat1), math.radians(lat2)
     dl = math.radians(lon2 - lon1)
     y = math.sin(dl) * math.cos(p2)
     x = math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dl)
     return math.degrees(math.atan2(y, x)) % 360.0
 
 
-def to_local_xy(lat, lon, home_lat, home_lon):
-    """(east, north) in meters of the point (lat, lon), seen from the home point."""
-    # TODO 3: north from the latitude difference, east from the longitude difference (do not forget the cos!)
-    east = (lon - home_lon) * M_PER_DEG * math.cos(math.radians(home_lat))
-    north = (lat - home_lat) * M_PER_DEG
-    return east, north
+def flat_en(lat, lon, lat0, lon0):
+    """(east, north) in meters of (lat, lon) from (lat0, lon0) — NAVERA's flat shortcut (M_PER_DEG)."""
+    # TODO 9: north = Δlat · M_PER_DEG ; east = Δlon · M_PER_DEG · cos(lat0)
+    return ((lon - lon0) * M_PER_DEG * math.cos(math.radians(lat0)),
+            (lat - lat0) * M_PER_DEG)
 
 
-def from_local_xy(east, north, home_lat, home_lon):
-    """(lat, lon) of the point that is `east` meters east and `north` meters north of home."""
-    # TODO 4: the exact opposite of to_local_xy
-    lat = home_lat + north / M_PER_DEG
-    lon = home_lon + east / (M_PER_DEG * math.cos(math.radians(home_lat)))
-    return lat, lon
-
-
-def route_length(points):
-    """Total length in meters of a route given as a list of (lat, lon) points, in order."""
-    # TODO 5: add up the distance() of every leg: point 0 -> 1, 1 -> 2, ...
-    total = 0.0
-    for i in range(len(points) - 1):
-        lat1, lon1 = points[i]
-        lat2, lon2 = points[i + 1]
-        total += distance(lat1, lon1, lat2, lon2)
-    return total
+def flat_move(lat, lon, de, dn):
+    """(lat, lon) after moving `de` meters east and `dn` meters north — NAVERA's _move()."""
+    # TODO 10: the inverse of flat_en, with the cosine of the CURRENT latitude (like NAVERA)
+    return (lat + dn / M_PER_DEG,
+            lon + de / (M_PER_DEG * math.cos(math.radians(lat))))
 
 
 # ---- you don't need to change anything below this line (but you can read it!) ----
 
-PLACES = {
-    "Ribat of Sousse": (35.8277, 10.6388),
-    "Port El Kantaoui marina": (35.8942, 10.5979),
-    "Monastir marina": (35.7795, 10.8320),
-    "Monastir airport": (35.7581, 10.7547),
+PLACES = {                                  # approximate coordinates (degrees), height above the ellipsoid (m)
+    "Muscat (Grand Mosque)": (23.5839, 58.3875, 0.0),
+    "Sohar": (24.3470, 56.7090, 0.0),
+    "Nizwa (fort)": (22.9333, 57.5300, 500.0),
+    "Jebel Shams (summit)": (23.2375, 57.2636, 3000.0),
+    "Salalah": (17.0194, 54.0897, 0.0),
 }
-HOME = "Ribat of Sousse"
+HOME = "Muscat (Grand Mosque)"
 
 
 def _fmt(v, width=0, decimals=1):
@@ -77,17 +139,39 @@ def _fmt(v, width=0, decimals=1):
     return text.rjust(width)
 
 
+def _first(v):
+    return None if v is None else v[0]
+
+
 if __name__ == "__main__":
-    hlat, hlon = PLACES[HOME]
-    print(f"Home: {HOME} ({hlat}, {hlon})\n")
-    print(f"{'place':<25}{'distance (m)':>14}{'bearing (deg)':>15}{'east (m)':>11}{'north (m)':>11}")
-    for name, (lat, lon) in PLACES.items():
-        d = distance(hlat, hlon, lat, lon)
-        b = "-".rjust(15) if name == HOME else _fmt(bearing(hlat, hlon, lat, lon), 15)
-        xy = to_local_xy(lat, lon, hlat, hlon)
-        e, n = xy if xy is not None else (None, None)
-        print(f"{name:<25}{_fmt(d, 14)}{b}{_fmt(e, 11)}{_fmt(n, 11)}")
-    back = from_local_xy(1000.0, 0.0, hlat, hlon)
-    print("\n1 km east of home is", "TODO 4" if back is None else f"({back[0]:.6f}, {back[1]:.6f})")
-    print("Length of the route Sousse -> Kantaoui -> Monastir marina -> airport:",
-          _fmt(route_length(list(PLACES.values()))), "m")
+    print("WGS84: a = %.3f m, b = %.3f m, e2 = %.10f" % (WGS84_A, WGS84_B, WGS84_E2))
+    print(f"\n{'place':<24}{'M (km)':>9}{'N (km)':>9}{'km/deg lat':>11}{'km/deg lon':>11}")
+    for name, (lat, lon, h) in PLACES.items():
+        r = radii(lat)
+        if r is None:
+            print(f"{name:<24}{'TODO 1':>9}")
+            continue
+        m, n = r
+        print(f"{name:<24}{m / 1000:9.1f}{n / 1000:9.1f}{m * math.pi / 180 / 1000:11.3f}"
+              f"{n * math.cos(math.radians(lat)) * math.pi / 180 / 1000:11.3f}")
+
+    hlat, hlon, hh = PLACES[HOME]
+    print(f"\nFrom {HOME}:")
+    print(f"{'place':<24}{'haversine (m)':>14}{'bearing':>9}{'ENU east':>11}{'north':>11}{'up':>9}")
+    for name, (lat, lon, h) in PLACES.items():
+        if name == HOME:
+            continue
+        enu = geodetic_to_enu(lat, lon, h, hlat, hlon, hh)
+        e, n, u = (None, None, None) if enu is None else enu
+        print(f"{name:<24}{_fmt(haversine(hlat, hlon, lat, lon), 14)}{_fmt(bearing(hlat, hlon, lat, lon), 9)}"
+              f"{_fmt(e, 11)}{_fmt(n, 11)}{_fmt(u, 9)}")
+
+    x = geodetic_to_ecef(*PLACES["Jebel Shams (summit)"])
+    print("\nJebel Shams ECEF (m):", "TODO 2" if x is None else "(%.1f, %.1f, %.1f)" % tuple(x))
+    if x is not None:
+        back = ecef_to_geodetic(*x)
+        print("  ... and back      :", "TODO 3" if back is None else "(%.7f, %.7f, %.3f)" % tuple(back))
+    fe = flat_en(23.6, 58.4, hlat, hlon)
+    print("\nflat_en of (23.6, 58.4) from home:", "TODO 9" if fe is None else "(%.1f, %.1f) m" % tuple(fe))
+    fm = flat_move(hlat, hlon, 1000.0, 0.0)
+    print("1 km east of home (flat_move)     :", "TODO 10" if fm is None else "(%.6f, %.6f)" % tuple(fm))

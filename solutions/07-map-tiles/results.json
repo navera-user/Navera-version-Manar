@@ -1,0 +1,114 @@
+{
+ "camera": {
+  "altitude_m": 300.0,
+  "hfov_deg": 84.0,
+  "width_px": 1536,
+  "gsd_m": 0.3517
+ },
+ "oman": [
+  {
+   "place": "Salalah",
+   "lat": 17.0194,
+   "m_per_px_z17": 1.142,
+   "tile_width_z17_m": 292.4,
+   "scale_factor": 1.0458,
+   "web_vs_ellipsoidal_mercator_km": 12.5,
+   "zoom_for_camera": 18
+  },
+  {
+   "place": "Duqm",
+   "lat": 19.66,
+   "m_per_px_z17": 1.1247,
+   "tile_width_z17_m": 287.9,
+   "scale_factor": 1.0619,
+   "web_vs_ellipsoidal_mercator_km": 14.37,
+   "zoom_for_camera": 18
+  },
+  {
+   "place": "Masirah",
+   "lat": 20.67,
+   "m_per_px_z17": 1.1174,
+   "tile_width_z17_m": 286.1,
+   "scale_factor": 1.0688,
+   "web_vs_ellipsoidal_mercator_km": 15.08,
+   "zoom_for_camera": 18
+  },
+  {
+   "place": "Nizwa",
+   "lat": 22.9333,
+   "m_per_px_z17": 1.0999,
+   "tile_width_z17_m": 281.6,
+   "scale_factor": 1.0858,
+   "web_vs_ellipsoidal_mercator_km": 16.64,
+   "zoom_for_camera": 18
+  },
+  {
+   "place": "Muscat",
+   "lat": 23.5839,
+   "m_per_px_z17": 1.0946,
+   "tile_width_z17_m": 280.2,
+   "scale_factor": 1.0911,
+   "web_vs_ellipsoidal_mercator_km": 17.09,
+   "zoom_for_camera": 18
+  },
+  {
+   "place": "Sohar",
+   "lat": 24.347,
+   "m_per_px_z17": 1.0881,
+   "tile_width_z17_m": 278.6,
+   "scale_factor": 1.0976,
+   "web_vs_ellipsoidal_mercator_km": 17.61,
+   "zoom_for_camera": 18
+  },
+  {
+   "place": "Khasab",
+   "lat": 26.18,
+   "m_per_px_z17": 1.0718,
+   "tile_width_z17_m": 274.4,
+   "scale_factor": 1.1143,
+   "web_vs_ellipsoidal_mercator_km": 18.85,
+   "zoom_for_camera": 18
+  },
+  {
+   "place": "Sousse (NAVERA test map)",
+   "lat": 35.8277,
+   "m_per_px_z17": 0.9683,
+   "tile_width_z17_m": 247.9,
+   "scale_factor": 1.2334,
+   "web_vs_ellipsoidal_mercator_km": 25.01,
+   "zoom_for_camera": 18
+  }
+ ],
+ "corner_bug_m": {
+  "Sousse (NAVERA test map)": 175.1,
+  "Muscat": 197.9
+ },
+ "pixel_round_trip_max_error_deg": 4.263256414560601e-14,
+ "muscat_zoom_by_altitude": {
+  "150": 19,
+  "200": 19,
+  "300": 18,
+  "500": 17,
+  "1000": 16,
+  "1500": 16,
+  "2000": 15
+ },
+ "map": {
+  "file_bytes": 10286944256,
+  "file_gb": 10.29,
+  "page_size": 4096,
+  "page_count": 2511461,
+  "estimated_size_mb_in_metadata": 36467,
+  "tiles_per_zoom": {
+   "13": 240,
+   "14": 928,
+   "15": 3528,
+   "16": 13750,
+   "17": 54312,
+   "18": 216810,
+   "19": 865375
+  },
+  "total_tiles": 1154943,
+  "mean_bytes_per_tile": 8907
+ }
+}

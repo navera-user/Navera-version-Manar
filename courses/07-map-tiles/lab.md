@@ -1,20 +1,27 @@
-# Lab 7 — Read NAVERA's map, tile by tile
+# Lab 7 — Web Mercator, tiles and NAVERA's map file
 
-**Goal:** compute tile numbers from latitude/longitude and back, read real tiles out of NAVERA's
-10 GB map with SQL, save them as pictures, and glue a 3 × 3 mosaic around any place with the place
-marked on it.
-**Time:** about 1 h 15.
+**Goal:** implement the Web Mercator tile mathematics (projection, tile numbers, inverse, scale,
+zoom choice, mosaic pixels), read real tiles out of NAVERA's 10 GB MBTiles file with SQL, verify
+everything against NAVERA's own code, then compute scales for Oman and write a short report.
+**Time:** about 3 hours.
 
-Your file is [tiles_lab.py](file:./tiles_lab.py): six functions with a `# TODO`. The scripts
-`explore_db.py`, `get_tile.py`, `mosaic.py` and `compare_navera.py` are ready and use your functions.
-Answers to the quiz go in [answers.py](file:./answers.py).
+| File | Role |
+|---|---|
+| [tiles_lab.py](file:./tiles_lab.py) | **your work**: ten functions marked `TODO` |
+| `explore_db.py` | looks inside an MBTiles file, or runs your SQL (ready) |
+| `get_tile.py`, `mosaic.py` | read one tile / build a mosaic with your functions (ready) |
+| `compare_navera.py` | your functions against NAVERA's (ready) |
+| `analysis.py` | Oman scales, map facts, corner bug → `results.json` (ready) |
+| [report.md](file:./report.md), [answers.py](file:./answers.py) | **your work**: report and quiz |
 
-Two maps are available, both read-only:
+Two maps, both read-only:
 
 | Path | What |
 |---|---|
-| `/data/map.mbtiles` | NAVERA's real map: Sousse region, zoom 13–19, 1.15 million tiles, 10 GB |
-| `/data/academy/07-map-tiles/sousse_small.mbtiles` | 88 tiles copied from it (around the Ribat of Sousse and Monastir marina), 2 MB — used by **✔ Check my work** |
+| `/data/map.mbtiles` | NAVERA's test map: Sousse region, Tunisia, zoom 13–19, 1.15 million tiles |
+| `/data/academy/07-map-tiles/sousse_small.mbtiles` | 88 tiles copied from it (Ribat of Sousse, Monastir marina), 2 MB — used by **✔ Check my work** |
+
+There is no imagery of Oman in the academy: Omani places are used for computations only.
 
 ## Step 1 — Look inside the map
 
@@ -22,167 +29,183 @@ Two maps are available, both read-only:
 python3 explore_db.py
 ```
 
-The first run can take up to 20 seconds (it counts a million rows on a disk). You see the two tables,
-the **metadata** and the number of tiles per zoom level. Find the line `altitude_zoom_map`: it is a
-small dictionary "flying height in meters → zoom level".
+The first run can take about 20 s (it counts more than a million index entries on disk). Read the
+output from the top: the **schema** (the two `CREATE TABLE` statements and the automatic index of
+the primary key), the **pages** (page count × page size, and the size reported by the file system —
+compare them), the **metadata**, and the number of tiles per zoom. Note the line
+`estimated_size_mb` and compare it with the measured size.
 
-Now ask your own SQL question. This one lists the tiles of zoom 13 (`LIMIT 5` = only the first 5 rows):
-
-```bash
-python3 explore_db.py "SELECT zoom_level, tile_column, tile_row, length(tile_data) FROM tiles WHERE zoom_level = 13 LIMIT 5"
-```
-
-`length(tile_data)` is the size of each picture in bytes. A tile of open sea can be tiny (under
-1 000 bytes — a uniform picture compresses very well), a tile of city is much bigger.
-
-> [!TASK]
-> Answer **Q1** (the zoom for 300 m) and **Q2** (the number of zoom-17 tiles) in `answers.py`.
-
-## Step 2 — tile_xy(): latitude/longitude → fractional tile position
-
-Open [tiles_lab.py](file:./tiles_lab.py). Write **TODO 1**, `tile_xy(lat, lon, z)`, with the two formulas
-of the course (step 3). Return `x, y` — both with their decimals.
-
-> [!TIP]
-> The Python names: `math.log` (ln), `math.tan`, `math.cos`, `math.pi`, `math.radians`. Remember: the
-> latitude must be in radians *inside* `tan` and `cos`. `2 ** z` is "2 to the power z".
-
-Try it in the interactive Python (`python3`, then):
-
-```python
-from tiles_lab import tile_xy
-tile_xy(35.8277, 10.6388, 17)
-```
-
-You should get `(69409.46887…, 51547.56049…)`. Try zoom 1 at latitude 0, longitude 0: you should get
-exactly `(1.0, 1.0)` — the corner shared by the 4 tiles of zoom 1.
-
-## Step 3 — latlon_to_tile() and tile_to_latlon()
-
-**TODO 2** `latlon_to_tile(lat, lon, z)`: call your `tile_xy()` and keep only the whole parts. Use
-`int(math.floor(x))` (for positive numbers `int(x)` alone gives the same; `floor` is correct everywhere).
-
-**TODO 3** `tile_to_latlon(x, y, z)`: the north-west corner of a tile (course, step 4). Return
-`lat, lon` in **degrees** (`math.degrees` at the end).
+Ask SQLite how it finds one tile:
 
 ```bash
-python3 tiles_lab.py
+python3 explore_db.py "EXPLAIN QUERY PLAN SELECT tile_data FROM tiles WHERE zoom_level=17 AND tile_column=69409 AND tile_row=79524"
 ```
 
-The table shows the Ribat's tile at each zoom. Look at the numbers: from one zoom to the next, x and y
-are (about) **doubled** — each tile was cut into 2 × 2.
-
-> [!TASK]
-> Finish **TODO 1**, **TODO 2** and **TODO 3**. Done means: the Ribat of Sousse is in tile
-> 17/69409/51547, the north-west corner of tile 17/69388/51536 is (35.8534396195918, 10.579833984375)
-> (the value of NAVERA's own test), and every point lies inside the tile you compute for it.
-
-## Step 4 — meters_per_pixel()
-
-**TODO 4** `meters_per_pixel(lat, z)`: course, step 5. Use the constants `EQUATOR_M` and `TILE_PX`
-of the file.
+`SEARCH ... USING INDEX` means a B-tree search, not a scan. Now measure the average tile size at
+the three lowest zooms (this reads ~4700 pictures, a few seconds):
 
 ```bash
-python3 tiles_lab.py
+python3 explore_db.py "SELECT zoom_level, COUNT(*), AVG(length(tile_data)) FROM tiles WHERE zoom_level <= 15 GROUP BY zoom_level"
 ```
 
-The last two columns fill in: at zoom 17 a pixel is 0.968 m and a tile is 248 m wide; at zoom 19 the
-tile is only 62 m wide — about the size of the Ribat itself.
-
 > [!TASK]
-> Finish **TODO 4**. Done means: 156 543 m per pixel at zoom 0 on the equator, ≈ 0.968 m at Sousse,
-> zoom 17, and exactly half of that at zoom 18.
+> Answer **Q1** (the zoom that `altitude_zoom_map` gives for 300 m) and **Q2** (the number of zoom-17
+> tiles) in [answers.py](file:./answers.py).
 
-## Step 5 — read_tile(): your first SQL in Python
+## Step 2 — The Mercator ordinate (TODO 1 and TODO 2)
 
-**TODO 5** `read_tile(db_path, z, x, y)` must:
+Open [tiles_lab.py](file:./tiles_lab.py). **TODO 1** `mercator_y(lat)`: ln tan(π/4 + φ/2) with φ in
+radians (`math.log`, `math.tan`, `math.pi`, `math.radians`). **TODO 2** `inverse_mercator_y(y)`:
+2·atan(eʸ) − π/2 (`math.exp`, `math.atan`), returned in **degrees**.
 
-1. open the file **read-only**: `conn = sqlite3.connect("file:" + db_path + "?mode=ro", uri=True)`;
-2. run the `SELECT` of the course with **placeholders**:
-   `conn.execute("SELECT tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?", (z, x, row))`
-   where `row` is the **TMS row** `(2 ** z - 1) - y`;
-3. take the first answer with `.fetchone()`: it is `None` when no tile matches, otherwise a tuple
-   whose first element is the picture;
-4. close the connection (`conn.close()`) and return `bytes(...)` of the picture, or `None`.
+```bash
+python3 -c "from tiles_lab import *; print(mercator_y(23.5839), inverse_mercator_y(mercator_y(23.5839)), mercator_y(MAX_LAT))"
+```
+
+Expected: 0.4237578881, 23.5839 (to ~10⁻¹⁴) and π = 3.14159… — the latitude where Web Mercator stops.
 
 > [!WARNING]
-> Never build the SQL by gluing numbers into the text (`"... zoom_level=" + str(z)`). The `?`
-> placeholders are the safe way: `sqlite3` inserts the values itself. And never forget `mode=ro` —
-> the check looks for it.
+> `ValueError: math domain error` here means `math.log()` received a number ≤ 0: you passed degrees
+> where radians were expected (see the course). Fix the unit, do not "protect" the log.
+
+## Step 3 — Tile numbers and their inverse (TODO 3, 4, 5)
+
+- **TODO 3** `tile_xy(lat, lon, z)`: x is a direct proportion of the longitude; y uses your
+  `mercator_y()`. Return the two **fractional** numbers.
+- **TODO 4** `latlon_to_tile()`: `int(math.floor(...))` of both.
+- **TODO 5** `tile_to_latlon(x, y, z)`: longitude from x; latitude with `inverse_mercator_y()` of
+  π·(1 − 2y/n). It must work for fractional x, y (centre = x + 0.5, y + 0.5).
+
+```bash
+python3 tiles_lab.py
+```
+
+The table shows the Ribat of Sousse at every zoom of NAVERA's map: from one zoom to the next, x and y
+double (each tile is cut into 2 × 2). Now the worked example of the course, the Grand Mosque in Muscat:
+
+```bash
+python3 -c "from tiles_lab import *; print(tile_xy(23.5839, 58.3875, 17), latlon_to_tile(23.5839, 58.3875, 17))"
+```
+
+You must find (86794.24, 56696.09…) and tile (86794, 56696).
+
+> [!TASK]
+> **TODO 1–5 done** means: `mercator_y(35.8277)` = 0.670562, `mercator_y(85.0511287798)` = π, the
+> inverse is exact; the Ribat is in 17/69409/51547; Muscat in 17/86794/56696; the NW corner of
+> 17/69388/51536 is (35.8534396195918, 10.579833984375) — the value of NAVERA's unit test; every point
+> lies inside the tile you compute for it.
+
+## Step 4 — Scale and zoom (TODO 6 and TODO 7)
+
+**TODO 6** `meters_per_pixel(lat, z)` with `EQUATOR_M` and `TILE_PX`. **TODO 7** `zoom_for_gsd(lat,
+gsd_m, zmin, zmax)`: `math.floor(math.log2(...))`, then clamp with `max(zmin, min(zmax, z))`, and
+return an `int`.
+
+```bash
+python3 -c "from tiles_lab import *; print(meters_per_pixel(23.5839, 17), meters_per_pixel(17.0194, 17), zoom_for_gsd(23.5839, 0.352, 13, 19))"
+```
+
+Expected: 1.0946 m (Muscat), 1.1420 m (Salalah), zoom 18.
+
+> [!TASK]
+> **TODO 6–7 done** means: 156 543.03 m/px at zoom 0 on the equator, Muscat 1.0946 and Salalah 1.1420
+> m/px at zoom 17, zoom 18 exactly half of zoom 17; `zoom_for_gsd()` returns the right integer zoom,
+> clamped to [zmin, zmax].
+
+## Step 5 — Read a tile with SQL (TODO 8)
+
+**TODO 8** `read_tile(db_path, z, x, y)`:
+
+1. `conn = sqlite3.connect("file:" + db_path + "?mode=ro", uri=True)` — read-only;
+2. `conn.execute("SELECT tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?", (z, x, row))`
+   with `row = (2 ** z - 1) - y` (the TMS row);
+3. `.fetchone()` → `None` if no tile, else a tuple whose element 0 is the JPEG;
+4. `conn.close()`, then return `bytes(...)` or `None`.
 
 ```bash
 python3 get_tile.py 35.8277 10.6388 19
 ```
 
-It prints the tile, its TMS row, its corner and its size, then saves `tile_19_277637_206190.png`. Click
-it in the file list: you see the Ribat of Sousse from above, 62 m × 62 m. Try a few other places of the
-lesson 6 table, and other zooms (13 to 19).
-
-> [!QUESTION]
-> Try `python3 get_tile.py 35.8277 10.6388 12`. Why does it say the tile is not in the map? Look at
-> `minzoom` in the metadata.
-
-> [!TASK]
-> Finish **TODO 5** and answer **Q3** (the TMS row of y = 51547 at zoom 17). Done means: `read_tile()`
-> returns the right JPEG bytes at zoom 13, 17 and 19, returns `None` for a missing tile, and opens the
-> file with `mode=ro`.
-
-## Step 6 — compare with NAVERA
+Open `tile_19_277637_206190.png`: the Ribat of Sousse seen from above, 62 m wide. Now ask for Muscat:
 
 ```bash
-python3 compare_navera.py
+python3 get_tile.py 23.5839 58.3875 17
 ```
 
-It puts your `tile_xy()` and `meters_per_pixel()` next to NAVERA's (`day_pkg/local_matcher.py`), your
-corner next to `prepare_area.tile_nw()`, and reads the same tile with your `read_tile()` and with
-NAVERA's `MBTilesReader`. Everything must be identical — including the bytes of the picture.
+The tile number is computed, but `read_tile()` returns `None`: NAVERA's map has no tile of Oman.
 
-Notice the line **centre**: `prepare_area.tile_center()` gives a point half a tile south-east of the
-corner. This is the difference that caused the 175 m bug of the course.
+> [!TASK]
+> **TODO 8 done** means: `read_tile()` returns the exact JPEG bytes (checked by md5) of three tiles at
+> zoom 13, 17 and 19, `None` for a missing tile, and the file is opened with `mode=ro`. Answer **Q3**
+> (the TMS row of y = 51547 at zoom 17).
 
-## Step 7 — a mosaic around any place
+## Step 6 — Mosaic pixels (TODO 9 and TODO 10)
 
-One tile is small. NAVERA always looks at the tiles **around** the position too: the drone may be near
-the edge of its tile. `build_mosaic()` (already written, below the line in `tiles_lab.py`) reads the
-3 × 3 tiles around a point and glues them into one 768 × 768 picture, then marks the point. It needs
-one last function from you.
-
-**TODO 6** `pixel_in_mosaic(lat, lon, z)`: where is the point in that mosaic, in pixels? The mosaic's
-top-left tile is `(x − 1, y − 1)`. So the point is `(fractional x − (x − 1))` tiles from the left edge,
-which you multiply by 256 to get pixels — same for y.
+**TODO 9** `latlon_to_pixel(lat, lon, z, x0, y0)` and **TODO 10** `pixel_to_latlon(px, py, z, x0, y0)`:
+the two formulas of section 6 of the course.
 
 ```bash
 python3 mosaic.py 35.8277 10.6388 17
 ```
 
-Open `mosaic.png`: the red circle must sit **on the Ribat** (the square fort in the medina, just south
-of the big road), white lines show the tile borders, and a scale bar shows 200 m. If the circle is
-somewhere else, your `pixel_in_mosaic()` is wrong; if the picture is upside-down in pieces, check your
-TMS row.
-
-Now Monastir marina, and a wider view at zoom 15:
+Open `mosaic.png`: the red circle must sit on the Ribat (the square fort in the medina), the yellow
+mark is the NW corner of its tile and the green mark the tile's centre — the 175 m of the corner bug,
+visible on the ground. The program also converts the red pixel back to lat/lon: it must give the
+input again. Then a larger view (5 × 5 tiles at zoom 15) of Monastir marina:
 
 ```bash
-python3 mosaic.py 35.7795 10.8320 17
-```
-
-```bash
-python3 mosaic.py 35.7795 10.8320 15
+python3 mosaic.py 35.7795 10.8320 15 --radius 2
 ```
 
 > [!TASK]
-> Finish **TODO 6**. Done means: the Ribat of Sousse is at pixel ≈ (376.0, 399.5) of its zoom-17
-> mosaic, and `mosaic.py` produces a 768 × 768 `mosaic.png`.
+> **TODO 9–10 done** means: the Ribat is at pixel (376.03, 399.49) of the mosaic whose top-left tile
+> is (69408, 51546); pixel → lat/lon is the exact inverse; pixel (100.25, 37.5) of tile 17/69409/51547
+> gives NAVERA's value; `mosaic.py` writes a 768 × 768 `mosaic.png`.
 
-Press **✔ Check my work**.
+## Step 7 — Compare with NAVERA
+
+```bash
+python3 compare_navera.py
+```
+
+Every pair of numbers must be identical: your `tile_xy` and `meters_per_pixel` against
+`local_matcher`; your corner and centre against `prepare_area.tile_nw/tile_center` and the bug fix
+`tile_center_latlon`; your `pixel_to_latlon` against `tile_px_to_latlon`; and the bytes read by your
+`read_tile` against the simulator's `MBTilesReader`.
+
+## Step 8 — Analysis and report
+
+```bash
+python3 analysis.py
+```
+
+It prints and saves to `results.json`: for eight places (seven in Oman, plus Sousse) the zoom-17
+pixel and tile size, the scale factor 1/cos φ, the EPSG:3857 − EPSG:3395 offset, and the zoom your
+`zoom_for_gsd()` picks for an example camera (84°, 1536 px, 300 m); the zoom by flying height over
+Muscat next to the map's own `altitude_zoom_map`; the corner-bug size in Sousse and Muscat; the
+pixel round-trip error; and the map-file facts.
+
+Write [report.md](file:./report.md) (150–400 words, your own words, three headings):
+
+- **## Oman scales** — zoom-17 m/px in Muscat and Salalah and why they differ; your zoom rule against
+  `altitude_zoom_map`: which would you use, and why?
+- **## The map file** — the real size in GB, the metadata's `estimated_size_mb`, which you trust and
+  why; how a tile is found among a million (index, query plan).
+- **## The corner bug** — what was wrong, 175 m in Sousse, how much in Muscat, and why different.
+
+> [!TASK]
+> `results.json` exists and is right (the check verifies it), and `report.md` has the three headings,
+> at least 150 words, and quotes: Muscat's and Salalah's zoom-17 m/px, the real size in GB, the
+> 36467 MB estimate, and the corner error in Muscat in meters. Then press **✔ Check my work**.
 
 ## Going further (optional)
 
-- **Your street.** Is your home or school inside the map's `bounds` (10.3–10.9 east, 35.55–36.1 north)?
-  If yes, make its mosaic at zoom 19. If not, `build_mosaic` leaves dark grey squares: those tiles are
-  not in the file.
-- **The edge of the map.** Make a mosaic of a point just outside the bounds, e.g. `35.56 10.31` at zoom
-  13. Which tiles are missing? What should NAVERA do when the drone flies off its map?
-- **Size of the map.** With SQL, compute the total size of all zoom-19 pictures:
-  `SELECT SUM(length(tile_data)) FROM tiles WHERE zoom_level = 19` (it takes a while). What share of the
-  10 GB is zoom 19? Why would someone choose not to carry zoom 19 on a drone?
+- **The true ellipsoidal Mercator.** Write `mercator_y_3395(lat)` and plot, for 0–60°, the
+  difference with Web Mercator in meters and in zoom-17 pixels. At which latitude does the offset
+  exceed one zoom-0 tile?
+- **Quadkeys.** Some map servers address tiles with one string (Bing "quadkeys"): each zoom level adds
+  one digit 0–3 from the bits of x and y. Write `quadkey(x, y, z)` and its inverse, and check that a
+  tile's quadkey is a prefix of its children's.
+- **Size of a mission.** With SQL, compute the bytes of all zoom-17 tiles inside a 5 km corridor
+  around a route of your choice in the map (use `prepare_area.py` as a model). How much storage would
+  the same corridor need at zoom 19? Why would NAVERA not carry zoom 19 for a long route?
