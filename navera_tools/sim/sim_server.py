@@ -768,7 +768,10 @@ class Simulator(Node):
             self._start_proc("celestial", [
                 "ros2", "run", "cn_pkg", "cn_subscriber.py", "--ros-args",
                 "-p", "camera_fov_deg:=60.0", "-p", "attitude_sigma_deg:=0.5",
-                "-p", "camera_mount_elevation_deg:=90.0"], env=env)
+                "-p", "camera_mount_elevation_deg:=90.0",
+                # the attitude the vehicle mode really has (the box IMU is not there)
+                "-p", f"imu_topic:={'/navera/vehicle/imu' if self.cfg.get('sensor_source') == 'vehicle' else '/navera/sensors/imu'}"],
+                env=env)
             self.starcam.start()
             self.event("info", f"celestial: star camera on (60°, pointing up); sky time "
                                f"{self._sky_utc()} UTC")
