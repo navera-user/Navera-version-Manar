@@ -5,7 +5,7 @@ recorded flights; compare NAVERA with the "repeat the last position" baseline; i
 bootstrap (iid and block), the paired difference and the Wilson interval; test your confidence
 intervals with a coverage experiment; check a source's stated σ with NAVERA's own
 `evaluate_session.py`; and write an honest report.
-**Time:** about 3 h.
+**Time:** about 4 h.
 
 Your files:
 [measure.py](file:./measure.py) (TODO 1–6),
@@ -158,6 +158,18 @@ Look at the lines "95 % CI". Then look at the paired difference in detail:
 python3 -c "import json; print(json.load(open('results_flight_measured.json'))['ci'])"
 ```
 
+> [!WARNING]
+> **The block CI of `flight_selective` is not meaningful.** For this flight `measure.py` prints
+> `iid [94, 239] m   block 10 s [114, 159] m`: the block interval is *narrower*, and the point value
+> (154 m) sits at its edge. The reason: the block bootstrap assumes that neighbouring values in the
+> list are **neighbouring seconds**, so that a block of 10 values is 10 s of flight. In the selective
+> flight only 14 of the 60 jammed seconds were kept, and they are **not consecutive** (the gaps were
+> deleted). A "block" of 10 kept values can span most of the jam, and with only 14 values there are
+> just 5 possible block starts, so the resamples are almost always the same few blocks. In your
+> report, give the **iid** CI for this flight and write that a block CI is not valid when seconds are
+> missing. The same is true of this flight's paired difference `[-308, -5]`: it is computed on the
+> same 14 non-consecutive seconds, so treat it with the same caution.
+
 > [!QUESTION]
 > For `flight_measured`, does the CI of "CEP50 of NAVERA − CEP50 of the baseline" contain 0? For
 > `flight_target`? What exactly may you write in each case?
@@ -234,8 +246,10 @@ A good conclusion says **what** is better, **by how much** (with a CI), **compar
 
 ## Going further (optional)
 
-- **Your own flight.** If you recorded `flight.csv` in lesson 28, run
-  `python3 measure.py ~/lessons/28-simulator/flight.csv`. Same numbers as the sample? Why not exactly?
+- **Your own flight.** If you flew your own scenario in lesson 28 (Part E), run
+  `python3 measure.py ~/lessons/28-simulator/my_runs/<name>.csv` (replace `<name>` by the `"name"` of
+  your scenario, for example `my_run`; if you used `sim_ctl.py record`, the file is
+  `~/lessons/28-simulator/flight.csv`). Same numbers as the sample? Why not exactly?
   Would a CI computed on your flight cover the sample's CEP50?
 - **A fairer baseline.** "Repeat the last position" ignores that the drone was moving. Write
   `baseline_dead_reckoning(rows)`: continue the last GPS velocity (from the last two GPS fixes) in a

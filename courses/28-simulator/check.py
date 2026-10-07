@@ -277,9 +277,9 @@ def _():
     c.eq(es([], 0, 1), (None, None, None), "error_stats() with no rows")
 
 
-@c.test("C5. REQUIREMENTS has R7, and the whole campaign gives 22 PASS, 0 FAIL",
+@c.test("C5. REQUIREMENTS has R7, and the recorded campaign gives 22 PASS, 0 FAIL (your own my_runs/ adds more)",
         hint="TODO 7: copy the shape of R1-R6: applies to 'spoof_drift', measured key 'gps_err_max_m', and a "
-             "test that PASSES up to 150 m and FAILS for None.")
+             "test that PASSES up to and including 150 m (v <= 150) and FAILS for None.")
 def _():
     m = C()
     reqs, verdicts = need(m, "REQUIREMENTS", "verdicts")

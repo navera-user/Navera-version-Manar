@@ -4,7 +4,7 @@
 Mahalanobis gate, information fusion), build a 2-D constant-velocity Kalman filter with a
 chi-square gate, test its honesty with NEES, prove that your 1-D filter is NAVERA's real height
 filter, and write a short report with your measured numbers.
-**Time:** about 3 h.
+**Time:** about 4 h.
 
 Your files:
 

@@ -53,6 +53,9 @@ def run_filter(times, zs, sigma_z, q, gate_p=None, v0_sigma=20.0):
 
     Start: x = [z0_e, z0_n, 0, 0], P = diag(sigma_z^2, sigma_z^2, v0_sigma^2, v0_sigma^2)
            (the first measurement is used as the start, it is not "updated" again).
+           Entry 0 of the result: x = that start state, P = that start covariance,
+           d2 = None (there is no prediction to compare with), accepted = True (it was used).
+           You may assume zs[0] is not None.
     Every next step: predict with dt = times[k] - times[k-1]; then, if there is a measurement,
     compute nu and S, d2 = mahalanobis2(nu, S); update unless the gate refuses it.
 

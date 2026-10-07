@@ -1,5 +1,17 @@
 # Final project: one change, tested and measured with confidence
 
+> [!NOTE] In short
+> - In this final project you improve NAVERA with **one** change and prove with measurements that
+>   it helps.
+> - First write a proposal and a decision rule, before you look at any result.
+> - Write a test that fails first, then passes after the change.
+> - Measure before and after on the same data, with **bootstrap** confidence intervals; then
+>   accept, reject, or say "inconclusive".
+> - Follow NAVERA's rules: work on a git branch, one concern per commit, measure instead of
+>   guessing, report honestly.
+> - You finish with a commit, a patch and a report; the guided example changes the GPS driver
+>   (`gps_node.py`).
+
 A NAVERA box is installed on a survey drone in Muscat. The operator reports that, near the tall
 buildings of Al Khuwair and in the narrow streets of Muttrah, the GPS position sometimes jumps by
 tens of metres for half a minute — while the receiver still says "fix". A colleague proposes a
@@ -45,6 +57,15 @@ A **proposal** is a short text written *before* the "after" measurement. It has 
 | **Metric** | What number, which unit, which direction is better, on which data? | p95 horizontal error (m), lower is better, on 1800 epochs; guard-rail: availability |
 | **Acceptance criterion** | Which result means "accept"? | 95 % CI of Δp95 entirely below 0 m, and CI of Δavailability above −10 points |
 
+> [!TIP]
+> **A metric with a right value.** Some metrics are not "lower is better" or "higher is better":
+> they have a **target**. Example: an honest 2-D Gaussian σ puts 86 % of the errors inside 2σ, so a
+> 2σ coverage of 80 % is too optimistic and 95 % is too cautious. For such a **calibration metric**,
+> judge the **distance to the target**, |coverage − 86 %|, which *is* "lower is better". Compute it
+> inside each bootstrap resample (so that it has its own CI), and save it with
+> `write_results(..., better="closer", target=86.0)`. Choosing "higher is better" for a calibration
+> metric is a classic mistake: it rewards a σ that is too large.
+
 A **guard-rail metric** is a second metric that must not get much worse. Almost every safety rule
 has a price: here, fewer accepted fixes means less GPS time. If you only measure the gain, you will
 always "win".
@@ -84,8 +105,10 @@ For a set of n horizontal errors e₁ … eₙ (metres, against the known truth)
 - **max**: the worst case. It is real, but it depends on one sample only.
 - **availability** = accepted epochs / all epochs. An epoch here is one second (one GGA sentence).
 
-The percentile is computed with **linear interpolation** (the definition of numpy's default
-`np.percentile`, and the one you implement in `stats_tools.percentile`):
+The percentile is computed with **linear interpolation** — the course rule of lesson 22 (numpy's
+default `np.percentile`, and the one you implement in `stats_tools.percentile`). Lesson 29 used
+NAVERA's nearest-rank rule only to reproduce `evaluate_session.py`; your project uses linear
+interpolation and says so in its method:
 
 ```
 sort:  x[0] ≤ x[1] ≤ … ≤ x[n−1]
@@ -257,7 +280,7 @@ Choose **one**. ★ a few lines, ★★ an afternoon, ★★★ a real challenge
 |---|---|---|---|---|
 | 1 | **Refuse GPS fixes from fewer than 4 satellites** (the worked example of the lab) | ★ | `gps_pkg/gps_pkg/nodes/gps_node.py` (`_publish_fix`), new test in `gps_pkg/test/` | p95 error, availability |
 | 2 | **"NO FIX since 12 s"** in the operator view, so the operator knows how long the gap is | ★ | `simulation_web/simulation_web/resources/operator.html` (`showNoPosition`), tests in `simulation_web/test/test_operator_sim.py` | correctness of the shown duration on scripted gaps |
-| 3 | **Is the GPS σ honest?** gps_node states σ = 2 m × HDOP. On the bench file (truth known), measure the fraction of errors inside 1σ and 2σ (an honest 2-D Gaussian gives 39 % and 86 %), propose a value with a CI, make it a named constant with a unit test | ★★ | `gps_pkg/gps_pkg/nodes/gps_node.py` (the `cov = (hdop * 2.0) ** 2` line) | coverage at 1σ / 2σ |
+| 3 | **Is the GPS σ honest?** gps_node states σ = 2 m × HDOP. On the bench file (truth known), measure the fraction of errors inside 1σ and 2σ (an honest 2-D Gaussian gives 39 % and 86 %), propose a value with a CI. **The change** = a named constant (e.g. `UERE_M`) + a unit test; change its *value* only if the CI of the fitted value excludes the current 2.0 m. Metric: distance of the 2σ coverage to 86 % (`better="closer"`) | ★★ | `gps_pkg/gps_pkg/nodes/gps_node.py` (the `cov = (hdop * 2.0) ** 2` line) | coverage at 1σ / 2σ |
 | 4 | **HDOP-aware jump margin**: the kinematic gate allows a fixed 50 m of GPS noise; make it `max(50, 3 × stated σ)` as a pure function with unit tests | ★★ | `navera_estimator/navera_estimator/nodes/estimator_node.py` (`_check_gps_plausibility`, `gps_jump_margin_m`); pure function + test in `navera_common/navera_common/` and `navera_common/test/` | false alarms on noisy-but-honest GPS vs detection of jumps |
 | 5 | **Skip featureless frames** (sea, the sand of Wahiba Sands, blur) before the expensive search, with a clear reason | ★★ | `day_pkg/day_pkg/local_matcher.py` (`locate`, "too few features…"), tests in `day_pkg/test/test_local_matcher.py` | time per frame, good frames lost |
 | 6 | **Dead-reckoning drift alarm**: how far has a propagated position travelled since its last measured fix? Warn past a threshold | ★★ | `navera_common/navera_common/track.py` (`TrackVelocity.propagate`), `navera_common/test/test_track.py` | alarm delay vs false alarms on a recorded track |

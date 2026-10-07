@@ -76,6 +76,12 @@ def main():
         print(f"  -> first 'unavailable' at frame {first_off}; worst error while a position was given "
               f"{max(errs):.1f} m; error within 2 sigma on {100 * inside:.0f} % of them; "
               f"your gate agreed with NAVERA's on {agree} of {len(rows) - 4} steps")
+        if not use and first_off:                          # the comparison asked in the lab (Step 10)
+            k = first_off - 1
+            track = vo.integrate(steps, truth[0])
+            plain = math.hypot(track[k][0] - truth[k][0], track[k][1] - truth[k][1])
+            print(f"  -> for comparison: your plain integrated odometry (vo.integrate) is {plain:.1f} m off "
+                  f"at frame {k}, the last frame before 'unavailable'")
         out[name] = {"first_unavailable": first_off, "worst_error_m": round(max(errs), 2),
                      "inside_2sigma": round(inside, 3), "gate_agree": agree}
     try:

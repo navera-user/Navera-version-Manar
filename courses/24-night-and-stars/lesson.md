@@ -1,5 +1,18 @@
 # Navigating at night: heat and stars
 
+> [!NOTE] In short
+> - At night the day camera sees nothing, but heat and the stars still give information about
+>   position.
+> - A thermal camera sees heat, and SIFT fails between thermal and day images, so NAVERA's night
+>   vision uses a learned matcher (STHN).
+> - Celestial navigation uses the exact time and a star camera: a **plate solver** finds where the
+>   camera points.
+> - Night vision gives metres, but celestial navigation gives tens of kilometres: one degree of
+>   error costs 111 km.
+> - In the lab you compute the sky (Julian date, sidereal time, altitude and azimuth) and
+>   re-implement the geometry of NAVERA's night localizer.
+> - NAVERA's night vision is **not yet validated** on real thermal images.
+
 It is 21:00 in October. A survey drone flies over the foothills of the Hajar mountains, between
 Nizwa and Jebel Shams. GPS has been jammed for ten minutes. In lessons 20–23 the drone found
 itself by matching its camera picture with the satellite map. Now it is **dark**: the day camera
@@ -8,8 +21,9 @@ sees nothing. Two things still carry information about position:
 1. **Heat.** Roads, roofs, rock, sand and water keep different temperatures after sunset. A
    **thermal camera** sees them, so the shapes on the ground are still there — with different
    brightness.
-2. **The stars.** Arab and Omani navigators crossed the Indian Ocean with star altitudes, a good
-   clock came later, and tables did the rest. A camera pointed at the sky can do the same.
+2. **The stars.** Arab and Omani navigators crossed the Indian Ocean by measuring the altitude of
+   stars above the horizon. Much later, accurate clocks and printed star tables made this method
+   precise. A camera pointed at the sky can do the same.
 
 NAVERA has one source for each: **night vision** (`night_pkg`, a learned thermal-to-map matcher
 called STHN) and **celestial navigation** (`cn_pkg`, a star camera with a plate solver). This
@@ -20,6 +34,14 @@ and the second gives tens of kilometres.
 > NAVERA's test map and recorded frames cover **Sousse, Tunisia**, where NAVERA is developed. The
 > lab uses them as they are. The star computations use Omani sites (Muscat, Jebel Shams), because
 > the sky works the same everywhere.
+
+> [!TIP]
+> **How to study this lesson.** It has two independent parts: **Part 1, night vision** (about 1 h of
+> reading) and **Part 2, celestial navigation** (about 1.5 h). The lab is split the same way
+> (Part A = the sky, Part B = night vision). Plan **two sessions**, one per part; you can do them in
+> either order. Sections marked **📖 Read, do not memorise** are background: understand the idea and
+> the numbers; you do not need to reproduce their formulas. The lab only uses §2.1–2.3, §2.5, §2.7
+> and the zenith case of §2.6.
 
 ## Part 1 — Night vision with a thermal camera
 
@@ -200,13 +222,33 @@ difference UT1 − UTC is kept below 0.9 s by leap seconds and is published by t
 
 ### 2.3 From (α, δ) to (a, A): the navigational triangle
 
+> [!NOTE]
+> **Primer: triangles on a sphere.** On a sphere of radius 1, the "straight lines" are **great
+> circles** (circles whose centre is the centre of the sphere, like the equator or a meridian). A
+> **spherical triangle** has three great-circle arcs as sides. Two facts are all you need:
+> 1. **A side is an angle.** The length of an arc on a unit sphere equals the angle it makes at the
+>    centre. So sides are written in degrees (on the Earth, 1° of arc = 111.2 km).
+> 2. **The spherical law of cosines.** For sides a, b, c and the angle C between sides a and b
+>    (C is the corner opposite side c):
+>    **cos c = cos a · cos b + sin a · sin b · cos C**.
+>    For a very small triangle, cos x ≈ 1 − x²/2 and sin x ≈ x, and this becomes the flat cosine
+>    rule c² = a² + b² − 2ab cos C that you know from school.
+>
+> Example, Muscat (23.59° N, 58.41° E) to Salalah (17.02° N, 54.09° E): take the triangle North
+> pole – Muscat – Salalah. Its sides from the pole are a = 90° − 23.59° = 66.41° and
+> b = 90° − 17.02° = 72.98°, and the angle at the pole is the longitude difference C = 4.32°.
+> cos c = 0.4002 · 0.2927 + 0.9164 · 0.9562 · 0.9972 = 0.9909, so c = 7.72° = **858 km** — the
+> great-circle distance Muscat–Salalah. The navigational triangle below is the same idea with the
+> pole, your zenith and a star.
+
 Three points on the sphere — the celestial **pole** P, the **zenith** Z and the star X — form the
 **navigational triangle**. Its sides are 90° − φ, 90° − a and 90° − δ; its angle at P is the
 hour angle H, its angle at Z is the azimuth A.
 
 ![The navigational triangle PZX](assets/celestial_triangle.svg)
 
-The spherical law of cosines on the side ZX, and the sine/cosine rules for the azimuth, give
+The spherical law of cosines on the side ZX (with cos(90° − x) = sin x), and the sine/cosine rules
+for the azimuth, give
 
 ```
 sin a = sin δ · sin φ + cos δ · cos φ · cos H
@@ -233,10 +275,10 @@ A = atan2(−0.77922 · 0.75651, 0.62675 · 0.91886 − 0.77922 · 0.39458 · 0.
 astropy gives 45.68874° and 302.44975°: the same to better than one arcsecond. Look up at
 21:00 in October from Jebel Shams and Vega is there, half way up in the north-west.
 
-### 2.4 Catalogue positions, precession and the offline IERS problem
+### 2.4 Catalogue positions, precession and the offline IERS problem — 📖 Read, do not memorise
 
 Catalogues give α, δ for the epoch J2000. The Earth's axis **precesses** (one turn in about
-26 000 years) and **nods** (nutation), and the Earth's motion shifts apparent positions by up to
+26 000 years) and also makes a small periodic "nodding" motion called **nutation** (at most about 17″, period 18.6 years), and the Earth's motion shifts apparent positions by up to
 20″ (**aberration**). From 2000 to 2026 precession alone moves right ascensions by about 0.36° —
 tens of kilometres if ignored. NAVERA converts with astropy (`apparent_radec`: ICRS → TETE, the
 true equator and equinox of date) and pairs the result with GAST.
@@ -289,7 +331,8 @@ The simplest fix: if the camera points **exactly** at the zenith, its centre has
 φ = δ_centre          λ = α_centre − GAST        (wrapped to −180°…180°)
 ```
 
-In general the camera is tilted. The IMU gives the boresight's (a, A) (`boresight_altaz` turns the
+📖 **Read, do not memorise (the rest of this section).** In general the camera is tilted. The IMU
+gives the boresight's (a, A) (`boresight_altaz` turns the
 IMU quaternion into them), the solver gives its (α, δ), and the triangle is solved for the observer
 (`observer_candidates`):
 
@@ -299,7 +342,11 @@ cos δ · sin H = −cos a · sin A                              (2)
 cos δ · cos H =  sin a · cos φ − cos a · sin φ · cos A      (3)  → H, then λ = α + H − GAST
 ```
 
-Equation (1) has **two** latitude solutions in general, both geometrically valid.
+Equation (1) has **two** latitude solutions in general, both geometrically valid. Why? With a and A
+known, the right side of (1) is p · sin φ + q · cos φ (p = sin a, q = cos a · cos A), which can be
+written R · sin(φ + ψ) with R = √(p² + q²) and ψ = atan2(q, p). And a sine takes the same value at
+two angles: sin x = sin(180° − x). So φ + ψ has two possible values, hence two latitudes. (The
+"Two answers" experiment at the end of the lab shows both solutions.)
 `choose_candidate` keeps the one within 5° of a **prior** (the operating area, the last GPS fix);
 if the prior cannot separate them, NAVERA publishes **no position**.
 
@@ -404,6 +451,9 @@ def _sigma_m(self):
 | **STHN** | the deep network NAVERA uses to fit a homography from a thermal frame to the satellite map |
 | **coverage** | share of STHN's 512 px reference square filled by the scaled, north-up frame |
 | **motion gate** | rejection of a fix farther than the vehicle could have travelled |
+| **great circle** | a circle on a sphere whose centre is the centre of the sphere (the equator, a meridian): the "straight line" of the sphere |
+| **spherical triangle** | three great-circle arcs; its sides are angles; cos c = cos a cos b + sin a sin b cos C |
+| **nutation** | a small periodic "nodding" of the Earth's axis (about 17″, period 18.6 years) on top of precession |
 | **declination δ / right ascension α** | a star's coordinates on the celestial sphere, fixed to the stars |
 | **altitude a / azimuth A** | a star's direction in the observer's sky |
 | **Julian date (JD)** | a continuous day count; JD 2451545.0 = 2000-01-01 12:00 |

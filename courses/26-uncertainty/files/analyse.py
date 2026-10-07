@@ -57,7 +57,7 @@ def track_stats(run, truth, zs):
 
 
 def missing():
-    """The names of the functions that still return None (TODO not done yet)."""
+    """The names of the functions that are not finished yet (they return None or raise an error)."""
     P = np.array([[4.0, 1.0], [1.0, 2.0]])
     tries = {"sample_cov (TODO 1)": lambda: sample_cov([[0.0, 0.0], [1.0, 2.0], [2.0, 1.0]]),
              "error_ellipse (TODO 2)": lambda: error_ellipse(P)[0],
@@ -81,7 +81,7 @@ def missing():
 def main():
     todo = missing()
     if todo:
-        print("Not finished yet — these still return None:\n  " + "\n  ".join(todo))
+        print("Not finished yet — these return None or raise an error:\n  " + "\n  ".join(todo))
         print("Complete them (python3 uncertainty.py and python3 kalman.py to try them), then run me again.")
         return
     res = {}

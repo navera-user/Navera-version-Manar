@@ -26,7 +26,7 @@ the baseline is a paired bootstrap (the same seconds for both).
 |---|---|---|---|---|---|---|---|---|---|
 | target (15 m profile, not measured) | 60 | 20 m [19, 23] | 32 m | 24 m | 64 m | 455 m | [-648, -201] | 100 % | 0 s |
 | measured (former day vision) | 60 | 430 m [390, 554] | 847 m | 514 m | 1082 m | 452 m | [-297, 221] | 100 % | 0 s |
-| selective (synthetic) | 60 (14 with a position) | 154 m [114, 159] | 287 m | 187 m | 296 m | 452 m | [-308, -5] | 23 % | 13 s |
+| selective (synthetic) | 60 (14 with a position) | 154 m [94, 239] (iid; a block CI is not meaningful here) | 287 m | 187 m | 296 m | 452 m | [-308, -5] | 23 % | 13 s |
 
 ## Is the difference real?
 

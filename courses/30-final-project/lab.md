@@ -3,8 +3,8 @@
 **Goal:** improve NAVERA with **one** change: a written proposal, a test that fails first, a
 before/after measurement with bootstrap confidence intervals, a decision, a commit on a branch, a
 patch and a report.
-**Time:** 3–4 h for parts A and B (statistics tools + the guided example), then your own project
-(part C) — a few more hours if you choose another idea.
+**Time:** about 4 h for parts A and B (statistics tools + the guided example), then your own project
+(part C): plan 3–4 more hours (6–8 h in total) if you choose another idea.
 
 Your files: [stats_tools.py](file:./stats_tools.py) (percentile and bootstrap — for every project),
 [measure_project.py](file:./measure_project.py) (the example's measurement),
@@ -263,6 +263,34 @@ measurement script in this folder; reuse `percentile`, `bootstrap_ci` (independe
 value per test frame) or `block_bootstrap_ci` (time series), and write `results.json` with
 `write_results()` — set `project` to your branch's short name. The check always looks at the branch
 you are **on** (`git branch --show-current`).
+
+A skeleton for your own measurement script (`measure_mine.py`) — replace the three `...` parts:
+
+```python
+import numpy as np
+from stats_tools import block_bootstrap_ci, percentile, write_results
+
+# 1. load: one value per epoch (time series) for BEFORE and AFTER, on the SAME epochs
+before = np.array(...)            # e.g. the error of each epoch with the base code
+after = np.array(...)             # the same epochs with your change
+def metric(x):                    # 2. your primary metric, as fixed in the proposal
+    return percentile(x, 95)      #    (target metric: abs(coverage(x) - 86.0), better="closer")
+n = len(before)
+# 3. paired moving-block bootstrap: the SAME resampled epochs for before and after
+ci = lambda f: block_bootstrap_ci(n, f, block_len=60, n_boot=2000, seed=30)
+b, a = metric(before), metric(after)
+res = {"before": {"value": b, "ci95": ci(lambda i: metric(before[i]))},
+       "after": {"value": a, "ci95": ci(lambda i: metric(after[i]))},
+       "difference": {"value": a - b, "ci95": ci(lambda i: metric(after[i]) - metric(before[i]))}}
+lo, hi = res["difference"]["ci95"]
+decision = "accept" if hi < 0 else ("reject" if lo > 0 else "inconclusive")   # for better="lower"
+write_results("results.json", project="my-idea", metric="p95 error", unit="m", better="lower",
+              data=..., n=n, bootstrap={"method": "moving-block", "block_len": 60, "n_boot": 2000,
+              "seed": 30}, acceptance="95 % CI of the difference entirely below 0", decision=decision, **res)
+```
+
+For independent samples (one value per test frame, not a time series) use `bootstrap_ci` instead,
+with the same idea.
 
 > [!TIP]
 > Stuck? Make the change smaller. A small change, well tested and honestly measured, is a much better

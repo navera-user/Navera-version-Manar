@@ -4,7 +4,7 @@
 state machine; prove it equivalent to the real `estimator_node` on a 31-second scenario (decisions
 *and* switch instants); then measure the two design trade-offs (hold-off, freshness window) and
 test selection against fusion. You finish with a short written analysis.
-**Time:** about 3 hours.
+**Time:** about 4 hours.
 
 Your files:
 
@@ -212,6 +212,9 @@ python3 experiment.py
 It prints three tables, writes `results.json` and draws [tradeoffs.png](file:./tradeoffs.png) (open
 it in the editor). You should see the switch rate fall from about 27 per minute at h = 0 while the
 unused GPS time grows, and the availability rise with T while the staleness error grows linearly.
+In table B, `max age` prints as `2.0` for T = 2 s although a fix is only used while its age is
+**strictly** below T: the real maximum is a little less than 2 s (`results.json` shows 1.999 s), and
+the one-decimal print rounds it up.
 
 > [!TASK]
 > Complete TODO A, B, C1, C2 so that `python3 experiment.py` writes `results.json`. The check calls

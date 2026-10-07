@@ -4,7 +4,7 @@
 REFUSED) and test them against seven attacks; (B) treat detection as a hypothesis test: compute
 false-alarm probabilities, the patient-spoofer time, and run a Monte-Carlo **ROC experiment**;
 (C) attack NAVERA's **real** arbiter with a scripted fake GPS; (D) write a short report.
-**Time:** about 3 h.
+**Time:** about 4 h.
 
 Your files:
 
@@ -110,8 +110,9 @@ In [detection.py](file:./detection.py):
 - **TODO 7** `patient_accept_time(offset_m, speed_mps, max_speed_mps, margin_m)`: the smallest Δt with
   `v·Δt + m ≥ sqrt((s·Δt)² + D²)`. Square both sides (both are positive) to get
   `a·Δt² + b·Δt + c ≥ 0` with `a = v² − s²`, `b = 2·v·m`, `c = m² − D²`, and take the positive root.
-  Handle the edge cases: `m ≥ D` → 0; `a ≤ 0` → the spoof may never become reachable → `math.inf`
-  (with `a = 0` the inequality is linear).
+  Handle the edge cases: `m ≥ D` → 0; `a < 0` (the vehicle flies faster than the gate's
+  `max_speed`) → never reachable → `math.inf`; `a = 0` → the inequality is linear,
+  `b·Δt + c ≥ 0`, so Δt = −c / b.
 
 ```bash
 python3 -c "import detection as d; print(d.p_exceed(3.0), d.p_streak(3.0, 5), d.patient_accept_time(2000, 15, 30, 50))"
@@ -206,7 +207,8 @@ Each run saves `real_<attack>.txt` (the status changes; the check reads it) and
 What to look for:
 
 - **jump** — vision states *no* accuracy, so only the gate can act: `GPS refused: implausible jump
-  2000 m in 0.5 s (max 65 m at 30 m/s)`. When the true GPS returns, the log says
+  2000 m in 0.5 s (max 65 m at 30 m/s)` — the exact numbers depend on timing (for example
+  `0.5 s` or `0.6 s`, `max 65 m` or `66 m`). When the true GPS returns, the log says
   `GPS plausible again — re-accepted`, and FIX GPS comes **2 s later** — the hold-off of lesson 25.
 - **drift** (6 m/s) — first `DEGRADED GPS … — GPS IN DOUBT: day vision disagrees by N m`: *in doubt*
   raised the GPS's stated uncertainty to the gap (lesson 26). Then `GPS drifting away from day vision: 5

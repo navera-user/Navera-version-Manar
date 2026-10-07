@@ -1,5 +1,16 @@
 # Measuring honestly: error statistics, baselines and confidence intervals
 
+> [!NOTE] In short
+> - A claim like "4 m without GPS" means nothing until you know which statistic, how many
+>   measurements, where, and compared with what.
+> - You learn the error statistics (median, percentiles, CEP, RMSE), and you always state the
+>   percentile rule.
+> - A position you do not get is not 0 m: always report **availability** and continuity too.
+> - A method is useful only if it beats a **baseline**, such as "repeat the last known position".
+> - **Confidence intervals** (the bootstrap, the Wilson interval) say how sure a number is.
+> - In the lab you measure three flights, compare NAVERA with the baseline, and check a stated σ
+>   with NAVERA's `evaluate_session.py`.
+
 At a technology fair in Muscat, a company presents a navigation box for drones: *"Accuracy: 4 m
 without GPS!"* A logistics company that wants to fly medicine from Sohar to villages in the Hajar
 mountains asks you, the engineer, whether to buy it.
@@ -57,8 +68,17 @@ and aviation documents also use **R95** (same as CEP95) and **2DRMS** (= 2 × RM
 ### Percentiles: the rule matters
 
 A **percentile** p is a value below which p % of the sorted data lie. There are several rules for
-the value "between two samples"; on small samples they give different answers. NAVERA's tools use
-the **nearest-rank** rule:
+the value "between two samples"; on small samples they give different answers.
+
+> [!NOTE]
+> **The course rule, and the one exception.** Lessons 22 and 30 (and the bootstrap intervals of this
+> lesson, computed with `np.percentile`) use **linear interpolation**, the course rule stated in
+> lesson 22. In **this lesson only**, the error statistics (CEP50, p90, CEP95) use NAVERA's
+> **nearest-rank** rule, because you compare your numbers with the tables of NAVERA's own tool
+> `evaluate_session.py`, and numbers that you compare must use the same rule. Always write the rule
+> you used.
+
+NAVERA's tools use the **nearest-rank** rule:
 
 ```python
 def pct(v, q):                                   # navera_tools/evaluate_session.py

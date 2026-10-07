@@ -1,5 +1,17 @@
 # How sure are we? Covariance, gating and the Kalman filter
 
+> [!NOTE] In short
+> - When GPS comes back after a gap, NAVERA must decide if a fix is plausible, so it needs to know
+>   how wrong each position may be.
+> - This "how wrong" is the **covariance**: you draw it as an ellipse and propagate it with J P
+>   Jᵀ.
+> - The **chi-square gate** tests if a measurement is plausible, and inverse-variance fusion
+>   combines two estimates.
+> - A **Kalman filter** carries the covariance from second to second, and the **NEES** test checks
+>   if the filter is honest.
+> - In the lab you build a 2-D Kalman filter with a chi-square gate, and prove that your 1-D
+>   filter is NAVERA's real height filter.
+
 A survey drone leaves Mutrah and flies west along the Muscat coast. Every second its GPS says
 *"you are here, ±5 m"*. Then, near the port, a jammer silences the GPS for 40 seconds. When the
 fixes come back, the first one is 150 m away from where the drone thinks it is. Is the drone lost,
@@ -215,9 +227,12 @@ Q = q · [ dt⁴/4   dt³/2 ]     (white-noise acceleration of spectral density 
         [ dt³/2   dt²   ]
 ```
 
+(The **spectral density** q measures how strong the random acceleration is: in one step the
+velocity changes by a random amount whose variance is the bottom-right entry of Q. A larger q lets the velocity change faster.)
+
 Q says how much the vehicle can change its velocity between two steps (a turn, a gust). For two
-axes with state `[e, n, ve, vn]`, `F = kron(F1, I₂)` and `Q = kron(Q1, I₂)` (the Kronecker product
-copies the 1-axis block for each axis).
+axes with state `[e, n, ve, vn]`, `F = kron(F1, I₂)` and `Q = kron(Q1, I₂)` (the **Kronecker product**
+`kron(A, I₂)` replaces each entry a of A by the block a·I₂, so it copies the 1-axis model for each axis).
 
 **Predict** (propagation, section 3 with J = F):
 

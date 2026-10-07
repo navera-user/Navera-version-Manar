@@ -1,5 +1,17 @@
 # Visual odometry: phase correlation, drift and fusion
 
+> [!NOTE] In short
+> - When no map match is accepted for some time, NAVERA can still follow the drone's motion with
+>   **visual odometry**.
+> - **Phase correlation** (with the FFT) measures how far the ground moved between two frames, in
+>   pixels.
+> - The camera scale and the heading turn this pixel shift into metres east and north.
+> - Visual odometry tells you how you moved, not where you are, and its error always grows (random
+>   walk plus bias).
+> - A simple **Kalman update** with map fixes keeps this drift bounded.
+> - In the lab you follow a drone through 80 frames, measure the drift, and run NAVERA's
+>   `FrameOdometry` and `VisionNavigator` on the same flight.
+
 A survey drone flies along the Muscat Expressway at 120 m, 20 m/s. Its GPS is jammed. Until now
 NAVERA's day vision found the drone on the satellite map every second or two (lesson 22). Then the
 drone crosses a new housing area in Al Mabelah: the map imagery is three years old, the ground has
@@ -52,6 +64,23 @@ similarity (for example the correlation). With N = 320 × 240 = 76 800 pixels an
 shifts that is N² ≈ 5.9 × 10⁹ multiplications per frame pair — far too slow for a Jetson at 1 Hz.
 
 ### 2.2 The Fourier shift theorem
+
+> [!NOTE]
+> **Primer: complex numbers, waves and phase (read this first if the DFT is new to you).**
+> - A complex number z = a + i b (with i² = −1) is a point (a, b) in the plane. Its **magnitude**
+>   is |z| = √(a² + b²), its **phase** is the angle φ of that point. Euler's formula:
+>   **exp(iφ) = cos φ + i sin φ** is the point at angle φ on the circle of radius 1.
+> - Multiplying by exp(iφ) **turns** a complex number by the angle φ and does not change its length.
+> - The **complex conjugate** z* = a − i b has the same magnitude and the opposite phase. So
+>   z₁ · z₂* has the magnitude |z₁| |z₂| and the phase φ₁ − φ₂: it measures the **phase difference**.
+> - The DFT measures, for each frequency u, "how much of a wave cos/sin with u periods across the
+>   image" the image contains: the magnitude says *how strong*, the phase says *where the wave's peaks
+>   are*. Slide the image to the right and every wave slides too: its strength stays the same, only
+>   its phase changes — and a fast wave (large u) changes phase more than a slow one for the same
+>   slide. That is the whole idea of phase correlation.
+>
+> Example: the wave cos(2π · 2x / 8) has its peaks at x = 0 and 4. Shifted right by 1 sample, its
+> peaks are at x = 1 and 5: the same wave, phase changed by 2π · 2 · 1 / 8 = 90°.
 
 The **discrete Fourier transform** (DFT) writes an image as a sum of 2-D waves. For an image a(x, y)
 of size W × H:
@@ -127,7 +156,9 @@ print(np.round(np.real(np.fft.ifft(R)), 3))      # [0. 0. 1. 0. 0. 0. 0. 0.]
 
 The **peak value** (the **response**, between 0 and 1) says how much of the image moved together.
 Two frames of the same textured ground give a clear peak; two frames of open sea, of uniform sand or
-of pure noise give a low, flat correlation.
+of pure noise give a low, flat correlation. Typical values with the numpy method of the lab: about
+**0.1–0.3** for consecutive real frames of the lab's flight, about **0.02** for unrelated noise
+(OpenCV's `phaseCorrelate` reports a different, larger number: see the lab, Step 4).
 
 > [!WARNING]
 > Phase correlation measures **only a translation**. If the second frame is also rotated or scaled
@@ -250,7 +281,7 @@ similar (K ≈ 0.5) it is an average weighted by the variances.
 
 ![Odometry between fixes: a saw-tooth error](assets/fusion.svg)
 
-The error becomes a **saw-tooth**: it grows between fixes and falls back at each one. Its maximum
+The error becomes a **saw-tooth** (shaped like the teeth of a saw: a slow rise, then a sudden drop): it grows between fixes and falls back at each one. Its maximum
 depends on the distance **between fixes**, not on the length of the flight. Design rule: to stay
 within 30 m with a 3.5 m / 100 m drift, you need a fix at least every ~850 m. A stated σ is
 **honest** when the true error stays inside ±2σ about 95 % of the time; you will measure that too.
@@ -303,8 +334,8 @@ dn = fwd * math.cos(th) - right * math.sin(th)
 ```
 
 You can now read every line: the frame is halved (`scale = 0.5`) for speed; a **high-pass** filter
-(the image minus its blur) removes slow brightness changes that would otherwise "lock" the peak at
-zero; the previous frame is turned by the heading change and scaled by the height change; the step is
+(the image minus its blur) removes slow brightness changes that would otherwise pull the peak to a
+shift of zero (the same light gradient in both frames "matches" without moving); the previous frame is turned by the heading change and scaled by the height change; the step is
 refused when the response is below `min_response` (**0.15**) or the shift exceeds a quarter of the
 image; and the last two lines are your rotation by θ. The optional `predicted_en` argument shifts the
 previous frame by the expected motion first, so that things that do not move in the image (the

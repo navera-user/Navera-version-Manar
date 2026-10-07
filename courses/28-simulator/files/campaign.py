@@ -122,7 +122,8 @@ REQUIREMENTS = [
     ("R6", "failed", "camera lost while GPS is down: NO FIX within 6 s and the autopilot fails safe (LAND)",
      "nofix_s", None),
     # TODO 7: add requirement R7 for the fault "spoof_drift": a slow GPS drift is refused before it
-    #         drags NAVERA 150 m away (measured key: "gps_err_max_m"; None must FAIL).
+    #         drags NAVERA more than 150 m away, i.e. PASS when gps_err_max_m <= 150 m (exactly 150 m
+    #         still PASSES; measured key: "gps_err_max_m"; None must FAIL).
 ]
 
 

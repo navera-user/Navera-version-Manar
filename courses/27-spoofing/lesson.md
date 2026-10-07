@@ -1,5 +1,17 @@
 # Detecting GPS spoofing: hypothesis tests in the arbiter
 
+> [!NOTE] In short
+> - A spoofer sends fake satellite signals and the receiver still says "fix OK", so only reasoning
+>   about the positions can detect it.
+> - NAVERA treats detection as a **hypothesis test**, with a false-alarm probability and a
+>   missed-detection probability.
+> - Test 1, the **kinematic gate**, refuses a jump that the vehicle could not fly.
+> - Test 2 compares GPS with an independent source (vision), and refuses it only after several
+>   disagreements in a row.
+> - The tests have limits: with no independent source, a slow and patient spoofer is not caught.
+> - In the lab you build a GPS guard, measure its ROC curve, and attack NAVERA's real arbiter with
+>   a scripted fake GPS.
+
 A survey drone flies along the Batinah coast, north of the port of Sohar, at 15 m/s. At t = 20 s its
 GPS suddenly reports a position **2 km north, over the Gulf of Oman**. Nothing else changed: the
 motors, the wind, the camera picture of the coast below. If the autopilot believes the GPS, it will

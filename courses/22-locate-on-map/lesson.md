@@ -1,5 +1,17 @@
 # Map-based localisation: from a photo to latitude and longitude
 
+> [!NOTE] In short
+> - NAVERA's day vision answers one question every one or two seconds: where on the map was this
+>   photo taken, and how sure am I?
+> - The chain has five steps: scale the photo, search near the last position, match and fit, apply
+>   the gates, convert the photo centre to lat/lon.
+> - An **error budget** lists each error source in metres; independent errors combine as the root
+>   sum of squares.
+> - An honest evaluation reports four numbers: availability, median error, p90, and the number of
+>   wrong fixes accepted.
+> - In the lab you build the full chain, measure the errors of a wrong height and a tilted camera,
+>   and test NAVERA's `LocalMatcher` on the same 13 photos.
+
 A survey drone flies 250 m above the coastal road between Muscat and Sohar. Near Barka its GPS
 receiver starts to report nonsense: somebody is jamming the signal. The drone still has a camera
 that looks down, an IMU that measures its attitude, a barometer, and — on its NAVERA box — a
@@ -140,13 +152,13 @@ Because the image y axis points **down**, a positive `θ` turns clockwise on the
 compass heading. A photo whose top pointed 30° east of north gives `θ ≈ +30°`.
 
 Fewer parameters help RANSAC in two ways. A similarity needs a **minimal sample** of 2 matches,
-a homography 4. With the iteration formula of lesson 21, `N = log(1 − p) / log(1 − w^m)` for a
-confidence `p = 0.999`:
+a homography 4. With the iteration formula of lesson 21, `N = ⌈log(1 − p) / log(1 − w^m)⌉`
+(rounded **up**, as in lesson 21) for a confidence `p = 0.999`:
 
 | Inlier ratio `w` | similarity (`m = 2`) | homography (`m = 4`) |
 |---|---|---|
-| 0.3 | 73 iterations | 849 iterations |
-| 0.1 | 687 iterations | 69 074 iterations |
+| 0.3 | 74 iterations (73.2 → 74) | 850 iterations (849.4 → 850) |
+| 0.1 | 688 iterations (687.3 → 688) | 69 075 iterations (69 074.1 → 69 075) |
 
 Cross-date photos often have `w ≈ 0.1`: the similarity stays cheap. And a model with fewer
 degrees of freedom has fewer ways to fit random matches at a wrong place. Use the homography only
@@ -245,8 +257,8 @@ when none is known, and the height filter in `vision_nav.py` is updated with `h 
 
 **c) Latency → along-track offset.** A photo processed `Δt` seconds after its exposure describes
 where the vehicle *was*: `d = v · Δt`. NAVERA carries each vision position to the present along the
-measured velocity (from `docs/VALIDATION_STATUS.md`: a 1.5 s old photo at 40 m/s is moved 60 m and
-stated ±31.5 m). Only the residual timing error stays in the budget.
+measured velocity (from `docs/VALIDATION_STATUS.md`: a photo processed 1.5 s after it was taken, at
+40 m/s, is moved 60 m forward, and its stated accuracy becomes ±31.5 m). Only the residual timing error stays in the budget.
 
 **d) Matcher noise.** Inlier positions are noisy by a few pixels; the fitted centre too.
 `fix_sigma_m()` in NAVERA maps the inlier count to a 1-sigma error, measured in a bench campaign:
@@ -278,6 +290,13 @@ is never enough:
 | **median error** | 50th percentile of the accepted errors | the typical error, not pulled by one outlier |
 | **p90** | 90th percentile of the accepted errors | the tail: what the autopilot must survive |
 | **wrong accepted** | number of accepted fixes with error > 50 m | the dangerous failures; must be 0 |
+
+> [!NOTE]
+> **The percentile rule of this course.** From here to lesson 30, "percentile" (median, p90, p95…)
+> means **linear interpolation**, numpy's default, defined just below. There is one exception, and
+> it is announced where it happens: in lesson 29 you reproduce the tables of NAVERA's tool
+> `evaluate_session.py`, which uses the **nearest-rank** rule, so there you use that rule too
+> (numbers that you compare must use the same rule). In every report, write the rule you used.
 
 The **percentile** with linear interpolation (numpy's default): sort the `m` values `v[0] ≤ … ≤
 v[m−1]`, compute the position `p = (m − 1) · q / 100`, and interpolate between `v[floor(p)]` and

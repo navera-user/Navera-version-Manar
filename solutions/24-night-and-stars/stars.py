@@ -57,7 +57,7 @@ def radec_to_altaz(ra_deg, dec_deg, lat_deg, lon_deg, gst_deg):
     return alt, az % 360.0
 
 
-# TODO 4 — the stars above min_alt_deg, brightest (smallest magnitude) first.
+# GIVEN 4 (already written for you: read it, nothing to change) — the stars above min_alt_deg, brightest (smallest magnitude) first.
 #   stars: list of dicts {"name", "mag", "ra", "dec"}. Use ONE call of radec_to_altaz on arrays.
 #   Return a list of dicts {"name", "mag", "alt", "az"} (plain Python floats).
 def visible_stars(stars, lat_deg, lon_deg, gst_deg, min_alt_deg=0.0):
@@ -138,6 +138,9 @@ NAMES = {424: "Polaris", 7001: "Vega", 7557: "Altair", 7924: "Deneb", 5340: "Arc
          6879: "Kaus Australis", 188: "Diphda", 99: "Ankaa", 6527: "Shaula", 21: "Caph", 8162: "Alderamin",
          7796: "Sadr", 264: "Navi", 5054: "Mizar", 2088: "Menkalinan", 8425: "Alnair", 5793: "Alphecca",
          6217: "Atria", 4819: "Menkent", 39: "Algenib"}
+# HR 264 is Gamma Cassiopeiae. It has no classical name; Apollo astronauts called it "Navi" (Ivan, the
+# middle name of astronaut Gus Grissom, spelled backwards) and used it as a navigation star. A real
+# nickname, not a bug and not our swallow.
 SKIP = {5958}    # T CrB: a nova the catalogue lists at its 1946 outburst brightness
 
 

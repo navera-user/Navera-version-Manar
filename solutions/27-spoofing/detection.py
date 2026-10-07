@@ -56,7 +56,11 @@ def patient_accept_time(offset_m, speed_mps, max_speed_mps, margin_m):
     offset_m to the SIDE of the true track and keeps it there. The gate compares with the
     last trusted fix, dt seconds ago. Return the smallest dt (s) for which the spoofed fix is
     'reachable':   max_speed*dt + margin >= sqrt((speed*dt)**2 + offset**2)
-    or math.inf if it never becomes reachable."""
+    or math.inf if it never becomes reachable.
+    Edge cases (with a = max_speed**2 - speed**2):
+        margin >= offset  -> 0.0        (reachable at once)
+        a < 0             -> math.inf   (the vehicle is faster than the gate allows: never reachable)
+        a == 0            -> linear:  b*dt + c >= 0  ->  dt = -c / b   (b = 2*max_speed*margin > 0)"""
     v, s, m, d = max_speed_mps, speed_mps, margin_m, offset_m
     if m >= d:
         return 0.0

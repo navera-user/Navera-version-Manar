@@ -4,7 +4,7 @@
 metres east/north, follow a drone through 80 frames, measure the drift and explain it with a
 random-walk model, bound it with map fixes (a Kalman update), and run NAVERA's own `FrameOdometry`
 and `VisionNavigator` on the same flight.
-**Time:** about 3 hours.
+**Time:** about 4 hours.
 
 Your files:
 
@@ -116,6 +116,14 @@ Expected: a mean difference below 0.4 px (about 0.17 px), and OpenCV 2–3 times
 peak is the same; the sub-pixel methods differ (parabola vs centroid). This writes the
 `fft_vs_opencv` part of `results.json`.
 
+> [!NOTE]
+> **What is a "good" response?** `vo.py pair 10` prints `peak (response) 0.158`. That is a good
+> peak. On this flight your numpy response for consecutive frames is between about **0.08 and 0.28**
+> (median about 0.18); two unrelated noise images give about **0.02**. Do not compare your number with
+> NAVERA's `min_response = 0.15` (lesson, In NAVERA): `cv2.phaseCorrelate` reports a different
+> quantity (the energy in the 5 × 5 pixels around the peak, about 0.6–0.9 on these frames) on a
+> windowed, high-passed image. What matters is the peak **compared with noise**: 0.16 is 8 × 0.02.
+
 ## Step 5 — From pixels to east/north (TODO 4)
 
 > [!TASK]
@@ -173,28 +181,7 @@ turned (sin 2° ≈ 0.035). Both are **biases**; no better pixel measurement rem
 > The error at the end is 54 m after 1580 m. Will it ever come back down by itself? What kind of
 > information could correct the 2° heading error?
 
-## Step 7 — Drift as a random walk (TODOs 9, 10)
-
-Is the error growth on the flight "√n" or "n"? Simulate both.
-
-> [!TASK]
-> **TODO 9.** In `drift_sim.py`, `simulate_drift(n_steps, sigma, bias, trials, seed)`: per-step error
-> vectors `ex = bias + N(0, σ)`, `ey = N(0, σ)` for `trials` flights (`np.random.default_rng(seed)`,
-> arrays of shape `(trials, n_steps)`), cumulative sums along the steps, and the RMS of |error| over
-> the trials → an array of length `n_steps`.
->
-> **TODO 10.** `growth_exponent(rms)`: the slope p of `log(rms)` against `log(n)`, n = 1…len(rms)
-> (`np.polyfit(..., 1)`).
-
-```bash
-python3 drift_sim.py
-```
-
-Expected: after 100 steps about 7.07 m (= σ√(2n)) for random errors and 10.00 m (= b·n) for the bias;
-exponents 0.50 and 1.00. Open **drift_sim.png**: two straight lines of different slopes on a log-log
-plot, and the dashed "both" curve that follows the random line first and the bias line later.
-
-## Step 8 — Fusion with map fixes (TODO 7)
+## Step 7 — Fusion with map fixes (TODO 7)
 
 `map_fixes.csv` gives a map-matched position (lesson 22) every 10 frames (200 m): the truth plus about
 4 m of noise.
@@ -227,7 +214,7 @@ Expected: `worst 10.3 m` with fixes (against 54 m), and the stated 2σ covering 
 about 99 % of the frames. In **vo_error.png** the blue curve is a saw-tooth, the dashed line the
 stated 2σ.
 
-## Step 9 — NAVERA's own code on the same flight (TODOs 8, 11)
+## Step 8 — NAVERA's own odometry on the same flight (TODO 8)
 
 Your NAVERA copy is in `~/navera`. Open
 [frame_odometry.py](file:navera/day_pkg/day_pkg/frame_odometry.py) and
@@ -247,6 +234,31 @@ python3 vo.py navera
 Expected: 0 refused, a drift of about 3.57 m per 100 m — close to yours. NAVERA works on a half-size,
 high-passed image; your full-size version is a little better here.
 
+## Step 9 — Drift as a random walk (TODOs 9, 10)
+
+Is the error growth on the flight "√n" or "n"? Simulate both.
+
+> [!TASK]
+> **TODO 9.** In `drift_sim.py`, `simulate_drift(n_steps, sigma, bias, trials, seed)`: per-step error
+> vectors `ex = bias + N(0, σ)`, `ey = N(0, σ)` for `trials` flights (`np.random.default_rng(seed)`,
+> arrays of shape `(trials, n_steps)`), cumulative sums along the steps, and the RMS of |error| over
+> the trials → an array of length `n_steps`.
+>
+> **TODO 10.** `growth_exponent(rms)`: the slope p of `log(rms)` against `log(n)`, n = 1…len(rms)
+> (`np.polyfit(..., 1)`).
+
+```bash
+python3 drift_sim.py
+```
+
+Expected: after 100 steps about 7.07 m (= σ√(2n)) for random errors and 10.00 m (= b·n) for the bias;
+exponents 0.50 and 1.00. Open **drift_sim.png**: two straight lines of different slopes on a log-log
+plot, and the dashed "both" curve that follows the random line first and the bias line later.
+
+## Step 10 — NAVERA's navigator without map fixes (TODO 11)
+
+Keep [vision_nav.py](file:navera/day_pkg/day_pkg/vision_nav.py) open.
+
 > [!TASK]
 > **TODO 11.** In `navera_nav.py`, `vo_gate(v_vo, v_ref, vel_sigma)`: True when the VO velocity
 > agrees with the velocity measured by the map fixes — the same rule as `VisionNavigator.odometry()`.
@@ -263,10 +275,10 @@ NAVERA says **unavailable** from frame 29, when σ passes `max_sigma_m` = 300 m.
 
 > [!QUESTION]
 > In B the error of `VisionNavigator` reaches ~150 m before it stops, but your integrated odometry was
-> only about 24 m off at frame 28. Look at `predict()`: how does it use the velocity, and why does that hurt
+> only about 24 m off at frame 28 (the last line of scenario B prints this number). Look at `predict()`: how does it use the velocity, and why does that hurt
 > on a curved path flown without a heading?
 
-## Step 10 — Write the report
+## Step 11 — Write the report
 
 > [!TASK]
 > Fill in [report.md](file:./report.md): five sections, 2–5 sentences each, every `...` replaced.
@@ -278,7 +290,7 @@ NAVERA says **unavailable** from frame 29, when σ passes `max_sigma_m` = 300 m.
 cat results.json
 ```
 
-## Step 11 — Check your work
+## Step 12 — Check your work
 
 Press **✔ Check my work**. The check tests every function on small exact cases, runs your odometry on
 the whole flight, and compares `results.json` and `report.md`. If the `results.json` check fails, run

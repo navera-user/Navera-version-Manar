@@ -113,7 +113,7 @@ def _():
              f"NAVERA turns that back into RA {ra2:.2f}°, Dec {dec2:.2f}°")
 
 
-@c.test("TODO 4 — visible_stars(): 37 bright stars above Jebel Shams, brightest first",
+@c.test("Given code 4 — visible_stars() (uses your TODO 3): 37 bright stars above Jebel Shams, brightest first",
         hint="One radec_to_altaz call on arrays of all RA and Dec; keep alt > min_alt_deg; dicts with name, mag, "
              "alt, az; sorted(..., key=lambda v: v['mag']).")
 def _():
@@ -197,7 +197,7 @@ def _():
 
 # ---------------- part B: night ----------------
 
-@c.test("TODO 9 — parse_thermal_name() reads lat, lon and alt — and None for a NOGPS frame",
+@c.test("Given code 9 — parse_thermal_name() reads lat, lon and alt — and None for a NOGPS frame",
         hint="os.path.basename, os.path.splitext, split('_'); a part starting with 'lat' gives float(part[3:]); "
              "for 'alt400m' remove the 'm'. Without lat or lon, return None.")
 def _():
@@ -225,7 +225,7 @@ def _():
         c.near(got, ref, 0.006, f"query_coverage({w}x{h}, {alt:.0f} m, {hfov}°, heading {hdg:.0f}°) (NAVERA {ref})")
 
 
-@c.test("TODO 12 and 13 — min_altitude() by bisection, and NAVERA's motion gate",
+@c.test("TODO 13 (and given code 12, min_altitude() by bisection) — NAVERA's motion gate",
         hint="Bisection: if coverage(mid) >= need then hi = mid else lo = mid, until hi - lo < tol. "
              "Gate: reach = max_speed x max(0, t - t_anchor) + margin; accepted when jump <= reach.")
 def _():

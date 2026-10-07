@@ -5,12 +5,13 @@ against astropy and NAVERA's `cn_pkg`, measure what clock and attitude errors co
 with a Monte Carlo on NAVERA's own solver; then re-implement the geometry of NAVERA's night
 localizer (scale, coverage, minimum height, motion gate) and test whether the night replay frames
 can be trusted.
-**Time:** 2 h 30 – 3 h.
+**Time:** about 5 h in **two sessions**: Part A (the sky, ~2 h 30) and Part B (night vision,
+~2 h), then the report (~30 min). The two parts are independent: you can do Part B first.
 
 | File | What you do |
 |---|---|
-| [stars.py](file:./stars.py) | TODO 1–8: the sky, Polaris, the error budget, the Monte Carlo |
-| [thermal.py](file:./thermal.py) | TODO 9–15: night geometry, the motion gate, the data check |
+| [stars.py](file:./stars.py) | Part A — TODO 1–3 and 5–8: the sky, Polaris, the error budget, the Monte Carlo (`visible_stars`, number 4, is given) |
+| [thermal.py](file:./thermal.py) | Part B — TODO 10, 11, 13–15: night geometry, the motion gate, the data check (`parse_thermal_name` and `min_altitude`, numbers 9 and 12, are given) |
 | [compare_navera.py](file:./compare_navera.py) | given: your coverage against NAVERA's `normalize_query` |
 | [report.md](file:./report.md) | your written analysis (5 sections) |
 
@@ -69,15 +70,16 @@ Then run `python3 stars.py` again. It prints your JD and GMST next to astropy's,
 Your GMST should agree with astropy to a small fraction of an arcsecond. GAST is about 0.5 s of time
 later: the equation of the equinoxes (nutation).
 
-### Step 3 — Equatorial to horizontal (TODO 3, 4)
+### Step 3 — Equatorial to horizontal (TODO 3)
 
 > [!TASK]
 > **TODO 3.** `radec_to_altaz(ra_deg, dec_deg, lat_deg, lon_deg, gst_deg)` — **vectorised**: it
 > must accept one star or numpy arrays of stars. Formulas in the course (section 2.3) and above the
 > function.
->
-> **TODO 4.** `visible_stars(stars, lat_deg, lon_deg, gst_deg, min_alt_deg=0.0)` with **one** call
-> of `radec_to_altaz` on arrays; return dicts `{"name", "mag", "alt", "az"}`, brightest first.
+
+**Given 4** — `visible_stars(...)` is already written below TODO 3: read it. It calls your
+`radec_to_altaz` **once** on arrays of all the stars (no Python loop over the stars for the maths)
+and sorts the visible ones, brightest first. This is the pattern "vectorise, then filter".
 
 Check the worked example of the course (Vega from Jebel Shams, apparent coordinates, GAST):
 
@@ -149,7 +151,9 @@ The program writes the `"stars"` section of **results.json**. Open it.
 
 ## Part B — night vision
 
-### Step 7 — The night replay frames (TODO 9, 10)
+Part B does not use anything from Part A. If this is your second session, start here.
+
+### Step 7 — The night replay frames (TODO 10)
 
 ```bash
 head -5 /data/navera_data/camera_pkg/camera_pkg/data/thermal/flight_ready.csv
@@ -158,24 +162,25 @@ head -5 /data/navera_data/camera_pkg/camera_pkg/data/thermal/flight_ready.csv
 Each frame's file name holds a position and a height, e.g.
 `frame_0002_lat35.83026_lon10.64111_alt400m.jpg`; five frames say `NOGPS`.
 
+**Given 9** — `parse_thermal_name(filename)` (already written: read it) turns such a name into
+`(lat, lon, alt)` floats, or `None` without a position; it accepts a full path and negative numbers.
+
 > [!TASK]
-> **TODO 9.** `parse_thermal_name(filename)` → `(lat, lon, alt)` floats, or `None` without a
-> position. It must accept a full path and negative numbers (`lat-12.5`).
->
 > **TODO 10.** `scale_to_map(altitude_m, hfov_deg, width_px, lat_deg, zoom=17)`: the resize factor of
 > `normalize_query` (course, section 1.5). `m_per_px` is imported from `navmap.py` (lesson 7).
 
-### Step 8 — Coverage and minimum height (TODO 11, 12)
+### Step 8 — Coverage and minimum height (TODO 11)
 
 > [!TASK]
 > **TODO 11.** `query_coverage(width_px, height_px, altitude_m, hfov_deg, heading_deg, lat_deg)`:
 > the share of the 512 × 512 reference square covered by the scaled frame turned by its heading.
 > Sample the square at its pixel centres with `np.meshgrid`, rotate the samples into the frame's
 > axes (formula above the function), test the two half-sizes, take the mean. No loops.
->
-> **TODO 12.** `min_altitude(width_px, height_px, hfov_deg, heading_deg, lat_deg, need=0.85)` by
-> **bisection** between 50 m and 2000 m, to 0.5 m. Coverage only grows with height: that is what
-> makes bisection valid.
+
+**Given 12** — `min_altitude(width_px, height_px, hfov_deg, heading_deg, lat_deg, need=0.85)` is
+already written: read it. It finds the lowest height by **bisection** between 50 m and 2000 m, to
+0.5 m, calling your `query_coverage`. Coverage only grows with height: that is what makes bisection
+valid.
 
 Now compare your coverage with NAVERA's real `normalize_query` (it imports PyTorch: ~10 s):
 

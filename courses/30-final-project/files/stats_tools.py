@@ -63,19 +63,35 @@ def block_bootstrap_ci(n, metric, block_len=60, n_boot=2000, alpha=0.05, seed=0)
 # ---- you don't need to change anything below this line ----
 
 def write_results(path, *, project, metric, unit, better, data, n, before, after, difference,
-                  bootstrap, acceptance, decision, secondary=None):
+                  bootstrap, acceptance, decision, secondary=None, target=None):
     """Write results.json in the format the check reads.
 
     before / after / difference: {"value": float, "ci95": [lo, hi]}
-    better: "lower" or "higher" (which direction of the metric is an improvement)
+    better: "lower" or "higher" (which direction of the metric is an improvement), or
+            "closer" for a CALIBRATION metric that has a right value (e.g. "2-sigma coverage
+            should be 86 %"): then give target=86.0, and before / after / difference must be the
+            DISTANCE to the target, |value - target|, each with its own bootstrap CI (compute
+            abs(stat - target) inside the resample). It is saved as better="lower" plus the target.
     bootstrap: {"method": "moving-block" or "iid", "block_len": int, "n_boot": int, "seed": int}
     decision: "accept", "reject" or "inconclusive"  (from the acceptance criterion, fixed BEFORE)
     secondary: optional dict of other metrics (same {"before","after","difference"} shape)."""
+    if better == "closer":
+        if target is None:
+            raise ValueError('better="closer" needs target=<the right value of the metric>')
+        better = "lower"
+    elif better not in ("lower", "higher"):
+        raise ValueError(f'better must be "lower", "higher" or "closer", not {better!r}')
+    elif target is not None:
+        raise ValueError('target=... only makes sense with better="closer"')
+
     def clean(d):
         return {"value": round(float(d["value"]), 4), "ci95": [round(float(x), 4) for x in d["ci95"]]}
     out = {"project": project, "metric": metric, "unit": unit, "better": better, "data": data,
            "n": int(n), "before": clean(before), "after": clean(after), "difference": clean(difference),
            "bootstrap": bootstrap, "acceptance": acceptance, "decision": decision}
+    if target is not None:
+        out["target"] = float(target)
+        out["metric"] = f"|{metric} - {float(target):g}| (distance to the target)"
     if secondary:
         out["secondary"] = {k: {kk: clean(vv) for kk, vv in v.items()} for k, v in secondary.items()}
     with open(path, "w") as f:

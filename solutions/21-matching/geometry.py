@@ -184,6 +184,8 @@ if __name__ == "__main__":
     src, dst, H_true, is_in = synthetic_pairs()
     print(f"{len(src)} synthetic pairs, {is_in.sum()} inliers (noise 0.5 px), {(~is_in).sum()} outliers")
     print("H_true =\n", H_true)
+    print(f"  (perspective terms H[2,0], H[2,1] = {H_true[2, 0]:.1e}, {H_true[2, 1]:.1e}: small, NOT zero —"
+          " with 4 decimals they print as 0.)")
     m = _try("TODO 1", apply_homography, H_true, src[:3])
     if m is not None:
         print("TODO 1  H_true carries the first point", src[0].round(1), "to", np.round(m[0], 1))
@@ -195,6 +197,7 @@ if __name__ == "__main__":
     H = _try("TODO 3", dlt_homography, src[is_in], dst[is_in])
     if H is not None:
         print("TODO 3  DLT on the inliers only:\n", H)
+        print(f"        perspective terms {H[2, 0]:.2e}, {H[2, 1]:.2e} (truth 2.0e-05, -1.0e-05)")
     for w in (0.9, 0.7, 0.5, 0.3):
         n = _try("TODO 4", ransac_iterations, 0.99, w, 4)
         if n is None:
@@ -206,4 +209,5 @@ if __name__ == "__main__":
         print(f"TODO 5  RANSAC: {mask.sum()} inliers, {np.sum(mask & is_in)} of them true inliers")
         sp = _try("TODO 6", similarity_params, Hr)
         if sp:
-            print("TODO 6  ", {k: round(v, 4) for k, v in sp.items()}, "(truth: rotation 35, scale ~1.2)")
+            print("TODO 6  ", {k: (f"{v:.2e}" if k == "perspective" else round(v, 4)) for k, v in sp.items()},
+                  "(truth: rotation 35, scale ~1.2, perspective ~2.2e-05)")

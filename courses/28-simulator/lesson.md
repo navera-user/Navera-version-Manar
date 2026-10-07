@@ -1,5 +1,18 @@
 # Simulation and fault injection: SITL, MAVLink and NAVERA's mission simulator
 
+> [!NOTE] In short
+> - You cannot jam GPS over Oman to test NAVERA, so you test it in a **simulator**, where you can
+>   repeat a failure safely.
+> - NAVERA's mission simulator joins ArduPilot **SITL**, **MAVLink** and simulated sensors in a
+>   closed loop.
+> - NAVERA sends its position to the autopilot in a MAVLink `GPS_INPUT` message, which you can
+>   decode byte by byte.
+> - A **fault-injection campaign** runs scripted failures and turns the results into PASS / FAIL
+>   verdicts.
+> - A simulation proves behaviour (logic, timing, integration), not real accuracy.
+> - In the lab you decode MAVLink messages, check the sensor models, and analyse a campaign of
+>   five flights.
+
 A survey drone leaves Sohar to inspect the coast towards Shinas. Halfway, its GPS stops giving a fix.
 GNSS interference is a known problem for aviation and shipping in several regions of the world, so
 this is not science fiction: the question is what the whole system does at that moment. Does NAVERA

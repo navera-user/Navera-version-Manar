@@ -206,7 +206,8 @@ def _():
     r = results()
     for k in ("metric", "unit", "better", "n", "before", "after", "difference", "bootstrap", "acceptance", "decision"):
         c.ok(k in r, f"results.json has no key '{k}'")
-    c.ok(r["better"] in ("lower", "higher"), "'better' must be \"lower\" or \"higher\"")
+    c.ok(r["better"] in ("lower", "higher"),
+         "'better' must be \"lower\" or \"higher\" (write_results saves better=\"closer\" as \"lower\")")
     c.ok(isinstance(r["n"], int) and r["n"] >= 20, "'n' should be the number of samples (at least 20)")
     for k in ("before", "after", "difference"):
         v, ci = r[k].get("value"), r[k].get("ci95")

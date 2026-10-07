@@ -1,5 +1,17 @@
 # Who to trust? The arbiter as a state machine
 
+> [!NOTE] In short
+> - The autopilot needs **one** position and an honest uncertainty every 0.2 s, but NAVERA's
+>   sources disagree.
+> - The **arbiter** is a state machine: it checks that each source is eligible (valid, fresh,
+>   finite), then picks the first one in priority order.
+> - **Hysteresis** (a 2 s hold-off) stops the output from switching back and forth when the GPS
+>   flips between valid and invalid.
+> - NAVERA **selects** one source instead of fusing them: the gain is small, errors can be
+>   correlated, and a spoofed GPS would pull the fused position.
+> - In the lab you build the arbiter as a `decide()` function, prove it matches the real
+>   `estimator_node`, and measure its trade-offs.
+
 A survey drone flies north along the Batinah coast towards Sohar port at 40 m/s. Its GPS says
 *"you are here, σ = 3 m"*. Its day camera, matching the ground against a satellite map, says
 *"you are 40 m further inland, σ = 30 m"*. The star camera says *"you are somewhere in a circle
@@ -146,7 +158,8 @@ Choosing `T_s` is a **trade-off** between two errors:
   available).
 
 **A model of availability.** Suppose the gaps `G` between frames are independent with the same
-distribution. In each gap the source is fresh for `min(G, T)` seconds, so (renewal theory)
+distribution. In each gap the source is fresh for `min(G, T)` seconds, so (a result of **renewal theory**, the probability theory of events that repeat with random
+gaps; you do not need more of it than this formula)
 
 ```
 availability(T) = E[min(G, T)] / E[G]
@@ -173,7 +186,8 @@ Among the eligible sources, the winner is the **first** one in a fixed order:
 w(t) = first s in (gps, day, night, cn) such that E_s(t)          (none → NO_FIX)
 ```
 
-This is a **lexicographic** policy: GPS always beats day vision when both are eligible, whatever
+This is a **lexicographic** policy (like the order of words in a dictionary: compare the first
+letter first, and look at the next letter only when the first ones are equal): GPS always beats day vision when both are eligible, whatever
 their stated σ. The order is the order of quality *when the source works*: a GPS lock is metres,
 day vision tens of metres (stated), night vision fewer landmarks, celestial tens of km.
 
@@ -233,7 +247,7 @@ The `state` tells the operator and the autopilot how much to trust the position.
 | nothing ever received | INITIALIZING | `waiting for first source message` |
 
 The threshold is `fix_max_sigma_m = 25 m`. A GPS with poor satellite geometry (HDOP 20) states
-σ ≈ 40 m: it still wins, but it is DEGRADED. The rule is **self-correcting**: the day day-vision
+σ ≈ 40 m: it still wins, but it is DEGRADED. The rule is **self-correcting**: when day vision's
 accuracy is measured and stated below 25 m, day vision becomes FIX without changing one line of
 the arbiter. Promotion is the reward for *measuring*, never a decision.
 

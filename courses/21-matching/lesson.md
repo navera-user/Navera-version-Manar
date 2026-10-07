@@ -1,5 +1,18 @@
 # Matching and geometry: ratio test, DLT and RANSAC
 
+> [!NOTE] In short
+> - When GPS is jammed, NAVERA must find which frame keypoints match which map keypoints, and how
+>   the frame lies on the map.
+> - The **ratio test** keeps a match only when the best map descriptor is clearly better than the
+>   second best.
+> - The **DLT** computes a homography from point pairs, and **RANSAC** finds the right one even
+>   when many pairs are wrong.
+> - **Trust gates** (inliers, rotation, scale, spread, prediction) stop NAVERA from believing a
+>   wrong place.
+> - In the lab you write your own DLT and RANSAC with NumPy, compare them with OpenCV, and apply
+>   NAVERA's trust gates.
+> - NAVERA's `LocalMatcher.locate()` uses the same ratio test (0.8) and RANSAC.
+
 A survey drone flies along the coast north of Sohar at 300 m. Ships and aircraft in the Gulf of Oman
 and the Strait of Hormuz regularly report **GNSS interference**, and today the drone's GPS receiver
 shows nonsense. The camera still works. NAVERA has the satellite map on board, and lesson 20 gave
@@ -132,9 +145,25 @@ H = Vt[-1].reshape(3, 3)
 H = H / H[2, 2]          # the usual scale: H[2, 2] = 1
 ```
 
+> [!NOTE]
+> **Why the smallest singular vector? (a short primer)** The **SVD** writes any matrix as
+> A = U Σ Vᵀ, where U and V are rotation-like matrices (their columns are orthonormal: length 1,
+> perpendicular to each other) and Σ is diagonal with the **singular values** σ₁ ≥ σ₂ ≥ … ≥ σ₉ ≥ 0.
+>
+> 1. Rotations do not change lengths. So ‖A h‖ = ‖U Σ Vᵀ h‖ = ‖Σ z‖ with **z = Vᵀ h**, and
+>    ‖z‖ = ‖h‖ = 1.
+> 2. ‖Σ z‖² = σ₁² z₁² + σ₂² z₂² + … + σ₉² z₉², with z₁² + … + z₉² = 1. This is a weighted average
+>    of the σᵢ². It is smallest when all the weight is on the smallest one: z = (0, …, 0, 1).
+> 3. Back to h: h = V z = the **last column of V** = the last row of Vᵀ. The minimum value of
+>    ‖A h‖ is σ₉. With 4 exact pairs σ₉ = 0 (an exact solution); with noise σ₉ is small but not 0.
+>
+> Example: if Σ = diag(5, 2, 0.1), the unit vector z that makes ‖Σ z‖ smallest is (0, 0, 1),
+> giving 0.1; any mix such as z = (0.6, 0, 0.8) gives √(25·0.36 + 0.01·0.64) ≈ 3.0.
+
 With exactly 4 pairs (no 3 on a line), A is 8 × 9, has a one-dimensional null space, and H is
 exact. With more pairs the DLT is a least-squares fit of the **algebraic** error ‖A h‖ — not exactly
-the pixel error, but close when the data are well conditioned.
+the pixel error, but close when the data are **well conditioned** (small rounding errors in A only
+cause small changes in h — see the next part).
 
 ### Normalisation (Hartley, 1997)
 
@@ -161,7 +190,8 @@ Run the DLT on the normalised points (T_src·x ↔ T_dst·u) to get Hn, then und
 H = T_dst⁻¹ · Hn · T_src
 ```
 
-What you will measure in the lab (8 random pairs with 1 px noise, 200 trials):
+What the lab's `experiments.py` measures (8 random pairs with 1 px noise, 200 trials, error averaged
+over a grid of 63 image points; a quicker test in lab Step 4 gives about 1.9 / 39 px — same conclusion):
 
 | Map coordinates | cond(A) raw | cond(A) normalised | median error raw | median error normalised |
 |---|---|---|---|---|
@@ -172,8 +202,9 @@ Normalisation is cheap and never hurts. Always do it.
 
 ## 5. RANSAC
 
-Least squares has a **breakdown point** of 0 %: one single outlier, far enough away, can move the
-fit anywhere. After the ratio test, 10–90 % of the pairs can still be wrong. **RANSAC** (RANdom SAmple
+Least squares has a **breakdown point** of 0 % (the breakdown point is the fraction of wrong data
+a method can survive before its answer becomes meaningless): one single outlier, far enough away,
+can move the fit anywhere. After the ratio test, 10–90 % of the pairs can still be wrong. **RANSAC** (RANdom SAmple
 Consensus) is robust:
 
 1. Draw a **minimal sample** of s pairs at random (s = 4 for a homography).
@@ -214,8 +245,11 @@ it stops after a handful of samples.
 ### The inlier threshold
 
 If the true matches have Gaussian position noise σ in each axis, the squared reprojection error
-divided by σ² follows a χ² distribution with 2 degrees of freedom. Accepting 95 % of the true
-inliers needs t² = 5.99 σ², so **t ≈ 2.45 σ**. Keypoints are located to 1–2 px, so t = 3–6 px is
+divided by σ² is (ex/σ)² + (ey/σ)²: a sum of **two squared standard normal numbers**. The
+distribution of such a sum has a name, **χ² ("chi-squared") with 2 degrees of freedom**; tables
+give its percentiles, and its 95 % point is 5.99. (Lesson 26 explains χ² properly; here you only
+need this one number.) Accepting 95 % of the true inliers therefore needs t² = 5.99 σ², so
+**t ≈ 2.45 σ**. Keypoints are located to 1–2 px, so t = 3–6 px is
 typical. NAVERA uses `ransac_px = 6.0` in map pixels at zoom 17 (≈ 0.97 m), i.e. about 6 m on the
 ground. Too small a threshold drops good pairs; too large lets wrong pairs vote.
 
@@ -282,7 +316,7 @@ pixels for ≥ 100, ≥ 50, ≥ 20 or fewer inliers — at 0.97 m per pixel, fro
 
 In 2004 Dora Biro, Jessica Meade and Tim Guilford (University of Oxford) put small GPS loggers on
 homing pigeons and released them many times from the same sites. Each bird developed its **own
-idiosyncratic route** home and followed it faithfully, flight after flight, often along roads,
+personal route** home (different from the routes of the other birds) and followed it faithfully, flight after flight, often along roads,
 rivers and field edges. The best explanation is **visual pilotage**: the bird matches what it sees
 with remembered landmarks along the route.
 
@@ -346,6 +380,8 @@ are not frames from NAVERA's own camera, and positions are stated at ±30 m unti
 | **degrees of freedom (DOF)** | the number of independent parameters of a model |
 | **DLT** | Direct Linear Transform: solve A h = 0 with the SVD |
 | **SVD** | A = U Σ Vᵀ; the last row of Vᵀ minimises ‖A h‖ with ‖h‖ = 1 |
+| **χ² with 2 degrees of freedom** | the distribution of a sum of two squared standard normal numbers; its 95 % point is 5.99 (lesson 26) |
+| **breakdown point** | the fraction of wrong data a method survives before its answer becomes meaningless |
 | **condition number** | σ_max / σ_min of a matrix; large = sensitive to rounding and noise |
 | **Hartley normalisation** | centroid to 0, mean distance √2, before the DLT |
 | **RANSAC** | fit minimal random samples, keep the model with most inliers, refit |

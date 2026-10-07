@@ -4,7 +4,7 @@
 normalisation, DLT with the SVD, the RANSAC sample formula, adaptive RANSAC, decomposition of H),
 use it to lay synthetic drone views onto the satellite map, compare it with `cv2.findHomography`,
 apply NAVERA's trust gates, and write a short analysis of your measurements.
-**Time:** 2.5–3 h.
+**Time:** 4–5 h (the maths of Steps 3–6 takes most students longer than they expect).
 
 Your files:
 
@@ -83,10 +83,10 @@ python3 geometry.py
 ```
 
 The DLT on the true inliers must give almost exactly `H_true`. Compare with OpenCV's own DLT
-(method `0` = plain least squares, no RANSAC) on the noise-free inliers:
+(method `0` = plain least squares, no RANSAC) on noise-free pairs (`noise_px=0.0`, no outliers):
 
 ```bash
-python3 -c "import cv2, numpy as np, geometry as g; s, d, H, m = g.synthetic_pairs(outlier_ratio=0.0); np.set_printoptions(precision=5, suppress=True); print('mine\n', g.dlt_homography(s, d)); print('opencv\n', cv2.findHomography(s, d, 0)[0])"
+python3 -c "import cv2, numpy as np, geometry as g; s, d, H, m = g.synthetic_pairs(outlier_ratio=0.0, noise_px=0.0); np.set_printoptions(precision=5, suppress=True); print('mine\n', g.dlt_homography(s, d)); print('opencv\n', cv2.findHomography(s, d, 0)[0])"
 ```
 
 Now see why normalisation matters: 50 sets of 8 noisy pairs (1 px), with the map side moved to
@@ -96,7 +96,15 @@ global tile pixels (+3.55 × 10⁷, like NAVERA's map points), with and without 
 python3 -c "import numpy as np, geometry as g; P = [g.synthetic_pairs(n=8, outlier_ratio=0.0, noise_px=1.0, seed=k) for k in range(50)]; grid = np.array([[0, 0], [640, 0], [640, 480], [0, 480], [320, 240]]); [print('normalise =', n, '  median error over 50 trials:', round(float(np.median([g.reprojection_errors(g.dlt_homography(s, d + 3.55e7, normalise=n), grid, g.apply_homography(H, grid) + 3.55e7).mean() for s, d, H, m in P])), 2), 'px') for n in (True, False)]"
 ```
 
-Expected: about 2 px normalised, about 40 px raw.
+Expected: about **1.9 px** normalised, about **39 px** raw (raw is about 20 × worse).
+
+> [!NOTE]
+> The lesson's table says 1.35 px / 25.3 px. Both are right: they are **two different experiments**.
+> This quick test uses 50 different random sets of 8 pairs and measures the error at a grid of
+> **5 points**. The lesson's numbers come from `experiments.py` (Step 11): 200 draws of 8 pairs from
+> one fixed set of 300 pairs, error averaged over a grid of **63 points**; you will find them in
+> `results.json` → `normalisation`. Different samples give different numbers; the conclusion is the
+> same: without normalisation the error is about 20 × larger.
 
 > [!QUESTION]
 > Look at the columns of A for a point near 3.55 × 10⁷: what is the ratio between the largest and

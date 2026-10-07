@@ -25,7 +25,7 @@ QUERY_PX = 512                # STHN_QUERY_PX: the reference square, in map pixe
 MIN_COVERAGE = 0.85           # MIN_QUERY_COVERAGE in night_localizer.py
 
 
-# TODO 9 — read the position written in a frame's file name.
+# GIVEN 9 (already written for you: read it, nothing to change) — read the position written in a frame's file name.
 #   "frame_0002_lat35.83026_lon10.64111_alt400m.jpg"  ->  (35.83026, 10.64111, 400.0)
 #   "frame_0004_NOGPS_alt400m.jpg"                    ->  None   (no position recorded)
 #   Works with a full path and with negative numbers ("lat-12.5").
@@ -70,7 +70,7 @@ def query_coverage(width_px, height_px, altitude_m, hfov_deg, heading_deg, lat_d
     return float(np.mean((np.abs(x) <= W / 2.0) & (np.abs(y) <= H / 2.0)))
 
 
-# TODO 12 — the lowest height (m) at which query_coverage >= need, by BISECTION between lo and hi
+# GIVEN 12 (already written for you: read it, nothing to change) — the lowest height (m) at which query_coverage >= need, by BISECTION between lo and hi
 # (coverage grows with height). Stop when hi - lo < tol; return hi (a height that is enough).
 def min_altitude(width_px, height_px, hfov_deg, heading_deg, lat_deg, need=MIN_COVERAGE, lo=50.0, hi=2000.0, tol=0.5):
     while hi - lo > tol:

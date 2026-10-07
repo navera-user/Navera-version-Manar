@@ -5,7 +5,7 @@ the MAVLink messages NAVERA sends to the autopilot, (B) check the simulator's se
 their theory, (C) turn a recorded fault-injection campaign of five flights into measurements and
 PASS / FAIL verdicts, (D) write a short test report, and (E) if the simulator is free, fly your own
 scripted scenario.
-**Time:** about 3 hours (Part E adds 20 minutes).
+**Time:** about 4 h (Part E, with the simulator, adds 30–45 minutes).
 
 Your files:
 
@@ -71,7 +71,8 @@ python3 mavlink_lab.py
 ```
 
 You should now see the first four frames, alternating `msgid 0` (len 9) and `msgid 232` (len 62 —
-not 65!), all with `crc_ok True`.
+not 65!), all with `crc_ok True`. The lesson's worked frame had len 63; here `satellites_visible` is
+0 too, so one more trailing zero byte is truncated (65 − 3 = 62).
 
 ### Step 4 — Decode GPS_INPUT (TODO 3–5)
 
@@ -207,14 +208,17 @@ python3 campaign.py --flight /data/academy/28-simulator/campaign/off_target.csv
 ### Step 11 — Requirements and the campaign table (TODO 7)
 
 `REQUIREMENTS` lists R1–R6 as tuples `(id, applies to, text, measured key, test)`. **TODO 7**: add
-R7 for the slow drift (see the comment). Then run the whole campaign:
+R7 for the slow drift (see the comment): it PASSES when `gps_err_max_m` is **at most** 150 m
+(`<= 150`, so exactly 150 m still passes) and FAILS for `None`. Then run the whole campaign:
 
 ```bash
 python3 campaign.py
 ```
 
 It prints one block per fault with its verdicts and writes `results.json` (the campaign, plus the
-summaries of Parts A and B).
+summaries of Parts A and B). The recorded campaign alone gives **22 PASS, 0 FAIL**. After Part E,
+`campaign.py` also reads your `my_runs/*.csv`, so the total grows (for example 25 PASS) — that is
+normal; the check counts the recorded campaign only.
 
 > [!WARNING]
 > **Resolution and bias.** The flights have one row per second, and the recorder writes a row *before*
@@ -248,8 +252,10 @@ Skip this part if the simulator is not available today (`NO_SIMULATOR = True`).
 
 ### Step 13 — Take the simulator
 
-1. **Hardware** (top bar) → *Mission simulator* → **Take**. Then open a **new** terminal tab: its first
-   line says `[this terminal has access to: sim]`.
+1. **Hardware** (top bar) → *Mission simulator* → **Take**. Then open a **new** terminal tab (only
+   terminals opened *after* Take can use the simulator). Its first line usually says
+   `[this terminal has access to: sim]`; if you do not see that line, continue — the next steps show
+   whether the simulator works.
 2. Check that nobody uses the simulator's ports — this must print **nothing**:
 
 ```bash
@@ -276,6 +282,11 @@ scenario under 150 s after "en route" (the route is ~4 km). Then, in a second te
 ```bash
 python3 sim_ctl.py campaign my_scenario.json --out-dir my_runs
 ```
+
+`sim_ctl.py` checks your scenario file and creates `my_runs/` **before** it sends anything to the
+simulator; a typo (`"jamed"`, a missing comma) stops it with a clear message and nothing flies. If
+anything goes wrong during the flight (or you press `Ctrl+C`), it resets the faults and stops the
+mission, so the shared simulator is never left flying alone.
 
 It takes about 4 minutes: start, alignment on NAVERA's GPS (30–60 s), take-off, your faults, stop.
 Meanwhile, watch the **🛩️ Simulator** and **🧭 Operator view** tabs. `my_runs/<name>_events.log` also

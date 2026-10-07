@@ -20,7 +20,7 @@ intervals were obtained: bootstrap, block length, paired or not, B, seed.)
 |---|---|---|---|---|---|---|---|---|---|
 | target (15 m profile, not measured) | (s) | (m) [lo, hi] | (m) | (m) | (m) | (m) | [lo, hi] | (%) | (s) |
 | measured (former day vision) | (s) | (m) [lo, hi] | (m) | (m) | (m) | (m) | [lo, hi] | (%) | (s) |
-| selective (synthetic) | (s) | (m) [lo, hi] | (m) | (m) | (m) | (m) | [lo, hi] | (%) | (s) |
+| selective (synthetic) — give the iid CI (see the lab, Step 4) | (s) | (m) [lo, hi] | (m) | (m) | (m) | (m) | [lo, hi] | (%) | (s) |
 
 ## Is the difference real?
 

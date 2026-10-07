@@ -114,23 +114,82 @@ def mission(vision="target", start=START, dest=DEST, speed=15.0, alt=150.0):
                               max_speed_mps=30.0, camera_mount="gimbal"))
 
 
+FAULT_VALUES = {"gps": ("ok", "jammed", "spoof_jump", "spoof_drift", "off"), "camera": ("ok", "failed")}
+
+
+def load_scenario(path):
+    """Read and check a scenario file. Every mistake is found HERE, before anything is sent to the
+    simulator (the simulator is shared by the class: a half-started mission must never be left flying)."""
+    try:
+        with open(path) as f:
+            sc = json.load(f)
+    except FileNotFoundError:
+        sys.exit(f"scenario file not found: {path}")
+    except json.JSONDecodeError as e:
+        sys.exit(f"{path} is not valid JSON: {e}")
+    if not isinstance(sc, dict):
+        sys.exit(f"{path}: the scenario must be a JSON object {{...}}")
+    name = sc.get("name")
+    if not isinstance(name, str) or not name or any(ch in name for ch in "/\\") or name.startswith("."):
+        sys.exit(f'{path}: "name" must be a simple file name like "my_run" (no "/")')
+    if sc.get("vision", "target") not in ("target", "measured"):
+        sys.exit(f'{path}: "vision" must be "target" or "measured", not {sc.get("vision")!r}')
+    faults = sc.get("faults", [])
+    if not isinstance(faults, list):
+        sys.exit(f'{path}: "faults" must be a list like [[30, "gps", "jammed"], [70, "gps", "ok"]]')
+    for i, fl in enumerate(faults):
+        if not (isinstance(fl, list) and len(fl) == 3 and isinstance(fl[0], (int, float))
+                and not isinstance(fl[0], bool) and fl[0] >= 0):
+            sys.exit(f"{path}: fault {i} = {fl!r} must be [seconds >= 0, what, value]")
+        if fl[1] not in FAULT_VALUES or fl[2] not in FAULT_VALUES[fl[1]]:
+            sys.exit(f"{path}: fault {i} = {fl!r}: allowed are "
+                     + "; ".join(f"{k}: {'|'.join(v)}" for k, v in FAULT_VALUES.items()))
+    for key, default in (("tail_s", 40), ("max_s", 900)):
+        v = sc.get(key, default)
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or v <= 0:
+            sys.exit(f'{path}: "{key}" must be a positive number of seconds, not {v!r}')
+    sc["faults"] = sorted(faults, key=lambda fl: fl[0])
+    return sc
+
+
+def safe_stop():
+    """Best effort: faults back to ok and mission stopped. Never exits, never raises."""
+    for path, body in (("/api/fault", {"gps": "ok", "camera": "ok"}), ("/api/stop", {})):
+        try:
+            req = urllib.request.Request(URL + path, data=json.dumps(body).encode(), method="POST",
+                                         headers={"Content-Type": "application/json"})
+            urllib.request.urlopen(req, timeout=5).read()
+        except Exception as e:                       # noqa: BLE001 — we are already cleaning up
+            print(f"  (warning: {path} failed during clean-up: {e})", file=sys.stderr)
+
+
 def campaign(path, out_dir="."):
     """Run one scripted scenario: the same mission, the same faults at the same times, every time."""
-    with open(path) as f:
-        sc = json.load(f)
-    name = sc["name"]
-    faults = sorted(sc.get("faults", []))
+    # 1. check everything BEFORE touching the shared simulator
+    sc = load_scenario(path)
+    name, faults = sc["name"], sc["faults"]
+    call("/api/state")                                       # reachable? (read only: changes nothing)
+    try:
+        os.makedirs(out_dir, exist_ok=True)                  # --out-dir my_runs works on the first run
+    except OSError as e:
+        sys.exit(f"cannot create the output folder {out_dir!r}: {e}")
     csv_path = os.path.join(out_dir, f"{name}.csv")
     ev_path = os.path.join(out_dir, f"{name}_events.log")
-    call("/api/fault", {"gps": "ok", "camera": "ok"})          # a clean start
-    mission(sc.get("vision", "target"))
-    print(f"{name}: mission sent; faults {faults} (s after en route)")
-    seen, t0, t_enroute, k = set(), time.time(), None, 0
-    end_after = (faults[-1][0] if faults else 0) + float(sc.get("tail_s", 40))
-    with open(csv_path, "w", newline="") as f, open(ev_path, "w") as ev:
-        w = csv.DictWriter(f, fieldnames=COLUMNS)
-        w.writeheader()
+    try:                                                     # open (= test) both files before flying
+        f = open(csv_path, "w", newline="")
+        ev = open(ev_path, "w")
+    except OSError as e:
+        sys.exit(f"cannot write the output files in {out_dir!r}: {e}")
+    # 2. from here on, ANY error (or Ctrl+C) still resets the faults and stops the mission
+    with f, ev:
         try:
+            call("/api/fault", {"gps": "ok", "camera": "ok"})          # a clean start
+            mission(sc.get("vision", "target"))
+            print(f"{name}: mission sent; faults {faults} (s after en route)")
+            seen, t0, t_enroute, k = set(), time.time(), None, 0
+            end_after = (faults[-1][0] if faults else 0) + float(sc.get("tail_s", 40))
+            w = csv.DictWriter(f, fieldnames=COLUMNS)
+            w.writeheader()
             while time.time() - t0 < float(sc.get("max_s", 900)):
                 st = call("/api/state")
                 t = time.time() - t0
@@ -157,10 +216,10 @@ def campaign(path, out_dir="."):
                         break
                 time.sleep(max(0.0, 1.0 - (time.time() - t0 - t)))
         except KeyboardInterrupt:
-            pass
-    call("/api/fault", {"gps": "ok", "camera": "ok"})
-    call("/api/stop", {})
-    print(f"saved {csv_path} and {ev_path}")
+            print("  stopped by Ctrl+C")
+        finally:                                             # also runs on errors and sys.exit()
+            safe_stop()
+            print(f"mission stopped; saved {csv_path} and {ev_path}")
 
 
 def main():
@@ -188,12 +247,18 @@ def main():
     if a.cmd == "status":
         status()
     elif a.cmd == "mission":
-        start = [float(v) for v in a.start.split(",")]
-        dest = [float(v) for v in a.dest.split(",")]
+        try:
+            start = [float(v) for v in a.start.split(",")]
+            dest = [float(v) for v in a.dest.split(",")]
+            assert len(start) == 2 and len(dest) == 2
+        except (ValueError, AssertionError):
+            sys.exit("--start and --dest must be 'lat,lon' in degrees, e.g. 35.8256,10.6385")
         mission(a.vision, start, dest, a.speed, a.alt)
         print("mission sent: the autopilot starts, aligns on NAVERA's GPS (30–60 s), arms and takes off.\n"
               "Follow it with:  python3 sim_ctl.py status")
     elif a.cmd == "fault":
+        if a.value not in FAULT_VALUES[a.what]:
+            sys.exit(f"{a.what} accepts: {'|'.join(FAULT_VALUES[a.what])}")
         call("/api/fault", {a.what: a.value})
         print(f"fault injected: {a.what} -> {a.value}")
     elif a.cmd == "record":

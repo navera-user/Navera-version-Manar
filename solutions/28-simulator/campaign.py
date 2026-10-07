@@ -149,7 +149,7 @@ REQUIREMENTS = [
     ("R5", "*spoof", "no second with NAVERA on a GPS more than 100 m wrong", "spoof_leak_s", lambda v: v == 0),
     ("R6", "failed", "camera lost while GPS is down: NO FIX within 6 s and the autopilot fails safe (LAND)",
      "nofix_s", None),
-    ("R7", "spoof_drift", "a slow GPS drift is refused before it drags NAVERA 150 m away", "gps_err_max_m",
+    ("R7", "spoof_drift", "a slow GPS drift is refused before it drags NAVERA more than 150 m away (<= 150 m)", "gps_err_max_m",
      lambda v: v is not None and v <= 150.0),
 ]
 

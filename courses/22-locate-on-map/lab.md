@@ -4,7 +4,7 @@
 similarity, gates, centre → lat/lon), measure two error sources experimentally (wrong height,
 tilted camera), evaluate your pipeline and NAVERA's own `LocalMatcher` on the same 13 photos, and
 write a short engineering report.
-**Time:** 2 h 30 – 3 h.
+**Time:** 3 h 30 – 4 h.
 
 | File | What you do in it |
 |---|---|
@@ -164,7 +164,7 @@ Open [budget.py](file:./budget.py). Four small formulas from section 7 of the co
 > - **TODO 8** `rss(terms)` and `error_budget(...)` — the four terms in metres (tilt, matcher =
 >   pixels × map metres per pixel, lag = speed × lag, map) and `total_m` = their RSS.
 
-Quick tests (the expected values are in the course):
+Quick tests (the formulas are in the course, §2 and §7a — the course has no 5° example, so the expected values are given just below):
 
 ```bash
 python3 -c "from budget import *; print(expected_scale(200, 160), tilt_offset_m(200, 5), rss([3, 4]))"
