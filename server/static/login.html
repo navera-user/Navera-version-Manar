@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NAVERA Academy</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  body { display: flex; align-items: center; justify-content: center; min-height: 100%;
+    background: radial-gradient(1200px 600px at 20% 10%, #12a1b8 0%, transparent 60%), linear-gradient(140deg, #0b1620, #0e2a3a 60%, #0b6e8a); }
+  .box { background: #fff; border-radius: 18px; padding: 30px 30px 24px; width: min(380px, 92vw); box-shadow: 0 24px 70px rgba(0,0,0,.35); }
+  .box h1 { margin: 10px 0 2px; font-size: 24px; }
+  .box p { color: var(--muted); margin: 0 0 18px; line-height: 1.45; font-size: 14px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  input { width: 100%; }
+  button { width: 100%; margin-top: 18px; padding: 10px; }
+  .err { color: var(--bad); font-size: 14px; min-height: 20px; margin-top: 10px; }
+</style>
+</head>
+<body>
+<form class="box" id="f">
+  <svg width="44" height="44" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15" fill="#0b6e8a"/><path d="M16 5 L22 25 L16 21 L10 25 Z" fill="#fff"/><circle cx="16" cy="16" r="2" fill="#f2a33a"/></svg>
+  <h1>NAVERA Academy</h1>
+  <p>Learn how a robot finds its way when GPS is gone: with cameras, maps, stars and a lot of code.</p>
+  <label for="n">Your name</label><input id="n" autocomplete="username" autofocus>
+  <label for="p">Password</label><input id="p" type="password" autocomplete="current-password">
+  <button class="primary">Log in</button>
+  <div class="err" id="e"></div>
+</form>
+<script>
+document.getElementById('f').onsubmit = async (ev) => {
+  ev.preventDefault();
+  const r = await fetch('/api/login', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: n.value, password: p.value})});
+  const d = await r.json();
+  if (r.ok) location.href = d.role === 'teacher' ? '/teacher' : '/';
+  else document.getElementById('e').textContent = d.error || 'Error';
+};
+</script>
+</body>
+</html>

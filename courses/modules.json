@@ -1,0 +1,16 @@
+[
+ {"title": "1 · Welcome aboard", "desc": "What NAVERA is, and the tools every robot engineer uses: the terminal, Python and git.",
+  "lessons": ["01-welcome", "02-terminal", "03-python-basics", "04-python-data", "05-git"]},
+ {"title": "2 · Where am I? Coordinates, maps and images", "desc": "How a position is written, how the Earth is cut into map tiles, and why a photo is just numbers.",
+  "lessons": ["06-coordinates", "07-map-tiles", "08-images"]},
+ {"title": "3 · Robots talk: ROS 2", "desc": "Nodes, topics and messages — how the parts of NAVERA talk to each other — and how engineers test them.",
+  "lessons": ["09-ros-intro", "10-publisher", "11-subscriber", "12-position-message", "13-launch-params", "14-testing"]},
+ {"title": "4 · Sensors", "desc": "GPS, the IMU and the camera: what each one measures and how NAVERA reads it.",
+  "lessons": ["15-gps-nmea", "16-imu", "17-camera-model", "18-calibration", "19-live-camera"]},
+ {"title": "5 · Seeing the way: vision navigation", "desc": "Find a drone photo on a satellite map, follow the motion between photos, and navigate at night and by the stars.",
+  "lessons": ["20-features", "21-matching", "22-locate-on-map", "23-visual-odometry", "24-night-and-stars"]},
+ {"title": "6 · Who to trust? Fusion and safety", "desc": "How NAVERA chooses between its sources, how sure it is, and how it catches a fake GPS.",
+  "lessons": ["25-arbiter", "26-uncertainty", "27-spoofing"]},
+ {"title": "7 · The whole system", "desc": "Fly full missions in the simulator, measure honestly, and build your own improvement.",
+  "lessons": ["28-simulator", "29-measuring", "30-final-project"]}
+]

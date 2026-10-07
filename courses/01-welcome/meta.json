@@ -1,0 +1,3 @@
+{"number": "01", "title": "Welcome: how does a robot know where it is?", "module": 1, "duration": "1 h",
+ "summary": "GPS, why it fails, and how NAVERA keeps a vehicle on track anyway. Your first command and your first edit.",
+ "resources": [], "open": ["hello_navera.py", "answers.py"], "check_timeout_s": 60}

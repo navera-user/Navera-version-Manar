@@ -1,0 +1,9 @@
+# runtime data — never committed
+students/
+state/
+logs/
+base/
+base.new/
+base.old/
+__pycache__/
+*.pyc

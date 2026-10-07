@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NAVERA Academy — Teacher</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .wrap { padding: 22px clamp(16px, 3vw, 40px) 60px; height: calc(100% - 52px); overflow: auto; }
+  .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+  select { min-width: 0; max-width: 100%; }
+  #pgrid table { width: auto; }
+  #pgrid td, #pgrid th { padding: 4px 6px; text-align: center; }
+  @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+  .box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; box-shadow: var(--shadow); margin-bottom: 16px; }
+  .box h2 { margin: 0 0 10px; font-size: 17px; }
+  .box p { color: var(--muted); margin: 4px 0 10px; font-size: 14px; line-height: 1.5; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { border-bottom: 1px solid var(--line); padding: 7px 8px; text-align: left; white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; }
+  td .bar { height: 8px; border-radius: 4px; background: var(--bg); width: 120px; overflow: hidden; display: inline-block; vertical-align: middle; }
+  td .bar i { display: block; height: 100%; background: var(--ok); }
+  .grid { overflow: auto; }
+  .cell { width: 18px; height: 18px; border-radius: 4px; display: inline-block; background: var(--bg); border: 1px solid var(--line); }
+  .cell.passed { background: var(--ok); border-color: var(--ok); }
+  .cell.started { background: var(--accent); border-color: var(--accent); }
+  textarea { width: 100%; min-height: 90px; font-family: ui-monospace, monospace; font-size: 13px; }
+  .acts button { padding: 3px 8px; font-size: 13px; }
+  pre.log { background: #0f1720; color: #d6e2ea; padding: 10px; border-radius: 8px; max-height: 220px; overflow: auto; font-size: 12px; white-space: pre-wrap; }
+  .creds { background: #fffbea; border: 1px solid #f1d98a; padding: 10px; border-radius: 8px; font-family: ui-monospace, monospace; font-size: 13px; white-space: pre; margin-top: 10px; display: none; }
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="logo" onclick="location.href='/'">
+    <svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="15" fill="#0b6e8a"/><path d="M16 5 L22 25 L16 21 L10 25 Z" fill="#fff"/><circle cx="16" cy="16" r="2" fill="#f2a33a"/></svg>
+    NAVERA <small>Academy · Teacher</small>
+  </div>
+  <div class="crumb"></div>
+  <button onclick="location.href='/'">📚 My workspace</button>
+  <button id="logout">🚪 Log out</button>
+</div>
+<div class="wrap">
+  <div class="box">
+    <h2>Students</h2>
+    <p>Each student has a private NAVERA copy, lesson files and terminals in a sandbox. "Open" shows their workspace as they see it.</p>
+    <div class="grid"><table id="tbl"></table></div>
+  </div>
+  <div class="grid2">
+    <div class="box">
+      <h2>Add students</h2>
+      <p>One per line: <code>login, Display name, password</code> — name and password are optional (a password is generated).
+        Logins: lower-case letters, digits and _.</p>
+      <textarea id="names" placeholder="amine, Amine B.&#10;sarra&#10;youssef, Youssef K., mypass123"></textarea>
+      <div style="margin-top:8px"><button class="primary" id="add">Create accounts</button></div>
+      <div class="creds" id="creds"></div>
+    </div>
+    <div class="box">
+      <h2>NAVERA base</h2>
+      <p>The version every student starts from and returns to with Reset. Taken from your real <code>~/Navera</code> repository
+        (read only, never changed). Changing it affects only the next reset / new students.</p>
+      <div id="baseNow"></div>
+      <div style="display:flex; gap:8px; margin-top:10px"><select id="commit" style="flex:1"></select><button id="rebase">Use this commit</button></div>
+      <pre class="log" id="baseLog" style="display:none"></pre>
+    </div>
+  </div>
+  <div class="box">
+    <h2>Progress by lesson</h2>
+    <p>Green = passed · orange = started. Hover a square for details.</p>
+    <div class="grid" id="pgrid"></div>
+  </div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function api(url, opts = {}) {
+  const o = {...opts, headers: {'Content-Type': 'application/json'}};
+  if (o.body && typeof o.body !== 'string') o.body = JSON.stringify(o.body);
+  const r = await fetch(url, o);
+  if (r.status === 401 || r.status === 403) { location.href = '/'; throw new Error('login'); }
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+  return d;
+}
+let DATA;
+async function load() {
+  DATA = await api('/api/admin/students');
+  const t = $('tbl');
+  let h = '<tr><th>Student</th><th>Login</th><th>Progress</th><th>Terminals</th><th>Backups</th><th></th></tr>';
+  for (const s of DATA.students) {
+    const pct = s.lessons ? Math.round(100 * s.passed / s.lessons) : 0;
+    h += `<tr><td>${esc(s.display)}</td><td><code>${esc(s.name)}</code></td>
+      <td><span class="bar"><i style="width:${pct}%"></i></span> ${s.passed}/${s.lessons} <span style="color:var(--muted)">(${s.started} started)</span></td>
+      <td>${s.terminals}</td><td>${s.backups}</td>
+      <td class="acts"><button onclick="window.open('/?as=${encodeURIComponent(s.name)}','_blank')">Open</button>
+      <button onclick="act('${s.name}','password')">New password</button>
+      <button onclick="act('${s.name}','reset_navera')">Reset NAVERA</button>
+      <button onclick="act('${s.name}','kill')">Stop terminals</button>
+      <button class="danger" onclick="act('${s.name}','delete')">Delete</button></td></tr>`;
+  }
+  if (!DATA.students.length) h += '<tr><td colspan="6" style="color:var(--muted)">No students yet — add them below.</td></tr>';
+  t.innerHTML = h;
+  // progress grid
+  let g = '<table><tr><th>Student</th>' + DATA.lessons.map(l => `<th title="${esc(l)}">${esc(l.slice(0, 2))}</th>`).join('') + '</tr>';
+  for (const s of DATA.students) {
+    g += `<tr><td>${esc(s.display)}</td>` + DATA.lessons.map(l => {
+      const p = s.progress[l] || {};
+      const tip = p.status ? `${l}: ${p.status}, ${p.attempts || 0} tries, last ${p.last || ''}${p.total ? `, best ${p.best}/${p.total}` : ''}` : l;
+      return `<td><span class="cell ${p.status || ''}" title="${esc(tip)}"></span></td>`;
+    }).join('') + '</tr>';
+  }
+  $('pgrid').innerHTML = g + '</table>';
+  const b = DATA.base;
+  $('baseNow').innerHTML = b ? `Current base: <b>${esc(b.subject)}</b><br><span style="color:var(--muted)">built ${esc(b.built)}</span>` : 'No base';
+}
+async function loadCommits() {
+  const c = await api('/api/admin/commits');
+  $('commit').innerHTML = c.commits.map(x => `<option value="${x.hash}">${x.hash} · ${x.date} · ${esc(x.refs ? '[' + x.refs + '] ' : '')}${esc(x.subject.slice(0, 70))}</option>`).join('');
+}
+async function act(name, action) {
+  const msgs = {delete: `Delete ${name}? Their files, backups and progress are removed for good.`,
+    reset_navera: `Reset ${name}'s NAVERA copy? Their changes are saved in a backup first.`,
+    password: `Give ${name} a new password?`, kill: `Close all of ${name}'s terminals (and the programs in them)?`};
+  if (!confirm(msgs[action])) return;
+  try {
+    const r = await api(`/api/admin/student/${name}`, {method: 'POST', body: {action}});
+    if (r.password) alert(`New password for ${name}: ${r.password}`);
+    load();
+  } catch (e) { alert(e.message); }
+}
+$('add').onclick = async () => {
+  try {
+    const r = await api('/api/admin/students', {method: 'POST', body: {names: $('names').value}});
+    $('names').value = '';
+    if (r.created.length) {
+      $('creds').style.display = 'block';
+      $('creds').textContent = `Give each student their login (shown once):\nAddress: http://${location.host}/\n\n` + r.created.map(c => `${c.name.padEnd(16)} ${c.password}`).join('\n');
+    }
+    load();
+  } catch (e) { alert(e.message); }
+};
+$('rebase').onclick = async () => {
+  const c = $('commit').value;
+  if (!confirm(`Build a new base from ${c}? Students keep their copies until they press Reset.`)) return;
+  try { await api('/api/admin/base', {method: 'POST', body: {commit: c}}); } catch (e) { return alert(e.message); }
+  $('baseLog').style.display = 'block';
+  const poll = async () => {
+    const s = await api('/api/admin/base');
+    $('baseLog').textContent = s.log.join('\n') + (s.error ? '\nERROR: ' + s.error : '');
+    if (s.running) setTimeout(poll, 1500); else load();
+  };
+  poll();
+};
+$('logout').onclick = async () => { await api('/api/logout', {method: 'POST', body: {}}); location.href = '/'; };
+load(); loadCommits(); setInterval(load, 15000);
+</script>
+</body>
+</html>

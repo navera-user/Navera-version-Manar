@@ -1,0 +1,111 @@
+"""The student sandbox: bubblewrap + a systemd scope (memory / process limits).
+
+Inside, a student sees the system read only, their own home (/home/student, with their
+NAVERA copy and lesson files) read-write, the shared data read only, and nothing else of
+this machine's home folder: not the real ~/Navera, not keys, not other students.
+"""
+import glob
+import os
+
+import config
+
+GPU_DEVICES = ["/dev/nvmap", "/dev/nvsciipc", "/dev/nvgpu", "/dev/nvidia0", "/dev/nvidiactl",
+               "/dev/nvidia-modeset", "/dev/dri", "/dev/host1x-fence", "/dev/dma_heap"] + sorted(glob.glob("/dev/nvhost-*"))
+
+
+def student_env(name, index, heavy=False):
+    env = {
+        "HOME": config.S_HOME,
+        "USER": "student",
+        "LOGNAME": "student",
+        "SHELL": "/bin/bash",
+        "TERM": "xterm-256color",
+        "LANG": "C.UTF-8",
+        "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "PYTHONUSERBASE": os.path.join(config.HOME, ".local"),
+        "ROS_DOMAIN_ID": str(config.FIRST_DOMAIN_ID + index),
+        "ROS_LOCALHOST_ONLY": "1",
+        "ACADEMY_STUDENT": name,
+        "NAVERA_MBTILES": config.S_DATA + "/map.mbtiles",
+        "NAVERA_ARDUPILOT": config.S_DATA + "/ardupilot",
+        "NAVERA_STHN_DIR": config.S_DATA + "/navera_data/night_pkg/STHN",
+        "NAVERA_STHN_WEIGHTS": config.S_DATA + "/navera_data/night_pkg/STHN/weights/one_stage/model.safetensors",
+        "DAY_DATASET_DIR": config.S_DATA + "/navera_data/day_pkg/day_pkg/dataset",
+        "NAVERA_DAY_IMAGES_DIR": config.S_DATA + "/navera_data/camera_pkg/camera_pkg/data/day",
+        "NAVERA_DAY_CSV": config.S_DATA + "/navera_data/camera_pkg/camera_pkg/data/day/flight_log.csv",
+        "TORCH_HOME": config.S_HOME + "/.torch_cache",
+        "NAVERA_STATE_DIR": config.S_HOME + "/.navera_state",
+    }
+    for k in ("CUDA_HOME", "LD_LIBRARY_PATH"):
+        if os.environ.get(k):
+            env[k] = os.environ[k]
+    return env
+
+
+def bwrap_argv(name, home, index, command, resources=(), heavy=False, writable_base=None, extra_ro=(),
+               interactive=False):
+    """argv that runs `command` (list) in the student's sandbox."""
+    a = ["bwrap", "--die-with-parent", "--unshare-pid", "--unshare-ipc", "--unshare-uts",
+         "--hostname", "navera"]
+    if not interactive:          # a terminal keeps its tty (job control, Ctrl-C)
+        a += ["--new-session"]
+    for d in ("/usr", "/etc", "/opt", "/var/lib", "/sys", "/snap"):
+        if os.path.exists(d):
+            a += ["--ro-bind", d, d]
+    for l in ("bin", "sbin", "lib", "lib64"):
+        p = "/" + l
+        if os.path.islink(p):
+            a += ["--symlink", os.readlink(p), p]
+        elif os.path.isdir(p):
+            a += ["--ro-bind", p, p]
+    a += ["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--tmpfs", "/run",
+          "--tmpfs", "/dev/shm", "--tmpfs", "/home", "--tmpfs", "/media", "--tmpfs", "/mnt"]
+    if os.path.exists("/run/systemd/resolve"):
+        a += ["--ro-bind", "/run/systemd/resolve", "/run/systemd/resolve"]   # DNS (pip, git)
+    for d in GPU_DEVICES:
+        if os.path.exists(d):
+            a += ["--dev-bind", d, d]
+    for r in resources:
+        for d in config.RESOURCES.get(r, {}).get("devices", []):
+            if os.path.exists(d):
+                a += ["--dev-bind", d, d]
+    # Python packages installed with pip --user (torch for Jetson, kornia, lightglue…).
+    if os.path.isdir(config.PYTHON_USER_SITE):
+        a += ["--ro-bind", config.PYTHON_USER_SITE, config.PYTHON_USER_SITE]
+    a += ["--bind", home, config.S_HOME]
+    if writable_base:                    # used once, to build the base snapshot
+        a += ["--bind", writable_base, config.S_NAVERA]
+    for host, inside in list(config.data_mounts()) + list(extra_ro):
+        a += ["--ro-bind", host, inside]
+    a += ["--ro-bind", _passwd(), "/etc/passwd"]
+    a += ["--chdir", config.S_HOME, "--clearenv"]
+    for k, v in student_env(name, index, heavy).items():
+        a += ["--setenv", k, v]
+    a += ["--"] + list(command)
+    mem = config.HEAVY_MEMORY_MAX if heavy else config.MEMORY_MAX
+    scope = ["systemd-run", "--user", "--scope", "--quiet", "--collect",
+             "--unit", f"academy-{name}-{os.getpid()}-{_counter()}",
+             "-p", f"MemoryMax={mem}", "-p", "MemorySwapMax=0", "-p", f"TasksMax={config.PIDS_MAX}"]
+    return scope + a
+
+
+_n = [0]
+
+
+def _counter():
+    _n[0] += 1
+    return _n[0]
+
+
+def _passwd():
+    """/etc/passwd for the sandbox: this uid is called "student", home /home/student."""
+    p = os.path.join(config.STATE, "sandbox_passwd")
+    uid, gid = os.getuid(), os.getgid()
+    lines = [l for l in open("/etc/passwd") if not l.split(":")[2:3] == [str(uid)]]
+    lines.append(f"student:x:{uid}:{gid}:NAVERA student:{config.S_HOME}:/bin/bash\n")
+    data = "".join(lines)
+    if not os.path.exists(p) or open(p).read() != data:
+        os.makedirs(config.STATE, exist_ok=True)
+        with open(p, "w") as f:
+            f.write(data)
+    return p
