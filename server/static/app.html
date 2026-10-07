@@ -39,8 +39,9 @@
       <div class="tab" data-doc="lab">🛠️ Lab</div>
       <div class="grow"></div>
     </div>
+    <div class="readbar" id="readbar"><i></i></div>
     <div class="doc" id="doc"></div>
-    <div class="result" id="result"><div class="head"><span id="rhead"></span><button id="rclose" style="padding:1px 8px">✕</button></div><pre id="rout"></pre></div>
+    <div class="result" id="result"><div class="head"><img id="rimg" src="/static/img/navi-think.svg" alt=""><span class="rt" id="rhead"></span><span class="score" id="rscore"></span><button id="rclose" style="padding:1px 8px">✕</button></div><div class="rlog" id="rout"></div></div>
     <div class="checkbar">
       <button id="prevBtn">◀</button>
       <button id="nextBtn">▶</button>
@@ -65,7 +66,11 @@
         <div class="ftabs" id="ftabs"></div>
         <div id="monaco" style="display:none"></div>
         <div class="imgview" id="imgview"><img id="imgel" alt=""></div>
-        <div class="empty" id="edEmpty"><img src="/static/img/navi.svg" alt="">Open a file on the left.<br>Save with <code>Ctrl+S</code>. Run it in the <b>Terminal</b> tab.</div>
+        <div class="empty welcome" id="edEmpty"><img src="/static/img/navi-read.svg" alt=""><h3>Your workbench</h3><div class="sub">code · run · check</div>
+          <ul><li>📂 Mission files are in <b>lessons/</b>, your NAVERA copy in <b>navera/</b> — open one on the left.</li>
+          <li>💾 Save with <kbd>Ctrl</kbd>+<kbd>S</kbd>. An orange dot on a tab means "not saved yet".</li>
+          <li>▶ Run code in the <b>Terminal</b> tab, or press <b>Run</b> on a command in the lab.</li>
+          <li>🖼️ PNG images you create open right here.</li></ul></div>
       </div>
     </div>
     <div class="pane" id="pane-terminal">

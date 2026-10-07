@@ -223,6 +223,7 @@ def api_lesson(lid):
     m["has_check"] = os.path.exists(os.path.join(base, "check.py"))
     m["progress"] = _load("progress.json", {}).get(name, {}).get(lid, {})
     m["workdir"] = f"lessons/{lid}"
+    m["outdated"] = workspaces.installed_version(name, lid) != workspaces.course_version(lid)
     return jsonify(m)
 
 

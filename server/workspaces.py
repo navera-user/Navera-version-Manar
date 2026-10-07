@@ -136,6 +136,29 @@ def reset_navera(name):
     return saved
 
 
+def course_version(lesson_id):
+    """Hash of a lesson's starter files: changes when the teacher updates the lab."""
+    import hashlib
+    src = os.path.join(config.COURSES, lesson_id, "files")
+    h = hashlib.sha1()
+    for root, dirs, files in sorted(os.walk(src)):
+        dirs.sort()
+        for f in sorted(files):
+            p = os.path.join(root, f)
+            h.update(os.path.relpath(p, src).encode())
+            with open(p, "rb") as fh:
+                h.update(fh.read())
+    return h.hexdigest()[:12]
+
+
+VERSION_FILE = ".academy_version"
+
+
+def installed_version(name, lesson_id):
+    p = os.path.join(lesson_dir(name, lesson_id), VERSION_FILE)
+    return open(p).read().strip() if os.path.exists(p) else None
+
+
 def lesson_dir(name, lesson_id):
     return os.path.join(student_home(name), "lessons", lesson_id)
 
@@ -155,6 +178,8 @@ def install_lesson(name, lesson_id, overwrite=False):
         shutil.copytree(src, dst, symlinks=True)
     else:
         os.makedirs(dst)
+    with open(os.path.join(dst, VERSION_FILE), "w") as f:
+        f.write(course_version(lesson_id) + "\n")
     return dst
 
 

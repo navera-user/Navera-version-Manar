@@ -288,3 +288,63 @@ iframe.web { flex: 1; border: 0; background: #fff; width: 100%; }
 .card .xp { font-size: 11.5px; font-weight: 800; color: #8a5300; background: #fff1cc; padding: 2px 8px; border-radius: 99px; }
 .module .micon { box-shadow: 0 3px 0 rgba(20,33,61,.08); }
 @media (max-width: 700px) { .hq .stats { flex: 1 1 100%; } .hq .navi { width: 96px; } .hq h1 { font-size: 25px; } }
+
+/* ================================================================ mission header (lesson page) */
+.mhero { position: relative; margin: 2px 0 22px; padding: 18px 140px 16px 20px; min-height: 128px; border-radius: 18px; overflow: hidden;
+  background: linear-gradient(135deg, #14213d 0%, #1f3a68 70%, #2c4c80 100%); color: #fff; box-shadow: 0 10px 24px rgba(20,33,61,.18); }
+.mhero::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--mcolor, var(--brand)); }
+.mhero::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 26px; opacity: .55; pointer-events: none;
+  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 26' preserveAspectRatio='none'><path d='M0 20 L60 8 L100 16 L160 3 L220 18 L280 9 L340 19 L400 6 L470 17 L530 10 L600 16 L600 26 L0 26Z' fill='%232c4c80'/><path d='M0 22 Q100 14 200 21 T400 21 T600 20 L600 26 L0 26Z' fill='%23e9b97a'/></svg>") no-repeat bottom / 100% 100%; }
+.mhero .leg { font-family: var(--head); font-weight: 700; font-size: 12.5px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--brand-2); }
+.mhero h1 { margin: 4px 0 12px !important; color: #fff !important; font-size: 26px !important; line-height: 1.18; }
+.mhero .chips { display: flex; flex-wrap: wrap; gap: 8px; position: relative; z-index: 1; }
+.mhero .chip2 { font-size: 13px; font-weight: 800; color: #fff; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2);
+  border-radius: 99px; padding: 3px 11px; display: inline-flex; gap: 6px; align-items: center; }
+.mhero .chip2.done { background: var(--grass); border-color: var(--grass); }
+.doc .mhero img.navi { border: none; background: none; border-radius: 0; }
+.mhero .navi { position: absolute; right: 14px; top: 50%; transform: translateY(-58%); width: 116px; filter: drop-shadow(0 8px 8px rgba(0,0,0,.3)); }
+.mhero .update { margin-top: 12px; position: relative; z-index: 1; background: #fff3cf; color: #6b4a00; border-radius: 12px; padding: 8px 12px;
+  font-size: 14px; font-weight: 700; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.mhero .update button { padding: 3px 12px; font-size: 13.5px; }
+@media (max-width: 1100px) { .mhero { padding-right: 20px; } .mhero .navi { display: none; } }
+.readbar { height: 4px; background: var(--line); flex: none; }
+.readbar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--brand), var(--sun)); transition: width .15s; }
+
+/* ================================================================ check results ("field report") */
+.result .head { gap: 12px; justify-content: flex-start; padding: 10px 14px; font-size: 16px; }
+.result .head img { width: 58px; flex: none; }
+.result .head .rt { flex: 1; min-width: 0; line-height: 1.25; }
+.result .head .rt small { display: block; font-family: "Nunito", sans-serif; font-weight: 700; font-size: 13px; opacity: .8; }
+.result .head .score { font-family: var(--head); font-weight: 800; font-size: 22px; padding: 2px 12px; border-radius: 12px; background: #fff; }
+.result.ok .head .score { color: var(--ok); } .result.bad .head .score { color: var(--bad); }
+.result pre { border-top: 1px solid var(--line); }
+
+/* ================================================================ code side in expedition colours */
+.tools { background: #121826; }
+.tools .tabs { background: #1a2234; border-color: #26304a; }
+.tools .tabs .tab { color: #8b97ad; }
+.tools .tabs .tab.on { background: #121826; color: #fff; border-color: #26304a; box-shadow: inset 0 3px 0 var(--brand); }
+.tree, .tree .bar, .ftabs, .termtabs, .webbar { background: #1a2234; }
+.tree { border-right-color: #26304a; color: #c8d1e0; }
+.tree .bar button, .webbar button { background: #26304a; border-color: #33405e; color: #dfe6f2; }
+.tree .node:hover { background: #222c42; }
+.tree .node.sel { background: rgba(255, 122, 26, .18); color: #fff; box-shadow: inset 3px 0 0 var(--brand); }
+.ftab { border-right-color: #121826; color: #9aa7bd; } .ftab.on { background: #121826; color: #fff; box-shadow: inset 0 2px 0 var(--brand); }
+.termtabs .ttab { border-right-color: #121826; color: #9aa7bd; } .termtabs .ttab.on { background: #121826; color: #fff; box-shadow: inset 0 2px 0 var(--brand); }
+.webbar input { background: #121826; border-color: #33405e; }
+.imgview { background: #121826; }
+.empty.welcome { color: #c8d1e0; max-width: 470px; text-align: left; }
+.empty.welcome img { width: 140px; margin: 0 auto 6px; display: block; opacity: 1; }
+.empty.welcome h3 { font-family: var(--head); font-size: 22px; color: #fff; margin: 0 0 4px; text-align: center; }
+.empty.welcome .sub { text-align: center; color: var(--brand-2); font-weight: 800; font-size: 13px; letter-spacing: 1.2px; text-transform: uppercase; margin-bottom: 10px; }
+.empty.welcome ul { margin: 0; padding: 0; list-style: none; }
+.empty.welcome li { padding: 7px 10px; margin: 6px 0; background: #1a2234; border: 1px solid #26304a; border-radius: 10px; line-height: 1.5; }
+.empty.welcome kbd { background: #26304a; border-radius: 5px; padding: 1px 6px; font-family: ui-monospace, monospace; font-size: 12px; color: #fff; }
+.result .rlog { margin: 0; padding: 10px 14px 14px; font-size: 13px; font-family: ui-monospace, "JetBrains Mono", monospace; background: #fffdf8; }
+.result .rlog div { white-space: pre-wrap; line-height: 1.5; }
+.result .rlog .ok { color: var(--ok); font-weight: 700; }
+.result .rlog .ko { color: var(--bad); font-weight: 800; margin-top: 6px; }
+.result .rlog .why { color: #4a5568; padding-left: 22px; }
+.result .rlog .hint { color: #7a5200; background: #fff3cf; border-radius: 8px; padding: 3px 10px; margin: 3px 0 4px 22px; }
+.result .rlog .sum { margin-top: 10px; font-weight: 800; color: var(--navy); }
+.result .rlog .plain { color: #4a5568; }

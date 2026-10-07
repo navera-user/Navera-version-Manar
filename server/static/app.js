@@ -213,14 +213,41 @@ function setStatus(p) {
   else { s.className = 'badge'; s.textContent = 'not checked yet'; }
 }
 document.querySelectorAll('.notebook .tab').forEach(t => t.onclick = () => showDoc(t.dataset.doc));
+function missionHeader(which) {
+  const m = moduleOf(LESSON.id);
+  const tasks = ((LESSON.lab || '').match(/\[!TASK\]/g) || []).length;
+  const done = LESSON.progress && LESSON.progress.status === 'passed';
+  const h1 = ((which === 'lab' ? LESSON.lab : LESSON.course) || '').match(/^#\s+(.+)$/m);
+  const res = (LESSON.resources || []).map(r => `<span class="chip2">${r === 'sim' ? '🛩️ simulator' : r === 'camera' ? '📷 camera' : '🔌 sensors'}</span>`).join('');
+  return `<div class="mhero" style="--mcolor:${m.color}">
+    <div class="leg">${esc(m.leg || '')} · Mission ${esc(LESSON.number)} · ${which === 'lab' ? 'Lab' : 'Briefing'}</div>
+    <h1>${esc(h1 ? h1[1] : LESSON.title)}</h1>
+    <div class="chips"><span class="chip2">⏱ ${esc(LESSON.duration || '')}</span><span class="chip2">⭐ +${XP_PER_MISSION} XP</span>
+      ${tasks ? `<span class="chip2">🎯 ${tasks} task${tasks > 1 ? 's' : ''}</span>` : ''}${res}
+      ${done ? '<span class="chip2 done">✔ complete</span>' : ''}</div>
+    ${LESSON.outdated ? `<div class="update">🔄 This mission was updated since you started it. <button class="go" id="getNew">Get the new lab files</button>
+      <span style="font-weight:600">your current files are kept in a backup</span></div>` : ''}
+    <img class="navi" src="/static/img/${done ? 'navi-cheer' : 'navi-pilot'}.svg" alt=""></div>`;
+}
+function updateReadbar() {
+  const d = $('doc'), max = d.scrollHeight - d.clientHeight;
+  $('readbar').firstElementChild.style.width = (max > 0 ? Math.min(100, 100 * d.scrollTop / max) : 100) + '%';
+}
 function showDoc(which) {
   DOC = which;
   document.querySelectorAll('.notebook .tab').forEach(t => t.classList.toggle('on', t.dataset.doc === which));
-  renderMarkdown($('doc'), which === 'lab' ? LESSON.lab : LESSON.course);
-  $('doc').scrollTop = 0;
+  renderMarkdown($('doc'), (which === 'lab' ? LESSON.lab : LESSON.course).replace(/^#\s+.+$/m, ''));
+  $('doc').insertAdjacentHTML('afterbegin', missionHeader(which));
+  if ($('getNew')) $('getNew').onclick = async () => {
+    await api(`/api/lesson/${LESSON.id}/reset`, {method: 'POST', body: {}});
+    Editor.closeUnder(`lessons/${LESSON.id}/`); LESSON = null; await openLesson(location.hash.slice(8)); await loadTree();
+    toast('New lab files installed — your previous files are in a backup');
+  };
+  $('doc').scrollTop = 0; updateReadbar();
 }
 
 marked.setOptions({gfm: true, breaks: false});
+$('doc').addEventListener('scroll', () => updateReadbar());
 function renderMarkdown(el, md) {
   const lid = LESSON.id;
   md = (md || '').replace(/\]\((?:\.\/)?assets\//g, `](/course-assets/${lid}/`)
@@ -279,8 +306,18 @@ $('checkBtn').onclick = async () => {
     const r = await api(`/api/lesson/${LESSON.id}/check`, {method: 'POST', body: {}});
     $('result').className = 'result show ' + (r.passed ? 'ok' : 'bad');
     const sc = r.score ? ` — ${r.score.passed}/${r.score.total}` : '';
-    $('rhead').textContent = r.passed ? `🎉 Well done, all checks pass${sc}` : `Not yet${sc} — read the hints below and try again`;
-    $('rout').textContent = r.output.trim() || '(no output)';
+    const partly = r.score && r.score.passed > 0;
+    $('rimg').src = '/static/img/' + (r.passed ? 'navi-cheer' : partly ? 'navi-think' : 'navi-oops') + '.svg';
+    $('rscore').textContent = r.score ? `${r.score.passed}/${r.score.total}` : (r.passed ? '✔' : '✘');
+    $('rhead').innerHTML = r.passed ? 'Mission checks passed<small>Every check is green — well flown.</small>'
+      : partly ? 'Almost there<small>Read the ✘ lines and their hints below, fix, save and check again.</small>'
+      : 'Not yet<small>Start with the first ✘ line — its hint tells you where to look.</small>';
+    $('rout').innerHTML = (r.output.trim() || '(no output)').split('\n').map(line => {
+      const t = line.trim();
+      const cls = /^✔/.test(t) ? 'ok' : /^✘/.test(t) ? 'ko' : /^→/.test(t) ? 'why' : /^💡/.test(t) ? 'hint'
+        : /^(🎉|\d+ of \d+ checks)/.test(t) ? 'sum' : 'plain';
+      return `<div class="${cls}">${esc(cls === 'plain' ? line : t)}</div>`;
+    }).join('');
     if (r.passed && !(LESSON.progress && LESSON.progress.status === 'passed')) {
       const before = COURSES.filter(c => c.progress.status === 'passed').length;
       try { const c = await api('/api/courses'); COURSES = c.lessons; } catch (e) {}
@@ -412,7 +449,13 @@ const Editor = {
     this.ready = new Promise((resolve) => {
       require.config({paths: {vs: '/static/vendor/monaco/min/vs'}});
       require(['vs/editor/editor.main'], () => {
-        this.ed = monaco.editor.create($('monaco'), {theme: 'vs-dark', automaticLayout: false, fontSize: 14,
+        monaco.editor.defineTheme('expedition', {base: 'vs-dark', inherit: true,
+          rules: [{token: 'comment', foreground: '7f8ea8', fontStyle: 'italic'}, {token: 'keyword', foreground: 'ff9a3c'},
+            {token: 'string', foreground: 'ffd27a'}, {token: 'number', foreground: '7fd4c9'}, {token: 'type', foreground: '9fb8ff'}],
+          colors: {'editor.background': '#121826', 'editor.lineHighlightBackground': '#1a2234', 'editorLineNumber.foreground': '#46536f',
+            'editorLineNumber.activeForeground': '#ffb36b', 'editorCursor.foreground': '#ff9a3c', 'editor.selectionBackground': '#ff7a1a40',
+            'editorIndentGuide.background1': '#1f2940', 'editorWidget.background': '#1a2234'}});
+        this.ed = monaco.editor.create($('monaco'), {theme: 'expedition', automaticLayout: false, fontSize: 14,
           minimap: {enabled: false}, scrollBeyondLastLine: false, tabSize: 4, renderWhitespace: 'selection'});
         this.ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => this.save());
         resolve();
@@ -509,7 +552,9 @@ const Terms = {
     const id = ++this.n;
     const el = document.createElement('div'); el.className = 'term'; $('terms').appendChild(el);
     const term = new Terminal({fontSize: 14, lineHeight: 1.2, cursorBlink: true, scrollback: 5000,
-      fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, monospace', theme: {background: '#1e1e1e'}});
+      fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, monospace', theme: {background: '#121826', foreground: '#dfe6f2',
+        cursor: '#ff9a3c', cursorAccent: '#121826', selectionBackground: '#ff7a1a55', yellow: '#ffd27a', brightYellow: '#ffe3a3',
+        cyan: '#7fd4c9', brightCyan: '#a5e6dd', blue: '#7aa7ff', brightBlue: '#9fc0ff'}});
     const fit = new FitAddon.FitAddon(); term.loadAddon(fit); term.open(el);
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const cwd = LESSON ? `lessons/${LESSON.id}` : '';
