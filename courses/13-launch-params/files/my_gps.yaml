@@ -1,0 +1,12 @@
+# Settings of the fake GPS node, for:  python3 fake_gps_params.py --ros-args --params-file my_gps.yaml
+#
+# TODO 3: complete this file (the lab gives the values). The structure is ALWAYS:
+#
+#   <node name>:
+#     ros__parameters:
+#       <parameter>: <value>
+#
+# Indent with spaces (2 per level), never with tabs. Write decimal numbers with a dot: 1.0, not 1.
+fake_gps:
+  ros__parameters:
+    topic: "/fake_gps/fix"

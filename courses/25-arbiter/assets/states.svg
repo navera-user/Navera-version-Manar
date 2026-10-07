@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 260" font-family="Helvetica, Arial, sans-serif" font-size="14">
+  <rect width="760" height="260" rx="12" fill="#f8fafc"/>
+  <text x="380" y="28" text-anchor="middle" font-size="18" font-weight="bold" fill="#0f172a">The four states of /navera/nav_status</text>
+  <rect x="20" y="55" width="170" height="150" rx="10" fill="#e2e8f0" stroke="#64748b"/>
+  <text x="105" y="82" text-anchor="middle" font-weight="bold">INITIALIZING</text>
+  <text x="32" y="110" font-size="13">nothing received yet</text><text x="32" y="130" font-size="13">since start-up.</text>
+  <text x="32" y="160" font-size="13" fill="#475569">Normal for a few</text><text x="32" y="178" font-size="13" fill="#475569">seconds.</text>
+  <rect x="205" y="55" width="170" height="150" rx="10" fill="#fee2e2" stroke="#dc2626"/>
+  <text x="290" y="82" text-anchor="middle" font-weight="bold" fill="#991b1b">NO_FIX</text>
+  <text x="217" y="110" font-size="13">running, but no</text><text x="217" y="130" font-size="13">source is usable.</text>
+  <text x="217" y="160" font-size="13" fill="#475569">No old position is</text><text x="217" y="178" font-size="13" fill="#475569">re-sent as current.</text>
+  <rect x="390" y="55" width="170" height="150" rx="10" fill="#fef3c7" stroke="#d97706"/>
+  <text x="475" y="82" text-anchor="middle" font-weight="bold" fill="#92400e">DEGRADED</text>
+  <text x="402" y="110" font-size="13">a position, but trust</text><text x="402" y="130" font-size="13">is reduced: sigma</text>
+  <text x="402" y="150" font-size="13">unknown or &gt; 25 m,</text><text x="402" y="170" font-size="13">or dead-reckoned.</text>
+  <text x="402" y="192" font-size="12" fill="#475569">(all vision today)</text>
+  <rect x="575" y="55" width="165" height="150" rx="10" fill="#dcfce7" stroke="#16a34a"/>
+  <text x="657" y="82" text-anchor="middle" font-weight="bold" fill="#166534">FIX</text>
+  <text x="587" y="110" font-size="13">a fresh MEASURED</text><text x="587" y="130" font-size="13">position with a stated</text>
+  <text x="587" y="150" font-size="13">sigma ≤ 25 m.</text>
+  <text x="587" y="178" font-size="12" fill="#475569">(only GPS today)</text>
+  <text x="380" y="240" text-anchor="middle" font-size="13" fill="#334155">Each status also carries the active source, its mode, the health of every source and a reason in plain words.</text>
+</svg>

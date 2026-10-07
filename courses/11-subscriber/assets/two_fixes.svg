@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 260" font-family="sans-serif" font-size="13">
+  <rect width="640" height="260" fill="#f7fafc"/>
+  <defs>
+    <marker id="e" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#3a8a4a"/>
+    </marker>
+  </defs>
+  <text x="320" y="24" text-anchor="middle" font-size="15" font-weight="bold" fill="#1d2733">What the trip computer remembers (its state)</text>
+  <!-- track -->
+  <path d="M40 210 Q140 200 200 160 T330 110" stroke="#c8d3dc" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <circle cx="200" cy="160" r="8" fill="#56606b"/>
+  <circle cx="330" cy="110" r="8" fill="#d64545"/>
+  <line x1="206" y1="157" x2="320" y2="114" stroke="#3a8a4a" stroke-width="2.5" marker-end="url(#e)"/>
+  <text x="250" y="122" fill="#3a8a4a" font-weight="bold">step</text>
+  <text x="30" y="118" fill="#56606b">previous fix</text>
+  <text x="30" y="136" fill="#56606b" font-family="monospace" font-size="12">self.last = (lat, lon, t)</text>
+  <text x="290" y="90" fill="#d64545">new fix (msg)</text>
+  <!-- state box -->
+  <rect x="420" y="50" width="204" height="150" rx="10" fill="#ffffff" stroke="#0b6e8a" stroke-width="2"/>
+  <text x="432" y="72" font-weight="bold" fill="#0b6e8a">self (the backpack)</text>
+  <g font-family="monospace" font-size="12" fill="#1d2733">
+    <text x="432" y="98">count      = 12</text>
+    <text x="432" y="120">distance_m = 66.0</text>
+    <text x="432" y="142">speed_mps  = 6.0</text>
+    <text x="432" y="164">last = (35.82…,</text>
+    <text x="432" y="182">        10.63…, t)</text>
+  </g>
+  <text x="320" y="238" text-anchor="middle" fill="#1d2733">step = haversine(previous, new)    dt = t_new − t_previous    speed = step / dt</text>
+</svg>

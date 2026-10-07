@@ -1,0 +1,75 @@
+
+===== 2026-10-07 11:13:27 start: ros2 run gps_pkg gps_node.py --ros-args -p serial_port:=/dev/pts/0
+[INFO] [1791368008.372062217] [gps_node]: Port open OK: /dev/pts/0 @ 9600
+[INFO] [1791368008.374211003] [gps_node]: READ LOOP RUNNING
+[INFO] [1791368008.374491462] [gps_node]: Read thread started
+
+===== 2026-10-07 11:13:29 start: ros2 run gps_pkg gps_node.py --ros-args -p serial_port:=/dev/pts/0
+[INFO] [1791368010.914309211] [gps_node]: Port open OK: /dev/pts/0 @ 9600
+[INFO] [1791368010.916466701] [gps_node]: Read thread started
+[INFO] [1791368010.917470132] [gps_node]: READ LOOP RUNNING
+[INFO] [1791368012.920176586] [gps_node]: LINE 1: 
+[INFO] [1791368013.160902840] [gps_node]: LINE 2: $GPGGA,101333.15,3549.5362,N,01038.3100,E,1,12,0.7,10.1,M,33.0,M,,*5E
+[INFO] [1791368013.165552267] [gps_node]: FIX #1: lat=35.825603 lon=10.638500 alt=43.1m sats=12 hdop=0.7
+[INFO] [1791368013.168442298] [gps_node]: LINE 3: $GPRMC,101333.15,A,3549.5362,N,01038.3100,E,0.00,235.9,071026,,,A*67
+[INFO] [1791368013.359482000] [gps_node]: LINE 4: $GPGGA,101333.35,3549.5363,N,01038.3098,E,1,12,0.7,10.1,M,33.0,M,,*5D
+[INFO] [1791368013.363216352] [gps_node]: LINE 5: $GPRMC,101333.35,A,3549.5363,N,01038.3098,E,0.00,235.9,071026,,,A*64
+[INFO] [1791368023.362938699] [gps_node]: FIX #52: lat=35.825572 lon=10.638488 alt=43.1m sats=12 hdop=0.7
+[INFO] [1791368033.561732916] [gps_node]: FIX #103: lat=35.825567 lon=10.638493 alt=43.1m sats=12 hdop=0.7
+[INFO] [1791368043.759865051] [gps_node]: FIX #154: lat=35.825585 lon=10.638495 alt=43.1m sats=12 hdop=0.7
+[INFO] [1791368053.762767297] [gps_node]: FIX #204: lat=35.825593 lon=10.638483 alt=43.1m sats=12 hdop=0.7
+[INFO] [1791368063.962451787] [gps_node]: FIX #255: lat=35.825610 lon=10.638497 alt=68.3m sats=12 hdop=0.7
+[INFO] [1791368074.160552482] [gps_node]: FIX #306: lat=35.825618 lon=10.638487 alt=116.3m sats=12 hdop=0.7
+[INFO] [1791368084.162712164] [gps_node]: FIX #356: lat=35.825608 lon=10.638493 alt=164.3m sats=12 hdop=0.7
+[INFO] [1791368094.362376456] [gps_node]: FIX #407: lat=35.825393 lon=10.638082 alt=182.9m sats=12 hdop=0.7
+[INFO] [1791368104.362511978] [gps_node]: FIX #457: lat=35.824638 lon=10.636733 alt=183.4m sats=12 hdop=0.7
+[INFO] [1791368114.561101074] [gps_node]: FIX #508: lat=35.823862 lon=10.635393 alt=183.3m sats=12 hdop=0.7
+[INFO] [1791368119.561951840] [gps_node]: No fix (qual=0)
+[INFO] [1791368129.761319275] [gps_node]: No fix (qual=0)
+[INFO] [1791368139.961587303] [gps_node]: No fix (qual=0)
+[INFO] [1791368149.962419994] [gps_node]: No fix (qual=0)
+[INFO] [1791368160.158894754] [gps_node]: No fix (qual=0)
+[INFO] [1791368170.160133077] [gps_node]: No fix (qual=0)
+[INFO] [1791368179.760128254] [gps_node]: FIX #533: lat=35.819272 lon=10.626967 alt=184.0m sats=12 hdop=0.7
+[INFO] [1791368189.761129195] [gps_node]: FIX #583: lat=35.818570 lon=10.625690 alt=184.1m sats=12 hdop=0.7
+[INFO] [1791368199.762423055] [gps_node]: FIX #633: lat=35.817837 lon=10.624338 alt=184.2m sats=12 hdop=0.7
+[INFO] [1791368209.762973962] [gps_node]: FIX #683: lat=35.817075 lon=10.622985 alt=184.3m sats=12 hdop=0.7
+[INFO] [1791368219.962479487] [gps_node]: FIX #734: lat=35.826722 lon=10.639692 alt=184.4m sats=12 hdop=0.7
+[INFO] [1791368230.162473663] [gps_node]: FIX #785: lat=35.825990 lon=10.638262 alt=184.6m sats=12 hdop=0.7
+[INFO] [1791368240.162737961] [gps_node]: FIX #835: lat=35.825248 lon=10.636890 alt=184.7m sats=12 hdop=0.7
+[INFO] [1791368250.362676010] [gps_node]: FIX #886: lat=35.814145 lon=10.617727 alt=184.9m sats=12 hdop=0.7
+[INFO] [1791368260.363185883] [gps_node]: FIX #936: lat=35.813455 lon=10.616392 alt=184.9m sats=12 hdop=0.7
+[INFO] [1791368270.562343992] [gps_node]: FIX #987: lat=35.812690 lon=10.615022 alt=185.0m sats=12 hdop=0.7
+[INFO] [1791368280.562970054] [gps_node]: FIX #1037: lat=35.811960 lon=10.613645 alt=185.1m sats=12 hdop=0.7
+[INFO] [1791368290.763298700] [gps_node]: FIX #1088: lat=35.811197 lon=10.612283 alt=185.2m sats=12 hdop=0.7
+[INFO] [1791368300.960555823] [gps_node]: FIX #1139: lat=35.810448 lon=10.610908 alt=185.3m sats=12 hdop=0.7
+[INFO] [1791368310.962388322] [gps_node]: FIX #1189: lat=35.809697 lon=10.609565 alt=185.4m sats=12 hdop=0.7
+[INFO] [1791368321.160258678] [gps_node]: FIX #1240: lat=35.808947 lon=10.608172 alt=185.6m sats=12 hdop=0.7
+[INFO] [1791368331.161139484] [gps_node]: FIX #1290: lat=35.808187 lon=10.606817 alt=185.7m sats=12 hdop=0.7
+[INFO] [1791368341.162557175] [gps_node]: FIX #1340: lat=35.807455 lon=10.605470 alt=185.8m sats=12 hdop=0.7
+[INFO] [1791368351.362621886] [gps_node]: FIX #1391: lat=35.806708 lon=10.604098 alt=185.9m sats=12 hdop=0.7
+[INFO] [1791368361.562502269] [gps_node]: FIX #1442: lat=35.805948 lon=10.602720 alt=186.1m sats=12 hdop=0.7
+[INFO] [1791368371.762375692] [gps_node]: FIX #1493: lat=35.805225 lon=10.601388 alt=186.2m sats=12 hdop=0.7
+[INFO] [1791368381.962545002] [gps_node]: FIX #1544: lat=35.804992 lon=10.601000 alt=186.2m sats=12 hdop=0.7
+[INFO] [1791368392.162354767] [gps_node]: FIX #1595: lat=35.804998 lon=10.601007 alt=186.3m sats=12 hdop=0.7
+[INFO] [1791368402.362275870] [gps_node]: FIX #1646: lat=35.805005 lon=10.600990 alt=186.3m sats=12 hdop=0.7
+[INFO] [1791368412.362833597] [gps_node]: FIX #1696: lat=35.804988 lon=10.601015 alt=186.2m sats=12 hdop=0.7
+[INFO] [1791368422.562340180] [gps_node]: FIX #1747: lat=35.804988 lon=10.601000 alt=186.3m sats=12 hdop=0.7
+[INFO] [1791368432.562459654] [gps_node]: FIX #1797: lat=35.805005 lon=10.601002 alt=186.2m sats=12 hdop=0.7
+[INFO] [1791368442.562538898] [gps_node]: FIX #1847: lat=35.804995 lon=10.601002 alt=186.2m sats=12 hdop=0.7
+[INFO] [1791368452.762310070] [gps_node]: FIX #1898: lat=35.804997 lon=10.600992 alt=186.2m sats=12 hdop=0.7
+[INFO] [1791368462.962489765] [gps_node]: FIX #1949: lat=35.804997 lon=10.600993 alt=186.3m sats=12 hdop=0.7
+[INFO] [1791368472.962544050] [gps_node]: FIX #1999: lat=35.804993 lon=10.601007 alt=186.2m sats=12 hdop=0.7
+[INFO] [1791368483.162544866] [gps_node]: FIX #2050: lat=35.804990 lon=10.600998 alt=186.2m sats=12 hdop=0.7
+[INFO] [1791368493.360479282] [gps_node]: FIX #2101: lat=35.804988 lon=10.601008 alt=186.3m sats=12 hdop=0.7
+[INFO] [1791368503.362506416] [gps_node]: FIX #2151: lat=35.804998 lon=10.600983 alt=186.2m sats=12 hdop=0.7
+[INFO] [1791368513.562510909] [gps_node]: FIX #2202: lat=35.805012 lon=10.601022 alt=186.3m sats=12 hdop=0.7
+[INFO] [1791368523.759559746] [gps_node]: FIX #2253: lat=35.805002 lon=10.600992 alt=186.2m sats=12 hdop=0.7
+[INFO] [1791368533.759822481] [gps_node]: FIX #2303: lat=35.805012 lon=10.600998 alt=186.2m sats=12 hdop=0.7
+[INFO] [1791368543.762278125] [gps_node]: FIX #2353: lat=35.804995 lon=10.601008 alt=186.3m sats=12 hdop=0.7
+[INFO] [1791368553.762588370] [gps_node]: FIX #2403: lat=35.805018 lon=10.601007 alt=186.3m sats=12 hdop=0.7
+[INFO] [1791368563.763179551] [gps_node]: FIX #2453: lat=35.805008 lon=10.600998 alt=186.3m sats=12 hdop=0.7
+[INFO] [1791368573.963525511] [gps_node]: FIX #2504: lat=35.804985 lon=10.600987 alt=186.2m sats=12 hdop=0.7
+[INFO] [1791368584.161045937] [gps_node]: FIX #2555: lat=35.804987 lon=10.601008 alt=186.3m sats=12 hdop=0.7
+[INFO] [1791368594.161579370] [gps_node]: FIX #2605: lat=35.805002 lon=10.600995 alt=186.2m sats=12 hdop=0.7
+[INFO] [1791368604.162496524] [gps_node]: FIX #2655: lat=35.805018 lon=10.601002 alt=186.2m sats=12 hdop=0.7

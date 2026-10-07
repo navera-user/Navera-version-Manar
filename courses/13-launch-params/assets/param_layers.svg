@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 300" font-family="sans-serif" font-size="13">
+  <rect width="680" height="300" fill="#f7fafc"/>
+  <text x="340" y="24" text-anchor="middle" font-size="15" font-weight="bold" fill="#1d2733">Where does a parameter's value come from? The last layer wins.</text>
+  <g stroke-width="2">
+    <rect x="30" y="46" width="420" height="44" rx="8" fill="#ffffff" stroke="#56606b"/>
+    <rect x="50" y="100" width="420" height="44" rx="8" fill="#e6f2f6" stroke="#0b6e8a"/>
+    <rect x="70" y="154" width="420" height="44" rx="8" fill="#eaf6ec" stroke="#3a8a4a"/>
+    <rect x="90" y="208" width="420" height="44" rx="8" fill="#fff4e0" stroke="#f2a33a"/>
+  </g>
+  <g fill="#1d2733">
+    <text x="44" y="66" font-weight="bold">1. the default in the code</text>
+    <text x="44" y="83" font-family="monospace" font-size="12">declare_parameter("day_timeout_s", 3.0)</text>
+    <text x="64" y="120" font-weight="bold">2. a YAML parameters file</text>
+    <text x="64" y="137" font-family="monospace" font-size="12">estimator_params.yaml: day_timeout_s: 5.0</text>
+    <text x="84" y="174" font-weight="bold">3. the command line / the launch file</text>
+    <text x="84" y="191" font-family="monospace" font-size="12">-p gps_timeout_s:=2.0    or  {'gps_timeout_s': ...}</text>
+    <text x="104" y="228" font-weight="bold">4. while running: ros2 param set</text>
+    <text x="104" y="245" font-family="monospace" font-size="12">changes the value… used only if the node reads it again</text>
+  </g>
+  <g fill="#56606b" font-size="12">
+    <text x="530" y="72">written by the</text>
+    <text x="530" y="88">developer</text>
+    <text x="530" y="126">written by the</text>
+    <text x="530" y="142">integrator</text>
+    <text x="530" y="180">chosen at start-up</text>
+    <text x="530" y="234">changed live</text>
+  </g>
+  <text x="340" y="284" text-anchor="middle" fill="#1d2733">ros2 run → day_timeout_s = 3.0      NAVERA's launch file (with the YAML) → 5.0</text>
+</svg>

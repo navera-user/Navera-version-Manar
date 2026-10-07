@@ -54,7 +54,8 @@ if a.solution and os.path.exists(os.path.join(dst, "_apply.sh")):
 inner = a.shell or f"PYTHONPATH=/academy/lib:$PYTHONPATH python3 /academy/courses/{lid}/check.py"
 cmd = ["bash", "-lc", f"source ~/.bashrc >/dev/null 2>&1; cd ~/lessons/{lid} && {pre}{inner}"]
 res = [r for r in a.resources.split(",") if r]
-argv = sandbox.bwrap_argv(name, workspaces.student_home(name), 60 + int(lid[:2]), cmd, resources=res, heavy=bool(res),
+argv = sandbox.bwrap_argv(name, workspaces.student_home(name), 0, cmd, resources=res, heavy=bool(res),
+                          domain=config.TEST_DOMAINS[int(lid[:2]) % len(config.TEST_DOMAINS)],
                           extra_ro=mounts)
 try:
     import signal

@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 270" font-family="Helvetica, Arial, sans-serif" font-size="13">
+  <rect width="760" height="270" rx="12" fill="#f8fafc"/>
+  <text x="380" y="26" text-anchor="middle" font-size="16" font-weight="bold" fill="#0f172a">The vision cross-check: a slow drift, step by step</text>
+  <!-- axis -->
+  <line x1="40" y1="200" x2="730" y2="200" stroke="#334155"/>
+  <text x="730" y="218" text-anchor="end" font-size="11">time →</text>
+  <!-- tolerance band -->
+  <rect x="40" y="150" width="690" height="50" fill="#dcfce7"/>
+  <text x="46" y="166" font-size="11" fill="#166534">agrees: within 3σ of vision (3 × 15 m = 45 m)</text>
+  <!-- GPS offset line -->
+  <path d="M40 198 L150 198 L640 60" stroke="#dc2626" stroke-width="3" fill="none"/>
+  <path d="M640 195 L730 195" stroke="#2563eb" stroke-width="3"/>
+  <text x="200" y="120" fill="#991b1b" font-weight="bold">GPS – vision gap (spoofer pulls slowly)</text>
+  <!-- vision ticks -->
+  <g fill="#0f172a">
+    <circle cx="330" cy="200" r="4"/><circle cx="380" cy="200" r="4"/><circle cx="430" cy="200" r="4"/>
+    <circle cx="480" cy="200" r="4"/><circle cx="530" cy="200" r="4"/><circle cx="580" cy="200" r="4"/>
+  </g>
+  <text x="330" y="236" text-anchor="middle" font-size="11">beyond 3σ: 1</text>
+  <text x="380" y="252" text-anchor="middle" font-size="11" fill="#92400e" font-weight="bold">2 → IN DOUBT</text>
+  <text x="530" y="236" text-anchor="middle" font-size="11" fill="#991b1b" font-weight="bold">5 → REFUSED</text>
+  <text x="690" y="236" text-anchor="middle" font-size="11" fill="#1d4ed8" font-weight="bold">true GPS back:</text>
+  <text x="690" y="252" text-anchor="middle" font-size="11" fill="#1d4ed8">2 agreeing → re-accepted</text>
+  <!-- state bar -->
+  <rect x="40" y="40" width="300" height="22" fill="#bbf7d0"/><text x="190" y="56" text-anchor="middle" font-size="12">GPS used (FIX)</text>
+  <rect x="340" y="40" width="190" height="22" fill="#fde68a"/><text x="435" y="56" text-anchor="middle" font-size="12">GPS IN DOUBT (DEGRADED)</text>
+  <rect x="530" y="40" width="160" height="22" fill="#fecaca"/><text x="610" y="56" text-anchor="middle" font-size="12">refused → vision</text>
+  <rect x="690" y="40" width="40" height="22" fill="#bbf7d0"/>
+</svg>

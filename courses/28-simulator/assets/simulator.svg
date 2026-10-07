@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 400" font-family="Helvetica, Arial, sans-serif" font-size="13">
+  <rect width="780" height="400" rx="12" fill="#f8fafc"/>
+  <text x="390" y="26" text-anchor="middle" font-size="17" font-weight="bold" fill="#0f172a">The mission simulator: what is real, what is simulated</text>
+  <defs><marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker></defs>
+  <!-- simulated world -->
+  <rect x="20" y="45" width="220" height="300" rx="10" fill="#fef3c7" stroke="#d97706"/>
+  <text x="130" y="68" text-anchor="middle" font-weight="bold" fill="#92400e">SIMULATED world</text>
+  <text x="130" y="84" text-anchor="middle" font-size="11" fill="#92400e">sim_server.py</text>
+  <rect x="35" y="98" width="190" height="40" rx="6" fill="#fff" stroke="#d97706"/>
+  <text x="130" y="115" text-anchor="middle">GPS receiver (NMEA)</text><text x="130" y="131" text-anchor="middle" font-size="11">jam / spoof / off</text>
+  <rect x="35" y="148" width="190" height="34" rx="6" fill="#fff" stroke="#d97706"/>
+  <text x="130" y="170" text-anchor="middle">IMU, clock samples</text>
+  <rect x="35" y="192" width="190" height="40" rx="6" fill="#fff" stroke="#d97706"/>
+  <text x="130" y="209" text-anchor="middle">camera images, or</text><text x="130" y="225" text-anchor="middle" font-size="11">a vision error profile</text>
+  <rect x="35" y="242" width="190" height="40" rx="6" fill="#fff" stroke="#d97706"/>
+  <text x="130" y="259" text-anchor="middle">the vehicle's true motion</text><text x="130" y="275" text-anchor="middle" font-size="11">(ArduPilot's physics)</text>
+  <text x="130" y="312" text-anchor="middle" fill="#334155">control page :8190</text>
+  <text x="130" y="330" text-anchor="middle" fill="#334155">(🛩️ Simulator tab)</text>
+  <!-- NAVERA -->
+  <rect x="290" y="45" width="220" height="300" rx="10" fill="#dcfce7" stroke="#16a34a"/>
+  <text x="400" y="68" text-anchor="middle" font-weight="bold" fill="#166534">REAL NAVERA nodes</text>
+  <text x="400" y="84" text-anchor="middle" font-size="11" fill="#166534">from ~/navera, as on the box</text>
+  <rect x="305" y="98" width="190" height="34" rx="6" fill="#fff" stroke="#16a34a"/><text x="400" y="120" text-anchor="middle">gps_node</text>
+  <rect x="305" y="142" width="190" height="34" rx="6" fill="#fff" stroke="#16a34a"/><text x="400" y="164" text-anchor="middle">day vision (optional)</text>
+  <rect x="305" y="186" width="190" height="34" rx="6" fill="#fff" stroke="#16a34a"/><text x="400" y="208" text-anchor="middle" font-weight="bold">estimator (arbiter)</text>
+  <rect x="305" y="230" width="190" height="34" rx="6" fill="#fff" stroke="#16a34a"/><text x="400" y="252" text-anchor="middle">vehicle_output (MAVLink)</text>
+  <rect x="305" y="274" width="190" height="34" rx="6" fill="#fff" stroke="#16a34a"/><text x="400" y="296" text-anchor="middle">web bridge → :8181</text>
+  <text x="400" y="330" text-anchor="middle" fill="#334155">(🧭 Operator view tab)</text>
+  <!-- autopilot -->
+  <rect x="560" y="45" width="200" height="300" rx="10" fill="#dbeafe" stroke="#2563eb"/>
+  <text x="660" y="68" text-anchor="middle" font-weight="bold" fill="#1e40af">REAL autopilot</text>
+  <text x="660" y="84" text-anchor="middle" font-size="11" fill="#1e40af">ArduPilot SITL (Copter / Rover)</text>
+  <text x="660" y="130" text-anchor="middle">its ONLY position input</text>
+  <text x="660" y="148" text-anchor="middle">is NAVERA's output</text>
+  <text x="660" y="166" text-anchor="middle" font-size="11">(GPS_INPUT on port 5762)</text>
+  <text x="660" y="210" text-anchor="middle">flies the mission:</text>
+  <text x="660" y="228" text-anchor="middle">align, arm, take off,</text>
+  <text x="660" y="246" text-anchor="middle">go to the destination</text>
+  <text x="660" y="290" text-anchor="middle" font-size="11">ground-station link :5760</text>
+  <text x="660" y="306" text-anchor="middle" font-size="11">(truth + its own belief)</text>
+  <!-- arrows -->
+  <path d="M225 118 H303" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M225 212 Q265 190 303 160" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M400 132 V184" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M400 220 V228" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M495 247 H558" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M560 270 Q400 380 230 262" stroke="#475569" stroke-width="2" fill="none" stroke-dasharray="5 4" marker-end="url(#a)"/>
+  <text x="400" y="375" text-anchor="middle" font-size="11" fill="#475569">the autopilot moves the simulated vehicle → new GPS, camera, IMU samples → …</text>
+</svg>

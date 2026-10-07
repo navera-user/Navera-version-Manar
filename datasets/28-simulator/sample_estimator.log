@@ -1,0 +1,9 @@
+
+===== 2026-10-07 11:13:27 start: ros2 run navera_estimator estimator_node.py --ros-args --params-file /home/student/navera/install/navera_estimator/share/navera_estimator/config/estimator_params.yaml -p max_speed_mps:=60.0
+[INFO] [1791368008.390295269] [estimator_node]: estimator up (v3 GPS>day>night>cn): rate=5.0Hz gps_timeout=3.0s day_timeout=5.0s night_timeout=5.0s cn_timeout=45.0s imu_timeout=1.0s
+
+===== 2026-10-07 11:13:29 start: ros2 run navera_estimator estimator_node.py --ros-args --params-file /home/student/navera/install/navera_estimator/share/navera_estimator/config/estimator_params.yaml -p max_speed_mps:=30.0
+[INFO] [1791368010.524062051] [estimator_node]: estimator up (v3 GPS>day>night>cn): rate=5.0Hz gps_timeout=3.0s day_timeout=5.0s night_timeout=5.0s cn_timeout=45.0s imu_timeout=1.0s
+[WARN] [1791368180.562453390] [estimator_node]: GPS confirmed by day vision (21 m apart, 3 sigma 45 m, 2 fixes) — re-accepted
+[ERROR] [1791368219.964098177] [estimator_node]: GPS refused: implausible jump 1994 m in 0.2 s (max 56 m at 30 m/s) — possible spoofing
+[WARN] [1791368251.564932305] [estimator_node]: GPS confirmed by day vision (15 m apart, 3 sigma 45 m, 2 fixes) — re-accepted

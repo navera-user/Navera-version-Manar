@@ -13,7 +13,8 @@ GPU_DEVICES = ["/dev/nvmap", "/dev/nvsciipc", "/dev/nvgpu", "/dev/nvidia0", "/de
                "/dev/nvidia-modeset", "/dev/dri", "/dev/host1x-fence", "/dev/dma_heap"] + sorted(glob.glob("/dev/nvhost-*"))
 
 
-def student_env(name, index, heavy=False):
+def student_env(name, index, heavy=False, domain=None):
+    dom = str(domain if domain is not None else config.domain_for(index))
     env = {
         "HOME": config.S_HOME,
         "USER": "student",
@@ -23,8 +24,11 @@ def student_env(name, index, heavy=False):
         "LANG": "C.UTF-8",
         "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
         "PYTHONUSERBASE": os.path.join(config.HOME, ".local"),
-        "ROS_DOMAIN_ID": str(config.FIRST_DOMAIN_ID + index),
+        "ROS_DOMAIN_ID": dom,
         "ROS_LOCALHOST_ONLY": "1",
+        "NAVERA_SIM_DOMAIN": dom,   # run_sim.sh: the student's own domain
+        # system + pip-user matplotlib are mixed: hide the harmless "Unable to import Axes3D" warning
+        "PYTHONWARNINGS": "ignore:Unable to import Axes3D",
         "ACADEMY_STUDENT": name,
         "NAVERA_MBTILES": config.S_DATA + "/map.mbtiles",
         "NAVERA_ARDUPILOT": config.S_DATA + "/ardupilot",
@@ -43,7 +47,7 @@ def student_env(name, index, heavy=False):
 
 
 def bwrap_argv(name, home, index, command, resources=(), heavy=False, writable_base=None, extra_ro=(),
-               interactive=False):
+               interactive=False, domain=None):
     """argv that runs `command` (list) in the student's sandbox."""
     a = ["bwrap", "--die-with-parent", "--unshare-pid", "--unshare-ipc", "--unshare-uts",
          "--hostname", "navera"]
@@ -79,7 +83,7 @@ def bwrap_argv(name, home, index, command, resources=(), heavy=False, writable_b
         a += ["--ro-bind", host, inside]
     a += ["--ro-bind", _passwd(), "/etc/passwd"]
     a += ["--chdir", config.S_HOME, "--clearenv"]
-    for k, v in student_env(name, index, heavy).items():
+    for k, v in student_env(name, index, heavy, domain).items():
         a += ["--setenv", k, v]
     a += ["--"] + list(command)
     mem = config.HEAVY_MEMORY_MAX if heavy else config.MEMORY_MAX

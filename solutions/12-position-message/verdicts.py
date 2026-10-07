@@ -1,0 +1,11 @@
+# Lab 12 — what did the jury say? (teacher solution)
+REASON_GOOD = "day vision fix"
+REASON_NAN = "day: non-finite position or covariance"
+REASON_BAD_COV = "day: non-finite position or covariance"
+REASON_STALE = "day: stale (11.4s>3.0s)"
+REASON_INVALID = "day: invalid (lens covered)"
+REASON_REPLAYED = "day: replayed not usable"
+REASON_UNKNOWN_COV = "day vision fix, uncertainty unknown"
+REASON_SIGMA_40 = "day vision fix, uncertainty 40 m > 25 m"
+Q1 = "b"
+Q2 = "b"

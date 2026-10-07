@@ -1,0 +1,3 @@
+{"number": "26", "title": "How sure are we? Errors, sigma and covariance", "module": 6, "duration": "1 h 45",
+ "summary": "Error vs uncertainty, mean vs median, standard deviation, the 1-2-3 sigma circles, covariance as an ellipse, and the weighted average that starts sensor fusion.",
+ "resources": [], "open": ["uncertainty.py", "analyse.py"], "check_timeout_s": 60}

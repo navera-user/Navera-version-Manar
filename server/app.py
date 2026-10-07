@@ -142,7 +142,7 @@ def api_logout():
 def api_me():
     b = workspaces.base_info()
     return jsonify(name=request.user, role=request.urec["role"], display=request.urec.get("display", request.user),
-                   domain=config.FIRST_DOMAIN_ID + request.urec["index"], base=b, host=_host_ip())
+                   domain=config.domain_for(request.urec["index"]), base=b, host=_host_ip())
 
 
 @app.post("/api/password")
@@ -610,7 +610,9 @@ def api_admin_add():
                 return jsonify(error=f"'{name}': lower-case letters, digits, _ (2–24, starts with a letter)"), 400
             if name in u:
                 continue
-            idx = next(i for i in range(1, 120) if i not in used)
+            idx = next((i for i in range(1, len(config.STUDENT_DOMAINS)) if i not in used), None)
+            if idx is None:
+                return jsonify(error=f"at most {len(config.STUDENT_DOMAINS) - 1} students"), 400
             used.add(idx)
             pw = parts[2] if len(parts) > 2 and parts[2] else secrets.token_urlsafe(5)
             u[name] = {"role": "student", "pw": generate_password_hash(pw), "index": idx,

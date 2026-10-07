@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 230" font-family="Helvetica, Arial, sans-serif" font-size="13">
+  <rect width="780" height="230" rx="12" fill="#f8fafc"/>
+  <text x="390" y="26" text-anchor="middle" font-size="17" font-weight="bold" fill="#0f172a">One project, one change: the engineer's loop</text>
+  <defs><marker id="a" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker></defs>
+  <g>
+    <rect x="15" y="60" width="80" height="60" rx="8" fill="#e2e8f0" stroke="#64748b"/><text x="55" y="86" text-anchor="middle" font-weight="bold">understand</text><text x="55" y="104" text-anchor="middle" font-size="11">read, grep</text>
+    <rect x="110" y="60" width="80" height="60" rx="8" fill="#dbeafe" stroke="#2563eb"/><text x="150" y="86" text-anchor="middle" font-weight="bold">branch</text><text x="150" y="104" text-anchor="middle" font-size="11">checkout -b</text>
+    <rect x="205" y="60" width="90" height="60" rx="8" fill="#fef3c7" stroke="#d97706"/><text x="250" y="86" text-anchor="middle" font-weight="bold">measure</text><text x="250" y="104" text-anchor="middle" font-size="11">BEFORE</text>
+    <rect x="310" y="60" width="80" height="60" rx="8" fill="#fee2e2" stroke="#dc2626"/><text x="350" y="86" text-anchor="middle" font-weight="bold">test</text><text x="350" y="104" text-anchor="middle" font-size="11">fails first</text>
+    <rect x="405" y="60" width="80" height="60" rx="8" fill="#dcfce7" stroke="#16a34a"/><text x="445" y="86" text-anchor="middle" font-weight="bold">change</text><text x="445" y="104" text-anchor="middle" font-size="11">the smallest</text>
+    <rect x="500" y="60" width="90" height="60" rx="8" fill="#fef3c7" stroke="#d97706"/><text x="545" y="86" text-anchor="middle" font-weight="bold">measure</text><text x="545" y="104" text-anchor="middle" font-size="11">AFTER</text>
+    <rect x="605" y="60" width="75" height="60" rx="8" fill="#dbeafe" stroke="#2563eb"/><text x="642" y="86" text-anchor="middle" font-weight="bold">commit</text><text x="642" y="104" text-anchor="middle" font-size="11">+ patch</text>
+    <rect x="695" y="60" width="72" height="60" rx="8" fill="#ede9fe" stroke="#7c3aed"/><text x="731" y="86" text-anchor="middle" font-weight="bold">report</text><text x="731" y="104" text-anchor="middle" font-size="11">PROJECT.md</text>
+  </g>
+  <path d="M95 90 H108 M190 90 H203 M295 90 H308 M390 90 H403 M485 90 H498 M590 90 H603 M680 90 H693" stroke="#475569" stroke-width="2" marker-end="url(#a)"/>
+  <path d="M445 122 Q445 165 350 165 Q330 165 340 124" stroke="#dc2626" stroke-width="2" fill="none" stroke-dasharray="5 4" marker-end="url(#a)"/>
+  <text x="400" y="185" text-anchor="middle" font-size="12" fill="#991b1b">tests red? fix the change, not the test</text>
+  <text x="390" y="215" text-anchor="middle" font-size="12" fill="#334155">deliverables checked: PROJECT.md · a project branch with commits · a passing test · package tests green · my_project.patch</text>
+</svg>

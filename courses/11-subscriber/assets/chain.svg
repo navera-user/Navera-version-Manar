@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" font-family="sans-serif" font-size="12">
+  <rect width="720" height="300" fill="#f7fafc"/>
+  <defs>
+    <marker id="d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#0b6e8a"/>
+    </marker>
+  </defs>
+  <text x="360" y="22" text-anchor="middle" font-size="14" font-weight="bold" fill="#1d2733">The chain of this lab: your nodes (green) around NAVERA's real nodes (blue)</text>
+  <!-- row 1 -->
+  <rect x="14" y="52" width="150" height="50" rx="8" fill="#eaf6ec" stroke="#3a8a4a" stroke-width="2"/>
+  <text x="89" y="73" text-anchor="middle" font-weight="bold" fill="#1d2733">gps_track_player</text>
+  <text x="89" y="90" text-anchor="middle" fill="#56606b">(or your fake_gps)</text>
+  <rect x="270" y="52" width="130" height="50" rx="8" fill="#e6f2f6" stroke="#0b6e8a" stroke-width="2"/>
+  <text x="335" y="73" text-anchor="middle" font-weight="bold" fill="#1d2733">ros_gps_node</text>
+  <text x="335" y="90" text-anchor="middle" fill="#56606b">NAVERA, gps_pkg</text>
+  <rect x="556" y="52" width="150" height="50" rx="8" fill="#e6f2f6" stroke="#0b6e8a" stroke-width="2"/>
+  <text x="631" y="73" text-anchor="middle" font-weight="bold" fill="#1d2733">estimator_node</text>
+  <text x="631" y="90" text-anchor="middle" fill="#56606b">NAVERA's arbiter</text>
+  <g stroke="#0b6e8a" stroke-width="2" fill="none" marker-end="url(#d)">
+    <path d="M164 77 L268 77"/>
+    <path d="M400 77 L554 77"/>
+    <path d="M631 102 L631 170"/>
+    <path d="M584 102 L442 182"/>
+    <path d="M175 77 L175 170"/>
+  </g>
+  <g fill="#a8680d" font-family="monospace" font-size="11">
+    <text x="170" y="70">/fake_gps/fix</text>
+    <text x="406" y="70">/navera/estimate/gps</text>
+    <text x="490" y="126" text-anchor="end">/navera/nav_status</text>
+    <text x="181" y="140">/fake_gps/fix</text>
+  </g>
+  <g fill="#56606b" font-size="10">
+    <text x="170" y="94">NavSatFix</text>
+    <text x="406" y="94">PositionEstimate</text>
+    <text x="490" y="140" text-anchor="end">NavStatus, 5 Hz</text>
+  </g>
+  <!-- row 2 -->
+  <rect x="100" y="172" width="150" height="50" rx="8" fill="#eaf6ec" stroke="#3a8a4a" stroke-width="2"/>
+  <text x="175" y="193" text-anchor="middle" font-weight="bold" fill="#1d2733">gps_listener</text>
+  <text x="175" y="210" text-anchor="middle" fill="#56606b">distance, speed</text>
+  <rect x="290" y="172" width="150" height="50" rx="8" fill="#eaf6ec" stroke="#3a8a4a" stroke-width="2"/>
+  <text x="365" y="193" text-anchor="middle" font-weight="bold" fill="#1d2733">status_listener</text>
+  <text x="365" y="210" text-anchor="middle" fill="#56606b">"FIX | source: GPS"</text>
+  <rect x="556" y="172" width="150" height="50" rx="8" fill="#ffffff" stroke="#56606b" stroke-dasharray="5 4"/>
+  <text x="631" y="193" text-anchor="middle" fill="#1d2733">ros2 topic echo</text>
+  <text x="631" y="210" text-anchor="middle" fill="#56606b">/navera/position</text>
+  <text x="360" y="262" text-anchor="middle" fill="#56606b">One message can be received by several subscribers: the track player's fixes go both to</text>
+  <text x="360" y="280" text-anchor="middle" fill="#56606b">your gps_listener and to NAVERA's ros_gps_node, without the player knowing.</text>
+</svg>

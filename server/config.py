@@ -53,7 +53,13 @@ PORT = int(os.environ.get("ACADEMY_PORT", "8300"))
 MEMORY_MAX = os.environ.get("ACADEMY_MEMORY_MAX", "1800M")   # per student sandbox
 HEAVY_MEMORY_MAX = os.environ.get("ACADEMY_HEAVY_MEMORY_MAX", "4500M")  # holder of the simulator
 PIDS_MAX = 400
-FIRST_DOMAIN_ID = 101          # ROS_DOMAIN_ID = 101 + student index (NAVERA uses 77–79)
+# ROS domains in the range ROS documents as safe on Linux (1–101), without NAVERA's own 77–79.
+STUDENT_DOMAINS = [d for d in range(1, 102) if d not in (77, 78, 79)]
+TEST_DOMAINS = list(range(215, 233))     # tools/try_lesson.py
+
+
+def domain_for(index):
+    return STUDENT_DOMAINS[index % len(STUDENT_DOMAINS)]
 
 # Exclusive resources a student books from the dashboard.
 RESOURCES = {

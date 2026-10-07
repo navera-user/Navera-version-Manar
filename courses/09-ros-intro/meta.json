@@ -1,0 +1,3 @@
+{"number": "09", "title": "Nodes and topics: how robot programs talk", "module": 3, "duration": "1 h 30",
+ "summary": "What ROS 2 is, and the words every robot engineer uses: nodes, topics, messages, publish and subscribe. You explore a live ROS graph — then NAVERA's own.",
+ "resources": [], "open": ["answers.py"], "check_timeout_s": 120}

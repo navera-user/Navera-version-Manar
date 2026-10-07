@@ -1,0 +1,3 @@
+{"number": "10", "title": "Your first publisher: a fake GPS", "module": 3, "duration": "1 h 30",
+ "summary": "Write a ROS 2 node that publishes a GPS position twice a second, moving along a straight line — exactly the kind of message NAVERA's GPS source reads.",
+ "resources": [], "open": ["fake_gps.py"], "check_timeout_s": 120}

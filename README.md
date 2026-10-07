@@ -40,7 +40,7 @@ Teacher login: `teacher`, password in `state/teacher_password.txt` (change it fr
 The sandbox (bubblewrap + systemd scope) shows the system read only and nothing else of the
 `shadow-team` home folder: not `~/Navera`, not SSH/Claude keys, not other students. Memory is capped
 (1.8 GB per student, 4.5 GB while holding the simulator or camera). Each student has their own ROS
-domain (101 + n), loopback only.
+domain (1–101, never NAVERA's 77–79), loopback only.
 
 ## Shared hardware
 

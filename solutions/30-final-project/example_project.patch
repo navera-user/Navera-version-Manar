@@ -1,0 +1,107 @@
+diff --git a/gps_pkg/gps_pkg/nodes/gps_node.py b/gps_pkg/gps_pkg/nodes/gps_node.py
+index f3fcce3..1e0e89d 100755
+--- a/gps_pkg/gps_pkg/nodes/gps_node.py
++++ b/gps_pkg/gps_pkg/nodes/gps_node.py
+@@ -46,6 +46,24 @@ import serial
+ KNOTS_TO_MPS = 0.514444
+ # GGA quality indicators that are a real satellite fix.
+ _VALID_GPS_QUAL = {1, 2, 4, 5}
++# A 3-D position needs at least 4 satellites; with fewer the receiver extrapolates or
++# fixes a 2-D position on an assumed altitude (errors of tens to hundreds of metres).
++MIN_SATELLITES = 4
++
++
++def fix_problem(gps_qual, has_pos, num_sats):
++    """Why a GGA sentence is NOT a usable fix ("" when it is one).
++
++    gps_qual: the GGA fix quality (int); has_pos: latitude and longitude present;
++    num_sats: satellites used (int), or None when the field is empty (unknown: not
++    judged — some receivers leave it empty)."""
++    if not has_pos or gps_qual not in _VALID_GPS_QUAL:
++        if gps_qual in (6, 7, 8):
++            return f"receiver reports a non-satellite position (qual={gps_qual}) — not used"
++        return f"no GPS fix (qual={gps_qual})"
++    if num_sats is not None and num_sats < MIN_SATELLITES:
++        return f"only {num_sats} satellites (a 3-D fix needs {MIN_SATELLITES}) — not used"
++    return ""
+ 
+ 
+ def _field_float(value):
+@@ -119,22 +137,25 @@ class GPSNode(Node):
+         except (TypeError, ValueError):
+             gps_qual = 0
+         has_pos = bool(msg.lat) and bool(msg.lon)
+-        if not has_pos or gps_qual not in _VALID_GPS_QUAL:
++        try:
++            sats = int(msg.num_sats) if msg.num_sats else None
++        except (TypeError, ValueError):
++            sats = None
++        problem = fix_problem(gps_qual, has_pos, sats)
++        if problem:
+             fix.status.status = NavSatStatus.STATUS_NO_FIX
+             fix.latitude = fix.longitude = fix.altitude = math.nan
+             fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_UNKNOWN
+             self.pub_fix.publish(fix)
+             # Contract: an invalid fix is published, not swallowed. valid=False,
+             # NaN position, covariance UNKNOWN. Still MODE_MEASURED: it IS a live reading.
+-            reason = (f"no GPS fix (qual={gps_qual})" if gps_qual not in (6, 7, 8) else
+-                      f"receiver reports a non-satellite position (qual={gps_qual}) — not used")
+             self._publish_estimate(
+                 fix.header, valid=False,
+                 lat=math.nan, lon=math.nan, alt=math.nan,
+-                cov=None, reason=reason,
+-                extras={"gps_qual": gps_qual},
++                cov=None, reason=problem,
++                extras={"gps_qual": gps_qual, "num_sats": sats},
+             )
+-            self.get_logger().info(f"No fix (qual={gps_qual})", throttle_duration_sec=10.0)
++            self.get_logger().info(f"No fix (qual={gps_qual}, sats={sats})", throttle_duration_sec=10.0)
+             return
+         fix.status.status = (NavSatStatus.STATUS_GBAS_FIX if gps_qual in (2, 4, 5)
+                              else NavSatStatus.STATUS_FIX)
+diff --git a/gps_pkg/test/test_gga_validation.py b/gps_pkg/test/test_gga_validation.py
+new file mode 100644
+index 0000000..6c3a86e
+--- /dev/null
++++ b/gps_pkg/test/test_gga_validation.py
+@@ -0,0 +1,40 @@
++"""Unit tests for gps_node.fix_problem(): which GGA sentences are usable fixes."""
++import pynmea2
++
++from gps_pkg.nodes.gps_node import MIN_SATELLITES, fix_problem
++
++
++def gga(qual="1", sats="08", lat="3544.04006", lon="01034.55091"):
++    body = f"GPGGA,141621.00,{lat},N,{lon},E,{qual},{sats},0.9,25.0,M,33.0,M,,"
++    cs = 0
++    for ch in body:
++        cs ^= ord(ch)
++    return pynmea2.parse(f"${body}*{cs:02X}", check=True)
++
++
++def problem_of(msg):
++    sats = int(msg.num_sats) if msg.num_sats else None
++    return fix_problem(int(msg.gps_qual or 0), bool(msg.lat) and bool(msg.lon), sats)
++
++
++def test_a_normal_fix_is_usable():
++    assert problem_of(gga()) == ""
++
++
++def test_no_fix_and_dead_reckoning_are_refused_as_before():
++    assert problem_of(gga(qual="0")).startswith("no GPS fix")
++    assert "non-satellite" in problem_of(gga(qual="6"))
++
++
++def test_fewer_than_four_satellites_is_refused():
++    assert MIN_SATELLITES == 4
++    assert "only 3 satellites" in problem_of(gga(sats="03"))
++    assert problem_of(gga(sats="04")) == ""
++
++
++def test_unknown_satellite_count_is_not_judged():
++    assert problem_of(gga(sats="")) == ""
++
++
++def test_missing_position_is_refused():
++    assert problem_of(gga(lat="", lon="")).startswith("no GPS fix")

@@ -1,0 +1,3 @@
+{"number": "29", "title": "Measuring honestly", "module": 7, "duration": "1 h 45",
+ "summary": "Truth vs estimate, median, p90 and max, availability, the baseline every method must beat, small samples and why simulation is not reality — on two recorded simulator flights and with NAVERA's own evaluate_session.py.",
+ "resources": [], "open": ["measure.py", "report.md"], "check_timeout_s": 90}

@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 300" font-family="sans-serif" font-size="13">
+  <rect width="680" height="300" fill="#f7fafc"/>
+  <defs>
+    <marker id="h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#56606b"/>
+    </marker>
+  </defs>
+  <text x="340" y="24" text-anchor="middle" font-size="15" font-weight="bold" fill="#1d2733">How the checker tests your tests</text>
+  <!-- tests box -->
+  <rect x="20" y="110" width="150" height="70" rx="10" fill="#1d2733"/>
+  <text x="95" y="140" text-anchor="middle" fill="#ffffff" font-weight="bold">your tests</text>
+  <text x="95" y="160" text-anchor="middle" fill="#c8d3dc" font-family="monospace" font-size="12">test_geo_tools.py</text>
+  <g stroke="#56606b" stroke-width="2" fill="none" marker-end="url(#h)">
+    <path d="M170 130 L250 66"/>
+    <path d="M170 145 L250 145"/>
+    <path d="M170 160 L250 226"/>
+  </g>
+  <!-- versions -->
+  <g stroke-width="2">
+    <rect x="254" y="44" width="220" height="44" rx="8" fill="#eaf6ec" stroke="#3a8a4a"/>
+    <rect x="254" y="123" width="220" height="44" rx="8" fill="#fdecec" stroke="#d64545"/>
+    <rect x="254" y="204" width="220" height="44" rx="8" fill="#fdecec" stroke="#d64545"/>
+  </g>
+  <g fill="#1d2733">
+    <text x="266" y="63" font-weight="bold">correct geo_tools.py</text>
+    <text x="266" y="80" font-size="12">the real code</text>
+    <text x="266" y="142" font-weight="bold">mutant: forgets cos(lat)</text>
+    <text x="266" y="159" font-size="12">a copy with one bug</text>
+    <text x="266" y="223" font-weight="bold">mutant: accepts (0, 0)</text>
+    <text x="266" y="240" font-size="12">a copy with another bug</text>
+  </g>
+  <!-- results -->
+  <g font-weight="bold">
+    <text x="490" y="63" fill="#3a8a4a">all tests PASS</text>
+    <text x="490" y="80" fill="#3a8a4a" font-weight="normal" font-size="12">✔ good: no false alarm</text>
+    <text x="490" y="142" fill="#3a8a4a">a test FAILS</text>
+    <text x="490" y="159" fill="#3a8a4a" font-weight="normal" font-size="12">✔ the bug is caught</text>
+    <text x="490" y="223" fill="#d64545">all tests pass…</text>
+    <text x="490" y="240" fill="#d64545" font-weight="normal" font-size="12">✘ the bug survived!</text>
+  </g>
+  <text x="340" y="282" text-anchor="middle" fill="#56606b">A test suite is only as good as the bugs it catches. Engineers call this mutation testing.</text>
+</svg>

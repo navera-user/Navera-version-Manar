@@ -178,6 +178,8 @@ BASHRC = r"""# NAVERA Academy sandbox
 [ -f /etc/bash.bashrc ] && . /etc/bash.bashrc
 source /opt/ros/humble/setup.bash
 [ -f ~/navera/install/setup.bash ] && source ~/navera/install/setup.bash
+# the ros2 CLI daemon in its own session: a `timeout ros2 …` cannot leave it half-dead
+(setsid ros2 daemon start >/dev/null 2>&1 &)
 export PS1='\[\e[1;36m\]student\[\e[0m\]@\[\e[1;33m\]navera\[\e[0m\]:\[\e[1;34m\]\w\[\e[0m\]\$ '
 alias ll='ls -la --color=auto'
 alias ls='ls --color=auto'

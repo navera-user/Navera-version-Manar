@@ -1,0 +1,3 @@
+{"number": "14", "title": "Testing code like an engineer", "module": 3, "duration": "1 h 45",
+ "summary": "Why engineers write tests, how pytest works, and how NAVERA's own tests catch a bug. You write tests strong enough to catch wrong code — the checker will try to fool them.",
+ "resources": [], "open": ["geo_tools.py", "test_geo_tools.py", "test_navera_geo.py"], "check_timeout_s": 180}
