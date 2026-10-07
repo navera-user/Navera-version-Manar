@@ -51,6 +51,7 @@ class VisionNavigator:
         self.search_k, self.min_search_m, self.max_search_m = search_k, min_search_m, max_search_m
         self.gate_k, self.strong_inliers, self.min_spread = gate_k, strong_inliers, min_spread
         self.retry_after, self.bias_radius_m = retry_after, bias_radius_m
+        self.weak_inliers = 30        # fewer: the fix places the vehicle, not its velocity
         self.fix = None               # (lat, lon, t, sigma_m, heading_deg or None): last position measured
         self.vel = None               # (east, north) m/s
         self.vel_sigma = 5.0          # m/s
@@ -63,6 +64,13 @@ class VisionNavigator:
         self._h = None                # [height, climb rate], 2x2 covariance, time
         self.height_source = None     # where the last independent height came from
         self.climb_accel = 0.5        # m/s^2: climb-rate changes the filter allows
+        # a climb does not last for ever: the carried climb rate fades (time constant), and is
+        # never more than max_climb — without it a climb measured before the matches stopped
+        # was extrapolated without limit (camera campaign 5: the height tried reached 3-11x
+        # the truth, the matching failed for good and the GPU memory ran out)
+        self.climb_tau_s = 10.0
+        self.climb_hold_s = 3.0
+        self.max_climb_mps = 8.0
         self.height = None            # (m above ground, sigma_m, t, source): the filter's state
         self.fails = 0                # matches failed in a row
         self._bias = deque(maxlen=40)  # (lat, lon, de, dn, heading): GPS minus vision, while GPS is good
@@ -89,10 +97,17 @@ class VisionNavigator:
         (h, v), P, th = self._h
         dt = max(0.0, t - th)
         q = self.climb_accel ** 2
-        P = [[P[0][0] + dt * (P[0][1] + P[1][0]) + dt * dt * P[1][1] + q * dt ** 4 / 4,
-              P[0][1] + dt * P[1][1] + q * dt ** 3 / 2],
-             [P[1][0] + dt * P[1][1] + q * dt ** 3 / 2, P[1][1] + q * dt * dt]]
-        return (h + v * dt, v), P, t
+        # the climb rate is held for climb_hold_s after the last update (frame-to-frame the
+        # filter tracks a steady climb without lag), then fades over climb_tau_s: the height
+        # moves by at most v (hold + tau)
+        hold = min(dt, self.climb_hold_s)
+        e = math.exp(-(dt - hold) / self.climb_tau_s)
+        a = hold + self.climb_tau_s * (1.0 - e)
+        v = max(-self.max_climb_mps, min(self.max_climb_mps, v))
+        P = [[P[0][0] + a * (P[0][1] + P[1][0]) + a * a * P[1][1] + q * dt ** 4 / 4,
+              e * (P[0][1] + a * P[1][1]) + q * dt ** 3 / 2],
+             [e * (P[1][0] + a * P[1][1]) + q * dt ** 3 / 2, e * e * P[1][1] + q * dt * dt]]
+        return (h + v * a, v * e), P, t
 
     def _height_update(self, t: float, z: float, sigma: float, source: str) -> None:
         pred = self._height_predict(t)
@@ -306,19 +321,20 @@ class VisionNavigator:
         self._pending = None
         self.fails = 0
         wide = (search_m or 0.0) > 300.0 or reacquired
-        if wide and inl < 100 and self.height is not None:
-            # a re-acquisition far from the prediction places the vehicle but its scale is
-            # not trusted for the height (one set it 15 % low and the next frames failed)
-            height_used = None
         if height_used and res.get("scale_residual"):
             hv = height_used * float(res["scale_residual"])
-            # vision height: ~3 % (campaign median), worse with few inliers
-            self._height_update(t, hv, max(0.03 * hv, 0.05 * hv if inl < 50 else 0.0), "vision")
+            # vision height: ~3 % (campaign median), worse with few inliers; a re-acquisition
+            # far from the prediction counts little (one set it 15 % low and the next frames
+            # failed) but is not ignored (a stale height then stayed wrong: campaign 5)
+            hs = max(0.03 * hv, 0.05 * hv if inl < 50 else 0.0)
+            self._height_update(t, hv, 0.12 * hv if wide and inl < 100 else hs, "vision")
         if not gps_valid:
-            self._set_fix(t, lat, lon, sig, heading_deg)
+            # a weak fix places the vehicle but does not measure its velocity (campaign 5: the
+            # velocity of weak fixes carried the output to 68-142 m)
+            self._set_fix(t, lat, lon, sig, heading_deg, velocity=inl >= self.weak_inliers)
         return True
 
-    def _set_fix(self, t, lat, lon, sigma_m, heading_deg):
+    def _set_fix(self, t, lat, lon, sigma_m, heading_deg, velocity: bool = True):
         if self.fix is not None and t < self.fix[2]:
             return
         self._carry = None
@@ -327,6 +343,9 @@ class VisionNavigator:
             # was with the one after cancelled: 0 m/s at the GPS loss on the coast, 618 m)
             self.vel = self._rotate(self.vel, _wrap(heading_deg - self.vel_hdg))
             self.vel_hdg = heading_deg
+        if not velocity:
+            self.fix = (lat, lon, t, sigma_m, heading_deg)
+            return
         self._fixes.append((t, lat, lon))
         # the velocity: from the latest fix at least 2 s older (else the oldest >= 1 s older),
         # never along a chord longer than 8 s (across a turn it is not a velocity)

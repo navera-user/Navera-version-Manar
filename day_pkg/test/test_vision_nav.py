@@ -261,10 +261,27 @@ def test_velocity_from_before_a_turn_does_not_cancel_the_new_one():
     assert math.hypot(*nav.vel) > 20.0                             # not ~0 m/s
 
 
-def test_the_climb_is_carried_once():
-    """height + rate x dt — the 10 s decay added it twice (1.86x the climb at 1 s)."""
+def test_the_climb_is_carried_once_and_fades():
+    """The climb rate is held 3 s then fades over 10 s, applied once: at 1 s nearly the full climb (the old
+    double-counted decay gave 1.86x it); never extrapolated without limit (campaign 5: the
+    height tried reached 11x the truth after a long gap)."""
     nav = VisionNavigator()
     for t in range(20):
         nav.set_height(float(t), 400.0 + 4.0 * t, 5.0, "gps")
-    assert abs(nav.height_at(24.0)[0] - (476.0 + 4.0 * 5)) < 3.0
+    h0 = nav.height_at(19.0)[0]
+    assert 3.0 < nav.height_at(20.0)[0] - h0 < 4.5
+    assert abs(nav.height_at(24.0)[0] - (476.0 + 4.0 * 5)) < 6.0
+    assert nav.height_at(600.0)[0] - h0 < 4.0 * (nav.climb_hold_s + nav.climb_tau_s) + 5.0
 
+
+
+def test_weak_fix_places_but_does_not_set_the_velocity():
+    """Under 30 inliers the fix moves the position but not the velocity (campaign 5: weak
+    fixes' velocity carried the output to 68-142 m)."""
+    nav = VisionNavigator()
+    p = _fly(nav, 0, 10, 10.0, 0.0, heading=90.0)
+    vel = nav.vel
+    q = _move(p, 10.0 + 8.0, 6.0)                       # 8 m ahead, 6 m aside of the prediction
+    assert nav.update(11.0, _fix(*q, inliers=25, sigma=8.0), 500.0, 90.0)
+    assert nav.fix[:2] == q
+    assert math.hypot(nav.vel[0] - vel[0], nav.vel[1] - vel[1]) < 0.01
