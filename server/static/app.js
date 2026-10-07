@@ -61,39 +61,79 @@ function route() {
 }
 
 /* ------------------------------------------------------------------ home */
+function moduleOf(id) {
+  const i = MODULES.findIndex(m => (m.lessons || []).includes(id));
+  return i < 0 ? {color: '#3b8ff0', icon: '🐦', leg: '', idx: 0} : {...MODULES[i], idx: i};
+}
+function routeSVG(lessons) {
+  // Navi's migration: one stop per lesson along a wavy flight path.
+  const W = 1000, H = 250, x0 = 95, x1 = 905, n = lessons.length;
+  const pt = (t) => [x0 + (x1 - x0) * t, 128 + 52 * Math.sin(t * Math.PI * 4.4)];
+  let d = '';
+  for (let k = 0; k <= 200; k++) { const [x, y] = pt(k / 200); d += (k ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1); }
+  const next = lessons.findIndex(l => l.progress.status !== 'passed');
+  let g = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Navi's migration route">
+    <defs><linearGradient id="skyg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#dff3ff"/><stop offset="1" stop-color="#f6fcff"/></linearGradient></defs>
+    <rect x="0" y="0" width="${W}" height="${H}" rx="22" fill="url(#skyg)"/>
+    <circle cx="955" cy="40" r="26" fill="#ffd25e"/><circle cx="955" cy="40" r="36" fill="#ffd25e" opacity=".25"/>
+    <g fill="#fff" opacity=".9"><ellipse cx="190" cy="40" rx="46" ry="13"/><ellipse cx="208" cy="31" rx="22" ry="15"/>
+      <ellipse cx="610" cy="222" rx="54" ry="13"/><ellipse cx="630" cy="212" rx="24" ry="15"/></g>
+    <path d="${d}" fill="none" stroke="#9fc9ee" stroke-width="5" stroke-dasharray="2 12" stroke-linecap="round"/>
+    <text x="${x0 - 22}" y="${pt(0)[1] + 5}" text-anchor="end" font-size="15" fill="#5f7187">🪺 nest</text>
+    <text x="${x1 + 22}" y="${pt(1)[1] + 5}" font-size="15" fill="#5f7187">🌍 Africa!</text>`;
+  lessons.forEach((l, i) => {
+    const [x, y] = pt(n > 1 ? i / (n - 1) : 0);
+    const m = moduleOf(l.id), done = l.progress.status === 'passed', started = l.progress.status === 'started';
+    const fill = done ? m.color : '#fff';
+    g += `<g class="stop" data-id="${esc(l.id)}"><title>Lesson ${esc(l.number)} · ${esc(l.title)}${done ? ' — passed' : ''}</title>
+      <circle class="ring" cx="${x}" cy="${y}" r="13" fill="${fill}" stroke="${m.color}" stroke-width="3.5" ${started ? 'stroke-dasharray="5 3"' : ''}/>
+      <text x="${x}" y="${y + 5}" text-anchor="middle" font-size="${done ? 14 : 12}" fill="${done ? '#fff' : m.color}">${done ? '✓' : (+l.number)}</text></g>`;
+  });
+  if (next >= 0) {
+    const [x, y] = pt(n > 1 ? next / (n - 1) : 0);
+    g += `<image href="/static/img/navi.svg" x="${x - 34}" y="${y - 70}" width="64" height="52"><animateTransform attributeName="transform" type="translate" values="0 0; 0 -6; 0 0" dur="1.6s" repeatCount="indefinite"/></image>`;
+  } else {
+    g += `<image href="/static/img/navi.svg" x="${x1 - 30}" y="${pt(1)[1] - 72}" width="70" height="56"/>`;
+  }
+  return g + '</svg>';
+}
 async function showHome() {
   try { const c = await api('/api/courses'); COURSES = c.lessons; MODULES = c.modules; } catch (e) {}
   $('work').style.display = 'none'; $('home').style.display = '';
   $('crumb').innerHTML = '';
   const passed = COURSES.filter(l => l.progress.status === 'passed').length;
-  const pct = COURSES.length ? passed / COURSES.length : 0;
-  const R = 40, C = 2 * Math.PI * R;
-  let h = `<div class="hero"><div><h1>Hello ${esc(ME.display)} 👋</h1>
-    <p>NAVERA keeps a drone, a car or a robot on track when GPS stops working — using a camera, a map,
-    the stars and some clever code. In ${COURSES.length} lessons you will learn how it works and change it yourself.
-    Your NAVERA copy is yours: break it, fix it, and press <b>Reset</b> whenever you want.</p></div>
-    <svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="${R}" stroke="rgba(255,255,255,.2)" stroke-width="10" fill="none"/>
-    <circle cx="50" cy="50" r="${R}" stroke="#f2a33a" stroke-width="10" fill="none" stroke-linecap="round"
-      stroke-dasharray="${C * pct} ${C}" transform="rotate(-90 50 50)"/>
-    <text x="50" y="47" text-anchor="middle" fill="#fff" font-size="20" font-weight="700">${passed}/${COURSES.length}</text>
-    <text x="50" y="64" text-anchor="middle" fill="#cfe7ef" font-size="10">lessons passed</text></svg></div>`;
+  const next = COURSES.find(l => l.progress.status !== 'passed');
+  const first = ME.display.split(' ')[0];
+  const line = passed === 0 ? `I'm <b>Navi</b>, a little swallow. Every year I fly from Europe to Africa without any GPS — I use my eyes,
+      the sun, the stars and my inner compass. NAVERA was born from that idea: a vehicle that finds its way like a bird.
+      Fly with me through ${COURSES.length} lessons and you will build it yourself!`
+    : passed === COURSES.length ? `We made it to Africa! 🎉 You finished all ${COURSES.length} lessons. You now know how NAVERA finds its way like a bird.`
+    : `Great flying! ${passed} of ${COURSES.length} stops done. Next stop: <b>${esc(next.title)}</b>${/[.?!]$/.test(next.title) ? '' : '.'} Your NAVERA copy is yours — break it, fix it, and press Reset whenever you want.`;
+  let h = `<div class="hero"><div class="cloud c1"></div><div class="cloud c2"></div>
+    <img class="navi" src="/static/img/navi.svg" alt="Navi the swallow">
+    <div class="say"><h1>Hi ${esc(first)}! 👋</h1><p>${line}</p></div>
+    <div class="score"><b>${passed}/${COURSES.length}</b><span>stops reached</span>${next ? `<div style="margin-top:8px"><button class="go" id="goNext">Fly on ➜</button></div>` : ''}</div></div>
+    <div class="route"><h2>🗺️ Navi's migration route</h2><p>Each stop is a lesson. Pass its lab to fill it in — click any stop to fly there.</p>${routeSVG(COURSES)}</div>`;
   const mods = MODULES.length ? MODULES : [{title: 'Lessons', lessons: COURSES.map(l => l.id)}];
   const byId = Object.fromEntries(COURSES.map(l => [l.id, l]));
   for (const m of mods) {
-    h += `<div class="module"><h2>${esc(m.title)}</h2>${m.desc ? `<p class="mdesc">${esc(m.desc)}</p>` : ''}<div class="cards">`;
+    const color = m.color || '#3b8ff0';
+    h += `<div class="module" style="--mcolor:${color}"><div class="mhead"><div class="micon" style="background:${color}22">${m.icon || '🐦'}</div>
+      <div><div class="mtag" style="color:${color}">${esc(m.leg || '')}</div><h2>${esc(m.title)}</h2>${m.desc ? `<p class="mdesc">${esc(m.desc)}</p>` : ''}</div></div><div class="cards">`;
     for (const id of (m.lessons || [])) {
       const l = byId[id]; if (!l) continue;
       const st = l.progress.status;
       const badge = st === 'passed' ? '<span class="badge passed">✔ passed</span>' :
         st === 'started' ? '<span class="badge started">in progress</span>' : '';
       const res = (l.resources || []).map(r => `<span class="badge res">${r === 'sim' ? '🛩️ simulator' : r === 'camera' ? '📷 camera' : '🔌 sensors'}</span>`).join(' ');
-      h += `<div class="card" data-id="${esc(id)}"><div class="num"><span>Lesson ${esc(l.number)} · ${esc(l.duration || '')}</span>${badge}</div>
+      h += `<div class="card" data-id="${esc(id)}"><div class="num"><span><span class="bubble">${esc(+l.number)}</span>${esc(l.duration || '')}</span>${badge}</div>
         <div class="title">${esc(l.title)}</div><div class="sum">${esc(l.summary || '')}</div><div>${res}</div></div>`;
     }
     h += '</div></div>';
   }
   $('home').innerHTML = h;
-  $('home').querySelectorAll('.card').forEach(c => c.onclick = () => { location.hash = 'lesson/' + c.dataset.id; });
+  $('home').querySelectorAll('.card, .stop').forEach(c => c.onclick = () => { location.hash = 'lesson/' + c.dataset.id; });
+  if ($('goNext')) $('goNext').onclick = () => { location.hash = 'lesson/' + next.id; };
 }
 
 /* ------------------------------------------------------------------ lesson */
@@ -141,10 +181,10 @@ function renderMarkdown(el, md) {
   el.querySelectorAll('blockquote').forEach(bq => {
     const first = bq.firstElementChild;
     if (!first) return;
-    const m = first.innerHTML.match(/^\s*\[!(NOTE|TIP|WARNING|TASK|QUESTION)\]\s*(.*)/is);
+    const m = first.innerHTML.match(/^\s*\[!(NOTE|TIP|WARNING|TASK|QUESTION|BIRD)\]\s*(.*)/is);
     if (!m) return;
     const kind = m[1].toLowerCase();
-    const labels = {note: 'ℹ️ Note', tip: '💡 Tip', warning: '⚠️ Careful', task: '🎯 Your turn', question: '❓ Think'};
+    const labels = {note: 'ℹ️ Note', tip: '💡 Tip', warning: '⚠️ Careful', task: '🎯 Your turn', question: '❓ Think', bird: "🐦 Bird's-eye view"};
     first.innerHTML = m[2];
     if (!first.innerHTML.trim()) first.remove();
     const d = document.createElement('div'); d.className = 'callout ' + kind;
@@ -183,17 +223,34 @@ function runInTerminal(cmd) {
 
 $('checkBtn').onclick = async () => {
   await Editor.saveAll();
-  const b = $('checkBtn'); b.disabled = true; b.textContent = '⏳ Checking…';
+  const b = $('checkBtn'); b.disabled = true; b.textContent = '🐦 Navi is checking…';
   try {
     const r = await api(`/api/lesson/${LESSON.id}/check`, {method: 'POST', body: {}});
     $('result').className = 'result show ' + (r.passed ? 'ok' : 'bad');
     const sc = r.score ? ` — ${r.score.passed}/${r.score.total}` : '';
-    $('rhead').textContent = r.passed ? `🎉 Well done, all checks pass${sc}` : `Not yet${sc} — read the hints below and try again`;
+    $('rhead').textContent = r.passed ? `🎉 Well done, all checks pass${sc}` : `Not yet${sc} — read Navi's hints below and try again`;
     $('rout').textContent = r.output.trim() || '(no output)';
+    if (r.passed) celebrate();
     const l = await api('/api/lesson/' + LESSON.id); LESSON.progress = l.progress; setStatus(l.progress);
   } catch (e) { toast(e.message); }
   b.disabled = false; b.textContent = '✔ Check my work';
 };
+function celebrate() {
+  const p = document.createElement('div'); p.className = 'party';
+  const icons = ['🪶', '🪶', '🪶', '⭐', '✨', '🪶'];
+  for (let i = 0; i < 34; i++) {
+    const f = document.createElement('div'); f.className = 'feather';
+    f.textContent = icons[i % icons.length];
+    f.style.left = (Math.random() * 100) + 'vw';
+    f.style.animationDuration = (2.2 + Math.random() * 2) + 's';
+    f.style.animationDelay = (Math.random() * .8) + 's';
+    p.appendChild(f);
+  }
+  const lines = ['Great flying!', 'Perfect landing!', 'You found the way!', 'Navi is proud of you!'];
+  p.insertAdjacentHTML('beforeend', `<div class="cheer"><img src="/static/img/navi.svg" alt=""><div><b>${lines[Math.floor(Math.random() * lines.length)]}</b><span>Lab passed — one more stop on the route.</span></div></div>`);
+  document.body.appendChild(p);
+  setTimeout(() => p.remove(), 4200);
+}
 $('rclose').onclick = () => $('result').className = 'result';
 $('resetLesson').onclick = async () => {
   const ok = await modal('Reset the lab files?', `<p>The files of this lesson go back to how they were at the start.

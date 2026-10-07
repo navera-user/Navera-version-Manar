@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NAVERA Academy</title>
+<link rel="icon" href="/static/img/navi.svg">
 <link rel="stylesheet" href="/static/style.css">
 <link rel="stylesheet" href="/static/vendor/xterm/css/xterm.css">
 <link rel="stylesheet" href="/static/vendor/hljs/styles/github-dark.min.css">
@@ -10,7 +11,7 @@
 <body>
 <div class="top">
   <div class="logo" id="logo" title="All lessons">
-    <svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="15" fill="#0b6e8a"/><path d="M16 5 L22 25 L16 21 L10 25 Z" fill="#fff"/><circle cx="16" cy="16" r="2" fill="#f2a33a"/></svg>
+    <img src="/static/img/navi.svg" alt="">
     NAVERA <small>Academy</small>
   </div>
   <div class="crumb" id="crumb"></div>
@@ -46,7 +47,7 @@
       <span class="badge" id="lstatus"></span>
       <div class="grow"></div>
       <button id="resetLesson" title="Put this lesson's files back as they were (your version is saved)">↺ Reset lab files</button>
-      <button class="primary" id="checkBtn">✔ Check my work</button>
+      <button class="go" id="checkBtn">✔ Check my work</button>
     </div>
   </div>
   <div class="split" id="split"></div>
@@ -64,7 +65,7 @@
         <div class="ftabs" id="ftabs"></div>
         <div id="monaco" style="display:none"></div>
         <div class="imgview" id="imgview"><img id="imgel" alt=""></div>
-        <div class="empty" id="edEmpty">Open a file on the left.<br>Save with <code>Ctrl+S</code>. Run it in the <b>Terminal</b> tab.</div>
+        <div class="empty" id="edEmpty"><img src="/static/img/navi.svg" alt="">Open a file on the left.<br>Save with <code>Ctrl+S</code>. Run it in the <b>Terminal</b> tab.</div>
       </div>
     </div>
     <div class="pane" id="pane-terminal">
