@@ -248,7 +248,7 @@ def worker(axis_w, h0):
                 if r["accepted"]:
                     break
             sc = float(r.get("scale_residual") or 1.0)
-            if r.get("accepted") and abs(sc - 1.0) > 0.10:
+            if r.get("accepted") and abs(sc - 1.0) > 0.05:
                 # the fitted scale answers ~half of a height error: match again at the corrected height
                 again = M.locate(img, centre, R, frame_mpp(used * sc, img.shape[1]), scale_tol=tol,
                                  heading_deg=imu, heading_tol_deg=20.0)
@@ -258,7 +258,7 @@ def worker(axis_w, h0):
         vis = (r["predicted_lat"], r["predicted_lon"]) if r.get("accepted") else None
         if vis and gps_on:
             nav.bias_sample(vis, truth, imu)
-        ok = nav.update(t, r, used, imu, gps_valid=gps_on)
+        ok = nav.update(t, r, used, imu, gps_valid=gps_on, search_m=R)
         if nav.height is not None:
             pred = None
             if nav.vel is not None and vo._prev is not None:

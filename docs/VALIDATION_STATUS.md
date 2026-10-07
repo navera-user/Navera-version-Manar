@@ -14,10 +14,11 @@ been measured. Open engineering items are tracked in
 |---|---|---|
 | GPS pass-through, fix arbitration, operator display | Working, bench-tested | Scripted tests, virtual serial port, simulated sensors |
 | Automatic restart after a crash | Mechanism verified; not yet reboot-tested on a deployed unit | Node exit → launch exit, verified |
-| Day vision — local feature matching (default since 2026-10-01) | **Accurate on aerial test frames; not yet measured with NAVERA's camera** | 32/33 frames within 9 m (median 4 m), no wrong position accepted, 0.16 s/frame |
+| Day vision — local feature matching (default since 2026-10-01) | **Accurate on aerial test frames; measured with NAVERA's camera on a screen bench only (not flown)** | 32/33 frames within 9 m (median 4 m), no wrong position accepted, 0.16 s/frame |
+| Day vision — DISK + LightGlue matcher, navigation between matches (2026-10-06/07) | **Screen bench with the Insta360 (other-date imagery) and simulator; not flown** | below: "Day vision with NAVERA's camera — screen bench" |
 | Day vision — DINOv2 tile retrieval (former method, fallback) | **Not accurate enough to replace GPS** | Median 442 m on labelled replay frames |
-| Night vision (STHN homography) | Frames scaled and turned north-up from altitude, camera field of view and heading; motion gate; **not validated on real thermal** | 8–13 m median on synthetic frames (250–600 m, any heading); simulated night mission 6 m median |
-| Celestial (astrometry.net) | Run end to end on simulated star fields; **coarse: bounded by the IMU attitude (~111 km per degree)** | 5.5–6.5 km with a perfect attitude; 24–119 km with a BNO085-class IMU |
+| Night vision (STHN homography) | Frames scaled and turned north-up from altitude, camera field of view and heading; motion gate; **simulator only — not validated on real thermal** | 8–13 m median on synthetic frames (250–600 m, any heading); simulated night mission, GPS jammed, vehicle barometer (2026-10-07): 10 m median, 21 m max, stated accuracy (simulator-calibrated) 100 % within 3 sigma; **needs an independent height (barometer) after GPS loss** |
+| Celestial (astrometry.net) | Run end to end on simulated star fields; **coarse: bounded by the IMU attitude (~111 km per degree); simulator only — not run on a real sky** | 5.5–6.5 km with a perfect attitude; 24–119 km with a BNO085-class IMU; simulated night mission without barometer (2026-10-07): 29 km median, 40 km max, 100 % within its stated sigma |
 | Day vision dead-reckoning along the measured track (no match: sea, uniform ground, frame unusable) | Implemented 2026-10-02; **simulator only** | Land route: no failsafe, error median 10 m, max 33 m; across the bay: carried 90 s over the sea stating ±300 m, true error at most 146 m |
 | Vision position carried to the present (output, operator view) | Implemented; unit tests and simulator only | 1.5 s old photo at 40 m/s: moved 60 m, stated ±31.5 m |
 | Inertial navigation (integrating the IMU) | **Not implemented** — the IMU gives attitude and heading changes | — |
@@ -112,6 +113,32 @@ from day vision.
 
 > The replay frames in `camera_pkg/data/day` do not show the places their CSV labels
 > say. Earlier accuracy figures computed on them are not valid.
+
+### Day vision with NAVERA's camera — screen bench (2026-10-06/07)
+
+The Insta360 One R (top lens, calibrated fisheye, straightened to 111°, 0.14 s delay
+measured) films the Jetson's screen, on which Esri Wayback imagery **2–3 years older than
+NAVERA's map** scrolls like a flight: racetrack with turns, height ±20 %, simulated IMU
+heading ±5°, 25 m/s, ~520 m equivalent height; GPS for 90 s, then lost
+(`navera_tools/bench/screen_mission.py`; truth = the camera axis calibrated against the
+terrain imagery itself). Matcher DISK + LightGlue (fp16, 1536/768 keypoints, SIFT fallback)
+with `day_pkg/vision_nav.py` between matches. Campaign 4 (before the last carry fix),
+GPS lost, NAVERA output error median / p95 / max:
+
+| Terrain | Fixes | Available | Error (m) | Within 3 stated sigma |
+|---|---|---|---|---|
+| City (2 runs) | 95.6 % | 100 % | 5.2 / 17 / 36 | 100 % |
+| Olive groves | 96.4 % | 100 % | 4.2 / 9 / 90 | 100 % |
+| Dry hills | 97.3 % | 100 % | 3.6 / 20 / 307 | 97 % |
+| Farm fields | 86.6 % | 99.3 % | 4.5 / 110 / 554 | 96 % |
+| Coast (half sea) | 32.8 % | 51.6 % ("no position" otherwise) | 7.3 / 63 / 84 | 100 % |
+| City, 18 min (killed for memory) | 94 % | 100 % | 5.5 / 17 / 49 — no drift | 100 % |
+
+The 307 m and 554 m maxima were the carried position folding turns; fixed after
+(frame-by-frame carry): replayed on the same matches, non-coast max 554 → 42 m. Imagery
+8 years older than the map (2017): no match with any matcher. Limits: the screen is flat
+(no relief, no perspective of buildings), no vibration or real blur; the camera was
+re-aimed between campaigns. **Not a flight measurement.**
 
 ### Night vision (`night_pkg`, STHN one-stage)
 
