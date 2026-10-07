@@ -64,7 +64,7 @@ function route() {
 /* ------------------------------------------------------------------ home */
 function moduleOf(id) {
   const i = MODULES.findIndex(m => (m.lessons || []).includes(id));
-  return i < 0 ? {color: '#c8892f', leg: '', idx: 0, title: ''} : {...MODULES[i], idx: i};
+  return i < 0 ? {color: '#d9634f', leg: '', idx: 0, title: ''} : {...MODULES[i], idx: i};
 }
 const XP_PER_MISSION = 100;
 const RANKS = [[0, 'Fledgling', 'egg'], [3, 'Glider', 'plane'], [8, 'Wayfinder', 'compass'],
@@ -87,11 +87,26 @@ const ICONS = {
 const icon = (n) => `<svg viewBox="0 0 24 24">${ICONS[n] || ''}</svg>`;
 const BIRD_PATH = 'M62 32 Q58.5 28.4 51 28.6 Q47 13 21 5 Q31 17 37.5 29 Q32 29.4 27 30.4 L3 22.5 Q12.5 29.4 17.5 32 Q12.5 34.6 3 41.5 L27 33.6 Q32 34.6 37.5 35 Q31 47 21 59 Q47 51 51 35.4 Q58.5 35.6 62 32 Z';
 const bird = (x, y, s, fill, op = 1) => `<g transform="translate(${x} ${y}) scale(${s / 64})" opacity="${op}"><path d="${BIRD_PATH}" fill="${fill}"/></g>`;
-const DUSK_DEFS = `<linearGradient id="dusk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0f1530"/><stop offset=".45" stop-color="#3b3a6b"/><stop offset=".72" stop-color="#c9707a"/><stop offset=".9" stop-color="#f2a65e"/><stop offset="1" stop-color="#f7c27a"/></linearGradient>
-  <linearGradient id="r1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5a4a78"/><stop offset="1" stop-color="#3a3157"/></linearGradient>
-  <linearGradient id="r2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a3157"/><stop offset="1" stop-color="#241f3c"/></linearGradient>
-  <linearGradient id="dune" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b9784a"/><stop offset="1" stop-color="#7c4a2c"/></linearGradient>
-  <radialGradient id="sun" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#fff1c9"/><stop offset=".5" stop-color="#ffc77a"/><stop offset="1" stop-color="#ffc77a" stop-opacity="0"/></radialGradient>`;
+const DUSK_DEFS = `<linearGradient id="dusk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b1730"/><stop offset=".45" stop-color="#16395a"/><stop offset=".62" stop-color="#1d4e6b"/><stop offset=".84" stop-color="#e6928a"/><stop offset="1" stop-color="#f6c7a8"/></linearGradient>
+  <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a6f86"/><stop offset="1" stop-color="#0b2236"/></linearGradient>
+  <radialGradient id="sun" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#fff0e2"/><stop offset=".45" stop-color="#ffb59c"/><stop offset="1" stop-color="#ffb59c" stop-opacity="0"/></radialGradient>`;
+// sky, sun on the horizon, a far coastline, the sea with its waves and reflection, and a flock of swallows
+function oceanScene(W, H, hz, flock = true) {
+  const stars = [[.06, .1], [.18, .22], [.3, .08], [.43, .18], [.55, .06], [.68, .14], [.79, .07], [.9, .2], [.96, .1], [.38, .3]]
+    .map(([x, y]) => `<circle cx="${x * W}" cy="${y * H}" r="${1 + (x * 7) % 1}" />`).join('');
+  const sx = W * .68, waves = [0, 1, 2, 3].map(k => {
+    const y = hz + (H - hz) * (.25 + k * .22);
+    let d = `M0 ${y}`; for (let x = 0; x < W; x += 120) d += ` q30 -5 60 0 t60 0`;
+    return `<path d="${d}" stroke="rgba(255,255,255,${.16 - k * .03})" stroke-width="1.4" fill="none"/>`;
+  }).join('');
+  const glints = [0, 1, 2, 3, 4].map(k => `<rect x="${sx - 60 + (k % 2) * 25 - k * 6}" y="${hz + 10 + k * 13}" width="${120 - k * 18}" height="2" rx="1" fill="#ffd9bd" opacity="${.6 - k * .09}"/>`).join('');
+  const coast = `M${W * .52} ${hz} L${W * .6} ${hz - H * .055} L${W * .66} ${hz - H * .03} L${W * .74} ${hz - H * .075} L${W * .83} ${hz - H * .035} L${W * .92} ${hz - H * .06} L${W} ${hz - H * .04} L${W} ${hz} Z`;
+  const birds = flock ? `${bird(W * .2, H * .16, 46, '#0b1730', .85)}${bird(W * .2 + 52, H * .16 + 30, 30, '#0b1730', .8)}${bird(W * .2 - 30, H * .16 + 40, 24, '#0b1730', .75)}${bird(W * .2 + 90, H * .16 + 6, 20, '#0b1730', .7)}` : '';
+  return `<rect width="${W}" height="${H}" fill="url(#dusk)"/><g fill="#fff" opacity=".8">${stars}</g>
+    <path d="M${W * .86} ${H * .17} a${H * .045} ${H * .045} 0 1 0 ${H * .038} ${H * .07} a${H * .034} ${H * .034} 0 1 1 ${-H * .038} ${-H * .07}z" fill="#f1f6fb" opacity=".9"/>
+    <circle cx="${sx}" cy="${hz}" r="${H * .3}" fill="url(#sun)" opacity=".75"/><circle cx="${sx}" cy="${hz}" r="${H * .065}" fill="#ffe3cf"/>
+    <path d="${coast}" fill="#15314d"/><rect y="${hz}" width="${W}" height="${H - hz}" fill="url(#sea)"/>${waves}${glints}${birds}`;
+}
 function rankFor(passed) {
   let i = 0;
   RANKS.forEach((r, k) => { if (passed >= r[0]) i = k; });
@@ -99,29 +114,14 @@ function rankFor(passed) {
   return {name: RANKS[i][1], icon: RANKS[i][2], idx: i, from: RANKS[i][0], next: next ? next[0] : null, nextName: next ? next[1] : null};
 }
 function heroScene() {
-  return `<svg class="scene" viewBox="0 0 1440 640" preserveAspectRatio="xMidYMid slice"><defs>${DUSK_DEFS}</defs>
-    <rect width="1440" height="640" fill="url(#dusk)"/>
-    <g fill="#fff" opacity=".8"><circle cx="120" cy="80" r="1.2"/><circle cx="260" cy="130" r="1"/><circle cx="420" cy="60" r="1.4"/><circle cx="620" cy="110" r="1"/>
-      <circle cx="760" cy="50" r="1.2"/><circle cx="980" cy="90" r="1"/><circle cx="1120" cy="60" r="1.3"/><circle cx="1300" cy="120" r="1"/><circle cx="1380" cy="70" r="1.2"/><circle cx="560" cy="170" r=".9"/></g>
-    <path d="M1180 112 a26 26 0 1 0 22 40 a20 20 0 1 1 -22 -40z" fill="#fff4dc" opacity=".9"/>
-    <circle cx="980" cy="500" r="170" fill="url(#sun)" opacity=".8"/>
-    <path d="M0 470 L120 400 L210 440 L330 350 L450 430 L560 370 L680 450 L800 370 L930 440 L1060 360 L1190 430 L1300 380 L1440 430 L1440 640 L0 640Z" fill="url(#r1)"/>
-    <path d="M0 510 L140 450 L260 490 L400 420 L520 490 L660 440 L780 510 L920 450 L1060 510 L1200 460 L1440 500 L1440 640 L0 640Z" fill="url(#r2)"/>
-    <path d="M0 570 Q240 520 480 565 T960 560 T1440 550 L1440 640 L0 640Z" fill="url(#dune)"/>
-    <path d="M0 605 Q300 575 640 603 T1440 595 L1440 640 L0 640Z" fill="#5c3520" opacity=".7"/>
-    ${bird(1030, 200, 40, '#14112a', .85)}${bird(1084, 232, 26, '#14112a', .8)}${bird(992, 246, 22, '#14112a', .75)}</svg>`;
+  return `<svg class="scene" viewBox="0 0 1440 640" preserveAspectRatio="xMidYMid slice"><defs>${DUSK_DEFS}</defs>${oceanScene(1440, 640, 505)}</svg>`;
 }
 function expeditionSVG(lessons) {
   const W = 1220, H = 380, n = lessons.length;
   const next = lessons.findIndex(l => l.progress.status !== 'passed');
   let g = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Expedition map"><defs>${DUSK_DEFS}
       <filter id="gl"><feGaussianBlur stdDeviation="3.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
-    <rect width="${W}" height="${H}" fill="url(#dusk)"/>
-    <g fill="#fff" opacity=".7"><circle cx="90" cy="40" r="1.1"/><circle cx="300" cy="70" r="1"/><circle cx="520" cy="30" r="1.3"/><circle cx="700" cy="60" r="1"/><circle cx="880" cy="25" r="1.2"/><circle cx="1060" cy="55" r="1"/><circle cx="1160" cy="30" r="1.1"/></g>
-    <circle cx="1010" cy="320" r="120" fill="url(#sun)" opacity=".7"/>
-    <path d="M0 290 L110 230 L200 265 L320 190 L430 255 L540 205 L650 270 L760 200 L880 265 L990 215 L1100 260 L1220 225 L1220 380 L0 380Z" fill="url(#r1)" opacity=".9"/>
-    <path d="M0 320 L130 275 L250 310 L380 255 L500 310 L630 270 L760 325 L890 280 L1020 320 L1140 285 L1220 310 L1220 380 L0 380Z" fill="url(#r2)"/>
-    <path d="M0 350 Q240 320 480 348 T960 342 T1220 338 L1220 380 L0 380Z" fill="url(#dune)"/>
+    ${oceanScene(W, H, 300, false)}
     <path id="route" d="M50 240 C150 130 250 270 360 185 S560 90 660 170 S860 280 960 175 S1130 105 1180 150" fill="none" stroke="rgba(255,236,200,.45)" stroke-width="2" stroke-dasharray="2 8" stroke-linecap="round"/>
     <g id="wps"></g><g id="leglabels" font-family="Fraunces, serif" font-size="15" fill="rgba(255,240,215,.88)" text-anchor="middle"></g></svg>`;
   return g;
@@ -134,8 +134,8 @@ function placeWaypoints(lessons) {
   lessons.forEach((l, i) => {
     const q = p.getPointAtLength(L * i / Math.max(1, n - 1)), done = l.progress.status === 'passed', now = i === next;
     const t = `<title>Mission ${esc(l.number)} · ${esc(l.title)}${done ? ' — complete' : ''}</title>`;
-    if (done) h += `<g class="wp" data-id="${esc(l.id)}">${t}<circle class="r" cx="${q.x}" cy="${q.y}" r="10" fill="#e8b25c" stroke="#fff4dc" stroke-width="0" filter="url(#gl)"/><path d="M${q.x - 4} ${q.y} l3 3 l5.5 -6" stroke="#3a2405" stroke-width="2.2" fill="none" stroke-linecap="round"/></g>`;
-    else if (now) h += `<g class="wp" data-id="${esc(l.id)}">${t}<circle cx="${q.x}" cy="${q.y}" r="18" fill="rgba(255,208,138,.25)"><animate attributeName="r" values="13;22;13" dur="2.2s" repeatCount="indefinite"/></circle><circle class="r" cx="${q.x}" cy="${q.y}" r="11" fill="#fff4dc" stroke="#e8b25c" stroke-width="3"/><text x="${q.x}" y="${q.y + 4}" font-family="Inter" font-weight="700" font-size="11" text-anchor="middle" fill="#9c6a22">${+l.number}</text>${bird(q.x - 22, q.y - 60, 44, '#fff4dc', .95)}</g>`;
+    if (done) h += `<g class="wp" data-id="${esc(l.id)}">${t}<circle class="r" cx="${q.x}" cy="${q.y}" r="10" fill="#ff9f8a" stroke="#f1f6fb" stroke-width="0" filter="url(#gl)"/><path d="M${q.x - 4} ${q.y} l3 3 l5.5 -6" stroke="#3a0f0a" stroke-width="2.2" fill="none" stroke-linecap="round"/></g>`;
+    else if (now) h += `<g class="wp" data-id="${esc(l.id)}">${t}<circle cx="${q.x}" cy="${q.y}" r="18" fill="rgba(255,201,176,.25)"><animate attributeName="r" values="13;22;13" dur="2.2s" repeatCount="indefinite"/></circle><circle class="r" cx="${q.x}" cy="${q.y}" r="11" fill="#f1f6fb" stroke="#ff9f8a" stroke-width="3"/><text x="${q.x}" y="${q.y + 4}" font-family="Inter" font-weight="700" font-size="11" text-anchor="middle" fill="#b0453a">${+l.number}</text>${bird(q.x - 22, q.y - 60, 44, '#f1f6fb', .95)}</g>`;
     else h += `<g class="wp" data-id="${esc(l.id)}">${t}<circle class="r" cx="${q.x}" cy="${q.y}" r="9.5" fill="rgba(20,17,42,.55)" stroke="rgba(255,236,200,.6)" stroke-width="1.5"/><text x="${q.x}" y="${q.y + 3.5}" font-family="Inter" font-size="9.5" font-weight="600" text-anchor="middle" fill="rgba(255,236,200,.88)">${+l.number}</text></g>`;
   });
   g.innerHTML = h;
@@ -259,7 +259,7 @@ function missionHeader(which) {
   const h1 = ((which === 'lab' ? LESSON.lab : LESSON.course) || '').match(/^#\s+(.+)$/m);
   const res = (LESSON.resources || []).map(r => `<span class="chip2">${r === 'sim' ? 'Simulator' : r === 'camera' ? 'Camera' : 'Sensors'}</span>`).join('');
   return `<div class="mhero">
-    <svg class="ridge" viewBox="0 0 600 70" preserveAspectRatio="none"><path d="M0 56 L60 30 L110 46 L170 18 L230 44 L290 26 L350 50 L420 22 L480 46 L540 30 L600 44 L600 70 L0 70Z" fill="#3a3157" opacity=".9"/><path d="M0 64 Q150 52 300 62 T600 60 L600 70 L0 70Z" fill="#7c4a2c" opacity=".85"/></svg>
+    <svg class="ridge" viewBox="0 0 600 70" preserveAspectRatio="none"><path d="M330 44 L380 34 L420 40 L470 28 L530 38 L600 32 L600 46 L330 46Z" fill="#15314d"/><rect y="45" width="600" height="25" fill="#1f5470"/><path d="M0 55 q20 -3 40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0" stroke="rgba(255,255,255,.18)" fill="none"/></svg>
     <span class="navi"></span>
     <div class="leg">${esc(m.leg || '')} · Mission ${esc(LESSON.number)} · ${which === 'lab' ? 'Lab' : 'Briefing'}</div>
     <h1>${esc(h1 ? h1[1] : LESSON.title)}</h1>
@@ -498,9 +498,9 @@ const Editor = {
         monaco.editor.defineTheme('expedition', {base: 'vs-dark', inherit: true,
           rules: [{token: 'comment', foreground: '6c7590', fontStyle: 'italic'}, {token: 'keyword', foreground: 'f2b763'},
             {token: 'string', foreground: 'e6d3a3'}, {token: 'number', foreground: '7fd1c7'}, {token: 'type', foreground: 'b7a6e0'}],
-          colors: {'editor.background': '#12172b', 'editor.lineHighlightBackground': '#1b2240', 'editorLineNumber.foreground': '#454d73',
-            'editorLineNumber.activeForeground': '#ffd08a', 'editorCursor.foreground': '#e0a64a', 'editor.selectionBackground': '#e0a64a40',
-            'editorIndentGuide.background1': '#232a4a', 'editorWidget.background': '#1b2240'}});
+          colors: {'editor.background': '#0b1730', 'editor.lineHighlightBackground': '#13284a', 'editorLineNumber.foreground': '#3d567a',
+            'editorLineNumber.activeForeground': '#ffc9b0', 'editorCursor.foreground': '#ff8f7a', 'editor.selectionBackground': '#ff8f7a40',
+            'editorIndentGuide.background1': '#1c3150', 'editorWidget.background': '#13284a'}});
         this.ed = monaco.editor.create($('monaco'), {theme: 'expedition', automaticLayout: false, fontSize: 14,
           minimap: {enabled: false}, scrollBeyondLastLine: false, tabSize: 4, renderWhitespace: 'selection'});
         this.ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => this.save());
@@ -598,8 +598,8 @@ const Terms = {
     const id = ++this.n;
     const el = document.createElement('div'); el.className = 'term'; $('terms').appendChild(el);
     const term = new Terminal({fontSize: 14, lineHeight: 1.2, cursorBlink: true, scrollback: 5000,
-      fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, monospace', theme: {background: '#12172b', foreground: '#dfe3f0',
-        cursor: '#e0a64a', cursorAccent: '#12172b', selectionBackground: '#e0a64a55', yellow: '#f2b763', brightYellow: '#ffd08a',
+      fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, monospace', theme: {background: '#0b1730', foreground: '#dde7f0',
+        cursor: '#ff8f7a', cursorAccent: '#0b1730', selectionBackground: '#ff8f7a55', yellow: '#ff9f8a', brightYellow: '#ffc9b0',
         cyan: '#7fd4c9', brightCyan: '#a5e6dd', blue: '#7aa7ff', brightBlue: '#9fc0ff'}});
     const fit = new FitAddon.FitAddon(); term.loadAddon(fit); term.open(el);
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
