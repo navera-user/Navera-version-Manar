@@ -47,8 +47,8 @@ class LearnedMatcher(LocalMatcher):
     MIN_INLIERS = 12                  # LightGlue gives hundreds of inliers on a right place
     HEADING_MEMORY_S = 10.0           # a measured rotation stands in for the heading this long
 
-    def __init__(self, images_dir: str, zoom: int = 17, keypoints: int = 1024, cache_dir: Optional[str] = None,
-                 per_chunk: int = 512, half: bool = True,
+    def __init__(self, images_dir: str, zoom: int = 17, keypoints: int = 1536, cache_dir: Optional[str] = None,
+                 per_chunk: int = 768, half: bool = True,
                  **kw):
         super().__init__(images_dir, zoom=zoom, **kw)
         import torch

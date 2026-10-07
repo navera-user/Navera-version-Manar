@@ -209,6 +209,11 @@ class DaySubscriber(Node):
         # frame-to-frame visual odometry: the displacement through gaps in map matching
         self.vo = FrameOdometry()
         self._vo_step = None
+        self._doubted = None                    # (t, lat, lon, sigma): a fix a gate doubted
+        # the trusted GPS by its measurement time: a bias sample compares a frame's fix with
+        # the GPS at that frame's instant (the latest GPS is v x delay off along the track)
+        from navera_common.sensor_history import History
+        self._gps_hist = History(maxlen=600, max_gap_s=1.5)
         self.allow_global_search = bool(self.get_parameter("allow_global_search").value)
         self.max_speed_mps = float(self.get_parameter("max_speed_mps").value)
         self.gate_margin_m = float(self.get_parameter("gate_margin_m").value)
@@ -399,6 +404,9 @@ class DaySubscriber(Node):
             return
         if self._gps_prior.update(msg.latitude, msg.longitude, msg.valid,
                                   msg.mode == PositionEstimate.MODE_MEASURED):
+            st = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+            if st > 0:
+                self._gps_hist.add(st, (float(msg.latitude), float(msg.longitude)))
             if self.shadow_mode and self._anchor_lat is not None:
                 return
             self._anchor_lat, self._anchor_lon = msg.latitude, msg.longitude
@@ -522,8 +530,20 @@ class DaySubscriber(Node):
             self._vo_step = None
             if mpp is not None:
                 ns = meta.get("image_stamp_ns")
-                self._vo_step = self.vo.step(img, self._heading_for_match(meta), mpp,
-                                             int(ns) / 1e9 if ns else time.time())
+                t_img = int(ns) / 1e9 if ns else time.time()
+                v = self.track.velocity(time.time())
+                pred = None
+                if v is not None and self.vo._prev is not None:
+                    dt = t_img - self.vo._prev[3]
+                    pred = (v[0] * dt, v[1] * dt)
+                self._vo_step = self.vo.step(img, self._heading_for_match(meta), mpp, t_img, pred)
+                if self._vo_step is not None and v is not None:
+                    # odometry that disagrees with the velocity the map fixes measured is not
+                    # used (phase correlation can lock on what does not move in the image)
+                    de, dn, dt, _ = self._vo_step
+                    dv = math.hypot(de / dt - v[0], dn / dt - v[1])
+                    if dv > max(3.0 * v[2], 0.3 * math.hypot(v[0], v[1]), 3.0):
+                        self._vo_step = None
             if self.local is not None and center is not None and mpp is not None:
                 # after height_retry_after failures, 20 % lower and 25 % higher too
                 factors = [1.0] + ([0.8, 1.25] if self._rejects_in_row + 1 >= self.height_retry_after else [])
@@ -533,6 +553,15 @@ class DaySubscriber(Node):
                                                heading_tol_deg=self.local_heading_tol_deg)
                     if result.get("accepted"):
                         break
+                sc = float(result.get("scale_residual") or 1.0)
+                if result.get("accepted") and abs(sc - 1.0) > 0.04:
+                    # the fitted scale answers only ~half of a height error (campaign 2: slope
+                    # 0.45-0.6): match again at the corrected height, keep it if it holds
+                    again = self.local.locate(img, center, R, mpp * f * sc, scale_tol=self._scale_tol(meta),
+                                              heading_deg=self._heading_for_match(meta),
+                                              heading_tol_deg=self.local_heading_tol_deg)
+                    if again.get("accepted") and int(again.get("inliers") or 0) >= int(result.get("inliers") or 0) // 2:
+                        result, f = again, f * sc
                 result["_frame_shape"], result["_frame_mpp"] = img.shape, mpp * f
                 result["_height_factor"] = f
             elif self.local is not None:
@@ -662,7 +691,10 @@ class DaySubscriber(Node):
                                                   f"({res.get('inliers')} inliers)" if res.get("accepted") else f"no match ({res.get('reason')})"))
         if res.get("accepted"):
             self._check_fix = (float(res["predicted_lat"]), float(res["predicted_lon"]), time.time())
-            self.map_bias.bias_sample(self._check_fix[:2], prior)
+            ns = meta.get("image_stamp_ns")
+            g = self._gps_hist.at(int(ns) / 1e9) if ns else None
+            if g is not None:                       # no GPS at the frame's instant: no sample
+                self.map_bias.bias_sample(self._check_fix[:2], g, self._heading_for_match(meta))
             st = {}
             self._publish_vision_altitude(meta, res, st)
             self._publish_estimate(exposure_stamp(meta, self.get_clock().now().to_msg()), seq_id, "local_match",
@@ -968,17 +1000,34 @@ class DaySubscriber(Node):
             status["map_bias_m"] = [round(de, 1), round(dn, 1)]
             status["lat"], status["lon"] = lat, lon
         inl = int(result.get("inliers") or 0)
-        if inl < 50 and float(result.get("spread", 1.0)) < self.min_spread:
+        if inl < 30 and float(result.get("spread", 1.0)) < self.min_spread:
             return lat, lon, (f"inliers cover {float(result.get('spread', 0)):.0%} of the frame ({inl}): "
                               "poorly conditioned — match rejected")
         pred = self._predicted(meta)
+        sig = float(result.get("sigma_m") or self.local_sigma_m)
+        doubt = None
         if pred is not None and inl < self.strong_inliers:
             d = math.hypot(*_en((lat, lon), pred[:2]))
-            lim = self.gate_k * math.hypot(pred[2], float(result.get("sigma_m") or self.local_sigma_m))
+            lim = self.gate_k * math.hypot(pred[2], sig)
             if d > lim:
-                return lat, lon, (f"{d:.0f} m from the carried position (> {lim:.0f} m, {inl} inliers) — "
-                                  "match rejected")
-        return lat, lon, None
+                doubt = f"{d:.0f} m from the carried position (> {lim:.0f} m, {inl} inliers)"
+            elif pred[2] > 50.0 and inl < 40:
+                doubt = f"weak fix ({inl} inliers) while the position is uncertain (±{pred[2]:.0f} m)"
+        if doubt is None:
+            self._doubted = None
+            return lat, lon, None
+        # two doubted fixes in a row agreeing with each other: the prediction is what is wrong
+        now, prev, self._doubted = time.time(), self._doubted, (time.time(), lat, lon, sig)
+        if prev is not None and 0 < now - prev[0] <= 6.0:
+            v = self.track.velocity(now)
+            ve, vn = (v[0], v[1]) if v is not None else (0.0, 0.0)
+            carried = _move(prev[1:3], ve * (now - prev[0]), vn * (now - prev[0]))
+            gap = math.hypot(*_en((lat, lon), carried))
+            if gap <= max(3.0 * math.hypot(sig, prev[3]), 15.0) + 0.3 * math.hypot(ve, vn) * (now - prev[0]):
+                self._doubted = None
+                status["reacquired"] = doubt
+                return lat, lon, None
+        return lat, lon, doubt + " — match rejected (a second agreeing fix would confirm it)"
 
     def _publish_result(self, seq_id, meta, result):
         now      = self.get_clock().now().to_msg()
