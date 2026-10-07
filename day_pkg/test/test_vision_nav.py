@@ -204,25 +204,67 @@ def test_a_weak_fix_while_lost_needs_confirmation():
     assert "weak fix" in nav.last_reason
 
 
-def test_a_climb_is_not_extrapolated_through_a_long_gap():
-    nav = VisionNavigator()
-    for t in range(20):                                          # climbing 4 m/s, GPS height
-        nav.set_height(float(t), 400.0 + 4.0 * t, 5.0, "gps")
-    h30 = nav.height_at(19.0 + 30.0)[0]                           # 30 s without any height
-    assert h30 < 476.0 + 4.0 * 30 * 0.5                           # the rate decayed (no +120 m)
-    assert h30 > 476.0                                            # but the climb was not ignored
-
-
-def test_a_weak_fix_does_not_set_the_velocity():
-    nav = VisionNavigator()
-    _fly(nav, 0, 10, 25.0, 0.0)
-    p = nav.predict(11.0)
-    off = _move(p[:2], 0.0, 20.0)                                 # 20 m off, 25 inliers: accepted...
-    assert nav.update(11.0, _fix(*off, inliers=25, sigma=15.0), 500.0)
-    assert abs(nav.vel[0] - 25.0) < 0.5 and abs(nav.vel[1]) < 0.5  # ...but the velocity kept
-
-
 def test_the_search_window_is_capped():
     nav = VisionNavigator()
     _fly(nav, 0, 10, 25.0, 0.0)
     assert nav.search(100.0)[1] == 600.0
+
+
+def test_no_velocity_chord_across_a_long_gap():
+    """A velocity from two fixes 20 s apart across a turn is not the vehicle's velocity."""
+    nav = VisionNavigator()
+    _fly(nav, 0, 10, 25.0, 0.0, heading=90.0)                     # east at 25 m/s
+    v0 = nav.vel
+    p = _move(P0, 25.0 * 10, 0.0)
+    nav.update(30.0, _fix(*_move(p, 0.0, 300.0), inliers=300), 500.0, heading_deg=0.0)
+    # not the 20 s chord (300 m north, 0 east = 15 m/s): the old speed, turned to the new heading
+    assert abs(math.hypot(*nav.vel) - math.hypot(*v0)) < 0.5 and abs(nav.vel[1] - 25.0) < 0.5
+
+
+def test_a_turn_grows_the_stated_uncertainty():
+    nav = VisionNavigator()
+    _fly(nav, 0, 10, 25.0, 0.0, heading=90.0)
+    straight = nav.predict(20.0, 90.0)[2]
+    turning = nav.predict(20.0, 180.0)[2]
+    assert turning > straight + 100.0
+
+
+def test_a_wide_re_acquisition_does_not_set_the_height():
+    nav = VisionNavigator()
+    for t in range(11):                                           # GPS: position and height 600 m
+        nav.gps(float(t), *_move(P0, 25.0 * t, 0.0))
+        nav.set_height(float(t), 600.0, 10.0, "gps")
+    p = _move(P0, 25.0 * 11, 0.0)
+    nav.update(11.0, _fix(*p, inliers=60, scale=0.85), 600.0, search_m=500.0)
+    assert abs(nav.height_at(11.0)[0] - 600.0) < 5.0              # not 510 m
+
+
+def test_a_full_lap_without_fixes_is_not_folded():
+    """Frame-by-frame carry: after a 360 deg turn the vehicle is back near where it began
+    the turn (one constant-rate turn from the fix's heading would have flown straight)."""
+    nav = VisionNavigator()
+    _fly(nav, 0, 10, 0.0, 25.0, heading=0.0)                     # north, 25 m/s
+    start = _move(P0, 0.0, 250.0)
+    for k in range(1, 37):                                        # 36 s: 10 deg per second
+        nav.output(10.0 + k, heading_deg=(10.0 * k) % 360)
+    lat, lon, _ = nav.predict(46.0, 0.0)
+    assert math.hypot(*_en((lat, lon), start)) < 60.0             # a circle of ~900 m around
+
+
+def test_velocity_from_before_a_turn_does_not_cancel_the_new_one():
+    nav = VisionNavigator()
+    _fly(nav, 0, 10, 12.5, 21.7, heading=30.0)                    # heading 30
+    p = _move(P0, 125.0, 217.0)
+    for k, t in enumerate(range(20, 26)):                         # later, heading 210 (back)
+        p2 = _move(p, -12.5 * (t - 10), -21.7 * (t - 10))
+        nav.update(float(t), _fix(*p2, inliers=300), 500.0, heading_deg=210.0)
+    assert math.hypot(*nav.vel) > 20.0                             # not ~0 m/s
+
+
+def test_the_climb_is_carried_once():
+    """height + rate x dt — the 10 s decay added it twice (1.86x the climb at 1 s)."""
+    nav = VisionNavigator()
+    for t in range(20):
+        nav.set_height(float(t), 400.0 + 4.0 * t, 5.0, "gps")
+    assert abs(nav.height_at(24.0)[0] - (476.0 + 4.0 * 5)) < 3.0
+

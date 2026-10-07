@@ -54,6 +54,8 @@ class VisionNavigator:
         self.fix = None               # (lat, lon, t, sigma_m, heading_deg or None): last position measured
         self.vel = None               # (east, north) m/s
         self.vel_sigma = 5.0          # m/s
+        self.vel_hdg = None           # the heading (IMU) when the velocity was measured
+        self._carry = None            # (lat, lon, t, sigma, heading, velocity): carried since the last fix
         self._fixes = deque(maxlen=8)  # (t, lat, lon) of recent fixes: the velocity
         # height above ground: a Kalman filter on (height, climb rate) — process noise for
         # climbs the vehicle makes, updated by independent heights (GPS - ground, baro) and by
@@ -86,10 +88,6 @@ class VisionNavigator:
             return None
         (h, v), P, th = self._h
         dt = max(0.0, t - th)
-        # a climb is not carried forever: the rate decays (10 s) — extrapolated through
-        # 15-30 s gaps it put the height 7-26 % off (campaign 3)
-        decay = math.exp(-dt / 10.0)
-        h, v = h + v * 10.0 * (1.0 - decay), v * decay
         q = self.climb_accel ** 2
         P = [[P[0][0] + dt * (P[0][1] + P[1][0]) + dt * dt * P[1][1] + q * dt ** 4 / 4,
               P[0][1] + dt * P[1][1] + q * dt ** 3 / 2],
@@ -178,33 +176,59 @@ class VisionNavigator:
             out = [x * self.max_bias_m / n for x in out]
         return out[0], out[1]
 
+    @staticmethod
+    def _rotate(v, deg):
+        """(east, north) turned clockwise by deg."""
+        a = math.radians(deg)
+        return (v[0] * math.cos(a) + v[1] * math.sin(a), -v[0] * math.sin(a) + v[1] * math.cos(a))
+
     def predict(self, t: float, heading_deg: Optional[float] = None) -> Optional[Tuple[float, float, float]]:
-        """(lat, lon, sigma_m) at t: the last fix carried along the velocity. With a heading
-        (IMU) and the heading at the last fix, the velocity turns with the vehicle: in a turn
-        a straight-line carry leaves the track."""
+        """(lat, lon, sigma_m) at t: the position carried along the velocity from where it
+        was last carried (advance(), once per frame) or the last fix. The velocity turns
+        with the heading frame by frame: one constant-rate turn from the fix's heading to
+        the present one folded a 180 deg turn or a full lap into a small one (campaign 4:
+        the coast prediction 3-3.8 km off, outside the search window)."""
+        base = self._carry or self._from_fix()
+        if base is None:
+            return None
+        lat, lon, tb, sig, hdg_b, vel = base
+        dt = max(0.0, t - tb)
+        if vel is None or dt == 0:
+            return lat, lon, sig + (0 if vel else 25.0 * dt)
+        turn = _wrap(heading_deg - hdg_b) if heading_deg is not None and hdg_b is not None else 0.0
+        steps = max(1, int(abs(turn) / 5.0))
+        de = dn = 0.0
+        for i in range(steps):                                # a constant-rate turn since the base
+            v = self._rotate(vel, turn * (i + 0.5) / steps)
+            de += v[0] * dt / steps
+            dn += v[1] * dt / steps
+        p = _move((lat, lon), de, dn)
+        speed = math.hypot(*vel)
+        # speed error, heading error (5 deg), unseen accelerations, and the turn (when it
+        # started and its rate are not known: half its sideways reach)
+        return (p[0], p[1], sig + self.vel_sigma * dt + math.radians(5.0) * speed * dt
+                + 0.5 * self.accel * dt * dt + 0.5 * abs(math.radians(turn)) * speed * dt)
+
+    def _from_fix(self):
         if self.fix is None:
             return None
         lat, lon, tf, sig, hdg_fix = self.fix
-        dt = max(0.0, t - tf)
-        if self.vel is None or dt == 0:
-            return lat, lon, sig + (0 if self.vel else 25.0 * dt)
-        ve, vn = self.vel
-        if heading_deg is not None and hdg_fix is not None:
-            # turned at a constant rate from the fix's heading to the present one: integrate
-            turn = math.radians(_wrap(heading_deg - hdg_fix))
-            steps = max(1, int(abs(turn) / math.radians(5)))
-            de = dn = 0.0
-            for i in range(steps):
-                a = turn * (i + 0.5) / steps
-                c, s = math.cos(a), math.sin(a)
-                de += (c * ve + s * vn) * dt / steps
-                dn += (-s * ve + c * vn) * dt / steps
-        else:
-            de, dn = ve * dt, vn * dt
-        p = _move((lat, lon), de, dn)
-        speed = math.hypot(ve, vn)
-        # speed error, heading error (5 deg) and unseen accelerations, as TrackVelocity
-        return p[0], p[1], sig + self.vel_sigma * dt + math.radians(5.0) * speed * dt + 0.5 * self.accel * dt * dt
+        vel, hdg = self.vel, self.vel_hdg if self.vel_hdg is not None else hdg_fix
+        if vel is not None and hdg is not None and hdg_fix is not None:
+            vel, hdg = self._rotate(vel, _wrap(hdg_fix - hdg)), hdg_fix   # the velocity at the fix's heading
+        return lat, lon, tf, sig, hdg, vel
+
+    def advance(self, t: float, heading_deg: Optional[float] = None) -> None:
+        """Carry the position to t (once per frame without a fix): the next prediction
+        starts from here, with the velocity turned to this heading."""
+        p = self.predict(t, heading_deg)
+        base = self._carry or self._from_fix()
+        if p is None or base is None or t <= base[2]:
+            return
+        vel, hdg = base[5], base[4]
+        if vel is not None and heading_deg is not None and hdg is not None:
+            vel, hdg = self._rotate(vel, _wrap(heading_deg - hdg)), heading_deg
+        self._carry = (p[0], p[1], t, p[2], hdg, vel)
 
     def search(self, t: float, heading_deg: Optional[float] = None, footprint_m: float = 0.0):
         """(centre, radius_m) to search the next frame in: the prediction and k sigma of it
@@ -229,7 +253,7 @@ class VisionNavigator:
 
     # ── a match result ───────────────────────────────────────────────────
     def update(self, t: float, res: dict, height_used: Optional[float], heading_deg: Optional[float] = None,
-               gps_valid: bool = False) -> bool:
+               gps_valid: bool = False, search_m: Optional[float] = None) -> bool:
         """A matcher result for the frame taken at t: True when accepted as a position."""
         if not res.get("accepted"):
             self.fails += 1
@@ -241,8 +265,12 @@ class VisionNavigator:
             de, dn = self.bias((lat, lon))
             lat, lon = _move((lat, lon), de, dn)
         sig = float(res.get("sigma_m") or 30.0)
-        pred = self.predict(t, heading_deg)
         spread = float(res.get("spread", 1.0))
+        if inl < 100 and spread <= 0.25:
+            # inliers on a quarter of the frame or less: such fixes reached p95 24-28 m
+            # while stated 7.7 m (campaign 4)
+            sig = max(sig, 14.5)
+        pred = self.predict(t, heading_deg)
         if (inl < 30 and spread < self.min_spread) or (inl < 50 and spread <= 0.125):
             # (campaign 2: of 35 fixes refused on spread < 25 % with < 50 inliers, 27 were
             # right; campaign 3: the wrong ones that slipped through had their inliers in one
@@ -250,7 +278,7 @@ class VisionNavigator:
             self.fails += 1
             self.last_reason = f"inliers on {res.get('spread', 0):.0%} of the frame ({inl}): rejected"
             return False
-        doubt = None
+        doubt, reacquired = None, False
         if not gps_valid and pred is not None and inl < self.strong_inliers:
             d = math.hypot(*_en((lat, lon), pred[:2]))
             lim = self.gate_k * math.hypot(pred[2], sig)
@@ -274,27 +302,36 @@ class VisionNavigator:
                 self.last_reason = doubt + ": rejected (a second agreeing fix would confirm it)"
                 return False
             self.last_reason = doubt + ": confirmed by the previous fix — re-acquired"
+            reacquired = True
         self._pending = None
         self.fails = 0
+        wide = (search_m or 0.0) > 300.0 or reacquired
+        if wide and inl < 100 and self.height is not None:
+            # a re-acquisition far from the prediction places the vehicle but its scale is
+            # not trusted for the height (one set it 15 % low and the next frames failed)
+            height_used = None
         if height_used and res.get("scale_residual"):
             hv = height_used * float(res["scale_residual"])
             # vision height: ~3 % (campaign median), worse with few inliers
             self._height_update(t, hv, max(0.03 * hv, 0.05 * hv if inl < 50 else 0.0), "vision")
         if not gps_valid:
-            # a weak fix places the vehicle but does not set its velocity (one 38 m fix with
-            # 18 inliers turned into a 9-16 m/s velocity error: campaign 3)
-            self._set_fix(t, lat, lon, sig, heading_deg, velocity=inl >= 30)
+            self._set_fix(t, lat, lon, sig, heading_deg)
         return True
 
-    def _set_fix(self, t, lat, lon, sigma_m, heading_deg, velocity: bool = True):
+    def _set_fix(self, t, lat, lon, sigma_m, heading_deg):
         if self.fix is not None and t < self.fix[2]:
             return
-        if not velocity:
-            self.fix = (lat, lon, t, sigma_m, heading_deg)
-            return
+        self._carry = None
+        if self.vel is not None and self.vel_hdg is not None and heading_deg is not None:
+            # the velocity follows the heading (a velocity from before a turn blended as it
+            # was with the one after cancelled: 0 m/s at the GPS loss on the coast, 618 m)
+            self.vel = self._rotate(self.vel, _wrap(heading_deg - self.vel_hdg))
+            self.vel_hdg = heading_deg
         self._fixes.append((t, lat, lon))
-        # the velocity: from the latest fix at least 2 s older (else the oldest >= 1 s older)
-        older = [f for f in self._fixes if t - f[0] >= 2.0] or [f for f in self._fixes if t - f[0] >= 1.0][:1]
+        # the velocity: from the latest fix at least 2 s older (else the oldest >= 1 s older),
+        # never along a chord longer than 8 s (across a turn it is not a velocity)
+        recent = [f for f in self._fixes if t - f[0] <= 8.0]
+        older = [f for f in recent if t - f[0] >= 2.0] or [f for f in recent if t - f[0] >= 1.0][:1]
         if older:
             t0, la0, lo0 = older[-1]
             de, dn = _en((lat, lon), (la0, lo0))
@@ -306,6 +343,7 @@ class VisionNavigator:
             # few fixes or a turn since: the velocity is less sure
             floor = 3.0 if len(self._fixes) < 4 else 0.0
             self.vel_sigma = max(floor, 1.0 + sigma_m / max(t - t0, 1.0))
+            self.vel_hdg = heading_deg
         self.fix = (lat, lon, t, sigma_m, heading_deg)
 
     # ── output ───────────────────────────────────────────────────────────
@@ -315,6 +353,8 @@ class VisionNavigator:
         p = self.predict(t, heading_deg)
         if p is None:
             return None, None, None, "unavailable"
+        if t - self.fix[2] >= 0.5:
+            self.advance(t, heading_deg)
         age = t - self.fix[2]
         if age > self.max_dr_s or p[2] > self.max_sigma_m:
             return None, None, p[2], "unavailable"
