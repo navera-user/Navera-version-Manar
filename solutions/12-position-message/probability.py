@@ -65,6 +65,12 @@ def main():
     res["probability"], res["stated_vs_max"] = prob, compare
     with open("results.json", "w") as f:
         json.dump(res, f, indent=2)
+    if p_inside(1.0) == 0.0:
+        print("TODO 7 not done yet: p_inside() returns 0 — the 'theory' column is empty.")
+    if not np.any(d2):
+        print("TODO 6 not done yet: mahalanobis2() returns 0 — every sample counts as 'inside'.")
+    if major == 0.0:
+        print("TODO 3 (my_source.py) not done yet: the ellipse sizes below are 0.")
     for k in KS:
         print(f"inside the {k}-sigma ellipse: sampled {prob['sampled'][str(k)]:.4f}, theory {prob['theory'][str(k)]:.4f}")
     print(f"|east error| <= sigma_E: {prob['east_within_1sigma']:.4f}")

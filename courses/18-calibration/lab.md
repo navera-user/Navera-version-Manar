@@ -36,20 +36,20 @@ Find the model, the size, the 9 numbers of `camera_matrix` (K row by row), the 4
 `distortion` (k1…k4), `rms_px`, `views`, `out_hfov_deg` and `crop`. Copy one view and open it:
 
 ```bash
-cp /data/academy/18-calibration/views/f0208.jpg .
+cp /data/academy/18-calibration/views/f0216.jpg .
 ```
 
-Open [f0208.jpg](file:./f0208.jpg). The screen's edges, the window frame and the chessboard rows are
-curved. In the real room they are straight.
+Open [f0216.jpg](file:./f0216.jpg). The screen's edges, the window frame and the chessboard rows are
+curved. In the real room they are straight. This is the view Part A straightens.
 
 ## Step 2 — Read the calibration and project points (TODOs 1 and 2, 25 min)
 
 **TODO 1** — `load_calibration(path)` returns `K` (3 × 3 float array), `D` (4 floats) and
-`size = (width, height)`. `yaml.safe_load()` gives a Python dictionary.
+`size = (width, height)`. Use the file you printed in Step 1 to find the right keys.
 
 **TODO 2** — `project_fisheye(X_cam, K, D)`: the five steps of section 2.3 of the course, for an
 array of N points at once (numpy works on whole columns: `X[:, 0] / X[:, 2]`). Return an (N, 2) array.
-Use `np.where` to avoid the division by r = 0 on the optical axis.
+One step divides by r: a point on the optical axis has r = 0. Decide what that step must give there.
 
 Test it on the worked example of the course:
 
@@ -90,22 +90,24 @@ Expected: about `[0.0, 0.5097, 1.17…, nan]` — 0.5097 rad is the 29.2° of th
 
 ## Step 4 — Reprojection error, straightening, straightness (TODOs 4–7, 40 min)
 
-**TODO 4** — `reprojection_rms(obj_pts, img_pts_list, rvecs, tvecs, K, D)`. For each view, turn the
-Rodrigues vector into a matrix (`R, _ = cv2.Rodrigues(rvec)`), move the board points into the camera
-frame (X_cam = R X + t, i.e. `obj.reshape(-1, 3) @ R.T + t.reshape(1, 3)`), project them with **your**
-`project_fisheye()`, and compare with the detected corners (`seen.reshape(-1, 2)`). Return the RMS
-over all corners and the list of per-view RMS. (It is used in Part B.)
+**TODO 4** — `reprojection_rms(obj_pts, img_pts_list, rvecs, tvecs, K, D)`: the RMS of course
+section 4, over all corners, and the list of per-view RMS. For each view, the pose (`rvec`, `tvec`)
+puts the board into the camera frame; `cv2.Rodrigues()` turns a Rodrigues vector into a 3 × 3
+matrix. Project with **your** `project_fisheye()` and compare with the detected corners. Watch the
+array shapes: OpenCV stores points as (N, 1, 3) and (N, 1, 2). (This function is used in Part B.)
 
-**TODO 5** — `straight_camera_matrix(hfov_deg, size)`: f = (w/2) / tan(hfov/2), principal point at
-(w/2, h/2). Check by hand: 90° on a 1000 × 500 image gives f = 500.
+**TODO 5** — `straight_camera_matrix(hfov_deg, size)`: the K of a perfect pinhole camera (course
+section 8 and lesson 17), principal point at (w/2, h/2). Check by hand: 90° on a 1000 × 500 image
+gives f = 500.
 
-**TODO 6** — `undistort(img, K, D, K_new)`: `cv2.fisheye.initUndistortRectifyMap` with R = `np.eye(3)`,
-the new camera `K_new`, the size `(w, h)` and `cv2.CV_16SC2`; then `cv2.remap` with
-`cv2.INTER_LINEAR` and `borderMode=cv2.BORDER_CONSTANT`.
+**TODO 6** — `undistort(img, K, D, K_new)`: course section 7 and the API table of section 5. No
+rotation, the new camera `K_new`, map type `cv2.CV_16SC2`, bilinear interpolation and a constant
+(black) border.
 
-**TODO 7** — `line_bend_px(points)`: the straightness of a row of corners. `cv2.fitLine(points as
-float32, cv2.DIST_L2, 0, 0.01, 0.01).ravel()` gives `(vx, vy, x0, y0)`; the distance of (x, y) to that
-line is |(x − x0)·vy − (y − y0)·vx|. Return the **largest** distance as a float.
+**TODO 7** — `line_bend_px(points)`: the straightness of a row of corners. Fit the best straight line
+through the points, then return the **largest** distance between a point and that line (a float).
+`cv2.fitLine` returns a unit direction (vx, vy) and one point (x0, y0) of the line; the distance
+formula comes from the cross product of 2D vectors.
 
 > [!TIP]
 > Why not `np.polyfit` (y = a·x + b)? A chessboard **column** is almost vertical: x hardly changes,
@@ -119,13 +121,13 @@ python3 fisheye_model.py
 
 You should see: your projection equal to OpenCV's (difference ~10⁻¹³ px), the worked example, the
 ideal field of view 166.5° × 42.8°, the curve peak at 67.4° / 825 px, the left edge "not describable",
-f = 659.8 px for 111°, a line like `most bent chessboard line: before 6.52 px, after 1.17 px`, and the
+f = 659.8 px for 111°, a line like `most bent chessboard line: before 5.12 px, after 0.63 px`, and the
 trade-off table of the course. Open [before_after.jpg](file:./before_after.jpg): the red lines join the
 first and last corner of each row — before, the corners sag away from them; after, they sit on them.
 The black areas are directions the lens never saw.
 
 > [!QUESTION]
-> Why is the "after" value 1.2 px and not 0? Think of the RMS of the calibration (0.5 px), of the
+> Why is the "after" value 0.6 px and not 0? Think of the RMS of the calibration (0.5 px), of the
 > corner detector, and of a computer screen that is not perfectly flat.
 
 > [!TASK]
@@ -153,14 +155,13 @@ Open [calibrate_lab.py](file:./calibrate_lab.py).
 as a (54, 1, 3) float64 array, row by row with the column index changing fastest. Corner 1 is at
 (s, 0, 0) and corner 9 at (0, s, 0) for s = 0.03294 m.
 
-**TODO 9** — `calibrate_fisheye(obj, views, size)`: one call of `cv2.fisheye.calibrate` with one copy
-of `obj` per view, K = `np.eye(3)`, D = `np.zeros((4, 1))`, the flags
-`CALIB_RECOMPUTE_EXTRINSIC | CALIB_CHECK_COND | CALIB_FIX_SKEW` and the criteria written in the TODO.
-Do **not** catch `cv2.error`: the given `calibrate_robust()` needs it to drop refused views.
+**TODO 9** — `calibrate_fisheye(obj, views, size)`: one call of `cv2.fisheye.calibrate` (course
+section 5) on all the views. Choose the three flags described in the docstring from the list in
+section 5. Do **not** catch `cv2.error`: the given `calibrate_robust()` needs it to drop refused views.
 
 **TODO 10** — `calibrate_pinhole(obj, views, size)`: the Brown–Conrady model with
-`cv2.calibrateCamera(obj_list, views, size, None, None)`. Convert everything to `np.float32` first —
-this is the bug of NAVERA's `--model pinhole` (course, "In NAVERA").
+`cv2.calibrateCamera`. Read "Formats that trip everyone" in section 5 first — the same trap is the
+bug of NAVERA's `--model pinhole` (course, "In NAVERA").
 
 Run it (the corner detection takes about 1 minute the first time, then it is cached in
 `corners.npz`; the whole script takes about 2 minutes):
@@ -174,6 +175,9 @@ Read the output carefully:
 1. **Your calibration**: views used and refused, fx, fy, cx, cy, D, and the RMS computed by OpenCV
    **and** by your `reprojection_rms()` — they must be equal. The worst and best views. The farthest
    corner angle in the views used and in all views: compare them — which views did OpenCV refuse?
+   You should see 2 refused views, `f0023` and `f0208`. They are among the most extreme views
+   (the board far to the right, where the distortion is strong). This is why Part A uses `f0216`, a view that
+   the calibration keeps.
 2. **Stability**: fx from random subsets of 8, 12, 20 and 30 views. How does the spread change?
 3. **Hold-out**: calibration on 28 views, error measured on the 8 others.
 4. **Brown–Conrady** on the same views: its RMS, its fx, its hold-out error.
@@ -222,8 +226,10 @@ the ray angle θ, for the ideal pinhole (f tan θ), the ideal fisheye (f θ), th
 fisheye calibration and your Brown–Conrady fit. The grey zone starts at the farthest corner used by
 your calibration. Answer for yourself:
 
-- Up to which angle do all the calibrated curves agree? Why there?
-- What happens to the Brown–Conrady curve beyond that angle, and why (look at its formula)?
+- The two **fisheye** curves (bench and yours): up to which angle do they agree? Why there?
+- The Brown–Conrady curve leaves the others early (near 25°), because its fx is larger (about
+  738 px against about 670 px). It is a different model with different parameters. What happens to
+  it at large angles, and why (look at its formula: it starts from tan θ)?
 - Your fisheye calibration and the bench one turn back down at different angles. Which one is "right"?
 
 ## Step 9 — Report and quiz (30 min)

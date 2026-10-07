@@ -63,6 +63,8 @@ def main():
     rclpy.init()
     node = Demo(separate_groups=(mode == "multi"))
     ex = make_executor(mode)
+    if mode == "multi" and not isinstance(ex, MultiThreadedExecutor):
+        print("TODO 4b not done yet: 'multi' still uses a SingleThreadedExecutor.")
     ex.add_node(node)
     end = time.monotonic() + DURATION_S
     try:

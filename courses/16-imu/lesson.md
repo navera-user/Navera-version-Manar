@@ -1,5 +1,16 @@
 # Attitude: rotations, quaternions and the IMU
 
+> [!NOTE] In short
+> - An **IMU** has three sensors: a gyroscope (turn rates), an accelerometer (gravity + acceleration)
+>   and a magnetometer (the Earth's magnetic field).
+> - You will learn three ways to write an attitude: rotation matrices, Euler angles (and gimbal lock),
+>   and **quaternions** (and SLERP to interpolate them).
+> - The gyroscope drifts; the accelerometer is noisy and is fooled by acceleration. A
+>   **complementary filter** keeps the good part of each.
+> - A compass gives **magnetic** north. Add the **declination** (World Magnetic Model) to get true north.
+> - In the lab you write the rotation toolbox, then estimate the attitude of a simulated flight near
+>   Nizwa and compare with NAVERA's code.
+
 A NAVERA drone flies at 150 m above the wadis south of Nizwa, towards the slopes of Jebel Akhdar.
 The GPS signal is jammed. The downward camera takes a photo and NAVERA wants to find that photo on
 its satellite map. Before any image processing can start, three questions need numbers:

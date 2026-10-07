@@ -12,29 +12,29 @@ V_MAX_MPS = 60.0                      # jump gate of this lab (NOT in gps_node):
 
 
 # TODO 9: what gps_node publishes for one GGA, as a pair (valid, reason).
-#   gga is a dictionary from nt.parse_gga (or None for a line that is not a valid GGA:
-#   then return (False, "not a GGA sentence")).
-#   - quality = gga["quality"], or 0 when it is None (gps_node: int(...) fails -> 0)
-#   - position present = lat AND lon are not None
-#   - if no position OR quality not in USABLE_QUALITIES:
-#         quality 6, 7 or 8 -> reason f"receiver reports a non-satellite position (qual={q}) — not used"
-#         otherwise         -> reason f"no GPS fix (qual={q})"
-#     and return (False, reason)
-#   - otherwise return (True, "")
-#   The dash in the first reason is an EM DASH "—" (copy it from gps_node.py).
+#   gga is a dictionary from nt.parse_gga, or None for a line that is not a valid GGA:
+#   then return (False, "not a GGA sentence").
+#   Read gps_node.py (_publish_fix and _VALID_GPS_QUAL) and copy its RULES and its reason
+#   TEXTS exactly (one reason contains an EM DASH "—": copy it from the file).
+#   Valid fix -> (True, ""). A missing quality counts as 0, like in gps_node.
+#   Note: gps_node judges the position AND the quality. A GGA with quality 1 but no position
+#   is not a fix, and gps_node's reason is then "no GPS fix (qual=1)". Your parser gives
+#   lat = None for the 62-minute line, so you will see this strange-looking text. It is correct.
 def navera_decision(gga):
     return None  # TODO 9: replace this line with your code
 
 
 # TODO 10: the position covariance gps_node writes (a list of 9 floats, row-major 3 x 3,
-#   axes East, North, Up), or None when hdop is None or <= 0 (covariance UNKNOWN):
-#       s = HDOP * UERE_M ;  diagonal = [s^2, s^2, 4 s^2] ; all other entries 0.0
+#   axes East, North, Up), or None when hdop is None or <= 0 (covariance UNKNOWN).
+#   Read the covariance in gps_node.py _publish_fix (it uses UERE_M above). Course: section 6,
+#   "NAVERA's choice".
 def navera_covariance(hdop):
     return None  # TODO 10: replace this line with your code
 
 
 # TODO 11: a "jump gate". Going from prev (lat, lon) to cur (lat, lon) in dt seconds is
-#   plausible when the distance (nt.haversine_m) is at most  v_max * dt + slack_m.
+#   plausible when the distance is not more than what a vehicle at v_max can drive in dt,
+#   plus slack_m (use nt.haversine_m for the distance).
 #   slack_m allows for the noise of the fixes themselves (the lab uses 3 sigma of cur).
 #   Return True / False. prev None -> True (first fix). dt None or <= 0 -> False.
 def jump_ok(prev, cur, dt, slack_m=0.0, v_max=V_MAX_MPS):

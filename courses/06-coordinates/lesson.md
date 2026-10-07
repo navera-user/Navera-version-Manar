@@ -1,5 +1,16 @@
 # Geodesy for navigation: from WGS84 to a local frame in meters
 
+> [!NOTE] In short
+> - GPS and maps use degrees, but the flight controller needs metres, so NAVERA converts between
+>   them every second.
+> - You learn three ways to write one point: **geodetic** (lat, lon, height), **ECEF** (X, Y, Z
+>   from the Earth's centre) and **ENU** (metres east, north, up from a home point).
+> - The exact conversions use the WGS84 ellipsoid; the haversine (sphere) and the flat-Earth
+>   formula are faster shortcuts.
+> - The key question for an engineer: how big is the error of each shortcut?
+> - In the lab you implement the conversions, check them against NAVERA's code, and measure the
+>   error of the shortcuts around Muscat.
+
 A survey drone takes off from the port of **Sohar** and flies down the Batinah coast towards
 **Muscat**. Halfway, its GPS is jammed. NAVERA's camera matches the ground with the on-board
 map and reports *"you are at 23.9120° N, 57.6050° E"*. The flight controller does not think in

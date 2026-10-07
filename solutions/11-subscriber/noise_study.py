@@ -53,6 +53,8 @@ def main():
     except (OSError, ValueError):
         pass
     res["noise"] = {"sigma_0m": run(0.0), "sigma_3m": run(3.0)}
+    if res["noise"]["sigma_0m"]["fixes"] == 0:
+        print("TODO 1/2 not done yet: your Tracker accepted no fix, so all the numbers below are 0.")
     with open("results.json", "w") as f:
         json.dump(res, f, indent=2)
     for k, r in res["noise"].items():

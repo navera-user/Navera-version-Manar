@@ -1,7 +1,7 @@
 # Lab 18 — Part B: calibrate the Insta360 top lens yourself, and test the calibration.
 #
 # Run:  python3 calibrate_lab.py
-# 1. finds the 9x6 chessboard corners in the 37 real views (about 1 minute the first time,
+# 1. finds the 9x6 chessboard corners in the 36 real views (about 1 minute the first time,
 #    then cached in corners.npz),
 # 2. calibrates with YOUR calibrate_fisheye() and recomputes the RMS with YOUR
 #    reprojection_rms() from fisheye_model.py,
@@ -108,7 +108,10 @@ def holdout_rms_fisheye(obj, test_views, K, D):
         ok, rv, tv = cv2.solvePnP(obj.astype(np.float64), n, np.eye(3), None)
         R, _ = cv2.Rodrigues(rv)
         Xc = obj.reshape(-1, 3) @ R.T + tv.reshape(1, 3)
-        e = fm.project_fisheye(Xc, K, D) - v.reshape(-1, 2)
+        p = fm.project_fisheye(Xc, K, D)
+        if p is None:
+            raise SystemExit("project_fisheye() is not written yet (fisheye_model.py, TODO 2)")
+        e = p - v.reshape(-1, 2)
         sq.append((e ** 2).sum(axis=1))
     return float(np.sqrt(np.concatenate(sq).mean()))
 

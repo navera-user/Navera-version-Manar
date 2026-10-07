@@ -18,47 +18,41 @@ G = 9.80665
 
 # TODO 8: integrate the gyroscope in 3-D.
 #   t: array (N,) of times (s); gyro: array (N, 3) of body rates (rad/s); q0: start quaternion (w, x, y, z).
-#   Return an array (N, 4) of quaternions, q[0] = q0, and for k = 1 .. N-1:
-#       ω  = gyro[k-1]                         (the rate measured at the start of the step)
-#       dt = t[k] − t[k-1]
-#       dq = quat_from_axis_angle(ω, |ω|·dt)   (if |ω| == 0, dq = (1, 0, 0, 0))
-#       q[k] = q[k-1] ⊗ dq                     (BODY rates → multiply on the RIGHT)
-#   Normalise q[k] at each step so rounding errors cannot make it grow.
+#   Return an array (N, 4) of quaternions with q[0] = q0. Course: section 7.
+#   Rules of this lab: step k uses the rate gyro[k-1] (measured at the start of the step) and
+#   dt = t[k] − t[k-1]; turn the small rotation of one step into a quaternion with your
+#   TODO 4 function (careful when |ω| = 0); think about the SIDE of the product (the rates
+#   are measured in the BODY frame); normalise q[k] at each step.
 def integrate_gyro(t, gyro, q0):
     return None   # TODO 8: replace this line with your code
 
 # TODO 9: roll and pitch (radians, ROS signs) from accelerometer samples alone.
-#   acc: array (N, 3) of specific force (m/s²) in the body frame.
-#   roll  = atan2(f_y, f_z)
-#   pitch = atan2(−f_x, sqrt(f_y² + f_z²))
-#   Return two arrays (roll, pitch). np.arctan2 and np.sqrt work on whole arrays.
+#   acc: array (N, 3) of specific force (m/s²) in the body frame. Course: section 8.
+#   Return two arrays (roll, pitch). numpy functions work on whole columns (no loop needed).
 def accel_roll_pitch(acc):
     return None   # TODO 9: replace this line with your code
 
 # TODO 10: complementary filter for roll and pitch (radians), time constant tau (s).
-#   Start from the accelerometer angles of sample 0. Then for k = 1 .. N-1:
-#     p, q, r = gyro[k-1];  dt = t[k] − t[k-1];  alpha = tau / (tau + dt)
-#     roll_dot  = p + (q·sin(roll) + r·cos(roll))·tan(pitch)      (Euler-angle kinematics)
-#     pitch_dot = q·cos(roll) − r·sin(roll)
-#     roll  = alpha·(roll  + roll_dot·dt)  + (1 − alpha)·roll_acc[k]
-#     pitch = alpha·(pitch + pitch_dot·dt) + (1 − alpha)·pitch_acc[k]
+#   Course: section 9 (the filter equation, alpha from tau and dt, and the Euler-angle
+#   kinematics that turn body rates p, q, r into roll and pitch rates).
+#   Start from the accelerometer angles of sample 0 (your TODO 9). Step k: predict with the
+#   gyro of sample k-1 and dt = t[k] − t[k-1], then blend with the accelerometer angles of sample k.
 #   Return two arrays (roll, pitch) of length N.
 def complementary_tilt(t, gyro, acc, tau):
     return None   # TODO 10: replace this line with your code
 
 # TODO 11: tilt-compensated MAGNETIC heading (degrees, clockwise from magnetic north, in [0, 360)).
 #   mag: array (N, 3) body-frame field; roll, pitch: arrays (N,) in radians.
-#   For each sample:  m_h = Ry(pitch) @ Rx(roll) @ m_body      (the field seen by a LEVEL body)
-#                     heading = atan2(m_h[1], m_h[0])  in degrees, then % 360
-#   (rot_x / rot_y are in quaternions.py — or write the two rows you need by hand.)
+#   Course: section 10 (tilt compensation: first "level" the measured field with roll and
+#   pitch, then read the heading from its horizontal part).
+#   (rot_x / rot_y are in quaternions.py.) Output: an array of N headings in degrees, in [0, 360).
 def mag_heading(mag, roll, pitch):
     return None   # TODO 11: replace this line with your code
 
 # TODO 12: the magnetic declination (deg, east positive) from the World Magnetic Model,
-#   exactly like NAVERA's imu_pkg/orientation.py (class Declination):
-#       from pygeomag import GeoMag
-#       GeoMag().calculate(glat=lat, glon=lon, alt=0, time=year).d
-#   year is a decimal year (2026.79 = mid-October 2026).
+#   exactly like NAVERA's class Declination in ~/navera/imu_pkg/imu_pkg/orientation.py
+#   (read how it calls the pygeomag package; use alt = 0).
+#   year is a decimal year (2026.79 = mid-October 2026). Output: one float in degrees.
 def declination_at(lat, lon, year):
     return None   # TODO 12: replace this line with your code
 

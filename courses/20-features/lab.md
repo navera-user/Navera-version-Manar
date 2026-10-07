@@ -45,12 +45,14 @@ python3 features.py
 ```
 
 It prints `(TODO 1 is not done yet)`. Open [features.py](file:./features.py).
+The demo scripts (`features.py`, `scale_demo.py`, `peek.py`, `measure.py`, `my_spot.py`) say which TODO is
+missing. The short `python3 -c "…"` test commands of the next steps do not: if a TODO is not done, they end
+with `NotImplementedError: TODO N`. That only means "write TODO N first".
 
 > [!TASK]
-> **TODO 1.** `image_gradients(grey)` returns `(Ix, Iy)` as `float32` arrays of the picture's shape:
-> `cv2.Sobel(g, cv2.CV_32F, 1, 0, ksize=3)` for `Ix`, `(…, 0, 1, …)` for `Iy`, both divided by
-> `SOBEL_NORM` (= 8, see the lesson's worked example). Convert the picture with
-> `grey.astype(np.float32)` first.
+> **TODO 1.** `image_gradients(grey)` returns `(Ix, Iy)` as `float32` arrays of the picture's shape.
+> Use the 3 × 3 Sobel derivative of lesson section 1, divided by `SOBEL_NORM` (= 8, see the lesson's
+> worked example), so that a ramp `I = 3x` gives `Ix = 3`.
 
 Run `python3 features.py` again: the line `TODO 1  ramp I = 3x: Ix = 3.00` must show 3.00 and 0.00.
 
@@ -61,16 +63,14 @@ Run `python3 features.py` again: the line `TODO 1  ramp I = 3x: Ix = 3.00` must 
 ## Step 3 — Harris (TODOs 2 and 3)
 
 > [!TASK]
-> **TODO 2.** `harris_response(grey, sigma=1.5, k=0.05)`: compute `Ix·Ix`, `Iy·Iy`, `Ix·Iy` (element-wise,
-> numpy `*`), smooth each with `cv2.GaussianBlur(product, (0, 0), sigma)` → `Sxx, Syy, Sxy`, and return
-> `R = Sxx·Syy − Sxy² − k·(Sxx + Syy)²` as `float32`. No Python loops.
+> **TODO 2.** `harris_response(grey, sigma=1.5, k=0.05)` returns the Harris response `R` of lesson
+> section 2 at every pixel, as a `float32` array of the picture's shape. The window is a Gaussian of
+> standard deviation `sigma`. No Python loops over the pixels.
 >
-> **TODO 3.** `harris_corners(grey, n=500, sigma=1.5, k=0.05, nms_radius=4, rel_threshold=0.01)`:
-> 1. `R = harris_response(...)`;
-> 2. local maxima: `R == cv2.dilate(R, np.ones((2*nms_radius+1,)*2, np.uint8))`;
-> 3. and `R > rel_threshold * R.max()`;
-> 4. `ys, xs = np.nonzero(mask)` (rows first!), sort by `R[ys, xs]` decreasing, keep `n`;
-> 5. return a `float32` array of shape `(m, 2)` with columns **x, y**.
+> **TODO 3.** `harris_corners(grey, n=500, sigma=1.5, k=0.05, nms_radius=4, rel_threshold=0.01)` returns
+> the `n` strongest corners (or fewer) as a `float32` array of shape `(m, 2)` with columns **x, y**,
+> strongest first. Keep a pixel only when it passes both tests of "From R to points" (lesson section 2).
+> Careful: numpy gives indices as **(row, column)**, that is (y, x).
 
 ```bash
 python3 features.py
@@ -95,10 +95,9 @@ the Sobel output by 8, and averages with a 5 × 5 box): only the **shape** of R 
 ## Step 4 — Characteristic scale (TODO 4)
 
 > [!TASK]
-> **TODO 4.** `characteristic_scale(grey, x, y, sigmas)`: for each `s` in `sigmas`, blur the float32
-> picture (`cv2.GaussianBlur(g, (0, 0), s)`), take `cv2.Laplacian(blurred, cv2.CV_32F, ksize=1)`, read its
-> value at row `y`, column `x`, multiply by `s**2`, take the absolute value. Return the `s` with the largest
-> value (a float).
+> **TODO 4.** `characteristic_scale(grey, x, y, sigmas)` returns the value of `sigmas` (a float) where the
+> **scale-normalised Laplacian** of lesson section 3 has its largest absolute value at the pixel
+> column `x`, row `y`. Work in float32.
 
 ```bash
 python3 scale_demo.py
@@ -112,10 +111,11 @@ from the list of σ values tried, 8 % apart.)
 ## Step 5 — OpenCV's ORB and SIFT (TODOs 5 and 0)
 
 > [!TASK]
-> **TODO 5.** `detect_keypoints(img, method="ORB", max_points=10000)`: grey picture if `img.ndim == 3`
-> (`cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)`), then `cv2.ORB_create(nfeatures=max_points)` or
-> `cv2.SIFT_create(nfeatures=max_points)`, `raise ValueError(...)` for any other name, then
-> `kps, des = detector.detectAndCompute(grey, None)`; return `list(kps), des`.
+> **TODO 5.** `detect_keypoints(img, method="ORB", max_points=10000)` accepts a colour (BGR) or grey
+> picture and returns `(keypoints, descriptors)`: a Python **list** of `cv2.KeyPoint` and the descriptor
+> array. `method` is `"ORB"` or `"SIFT"` (OpenCV's detectors with default settings, at most `max_points`
+> points); any other name raises `ValueError`. The "In NAVERA" section of the lesson shows how NAVERA
+> creates its SIFT detector.
 
 ```bash
 python3 features.py
@@ -135,8 +135,8 @@ python3 peek.py
 ## Step 6 — Hamming distance (TODO 6)
 
 > [!TASK]
-> **TODO 6.** `hamming(a, b)`: the number of different bits between two `uint8` descriptors:
-> `np.bitwise_xor`, then `np.unpackbits`, then the sum. Return a Python `int`.
+> **TODO 6.** `hamming(a, b)`: the number of different bits between two `uint8` descriptors (lesson
+> section 4). Return a Python `int`. Do it with numpy, without a loop over the bits.
 
 Test it against OpenCV:
 
@@ -149,11 +149,13 @@ Both numbers must be 2 (the lesson's worked example).
 ## Step 7 — Repeatability (TODO 7)
 
 > [!TASK]
-> **TODO 7.** `project(points, H)`: add a column of ones to the `(N, 2)` points, multiply by `H.T`, divide
-> the first two columns by the third; return `(N, 2)`.
-> `repeatability(pts_a, pts_b, H, shape_b, eps=3.0)`: project the A points, keep those inside B
-> (`0 ≤ x < w` and `0 ≤ y < h`), find the nearest B point of each with `scipy.spatial.cKDTree(pts_b).query(...)`
-> and return the share within `eps`. Return `0.0` when no A point falls inside.
+> **TODO 7.** `project(points, H)` maps `(N, 2)` points with the homography `H` (homogeneous coordinates,
+> lesson section 5) and returns `(N, 2)`.
+> `repeatability(pts_a, pts_b, H, shape_b, eps=3.0)`: take only the A points whose projection falls
+> **inside** B (`0 ≤ x < w` and `0 ≤ y < h`); return the share of them that have a B point within `eps`
+> pixels of their projection. Return `0.0`
+> when no A point falls inside. `scipy.spatial.cKDTree` (already imported) finds nearest neighbours fast:
+> read its `query` method in the scipy documentation (`help(cKDTree.query)` in Python).
 
 Test it on one pair, Harris against Harris:
 
@@ -166,11 +168,11 @@ You should get about 0.6 for `city_rot35`.
 ## Step 8 — Spread and matchability (TODO 8), CLAHE
 
 > [!TASK]
-> **TODO 8.** `spread(keypoints, shape, grid=(4, 4), min_per_cell=3)`: `grid = (columns, rows)`; the cell
-> of a keypoint at `x, y = kp.pt` is column `int(x / w * columns)` and row `int(y / h * rows)`, both kept
-> inside the grid. Count per cell (`np.zeros((rows, columns), int)`), return the share of cells with at
-> least `min_per_cell`. `matchability(img, enough=300)`: ORB keypoints with `max_points=500`, return
-> `min(1, n / enough) * spread(keypoints, img.shape)`.
+> **TODO 8.** `spread(keypoints, shape, grid=(4, 4), min_per_cell=3)`: cut the picture into a grid of
+> `grid = (columns, rows)` equal cells and return the share (0 to 1) of cells that hold at least
+> `min_per_cell` keypoints. A keypoint's position is `kp.pt = (x, y)`; a point on the right or bottom
+> border must still land in a cell. `matchability(img, enough=300)`: the score of lesson section 6,
+> with ORB keypoints and `max_points=500`.
 
 ```bash
 python3 features.py
@@ -187,8 +189,15 @@ python3 clahe_demo.py
 python3 clahe_demo.py terrain_coast_water.jpg
 ```
 
-Open `clahe_demo.png` after each run (left: original, right: CLAHE). On the dark drone photo the city comes
-back. On the water the new keypoints sit on ripples and seagrass shadows — will they be there on the next
+Open `clahe_demo.png` after each run (left: original, right: CLAHE).
+
+> [!NOTE]
+> On the water picture, `clahe_demo.py` says **68** keypoints before CLAHE, but `measure.py` (Step 9)
+> will say only about **4** for the same picture. This is not a bug. `clahe_demo.py` uses NAVERA's
+> setting `contrastThreshold=0.02`, which keeps weaker points. Your `detect_keypoints()` and
+> `measure.py` use OpenCV's default, 0.04 (lesson section 3, "Rejection"). The dark drone photo also
+> gives 68 by chance. On the dark drone photo the city comes
+back. On the water the new keypoints sit on ripples and on the shadows of sea plants — will they be there on the next
 satellite picture?
 
 ## Step 9 — Measure everything and write the report

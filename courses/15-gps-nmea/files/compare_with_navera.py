@@ -40,24 +40,42 @@ def navera_reads(raw):
     return "gga", (msg.latitude, msg.longitude)
 
 
+def my_decision(g):
+    """Your navera_decision (TODO 9), or None when it is not written yet."""
+    if not g:
+        return False, ""
+    d = gf.navera_decision(g)
+    if not (isinstance(d, tuple) and len(d) == 2):
+        return None
+    return d
+
+
 def main(path):
     lines = mine.read_log(path)
+    if mine.is_valid(lines[0]) is None:
+        print("TODO 1-2 not done yet (is_valid returns None): the 'yours' column means nothing.\n")
+    has_decision = my_decision({"quality": 1, "lat": 24.4, "lon": 56.6, "hdop": 1.0}) is not None
+    if not has_decision:
+        print("TODO 9 not done yet (navera_decision returns None) — skipping the decision column.")
+        print("Run this script again after Step 7 to compare the usable fixes.\n")
     n_rej_navera = n_rej_mine = n_fix_navera = n_fix_mine = 0
     worst = 0.0
     problems = []
     for no, raw in enumerate(lines, 1):
         kind, fix = navera_reads(raw)
         ok_mine = mine.is_valid(raw)
-        g = mine.parse_gga(raw)
-        valid, _ = gf.navera_decision(g) if g else (False, "")
-        my_fix = (g["lat"], g["lon"]) if valid else None
         n_rej_navera += kind == "rejected"
         n_rej_mine += ok_mine is not True
         n_fix_navera += fix is not None
-        n_fix_mine += my_fix is not None
         if (kind == "rejected") == (ok_mine is True):
             problems.append(f"line {no}: NAVERA {'rejects' if kind == 'rejected' else 'accepts'} it, "
                             f"your is_valid says {ok_mine!r}:\n      {raw[:72]!r}")
+        if not has_decision:
+            continue
+        g = mine.parse_gga(raw)
+        valid, _ = my_decision(g) or (False, "")
+        my_fix = (g["lat"], g["lon"]) if valid else None
+        n_fix_mine += my_fix is not None
         if (fix is None) != (my_fix is None):
             problems.append(f"line {no}: NAVERA fix {fix}, yours {my_fix}:\n      {raw[:72]!r}")
         elif fix is not None:
@@ -68,8 +86,9 @@ def main(path):
     print(f"{len(lines)} lines in {path}")
     print(f"{'':28}{'NAVERA (pynmea2)':>18}{'yours':>10}")
     print(f"{'lines rejected':28}{n_rej_navera:>18}{n_rej_mine:>10}")
-    print(f"{'usable fixes':28}{n_fix_navera:>18}{n_fix_mine:>10}")
-    print(f"largest position difference on common fixes: {worst:.2e} deg (about {worst * 111320:.6f} m)")
+    print(f"{'usable fixes':28}{n_fix_navera:>18}{n_fix_mine if has_decision else '—':>10}")
+    if has_decision:
+        print(f"largest position difference on common fixes: {worst:.2e} deg (about {worst * 111320:.6f} m)")
     if problems:
         print(f"\n{len(problems)} disagreement(s):")
         for p in problems[:15]:

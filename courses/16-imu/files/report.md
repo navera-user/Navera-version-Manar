@@ -7,14 +7,14 @@ Keep the five headings exactly as they are: the checker looks for them.
 ## 1. Gyroscope drift
 
 TODO: the heading error of the gyroscope-only attitude after 300 s (in degrees), the value
-you predicted from the bias with `error = bias × time`, and one sentence that explains the
-difference.
+you predicted from the bias with `error = bias × time`, one sentence that explains the
+difference, and one sentence that explains the sign.
 
 ## 2. Tilt: accelerometer and complementary filter
 
 TODO: the largest roll error of the accelerometer alone and WHEN it happens (what is the
-drone doing?), the best time constant tau of your sweep, and why a very small tau and a very
-large tau are both bad in general.
+drone doing?), the best time constant tau of your sweep, what happened when you tried
+tau = 100 s and 300 s, and why a very small tau and a very large tau are both bad in general.
 
 ## 3. Compass and true north
 

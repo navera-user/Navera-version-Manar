@@ -1,7 +1,12 @@
-# Lab 12 — what did the jury say? For each run of your source, copy the arbiter's verdict:
+# Lab 12 — what did the arbiter say? For each run of your source, copy the arbiter's verdict:
 #   STATE:  the `state` number of /navera/nav_status  (0 INITIALIZING, 1 NO_FIX, 2 FIX, 3 DEGRADED)
-#   REASON: its `reason`, the part about day vision — e.g. "day: stale (10.0s>3.0s)" or "day vision fix"
-# Commands (lab, steps 4–6):
+#   REASON: its `reason`.
+#     - state NO_FIX (1): the reason lists every source; copy only the "day: ..." part,
+#       e.g. "day: stale (10.0s>3.0s)".
+#     - state FIX (2) or DEGRADED (3): the reason is one sentence; copy all of it,
+#       e.g. "day vision fix" or "day vision fix, uncertainty unknown".
+#     Numbers may differ a little from the lab (10.4 s instead of 10.0 s): copy what YOU see.
+# Commands (lab, steps 4 and 5):
 #   ros2 topic echo /navera/nav_status --field reason
 #   ros2 topic echo --once /navera/nav_status --field state
 

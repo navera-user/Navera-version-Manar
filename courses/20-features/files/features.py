@@ -2,6 +2,8 @@
 
 Run the demo:   python3 features.py
 Each TODO is one function. Save (Ctrl+S), run again, then press ✔ Check my work.
+Each TODO says WHAT to compute and WHERE the lesson explains it. The "how" is yours.
+If the check fails, its hint gives you more help.
 The units: x = column (to the right), y = row (down), as in OpenCV; points are (x, y).
 """
 import csv
@@ -25,16 +27,17 @@ SOBEL_NORM = 8.0       # cv2.Sobel(ksize=3) gives 8x the change per pixel: divid
 def image_gradients(grey):
     """(Ix, Iy): brightness change per pixel to the right (x) and down (y), float32 arrays.
     3x3 Sobel derivative divided by SOBEL_NORM, so that a ramp I = a*x gives Ix = a."""
-    # TODO 1: cv2.Sobel on a float32 copy (dx=1 for Ix, dy=1 for Iy, ksize=3), divided by SOBEL_NORM
+    # TODO 1: lesson section 1 (Sobel kernel, worked example, and the WARNING about uint8).
+    #   In: grey, a uint8 array (h, w).  Out: (Ix, Iy), two float32 arrays (h, w).
     raise NotImplementedError("TODO 1")
 
 
 def harris_response(grey, sigma=1.5, k=0.05):
     """Harris corner response R = det(M) - k * trace(M)^2 at every pixel (float32 array).
     M = [[Sxx, Sxy], [Sxy, Syy]] is the structure tensor: Ix*Ix, Iy*Iy and Ix*Iy, each
-    averaged by a Gaussian window of standard deviation sigma (cv2.GaussianBlur)."""
-    # TODO 2: gradients → the three products → Gaussian window (cv2.GaussianBlur with (0, 0), sigma)
-    #         → R = det - k * trace^2   (element-wise numpy arithmetic, no loops)
+    averaged by a Gaussian window of standard deviation sigma."""
+    # TODO 2: lesson section 2 (structure tensor and Harris response). Use your image_gradients().
+    #   In: grey (h, w).  Out: R, a float32 array (h, w). No Python loops over pixels.
     raise NotImplementedError("TODO 2")
 
 
@@ -42,15 +45,16 @@ def harris_corners(grey, n=500, sigma=1.5, k=0.05, nms_radius=4, rel_threshold=0
     """The n strongest Harris corners as a float32 array (m, 2) of (x, y), strongest first.
     A pixel is kept when (1) R is the maximum of its (2r+1) x (2r+1) neighbourhood
     (non-maximum suppression, r = nms_radius) and (2) R > rel_threshold * R.max()."""
-    # TODO 3: R → local maxima (compare R with cv2.dilate(R, kernel)) → threshold → sort by R → n first
+    # TODO 3: lesson section 2, "From R to points" (threshold, then non-maximum suppression).
+    #   In: grey (h, w).  Out: float32 array (m, 2) of (x, y), m <= n, strongest first.
     raise NotImplementedError("TODO 3")
 
 
 def characteristic_scale(grey, x, y, sigmas):
     """The sigma (one of `sigmas`) where the scale-normalised Laplacian
     |sigma^2 * Laplacian(Gaussian_sigma * I)| is largest at pixel (x, y)."""
-    # TODO 4: for each sigma: blur, cv2.Laplacian(..., cv2.CV_32F, ksize=1), value at row y / column x,
-    #         times sigma**2, absolute value; return the sigma with the largest value
+    # TODO 4: lesson section 3 (scale-normalised Laplacian). Careful: (x, y) is column x, row y.
+    #   In: grey (h, w), a pixel (x, y), a list of sigmas.  Out: one value of `sigmas`.
     raise NotImplementedError("TODO 4")
 
 
@@ -60,13 +64,15 @@ def detect_keypoints(img, method="ORB", max_points=10000):
     """(keypoints, descriptors) of a picture (colour BGR or grey) with ORB or SIFT.
     keypoints: a list of cv2.KeyPoint; descriptors: one row per keypoint (None when none).
     Any other method → ValueError."""
-    # TODO 5: grey picture, then ORB or SIFT detector with nfeatures=max_points, then detectAndCompute
+    # TODO 5: lesson sections 3 and 4 (SIFT, ORB) and "In NAVERA". Use OpenCV's detectors,
+    #   limited to max_points.  Out: (list of cv2.KeyPoint, descriptor array or None).
     raise NotImplementedError("TODO 5")
 
 
 def hamming(a, b):
     """Number of different bits between two binary descriptors (uint8 arrays of equal length)."""
-    # TODO 6: XOR the bytes, unpack them into bits, count the ones
+    # TODO 6: lesson section 4 (Hamming distance and its worked example).
+    #   In: two uint8 arrays of the same length.  Out: an int (0 to 8 x length).
     raise NotImplementedError("TODO 6")
 
 
@@ -74,7 +80,8 @@ def hamming(a, b):
 
 def project(points, H):
     """Points (N, 2) mapped by the 3x3 matrix H: [x', y', w'] = H [x, y, 1], then (x'/w', y'/w')."""
-    # TODO 7a: homogeneous coordinates (add a column of ones), multiply by H, divide by the third column
+    # TODO 7a: lesson section 5 (homogeneous coordinates).
+    #   In: points (N, 2), H (3, 3).  Out: an array (N, 2) of projected (x, y).
     raise NotImplementedError("TODO 7")
 
 
@@ -83,7 +90,8 @@ def repeatability(pts_a, pts_b, H, shape_b, eps=3.0):
     pts_a, pts_b: arrays (N, 2) of (x, y). H maps A to B. shape_b: B's shape (h, w, ...).
     Only A points whose projection falls inside B count; one is 'repeated' when a B point
     lies within eps pixels of its projection. Returns a number 0-1 (0 when none falls inside)."""
-    # TODO 7b: project A, keep the inside ones, nearest B point of each (scipy cKDTree), share within eps
+    # TODO 7b: lesson section 5 (repeatability). Use your project(). cKDTree (imported above)
+    #   finds nearest neighbours fast.  Out: a float 0-1.
     raise NotImplementedError("TODO 7")
 
 
@@ -106,14 +114,16 @@ def keypoints_per_terrain(method="SIFT"):
 def spread(keypoints, shape, grid=(4, 4), min_per_cell=3):
     """Share (0 to 1) of the cells of a grid cut of the picture that hold at least
     min_per_cell keypoints. shape: img.shape (height, width, ...). grid: (columns, rows)."""
-    # TODO 8a: count the keypoints in each cell, then the share of cells with >= min_per_cell
+    # TODO 8a: lesson section 6 ("Matchability"). A keypoint's position is kp.pt = (x, y).
+    #   Out: a float 0-1.
     raise NotImplementedError("TODO 8")
 
 
 def matchability(img, enough=300):
     """How easy this picture will be to match on a map: 0 (hopeless) to 1 (great).
     = min(1, number of ORB keypoints / enough) x spread of those keypoints."""
-    # TODO 8b: ORB keypoints (max_points=500), then combine their number and their spread
+    # TODO 8b: lesson section 6 ("Matchability"). Use ORB with max_points=500 and your spread().
+    #   Out: a float 0-1.
     raise NotImplementedError("TODO 8")
 
 

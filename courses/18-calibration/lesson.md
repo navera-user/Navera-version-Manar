@@ -1,5 +1,12 @@
 # Lens calibration: fisheye models and Zhang's method
 
+> [!NOTE] In short
+> - A wide lens bends straight lines. A **distortion model** (Brown–Conrady or fisheye) describes this bending with a few numbers.
+> - **Calibration** finds these numbers from many photos of a chessboard (Zhang's method, done by OpenCV).
+> - The **reprojection error** (RMS) says how well the model fits — but only where the board was seen.
+> - **Straightening** turns the fisheye picture into the picture of a perfect pinhole camera; NAVERA keeps a 111° view.
+> - In the lab you write the fisheye model by hand, calibrate the real Insta360 lens from 36 views, and compare with NAVERA's tool.
+
 A survey drone flies along the coast road from Sohar to Shinas at 150 m. The GPS signal is jammed,
 and NAVERA must find the drone's position by matching the camera picture with a satellite map. The
 road is perfectly straight on the map. In the camera picture it is **curved**, like a reflection in
@@ -156,6 +163,11 @@ tilted boards, boards near the edges and corners of the image (where distortion 
 different distances.
 
 ### 3.1 Zhang's method (2000)
+
+> [!NOTE]
+> This section is **for reading**: it explains what happens inside OpenCV. The lab uses OpenCV's
+> calibration functions and does not ask you to write Zhang's closed form (it is a "Going further"
+> challenge).
 
 Zhengyou Zhang's idea is to use a **planar** target and put the world frame on it, so every corner
 has Z = 0. For a pinhole camera, the projection of the board then becomes a 3 × 3 **homography**:

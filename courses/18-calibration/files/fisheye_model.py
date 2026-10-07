@@ -14,7 +14,7 @@ import yaml
 
 DATA = "/data/academy/18-calibration"
 CALIB_FILE = DATA + "/insta360_top.yaml"
-EXAMPLE = DATA + "/views/f0208.jpg"
+EXAMPLE = DATA + "/views/f0216.jpg"
 HFOV = 111.0           # width of the straight picture (deg), as NAVERA publishes it
 
 
@@ -22,19 +22,17 @@ def load_calibration(path):
     """Read a NAVERA calibration YAML.
     Returns (K, D, size): K a 3x3 float array, D a float array of the 4 fisheye
     coefficients k1..k4, size = (width, height) in pixels."""
-    # TODO 1: yaml.safe_load() the file. K = the 9 numbers of "camera_matrix" as a 3x3 array
-    #   (row by row), D = the 4 numbers of "distortion", size = (image_width, image_height).
+    # TODO 1: look at the file first (lab Step 1). Which keys hold K, D and the size?
+    #   yaml.safe_load() gives a Python dictionary.
     return None, None, None
 
 
 def project_fisheye(X_cam, K, D):
     """Project 3D points given in the CAMERA frame (N x 3, metres, z forward) to pixels
     (N x 2) with OpenCV's fisheye model (equidistant + k1..k4 polynomial, no skew)."""
-    # TODO 2: for every point (vectorised with numpy, no Python loop needed):
-    #   a = X/Z, b = Y/Z, r = sqrt(a^2 + b^2), theta = atan(r)
-    #   theta_d = theta * (1 + k1 theta^2 + k2 theta^4 + k3 theta^6 + k4 theta^8)
-    #   x' = (theta_d / r) a, y' = (theta_d / r) b      <- careful when r = 0 (on the axis)
-    #   u = fx x' + cx, v = fy y' + cy.   Return an (N, 2) array.
+    # TODO 2: the five steps of lesson section 2.3, on all N points at once (numpy columns,
+    #   no Python loop needed). One step divides by r: think about a point ON the axis (r = 0).
+    #   Out: an (N, 2) array of pixels.
     return None
 
 
@@ -49,12 +47,8 @@ def theta_from_theta_d(theta_d, D):
     """Invert theta_d = theta (1 + k1 theta^2 + ... + k4 theta^8) on its RISING part.
     Returns theta (rad), or float('nan') when no angle of the rising part gives theta_d
     (the calibration cannot describe that pixel)."""
-    # TODO 3: the polynomial rises from theta = 0, reaches a maximum, then may fall.
-    #   1. find where the rising part ends (e.g. evaluate theta_d_of() on a fine grid of
-    #      0..pi/2 and find the first place it stops increasing);
-    #   2. if theta_d is above the value there (or negative): return float("nan");
-    #   3. otherwise solve theta_d_of(theta) = theta_d on [0, end] — bisection is safe
-    #      (Newton also works if you keep it on the rising part). Return a float.
+    # TODO 3: lesson section 6 shows the shape of the curve (it rises, then falls).
+    #   Lab Step 3 gives the plan. In: theta_d (a float). Out: theta (a float, rad) or nan.
     return None
 
 
@@ -62,34 +56,33 @@ def reprojection_rms(obj_pts, img_pts_list, rvecs, tvecs, K, D):
     """RMS reprojection error (px) over all views, and the RMS of each view.
     obj_pts: the board corners (54 x 1 x 3) in the board frame; img_pts_list: the corners
     seen in each view; rvecs/tvecs: the pose of the board in each view (from calibration)."""
-    # TODO 4: for each view: R from cv2.Rodrigues(rvec); points in the camera frame
-    #   X_cam = R X_board + t; project them with YOUR project_fisheye(); error e = predicted - seen
-    #   (both N x 2). Overall RMS = sqrt(mean over ALL corners of |e|^2) (|e|^2 = ex^2 + ey^2),
-    #   per-view RMS the same over that view's corners. Return (rms, [rms of each view]).
+    # TODO 4: lesson section 4 (the RMS) and section 3 (rvec = a Rodrigues vector, tvec).
+    #   For each view: move the board corners into the camera frame, project them with YOUR
+    #   project_fisheye(), compare with the corners seen.
+    #   Out: (overall RMS over ALL corners, [RMS of each view]).
     return None, None
 
 
 def straight_camera_matrix(hfov_deg, size):
     """The K of a perfect (pinhole) camera with this horizontal field of view, for an
-    image of `size` = (w, h): f = (w/2) / tan(hfov/2), principal point in the middle."""
-    # TODO 5: compute f (math.tan wants RADIANS), return a 3x3 numpy array
-    #   [[f, 0, w/2], [0, f, h/2], [0, 0, 1]].
+    image of `size` = (w, h), principal point in the middle. Out: a 3x3 float array."""
+    # TODO 5: lesson section 8 (f_new) and lesson 17 (the matrix K). Angles: degrees in, radians for math.tan.
     return None
 
 
 def undistort(img, K, D, K_new):
     """The straightened image (same size as img), seen by the perfect camera K_new."""
-    # TODO 6: map1, map2 = cv2.fisheye.initUndistortRectifyMap(K, D, R, K_new, (w, h), cv2.CV_16SC2)
-    #   with R = np.eye(3) (no rotation), then cv2.remap(img, map1, map2, cv2.INTER_LINEAR,
-    #   borderMode=cv2.BORDER_CONSTANT). Size is (width, height) — numpy's shape is (h, w, 3).
+    # TODO 6: lesson section 7 (straightening = a map, then remap) and the API table of
+    #   section 5. No rotation. Use the map type cv2.CV_16SC2, bilinear interpolation and a
+    #   constant (black) border. Careful with the size order (section 5, "Formats").
     return None
 
 
 def line_bend_px(points):
     """Largest distance (px) between a point and the best straight line through all of them."""
-    # TODO 7: cv2.fitLine(points as float32, cv2.DIST_L2, 0, 0.01, 0.01).ravel() gives
-    #   (vx, vy, x0, y0): a unit direction and a point of the best line. The distance of (x, y)
-    #   to it is |(x - x0) vy - (y - y0) vx|. Return the LARGEST distance as a float.
+    # TODO 7: In: an (N, 2) array of corners. Fit the best line in ANY direction (a column is
+    #   almost vertical — see the tip in lab Step 4; OpenCV has cv2.fitLine), then the distance
+    #   of each point to that line. Out: the LARGEST distance, as a float.
     return None
 
 
@@ -185,6 +178,8 @@ if __name__ == "__main__":
     c0, c1 = find_corners(img), find_corners(flat)
     b0, b1 = worst_bend(c0), worst_bend(c1)
     todo("line_bend_px", b0)
+    if b1 is None:
+        raise SystemExit("no chessboard found in the straightened picture — check undistort() (TODO 6)")
     print(f"most bent chessboard line: before {b0:.2f} px, after {b1:.2f} px")
     both = np.vstack([draw(img, c0, f"fisheye: worst line bent {b0:.1f} px"),
                       draw(flat, c1, f"straightened {HFOV:g} deg: {b1:.1f} px")])

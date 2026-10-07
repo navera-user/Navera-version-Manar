@@ -196,9 +196,9 @@ def verdicts():
         with Background("ros2 run navera_estimator estimator_node.py", settle=2.5):
             for f in LIVE_FAULTS:
                 with Background(f"python3 -u my_source.py {f}", settle=2.0) as bg:
-                    time.sleep(2.5)
+                    time.sleep(3.5)       # slow machines: let the arbiter discover the new source
                     msgs = wait_for_messages("/navera/nav_status", NavStatus, count=3, timeout=6)
-                    pos = wait_for_messages("/navera/position", PositionEstimate, count=1, timeout=2.5) \
+                    pos = wait_for_messages("/navera/position", PositionEstimate, count=1, timeout=5.0) \
                         if f == "none" else []
                 RES[f] = (msgs[-1] if msgs else None, pos, bg.output())
     return RES

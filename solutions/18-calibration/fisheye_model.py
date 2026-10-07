@@ -14,7 +14,7 @@ import yaml
 
 DATA = "/data/academy/18-calibration"
 CALIB_FILE = DATA + "/insta360_top.yaml"
-EXAMPLE = DATA + "/views/f0208.jpg"
+EXAMPLE = DATA + "/views/f0216.jpg"
 HFOV = 111.0           # width of the straight picture (deg), as NAVERA publishes it
 
 
@@ -208,6 +208,8 @@ if __name__ == "__main__":
     c0, c1 = find_corners(img), find_corners(flat)
     b0, b1 = worst_bend(c0), worst_bend(c1)
     todo("line_bend_px", b0)
+    if b1 is None:
+        raise SystemExit("no chessboard found in the straightened picture — check undistort() (TODO 6)")
     print(f"most bent chessboard line: before {b0:.2f} px, after {b1:.2f} px")
     both = np.vstack([draw(img, c0, f"fisheye: worst line bent {b0:.1f} px"),
                       draw(flat, c1, f"straightened {HFOV:g} deg: {b1:.1f} px")])

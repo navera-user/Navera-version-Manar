@@ -1,5 +1,15 @@
 # Linux and the shell for robotics
 
+> [!NOTE] In short
+> - A NAVERA box has no screen, so engineers control it and read its logs with text commands in a
+>   **terminal**.
+> - You learn the file system, permissions, processes and signals, and environment variables.
+> - You learn **pipes** (`|`), text tools such as `grep`, and short **bash** scripts.
+> - In the lab you study two synthetic NAVERA flight logs (Sohar and Nizwa) and write a script
+>   that summarises any NAVERA log.
+> - NAVERA's own test script uses the same pipes, and the same signals: SIGTERM first, then
+>   SIGKILL.
+
 A survey drone lands on a beach north of Sohar port after a training flight. Inside it, a NAVERA box:
 no screen, no keyboard, no mouse. The test engineer has three questions. *Did the GPS drop out? Did
 the arbiter switch to day vision, and for how long? Did any node report an error?* She connects her

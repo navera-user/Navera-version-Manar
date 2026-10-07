@@ -1,5 +1,17 @@
 # Data analysis: reading a flight-test campaign
 
+> [!NOTE] In short
+> - After a test campaign, an engineer must check that the data is clean and measure what happened
+>   in each flight.
+> - You read CSV files and work with tables in **pandas**: filters, missing values, duplicates and
+>   `groupby`.
+> - You compute distances and speeds with NumPy, find GPS outages with **run-length** logic, and
+>   use statistics that survive bad data.
+> - In the lab you analyse four synthetic flights in Oman, draw two figures with matplotlib and
+>   write a short test report.
+> - NAVERA's tools use the same methods: pandas for the map tile table, and the same statistics in
+>   `evaluate_session.py`.
+
 A test week is over. Four drone flights were logged in Oman: along the Muscat coast, around a port
 near Sohar, over the foothills near Nizwa, and a survey line pattern near Barr Al Hikman. The logger
 wrote one row every 2 seconds per flight: 1556 rows, ten columns. The test engineer must answer

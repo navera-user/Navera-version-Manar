@@ -25,15 +25,16 @@ KS = [1.0, 2.0, 2.448]
 def mahalanobis2(e_east, e_north, cov):
     """Squared Mahalanobis distance d² = eᵀ Σ⁻¹ e of a horizontal error (e_east, e_north), with
     Σ the horizontal 2x2 block of `cov` (9 numbers). Works on numbers or numpy arrays."""
-    # TODO 6: a, b, c = cov[0], cov[1], cov[4];  det = a·c − b²
-    #   the inverse of [[a, b], [b, c]] is [[c, −b], [−b, a]] / det, so
-    #   d² = (c·e_east² − 2·b·e_east·e_north + a·e_north²) / det
+    # TODO 6: d² = eᵀ Σ⁻¹ e — course section 3. Derive it yourself: invert the 2x2 block
+    #   [[Σ_EE, Σ_EN], [Σ_NE, Σ_NN]] by hand (school formula for a 2x2 inverse), then expand eᵀ Σ⁻¹ e.
+    #   Use only + − × / so that it also works on whole numpy arrays (no loops, no np.linalg).
+    #   Test: a 1-sigma error along the major axis (15·sin 30°, 15·cos 30°) gives d² = 1.
     return 0.0 * e_east
 
 
 def p_inside(k):
     """Theory: probability that a 2-D Gaussian error lies inside the k-sigma ellipse."""
-    # TODO 7: 1 − exp(−k² / 2)
+    # TODO 7: the chi-square (2 degrees of freedom) law of course section 3. p_inside(1) ≈ 0.393.
     return 0.0
 
 
@@ -67,6 +68,12 @@ def main():
     res["probability"], res["stated_vs_max"] = prob, compare
     with open("results.json", "w") as f:
         json.dump(res, f, indent=2)
+    if p_inside(1.0) == 0.0:
+        print("TODO 7 not done yet: p_inside() returns 0 — the 'theory' column is empty.")
+    if not np.any(d2):
+        print("TODO 6 not done yet: mahalanobis2() returns 0 — every sample counts as 'inside'.")
+    if major == 0.0:
+        print("TODO 3 (my_source.py) not done yet: the ellipse sizes below are 0.")
     for k in KS:
         print(f"inside the {k}-sigma ellipse: sampled {prob['sampled'][str(k)]:.4f}, theory {prob['theory'][str(k)]:.4f}")
     print(f"|east error| <= sigma_E: {prob['east_within_1sigma']:.4f}")

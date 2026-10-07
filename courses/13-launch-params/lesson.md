@@ -1,5 +1,12 @@
 # Launch files and parameters: configuring a system without touching its code
 
+> [!NOTE] In short
+> - A node's **parameters** are its settings; the code stays the same for a car, a boat or a drone.
+> - You will learn parameter types, **descriptors** (description, range, read-only) and **validation callbacks**.
+> - You will write a **YAML parameters file** and measure which value wins when there are several.
+> - You will learn **namespaces** and **remapping**, then write one **launch file** that starts a car, a boat and NAVERA.
+> - In the lab you also change one of NAVERA's own settings and see its verdict change.
+
 The same NAVERA software runs on a survey drone over Jebel Akhdar, on a delivery car in Muscat and on
 a patrol boat off Sohar. The drone flies at 30 m/s, the boat at 15 m/s. One box reads its GNSS on a
 serial cable, another from the autopilot, a third from the vehicle's own ROS topic. IRIS Systems does
@@ -23,7 +30,8 @@ has a **type**, fixed at declaration by the default: `2.0` → double, `2` → i
 ros2 param set … 5     → Setting parameter failed: Wrong parameter type, expected 'Type.DOUBLE' got 'Type.INTEGER'
 ```
 
-NAVERA's engineers met this trap with launch files written by integrators (`max_speed_mps:=25`) and
+NAVERA's engineers met this trap with launch files written by **integrators** (the people who install
+NAVERA on a vehicle), for example `max_speed_mps:=25`. They
 wrote a helper, `declare_float`, that declares a double with **dynamic typing** so that an integer is
 accepted ([navera_common/params.py](file:navera/navera_common/navera_common/params.py)):
 
@@ -92,12 +100,15 @@ Twenty parameters on a command line are unreadable. A **parameters file** in YAM
     speed_mps: 12.0
 ```
 
-and a node loads it with `--ros-args --params-file my_gps.yaml`. YAML rules that bite: spaces, never
+and a node loads it with `--ros-args --params-file my_gps.yaml`. YAML rules to remember: spaces, never
 tabs; equal indentation for equal levels; `1.0` is a double, `1` an integer, `"car"` or `car` a
 string, `true` a bool; `#` starts a comment. A section applies to a node when its key matches the node's
 full name (`/car/fake_gps`) or a wildcard (`/**` = every node, `/car/*` = every node directly in
 `/car`). A key without the leading slash, `fake_gps:`, means `/fake_gps`: it does **not** match the
 same node started in a namespace — a frequent surprise (measured: the node keeps its code default).
+NAVERA's own [estimator_params.yaml](file:navera/navera_estimator/navera_estimator/config/estimator_params.yaml)
+uses `estimator_node:` with no slash. This is not a bug: the arbiter runs **without** a namespace, so
+its full name is `/estimator_node`, and `estimator_node:` means exactly that.
 
 ## 3. Who wins? Precedence, measured
 
@@ -240,7 +251,7 @@ Then open [estimator_params.yaml](file:navera/navera_estimator/navera_estimator/
 every value carries a comment explaining *why* — sometimes with the measurement behind it
 (`ros2 topic hz /navera/sensors/gps_fix = 1.000 Hz, std 0.148 s`), sometimes with the incident that
 changed it (day vision's 5 s window: "a 3 s window made NAVERA flicker NO_FIX between good fixes").
-A setting without a reason is a setting nobody dares to change. In the lab you will change
+If a setting has no reason written next to it, people are afraid to change it. In the lab you will change
 `fix_max_sigma_m`, the largest stated σ that still counts as FIX.
 
 ## Glossary

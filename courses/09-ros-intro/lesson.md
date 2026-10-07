@@ -1,5 +1,17 @@
 # The ROS 2 graph: nodes, topics, discovery and QoS
 
+> [!NOTE] In short
+> - About ten programs run at the same time in a NAVERA box, and they exchange data many times per
+>   second.
+> - **ROS 2** connects them: **nodes** send typed **messages** on topics, or use services and
+>   actions.
+> - Under ROS 2, **DDS** lets the nodes find each other on the network (discovery).
+> - **QoS** rules decide what happens when a message is late or lost.
+> - In the lab you measure discovery, message sizes and QoS on a live system, and question
+>   NAVERA's real arbiter.
+> - In NAVERA, every source publishes the same message type on its own topic, and the arbiter
+>   subscribes to all of them.
+
 A NAVERA box is mounted on a survey drone that flies along the coast from Muscat to Sur. Inside
 the box, about **ten programs run at the same time**: one reads the GPS receiver, one reads the
 attitude sensor, one takes camera frames, one matches them against the satellite map, one decides

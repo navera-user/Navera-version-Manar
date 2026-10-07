@@ -32,26 +32,30 @@ FAULTS = ["none", "nan", "not_psd", "stale", "latency", "future", "invalid", "re
 def enu_covariance(sigma_along_m, sigma_cross_m, heading_deg, sigma_up_m=0.0):
     """The 9 floats (ENU, row-major, m²) of an error ellipse with semi-axes sigma_along (along the
     heading) and sigma_cross, heading clockwise from north; independent vertical error sigma_up."""
-    # TODO 1: with h in radians, s = sin(h), c = cos(h), A = sigma_along², C = sigma_cross²:
-    #   Σ_EE = A·s² + C·c²     Σ_NN = A·c² + C·s²     Σ_EN = Σ_NE = (A − C)·s·c
-    #   Σ_UU = sigma_up², everything else 0.0. Return the 9 numbers row after row, as floats.
+    # TODO 1: build Σ = R·diag(σ_along², σ_cross²)·Rᵀ for the horizontal block — course section 2,
+    #   "Building a covariance from an error ellipse". Careful: math.sin/cos want radians.
+    #   Input: two sigmas (m), a heading (deg, clockwise from north), sigma_up (m).
+    #   Output: a list of 9 floats, row-major (E, N, U), with Σ_UU = sigma_up² and no E/N–U correlation.
+    #   Test: enu_covariance(15, 6, 30, 6) gives the course's worked example (83.25, 81.84, 177.75 ...).
     return [0.0] * 9
 
 
 def is_psd_2x2(cov):
     """True if the horizontal 2x2 block of `cov` (9 numbers) is a covariance: finite, symmetric
     (|Σ_EN − Σ_NE| ≤ 1e-9·scale), non-negative variances and a non-negative determinant."""
-    # TODO 2: a, b, b2, c = cov[0], cov[1], cov[3], cov[4]
-    #   all four finite; a >= 0 and c >= 0; |b - b2| <= 1e-9 * max(1, a, c); a*c - b*b2 >= -1e-9 * max(1, a, c)
+    # TODO 2: the two properties of a real covariance — course section 2 (symmetric, PSD).
+    #   Input: 9 numbers; only the horizontal block (indices 0, 1, 3, 4) matters.
+    #   Output: True or False. Use the tolerance tol = 1e-9 * max(1, Σ_EE, Σ_NN) for the two
+    #   comparisons that involve rounding (symmetry, determinant). NaN or inf -> False.
     return True
 
 
 def error_ellipse(cov):
     """(semi_major_m, semi_minor_m, heading_deg of the major axis in [0, 180)) of the horizontal block."""
-    # TODO 3: a, b, c = cov[0], cov[1], cov[4]
-    #   m = (a + c) / 2 ;  r = sqrt(((a - c) / 2)² + b²) ;  λ1 = m + r ;  λ2 = m - r
-    #   heading = degrees(0.5 * atan2(2b, c - a)) modulo 180
-    #   return sqrt(λ1), sqrt(max(λ2, 0.0)), heading
+    # TODO 3: the inverse of TODO 1 — course section 2, "From a covariance back to the ellipse".
+    #   Input: 9 numbers. Output: (semi_major_m, semi_minor_m, heading_deg in [0, 180)).
+    #   The semi-axes are the square roots of the two eigenvalues (protect the smaller one against a
+    #   tiny negative rounding error). Test: error_ellipse(enu_covariance(15, 6, 30)) ≈ (15, 6, 30).
     return 0.0, 0.0, 0.0
 
 
@@ -60,14 +64,14 @@ def build_estimate(lat, lon, cov, cov_type, stamp):
     est = PositionEstimate()
     est.latitude = float(lat)
     est.longitude = float(lon)
-    # TODO 4: fill every other field of the contract (the lesson's tables explain each one):
-    #   header.stamp (publication) and sensor_stamp (measurement) -> both `stamp` here
-    #   header.frame_id = "student_camera"
-    #   altitude -> unknown: math.nan (never 0.0, which is sea level!)
-    #   position_covariance = cov (a list of 9 floats)   position_covariance_type = cov_type
-    #   source = PositionEstimate.SOURCE_DAY_VISION     mode = PositionEstimate.MODE_MEASURED
-    #   valid = True      reason = ""       confidence = 0.0
-    #   producer = "my_source"   model_id = "lesson12"   frame_index = -1   details_json = "{}"
+    # TODO 4: fill every other field of the contract. Course section 1 (the form: where, how sure,
+    #   who, how, usable, when, traceability) and section 5 (the two stamps) say what each field means.
+    #   Our pretend camera measures and publishes at the same instant `stamp`, it does not know its
+    #   altitude, and it is an honest, usable, measured day-vision fix.
+    #   The values the checker expects for the free-text fields:
+    #     header.frame_id "student_camera", producer "my_source", model_id "lesson12",
+    #     frame_index -1, details_json "{}", reason "", confidence 0.0.
+    #   The constants (SOURCE_..., MODE_...) are attributes of PositionEstimate.
     return est
 
 
@@ -79,19 +83,19 @@ def shifted(t, seconds):
 
 def apply_fault(est, fault):
     """Break `est` on purpose, the way `fault` says, changing ONLY that. Returns the message."""
-    # TODO 5: one `if` / `elif` per fault (FAULTS lists them):
-    #   "nan"         latitude = math.nan
-    #   "not_psd"     Σ_EN and Σ_NE (indices 1 and 3) = 2·sqrt(Σ_EE·Σ_NN): a correlation of 2
-    #   "stale"       sensor_stamp 10 s in the past (header.stamp unchanged: published now!)  -> shifted()
-    #   "latency"     sensor_stamp 2 s in the past (header.stamp unchanged)
-    #   "future"      header.stamp AND sensor_stamp 5 s in the future
-    #   "invalid"     valid = False and reason = "lens covered"
-    #   "replayed"    mode = MODE_REPLAYED          "held"        mode = MODE_HELD
-    #   "propagated"  mode = MODE_PROPAGATED
-    #   "unknown_cov" nine 0.0 and COVARIANCE_TYPE_UNKNOWN
-    #   "big_sigma"   enu_covariance(30, 30, HEADING_DEG, SIGMA_UP_M)          (a 30 m circle)
-    #   "tilted"      enu_covariance(30, 5, 45.0, SIGMA_UP_M)                  (thin, at 45°)
+    # TODO 5: one `if` / `elif` per fault (FAULTS lists them). What each fault must change:
+    #   "nan"         the latitude becomes NaN
+    #   "not_psd"     Σ_EN and Σ_NE (indices 1 and 3) become 2·sqrt(Σ_EE·Σ_NN): a correlation of 2
+    #   "stale"       the MEASUREMENT stamp is 10 s in the past; the publication stamp does not change
+    #   "latency"     the same, 2 s in the past
+    #   "future"      BOTH stamps 5 s in the future
+    #   "invalid"     not usable, with the reason "lens covered"
+    #   "replayed", "held", "propagated"   the matching mode
+    #   "unknown_cov" no accuracy stated: nine zeros and the matching covariance type (course section 4)
+    #   "big_sigma"   a 30 m circle (along 30, cross 30, HEADING_DEG, SIGMA_UP_M)
+    #   "tilted"      a thin ellipse: along 30, cross 5, heading 45°, SIGMA_UP_M
     #   "none"        nothing
+    #   shifted() below moves a stamp. position_covariance is an array: build a new list of 9 floats.
     return est
 
 

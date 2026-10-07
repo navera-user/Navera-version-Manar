@@ -15,6 +15,11 @@ files in `out/`, and `report.md`.
 > (`/data/academy/19-live-camera/`) when the camera is not booked, absent, or busy. The programs
 > check `fuser` first and never open a busy camera. The camera check is skipped when no camera
 > was used.
+>
+> **How to book the camera** (optional): in the dashboard, press the **Hardware** button at the
+> top, then **Take** on the line **Camera**. Then open a **new terminal**: only terminals opened
+> after the booking can see the camera. Press the button again to release it when you finish.
+> If you do not book it, you do not need it: follow the no-camera path.
 
 > [!WARNING]
 > **Privacy.** The recorded frames were saved while the top lens looked at a calibration board
@@ -52,6 +57,11 @@ fuser /dev/video0 /dev/video1
 
 No output means that it is free. A process number means that it is busy: do not open it.
 
+> [!NOTE]
+> **No camera?** Then `fuser` prints `Specified filename /dev/video0 does not exist.` (and the
+> same for `/dev/video1`). This is normal: it only means that your sandbox has no camera. Go on to
+> Step 2.
+
 ## Step 2 — Part A: frames, statistics and the stamp (TODO 1–4)
 
 Open [camera_tools.py](file:./camera_tools.py). Read the conventions at the top and the class
@@ -62,8 +72,8 @@ Open [camera_tools.py](file:./camera_tools.py). Read the conventions at the top 
 > In `camera_tools.py`, write:
 > 1. `split_halves(frame)` → `(top, bottom)`. Compute the half from `frame.shape[0]` (do not write 540).
 > 2. `frame_stats(grab_times)` → a dict with exactly the keys `n, fps, period_ms, median_ms,
->    jitter_ms, max_gap_ms, dropped` as defined in its docstring (lesson, section 5). Use
->    `np.diff`, `np.median`, `np.std` (ddof = 0). For fewer than 2 times, return zeros.
+>    jitter_ms, max_gap_ms, dropped` as defined in its docstring and in lesson section 5.
+>    For fewer than 2 times, return zeros.
 > 3. `exposure_time(grab_time_s, latency_s)`.
 > 4. `load_latency(calib_file)` → `latency_s` as a float, `0.0` when the key is missing.
 
@@ -170,11 +180,11 @@ midpoint) and a flash that the camera never sees, which you must skip.
 
 > [!TASK]
 > Write, with quaternions as numpy arrays **(w, x, y, z)**:
-> 6. `quat_angle_deg(q0, q1)` = 2·acos(min(1, |q0·q1|)) in degrees.
-> 7. `slerp(q0, q1, f)`: shortest path, the linear branch for a dot product above 0.9995, normalised.
+> 6. `quat_angle_deg(q0, q1)`: the angle between two attitudes, in degrees (lesson section 8).
+> 7. `slerp(q0, q1, f)` with the three practical rules of lesson section 8.
 >    You wrote it in lesson 16 (`quaternions.py`). Write it again here, so this file is complete.
-> 8. `attitude_at(t, imu_times, imu_quats, max_gap_s=0.2)` with **NAVERA's rules** (docstring),
->    using `bisect.bisect_left`.
+> 8. `attitude_at(t, imu_times, imu_quats, max_gap_s=0.2)` with **NAVERA's rules** (docstring,
+>    and "When there is no sample" in section 8).
 
 ```bash
 python3 camera_tools.py
@@ -190,8 +200,9 @@ python3 compare_with_navera.py
 
 Read [compare_with_navera.py](file:./compare_with_navera.py): it converts each sample to NAVERA's
 **(x, y, z, w)** order before giving it to `History.add`. You must get
-`✔ your attitude_at() gives NAVERA's attitude at every exposure` and 12 exposures without
-attitude on both sides. A difference of about 1e-6° is only rounding in `acos`.
+`✔ your attitude_at() gives NAVERA's attitude at every exposure`, with
+`"frames_compared": 651` and `"both_unusable": 12`: 651 = 663 − 12, because the 12 exposures in
+the IMU gap have no attitude on both sides, so there is nothing to compare. A difference of about 1e-6° is only rounding in `acos`.
 
 ## Step 7 — The experiment: analyse.py
 

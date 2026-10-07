@@ -10,8 +10,9 @@ is_finite_latlon, and why a test of another function (dead_reckon) failed too.*
 
 ## Mutants
 
-*Which mutants survived your FIRST version of test_geo_tools.py (the checker's list, or your own
-attacks), which tests you added to kill them, and one mutant that only a property can catch easily.*
+*Which mutants survived your FIRST version of test_geo_tools.py (the checker's list; if none survived,
+the results of your own attacks of step 6), which tests you added to kill them, and one mutant that
+only a property can catch easily.*
 
 ## Properties
 

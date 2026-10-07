@@ -38,9 +38,9 @@ MAX_SPEED_MPS = {"car": 40.0, "drone": 30.0, "boat": 15.0}
 def make_descriptor(description, lo, hi, read_only):
     """A ParameterDescriptor with a description, read_only flag and, when lo/hi are given, a
     floating-point range [lo, hi]."""
-    # TODO 1: build and return ParameterDescriptor(description=..., read_only=...), and when lo is not
-    #         None also floating_point_range=[FloatingPointRange(from_value=lo, to_value=hi, step=0.0)]
-    #         (step 0.0 = any value in the range).
+    # TODO 1: course section 1, "Descriptors" (the table of fields). Return a ParameterDescriptor that
+    #         carries the description and the read-only flag. When lo is not None, it also limits the
+    #         value to [lo, hi] (any value inside the range is allowed). Strings (lo is None) get no range.
     return ParameterDescriptor()
 
 
@@ -98,9 +98,9 @@ class FakeGps(Node):
     def on_set_parameters(self, params):
         """Called by ROS BEFORE new values are applied (ros2 param set, a launch file...). `params` is
         the list of rclpy Parameters being set. Return SetParametersResult(successful=..., reason=...)."""
-        # TODO 2b: the vehicle and the speed after the change are the new value when it is in
-        #          `params` (p.name, p.value), else the current one (self.get_parameter(...).value).
-        #          reason = check_settings(vehicle, speed); successful = (reason == "").
+        # TODO 2b: course section 1, "Validation callbacks". Find the vehicle and the speed the node
+        #          WOULD have after this change (a parameter that is not in `params` keeps its current
+        #          value), test them with check_settings(), and accept or refuse with that reason.
         return SetParametersResult(successful=True)
 
     def on_timer(self):

@@ -1,5 +1,13 @@
 # Subscribers, callbacks and executors: listening with memory
 
+> [!NOTE] In short
+> - A **subscriber** runs a **callback** for every message; an **executor** decides when callbacks run.
+> - You will learn how a node keeps **state** (memory) and refuses bad messages.
+> - You will see why speed computed from noisy GNSS positions is wrong, and how a **window** fixes it.
+> - You will learn why a node needs a **timer** to notice that a sensor went silent.
+> - In the lab you build a trip computer, measure single- vs multi-threaded executors, and watch
+>   NAVERA's real arbiter detect a lost GNSS.
+
 In lesson 10 your fake receiver published its position into `/fake_gps/fix`. Publishing is half of
 a conversation. The other half is harder: a **subscriber** must react to every message, **remember**
 what came before, **refuse** bad data, and do it all without blocking the rest of the node. A trip
@@ -130,9 +138,12 @@ about
 Worked example: σ = 3 m and dt = 0.5 s give σ_v ≈ 1.414 × 3 / 0.5 = **8.5 m/s** for a vehicle
 driving at 6 m/s. The instantaneous speed is useless. Worse, here the noise (4.2 m per axis) is
 larger than the true step (3 m), so the approximation breaks down and the result is also **biased**:
-the length of a 2-D vector of pure noise has a mean of about 1.77 σ (a Rayleigh distribution), so a
+the length of a 2-D vector of pure noise has a mean of about 1.77 σ (a **Rayleigh distribution**:
+for a 2-D Gaussian with σ' per axis, the mean length is σ'·√(π/2) ≈ 1.25 σ', and here σ' = √2·σ,
+so 1.25 × 1.414 ≈ 1.77), so a
 **parked** car would show 1.77 × 3 / 0.5 ≈ 10.6 m/s — 38 km/h — on average. The same bias makes a sum
-of noisy steps much longer than the real path.
+of noisy steps much longer than the real path. The spread is also smaller than 8.5 m/s, because a
+length cannot be negative (about 6 m/s in the lab — the lab explains why).
 
 The remedy is to measure over a longer baseline. With a **window** of N fixes, use the straight
 distance from the oldest to the newest fix divided by their time span (N − 1)·dt:
@@ -142,13 +153,13 @@ distance from the oldest to the newest fix divided by their time span (N − 1)�
 ```
 
 For N = 10: √2 × 3 / 4.5 ≈ **0.94 m/s**. The price is **lag** (the value describes the last 4.5 s)
-and **corner cutting** (in a turn, the chord is shorter than the arc). Every estimator chooses a
+and **corner cutting** (the chord takes a short cut: in a turn, the chord is shorter than the arc). Every estimator chooses a
 trade-off between noise and delay; the Kalman-style filters of lesson 26 make that choice
 optimally. In the lab you will measure all of this with a seeded simulation.
 
 ![Instantaneous steps zig-zag with the noise; the window's chord follows the true path](assets/two_fixes.svg)
 
-## 5. Silence is also information
+## 5. Detecting silence
 
 A subscription only runs when something **arrives**. If the GNSS receiver stops, no callback is
 called at all — the node cannot notice silence with a subscription alone. The pattern is a
@@ -161,11 +172,11 @@ silence between 3.0 and about 3.2 s after the last fix was measured — a number
 ## 🐦 How birds do it
 
 Birds are good subscribers. In 2007, Christopher Templeton and Erick Greene showed in *PNAS* that
-red-breasted nuthatches **eavesdrop** on the alarm calls of chickadees, a different species, and
+red-breasted nuthatches listen to (**eavesdrop** on) the alarm calls of chickadees, a different species, and
 react more strongly to the calls that signal a more dangerous predator. They read the value inside
 the message and decide what to do — a callback with state. In Muscat's gardens you can watch the same
 behaviour: when one bird starts a harsh alarm at a cat or an owl, bulbuls and other small birds arrive
-to join the mob.
+to attack the predator together (biologists call this **mobbing**).
 
 Birds also filter. A good listener ignores old news: Navi does not panic about a cat that left ten
 minutes ago (a **stale** message), and she does not count the same alarm twice when it echoes from a

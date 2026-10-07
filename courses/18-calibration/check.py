@@ -10,7 +10,7 @@ from academy_check import Checker, load_student, need
 c = Checker()
 DATA = "/data/academy/18-calibration"
 CALIB = DATA + "/insta360_top.yaml"
-FRAME = DATA + "/views/f0208.jpg"
+FRAME = DATA + "/views/f0216.jpg"
 REAL = dict(fx=660.4827288497767, fy=721.3969246428146, cx=937.0585411264981, cy=317.6611884647247,
             k1=0.23188047333874745)
 # 12 views that OpenCV accepts together (no ill-conditioned one): fast enough for grading
@@ -235,7 +235,7 @@ def _():
 
 
 @c.test("calibrate_fisheye() calibrates 12 real views like OpenCV with NAVERA's flags",
-        hint="One object-point array per view, initial K = identity and D = zeros (4x1), the three flags of TODO 9 combined "
+        hint="One object-point array per view, initial K = identity and D = zeros (4x1), the flags CALIB_RECOMPUTE_EXTRINSIC, CALIB_CHECK_COND and CALIB_FIX_SKEW combined "
              "with |, and the criteria tuple; return the 5 values OpenCV returns. Do not catch cv2.error.")
 def _():
     (cf,) = need(cl(), "calibrate_fisheye")
@@ -263,7 +263,7 @@ def _():
 def _():
     m = results("model")
     c.ok(m.get("project_max_diff_px", 1) < 1e-6, "project_max_diff_px is too large — rerun after fixing TODO 2")
-    c.near(m.get("bend_before_px"), 6.5, 0.6, "bend_before_px")
+    c.near(m.get("bend_before_px"), 5.1, 0.6, "bend_before_px")
     c.ok(m.get("bend_after_px", 99) < 2.0, "bend_after_px should be under 2 px")
     c.near(m.get("curve_peak_deg"), 67.4, 0.3, "curve_peak_deg")
     c.near(m.get("max_out_hfov_deg"), 110.94, 0.02, "max_out_hfov_deg")

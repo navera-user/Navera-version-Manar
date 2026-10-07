@@ -56,6 +56,7 @@ async function init() {
   pollBookings(); setInterval(pollBookings, 8000);
 }
 function route() {
+  if (window.Tour) Tour.close();
   const m = location.hash.match(/^#lesson\/(.+)$/);
   if (m) openLesson(decodeURIComponent(m[1])); else showHome();
 }
@@ -219,6 +220,7 @@ async function showHome() {
   ['goNext', 'goNext2'].forEach(id => { if ($(id)) $(id).onclick = () => { location.hash = 'lesson/' + next.id; }; });
   $('goMap').onclick = () => $('mapHead').scrollIntoView({behavior: 'smooth'});
   $('home').onscroll = () => document.body.classList.toggle('scrolled', $('home').scrollTop > 40);
+  Tour.maybe('home');
 }
 
 /* ------------------------------------------------------------------ lesson */
@@ -240,7 +242,7 @@ async function openLesson(id) {
   else showDoc(DOC);
   if (switched && l.open) for (const f of l.open) openFile(`lessons/${l.id}/${f}`, false);
   if (switched && Terms.list.length === 0 && l.terminal !== false && document.querySelector('[data-pane=terminal].on')) Terms.add();
-  if (l.resources && l.resources.includes('sim')) {} // the sim tab is always there
+  Tour.maybe('mission');
 }
 function setStatus(p) {
   const s = $('lstatus');
@@ -272,6 +274,7 @@ function updateReadbar() {
 }
 function showDoc(which) {
   DOC = which;
+  if (which === 'lab') Tip.once('first-lab');
   document.querySelectorAll('.notebook .tab').forEach(t => t.classList.toggle('on', t.dataset.doc === which));
   renderMarkdown($('doc'), (which === 'lab' ? LESSON.lab : LESSON.course).replace(/^#\s+.+$/m, ''));
   $('doc').insertAdjacentHTML('afterbegin', missionHeader(which));
@@ -297,11 +300,16 @@ function renderMarkdown(el, md) {
     const m = first.innerHTML.match(/^\s*\[!(NOTE|TIP|WARNING|TASK|QUESTION|BIRD)\]\s*(.*)/is);
     if (!m) return;
     const kind = m[1].toLowerCase();
+    // "> [!NOTE] In short" — a short text on the marker line becomes the box title
+    const firstLine = m[2].split(/\n|<br\s*\/?>/)[0].trim();
+    const more = m[2].trim() !== firstLine || first.nextElementSibling;
+    const custom = firstLine && firstLine.length <= 40 && !/[.:]$/.test(firstLine) && more ? firstLine : null;
+    if (custom) m[2] = m[2].slice(m[2].indexOf(firstLine) + firstLine.length).replace(/^\s*(<br\s*\/?>)?/, '');
     const labels = {note: 'Note', tip: 'Tip', warning: 'Careful', task: 'Task', question: 'Question', bird: "🐦 Bird's-eye view"};
     first.innerHTML = m[2];
     if (!first.innerHTML.trim()) first.remove();
     const d = document.createElement('div'); d.className = 'callout ' + kind;
-    d.innerHTML = `<div class="ct">${labels[kind]}</div>` + bq.innerHTML;
+    d.innerHTML = `<div class="ct">${custom ? esc(custom) : labels[kind]}</div>` + bq.innerHTML;
     bq.replaceWith(d);
   });
   // headings that already start with an emoji get no extra feather
@@ -355,6 +363,7 @@ $('checkBtn').onclick = async () => {
         : /^(🎉|\d+ of \d+ checks)/.test(t) ? 'sum' : 'plain';
       return `<div class="${cls}">${esc(cls === 'plain' ? line : t)}</div>`;
     }).join('');
+    setTimeout(() => Tip.once(r.passed ? 'first-pass' : 'first-fail'), r.passed ? 4800 : 600);
     if (r.passed && !(LESSON.progress && LESSON.progress.status === 'passed')) {
       const before = COURSES.filter(c => c.progress.status === 'passed').length;
       try { const c = await api('/api/courses'); COURSES = c.lessons; } catch (e) {}
@@ -388,7 +397,7 @@ document.querySelectorAll('.tools .tab').forEach(t => t.onclick = () => showPane
 function showPane(p) {
   document.querySelectorAll('.tools .tab').forEach(t => t.classList.toggle('on', t.dataset.pane === p));
   document.querySelectorAll('.tools .pane').forEach(x => x.classList.toggle('on', x.id === 'pane-' + p));
-  if (p === 'terminal') { if (!Terms.list.length) Terms.add(); else Terms.fitAll(); }
+  if (p === 'terminal') { if (!Terms.list.length) Terms.add(); else Terms.fitAll(); Tip.once('first-terminal'); }
   if (p === 'editor') Editor.layout();
   if (p === 'sim' && !$('simFrame').src) loadWeb('sim');
   if (p === 'operator' && !$('opFrame').src) loadWeb('op');
@@ -511,7 +520,7 @@ const Editor = {
         await this.init();
         const model = monaco.editor.createModel(d.content, undefined, monaco.Uri.file('/' + path));
         const f = {model, saved: model.getAlternativeVersionId()};
-        model.onDidChangeContent(() => this.renderTabs());
+        model.onDidChangeContent(() => { this.renderTabs(); Tip.once('first-edit'); });
         this.files[path] = f;
       }
     }
@@ -686,6 +695,7 @@ $('mResetNavera').onclick = async () => {
     toast('NAVERA is back to the original. Backup: ' + (r.backup || 'none'), 5000);
   } catch (e) { toast(e.message); }
 };
+$('mTour').onclick = () => { $('userMenu').classList.remove('open'); Tour.reset(); Tour.start($('work').style.display === 'none' ? 'home' : 'mission'); };
 $('mPw').onclick = async () => {
   const bg = await modal('Change password', `<p>Current password</p><input type="password" style="width:100%"><p>New password (6+ characters)</p><input type="password" style="width:100%">`,
     [['Cancel', false], ['Change', undefined, 'primary']]);

@@ -1,5 +1,18 @@
 # Digital images: arrays, filters and geometric transforms
 
+> [!NOTE] In short
+> - For a computer, a photo is an array of numbers, and NAVERA must compare it with another array:
+>   the satellite map.
+> - You learn array types (**dtypes**) and their traps, colour and grey, and histograms for
+>   contrast.
+> - **Convolution** filters (blur, edges) and **affine** transforms (rotation, scale) change an
+>   image with a small matrix.
+> - Before a comparison, the photo needs the map's orientation and scale: rotate by −heading, then
+>   scale.
+> - In the lab you write these operations with NumPy, check them against OpenCV, and bring a drone
+>   photo to the map's orientation and scale.
+> - NAVERA's night vision prepares every thermal frame with the same steps.
+
 A drone flies over the old town of **Nizwa** at 300 m. Its camera looks straight down and sends a
 photo of 1536 × 730 pixels every second. You see the fort, the souq, the palm gardens. The computer
 sees **3 363 840 numbers** of type `uint8`. To find its position without GPS, NAVERA must compare

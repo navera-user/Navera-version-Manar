@@ -4,7 +4,7 @@
 # ---- Step 2 — runtime changes
 RATE_SET_ACCEPTED = None      # `ros2 param set /fake_gps rate_hz 5.0`: accepted? (True / False)
 SPEED_500_ACCEPTED = None     # `ros2 param set /fake_gps speed_mps 500.0`: accepted?
-BOAT_FAST_ACCEPTED = None     # step 3: the boat, `ros2 param set /boat/fake_gps speed_mps 20.0`: accepted?
+BOAT_FAST_ACCEPTED = None     # step 4: the boat, `ros2 param set /boat/fake_gps speed_mps 20.0`: accepted?
 
 # ---- Step 5 — who wins? `ros2 param get /car/fake_gps rate_hz` in each experiment
 RATE_CODE_DEFAULT = None      # no params file, no -p

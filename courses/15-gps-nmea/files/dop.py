@@ -1,11 +1,7 @@
 """Lesson 15 — Dilution Of Precision from the satellite geometry.
 
-Linearised pseudorange model (one row per satellite i):
-    delta_rho_i = -u_i . delta_x + delta_b        u_i = unit vector receiver -> satellite (E, N, U)
-    =>  delta_rho = G @ [dE, dN, dU, db]         G row i = [-uE_i, -uN_i, -uU_i, 1]
-Least squares: Q = (G^T G)^-1 ;  covariance of the solution = UERE^2 * Q
-    GDOP = sqrt(trace Q)            PDOP = sqrt(Q_EE + Q_NN + Q_UU)
-    HDOP = sqrt(Q_EE + Q_NN)        VDOP = sqrt(Q_UU)          TDOP = sqrt(Q_bb)
+Course: section 5 (linearised pseudorange model, the matrix G, Q = (G^T G)^-1 and the five DOPs)
+and its worked example (5 satellites, HDOP 1.155). Use numpy.
 
     python3 dop.py          (prints the worked example of the course)
 """
@@ -13,17 +9,18 @@ import numpy as np
 
 
 # TODO 7: the geometry matrix G (shape N x 4) from azimuths and elevations in DEGREES.
-#   Azimuth: clockwise from north. Elevation: above the horizon.
-#   unit vector to the satellite in (East, North, Up):
-#       (cos(el) sin(az),  cos(el) cos(az),  sin(el))
-#   Row of G = [-uE, -uN, -uU, 1].  Accept lists or numpy arrays; use np.radians!
+#   Azimuth: clockwise from north. Elevation: above the horizon. Axes: East, North, Up, clock.
+#   Course: section 5 ("Linearisation" and "Stack the n satellites").
+#   Input: two lists (or numpy arrays) of the same length n. Output: numpy array, shape (n, 4).
+#   Careful: numpy's sin/cos take RADIANS.
 def geometry_matrix(az_deg, el_deg):
     return None  # TODO 7: replace this line with your code
 
 
 # TODO 8: the five DOPs as a dictionary {"GDOP", "PDOP", "HDOP", "VDOP", "TDOP"} (floats).
-#   Q = inverse of (G^T G). Raise ValueError("need at least 4 satellites") when fewer than
-#   4 satellites are given (with 3 the 4 x 4 matrix G^T G cannot be inverted).
+#   Course: section 5 (the DOP table under "The DOPs are the square roots…").
+#   Raise ValueError("need at least 4 satellites") when fewer than 4 satellites are given.
+#   Check yourself with the worked example: HDOP 1.155, VDOP 2.236.
 def dops(az_deg, el_deg):
     return None  # TODO 8: replace this line with your code
 

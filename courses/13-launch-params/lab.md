@@ -172,7 +172,15 @@ ros2 launch ./my_navera.launch.py
 
 Read the start: the warning about `NAVERA_MAX_SPEED_KMH` (not configured in the sandbox — normal),
 then one line per process: `[fake_gps_node.py-1] … fake GPS (car) on /car/fix`, the boat, `GPS from
-/car/fix`, and `estimator up … gps_timeout=2.0s`. In **Terminal 2**:
+/car/fix`, and `estimator up … gps_timeout=2.0s`.
+
+> [!NOTE]
+> When you press `Ctrl+C` on `ros2 launch`, you will see Python tracebacks that end with
+> `KeyboardInterrupt` (from several processes, even your `fake_gps_node.py`), and lines like
+> `[ERROR] [fake_gps_node.py-1]: process has died [pid 31, exit code -2, …]`. This is **normal**
+> shutdown noise: exit code -2 means "stopped by Ctrl+C" (signal 2). It is not a crash of your code.
+
+In **Terminal 2**:
 
 ```bash
 ros2 node list

@@ -56,9 +56,9 @@ Run `python3 camera_math.py` again. You should see `focal length f 659.790 px`, 
 ## Step 3 — Projection (TODO 2)
 
 > [!TASK]
-> **TODO 2:** write `project(K, R_wc, C, X)`: camera coordinates `x_cam = R_wc.T @ (X - C)`,
-> return `None` if `x_cam[2] <= 0` (behind the camera), otherwise `p = K @ x_cam` and the pixel
-> `p[:2] / p[2]` (a numpy array of 2 floats).
+> **TODO 2:** write `project(K, R_wc, C, X)`: the pixel (u, v) of the world point X, as a numpy
+> array of 2 floats, or `None` if X is behind the camera. Use lesson sections 1–2: first move X
+> into the camera frame (read the `R_wc` convention at the top of the file), then apply K.
 
 Convert inputs with `np.asarray(X, float)` so that lists work too. Run the program: the line
 `pixel of the ground point (30 m E, 45 m N)` must be `[576. 126.]` — worked example 1 of the lesson.
@@ -71,11 +71,11 @@ Convert inputs with `np.asarray(X, float)` so that lists work too. Run the progr
 ## Step 4 — Back-projection onto the ground (TODO 3)
 
 > [!TASK]
-> **TODO 3:** write `ground_point(K, R_wc, C, u, v)`: the ray direction
-> `d = R_wc @ K⁻¹ @ [u, v, 1]`, `None` if `d[2] >= 0`, otherwise `lam = -C[2] / d[2]` and the
-> **[east, north]** of `C + lam * d`.
+> **TODO 3:** write `ground_point(K, R_wc, C, u, v)`: the **[east, north]** (m) where the ray of
+> pixel (u, v) hits the ground z = 0, or `None` if the ray does not go down. This is lesson
+> section 3: the ray direction in the world, then the ray–plane intersection.
 
-`np.linalg.inv(K) @ x` and `np.linalg.solve(K, x)` both work (solve is more precise). Run the
+To undo K you need its inverse: numpy has `np.linalg.inv` and `np.linalg.solve`. Run the
 program: pixel (0, 0) of the nadir camera at 150 m is at `[-150. 84.38]` (north-west corner), and
 the tilted camera (heading 30°, pitch −12°, roll 4°) sees at its image centre `[-25.23 -22.25]`.
 
@@ -97,7 +97,7 @@ uv = project(K, R, C, [38, -92, 0]); print(uv, ground_point(K, R, C, *uv))
 > [!TASK]
 > **TODO 4:** write `footprint_polygon(K, R_wc, C, width_px, height_px)` (the 4 corners
 > (0,0), (w,0), (w,h), (0,h) on the ground, a (4, 2) array, `None` if one corner sees the sky) and
-> `polygon_area(pts)` with the shoelace formula.
+> `polygon_area(pts)` with the shoelace formula of lesson section 4.
 
 Run the program: the tilted footprint area is about **56 669 m²**. A quick test of the shoelace
 formula: a 4 × 3 rectangle must give 12, in both vertex orders (that is why there is an `abs`).
@@ -105,21 +105,23 @@ formula: a 4 × 3 rectangle must give 12, in both vertex orders (that is why the
 ## Step 6 — GSD and map zoom (TODO 5)
 
 > [!TASK]
-> **TODO 5:** write `meters_per_pixel(height_m, hfov_deg, width_px)` (nadir GSD),
-> `map_m_per_px(lat_deg, zoom)` (`EQUATOR_M * cos(lat) / 2**zoom / TILE_PX`) and
+> **TODO 5:** write `meters_per_pixel(height_m, hfov_deg, width_px)` (nadir GSD, lesson
+> section 5), `map_m_per_px(lat_deg, zoom)` (lesson section 6 and lesson 07) and
 > `best_zoom(height_m, hfov_deg, width_px, lat_deg, zooms=range(13, 20))`: the zoom **number**
-> (int) that minimises `abs(math.log(map_mpp / photo_mpp))`, chosen only from `zooms`.
+> (int) from `zooms` whose map resolution is closest **in ratio** to the photo's
+> (the smallest `abs(math.log(map_mpp / photo_mpp))`).
 
 Expected: GSD 0.227 m/px at 150 m, zoom 17 is 1.095 m/px in Muscat and 0.968 m/px in Sousse, the
-best zoom at 300 m over Muscat is 18. `min(zooms, key=lambda z: ...)` is a compact way to write
-the search, but an ordinary loop that keeps the best value is fine.
+best zoom at 300 m over Muscat is 18. An ordinary loop that keeps the best value is fine.
 
 ## Step 7 — Measurements and errors (TODO 6)
 
 > [!TASK]
-> **TODO 6:** write `height_from_object(size_m, size_px, f_px)` (pinhole: size_px / f = size_m / h),
-> `fitted_scale(h_believed_m, h_true_m)` (the scale a map match would measure) and
-> `tilt_position_error(height_m, tilt_deg, dtilt_deg)` = h·(tan(θ + δθ) − tan θ).
+> **TODO 6:** write `height_from_object(size_m, size_px, f_px)` (the pinhole model of section 2,
+> solved for the height), `fitted_scale(h_believed_m, h_true_m)` (the scale a map match would
+> measure, section 7) and `tilt_position_error(height_m, tilt_deg, dtilt_deg)`: how far the
+> ground point of the optical axis moves when the tilt is wrong by δθ (section 7 — compute it
+> exactly, with and without the error, not with the linear approximation).
 
 Expected: 120 m for a 12 m pad seen as 48 px with f = 480; scale 1.333 when NAVERA believes 150 m
 and the drone is at 200 m; 2.708 m of ground error for 1° of tilt error at 150 m and 10° tilt.
@@ -162,8 +164,8 @@ python3 measure_pad.py
 
 You should see heights near 120 m (A) and 213 m (B, truth 210 m) with their ±1 px range, and the
 pad of photo T at about **37.6 m east, −91.8 m north** of the point under the drone (the truth is
-38.0, −92.0). Remember: `np.nonzero(mask)` returns `(rows, cols)` and a pixel is `(u, v) = (col, row)`
-— swapping them is the classic bug here. Open `mask_photo_A.png` to see what the mask found.
+38.0, −92.0). Remember: numpy gives positions as (row, column), but a pixel is
+`(u, v) = (column, row)` — swapping them is the classic bug here. Open `mask_photo_A.png` to see what the mask found.
 
 ## Step 10 — Run all experiments
 
@@ -171,7 +173,8 @@ pad of photo T at about **37.6 m east, −91.8 m north** of the point under the 
 python3 experiments.py
 ```
 
-It writes `results.json` and two charts. Open [footprint.png](file:./footprint.png): the four
+It writes `results.json` and two charts. It also runs your `measure_pad.py` again, so the
+lines about photo A, B and T appear a second time — that is normal. Open [footprint.png](file:./footprint.png): the four
 footprints at 150 m for pitch 0°, −10°, −20°, −30°, with their image-centre points. Open
 [scale.png](file:./scale.png): the Insta360 GSD against height, with the map zoom levels of Muscat
 (solid) and Sousse (dotted). Where the blue line crosses a zoom line, the photo has exactly that

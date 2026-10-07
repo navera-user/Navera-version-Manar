@@ -15,7 +15,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo  # noqa: F401
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -28,28 +28,30 @@ PARAMS = os.path.join(HERE, "my_gps.yaml")
 
 def fake_gps(namespace, condition=None):
     """One fake GNSS node in `namespace`, with my_gps.yaml, publishing on <namespace>/fix."""
-    # TODO 4: return Node(executable=NODE_SCRIPT, name="fake_gps", namespace=namespace,
-    #                     parameters=[PARAMS], remappings=[("/fake_gps/fix", "fix")],
-    #                     condition=condition, output="screen")
-    #         The remapping turns the node's ABSOLUTE topic into a RELATIVE one, resolved in its namespace.
+    # TODO 4: course section 5 (the Node action) and section 4 (the worked remapping example).
+    #         Return a Node that runs NODE_SCRIPT, named "fake_gps", in `namespace`, with the file PARAMS,
+    #         a remapping that turns the ABSOLUTE topic /fake_gps/fix into the RELATIVE "fix",
+    #         the given `condition`, and its output on the screen.
     return None
 
 
 def generate_launch_description():
-    # TODO 5: two launch arguments: "with_boat" (default "true") and "gps_source" (default "car").
+    # TODO 5: course section 5 (DeclareLaunchArgument). Two arguments:
+    #         "with_boat" (default "true") and "gps_source" (default "car").
     args = []
 
-    # TODO 6: NAVERA's GNSS bridge, package gps_pkg, executable ros_gps_node.py, name "ros_gps",
-    #         parameters=[{"fix_topic": ["/", LaunchConfiguration("gps_source"), "/fix"]}]
-    #         (a LIST of strings and substitutions is joined into one string at launch time).
+    # TODO 6: NAVERA's GNSS bridge: package gps_pkg, executable ros_gps_node.py, name "ros_gps".
+    #         Its parameter fix_topic must become "/<gps_source>/fix" at launch time
+    #         (course section 5: substitutions — remember that "/" + LaunchConfiguration(...) fails).
     ros_gps = None
 
-    # TODO 7: NAVERA's arbiter through its own launch file, with a launch argument:
-    #   path = os.path.join(get_package_share_directory("navera_estimator"), "launch", "estimator.launch.py")
-    #   estimator = IncludeLaunchDescription(PythonLaunchDescriptionSource(path),
-    #                                        launch_arguments={"gps_timeout_s": "2.0"}.items())
+    # TODO 7: course "In NAVERA". Include NAVERA's own launch file estimator.launch.py (package
+    #         navera_estimator, folder launch in its share directory) with the launch argument
+    #         gps_timeout_s = "2.0".
     estimator = None
 
-    # TODO 8: the car (always) and the boat (condition=IfCondition(LaunchConfiguration("with_boat"))),
-    #         then return everything in ONE list:  LaunchDescription(args + [car, boat, ros_gps, estimator])
+    # TODO 8: the car (always) and the boat (only when with_boat is true: course section 5, conditions).
+    #         Return ONE LaunchDescription with the arguments and the four actions.
+    if None in (ros_gps, estimator):
+        return LaunchDescription(args + [LogInfo(msg="TODO 4 to 8 not done yet: nothing to start.")])
     return LaunchDescription(args)

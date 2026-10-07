@@ -23,9 +23,9 @@ TRUTH = "/data/academy/15-gps-nmea/truth.csv"
 
 
 # TODO 12: estimate the UERE (user equivalent range error, metres) from horizontal errors.
-#   Theory (course): E[e_h^2] = UERE^2 * HDOP^2 for each fix, so
-#       UERE_est = sqrt( mean( (e_h / HDOP)^2 ) )
-#   err_h and hdop are lists (or arrays) of the same length. Return a float.
+#   Course: section 6, "Estimating UERE from data".
+#   err_h (horizontal errors, m) and hdop are lists (or arrays) of the same length.
+#   Return a float (metres).
 def estimate_uere(err_h, hdop):
     return None  # TODO 12: replace this line with your code
 

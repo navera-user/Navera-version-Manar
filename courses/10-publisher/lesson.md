@@ -1,5 +1,16 @@
 # Your first publisher: a fake GNSS receiver
 
+> [!NOTE] In short
+> - On a test bench there is no aircraft, so engineers use a **fake GNSS receiver** that publishes
+>   moving positions.
+> - An `rclpy` node is a class that inherits from `Node`; a **timer** runs its code at a fixed
+>   rate.
+> - **Parameters** let you change settings, such as speed and heading, while the node runs.
+> - A `NavSatFix` message carries the position and its uncertainty (the covariance, in m²).
+> - In the lab you build a fake GNSS node that drives from Muscat, measure its timing, and measure
+>   the error of the flat-Earth model.
+> - NAVERA's `sensor_sim.py` does the same job to test the whole chain on a bench.
+
 Before a NAVERA box flies, it spends many hours on a **test bench**: a table, a Jetson, cables —
 and no aircraft. The arbiter still needs GNSS positions that *move*, as if the box were flying
 along the Batinah coast. So the engineers write a program that **pretends to be a GNSS receiver**:

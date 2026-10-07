@@ -1,7 +1,7 @@
 # Lab 18 — Part B: calibrate the Insta360 top lens yourself, and test the calibration.
 #
 # Run:  python3 calibrate_lab.py
-# 1. finds the 9x6 chessboard corners in the 37 real views (about 1 minute the first time,
+# 1. finds the 9x6 chessboard corners in the 36 real views (about 1 minute the first time,
 #    then cached in corners.npz),
 # 2. calibrates with YOUR calibrate_fisheye() and recomputes the RMS with YOUR
 #    reprojection_rms() from fisheye_model.py,
@@ -29,8 +29,7 @@ def board_points(cols, rows, square_m):
     """3D coordinates of the inner corners in the BOARD frame (the board is the plane Z = 0):
     an array (cols*rows, 1, 3) of float64, in the order the detector returns them —
     row by row, the column index changing fastest: (0,0,0), (s,0,0), (2s,0,0), ..."""
-    # TODO 8: corner (column i, row j) is at (i*s, j*s, 0). Build the (cols*rows, 1, 3)
-    #   float64 array in the order above (np.mgrid or two loops both work).
+    # TODO 8: lesson section 3.1 (the board is the plane Z = 0) and 3.2 (the corner order).
     return None
 
 
@@ -38,22 +37,17 @@ def calibrate_fisheye(obj, views, size):
     """One call of cv2.fisheye.calibrate on all views. Returns (rms, K, D, rvecs, tvecs).
     Flags: recompute the board poses at each iteration, refuse ill-conditioned views,
     no skew."""
-    # TODO 9: cv2.fisheye.calibrate(objectPoints, imagePoints, image_size, K, D, flags=..., criteria=...)
-    #   objectPoints: one copy of obj per view; imagePoints: the list of views;
-    #   start from K = np.eye(3), D = np.zeros((4, 1));
-    #   flags: cv2.fisheye.CALIB_RECOMPUTE_EXTRINSIC | cv2.fisheye.CALIB_CHECK_COND | cv2.fisheye.CALIB_FIX_SKEW
-    #   criteria: (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 200, 1e-9)
-    #   It returns (rms, K, D, rvecs, tvecs): return them. Do NOT catch cv2.error here
-    #   (calibrate_robust() below needs it to drop the refused views).
+    # TODO 9: lesson section 5 (the API table and the flags). Start from K = identity and
+    #   D = 4 zeros. Stop criteria: (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 200, 1e-9).
+    #   Do NOT catch cv2.error here (calibrate_robust() below needs it to drop the refused views).
     return None
 
 
 def calibrate_pinhole(obj, views, size):
     """The Brown–Conrady model (k1, k2, p1, p2, k3) with cv2.calibrateCamera on the same
     views. Returns (rms, K, dist, rvecs, tvecs). Careful: this function wants float32."""
-    # TODO 10: cv2.calibrateCamera(objectPoints, imagePoints, size, None, None) returns
-    #   (rms, K, dist, rvecs, tvecs). It refuses float64 points ("should contain vector of
-    #   vectors of points of type Point3f") — convert obj and every view to np.float32 first.
+    # TODO 10: the same idea as TODO 9 with cv2.calibrateCamera (no starting K or dist needed).
+    #   Read "Formats that trip everyone" in lesson section 5 before you start.
     return None
 
 
@@ -110,7 +104,10 @@ def holdout_rms_fisheye(obj, test_views, K, D):
         ok, rv, tv = cv2.solvePnP(obj.astype(np.float64), n, np.eye(3), None)
         R, _ = cv2.Rodrigues(rv)
         Xc = obj.reshape(-1, 3) @ R.T + tv.reshape(1, 3)
-        e = fm.project_fisheye(Xc, K, D) - v.reshape(-1, 2)
+        p = fm.project_fisheye(Xc, K, D)
+        if p is None:
+            raise SystemExit("project_fisheye() is not written yet (fisheye_model.py, TODO 2)")
+        e = p - v.reshape(-1, 2)
         sq.append((e ** 2).sum(axis=1))
     return float(np.sqrt(np.concatenate(sq).mean()))
 

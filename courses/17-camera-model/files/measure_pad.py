@@ -29,15 +29,15 @@ def orange_mask(img):
 def pad_size_px(img):
     """Width of the pad in pixels: the number of COLUMNS from the leftmost to the rightmost
     orange pixel, both included (an int). None if there is no orange pixel."""
-    # TODO 7: rows, cols = np.nonzero(orange_mask(img)) gives the row and column of every
-    #         True pixel of the mask (lesson 08). Mind the "both included".
+    # TODO 7: start from orange_mask(img); find the positions of its True pixels (lesson 08).
+    #         Mind the "both included".
     return None
 
 
 def pad_centre_px(img):
     """Centre of the pad in the image: (u, v) = (mean column, mean row) of the orange pixels,
     as two floats. None if there is no orange pixel."""
-    # TODO 7: the same arrays; .mean() of a numpy array is its average
+    # TODO 7: the same positions as above. Careful: u is a column, v is a row.
     return None
 
 

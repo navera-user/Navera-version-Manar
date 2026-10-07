@@ -19,22 +19,22 @@ TILE_PX = 256               # a map tile is 256 x 256 pixels (lesson 07)
 # ---------------------------------------------------------------- TODO 1 — intrinsics
 def focal_px(hfov_deg, width_px):
     """Focal length (pixels) of a pinhole camera that sees hfov_deg across width_px pixels.
-        f = (width_px / 2) / tan(hfov / 2)"""
-    # TODO 1: return the focal length in pixels
+    In: angle in degrees, width in pixels. Out: a float (pixels)."""
+    # TODO 1: lesson section 2, "Field of view" — draw the half-angle triangle
     return None
 
 
 def intrinsic_matrix(hfov_deg, width_px, height_px):
     """The 3x3 intrinsic matrix K (numpy array, float) of an ideal camera: square pixels
     (fx = fy = f), no skew, principal point at the image centre (width/2, height/2)."""
-    # TODO 1: build K with np.array([[...], [...], [...]]) — reuse focal_px()
+    # TODO 1: lesson section 2 (the intrinsic matrix K) — reuse focal_px()
     return None
 
 
 def fov_deg(f_px, size_px):
     """Field of view (degrees) seen across size_px pixels by a camera of focal length f_px.
     (Use it for the vertical FOV: fov_deg(f, height_px).)"""
-    # TODO 1: invert the focal-length formula (math.atan, math.degrees)
+    # TODO 1: the same relation as focal_px(), solved for the angle (out: degrees)
     return None
 
 
@@ -42,20 +42,18 @@ def fov_deg(f_px, size_px):
 def project(K, R_wc, C, X):
     """Pixel (u, v) — a numpy array of 2 floats — where the world point X (3 values, metres)
     appears, for a camera with intrinsics K, orientation R_wc and centre C.
-        x_cam = R_wc.T @ (X - C)          (world -> camera frame)
-        p = K @ x_cam ;  u = p[0]/p[2],  v = p[1]/p[2]
-    Return None if the point is behind the camera (x_cam[2] <= 0)."""
-    # TODO 2: camera coordinates, the "behind" test, then K and the division by p[2]
+    Return None if the point is behind the camera."""
+    # TODO 2: lesson sections 1-2 and worked example 1: world -> camera frame, then K.
+    #         Read the R_wc convention at the top of this file.
     return None
 
 
 # ---------------------------------------------------------------- TODO 3 — back-projection
 def ground_point(K, R_wc, C, u, v):
     """Where the ray of pixel (u, v) hits the flat ground z = 0: numpy array [east, north] (m).
-        d = R_wc @ K^-1 @ [u, v, 1]      (ray direction in the world)
-        X = C + lam * d   with lam chosen so that X_z = 0  ->  lam = -C_z / d_z
-    Return None when the ray does not go down (d_z >= 0: sky or horizon)."""
-    # TODO 3: ray direction (np.linalg.inv(K) or np.linalg.solve), the "goes down" test, lam, X
+    Return None when the ray does not go down (it sees the sky or the horizon)."""
+    # TODO 3: lesson section 3 (back-projection) and worked example 2:
+    #         the ray direction in the world, the "goes down" test, then the ray-ground intersection
     return None
 
 
@@ -64,58 +62,57 @@ def footprint_polygon(K, R_wc, C, width_px, height_px):
     """The ground footprint: a (4, 2) numpy array of the [east, north] ground points of the
     four image corners, in this order: (0, 0), (width, 0), (width, height), (0, height).
     Return None if any corner does not hit the ground."""
-    # TODO 4: call ground_point() for the 4 corners, in the order given
+    # TODO 4: lesson section 4 — reuse ground_point()
     return None
 
 
 def polygon_area(pts):
-    """Area (m^2) of a simple polygon given as an (N, 2) array of vertices in order
-    (shoelace formula):  A = 1/2 |sum_i (x_i * y_(i+1) - x_(i+1) * y_i)|"""
-    # TODO 4: shoelace formula (np.roll(y, -1) gives y_(i+1))
+    """Area (m^2, positive) of a simple polygon given as an (N, 2) array of vertices in order
+    (clockwise or anticlockwise)."""
+    # TODO 4: the shoelace formula of lesson section 4
     return None
 
 
 # ---------------------------------------------------------------- TODO 5 — resolution and map
 def meters_per_pixel(height_m, hfov_deg, width_px):
-    """Ground sampling distance (m/px) of a NADIR camera: footprint width / image width.
-        GSD = 2 h tan(hfov/2) / width_px   (= h / f)"""
-    # TODO 5
+    """Ground sampling distance (m/px) of a NADIR camera: footprint width / image width."""
+    # TODO 5: lesson section 5
     return None
 
 
 def map_m_per_px(lat_deg, zoom):
-    """Metres per pixel of a Web-Mercator map tile at this latitude and zoom (lesson 07):
-        EQUATOR_M * cos(lat) / 2**zoom / 256"""
-    # TODO 5
+    """Metres per pixel of a Web-Mercator map tile at this latitude and zoom.
+    Use the constants EQUATOR_M and TILE_PX above."""
+    # TODO 5: lesson section 6 (and lesson 07)
     return None
 
 
 def best_zoom(height_m, hfov_deg, width_px, lat_deg, zooms=range(13, 20)):
     """The zoom (an int from `zooms`) whose map m/px is closest to the photo's GSD, closest
     in RATIO: minimise abs(math.log(map_mpp / photo_mpp))."""
-    # TODO 5: loop over zooms, keep the best one (or use min(..., key=...))
+    # TODO 5: lesson section 6 — try every zoom, keep the best one
     return None
 
 
 # ---------------------------------------------------------------- TODO 6 — measuring and errors
 def height_from_object(size_m, size_px, f_px):
     """Height (m) of a nadir camera that sees a ground object of size_m metres as size_px
-    pixels. Pinhole: size_px / f = size_m / h."""
-    # TODO 6
+    pixels."""
+    # TODO 6: lesson section 2 — the similar triangles of the pinhole model
     return None
 
 
 def fitted_scale(h_believed_m, h_true_m):
     """The scale a map match measures when the photo was resized for h_believed but taken at
-    h_true (1.0 = height right). The ground width seen grows linearly with the height."""
-    # TODO 6
+    h_true (1.0 = height right; > 1 when the drone is higher than believed)."""
+    # TODO 6: lesson section 7
     return None
 
 
 def tilt_position_error(height_m, tilt_deg, dtilt_deg):
     """Ground error (m) of the point seen along the optical axis when the tilt is wrong by
-    dtilt_deg:  h * (tan(tilt + dtilt) - tan(tilt))."""
-    # TODO 6
+    dtilt_deg (all angles in degrees). Out: metres."""
+    # TODO 6: lesson section 7 — where the optical axis hits the ground, with and without the error
     return None
 
 

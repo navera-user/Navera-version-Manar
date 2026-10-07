@@ -1,5 +1,16 @@
 # Welcome: navigation without GNSS
 
+> [!NOTE] In short
+> - GPS can be lost (jamming, blockage) or faked (spoofing), and the autopilot cannot see the
+>   difference.
+> - A receiver needs at least four satellites, because its own clock error is a fourth unknown.
+> - The GPS signal arrives weaker than the noise, so a small jammer can deny GPS over many
+>   kilometres.
+> - NAVERA has three layers: **sources** (GPS, day vision, night vision, celestial), an
+>   **arbiter** that chooses one, and an **output** that looks like a GPS to the autopilot.
+> - In the lab you run your first commands on the Jetson, run a GNSS solver, break it on purpose,
+>   and apply the arbiter's jump gate.
+
 A survey drone flies along the coast between Muscat and Barka. Its autopilot holds the route with
 a position from **GPS**, updated five times per second. Suddenly the receiver reports
 "no fix" — or worse, it keeps reporting a position that is calm, precise… and 2 km out at sea,

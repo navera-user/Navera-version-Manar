@@ -4,7 +4,11 @@
 # Fill in the TODOs (1 to 8), save (Ctrl+S), then try them:
 #     python3 camera_tools.py
 # The scripts of the lab (capture.py, gst_timing.py, analyse.py, compare_with_navera.py)
-# import these functions.
+# import these functions. A TODO that is not done returns None, and the scripts tell you
+# which one is missing.
+#
+# Each TODO says WHAT to compute and WHERE the lesson explains it. The "how" is yours.
+# If the check fails, its hint gives you more help.
 #
 # Conventions (the same as lesson 16):
 #   * times are in seconds (float), e.g. time.time()
@@ -21,31 +25,36 @@ import numpy as np
 def split_halves(frame):
     """The Insta360 sends ONE picture with its two lenses stacked: the top lens in the
     upper half, the bottom lens in the lower half (1920x1080 -> two 1920x540 halves).
-    Return (top, bottom). Compute the half from frame.shape[0] (any height)."""
-    # TODO 1: cut the frame in two at half its height and return (top, bottom)
+
+    Input:  frame, a numpy image of shape (H, W, 3), any height H.
+    Output: (top, bottom), two numpy images of shape (H/2, W, 3).
+    Do not write 540: compute the half from the frame itself."""
+    # TODO 1: return (top, bottom)
     return None
 
 
 def frame_stats(grab_times):
     """Statistics of a list of grab times (seconds, in increasing order).
+    Lesson section 5 defines every quantity and has a worked example.
 
-    Return a dict with these keys (all floats except n and dropped, which are ints):
-      n           number of frames
-      fps         (n - 1) / (last - first)                          0.0 if n < 2
-      period_ms   mean of the intervals, in ms                       0.0 if n < 2
-      median_ms   median of the intervals, in ms (the nominal period) 0.0 if n < 2
-      jitter_ms   standard deviation of the intervals (np.std, ddof=0), ms   0.0 if n < 2
-      max_gap_ms  largest interval, ms                               0.0 if n < 2
-      dropped     estimated number of missing frames: for every interval g larger than
-                  1.5 x the median interval m, add round(g / m) - 1          0 if n < 2
-    """
-    # TODO 2: np.diff gives the intervals; build and return the dict described above
+    Input:  grab_times, a list (or array) of n floats.
+    Output: a dict with exactly these keys:
+      n           number of frames (int)
+      fps         mean frame rate (n frames, but n - 1 intervals)
+      period_ms   mean interval, in ms
+      median_ms   median interval, in ms (the nominal period)
+      jitter_ms   standard deviation of the intervals, in ms (population std, ddof = 0)
+      max_gap_ms  largest interval, in ms
+      dropped     estimated number of missing frames (int), with the 1.5 x median rule
+    All values are 0 (0.0 for the floats) when n < 2."""
+    # TODO 2: build and return the dict described above
     return None
 
 
 def exposure_time(grab_time_s, latency_s):
-    """The instant the picture was really taken: it is `latency_s` older than its grab."""
-    # TODO 3: one line
+    """The instant the picture was really taken (lesson section 6).
+    Input: the grab time and the camera delay (s). Output: the exposure time (s)."""
+    # TODO 3
     return None
 
 
@@ -55,58 +64,59 @@ def load_latency(calib_file):
     import yaml
     with open(calib_file) as f:
         calib = yaml.safe_load(f)
-    # TODO 4: `calib` is a dict. Return its "latency_s" as a float, or 0.0 if it is missing
+    # TODO 4: `calib` is a dict. Output: a float (the delay, or 0.0)
     return None
 
 
 # ======================================================================= part B: the delay
 def latency_from_flashes(flash_times, frame_times, brightness):
-    """The screen-flash method of navera_tools/bench/camera_latency.py.
+    """The screen-flash method of navera_tools/bench/camera_latency.py (lesson section 6).
 
     flash_times  when the program turned the screen white (s)
     frame_times  grab time of every frame (s, increasing)
     brightness   brightness of the centre of every frame (same length as frame_times)
 
-    For each flash time t0:
+    The exact rule (it is NAVERA's), for each flash time t0:
       lo = median brightness of the frames grabbed in [t0 - 0.3, t0)
       hi = median brightness of the frames grabbed in [t0 + 0.4, t0 + 0.65]
       if a window is empty, or hi - lo < 20: the camera did not see this flash -> skip it
       otherwise the delay is  t - t0  for the FIRST frame with t >= t0 and
       brightness > (lo + hi) / 2
-    Return the list of delays (s), in the order of the flashes."""
-    # TODO 5: loop over the flashes; numpy masks like ft[(ft >= a) & (ft < b)] help
+    Output: the list of delays (s), in the order of the flashes."""
+    # TODO 5: implement the rule above
     return None
 
 
 # ======================================================================= part C: attitude
 def quat_angle_deg(q0, q1):
-    """The angle (degrees, 0..180) of the rotation between two unit quaternions:
-    2 * acos(|q0 . q1|). q and -q are the same attitude: the result must be 0 for them.
-    Clip the dot product to 1.0 before acos (rounding can give 1.0000000002)."""
-    # TODO 6: one or two lines (np.dot, abs, min, math.acos, math.degrees)
+    """The angle (degrees, 0..180) of the rotation between two unit quaternions.
+    The formula is at the end of lesson section 8. Two traps (both are tested):
+      * q and -q are the same attitude: the result must be 0 for them;
+      * rounding can push a dot product to 1.0000000002, and acos() then fails."""
+    # TODO 6
     return None
 
 
 def slerp(q0, q1, f):
     """Spherical linear interpolation between unit quaternions, f in [0, 1].
-      d = q0 . q1 ; if d < 0: use -q1 and -d (shortest path)
-      if d > 0.9995: q = q0 + f (q1 - q0)            (almost equal: plain interpolation)
-      else: W = acos(d); q = sin((1-f) W)/sin(W) q0 + sin(f W)/sin(W) q1
-      return q / |q|  (a numpy array)"""
-    # TODO 7: follow the recipe above
+    Lesson section 8 gives the formula and its THREE practical rules (shortest path,
+    almost-equal quaternions with dot > 0.9995, normalise). Apply all three.
+    Output: a unit quaternion, as a numpy array (w, x, y, z)."""
+    # TODO 7
     return None
 
 
 def attitude_at(t, imu_times, imu_quats, max_gap_s=0.2):
     """The attitude at time t from IMU samples (times increasing, quats (w,x,y,z)).
-    The same rule as NAVERA's navera_common/sensor_history.py (History.at):
-      i = bisect.bisect_left(imu_times, t)
-      i == 0          (t before the first sample): first quat if imu_times[0] - t <= max_gap_s, else None
-      i == len(...)   (t after the last sample):   last quat if t - imu_times[-1] <= max_gap_s, else None
-      otherwise t0, t1 = imu_times[i-1], imu_times[i]:
-         a hole in the data: if t1 - t0 > 2*max_gap_s and min(t - t0, t1 - t) > max_gap_s -> None
-         else slerp(q[i-1], q[i], (t - t0) / (t1 - t0))"""
-    # TODO 8: follow the rules above (they are NAVERA's)
+    Use the same rule as NAVERA's navera_common/sensor_history.py (History.at), described
+    at the end of lesson section 8 ("When there is no sample"):
+      * t before the first sample: the first quaternion if it is at most max_gap_s away, else None
+      * t after the last sample:   the last quaternion if it is at most max_gap_s away, else None
+      * t between two samples t0 <= t <= t1:
+          None inside a hole (t1 - t0 > 2 * max_gap_s) when t is more than max_gap_s from
+          both sides; otherwise interpolate q0 -> q1 with your slerp.
+    The module `bisect` (already imported) finds the two samples around t quickly."""
+    # TODO 8
     return None
 
 

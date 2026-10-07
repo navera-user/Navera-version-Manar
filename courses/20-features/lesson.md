@@ -1,5 +1,12 @@
 # Local features: corners, scale and descriptors
 
+> [!NOTE] In short
+> - To find a photo on a map, vision looks for a few **distinctive points** (keypoints), not for every pixel.
+> - You will learn the maths of the **Harris corner** (image gradients and the structure tensor).
+> - You will learn how SIFT finds the **scale** of a point, and how SIFT and ORB **describe** it with a vector.
+> - You will measure **repeatability** (does the detector find the same points again after a turn or a zoom?).
+> - In the lab you build Harris from scratch, use OpenCV's ORB and SIFT, and score which terrains can be matched.
+
 A survey drone leaves Sohar and flies south-east along the Batinah coast towards Muscat at 300 m.
 Near Barka its GPS receiver is jammed. The camera still works: it sees roofs, roads, palm groves,
 the beach. On board, NAVERA has a satellite map of the area. The question of this module ("Eyes on
@@ -247,7 +254,7 @@ Read it carefully — it is more interesting than the textbook story:
 
 - **Harris is rotation invariant** (0.64 at 35°) and survives moderate zoom on sharp building corners: a
   sharp corner is a corner at every scale.
-- At **×3.9** the close-up photo shows small details (windows, parapets, cars) that do not exist at the
+- At **×3.9** the close-up photo shows small details (windows, low roof walls, cars) that do not exist at the
   map's resolution; Harris with its fixed window prefers them, and its repeatability falls to 0.32.
   SIFT chooses a scale per point and stays at 0.79.
 - **ORB** scores low here partly because of the metric: its points on coarse pyramid levels are only
@@ -263,6 +270,11 @@ A picture with many distinct, well-spread features has rich **texture**. The lab
 six 512 × 512 patches of the Sousse map at zoom 17 (0.97 m per pixel, about 500 m × 500 m of ground):
 
 ![Keypoints per terrain](assets/terrain_counts.svg)
+
+The two extremes: the city patch gives about **6600** SIFT keypoints, the open-sea patch (`terrain_sea`)
+gives **0**, and the coast with water (`terrain_coast_water`) only about **4**. These counts use OpenCV's
+default `contrastThreshold` of 0.04. With NAVERA's lower value, 0.02, the same coast patch gives about
+68 — still very few, and mostly on the shoreline.
 
 Now think about Oman:
 
@@ -283,7 +295,7 @@ Now think about Oman:
 - **Barr Al Hikman** and the sabkhas (salt flats): wide, flat, and changed by tides — few features.
 
 Three more enemies of texture come from the camera: **blur** (vibration, speed), **darkness** (dusk,
-shadows) and **haze** (dust, very common in summer over the Gulf of Oman). All three remove the small
+shadows) and **haze** (dust in the air, very common in summer over the Gulf of Oman). All three remove the small
 brightness changes detectors need.
 
 **CLAHE** (*Contrast Limited Adaptive Histogram Equalisation*) stretches the contrast in small tiles,

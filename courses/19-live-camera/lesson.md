@@ -1,5 +1,12 @@
 # Live camera: frames, delay and the attitude at the exposure
 
+> [!NOTE] In short
+> - Each camera picture is a **measurement taken at one instant**: about 0.14 s before your program receives it.
+> - You will learn how Linux delivers frames (V4L2, MJPG, GStreamer) and how to describe their timing with statistics.
+> - You will learn how to measure a camera's delay with a screen flash, and why a small time error becomes metres on the ground.
+> - You will compute the vehicle's attitude at the exposure instant with **slerp**, using NAVERA's own rules.
+> - In the lab you build the timing tools, check them against NAVERA's code, and run NAVERA's live camera node. The camera is **not** needed.
+
 A survey drone flies 150 m above the Al Batinah coast near Sohar. Its GPS has just been jammed,
 so NAVERA must find each camera picture on its satellite map. The drone is rolling into a turn
 at 25° per second. The picture that reaches the computer **now** was taken about **0.14 s
@@ -28,7 +35,7 @@ facts about it:
 | Picture | two fisheye images stacked: top lens rows 0–539, bottom lens rows 540–1079 |
 | Lens used by NAVERA | the top lens: fisheye about 166° × 43°, straightened view capped at 111° (lesson 18) |
 | Exposure control | none from Linux (no V4L2 controls): the camera chooses exposure itself |
-| Delay | 0.138 s, measured with the screen-flash method (section 5) |
+| Delay | 0.138 s, measured with the screen-flash method (section 6) |
 
 A **frame** is one picture of the stream. The **frame period** is T = 1/28.8 = 34.72 ms.
 
@@ -146,7 +153,7 @@ Then fps = 4 / 0.5 = 8.0, m = 0.1 s, mean period = 0.125 s, σ = 0.0433 s, large
 and one dropped frame (round(0.2/0.1) − 1 = 1).
 
 > [!NOTE]
-> The standard deviation is very sensitive to rare large values. One 0.35 s stall among 1700
+> The standard deviation is very sensitive to rare large values. One 0.35 s **stall** (a pause of the stream) among 1700
 > normal 35 ms intervals multiplies σ by several times. Report it, but also look at the histogram
 > or at percentiles: σ describes the **risk**, the median describes the **normal** behaviour.
 
@@ -359,6 +366,7 @@ acknowledgement (`frame_done`) before sending the next.
 | **exposure stamp** | tₑ = t_g − L, the instant the picture was taken |
 | **rolling shutter** | sensor rows exposed one after another, not all at once |
 | **slerp** | spherical linear interpolation between unit quaternions |
+| **flicker fusion frequency** | the flicker rate at which a flashing light starts to look steady |
 | **proportional navigation** | steering in proportion to the rotation rate of the line of sight |
 
 ## Self-check

@@ -97,6 +97,13 @@ You must find **7** lines. For each one, decide what happened on the wire (cut, 
 missing checksum, garbage, two glued sentences, a non-ASCII byte shown as `�`). You will
 describe them in section 1 of the report.
 
+<details><summary>Hint: two lines look alike — which one is the "flipped character"?</summary>
+
+There are **two** flipped characters: one in a GGA latitude, and one in a GSA. Look at the end of
+the GSA line `…,1.31,0.77,1906*0D`: the last field is the VDOP. A VDOP of "1906" is impossible.
+One character changed: the decimal point became a `9` (the real value was `1.06`).
+</details>
+
 > [!TASK]
 > **TODO 1–2** — `nmea_checksum(body)` returns 2 upper-case hex digits; `is_valid(line)` returns
 > `True`/`False` and finds exactly 7 damaged lines in the log. The two swapped-digit lines (UTC
@@ -150,7 +157,11 @@ and lists every disagreement:
 python3 compare_with_navera.py
 ```
 
-You should see 7 rejected lines on both sides, 991 usable fixes for NAVERA and **990 for you**, and
+Now (before Step 7) you should see 7 rejected lines on both sides and no disagreement. The "usable
+fixes" column of your side shows `—`, with the message "TODO 9 not done yet": this column needs
+your `navera_decision()` from Step 7. That is normal. **Run the script again after Step 7.**
+
+After Step 7 you should see 991 usable fixes for NAVERA and **990 for you**, and
 one disagreement: line 1988 (UTC 051731). pynmea2 accepts `2462.56214` and computes 25.0427° N —
 about 67 km north of the road. Your parser refuses it because 62 minutes is impossible. Who is
 right? Note the answer for section 4 of the report.
@@ -204,6 +215,12 @@ covariance in `_publish_fix`. Then write:
 python3 gps_filter.py
 ```
 
+Now go back to Step 5 and run `compare_with_navera.py` again: the "usable fixes" column is ready.
+
+```bash
+python3 compare_with_navera.py
+```
+
 > [!TASK]
 > **TODO 9–11** — the three functions of `gps_filter.py`, as specified above each TODO.
 
@@ -211,7 +228,7 @@ python3 gps_filter.py
 
 Two last functions in [analyze_drive.py](file:./analyze_drive.py):
 
-- `estimate_uere(err_h, hdop)` = `sqrt(mean((e_h / HDOP)²))` (course, section 6);
+- `estimate_uere(err_h, hdop)` → one number in metres (course, section 6, "Estimating UERE from data");
 - `longest_gap(times)` → `(gap_s, t_before, t_after)` over consecutive accepted fixes.
 
 The rest is ready: it groups the sentences into seconds, recomputes the DOPs of every second from

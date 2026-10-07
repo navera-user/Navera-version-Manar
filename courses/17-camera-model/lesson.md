@@ -1,5 +1,13 @@
 # The camera as a measuring instrument
 
+> [!NOTE] In short
+> - A camera is a point in the air that looks along **rays**: the **pinhole model** and the
+>   **intrinsic matrix K** turn a 3D point into a pixel.
+> - You will learn to go back from a pixel to the ground, and to find the **footprint** of a tilted camera.
+> - You will compute how many metres one pixel covers (**GSD**) and which map zoom fits the photo.
+> - You will see how a height error becomes a **scale** error, and a tilt error becomes a position error.
+> - In the lab you build these functions, compare them with NAVERA's code, and measure a landing pad in drone photos.
+
 A survey drone flies at 300 m over the coast between Muscat and Sohar. Its GPS is jammed. The
 camera under the drone takes a photo of roads, date palms and roofs, and NAVERA must find this
 photo on its satellite map. Before any image matching can start, NAVERA needs to answer three

@@ -38,27 +38,26 @@ def euler_to_matrix(roll, pitch, yaw):
     return None   # TODO 1: replace this line with your code
 
 # TODO 2: the inverse: (roll, pitch, yaw) in radians from a rotation matrix R (ZYX).
-#   pitch = -asin(R[2,0])             (clamp R[2,0] into [-1, 1] first!)
-#   roll  = atan2(R[2,1], R[2,2])
-#   yaw   = atan2(R[1,0], R[0,0])
-#   At gimbal lock (|R[2,0]| close to 1) roll and yaw are not separable: return roll = 0 and
-#   put the whole rotation into yaw:  yaw = atan2(-R[0,1], R[1,1]).
+#   Course: section 4 (read the three angles from well-chosen entries of R, then "Gimbal lock").
+#   Output: a tuple of 3 floats. Two rules of this lab:
+#   - clamp the entry you pass to asin into [-1, 1] (rounding can give 1.0000000002)
+#   - at gimbal lock (|R[2,0]| > 1 - 1e-9) return roll = 0 and put the whole rotation into yaw.
 def matrix_to_euler(R):
     return None   # TODO 2: replace this line with your code
 
 # TODO 3: the Hamilton product p ⊗ q of two quaternions (w, x, y, z).
-#   (pw, pv) ⊗ (qw, qv) = (pw·qw − pv·qv,  pw·qv + qw·pv + pv × qv)
-#   np.dot and np.cross help. Return a numpy array of 4 numbers.
+#   Course: section 5 ("Hamilton product"). Write it with the scalar part and the vector part.
+#   Output: a numpy array of 4 numbers. Test: i ⊗ j = k, but j ⊗ i = −k.
 def quat_mul(p, q):
     return None   # TODO 3: replace this line with your code
 
-# TODO 4: the unit quaternion of a rotation by `angle` (rad) about `axis` (3 numbers, any length):
-#   q = (cos(angle/2), sin(angle/2) · axis / |axis|)
+# TODO 4: the unit quaternion of a rotation by `angle` (rad) about `axis` (3 numbers, any length).
+#   Course: section 5. Careful: the axis may not have length 1. Output: numpy array (w, x, y, z).
 def quat_from_axis_angle(axis, angle):
     return None   # TODO 4: replace this line with your code
 
-# TODO 5: rotate the 3-vector v by the unit quaternion q:  (0, v') = q ⊗ (0, v) ⊗ q*
-#   Use your quat_mul and quat_conj (given below). Return a numpy array of 3 numbers.
+# TODO 5: rotate the 3-vector v by the unit quaternion q (course: section 5, rotating a vector).
+#   Use your quat_mul and quat_conj (given below). Output: a numpy array of 3 numbers.
 def quat_rotate(q, v):
     return None   # TODO 5: replace this line with your code
 
@@ -68,10 +67,10 @@ def quat_to_matrix(q):
     return None   # TODO 6: replace this line with your code
 
 # TODO 7: SLERP — spherical linear interpolation between unit quaternions q0 and q1, t in [0, 1].
-#   d = q0·q1 ; if d < 0: use -q1 and -d (shortest path: q and -q are the same rotation)
-#   if d > 0.9995: normalised linear interpolation (the two are almost equal)
-#   else: θ = acos(d),  q = (sin((1−t)θ)·q0 + sin(tθ)·q1) / sin θ
-#   Return a unit quaternion (numpy array, w first). Lesson 19 uses this function.
+#   Course: section 6. Before you code, answer on paper: what is the angle θ between q0 and q1
+#   (as 4-D unit vectors)? Why must q0 and -q1 sometimes be used instead of q0 and q1?
+#   What goes wrong in the formula when θ is almost 0 (use a normalised linear mix when q0·q1 > 0.9995)?
+#   Output: a unit quaternion (numpy array, w first). Lesson 19 uses this function.
 def slerp(q0, q1, t):
     return None   # TODO 7: replace this line with your code
 

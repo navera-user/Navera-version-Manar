@@ -1,5 +1,12 @@
 # The position contract: covariance, stamps and honest uncertainty
 
+> [!NOTE] In short
+> - Every NAVERA source fills the same message, `PositionEstimate`: where, how sure, when, how.
+> - You will learn what the 9 numbers of a **covariance** mean: an error ellipse, its axes and its angle.
+> - You will learn how much probability is inside "1 σ" in 2-D (only 39 %).
+> - You will learn the two time stamps (measured when, published when) and the arbiter's rule.
+> - In the lab you build a source, publish it to NAVERA's real arbiter and inject 13 faults.
+
 A drone flies over the Wahiba Sands. Its GNSS is jammed. Three NAVERA sources still produce positions:
 day vision matched a photo against the satellite map 0.6 s ago, celestial navigation solved a star
 field 20 s ago, and a dead-reckoned position is carried forward from the last good fix. Which one
@@ -134,8 +141,8 @@ errors from the example's Σ.
 | `DIAGONAL_KNOWN` (2) | the three variances are known, the correlations are not |
 | `KNOWN` (3) | the full matrix is known |
 
-The message file is blunt: *"Publish UNKNOWN rather than an invented matrix: a fabricated covariance
-is indistinguishable from a measured one downstream."* A made-up "5 m" looks exactly like a measured
+The message file says it very directly: *"Publish UNKNOWN rather than an invented matrix: a fabricated covariance
+is indistinguishable from a measured one downstream."* (Indistinguishable means: nobody can tell them apart.) A made-up "5 m" looks exactly like a measured
 5 m to every node after it. NAVERA's arbiter also refuses to read an accuracy from a **zero**
 covariance: σ below 1 cm counts as "not filled", not as a perfect sensor.
 
@@ -151,15 +158,15 @@ published at 12:00:00.640, the position describes 12:00:00.000; at 20 m/s the ai
 12.8 m further. The difference `header.stamp − sensor_stamp` is the source's **latency**.
 
 ![sensor_stamp is when the photo was taken, header.stamp when the result was published](assets/stamps.svg)
- The arbiter
-judges **freshness on the measurement**: age = now − `sensor_stamp` (or `header.stamp` when a producer
+
+The arbiter judges **freshness on the measurement**: age = now − `sensor_stamp` (or `header.stamp` when a producer
 leaves `sensor_stamp` at zero). A position is as old as its photo. A stamp more than 0.5 s in the
 **future** (`future_tolerance_s`) is refused too: its age cannot be trusted (clock stepped back, two
 machines on different clocks).
 
 ## 6. The jury's rule
 
-The arbiter (docs/ARCHITECTURE.md §3) applies **one generic rule** to every source. A source is
+The arbiter is like a **jury**: it judges every source and gives a verdict. It (docs/ARCHITECTURE.md §3) applies **one generic rule** to every source. A source is
 **eligible** when:
 
 1. `valid` is true;
@@ -179,7 +186,7 @@ higher-priority source takes over). The state then follows from the winner:
 
 > [!WARNING]
 > **The arbiter believes the stated σ.** A source that claims 15 m while being 500 m off would get a
-> green FIX. Honesty is not decoration; it is what makes one generic rule possible. This is why
+> green FIX. Honesty is required: it is what makes one generic rule possible. This is why
 > NAVERA's day vision does not claim an accuracy that has not been measured, and why
 > `docs/VALIDATION_STATUS.md` separates "measured in simulation" from "measured with the real camera".
 

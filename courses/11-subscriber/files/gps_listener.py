@@ -89,6 +89,7 @@ class GpsListener(Node):
         #          then log ONE line per message with self.get_logger().info(...), exactly:
         #            accepted:  fix 12: distance 66.0 m, speed 6.0 m/s, window 6.0 m/s
         #            rejected:  rejected (no fix), 3 so far
+          #          where 3 = the number of fixes rejected so far FOR THIS REASON (here: "no fix").
         #          Write "?" for a speed that is None. Use fmt() below for the numbers.
         pass
 

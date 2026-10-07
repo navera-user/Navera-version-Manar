@@ -168,7 +168,9 @@ python3 -m pytest -q test_properties.py
 ```
 
 hypothesis prints a `Falsifying example: test_…(lat0=…, lon0=…, north=…, east=…)`. Copy it into your
-report: what does it mean physically? (Course, section 3.) Because the search is random, it may need
+report: what does it mean physically? (Course, section 3.) The example may be **near a pole**
+(lat0 above about 80°) **or on the ±180° meridian** (lon0 = 180.0 or −180.0): both are the same
+missing longitude wrap. Because the search is random, it may need
 two or three runs; once found, hypothesis stores the example in `.hypothesis/` and replays it first.
 Then restrict the domain of the validity and round-trip properties to |lat0| ≤ 80° and |lon0| ≤ 170°
 (make two new strategies) and run again: all pass.
@@ -184,6 +186,12 @@ Then restrict the domain of the validity and round-trip properties to |lat0| ≤
 > [!TASK]
 > In `test_navera_geo.py`, write at least 5 tests of NAVERA's `is_finite_latlon`, `haversine_m` and
 > `dead_reckon` (imported from your NAVERA copy), following the TODO.
+
+The three functions are in [geo.py](file:navera/navera_common/navera_common/geo.py) — read their
+docstrings first. `dead_reckon(lat, lon, heading_deg, speed_mps, dt_s)` moves a position along a
+heading (degrees clockwise from north) at a speed (m/s) for dt seconds. It returns a tuple
+`(lat, lon)`, or `None` when the motion is unknown or impossible (non-finite heading or speed, negative
+speed, dt ≤ 0, or a start that `is_finite_latlon` refuses).
 
 ```bash
 python3 -m pytest -v test_navera_geo.py

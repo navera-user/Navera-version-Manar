@@ -16,8 +16,8 @@
     "curve_peak_deg": 67.39,
     "curve_peak_px": 825.1,
     "left_edge_theta_deg": null,
-    "bend_before_px": 6.523,
-    "bend_after_px": 1.171,
+    "bend_before_px": 5.118,
+    "bend_after_px": 0.635,
     "max_out_hfov_deg": 110.944,
     "tradeoff": {
       "111": {

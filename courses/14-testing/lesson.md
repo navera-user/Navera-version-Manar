@@ -1,5 +1,12 @@
 # Testing robotics code: examples, properties, mutants and launch tests
 
+> [!NOTE] In short
+> - A **test** is a small program that checks your program automatically, in seconds.
+> - You will write **example tests** with pytest (fixtures, parametrized tests).
+> - You will write **property tests** with hypothesis: one rule, hundreds of generated inputs.
+> - You will measure the quality of your tests with **mutants** (wrong copies of the code).
+> - You will run NAVERA's 359 unit tests and write a **launch test** that starts NAVERA's real arbiter.
+
 A NAVERA box flies over the sea off Duqm. Yesterday an engineer made a small change to the function
 that checks whether a position is real. He tried it on his desk: it worked. He did not notice that it
 now accepts (0, 0) — the "Null Island" value of a GNSS field nobody filled. Today a sensor glitch sends
@@ -88,7 +95,8 @@ def test_distance_is_symmetric(lat1, lon1, lat2, lon2):
 
 hypothesis runs the test with 100 generated inputs (more with `max_examples`), deliberately including
 edge values (0, ±90, ±180, tiny and huge numbers). When one fails it **shrinks** it — simplifies it
-step by step while it still fails — and prints a minimal `Falsifying example`. It stores failing
+step by step while it still fails — and prints a minimal `Falsifying example` (an input that
+proves the property false). It stores failing
 examples in a local database (`.hypothesis/`) and replays them first next time.
 
 Good properties for navigation code are mathematical facts:
@@ -109,7 +117,9 @@ longitude (1/cos φ is large), so the flat-Earth helper returns a longitude abov
 because it never **wraps** longitude. No human chose that example. The fix is either to restrict the
 helper's documented **domain** (far from the poles and the antimeridian) or to wrap the result. NAVERA's
 `dead_reckon` wraps (`lon2 = (degrees(l2) + 540.0) % 360.0 - 180.0`) and has a test for it:
-`test_longitude_wraps_at_antimeridian`. Because generation is random, a run can also miss a rare
+`test_longitude_wraps_at_antimeridian`. Your run may also find an example **on the ±180° meridian** (the
+**antimeridian**), for example `lat0=78.2, lon0=180.0, east=46302`: a start at longitude 180 plus a
+move east gives more than 180. It is the same missing wrap, found in a different place. Because generation is random, a run can also miss a rare
 counterexample: raise `max_examples` for exploration, and keep the database.
 
 ## 4. Are the tests any good? Mutation thinking
@@ -134,7 +144,7 @@ test detects **survives**. The **mutation score** = killed mutants / total mutan
   `cos(p1)²` instead of `cos(p1)·cos(p2)` gives correct results whenever both points share a
   latitude — but symmetry fails at once.
 
-The checker of this lab applies 12 mutants to `geo_tools.py` and 4 to NAVERA's `geo.py`, and tells
+The checker of this lab applies 12 mutants to `geo_tools.py` and 5 to NAVERA's `geo.py`, and tells
 you which ones survived. Ask, for every test you write: **which bug would this catch?**
 
 ![The checker runs your tests on the correct code and on wrong copies of it](assets/mutants.svg)
@@ -244,7 +254,8 @@ longitude change), where the two expressions agree; swapping two points at diffe
 </details>
 
 <details><summary>4. hypothesis prints <code>Falsifying example: lat0=86.6, …, east=44488.5</code>. Is the code wrong?</summary>
-It is outside the domain the flat-Earth helper can handle (near a pole the longitude exceeds 180°). Either
+It is outside the domain the flat-Earth helper can handle (near a pole, or on the ±180° meridian, the
+longitude exceeds 180°). Either
 restrict and document the domain, or fix the function (wrap the longitude, as NAVERA's dead_reckon does).
 </details>
 

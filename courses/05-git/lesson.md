@@ -1,5 +1,17 @@
 # Git and the engineering workflow
 
+> [!NOTE] In short
+> - When a change breaks NAVERA, **git** shows which line changed, who changed it, when and why.
+> - Git stores history as objects named by their hash: blobs, trees, commits and tags.
+> - You learn the daily commands: stage, commit, diff, log, undo, branches, merges, tags and
+>   patches.
+> - Good habits matter: small commits, clear messages, and **code review** before a change enters
+>   the main line.
+> - In the lab you make commits in your NAVERA copy, export a patch, review a colleague's patch
+>   and rescue a deleted file.
+> - NAVERA's team rules say: always work on a branch, one concern per commit, never commit large
+>   files.
+
 Friday evening, an engineer raises one number in NAVERA's arbiter configuration "to stop false GPS
 refusals". On Monday, a spoofing test in the simulator fails: a GPS position that jumps 2 km in one
 second is accepted. What changed? Which file, which line, who, when, and why? With **git**, the team

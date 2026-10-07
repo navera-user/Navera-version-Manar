@@ -1,5 +1,17 @@
 # Map projections and tiles: Web Mercator, the tile pyramid and MBTiles
 
+> [!NOTE] In short
+> - To find its position, NAVERA compares each photo with the few map tiles near its last
+>   position, and it must read them fast.
+> - Web maps use the **Web Mercator** projection and a pyramid of 256 × 256 tiles; each tile has
+>   an address z/x/y.
+> - You compute the tile address, and the size of a pixel in metres, from a latitude and a
+>   longitude.
+> - NAVERA's map is an **MBTiles** file: an SQLite database that you can read with SQL.
+> - In the lab you implement the tile maths, read real tiles from NAVERA's map of Sousse, and
+>   compute scales for Oman.
+> - You also study a real NAVERA bug: the tile corner instead of its centre cost 175 m per fix.
+
 A drone flying over **Muscat** at 300 m takes a photo every second. To find where it is without GPS,
 NAVERA must compare that photo with the satellite map of the area — not the whole map, but the few
 map squares around its last known position, read **now**. NAVERA's map of its test area is one file

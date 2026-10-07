@@ -1,5 +1,13 @@
 # GNSS receivers and NMEA 0183: from satellites to a trusted fix
 
+> [!NOTE] In short
+> - A GNSS receiver sends one line of text (**NMEA 0183**) per message: you will learn to read GGA, GSA and GSV.
+> - A **checksum** finds most damaged lines, but not two swapped characters.
+> - **DOP** measures the satellite geometry: you will compute it from a 4-column matrix G.
+> - Error in metres ≈ DOP × **UERE** (the error of one range measurement).
+> - In the lab you build a robust parser, recompute the DOPs, estimate the UERE of a synthetic drive
+>   in Sohar, and test NAVERA's real GPS driver on a damaged log.
+
 A survey drone flies along the Batinah coast, from Sohar Port towards Sohar Fort. Its GPS receiver
 sends a short line of text to the flight computer every second. One second, a motor starts,
 one bit flips on the cable, and the latitude in that line changes from `2426` to `2462`. Read

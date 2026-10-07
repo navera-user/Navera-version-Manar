@@ -38,7 +38,7 @@ Expected: `'' no fix not finite null island`. (`NOT_NEWER` needs a previous fix:
 Three fixes 0.001° of latitude apart (111.2 m) and 10 s apart, then two bad ones:
 
 ```bash
-python3 -c "from gps_listener import *; t = Tracker(); print(t.update(23.588, 58.38, 0), t.update(23.589, 58.38, 10), t.update(23.590, 58.38, 20)); print(t.update(23.591, 58.38, 15), t.update(0.0, 0.0, 30)); print(t.count, round(t.distance_m, 1), round(t.window_speed_mps, 3), t.rejected)"
+python3 -c "from gps_listener import *; t = Tracker(); print(t.update(23.588, 58.38, 0), t.update(23.589, 58.38, 10), t.update(23.590, 58.38, 20)); print(t.update(23.591, 58.38, 15), t.update(0.0, 0.0, 30)); w = t.window_speed_mps; print(t.count, round(t.distance_m, 1), w if w is None else round(w, 3), t.rejected)"
 ```
 
 Expected: `None 11.119… 11.119…`, then `None None`, then `3 222.4 11.119 {'not newer': 1, 'null island': 1}`.
@@ -52,17 +52,35 @@ with σ = 3 m (fixed random seed), and writes `results.json`:
 python3 noise_study.py
 ```
 
-Compare with the course (section 4): the distance ratio with noise, the mean and standard deviation of
-the instantaneous speed (biased, huge spread), and the window speed's standard deviation versus the
-prediction √2·σ/4.5 s ≈ 0.94 m/s. Even without noise the window speed is a little below 6 m/s on
-average: find the reason in the course (one word: corners).
+Compare with the course (section 4). What you should see with σ = 3 m:
+
+| Number | Expected | Why |
+|---|---|---|
+| distance ratio | about 2.1 | each noisy step is longer than the true 3 m step (the Rayleigh bias) |
+| instantaneous speed: mean | about 12.6 m/s, not 6 | the same bias: the length of a noisy step is never negative |
+| instantaneous speed: std | about **6.1 m/s**, not 8.5 | see below |
+| window speed: mean ± std | about 6.0 ± **1.0** m/s | close to the prediction √2·σ/4.5 s ≈ 0.94 m/s |
+
+**Why 6.1 and not 8.5 m/s?** The formula √2·σ/dt = 8.5 m/s is the spread of each **component**
+(east, north) of the speed vector. It is only the spread of the speed **length** when the noise is
+small compared with the step. Here the noise (4.2 m per axis) is bigger than the step (3 m). A length
+cannot be negative, so the negative side is "folded" onto the positive side: the mean goes up (12.6)
+and the spread goes down. For pure noise (a parked car), the spread of the length is
+√(2 − π/2) ≈ 0.66 times the per-axis value: 0.66 × 8.5 ≈ 5.6 m/s. With a real 3 m step it is a
+little larger: 6.1 m/s. So 6.1 is the correct result, not a bug.
+
+**Without noise**, the instantaneous std is about 0.14 m/s, not 0, and the window speed is a little
+below 6 m/s on average (about 5.92). The reason is the **corners** of the route: in a turn, the
+straight line between two fixes (the chord) is shorter than the curved path (the arc), so the
+computed speed drops a little. A long window cuts more of the corner than one step, so the window
+speed drops more.
 
 ### Step 4 — Subscribe and log (TODO 3)
 
 > [!TASK]
 > **TODO 3** — in `GpsListener`, subscribe with `qos_profile_sensor_data` (3a) and, in `on_fix`, log
 > exactly one line per message (3b): `fix 12: distance 66.0 m, speed 6.0 m/s, window 6.0 m/s` or
-> `rejected (no fix), 3 so far`.
+> `rejected (no fix), 3 so far` (3 = the number of fixes rejected so far **for this reason**).
 
 **Terminal 1** — start the player:
 
@@ -145,10 +163,10 @@ python3 -c "from status_listener import *; print([state_name(n) for n in range(5
 Expected: `['INITIALIZING', 'NO_FIX', 'FIX', 'DEGRADED', 'UNKNOWN STATE 4']`.
 
 ```bash
-python3 -c "from status_listener import *; from builtin_interfaces.msg import Time; m = NavStatus(); m.header.stamp = Time(sec=100, nanosec=500000000); m.sources = [SourceHealth(source=SourceHealth.SOURCE_GPS, last_seen=Time(sec=97, nanosec=300000000))]; print(round(gps_silence_s(m), 3))"
+python3 -c "from status_listener import *; from builtin_interfaces.msg import Time; m = NavStatus(); m.header.stamp = Time(sec=100, nanosec=500000000); m.sources = [SourceHealth(source=SourceHealth.SOURCE_GPS, last_seen=Time(sec=97, nanosec=300000000))]; s = gps_silence_s(m); print(s if s is None else round(s, 3))"
 ```
 
-Expected: `3.2`.
+Expected: `3.2`. (`None` means TODO 6 is not done yet.)
 
 ### Step 7 — Plug your GNSS into NAVERA (TODO 7)
 

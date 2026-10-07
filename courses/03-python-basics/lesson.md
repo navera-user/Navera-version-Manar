@@ -1,5 +1,16 @@
 # Python for engineers: functions, classes and NumPy
 
+> [!NOTE] In short
+> - NAVERA is written in Python, and this lesson gives you the Python you need to read and write
+>   it.
+> - You learn **functions**, **modules**, **exceptions** (to refuse bad input) and **classes**
+>   with inheritance.
+> - With **NumPy** you compute on whole arrays of numbers at once, without loops.
+> - You also use flight physics: the wind triangle, battery endurance and the turn radius.
+> - In the lab you write a small navigation library and a mission planner for an inspection on the
+>   Batinah coast.
+> - NAVERA's `TrackVelocity` class is built like the `Track` class you write.
+
 A survey drone takes off from a port on the Batinah coast, near Sohar. It must inspect a point
 9 km away on the track 030° and come back. The wind blows at 5 m/s towards the south-west.
 The drone flies at 12 m/s through the air, its battery holds 160 Wh, it uses 350 W, and the rules

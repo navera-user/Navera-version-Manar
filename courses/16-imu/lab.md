@@ -72,8 +72,8 @@ Part 1 of the output must show the matrix of the worked example of the course, `
 > [!TASK]
 > **TODO 3** — `quat_mul(p, q)`: the Hamilton product (scalar first). `np.dot` and `np.cross` help.
 >
-> **TODO 4** — `quat_from_axis_angle(axis, angle)`: normalise the axis, then
-> (cos(α/2), sin(α/2)·u).
+> **TODO 4** — `quat_from_axis_angle(axis, angle)`: the unit quaternion of section 5. The axis
+> may have any length.
 >
 > **TODO 5** — `quat_rotate(q, v)`: q ⊗ (0, v) ⊗ q*, return the 3 last numbers.
 >
@@ -103,8 +103,8 @@ to do with the first — and there is no error message.
 ## Step 4 — SLERP
 
 > [!TASK]
-> **TODO 7** — `slerp(q0, q1, t)` with the algorithm of section 6: shortest path (if q0·q1 < 0 use
-> −q1), normalised linear interpolation when q0·q1 > 0.9995, otherwise the sine formula. Return a
+> **TODO 7** — `slerp(q0, q1, t)` from section 6 of the course. Before you code, answer the three
+> questions above TODO 7 in the file (the angle θ, the shortest path, the case θ ≈ 0). Return a
 > unit quaternion. **Lesson 19 uses this function** to get the attitude at the exposure instant.
 
 ```bash
@@ -125,10 +125,9 @@ The raw average has a norm of 0.943 (not a rotation), and once normalised it giv
 Open [imu_filters.py](file:./imu_filters.py). It imports your functions from `quaternions.py`.
 
 > [!TASK]
-> **TODO 8** — `integrate_gyro(t, gyro, q0)` returns an (N, 4) array of quaternions: start with q0,
-> then `q[k] = q[k−1] ⊗ Δq`, with Δq the axis-angle quaternion of the rotation |ω|·dt about ω
-> (ω = `gyro[k−1]`, dt = `t[k] − t[k−1]`). Multiply on the **right** (body rates). Re-normalise each
-> step. If |ω| = 0, Δq = (1, 0, 0, 0).
+> **TODO 8** — `integrate_gyro(t, gyro, q0)` returns an (N, 4) array of quaternions, starting with
+> q0. Section 7 of the course gives the update of one step. Use the rate of sample k−1 for the step
+> from k−1 to k, and re-normalise at each step.
 
 ```bash
 python3 imu_filters.py
@@ -138,11 +137,18 @@ You see the first line, `gyro only: heading error … after 60 s, … after 300 
 stops at TODO 9. Before you continue: the z bias is 0.03 °/s. Which error do you predict after
 300 s? Compare.
 
+> [!NOTE]
+> **Why is the error negative?** A positive z bias makes the gyro report a turn to the **left**
+> (counter-clockwise seen from above), so the integrated **yaw** grows too fast. The compass heading
+> is `90° − yaw` (yaw from east, counter-clockwise; heading from north, clockwise). So the heading
+> becomes too **small**, and the error (gyro − truth) is negative: about −9°. The size is not exactly
+> 9.0°: the noise and the small x and y biases add a little during the turns.
+
 ## Step 6 — Tilt: accelerometer and complementary filter
 
 > [!TASK]
-> **TODO 9** — `accel_roll_pitch(acc)` returns `(roll, pitch)` arrays (radians) from section 8:
-> `roll = atan2(f_y, f_z)`, `pitch = atan2(−f_x, √(f_y² + f_z²))`. Use numpy on whole columns.
+> **TODO 9** — `accel_roll_pitch(acc)` returns `(roll, pitch)` arrays (radians), with the tilt
+> formulas of section 8. Use numpy on whole columns.
 >
 > **TODO 10** — `complementary_tilt(t, gyro, acc, tau)`: start from the accelerometer angles of
 > sample 0; at each step predict with the Euler-angle kinematics (gyro of sample k−1), then blend
@@ -154,7 +160,22 @@ python3 imu_filters.py
 
 The program prints the accelerometer-only errors and a **sweep** of τ from 0.1 s to 30 s. Open
 **attitude.png** after Step 7 (top panel): during the four turns the drone banks to about ±14°,
-while the accelerometer alone stays near 0°. Why? (Section 8 of the course.)
+while the accelerometer alone stays near 0°. Why? (Section 8 of the course.) The four turns are
+centred near **t = 35, 100, 165 and 240 s** (each lasts about 10–15 s). You need these times for
+section 2 of the report.
+
+> [!NOTE]
+> **The best τ is 30 s, the last value of the sweep.** When the best value is at the **edge** of a
+> sweep, you do not know yet if a larger value is even better. The rule: extend the sweep until the
+> error grows again. Try τ = 100 s and 300 s (this takes a few seconds):
+>
+> ```bash
+> python3 -c "import numpy as np, imu_filters as F; L = F.load_log(); t = L['t_s']; g = np.stack([L['gx'], L['gy'], L['gz']], 1); a = np.stack([L['ax'], L['ay'], L['az']], 1); [print(tau, [round(F.rms(np.degrees(x) - L[k]), 2) for x, k in zip(F.complementary_tilt(t, g, a, tau), ('true_roll_deg', 'true_pitch_deg'))]) for tau in (30.0, 100.0, 300.0)]"
+> ```
+>
+> Where is the minimum now? Why does a very large τ fail in the end (think of the gyro bias)?
+> Keep `TAUS` unchanged in the file: the check expects the original sweep. Write your answer in
+> section 2 of the report.
 
 > [!QUESTION]
 > The roll error falls steadily as τ grows, but the pitch error does not: it gets worse from
@@ -166,13 +187,13 @@ while the accelerometer alone stays near 0°. Why? (Section 8 of the course.)
 ## Step 7 — Compass and true north
 
 > [!TASK]
-> **TODO 11** — `mag_heading(mag, roll, pitch)`: for each sample, m_h = Ry(pitch) Rx(roll) m_b,
-> heading = atan2(m_h[1], m_h[0]) in degrees, `% 360`. Return an array.
+> **TODO 11** — `mag_heading(mag, roll, pitch)`: the tilt-compensated heading of section 10, for
+> each sample, in degrees in [0, 360). Return an array.
 >
 > **TODO 12** — `declination_at(lat, lon, year)`: the World Magnetic Model through pygeomag,
 > exactly like NAVERA's class `Declination` in
-> [orientation.py](file:navera/imu_pkg/imu_pkg/orientation.py):
-> `GeoMag().calculate(glat=lat, glon=lon, alt=0, time=year).d`.
+> [orientation.py](file:navera/imu_pkg/imu_pkg/orientation.py). Read how NAVERA calls it, and use
+> altitude 0.
 
 ```bash
 python3 imu_filters.py
@@ -212,8 +233,10 @@ gyro step on the **right**. Make sure you can explain why.
 > [!TASK]
 > Fill [report.md](file:./report.md): five sections, at least 30 words each, no `TODO` left, with
 > these numbers (from your output / results.json):
-> 1. the gyro heading error after 300 s and your bias × time prediction (9.0°);
-> 2. the largest accelerometer roll error and when it happens, the best τ, the τ trade-off;
+> 1. the gyro heading error after 300 s and your bias × time prediction (9.0°), and why the sign
+>    is negative;
+> 2. the largest accelerometer roll error and when it happens, the best τ of the sweep (30 s), the
+>    τ trade-off, and what you found when you extended the sweep;
 > 3. the declination at the log's place, the true-heading RMS with and without tilt compensation;
 > 4. a table of the declination in Muscat, Sohar, Nizwa, Salalah and Masirah (2 decimals), and the
 >    side error after 10 km from Muscat if D is ignored (in metres);

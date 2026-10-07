@@ -13,26 +13,25 @@ MAX_SENTENCE_LEN = 80          # NMEA 0183: at most 82 characters including "\r\
 
 
 # TODO 1: the checksum of a sentence body (the text BETWEEN "$" and "*").
-#   XOR (^) the character codes (ord) of every character, starting from 0,
-#   and return the result as 2 upper-case hexadecimal digits, e.g. "47".
+#   Course: section 3 (the worked example with GPGSA,A,1 -> "32").
+#   Input: body (str). Output: 2 upper-case hexadecimal digits (str), e.g. "47" or "0D".
 def nmea_checksum(body):
     return None  # TODO 1: replace this line with your code
 
 
-# TODO 2: True when a whole line is a correct sentence, else False (never None, never crash):
-#   - remove spaces and "\r\n" at both ends (strip)
+# TODO 2: True when a whole line is a correct sentence, else False (never None, never crash,
+#   even for None or ""). Course: section 7, rule 1. The rules, in this lab:
+#   - ignore spaces and "\r\n" at both ends
 #   - at most MAX_SENTENCE_LEN characters, starts with "$", contains "*"
-#   - the body (between "$" and the first "*") contains no other "$"
-#   - exactly 2 characters after "*", and they equal nmea_checksum(body)
-#     (accept lower-case hex digits too: compare with .upper())
+#   - the body (between "$" and the first "*") contains no other "$" (two glued sentences)
+#   - exactly 2 characters after "*", equal to the checksum of the body (accept lower-case hex)
 def is_valid(line):
     return None  # TODO 2: replace this line with your code
 
 
-# TODO 3: NMEA "degrees and minutes" -> decimal degrees.
-#   "2425.14618", "N"  ->  24 + 25.14618/60 = 24.419103
-#   degrees = int(v // 100), minutes = v - 100 * degrees.
-#   S and W are negative. Return None when: the value is unreadable (to_float gives None),
+# TODO 3: NMEA "degrees and minutes" text -> decimal degrees (float).
+#   Course: section 4, GGA (the ddmm.mmmmm format). Example: "2425.14618", "N" -> 24.419103.
+#   S and W give negative degrees. Return None when: the value is unreadable (use to_float),
 #   the hemisphere is not one of N, S, E, W, or the minutes are not in [0, 60).
 def dm_to_deg(value, hemisphere):
     return None  # TODO 3: replace this line with your code
@@ -49,8 +48,8 @@ def fields(line):
 #     "time" [1] text      "lat" [2]+[3] degrees   "lon" [4]+[5] degrees
 #     "quality" [6] int    "sats" [7] int          "hdop" [8] float
 #     "alt_msl" [9] float  "geo_sep" [11] float
-#   Return None when the line is not valid, is not a GGA (f[0] ends with "GGA"),
-#   or has fewer than 15 fields. Empty or unreadable fields become None.
+#   Return None when the line is not valid, is not a GGA, or has fewer than 15 fields.
+#   Empty or unreadable fields become None (the helpers below the line do that for you).
 def parse_gga(line):
     return None  # TODO 4: replace this line with your code
 
@@ -72,8 +71,7 @@ def parse_gsa(line):
 #   Return {"n_msgs": int, "msg": int, "in_view": int,
 #           "sats": [(prn, elev_deg, azim_deg, snr), ...]}  (each value int or None; skip a
 #   block whose prn is None). Return None when not a valid GSV or fewer than 4 fields.
-#   Careful: the number of fields after f[3] is a multiple of 4 (an extra last field in
-#   NMEA 4.10+ is a signal id: ignore what does not make a full block of 4).
+#   Careful: an extra last field (NMEA 4.10+ signal id) does not make a full block of 4: ignore it.
 def parse_gsv(line):
     return None  # TODO 6: replace this line with your code
 

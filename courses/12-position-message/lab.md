@@ -1,4 +1,4 @@
-# Lab 12 — Fill the contract, then face the jury
+# Lab 12 — Fill the contract, then let the arbiter judge it
 
 **Goal:** implement the covariance mathematics of the course in [my_source.py](file:./my_source.py)
 and [probability.py](file:./probability.py), publish a complete `PositionEstimate` to NAVERA's real
@@ -56,8 +56,9 @@ python3 -c "from navera_estimator.nodes.estimator_node import EstimatorNode as E
 ### Step 3 — Probability inside the ellipse (TODO 6 and 7)
 
 > [!TASK]
-> **TODO 6** — `mahalanobis2(e_east, e_north, cov)` in `probability.py` (2 × 2 inverse).
-> **TODO 7** — `p_inside(k) = 1 − exp(−k²/2)`.
+> **TODO 6** — `mahalanobis2(e_east, e_north, cov)` in `probability.py`: d² = eᵀ Σ⁻¹ e. Invert the
+> 2 × 2 block by hand and expand the product (course, section 3).
+> **TODO 7** — `p_inside(k)`: the 2-D probability law of course section 3.
 
 ```bash
 python3 probability.py
@@ -68,11 +69,11 @@ It samples 100 000 errors from your covariance and prints the fractions inside t
 **stated σ** next to your ellipse's largest σ for the default and the "tilted" covariance. Everything
 is saved in `results.json`. The sampled values must agree with the theory to about ±0.005.
 
-## Part B — Face the jury
+## Part B — The arbiter's verdict
 
 ### Step 4 — Fill the form (TODO 4)
 
-First, see the starter face the jury. **Terminal 1**:
+First, see how the arbiter judges the starter. **Terminal 1**:
 
 ```bash
 ros2 run navera_estimator estimator_node.py
@@ -127,8 +128,12 @@ ros2 topic echo --once /navera/position
 ```
 
 `state` 2 (FIX). In `/navera/position`: your latitude, `source: 2`, your covariance, and
-`producer: navera_estimator` — the arbiter re-signs the winning estimate but keeps your
-`sensor_stamp`, `model_id` and `frame_index`: traceability.
+`producer: navera_estimator` — the arbiter writes its own name in `producer` (it "signs" the
+output), but it keeps your `sensor_stamp`, `model_id` and `frame_index`: traceability.
+
+> [!TIP]
+> `ros2 topic echo --once` sometimes prints nothing for a few seconds: it must first discover the
+> topic. Wait about 5 s. If it still prints nothing, press `Ctrl+C` and run it again.
 
 ### Step 5 — Thirteen ways to meet the jury (TODO 5)
 
@@ -165,19 +170,33 @@ python3 my_source.py stale
 > Your source publishes once per second and the arbiter keeps the last message of each source, so
 > the first line after a switch may still show the previous verdict. Wait two seconds.
 
-What each one teaches:
+When the state is **NO_FIX**, the reason has one part per source, for example
+`GPS: none received; day: stale (10.0s>3.0s); night: none received; cn: none received`. Copy only the
+`day: …` part. When the state is **FIX** or **DEGRADED**, the reason is one short sentence about the
+winning source (for example `day vision fix, uncertainty unknown`): copy all of it.
 
-- `nan`, `not_psd` → `non-finite position or covariance`: `_sane()` refused them, even with `valid`
-  true. (The wording also covers a non-PSD matrix.)
-- `stale` → `stale (10.0s>3.0s)` although **published now**: freshness is judged on `sensor_stamp`.
-- `latency` → still a FIX: the photo is 2 s old, inside the 3 s window. Latency is allowed; staleness
-  is not.
-- `future` → `timestamp 5.0s in the future (clock problem)`.
-- `invalid` → your own `reason` reaches the operator. `replayed`, `held` → `… not usable`.
+What each one teaches (the exact texts printed by the arbiter):
+
+- `nan`, `not_psd` → `day: non-finite position or covariance`: `_sane()` refused them, even with
+  `valid` true. (The wording also covers a non-PSD matrix.)
+- `stale` → `day: stale (10.0s>3.0s)` although **published now**: freshness is judged on
+  `sensor_stamp`. You will see between 10.0 and about 11.0 s: your source publishes once per second,
+  so the last message is up to 1 s older when the arbiter judges it.
+- `latency` → still `day vision fix` (FIX): the photo is 2 s old, inside the 3 s window. Latency is
+  allowed; staleness is not.
+- `future` → `day: timestamp 4.5s in the future (clock problem)`. The number is between about 4.0
+  and 5.0 s, not exactly 5.0, for the same reason: time passes between publication and judgement.
+- `invalid` → `day: invalid (lens covered)`: your own `reason` reaches the operator.
+  `replayed`, `held` → `day: replayed not usable`, `day: held not usable`.
 - `propagated` → used, but DEGRADED: `day vision solution is propagated (dead-reckoned)`.
-- `unknown_cov` → used, DEGRADED: `uncertainty unknown`. `big_sigma` → DEGRADED: `uncertainty 30 m > 25 m`.
-- `tilted` → **FIX** — although its ellipse is 30 m long. Compare with `big_sigma` and with your
-  `results.json` (`stated_vs_max`): this is the design question of the report.
+- `unknown_cov` → used, DEGRADED: `day vision fix, uncertainty unknown`.
+- `big_sigma` → DEGRADED: `day vision fix, uncertainty 30 m > 25 m`.
+- `tilted` → **FIX** (`day vision fix`) — although its ellipse is 30 m long. Compare with
+  `big_sigma` and with your `results.json` (`stated_vs_max`): this is the design question of the
+  report.
+
+The checker only looks for the key words (for example `stale` and `>3.0s`), so 10.1 s or 4.5 s is
+correct.
 
 Stop everything (`Ctrl+C` in each terminal) and answer `Q1` and `Q2` in `verdicts.py`.
 
