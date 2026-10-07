@@ -78,7 +78,7 @@ class TileFeatures:
 
     PAD = 48                          # border taken from the neighbours
 
-    def __init__(self, images_dir: str, zoom: int = 17, per_tile: int = 300, cache_tiles: int = 3000):
+    def __init__(self, images_dir: str, zoom: int = 17, per_tile: int = 300, cache_tiles: int = 800):
         self.dir, self.z, self.cap = images_dir, zoom, cache_tiles
         self.sift = cv2.SIFT_create(nfeatures=per_tile, contrastThreshold=0.02)
         self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))

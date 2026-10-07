@@ -49,7 +49,7 @@ class LearnedMatcher(LocalMatcher):
     # process to 4.2-4.9 GB and the 8 GB Jetson killed it): chunks kept in memory (~0.4 MB
     # each at 768 keypoints), map keypoints matched at once, and no SIFT fallback over a
     # window wider than this (it doubled the time of every failed frame: 33-64 s)
-    MAX_CHUNKS = 1200
+    MAX_CHUNKS = 500
     MAX_MAP_KEYPOINTS = 24000
     SIFT_FALLBACK_MAX_M = 300.0
     HEADING_MEMORY_S = 10.0           # a measured rotation stands in for the heading this long
@@ -106,7 +106,7 @@ class LearnedMatcher(LocalMatcher):
             im = cv2.imread(os.path.join(self.tiles.dir, f"tile_{self.z}_{x}_{y}.jpg"), cv2.IMREAD_COLOR)
             if im is not None and im.shape[:2] != (256, 256):
                 im = cv2.resize(im, (256, 256), interpolation=cv2.INTER_AREA)
-            if len(self._tiles) > 2000:
+            if len(self._tiles) > 300:                # only needed while computing chunks
                 self._tiles.clear()
             self._tiles[k] = im
         return self._tiles[k]
@@ -252,6 +252,10 @@ class LearnedMatcher(LocalMatcher):
         if res["accepted"] and res.get("rotation_deg") is not None:
             self._heading = (float(res["rotation_deg"]), time.time())
         res["total_ms"] = (time.time() - t0) * 1000.0
+        if search_m > 300.0:
+            # a wide window's tensors stay in PyTorch's cache, which on the Jetson is system
+            # memory: a single 600 m frame raised the process by 1.7 GB (campaign 4)
+            self._t.cuda.empty_cache()
         return res
 
     def locate_any_height(self, frame, prior, search_m, hfov_deg, *args, heading_deg=None, **kw) -> dict:

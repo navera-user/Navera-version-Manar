@@ -210,6 +210,10 @@ class DaySubscriber(Node):
         self.vo = FrameOdometry()
         self._vo_step = None
         self._doubted = None                    # (t, lat, lon, sigma): a fix a gate doubted
+        # the position carried frame by frame since the last fix (lat, lon, t, heading,
+        # ve, vn, sigma): one turn from the fix's heading to the present folded a 180 deg
+        # turn or a lap into a small one (bench campaign 4: 3-3.8 km off on the coast)
+        self._carry = None
         # the trusted GPS by its measurement time: a bias sample compares a frame's fix with
         # the GPS at that frame's instant (the latest GPS is v x delay off along the track)
         from navera_common.sensor_history import History
@@ -554,7 +558,7 @@ class DaySubscriber(Node):
                     if result.get("accepted"):
                         break
                 sc = float(result.get("scale_residual") or 1.0)
-                if result.get("accepted") and abs(sc - 1.0) > 0.10:
+                if result.get("accepted") and abs(sc - 1.0) > 0.05:
                     # the fitted scale answers only ~half of a height error (campaign 2: slope
                     # 0.45-0.6): match again at the corrected height, keep it if it holds
                     again = self.local.locate(img, center, R, mpp * f * sc, scale_tol=self._scale_tol(meta),
@@ -796,11 +800,51 @@ class DaySubscriber(Node):
         t_last = self.track.last_time()
         if t_last is None:
             return None
-        turn = 0.0
         h = self._heading_for_match(meta)
+        t = self._frame_time(meta)
+        c = self._carry
+        if c is not None and c[2] >= t_last:
+            lat, lon, tc, hc, ve, vn, sig = c
+            dt = max(0.0, t - tc)
+            turn = (h - hc + 180.0) % 360.0 - 180.0 if h is not None and hc is not None else 0.0
+            steps = max(1, int(abs(turn) / 5.0))
+            de = dn = 0.0
+            for i in range(steps):
+                a = math.radians(turn * (i + 0.5) / steps)
+                de += (ve * math.cos(a) + vn * math.sin(a)) * dt / steps
+                dn += (-ve * math.sin(a) + vn * math.cos(a)) * dt / steps
+            v = self.track.velocity(t_last + 1e-3)
+            sig_v = v[2] if v is not None else 3.0
+            speed = math.hypot(ve, vn)
+            p = _move((lat, lon), de, dn)
+            return (p[0], p[1], sig + sig_v * dt + math.radians(5.0) * speed * dt + 0.25 * dt * dt
+                    + 0.5 * abs(math.radians(turn)) * speed * dt)
+        turn = 0.0
         if h is not None and self._track_heading is not None:
             turn = (h - self._track_heading + 180.0) % 360.0 - 180.0
-        return self.track.propagate(time.time(), turn)
+        return self.track.propagate(t, turn)
+
+    def _set_carry(self, lat, lon, t, meta, sigma):
+        """Remember the carried position and its velocity turned to this frame's heading."""
+        v = self.track.velocity(t)
+        if v is None:
+            self._carry = None
+            return
+        h = self._heading_for_match(meta)
+        hc = self._carry[3] if self._carry is not None else self._track_heading
+        ve, vn = (self._carry[4], self._carry[5]) if self._carry is not None else (v[0], v[1])
+        if h is not None and hc is not None:
+            a = math.radians((h - hc + 180.0) % 360.0 - 180.0)
+            ve, vn = ve * math.cos(a) + vn * math.sin(a), -ve * math.sin(a) + vn * math.cos(a)
+        self._carry = (lat, lon, t, h, ve, vn, sigma)
+
+    @staticmethod
+    def _frame_time(meta) -> float:
+        """The frame's exposure instant (its stamp), else now: a position carried to the
+        processing instant but stamped at the exposure lands v x delay ahead (simulator
+        plane, 2026-10-07: dead-reckoned frames 31-48 m ahead at 42 m/s)."""
+        ns = meta.get("image_stamp_ns")
+        return int(ns) / 1e9 if ns else time.time()
 
     def _dead_reckon_without_frames(self):
         t_frame, meta = self._last_frame
@@ -820,7 +864,7 @@ class DaySubscriber(Node):
         """No measurement this frame: publish the last measured position carried along the
         measured track (PROPAGATED, with its growing stated uncertainty). False, with
         self._dr_why set, when it cannot be done honestly."""
-        t_now = time.time()
+        t_now = self._frame_time(meta)
         t_last = self.track.last_time()
         if t_last is None:
             self._dr_why = "no measured track to continue"
@@ -837,6 +881,7 @@ class DaySubscriber(Node):
             sigma = self._dr_sigma + 0.1 * math.hypot(de, dn) + 1.0
             if sigma <= self.dr_max_sigma_m:
                 self.track.add(t_now, lat, lon, sigma)
+                self._carry = None                  # the odometry point is on the track itself
                 self._anchor_lat, self._anchor_lon, self._anchor_time = lat, lon, t_now
                 self._dr_sigma = sigma
                 self._emit_fix(now, seq_id, lat, lon, meta, status, "dead_reckon", score, None,
@@ -851,6 +896,7 @@ class DaySubscriber(Node):
         if sigma > self.dr_max_sigma_m:
             self._dr_why = f"dead-reckoning uncertainty {sigma:.0f} m > {self.dr_max_sigma_m:.0f} m"
             return False
+        self._set_carry(lat, lon, t_now, meta, sigma)
         self._anchor_lat, self._anchor_lon, self._anchor_time = lat, lon, t_now
         self._dr_sigma = sigma
         self._emit_fix(now, seq_id, lat, lon, meta, status, "dead_reckon", score, None,
@@ -1115,6 +1161,7 @@ class DaySubscriber(Node):
             self._anchor_lat, self._anchor_lon, self._anchor_time = out_lat, out_lon, t_now
             self._last_measured_time = t_now
             self._dr_sigma = max(self.local_sigma_m, float(result.get("sigma_m") or 0.0))
+            self._carry = None
             self._rejects_in_row = 0
             self._remember_anchor()
             if src == "local_match":
