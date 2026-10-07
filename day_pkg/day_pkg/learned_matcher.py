@@ -13,7 +13,8 @@ learned match fails, SIFT (rotation invariant) is tried: never worse than LocalM
 
 The map's features are computed in 640 px chunks on a fixed grid of the map, once, kept in
 memory (CPU) and saved next to the tiles (<images_dir>/../learned_features/), so a mission
-area costs its computation only once (prepare_area.py can do it before the flight).
+area costs its computation only once — the first pass over each place is slower (warm()
+computes an area ahead; prepare_area.py does not call it yet).
 """
 import math
 import os

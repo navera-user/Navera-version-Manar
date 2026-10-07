@@ -86,9 +86,16 @@ def check_settings():
                 from navera_common.camera_model import CameraModel
                 c = yaml.safe_load(open(cam["calibration_file"]))
                 m = CameraModel.from_calibration(c)
-                if m.size != (cam["width"], cam["height"]):
-                    report(FAIL, "lens calibration", f"made for {m.size[0]}x{m.size[1]}, the camera is set to "
-                                                     f"{cam['width']}x{cam['height']}")
+                # with a crop (one lens of a 360 camera) the calibration is of the cropped part
+                from navera_common.camera_model import parse_crop
+                crop = parse_crop(cam.get("crop"), cam["width"], cam["height"])
+                used = (crop[2], crop[3]) if crop else (cam["width"], cam["height"])
+                if m.size != used:
+                    report(FAIL, "lens calibration", f"made for {m.size[0]}x{m.size[1]}, the camera gives "
+                                                     f"{used[0]}x{used[1]}" + (f" (crop {list(crop)})" if crop else ""))
+                elif list(c.get("crop") or []) != list(crop or []):
+                    report(FAIL, "lens calibration", f"made with crop {c.get('crop')}, the camera uses "
+                                                     f"{list(crop) if crop else 'the whole picture'}: calibrate again")
                 else:
                     rms = c.get("rms_px")
                     report(OK if rms is not None and rms < 0.5 else WARN, "lens calibration",

@@ -35,7 +35,7 @@ sudo install -d -o navera -g navera /data/navera/rec
 
 | Item | Setting |
 |---|---|
-| Camera | Insta360 ONE R, **4K wide-angle module**, **USB webcam mode**. Address it by its stable name `/dev/v4l/by-id/usb-…-video-index0` (`ls -l /dev/v4l/by-id/`), not `/dev/videoN` |
+| Camera | Insta360 ONE R in **USB webcam mode** — the **4K wide-angle module**, or the **360 module** (two lenses in one 1920x1080 picture, top / bottom halves 1920x540: point one lens straight down and set `NAVERA_CAMERA_CROP=top` or `bottom` for it; calibrate with the same `--crop`; its straightened view is 111° x ~37°, so at 100 m it sees ~290 x 80 m — bench results were at ~520 m equivalent). Address it by its stable name `/dev/v4l/by-id/usb-…-video-index0` (`ls -l /dev/v4l/by-id/`), not `/dev/videoN` |
 | Mount, multirotor | **on a gimbal** holding it straight down (`NAVERA_CAMERA_GIMBAL=true`). A fixed camera leans with the drone: 45° at speed in simulation, the limit (`NAVERA_CAMERA_MAX_TILT_DEG`, default 45) |
 | Mount, plane / boat / robot | fixed, looking straight down, image top towards the nose (`NAVERA_CAMERA_MOUNT_RPY=0,0,0`; otherwise measure and enter the angles). A fixed camera's frames taken while the vehicle rotates faster than `NAVERA_CAMERA_MAX_RATE_DPS` (30°/s) are not used: fly smooth turns on the recording legs |
 | IMU | BNO085 on I²C bus 1 (0x4A), rigidly fixed. Mounting angles: `NAVERA_IMU_MOUNT_RPY` (roll,pitch,yaw in degrees) in `/etc/navera/navera.env` or on the `/mission` page |
