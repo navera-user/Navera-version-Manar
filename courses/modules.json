@@ -11,7 +11,8 @@
   ],
   "icon": "🥚",
   "color": "#ff9f43",
-  "leg": "Leg 1 · Out of the nest"
+  "leg": "Leg 1 · Out of the nest",
+  "short": "Foundations"
  },
  {
   "title": "Geodesy, maps and images",
@@ -23,7 +24,8 @@
   ],
   "icon": "🗺️",
   "color": "#26a69a",
-  "leg": "Leg 2 · Reading the land"
+  "leg": "Leg 2 · Reading the land",
+  "short": "Geodesy"
  },
  {
   "title": "ROS 2: nodes, topics and contracts",
@@ -38,7 +40,8 @@
   ],
   "icon": "🐦",
   "color": "#5c7cfa",
-  "leg": "Leg 3 · Flying in a flock"
+  "leg": "Leg 3 · Flying in a flock",
+  "short": "ROS 2"
  },
  {
   "title": "Sensors and their models",
@@ -52,7 +55,8 @@
   ],
   "icon": "🧭",
   "color": "#e8553f",
-  "leg": "Leg 4 · A bird's senses"
+  "leg": "Leg 4 · A bird's senses",
+  "short": "Sensors"
  },
  {
   "title": "Vision-based navigation",
@@ -66,7 +70,8 @@
   ],
   "icon": "👀",
   "color": "#1f63d1",
-  "leg": "Leg 5 · Eyes on the ground"
+  "leg": "Leg 5 · Eyes on the ground",
+  "short": "Vision"
  },
  {
   "title": "Fusion, uncertainty and integrity",
@@ -78,7 +83,8 @@
   ],
   "icon": "⚖️",
   "color": "#9b6cf0",
-  "leg": "Leg 6 · Who to trust?"
+  "leg": "Leg 6 · Who to trust?",
+  "short": "Fusion"
  },
  {
   "title": "System, measurement and project",
@@ -90,6 +96,7 @@
   ],
   "icon": "🌍",
   "color": "#26a24a",
-  "leg": "Leg 7 · The big migration"
+  "leg": "Leg 7 · The big migration",
+  "short": "System"
  }
 ]

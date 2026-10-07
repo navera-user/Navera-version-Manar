@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup B · Bright Studio</title>
+<style>
+@font-face { font-family: Manrope; font-weight: 500; src: url(/static/vendor/fonts/manrope-latin-500-normal.woff2) format("woff2"); }
+@font-face { font-family: Manrope; font-weight: 600; src: url(/static/vendor/fonts/manrope-latin-600-normal.woff2) format("woff2"); }
+@font-face { font-family: Manrope; font-weight: 700; src: url(/static/vendor/fonts/manrope-latin-700-normal.woff2) format("woff2"); }
+@font-face { font-family: Manrope; font-weight: 800; src: url(/static/vendor/fonts/manrope-latin-800-normal.woff2) format("woff2"); }
+:root { --ink: #111827; --muted: #6b7280; --line: #ececf3; --bg: #f7f7fb; --indigo: #4f46e5; --indigo-2: #6366f1;
+  --coral: #ff6b5a; --mint: #10b981; --sun: #f5b400; --sky: #0ea5e9; --plum: #a855f7; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: Manrope, system-ui, sans-serif; color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1200px; margin: 0 auto; padding: 0 32px; }
+nav { height: 70px; background: #fff; border-bottom: 1px solid var(--line); }
+nav .wrap { height: 100%; display: flex; align-items: center; gap: 30px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; letter-spacing: -.4px; }
+.brand svg { width: 34px; height: 34px; color: var(--indigo); }
+nav .links { display: flex; gap: 6px; }
+nav .links a { padding: 8px 14px; border-radius: 10px; font-weight: 700; font-size: 14.5px; color: var(--muted); }
+nav .links a.on { background: #eef0ff; color: var(--indigo); }
+nav .right { margin-left: auto; display: flex; gap: 12px; align-items: center; }
+.streak { font-weight: 800; color: var(--coral); background: #fff1ef; padding: 7px 12px; border-radius: 12px; font-size: 14px; }
+.xp { font-weight: 800; color: #9a6c00; background: #fff7d6; padding: 7px 12px; border-radius: 12px; font-size: 14px; }
+.avatar { width: 38px; height: 38px; border-radius: 12px; background: var(--indigo); color: #fff; display: grid; place-items: center; font-weight: 800; }
+
+.layout { display: grid; grid-template-columns: 1fr 360px; gap: 30px; padding: 36px 0 70px; }
+.hello { background: #fff; border: 1px solid var(--line); border-radius: 28px; padding: 34px 36px; display: grid; grid-template-columns: 1fr 210px; gap: 18px; align-items: center; overflow: hidden; position: relative; }
+.hello h1 { font-size: 40px; line-height: 1.08; letter-spacing: -1.4px; margin: 0 0 12px; font-weight: 800; }
+.hello h1 em { font-style: normal; color: var(--indigo); }
+.hello p { color: var(--muted); font-size: 16.5px; line-height: 1.6; margin: 0 0 22px; }
+.btn { display: inline-flex; gap: 8px; align-items: center; padding: 14px 22px; border-radius: 14px; font-weight: 800; font-size: 15.5px; background: var(--indigo); color: #fff; box-shadow: 0 6px 0 #3730a3; }
+.btn.ghost { background: #fff; color: var(--ink); box-shadow: none; border: 2px solid var(--line); margin-left: 8px; }
+.art { width: 210px; height: 190px; position: relative; }
+.art .blob { position: absolute; border-radius: 50%; }
+.art svg.bird { position: absolute; left: 36px; top: 30px; width: 140px; color: var(--indigo); transform: rotate(-12deg); }
+
+h2 { font-size: 22px; letter-spacing: -.5px; margin: 34px 0 6px; font-weight: 800; }
+.sub { color: var(--muted); margin: 0 0 18px; font-weight: 600; }
+.path { background: #fff; border: 1px solid var(--line); border-radius: 28px; padding: 26px 20px 30px; position: relative; }
+.unit { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 18px; color: #fff; margin: 0 0 20px; }
+.unit b { font-size: 17px; } .unit span { opacity: .85; font-size: 13.5px; font-weight: 600; display: block; }
+.unit .ic { width: 44px; height: 44px; border-radius: 14px; background: rgba(255,255,255,.2); display: grid; place-items: center; }
+.unit .ic svg { width: 24px; height: 24px; }
+.steps { position: relative; height: 450px; margin-top: 10px; }
+.node { position: absolute; width: 76px; height: 70px; transform: translateX(-50%); }
+.node .b { width: 76px; height: 70px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 22px; color: #fff; }
+.node.done .b { background: var(--c); box-shadow: 0 7px 0 var(--d); }
+.node.now .b { background: var(--c); box-shadow: 0 7px 0 var(--d), 0 0 0 8px #eef0ff; }
+.node.lock .b { background: #e5e7eb; color: #9ca3af; box-shadow: 0 7px 0 #d1d5db; }
+.node .b svg { width: 30px; height: 30px; }
+.node .tip { position: absolute; top: -6px; left: 300px; width: 190px !important; background: #fff; border: 2px solid var(--line); border-radius: 14px;
+  padding: 10px 14px; width: 230px; box-shadow: 0 10px 30px rgba(17,24,39,.08); }
+.node .tip b { display: block; font-size: 14.5px; } .node .tip span { color: var(--muted); font-size: 12.5px; font-weight: 600; }
+.node .tip a { display: block; margin-top: 8px; text-align: center; background: var(--indigo); color: #fff; border-radius: 10px; padding: 8px; font-weight: 800; font-size: 13.5px; box-shadow: 0 4px 0 #3730a3; }
+.navi { position: absolute; width: 64px; color: var(--indigo); }
+
+.side .card { background: #fff; border: 1px solid var(--line); border-radius: 24px; padding: 22px; margin-bottom: 18px; }
+.side h3 { margin: 0 0 14px; font-size: 17px; font-weight: 800; }
+.rank { display: flex; gap: 14px; align-items: center; }
+.rank .m { width: 58px; height: 58px; border-radius: 18px; background: linear-gradient(135deg, #ffd34d, #f59e0b); display: grid; place-items: center; box-shadow: 0 5px 0 #b45309; }
+.rank .m svg { width: 30px; height: 30px; color: #fff; }
+.rank b { font-size: 20px; display: block; } .rank span { color: var(--muted); font-weight: 600; font-size: 13.5px; }
+.bar { height: 14px; background: #f1f1f6; border-radius: 99px; overflow: hidden; margin: 16px 0 8px; }
+.bar i { display: block; height: 100%; width: 30%; background: linear-gradient(90deg, var(--sun), #f59e0b); border-radius: 99px; }
+.legsbar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.legsbar i { height: 10px; border-radius: 99px; background: #eceef4; display: block; position: relative; overflow: hidden; }
+.legsbar i b { position: absolute; inset: 0; background: var(--c); width: var(--w); }
+.leglist { margin-top: 12px; font-size: 13.5px; }
+.leglist div { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed var(--line); font-weight: 700; }
+.leglist div span { color: var(--muted); }
+.badges { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.bd { aspect-ratio: 1; border-radius: 18px; display: grid; place-items: center; background: #f3f4f6; color: #c4c8d0; }
+.bd svg { width: 26px; height: 26px; }
+.bd.on { background: var(--c); color: #fff; box-shadow: 0 5px 0 var(--d); }
+
+.preview { margin: 0 0 70px; background: #fff; border: 1px solid var(--line); border-radius: 28px; overflow: hidden; }
+.preview .top { display: flex; align-items: center; gap: 14px; padding: 18px 24px; border-bottom: 1px solid var(--line); }
+.preview .top .x { width: 34px; height: 34px; border-radius: 10px; background: #f3f4f6; display: grid; place-items: center; color: var(--muted); font-weight: 800; }
+.preview .top .prog { flex: 1; height: 14px; background: #f1f1f6; border-radius: 99px; overflow: hidden; }
+.preview .top .prog i { display: block; height: 100%; width: 42%; background: var(--mint); border-radius: 99px; }
+.preview .cols { display: grid; grid-template-columns: 1fr 1fr; }
+.preview .doc { padding: 30px 34px; }
+.preview .doc .lbl { color: var(--indigo); font-weight: 800; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; }
+.preview .doc h3 { font-size: 30px; letter-spacing: -1px; margin: 8px 0 12px; line-height: 1.1; }
+.preview .doc p { color: #374151; line-height: 1.7; font-size: 15.5px; }
+.preview .task { background: #eef0ff; border-radius: 18px; padding: 16px 18px; margin-top: 16px; }
+.preview .task b { color: var(--indigo); }
+.preview .code { background: #0f1222; color: #d6dbf5; font-family: ui-monospace, monospace; font-size: 13.5px; line-height: 1.75; padding: 26px; }
+.code .k { color: #a5b4fc; } .code .s { color: #fcd34d; } .code .c { color: #6b7280; } .code .n { color: #6ee7b7; }
+.preview .bottom { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; border-top: 1px solid var(--line); background: #ecfdf5; }
+.preview .bottom b { color: #047857; }
+.cap { text-align: center; color: var(--muted); font-size: 13px; margin: -50px 0 60px; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="bird" viewBox="0 0 64 64"><path fill="currentColor" d="M62 32 Q58.5 28.4 51 28.6 Q47 13 21 5 Q31 17 37.5 29 Q32 29.4 27 30.4 L3 22.5 Q12.5 29.4 17.5 32 Q12.5 34.6 3 41.5 L27 33.6 Q32 34.6 37.5 35 Q31 47 21 59 Q47 51 51 35.4 Q58.5 35.6 62 32 Z"/></symbol>
+  <symbol id="check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2.5" fill="currentColor"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2.4"/></symbol>
+  <symbol id="star" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2.8l2.8 5.8 6.3.9-4.6 4.4 1.1 6.3L12 17.2l-5.6 3 1.1-6.3L2.9 9.5l6.3-.9z"/></symbol>
+  <symbol id="nodes" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="5" cy="6" r="2.6"/><circle cx="19" cy="6" r="2.6"/><circle cx="12" cy="18" r="2.6"/><path d="M7.4 7.4l3.2 8.2M16.6 7.4l-3.2 8.2M7.6 6h8.8"/></g></symbol>
+  <symbol id="compass" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z" fill="currentColor"/></g></symbol>
+  <symbol id="eye" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.2"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></g></symbol>
+</defs></svg>
+<nav><div class="wrap">
+  <div class="brand"><svg><use href="#bird"/></svg>NAVERA Academy</div>
+  <div class="links"><a class="on">Learn</a><a>Map</a><a>Badges</a><a>Workbench</a></div>
+  <div class="right"><span class="streak">🔥 4</span><span class="xp">⭐ 900 XP</span><div class="avatar">M</div></div>
+</div></nav>
+<div class="wrap">
+  <div class="layout">
+    <main>
+      <div class="hello">
+        <div><h1>Navigate without GPS — <em>the way birds do.</em></h1>
+          <p>Welcome back, Maryam. You're on mission 10 of 30: build a fake GNSS receiver in ROS 2 and watch NAVERA's arbiter judge it.</p>
+          <a class="btn">Continue mission 10 →</a><a class="btn ghost">Flight map</a></div>
+        <div class="art"><div class="blob" style="width:170px;height:170px;left:20px;top:10px;background:#eef0ff"></div>
+          <div class="blob" style="width:60px;height:60px;left:150px;top:0;background:#ffe6e2"></div>
+          <div class="blob" style="width:40px;height:40px;left:0;top:130px;background:#d1fae5"></div>
+          <svg class="bird"><use href="#bird"/></svg></div>
+      </div>
+
+      <h2>Leg 3 · ROS 2: nodes, topics and contracts</h2><p class="sub">Robots talk to each other like a flock. 2 of 6 missions done.</p>
+      <div class="path">
+        <div class="unit" style="background:linear-gradient(135deg,#4f46e5,#6366f1)"><div class="ic"><svg><use href="#nodes"/></svg></div><div><b>Flying in a flock</b><span>DDS discovery · publishers · subscribers · launch · testing</span></div></div>
+        <div class="steps">
+          <div class="node done" style="left:50%;top:10px;--c:#4f46e5;--d:#3730a3"><div class="b"><svg><use href="#check"/></svg></div></div>
+          <div class="node now" style="left:34%;top:96px;--c:#4f46e5;--d:#3730a3"><div class="b"><svg><use href="#star"/></svg></div>
+            <div class="tip"><b>10 · Your first publisher</b><span>A fake GNSS receiver · 3 h · +100 XP</span><a>Continue</a></div></div>
+          <svg class="navi" style="left:16%;top:104px;transform:rotate(-10deg)"><use href="#bird"/></svg>
+          <div class="node lock" style="left:50%;top:190px"><div class="b"><svg><use href="#lock"/></svg></div></div>
+          <div class="node lock" style="left:66%;top:276px"><div class="b"><svg><use href="#lock"/></svg></div></div>
+          <div class="node lock" style="left:50%;top:360px"><div class="b"><svg><use href="#lock"/></svg></div></div>
+        </div>
+      </div>
+    </main>
+    <aside class="side">
+      <div class="card"><div class="rank"><div class="m"><svg><use href="#compass"/></svg></div><div><b>Wayfinder</b><span>rank 3 of 6 · 900 XP</span></div></div>
+        <div class="bar"><i></i></div><span style="color:var(--muted);font-weight:700;font-size:13px">6 missions to Navigator</span></div>
+      <div class="card"><h3>Your journey</h3>
+        <div class="legsbar"><i style="--c:#ff6b5a;--w:100%"><b></b></i><i style="--c:#10b981;--w:100%"><b></b></i><i style="--c:#4f46e5;--w:33%"><b></b></i><i style="--c:#f5b400;--w:0"><b></b></i><i style="--c:#0ea5e9;--w:0"><b></b></i><i style="--c:#a855f7;--w:0"><b></b></i><i style="--c:#111827;--w:0"><b></b></i></div>
+        <div class="leglist"><div>Foundations <span>5/5</span></div><div>Geodesy, maps, images <span>3/3</span></div><div>ROS 2 <span>1/6</span></div><div>Sensors <span>0/5</span></div><div>Vision <span>0/5</span></div></div></div>
+      <div class="card"><h3>Badges</h3><div class="badges">
+        <div class="bd on" style="--c:#ff6b5a;--d:#c2412d"><svg><use href="#star"/></svg></div><div class="bd on" style="--c:#10b981;--d:#047857"><svg><use href="#compass"/></svg></div>
+        <div class="bd on" style="--c:#f5b400;--d:#b45309"><svg><use href="#bird"/></svg></div><div class="bd"><svg><use href="#nodes"/></svg></div>
+        <div class="bd"><svg><use href="#eye"/></svg></div><div class="bd"><svg><use href="#lock"/></svg></div><div class="bd"><svg><use href="#lock"/></svg></div><div class="bd"><svg><use href="#lock"/></svg></div></div></div>
+    </aside>
+  </div>
+
+  <div class="preview">
+    <div class="top"><div class="x">✕</div><div class="prog"><i></i></div><span style="font-weight:800;color:var(--mint)">3 / 7 tasks</span></div>
+    <div class="cols">
+      <div class="doc"><div class="lbl">Mission 10 · Briefing</div><h3>A node is an object</h3>
+        <p>In mission 03 you wrote classes. A <b>rclpy</b> node is an object of a class that inherits from <code>Node</code>. Its constructor declares parameters, creates a publisher and starts a timer that fires twice per second.</p>
+        <div class="task"><b>Task 4 ·</b> Complete <code>position_at(t)</code> so the receiver drives 5 m/s on heading 030° from the Grand Mosque in Muscat.</div></div>
+      <div class="code"><span class="k">class</span> FakeGnss(Node):<br>&nbsp;&nbsp;<span class="k">def</span> __init__(self):<br>&nbsp;&nbsp;&nbsp;&nbsp;super().__init__(<span class="s">"fake_gps"</span>)<br>&nbsp;&nbsp;&nbsp;&nbsp;self.declare_parameter(<span class="s">"speed_mps"</span>, <span class="n">5.0</span>)<br>&nbsp;&nbsp;&nbsp;&nbsp;self.pub = self.create_publisher(NavSatFix, <span class="s">"/fake_gps/fix"</span>, <span class="n">10</span>)<br>&nbsp;&nbsp;&nbsp;&nbsp;self.timer = self.create_timer(<span class="n">0.5</span>, self.tick)<br><br>&nbsp;&nbsp;<span class="k">def</span> tick(self):<br>&nbsp;&nbsp;&nbsp;&nbsp;<span class="c"># TODO 3: fill the message</span><br>&nbsp;&nbsp;&nbsp;&nbsp;msg.position_covariance = [<span class="n">9.0</span>, <span class="n">0.0</span>, …]</div>
+    </div>
+    <div class="bottom"><b>✓ 11 of 13 checks passed — almost there!</b><a class="btn" style="background:var(--mint);box-shadow:0 5px 0 #047857;padding:11px 20px">Check my work</a></div>
+  </div>
+  <p class="cap">Mockup B · Bright Studio — white, bold, playful path of missions</p>
+</div>
+</body>
+</html>

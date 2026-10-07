@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup C · Cinematic Oman</title>
+<style>
+@font-face { font-family: Fraunces; font-weight: 500; src: url(/static/vendor/fonts/fraunces-latin-500-normal.woff2) format("woff2"); }
+@font-face { font-family: Fraunces; font-weight: 600; src: url(/static/vendor/fonts/fraunces-latin-600-normal.woff2) format("woff2"); }
+@font-face { font-family: Fraunces; font-weight: 700; src: url(/static/vendor/fonts/fraunces-latin-700-normal.woff2) format("woff2"); }
+@font-face { font-family: Inter; font-weight: 400; src: url(/static/vendor/fonts/inter-latin-400-normal.woff2) format("woff2"); }
+@font-face { font-family: Inter; font-weight: 500; src: url(/static/vendor/fonts/inter-latin-500-normal.woff2) format("woff2"); }
+@font-face { font-family: Inter; font-weight: 600; src: url(/static/vendor/fonts/inter-latin-600-normal.woff2) format("woff2"); }
+@font-face { font-family: Inter; font-weight: 700; src: url(/static/vendor/fonts/inter-latin-700-normal.woff2) format("woff2"); }
+:root { --ivory: #f8f4ec; --ink: #1d1a17; --muted: #7a7065; --line: #e6ddcf; --gold: #c8892f; --gold-2: #e0a64a; --night: #12172b; --teal: #1f7a74; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: Inter, system-ui, sans-serif; color: var(--ink); background: var(--ivory); -webkit-font-smoothing: antialiased; }
+.serif { font-family: Fraunces, Georgia, serif; }
+.hero { position: relative; height: 560px; color: #fff; overflow: hidden; }
+.hero svg.scene { position: absolute; inset: 0; width: 100%; height: 100%; }
+nav { position: relative; z-index: 2; max-width: 1220px; margin: 0 auto; padding: 22px 32px; display: flex; align-items: center; gap: 30px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: 3px; font-size: 13px; text-transform: uppercase; }
+.brand svg { width: 30px; height: 30px; color: #fff; }
+nav .links { display: flex; gap: 26px; font-size: 14px; color: rgba(255,255,255,.75); }
+nav .links a.on { color: #fff; }
+nav .right { margin-left: auto; display: flex; align-items: center; gap: 12px; font-size: 14px; }
+.avatar { width: 36px; height: 36px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.6); display: grid; place-items: center; font-weight: 600; }
+.content { position: relative; z-index: 2; max-width: 1220px; margin: 0 auto; padding: 50px 32px 0; display: grid; grid-template-columns: 1.3fr .8fr; gap: 40px; align-items: end; }
+.kicker { font-size: 12.5px; letter-spacing: 3.5px; text-transform: uppercase; color: #ffd9a3; font-weight: 600; }
+.hero h1 { font-family: Fraunces, serif; font-weight: 600; font-size: 62px; line-height: 1.02; letter-spacing: -1.5px; margin: 14px 0 18px; }
+.hero h1 i { font-style: normal; color: #ffd08a; }
+.hero p { color: rgba(255,255,255,.82); font-size: 17px; line-height: 1.6; max-width: 560px; margin: 0 0 28px; }
+.btn { display: inline-flex; gap: 10px; align-items: center; padding: 14px 24px; border-radius: 999px; font-weight: 600; font-size: 15px; }
+.btn.gold { background: linear-gradient(135deg, #f2bb62, #d58d2e); color: #2a1700; box-shadow: 0 12px 30px rgba(213,141,46,.4); }
+.btn.line { border: 1px solid rgba(255,255,255,.5); color: #fff; margin-left: 10px; }
+.glass { background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.22); backdrop-filter: blur(16px); border-radius: 24px; padding: 24px; }
+.glass .t { font-size: 12px; letter-spacing: 2.5px; text-transform: uppercase; color: rgba(255,255,255,.7); font-weight: 600; }
+.glass .big { font-family: Fraunces, serif; font-size: 44px; font-weight: 600; margin: 4px 0 2px; }
+.glass .big small { font-size: 18px; color: rgba(255,255,255,.7); }
+.glass .bar { height: 6px; background: rgba(255,255,255,.18); border-radius: 99px; margin: 14px 0 16px; overflow: hidden; }
+.glass .bar i { display: block; height: 100%; width: 30%; background: linear-gradient(90deg, #ffd08a, #f2a548); }
+.glass .row { display: flex; justify-content: space-between; font-size: 14px; padding: 8px 0; border-top: 1px solid rgba(255,255,255,.15); color: rgba(255,255,255,.85); }
+.glass .row b { color: #fff; font-weight: 600; }
+
+.wrap { max-width: 1220px; margin: 0 auto; padding: 0 32px; }
+.journey { margin-top: -54px; position: relative; z-index: 3; background: #fff; border-radius: 26px; box-shadow: 0 24px 60px rgba(40,30,10,.12); padding: 26px 30px; display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
+.leg { padding: 6px 10px; border-left: 1px solid var(--line); }
+.leg:first-child { border-left: none; }
+.leg .n { font-family: Fraunces, serif; font-size: 13px; color: var(--muted); }
+.leg b { display: block; font-size: 14.5px; margin: 4px 0 10px; font-weight: 600; }
+.leg .p { height: 4px; background: #efe8dc; border-radius: 99px; overflow: hidden; }
+.leg .p i { display: block; height: 100%; background: var(--gold); }
+.leg span { display: block; font-size: 12px; color: var(--muted); margin-top: 6px; }
+.leg.cur b { color: var(--gold); }
+
+.sec { display: grid; grid-template-columns: 300px 1fr; gap: 50px; margin: 70px 0; }
+.sec h2 { font-family: Fraunces, serif; font-weight: 600; font-size: 38px; line-height: 1.08; letter-spacing: -.8px; margin: 6px 0 14px; }
+.sec .kicker { color: var(--gold); }
+.sec p.intro { color: var(--muted); line-height: 1.7; font-size: 15.5px; }
+.list { border-top: 1px solid var(--line); }
+.item { display: grid; grid-template-columns: 70px 1fr 110px 120px; align-items: center; gap: 18px; padding: 22px 6px; border-bottom: 1px solid var(--line); }
+.item .no { font-family: Fraunces, serif; font-size: 34px; color: #cdbfa8; font-weight: 500; }
+.item.done .no { color: var(--teal); }
+.item.now { background: linear-gradient(90deg, #fff6e6, transparent); border-radius: 14px; }
+.item.now .no { color: var(--gold); }
+.item h3 { font-size: 18px; margin: 0 0 4px; font-weight: 600; letter-spacing: -.2px; }
+.item p { margin: 0; color: var(--muted); font-size: 14px; }
+.item .dur { color: var(--muted); font-size: 14px; }
+.status { font-size: 12.5px; font-weight: 600; padding: 6px 12px; border-radius: 99px; text-align: center; }
+.status.done { background: #e4f2ef; color: var(--teal); }
+.status.now { background: var(--night); color: #ffd08a; }
+.status.next { border: 1px solid var(--line); color: var(--muted); }
+
+.preview { background: #fff; border-radius: 26px; box-shadow: 0 24px 60px rgba(40,30,10,.1); overflow: hidden; margin-bottom: 70px; }
+.preview .head { position: relative; height: 150px; color: #fff; overflow: hidden; }
+.preview .head svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.preview .head .tx { position: relative; padding: 26px 34px; }
+.preview .head .tx .kicker { font-size: 11.5px; }
+.preview .head h3 { font-family: Fraunces, serif; font-size: 34px; font-weight: 600; margin: 8px 0 0; letter-spacing: -.6px; }
+.preview .cols { display: grid; grid-template-columns: 1fr 1fr; }
+.preview .doc { padding: 30px 36px; }
+.preview .doc h4 { font-family: Fraunces, serif; font-size: 24px; margin: 0 0 10px; font-weight: 600; }
+.preview .doc p { color: #4a4238; line-height: 1.75; font-size: 15.5px; }
+.preview .note { border-left: 3px solid var(--gold); background: #fbf5ea; padding: 14px 18px; border-radius: 0 14px 14px 0; margin-top: 16px; font-size: 15px; color: #4a4238; }
+.preview .note b { color: var(--gold); letter-spacing: 1.5px; font-size: 12px; text-transform: uppercase; display: block; margin-bottom: 4px; }
+.preview .code { background: #12172b; color: #dfe3f0; font-family: ui-monospace, monospace; font-size: 13.5px; line-height: 1.75; padding: 28px; }
+.code .k { color: #f2b763; } .code .s { color: #e6d3a3; } .code .c { color: #6c7590; } .code .n { color: #7fd1c7; }
+.preview .bottom { display: flex; justify-content: space-between; align-items: center; padding: 16px 30px; border-top: 1px solid var(--line); }
+.cap { text-align: center; color: var(--muted); font-size: 13px; margin: -50px 0 60px; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="bird" viewBox="0 0 64 64"><path fill="currentColor" d="M62 32 Q58.5 28.4 51 28.6 Q47 13 21 5 Q31 17 37.5 29 Q32 29.4 27 30.4 L3 22.5 Q12.5 29.4 17.5 32 Q12.5 34.6 3 41.5 L27 33.6 Q32 34.6 37.5 35 Q31 47 21 59 Q47 51 51 35.4 Q58.5 35.6 62 32 Z"/></symbol>
+  <linearGradient id="dusk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0f1530"/><stop offset=".45" stop-color="#3b3a6b"/><stop offset=".72" stop-color="#c9707a"/><stop offset=".9" stop-color="#f2a65e"/><stop offset="1" stop-color="#f7c27a"/></linearGradient>
+  <linearGradient id="r1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5a4a78"/><stop offset="1" stop-color="#3a3157"/></linearGradient>
+  <linearGradient id="r2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a3157"/><stop offset="1" stop-color="#241f3c"/></linearGradient>
+  <linearGradient id="dune" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b9784a"/><stop offset="1" stop-color="#7c4a2c"/></linearGradient>
+  <radialGradient id="sun" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#fff1c9"/><stop offset=".5" stop-color="#ffc77a"/><stop offset="1" stop-color="#ffc77a" stop-opacity="0"/></radialGradient>
+</defs></svg>
+
+<header class="hero">
+  <svg class="scene" viewBox="0 0 1440 560" preserveAspectRatio="xMidYMid slice">
+    <rect width="1440" height="560" fill="url(#dusk)"/>
+    <g fill="#fff" opacity=".8"><circle cx="120" cy="60" r="1.2"/><circle cx="260" cy="110" r="1"/><circle cx="420" cy="40" r="1.4"/><circle cx="620" cy="90" r="1"/>
+      <circle cx="760" cy="30" r="1.2"/><circle cx="980" cy="70" r="1"/><circle cx="1120" cy="40" r="1.3"/><circle cx="1300" cy="100" r="1"/><circle cx="1380" cy="50" r="1.2"/><circle cx="560" cy="150" r=".9"/></g>
+    <path d="M1180 92 a26 26 0 1 0 22 40 a20 20 0 1 1 -22 -40z" fill="#fff4dc" opacity=".9"/>
+    <circle cx="980" cy="430" r="160" fill="url(#sun)" opacity=".8"/>
+    <path d="M0 400 L120 330 L210 370 L330 280 L450 360 L560 300 L680 380 L800 300 L930 370 L1060 290 L1190 360 L1300 310 L1440 360 L1440 560 L0 560Z" fill="url(#r1)"/>
+    <path d="M0 440 L140 380 L260 420 L400 350 L520 420 L660 370 L780 440 L920 380 L1060 440 L1200 390 L1440 430 L1440 560 L0 560Z" fill="url(#r2)"/>
+    <path d="M0 500 Q240 450 480 495 T960 490 T1440 480 L1440 560 L0 560Z" fill="url(#dune)"/>
+    <path d="M0 530 Q300 500 640 528 T1440 520 L1440 560 L0 560Z" fill="#5c3520" opacity=".7"/>
+    <g fill="#14112a" opacity=".85"><use href="#bird" x="1040" y="170" width="38" height="38" transform="rotate(-8 1059 189)"/><use href="#bird" x="1092" y="200" width="26" height="26"/><use href="#bird" x="1000" y="214" width="22" height="22"/></g>
+  </svg>
+  <nav><div class="brand"><svg><use href="#bird"/></svg>NAVERA Academy</div>
+    <div class="links"><a class="on">Journey</a><a>Missions</a><a>Field notes</a><a>Workbench</a></div>
+    <div class="right"><span>Maryam</span><div class="avatar">M</div></div></nav>
+  <div class="content">
+    <div><div class="kicker">Leg 3 of 7 · Flying in a flock</div>
+      <h1>Find your way<br>when the <i>sky goes quiet.</i></h1>
+      <p>Every autumn, swallows cross Oman without a single satellite. In 30 missions you will build the same skills for machines — on NAVERA's real code.</p>
+      <a class="btn gold">Continue mission 10 →</a><a class="btn line">See the journey</a></div>
+    <div class="glass"><div class="t">Your expedition</div><div class="big">9 <small>/ 30 missions</small></div>
+      <div class="bar"><i></i></div>
+      <div class="row"><span>Rank</span><b>Wayfinder</b></div><div class="row"><span>Experience</span><b>900 XP</b></div><div class="row"><span>Next milestone</span><b>Navigator · 6 missions</b></div></div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="journey">
+    <div class="leg"><div class="n">I</div><b>Foundations</b><div class="p"><i style="width:100%"></i></div><span>5 / 5</span></div>
+    <div class="leg"><div class="n">II</div><b>Geodesy &amp; maps</b><div class="p"><i style="width:100%"></i></div><span>3 / 3</span></div>
+    <div class="leg cur"><div class="n">III</div><b>ROS 2</b><div class="p"><i style="width:17%"></i></div><span>1 / 6</span></div>
+    <div class="leg"><div class="n">IV</div><b>Sensors</b><div class="p"><i style="width:0"></i></div><span>0 / 5</span></div>
+    <div class="leg"><div class="n">V</div><b>Vision</b><div class="p"><i style="width:0"></i></div><span>0 / 5</span></div>
+    <div class="leg"><div class="n">VI</div><b>Fusion</b><div class="p"><i style="width:0"></i></div><span>0 / 3</span></div>
+    <div class="leg"><div class="n">VII</div><b>System</b><div class="p"><i style="width:0"></i></div><span>0 / 3</span></div>
+  </div>
+
+  <section class="sec">
+    <div><div class="kicker">Leg III</div><h2>Flying in a flock</h2><p class="intro">A starling follows its six or seven nearest neighbours; a ROS 2 node listens to the topics it needs. Six missions on how NAVERA's parts talk — and how to prove they do it right.</p></div>
+    <div class="list">
+      <div class="item done"><div class="no">09</div><div><h3>The ROS 2 graph: nodes, topics, discovery and QoS</h3><p>DDS discovery, the port formula and QoS on a live graph</p></div><div class="dur">3 h</div><div class="status done">Complete</div></div>
+      <div class="item now"><div class="no">10</div><div><h3>Your first publisher: a fake GNSS receiver</h3><p>A Node class, timers, live parameters and honest covariance</p></div><div class="dur">3 h</div><div class="status now">In progress</div></div>
+      <div class="item"><div class="no">11</div><div><h3>Subscribers, callbacks and executors</h3><p>Listening with memory — and what threads change</p></div><div class="dur">3 h 30</div><div class="status next">Up next</div></div>
+      <div class="item"><div class="no">12</div><div><h3>The position contract: covariance and stamps</h3><p>Error ellipses, χ² gates and 13 faults against the arbiter</p></div><div class="dur">3 h</div><div class="status next">Later</div></div>
+    </div>
+  </section>
+
+  <div class="preview">
+    <div class="head"><svg viewBox="0 0 1200 150" preserveAspectRatio="xMidYMid slice"><rect width="1200" height="150" fill="url(#dusk)"/>
+      <path d="M0 120 L120 80 L230 110 L360 60 L480 105 L600 70 L740 115 L880 75 L1020 110 L1200 85 L1200 150 L0 150Z" fill="url(#r2)"/></svg>
+      <div class="tx"><div class="kicker">Mission 10 · Briefing · 3 h · +100 XP</div><h3>Your first publisher: a fake GNSS receiver</h3></div></div>
+    <div class="cols">
+      <div class="doc"><h4>A node is an object</h4><p>In mission 03 you wrote classes. A <b>rclpy</b> node is an object of a class that inherits from <code>Node</code>. Its constructor declares parameters, creates a publisher and starts a timer that fires twice per second.</p>
+        <div class="note"><b>Your task</b>Complete <code>position_at(t)</code> so the receiver drives at 5 m/s on heading 030° from the Grand Mosque in Muscat.</div></div>
+      <div class="code"><span class="k">class</span> FakeGnss(Node):<br>&nbsp;&nbsp;<span class="k">def</span> __init__(self):<br>&nbsp;&nbsp;&nbsp;&nbsp;super().__init__(<span class="s">"fake_gps"</span>)<br>&nbsp;&nbsp;&nbsp;&nbsp;self.declare_parameter(<span class="s">"speed_mps"</span>, <span class="n">5.0</span>)<br>&nbsp;&nbsp;&nbsp;&nbsp;self.pub = self.create_publisher(NavSatFix, <span class="s">"/fake_gps/fix"</span>, <span class="n">10</span>)<br>&nbsp;&nbsp;&nbsp;&nbsp;self.timer = self.create_timer(<span class="n">0.5</span>, self.tick)<br><br>&nbsp;&nbsp;<span class="k">def</span> tick(self):<br>&nbsp;&nbsp;&nbsp;&nbsp;<span class="c"># TODO 3: fill the message</span><br>&nbsp;&nbsp;&nbsp;&nbsp;msg.position_covariance = [<span class="n">9.0</span>, <span class="n">0.0</span>, …]</div>
+    </div>
+    <div class="bottom"><span style="color:var(--muted);font-size:14px">Last check · 11 of 13 passed</span><a class="btn gold" style="padding:11px 22px">Check my work</a></div>
+  </div>
+  <p class="cap">Mockup C · Cinematic Oman — landscape hero, serif titles, journey timeline</p>
+</div>
+</body>
+</html>

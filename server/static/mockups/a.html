@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup A · Mission Control</title>
+<style>
+@font-face { font-family: Inter; font-weight: 400; src: url(/static/vendor/fonts/inter-latin-400-normal.woff2) format("woff2"); }
+@font-face { font-family: Inter; font-weight: 500; src: url(/static/vendor/fonts/inter-latin-500-normal.woff2) format("woff2"); }
+@font-face { font-family: Inter; font-weight: 600; src: url(/static/vendor/fonts/inter-latin-600-normal.woff2) format("woff2"); }
+@font-face { font-family: Inter; font-weight: 700; src: url(/static/vendor/fonts/inter-latin-700-normal.woff2) format("woff2"); }
+@font-face { font-family: Inter; font-weight: 800; src: url(/static/vendor/fonts/inter-latin-800-normal.woff2) format("woff2"); }
+:root { --bg: #070b16; --panel: rgba(255,255,255,.04); --line: rgba(255,255,255,.09); --ink: #e8edf7; --muted: #8a96ad;
+  --amber: #ffb547; --amber-2: #ff8a3d; --teal: #3ee6c4; --violet: #9b8cff; --rose: #ff6b8b; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: Inter, system-ui, sans-serif; color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; }
+body::before { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: -1;
+  background: radial-gradient(900px 500px at 12% -10%, rgba(255,150,60,.16), transparent 60%),
+              radial-gradient(800px 600px at 100% 30%, rgba(62,230,196,.10), transparent 60%),
+              radial-gradient(700px 500px at 40% 110%, rgba(155,140,255,.10), transparent 60%); }
+a { color: inherit; text-decoration: none; }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 0 32px; }
+nav { height: 64px; display: flex; align-items: center; gap: 28px; border-bottom: 1px solid var(--line); background: rgba(7,11,22,.7); backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 5; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: -.2px; font-size: 16px; }
+.brand .mk { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: linear-gradient(135deg, var(--amber), var(--amber-2)); color: #1a0f00; }
+.brand .mk svg { width: 20px; height: 20px; }
+.brand span { color: var(--muted); font-weight: 500; }
+nav .links { display: flex; gap: 22px; font-size: 14px; color: var(--muted); font-weight: 500; }
+nav .links a.on { color: var(--ink); }
+nav .right { margin-left: auto; display: flex; align-items: center; gap: 14px; font-size: 13.5px; color: var(--muted); }
+.pill { border: 1px solid var(--line); border-radius: 99px; padding: 6px 12px; display: inline-flex; gap: 8px; align-items: center; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 10px var(--teal); }
+.avatar { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, #5b6cff, #9b8cff); display: grid; place-items: center; color: #fff; font-weight: 700; }
+
+.hero { display: grid; grid-template-columns: 1.35fr .9fr; gap: 28px; padding: 54px 0 34px; align-items: center; }
+.eyebrow { font-size: 12.5px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; color: var(--amber); display: flex; gap: 10px; align-items: center; }
+.eyebrow i { width: 26px; height: 1px; background: var(--amber); display: inline-block; }
+h1 { font-size: 50px; line-height: 1.04; letter-spacing: -1.6px; margin: 14px 0 16px; font-weight: 800;
+  background: linear-gradient(180deg, #fff 30%, #b9c4da); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.lead { color: var(--muted); font-size: 17px; line-height: 1.6; max-width: 600px; margin: 0 0 26px; }
+.meta { display: flex; gap: 18px; color: var(--muted); font-size: 14px; margin-bottom: 28px; flex-wrap: wrap; }
+.meta b { color: var(--ink); font-weight: 600; }
+.btn { display: inline-flex; align-items: center; gap: 10px; padding: 13px 22px; border-radius: 12px; font-weight: 600; font-size: 15px; border: 1px solid var(--line); color: var(--ink); background: var(--panel); }
+.btn.primary { background: linear-gradient(135deg, var(--amber), var(--amber-2)); color: #1a0f00; border: none; box-shadow: 0 10px 30px rgba(255,140,60,.35); }
+.glass { background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02)); border: 1px solid var(--line); border-radius: 22px; backdrop-filter: blur(14px); }
+.stats { padding: 26px; }
+.ringrow { display: flex; gap: 22px; align-items: center; }
+.ring { width: 126px; height: 126px; position: relative; flex: none; }
+.ring svg { transform: rotate(-90deg); }
+.ring .c { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
+.ring .c b { font-size: 30px; font-weight: 800; letter-spacing: -1px; display: block; }
+.ring .c span { font-size: 12px; color: var(--muted); }
+.rank b { font-size: 22px; font-weight: 700; letter-spacing: -.4px; }
+.rank .lbl { font-size: 12px; letter-spacing: 1.6px; color: var(--muted); text-transform: uppercase; font-weight: 600; }
+.rank .xp { color: var(--amber); font-weight: 600; margin-top: 4px; font-size: 14px; }
+.kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 22px; }
+.kpi { border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
+.kpi b { font-size: 20px; font-weight: 700; display: block; }
+.kpi span { font-size: 12px; color: var(--muted); }
+
+.section-h { display: flex; align-items: end; justify-content: space-between; margin: 40px 0 16px; }
+.section-h h2 { font-size: 22px; letter-spacing: -.5px; margin: 0; font-weight: 700; }
+.section-h span { color: var(--muted); font-size: 14px; }
+.flight { padding: 6px; overflow: hidden; }
+.flight svg { display: block; width: 100%; height: auto; border-radius: 18px; }
+
+.legs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+.legs .lg { font-size: 13px; padding: 7px 13px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); }
+.legs .lg.on { background: rgba(255,181,71,.12); border-color: rgba(255,181,71,.4); color: var(--amber); }
+.grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.mcard { position: relative; padding: 20px; overflow: hidden; min-height: 196px; display: flex; flex-direction: column; }
+.mcard::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--c); box-shadow: 0 0 18px var(--c); }
+.mcard .no { position: absolute; right: 14px; top: 2px; font-size: 64px; font-weight: 800; color: rgba(255,255,255,.04); letter-spacing: -3px; }
+.mcard .tag { font-size: 11.5px; font-weight: 600; letter-spacing: 1.4px; text-transform: uppercase; color: var(--c); }
+.mcard h3 { font-size: 17px; line-height: 1.3; margin: 10px 0 8px; font-weight: 650; letter-spacing: -.2px; }
+.mcard p { color: var(--muted); font-size: 13.5px; line-height: 1.5; margin: 0 0 14px; }
+.mcard .foot { margin-top: auto; display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; color: var(--muted); }
+.st { font-weight: 600; font-size: 12px; padding: 4px 10px; border-radius: 99px; }
+.st.done { background: rgba(62,230,196,.12); color: var(--teal); }
+.st.now { background: rgba(255,181,71,.14); color: var(--amber); }
+.st.lock { background: rgba(255,255,255,.05); color: var(--muted); }
+
+/* mission page preview */
+.window { margin: 46px 0 70px; overflow: hidden; }
+.wbar { height: 40px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; padding: 0 16px; color: var(--muted); font-size: 13px; }
+.wbar i { width: 11px; height: 11px; border-radius: 50%; background: rgba(255,255,255,.12); display: inline-block; }
+.split { display: grid; grid-template-columns: 1fr 1fr; min-height: 470px; }
+.doc { padding: 28px 32px; border-right: 1px solid var(--line); }
+.doc .eyebrow { margin-bottom: 8px; }
+.doc h2 { font-size: 30px; letter-spacing: -.8px; margin: 0 0 12px; line-height: 1.12; }
+.doc p { color: #b7c1d6; line-height: 1.7; font-size: 15px; }
+.doc .chips { display: flex; gap: 8px; margin: 14px 0 20px; }
+.doc .chips span { font-size: 12.5px; border: 1px solid var(--line); border-radius: 99px; padding: 5px 11px; color: var(--muted); }
+.task { border: 1px solid rgba(255,181,71,.35); background: rgba(255,181,71,.07); border-radius: 14px; padding: 14px 16px; margin-top: 18px; }
+.task b { color: var(--amber); font-size: 12px; letter-spacing: 1.4px; text-transform: uppercase; }
+.task p { margin: 6px 0 0; }
+.code { background: #050811; font-family: ui-monospace, "JetBrains Mono", monospace; font-size: 13.5px; line-height: 1.75; padding: 22px 24px; color: #c9d3e6; }
+.code .k { color: #ff9f5a; } .code .s { color: #ffd88a; } .code .c { color: #5d6a85; } .code .n { color: #6fe3cd; } .code .f { color: #a9b6ff; }
+.checkbar { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--line); padding: 14px 22px; }
+.score { font-weight: 700; color: var(--teal); }
+.cap { text-align: center; color: var(--muted); font-size: 13px; margin: -50px 0 60px; }
+</style>
+</head>
+<body>
+<nav><div class="wrap" style="display:flex;align-items:center;gap:28px;width:100%">
+  <div class="brand"><div class="mk"><svg viewBox="0 0 64 64"><path fill="currentColor" d="M62 32 Q58.5 28.4 51 28.6 Q47 13 21 5 Q31 17 37.5 29 Q32 29.4 27 30.4 L3 22.5 Q12.5 29.4 17.5 32 Q12.5 34.6 3 41.5 L27 33.6 Q32 34.6 37.5 35 Q31 47 21 59 Q47 51 51 35.4 Q58.5 35.6 62 32 Z"/></svg></div>NAVERA <span>Academy</span></div>
+  <div class="links"><a class="on">Missions</a><a>Flight map</a><a>Achievements</a><a>Workbench</a></div>
+  <div class="right"><span class="pill"><span class="dot"></span>Simulator free</span><div class="avatar">M</div></div>
+</div></nav>
+
+<div class="wrap">
+  <section class="hero">
+    <div>
+      <div class="eyebrow"><i></i>Mission 10 of 30 · Leg 3 · ROS 2</div>
+      <h1>Your first publisher:<br>a fake GNSS receiver</h1>
+      <p class="lead">Build a ROS 2 node that drives a virtual receiver out of Muscat — timers, clocks and honest covariance — and feed it to NAVERA's real arbiter.</p>
+      <div class="meta"><span>⏱ <b>3 h</b></span><span>◎ <b>7 tasks</b></span><span>✦ <b>+100 XP</b></span><span>Last opened <b>yesterday</b></span></div>
+      <a class="btn primary">Resume mission →</a> &nbsp; <a class="btn">View flight map</a>
+    </div>
+    <div class="glass stats">
+      <div class="ringrow">
+        <div class="ring"><svg width="126" height="126"><circle cx="63" cy="63" r="54" stroke="rgba(255,255,255,.08)" stroke-width="10" fill="none"/>
+          <circle cx="63" cy="63" r="54" stroke="url(#gr)" stroke-width="10" fill="none" stroke-linecap="round" stroke-dasharray="102 340"/>
+          <defs><linearGradient id="gr"><stop offset="0" stop-color="#ffb547"/><stop offset="1" stop-color="#ff8a3d"/></linearGradient></defs></svg>
+          <div class="c"><div><b>9</b><span>of 30 missions</span></div></div></div>
+        <div class="rank"><div class="lbl">Current rank</div><b>Wayfinder</b><div class="xp">900 XP · 600 to Navigator</div></div>
+      </div>
+      <div class="kpis"><div class="kpi"><b>4</b><span>day streak</span></div><div class="kpi"><b>27 h</b><span>flight time</span></div><div class="kpi"><b>3</b><span>badges</span></div></div>
+    </div>
+  </section>
+
+  <div class="section-h"><h2>Flight map</h2><span>30 waypoints · from first take-off to your own NAVERA improvement</span></div>
+  <div class="glass flight"><svg viewBox="0 0 1200 260">
+    <defs>
+      <pattern id="topo" width="240" height="240" patternUnits="userSpaceOnUse">
+        <g fill="none" stroke="rgba(255,255,255,.05)" stroke-width="1">
+          <path d="M-20 60 C40 20 100 90 160 50 S260 40 280 70"/><path d="M-20 90 C40 50 100 120 160 80 S260 70 280 100"/>
+          <path d="M-20 130 C50 100 110 160 170 120 S250 110 280 140"/><path d="M-20 175 C60 150 120 200 180 165 S250 160 280 185"/>
+          <path d="M-20 215 C60 195 120 240 180 210 S250 205 280 225"/></g></pattern>
+      <filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      <linearGradient id="trail" x1="0" x2="1"><stop offset="0" stop-color="#ffb547"/><stop offset=".3" stop-color="#ff8a3d"/><stop offset=".31" stop-color="rgba(255,255,255,.18)"/><stop offset="1" stop-color="rgba(255,255,255,.18)"/></linearGradient>
+    </defs>
+    <rect width="1200" height="260" fill="#0a1020"/><rect width="1200" height="260" fill="url(#topo)"/>
+    <path id="p" d="M40 170 C140 80 220 210 330 140 S520 60 620 130 S820 220 920 130 S1100 70 1160 110" fill="none" stroke="url(#trail)" stroke-width="2.5" stroke-dasharray="1 0"/>
+    <g id="nodes"></g>
+    <g font-family="Inter" font-size="11" fill="#5d6a85" letter-spacing="1.4">
+      <text x="60" y="236">LEG 1 · FOUNDATIONS</text><text x="250" y="236">LEG 2 · GEODESY</text><text x="420" y="236">LEG 3 · ROS 2</text>
+      <text x="600" y="236">LEG 4 · SENSORS</text><text x="780" y="236">LEG 5 · VISION</text><text x="950" y="236">LEG 6 · FUSION</text><text x="1090" y="236">LEG 7</text></g>
+  </svg></div>
+
+  <div class="section-h"><h2>Leg 3 · ROS 2: nodes, topics and contracts</h2><span>2 of 6 complete</span></div>
+  <div class="legs"><span class="lg">Foundations</span><span class="lg">Geodesy</span><span class="lg on">ROS 2</span><span class="lg">Sensors</span><span class="lg">Vision</span><span class="lg">Fusion</span><span class="lg">System</span></div>
+  <div class="grid">
+    <div class="glass mcard" style="--c:#3ee6c4"><div class="no">09</div><div class="tag">Mission 09</div><h3>The ROS 2 graph: nodes, topics, discovery and QoS</h3><p>DDS discovery, the port formula and QoS compatibility on a live graph.</p><div class="foot"><span>3 h</span><span class="st done">Complete</span></div></div>
+    <div class="glass mcard" style="--c:#ffb547"><div class="no">10</div><div class="tag">Mission 10</div><h3>Your first publisher: a fake GNSS receiver</h3><p>A Node class with timers, live parameters and honest covariance.</p><div class="foot"><span>3 h</span><span class="st now">In progress</span></div></div>
+    <div class="glass mcard" style="--c:#9b8cff"><div class="no">11</div><div class="tag">Mission 11</div><h3>Subscribers, callbacks and executors</h3><p>Listening with memory, filtering bad fixes, single vs multi-threaded.</p><div class="foot"><span>3 h 30</span><span class="st lock">Up next</span></div></div>
+    <div class="glass mcard" style="--c:#ff6b8b"><div class="no">12</div><div class="tag">Mission 12</div><h3>The position contract: covariance and stamps</h3><p>Error ellipses, χ² gates and 13 faults against the real arbiter.</p><div class="foot"><span>3 h</span><span class="st lock">Locked</span></div></div>
+  </div>
+
+  <div class="glass window">
+    <div class="wbar"><i></i><i></i><i></i>&nbsp; Mission 10 · Your first publisher</div>
+    <div class="split">
+      <div class="doc"><div class="eyebrow"><i></i>Briefing</div><h2>A node is an object</h2>
+        <div class="chips"><span>⏱ 3 h</span><span>◎ 7 tasks</span><span>✦ +100 XP</span></div>
+        <p>In lesson 03 you wrote classes. A <b>rclpy</b> node is an object of a class that inherits from <code>rclpy.node.Node</code>. Its constructor declares parameters, creates a publisher and starts a timer that fires twice per second.</p>
+        <div class="task"><b>Task 2</b><p>Complete <code>position_at(t)</code> so the receiver drives 5 m/s on heading 030° from the Grand Mosque.</p></div></div>
+      <div class="code"><span class="k">class</span> <span class="f">FakeGnss</span>(Node):<br>&nbsp;&nbsp;<span class="k">def</span> <span class="f">__init__</span>(self):<br>&nbsp;&nbsp;&nbsp;&nbsp;super().__init__(<span class="s">"fake_gps"</span>)<br>&nbsp;&nbsp;&nbsp;&nbsp;self.declare_parameter(<span class="s">"speed_mps"</span>, <span class="n">5.0</span>)<br>&nbsp;&nbsp;&nbsp;&nbsp;self.pub = self.create_publisher(NavSatFix, <span class="s">"/fake_gps/fix"</span>, <span class="n">10</span>)<br>&nbsp;&nbsp;&nbsp;&nbsp;self.timer = self.create_timer(<span class="n">0.5</span>, self.tick)<br><br>&nbsp;&nbsp;<span class="k">def</span> <span class="f">tick</span>(self):<br>&nbsp;&nbsp;&nbsp;&nbsp;<span class="c"># TODO 3: fill the message, covariance as floats</span><br>&nbsp;&nbsp;&nbsp;&nbsp;msg = NavSatFix()<br>&nbsp;&nbsp;&nbsp;&nbsp;msg.position_covariance = [<span class="n">9.0</span>, <span class="n">0.0</span>, <span class="n">0.0</span>, …]</div>
+    </div>
+    <div class="checkbar"><span style="color:var(--muted);font-size:13.5px">Last check · 11 of 13 passed</span><a class="btn primary" style="padding:10px 18px">Run checks</a></div>
+  </div>
+  <p class="cap">Mockup A · Mission Control — dark, glass, glowing flight path</p>
+</div>
+<script>
+const p = document.getElementById('p'), g = document.getElementById('nodes'), L = p.getTotalLength();
+const colors = ['#ffb547','#ffb547','#ffb547','#ffb547','#ffb547','#3ee6c4','#3ee6c4','#3ee6c4','#9b8cff','#9b8cff','#9b8cff','#9b8cff','#9b8cff','#9b8cff','#ff6b8b','#ff6b8b','#ff6b8b','#ff6b8b','#ff6b8b','#6fb6ff','#6fb6ff','#6fb6ff','#6fb6ff','#6fb6ff','#c38cff','#c38cff','#c38cff','#3ee6c4','#3ee6c4','#3ee6c4'];
+for (let i = 0; i < 30; i++) {
+  const q = p.getPointAtLength(L * i / 29), done = i < 9, now = i === 9;
+  g.insertAdjacentHTML('beforeend', now
+    ? `<circle cx="${q.x}" cy="${q.y}" r="16" fill="rgba(255,181,71,.15)"><animate attributeName="r" values="12;20;12" dur="2s" repeatCount="indefinite"/></circle><circle cx="${q.x}" cy="${q.y}" r="7" fill="#ffb547" filter="url(#glow)"/>`
+    : `<circle cx="${q.x}" cy="${q.y}" r="${done ? 5 : 4}" fill="${done ? colors[i] : '#0a1020'}" stroke="${done ? 'none' : 'rgba(255,255,255,.25)'}" stroke-width="1.5" ${done ? 'filter="url(#glow)"' : ''}/>`);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup D · Cinematic Oman + Expedition</title><style>
+@font-face { font-family: Fraunces; font-weight: 500; src: url(/static/vendor/fonts/fraunces-latin-500-normal.woff2) format("woff2"); }
+@font-face { font-family: Fraunces; font-weight: 600; src: url(/static/vendor/fonts/fraunces-latin-600-normal.woff2) format("woff2"); }
+@font-face { font-family: Fraunces; font-weight: 700; src: url(/static/vendor/fonts/fraunces-latin-700-normal.woff2) format("woff2"); }
+@font-face { font-family: Inter; font-weight: 400; src: url(/static/vendor/fonts/inter-latin-400-normal.woff2) format("woff2"); }
+@font-face { font-family: Inter; font-weight: 500; src: url(/static/vendor/fonts/inter-latin-500-normal.woff2) format("woff2"); }
+@font-face { font-family: Inter; font-weight: 600; src: url(/static/vendor/fonts/inter-latin-600-normal.woff2) format("woff2"); }
+@font-face { font-family: Inter; font-weight: 700; src: url(/static/vendor/fonts/inter-latin-700-normal.woff2) format("woff2"); }
+:root { --ivory: #f8f4ec; --ink: #1d1a17; --muted: #7a7065; --line: #e6ddcf; --gold: #c8892f; --gold-2: #e0a64a; --night: #12172b; --teal: #1f7a74; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: Inter, system-ui, sans-serif; color: var(--ink); background: var(--ivory); -webkit-font-smoothing: antialiased; }
+.serif { font-family: Fraunces, Georgia, serif; }
+.hero { position: relative; height: 560px; color: #fff; overflow: hidden; }
+.hero svg.scene { position: absolute; inset: 0; width: 100%; height: 100%; }
+nav { position: relative; z-index: 2; max-width: 1220px; margin: 0 auto; padding: 22px 32px; display: flex; align-items: center; gap: 30px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: 3px; font-size: 13px; text-transform: uppercase; }
+.brand svg { width: 30px; height: 30px; color: #fff; }
+nav .links { display: flex; gap: 26px; font-size: 14px; color: rgba(255,255,255,.75); }
+nav .links a.on { color: #fff; }
+nav .right { margin-left: auto; display: flex; align-items: center; gap: 12px; font-size: 14px; }
+.avatar { width: 36px; height: 36px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.6); display: grid; place-items: center; font-weight: 600; }
+.content { position: relative; z-index: 2; max-width: 1220px; margin: 0 auto; padding: 50px 32px 0; display: grid; grid-template-columns: 1.3fr .8fr; gap: 40px; align-items: end; }
+.kicker { font-size: 12.5px; letter-spacing: 3.5px; text-transform: uppercase; color: #ffd9a3; font-weight: 600; }
+.hero h1 { font-family: Fraunces, serif; font-weight: 600; font-size: 62px; line-height: 1.02; letter-spacing: -1.5px; margin: 14px 0 18px; }
+.hero h1 i { font-style: normal; color: #ffd08a; }
+.hero p { color: rgba(255,255,255,.82); font-size: 17px; line-height: 1.6; max-width: 560px; margin: 0 0 28px; }
+.btn { display: inline-flex; gap: 10px; align-items: center; padding: 14px 24px; border-radius: 999px; font-weight: 600; font-size: 15px; }
+.btn.gold { background: linear-gradient(135deg, #f2bb62, #d58d2e); color: #2a1700; box-shadow: 0 12px 30px rgba(213,141,46,.4); }
+.btn.line { border: 1px solid rgba(255,255,255,.5); color: #fff; margin-left: 10px; }
+.glass { background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.22); backdrop-filter: blur(16px); border-radius: 24px; padding: 24px; }
+.glass .t { font-size: 12px; letter-spacing: 2.5px; text-transform: uppercase; color: rgba(255,255,255,.7); font-weight: 600; }
+.glass .big { font-family: Fraunces, serif; font-size: 44px; font-weight: 600; margin: 4px 0 2px; }
+.glass .big small { font-size: 18px; color: rgba(255,255,255,.7); }
+.glass .bar { height: 6px; background: rgba(255,255,255,.18); border-radius: 99px; margin: 14px 0 16px; overflow: hidden; }
+.glass .bar i { display: block; height: 100%; width: 30%; background: linear-gradient(90deg, #ffd08a, #f2a548); }
+.glass .row { display: flex; justify-content: space-between; font-size: 14px; padding: 8px 0; border-top: 1px solid rgba(255,255,255,.15); color: rgba(255,255,255,.85); }
+.glass .row b { color: #fff; font-weight: 600; }
+
+.wrap { max-width: 1220px; margin: 0 auto; padding: 0 32px; }
+.journey { margin-top: -54px; position: relative; z-index: 3; background: #fff; border-radius: 26px; box-shadow: 0 24px 60px rgba(40,30,10,.12); padding: 26px 30px; display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
+.leg { padding: 6px 10px; border-left: 1px solid var(--line); }
+.leg:first-child { border-left: none; }
+.leg .n { font-family: Fraunces, serif; font-size: 13px; color: var(--muted); }
+.leg b { display: block; font-size: 14.5px; margin: 4px 0 10px; font-weight: 600; }
+.leg .p { height: 4px; background: #efe8dc; border-radius: 99px; overflow: hidden; }
+.leg .p i { display: block; height: 100%; background: var(--gold); }
+.leg span { display: block; font-size: 12px; color: var(--muted); margin-top: 6px; }
+.leg.cur b { color: var(--gold); }
+
+.sec { display: grid; grid-template-columns: 300px 1fr; gap: 50px; margin: 70px 0; }
+.sec h2 { font-family: Fraunces, serif; font-weight: 600; font-size: 38px; line-height: 1.08; letter-spacing: -.8px; margin: 6px 0 14px; }
+.sec .kicker { color: var(--gold); }
+.sec p.intro { color: var(--muted); line-height: 1.7; font-size: 15.5px; }
+.list { border-top: 1px solid var(--line); }
+.item { display: grid; grid-template-columns: 70px 1fr 110px 120px; align-items: center; gap: 18px; padding: 22px 6px; border-bottom: 1px solid var(--line); }
+.item .no { font-family: Fraunces, serif; font-size: 34px; color: #cdbfa8; font-weight: 500; }
+.item.done .no { color: var(--teal); }
+.item.now { background: linear-gradient(90deg, #fff6e6, transparent); border-radius: 14px; }
+.item.now .no { color: var(--gold); }
+.item h3 { font-size: 18px; margin: 0 0 4px; font-weight: 600; letter-spacing: -.2px; }
+.item p { margin: 0; color: var(--muted); font-size: 14px; }
+.item .dur { color: var(--muted); font-size: 14px; }
+.status { font-size: 12.5px; font-weight: 600; padding: 6px 12px; border-radius: 99px; text-align: center; }
+.status.done { background: #e4f2ef; color: var(--teal); }
+.status.now { background: var(--night); color: #ffd08a; }
+.status.next { border: 1px solid var(--line); color: var(--muted); }
+
+.preview { background: #fff; border-radius: 26px; box-shadow: 0 24px 60px rgba(40,30,10,.1); overflow: hidden; margin-bottom: 70px; }
+.preview .head { position: relative; height: 150px; color: #fff; overflow: hidden; }
+.preview .head svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.preview .head .tx { position: relative; padding: 26px 34px; }
+.preview .head .tx .kicker { font-size: 11.5px; }
+.preview .head h3 { font-family: Fraunces, serif; font-size: 34px; font-weight: 600; margin: 8px 0 0; letter-spacing: -.6px; }
+.preview .cols { display: grid; grid-template-columns: 1fr 1fr; }
+.preview .doc { padding: 30px 36px; }
+.preview .doc h4 { font-family: Fraunces, serif; font-size: 24px; margin: 0 0 10px; font-weight: 600; }
+.preview .doc p { color: #4a4238; line-height: 1.75; font-size: 15.5px; }
+.preview .note { border-left: 3px solid var(--gold); background: #fbf5ea; padding: 14px 18px; border-radius: 0 14px 14px 0; margin-top: 16px; font-size: 15px; color: #4a4238; }
+.preview .note b { color: var(--gold); letter-spacing: 1.5px; font-size: 12px; text-transform: uppercase; display: block; margin-bottom: 4px; }
+.preview .code { background: #12172b; color: #dfe3f0; font-family: ui-monospace, monospace; font-size: 13.5px; line-height: 1.75; padding: 28px; }
+.code .k { color: #f2b763; } .code .s { color: #e6d3a3; } .code .c { color: #6c7590; } .code .n { color: #7fd1c7; }
+.preview .bottom { display: flex; justify-content: space-between; align-items: center; padding: 16px 30px; border-top: 1px solid var(--line); }
+.cap { text-align: center; color: var(--muted); font-size: 13px; margin: -50px 0 60px; }
+
+/* ---- fusion additions ---- */
+.hero { height: 600px; }
+.content { grid-template-columns: 1.25fr .85fr; }
+.hero h1 { font-size: 56px; }
+.glass .rank { display: flex; gap: 14px; align-items: center; margin-bottom: 4px; }
+.glass .medal { width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  background: radial-gradient(circle at 35% 30%, #fff1c9, #e0a64a 65%, #9c6a22); box-shadow: 0 0 0 3px rgba(255,255,255,.18), 0 8px 18px rgba(0,0,0,.25); color: #3a2405; }
+.glass .medal svg { width: 26px; height: 26px; }
+.glass .rank b { font-family: Fraunces, serif; font-size: 28px; font-weight: 600; display: block; line-height: 1.05; }
+.glass .rank span { font-size: 13px; color: rgba(255,255,255,.75); }
+.glass .btn { margin-top: 14px; width: 100%; justify-content: center; }
+h2.sh { font-family: Fraunces, serif; font-weight: 600; font-size: 34px; letter-spacing: -.6px; margin: 0 0 6px; }
+.shead { display: flex; justify-content: space-between; align-items: end; margin: 64px 0 18px; }
+.shead p { margin: 0; color: var(--muted); font-size: 15px; }
+.mapcard { border-radius: 26px; overflow: hidden; box-shadow: 0 24px 60px rgba(40,30,10,.14); }
+.mapcard svg { display: block; width: 100%; height: auto; }
+.mapcard .wp { cursor: pointer; }
+.medals { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 18px; }
+.md { text-align: center; }
+.md .disc { width: 92px; height: 92px; border-radius: 50%; margin: 0 auto 10px; display: grid; place-items: center; color: #b9ab95;
+  border: 1.5px dashed #d8ccb9; background: #fbf8f2; }
+.md .disc svg { width: 34px; height: 34px; }
+.md.on .disc { border: none; color: #3a2405; background: radial-gradient(circle at 35% 30%, #fff1c9, #e8b25c 62%, #a8722a);
+  box-shadow: 0 0 0 5px #fff, 0 0 0 6px #e6cfa4, 0 12px 24px rgba(168,114,42,.25); }
+.md b { font-family: Fraunces, serif; font-weight: 600; font-size: 16px; display: block; }
+.md span { color: var(--muted); font-size: 12.5px; }
+.legblock { display: grid; grid-template-columns: 300px 1fr; gap: 50px; padding: 40px 0; border-top: 1px solid var(--line); }
+.legblock .kicker { color: var(--gold); }
+.legblock h3.lt { font-family: Fraunces, serif; font-weight: 600; font-size: 30px; margin: 6px 0 10px; letter-spacing: -.5px; line-height: 1.1; }
+.legblock .ld { color: var(--muted); line-height: 1.7; font-size: 15px; }
+.legblock .lp { margin-top: 14px; height: 4px; border-radius: 99px; background: #efe8dc; overflow: hidden; } .legblock .lp i { display: block; height: 100%; background: var(--gold); }
+.legblock .lc { margin-top: 8px; font-size: 13px; color: var(--muted); }
+.item { grid-template-columns: 70px 1fr 90px 90px 120px; }
+.xp { font-size: 12.5px; font-weight: 600; color: #9c6a22; background: #fbf0dc; border-radius: 99px; padding: 5px 10px; text-align: center; }
+.preview .chips { display: flex; gap: 8px; margin-top: 12px; }
+.preview .chips span { font-size: 12.5px; font-weight: 600; color: #fff; background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.22); border-radius: 99px; padding: 4px 11px; }
+.preview .head { height: 190px; }
+.report { border-top: 1px solid var(--line); }
+.report .rh { display: flex; align-items: center; gap: 14px; padding: 16px 30px; background: #fbf5ea; }
+.report .rh b { font-family: Fraunces, serif; font-size: 20px; font-weight: 600; }
+.report .rh small { display: block; color: var(--muted); font-size: 13.5px; }
+.report .rh .sc { margin-left: auto; font-family: Fraunces, serif; font-size: 28px; font-weight: 600; color: var(--gold); }
+.report .rl { padding: 12px 30px 18px; font-family: ui-monospace, monospace; font-size: 13px; line-height: 1.7; }
+.report .ok { color: var(--teal); font-weight: 600; } .report .ko { color: #b4432f; font-weight: 700; margin-top: 4px; }
+.report .hint { color: #7a5200; background: #fbf0dc; border-radius: 8px; padding: 3px 10px; margin: 3px 0 4px 20px; }
+</style></head><body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="bird" viewBox="0 0 64 64"><path fill="currentColor" d="M62 32 Q58.5 28.4 51 28.6 Q47 13 21 5 Q31 17 37.5 29 Q32 29.4 27 30.4 L3 22.5 Q12.5 29.4 17.5 32 Q12.5 34.6 3 41.5 L27 33.6 Q32 34.6 37.5 35 Q31 47 21 59 Q47 51 51 35.4 Q58.5 35.6 62 32 Z"/></symbol>
+  <linearGradient id="dusk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0f1530"/><stop offset=".45" stop-color="#3b3a6b"/><stop offset=".72" stop-color="#c9707a"/><stop offset=".9" stop-color="#f2a65e"/><stop offset="1" stop-color="#f7c27a"/></linearGradient>
+  <linearGradient id="r1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5a4a78"/><stop offset="1" stop-color="#3a3157"/></linearGradient>
+  <linearGradient id="r2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a3157"/><stop offset="1" stop-color="#241f3c"/></linearGradient>
+  <linearGradient id="dune" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b9784a"/><stop offset="1" stop-color="#7c4a2c"/></linearGradient>
+  <radialGradient id="sun" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#fff1c9"/><stop offset=".5" stop-color="#ffc77a"/><stop offset="1" stop-color="#ffc77a" stop-opacity="0"/></radialGradient>
+
+  <symbol id="i-compass" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z" fill="currentColor" stroke="none"/></g></symbol>
+  <symbol id="i-plane" viewBox="0 0 24 24"><path fill="currentColor" d="M3 13.5l7-2 4-7c.6-1 2-.8 2 .3L15 11.5l5 1.5v2L15 14.5l-1 4 1.5 1.5v1L12 19.5l-3.5 1.5v-1L10 18.5l1-4-8 1z"/></symbol>
+  <symbol id="i-egg" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" d="M12 3c-3.6 0-6.6 5.6-6.6 10a6.6 6.6 0 0 0 13.2 0C18.6 8.6 15.6 3 12 3z"/></symbol>
+  <symbol id="i-map" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></g></symbol>
+  <symbol id="i-flock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2.5 10c1.6-1.2 3.2-1.2 4.5 0 1.3-1.2 2.9-1.2 4.5 0"/><path d="M11 5.5c1.3-1 2.6-1 3.7 0 1.1-1 2.4-1 3.7 0"/><path d="M12 16c1.5-1.1 3-1.1 4.2 0 1.2-1.1 2.7-1.1 4.2 0"/></g></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></g></symbol>
+  <symbol id="i-scales" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3v17M7 20h10M5 6h14M5 6l-3 7h6zM19 6l-3 7h6z"/></g></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18"/></g></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path fill="currentColor" d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></symbol>
+</defs></svg>
+<header class="hero">
+  <svg class="scene" viewBox="0 0 1440 560" preserveAspectRatio="xMidYMid slice">
+    <rect width="1440" height="560" fill="url(#dusk)"/>
+    <g fill="#fff" opacity=".8"><circle cx="120" cy="60" r="1.2"/><circle cx="260" cy="110" r="1"/><circle cx="420" cy="40" r="1.4"/><circle cx="620" cy="90" r="1"/>
+      <circle cx="760" cy="30" r="1.2"/><circle cx="980" cy="70" r="1"/><circle cx="1120" cy="40" r="1.3"/><circle cx="1300" cy="100" r="1"/><circle cx="1380" cy="50" r="1.2"/><circle cx="560" cy="150" r=".9"/></g>
+    <path d="M1180 92 a26 26 0 1 0 22 40 a20 20 0 1 1 -22 -40z" fill="#fff4dc" opacity=".9"/>
+    <circle cx="980" cy="430" r="160" fill="url(#sun)" opacity=".8"/>
+    <path d="M0 400 L120 330 L210 370 L330 280 L450 360 L560 300 L680 380 L800 300 L930 370 L1060 290 L1190 360 L1300 310 L1440 360 L1440 560 L0 560Z" fill="url(#r1)"/>
+    <path d="M0 440 L140 380 L260 420 L400 350 L520 420 L660 370 L780 440 L920 380 L1060 440 L1200 390 L1440 430 L1440 560 L0 560Z" fill="url(#r2)"/>
+    <path d="M0 500 Q240 450 480 495 T960 490 T1440 480 L1440 560 L0 560Z" fill="url(#dune)"/>
+    <path d="M0 530 Q300 500 640 528 T1440 520 L1440 560 L0 560Z" fill="#5c3520" opacity=".7"/>
+    <g fill="#14112a" opacity=".85"><use href="#bird" x="1040" y="170" width="38" height="38" transform="rotate(-8 1059 189)"/><use href="#bird" x="1092" y="200" width="26" height="26"/><use href="#bird" x="1000" y="214" width="22" height="22"/></g>
+  </svg>
+  <nav><div class="brand"><svg><use href="#bird"/></svg>NAVERA Academy</div>
+    <div class="links"><a class="on">Journey</a><a>Missions</a><a>Field notes</a><a>Workbench</a></div>
+    <div class="right"><span>Maryam</span><div class="avatar">M</div></div></nav>
+  
+  <div class="content">
+    <div><div class="kicker">Expedition HQ · Mission briefing</div>
+      <h1>Welcome back,<br><i>Maryam.</i></h1>
+      <p>9 of 30 missions complete. Next on your route: <b style="color:#fff">Your first publisher — a fake GNSS receiver</b>. Your NAVERA copy is your own aircraft: change it freely, Reset brings back the factory version.</p>
+      <a class="btn gold">Continue mission 10 →</a><a class="btn line">Open the expedition map</a></div>
+    <div class="glass">
+      <div class="rank"><div class="medal"><svg><use href="#i-compass"/></svg></div><div><b>Wayfinder</b><span>Rank 3 of 6 · 900 XP</span></div></div>
+      <div class="bar"><i style="width:14%"></i></div>
+      <div class="row"><span>Missions</span><b>9 / 30</b></div>
+      <div class="row"><span>Next rank</span><b>Navigator · 6 missions</b></div>
+      <div class="row"><span>Badges</span><b>3 of 11</b></div>
+      <a class="btn gold">Next mission →</a></div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="shead"><div><div class="kicker" style="color:var(--gold)">Your route</div><h2 class="sh">Expedition map</h2><p>30 waypoints across seven legs — click any waypoint to open its mission.</p></div></div>
+  <div class="mapcard"><svg viewBox="0 0 1220 360" id="map">
+    <defs>
+      <linearGradient id="msky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1a2040"/><stop offset=".5" stop-color="#4a3f72"/><stop offset=".8" stop-color="#c47676"/><stop offset="1" stop-color="#eba35e"/></linearGradient>
+      <filter id="gl"><feGaussianBlur stdDeviation="3.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    </defs>
+    <rect width="1220" height="360" fill="url(#msky)"/>
+    <g fill="#fff" opacity=".7"><circle cx="90" cy="40" r="1.1"/><circle cx="300" cy="70" r="1"/><circle cx="520" cy="30" r="1.3"/><circle cx="700" cy="60" r="1"/><circle cx="880" cy="25" r="1.2"/><circle cx="1060" cy="55" r="1"/><circle cx="1160" cy="30" r="1.1"/></g>
+    <circle cx="1010" cy="300" r="120" fill="url(#sun)" opacity=".7"/>
+    <path d="M0 270 L110 210 L200 245 L320 170 L430 235 L540 185 L650 250 L760 180 L880 245 L990 195 L1100 240 L1220 205 L1220 360 L0 360Z" fill="url(#r1)" opacity=".9"/>
+    <path d="M0 300 L130 255 L250 290 L380 235 L500 290 L630 250 L760 305 L890 260 L1020 300 L1140 265 L1220 290 L1220 360 L0 360Z" fill="url(#r2)"/>
+    <path d="M0 330 Q240 300 480 328 T960 322 T1220 318 L1220 360 L0 360Z" fill="url(#dune)"/>
+    <path id="route" d="M50 230 C150 120 250 260 360 175 S560 80 660 160 S860 270 960 165 S1130 95 1180 140" fill="none" stroke="rgba(255,236,200,.45)" stroke-width="2" stroke-dasharray="2 8" stroke-linecap="round"/>
+    <g id="wps"></g>
+    <g font-family="Fraunces, serif" font-size="15" fill="rgba(255,240,215,.85)" text-anchor="middle">
+      <text x="120" y="345">I · Foundations</text><text x="285" y="345">II · Geodesy</text><text x="450" y="345">III · ROS 2</text>
+      <text x="630" y="345">IV · Sensors</text><text x="810" y="345">V · Vision</text><text x="975" y="345">VI · Fusion</text><text x="1125" y="345">VII · System</text></g>
+  </svg></div>
+
+  <div class="shead"><div><div class="kicker" style="color:var(--gold)">Achievements</div><h2 class="sh">Badges</h2><p>Complete a whole leg to earn its badge.</p></div></div>
+  <div class="medals">
+    <div class="md on"><div class="disc"><svg><use href="#i-plane"/></svg></div><b>First flight</b><span>earned</span></div>
+    <div class="md on"><div class="disc"><svg><use href="#i-egg"/></svg></div><b>Out of the nest</b><span>earned</span></div>
+    <div class="md on"><div class="disc"><svg><use href="#i-map"/></svg></div><b>Reading the land</b><span>earned</span></div>
+    <div class="md"><div class="disc"><svg><use href="#i-flock"/></svg></div><b>Flying in a flock</b><span>Leg III</span></div>
+    <div class="md"><div class="disc"><svg><use href="#i-compass"/></svg></div><b>A bird's senses</b><span>Leg IV</span></div>
+    <div class="md"><div class="disc"><svg><use href="#i-eye"/></svg></div><b>Eyes on the ground</b><span>Leg V</span></div>
+    <div class="md"><div class="disc"><svg><use href="#i-scales"/></svg></div><b>Who to trust?</b><span>Leg VI</span></div>
+    <div class="md"><div class="disc"><svg><use href="#i-globe"/></svg></div><b>The big migration</b><span>Leg VII</span></div>
+    <div class="md"><div class="disc"><svg><use href="#i-moon"/></svg></div><b>Halfway there</b><span>15 missions</span></div>
+  </div>
+
+  <div class="shead" style="margin-bottom:0"><div><div class="kicker" style="color:var(--gold)">Missions</div><h2 class="sh">Seven legs, thirty missions</h2></div></div>
+  <div class="legblock">
+    <div><div class="kicker">Leg I · Out of the nest</div><h3 class="lt">Foundations</h3><p class="ld">GNSS and its threats, then the engineer's toolkit: Linux, Python with classes and NumPy, data analysis and git.</p><div class="lp"><i style="width:100%"></i></div><div class="lc">5 of 5 complete</div></div>
+    <div class="list">
+      <div class="item done"><div class="no">01</div><div><h3>Welcome: navigation without GNSS</h3><p>Pseudoranges, jamming and spoofing, NAVERA's architecture</p></div><div class="dur">2 h</div><div class="xp">+100 XP</div><div class="status done">Complete</div></div>
+      <div class="item done"><div class="no">02</div><div><h3>Linux and the shell for robotics</h3><p>Processes, signals, environment, pipes and scripts</p></div><div class="dur">3 h</div><div class="xp">+100 XP</div><div class="status done">Complete</div></div>
+      <div class="item done"><div class="no">03</div><div><h3>Python for engineers: functions, classes and NumPy</h3><p>A wind triangle, a Vehicle class and vectorised tracks</p></div><div class="dur">3 h 30</div><div class="xp">+100 XP</div><div class="status done">Complete</div></div>
+    </div>
+  </div>
+  <div class="legblock">
+    <div><div class="kicker">Leg III · Flying in a flock</div><h3 class="lt">ROS 2: nodes, topics and contracts</h3><p class="ld">A starling follows its six or seven nearest neighbours; a ROS 2 node listens to the topics it needs.</p><div class="lp"><i style="width:17%"></i></div><div class="lc">1 of 6 complete</div></div>
+    <div class="list">
+      <div class="item done"><div class="no">09</div><div><h3>The ROS 2 graph: nodes, topics, discovery and QoS</h3><p>DDS discovery, the port formula and QoS on a live graph</p></div><div class="dur">3 h</div><div class="xp">+100 XP</div><div class="status done">Complete</div></div>
+      <div class="item now"><div class="no">10</div><div><h3>Your first publisher: a fake GNSS receiver</h3><p>A Node class, timers, live parameters and honest covariance</p></div><div class="dur">3 h</div><div class="xp">+100 XP</div><div class="status now">In progress</div></div>
+      <div class="item"><div class="no">11</div><div><h3>Subscribers, callbacks and executors</h3><p>Listening with memory — and what threads change</p></div><div class="dur">3 h 30</div><div class="xp">+100 XP</div><div class="status next">Up next</div></div>
+    </div>
+  </div>
+
+  <div class="shead"><div><div class="kicker" style="color:var(--gold)">Inside a mission</div><h2 class="sh">Mission page</h2></div></div>
+  <div class="preview">
+    <div class="head"><svg viewBox="0 0 1200 190" preserveAspectRatio="xMidYMid slice"><rect width="1200" height="190" fill="url(#dusk)"/>
+      <path d="M0 150 L120 105 L230 135 L360 80 L480 130 L600 92 L740 140 L880 98 L1020 135 L1200 108 L1200 190 L0 190Z" fill="url(#r2)"/>
+      <use href="#bird" x="1060" y="40" width="44" height="44" style="color:#fff4dc" opacity=".85"/></svg>
+      <div class="tx"><div class="kicker">Leg III · Flying in a flock · Mission 10 · Briefing</div><h3>Your first publisher: a fake GNSS receiver</h3>
+        <div class="chips"><span>⏱ 3 h</span><span>★ +100 XP</span><span>◎ 7 tasks</span></div></div></div>
+    <div class="cols">
+      <div class="doc"><h4>A node is an object</h4><p>In mission 03 you wrote classes. A <b>rclpy</b> node is an object of a class that inherits from <code>Node</code>. Its constructor declares parameters, creates a publisher and starts a timer that fires twice per second.</p>
+        <div class="note"><b>Your task</b>Complete <code>position_at(t)</code> so the receiver drives at 5 m/s on heading 030° from the Grand Mosque in Muscat.</div></div>
+      <div class="code"><span class="k">class</span> FakeGnss(Node):<br>&nbsp;&nbsp;<span class="k">def</span> __init__(self):<br>&nbsp;&nbsp;&nbsp;&nbsp;super().__init__(<span class="s">"fake_gps"</span>)<br>&nbsp;&nbsp;&nbsp;&nbsp;self.declare_parameter(<span class="s">"speed_mps"</span>, <span class="n">5.0</span>)<br>&nbsp;&nbsp;&nbsp;&nbsp;self.pub = self.create_publisher(NavSatFix, <span class="s">"/fake_gps/fix"</span>, <span class="n">10</span>)<br>&nbsp;&nbsp;&nbsp;&nbsp;self.timer = self.create_timer(<span class="n">0.5</span>, self.tick)<br><br>&nbsp;&nbsp;<span class="k">def</span> tick(self):<br>&nbsp;&nbsp;&nbsp;&nbsp;<span class="c"># TODO 3: fill the message</span><br>&nbsp;&nbsp;&nbsp;&nbsp;msg.position_covariance = [<span class="n">9.0</span>, <span class="n">0.0</span>, …]</div>
+    </div>
+    <div class="report"><div class="rh"><div><b>Field report — almost there</b><small>Read the ✘ lines and their hints, fix, save and check again.</small></div><span class="sc">11 / 13</span></div>
+      <div class="rl"><div class="ok">✔ 1. fake_gps.py starts and publishes on /fake_gps/fix</div><div class="ok">✔ 2. 2.0 messages per second (±10 %)</div>
+        <div class="ko">✘ 3. position_covariance holds floats</div><div class="hint">💡 Hint: write 9.0, not 9 — ROS rejects integers in float arrays.</div></div></div>
+    <div class="bottom"><span style="color:var(--muted);font-size:14px">⏱ 3 h · ★ +100 XP</span><a class="btn gold" style="padding:11px 22px">Check my work</a></div>
+  </div>
+  <p class="cap">Mockup D · Cinematic Oman colours + the current expedition structure (rank/XP, map, badges, legs, missions, field report)</p>
+</div>
+<script>
+const p = document.getElementById('route'), g = document.getElementById('wps'), L = p.getTotalLength();
+for (let i = 0; i < 30; i++) {
+  const q = p.getPointAtLength(L * i / 29), done = i < 9, now = i === 9;
+  if (done) g.insertAdjacentHTML('beforeend', `<g class="wp"><circle cx="${q.x}" cy="${q.y}" r="10" fill="#e8b25c" filter="url(#gl)"/><path d="M${q.x-4} ${q.y} l3 3 l5.5 -6" stroke="#3a2405" stroke-width="2.2" fill="none" stroke-linecap="round"/></g>`);
+  else if (now) g.insertAdjacentHTML('beforeend', `<g class="wp"><circle cx="${q.x}" cy="${q.y}" r="18" fill="rgba(255,208,138,.25)"><animate attributeName="r" values="13;22;13" dur="2.2s" repeatCount="indefinite"/></circle><circle cx="${q.x}" cy="${q.y}" r="11" fill="#fff4dc" stroke="#e8b25c" stroke-width="3"/><text x="${q.x}" y="${q.y+4}" font-family="Inter" font-weight="700" font-size="11" text-anchor="middle" fill="#9c6a22">10</text><use href="#bird" x="${q.x-22}" y="${q.y-58}" width="44" height="44" style="color:#fff4dc"/></g>`);
+  else g.insertAdjacentHTML('beforeend', `<g class="wp"><circle cx="${q.x}" cy="${q.y}" r="9" fill="rgba(20,17,42,.55)" stroke="rgba(255,236,200,.6)" stroke-width="1.5"/><text x="${q.x}" y="${q.y+3.5}" font-family="Inter" font-size="9.5" font-weight="600" text-anchor="middle" fill="rgba(255,236,200,.85)">${i+1}</text></g>`);
+}
+</script>
+</body></html>

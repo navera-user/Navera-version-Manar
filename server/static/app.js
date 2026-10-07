@@ -63,126 +63,162 @@ function route() {
 /* ------------------------------------------------------------------ home */
 function moduleOf(id) {
   const i = MODULES.findIndex(m => (m.lessons || []).includes(id));
-  return i < 0 ? {color: '#3b8ff0', icon: '🐦', leg: '', idx: 0} : {...MODULES[i], idx: i};
+  return i < 0 ? {color: '#c8892f', leg: '', idx: 0, title: ''} : {...MODULES[i], idx: i};
 }
 const XP_PER_MISSION = 100;
-const RANKS = [  // [missions passed, name, icon]
-  [0, 'Fledgling', '🥚'], [3, 'Glider', '🪁'], [8, 'Wayfinder', '🧭'],
-  [15, 'Navigator', '🗺️'], [22, 'Falcon', '🦅'], [30, 'Migration Master', '🏆']];
+const RANKS = [[0, 'Fledgling', 'egg'], [3, 'Glider', 'plane'], [8, 'Wayfinder', 'compass'],
+  [15, 'Navigator', 'map'], [22, 'Falcon', 'eye'], [30, 'Migration Master', 'globe']];
+const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
+const LEG_ICONS = ['egg', 'map', 'flock', 'compass', 'eye', 'scales', 'globe'];
+const ICONS = {
+  compass: '<g fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z" fill="currentColor" stroke="none"/></g>',
+  plane: '<path fill="currentColor" d="M3 13.5l7-2 4-7c.6-1 2-.8 2 .3L15 11.5l5 1.5v2L15 14.5l-1 4 1.5 1.5v1L12 19.5l-3.5 1.5v-1L10 18.5l1-4-8 1z"/>',
+  egg: '<path fill="none" stroke="currentColor" stroke-width="1.8" d="M12 3c-3.6 0-6.6 5.6-6.6 10a6.6 6.6 0 0 0 13.2 0C18.6 8.6 15.6 3 12 3z"/>',
+  map: '<g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></g>',
+  flock: '<g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2.5 10c1.6-1.2 3.2-1.2 4.5 0 1.3-1.2 2.9-1.2 4.5 0"/><path d="M11 5.5c1.3-1 2.6-1 3.7 0 1.1-1 2.4-1 3.7 0"/><path d="M12 16c1.5-1.1 3-1.1 4.2 0 1.2-1.1 2.7-1.1 4.2 0"/></g>',
+  eye: '<g fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></g>',
+  scales: '<g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3v17M7 20h10M5 6h14M5 6l-3 7h6zM19 6l-3 7h6z"/></g>',
+  globe: '<g fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18"/></g>',
+  moon: '<path fill="none" stroke="currentColor" stroke-width="1.8" d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
+  magnify: '<g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l6 6"/></g>',
+  stars: '<path fill="currentColor" d="M9 3l1.6 4.4L15 9l-4.4 1.6L9 15l-1.6-4.4L3 9l4.4-1.6zM18 13l.8 2.2 2.2.8-2.2.8L18 19l-.8-2.2L15 16l2.2-.8z"/>',
+};
+const icon = (n) => `<svg viewBox="0 0 24 24">${ICONS[n] || ''}</svg>`;
+const BIRD_PATH = 'M62 32 Q58.5 28.4 51 28.6 Q47 13 21 5 Q31 17 37.5 29 Q32 29.4 27 30.4 L3 22.5 Q12.5 29.4 17.5 32 Q12.5 34.6 3 41.5 L27 33.6 Q32 34.6 37.5 35 Q31 47 21 59 Q47 51 51 35.4 Q58.5 35.6 62 32 Z';
+const bird = (x, y, s, fill, op = 1) => `<g transform="translate(${x} ${y}) scale(${s / 64})" opacity="${op}"><path d="${BIRD_PATH}" fill="${fill}"/></g>`;
+const DUSK_DEFS = `<linearGradient id="dusk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0f1530"/><stop offset=".45" stop-color="#3b3a6b"/><stop offset=".72" stop-color="#c9707a"/><stop offset=".9" stop-color="#f2a65e"/><stop offset="1" stop-color="#f7c27a"/></linearGradient>
+  <linearGradient id="r1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5a4a78"/><stop offset="1" stop-color="#3a3157"/></linearGradient>
+  <linearGradient id="r2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a3157"/><stop offset="1" stop-color="#241f3c"/></linearGradient>
+  <linearGradient id="dune" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b9784a"/><stop offset="1" stop-color="#7c4a2c"/></linearGradient>
+  <radialGradient id="sun" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#fff1c9"/><stop offset=".5" stop-color="#ffc77a"/><stop offset="1" stop-color="#ffc77a" stop-opacity="0"/></radialGradient>`;
 function rankFor(passed) {
   let i = 0;
   RANKS.forEach((r, k) => { if (passed >= r[0]) i = k; });
   const next = RANKS[i + 1];
-  return {name: RANKS[i][1], icon: RANKS[i][2], from: RANKS[i][0], next: next ? next[0] : null, nextName: next ? next[1] : null};
+  return {name: RANKS[i][1], icon: RANKS[i][2], idx: i, from: RANKS[i][0], next: next ? next[0] : null, nextName: next ? next[1] : null};
+}
+function heroScene() {
+  return `<svg class="scene" viewBox="0 0 1440 640" preserveAspectRatio="xMidYMid slice"><defs>${DUSK_DEFS}</defs>
+    <rect width="1440" height="640" fill="url(#dusk)"/>
+    <g fill="#fff" opacity=".8"><circle cx="120" cy="80" r="1.2"/><circle cx="260" cy="130" r="1"/><circle cx="420" cy="60" r="1.4"/><circle cx="620" cy="110" r="1"/>
+      <circle cx="760" cy="50" r="1.2"/><circle cx="980" cy="90" r="1"/><circle cx="1120" cy="60" r="1.3"/><circle cx="1300" cy="120" r="1"/><circle cx="1380" cy="70" r="1.2"/><circle cx="560" cy="170" r=".9"/></g>
+    <path d="M1180 112 a26 26 0 1 0 22 40 a20 20 0 1 1 -22 -40z" fill="#fff4dc" opacity=".9"/>
+    <circle cx="980" cy="500" r="170" fill="url(#sun)" opacity=".8"/>
+    <path d="M0 470 L120 400 L210 440 L330 350 L450 430 L560 370 L680 450 L800 370 L930 440 L1060 360 L1190 430 L1300 380 L1440 430 L1440 640 L0 640Z" fill="url(#r1)"/>
+    <path d="M0 510 L140 450 L260 490 L400 420 L520 490 L660 440 L780 510 L920 450 L1060 510 L1200 460 L1440 500 L1440 640 L0 640Z" fill="url(#r2)"/>
+    <path d="M0 570 Q240 520 480 565 T960 560 T1440 550 L1440 640 L0 640Z" fill="url(#dune)"/>
+    <path d="M0 605 Q300 575 640 603 T1440 595 L1440 640 L0 640Z" fill="#5c3520" opacity=".7"/>
+    ${bird(1030, 200, 40, '#14112a', .85)}${bird(1084, 232, 26, '#14112a', .8)}${bird(992, 246, 22, '#14112a', .75)}</svg>`;
 }
 function expeditionSVG(lessons) {
-  // An expedition map: sea, dunes, the Hajar mountains and Navi's flight path with one waypoint per mission.
-  const W = 1000, H = 290, x0 = 80, x1 = 920, n = lessons.length;
-  const pt = (t) => [x0 + (x1 - x0) * t, 150 + 50 * Math.sin(t * Math.PI * 4.2 + .3)];
-  let d = '';
-  for (let k = 0; k <= 200; k++) { const [x, y] = pt(k / 200); d += (k ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1); }
+  const W = 1220, H = 380, n = lessons.length;
   const next = lessons.findIndex(l => l.progress.status !== 'passed');
-  let g = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Expedition map">
-    <defs>
-      <linearGradient id="dusk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd8b0"/><stop offset=".55" stop-color="#fff0dc"/><stop offset="1" stop-color="#fff7ec"/></linearGradient>
-      <linearGradient id="sea" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#1fa5a0"/><stop offset="1" stop-color="#7fd4c9"/></linearGradient>
-    </defs>
+  let g = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Expedition map"><defs>${DUSK_DEFS}
+      <filter id="gl"><feGaussianBlur stdDeviation="3.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
     <rect width="${W}" height="${H}" fill="url(#dusk)"/>
-    <circle cx="840" cy="70" r="34" fill="#ffb347" opacity=".9"/><circle cx="840" cy="70" r="52" fill="#ffb347" opacity=".18"/>
-    <path d="M300 205 L360 120 L395 150 L450 95 L505 160 L560 110 L620 175 L680 135 L740 205 Z" fill="#c9a6c9" opacity=".55"/>
-    <path d="M330 215 L390 150 L430 178 L480 128 L540 190 L600 150 L660 210 Z" fill="#a983b0" opacity=".55"/>
-    <text x="470" y="88" font-size="12" fill="#8a6a93" text-anchor="middle">Hajar mountains</text>
-    <path d="M0 236 Q90 208 190 232 T420 246 L430 290 L0 290 Z" fill="url(#sea)" opacity=".9"/>
-    <text x="70" y="270" font-size="12" fill="#ffffff">Gulf of Oman</text>
-    <path d="M330 290 Q360 252 470 232 Q560 224 620 246 T820 238 T1000 244 L1000 290 Z" fill="#f1c98f"/>
-    <path d="M520 262 Q620 236 720 262 T920 260 L1000 266 L1000 290 L520 290 Z" fill="#e8b46e"/>
-    <text x="790" y="280" font-size="12" fill="#8a5a1f">Wahiba Sands</text>
-    <g fill="#fff" opacity=".85"><ellipse cx="200" cy="58" rx="44" ry="12"/><ellipse cx="216" cy="49" rx="20" ry="13"/>
-      <ellipse cx="620" cy="44" rx="40" ry="11"/><ellipse cx="634" cy="36" rx="18" ry="12"/></g>
-    <path d="${d}" fill="none" stroke="#14213d" stroke-opacity=".35" stroke-width="3" stroke-dasharray="1 10" stroke-linecap="round"/>
-    <text x="${x0 - 24}" y="${pt(0)[1] + 4}" text-anchor="end" font-size="14" fill="#65748b">🪺 start</text>
-    <text x="${x1 + 26}" y="${pt(1)[1] + 4}" font-size="14" fill="#65748b">🏁</text>`;
-  lessons.forEach((l, i) => {
-    const [x, y] = pt(n > 1 ? i / (n - 1) : 0);
-    const m = moduleOf(l.id), done = l.progress.status === 'passed', started = l.progress.status === 'started';
-    const title = `Mission ${l.number} · ${l.title}${done ? ' — complete' : started ? ' — in progress' : ''}`;
-    if (done) {
-      g += `<g class="wp" data-id="${esc(l.id)}"><title>${esc(title)}</title><g class="pin">
-        <line x1="${x}" y1="${y}" x2="${x}" y2="${y - 26}" stroke="#14213d" stroke-width="2.5"/>
-        <path d="M${x} ${y - 26} L${x + 17} ${y - 20} L${x} ${y - 14} Z" fill="${m.color}"/>
-        <circle cx="${x}" cy="${y}" r="6" fill="${m.color}" stroke="#fff" stroke-width="2"/></g></g>`;
-    } else {
-      g += `<g class="wp" data-id="${esc(l.id)}"><title>${esc(title)}</title><g class="pin">
-        <circle cx="${x}" cy="${y}" r="12" fill="#fff" stroke="${m.color}" stroke-width="3" ${started ? 'stroke-dasharray="4 3"' : ''}/>
-        <text x="${x}" y="${y + 4.5}" text-anchor="middle" font-size="11.5" fill="${m.color}">${+l.number}</text></g></g>`;
-    }
-  });
-  if (next >= 0) {
-    const [x, y] = pt(n > 1 ? next / (n - 1) : 0);
-    g += `<image href="/static/img/navi-pilot.svg" x="${x - 36}" y="${y - 78}" width="70" height="56"><animateTransform attributeName="transform" type="translate" values="0 0; 0 -6; 0 0" dur="1.8s" repeatCount="indefinite"/></image>`;
-  } else {
-    g += `<image href="/static/img/navi-pilot.svg" x="${x1 - 10}" y="${pt(1)[1] - 80}" width="76" height="60"/>`;
-  }
-  return g + '</svg>';
+    <g fill="#fff" opacity=".7"><circle cx="90" cy="40" r="1.1"/><circle cx="300" cy="70" r="1"/><circle cx="520" cy="30" r="1.3"/><circle cx="700" cy="60" r="1"/><circle cx="880" cy="25" r="1.2"/><circle cx="1060" cy="55" r="1"/><circle cx="1160" cy="30" r="1.1"/></g>
+    <circle cx="1010" cy="320" r="120" fill="url(#sun)" opacity=".7"/>
+    <path d="M0 290 L110 230 L200 265 L320 190 L430 255 L540 205 L650 270 L760 200 L880 265 L990 215 L1100 260 L1220 225 L1220 380 L0 380Z" fill="url(#r1)" opacity=".9"/>
+    <path d="M0 320 L130 275 L250 310 L380 255 L500 310 L630 270 L760 325 L890 280 L1020 320 L1140 285 L1220 310 L1220 380 L0 380Z" fill="url(#r2)"/>
+    <path d="M0 350 Q240 320 480 348 T960 342 T1220 338 L1220 380 L0 380Z" fill="url(#dune)"/>
+    <path id="route" d="M50 240 C150 130 250 270 360 185 S560 90 660 170 S860 280 960 175 S1130 105 1180 150" fill="none" stroke="rgba(255,236,200,.45)" stroke-width="2" stroke-dasharray="2 8" stroke-linecap="round"/>
+    <g id="wps"></g><g id="leglabels" font-family="Fraunces, serif" font-size="15" fill="rgba(255,240,215,.88)" text-anchor="middle"></g></svg>`;
+  return g;
 }
-function achievements(lessons) {
+function placeWaypoints(lessons) {
+  const p = document.getElementById('route'); if (!p) return;
+  const g = document.getElementById('wps'), labels = document.getElementById('leglabels'), L = p.getTotalLength(), n = lessons.length;
+  const next = lessons.findIndex(l => l.progress.status !== 'passed');
+  let h = '';
+  lessons.forEach((l, i) => {
+    const q = p.getPointAtLength(L * i / Math.max(1, n - 1)), done = l.progress.status === 'passed', now = i === next;
+    const t = `<title>Mission ${esc(l.number)} · ${esc(l.title)}${done ? ' — complete' : ''}</title>`;
+    if (done) h += `<g class="wp" data-id="${esc(l.id)}">${t}<circle class="r" cx="${q.x}" cy="${q.y}" r="10" fill="#e8b25c" stroke="#fff4dc" stroke-width="0" filter="url(#gl)"/><path d="M${q.x - 4} ${q.y} l3 3 l5.5 -6" stroke="#3a2405" stroke-width="2.2" fill="none" stroke-linecap="round"/></g>`;
+    else if (now) h += `<g class="wp" data-id="${esc(l.id)}">${t}<circle cx="${q.x}" cy="${q.y}" r="18" fill="rgba(255,208,138,.25)"><animate attributeName="r" values="13;22;13" dur="2.2s" repeatCount="indefinite"/></circle><circle class="r" cx="${q.x}" cy="${q.y}" r="11" fill="#fff4dc" stroke="#e8b25c" stroke-width="3"/><text x="${q.x}" y="${q.y + 4}" font-family="Inter" font-weight="700" font-size="11" text-anchor="middle" fill="#9c6a22">${+l.number}</text>${bird(q.x - 22, q.y - 60, 44, '#fff4dc', .95)}</g>`;
+    else h += `<g class="wp" data-id="${esc(l.id)}">${t}<circle class="r" cx="${q.x}" cy="${q.y}" r="9.5" fill="rgba(20,17,42,.55)" stroke="rgba(255,236,200,.6)" stroke-width="1.5"/><text x="${q.x}" y="${q.y + 3.5}" font-family="Inter" font-size="9.5" font-weight="600" text-anchor="middle" fill="rgba(255,236,200,.88)">${+l.number}</text></g>`;
+  });
+  g.innerHTML = h;
+  // a label under the middle of each leg
+  let lab = '';
+  MODULES.forEach((m, k) => {
+    const idx = (m.lessons || []).map(id => lessons.findIndex(l => l.id === id)).filter(i => i >= 0);
+    if (!idx.length) return;
+    const mid = (Math.min(...idx) + Math.max(...idx)) / 2;
+    const x = p.getPointAtLength(L * mid / Math.max(1, n - 1)).x;
+    lab += `<text x="${x}" y="368">${ROMAN[k]} · ${esc(m.short || (m.title || '').split(/[:,]/)[0])}</text>`;
+  });
+  labels.innerHTML = lab;
+  g.querySelectorAll('.wp').forEach(w => w.onclick = () => { location.hash = 'lesson/' + w.dataset.id; });
+}
+function badgesHTML(lessons) {
   const st = Object.fromEntries(lessons.map(l => [l.id, l.progress.status]));
   const passed = lessons.filter(l => l.progress.status === 'passed').length;
-  const list = MODULES.map(m => ({icon: m.icon || '🏅', name: m.leg ? m.leg.replace(/^Leg \d+ · /, '') : m.title,
-    hint: (m.leg || '').split(' · ')[0] || 'Leg', color: m.color, on: (m.lessons || []).length > 0 && (m.lessons || []).every(id => st[id] === 'passed')}));
-  list.unshift({icon: '🛫', name: 'First flight', hint: 'pass 1 mission', color: '#ff7a1a', on: passed >= 1});
-  list.push({icon: '🌓', name: 'Halfway there', hint: '15 missions', color: '#1fa5a0', on: passed >= 15});
-  list.push({icon: '🕵️', name: 'Spoof hunter', hint: 'mission 27', color: '#8b5cf6', on: st['27-spoofing'] === 'passed'});
-  list.push({icon: '🌌', name: 'Star reader', hint: 'mission 24', color: '#1f3a68', on: st['24-night-and-stars'] === 'passed'});
-  return list.map(b => `<div class="bdg ${b.on ? 'on' : ''}" style="--bc:${b.color}"><div class="m">${b.icon}</div><b>${esc(b.name)}</b><span>${b.on ? 'unlocked' : esc(b.hint)}</span></div>`).join('');
+  const list = MODULES.map((m, i) => ({icon: LEG_ICONS[i] || 'compass', name: (m.leg || '').replace(/^Leg \d+ · /, '') || m.title,
+    hint: `Leg ${ROMAN[i]}`, on: (m.lessons || []).length > 0 && (m.lessons || []).every(id => st[id] === 'passed')}));
+  list.unshift({icon: 'plane', name: 'First flight', hint: 'pass 1 mission', on: passed >= 1});
+  list.push({icon: 'moon', name: 'Halfway there', hint: '15 missions', on: passed >= 15});
+  list.push({icon: 'magnify', name: 'Spoof hunter', hint: 'mission 27', on: st['27-spoofing'] === 'passed'});
+  list.push({icon: 'stars', name: 'Star reader', hint: 'mission 24', on: st['24-night-and-stars'] === 'passed'});
+  return {html: list.map(b => `<div class="md ${b.on ? 'on' : ''}"><div class="disc">${icon(b.icon)}</div><b>${esc(b.name)}</b><span>${b.on ? 'earned' : esc(b.hint)}</span></div>`).join(''),
+    earned: list.filter(b => b.on).length, total: list.length};
 }
 async function showHome() {
   try { const c = await api('/api/courses'); COURSES = c.lessons; MODULES = c.modules; } catch (e) {}
   $('work').style.display = 'none'; $('home').style.display = '';
+  document.body.classList.add('at-home');
   $('crumb').innerHTML = '';
   const passed = COURSES.filter(l => l.progress.status === 'passed').length;
   const next = COURSES.find(l => l.progress.status !== 'passed');
   const first = ME.display.split(' ')[0];
   const r = rankFor(passed), xp = passed * XP_PER_MISSION;
-  const pct = r.next === null ? 100 : Math.round(100 * (passed - r.from) / (r.next - r.from));
-  const brief = passed === 0
-    ? `Every year a swallow like <b>Navi</b> flies thousands of kilometres with no GPS — landmarks, the sun, the stars and an inner compass,
-       each checked against the others. NAVERA does the same for drones and vehicles. ${COURSES.length} missions stand between you and
-       the engineering behind it. Your first mission is ready.`
-    : passed === COURSES.length
-    ? `Expedition complete. ${COURSES.length} missions, ${xp} XP. You have rebuilt the ideas behind NAVERA one by one — time to show your final project.`
-    : `${passed} of ${COURSES.length} missions complete. Next on the map: <b>${esc(next.title)}</b>${/[.?!]$/.test(next.title) ? '' : '.'}
-       Your NAVERA copy is your own aircraft — modify it freely; Reset brings back the factory version.`;
-  let h = `<div class="hq"><div class="row">
-      <img class="navi" src="/static/img/navi-pilot.svg" alt="Navi the swallow, pilot">
-      <div class="brief"><div class="over">Expedition HQ · mission briefing</div><h1>Welcome aboard, ${esc(first)}</h1><p>${brief}</p></div>
-      <div class="stats"><div class="rank"><div class="medal">${r.icon}</div><div><b>${esc(r.name)}</b><span>rank · ${xp} XP</span></div></div>
-        <div class="xpbar"><i style="width:${pct}%"></i></div>
-        <div class="xptext"><span>${passed}/${COURSES.length} missions</span><span>${r.next === null ? 'max rank' : `${r.next - passed} to ${esc(r.nextName)}`}</span></div>
-        ${next ? `<button class="go" id="goNext">${passed ? 'Next mission ➜' : 'Start mission 1 ➜'}</button>` : ''}</div>
-    </div></div>
-    <div class="expmap"><div class="head"><h2>🗺️ Expedition map</h2><span>Flags mark completed missions · click any waypoint</span></div>${expeditionSVG(COURSES)}</div>
-    <div class="ach"><div class="head"><h2>🏅 Achievements</h2><span>Complete a whole leg to earn its badge</span></div><div class="badges">${achievements(COURSES)}</div></div>`;
-  const mods = MODULES.length ? MODULES : [{title: 'Missions', lessons: COURSES.map(l => l.id)}];
+  const pct = r.next === null ? 100 : Math.max(3, Math.round(100 * (passed - r.from) / (r.next - r.from)));
+  const b = badgesHTML(COURSES);
+  const headline = passed === 0 ? `Find your way<br>when the <i>sky goes quiet.</i>` : `Welcome back,<br><i>${esc(first)}.</i>`;
+  const text = passed === 0
+    ? `Every autumn, swallows cross Oman without a single satellite — landmarks, the sun, the stars and an inner compass, each checked against the others. In ${COURSES.length} missions you will build the same skills for machines, on NAVERA's real code.`
+    : passed === COURSES.length ? `All ${COURSES.length} missions complete — ${xp} XP. You have rebuilt the ideas behind NAVERA one by one.`
+    : `${passed} of ${COURSES.length} missions complete. Next on your route: <b>${esc(next.title)}</b>. Your NAVERA copy is your own aircraft: change it freely, Reset brings back the factory version.`;
+  let h = `<header class="hhero">${heroScene()}<div class="hwrap"><div class="hgrid">
+      <div><div class="kicker">${next ? `${esc(moduleOf(next.id).leg || '')} · Mission ${esc(next.number)}` : 'Expedition complete'}</div>
+        <h1>${headline}</h1><p>${text}</p>
+        ${next ? `<button class="go hbtn" id="goNext">${passed ? `Continue mission ${+next.number}` : 'Start mission 1'} →</button>` : ''}<button class="hbtn line" id="goMap">Open the expedition map</button></div>
+      <div class="glass"><div class="rank"><div class="medal">${icon(r.icon)}</div><div><b>${esc(r.name)}</b><span>Rank ${r.idx + 1} of ${RANKS.length} · ${xp} XP</span></div></div>
+        <div class="bar"><i style="width:${pct}%"></i></div>
+        <div class="row"><span>Missions</span><b>${passed} / ${COURSES.length}</b></div>
+        <div class="row"><span>Next rank</span><b>${r.next === null ? '—' : `${esc(r.nextName)} · ${r.next - passed} mission${r.next - passed > 1 ? 's' : ''}`}</b></div>
+        <div class="row"><span>Badges</span><b>${b.earned} of ${b.total}</b></div>
+        ${next ? `<button class="go" id="goNext2">Next mission →</button>` : ''}</div>
+    </div></div></header>
+    <div class="wrap">
+      <div class="shead" id="mapHead"><div class="kicker">Your route</div><h2>Expedition map</h2><p>${COURSES.length} waypoints across ${MODULES.length} legs — click any waypoint to open its mission.</p></div>
+      <div class="mapcard">${expeditionSVG(COURSES)}</div>
+      <div class="shead"><div class="kicker">Achievements</div><h2>Badges</h2><p>Complete a whole leg to earn its badge.</p></div>
+      <div class="medals">${b.html}</div>
+      <div class="shead" style="margin-bottom:0"><div class="kicker">Missions</div><h2>${MODULES.length} legs, ${COURSES.length} missions</h2></div>`;
   const byId = Object.fromEntries(COURSES.map(l => [l.id, l]));
-  for (const m of mods) {
-    const color = m.color || '#ff7a1a';
-    h += `<div class="module" style="--mcolor:${color}"><div class="mhead"><div class="micon" style="background:${color}22">${m.icon || '🐦'}</div>
-      <div><div class="mtag" style="color:${color}">${esc(m.leg || '')}</div><h2>${esc(m.title)}</h2>${m.desc ? `<p class="mdesc">${esc(m.desc)}</p>` : ''}</div></div><div class="cards">`;
-    for (const id of (m.lessons || [])) {
-      const l = byId[id]; if (!l) continue;
-      const st = l.progress.status;
-      const badge = st === 'passed' ? '<span class="badge passed">✔ complete</span>' :
-        st === 'started' ? '<span class="badge started">in progress</span>' : `<span class="xp">+${XP_PER_MISSION} XP</span>`;
-      const res = (l.resources || []).map(r => `<span class="badge res">${r === 'sim' ? '🛩️ simulator' : r === 'camera' ? '📷 camera' : '🔌 sensors'}</span>`).join(' ');
-      h += `<div class="card" data-id="${esc(id)}"><div class="num"><span class="mission">Mission ${esc(l.number)} · ${esc(l.duration || '')}</span>${badge}</div>
-        <div class="title">${esc(l.title)}</div><div class="sum">${esc(l.summary || '')}</div><div>${res}</div></div>`;
+  MODULES.forEach((m, k) => {
+    const ls = (m.lessons || []).map(id => byId[id]).filter(Boolean);
+    const done = ls.filter(l => l.progress.status === 'passed').length;
+    h += `<div class="legblock"><div><div class="kicker">${esc(m.leg || `Leg ${ROMAN[k]}`)}</div><h3>${esc(m.title)}</h3><p class="ld">${esc(m.desc || '')}</p>
+      <div class="lp"><i style="width:${ls.length ? 100 * done / ls.length : 0}%"></i></div><div class="lc">${done} of ${ls.length} complete</div></div><div class="mlist">`;
+    for (const l of ls) {
+      const st = l.progress.status, isNext = next && next.id === l.id;
+      const cls = st === 'passed' ? 'done' : isNext ? 'now' : '';
+      const status = st === 'passed' ? '<span class="status done">Complete</span>' : isNext ? `<span class="status now">${st === 'started' ? 'In progress' : 'Up next'}</span>`
+        : st === 'started' ? '<span class="status next">Started</span>' : '<span class="status next">Later</span>';
+      const res = (l.resources || []).map(x => x === 'sim' ? 'needs the simulator' : x === 'camera' ? 'needs the camera' : 'needs the sensors').join(' · ');
+      h += `<div class="mitem ${cls}" data-id="${esc(l.id)}"><div class="no">${esc(l.number)}</div><div><h4>${esc(l.title)}</h4><p>${esc(l.summary || '')}</p>${res ? `<div class="res">${res}</div>` : ''}</div>
+        <div class="dur">${esc(l.duration || '')}</div><div class="xp">+${XP_PER_MISSION} XP</div>${status}</div>`;
     }
     h += '</div></div>';
-  }
+  });
+  h += `<div class="foot">NAVERA Academy · NAVERA is developed by IRIS Systems · Release 0.x — field validation pending</div></div>`;
   $('home').innerHTML = h;
-  $('home').querySelectorAll('.card, .wp').forEach(c => c.onclick = () => { location.hash = 'lesson/' + c.dataset.id; });
-  if ($('goNext')) $('goNext').onclick = () => { location.hash = 'lesson/' + next.id; };
+  placeWaypoints(COURSES);
+  $('home').querySelectorAll('.mitem').forEach(c => c.onclick = () => { location.hash = 'lesson/' + c.dataset.id; });
+  ['goNext', 'goNext2'].forEach(id => { if ($(id)) $(id).onclick = () => { location.hash = 'lesson/' + next.id; }; });
+  $('goMap').onclick = () => $('mapHead').scrollIntoView({behavior: 'smooth'});
+  $('home').onscroll = () => document.body.classList.toggle('scrolled', $('home').scrollTop > 40);
 }
 
 /* ------------------------------------------------------------------ lesson */
@@ -191,7 +227,7 @@ async function openLesson(id) {
   try { l = await api('/api/lesson/' + encodeURIComponent(id)); } catch (e) { toast(e.message); location.hash = ''; return; }
   const switched = !LESSON || LESSON.id !== l.id;
   LESSON = l;
-  $('home').style.display = 'none'; $('work').style.display = '';
+  $('home').style.display = 'none'; $('work').style.display = ''; document.body.classList.remove('at-home', 'scrolled');
   $('crumb').innerHTML = `Mission ${esc(l.number)} · <b>${esc(l.title)}</b>`;
   $('checkBtn').style.display = l.has_check ? '' : 'none';
   setStatus(l.progress);
@@ -218,16 +254,17 @@ function missionHeader(which) {
   const tasks = ((LESSON.lab || '').match(/\[!TASK\]/g) || []).length;
   const done = LESSON.progress && LESSON.progress.status === 'passed';
   const h1 = ((which === 'lab' ? LESSON.lab : LESSON.course) || '').match(/^#\s+(.+)$/m);
-  const res = (LESSON.resources || []).map(r => `<span class="chip2">${r === 'sim' ? '🛩️ simulator' : r === 'camera' ? '📷 camera' : '🔌 sensors'}</span>`).join('');
-  return `<div class="mhero" style="--mcolor:${m.color}">
+  const res = (LESSON.resources || []).map(r => `<span class="chip2">${r === 'sim' ? 'Simulator' : r === 'camera' ? 'Camera' : 'Sensors'}</span>`).join('');
+  return `<div class="mhero">
+    <svg class="ridge" viewBox="0 0 600 70" preserveAspectRatio="none"><path d="M0 56 L60 30 L110 46 L170 18 L230 44 L290 26 L350 50 L420 22 L480 46 L540 30 L600 44 L600 70 L0 70Z" fill="#3a3157" opacity=".9"/><path d="M0 64 Q150 52 300 62 T600 60 L600 70 L0 70Z" fill="#7c4a2c" opacity=".85"/></svg>
+    <span class="navi"></span>
     <div class="leg">${esc(m.leg || '')} · Mission ${esc(LESSON.number)} · ${which === 'lab' ? 'Lab' : 'Briefing'}</div>
     <h1>${esc(h1 ? h1[1] : LESSON.title)}</h1>
-    <div class="chips"><span class="chip2">⏱ ${esc(LESSON.duration || '')}</span><span class="chip2">⭐ +${XP_PER_MISSION} XP</span>
-      ${tasks ? `<span class="chip2">🎯 ${tasks} task${tasks > 1 ? 's' : ''}</span>` : ''}${res}
-      ${done ? '<span class="chip2 done">✔ complete</span>' : ''}</div>
-    ${LESSON.outdated ? `<div class="update">🔄 This mission was updated since you started it. <button class="go" id="getNew">Get the new lab files</button>
-      <span style="font-weight:600">your current files are kept in a backup</span></div>` : ''}
-    <img class="navi" src="/static/img/${done ? 'navi-cheer' : 'navi-pilot'}.svg" alt=""></div>`;
+    <div class="chips"><span class="chip2">⏱ ${esc(LESSON.duration || '')}</span><span class="chip2">★ +${XP_PER_MISSION} XP</span>
+      ${tasks ? `<span class="chip2">◎ ${tasks} task${tasks > 1 ? 's' : ''}</span>` : ''}${res}
+      ${done ? '<span class="chip2 done">✔ Complete</span>' : ''}</div>
+    ${LESSON.outdated ? `<div class="update">This mission was updated since you started it. <button class="go" id="getNew">Get the new lab files</button>
+      <span style="color:var(--muted)">your current files are kept in a backup</span></div>` : ''}</div>`;
 }
 function updateReadbar() {
   const d = $('doc'), max = d.scrollHeight - d.clientHeight;
@@ -330,11 +367,10 @@ $('checkBtn').onclick = async () => {
 function celebrate(before, after) {
   const p = document.createElement('div'); p.className = 'party';
   const r0 = rankFor(before), r1 = rankFor(after);
-  const up = r1.name !== r0.name ? `<span class="rankup">${r1.icon} Rank up: ${esc(r1.name)}!</span>` : '';
-  const lines = ['Mission complete!', 'Clean landing!', 'Waypoint reached!', 'Navigation confirmed!'];
-  p.innerHTML = `<div class="cheer"><img src="/static/img/navi-pilot.svg" alt=""><div><b>${lines[Math.floor(Math.random() * lines.length)]}</b><span>+${XP_PER_MISSION} XP · ${after}/${COURSES.length} missions</span>${up}</div></div>`;
+  const up = r1.name !== r0.name ? `<span class="rankup">New rank: ${esc(r1.name)}</span>` : '';
+  p.innerHTML = `<div class="cheer"><div class="medal">${icon(r1.icon)}</div><div><b>Mission complete</b><span>+${XP_PER_MISSION} XP · ${after} of ${COURSES.length} missions</span>${up}</div></div>`;
   document.body.appendChild(p);
-  setTimeout(() => p.remove(), up ? 5200 : 4200);
+  setTimeout(() => p.remove(), up ? 5200 : 4400);
 }
 $('rclose').onclick = () => $('result').className = 'result';
 $('resetLesson').onclick = async () => {
@@ -450,11 +486,11 @@ const Editor = {
       require.config({paths: {vs: '/static/vendor/monaco/min/vs'}});
       require(['vs/editor/editor.main'], () => {
         monaco.editor.defineTheme('expedition', {base: 'vs-dark', inherit: true,
-          rules: [{token: 'comment', foreground: '7f8ea8', fontStyle: 'italic'}, {token: 'keyword', foreground: 'ff9a3c'},
-            {token: 'string', foreground: 'ffd27a'}, {token: 'number', foreground: '7fd4c9'}, {token: 'type', foreground: '9fb8ff'}],
-          colors: {'editor.background': '#121826', 'editor.lineHighlightBackground': '#1a2234', 'editorLineNumber.foreground': '#46536f',
-            'editorLineNumber.activeForeground': '#ffb36b', 'editorCursor.foreground': '#ff9a3c', 'editor.selectionBackground': '#ff7a1a40',
-            'editorIndentGuide.background1': '#1f2940', 'editorWidget.background': '#1a2234'}});
+          rules: [{token: 'comment', foreground: '6c7590', fontStyle: 'italic'}, {token: 'keyword', foreground: 'f2b763'},
+            {token: 'string', foreground: 'e6d3a3'}, {token: 'number', foreground: '7fd1c7'}, {token: 'type', foreground: 'b7a6e0'}],
+          colors: {'editor.background': '#12172b', 'editor.lineHighlightBackground': '#1b2240', 'editorLineNumber.foreground': '#454d73',
+            'editorLineNumber.activeForeground': '#ffd08a', 'editorCursor.foreground': '#e0a64a', 'editor.selectionBackground': '#e0a64a40',
+            'editorIndentGuide.background1': '#232a4a', 'editorWidget.background': '#1b2240'}});
         this.ed = monaco.editor.create($('monaco'), {theme: 'expedition', automaticLayout: false, fontSize: 14,
           minimap: {enabled: false}, scrollBeyondLastLine: false, tabSize: 4, renderWhitespace: 'selection'});
         this.ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => this.save());
@@ -552,8 +588,8 @@ const Terms = {
     const id = ++this.n;
     const el = document.createElement('div'); el.className = 'term'; $('terms').appendChild(el);
     const term = new Terminal({fontSize: 14, lineHeight: 1.2, cursorBlink: true, scrollback: 5000,
-      fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, monospace', theme: {background: '#121826', foreground: '#dfe6f2',
-        cursor: '#ff9a3c', cursorAccent: '#121826', selectionBackground: '#ff7a1a55', yellow: '#ffd27a', brightYellow: '#ffe3a3',
+      fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, monospace', theme: {background: '#12172b', foreground: '#dfe3f0',
+        cursor: '#e0a64a', cursorAccent: '#12172b', selectionBackground: '#e0a64a55', yellow: '#f2b763', brightYellow: '#ffd08a',
         cyan: '#7fd4c9', brightCyan: '#a5e6dd', blue: '#7aa7ff', brightBlue: '#9fc0ff'}});
     const fit = new FitAddon.FitAddon(); term.loadAddon(fit); term.open(el);
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
