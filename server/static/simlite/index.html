@@ -76,12 +76,12 @@
   .mapwrap #map { position: absolute; inset: 0; }
   @media (max-width: 900px) { .mid { grid-template-columns: 1fr; grid-template-rows: 55% 45%; } .bottom { grid-template-columns: repeat(2, minmax(0, 1fr)); } .sl { grid-template-rows: 54px minmax(0, 1fr) auto; } .card:last-child { display: none; } }
 
-/* IRIS Systems — the company's wordmark, as on iris-systems.tn (Space Grotesk, letters spaced, framed) */
+/* IRIS Systems — the company logo (img/iris-logo-mask.png, from "Logo IRIS 002"), drawn in the text colour */
 @font-face { font-family: "Space Grotesk"; font-weight: 300 700; font-display: swap; src: url(/static/vendor/fonts/space-grotesk-latin.woff2) format("woff2"); }
-.iris-mark { display: inline-flex; align-items: center; border: 2px solid currentColor; border-radius: 6px; padding: 3px 8px; font-family: "Space Grotesk", Inter, sans-serif; font-weight: 500; font-size: 13px; line-height: 1; letter-spacing: .3em; text-transform: uppercase; }
-.iris-mark span { margin-right: -.3em; }
+.iris-mark { display: inline-block; vertical-align: middle; height: 22px; aspect-ratio: 3.279; background: currentColor; -webkit-mask: url(/static/img/iris-logo-mask.png) center / contain no-repeat; mask: url(/static/img/iris-logo-mask.png) center / contain no-repeat; color: inherit; font-size: 0; border: none; padding: 0; }
+.iris-mark span { display: none; }
 .by-iris { margin-left: 0; display: inline-flex; align-items: center; gap: 8px; margin-left: 14px; padding-left: 14px; border-left: 1px solid rgba(255,255,255,.22); font-size: 11px; letter-spacing: 1.5px; text-transform: lowercase; font-weight: 500; opacity: .9; text-decoration: none; color: inherit; }
-.by-iris .iris-mark { font-size: 11px; padding: 3px 7px; border-width: 1.5px; }
+.by-iris .iris-mark { height: 17px; }
 .iris-foot { display: inline-flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; }
 .iris-foot img { width: 26px; height: 26px; border-radius: 6px; }
 @media (max-width: 640px) { .by-iris { margin-left: 0; display: none; } }
@@ -90,7 +90,7 @@
 <body>
 <div class="sl">
   <div class="top">
-    <span class="logo">✈ NAVERA SIM</span><a class="by-iris" href="https://iris-systems.tn" target="_blank" rel="noopener" onclick="event.stopPropagation()">by <span class="iris-mark"><span>IRIS</span></span></a>
+    <span class="logo">✈ NAVERA SIM</span><a class="by-iris" href="https://iris-systems.tn" target="_blank" rel="noopener" onclick="event.stopPropagation()">by <span class="iris-mark" role="img" aria-label="IRIS"><span>IRIS</span></span></a>
     <span class="lite">Lite · runs on your computer</span>
     <span class="seg"><button class="on">Lite</button><button id="toFull" title="The full simulator (real autopilot), by booking">Full · booked</button></span>
     <span class="seg" id="vehSeg"><button data-v="drone" class="on">🛩 Drone</button><button data-v="plane">✈ Plane</button><button data-v="boat">🚤 Boat</button><button data-v="robot">🚙 Robot</button></span>

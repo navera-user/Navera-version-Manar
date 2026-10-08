@@ -215,7 +215,7 @@ async function showHome() {
     }
     h += '</div></div>';
   });
-  h += `<div class="foot"><a class="iris-foot" href="https://iris-systems.tn" target="_blank" rel="noopener" style="color:var(--ink)"><img src="/static/img/iris-icon.svg" alt="">${'<span class="iris-mark"><span>IRIS</span></span>'}</a><div style="margin-top:8px">NAVERA Academy · NAVERA is developed by IRIS Systems · Release 0.x — field validation pending</div></div></div>`;
+  h += `<div class="foot"><a class="iris-foot" href="https://iris-systems.tn" target="_blank" rel="noopener" style="color:var(--ink)"><img src="/static/img/iris-icon.svg" alt="">${'<span class="iris-mark" role="img" aria-label="IRIS"><span>IRIS</span></span>'}</a><div style="margin-top:8px">NAVERA Academy · NAVERA is developed by IRIS Systems · Release 0.x — field validation pending</div></div></div>`;
   $('home').innerHTML = h;
   placeWaypoints(COURSES);
   $('home').querySelectorAll('.mitem').forEach(c => c.onclick = () => { location.hash = 'lesson/' + c.dataset.id; });
