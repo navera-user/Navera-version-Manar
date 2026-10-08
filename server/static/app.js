@@ -406,16 +406,16 @@ function showPane(p) {
   if (p === 'operator' && !$('opFrame').src) loadWeb('op');
 }
 function loadWeb(which) {
-  const host = location.hostname;
-  const url = which === 'sim' ? `http://${host}:8190/` : `http://${host}:8181/operator`;
+  // carried by the academy itself (same address, same login): works locally and through the internet
+  const url = which === 'sim' ? '/web/sim/' : '/web/op/operator';
   const f = which === 'sim' ? $('simFrame') : $('opFrame');
   (which === 'sim' ? $('simUrl') : $('opUrl')).value = url;
   f.src = url;
 }
 $('simReload').onclick = () => { $('simFrame').src = 'about:blank'; setTimeout(() => loadWeb('sim'), 50); };
 $('opReload').onclick = () => { $('opFrame').src = 'about:blank'; setTimeout(() => loadWeb('op'), 50); };
-$('simOpen').onclick = () => window.open(`http://${location.hostname}:8190/`, '_blank');
-$('opOpen').onclick = () => window.open(`http://${location.hostname}:8181/operator`, '_blank');
+$('simOpen').onclick = () => window.open('/web/sim/', '_blank');
+$('opOpen').onclick = () => window.open('/web/op/operator', '_blank');
 
 // resizable split
 (() => {

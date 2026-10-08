@@ -27,6 +27,7 @@ from flask_sock import Sock
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import config
+import webtools
 import sandbox
 import workspaces
 
@@ -631,6 +632,24 @@ def _holder(res):
 def _ports_busy(ports):
     out = subprocess.run(["ss", "-ltnH"], text=True, capture_output=True).stdout
     return [p for p in ports if re.search(rf":{p}\s", out)]
+
+
+@app.route("/web/<tool>/", defaults={"sub": ""}, methods=["GET", "POST"])
+@app.route("/web/<tool>/<path:sub>", methods=["GET", "POST"])
+@login_required()
+def web_tool(tool, sub):
+    """Simulator and operator view inside the page, under the academy's address (see webtools.py)."""
+    if tool not in webtools.PORTS:
+        abort(404)
+    holder = _holder("sim")
+    if request.urec["role"] != "teacher" and holder != request.user:
+        if holder:
+            return webtools.message("The simulator is in use",
+                                    f"<b>{holder}</b> has booked it. Your turn comes when they release it.", 423)
+        return webtools.message("Book the simulator first",
+                                "Press <b>Book</b> next to “Mission simulator”, start it from your terminal, "
+                                "then press ⟳ Reload.", 423)
+    return webtools.proxy(app, tool, sub, request)
 
 
 @app.get("/api/bookings")
