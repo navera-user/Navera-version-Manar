@@ -11,6 +11,8 @@ import images_lab as L
 
 FRAME = "/data/navera_data/camera_pkg/camera_pkg/data/day/frame_0005.jpeg"
 img = cv2.imread(FRAME)
+if img is None:
+    raise SystemExit(f"data not found ({FRAME}) — ask the teacher to connect the data disk")
 os.makedirs("out", exist_ok=True)
 
 

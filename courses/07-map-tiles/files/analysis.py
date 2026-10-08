@@ -73,20 +73,25 @@ for k in range(200):                                               # pixel <-> l
     worst = max(worst, abs(la - lat), abs(lo - lon))
 print(f"pixel <-> lat/lon round trip over 200 points around the world: worst error {worst:.2e} degrees")
 
-db = sqlite3.connect("file:" + MAP + "?mode=ro", uri=True)
-meta = dict(db.execute("SELECT name, value FROM metadata"))
-counts = {str(z): n for z, n in db.execute("SELECT zoom_level, COUNT(*) FROM tiles GROUP BY zoom_level")}
-page_size = db.execute("PRAGMA page_size").fetchone()[0]
-page_count = db.execute("PRAGMA page_count").fetchone()[0]
-size = os.path.getsize(MAP)
-mapinfo = {"file_bytes": size, "file_gb": round(size / 1e9, 2), "page_size": page_size, "page_count": page_count,
-           "estimated_size_mb_in_metadata": int(meta.get("estimated_size_mb", 0)),
-           "tiles_per_zoom": counts, "total_tiles": sum(counts.values()),
-           "mean_bytes_per_tile": round(size / sum(counts.values()))}
-print(f"\nmap file: {size} bytes = {mapinfo['file_gb']} GB ({page_count} pages x {page_size} B); "
-      f"metadata says estimated_size_mb = {mapinfo['estimated_size_mb_in_metadata']}")
-print("tiles per zoom:", counts, " total", mapinfo["total_tiles"])
-print("the map's own altitude_zoom_map:", meta.get("altitude_zoom_map"))
+if not os.path.exists(MAP):
+    print(f"\nmap data not found ({MAP}) — ask the teacher to connect the data disk "
+          "(the other results are saved; run analysis.py again once the disk is back)")
+    mapinfo = {"missing": "data disk not connected"}
+else:
+    db = sqlite3.connect("file:" + MAP + "?mode=ro", uri=True)
+    meta = dict(db.execute("SELECT name, value FROM metadata"))
+    counts = {str(z): n for z, n in db.execute("SELECT zoom_level, COUNT(*) FROM tiles GROUP BY zoom_level")}
+    page_size = db.execute("PRAGMA page_size").fetchone()[0]
+    page_count = db.execute("PRAGMA page_count").fetchone()[0]
+    size = os.path.getsize(MAP)
+    mapinfo = {"file_bytes": size, "file_gb": round(size / 1e9, 2), "page_size": page_size, "page_count": page_count,
+               "estimated_size_mb_in_metadata": int(meta.get("estimated_size_mb", 0)),
+               "tiles_per_zoom": counts, "total_tiles": sum(counts.values()),
+               "mean_bytes_per_tile": round(size / sum(counts.values()))}
+    print(f"\nmap file: {size} bytes = {mapinfo['file_gb']} GB ({page_count} pages x {page_size} B); "
+          f"metadata says estimated_size_mb = {mapinfo['estimated_size_mb_in_metadata']}")
+    print("tiles per zoom:", counts, " total", mapinfo["total_tiles"])
+    print("the map's own altitude_zoom_map:", meta.get("altitude_zoom_map"))
 
 results = {"camera": dict(CAMERA, gsd_m=round(gsd, 4)), "world": world, "corner_bug_m": corner,
            "pixel_round_trip_max_error_deg": worst, "singapore_zoom_by_altitude": alt_zoom, "map": mapinfo}

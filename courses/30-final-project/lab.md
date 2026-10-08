@@ -82,7 +82,7 @@ cd ~/navera && git status --short | head
 ```
 
 If it lists files you changed in earlier lessons, keep them out of the project: commit them on their
-own branch, or use **Reset my NAVERA copy** (it makes a backup first). Tell git who you are (once),
+own branch, or use **♻️ Reset my NAVERA copy** (it makes a backup first). Tell git who you are (once),
 then create the project branch **from `base`**:
 
 ```bash

@@ -3,6 +3,7 @@
 #     python3 mosaic.py LAT LON ZOOM [--radius 1]      e.g.  python3 mosaic.py 35.8277 10.6388 17
 #     python3 mosaic.py LAT LON ZOOM --map /data/academy/07-map-tiles/sousse_small.mbtiles
 #     python3 mosaic.py LAT LON ZOOM --out other.png   (write another file instead of mosaic.png)
+import os
 import sys
 
 import cv2
@@ -25,6 +26,9 @@ for flag in ("--map", "--radius", "--out"):
 if len(args) != 3:
     raise SystemExit("usage: python3 mosaic.py LAT LON ZOOM [--radius R] [--map FILE] [--out FILE.png]")
 lat, lon, z = float(args[0]), float(args[1]), int(args[2])
+if not os.path.exists(path):
+    raise SystemExit(f"map data not found ({path}) — ask the teacher to connect the data disk "
+                     "(or try the small map: --map /data/academy/07-map-tiles/sousse_small.mbtiles)")
 for name, result in (("latlon_to_tile", latlon_to_tile(lat, lon, z)), ("meters_per_pixel", meters_per_pixel(lat, z)),
                      ("latlon_to_pixel", latlon_to_pixel(lat, lon, z, 0, 0)),
                      ("pixel_to_latlon", pixel_to_latlon(0.0, 0.0, z, 0, 0))):

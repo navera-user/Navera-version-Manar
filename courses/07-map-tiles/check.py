@@ -4,7 +4,7 @@ import math
 import os
 import re
 
-from academy_check import Checker, load_student, need, sh
+from academy_check import CheckFailed, Checker, load_student, need, sh
 
 c = Checker()
 
@@ -199,6 +199,9 @@ def _():
     c.near(RES.get("corner_bug_m", {}).get("Reykjavik", 0), 94.2, tol=0.2, what="corner_bug_m for Reykjavik")
     c.near(RES.get("corner_bug_m", {}).get("Sousse (NAVERA test map)", 0), 175.1, tol=0.2, what="corner_bug_m for Sousse")
     m = RES.get("map", {})
+    if m.get("missing"):
+        raise CheckFailed("results.json has no map facts: the data disk was not connected when analysis.py ran — "
+                          "ask the teacher, then run analysis.py again")
     c.eq(m.get("file_bytes"), 10286944256, what="map.file_bytes")
     c.eq(m.get("total_tiles"), 1154943, what="map.total_tiles")
 

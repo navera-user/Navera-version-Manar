@@ -67,7 +67,7 @@ python3 probability.py
 It samples 100 000 errors from your covariance and prints the fractions inside the 1, 2 and
 2.448-sigma ellipses next to the theory, the 1-D fraction for the east error, and — part 2 — NAVERA's
 **stated σ** next to your ellipse's largest σ for the default and the "tilted" covariance. Everything
-is saved in `results.json`. The sampled values must agree with the theory to about ±0.005.
+is saved in `results.json`. The sampled values must agree with the theory to about ±0.006.
 
 ## Part B — The arbiter's verdict
 

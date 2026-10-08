@@ -15,6 +15,10 @@ fi
 for f in "$NAVERA_MBTILES" "$HOME/navera/navera_msgs/msg/PositionEstimate.msg"; do
     if [ -e "$f" ]; then
         echo "found            : $f"
+    elif [ "$f" = "$NAVERA_MBTILES" ]; then
+        echo "  !! missing     : $f"
+        echo "     (the map lives on the data disk: ask the teacher to connect it — not your mistake)"
+        problems=$((problems + 1))
     else
         echo "  !! missing     : $f"
         problems=$((problems + 1))

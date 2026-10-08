@@ -185,7 +185,7 @@ Every pair of numbers must be identical: your `tile_xy` and `meters_per_pixel` a
 python3 analysis.py
 ```
 
-It prints and saves to `results.json`: for eight places (seven cities on five continents, plus Sousse) the zoom-17
+It prints and saves to `results.json`: for eight places (seven cities on six continents, plus Sousse) the zoom-17
 pixel and tile size, the scale factor 1/cos φ, the EPSG:3857 − EPSG:3395 offset, and the zoom your
 `zoom_for_gsd()` picks for an example camera (84°, 1536 px, 300 m); the zoom by flying height over
 Singapore next to the map's own `altitude_zoom_map`; the corner-bug size in Sousse, Singapore and

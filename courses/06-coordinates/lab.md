@@ -26,9 +26,10 @@ heights in meters above the ellipsoid; several results are returned as a **tuple
 python3 geo_lab.py
 ```
 
-Every value prints `TODO`. Read the top of the file: the constants `WGS84_A`, `WGS84_F`, `WGS84_B`,
+Only the first line (the WGS84 constants) prints real values; every computed value prints `TODO`.
+Read the top of the file: the constants `WGS84_A`, `WGS84_F`, `WGS84_B`,
 `WGS84_E2`, `EARTH_RADIUS_M` and `M_PER_DEG`, then the ten functions. Below the line
-`# ---- you don't need to change anything below this line ----` is the demo and the list `PLACES`
+`# ---- you don't need to change anything below this line (but you can read it!) ----` is the demo and the list `PLACES`
 (Sousse, Monastir, Kairouan, Rome and the summit of Kilimanjaro).
 
 > [!TIP]

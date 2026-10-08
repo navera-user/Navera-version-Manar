@@ -921,7 +921,7 @@ def api_admin_students():
                     "terminals": sum(1 for t in TERMS.values() if t["user"] == name),
                     "backups": len(os.listdir(os.path.join(config.STUDENTS, name, "backups")))
                     if os.path.isdir(os.path.join(config.STUDENTS, name, "backups")) else 0})
-    return jsonify(students=out, base=workspaces.base_info(), lessons=lesson_ids())
+    return jsonify(students=out, base=workspaces.base_info(), lessons=lesson_ids(), missing_data=config.missing_data())
 
 
 @app.post("/api/admin/students")

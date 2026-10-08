@@ -12,6 +12,13 @@ NAVERA's arbiter ([test_estimator_launch.py](file:./test_estimator_launch.py)). 
 
 ### Step 1 — Start from a clean copy
 
+First make sure you are on the branch `work` (lesson 05 left you on `my-first-change`; your commits
+stay there):
+
+```bash
+git -C ~/navera switch work
+```
+
 Lesson 13 changed a setting of NAVERA. Ask git:
 
 ```bash
@@ -33,7 +40,8 @@ git -C ~/navera restore navera_estimator/navera_estimator/config/estimator_param
 git -C ~/navera status
 ```
 
-`nothing to commit, working tree clean` (untracked files such as `.pytest_cache/` are fine).
+`nothing to commit, working tree clean` — or, if earlier tests left `.pytest_cache/` or `.hypothesis/`
+behind, `nothing added to commit but untracked files present`: untracked files like those are fine.
 
 ### Step 2 — One test file, then the whole suite
 

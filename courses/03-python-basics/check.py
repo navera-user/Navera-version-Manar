@@ -47,7 +47,8 @@ def pair(r, what):
 
 def near_angle(got, want, tol, what):
     d = (float(got) - want + 180.0) % 360.0 - 180.0
-    c.ok(abs(d) <= tol, f"{what} is {float(got):.4g}°, expected {want:.4g}° (± {tol:g})")
+    c.ok(abs(d) <= tol, f"{what} is {float(got):.4g}°: {'too far clockwise' if d > 0 else 'too far anticlockwise'} "
+                        f"(it must be within ± {tol:g}° of the right value)")
 
 
 # ---------------------------------------------------------------- Part A

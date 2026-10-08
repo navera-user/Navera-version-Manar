@@ -72,6 +72,8 @@ float64 latitude              # deg, WGS84
 float64 longitude             # deg, WGS84
 float64 altitude              # m above the WGS84 ellipsoid; NaN if unknown
 float64[9] position_covariance
+uint8 position_covariance_type
+...
 uint8 source
 uint8 SOURCE_UNKNOWN=0
 uint8 SOURCE_GPS=1
@@ -101,8 +103,8 @@ positions coming from very different sources with one single rule.
 On the wire, a message is **serialised** with CDR (*Common Data Representation*): fields one after
 the other, each aligned to its own size, plus a 4-byte header. A `std_msgs/String` holding
 `"Hello World: 12"` (15 characters) takes 4 (header) + 4 (string length) + 16 (characters and the
-final zero) = **24 bytes**. A `NavSatFix` is about 120 bytes: 12 float64 (96 bytes) plus the
-header and status fields. So a GPS at 5 Hz uses about 600 B/s, while one colour camera frame of
+final zero) = **24 bytes**. A `NavSatFix` is about 125 bytes: 12 float64 (96 bytes) plus the
+header and status fields (lesson 10 measures 128 B, the size rounded up). So a GPS at 5 Hz uses about 600 B/s, while one colour camera frame of
 1536 × 730 pixels is 1536 × 730 × 3 ≈ 3.4 MB. Two orders of magnitude matter when you design a
 system: this is why NAVERA's cameras and localisers run on the same box and never send raw frames
 over a radio link. You will measure message sizes with `ros2 topic bw`.
@@ -151,8 +153,8 @@ user data unicast port    = PB + DG * domain + 11 + PG * p
 Worked example: in domain 42, the discovery port is 7400 + 250 × 42 = **17 900**; the first
 participant (p = 0) receives its user data on 17 900 + 11 = 17 911, the second (p = 1) on 17 913.
 
-In this academy every student has a private domain between 1 and 101, and NAVERA itself avoids
-77–79 for student use.
+In this academy every student has a private domain between 1 and 101. Domains 77–79 are kept for
+NAVERA itself and are never given to a student.
 
 > [!NOTE]
 > **For the curious: why domains 0–101?** The largest port number is 65 535, so the domain can be

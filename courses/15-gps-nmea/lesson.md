@@ -218,7 +218,7 @@ geometry**: GSV says where each satellite is, GSA says which ones were used.
 
 ## 5. Dilution of precision: geometry in a matrix
 
-Why does the same receiver give 1.5 m in the open desert and 30 m in a street? The
+Why does the same receiver give 1.5 m in an open field and 30 m in a street? The
 pseudorange errors `eps_i` are similar. What changes is the **geometry**.
 
 **Linearisation.** Start from an approximate solution `x0, b0` and write `x = x0 + dx`,

@@ -435,8 +435,24 @@ commits and their messages, the files each commit changes, the tag, the state of
 your files in the lesson folder.
 
 > [!WARNING]
-> Do not press **Reset my NAVERA copy** now: your commits would go into the backup bundle and the
+> Do not press **♻️ Reset my NAVERA copy** now: your commits would go into the backup bundle and the
 > new `~/navera` would not have your branch, so these checks would fail.
+
+## Step 14 — Back to the main branch
+
+When the check passes, go back to `work`, the branch the next missions start from:
+
+```bash
+git switch work
+```
+
+```bash
+git status
+```
+
+`On branch work`, `nothing to commit, working tree clean`. Your branch `my-first-change` and the tag
+`lab5` stay in the repository (`git branch`, `git tag`): nothing is lost, and the check still finds
+them. The next missions expect NAVERA as it was — `geo.py` without your edit.
 
 ## Going further (optional)
 

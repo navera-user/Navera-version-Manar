@@ -1,7 +1,7 @@
 """mission.py — use navlib to answer the mission planner's questions (lab 3, Step 6).
 
 Scenario (synthetic numbers): an inspection of a point 9 km from the take-off site, from a
-small harbour on a desert coast, along the ground track 030° (north-north-east), and back.
+small harbour on a rocky coast, along the ground track 030° (north-north-east), and back.
 Wind: 5 m/s blowing TOWARDS the south-west, i.e. wind_east = -3 m/s, wind_north = -4 m/s.
 
 Run:   python3 mission.py        -> prints a summary and writes results.json

@@ -140,6 +140,10 @@ Keep the node running for the next step, but put the defaults back first:
 ros2 param set /fake_gps speed_mps 5.0
 ```
 
+```bash
+ros2 param set /fake_gps heading_deg 30.0
+```
+
 ## Step 5 — Look at the messages
 
 Still in Terminal 2:

@@ -25,7 +25,10 @@ for name in ("to_gray", "normalise", "equalise", "convolve2d", "gaussian_kernel"
         raise SystemExit(f"{name}() still returns None: finish its TODO in images_lab.py first")
 
 res = {}
-frame = L.to_gray(cv2.imread(FRAME))
+raw_frame = cv2.imread(FRAME)
+if raw_frame is None:
+    raise SystemExit(f"data not found ({FRAME}) — ask the teacher to connect the data disk")
+frame = L.to_gray(raw_frame)
 res["dtypes"] = {"to_gray": str(frame.dtype), "normalise": str(np.asarray(L.normalise(frame)).dtype),
                  "equalise": str(np.asarray(L.equalise(frame)).dtype),
                  "convolve2d": str(L.convolve2d(frame, np.ones((3, 3)) / 9).dtype),

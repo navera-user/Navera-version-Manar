@@ -267,7 +267,7 @@ def _():
          "after the GNSS stopped, no line with NO_FIX and `GPS: stale (...)`:\n" + out[-600:])
     m = re.findall(r"GPS silent for ([\d.]+) s", out)
     c.ok(m, "no line `GPS silent for X.XX s` after NO_FIX:\n" + out[-500:])
-    c.ok(2.9 <= float(m[-1]) <= 3.6, f"GPS silent for {m[-1]} s — expected between 3.0 and about 3.3 s")
+    c.ok(2.9 <= float(m[-1]) <= 3.6, f"GPS silent for {m[-1]} s — expected between 3.0 and about 3.2 s (the window plus at most one tick)")
 
 
 @c.test("report.md — Noise, Executors and NAVERA, with your numbers",

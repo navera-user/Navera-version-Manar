@@ -304,7 +304,7 @@ writes its PID into `fake_node.pid` and a line into `fake_node.log` when it catc
 ./fake_node.sh &
 ```
 
-The shell prints `[1]` and a PID, and the prompt comes back. Find it in three ways:
+The shell prints `[1]` and a PID, and the prompt comes back. Find it in four ways:
 
 ```bash
 jobs
@@ -360,8 +360,13 @@ grep WARN mission/logs/sousse_2026-09-21.log | grep -v "^\[WARN\]"
 
 An INFO line that only *mentions* WARN. A severity is the **first field**, so anchor your patterns.
 
-Which nodes complained? Build the pipeline of the course step by step — run it, then press `↑` and
-add the next stage each time:
+Which nodes complained? Build the pipeline of the course step by step: run the first stage, then
+press `↑` and add the next stage each time (`| cut -d' ' -f3`, then `| sort`, `| uniq -c`,
+`| sort -rn`). The first and the last command:
+
+```bash
+grep "^\[WARN\]" mission/logs/sousse_2026-09-21.log
+```
 
 ```bash
 grep "^\[WARN\]" mission/logs/sousse_2026-09-21.log | cut -d' ' -f3 | sort | uniq -c | sort -rn
@@ -415,8 +420,9 @@ grep -rn "ROS_DOMAIN_ID=42" ~/navera/deploy
 
 <details><summary>Answer (not graded)</summary>
 Three files contain it. <code>deploy/navera.env.example</code> is the template of <code>/etc/navera/navera.env</code>, the
-settings file of a deployed box: the line <code>ROS_DOMAIN_ID=42</code> written there <b>decides</b> the domain (the systemd
-units load it with <code>EnvironmentFile=</code>). <code>deploy/systemd/navera_boot_lib.sh</code> is only the safety net: it
+settings file of a deployed box: the line <code>ROS_DOMAIN_ID=42</code> written there sets the domain (the systemd
+units load it with <code>EnvironmentFile=</code>) — unless a later file of the same units,
+<code>/var/lib/navera/settings.env</code> or <code>/var/lib/navera/discovered.env</code>, sets it again: the last one loaded wins. <code>deploy/systemd/navera_boot_lib.sh</code> is only the safety net: it
 uses 42 when the value is not a number. <code>deploy/README.md</code> is documentation.
 </details>
 

@@ -5,6 +5,7 @@
 #   simulation_web/simulation_web/web_common.py   MBTilesReader (reads the map for the simulator)
 #     python3 compare_navera.py
 import logging
+import os
 
 from day_pkg import local_matcher, prepare_area
 from day_pkg.nodes.day_localizer import tile_center_latlon
@@ -41,6 +42,8 @@ px, py = x * 256 + 100.25, y * 256 + 37.5
 print("   yours ", show(pixel_to_latlon(px, py, 17, 0, 0), "(%.10f, %.10f)"))
 print("   NAVERA", "(%.10f, %.10f)" % local_matcher.tile_px_to_latlon(px, py, 17))
 
+if not os.path.exists(MAP):
+    raise SystemExit(f"\n4) skipped: map data not found ({MAP}) — ask the teacher to connect the data disk")
 reader = MBTilesReader(MAP, logging.getLogger("demo"))
 a, b = read_tile(MAP, 17, x, y), reader.get(17, x, y)
 print("\n4) The same tile read by your read_tile() and by the simulator's MBTilesReader:",

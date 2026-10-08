@@ -5,7 +5,7 @@
 >   **terminal**.
 > - You learn the file system, permissions, processes and signals, and environment variables.
 > - You learn **pipes** (`|`), text tools such as `grep`, and short **bash** scripts.
-> - In the lab you study two synthetic NAVERA flight logs (Sousse and a desert range) and write a
+> - In the lab you study two synthetic NAVERA flight logs (Sousse and an inland test range) and write a
 >   script that summarises any NAVERA log.
 > - NAVERA's own test script uses the same pipes, and the same signals: SIGTERM first, then
 >   SIGKILL.
@@ -20,7 +20,7 @@ Every robot computer works like this. The computer is inside a drone, a boat or 
 server room. It runs **Linux**, and engineers talk to it in text. This lesson gives you the working
 knowledge of Linux that a robotics engineer uses every day: the file system, permissions, processes
 and signals, environment variables, streams and pipes, the text tools, and small **bash** scripts.
-In the lab you will use them on two (synthetic) NAVERA flight logs from Sousse and a desert test
+In the lab you will use them on two (synthetic) NAVERA flight logs from Sousse and an inland test
 range, and you will write a log-report script that works on any NAVERA log.
 
 > [!NOTE]

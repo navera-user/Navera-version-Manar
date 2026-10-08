@@ -2,6 +2,6 @@ Notes for the pilot — training flights in Tunisia (synthetic logs, GPS losses 
 
 - Sousse, 21 Sept, 08:30: along the coast north of the port. Jamming simulated twice.
   The second loss was over the sea: the day camera had nothing to recognise.
-- Desert range, 22 Sept, 16:05: rocky hills of a desert test range in southern Tunisia. A fake GPS
+- Inland range, 22 Sept, 16:05: rocky hills of a test range in southern Tunisia. A fake GPS
   jump was injected to test the arbiter; later the GPS was lost in a dry valley between two ridges.
 - Next time: keep the route over land when GPS is jammed; low sun makes long shadows.

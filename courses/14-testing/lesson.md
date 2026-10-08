@@ -40,7 +40,7 @@ pytest finds files `test_*.py`, runs functions `test_*`, and reports each as pas
 
 ```python
 def test_one_degree_of_latitude():
-    assert haversine_m(23.0, 58.0, 24.0, 58.0) == pytest.approx(M_PER_DEG, rel=1e-6)
+    assert haversine_m(35.0, 10.0, 36.0, 10.0) == pytest.approx(M_PER_DEG, rel=1e-6)
 ```
 
 `assert` stops the test with an AssertionError when its condition is false; pytest **rewrites** the
@@ -185,7 +185,7 @@ turns.
 
 These are **property tests** of a navigation system: "for any rotation of the sky, the chosen
 direction rotates by the same angle". And they are designed to be able to **fail** — the essential
-quality of a test. The same logic is applied today to satellite-tagged birds crossing Arabia: a
+quality of a test. The same logic is applied today to satellite-tagged birds crossing the Mediterranean: a
 hypothesis about how they navigate is only useful if it predicts tracks that the measured ones could
 contradict.
 

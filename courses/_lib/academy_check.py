@@ -55,8 +55,12 @@ class Checker:
             g = float(got)
         except (TypeError, ValueError):
             raise CheckFailed(f"{what} should be a number, got {got!r}")
-        if not math.isfinite(g) or abs(g - want) > tol:
-            raise CheckFailed(f"{what} is {g:.6g}, expected {want:.6g} (± {tol:g})")
+        if not math.isfinite(g):
+            raise CheckFailed(f"{what} is {g} — not a usable number")
+        if abs(g - want) > tol:
+            # the right value is not shown: the student finds it with their own code
+            raise CheckFailed(f"{what} is {g:.6g}: {'too high' if g > want else 'too low'} "
+                              f"(it must be within ± {tol:g} of the right value)")
 
     def file_exists(self, path):
         if not os.path.exists(path):

@@ -8,7 +8,8 @@ import numpy as np
 path = sys.argv[1] if len(sys.argv) > 1 else "/data/navera_data/camera_pkg/camera_pkg/data/day/frame_0005.jpeg"
 img = cv2.imread(path)                       # BGR colour picture, as a numpy array
 if img is None:
-    raise SystemExit(f"cannot read {path}")
+    raise SystemExit(f"cannot read {path}" + ("" if len(sys.argv) > 1 else
+                     " — data not found: ask the teacher to connect the data disk"))
 
 print("file      :", path)
 print("type      :", type(img).__name__, "of", img.dtype)

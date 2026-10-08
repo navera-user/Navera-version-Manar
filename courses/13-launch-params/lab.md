@@ -281,7 +281,7 @@ git -C ~/navera diff
 
 > [!NOTE]
 > Keep this change for the check. Lesson 14 starts by putting NAVERA back with git (the
-> **Reset my NAVERA copy** button would do it too).
+> **♻️ Reset my NAVERA copy** button would do it too).
 
 Stop the launch.
 

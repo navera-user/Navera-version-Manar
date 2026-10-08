@@ -41,8 +41,9 @@ def as_vec(v, n, what):
 
 def vnear(got, want, tol, what):
     g = as_vec(got, len(want), what)
-    c.ok(np.all(np.abs(g - np.asarray(want)) <= tol),
-         f"{what} is {np.round(g, 3).tolist()}, expected {np.round(want, 3).tolist()} (± {tol:g})")
+    bad = [i for i in range(len(want)) if not abs(g[i] - want[i]) <= tol]
+    c.ok(not bad, f"{what} is {np.round(g, 3).tolist()}: value{'s' if len(bad) > 1 else ''} "
+                  f"{', '.join(str(i + 1) for i in bad)} not within ± {tol:g} of the right value")
 
 
 @c.test("TODO 1 — focal_px() and fov_deg(): 480 px for 90° on 960 px, the Insta360 view is 659.8 px and 44.5° high",

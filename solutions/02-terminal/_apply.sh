@@ -10,7 +10,7 @@ ls inbox/*.tmp
 rm inbox/*.tmp
 rmdir inbox
 chmod +x mission/bin/preflight.sh
-./mission/bin/preflight.sh
+./mission/bin/preflight.sh || echo "(preflight reported a problem — the rest of the lab goes on)"
 cp ~/navera/gps_pkg/gps_pkg/config/gps_params.yaml mission/docs/
 env | grep '^ROS_' | sort > ros_env.txt
 ls ~/navera/README.md ~/navera/NO_SUCH_FILE.md > ls_out.txt 2> ls_err.txt || true

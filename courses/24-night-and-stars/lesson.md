@@ -13,7 +13,7 @@
 >   re-implement the geometry of NAVERA's night localizer.
 > - NAVERA's night vision is **not yet validated** on real thermal images.
 
-It is 21:00 in October. A survey drone flies over the foothills of a desert mountain range, far
+It is 21:00 in October. A survey drone flies over the foothills of a mountain range, far
 from any city. GPS has been jammed for ten minutes. In lessons 20–23 the drone found
 itself by matching its camera picture with the satellite map. Now it is **dark**: the day camera
 sees nothing. Two things still carry information about position:

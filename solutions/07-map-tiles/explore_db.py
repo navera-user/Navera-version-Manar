@@ -13,6 +13,9 @@ if "--map" in args:
     path = args[i + 1]
     del args[i:i + 2]
 
+if not os.path.exists(path):
+    sys.exit(f"map data not found ({path}) — ask the teacher to connect the data disk "
+             "(or try the small map: --map /data/academy/07-map-tiles/sousse_small.mbtiles)")
 db = sqlite3.connect("file:" + path + "?mode=ro", uri=True)     # mode=ro: this program can NOT change the file
 if args:
     cur = db.execute(args[0])

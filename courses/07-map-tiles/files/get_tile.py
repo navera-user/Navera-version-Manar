@@ -1,6 +1,7 @@
 # Reads ONE tile with YOUR functions and saves it as a PNG picture. Usage:
 #     python3 get_tile.py LAT LON ZOOM            e.g.  python3 get_tile.py 35.8277 10.6388 19
 #     python3 get_tile.py LAT LON ZOOM --map /data/academy/07-map-tiles/sousse_small.mbtiles
+import os
 import sys
 
 import cv2
@@ -16,6 +17,9 @@ if "--map" in args:
 if len(args) != 3:
     raise SystemExit("usage: python3 get_tile.py LAT LON ZOOM")
 lat, lon, z = float(args[0]), float(args[1]), int(args[2])
+if not os.path.exists(path):
+    raise SystemExit(f"map data not found ({path}) — ask the teacher to connect the data disk "
+                     "(or try the small map: --map /data/academy/07-map-tiles/sousse_small.mbtiles)")
 
 t = latlon_to_tile(lat, lon, z)
 if t is None:

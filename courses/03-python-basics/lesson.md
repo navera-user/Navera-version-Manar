@@ -11,7 +11,7 @@
 >   coast.
 > - NAVERA's `TrackVelocity` class is built like the `Track` class you write.
 
-A survey drone takes off from a small harbour on a desert coast. It must inspect a point
+A survey drone takes off from a small harbour on a rocky coast. It must inspect a point
 9 km away on the track 030° and come back. The wind blows at 5 m/s towards the south-west.
 The drone flies at 12 m/s through the air, its battery holds 160 Wh, it uses 350 W, and the rules
 say: **keep 20 % in reserve**. Can it do the mission? Which heading must it fly so that the wind
@@ -101,7 +101,7 @@ while battery_wh > reserve_wh:    # repeat while a condition is true
 
 A **list comprehension** builds a list in one line:
 `high = [a for a in alts if a > 100]`. NAVERA uses them everywhere, for example in
-`day_pkg/vision_nav.py`:
+`day_pkg/day_pkg/vision_nav.py`:
 `pts = [p for p in self._bias if math.hypot(*_en(p[:2], near)) <= self.bias_radius_m]`
 (the `*` in front of `_en(...)` is explained at the end of section 2).
 
@@ -245,7 +245,7 @@ print(quad.endurance_s())                     # 1316.6 s
   `self.battery_wh` is **this** vehicle's battery. Forgetting `self.` in front of an attribute
   creates a local variable that disappears at the end of the method — a classic bug.
 - Two objects of the same class have their own attributes:
-  `Vehicle("wing", 20, 150, 220, …)` does not change `quad`.
+  `Vehicle("wing", 20, 150, 220)` does not change `quad`.
 - Names with two underscores on each side (`__init__`, `__len__`, `__repr__`) are **special
   methods**: Python calls them for you. `len(track)` calls `track.__len__()`, and `print(quad)`
   shows the text returned by `quad.__repr__()`. In an f-string, `{name!r}` inserts `repr(name)`:

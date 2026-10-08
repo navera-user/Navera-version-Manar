@@ -142,8 +142,8 @@ ROS_DOMAIN_ID=$((ROS_DOMAIN_ID + 110)) ros2 topic list --no-daemon --spin-time 3
 ```
 
 > [!NOTE]
-> The domain `yours + 110` is between 111 and 211: private to you, and it collides with nobody in
-> the class. As the course explains, such domains use ephemeral ports — fine for a 3-second test,
+> The domain `yours + 110` is between 111 and 211: private to you, and it collides with no other
+> student (the teacher's automatic tests use 200–232, but never while you are working). As the course explains, such domains use ephemeral ports — fine for a 3-second test,
 > not for a product.
 
 > [!TASK]

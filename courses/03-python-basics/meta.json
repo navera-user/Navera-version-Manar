@@ -1,3 +1,3 @@
 {"number": "03", "title": "Python for engineers: functions, classes and NumPy", "module": 1, "duration": "4 h 30",
- "summary": "The Python an engineer needs to read NAVERA: functions, modules, exceptions, classes with inheritance and NumPy arrays — applied to the wind triangle, battery endurance and a survey track along a desert coast.",
+ "summary": "The Python an engineer needs to read NAVERA: functions, modules, exceptions, classes with inheritance and NumPy arrays — applied to the wind triangle, battery endurance and a survey track along a rocky coast.",
  "resources": [], "open": ["navlib.py", "mission.py", "report.md"], "check_timeout_s": 90}

@@ -181,6 +181,9 @@ def _():
     c.ok(same_bytes(p, os.path.join(STARTER, "inbox", "preflight.sh")), f"{p} was changed — only move it")
     c.ok(os.stat(p).st_mode & 0o100, f"{p} has no execute (x) permission for its owner yet")
     code, out = sh(f"./{p}", timeout=20)
+    if "data disk" in out:
+        raise CheckFailed("the map file is missing because the data disk is not connected — ask the teacher "
+                          "(your preflight.sh is fine: it found the problem)")
     c.ok(code == 0 and "PRE-FLIGHT OK" in out, f"./{p} did not report PRE-FLIGHT OK:\n{out[-400:]}")
 
 

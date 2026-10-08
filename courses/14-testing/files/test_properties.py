@@ -8,6 +8,8 @@ counterexample, printed as "Falsifying example: ...".
 """
 import math
 
+import pytest
+
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 

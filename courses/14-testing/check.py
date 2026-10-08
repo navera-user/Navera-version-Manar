@@ -236,16 +236,19 @@ def _():
          + out[-600:])
 
 
-@c.test("your NAVERA copy is restored: geo.py and estimator_params.yaml are back to the original",
+@c.test("your NAVERA copy is restored: no edit left in geo.py or estimator_params.yaml",
         hint="cd ~/navera, then `git status` and `git diff` show what changed; `git restore <file>` puts a file "
-             "back as it was in the last commit.")
+             "back as it was in the last commit. Lesson 05's commits are fine: they live on my-first-change "
+             "(`git switch work` to leave that branch).")
 def _():
+    # only edits that are NOT committed count (a forgotten mutant, lesson 13's setting): commits made on
+    # purpose, like lesson 05's on my-first-change, are the student's history, not a leftover
     changed = []
     for f in (NAV_GEO, "navera_estimator/navera_estimator/config/estimator_params.yaml"):
-        code, _ = sh(f"git -C ~/navera diff --quiet base -- {f}", timeout=20)
+        code, _ = sh(f"git -C ~/navera diff --quiet HEAD -- {f}", timeout=20)
         if code != 0:
             changed.append(f)
-    c.ok(not changed, "still different from the original: " + ", ".join(changed))
+    c.ok(not changed, "still changed and not committed: " + ", ".join(changed))
 
 
 @c.test("report.md — NAVERA's tests, Mutants and Properties, with your observations",

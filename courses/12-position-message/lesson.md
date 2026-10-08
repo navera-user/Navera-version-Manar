@@ -7,7 +7,7 @@
 > - You will learn the two time stamps (measured when, published when) and the arbiter's rule.
 > - In the lab you build a source, publish it to NAVERA's real arbiter and inject 13 faults.
 
-A drone flies over a desert test range. Its GNSS is jammed. Three NAVERA sources still produce positions:
+A drone flies over a coastal test range. Its GNSS is jammed. Three NAVERA sources still produce positions:
 day vision matched a photo against the satellite map 0.6 s ago, celestial navigation solved a star
 field 20 s ago, and a dead-reckoned position is carried forward from the last good fix. Which one
 should the autopilot follow — and how much should it trust it?
@@ -34,10 +34,11 @@ arbiter.
 | **when?** | `sensor_stamp` (measurement), `header.stamp` (publication) |
 | **traceability** | `producer`, `model_id`, `frame_index`, `details_json` |
 
-The message file states two rules: (1) the **covariance** is the only quantity that may be fused or
-compared mathematically across sources — `confidence` is not comparable; (2) **nothing may decide on
-`details_json`** (or on `reason`): free text has no guaranteed format, so if a value matters for a
-decision it must become a typed field.
+The comment at the top of `PositionEstimate.msg` states two rules (here in our words): (1) the
+**covariance** is the only quantity that may be fused mathematically — `confidence` is source-local and
+not comparable across sources; (2) **nothing may decide on `details_json`**: if a value matters for a
+decision it must become a typed field. The same goes for `reason`, marked "for humans, never parsed"
+in the message (and in `NavStatus.msg`): free text has no guaranteed format.
 
 **Unknown is NaN, never 0.** An altitude of `0.0` is a real altitude — sea level. `math.nan` ("not a
 number") means "no value": every calculation with it gives NaN, and `math.nan == math.nan` is even

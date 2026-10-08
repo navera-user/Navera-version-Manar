@@ -46,6 +46,7 @@
   <button id="logout">🚪 Log out</button>
 </div>
 <div class="wrap">
+  <div class="box" id="dataWarn" style="display:none;border:2px solid #c23b4a;background:#fff3f2"></div>
   <div class="box">
     <h2>Students</h2>
     <p>Each student has a private NAVERA copy, lesson files and terminals in a sandbox. "Open" shows their workspace as they see it.</p>
@@ -115,6 +116,11 @@ async function api(url, opts = {}) {
 let DATA;
 async function load() {
   DATA = await api('/api/admin/students');
+  const md = DATA.missing_data || [];
+  $('dataWarn').style.display = md.length ? '' : 'none';
+  $('dataWarn').innerHTML = md.length ? `<h2 style="color:#c23b4a">⚠️ The data disk is not connected</h2><p>Missions that need it will fail until it is back:</p><ul>` +
+    md.map(m => `<li><b>${esc(m.what)}</b> — <code>${esc(m.target)}</code></li>`).join('') +
+    `</ul><p>Plug in the ADATA disk and open it once in the file manager (or run <code>udisksctl mount -b /dev/sda2</code> in a terminal on the Jetson), then reload this page.</p>` : '';
   const t = $('tbl');
   let h = '<tr><th>Student</th><th>Login</th><th>E-mail</th><th>Progress</th><th>Terminals</th><th>Backups</th><th></th></tr>';
   for (const s of DATA.students) {

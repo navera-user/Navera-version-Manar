@@ -151,7 +151,7 @@ equator, the map is stretched by 1/cos φ, so a pixel covers less ground:
 meters per pixel = 2πa · cos φ / (256 · 2^z) = 156 543.03 · cos φ / 2^z
 ```
 
-| Zoom | Singapore (1.3°) | Sousse (35.8°) | London (51.5°) | Reykjavik (64.1°) |
+| Zoom | Singapore (1.28°) | Sousse (35.83°) | London (51.50°) | Reykjavik (64.14°) |
 |---|---|---|---|---|
 | 13 | 19.10 m | 15.49 m | 11.90 m | 8.33 m |
 | 15 | 4.776 m | 3.873 m | 2.974 m | 2.084 m |

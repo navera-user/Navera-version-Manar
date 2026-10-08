@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Make the synthetic survey track of lesson 03 (deterministic: same file every time).
 
-A multirotor inspects the breakwater of a small harbour on a desert coast
+A multirotor inspects the breakwater of a small harbour on a rocky coast
 (synthetic numbers, local east/north metres from the take-off point). One row per second:
 t_s, east_m, north_m. Flight: 1200 m north at ~12 m/s, 600 m east, then straight home.
 Position noise 1.5 m (GPS-like), plus one 40 m glitch at t = 150 s.

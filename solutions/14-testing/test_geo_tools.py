@@ -27,7 +27,7 @@ def test_speed_without_time_is_none(dt):
 # ---------- haversine_m ----------
 
 def test_one_degree_of_latitude():
-    assert haversine_m(23.0, 58.0, 24.0, 58.0) == pytest.approx(M_PER_DEG, rel=1e-6)
+    assert haversine_m(35.0, 10.0, 36.0, 10.0) == pytest.approx(M_PER_DEG, rel=1e-6)
 
 
 def test_one_degree_of_longitude_on_the_equator_and_at_60():
@@ -69,7 +69,7 @@ def test_round_trip_example(london):
 
 @pytest.mark.parametrize("lat, lon, ok", [
     (51.5007, -0.1246, True), (-89.9, 179.9, True), (0.0, 0.0, False), (91.0, 10.0, False),
-    (-91.0, 10.0, False), (23.0, 181.0, False), (math.nan, 10.0, False), (23.0, math.inf, False)])
+    (-91.0, 10.0, False), (35.0, 181.0, False), (math.nan, 10.0, False), (35.0, math.inf, False)])
 def test_is_valid_position(lat, lon, ok):
     assert is_valid_position(lat, lon) is ok
 

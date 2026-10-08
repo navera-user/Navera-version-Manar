@@ -85,6 +85,19 @@ def _():
 LIVE = {}
 
 
+def ros2_param(cmd, want=None):
+    """A `ros2 param` command, tried up to 3 times: on a busy computer the ros2 daemon may not see the new
+    node yet ("Node not found", or an empty answer). Later tries skip the daemon and discover directly."""
+    out = ""
+    for attempt in range(3):
+        full = cmd if attempt == 0 else cmd + " --no-daemon --spin-time 3"
+        out = sh(full, timeout=25)[1]
+        if out.strip() and "Node not found" not in out and (want is None or want in out):
+            return out
+        time.sleep(1.0)
+    return out
+
+
 @c.test("live — descriptors and the validation callback refuse bad changes, accept good ones",
         hint="TODO 1 makes rate_hz read-only and speed_mps limited to [0, 60]. TODO 2b: combine the new values "
              "(p.name, p.value) with the current ones and return SetParametersResult(successful=..., reason=...).")
@@ -98,7 +111,7 @@ def _():
                            ("s45", "ros2 param set /fake_gps speed_mps 45.0"),
                            ("drone", "ros2 param set /fake_gps vehicle drone"),
                            ("s45d", "ros2 param set /fake_gps speed_mps 25.0")):
-                LIVE[k] = sh(cmd, timeout=25)[1]
+                LIVE[k] = ros2_param(cmd, want="Max value" if k == "describe" else None)
     c.ok("Max value: 60.0" in LIVE["describe"], "`ros2 param describe /fake_gps speed_mps` shows no range:\n" + LIVE["describe"][-300:])
     c.ok("read-only" in LIVE["rate"], f"rate_hz should be read-only, `ros2 param set` said: {LIVE['rate'].strip()[:200]}")
     c.ok("out of range" in LIVE["s500"], f"speed 500 should be out of range, got: {LIVE['s500'].strip()[:200]}")

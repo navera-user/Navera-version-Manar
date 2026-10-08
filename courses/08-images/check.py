@@ -4,7 +4,7 @@ import re
 
 import numpy as np
 
-from academy_check import Checker, load_student, need, sh
+from academy_check import CheckFailed, Checker, load_student, need, sh
 
 c = Checker()
 D = "/data/academy/08-images/"
@@ -274,6 +274,9 @@ RES = {}
         hint="Run `python3 analysis.py` and read the error, if any. It needs TODO 1–11.")
 def _():
     code, out = sh("python3 analysis.py", timeout=100)
+    if "connect the data disk" in out:
+        raise CheckFailed("analysis.py needs an aerial photo from the data disk, which is not connected — "
+                          "ask the teacher (this is not a mistake in your code)")
     c.ok(code == 0, "analysis.py stopped with an error:\n" + out[-700:])
     RES.update(json.load(open("results.json")))
     c.eq(RES.get("best_heading_deg"), 35, what="best_heading_deg")

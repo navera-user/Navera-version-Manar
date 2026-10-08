@@ -252,7 +252,7 @@ matching method that estimates rotation and scale itself (features, lessons 20�
 
 ## 🐦 How birds do it
 
-Arabia has an old tradition of **falconry**, and falcons are a good model of a vision system.
+Many countries have an old tradition of **falconry**, and falcons are a good model of a vision system.
 Like other raptors, a falcon's retina has two **foveae** (regions of very densely packed
 photoreceptors) in each eye: a deep central one looking sideways and a shallower one looking forward.
 The deep fovea works like a high-resolution crop of the image — in our words, more pixels per degree

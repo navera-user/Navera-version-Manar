@@ -18,7 +18,7 @@ def test_not_a_position(lat, lon):
 
 
 def test_one_degree_of_latitude():
-    assert haversine_m(23.0, 58.0, 24.0, 58.0) == pytest.approx(M_PER_DEG, rel=1e-6)
+    assert haversine_m(35.0, 10.0, 36.0, 10.0) == pytest.approx(M_PER_DEG, rel=1e-6)
 
 
 def test_dead_reckon_100_m_east():

@@ -6,7 +6,7 @@ The logs imitate the ROS 2 console format of NAVERA's nodes:
 Two training flights, invented for the lab (the GPS losses are simulated):
   sousse_2026-09-21.log  coast near Sousse (NAVERA's test area): a jammed stretch over land, then a
                          long one over the sea
-  range_2026-09-22.log   rocky hills of a desert test range: a GPS jump (spoofing test) refused by
+  range_2026-09-22.log   rocky hills of an inland test range: a GPS jump (spoofing test) refused by
                          the arbiter
 
     python3 make_dataset.py ../../courses/02-terminal/files/inbox
@@ -102,7 +102,7 @@ def sousse():
     return log
 
 
-def desert_range():
+def inland_range():
     log = Log(epoch(2026, 9, 22, 16, 5), 2026_0922)
     r = log.rnd
     lost = [(610, 700)]
@@ -138,6 +138,6 @@ def desert_range():
 if __name__ == "__main__":
     out = sys.argv[1] if len(sys.argv) > 1 else "."
     os.makedirs(out, exist_ok=True)
-    for name, fn in (("sousse_2026-09-21.log", sousse), ("range_2026-09-22.log", desert_range)):
+    for name, fn in (("sousse_2026-09-21.log", sousse), ("range_2026-09-22.log", inland_range)):
         n = fn().write(os.path.join(out, name))
         print(name, n, "lines")

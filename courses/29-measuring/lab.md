@@ -256,6 +256,6 @@ A good conclusion says **what** is better, **by how much** (with a CI), **compar
   why must you publish the harder one?
 - **How many seconds of jamming do you need?** With `make_errors` and `rho = 0.9`, find the n for which
   the block-bootstrap CI of the median is narrower than ±10 %. Translate into minutes of flight for a
-  field campaign over a desert test range.
+  field campaign over a coastal test range.
 - **Rule of three.** Simulate 0 failures in n trials for a true failure rate of 1 %: how often do you
   see 0 failures with n = 33? With n = 300?

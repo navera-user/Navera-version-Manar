@@ -142,7 +142,8 @@ python3 nmea_tools.py
 
 > [!WARNING]
 > Common mistakes: forgetting that an empty SNR (`,,`) means "in view but not tracked" (it must give
-> `None`, not crash); requiring exactly 18 GSA fields (NMEA 4.10 adds a 19th); reading a last GSV
+> `None`, not crash); requiring exactly 18 items after `split(",")` for GSA — the sentence ID plus fields 1–17 (NMEA 4.10 adds
+> field 18, the system ID: a 19th item); reading a last GSV
 > block that has fewer than 4 fields.
 
 > [!TASK]

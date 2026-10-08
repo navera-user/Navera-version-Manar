@@ -91,7 +91,7 @@ but two reports that use different rules cannot be compared at the last decimal.
 used. One more trap: Python's `round()` rounds halves to the **even** integer (`round(4.5) == 4`,
 `round(5.5) == 6`). That is the rule NAVERA's code uses, so use `round()`, not `math.ceil()`.
 
-### Worked example (a test drive on a desert test range)
+### Worked example (a test drive on a coastal test range)
 
 Ten errors (m) from a test drive: `2.1 3.4 1.8 4.6 2.9 3.1 12.5 2.4 3.8 2.6`.
 Sorted: `1.8 2.1 2.4 2.6 2.9 3.1 3.4 3.8 4.6 12.5`, n = 10.

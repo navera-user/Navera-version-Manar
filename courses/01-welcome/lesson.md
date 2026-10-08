@@ -81,7 +81,7 @@ the lab you run such a solver and watch the clock bias come out of it.
 The noise `ε` of a few metres becomes a position error multiplied by a **dilution of precision**
 (DOP) that depends only on the geometry: satellites spread over the whole sky give a small DOP
 (1–2); satellites bunched in one direction, or only four of them, give a larger one. That is why the
-same receiver is precise in the open desert and poor in a narrow old-town street between tall houses
+same receiver is precise in an open field and poor in a narrow old-town street between tall houses
 and hills.
 
 ## 2. Why GNSS is fragile
@@ -117,14 +117,14 @@ at altitude has — a one-watt device can therefore deny GPS over many kilometre
 
 | Threat | What happens | What the receiver knows | Example situations |
 |---|---|---|---|
-| **Outage / blockage** | the signal is blocked or reflected (**multipath**) | it sees fewer satellites, larger DOP, or no fix | streets between tall buildings, deep wadis, under bridges, tunnels, inside a hangar |
+| **Outage / blockage** | the signal is blocked or reflected (**multipath**) | it sees fewer satellites, larger DOP, or no fix | streets between tall buildings, deep valleys, under bridges, tunnels, inside a hangar |
 | **Interference / jamming** | noise is transmitted on the GNSS frequency, deliberately or not | it **knows** it lost the fix | a jammer in a vehicle, a faulty transmitter, a military exercise |
 | **Spoofing** | fake but consistent GNSS signals are transmitted, for a chosen false position or time | it usually **does not know**: the fix looks normal | the receiver's position slowly drifts away, or jumps |
 | **Meaconing** | real signals are recorded and **re-broadcast** with a delay | it does not know; it computes the position of the re-broadcaster, and a wrong time | a simple "repeater" attack |
 
 Interference is not a theory. Navigation authorities for shipping and aviation have for years
-published warnings about GNSS interference in parts of the Middle East, including the Arabian Gulf
-and the Strait of Hormuz, and similar warnings exist for other regions of the world. Typical reports
+published warnings about GNSS interference in several regions of the world — around the Baltic Sea,
+the Black Sea, the Eastern Mediterranean and the Middle East, among others. Typical reports
 describe ships whose broadcast position appears on land, or aircraft that lose GPS for part of a
 flight. Any vehicle that must keep working in such conditions needs a second way to know where it is.
 
