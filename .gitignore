@@ -7,3 +7,5 @@ base.new/
 base.old/
 __pycache__/
 *.pyc
+setup/vendor/
+setup/sticker.html
