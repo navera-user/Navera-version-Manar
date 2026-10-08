@@ -15,7 +15,7 @@ OWNER_UID="$(id -u "$OWNER")"
 mkdir -p /etc/navera
 if [ ! -f /etc/navera/setup.json ]; then
   MAC=$(cat /sys/class/net/$(nmcli -t -f DEVICE,TYPE device | awk -F: '$2=="wifi"{print $1; exit}')/address | tr -d ':' | tr a-z A-Z)
-  PW=$(tr -dc 'abcdefghjkmnpqrstuvwxyz23456789' < /dev/urandom | head -c 10)
+  PW=$(python3 -c "import secrets; print(''.join(secrets.choice('abcdefghjkmnpqrstuvwxyz23456789') for _ in range(10)))")
   printf '{"ssid": "NAVERA-Setup-%s", "password": "%s", "public_url": ""}\n' "${MAC: -4}" "$PW" > /etc/navera/setup.json
   chmod 644 /etc/navera/setup.json
 fi
