@@ -329,3 +329,13 @@ iframe.web { flex: 1; border: 0; background: #fff; width: 100%; }
 .mapwide svg { display: block; width: 100%; height: auto; min-height: 320px; }
 .mapwide .wp { cursor: pointer; }
 .mapwide text { font-family: Inter, sans-serif; }
+
+/* IRIS Systems — the company's wordmark, as on iris-systems.tn (Space Grotesk, letters spaced, framed) */
+@font-face { font-family: "Space Grotesk"; font-weight: 300 700; font-display: swap; src: url(/static/vendor/fonts/space-grotesk-latin.woff2) format("woff2"); }
+.iris-mark { display: inline-flex; align-items: center; border: 2px solid currentColor; border-radius: 6px; padding: 3px 8px; font-family: "Space Grotesk", Inter, sans-serif; font-weight: 500; font-size: 13px; line-height: 1; letter-spacing: .3em; text-transform: uppercase; }
+.iris-mark span { margin-right: -.3em; }
+.by-iris { display: inline-flex; align-items: center; gap: 8px; margin-left: 14px; padding-left: 14px; border-left: 1px solid rgba(255,255,255,.22); font-size: 11px; letter-spacing: 1.5px; text-transform: lowercase; font-weight: 500; opacity: .9; text-decoration: none; color: inherit; }
+.by-iris .iris-mark { font-size: 11px; padding: 3px 7px; border-width: 1.5px; }
+.iris-foot { display: inline-flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; }
+.iris-foot img { width: 26px; height: 26px; border-radius: 6px; }
+@media (max-width: 640px) { .by-iris { display: none; } }

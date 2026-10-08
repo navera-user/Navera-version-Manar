@@ -27,6 +27,7 @@ from flask_sock import Sock
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import config
+import simlite
 import webtools
 import sandbox
 import workspaces
@@ -657,6 +658,45 @@ def web_tool(tool, sub):
                                 "Press <b>Book</b> next to “Mission simulator”, start it from your terminal, "
                                 "then press ⟳ Reload.", 423)
     return webtools.proxy(app, tool, sub, request)
+
+
+# ---------------------------------------------------------------- Sim Lite (runs in the browser)
+@app.get("/api/simlite/code")
+@login_required()
+def api_simlite_code():
+    src = "original" if request.args.get("src") == "original" else "mine"
+    return jsonify(simlite.code(request.user, src))
+
+
+@app.get("/api/simlite/script")
+@login_required()
+def api_simlite_script():
+    return jsonify(text=simlite.script(request.user))
+
+
+@app.post("/api/simlite/script")
+@login_required()
+def api_simlite_script_save():
+    simlite.save_script(request.user, str(request.get_json(force=True).get("text", "")))
+    return jsonify(ok=True)
+
+
+@app.get("/api/simlite/map")
+@login_required()
+def api_simlite_map():
+    path, native = simlite.map_file()
+    return jsonify(available=bool(path), max_native_zoom=native)
+
+
+@app.get("/api/simlite/tiles/<int:z>/<int:x>/<int:y>.jpg")
+@login_required()
+def api_simlite_tile(z, x, y):
+    data = simlite.tile(z, x, y)
+    if not data:
+        return "", 204
+    r = app.response_class(data, content_type="image/jpeg")
+    r.headers["Cache-Control"] = "private, max-age=86400"
+    return r
 
 
 @app.get("/api/bookings")

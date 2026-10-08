@@ -21,8 +21,8 @@ html = f"""<!doctype html><meta charset="utf-8"><title>NAVERA sticker</title>
 .s{{width:150mm;border:2px solid #0b1730;border-radius:6mm;padding:7mm}}h1{{margin:0 0 2mm;font-size:20pt}}
 .row{{display:flex;gap:8mm;margin-top:5mm}}.q{{flex:1;text-align:center}}.q img{{width:52mm}}
 .n{{display:inline-block;background:#e8706a;color:#fff;border-radius:50%;width:8mm;height:8mm;line-height:8mm;font-weight:700}}
-code{{font-size:12pt}}p{{margin:2mm 0}}</style>
-<div class="s"><h1>NAVERA Academy — first start</h1><p>Power on, wait 2 minutes, then:</p>
+code{{font-size:12pt}}.iris{{display:inline-flex;border:2px solid #0b1730;border-radius:5px;padding:2px 7px;font-size:11pt;letter-spacing:.3em;font-weight:500;float:right}}.iris span{{margin-right:-.3em}}p{{margin:2mm 0}}</style>
+<div class="s"><span class="iris iris-mark"><span>IRIS</span></span><h1>NAVERA Academy — first start</h1><p>Power on, wait 2 minutes, then:</p>
 <div class="row"><div class="q"><span class="n">1</span><p><b>Join the setup Wi-Fi</b></p><img src="{wifi}">
 <p><code>{c['ssid']}</code><br>password <code>{c['password']}</code></p></div>
 <div class="q"><span class="n">2</span><p><b>Open the setup page</b></p><img src="{page}"><p><code>http://navera.setup</code></p></div></div>

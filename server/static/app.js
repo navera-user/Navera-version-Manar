@@ -215,7 +215,7 @@ async function showHome() {
     }
     h += '</div></div>';
   });
-  h += `<div class="foot">NAVERA Academy · NAVERA is developed by IRIS Systems · Release 0.x — field validation pending</div></div>`;
+  h += `<div class="foot"><a class="iris-foot" href="https://iris-systems.tn" target="_blank" rel="noopener" style="color:var(--ink)"><img src="/static/img/iris-icon.svg" alt="">${'<span class="iris-mark"><span>IRIS</span></span>'}</a><div style="margin-top:8px">NAVERA Academy · NAVERA is developed by IRIS Systems · Release 0.x — field validation pending</div></div></div>`;
   $('home').innerHTML = h;
   placeWaypoints(COURSES);
   $('home').querySelectorAll('.mitem').forEach(c => c.onclick = () => { location.hash = 'lesson/' + c.dataset.id; });
@@ -407,14 +407,16 @@ function showPane(p) {
 }
 function loadWeb(which) {
   // carried by the academy itself (same address, same login): works locally and through the internet
-  const url = which === 'sim' ? '/web/sim/' : '/web/op/operator';
+  // Simulator tab: Sim Lite (in the browser, everyone at once); its "Full · booked" switch opens
+  // the full simulator. Operator view: the full simulator's, carried by the academy.
+  const url = which === 'sim' ? '/static/simlite/index.html' : '/web/op/operator';
   const f = which === 'sim' ? $('simFrame') : $('opFrame');
   (which === 'sim' ? $('simUrl') : $('opUrl')).value = url;
   f.src = url;
 }
 $('simReload').onclick = () => { $('simFrame').src = 'about:blank'; setTimeout(() => loadWeb('sim'), 50); };
 $('opReload').onclick = () => { $('opFrame').src = 'about:blank'; setTimeout(() => loadWeb('op'), 50); };
-$('simOpen').onclick = () => window.open('/web/sim/', '_blank');
+$('simOpen').onclick = () => window.open('/static/simlite/index.html', '_blank');
 $('opOpen').onclick = () => window.open('/web/op/operator', '_blank');
 
 // resizable split
