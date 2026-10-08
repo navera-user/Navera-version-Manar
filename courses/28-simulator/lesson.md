@@ -291,8 +291,9 @@ the expected behaviour written down *before* running it.
 ### Scripted, not clicked
 
 Clicking a fault button by hand is good for a demo but bad for engineering: the timing differs at
-every run, and nobody can repeat it exactly. The lab's `sim_ctl.py campaign scenario.json` runs a
-**scenario file**:
+every run, and nobody can repeat it exactly. A campaign runs a **scenario file**: the recorded campaign
+was flown that way on the full simulator (`sim_ctl.py campaign scenario.json`, run by the teacher), and
+your own scenario flies the same way in Sim Lite (**▶ Fly my scenario**, lab Part E):
 
 ```json
 {"name": "drift_target", "vision": "target",

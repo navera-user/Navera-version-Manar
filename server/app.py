@@ -26,6 +26,8 @@ from flask import Flask, abort, jsonify, redirect, request, send_file, send_from
 from flask_sock import Sock
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from flask.sessions import SecureCookieSessionInterface
+
 import config
 import simlite
 import webtools
@@ -45,8 +47,11 @@ class _FromProxy:
 
     def __call__(self, env, start):
         if env.get("REMOTE_ADDR") == "127.0.0.1" and env.get("HTTP_X_FORWARDED_FOR"):
-            env["REMOTE_ADDR"] = env["HTTP_X_FORWARDED_FOR"].split(",")[0].strip()
-            env["wsgi.url_scheme"] = env.get("HTTP_X_FORWARDED_PROTO", env["wsgi.url_scheme"])
+            # the LAST address is the one our own front door added; earlier ones come from the visitor
+            env["REMOTE_ADDR"] = env["HTTP_X_FORWARDED_FOR"].split(",")[-1].strip()
+            proto = env.get("HTTP_X_FORWARDED_PROTO", "").split(",")[-1].strip()
+            if proto in ("http", "https"):
+                env["wsgi.url_scheme"] = proto
         return self.wsgi(env, start)
 
 
@@ -63,6 +68,16 @@ if not os.path.exists(_secret):
 app.secret_key = open(_secret).read().strip()
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
                   MAX_CONTENT_LENGTH=8 * 1024 * 1024)
+
+class _Sessions(SecureCookieSessionInterface):
+    """Over HTTPS (the public address) the sign-in cookie is marked Secure, so a browser never sends it
+    over plain HTTP; on the local network (http://…:8300, navera-academy.local) sign-in keeps working."""
+    def get_cookie_secure(self, app):
+        return request.scheme == "https"
+
+
+app.session_interface = _Sessions()
+
 
 NAME_RE = re.compile(r"^[a-z][a-z0-9_]{1,23}$")
 HIDDEN = {".git", "build", "install", "log", "__pycache__", ".navera_state", ".torch_cache",
@@ -135,15 +150,33 @@ def sandbox_user():
     return name, u
 
 
+_fails = {}           # (ip or account) -> [times of wrong passwords]
+LOGIN_FAILS = 10      # wrong passwords allowed per 15 minutes, per device and per account
+
+
+def _too_many_fails(*keys):
+    now = time.time()
+    for k in keys:
+        _fails[k] = [t for t in _fails.get(k, []) if now - t < 900]
+    return any(len(_fails[k]) >= LOGIN_FAILS for k in keys)
+
+
 @app.post("/api/login")
 def api_login():
     d = request.get_json(force=True)
     name = (d.get("name") or "").strip().lower()
+    if not name or not d.get("password"):
+        return jsonify(error="Enter your name (or e-mail) and your password."), 400
+    keys = ("ip:" + (request.remote_addr or "?"), "user:" + name)
+    if _too_many_fails(*keys):
+        return jsonify(error="Too many wrong passwords. Wait 15 minutes, or ask your teacher for a new password."), 429
     all_users = users()
     if name not in all_users and "@" in name:                     # sign in with the e-mail address too
         name = next((k for k, v in all_users.items() if (v.get("email") or "").lower() == name), name)
     u = all_users.get(name)
     if not u or not u.get("pw") or not check_password_hash(u["pw"], d.get("password") or ""):
+        for k in keys:
+            _fails[k].append(time.time())
         time.sleep(0.7)
         return jsonify(error="Wrong name or password"), 401
     session.clear()
@@ -155,7 +188,7 @@ def api_login():
 # ---------------------------------------------------------------- accounts: sign-up, preferences, Google/GitHub
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[a-z]{2,24}$", re.I)
 _signups = {}          # ip -> [times]: at most SIGNUP_PER_HOUR new accounts per device per hour
-SIGNUP_PER_HOUR = 5
+SIGNUP_PER_HOUR = 30   # a whole class may sign up from one school address
 
 
 def settings():
@@ -361,8 +394,8 @@ def api_password():
         u = users()
         if u[request.user].get("pw") and not check_password_hash(u[request.user]["pw"], d.get("old") or ""):
             return jsonify(error="The current password is wrong"), 400
-        if len(d.get("new") or "") < 6:
-            return jsonify(error="At least 6 characters"), 400
+        if len(d.get("new") or "") < 8:
+            return jsonify(error="At least 8 characters"), 400
         u[request.user]["pw"] = generate_password_hash(d["new"])
         _save("users.json", u)
     return jsonify(ok=True)
@@ -649,14 +682,10 @@ def web_tool(tool, sub):
     """Simulator and operator view inside the page, under the academy's address (see webtools.py)."""
     if tool not in webtools.PORTS:
         abort(404)
-    holder = _holder("sim")
-    if request.urec["role"] != "teacher" and holder != request.user:
-        if holder:
-            return webtools.message("The simulator is in use",
-                                    f"<b>{holder}</b> has booked it. Your turn comes when they release it.", 423)
-        return webtools.message("Book the simulator first",
-                                "Press <b>Book</b> next to “Mission simulator”, start it from your terminal, "
-                                "then press ⟳ Reload.", 423)
+    if request.urec["role"] != "teacher" and (config.RESOURCES["sim"].get("teacher_only") or _holder("sim") != request.user):
+        return webtools.message("The full simulator is for the teacher",
+                                "You fly <b>Sim Lite</b>: open the 🛩️ <b>Simulator</b> tab. It runs your own NAVERA code, "
+                                "and no booking is needed.", 423, lite=True)
     return webtools.proxy(app, tool, sub, request)
 
 
@@ -677,7 +706,10 @@ def api_simlite_script():
 @app.post("/api/simlite/script")
 @login_required()
 def api_simlite_script_save():
-    simlite.save_script(request.user, str(request.get_json(force=True).get("text", "")))
+    try:
+        simlite.save_script(request.user, str(request.get_json(force=True).get("text", "")))
+    except ValueError as e:
+        return jsonify(error=str(e)), 413
     return jsonify(ok=True)
 
 
@@ -687,7 +719,12 @@ def api_simlite_scenario():
     try:
         return jsonify(simlite.scenario(request.user, request.args.get("lesson", "")))
     except FileNotFoundError:
-        return jsonify(error="my_scenario.json is not in this mission's folder (open the mission once)"), 404
+        lesson = request.args.get("lesson", "")
+        expected = "/" not in lesson and os.path.exists(os.path.join(config.COURSES, lesson, "files", "my_scenario.json"))
+        if not expected:
+            return jsonify(none=True)                      # this mission has no scenario: nothing to show
+        return jsonify(error="my_scenario.json is missing from your mission folder: open the 📝 Code tab, "
+                             "or put it back from the mission's files", expected=True), 404
     except (ValueError, json.JSONDecodeError) as e:
         return jsonify(error=f"my_scenario.json: {e}"), 400
 
@@ -908,7 +945,7 @@ def api_admin_add():
             if idx is None:
                 return jsonify(error=f"at most {len(config.STUDENT_DOMAINS) - 1} students"), 400
             used.add(idx)
-            pw = parts[2] if len(parts) > 2 and parts[2] else secrets.token_urlsafe(5)
+            pw = parts[2] if len(parts) > 2 and parts[2] else secrets.token_urlsafe(8)
             u[name] = {"role": "student", "pw": generate_password_hash(pw), "index": idx,
                        "display": parts[1] if len(parts) > 1 and parts[1] else name}
             created.append({"name": name, "password": pw})
@@ -928,7 +965,7 @@ def api_admin_student(name):
         if name not in u or u[name]["role"] != "student":
             abort(404)
         if action == "password":
-            pw = secrets.token_urlsafe(5)
+            pw = secrets.token_urlsafe(8)
             u[name]["pw"] = generate_password_hash(pw)
             _save("users.json", u)
             return jsonify(password=pw)
@@ -967,6 +1004,14 @@ def api_admin_commits():
 
 
 BASE_JOB = {"running": False, "log": []}
+
+
+@app.get("/api/admin/fullsim")
+@login_required("teacher")
+def api_admin_fullsim():
+    """Is the full simulator running (sim page :8190, operator view :8181), and who holds it."""
+    busy = _ports_busy([webtools.PORTS["sim"], webtools.PORTS["op"]])
+    return jsonify(sim=webtools.PORTS["sim"] in busy, op=webtools.PORTS["op"] in busy, holder=_holder("sim"))
 
 
 @app.post("/api/admin/base")

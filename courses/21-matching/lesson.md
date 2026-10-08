@@ -168,7 +168,8 @@ cause small changes in h — see the next part).
 ### Normalisation (Hartley, 1997)
 
 The entries of A mix 1, x, and products like u·x. In patch pixels (0 to 800) the products reach
-6 × 10⁵. NAVERA's map points are in **global tile pixels** at zoom 17–18: about 3.55 × 10⁷ in Sousse.
+6 × 10⁵. NAVERA's map points are in **global tile pixels** at zoom 17–18: about 1.8 × 10⁷ (zoom 17) to
+3.55 × 10⁷ (zoom 18) in Sousse.
 Then u·x ≈ 2 × 10¹⁰ while some columns are −1: the matrix is badly **conditioned** (the ratio of its
 largest to smallest singular value is huge) and rounding errors destroy the smallest singular vector.
 

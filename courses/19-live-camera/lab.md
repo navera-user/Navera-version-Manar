@@ -17,8 +17,9 @@ files in `out/`, and `report.md`.
 > was used.
 >
 > **How to book the camera** (optional): in the dashboard, press the **Hardware** button at the
-> top, then **Take** on the line **Camera**. Then open a **new terminal**: only terminals opened
-> after the booking can see the camera. Press the button again to release it when you finish.
+> top, then **Take** on the line **Insta360 camera**. Then open a **new terminal**: only terminals
+> opened after the booking can see the camera. When you finish, open the **Hardware** menu again and
+> press **Release** on the same line.
 > If you do not book it, you do not need it: follow the no-camera path.
 
 > [!WARNING]
@@ -33,6 +34,7 @@ The data of this lab:
 |---|---|---|
 | `frames/frame_*.jpg`, `insta360_top.yaml` | **real** (NAVERA bench) | 30 Insta360 frames, the top lens calibration with `latency_s: 0.138` |
 | `grab_log.csv` | synthetic | 60 s of grab times at nominal 28.8 fps: jitter, drops, one stall |
+| `grab_times.csv` | synthetic | the replay rhythm of the 30 recorded frames (28.8 fps + 2 ms jitter) |
 | `flashes.csv`, `flash_frames.csv` | synthetic | a simulated flash bench (screen delay 20 ms, latency 105 ms — **chosen values, not the Insta360's**) |
 | `turn_imu.csv`, `turn_frames.csv` | synthetic | a drone turning 150 m above a coastline: IMU at 50 Hz with an 0.8 s dropout, frames with the **true** attitude at each exposure |
 

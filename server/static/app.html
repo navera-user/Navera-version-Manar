@@ -13,7 +13,7 @@
   <div class="logo" id="logo" title="All lessons"><img src="/static/img/navi-mark-gold.svg" alt="">NAVERA Academy<a class="by-iris" href="https://iris-systems.tn" target="_blank" rel="noopener" onclick="event.stopPropagation()">by <span class="iris-mark" role="img" aria-label="IRIS"><span>IRIS</span></span></a></div>
   <div class="crumb" id="crumb"></div>
   <span id="asBanner" style="display:none" class="badge started"></span>
-  <button id="bookBtn" class="chip" title="Simulator, camera and sensors are shared: book them before use"><span class="dot" id="bookDot"></span> Hardware</button>
+  <button id="bookBtn" class="chip" title="The camera and sensors are shared: book them before use"><span class="dot" id="bookDot"></span> Hardware</button>
   <button id="userBtn">👤 <span id="uname"></span> ▾</button>
   <div class="menu" id="bookMenu"></div>
   <div class="menu" id="userMenu">
@@ -56,7 +56,7 @@
       <div class="tab on" data-pane="editor">📝 Code</div>
       <div class="tab" data-pane="terminal">⌨️ Terminal</div>
       <div class="tab" data-pane="sim">🛩️ Simulator</div>
-      <div class="tab" data-pane="operator">🧭 Operator view</div>
+      <div class="tab" data-pane="operator" id="opTab" style="display:none">🧭 Operator view</div>
       <div class="grow"></div>
     </div>
     <div class="pane on" id="pane-editor">

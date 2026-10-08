@@ -103,6 +103,12 @@ def install_navera(files, root):
             f.write(f"{name} = define('navera_msgs', {name!r}, {msgs[name]!r})\n")
     if root not in sys.path:
         sys.path.insert(0, root)
+    for rel, text in files.items():                # a typo in the student's code is shown when it is loaded
+        if rel.endswith(".py"):
+            try:
+                compile(text, rel, "exec")
+            except SyntaxError as e:
+                raise SyntaxError(f"{rel}, line {e.lineno}: {e.msg}") from None
     import importlib
     importlib.invalidate_caches()
 
@@ -168,6 +174,12 @@ class World(Node):
             src = SRC.get(m.active_source, "none")
             self.event(lvl, f"NAVERA: {STATE.get(m.state, m.state)} — source {src}" + (f" ({m.reason})" if m.reason else ""))
         self.nav.update(state=m.state, source=m.active_source, reason=m.reason)
+        imu = next((h.alive for h in (m.sources or []) if h.source == 5), None)      # NAVERA's own IMU health row
+        if imu is not None and imu != self.nav.get("imu_alive", True):
+            self.event("ok" if imu else "warn", "NAVERA: IMU " + ("alive again" if imu else
+                       "NOT alive (its health row says so — in this version the IMU only proves the vehicle is alive)"))
+        if imu is not None:
+            self.nav["imu_alive"] = imu
 
     # -- sensors
     def _stamp(self, m):
@@ -298,8 +310,10 @@ class World(Node):
             if togo < max(10.0, self.cruise * 1.5):
                 self.phase = "arrived"
                 miss = dist(self.truth, self.dest)
-                self.arrival = {"t": round(self.t, 1), "miss_m": round(miss, 1)}
-                self.event("ok" if miss < 50 else "bad",
+                radius = max(10.0, self.cruise * 1.5)       # the autopilot calls it "arrived" this close (its belief)
+                good = miss < radius + 30.0
+                self.arrival = {"t": round(self.t, 1), "miss_m": round(miss, 1), "radius_m": round(radius), "good": good}
+                self.event("ok" if good else "bad",
                            f"arrived (by its own estimate) — really {miss:.0f} m from the destination")
             else:
                 want = bearing(self.belief, self.dest)
@@ -428,6 +442,16 @@ class SimAPI:
 
 
 # ---------------------------------------------------------------- one run
+def _short_tb():
+    """The traceback from the student's script only (not the simulator's own frames)."""
+    import sys
+    etype, e, tb = sys.exc_info()
+    while tb is not None and tb.tb_frame.f_code.co_filename != "flight_script.py":
+        tb = tb.tb_next
+    lines = traceback.format_exception(etype, e, tb) if tb is not None else traceback.format_exception_only(etype, e)
+    return "".join(lines)
+
+
 class Run:
     """A simulation: the world, the student's estimator, and their optional flight script."""
 
@@ -443,14 +467,15 @@ class Run:
         self.api = SimAPI(self.world)
         self.script = {}
         self.script_error = None
+        self.error_sent = False
         if script_text.strip():
             try:
                 exec(compile(script_text, "flight_script.py", "exec"), self.script)
                 if "on_start" in self.script:
                     self.script["on_start"](self.api)
             except Exception:
-                self.script_error = traceback.format_exc(limit=3)
-                self.world.event("bad", "flight script error — see the console")
+                self.script_error = _short_tb()
+                self.world.event("bad", "flight script error — see the console (the flight goes on without your script)")
         self.sent = {}
 
     def advance(self, seconds):
@@ -464,10 +489,12 @@ class Run:
                 try:
                     tick(self.api, round(self.world.t, 1))
                 except Exception:
-                    self.script_error = traceback.format_exc(limit=3)
-                    self.world.event("bad", "flight script error — see the console")
+                    self.script_error = _short_tb()
+                    self.world.event("bad", "flight script error — see the console (the flight goes on without your script)")
         snap, self.sent = self.world.snapshot(self.sent)
         snap["logs"], self.logs = self.logs, []
-        snap["script_error"] = self.script_error
-        self.script_error = None if not snap["script_error"] else self.script_error
+        # the error is sent once; the script stays off for the rest of the flight
+        snap["script_error"] = self.script_error if not self.error_sent else None
+        if self.script_error:
+            self.error_sent = True
         return snap

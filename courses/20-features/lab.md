@@ -29,7 +29,13 @@ ls -l /data/academy/20-features/
 python3 -c "import json; [print(p['name'], p['scale'], p['heading_deg'], p['what']) for p in json.load(open('/data/academy/20-features/pairs.json'))]"
 ```
 
-Open `terrain_city.jpg` and `pair_city_zoom4.jpg` in the editor (📝 Code → open file → paste the path).
+Copy the two pictures into your lesson folder, then click them in the file tree (⟳ to refresh it) to
+see them in the editor:
+
+```bash
+cp /data/academy/20-features/terrain_city.jpg /data/academy/20-features/pair_city_zoom4.jpg .
+```
+
 The second one shows the north-west part of the first, 3.9 times closer.
 
 > [!QUESTION]
@@ -193,12 +199,13 @@ Open `clahe_demo.png` after each run (left: original, right: CLAHE).
 
 > [!NOTE]
 > On the water picture, `clahe_demo.py` says **68** keypoints before CLAHE, but `measure.py` (Step 9)
-> will say only about **4** for the same picture. This is not a bug. `clahe_demo.py` uses NAVERA's
+> will say only about **5** for the same picture. This is not a bug. `clahe_demo.py` uses NAVERA's
 > setting `contrastThreshold=0.02`, which keeps weaker points. Your `detect_keypoints()` and
-> `measure.py` use OpenCV's default, 0.04 (lesson section 3, "Rejection"). The dark drone photo also
-> gives 68 by chance. On the dark drone photo the city comes
-back. On the water the new keypoints sit on ripples and on the shadows of sea plants — will they be there on the next
-satellite picture?
+> `measure.py` use OpenCV's default, 0.04 (lesson section 3, "Rejection"). (The dark drone photo also
+> gives 68 before CLAHE, by chance.)
+>
+> On the dark drone photo, CLAHE brings the city back. On the water, the new keypoints sit on ripples
+> and on the shadows of sea plants — will they be there on the next satellite picture?
 
 ## Step 9 — Measure everything and write the report
 

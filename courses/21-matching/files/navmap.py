@@ -14,6 +14,8 @@ _conn = None
 def _db():
     global _conn
     if _conn is None:
+        if not os.path.exists(MAP_PATH):
+            raise FileNotFoundError(f"map data not found ({MAP_PATH}) — ask the teacher to connect the data disk")
         _conn = sqlite3.connect("file:" + MAP_PATH + "?mode=ro", uri=True)
     return _conn
 

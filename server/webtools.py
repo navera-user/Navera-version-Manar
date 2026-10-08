@@ -1,10 +1,10 @@
 """Simulator & operator view inside the academy page.
 
 The simulator (:8190) and NAVERA's operator view (:8181) are plain-http servers started by the
-simulator's booking holder, from their own sandbox copy of NAVERA. Through the internet the academy
+teacher (the full simulator is teacher-only; students fly Sim Lite), from a sandbox copy of NAVERA. Through the internet the academy
 is https and a browser refuses an http page inside it, so the academy carries them under its own
-address (/web/sim/…, /web/op/…), behind the academy login: only the booking holder and the teacher
-can see or drive them. Their pages use absolute paths (/api/…, /tiles/…): a small script added to
+address (/web/sim/…, /web/op/…), behind the academy login: only the teacher can see or drive them here
+(run_sim.sh itself listens on the local network too). Their pages use absolute paths (/api/…, /tiles/…): a small script added to
 each page sends those under the same prefix. NAVERA's own files are not changed.
 """
 import json
@@ -18,7 +18,8 @@ _HOP = {"connection", "keep-alive", "transfer-encoding", "te", "trailer", "upgra
         "proxy-authenticate", "content-length", "content-encoding", "host", "cookie", "content-type"}
 
 _PATCH = """<script>(function(){var P=%s;
-function f(u){return (typeof u==='string'&&u[0]==='/'&&u[1]!=='/'&&u.indexOf(P+'/')!==0)?P+u:u}
+var L=location.origin;function f(u){if(typeof u!=='string')return u;if(u.indexOf(L+'/')===0)u=u.slice(L.length);
+return (u[0]==='/'&&u[1]!=='/'&&u.indexOf('/web/')!==0)?P+u:u}
 var F=window.fetch;window.fetch=function(u,o){return F.call(this,typeof u==='string'?f(u):u,o)};
 var O=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){arguments[1]=f(u);return O.apply(this,arguments)};
 if(window.EventSource){var E=window.EventSource;window.EventSource=function(u,c){return new E(f(u),c)}}
@@ -31,11 +32,24 @@ var S=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v
 _ATTR = re.compile(r"""((?:src|href|action)\s*=\s*["'])/(?!/)""")
 
 
-def message(title, text, status):
+START_HELP = ("Take <b>Full mission simulator</b> in the Hardware menu, open a new terminal and run "
+              "<code>cd ~/navera &amp;&amp; navera_tools/run_sim.sh</code>, then press <b>Try again</b>.")
+
+
+def message(title, text, status, lite=False, retry=False):
+    btn = ("display:inline-block;margin:6px;padding:9px 18px;border-radius:999px;text-decoration:none;font-weight:600;"
+           "border:1px solid rgba(255,255,255,.4);color:#fff")
+    links = ""
+    if retry:
+        links += f"<a style='{btn}' href='javascript:location.reload()'>⟳ Try again</a>"
+    if lite or retry:
+        links += (f"<a style='{btn};background:linear-gradient(135deg,#ff9f8a,#e8706a);color:#2a0d08;border:none' "
+                  "href='javascript:history.length>1?history.back():location.replace(\"/static/simlite/index.html\")'>"
+                  "🛩️ Back to Sim Lite</a>")
     page = ("<body style='margin:0;display:grid;place-items:center;height:100vh;font-family:Inter,system-ui,"
-            "sans-serif;background:#0b1730;color:#f4f7fa;text-align:center'><div style='max-width:460px;"
+            "sans-serif;background:#0b1730;color:#f4f7fa;text-align:center'><div style='max-width:480px;"
             "padding:24px'><h2 style='font-family:Fraunces,Georgia,serif;font-weight:600'>%s</h2>"
-            "<p style='opacity:.85;line-height:1.55'>%s</p></div></body>") % (title, text)
+            "<p style='opacity:.85;line-height:1.55'>%s</p><p>%s</p></div></body>") % (title, text, links)
     return page, status
 
 
@@ -53,8 +67,7 @@ def proxy(app, tool, sub, request):
     except urllib.error.HTTPError as e:
         r = e
     except (urllib.error.URLError, OSError):
-        return message(f"The {NAMES[tool]} is not running",
-                       "Start the simulator from your terminal (mission 28 shows how), then press ⟳ Reload.", 503)
+        return message(f"The {NAMES[tool]} is not running", START_HELP, 503, retry=True)
     ctype = r.headers.get("Content-Type", "application/octet-stream")
     out = [(k, v) for k, v in r.headers.items() if k.lower() not in _HOP]
     prefix = f"/web/{tool}"

@@ -175,7 +175,7 @@ def install_lesson(name, lesson_id, overwrite=False):
         shutil.copytree(dst, bk, symlinks=True)
         shutil.rmtree(dst)
     if os.path.isdir(src):
-        shutil.copytree(src, dst, symlinks=True)
+        shutil.copytree(src, dst, symlinks=True, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     else:
         os.makedirs(dst)
     with open(os.path.join(dst, VERSION_FILE), "w") as f:

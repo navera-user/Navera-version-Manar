@@ -85,6 +85,8 @@ def script(name):
 
 
 def save_script(name, text):
+    if len(text) > MAX_FILE:
+        raise ValueError(f"the script is too long ({len(text) // 1000} kB, the limit is {MAX_FILE // 1000} kB): nothing was saved")
     p = _script_path(name)
     os.makedirs(os.path.dirname(p), exist_ok=True)
     tmp = p + ".tmp"
@@ -101,14 +103,37 @@ _NAME = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 
 
 def _lesson(name, lesson_id):
-    if not lesson_id or not os.path.isdir(os.path.join(config.COURSES, lesson_id)) or "/" in lesson_id:
+    if not lesson_id or "/" in lesson_id or lesson_id.startswith(".") \
+            or not os.path.isdir(os.path.join(config.COURSES, lesson_id)):
         raise ValueError("unknown lesson")
     return workspaces.lesson_dir(name, lesson_id)
 
 
+FAULTS = {"gps": ("ok", "jammed", "spoof_jump", "spoof_drift", "off"), "camera": ("ok", "failed")}
+
+
 def scenario(name, lesson_id):
+    """my_scenario.json, checked like sim_ctl.py checks it: every mistake is reported, nothing is guessed."""
     with open(os.path.join(_lesson(name, lesson_id), "my_scenario.json")) as f:
-        return json.load(f)
+        sc = json.load(f)
+    if not isinstance(sc, dict):
+        raise ValueError('the file must be one object: {"name": …, "vision": …, "faults": […], "tail_s": …}')
+    if not isinstance(sc.get("name", "my_run"), str) or not sc.get("name", "my_run").strip():
+        raise ValueError('"name" must be a text, for example "my_run"')
+    if sc.get("vision", "target") not in ("target", "measured"):
+        raise ValueError(f'"vision" must be "target" or "measured", not {sc.get("vision")!r}')
+    faults = sc.get("faults", [])
+    if not isinstance(faults, list):
+        raise ValueError('"faults" must be a list like [[30, "gps", "jammed"], [70, "gps", "ok"]]')
+    for f in faults:
+        if (not isinstance(f, list) or len(f) != 3 or not isinstance(f[0], (int, float)) or isinstance(f[0], bool)
+                or f[0] < 0 or f[1] not in FAULTS or f[2] not in FAULTS[f[1]]):
+            raise ValueError(f'fault {json.dumps(f)}: use [seconds, "gps", "ok|jammed|spoof_jump|spoof_drift|off"] '
+                             'or [seconds, "camera", "ok|failed"]')
+    tail = sc.get("tail_s", 40)
+    if not isinstance(tail, (int, float)) or isinstance(tail, bool) or tail < 0:
+        raise ValueError('"tail_s" must be a number of seconds')
+    return sc
 
 
 def save_flight(name, lesson_id, run, csv_text, events_text):

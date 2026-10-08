@@ -44,11 +44,15 @@ domain (1–101, never NAVERA's 77–79), loopback only.
 
 ## Shared hardware
 
-The simulator (fixed ports 8181/8190/5760…, ~3 GB RAM), the camera and the I²C/serial sensors exist
-once. Students **book** them from the "Hardware" button; only the holder's new terminals get access.
-The teacher can release any booking. Do not run your own `run_sim.sh` or bench while a student holds
-the simulator or camera (and a student cannot book the simulator while your own NAVERA uses those
-ports).
+The camera and the I²C/serial sensors exist once. Students **book** them from the "Hardware" button;
+only the holder's new terminals get access. The teacher can release any booking.
+
+The **full simulator** (fixed ports 8181/8190/5760…, ~3 GB RAM) is **teacher only**: students fly
+**Sim Lite** in the Simulator tab (it runs in each browser, so the whole class can fly at once, with
+their own NAVERA code). The teacher page's "Full simulator" box shows whether it runs and how to start
+it (Hardware → Take, then `cd ~/navera && navera_tools/run_sim.sh` in a new terminal); it then appears
+in the Simulator tab (switch "Full") and the Operator view tab. Do not run your own `run_sim.sh` or
+bench outside the academy while a student holds the camera.
 
 ## Files
 

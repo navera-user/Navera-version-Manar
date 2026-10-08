@@ -275,7 +275,7 @@ That is the residual test.
 | Cross-check while GPS is trusted | `_drifting_away()`, `_refuse()`, `_in_doubt()` |
 | The independent reference (fresh, stated σ, same instant) | `_independent_reference()`, `_gps_near()` |
 | Constants | `STREAK_N = 5`, `DOUBT_MAX_M = 500.0`, `gps_crosscheck_sigmas` (5), `gps_crosscheck_persist_s` (3 s) |
-| Top speed | `max_speed_mps`, from `NAVERA_MAX_SPEED_KMH` (`navera_common/vehicle.py`) |
+| Top speed | `max_speed_mps`, from `NAVERA_MAX_SPEED_KMH` (`navera_common/navera_common/vehicle.py`) |
 | Vision checking GPS every 2 s | `day_pkg` (`gps_check_period_s`, `gps_check_radius_m` 600 m) |
 | Integration test (jump, patient spoof, jam-then-spoof, drift, one wrong vision fix) | `navera_tools/tests/test_estimator.py` |
 

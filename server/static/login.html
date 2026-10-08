@@ -32,7 +32,8 @@
   .or { display: flex; align-items: center; gap: 10px; color: rgba(255,255,255,.65); font-size: 12.5px; margin: 16px 0 2px; letter-spacing: 1px; text-transform: uppercase; }
   .or::before, .or::after { content: ""; flex: 1; height: 1px; background: rgba(255,255,255,.25); }
   .fine { color: rgba(255,255,255,.7); font-size: 12.5px; margin: 10px 0 0; text-align: center; }
-  .err { color: #ffb4a3; font-size: 14px; min-height: 20px; margin-top: 10px; text-align: center; font-weight: 600; }
+  .err { color: #fff; font-size: 14px; margin-top: 10px; text-align: center; font-weight: 600; border-radius: 12px; }
+  .err:not(:empty) { background: #9e2d3a; padding: 9px 12px; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
   @media (max-width: 900px) { .page { grid-template-columns: 1fr; padding-top: 90px; gap: 30px; } h1 { font-size: 40px; } .facts { display: none; } body { overflow: auto; } }
 
 /* IRIS Systems — the company logo (img/iris-logo-mask.png, from "Logo IRIS 002"), drawn in the text colour */
@@ -89,6 +90,7 @@
 const $ = (id) => document.getElementById(id);
 const err = (m) => { $('e').textContent = m || ''; };
 // 1. sign in / create account (the intro film plays after sign-in, on the home page)
+document.querySelectorAll('#fIn input, #fUp input').forEach(i => i.addEventListener('input', () => err()));   // an old message goes as soon as they type
 document.querySelectorAll('.t2').forEach(b => b.onclick = () => {
   document.querySelectorAll('.t2').forEach(x => x.classList.toggle('on', x === b));
   $('fIn').style.display = b.dataset.t === 'in' ? '' : 'none';

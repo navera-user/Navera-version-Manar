@@ -7,18 +7,35 @@ const LESSON_ID = new URLSearchParams(location.search).get('lesson') || '';
 const COLUMNS = ['t_s', 'phase', 'gps_mode', 'navera_state', 'navera_source', 'navera_lat', 'navera_lon', 'navera_err_m',
   'truth_lat', 'truth_lon', 'truth_alt_m', 'truth_speed_mps', 'ap_mode', 'ap_err_m', 'reason', 'camera'];
 const SCEN_ROUTE = { start: [35.8256, 10.6385], dest: [35.8050, 10.6010] };   // sim_ctl.py's route (~4 km)
-const S = { rows: [], evlines: [], runName: null, scenario: null, vehicle: 'drone', start: [35.8256, 10.6360], dest: [35.7643, 10.8113], profile: 'measured', light: 'day',
+const S = { runId: 0, rows: [], evlines: [], runName: null, scenario: null, vehicle: 'drone', start: [35.8256, 10.6360], dest: [35.7643, 10.8113], profile: 'measured', light: 'day',
   rate: 4, src: 'mine', running: false, paused: false, busy: false, picking: null, files: null };
 
 // ---------------------------------------------------------------- the simulation thread
-const worker = new Worker('/static/simlite/worker.js');
-let seq = 0; const waiting = {};
-worker.onmessage = (ev) => { const w = waiting[ev.data.id]; delete waiting[ev.data.id]; if (w) (ev.data.ok ? w.ok : w.no)(ev.data.data); };
-const call = (cmd, args) => new Promise((ok, no) => { const id = ++seq; waiting[id] = { ok, no }; worker.postMessage({ id, cmd, args }); });
+let worker = null, seq = 0; const waiting = {};
+function newWorker() {
+  worker = new Worker('/static/simlite/worker.js');
+  worker.onmessage = (ev) => { const w = waiting[ev.data.id]; delete waiting[ev.data.id]; if (w) { clearTimeout(w.timer); (ev.data.ok ? w.ok : w.no)(ev.data.data); } };
+}
+newWorker();
+// a flight step that does not answer in time (an endless loop in on_tick…) gets a fresh simulation thread
+const LIMIT = { start: 8000, advance: 6000, fault: 6000, speed: 6000 };
+const call = (cmd, args) => new Promise((ok, no) => {
+  const id = ++seq; waiting[id] = { ok, no };
+  if (LIMIT[cmd]) waiting[id].timer = setTimeout(() => restartWorker(`your code did not answer for ${LIMIT[cmd] / 1000} s (an endless loop in on_tick or in the estimator?) — the simulation was restarted`), LIMIT[cmd]);
+  worker.postMessage({ id, cmd, args });
+});
+function restartWorker(why) {
+  worker.terminate();
+  for (const id of Object.keys(waiting)) { const w = waiting[id]; delete waiting[id]; clearTimeout(w.timer); w.no(why); }
+  S.files = null; S.busy = false;
+  newWorker();
+}
 
 // ---------------------------------------------------------------- map
 const map = L.map('map', { zoomControl: true, attributionControl: false }).setView([35.80, 10.72], 12);
 fetch('/api/simlite/map').then(r => r.json()).then(m => {
+  // online satellite imagery underneath (when this computer has internet), the academy's map files on top
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxNativeZoom: 18, maxZoom: 19 }).addTo(map);
   if (!m.available) return;
   L.tileLayer('/api/simlite/tiles/{z}/{x}/{y}.jpg', { maxNativeZoom: Math.min(17, m.max_native_zoom), maxZoom: 19, minZoom: 9 }).addTo(map);
 }).catch(() => {});
@@ -75,6 +92,9 @@ function opts(id, key) {
     S[key] = b.dataset.v; document.querySelectorAll(`#${id} button`).forEach(x => x.classList.toggle('on', x === b)); });
 }
 opts('profOpts', 'profile'); opts('lightOpts', 'light');
+// the Mission tab's light switch also works during a flight (same as the Faults tab)
+document.querySelectorAll('#lightOpts button').forEach(b => b.addEventListener('click', () => {
+  if (S.running) call('fault', { key: 'light', value: b.dataset.v }).catch(e => toastLog('bad', e)); }));
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
   document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x === b));
   document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.id === 'p-' + b.dataset.p));
@@ -114,8 +134,12 @@ async function loadCode() {
 $('reloadBtn').onclick = async () => { if (await loadCode()) consoleLine('ok', '✓ reloaded — press ▶ Run my code to fly with it'); };
 async function loadScript() { try { $('script').value = (await (await fetch('/api/simlite/script')).json()).text; } catch (e) {} }
 $('saveBtn').onclick = async () => {
-  await fetch('/api/simlite/script', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: $('script').value }) });
-  consoleLine('ok', '✓ flight script saved in your account');
+  try {
+    const r = await fetch('/api/simlite/script', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: $('script').value }) });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) consoleLine('ok', '✓ flight script saved in your account');
+    else consoleLine('bad', '✗ NOT saved: ' + (r.status === 401 ? 'you are signed out — sign in again in another tab, then press Save again' : d.error || 'error ' + r.status));
+  } catch (e) { consoleLine('bad', '✗ NOT saved: no connection to the academy'); }
 };
 
 // ---------------------------------------------------------------- flying
@@ -123,6 +147,7 @@ let loop = null;
 async function fly(opts = {}) {
   S.runName = opts.runName || null;
   if (!S.files) { if (!(await loadCode())) { consoleLine('bad', 'Your NAVERA code could not be loaded.'); return; } }
+  const run = ++S.runId;
   stop(); clearMap(); $('result').style.display = 'none'; $('log').innerHTML = ''; $('console').innerHTML = '';
   S.rows = []; S.evlines = []; $('saveRunBtn').disabled = true;
   ['gps', 'camera', 'light', 'imu'].forEach(k => markFault(k, k === 'light' ? S.light : 'ok'));
@@ -130,17 +155,22 @@ async function fly(opts = {}) {
     speed: +$('speedIn').value || null, max_speed: +$('maxIn').value || null, seed: Math.floor(Math.random() * 1e6) };
   consoleLine('ok', `▶ starting: your estimator (${S.files.origin === 'mine' ? 'your copy' : 'original NAVERA'}) + flight script`);
   if (opts.cfg) Object.assign(cfg, opts.cfg);
-  try { show(await call('start', { cfg, script: opts.script != null ? opts.script : $('script').value })); }
-  catch (e) { consoleLine('bad', 'Your code stopped while starting:\n' + e); openTab('code'); return; }
+  if (S.busy) { restartWorker('a new flight'); if (!(await loadCode())) return; }
+  let first;
+  try { first = await call('start', { cfg, script: opts.script != null ? opts.script : $('script').value }); }
+  catch (e) { if (run === S.runId) { consoleLine('bad', 'Your code stopped while starting:\n' + e); openTab('code'); } return; }
+  if (run !== S.runId) return;
+  show(first);
   S.running = true; S.paused = false; setButtons();
   loop = setInterval(tick, 100);
 }
 async function tick() {
   if (S.busy || S.paused || !S.running) return;
+  const run = S.runId;
   S.busy = true;
-  try { show(await call('advance', { seconds: 0.1 * S.rate })); }
-  catch (e) { consoleLine('bad', 'Your code stopped during the flight:\n' + e); openTab('code'); stop(); }
-  S.busy = false;
+  try { const snap = await call('advance', { seconds: 0.1 * S.rate }); if (run === S.runId) show(snap); }   // a late answer from an older flight is dropped
+  catch (e) { if (run === S.runId) { consoleLine('bad', 'Your code stopped during the flight:\n' + e); openTab('code'); stop(); } }
+  if (run === S.runId) S.busy = false;
 }
 function stop() { if (loop) clearInterval(loop); loop = null; S.running = false; setButtons(); }
 function setButtons() {
@@ -167,13 +197,13 @@ function scenarioScript(sc) {
 async function loadScenario() {
   if (!LESSON_ID) return;
   const r = await fetch('/api/simlite/scenario?lesson=' + encodeURIComponent(LESSON_ID));
-  if (r.status === 404) return;                      // this mission has no scenario file
-  const d = await r.json();
+  const d = await r.json().catch(() => ({}));
+  if (d.none || (r.status === 404 && !d.expected)) return;   // this mission has no scenario file
   $('scenBox').style.display = '';
   if (!r.ok) { $('scenText').innerHTML = `<span class="no">${esc(d.error)}</span>`; S.scenario = null; return; }
   S.scenario = d;
   const f = (d.faults || []).map(x => `${x[0]} s: ${x[1]} → ${x[2]}`).join(' · ') || 'no fault';
-  $('scenText').textContent = `“${d.name}” · vision ${d.vision || 'measured'} · ${f} · then ${d.tail_s || 40} s`;
+  $('scenText').textContent = `“${d.name}” · vision ${d.vision || 'target'} · ${f} · then ${d.tail_s || 40} s`;
 }
 $('scenReload').onclick = loadScenario;
 $('scenFly').onclick = async () => {
@@ -201,7 +231,12 @@ async function saveRun(name) {
 }
 $('saveRunBtn').onclick = () => saveRun(null);
 $('pauseBtn').onclick = () => { S.paused = !S.paused; setButtons(); };
-$('resetBtn').onclick = () => { stop(); clearMap(); $('result').style.display = 'none'; drawPlan(); paintCards(null); $('clock').textContent = 'T+ 00:00'; };
+$('resetBtn').onclick = async () => {
+  S.runId++; stop(); S.paused = false; clearMap(); $('result').style.display = 'none'; drawPlan(); paintCards(null); $('clock').textContent = 'T+ 00:00';
+  S.rows = []; S.evlines = []; S.runName = null; $('saveRunBtn').disabled = true;
+  ['gps', 'camera', 'imu'].forEach(k => markFault(k, 'ok')); markFault('light', S.light);
+  if (S.busy) { restartWorker('reset'); await loadCode(); }
+};
 function trim(group, keep) { const l = group.getLayers(); for (let i = 0; i < l.length - keep; i++) group.removeLayer(l[i]); }
 function clearMap() { lay.truth.setLatLngs([]); lay.nav.setLatLngs([]); lay.gps.clearLayers(); lay.vis.clearLayers(); navC.setStyle({ opacity: 0 }); navC.unbindTooltip(); errs = []; drawChart(); }
 function openTab(p) { document.querySelector(`#tabs button[data-p="${p}"]`).click(); }
@@ -233,6 +268,7 @@ function show(s) {
   s.events.filter(e => e.level === 'script' || e.level === 'bad').forEach(e => consoleLine(e.level, `T+${e.t.toFixed(1)}  ${e.text}`));
   s.err_hist.forEach(p => errs.push(p)); drawChart();
   paintCards(s);
+  Object.entries(s.faults).forEach(([k, v]) => markFault(k, v));      // faults set by a script show too
   if (s.phase === 'stopped') {
     stop();
     if (S.runName) saveRun(S.runName);
@@ -240,14 +276,14 @@ function show(s) {
   if (s.phase === 'arrived' && s.arrival) {
     stop();
     if (S.runName) saveRun(S.runName);
-    const good = s.arrival.miss_m < 50;
+    const good = s.arrival.good != null ? s.arrival.good : s.arrival.miss_m < 50;
     $('result').className = 'result' + (good ? '' : ' badr');
     $('result').innerHTML = `${good ? '✅' : '⚠️'} Arrived after ${Math.round(s.arrival.t)} s — the vehicle believes it is there; it is really <b>${Math.round(s.arrival.miss_m)} m</b> from the destination.`;
     $('result').style.display = 'block';
   }
 }
 function paintCards(s) {
-  if (!s) { ['cGps', 'cNav', 'cErr', 'cVeh'].forEach(i => { $(i).textContent = '—'; $(i).className = 'v'; }); return; }
+  if (!s) { ['cGps', 'cNav', 'cErr', 'cVeh'].forEach(i => { $(i).textContent = '—'; $(i).className = 'v'; }); $('nGps').textContent = 'not flying yet'; $('nNav').textContent = 'your estimator'; $('nVeh').textContent = ''; return; }
   const g = s.faults.gps, gname = { ok: 'Normal', jammed: 'Jammed', spoof_jump: 'Spoofed', spoof_drift: 'Spoofed', off: 'Off' }[g];
   $('cGps').textContent = gname; $('cGps').className = 'v ' + (g === 'ok' ? 'good' : 'bad');
   $('nGps').textContent = g === 'spoof_drift' ? 'slow drift' : g === 'spoof_jump' ? '2 km jump' : g === 'ok' ? 'fix every 0.2 s' : 'no usable fix';

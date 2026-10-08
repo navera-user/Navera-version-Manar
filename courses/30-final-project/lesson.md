@@ -286,16 +286,17 @@ Choose **one**. ★ a few lines, ★★ an afternoon, ★★★ a real challenge
 | 6 | **Dead-reckoning drift alarm**: how far has a propagated position travelled since its last measured fix? Warn past a threshold | ★★ | `navera_common/navera_common/track.py` (`TrackVelocity.propagate`), `navera_common/test/test_track.py` | alarm delay vs false alarms on a recorded track |
 | 7 | **A "GPS frozen" fault** in the simulated receiver (same position, still "fix"): add the mode and its unit test; then observe what NAVERA does (the teacher runs it on the full simulator) | ★★ | `navera_tools/sim/nmea_gps.py` (`MODES`, `reported`), `navera_tools/sim/sim.html` | detection: does anything notice? |
 | 8 | **A "GPS frozen" detector** in the arbiter: refuse a GPS whose position does not change for N fixes while another source says the vehicle moves | ★★★ | `estimator_node.py` (`_on_gps`, `_check_gps_plausibility`); integration test in `navera_tools/tests/test_estimator.py` | ROC: N vs false alarms / detections |
-| 9 | **Is day vision's σ honest?** Record a simulator flight in shadow mode, run the evaluation, propose the σ day vision should state, with a CI | ★★★ | `navera_tools/evaluate_session.py`, `navera_tools/record_session.sh`, `navera_tools/tests/test_evaluate_session.py` | coverage of the stated σ |
-| 10 | **Freshness windows from data**: the arbiter's per-source timeouts were chosen from simulator runs; measure inter-arrival times and propose values with CIs | ★★★ | `navera_estimator/navera_estimator/config/estimator_params.yaml`, `estimator_node.py` | flicker rate FIX↔NO FIX, gap detection delay |
+| 9 | **Is day vision's σ honest?** Run the evaluation on the recorded shadow-mode flight (`/data/academy/29-measuring/shadow_bag`; a new recording is made by the teacher on the full simulator), propose the σ day vision should state, with a CI | ★★★ | `navera_tools/evaluate_session.py`, `navera_tools/record_session.sh`, `navera_tools/tests/test_evaluate_session.py` | coverage of the stated σ |
+| 10 | **Freshness windows from data**: the arbiter's per-source timeouts were chosen from simulator runs; measure inter-arrival times (recorded shadow bag of lesson 29, or Sim Lite flights) and propose values with CIs | ★★★ | `navera_estimator/navera_estimator/config/estimator_params.yaml`, `estimator_node.py` | flicker rate FIX↔NO FIX, gap detection delay |
 
 Your own idea is welcome — check with the teacher that it is **one** change you can **test** and
 **measure** in a few hours.
 
 > [!WARNING]
-> Ideas 7–10 use a simulator: fly them in **Sim Lite** (🛩️ Simulator tab — your own estimator, no
-> booking), or on recorded data (lessons 28 and 29). Idea 7 changes the **full** simulator's receiver
-> model: ask the teacher to run it on the full simulator. Never change files outside `~/navera` and
+> Ideas 7–10 use a simulator or its recordings: fly in **Sim Lite** (🛩️ Simulator tab — your own
+> estimator, no booking; it writes CSV flights, not ROS 2 bags), or use recorded data (lessons 28 and 29,
+> e.g. the shadow-mode bag `/data/academy/29-measuring/shadow_bag` for idea 9). Idea 7 changes the
+> **full** simulator's receiver model, and a new bag needs the full simulator: ask the teacher to run those. Never change files outside `~/navera` and
 > your lesson folder.
 
 ## 11. The deliverables

@@ -226,7 +226,7 @@ For a tilted camera the GSD changes across the image. At the image centre the sl
 h / cos θ; a pixel there covers h / (f cos θ) across the tilt direction and h / (f cos² θ) along it
 (the ground is seen at a grazing angle). At 150 m and θ = 20°: 0.333 m and 0.354 m instead of 0.3125 m.
 This non-uniform scale is one more reason why NAVERA **straightens** tilted frames into the view of
-a level nadir camera before matching (section 8).
+a level nadir camera before matching (see *In NAVERA* below).
 
 ## 6. Matching the map's zoom level
 

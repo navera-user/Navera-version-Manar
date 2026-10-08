@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """sim_ctl.py — talk to the NAVERA mission simulator from the terminal.
 
+FULL SIMULATOR ONLY — teacher only. Students fly Part E in Sim Lite (🛩️ Simulator tab), which
+writes the same columns; this file is here so you can read how the recorded campaign was flown.
+
 The simulator (navera_tools/run_sim.sh) has a web page on port 8190; this script uses the
 same HTTP API the page uses (/api/state, /api/mission, /api/fault, /api/stop).
 
@@ -18,8 +21,8 @@ same HTTP API the page uses (/api/state, /api/mission, /api/fault, /api/stop).
 
 A scenario file (JSON) — times are seconds after the drone starts flying to the destination:
     {"name": "drift_target", "vision": "target",
-     "faults": [[30, "gps", "spoof_drift"], [120, "gps", "ok"]],
-     "tail_s": 40}
+     "faults": [[30, "gps", "spoof_drift"], [110, "gps", "ok"]],
+     "tail_s": 45}
 """
 import argparse
 import csv
@@ -53,7 +56,7 @@ def call(path, body=None, timeout=10):
         sys.exit(f"the simulator refused: {msg}")
     except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
         sys.exit(f"cannot reach the simulator on {URL} ({e}). Is navera_tools/run_sim.sh running "
-                 f"(and did you take the simulator in the Hardware menu)?")
+                 f"(the full simulator is run by the teacher; students use Sim Lite in the Simulator tab)")
 
 
 def row(st, t):

@@ -51,6 +51,12 @@ onmessage = async (ev) => {
     reply(id, false, 'unknown command ' + cmd);
   } catch (e) {
     // Python errors carry the traceback: the student sees exactly where their code failed
-    reply(id, false, String(e.message || e));
+    // (without Pyodide's own frames, which mean nothing to a student)
+    const msg = String(e.message || e).split('\n');
+    const out = []; for (let i = 0; i < msg.length; i++) {
+      if (/File "\/lib\/python[^"]*\/(_pyodide|pyodide)\//.test(msg[i]) || /File "<exec>"/.test(msg[i])) { if (msg[i + 1] && /^\s{4}/.test(msg[i + 1])) i++; continue; }
+      out.push(msg[i]);
+    }
+    reply(id, false, out.join('\n'));
   }
 };

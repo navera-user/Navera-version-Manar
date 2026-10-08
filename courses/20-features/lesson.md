@@ -272,7 +272,7 @@ six 512 × 512 patches of the Sousse map at zoom 17 (0.97 m per pixel, about 500
 ![Keypoints per terrain](assets/terrain_counts.svg)
 
 The two extremes: the city patch gives about **6600** SIFT keypoints, the open-sea patch (`terrain_sea`)
-gives **0**, and the coast with water (`terrain_coast_water`) only about **4**. These counts use OpenCV's
+gives **0**, and the coast with water (`terrain_coast_water`) only about **5**. These counts use OpenCV's
 default `contrastThreshold` of 0.04. With NAVERA's lower value, 0.02, the same coast patch gives about
 68 — still very few, and mostly on the shoreline.
 
@@ -376,7 +376,8 @@ if dq is None or len(kq) < 10:
 The function `inlier_spread()` in the same file measures how much of the frame the matched points cover,
 on a 4 × 2 grid with at least 3 points per cell — the idea of your `spread()`. In
 [vision_nav.py](file:navera/day_pkg/day_pkg/vision_nav.py) a fix whose inliers cover too little of the
-frame (`min_spread=0.25`) is rejected.
+frame is rejected — but only when it is also weak: fewer than 30 inliers **and** a spread below
+`min_spread=0.25`.
 
 What happens over uniform terrain is written in `docs/VALIDATION_STATUS.md`. In a simulated flight over
 uniform terrain near Gabès (southern Tunisia), the former whole-tile method gave a median error of 351 m:

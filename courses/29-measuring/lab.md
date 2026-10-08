@@ -28,8 +28,8 @@ The simulator's own error column has been removed: you compute the errors yourse
 `truth_lat/lon` and `navera_lat/lon`.
 
 > [!NOTE]
-> The shared simulator is **not** needed for this lab: everything uses recorded data. If you flew your
-> own mission in lesson 28, you can measure it too ("Going further").
+> No simulator is needed for this lab: everything uses recorded data. If you flew your
+> own scenario in Sim Lite in lesson 28, you can measure it too ("Going further").
 
 ## Step 1 — Look at the data (10 min)
 
@@ -248,8 +248,7 @@ A good conclusion says **what** is better, **by how much** (with a CI), **compar
 
 - **Your own flight.** If you flew your own scenario in lesson 28 (Part E), run
   `python3 measure.py ~/lessons/28-simulator/my_runs/<name>.csv` (replace `<name>` by the `"name"` of
-  your scenario, for example `my_run`; if you used `sim_ctl.py record`, the file is
-  `~/lessons/28-simulator/flight.csv`). Same numbers as the sample? Why not exactly?
+  your scenario, for example `my_run`). Same numbers as the sample? Why not exactly?
   Would a CI computed on your flight cover the sample's CEP50?
 - **A fairer baseline.** "Repeat the last position" ignores that the drone was moving. Write
   `baseline_dead_reckoning(rows)`: continue the last GPS velocity (from the last two GPS fixes) in a

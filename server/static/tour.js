@@ -17,12 +17,12 @@
   const TOURS = {
     home: [
       {title: 'Welcome to the expedition', text: 'This short tour shows you around. It takes one minute. You can close it at any time and replay it from your name menu (top right).', target: null},
-      {target: '.glass', title: 'Your rank and progress', text: 'Every mission you pass gives you 100 XP. Your rank grows from Fledgling to Migration Master. The bar shows how far you are from the next rank.'},
+      {target: '.glass', scroll: true, title: 'Your rank and progress', text: 'Every mission you pass gives you 100 XP. Your rank grows from Fledgling to Migration Master. The bar shows how far you are from the next rank.'},
       {target: '#goNext', title: 'Continue where you stopped', text: 'This button always opens your next mission.'},
       {target: '.mapwide', title: 'The expedition map', text: 'Each waypoint is a mission. Filled waypoints are done; the glowing one is your next mission. Click any waypoint to open it.', scroll: true},
       {target: '.medals', title: 'Badges', text: 'Finish a whole leg of the journey to earn its badge. Some special badges reward key missions.', scroll: true},
       {target: '.legblock', title: 'Missions, leg by leg', text: 'The 30 missions are grouped in 7 legs. Each row shows the time to plan, the XP and your status. Missions build on each other: take them in order.', scroll: true},
-      {target: '#bookBtn', title: 'Shared hardware', text: 'The simulator and the camera exist only once for the whole class. Book them here only when a mission needs them, and release them when you finish.'},
+      {target: '#bookBtn', title: 'Shared hardware', text: 'The camera and the sensors exist only once for the whole class. Book them here only when a mission needs them, and release them when you finish. The simulator needs no booking: the Simulator tab runs Sim Lite in your browser.'},
       {target: '#userBtn', title: 'Your menu', text: 'Change your password, reset your NAVERA copy if you broke it (a backup is kept), or replay this tour. Ready? Start your first mission!'},
     ],
     mission: [
@@ -47,7 +47,10 @@
   };
 
   let layer = null;
-  function close() { if (layer) { layer.remove(); layer = null; } window.removeEventListener('resize', relayout); }
+  function close() {
+    if (layer) { layer.remove(); layer = null; } window.removeEventListener('resize', relayout);
+    if (cur && cur.name === 'home') { const h = document.getElementById('home'); if (h) h.scrollTo({top: 0, behavior: 'smooth'}); window.scrollTo({top: 0}); }
+  }
   let cur = null;
   function relayout() { if (cur) show(cur.name, cur.i, true); }
 
@@ -112,6 +115,7 @@
       if (seen('tip-' + name) || layer || !TIPS[name]) return;
       mark('tip-' + name);
       const t = TIPS[name], box = document.createElement('div');
+      document.querySelectorAll('.tip-card').forEach(c => c.remove());   // one tip at a time
       box.className = 'tip-card';
       box.innerHTML = `<div class="tip-k">Tip</div><b>${t.title}</b><p>${t.text}</p><button class="tip-x" aria-label="Close">✕</button>`;
       box.querySelector('.tip-x').onclick = () => box.remove();

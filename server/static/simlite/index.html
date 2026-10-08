@@ -85,6 +85,14 @@
 .iris-foot { display: inline-flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; }
 .iris-foot img { width: 26px; height: 26px; border-radius: 6px; }
 @media (max-width: 640px) { .by-iris { margin-left: 0; display: none; } }
+/* phones: the controls wrap onto two rows instead of hiding off-screen; the side panel gets more room */
+@media (max-width: 640px) {
+  .sl { grid-template-rows: auto minmax(0, 1fr) auto; }
+  .top { flex-wrap: wrap; padding: 8px 10px; gap: 6px; overflow: visible; }
+  .lite, .top .grow { display: none; }
+  .seg button { padding: 5px 8px; font-size: 12px; } .btn { padding: 7px 12px; font-size: 13px; }
+  .mid { grid-template-rows: 42% 58%; }
+}
 </style>
 </head>
 <body>

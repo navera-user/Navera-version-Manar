@@ -3,8 +3,8 @@
 > [!NOTE] In short
 > - NAVERA's day vision answers one question every one or two seconds: where on the map was this
 >   photo taken, and how sure am I?
-> - The chain has five steps: scale the photo, search near the last position, match and fit, apply
->   the gates, convert the photo centre to lat/lon.
+> - The chain has six steps: scale the photo, search near the last position, match features, fit
+>   with RANSAC, apply the gates, convert the photo centre to lat/lon.
 > - An **error budget** lists each error source in metres; independent errors combine as the root
 >   sum of squares.
 > - An honest evaluation reports four numbers: availability, median error, p90, and the number of
@@ -202,7 +202,8 @@ lat      = atan( sinh( π · (1 − 2 Y / n) ) )         (inverse Web Mercator, 
 ```
 
 **Worked example** (photo p01 of the lab, old town of Sousse). The patch corner is
-`(x0, y0) = (17 768 148, 13 195 909)` and RANSAC carries the centre to `(u, v) = (508.3, 507.9)`.
+`(x0, y0) = (17 768 272, 13 195 992)` (the patch is centred on the **prior**, about 145 m from the truth) and
+RANSAC carries the centre to `(u, v) = (384.3, 424.9)`.
 Then `X = 17 768 656.3`, `Y = 13 196 416.9`, `n = 256 · 2^17 = 33 554 432`:
 
 ```

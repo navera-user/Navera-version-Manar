@@ -41,7 +41,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--gold-2); box-sha
 /* ---------------------------------------------------------------- top bar */
 .top { height: 62px; background: var(--night); color: #fff; display: flex; align-items: center; gap: 16px; padding: 0 22px; position: relative; z-index: 6;
   box-shadow: 0 1px 0 rgba(255,255,255,.06); transition: background .25s; }
-body.at-home .top { position: fixed; left: 0; right: 0; top: 0; background: transparent; box-shadow: none; }
+body.at-home .top { position: fixed; left: 0; right: 0; top: 0; background: linear-gradient(180deg, rgba(11,23,48,.85), rgba(11,23,48,0)); box-shadow: none; }
 body.at-home.scrolled .top { background: rgba(18,23,43,.92); backdrop-filter: blur(10px); }
 .logo { display: flex; align-items: center; gap: 10px; cursor: pointer; white-space: nowrap; font-weight: 600; letter-spacing: 3px; font-size: 13px; text-transform: uppercase; }
 .logo img { width: 30px; height: 30px; }
@@ -282,6 +282,16 @@ iframe.web { flex: 1; border: 0; background: #fff; width: 100%; }
   .split { display: none; } .tree { width: 150px; } .crumb { display: none; }
 }
 @media (max-width: 600px) { #uname { display: none; } .hwrap, .wrap { padding: 0 16px; } .hhero { padding: 90px 0 80px; } }
+/* phones: the top bar fits the screen, each tool gets the full height */
+@media (max-width: 520px) {
+  .top { padding: 0 12px; gap: 8px; }
+  .logo { font-size: 0; letter-spacing: 0; gap: 0; } .logo img { width: 28px; height: 28px; }
+  #bookBtn { font-size: 0; padding: 8px 10px; gap: 0; } #bookBtn::after { content: "🔌"; font-size: 15px; margin-left: 6px; }
+  #userBtn { padding: 6px 12px; flex: none; }
+  .webbar input { display: none; } .webbar { flex-wrap: wrap; } .webbar #simOpen, .webbar #opOpen { display: none; }
+  .notebook { height: 45%; }
+  .tree { width: 120px; font-size: 13px; }
+}
 
 /* ---------------------------------------------------------------- guided tour and tips */
 .tour { position: fixed; inset: 0; z-index: 80; }
@@ -297,7 +307,7 @@ iframe.web { flex: 1; border: 0; background: #fff; width: 100%; }
 .tour-btns span { flex: 1; }
 .tour-btns button { padding: 6px 14px; font-size: 13.5px; }
 .tour-skip { border: none; background: none; color: var(--muted); }
-.tip-card { position: fixed; left: 22px; bottom: 22px; z-index: 70; width: min(360px, 88vw); background: var(--night); color: #fff; border-radius: 18px;
+.tip-card { position: fixed; right: 22px; bottom: 22px; z-index: 70; width: min(360px, 88vw); background: var(--night); color: #fff; border-radius: 18px;
   padding: 14px 40px 14px 18px; box-shadow: 0 20px 50px rgba(10,10,30,.4); border: 1px solid rgba(255,201,176,.35);
   opacity: 0; transform: translateY(16px); transition: all .3s ease; }
 .tip-card.in { opacity: 1; transform: none; }
@@ -339,3 +349,4 @@ iframe.web { flex: 1; border: 0; background: #fff; width: 100%; }
 .iris-foot { display: inline-flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; }
 .iris-foot img { width: 26px; height: 26px; border-radius: 6px; }
 @media (max-width: 640px) { .by-iris { display: none; } }
+@media (max-width: 520px) { .tip-card { left: 12px; right: 12px; bottom: 12px; width: auto; } }

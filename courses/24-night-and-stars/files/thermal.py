@@ -9,6 +9,7 @@ labels with image correlation. Prints a report, draws thermal_vs_map.png and wri
 """
 import math
 import os
+import sys
 
 import cv2
 import numpy as np
@@ -166,6 +167,9 @@ def main():
     res = {}
     files = sorted(glob.glob(os.path.join(THERMAL_DIR, "frame_*.jpg")))
     print(f"{len(files)} night frames in {THERMAL_DIR}")
+    if not files:
+        print(f"thermal data not found ({THERMAL_DIR}) — ask the teacher to connect the data disk")
+        sys.exit(1)
     labels = [_do(parse_thermal_name, f) for f in files]
     for f, lab in list(zip(files, labels))[:4]:
         print(f"  {os.path.basename(f):48s} -> {lab}")

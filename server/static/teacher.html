@@ -12,6 +12,13 @@
   #pgrid table { width: auto; }
   #pgrid td, #pgrid th { padding: 4px 6px; text-align: center; }
   @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+  .acts { display: flex; gap: 6px; align-items: center; } .acts select { padding: 6px 10px; border-radius: 99px; font-size: 13.5px; }
+  @media (max-width: 760px) {
+    .top { height: auto; flex-wrap: wrap; padding: 10px 14px; gap: 8px; } .top .crumb { display: none; }
+    .top .logo { flex: 1 0 100%; font-size: 12px; letter-spacing: 2px; } .top button { padding: 6px 10px; font-size: 13px; }
+    .wrap { height: auto; padding: 16px 12px 40px; } .box { min-width: 0; }
+    .grid { max-width: 100%; }
+  }
   .box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; box-shadow: var(--shadow); margin-bottom: 16px; }
   .box h2 { margin: 0 0 10px; font-size: 17px; }
   .box p { color: var(--muted); margin: 4px 0 10px; font-size: 14px; line-height: 1.5; }
@@ -63,6 +70,15 @@
     </div>
   </div>
   <div class="box">
+    <h2>Full simulator <span style="font-weight:400;font-size:14px;color:var(--muted)">· teacher only — students fly Sim Lite</span></h2>
+    <p id="fsState">Checking…</p>
+    <ol style="line-height:1.7;margin:6px 0 0">
+      <li>Open <a href="/" target="_blank">My workspace</a>, then <b>Hardware</b> → <b>Take</b> “Full mission simulator”.</li>
+      <li>Open a new terminal there and run <code>cd ~/navera &amp;&amp; navera_tools/run_sim.sh</code></li>
+      <li>Fly it from the <b>🛩️ Simulator</b> tab (switch <b>Full</b>) or the <b>🧭 Operator view</b> tab. Stop it with Ctrl+C in that terminal, then release it in Hardware.</li>
+    </ol>
+  </div>
+  <div class="box">
     <h2>Accounts and sign-in</h2>
     <p>Students can create their own account on the first page (e-mail), or sign in with Google / GitHub once those are set up.
       Their progress, XP, badges and intro/tour status are saved in their account.</p>
@@ -107,10 +123,9 @@ async function load() {
       <td><span class="bar"><i style="width:${pct}%"></i></span> ${s.passed}/${s.lessons} <span style="color:var(--muted)">(${s.started} started)</span></td>
       <td>${s.terminals}</td><td>${s.backups}</td>
       <td class="acts"><button onclick="window.open('/?as=${encodeURIComponent(s.name)}','_blank')">Open</button>
-      <button onclick="act('${s.name}','password')">New password</button>
-      <button onclick="act('${s.name}','reset_navera')">Reset NAVERA</button>
-      <button onclick="act('${s.name}','kill')">Stop terminals</button>
-      <button class="danger" onclick="act('${s.name}','delete')">Delete</button></td></tr>`;
+      <select aria-label="More actions" onchange="const a=this.value; this.value=''; if (a) act('${s.name}', a)">
+        <option value="">More ▾</option><option value="password">New password</option><option value="reset_navera">Reset NAVERA</option>
+        <option value="kill">Stop terminals</option><option value="delete">Delete…</option></select></td></tr>`;
   }
   if (!DATA.students.length) h += '<tr><td colspan="7" style="color:var(--muted)">No students yet — add them below.</td></tr>';
   t.innerHTML = h;
@@ -127,9 +142,23 @@ async function load() {
   const b = DATA.base;
   $('baseNow').innerHTML = b ? `Current base: <b>${esc(b.subject)}</b><br><span style="color:var(--muted)">built ${esc(b.built)}</span>` : 'No base';
 }
+async function loadFullSim() {
+  try {
+    const f = await api('/api/admin/fullsim');
+    $('fsState').innerHTML = f.sim
+      ? `<b style="color:#2e9e6b">● Running</b>${f.op ? ' (with the operator view)' : ''} — <a href="/web/sim/" target="_blank">open it</a>${f.holder ? ' · held by ' + esc(f.holder) : ''}`
+      : `<b style="color:#c23b4a">● Not running</b>${f.holder ? ' · held by ' + esc(f.holder) : ''}`;
+  } catch (e) { $('fsState').textContent = e.message; }
+}
+setInterval(loadFullSim, 15000); loadFullSim();
 async function loadCommits() {
   const c = await api('/api/admin/commits');
-  $('commit').innerHTML = c.commits.map(x => `<option value="${x.hash}">${x.hash} · ${x.date} · ${esc(x.refs ? '[' + x.refs + '] ' : '')}${esc(x.subject.slice(0, 70))}</option>`).join('');
+  // the list starts on the CURRENT base, so a click on "Use this commit" never switches by accident
+  const cur = c.base && c.base.commit ? c.base.commit.slice(0, 7) : '';
+  const list = c.commits.slice();
+  if (cur && !list.some(x => cur.startsWith(x.hash) || x.hash.startsWith(cur))) list.unshift({hash: cur, date: '', refs: '', subject: c.base.subject.replace(/^\S+ /, '')});
+  $('commit').innerHTML = list.map(x => { const now = cur && (cur.startsWith(x.hash) || x.hash.startsWith(cur));
+    return `<option value="${x.hash}"${now ? ' selected' : ''}>${now ? '● current · ' : ''}${x.hash} · ${x.date} · ${esc(x.refs ? '[' + x.refs + '] ' : '')}${esc(x.subject.slice(0, 70))}</option>`; }).join('');
 }
 async function act(name, action) {
   const msgs = {delete: `Delete ${name}? Their files, backups and progress are removed for good.`,
@@ -148,7 +177,7 @@ $('add').onclick = async () => {
     $('names').value = '';
     if (r.created.length) {
       $('creds').style.display = 'block';
-      $('creds').textContent = `Give each student their login (shown once):\nAddress: http://${location.host}/\n\n` + r.created.map(c => `${c.name.padEnd(16)} ${c.password}`).join('\n');
+      $('creds').textContent = `Give each student their login (shown once):\nAddress: ${location.origin}/\n\n` + r.created.map(c => `${c.name.padEnd(16)} ${c.password}`).join('\n');
     }
     load();
   } catch (e) { alert(e.message); }

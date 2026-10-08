@@ -47,7 +47,8 @@ m_per_px         = 2 h tan(HFOV / 2) / W
 Worked example (the lab camera): h = 114.25 m, HFOV = 70°, W = 320 px →
 2 × 114.25 × tan 35° / 320 = 2 × 114.25 × 0.7002 / 320 = **0.500 m per pixel**. A frame of
 320 × 240 px covers 160 m × 120 m. At 20 m/s and one frame per second, consecutive frames move
-20 m = 40 px: they **overlap** by about 75 % in the direction of flight. The more overlap, the
+20 m = 40 px: they **overlap** by more than 80 % in the direction of flight (1 − 40/240 ≈ 83 % if the
+frame's short side points forward). The more overlap, the
 easier the measurement; below about 50 % it becomes unreliable.
 
 ![The camera flies north-east: the ground in its photo slides south-west](assets/slide.svg)

@@ -35,6 +35,10 @@ function modal(title, html, buttons) {
       b.onmousedown = () => { bg._vals = [...bg.querySelectorAll('input')].map(i => i.value); };
       row.appendChild(b);
     }
+    bg.addEventListener('keydown', (e) => {                 // Enter in a field = the main button
+      if (e.key !== 'Enter' || e.target.tagName !== 'INPUT') return;
+      const b = row.querySelector('.primary') || row.lastElementChild; e.preventDefault(); b.onmousedown(); b.click();
+    });
     document.body.appendChild(bg);
     const i = bg.querySelector('input'); if (i) i.focus();
   });
@@ -47,7 +51,7 @@ async function init() {
   $('uname').textContent = ME.display;
   $('uinfo').innerHTML = `Logged in as <b>${esc(ME.name)}</b> · ROS domain ${ME.domain}` +
     (ME.base ? `<br>NAVERA base: ${esc(ME.base.subject.slice(0, 60))}` : '');
-  if (ME.role === 'teacher') $('mTeacher').style.display = '';
+  if (ME.role === 'teacher') { $('mTeacher').style.display = ''; $('opTab').style.display = ''; }   // full simulator: teacher only
   if (AS) { $('asBanner').style.display = ''; $('asBanner').textContent = 'viewing ' + AS; }
   const c = await api('/api/courses');
   COURSES = c.lessons; MODULES = c.modules;
@@ -516,6 +520,14 @@ const Editor = {
   },
   layout() { if (this.ed) this.ed.layout(); },
   async open(path, focus) {
+    // two clicks on a file still loading (or a click during the lesson's auto-open) share one load
+    this._loading = this._loading || {};
+    if (!this.files[path] && this._loading[path]) { await this._loading[path]; if (this.files[path] && focus) this.show(path); return; }
+    let doneLoading;
+    if (!this.files[path]) this._loading[path] = new Promise(r => { doneLoading = r; });
+    try { await this._open(path, focus); } finally { if (doneLoading) { delete this._loading[path]; doneLoading(); } }
+  },
+  async _open(path, focus) {
     const isImg = /\.(png|jpe?g|gif|bmp|webp|svg)$/i.test(path);
     if (!this.files[path]) {
       if (isImg) this.files[path] = {img: true};
@@ -524,7 +536,8 @@ const Editor = {
         try { d = await api('/api/file?path=' + encodeURIComponent(path)); } catch (e) { if (focus) toast(e.message); return; }
         if (d.binary) { toast(`${path}: ${d.reason}`); return; }
         await this.init();
-        const model = monaco.editor.createModel(d.content, undefined, monaco.Uri.file('/' + path));
+        const uri = monaco.Uri.file('/' + path);
+        const model = monaco.editor.getModel(uri) || monaco.editor.createModel(d.content, undefined, uri);
         const f = {model, saved: model.getAlternativeVersionId()};
         model.onDidChangeContent(() => { this.renderTabs(); Tip.once('first-edit'); });
         this.files[path] = f;
@@ -726,7 +739,7 @@ const Intro = {
 $('mIntro').onclick = () => { $('userMenu').classList.remove('open'); Intro.show(); };
 $('mTour').onclick = () => { $('userMenu').classList.remove('open'); Tour.reset(); Tour.start($('work').style.display === 'none' ? 'home' : 'mission'); };
 $('mPw').onclick = async () => {
-  const bg = await modal('Change password', `<p>Current password</p><input type="password" style="width:100%"><p>New password (6+ characters)</p><input type="password" style="width:100%">`,
+  const bg = await modal('Change password', `<p>Current password</p><input type="password" style="width:100%"><p>New password (8+ characters)</p><input type="password" style="width:100%">`,
     [['Cancel', false], ['Change', undefined, 'primary']]);
   if (!bg || !bg._vals) return;
   try { await api('/api/password', {method: 'POST', body: {old: bg._vals[0], new: bg._vals[1]}}); toast('Password changed'); }

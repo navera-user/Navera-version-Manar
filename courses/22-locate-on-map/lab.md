@@ -40,6 +40,8 @@ the search radius `search_m` = 300 m. Copy the overview picture here and open it
 cp /data/academy/22-locate-on-map/overview.jpg .
 ```
 
+Then open [overview.jpg](file:./overview.jpg).
+
 How were these photos made? `/data/academy/22-locate-on-map/make_dataset.py` cuts a piece of map
 around a chosen point, turns it by the heading, scales it to the camera's GSD, then blurs it,
 changes its exposure, adds noise and JPEG artefacts. Because we chose the point, the truth is

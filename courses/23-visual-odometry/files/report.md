@@ -1,7 +1,8 @@
 # Lab 23 — Report: visual odometry over NAVERA's Sousse map
 
 Write 2–5 sentences under each heading. Copy the numbers from the program outputs or from
-`results.json` (the check compares them). Replace every `...`.
+`results.json` (the check compares them). Replace every placeholder (three dots) by your own
+numbers and words.
 
 ## 1. FFT vs OpenCV
 

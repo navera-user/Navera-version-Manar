@@ -1,7 +1,8 @@
 # Lab 22 report — locating drone photos on the map
 
 Write in your own words, in English, with the numbers from `results.json` and `budget.json`.
-Replace every line that starts with TODO. Keep the four headings exactly as they are.
+Replace every placeholder line by your own sentences (the check fails while one is left). Keep the
+four headings exactly as they are.
 
 ## 1. Results
 

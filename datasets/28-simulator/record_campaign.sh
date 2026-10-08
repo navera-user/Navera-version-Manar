@@ -1,11 +1,12 @@
 #!/bin/bash
 # record_campaign.sh — how the fault-injection campaign of lesson 28 was recorded.
-# Run in a student sandbox that HOLDS the simulator (lesson 28 folder, sim_ctl.py there):
+# Run by the TEACHER, on the full simulator (teacher only; students fly Part E in Sim Lite).
+# Run from a terminal that holds the simulator (lesson 28 folder, sim_ctl.py there):
 #     bash /data/academy/28-simulator/record_campaign.sh [scenario.json ...]
 # Default: the three scenarios in /data/academy/28-simulator/scenarios/. Each one is a drone
 # mission over Sousse (simulated vision "target" profile), with faults at fixed times after the
 # drone starts flying to the destination. One simulator session; it is stopped at the end.
-# The first two flights of the campaign (sample_flight.csv, flight_measured.csv) were recorded
+# The first two flights of the campaign (sample_flight.csv, campaign/jam_spoof_measured.csv) were recorded
 # with record_sample.sh (GPS jammed 60 s, then spoofed by a 2 km jump for 30 s).
 set -u
 L=~/lessons/28-simulator

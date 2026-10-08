@@ -3,9 +3,9 @@
 **Goal:** work like a test engineer on NAVERA's mission simulator. You will (A) decode, byte by byte,
 the MAVLink messages NAVERA sends to the autopilot, (B) check the simulator's sensor models against
 their theory, (C) turn a recorded fault-injection campaign of five flights into measurements and
-PASS / FAIL verdicts, (D) write a short test report, and (E) if the simulator is free, fly your own
-scripted scenario.
-**Time:** about 4 h (Part E, with the simulator, adds 30–45 minutes).
+PASS / FAIL verdicts, (D) write a short test report, and (E) fly your own scripted scenario in Sim Lite (the 🛩️ Simulator
+tab: no booking, the whole class flies at once).
+**Time:** about 4 h (Part E, in Sim Lite, adds 30–45 minutes).
 
 Your files:
 
@@ -246,7 +246,7 @@ Fill [report.md](file:./report.md): the five sections are already there. Use **y
 > (`target_median_m`) and the lagged Monte Carlo median (`lagged_median_m`). The *Fidelity* section
 > must say clearly that these are **behaviour** results, not accuracy results.
 
-## Part E — Your own scripted run (needs the simulator)
+## Part E — Your own scripted run (in Sim Lite)
 
 Part E flies in **Sim Lite** (🛩️ **Simulator** tab). It runs in your browser, so the whole class
 can fly at once, and it runs **your own** `navera_estimator` — the one in your NAVERA copy. Its
@@ -280,7 +280,7 @@ is the recorded campaign's: ~4 km from Sousse).
 
 ```bash
 head -3 my_runs/*.csv
-cut -d, -f2,3 my_runs/*.csv | sort | uniq -c
+cut -d, -f2,3,16 my_runs/*.csv | sort | uniq -c     # phase, gps_mode, camera
 ```
 
 You should see `enroute` rows and your faults in the `gps_mode` (or `camera`) column.

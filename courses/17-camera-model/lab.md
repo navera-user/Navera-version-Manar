@@ -146,10 +146,10 @@ say `ALL MATCH`.
 Copy two photos into your folder to look at them:
 
 ```bash
-cp /data/academy/17-camera-model/photo_A.png /data/academy/17-camera-model/photo_T.png .
+cp /data/academy/17-camera-model/photo_A.png /data/academy/17-camera-model/photo_B.png /data/academy/17-camera-model/photo_T.png .
 ```
 
-Open [photo_A.png](file:./photo_A.png) (nadir, height unknown) and [photo_T.png](file:./photo_T.png)
+Open [photo_A.png](file:./photo_A.png) and [photo_B.png](file:./photo_B.png) (both nadir, height unknown) and [photo_T.png](file:./photo_T.png)
 (tilted: 150 m, heading 30°, pitch −12°, roll +4°). Each has a 12 m × 12 m orange pad on the ground.
 In [measure_pad.py](file:./measure_pad.py), `orange_mask(img)` already returns a boolean array,
 True on the pad's orange pixels.
