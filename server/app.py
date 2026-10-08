@@ -151,7 +151,7 @@ def api_login():
     return jsonify(ok=True, role=u["role"])
 
 
-# ---------------------------------------------------------------- accounts: sign-up, preferences, Google/Facebook
+# ---------------------------------------------------------------- accounts: sign-up, preferences, Google/GitHub
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[a-z]{2,24}$", re.I)
 _signups = {}          # ip -> [times]: at most SIGNUP_PER_HOUR new accounts per device per hour
 SIGNUP_PER_HOUR = 5
@@ -165,10 +165,10 @@ def settings():
 
 def oauth_conf():
     """state/oauth.json: {"base_url": "https://academy.example.com",
-    "google": {"client_id": "…", "client_secret": "…"}, "facebook": {"client_id": "…", "client_secret": "…"}}"""
+    "google": {"client_id": "…", "client_secret": "…"}, "github": {"client_id": "…", "client_secret": "…"}}"""
     c = _load("oauth.json", {})
     ok = lambda p: bool(c.get("base_url") and (c.get(p) or {}).get("client_id") and (c.get(p) or {}).get("client_secret"))
-    return c, {"google": ok("google"), "facebook": ok("facebook")}
+    return c, {p: ok(p) for p in OAUTH}
 
 
 def new_student(display, email=None, password=None, provider=None, provider_id=None):
@@ -259,8 +259,8 @@ def api_prefs_set():
 OAUTH = {
     "google": {"auth": "https://accounts.google.com/o/oauth2/v2/auth", "token": "https://oauth2.googleapis.com/token",
                "user": "https://openidconnect.googleapis.com/v1/userinfo", "scope": "openid email profile"},
-    "facebook": {"auth": "https://www.facebook.com/v19.0/dialog/oauth", "token": "https://graph.facebook.com/v19.0/oauth/access_token",
-                 "user": "https://graph.facebook.com/me?fields=id,name,email", "scope": "email,public_profile"},
+    "github": {"auth": "https://github.com/login/oauth/authorize", "token": "https://github.com/login/oauth/access_token",
+               "user": "https://api.github.com/user", "scope": "read:user user:email"},
 }
 
 
@@ -291,11 +291,18 @@ def auth_callback(provider):
     data = {"client_id": conf[provider]["client_id"], "client_secret": conf[provider]["client_secret"],
             "code": request.args["code"], "redirect_uri": redirect_uri, "grant_type": "authorization_code"}
     try:
-        tok = (rq.post if provider == "google" else rq.get)(OAUTH[provider]["token"], **({"data": data} if provider == "google" else {"params": data}), timeout=15).json()
-        info = rq.get(OAUTH[provider]["user"], headers={"Authorization": "Bearer " + tok["access_token"]}, timeout=15).json()
+        tok = rq.post(OAUTH[provider]["token"], data=data, headers={"Accept": "application/json"}, timeout=15).json()
+        auth = {"Authorization": "Bearer " + tok["access_token"], "Accept": "application/json"}
+        info = rq.get(OAUTH[provider]["user"], headers=auth, timeout=15).json()
+        # only an address the provider has verified may join an existing account
+        if provider == "google":
+            email = (info.get("email") or "").lower() if info.get("email_verified") else ""
+        else:
+            mails = rq.get("https://api.github.com/user/emails", headers=auth, timeout=15).json()
+            email = next((m["email"].lower() for m in mails if m.get("primary") and m.get("verified")), "")
+            info["name"] = info.get("name") or info.get("login")
     except Exception:
         return redirect("/?auth_error=provider_failed")
-    email = (info.get("email") or "").lower()
     pid = str(info.get("sub") or info.get("id") or "")
     u = users()
     name = next((k for k, v in u.items() if (email and (v.get("email") or "") == email)
