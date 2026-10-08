@@ -76,7 +76,7 @@
   .result.badr { border-left-color: #c23b4a; }
   .mapwrap { position: relative; min-height: 0; min-width: 0; }
   .mapwrap #map { position: absolute; inset: 0; }
-  @media (max-width: 900px) { .mid { grid-template-columns: 1fr; grid-template-rows: 55% 45%; } .bottom { grid-template-columns: repeat(2, minmax(0, 1fr)); } .sl { grid-template-rows: auto minmax(0, 1fr) auto; } .card:last-child { display: none; } }
+  @media (max-width: 900px) { .mid { grid-template-columns: 1fr; grid-template-rows: 55% 45%; } .bottom { grid-template-columns: repeat(2, minmax(0, 1fr)); } .sl { grid-template-rows: auto minmax(0, 1fr) auto; } .bottom .card:last-child { display: none; } }
 
 /* IRIS Systems — the company logo (img/iris-logo-mask.png, from "Logo IRIS 002"), drawn in the text colour */
 @font-face { font-family: "Space Grotesk"; font-weight: 300 700; font-display: swap; src: url(/static/vendor/fonts/space-grotesk-latin.woff2) format("woff2"); }
@@ -95,19 +95,69 @@
   .seg button { padding: 5px 8px; font-size: 12px; } .btn { padding: 7px 12px; font-size: 13px; }
   .mid { grid-template-rows: 42% 58%; }
 }
+
+/* ---- organised panel: cards with numbered steps ---- */
+.pane { background: var(--ivory); }
+.pane.on { display: flex !important; flex-direction: column; gap: 9px; }
+.side .card { background: #fff; border: 1px solid var(--line); border-radius: 13px; padding: 10px 12px; min-width: 0; }
+.side .card.hl { border: 1.5px solid var(--coral); background: #fffaf8; }
+.ch { display: flex; align-items: center; gap: 7px; font-size: 10.5px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); font-weight: 700; margin-bottom: 8px; }
+.ch .n { width: 18px; height: 18px; border-radius: 50%; background: var(--night); color: #fff; display: grid; place-items: center; font-size: 10px; letter-spacing: 0; flex: none; }
+.lnk { margin-left: auto; border: none; background: none; color: #1d7f8c; font: 600 12px Inter, sans-serif; cursor: pointer; text-transform: none; letter-spacing: 0; padding: 0; }
+.route { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px 8px; align-items: center; }
+.rl { font-size: 12px; font-weight: 600; color: var(--muted); cursor: default; }
+.ib { width: 34px; height: 34px; border-radius: 10px; border: 1.5px solid var(--line); background: #fff; cursor: pointer; font-size: 14px; }
+.seg.light { background: #eef2f6; display: flex; } .seg.light button { flex: 1; color: var(--muted); padding: 6px 4px; }
+.seg.light button.on { background: #fff; color: var(--ink); box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+label.fl { display: block; font-size: 11.5px; font-weight: 600; color: var(--muted); } label.fl span { font-weight: 400; }
+label.fl input { margin-top: 4px; }
+.cond { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 10px; align-items: center; }
+.fault { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 6px 8px; align-items: center; }
+.fault .ic { font-size: 18px; } .fault b { font-size: 13.5px; } .fault .opts { grid-column: 1 / 3; }
+textarea.code { height: 190px; }
+.console { max-height: 160px; }
+.log { border: none; padding: 0; max-height: none; }
+#p-log .card:last-child { flex: 1; min-height: 0; overflow-y: auto; }
+
+/* ---- compact: next to the course (the panel is a narrow column) ---- */
+@media (max-width: 1250px) {
+  .lt, .by-iris, .lite { display: none; }
+  .top { padding: 6px 10px; gap: 6px; min-height: 46px; }
+  .seg button { padding: 5px 9px; font-size: 12px; }
+  .btn { padding: 7px 13px; font-size: 13px; } .bt { display: none; }
+  .clock { font-size: 13px; }
+  .pane { padding: 9px; }
+  .legend { font-size: 11px; line-height: 1.6; padding: 6px 9px; }
+  .mid { grid-template-columns: minmax(0, 1fr) 360px; }
+  .tabs button { white-space: nowrap; padding: 11px 9px; font-size: 12.5px; flex: 1; }
+  .lnk { white-space: nowrap; } .ch { white-space: nowrap; overflow: hidden; }
+  .cond .opts { flex-wrap: nowrap; } .cond .opts button { padding: 5px 9px; font-size: 12px; white-space: nowrap; }
+  /* status cards: one slim row of chips */
+  .sl { grid-template-rows: auto minmax(0, 1fr) auto; }
+  .bottom { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 6px 10px; }
+  .bottom .card:last-child { display: none; }
+  .bottom .card { padding: 5px 9px; border-radius: 10px; background: rgba(255,255,255,.05); border: none; }
+  .bottom .card .l { font-size: 9.5px; } .bottom .card .v { font-size: 15px; margin-top: 1px; } .bottom .card .n { display: none; }
+}
+@media (max-width: 900px) {
+  .mid { grid-template-columns: 1fr; grid-template-rows: 46% 54%; }
+  .bottom { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .bottom .card:last-child { display: none; }
+  .legend { display: none; }
+}
+@media (max-width: 520px) { .bottom { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 5px 6px; } .bottom .card { padding: 4px 6px; } .bottom .card .v { font-size: 12.5px; } .bottom .card .l { font-size: 8.5px; letter-spacing: .6px; } }
 </style>
 </head>
 <body>
 <div class="sl">
   <div class="top">
-    <span class="logo">✈ NAVERA SIM</span><a class="by-iris" href="https://iris-systems.tn" target="_blank" rel="noopener" onclick="event.stopPropagation()">by <span class="iris-mark" role="img" aria-label="IRIS"><span>IRIS</span></span></a>
+    <span class="logo">✈ <span class="lt">NAVERA SIM</span></span><a class="by-iris" href="https://iris-systems.tn" target="_blank" rel="noopener" onclick="event.stopPropagation()">by <span class="iris-mark" role="img" aria-label="IRIS"><span>IRIS</span></span></a>
     <span class="lite">Lite · runs on your computer</span>
     <span class="seg" id="modeSeg" style="display:none"><button class="on">Lite</button><button id="toFull" title="The full simulator (real ArduPilot autopilot) — teacher">Full</button></span>
-    <span class="seg" id="vehSeg"><button data-v="drone" class="on">🛩 Drone</button><button data-v="plane">✈ Plane</button><button data-v="boat">🚤 Boat</button><button data-v="robot">🚙 Robot</button></span>
     <span class="grow"></span>
-    <span class="seg" id="rateSeg"><button data-r="1">1×</button><button data-r="4" class="on">4×</button><button data-r="10">10×</button><button data-r="30">30×</button></span>
+    <span class="seg" id="rateSeg" title="Simulation speed"><button data-r="1">1×</button><button data-r="4" class="on">4×</button><button data-r="10">10×</button><button data-r="30">30×</button></span>
     <span class="clock" id="clock">T+ 00:00</span>
-    <button class="btn ghost" id="resetBtn">↺ Reset</button>
+    <button class="btn ghost" id="resetBtn" title="Reset">↺<span class="bt"> Reset</span></button>
     <button class="btn ghost" id="pauseBtn" disabled>⏸ Pause</button>
     <button class="btn fly" id="flyBtn">▶ Fly</button>
   </div>
@@ -115,62 +165,76 @@
   <div class="mid">
     <div class="mapwrap"><div id="map"></div><div class="result" id="result"></div></div>
     <div class="side">
-      <div class="tabs" id="tabs"><button data-p="mission" class="on">Mission</button><button data-p="faults">Faults</button><button data-p="code">My code</button><button data-p="log">Log</button></div>
+      <div class="tabs" id="tabs"><button data-p="mission" class="on">🧭 Flight</button><button data-p="faults">⚡ Faults</button><button data-p="code">🐍 Code</button><button data-p="log">📋 Results</button></div>
 
       <div class="pane on" id="p-mission">
-        <div id="scenBox" style="display:none;background:#fff;border:1.5px solid var(--coral);border-radius:14px;padding:11px 13px;margin-bottom:6px">
-          <b style="font-size:13.5px">This mission's scenario — my_scenario.json</b>
-          <div class="hint" id="scenText"></div>
-          <div class="acts"><button class="btn fly" id="scenFly">▶ Fly my scenario</button><button class="btn lite-btn" id="scenReload">↻ Re-read the file</button></div>
-          <div class="hint">The flight is saved by itself in your mission folder: <b>my_runs/</b>, ready for campaign.py.</div>
+        <div id="scenBox" class="card hl" style="display:none">
+          <div class="ch">🎯 This mission · my_scenario.json <button class="lnk" id="scenReload">↻ re-read</button></div>
+          <div class="hint" id="scenText" style="margin:0 0 8px"></div>
+          <button class="btn fly" id="scenFly">▶ Fly my scenario</button>
+          <span class="hint" style="margin-left:6px">saved by itself in <b>my_runs/</b></span>
         </div>
-        <label class="f">Start</label>
-        <div class="row"><select id="startSel"></select></div>
-        <button class="pick" id="pickStart">or click the map to choose</button>
-        <label class="f">Destination</label>
-        <div class="row"><select id="destSel"></select></div>
-        <button class="pick" id="pickDest">or click the map to choose</button>
-        <div class="row">
-          <div><label class="f">Cruise speed (m/s)</label><input type="number" id="speedIn" min="1" max="120" step="1"></div>
-          <div><label class="f">NAVERA max speed (m/s)</label><input type="number" id="maxIn" min="1" max="525" step="1"></div>
+        <div class="card">
+          <div class="ch"><span class="n">1</span>Route</div>
+          <div class="route">
+            <span class="rl">From</span><select id="startSel"></select><button class="ib" id="pickStart" title="Click the map to choose the start">📍</button>
+            <span class="rl">To</span><select id="destSel"></select><button class="ib" id="pickDest" title="Click the map to choose the destination">📍</button>
+          </div>
         </div>
-        <label class="f">Vision accuracy</label>
-        <div class="opts" id="profOpts"><button data-v="measured" class="on">Measured today</button><button data-v="target">Target (goal, not measured)</button></div>
-        <p class="hint">"Measured today" uses what NAVERA's day and night vision really achieve now (day ≈ 440 m median). "Target" is the accuracy goal — useful to see the design work, not a promise.</p>
-        <label class="f">Light</label>
-        <div class="opts" id="lightOpts"><button data-v="day" class="on">☀ Day</button><button data-v="night">☾ Night</button></div>
+        <div class="card">
+          <div class="ch"><span class="n">2</span>Vehicle</div>
+          <span class="seg light" id="vehSeg"><button data-v="drone" class="on">🛩 Drone</button><button data-v="plane">✈ Plane</button><button data-v="boat">🚤 Boat</button><button data-v="robot">🚙 Robot</button></span>
+          <div class="row" style="margin-top:8px">
+            <label class="fl">Cruise speed <span>m/s</span><input type="number" id="speedIn" min="1" max="120" step="1"></label>
+            <label class="fl">NAVERA max <span>m/s</span><input type="number" id="maxIn" min="1" max="525" step="1"></label>
+          </div>
+        </div>
+        <div class="card">
+          <div class="ch"><span class="n">3</span>Conditions</div>
+          <div class="cond">
+            <span class="rl" title="&quot;Measured today&quot; = what NAVERA's day and night vision really achieve now (day ≈ 440 m median). &quot;Target&quot; = the accuracy goal, to see the design work — not a promise.">Vision ⓘ</span>
+            <div class="opts" id="profOpts"><button data-v="measured" class="on">Measured today</button><button data-v="target">Target (goal)</button></div>
+            <span class="rl">Light</span>
+            <div class="opts" id="lightOpts"><button data-v="day" class="on">☀ Day</button><button data-v="night">☾ Night</button></div>
+          </div>
+        </div>
       </div>
 
       <div class="pane" id="p-faults">
-        <p class="hint" style="margin-top:0">Inject a failure at any moment during the flight — or from your flight script.</p>
-        <label class="f">GPS receiver</label>
-        <div class="opts" data-k="gps"><button data-v="ok" class="on">Normal</button><button data-v="jammed">Jammed</button><button data-v="spoof_jump">Spoofed — 2 km jump</button><button data-v="spoof_drift">Spoofed — slow drift</button><button data-v="off">Off</button></div>
-        <label class="f">Camera (vision)</label>
-        <div class="opts" data-k="camera"><button data-v="ok" class="on">Working</button><button data-v="failed">Failed</button></div>
-        <label class="f">Light</label>
-        <div class="opts" data-k="light"><button data-v="day" class="on">☀ Day</button><button data-v="night">☾ Night</button></div>
-        <label class="f">IMU</label>
-        <div class="opts" data-k="imu"><button data-v="ok" class="on">Working</button><button data-v="failed">Failed</button></div>
+        <p class="hint" style="margin:0 0 8px">Press ▶ Fly, then click a state to inject it — your flight script can do the same.</p>
+        <div class="card fault"><span class="ic">🛰</span><b>GPS receiver</b>
+          <div class="opts" data-k="gps"><button data-v="ok" class="on">Normal</button><button data-v="jammed">Jammed</button><button data-v="spoof_jump">Spoof · 2 km jump</button><button data-v="spoof_drift">Spoof · slow drift</button><button data-v="off">Off</button></div></div>
+        <div class="card fault"><span class="ic">📷</span><b>Camera (vision)</b>
+          <div class="opts" data-k="camera"><button data-v="ok" class="on">Working</button><button data-v="failed">Failed</button></div></div>
+        <div class="card fault"><span class="ic">🧭</span><b>IMU</b>
+          <div class="opts" data-k="imu"><button data-v="ok" class="on">Working</button><button data-v="failed">Failed</button></div></div>
+        <div class="card fault"><span class="ic">🌗</span><b>Light</b>
+          <div class="opts" data-k="light"><button data-v="day" class="on">☀ Day</button><button data-v="night">☾ Night</button></div></div>
       </div>
 
       <div class="pane" id="p-code">
-        <div class="src" id="srcSel">
-          <button data-s="mine" class="on"><b>My NAVERA copy</b>estimator from your workspace</button>
-          <button data-s="original"><b>Original NAVERA</b>the reference, to compare</button>
+        <div class="card">
+          <div class="ch"><span class="n">1</span>The estimator that flies <button class="lnk" id="reloadBtn">↻ reload</button></div>
+          <div class="src" id="srcSel">
+            <button data-s="mine" class="on"><b>My NAVERA copy</b>from your workspace</button>
+            <button data-s="original"><b>Original NAVERA</b>to compare</button>
+          </div>
+          <div class="file" id="fileInfo">📄 navera_estimator/nodes/estimator_node.py — loading…</div>
         </div>
-        <div class="file" id="fileInfo">📄 navera_estimator/nodes/estimator_node.py — loading…</div>
-        <label class="f" style="color:var(--ink)">Flight script (Python, runs in your browser)</label>
-        <textarea class="code" id="script" spellcheck="false"></textarea>
-        <div class="acts">
-          <button class="btn fly" id="runBtn">▶ Run my code</button>
-          <button class="btn lite-btn" id="saveBtn">💾 Save</button>
-          <button class="btn lite-btn" id="reloadBtn">↻ Reload from my copy</button>
-          <button class="btn lite-btn" id="saveRunBtn" disabled title="Save the last flight as a CSV in this mission's my_runs/ folder">📁 Save flight to my_runs/</button>
+        <div class="card">
+          <div class="ch"><span class="n">2</span>Flight script <span class="hint" style="margin:0 0 0 auto;text-transform:none;letter-spacing:0;font-weight:500">Python, in your browser</span></div>
+          <textarea class="code" id="script" spellcheck="false"></textarea>
+          <div class="acts"><button class="btn fly" id="runBtn">▶ Run with my script</button><button class="btn lite-btn" id="saveBtn">💾 Save</button></div>
+          <div class="console" id="console">Edit estimator_node.py in your NAVERA copy (📝 Code tab), press ↻ reload above, then fly: the coral line on the map is what YOUR estimator decides.</div>
         </div>
-        <div class="console" id="console">Edit estimator_node.py in your NAVERA copy (Code tab), press "Reload from my copy", then fly: the coral line on the map is what YOUR estimator decides.</div>
       </div>
 
-      <div class="pane" id="p-log"><div class="log" id="log"></div></div>
+      <div class="pane" id="p-log">
+        <div class="card"><div class="ch">Save this flight</div>
+          <button class="btn fly" id="saveRunBtn" disabled title="Save the last flight as a CSV in this mission's my_runs/ folder">📁 Save to my_runs/</button>
+          <span class="hint" style="margin-left:6px">CSV in sim_ctl.py's columns + the events log</span></div>
+        <div class="card"><div class="ch">Flight log</div><div class="log" id="log"></div></div>
+      </div>
     </div>
   </div>
 

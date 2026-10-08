@@ -258,6 +258,8 @@ body:not(.at-home) .home { height: calc(100% - 62px); }
 .term { position: absolute; inset: 0; padding: 8px 0 0 10px; display: none; }
 .term.on { display: block; }
 iframe.web { flex: 1; border: 0; background: #fff; width: 100%; }
+.simacts { display: flex; gap: 6px; align-items: center; padding-right: 8px; }
+.simacts button { background: rgba(255,255,255,.06); color: #dde7f0; border: 1px solid #28406a; padding: 4px 11px; font-size: 13px; }
 .webbar { display: flex; gap: 8px; align-items: center; padding: 7px 10px; background: var(--night-2); color: #a3b4c8; font-size: 13px; flex: none; }
 .webbar input { flex: 1; background: var(--night); color: #eee; border: 1px solid #28406a; padding: 5px 9px; border-radius: 8px; }
 .webbar button { background: rgba(255,255,255,.06); color: #dde7f0; border: 1px solid #28406a; padding: 4px 11px; }
@@ -288,7 +290,8 @@ iframe.web { flex: 1; border: 0; background: #fff; width: 100%; }
   .logo { font-size: 0; letter-spacing: 0; gap: 0; } .logo img { width: 28px; height: 28px; }
   #bookBtn { font-size: 0; padding: 8px 10px; gap: 0; } #bookBtn::after { content: "🔌"; font-size: 15px; margin-left: 6px; }
   #userBtn { padding: 6px 12px; flex: none; }
-  .webbar input { display: none; } .webbar { flex-wrap: wrap; } .webbar #simOpen, .webbar #opOpen { display: none; }
+  .webbar input { display: none; } .webbar { flex-wrap: wrap; } .webbar #opOpen, .simacts #simOpen { display: none; }
+  .tools .tabs { overflow-x: auto; } .tools .tabs .tab { white-space: nowrap; } .simacts { display: none !important; }
   .notebook { height: 45%; }
   .tree { width: 120px; font-size: 13px; }
 }

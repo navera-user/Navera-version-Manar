@@ -58,6 +58,7 @@
       <div class="tab" data-pane="sim">🛩️ Simulator</div>
       <div class="tab" data-pane="operator" id="opTab" style="display:none">🧭 Operator view</div>
       <div class="grow"></div>
+      <span class="simacts" id="simActs" style="display:none"><button id="simReload" title="Reload the simulator">⟳</button><button id="simOpen" title="Open the simulator in a new window">↗ New window</button></span>
     </div>
     <div class="pane on" id="pane-editor">
       <div class="tree" id="tree"><div class="bar"><button id="tRefresh" title="Refresh">⟳</button><button id="tNew" title="New file">+ file</button><button id="tDel" title="Delete selected">🗑</button></div><div id="treeItems"></div></div>
@@ -79,7 +80,6 @@
       </div>
     </div>
     <div class="pane" id="pane-sim"><div class="col">
-      <div class="webbar">Mission simulator <input id="simUrl" readonly><button id="simReload">⟳ Reload</button><button id="simOpen">↗ New window</button></div>
       <iframe class="web" id="simFrame" allow="geolocation; fullscreen"></iframe></div></div>
     <div class="pane" id="pane-operator"><div class="col">
       <div class="webbar">NAVERA operator view <input id="opUrl" readonly><button id="opReload">⟳ Reload</button><button id="opOpen">↗ New window</button></div>

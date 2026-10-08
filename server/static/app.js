@@ -406,6 +406,7 @@ function showPane(p) {
   document.querySelectorAll('.tools .pane').forEach(x => x.classList.toggle('on', x.id === 'pane-' + p));
   if (p === 'terminal') { if (!Terms.list.length) Terms.add(); else Terms.fitAll(); Tip.once('first-terminal'); }
   if (p === 'editor') Editor.layout();
+  $('simActs').style.display = p === 'sim' ? '' : 'none';            // Reload / New window sit in the tab row
   if (p === 'sim' && $('simFrame').dataset.lesson !== (LESSON ? LESSON.id : '')) loadWeb('sim');
   if (p === 'operator' && !$('opFrame').src) loadWeb('op');
 }
@@ -415,7 +416,7 @@ function loadWeb(which) {
   // switch to the full simulator. Operator view: the full simulator's, carried by the academy.
   const url = which === 'sim' ? '/static/simlite/index.html?lesson=' + encodeURIComponent(LESSON ? LESSON.id : '') : '/web/op/operator';
   const f = which === 'sim' ? $('simFrame') : $('opFrame');
-  (which === 'sim' ? $('simUrl') : $('opUrl')).value = url;
+  if (which === 'op') $('opUrl').value = url;
   if (which === 'sim') f.dataset.lesson = LESSON ? LESSON.id : '';
   f.src = url;
 }
