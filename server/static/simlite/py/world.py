@@ -373,24 +373,6 @@ class _NavView:
     def source(self):
         return {1: "gps", 2: "vision", 3: "vision", 4: "celestial"}.get(self._w.nav["source"], "none")
     @property
-    def row(self):
-        """Same columns as the full simulator's recorder (courses/28-simulator/files/sim_ctl.py)."""
-        f = lambda v, d=1: "" if v is None else f"{v:.{d}f}"           # noqa: E731
-        fresh = self.nav["t"] is not None and self.t - self.nav["t"] <= 1.5
-        phase = {"waiting": "waiting_gps", "flying": "enroute", "arrived": "arrived", "stopped": "stopped"}[self.phase]
-        ap_err = dist(self.belief, self.truth) if self.belief is not None else None
-        return {"t_s": f(self.t), "phase": phase, "gps_mode": self.faults["gps"],
-                "navera_state": STATE.get(self.nav["state"], ""), "navera_source": SRC.get(self.nav["source"], ""),
-                "navera_lat": f(self.nav["lat"] if fresh else None, 7), "navera_lon": f(self.nav["lon"] if fresh else None, 7),
-                "navera_err_m": f(self.error_m()), "truth_lat": f(self.truth[0], 7), "truth_lon": f(self.truth[1], 7),
-                "truth_alt_m": f(self.alt), "truth_speed_mps": f(self.speed), "ap_mode": "GUIDED" if self.phase == "flying" else "",
-                "ap_err_m": f(ap_err), "reason": self.nav["reason"], "camera": self.faults["camera"]}
-
-    def stop(self, why="stopped"):
-        if self.phase != "stopped":
-            self.phase = "stopped"
-            self.event("info", f"mission stopped ({why})")
-
     def error_m(self):
         e = self._w.error_m()
         return float("inf") if e is None else e
