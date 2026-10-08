@@ -22,16 +22,18 @@ CACHE = os.path.join(config.ACADEMY, "state", "tilecache")
 _db = threading.local()
 
 
-def _root(name, src):
+def _root(name, src, allow_original):
     if src == "mine":
         nav = os.path.join(workspaces.student_home(name), "navera")
         if os.path.isdir(nav):
             return nav, "mine"
+    if not allow_original:          # students only ever fly their own copy, never the original's code
+        raise FileNotFoundError("your NAVERA copy is missing — press ♻️ Reset my NAVERA copy in the user menu")
     return config.BASE, "original"
 
 
-def code(name, src):
-    root, origin = _root(name, src)
+def code(name, src, allow_original=False):
+    root, origin = _root(name, src, allow_original)
     files = {}
     for f in sorted(glob.glob(os.path.join(root, "navera_common", "navera_common", "*.py"))):
         files["navera_common/" + os.path.basename(f)] = f

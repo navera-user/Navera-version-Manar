@@ -161,7 +161,8 @@ document.querySelectorAll('#srcSel button').forEach(b => b.onclick = () => {
 async function loadCode() {
   $('fileInfo').innerHTML = '📄 navera_estimator/nodes/estimator_node.py — loading…';
   try {
-    const r = await fetch('/api/simlite/code?src=' + S.src); if (!r.ok) throw new Error('please sign in again');
+    const r = await fetch('/api/simlite/code?src=' + S.src);
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || 'please sign in again'); }
     const c = await r.json();
     await call('load', { files: c.files });
     S.files = c;
@@ -353,6 +354,6 @@ function toastLog(level, text) { consoleLine(level, text); logLine(level, text);
 
 // ---------------------------------------------------------------- start
 drawPlan(); loadScript(); loadScenario();
-fetch('/api/me').then(r => r.json()).then(me => { if (me.role === 'teacher') $('modeSeg').style.display = ''; }).catch(() => {});
+fetch('/api/me').then(r => r.json()).then(me => { if (me.role === 'teacher') { $('modeSeg').style.display = ''; $('srcSel').style.display = ''; } }).catch(() => {});
 call('ping').then(async () => { $('veilText').textContent = 'Loading your NAVERA code…'; await loadCode(); $('veil').style.display = 'none'; })
   .catch(e => { $('veilText').textContent = 'The simulator could not start in this browser: ' + e; });

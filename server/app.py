@@ -693,8 +693,12 @@ def web_tool(tool, sub):
 @app.get("/api/simlite/code")
 @login_required()
 def api_simlite_code():
-    src = "original" if request.args.get("src") == "original" else "mine"
-    return jsonify(simlite.code(request.user, src))
+    teacher = request.urec["role"] == "teacher"            # the original NAVERA: teacher only
+    src = "original" if teacher and request.args.get("src") == "original" else "mine"
+    try:
+        return jsonify(simlite.code(request.user, src, allow_original=teacher))
+    except FileNotFoundError as e:
+        return jsonify(error=str(e)), 409
 
 
 @app.get("/api/simlite/script")
