@@ -91,7 +91,7 @@ const DUSK_DEFS = `<linearGradient id="dusk" x1="0" y1="0" x2="0" y2="1"><stop o
   <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a6f86"/><stop offset="1" stop-color="#0b2236"/></linearGradient>
   <radialGradient id="sun" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#fff0e2"/><stop offset=".45" stop-color="#ffb59c"/><stop offset="1" stop-color="#ffb59c" stop-opacity="0"/></radialGradient>`;
 // sky, sun on the horizon, a far coastline, the sea with its waves and reflection, and a flock of swallows
-function oceanScene(W, H, hz, flock = true) {
+function oceanScene(W, H, hz, flock = true, moon = true) {
   const stars = [[.06, .1], [.18, .22], [.3, .08], [.43, .18], [.55, .06], [.68, .14], [.79, .07], [.9, .2], [.96, .1], [.38, .3]]
     .map(([x, y]) => `<circle cx="${x * W}" cy="${y * H}" r="${1 + (x * 7) % 1}" />`).join('');
   const sx = W * .68, waves = [0, 1, 2, 3].map(k => {
@@ -103,7 +103,7 @@ function oceanScene(W, H, hz, flock = true) {
   const coast = `M${W * .52} ${hz} L${W * .6} ${hz - H * .055} L${W * .66} ${hz - H * .03} L${W * .74} ${hz - H * .075} L${W * .83} ${hz - H * .035} L${W * .92} ${hz - H * .06} L${W} ${hz - H * .04} L${W} ${hz} Z`;
   const birds = flock ? `${bird(W * .2, H * .16, 46, '#0b1730', .85)}${bird(W * .2 + 52, H * .16 + 30, 30, '#0b1730', .8)}${bird(W * .2 - 30, H * .16 + 40, 24, '#0b1730', .75)}${bird(W * .2 + 90, H * .16 + 6, 20, '#0b1730', .7)}` : '';
   return `<rect width="${W}" height="${H}" fill="url(#dusk)"/><g fill="#fff" opacity=".8">${stars}</g>
-    <path d="M${W * .86} ${H * .17} a${H * .045} ${H * .045} 0 1 0 ${H * .038} ${H * .07} a${H * .034} ${H * .034} 0 1 1 ${-H * .038} ${-H * .07}z" fill="#f1f6fb" opacity=".9"/>
+    ${moon ? '' : '<!--'}<path d="M${W * .86} ${H * .17} a${H * .045} ${H * .045} 0 1 0 ${H * .038} ${H * .07} a${H * .034} ${H * .034} 0 1 1 ${-H * .038} ${-H * .07}z" fill="#f1f6fb" opacity=".9"/>${moon ? '' : '-->'}
     <circle cx="${sx}" cy="${hz}" r="${H * .3}" fill="url(#sun)" opacity=".75"/><circle cx="${sx}" cy="${hz}" r="${H * .065}" fill="#ffe3cf"/>
     <path d="${coast}" fill="#15314d"/><rect y="${hz}" width="${W}" height="${H - hz}" fill="url(#sea)"/>${waves}${glints}${birds}`;
 }
@@ -121,7 +121,7 @@ function expeditionSVG(lessons) {
   const next = lessons.findIndex(l => l.progress.status !== 'passed');
   let g = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Expedition map"><defs>${DUSK_DEFS}
       <filter id="gl"><feGaussianBlur stdDeviation="3.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
-    ${oceanScene(W, H, 300, false)}
+    ${oceanScene(W, H, 300, false, false)}
     <path id="route" d="M50 240 C150 130 250 270 360 185 S560 90 660 170 S860 280 960 175 S1130 105 1180 150" fill="none" stroke="rgba(255,236,200,.45)" stroke-width="2" stroke-dasharray="2 8" stroke-linecap="round"/>
     <g id="wps"></g><g id="leglabels" font-family="Fraunces, serif" font-size="15" fill="rgba(255,240,215,.88)" text-anchor="middle"></g></svg>`;
   return g;
@@ -192,7 +192,9 @@ async function showHome() {
     </div></div></header>
     <div class="wrap">
       <div class="shead" id="mapHead"><div class="kicker">Your route</div><h2>Expedition map</h2><p>${COURSES.length} waypoints across ${MODULES.length} legs — click any waypoint to open its mission.</p></div>
-      <div class="mapcard">${expeditionSVG(COURSES)}</div>
+    </div>
+    <div class="mapwide">${expeditionSVG(COURSES)}</div>
+    <div class="wrap">
       <div class="shead"><div class="kicker">Achievements</div><h2>Badges</h2><p>Complete a whole leg to earn its badge.</p></div>
       <div class="medals">${b.html}</div>
       <div class="shead" style="margin-bottom:0"><div class="kicker">Missions</div><h2>${MODULES.length} legs, ${COURSES.length} missions</h2></div>`;
@@ -696,25 +698,32 @@ $('mResetNavera').onclick = async () => {
     toast('NAVERA is back to the original. Backup: ' + (r.backup || 'none'), 5000);
   } catch (e) { toast(e.message); }
 };
+// account preferences (saved on the server: they follow the student to any computer)
+const Prefs = {
+  get: (k) => !!(ME.prefs && ME.prefs[k]),
+  set(k, v = true) { ME.prefs = ME.prefs || {}; ME.prefs[k] = v; api('/api/prefs', {method: 'POST', body: {[k]: v}}).catch(() => {}); },
+};
 const Intro = {
-  key: () => `academy:${ME.name}:intro`,
-  seen() { try { return localStorage.getItem(this.key()) === '1'; } catch (e) { return false; } },
   show(then) {
-    try { localStorage.setItem(this.key(), '1'); } catch (e) {}
-    const bg = document.createElement('div'); bg.className = 'intro-bg';
-    bg.innerHTML = `<div class="intro-box"><video src="/static/media/navera-intro.webm" controls playsinline></video>
-      <div class="intro-bar"><b>Welcome to NAVERA Academy</b><span>A short film · with narration — turn your sound on 🔊</span>
-      <a href="/static/media/navera-intro.webm" download>Download</a><button class="go">Start the expedition →</button></div></div>`;
-    const done = () => { bg.remove(); if (then) then(); };
-    bg.querySelector('button').onclick = done;
-    const v = bg.querySelector('video');
-    v.onended = () => { bg.querySelector('button').focus(); };
-    // browsers block autoplay with sound until the user clicks: try with sound, else start muted with a hint
-    v.play().catch(() => { v.muted = true; v.play().catch(() => {}); bg.querySelector('.intro-bar span').textContent = 'Muted by your browser — click 🔊 in the player for the voice'; });
-    bg.addEventListener('click', (e) => { if (e.target === bg) done(); });
-    document.body.appendChild(bg);
+    Prefs.set('intro_seen');
+    const f = document.createElement('div'); f.className = 'film-full';
+    f.innerHTML = `<video src="/static/media/navera-intro.webm" playsinline></video>
+      <div class="ff-brand"><img src="/static/img/navi-mark-gold.svg" alt="">NAVERA Academy</div>
+      <button class="ff-skip">Skip intro ›</button><button class="ff-sound">🔊 Turn the sound on</button>`;
+    document.body.appendChild(f);
+    const v = f.querySelector('video'), snd = f.querySelector('.ff-sound');
+    const done = () => { v.pause(); f.remove(); if (then) then(); };
+    f.querySelector('.ff-skip').onclick = done;
+    v.onended = done;
+    snd.onclick = () => { v.muted = false; v.play(); snd.style.display = 'none'; };
+    v.play().catch(() => { v.muted = true; v.play().catch(() => {}); snd.style.display = 'block'; });
   },
-  maybe(then) { if (this.seen() || AS) { if (then) then(); } else this.show(then); },
+  maybe(then) {
+    let justWatched = false;
+    try { justWatched = sessionStorage.getItem('academy:intro-now') === '1'; sessionStorage.removeItem('academy:intro-now'); } catch (e) {}
+    if (justWatched) Prefs.set('intro_seen');                      // watched on the first page a moment ago
+    if (Prefs.get('intro_seen') || AS) { if (then) then(); } else this.show(then);
+  },
 };
 $('mIntro').onclick = () => { $('userMenu').classList.remove('open'); Intro.show(); };
 $('mTour').onclick = () => { $('userMenu').classList.remove('open'); Tour.reset(); Tour.start($('work').style.display === 'none' ? 'home' : 'mission'); };

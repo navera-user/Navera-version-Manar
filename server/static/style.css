@@ -314,3 +314,18 @@ iframe.web { flex: 1; border: 0; background: #fff; width: 100%; }
 .intro-bar b { font-family: var(--serif); color: #ffc9b0; font-weight: 600; font-size: 17px; }
 .intro-bar span { flex: 1; }
 .intro-bar a { color: #ffc9b0; font-size: 13px; }
+
+/* full-page intro film (first visit of an account) */
+.film-full { position: fixed; inset: 0; z-index: 95; background: #000; }
+.film-full video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+.film-full .ff-skip { position: absolute; top: 22px; right: 24px; padding: 10px 22px; background: rgba(255,255,255,.14); color: #fff;
+  border: 1px solid rgba(255,255,255,.45); backdrop-filter: blur(6px); font-size: 15px; }
+.film-full .ff-sound { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); padding: 12px 24px; display: none;
+  background: linear-gradient(135deg, #ff9f8a, #e8706a); color: #2a0d08; border: none; font-size: 16px; }
+.film-full .ff-brand { position: absolute; top: 26px; left: 28px; display: flex; gap: 10px; align-items: center; color: #fff; font-weight: 600; letter-spacing: 3px; font-size: 13px; text-transform: uppercase; }
+.film-full .ff-brand img { width: 28px; }
+/* expedition map from edge to edge */
+.mapwide { width: 100%; margin: 0; line-height: 0; }
+.mapwide svg { display: block; width: 100%; height: auto; min-height: 320px; }
+.mapwide .wp { cursor: pointer; }
+.mapwide text { font-family: Inter, sans-serif; }

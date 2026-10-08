@@ -23,6 +23,26 @@
   label { display: block; font-size: 11.5px; letter-spacing: 2px; text-transform: uppercase; color: rgba(255,255,255,.75); margin: 14px 0 6px; font-weight: 600; }
   input { width: 100%; font-size: 16px; background: rgba(255,255,255,.92); border: none; }
   button { width: 100%; margin-top: 22px; padding: 13px; font-size: 16px; }
+  .tabs2 { display: flex; gap: 6px; background: rgba(255,255,255,.08); border-radius: 999px; padding: 4px; margin-bottom: 16px; }
+  .t2 { flex: 1; background: none; border: none; color: rgba(255,255,255,.75); padding: 9px; font-size: 15px; margin: 0; width: auto; }
+  .t2.on { background: #fff; color: #14202b; }
+  .social { display: grid; gap: 8px; }
+  .soc { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; margin: 0; padding: 11px; background: #fff; color: #14202b; border: none; font-size: 15px; }
+  .soc.off { opacity: .55; }
+  .or { display: flex; align-items: center; gap: 10px; color: rgba(255,255,255,.65); font-size: 12.5px; margin: 16px 0 2px; letter-spacing: 1px; text-transform: uppercase; }
+  .or::before, .or::after { content: ""; flex: 1; height: 1px; background: rgba(255,255,255,.25); }
+  .fine { color: rgba(255,255,255,.7); font-size: 12.5px; margin: 10px 0 0; text-align: center; }
+  .replay { display: block; text-align: center; margin-top: 12px; color: #ffc9b0; font-size: 13.5px; cursor: pointer; }
+  /* full-page intro film */
+  .film { position: fixed; inset: 0; z-index: 50; background: #000; display: none; }
+  .film.on { display: block; }
+  .film video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+  .film .skip { position: absolute; top: 22px; right: 24px; width: auto; margin: 0; padding: 10px 22px; background: rgba(255,255,255,.14); color: #fff;
+    border: 1px solid rgba(255,255,255,.45); backdrop-filter: blur(6px); font-size: 15px; }
+  .film .sound { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); width: auto; margin: 0; padding: 12px 24px;
+    background: linear-gradient(135deg, #ff9f8a, #e8706a); color: #2a0d08; border: none; font-size: 16px; display: none; }
+  .film .brand2 { position: absolute; top: 26px; left: 28px; display: flex; gap: 10px; align-items: center; font-weight: 600; letter-spacing: 3px; font-size: 13px; text-transform: uppercase; color: #fff; }
+  .film .brand2 img { width: 28px; }
   .err { color: #ffb4a3; font-size: 14px; min-height: 20px; margin-top: 10px; text-align: center; font-weight: 600; }
   @media (max-width: 900px) { .page { grid-template-columns: 1fr; padding-top: 90px; gap: 30px; } h1 { font-size: 40px; } .facts { display: none; } body { overflow: auto; } }
 </style>
@@ -31,6 +51,9 @@
 <svg class="scene" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="dusk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b1730"/><stop offset=".45" stop-color="#16395a"/><stop offset=".62" stop-color="#1d4e6b"/><stop offset=".84" stop-color="#e6928a"/><stop offset="1" stop-color="#f6c7a8"/></linearGradient>
     <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a6f86"/><stop offset="1" stop-color="#0b2236"/></linearGradient>
     <radialGradient id="sun" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#fff0e2"/><stop offset=".45" stop-color="#ffb59c"/><stop offset="1" stop-color="#ffb59c" stop-opacity="0"/></radialGradient></defs><rect width="1440" height="900" fill="url(#dusk)"/><g fill="#fff" opacity=".8"><circle cx="86" cy="90" r="1.42"/><circle cx="259" cy="198" r="1.26"/><circle cx="432" cy="72" r="1.10"/><circle cx="619" cy="162" r="1.01"/><circle cx="792" cy="54" r="1.85"/><circle cx="979" cy="126" r="1.76"/><circle cx="1138" cy="63" r="1.53"/><circle cx="1296" cy="180" r="1.30"/><circle cx="1382" cy="90" r="1.72"/><circle cx="547" cy="270" r="1.66"/></g><path d="M1238 90 a40.5 40.5 0 1 0 34.2 63.0 a30.6 30.6 0 1 1 -34.2 -63.0z" fill="#f1f6fb" opacity=".9"/><circle cx="979" cy="700" r="270" fill="url(#sun)" opacity=".75"/><circle cx="979" cy="700" r="58" fill="#ffe3cf"/><path d="M749 700 L864 650 L950 673 L1066 632 L1195 668 L1325 646 L1440 664 L1440 700 Z" fill="#15314d"/><rect y="700" width="1440" height="200" fill="url(#sea)"/><path d="M0 750 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0" stroke="rgba(255,255,255,0.16)" stroke-width="1.4" fill="none"/><path d="M0 794 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0" stroke="rgba(255,255,255,0.13)" stroke-width="1.4" fill="none"/><path d="M0 838 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0" stroke="rgba(255,255,255,0.10)" stroke-width="1.4" fill="none"/><path d="M0 882 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0" stroke="rgba(255,255,255,0.07)" stroke-width="1.4" fill="none"/><rect x="919" y="710" width="120" height="2" rx="1" fill="#ffd9bd" opacity="0.60"/><rect x="938" y="723" width="102" height="2" rx="1" fill="#ffd9bd" opacity="0.51"/><rect x="907" y="736" width="84" height="2" rx="1" fill="#ffd9bd" opacity="0.42"/><rect x="926" y="749" width="66" height="2" rx="1" fill="#ffd9bd" opacity="0.33"/><rect x="895" y="762" width="48" height="2" rx="1" fill="#ffd9bd" opacity="0.24"/><g transform="translate(892.8 180.0) scale(0.719)" opacity="0.85"><path d="M62 32 Q58.5 28.4 51 28.6 Q47 13 21 5 Q31 17 37.5 29 Q32 29.4 27 30.4 L3 22.5 Q12.5 29.4 17.5 32 Q12.5 34.6 3 41.5 L27 33.6 Q32 34.6 37.5 35 Q31 47 21 59 Q47 51 51 35.4 Q58.5 35.6 62 32 Z" fill="#0b1730"/></g><g transform="translate(944.8 210.0) scale(0.469)" opacity="0.8"><path d="M62 32 Q58.5 28.4 51 28.6 Q47 13 21 5 Q31 17 37.5 29 Q32 29.4 27 30.4 L3 22.5 Q12.5 29.4 17.5 32 Q12.5 34.6 3 41.5 L27 33.6 Q32 34.6 37.5 35 Q31 47 21 59 Q47 51 51 35.4 Q58.5 35.6 62 32 Z" fill="#0b1730"/></g><g transform="translate(862.8 220.0) scale(0.375)" opacity="0.75"><path d="M62 32 Q58.5 28.4 51 28.6 Q47 13 21 5 Q31 17 37.5 29 Q32 29.4 27 30.4 L3 22.5 Q12.5 29.4 17.5 32 Q12.5 34.6 3 41.5 L27 33.6 Q32 34.6 37.5 35 Q31 47 21 59 Q47 51 51 35.4 Q58.5 35.6 62 32 Z" fill="#0b1730"/></g><g transform="translate(982.8 186.0) scale(0.312)" opacity="0.7"><path d="M62 32 Q58.5 28.4 51 28.6 Q47 13 21 5 Q31 17 37.5 29 Q32 29.4 27 30.4 L3 22.5 Q12.5 29.4 17.5 32 Q12.5 34.6 3 41.5 L27 33.6 Q32 34.6 37.5 35 Q31 47 21 59 Q47 51 51 35.4 Q58.5 35.6 62 32 Z" fill="#0b1730"/></g></svg>
+<div class="film" id="film"><video id="fv" src="/static/media/navera-intro.webm" playsinline preload="auto"></video>
+  <div class="brand2"><img src="/static/img/navi-mark-gold.svg" alt="">NAVERA Academy</div>
+  <button class="skip" id="skip">Skip intro ›</button><button class="sound" id="snd">🔊 Turn the sound on</button></div>
 <div class="brand"><img src="/static/img/navi-mark-gold.svg" alt="">NAVERA Academy</div>
 <div class="page">
   <div>
@@ -39,23 +62,77 @@
     <p class="lead">Every autumn, swallows cross seas and deserts without a single satellite. Learn the engineering that lets drones and vehicles do the same — on NAVERA's real code.</p>
     <div class="facts"><div><b>30</b>missions</div><div><b>7</b>legs</div><div><b>1</b>real product</div></div>
   </div>
-  <form class="box" id="f">
-    <h2>Welcome aboard</h2><p>Sign in to your expedition.</p>
-    <label for="n">Username</label><input id="n" autocomplete="username" autofocus>
-    <label for="p">Password</label><input id="p" type="password" autocomplete="current-password">
-    <button class="go">Sign in →</button>
+  <div class="box" id="authbox">
+    <div class="tabs2"><button class="t2 on" data-t="in">Sign in</button><button class="t2" data-t="up" id="tabUp">Create account</button></div>
+    <div class="social">
+      <button class="soc" id="gBtn" type="button"><svg viewBox="0 0 48 48" width="20" height="20"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>Continue with Google</button>
+      <button class="soc" id="fBtn" type="button"><svg viewBox="0 0 24 24" width="20" height="20"><path fill="#1877F2" d="M24 12a12 12 0 1 0-13.9 11.9v-8.4H7.1V12h3V9.4c0-3 1.8-4.7 4.5-4.7 1.3 0 2.7.2 2.7.2v3h-1.5c-1.5 0-2 .9-2 1.9V12h3.4l-.5 3.5h-2.9v8.4A12 12 0 0 0 24 12z"/></svg>Continue with Facebook</button>
+    </div>
+    <div class="or"><span>or with your e-mail</span></div>
+    <form id="fIn">
+      <label for="n">E-mail or username</label><input id="n" autocomplete="username" autofocus>
+      <label for="p">Password</label><input id="p" type="password" autocomplete="current-password">
+      <button class="go">Sign in →</button>
+    </form>
+    <form id="fUp" style="display:none">
+      <label for="un">Your name</label><input id="un" autocomplete="name" placeholder="First and last name">
+      <label for="ue">E-mail</label><input id="ue" type="email" autocomplete="email" placeholder="you@example.com">
+      <label for="up">Password</label><input id="up" type="password" autocomplete="new-password" placeholder="at least 8 characters">
+      <button class="go">Create my account →</button>
+      <p class="fine">Your progress, XP and badges are saved in your account.</p>
+    </form>
     <div class="err" id="e"></div>
-  </form>
+    <a class="replay" id="replay">▶ Watch the intro film</a>
+  </div>
 </div>
 <script>
-document.getElementById('f').onsubmit = async (ev) => {
-  ev.preventDefault();
-  const r = await fetch('/api/login', {method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({name: n.value, password: p.value})});
-  const d = await r.json();
-  if (r.ok) location.href = d.role === 'teacher' ? '/teacher' : '/';
-  else document.getElementById('e').textContent = d.error || 'Error';
+const $ = (id) => document.getElementById(id);
+const err = (m) => { $('e').textContent = m || ''; };
+const seen = () => { try { return localStorage.getItem('academy:intro-seen') === '1'; } catch (e) { return false; } };
+const markSeen = () => { try { localStorage.setItem('academy:intro-seen', '1'); sessionStorage.setItem('academy:intro-now', '1'); } catch (e) {} };
+// 1. every first visitor sees the film, full page, with a Skip button
+function showFilm() {
+  const f = $('film'), v = $('fv');
+  f.classList.add('on'); v.currentTime = 0; v.muted = false;
+  v.play().catch(() => { v.muted = true; v.play().catch(() => {}); $('snd').style.display = 'block'; });
+}
+function closeFilm() { const v = $('fv'); v.pause(); $('film').classList.remove('on'); markSeen(); $('n').focus(); }
+$('skip').onclick = closeFilm;
+$('fv').onended = closeFilm;
+$('snd').onclick = () => { const v = $('fv'); v.muted = false; v.play(); $('snd').style.display = 'none'; };
+$('replay').onclick = showFilm;
+if (!seen()) showFilm();
+
+// 2. sign in / create account
+document.querySelectorAll('.t2').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.t2').forEach(x => x.classList.toggle('on', x === b));
+  $('fIn').style.display = b.dataset.t === 'in' ? '' : 'none';
+  $('fUp').style.display = b.dataset.t === 'up' ? '' : 'none'; err();
+});
+const go = (d) => { location.href = d.role === 'teacher' ? '/teacher' : '/'; };
+$('fIn').onsubmit = async (ev) => {
+  ev.preventDefault(); err();
+  const r = await fetch('/api/login', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name: $('n').value, password: $('p').value})});
+  const d = await r.json(); r.ok ? go(d) : err(d.error || 'Error');
 };
+$('fUp').onsubmit = async (ev) => {
+  ev.preventDefault(); err();
+  const r = await fetch('/api/signup', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({display: $('un').value, email: $('ue').value, password: $('up').value})});
+  const d = await r.json(); r.ok ? go(d) : err(d.error || 'Error');
+};
+// 3. Google / Facebook (work once the teacher has configured them)
+fetch('/api/auth/options').then(r => r.json()).then(o => {
+  if (!o.signup) { $('tabUp').style.display = 'none'; }
+  [['google', 'gBtn', 'Google'], ['facebook', 'fBtn', 'Facebook']].forEach(([k, id, label]) => {
+    const b = $(id);
+    if (o[k]) b.onclick = () => { location.href = '/auth/' + k; };
+    else { b.classList.add('off'); b.onclick = () => err(label + ' sign-in is not set up yet on this academy. Use your e-mail for now.'); }
+  });
+});
+const q = new URLSearchParams(location.search).get('auth_error');
+if (q) err({cancelled: 'Sign-in was cancelled.', signup_closed: 'Account creation is closed. Ask your teacher.', full: 'The academy is full. Ask your teacher.',
+  provider_failed: 'The sign-in service did not answer. Try again.'}[q] || 'This sign-in method is not set up yet.');
 </script>
 </body>
 </html>

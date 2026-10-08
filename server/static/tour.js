@@ -6,10 +6,11 @@
  */
 'use strict';
 (() => {
-  const who = () => (window.ME && ME.name) || 'anon';
+  const me = () => (typeof ME !== 'undefined' ? ME : null);   // ME and Prefs are defined by app.js
+  const who = () => (me() && me().name) || 'anon';
   const key = (k) => `academy:${who()}:${k}`;
-  const seen = (k) => { try { return localStorage.getItem(key(k)) === '1'; } catch (e) { return false; } };
-  const mark = (k) => { try { localStorage.setItem(key(k), '1'); } catch (e) {} };
+  const seen = (k) => { if (me() && me().prefs && me().prefs[k.replace(/[^a-z0-9_-]/g, '_')]) return true; try { return localStorage.getItem(key(k)) === '1'; } catch (e) { return false; } };
+  const mark = (k) => { try { localStorage.setItem(key(k), '1'); } catch (e) {} if (typeof Prefs !== 'undefined') Prefs.set(k.replace(/[^a-z0-9_-]/g, '_')); };
   const q = (sel) => (typeof sel === 'function' ? sel() : document.querySelector(sel));
   const visible = (el) => el && el.offsetParent !== null && el.getBoundingClientRect().width > 0;
 
@@ -18,7 +19,7 @@
       {title: 'Welcome to the expedition', text: 'This short tour shows you around. It takes one minute. You can close it at any time and replay it from your name menu (top right).', target: null},
       {target: '.glass', title: 'Your rank and progress', text: 'Every mission you pass gives you 100 XP. Your rank grows from Fledgling to Migration Master. The bar shows how far you are from the next rank.'},
       {target: '#goNext', title: 'Continue where you stopped', text: 'This button always opens your next mission.'},
-      {target: '.mapcard', title: 'The expedition map', text: 'Each waypoint is a mission. Gold waypoints are done; the glowing one is your next mission. Click any waypoint to open it.', scroll: true},
+      {target: '.mapwide', title: 'The expedition map', text: 'Each waypoint is a mission. Filled waypoints are done; the glowing one is your next mission. Click any waypoint to open it.', scroll: true},
       {target: '.medals', title: 'Badges', text: 'Finish a whole leg of the journey to earn its badge. Some special badges reward key missions.', scroll: true},
       {target: '.legblock', title: 'Missions, leg by leg', text: 'The 30 missions are grouped in 7 legs. Each row shows the time to plan, the XP and your status. Missions build on each other: take them in order.', scroll: true},
       {target: '#bookBtn', title: 'Shared hardware', text: 'The simulator and the camera exist only once for the whole class. Book them here only when a mission needs them, and release them when you finish.'},
@@ -102,8 +103,8 @@
   window.Tour = {
     close() { cur = null; close(); },
     start(name) { if (TOURS[name]) setTimeout(() => show(name, 0), 50); },
-    maybe(name) { if (!seen('tour-' + name) && !window.AS) setTimeout(() => { if (!seen('tour-' + name)) show(name, 0); }, 900); },
-    reset() { Object.keys(TOURS).forEach(n => { try { localStorage.removeItem(key('tour-' + n)); } catch (e) {} });
+    maybe(name) { if (!seen('tour-' + name) && !(typeof AS !== 'undefined' && AS)) setTimeout(() => { if (!seen('tour-' + name)) show(name, 0); }, 900); },
+    reset() { Object.keys(TOURS).forEach(n => { try { localStorage.removeItem(key('tour-' + n)); } catch (e) {} if (me() && me().prefs) { delete me().prefs['tour-' + n]; if (typeof Prefs !== 'undefined') Prefs.set('tour-' + n, false); } });
       Object.keys(TIPS).forEach(n => { try { localStorage.removeItem(key('tip-' + n)); } catch (e) {} }); },
   };
   window.Tip = {

@@ -63,6 +63,22 @@
     </div>
   </div>
   <div class="box">
+    <h2>Accounts and sign-in</h2>
+    <p>Students can create their own account on the first page (e-mail), or sign in with Google / Facebook once those are set up.
+      Their progress, XP, badges and intro/tour status are saved in their account.</p>
+    <label style="display:flex;gap:10px;align-items:center;font-weight:600"><input type="checkbox" id="allowSignup" style="width:auto"> Students can create their own accounts</label>
+    <div id="oauthState" style="margin-top:12px"></div>
+    <details style="margin-top:10px"><summary style="cursor:pointer;font-weight:600">How to switch on Google and Facebook sign-in</summary>
+      <ol style="line-height:1.7;color:var(--muted);font-size:14px">
+        <li>Give the academy a public address with HTTPS (for example <code>https://academy.your-company.com</code>) — Google and Facebook refuse private addresses like 192.168.x.x.</li>
+        <li>Google: in Google Cloud Console → APIs &amp; Services → Credentials, create an "OAuth client ID" (Web application) with the redirect URI <code>https://YOUR-ADDRESS/auth/google/callback</code>.</li>
+        <li>Facebook: in Meta for Developers, create an app with "Facebook Login" and the redirect URI <code>https://YOUR-ADDRESS/auth/facebook/callback</code>.</li>
+        <li>Put the address and the keys in <code>~/navera-academy/state/oauth.json</code>:<br>
+          <code>{"base_url": "https://YOUR-ADDRESS", "google": {"client_id": "…", "client_secret": "…"}, "facebook": {"client_id": "…", "client_secret": "…"}}</code>
+          — the buttons switch on immediately.</li>
+      </ol></details>
+  </div>
+  <div class="box">
     <h2>Progress by lesson</h2>
     <p>Green = passed · orange = started. Hover a square for details.</p>
     <div class="grid" id="pgrid"></div>
@@ -84,10 +100,10 @@ let DATA;
 async function load() {
   DATA = await api('/api/admin/students');
   const t = $('tbl');
-  let h = '<tr><th>Student</th><th>Login</th><th>Progress</th><th>Terminals</th><th>Backups</th><th></th></tr>';
+  let h = '<tr><th>Student</th><th>Login</th><th>E-mail</th><th>Progress</th><th>Terminals</th><th>Backups</th><th></th></tr>';
   for (const s of DATA.students) {
     const pct = s.lessons ? Math.round(100 * s.passed / s.lessons) : 0;
-    h += `<tr><td>${esc(s.display)}</td><td><code>${esc(s.name)}</code></td>
+    h += `<tr><td>${esc(s.display)}</td><td><code>${esc(s.name)}</code></td><td>${s.email ? esc(s.email) : '<span style="color:var(--muted)">—</span>'} <span class="badge">${esc(s.provider || '')}</span></td>
       <td><span class="bar"><i style="width:${pct}%"></i></span> ${s.passed}/${s.lessons} <span style="color:var(--muted)">(${s.started} started)</span></td>
       <td>${s.terminals}</td><td>${s.backups}</td>
       <td class="acts"><button onclick="window.open('/?as=${encodeURIComponent(s.name)}','_blank')">Open</button>
@@ -96,7 +112,7 @@ async function load() {
       <button onclick="act('${s.name}','kill')">Stop terminals</button>
       <button class="danger" onclick="act('${s.name}','delete')">Delete</button></td></tr>`;
   }
-  if (!DATA.students.length) h += '<tr><td colspan="6" style="color:var(--muted)">No students yet — add them below.</td></tr>';
+  if (!DATA.students.length) h += '<tr><td colspan="7" style="color:var(--muted)">No students yet — add them below.</td></tr>';
   t.innerHTML = h;
   // progress grid
   let g = '<table><tr><th>Student</th>' + DATA.lessons.map(l => `<th title="${esc(l)}">${esc(l.slice(0, 2))}</th>`).join('') + '</tr>';
@@ -150,7 +166,13 @@ $('rebase').onclick = async () => {
   poll();
 };
 $('logout').onclick = async () => { await api('/api/logout', {method: 'POST', body: {}}); location.href = '/'; };
-load(); loadCommits(); setInterval(load, 15000);
+async function loadSettings() {
+  const st = await api('/api/admin/settings');
+  $('allowSignup').checked = st.settings.allow_signup;
+  $('oauthState').innerHTML = ['google', 'facebook'].map(k => `<span class="badge ${st.oauth[k] ? 'passed' : ''}" style="margin-right:8px">${k === 'google' ? 'Google' : 'Facebook'}: ${st.oauth[k] ? 'ready' : 'not set up'}</span>`).join('') + '<span class="badge passed">E-mail: ready</span>';
+}
+$('allowSignup').onchange = async () => { await api('/api/admin/settings', {method: 'POST', body: {allow_signup: $('allowSignup').checked}}); };
+load(); loadCommits(); loadSettings(); setInterval(load, 15000);
 </script>
 </body>
 </html>

@@ -121,14 +121,196 @@ def sandbox_user():
 def api_login():
     d = request.get_json(force=True)
     name = (d.get("name") or "").strip().lower()
-    u = users().get(name)
-    if not u or not check_password_hash(u["pw"], d.get("password") or ""):
+    all_users = users()
+    if name not in all_users and "@" in name:                     # sign in with the e-mail address too
+        name = next((k for k, v in all_users.items() if (v.get("email") or "").lower() == name), name)
+    u = all_users.get(name)
+    if not u or not u.get("pw") or not check_password_hash(u["pw"], d.get("password") or ""):
         time.sleep(0.7)
         return jsonify(error="Wrong name or password"), 401
     session.clear()
     session["user"] = name
     session.permanent = True
     return jsonify(ok=True, role=u["role"])
+
+
+# ---------------------------------------------------------------- accounts: sign-up, preferences, Google/Facebook
+EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[a-z]{2,24}$", re.I)
+_signups = {}          # ip -> [times]: at most SIGNUP_PER_HOUR new accounts per device per hour
+SIGNUP_PER_HOUR = 5
+
+
+def settings():
+    s = {"allow_signup": True}
+    s.update(_load("settings.json", {}))
+    return s
+
+
+def oauth_conf():
+    """state/oauth.json: {"base_url": "https://academy.example.com",
+    "google": {"client_id": "…", "client_secret": "…"}, "facebook": {"client_id": "…", "client_secret": "…"}}"""
+    c = _load("oauth.json", {})
+    ok = lambda p: bool(c.get("base_url") and (c.get(p) or {}).get("client_id") and (c.get(p) or {}).get("client_secret"))
+    return c, {"google": ok("google"), "facebook": ok("facebook")}
+
+
+def new_student(display, email=None, password=None, provider=None, provider_id=None):
+    """Create a student account (name derived from the e-mail) and its sandbox. Returns the login name."""
+    with _lock:
+        u = users()
+        used = {v["index"] for v in u.values()}
+        idx = next((i for i in range(1, len(config.STUDENT_DOMAINS)) if i not in used), None)
+        if idx is None:
+            raise ValueError("The academy is full — ask the teacher.")
+        base = re.sub(r"[^a-z0-9_]", "", ((email or display or "student").split("@")[0]).lower().replace(".", "_").replace("-", "_"))
+        if not base or not base[0].isalpha():
+            base = "s" + base
+        base = base[:18]
+        name, n = base if len(base) >= 2 else base + "1", 1
+        while name in u:
+            n += 1
+            name = f"{base}{n}"
+        rec = {"role": "student", "index": idx, "display": (display or name)[:40], "created": time.strftime("%Y-%m-%d %H:%M"),
+               "pw": generate_password_hash(password) if password else None}
+        if email:
+            rec["email"] = email.lower()
+        if provider:
+            rec["provider"] = provider
+            rec["provider_id"] = provider_id
+        u[name] = rec
+        _save("users.json", u)
+    workspaces.create_student(name)
+    return name
+
+
+@app.get("/api/auth/options")
+def api_auth_options():
+    _, ready = oauth_conf()
+    return jsonify(signup=settings()["allow_signup"], **ready)
+
+
+@app.post("/api/signup")
+def api_signup():
+    if not settings()["allow_signup"]:
+        return jsonify(error="Account creation is closed. Ask your teacher for an account."), 403
+    d = request.get_json(force=True)
+    display = (d.get("display") or "").strip()
+    email = (d.get("email") or "").strip().lower()
+    pw = d.get("password") or ""
+    if len(display) < 2:
+        return jsonify(error="Please enter your name."), 400
+    if not EMAIL_RE.match(email):
+        return jsonify(error="Please enter a valid e-mail address."), 400
+    if len(pw) < 8:
+        return jsonify(error="The password needs at least 8 characters."), 400
+    if any((v.get("email") or "") == email for v in users().values()):
+        return jsonify(error="An account with this e-mail already exists — sign in instead."), 409
+    ip = request.remote_addr or "?"
+    now = time.time()
+    _signups[ip] = [t for t in _signups.get(ip, []) if now - t < 3600]
+    if len(_signups[ip]) >= SIGNUP_PER_HOUR:
+        return jsonify(error="Too many new accounts from this device. Try again later."), 429
+    try:
+        name = new_student(display, email=email, password=pw)
+    except ValueError as e:
+        return jsonify(error=str(e)), 409
+    _signups[ip].append(now)
+    session.clear(); session["user"] = name; session.permanent = True
+    return jsonify(ok=True, role="student", name=name)
+
+
+@app.get("/api/prefs")
+@login_required()
+def api_prefs_get():
+    return jsonify(users()[request.user].get("prefs", {}))
+
+
+@app.post("/api/prefs")
+@login_required()
+def api_prefs_set():
+    d = request.get_json(force=True)
+    with _lock:
+        u = users()
+        prefs = u[request.user].setdefault("prefs", {})
+        for k, v in d.items():
+            if re.fullmatch(r"[a-z0-9_-]{1,32}", k) and isinstance(v, (bool, int, str)) and len(str(v)) < 200:
+                prefs[k] = v
+        _save("users.json", u)
+    return jsonify(ok=True)
+
+
+OAUTH = {
+    "google": {"auth": "https://accounts.google.com/o/oauth2/v2/auth", "token": "https://oauth2.googleapis.com/token",
+               "user": "https://openidconnect.googleapis.com/v1/userinfo", "scope": "openid email profile"},
+    "facebook": {"auth": "https://www.facebook.com/v19.0/dialog/oauth", "token": "https://graph.facebook.com/v19.0/oauth/access_token",
+                 "user": "https://graph.facebook.com/me?fields=id,name,email", "scope": "email,public_profile"},
+}
+
+
+@app.get("/auth/<provider>")
+def auth_start(provider):
+    conf, ready = oauth_conf()
+    if provider not in OAUTH or not ready.get(provider):
+        return redirect("/?auth_error=" + provider + "_not_configured")
+    from urllib.parse import urlencode
+    state = secrets.token_urlsafe(24)
+    session["oauth_state"] = state
+    q = {"client_id": conf[provider]["client_id"], "redirect_uri": conf["base_url"].rstrip("/") + f"/auth/{provider}/callback",
+         "response_type": "code", "scope": OAUTH[provider]["scope"], "state": state}
+    if provider == "google":
+        q["prompt"] = "select_account"
+    return redirect(OAUTH[provider]["auth"] + "?" + urlencode(q))
+
+
+@app.get("/auth/<provider>/callback")
+def auth_callback(provider):
+    import requests as rq
+    conf, ready = oauth_conf()
+    if provider not in OAUTH or not ready.get(provider):
+        return redirect("/?auth_error=" + provider + "_not_configured")
+    if not request.args.get("code") or request.args.get("state") != session.pop("oauth_state", None):
+        return redirect("/?auth_error=cancelled")
+    redirect_uri = conf["base_url"].rstrip("/") + f"/auth/{provider}/callback"
+    data = {"client_id": conf[provider]["client_id"], "client_secret": conf[provider]["client_secret"],
+            "code": request.args["code"], "redirect_uri": redirect_uri, "grant_type": "authorization_code"}
+    try:
+        tok = (rq.post if provider == "google" else rq.get)(OAUTH[provider]["token"], **({"data": data} if provider == "google" else {"params": data}), timeout=15).json()
+        info = rq.get(OAUTH[provider]["user"], headers={"Authorization": "Bearer " + tok["access_token"]}, timeout=15).json()
+    except Exception:
+        return redirect("/?auth_error=provider_failed")
+    email = (info.get("email") or "").lower()
+    pid = str(info.get("sub") or info.get("id") or "")
+    u = users()
+    name = next((k for k, v in u.items() if (email and (v.get("email") or "") == email)
+                 or (v.get("provider") == provider and v.get("provider_id") == pid)), None)
+    if not name:
+        if not settings()["allow_signup"]:
+            return redirect("/?auth_error=signup_closed")
+        try:
+            name = new_student(info.get("name") or email, email=email or None, provider=provider, provider_id=pid)
+        except ValueError:
+            return redirect("/?auth_error=full")
+    session.clear(); session["user"] = name; session.permanent = True
+    return redirect("/teacher" if users()[name]["role"] == "teacher" else "/")
+
+
+@app.get("/api/admin/settings")
+@login_required("teacher")
+def api_admin_settings():
+    _, ready = oauth_conf()
+    return jsonify(settings=settings(), oauth=ready)
+
+
+@app.post("/api/admin/settings")
+@login_required("teacher")
+def api_admin_settings_set():
+    d = request.get_json(force=True)
+    with _lock:
+        s = settings()
+        if "allow_signup" in d:
+            s["allow_signup"] = bool(d["allow_signup"])
+        _save("settings.json", s)
+    return jsonify(ok=True, settings=s)
 
 
 @app.post("/api/logout")
@@ -142,6 +324,7 @@ def api_logout():
 def api_me():
     b = workspaces.base_info()
     return jsonify(name=request.user, role=request.urec["role"], display=request.urec.get("display", request.user),
+                   email=request.urec.get("email"), prefs=request.urec.get("prefs", {}),
                    domain=config.domain_for(request.urec["index"]), base=b, host=_host_ip())
 
 
@@ -151,7 +334,7 @@ def api_password():
     d = request.get_json(force=True)
     with _lock:
         u = users()
-        if not check_password_hash(u[request.user]["pw"], d.get("old") or ""):
+        if u[request.user].get("pw") and not check_password_hash(u[request.user]["pw"], d.get("old") or ""):
             return jsonify(error="The current password is wrong"), 400
         if len(d.get("new") or "") < 6:
             return jsonify(error="At least 6 characters"), 400
@@ -585,6 +768,7 @@ def api_admin_students():
             continue
         pr = p.get(name, {})
         out.append({"name": name, "display": rec.get("display", name), "index": rec["index"],
+                    "email": rec.get("email"), "provider": rec.get("provider", "email" if rec.get("email") else "teacher"),
                     "passed": sum(1 for v in pr.values() if v.get("status") == "passed"),
                     "started": sum(1 for v in pr.values() if v.get("status") == "started"),
                     "lessons": n, "progress": pr,
