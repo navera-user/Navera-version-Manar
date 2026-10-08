@@ -317,7 +317,7 @@ iframe.web { flex: 1; border: 0; background: #fff; width: 100%; }
 
 /* full-page intro film (first visit of an account) */
 .film-full { position: fixed; inset: 0; z-index: 95; background: #000; }
-.film-full video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+.film-full iframe { width: 100%; height: 100%; border: 0; display: block; }
 .film-full .ff-skip { position: absolute; top: 22px; right: 24px; padding: 10px 22px; background: rgba(255,255,255,.14); color: #fff;
   border: 1px solid rgba(255,255,255,.45); backdrop-filter: blur(6px); font-size: 15px; }
 .film-full .ff-sound { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); padding: 12px 24px; display: none;

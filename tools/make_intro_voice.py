@@ -6,6 +6,7 @@
         state/intro-voice-<voice>.wav, and state/intro-music.wav at the right length
   2. record the film (it reads intro-timing.json):  tools/make_intro_voice.py record
   3. tools/make_intro_voice.py mux [--voice …] [--out server/static/media/navera-intro.webm]
+     (also writes media/navera-intro-audio.m4a, the soundtrack the site plays under the live intro.html)
 
   or all at once:  tools/make_intro_voice.py all --voice en_US-norman-medium
 
@@ -189,7 +190,10 @@ def mux(a):
         subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-loglevel", "error", "-i", os.path.join(MEDIA, "navera-intro-silent.webm"),
                         "-i", wav, "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "libopus", "-b:a", "112k", "-shortest", out_tmp], check=True)
         shutil.move(out_tmp, a.out)
-    print("wrote", a.out, os.path.getsize(a.out) // 1024, "KB")
+        # the soundtrack alone: the site plays intro.html live (sharp at any screen size) with this audio
+        snd = os.path.join(MEDIA, "navera-intro-audio.m4a")
+        subprocess.run([imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-loglevel", "error", "-i", wav, "-c:a", "aac", "-b:a", "128k", snd], check=True)
+    print("wrote", a.out, os.path.getsize(a.out) // 1024, "KB and", snd)
 
 
 def main():

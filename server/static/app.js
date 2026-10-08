@@ -707,24 +707,19 @@ const Prefs = {
   set(k, v = true) { ME.prefs = ME.prefs || {}; ME.prefs[k] = v; api('/api/prefs', {method: 'POST', body: {[k]: v}}).catch(() => {}); },
 };
 const Intro = {
+  // the intro is intro.html played live (sharp at any screen size), full window, after sign-in
   show(then) {
     Prefs.set('intro_seen');
     const f = document.createElement('div'); f.className = 'film-full';
-    f.innerHTML = `<video src="/static/media/navera-intro.webm" playsinline></video>
-      <div class="ff-brand"><img src="/static/img/navi-mark-gold.svg" alt="">NAVERA Academy</div>
-      <button class="ff-skip">Skip intro ›</button><button class="ff-sound">🔊 Turn the sound on</button>`;
+    f.innerHTML = `<iframe src="/static/intro.html" allow="autoplay" title="NAVERA Academy intro"></iframe>`;
     document.body.appendChild(f);
-    const v = f.querySelector('video'), snd = f.querySelector('.ff-sound');
-    const done = () => { v.pause(); f.remove(); if (then) then(); };
-    f.querySelector('.ff-skip').onclick = done;
-    v.onended = done;
-    snd.onclick = () => { v.muted = false; v.play(); snd.style.display = 'none'; };
-    v.play().catch(() => { v.muted = true; v.play().catch(() => {}); snd.style.display = 'block'; });
+    const done = (ev) => {
+      if (ev && (ev.origin !== location.origin || ev.data !== 'intro-done')) return;
+      window.removeEventListener('message', done); f.remove(); if (then) then();
+    };
+    window.addEventListener('message', done);
   },
   maybe(then) {
-    let justWatched = false;
-    try { justWatched = sessionStorage.getItem('academy:intro-now') === '1'; sessionStorage.removeItem('academy:intro-now'); } catch (e) {}
-    if (justWatched) Prefs.set('intro_seen');                      // watched on the first page a moment ago
     if (Prefs.get('intro_seen') || AS) { if (then) then(); } else this.show(then);
   },
 };

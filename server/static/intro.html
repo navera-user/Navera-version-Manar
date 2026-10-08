@@ -94,17 +94,34 @@
   .t7 h1 { font-family: Fraunces, serif; font-weight: 600; font-size: clamp(36px, 6vw, 76px); margin: 10px 0 6px; letter-spacing: -1.5px; }
   .t7 .sub { letter-spacing: 6px; text-transform: uppercase; color: #ffd3c0; font-weight: 600; font-size: clamp(12px, 1.3vw, 16px); }
 
-  .ui { position: fixed; right: 18px; bottom: 16px; display: flex; gap: 8px; z-index: 5; }
-  .ui button { background: rgba(255,255,255,.12); color: #fff; border: 1px solid rgba(255,255,255,.3); padding: 7px 14px; font-size: 14px; }
+  .ui-brand { position: fixed; top: 26px; left: 28px; z-index: 5; display: flex; gap: 10px; align-items: center; color: #fff; font-weight: 600; letter-spacing: 3px; font-size: 13px; text-transform: uppercase; }
+  .ui-brand img { width: 28px; }
+  .ui-skip { position: fixed; top: 22px; right: 24px; z-index: 5; padding: 10px 22px; background: rgba(255,255,255,.14); color: #fff;
+    border: 1px solid rgba(255,255,255,.45); backdrop-filter: blur(6px); font-size: 15px; }
+  .ui-sound { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 5; padding: 12px 24px; display: none;
+    background: linear-gradient(135deg, #ff9f8a, #e8706a); color: #2a0d08; border: none; font-size: 16px; }
   .bar { position: fixed; left: 0; bottom: 0; height: 3px; background: linear-gradient(90deg, #ff9f8a, #e8706a); width: 0; z-index: 5; }
-  body.rec .ui, body.rec .bar { display: none; }
+  body.rec .ui-brand, body.rec .ui-skip, body.rec .ui-sound, body.rec .bar { display: none; }
+  @media (max-width: 640px) {
+    .senses { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 88vw; height: auto; top: 40%; }
+    .senses .bird { position: static; transform: none; width: 72px; height: 72px; margin-bottom: 6px; }
+    .sense { position: static; }
+    .sources { grid-template-columns: 1fr 1fr; gap: 10px; top: 32%; }
+    .src { padding: 10px; } .src b { font-size: 17px; } .src span { font-size: 12.5px; }
+    .arb { top: 56%; font-size: 15px; padding: 10px 18px; }
+    .ws { grid-template-columns: 1fr; height: auto; top: 36%; } .pnl.code { display: none; }
+    .check { right: 50%; transform: translate(50%, 20px); top: 50%; white-space: nowrap; } .check.on { transform: translate(50%, 0); }
+    .match { width: 260px; height: 260px; } .coord { top: calc(32% + 142px); font-size: 13px; }
+    .cap { bottom: 6%; padding: 0 6%; }
+  }
+  @media (max-width: 640px) { .ui-brand { top: 18px; left: 16px; font-size: 11px; } .ui-skip { top: 12px; right: 12px; padding: 8px 14px; font-size: 13px; } }
 </style>
 </head>
 <body>
 <div class="stage">
   <svg class="bg" viewBox="0 0 1440 810" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="dusk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b1730"/><stop offset=".45" stop-color="#16395a"/><stop offset=".62" stop-color="#1d4e6b"/><stop offset=".84" stop-color="#e6928a"/><stop offset="1" stop-color="#f6c7a8"/></linearGradient>
     <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a6f86"/><stop offset="1" stop-color="#0b2236"/></linearGradient>
-    <radialGradient id="sun" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#fff0e2"/><stop offset=".45" stop-color="#ffb59c"/><stop offset="1" stop-color="#ffb59c" stop-opacity="0"/></radialGradient></defs><rect width="1440" height="810" fill="url(#dusk)"/><g fill="#fff" opacity=".8"><circle cx="86" cy="81" r="1.42"/><circle cx="259" cy="178" r="1.26"/><circle cx="432" cy="65" r="1.10"/><circle cx="619" cy="146" r="1.01"/><circle cx="792" cy="49" r="1.85"/><circle cx="979" cy="113" r="1.76"/><circle cx="1138" cy="57" r="1.53"/><circle cx="1296" cy="162" r="1.30"/><circle cx="1382" cy="81" r="1.72"/><circle cx="547" cy="243" r="1.66"/></g><path d="M1238 81 a36.4 36.4 0 1 0 30.8 56.7 a27.5 27.5 0 1 1 -30.8 -56.7z" fill="#f1f6fb" opacity=".9"/><circle cx="979" cy="640" r="243" fill="url(#sun)" opacity=".75"/><circle cx="979" cy="640" r="53" fill="#ffe3cf"/><path d="M749 640 L864 595 L950 616 L1066 579 L1195 612 L1325 591 L1440 608 L1440 640 Z" fill="#15314d"/><rect y="640" width="1440" height="170" fill="url(#sea)"/><path d="M0 682 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0" stroke="rgba(255,255,255,0.16)" stroke-width="1.4" fill="none"/><path d="M0 720 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0" stroke="rgba(255,255,255,0.13)" stroke-width="1.4" fill="none"/><path d="M0 757 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0" stroke="rgba(255,255,255,0.10)" stroke-width="1.4" fill="none"/><path d="M0 795 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0" stroke="rgba(255,255,255,0.07)" stroke-width="1.4" fill="none"/><rect x="919" y="650" width="120" height="2" rx="1" fill="#ffd9bd" opacity="0.60"/><rect x="938" y="663" width="102" height="2" rx="1" fill="#ffd9bd" opacity="0.51"/><rect x="907" y="676" width="84" height="2" rx="1" fill="#ffd9bd" opacity="0.42"/><rect x="926" y="689" width="66" height="2" rx="1" fill="#ffd9bd" opacity="0.33"/><rect x="895" y="702" width="48" height="2" rx="1" fill="#ffd9bd" opacity="0.24"/></svg>
+    <radialGradient id="sun" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#fff0e2"/><stop offset=".45" stop-color="#ffb59c"/><stop offset="1" stop-color="#ffb59c" stop-opacity="0"/></radialGradient></defs><rect width="1440" height="810" fill="url(#dusk)"/><g fill="#fff" opacity=".8"><circle cx="86" cy="81" r="1.42"/><circle cx="259" cy="178" r="1.26"/><circle cx="432" cy="65" r="1.10"/><circle cx="619" cy="146" r="1.01"/><circle cx="792" cy="49" r="1.85"/><circle cx="979" cy="113" r="1.76"/><circle cx="1138" cy="57" r="1.53"/><circle cx="1296" cy="162" r="1.30"/><circle cx="1382" cy="81" r="1.72"/><circle cx="547" cy="243" r="1.66"/></g><path d="M1238 81 a36.4 36.4 0 1 0 30.8 56.7 a27.5 27.5 0 1 1 -30.8 -56.7z" fill="#f1f6fb" opacity=".9"/><circle cx="979" cy="640" r="243" fill="url(#sun)" opacity=".75"/><circle cx="979" cy="640" r="53" fill="#ffe3cf"/><path d="M749 640 L864 595 L950 616 L1066 579 L1195 612 L1325 591 L1440 608 L1440 640 Z" fill="#15314d"/><rect y="640" width="1440" height="170" fill="url(#sea)"/><path d="M0 682 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0" stroke="rgba(255,255,255,0.16)" stroke-width="1.4" fill="none"/><path d="M0 720 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0" stroke="rgba(255,255,255,0.13)" stroke-width="1.4" fill="none"/><path d="M0 757 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0" stroke="rgba(255,255,255,0.10)" stroke-width="1.4" fill="none"/><path d="M0 795 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0 q30 -5 60 0 t60 0" stroke="rgba(255,255,255,0.07)" stroke-width="1.4" fill="none"/></svg>
   <svg width="0" height="0" style="position:absolute"><defs>
     <symbol id="b" viewBox="0 0 64 64"><path d="M62 32 Q58.5 28.4 51 28.6 Q47 13 21 5 Q31 17 37.5 29 Q32 29.4 27 30.4 L3 22.5 Q12.5 29.4 17.5 32 Q12.5 34.6 3 41.5 L27 33.6 Q32 34.6 37.5 35 Q31 47 21 59 Q47 51 51 35.4 Q58.5 35.6 62 32 Z"/></symbol>
   </defs></svg>
@@ -173,7 +190,9 @@
     <div class="cap"><p>Your journey begins now.</p></div>
   </div>
 </div>
-<div class="ui"><button id="replay">↺ Replay</button><button id="skip">Close ✕</button></div>
+<div class="ui-brand"><img src="/static/img/navi-mark-gold.svg" alt="">NAVERA Academy</div>
+<button class="ui-skip" id="skip">Skip intro ›</button><button class="ui-sound" id="sound">🔊 Turn the sound on</button>
+<audio id="audio" src="/static/media/navera-intro-audio.m4a" preload="auto"></audio>
 <div class="bar" id="bar"></div>
 <script>
 const REC = new URLSearchParams(location.search).has('rec');
@@ -204,13 +223,22 @@ function play() {
     if (typeof a === 'string') { document.querySelectorAll('.scene.on').forEach(s => s.classList.remove('on')); $(a).classList.add('on'); }
     else a();
   }, t * 1000));
-  const t0 = performance.now();
+  const t0 = performance.now(); T0 = t0;
+  const au = $('audio');
+  if (!REC) { au.currentTime = 0; au.play().then(() => { $('sound').style.display = 'none'; }).catch(() => { $('sound').style.display = 'block'; }); }
   const tick = () => { const p = Math.min(1, (performance.now() - t0) / (TOTAL * 1000)); $('bar').style.width = (p * 100) + '%'; if (p < 1) requestAnimationFrame(tick); };
   tick();
-  timers.push(setTimeout(() => { if (window.parent !== window) window.parent.postMessage('intro-done', '*'); }, TOTAL * 1000));
+  timers.push(setTimeout(finish, TOTAL * 1000));
 }
-$('replay').onclick = play;
-$('skip').onclick = () => { if (window.parent !== window) window.parent.postMessage('intro-done', '*'); else history.back(); };
+let T0 = 0;
+// browsers may refuse sound until the viewer clicks: the film goes on silently, the button brings the sound in at the right moment
+$('sound').onclick = () => { const au = $('audio'); au.currentTime = (performance.now() - T0) / 1000; au.play().catch(() => {}); $('sound').style.display = 'none'; };
+function finish() {
+  timers.forEach(clearTimeout); $('audio').pause();
+  if (window.parent !== window) window.parent.postMessage('intro-done', location.origin);
+  else if (window.opener) window.close(); else location.href = '/';
+}
+$('skip').onclick = finish;
 fetch('/static/media/intro-timing.json', {cache: 'no-store'}).then(r => r.ok ? r.json() : null).catch(() => null).then(j => {
   if (j) { START = j.scenes; TOTAL = j.total; }
   buildTimeline(); play();
