@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sim Lite panel — mockup</title>
+<style>
+  @font-face { font-family: Inter; font-weight: 400; src: url(/static/vendor/fonts/inter-latin-400-normal.woff2) format("woff2"); }
+  @font-face { font-family: Inter; font-weight: 600; src: url(/static/vendor/fonts/inter-latin-600-normal.woff2) format("woff2"); }
+  @font-face { font-family: Inter; font-weight: 700; src: url(/static/vendor/fonts/inter-latin-700-normal.woff2) format("woff2"); }
+  :root { --night: #0b1730; --coral: #e8706a; --coral-2: #ff8f7a; --teal: #1d7f8c; --ink: #14202b; --muted: #5d6b78; --line: #dde5ec; --ivory: #f4f7fa; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--night); font-family: Inter, system-ui, sans-serif; color: #fff; padding: 26px; }
+  h1 { font-size: 22px; margin: 0 0 4px; } .sub { color: #b9c6d6; margin: 0 0 22px; font-size: 14px; }
+  .cols { display: grid; grid-template-columns: repeat(4, 400px); gap: 22px; overflow-x: auto; padding-bottom: 10px; }
+  .cap { font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: #ffc9b0; font-weight: 700; margin-bottom: 8px; }
+  .side { background: var(--ivory); color: var(--ink); border-radius: 14px; overflow: hidden; height: 760px; display: flex; flex-direction: column; }
+  .tabs { display: flex; background: #fff; border-bottom: 1px solid var(--line); }
+  .tabs b { flex: 1; text-align: center; padding: 12px 4px; font-size: 13.5px; color: var(--muted); font-weight: 600; }
+  .tabs b.on { color: #d9634f; box-shadow: inset 0 -3px 0 var(--coral); }
+  .tabs b i { font-style: normal; margin-right: 5px; }
+  .pane { padding: 12px; overflow: hidden; flex: 1; display: flex; flex-direction: column; gap: 10px; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 11px 13px; }
+  .card.hl { border: 1.5px solid var(--coral); background: #fffaf8; }
+  .ch { display: flex; align-items: center; gap: 8px; font-size: 11px; letter-spacing: 1.3px; text-transform: uppercase; color: var(--muted); font-weight: 700; margin-bottom: 9px; }
+  .ch .n { width: 19px; height: 19px; border-radius: 50%; background: var(--night); color: #fff; display: grid; place-items: center; font-size: 10.5px; letter-spacing: 0; }
+  .ch .r { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--teal); font-size: 12px; }
+  .route { display: grid; grid-template-columns: 1fr auto; gap: 6px 8px; align-items: center; }
+  .sel { border: 1.5px solid var(--line); border-radius: 10px; padding: 7px 10px; font-size: 13.5px; display: flex; justify-content: space-between; }
+  .sel small { color: var(--muted); }
+  .ib { width: 34px; height: 34px; border-radius: 10px; border: 1.5px solid var(--line); display: grid; place-items: center; font-size: 15px; }
+  .dist { font-size: 12px; color: var(--muted); margin-top: 7px; display: flex; justify-content: space-between; }
+  .seg { display: flex; background: #eef2f6; border-radius: 999px; padding: 3px; }
+  .seg span { flex: 1; text-align: center; padding: 6px 4px; border-radius: 999px; font-size: 12.5px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+  .seg span.on { background: #fff; color: var(--ink); box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 9px; }
+  .fld { font-size: 11.5px; color: var(--muted); font-weight: 600; }
+  .fld div { border: 1.5px solid var(--line); border-radius: 10px; padding: 6px 10px; font-size: 13.5px; color: var(--ink); margin-top: 4px; font-weight: 400; }
+  .lbl { font-size: 11.5px; color: var(--muted); font-weight: 600; margin: 10px 0 5px; display: flex; justify-content: space-between; }
+  .lbl u { text-decoration: none; color: var(--teal); }
+  .btn { border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 700; display: inline-block; }
+  .fly { background: linear-gradient(135deg, var(--coral-2), var(--coral)); color: #2a0d08; }
+  .lite { background: #e8eef3; color: var(--ink); }
+  .acts { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 9px; }
+  .hint { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 6px 0 0; }
+  .fault { display: grid; grid-template-columns: 30px 1fr auto; gap: 4px 10px; align-items: center; }
+  .fault .ic { font-size: 20px; grid-row: span 2; }
+  .fault b { font-size: 14px; } .pill { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
+  .pill.ok { background: #e2f3f5; color: var(--teal); } .pill.bad { background: #fde8e6; color: #c23b4a; }
+  .opts { grid-column: 2 / 4; display: flex; flex-wrap: wrap; gap: 5px; }
+  .opts span { border: 1.5px solid var(--line); border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 600; }
+  .opts span.on { border-color: var(--coral); background: #fff4f1; color: #b3412f; }
+  .banner { background: #eef5f8; border-radius: 12px; padding: 9px 12px; font-size: 12.5px; color: var(--muted); }
+  .src { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .src span { border: 1.5px solid var(--line); border-radius: 11px; padding: 7px 9px; font-size: 11.5px; color: var(--muted); }
+  .src span b { display: block; color: var(--ink); font-size: 12.5px; }
+  .src span.on { border-color: var(--coral); background: #fff4f1; }
+  .file { font-size: 12px; margin-top: 8px; display: flex; justify-content: space-between; gap: 8px; }
+  .ok { color: var(--teal); font-weight: 700; }
+  .code { background: #0f1d36; color: #d7e3f0; border-radius: 11px; padding: 9px 11px; font: 11.5px/1.6 ui-monospace, monospace; height: 165px; white-space: pre; overflow: hidden; }
+  .code .k { color: #ff9f8a; } .code .c { color: #64809a; } .code .s { color: #ffd3c0; }
+  .out { background: #fff; border: 1px solid var(--line); border-radius: 11px; padding: 8px 10px; font: 11.5px/1.6 ui-monospace, monospace; flex: 1; }
+  .g { color: var(--teal); } .w { color: #b0453a; } .p { color: #6b4fc2; } .m { color: var(--muted); }
+  .runcard { display: grid; grid-template-columns: 1fr auto; gap: 4px; align-items: center; }
+  .runcard b { font-size: 14px; } .runcard small { color: var(--muted); font-size: 12px; }
+  .filters { display: flex; gap: 5px; }
+  .filters span { font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px; border: 1.5px solid var(--line); color: var(--muted); }
+  .filters span.on { background: var(--night); color: #fff; border-color: var(--night); }
+  .notes { margin-top: 26px; background: rgba(255,255,255,.06); border-radius: 14px; padding: 16px 20px; max-width: 1000px; font-size: 14px; line-height: 1.65; color: #dbe5ef; }
+  .notes b { color: #fff; }
+</style></head><body>
+<h1>Sim Lite — side panel, reorganised (mockup)</h1>
+<p class="sub">Same features, grouped by what the student is doing. The map, the top bar (speed, clock, Reset, Pause, ▶ Fly) and the cards under the map stay as they are; the vehicle choice moves into the panel.</p>
+<div class="cols">
+
+<!-- 1. FLIGHT -->
+<div><div class="cap">Tab 1 · Flight (set up, then ▶ Fly)</div>
+<div class="side"><div class="tabs"><b class="on"><i>🧭</i>Flight</b><b><i>⚡</i>Faults</b><b><i>🐍</i>Code</b><b><i>📋</i>Results</b></div>
+<div class="pane">
+  <div class="card hl"><div class="ch">🎯 Mission 28 · my_scenario.json <span class="r">↻ re-read</span></div>
+    <div style="font-size:13px">“my_run” · vision target · 30 s gps → jammed · 70 s gps → ok · then 40 s</div>
+    <div class="acts"><span class="btn fly">▶ Fly my scenario</span></div>
+    <p class="hint">Saved by itself in <b>my_runs/</b>, ready for campaign.py.</p></div>
+  <div class="card"><div class="ch"><span class="n">1</span>Route</div>
+    <div class="route"><div class="sel">🟢 Sousse <small>▾</small></div><div class="ib" title="Click the map">📍</div>
+      <div class="sel">🚩 Monastir <small>▾</small></div><div class="ib">📍</div></div>
+    <div class="dist"><span>⇅ swap</span><span>straight line 15.6 km · ≈ 17 min</span></div></div>
+  <div class="card"><div class="ch"><span class="n">2</span>Vehicle</div>
+    <div class="seg"><span class="on">🛩 Drone</span><span>✈ Plane</span><span>🚤 Boat</span><span>🚙 Robot</span></div>
+    <div class="two"><div class="fld">Cruise speed<div>15 m/s</div></div><div class="fld">NAVERA max speed<div>30 m/s</div></div></div></div>
+  <div class="card"><div class="ch"><span class="n">3</span>Conditions</div>
+    <div class="lbl" style="margin-top:0">Vision accuracy <u>what is this?</u></div>
+    <div class="seg"><span class="on">Measured today</span><span>Target (goal)</span></div>
+    <div class="lbl">Light</div>
+    <div class="seg"><span class="on">☀ Day</span><span>☾ Night</span></div></div>
+</div></div></div>
+
+<!-- 2. FAULTS -->
+<div><div class="cap">Tab 2 · Faults (during the flight)</div>
+<div class="side"><div class="tabs"><b><i>🧭</i>Flight</b><b class="on"><i>⚡</i>Faults</b><b><i>🐍</i>Code</b><b><i>📋</i>Results</b></div>
+<div class="pane">
+  <div class="banner">✈ Flying · T+02:14 — click a state to inject it now. Your flight script can do the same.</div>
+  <div class="card fault"><span class="ic">🛰</span><b>GPS receiver</b><span class="pill bad">JAMMED</span>
+    <div class="opts"><span>Normal</span><span class="on">Jammed</span><span>Spoof · 2 km jump</span><span>Spoof · slow drift</span><span>Off</span></div></div>
+  <div class="card fault"><span class="ic">📷</span><b>Camera (vision)</b><span class="pill ok">WORKING</span>
+    <div class="opts"><span class="on">Working</span><span>Failed</span></div></div>
+  <div class="card fault"><span class="ic">🧭</span><b>IMU</b><span class="pill ok">WORKING</span>
+    <div class="opts"><span class="on">Working</span><span>Failed</span></div></div>
+  <div><span class="btn lite">↺ Restore everything</span></div>
+  <div class="card" style="margin-top:auto"><div class="ch">What NAVERA did</div>
+    <div class="out" style="border:none;padding:0;font-size:11.5px"><span class="w">T+ 120.0 GPS → JAMMED</span><br><span class="g">T+ 120.1 NAVERA: FIX — source DAY VISION</span><br><span class="m">T+ 134.6 error 212 m</span></div></div>
+</div></div></div>
+
+<!-- 3. CODE -->
+<div><div class="cap">Tab 3 · Code (estimator + flight script)</div>
+<div class="side"><div class="tabs"><b><i>🧭</i>Flight</b><b><i>⚡</i>Faults</b><b class="on"><i>🐍</i>Code</b><b><i>📋</i>Results</b></div>
+<div class="pane">
+  <div class="card"><div class="ch"><span class="n">1</span>The estimator that flies</div>
+    <div class="src"><span class="on"><b>My NAVERA copy</b>from your workspace</span><span><b>Original NAVERA</b>to compare</span></div>
+    <div class="file"><span>📄 estimator_node.py <span class="ok">✓ loaded</span></span><span style="color:var(--teal);font-weight:600">↻ reload</span></div></div>
+  <div class="card" style="flex:1;display:flex;flex-direction:column"><div class="ch"><span class="n">2</span>Flight script <span class="r">API help ▾</span></div>
+    <div class="code"><span class="k">def</span> on_start(sim):
+    sim.goto(<span class="s">"Monastir"</span>, speed=<span class="s">15</span>)
+
+<span class="k">def</span> on_tick(sim, t):
+    <span class="k">if</span> t == <span class="s">60</span>:
+        sim.jam_gps()   <span class="c"># what does NAVERA do?</span>
+    <span class="k">if</span> sim.navera.error_m &gt; <span class="s">400</span>:
+        sim.log(<span class="s">"error above 400 m"</span>)</div>
+    <div class="acts"><span class="btn fly">▶ Run with my script</span><span class="btn lite">💾 Save</span><span class="btn lite">Default</span></div>
+    <div class="ch" style="margin:8px 0 5px">Output</div>
+    <div class="out"><span class="g">✓ flight script saved in your account</span><br><span class="p">T+60.0 [script] GPS → JAMMED</span><br><span class="w">T+81.3 error above 400 m</span></div></div>
+</div></div></div>
+
+<!-- 4. RESULTS -->
+<div><div class="cap">Tab 4 · Results (the flight, the log, saving)</div>
+<div class="side"><div class="tabs"><b><i>🧭</i>Flight</b><b><i>⚡</i>Faults</b><b><i>🐍</i>Code</b><b class="on"><i>📋</i>Results</b></div>
+<div class="pane">
+  <div class="card runcard"><div><b>✅ Arrived after 1 150 s</b><br><small>really 22 m from the destination · worst error 1.1 km · 1 150 rows</small></div></div>
+  <div class="card"><div class="ch">Save this flight</div>
+    <div style="display:flex;gap:8px"><div class="sel" style="flex:1">my_run</div><span class="btn fly">📁 Save to my_runs/</span></div>
+    <p class="hint">CSV in sim_ctl.py's columns + the events log, in this mission's folder.</p></div>
+  <div class="card" style="flex:1;display:flex;flex-direction:column"><div class="ch">Flight log <span class="r"><span class="filters"><span class="on">Events</span><span>+ NAVERA messages</span></span></span></div>
+    <div class="out" style="border:none;padding:0">T+   0.1 drone ready at the start, 15 m/s<br><span class="g">T+   1.2 NAVERA: first position (GPS)</span><br>T+   1.3 take-off: the autopilot follows NAVERA<br><span class="w">T+ 120.0 GPS → JAMMED</span><br><span class="g">T+ 120.1 NAVERA: FIX — source DAY VISION</span><br><span class="g">T+ 180.0 GPS → normal</span><br><span class="g">T+ 182.0 NAVERA: FIX — source GPS</span><br><span class="g">T+1150.0 arrived — really 22 m away</span></div></div>
+</div></div></div>
+</div>
+
+<div class="notes">
+<b>What changes</b><br>
+• <b>Flight</b>: numbered steps — Route → Vehicle → Conditions (Light is set here only, and can be switched during the flight). The vehicle choice leaves the crowded top bar; the route shows distance and time; ⇅ swaps start and destination. The mission-28 scenario stays on top when the mission has one.<br>
+• <b>Faults</b>: one card per sensor with its current state as a pill (follows your script too), “Restore everything”, and the last few events right under it so you see NAVERA react.<br>
+• <b>Code</b>: two clear steps — which estimator flies, then your flight script — with its own output under it; “API help” lists every <code>sim.…</code> call.<br>
+• <b>Results</b> (was “Log”): the outcome of the flight on top, “Save to my_runs/” with a name field, then the log with a filter (events only, or with NAVERA's own messages).
+</div>
+</body></html>
