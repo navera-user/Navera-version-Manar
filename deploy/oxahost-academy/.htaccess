@@ -1,0 +1,5 @@
+# academy.iris-systems.tn → the NAVERA Academy (on the Jetson, reached through its free tunnel).
+# Replace TUNNEL_ADDRESS with the real address (e.g. navera-academy.tail1234.ts.net). Keeps the path:
+# academy.iris-systems.tn/lesson/3 → https://TUNNEL_ADDRESS/lesson/3
+RewriteEngine On
+RewriteRule ^(.*)$ https://TUNNEL_ADDRESS/$1 [R=302,L]
