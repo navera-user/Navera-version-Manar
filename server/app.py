@@ -33,6 +33,22 @@ import workspaces
 HERE = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__, static_folder=os.path.join(HERE, "static"), static_url_path="/static")
 sock = Sock(app)
+
+
+class _FromProxy:
+    """Behind the HTTPS front door (Caddy on this machine), take the visitor's real address and scheme
+    from its headers — only when the request really comes from 127.0.0.1, so nobody can fake them."""
+    def __init__(self, wsgi):
+        self.wsgi = wsgi
+
+    def __call__(self, env, start):
+        if env.get("REMOTE_ADDR") == "127.0.0.1" and env.get("HTTP_X_FORWARDED_FOR"):
+            env["REMOTE_ADDR"] = env["HTTP_X_FORWARDED_FOR"].split(",")[0].strip()
+            env["wsgi.url_scheme"] = env.get("HTTP_X_FORWARDED_PROTO", env["wsgi.url_scheme"])
+        return self.wsgi(env, start)
+
+
+app.wsgi_app = _FromProxy(app.wsgi_app)
 _lock = threading.RLock()
 
 for d in (config.STATE, config.STUDENTS, config.LOGS, config.COURSES):
