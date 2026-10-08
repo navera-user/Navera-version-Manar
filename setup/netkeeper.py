@@ -127,7 +127,10 @@ def connected_extras(on):
     rule = ["-t", "nat", "PREROUTING", "-i", state["iface"], "-p", "tcp", "--dport", "80", "-j", "REDIRECT", "--to-ports", str(ACADEMY_PORT)]
     if on:
         if sh(["iptables", "-C"] + rule).returncode:
-            sh(["iptables", "-A"] + rule)
+            r = sh(["iptables", "-A"] + rule)
+            if r.returncode and not getattr(connected_extras, "warned", False):
+                connected_extras.warned = True
+                log("port-80 rule not set (the setup page redirects instead):", r.stderr.strip()[:200])
         ip = current_ip()
         if ip and (_avahi is None or _avahi.poll() is not None or getattr(_avahi, "ip", None) != ip):
             if _avahi and _avahi.poll() is None:
@@ -198,6 +201,12 @@ def make_portal(preview=False):
 
     @app.before_request
     def to_portal():
+        with lock:
+            mode = state["mode"]
+        if not preview and mode != "setup":
+            # on the client's network: whatever the port-80 rule does, send visitors to the academy itself
+            host = request.host.split(":")[0]
+            return redirect(f"http://{host}:{ACADEMY_PORT}{request.full_path.rstrip('?')}", code=302)
         # phones test the internet with these addresses: answering with our page opens the setup page by itself
         if request.path in captive or (not preview and request.host.split(":")[0] not in (PORTAL_HOST, AP_IP)):
             return redirect(f"http://{PORTAL_HOST}/", code=302)
