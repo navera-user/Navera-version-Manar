@@ -37,7 +37,9 @@ fetch('/api/simlite/map').then(r => r.json()).then(m => {
   // online satellite imagery underneath (when this computer has internet), the academy's map files on top
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxNativeZoom: 18, maxZoom: 19 }).addTo(map);
   if (!m.available) return;
-  L.tileLayer('/api/simlite/tiles/{z}/{x}/{y}.jpg', { maxNativeZoom: Math.min(17, m.max_native_zoom), maxZoom: 19, minZoom: 9 }).addTo(map);
+  // the academy's own map files cover only some areas: ask the Jetson for tiles there only
+  (m.bounds && m.bounds.length ? m.bounds : [null]).forEach(b => L.tileLayer('/api/simlite/tiles/{z}/{x}/{y}.jpg',
+    Object.assign({ maxNativeZoom: Math.min(17, m.max_native_zoom), maxZoom: 19, minZoom: 9 }, b ? { bounds: [[b[0], b[1]], [b[2], b[3]]] } : {})).addTo(map));
 }).catch(() => {});
 const legend = L.control({ position: 'topleft' });
 legend.onAdd = () => { const d = L.DomUtil.create('div', 'legend'); d.innerHTML =
@@ -59,7 +61,15 @@ function arrow(deg) {
   return L.divIcon({ className: '', iconSize: [28, 28], iconAnchor: [14, 14],
     html: `<svg width="28" height="28" viewBox="-14 -14 28 28" style="transform:rotate(${deg}deg)"><path d="M0 -12 L8 10 L0 5 L-8 10 Z" fill="#f4f7fa" stroke="#0b1730" stroke-width="2"/></svg>` });
 }
-function drawPlan() { lay.plan.setLatLngs([S.start, S.dest]); startM.setLatLng(S.start); destM.setLatLng(S.dest); vehM.setLatLng(S.start); }
+function drawPlan() {
+  lay.plan.setLatLngs([S.start, S.dest]); startM.setLatLng(S.start); destM.setLatLng(S.dest); vehM.setLatLng(S.start);
+  // distance and flight time, so a long route is not a surprise
+  const km = map.distance(S.start, S.dest) / 1000, v = +$('speedIn').value || VEH[S.vehicle][0];
+  const simS = km * 1000 / v, at30 = simS / 30;
+  const t = (x) => x >= 3600 ? `${Math.floor(x / 3600)} h ${Math.round(x % 3600 / 60)} min` : `${Math.max(1, Math.round(x / 60))} min`;
+  $('routeInfo').innerHTML = `<b>${km < 10 ? km.toFixed(1) : Math.round(km)} km</b> straight line · ${t(simS)} of flight at ${v} m/s · ≈ ${t(at30)} to watch at 30×` +
+    (at30 > 1800 ? ` <span class="warn">— long! try ✈ Plane or a higher speed</span>` : '');
+}
 map.on('click', (e) => {
   if (!S.picking) return;
   const p = [+e.latlng.lat.toFixed(6), +e.latlng.lng.toFixed(6)];
@@ -70,18 +80,51 @@ map.on('click', (e) => {
 // ---------------------------------------------------------------- controls
 function fillPlaces(id, sel) {
   $(id).innerHTML = Object.keys(PLACES).map(n => `<option ${n === sel ? 'selected' : ''}>${n}</option>`).join('');
-  $(id).onchange = () => { const v = $(id).value; S[id === 'startSel' ? 'start' : 'dest'] = v.startsWith('📍') ? S[id === 'startSel' ? 'start' : 'dest'] : PLACES[v]; drawPlan(); };
+  $(id).onchange = () => {
+    const o = $(id).selectedOptions[0], k = id === 'startSel' ? 'start' : 'dest';
+    S[k] = o.dataset.ll ? JSON.parse(o.dataset.ll) : PLACES[o.value]; drawPlan();
+  };
 }
-function addCustom(id, p) {
-  const label = `📍 ${p[0].toFixed(4)}, ${p[1].toFixed(4)}`;
-  const o = document.createElement('option'); o.textContent = label; o.selected = true; $(id).appendChild(o);
+function addCustom(id, p, name) {
+  const label = name ? `📍 ${name}` : `📍 ${p[0].toFixed(4)}, ${p[1].toFixed(4)}`;
+  const o = document.createElement('option'); o.textContent = label; o.dataset.ll = JSON.stringify(p); o.selected = true; $(id).appendChild(o);
 }
 fillPlaces('startSel', 'Sousse'); fillPlaces('destSel', 'Monastir');
+// any place in the world: OpenStreetMap's search (Nominatim), straight from the browser
+let lastSearch = 0;
+$('placeForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const q = $('placeQ').value.trim(); if (!q) return;
+  if (Date.now() - lastSearch < 1100) return;            // their rule: at most one search per second
+  lastSearch = Date.now();
+  $('placeRes').innerHTML = '<div class="hint">Searching…</div>';
+  try {
+    const r = await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q=' + encodeURIComponent(q), { headers: { 'Accept-Language': 'en' } });
+    const list = await r.json();
+    if (!list.length) { $('placeRes').innerHTML = '<div class="hint">Nothing found — try another name, or click 📍 and pick on the map.</div>'; return; }
+    $('placeRes').innerHTML = '';
+    list.forEach(p => {
+      const parts = p.display_name.split(', '), short = parts[0], rest = parts.slice(1, 3).join(', ');
+      const d = document.createElement('div'); d.className = 'res';
+      d.innerHTML = `<span title="${esc(p.display_name)}">${esc(short)} <small>${esc(rest)}</small></span><button data-k="start">From</button><button data-k="dest">To</button>`;
+      d.querySelectorAll('button').forEach(b => b.onclick = () => usePlace(b.dataset.k, [+(+p.lat).toFixed(6), +(+p.lon).toFixed(6)], short));
+      $('placeRes').appendChild(d);
+    });
+    map.setView([+list[0].lat, +list[0].lon], 13);
+  } catch (err) { $('placeRes').innerHTML = '<div class="hint">The place search needs internet — you can still click 📍 and pick on the map.</div>'; }
+};
+function usePlace(k, p, name) {
+  if (S.running) { toastLog('warn', 'Reset the flight first, then change the route.'); return; }
+  S[k] = p; addCustom(k === 'start' ? 'startSel' : 'destSel', p, name); drawPlan();
+  map.fitBounds(L.latLngBounds([S.start, S.dest]).pad(0.25));
+}
+$('speedIn').addEventListener('input', drawPlan);
 $('pickStart').onclick = () => { S.picking = 'start'; map.getContainer().style.cursor = 'crosshair'; };
 $('pickDest').onclick = () => { S.picking = 'dest'; map.getContainer().style.cursor = 'crosshair'; };
 function setVehicle(v) {
   S.vehicle = v; $('speedIn').value = VEH[v][0]; $('maxIn').value = VEH[v][1];
   document.querySelectorAll('#vehSeg button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  if ($('routeInfo')) drawPlan();
 }
 document.querySelectorAll('#vehSeg button').forEach(b => b.onclick = () => { if (!S.running) setVehicle(b.dataset.v); });
 setVehicle('drone');

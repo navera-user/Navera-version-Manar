@@ -58,7 +58,8 @@ DEFAULT_SCRIPT = '''# Your flight script — runs in your browser with the simul
 # Read: sim.t, sim.truth, sim.navera.source / .state / .error_m / .position
 
 def on_start(sim):
-    sim.goto("Monastir", speed=15)
+    sim.log("flying the route set in the Flight tab")
+    # sim.goto("Monastir", speed=15)   # or send the vehicle somewhere else from your script
 
 warned = False
 
@@ -158,6 +159,37 @@ def maps():
         p = os.path.realpath(os.path.expanduser(path))
         if os.path.exists(p):
             out.append((p, native))
+    return out
+
+
+_bounds_cache = {}
+
+
+def bounds():
+    """[south, west, north, east] of each map file (from its metadata, else from its tiles): the page asks
+    the Jetson only for tiles inside these; everywhere else the online imagery is enough."""
+    import math
+    out = []
+    for path, _ in maps():
+        if path not in _bounds_cache:
+            b = None
+            try:
+                meta = dict(_conn(path).execute("SELECT name, value FROM metadata").fetchall())
+                if meta.get("bounds"):
+                    w, s_, e, n = (float(v) for v in meta["bounds"].split(","))
+                    b = [s_, w, n, e]
+                else:
+                    z, x0, x1, r0, r1 = _conn(path).execute(
+                        "SELECT zoom_level, MIN(tile_column), MAX(tile_column), MIN(tile_row), MAX(tile_row) FROM tiles "
+                        "GROUP BY zoom_level ORDER BY zoom_level DESC LIMIT 1").fetchone()
+                    lon = lambda x: x / 2 ** z * 360 - 180                                         # noqa: E731
+                    lat = lambda r: math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * (2 ** z - r) / 2 ** z))))  # noqa: E731
+                    b = [lat(r0), lon(x0), lat(r1 + 1), lon(x1 + 1)]
+            except Exception:
+                b = None
+            _bounds_cache[path] = b
+        if _bounds_cache[path]:
+            out.append(_bounds_cache[path])
     return out
 
 

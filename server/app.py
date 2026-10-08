@@ -745,7 +745,7 @@ def api_simlite_flight():
 @login_required()
 def api_simlite_map():
     path, native = simlite.map_file()
-    return jsonify(available=bool(path), max_native_zoom=native)
+    return jsonify(available=bool(path), max_native_zoom=native, bounds=simlite.bounds())
 
 
 @app.get("/api/simlite/tiles/<int:z>/<int:x>/<int:y>.jpg")
