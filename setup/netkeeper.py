@@ -124,10 +124,10 @@ _avahi = None
 def connected_extras(on):
     """navera-academy.local on the client's network, and port 80 → the academy."""
     global _avahi
-    rule = ["-t", "nat", "PREROUTING", "-i", state["iface"], "-p", "tcp", "--dport", "80", "-j", "REDIRECT", "--to-ports", str(ACADEMY_PORT)]
+    rule = ["PREROUTING", "-i", state["iface"], "-p", "tcp", "--dport", "80", "-j", "REDIRECT", "--to-ports", str(ACADEMY_PORT)]
     if on:
-        if sh(["iptables", "-C"] + rule).returncode:
-            r = sh(["iptables", "-A"] + rule)
+        if sh(["iptables", "-t", "nat", "-C"] + rule).returncode:
+            r = sh(["iptables", "-t", "nat", "-A"] + rule)
             if r.returncode and not getattr(connected_extras, "warned", False):
                 connected_extras.warned = True
                 log("port-80 rule not set (the setup page redirects instead):", r.stderr.strip()[:200])
@@ -139,7 +139,7 @@ def connected_extras(on):
             _avahi.ip = ip
             log(f"{LOCAL_NAME} → {ip}")
     else:
-        while sh(["iptables", "-D"] + rule).returncode == 0:
+        while sh(["iptables", "-t", "nat", "-D"] + rule).returncode == 0:
             pass
         if _avahi and _avahi.poll() is None:
             _avahi.terminate()
