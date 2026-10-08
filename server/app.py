@@ -22,12 +22,13 @@ import termios
 import threading
 import time
 
-from flask import Flask, abort, jsonify, redirect, request, send_file, send_from_directory, session
+from flask import Flask, Response, abort, jsonify, redirect, render_template, request, send_file, send_from_directory, session
 from flask_sock import Sock
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from flask.sessions import SecureCookieSessionInterface
 
+import certs
 import config
 import simlite
 import webtools
@@ -1047,6 +1048,115 @@ def api_admin_base_state():
 
 
 # ---------------------------------------------------------------- pages
+# ---------------------------------------------------------------- end-of-course certificate (certs.py)
+def _public_url():
+    """The academy's public address, for the QR code and the links printed on certificates."""
+    try:
+        with open(os.path.join(config.STATE, "public_url.txt")) as f:
+            u = f.read().strip().rstrip("/")
+            if u:
+                return u
+    except OSError:
+        pass
+    return request.url_root.rstrip("/")
+
+
+def _course_facts(name):
+    """(all passed?, missions, hours of study, date the last mission was passed)."""
+    prog = _load("progress.json", {}).get(name, {})
+    ids = lesson_ids()
+    hours, last = 0, ""
+    for lid in ids:
+        m = re.match(r"(\d+)\s*h\s*(\d+)?", lesson_meta(lid).get("duration", "") or "")
+        if m:
+            hours += int(m.group(1)) * 60 + int(m.group(2) or 0)
+        last = max(last, prog.get(lid, {}).get("passed_at", ""))
+    done = sum(1 for lid in ids if prog.get(lid, {}).get("status") == "passed")
+    return done == len(ids) and len(ids) > 0, done, len(ids), round(hours / 60), last[:10]
+
+
+@app.get("/api/certificate")
+@login_required()
+def api_certificate():
+    ok, done, total, hours, last = _course_facts(request.user)
+    c = certs.for_user(request.user)
+    return jsonify(eligible=ok, passed=done, total=total, name=request.urec.get("display") or request.user,
+                   certificate=None if not c else {"id": c["id"], "name": c["name"], "revoked": c.get("revoked", False),
+                                                     "url": f"/certificate/{c['id']}", "verify": f"{_public_url()}/verify/{c['id']}"})
+
+
+@app.post("/api/certificate")
+@login_required("student")
+def api_certificate_issue():
+    ok, done, total, hours, last = _course_facts(request.user)
+    if not ok:
+        return jsonify(error=f"The certificate unlocks when all {total} missions are passed ({done} so far)."), 403
+    name = re.sub(r"\s+", " ", str(request.get_json(force=True).get("name", ""))).strip()
+    if not 3 <= len(name) <= 60 or not re.search(r"[^\W\d_]", name):
+        return jsonify(error="Enter your full name as it should be printed (3 to 60 characters)."), 400
+    c = certs.issue(request.user, name, last or time.strftime("%Y-%m-%d"), total, hours)
+    return jsonify(id=c["id"], url=f"/certificate/{c['id']}")
+
+
+def _cert_page(template, c, cid=""):
+    import datetime
+    status = certs.check(c)
+    long = ""
+    if c:
+        try:
+            d = datetime.date.fromisoformat(c["completed"])
+            long = f"{d.day} {d.strftime('%B %Y')}"
+        except ValueError:
+            long = c["completed"]
+    return render_template(template, c=c, cid=cid or (c or {}).get("id", ""), status=status, completed_long=long,
+                           fp=certs.fingerprint(), legs=len(_load_modules()) or 7,
+                           xp=(c or {}).get("missions", 0) * 100, rank="Migration Master",
+                           verify_url=f"{_public_url()}/verify/{(c or {}).get('id', '')}",
+                           verify_short=f"…/verify/{(c or {}).get('id', '')}",
+                           qr=certs.qr_svg(f"{_public_url()}/verify/{c['id']}") if c else "",
+                           mine=bool(c) and session.get("user") == c.get("user"))
+
+
+@app.get("/certificate/<cid>")
+def page_certificate(cid):
+    """Public, like a paper certificate: whoever has the link (or the QR code) can see it."""
+    c = certs.get(cid)
+    if not c or certs.check(c) == "invalid":
+        return _cert_page("verify.html", None, cid), 404
+    return _cert_page("certificate.html", c)
+
+
+@app.get("/verify")
+@app.get("/verify/<cid>")
+def page_verify(cid=""):
+    cid = (cid or request.args.get("id", "")).strip().upper()[:40]
+    if cid and not request.view_args.get("cid"):
+        return redirect(f"/verify/{cid}")
+    return _cert_page("verify.html", certs.get(cid), cid)
+
+
+@app.get("/certificates/iris-key.pub")
+def cert_public_key():
+    return Response(certs.public_pem(), mimetype="text/plain")
+
+
+@app.get("/api/admin/certificates")
+@login_required("teacher")
+def api_admin_certificates():
+    return jsonify(certificates=[{k: c[k] for k in ("id", "name", "user", "issued", "completed", "revoked")}
+                                 for c in certs.all_certs()], key=certs.KEY_NAME, fingerprint=certs.fingerprint())
+
+
+@app.post("/api/admin/certificates/<cid>")
+@login_required("teacher")
+def api_admin_certificate_set(cid):
+    action = request.get_json(force=True).get("action")
+    if action not in ("revoke", "restore"):
+        abort(400)
+    c = certs.set_revoked(cid, action == "revoke")
+    return jsonify(ok=True) if c else (jsonify(error="unknown certificate"), 404)
+
+
 @app.get("/")
 def page_index():
     if not session.get("user") or session["user"] not in users():

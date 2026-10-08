@@ -71,6 +71,11 @@
     </div>
   </div>
   <div class="box">
+    <h2>Certificates <span style="font-weight:400;font-size:14px;color:var(--muted)">· given when a student passes all missions, digitally signed by IRIS</span></h2>
+    <div class="grid"><table id="certTbl"></table></div>
+    <p id="certKey" style="font-size:12.5px;color:var(--muted);margin-bottom:0"></p>
+  </div>
+  <div class="box">
     <h2>Full simulator <span style="font-weight:400;font-size:14px;color:var(--muted)">· teacher only — students fly Sim Lite</span></h2>
     <p id="fsState">Checking…</p>
     <ol style="line-height:1.7;margin:6px 0 0">
@@ -148,6 +153,24 @@ async function load() {
   const b = DATA.base;
   $('baseNow').innerHTML = b ? `Current base: <b>${esc(b.subject)}</b><br><span style="color:var(--muted)">built ${esc(b.built)}</span>` : 'No base';
 }
+async function loadCerts() {
+  try {
+    const d = await api('/api/admin/certificates');
+    $('certKey').innerHTML = `Signing key ${esc(d.key)} · ${esc(d.fingerprint)} — public key: <a href="/certificates/iris-key.pub" target="_blank">/certificates/iris-key.pub</a>. Anyone can check a certificate at <a href="/verify" target="_blank">/verify</a>.`;
+    $('certTbl').innerHTML = '<tr><th>Number</th><th>Name on the certificate</th><th>Login</th><th>Completed</th><th>Status</th><th></th></tr>' +
+      (d.certificates.length ? d.certificates.map(c => `<tr><td><code>${esc(c.id)}</code></td><td>${esc(c.name)}</td><td>${esc(c.user)}</td><td>${esc(c.completed)}</td>
+        <td>${c.revoked ? '<span class="badge" style="background:#fde8e6;color:#c23b4a">revoked</span>' : '<span class="badge passed">valid</span>'}</td>
+        <td class="acts"><button onclick="window.open('/certificate/${esc(c.id)}','_blank')">Open</button>
+        <button onclick="certSet('${esc(c.id)}','${c.revoked ? 'restore' : 'revoke'}')">${c.revoked ? 'Restore' : 'Revoke'}</button></td></tr>`).join('')
+        : '<tr><td colspan="6" style="color:var(--muted)">No certificate yet.</td></tr>');
+  } catch (e) { $('certTbl').innerHTML = `<tr><td>${esc(e.message)}</td></tr>`; }
+}
+async function certSet(id, action) {
+  if (action === 'revoke' && !confirm(`Revoke ${id}? Its verification page will say it is no longer valid.`)) return;
+  try { await api('/api/admin/certificates/' + encodeURIComponent(id), {method: 'POST', body: {action}}); } catch (e) { return alert(e.message); }
+  loadCerts();
+}
+loadCerts();
 async function loadFullSim() {
   try {
     const f = await api('/api/admin/fullsim');

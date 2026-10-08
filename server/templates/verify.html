@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verify certificate {{ cid }} — IRIS Systems</title>
+<link rel="icon" href="/static/img/iris-icon.svg">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  html, body { height: auto; }
+  body { background: #0b1730; overflow: auto; margin: 0; font-family: Inter, sans-serif; color: #14202b; }
+  .wrapv { max-width: 760px; margin: 0 auto; padding: 28px 16px 50px; }
+  .head { display: flex; align-items: center; justify-content: space-between; color: #fff; margin-bottom: 18px; gap: 12px; flex-wrap: wrap; }
+  .head img { height: 34px; }
+  .head span { font-size: 12.5px; letter-spacing: 3px; text-transform: uppercase; font-weight: 600; }
+  .vp { background: #f4f7fa; border-radius: 18px; padding: 26px 28px; }
+  .st { display: flex; gap: 14px; align-items: center; border-radius: 14px; padding: 14px 18px; }
+  .st .big { font-size: 34px; } .st b { font-size: 19px; display: block; } .st span { color: #3b4652; font-size: 14px; }
+  .valid { background: #e2f3f5; } .valid b { color: #0f6b76; }
+  .revoked, .invalid { background: #fde8e6; } .revoked b, .invalid b { color: #c23b4a; }
+  table { width: 100%; border-collapse: collapse; margin-top: 18px; font-size: 14.5px; }
+  td { padding: 9px 4px; border-bottom: 1px solid #dde5ec; vertical-align: top; } td:first-child { color: #5d6b78; width: 190px; }
+  .tech { margin-top: 16px; font-size: 12.5px; color: #5d6b78; line-height: 1.6; overflow-wrap: anywhere; }
+  .tech code { font-size: 11.5px; }
+  a { color: #1d7f8c; font-weight: 600; }
+  form { display: flex; gap: 8px; margin-top: 18px; } form input { flex: 1; min-width: 0; font: 15px Inter, sans-serif; padding: 9px 12px; border: 1.5px solid #dde5ec; border-radius: 10px; }
+  form button { font: 600 14px Inter, sans-serif; border: none; border-radius: 999px; padding: 9px 18px; background: linear-gradient(135deg, #ff9f8a, #e8706a); color: #2a0d08; cursor: pointer; }
+  @media (max-width: 560px) { td:first-child { width: 110px; } .vp { padding: 18px; } }
+</style></head><body>
+<div class="wrapv">
+  <div class="head"><img src="/static/img/iris-logo-white.png" alt="IRIS Systems"><span>Certificate verification</span></div>
+  <div class="vp">
+    {% if status == 'valid' %}
+      <div class="st valid"><span class="big">✅</span><div><b>Valid certificate — signed by IRIS Systems</b><span>The signature matches: nothing on this certificate was changed.</span></div></div>
+    {% elif status == 'revoked' %}
+      <div class="st revoked"><span class="big">⛔</span><div><b>This certificate was revoked</b><span>It was signed by IRIS Systems, but has since been cancelled. It is no longer valid.</span></div></div>
+    {% else %}
+      <div class="st invalid"><span class="big">⛔</span><div><b>Not a valid certificate</b><span>No certificate with this number was signed by IRIS Systems{% if c %}, or its data was changed{% endif %}.</span></div></div>
+    {% endif %}
+    {% if c and status != 'invalid' %}
+    <table>
+      <tr><td>Certificate</td><td><b>{{ c.id }}</b> · <a href="/certificate/{{ c.id }}">view it</a></td></tr>
+      <tr><td>Awarded to</td><td><b>{{ c.name }}</b></td></tr>
+      <tr><td>Programme</td><td>{{ c.programme }} ({{ c.missions }} missions, ≈ {{ c.hours }} h)</td></tr>
+      <tr><td>Completed</td><td>{{ completed_long }}</td></tr>
+      <tr><td>Signed by</td><td>{{ c.issuer }} — The IRIS Team (key {{ c.key }} · {{ fp }})</td></tr>
+    </table>
+    {% endif %}
+    <form method="get" action="/verify"><input name="id" placeholder="Check another number: NAV-2026-XXXX-XXXX" value=""><button>Check</button></form>
+    <div class="tech">Each certificate's data (number, name, programme, date) is signed with IRIS Systems' private key (Ed25519).
+      This page checks the signature with the public key, published at <a href="/certificates/iris-key.pub">/certificates/iris-key.pub</a>.
+      {% if c and status != 'invalid' %}<br>Signature: <code>{{ c.signature }}</code>{% endif %}</div>
+  </div>
+</div>
+</body></html>

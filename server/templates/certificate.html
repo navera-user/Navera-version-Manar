@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Certificate {{ c.id }} — {{ c.name }}</title>
+<link rel="icon" href="/static/img/iris-icon.svg">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  @page { size: A4 landscape; margin: 0; }
+  html, body { height: auto; } html { background: #0b1730; }
+  body { background: #0b1730; overflow: auto; margin: 0; font-family: Inter, sans-serif; }
+  .bar { display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; padding: 16px; color: #dbe5ef; font-size: 14px; }
+  .bar button, .bar a.b { background: rgba(255,255,255,.1); color: #fff; border: 1px solid rgba(255,255,255,.3); padding: 8px 16px; border-radius: 999px; font: 600 14px Inter, sans-serif; cursor: pointer; text-decoration: none; }
+  .bar button.main { background: linear-gradient(135deg, #ff9f8a, #e8706a); color: #2a0d08; border: none; }
+  .stage { display: flex; justify-content: center; padding: 0 16px 40px; }
+  .scaler { transform-origin: top center; }
+  .cert { width: 1123px; height: 794px; background: #fbf8f3; color: #14202b; position: relative; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.45); }
+  .cert .frame { position: absolute; inset: 22px; border: 1.5px solid #0b1730; }
+  .cert .frame2 { position: absolute; inset: 30px; border: 1px solid rgba(232,112,106,.55); }
+  .cert .band { position: absolute; left: 0; right: 0; bottom: 0; height: 120px; background: linear-gradient(180deg, rgba(251,248,243,0), rgba(29,78,107,.06)); }
+  .cert .birds { position: absolute; right: 70px; top: 340px; opacity: .1; }
+  .cert .in { position: absolute; inset: 58px 80px 50px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+  .ctop { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+  .ctop img.iris { height: 46px; }
+  .ctop .acad { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: 3px; font-size: 12.5px; text-transform: uppercase; color: #0b1730; }
+  .ctop .acad img { width: 30px; }
+  .kick { margin-top: 40px; font-size: 12.5px; letter-spacing: 6px; text-transform: uppercase; color: #b3412f; font-weight: 700; }
+  .title { font-family: Fraunces, serif; font-weight: 600; font-size: 50px; margin: 8px 0 0; letter-spacing: -1px; color: #0b1730; }
+  .lead { margin-top: 26px; font-size: 16px; color: #5d6b78; }
+  .name { font-family: Fraunces, serif; font-weight: 600; font-size: 46px; margin: 8px 0 0; color: #0b1730; padding: 0 40px 8px; border-bottom: 1.5px solid #e8706a; max-width: 900px; overflow-wrap: anywhere; }
+  .name.long { font-size: 36px; }
+  .what { margin-top: 18px; font-size: 16px; line-height: 1.65; color: #2c3a48; max-width: 760px; }
+  .what b { color: #0b1730; }
+  .facts { display: flex; gap: 34px; margin-top: 22px; }
+  .facts div { font-size: 12px; color: #5d6b78; letter-spacing: 1.2px; text-transform: uppercase; }
+  .facts b { display: block; font-family: Fraunces, serif; font-size: 24px; color: #0b1730; letter-spacing: 0; text-transform: none; font-weight: 600; }
+  .foot { margin-top: auto; width: 100%; display: grid; grid-template-columns: 1.5fr auto 1fr; align-items: end; gap: 20px; text-align: left; }
+  .seal { display: flex; gap: 14px; align-items: center; }
+  .seal .disc { width: 74px; height: 74px; border-radius: 50%; border: 2px solid #0b1730; display: grid; place-items: center; position: relative; flex: none; }
+  .seal .disc::after { content: ""; position: absolute; inset: 5px; border-radius: 50%; border: 1px dashed rgba(11,23,48,.5); }
+  .seal .disc img { width: 34px; }
+  .seal b { display: block; font-size: 14px; color: #0b1730; } .seal small { display: block; font-size: 11.5px; color: #5d6b78; line-height: 1.5; }
+  .seal code { font-size: 10.5px; color: #1d4e6b; }
+  .date { text-align: center; font-size: 13px; color: #5d6b78; } .date b { display: block; font-family: Fraunces, serif; font-size: 18px; color: #0b1730; }
+  .verify { display: flex; gap: 12px; align-items: center; justify-content: flex-end; text-align: right; }
+  .verify .qr svg { width: 86px; height: 86px; display: block; }
+  .verify small { display: block; font-size: 11.5px; color: #5d6b78; line-height: 1.5; } .verify b { font-size: 13px; color: #0b1730; letter-spacing: .5px; }
+  .void { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+  .void span { transform: rotate(-18deg); border: 6px solid rgba(194,59,74,.75); color: rgba(194,59,74,.8); font: 800 90px Inter, sans-serif; letter-spacing: 12px; padding: 6px 30px; border-radius: 12px; }
+  @media print {
+    body { background: #fff; }
+    .bar { display: none; }
+    .stage { padding: 0; }
+    .scaler { transform: none !important; height: auto !important; }
+    .cert { box-shadow: none; width: 297mm; height: 210mm; }
+  }
+</style></head><body>
+<div class="bar">
+  <button class="main" onclick="window.print()">⬇ Download PDF</button>
+  <button id="copy">🔗 Copy the verification link</button>
+  <a class="b" href="{{ verify_url }}" target="_blank" rel="noopener">✅ Verify</a>
+  {% if mine %}<a class="b" href="/">← Back to the academy</a>{% endif %}
+</div>
+<div class="stage"><div class="scaler" id="scaler">
+<div class="cert">
+  <div class="frame"></div><div class="frame2"></div><div class="band"></div>
+  <div class="in">
+    <div class="ctop"><img class="iris" src="/static/img/iris-logo-dark.png" alt="IRIS Systems"><div class="acad"><img src="/static/img/navi-mark-gold.svg" alt="">NAVERA Academy</div></div>
+    <div class="kick">Certificate of completion</div>
+    <div class="title">GPS-denied navigation with NAVERA</div>
+    <div class="lead">This certifies that</div>
+    <div class="name{% if c.name|length > 28 %} long{% endif %}">{{ c.name }}</div>
+    <div class="what">has completed the <b>{{ c.missions }} missions</b> of the NAVERA Academy programme — from GNSS and ROS 2 to computer vision,
+      sensor fusion, spoofing detection and fault-injection testing — and passed every graded check on <b>NAVERA's real code</b>.</div>
+    <div class="facts"><div><b>{{ c.missions }} / {{ c.missions }}</b>missions</div><div><b>{{ legs }}</b>legs</div><div><b>≈ {{ c.hours }} h</b>of study</div><div><b>{{ xp }} XP</b>{{ rank }}</div></div>
+    <div class="foot">
+      <div class="seal"><div class="disc"><img src="/static/img/iris-icon.svg" alt=""></div>
+        <div><b>Digitally signed — The IRIS Team</b><small>IRIS Systems · Integrated Robotics and Intelligent Systems<br>Ed25519 signature · key <code>{{ c.key }} · {{ fp }}</code></small></div></div>
+      <div class="date">Issued on<b>{{ completed_long }}</b></div>
+      <div class="verify"><div><b>{{ c.id }}</b><small>Scan to verify, or open<br>{{ verify_short }}</small></div><div class="qr">{{ qr|safe }}</div></div>
+    </div>
+  </div>
+  {% if status != 'valid' %}<div class="void"><span>{{ 'REVOKED' if status == 'revoked' else 'INVALID' }}</span></div>{% endif %}
+</div>
+</div></div>
+<script>
+  // fit the A4 page to the screen (print uses the real size)
+  function fit() { const s = document.getElementById('scaler'), k = Math.min(1, (window.innerWidth - 32) / 1123);
+    s.style.transform = `scale(${k})`; s.style.height = (794 * k) + 'px'; }
+  addEventListener('resize', fit); fit();
+  document.getElementById('copy').onclick = async (e) => {
+    try { await navigator.clipboard.writeText({{ verify_url|tojson }}); e.target.textContent = '✓ Link copied'; }
+    catch (err) { prompt('Copy this link:', {{ verify_url|tojson }}); }
+  };
+</script>
+</body></html>

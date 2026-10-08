@@ -186,12 +186,13 @@ async function showHome() {
   let h = `<header class="hhero">${heroScene()}<div class="hwrap"><div class="hgrid">
       <div><div class="kicker">${next ? `${esc(moduleOf(next.id).leg || '')} · Mission ${esc(next.number)}` : 'Expedition complete'}</div>
         <h1>${headline}</h1><p>${text}</p>
-        ${next ? `<button class="go hbtn" id="goNext">${passed ? `Continue mission ${+next.number}` : 'Start mission 1'} →</button>` : ''}<button class="hbtn line" id="goMap">Open the expedition map</button><button class="hbtn line" id="goIntro">▶ Watch the intro</button></div>
+        ${next ? `<button class="go hbtn" id="goNext">${passed ? `Continue mission ${+next.number}` : 'Start mission 1'} →</button>` : ''}<button class="hbtn line" id="goMap">Open the expedition map</button><button class="hbtn line" id="goIntro">▶ Watch the intro</button><div id="certHero"></div></div>
       <div class="glass"><div class="rank"><div class="medal">${icon(r.icon)}</div><div><b>${esc(r.name)}</b><span>Rank ${r.idx + 1} of ${RANKS.length} · ${xp} XP</span></div></div>
         <div class="bar"><i style="width:${pct}%"></i></div>
         <div class="row"><span>Missions</span><b>${passed} / ${COURSES.length}</b></div>
         <div class="row"><span>Next rank</span><b>${r.next === null ? '—' : `${esc(r.nextName)} · ${r.next - passed} mission${r.next - passed > 1 ? 's' : ''}`}</b></div>
         <div class="row"><span>Badges</span><b>${b.earned} of ${b.total}</b></div>
+        <div class="row"><span>Certificate</span><b id="certRow">${passed === COURSES.length ? '🎓 unlocked' : `🔒 after ${COURSES.length} missions`}</b></div>
         ${next ? `<button class="go" id="goNext2">Next mission →</button>` : ''}</div>
     </div></div></header>
     <div class="wrap">
@@ -226,6 +227,7 @@ async function showHome() {
   ['goNext', 'goNext2'].forEach(id => { if ($(id)) $(id).onclick = () => { location.hash = 'lesson/' + next.id; }; });
   $('goMap').onclick = () => $('mapHead').scrollIntoView({behavior: 'smooth'});
   $('goIntro').onclick = () => Intro.show();
+  if (!AS) Cert.home();
   $('home').onscroll = () => document.body.classList.toggle('scrolled', $('home').scrollTop > 40);
   Intro.maybe(() => Tour.maybe('home'));
 }
@@ -719,6 +721,30 @@ $('mResetNavera').onclick = async () => {
 const Prefs = {
   get: (k) => !!(ME.prefs && ME.prefs[k]),
   set(k, v = true) { ME.prefs = ME.prefs || {}; ME.prefs[k] = v; api('/api/prefs', {method: 'POST', body: {[k]: v}}).catch(() => {}); },
+};
+// end-of-course certificate, digitally signed by IRIS (server: certs.py)
+const Cert = {
+  async home() {
+    let d; try { d = await api('/api/certificate'); } catch (e) { return; }
+    if (!d.eligible || !$('certHero')) return;
+    const c = d.certificate;
+    $('certHero').innerHTML = `<div class="certcall"><span>🎓</span><div><b>${c ? 'Your certificate' : 'You earned your certificate'}</b>
+      <small>${c ? `${esc(c.id)} · digitally signed by IRIS` : `all ${d.total} missions passed — signed by the IRIS team`}</small></div>
+      <button class="go" id="certBtn">${c ? 'View my certificate' : 'Get my certificate'}</button></div>`;
+    $('certRow').textContent = c ? '🎓 ' + c.id : '🎓 ready';
+    $('certBtn').onclick = () => c ? window.open(c.url, '_blank') : this.issue(d);
+  },
+  async issue(d) {
+    const bg = await modal('Your certificate', `<p>Write your full name <b>exactly as it should be printed</b>. The certificate is signed with this name:
+      it can't be changed afterwards.</p><input id="certName" maxlength="60" style="width:100%" value="${esc(d.name)}">`,
+      [['Cancel', false], ['Sign and create my certificate', undefined, 'primary']]);
+    if (!bg) return;
+    const name = (bg._vals && bg._vals[0]) || '';
+    try {
+      const r = await api('/api/certificate', {method: 'POST', body: {name}});
+      location.href = r.url;
+    } catch (e) { toast(e.message, 5000); }
+  },
 };
 const Intro = {
   // the intro is intro.html played live (sharp at any screen size), full window, after sign-in
