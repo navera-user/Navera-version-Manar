@@ -22,6 +22,9 @@ import threading
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# Flask is installed for the academy's owner (~/.local), not for root: use the owner's packages too
+_owner_home = __import__("pwd").getpwuid(os.stat(HERE).st_uid).pw_dir
+sys.path.append(os.path.join(_owner_home, ".local/lib/python%d.%d/site-packages" % sys.version_info[:2]))
 STATE_DIR = "/var/lib/navera-setup"
 CONF = "/etc/navera/setup.json"            # {"ssid": "NAVERA-Setup-0CE9", "password": "…", "public_url": "…"}
 AP_CON = "navera-setup"
@@ -263,7 +266,13 @@ def main():
     state["iface"] = wifi_iface()
     if not state["iface"]:
         sys.exit("no Wi-Fi device")
-    threading.Thread(target=lambda: make_portal().run(host="0.0.0.0", port=a.port, threaded=True), daemon=True).start()
+    def portal():
+        try:
+            make_portal().run(host="0.0.0.0", port=a.port, threaded=True)
+        except BaseException as e:                  # no setup page = useless keeper: let systemd restart us
+            log("setup page failed:", e)
+            os._exit(1)
+    threading.Thread(target=portal, daemon=True).start()
     log("waiting for a known Wi-Fi…")
     t0 = time.time()
     while time.time() - t0 < WAIT_AT_BOOT_S and not connected():
