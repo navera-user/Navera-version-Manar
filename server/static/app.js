@@ -209,7 +209,7 @@ async function showHome() {
       const cls = st === 'passed' ? 'done' : isNext ? 'now' : '';
       const status = st === 'passed' ? '<span class="status done">Complete</span>' : isNext ? `<span class="status now">${st === 'started' ? 'In progress' : 'Up next'}</span>`
         : st === 'started' ? '<span class="status next">Started</span>' : '<span class="status next">Later</span>';
-      const res = (l.resources || []).map(x => x === 'sim' ? 'needs the simulator' : x === 'camera' ? 'needs the camera' : 'needs the sensors').join(' · ');
+      const res = (l.resources || []).map(x => x === 'simlite' ? 'flies Sim Lite' : x === 'sim' ? 'needs the simulator' : x === 'camera' ? 'needs the camera' : 'needs the sensors').join(' · ');
       h += `<div class="mitem ${cls}" data-id="${esc(l.id)}"><div class="no">${esc(l.number)}</div><div><h4>${esc(l.title)}</h4><p>${esc(l.summary || '')}</p>${res ? `<div class="res">${res}</div>` : ''}</div>
         <div class="dur">${esc(l.duration || '')}</div><div class="xp">+${XP_PER_MISSION} XP</div>${status}</div>`;
     }
@@ -259,7 +259,7 @@ function missionHeader(which) {
   const tasks = ((LESSON.lab || '').match(/\[!TASK\]/g) || []).length;
   const done = LESSON.progress && LESSON.progress.status === 'passed';
   const h1 = ((which === 'lab' ? LESSON.lab : LESSON.course) || '').match(/^#\s+(.+)$/m);
-  const res = (LESSON.resources || []).map(r => `<span class="chip2">${r === 'sim' ? 'Simulator' : r === 'camera' ? 'Camera' : 'Sensors'}</span>`).join('');
+  const res = (LESSON.resources || []).map(r => `<span class="chip2">${r === 'simlite' ? 'Sim Lite' : r === 'sim' ? 'Simulator' : r === 'camera' ? 'Camera' : 'Sensors'}</span>`).join('');
   return `<div class="mhero">
     <svg class="ridge" viewBox="0 0 600 70" preserveAspectRatio="none"><path d="M330 44 L380 34 L420 40 L470 28 L530 38 L600 32 L600 46 L330 46Z" fill="#15314d"/><rect y="45" width="600" height="25" fill="#1f5470"/><path d="M0 55 q20 -3 40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0 t40 0" stroke="rgba(255,255,255,.18)" fill="none"/></svg>
     <span class="navi"></span>
@@ -402,21 +402,22 @@ function showPane(p) {
   document.querySelectorAll('.tools .pane').forEach(x => x.classList.toggle('on', x.id === 'pane-' + p));
   if (p === 'terminal') { if (!Terms.list.length) Terms.add(); else Terms.fitAll(); Tip.once('first-terminal'); }
   if (p === 'editor') Editor.layout();
-  if (p === 'sim' && !$('simFrame').src) loadWeb('sim');
+  if (p === 'sim' && $('simFrame').dataset.lesson !== (LESSON ? LESSON.id : '')) loadWeb('sim');
   if (p === 'operator' && !$('opFrame').src) loadWeb('op');
 }
 function loadWeb(which) {
   // carried by the academy itself (same address, same login): works locally and through the internet
-  // Simulator tab: Sim Lite (in the browser, everyone at once); its "Full · booked" switch opens
-  // the full simulator. Operator view: the full simulator's, carried by the academy.
-  const url = which === 'sim' ? '/static/simlite/index.html' : '/web/op/operator';
+  // Simulator tab: Sim Lite (in the browser, everyone at once, no booking); the teacher can still
+  // switch to the full simulator. Operator view: the full simulator's, carried by the academy.
+  const url = which === 'sim' ? '/static/simlite/index.html?lesson=' + encodeURIComponent(LESSON ? LESSON.id : '') : '/web/op/operator';
   const f = which === 'sim' ? $('simFrame') : $('opFrame');
   (which === 'sim' ? $('simUrl') : $('opUrl')).value = url;
+  if (which === 'sim') f.dataset.lesson = LESSON ? LESSON.id : '';
   f.src = url;
 }
 $('simReload').onclick = () => { $('simFrame').src = 'about:blank'; setTimeout(() => loadWeb('sim'), 50); };
 $('opReload').onclick = () => { $('opFrame').src = 'about:blank'; setTimeout(() => loadWeb('op'), 50); };
-$('simOpen').onclick = () => window.open('/static/simlite/index.html', '_blank');
+$('simOpen').onclick = () => window.open('/static/simlite/index.html?lesson=' + encodeURIComponent(LESSON ? LESSON.id : ''), '_blank');
 $('opOpen').onclick = () => window.open('/web/op/operator', '_blank');
 
 // resizable split

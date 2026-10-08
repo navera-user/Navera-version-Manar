@@ -92,7 +92,7 @@
   <div class="top">
     <span class="logo">✈ NAVERA SIM</span><a class="by-iris" href="https://iris-systems.tn" target="_blank" rel="noopener" onclick="event.stopPropagation()">by <span class="iris-mark" role="img" aria-label="IRIS"><span>IRIS</span></span></a>
     <span class="lite">Lite · runs on your computer</span>
-    <span class="seg"><button class="on">Lite</button><button id="toFull" title="The full simulator (real autopilot), by booking">Full · booked</button></span>
+    <span class="seg" id="modeSeg" style="display:none"><button class="on">Lite</button><button id="toFull" title="The full simulator (real ArduPilot autopilot) — teacher">Full</button></span>
     <span class="seg" id="vehSeg"><button data-v="drone" class="on">🛩 Drone</button><button data-v="plane">✈ Plane</button><button data-v="boat">🚤 Boat</button><button data-v="robot">🚙 Robot</button></span>
     <span class="grow"></span>
     <span class="seg" id="rateSeg"><button data-r="1">1×</button><button data-r="4" class="on">4×</button><button data-r="10">10×</button><button data-r="30">30×</button></span>
@@ -108,6 +108,12 @@
       <div class="tabs" id="tabs"><button data-p="mission" class="on">Mission</button><button data-p="faults">Faults</button><button data-p="code">My code</button><button data-p="log">Log</button></div>
 
       <div class="pane on" id="p-mission">
+        <div id="scenBox" style="display:none;background:#fff;border:1.5px solid var(--coral);border-radius:14px;padding:11px 13px;margin-bottom:6px">
+          <b style="font-size:13.5px">This mission's scenario — my_scenario.json</b>
+          <div class="hint" id="scenText"></div>
+          <div class="acts"><button class="btn fly" id="scenFly">▶ Fly my scenario</button><button class="btn lite-btn" id="scenReload">↻ Re-read the file</button></div>
+          <div class="hint">The flight is saved by itself in your mission folder: <b>my_runs/</b>, ready for campaign.py.</div>
+        </div>
         <label class="f">Start</label>
         <div class="row"><select id="startSel"></select></div>
         <button class="pick" id="pickStart">or click the map to choose</button>
@@ -149,6 +155,7 @@
           <button class="btn fly" id="runBtn">▶ Run my code</button>
           <button class="btn lite-btn" id="saveBtn">💾 Save</button>
           <button class="btn lite-btn" id="reloadBtn">↻ Reload from my copy</button>
+          <button class="btn lite-btn" id="saveRunBtn" disabled title="Save the last flight as a CSV in this mission's my_runs/ folder">📁 Save flight to my_runs/</button>
         </div>
         <div class="console" id="console">Edit estimator_node.py in your NAVERA copy (Code tab), press "Reload from my copy", then fly: the coral line on the map is what YOUR estimator decides.</div>
       </div>

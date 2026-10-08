@@ -63,7 +63,9 @@ def domain_for(index):
 
 # Exclusive resources a student books from the dashboard.
 RESOURCES = {
-    "sim": {"title": "Mission simulator (ports 8181, 8190, SITL)", "ports": [8181, 8190, 8443, 5760, 5762]},
+    # the full simulator (real ArduPilot): teacher only — students fly Sim Lite in their browser, no booking
+    "sim": {"title": "Full mission simulator (ports 8181, 8190, SITL)", "ports": [8181, 8190, 8443, 5760, 5762],
+            "teacher_only": True},
     "camera": {"title": "Insta360 camera (/dev/video*)", "devices": ["/dev/video0", "/dev/video1",
                                                                       "/dev/v4l"]},
     "sensors": {"title": "IMU / RTC / serial GPS (I2C, ttyTHS)", "devices": ["/dev/i2c-1", "/dev/i2c-7",

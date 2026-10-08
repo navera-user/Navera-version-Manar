@@ -93,6 +93,38 @@ def save_script(name, text):
     os.replace(tmp, p)
 
 
+# ---------------------------------------------------------------- lesson files (mission 28: scenario in, flight out)
+import json
+import re
+
+_NAME = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
+
+
+def _lesson(name, lesson_id):
+    if not lesson_id or not os.path.isdir(os.path.join(config.COURSES, lesson_id)) or "/" in lesson_id:
+        raise ValueError("unknown lesson")
+    return workspaces.lesson_dir(name, lesson_id)
+
+
+def scenario(name, lesson_id):
+    with open(os.path.join(_lesson(name, lesson_id), "my_scenario.json")) as f:
+        return json.load(f)
+
+
+def save_flight(name, lesson_id, run, csv_text, events_text):
+    """my_runs/<run>.csv (+ _events.log) in the student's lesson folder: what sim_ctl.py writes."""
+    if not _NAME.match(run or ""):
+        raise ValueError("the run name may use letters, digits, - and _ only")
+    d = os.path.join(_lesson(name, lesson_id), "my_runs")
+    os.makedirs(d, exist_ok=True)
+    for fn, text in ((f"{run}.csv", csv_text), (f"{run}_events.log", events_text)):
+        tmp = os.path.join(d, fn + ".tmp")
+        with open(tmp, "w") as f:
+            f.write(text[:5_000_000])
+        os.replace(tmp, os.path.join(d, fn))
+    return f"my_runs/{run}.csv"
+
+
 # ---------------------------------------------------------------- map tiles
 def maps():
     """Every map file present, best first: each tile is taken from the first one that has it."""

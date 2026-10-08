@@ -136,6 +136,8 @@ class World(Node):
         self.err_hist = []
         self.t = 0.0
         self.arrival = None
+        self.enroute_at = None                      # sim time when the vehicle left (for scenario times)
+        self.rows = []                              # one row per simulated second, sim_ctl.py's columns
         self.pub_gps = self.create_publisher(PositionEstimate, "/navera/estimate/gps", 10)
         self.pub_day = self.create_publisher(PositionEstimate, "/navera/estimate/day", 10)
         self.pub_night = self.create_publisher(PositionEstimate, "/navera/estimate/night", 10)
@@ -283,9 +285,12 @@ class World(Node):
         self.t += DT
         if self.phase == "waiting" and self.belief is not None:
             self.phase = "flying"
+            self.enroute_at = self.t
             self.event("info", "take-off: the autopilot follows NAVERA's position")
         target_speed = 0.0
-        if self.phase == "flying":
+        if self.phase == "stopped":
+            pass                                    # slows down and stays
+        elif self.phase == "flying":
             # the autopilot's belief: NAVERA's last position, carried forward with its own velocity
             if self.belief is not None:
                 self.belief = list(offset(self.belief[0], self.belief[1], self.vel[0] * DT, self.vel[1] * DT))
@@ -308,10 +313,30 @@ class World(Node):
         vn = self.speed * math.cos(math.radians(self.heading))
         self.vel = (ve, vn)
         self.truth = list(offset(self.truth[0], self.truth[1], ve * DT, vn * DT))
+        if int(round(self.t / DT)) % 10 == 0:
+            self.rows.append(self.row())
         if int(self.t / DT) % 10 == 0:
             self.trail.append((round(self.truth[0], 7), round(self.truth[1], 7)))
             if self.nav["lat"] is not None:
                 self.err_hist.append((round(self.t, 1), round(self.error_m(), 1)))
+
+    def row(self):
+        """Same columns as the full simulator's recorder (courses/28-simulator/files/sim_ctl.py)."""
+        f = lambda v, d=1: "" if v is None else f"{v:.{d}f}"           # noqa: E731
+        fresh = self.nav["t"] is not None and self.t - self.nav["t"] <= 1.5
+        phase = {"waiting": "waiting_gps", "flying": "enroute", "arrived": "arrived", "stopped": "stopped"}[self.phase]
+        ap_err = dist(self.belief, self.truth) if self.belief is not None else None
+        return {"t_s": f(self.t), "phase": phase, "gps_mode": self.faults["gps"],
+                "navera_state": STATE.get(self.nav["state"], ""), "navera_source": SRC.get(self.nav["source"], ""),
+                "navera_lat": f(self.nav["lat"] if fresh else None, 7), "navera_lon": f(self.nav["lon"] if fresh else None, 7),
+                "navera_err_m": f(self.error_m()), "truth_lat": f(self.truth[0], 7), "truth_lon": f(self.truth[1], 7),
+                "truth_alt_m": f(self.alt), "truth_speed_mps": f(self.speed), "ap_mode": "GUIDED" if self.phase == "flying" else "",
+                "ap_err_m": f(ap_err), "reason": self.nav["reason"], "camera": self.faults["camera"]}
+
+    def stop(self, why="stopped"):
+        if self.phase != "stopped":
+            self.phase = "stopped"
+            self.event("info", f"mission stopped ({why})")
 
     def error_m(self):
         if self.nav["lat"] is None:
@@ -331,7 +356,8 @@ class World(Node):
             "togo_m": round(dist(self.truth, self.dest)), "faults": dict(self.faults), "arrival": self.arrival,
             "gps_lost_for": None,
         }
-        for k in ("trail", "gps_pts", "vis_pts", "nav_pts", "events", "err_hist"):
+        out["enroute_s"] = None if self.enroute_at is None else round(self.t - self.enroute_at, 1)
+        for k in ("trail", "gps_pts", "vis_pts", "nav_pts", "events", "err_hist", "rows"):
             arr = getattr(self, k)
             out[k] = arr[s.get(k, 0):]
             s[k] = len(arr)
@@ -347,6 +373,24 @@ class _NavView:
     def source(self):
         return {1: "gps", 2: "vision", 3: "vision", 4: "celestial"}.get(self._w.nav["source"], "none")
     @property
+    def row(self):
+        """Same columns as the full simulator's recorder (courses/28-simulator/files/sim_ctl.py)."""
+        f = lambda v, d=1: "" if v is None else f"{v:.{d}f}"           # noqa: E731
+        fresh = self.nav["t"] is not None and self.t - self.nav["t"] <= 1.5
+        phase = {"waiting": "waiting_gps", "flying": "enroute", "arrived": "arrived", "stopped": "stopped"}[self.phase]
+        ap_err = dist(self.belief, self.truth) if self.belief is not None else None
+        return {"t_s": f(self.t), "phase": phase, "gps_mode": self.faults["gps"],
+                "navera_state": STATE.get(self.nav["state"], ""), "navera_source": SRC.get(self.nav["source"], ""),
+                "navera_lat": f(self.nav["lat"] if fresh else None, 7), "navera_lon": f(self.nav["lon"] if fresh else None, 7),
+                "navera_err_m": f(self.error_m()), "truth_lat": f(self.truth[0], 7), "truth_lon": f(self.truth[1], 7),
+                "truth_alt_m": f(self.alt), "truth_speed_mps": f(self.speed), "ap_mode": "GUIDED" if self.phase == "flying" else "",
+                "ap_err_m": f(ap_err), "reason": self.nav["reason"], "camera": self.faults["camera"]}
+
+    def stop(self, why="stopped"):
+        if self.phase != "stopped":
+            self.phase = "stopped"
+            self.event("info", f"mission stopped ({why})")
+
     def error_m(self):
         e = self._w.error_m()
         return float("inf") if e is None else e
@@ -382,6 +426,12 @@ class SimAPI:
             self._w.phase = "flying"
         self._w.event("info", f"new destination {where}" + (f" at {speed} m/s" if speed else ""))
 
+    @property
+    def enroute_s(self):
+        """Seconds since the vehicle left (None before): the time base of my_scenario.json."""
+        return None if self._w.enroute_at is None else round(self._w.t - self._w.enroute_at, 1)
+
+    def stop(self, why="by the flight script"): self._w.stop(why)
     def set_speed(self, mps): self._w.cruise = float(mps)
     def jam_gps(self, **_): self._w.set_fault("gps", "jammed")
     def spoof_gps(self, kind="jump"): self._w.set_fault("gps", "spoof_jump" if kind == "jump" else "spoof_drift")

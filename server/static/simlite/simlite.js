@@ -3,7 +3,11 @@ const $ = (id) => document.getElementById(id);
 const PLACES = { 'Sousse': [35.8256, 10.6360], 'Port El Kantaoui': [35.8920, 10.5980], 'Hammam Sousse': [35.8606, 10.5944],
   'Monastir': [35.7643, 10.8113], 'Monastir harbour': [35.7778, 10.8317], 'Monastir airport': [35.7581, 10.7547], 'Skanes': [35.7560, 10.7680] };
 const VEH = { drone: [15, 30], plane: [40, 100], boat: [8, 20], robot: [4, 10] };
-const S = { vehicle: 'drone', start: [35.8256, 10.6360], dest: [35.7643, 10.8113], profile: 'measured', light: 'day',
+const LESSON_ID = new URLSearchParams(location.search).get('lesson') || '';
+const COLUMNS = ['t_s', 'phase', 'gps_mode', 'navera_state', 'navera_source', 'navera_lat', 'navera_lon', 'navera_err_m',
+  'truth_lat', 'truth_lon', 'truth_alt_m', 'truth_speed_mps', 'ap_mode', 'ap_err_m', 'reason', 'camera'];
+const SCEN_ROUTE = { start: [35.8256, 10.6385], dest: [35.8050, 10.6010] };   // sim_ctl.py's route (~4 km)
+const S = { rows: [], evlines: [], runName: null, scenario: null, vehicle: 'drone', start: [35.8256, 10.6360], dest: [35.7643, 10.8113], profile: 'measured', light: 'day',
   rate: 4, src: 'mine', running: false, paused: false, busy: false, picking: null, files: null };
 
 // ---------------------------------------------------------------- the simulation thread
@@ -116,14 +120,17 @@ $('saveBtn').onclick = async () => {
 
 // ---------------------------------------------------------------- flying
 let loop = null;
-async function fly() {
+async function fly(opts = {}) {
+  S.runName = opts.runName || null;
   if (!S.files) { if (!(await loadCode())) { consoleLine('bad', 'Your NAVERA code could not be loaded.'); return; } }
   stop(); clearMap(); $('result').style.display = 'none'; $('log').innerHTML = ''; $('console').innerHTML = '';
+  S.rows = []; S.evlines = []; $('saveRunBtn').disabled = true;
   ['gps', 'camera', 'light', 'imu'].forEach(k => markFault(k, k === 'light' ? S.light : 'ok'));
   const cfg = { vehicle: S.vehicle, start: S.start, dest: S.dest, profile: S.profile, light: S.light,
     speed: +$('speedIn').value || null, max_speed: +$('maxIn').value || null, seed: Math.floor(Math.random() * 1e6) };
   consoleLine('ok', `▶ starting: your estimator (${S.files.origin === 'mine' ? 'your copy' : 'original NAVERA'}) + flight script`);
-  try { show(await call('start', { cfg, script: $('script').value })); }
+  if (opts.cfg) Object.assign(cfg, opts.cfg);
+  try { show(await call('start', { cfg, script: opts.script != null ? opts.script : $('script').value })); }
   catch (e) { consoleLine('bad', 'Your code stopped while starting:\n' + e); openTab('code'); return; }
   S.running = true; S.paused = false; setButtons();
   loop = setInterval(tick, 100);
@@ -140,7 +147,59 @@ function setButtons() {
   $('pauseBtn').disabled = !S.running; $('pauseBtn').textContent = S.paused ? '▶ Resume' : '⏸ Pause';
   document.querySelectorAll('#vehSeg button').forEach(b => b.disabled = S.running);
 }
-$('flyBtn').onclick = fly; $('runBtn').onclick = fly;
+$('flyBtn').onclick = () => fly(); $('runBtn').onclick = () => fly();
+
+// ---------------------------------------------------------------- mission 28: my_scenario.json in, my_runs/ out
+const FAULT_CALL = { gps: { ok: 'sim.restore_gps()', jammed: 'sim.jam_gps()', spoof_jump: 'sim.spoof_gps("jump")',
+  spoof_drift: 'sim.spoof_gps("drift")', off: 'sim.gps_off()' }, camera: { ok: 'sim.camera_ok()', failed: 'sim.camera_fail()' } };
+function scenarioScript(sc) {
+  const faults = sc.faults || [];
+  for (const f of faults) {
+    if (!Array.isArray(f) || f.length !== 3 || typeof f[0] !== 'number' || !(FAULT_CALL[f[1]] || {})[f[2]])
+      throw new Error(`fault ${JSON.stringify(f)}: use [seconds, "gps", "ok|jammed|spoof_jump|spoof_drift|off"] or [seconds, "camera", "ok|failed"]`);
+  }
+  const last = faults.reduce((m, f) => Math.max(m, f[0]), 0), tail = +sc.tail_s || 40;
+  if (last + tail > 150) throw new Error('keep the whole scenario under 150 s after "en route"');
+  const lines = faults.map((f, i) => `    if e >= ${f[0]} and ${i} not in done:\n        done.add(${i}); sim.log("${f[1]} -> ${f[2]}"); ${FAULT_CALL[f[1]][f[2]]}`);
+  return `# generated from my_scenario.json (${sc.name})\ndone = set()\n\ndef on_tick(sim, t):\n    e = sim.enroute_s\n    if e is None:\n        return\n` +
+    (lines.length ? lines.join('\n') + '\n' : '') + `    if e >= ${last + tail}:\n        sim.stop("scenario finished")\n`;
+}
+async function loadScenario() {
+  if (!LESSON_ID) return;
+  const r = await fetch('/api/simlite/scenario?lesson=' + encodeURIComponent(LESSON_ID));
+  if (r.status === 404) return;                      // this mission has no scenario file
+  const d = await r.json();
+  $('scenBox').style.display = '';
+  if (!r.ok) { $('scenText').innerHTML = `<span class="no">${esc(d.error)}</span>`; S.scenario = null; return; }
+  S.scenario = d;
+  const f = (d.faults || []).map(x => `${x[0]} s: ${x[1]} → ${x[2]}`).join(' · ') || 'no fault';
+  $('scenText').textContent = `“${d.name}” · vision ${d.vision || 'measured'} · ${f} · then ${d.tail_s || 40} s`;
+}
+$('scenReload').onclick = loadScenario;
+$('scenFly').onclick = async () => {
+  await loadScenario();
+  if (!S.scenario) return;
+  let script;
+  try { script = scenarioScript(S.scenario); } catch (e) { $('scenText').innerHTML = `<span class="no">${esc(e.message)}</span>`; return; }
+  const name = String(S.scenario.name || 'my_run').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 40) || 'my_run';
+  setVehicle('drone');
+  fly({ runName: name, script, cfg: { vehicle: 'drone', start: SCEN_ROUTE.start, dest: SCEN_ROUTE.dest,
+    profile: S.scenario.vision === 'measured' ? 'measured' : 'target' } });
+};
+function csvCell(v) { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+async function saveRun(name) {
+  if (!LESSON_ID) { consoleLine('warn', 'Open Sim Lite from a mission to save into its my_runs/ folder.'); return; }
+  name = name || prompt('Name of this run (letters, digits, - and _):', 'lite_run');
+  if (!name) return;
+  const csv = [COLUMNS.join(',')].concat(S.rows.map(r => COLUMNS.map(k => csvCell(r[k])).join(','))).join('\n') + '\n';
+  const r = await fetch('/api/simlite/flight', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lesson: LESSON_ID, run: name, csv, events: S.evlines.join('\n') + '\n' }) });
+  const d = await r.json();
+  if (r.ok) toastLog('ok', `✓ flight saved: ${d.path} (${S.rows.length} rows) — now run python3 campaign.py`);
+  else toastLog('bad', 'not saved: ' + d.error);
+  S.runName = null;
+}
+$('saveRunBtn').onclick = () => saveRun(null);
 $('pauseBtn').onclick = () => { S.paused = !S.paused; setButtons(); };
 $('resetBtn').onclick = () => { stop(); clearMap(); $('result').style.display = 'none'; drawPlan(); paintCards(null); $('clock').textContent = 'T+ 00:00'; };
 function trim(group, keep) { const l = group.getLayers(); for (let i = 0; i < l.length - keep; i++) group.removeLayer(l[i]); }
@@ -165,14 +224,22 @@ function show(s) {
     navC.setTooltipContent(`NAVERA: ${s.nav.state} · ${s.nav.source}`);
   }
   if (lay.truth.getLatLngs().length && !map.getBounds().pad(-0.1).contains(s.truth)) map.panTo(s.truth);
+  s.rows.forEach(r => S.rows.push(r));
+  s.events.forEach(e => S.evlines.push(`T+${e.t.toFixed(1)} [${e.level === 'script' ? 'inject' : e.level}] ${e.text}`));
+  if (S.rows.length) $('saveRunBtn').disabled = false;
   s.events.forEach(e => logLine(e.level, `T+${e.t.toFixed(1).padStart(6)}  ${e.text}`));
   s.logs.forEach(l => logLine(l.level === 'info' ? 'node' : l.level, `        [${l.node}] ${l.text}`));
   if (s.script_error) consoleLine('bad', 'flight script:\n' + s.script_error);
   s.events.filter(e => e.level === 'script' || e.level === 'bad').forEach(e => consoleLine(e.level, `T+${e.t.toFixed(1)}  ${e.text}`));
   s.err_hist.forEach(p => errs.push(p)); drawChart();
   paintCards(s);
+  if (s.phase === 'stopped') {
+    stop();
+    if (S.runName) saveRun(S.runName);
+  }
   if (s.phase === 'arrived' && s.arrival) {
     stop();
+    if (S.runName) saveRun(S.runName);
     const good = s.arrival.miss_m < 50;
     $('result').className = 'result' + (good ? '' : ' badr');
     $('result').innerHTML = `${good ? '✅' : '⚠️'} Arrived after ${Math.round(s.arrival.t)} s — the vehicle believes it is there; it is really <b>${Math.round(s.arrival.miss_m)} m</b> from the destination.`;
@@ -206,6 +273,7 @@ function consoleLine(level, text) { const d = $('console'); d.insertAdjacentHTML
 function toastLog(level, text) { consoleLine(level, text); logLine(level, text); }
 
 // ---------------------------------------------------------------- start
-drawPlan(); loadScript();
+drawPlan(); loadScript(); loadScenario();
+fetch('/api/me').then(r => r.json()).then(me => { if (me.role === 'teacher') $('modeSeg').style.display = ''; }).catch(() => {});
 call('ping').then(async () => { $('veilText').textContent = 'Loading your NAVERA code…'; await loadCode(); $('veil').style.display = 'none'; })
   .catch(e => { $('veilText').textContent = 'The simulator could not start in this browser: ' + e; });

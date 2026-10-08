@@ -681,6 +681,29 @@ def api_simlite_script_save():
     return jsonify(ok=True)
 
 
+@app.get("/api/simlite/scenario")
+@login_required()
+def api_simlite_scenario():
+    try:
+        return jsonify(simlite.scenario(request.user, request.args.get("lesson", "")))
+    except FileNotFoundError:
+        return jsonify(error="my_scenario.json is not in this mission's folder (open the mission once)"), 404
+    except (ValueError, json.JSONDecodeError) as e:
+        return jsonify(error=f"my_scenario.json: {e}"), 400
+
+
+@app.post("/api/simlite/flight")
+@login_required()
+def api_simlite_flight():
+    d = request.get_json(force=True)
+    try:
+        path = simlite.save_flight(request.user, str(d.get("lesson", "")), str(d.get("run", "")),
+                                   str(d.get("csv", "")), str(d.get("events", "")))
+    except (ValueError, OSError) as e:
+        return jsonify(error=str(e)), 400
+    return jsonify(ok=True, path=path)
+
+
 @app.get("/api/simlite/map")
 @login_required()
 def api_simlite_map():
@@ -703,8 +726,10 @@ def api_simlite_tile(z, x, y):
 @login_required()
 def api_bookings():
     b = bookings()
+    teacher = request.urec["role"] == "teacher"
     return jsonify({k: {"title": v["title"], "holder": b.get(k, {}).get("user"),
-                        "since": b.get(k, {}).get("since")} for k, v in config.RESOURCES.items()})
+                        "since": b.get(k, {}).get("since")} for k, v in config.RESOURCES.items()
+                    if teacher or not v.get("teacher_only")})
 
 
 @app.post("/api/book")
@@ -714,6 +739,8 @@ def api_book():
     res, action = d.get("resource"), d.get("action", "take")
     if res not in config.RESOURCES:
         abort(404)
+    if config.RESOURCES[res].get("teacher_only") and request.urec["role"] != "teacher":
+        return jsonify(error="Students fly Sim Lite (Simulator tab): no booking needed."), 403
     name = request.user
     with _lock:
         b = bookings()

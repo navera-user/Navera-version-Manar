@@ -16,16 +16,16 @@ Your files:
 | [campaign.py](file:./campaign.py) | C | TODO 1–7: metrics and requirements; writes `results.json` |
 | [report.md](file:./report.md) | D | your test report |
 | [answers.py](file:./answers.py) | C | six short answers |
-| [sim_ctl.py](file:./sim_ctl.py), [my_scenario.json](file:./my_scenario.json) | E | drive the simulator (no change needed in `sim_ctl.py`) |
+| [my_scenario.json](file:./my_scenario.json), [sim_ctl.py](file:./sim_ctl.py) | E | your scenario for Sim Lite; `sim_ctl.py` is how the recorded campaign was flown on the full simulator (read it: Sim Lite writes the same columns) |
 
 The recorded data is in `/data/academy/28-simulator/` (read only). NAVERA's test map covers
 **Sousse, Tunisia**, so every flight flies there.
 
 > [!NOTE]
-> **Parts A–D need no simulator.** The simulator is shared by the whole class and is often busy. The
-> campaign you analyse was recorded with exactly the tools of Part E (`record_sample.sh` and
-> `record_campaign.sh` in the data folder show how). If you cannot use the simulator, set
-> `NO_SIMULATOR = True` in `answers.py` and the Part E check is skipped.
+> **Parts A–D need no simulator.** The campaign you analyse was recorded on NAVERA's **full**
+> simulator (real ArduPilot autopilot) with `sim_ctl.py` (`record_sample.sh` and `record_campaign.sh`
+> in the data folder show how). Part E flies **your own** scenario in **Sim Lite**, the simulator in
+> your browser — everyone can fly at the same time, no booking.
 
 ## Part A — MAVLink, byte by byte
 
@@ -248,55 +248,42 @@ Fill [report.md](file:./report.md): the five sections are already there. Use **y
 
 ## Part E — Your own scripted run (needs the simulator)
 
-Skip this part if the simulator is not available today (`NO_SIMULATOR = True`).
+Part E flies in **Sim Lite** (🛩️ **Simulator** tab). It runs in your browser, so the whole class
+can fly at once, and it runs **your own** `navera_estimator` — the one in your NAVERA copy. Its
+world is simpler than the full simulator's (simple vehicle kinematics instead of ArduPilot's
+physics, no camera images: vision fixes follow the same error profiles), so your run tests NAVERA's
+**behaviour**, exactly like the recorded campaign.
 
-### Step 13 — Take the simulator
-
-1. **Hardware** (top bar) → *Mission simulator* → **Take**. Then open a **new** terminal tab (only
-   terminals opened *after* Take can use the simulator). Its first line usually says
-   `[this terminal has access to: sim]`; if you do not see that line, continue — the next steps show
-   whether the simulator works.
-2. Check that nobody uses the simulator's ports — this must print **nothing**:
-
-```bash
-ss -ltn | grep -E ':(8181|8190|8443|5760|5762) '
-```
-
-3. Start the simulator on your own ROS domain, and leave this terminal alone (it *is* the simulator;
-   `Ctrl+C` there stops it):
-
-```bash
-mkdir -p ~/.navera_sim && cd ~/navera && NAVERA_SIM_DOMAIN=$ROS_DOMAIN_ID navera_tools/run_sim.sh 2>&1 | tee -i ~/.navera_sim/run_sim.out
-```
-
-Wait for `simulator ready on port 8190`.
-
-### Step 14 — Run your scenario
+### Step 13 — Write your scenario
 
 Edit [my_scenario.json](file:./my_scenario.json): choose **one** question you want to answer (e.g.
 "does a 10 s jam give the same recovery as a 40 s jam?", "what does a drift do with the measured
 vision profile?"). Faults: `gps` → `ok | jammed | spoof_jump | spoof_drift | off`, `camera` →
-`ok | failed`; times in seconds after the drone starts flying to its destination; keep the whole
-scenario under 150 s after "en route" (the route is ~4 km). Then, in a second terminal:
+`ok | failed`; times in seconds after the drone starts flying to its destination ("en route");
+`vision` is `target` or `measured`; keep the whole scenario under 150 s after "en route" (the route
+is the recorded campaign's: ~4 km from Sousse).
+
+### Step 14 — Fly it
+
+1. Open the **🛩️ Simulator** tab. The box at the top of **Mission** shows your scenario, read from
+   this mission's folder (press **↻ Re-read the file** after editing it). A typo (`"jamed"`, a
+   missing comma) is shown there in red, and nothing flies.
+2. Press **▶ Fly my scenario**. Choose **10×** or **30×** if you do not want to wait: the simulated
+   time is the same, only faster.
+3. Watch the map: the white line is the truth, the coral line is **your estimator's** decision. The
+   **Log** tab shows each fault (`gps -> jammed`) and each decision NAVERA takes.
+4. When the scenario ends, the flight is **saved by itself** in this mission's folder:
+   `my_runs/<name>.csv` (one row per simulated second, the same columns as the recorded campaign) and
+   `my_runs/<name>_events.log`. The console says `✓ flight saved`.
+
+### Step 15 — Check the file
 
 ```bash
-python3 sim_ctl.py campaign my_scenario.json --out-dir my_runs
+head -3 my_runs/*.csv
+cut -d, -f2,3 my_runs/*.csv | sort | uniq -c
 ```
 
-`sim_ctl.py` checks your scenario file and creates `my_runs/` **before** it sends anything to the
-simulator; a typo (`"jamed"`, a missing comma) stops it with a clear message and nothing flies. If
-anything goes wrong during the flight (or you press `Ctrl+C`), it resets the faults and stops the
-mission, so the shared simulator is never left flying alone.
-
-It takes about 4 minutes: start, alignment on NAVERA's GPS (30–60 s), take-off, your faults, stop.
-Meanwhile, watch the **🛩️ Simulator** and **🧭 Operator view** tabs. `my_runs/<name>_events.log` also
-records the exact instant of each injection (`[inject]` lines).
-
-### Step 15 — Stop and release
-
-1. In the simulator's terminal: `Ctrl+C`, and wait for the prompt.
-2. Check that the ports are free again (must print nothing): run the `ss -ltn …` command of Step 13.
-3. **Hardware** → Mission simulator → **Release**.
+You should see `enroute` rows and your faults in the `gps_mode` (or `camera`) column.
 
 Then analyse your run with the rest of the campaign (`campaign.py` also reads `my_runs/*.csv`):
 

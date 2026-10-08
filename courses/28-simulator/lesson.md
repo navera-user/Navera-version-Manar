@@ -369,14 +369,20 @@ so small differences are expected and worth explaining.
 NAVERA is a commercial product in **Release 0.x — field validation pending**: the simulator is how its
 behaviour is checked today; the field test procedure is how its accuracy will be measured.
 
-## 7. One simulator for the class
+## 7. Two simulators: the full one and Sim Lite
 
-The simulator needs fixed TCP ports — 8190 (control page), 8443 (HTTPS), 8181 (operator view),
-5760 and 5762 (ArduPilot) — and a port can be used by **one** program at a time. It also needs about
-2–3 GB of the Jetson's 8 GB. So there is one simulator for the class: you **take** it (Hardware
-button), use it, stop it, release it. Its control page has no password (*"Development tool — no
-authentication"*), so it must never run on a box installed in a vehicle. When the simulator is busy,
-the lab works entirely on the recorded campaign.
+The **full** simulator needs fixed TCP ports — 8190 (control page), 8443 (HTTPS), 8181 (operator
+view), 5760 and 5762 (ArduPilot) — and a port can be used by **one** program at a time. It also needs
+about 2–3 GB of the Jetson's 8 GB. So it runs one flight at a time; the campaign you analyse was
+recorded on it. Its control page has no password (*"Development tool — no authentication"*), so it
+must never run on a box installed in a vehicle.
+
+**Sim Lite** (the 🛩️ Simulator tab) is built for a class: it runs in **your browser**, so everyone
+flies at once. It keeps what matters for NAVERA's behaviour — your own `navera_estimator`, the GPS
+estimate with jamming and spoofing, the vision fixes with the measured or target error profiles, an
+autopilot whose only position is NAVERA's output — and simplifies the rest: simple vehicle
+kinematics instead of ArduPilot's physics, no camera images, a stand-in for ROS 2 with simulated time.
+Same rule as always: a simulation proves **behaviour**, not accuracy.
 
 ## 🐦 How birds do it
 

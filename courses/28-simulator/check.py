@@ -389,8 +389,8 @@ def _():
 
 # ---------------- Part E ----------------
 @c.test("E. your own scripted run in the simulator (my_runs/)",
-        hint="Part E: take the simulator, run `python3 sim_ctl.py campaign my_scenario.json --out-dir my_runs`, then "
-             "`python3 campaign.py`. No simulator today? Set NO_SIMULATOR = True in answers.py.")
+        hint="Part E: Simulator tab → Mission → ▶ Fly my scenario (it saves my_runs/<name>.csv by itself), "
+             "then `python3 campaign.py`.")
 def _():
     if no_simulator():
         c.skip("NO_SIMULATOR = True: graded on the recorded campaign only")
