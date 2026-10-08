@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Accounts and classes — mockup</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  html, body { height: auto; } body { background: #0b1730; overflow: auto; padding: 28px; color: #f4f7fa; font-family: Inter, sans-serif; }
+  h1.m { font-size: 22px; margin: 0 0 6px; font-family: Inter; } p.m { color: #b9c6d6; margin: 0 0 8px; max-width: 1200px; line-height: 1.6; }
+  .cap { font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: #ffc9b0; font-weight: 700; margin: 0 0 10px; }
+  .cols { display: grid; grid-template-columns: repeat(3, 400px); gap: 26px; margin-top: 22px; align-items: start; }
+  .cols2 { display: grid; grid-template-columns: 400px 826px; gap: 26px; margin-top: 30px; align-items: start; }
+  /* the glass sign-up box, as on the real first page */
+  .scene { border-radius: 22px; padding: 22px; background: linear-gradient(180deg, #0b1730, #16395a 45%, #1d4e6b 62%, #e6928a 88%, #f6c7a8); }
+  .box { background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.24); backdrop-filter: blur(18px); border-radius: 22px; padding: 22px 22px 18px; color: #fff; }
+  .box h2 { font-size: 24px; margin: 0 0 4px; color: #fff; } .box p.s { color: rgba(255,255,255,.78); margin: 0 0 12px; font-size: 13.5px; line-height: 1.5; }
+  .tabs2 { display: flex; gap: 6px; background: rgba(255,255,255,.08); border-radius: 999px; padding: 4px; margin-bottom: 12px; }
+  .tabs2 span { flex: 1; text-align: center; padding: 8px; font-size: 14px; border-radius: 999px; color: rgba(255,255,255,.75); }
+  .tabs2 span.on { background: #fff; color: #14202b; font-weight: 600; }
+  .who { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 2px 0 6px; }
+  .who div { border: 1.5px solid rgba(255,255,255,.35); border-radius: 14px; padding: 9px 11px; font-size: 12px; color: rgba(255,255,255,.8); }
+  .who div b { display: block; font-size: 14.5px; color: #fff; } .who div.on { background: #fff; color: #5d6b78; border-color: #fff; } .who div.on b { color: #14202b; }
+  .lbl { font-size: 10.5px; letter-spacing: 1.8px; text-transform: uppercase; color: rgba(255,255,255,.78); margin: 11px 0 5px; font-weight: 600; display: flex; justify-content: space-between; }
+  .lbl i { font-style: normal; letter-spacing: 0; text-transform: none; color: #ffd3c0; font-weight: 500; }
+  .in { background: rgba(255,255,255,.93); color: #14202b; border-radius: 12px; padding: 9px 12px; font-size: 14.5px; display: flex; justify-content: space-between; align-items: center; }
+  .in.ph { color: #8a97a5; } .in small { color: #5d6b78; font-size: 12px; }
+  .ok { margin-top: 6px; background: rgba(127,224,216,.18); border: 1px solid rgba(127,224,216,.55); border-radius: 12px; padding: 8px 11px; font-size: 12.5px; color: #dffaf7; }
+  .ok b { color: #fff; }
+  .go { margin-top: 16px; text-align: center; padding: 11px; border-radius: 999px; background: linear-gradient(135deg, #ff9f8a, #e8706a); color: #2a0d08; font-weight: 700; font-size: 15px; }
+  .fine { color: rgba(255,255,255,.72); font-size: 12px; margin: 9px 0 0; text-align: center; line-height: 1.5; }
+  .note { margin-top: 10px; font-size: 12px; color: rgba(255,255,255,.8); background: rgba(11,23,48,.35); border-radius: 10px; padding: 7px 10px; line-height: 1.45; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  /* first-start wizard */
+  .wiz { background: #f4f7fa; color: #14202b; border-radius: 22px; padding: 22px; }
+  .steps { display: flex; gap: 6px; margin-bottom: 14px; } .steps span { flex: 1; height: 5px; border-radius: 3px; background: #dde5ec; } .steps span.on { background: #e8706a; }
+  .wiz h2 { font-size: 22px; margin: 0 0 4px; } .wiz p.s { color: #5d6b78; font-size: 13.5px; margin: 0 0 12px; line-height: 1.5; }
+  .wiz .lbl { color: #5d6b78; } .wiz .in { background: #fff; border: 1.5px solid #dde5ec; }
+  .logo-drop { border: 1.5px dashed #c9d4de; border-radius: 12px; padding: 10px; font-size: 12.5px; color: #5d6b78; display: flex; gap: 10px; align-items: center; }
+  .logo-drop span { width: 40px; height: 40px; border-radius: 10px; background: #e8eef3; display: grid; place-items: center; font-size: 18px; }
+  /* teacher page: classes */
+  .tp { background: #f4f7fa; color: #14202b; border-radius: 22px; overflow: hidden; }
+  .tp .bar { background: #0b1730; color: #fff; padding: 12px 18px; display: flex; align-items: center; gap: 12px; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; font-weight: 600; }
+  .tp .bar .sel { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 600; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.3); border-radius: 999px; padding: 6px 14px; }
+  .tp .body { padding: 16px 18px; display: grid; grid-template-columns: 1fr 300px; gap: 14px; }
+  .card { background: #fff; border: 1px solid #dde5ec; border-radius: 16px; padding: 14px 16px; }
+  .card h3 { margin: 0 0 8px; font-size: 16px; font-family: Inter; } .card .k { font-size: 10.5px; letter-spacing: 1.4px; text-transform: uppercase; color: #5d6b78; font-weight: 700; }
+  .code { font: 700 30px ui-monospace, monospace; letter-spacing: 4px; color: #0b1730; margin: 6px 0; }
+  .qr { width: 120px; height: 120px; background: repeating-conic-gradient(#0b1730 0 25%, #fff 0 50%) 0 0 / 15px 15px; border-radius: 6px; margin: 6px auto; border: 6px solid #fff; outline: 1px solid #dde5ec; }
+  .btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; } .btns span { font-size: 12.5px; font-weight: 600; border: 1.5px solid #dde5ec; border-radius: 999px; padding: 5px 11px; }
+  .btns span.p { background: linear-gradient(135deg, #ff9f8a, #e8706a); border: none; color: #2a0d08; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; } td, th { text-align: left; padding: 7px 6px; border-bottom: 1px solid #edf1f5; } th { color: #5d6b78; font-weight: 600; font-size: 12px; }
+  .pb { display: inline-block; width: 90px; height: 6px; border-radius: 3px; background: #e8eef3; vertical-align: middle; margin-right: 6px; } .pb i { display: block; height: 100%; border-radius: 3px; background: #e8706a; }
+  .pill { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: #e2f3f5; color: #1d7f8c; } .pill.w { background: #fff4e0; color: #9a6400; }
+  .opts { font-size: 13px; line-height: 1.9; color: #3b4652; } .opts b { color: #14202b; }
+  .tg { display: inline-block; width: 30px; height: 17px; border-radius: 9px; background: #1d7f8c; vertical-align: middle; position: relative; margin-right: 6px; } .tg::after { content: ""; position: absolute; right: 2px; top: 2px; width: 13px; height: 13px; border-radius: 50%; background: #fff; }
+  .tg.off { background: #c9d4de; } .tg.off::after { right: auto; left: 2px; }
+  .notes { margin-top: 26px; background: rgba(255,255,255,.06); border-radius: 14px; padding: 16px 20px; max-width: 1250px; font-size: 14px; line-height: 1.7; color: #dbe5ef; }
+  .notes b { color: #fff; }
+</style></head><body>
+<h1 class="m">Accounts and classes for a client — mockup</h1>
+<p class="m">Three moments, each a few clicks: the client's first start of the Jetson, a student or teacher creating an account, and a teacher creating a class. Roles: <b>Admin</b> (the client's manager), <b>Teacher</b>, <b>Student</b>.</p>
+
+<div class="cols">
+  <!-- A. first start -->
+  <div><div class="cap">① First start of a new Jetson (once)</div>
+  <div class="wiz">
+    <div class="steps"><span class="on"></span><span class="on"></span><span></span></div>
+    <h2>Welcome to your NAVERA Academy</h2>
+    <p class="s">Set up your organisation. You become its <b>administrator</b>: you add teachers and see every class.</p>
+    <div class="lbl">Organisation</div><div class="in">Example School of Engineering</div>
+    <div class="lbl">Logo <i>optional — printed on certificates next to IRIS</i></div>
+    <div class="logo-drop"><span>🏛</span>Drop your logo here, or click to choose (PNG / SVG)</div>
+    <div class="lbl" style="color:#5d6b78">Your name</div><div class="in">Karim Mansour</div>
+    <div class="two"><div><div class="lbl" style="color:#5d6b78">E-mail</div><div class="in">k.mansour@school.example</div></div><div><div class="lbl" style="color:#5d6b78">Password</div><div class="in">••••••••••</div></div></div>
+    <div class="go">Create my academy →</div>
+    <p class="fine" style="color:#5d6b78">Step 3: add your teachers (or do it later from the admin page).</p>
+  </div></div>
+
+  <!-- B. create account: student -->
+  <div><div class="cap">② Create account — a student</div>
+  <div class="scene"><div class="box">
+    <div class="tabs2"><span>Sign in</span><span class="on">Create account</span></div>
+    <div class="who"><div class="on"><b>🎓 I'm a student</b>I have a class code</div><div><b>🧑‍🏫 I'm a teacher</b>I teach a class</div></div>
+    <div class="lbl">Class code <i>from your teacher · or scan the QR</i></div>
+    <div class="in">EAG-7K3Q <small>📷 scan</small></div>
+    <div class="ok">✓ <b>NAVERA — Group A 2026</b> · Example School · teacher Mme Sarra Ben Ali</div>
+    <div class="lbl">Your full name <i>as on your certificate</i></div><div class="in">Youssef Karoui</div>
+    <div class="lbl">E-mail</div><div class="in">youssef.karoui@gmail.com</div>
+    <div class="two"><div><div class="lbl">Password</div><div class="in">••••••••</div></div><div><div class="lbl">Student ID <i>optional</i></div><div class="in ph">e.g. 21A045</div></div></div>
+    <div class="go">Join my class →</div>
+    <p class="fine">Opened from the class QR code, the code is already filled in.</p>
+  </div></div></div>
+
+  <!-- C. create account: teacher -->
+  <div><div class="cap">② Create account — a teacher</div>
+  <div class="scene"><div class="box">
+    <div class="tabs2"><span>Sign in</span><span class="on">Create account</span></div>
+    <div class="who"><div><b>🎓 I'm a student</b>I have a class code</div><div class="on"><b>🧑‍🏫 I'm a teacher</b>I teach a class</div></div>
+    <div class="lbl">Your full name</div><div class="in">Sarra Ben Ali</div>
+    <div class="lbl">E-mail</div><div class="in">s.benali@school.example</div>
+    <div class="lbl">Password</div><div class="in">••••••••••</div>
+    <div class="lbl">Teacher invitation code <i>from your administrator</i></div><div class="in">T-4M9P-2XQ</div>
+    <div class="go">Create my teacher account →</div>
+    <div class="note">No code? Your account is created as <b>waiting for approval</b> — the administrator gets a notice and approves it in one click.</div>
+  </div></div></div>
+</div>
+
+<div class="cols2">
+  <div><div class="cap">③ A teacher creates a class (one button)</div>
+  <div class="wiz">
+    <h2>New class</h2>
+    <div class="lbl" style="color:#5d6b78">Name</div><div class="in">NAVERA — Group A 2026</div>
+    <div class="two"><div><div class="lbl" style="color:#5d6b78">Starts</div><div class="in">13 Oct 2026</div></div><div><div class="lbl" style="color:#5d6b78">Ends <i>optional</i></div><div class="in">31 Jan 2027</div></div></div>
+    <div class="lbl" style="color:#5d6b78">Missions</div>
+    <div class="in">All 30 — open one leg at a time <small>▾</small></div>
+    <div class="lbl" style="color:#5d6b78">Seats</div><div class="in">30 students</div>
+    <div class="go">Create the class →</div>
+  </div></div>
+
+  <div><div class="cap">The teacher page, with classes</div>
+  <div class="tp">
+    <div class="bar">NAVERA Academy · Teacher <span class="sel">📚 NAVERA — Group A 2026 ▾</span></div>
+    <div class="body">
+      <div class="card"><div class="k">Students · 18 of 30 seats</div>
+        <table><tr><th>Student</th><th>Progress</th><th>Last seen</th><th></th></tr>
+          <tr><td><b>Youssef Karoui</b> <small style="color:#5d6b78">21A045</small></td><td><span class="pb"><i style="width:40%"></i></span>12/30</td><td>today</td><td><span class="pill">🎓 —</span></td></tr>
+          <tr><td><b>Amira Trabelsi</b></td><td><span class="pb"><i style="width:100%"></i></span>30/30</td><td>yesterday</td><td><span class="pill">🎓 issued</span></td></tr>
+          <tr><td><b>Mehdi Gharbi</b></td><td><span class="pb"><i style="width:17%"></i></span>5/30</td><td>3 days</td><td><span class="pill w">behind</span></td></tr>
+          <tr><td colspan="4" style="color:#5d6b78">… 15 more · <b style="color:#1d7f8c">Export to Excel</b></td></tr></table></div>
+      <div>
+        <div class="card" style="text-align:center"><div class="k">Join code</div><div class="code">EAG-7K3Q</div><div class="qr"></div>
+          <div class="btns" style="justify-content:center"><span class="p">🖨 Print the poster</span><span>🔗 Copy link</span><span>↻ New code</span></div></div>
+        <div class="card" style="margin-top:12px"><div class="k">Class options</div>
+          <div class="opts"><span class="tg"></span>Students can join with the code<br><span class="tg"></span>Open legs I to III <b>(next: IV on 3 Nov)</b><br><span class="tg off"></span>Show a class ranking<br><span class="tg"></span>Certificate names the class and school</div></div>
+      </div>
+    </div>
+  </div></div>
+</div>
+
+<div class="notes">
+<b>What this adds</b><br>
+• <b>Roles:</b> Admin (the client: organisation, logo, teachers, the Jetson's settings) → Teachers (their own classes only) → Students (their own work only). IRIS keeps a support account.<br>
+• <b>Create account</b> asks one question first — student or teacher. Students join with a <b>class code / QR</b> (their class is shown before they confirm), give the name printed on the certificate, and an optional student ID. Teachers need an <b>invitation code</b> from the admin, or wait for approval — so nobody makes themself a teacher.<br>
+• <b>Classes:</b> one button to create; a code + QR poster to print; options per class (who can join, which legs are open and when, seats, ranking, certificate wording). The teacher page shows one class at a time, with export to Excel.<br>
+• <b>Certificates</b> can print the class, the school and its logo next to IRIS.
+</div>
+</body></html>
