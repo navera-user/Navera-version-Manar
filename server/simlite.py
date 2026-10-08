@@ -186,8 +186,8 @@ def _compose(z, x, y, depth):
     """A tile built from its four children (for zooms the map file does not hold)."""
     from PIL import Image
     kids = [(dx, dy, tile(z + 1, 2 * x + dx, 2 * y + dy, depth - 1)) for dx in (0, 1) for dy in (0, 1)]
-    if not any(k[2] for k in kids):
-        return None
+    if not all(k[2] for k in kids):
+        return None          # an incomplete square would paint dark holes over the satellite imagery underneath
     canvas = Image.new("RGB", (512, 512), (18, 40, 66))
     for dx, dy, data in kids:
         if data:
