@@ -9,3 +9,4 @@ __pycache__/
 *.pyc
 setup/vendor/
 setup/sticker.html
+tools/bin/
