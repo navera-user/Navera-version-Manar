@@ -4,7 +4,7 @@
 metres east/north, follow a drone through 80 frames, measure the drift and explain it with a
 random-walk model, bound it with map fixes (a Kalman update), and run NAVERA's own `FrameOdometry`
 and `VisionNavigator` on the same flight.
-**Time:** about 4 hours.
+**Time:** about 4 hours for this lab (about 4 h 45 for the whole mission with the lesson).
 
 Your files:
 

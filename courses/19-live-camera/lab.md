@@ -4,7 +4,7 @@
 flash bench, and the attitude at the exposure with slerp. Check that your attitude function
 matches NAVERA's own code, measure a live GStreamer source, run NAVERA's `live_camera.py` on
 recorded Insta360 frames, and write a short technical report.
-**Time:** about 3 h.
+**Time:** about 3 h for this lab (about 3 h 45 for the whole mission with the lesson).
 
 **What is graded:** `camera_tools.py` (8 functions), `results.json` (made by `analyse.py`), the
 files in `out/`, and `report.md`.

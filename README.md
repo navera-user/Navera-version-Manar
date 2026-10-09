@@ -111,8 +111,9 @@ AUTHORING.md          how to write or change a lesson
 - Student sandboxes have their own network (loopback only): no internet, nothing on the Jetson. Staff keep
   the Jetson's network (the full simulator must be reachable). A terminal never sees the graders (check.py);
   a check sees only its own mission's grader.
-- The full simulator listens on the Jetson's network (ports 8190/8181) while it runs: anyone on the same
-  Wi-Fi can open it directly, without the academy's sign-in. Run it only during the lesson.
+- The full simulator runs in the teacher's terminal with server/native/loopback_bind.c preloaded: all its
+  TCP ports (8190, 8443, 8181, ArduPilot 5760-5763) listen on 127.0.0.1 only, so nobody on the Wi-Fi can
+  open or command it directly; the academy proxies it for the teacher (/web/sim). NAVERA is not changed.
 - The simulator and camera serve one student at a time; plan those lessons (19, 28) in turns.
 - A student could join another student's ROS domain on purpose (same machine); there is no
   protection against that beyond the default separate domains.

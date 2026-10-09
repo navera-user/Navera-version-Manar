@@ -5,7 +5,7 @@ recorded flights; compare NAVERA with the "repeat the last position" baseline; i
 bootstrap (iid and block), the paired difference and the Wilson interval; test your confidence
 intervals with a coverage experiment; check a source's stated σ with NAVERA's own
 `evaluate_session.py`; and write an honest report.
-**Time:** about 4 h.
+**Time:** about 4 h for this lab (about 5 h for the whole mission with the lesson).
 
 Your files:
 [measure.py](file:./measure.py) (TODO 1–6),

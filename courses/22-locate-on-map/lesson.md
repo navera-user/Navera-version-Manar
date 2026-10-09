@@ -12,6 +12,8 @@
 > - In the lab you build the full chain, measure the errors of a wrong height and a tilted camera,
 >   and test NAVERA's `LocalMatcher` on the same 13 photos.
 
+⏱ Core reading ~16 min · optional deep-dives marked *Going further*.
+
 A survey drone flies 250 m above a coastal road between two port cities. Halfway, its GPS
 receiver starts to report nonsense: somebody is jamming the signal. The drone still has a camera
 that looks down, an IMU that measures its attitude, a barometer, and — on its NAVERA box — a
@@ -81,25 +83,36 @@ images show the ground at the same scale (scale invariance is approximate). Seco
 important — once the scale is fixed *before* matching, the scale fitted *after* matching must be
 **1**. That gives us a free test of the answer (section 5).
 
+<details class="further"><summary>Going further (optional) — Which zoom level?</summary>
+
 **Which zoom?** NAVERA matches against **zoom 17**: about 1 m per pixel. Zoom 18 is twice as sharp
 but has four times more pixels to search and to keep in memory; zoom 16 loses the small details
 (cars, small buildings) that make features distinctive.
+
+</details>
 
 ## 3. Step 2 — The prior and the search radius
 
 **Why not search the whole map?** Because many places look alike. If the searched area is `A` and
 the density of "look-alike" features is roughly constant, the number of wrong candidates grows with
-`A`, so the chance that a wrong place fits by accident grows too. NAVERA measured this with its
-first day-vision method (DINOv2 tile retrieval, 33 labelled aerial frames, from
-`docs/VALIDATION_STATUS.md`):
+`A`, so the chance that a wrong place fits by accident grows too.
+
+<details class="further"><summary>Going further (optional) — How much worse is a whole-map search? (measured)</summary>
+
+NAVERA measured this with its first day-vision method (DINOv2 tile retrieval, 33 labelled
+aerial frames, from `docs/VALIDATION_STATUS.md`):
 
 | Where it searched | Median error |
 |---|---|
 | the whole map, no prior | **1 696 m** |
 | within 600 m of the previous true position | 442 m |
 
+</details>
+
 Whole-map search is therefore **disabled by default** (`allow_global_search: false`): day vision
 waits for a prior.
+
+<details class="further"><summary>Going further (optional) — How NAVERA sizes the search circle</summary>
 
 **The search radius follows the uncertainty.** If the prior has a 1-sigma error `σ`, the true
 position lies within `3σ` of it with a probability above 98 % (for a 2-D Gaussian, the probability
@@ -112,6 +125,8 @@ r = clamp(k · σ_pred, 80 m, 1500 m)        with k = 3   (vision_nav.py, search
 and `σ_pred` grows with the time since the last fix (velocity error × t, plus a 5° heading error ×
 distance, plus unseen accelerations — lesson 23 explains this "dead-reckoning"). A vehicle that has
 been lost for a while is searched for in a wider circle.
+
+</details>
 
 **The margin.** The circle bounds the photo **centre**. The photo itself extends further: we add a
 margin of half the photo's diagonal on the ground, so the whole photo fits in the map patch even
@@ -151,6 +166,8 @@ s = hypot(A[0,0], A[1,0])        θ = atan2(A[1,0], A[0,0])
 Because the image y axis points **down**, a positive `θ` turns clockwise on the screen — like a
 compass heading. A photo whose top pointed 30° east of north gives `θ ≈ +30°`.
 
+<details class="further"><summary>Going further (optional) — RANSAC cost: similarity against homography</summary>
+
 Fewer parameters help RANSAC in two ways. A similarity needs a **minimal sample** of 2 matches,
 a homography 4. With the iteration formula of lesson 21, `N = ⌈log(1 − p) / log(1 − w^m)⌉`
 (rounded **up**, as in lesson 21) for a confidence `p = 0.999`:
@@ -163,6 +180,8 @@ a homography 4. With the iteration formula of lesson 21, `N = ⌈log(1 − p) / 
 Cross-date photos often have `w ≈ 0.1`: the similarity stays cheap. And a model with fewer
 degrees of freedom has fewer ways to fit random matches at a wrong place. Use the homography only
 when the frame could not be straightened (unknown attitude).
+
+</details>
 
 ## 5. Step 4 — The gates
 
@@ -177,6 +196,8 @@ the patch. The gates decide whether to believe it:
    has ≥ 100 inliers; a weak fix whose inliers cover too little of the frame is refused; and a fix
    farther than the vehicle could have flown since the last one is refused (the **motion gate**).
 
+<details class="further"><summary>Going further (optional) — What the scale gate was measured to do</summary>
+
 The value of gate 2 was measured on the 33 aerial test frames (`docs/VALIDATION_STATUS.md`, search
 within 600 m of the true position):
 
@@ -184,6 +205,8 @@ within 600 m of the true position):
 |---|---|---|---|
 | prototype, no scale check, ≥ 12 inliers | 10/33 | 1 097 m | 1 |
 | + scale check | 21/33 | 5 m | 0 |
+
+</details>
 
 A refusal is reported as `"no fix"` with a reason such as `"3 inliers (min 8)"`. That is not a
 failure of the code: it is the code being honest.
@@ -250,11 +273,15 @@ correct match. A wrong height costs **availability**. It also means vision can *
 height: `h_t = h_a · s_fit`. NAVERA uses this: `locate_any_height()` tries a ladder of heights
 when none is known, and the height filter in `vision_nav.py` is updated with `h · s_fit`.
 
+<details class="further"><summary>Going further (optional) — A classic mistake over high ground</summary>
+
 > [!WARNING]
 > Over high ground this is the classic mistake. A drone at 4 100 m above sea level over the
 > Altiplano near La Paz, Bolivia (about 3 800 m high) is only about 300 m above the ground. If the
 > code used the altitude above the sea, it would expect a footprint 13.7 times too large and every
 > match would fail the scale gate. NAVERA needs the **height above the ground**.
+
+</details>
 
 **c) Latency → along-track offset.** A photo processed `Δt` seconds after its exposure describes
 where the vehicle *was*: `d = v · Δt`. NAVERA carries each vision position to the present along the
@@ -304,10 +331,16 @@ v[m−1]`, compute the position `p = (m − 1) · q / 100`, and interpolate betw
 `v[ceil(p)]`. Example: errors `[0.2, 0.4, 1.1, 5.0, 7.5, 30]`, q = 90: `p = 4.5`, so
 `p90 = 7.5 + 0.5 × (30 − 7.5) = 18.75 m`.
 
+<details class="further"><summary>Going further (optional) — Small samples: the rule of three</summary>
+
 **Small samples.** "0 wrong out of 10" does not mean "never wrong". If the true rate of wrong fixes
 were `ρ`, the probability of seeing 0 in `n` trials is `(1 − ρ)^n`. Setting it to 5 % gives the
 **rule of three**: the 95 % upper bound is `ρ ≈ 3 / n`. With 10 photos, you can only claim
 `ρ < 30 %`; with 300 photos, `ρ < 1 %`.
+
+</details>
+
+<details class="further"><summary>Going further (optional) — Test data: why photos cut from the map are too easy</summary>
 
 **Test data.** Photos cut from the map itself match far too easily. NAVERA's validation document
 quotes its bench result on **33 real aerial frames from another source and date** — 32/33 within
@@ -317,7 +350,9 @@ cautious 30 m (`local_sigma_m`) until they are measured with the real camera. In
 error is about 1 m, but the simulated camera is cut from the map's own imagery: optimistic. You will
 see exactly this effect in the lab.
 
-## 9. Going further (optional): learned matchers, DISK + LightGlue
+</details>
+
+<details class="further"><summary>Going further (optional) — Learned matchers, DISK + LightGlue</summary>
 
 SIFT is a hand-designed detector (lesson 20). **Learned** features replace it with neural networks
 trained on many real image pairs: **DISK** detects keypoints and computes descriptors, and
@@ -333,6 +368,8 @@ above, so do not compare the two tables line by line.) Two practical points: DIS
 **not rotation invariant**, so the frame is first turned north-up with the heading; and when the
 learned match fails, SIFT is tried as a fallback. The lab uses SIFT only: the learned models need a
 GPU and their weights.
+
+</details>
 
 ## 🐦 How birds do it
 
@@ -377,11 +414,16 @@ Differences with your lab pipeline:
   in the background ahead of the vehicle (`prefetch()`). Map points are stored directly in global
   pixels, so there is no `(x0, y0)` to add. The cost: only the 300 strongest features per tile —
   you will see the consequence in the lab.
+
+<details class="further"><summary>Going further (optional) — Other differences: search window, height ladder, stated accuracy</summary>
+
 - **Search window** (`vision_nav.py`, `search()`): `r = clamp(3 · σ_pred, 80 m, 1500 m)`.
 - **Height** (`vision_nav.py`, `heights_to_try()`): the scale tolerance widens with the height
   uncertainty, `tol = min(0.35, max(0.15, 2 σ_h / h))`, and after 3 failures in a row the heights
   0.8 h and 1.25 h are tried too.
 - **Stated accuracy** (`fix_sigma_m()`): from the inlier count, as in section 7.
+
+</details>
 
 ## Words to remember
 

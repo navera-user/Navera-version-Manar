@@ -3,7 +3,7 @@
 **Goal:** run your first commands on the NAVERA computer, find real parameters in your NAVERA copy,
 run a GNSS position solver and break it on purpose (too few satellites, spoofing), apply the
 arbiter's jump gate, and write a short threat analysis.
-**Time:** about 2 hours.
+**Time:** about 2 hours for this lab (about 3 h for the whole mission with the lesson).
 
 Your files (open in the **📝 Code** tab): [hello_navera.py](file:./hello_navera.py),
 [gnss_fix.py](file:./gnss_fix.py), [answers.py](file:./answers.py) and

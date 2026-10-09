@@ -3,7 +3,7 @@
 **Goal:** clean a messy flight-test log of four flights, compute per-flight statistics with pandas,
 distances and speeds with vectorised NumPy, find every GPS outage with run-length logic, compare the
 noise of GPS and day vision, draw two figures, and write a short test report.
-**Time:** about 4–5 hours (pandas is new for most students: take your time in Step 3).
+**Time:** about 4–5 hours for this lab (about 6 h for the whole mission with the lesson; pandas is new for most students: take your time in Step 3).
 
 Your files (already open): [flight_analysis.py](file:./flight_analysis.py) (TODO 1–9),
 [campaign.csv](file:./campaign.csv) (the data: 1556 rows, synthetic, four flights near Sousse, Tunisia) and

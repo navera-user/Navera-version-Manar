@@ -4,7 +4,7 @@
 normalisation, DLT with the SVD, the RANSAC sample formula, adaptive RANSAC, decomposition of H),
 use it to lay synthetic drone views onto the satellite map, compare it with `cv2.findHomography`,
 apply NAVERA's trust gates, and write a short analysis of your measurements.
-**Time:** 4–5 h (the maths of Steps 3–6 takes most students longer than they expect).
+**Time:** 4–5 h for this lab (about 5 h 15 for the whole mission with the lesson; the maths of Steps 3–6 takes most students longer than they expect).
 
 Your files:
 
@@ -99,7 +99,7 @@ python3 -c "import numpy as np, geometry as g; P = [g.synthetic_pairs(n=8, outli
 Expected: about **1.9 px** normalised, about **39 px** raw (raw is about 20 × worse).
 
 > [!NOTE]
-> The lesson's table says 1.35 px / 25.3 px. Both are right: they are **two different experiments**.
+> The lesson's table (section 4, block *Going further — What experiments.py measures*) says 1.35 px / 25.3 px. Both are right: they are **two different experiments**.
 > This quick test uses 50 different random sets of 8 pairs and measures the error at a grid of
 > **5 points**. The lesson's numbers come from `experiments.py` (Step 11): 200 draws of 8 pairs from
 > one fixed set of 300 pairs, error averaged over a grid of **63 points**; you will find them in

@@ -5,7 +5,7 @@
 runs; measure its timing and message size; then compute, with NAVERA's own spherical code, how wrong
 the flat-Earth conversion becomes with distance ([analysis.py](file:./analysis.py),
 [report.md](file:./report.md)).
-**Time:** about 2 h 30. You need two terminals (**＋ new** in the Terminal tab); `Ctrl+C` stops a node.
+**Time:** about 2 h 30 for this lab (about 3 h 30 for the whole mission with the lesson). You need two terminals (**＋ new** in the Terminal tab); `Ctrl+C` stops a node.
 
 ## Step 1 — Read and run the starter
 

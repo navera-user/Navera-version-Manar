@@ -3,7 +3,7 @@
 **Goal:** process the files of two training flights entirely from the terminal: tidy them, fix a
 permission, record the environment, stop a running process cleanly, write a reusable bash script
 that summarises any NAVERA log, explore the NAVERA code, and write a short flight report.
-**Time:** about 3 hours.
+**Time:** about 3 hours for this lab (about 4 h 30 for the whole mission with the lesson).
 
 **The data.** The two logs (`sousse_2026-09-21.log`, `range_2026-09-22.log`) are **synthetic**: they
 were generated for this lab in the exact format of NAVERA's ROS 2 nodes, and the GPS losses in them

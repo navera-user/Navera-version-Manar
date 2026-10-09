@@ -4,7 +4,7 @@
 state machine; prove it equivalent to the real `estimator_node` on a 31-second scenario (decisions
 *and* switch instants); then measure the two design trade-offs (hold-off, freshness window) and
 test selection against fusion. You finish with a short written analysis.
-**Time:** about 4 hours.
+**Time:** about 4 hours for this lab (about 4 h 45 for the whole mission with the lesson).
 
 Your files:
 

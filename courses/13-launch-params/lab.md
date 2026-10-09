@@ -6,7 +6,7 @@ callback in [fake_gps_node.py](file:./fake_gps_node.py)), write a parameters fil
 car, a boat and NAVERA ([my_navera.launch.py](file:./my_navera.launch.py)), fall into NAVERA's order
 trap on purpose, and change one of NAVERA's own settings. Record measurements in
 [answers.py](file:./answers.py) and the analysis in [report.md](file:./report.md).
-**Time:** about 3 h. Two terminals are enough; `Ctrl+C` stops a node or a launch.
+**Time:** about 3 h for this lab (about 3 h 45 for the whole mission with the lesson). Two terminals are enough; `Ctrl+C` stops a node or a launch.
 
 ## Step 1 — The starting point
 

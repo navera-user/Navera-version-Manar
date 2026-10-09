@@ -4,7 +4,7 @@
 with inheritance and a `Track` class computed with NumPy; then use it in `mission.py` to decide
 whether two vehicles can fly an inspection on a rocky coast and to analyse a recorded survey
 track. You finish with a short written report.
-**Time:** about 3–4 hours (more if Python classes are new to you — that is normal).
+**Time:** about 3–4 hours for this lab (about 4 h 30 for the whole mission with the lesson; more if Python classes are new to you — that is normal).
 
 Your files (already open): [navlib.py](file:./navlib.py) (TODO 1–9),
 [mission.py](file:./mission.py) (TODO A–C), [report.md](file:./report.md), and the data

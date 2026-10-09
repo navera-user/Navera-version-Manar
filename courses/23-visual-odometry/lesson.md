@@ -12,6 +12,8 @@
 > - In the lab you follow a drone through 80 frames, measure the drift, and run NAVERA's
 >   `FrameOdometry` and `VisionNavigator` on the same flight.
 
+⏱ Core reading ~17 min · optional deep-dives marked *Going further*.
+
 A survey drone flies along a city ring road at 120 m, 20 m/s. Its GPS is jammed. Until now
 NAVERA's day vision found the drone on the satellite map every second or two (lesson 22). Then the
 drone crosses a new housing area on the edge of the city: the map imagery is three years old, the ground has
@@ -60,11 +62,17 @@ towards the top of the image, the ground slides down.
 
 ### 2.1 Brute force is too slow
 
+<details class="further"><summary>Going further (optional) — How slow is brute force?</summary>
+
 The direct method: for every candidate shift (dx, dy), overlay the two frames and compute a
 similarity (for example the correlation). With N = 320 × 240 = 76 800 pixels and all N possible
 shifts that is N² ≈ 5.9 × 10⁹ multiplications per frame pair — far too slow for a Jetson at 1 Hz.
 
+</details>
+
 ### 2.2 The Fourier shift theorem
+
+<details class="further"><summary>Going further (optional) — Primer: complex numbers, waves and phase</summary>
 
 > [!NOTE]
 > **Primer: complex numbers, waves and phase (read this first if the DFT is new to you).**
@@ -82,6 +90,8 @@ shifts that is N² ≈ 5.9 × 10⁹ multiplications per frame pair — far too s
 >
 > Example: the wave cos(2π · 2x / 8) has its peaks at x = 0 and 4. Shifted right by 1 sample, its
 > peaks are at x = 1 and 5: the same wave, phase changed by 2π · 2 · 1 / 8 = 90°.
+
+</details>
 
 The **discrete Fourier transform** (DFT) writes an image as a sum of 2-D waves. For an image a(x, y)
 of size W × H:
@@ -120,6 +130,8 @@ about **1600 times** less than brute force. That is why phase correlation tests 
 
 ### 2.3 A tiny worked example (1-D)
 
+<details class="further"><summary>Going further (optional) — A tiny worked example in Python</summary>
+
 Take a = [0, 0, 1, 3, 1, 0, 0, 0] (8 samples) and b = a shifted right by 2:
 b = [0, 0, 0, 0, 1, 3, 1, 0]. Then R(u) = exp(−i 2π u · 2 / 8) = exp(−i u π/2), i.e. the phases
 0°, −90°, −180°, −270°, … The inverse DFT of this ramp is [0, 0, **1**, 0, 0, 0, 0, 0]: a spike at
@@ -131,6 +143,8 @@ a = np.array([0, 0, 1, 3, 1, 0, 0, 0], float); b = np.roll(a, 2)
 R = np.fft.fft(b) * np.conj(np.fft.fft(a)); R /= np.abs(R)
 print(np.round(np.real(np.fft.ifft(R)), 3))      # [0. 0. 1. 0. 0. 0. 0. 0.]
 ```
+
+</details>
 
 ### 2.4 Three practical details
 
@@ -168,10 +182,14 @@ of pure noise give a low, flat correlation. Typical values with the numpy method
 > only a translation remains. (Rotation and scale can also be measured with phase correlation in
 > **log-polar** coordinates — the Fourier–Mellin method — but NAVERA does not need it.)
 
+<details class="further"><summary>Going further (optional) — Why not keypoints for odometry?</summary>
+
 > [!NOTE]
 > The features of lessons 20–21 (keypoints + RANSAC + `cv2.estimateAffinePartial2D`) can also measure
 > the motion between frames, including rotation and scale. They are slower. NAVERA uses phase
 > correlation for odometry because it is fast (a few ms) and the IMU already gives the rotation.
+
+</details>
 
 ## 3. From pixels to metres east and north
 
@@ -246,10 +264,14 @@ you will measure about 3.4 m per 100 m. Because these errors are **systematic**,
 in **metres of error per 100 m flown** (or % of distance). A few % is good — fine for 500 m, useless
 for 50 km (a 3 % drift gives 1.5 km).
 
+<details class="further"><summary>Going further (optional) — Terrain that makes visual odometry harder</summary>
+
 Over mountains such as the Alps or the Andes there is one more problem: the ground is not flat. A ridge 300 m below the
 drone and a valley 600 m below it have different m_per_px in the **same** frame, so one scale is wrong
 for part of the image. Over the Sahara's sand seas the dunes repeat and look alike; over the open sea
 the water moves. In all three cases the VO error grows faster, or the response drops.
+
+</details>
 
 ## 5. Bounding the drift: fusion with map fixes
 
@@ -342,7 +364,7 @@ image; and the last two lines are your rotation by θ. The optional `predicted_e
 previous frame by the expected motion first, so that things that do not move in the image (the
 vehicle's own legs, lens dirt) end up far from zero and are rejected.
 
-### `day_pkg/day_pkg/nodes/day_subscriber.py` — carrying the anchor
+<details class="further"><summary>Going further (optional) — `day_subscriber.py` — carrying the anchor</summary>
 
 When a frame gives no map match, `_dead_reckon()` moves the last position (the **anchor**) by the VO
 step and grows the stated σ exactly like your `fuse_with_fixes()`:
@@ -358,6 +380,8 @@ if sigma <= self.dr_max_sigma_m:
 The positions are published as **PROPAGATED**, never as measured. Dead-reckoning stops after
 `max_dead_reckon_s` (**120 s**) or when σ exceeds `dead_reckon_max_sigma_m` (**500 m**). After an
 accepted map match `_dr_sigma` is reset to the match's own σ — the update with K ≈ 1.
+
+</details>
 
 ### `day_pkg/day_pkg/vision_nav.py` — the odometry gate and the growing search
 
@@ -382,7 +406,7 @@ says **"unavailable"** when the fix is older than `max_dr_s` (120 s) or σ excee
 (300 m): no position is better than a wrong one. In the lab you will drive this class with your own
 VO and watch it give up.
 
-### What has been measured
+<details class="further"><summary>Going further (optional) — What has been measured (simulator only)</summary>
 
 From `docs/VALIDATION_STATUS.md`, dead-reckoning along the measured track when no frame matches
 (**simulator only**, GPS jammed): land route, error **median 10 m, max 33 m**, no autopilot failsafe;
@@ -390,6 +414,8 @@ across the bay, carried **90 s over the sea stating ±300 m, true error at most 
 are for carrying the position along the measured velocity; the frame-to-frame odometry was added
 after them and has no separate figure in the document yet. Nothing
 here has been measured on a real flight — NAVERA is Release 0.x, field validation pending.
+
+</details>
 
 ## Glossary
 

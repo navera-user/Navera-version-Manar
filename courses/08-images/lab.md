@@ -4,7 +4,7 @@
 histogram, normalisation and equalisation, a true 2-D convolution, Gaussian and Sobel kernels, the
 rotation–scale matrix and a bilinear affine warp — verify each one against OpenCV, then use them to
 bring a drone photo to the map's orientation and scale, and measure how sensitive the comparison is.
-**Time:** 4–6 hours (TODO 10, the warp, is the longest step: plan an hour for it).
+**Time:** 4–6 hours for this lab (about 7 h for the whole mission with the lesson; TODO 10, the warp, is the longest step: plan an hour for it).
 
 | File | Role |
 |---|---|

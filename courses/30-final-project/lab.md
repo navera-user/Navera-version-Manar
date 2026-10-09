@@ -3,8 +3,9 @@
 **Goal:** improve NAVERA with **one** change: a written proposal, a test that fails first, a
 before/after measurement with bootstrap confidence intervals, a decision, a commit on a branch, a
 patch and a report.
-**Time:** about 4 h for parts A and B (statistics tools + the guided example), then your own project
-(part C): plan 3–4 more hours (6–8 h in total) if you choose another idea.
+**Time:** about 4 h for parts A and B of this lab (statistics tools + the guided example), then your
+own project (part C): plan 3–4 more hours if you choose another idea — about 8 h for the whole mission with the lesson,
+in 2–3 sessions.
 
 Your files: [stats_tools.py](file:./stats_tools.py) (percentile and bootstrap — for every project),
 [measure_project.py](file:./measure_project.py) (the example's measurement),

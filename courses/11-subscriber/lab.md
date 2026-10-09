@@ -5,7 +5,7 @@
 [executor_demo.py](file:./executor_demo.py) (single- versus multi-threaded executor) and
 [status_listener.py](file:./status_listener.py) (NAVERA's real arbiter, including how fast it detects
 a silent GNSS). You write the analysis in [report.md](file:./report.md).
-**Time:** about 3 h. You need up to **five terminals** (**＋ new**); `Ctrl+C` stops a node.
+**Time:** about 3 h for this lab (about 4 h for the whole mission with the lesson). You need up to **five terminals** (**＋ new**); `Ctrl+C` stops a node.
 
 Your folder also contains [gps_track_player.py](file:./gps_track_player.py), a ready-made GNSS source
 that drives a loop near the Ribat of Sousse (NAVERA's test area) at **6 m/s** and publishes on `/fake_gps/fix` at

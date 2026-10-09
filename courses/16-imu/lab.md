@@ -5,7 +5,7 @@ estimate the attitude of a drone from raw gyroscope, accelerometer and magnetome
 integrate the gyroscope, compute the tilt from gravity, fuse both with a complementary filter, read
 a tilt-compensated compass and correct it to true north with the World Magnetic Model. You compare
 your code with NAVERA's and write a short report.
-**Time:** about 3 hours.
+**Time:** about 3 hours for this lab (about 4 h for the whole mission with the lesson).
 
 **Files:** [quaternions.py](file:./quaternions.py) (TODOs 1–7),
 [imu_filters.py](file:./imu_filters.py) (TODOs 8–12), [report.md](file:./report.md).

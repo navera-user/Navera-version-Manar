@@ -3,7 +3,7 @@
 **Goal:** implement the pinhole camera model (K, projection, back-projection onto the ground,
 footprint, GSD, map zoom, error propagation), verify it against NAVERA's own code, use it on three
 synthetic drone photos, and write a short analysis.
-**Time:** about 3 hours.
+**Time:** about 3 hours for this lab (about 3 h 45 for the whole mission with the lesson).
 
 | File | What you do with it |
 |---|---|

@@ -5,8 +5,9 @@ against astropy and NAVERA's `cn_pkg`, measure what clock and attitude errors co
 with a Monte Carlo on NAVERA's own solver; then re-implement the geometry of NAVERA's night
 localizer (scale, coverage, minimum height, motion gate) and test whether the night replay frames
 can be trusted.
-**Time:** about 5 h in **two sessions**: Part A (the sky, ~2 h 30) and Part B (night vision,
-~2 h), then the report (~30 min). The two parts are independent: you can do Part B first.
+**Time:** about 5 h for this lab, in **two sessions**: Part A (the sky, ~2 h 30) and Part B (night
+vision, ~2 h), then the report (~30 min); about 7 h 30 for the whole mission with the lesson. The two parts are independent: you can
+do Part B first.
 
 | File | What you do |
 |---|---|

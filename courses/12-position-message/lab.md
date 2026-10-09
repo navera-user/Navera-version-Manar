@@ -4,7 +4,7 @@
 and [probability.py](file:./probability.py), publish a complete `PositionEstimate` to NAVERA's real
 arbiter, inject twelve faults and record each verdict in [verdicts.py](file:./verdicts.py), then
 argue a design question in [report.md](file:./report.md).
-**Time:** about 3 h.
+**Time:** about 3 h for this lab (about 4 h for the whole mission with the lesson).
 
 Your source publishes on `/navera/estimate/day`, the arbiter's **day-vision mailbox**: the arbiter has
 four mailboxes (gps, day, night, cn) and no day vision runs in your sandbox, so we borrow that one.

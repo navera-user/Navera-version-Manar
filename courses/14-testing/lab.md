@@ -6,7 +6,7 @@ tests ([test_geo_tools.py](file:./test_geo_tools.py)) and property tests
 NAVERA's real `geo.py` ([test_navera_geo.py](file:./test_navera_geo.py)); and write a launch test of
 NAVERA's arbiter ([test_estimator_launch.py](file:./test_estimator_launch.py)). Analysis in
 [report.md](file:./report.md).
-**Time:** about 3 h. One terminal is enough.
+**Time:** about 3 h for this lab (about 3 h 45 for the whole mission with the lesson). One terminal is enough.
 
 ## Part A — NAVERA's tests
 

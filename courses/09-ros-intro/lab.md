@@ -3,7 +3,7 @@
 **Goal:** start ROS 2 nodes, observe discovery, ports, message sizes and QoS with your own
 measurements, use a service and an action, then question NAVERA's real arbiter. You record every
 result in [answers.py](file:./answers.py) and write a short analysis in [report.md](file:./report.md).
-**Time:** about 2 h 30.
+**Time:** about 2 h 30 for this lab (about 3 h 30 for the whole mission with the lesson).
 
 You need **three terminals** at the same time. In the **⌨️ Terminal** tab, click **＋ new** to open
 another one, and click *Terminal 1*, *Terminal 2*… to switch. Every terminal starts in

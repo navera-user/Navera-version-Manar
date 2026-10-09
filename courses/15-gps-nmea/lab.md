@@ -4,7 +4,7 @@
 PDOP/HDOP/VDOP from the satellite geometry, reproduce the decisions of NAVERA's `gps_node`, estimate
 the range error (UERE) of a drive whose truth is known, replay the log into NAVERA's real driver,
 and write a short engineering report.
-**Time:** about 3 hours.
+**Time:** about 3 hours for this lab (about 4 h for the whole mission with the lesson).
 
 ## The data
 

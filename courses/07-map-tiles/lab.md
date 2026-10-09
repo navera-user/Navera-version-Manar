@@ -3,7 +3,7 @@
 **Goal:** implement the Web Mercator tile mathematics (projection, tile numbers, inverse, scale,
 zoom choice, mosaic pixels), read real tiles out of NAVERA's 10 GB MBTiles file with SQL, verify
 everything against NAVERA's own code, then compute scales for cities around the world and write a short report.
-**Time:** about 3 hours.
+**Time:** about 3 hours for this lab (about 4 h for the whole mission with the lesson).
 
 | File | Role |
 |---|---|

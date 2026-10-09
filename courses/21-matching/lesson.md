@@ -13,6 +13,8 @@
 >   NAVERA's trust gates.
 > - NAVERA's `LocalMatcher.locate()` uses the same ratio test (0.8) and RANSAC.
 
+⏱ Core reading ~16 min · optional deep-dives marked *Going further*.
+
 A survey drone flies along a coast at 300 m. Ships and aircraft in the Baltic Sea and the eastern
 Mediterranean regularly report **GNSS interference**, and today the drone's GPS receiver
 shows nonsense. The camera still works. NAVERA has the satellite map on board, and lesson 20 gave
@@ -52,10 +54,14 @@ pairs = matcher.knnMatch(desc_frame, desc_map, k=2)  # the 2 nearest neighbours 
 Each element of `pairs` is a list `[best, second]` of `cv2.DMatch` objects with `queryIdx` (index in
 the frame), `trainIdx` (index in the map) and `distance`.
 
+<details class="further"><summary>Going further (optional) — The cost of brute-force matching, and why NAVERA uses the GPU</summary>
+
 **Cost.** NAVERA matches up to 1500 frame descriptors against the map tiles of its search circle —
 often 20 000–50 000 descriptors. That is 1500 × 30 000 = 4.5 × 10⁷ distances of 128 dimensions,
 about 6 × 10⁹ multiply-adds per frame. This is why `LocalMatcher._knn2` computes them on the GPU
 with `torch.cdist`, in blocks of 20 000 map descriptors to bound the memory.
+
+</details>
 
 ## 2. The ratio test
 
@@ -111,11 +117,15 @@ Each pair (x, y) ↔ (u, v) gives two equations, so the minimal sample is ⌈DOF
 
 ![A homography lays the drone view onto the map](assets/homography.svg)
 
+<details class="further"><summary>Going further (optional) — When is a homography the right model?</summary>
+
 **When is a homography the right model?** Exactly when the scene is a **plane** (or the camera only
 rotates). Seen from 300 m, flat coastal ground (like Sousse) is nearly a plane: a 20 m building is 7 % of the
 height, so its roof is displaced in the image, but most of the frame follows a homography. For a
 camera looking **straight down** (after NAVERA straightens the frame with the IMU, lessons 16–18),
 the homography reduces to a **similarity**: rotation θ, scale s, shift (tx, ty), with h20 = h21 = 0.
+
+</details>
 
 ## 4. The Direct Linear Transform (DLT)
 
@@ -145,6 +155,8 @@ H = Vt[-1].reshape(3, 3)
 H = H / H[2, 2]          # the usual scale: H[2, 2] = 1
 ```
 
+<details class="further"><summary>Going further (optional) — Why the smallest singular vector? (an SVD primer)</summary>
+
 > [!NOTE]
 > **Why the smallest singular vector? (a short primer)** The **SVD** writes any matrix as
 > A = U Σ Vᵀ, where U and V are rotation-like matrices (their columns are orthonormal: length 1,
@@ -159,6 +171,8 @@ H = H / H[2, 2]          # the usual scale: H[2, 2] = 1
 >
 > Example: if Σ = diag(5, 2, 0.1), the unit vector z that makes ‖Σ z‖ smallest is (0, 0, 1),
 > giving 0.1; any mix such as z = (0.6, 0, 0.8) gives √(25·0.36 + 0.01·0.64) ≈ 3.0.
+
+</details>
 
 With exactly 4 pairs (no 3 on a line), A is 8 × 9, has a one-dimensional null space, and H is
 exact. With more pairs the DLT is a least-squares fit of the **algebraic** error ‖A h‖ — not exactly
@@ -191,6 +205,8 @@ Run the DLT on the normalised points (T_src·x ↔ T_dst·u) to get Hn, then und
 H = T_dst⁻¹ · Hn · T_src
 ```
 
+<details class="further"><summary>Going further (optional) — What experiments.py measures: raw against normalised coordinates</summary>
+
 What the lab's `experiments.py` measures (8 random pairs with 1 px noise, 200 trials, error averaged
 over a grid of 63 image points; a quicker test in lab Step 4 gives about 1.9 / 39 px — same conclusion):
 
@@ -198,6 +214,8 @@ over a grid of 63 image points; a quicker test in lab Step 4 gives about 1.9 / 3
 |---|---|---|---|---|
 | patch pixels (0–800) | 1.1 × 10⁸ | 571 | 1.36 px | 1.35 px |
 | global tile pixels (~3.55 × 10⁷) | 8.5 × 10¹⁷ | 571 | 25.3 px | 1.35 px |
+
+</details>
 
 Normalisation is cheap and never hurts. Always do it.
 
@@ -243,7 +261,7 @@ w is unknown in advance. **Adaptive RANSAC** starts with a large N and, each tim
 with more inliers, recomputes N with w = inliers / pairs. On the city pair of the lab (w ≈ 0.95)
 it stops after a handful of samples.
 
-### The inlier threshold
+<details class="further"><summary>Going further (optional) — The inlier threshold: where t ≈ 2.45 σ comes from</summary>
 
 If the true matches have Gaussian position noise σ in each axis, the squared reprojection error
 divided by σ² is (ex/σ)² + (ey/σ)²: a sum of **two squared standard normal numbers**. The
@@ -253,6 +271,8 @@ need this one number.) Accepting 95 % of the true inliers therefore needs t² = 
 **t ≈ 2.45 σ**. Keypoints are located to 1–2 px, so t = 3–6 px is
 typical. NAVERA uses `ransac_px = 6.0` in map pixels at zoom 17 (≈ 0.97 m), i.e. about 6 m on the
 ground. Too small a threshold drops good pairs; too large lets wrong pairs vote.
+
+</details>
 
 > [!TIP]
 > OpenCV's `cv2.findHomography(src, dst, cv2.RANSAC, 5.0)` does the same thing as your RANSAC and
@@ -306,7 +326,7 @@ never passes:
 |---|---|---|---|
 | inliers | `LocalMatcher.min_inliers` | ≥ 8 (≥ 15 when the height is searched) | a few pairs agree by chance |
 | rotation | `locate(heading_deg=…)` | ±20° from the IMU heading | a wrong place rarely fits at the right rotation |
-| scale | `scale_tol` | ±15 % of the scale predicted from height + field of view | the strongest gate (see below) |
+| scale | `scale_tol` | ±15 % of the scale predicted from height + field of view | the strongest gate (see *How much did the gates matter?* in "In NAVERA") |
 | spread | `VisionNavigator.update` | if < 30 inliers, they must cover ≥ 25 % of a 4 × 2 grid | inliers on one strip (a shoreline, a road) leave scale and rotation badly determined |
 | prediction | `VisionNavigator.update` | within 3 σ of the position carried along the velocity (unless ≥ 100 inliers) | a sudden jump needs a second agreeing fix |
 
@@ -355,6 +375,8 @@ Note three details. The frame is **pre-scaled** with the height so that the expe
 exactly 1. The model is a **similarity** (s = 2), not a homography. And `dst` is in global tile
 pixels: OpenCV normalises internally, which is exactly why your DLT must too.
 
+<details class="further"><summary>Going further (optional) — How much did the gates matter? (bench results)</summary>
+
 How much did the gates matter? `docs/VALIDATION_STATUS.md` (benchmark of 2026-10-01, measured on the
 Jetson with 33 aerial frames from another source and date than the map, search within 600 m):
 
@@ -367,6 +389,8 @@ Jetson with 33 aerial frames from another source and date than the map, search w
 
 The scale gate removed the only wrong fix (1097 m). The document is honest about the limits: these
 are not frames from NAVERA's own camera, and positions are stated at ±30 m until that is measured.
+
+</details>
 
 ## Glossary
 

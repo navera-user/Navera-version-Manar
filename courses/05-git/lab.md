@@ -4,7 +4,7 @@
 identity, create a branch, make clean commits (including a real code change), read and compare the
 history, tag your work, export it as a patch, **review a colleague's patch** and apply only its safe
 part, rescue a deleted file, and write your review.
-**Time:** about 2 h 30.
+**Time:** about 2 h 30 for this lab (about 3 h 30 for the whole mission with the lesson).
 
 Your files in `~/lessons/05-git/`: [answers.py](file:./answers.py),
 [review.md](file:./review.md) (your review, to write) and

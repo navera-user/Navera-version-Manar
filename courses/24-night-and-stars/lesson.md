@@ -13,6 +13,8 @@
 >   re-implement the geometry of NAVERA's night localizer.
 > - NAVERA's night vision is **not yet validated** on real thermal images.
 
+⏱ Core reading ~16 min · optional deep-dives marked *Going further*.
+
 It is 21:00 in October. A survey drone flies over the foothills of a mountain range, far
 from any city. GPS has been jammed for ten minutes. In lessons 20–23 the drone found
 itself by matching its camera picture with the satellite map. Now it is **dark**: the day camera
@@ -39,13 +41,15 @@ and the second gives tens of kilometres.
 > **How to study this lesson.** It has two independent parts: **Part 1, night vision** (about 1 h of
 > reading) and **Part 2, celestial navigation** (about 1.5 h). The lab is split the same way
 > (Part A = the sky, Part B = night vision). Plan **two sessions**, one per part; you can do them in
-> either order. Sections marked **📖 Read, do not memorise** are background: understand the idea and
+> either order. Sections marked **📖 Read, do not memorise** are background (folded into *Going further* blocks): understand the idea and
 > the numbers; you do not need to reproduce their formulas. The lab only uses §2.1–2.3, §2.5, §2.7
 > and the zenith case of §2.6.
 
 ## Part 1 — Night vision with a thermal camera
 
 ### 1.1 What a thermal camera measures
+
+<details class="further"><summary>Going further (optional) — The physics: Stefan–Boltzmann, Wien and emissivity</summary>
 
 Every surface emits electromagnetic radiation because of its temperature. For a perfect emitter
 (a **black body**) the total power per square metre is the **Stefan–Boltzmann law**
@@ -65,6 +69,8 @@ Worked example: wet sand at 300 K and dry rock at 295 K, both ε ≈ 0.95. The r
 emissions is (300/295)⁴ = 1.07: a 5 K difference gives 7 % more radiance, easily measured by a
 sensor with 0.05 K sensitivity.
 
+</details>
+
 ### 1.2 Why the night picture is not the day map
 
 What makes thermal images hard to use is **thermal inertia**: how fast a material heats and cools.
@@ -74,6 +80,8 @@ material, the hour and the weather.
 
 ![Satellite photo, thermal at noon, thermal at night](assets/thermal.svg)
 
+<details class="further"><summary>Going further (optional) — Satellite photo against thermal image, feature by feature</summary>
+
 | | Satellite photo (the map) | Thermal image |
 |---|---|---|
 | What a pixel means | reflected sunlight (colour) | emitted radiance (temperature × emissivity) |
@@ -81,6 +89,8 @@ material, the hour and the weather.
 | A road | grey | bright at noon (hot asphalt), medium at night |
 | Water, a canal or a pool | dark blue | cold at noon, **warmer** than the ground at night |
 | Trees along a river | dark green | cooler than bare soil by day, often warmer at night |
+
+</details>
 
 Twice a day, near dawn and dusk, warm and cold materials pass through the **same** temperature:
 the **thermal crossover**. The contrast then nearly disappears. In the sand seas of the Sahara the dunes are
@@ -99,7 +109,9 @@ quantities, so their brightness is related by an unknown, non-monotonic, place-d
 ### 1.4 NAVERA's answer: a learned homography (STHN)
 
 NAVERA uses **STHN**, a published deep network for **thermal-to-satellite homography** estimation.
-The intuition, in four steps:
+The intuition, in four steps, is in the block below.
+
+<details class="further"><summary>Going further (optional) — STHN's four steps</summary>
 
 1. Two convolutional **encoders** turn the thermal frame and the satellite patch into feature
    maps. They are **trained** on many aligned thermal/satellite pairs, so they learn features that
@@ -111,6 +123,8 @@ The intuition, in four steps:
    the map, step by step, to where the correlation is best.
 4. The four corner displacements define a **homography** (8 degrees of freedom, lesson 21). The
    frame centre, carried through it, is the position.
+
+</details>
 
 A learned model does not tell you when it is wrong. In NAVERA's tests its **consistency score**
 stayed near 0.9 on wrong matches. So NAVERA protects it in two ways: it gives the network exactly
@@ -160,6 +174,8 @@ anchor: the next frame is tried again from the last good position.
 
 ### 1.7 What was measured (docs/VALIDATION_STATUS.md)
 
+<details class="further"><summary>Going further (optional) — The measured numbers</summary>
+
 | Test | Result |
 |---|---|
 | Synthetic frames (grey renders of the map), frames scaled and turned north-up, 250–600 m | 8–13 m median |
@@ -167,6 +183,8 @@ anchor: the next frame is tried again from the last good position.
 | Mission simulator, drone at 400 m, GPS jammed | 290 matches, median 6 m, p90 11 m, max 37 m |
 | GPU time on the Jetson | ~225 ms per frame (fp32) |
 | Real thermal imagery | **not validated** |
+
+</details>
 
 These numbers are **optimistic**: a grey render of the satellite map is much easier than a real
 thermal image. The validation document also states that the replay set in
@@ -217,10 +235,16 @@ LST = GAST + λ          (local sidereal time)
 H   = LST − α           (hour angle: how far the star has turned west of your meridian)
 ```
 
+<details class="further"><summary>Going further (optional) — UT1, UTC and the IERS</summary>
+
 Strictly, the formula wants **UT1** (time by the Earth's rotation), not UTC (atomic time). The
 difference UT1 − UTC is kept below 0.9 s by leap seconds and is published by the **IERS**.
 
+</details>
+
 ### 2.3 From (α, δ) to (a, A): the navigational triangle
+
+<details class="further"><summary>Going further (optional) — Primer: triangles on a sphere (London–Paris example)</summary>
 
 > [!NOTE]
 > **Primer: triangles on a sphere.** On a sphere of radius 1, the "straight lines" are **great
@@ -241,6 +265,8 @@ difference UT1 − UTC is kept below 0.9 s by leap seconds and is published by t
 > cos c = 0.7827 · 0.7531 + 0.6224 · 0.6579 · 0.9991 = 0.99855, so c = 3.09° = **343 km** — the
 > great-circle distance London–Paris. The navigational triangle below is the same idea with the
 > pole, your zenith and a star.
+
+</details>
 
 Three points on the sphere — the celestial **pole** P, the **zenith** Z and the star X — form the
 **navigational triangle**. Its sides are 90° − φ, 90° − a and 90° − δ; its angle at P is the
@@ -279,6 +305,8 @@ place **west** of Greenwich has a **negative** longitude, so its LST is smaller 
 
 ### 2.4 Catalogue positions, precession and the offline IERS problem — 📖 Read, do not memorise
 
+<details class="further"><summary>Going further (optional) — Precession, nutation, aberration and the offline IERS tables</summary>
+
 Catalogues give α, δ for the epoch J2000. The Earth's axis **precesses** (one turn in about
 26 000 years) and also makes a small periodic "nodding" motion called **nutation** (at most about 17″, period 18.6 years), and the Earth's motion shifts apparent positions by up to
 20″ (**aberration**). From 2000 to 2026 precession alone moves right ascensions by about 0.36° —
@@ -297,6 +325,8 @@ iers.conf.iers_degraded_accuracy = "ignore"     # outside the bundled table: UT1
 
 The cost is at most 0.9 s of UT1, i.e. 0.004° of sky rotation (0.9 × 0.464 km ≈ 0.42 km at most, on the equator): negligible next to the
 attitude error below.
+
+</details>
 
 ### 2.5 Latitude from Polaris
 
@@ -334,6 +364,8 @@ The simplest fix: if the camera points **exactly** at the zenith, its centre has
 φ = δ_centre          λ = α_centre − GAST        (wrapped to −180°…180°)
 ```
 
+<details class="further"><summary>Going further (optional) — The general case: a tilted camera and its two latitude solutions</summary>
+
 📖 **Read, do not memorise (the rest of this section).** In general the camera is tilted. The IMU
 gives the boresight's (a, A) (`boresight_altaz` turns the
 IMU quaternion into them), the solver gives its (α, δ), and the triangle is solved for the observer
@@ -352,6 +384,8 @@ two angles: sin x = sin(180° − x). So φ + ψ has two possible values, hence 
 "Two answers" experiment at the end of the lab shows both solutions.)
 `choose_candidate` keeps the one within 5° of a **prior** (the operating area, the last GPS fix);
 if the prior cannot separate them, NAVERA publishes **no position**.
+
+</details>
 
 ### 2.7 Error budget: why one degree costs 111 km
 

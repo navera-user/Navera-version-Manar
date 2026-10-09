@@ -3,7 +3,7 @@
 **Goal:** implement the Harris detector from its maths, find the characteristic scale of a blob, compare
 your Harris with OpenCV's ORB and SIFT on pictures with a known transform (repeatability), measure binary
 descriptor distances, score the "matchability" of different terrains, and write a short report.
-**Time:** 2½ – 3 hours.
+**Time:** 2½ – 3 hours for this lab (about 3 h 45 for the whole mission with the lesson).
 
 Your pictures are in `/data/academy/20-features/` (read only). They are cut from **NAVERA's satellite
 map of Sousse, Tunisia** (the only map NAVERA has today):
@@ -201,7 +201,7 @@ Open `clahe_demo.png` after each run (left: original, right: CLAHE).
 > On the water picture, `clahe_demo.py` says **68** keypoints before CLAHE, but `measure.py` (Step 9)
 > will say only about **5** for the same picture. This is not a bug. `clahe_demo.py` uses NAVERA's
 > setting `contrastThreshold=0.02`, which keeps weaker points. Your `detect_keypoints()` and
-> `measure.py` use OpenCV's default, 0.04 (lesson section 3, "Rejection"). (The dark drone photo also
+> `measure.py` use OpenCV's default, 0.04 (lesson section 3, *Going further — SIFT in four steps*, "Rejection"). (The dark drone photo also
 > gives 68 before CLAHE, by chance.)
 >
 > On the dark drone photo, CLAHE brings the city back. On the water, the new keypoints sit on ripples
@@ -229,7 +229,8 @@ the SIFT counts per terrain and the matchability scores. Open `results.json` too
 >    CLAHE did on water.
 > 4. **World** — discuss at least two real places on Earth (a city such as Paris or Singapore, the Sahara
 >    or Namib dunes, the Alps or Andes, the open ocean, the Wadden Sea, the Salar de Uyuni, Greenland…):
->    what would the camera see, what would SIFT and the matchability score do?
+>    what would the camera see, what would SIFT and the matchability score do? (The lesson's block
+>    *Going further — Terrains around the world*, in section 6, gives ideas.)
 >
 > The check verifies the four headings, the word counts, the quoted numbers and the named places — and it
 > recomputes one repeatability value with your code, so run `measure.py` again after any change.

@@ -176,6 +176,10 @@ body:not(.at-home) .home { height: calc(100% - 62px); }
   -webkit-mask: url(/static/img/navi-mark.svg) no-repeat center / contain; mask: url(/static/img/navi-mark.svg) no-repeat center / contain; }
 .doc details { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 10px 16px; margin: 10px 0; }
 .doc details summary { cursor: pointer; font-weight: 600; color: var(--ink); }
+/* "Going further (optional)" deep-dives: lighter than the self-check cards, clearly optional */
+.doc details.further { background: transparent; border: 1px dashed var(--line); border-left: 3px solid #9fc3d6; border-radius: 0 12px 12px 0; }
+.doc details.further > summary { font-weight: 500; font-style: italic; color: var(--muted); }
+.doc details.further[open] { background: #fbfdfe; }
 .doc a.file { font-family: ui-monospace, monospace; font-size: 13.5px; }
 
 /* mission header */

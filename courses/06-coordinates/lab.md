@@ -3,7 +3,7 @@
 **Goal:** implement the WGS84 conversions geodetic ↔ ECEF ↔ ENU, the spherical haversine and
 bearing, and NAVERA's flat shortcut; prove they agree with NAVERA's own code; then run an error
 study around Sousse (NAVERA's test area) and write a short engineering report on how far the shortcuts can be trusted.
-**Time:** about 3 hours.
+**Time:** about 3 hours for this lab (about 4 h 30 for the whole mission with the lesson).
 
 Files in your lesson folder:
 

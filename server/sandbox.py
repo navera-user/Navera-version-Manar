@@ -6,6 +6,7 @@ this machine's home folder: not the real ~/Navera, not keys, not other students.
 """
 import glob
 import os
+import subprocess
 
 import config
 
@@ -88,7 +89,12 @@ def bwrap_argv(name, home, index, command, resources=(), heavy=False, writable_b
         a += ["--ro-bind", host, inside]
     a += ["--ro-bind", _passwd(), "/etc/passwd", "--ro-bind", _group(), "/etc/group"]
     a += ["--chdir", config.S_HOME, "--clearenv"]
-    for k, v in student_env(name, index, heavy, domain).items():
+    env = student_env(name, index, heavy, domain)
+    lb = loopback_lib() if "sim" in resources else None
+    if lb:                               # the full simulator listens on this machine only (not the Wi-Fi)
+        a += ["--ro-bind", lb, "/academy/loopback_bind.so"]
+        env["LD_PRELOAD"] = "/academy/loopback_bind.so"
+    for k, v in env.items():
         a += ["--setenv", k, v]
     a += ["--"] + list(command)
     mem = config.HEAVY_MEMORY_MAX if heavy else config.MEMORY_MAX
@@ -96,6 +102,20 @@ def bwrap_argv(name, home, index, command, resources=(), heavy=False, writable_b
              "--unit", f"academy-{name}-{os.getpid()}-{_counter()}",
              "-p", f"MemoryMax={mem}", "-p", "MemorySwapMax=0", "-p", f"TasksMax={config.PIDS_MAX}"]
     return scope + a
+
+
+def loopback_lib():
+    """server/native/loopback_bind.c built once into state/ (gcc); None if it cannot be built."""
+    src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "native", "loopback_bind.c")
+    so = os.path.join(config.STATE, "loopback_bind.so")
+    try:
+        if not os.path.exists(so) or os.path.getmtime(so) < os.path.getmtime(src):
+            subprocess.run(["gcc", "-shared", "-fPIC", "-O2", "-o", so + ".tmp", src, "-ldl"], check=True,
+                           capture_output=True, timeout=60)
+            os.replace(so + ".tmp", so)
+        return so
+    except (OSError, subprocess.SubprocessError):
+        return None
 
 
 def _group():

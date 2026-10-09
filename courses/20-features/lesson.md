@@ -7,6 +7,8 @@
 > - You will measure **repeatability** (does the detector find the same points again after a turn or a zoom?).
 > - In the lab you build Harris from scratch, use OpenCV's ORB and SIFT, and score which terrains can be matched.
 
+⏱ Core reading ~16 min · optional deep-dives marked *Going further*.
+
 A survey drone flies along a busy coast at 300 m, from one harbour town to the next.
 Halfway, its GPS receiver is jammed. The camera still works: it sees roofs, roads, palm groves,
 the beach. On board, NAVERA has a satellite map of the area. The question of this module ("Eyes on
@@ -117,9 +119,13 @@ orientation. The Harris response is therefore **rotation invariant**.
    each hill — the pixels whose `R` equals the maximum of their `(2r+1) × (2r+1)` neighbourhood.
    With OpenCV: `R == cv2.dilate(R, kernel)` (dilation replaces each pixel by the maximum around it).
 
+<details class="further"><summary>Going further (optional) — Relatives of Harris: Shi–Tomasi and FAST</summary>
+
 A close relative, **Shi–Tomasi** ("good features to track", `cv2.goodFeaturesToTrack`), uses
 `min(λ1, λ2)` instead of `R`. **FAST**, used by ORB, is a much faster corner test: it compares 16 pixels
 on a circle with the centre and needs 9 contiguous ones all brighter or all darker.
+
+</details>
 
 ## 3. Scale: the same roof from 150 m and from 600 m
 
@@ -148,7 +154,7 @@ detector measures the size of the structure, which is exactly what you need to c
 
 ![Scale space and the difference of Gaussians](assets/scale_space.svg)
 
-### Going further (optional): SIFT in four steps (Lowe, 2004)
+<details class="further"><summary>Going further (optional) — SIFT in four steps (Lowe, 2004)</summary>
 
 1. **Difference of Gaussians (DoG).** Computing a Laplacian at every scale is expensive. Lowe used the
    difference of two neighbouring blurred images, `D = L(kσ) − L(σ) ≈ (k − 1)·σ²·∇²L` — the
@@ -164,6 +170,8 @@ detector measures the size of the structure, which is exactly what you need to c
 4. **Orientation.** A 36-bin histogram of the gradient directions around the point (weighted by
    magnitude) gives the dominant direction θ. The descriptor is computed in a frame turned by θ and
    scaled by σ: that is what makes it **rotation and scale invariant**.
+
+</details>
 
 ## 4. Descriptors: a vector per keypoint
 
@@ -238,6 +246,8 @@ p_chance ≈ 1 − exp(−N·π·ε² / (w·h))
 every detector with this level, and always with the **same number of points** — more points per pixel
 raise the score without making the detector better.
 
+<details class="further"><summary>Going further (optional) — What the lab measures (compare with your own results after Step 9)</summary>
+
 **What the lab measures** (OpenCV 4.11, 1000 points per detector, ε = 3 px, synthetic photos made from
 the Sousse map):
 
@@ -264,6 +274,8 @@ Read it carefully — it is more interesting than the textbook story:
   you could not *match* its corners between a map at 0.97 m/px and a photo at 0.25 m/px. Repeatable
   positions are necessary, not sufficient.
 
+</details>
+
 ## 6. Texture and matchability: cities, dunes, the open sea
 
 A picture with many distinct, well-spread features has rich **texture**. The lab counts SIFT keypoints in
@@ -275,6 +287,8 @@ The two extremes: the city patch gives about **6600** SIFT keypoints, the open-s
 gives **0**, and the coast with water (`terrain_coast_water`) only about **5**. These counts use OpenCV's
 default `contrastThreshold` of 0.04. With NAVERA's lower value, 0.02, the same coast patch gives about
 68 — still very few, and mostly on the shoreline.
+
+<details class="further"><summary>Going further (optional) — Terrains around the world (useful for report section 4)</summary>
 
 Now think about the whole world:
 
@@ -294,6 +308,8 @@ Now think about the whole world:
   badly constrained.
 - **Tidal flats and salt flats** (the Wadden Sea in Europe, the Salar de Uyuni in Bolivia): wide, flat,
   and changed by tides or flooding — few features. Snow and ice (Greenland, Antarctica) are even worse.
+
+</details>
 
 Three more enemies of texture come from the camera: **blur** (vibration, speed), **darkness** (dusk,
 shadows) and **haze** (dust or smog in the air, very common over deserts and big cities). All three remove the small
@@ -379,6 +395,8 @@ on a 4 × 2 grid with at least 3 points per cell — the idea of your `spread()`
 frame is rejected — but only when it is also weak: fewer than 30 inliers **and** a spread below
 `min_spread=0.25`.
 
+<details class="further"><summary>Going further (optional) — What NAVERA measured over uniform terrain and over the sea</summary>
+
 What happens over uniform terrain is written in `docs/VALIDATION_STATUS.md`. In a simulated flight over
 uniform terrain near Gabès (southern Tunisia), the former whole-tile method gave a median error of 351 m:
 **"Day vision is unreliable over uniform terrain (desert, sea)"**. Local SIFT matching did much better on
@@ -387,6 +405,8 @@ camera is cut from the map's own imagery, which is optimistic. Over the sea ther
 NAVERA carries its last position along the measured track (lesson 23). In the simulator it was carried
 90 s over a bay stating ±300 m, with a true error of at most 146 m. All these figures are from the
 simulator or the bench; NAVERA is at **Release 0.x — field validation pending**.
+
+</details>
 
 ## Glossary
 

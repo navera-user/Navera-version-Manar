@@ -4,7 +4,7 @@
 similarity, gates, centre → lat/lon), measure two error sources experimentally (wrong height,
 tilted camera), evaluate your pipeline and NAVERA's own `LocalMatcher` on the same 13 photos, and
 write a short engineering report.
-**Time:** 3 h 30 – 4 h.
+**Time:** 3 h 30 – 4 h for this lab (about 4 h 45 for the whole mission with the lesson).
 
 | File | What you do in it |
 |---|---|

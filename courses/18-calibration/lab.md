@@ -4,7 +4,7 @@
 and measure the result, calibrate the lens yourself from 36 real chessboard views, test the
 calibration (stability, hold-out, other model), reproduce it with NAVERA's own tool, and write a
 short engineering report.
-**Time:** about 3 hours.
+**Time:** about 3 hours for this lab (about 4 h for the whole mission with the lesson).
 
 | File | What you do |
 |---|---|

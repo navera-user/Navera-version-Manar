@@ -4,7 +4,7 @@
 REFUSED) and test them against seven attacks; (B) treat detection as a hypothesis test: compute
 false-alarm probabilities, the patient-spoofer time, and run a Monte-Carlo **ROC experiment**;
 (C) attack NAVERA's **real** arbiter with a scripted fake GPS; (D) write a short report.
-**Time:** about 4 h.
+**Time:** about 4 h for this lab (about 4 h 45 for the whole mission with the lesson).
 
 Your files:
 

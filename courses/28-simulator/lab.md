@@ -5,7 +5,7 @@ the MAVLink messages NAVERA sends to the autopilot, (B) check the simulator's se
 their theory, (C) turn a recorded fault-injection campaign of five flights into measurements and
 PASS / FAIL verdicts, (D) write a short test report, and (E) fly your own scripted scenario in Sim Lite (the 🛩️ Simulator
 tab: no booking, the whole class flies at once).
-**Time:** about 4 h (Part E, in Sim Lite, adds 30–45 minutes).
+**Time:** about 4 h for this lab (about 5 h 30 for the whole mission with the lesson; Part E, in Sim Lite, adds 30–45 minutes).
 
 Your files:
 
