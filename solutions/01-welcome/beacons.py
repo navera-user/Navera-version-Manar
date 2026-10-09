@@ -20,7 +20,7 @@ def distance(p, q):
 
 # TODO 2 ------------------------------------------------------------------------------------
 def mismatch(p, beacons, measured, bias=0.0):
-    """How badly the position p explains the measurements (course §1 and §2).
+    """How badly the position p explains the measurements (lesson §2 and §3).
 
     For each beacon: (distance from p to the beacon + bias) minus the measured value, squared.
     Return the sum over all beacons. 0 means p (with this bias) explains every measurement.
@@ -87,7 +87,7 @@ def spoof_measurements(beacons, fake_position, bias):
 
 # TODO 6 ------------------------------------------------------------------------------------
 def gate_ok(last, new, elapsed_s, v_max_mps, margin_m):
-    """NAVERA's jump gate (course §4). Positions in metres, time in seconds.
+    """NAVERA's jump gate (lesson §5). Positions in metres, time in seconds.
 
     Return True if the new fix is ACCEPTED: its distance to the last trusted fix is at most
     v_max × elapsed + margin. Return False if it is refused.
@@ -100,14 +100,12 @@ def gate_ok(last, new, elapsed_s, v_max_mps, margin_m):
 
 # TODO 7 ------------------------------------------------------------------------------------
 def count_refused(fixes, dt_s, v_max_mps, margin_m):
-    """Run the jump gate on a list of GPS fixes, like the arbiter does.
+    """How many of these GPS fixes does NAVERA's jump gate refuse? (lesson §5)
 
-    fixes[0] is trusted. The next fixes arrive one every dt_s seconds. Check each of them with
-    gate_ok against the LAST ACCEPTED fix, where elapsed = the time since that accepted fix.
-    An accepted fix becomes the new last accepted fix. Return how many fixes were refused.
+    fixes[0] is trusted; one new fix arrives every dt_s seconds. Positions in metres.
 
-    Example (the worked example of the course, a 500 m jump):
-        count_refused([(0, 0)] + [(500, 0)] * 6, 1.0, 100.0, 50.0)  ->  4
+    Example (the 7-row table of lesson §5: a 500 m jump, then 400 m more):
+        count_refused([(0, 0)] + [(500, 0)] * 6 + [(900, 0)], 1.0, 100.0, 50.0)  ->  5
     """
     refused = 0
     last = fixes[0]

@@ -12,7 +12,7 @@
 <circle cx="136.0" cy="212.0" r="4" fill="#1d2733"/><text x="144.0" y="228.0" fill="#1d2733" font-size="12">true (3, 4)</text>
 <text x="165" y="322" text-anchor="middle" fill="#555" font-size="12">the three circles meet in one point</text></g><g transform="translate(360,0)">
 <rect x="0" y="0" width="330" height="330" rx="10" fill="#ffffff" stroke="#dde5ec"/>
-<text x="165" y="24" text-anchor="middle" font-weight="700" fill="#1d2733">Clock 1 µs fast: +0.3 km each</text>
+<text x="165" y="24" text-anchor="middle" font-weight="700" fill="#1d2733">Clock 1 µs ahead: +0.3 km each</text>
 <g clip-path="url(#clip360)">
 <circle cx="70.0" cy="300.0" r="116.6" fill="none" stroke="#0b6e8a" stroke-width="1.6" opacity=".8"/>
 <circle cx="290.0" cy="300.0" r="184.0" fill="none" stroke="#0b6e8a" stroke-width="1.6" opacity=".8"/>
@@ -22,4 +22,4 @@
 <rect x="284.0" y="294.0" width="12" height="12" fill="#e8706a"/><text x="299.0" y="292.0" font-weight="700" fill="#b0453a">B</text>
 <rect x="64.0" y="74.0" width="12" height="12" fill="#e8706a"/><text x="79.0" y="72.0" font-weight="700" fill="#b0453a">C</text>
 <circle cx="136.0" cy="212.0" r="4" fill="#1d2733"/><text x="144.0" y="228.0" fill="#1d2733" font-size="12">true (3, 4)</text>
-<text x="165" y="322" text-anchor="middle" fill="#555" font-size="12">too big: the circles no longer meet</text></g></svg>
+<text x="165" y="322" text-anchor="middle" fill="#555" font-size="12">too long: no single meeting point</text></g></svg>

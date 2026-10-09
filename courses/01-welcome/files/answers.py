@@ -15,8 +15,8 @@ V_MAX_MPS = 0.0      # max_speed_mps
 MARGIN_M = 0.0       # gps_jump_margin_m
 GPS_TIMEOUT_S = 0.0  # gps_timeout_s
 
-# ---- Step 6: a clock 1 µs fast -------------------------------------------------------
-PREDICT_CLOCK = ""   # before running: where will find_position land with the wrong clock? why?
+# ---- Step 6: a clock 1 µs ahead ------------------------------------------------------
+PREDICT_CLOCK = ""   # before running: where will find_position land, with what minimum mismatch?
 CLOCK_ERROR_M = 0    # after running: "distance from the true position" of find_position (metres)
 EXPLAIN_CLOCK = ""   # why did find_position_and_bias find the right place when find_position did not?
 
@@ -25,7 +25,7 @@ PREDICT_TWO = ""     # before running: with only A and B and an unknown clock, h
 EXPLAIN_TWO = ""     # after running: why so many? (count the unknowns and the measurements)
 
 # ---- Step 8: the spoofer -------------------------------------------------------------
-PREDICT_SPOOF = ""   # before running: will your receiver notice the spoof? how?
+PREDICT_SPOOF = ""   # before running: what will your solver find, with what mismatch? noticed?
 EXPLAIN_SPOOF = ""   # after running: why is the mismatch 0 at the fake position?
 
 # ---- Step 9: the jump gate -----------------------------------------------------------
@@ -33,3 +33,11 @@ PREDICT_GATE = ""    # before running: how many fixes refused in attack A (300 m
 JUMP_REFUSED = -1    # after running: count_refused for attack A
 DRIFT_REFUSED = -1   # after running: count_refused for attack B
 EXPLAIN_GATE = ""    # why can't the gate alone stop these attacks? what does NAVERA add?
+
+# ---- Step 10: the attacker's challenge -------------------------------------------------
+STEALTH_SPEED_MPS = 0    # the highest drag speed (m/s) the gate never refuses
+STEALTH_DISTANCE_M = 0   # how far that drag moves the drone in 60 s (m)
+
+# ---- Step 11: be the arbiter -----------------------------------------------------------
+ARBITER_SOURCE = ""  # "gps", "day", "night", "celestial" or "none"
+ARBITER_STATE = ""   # "FIX", "DEGRADED" or "NO_FIX"

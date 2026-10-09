@@ -10,8 +10,8 @@ A jammer drowns the weak GPS signal and the receiver reports no fix, so at least
 
 ## Spoofing
 
-A spoofer sends consistent fake signals; in my lab the receiver found the fake point 4472 m away with a mismatch of 0. The autopilot would follow it. NAVERA's jump gate refused a 300 m jump for only 2 fixes and a slow drag 0 times, so it needs vision to compare.
+A spoofer sends consistent fake signals; in my lab the receiver found the fake point 4472 m away with a mismatch of 0. The autopilot would follow it. NAVERA's jump gate refused a 300 m jump for only 2 fixes and a slow drag 0 times, so it needs a cross-check with a source of stated uncertainty, not available yet.
 
 ## Meaconing
 
-Real signals are recorded and replayed later, so the receiver computes the replayer's position and a wrong time. The autopilot cannot tell. NAVERA can compare with vision, but only when vision has a match.
+Real signals are recorded and replayed later, so the receiver computes the position of the recording place and an old time. The autopilot cannot tell. NAVERA can compare with vision, but only when vision has a match.

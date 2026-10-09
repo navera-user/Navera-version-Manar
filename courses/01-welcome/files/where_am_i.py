@@ -2,7 +2,7 @@
 
     python3 where_am_i.py test     check each function with its example
     python3 where_am_i.py clean    exact distances                     (lab step 5)
-    python3 where_am_i.py clock    the receiver clock is 1 µs fast      (lab step 6)
+    python3 where_am_i.py clock    the receiver clock is 1 µs ahead     (lab step 6)
     python3 where_am_i.py two      three beacons or two, unknown clock  (lab step 7)
     python3 where_am_i.py spoof    a spoofer sends a fake position      (lab step 8)
     python3 where_am_i.py gate     NAVERA's jump gate against two attacks (lab step 9)
@@ -10,6 +10,7 @@
 Pictures are saved in the folder out/ — click them in the file list of the 📝 Code tab.
 """
 import contextlib
+import inspect
 import io
 import math
 import os
@@ -39,12 +40,22 @@ def call(fn, *args):
     try:
         result = getattr(b, fn)(*args)
         if result is None:
-            return None, f"{fn}() returns nothing yet: write its TODO in beacons.py and `return` the result"
+            try:
+                stub = "return None   # TODO" in inspect.getsource(getattr(b, fn))
+            except (OSError, TypeError):
+                stub = False
+            if stub:
+                return None, f"{fn}() is not written yet: write its TODO in beacons.py and `return` the result"
+            return None, (f"{fn}() returned None for this case: every path must end with a `return` "
+                          "(an `if` without `else`?)")
         return result, None
     except Exception as e:
         tb = traceback.extract_tb(e.__traceback__)
         line = next((f.lineno for f in reversed(tb) if f.filename.endswith("beacons.py")), "?")
-        return None, f"{fn}() stopped with {type(e).__name__}: {e} (beacons.py line {line})"
+        extra = ""
+        if isinstance(e, NameError) and "sqrt" in str(e):
+            extra = " — write math.sqrt, with `import math` at the top"
+        return None, f"{fn}() stopped with {type(e).__name__}: {e} (beacons.py line {line}){extra}"
 
 
 def km(v):
@@ -63,16 +74,20 @@ def picture(name, circles, points, title, bias=0.0):
         return
     os.makedirs("out", exist_ok=True)
     fig, ax = plt.subplots(figsize=(6, 6))
+    colours = {"A": "#0b6e8a", "B": "#d17a00", "C": "#7a3fb0"}
     for (bx, by), r, n in circles:
-        ax.add_patch(plt.Circle((bx, by), max(r - bias, 0), fill=False, color="#0b6e8a", lw=1.5))
+        ax.add_patch(plt.Circle((bx, by), max(r - bias, 0), fill=False, color=colours.get(n, "#0b6e8a"), lw=1.6,
+                                label=f"circle around {n}"))
         ax.plot(bx, by, "s", color="#e8706a", ms=10)
         ax.annotate(n, (bx, by), xytext=(8, 8), textcoords="offset points", color="#b0453a", weight="bold")
     for (x, y), label, style in points:
-        ax.plot(x, y, style, ms=9, label=label)
+        if style == "o":                      # the truth: a hollow ring, so a point on it stays visible
+            ax.plot(x, y, "o", ms=14, mfc="none", mec="k", mew=2, label=label)
+        else:
+            ax.plot(x, y, style, ms=9, label=label)
     ax.set_xlim(-1, 11); ax.set_ylim(-1, 11); ax.set_aspect("equal"); ax.grid(alpha=.3)
     ax.set_xlabel("x (km)"); ax.set_ylabel("y (km)"); ax.set_title(title)
-    if points:
-        ax.legend(loc="upper right")
+    ax.legend(loc="upper right", fontsize=8)
     fig.savefig(f"out/{name}.png", dpi=90, bbox_inches="tight"); plt.close(fig)
     print(f"\n🖼  picture saved: out/{name}.png (open it in the 📝 Code tab)")
 
@@ -97,10 +112,11 @@ def test():
         ("mismatch", (TRUTH, BEACONS, LATE, 0.3), 0.0, 1e-5),
         ("find_position", (BEACONS, EXACT), (3.0, 4.0), 1e-6),
         ("find_position_and_bias", (BEACONS, LATE), (3.0, 4.0, 0.3), 1e-6),
+        ("find_position_and_bias", (BEACONS, [d - 0.05 for d in LATE]), (3.0, 4.0, 0.25), 1e-6),
         ("spoof_measurements", ([(0, 0), (10, 0)], (6, 8), 0.5), [10.5, math.sqrt(80) + 0.5], 1e-6),
         ("gate_ok", ((0, 0), (120, 0), 1.0, 100.0, 50.0), True, 0),
         ("gate_ok", ((0, 0), (500, 0), 1.0, 100.0, 50.0), False, 0),
-        ("count_refused", ([(0, 0)] + [(500, 0)] * 6, 1.0, 100.0, 50.0), 4, 0),
+        ("count_refused", ([(0, 0)] + [(500, 0)] * 6 + [(900, 0)], 1.0, 100.0, 50.0), 5, 0),
     ]
     done = 0
     for fn, args, want, tol in cases:
@@ -138,7 +154,7 @@ def clean():
 
 def clock():
     need("distance", "mismatch")
-    print("The receiver clock is 1 µs fast: every distance is 0.3 km too long.")
+    print("The receiver clock is 1 µs ahead: every range is 0.3 km too long.")
     print("Measured pseudoranges:", ", ".join(f"{n} {km(d)}" for n, d in zip(NAMES, LATE)))
     p, err = call("find_position", BEACONS, LATE)
     if err:
@@ -149,7 +165,7 @@ def clock():
     off = math.dist(p, TRUTH) * 1000
     print(f"\n1) find_position (ignores the clock)  ->  {p}")
     print(f"   mismatch there: {m:.4f}      distance from the true position: {off:.0f} m")
-    pts = [(TRUTH, "true position", "ko"), (p, "find_position (no bias)", "rX")]
+    pts = [(TRUTH, "true position", "o"), (p, "find_position (no bias)", "rX")]
     q, err = call("find_position_and_bias", BEACONS, LATE)
     if err:
         print("\n2) " + err)
@@ -160,8 +176,8 @@ def clock():
         print(f"\n2) find_position_and_bias  ->  x = {q[0]}, y = {q[1]}, bias = {q[2]} km")
         print(f"   mismatch there: {m2:.4f}      distance from the true position: "
               f"{math.dist(q[:2], TRUTH) * 1000:.0f} m")
-        pts.append((q[:2], "find_position_and_bias", "k*"))
-    picture("clock", list(zip(BEACONS, LATE, NAMES)), pts, "Clock 1 µs fast (circles = pseudoranges)")
+        pts.append((q[:2], "find_position_and_bias", "g*"))
+    picture("clock", list(zip(BEACONS, LATE, NAMES)), pts, "Clock 1 µs ahead (circles = pseudoranges)")
 
 
 def two():
@@ -186,7 +202,7 @@ def two():
     good = counts["only A and B"]
     picture("two", list(zip(BEACONS[:2], LATE[:2], NAMES)),
             [((g[0], g[1]), None, "b.") for g in good] + [(TRUTH, "true position", "k*")],
-            "Only A and B, unknown clock: every blue dot fits")
+            "Only A and B, unknown clock: every blue dot fits\n(only y from 0 to 10 is searched)")
 
 
 def spoof():
@@ -208,7 +224,7 @@ def spoof():
     print(f"\nYour receiver computes: x = {q[0]}, y = {q[1]}, bias = {q[2]} km")
     print(f"mismatch there: {m:.4f}      distance from the TRUE position: {math.dist(q[:2], TRUTH) * 1000:.0f} m")
     picture("spoof", list(zip(BEACONS, fake_m, NAMES)),
-            [(TRUTH, "where you really are", "ko"), (q[:2], "what the receiver says", "r*")],
+            [(TRUTH, "where you really are", "o"), (q[:2], "what the receiver says", "r*")],
             "Spoofed: the circles meet perfectly… at the wrong place", bias=q[2])
 
 
