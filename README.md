@@ -42,6 +42,23 @@ The sandbox (bubblewrap + systemd scope) shows the system read only and nothing 
 (1.8 GB per student, 4.5 GB while holding the simulator or camera). Each student has their own ROS
 domain (1–101, never NAVERA's 77–79), loopback only.
 
+## Organisation, teachers and classes
+
+Three roles: **administrator** (the client's manager: organisation name and logo, teachers, the Jetson's
+settings), **teacher** (their own classes only) and **student** (their own work only). The `teacher`
+account (password in `state/teacher_password.txt`) is IRIS's support administrator.
+
+- **First start of a new box:** the academy shows "Welcome to your NAVERA Academy". The client types
+  the **setup code** (`state/setup_code.txt`, printed on the sticker by `setup/make_sticker.py`), the
+  organisation, an optional logo, and becomes its administrator.
+- **Create account** asks "student or teacher?". Students type their **class code** (or scan the class
+  QR / open `/join/<code>`); teachers type the **teacher invitation code** (admin page), or wait for the
+  administrator's approval.
+- **Classes** (teacher page → ＋ New class): join code + QR poster, seats, dates, legs opened on dates,
+  optional ranking (first names + XP), Excel export, certificate naming the class and organisation.
+- Data: `state/org.json`, `state/classes.json`, `state/org_logo.png`; a student's class is `class` in
+  `state/users.json`. Code: `server/orgs.py`.
+
 ## Shared hardware
 
 The camera and the I²C/serial sensors exist once. Students **book** them from the "Hardware" button;

@@ -13,8 +13,14 @@ IRIS_LOGO = "data:image/png;base64," + __import__("base64").b64encode(open(os.pa
 ap = argparse.ArgumentParser()
 ap.add_argument("--conf", default="/etc/navera/setup.json")
 ap.add_argument("--out", default="sticker.html")
+ap.add_argument("--setup-code", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "state", "setup_code.txt"),
+                help="the academy's first-start code (state/setup_code.txt, made when the academy starts)")
 a = ap.parse_args()
 c = json.load(open(a.conf))
+try:
+    setup_code = open(a.setup_code).read().strip()
+except OSError:
+    setup_code = ""
 esc = lambda s: "".join("\\" + ch if ch in '\;,:"' else ch for ch in s)
 wifi = segno.make(f'WIFI:T:WPA;S:{esc(c["ssid"])};P:{esc(c["password"])};;', error="m").svg_data_uri(scale=6, dark="#0b1730")
 page = segno.make("http://navera.setup", error="m").svg_data_uri(scale=6, dark="#0b1730")
@@ -28,6 +34,8 @@ code{{font-size:12pt}}.iris{{height:9mm;float:right}}p{{margin:2mm 0}}</style>
 <div class="row"><div class="q"><span class="n">1</span><p><b>Join the setup Wi-Fi</b></p><img src="{wifi}">
 <p><code>{c['ssid']}</code><br>password <code>{c['password']}</code></p></div>
 <div class="q"><span class="n">2</span><p><b>Open the setup page</b></p><img src="{page}"><p><code>http://navera.setup</code></p></div></div>
-<p style="margin-top:5mm">3 · Choose your Wi-Fi, type its password, press <b>Connect</b>. Done.</p></div>"""
+<p style="margin-top:5mm">3 · Choose your Wi-Fi, type its password, press <b>Connect</b>.</p>
+<p>4 · Open <b>http://navera-academy.local</b> and create your academy with this <b>setup code</b>:
+<code style="font-size:15pt;font-weight:700;letter-spacing:1px">{setup_code or "(start the academy once, then make this sticker again)"}</code></p></div>"""
 open(a.out, "w").write(html)
 print("wrote", a.out)

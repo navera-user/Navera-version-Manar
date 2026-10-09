@@ -30,6 +30,7 @@ from flask.sessions import SecureCookieSessionInterface
 
 import certs
 import config
+import orgs
 import simlite
 import webtools
 import sandbox
@@ -107,21 +108,72 @@ def users():
     return _load("users.json", {})
 
 
+# roles: admin (the client's manager) → teacher (own classes; "pending" until the admin approves) → student
+STAFF = ("teacher", "admin")
+
+
+def is_staff(u):
+    return bool(u) and u.get("role") in STAFF and u.get("status", "active") == "active"
+
+
+def is_admin(u):
+    return bool(u) and u.get("role") == "admin"
+
+
+def can_see(viewer, vrec, name):
+    """May this account look at (and act on) that student's work?"""
+    if viewer == name:
+        return True
+    if not is_staff(vrec):
+        return False
+    s = users().get(name)
+    if not s or s.get("role") != "student":
+        return False
+    if is_admin(vrec):
+        return True
+    c = orgs.get(s.get("class") or "")
+    return bool(c) and c["teacher"] == viewer
+
+
+def visible_students(viewer, vrec, cid=None):
+    out = {}
+    own = {c["id"] for c in orgs.owned_by(viewer)}
+    for name, rec in users().items():
+        if rec.get("role") != "student":
+            continue
+        if not is_admin(vrec) and rec.get("class") not in own:
+            continue
+        if cid is not None and (rec.get("class") or "") != cid:
+            continue
+        out[name] = rec
+    return out
+
+
 def ensure_teacher():
+    """The IRIS support account ("teacher", password in state/teacher_password.txt) is an administrator."""
     with _lock:
         u = users()
-        if not any(v["role"] == "teacher" for v in u.values()):
+        changed = False
+        if "teacher" in u and u["teacher"]["role"] == "teacher":           # before classes: one teacher = the admin
+            u["teacher"].update(role="admin", support=True)
+            changed = True
+        if not any(v["role"] == "admin" for v in u.values()):
             pw = secrets.token_urlsafe(9)
-            u["teacher"] = {"role": "teacher", "pw": generate_password_hash(pw), "index": 0,
-                            "display": "Teacher"}
-            _save("users.json", u)
+            u["teacher"] = {"role": "admin", "support": True, "pw": generate_password_hash(pw), "index": 0,
+                            "display": "IRIS support"}
+            changed = True
             with open(os.path.join(config.STATE, "teacher_password.txt"), "w") as f:
                 f.write(pw + "\n")
             os.chmod(os.path.join(config.STATE, "teacher_password.txt"), 0o600)
-            print(f"teacher account created: teacher / {pw}  (state/teacher_password.txt)")
+            print(f"IRIS support account created: teacher / {pw}  (state/teacher_password.txt)")
+        if changed:
+            _save("users.json", u)
 
 
 # ---------------------------------------------------------------- auth
+PENDING_OK = {"api_me", "api_password", "api_prefs_get", "api_prefs_set"}
+
+
 def login_required(role=None):
     def deco(fn):
         @functools.wraps(fn)
@@ -130,7 +182,10 @@ def login_required(role=None):
             u = users().get(name) if name else None
             if not u:
                 abort(401)
-            if role and u["role"] != role:
+            if u.get("status") == "pending" and fn.__name__ not in PENDING_OK:
+                return jsonify(error="Your teacher account is waiting for the administrator's approval."), 403
+            if (role == "teacher" and not is_staff(u)) or (role == "admin" and not is_admin(u)) \
+                    or (role == "student" and u["role"] != "student"):
                 abort(403)
             request.user = name
             request.urec = u
@@ -142,8 +197,12 @@ def login_required(role=None):
 def sandbox_user():
     """The sandbox to use: the logged-in student, or the student a teacher is viewing."""
     name = request.user
-    if request.urec["role"] == "teacher":
-        name = request.args.get("as") or (request.get_json(silent=True) or {}).get("as") or "teacher"
+    if is_staff(request.urec):
+        other = request.args.get("as") or (request.get_json(silent=True) or {}).get("as")
+        if other:
+            if not can_see(request.user, request.urec, other):
+                abort(403)
+            name = other
     u = users().get(name)
     if not u:
         abort(404)
@@ -183,7 +242,7 @@ def api_login():
     session.clear()
     session["user"] = name
     session.permanent = True
-    return jsonify(ok=True, role=u["role"])
+    return jsonify(ok=True, role=u["role"], status=u.get("status", "active"))
 
 
 # ---------------------------------------------------------------- accounts: sign-up, preferences, Google/GitHub
@@ -206,8 +265,8 @@ def oauth_conf():
     return c, {p: ok(p) for p in OAUTH}
 
 
-def new_student(display, email=None, password=None, provider=None, provider_id=None):
-    """Create a student account (name derived from the e-mail) and its sandbox. Returns the login name."""
+def new_student(display, email=None, password=None, provider=None, provider_id=None, klass=None, role="student", status=None):
+    """Create an account (login name derived from the e-mail) and its sandbox. Returns the login name."""
     with _lock:
         u = users()
         used = {v["index"] for v in u.values()}
@@ -222,13 +281,17 @@ def new_student(display, email=None, password=None, provider=None, provider_id=N
         while name in u:
             n += 1
             name = f"{base}{n}"
-        rec = {"role": "student", "index": idx, "display": (display or name)[:40], "created": time.strftime("%Y-%m-%d %H:%M"),
+        rec = {"role": role, "index": idx, "display": (display or name)[:40], "created": time.strftime("%Y-%m-%d %H:%M"),
                "pw": generate_password_hash(password) if password else None}
         if email:
             rec["email"] = email.lower()
         if provider:
             rec["provider"] = provider
             rec["provider_id"] = provider_id
+        if klass:
+            rec["class"] = klass
+        if status:
+            rec["status"] = status
         u[name] = rec
         _save("users.json", u)
     workspaces.create_student(name)
@@ -238,7 +301,47 @@ def new_student(display, email=None, password=None, provider=None, provider_id=N
 @app.get("/api/auth/options")
 def api_auth_options():
     _, ready = oauth_conf()
-    return jsonify(signup=settings()["allow_signup"], **ready)
+    o = orgs.org()
+    return jsonify(signup=settings()["allow_signup"], need_class=bool(orgs.classes()), org=o.get("name", ""),
+                   logo=f"/org/logo.png?v={o.get('logo_v', 0)}" if o.get("logo") else "", **ready)
+
+
+def _class_seats_used(cid):
+    return sum(1 for v in users().values() if v.get("role") == "student" and v.get("class") == cid)
+
+
+def _class_for_join(code):
+    """(class, None) or (None, error) — a code is needed once the academy has classes."""
+    if not code:
+        if orgs.classes():
+            return None, "Enter the class code your teacher gave you."
+        return None, None
+    c = orgs.by_code(code)
+    err = orgs.join_problem(c, _class_seats_used(c["id"]) if c else 0)
+    return (None, err) if err else (c, None)
+
+
+_peeks = {}
+
+
+@app.get("/api/class-info")
+def api_class_info():
+    """What a class code opens, shown before the student confirms (no login; a few tries per minute)."""
+    ip = request.remote_addr or "?"
+    now = time.time()
+    _peeks[ip] = [t for t in _peeks.get(ip, []) if now - t < 60][-40:] + [now]
+    if len(_peeks[ip]) > 30:
+        return jsonify(error="Too many tries — wait a minute."), 429
+    c, err = _class_for_join(request.args.get("code", ""))
+    if not c:
+        return jsonify(error=err or "Enter a class code."), 404
+    t = users().get(c["teacher"], {})
+    return jsonify(name=c["name"], org=orgs.org().get("name", ""), teacher=t.get("display", ""))
+
+
+@app.get("/join/<code>")
+def page_join(code):
+    return redirect("/?join=" + re.sub(r"[^A-Za-z0-9-]", "", code)[:20])
 
 
 @app.post("/api/signup")
@@ -246,11 +349,12 @@ def api_signup():
     if not settings()["allow_signup"]:
         return jsonify(error="Account creation is closed. Ask your teacher for an account."), 403
     d = request.get_json(force=True)
-    display = (d.get("display") or "").strip()
+    kind = "teacher" if d.get("kind") == "teacher" else "student"
+    display = re.sub(r"\s+", " ", (d.get("display") or "")).strip()[:60]
     email = (d.get("email") or "").strip().lower()
     pw = d.get("password") or ""
     if len(display) < 2:
-        return jsonify(error="Please enter your name."), 400
+        return jsonify(error="Please enter your full name."), 400
     if not EMAIL_RE.match(email):
         return jsonify(error="Please enter a valid e-mail address."), 400
     if len(pw) < 8:
@@ -262,13 +366,23 @@ def api_signup():
     _signups[ip] = [t for t in _signups.get(ip, []) if now - t < 3600]
     if len(_signups[ip]) >= SIGNUP_PER_HOUR:
         return jsonify(error="Too many new accounts from this device. Try again later."), 429
+    klass, status = None, None
+    if kind == "student":
+        c, err = _class_for_join(d.get("class_code", ""))
+        if err:
+            return jsonify(error=err), 400
+        klass = c["id"] if c else None
+    else:
+        code = re.sub(r"[^A-Z0-9]", "", (d.get("invite_code") or "").upper())
+        good = re.sub(r"[^A-Z0-9]", "", orgs.org().get("teacher_code", ""))
+        status = "active" if code and good and secrets.compare_digest(code, good) else "pending"
     try:
-        name = new_student(display, email=email, password=pw)
+        name = new_student(display, email=email, password=pw, klass=klass, role=kind, status=status)
     except ValueError as e:
         return jsonify(error=str(e)), 409
     _signups[ip].append(now)
     session.clear(); session["user"] = name; session.permanent = True
-    return jsonify(ok=True, role="student", name=name)
+    return jsonify(ok=True, role=kind, status=status or "active", name=name)
 
 
 @app.get("/api/prefs")
@@ -307,6 +421,7 @@ def auth_start(provider):
     from urllib.parse import urlencode
     state = secrets.token_urlsafe(24)
     session["oauth_state"] = state
+    session["join_code"] = request.args.get("code", "")[:20]
     q = {"client_id": conf[provider]["client_id"], "redirect_uri": conf["base_url"].rstrip("/") + f"/auth/{provider}/callback",
          "response_type": "code", "scope": OAUTH[provider]["scope"], "state": state}
     if provider == "google":
@@ -345,23 +460,27 @@ def auth_callback(provider):
     if not name:
         if not settings()["allow_signup"]:
             return redirect("/?auth_error=signup_closed")
+        c, err = _class_for_join(session.pop("join_code", ""))
+        if err:
+            return redirect("/?auth_error=need_class_code")
         try:
-            name = new_student(info.get("name") or email, email=email or None, provider=provider, provider_id=pid)
+            name = new_student(info.get("name") or email, email=email or None, provider=provider, provider_id=pid,
+                               klass=c["id"] if c else None)
         except ValueError:
             return redirect("/?auth_error=full")
     session.clear(); session["user"] = name; session.permanent = True
-    return redirect("/teacher" if users()[name]["role"] == "teacher" else "/")
+    return redirect("/teacher" if is_staff(users()[name]) else "/")
 
 
 @app.get("/api/admin/settings")
-@login_required("teacher")
+@login_required("admin")
 def api_admin_settings():
     _, ready = oauth_conf()
     return jsonify(settings=settings(), oauth=ready)
 
 
 @app.post("/api/admin/settings")
-@login_required("teacher")
+@login_required("admin")
 def api_admin_settings_set():
     d = request.get_json(force=True)
     with _lock:
@@ -382,7 +501,12 @@ def api_logout():
 @login_required()
 def api_me():
     b = workspaces.base_info()
-    return jsonify(name=request.user, role=request.urec["role"], display=request.urec.get("display", request.user),
+    c = orgs.get(request.urec.get("class") or "")
+    o = orgs.org()
+    return jsonify(name=request.user, role=request.urec["role"], status=request.urec.get("status", "active"),
+                   staff=is_staff(request.urec), admin=is_admin(request.urec), org=o.get("name", ""),
+                   klass={"id": c["id"], "name": c["name"], "ranking": c.get("ranking", False)} if c else None,
+                   display=request.urec.get("display", request.user),
                    email=request.urec.get("email"), prefs=request.urec.get("prefs", {}),
                    domain=config.domain_for(request.urec["index"]), base=b, host=_host_ip())
 
@@ -429,15 +553,32 @@ def lesson_meta(lid):
 @app.get("/api/courses")
 @login_required()
 def api_courses():
-    name = request.args.get("as") if request.urec["role"] == "teacher" else request.user
+    name = request.user
+    if is_staff(request.urec) and request.args.get("as"):
+        if not can_see(request.user, request.urec, request.args["as"]):
+            abort(403)
+        name = request.args["as"]
     prog = _load("progress.json", {}).get(name or "", {})
     mods = _load_modules()
     out = []
     for lid in lesson_ids():
         m = lesson_meta(lid)
         m["progress"] = prog.get(lid, {})
+        m["locked_until"] = lesson_locked(name, lid)
         out.append(m)
     return jsonify(lessons=out, modules=mods)
+
+
+def lesson_leg(lid):
+    return next((i for i, m in enumerate(_load_modules()) if lid in (m.get("lessons") or [])), -1)
+
+
+def lesson_locked(name, lid):
+    """For a student whose class opens legs on dates: the date this mission opens, else ''."""
+    rec = users().get(name or "", {})
+    if rec.get("role") != "student":
+        return ""
+    return orgs.leg_open_from(orgs.get(rec.get("class") or ""), lesson_leg(lid))
 
 
 def _load_modules():
@@ -454,6 +595,8 @@ def api_lesson(lid):
     if lid not in lesson_ids():
         abort(404)
     name, _ = sandbox_user()
+    if lesson_locked(name, lid):
+        return jsonify(error=f"This leg opens on {lesson_locked(name, lid)}."), 403
     workspaces.install_lesson(name, lid)
     base = os.path.join(config.COURSES, lid)
     def read(fn):
@@ -508,6 +651,8 @@ def api_check(lid):
     if lid not in lesson_ids():
         abort(404)
     name, _ = sandbox_user()
+    if lesson_locked(name, lid):
+        return jsonify(error=f"This leg opens on {lesson_locked(name, lid)}."), 403
     m = lesson_meta(lid)
     timeout = int(m.get("check_timeout_s", 180))
     res = [r for r in m.get("resources", []) if _holder(r) == name]
@@ -524,7 +669,7 @@ def api_check(lid):
             pass
     out = re.sub(r"^ACADEMY_RESULT .*\n?", "", out, flags=re.M)
     passed = code == 0 and (score is None or score.get("passed") == score.get("total"))
-    if request.urec["role"] != "teacher" or name == request.user:
+    if not is_staff(request.urec) or name == request.user:
         with _lock:
             p = _load("progress.json", {})
             rec = p.setdefault(name, {}).setdefault(lid, {})
@@ -683,7 +828,7 @@ def web_tool(tool, sub):
     """Simulator and operator view inside the page, under the academy's address (see webtools.py)."""
     if tool not in webtools.PORTS:
         abort(404)
-    if request.urec["role"] != "teacher" and (config.RESOURCES["sim"].get("teacher_only") or _holder("sim") != request.user):
+    if not is_staff(request.urec) and (config.RESOURCES["sim"].get("teacher_only") or _holder("sim") != request.user):
         return webtools.message("The full simulator is for the teacher",
                                 "You fly <b>Sim Lite</b>: open the 🛩️ <b>Simulator</b> tab. It runs your own NAVERA code, "
                                 "and no booking is needed.", 423, lite=True)
@@ -694,7 +839,7 @@ def web_tool(tool, sub):
 @app.get("/api/simlite/code")
 @login_required()
 def api_simlite_code():
-    teacher = request.urec["role"] == "teacher"            # the original NAVERA: teacher only
+    teacher = is_staff(request.urec)                       # the original NAVERA: teacher only
     src = "original" if teacher and request.args.get("src") == "original" else "mine"
     try:
         return jsonify(simlite.code(request.user, src, allow_original=teacher))
@@ -768,7 +913,7 @@ def api_simlite_tile(z, x, y):
 @login_required()
 def api_bookings():
     b = bookings()
-    teacher = request.urec["role"] == "teacher"
+    teacher = is_staff(request.urec)
     return jsonify({k: {"title": v["title"], "holder": b.get(k, {}).get("user"),
                         "since": b.get(k, {}).get("since")} for k, v in config.RESOURCES.items()
                     if teacher or not v.get("teacher_only")})
@@ -781,7 +926,7 @@ def api_book():
     res, action = d.get("resource"), d.get("action", "take")
     if res not in config.RESOURCES:
         abort(404)
-    if config.RESOURCES[res].get("teacher_only") and request.urec["role"] != "teacher":
+    if config.RESOURCES[res].get("teacher_only") and not is_staff(request.urec):
         return jsonify(error="Students fly Sim Lite (Simulator tab): no booking needed."), 403
     name = request.user
     with _lock:
@@ -796,7 +941,7 @@ def api_book():
                                      f"running). Ask the teacher."), 409
             b[res] = {"user": name, "since": time.strftime("%H:%M")}
         else:
-            if cur and cur != name and request.urec["role"] != "teacher":
+            if cur and cur != name and not is_staff(request.urec):
                 abort(403)
             if cur:
                 _kill_terminals(cur, only_with=res)
@@ -826,10 +971,13 @@ def _kill(t):
 def ws_term(ws):
     name = session.get("user")
     u = users().get(name) if name else None
-    if not u:
+    if not u or u.get("status") == "pending":
         ws.close()
         return
-    if u["role"] == "teacher" and request.args.get("as"):
+    if is_staff(u) and request.args.get("as"):
+        if not can_see(name, u, request.args["as"]):
+            ws.close()
+            return
         name = request.args["as"]
         u = users().get(name)
         if not u:
@@ -910,15 +1058,17 @@ def ws_term(ws):
 @app.get("/api/admin/students")
 @login_required("teacher")
 def api_admin_students():
-    u = users()
+    cid = request.args.get("class")
+    seen = visible_students(request.user, request.urec, None if cid in (None, "all") else cid)
     p = _load("progress.json", {})
     n = len(lesson_ids())
     out = []
-    for name, rec in sorted(u.items()):
-        if rec["role"] != "student":
-            continue
+    for name, rec in sorted(seen.items()):
         pr = p.get(name, {})
-        out.append({"name": name, "display": rec.get("display", name), "index": rec["index"],
+        last = max((v.get("last", "") for v in pr.values()), default="")
+        c = certs.for_user(name)
+        out.append({"name": name, "display": rec.get("display", name), "index": rec["index"], "class": rec.get("class") or "",
+                    "last": last or rec.get("created", ""), "certificate": c["id"] if c and not c.get("revoked") else "",
                     "email": rec.get("email"), "provider": rec.get("provider", "email" if rec.get("email") else "teacher"),
                     "passed": sum(1 for v in pr.values() if v.get("status") == "passed"),
                     "started": sum(1 for v in pr.values() if v.get("status") == "started"),
@@ -926,7 +1076,8 @@ def api_admin_students():
                     "terminals": sum(1 for t in TERMS.values() if t["user"] == name),
                     "backups": len(os.listdir(os.path.join(config.STUDENTS, name, "backups")))
                     if os.path.isdir(os.path.join(config.STUDENTS, name, "backups")) else 0})
-    return jsonify(students=out, base=workspaces.base_info(), lessons=lesson_ids(), missing_data=config.missing_data())
+    return jsonify(students=out, base=workspaces.base_info(), lessons=lesson_ids(),
+                   missing_data=config.missing_data() if is_admin(request.urec) else [])
 
 
 @app.post("/api/admin/students")
@@ -934,6 +1085,11 @@ def api_admin_students():
 def api_admin_add():
     d = request.get_json(force=True)
     created = []
+    cid = d.get("class") or None
+    if cid and (not orgs.get(cid) or (not is_admin(request.urec) and orgs.get(cid)["teacher"] != request.user)):
+        return jsonify(error="Choose one of your classes."), 400
+    if not cid and not is_admin(request.urec):
+        return jsonify(error="Choose the class for these students."), 400
     with _lock:
         u = users()
         used = {v["index"] for v in u.values()}
@@ -952,7 +1108,9 @@ def api_admin_add():
             used.add(idx)
             pw = parts[2] if len(parts) > 2 and parts[2] else secrets.token_urlsafe(8)
             u[name] = {"role": "student", "pw": generate_password_hash(pw), "index": idx,
-                       "display": parts[1] if len(parts) > 1 and parts[1] else name}
+                       "display": parts[1] if len(parts) > 1 and parts[1] else name, "created": time.strftime("%Y-%m-%d %H:%M")}
+            if cid:
+                u[name]["class"] = cid
             created.append({"name": name, "password": pw})
         _save("users.json", u)
     for c in created:
@@ -965,10 +1123,24 @@ def api_admin_add():
 def api_admin_student(name):
     d = request.get_json(force=True)
     action = d.get("action")
+    if not can_see(request.user, request.urec, name) or name == request.user:
+        abort(404)
     with _lock:
         u = users()
         if name not in u or u[name]["role"] != "student":
             abort(404)
+        if action == "move":                                   # to another class (one of mine, or any for the admin)
+            c = orgs.get(d.get("class") or "")
+            if d.get("class") and (not c or (not is_admin(request.urec) and c["teacher"] != request.user)):
+                return jsonify(error="Choose one of your classes."), 400
+            if not c and not is_admin(request.urec):
+                return jsonify(error="Choose one of your classes."), 400
+            if c:
+                u[name]["class"] = c["id"]
+            else:
+                u[name].pop("class", None)
+            _save("users.json", u)
+            return jsonify(ok=True)
         if action == "password":
             pw = secrets.token_urlsafe(8)
             u[name]["pw"] = generate_password_hash(pw)
@@ -997,7 +1169,7 @@ def api_admin_student(name):
 
 
 @app.get("/api/admin/commits")
-@login_required("teacher")
+@login_required("admin")
 def api_admin_commits():
     r = subprocess.run(["git", "-C", config.REAL_REPO, "log", "--all", "-25",
                         "--format=%h|%ad|%D|%s", "--date=short"], text=True, capture_output=True)
@@ -1020,7 +1192,7 @@ def api_admin_fullsim():
 
 
 @app.post("/api/admin/base")
-@login_required("teacher")
+@login_required("admin")
 def api_admin_base():
     commit = (request.get_json(force=True)).get("commit", "")
     if not re.fullmatch(r"[0-9a-f]{6,40}", commit):
@@ -1041,13 +1213,303 @@ def api_admin_base():
 
 
 @app.get("/api/admin/base")
-@login_required("teacher")
+@login_required("admin")
 def api_admin_base_state():
     return jsonify(running=BASE_JOB["running"], log=BASE_JOB["log"][-30:], error=BASE_JOB.get("error"),
                    base=workspaces.base_info())
 
 
 # ---------------------------------------------------------------- pages
+# ---------------------------------------------------------------- organisation, classes, teachers (orgs.py)
+@app.get("/api/setup")
+def api_setup_state():
+    return jsonify(needed=not orgs.configured() and not any(v.get("role") == "student" or not v.get("support")
+                                                            for v in users().values()))
+
+
+@app.post("/api/setup")
+def api_setup():
+    """First start of a client's Jetson: the organisation and its first administrator (needs the sticker's code)."""
+    if orgs.configured() or any(v.get("role") == "student" or not v.get("support") for v in users().values()):
+        return jsonify(error="This academy is already set up — sign in."), 409
+    d = request.get_json(force=True)
+    ip = "setup:" + (request.remote_addr or "?")
+    if _too_many_fails(ip):
+        return jsonify(error="Too many wrong codes. Wait 15 minutes."), 429
+    code = re.sub(r"[^A-Z0-9]", "", (d.get("setup_code") or "").upper())
+    if not secrets.compare_digest(code, re.sub(r"[^A-Z0-9]", "", orgs.setup_code())):
+        _fails[ip].append(time.time())
+        return jsonify(error="This setup code is not right — it is on the sticker under the NAVERA box."), 403
+    org = re.sub(r"\s+", " ", d.get("org") or "").strip()[:80]
+    display = re.sub(r"\s+", " ", d.get("display") or "").strip()[:60]
+    email = (d.get("email") or "").strip().lower()
+    pw = d.get("password") or ""
+    if len(org) < 2:
+        return jsonify(error="Enter the name of your organisation."), 400
+    if len(display) < 2:
+        return jsonify(error="Enter your full name."), 400
+    if not EMAIL_RE.match(email):
+        return jsonify(error="Enter a valid e-mail address."), 400
+    if len(pw) < 8:
+        return jsonify(error="The password needs at least 8 characters."), 400
+    name = new_student(display, email=email, password=pw, role="admin")
+    orgs.save_org(name=org)
+    session.clear(); session["user"] = name; session.permanent = True
+    return jsonify(ok=True, name=name)
+
+
+@app.get("/org/logo.png")
+def org_logo():
+    if not os.path.exists(orgs.LOGO):
+        abort(404)
+    return send_file(orgs.LOGO, mimetype="image/png", max_age=300)
+
+
+@app.get("/api/admin/org")
+@login_required("admin")
+def api_admin_org():
+    o = orgs.org()
+    return jsonify(name=o.get("name", ""), teacher_code=o.get("teacher_code", ""), logo=bool(o.get("logo")),
+                   logo_url=f"/org/logo.png?v={o.get('logo_v', 0)}" if o.get("logo") else "",
+                   join_url=_public_url() + "/")
+
+
+@app.post("/api/admin/org")
+@login_required("admin")
+def api_admin_org_set():
+    d = request.get_json(force=True)
+    if d.get("action") == "new_teacher_code":
+        return jsonify(teacher_code=orgs.new_teacher_code())
+    if d.get("action") == "remove_logo":
+        if os.path.exists(orgs.LOGO):
+            os.remove(orgs.LOGO)
+        orgs.save_org(logo=False)
+        return jsonify(ok=True)
+    name = re.sub(r"\s+", " ", d.get("name") or "").strip()[:80]
+    if len(name) < 2:
+        return jsonify(error="Enter the name of your organisation."), 400
+    orgs.save_org(name=name)
+    return jsonify(ok=True)
+
+
+@app.post("/api/admin/org/logo")
+@login_required("admin")
+def api_admin_org_logo():
+    data = request.get_data()
+    if not data or len(data) > 3_000_000:
+        return jsonify(error="Choose a PNG or JPEG picture under 3 MB."), 400
+    try:
+        orgs.save_logo(data)
+    except Exception as e:
+        return jsonify(error=str(e) if isinstance(e, ValueError) else "This file is not a PNG or JPEG picture."), 400
+    return jsonify(ok=True)
+
+
+def _class_view(c):
+    t = users().get(c["teacher"], {})
+    return dict(c, teacher_name=t.get("display", c["teacher"]), students=_class_seats_used(c["id"]),
+                join_url=f"{_public_url()}/join/{c['code']}")
+
+
+@app.get("/api/classes")
+@login_required("teacher")
+def api_classes():
+    cs = orgs.classes().values() if is_admin(request.urec) else orgs.owned_by(request.user)
+    teachers = [{"name": k, "display": v.get("display", k)} for k, v in users().items()
+                if is_staff(v)] if is_admin(request.urec) else []
+    mods = [{"index": i, "leg": m.get("leg", ""), "title": m.get("title", "")} for i, m in enumerate(_load_modules())]
+    unassigned = sum(1 for v in users().values() if v.get("role") == "student" and not orgs.get(v.get("class") or ""))
+    return jsonify(classes=sorted((_class_view(c) for c in cs), key=lambda c: c["created"]), teachers=teachers,
+                   legs=mods, unassigned=unassigned if is_admin(request.urec) else 0)
+
+
+def _class_fields(d):
+    f = {}
+    if "name" in d:
+        f["name"] = re.sub(r"\s+", " ", str(d["name"])).strip()[:80]
+        if len(f["name"]) < 2:
+            raise ValueError("Give the class a name.")
+    for k in ("starts", "ends"):
+        if k in d:
+            v = str(d[k] or "")
+            if v and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+                raise ValueError("Dates look like 2026-10-13.")
+            f[k] = v
+    if "seats" in d:
+        f["seats"] = max(1, min(98, int(d["seats"] or 30)))
+    for k in ("join", "ranking", "cert_class"):
+        if k in d:
+            f[k] = bool(d[k])
+    if "legs" in d:
+        legs = {}
+        for k, v in (d["legs"] or {}).items():
+            if re.fullmatch(r"\d{1,2}", str(k)) and (not v or re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(v))):
+                if v:
+                    legs[str(k)] = str(v)
+        f["legs"] = legs
+    return f
+
+
+@app.post("/api/classes")
+@login_required("teacher")
+def api_class_create():
+    d = request.get_json(force=True)
+    try:
+        f = _class_fields(dict(d, name=d.get("name", "")))
+    except (ValueError, TypeError) as e:
+        return jsonify(error=str(e)), 400
+    owner = request.user
+    if is_admin(request.urec) and d.get("teacher") and is_staff(users().get(d["teacher"])):
+        owner = d["teacher"]
+    c = orgs.create(owner, f["name"], f.get("starts"), f.get("ends"), f.get("seats", 30))
+    rest = {k: v for k, v in f.items() if k not in ("name", "starts", "ends", "seats")}
+    if rest:
+        c = orgs.update(c["id"], **rest)
+    return jsonify(_class_view(c))
+
+
+def _my_class(cid):
+    c = orgs.get(cid)
+    if not c or not (is_admin(request.urec) or c["teacher"] == request.user):
+        abort(404)
+    return c
+
+
+@app.post("/api/classes/<cid>")
+@login_required("teacher")
+def api_class_update(cid):
+    _my_class(cid)
+    d = request.get_json(force=True)
+    if d.get("action") == "delete":
+        with _lock:                              # its students stay, without a class (the admin sees them)
+            u = users()
+            for v in u.values():
+                if v.get("class") == cid:
+                    v.pop("class", None)
+            _save("users.json", u)
+        orgs.delete(cid)
+        return jsonify(ok=True)
+    try:
+        f = _class_fields(d)
+    except (ValueError, TypeError) as e:
+        return jsonify(error=str(e)), 400
+    if is_admin(request.urec) and d.get("teacher") and is_staff(users().get(d["teacher"])):
+        f["teacher"] = d["teacher"]
+    c = orgs.update(cid, new_code=bool(d.get("new_code")), **f)
+    return jsonify(_class_view(c))
+
+
+def _cell(rec):
+    """One mission in the Excel export: ✔ passed, best score while started, empty otherwise."""
+    if rec.get("status") == "passed":
+        return "✔"
+    if rec.get("status") == "started":
+        return f"{rec.get('best', 0)}/{rec.get('total', '?')}"
+    return ""
+
+
+@app.get("/api/classes/<cid>/export.xlsx")
+@login_required("teacher")
+def api_class_export(cid):
+    c = _my_class(cid) if cid != "all" else None
+    if cid == "all" and not is_admin(request.urec):
+        abort(404)
+    ids = lesson_ids()
+    p = _load("progress.json", {})
+    rows = [["Name", "E-mail", "Login", "Class", "Missions passed", "of", "XP", "Last activity", "Certificate"] +
+            [f"M{lesson_meta(i).get('number', i[:2])}" for i in ids]]
+    for name, rec in sorted(visible_students(request.user, request.urec, None if cid == "all" else cid).items(),
+                            key=lambda kv: kv[1].get("display", kv[0]).lower()):
+        pr = p.get(name, {})
+        done = sum(1 for i in ids if pr.get(i, {}).get("status") == "passed")
+        cert = certs.for_user(name)
+        k = orgs.get(rec.get("class") or "")
+        rows.append([rec.get("display", name), rec.get("email", ""), name, k["name"] if k else "", done, len(ids), done * 100,
+                     max((v.get("last", "") for v in pr.values()), default=""),
+                     cert["id"] if cert and not cert.get("revoked") else ""] +
+                    [_cell(pr.get(i, {})) for i in ids])
+    fn = re.sub(r"[^A-Za-z0-9_-]+", "_", c["name"] if c else "all_students").strip("_") or "class"
+    return Response(orgs.xlsx(rows, (c["name"] if c else "Students")[:31]),
+                    mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="{fn}.xlsx"'})
+
+
+@app.get("/api/classes/<cid>/qr.svg")
+@login_required("teacher")
+def api_class_qr(cid):
+    return Response(certs.qr_svg(_class_view(_my_class(cid))["join_url"]), mimetype="image/svg+xml")
+
+
+@app.get("/class/<cid>/poster")
+@login_required("teacher")
+def page_class_poster(cid):
+    c = _class_view(_my_class(cid))
+    o = orgs.org()
+    return render_template("poster.html", c=c, org=o.get("name", ""), qr=certs.qr_svg(c["join_url"]),
+                           logo=f"/org/logo.png?v={o.get('logo_v', 0)}" if o.get("logo") else "")
+
+
+@app.get("/api/class/ranking")
+@login_required("student")
+def api_class_ranking():
+    c = orgs.get(request.urec.get("class") or "")
+    if not c or not c.get("ranking"):
+        return jsonify(ranking=None)
+    p = _load("progress.json", {})
+    rows = []
+    for name, rec in users().items():
+        if rec.get("role") == "student" and rec.get("class") == c["id"]:
+            xp = 100 * sum(1 for v in p.get(name, {}).values() if v.get("status") == "passed")
+            rows.append({"first": (rec.get("display") or name).split(" ")[0], "xp": xp, "me": name == request.user})
+    rows.sort(key=lambda r: -r["xp"])
+    return jsonify(ranking=rows[:50], klass=c["name"])
+
+
+@app.get("/api/admin/teachers")
+@login_required("admin")
+def api_admin_teachers():
+    out = []
+    for name, rec in sorted(users().items()):
+        if rec.get("role") in STAFF:
+            out.append({"name": name, "display": rec.get("display", name), "email": rec.get("email", ""),
+                        "role": rec["role"], "status": rec.get("status", "active"), "support": bool(rec.get("support")),
+                        "classes": len(orgs.owned_by(name)), "created": rec.get("created", "")})
+    return jsonify(teachers=out)
+
+
+@app.post("/api/admin/teacher/<name>")
+@login_required("admin")
+def api_admin_teacher(name):
+    action = request.get_json(force=True).get("action")
+    with _lock:
+        u = users()
+        if name not in u or u[name].get("role") not in STAFF or name == request.user or u[name].get("support"):
+            abort(404)
+        if action == "approve":
+            u[name]["status"] = "active"
+        elif action == "make_admin":
+            u[name].update(role="admin", status="active")
+        elif action == "make_teacher":
+            u[name]["role"] = "teacher"
+        elif action == "password":
+            pw = secrets.token_urlsafe(8)
+            u[name]["pw"] = generate_password_hash(pw)
+            _save("users.json", u)
+            return jsonify(password=pw)
+        elif action in ("delete", "reject"):
+            for c in orgs.owned_by(name):        # their classes go to the admin who removes them
+                orgs.update(c["id"], teacher=request.user)
+            _kill_terminals(name)
+            del u[name]
+            _save("users.json", u)
+            workspaces.delete_student(name)
+            return jsonify(ok=True)
+        else:
+            abort(400)
+        _save("users.json", u)
+    return jsonify(ok=True)
+
+
 # ---------------------------------------------------------------- end-of-course certificate (certs.py)
 def _public_url():
     """The academy's public address, for the QR code and the links printed on certificates."""
@@ -1094,7 +1556,14 @@ def api_certificate_issue():
     name = re.sub(r"\s+", " ", str(request.get_json(force=True).get("name", ""))).strip()
     if not 3 <= len(name) <= 60 or not re.search(r"[^\W\d_]", name):
         return jsonify(error="Enter your full name as it should be printed (3 to 60 characters)."), 400
-    c = certs.issue(request.user, name, last or time.strftime("%Y-%m-%d"), total, hours)
+    extra = {}
+    o = orgs.org()
+    k = orgs.get(request.urec.get("class") or "")
+    if o.get("name"):
+        extra["organisation"] = o["name"]
+    if k and k.get("cert_class", True):
+        extra["class"] = k["name"]
+    c = certs.issue(request.user, name, last or time.strftime("%Y-%m-%d"), total, hours, extra)
     return jsonify(id=c["id"], url=f"/certificate/{c['id']}")
 
 
@@ -1114,7 +1583,9 @@ def _cert_page(template, c, cid=""):
                            verify_url=f"{_public_url()}/verify/{(c or {}).get('id', '')}",
                            verify_short=f"…/verify/{(c or {}).get('id', '')}",
                            qr=certs.qr_svg(f"{_public_url()}/verify/{c['id']}") if c else "",
-                           mine=bool(c) and session.get("user") == c.get("user"))
+                           mine=bool(c) and session.get("user") == c.get("user"),
+                           org_logo=(f"/org/logo.png?v={orgs.org().get('logo_v', 0)}"
+                                     if c and c.get("organisation") and orgs.org().get("logo") else ""))
 
 
 @app.get("/certificate/<cid>")
@@ -1143,8 +1614,10 @@ def cert_public_key():
 @app.get("/api/admin/certificates")
 @login_required("teacher")
 def api_admin_certificates():
-    return jsonify(certificates=[{k: c[k] for k in ("id", "name", "user", "issued", "completed", "revoked")}
-                                 for c in certs.all_certs()], key=certs.KEY_NAME, fingerprint=certs.fingerprint())
+    mine = set(visible_students(request.user, request.urec))
+    return jsonify(certificates=[{k: c.get(k, "") for k in ("id", "name", "user", "issued", "completed", "revoked", "class")}
+                                 for c in certs.all_certs() if is_admin(request.urec) or c["user"] in mine],
+                   key=certs.KEY_NAME, fingerprint=certs.fingerprint())
 
 
 @app.post("/api/admin/certificates/<cid>")
@@ -1153,21 +1626,29 @@ def api_admin_certificate_set(cid):
     action = request.get_json(force=True).get("action")
     if action not in ("revoke", "restore"):
         abort(400)
+    c0 = certs.get(cid)
+    if not c0 or not (is_admin(request.urec) or c0["user"] in visible_students(request.user, request.urec)):
+        return jsonify(error="unknown certificate"), 404
     c = certs.set_revoked(cid, action == "revoke")
     return jsonify(ok=True) if c else (jsonify(error="unknown certificate"), 404)
 
 
 @app.get("/")
 def page_index():
-    if not session.get("user") or session["user"] not in users():
+    u = users().get(session.get("user") or "")
+    if not u:
+        if not orgs.configured() and not any(v.get("role") == "student" or not v.get("support") for v in users().values()):
+            return send_from_directory(app.static_folder, "setup.html")       # a brand-new Jetson: first start
         return send_from_directory(app.static_folder, "login.html")
+    if u.get("status") == "pending":
+        return send_from_directory(app.static_folder, "pending.html")
     return send_from_directory(app.static_folder, "app.html")
 
 
 @app.get("/teacher")
 def page_teacher():
     u = users().get(session.get("user") or "")
-    if not u or u["role"] != "teacher":
+    if not is_staff(u):
         return redirect("/")
     return send_from_directory(app.static_folder, "teacher.html")
 
@@ -1187,5 +1668,7 @@ if __name__ == "__main__":
         raise SystemExit("no base yet: python3 -c 'import workspaces; workspaces.build_base(\"<commit>\")'")
     ensure_teacher()
     workspaces.create_student("teacher")
+    if not orgs.configured():
+        orgs.setup_code()               # printed on the sticker; asked on the first-start page
     print(f"NAVERA Academy on http://{_host_ip()}:{config.PORT}")
     app.run(host="0.0.0.0", port=config.PORT, threaded=True)

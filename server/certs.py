@@ -53,7 +53,11 @@ def fingerprint():
 def _payload(c):
     """Exactly the signed fields, in a fixed order."""
     keys = ("id", "name", "programme", "completed", "missions", "hours", "issuer", "key")
-    return json.dumps({k: c[k] for k in keys}, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    d = {k: c[k] for k in keys}
+    for k in ("organisation", "class"):            # signed too when present (certificates since classes)
+        if c.get(k):
+            d[k] = c[k]
+    return json.dumps(d, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
 
 
 def _load():
@@ -83,7 +87,7 @@ def all_certs():
     return sorted(_load().values(), key=lambda c: c["issued"], reverse=True)
 
 
-def issue(user, name, completed, missions, hours):
+def issue(user, name, completed, missions, hours, extra=None):
     """One certificate per account; the printed name is fixed once signed."""
     with _lock:
         d = _load()
@@ -97,6 +101,7 @@ def issue(user, name, completed, missions, hours):
                 break
         c = {"id": cid, "name": name, "programme": PROGRAMME, "completed": completed, "missions": missions,
              "hours": hours, "issuer": ISSUER, "key": KEY_NAME}
+        c.update({k: v for k, v in (extra or {}).items() if k in ("organisation", "class") and v})
         c["signature"] = base64.b64encode(_key().sign(_payload(c))).decode()
         c.update(user=user, issued=time.strftime("%Y-%m-%d %H:%M"), revoked=False)
         d[cid] = c

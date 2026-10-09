@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Join {{ c.name }} — NAVERA Academy</title>
+<link rel="icon" href="/static/img/navi-mark-gold.svg">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  @page { size: A4 portrait; margin: 0; }
+  html, body { height: auto; } html { background: #0b1730; }
+  body { background: #0b1730; overflow: auto; margin: 0; font-family: Inter, sans-serif; }
+  .bar { display: flex; gap: 10px; justify-content: center; padding: 16px; }
+  .bar button { background: linear-gradient(135deg, #ff9f8a, #e8706a); color: #2a0d08; border: none; padding: 9px 18px; border-radius: 999px; font: 600 14px Inter, sans-serif; cursor: pointer; }
+  .sheet { width: 794px; height: 1123px; margin: 0 auto 40px; background: #fbf8f3; color: #0b1730; position: relative; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.45);
+    display: flex; flex-direction: column; align-items: center; text-align: center; padding: 70px 60px 50px; box-sizing: border-box; }
+  .sheet::before { content: ""; position: absolute; inset: 20px; border: 1.5px solid #0b1730; pointer-events: none; }
+  .logos { display: flex; gap: 18px; align-items: center; } .logos img { max-height: 54px; max-width: 220px; object-fit: contain; }
+  .logos .sep { width: 1px; height: 40px; background: #c9d4de; }
+  .kick { margin-top: 46px; font-size: 14px; letter-spacing: 6px; text-transform: uppercase; color: #b3412f; font-weight: 700; }
+  h1 { font-family: Fraunces, serif; font-size: 50px; line-height: 1.05; margin: 14px 0 6px; font-weight: 600; }
+  .org { font-size: 18px; color: #5d6b78; }
+  .qr { margin-top: 40px; padding: 18px; background: #fff; border-radius: 22px; box-shadow: 0 10px 30px rgba(11,23,48,.12); }
+  .qr svg { width: 330px; height: 330px; display: block; }
+  .code { margin-top: 30px; font: 700 64px ui-monospace, monospace; letter-spacing: 8px; }
+  .how { margin-top: 18px; font-size: 18px; line-height: 1.6; color: #2c3a48; max-width: 560px; }
+  .how b { color: #0b1730; }
+  .url { margin-top: 8px; font: 15px ui-monospace, monospace; color: #1d4e6b; }
+  .foot { margin-top: auto; display: flex; gap: 10px; align-items: center; font-size: 13px; color: #5d6b78; letter-spacing: 2px; text-transform: uppercase; font-weight: 600; }
+  .foot img { width: 26px; }
+  @media print { html, body { background: #fff; } .bar { display: none; } .sheet { box-shadow: none; margin: 0; width: 210mm; height: 297mm; } }
+</style></head><body>
+<div class="bar"><button onclick="window.print()">🖨 Print this poster</button></div>
+<div class="sheet">
+  <div class="logos"><img src="/static/img/iris-logo-dark.png" alt="IRIS Systems">{% if logo %}<span class="sep"></span><img src="{{ logo }}" alt="{{ org }}">{% endif %}</div>
+  <div class="kick">Join the class</div>
+  <h1>{{ c.name }}</h1>
+  <div class="org">{{ org }}{% if org %} · {% endif %}teacher {{ c.teacher_name }}</div>
+  <div class="qr">{{ qr|safe }}</div>
+  <div class="code">{{ c.code }}</div>
+  <div class="how"><b>Scan the QR code</b> with your phone, or open the academy, choose <b>Create account → I'm a student</b>
+    and type the class code.</div>
+  <div class="url">{{ c.join_url }}</div>
+  <div class="foot"><img src="/static/img/navi-mark-gold.svg" alt="">NAVERA Academy · GPS-denied navigation</div>
+</div>
+</body></html>

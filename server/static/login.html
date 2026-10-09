@@ -50,6 +50,13 @@
   .irisfoot .iris-mark { height: 26px; }
   .irisfoot small { display: block; opacity: .8; letter-spacing: .4px; }
   @media (max-width: 900px) { .irisfoot { position: static; display: flex; justify-content: center; margin: 18px 0 26px; } }
+  .who { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 2px 0 4px; }
+  .who button { margin: 0; width: auto; text-align: left; background: none; border: 1.5px solid rgba(255,255,255,.35); border-radius: 14px; padding: 9px 11px; color: rgba(255,255,255,.8); font-size: 12px; }
+  .who button b { display: block; font-size: 14.5px; color: #fff; } .who button.on { background: #fff; border-color: #fff; color: #5d6b78; } .who button.on b { color: #14202b; }
+  label i { font-style: normal; letter-spacing: 0; text-transform: none; color: #ffd3c0; font-weight: 500; margin-left: 6px; }
+  .clsok { margin-top: 6px; font-size: 13px; border-radius: 12px; display: none; padding: 8px 11px; }
+  .clsok.on { display: block; background: rgba(127,224,216,.18); border: 1px solid rgba(127,224,216,.55); color: #dffaf7; }
+  .clsok.bad { display: block; background: rgba(194,59,74,.25); border: 1px solid rgba(255,140,140,.5); color: #ffd9d6; }
 </style>
 </head>
 <body>
@@ -77,11 +84,17 @@
       <button class="go">Sign in →</button>
     </form>
     <form id="fUp" style="display:none">
-      <label for="un">Your name</label><input id="un" autocomplete="name" placeholder="First and last name">
+      <div class="who"><button type="button" class="on" data-k="student"><b>🎓 I'm a student</b><span id="whoS">I have a class code</span></button>
+        <button type="button" data-k="teacher"><b>🧑‍🏫 I'm a teacher</b><span>I teach a class</span></button></div>
+      <div id="codeRow"><label for="uc">Class code <i>from your teacher · or scan the class QR</i></label><input id="uc" autocomplete="off" placeholder="e.g. EAG-7K3Q" style="text-transform:uppercase">
+        <div class="clsok" id="clsInfo"></div></div>
+      <label for="un">Your full name <i id="nameHint">as on your certificate</i></label><input id="un" autocomplete="name" placeholder="First and last name">
       <label for="ue">E-mail</label><input id="ue" type="email" autocomplete="email" placeholder="you@example.com">
       <label for="up">Password</label><input id="up" type="password" autocomplete="new-password" placeholder="at least 8 characters">
-      <button class="go">Create my account →</button>
-      <p class="fine">Your progress, XP and badges are saved in your account.</p>
+      <div id="inviteRow" style="display:none"><label for="ui">Teacher invitation code <i>from your administrator</i></label><input id="ui" autocomplete="off" placeholder="e.g. T-4M9-P2XQ" style="text-transform:uppercase">
+        <p class="fine" style="text-align:left">No code? Your account is created and waits for the administrator's approval.</p></div>
+      <button class="go" id="upGo">Join my class →</button>
+      <p class="fine" id="upFine">Your progress, XP and badges are saved in your account.</p>
     </form>
     <div class="err" id="e"></div>
   </div>
@@ -96,7 +109,27 @@ document.querySelectorAll('.t2').forEach(b => b.onclick = () => {
   $('fIn').style.display = b.dataset.t === 'in' ? '' : 'none';
   $('fUp').style.display = b.dataset.t === 'up' ? '' : 'none'; err();
 });
-const go = (d) => { location.href = d.role === 'teacher' ? '/teacher' : '/'; };
+const go = (d) => { location.href = (d.role === 'teacher' || d.role === 'admin') && d.status !== 'pending' ? '/teacher' : '/'; };
+// create account: student (class code, the class is shown before joining) or teacher (invitation code)
+let KIND = 'student', NEED_CLASS = false;
+document.querySelectorAll('.who button').forEach(b => b.onclick = () => {
+  KIND = b.dataset.k; document.querySelectorAll('.who button').forEach(x => x.classList.toggle('on', x === b));
+  $('codeRow').style.display = KIND === 'student' && NEED_CLASS ? '' : 'none';
+  $('inviteRow').style.display = KIND === 'teacher' ? '' : 'none';
+  $('nameHint').textContent = KIND === 'student' ? 'as on your certificate' : '';
+  $('upGo').textContent = KIND === 'student' ? (NEED_CLASS ? 'Join my class →' : 'Create my account →') : 'Create my teacher account →';
+  err();
+});
+let peek = null;
+$('uc').addEventListener('input', () => {
+  clearTimeout(peek); $('clsInfo').innerHTML = '';
+  const code = $('uc').value.trim(); if (code.replace(/[^A-Za-z0-9]/g, '').length < 7) return;
+  peek = setTimeout(async () => {
+    const r = await fetch('/api/class-info?code=' + encodeURIComponent(code)); const d = await r.json().catch(() => ({}));
+    $('clsInfo').className = 'clsok' + (r.ok ? ' on' : ' bad');
+    $('clsInfo').textContent = r.ok ? `✓ ${d.name}${d.org ? ' · ' + d.org : ''}${d.teacher ? ' · teacher ' + d.teacher : ''}` : (d.error || 'Unknown code');
+  }, 350);
+});
 $('fIn').onsubmit = async (ev) => {
   ev.preventDefault(); err();
   const r = await fetch('/api/login', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name: $('n').value, password: $('p').value})});
@@ -105,21 +138,28 @@ $('fIn').onsubmit = async (ev) => {
 $('fUp').onsubmit = async (ev) => {
   ev.preventDefault(); err();
   const r = await fetch('/api/signup', {method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({display: $('un').value, email: $('ue').value, password: $('up').value})});
+    body: JSON.stringify({kind: KIND, display: $('un').value, email: $('ue').value, password: $('up').value,
+      class_code: $('uc').value, invite_code: $('ui').value})});
   const d = await r.json(); r.ok ? go(d) : err(d.error || 'Error');
 };
 // 2. Google / GitHub (work once the teacher has configured them)
 fetch('/api/auth/options').then(r => r.json()).then(o => {
   if (!o.signup) { $('tabUp').style.display = 'none'; }
+  NEED_CLASS = !!o.need_class;
+  if (!NEED_CLASS) { $('codeRow').style.display = 'none'; $('whoS').textContent = 'I learn NAVERA'; $('upGo').textContent = 'Create my account →'; }
+  // opened from a class QR code / join link: straight to "Create account", code filled in
+  const j = new URLSearchParams(location.search).get('join');
+  if (j) { $('tabUp').click(); $('uc').value = j; $('uc').dispatchEvent(new Event('input')); }
   [['google', 'gBtn', 'Google'], ['github', 'hBtn', 'GitHub']].forEach(([k, id, label]) => {
     const b = $(id);
-    if (o[k]) b.onclick = () => { location.href = '/auth/' + k; };
+    if (o[k]) b.onclick = () => { location.href = '/auth/' + k + ($('uc').value ? '?code=' + encodeURIComponent($('uc').value) : ''); };
     else { b.classList.add('off'); b.onclick = () => err(label + ' sign-in is not set up yet on this academy. Use your e-mail for now.'); }
   });
 });
 const q = new URLSearchParams(location.search).get('auth_error');
 if (q) err({cancelled: 'Sign-in was cancelled.', signup_closed: 'Account creation is closed. Ask your teacher.', full: 'The academy is full. Ask your teacher.',
-  provider_failed: 'The sign-in service did not answer. Try again.'}[q] || 'This sign-in method is not set up yet.');
+  provider_failed: 'The sign-in service did not answer. Try again.',
+  need_class_code: 'New here? Choose Create account, type your class code, then press Continue with Google / GitHub.'}[q] || 'This sign-in method is not set up yet.');
 </script>
 <a class="iris-foot irisfoot" href="https://iris-systems.tn" target="_blank" rel="noopener"><img src="/static/img/iris-icon.svg" alt=""><span class="iris-mark" role="img" aria-label="IRIS"><span>IRIS</span></span><span><small>Integrated Robotics and Intelligent Systems</small><small>iris-systems.tn</small></span></a>
 </body>

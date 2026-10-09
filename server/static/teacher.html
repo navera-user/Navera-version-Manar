@@ -6,26 +6,31 @@
 <link rel="icon" href="/static/img/navi-mark-gold.svg">
 <link rel="stylesheet" href="/static/style.css">
 <style>
-  .wrap { padding: 22px clamp(16px, 3vw, 40px) 60px; height: calc(100% - 52px); overflow: auto; }
+  .wrap { padding: 22px clamp(16px, 3vw, 40px) 60px; height: calc(100% - 62px); overflow: auto; }
   .grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+  .cgrid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
   select { min-width: 0; max-width: 100%; }
   #pgrid table { width: auto; }
   #pgrid td, #pgrid th { padding: 4px 6px; text-align: center; }
-  @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+  @media (max-width: 1000px) { .cgrid, .grid2 { grid-template-columns: 1fr; } }
   .acts { display: flex; gap: 6px; align-items: center; } .acts select { padding: 6px 10px; border-radius: 99px; font-size: 13.5px; }
+  .classsel { margin-left: 8px; background: rgba(255,255,255,.1); color: #fff; border: 1px solid rgba(255,255,255,.3); border-radius: 999px; padding: 6px 12px; font-weight: 600; max-width: 320px; }
+  .classsel option { color: #14202b; }
   @media (max-width: 760px) {
     .top { height: auto; flex-wrap: wrap; padding: 10px 14px; gap: 8px; } .top .crumb { display: none; }
     .top .logo { flex: 1 0 100%; font-size: 12px; letter-spacing: 2px; } .top button { padding: 6px 10px; font-size: 13px; }
     .wrap { height: auto; padding: 16px 12px 40px; } .box { min-width: 0; }
-    .grid { max-width: 100%; }
+    .grid { max-width: 100%; } .classsel { margin-left: 0; flex: 1 0 100%; max-width: none; }
   }
-  .box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; box-shadow: var(--shadow); margin-bottom: 16px; }
-  .box h2 { margin: 0 0 10px; font-size: 17px; }
+  .box { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; box-shadow: var(--shadow); margin-bottom: 16px; min-width: 0; }
+  .box h2 { margin: 0 0 10px; font-size: 17px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .box h2 small { font-weight: 400; font-size: 13.5px; color: var(--muted); }
+  .box h2 .r { margin-left: auto; display: flex; gap: 6px; }
   .box p { color: var(--muted); margin: 4px 0 10px; font-size: 14px; line-height: 1.5; }
   table { border-collapse: collapse; width: 100%; font-size: 14px; }
   th, td { border-bottom: 1px solid var(--line); padding: 7px 8px; text-align: left; white-space: nowrap; }
   th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; }
-  td .bar { height: 8px; border-radius: 4px; background: var(--bg); width: 120px; overflow: hidden; display: inline-block; vertical-align: middle; }
+  td .bar { height: 8px; border-radius: 4px; background: var(--bg); width: 110px; overflow: hidden; display: inline-block; vertical-align: middle; }
   td .bar i { display: block; height: 100%; background: var(--ok); }
   .grid { overflow: auto; }
   .cell { width: 18px; height: 18px; border-radius: 4px; display: inline-block; background: var(--bg); border: 1px solid var(--line); }
@@ -34,49 +39,146 @@
   textarea { width: 100%; min-height: 90px; font-family: ui-monospace, monospace; font-size: 13px; }
   .acts button { padding: 3px 8px; font-size: 13px; }
   pre.log { background: #0f1720; color: #d6e2ea; padding: 10px; border-radius: 8px; max-height: 220px; overflow: auto; font-size: 12px; white-space: pre-wrap; }
-  .creds { background: #fffbea; border: 1px solid #f1d98a; padding: 10px; border-radius: 8px; font-family: ui-monospace, monospace; font-size: 13px; white-space: pre; margin-top: 10px; display: none; }
+  .creds { background: #fffbea; border: 1px solid #f1d98a; padding: 10px; border-radius: 8px; font-family: ui-monospace, monospace; font-size: 13px; white-space: pre; margin-top: 10px; display: none; overflow: auto; }
+  .code { font: 700 30px ui-monospace, monospace; letter-spacing: 4px; color: #0b1730; text-align: center; margin: 4px 0; }
+  .qrbox { display: flex; justify-content: center; } .qrbox img { width: 150px; height: 150px; padding: 8px; background: #fff; border: 1px solid var(--line); border-radius: 10px; }
+  .btns { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: 10px; }
+  .btns button { padding: 6px 12px; font-size: 13px; }
+  .opt { display: flex; gap: 10px; align-items: center; font-size: 14px; margin: 7px 0; cursor: pointer; } .opt input { width: auto; }
+  .frm { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; margin-top: 8px; }
+  .frm label { font-size: 12px; font-weight: 600; color: var(--muted); display: block; } .frm input, .frm select { width: 100%; margin-top: 3px; }
+  .legs { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 10px; align-items: center; font-size: 13.5px; margin-top: 6px; }
+  .legs input { padding: 5px 8px; }
+  .empty { text-align: center; padding: 30px 16px; }
+  .empty .big { font-size: 40px; } .empty h3 { margin: 6px 0; font-size: 22px; }
+  .warnbox { border: 2px solid #c23b4a; background: #fff3f2; }
+  .notice { border: 1.5px solid #e8706a; background: #fff8f5; }
+  details.adm > summary { cursor: pointer; font-weight: 700; font-size: 17px; list-style: none; display: flex; align-items: center; gap: 8px; }
+  details.adm > summary::before { content: "▸"; color: var(--muted); } details.adm[open] > summary::before { content: "▾"; }
+  .modal input, .modal select { width: 100%; }
 </style>
 </head>
 <body>
 <div class="top">
-  <div class="logo" onclick="location.href='/'"><img src="/static/img/navi-mark-gold.svg" alt="">NAVERA Academy<span style="color:#ffc9b0;margin-left:6px">· Teacher</span><a class="by-iris" href="https://iris-systems.tn" target="_blank" rel="noopener" onclick="event.stopPropagation()">by <span class="iris-mark" role="img" aria-label="IRIS"><span>IRIS</span></span></a></div>
+  <div class="logo" onclick="location.href='/'"><img src="/static/img/navi-mark-gold.svg" alt="">NAVERA Academy<span style="color:#ffc9b0;margin-left:6px" id="roleLbl">· Teacher</span><a class="by-iris" href="https://iris-systems.tn" target="_blank" rel="noopener" onclick="event.stopPropagation()">by <span class="iris-mark" role="img" aria-label="IRIS"><span>IRIS</span></span></a></div>
+  <select class="classsel" id="classSel" aria-label="Class"></select>
   <div class="crumb"></div>
   <button onclick="window.open('/static/intro.html','_blank')">▶ Intro video</button>
   <button onclick="location.href='/'">📚 My workspace</button>
   <button id="logout">🚪 Log out</button>
 </div>
 <div class="wrap">
-  <div class="box" id="dataWarn" style="display:none;border:2px solid #c23b4a;background:#fff3f2"></div>
-  <div class="box">
-    <h2>Students</h2>
-    <p>Each student has a private NAVERA copy, lesson files and terminals in a sandbox. "Open" shows their workspace as they see it.</p>
-    <div class="grid"><table id="tbl"></table></div>
+  <div class="box notice" id="orgSetup" style="display:none"></div>
+  <div class="box warnbox" id="dataWarn" style="display:none"></div>
+  <div class="box notice" id="pendingBox" style="display:none"></div>
+
+  <!-- no class yet -->
+  <div class="box empty" id="noClass" style="display:none">
+    <div class="big">📚</div><h3>Create your first class</h3>
+    <p>A class gets a join code and a QR poster: students type the code (or scan it) when they create their account, and land in your class.</p>
+    <button class="primary" onclick="newClass()">＋ New class</button>
   </div>
-  <div class="grid2">
-    <div class="box">
-      <h2>Add students</h2>
-      <p>One per line: <code>login, Display name, password</code> — name and password are optional (a password is generated).
-        Logins: lower-case letters, digits and _.</p>
-      <textarea id="names" placeholder="amine, Amine B.&#10;sarra&#10;youssef, Youssef K., mypass123"></textarea>
-      <div style="margin-top:8px"><button class="primary" id="add">Create accounts</button></div>
-      <div class="creds" id="creds"></div>
-    </div>
-    <div class="box">
-      <h2>NAVERA base</h2>
-      <p>The version every student starts from and returns to with Reset. Taken from your real <code>~/Navera</code> repository
-        (read only, never changed). Changing it affects only the next reset / new students.</p>
-      <div id="baseNow"></div>
-      <div style="display:flex; gap:8px; margin-top:10px"><select id="commit" style="flex:1"></select><button id="rebase">Use this commit</button></div>
-      <pre class="log" id="baseLog" style="display:none"></pre>
+
+  <!-- the selected class -->
+  <div id="classView" style="display:none">
+    <div class="cgrid">
+      <div>
+        <div class="box">
+          <h2><span id="cTitle">Students</span> <small id="cSub"></small>
+            <span class="r"><button id="exportBtn">⬇ Export to Excel</button><button class="primary" onclick="newClass()">＋ New class</button></span></h2>
+          <div class="grid"><table id="tbl"></table></div>
+          <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:600;font-size:14px">Create accounts yourself (instead of the join code)</summary>
+            <p>One per line: <code>login, Full name, password</code> — name and password are optional (a password is generated). Logins: lower-case letters, digits and _.</p>
+            <textarea id="names" placeholder="amine, Amine Ben Salah&#10;sarra&#10;youssef, Youssef Karoui, mypass123"></textarea>
+            <div style="margin-top:8px"><button class="primary" id="add">Create accounts in this class</button></div>
+            <div class="creds" id="creds"></div>
+          </details>
+        </div>
+        <div class="box">
+          <h2>Progress by mission <small>green = passed · orange = started — hover a square</small></h2>
+          <div class="grid" id="pgrid"></div>
+        </div>
+      </div>
+      <div id="classSide">
+        <div class="box" id="joinBox">
+          <h2 style="justify-content:center">Join code</h2>
+          <div class="code" id="cCode">—</div>
+          <div class="qrbox"><img id="cQr" alt="QR code"></div>
+          <div class="btns"><button class="primary" id="posterBtn">🖨 Print the poster</button><button id="copyBtn">🔗 Copy link</button><button id="newCodeBtn">↻ New code</button></div>
+        </div>
+        <div class="box" id="optBox">
+          <h2>Class options</h2>
+          <label class="opt"><input type="checkbox" id="oJoin"> Students can join with the code</label>
+          <label class="opt"><input type="checkbox" id="oRank"> Show a class ranking (first names + XP)</label>
+          <label class="opt"><input type="checkbox" id="oCert"> Certificate names the class and organisation</label>
+          <div class="frm">
+            <div style="grid-column:1/3"><label>Name<input id="oName"></label></div>
+            <div><label>Starts<input type="date" id="oStart"></label></div><div><label>Ends<input type="date" id="oEnd"></label></div>
+            <div><label>Seats<input type="number" id="oSeats" min="1" max="98"></label></div>
+            <div id="oTeachWrap" style="display:none"><label>Teacher<select id="oTeacher"></select></label></div>
+          </div>
+          <div style="font-size:12px;font-weight:600;color:var(--muted);margin-top:12px">Legs — leave empty to open now, or pick the date it opens</div>
+          <div class="legs" id="oLegs"></div>
+          <div class="btns" style="justify-content:space-between"><button class="primary" id="saveOpts">Save the options</button><button class="danger" id="delClass">Delete the class</button></div>
+        </div>
+      </div>
     </div>
   </div>
-  <div class="box">
-    <h2>Certificates <span style="font-weight:400;font-size:14px;color:var(--muted)">· given when a student passes all missions, digitally signed by IRIS</span></h2>
+
+  <div class="box" id="certBox">
+    <h2>Certificates <small>given when a student passes all missions, digitally signed by IRIS</small></h2>
     <div class="grid"><table id="certTbl"></table></div>
     <p id="certKey" style="font-size:12.5px;color:var(--muted);margin-bottom:0"></p>
   </div>
+
+  <!-- administrator -->
+  <div id="adminArea" style="display:none">
+    <div class="grid2">
+      <div class="box">
+        <h2>Organisation</h2>
+        <div class="frm" style="grid-template-columns:1fr auto"><div><label>Name<input id="orgName"></label></div><div style="align-self:end"><button id="orgSave">Save</button></div></div>
+        <div style="display:flex;gap:12px;align-items:center;margin-top:12px"><img id="orgLogo" alt="" style="max-height:48px;max-width:160px;display:none">
+          <button id="logoBtn">🏛 Choose a logo (PNG / JPEG)</button><button id="logoDel" class="danger" style="display:none">Remove</button>
+          <input type="file" id="logoFile" accept="image/png,image/jpeg" style="display:none"></div>
+        <p style="margin-top:10px">The logo is printed on certificates and class posters next to IRIS.</p>
+      </div>
+      <div class="box">
+        <h2>Teacher invitation code</h2>
+        <div class="code" id="tCode" style="font-size:26px">—</div>
+        <p>Teachers choose <b>Create account → I'm a teacher</b> and type this code. Without it, their account waits for your approval below.</p>
+        <div class="btns"><button id="tCodeNew">↻ New code</button></div>
+      </div>
+    </div>
+    <div class="box">
+      <h2>Teachers and administrators</h2>
+      <div class="grid"><table id="teachTbl"></table></div>
+    </div>
+    <div class="grid2">
+      <div class="box">
+        <h2>NAVERA base</h2>
+        <p>The version every student starts from and returns to with Reset. Taken from the real <code>~/Navera</code> repository
+          (read only, never changed). Changing it affects only the next reset / new students.</p>
+        <div id="baseNow"></div>
+        <div style="display:flex; gap:8px; margin-top:10px"><select id="commit" style="flex:1"></select><button id="rebase">Use this commit</button></div>
+        <pre class="log" id="baseLog" style="display:none"></pre>
+      </div>
+      <div class="box">
+        <h2>Accounts and sign-in</h2>
+        <label class="opt"><input type="checkbox" id="allowSignup"> Students and teachers can create their own accounts</label>
+        <div id="oauthState" style="margin-top:12px"></div>
+        <details style="margin-top:10px"><summary style="cursor:pointer;font-weight:600">How to switch on Google and GitHub sign-in</summary>
+          <ol style="line-height:1.7;color:var(--muted);font-size:14px">
+            <li>Give the academy a public address with HTTPS — Google and GitHub refuse private addresses like 192.168.x.x.</li>
+            <li>Google: Google Cloud Console → APIs &amp; Services → Credentials → "OAuth client ID" (Web application), redirect URI <code>https://YOUR-ADDRESS/auth/google/callback</code>.</li>
+            <li>GitHub: Settings → Developer settings → OAuth Apps → New, callback URL <code>https://YOUR-ADDRESS/auth/github/callback</code>.</li>
+            <li>Save the keys with <code>python3 ~/navera-academy/tools/set_oauth.py google</code> (or <code>github</code>) — the buttons switch on immediately.</li>
+          </ol></details>
+      </div>
+    </div>
+  </div>
+
   <div class="box">
-    <h2>Full simulator <span style="font-weight:400;font-size:14px;color:var(--muted)">· teacher only — students fly Sim Lite</span></h2>
+    <h2>Full simulator <small>teachers only — students fly Sim Lite</small></h2>
     <p id="fsState">Checking…</p>
     <ol style="line-height:1.7;margin:6px 0 0">
       <li>Open <a href="/" target="_blank">My workspace</a>, then <b>Hardware</b> → <b>Take</b> “Full mission simulator”.</li>
@@ -84,63 +186,100 @@
       <li>Fly it from the <b>🛩️ Simulator</b> tab (switch <b>Full</b>) or the <b>🧭 Operator view</b> tab. Stop it with Ctrl+C in that terminal, then release it in Hardware.</li>
     </ol>
   </div>
-  <div class="box">
-    <h2>Accounts and sign-in</h2>
-    <p>Students can create their own account on the first page (e-mail), or sign in with Google / GitHub once those are set up.
-      Their progress, XP, badges and intro/tour status are saved in their account.</p>
-    <label style="display:flex;gap:10px;align-items:center;font-weight:600"><input type="checkbox" id="allowSignup" style="width:auto"> Students can create their own accounts</label>
-    <div id="oauthState" style="margin-top:12px"></div>
-    <details style="margin-top:10px"><summary style="cursor:pointer;font-weight:600">How to switch on Google and GitHub sign-in</summary>
-      <ol style="line-height:1.7;color:var(--muted);font-size:14px">
-        <li>Give the academy a public address with HTTPS (for example <code>https://academy.your-company.com</code>) — Google and GitHub refuse private addresses like 192.168.x.x.</li>
-        <li>Google: in Google Cloud Console → APIs &amp; Services → Credentials, create an "OAuth client ID" (Web application) with the redirect URI <code>https://YOUR-ADDRESS/auth/google/callback</code>.</li>
-        <li>GitHub: in GitHub → Settings → Developer settings → OAuth Apps → New OAuth App, with the callback URL <code>https://YOUR-ADDRESS/auth/github/callback</code>.</li>
-        <li>Put the address and the keys in <code>~/navera-academy/state/oauth.json</code>:<br>
-          <code>{"base_url": "https://YOUR-ADDRESS", "google": {"client_id": "…", "client_secret": "…"}, "github": {"client_id": "…", "client_secret": "…"}}</code>
-          — the buttons switch on immediately.</li>
-      </ol></details>
-  </div>
-  <div class="box">
-    <h2>Progress by lesson</h2>
-    <p>Green = passed · orange = started. Hover a square for details.</p>
-    <div class="grid" id="pgrid"></div>
-  </div>
 </div>
 <script>
 const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function api(url, opts = {}) {
   const o = {...opts, headers: {'Content-Type': 'application/json'}};
   if (o.body && typeof o.body !== 'string') o.body = JSON.stringify(o.body);
   const r = await fetch(url, o);
-  if (r.status === 401 || r.status === 403) { location.href = '/'; throw new Error('login'); }
+  if (r.status === 401) { location.href = '/'; throw new Error('login'); }
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
   return d;
 }
-let DATA;
-async function load() {
-  DATA = await api('/api/admin/students');
+function modal(title, html, okLabel) {
+  return new Promise((resolve) => {
+    const bg = document.createElement('div'); bg.className = 'modal-bg';
+    bg.innerHTML = `<div class="modal"><h3>${esc(title)}</h3><div class="mb">${html}</div><div class="row"><button data-v="0">Cancel</button><button class="primary" data-v="1">${esc(okLabel)}</button></div></div>`;
+    bg.querySelectorAll('.row button').forEach(b => b.onclick = () => { const vals = [...bg.querySelectorAll('input,select')].map(i => i.value); bg.remove(); resolve(b.dataset.v === '1' ? vals : null); });
+    bg.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') bg.querySelector('.primary').click(); });
+    document.body.appendChild(bg); const i = bg.querySelector('input'); if (i) i.focus();
+  });
+}
+let ME, CLASSES = [], LEGS = [], TEACHERS = [], UNASSIGNED = 0, DATA, CUR = '';
+const store = { get: () => { try { return localStorage.getItem('teacher:class') || ''; } catch (e) { return ''; } },
+  set: (v) => { try { localStorage.setItem('teacher:class', v); } catch (e) {} } };
+
+async function init() {
+  ME = await api('/api/me');
+  $('roleLbl').textContent = ME.admin ? '· Administrator' : '· Teacher';
+  if (ME.admin) { $('adminArea').style.display = ''; loadAdmin(); }
+  await loadClasses();
+  loadCerts(); loadFullSim(); setInterval(loadFullSim, 15000); setInterval(() => loadStudents(), 15000);
+}
+async function loadClasses(select) {
+  const d = await api('/api/classes');
+  CLASSES = d.classes; LEGS = d.legs; TEACHERS = d.teachers; UNASSIGNED = d.unassigned;
+  const opts = CLASSES.map(c => `<option value="${esc(c.id)}">📚 ${esc(c.name)}${ME.admin && c.teacher !== ME.name ? ' — ' + esc(c.teacher_name) : ''} (${c.students})</option>`);
+  if (ME.admin) { opts.push('<option value="all">👥 All students</option>'); if (UNASSIGNED) opts.push(`<option value="none">… without a class (${UNASSIGNED})</option>`); }
+  $('classSel').innerHTML = opts.join('');
+  $('classSel').style.display = opts.length ? '' : 'none';
+  const want = select || CUR || store.get();
+  CUR = [...$('classSel').options].some(o => o.value === want) ? want : ($('classSel').options[0] || {}).value || '';
+  $('classSel').value = CUR;
+  showClass();
+}
+$('classSel').onchange = () => { CUR = $('classSel').value; store.set(CUR); showClass(); };
+function curClass() { return CLASSES.find(c => c.id === CUR); }
+function showClass() {
+  const c = curClass();
+  $('noClass').style.display = !CUR ? '' : 'none';
+  $('classView').style.display = CUR ? '' : 'none';
+  $('classSide').style.display = c ? '' : 'none';
+  $('classView').querySelector('.cgrid').style.gridTemplateColumns = c ? '' : '1fr';
+  if (c) {
+    $('cTitle').textContent = c.name;
+    $('cSub').textContent = `${c.students} of ${c.seats} seats · teacher ${c.teacher_name}${c.starts ? ' · from ' + c.starts : ''}${c.ends ? ' to ' + c.ends : ''}`;
+    $('cCode').textContent = c.code; $('cQr').src = `/api/classes/${c.id}/qr.svg?code=${encodeURIComponent(c.code)}`;
+    $('oJoin').checked = c.join; $('oRank').checked = c.ranking; $('oCert').checked = c.cert_class !== false;
+    $('oName').value = c.name; $('oStart').value = c.starts || ''; $('oEnd').value = c.ends || ''; $('oSeats').value = c.seats;
+    $('oTeachWrap').style.display = ME.admin ? '' : 'none';
+    $('oTeacher').innerHTML = TEACHERS.map(t => `<option value="${esc(t.name)}"${t.name === c.teacher ? ' selected' : ''}>${esc(t.display)}</option>`).join('');
+    $('oLegs').innerHTML = LEGS.map(l => `<span>${esc(l.leg || 'Leg ' + (l.index + 1))} · ${esc(l.title)}</span><input type="date" data-leg="${l.index}" value="${esc((c.legs || {})[l.index] || '')}">`).join('');
+  } else {
+    $('cTitle').textContent = CUR === 'all' ? 'All students' : CUR === 'none' ? 'Students without a class' : 'Students';
+    $('cSub').textContent = CUR === 'none' ? 'they signed up before classes existed — move them into a class with More ▾' : '';
+  }
+  $('add').textContent = c ? 'Create accounts in this class' : 'Create accounts';
+  loadStudents();
+}
+async function loadStudents() {
+  if (!CUR) return;
+  DATA = await api('/api/admin/students?class=' + encodeURIComponent(CUR === 'none' ? '' : CUR));
   const md = DATA.missing_data || [];
   $('dataWarn').style.display = md.length ? '' : 'none';
   $('dataWarn').innerHTML = md.length ? `<h2 style="color:#c23b4a">⚠️ The data disk is not connected</h2><p>Missions that need it will fail until it is back:</p><ul>` +
     md.map(m => `<li><b>${esc(m.what)}</b> — <code>${esc(m.target)}</code></li>`).join('') +
     `</ul><p>Plug in the ADATA disk and open it once in the file manager (or run <code>udisksctl mount -b /dev/sda2</code> in a terminal on the Jetson), then reload this page.</p>` : '';
-  const t = $('tbl');
-  let h = '<tr><th>Student</th><th>Login</th><th>E-mail</th><th>Progress</th><th>Terminals</th><th>Backups</th><th></th></tr>';
+  const showCls = CUR === 'all';
+  let h = `<tr><th>Student</th><th>E-mail</th>${showCls ? '<th>Class</th>' : ''}<th>Progress</th><th>Last activity</th><th>🎓</th><th></th></tr>`;
+  const moveOpts = (CLASSES.length > 1 || !curClass()) ? '<option value="move">Move to another class…</option>' : '';
   for (const s of DATA.students) {
     const pct = s.lessons ? Math.round(100 * s.passed / s.lessons) : 0;
-    h += `<tr><td>${esc(s.display)}</td><td><code>${esc(s.name)}</code></td><td>${s.email ? esc(s.email) : '<span style="color:var(--muted)">—</span>'} <span class="badge">${esc(s.provider || '')}</span></td>
-      <td><span class="bar"><i style="width:${pct}%"></i></span> ${s.passed}/${s.lessons} <span style="color:var(--muted)">(${s.started} started)</span></td>
-      <td>${s.terminals}</td><td>${s.backups}</td>
+    const cls = CLASSES.find(c => c.id === s.class);
+    h += `<tr><td><b>${esc(s.display)}</b> <code style="color:var(--muted)">${esc(s.name)}</code></td><td>${s.email ? esc(s.email) : '<span style="color:var(--muted)">—</span>'}</td>
+      ${showCls ? `<td>${cls ? esc(cls.name) : '<span style="color:var(--muted)">—</span>'}</td>` : ''}
+      <td><span class="bar"><i style="width:${pct}%"></i></span> ${s.passed}/${s.lessons}</td><td>${esc((s.last || '').slice(0, 10))}</td>
+      <td>${s.certificate ? `<a href="/certificate/${esc(s.certificate)}" target="_blank">issued</a>` : '<span style="color:var(--muted)">—</span>'}</td>
       <td class="acts"><button onclick="window.open('/?as=${encodeURIComponent(s.name)}','_blank')">Open</button>
-      <select aria-label="More actions" onchange="const a=this.value; this.value=''; if (a) act('${s.name}', a)">
-        <option value="">More ▾</option><option value="password">New password</option><option value="reset_navera">Reset NAVERA</option>
+      <select aria-label="More actions" onchange="const a=this.value; this.value=''; if (a) act('${esc(s.name)}', a)">
+        <option value="">More ▾</option><option value="password">New password</option>${moveOpts}<option value="reset_navera">Reset NAVERA</option>
         <option value="kill">Stop terminals</option><option value="delete">Delete…</option></select></td></tr>`;
   }
-  if (!DATA.students.length) h += '<tr><td colspan="7" style="color:var(--muted)">No students yet — add them below.</td></tr>';
-  t.innerHTML = h;
-  // progress grid
+  if (!DATA.students.length) h += `<tr><td colspan="7" style="color:var(--muted);white-space:normal">${curClass() ? 'No student yet — print the poster or give them the join code: they appear here as soon as they create their account.' : 'No student here.'}</td></tr>`;
+  $('tbl').innerHTML = h;
   let g = '<table><tr><th>Student</th>' + DATA.lessons.map(l => `<th title="${esc(l)}">${esc(l.slice(0, 2))}</th>`).join('') + '</tr>';
   for (const s of DATA.students) {
     g += `<tr><td>${esc(s.display)}</td>` + DATA.lessons.map(l => {
@@ -150,15 +289,75 @@ async function load() {
     }).join('') + '</tr>';
   }
   $('pgrid').innerHTML = g + '</table>';
-  const b = DATA.base;
-  $('baseNow').innerHTML = b ? `Current base: <b>${esc(b.subject)}</b><br><span style="color:var(--muted)">built ${esc(b.built)}</span>` : 'No base';
+  if (ME.admin && DATA.base) $('baseNow').innerHTML = `Current base: <b>${esc(DATA.base.subject)}</b><br><span style="color:var(--muted)">built ${esc(DATA.base.built)}</span>`;
 }
+async function newClass() {
+  const t = ME.admin && TEACHERS.length > 1 ? `<p style="margin:10px 0 4px">Teacher</p><select>${TEACHERS.map(x => `<option value="${esc(x.name)}"${x.name === ME.name ? ' selected' : ''}>${esc(x.display)}</option>`).join('')}</select>` : '';
+  const v = await modal('New class', `<p>Name</p><input placeholder="e.g. NAVERA — Group A 2026"><p style="margin:10px 0 4px">Seats</p><input type="number" value="30" min="1" max="98">${t}`, 'Create the class');
+  if (!v) return;
+  try {
+    const c = await api('/api/classes', {method: 'POST', body: {name: v[0], seats: +v[1] || 30, teacher: v[2] || undefined}});
+    store.set(c.id); await loadClasses(c.id);
+  } catch (e) { alert(e.message); }
+}
+$('posterBtn').onclick = () => window.open(`/class/${curClass().id}/poster`, '_blank');
+$('copyBtn').onclick = async (e) => { try { await navigator.clipboard.writeText(curClass().join_url); e.target.textContent = '✓ Copied'; setTimeout(() => { e.target.textContent = '🔗 Copy link'; }, 1500); } catch (er) { prompt('Copy this link:', curClass().join_url); } };
+$('newCodeBtn').onclick = async () => {
+  if (!confirm('Make a new join code? The old code and poster stop working (students already in the class stay).')) return;
+  try { await api(`/api/classes/${curClass().id}`, {method: 'POST', body: {new_code: true}}); loadClasses(); } catch (e) { alert(e.message); }
+};
+$('saveOpts').onclick = async () => {
+  const legs = {}; document.querySelectorAll('#oLegs input').forEach(i => { if (i.value) legs[i.dataset.leg] = i.value; });
+  try {
+    await api(`/api/classes/${curClass().id}`, {method: 'POST', body: {name: $('oName').value, starts: $('oStart').value, ends: $('oEnd').value,
+      seats: +$('oSeats').value, join: $('oJoin').checked, ranking: $('oRank').checked, cert_class: $('oCert').checked, legs,
+      teacher: ME.admin ? $('oTeacher').value : undefined}});
+    $('saveOpts').textContent = '✓ Saved'; setTimeout(() => { $('saveOpts').textContent = 'Save the options'; }, 1500); loadClasses();
+  } catch (e) { alert(e.message); }
+};
+$('delClass').onclick = async () => {
+  const c = curClass();
+  if (!confirm(`Delete the class "${c.name}"? Its ${c.students} students keep their accounts and work, without a class (the administrator sees them).`)) return;
+  try { await api(`/api/classes/${c.id}`, {method: 'POST', body: {action: 'delete'}}); store.set(''); CUR = ''; loadClasses(); } catch (e) { alert(e.message); }
+};
+$('exportBtn').onclick = () => { location.href = `/api/classes/${CUR === 'none' || !CUR ? 'all' : CUR}/export.xlsx`; };
+async function act(name, action) {
+  if (action === 'move') {
+    const own = CLASSES.filter(c => c.id !== CUR);
+    const v = await modal('Move to another class', `<p>${esc(name)} moves with all their work and progress.</p><select>${own.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}${ME.admin ? '<option value="">(no class)</option>' : ''}</select>`, 'Move');
+    if (!v) return;
+    try { await api(`/api/admin/student/${name}`, {method: 'POST', body: {action: 'move', class: v[0]}}); loadClasses(); } catch (e) { alert(e.message); }
+    return;
+  }
+  const msgs = {delete: `Delete ${name}? Their files, backups and progress are removed for good.`,
+    reset_navera: `Reset ${name}'s NAVERA copy? Their changes are saved in a backup first.`,
+    password: `Give ${name} a new password?`, kill: `Close all of ${name}'s terminals (and the programs in them)?`};
+  if (!confirm(msgs[action])) return;
+  try {
+    const r = await api(`/api/admin/student/${name}`, {method: 'POST', body: {action}});
+    if (r.password) alert(`New password for ${name}: ${r.password}`);
+    loadClasses();
+  } catch (e) { alert(e.message); }
+}
+$('add').onclick = async () => {
+  try {
+    const c = curClass();
+    const r = await api('/api/admin/students', {method: 'POST', body: {names: $('names').value, class: c ? c.id : ''}});
+    $('names').value = '';
+    if (r.created.length) {
+      $('creds').style.display = 'block';
+      $('creds').textContent = `Give each student their login (shown once):\nAddress: ${location.origin}/\n\n` + r.created.map(x => `${x.name.padEnd(16)} ${x.password}`).join('\n');
+    }
+    loadClasses();
+  } catch (e) { alert(e.message); }
+};
+// certificates (teachers: their students; administrators: all)
 async function loadCerts() {
   try {
     const d = await api('/api/admin/certificates');
     $('certKey').innerHTML = `Signing key ${esc(d.key)} · ${esc(d.fingerprint)} — public key: <a href="/certificates/iris-key.pub" target="_blank">/certificates/iris-key.pub</a>. Anyone can check a certificate at <a href="/verify" target="_blank">/verify</a>.`;
-    $('certTbl').innerHTML = '<tr><th>Number</th><th>Name on the certificate</th><th>Login</th><th>Completed</th><th>Status</th><th></th></tr>' +
-      (d.certificates.length ? d.certificates.map(c => `<tr><td><code>${esc(c.id)}</code></td><td>${esc(c.name)}</td><td>${esc(c.user)}</td><td>${esc(c.completed)}</td>
+    $('certTbl').innerHTML = '<tr><th>Number</th><th>Name on the certificate</th><th>Class</th><th>Completed</th><th>Status</th><th></th></tr>' +
+      (d.certificates.length ? d.certificates.map(c => `<tr><td><code>${esc(c.id)}</code></td><td>${esc(c.name)}</td><td>${esc(c.class || '—')}</td><td>${esc(c.completed)}</td>
         <td>${c.revoked ? '<span class="badge" style="background:#fde8e6;color:#c23b4a">revoked</span>' : '<span class="badge passed">valid</span>'}</td>
         <td class="acts"><button onclick="window.open('/certificate/${esc(c.id)}','_blank')">Open</button>
         <button onclick="certSet('${esc(c.id)}','${c.revoked ? 'restore' : 'revoke'}')">${c.revoked ? 'Restore' : 'Revoke'}</button></td></tr>`).join('')
@@ -170,7 +369,6 @@ async function certSet(id, action) {
   try { await api('/api/admin/certificates/' + encodeURIComponent(id), {method: 'POST', body: {action}}); } catch (e) { return alert(e.message); }
   loadCerts();
 }
-loadCerts();
 async function loadFullSim() {
   try {
     const f = await api('/api/admin/fullsim');
@@ -179,7 +377,45 @@ async function loadFullSim() {
       : `<b style="color:#c23b4a">● Not running</b>${f.holder ? ' · held by ' + esc(f.holder) : ''}`;
   } catch (e) { $('fsState').textContent = e.message; }
 }
-setInterval(loadFullSim, 15000); loadFullSim();
+// administrator: organisation, teachers, base, sign-in
+async function loadAdmin() {
+  const o = await api('/api/admin/org');
+  $('orgName').value = o.name; $('tCode').textContent = o.teacher_code || '—';
+  $('orgLogo').style.display = o.logo ? '' : 'none'; $('logoDel').style.display = o.logo ? '' : 'none'; if (o.logo) $('orgLogo').src = o.logo_url;
+  $('orgSetup').style.display = o.name ? 'none' : '';
+  $('orgSetup').innerHTML = o.name ? '' : '<h2>👋 Set up your organisation</h2><p>Write its name below (and add its logo): it appears on class posters and certificates. Then create a class, or share the teacher invitation code with your teachers.</p>';
+  const t = await api('/api/admin/teachers');
+  const pend = t.teachers.filter(x => x.status === 'pending');
+  $('pendingBox').style.display = pend.length ? '' : 'none';
+  $('pendingBox').innerHTML = pend.length ? `<h2>⏳ ${pend.length} teacher${pend.length > 1 ? 's' : ''} waiting for your approval</h2>` +
+    pend.map(x => `<div style="display:flex;gap:10px;align-items:center;margin:6px 0;flex-wrap:wrap"><b>${esc(x.display)}</b><span style="color:var(--muted)">${esc(x.email)}</span>
+      <button class="primary" onclick="tAct('${esc(x.name)}','approve')">Approve</button><button class="danger" onclick="tAct('${esc(x.name)}','reject')">Refuse</button></div>`).join('') : '';
+  $('teachTbl').innerHTML = '<tr><th>Name</th><th>E-mail</th><th>Role</th><th>Classes</th><th></th></tr>' + t.teachers.map(x => `<tr><td><b>${esc(x.display)}</b> <code style="color:var(--muted)">${esc(x.name)}</code></td>
+    <td>${esc(x.email || '—')}</td><td>${x.support ? 'IRIS support' : x.role === 'admin' ? 'Administrator' : x.status === 'pending' ? '<span class="badge started">waiting</span>' : 'Teacher'}</td><td>${x.classes}</td>
+    <td class="acts">${x.support || x.name === ME.name ? '' : `<select onchange="const a=this.value; this.value=''; if (a) tAct('${esc(x.name)}', a)"><option value="">More ▾</option>
+      ${x.status === 'pending' ? '<option value="approve">Approve</option>' : ''}${x.role === 'admin' ? '<option value="make_teacher">Make teacher</option>' : '<option value="make_admin">Make administrator</option>'}
+      <option value="password">New password</option><option value="delete">Remove…</option></select>`}</td></tr>`).join('');
+  loadCommits(); loadSettings();
+}
+async function tAct(name, action) {
+  const msgs = {reject: `Refuse ${name}'s teacher account? It is deleted.`, delete: `Remove ${name}? Their classes move to you; their students stay.`,
+    make_admin: `Make ${name} an administrator (sees everything, manages teachers)?`, make_teacher: `Make ${name} a teacher again?`, password: `Give ${name} a new password?`};
+  if (msgs[action] && !confirm(msgs[action])) return;
+  try { const r = await api(`/api/admin/teacher/${name}`, {method: 'POST', body: {action}}); if (r.password) alert(`New password for ${name}: ${r.password}`); loadAdmin(); loadClasses(); }
+  catch (e) { alert(e.message); }
+}
+$('orgSave').onclick = async () => { try { await api('/api/admin/org', {method: 'POST', body: {name: $('orgName').value}}); loadAdmin(); } catch (e) { alert(e.message); } };
+$('logoBtn').onclick = () => $('logoFile').click();
+$('logoFile').onchange = async () => {
+  const f = $('logoFile').files[0]; if (!f) return;
+  const r = await fetch('/api/admin/org/logo', {method: 'POST', body: f}); const d = await r.json().catch(() => ({}));
+  if (!r.ok) alert(d.error || 'Error'); loadAdmin();
+};
+$('logoDel').onclick = async () => { await api('/api/admin/org', {method: 'POST', body: {action: 'remove_logo'}}); loadAdmin(); };
+$('tCodeNew').onclick = async () => {
+  if (!confirm('Make a new teacher invitation code? The old one stops working.')) return;
+  const r = await api('/api/admin/org', {method: 'POST', body: {action: 'new_teacher_code'}}); $('tCode').textContent = r.teacher_code;
+};
 async function loadCommits() {
   const c = await api('/api/admin/commits');
   // the list starts on the CURRENT base, so a click on "Use this commit" never switches by accident
@@ -188,29 +424,8 @@ async function loadCommits() {
   if (cur && !list.some(x => cur.startsWith(x.hash) || x.hash.startsWith(cur))) list.unshift({hash: cur, date: '', refs: '', subject: c.base.subject.replace(/^\S+ /, '')});
   $('commit').innerHTML = list.map(x => { const now = cur && (cur.startsWith(x.hash) || x.hash.startsWith(cur));
     return `<option value="${x.hash}"${now ? ' selected' : ''}>${now ? '● current · ' : ''}${x.hash} · ${x.date} · ${esc(x.refs ? '[' + x.refs + '] ' : '')}${esc(x.subject.slice(0, 70))}</option>`; }).join('');
+  if (c.base) $('baseNow').innerHTML = `Current base: <b>${esc(c.base.subject)}</b><br><span style="color:var(--muted)">built ${esc(c.base.built)}</span>`;
 }
-async function act(name, action) {
-  const msgs = {delete: `Delete ${name}? Their files, backups and progress are removed for good.`,
-    reset_navera: `Reset ${name}'s NAVERA copy? Their changes are saved in a backup first.`,
-    password: `Give ${name} a new password?`, kill: `Close all of ${name}'s terminals (and the programs in them)?`};
-  if (!confirm(msgs[action])) return;
-  try {
-    const r = await api(`/api/admin/student/${name}`, {method: 'POST', body: {action}});
-    if (r.password) alert(`New password for ${name}: ${r.password}`);
-    load();
-  } catch (e) { alert(e.message); }
-}
-$('add').onclick = async () => {
-  try {
-    const r = await api('/api/admin/students', {method: 'POST', body: {names: $('names').value}});
-    $('names').value = '';
-    if (r.created.length) {
-      $('creds').style.display = 'block';
-      $('creds').textContent = `Give each student their login (shown once):\nAddress: ${location.origin}/\n\n` + r.created.map(c => `${c.name.padEnd(16)} ${c.password}`).join('\n');
-    }
-    load();
-  } catch (e) { alert(e.message); }
-};
 $('rebase').onclick = async () => {
   const c = $('commit').value;
   if (!confirm(`Build a new base from ${c}? Students keep their copies until they press Reset.`)) return;
@@ -219,18 +434,18 @@ $('rebase').onclick = async () => {
   const poll = async () => {
     const s = await api('/api/admin/base');
     $('baseLog').textContent = s.log.join('\n') + (s.error ? '\nERROR: ' + s.error : '');
-    if (s.running) setTimeout(poll, 1500); else load();
+    if (s.running) setTimeout(poll, 1500); else loadCommits();
   };
   poll();
 };
-$('logout').onclick = async () => { await api('/api/logout', {method: 'POST', body: {}}); location.href = '/'; };
 async function loadSettings() {
   const st = await api('/api/admin/settings');
   $('allowSignup').checked = st.settings.allow_signup;
   $('oauthState').innerHTML = ['google', 'github'].map(k => `<span class="badge ${st.oauth[k] ? 'passed' : ''}" style="margin-right:8px">${k === 'google' ? 'Google' : 'GitHub'}: ${st.oauth[k] ? 'ready' : 'not set up'}</span>`).join('') + '<span class="badge passed">E-mail: ready</span>';
 }
 $('allowSignup').onchange = async () => { await api('/api/admin/settings', {method: 'POST', body: {allow_signup: $('allowSignup').checked}}); };
-load(); loadCommits(); loadSettings(); setInterval(load, 15000);
+$('logout').onclick = async () => { await api('/api/logout', {method: 'POST', body: {}}); location.href = '/'; };
+init().catch(e => alert(e.message));
 </script>
 </body>
 </html>

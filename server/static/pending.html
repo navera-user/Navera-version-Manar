@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Waiting for approval — NAVERA Academy</title>
+<link rel="icon" href="/static/img/navi-mark-gold.svg">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  html, body { height: 100%; background: linear-gradient(180deg, #0b1730, #16395a 45%, #1d4e6b 70%, #e6928a); }
+  body { display: grid; place-items: center; font-family: Inter, sans-serif; padding: 16px; box-sizing: border-box; }
+  .card { background: #f4f7fa; border-radius: 22px; padding: 30px; max-width: 460px; text-align: center; color: #14202b; box-shadow: 0 30px 80px rgba(0,0,0,.35); }
+  .big { font-size: 46px; } h1 { font-size: 26px; margin: 6px 0 8px; } p { color: #5d6b78; line-height: 1.6; }
+  .row { display: flex; gap: 8px; justify-content: center; margin-top: 18px; flex-wrap: wrap; }
+</style></head><body>
+<div class="card">
+  <div class="big">⏳</div>
+  <h1>Your teacher account is waiting</h1>
+  <p>The administrator of <b id="org">this academy</b> needs to approve it. You will be able to create your classes as soon as
+    they do — just come back and reload this page.</p>
+  <p style="font-size:13.5px">Have a teacher invitation code? Ask your administrator to approve you, or create the account again with the code.</p>
+  <div class="row"><button class="primary" onclick="location.reload()">⟳ Check again</button><button id="out">Sign out</button></div>
+</div>
+<script>
+fetch('/api/me').then(r => r.json()).then(m => { if (m.org) document.getElementById('org').textContent = m.org;
+  if (m.status !== 'pending') location.href = m.staff ? '/teacher' : '/'; }).catch(() => {});
+document.getElementById('out').onclick = async () => { await fetch('/api/logout', {method: 'POST'}); location.href = '/'; };
+</script>
+</body></html>

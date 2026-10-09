@@ -354,6 +354,6 @@ function toastLog(level, text) { consoleLine(level, text); logLine(level, text);
 
 // ---------------------------------------------------------------- start
 drawPlan(); loadScript(); loadScenario();
-fetch('/api/me').then(r => r.json()).then(me => { if (me.role === 'teacher') { $('modeSeg').style.display = ''; $('srcSel').style.display = ''; } }).catch(() => {});
+fetch('/api/me').then(r => r.json()).then(me => { if (me.staff) { $('modeSeg').style.display = ''; $('srcSel').style.display = ''; } }).catch(() => {});
 call('ping').then(async () => { $('veilText').textContent = 'Loading your NAVERA code…'; await loadCode(); $('veil').style.display = 'none'; })
   .catch(e => { $('veilText').textContent = 'The simulator could not start in this browser: ' + e; });

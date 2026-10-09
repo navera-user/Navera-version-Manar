@@ -38,6 +38,7 @@
     <table>
       <tr><td>Certificate</td><td><b>{{ c.id }}</b> · <a href="/certificate/{{ c.id }}">view it</a></td></tr>
       <tr><td>Awarded to</td><td><b>{{ c.name }}</b></td></tr>
+      {% if c.organisation %}<tr><td>Organisation</td><td>{{ c.organisation }}{% if c.get('class') %} — {{ c.get('class') }}{% endif %}</td></tr>{% endif %}
       <tr><td>Programme</td><td>{{ c.programme }} ({{ c.missions }} missions, ≈ {{ c.hours }} h)</td></tr>
       <tr><td>Completed</td><td>{{ completed_long }}</td></tr>
       <tr><td>Signed by</td><td>{{ c.issuer }} — The IRIS Team (key {{ c.key }} · {{ fp }})</td></tr>

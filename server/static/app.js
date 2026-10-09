@@ -51,7 +51,7 @@ async function init() {
   $('uname').textContent = ME.display;
   $('uinfo').innerHTML = `Logged in as <b>${esc(ME.name)}</b> · ROS domain ${ME.domain}` +
     (ME.base ? `<br>NAVERA base: ${esc(ME.base.subject.slice(0, 60))}` : '');
-  if (ME.role === 'teacher') { $('mTeacher').style.display = ''; $('opTab').style.display = ''; }   // full simulator: teacher only
+  if (ME.staff) { $('mTeacher').style.display = ''; $('opTab').style.display = ''; }   // full simulator: teachers and admins only
   if (AS) { $('asBanner').style.display = ''; $('asBanner').textContent = 'viewing ' + AS; }
   const c = await api('/api/courses');
   COURSES = c.lessons; MODULES = c.modules;
@@ -173,7 +173,9 @@ async function showHome() {
   document.body.classList.add('at-home');
   $('crumb').innerHTML = '';
   const passed = COURSES.filter(l => l.progress.status === 'passed').length;
-  const next = COURSES.find(l => l.progress.status !== 'passed');
+  // missions of a leg the teacher has not opened yet are locked until their date
+  const next = COURSES.find(l => l.progress.status !== 'passed' && !l.locked_until);
+  const waiting = !next && COURSES.find(l => l.progress.status !== 'passed' && l.locked_until);
   const first = ME.display.split(' ')[0];
   const r = rankFor(passed), xp = passed * XP_PER_MISSION;
   const pct = r.next === null ? 100 : Math.max(3, Math.round(100 * (passed - r.from) / (r.next - r.from)));
@@ -182,9 +184,10 @@ async function showHome() {
   const text = passed === 0
     ? `Every autumn, swallows cross seas and deserts without a single satellite — landmarks, the sun, the stars and an inner compass, each checked against the others. In ${COURSES.length} missions you will build the same skills for machines, on NAVERA's real code.`
     : passed === COURSES.length ? `All ${COURSES.length} missions complete — ${xp} XP. You have rebuilt the ideas behind NAVERA one by one.`
+    : waiting ? `${passed} of ${COURSES.length} missions complete — everything open so far is done. The next leg opens on <b>${esc(waiting.locked_until)}</b>.`
     : `${passed} of ${COURSES.length} missions complete. Next on your route: <b>${esc(next.title)}</b>. Your NAVERA copy is your own aircraft: change it freely, Reset brings back the factory version.`;
   let h = `<header class="hhero">${heroScene()}<div class="hwrap"><div class="hgrid">
-      <div><div class="kicker">${next ? `${esc(moduleOf(next.id).leg || '')} · Mission ${esc(next.number)}` : 'Expedition complete'}</div>
+      <div><div class="kicker">${ME.klass ? esc(ME.klass.name) + ' · ' : ''}${next ? `${esc(moduleOf(next.id).leg || '')} · Mission ${esc(next.number)}` : waiting ? 'Next leg coming' : 'Expedition complete'}</div>
         <h1>${headline}</h1><p>${text}</p>
         ${next ? `<button class="go hbtn" id="goNext">${passed ? `Continue mission ${+next.number}` : 'Start mission 1'} →</button>` : ''}<button class="hbtn line" id="goMap">Open the expedition map</button><button class="hbtn line" id="goIntro">▶ Watch the intro</button><div id="certHero"></div></div>
       <div class="glass"><div class="rank"><div class="medal">${icon(r.icon)}</div><div><b>${esc(r.name)}</b><span>Rank ${r.idx + 1} of ${RANKS.length} · ${xp} XP</span></div></div>
@@ -202,6 +205,7 @@ async function showHome() {
     <div class="wrap">
       <div class="shead"><div class="kicker">Achievements</div><h2>Badges</h2><p>Complete a whole leg to earn its badge.</p></div>
       <div class="medals">${b.html}</div>
+      <div id="rankBox"></div>
       <div class="shead" style="margin-bottom:0"><div class="kicker">Missions</div><h2>${MODULES.length} legs, ${COURSES.length} missions</h2></div>`;
   const byId = Object.fromEntries(COURSES.map(l => [l.id, l]));
   MODULES.forEach((m, k) => {
@@ -211,8 +215,9 @@ async function showHome() {
       <div class="lp"><i style="width:${ls.length ? 100 * done / ls.length : 0}%"></i></div><div class="lc">${done} of ${ls.length} complete</div></div><div class="mlist">`;
     for (const l of ls) {
       const st = l.progress.status, isNext = next && next.id === l.id;
-      const cls = st === 'passed' ? 'done' : isNext ? 'now' : '';
-      const status = st === 'passed' ? '<span class="status done">Complete</span>' : isNext ? `<span class="status now">${st === 'started' ? 'In progress' : 'Up next'}</span>`
+      const cls = st === 'passed' ? 'done' : isNext ? 'now' : l.locked_until ? 'locked' : '';
+      const status = st === 'passed' ? '<span class="status done">Complete</span>' : l.locked_until ? `<span class="status next">🔒 opens ${esc(l.locked_until)}</span>`
+        : isNext ? `<span class="status now">${st === 'started' ? 'In progress' : 'Up next'}</span>`
         : st === 'started' ? '<span class="status next">Started</span>' : '<span class="status next">Later</span>';
       const res = (l.resources || []).map(x => x === 'simlite' ? 'flies Sim Lite' : x === 'sim' ? 'needs the simulator' : x === 'camera' ? 'needs the camera' : 'needs the sensors').join(' · ');
       h += `<div class="mitem ${cls}" data-id="${esc(l.id)}"><div class="no">${esc(l.number)}</div><div><h4>${esc(l.title)}</h4><p>${esc(l.summary || '')}</p>${res ? `<div class="res">${res}</div>` : ''}</div>
@@ -227,7 +232,7 @@ async function showHome() {
   ['goNext', 'goNext2'].forEach(id => { if ($(id)) $(id).onclick = () => { location.hash = 'lesson/' + next.id; }; });
   $('goMap').onclick = () => $('mapHead').scrollIntoView({behavior: 'smooth'});
   $('goIntro').onclick = () => Intro.show();
-  if (!AS) Cert.home();
+  if (!AS) { Cert.home(); Ranking.home(); }
   $('home').onscroll = () => document.body.classList.toggle('scrolled', $('home').scrollTop > 40);
   Intro.maybe(() => Tour.maybe('home'));
 }
@@ -682,7 +687,7 @@ function renderBookMenu() {
   for (const [k, b] of Object.entries(BOOK)) {
     const state = !b.holder ? '<span class="badge">free</span>' : b.holder === me ? `<span class="badge passed">yours since ${b.since}</span>` :
       `<span class="badge started">${esc(b.holder)}</span>`;
-    const btn = !b.holder ? `<button data-r="${k}" data-a="take">Take</button>` : b.holder === me || ME.role === 'teacher' ?
+    const btn = !b.holder ? `<button data-r="${k}" data-a="take">Take</button>` : b.holder === me || ME.staff ?
       `<button data-r="${k}" data-a="release">Release</button>` : '';
     h += `<div class="item"><span>${esc(b.title)}<br>${state}</span>${btn}</div>`;
   }
@@ -721,6 +726,16 @@ $('mResetNavera').onclick = async () => {
 const Prefs = {
   get: (k) => !!(ME.prefs && ME.prefs[k]),
   set(k, v = true) { ME.prefs = ME.prefs || {}; ME.prefs[k] = v; api('/api/prefs', {method: 'POST', body: {[k]: v}}).catch(() => {}); },
+};
+// class ranking (only when the teacher turned it on): first names and XP
+const Ranking = {
+  async home() {
+    if (!ME.klass || !ME.klass.ranking || !$('rankBox')) return;
+    let d; try { d = await api('/api/class/ranking'); } catch (e) { return; }
+    if (!d.ranking) return;
+    $('rankBox').innerHTML = `<div class="shead"><div class="kicker">${esc(d.klass)}</div><h2>Class ranking</h2><p>First names and XP only — turned on by your teacher.</p></div>
+      <div class="ranklist">${d.ranking.map((r, i) => `<div class="${r.me ? 'me' : ''}"><b>${i + 1}</b><span>${esc(r.first)}${r.me ? ' (you)' : ''}</span><i>${r.xp} XP</i></div>`).join('')}</div>`;
+  },
 };
 // end-of-course certificate, digitally signed by IRIS (server: certs.py)
 const Cert = {
