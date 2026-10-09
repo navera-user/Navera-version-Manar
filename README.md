@@ -105,6 +105,8 @@ AUTHORING.md          how to write or change a lesson
 ## Limits to know
 
 - Plain HTTP on the local network (passwords travel unencrypted): use it on a trusted network.
+- Wrong passwords: a device (browser) waits 15 min after 10; an account is only slowed down (one try
+  per 30 s after 5), never locked, so nobody can lock a classmate out; a whole network waits after 100.
 - The simulator and camera serve one student at a time; plan those lessons (19, 28) in turns.
 - A student could join another student's ROS domain on purpose (same machine); there is no
   protection against that beyond the default separate domains.

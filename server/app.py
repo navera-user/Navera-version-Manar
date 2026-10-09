@@ -22,7 +22,7 @@ import termios
 import threading
 import time
 
-from flask import Flask, Response, abort, jsonify, redirect, render_template, request, send_file, send_from_directory, session
+from flask import Flask, Response, abort, jsonify, make_response, redirect, render_template, request, send_file, send_from_directory, session
 from flask_sock import Sock
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -210,15 +210,35 @@ def sandbox_user():
     return name, u
 
 
-_fails = {}           # (ip or account) -> [times of wrong passwords]
-LOGIN_FAILS = 10      # wrong passwords allowed per 15 minutes, per device and per account
+_fails = {}           # ("dev:", "ip:", "user:" or "setup:" key) -> [times of wrong passwords]
+LOGIN_FAILS = 10      # wrong passwords allowed per 15 minutes on one device (browser) before it waits
+NETWORK_FAILS = 100   # per network address: a whole school shares one, so only a high ceiling against robots
+ACCOUNT_FAILS = 5     # after this many on one account, that account allows one try per ACCOUNT_PAUSE seconds
+ACCOUNT_PAUSE = 30    # (an account is slowed down, never locked: nobody can lock a student out by guessing)
+DEVICE_COOKIE = "nav_dev"
+
+
+def _recent(k, now=None):
+    now = now or time.time()
+    _fails[k] = [t for t in _fails.get(k, []) if now - t < 900]
+    return _fails[k]
 
 
 def _too_many_fails(*keys):
+    return any(len(_recent(k)) >= LOGIN_FAILS for k in keys)
+
+
+def _login_wait(dev, ip, name):
+    """Seconds this sign-in must wait (0 = may try now), and why."""
     now = time.time()
-    for k in keys:
-        _fails[k] = [t for t in _fails.get(k, []) if now - t < 900]
-    return any(len(_fails[k]) >= LOGIN_FAILS for k in keys)
+    if len(_recent(dev, now)) >= LOGIN_FAILS:
+        return int(900 - (now - _fails[dev][0])) + 1, "device"
+    if len(_recent(ip, now)) >= NETWORK_FAILS:
+        return int(900 - (now - _fails[ip][0])) + 1, "network"
+    acc = _recent(name, now)
+    if len(acc) >= ACCOUNT_FAILS and now - acc[-1] < ACCOUNT_PAUSE:
+        return int(ACCOUNT_PAUSE - (now - acc[-1])) + 1, "account"
+    return 0, ""
 
 
 @app.post("/api/login")
@@ -227,22 +247,39 @@ def api_login():
     name = (d.get("name") or "").strip().lower()
     if not name or not d.get("password"):
         return jsonify(error="Enter your name (or e-mail) and your password."), 400
-    keys = ("ip:" + (request.remote_addr or "?"), "user:" + name)
-    if _too_many_fails(*keys):
-        return jsonify(error="Too many wrong passwords. Wait 15 minutes, or ask your teacher for a new password."), 429
+    dev_id = request.cookies.get(DEVICE_COOKIE, "")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{16,64}", dev_id):
+        dev_id = secrets.token_urlsafe(18)
+
+    def reply(body, code=200):
+        r = make_response(jsonify(body), code)
+        r.set_cookie(DEVICE_COOKIE, dev_id, max_age=3 * 365 * 86400, httponly=True, samesite="Lax",
+                     secure=request.scheme == "https")
+        return r
+
+    dev, ip, acc = "dev:" + dev_id, "ip:" + (request.remote_addr or "?"), "user:" + name
+    wait, why = _login_wait(dev, ip, acc)
+    if wait:
+        if why == "account":
+            msg = f"Several wrong passwords for this account — wait {wait} seconds and try again."
+        else:
+            msg = f"Too many wrong passwords — wait {max(1, round(wait / 60))} min, or ask your teacher for a new password."
+        return reply({"error": msg, "wait": wait}, 429)
     all_users = users()
     if name not in all_users and "@" in name:                     # sign in with the e-mail address too
         name = next((k for k, v in all_users.items() if (v.get("email") or "").lower() == name), name)
     u = all_users.get(name)
     if not u or not u.get("pw") or not check_password_hash(u["pw"], d.get("password") or ""):
-        for k in keys:
-            _fails[k].append(time.time())
+        now = time.time()
+        for k in (dev, ip, acc):
+            _fails[k].append(now)
         time.sleep(0.7)
-        return jsonify(error="Wrong name or password"), 401
+        return reply({"error": "Wrong name or password"}, 401)
+    _fails.pop(dev, None)                 # a right password clears this device's count
     session.clear()
     session["user"] = name
     session.permanent = True
-    return jsonify(ok=True, role=u["role"], status=u.get("status", "active"))
+    return reply({"ok": True, "role": u["role"], "status": u.get("status", "active")})
 
 
 # ---------------------------------------------------------------- accounts: sign-up, preferences, Google/GitHub

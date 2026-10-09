@@ -37,7 +37,7 @@ def student_env(name, index, heavy=False, domain=None):
         "DAY_DATASET_DIR": config.S_DATA + "/navera_data/day_pkg/day_pkg/dataset",
         "NAVERA_DAY_IMAGES_DIR": config.S_DATA + "/navera_data/camera_pkg/camera_pkg/data/day",
         "NAVERA_DAY_CSV": config.S_DATA + "/navera_data/camera_pkg/camera_pkg/data/day/flight_log.csv",
-        "TORCH_HOME": config.S_HOME + "/.torch_cache",
+        "TORCH_HOME": config.S_DATA + "/navera_data/.torch_cache",   # the models (DINOv2…) are cached there, read only
         "NAVERA_STATE_DIR": config.S_HOME + "/.navera_state",
     }
     for k in ("CUDA_HOME", "LD_LIBRARY_PATH"):
