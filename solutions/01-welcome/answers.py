@@ -1,60 +1,16 @@
-# Lab 1 — answers. Numbers without quotes (GATE_M = 123.4), text and letters in quotes (Q1 = "b").
-# Save with Ctrl+S, then press ✔ Check my work.
-
-# ---- Step 1: the computer ----------------------------------------------------------
-ARCH = "aarch64"    # what `uname -m` prints (the processor architecture)
-CPU_CORES = 6    # what `nproc` prints
-
-# ---- Step 3: your NAVERA copy ------------------------------------------------------
-GPS_TIMEOUT_S = 3.0    # gps_timeout_s in navera_estimator/.../config/estimator_params.yaml
-FIX_MAX_SIGMA_M = 25.0    # fix_max_sigma_m in the same file
-SOURCE_DAY_VISION = 2    # the number of SOURCE_DAY_VISION in navera_msgs/msg/PositionEstimate.msg
-
-# ---- Step 4: the GNSS solver (gnss_fix.py) — 1 decimal is enough ------------------
-BIAS_FOUND_M = 148.1    # "clock bias found" with the DEFAULT settings (8 satellites, 0.5 µs)
-H_ERR_4_SATS_M = 4.3    # "horizontal error" with USE_SATELLITES = 4
-RESID_4_SATS_M = 0.0    # "residual RMS" with USE_SATELLITES = 4
-SPOOF_H_ERR_M = 499.5    # "horizontal error" with 8 satellites and SPOOF_EAST_M = 500.0
-SPOOF_RESID_M = 1.8    # "residual RMS" in that same spoofed case
-
-# ---- Step 5: the arbiter's GPS jump gate --------------------------------------------
-# v_max = 100 m/s, margin = 50 m, the new GPS fix comes 2.0 s after the last trusted one.
-# Beyond what distance (m) is the new fix refused?
-GATE_M = 250.0
-
-# ---- Step 7: quiz — write the letter --------------------------------------------------
-# Q1. Why does a receiver need at least 4 satellites for a 3-D fix?
-#   a) one per axis, plus one spare in case a satellite fails
-#   b) the unknowns are x, y, z and the receiver clock bias
-#   c) the 4th satellite gives the local time zone
-Q1 = "b"
-
-# Q2. With exactly 4 satellites the residual RMS is 0.0 m. What does that tell you?
-#   a) the fix is perfect
-#   b) nothing: 4 equations for 4 unknowns always fit, so an error cannot be detected
-#   c) the receiver is being spoofed
-Q2 = "b"
-
-# Q3. A spoofer moved the fix 500 m east and the residual RMS stayed normal. Conclusion?
-#   a) a consistent spoof looks like a normal fix: an independent source is needed to see it
-#   b) the clock bias always reveals spoofing
-#   c) spoofing is impossible with 8 satellites
-Q3 = "a"
-
-# Q4. Real GNSS signals are recorded and re-broadcast with a delay. This attack is called:
-#   a) jamming     b) multipath     c) meaconing
-Q4 = "c"
-
-# Q5. Which NAVERA node decides which source's position is published?
-#   a) gps_node     b) estimator_node (the arbiter)     c) vehicle_output_node
-Q5 = "b"
-
-# Q6. How does NAVERA give its position to an ArduPilot autopilot?
-#   a) like a GPS receiver would: NMEA sentences or the MAVLink message GPS_INPUT
-#   b) it replaces the autopilot's firmware
-#   c) through the operator web page
-Q6 = "a"
-
-# Q7. GPS is jammed and day vision has a fresh match. Which state does NAVERA report today?
-#   a) FIX     b) DEGRADED     c) NO_FIX
-Q7 = "b"
+ARCH = "aarch64"
+CPU_CORES = 0        # replaced by _apply.sh with the real nproc
+V_MAX_MPS = 100.0
+MARGIN_M = 50.0
+GPS_TIMEOUT_S = 3.0
+PREDICT_CLOCK = "Somewhere near (3, 4) but not exactly, because all circles are too big."
+CLOCK_ERROR_M = 141
+EXPLAIN_CLOCK = "The clock bias adds the same 0.3 km to every distance, so when the bias is an unknown the search removes it from all distances and the circles meet again."
+PREDICT_TWO = "Several answers."
+EXPLAIN_TWO = "There are three unknowns (x, y and the bias) but only two measurements, so a whole line of guesses fits. A real GPS has four unknowns (x, y, z, bias) so it needs 4 satellites."
+PREDICT_SPOOF = "It will not notice."
+EXPLAIN_SPOOF = "The spoofer sends exactly the distances measured at the fake place, so they are consistent and the receiver cannot tell anything is wrong from its own measurements."
+PREDICT_GATE = "A: 2 refused (150 then 250 m), then accepted at 350 m. B: none."
+JUMP_REFUSED = 2
+DRIFT_REFUSED = 0
+EXPLAIN_GATE = "The gate grows with time so a jump is only delayed, and a slow drag is always reachable; NAVERA compares GPS with vision, an independent source, before trusting it again."

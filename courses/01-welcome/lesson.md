@@ -1,321 +1,359 @@
 # Welcome: navigation without GNSS
 
 > [!NOTE] In short
-> - GPS can be lost (jamming, blockage) or faked (spoofing), and the autopilot cannot see the
->   difference.
-> - A receiver needs at least four satellites, because its own clock error is a fourth unknown.
-> - The GPS signal arrives weaker than the noise, so a small jammer can deny GPS over many
->   kilometres.
-> - NAVERA has three layers: **sources** (GPS, day vision, night vision, celestial), an
->   **arbiter** that chooses one, and an **output** that looks like a GPS to the autopilot.
-> - In the lab you run your first commands on the Jetson, run a GNSS solver, break it on purpose,
->   and apply the arbiter's jump gate.
+> - A satellite receiver finds its position from **distances**, like you will do with three
+>   beacons on a map.
+> - Its clock is not perfect. That adds **one more unknown**, so it needs one more satellite.
+> - GPS can be **lost** (blocked, jammed) or **faked** (spoofed). A good fake looks perfect.
+> - NAVERA keeps a vehicle on track with other **sources** (camera, stars), an **arbiter** that
+>   decides whom to believe, and an **output** that looks like a GPS to the autopilot.
+> - In the lab you write your own small position finder in Python, break it with a bad clock, fool
+>   it with a fake signal, and write NAVERA's jump gate yourself.
 
-A survey drone flies along a coastline, from one harbour town to the next. Its autopilot holds
-the route with a position from **GPS**, updated five times per second. Suddenly the receiver reports
-"no fix" — or worse, it keeps reporting a position that is calm, precise… and 2 km out at sea,
-while the drone is still over the beach. The autopilot cannot see the difference. It will either
-land where it is, fly a "return home" towards a wrong home, or follow the fake position.
+⏱ Reading: about 25 minutes. Lab: about 2 h 30.
 
-This course is about the engineering answer to that situation: **GNSS-denied navigation**. You will
-study, modify and test **NAVERA**, a commercial navigation product made by IRIS Systems. NAVERA
-sits beside the autopilot of a vehicle (drone, aircraft, ground robot, boat) and keeps giving it a
-position when satellite navigation is lost or cannot be trusted — from a camera and a satellite map,
-a thermal camera, the stars, and a strict set of rules about whom to believe.
+## Words of this lesson
 
-In this first lesson you learn how satellite positioning works and why it fails, what NAVERA is made
-of, and how this dashboard works.
+You will meet these words below. Come back here when you forget one.
 
-## 1. How GNSS works: pseudoranges
-
-**GNSS** (Global Navigation Satellite System) is the general name; **GPS** (USA) is one system,
-next to Galileo (Europe), GLONASS (Russia) and BeiDou (China). A GPS satellite orbits at about
-20 200 km altitude (orbit radius 26 560 km) and continuously broadcasts:
-
-- *when* it sent the signal, from its atomic clock;
-- *where* it is, from its orbit parameters (the **ephemeris**).
-
-The receiver notes *when* the signal arrived and multiplies the travel time by the speed of light
-`c ≈ 299 792 458 m/s`. The travel time is about 67–86 ms. The problem: the receiver has a cheap
-quartz clock, not an atomic one. If its clock is wrong by a **bias** `b`, every measured distance
-is wrong by the same amount `c·b` — and 1 µs of clock error is already 300 m. The measured
-distance is therefore called a **pseudorange**:
-
-```
-ρ_i = ‖s_i − r‖ + c·b + ε_i
-
-  ρ_i   pseudorange to satellite i (measured, m)
-  s_i   position of satellite i (known from its message)
-  r     receiver position (x, y, z)        ← unknown
-  b     receiver clock bias (s)            ← unknown
-  ε_i   noise: atmosphere, multipath, receiver (a few metres)
-```
-
-There are **four unknowns**: `x, y, z` and `b`. Each satellite gives one equation, so a 3-D fix needs
-**at least four satellites**. With more than four, the receiver solves a **least-squares** problem (it
-chooses the position that makes the sum of the squared errors of all equations as small as possible):
-the extra equations average the noise and make it possible to detect a measurement that disagrees.
-
-![Four satellites, four pseudoranges: three unknown coordinates plus the clock bias](assets/gps.svg)
-
-### A worked example in 2-D
-
-Take a flat world with three beacons (in km): `A = (0, 0)`, `B = (10, 0)`, `C = (0, 10)`. The receiver is
-really at `(3, 4)`, and its clock is 1 µs late, so every pseudorange is 0.3 km too long:
-
-| Beacon | True distance | Pseudorange (+0.3 km) |
+| Word | Meaning | Français |
 |---|---|---|
-| A | √(3² + 4²) = 5.000 | 5.300 |
-| B | √(7² + 4²) = 8.062 | 8.362 |
-| C | √(3² + 6²) = 6.708 | 7.008 |
+| **GNSS / GPS** | satellite navigation in general / the American system | GNSS / GPS |
+| **beacon** | a transmitter at a known place | balise |
+| **pseudorange** | a measured distance that includes the clock error | pseudo-distance |
+| **clock bias** | how wrong the receiver's clock is, written as a distance (km or m) | biais d'horloge |
+| **mismatch** | how badly a guessed position explains the measurements (0 = perfectly) | écart |
+| **fix** | one position given by a GPS receiver ("a GPS fix"; "no fix" = no position) | position calculée, « fix » |
+| **uncertainty** | how many metres a position may be wrong, for example ± 10 m | incertitude |
+| **fresh** | recent enough to use: for GPS, younger than 3 seconds in NAVERA | récent |
+| **jamming** | noise sent on the GPS frequency, so the receiver hears nothing | brouillage |
+| **spoofing** | fake GPS signals, so the receiver computes a false position | leurrage |
+| **consistent** | (for fake signals) all the distances agree with each other, like real ones | cohérent |
+| **meaconing** | real GPS signals recorded and sent again later | répétition (meaconing) |
+| **autopilot** | the computer that flies the vehicle (ArduPilot, PX4) | autopilote |
+| **attitude** | the angles of the vehicle: how it is tilted and where its nose points | attitude (angles) |
+| **arbiter** | the NAVERA program that chooses which position to send | arbitre |
 
-Draw three circles with the pseudoranges as radii: they do **not** meet in one point. In 2-D the
-unknowns are `x, y, b`: three unknowns, three equations. Find the `b` that makes the circles
-**shrink** (radius `ρ_i − c·b`) until they meet in a single point: with `c·b = 0.3 km` they meet at
-`(3, 4)`. (You do not have to solve this by hand; the lab's solver does it.) In 3-D the same idea needs four satellites. A real receiver does it numerically: it
-**linearises** the equations around a guess and improves the guess a few times (Gauss–Newton). In
-the lab you run such a solver and watch the clock bias come out of it.
+## The problem
 
-### Geometry matters: DOP
+A survey drone flies along a coast, from one harbour to the next. Its **autopilot** steers with a
+position from GPS, five times per second. Suddenly the GPS says "no position". Or worse: it keeps
+giving a calm, precise position… 2 km out at sea, while the drone is still over the beach. The
+autopilot cannot tell. It will land where it is, or fly "home" towards a wrong home.
 
-The noise `ε` of a few metres becomes a position error multiplied by a **dilution of precision**
-(DOP) that depends only on the geometry: satellites spread over the whole sky give a small DOP
-(1–2); satellites bunched in one direction, or only four of them, give a larger one. That is why the
-same receiver is precise in an open field and poor in a narrow old-town street between tall houses
-and hills.
+This course is about the engineering answer: **GNSS-denied navigation**. You will study, change and
+test **NAVERA**, a navigation product made by IRIS Systems. NAVERA sits next to the autopilot and
+keeps giving it a position when satellite navigation is lost or cannot be trusted.
 
-## 2. Why GNSS is fragile
+To protect GPS, you must first understand how it works. So we start there.
 
-A GPS satellite transmits about 25–50 W from 20 000 km away. On the ground the L1 signal
-(1575.42 MHz) arrives with a power of about **−128.5 dBm**, i.e. about `1.4 × 10⁻¹⁶ W`. The
-thermal noise of the receiver over the signal's 2 MHz bandwidth is about **−111 dBm**: the signal
-is roughly **50 times weaker than the noise** (−17 dB). The receiver can still use it because it
-knows the satellite's spreading code and **correlates** for a millisecond or more, which gains about
-30 dB. (Why 30 dB? The GPS code has 1023 **chips** (code bits) per millisecond. Correlating adds
-about 1000 chips together: the signal parts add in step, the random noise does not, so the
-signal-to-noise ratio improves about 1000 times: `10·log10(1000) = 30 dB`.) But any transmitter on the same frequency competes with a signal
-that is already below the noise.
+## 1. A position from distances
+
+Forget satellites for a moment. You are somewhere on a flat 10 km × 10 km field. Three radio
+**beacons** stand at known places (in km):
+
+```
+A = (0, 0)      B = (10, 0)      C = (0, 10)
+```
+
+Your receiver measures the distance to each beacon: **5.000 km** to A, **8.062 km** to B,
+**6.708 km** to C. Where are you?
+
+Each distance puts you on a **circle** around that beacon. Two circles usually cross in **two**
+points; the third circle chooses one of them. Three circles meet in one point: that is you. In the left picture, they meet at **(3, 4)**.
+
+![Three beacons and three circles. Left: the circles meet at the true position. Right: every distance is 0.3 km too long, and they no longer meet.](assets/beacons.svg)
+
+### The distance between two points
+
+The distance between `p = (x1, y1)` and `q = (x2, y2)` is Pythagoras:
+
+```
+distance = √( (x2 − x1)² + (y2 − y1)² )
+```
+
+**Example.** From A = (0, 0) to the point (3, 4): `√(3² + 4²) = √25 = 5`. From B = (10, 0) to
+(3, 4): `√(7² + 4²) = √65 = 8.062`.
+
+### How good is a guess? The mismatch
+
+A computer does not draw circles. It **tries** a position and measures how badly that position
+explains the measurements. For a guess `p`, for each beacon:
+
+1. compute the distance from `p` to the beacon (what you *would* measure if you were at `p`);
+2. subtract what you *did* measure;
+3. square it (so that a negative difference counts as much as a positive one).
+
+Add the three squares. This sum is the **mismatch**. It is 0 when `p` explains every
+measurement perfectly, and it grows when `p` is wrong.
+
+**Worked example.** Guess `p = (4, 4)`:
+
+| Beacon | Distance from (4, 4) | Measured | Difference | Squared |
+|---|---|---|---|---|
+| A (0, 0) | √(4² + 4²) = 5.657 | 5.000 | +0.657 | 0.431 |
+| B (10, 0) | √(6² + 4²) = 7.211 | 8.062 | −0.851 | 0.725 |
+| C (0, 10) | √(4² + 6²) = 7.211 | 6.708 | +0.503 | 0.253 |
+| | | | **mismatch** | **1.409** |
+
+And at the true point (3, 4), each difference is 0, so the mismatch is **0**.
+
+### Finding the best guess: try them all
+
+The simplest way to find the position: try **every** point of a grid and keep the one with the
+smallest mismatch. Computers are fast: 101 × 101 points is about ten thousand tries, done in a
+moment.
+
+Here is the same idea in one dimension, in Python. *Which number x between 0 and 10 (in steps of
+0.1) has a square closest to 20?*
+
+```python
+best_x = None
+best_err = None
+for i in range(101):            # i = 0, 1, 2, …, 100
+    x = i / 10                  # x = 0.0, 0.1, 0.2, …, 10.0
+    err = (x * x - 20) ** 2     # how wrong x is (squared: never negative)
+    if best_err is None or err < best_err:
+        best_x = x              # a better x: remember it
+        best_err = err
+print(best_x)                   # 4.5   (because 4.5² = 20.25, the closest)
+```
+
+Read it line by line:
+
+- `best_x = None`: `None` means "nothing yet". Before the loop we have no best answer.
+- `for i in range(101)` repeats the block 101 times, with `i` = 0, 1, …, 100.
+- `x = i / 10` turns `i` into the number we try. (We loop over whole numbers and divide, because
+  adding 0.1 again and again makes small rounding errors.)
+- `err` measures how wrong this `x` is.
+- `if best_err is None or err < best_err` asks: is this the first try, or the best so far? If yes,
+  we remember it.
+- `print(best_x)` is **after** the loop (not indented): it runs once, when all tries are done.
+
+In the lab you write the **two-dimensional** version: two loops, one for `x` and one inside it for
+`y`, and the mismatch instead of `err`.
+
+## 2. The clock problem: a fourth unknown
+
+Each satellite says: "I sent this signal at 12:00:00.000000". The receiver writes down when the
+signal arrived, by its own clock. Distance = travel time × the speed of light
+`c ≈ 300 000 km/s`. The satellite has a perfect atomic clock; your receiver has a cheap one.
+
+If the receiver's clock is **1 µs fast** (ahead by one millionth of a second), it writes down every
+arrival 1 µs too late. So every travel time looks 1 µs too long, and every distance comes out
+**0.3 km** too long:
+
+```
+c × 1 µs = 300 000 km/s × 0.000 001 s = 0.3 km
+```
+
+Every distance is wrong by the **same** amount. A measured distance that includes this clock error
+is called a **pseudorange**:
+
+```
+pseudorange = true distance + bias        (bias = c × clock error, here 0.3 km)
+```
+
+Back to our field, with a clock 1 µs fast:
+
+| Beacon | True distance | Pseudorange |
+|---|---|---|
+| A | 5.000 | 5.300 |
+| B | 8.062 | 8.362 |
+| C | 6.708 | 7.008 |
+
+All circles are now 0.3 km too big, and they **no longer meet** (right picture above). The best
+grid point is no longer (3, 4), and even the best mismatch is not 0. You will see it happen in the
+lab.
+
+**The solution is clever.** We do not know the bias, so we make it an **unknown** too. A guess is
+now `(x, y, bias)`. For each guess, what we *would* measure becomes:
+
+```
+would measure = distance from the guess to the beacon + bias
+```
+
+and the mismatch compares that with the measured pseudoranges, exactly as in §1. At (3, 4) with
+bias = 0.3 km: 5.000 + 0.3 = 5.300, 8.062 + 0.3 = 8.362, 6.708 + 0.3 = 7.008. Every pseudorange is
+explained: mismatch 0.
+
+One more unknown needs one more measurement:
+
+| World | Unknowns | Beacons or satellites needed (at least) |
+|---|---|---|
+| flat field, perfect clock | x, y | 2 (they leave two possible points; a 3rd chooses) |
+| flat field, cheap clock | x, y, bias | **3** |
+| real GPS, cheap clock | x, y, z, bias | **4** |
+
+That is why a GPS receiver needs **at least four satellites**. With more than four, it uses the
+extra ones to reduce the noise and to notice a measurement that disagrees with the others.
 
 > [!NOTE]
-> **Decibels.** Engineers compare powers on a log scale: `P_dBm = 10·log10(P / 1 mW)`. +10 dB = ×10,
-> +3 dB ≈ ×2, −20 dB = ÷100. A difference of 36 dB is a factor of about 4000.
+> A real receiver does not try every point of a grid: in 3-D with a clock, that would be far too
+> many. It starts from a guess and improves it a few times with algebra. The idea is the same:
+> **find the position (and bias) with the smallest mismatch**. The "Going further" part of the lab
+> lets you run such a receiver with eight satellites.
 
-**Worked example — how far can a jammer reach?** In free space, a radio signal loses
-`FSPL(dB) = 20·log10(d_km) + 20·log10(f_MHz) + 32.44`. A small 1 W jammer (30 dBm) at 20 km:
+## 3. What can go wrong with GPS
 
-```
-FSPL = 20·log10(20) + 20·log10(1575.42) + 32.44 = 26.0 + 63.9 + 32.4 = 122.4 dB
-received jamming power = 30 − 122.4 = −92.4 dBm
-J/S = −92.4 − (−128.5) = 36 dB   → about 4000 times stronger than the satellite
-```
+The GPS signal is extremely weak when it reaches the ground: weaker than the natural radio noise
+around the antenna. The receiver can still find it only because it knows exactly what pattern to
+listen for. So a small transmitter on the same frequency can cover it completely, kilometres away.
 
-Civil receivers usually lose tracking when the jamming is a few tens of dB above the signal
-(the exact limit depends on the receiver and antenna). With a clear line of sight — which a drone
-at altitude has — a one-watt device can therefore deny GPS over many kilometres.
-
-### The threat model
-
-| Threat | What happens | What the receiver knows | Example situations |
-|---|---|---|---|
-| **Outage / blockage** | the signal is blocked or reflected (**multipath**) | it sees fewer satellites, larger DOP, or no fix | streets between tall buildings, deep valleys, under bridges, tunnels, inside a hangar |
-| **Interference / jamming** | noise is transmitted on the GNSS frequency, deliberately or not | it **knows** it lost the fix | a jammer in a vehicle, a faulty transmitter, a military exercise |
-| **Spoofing** | fake but consistent GNSS signals are transmitted, for a chosen false position or time | it usually **does not know**: the fix looks normal | the receiver's position slowly drifts away, or jumps |
-| **Meaconing** | real signals are recorded and **re-broadcast** with a delay | it does not know; it computes the position of the re-broadcaster, and a wrong time | a simple "repeater" attack |
-
-Interference is not a theory. Navigation authorities for shipping and aviation have for years
-published warnings about GNSS interference in several regions of the world — around the Baltic Sea,
-the Black Sea, the Eastern Mediterranean and the Middle East, among others. Typical reports
-describe ships whose broadcast position appears on land, or aircraft that lose GPS for part of a
-flight. Any vehicle that must keep working in such conditions needs a second way to know where it is.
-
-Spoofing is the most dangerous case for an autopilot, because the error is **silent**: with only
-GNSS, the receiver has nothing independent to compare with. The defence is to compare GNSS with
-something that does not use radio signals: the camera, the stars, the vehicle's own motion.
-
-## Where the idea came from: birds
-
-Twice a year, billions of birds travel between their breeding grounds and their winter quarters.
-White storks cross from Europe to Africa over the Strait of Gibraltar; bar-tailed godwits fly
-non-stop from Alaska to New Zealand; Arctic terns go from the Arctic to the Antarctic and back.
-Barn swallows, wheatears, warblers and birds of prey cross the Mediterranean and the Sahara in
-spring and in autumn, many of them flying at night. A barn swallow that breeds in Europe
-or Central Asia winters in Africa and often comes back to the same building, sometimes to the same
-nest, after a journey of thousands of kilometres over sea and desert — with no GPS.
-
-Scientists have studied how they do it for more than a century, and the answer is the founding idea
-of NAVERA: a bird does not have **one** perfect sense. It has **several**, each imperfect, and it
-**cross-checks** them.
-
-Meet **Navi**, a barn swallow. She will appear in each lesson, briefly, to show how birds solve the
-problem the lesson is about.
-
-![Navi's senses, and the NAVERA source each one inspired](assets/bird_senses.svg)
-
-| What the bird uses | What it gives | NAVERA's version |
+| Threat | What happens | Does the receiver know? |
 |---|---|---|
-| **Eyes + landmarks** (coasts, mountains, rivers, roads) | "I know this place" | **day vision**: camera + satellite map |
-| **The stars** (night migrants learn the sky's centre of rotation) | a direction at night | **celestial**: a star camera |
-| **The sun + an inner clock** | a direction by day; needs the time | an accurate **clock** (GNSS and stars both need it) |
-| **A magnetic sense** | a compass, even under clouds | the **magnetometer** of the IMU |
-| **The inner ear** | which way is up, how fast it turns | the **IMU** (gyroscopes, accelerometers) |
-| **A sense of its own motion** | "so far, in that direction" | **dead reckoning**, visual odometry |
-| **Cross-checking** | which sense to trust when they disagree | the **arbiter** |
+| **Outage** | buildings, mountains, a tunnel block the signal | yes: fewer satellites, or "no fix" |
+| **Jamming** | someone sends noise on the GPS frequency | yes: "no fix" |
+| **Spoofing** | someone sends **fake but consistent** GPS signals for a false position | **usually not** |
+| **Meaconing** | someone records real signals and sends them again later | usually not |
 
-## 3. NAVERA: sources, arbiter, output
+Jamming is serious, but at least the receiver knows: it says "no fix", and the autopilot can react.
+**Spoofing is the dangerous one.** The spoofer computes, for a false position, exactly the
+pseudoranges a receiver *would* measure there. The receiver finds that false position with a
+mismatch of 0: everything looks perfect. You will build such a spoofer in the lab and watch your own
+position finder believe it.
 
-NAVERA is a set of programs (ROS 2 **nodes**, lesson 9) running on an NVIDIA Jetson computer. It has
-three layers.
+Interference is real. Navigation authorities have warned for years about GPS interference around
+the Baltic Sea, the Black Sea, the Eastern Mediterranean and the Middle East: ships that appear on
+land, aircraft that lose GPS for part of a flight.
+
+**Meaconing** is a lazy spoofing: the attacker records the real signals somewhere and sends them
+again later. The receiver computes the position of the recording place (and an old time), again
+with no alarm. NAVERA's defences are the same as for spoofing: the jump gate, and the comparison
+with vision.
+
+**Lesson learned:** inside the receiver, nothing says "spoofed". The only defence is to compare GPS
+with something that does not use radio: a camera, the stars, the vehicle's own motion.
+
+## 4. NAVERA: sources, arbiter, output
+
+NAVERA is a set of programs running on an NVIDIA Jetson computer next to the autopilot. It has three
+layers.
 
 ![NAVERA's architecture: sources, arbiter, output to the autopilot](assets/architecture.svg)
 
-**1. Sources** — each one produces its own position estimate, with its own uncertainty:
+Today, look only at the three big boxes. The small names in the picture (topics, NMEA, MAVLink)
+come in later lessons.
 
-| Source | Package in your copy | How it finds the position | Lessons |
-|---|---|---|---|
-| GPS | `gps_pkg` | reads the receiver (NMEA sentences) | 15 |
-| Day vision | `day_pkg` | matches the camera image against a stored satellite map | 17–23 |
-| Night vision | `night_pkg` | matches a thermal image against the map | 24 |
-| Celestial | `cn_pkg` | recognises stars in a sky image, with the exact time | 24 |
-| IMU | `imu_pkg` | attitude and heading (it does **not** give a position) | 16 |
+**1. Sources.** Each one produces its own position, with its own uncertainty.
 
-**2. The arbiter** (`navera_estimator`, node `estimator_node`) decides, five times per second
-by default (parameter `publish_rate_hz = 5.0`), which source to publish. Its rule is simple and strict:
+| Source | How it finds the position | Lessons |
+|---|---|---|
+| GPS | reads the GPS receiver | 15 |
+| Day vision | matches the camera image with a satellite map stored on the Jetson | 17–23 |
+| Night vision | matches a thermal image with the map | 24 |
+| Celestial | recognises stars in a sky image | 24 |
+| IMU | measures turns and accelerations: gives the attitude (tilt and heading), **not** a position | 16 |
 
-- a source is **eligible** only if its estimate is valid, fresh (for GPS: younger than
-  `gps_timeout_s = 3.0` s), **measured** or **dead-reckoned** (propagated) — never a held or
-  replayed old point — and has finite numbers;
-- among the eligible ones, the first in the priority order **GPS > day vision > night vision >
-  celestial** wins;
-- a GPS fix that **jumps** farther than the vehicle could have moved is refused:
+**2. The arbiter** (the program `estimator_node`) decides, five times per second, which source to
+send. A source can be chosen only if its position is **fresh** (for GPS: younger than
+`gps_timeout_s` = 3 s) and valid. Among those, the priority is
+**GPS > day vision > night vision > celestial**.
+
+**3. The output** gives the chosen position to the autopilot **in the form of a GPS**. The autopilot
+does not need to change: for it, NAVERA is a GPS receiver. But unlike a GPS alone, it says when it
+is not sure.
+
+### The jump gate
+
+One of the arbiter's rules is the **jump gate**. A vehicle cannot teleport. If a new GPS position is
+farther from the last trusted one than the vehicle could have flown, the arbiter refuses it:
 
 ```
-refuse GPS if   distance(new fix, last trusted fix) > v_max · Δt + margin
+refuse the new GPS fix if   distance(last trusted fix, new fix)  >  v_max × elapsed + margin
 ```
 
-With `v_max = 100 m/s` (a parameter set per vehicle), `margin = 50 m` and fixes 1 s apart, a jump of
-more than 150 m is refused. While GPS is refused, it is only accepted again when it **agrees** with
-an independent source such as vision. Lessons 25–27 study these rules in detail.
+- `v_max` is the vehicle's top speed (m/s), set per vehicle;
+- `elapsed` is the time since the **last trusted** fix (s);
+- `margin` covers normal GPS noise (m).
 
-**3. The output** (`navera_output`, node `vehicle_output_node`) gives the decision to the
-autopilot **in the form of a GPS**: NMEA sentences on a serial port, or the MAVLink message
-`GPS_INPUT` (ArduPilot, PX4), or a ROS topic. The autopilot does not need to change: NAVERA looks
-like a GPS receiver that does not fail silently.
+**Worked example.** `v_max = 100 m/s`, `margin = 50 m`, a fix every second. The drone flies
+normally; then a spoofer makes the GPS jump **500 m** and stays there.
 
-Every position NAVERA publishes carries its **source**, whether it was **measured** or
-**dead-reckoned**, and its **uncertainty**. The arbiter summarises the situation as a state:
+- After 1 s: gate = 100 × 1 + 50 = 150 m. 500 > 150: **refused**.
+- The last trusted fix does not change, so `elapsed` keeps growing: 250 m, 350 m, 450 m: refused.
+- After 5 s: gate = 550 m. 500 < 550: **accepted**. The fake position is "reachable" now.
+
+![The gate grows with the time since the last trusted fix. A 500 m jump is refused for 4 seconds, then accepted.](assets/gate.svg)
+
+So the gate alone only **delays** a jump. And a spoofer who drags the position slowly, for example
+20 m each second, is never refused at all. That is why NAVERA does not trust GPS again just because
+it became "reachable": when vision is available, the GPS must also **agree with vision**. Lessons
+25–27 study these rules.
+
+### How sure is NAVERA? The three states
+
+Every position NAVERA sends carries its source and its **uncertainty** (how many metres it may be
+wrong). The arbiter sums up the situation
+in one of three states:
 
 | State | Meaning |
 |---|---|
-| **FIX** | fresh measured position with a stated uncertainty of at most 25 m — today only GPS |
-| **DEGRADED** | a position exists but its uncertainty is unknown, above 25 m, or it is dead-reckoned (all vision and celestial positions today) |
-| **NO_FIX** | no usable source; no old position is re-sent as current |
+| **FIX** | a fresh, measured position with a known uncertainty of at most 25 m |
+| **DEGRADED** | a position exists, but its uncertainty is unknown or larger than 25 m |
+| **NO_FIX** | no usable source; NAVERA never re-sends an old position as if it were new |
+
+Today, GPS is normally FIX. The vision sources give positions without a validated uncertainty yet,
+so they show **DEGRADED**. They would become FIX automatically once their uncertainty is measured
+and stated.
 
 > [!WARNING]
-> NAVERA is **Release 0.2 — field validation pending**. Its documentation
-> (`docs/VALIDATION_STATUS.md` in your copy) lists what has been measured and how. For example,
-> day vision with local feature matching placed 32 of 33 aerial test frames within 9 m (median 4 m)
-> **on the bench**, with frames that were not taken by NAVERA's own camera; celestial navigation
-> gives 5.5–6.5 km with a perfect attitude in **simulation**. Engineers quote such numbers with
-> their conditions, never alone. You will do the same in this course.
+> NAVERA is **Release 0.2 — field validation pending**. Its file `docs/VALIDATION_STATUS.md` lists
+> what has been measured, and how. For example, day vision placed 32 of 33 aerial test frames within
+> 9 m (median 4 m) **on the bench**, with photos not taken by NAVERA's own camera. Engineers always
+> give a number with its conditions. You will do the same in this course.
 
 NAVERA's test map and recorded data cover the region of **Sousse, Tunisia**, where NAVERA is
-developed. Other examples of this course use well-known places around the world; the real data stays
-where it was recorded.
+developed.
 
 ## 🐦 How birds do it
 
-Navi has to admit that none of her senses is perfect. Clouds hide the sun and the stars; fog hides
-the coast; and the magnetic sense can be disturbed. Homing pigeons released at **magnetic
-anomalies** (places where the rocks distort the Earth's field) often fly off in wrong directions at
-first.
+Migrating birds cross seas and deserts without GPS. They do not have one perfect sense: they have
+several imperfect ones (landmarks, the sun, the stars, a magnetic sense) and they **cross-check**
+them. Thrushes even re-calibrate their magnetic compass each evening from the sunset sky. That is
+NAVERA's founding idea, and the arbiter's job: never trust one source blindly. Meet **Navi**, a
+barn swallow: she will appear briefly in each lesson.
 
-So birds cross-check, and the clearest experiment is about **calibration**. In 2004 William Cochran
-and colleagues (journal *Science*) followed migrating thrushes in North America through the night
-with small radio transmitters, driving behind them with an antenna on the car's roof. At sunset,
-just before departure, they placed some birds in an artificial magnetic field turned away from the
-real one. That night, those birds flew in the wrong direction; the next night, in the normal field,
-they flew the right way again. The thrushes **re-calibrate their magnetic compass every evening
-from the sunset sky** — one sense calibrates another, and an error injected at the moment of
-calibration goes straight into the flight.
+## 5. Your workspace
 
-That is the arbiter's job: never trust one source blindly, compare it with an independent one, and
-notice when one starts telling a different story — a GPS that puts the drone 2 km out at sea while
-the camera sees the roofs of the harbour town. It is also the arbiter's main risk: if a spoofer
-manages to "calibrate" NAVERA with a false position, the error propagates. Lesson 27 returns to this.
-
-## 4. Your workspace
-
-The dashboard has two sides:
-
-- **Left — the notebook.** The **Course** tab (this text), the **Lab** tab (step-by-step work), and
-  **✔ Check my work**, which runs automatic tests on your files and shows a hint for each problem.
-- **Right — your tools.** **📝 Code** (an editor: files on the left, `Ctrl+S` to save; it also
-  shows images), **⌨️ Terminal** (a Linux shell on the Jetson — lesson 2), **🛩️ Simulator** (a
-  flight simulator with NAVERA in the loop — lesson 28) and **🧭 Operator view** (the screen a
-  NAVERA operator watches).
-
-Your home folder contains:
+- **Left — the notebook.** The **Course** tab (this text), the **Lab** tab, and
+  **✔ Check my work**, which tests your files and gives a hint for each problem.
+- **Right — your tools.** **📝 Code** (an editor; `Ctrl+S` saves), **⌨️ Terminal** (a Linux
+  command line on the Jetson; lesson 2 teaches it), **🛩️ Simulator** (lesson 28) and
+  **🧭 Operator view**.
 
 | Folder | What it is |
 |---|---|
-| `~/navera/` | **your own copy of NAVERA**, already built. You may change anything: the 👤 menu's **Reset my NAVERA copy** gives you a fresh copy (your work is saved in a backup first — lesson 5 explains how). |
-| `~/lessons/<lesson>/` | the files of each lab. **↺ Reset lab files** puts the current lesson's files back. |
+| `~/navera/` | **your own copy of NAVERA**. You may change anything; the 👤 menu's **Reset my NAVERA copy** gives you a fresh one. |
+| `~/lessons/<lesson>/` | the files of each lab. **↺ Reset lab files** puts them back as they were. |
 
 > [!TIP]
-> Code blocks with a **▶ Run** button type the command into your terminal. Links like
-> [this one](file:navera/navera_estimator/navera_estimator/config/estimator_params.yaml) open a file
-> of your NAVERA copy in the editor.
-
-## Glossary
-
-| Term | Meaning |
-|---|---|
-| **GNSS / GPS** | satellite navigation in general / the US system |
-| **pseudorange** | distance measured with the receiver's clock: true range + clock bias × c + noise |
-| **clock bias** | the receiver clock's error; one more unknown in the position solution |
-| **least squares** | the solution that best fits more equations than unknowns |
-| **DOP** | dilution of precision: how the satellite geometry multiplies the measurement noise |
-| **dBm** | power in decibels relative to 1 mW |
-| **multipath** | a signal that reaches the antenna after a reflection, so it travels a longer path |
-| **jamming / spoofing / meaconing** | noise on the frequency / fake signals / re-broadcast real signals |
-| **source** | a component that produces a position estimate (GPS, day vision…) |
-| **arbiter** | NAVERA's `estimator_node`: decides which source to publish |
-| **dead reckoning** | carrying a known position forward with a measured speed and heading |
-| **autopilot** | the flight controller (ArduPilot, PX4); NAVERA gives it a position as a GPS would |
-| **FIX / DEGRADED / NO_FIX** | NAVERA's states: bounded measured fix / reduced trust / nothing usable |
+> Code blocks with a **▶ Run** button type the command in your terminal for you.
 
 ## Check what you learned
 
-<details><summary>1. Why are four satellites the minimum for a 3-D fix, and what do the extra satellites bring?</summary>
-The unknowns are x, y, z and the receiver clock bias b: four unknowns need four equations. Extra satellites
-reduce the effect of noise (least squares, smaller DOP) and, above all, give <b>redundancy</b>: with exactly four
-the equations always fit perfectly (residual 0), so a wrong measurement cannot be detected.
+<details><summary>1. Three beacons, and your clock is perfect. How many beacons do you really need on a flat field, and why use the third?</summary>
+Two circles usually cross in two points, so two beacons leave you with two possible positions. The third beacon
+chooses between them, and it also lets you notice if one measurement is wrong.
 </details>
 
-<details><summary>2. The receiver clock is 2 µs fast. What does that do to every pseudorange?</summary>
-It changes all of them by the same amount, c × 2 µs ≈ 600 m. Because it is the same for all satellites, the
-solver can estimate it as the fourth unknown — that is the point of the clock-bias term.
+<details><summary>2. The receiver clock is 2 µs fast. What happens to each distance?</summary>
+Each one is 0.6 km too long (c × 2 µs = 300 000 km/s × 0.000 002 s). All by the same amount — that is why the
+bias can be found as one more unknown.
 </details>
 
-<details><summary>3. A 1 W jammer is 40 km away instead of 20 km. By how many dB does its effect drop?</summary>
-FSPL grows by 20·log10(2) ≈ 6 dB: J/S drops from about 36 dB to about 30 dB — still enough to disturb many
-receivers. Doubling the distance only divides the power by 4.
+<details><summary>3. Why does a real GPS receiver need four satellites, not three?</summary>
+Its unknowns are x, y, z and the clock bias: four unknowns need four measurements.
 </details>
 
-<details><summary>4. Why is spoofing more dangerous than jamming for an autopilot?</summary>
-Jamming is detected: the receiver says "no fix" and the autopilot can react. A good spoof produces a normal-looking
-fix with small residuals; the autopilot follows a false position without any alarm. Only an independent source can
-reveal it.
+<details><summary>4. Why is jamming less dangerous than spoofing for an autopilot?</summary>
+A jammed receiver says "no fix", so the autopilot knows and can react. A spoofed receiver gives a wrong
+position that looks normal, with no alarm.
 </details>
 
-<details><summary>5. NAVERA's day vision has a fresh fix and GPS is jammed. What state does the arbiter report, and why not FIX?</summary>
-DEGRADED: today vision positions do not have a validated stated uncertainty of at most 25 m, so the contract
-reports them as reduced trust. FIX is reserved for a measured position whose error is bounded (today only GPS).
-</details>
-
-<details><summary>6. Fixes arrive every 1 s, <code>v_max = 100 m/s</code>, margin 50 m. The GPS jumps 120 m. Refused?</summary>
-No: 120 m &lt; 100 × 1 + 50 = 150 m. A small jump passes this gate — which is why a slow, gradual spoof needs the
-cross-check with an independent source (lesson 27).
+<details><summary>5. v_max = 100 m/s, margin = 50 m, fixes every second. The GPS jumps 120 m after one second. Refused?</summary>
+No: 120 m is less than 100 × 1 + 50 = 150 m. Small or slow changes pass the gate, which is why NAVERA also
+compares GPS with vision.
 </details>
 
 Now open the **🛠️ Lab** tab.
