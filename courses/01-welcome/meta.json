@@ -1,3 +1,3 @@
 {"number": "01", "title": "Welcome: navigation without GNSS", "module": 1, "duration": "4 h",
- "summary": "How a receiver finds its position from distances, why its clock adds a fourth unknown, and why GPS can be jammed or spoofed. You write your own position finder in Python, break it, fool it, and write NAVERA's jump gate.",
- "resources": [], "open": ["beacons.py", "answers.py", "hello_navera.py", "threats.md"], "check_timeout_s": 120}
+ "summary": "Trilateration as least squares, the clock as a fourth unknown, and why a spoof goes unnoticed. You build a solver (brute force, then Gauss–Newton), spoof it, catch a spoofed flight, and attack and defend NAVERA's jump gate.",
+ "resources": [], "open": ["beacons.py", "answers.py", "flight.csv"], "check_timeout_s": 120}

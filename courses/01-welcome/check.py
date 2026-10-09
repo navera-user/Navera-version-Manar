@@ -3,9 +3,10 @@ import io
 import re
 import signal
 
-from academy_check import CheckFailed, Checker, load_student, need, sh
+from academy_check import CheckFailed, Checker, load_student, need
 
 c = Checker()
+TEACHER_NOTE = " (Your teacher reads these answers with a rubric: the check only verifies that you really answered.)"
 
 
 def quiet_load(name):
@@ -22,17 +23,12 @@ def functions(*names):
 
 
 def number(v, name):
-    if isinstance(v, bool):
-        raise CheckFailed(f"{name} should be a number, got {v!r}")
+    if isinstance(v, bool) or isinstance(v, str):
+        raise CheckFailed(f"{name} should be a number without quotes, got {v!r}")
     try:
         return float(v)
     except (TypeError, ValueError):
-        raise CheckFailed(f"{name} should be a number (no quotes), got {v!r}")
-
-
-def last_line(out):
-    lines = [l for l in out.strip().splitlines() if l.strip()]
-    return lines[-1] if lines else "(no output)"
+        raise CheckFailed(f"{name} should be a number, got {v!r}")
 
 
 def run(fn, *args, seconds=40):
@@ -54,7 +50,7 @@ def run(fn, *args, seconds=40):
 
 def point(v, n, what):
     if not isinstance(v, (tuple, list)) or len(v) != n or not all(isinstance(x, (int, float)) for x in v):
-        raise CheckFailed(f"{what} should return {n} numbers like {'(x, y)' if n == 2 else '(x, y, bias)'}, got {v!r}")
+        raise CheckFailed(f"{what} should return {n} numbers, got {v!r}")
     return [float(x) for x in v]
 
 
@@ -62,43 +58,23 @@ def words(s):
     return re.findall(r"[A-Za-zÀ-ÿ']{2,}", str(s))
 
 
-TEACHER_NOTE = " (Your teacher reads these answers with a rubric: the check only verifies that you really answered.)"
+def predicted(name, value):
+    c.ok(isinstance(value, str) and value.strip() != "", f"{name} is empty — write your guess (any honest guess is fine)")
 
 
-def explained(name, value, keywords, need_what):
+def explained(name, value, *groups):
+    """value must be a real sentence that touches each group of ideas (any keyword of each group)."""
     c.ok(isinstance(value, str) and value.strip() != "", f"{name} is still empty")
-    c.ok(len(words(value)) >= 8, f"{name} is very short — explain in one or two full sentences")
+    c.ok(len(words(value)) >= 8, f"{name} is very short — explain in one to three full sentences")
     low = value.lower()
-    c.ok(any(k in low for k in keywords), f"{name} does not mention {need_what} yet." + TEACHER_NOTE)
+    for keywords, idea in groups:
+        c.ok(any(re.search(k, low) for k in keywords), f"{name} does not explain {idea} yet." + TEACHER_NOTE)
 
 
-# ---------------------------------------------------------------- steps 1–3
-@c.test("hello_navera.py runs, with your name, a vehicle and your city",
-        hint='Replace each "???" between the quotes; the vehicle is drone, car, boat or robot. '
-             "If it does not run, read the LAST line of the error.")
-def _():
-    code, out = sh("python3 hello_navera.py", timeout=20)
-    c.ok(code == 0, "the program stopped with an error: " + last_line(out))
-    name, vehicle, city = need(quiet_load("hello_navera.py"), "PILOT_NAME", "FAVOURITE_VEHICLE", "CITY")
-    c.ok(str(name).strip() not in ("", "???"), 'PILOT_NAME is still "???"')
-    c.ok(str(vehicle).strip().lower() in ("drone", "car", "boat", "robot"), f'FAVOURITE_VEHICLE is "{vehicle}"')
-    c.ok(str(city).strip() not in ("", "???"), 'CITY is still "???"')
-
-
-@c.test("Step 1: the computer (ARCH, CPU_CORES)",
-        hint='Run `uname -m` and `nproc` in the terminal and copy what they print. Text needs quotes: '
-             'ARCH = "aarch64". A NameError in answers.py almost always means missing quotes.')
-def _():
-    arch, cores = answers("ARCH", "CPU_CORES")
-    _, real_arch = sh("uname -m", timeout=10)
-    _, real_cores = sh("nproc", timeout=10)
-    c.ok(str(arch).strip() == real_arch.strip(), f"ARCH = {arch!r} is not what `uname -m` prints")
-    c.ok(not isinstance(cores, str), f"CPU_CORES = {cores!r} is text: a number has no quotes")
-    c.ok(int(number(cores, "CPU_CORES")) == int(real_cores.strip()), f"CPU_CORES = {cores!r} is not what `nproc` prints")
-
-
-@c.test("Step 3: NAVERA's settings (V_MAX_MPS, MARGIN_M, GPS_TIMEOUT_S)",
-        hint="Open estimator_params.yaml (link in Step 3) and find max_speed_mps, gps_jump_margin_m and gps_timeout_s.")
+# ---------------------------------------------------------------- Step 1
+@c.test("Step 1: NAVERA's settings (V_MAX_MPS, MARGIN_M, GPS_TIMEOUT_S)",
+        hint="Open estimator_params.yaml (link in Step 1) and find max_speed_mps, gps_jump_margin_m and gps_timeout_s. "
+             "A NameError in answers.py almost always means text without quotes.")
 def _():
     v, m, t = answers("V_MAX_MPS", "MARGIN_M", "GPS_TIMEOUT_S")
     c.ok(number(v, "V_MAX_MPS") == 100.0, f"V_MAX_MPS = {v!r} is not max_speed_mps of the file")
@@ -106,14 +82,15 @@ def _():
     c.ok(number(t, "GPS_TIMEOUT_S") == 3.0, f"GPS_TIMEOUT_S = {t!r} is not gps_timeout_s of the file")
 
 
-# ---------------------------------------------------------------- your functions, on new numbers
-BEACONS = [(1, 1), (9, 2), (4, 9)]                         # not the lab's beacons
+# ---------------------------------------------------------------- your functions, on unseen numbers
+BEACONS = [(1, 1), (9, 2), (4, 9)]
 CLEAN = [5.859181, 3.275668, 5.738467]                     # measured from (6.2, 3.7)
-LATE = [6.309181, 3.725668, 6.188467]                      # same, with a bias of 0.45 km
+LATE = [6.309181, 3.725668, 6.188467]                      # same, with b = 0.45 km
+FOUR = [(1, 1), (9, 2), (4, 9), (8, 8)]
+NOISY = [6.329181, 3.695668, 6.198467, 5.136545]           # four ranges with small errors
 
 
-@c.test("TODO 1: distance() works for any two points",
-        hint="Lesson §2 (Pythagoras). The 🧰 box of Step 4 shows p[0], p[1], ** and math.sqrt.")
+@c.test("TODO 1: distance() works for any two points", hint="Lesson §2; the 🧰 refresher of Step 2 shows p[0], ** and math.sqrt.")
 def _():
     (distance,) = functions("distance")
     c.near(run(distance, (0, 0), (3, 4)), 5.0, 1e-6, "distance((0, 0), (3, 4))")
@@ -122,30 +99,28 @@ def _():
 
 
 @c.test("TODO 2: mismatch() works for other beacons, with and without a bias",
-        hint="Lesson §2: the sum over the beacons of the squared residuals (predicted − measured), with predicted = "
-             "distance + bias. See the Step 4 hints if your value equals a single row of the lesson table.")
+        hint="Lesson §2: the sum of squared residuals, residual = measured − (distance + bias). "
+             "If your value equals one row of the lesson table, see the Step 2 hints.")
 def _():
     (mismatch,) = functions("mismatch")
     c.near(run(mismatch, (4, 4), [(0, 0), (10, 0), (0, 10)], [5.0, 8.062, 6.708]), 1.4086, 0.001,
-           "mismatch at (4, 4), the course example")
+           "mismatch at (4, 4), the lesson example")
     c.near(run(mismatch, (5, 5), BEACONS, CLEAN), 5.62365, 0.0005, "mismatch on other beacons")
     c.near(run(mismatch, (5, 5), BEACONS, LATE, 0.2), 5.85783, 0.0005, "mismatch with bias = 0.2")
     c.near(run(mismatch, (6.2, 3.7), BEACONS, LATE, 0.45), 0.0, 1e-6, "mismatch at the true point with the right bias")
 
 
 @c.test("TODO 3: find_position() finds a position it has never seen",
-        hint="Lesson §3 search, in 2-D: one loop inside the other over the grid of the docstring; keep the smallest mismatch "
-             "(course example: the square closest to 20).")
+        hint="Lesson §3 brute force in 2-D: one loop inside the other over the docstring grid; keep the smallest mismatch.")
 def _():
     (find_position,) = functions("find_position")
     p = point(run(find_position, BEACONS, CLEAN), 2, "find_position")
-    c.ok(abs(p[0] - 6.2) < 0.01 and abs(p[1] - 3.7) < 0.01,
-         f"find_position gives {tuple(p)} for beacons it has not seen before — that is not the right point")
+    c.ok(abs(p[0] - 6.2) < 0.01 and abs(p[1] - 3.7) < 0.01, f"find_position gives {tuple(p)} on new beacons — not the right point")
 
 
 @c.test("TODO 4: find_position_and_bias() finds the position AND the clock bias",
         hint="Your biases must be 0.00, 0.05, 0.10 … 1.00 (print them to check). Give the bias to mismatch(). "
-             "Return three numbers (x, y, bias).")
+             "Return three numbers.")
 def _():
     (fpb,) = functions("find_position_and_bias")
     p = point(run(fpb, BEACONS, LATE, seconds=60), 3, "find_position_and_bias")
@@ -153,7 +128,21 @@ def _():
     c.ok(abs(p[2] - 0.45) < 0.01, f"the bias found is {p[2]} — not the right bias")
 
 
-@c.test("TODO 5: spoof_measurements() computes what a receiver at the fake position would measure",
+@c.test("TODO 5: gauss_newton() solves exactly with 3 beacons and in the least-squares sense with 4 noisy ones",
+        hint="Lesson §3: rows [uₓ, u_y, 1] with u = (p − beacon)/d, residuals measured − (d + b), "
+             "np.linalg.lstsq, then ADD the correction. Check your first step against the lesson table.")
+def _():
+    (gn,) = functions("gauss_newton")
+    p = point(run(gn, BEACONS, LATE), 3, "gauss_newton")
+    c.ok(abs(p[0] - 6.2) < 1e-3 and abs(p[1] - 3.7) < 1e-3 and abs(p[2] - 0.45) < 1e-3,
+         f"with 3 exact beacons it gives {tuple(round(v, 4) for v in p)} — not the exact solution")
+    q = point(run(gn, FOUR, NOISY, (5.0, 5.0, 0.0), 10), 3, "gauss_newton")
+    c.ok(abs(q[0] - 6.22040) < 1e-3 and abs(q[1] - 3.68361) < 1e-3 and abs(q[2] - 0.45252) < 1e-3,
+         f"with 4 noisy beacons it gives {tuple(round(v, 4) for v in q)} — not the least-squares solution "
+         "(does it use every beacon?)")
+
+
+@c.test("TODO 6: spoof_measurements() computes what a receiver at the fake position would measure",
         hint="The predicted pseudorange of lesson §3, for a receiver at fake_position. Return a list, one value per beacon.")
 def _():
     (spoof,) = functions("spoof_measurements")
@@ -163,8 +152,8 @@ def _():
         c.near(g, want, 1e-4, f"value {n}")
 
 
-@c.test("TODO 6: gate_ok() applies the jump gate",
-        hint="Accepted when distance(last, new) <= v_max × elapsed + margin. Exactly on the limit counts as accepted.")
+@c.test("TODO 7: gate_ok() applies the jump gate",
+        hint="Accepted when distance(last, new) ≤ v_max × elapsed + margin; exactly on the limit is accepted.")
 def _():
     (gate_ok,) = functions("gate_ok")
     cases = [((0, 0), (120, 0), 1.0, 100.0, 50.0, True), ((0, 0), (500, 0), 1.0, 100.0, 50.0, False),
@@ -176,113 +165,132 @@ def _():
         c.ok(got == want, f"gate_ok({last}, {new}, elapsed {el} s, v_max {v}, margin {m}) gives {got}")
 
 
-@c.test("TODO 7: count_refused() follows the arbiter's rule",
-        hint="Redo the 7-row table of lesson §5 by hand and compare it with what your code does, row by row "
-             "(Step 9 hints list the usual wrong counts).")
+@c.test("TODO 8: count_refused() follows the arbiter's rule",
+        hint="Redo the 7-row table of lesson §5 by hand and compare it with your code, row by row "
+             "(the Step 8 hints list the usual wrong counts).")
 def _():
     (count_refused,) = functions("count_refused")
     got = run(count_refused, [(0, 0)] + [(500, 0)] * 6 + [(900, 0)], 1.0, 100.0, 50.0)
-    c.ok(got == 5, f"on the course's 7-row table it gives {got!r} instead of 5 — redo the table by hand "
-                   "and compare row by row (Step 9 hints)")
+    c.ok(got == 5, f"on the lesson's 7-row table it gives {got!r} instead of 5")
     fixes = [(0, 0), (10, 0), (30, 0), (31, 0), (80, 0), (82, 0), (84, 0), (10, 0)]
     got = run(count_refused, fixes, 0.5, 30.0, 10.0)
-    c.ok(got == 3, f"on a test with other fixes (dt 0.5 s, v_max 30, margin 10) it gives {got!r} — not the "
-                   "right count. Walk through it by hand: when does the time since the last accepted fix reset?")
+    c.ok(got == 3, f"on other fixes (dt 0.5 s, v_max 30, margin 10) it gives {got!r} — not the right count")
+
+
+@c.test("TODO 9: first_disagreement() applies the cross-check to a log",
+        hint="Skip rows without vision (None). Refuse only when the distance is strictly larger than "
+             "k × sigma + margin. Return the t_s of that row, or None if it never happens.")
+def _():
+    (fd,) = functions("first_disagreement")
+    rows = [dict(t_s=0, gps_x_m=0, gps_y_m=0, vision_x_m=10, vision_y_m=0, vision_sigma_m=20),
+            dict(t_s=1, gps_x_m=100, gps_y_m=0, vision_x_m=None, vision_y_m=None, vision_sigma_m=None),
+            dict(t_s=2, gps_x_m=0, gps_y_m=150, vision_x_m=0, vision_y_m=0, vision_sigma_m=20),
+            dict(t_s=3, gps_x_m=0, gps_y_m=151, vision_x_m=0, vision_y_m=0, vision_sigma_m=20)]
+    got = run(fd, rows)
+    c.ok(got == 3, f"with the default k = 5 and margin 50 it gives {got!r} — not the right row "
+                   "(exactly on the limit is still agreement)")
+    got = run(fd, rows, 3.0, 50.0)
+    c.ok(got == 2, f"with k = 3 it gives {got!r} — does your function use its k and margin arguments?")
+    c.ok(run(fd, rows[:3]) is None, "when GPS and vision always agree it should return None")
 
 
 # ---------------------------------------------------------------- what you saw and why
-@c.test("Step 6: a clock 1 µs ahead — prediction, error and explanation",
-        hint="Run python3 where_am_i.py clock. CLOCK_ERROR_M is the 'distance from the true position' of part 1). "
-             "In EXPLAIN_CLOCK, say what the bias does to every distance.")
+@c.test("Step 4: a clock 1 µs ahead — prediction, error and explanation",
+        hint="Run python3 where_am_i.py clock. CLOCK_ERROR_M is the distance from the true position in part 1.")
 def _():
     pred, err, why = answers("PREDICT_CLOCK", "CLOCK_ERROR_M", "EXPLAIN_CLOCK")
-    c.ok(str(pred).strip() != "", "PREDICT_CLOCK is empty — write your guess (any guess is fine)")
+    predicted("PREDICT_CLOCK", pred)
     e = number(err, "CLOCK_ERROR_M")
-    c.ok(100 <= e <= 150, f"CLOCK_ERROR_M = {err!r} is not the 'distance from the true position' that "
-                          "where_am_i.py clock prints in part 1)")
-    explained("EXPLAIN_CLOCK", why, ("bias", "clock"), "the clock bias")
-    c.ok(any(k in why.lower() for k in ("every", "all", "each", "same")),
-         "EXPLAIN_CLOCK should say that the bias changes every distance (all of them, by the same amount)")
+    c.ok(100 <= e <= 150, f"CLOCK_ERROR_M = {err!r} is not what part 1 of `clock` prints")
+    explained("EXPLAIN_CLOCK", why, ((r"bias", r"clock"), "the clock bias"),
+              ((r"every", r"\ball\b", r"each", r"same", r"common", r"shared"), "that it is the same for every range"))
 
 
-@c.test("Step 7: two beacons — prediction and explanation",
-        hint="Run python3 where_am_i.py two. Count: how many unknowns (x, y, bias), how many measurements? "
-             "Then: how many unknowns for a real GPS, so how many satellites?")
+@c.test("Step 5: two beacons — prediction, explanation and the curve",
+        hint="Run python3 where_am_i.py two. Count unknowns and measurements. For CURVE: the set of points whose "
+             "distances to two fixed points differ by a constant.")
 def _():
-    pred, why = answers("PREDICT_TWO", "EXPLAIN_TWO")
-    c.ok(str(pred).strip() != "", "PREDICT_TWO is empty — write your guess (any guess is fine)")
-    explained("EXPLAIN_TWO", why, ("unknown",), "the unknowns")
-    low = why.lower()
-    c.ok(re.search(r"\b(3|three)\b", low) and re.search(r"\b(2|two)\b", low),
-         "EXPLAIN_TWO should count them: how many unknowns, how many measurements?")
-    c.ok(re.search(r"\b(4|four)\b", low) and "satellite" in low,
-         "EXPLAIN_TWO should say how many satellites a real GPS needs")
+    pred, why, curve = answers("PREDICT_TWO", "EXPLAIN_TWO", "CURVE")
+    predicted("PREDICT_TWO", pred)
+    explained("EXPLAIN_TWO", why, ((r"unknown",), "the unknowns"),
+              ((r"\b(3|three)\b",), "how many unknowns"), ((r"\b(2|two)\b",), "how many measurements"),
+              ((r"\b(4|four)\b.*satellite|satellite.*\b(4|four)\b",), "how many satellites real GPS needs"))
+    c.ok("hyperbol" in str(curve).lower(), f"CURVE = {curve!r} is not the right curve")
 
 
-@c.test("Step 8: the spoofer — prediction and explanation",
-        hint="Run python3 where_am_i.py spoof. Why does the fake position explain the measurements perfectly? "
-             "Can the receiver tell, using only its own measurements?")
+@c.test("Step 6: Gauss–Newton — steps and explanation",
+        hint="Run python3 where_am_i.py gn and count the steps until the mismatch is below 1e-6. "
+             "Explain the linearisation, and one way it can fail.")
 def _():
-    pred, why = answers("PREDICT_SPOOF", "EXPLAIN_SPOOF")
-    c.ok(str(pred).strip() != "", "PREDICT_SPOOF is empty — write your guess (any guess is fine)")
-    explained("EXPLAIN_SPOOF", why, ("cannot", "can't", "can not", "not ", "no ", "nothing", "never"),
-              "whether the receiver can tell")
-    c.ok(any(k in why.lower() for k in ("consistent", "same", "exactly", "agree", "fit", "match")),
-         "EXPLAIN_SPOOF should say WHY the mismatch is 0: what is special about the fake measurements?")
+    steps, why = answers("GN_STEPS", "EXPLAIN_GN")
+    s = number(steps, "GN_STEPS")
+    c.ok(2 <= s <= 4, f"GN_STEPS = {steps!r} is not what `gn` shows")
+    explained("EXPLAIN_GN", why, ((r"linear", r"jacobian", r"derivative", r"gradient", r"\bstep"), "why each step is cheap"),
+              ((r"guess", r"start", r"diverg", r"far", r"line", r"singular", r"rank", r"mirror"), "how it could fail"))
 
 
-@c.test("Step 9: the jump gate against the two attacks",
-        hint="Run python3 where_am_i.py gate and copy the two count_refused results. In EXPLAIN_GATE, say what NAVERA "
-             "would need (lesson §5).")
+@c.test("Step 7: full and partial spoof — predictions and explanations",
+        hint="Run python3 where_am_i.py spoof and partial. Why is a full spoof consistent? What does a spare, "
+             "real measurement leave in the mismatch?")
 def _():
-    pred, jump, drift, why = answers("PREDICT_GATE", "JUMP_REFUSED", "DRIFT_REFUSED", "EXPLAIN_GATE")
-    c.ok(str(pred).strip() != "", "PREDICT_GATE is empty — write your guess (any guess is fine)")
+    p1, e1, p2, e2 = answers("PREDICT_SPOOF", "EXPLAIN_SPOOF", "PREDICT_PARTIAL", "EXPLAIN_PARTIAL")
+    predicted("PREDICT_SPOOF", p1)
+    predicted("PREDICT_PARTIAL", p2)
+    explained("EXPLAIN_SPOOF", e1, ((r"consistent", r"same", r"exact", r"agree", r"fit", r"match", r"one point"),
+                                    "why the fake ranges fit perfectly"),
+              ((r"cannot", r"can't", r"can not", r"\bnot\b", r"\bno\b", r"nothing", r"never"), "whether the receiver can tell"))
+    explained("EXPLAIN_PARTIAL", e2, ((r"residual", r"mismatch"), "what stays in the residuals"),
+              ((r"extra", r"redundan", r"spare", r"more", r"fourth", r"\bd\b", r"real"), "the role of the spare measurement"))
+
+
+@c.test("Step 8: the jump gate against two attacks",
+        hint="Run python3 where_am_i.py gate and copy the two count_refused results.")
+def _():
+    pred, jump, drift = answers("PREDICT_GATE", "JUMP_REFUSED", "DRIFT_REFUSED")
+    predicted("PREDICT_GATE", pred)
     c.ok(number(jump, "JUMP_REFUSED") == 2, f"JUMP_REFUSED = {jump!r} is not what the gate run gives for attack A")
     c.ok(number(drift, "DRIFT_REFUSED") == 0, f"DRIFT_REFUSED = {drift!r} is not what the gate run gives for attack B")
-    explained("EXPLAIN_GATE", why, ("vision", "camera", "independent", "agree", "compare", "cross"),
-              "what NAVERA would compare GPS with")
 
 
-@c.test("Step 10: the attacker's challenge (STEALTH_SPEED_MPS, STEALTH_DISTANCE_M)",
-        hint="Build drag lists (the fake position moves the same distance each second) and run your count_refused "
-             "on them, with NAVERA's settings. Increase the speed until a fix is refused.")
-def _():
-    v, d = answers("STEALTH_SPEED_MPS", "STEALTH_DISTANCE_M")
-    v, d = number(v, "STEALTH_SPEED_MPS"), number(d, "STEALTH_DISTANCE_M")
-    c.ok(v > 0, "STEALTH_SPEED_MPS is still 0")
-    c.ok(abs(v - 150) < 1, f"STEALTH_SPEED_MPS = {v:g} m/s: " + ("a faster drag still passes — keep increasing"
-                                                              if v < 150 else "at that speed a fix is refused — test it"))
-    c.ok(abs(d - 60 * v) < 1 and abs(d - 9000) < 60, f"STEALTH_DISTANCE_M = {d:g} m is not what that speed gives in 60 s")
-
-
-@c.test("Step 11: be the arbiter (ARBITER_SOURCE, ARBITER_STATE)",
-        hint="Lesson §5: which sources are fresh? Take the first in priority order (not the most precise). The state "
-             "then depends only on its uncertainty (25 m rule).")
+@c.test("Step 9: be the arbiter (ARBITER_SOURCE, ARBITER_STATE)",
+        hint="Lesson §5: is the GPS fix fresh? Then the priority order decides (not precision), and the state "
+             "depends only on that source's σ (25 m rule).")
 def _():
     src, state = answers("ARBITER_SOURCE", "ARBITER_STATE")
     src, state = str(src).strip().lower(), str(state).strip().upper().replace("-", "_").replace(" ", "_")
     c.ok(src in ("gps", "day", "night", "celestial", "none"), f"ARBITER_SOURCE = {src!r} is not one of the five choices")
     c.ok(state in ("FIX", "DEGRADED", "NO_FIX"), f"ARBITER_STATE = {state!r} is not one of the three states")
     c.ok(src == "gps", "not this source: is the GPS fix fresh (GPS_TIMEOUT_S)? Then apply the priority order")
-    c.ok(state == "DEGRADED", "the source is right, not the state: compare its uncertainty with 25 m")
+    c.ok(state == "DEGRADED", "the source is right, not the state: compare its σ with 25 m")
 
 
-@c.test("Step 12: threats.md — four threats, in your own words, with one of your numbers",
-        hint="Keep the four ## headings, replace every '(write here)', 2–4 sentences each (100 words in total), "
-             "and quote at least one number from your runs.")
+@c.test("Step 10: the detective — what each defence saw",
+        hint="Run python3 where_am_i.py flight. Then read out/flight.png: when does the GPS start to leave vision, "
+             "and where is the drone at that time?")
 def _():
-    c.file_exists("threats.md")
-    text = open("threats.md").read()
-    parts = re.split(r"^##\s+", text, flags=re.M)
-    c.ok("(write here)" not in "".join(parts[1:]).lower(), 'a section of threats.md still contains "(write here)"')
-    sections = {p.splitlines()[0].strip().lower(): p for p in parts[1:]}
-    for h in ("outage", "jamming", "spoofing", "meaconing"):
-        body = next((v for k, v in sections.items() if k.startswith(h)), None)
-        c.ok(body is not None, f'threats.md has no section "## {h.capitalize()}"')
-        c.ok(len(words(body)) - 1 >= 15, f'the section "{h.capitalize()}" is too short — write 2–4 sentences')
-    body = "".join(parts[1:])
-    c.ok(len(words(body)) >= 100, f"threats.md has about {len(words(body))} words of your own — write at least 100")
-    c.ok(re.search(r"\d", body), "quote at least one number from your own lab runs")
+    pred, refused, caught, why = answers("PREDICT_FLIGHT", "FLIGHT_REFUSED", "CAUGHT_AT_S", "EXPLAIN_FLIGHT")
+    predicted("PREDICT_FLIGHT", pred)
+    c.ok(number(refused, "FLIGHT_REFUSED") == 0, f"FLIGHT_REFUSED = {refused!r} is not what `flight` prints for the jump gate")
+    c.ok(number(caught, "CAUGHT_AT_S") == 450, f"CAUGHT_AT_S = {caught!r} is not what `flight` prints for the cross-check")
+    explained("EXPLAIN_FLIGHT", why, ((r"\b2[45]\d\b",), "when the spoof really started (read it on the plot)"),
+              ((r"sea", r"water", r"no (vision|match)", r"vision"), "why vision could not see it earlier"))
+
+
+@c.test("Step 11: attacker vs defender",
+        hint="Write a short script with your count_refused: drag lists [(n * t, 0) for t in range(61)] for the attacker; "
+             "the GPS fixes of flight.csv before the spoof started, v_max = 15, for the defender.")
+def _():
+    v, faster, margin, v2, why = answers("STEALTH_SPEED_MPS", "REFUSED_ONE_FASTER", "DEFENDER_MARGIN_M",
+                                         "DEFENDER_STEALTH_MPS", "EXPLAIN_TRADEOFF")
+    v, faster, margin, v2 = (number(v, "STEALTH_SPEED_MPS"), number(faster, "REFUSED_ONE_FASTER"),
+                             number(margin, "DEFENDER_MARGIN_M"), number(v2, "DEFENDER_STEALTH_MPS"))
+    c.ok(v == 150, f"STEALTH_SPEED_MPS = {v:g}: " + ("a faster drag still passes" if v < 150 else "at that speed fixes are refused"))
+    c.ok(faster == 60, f"REFUSED_ONE_FASTER = {faster:g} — run your count_refused on the 151 m/s drag")
+    c.ok(margin == 56, f"DEFENDER_MARGIN_M = {margin:g} — " + ("some honest fixes are still refused" if margin < 56
+                                                             else "a smaller margin also gives zero refusals"))
+    c.ok(v2 == 15 + margin, f"DEFENDER_STEALTH_MPS = {v2:g} is not the best drag speed against v_max 15 and your margin")
+    explained("EXPLAIN_TRADEOFF", why, ((r"false", r"honest", r"noise", r"multipath", r"spike", r"refus"), "the cost on real GPS"),
+              ((r"slow", r"drag", r"below", r"under", r"vision", r"cross", r"never"), "what the gate still cannot stop"))
 
 
 c.run()
