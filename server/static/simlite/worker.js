@@ -54,9 +54,15 @@ onmessage = async (ev) => {
     // (without Pyodide's own frames, which mean nothing to a student)
     const msg = String(e.message || e).split('\n');
     const out = []; for (let i = 0; i < msg.length; i++) {
-      if (/File "\/lib\/python[^"]*\/(_pyodide|pyodide)\//.test(msg[i]) || /File "<exec>"/.test(msg[i])) { if (msg[i + 1] && /^\s{4}/.test(msg[i + 1])) i++; continue; }
+      // Pyodide's frames and the simulator's own (/lite/: world.py, the rclpy stand-in) are left out:
+      // the student sees their own files and the message ("…/estimator_node.py, line 12: invalid syntax")
+      if (/File "\/lib\/python[^"]*\/(_pyodide|pyodide)\//.test(msg[i]) || /File "<exec>"/.test(msg[i]) || /File "\/lite\//.test(msg[i])) {
+        while (msg[i + 1] && /^\s{4}/.test(msg[i + 1])) i++;     // its source line and the ^^^ marker under it
+        continue;
+      }
       out.push(msg[i]);
     }
+    if (out.length && /^Traceback/.test(out[0]) && !(out[1] || '').startsWith('  File')) out.shift();   // no frame left to show
     reply(id, false, out.join('\n'));
   }
 };

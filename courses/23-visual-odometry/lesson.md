@@ -388,7 +388,7 @@ From `docs/VALIDATION_STATUS.md`, dead-reckoning along the measured track when n
 (**simulator only**, GPS jammed): land route, error **median 10 m, max 33 m**, no autopilot failsafe;
 across the bay, carried **90 s over the sea stating ±300 m, true error at most 146 m**. Those figures
 are for carrying the position along the measured velocity; the frame-to-frame odometry was added
-after them (bench campaign of 2026-10-06) and has no separate figure in the document yet. Nothing
+after them and has no separate figure in the document yet. Nothing
 here has been measured on a real flight — NAVERA is Release 0.x, field validation pending.
 
 ## Glossary

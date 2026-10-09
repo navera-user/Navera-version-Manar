@@ -295,7 +295,7 @@ iers.conf.auto_download = False                 # never try the internet
 iers.conf.iers_degraded_accuracy = "ignore"     # outside the bundled table: UT1 - UTC taken as 0
 ```
 
-The cost is at most 0.9 s of UT1, i.e. 0.004° of sky rotation (< 0.5 km): negligible next to the
+The cost is at most 0.9 s of UT1, i.e. 0.004° of sky rotation (0.9 × 0.464 km ≈ 0.42 km at most, on the equator): negligible next to the
 attitude error below.
 
 ### 2.5 Latitude from Polaris
@@ -368,7 +368,7 @@ Earth's surface:
 | tilt (pitch/roll) error of the IMU | 0.3° | 33 km |
 | heading error, camera at altitude a | 1.5° | 1.5° · cos a · 111 km = 43 km at a = 75°, 0 at the zenith |
 | clock error | 1 s | 15.04″ of longitude = 0.464 km · cos φ = 0.35 km at New York |
-| UT1 ignored (offline IERS) | < 0.9 s | < 0.4 km |
+| UT1 ignored (offline IERS) | < 0.9 s | < 0.42 km |
 | plate solution | ~3′ (measured, VALIDATION_STATUS) | ~5.5 km |
 
 For a camera at 75° with a BNO085-class IMU (0.3° tilt, 1.5° heading, independent errors):

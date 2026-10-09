@@ -27,7 +27,8 @@ second; latencies therefore have a resolution of about 1 s.
 | jam_camfail_target | jammed | 0.0 | 0.0 | 0.362 | 23.1 / 38.0 | R1 R3 PASS (R4 not applicable) |
 | jam_camfail_target | camera failed | — | — | 0.051 | — | R6 PASS (NO FIX after 4.1 s, autopilot LAND) |
 
-In total 22 requirements PASS and 0 FAIL. The MAVLink stream had 784 frames, 3 with a bad CRC and
+In total 25 requirements PASS and 0 FAIL: 22 for the recorded campaign and 3 (R1, R3, R4) for my own
+Sim Lite run my_run (a 40 s GPS jam, see Observations d). The MAVLink stream had 784 frames, 3 with a bad CRC and
 2 lost frames (sequence gap); 385 GPS_INPUT frames were 3D fixes.
 
 ## 3. Observations
@@ -50,6 +51,12 @@ c) Target vision: the median error during the jam was 20.0 m, more than the Rayl
 17.7 m for σ = 15 m. The simulated vision gives one fix per second, and the recorded position is the
 last fix, so it lags behind the drone by up to 15 m. The Monte Carlo with a uniform lag of 0–1 s at
 15 m/s predicts a median of 19.0 m, much closer to the measurement.
+
+d) My own run in Sim Lite (my_scenario.json: GPS jammed 30 s after "en route", restored at 70 s,
+target vision profile): NAVERA switched to day vision in the same second (switch 0.0 s in the 1 Hz
+CSV) and was back on GPS 2.0 s after the GPS was good again. During the jam the median error was
+17.8 m and the p95 34.3 m, close to the recorded target flight (20.0 / 33.0 m). It is one run of a
+simpler world (no ArduPilot physics, no images), so it confirms the behaviour, not the accuracy.
 
 ## 4. Fidelity
 

@@ -148,7 +148,7 @@ detector measures the size of the structure, which is exactly what you need to c
 
 ![Scale space and the difference of Gaussians](assets/scale_space.svg)
 
-### SIFT in four steps (Lowe, 2004)
+### Going further (optional): SIFT in four steps (Lowe, 2004)
 
 1. **Difference of Gaussians (DoG).** Computing a Laplacian at every scale is expensive. Lowe used the
    difference of two neighbouring blurred images, `D = L(kσ) − L(σ) ≈ (k − 1)·σ²·∇²L` — the

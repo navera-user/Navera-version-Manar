@@ -157,8 +157,10 @@ def _():
 
 
 @c.test("reprojection_rms() gives the same RMS as cv2.fisheye.calibrate (12 real views)",
-        hint="Per view: R = cv2.Rodrigues(rvec)[0], X_cam = X_board·Rᵀ + t, e = project_fisheye(X_cam) − seen. "
-             "RMS = sqrt(mean over ALL corners of ex² + ey²). Return (rms, list of per-view RMS).")
+        hint="For each view, turn the board corners into camera coordinates with that view's rvec/tvec (the "
+             "Rodrigues vector must become a matrix first), project them with your fisheye model and compare with "
+             "the detected corners. The global RMS averages the squared errors over ALL corners (not the mean of "
+             "the per-view RMS). Return (rms, list of per-view RMS).")
 def _():
     (rr,) = need(fm(), "reprojection_rms")
     rms, K, D, rv, tv = ref_fisheye()
@@ -248,8 +250,9 @@ def _():
 
 
 @c.test("calibrate_pinhole() fits Brown–Conrady on float64 corners without crashing",
-        hint="cv2.calibrateCamera wants float32 points (\"Point3f\"): convert obj and every view with "
-             ".astype(np.float32) — NAVERA's own --model pinhole has exactly this bug.")
+        hint="Read OpenCV's error message: it names the point type it expects (\"Point3f\" = 32-bit floats). "
+             "Check the dtype of the board points and of every view before calling cv2.calibrateCamera — NAVERA's "
+             "own --model pinhole has exactly this bug.")
 def _():
     (cp,) = need(cl(), "calibrate_pinhole")
     r = cp(board(), ref_views(), (1920, 540))
@@ -343,7 +346,7 @@ def _():
 
 ANSWERS = {"Q1": ("a", "Count the equations: one homography gives 2 constraints on K."),
            "Q2": ("b", "Think of training error vs test error in any fitted model."),
-           "Q3": ("b", "K is measured in pixels of ONE picture size. Read 'In NAVERA'.")}
+           "Q3": ("c", "K is measured in pixels of ONE picture size. Read 'In NAVERA'.")}
 
 
 @c.test("quiz (answers.py)", hint="Each answer is one letter between quotes, e.g. Q1 = \"b\".")

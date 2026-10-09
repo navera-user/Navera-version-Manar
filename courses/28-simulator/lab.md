@@ -280,7 +280,12 @@ is the recorded campaign's: ~4 km from Sousse).
 
 ```bash
 head -3 my_runs/*.csv
-cut -d, -f2,3,16 my_runs/*.csv | sort | uniq -c     # phase, gps_mode, camera
+```
+
+Count the rows per phase, GPS mode and camera state (columns 2, 3 and 16):
+
+```bash
+cut -d, -f2,3,16 my_runs/*.csv | sort | uniq -c
 ```
 
 You should see `enroute` rows and your faults in the `gps_mode` (or `camera`) column.
@@ -294,7 +299,9 @@ python3 campaign.py
 > [!TASK]
 > **Part E.** `my_runs/` contains your scripted flight (at least 30 s en route with at least one injected
 > fault), and `results.json` includes it. Add one paragraph about it to *Observations* in your report.
-> Press **✔ Check my work**.
+> The check verifies that the run was saved by Sim Lite (its columns, its `_events.log` with the
+> injected faults, consistent positions) and is not a copy of a recorded flight — edit the scenario,
+> not the CSV. Press **✔ Check my work**.
 
 ## Going further (optional)
 

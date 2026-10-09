@@ -89,7 +89,9 @@ def write_results(path, *, project, metric, unit, better, data, n, before, after
             abs(stat - target) inside the resample). It is saved as better="lower" plus the target.
     bootstrap: {"method": "moving-block" or "iid", "block_len": int, "n_boot": int, "seed": int}
     decision: "accept", "reject" or "inconclusive"  (from the acceptance criterion, fixed BEFORE)
-    secondary: optional dict of other metrics (same {"before","after","difference"} shape)."""
+    secondary: optional dict of other metrics (same {"before","after","difference"} shape). A
+               GUARD-RAIL also gets "limit" (the worst acceptable value of its difference) and
+               "better" ("lower"/"higher"); the check then applies it to the decision."""
     if better == "closer":
         if target is None:
             raise ValueError('better="closer" needs target=<the right value of the metric>')
@@ -108,7 +110,8 @@ def write_results(path, *, project, metric, unit, better, data, n, before, after
         out["target"] = float(target)
         out["metric"] = f"|{metric} - {float(target):g}| (distance to the target)"
     if secondary:
-        out["secondary"] = {k: {kk: clean(vv) for kk, vv in v.items()} for k, v in secondary.items()}
+        out["secondary"] = {k: {kk: (clean(vv) if isinstance(vv, dict) else vv) for kk, vv in v.items()}
+                            for k, v in secondary.items()}
     with open(path, "w") as f:
         json.dump(out, f, indent=2)
     return out

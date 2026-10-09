@@ -118,7 +118,8 @@ def main():
     #    "accept" when both CIs are on the good side, "reject" when one CI is entirely on the bad
     #    side, otherwise "inconclusive".
     # d) write_results("results.json", ...) — see its docstring in stats_tools.py; put the
-    #    availability under secondary={"availability": {"before": ..., "after": ..., "difference": ...}}.
+    #    availability under secondary={"availability": {"before": ..., "after": ..., "difference": ...,
+    #    "limit": -MAX_AVAILABILITY_LOSS, "better": "higher"}}  (a guard-rail: the check applies its limit).
     print("TODO 5: bootstrap + results.json not written yet")
 
 

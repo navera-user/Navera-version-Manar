@@ -2,10 +2,12 @@ import json
 import math
 import os
 import re
+import shutil
+import tempfile
 
 import numpy as np
 
-from academy_check import CheckFailed, Checker, load_student, need
+from academy_check import CheckFailed, Checker, load_student, need, sh
 
 c = Checker()
 DATA = "/data/academy/26-uncertainty"
@@ -249,12 +251,43 @@ def results():
         return json.load(fh)
 
 
+_fresh = {}
+
+
+def fresh_results():
+    """Run YOUR analyse.py (with your uncertainty.py and kalman.py) again in a scratch folder: the graded
+    numbers come from your code, not from a results.json that could have been edited by hand."""
+    if "r" not in _fresh:
+        tmp = tempfile.mkdtemp(prefix="check26_")
+        try:
+            for f in ("analyse.py", "uncertainty.py", "kalman.py"):
+                if not os.path.exists(f):
+                    raise CheckFailed(f"{f} is missing (↺ Reset lab files gives it back)")
+                shutil.copy(f, tmp)
+            code, out = sh(f"cd {tmp} && MPLBACKEND=Agg python3 -B analyse.py", timeout=90)
+            if code != 0 or not os.path.exists(os.path.join(tmp, "results.json")):
+                raise CheckFailed("`python3 analyse.py` did not write results.json:\n" + out[-600:])
+            with open(os.path.join(tmp, "results.json")) as fh:
+                _fresh["r"] = json.load(fh)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    return _fresh["r"]
+
+
 @c.test("analyse.py: results.json (ellipse, fusion, gating counts, NEES — TODO 14 and 15)",
         hint="Keep Q_FILTER = 0.3 and GATE_P = 0.99, finish TODO 14 (count refusals by kind) and TODO 15 "
              "(mean NEES and chi2.ppf(0.025 / 0.975, 2N) / N), then run `python3 analyse.py`.")
 def _():
-    r = results()
+    r = fresh_results()
     s, t = r["static"], r["track"]
+    saved = results()
+    for path in (("static", "a_m"), ("track", "gated", "mean_nees"), ("track", "gated", "caught"),
+                 ("track", "gated", "false_alarms"), ("track", "nees_band_95")):
+        mine, real = saved, r
+        for k in path:
+            mine, real = (mine or {}).get(k), real.get(k)
+        c.ok(mine == real, f"results.json {'.'.join(path)} = {mine!r}, but your analyse.py gives {real!r} "
+                           f"now: run `python3 analyse.py` again (and do not edit results.json by hand)")
     c.near(s["a_m"], 4.16957, 0.005, "static: semi-major axis a (m)")
     c.near(s["angle_deg"], 29.78, 0.05, "static: angle of the major axis (deg)")
     c.near(s["share_1s"], 0.3975, 0.003, "static: share inside the 1-sigma ellipse")
@@ -292,8 +325,11 @@ SECTIONS = [
 def _():
     c.file_exists("report.md")
     text = open("report.md", encoding="utf-8").read()
-    c.ok("TODO" not in text and "…" not in text, "report.md still contains TODO or … placeholders")
-    r = results()
+    first = text.find("\n## ")                      # the instructions above the first heading are not graded
+    body_text = text[first:] if first >= 0 else text
+    c.ok(not re.search(r"\bTODO\b", body_text) and "…" not in body_text,
+         "report.md still contains a TODO paragraph or a … placeholder under a heading")
+    r = fresh_results()
     vals = {"a_m": r["static"]["a_m"], "share_1s_pct": 100 * r["static"]["share_1s"],
             "rmse_g": r["track"]["gated"]["rmse_m"], "rmse_u": r["track"]["ungated"]["rmse_m"],
             "nees": r["track"]["gated"]["mean_nees"], "p3": 100 * (1 - math.exp(-4.5)),

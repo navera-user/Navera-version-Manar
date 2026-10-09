@@ -140,7 +140,8 @@ Below the line, `simulate_z()` generates Monte-Carlo flights with a fixed seed (
 same numbers): 2 000 honest flights of 2 min (60 vision checks) and 2 000 spoofed flights where the GPS
 is pulled north at 1.5 m/s and we want an alarm within 40 s. GPS noise σ_g = 3 m, vision σ_v = 15 m.
 It also generates 2 000 honest flights whose vision error is **correlated** from one fix to the next
-(AR(1) with ρ = 0.9: the same map error lasts several frames).
+(an **AR(1)** series, "auto-regressive of order 1": each error = ρ × the previous error + fresh
+noise, here with ρ = 0.9, so the same map error lasts several frames).
 
 ```bash
 python3 detection.py
@@ -155,7 +156,7 @@ Which one matches — with or without σ_g? Why?
 > [!TASK]
 > Complete TODO 5–9. "Done": the functions return the values above and pass the edge cases of the check;
 > `results.json` contains the 24 ROC points of the grid (the check recomputes them with its own
-> reference). Press **✔ Check my work** (checks 9–12).
+> reference). Press **✔ Check my work** (checks 9–13).
 
 ## Step 8 — Choose an operating point (TODO 10)
 

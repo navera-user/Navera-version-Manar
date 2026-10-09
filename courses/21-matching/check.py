@@ -35,6 +35,36 @@ def matched(name, method):
     return _cache[(name, method)]
 
 
+class NoOpenCVHomography:
+    """During a `with` block, OpenCV's own robust estimators raise: the code under test must use YOUR
+    RANSAC (geometry.ransac_homography), not cv2.findHomography(..., cv2.RANSAC)."""
+    NAMES = ("findHomography", "estimateAffine2D", "estimateAffinePartial2D")
+
+    def __enter__(self):
+        self.saved = {n: getattr(cv2, n) for n in self.NAMES if hasattr(cv2, n)}
+
+        def forbidden(*a, **k):
+            raise RuntimeError("cv2.findHomography / estimateAffine* is not allowed here: use your own RANSAC")
+        for n in self.saved:
+            setattr(cv2, n, forbidden)
+        return self
+
+    def __exit__(self, *exc):
+        for n, f in self.saved.items():
+            setattr(cv2, n, f)
+        return False
+
+
+def uses_opencv_ransac(func):
+    import inspect
+    try:
+        src = inspect.getsource(func)
+    except (OSError, TypeError):
+        return False
+    src = "\n".join(ln.split("#")[0] for ln in src.splitlines())   # comments do not count
+    return bool(re.search(r"findHomography|estimateAffine|cv2\.(RANSAC|USAC|LMEDS|RHO)", src))
+
+
 def H_sim(rot_deg, scale, tx=100.0, ty=50.0, persp=(0.0, 0.0)):
     a = math.radians(rot_deg)
     return np.array([[scale * math.cos(a), -scale * math.sin(a), tx],
@@ -175,9 +205,32 @@ def _():
         hint="Use rng = np.random.default_rng(seed). Inliers: reprojection error < threshold. Refit on all the "
              "inliers of the best sample at the end.")
 def _():
-    rh, sp = need(G(), "ransac_homography", "synthetic_pairs")
+    g = G()
+    rh, sp, dlt = need(g, "ransac_homography", "synthetic_pairs", "dlt_homography")
+    c.ok(not uses_opencv_ransac(rh), "ransac_homography() calls OpenCV's robust estimator: write the loop "
+                                     "yourself (sample 4 pairs, your DLT, count inliers, keep the best)")
     src, dst, H_true, is_in = sp()
-    r = rh(src, dst, 3.0)
+    calls = []
+
+    def counting_dlt(*a, **k):
+        calls.append(1)
+        return dlt(*a, **k)
+    g.dlt_homography = counting_dlt
+    try:
+        with NoOpenCVHomography():
+            r = rh(src, dst, 3.0)
+            n_full = len(calls)
+            del calls[:]
+            rh(src, dst, 3.0, max_iters=3)
+            n_three = len(calls)
+    except RuntimeError as e:
+        c.ok(False, str(e))
+    finally:
+        g.dlt_homography = dlt
+    c.ok(n_full >= 2, f"ransac_homography() called dlt_homography() {n_full} time(s): each sample (and the final "
+                      "refit) must use YOUR DLT")
+    c.ok(n_three <= 4, f"with max_iters=3, dlt_homography() was called {n_three} times (at most 3 samples + "
+                       "1 refit): respect max_iters")
     c.ok(isinstance(r, tuple) and len(r) == 2, "ransac_homography should return (H, mask)")
     H, mask = r
     c.ok(H is not None, "no homography found")
@@ -238,6 +291,12 @@ def _():
         hint="method 'mine' calls geometry.ransac_homography(src, dst, threshold). The sea has no keypoints: "
              "return (None, 0, details).")
 def _():
+    try:
+        with NoOpenCVHomography():
+            for name in ("city", "otherdate", "sea"):
+                matched(name, "mine")
+    except RuntimeError as e:
+        c.ok(False, f"method 'mine' still uses OpenCV ({e})")
     check_pair("city", "mine", 0.5, 0.01, 2.0, 150)
     check_pair("otherdate", "mine", 3.0, 0.05, 6.0, 10)
     H, inl, _ = matched("sea", "mine")

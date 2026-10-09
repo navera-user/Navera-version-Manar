@@ -220,21 +220,92 @@ def _():
          "bootstrap should say method (moving-block or iid), n_boot >= 1000 and the seed")
 
 
-@c.test("results.json: the decision follows from the CI of the difference",
-        hint="'accept' only when the whole CI of the difference is on the 'better' side of 0; when the CI "
-             "contains 0 (or a guard-rail CI crosses its limit) the honest answer is 'inconclusive'.")
+AVAIL_LIMIT = -0.10        # the example's guard-rail, fixed in its proposal: availability may drop by <= 10 points
+
+
+def is_example(r):
+    """The worked example (idea 1), whatever the student called it in results.json."""
+    if r.get("project") == "min-satellites":
+        return True
+    try:
+        if "min-satellites" in git("rev-parse --abbrev-ref HEAD"):
+            return True
+        diff = git("diff base..HEAD -- gps_pkg/gps_pkg/nodes/gps_node.py")
+    except CheckFailed:
+        diff = ""
+    added = "\n".join(ln for ln in diff.splitlines() if ln.startswith("+"))
+    if re.search(r"num_sats|MIN_SAT|satellites", added, re.I):
+        return True
+    return "nmea_bench" in str(r.get("data", "")) and "target" not in r and "availability" in r.get("secondary", {})
+
+
+def side(ci, limit, better):
+    """'good' if the whole CI is on the good side of `limit`, 'bad' if entirely on the bad side, else None."""
+    lo, hi = float(ci[0]), float(ci[1])
+    if better == "lower":
+        return "good" if hi < limit else ("bad" if lo > limit else None)
+    return "good" if lo > limit else ("bad" if hi < limit else None)
+
+
+def guard_rails(r):
+    """[(name, ci95 of the difference, limit, better)] — every secondary metric that has a 'limit'
+    (and, for the example, the availability limit of its proposal)."""
+    out = []
+    for name, m in (r.get("secondary") or {}).items():
+        if isinstance(m, dict) and "limit" in m:
+            out.append((name, m["difference"]["ci95"], float(m["limit"]), m.get("better", "higher")))
+    if is_example(r) and not any(g[0] == "availability" for g in out):
+        av = (r.get("secondary") or {}).get("availability")
+        c.ok(isinstance(av, dict) and "difference" in av,
+             "the example's guard-rail (secondary.availability with its difference and CI) is missing")
+        out.append(("availability", av["difference"]["ci95"], AVAIL_LIMIT, "higher"))
+    return out
+
+
+def expected_decision(r):
+    """The decision rule of the lesson (section 7): accept only when the primary CI is entirely on the
+    better side of 0 AND every guard-rail CI stays on the good side of its limit; reject when the
+    primary CI is entirely on the worse side or a guard-rail CI is entirely beyond its limit;
+    otherwise inconclusive."""
+    primary = side(r["difference"]["ci95"], 0.0, r["better"])
+    guards = [(name, ci, lim, side(ci, lim, b)) for name, ci, lim, b in guard_rails(r)]
+    if primary == "bad" or any(g[3] == "bad" for g in guards):
+        return "reject", guards
+    if primary == "good" and all(g[3] == "good" for g in guards):
+        return "accept", guards
+    return "inconclusive", guards
+
+
+@c.test("results.json: the decision follows the acceptance rule (CI of the difference AND guard-rails)",
+        hint="Lesson section 7: 'accept' only when the whole CI of the difference is on the 'better' side "
+             "of 0 AND every guard-rail CI stays on the good side of its limit; 'reject' when a CI is "
+             "entirely on the bad side; anything else (a CI that contains 0 or crosses a guard-rail "
+             "limit) is 'inconclusive'.")
 def _():
     r = results()
     d = r.get("decision")
     c.ok(d in ("accept", "reject", "inconclusive"), f"decision is {d!r}: use accept, reject or inconclusive")
+    want, guards = expected_decision(r)
     lo, hi = r["difference"]["ci95"]
-    good = hi < 0 if r["better"] == "lower" else lo > 0
-    bad = lo > 0 if r["better"] == "lower" else hi < 0
-    if d == "accept":
-        c.ok(good, f"'accept' but the CI of the difference [{lo}, {hi}] is not entirely on the "
-                   f"{r['better']} side of 0")
-    if bad:
-        c.ok(d == "reject", f"the CI [{lo}, {hi}] says the change makes the metric worse, but decision is {d!r}")
+    why = f"CI of the difference [{lo}, {hi}] ({r['better']} is better)"
+    for name, ci, lim, s in guards:
+        why += f"; guard-rail {name}: CI of the difference {list(ci)}, limit {lim:+g}"
+    c.ok(d == want, f"decision is {d!r} but the acceptance rule gives {want!r}: {why}")
+
+
+def _self_test_decision_rule():
+    """The example of the lab (Step 10): Δp95 CI below 0 but the availability CI crosses -10 points
+    -> inconclusive. Run when the check starts: a broken rule must never reach the students."""
+    ex = {"project": "min-satellites", "better": "lower", "difference": {"ci95": [-60.0, -20.0]},
+          "secondary": {"availability": {"difference": {"ci95": [-0.139, -0.020]}}}}
+    assert expected_decision(ex)[0] == "inconclusive", "decision rule: example should be inconclusive"
+    ex["secondary"]["availability"]["difference"]["ci95"] = [-0.05, -0.02]
+    assert expected_decision(ex)[0] == "accept"
+    ex["secondary"]["availability"]["difference"]["ci95"] = [-0.20, -0.12]
+    assert expected_decision(ex)[0] == "reject"
+    ex["difference"]["ci95"] = [-5.0, 3.0]
+    ex["secondary"]["availability"]["difference"]["ci95"] = [-0.05, -0.02]
+    assert expected_decision(ex)[0] == "inconclusive"
 
 
 def reference_example():
@@ -262,7 +333,7 @@ def reference_example():
                    if pos else math.nan)
     err, acc_b, acc_a = np.array(err), np.array(acc_b), np.array(acc_a)
     return (float(np.percentile(err[acc_b], 95)), float(np.percentile(err[acc_a], 95)),
-            float(acc_b.mean()), float(acc_a.mean()), len(err))
+            float(acc_b.mean()), float(acc_a.mean()), len(err), acc_b, acc_a)
 
 
 @c.test("example project: results.json agrees with a re-measurement of nmea_bench.txt",
@@ -270,9 +341,9 @@ def reference_example():
              "must come from the 1800 epochs of the file (corrupted lines count as epochs, not accepted).")
 def _():
     r = results()
-    if r.get("project") != "min-satellites":
-        c.skip("your project is not the example (project != 'min-satellites')")
-    p_b, p_a, a_b, a_a, n = reference_example()
+    if not is_example(r):
+        c.skip("your project is not the example (idea 1, refuse fixes from fewer than 4 satellites)")
+    p_b, p_a, a_b, a_a, n, acc_b, acc_a = reference_example()
     c.eq(r["n"], n, "results.json n (epochs)")
     c.near(r["before"]["value"], p_b, 0.05, what="before.value (p95, m)")
     c.near(r["after"]["value"], p_a, 0.05, what="after.value (p95, m)")
@@ -284,6 +355,18 @@ def _():
     c.ok(r["bootstrap"].get("method") == "moving-block" and w > 30,
          f"the p95-difference CI is only {w:.1f} m wide: the errors are correlated in time, use the "
          f"moving-block bootstrap (60 s blocks) as in the proposal")
+    # the guard-rail CI, recomputed here with YOUR block_bootstrap_ci on the reference epochs
+    (bbci,) = need(stats(), "block_bootstrap_ci")
+    bt = r["bootstrap"]
+    ref = pair(bbci(n, lambda i: float(np.mean(acc_a[i]) - np.mean(acc_b[i])), int(bt.get("block_len", 60)),
+                    int(bt.get("n_boot", 2000)), 0.05, int(bt.get("seed", 0))), "block_bootstrap_ci")
+    got = av.get("difference", {}).get("ci95", [math.nan, math.nan])
+    c.ok(abs(got[0] - ref[0]) < 0.01 and abs(got[1] - ref[1]) < 0.01,
+         f"availability difference CI in results.json {got} does not match a re-computation "
+         f"[{ref[0]:.4f}, {ref[1]:.4f}] (same epochs, block_len, n_boot, seed): run measure_project.py again")
+    c.ok(ref[0] < AVAIL_LIMIT < ref[1], "the re-computed availability CI does not cross the -10 point limit "
+                                         "(unexpected for nmea_bench.txt — ask the teacher)")
+    c.eq(r["decision"], "inconclusive", "decision of the example (the availability CI crosses -10 points)")
 
 
 # ---------------------------------------------------------------- the engineering part
@@ -381,4 +464,5 @@ def _():
                     "— export it again:\n" + out[-300:])
 
 
+_self_test_decision_rule()
 c.run()

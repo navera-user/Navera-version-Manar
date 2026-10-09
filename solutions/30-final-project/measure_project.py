@@ -151,7 +151,8 @@ def main():
         decision=decision,
         secondary={"availability": {"before": {"value": sb["availability"], "ci95": ci(avail(acc_b))},
                                     "after": {"value": sa["availability"], "ci95": ci(avail(acc_a))},
-                                    "difference": d_av}})
+                                    "difference": d_av,
+                                    "limit": -MAX_AVAILABILITY_LOSS, "better": "higher"}})
     print(f"\np95 difference (after - before): {out['difference']['value']:+.2f} m, "
           f"95 % CI [{out['difference']['ci95'][0]:+.2f}, {out['difference']['ci95'][1]:+.2f}] m")
     print(f"availability difference: {100 * d_av['value']:+.1f} points, 95 % CI "

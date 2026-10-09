@@ -155,14 +155,27 @@ textarea.code { height: 190px; }
 .res button { border: 1.5px solid var(--line); background: #fff; border-radius: 999px; padding: 3px 9px; font: 600 11.5px Inter, sans-serif; cursor: pointer; }
 .res button:hover { border-color: var(--coral); color: #b3412f; }
 #routeInfo b { color: var(--ink); } #routeInfo .warn { color: #b0453a; }
+#routeInfo.flash .warn { animation: flash 1.2s ease; border-radius: 6px; }
+@keyframes flash { 0%, 40% { background: #ffe1da; } 100% { background: transparent; } }
+select:disabled, input:disabled, .ib:disabled { opacity: .55; cursor: not-allowed; }
+.opts button:disabled { opacity: .5; cursor: not-allowed; }
+/* the banner takes its own row above the simulator: nothing (▶ Fly, ↺ Reset) is hidden under it */
+body.signed-out { display: flex; flex-direction: column; } body.signed-out .sl { height: auto; flex: 1; min-height: 0; }
+.auth { position: relative; z-index: 3000; display: none; flex: none; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;
+  padding: 10px 16px; background: var(--coral); color: #2a0d08; font: 600 14px Inter, sans-serif; box-shadow: 0 6px 18px rgba(0,0,0,.3); text-align: center; }
+@media (max-width: 640px) { .auth-x { display: none; } .auth { padding: 8px 10px; font-size: 13px; } }
+.auth a { background: var(--night); color: var(--ivory); border-radius: 999px; padding: 6px 14px; text-decoration: none; font-weight: 700; white-space: nowrap; }
+.sum { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; font-size: 12.5px; color: var(--muted); }
+.sum b { color: var(--ink); text-align: right; } .sum b:last-child { text-align: left; grid-column: 1 / 3; font-weight: 600; margin-top: -2px; }
 </style>
 </head>
 <body>
+<div class="auth" id="authBanner"><span>Your session ended — sign in again<span class="auth-x"> (your flight script is still in the editor: copy it first if you changed it)</span>.</span> <a href="/" target="_top">Sign in</a></div>
 <div class="sl">
   <div class="top">
     <span class="logo">✈ <span class="lt">NAVERA SIM</span></span><a class="by-iris" href="https://iris-systems.tn" target="_blank" rel="noopener" onclick="event.stopPropagation()">by <span class="iris-mark" role="img" aria-label="IRIS"><span>IRIS</span></span></a>
     <span class="lite">Lite · runs on your computer</span>
-    <span class="seg" id="modeSeg" style="display:none"><button class="on">Lite</button><button id="toFull" title="The full simulator (real ArduPilot autopilot) — teacher">Full</button></span>
+    <span class="seg" id="modeSeg" style="display:none"><button class="on">Lite</button><button id="toFull" title="The full simulator (real ArduPilot autopilot) — teacher; opens in a new window">Full ↗</button></span>
     <span class="grow"></span>
     <span class="seg" id="rateSeg" title="Simulation speed"><button data-r="1">1×</button><button data-r="4" class="on">4×</button><button data-r="10">10×</button><button data-r="30">30×</button></span>
     <span class="clock" id="clock">T+ 00:00</span>
@@ -209,11 +222,12 @@ textarea.code { height: 190px; }
             <span class="rl">Light</span>
             <div class="opts" id="lightOpts"><button data-v="day" class="on">☀ Day</button><button data-v="night">☾ Night</button></div>
           </div>
+          <div class="hint" id="visionNote"></div>
         </div>
       </div>
 
       <div class="pane" id="p-faults">
-        <p class="hint" style="margin:0 0 8px">Press ▶ Fly, then click a state to inject it — your flight script can do the same.</p>
+        <p class="hint" id="faultHint" style="margin:0 0 8px" data-def="Press ▶ Fly, then click a state to inject it — your flight script can do the same.">Press ▶ Fly, then click a state to inject it — your flight script can do the same.</p>
         <div class="card fault"><span class="ic">🛰</span><b>GPS receiver</b>
           <div class="opts" data-k="gps"><button data-v="ok" class="on">Normal</button><button data-v="jammed">Jammed</button><button data-v="spoof_jump">Spoof · 2 km jump</button><button data-v="spoof_drift">Spoof · slow drift</button><button data-v="off">Off</button></div></div>
         <div class="card fault"><span class="ic">📷</span><b>Camera (vision)</b>
@@ -236,12 +250,16 @@ textarea.code { height: 190px; }
         <div class="card">
           <div class="ch"><span class="n">2</span>Flight script <span class="hint" style="margin:0 0 0 auto;text-transform:none;letter-spacing:0;font-weight:500">Python, in your browser</span></div>
           <textarea class="code" id="script" spellcheck="false"></textarea>
-          <div class="acts"><button class="btn fly" id="runBtn">▶ Run with my script</button><button class="btn lite-btn" id="saveBtn">💾 Save</button></div>
-          <div class="console" id="console">Edit estimator_node.py in your NAVERA copy (📝 Code tab), press ↻ reload above, then fly: the coral line on the map is what YOUR estimator decides.</div>
+          <div class="acts"><button class="btn fly" id="runBtn">▶ Fly</button><button class="btn lite-btn" id="saveBtn">💾 Save</button><button class="btn lite-btn" id="defaultBtn" title="Put the default flight script back in the editor">↺ Restore default script</button></div>
+          <div class="console" id="console">Edit estimator_node.py in your NAVERA copy (in the academy's 📝 Code tab, not this one), press ↻ reload above, then ▶ Fly: the coral line on the map is what YOUR estimator decides.</div>
         </div>
       </div>
 
       <div class="pane" id="p-log">
+        <div class="card" id="sumCard" style="display:none"><div class="ch">Flight summary</div>
+          <div class="sum" id="sumBody"></div>
+          <p class="hint" style="margin:8px 0 0"><b>Position error</b> = how far NAVERA's estimate was from where the vehicle really was (how wrong NAVERA was).
+            <b>Distance to destination</b> = how far the vehicle really ended from the 🚩 (where the mistakes took it).</p></div>
         <div class="card"><div class="ch">Save this flight</div>
           <button class="btn fly" id="saveRunBtn" disabled title="Save the last flight as a CSV in this mission's my_runs/ folder">📁 Save to my_runs/</button>
           <span class="hint" style="margin-left:6px">CSV in sim_ctl.py's columns + the events log</span></div>

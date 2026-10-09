@@ -1,3 +1,3 @@
-{"number": "30", "title": "Final project: one change, tested and measured with confidence", "module": 7, "duration": "7 h (2–3 sessions)",
+{"number": "30", "title": "Final project: one change, tested and measured with confidence", "module": 7, "duration": "8 h (2–3 sessions)",
  "summary": "Work like a NAVERA engineer: a written proposal with an acceptance criterion, a test that fails first, a before/after measurement with (block) bootstrap confidence intervals, an honest decision, a branch and a patch. Ten project ideas from easy to hard.",
  "resources": [], "open": ["stats_tools.py", "measure_project.py", "PROJECT.md"], "check_timeout_s": 300}

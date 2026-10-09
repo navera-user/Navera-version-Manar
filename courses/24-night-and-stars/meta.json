@@ -1,3 +1,3 @@
-{"number": "24", "title": "Navigating at night: heat and stars", "module": 5, "duration": "5 h (2 sessions)",
+{"number": "24", "title": "Navigating at night: heat and stars", "module": 5, "duration": "7 h 30 (2 sessions)",
  "summary": "Thermal cameras and cross-modal matching (STHN), then celestial navigation from first principles: Julian date, sidereal time, the navigational triangle, Polaris, plate solving — and why one degree of attitude costs 111 km.",
  "resources": [], "open": ["stars.py", "thermal.py", "report.md"], "check_timeout_s": 300}

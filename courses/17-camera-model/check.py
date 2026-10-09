@@ -71,8 +71,9 @@ def _():
 
 
 @c.test("TODO 2 — project(): a camera looking straight down from 150 m",
-        hint="x_cam = R_wc.T @ (X - C); then p = K @ x_cam and divide by p[2]. With heading 0 the image top "
-             "points north, so a point north of the drone has v < 270.")
+        hint="Lesson section 'From the world to a pixel': first move the point into the CAMERA frame (relative "
+             "to the camera centre, with the inverse of the camera rotation), then apply K and divide by the "
+             "depth. With heading 0 the image top points north, so a point north of the drone has v < 270.")
 def _():
     (project,) = need(cm(), "project")
     K, R, C = K90(), ref_R(0, 0, 0), np.array([0.0, 0.0, 150.0])
@@ -94,8 +95,9 @@ def _():
 
 
 @c.test("TODO 3 — ground_point() is the inverse of project() on the ground, and None for the sky",
-        hint="d = R_wc @ inv(K) @ [u, v, 1]; lam = -C_z / d_z; X = C + lam*d; return X[:2]. "
-             "If d_z >= 0 the ray never reaches the ground.")
+        hint="Back-projection (lesson): the pixel gives a ray direction in the camera frame (undo K), rotated into "
+             "the world frame; walk along the ray from the camera centre until the height is 0. A ray that does "
+             "not point downwards never reaches the ground: return None.")
 def _():
     (gp,) = need(cm(), "ground_point")
     K, C = K90(), np.array([0.0, 0.0, 150.0])
@@ -112,8 +114,9 @@ def _():
 
 
 @c.test("TODO 4 — footprint_polygon() and polygon_area(): 50 625 m² straight down, 66 466 m² at pitch −20°",
-        hint="Corners in the order (0,0), (w,0), (w,h), (0,h) through ground_point(); shoelace: "
-             "0.5*|sum(x*roll(y,-1) - roll(x,-1)*y)|. Return None if a corner sees the sky.")
+        hint="Send the four image corners, in order around the image, through ground_point(); the area of the "
+             "polygon is the shoelace formula of the lesson (take the absolute value: the order may be clockwise). "
+             "Return None if a corner sees the sky.")
 def _():
     fpoly, area = need(cm(), "footprint_polygon", "polygon_area")
     c.near(area(np.array([[0, 0], [4, 0], [4, 3], [0, 3]])), 12.0, tol=1e-9, what="polygon_area(4 x 3 rectangle)")
@@ -169,8 +172,9 @@ def _():
 
 
 @c.test("TODO 7 — pad_size_px() and pad_centre_px() on the three photos",
-        hint="rows, cols = np.nonzero(mask); width = cols.max() - cols.min() + 1; centre = "
-             "(cols.mean(), rows.mean()) — u is a column, v is a row. None when the mask is empty.")
+        hint="Find the pixels of the mask that are set; the width counts the columns from the leftmost to the "
+             "rightmost pixel (both included); the centre is the mean position. Careful: u is a column and v a "
+             "row (numpy gives rows first). None when the mask is empty.")
 def _():
     import cv2
     mp = load_student("measure_pad.py")

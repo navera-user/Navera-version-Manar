@@ -363,7 +363,7 @@ Jetson with 33 aerial frames from another source and date than the map, search w
 | prototype, no scale check, ≥ 12 inliers | 10/33 | median 4 m, worst 1097 m | 1 |
 | + scale check (frame scale known) | 21/33 | median 4 m, worst 5 m | 0 |
 | + frame pre-scaled, map features per tile, margin 300 m | 32/33 | median 4 m, worst 9 m | 0 |
-| product module (`LocalMatcher`, ≥ 6 inliers, GPU matching) | 30/33 | median 4 m, worst 5 m | 0 |
+| product module (`LocalMatcher`, ≥ 6 inliers in that bench run — the default is now 8, as in the table above —, GPU matching) | 30/33 | median 4 m, worst 5 m | 0 |
 
 The scale gate removed the only wrong fix (1097 m). The document is honest about the limits: these
 are not frames from NAVERA's own camera, and positions are stated at ±30 m until that is measured.

@@ -274,7 +274,7 @@ sampled over several headings) and removes it afterwards, capped at 30 m.
 2.0 m; map registration → 5.0 m.
 
 ```
-σ_total = sqrt(1.6² + 9.3² + 2.0² + 5.0²) = sqrt(2.5 + 86.1 + 4.0 + 25.0) = 10.8 m
+σ_total = sqrt(1.6² + 9.3² + 2.0² + 5.0²) = sqrt(2.56 + 86.49 + 4.0 + 25.0) = sqrt(118.05) = 10.9 m
 ```
 
 The matcher term dominates: improving it (more inliers, a learned matcher) pays more than a better
@@ -317,7 +317,7 @@ cautious 30 m (`local_sigma_m`) until they are measured with the real camera. In
 error is about 1 m, but the simulated camera is cut from the map's own imagery: optimistic. You will
 see exactly this effect in the lab.
 
-## 9. Learned matchers: DISK + LightGlue
+## 9. Going further (optional): learned matchers, DISK + LightGlue
 
 SIFT is a hand-designed detector (lesson 20). **Learned** features replace it with neural networks
 trained on many real image pairs: **DISK** detects keypoints and computes descriptors, and

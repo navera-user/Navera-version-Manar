@@ -533,9 +533,10 @@ q1 and −q1 are the same rotation. If the dot product is negative, the arc from
 180° of rotation). Using −q1 takes the short arc.
 </details>
 
-<details><summary>4. A gyro has a bias of 0.05 °/s. What is the heading error after 10 minutes of pure integration? With a complementary filter of τ = 20 s?</summary>
+<details><summary>4. The roll gyro has a bias of 0.05 °/s. What is the roll error after 10 minutes of pure integration? With the gyro + accelerometer complementary filter of τ = 20 s?</summary>
 Integration: 0.05 × 600 = 30°. Complementary filter (steady state): b · τ = 0.05 × 20 = 1°, and it
-does not grow.
+does not grow. (This works for roll and pitch only: gravity says nothing about the heading, so the
+accelerometer cannot correct a heading drift — that is the magnetometer's job, section 10.)
 </details>
 
 <details><summary>5. A drone turns at 20 °/s at 12 m/s. What roll does its accelerometer report, and what is the true bank?</summary>

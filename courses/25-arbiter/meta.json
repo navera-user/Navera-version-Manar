@@ -2,7 +2,7 @@
  "number": "25",
  "title": "Who to trust? The arbiter as a state machine",
  "module": 6,
- "duration": "4 h",
+ "duration": "4 h 45",
  "summary": "Eligibility predicates, covariance sanity, freshness and latency, lexicographic priority with hysteresis, and the FIX / DEGRADED / NO_FIX states. Build the arbiter, race it against NAVERA's real estimator_node, measure the hold-off and freshness trade-offs, and test selection against fusion.",
  "resources": [],
  "open": [

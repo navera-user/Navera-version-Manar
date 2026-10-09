@@ -167,7 +167,7 @@ With the threshold ρ = k·σ_v and, as NAVERA does, σ_v only:
 |---|---|---|
 | 2 | exp(−2) = 0.135 | 0.146 |
 | 3 | exp(−4.5) = **0.0111** (≈ 1 in 90) | 0.0132 |
-| 5 | 3.7·10⁻⁶ | 6.6·10⁻⁶ |
+| 5 | 3.7·10⁻⁶ | 6.0·10⁻⁶ |
 
 Note the 2-D trap: in 1-D, "beyond 3σ" happens 0.27 % of the time; in 2-D it is 1.1 %, four times
 more. A single vision fix beyond 3σ is therefore **not** evidence of an attack.

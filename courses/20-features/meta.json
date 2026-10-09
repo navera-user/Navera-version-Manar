@@ -1,3 +1,3 @@
-{"number": "20", "title": "Local features: corners, scale and descriptors", "module": 5, "duration": "3 h",
+{"number": "20", "title": "Local features: corners, scale and descriptors", "module": 5, "duration": "3 h 45",
  "summary": "Gradients, the structure tensor and the Harris detector from the maths; scale space and SIFT; binary ORB descriptors and the Hamming distance; repeatability measured against a known transform; why towns are easy and dunes or the sea are not.",
  "resources": [], "open": ["features.py", "report.md"], "check_timeout_s": 120}

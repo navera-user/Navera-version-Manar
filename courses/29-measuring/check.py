@@ -263,13 +263,22 @@ def section(text, title):
     return m.group(1) if m else ""
 
 
+def graded_text():
+    """report.md without the instructions above its first heading (they quote the placeholders)."""
+    if not os.path.exists("report.md"):
+        return ""
+    text = open("report.md", encoding="utf-8", errors="replace").read()
+    first = text.find("\n## ")
+    return text[first:] if first >= 0 else text
+
+
 @c.test("report.md: complete, with your numbers and confidence intervals",
         hint="No '(fill in' paragraph and no '(m)', '(%)', '(s)', '[lo, hi]' cell left; the jam CEP50 of the target "
              "and measured flights, the CI of the measured flight's difference, and the selective flight's "
              "availability while jammed — all rounded to whole numbers.")
 def _():
     c.file_exists("report.md")
-    text = open("report.md", encoding="utf-8", errors="replace").read()
+    text = graded_text()
     left = [p for p in ("(fill in", "(m)", "(%)", "(s)", "[lo, hi]") if p in text]
     c.ok(not left, f"placeholders still there: {left}")
     nums = [float(x) for x in re.findall(r"-?\d+(?:\.\d+)?", text.replace("−", "-"))]
@@ -291,7 +300,7 @@ def _():
              "(100+ words); name the baseline, the confidence interval, availability, and say the flights are "
              "simulated over Sousse.")
 def _():
-    text = open("report.md", encoding="utf-8", errors="replace").read() if os.path.exists("report.md") else ""
+    text = graded_text()
     c.ok(text and "(fill in" not in text, "write your own text in place of the '(fill in …)' paragraphs first")
     diff, val, concl = (section(text, t) for t in ("Is the difference real?", "Validity", "Conclusion"))
     c.ok(len(diff.split()) >= 40, f"'Is the difference real?' has {len(diff.split())} words (at least 40)")

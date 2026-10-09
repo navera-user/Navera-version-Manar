@@ -81,7 +81,7 @@ program: pixel (0, 0) of the nadir camera at 150 m is at `[-150. 84.38]` (north-
 the tilted camera (heading 30°, pitch −12°, roll 4°) sees at its image centre `[-25.23 -22.25]`.
 
 > [!QUESTION]
-> The drone heads 30° (north-north-east) and pitches nose down. Why is the image centre
+> The drone heads 30° east of north (between north-north-east and north-east) and pitches nose down. Why is the image centre
 > **south-west** of the drone? Draw the side view of lesson section 3 before you answer.
 
 A good test of TODO 2 and 3 together: project a ground point, back-project the pixel, and you must

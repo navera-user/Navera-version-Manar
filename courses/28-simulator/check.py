@@ -52,11 +52,62 @@ def frames():
     return fr
 
 
-def no_simulator():
+SIMLITE_COLUMNS = ["t_s", "phase", "gps_mode", "navera_state", "navera_source", "navera_lat", "navera_lon",
+                   "navera_err_m", "truth_lat", "truth_lon", "truth_alt_m", "truth_speed_mps", "ap_mode", "ap_err_m",
+                   "reason", "camera"]
+
+
+def _enu_m(lat0, lon0, lat1, lon1):
+    k = math.pi / 180.0 * 6371000.0
+    return math.hypot((lon1 - lon0) * k * math.cos(math.radians((lat0 + lat1) / 2)), (lat1 - lat0) * k)
+
+
+def _truth_track(path):
+    import csv
+    with open(path, newline="") as f:
+        return tuple((r.get("truth_lat", ""), r.get("truth_lon", "")) for r in csv.DictReader(f)
+                     if r.get("truth_lat"))
+
+
+def simlite_run_problem(path, known_tracks):
+    """Why my_runs/<run>.csv is NOT a flight saved by Sim Lite ("" when it looks like one):
+    Sim Lite's exact columns, its events log next to it with the injected faults, 1 row per simulated
+    second, positions and errors that agree with each other, and a flight that is not a copy of a
+    recorded one (or of another of your runs)."""
+    import csv
+    with open(path, newline="") as f:
+        rd = csv.DictReader(f)
+        if rd.fieldnames != SIMLITE_COLUMNS:
+            return "its columns are not the ones Sim Lite writes"
+        rows = list(rd)
+    ev = path[:-4] + "_events.log"
+    if not os.path.exists(ev):
+        return f"{os.path.basename(ev)} (saved by Sim Lite with the CSV) is missing"
+    inject = [ln for ln in open(ev, encoding="utf-8", errors="replace") if ln.startswith("T+") and "[inject]" in ln]
+    if not inject:
+        return "its events log has no injected fault ('[inject] gps -> …' lines of ▶ Fly my scenario)"
     try:
-        return bool(getattr(load_student("answers.py"), "NO_SIMULATOR", False))
-    except Exception:
-        return False
+        t = [float(r["t_s"]) for r in rows]
+    except ValueError:
+        return "t_s is not a number on every row"
+    if len(t) < 2 or any(not 0.5 <= b - a <= 1.5 for a, b in zip(t, t[1:])):
+        return "the rows are not one per simulated second"
+    bad = 0
+    for r in rows:
+        if r["navera_lat"] and r["navera_err_m"] and r["truth_lat"]:
+            d = _enu_m(float(r["truth_lat"]), float(r["truth_lon"]), float(r["navera_lat"]), float(r["navera_lon"]))
+            bad += abs(d - float(r["navera_err_m"])) > 1.0
+    if bad:
+        return f"navera_err_m does not match the NAVERA and truth positions on {bad} rows"
+    moved = [(_enu_m(float(a["truth_lat"]), float(a["truth_lon"]), float(b["truth_lat"]), float(b["truth_lon"])),
+              (float(a["truth_speed_mps"]) + float(b["truth_speed_mps"])) / 2 * (float(b["t_s"]) - float(a["t_s"])))
+             for a, b in zip(rows, rows[1:]) if a["phase"] == b["phase"] == "enroute"]
+    if sum(abs(d - v) > 0.3 * v + 2.0 for d, v in moved) > 0.1 * max(1, len(moved)):
+        return "the truth positions do not move at the truth speed"
+    track = _truth_track(path)
+    if track in known_tracks:
+        return f"it is a copy of {known_tracks[track]}"
+    return ""
 
 
 def close(a, b, tol):
@@ -392,19 +443,29 @@ def _():
         hint="Part E: Simulator tab → Mission → ▶ Fly my scenario (it saves my_runs/<name>.csv by itself), "
              "then `python3 campaign.py`.")
 def _():
-    if no_simulator():
-        c.skip("NO_SIMULATOR = True: graded on the recorded campaign only")
     import glob
     runs = sorted(glob.glob("my_runs/*.csv"))
     c.ok(runs, "my_runs/ has no flight CSV yet (Step 14)")
     lf, fi = need(C(), "load_flight", "fault_intervals")
-    ok = False
+    known = {}
+    for p in sorted(glob.glob(f"{DATA}/**/*.csv", recursive=True)):
+        known.setdefault(_truth_track(p), "the recorded " + os.path.basename(p))
+    ok, why = False, []
     for p in runs:
+        try:
+            problem = simlite_run_problem(p, known)
+        except (ValueError, KeyError, TypeError) as e:
+            problem = f"a value is not what Sim Lite writes ({e})"
+        known.setdefault(_truth_track(p), p)            # two identical runs: the second is a copy
+        if problem:
+            why.append(f"{p}: {problem}")
+            continue
         rows = lf(p)
         enroute = sum(1 for x in rows if x.get("phase") == "enroute")
         faults = (fi(rows, "gps_mode") or []) + (fi(rows, "camera") or [])
         ok = ok or (enroute >= 30 and len(faults) >= 1)
-    c.ok(ok, "no run in my_runs/ has 30 s en route and an injected fault")
+    c.ok(ok, "no run in my_runs/ saved by Sim Lite has 30 s en route and an injected fault"
+         + ("" if not why else ":\n       " + "\n       ".join(why[:4])))
     r = json.load(open("results.json")) if os.path.exists("results.json") else {}
     c.ok(any(k.startswith("my_runs/") for k in r.get("campaign", {})),
          "results.json does not include your run: run python3 campaign.py again")

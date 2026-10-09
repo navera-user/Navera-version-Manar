@@ -58,6 +58,7 @@ DEFAULT_SCRIPT = '''# Your flight script — runs in your browser with the simul
 # sim.goto(place, speed=…), sim.jam_gps(), sim.spoof_gps("jump"|"drift"), sim.restore_gps(),
 # sim.camera_fail(), sim.night(), sim.set_speed(m/s), sim.log(text)
 # Read: sim.t, sim.truth, sim.navera.source / .state / .error_m / .position
+#   (before NAVERA's first position: .position is None and .error_m is inf)
 
 def on_start(sim):
     sim.log("flying the route set in the Flight tab")
@@ -69,27 +70,67 @@ def on_tick(sim, t):
     global warned
     if t == 60:
         sim.jam_gps()                 # what does NAVERA do without GPS?
+    if sim.navera.position is None:   # no position from NAVERA yet: nothing to judge
+        return
     if sim.navera.error_m > 400 and not warned:
         sim.log(f"error above 400 m at T+{t} s, source: {sim.navera.source}")
         warned = True
 '''
 
 
+# the default before 2026-10-09: it logged "error above 400 m" at T+0.1 s (no position yet = error inf)
+_OLD_DEFAULT = DEFAULT_SCRIPT.replace(
+    "#   (before NAVERA's first position: .position is None and .error_m is inf)\n", "").replace(
+    "    if sim.navera.position is None:   # no position from NAVERA yet: nothing to judge\n        return\n", "")
+
+
 def _script_path(name):
     return os.path.join(config.STUDENTS, name, "simlite", "flight.py")
 
 
-def script(name):
+def _request_data():
+    """GET args / JSON body of the current request (the routes in app.py only pass the user name)."""
+    try:
+        from flask import has_request_context, request
+        if has_request_context():
+            return request.args, (request.get_json(silent=True) or {})
+    except ImportError:
+        pass
+    return {}, {}
+
+
+def _current(name):
     try:
         with open(_script_path(name)) as f:
-            return f.read()
+            text = f.read()
     except OSError:
         return DEFAULT_SCRIPT
+    return DEFAULT_SCRIPT if text == _OLD_DEFAULT else text     # the old default, never edited: the fixed one
 
 
-def save_script(name, text):
+def script(name):
+    """The student's flight script; ?default=1 gives the default one (the "Restore default" button)."""
+    args, _ = _request_data()
+    if str(args.get("default", "")) == "1":
+        return DEFAULT_SCRIPT
+    return _current(name)
+
+
+CONFLICT = "this flight script was changed in another tab or window since you opened it"
+
+
+def save_script(name, text, base=None, force=None):
+    """Saved only if the file is still the one the page loaded (`base` in the request body): two tabs
+    must not silently overwrite each other. `force` (after the student confirmed) saves anyway."""
     if len(text) > MAX_FILE:
         raise ValueError(f"the script is too long ({len(text) // 1000} kB, the limit is {MAX_FILE // 1000} kB): nothing was saved")
+    _, body = _request_data()
+    base = body.get("base") if base is None else base
+    force = bool(body.get("force")) if force is None else force
+    if isinstance(base, str) and not force:
+        now = _current(name)
+        if now != base and now != text:
+            raise ValueError(CONFLICT + ": nothing was saved")
     p = _script_path(name)
     os.makedirs(os.path.dirname(p), exist_ok=True)
     tmp = p + ".tmp"
@@ -165,33 +206,60 @@ def maps():
 
 
 _bounds_cache = {}
+CELL_SHIFT = 4          # coverage cells: 16 x 16 tiles of the deepest zoom (zoom 13 for a zoom-17 map, ~4 km)
+
+
+def _tile_lat(z, ty):
+    """Latitude of the top edge of XYZ tile row ty."""
+    import math
+    return math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * ty / 2 ** z))))
+
+
+def _file_boxes(path):
+    """Where one map file has imagery, as [south, west, north, east] boxes. A file that states its
+    bounds (a prepared map of one region) is one box; a file of scattered tiles (downloaded along
+    flights) is described cell by cell — one box around them would cover half of Europe and make
+    the page ask the Jetson for thousands of tiles that do not exist."""
+    c = _conn(path)
+    meta = dict(c.execute("SELECT name, value FROM metadata").fetchall())
+    if meta.get("bounds"):
+        w, s_, e, n = (float(v) for v in meta["bounds"].split(","))
+        return [[s_, w, n, e]]
+    (z,) = c.execute("SELECT MAX(zoom_level) FROM tiles").fetchone()
+    if z is None:
+        return []
+    sh = min(CELL_SHIFT, z)
+    cz = z - sh
+    rows = {}
+    for cx, cr in c.execute(f"SELECT DISTINCT tile_column >> {sh}, tile_row >> {sh} FROM tiles WHERE zoom_level=?", (z,)):
+        rows.setdefault((1 << cz) - 1 - cr, []).append(cx)         # TMS row -> XYZ row
+    out = []
+    for cy, xs in rows.items():                                  # a run of neighbouring cells = one box
+        xs.sort()
+        start = prev = xs[0]
+        for x in xs[1:] + [None]:
+            if x is not None and x == prev + 1:
+                prev = x
+                continue
+            out.append([round(_tile_lat(cz, cy + 1), 5), round(start / 2 ** cz * 360 - 180, 5),
+                        round(_tile_lat(cz, cy), 5), round((prev + 1) / 2 ** cz * 360 - 180, 5)])
+            if x is not None:
+                start = prev = x
+    return out
 
 
 def bounds():
-    """[south, west, north, east] of each map file (from its metadata, else from its tiles): the page asks
-    the Jetson only for tiles inside these; everywhere else the online imagery is enough."""
-    import math
+    """[south, west, north, east] boxes where the map files have imagery. The page asks the Jetson for
+    tiles inside them only (elsewhere the online imagery is enough), and Sim Lite's day vision works
+    inside them only: real NAVERA day vision needs this prepared onboard map."""
     out = []
     for path, _ in maps():
         if path not in _bounds_cache:
-            b = None
             try:
-                meta = dict(_conn(path).execute("SELECT name, value FROM metadata").fetchall())
-                if meta.get("bounds"):
-                    w, s_, e, n = (float(v) for v in meta["bounds"].split(","))
-                    b = [s_, w, n, e]
-                else:
-                    z, x0, x1, r0, r1 = _conn(path).execute(
-                        "SELECT zoom_level, MIN(tile_column), MAX(tile_column), MIN(tile_row), MAX(tile_row) FROM tiles "
-                        "GROUP BY zoom_level ORDER BY zoom_level DESC LIMIT 1").fetchone()
-                    lon = lambda x: x / 2 ** z * 360 - 180                                         # noqa: E731
-                    lat = lambda r: math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * (2 ** z - r) / 2 ** z))))  # noqa: E731
-                    b = [lat(r0), lon(x0), lat(r1 + 1), lon(x1 + 1)]
+                _bounds_cache[path] = _file_boxes(path)
             except Exception:
-                b = None
-            _bounds_cache[path] = b
-        if _bounds_cache[path]:
-            out.append(_bounds_cache[path])
+                _bounds_cache[path] = []
+        out.extend(_bounds_cache[path])
     return out
 
 
@@ -231,6 +299,38 @@ def _compose(z, x, y, depth):
     return buf.getvalue()
 
 
+_buildable = {}
+
+
+def _can_build(files, z, x, y, depth):
+    """Cheap (index-only) check before building a tile from its children: some map file must hold ALL
+    the tiles under it at one deeper zoom. Most squares outside the map's area fail here at once,
+    instead of each being built (and found incomplete) on the Jetson."""
+    key = (z, x, y, depth)
+    if key in _buildable:
+        return _buildable[key]
+    ok = False
+    for path, native in files:
+        for k in range(1, depth + 1):
+            zz = z + k
+            if zz > native:
+                break
+            n = 1 << k
+            r0 = (1 << zz) - (y + 1) * n                          # TMS rows of the square
+            got = _conn(path).execute(
+                "SELECT COUNT(*) FROM tiles WHERE zoom_level=? AND tile_column BETWEEN ? AND ? AND tile_row BETWEEN ? AND ?",
+                (zz, x * n, x * n + n - 1, r0, r0 + n - 1)).fetchone()[0]
+            if got >= n * n:
+                ok = True
+                break
+        if ok:
+            break
+    if len(_buildable) > 200_000:
+        _buildable.clear()
+    _buildable[key] = ok
+    return ok
+
+
 def tile(z, x, y, depth=4):
     files = maps()
     if not files or not (0 <= z <= 19) or not (0 <= x < (1 << z)) or not (0 <= y < (1 << z)):
@@ -246,6 +346,8 @@ def tile(z, x, y, depth=4):
     if os.path.exists(c):
         with open(c, "rb") as f:
             return f.read() or None
+    if not _can_build(files, z, x, y, depth):
+        return None                              # nothing to build here (remembered in memory, nothing written)
     data = _compose(z, x, y, depth)
     os.makedirs(os.path.dirname(c), exist_ok=True)
     with open(c, "wb") as f:

@@ -2,8 +2,10 @@ import json
 import math
 import os
 import re
+import shutil
+import tempfile
 
-from academy_check import Checker, load_student, need
+from academy_check import Checker, load_student, need, sh
 
 c = Checker()
 LOG = "/data/academy/15-gps-nmea/sousse_drive.nmea"
@@ -28,7 +30,7 @@ def nt():
     return load_student("nmea_tools.py")
 
 
-def results():
+def saved_results():
     if not os.path.exists("results.json"):
         c.ok(False, "results.json does not exist yet — run python3 analyze_drive.py (Step 8)")
     try:
@@ -36,6 +38,36 @@ def results():
             return json.load(f)
     except ValueError as e:
         c.ok(False, f"results.json is not valid JSON ({e}) — run python3 analyze_drive.py again")
+
+
+_fresh = {}
+GRADED = ("lines_total", "lines_rejected", "gga_by_quality", "navera_valid", "jump_rejected_utc", "fixes_accepted",
+          "dop_epochs_compared", "dop_max_abs_diff", "outage_s", "outage_from_utc", "outage_to_utc", "hdop_max",
+          "uere_est_m", "frac_within_2drms", "track_length_m")
+
+
+def results():
+    """The numbers of YOUR analyze_drive.py, run again now in a scratch folder with your nmea_tools.py,
+    dop.py and gps_filter.py — and the saved results.json must agree with them."""
+    if "r" not in _fresh:
+        saved = saved_results()
+        tmp = tempfile.mkdtemp(prefix="check15_")
+        try:
+            for f in ("analyze_drive.py", "nmea_tools.py", "dop.py", "gps_filter.py"):
+                c.ok(os.path.exists(f), f"{f} is missing (↺ Reset lab files gives it back)")
+                shutil.copy(f, tmp)
+            code, out = sh(f"cd {tmp} && MPLBACKEND=Agg python3 -B analyze_drive.py", timeout=40)
+            c.ok(code == 0 and os.path.exists(os.path.join(tmp, "results.json")),
+                 "python3 analyze_drive.py did not finish:\n" + out[-600:])
+            with open(os.path.join(tmp, "results.json")) as f:
+                fresh = json.load(f)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        diff = [k for k in GRADED if saved.get(k) != fresh.get(k)]
+        c.ok(not diff, f"results.json does not match what your code gives now for {', '.join(diff)}: "
+                       "run python3 analyze_drive.py again (and never edit results.json by hand)")
+        _fresh["r"] = fresh
+    return _fresh["r"]
 
 
 @c.test("nmea_checksum(): XOR of the body, 2 upper-case hex digits",
@@ -296,6 +328,11 @@ def _():
     c.eq(g.get("published"), 1066, "PositionEstimate messages published (one per valid-checksum GGA)")
     c.eq(g.get("valid"), 1007, "valid estimates")
     c.eq(g.get("invalid"), 59, "invalid estimates")
+    reasons = g.get("reasons") or {}
+    c.ok(isinstance(reasons, dict) and sum(reasons.values()) == g.get("invalid")
+         and any("qual=6" in k for k in reasons),
+         "the reasons in gps_node_counts.json do not add up: run python3 play_to_gps_node.py again")
+    c.near(g.get("max_jump_m"), 50050.2, 1.0, what="max_jump_m (largest jump between valid fixes, from the replay)")
 
 
 @c.test("report.md — 5 sections, your numbers, at least 250 words",
@@ -305,6 +342,8 @@ def _():
 def _():
     c.file_exists("report.md")
     text = open("report.md", encoding="utf-8", errors="replace").read()
+    first = text.find("\n## 1.")                    # the instructions above the first heading are not graded
+    text = text[first:] if first >= 0 else text
     for h in ("## 1.", "## 2.", "## 3.", "## 4.", "## 5."):
         c.ok(h in text, f"the heading starting with '{h}' is missing")
     c.ok("TODO" not in text, "report.md still contains 'TODO' lines from the template")

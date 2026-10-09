@@ -960,7 +960,7 @@ def api_simlite_script_save():
     try:
         simlite.save_script(request.user, str(request.get_json(force=True).get("text", "")))
     except ValueError as e:
-        return jsonify(error=str(e)), 413
+        return jsonify(error=str(e), conflict=simlite.CONFLICT in str(e)), 409 if simlite.CONFLICT in str(e) else 413
     return jsonify(ok=True)
 
 

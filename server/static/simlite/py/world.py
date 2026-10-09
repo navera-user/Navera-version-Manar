@@ -135,6 +135,12 @@ class World(Node):
         self.gps_noise = [0.0, 0.0]
         self.night_est = None
         self.had_gps = False
+        # where the onboard map has imagery ([south, west, north, east] boxes, from the academy's map
+        # files): real day vision matches each photo against this prepared map, so outside it there is
+        # no day fix. None = not known (the page could not ask): day vision is then assumed everywhere.
+        boxes = cfg.get("map_boxes")
+        self.map_boxes = [tuple(float(v) for v in b) for b in boxes] if isinstance(boxes, list) else None
+        self.on_map = None
         self.nav = {"state": 0, "source": 0, "reason": "", "lat": None, "lon": None, "t": None, "mode": 0}
         self.belief = None                         # the autopilot's own position: NAVERA + dead reckoning
         self.vel = (0.0, 0.0)
@@ -245,6 +251,17 @@ class World(Node):
                 sig = None
         else:
             self.night_est = None
+            if self.map_boxes is not None:
+                inside = any(b[0] <= lat <= b[2] and b[1] <= lon <= b[3] for b in self.map_boxes)
+                if inside != self.on_map:
+                    if not inside:
+                        self.event("warn", "day vision: no onboard map here — no fix (real NAVERA day vision "
+                                           "matches each photo against its prepared map of the area)")
+                    elif self.on_map is not None:
+                        self.event("info", "day vision: back over the onboard map — fixes again")
+                    self.on_map = inside
+                if not inside:
+                    return
             sig = DAY_TARGET_SIGMA if target else None
             s = DAY_TARGET_SIGMA if target else DAY_MEASURED_SIGMA
             vlat, vlon = offset(lat, lon, self.rng.gauss(0, s), self.rng.gauss(0, s))
@@ -287,7 +304,11 @@ class World(Node):
                 ang = self.rng.uniform(0, 2 * math.pi)
                 self.spoof = [2000.0 * math.cos(ang), 2000.0 * math.sin(ang)]
         self.faults[key] = value
-        names = {"ok": "normal", "jammed": "JAMMED", "spoof_jump": "SPOOFED (2 km jump)", "spoof_drift": "SPOOFED (slow drift)",
+        to = ""
+        if key == "gps" and value == "spoof_jump":       # the direction matters: see the estimator's gate
+            to = " to the " + ("N", "NE", "E", "SE", "S", "SW", "W", "NW")[
+                int(((math.degrees(math.atan2(self.spoof[0], self.spoof[1])) % 360) + 22.5) // 45) % 8]
+        names = {"ok": "normal", "jammed": "JAMMED", "spoof_jump": f"SPOOFED (2 km jump{to})", "spoof_drift": "SPOOFED (slow drift)",
                  "off": "OFF", "failed": "FAILED", "day": "day", "night": "NIGHT"}
         self.event("warn" if value not in ("ok", "day") else "info", f"{key.upper()} → {names.get(value, value)}")
 

@@ -1,3 +1,3 @@
-{"number": "26", "title": "How sure are we? Covariance, gating and the Kalman filter", "module": 6, "duration": "4 h",
+{"number": "26", "title": "How sure are we? Covariance, gating and the Kalman filter", "module": 6, "duration": "5 h",
  "summary": "Random variables and covariance matrices, error ellipses by eigen-decomposition, J P Jᵀ propagation, Mahalanobis distance and the chi-square gate, inverse-variance fusion, and a Kalman filter you build, test for consistency (NEES) and prove identical to NAVERA's own height filter.",
  "resources": [], "open": ["uncertainty.py", "kalman.py"], "check_timeout_s": 90}

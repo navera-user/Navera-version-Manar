@@ -89,8 +89,9 @@ def _():
 
 
 @c.test("TODO 3 — harris_corners() finds the 4 corners of a square, strongest first, no duplicates",
-        hint="Local maximum: R == cv2.dilate(R, np.ones((2r+1, 2r+1), np.uint8)). Keep R > rel_threshold·R.max(). "
-             "np.nonzero gives (rows, columns) = (y, x): return (x, y). Sort with np.argsort(-R[ys, xs]).")
+        hint="Non-maximum suppression (lesson): a corner is a pixel equal to the maximum of its neighbourhood of "
+             "radius r AND above rel_threshold times the strongest response. numpy gives (rows, columns) = (y, x), "
+             "but the function returns (x, y); sort by decreasing response.")
 def _():
     (hc,) = need(F(), "harris_corners")
     pts = np.asarray(hc(square(), n=4), np.float64)
@@ -162,8 +163,9 @@ def _():
 
 
 @c.test("TODO 7 — project() applies H (also a perspective H); repeatability() on simple cases",
-        hint="project: [x, y, 1] @ H.T then divide the first two columns by the third. repeatability: only A points "
-             "projected INSIDE B count (0 ≤ x < w, 0 ≤ y < h); the result is repeated / inside.")
+        hint="project: use homogeneous coordinates and do not forget the division by the third coordinate (a "
+             "perspective H has a non-zero last row). repeatability: only A points that land INSIDE image B count, "
+             "both in the numerator and in the denominator.")
 def _():
     pr, rep = need(F(), "project", "repeatability")
     H = np.array([[2.0, 0, 10], [0, 2.0, -5], [0.001, 0, 1]])
@@ -262,7 +264,7 @@ def quotes(text, v):
 
 
 @c.test("report.md — four sections, each answered with your own numbers",
-        hint="Use the template of Step 8: '## 1. Scale', '## 2. Descriptors', '## 3. Terrain', '## 4. World'. "
+        hint="Use the template of Step 9: '## 1. Scale', '## 2. Descriptors', '## 3. Terrain', '## 4. World'. "
              "Each section needs at least 40 words; quote the numbers from YOUR results.json "
              "(e.g. 0.32 or 32 %).")
 def _():

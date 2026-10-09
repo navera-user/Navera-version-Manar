@@ -208,8 +208,9 @@ centre about
 Δx ≈ H · tan(δθ)            and with a rotation rate ω and a time error δt:   δθ ≈ ω · δt
 ```
 
-**Worked example (coastal survey).** H = 150 m, roll rate ω = 25 °/s, and NAVERA uses the attitude
-of the grab instead of the exposure, so δt = 0.138 s:
+**Worked example (coastal survey).** H = 150 m, roll rate ω = 25 °/s. Suppose a program used the
+attitude at the **grab** instead of the **exposure** (NAVERA does not: `live_camera.py` reads the
+attitude at grab time − `capture_latency_s`), so δt = 0.138 s:
 
 ```
 δθ = 25 × 0.138 = 3.45°      Δx = 150 × tan(3.45°) = 150 × 0.0603 ≈ 9.0 m
@@ -293,7 +294,7 @@ peregrine falcons attacking showed that they steer with **proportional navigatio
 guidance law of many missiles: they turn in proportion to how fast the line of sight to the
 prey rotates. In effect they aim at where the prey **will be**, not at the old image of where
 it was. **Eleonora's falcon** shows how much timing matters. It breeds on small islands in the
-Mediterranean, from Greece to the Canary Islands. It raises its chicks late in the summer,
+Mediterranean, from Greece westwards, and on the Canary Islands in the Atlantic Ocean. It raises its chicks late in the summer,
 when small songbirds migrate across the sea from Europe to Africa in autumn, and it catches
 them in flight over the water.
 

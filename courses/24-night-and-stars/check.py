@@ -274,8 +274,10 @@ def _():
     im = cv2.imread("thermal_vs_map.png")
     c.ok(im is not None and im.shape[1] > 3 * im.shape[0], "thermal_vs_map.png is not 3 pictures side by side")
     r = results().get("thermal", {})
-    c.eq(r.get("twin_offsets"), [8], "the twin offsets (day number - night number, mod 30) in results.json")
-    c.eq(r.get("gate_decisions"), [True, False, True], "the motion gate decisions in results.json")
+    c.ok(r.get("twin_offsets") == [8], "the twin offsets in results.json are not right yet: check TODO 15 "
+                                        "(find_day_twin) and look at the twin table again")
+    c.ok(r.get("gate_decisions") == [True, False, True], "the motion gate decisions in results.json are not "
+                                                          "right yet: check TODO 13 (Step 9)")
 
 
 SECTIONS = ["Sidereal time", "Polaris", "Error budget", "Night geometry", "The night replay set"]

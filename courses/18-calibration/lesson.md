@@ -44,7 +44,7 @@ r = sqrt(a² + b²) = tan θ          so, in pixels:   r_px = f · tan θ
 ```
 
 The pinhole has one beautiful property: **straight lines in the world stay straight in the image**
-(the projection is linear in homogeneous coordinates). Homographies (lesson 22) depend on it.
+(the projection is linear in homogeneous coordinates). Homographies (lesson 21) depend on it.
 
 But look at tan θ as θ grows:
 
@@ -131,9 +131,9 @@ u = 660.48 · 0.4743 + 937.06 = 1250.35 px
 v = 721.40 · 0.2372 + 317.66 =  488.75 px
 ```
 
-An ideal pinhole with the same K would give (1267.3, 498.0): already **17 px** away at only 29° off
+An ideal pinhole with the same K would give (1267.3, 498.0): already **19 px** away (√(16.95² + 9.25²) = 19.3 px) at only 29° off
 the axis. At 150 m above the ground, one pixel of NAVERA's straightened picture covers about 0.23 m,
-so ignoring the distortion would move this point by about 4 m on the ground — and much more near
+so ignoring the distortion would move this point by about 4.4 m on the ground — and much more near
 the edges.
 
 > [!WARNING]
@@ -148,7 +148,7 @@ A calibration estimates the **intrinsic** parameters, which belong to the camera
 - Brown–Conrady: fx, fy, cx, cy and k1, k2, p1, p2, k3 (9 numbers).
 
 But each photo of the board is taken from an unknown place, so each view also adds 6 **extrinsic**
-parameters: a rotation R_i (3 numbers, stored as a Rodrigues vector `rvec`) and a translation t_i
+parameters: a rotation R_i (3 numbers, stored as a **Rodrigues vector** `rvec`: a 3-D vector whose direction is the rotation axis and whose length is the rotation angle in radians; `cv2.Rodrigues(rvec)` turns it into the 3 × 3 matrix R) and a translation t_i
 (3 numbers, `tvec`). With N views of a 9 × 6 board:
 
 ```
@@ -177,7 +177,7 @@ s · [u, v, 1]ᵀ = K [r1  r2  r3  t] [X, Y, 0, 1]ᵀ = K [r1  r2  t] [X, Y, 1]�
 ```
 
 where r1, r2 are the first two columns of R and s is an unknown scale. Each view gives one H
-(8 numbers up to scale), which can be estimated from the corners by the **DLT** method (lesson 22).
+(8 numbers up to scale), which can be estimated from the corners by the **DLT** method (lesson 21).
 Write H = [h1 h2 h3]. Since H = λ K [r1 r2 t], we have r1 = K⁻¹h1/λ and r2 = K⁻¹h2/λ. The columns of a
 rotation are orthogonal and have the same length, so:
 
@@ -449,6 +449,7 @@ to stop with a clear message.
 |---|---|
 | **intrinsic parameters** | the camera's own numbers: fx, fy, cx, cy and the distortion coefficients |
 | **extrinsic parameters** | the pose of the board in one view: rotation (rvec) and translation (tvec) |
+| **Rodrigues vector** | a rotation stored as 3 numbers: direction = rotation axis, length = angle (radians) |
 | **distortion** | the difference between the real image and an ideal pinhole image |
 | **Brown–Conrady model** | pinhole + radial (k1, k2, k3) and tangential (p1, p2) corrections in r = tan θ |
 | **radial / tangential distortion** | displacement along the radius / perpendicular to it (lens tilted or off-centre) |

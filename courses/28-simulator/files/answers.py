@@ -1,9 +1,5 @@
 # Lesson 28 — short answers (graded by the check).
 
-# Set this to True ONLY if Sim Lite cannot be used (e.g. a browser too old to run it, teacher's decision):
-# the check about your own Sim Lite run (Part E) is then skipped. Everything else is graded the same.
-NO_SIMULATOR = False
-
 # Q1. GPS-off flight (campaign/off_target_events.log): the fault is injected at 12:53:26 and NAVERA
 #     reports DAY VISION at 12:53:29. What is the switch latency in seconds (a number)?
 #     (Compare with what campaign.py measured from the 1 Hz CSV — the report asks you to explain.)

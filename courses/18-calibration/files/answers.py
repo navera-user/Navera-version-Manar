@@ -18,7 +18,7 @@ Q2 = ""
 # Q3. The calibration file was made for the 1920x540 top half. Someone sets the camera to
 #     1280x720. What happens?
 #   a) nothing, the lens is the same so the file still works
-#   b) K is in pixels of 1920x540, so it is wrong now: live_camera.py refuses the file and the
+#   b) NAVERA divides everything by 2 automatically
+#   c) K is in pixels of 1920x540, so it is wrong now: live_camera.py refuses the file and the
 #      camera must be calibrated again at the new size
-#   c) NAVERA divides everything by 2 automatically
 Q3 = ""
