@@ -133,8 +133,21 @@ $('uc').addEventListener('input', () => {
 $('fIn').onsubmit = async (ev) => {
   ev.preventDefault(); err();
   const r = await fetch('/api/login', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name: $('n').value, password: $('p').value})});
-  const d = await r.json(); r.ok ? go(d) : err(d.error || 'Error');
+  const d = await r.json(); r.ok ? go(d) : (d.wait && d.why !== 'ceiling' ? countdown(d) : err(d.error || 'Error'));
 };
+let tick = null;
+function countdown(d) {        // "wait 25 seconds" counts down; the button comes back at 0
+  clearInterval(tick); const end = Date.now() + d.wait * 1000, btn = $('fIn').querySelector('.go');
+  const show = () => {
+    const s = Math.ceil((end - Date.now()) / 1000);
+    if (s <= 0) { clearInterval(tick); btn.disabled = false; err('You can try again now.'); return; }
+    btn.disabled = true;
+    err(d.why === 'account' ? `Several wrong passwords — try again in ${s} s.`
+        : `Too many wrong passwords on this ${d.why === 'network' ? 'network' : 'computer'} — try again in ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}.`);
+  };
+  show(); tick = setInterval(show, 1000);
+}
+$('n').addEventListener('input', () => { clearInterval(tick); $('fIn').querySelector('.go').disabled = false; });   // another account
 $('fUp').onsubmit = async (ev) => {
   ev.preventDefault(); err();
   const r = await fetch('/api/signup', {method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -144,7 +157,12 @@ $('fUp').onsubmit = async (ev) => {
 };
 // 2. Google / GitHub (work once the teacher has configured them)
 fetch('/api/auth/options').then(r => r.json()).then(o => {
-  if (!o.signup) { $('tabUp').style.display = 'none'; }
+  if (!o.signup) {   // closed for students; a teacher with the invitation code can still create an account
+    $('tabUp').textContent = 'Teacher account';
+    document.querySelector('.who button[data-k="teacher"]').click();
+    document.querySelector('.who').style.display = 'none';
+    $('inviteRow').querySelector('p').textContent = 'Students: your teacher creates your account.';
+  }
   NEED_CLASS = !!o.need_class;
   if (!NEED_CLASS) { $('codeRow').style.display = 'none'; $('whoS').textContent = 'I learn NAVERA'; $('upGo').textContent = 'Create my account →'; }
   // opened from a class QR code / join link: straight to "Create account", code filled in

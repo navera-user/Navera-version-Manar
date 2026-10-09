@@ -84,7 +84,7 @@ def save_logo(data):
     from PIL import Image
     im = Image.open(io.BytesIO(data))
     if im.format not in ("PNG", "JPEG"):
-        raise ValueError("the logo must be a PNG or JPEG picture")
+        raise ValueError("The logo must be a PNG or JPEG picture.")
     im = im.convert("RGBA")
     im.thumbnail((800, 400))
     im.save(LOGO, "PNG")
@@ -178,6 +178,7 @@ def join_problem(c, students_in_class):
 # ---------------------------------------------------------------- Excel export (a minimal .xlsx, no extra library)
 def xlsx(rows, sheet="Students"):
     """rows: list of lists (first row = header). Numbers stay numbers; everything else is text."""
+    sheet = re.sub(r"[\[\]:*?/\\]", " ", sheet).strip("' ")[:31] or "Students"   # Excel refuses these in a sheet name
     def cell(v, r, c):
         ref = f"{_col(c)}{r}"
         if isinstance(v, (int, float)) and not isinstance(v, bool):

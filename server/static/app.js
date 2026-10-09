@@ -49,8 +49,8 @@ const esc = (s) => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;
 async function init() {
   Object.assign(ME, await api('/api/me'));
   $('uname').textContent = ME.display;
-  $('uinfo').innerHTML = `Logged in as <b>${esc(ME.name)}</b> · ROS domain ${ME.domain}` +
-    (ME.base ? `<br>NAVERA base: ${esc(ME.base.subject.slice(0, 60))}` : '');
+  $('uinfo').innerHTML = `Logged in as <b>${esc(ME.name)}</b>` + (ME.staff ? ` · ROS domain ${ME.domain}` +
+    (ME.base ? `<br>NAVERA base: ${esc(ME.base.subject.slice(0, 60))}` : '') : '');
   if (ME.staff) { $('mTeacher').style.display = ''; $('opTab').style.display = ''; }   // full simulator: teachers and admins only
   if (AS) { $('asBanner').style.display = ''; $('asBanner').textContent = 'viewing ' + AS; }
   const c = await api('/api/courses');
@@ -180,7 +180,8 @@ async function showHome() {
   const r = rankFor(passed), xp = passed * XP_PER_MISSION;
   const pct = r.next === null ? 100 : Math.max(3, Math.round(100 * (passed - r.from) / (r.next - r.from)));
   const b = badgesHTML(COURSES);
-  const headline = passed === 0 ? `Find your way<br>when the <i>sky goes quiet.</i>` : `Welcome back,<br><i>${esc(first)}.</i>`;
+  const headline = AS ? `Viewing the work of<br><i>${esc(AS)}.</i>`
+    : passed === 0 ? `Find your way<br>when the <i>sky goes quiet.</i>` : `Welcome back,<br><i>${esc(first)}.</i>`;
   const text = passed === 0
     ? `Every autumn, swallows cross seas and deserts without a single satellite — landmarks, the sun, the stars and an inner compass, each checked against the others. In ${COURSES.length} missions you will build the same skills for machines, on NAVERA's real code.`
     : passed === COURSES.length ? `All ${COURSES.length} missions complete — ${xp} XP. You have rebuilt the ideas behind NAVERA one by one.`
@@ -369,6 +370,7 @@ $('checkBtn').onclick = async () => {
     $('rimg').src = '/static/img/' + (r.passed ? 'navi-cheer' : partly ? 'navi-think' : 'navi-oops') + '.svg';
     $('rscore').textContent = r.score ? `${r.score.passed}/${r.score.total}` : (r.passed ? '✔' : '✘');
     $('rhead').innerHTML = r.passed ? 'Mission checks passed<small>Every check is green — well flown.</small>'
+      : /syntax error|SyntaxError|IndentationError/.test(r.output || '') ? 'A file does not run yet<small>Python found a syntax error — the ✘ line below gives the file and line number.</small>'
       : partly ? 'Almost there<small>Read the ✘ lines and their hints below, fix, save and check again.</small>'
       : 'Not yet<small>Start with the first ✘ line — its hint tells you where to look.</small>';
     $('rout').innerHTML = (r.output.trim() || '(no output)').split('\n').map(line => {
@@ -384,6 +386,16 @@ $('checkBtn').onclick = async () => {
       celebrate(before, COURSES.filter(c => c.progress.status === 'passed').length);
     }
     const l = await api('/api/lesson/' + LESSON.id); LESSON.progress = l.progress; setStatus(l.progress);
+    if (r.passed) {         // the way on: straight to the next mission
+      const i = COURSES.findIndex(c => c.id === LESSON.id), nx = COURSES[i + 1];
+      if (nx && !nx.locked_until) {
+        const b2 = document.createElement('button'); b2.className = 'primary'; b2.style.margin = '10px 0 4px';
+        b2.textContent = `Next mission → ${nx.number} · ${nx.title}`; b2.onclick = () => openLesson(nx.id);
+        $('rout').prepend(b2);
+      } else if (nx && nx.locked_until) {
+        const w = document.createElement('div'); w.className = 'sum'; w.textContent = `The next leg opens on ${nx.locked_until}.`; $('rout').prepend(w);
+      }
+    }
   } catch (e) { toast(e.message); }
   b.disabled = false; b.textContent = '✔ Check my work';
 };
@@ -546,7 +558,7 @@ const Editor = {
         await this.init();
         const uri = monaco.Uri.file('/' + path);
         const model = monaco.editor.getModel(uri) || monaco.editor.createModel(d.content, undefined, uri);
-        const f = {model, saved: model.getAlternativeVersionId()};
+        const f = {model, saved: model.getAlternativeVersionId(), mtime: d.mtime};
         model.onDidChangeContent(() => { this.renderTabs(); Tip.once('first-edit'); });
         this.files[path] = f;
       }
@@ -584,8 +596,27 @@ const Editor = {
     const f = this.files[p];
     if (!f || f.img) return;
     const v = f.model.getAlternativeVersionId();
-    try { await api('/api/file', {method: 'PUT', body: {path: p, content: f.model.getValue()}}); f.saved = v; this.renderTabs(); }
-    catch (e) { toast('Not saved: ' + e.message); }
+    const put = (force) => fetch(withAs('/api/file'), {method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({path: p, content: f.model.getValue(), mtime: f.mtime, force})});
+    try {
+      let r = await put(false), d = await r.json().catch(() => ({}));
+      if (r.status === 409 && d.conflict) {
+        const ch = await modal('Changed outside the editor', `<p><b>${esc(p)}</b> was changed on disk (by a terminal command or a
+          program) after you opened it. Which version do you keep?</p>`, [['Cancel', 0], ['Load the disk version', 1], ['Keep mine (overwrite)', 2, 'primary']]);
+        if (ch === 1) { await this.reload(p); return; }
+        if (ch !== 2) return;
+        r = await put(true); d = await r.json().catch(() => ({}));
+      }
+      if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+      f.saved = v; f.mtime = d.mtime; this.renderTabs();
+    } catch (e) { toast('Not saved: ' + e.message); }
+  },
+  async reload(p) {          // take the disk version of an open file
+    const f = this.files[p]; if (!f || f.img) return;
+    let d; try { d = await api('/api/file?path=' + encodeURIComponent(p)); } catch (e) { return; }
+    if (d.binary) return;
+    if (d.content !== f.model.getValue()) f.model.setValue(d.content);
+    f.saved = f.model.getAlternativeVersionId(); f.mtime = d.mtime; this.renderTabs();
   },
   async saveAll() { for (const p of Object.keys(this.files)) if (this.dirty(p)) await this.save(p); },
   async close(p) {
@@ -610,9 +641,16 @@ const Editor = {
     if (!this.current) { $('monaco').style.display = 'none'; $('imgview').style.display = 'none'; $('edEmpty').style.display = ''; }
     this.renderTabs();
   },
-  async reloadIfClean(p) { /* after a run, files may have changed on disk */ },
+  async reloadIfClean(p) {     // a file changed by a terminal command shows the new content (if not being edited)
+    const f = this.files[p]; if (!f || f.img || this.dirty(p)) return;
+    let d; try { d = await api('/api/file?path=' + encodeURIComponent(p)); } catch (e) { return; }
+    if (d.binary || d.mtime === f.mtime || this.dirty(p)) return;
+    if (d.content !== f.model.getValue()) f.model.setValue(d.content);
+    f.saved = f.model.getAlternativeVersionId(); f.mtime = d.mtime; this.renderTabs();
+  },
 };
 function openFile(p, focus) { return Editor.open(p, focus); }
+setInterval(() => { if ($('work').style.display !== 'none' && !document.hidden) Object.keys(Editor.files).forEach(p => Editor.reloadIfClean(p)); }, 3000);
 window.addEventListener('beforeunload', (e) => {
   if (Object.keys(Editor.files).some(p => Editor.dirty(p))) { e.preventDefault(); e.returnValue = ''; }
 });

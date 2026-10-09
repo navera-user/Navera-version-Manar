@@ -4,7 +4,7 @@
 <link rel="icon" href="/static/img/navi-mark-gold.svg">
 <link rel="stylesheet" href="/static/style.css">
 <style>
-  html, body { height: auto; } html, body { background: linear-gradient(180deg, #0b1730, #16395a 45%, #1d4e6b 70%, #e6928a); min-height: 100%; }
+  html { background: #0b1730; } body { min-height: 100vh; margin: 0; background: linear-gradient(180deg, #0b1730, #16395a 45%, #1d4e6b 70%, #e6928a) fixed; }
   body { overflow: auto; font-family: Inter, sans-serif; color: #14202b; }
   .wrapw { max-width: 520px; margin: 0 auto; padding: 40px 16px 60px; }
   .brand { display: flex; gap: 10px; align-items: center; color: #fff; font-weight: 600; letter-spacing: 3px; font-size: 13px; text-transform: uppercase; margin-bottom: 18px; }
@@ -38,7 +38,7 @@
       <input type="file" id="logo" accept="image/png,image/jpeg" style="display:none">
       <label for="dn">Your full name</label><input id="dn" autocomplete="name">
       <div class="two"><div><label for="em">E-mail</label><input id="em" type="email" autocomplete="email"></div>
-        <div><label for="pw">Password</label><input id="pw" type="password" autocomplete="new-password" placeholder="8+ characters"></div></div>
+        <div><label for="pw">Password</label><input id="pw" type="password" autocomplete="new-password" placeholder="10+ characters"></div></div>
       <button class="go">Create my academy →</button>
     </form>
     <div class="err" id="e"></div>
@@ -50,6 +50,7 @@
     <p class="s">Give this <b>teacher invitation code</b> to your teachers: they choose <b>Create account → I'm a teacher</b> and type it.
       Without it, their account waits for your approval.</p>
     <div class="code" id="tcode">—</div>
+    <p class="s" id="logoMsg" style="color:#b0453a;font-weight:600"></p>
     <p class="s">Teachers then create their classes and print a poster with a code and QR code for their students.</p>
     <button class="go" onclick="location.href='/teacher'">Open my admin page →</button>
   </div>
@@ -69,7 +70,13 @@ $('f').onsubmit = async (ev) => {
     setup_code: $('sc').value, org: $('org').value, display: $('dn').value, email: $('em').value, password: $('pw').value})});
   const d = await r.json().catch(() => ({}));
   if (!r.ok) { $('e').textContent = d.error || 'Error'; return; }
-  if (logoFile) await fetch('/api/admin/org/logo', {method: 'POST', body: logoFile}).catch(() => {});
+  let logoMsg = '';
+  if (logoFile) {
+    const lr = await fetch('/api/admin/org/logo', {method: 'POST', body: logoFile}).catch(() => null);
+    if (!lr || !lr.ok) logoMsg = ((lr && (await lr.json().catch(() => ({}))).error) || 'The logo could not be saved') +
+      ' — add it later from your admin page (Organisation).';
+  }
+  $('logoMsg').textContent = logoMsg;
   const o = await (await fetch('/api/admin/org')).json().catch(() => ({}));
   $('tcode').textContent = o.teacher_code || '—';
   $('w1').style.display = 'none'; $('w2').style.display = '';

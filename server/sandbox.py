@@ -47,10 +47,15 @@ def student_env(name, index, heavy=False, domain=None):
 
 
 def bwrap_argv(name, home, index, command, resources=(), heavy=False, writable_base=None, extra_ro=(),
-               interactive=False, domain=None):
-    """argv that runs `command` (list) in the student's sandbox."""
+               interactive=False, domain=None, host_net=False):
+    """argv that runs `command` (list) in the student's sandbox. Without host_net (students) it has its
+    own network with only a loopback: ROS between the student's own nodes works, but nothing on the
+    Jetson (the academy itself, SSH, other students, the teacher's simulator) and no internet is
+    reachable. Staff keep the Jetson's network: the full simulator must be reachable by the academy."""
     a = ["bwrap", "--die-with-parent", "--unshare-pid", "--unshare-ipc", "--unshare-uts",
          "--hostname", "navera"]
+    if not host_net:
+        a += ["--unshare-net"]
     if not interactive:          # a terminal keeps its tty (job control, Ctrl-C)
         a += ["--new-session"]
     for d in ("/usr", "/etc", "/opt", "/var/lib", "/sys", "/snap"):

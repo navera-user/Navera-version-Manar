@@ -29,7 +29,7 @@ if(window.EventSource){var E=window.EventSource;window.EventSource=function(u,c)
 var S=Element.prototype.setAttribute;Element.prototype.setAttribute=function(n,v){if(n==='src'||n==='href')v=f(v);return S.call(this,n,v)};
 })();</script>"""
 
-_ATTR = re.compile(r"""((?:src|href|action)\s*=\s*["'])/(?!/)""")
+_ATTR = re.compile(r"""((?:src|href|action)\s*=\s*["'])/(?!/|web/)""")   # not '//' and not already '/web/'
 
 
 START_HELP = ("Take <b>Full mission simulator</b> in the Hardware menu, open a new terminal and run "

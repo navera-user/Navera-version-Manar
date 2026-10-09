@@ -15,12 +15,22 @@
   <h1>Your teacher account is waiting</h1>
   <p>The administrator of <b id="org">this academy</b> needs to approve it. You will be able to create your classes as soon as
     they do — just come back and reload this page.</p>
-  <p style="font-size:13.5px">Have a teacher invitation code? Ask your administrator to approve you, or create the account again with the code.</p>
-  <div class="row"><button class="primary" onclick="location.reload()">⟳ Check again</button><button id="out">Sign out</button></div>
+  <form id="cf" class="row" style="margin-top:14px"><input id="code" placeholder="Invitation code, e.g. T-4M9-P2XQ" autocomplete="off"
+      style="text-transform:uppercase;flex:1;min-width:200px;font-size:16px"><button class="primary">Use the code</button></form>
+  <p style="font-size:13.5px;margin:6px 0 0">Have the teacher invitation code from your administrator? Type it: your account opens at once.</p>
+  <div id="ce" style="color:#c23b4a;font-weight:600;min-height:20px;margin-top:6px"></div>
+  <div class="row"><button onclick="location.reload()">⟳ Check again</button><button id="out">Sign out</button></div>
 </div>
 <script>
 fetch('/api/me').then(r => r.json()).then(m => { if (m.org) document.getElementById('org').textContent = m.org;
   if (m.status !== 'pending') location.href = m.staff ? '/teacher' : '/'; }).catch(() => {});
+document.getElementById('cf').onsubmit = async (ev) => {
+  ev.preventDefault();
+  const r = await fetch('/api/pending/code', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({code: document.getElementById('code').value})});
+  const d = await r.json().catch(() => ({}));
+  if (r.ok) location.href = '/teacher'; else document.getElementById('ce').textContent = d.error || 'Error';
+};
 document.getElementById('out').onclick = async () => { await fetch('/api/logout', {method: 'POST'}); location.href = '/'; };
 </script>
 </body></html>

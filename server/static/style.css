@@ -56,6 +56,9 @@ body.at-home.scrolled .top { background: rgba(18,23,43,.92); backdrop-filter: bl
 .menu { position: absolute; right: 16px; top: 62px; background: #fff; color: var(--ink); border: 1px solid var(--line); border-radius: 18px;
   box-shadow: 0 24px 60px rgba(5,15,30,.22); min-width: 290px; padding: 8px; display: none; z-index: 20; }
 .menu.open { display: block; }
+.top .menu button { background: #fff; color: var(--ink); border: 1px solid var(--line); }   /* white menu: not the dark bar's style */
+.top .menu button:hover { background: var(--sky-2); border-color: var(--gold-2); }
+.top .menu button.primary, .top .menu button.go { background: linear-gradient(135deg, #ff9f8a, #e8706a); color: #2a0d08; border: none; }
 .menu .item { padding: 10px 12px; border-radius: 12px; cursor: pointer; display: flex; justify-content: space-between; gap: 10px; align-items: center; font-size: 14.5px; }
 .menu .item:hover { background: var(--sky-2); }
 .menu .sep { height: 1px; background: var(--line); margin: 6px 0; }
@@ -292,7 +295,8 @@ iframe.web { flex: 1; border: 0; background: #fff; width: 100%; }
   #userBtn { padding: 6px 12px; flex: none; }
   .webbar input { display: none; } .webbar { flex-wrap: wrap; } .webbar #opOpen, .simacts #simOpen { display: none; }
   .tools .tabs { overflow-x: auto; } .tools .tabs .tab { white-space: nowrap; } .simacts { display: none !important; }
-  .notebook { height: 45%; }
+  /* the reading and the tools each get a full screen; the page scrolls from one to the other */
+  .work { height: auto; } .notebook { height: calc(100svh - 62px); } .tools { height: calc(100svh - 62px); flex: none; }
   .tree { width: 120px; font-size: 13px; }
 }
 

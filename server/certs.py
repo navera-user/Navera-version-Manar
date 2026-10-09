@@ -138,5 +138,6 @@ def qr_svg(url):
     import io
     import segno
     buf = io.BytesIO()
-    segno.make(url, error="m").save(buf, kind="svg", scale=4, border=0, dark="#0b1730", xmldecl=False, svgns=True)
+    segno.make(url, error="m").save(buf, kind="svg", scale=4, border=0, dark="#0b1730", xmldecl=False, svgns=True,
+                           omitsize=True)   # viewBox only: the page sets the size
     return buf.getvalue().decode()

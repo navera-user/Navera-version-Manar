@@ -12,6 +12,8 @@ import os
 import pty
 import re
 import secrets
+import unicodedata
+import urllib.parse
 import select
 import shutil
 import signal
@@ -171,7 +173,7 @@ def ensure_teacher():
 
 
 # ---------------------------------------------------------------- auth
-PENDING_OK = {"api_me", "api_password", "api_prefs_get", "api_prefs_set"}
+PENDING_OK = {"api_me", "api_password", "api_prefs_get", "api_prefs_set", "api_pending_code"}
 
 
 def login_required(role=None):
@@ -210,11 +212,12 @@ def sandbox_user():
     return name, u
 
 
-_fails = {}           # ("dev:", "ip:", "user:" or "setup:" key) -> [times of wrong passwords]
-LOGIN_FAILS = 10      # wrong passwords allowed per 15 minutes on one device (browser) before it waits
+_fails = {}           # ("dev:", "ip:", "acc:", "user:" or "setup:" key) -> [times of wrong passwords]
+LOGIN_FAILS = 30      # wrong passwords on one browser (any accounts) before it waits: stops guessing many accounts
 NETWORK_FAILS = 100   # per network address: a whole school shares one, so only a high ceiling against robots
-ACCOUNT_FAILS = 5     # after this many on one account, that account allows one try per ACCOUNT_PAUSE seconds
-ACCOUNT_PAUSE = 30    # (an account is slowed down, never locked: nobody can lock a student out by guessing)
+ACCOUNT_FAILS = 5     # on one account FROM ONE BROWSER: then that browser gets one try per ACCOUNT_PAUSE s
+ACCOUNT_PAUSE = 30    # (keyed per browser, so a classmate's wrong tries never block the student's own browser)
+ACCOUNT_CEILING = 50  # on one account from all browsers in 15 min: a real attack — the teacher resets it
 DEVICE_COOKIE = "nav_dev"
 
 
@@ -225,19 +228,21 @@ def _recent(k, now=None):
 
 
 def _too_many_fails(*keys):
-    return any(len(_recent(k)) >= LOGIN_FAILS for k in keys)
+    return any(len(_recent(k)) >= 10 for k in keys)
 
 
-def _login_wait(dev, ip, name):
+def _login_wait(dev, ip, acc_dev, acc):
     """Seconds this sign-in must wait (0 = may try now), and why."""
     now = time.time()
+    if len(_recent(acc, now)) >= ACCOUNT_CEILING:
+        return int(900 - (now - _fails[acc][0])) + 1, "ceiling"
     if len(_recent(dev, now)) >= LOGIN_FAILS:
         return int(900 - (now - _fails[dev][0])) + 1, "device"
     if len(_recent(ip, now)) >= NETWORK_FAILS:
         return int(900 - (now - _fails[ip][0])) + 1, "network"
-    acc = _recent(name, now)
-    if len(acc) >= ACCOUNT_FAILS and now - acc[-1] < ACCOUNT_PAUSE:
-        return int(ACCOUNT_PAUSE - (now - acc[-1])) + 1, "account"
+    f = _recent(acc_dev, now)
+    if len(f) >= ACCOUNT_FAILS and now - f[-1] < ACCOUNT_PAUSE:
+        return int(ACCOUNT_PAUSE - (now - f[-1])) + 1, "account"
     return 0, ""
 
 
@@ -258,24 +263,27 @@ def api_login():
         return r
 
     dev, ip, acc = "dev:" + dev_id, "ip:" + (request.remote_addr or "?"), "user:" + name
-    wait, why = _login_wait(dev, ip, acc)
+    acc_dev = f"acc:{name}|{dev_id}"
+    wait, why = _login_wait(dev, ip, acc_dev, acc)
     if wait:
-        if why == "account":
-            msg = f"Several wrong passwords for this account — wait {wait} seconds and try again."
-        else:
-            msg = f"Too many wrong passwords — wait {max(1, round(wait / 60))} min, or ask your teacher for a new password."
-        return reply({"error": msg, "wait": wait}, 429)
+        mins = max(1, round(wait / 60))
+        msg = {"account": f"Several wrong passwords — wait {wait} seconds and try again.",
+               "device": f"Too many wrong passwords on this computer — wait {mins} min.",
+               "network": f"Too many wrong passwords from this network — wait {mins} min.",
+               "ceiling": "This account is protected after many wrong passwords — ask your teacher for a new password."}[why]
+        return reply({"error": msg, "wait": wait, "why": why}, 429)
     all_users = users()
     if name not in all_users and "@" in name:                     # sign in with the e-mail address too
         name = next((k for k, v in all_users.items() if (v.get("email") or "").lower() == name), name)
     u = all_users.get(name)
     if not u or not u.get("pw") or not check_password_hash(u["pw"], d.get("password") or ""):
         now = time.time()
-        for k in (dev, ip, acc):
+        for k in (dev, ip, acc_dev, acc):
             _fails[k].append(now)
         time.sleep(0.7)
         return reply({"error": "Wrong name or password"}, 401)
-    _fails.pop(dev, None)                 # a right password clears this device's count
+    _fails.pop(dev, None)                 # a right password clears this browser's counts
+    _fails.pop(acc_dev, None)
     session.clear()
     session["user"] = name
     session.permanent = True
@@ -302,8 +310,15 @@ def oauth_conf():
     return c, {p: ok(p) for p in OAUTH}
 
 
+def _text(v, n=80):
+    """A name typed by someone: one line, no invisible/direction-changing characters (U+202E…)."""
+    v = "".join(ch for ch in str(v or "") if unicodedata.category(ch) not in ("Cc", "Cf", "Co", "Cs"))
+    return re.sub(r"\s+", " ", v).strip()[:n]
+
+
 def new_student(display, email=None, password=None, provider=None, provider_id=None, klass=None, role="student", status=None):
     """Create an account (login name derived from the e-mail) and its sandbox. Returns the login name."""
+    display = _text(display, 60)
     with _lock:
         u = users()
         used = {v["index"] for v in u.values()}
@@ -383,11 +398,13 @@ def page_join(code):
 
 @app.post("/api/signup")
 def api_signup():
-    if not settings()["allow_signup"]:
-        return jsonify(error="Account creation is closed. Ask your teacher for an account."), 403
     d = request.get_json(force=True)
     kind = "teacher" if d.get("kind") == "teacher" else "student"
-    display = re.sub(r"\s+", " ", (d.get("display") or "")).strip()[:60]
+    invite = re.sub(r"[^A-Z0-9]", "", (d.get("invite_code") or "").upper())
+    if not settings()["allow_signup"] and not (kind == "teacher" and invite):
+        return jsonify(error="Account creation is closed. Ask your teacher for an account." if kind == "student" else
+                       "Account creation is closed: teachers need the invitation code from the administrator."), 403
+    display = _text(d.get("display"), 60)
     email = (d.get("email") or "").strip().lower()
     pw = d.get("password") or ""
     if len(display) < 2:
@@ -410,9 +427,12 @@ def api_signup():
             return jsonify(error=err), 400
         klass = c["id"] if c else None
     else:
-        code = re.sub(r"[^A-Z0-9]", "", (d.get("invite_code") or "").upper())
-        good = re.sub(r"[^A-Z0-9]", "", orgs.org().get("teacher_code", ""))
-        status = "active" if code and good and secrets.compare_digest(code, good) else "pending"
+        status = _teacher_code_status(invite)
+        if status == "wrong":
+            return jsonify(error="This invitation code is not right — check it with your administrator, or leave "
+                                 "it empty to ask for approval instead."), 400
+        if status == "slow":
+            return jsonify(error="Too many wrong invitation codes — wait 15 minutes."), 429
     try:
         name = new_student(display, email=email, password=pw, klass=klass, role=kind, status=status)
     except ValueError as e:
@@ -420,6 +440,38 @@ def api_signup():
     _signups[ip].append(now)
     session.clear(); session["user"] = name; session.permanent = True
     return jsonify(ok=True, role=kind, status=status or "active", name=name)
+
+
+def _teacher_code_status(code):
+    """'' (no code: waits for approval), 'active', 'wrong' or 'slow' (too many wrong codes from here)."""
+    if not code:
+        return "pending"
+    k = "invite:" + (request.remote_addr or "?")
+    if _too_many_fails(k):
+        return "slow"
+    good = re.sub(r"[^A-Z0-9]", "", orgs.org().get("teacher_code", ""))
+    if good and secrets.compare_digest(code, good):
+        return "active"
+    _fails[k].append(time.time())
+    return "wrong"
+
+
+@app.post("/api/pending/code")
+@login_required()
+def api_pending_code():
+    """A teacher waiting for approval types the invitation code: active at once."""
+    if request.urec.get("status") != "pending":
+        return jsonify(ok=True)
+    st = _teacher_code_status(re.sub(r"[^A-Z0-9]", "", (request.get_json(force=True).get("code") or "").upper()))
+    if st != "active":
+        return jsonify(error={"slow": "Too many wrong codes — wait 15 minutes.",
+                              "pending": "Type the invitation code."}.get(st, "This code is not right — check it "
+                                                                                "with your administrator.")), 400
+    with _lock:
+        u = users()
+        u[request.user]["status"] = "active"
+        _save("users.json", u)
+    return jsonify(ok=True)
 
 
 @app.get("/api/prefs")
@@ -615,6 +667,8 @@ def lesson_locked(name, lid):
     rec = users().get(name or "", {})
     if rec.get("role") != "student":
         return ""
+    if _load("progress.json", {}).get(name, {}).get(lid, {}).get("status"):
+        return ""                              # already started or passed: the student keeps their own work
     return orgs.leg_open_from(orgs.get(rec.get("class") or ""), lesson_leg(lid))
 
 
@@ -657,10 +711,10 @@ def course_asset(lid, fn):
     return send_from_directory(os.path.join(config.COURSES, lid, "assets"), fn)
 
 
-def run_in_sandbox(name, cmd, timeout=180, resources=(), heavy=False):
+def run_in_sandbox(name, cmd, timeout=180, resources=(), heavy=False, lid=None):
     u = users()[name]
     argv = sandbox.bwrap_argv(name, workspaces.student_home(name), u["index"], cmd,
-                              resources=resources, heavy=heavy, extra_ro=_course_mounts())
+                              resources=resources, heavy=heavy, extra_ro=_course_mounts(lid), host_net=is_staff(u))
     try:
         r = subprocess.run(argv, text=True, capture_output=True, timeout=timeout,
                            start_new_session=True, preexec_fn=_default_signals)
@@ -674,11 +728,14 @@ def _default_signals():
         signal.signal(sig, signal.SIG_DFL)
 
 
-def _course_mounts():
+def _course_mounts(lid=None):
+    """The grader of ONE mission, only while its check runs: a terminal sees no check.py (quiz keys,
+    expected values) and never the missions of a leg that is not open yet."""
+    if not lid:
+        return []
     lib = os.path.join(config.COURSES, "_lib")
     m = [(lib, "/academy/lib")] if os.path.isdir(lib) else []
-    for lid in lesson_ids():
-        m.append((os.path.join(config.COURSES, lid), f"/academy/courses/{lid}"))
+    m.append((os.path.join(config.COURSES, lid), f"/academy/courses/{lid}"))
     return m
 
 
@@ -697,7 +754,7 @@ def api_check(lid):
     code, out = run_in_sandbox(name, ["bash", "-lc",
                                       f"source ~/.bashrc >/dev/null 2>&1; cd ~/lessons/{lid} && "
                                       f"PYTHONPATH=/academy/lib:$PYTHONPATH python3 /academy/courses/{lid}/check.py"],
-                               timeout=timeout, resources=res, heavy=bool(res))
+                               timeout=timeout, resources=res, heavy=bool(res), lid=lid)
     score = None
     mres = re.findall(r"^ACADEMY_RESULT (\{.*\})$", out, re.M)
     if mres:
@@ -731,6 +788,8 @@ def api_lesson_reset(lid):
     if lid not in lesson_ids():
         abort(404)
     name, _ = sandbox_user()
+    if lesson_locked(name, lid):
+        return jsonify(error=f"This leg opens on {lesson_locked(name, lid)}."), 403
     workspaces.install_lesson(name, lid, overwrite=True)
     return jsonify(ok=True)
 
@@ -804,6 +863,10 @@ def api_file_put():
     home, p = _safe(name, d.get("path"))
     if os.path.isdir(p):
         abort(400)
+    seen = d.get("mtime")             # the version the editor loaded: refuse to overwrite a newer one silently
+    if seen is not None and not d.get("force") and os.path.exists(p) and abs(os.path.getmtime(p) - float(seen)) > 0.001:
+        return jsonify(error="This file was changed outside the editor (a terminal or a program).", conflict=True,
+                       mtime=os.path.getmtime(p)), 409
     os.makedirs(os.path.dirname(p), exist_ok=True)
     tmp = p + ".academy-tmp"
     with open(tmp, "w", encoding="utf-8") as f:
@@ -1009,6 +1072,9 @@ def _kill(t):
 def ws_term(ws):
     name = session.get("user")
     u = users().get(name) if name else None
+    origin = request.headers.get("Origin")
+    if origin and urllib.parse.urlsplit(origin).netloc != request.host:     # another site's page
+        u = None
     if not u or u.get("status") == "pending":
         ws.close()
         return
@@ -1029,7 +1095,7 @@ def ws_term(ws):
     cmd = ["bash", "-c", f"cd ~/{cwd} 2>/dev/null; exec bash --rcfile ~/.bashrc -i"]
     argv = sandbox.bwrap_argv(name, workspaces.student_home(name), u["index"], cmd,
                               resources=res, heavy="sim" in res or "camera" in res,
-                              extra_ro=_course_mounts(), interactive=True)
+                              interactive=True, host_net=is_staff(u))
     pid, fd = pty.fork()
     if pid == 0:
         try:
@@ -1131,6 +1197,11 @@ def api_admin_add():
     with _lock:
         u = users()
         used = {v["index"] for v in u.values()}
+        skipped = []
+        free = None
+        if cid:
+            c = orgs.get(cid)
+            free = int(c.get("seats") or 0) - sum(1 for v in u.values() if v.get("class") == cid)
         for line in (d.get("names") or "").splitlines():
             parts = [x.strip() for x in line.split(",")]
             name = parts[0].lower()
@@ -1139,21 +1210,25 @@ def api_admin_add():
             if not NAME_RE.match(name):
                 return jsonify(error=f"'{name}': lower-case letters, digits, _ (2–24, starts with a letter)"), 400
             if name in u:
+                skipped.append(name)
                 continue
+            if free is not None and len(created) >= free:
+                return jsonify(error=f"{c['name']} has {max(0, free)} free seat(s): add seats in its Class options "
+                                     "first (nobody was created)."), 409
             idx = next((i for i in range(1, len(config.STUDENT_DOMAINS)) if i not in used), None)
             if idx is None:
                 return jsonify(error=f"at most {len(config.STUDENT_DOMAINS) - 1} students"), 400
             used.add(idx)
             pw = parts[2] if len(parts) > 2 and parts[2] else secrets.token_urlsafe(8)
             u[name] = {"role": "student", "pw": generate_password_hash(pw), "index": idx,
-                       "display": parts[1] if len(parts) > 1 and parts[1] else name, "created": time.strftime("%Y-%m-%d %H:%M")}
+                       "display": _text(parts[1], 60) if len(parts) > 1 and parts[1] else name, "created": time.strftime("%Y-%m-%d %H:%M")}
             if cid:
                 u[name]["class"] = cid
             created.append({"name": name, "password": pw})
         _save("users.json", u)
     for c in created:
         workspaces.create_student(c["name"])
-    return jsonify(created=created)
+    return jsonify(created=created, skipped=skipped)
 
 
 @app.post("/api/admin/student/<name>")
@@ -1174,6 +1249,10 @@ def api_admin_student(name):
             if not c and not is_admin(request.urec):
                 return jsonify(error="Choose one of your classes."), 400
             if c:
+                taken = sum(1 for k, v in u.items() if v.get("class") == c["id"] and k != name)
+                if taken >= int(c.get("seats") or 0):
+                    return jsonify(error=f"{c['name']} is full ({taken} of {c.get('seats')} seats) — add seats in "
+                                         "its Class options first."), 409
                 u[name]["class"] = c["id"]
             else:
                 u[name].pop("class", None)
@@ -1183,6 +1262,7 @@ def api_admin_student(name):
             pw = secrets.token_urlsafe(8)
             u[name]["pw"] = generate_password_hash(pw)
             _save("users.json", u)
+            _fails.pop("user:" + name, None)              # the account's protection ends with a new password
             return jsonify(password=pw)
         if action == "delete":
             _kill_terminals(name)
@@ -1275,11 +1355,13 @@ def api_setup():
     if _too_many_fails(ip):
         return jsonify(error="Too many wrong codes. Wait 15 minutes."), 429
     code = re.sub(r"[^A-Z0-9]", "", (d.get("setup_code") or "").upper())
+    if not code:
+        return jsonify(error="Enter the setup code — it is on the sticker under the NAVERA box."), 400
     if not secrets.compare_digest(code, re.sub(r"[^A-Z0-9]", "", orgs.setup_code())):
         _fails[ip].append(time.time())
         return jsonify(error="This setup code is not right — it is on the sticker under the NAVERA box."), 403
-    org = re.sub(r"\s+", " ", d.get("org") or "").strip()[:80]
-    display = re.sub(r"\s+", " ", d.get("display") or "").strip()[:60]
+    org = _text(d.get("org"), 80)
+    display = _text(d.get("display"), 60)
     email = (d.get("email") or "").strip().lower()
     pw = d.get("password") or ""
     if len(org) < 2:
@@ -1288,8 +1370,9 @@ def api_setup():
         return jsonify(error="Enter your full name."), 400
     if not EMAIL_RE.match(email):
         return jsonify(error="Enter a valid e-mail address."), 400
-    if len(pw) < 8:
-        return jsonify(error="The password needs at least 8 characters."), 400
+    if len(pw) < 10 or pw.isdigit() or len(set(pw)) < 5:
+        return jsonify(error="The administrator password needs at least 10 characters, not only digits "
+                             "(it controls the whole academy)."), 400
     name = new_student(display, email=email, password=pw, role="admin")
     orgs.save_org(name=org)
     session.clear(); session["user"] = name; session.permanent = True
@@ -1323,7 +1406,7 @@ def api_admin_org_set():
             os.remove(orgs.LOGO)
         orgs.save_org(logo=False)
         return jsonify(ok=True)
-    name = re.sub(r"\s+", " ", d.get("name") or "").strip()[:80]
+    name = _text(d.get("name"), 80)
     if len(name) < 2:
         return jsonify(error="Enter the name of your organisation."), 400
     orgs.save_org(name=name)
@@ -1364,7 +1447,7 @@ def api_classes():
 def _class_fields(d):
     f = {}
     if "name" in d:
-        f["name"] = re.sub(r"\s+", " ", str(d["name"])).strip()[:80]
+        f["name"] = _text(d["name"], 80)
         if len(f["name"]) < 2:
             raise ValueError("Give the class a name.")
     for k in ("starts", "ends"):
@@ -1399,6 +1482,8 @@ def api_class_create():
     owner = request.user
     if is_admin(request.urec) and d.get("teacher") and is_staff(users().get(d["teacher"])):
         owner = d["teacher"]
+    if f.get("starts") and f.get("ends") and f["ends"] < f["starts"]:
+        return jsonify(error="The class cannot end before it starts."), 400
     c = orgs.create(owner, f["name"], f.get("starts"), f.get("ends"), f.get("seats", 30))
     rest = {k: v for k, v in f.items() if k not in ("name", "starts", "ends", "seats")}
     if rest:
@@ -1433,6 +1518,12 @@ def api_class_update(cid):
         return jsonify(error=str(e)), 400
     if is_admin(request.urec) and d.get("teacher") and is_staff(users().get(d["teacher"])):
         f["teacher"] = d["teacher"]
+    cur = dict(orgs.get(cid), **f)
+    if cur.get("starts") and cur.get("ends") and cur["ends"] < cur["starts"]:
+        return jsonify(error="The class cannot end before it starts."), 400
+    if "seats" in f and f["seats"] < _class_seats_used(cid):
+        return jsonify(error=f"{_class_seats_used(cid)} students are already in this class: seats cannot be "
+                             "fewer (move or remove students first)."), 400
     c = orgs.update(cid, new_code=bool(d.get("new_code")), **f)
     return jsonify(_class_view(c))
 
@@ -1591,7 +1682,7 @@ def api_certificate_issue():
     ok, done, total, hours, last = _course_facts(request.user)
     if not ok:
         return jsonify(error=f"The certificate unlocks when all {total} missions are passed ({done} so far)."), 403
-    name = re.sub(r"\s+", " ", str(request.get_json(force=True).get("name", ""))).strip()
+    name = _text(request.get_json(force=True).get("name", ""), 80)
     if not 3 <= len(name) <= 60 or not re.search(r"[^\W\d_]", name):
         return jsonify(error="Enter your full name as it should be printed (3 to 60 characters)."), 400
     extra = {}
@@ -1689,6 +1780,18 @@ def page_teacher():
     if not is_staff(u):
         return redirect("/")
     return send_from_directory(app.static_folder, "teacher.html")
+
+
+@app.before_request
+def same_site_only():
+    """A page on another site cannot make a signed-in browser change anything here (CSRF): browsers
+    always send Origin on a cross-site POST; it must name this academy."""
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        origin = request.headers.get("Origin")
+        if origin and origin != "null" and urllib.parse.urlsplit(origin).netloc != request.host:
+            return jsonify(error="Request from another site refused."), 403
+        if origin == "null":
+            return jsonify(error="Request from another site refused."), 403
 
 
 @app.after_request

@@ -105,8 +105,14 @@ AUTHORING.md          how to write or change a lesson
 ## Limits to know
 
 - Plain HTTP on the local network (passwords travel unencrypted): use it on a trusted network.
-- Wrong passwords: a device (browser) waits 15 min after 10; an account is only slowed down (one try
-  per 30 s after 5), never locked, so nobody can lock a classmate out; a whole network waits after 100.
+- Wrong passwords: after 5 on one account from one browser, that browser gets one try per 30 s (a classmate's
+  wrong tries never block the student's own browser); one browser waits 15 min after 30 (any accounts); a
+  network after 100; an account under real attack (50 in 15 min) waits until the teacher gives a new password.
+- Student sandboxes have their own network (loopback only): no internet, nothing on the Jetson. Staff keep
+  the Jetson's network (the full simulator must be reachable). A terminal never sees the graders (check.py);
+  a check sees only its own mission's grader.
+- The full simulator listens on the Jetson's network (ports 8190/8181) while it runs: anyone on the same
+  Wi-Fi can open it directly, without the academy's sign-in. Run it only during the lesson.
 - The simulator and camera serve one student at a time; plan those lessons (19, 28) in turns.
 - A student could join another student's ROS domain on purpose (same machine); there is no
   protection against that beyond the default separate domains.

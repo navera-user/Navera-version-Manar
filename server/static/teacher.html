@@ -12,7 +12,7 @@
   select { min-width: 0; max-width: 100%; }
   #pgrid table { width: auto; }
   #pgrid td, #pgrid th { padding: 4px 6px; text-align: center; }
-  @media (max-width: 1000px) { .cgrid, .grid2 { grid-template-columns: 1fr; } }
+  @media (max-width: 1000px) { .cgrid, .grid2 { grid-template-columns: minmax(0, 1fr); } }
   .acts { display: flex; gap: 6px; align-items: center; } .acts select { padding: 6px 10px; border-radius: 99px; font-size: 13.5px; }
   .classsel { margin-left: 8px; background: rgba(255,255,255,.1); color: #fff; border: 1px solid rgba(255,255,255,.3); border-radius: 999px; padding: 6px 12px; font-weight: 600; max-width: 320px; }
   .classsel option { color: #14202b; }
@@ -47,10 +47,12 @@
   .opt { display: flex; gap: 10px; align-items: center; font-size: 14px; margin: 7px 0; cursor: pointer; } .opt input { width: auto; }
   .frm { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; margin-top: 8px; }
   .frm label { font-size: 12px; font-weight: 600; color: var(--muted); display: block; } .frm input, .frm select { width: 100%; margin-top: 3px; }
-  .legs { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 10px; align-items: center; font-size: 13.5px; margin-top: 6px; }
-  .legs input { padding: 5px 8px; }
+  .legs { display: grid; grid-template-columns: minmax(0, 1fr) 148px; gap: 6px 10px; align-items: center; font-size: 13.5px; margin-top: 6px; }
+  .legs > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .legs input { padding: 5px 8px; width: 100%; min-width: 0; }
   .empty { text-align: center; padding: 30px 16px; }
-  .empty .big { font-size: 40px; } .empty h3 { margin: 6px 0; font-size: 22px; }
+  .empty .big { font-size: 40px; } .empty h3 { margin: 6px 0; font-size: 22px; color: var(--ink); }
+  .tscroll { overflow-x: auto; max-width: 100%; }
   .warnbox { border: 2px solid #c23b4a; background: #fff3f2; }
   .notice { border: 1.5px solid #e8706a; background: #fff8f5; }
   details.adm > summary { cursor: pointer; font-weight: 700; font-size: 17px; list-style: none; display: flex; align-items: center; gap: 8px; }
@@ -110,7 +112,7 @@
           <h2>Class options</h2>
           <label class="opt"><input type="checkbox" id="oJoin"> Students can join with the code</label>
           <label class="opt"><input type="checkbox" id="oRank"> Show a class ranking (first names + XP)</label>
-          <label class="opt"><input type="checkbox" id="oCert"> Certificate names the class and organisation</label>
+          <label class="opt"><input type="checkbox" id="oCert"> Certificate names the class</label>
           <div class="frm">
             <div style="grid-column:1/3"><label>Name<input id="oName"></label></div>
             <div><label>Starts<input type="date" id="oStart"></label></div><div><label>Ends<input type="date" id="oEnd"></label></div>
@@ -123,12 +125,6 @@
         </div>
       </div>
     </div>
-  </div>
-
-  <div class="box" id="certBox">
-    <h2>Certificates <small>given when a student passes all missions, digitally signed by IRIS</small></h2>
-    <div class="grid"><table id="certTbl"></table></div>
-    <p id="certKey" style="font-size:12.5px;color:var(--muted);margin-bottom:0"></p>
   </div>
 
   <!-- administrator -->
@@ -155,7 +151,7 @@
     </div>
     <div class="grid2">
       <div class="box">
-        <h2>NAVERA base</h2>
+        <h2>NAVERA version <small>advanced — usually left to IRIS support</small></h2>
         <p>The version every student starts from and returns to with Reset. Taken from the real <code>~/Navera</code> repository
           (read only, never changed). Changing it affects only the next reset / new students.</p>
         <div id="baseNow"></div>
@@ -177,13 +173,20 @@
     </div>
   </div>
 
+  <div class="box" id="certBox">
+    <h2>Certificates <small>given when a student passes all missions, digitally signed by IRIS</small></h2>
+    <div class="grid"><table id="certTbl"></table></div>
+    <p id="certKey" style="font-size:12.5px;color:var(--muted);margin-bottom:0"></p>
+  </div>
+
   <div class="box">
     <h2>Full simulator <small>teachers only — students fly Sim Lite</small></h2>
     <p id="fsState">Checking…</p>
     <ol style="line-height:1.7;margin:6px 0 0">
       <li>Open <a href="/" target="_blank">My workspace</a>, then <b>Hardware</b> → <b>Take</b> “Full mission simulator”.</li>
       <li>Open a new terminal there and run <code>cd ~/navera &amp;&amp; navera_tools/run_sim.sh</code></li>
-      <li>Fly it from the <b>🛩️ Simulator</b> tab (switch <b>Full</b>) or the <b>🧭 Operator view</b> tab. Stop it with Ctrl+C in that terminal, then release it in Hardware.</li>
+      <li><a href="/web/sim/" target="_blank">Open the simulator in a new window</a> (its map needs a full window) — the operator view is at
+        <a href="/web/op/operator" target="_blank">/web/op/operator</a>. Stop it with Ctrl+C in that terminal, then <b>Release</b> it in Hardware.</li>
     </ol>
   </div>
 </div>
@@ -235,7 +238,7 @@ $('classSel').onchange = () => { CUR = $('classSel').value; store.set(CUR); show
 function curClass() { return CLASSES.find(c => c.id === CUR); }
 function showClass() {
   const c = curClass();
-  $('noClass').style.display = !CUR ? '' : 'none';
+  $('noClass').style.display = !CLASSES.length ? '' : 'none';     // admins too: a new academy starts with a class
   $('classView').style.display = CUR ? '' : 'none';
   $('classSide').style.display = c ? '' : 'none';
   $('classView').querySelector('.cgrid').style.gridTemplateColumns = c ? '' : '1fr';
@@ -250,7 +253,7 @@ function showClass() {
     $('oLegs').innerHTML = LEGS.map(l => `<span>${esc(l.leg || 'Leg ' + (l.index + 1))} · ${esc(l.title)}</span><input type="date" data-leg="${l.index}" value="${esc((c.legs || {})[l.index] || '')}">`).join('');
   } else {
     $('cTitle').textContent = CUR === 'all' ? 'All students' : CUR === 'none' ? 'Students without a class' : 'Students';
-    $('cSub').textContent = CUR === 'none' ? 'they signed up before classes existed — move them into a class with More ▾' : '';
+    $('cSub').textContent = CUR === 'none' ? 'students who are not in any class — put them in one with More ▾ → Move' : '';
   }
   $('add').textContent = c ? 'Create accounts in this class' : 'Create accounts';
   loadStudents();
@@ -293,10 +296,11 @@ async function loadStudents() {
 }
 async function newClass() {
   const t = ME.admin && TEACHERS.length > 1 ? `<p style="margin:10px 0 4px">Teacher</p><select>${TEACHERS.map(x => `<option value="${esc(x.name)}"${x.name === ME.name ? ' selected' : ''}>${esc(x.display)}</option>`).join('')}</select>` : '';
-  const v = await modal('New class', `<p>Name</p><input placeholder="e.g. NAVERA — Group A 2026"><p style="margin:10px 0 4px">Seats</p><input type="number" value="30" min="1" max="98">${t}`, 'Create the class');
+  const v = await modal('New class', `<p>Name</p><input placeholder="e.g. NAVERA — Group A 2026"><p style="margin:10px 0 4px">Seats</p><input type="number" value="30" min="1" max="98">
+    <p style="margin:10px 0 4px">Starts <i style="color:var(--muted);font-style:normal">(optional)</i></p><input type="date"><p style="margin:10px 0 4px">Ends <i style="color:var(--muted);font-style:normal">(optional)</i></p><input type="date">${t}`, 'Create the class');
   if (!v) return;
   try {
-    const c = await api('/api/classes', {method: 'POST', body: {name: v[0], seats: +v[1] || 30, teacher: v[2] || undefined}});
+    const c = await api('/api/classes', {method: 'POST', body: {name: v[0], seats: +v[1] || 30, starts: v[2], ends: v[3], teacher: v[4] || undefined}});
     store.set(c.id); await loadClasses(c.id);
   } catch (e) { alert(e.message); }
 }
@@ -324,18 +328,22 @@ $('exportBtn').onclick = () => { location.href = `/api/classes/${CUR === 'none' 
 async function act(name, action) {
   if (action === 'move') {
     const own = CLASSES.filter(c => c.id !== CUR);
-    const v = await modal('Move to another class', `<p>${esc(name)} moves with all their work and progress.</p><select>${own.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}${ME.admin ? '<option value="">(no class)</option>' : ''}</select>`, 'Move');
+    const who = ((DATA.students || []).find(s => s.name === name) || {}).display || name;
+    const v = await modal('Move to another class', `<p>${esc(who)} moves with all their work and progress.</p><select>${own.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}${ME.admin ? '<option value="">(no class)</option>' : ''}</select>`, 'Move');
     if (!v) return;
     try { await api(`/api/admin/student/${name}`, {method: 'POST', body: {action: 'move', class: v[0]}}); loadClasses(); } catch (e) { alert(e.message); }
     return;
   }
-  const msgs = {delete: `Delete ${name}? Their files, backups and progress are removed for good.`,
-    reset_navera: `Reset ${name}'s NAVERA copy? Their changes are saved in a backup first.`,
-    password: `Give ${name} a new password?`, kill: `Close all of ${name}'s terminals (and the programs in them)?`};
+  const who = ((DATA.students || []).find(s => s.name === name) || {}).display || name;
+  const msgs = {delete: `Delete ${who}? Their files, backups and progress are removed for good.`,
+    reset_navera: `Reset ${who}'s NAVERA copy? Their changes are saved in a backup first.`,
+    password: `Give ${who} a new password?`, kill: `Close all of ${who}'s terminals (and the programs in them)?`};
   if (!confirm(msgs[action])) return;
   try {
     const r = await api(`/api/admin/student/${name}`, {method: 'POST', body: {action}});
-    if (r.password) alert(`New password for ${name}: ${r.password}`);
+    if (r.password) alert(`New password for ${who} (login ${name}): ${r.password}`);
+    if (action === 'reset_navera') alert(`Done: ${who}'s NAVERA copy is fresh.` + (r.backup ? ` Their old work is kept in the backup ${r.backup}.` : ''));
+    if (action === 'kill') alert(`Done: ${who}'s terminals are closed.`);
     loadClasses();
   } catch (e) { alert(e.message); }
 }
@@ -344,10 +352,11 @@ $('add').onclick = async () => {
     const c = curClass();
     const r = await api('/api/admin/students', {method: 'POST', body: {names: $('names').value, class: c ? c.id : ''}});
     $('names').value = '';
-    if (r.created.length) {
-      $('creds').style.display = 'block';
-      $('creds').textContent = `Give each student their login (shown once):\nAddress: ${location.origin}/\n\n` + r.created.map(x => `${x.name.padEnd(16)} ${x.password}`).join('\n');
-    }
+    const skip = (r.skipped || []).length ? `\n\nAlready exist (not changed): ${r.skipped.join(', ')}` : '';
+    $('creds').style.display = 'block';
+    $('creds').textContent = r.created.length
+      ? `Give each student their login (shown once):\nAddress: ${location.origin}/\n\n` + r.created.map(x => `${x.name.padEnd(16)} ${x.password}`).join('\n') + skip
+      : 'No new account was created.' + skip;
     loadClasses();
   } catch (e) { alert(e.message); }
 };
@@ -404,7 +413,9 @@ async function tAct(name, action) {
   try { const r = await api(`/api/admin/teacher/${name}`, {method: 'POST', body: {action}}); if (r.password) alert(`New password for ${name}: ${r.password}`); loadAdmin(); loadClasses(); }
   catch (e) { alert(e.message); }
 }
-$('orgSave').onclick = async () => { try { await api('/api/admin/org', {method: 'POST', body: {name: $('orgName').value}}); loadAdmin(); } catch (e) { alert(e.message); } };
+$('orgSave').onclick = async () => {
+  try { await api('/api/admin/org', {method: 'POST', body: {name: $('orgName').value}}); $('orgSave').textContent = '✓ Saved';
+    setTimeout(() => { $('orgSave').textContent = 'Save'; }, 1500); loadAdmin(); } catch (e) { alert(e.message); } };
 $('logoBtn').onclick = () => $('logoFile').click();
 $('logoFile').onchange = async () => {
   const f = $('logoFile').files[0]; if (!f) return;

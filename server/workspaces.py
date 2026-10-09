@@ -63,7 +63,7 @@ def build_base(commit, log=print):
            "colcon build --symlink-install --packages-select " + " ".join(config.BUILD_PACKAGES) +
            " --event-handlers console_direct- 2>&1 | tail -25; exit ${PIPESTATUS[0]}"]
     r = subprocess.run(sandbox.bwrap_argv(ADMIN_NAME, builder_home, 0, cmd, writable_base=new,
-                                          heavy=True), text=True, capture_output=True)
+                                          heavy=True, host_net=True), text=True, capture_output=True)
     log(r.stdout[-3000:] + r.stderr[-2000:])
     if r.returncode != 0:
         raise RuntimeError("colcon build failed — base not changed")
