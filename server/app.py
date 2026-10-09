@@ -653,6 +653,7 @@ def api_check(lid):
     name, _ = sandbox_user()
     if lesson_locked(name, lid):
         return jsonify(error=f"This leg opens on {lesson_locked(name, lid)}."), 403
+    workspaces.install_lesson(name, lid)               # files missing (never opened): put them in place, keep any work
     m = lesson_meta(lid)
     timeout = int(m.get("check_timeout_s", 180))
     res = [r for r in m.get("resources", []) if _holder(r) == name]

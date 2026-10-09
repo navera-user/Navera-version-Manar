@@ -59,6 +59,20 @@ account (password in `state/teacher_password.txt`) is IRIS's support administrat
 - Data: `state/org.json`, `state/classes.json`, `state/org_logo.png`; a student's class is `class` in
   `state/users.json`. Code: `server/orgs.py`.
 
+## Capacity (measured 2026-10-09 on this Jetson: 6 cores, 7.4 GB)
+
+"✔ Check my work" pressed by many students at the same moment (each check runs in the student's sandbox):
+
+| Mission | Students at once | Time per check | Peak memory used |
+|---|---|---|---|
+| 03 Python | 1 / 5 / 10 / 20 | 2 / 4 / 8 / 15 s | 1.6 / 1.9 / 2.3 / 2.9 GB |
+| 11 ROS 2 (heaviest kind) | 1 / 5 / 10 / 20 | 74 / 76 / 91 / 114 s | 1.8 / 2.7 / 3.9 / 5.4 GB |
+
+All checks succeeded, no memory exhaustion, and the pages stayed fast during the 20-student ROS run
+(median 21 ms). So one Jetson handles a class of ~20 checking at once; with ~30 students, ROS checks
+would run close to the memory limit — stagger them, or use a second box. Sim Lite runs in each
+student's browser and does not load the Jetson.
+
 ## Shared hardware
 
 The camera and the I²C/serial sensors exist once. Students **book** them from the "Hardware" button;
