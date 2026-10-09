@@ -216,9 +216,10 @@ also defines its own `haversine_m` at the top: expected values are computed **in
 code under test — testing a function with itself proves nothing.
 
 The test runner, [navera_tools/run_tests.sh](file:navera/navera_tools/run_tests.sh), shows two
-engineering habits: every step has a **time limit** ("a hang fails the run instead of blocking it"),
-and integration tests run on their **own ROS domain** with `ROS_LOCALHOST_ONLY=1` "so they never talk
-to a live NAVERA system on the same machine" — lesson 09's domains, applied to testing.
+engineering habits: every step has a **time limit** ("a hang fails the run (TIMED OUT) instead of
+blocking it"), and integration tests run on their **own ROS domain** with `ROS_LOCALHOST_ONLY=1`, "so
+they never talk to a live NAVERA system on the same machine or network" — lesson 09's domains,
+applied to testing.
 
 ## Glossary
 

@@ -16,5 +16,5 @@ VERDICTS = {
     "tilted":      (2, "day vision fix"),
 }
 
-Q1 = "b"
-Q2 = "b"
+Q1 = "c"
+Q2 = "a"

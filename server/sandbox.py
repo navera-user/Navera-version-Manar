@@ -86,7 +86,7 @@ def bwrap_argv(name, home, index, command, resources=(), heavy=False, writable_b
         a += ["--bind", writable_base, config.S_NAVERA]
     for host, inside in list(config.data_mounts()) + list(extra_ro):
         a += ["--ro-bind", host, inside]
-    a += ["--ro-bind", _passwd(), "/etc/passwd"]
+    a += ["--ro-bind", _passwd(), "/etc/passwd", "--ro-bind", _group(), "/etc/group"]
     a += ["--chdir", config.S_HOME, "--clearenv"]
     for k, v in student_env(name, index, heavy, domain).items():
         a += ["--setenv", k, v]
@@ -96,6 +96,20 @@ def bwrap_argv(name, home, index, command, resources=(), heavy=False, writable_b
              "--unit", f"academy-{name}-{os.getpid()}-{_counter()}",
              "-p", f"MemoryMax={mem}", "-p", "MemorySwapMax=0", "-p", f"TasksMax={config.PIDS_MAX}"]
     return scope + a
+
+
+def _group():
+    """/etc/group for the sandbox: this gid is called "student" (never the Jetson's own group name)."""
+    p = os.path.join(config.STATE, "sandbox_group")
+    gid = str(os.getgid())
+    lines = [l for l in open("/etc/group") if l.split(":")[2:3] != [gid]]
+    lines.append(f"student:x:{gid}:\n")
+    data = "".join(lines)
+    if not os.path.exists(p) or open(p).read() != data:
+        os.makedirs(config.STATE, exist_ok=True)
+        with open(p, "w") as f:
+            f.write(data)
+    return p
 
 
 _n = [0]

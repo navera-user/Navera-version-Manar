@@ -5,7 +5,7 @@
 > - You will learn what the 9 numbers of a **covariance** mean: an error ellipse, its axes and its angle.
 > - You will learn how much probability is inside "1 σ" in 2-D (only 39 %).
 > - You will learn the two time stamps (measured when, published when) and the arbiter's rule.
-> - In the lab you build a source, publish it to NAVERA's real arbiter and inject 13 faults.
+> - In the lab you build a source, publish it to NAVERA's real arbiter and inject 12 faults.
 
 A drone flies over a coastal test range. Its GNSS is jammed. Three NAVERA sources still produce positions:
 day vision matched a photo against the satellite map 0.6 s ago, celestial navigation solved a star

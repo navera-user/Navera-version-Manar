@@ -1,4 +1,4 @@
-# Geodesy for navigation: from WGS84 to a local frame in meters
+# Geodesy for navigation: WGS84, ECEF and ENU
 
 > [!NOTE] In short
 > - GPS and maps use degrees, but the flight controller needs metres, so NAVERA converts between
@@ -14,12 +14,12 @@
 A survey drone takes off from **Monastir** and flies up the coast towards **Sousse**, in Tunisia
 (NAVERA's test map covers Sousse). Halfway, its GPS is jammed. NAVERA's camera matches the ground
 with the on-board map and reports *"you are at 35.7960° N, 10.7250° E"*. The flight controller does not think in
-degrees: it needs **meters** — how far to the next waypoint, in which direction, how fast the
+degrees: it needs **metres** — how far to the next waypoint, in which direction, how fast the
 drone drifts east. Every second, NAVERA converts between three ways of writing the same point:
 
 1. **geodetic coordinates** (latitude, longitude, height) — what GPS and maps use;
 2. **ECEF** — a Cartesian (X, Y, Z) frame fixed to the Earth, with its origin at the Earth's centre;
-3. **ENU** — a local frame in meters: **E**ast, **N**orth, **U**p from a home point.
+3. **ENU** — a local frame in metres: **E**ast, **N**orth, **U**p from a home point.
 
 This lesson gives you the exact mathematics of these conversions on the **WGS84 ellipsoid**,
 the spherical shortcuts (haversine, bearing) and the flat-Earth shortcut that NAVERA uses, and —
@@ -107,8 +107,8 @@ A small change of latitude dφ (in radians) is a ground distance M·dφ; a small
 dλ is N·cos φ·dλ (the parallel at latitude φ is a circle of radius N cos φ). So:
 
 ```
-meters per degree of latitude  = M(φ) · π / 180
-meters per degree of longitude = N(φ) · cos φ · π / 180
+metres per degree of latitude  = M(φ) · π / 180
+metres per degree of longitude = N(φ) · cos φ · π / 180
 ```
 
 | Place | φ | M (km) | N (km) | 1° latitude | 1° longitude |
@@ -154,11 +154,11 @@ repeat:  N = N(φ);   h = p / cos φ − N;   φ = atan2(Z, p (1 − e² N / (N 
 ```
 
 Each iteration reduces the error by a factor of the order of e² ≈ 0.007, so 5–6 iterations give
-sub-millimeter accuracy for any point near the Earth. (Closed-form solutions exist, for example
+sub-millimetre accuracy for any point near the Earth. (Closed-form solutions exist, for example
 Bowring's method, but the iteration is easier to read and to test.) Because the formula divides by
 cos φ, it would fail exactly at the poles — not a problem for our drones, which do not fly there. You do not need to prove
 that the iteration converges: the lab checks it with a **round-trip test** (geodetic → ECEF →
-geodetic must give back the same point to a millimeter).
+geodetic must give back the same point to a millimetre).
 
 ## 4. ENU: the local tangent frame
 
@@ -190,7 +190,7 @@ X = X0 + Rᵀ · [e, n, u]ᵀ          then ECEF → (φ, λ, h) with the iterat
 
 ![The local ENU frame is a tangent plane](assets/enu_frame.svg)
 
-The ENU plane **touches** the Earth at home. A point on the ground d meters away is below the
+The ENU plane **touches** the Earth at home. A point on the ground d metres away is below the
 plane: u ≈ −d² / (2R). That is −8 cm at 1 km, −7.8 m at 10 km, and −38 km for Rome seen from
 Sousse. ENU is exact everywhere (it is just a rotation and a translation of ECEF), but its
 horizontal (e, n) is a "flat picture" of a curved surface, so it is most meaningful near home.
@@ -277,15 +277,15 @@ two kinds of error:
    N·π/180 ≈ 111 448 m is close to 111 320 m.
 2. **Curvature and convergence of the meridians (second order, proportional to d²).** Using the
    cosine of the home latitude for all points ignores that meridians get closer as you go north:
-   the east error is about e·n·tan φ0 / R (e, n: the east and north distances in meters). Example
+   the east error is about e·n·tan φ0 / R (e, n: the east and north distances in metres). Example
    at Sousse (φ0 = 35.8°, tan φ0 = 0.722), a point 10 km east and 10 km north:
    `10 000 × 10 000 × 0.722 / 6 371 000 ≈ 11.3 m`. Twice farther (20 km, 20 km) gives four times
    more, 45 m: that is "proportional to d²". With the exact radii M and N instead of 111 320 m, this
-   is all that remains: a few meters at 10 km (6.5 m at Sousse, in the worst direction).
+   is all that remains: a few metres at 10 km (6.5 m at Sousse, in the worst direction).
 
 In the lab you will measure both curves. For the worked example above, the flat formula puts
 Kairouan at (−48 305, −16 308) m instead of (−48 449, −16 123) m: **235 m wrong** at 51 km.
-A flat frame is a tool for a few kilometers, not for a flight across a whole country.
+A flat frame is a tool for a few kilometres, not for a flight across a whole country.
 
 > [!TIP]
 > **Python and numpy notes for this lab.**
@@ -370,10 +370,10 @@ def _move(p, de, dn):
     return (p[0] + dn / M_PER_DEG, p[1] + de / (M_PER_DEG * math.cos(math.radians(p[0]))))
 ```
 
-Day vision measures its **velocity** from two map fixes with `_en()` (meters per second) and later
+Day vision measures its **velocity** from two map fixes with `_en()` (metres per second) and later
 carries the position along that velocity with `_move()`, for example over the sea where the camera
 finds nothing to match. Because the same constant is used in both directions, the 0.33 % scale
-error **cancels** in the carried position; it only affects numbers expressed in meters, such as
+error **cancels** in the carried position; it only affects numbers expressed in metres, such as
 the distance gates and the stated uncertainty. You will quantify this in the lab and decide whether
 it matters.
 
@@ -392,7 +392,7 @@ separation).
 | **ellipsoidal height h** | height above the ellipsoid, along the normal (what GPS computes) |
 | **geoid, mean sea level** | the surface heights on maps refer to; differs from the ellipsoid by up to ~100 m |
 | **radius of curvature M, N** | meridian (north–south) and prime-vertical (east–west) radii at φ |
-| **ECEF** | Earth-centred Earth-fixed Cartesian frame (X, Y, Z) in meters |
+| **ECEF** | Earth-centred Earth-fixed Cartesian frame (X, Y, Z) in metres |
 | **ENU** | local frame east, north, up at a home point; a rotation + translation of ECEF |
 | **rotation matrix** | orthonormal matrix with det = +1; inverse = transpose |
 | **great circle** | shortest path on a sphere; its centre is the sphere's centre |
@@ -403,7 +403,7 @@ separation).
 
 ## Check what you learned
 
-<details><summary>1. How many kilometers is 1° of longitude in Sousse and in London, and why do they differ?</summary>
+<details><summary>1. How many kilometres is 1° of longitude in Sousse and in London, and why do they differ?</summary>
 N(φ)·cos φ·π/180: 90.4 km at Sousse (35.8°) and 69.4 km at London (51.5°). Parallels are
 circles of radius N cos φ, which shrink as cos φ decreases away from the equator.
 </details>
@@ -426,7 +426,7 @@ plane by about d²/(2R). A program that assumes "ground = u = 0" far from home m
 
 <details><summary>5. NAVERA's flat shortcut is 0.33 % too long in the north direction at Sousse. Give one case where it matters and one where it cancels.</summary>
 It cancels when a velocity measured with _en() is applied with _move() (same constant both ways).
-It matters when the result is compared with true meters: a distance gate, a stated uncertainty, a
+It matters when the result is compared with true metres: a distance gate, a stated uncertainty, a
 speed from another sensor (airspeed, IMU) — about 3.3 m per km.
 </details>
 

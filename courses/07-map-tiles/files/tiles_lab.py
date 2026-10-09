@@ -13,7 +13,7 @@ import sqlite3
 
 MAP = "/data/map.mbtiles"            # NAVERA's satellite map of the Sousse region (read only!)
 TILE_PX = 256                        # every tile is a square picture of 256 x 256 pixels
-EQUATOR_M = 40_075_016.7             # 2·π·a, length of the equator in meters (NAVERA's value, local_matcher.py)
+EQUATOR_M = 40_075_016.7             # 2·π·a, length of the equator in metres (NAVERA's value, local_matcher.py)
 MAX_LAT = 85.0511287798              # Web Mercator stops here: mercator_y(MAX_LAT) = π
 
 
@@ -49,13 +49,13 @@ def tile_to_latlon(x, y, z):
 
 
 def meters_per_pixel(lat, z):
-    """Ground size of one map pixel (meters) at latitude lat and zoom z: EQUATOR_M · cos φ / (2**z · 256)."""
+    """Ground size of one map pixel (metres) at latitude lat and zoom z: EQUATOR_M · cos φ / (2**z · 256)."""
     # TODO 6
     return None
 
 
 def zoom_for_gsd(lat, gsd_m, zmin=0, zmax=19):
-    """The highest zoom whose map pixel is still at least gsd_m meters (the map must not be finer
+    """The highest zoom whose map pixel is still at least gsd_m metres (the map must not be finer
     than the camera image), limited to [zmin, zmax]."""
     # TODO 7: z = floor(log2(meters_per_pixel(lat, 0) / gsd_m)), then clamp
     return None

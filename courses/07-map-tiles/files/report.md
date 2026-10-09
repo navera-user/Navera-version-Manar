@@ -5,7 +5,7 @@
 
 ## World scales
 
-<!-- Meters per pixel at zoom 17 in Singapore and in Reykjavik (and why they differ); the zooms that
+<!-- Metres per pixel at zoom 17 in Singapore and in Reykjavik (and why they differ); the zooms that
      zoom_for_gsd() chooses for the example camera at 150-2000 m over Singapore, compared with the
      map's own altitude_zoom_map. Which rule would you trust, and why? -->
 
@@ -16,5 +16,5 @@
 
 ## The corner bug
 
-<!-- What NAVERA did wrong, how many meters it cost at zoom 17 in Sousse, how many it would cost in
+<!-- What NAVERA did wrong, how many metres it cost at zoom 17 in Sousse, how many it would cost in
      Singapore, and why the two numbers differ. -->

@@ -1,5 +1,5 @@
 From 8cdaaaf2c3dc9066697f90d33bf247523263e93f Mon Sep 17 00:00:00 2001
-From: Khalid Al Rawahi <khalid.rawahi@example.com>
+From: Kenji Sato <kenji.sato@example.com>
 Date: Thu, 1 Oct 2026 10:00:00 +0100
 Subject: [PATCH] fix(estimator): fewer false GPS refusals; geo: use
  EARTH_RADIUS_M

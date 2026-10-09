@@ -31,8 +31,8 @@ def num(v, what):
 
 
 @c.test("mercator_y(): 0 at the equator, 0.670562 at Sousse, π at 85.0511°, odd in latitude",
-        hint="ln(tan(π/4 + φ/2)) with φ in RADIANS: math.log(math.tan(math.pi / 4 + math.radians(lat) / 2)). "
-             "'math domain error' means tan(...) was ≤ 0: usually degrees used as radians.")
+        hint="Course section 1, 'Deriving the Mercator formula': the result is a natural logarithm of a tangent, "
+             "with the latitude in RADIANS. 'math domain error' means the tangent was ≤ 0: usually degrees used as radians.")
 def _():
     (f,) = need(lab(), "mercator_y")
     c.near(num(f(0.0), "mercator_y()"), 0.0, tol=1e-12, what="mercator_y(0)")
@@ -104,8 +104,9 @@ def _():
 
 
 @c.test("zoom_for_gsd(): the highest zoom whose pixel is still ≥ the camera's, clamped to [zmin, zmax]",
-        hint="z = floor(log2(meters_per_pixel(lat, 0) / gsd_m)) — math.log2 and math.floor — then "
-             "max(zmin, min(zmax, z)). Return an int.")
+        hint="Course section 3: each zoom level halves the pixel size, so the number of halvings from zoom 0 down "
+             "to the camera's GSD is a base-2 logarithm — round DOWN (the map must not be finer than the photo), "
+             "then keep the result inside [zmin, zmax]. Return an int.")
 def _():
     (f,) = need(lab(), "zoom_for_gsd")
     for args, want in [((0.0, 1.0), 17), ((SINGAPORE[0], 0.352, 13, 19), 18), ((SINGAPORE[0], 0.7, 13, 19), 17),
@@ -117,8 +118,9 @@ def _():
 
 
 @c.test("read_tile() returns the right JPEG for 17/69409/51547 (the Ribat), 19/277637/206190 and 13/4338/3221",
-        hint="The file stores tile_row = 2**z − 1 − y (TMS). SELECT tile_data FROM tiles WHERE zoom_level=? "
-             "AND tile_column=? AND tile_row=? with the tuple (z, x, row); return bytes(row[0]).")
+        hint="Course sections 4 and 5: the file stores TMS rows (counted from the south), so convert y first; query "
+             "the tiles table with ? placeholders for zoom, column and row; open the file read-only; return the BLOB "
+             "as bytes, or None when no row comes back.")
 def _():
     (f,) = need(lab(), "read_tile")
     for (z, x, y), md5 in [((17, 69409, 51547), "270e09c03dd62649227d2c37500973c4"),
@@ -145,8 +147,9 @@ def _():
 
 
 @c.test("latlon_to_pixel() / pixel_to_latlon(): the Ribat at (376.03, 399.49) of its mosaic; exact inverse; = NAVERA",
-        hint="px = (fractional x − x0) · TILE_PX, py = (fractional y − y0) · TILE_PX. Back: "
-             "tile_to_latlon(x0 + px / TILE_PX, y0 + py / TILE_PX, z).")
+        hint="Course section 6: a pixel position is the FRACTIONAL tile coordinate measured from the top-left tile "
+             "of the mosaic, times the tile size. The inverse undoes these steps in reverse order and ends with "
+             "tile_to_latlon().")
 def _():
     to_px, to_ll = need(lab(), "latlon_to_pixel", "pixel_to_latlon")
     px, py = pair(to_px(*SOUSSE, 17, 69408, 51546), "latlon_to_pixel()")

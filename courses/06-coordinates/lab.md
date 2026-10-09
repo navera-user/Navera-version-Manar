@@ -17,7 +17,7 @@ Files in your lesson folder:
 | [answers.py](file:./answers.py) | **your work**: three quiz answers |
 
 Conventions in `geo_lab.py`: angles in **degrees** at the interface, radians inside `math.sin/cos`;
-heights in meters above the ellipsoid; several results are returned as a **tuple**
+heights in metres above the ellipsoid; several results are returned as a **tuple**
 (`return x, y, z`) except the ENU vector, which is a numpy array.
 
 ## Step 1 — Run the starter
@@ -64,11 +64,11 @@ python3 -c "from geo_lab import *; x = geodetic_to_ecef(-3.0674, 37.3556, 5895.0
 ```
 
 The summit of Kilimanjaro (Tanzania, 5895 m) must give (5 067 349.7, 3 868 062.8, −339 332.2) and come
-back as (−3.0674, 37.3556, 5895.0) to better than a millimeter. It is south of the equator, so Z is negative. `*x` unpacks the tuple into three
+back as (−3.0674, 37.3556, 5895.0) to better than a millimetre. It is south of the equator, so Z is negative. `*x` unpacks the tuple into three
 arguments (lesson 3): `ecef_to_geodetic(*x)` is `ecef_to_geodetic(x[0], x[1], x[2])`.
 
 > [!WARNING]
-> If the height comes back kilometers (or thousands of kilometers) wrong, a latitude was used in
+> If the height comes back kilometres (or thousands of kilometres) wrong, a latitude was used in
 > degrees inside `cos`, or in radians inside `radii()`. If you see `ZeroDivisionError`, the first guess or `cos(lat)`
 > is wrong.
 
@@ -150,7 +150,7 @@ python3 compare_navera.py
 
 Part 1 must show differences of `0.000000` m; parts 2 and 3 identical numbers. Part 4 flies NAVERA's
 spherical `dead_reckon()` 12 km towards Rome and measures the result with **your** exact ENU:
-read how many meters the sphere loses or gains, and compare with the 0.22 % of the course.
+read how many metres the sphere loses or gains, and compare with the 0.22 % of the course.
 
 > [!TASK]
 > **TODO 7–10 done** means: `haversine()` equals NAVERA's `haversine_m()` (to 1 mm) and gives
@@ -186,7 +186,7 @@ to d is a line of slope 1, an error proportional to d² a line of slope 2. Then 
 Write [report.md](file:./report.md) (150–400 words, your own words, keep the three headings):
 
 - **## Method** — what is the reference ("truth"), what are the two shortcuts, what is measured.
-- **## Results** — quote, in meters, the distance where NAVERA's flat error reaches **1 m** and
+- **## Results** — quote, in metres, the distance where NAVERA's flat error reaches **1 m** and
   **10 m** (`navera_flat_d_1m_m`, `navera_flat_d_10m_m`), the same 1 m distance for the WGS84-radii
   version, and the Sousse → Rome **difference** between sphere and ellipsoid (`difference_m`).
 - **## Discussion** — where the NAVERA error comes from (scale or curvature? use the slopes); why
@@ -200,7 +200,7 @@ Write [report.md](file:./report.md) (150–400 words, your own words, keep the t
 
 ## Step 9 — Quiz
 
-Answer Q1–Q3 in [answers.py](file:./answers.py) (Q1 is a number in **kilometers**).
+Answer Q1–Q3 in [answers.py](file:./answers.py) (Q1 is a number in **kilometres**).
 
 > [!TASK]
 > Q1, Q2 and Q3 answered. Then press **✔ Check my work**. Every red line has a hint; fix, save, check again.

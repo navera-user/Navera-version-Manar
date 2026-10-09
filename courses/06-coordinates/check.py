@@ -38,8 +38,9 @@ def num(v, what):
 
 
 @c.test("radii(): M and N at the equator, the pole and Sousse",
-        hint="w = 1 − e²·sin²(lat), with lat in RADIANS. M = a(1 − e²) / w**1.5 and N = a / sqrt(w). "
-             "Use the constants WGS84_A and WGS84_E2 of the file. Return the tuple (M, N).")
+        hint="Course section 2, 'Radii of curvature': both radii come from the same term w, built from e² and "
+             "sin of the latitude — and the latitude must be in RADIANS. Use the constants WGS84_A and WGS84_E2 of "
+             "the file and return the tuple (M, N). At the equator N must equal a exactly.")
 def _():
     (radii,) = need(geo(), "radii")
     for lat, want in [(0.0, (6335439.327, 6378137.0)), (90.0, (6399593.626, 6399593.626)),
@@ -122,8 +123,9 @@ def _():
 
 
 @c.test("haversine() uses EARTH_RADIUS_M and agrees with NAVERA's haversine_m() (Sousse → Rome 692.9 km)",
-        hint="The radius is called EARTH_RADIUS_M in geo_lab.py (not R). Every angle in radians; "
-             "a = sin²(Δφ/2) + cos φ1 cos φ2 sin²(Δλ/2); d = 2 · EARTH_RADIUS_M · asin(sqrt(min(1.0, a))).")
+        hint="Course section 5: the haversine formula. The radius is called EARTH_RADIUS_M in geo_lab.py (not R), "
+             "every angle goes to radians, and the value under the square root is clamped to at most 1 "
+             "(rounding can push it just above 1). Compare with haversine_m() in navera_common/geo.py.")
 def _():
     (f,) = need(geo(), "haversine")
     c.near(num(f(*SOUSSE, *SOUSSE), "haversine()"), 0.0, tol=1e-6, what="haversine of a point to itself")
@@ -137,8 +139,9 @@ def _():
 
 
 @c.test("bearing(): 0 / 90 / 180 / 270 for due N / E / S / W; Sousse → Rome ≈ 12.8°, back ≈ 194.0°",
-        hint="bearing() needs its OWN p1, p2, dl lines (variables of haversine() do not exist inside bearing()). "
-             "y = sin Δλ cos φ2 (east part), x = cos φ1 sin φ2 − sin φ1 cos φ2 cos Δλ; degrees(atan2(y, x)) % 360.")
+        hint="Course section 5, bearing: bearing() needs its OWN radian variables (those of haversine() do not exist "
+             "inside bearing()). atan2 takes the EAST part first and the NORTH part second; the result must be "
+             "converted to degrees and brought into [0, 360).")
 def _():
     (f,) = need(geo(), "bearing")
     lat, lon = SOUSSE
@@ -203,7 +206,7 @@ def _():
 
 
 @c.test("report.md: the three sections, at least 150 words, and the key numbers quoted",
-        hint="Use the headings '## Method', '## Results', '## Discussion'. Quote in meters the distance where "
+        hint="Use the headings '## Method', '## Results', '## Discussion'. Quote in metres the distance where "
              "NAVERA's flat error reaches 1 m and 10 m, and the Sousse–Rome difference (e.g. 982 or 982.2).")
 def _():
     c.file_exists("report.md")
@@ -229,7 +232,7 @@ def _():
     except (TypeError, ValueError):
         c.ok(False, f"Q1 should be a number, got {v!r}")
     c.ok(v != 0, "Q1 has no answer yet")
-    c.ok(90.1 <= v <= 90.6, f"Q1 = {v} km is not right (kilometers, not meters)")
+    c.ok(90.1 <= v <= 90.6, f"Q1 = {v} km is not right (kilometres, not metres)")
 
 
 QUIZ = {"Q2": ("a", "Read the 'Null Island' box of the course, and is_finite_latlon() in ~/navera/navera_common/navera_common/geo.py."),

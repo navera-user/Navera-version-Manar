@@ -93,8 +93,8 @@ line, with forks for branches and joins for merges. Names that point into the gr
 Every commit records an author. Set your identity once (`--global` writes it into `~/.gitconfig`):
 
 ```
-git config --global user.name "Aisha Al Balushi"
-git config --global user.email "aisha@example.com"
+git config --global user.name "Amara Diallo"
+git config --global user.email "amara@example.com"
 ```
 
 These are **examples**: write **your own** name. The e-mail may be invented — it is only written into
@@ -287,8 +287,8 @@ When your account was created, the academy:
 - **cloned** that base into your `~/navera`. A clone is a complete repository with all the history;
 - renamed the clone's source, normally called `origin`, to **`base`**: it is a **remote**.
 
-`git remote -v` therefore shows a path like `/home/shadow-team/navera-academy/base`: the folder of
-the academy base **on the server**, outside your sandbox. You cannot reach it from your terminal, and
+`git remote -v` therefore shows a path ending in `navera-academy/base` (not under your home
+`/home/student`): the folder of the academy base **on the server**, outside your sandbox. You cannot reach it from your terminal, and
 you never need to: nothing you do is ever **pushed** (sent) anywhere.
 
 A clone also keeps **remote-tracking branches**: read-only copies of the remote's branches as they

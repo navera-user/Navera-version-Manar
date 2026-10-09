@@ -5,7 +5,7 @@
 # Conventions used everywhere in this file:
 #   * latitudes / longitudes / bearings are in DEGREES (like a GPS gives them);
 #     math.sin / math.cos / math.atan2 work in RADIANS: convert with math.radians() / math.degrees();
-#   * heights h are in meters above the WGS84 ellipsoid;
+#   * heights h are in metres above the WGS84 ellipsoid;
 #   * a function that returns several numbers returns a tuple:  return east, north
 #     and the caller unpacks it:                                e, n = flat_en(...)
 
@@ -14,18 +14,18 @@ import math
 import numpy as np
 
 # --- the WGS84 ellipsoid (the reference surface of GPS) -------------------------------------
-WGS84_A = 6_378_137.0                    # semi-major axis a (equatorial radius), meters — exact by definition
+WGS84_A = 6_378_137.0                    # semi-major axis a (equatorial radius), metres — exact by definition
 WGS84_F = 1.0 / 298.257223563            # flattening f = (a - b) / a — exact by definition
 WGS84_B = WGS84_A * (1.0 - WGS84_F)      # semi-minor axis b (polar radius) = 6 356 752.314 m
 WGS84_E2 = WGS84_F * (2.0 - WGS84_F)     # first eccentricity squared e² = (a² - b²) / a² = 0.00669438
 
 # --- the two constants NAVERA uses -----------------------------------------------------------
 EARTH_RADIUS_M = 6_371_000.0             # mean radius of a SPHERICAL Earth (navera_common/geo.py)
-M_PER_DEG = 111_320.0                    # meters per degree, flat shortcut (day_pkg/vision_nav.py)
+M_PER_DEG = 111_320.0                    # metres per degree, flat shortcut (day_pkg/vision_nav.py)
 
 
 def radii(lat):
-    """(M, N) in meters at geodetic latitude `lat` (degrees):
+    """(M, N) in metres at geodetic latitude `lat` (degrees):
     M = meridian radius of curvature (north-south), N = prime-vertical radius (east-west)."""
     # TODO 1: w = 1 - e² sin²(lat);  M = a (1 - e²) / w^1.5 ;  N = a / sqrt(w)
     s = math.sin(math.radians(lat))
@@ -36,7 +36,7 @@ def radii(lat):
 
 
 def geodetic_to_ecef(lat, lon, h=0.0):
-    """(X, Y, Z) in meters, Earth-centred Earth-fixed, of the point (lat, lon, h)."""
+    """(X, Y, Z) in metres, Earth-centred Earth-fixed, of the point (lat, lon, h)."""
     # TODO 2: the three formulas of the course, with N from radii()
     p, l = math.radians(lat), math.radians(lon)
     _, n = radii(lat)
@@ -74,21 +74,21 @@ def enu_matrix(lat0, lon0):
 
 
 def geodetic_to_enu(lat, lon, h, lat0, lon0, h0):
-    """numpy array [east, north, up] in meters of (lat, lon, h) seen from the origin (lat0, lon0, h0)."""
+    """numpy array [east, north, up] in metres of (lat, lon, h) seen from the origin (lat0, lon0, h0)."""
     # TODO 5: ECEF of both points, difference, multiply by enu_matrix (R @ d)
     d = np.array(geodetic_to_ecef(lat, lon, h)) - np.array(geodetic_to_ecef(lat0, lon0, h0))
     return enu_matrix(lat0, lon0) @ d
 
 
 def enu_to_geodetic(e, n, u, lat0, lon0, h0):
-    """(lat, lon, h) of the point (e, n, u) meters from the origin — the inverse of geodetic_to_enu."""
+    """(lat, lon, h) of the point (e, n, u) metres from the origin — the inverse of geodetic_to_enu."""
     # TODO 6: R is orthonormal, so its inverse is its transpose: X = X0 + R.T @ [e, n, u]
     x = np.array(geodetic_to_ecef(lat0, lon0, h0)) + enu_matrix(lat0, lon0).T @ np.array([e, n, u], float)
     return ecef_to_geodetic(float(x[0]), float(x[1]), float(x[2]))
 
 
 def haversine(lat1, lon1, lat2, lon2):
-    """Great-circle distance in meters on a sphere of radius EARTH_RADIUS_M."""
+    """Great-circle distance in metres on a sphere of radius EARTH_RADIUS_M."""
     # TODO 7: the haversine formula (clip a to 1.0 before the square root, like NAVERA)
     p1, p2 = math.radians(lat1), math.radians(lat2)
     dp = p2 - p1
@@ -108,14 +108,14 @@ def bearing(lat1, lon1, lat2, lon2):
 
 
 def flat_en(lat, lon, lat0, lon0):
-    """(east, north) in meters of (lat, lon) from (lat0, lon0) — NAVERA's flat shortcut (M_PER_DEG)."""
+    """(east, north) in metres of (lat, lon) from (lat0, lon0) — NAVERA's flat shortcut (M_PER_DEG)."""
     # TODO 9: north = Δlat · M_PER_DEG ; east = Δlon · M_PER_DEG · cos(lat0)
     return ((lon - lon0) * M_PER_DEG * math.cos(math.radians(lat0)),
             (lat - lat0) * M_PER_DEG)
 
 
 def flat_move(lat, lon, de, dn):
-    """(lat, lon) after moving `de` meters east and `dn` meters north — NAVERA's _move()."""
+    """(lat, lon) after moving `de` metres east and `dn` metres north — NAVERA's _move()."""
     # TODO 10: the inverse of flat_en, with the cosine of the CURRENT latitude (like NAVERA)
     return (lat + dn / M_PER_DEG,
             lon + de / (M_PER_DEG * math.cos(math.radians(lat))))

@@ -102,8 +102,8 @@ def _():
 
 
 @c.test("TODO 4 — WHERE: NaN altitude, your covariance, and NAVERA finds it sane with a stated 13.3 m",
-        hint="altitude = math.nan; position_covariance = cov; type = cov_type. NAVERA's _stated_sigma reads "
-             "√max(Σ_EE, Σ_NN) = √177.75.")
+        hint="Course section 1 ('where'): an unknown altitude is not 0, it is 'not a number'; the covariance and its "
+             "type are the ones you built in TODO 1–3. Section 6, 'What stated σ means in the code', explains the 13.3 m.")
 def _():
     m = build()
     c.ok(math.isnan(m.altitude), f"altitude is {m.altitude} — unknown must be math.nan (0.0 is sea level)")
@@ -165,8 +165,9 @@ def results():
 
 
 @c.test("TODO 6/7 — probability.py: Mahalanobis distance, theory and sampling agree (results.json)",
-        hint="d² = (c·e_E² − 2b·e_E·e_N + a·e_N²)/(ac − b²); p_inside(k) = 1 − exp(−k²/2). Then run "
-             "`python3 probability.py`.")
+        hint="Course section 3: the Mahalanobis distance uses the INVERSE of the 2 × 2 covariance (write it with the "
+             "determinant), and the probability inside k σ in 2-D is the closed form derived there — not the "
+             "1-D 68 % rule. Then run `python3 probability.py`.")
 def _():
     p = load_student("probability.py")
     c.near(p.p_inside(2.0), 1 - math.exp(-2.0), 1e-9, "p_inside(2)")
@@ -270,7 +271,7 @@ def _():
         c.ok(isinstance(got, (tuple, list)) and len(got) == 2, f"VERDICTS[{name!r}] should be (state, \"reason\")")
         c.ok(got[0] == state, f"VERDICTS[{name!r}] state = {got[0]!r} is not what the arbiter says")
         c.ok(all(w in str(got[1]) for w in words), f"VERDICTS[{name!r}] reason = {got[1]!r} is not what the arbiter says")
-    c.ok(str(q1).strip().lower() == "b" and str(q2).strip().lower() == "b", f"Q1 = {q1!r}, Q2 = {q2!r}: not both right")
+    c.ok(str(q1).strip().lower() == "c" and str(q2).strip().lower() == "a", f"Q1 = {q1!r}, Q2 = {q2!r}: not both right")
 
 
 @c.test("report.md — Covariance, Probability and Stated sigma, with your numbers",

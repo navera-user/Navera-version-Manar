@@ -28,7 +28,7 @@ scale error; what remains is the convergence of the meridians and the curvature,
 second-order effects (larger at Sousse than near the equator, because tan of the latitude is 0.72).
 Day vision measures its velocity with _en() and applies it with _move(), so the same wrong
 constant is used in both directions and the scale error cancels in the carried position. It does
-not cancel in numbers that are compared with true meters, such as distance gates and stated
+not cancel in numbers that are compared with true metres, such as distance gates and stated
 uncertainties: over 2 km that is about 7 m, small compared with the uncertainty NAVERA states for
 a dead-reckoned position, so it is acceptable. For a 300 km survey flight with a single flat frame
 the error reaches about 6 km: the software must use exact ENU or move its home point often. Using

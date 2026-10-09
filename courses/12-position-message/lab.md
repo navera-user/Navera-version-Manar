@@ -2,7 +2,7 @@
 
 **Goal:** implement the covariance mathematics of the course in [my_source.py](file:./my_source.py)
 and [probability.py](file:./probability.py), publish a complete `PositionEstimate` to NAVERA's real
-arbiter, inject thirteen faults and record each verdict in [verdicts.py](file:./verdicts.py), then
+arbiter, inject twelve faults and record each verdict in [verdicts.py](file:./verdicts.py), then
 argue a design question in [report.md](file:./report.md).
 **Time:** about 3 h.
 
@@ -135,7 +135,7 @@ output), but it keeps your `sensor_stamp`, `model_id` and `frame_index`: traceab
 > `ros2 topic echo --once` sometimes prints nothing for a few seconds: it must first discover the
 > topic. Wait about 5 s. If it still prints nothing, press `Ctrl+C` and run it again.
 
-### Step 5 — Thirteen ways to meet the jury (TODO 5)
+### Step 5 — Twelve faults for the jury (TODO 5)
 
 > [!TASK]
 > **TODO 5** — complete `apply_fault(est, fault)`: one `if` / `elif` per fault, each changing

@@ -1,7 +1,7 @@
 # Code review — review_me.patch
 
 Reviewer: Test Student
-Patch author: Khalid Al Rawahi — "fix(estimator): fewer false GPS refusals; geo: use EARTH_RADIUS_M"
+Patch author: Kenji Sato — "fix(estimator): fewer false GPS refusals; geo: use EARTH_RADIUS_M"
 
 ## What the patch does
 

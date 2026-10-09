@@ -1,3 +1,3 @@
-{"number": "11", "title": "Subscribers, callbacks and executors: listening with memory", "module": 3, "duration": "3 h 30",
+{"number": "11", "title": "Subscribers, callbacks and executors: listening with memory", "module": 3, "duration": "4 h",
  "summary": "Write subscribers that filter bad fixes, keep state and compute speed despite GNSS noise; measure how executors and callback groups decide who waits; then follow NAVERA's real arbiter and time how fast it detects a silent receiver.",
  "resources": [], "open": ["gps_listener.py", "executor_demo.py", "status_listener.py", "report.md"], "check_timeout_s": 300}

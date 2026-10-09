@@ -79,10 +79,10 @@ def _():
     from builtin_interfaces.msg import Time
     from sensor_msgs.msg import NavSatFix, NavSatStatus
     (f,) = need(mod(), "make_fix")
-    m = f(22.93, 57.53, 40.0, 2.0, Time(sec=1000, nanosec=5))
+    m = f(35.77, 10.83, 40.0, 2.0, Time(sec=1000, nanosec=5))
     c.ok(isinstance(m, NavSatFix), f"make_fix should return a NavSatFix, got {type(m).__name__}")
-    c.near(m.latitude, 22.93, 1e-9, "latitude")
-    c.near(m.longitude, 57.53, 1e-9, "longitude")
+    c.near(m.latitude, 35.77, 1e-9, "latitude")
+    c.near(m.longitude, 10.83, 1e-9, "longitude")
     c.near(m.altitude, 40.0, 1e-9, "altitude")
     c.eq(m.status.status, NavSatStatus.STATUS_FIX, "status.status")
     c.eq(m.status.service, NavSatStatus.SERVICE_GPS, "status.service")
@@ -115,8 +115,9 @@ def run_default():
 
 
 @c.test("TODO 5/6 — the node /fake_gps publishes NavSatFix on /fake_gps/fix and declares its 6 parameters",
-        hint="TODO 5: declare_parameter(name, default) for each entry of DEFAULTS. TODO 6: create_publisher(NavSatFix, "
-             "TOPIC, 10) in self.pub and create_timer(1.0 / rate, self.on_timer). Then `ros2 param list /fake_gps`.")
+        hint="Course sections 2 and 3: TODO 5 declares every entry of DEFAULTS as a parameter; TODO 6 stores a "
+             "NavSatFix publisher on TOPIC in self.pub and starts a timer whose PERIOD comes from the rate parameter "
+             "and calls self.on_timer. Then `ros2 param list /fake_gps` must show the six names.")
 def _():
     r = run_default()
     missing = [p for p in ("rate_hz", "speed_mps", "heading_deg", "start_lat", "start_lon", "sigma_m")
@@ -125,7 +126,8 @@ def _():
 
 
 @c.test("default run — 2 Hz, current stamps, a valid fix that starts near Sousse",
-        hint="Timer period 1.0 / rate_hz; header.stamp = now.to_msg(); start_lat/start_lon read from the parameters.")
+        hint="Course section 2: the timer takes a PERIOD, not a rate; the stamp is the node clock's current time "
+             "converted to a message; the start position is read from the parameters, not from constants.")
 def _():
     from sensor_msgs.msg import NavSatStatus
     msgs = run_default()["msgs"]

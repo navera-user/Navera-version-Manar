@@ -178,11 +178,12 @@ three layers.
 | Celestial | `cn_pkg` | recognises stars in a sky image, with the exact time | 24 |
 | IMU | `imu_pkg` | attitude and heading (it does **not** give a position) | 16 |
 
-**2. The arbiter** (`navera_estimator`, node `estimator_node`) decides, five times per second,
-which source to publish. Its rule is simple and strict:
+**2. The arbiter** (`navera_estimator`, node `estimator_node`) decides, five times per second
+by default (parameter `publish_rate_hz = 5.0`), which source to publish. Its rule is simple and strict:
 
 - a source is **eligible** only if its estimate is valid, fresh (for GPS: younger than
-  `gps_timeout_s = 3.0` s), a real measurement, and has finite numbers;
+  `gps_timeout_s = 3.0` s), **measured** or **dead-reckoned** (propagated) — never a held or
+  replayed old point — and has finite numbers;
 - among the eligible ones, the first in the priority order **GPS > day vision > night vision >
   celestial** wins;
 - a GPS fix that **jumps** farther than the vehicle could have moved is refused:

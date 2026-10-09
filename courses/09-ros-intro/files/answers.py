@@ -45,14 +45,14 @@ FIX_MAX_SIGMA_M = None       # double_value returned by the get_parameters servi
 
 # ---- Quiz — write "a", "b" or "c"
 # Q1. A GPS driver publishes BEST_EFFORT. Which subscription receives its messages?
-#   a) only a RELIABLE one        b) only a BEST_EFFORT one        c) both kinds
+#   a) both kinds        b) only a RELIABLE one        c) only a BEST_EFFORT one
 Q1 = ""
 # Q2. In domain 42, what is the discovery multicast port?
 #   a) 7442        b) 17900        c) 10900
 Q2 = ""
 # Q3. A node restarts in flight and must learn that the mission has already started. Which QoS
 #     makes the "mission started" message reach it without anybody sending it again?
-#   a) BEST_EFFORT, depth 10
-#   b) TRANSIENT_LOCAL durability on both sides, depth >= 1
+#   a) TRANSIENT_LOCAL durability on both sides, depth >= 1
+#   b) BEST_EFFORT, depth 10
 #   c) RELIABLE, VOLATILE, depth 100
 Q3 = ""

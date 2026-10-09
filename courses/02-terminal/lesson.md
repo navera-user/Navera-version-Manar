@@ -135,8 +135,8 @@ Each set is also written as one **octal** digit: r = 4, w = 2, x = 1, added toge
 (`chmod 755 file`). Only the owner (or the administrator, **root**) may do it.
 
 > [!NOTE]
-> In this academy, `ls -l` may show a strange group name in the group column (for example
-> `shadow-team`). It is only the name of a group on the host computer that runs the sandboxes.
+> In this academy, `ls -l` may show a group name other than `student` in the group column. It is
+> only the name of a group on the host computer that runs the sandboxes.
 > It changes nothing for you: ignore it.
 
 ### Why robots care: devices and the execute bit

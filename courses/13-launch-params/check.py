@@ -57,8 +57,8 @@ def _():
 
 
 @c.test("TODO 1 — make_descriptor(): description, read_only and a floating-point range",
-        hint="ParameterDescriptor(description=..., read_only=...); if lo is not None: "
-             "floating_point_range=[FloatingPointRange(from_value=lo, to_value=hi, step=0.0)].")
+        hint="Course section 1, 'Descriptors': fill the description and read_only fields of a ParameterDescriptor; only "
+             "when a lower bound is given, add a floating-point range (a LIST holding one range, step 0 = continuous).")
 def _():
     (f,) = need(node_mod(), "make_descriptor")
     d = f("ground speed, m/s", 0.0, 60.0, False)
@@ -213,8 +213,9 @@ def _():
 
 
 @c.test("TODO 7 — the included estimator.launch.py receives gps_timeout_s := 2.0",
-        hint="IncludeLaunchDescription(PythonLaunchDescriptionSource(path), launch_arguments={\"gps_timeout_s\": "
-             "\"2.0\"}.items()). The arbiter logs its windows when it starts: look for gps_timeout=2.0s.")
+        hint="Course section 5 (launch files): include NAVERA's estimator.launch.py and pass gps_timeout_s as a launch "
+             "ARGUMENT — launch arguments are strings, given as (name, value) pairs. The arbiter logs its windows "
+             "when it starts: read that line to see what it received.")
 def _():
     r = launch()
     c.ok("gps_timeout=2.0s" in r["out"], "the arbiter did not start with gps_timeout=2.0s:\n" +
@@ -236,8 +237,8 @@ def _():
 
 @c.test("NAVERA copy — fix_max_sigma_m is 2.0 and gps_timeout_s is back to 3.0; the order trap measured",
         hint="Edit ~/navera/navera_estimator/navera_estimator/config/estimator_params.yaml (keep the indentation); "
-             "`git -C ~/navera diff` must show only fix_max_sigma_m. Answers: plain launch 3.0, ros2 run with the "
-             "YAML 1.0, your launch 2.0.")
+             "`git -C ~/navera diff` must show only fix_max_sigma_m. The three GPS_TIMEOUT_* answers are what the "
+             "arbiter printed in each run of the lab step (course section 3, 'Who wins?').")
 def _():
     d = load_yaml(NAVERA_YAML)
     try:

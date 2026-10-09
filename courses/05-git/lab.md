@@ -51,7 +51,8 @@ git tag
 git remote -v
 ```
 
-The remote `base` is a folder on the academy server (a path starting with `/home/shadow-team/…`).
+The remote `base` is a folder on the academy server (a path ending in `…/navera-academy/base`,
+not under your home `/home/student`).
 It is outside your sandbox: you cannot fetch from it or push to it, and you do not need to.
 
 ## Step 2 — Look inside the objects
@@ -121,7 +122,7 @@ Two branches; the `*` marks `my-first-change`, which starts at the same commit a
 ## Step 5 — First commit: a line in the README
 
 Open [ACADEMY_README.md](file:navera/ACADEMY_README.md) in the editor and add one line **at the
-end**, with your name, for example `- Aisha was here: my first commit in NAVERA!`. Save.
+end**, with your name, for example `- Amara was here: my first commit in NAVERA!`. Save.
 
 ```bash
 git status
@@ -283,7 +284,7 @@ git apply --check -R ~/lessons/05-git/my_changes.patch && echo "reverse applies:
 
 ## Step 9 — Review a colleague's patch
 
-A colleague, Khalid, sends you [review_me.patch](file:./review_me.patch) and asks you to apply it.
+A colleague, Kenji, sends you [review_me.patch](file:./review_me.patch) and asks you to apply it.
 A reviewer never applies blindly. First, what does it touch?
 
 ```bash

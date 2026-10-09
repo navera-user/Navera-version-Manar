@@ -105,8 +105,9 @@ the other, each aligned to its own size, plus a 4-byte header. A `std_msgs/Strin
 `"Hello World: 12"` (15 characters) takes 4 (header) + 4 (string length) + 16 (characters and the
 final zero) = **24 bytes**. A `NavSatFix` is about 125 bytes: 12 float64 (96 bytes) plus the
 header and status fields (lesson 10 measures 128 B, the size rounded up). So a GPS at 5 Hz uses about 600 B/s, while one colour camera frame of
-1536 × 730 pixels is 1536 × 730 × 3 ≈ 3.4 MB. Two orders of magnitude matter when you design a
-system: this is why NAVERA's cameras and localisers run on the same box and never send raw frames
+1536 × 730 pixels is 1536 × 730 × 3 ≈ 3.4 MB — one frame weighs as much as about 6000 GPS
+messages, almost **four orders of magnitude** more than a whole second of GPS (and a camera sends
+many frames per second). Such ratios matter when you design a system: this is why NAVERA's cameras and localisers run on the same box and never send raw frames
 over a radio link. You will measure message sizes with `ros2 topic bw`.
 
 ## 3. Under the hood: DDS and discovery

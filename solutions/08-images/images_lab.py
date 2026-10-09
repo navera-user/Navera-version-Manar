@@ -135,7 +135,7 @@ def warp_affine(gray, M, out_w, out_h):
 def make_like_map(photo, heading_deg, photo_m_per_px, map_m_per_px, method="normalise"):
     """Prepare a drone photo for comparison with the north-up map: grey, contrast (method =
     "normalise", "equalise" or "clahe"), then ONE affine warp that turns north up and brings the photo
-    to the map's meters per pixel. Output size: round(w * s) x round(h * s). Returns uint8.
+    to the map's metres per pixel. Output size: round(w * s) x round(h * s). Returns uint8.
 
     heading_deg: direction of the photo's TOP, in degrees clockwise from north (like a bearing)."""
     # TODO 11: to_gray -> contrast -> s = ? -> M = rotation_scale_matrix(w/2, h/2, ?, s) -> shift M so the

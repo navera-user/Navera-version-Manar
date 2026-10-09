@@ -276,8 +276,8 @@ compares a photo with the map, it turns, scales and normalises it — Navi does 
 
 ```python
 footprint_w = 2.0 * altitude_m * math.tan(math.radians(hfov_deg) / 2.0)
-gsd_cam = footprint_w / w                     # camera meters per pixel
-gsd_map = ground_resolution_m(lat, zoom)      # map meters per pixel (lesson 7)
+gsd_cam = footprint_w / w                     # camera metres per pixel
+gsd_map = ground_resolution_m(lat, zoom)      # map metres per pixel (lesson 7)
 scale = gsd_cam / gsd_map
 ...
     diag = int(math.ceil(math.hypot(w, h)))
@@ -332,7 +332,7 @@ agrees with the measured heading and the fitted scale with the altitude. The GSD
 | **inverse mapping** | compute, for each output pixel, where it comes from in the input |
 | **bilinear interpolation** | weighted blend of the 4 nearest pixels |
 | **aliasing** | false patterns created by sampling too sparsely; prevented by low-pass filtering |
-| **GSD** | ground sample distance: meters on the ground per pixel |
+| **GSD** | ground sample distance: metres on the ground per pixel |
 
 ## Check what you learned
 
@@ -363,8 +363,8 @@ Forward mapping leaves holes (some output pixels receive nothing) and collisions
 visits every output pixel once and interpolates the source at a non-integer position.
 </details>
 
-<details><summary>6. A frame has GSD 0.35 m and the map 1.095 m. Bigger or smaller, by how much, and with which interpolation?</summary>
-Smaller: s = 0.35/1.095 = 0.32. Shrinking by 3× must average (INTER_AREA) or blur first, otherwise
+<details><summary>6. A frame has GSD 0.35 m and the map (zoom 17 at Sousse) 0.968 m. Bigger or smaller, by how much, and with which interpolation?</summary>
+Smaller: s = 0.35/0.968 ≈ 0.36, i.e. about 2.8× smaller. Shrinking this much must average (INTER_AREA) or blur first, otherwise
 aliasing creates false patterns.
 </details>
 

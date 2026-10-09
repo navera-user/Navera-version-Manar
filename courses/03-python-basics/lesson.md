@@ -86,7 +86,7 @@ Python rounds exact halves to the even neighbour: `round(2.5)` is `2`, `round(3.
 
 ```python
 alts = [0.0, 8.0, 120.5]          # list: ordered, changeable   alts[0], alts[-1], alts[1:3]
-fix = (23.588, 58.383)            # tuple: ordered, fixed        lat, lon = fix   (unpacking)
+fix = (35.825, 10.636)            # tuple: ordered, fixed        lat, lon = fix   (unpacking)
 row = {"t_s": 40.0, "src": "gps"} # dict: key -> value           row["src"], row.get("hdop", None)
 
 for a in alts:                    # every item

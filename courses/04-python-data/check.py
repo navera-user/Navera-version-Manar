@@ -67,7 +67,7 @@ def small():
     import numpy as np
     return pd_().DataFrame({
         "flight_id": ["b", "a", "a", "a", "b", "a"], "time_s": [0, 0, 2, 4, 2, 6],
-        "lat": [20.0, 23.0, 23.0001, np.nan, 20.0, 23.0001], "lon": [58.0, 58.0, 58.0, np.nan, 58.0001, 58.0]})
+        "lat": [35.8, 35.7, 35.7001, np.nan, 35.8, 35.7001], "lon": [10.6, 10.6, 10.6, np.nan, 10.6001, 10.6]})
 
 
 # ---------------------------------------------------------------- Part A
@@ -101,12 +101,12 @@ def _():
     c.ok(np.shape(r) == (2,), f"with arrays of 2 points the result should have shape (2,), got {np.shape(r)}")
     c.near(r[0], 0.0, 1e-6, "distance of London to itself")
     c.near(r[1], 357375.95, 0.5, "haversine_m(Amsterdam, London)")
-    c.ok(math.isnan(float(call(h, float("nan"), 58.0, 23.0, 58.0))), "a NaN latitude should give NaN")
+    c.ok(math.isnan(float(call(h, float("nan"), 10.6, 35.7, 10.6))), "a NaN latitude should give NaN")
 
 
 @c.test("TODO 3: add_motion() — dt_s, step_m, gs_mps within each flight",
-        hint="Work on df.copy(); g = out.groupby('flight_id'); the previous value in the same flight is "
-             "g['lat'].shift(); step_m = haversine_m(previous, current); gs = step / dt.")
+        hint="Work on a copy. The previous row must come from the SAME flight: group by flight_id and shift each "
+             "column inside the groups. step_m is the haversine distance from the previous position, gs_mps = step / dt.")
 def _():
     (add_motion,) = fa("add_motion")
     s = small()
@@ -118,8 +118,8 @@ def _():
          "the FIRST row of each flight must have step_m = NaN (no previous row in that flight)")
     c.near(out.loc[2, "dt_s"], 2.0, 1e-9, "dt_s of row 2")
     c.near(out.loc[2, "step_m"], 11.1195, 1e-3, "step_m of row 2 (0.0001° north)")
-    c.near(out.loc[4, "step_m"], 10.4489, 1e-3, "step_m of row 4 (flight b, 0.0001° east) — previous row of the SAME flight")
-    c.near(out.loc[4, "gs_mps"], 5.22445, 1e-3, "gs_mps of row 4")
+    c.near(out.loc[4, "step_m"], 9.0186, 1e-3, "step_m of row 4 (flight b, 0.0001° east) — previous row of the SAME flight")
+    c.near(out.loc[4, "gs_mps"], 4.50931, 1e-3, "gs_mps of row 4")
     c.ok(math.isnan(out.loc[3, "step_m"]) and math.isnan(out.loc[5, "step_m"]),
          "a step to or from an empty position must be NaN")
 

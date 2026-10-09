@@ -1,6 +1,6 @@
 # Write your answers, then save. The course and the lab have everything you need.
 
-# Q1. How many KILOMETERS long is 1 degree of LONGITUDE at Sousse (latitude 35.8277°),
+# Q1. How many KILOMETRES long is 1 degree of LONGITUDE at Sousse (latitude 35.8277°),
 #     on the WGS84 ellipsoid?  (N · cos(lat) · π / 180, in km — a number, e.g.  Q1 = 50.0)
 Q1 = 0
 

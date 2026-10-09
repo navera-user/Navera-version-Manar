@@ -6,7 +6,7 @@
   <text x="20" y="26" fill="#1d2733" font-weight="bold">Reviewing a patch: check it, read it, apply only what is safe</text>
   <rect x="20" y="45" width="230" height="190" rx="8" fill="#ffffff" stroke="#8aa3b8"/>
   <text x="35" y="68" font-family="monospace" font-weight="bold" fill="#1d2733">review_me.patch</text>
-  <text x="35" y="88" font-size="11" fill="#4a5866">From: Khalid Al Rawahi</text>
+  <text x="35" y="88" font-size="11" fill="#4a5866">From: Kenji Sato</text>
   <text x="35" y="102" font-size="11" fill="#4a5866">Subject: fewer false GPS refusals;</text>
   <text x="35" y="116" font-size="11" fill="#4a5866">geo: use EARTH_RADIUS_M</text>
   <rect x="32" y="126" width="206" height="54" rx="4" fill="#e6f4e3" stroke="#4e9a44"/>

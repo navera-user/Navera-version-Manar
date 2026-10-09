@@ -1,7 +1,7 @@
 # Lab 6 report — how far can NAVERA trust its flat-Earth shortcut?
 
 <!-- Write 150-400 words in your own words. Keep the three headings exactly as they are.
-     Quote numbers from results.json (in meters). Delete these comment lines if you want. -->
+     Quote numbers from results.json (in metres). Delete these comment lines if you want. -->
 
 ## Method
 

@@ -39,7 +39,8 @@ def photo_gray():
 
 
 @c.test("to_uint8(): rounds, clips to 0..255 BEFORE converting, returns uint8",
-        hint="np.clip(np.rint(a), 0, 255).astype(np.uint8). If you convert first, 300 becomes 44 (300 − 256).")
+        hint="Course section 2 (dtypes): three steps in the right order — round to the nearest integer, limit to the "
+             "range 0..255, and only then change the dtype. If you convert first, 300 wraps around and becomes 44.")
 def _():
     (f,) = need(lab(), "to_uint8")
     r = u8(f(np.array([-5.6, 0.4, 99.5, 254.6, 300.0, 1e6])), "to_uint8()")
@@ -63,7 +64,8 @@ def _():
 
 
 @c.test("histogram(): 256 counts that add up to the number of pixels",
-        hint="np.bincount(gray.ravel(), minlength=256) — minlength makes sure there are 256 bins even if 255 never appears.")
+        hint="Course section 4: count how many pixels have each value 0..255 on the flattened picture. numpy has a "
+             "counting function for non-negative integers; make sure the result has 256 bins even if 255 never appears.")
 def _():
     (f,) = need(lab(), "histogram")
     g = np.array([[0, 0, 7], [7, 7, 200]], np.uint8)
@@ -86,8 +88,9 @@ def _():
 
 
 @c.test("equalise(): the same result as cv2.equalizeHist (± 1), uint8",
-        hint="cdf = np.cumsum(histogram(g)); cdf_min = the first non-zero cdf value; "
-             "lut = to_uint8((cdf − cdf_min) / (N − cdf_min) × 255); return lut[g] (numpy indexing with an array).")
+        hint="Course section 4 (histogram equalisation): build the cumulative histogram, use its first non-zero value "
+             "as the minimum, scale it to 0..255 into a look-up table with your to_uint8(), then apply the table to "
+             "every pixel at once with numpy indexing (no Python loop over pixels).")
 def _():
     import cv2
     (f,) = need(lab(), "equalise")
@@ -117,8 +120,9 @@ def _():
 
 
 @c.test("convolve2d(): identity kernel, TRUE convolution (flipped kernel), reflect-101 border, float32, = OpenCV",
-        hint="np.pad(img, ((r, r), (r, r)), mode='reflect') is OpenCV's BORDER_REFLECT_101. Flip with kernel[::-1, ::-1], "
-             "then add k[i, j] · padded[i:i+H, j:j+W] for every (i, j). With a 1 on the LEFT of the centre, a true "
+        hint="Course section 5: pad the picture by the kernel radius with the border mode that matches OpenCV's "
+             "BORDER_REFLECT_101 (look at np.pad's modes), FLIP the kernel (that is what makes it a convolution), then "
+             "add one shifted, weighted copy of the padded picture per kernel cell. With a 1 on the LEFT of the centre, a true "
              "convolution reads the RIGHT neighbour: out[y, x] = img[y, x + 1] (a correlation would read x − 1).")
 def _():
     import cv2
@@ -142,8 +146,8 @@ def _():
 
 
 @c.test("gaussian_kernel(): sums to 1, equals OpenCV's for (5, σ = 1.2) and for (11, σ = 0 → OpenCV's rule)",
-        hint="x = np.arange(k) − (k − 1)/2; g = np.exp(−x² / (2σ²)); g /= g.sum(); np.outer(g, g). "
-             "If sigma <= 0: sigma = 0.3·((k − 1)·0.5 − 1) + 0.8.")
+        hint="Course section 5, Gaussian blur: sample the 1-D Gaussian at integer offsets centred on 0, normalise it "
+             "to sum 1, and use separability to get the 2-D kernel. When sigma <= 0, use OpenCV's rule quoted in the course.")
 def _():
     import cv2
     (f,) = need(lab(), "gaussian_kernel")
@@ -174,8 +178,8 @@ def _():
 
 
 @c.test("rotation_scale_matrix() equals cv2.getRotationMatrix2D (2 × 3)",
-        hint="a = s·cos θ, b = s·sin θ (θ in radians): [[a, b, (1 − a)·cx − b·cy], [−b, a, b·cx + (1 − a)·cy]]. "
-             "Positive angles turn counter-clockwise on screen because the y axis points down.")
+        hint="Course section 6: the matrix of cv2.getRotationMatrix2D is written there, with θ in RADIANS; the "
+             "translation column keeps the centre (cx, cy) fixed — check that M·(cx, cy, 1) gives (cx, cy) back. Positive angles turn counter-clockwise on screen because the y axis points down.")
 def _():
     import cv2
     (f,) = need(lab(), "rotation_scale_matrix")
@@ -187,8 +191,9 @@ def _():
 
 
 @c.test("warp_affine(): identity gives the picture back, = cv2.warpAffine (mean diff < 0.25), outside = 0, float32",
-        hint="Inverse mapping: for each output pixel (u, v), source = A⁻¹·((u, v) − t) with A = M[:, :2], t = M[:, 2]. "
-             "Bilinear: weights (1 − fx)(1 − fy), fx(1 − fy), (1 − fx)fy, fx·fy on the 4 neighbours from _get().")
+        hint="Course section 6, inverse mapping: for each OUTPUT pixel, undo the affine map (invert its 2 × 2 part, "
+             "remove the translation) to find where it comes from in the source, then interpolate bilinearly between "
+             "the 4 neighbours given by _get() (weights from the fractional parts, summing to 1).")
 def _():
     import cv2
     (f,) = need(lab(), "warp_affine")

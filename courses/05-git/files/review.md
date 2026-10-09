@@ -1,7 +1,7 @@
 # Code review — review_me.patch
 
 Reviewer: (your name)
-Patch author: Khalid Al Rawahi — "fix(estimator): fewer false GPS refusals; geo: use EARTH_RADIUS_M"
+Patch author: Kenji Sato — "fix(estimator): fewer false GPS refusals; geo: use EARTH_RADIUS_M"
 
 Write 2–5 sentences under each heading. Replace every "(write here)".
 

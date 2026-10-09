@@ -1,4 +1,4 @@
-# Map projections and tiles: Web Mercator, the tile pyramid and MBTiles
+# Map projections and tiles: Web Mercator and MBTiles
 
 > [!NOTE] In short
 > - To find its position, NAVERA compares each photo with the few map tiles near its last
@@ -148,7 +148,7 @@ The equator, 2πa = 40 075 016.7 m (`EQUATOR_M`), is cut into 2^z · 256 pixels.
 equator, the map is stretched by 1/cos φ, so a pixel covers less ground:
 
 ```
-meters per pixel = 2πa · cos φ / (256 · 2^z) = 156 543.03 · cos φ / 2^z
+metres per pixel = 2πa · cos φ / (256 · 2^z) = 156 543.03 · cos φ / 2^z
 ```
 
 | Zoom | Singapore (1.28°) | Sousse (35.83°) | London (51.50°) | Reykjavik (64.14°) |
@@ -165,7 +165,7 @@ Reykjavik. A zoom-17 tile is 306 m wide in Singapore, 248 m in Sousse and 133 m 
 
 **Choosing a zoom.** A downward camera at height H with horizontal field of view α and W pixels
 across sees ground pixels of size GSD = 2H·tan(α/2)/W (the **ground sample distance**; lesson 8).
-NAVERA scales the photo to the map's meters per pixel before matching. Shrinking a photo is safe;
+NAVERA scales the photo to the map's metres per pixel before matching. Shrinking a photo is safe;
 enlarging it invents nothing but blur. So a simple rule is: take the **highest zoom whose pixel is
 still at least the camera's GSD**:
 
@@ -398,7 +398,7 @@ The measurement: os.path.getsize (or PRAGMA page_count × page_size). Metadata i
 a tool and can be wrong.
 </details>
 
-<details><summary>6. Why does the corner bug cost more meters in Singapore than in Sousse, at the same zoom?</summary>
+<details><summary>6. Why does the corner bug cost more metres in Singapore than in Sousse, at the same zoom?</summary>
 The error is half the tile diagonal. Tiles cover more ground at lower latitude (cos φ larger): 306 m
 in Singapore against 248 m in Sousse, so 216 m against 175 m (and only 94 m in Reykjavik).
 </details>

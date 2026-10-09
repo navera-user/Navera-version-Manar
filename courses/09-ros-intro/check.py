@@ -203,9 +203,9 @@ def _():
     c.near(answered("FIX_MAX_SIGMA_M"), 25.0, 1e-6, "FIX_MAX_SIGMA_M")
 
 
-@c.test("quiz Q1–Q3", hint="Q1 and Q3: the QoS compatibility tables of the course. Q2: 7400 + 250 × 42.")
+@c.test("quiz Q1–Q3", hint="Q1 and Q3: the QoS compatibility tables of the course. Q2: the discovery port formula of the course, with your domain number.")
 def _():
-    for q, good in (("Q1", "b"), ("Q2", "b"), ("Q3", "b")):
+    for q, good in (("Q1", "c"), ("Q2", "b"), ("Q3", "a")):
         v = str(ans(q)).strip().lower().strip(")")
         c.ok(v != "", f"{q} has no answer yet")
         c.ok(v == good, f"{q} = \"{v}\" is not the right answer")

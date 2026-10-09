@@ -33,7 +33,7 @@ You see `answers.py`, `fake_node.sh`, `inbox/` and `mission_brief.txt`, plus `.`
 `.academy_version` (a file the academy uses: ignore it). Read the
 first column of `ls -la`: `d` for a folder, `-` for a file, then the 9 permission bits. `fake_node.sh`
 has `x` bits; the other files do not. The third and fourth columns are the owner (`student`) and the
-group — the group may show a name of the host computer, such as `shadow-team`; ignore it.
+group — the group may show a name from the host computer instead of `student`; ignore it.
 
 ```bash
 cat mission_brief.txt

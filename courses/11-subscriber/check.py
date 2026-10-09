@@ -127,8 +127,9 @@ def run_listener(faults):
 
 
 @c.test("TODO 3 — gps_listener.py receives the player's fixes and logs one line per fix",
-        hint="3a: self.create_subscription(NavSatFix, TOPIC, self.on_fix, qos_profile_sensor_data). 3b: t from "
-             "header.stamp, tracker.update(...), then one get_logger().info line in exactly the format of the TODO.")
+        hint="Course section 1: 3a subscribes to TOPIC with the sensor-data QoS profile named in the TODO "
+             "and on_fix as callback. 3b (section 3, 'Which time?'): the time comes from the message's stamp, not "
+             "the clock; feed the tracker, then log one line in exactly the format given in the TODO comment.")
 def _():
     run_listener(False)
 
@@ -181,9 +182,9 @@ def run_executor(mode):
 
 
 @c.test("TODO 4 — with two callback groups and a MultiThreadedExecutor the timer runs on time",
-        hint="4a: two MutuallyExclusiveCallbackGroup() objects, one passed to create_timer, one to "
-             "create_subscription (callback_group=...). 4b: make_executor('multi') returns "
-             "MultiThreadedExecutor(num_threads=2).")
+        hint="Course section 2 (executors): 4a gives the timer and the subscription each their OWN mutually exclusive "
+             "callback group; 4b makes make_executor('multi') return an executor with two threads, so both groups "
+             "can run at the same time.")
 def _():
     single = run_executor("single")
     c.ok(single["fixes"] >= 5 and single["max_gap_ms"] > 200,
@@ -259,8 +260,9 @@ def _():
 
 
 @c.test("TODO 7 — when the GNSS stops: NO_FIX, and `GPS silent for X s` with X ≈ gps_timeout_s",
-        hint="On a change to NO_FIX, log f\"GPS silent for {gps_silence_s(msg):.2f} s\". NAVERA declares the GNSS "
-             "stale after 3 s, at its next 5 Hz tick.")
+        hint="Course section 5 (detecting silence): when the (state, source) key changes and the new state is NO_FIX, use gps_silence_s() "
+             "and the exact message format of the TODO comment. X should be close to the arbiter's GPS timeout "
+             "(see its parameters), give or take one tick.")
 def _():
     out = run_navera()
     c.ok("NO_FIX" in out and "stale" in out,

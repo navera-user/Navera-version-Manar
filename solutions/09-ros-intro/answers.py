@@ -36,6 +36,6 @@ FIRST_STATE = 0
 NAV_STATUS_HZ = 5.0
 FIX_MAX_SIGMA_M = 25.0
 
-Q1 = "b"
+Q1 = "c"
 Q2 = "b"
-Q3 = "b"
+Q3 = "a"

@@ -115,13 +115,18 @@ Expected: 1.1940 m (Singapore), 0.5209 m (Reykjavik), zoom 18.
 
 ## Step 5 — Read a tile with SQL (TODO 8)
 
-**TODO 8** `read_tile(db_path, z, x, y)`:
+**TODO 8** `read_tile(db_path, z, x, y)` returns the JPEG bytes of one tile, or `None`. Build it from
+what the lesson showed you:
 
-1. `conn = sqlite3.connect("file:" + db_path + "?mode=ro", uri=True)` — read-only;
-2. `conn.execute("SELECT tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?", (z, x, row))`
-   with `row = (2 ** z - 1) - y` (the TMS row);
-3. `.fetchone()` → `None` if no tile, else a tuple whose element 0 is the JPEG;
-4. `conn.close()`, then return `bytes(...)` or `None`.
+1. Open the database **read-only**: `/data/map.mbtiles` is shared and must never be modified. Look up
+   how `sqlite3.connect()` accepts a `file:` URI with a mode option (lesson section 5, and the
+   Python documentation of `sqlite3`).
+2. Ask for one tile with the `tiles` table of lesson section 5. Pass the three numbers as **query
+   parameters** (`?` placeholders), never by pasting them into the SQL string. Remember that the
+   file stores **TMS rows** (lesson section 4): convert `y` first.
+3. A query that finds nothing gives no row: return `None` in that case, otherwise the BLOB of the
+   row as `bytes`.
+4. Close the connection before you return.
 
 ```bash
 python3 get_tile.py 35.8277 10.6388 19
@@ -203,12 +208,12 @@ Write [report.md](file:./report.md) (150–400 words, your own words, three head
 > [!TASK]
 > `results.json` exists and is right (the check verifies it), and `report.md` has the three headings,
 > at least 150 words, and quotes: Singapore's and Reykjavik's zoom-17 m/px, the real size in GB, the
-> 36467 MB estimate, and the corner error in Singapore in meters. Then press **✔ Check my work**.
+> 36467 MB estimate, and the corner error in Singapore in metres. Then press **✔ Check my work**.
 
 ## Going further (optional)
 
 - **The true ellipsoidal Mercator.** Write `mercator_y_3395(lat)` and plot, for 0–60°, the
-  difference with Web Mercator in meters and in zoom-17 pixels. At which latitude does the offset
+  difference with Web Mercator in metres and in zoom-17 pixels. At which latitude does the offset
   exceed one zoom-0 tile?
 - **Quadkeys.** Some map servers address tiles with one string (Bing "quadkeys"): each zoom level adds
   one digit 0–3 from the bits of x and y. Write `quadkey(x, y, z)` and its inverse, and check that a

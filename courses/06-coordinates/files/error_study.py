@@ -51,7 +51,7 @@ for d in DISTANCES:
 
 
 def first_above(errors, limit):
-    """The smallest distance of the grid where the error reaches `limit` meters (None if never)."""
+    """The smallest distance of the grid where the error reaches `limit` metres (None if never)."""
     for d, err in zip(DISTANCES, errors):
         if err >= limit:
             return d
