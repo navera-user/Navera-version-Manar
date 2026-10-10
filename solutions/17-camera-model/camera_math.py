@@ -149,9 +149,12 @@ def rot_z(a):
 
 
 def camera_rotation(heading_deg=0.0, pitch_deg=0.0, roll_deg=0.0):
-    """R_wc of a camera fixed under the drone, looking down (lesson 16's angles):
+    """R_wc of a camera fixed under the drone, looking down.
+    Human angles, as NAVERA's body_rpy_enu() reports them (lesson 16, "In NAVERA"):
     heading clockwise from north, pitch positive NOSE UP, roll positive RIGHT WING DOWN.
-    Same as NAVERA: R_world_body = Rz(yaw_enu) Ry(-pitch) Rx(roll), then the nadir mount."""
+    This pitch is the OPPOSITE sign of the ROS pitch of lesson 16 section 1 (positive nose
+    down), so a nose-down drone has a negative pitch here, and the formula uses -pitch to get
+    the ROS angle back: R_world_body = Rz(90 - heading) Ry(-pitch) Rx(roll), then the nadir mount."""
     R_wb = rot_z(math.radians(90.0 - heading_deg)) @ rot_y(math.radians(-pitch_deg)) @ rot_x(math.radians(roll_deg))
     return R_wb @ R_BODY_NADIR_CAM
 

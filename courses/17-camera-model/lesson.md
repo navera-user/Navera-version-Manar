@@ -56,9 +56,15 @@ R_wc = [  1      0      0  ]     (east)
        [  0      0     -1  ]     (up)
 ```
 
-In the lab, `camera_rotation(heading, pitch, roll)` builds R_wc for any attitude with lesson 16's
-angles (heading clockwise from north, pitch positive nose up, roll positive right wing down):
-R_wc = Rz(90° − heading) · Ry(−pitch) · Rx(roll) · R_body→camera. It is NAVERA's own formula.
+In the lab, `camera_rotation(heading, pitch, roll)` builds R_wc for any attitude. It takes the
+**human angles** that NAVERA's `body_rpy_enu()` reports (lesson 16, "In NAVERA"): heading clockwise
+from north, pitch positive **nose up**, roll positive right wing down. Careful: this pitch has the
+opposite sign of the ROS pitch θ of lesson 16 §1 (positive nose **down**), so a nose-down drone has a
+**negative** pitch here (−12°, −20°…):
+R_wc = Rz(90° − heading) · Ry(−pitch) · Rx(roll) · R_body→camera.
+The **−pitch** turns the human pitch (nose up) back into the ROS angle θ (nose down) that the
+right-hand rotation Ry needs; 90° − heading does the same for the yaw (clockwise from north → ENU
+counter-clockwise from east). This is the inverse of NAVERA's `body_rpy_enu()`.
 
 ## 2. The pinhole model and the intrinsic matrix K
 

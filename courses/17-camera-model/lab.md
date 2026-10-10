@@ -28,7 +28,9 @@ Every line says `TODO not done yet`. Read the comment block at the top of
 [camera_math.py](file:./camera_math.py) (world ENU with the origin on the ground under the drone,
 camera axes OpenCV, `R_wc` maps camera → world), then scroll below the line
 `you don't need to change anything below` and read `camera_rotation()`: it builds R_wc from
-heading, pitch and roll exactly like NAVERA (lesson 16).
+heading, pitch and roll. Its pitch is the human one of NAVERA's `body_rpy_enu()` (positive **nose up**,
+so nose down is negative, e.g. −12°), the opposite sign of the ROS pitch of lesson 16 §1 — lesson §1
+explains the `-pitch` in the formula.
 
 > [!TIP]
 > Test small pieces in the Python shell: type `python3`, then for example
