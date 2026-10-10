@@ -174,7 +174,8 @@ def read_log(path):
 
 if __name__ == "__main__":
     example = "GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,"
-    print("TODO 1  checksum of the textbook example:", nmea_checksum(example), "(should be 47)")
+    print("TODO 1  checksum of the course example GPGSA,A,1:", nmea_checksum("GPGSA,A,1"), "(should be 32)")
+    print("        checksum of a GGA sentence (used below):", nmea_checksum(example), "(should be 47)")
     good = "$" + example + "*47"
     print("TODO 2  is_valid(good):", is_valid(good), "  is_valid(changed digit):",
           is_valid(good.replace("545", "546")), "(should be True False)")

@@ -197,6 +197,9 @@ python3 -c "import dop; a = [10, 80, 150, 200, 300]; e = [15, 50, 35, 70, 25]; p
 > [!TASK]
 > **TODO 7–8** — `geometry_matrix` returns an n × 4 numpy array; `dops` returns the dictionary
 > `{"GDOP", "PDOP", "HDOP", "VDOP", "TDOP"}` and raises `ValueError` with fewer than 4 satellites.
+> With a **singular** geometry (rank of `GᵀG` below 4, as in experiment 1) it does not crash: it
+> returns all five DOPs as `math.inf`. Use `np.linalg.matrix_rank`, not a `try` around
+> `np.linalg.inv`: because of rounding, `inv` sometimes returns huge numbers (1e16) instead of an error.
 
 ## Step 7 — NAVERA's decisions (TODO 9–11, 25 min)
 

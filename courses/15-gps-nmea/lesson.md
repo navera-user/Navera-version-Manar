@@ -295,8 +295,8 @@ Three lessons from this example:
    typically 1.5–2 times worse than horizontal.
 2. **Remove the overhead satellite** and the four remaining satellites all have the same
    elevation. Then the Up column is exactly −0.5 × the clock column: `G^T G` is **singular**, it
-   cannot be inverted, and height and clock cannot be separated. Geometry, not the number of
-   satellites, decides.
+   cannot be inverted, and height and clock cannot be separated: the DOPs are **infinite** (the
+   lab's `dops()` returns `math.inf` for all five). Geometry, not the number of satellites, decides.
 3. **Bunched satellites are bad.** In a street, only satellites along the street axis and near
    the zenith are visible. The error ellipse becomes long in the direction where no satellite
    constrains the position:

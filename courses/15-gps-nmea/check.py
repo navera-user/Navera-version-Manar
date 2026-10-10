@@ -224,7 +224,8 @@ def _():
 @c.test("dops(): the worked example, a bad geometry, rotation invariance and < 4 satellites",
         hint="Q = inverse of (G^T G); HDOP = sqrt(Q[0,0] + Q[1,1]), VDOP = sqrt(Q[2,2]), "
              "PDOP = sqrt of the first three, TDOP = sqrt(Q[3,3]), GDOP = sqrt(trace). Raise ValueError "
-             "yourself when fewer than 4 satellites are given.")
+             "yourself when fewer than 4 satellites are given. Singular geometry (np.linalg.matrix_rank(G^T G) < 4): "
+             "return math.inf for all five — np.linalg.inv does not always raise for it.")
 def _():
     (f,) = need(load_student("dop.py"), "dops")
     d = f([0, 90, 180, 270, 0], [30, 30, 30, 30, 90])
@@ -246,6 +247,15 @@ def _():
         c.ok(False, f"with 3 satellites dops should raise ValueError, it raised {type(e).__name__}")
     else:
         c.ok(False, "with 3 satellites dops should raise ValueError (G^T G is singular)")
+    # singular geometry: 4 satellites at one elevation (inv raises for 35 deg, returns ~1e16 for 30 deg)
+    for el in (35, 30):
+        try:
+            s = f([15, 105, 195, 285], [el] * 4)
+        except Exception as e:
+            c.ok(False, f"dops() of 4 satellites all at elevation {el} deg crashed with {type(e).__name__}: "
+                        f"a singular geometry must return math.inf for every DOP (lab, TODO 7-8 task)")
+        c.ok(isinstance(s, dict) and all(s.get(k) == math.inf for k in ("GDOP", "PDOP", "HDOP", "VDOP", "TDOP")),
+             f"4 satellites all at elevation {el} deg (singular G^T G): every DOP must be math.inf, got {s!r}")
 
 
 @c.test("navera_decision(): the same decisions and reason texts as gps_node._publish_fix",

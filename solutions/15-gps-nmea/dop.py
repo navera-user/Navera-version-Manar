@@ -9,6 +9,8 @@ Least squares: Q = (G^T G)^-1 ;  covariance of the solution = UERE^2 * Q
 
     python3 dop.py          (prints the worked example of the course)
 """
+import math
+
 import numpy as np
 
 
@@ -31,7 +33,10 @@ def dops(az_deg, el_deg):
     G = geometry_matrix(az_deg, el_deg)
     if G.shape[0] < 4:
         raise ValueError("need at least 4 satellites")
-    Q = np.linalg.inv(G.T @ G)
+    A = G.T @ G
+    if np.linalg.matrix_rank(A) < 4:              # singular geometry: the DOPs are infinite
+        return {k: math.inf for k in ("GDOP", "PDOP", "HDOP", "VDOP", "TDOP")}
+    Q = np.linalg.inv(A)
     d = np.diag(Q)
     return {"GDOP": float(np.sqrt(d.sum())),
             "PDOP": float(np.sqrt(d[0] + d[1] + d[2])),

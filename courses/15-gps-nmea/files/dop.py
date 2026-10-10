@@ -5,6 +5,8 @@ and its worked example (5 satellites, HDOP 1.155). Use numpy.
 
     python3 dop.py          (prints the worked example of the course)
 """
+import math
+
 import numpy as np
 
 
@@ -20,6 +22,11 @@ def geometry_matrix(az_deg, el_deg):
 # TODO 8: the five DOPs as a dictionary {"GDOP", "PDOP", "HDOP", "VDOP", "TDOP"} (floats).
 #   Course: section 5 (the DOP table under "The DOPs are the square roots…").
 #   Raise ValueError("need at least 4 satellites") when fewer than 4 satellites are given.
+#   Singular geometry (course section 5, 'Three lessons' point 2: e.g. 4 satellites at the same elevation): G^T G
+#   cannot be inverted and the DOPs are INFINITE -> return all five as math.inf (a float), never
+#   crash. Test it with np.linalg.matrix_rank(G.T @ G) < 4: np.linalg.inv() does NOT always raise
+#   for such a matrix (rounding can leave it "almost" invertible and give 1e16 instead).
+#   Example: dops([0, 90, 180, 270], [40, 40, 40, 40]) -> {"GDOP": inf, "PDOP": inf, ...}
 #   Check yourself with the worked example: HDOP 1.155, VDOP 2.236.
 def dops(az_deg, el_deg):
     return None  # TODO 8: replace this line with your code
