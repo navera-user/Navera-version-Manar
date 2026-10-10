@@ -72,14 +72,17 @@ def explained(name, value, *groups):
 
 
 # ---------------------------------------------------------------- Step 1
-@c.test("Step 1: NAVERA's settings (V_MAX_MPS, MARGIN_M, GPS_TIMEOUT_S)",
-        hint="Open estimator_params.yaml (link in Step 1) and find max_speed_mps, gps_jump_margin_m and gps_timeout_s. "
+@c.test("Step 1: NAVERA's settings and your stealth prediction",
+        hint="Open estimator_params.yaml (link in Step 1) and find max_speed_mps, gps_jump_margin_m, gps_timeout_s and "
+             "day_timeout_s. "
              "A NameError in answers.py almost always means text without quotes.")
 def _():
-    v, m, t = answers("V_MAX_MPS", "MARGIN_M", "GPS_TIMEOUT_S")
+    v, m, t, d, pred = answers("V_MAX_MPS", "MARGIN_M", "GPS_TIMEOUT_S", "DAY_TIMEOUT_S", "PREDICT_STEALTH")
     c.ok(number(v, "V_MAX_MPS") == 100.0, f"V_MAX_MPS = {v!r} is not max_speed_mps of the file")
     c.ok(number(m, "MARGIN_M") == 50.0, f"MARGIN_M = {m!r} is not gps_jump_margin_m of the file")
     c.ok(number(t, "GPS_TIMEOUT_S") == 3.0, f"GPS_TIMEOUT_S = {t!r} is not gps_timeout_s of the file")
+    c.ok(number(d, "DAY_TIMEOUT_S") == 5.0, f"DAY_TIMEOUT_S = {d!r} is not day_timeout_s of the file")
+    predicted("PREDICT_STEALTH", pred)
 
 
 # ---------------------------------------------------------------- your functions, on unseen numbers
@@ -116,6 +119,9 @@ def _():
     (find_position,) = functions("find_position")
     p = point(run(find_position, BEACONS, CLEAN), 2, "find_position")
     c.ok(abs(p[0] - 6.2) < 0.01 and abs(p[1] - 3.7) < 0.01, f"find_position gives {tuple(p)} on new beacons — not the right point")
+    p = point(run(find_position, BEACONS, [10.444616, 4.414748, 6.579514]), 2, "find_position")
+    c.ok(abs(p[0] - 10.0) < 0.01 and abs(p[1] - 6.3) < 0.01,
+         f"for a point on the edge of the field (x = 10.0) it gives {tuple(p)} — does your grid really reach 10.0?")
 
 
 @c.test("TODO 4: find_position_and_bias() finds the position AND the clock bias",
@@ -133,6 +139,10 @@ def _():
              "np.linalg.lstsq, then ADD the correction. Check your first step against the lesson table.")
 def _():
     (gn,) = functions("gauss_newton")
+    s1 = point(run(gn, [(0, 0), (10, 0), (0, 10)], [5.3, 8.362, 7.008], (4.0, 4.0, 0.0), 1), 3, "gauss_newton")
+    c.ok(abs(s1[0] - 3.0207) < 2e-3 and abs(s1[1] - 3.9971) < 2e-3 and abs(s1[2] - 0.3377) < 2e-3,
+         f"one step from (4, 4, 0) gives {tuple(round(v, 4) for v in s1)}, not the lesson's first step — "
+         "does it use `guess` and `steps`?")
     p = point(run(gn, BEACONS, LATE), 3, "gauss_newton")
     c.ok(abs(p[0] - 6.2) < 1e-3 and abs(p[1] - 3.7) < 1e-3 and abs(p[2] - 0.45) < 1e-3,
          f"with 3 exact beacons it gives {tuple(round(v, 4) for v in p)} — not the exact solution")
@@ -182,33 +192,34 @@ def _():
              "k × sigma + margin. Return the t_s of that row, or None if it never happens.")
 def _():
     (fd,) = functions("first_disagreement")
-    rows = [dict(t_s=0, gps_x_m=0, gps_y_m=0, vision_x_m=10, vision_y_m=0, vision_sigma_m=20),
-            dict(t_s=1, gps_x_m=100, gps_y_m=0, vision_x_m=None, vision_y_m=None, vision_sigma_m=None),
-            dict(t_s=2, gps_x_m=0, gps_y_m=150, vision_x_m=0, vision_y_m=0, vision_sigma_m=20),
-            dict(t_s=3, gps_x_m=0, gps_y_m=151, vision_x_m=0, vision_y_m=0, vision_sigma_m=20)]
+    rows = [dict(t_s=10, gps_x_m=0, gps_y_m=0, vision_x_m=10, vision_y_m=0, vision_sigma_m=20),
+            dict(t_s=11, gps_x_m=100, gps_y_m=0, vision_x_m=None, vision_y_m=None, vision_sigma_m=None),
+            dict(t_s=12, gps_x_m=0, gps_y_m=150, vision_x_m=0, vision_y_m=0, vision_sigma_m=20),
+            dict(t_s=13, gps_x_m=0, gps_y_m=151, vision_x_m=0, vision_y_m=0, vision_sigma_m=20)]
     got = run(fd, rows)
-    c.ok(got == 3, f"with the default k = 5 and margin 50 it gives {got!r} — not the right row "
-                   "(exactly on the limit is still agreement)")
+    c.ok(got == 13, f"with the default k = 5 and margin 50 it gives {got!r} — not the right time "
+                    "(return the row's t_s; exactly on the limit is still agreement)")
     got = run(fd, rows, 3.0, 50.0)
-    c.ok(got == 2, f"with k = 3 it gives {got!r} — does your function use its k and margin arguments?")
+    c.ok(got == 12, f"with k = 3 it gives {got!r} — does your function use its k and margin arguments?")
     c.ok(run(fd, rows[:3]) is None, "when GPS and vision always agree it should return None")
 
 
 # ---------------------------------------------------------------- what you saw and why
 @c.test("Step 4: a clock 1 µs ahead — prediction, error and explanation",
-        hint="Run python3 where_am_i.py clock. CLOCK_ERROR_M is the distance from the true position in part 1.")
+        hint="Run python3 where_am_i.py clock: CLOCK_ERROR_M is the distance from the true position in part 1. "
+             "EXPLAIN_CLOCK: say that the clock bias is the same on every range, and that it becomes an unknown.")
 def _():
     pred, err, why = answers("PREDICT_CLOCK", "CLOCK_ERROR_M", "EXPLAIN_CLOCK")
     predicted("PREDICT_CLOCK", pred)
     e = number(err, "CLOCK_ERROR_M")
-    c.ok(100 <= e <= 150, f"CLOCK_ERROR_M = {err!r} is not what part 1 of `clock` prints")
-    explained("EXPLAIN_CLOCK", why, ((r"bias", r"clock"), "the clock bias"),
+    c.ok(140 <= e <= 142, f"CLOCK_ERROR_M = {err!r} is not what part 1 of `clock` prints")
+    explained("EXPLAIN_CLOCK", why, ((r"bias", r"clock", r"\bb\b", r"offset"), "the clock bias"),
               ((r"every", r"\ball\b", r"each", r"same", r"common", r"shared"), "that it is the same for every range"))
 
 
 @c.test("Step 5: two beacons — prediction, explanation and the curve",
-        hint="Run python3 where_am_i.py two. Count unknowns and measurements. For CURVE: the set of points whose "
-             "distances to two fixed points differ by a constant.")
+        hint="Run python3 where_am_i.py two. Count unknowns and measurements. CURVE: not a line — on a bigger grid the "
+             "dots bend. Sum of distances to two points constant = ellipse; difference constant = ?")
 def _():
     pred, why, curve = answers("PREDICT_TWO", "EXPLAIN_TWO", "CURVE")
     predicted("PREDICT_TWO", pred)
@@ -218,13 +229,14 @@ def _():
     c.ok("hyperbol" in str(curve).lower(), f"CURVE = {curve!r} is not the right curve")
 
 
-@c.test("Step 6: Gauss–Newton — steps and explanation",
+@c.test("Step 6: Gauss–Newton — steps, a rank-deficient case, and explanation",
         hint="Run python3 where_am_i.py gn and count the steps until the mismatch is below 1e-6. "
              "Explain the linearisation, and one way it can fail.")
 def _():
-    steps, why = answers("GN_STEPS", "EXPLAIN_GN")
+    steps, rank, why = answers("GN_STEPS", "COLLINEAR_RANK", "EXPLAIN_GN")
     s = number(steps, "GN_STEPS")
-    c.ok(2 <= s <= 4, f"GN_STEPS = {steps!r} is not what `gn` shows")
+    c.ok(s == 3, f"GN_STEPS = {steps!r} is not what the `gn` table shows (mismatch below 1e-6, from (5, 5, 0))")
+    c.ok(number(rank, "COLLINEAR_RANK") == 2, f"COLLINEAR_RANK = {rank!r} — build H at (4, 0) and print np.linalg.matrix_rank(H)")
     explained("EXPLAIN_GN", why, ((r"linear", r"jacobian", r"derivative", r"gradient", r"\bstep"), "why each step is cheap"),
               ((r"guess", r"start", r"diverg", r"far", r"line", r"singular", r"rank", r"mirror"), "how it could fail"))
 
@@ -238,7 +250,8 @@ def _():
     predicted("PREDICT_PARTIAL", p2)
     explained("EXPLAIN_SPOOF", e1, ((r"consistent", r"same", r"exact", r"agree", r"fit", r"match", r"one point"),
                                     "why the fake ranges fit perfectly"),
-              ((r"cannot", r"can't", r"can not", r"\bnot\b", r"\bno\b", r"nothing", r"never"), "whether the receiver can tell"))
+              ((r"cannot", r"can't", r"can not", r"\bnot\b", r"\bno\b", r"nothing", r"never"), "whether the receiver can tell"),
+              ((r"jam", r"lose", r"lost", r"no signal", r"noise"), "why jamming, by contrast, is noticed"))
     explained("EXPLAIN_PARTIAL", e2, ((r"residual", r"mismatch"), "what stays in the residuals"),
               ((r"extra", r"redundan", r"spare", r"more", r"fourth", r"\bd\b", r"real"), "the role of the spare measurement"))
 

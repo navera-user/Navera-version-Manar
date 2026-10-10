@@ -56,11 +56,22 @@ def call(fn, *args):
         return result, None
     except Exception as e:
         tb = traceback.extract_tb(e.__traceback__)
-        line = next((f.lineno for f in reversed(tb) if f.filename.endswith("beacons.py")), "?")
+        mine = [f for f in tb if f.filename.endswith("beacons.py")]
+        where = "beacons.py"
+        if mine:
+            deepest = mine[-1]
+            where = f"beacons.py line {deepest.lineno}"
+            if deepest.name != fn:
+                outer = next((f for f in mine if f.name == fn), None)
+                where = (f"in {deepest.name}() line {deepest.lineno}, called from {fn}()"
+                         + (f" line {outer.lineno}" if outer else "") + " — the mistake may be in what "
+                         f"{fn}() passes to {deepest.name}()")
         extra = ""
         if isinstance(e, NameError) and "sqrt" in str(e):
             extra = " — write math.sqrt, with `import math` at the top"
-        return None, f"{fn}() stopped with {type(e).__name__}: {e} (beacons.py line {line}){extra}"
+        if "could not be broadcast" in str(e):
+            extra = " — did you write `delta = np.linalg.lstsq(...)` without `, *_`?"
+        return None, f"{fn}() stopped with {type(e).__name__}: {e} ({where}){extra}"
 
 
 def need_ok(fn, *args, n=None):
@@ -224,9 +235,10 @@ def two():
         print(f"\n  with {label}: {len(good[label])} guess(es) fit. Some of them:")
         for g in good[label][:: max(1, len(good[label]) // 5)][:5]:
             print(f"     x = {g[0]:4.1f}  y = {g[1]:4.1f}  bias = {g[2]:.2f}")
-    pts = [((g[0], g[1]), None, "b.") for g in good["only A and B"]] + [(TRUTH, "true position", "o")]
+    pts = [((g[0], g[1]), "fitting (x, y), each with its own bias" if i == 0 else None, "b.")
+           for i, g in enumerate(good["only A and B"])] + [(TRUTH, "true position", "o")]
     picture("two", list(zip(BEACONS[:2], LATE[:2], NAMES)), pts,
-            "Only A and B, unknown clock: every blue dot fits\n(only y from 0 to 10 is searched)")
+            "Only A and B, unknown clock: every blue dot fits\n(biases 0–1 km only: a short piece of the curve)")
 
 
 def gn():

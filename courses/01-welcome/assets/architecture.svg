@@ -44,7 +44,7 @@
 <line x1="551" y1="190" x2="551" y2="226" stroke="#555" stroke-width="1.5" marker-end="url(#ar)"/>
 <rect x="476" y="228" width="150" height="46" rx="6" fill="#1d2733"/>
 <text x="486" y="247" fill="#ffffff" font-weight="bold">autopilot</text>
-<text x="486" y="264" fill="#cfd8e3">ArduPilot / PX4 …</text>
+<text x="486" y="264" fill="#cfd8e3">ArduPilot (PX4: not yet)</text>
 <line x1="352" y1="270" x2="352" y2="300" stroke="#555" stroke-width="1.5" marker-end="url(#ar)"/>
 <text x="360" y="290" fill="#555" font-size="11">/navera/nav_status</text>
 <rect x="290" y="302" width="150" height="34" rx="6" fill="#ffffff" stroke="#888"/>

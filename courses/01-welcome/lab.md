@@ -2,7 +2,8 @@
 
 **Goal:** write a position solver (brute force, then Gauss–Newton), spoof it fully and partially, play
 detective on a spoofed survey flight, and finish as attacker and defender of NAVERA's jump gate.
-**Time:** 2 h 30 to 4 h (a strong programmer: about 2 h).
+**Time:** 2 h 30 to 4 h (a strong programmer: about 2 h; up to 6 h if Python is new to you).
+**Fast track:** if you know Python and numpy, skip every 🧰 box and every "Stuck?" box.
 
 Your files (📝 Code tab): [beacons.py](file:./beacons.py) (**your code**: nine functions, `TODO 1–9`),
 [answers.py](file:./answers.py) (predictions, results, explanations), [where_am_i.py](file:./where_am_i.py)
@@ -11,7 +12,7 @@ Your files (📝 Code tab): [beacons.py](file:./beacons.py) (**your code**: nine
 
 | Lesson | Lab | You write |
 |---|---|---|
-| §2 Least squares | Steps 2–3 | `distance`, `mismatch`, `find_position` |
+| §2–§3 Least squares, brute force | Steps 2–3 | `distance`, `mismatch`, `find_position` |
 | §3 Clock, Gauss–Newton | Steps 4–6 | `find_position_and_bias`, `gauss_newton` |
 | §4 Attacking GPS | Step 7 | `spoof_measurements` |
 | §5 Arbiter, gate, cross-check | Steps 8–11 | `gate_ok`, `count_refused`, `first_disagreement`, then your own experiments |
@@ -31,7 +32,11 @@ grep -n "max_speed_mps\|gps_jump_margin_m\|gps_timeout_s" ~/navera/navera_estima
 ```
 
 > [!TASK]
-> Write `V_MAX_MPS`, `MARGIN_M` and `GPS_TIMEOUT_S` in `answers.py` (numbers, no quotes).
+> Write `V_MAX_MPS`, `MARGIN_M`, `GPS_TIMEOUT_S` and `DAY_TIMEOUT_S` (how long a day-vision fix stays
+> fresh; it is not in the lesson) in `answers.py` (numbers, no quotes).
+>
+> **Predict** (`PREDICT_STEALTH`): with v_max and the margin, and one GPS fix per second, what is the
+> fastest steady drag (m/s) the gate can never refuse? You will measure it in Step 11.
 
 ## Step 2 — Residuals
 
@@ -66,6 +71,8 @@ The first five lines must be ✔. (`1.08e-07` is zero up to rounding.)
 2. 0.431 instead of 1.409 is beacon A alone: your `return` is inside the loop. 0.253 is beacon C
    alone: your total is reset inside the loop.
 3. `NameError: name 'sqrt'`: write `math.sqrt`.
+4. 1.08 at (3, 4) with bias 0.3 (= 3 × 0.6²): you add the bias instead of subtracting it. Brackets:
+   `measured − (distance + bias)`.
 </details>
 
 ## Step 3 — Brute force
@@ -80,6 +87,8 @@ python3 where_am_i.py clean
 
 1. `best` and `best_m` start as `None`, **before** both loops; the inner loop sits inside the outer one.
 2. x always 0.0 or 10.0? A `return` or a `best = None` sits inside a loop.
+3. `TypeError: 'float' object cannot be interpreted as an integer`: `range` takes whole numbers only;
+   use `for i in range(101):` and `x = i / 10`.
 </details>
 
 ## Step 4 — A clock 1 µs ahead
@@ -95,7 +104,7 @@ python3 where_am_i.py clock
 Write `CLOCK_ERROR_M` (part 1). Before you open the box below, try to explain why it is far less than
 300 m.
 
-<details><summary>Why about 140 m and not 300 m?</summary>
+<details><summary>Open only after you ran it: why less than 300 m?</summary>
 You are <b>inside</b> the beacon triangle: moving away from one beacon brings you closer to the others,
 so a uniform +0.3 km on all three ranges mostly cancels. The continuous least-squares optimum is about
 115 m away; the 0.1 km grid can only reach (3.1, 4.1), 141 m away. Outside the triangle it would not
@@ -125,10 +134,16 @@ Return three numbers. Run `clock` again: part 2 must find the true position and 
 python3 where_am_i.py two
 ```
 
-Each blue dot in `out/two.png` fits, with its own bias; a finer grid would give a continuous curve.
-Which curve? Take two dots: compute (distance to A − distance to B) for each, with your `distance`. What
-stays constant? Which curve is the set of points whose distances to two fixed points differ by a
-constant?
+Each blue dot in `out/two.png` fits, with its own bias. The plot shows only a short piece of the curve
+(biases 0–1 km only), which is why it looks almost straight. Which curve is it? Subtract the two
+pseudorange equations ρ_A = ‖p − A‖ + b and ρ_B = ‖p − B‖ + b: what happens to b? Which curve is the set
+{p : ‖p − A‖ − ‖p − B‖ = ρ_A − ρ_B}? Check it on two blue dots with your `distance`.
+
+<details><summary>Stuck? Hint</summary>
+Remember the conics: an ellipse is where the <b>sum</b> of the distances to two fixed points is constant.
+When the <b>difference</b> is constant, you get its sister curve, with two separate branches. (This is how
+LORAN, a radio navigation system from the Second World War, found ships.)
+</details>
 
 > [!TASK]
 > `EXPLAIN_TWO` (unknowns vs measurements; satellites needed by real GPS) and `CURVE` (one word).
@@ -146,7 +161,12 @@ H = np.array([[1.0, 0.0], [0.0, 2.0], [1.0, 1.0]]);  r = np.array([1.0, 2.0, 2.0
 delta, *_ = np.linalg.lstsq(H, r, rcond=None)        # least-squares solution of H · delta ≈ r
 ```
 
-Check your first step by hand against the lesson's worked table (guess (4, 4), b = 0), then:
+`lstsq` returns four things; `delta, *_ =` keeps the first and throws the others away.
+
+Check your first step against the lesson's worked table:
+`python3 -c "import beacons; print(beacons.gauss_newton([(0,0),(10,0),(0,10)], [5.3,8.362,7.008], (4,4,0), 1))"`
+must give about (3.021, 3.997, 0.338). (`gn` below starts from (5, 5, 0), so it needs one step more than
+the lesson.) Then:
 
 ```bash
 python3 where_am_i.py gn
@@ -157,11 +177,20 @@ python3 where_am_i.py gn
 1. Inside the step loop: two empty lists `H` and `r`, one row each per beacon, then one `lstsq`.
 2. Sign check: `uₓ = (x − beacon_x) / d`; the residual is measured − (d + b).
 3. Jumping away instead of converging? You add `−Δ`, or your residual has the opposite sign.
+4. `operands could not be broadcast … (3,) (0,)`: you wrote `delta = np.linalg.lstsq(...)` without
+   `, *_`, so `delta` holds all four results.
 </details>
 
+Now break it on purpose. Put three beacons on one line, (0, 0), (5, 0) and (10, 0), and build H at the
+guess (4, 0) (b = 0) by hand or with a few lines of code; print `np.linalg.matrix_rank(H)`.
+
 > [!TASK]
-> `GN_STEPS`: steps until the mismatch is below 1e-6. `EXPLAIN_GN`: why is it so much faster than brute
-> force, and what could make it fail?
+> `COLLINEAR_RANK`: the rank you found. In `EXPLAIN_GN`, also say what the solver cannot determine
+> then.
+
+> [!TASK]
+> `GN_STEPS`: steps (from the `gn` table) until the mismatch is below 1e-6. `EXPLAIN_GN`: why is it so
+> much faster than brute force, and what could make it fail?
 
 ## Step 7 — Be the spoofer
 
@@ -177,7 +206,8 @@ python3 where_am_i.py spoof
 ```
 
 > [!TASK]
-> `EXPLAIN_SPOOF`: why is the mismatch 0 at the fake position, and what does it mean for a receiver?
+> `EXPLAIN_SPOOF`: why is the mismatch 0 at the fake position, what does it mean for a receiver, and why
+> is jamming, by contrast, noticed?
 
 Now a fourth beacon D = (10, 10) is added. The spoofer overpowers A, B and C, but D's real signal still
 reaches you.
@@ -189,14 +219,19 @@ reaches you.
 python3 where_am_i.py partial
 ```
 
+Look at the partial solution: still about 4.5 km off. A residual says *something* is wrong, not *which*
+signal, and not where you are.
+
 > [!TASK]
 > `EXPLAIN_PARTIAL`: why can a receiver with a spare measurement notice a partial spoof, and why does that
 > not help against a full one?
 
 <details><summary>Read after Step 7: what real receivers do with this</summary>
 A full spoof is <b>consistent</b> (computed for one point), so the residual is zero and a simple receiver
-has no alarm. A partial spoof leaves a residual that no single point can remove: with more satellites
-than unknowns, receivers check exactly this (receiver autonomous integrity monitoring, RAIM). Better
+has no alarm. A naive partial spoof leaves a residual that no single point can remove: with more
+satellites than unknowns, receivers check exactly this (receiver autonomous integrity monitoring, RAIM).
+But a spoofer who knows where you are can tune its fake clock bias so that one real satellite also fits
+(try it in "Going further"); two or more real satellites are much harder to hide. Better
 receivers add other partial defences: signal power monitoring, several antennas to see where signals
 come from, signed navigation messages (Galileo OSNMA). Each has limits. A sensor that does not use radio
 at all (a camera, the stars) is not fooled by a radio attack: NAVERA's approach.
@@ -219,7 +254,8 @@ python3 where_am_i.py test
 1. What must you remember from one fix to the next? Create those variables before the loop.
 2. 4 instead of 5: `elapsed` does not restart after an accept, or starts one step too high. 2: you
    compare with the previous fix instead of the last trusted one, or you count the accepted fixes.
-   6 or 7: you update `elapsed` after the test, or you also restart it after a refusal.
+   6 or 7: you update `elapsed` after the test, or you also restart it after a refusal. 1: two bugs at
+   once (previous fix **and** no restart).
 </details>
 
 > [!TASK]
@@ -236,14 +272,31 @@ No code. It is 12:00:10. The last GPS fix arrived at 12:00:08 with σ 35 m (few 
 GPS has been the active source. Day vision is fresh with σ 30 m; night vision is fresh too.
 
 > [!TASK]
-> `ARBITER_SOURCE` and `ARBITER_STATE`. Careful: priority, not precision.
+> `ARBITER_SOURCE` and `ARBITER_STATE`.
 
 ## Step 10 — The detective
 
 [flight.csv](file:./flight.csv) is a **simulated** survey flight (one row per second): the GPS
 position, and the day-vision position with its σ when vision has a match (empty cells over the sea).
-Somewhere in it, a spoofer is at work. **TODO 9** `first_disagreement`: NAVERA's cross-check on the log
-(lesson §5: GPS farther from vision than 5 σ + 50 m).
+Somewhere in it, a spoofer is at work. **TODO 9** `first_disagreement`: NAVERA's 5 σ + 50 m cross-check
+on the log (lesson §5), simplified: no 3 s persistence and no 3 σ streak rule (mission 27 adds them).
+
+🧰 Rows are dicts, and `None` means "no value":
+
+```python
+row = {"t_s": 3, "vision_x_m": None}
+print(row["t_s"])                        # 3
+for r in rows:
+    if r["vision_x_m"] is None:
+        continue                         # skip to the next row
+```
+
+<details><summary>Stuck? Hints</summary>
+
+1. Skip the rows without vision first; `TypeError … NoneType` means you did not.
+2. Use your `distance`, and compare with `k * r["vision_sigma_m"] + margin_m`.
+3. Return `r["t_s"]` (a time, not the row number) as soon as you find it; `return None` after the loop.
+</details>
 
 > [!TASK]
 > **Predict** (`PREDICT_FLIGHT`): will the jump gate catch this spoofer? Will the cross-check? When?
@@ -267,11 +320,27 @@ whole-number drag speed that is never refused, and `REFUSED_ONE_FASTER`, how man
 refused at 1 m/s more. Look at that second number: what does the gate do to a drag that is just too
 fast?
 
+🧰 To load the flight in your own script:
+
+```python
+from where_am_i import read_flight
+rows = read_flight()
+honest = [(r["gps_x_m"], r["gps_y_m"]) for r in rows if r["t_s"] < START]   # START: read it on the plot
+```
+
 **Defender.** NAVERA's `max_speed_mps` is set per vehicle. Our survey drone flies at 15 m/s. With
 `v_max = 15`, run your `count_refused` on the honest part of the flight (the GPS fixes before the spoof
 started, which you found in Step 10) for several margins. Find `DEFENDER_MARGIN_M`, the smallest whole
 margin with **zero** refused honest fixes (look at the multipath spikes in `out/flight.png`), and
 `DEFENDER_STEALTH_MPS`, the attacker's best speed against your setting.
+
+<details><summary>Stuck? Hints</summary>
+
+1. Attacker: print `count_refused([(n * t, 0) for t in range(61)], 1.0, 100.0, 50.0)` for a few `n`.
+   Compare with your `PREDICT_STEALTH`.
+2. Defender: `for m in range(40, 80): print(m, count_refused(honest, 1.0, 15.0, m))`.
+3. Against a gate, the best steady drag moves v_max × 1 s + margin per fix.
+</details>
 
 > [!TASK]
 > Write the four numbers and `EXPLAIN_TRADEOFF`: what did tightening the gate gain, what does a smaller
@@ -280,8 +349,12 @@ margin with **zero** refused honest fixes (look at the multipath spikes in `out/
 ## Step 12 — Check, then look back
 
 Press **✔ Check my work**: it also tests your functions on beacons and numbers they have never seen.
-Then, without the lesson: could you explain to a friend, in three sentences, how twenty ships ended up
-at an airport, and what NAVERA would and would not have done about it?
+Then look back, without the lesson:
+
+1. Explain to a friend, in three sentences, how twenty ships ended up at an airport, and what NAVERA
+   would and would not have done about it.
+2. Which of your predictions was the most wrong, and why?
+3. Which NAVERA limit would you work on first, and how would you test the fix?
 
 ## Going further (optional)
 
@@ -290,5 +363,8 @@ at an airport, and what NAVERA would and would not have done about it?
   PDOP grow.
 - **Geometry.** Move beacon C to (10, 10) and redo Step 4. Does the clock error hurt more or less outside
   the triangle? Relate it to the valley of lesson §2 and to `(HᵀH)⁻¹`.
-- **A bad start.** Give `gauss_newton` the guess (−20, −20, 0), or a beacon set where all beacons lie on a
-  line. What happens, and why (hint: rank of H)?
+- **A bad start.** Give `gauss_newton` the guess (−20, −20, 0). With all beacons on a line, start once
+  with a guess on the line and once beside it: which of the two mirror points do you get?
+- **A smarter spoofer.** In the partial case, choose the fake bias b′ = ρ_D − ‖(7, 2) − D‖, where ρ_D is
+  D's real pseudorange. What is the mismatch now? How many real satellites does RAIM need against such a
+  spoofer?

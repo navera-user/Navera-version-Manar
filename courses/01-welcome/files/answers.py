@@ -6,6 +6,8 @@
 V_MAX_MPS = 0.0      # max_speed_mps
 MARGIN_M = 0.0       # gps_jump_margin_m
 GPS_TIMEOUT_S = 0.0  # gps_timeout_s
+DAY_TIMEOUT_S = 0.0  # day_timeout_s (not in the lesson)
+PREDICT_STEALTH = "" # fastest steady drag (m/s) the gate can never refuse, one fix per second?
 
 # ---- Step 4: a clock 1 µs ahead ------------------------------------------------------------
 PREDICT_CLOCK = ""   # where does find_position land, with what minimum mismatch?
@@ -19,11 +21,12 @@ CURVE = ""           # which curve do the fitting positions draw? (one word)
 
 # ---- Step 6: Gauss–Newton ---------------------------------------------------------------------
 GN_STEPS = 0         # how many steps until the mismatch is below 1e-6 (from `gn`)
-EXPLAIN_GN = ""      # why is it so much faster than brute force, and what could make it fail?
+COLLINEAR_RANK = 0   # rank of H with three beacons on a line, at a guess on that line
+EXPLAIN_GN = ""      # why so much faster than brute force? what could make it fail (and what is lost on a line)?
 
 # ---- Step 7: spoofing --------------------------------------------------------------------------
 PREDICT_SPOOF = ""   # full spoof: what will your solver find, with what mismatch?
-EXPLAIN_SPOOF = ""   # why is the mismatch 0 at the fake position? what does it mean for a receiver?
+EXPLAIN_SPOOF = ""   # why mismatch 0 at the fake position? what does it mean? why is jamming noticed?
 PREDICT_PARTIAL = "" # only A, B, C spoofed, D real: what changes?
 EXPLAIN_PARTIAL = "" # why can a receiver with a spare measurement notice a partial spoof?
 
