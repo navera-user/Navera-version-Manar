@@ -179,7 +179,9 @@ def _():
 
 
 def navera_reference():
-    code, out = sh(f"git -C ~/navera show base:{NAV_GEO}", timeout=20)
+    # refs/tags/base: a bare "base" can be ambiguous (tag base, remote base) and git's warning on stderr
+    # would end up inside the file text
+    code, out = sh(f"git -C ~/navera show refs/tags/base:{NAV_GEO} 2>/dev/null", timeout=20)
     c.ok(code == 0, "could not read the original geo.py from git:\n" + out[-300:])
     return out
 

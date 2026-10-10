@@ -56,7 +56,7 @@ python3 -m pytest -v navera_common/test/test_geo.py
 ```
 
 23 lines `PASSED`. Open [test_geo.py](file:navera/navera_common/test/test_geo.py) beside the output:
-the `[brackets]` are parametrized cases. Now every unit test of every package (about 1 minute 20):
+the `[brackets]` are parametrized cases. Now every unit test of every package (about 1 minute):
 
 ```bash
 navera_tools/run_tests.sh
@@ -176,12 +176,21 @@ python3 -m pytest -q test_properties.py
 ```
 
 hypothesis prints a `Falsifying example: test_…(lat0=…, lon0=…, north=…, east=…)`. Copy it into your
-report: what does it mean physically? (Course, section 3.) The example may be **near a pole**
-(lat0 above about 80°) **or on the ±180° meridian** (lon0 = 180.0 or −180.0): both are the same
-missing longitude wrap. Because the search is random, it may need
+report: what does it mean physically? (Course, section 3.) There are **two failure modes**, and
+your run may find either one:
+
+- the new **longitude is past ±180°**: a start **near a pole** (lat0 above about 80°, where a few km
+  east is several degrees of longitude) **or on the ±180° meridian** (lon0 = 180.0 or −180.0) — the
+  helper never wraps the longitude;
+- the new **latitude is past ±90°**: a start very close to a pole and a move towards it, e.g.
+  `lat0=89.6, north=49751` (+0.447°, so 90.05°) — the helper does not know that you cross the pole.
+
+Write in your report which of the two you got. Because the search is random, it may need
 two or three runs; once found, hypothesis stores the example in `.hypothesis/` and replays it first.
 Then restrict the domain of the validity and round-trip properties to |lat0| ≤ 80° and |lon0| ≤ 170°
-(make two new strategies) and run again: all pass.
+(make two new strategies) and run again: all pass. This one restriction removes **both** failure
+modes: a 50 km move is at most 0.45° of latitude (80.45° < 90°) and, at 80°, 2.6° of longitude
+(172.6° < 180°).
 
 > [!WARNING]
 > If a test fails with `DeadlineExceeded`, the shared machine was slow for one example: keep

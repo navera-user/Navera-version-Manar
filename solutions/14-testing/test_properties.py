@@ -12,7 +12,8 @@ LON = st.floats(min_value=-180.0, max_value=180.0, allow_nan=False)
 OFFSET = st.floats(min_value=-50_000.0, max_value=50_000.0, allow_nan=False)
 HALF_CIRCUMFERENCE = math.pi * 6_371_000.0
 # The flat-Earth helper does not wrap the longitude: near a pole or the antimeridian a 50 km move
-# leaves [-180, 180] (hypothesis found lat0=86.6, lon0=173.2, east=44488.5). Its documented domain:
+# leaves [-180, 180] (hypothesis found lat0=86.6, lon0=173.2, east=44488.5); very close to a pole a
+# move north can also give a latitude above 90 (e.g. lat0=89.6, north=49751). Its documented domain:
 LAT_FLAT = st.floats(min_value=-80.0, max_value=80.0, allow_nan=False)
 LON_FLAT = st.floats(min_value=-170.0, max_value=170.0, allow_nan=False)
 

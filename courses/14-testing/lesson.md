@@ -49,7 +49,12 @@ assert to show the values involved. Tools you will use:
 - **`pytest.approx`** — never compare floats with `==`: `0.1 + 0.2 == 0.3` is False (binary rounding).
   `approx(x, abs=…)` or `rel=…` sets an explicit tolerance. Choose it like an engineer: tighter than
   the bug you want to catch (a missing cos(φ) at 60° is a factor 2), looser than honest rounding
-  (≈ 1e-12 relative for double precision after a few operations).
+  (≈ 1e-12 relative for double precision after a few operations) **and** looser than the gap between
+  your simple expected value and what the formula really computes. Example: 1° of longitude at 60° is
+  "half of M_PER_DEG" = 55 597.46 m **along the parallel**, but `haversine_m` gives the **great-circle**
+  distance, 55 596.93 m (the great circle is a little shorter: a parallel is not a great circle).
+  The gap is 1e-5 relative, so `rel=1e-6` fails on correct code; `rel=1e-3` passes and still catches
+  the factor-2 bug.
 - **`is`** for exact objects: `assert speed_mps(100, 0) is None`, `assert is_valid(0, 0) is False`
   (with `== False`, a function returning `0` would pass).
 - **`pytest.raises(ValueError)`** — a test that an error *is* raised.
@@ -117,10 +122,20 @@ longitude (1/cos φ is large), so the flat-Earth helper returns a longitude abov
 because it never **wraps** longitude. No human chose that example. The fix is either to restrict the
 helper's documented **domain** (far from the poles and the antimeridian) or to wrap the result. NAVERA's
 `dead_reckon` wraps (`lon2 = (degrees(l2) + 540.0) % 360.0 - 180.0`) and has a test for it:
-`test_longitude_wraps_at_antimeridian`. Your run may also find an example **on the ±180° meridian** (the
-**antimeridian**), for example `lat0=78.2, lon0=180.0, east=46302`: a start at longitude 180 plus a
-move east gives more than 180. It is the same missing wrap, found in a different place. Because generation is random, a run can also miss a rare
-counterexample: raise `max_examples` for exploration, and keep the database.
+`test_longitude_wraps_at_antimeridian`. Your run may find one of **two different failure modes**:
+
+- **Longitude past ±180°** (a missing longitude wrap): near a pole as above, or **on the ±180°
+  meridian** (the **antimeridian**), for example `lat0=78.2, lon0=180.0, east=46302`: a start at
+  longitude 180 plus a move east gives more than 180.
+- **Latitude past ±90°** (crossing the pole): for example `lat0=89.6, north=49751`. 49 751 m north is
+  49 751 / 111 195 = 0.447° of latitude, and 89.6 + 0.447 = 90.05° — a latitude that does not exist.
+  The flat-Earth helper just adds degrees; it does not know that a move north over the pole comes
+  down the other side (latitude goes down again and the longitude jumps by 180°).
+
+Both come from the same cause: the flat-Earth formula is only right **far from the poles and the
+antimeridian**, and restricting the domain to |lat0| ≤ 80° and |lon0| ≤ 170° removes both (50 km is
+at most 0.45° of latitude and, at 80°, 2.6° of longitude). Because generation is random, a run can
+also miss a rare counterexample: raise `max_examples` for exploration, and keep the database.
 
 ## 4. Are the tests any good? Mutation thinking
 
@@ -255,8 +270,8 @@ longitude change), where the two expressions agree; swapping two points at diffe
 </details>
 
 <details><summary>4. hypothesis prints <code>Falsifying example: lat0=86.6, …, east=44488.5</code>. Is the code wrong?</summary>
-It is outside the domain the flat-Earth helper can handle (near a pole, or on the ±180° meridian, the
-longitude exceeds 180°). Either
+It is outside the domain the flat-Earth helper can handle: near a pole, or on the ±180° meridian, the
+longitude exceeds 180° (and a move north close to a pole can also give a latitude above 90°). Either
 restrict and document the domain, or fix the function (wrap the longitude, as NAVERA's dead_reckon does).
 </details>
 

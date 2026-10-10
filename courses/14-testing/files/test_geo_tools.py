@@ -34,7 +34,10 @@ def test_speed_without_time_is_none(dt):
 
 # ---------- TODO 1: haversine_m (at least 3 tests) ----------
 # Ideas: one degree of latitude along a meridian is M_PER_DEG metres; one degree of longitude on
-# the equator too, and at 60° only half (cos 60° = 0.5); a known distance from lesson 06.
+# the equator too, and at 60° about half (cos 60° = 0.5); a known distance from lesson 06.
+# Tolerance at 60°: haversine_m gives the GREAT-CIRCLE distance (55 596.93 m), a little shorter than
+# half of M_PER_DEG measured ALONG the 60° parallel (55 597.46 m): a 1e-5 relative gap. So use
+# rel=1e-3 there (rel=1e-6 fails on correct code); it still catches the factor-2 bug (missing cos).
 
 
 # ---------- TODO 2: meters_to_degrees and offset_to_latlon (at least 3 tests) ----------
