@@ -14,6 +14,16 @@ DATA = "/data/academy/26-uncertainty"
 P0 = np.array([[12.0, 5.0], [5.0, 6.0]])
 
 
+def navera_missing(what, module, e):
+    """NAVERA's real code is part of these checks: a failed import is a ✘ with the way to fix it, never a skip."""
+    raise CheckFailed(
+        f"NAVERA's {what} cannot be imported ({type(e).__name__}: {e}). This check compares with the real "
+        f"NAVERA code, so it cannot pass without it. In the terminal run `source ~/navera/install/setup.bash` "
+        f"then `python3 -c \"import {module}\"` to see the full error. No ~/navera/install folder? Build it: "
+        f"`cd ~/navera && colcon build --symlink-install`. Changed a NAVERA file by mistake? `git -C ~/navera diff` "
+        f"shows what you changed.")
+
+
 def U():
     return load_student("uncertainty.py")
 
@@ -138,8 +148,8 @@ def _():
     c.ok(mk(P0)[0] is not None, "finish make_covariance() first (TODO 7)")
     try:
         from navera_estimator.nodes.estimator_node import EstimatorNode as E
-    except ImportError as e:
-        c.skip(f"NAVERA's estimator cannot be imported here ({e})")
+    except (ImportError, SyntaxError) as e:
+        navera_missing("estimator", "navera_estimator.nodes.estimator_node", e)
     m = msg_of(35.76, 10.81, P0)
     c.ok(E._sane(m), "the real arbiter's _sane() refuses this covariance: " + str(list(m.position_covariance)))
     s = E._stated_sigma(m)
@@ -236,8 +246,8 @@ def _():
     c.ok(isinstance(mine, list) and len(mine) == len(rows), f"student_heights() should return one (height, sigma) per row ({len(rows)})")
     try:
         real = nav(rows)
-    except ImportError as e:
-        c.skip(f"NAVERA's day_pkg cannot be imported here ({e})")
+    except (ImportError, SyntaxError) as e:
+        navera_missing("day_pkg", "day_pkg.vision_nav", e)
     dh = max(abs(float(a[0]) - b[0]) for a, b in zip(mine, real))
     ds = max(abs(float(a[1]) - b[1]) for a, b in zip(mine, real))
     c.ok(dh < 1e-6 and ds < 1e-6, f"largest difference with NAVERA: height {dh:.3g} m, sigma {ds:.3g} m (want < 1e-6)")
