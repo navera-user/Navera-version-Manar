@@ -1,6 +1,6 @@
 # NAVERA Academy
 
-A 30-lesson course (course + detailed lab each) that teaches beginners how NAVERA works, in a web
+A 33-lesson course (course + detailed lab each) that teaches beginners how NAVERA works, in a web
 dashboard in the style of The Construct: the lesson on the left; a code editor, terminals, the
 mission simulator and the operator view on the right; **✔ Check my work** grades the lab.
 

@@ -183,8 +183,8 @@ def _():
 
 
 @c.test("TODO 8: count_refused() follows the arbiter's rule",
-        hint="Redo the 7-row table of lesson §5 by hand and compare it with your code, row by row "
-             "(the Step 8 hints list the usual wrong counts).")
+        hint="Redo the 7-row table of lesson §5 by hand and compare it with your code, row by row. 5 on the table but "
+             "wrong elsewhere: add dt_s BEFORE the gate test and restart after an accept (Step 8 hints).")
 def _():
     (count_refused,) = functions("count_refused")
     got = run(count_refused, [(0, 0)] + [(500, 0)] * 6 + [(900, 0)], 1.0, 100.0, 50.0)
@@ -238,7 +238,7 @@ def _():
 
 @c.test("Step 6: Gauss–Newton — steps, HDOP, a rank-deficient case, and explanation",
         hint="Run python3 where_am_i.py gn and count the steps until the mismatch is below 1e-6 (3.36e-05 = 0.0000336 "
-             "is still above 1e-6). HDOP: build H at (3, 4), np.linalg.inv(H.T @ H). Explain the linearisation, how it "
+             "is still above 1e-6). HDOP: H = np.array(H) at (3, 4), M = np.linalg.inv(H.T @ H), sqrt(M[0, 0] + M[1, 1]) — not the bias entry. Explain the linearisation, how it "
              "fails, and the link between HDOP and the valley.")
 def _():
     steps, h1, h2, rank, why = answers("GN_STEPS", "HDOP_TRIANGLE", "HDOP_OUTSIDE", "COLLINEAR_RANK", "EXPLAIN_GN")
@@ -274,7 +274,8 @@ def _():
 def _():
     pred, jump, drift = answers("PREDICT_GATE", "JUMP_REFUSED", "DRIFT_REFUSED")
     predicted("PREDICT_GATE", pred)
-    c.ok(number(jump, "JUMP_REFUSED") == 2, f"JUMP_REFUSED = {jump!r} is not what the gate run gives for attack A")
+    c.ok(number(jump, "JUMP_REFUSED") == 2, f"JUMP_REFUSED = {jump!r} is not what a correct count_refused gives for "
+                                            "attack A; if your gate run printed it, fix TODO 8 first (check 9)")
     c.ok(number(drift, "DRIFT_REFUSED") == 0, f"DRIFT_REFUSED = {drift!r} is not what the gate run gives for attack B")
 
 

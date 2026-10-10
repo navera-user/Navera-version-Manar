@@ -2,7 +2,7 @@
 
 **Goal:** write a position solver (brute force, then Gauss–Newton), spoof it fully and partially, play
 detective on a spoofed survey flight, and finish as attacker and defender of NAVERA's jump gate.
-**Time:** 2 h 30 to 4 h (a strong programmer: about 2 h; up to 6 h if Python is new to you).
+**Time:** 2 h 30 to 4 h (a strong programmer: about 2 h; up to 7 h if Python is new to you).
 **Fast track:** if you know Python and numpy, skip every 🧰 box and every "Stuck?" box. Steps 2–3 should
 take you under 10 minutes; if so, do "A smarter spoofer" from Going further right after Step 7.
 
@@ -140,7 +140,9 @@ python3 where_am_i.py two
 Each blue dot in `out/two.png` fits, with its own bias. The plot shows only a short piece of the curve
 (biases 0–1 km only), which is why it looks almost straight. Which curve is it? Subtract the two
 pseudorange equations ρ_A = ‖p − A‖ + b and ρ_B = ‖p − B‖ + b: what happens to b? Which curve is the set
-{p : ‖p − A‖ − ‖p − B‖ = ρ_A − ρ_B}? Check it on two blue dots with your `distance` (expect agreement to
+{p : ‖p − A‖ − ‖p − B‖ = ρ_A − ρ_B}? Check it on two blue dots with your `distance` (by calculator, or
+`python3 -c "from beacons import distance; print(distance((2.9, 4.2), (0, 0)) - distance((2.9, 4.2), (10, 0)))"`;
+expect agreement to
 about 0.1 km only: the dots sit on a 0.1 km grid and fit only to a mismatch below 0.005).
 
 <details><summary>Stuck? Hint</summary>
@@ -209,8 +211,11 @@ return (x, y, b)
 > `GN_STEPS`: steps (from the `gn` table) until the mismatch is below 1e-6.
 
 **How good is the geometry?** At the solution (3, 4), build `H` for A, B and C and compute
-`HDOP = √((HᵀH)⁻¹ₓₓ + (HᵀH)⁻¹ᵧᵧ)` (lesson §3; `np.linalg.inv(H.T @ H)`). Then move C to (10, 10), outside
-the triangle, and compute it again.
+`HDOP = √((HᵀH)⁻¹ₓₓ + (HᵀH)⁻¹ᵧᵧ)` (lesson §3). Then move C to (10, 10), outside the triangle, and compute it
+again.
+
+🧰 `H = np.array(H)` (a list has no `.T`); `M = np.linalg.inv(H.T @ H)`; `HDOP = np.sqrt(M[0, 0] + M[1, 1])`
+(the x and y entries of the diagonal, not the bias one). Expect a number between 1 and 2 inside the triangle.
 
 > [!TASK]
 > `HDOP_TRIANGLE` and `HDOP_OUTSIDE` (two decimals).
@@ -292,7 +297,9 @@ python3 where_am_i.py test
 <details><summary>Stuck? Hints</summary>
 
 1. What must you remember from one fix to the next? Create those variables before the loop.
-2. 4 instead of 5: `elapsed` does not restart after an accept, or starts one step too high. 2: you
+2. 5 on the table but 3 on the 300 m jump (`test` shows it): `elapsed` is added **after** the test and
+   never restarts — fix 1 arrives dt_s after fixes[0], so add dt_s **before** the test, and restart after an
+   accept. 4 instead of 5: `elapsed` does not restart after an accept, or starts one step too high. 2: you
    compare with the previous fix instead of the last trusted one, or you count the accepted fixes.
    6 or 7: you update `elapsed` after the test, or you also restart it after a refusal. 1: two bugs at
    once (previous fix **and** no restart).
@@ -414,5 +421,7 @@ Then look back, without the lesson:
   `spoof_measurements`). Start from (4, 0, 0): what happens to y, and why (rank)? Then from (4, 1, 0) and
   (4, −1, 0): which mirror point do you get?
 - **A smarter spoofer.** In the partial case, choose the fake bias b′ = ρ_D − ‖(7, 2) − D‖, where ρ_D is
-  D's real pseudorange. What is the mismatch now? How many real satellites does RAIM need against such a
-  spoofer?
+  D's real pseudorange. What is the mismatch now? Then make C real too (only A and B spoofed, same b′): what is the mismatch? So
+  how many real satellites does RAIM need against a spoofer that keeps its fake point and only tunes its
+  bias, and how many against one that may also move its fake point (it then has as many unknowns to play
+  with as you do)?

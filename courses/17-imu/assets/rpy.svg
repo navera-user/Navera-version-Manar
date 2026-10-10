@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 320" font-family="sans-serif" font-size="13">
+  <rect width="780" height="320" fill="#f7fafc"/>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#d64545"/></marker>
+    <marker id="b" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#1d2733"/></marker>
+  </defs>
+
+  <!-- ROLL: seen from behind -->
+  <g transform="translate(130 150)">
+    <text x="0" y="-120" text-anchor="middle" font-size="16" font-weight="bold" fill="#0b6e8a">ROLL</text>
+    <text x="0" y="-102" text-anchor="middle" fill="#1d2733">seen from behind</text>
+    <line x1="-105" y1="0" x2="105" y2="0" stroke="#999" stroke-dasharray="4 4"/>
+    <g transform="rotate(18)">
+      <!-- wings -->
+      <path d="M-95 2 L-14 -4 L14 -4 L95 2 L95 8 L14 4 L-14 4 L-95 8 Z" fill="#0b6e8a"/>
+      <!-- fuselage seen from behind (round) + tail fin -->
+      <circle cx="0" cy="0" r="15" fill="#0b6e8a"/>
+      <rect x="-3" y="-42" width="6" height="30" fill="#0b6e8a"/>
+      <text x="-92" y="-8" fill="#1d2733" font-size="11">left</text>
+      <text x="70" y="-6" fill="#1d2733" font-size="11">right</text>
+    </g>
+    <!-- axis pointing at the viewer -->
+    <circle cx="0" cy="0" r="6" fill="#f7fafc" stroke="#d64545" stroke-width="2"/>
+    <circle cx="0" cy="0" r="2" fill="#d64545"/>
+    <path d="M-60 -55 A80 80 0 0 1 60 -55" fill="none" stroke="#d64545" stroke-width="2.5" marker-end="url(#a)"/>
+    <text x="0" y="62" text-anchor="middle" fill="#1d2733">axis: the <tspan font-weight="bold">x</tspan> line nose → tail</text>
+    <text x="0" y="80" text-anchor="middle" fill="#1d2733">(the red dot, pointing at you)</text>
+    <text x="0" y="104" text-anchor="middle" fill="#a8680d">one wing goes down</text>
+  </g>
+
+  <!-- PITCH: seen from the side, nose up -->
+  <g transform="translate(390 150)">
+    <text x="0" y="-120" text-anchor="middle" font-size="16" font-weight="bold" fill="#0b6e8a">PITCH</text>
+    <text x="0" y="-102" text-anchor="middle" fill="#1d2733">seen from the side</text>
+    <line x1="-110" y1="0" x2="110" y2="0" stroke="#999" stroke-dasharray="4 4"/>
+    <g transform="rotate(-18)">
+      <!-- fuselage, pointed nose on the right, tail fin on the left -->
+      <path d="M-90 -6 L70 -8 Q100 0 70 8 L-90 6 Z" fill="#0b6e8a"/>
+      <path d="M-90 -6 L-100 -34 L-80 -34 L-62 -7 Z" fill="#0b6e8a"/>
+      <rect x="-15" y="-3" width="40" height="6" fill="#9cc7d6"/>
+    </g>
+    <text x="78" y="-58" fill="#a8680d" font-weight="bold">nose</text>
+    <text x="-108" y="40" fill="#1d2733" font-size="11">tail</text>
+    <circle cx="0" cy="0" r="6" fill="#f7fafc" stroke="#d64545" stroke-width="2"/>
+    <circle cx="0" cy="0" r="2" fill="#d64545"/>
+    <path d="M110 30 A90 90 0 0 0 110 -30" fill="none" stroke="#d64545" stroke-width="2.5" marker-end="url(#a)"/>
+    <text x="0" y="62" text-anchor="middle" fill="#1d2733">axis: the <tspan font-weight="bold">y</tspan> line wing → wing</text>
+    <text x="0" y="80" text-anchor="middle" fill="#1d2733">(the red dot, pointing at you)</text>
+    <text x="0" y="104" text-anchor="middle" fill="#a8680d">the nose goes up or down</text>
+  </g>
+
+  <!-- YAW: seen from above, a quadcopter -->
+  <g transform="translate(650 150)">
+    <text x="0" y="-120" text-anchor="middle" font-size="16" font-weight="bold" fill="#0b6e8a">YAW</text>
+    <text x="0" y="-102" text-anchor="middle" fill="#1d2733">seen from above</text>
+    <line x1="-95" y1="-50" x2="-95" y2="-85" stroke="#1d2733" stroke-width="2" marker-end="url(#b)"/>
+    <text x="-90" y="-50" fill="#1d2733" font-weight="bold">N</text>
+    <line x1="0" y1="0" x2="0" y2="-75" stroke="#999" stroke-dasharray="4 4"/>
+    <g transform="rotate(35) scale(0.78)">
+      <line x1="-36" y1="-36" x2="36" y2="36" stroke="#0b6e8a" stroke-width="6"/>
+      <line x1="36" y1="-36" x2="-36" y2="36" stroke="#0b6e8a" stroke-width="6"/>
+      <circle cx="-36" cy="-36" r="14" fill="#9cc7d6" opacity="0.8"/><circle cx="36" cy="-36" r="14" fill="#9cc7d6" opacity="0.8"/>
+      <circle cx="-36" cy="36" r="14" fill="#9cc7d6" opacity="0.8"/><circle cx="36" cy="36" r="14" fill="#9cc7d6" opacity="0.8"/>
+      <rect x="-12" y="-14" width="24" height="28" rx="5" fill="#0b6e8a"/>
+      <polygon points="-9,-14 0,-30 9,-14" fill="#f2a33a"/>
+      <line x1="0" y1="-30" x2="0" y2="-72" stroke="#f2a33a" stroke-width="2.5" marker-end="url(#b)"/>
+    </g>
+    <text x="40" y="-48" fill="#a8680d" font-weight="bold">nose</text>
+    <circle cx="0" cy="0" r="6" fill="#f7fafc" stroke="#d64545" stroke-width="2"/>
+    <circle cx="0" cy="0" r="2" fill="#d64545"/>
+    <path d="M-62 -40 A74 74 0 0 1 -20 -71" fill="none" stroke="#d64545" stroke-width="2.5" marker-end="url(#a)"/>
+    <text x="0" y="62" text-anchor="middle" fill="#1d2733">axis: the <tspan font-weight="bold">z</tspan> line (vertical)</text>
+    <text x="0" y="80" text-anchor="middle" fill="#1d2733">(the red dot, pointing at you)</text>
+    <text x="0" y="104" text-anchor="middle" fill="#a8680d">the nose points another way</text>
+  </g>
+</svg>

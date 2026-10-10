@@ -356,7 +356,7 @@ class World(Node):
                 self.err_hist.append((round(self.t, 1), round(self.error_m(), 1)))
 
     def row(self):
-        """Same columns as the full simulator's recorder (courses/28-simulator/files/sim_ctl.py)."""
+        """Same columns as the full simulator's recorder (courses/31-simulator/files/sim_ctl.py)."""
         f = lambda v, d=1: "" if v is None else f"{v:.{d}f}"           # noqa: E731
         fresh = self.nav["t"] is not None and self.t - self.nav["t"] <= 1.5
         phase = {"waiting": "waiting_gps", "flying": "enroute", "arrived": "arrived", "stopped": "stopped"}[self.phase]

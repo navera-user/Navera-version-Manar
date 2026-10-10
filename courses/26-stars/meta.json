@@ -1,0 +1,3 @@
+{"number": "26", "title": "Navigating by the stars", "module": 5, "duration": "3 h 45",
+ "summary": "Celestial navigation from first principles: Julian date, sidereal time, altitude and azimuth, latitude from Polaris with its two roots, plate solving — and why one degree of attitude costs 111 km.",
+ "resources": [], "open": ["stars.py", "thermal.py", "report.md"], "check_timeout_s": 300}

@@ -45,13 +45,14 @@
  },
  {
   "title": "Sensors and their models",
-  "desc": "NMEA and DOP, attitude with quaternions, the camera matrix, fisheye calibration and timing a live camera.",
+  "desc": "NMEA and DOP, rotations and quaternions, attitude from the IMU, the camera matrix, fisheye calibration and timing a live camera.",
   "lessons": [
    "15-gps-nmea",
-   "16-imu",
-   "17-camera-model",
-   "18-calibration",
-   "19-live-camera"
+   "16-rotations",
+   "17-imu",
+   "18-camera-model",
+   "19-calibration",
+   "20-live-camera"
   ],
   "icon": "🧭",
   "color": "#e8553f",
@@ -60,13 +61,14 @@
  },
  {
   "title": "Vision-based navigation",
-  "desc": "Features, homographies with RANSAC, locating a photo on the map, visual odometry, and navigating by heat and stars.",
+  "desc": "Features, homographies with RANSAC, locating a photo on the map, visual odometry, then navigating by heat and by the stars.",
   "lessons": [
-   "20-features",
-   "21-matching",
-   "22-locate-on-map",
-   "23-visual-odometry",
-   "24-night-and-stars"
+   "21-features",
+   "22-matching",
+   "23-locate-on-map",
+   "24-visual-odometry",
+   "25-thermal-night",
+   "26-stars"
   ],
   "icon": "👀",
   "color": "#1f63d1",
@@ -75,11 +77,12 @@
  },
  {
   "title": "Fusion, uncertainty and integrity",
-  "desc": "The arbiter as a state machine, covariance and Kalman filtering, and spoofing detection as hypothesis testing.",
+  "desc": "Covariance, gating and fusion, the Kalman filter, the arbiter as a state machine, and spoofing detection as hypothesis testing.",
   "lessons": [
-   "25-arbiter",
-   "26-uncertainty",
-   "27-spoofing"
+   "27-uncertainty",
+   "28-kalman",
+   "29-arbiter",
+   "30-spoofing"
   ],
   "icon": "⚖️",
   "color": "#9b6cf0",
@@ -90,9 +93,9 @@
   "title": "System, measurement and project",
   "desc": "Fault injection in SITL, honest statistics with confidence intervals, and your own measured improvement to NAVERA.",
   "lessons": [
-   "28-simulator",
-   "29-measuring",
-   "30-final-project"
+   "31-simulator",
+   "32-measuring",
+   "33-final-project"
   ],
   "icon": "🌍",
   "color": "#26a24a",

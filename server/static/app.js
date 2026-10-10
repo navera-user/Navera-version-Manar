@@ -162,8 +162,8 @@ function badgesHTML(lessons) {
     hint: `Leg ${ROMAN[i]}`, on: (m.lessons || []).length > 0 && (m.lessons || []).every(id => st[id] === 'passed')}));
   list.unshift({icon: 'plane', name: 'First flight', hint: 'pass 1 mission', on: passed >= 1});
   list.push({icon: 'moon', name: 'Halfway there', hint: '15 missions', on: passed >= 15});
-  list.push({icon: 'magnify', name: 'Spoof hunter', hint: 'mission 27', on: st['27-spoofing'] === 'passed'});
-  list.push({icon: 'stars', name: 'Star reader', hint: 'mission 24', on: st['24-night-and-stars'] === 'passed'});
+  list.push({icon: 'magnify', name: 'Spoof hunter', hint: 'mission 30', on: st['30-spoofing'] === 'passed'});
+  list.push({icon: 'stars', name: 'Star reader', hint: 'mission 26', on: st['26-stars'] === 'passed'});
   return {html: list.map(b => `<div class="md ${b.on ? 'on' : ''}"><div class="disc">${icon(b.icon)}</div><b>${esc(b.name)}</b><span>${b.on ? 'earned' : esc(b.hint)}</span></div>`).join(''),
     earned: list.filter(b => b.on).length, total: list.length};
 }

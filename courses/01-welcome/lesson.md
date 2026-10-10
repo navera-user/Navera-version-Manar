@@ -21,7 +21,7 @@
 
 **You need:** Pythagoras, vectors, a derivative, a matrix × vector product, and one short Python course.
 🧰 boxes refresh the rest. ⏱ Reading: about 75 minutes, with pencil and calculator. Lab: 2 h 30 to 4 h
-(up to 6 h if Python is new to you).
+(up to 7 h if Python is new to you).
 
 <details><summary>Workspace and words (open if you need them)</summary>
 
@@ -184,7 +184,8 @@ second.
 
 `(HᵀH)⁻¹` is also where DOP comes from: with independent range noise σ on every satellite, the
 covariance of the solution is σ²(HᵀH)⁻¹, and the horizontal error is about HDOP × σ with
-`HDOP = √((HᵀH)⁻¹ₓₓ + (HᵀH)⁻¹ᵧᵧ)` (x, y = east, north). A flat valley in §2 is a large HDOP; you
+`HDOP = √((HᵀH)⁻¹ₓₓ + (HᵀH)⁻¹ᵧᵧ)` (x, y = east, north: the first two numbers on the diagonal, not the bias
+one). A flat valley in §2 is a large HDOP; you
 compute it in lab Step 6.
 
 > [!QUESTION] ✏️ Check

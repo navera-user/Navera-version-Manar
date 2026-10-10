@@ -110,7 +110,7 @@ git config --global --list
 git switch -c my-first-change
 ```
 
-(The older equivalent, used in NAVERA's `CLAUDE.md` and in lesson 30, is
+(The older equivalent, used in NAVERA's `CLAUDE.md` and in lesson 33, is
 `git checkout -b my-first-change`.)
 
 ```bash

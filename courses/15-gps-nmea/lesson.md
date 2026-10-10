@@ -165,7 +165,7 @@ rejects **minutes ≥ 60**: `3574.17098` is not a valid angle, even with a corre
 
 Quality 6 is the dangerous one: in a tunnel, some receivers continue the last motion and print a
 nice position with quality 6. No satellite measured it. NAVERA has better sources for that
-situation (vision, lessons 20–24), so it refuses quality 6, 7 and 8.
+situation (vision, lessons 21–26), so it refuses quality 6, 7 and 8.
 
 **Two altitudes.** GNSS computes heights above the **WGS84 ellipsoid** (a smooth mathematical
 shape). Maps and pilots use height above **mean sea level**, which follows the **geoid** (the
@@ -243,7 +243,7 @@ d rho = G [dE, dN, dU, db]^T + eps        G (n x 4), row i = [ -uE_i, -uN_i, -uU
 ```
 
 If the errors `eps_i` are independent, with zero mean and the same standard deviation
-`sigma_UERE`, the covariance of the solution is (covariance propagation, lesson 26):
+`sigma_UERE`, the covariance of the solution is (covariance propagation, lesson 27):
 
 ```
 Cov = sigma_UERE^2 * Q          Q = (G^T G)^-1   (4 x 4, depends ONLY on geometry)
@@ -427,11 +427,11 @@ Important design choices:
 - **gps_node does not check plausibility.** A swapped-digit line with a correct checksum becomes a
   valid fix. The plausibility gate lives in the estimator
   ([estimator_node.py](file:navera/navera_estimator/navera_estimator/nodes/estimator_node.py),
-  lesson 25): a fix farther from the last trusted fix than
+  lesson 29): a fix farther from the last trusted fix than
   `max_speed_mps × elapsed + gps_jump_margin_m` (defaults 100 m/s and 50 m) is refused as
   "possible spoofing".
 - **Timing is not finished.** The code says `# TODO(step 6): true measurement instant = GGA UTC +
-  date(RMC)/RTC`: today `sensor_stamp` is the publication time. Lesson 19 explains why the true
+  date(RMC)/RTC`: today `sensor_stamp` is the publication time. Lesson 20 explains why the true
   measurement instant matters.
 
 The topics: `/navera/sensors/gps_fix` (`sensor_msgs/NavSatFix`), `/navera/sensors/gps_vel`

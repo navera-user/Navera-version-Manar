@@ -154,7 +154,7 @@ distance from the oldest to the newest fix divided by their time span (N − 1)�
 
 For N = 10: √2 × 3 / 4.5 ≈ **0.94 m/s**. The price is **lag** (the value describes the last 4.5 s)
 and **corner cutting** (the chord takes a short cut: in a turn, the chord is shorter than the arc). Every estimator chooses a
-trade-off between noise and delay; the Kalman-style filters of lesson 26 make that choice
+trade-off between noise and delay; the Kalman-style filters of lesson 28 make that choice
 optimally. In the lab you will measure all of this with a seeded simulation.
 
 ![Instantaneous steps zig-zag with the noise; the window's chord follows the true path](assets/two_fixes.svg)

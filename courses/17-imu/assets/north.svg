@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 270" font-family="sans-serif" font-size="13">
+  <rect width="520" height="270" fill="#f7fafc"/>
+  <defs><marker id="m" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="context-stroke"/></marker></defs>
+  <circle cx="230" cy="170" r="80" fill="none" stroke="#9cc7d6" stroke-width="2"/>
+  <line x1="230" y1="170" x2="230" y2="55" stroke="#0b6e8a" stroke-width="3" marker-end="url(#m)"/>
+  <line x1="230" y1="170" x2="250" y2="57" stroke="#d64545" stroke-width="3" marker-end="url(#m)"/>
+  <path d="M230 100 A70 70 0 0 1 242 101" fill="none" stroke="#a8680d" stroke-width="2"/>
+  <text x="218" y="40" fill="#0b6e8a" font-weight="bold" text-anchor="end">true north</text>
+  <text x="218" y="56" fill="#0b6e8a" font-size="12" text-anchor="end">(Earth's axis, the maps' north)</text>
+  <text x="262" y="40" fill="#d64545" font-weight="bold">magnetic north</text>
+  <text x="262" y="56" fill="#d64545" font-size="12">(where a compass points)</text>
+  <text x="218" y="100" fill="#a8680d" text-anchor="end">declination</text>
+  <text x="218" y="116" fill="#a8680d" font-size="12" text-anchor="end">(Sousse, 2026: +3.3°, east)</text>
+  <text x="340" y="170" fill="#1d2733">true heading =</text>
+  <text x="340" y="188" fill="#1d2733">magnetic heading</text>
+  <text x="340" y="206" fill="#1d2733">+ declination</text>
+  <text x="340" y="228" fill="#1d2733" font-size="12">(east positive)</text>
+  <text x="340" y="252" fill="#777" font-size="11">angle drawn larger than real</text>
+</svg>

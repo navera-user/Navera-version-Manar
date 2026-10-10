@@ -21,7 +21,7 @@
       {target: '#goNext', title: 'Continue where you stopped', text: 'This button always opens your next mission.'},
       {target: '.mapwide', title: 'The expedition map', text: 'Each waypoint is a mission. Filled waypoints are done; the glowing one is your next mission. Click any waypoint to open it.', scroll: true},
       {target: '.medals', title: 'Badges', text: 'Finish a whole leg of the journey to earn its badge. Some special badges reward key missions.', scroll: true},
-      {target: '.legblock', title: 'Missions, leg by leg', text: 'The 30 missions are grouped in 7 legs. Each row shows the time to plan, the XP and your status. Missions build on each other: take them in order.', scroll: true},
+      {target: '.legblock', title: 'Missions, leg by leg', text: 'The 33 missions are grouped in 7 legs. Each row shows the time to plan, the XP and your status. Missions build on each other: take them in order.', scroll: true},
       {target: '#bookBtn', title: 'Shared hardware', text: 'The camera and the sensors exist only once for the whole class. Book them here only when a mission needs them, and release them when you finish. The simulator needs no booking: the Simulator tab runs Sim Lite in your browser.'},
       {target: '#userBtn', title: 'Your menu', text: 'Change your password, reset your NAVERA copy if you broke it (a backup is kept), or replay this tour. Ready? Start your first mission!'},
     ],

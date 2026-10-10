@@ -1,0 +1,3 @@
+{"number": "17", "title": "The IMU: attitude from a gyroscope, gravity and a compass", "module": 4, "duration": "4 h",
+ "summary": "Integrate a gyroscope and predict its drift, get the tilt from gravity, fuse them with a complementary filter, detect a stale sensor, and correct a compass to true north with the World Magnetic Model.",
+ "resources": [], "open": ["quaternions.py", "imu_filters.py", "report.md"], "check_timeout_s": 150}

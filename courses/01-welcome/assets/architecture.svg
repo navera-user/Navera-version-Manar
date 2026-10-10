@@ -28,7 +28,7 @@
 <rect x="262" y="70" width="180" height="200" rx="8" fill="#ffe7df" stroke="#e8613c" stroke-width="2"/>
 <text x="272" y="94" fill="#1d2733" font-weight="bold">estimator_node</text>
 <text x="272" y="116" fill="#1d2733">eligible = valid, fresh,</text>
-<text x="272" y="138" fill="#1d2733">measured, finite</text>
+<text x="272" y="138" fill="#1d2733">measured or propagated, finite</text>
 <text x="272" y="160" fill="#1d2733" font-weight="bold">priority:</text>
 <text x="272" y="182" fill="#1d2733">GPS > day > night > celestial</text>
 <text x="272" y="204" fill="#1d2733" font-weight="bold">GPS jump gate:</text>

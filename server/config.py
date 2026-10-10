@@ -49,8 +49,8 @@ def data_mounts():
 
 def missing_data():
     """The external data the missions need (on the ADATA disk) that is not reachable right now."""
-    need = {"~/navera_data": "flight data and camera frames (missions 2, 8, 24…)",
-            "~/navera_data_map.mbtiles": "the big Sousse map (missions 2, 7, 22, Sim Lite and the full simulator)"}
+    need = {"~/navera_data": "flight data and camera frames (missions 2, 8, 25…)",
+            "~/navera_data_map.mbtiles": "the big Sousse map (missions 2, 7, 23, Sim Lite and the full simulator)"}
     return [{"path": p, "what": w, "target": os.path.realpath(os.path.expanduser(p))}
             for p, w in need.items() if not os.path.exists(os.path.realpath(os.path.expanduser(p)))]
 

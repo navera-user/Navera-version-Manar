@@ -331,7 +331,7 @@ function setButtons() {
 }
 $('flyBtn').onclick = () => fly(); $('runBtn').onclick = () => fly();
 
-// ---------------------------------------------------------------- mission 28: my_scenario.json in, my_runs/ out
+// ---------------------------------------------------------------- mission 31: my_scenario.json in, my_runs/ out
 const FAULT_CALL = { gps: { ok: 'sim.restore_gps()', jammed: 'sim.jam_gps()', spoof_jump: 'sim.spoof_gps("jump")',
   spoof_drift: 'sim.spoof_gps("drift")', off: 'sim.gps_off()' }, camera: { ok: 'sim.camera_ok()', failed: 'sim.camera_fail()' } };
 function scenarioScript(sc) {

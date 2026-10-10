@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 300" font-family="sans-serif" font-size="13">
+  <rect width="640" height="300" fill="#f7fafc"/>
+  <defs><marker id="s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#1d2733"/></marker></defs>
+  <!-- unit circle arc, centre (170, 250), radius 190 -->
+  <path d="M360 250 A190 190 0 0 0 170 60" fill="none" stroke="#9cc7d6" stroke-width="2"/>
+  <line x1="170" y1="250" x2="360" y2="250" stroke="#1d2733" stroke-width="2" marker-end="url(#s)"/>
+  <line x1="170" y1="250" x2="170" y2="60" stroke="#1d2733" stroke-width="2" marker-end="url(#s)"/>
+  <text x="366" y="254" fill="#1d2733" font-weight="bold">q0</text>
+  <text x="160" y="52" fill="#1d2733" font-weight="bold">q1</text>
+  <!-- chord (lerp) -->
+  <line x1="360" y1="250" x2="170" y2="60" stroke="#d64545" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <!-- slerp points at t = 0.25, 0.5, 0.75 : angles 22.5, 45, 67.5 deg -->
+  <circle cx="345.5" cy="177.3" r="5" fill="#0b6e8a"/>
+  <circle cx="304.4" cy="115.6" r="5" fill="#0b6e8a"/>
+  <circle cx="242.7" cy="74.5" r="5" fill="#0b6e8a"/>
+  <!-- lerp points on chord (not normalised) -->
+  <circle cx="312.5" cy="202.5" r="4" fill="#d64545"/>
+  <circle cx="265" cy="155" r="4" fill="#d64545"/>
+  <circle cx="217.5" cy="107.5" r="4" fill="#d64545"/>
+  <path d="M215 250 A45 45 0 0 0 201.8 218.2" fill="none" stroke="#a8680d" stroke-width="1.5"/>
+  <text x="222" y="236" fill="#a8680d">θ</text>
+  <text x="400" y="80" fill="#0b6e8a" font-weight="bold">SLERP (on the sphere)</text>
+  <text x="400" y="98" fill="#0b6e8a" font-size="12">equal angles for equal steps of t:</text>
+  <text x="400" y="114" fill="#0b6e8a" font-size="12">constant turn rate, always unit length</text>
+  <text x="400" y="160" fill="#d64545" font-weight="bold">linear interpolation (chord)</text>
+  <text x="400" y="178" fill="#d64545" font-size="12">shorter than 1 (must be normalised),</text>
+  <text x="400" y="194" fill="#d64545" font-size="12">faster in the middle than at the ends</text>
+  <text x="400" y="240" fill="#1d2733" font-size="12">q(t) = [sin((1−t)θ)·q0 + sin(tθ)·q1] / sin θ</text>
+  <text x="400" y="258" fill="#1d2733" font-size="12">cos θ = q0·q1   (if q0·q1 &lt; 0, use −q1)</text>
+</svg>

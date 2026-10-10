@@ -139,7 +139,7 @@ def save_script(name, text, base=None, force=None):
     os.replace(tmp, p)
 
 
-# ---------------------------------------------------------------- lesson files (mission 28: scenario in, flight out)
+# ---------------------------------------------------------------- lesson files (mission 31: scenario in, flight out)
 import json
 import re
 

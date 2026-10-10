@@ -355,7 +355,7 @@ m · v² / r = m · g · tan φ      →      r = v² / (g · tan φ)
 
 At 20 m/s and 30° of bank: `r = 400 / (9.81 × 0.577) = 70.6 m`. A day-vision search circle of
 a few hundred metres is therefore much wider than the aircraft's turns — and the camera tilts
-with the bank, which lesson 17 deals with.
+with the bank, which lesson 18 deals with.
 
 ## 7. NumPy: computing on whole arrays
 

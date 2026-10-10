@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 690 420" font-family="sans-serif" font-size="13">
+  <rect width="690" height="420" fill="#f7fafc"/>
+  <g transform="translate(45,0)">
+  <circle cx="200" cy="215" r="170" fill="#eef4fa" stroke="#9fb3c8" stroke-width="1.5"/>
+  <ellipse cx="200" cy="215" rx="170" ry="42" fill="#cde6c8" fill-opacity="0.7" stroke="#1d2733" stroke-width="1.5"/>
+  <text x="26" y="233" text-anchor="middle" font-weight="bold" fill="#1d2733">N</text>
+  <text x="374" y="233" text-anchor="middle" font-weight="bold" fill="#1d2733">S</text>
+  <text x="280" y="245" fill="#1d2733" font-size="12">horizon</text>
+  <line x1="200" y1="215" x2="200" y2="45" stroke="#1d2733" stroke-dasharray="3 4"/>
+  <line x1="200" y1="215" x2="60.7" y2="117.5" stroke="#1d2733" stroke-dasharray="3 4"/>
+  <line x1="200" y1="215" x2="30" y2="215" stroke="#1d2733" stroke-dasharray="3 4"/>
+  <line x1="200" y1="215" x2="295" y2="107" stroke="#f2a33a" stroke-width="1.5"/>
+  <circle cx="200" cy="215" r="5" fill="#d64545"/>
+  <text x="208" y="231" fill="#d64545" font-size="12">observer</text>
+  <path d="M 140 215 A 60 60 0 0 1 150.9 180.6" fill="none" stroke="#0b6e8a" stroke-width="2"/>
+  <text x="88" y="205" fill="#0b6e8a" font-weight="bold">φ</text>
+  <!-- the spherical triangle -->
+  <path d="M 60.7 117.5 Q 130 30 200 45" fill="none" stroke="#0b6e8a" stroke-width="2.5"/>
+  <path d="M 200 45 Q 260 45 295 107" fill="none" stroke="#d64545" stroke-width="2.5"/>
+  <path d="M 60.7 117.5 Q 210 100 295 107" fill="none" stroke="#7a4fb5" stroke-width="2.5"/>
+  <circle cx="200" cy="45" r="5" fill="#1d2733"/>
+  <text x="200" y="35" text-anchor="middle" font-weight="bold" fill="#1d2733">Z zenith</text>
+  <circle cx="60.7" cy="117.5" r="5" fill="#1d2733"/>
+  <text x="52.7" y="107.5" text-anchor="end" font-weight="bold" fill="#1d2733">P pole</text>
+  <text x="52.7" y="123.5" text-anchor="end" fill="#1d2733" font-size="12">(≈ Polaris)</text>
+  <g transform="translate(295,107)"><polygon points="0,-11 3,-3 11,-3 5,2 7,10 0,5 -7,10 -5,2 -11,-3 -3,-3" fill="#f2a33a"/></g>
+  <text x="309" y="111" font-weight="bold" fill="#a8680d">X star</text>
+  <text x="82" y="55" fill="#0b6e8a" font-weight="bold">90° − φ</text>
+  <text x="250" y="55" fill="#d64545" font-weight="bold">90° − a</text>
+  <text x="170" y="123" fill="#7a4fb5" font-weight="bold">90° − δ</text>
+  <text x="76.7" y="113.5" fill="#1d2733" font-weight="bold">H</text>
+  <text x="210" y="71" fill="#1d2733" font-weight="bold">A</text>
+  </g>
+  <g fill="#1d2733" transform="translate(50,0)">
+    <text x="400" y="40" font-weight="bold">The navigational triangle PZX</text>
+    <text x="400" y="66" font-size="12">sides (arcs of great circles):</text>
+    <text x="410" y="86" font-size="12" fill="#0b6e8a">PZ = 90° − φ  (latitude φ)</text>
+    <text x="410" y="104" font-size="12" fill="#d64545">ZX = 90° − a  (altitude a)</text>
+    <text x="410" y="122" font-size="12" fill="#7a4fb5">PX = 90° − δ  (declination δ)</text>
+    <text x="400" y="148" font-size="12">angles:</text>
+    <text x="410" y="168" font-size="12">at P: hour angle H = LST − α</text>
+    <text x="410" y="186" font-size="12">at Z: azimuth A (from north)</text>
+    <text x="400" y="216" font-size="12">Spherical law of cosines on ZX:</text>
+    <text x="410" y="238" font-size="12">sin a = sin δ sin φ + cos δ cos φ cos H</text>
+    <text x="400" y="266" font-size="12">Know φ, λ, time → get a, A</text>
+    <text x="400" y="284" font-size="12">(where to look for a star).</text>
+    <text x="400" y="306" font-size="12">Measure a, A, read α, δ from</text>
+    <text x="400" y="324" font-size="12">the photo → get φ, λ</text>
+    <text x="400" y="342" font-size="12">(celestial fix, NAVERA cn_pkg).</text>
+  </g>
+  <text x="20" y="408" fill="#1d2733" font-size="12">Drawn for φ = 35° to keep the picture readable; on Tenerife φ ≈ 28.3°.</text>
+</svg>

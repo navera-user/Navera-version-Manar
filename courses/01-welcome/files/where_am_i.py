@@ -168,6 +168,7 @@ def test():
         ("gate_ok", ((0, 0), (120, 0), 1.0, 100.0, 50.0), True, 0),
         ("gate_ok", ((0, 0), (500, 0), 1.0, 100.0, 50.0), False, 0),
         ("count_refused", ([(0, 0)] + [(500, 0)] * 6 + [(900, 0)], 1.0, 100.0, 50.0), 5, 0),
+        ("count_refused", ([(0, 0)] + [(300, 0)] * 8, 1.0, 100.0, 50.0), 2, 0),
         ("first_disagreement", (flight_example,), 101, 0),
     ]
     done = 0
@@ -303,6 +304,8 @@ def gate():
                 last, elapsed = f, 0.0
         print(f"   first {len(line)} fixes (gate_ok):  " + " ".join(line) + "      (✔ accepted, ✘ refused)")
         print(f"   count_refused  ->  {n} refused, final position {fixes[-1][0]} m from the start")
+        if len(fixes) <= 11 and n != line.count("✘"):
+            print("   ⚠ count_refused and gate_ok disagree on these fixes: check TODO 8 (see the Step 8 hints)")
 
 
 def flight():
@@ -319,7 +322,8 @@ def flight():
     vision = [r for r in rows if r["vision_x_m"] is not None]
     print(f"Simulated survey flight: {len(rows)} s, one GPS fix per second, day vision on {len(vision)} of them.")
     print(f"\n  jump gate alone (count_refused, v_max {v_max:g}, margin {margin:g})  ->  {n} fixes refused")
-    print(f"  cross-check (first_disagreement, 5 σ + 50 m)            ->  first disagreement at t = {t}")
+    shown = int(t) if isinstance(t, float) and t.is_integer() else t
+    print(f"  cross-check (first_disagreement, 5 σ + 50 m)            ->  first disagreement at t = {shown}")
     if t is not None:
         r = next(r for r in rows if r["t_s"] == t)
         d = need_ok("distance", (r["gps_x_m"], r["gps_y_m"]), (r["vision_x_m"], r["vision_y_m"]))

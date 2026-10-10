@@ -1,3 +1,0 @@
-{"number": "22", "title": "Map-based localisation: from a photo to latitude and longitude", "module": 5, "duration": "4 h 45",
- "summary": "The full day-vision chain — prior and search radius, map patch at matching scale, match, similarity fit, gates, centre to lat/lon — then an error budget (height, tilt, lag, map) and an honest evaluation of your pipeline against NAVERA's LocalMatcher.",
- "resources": [], "open": ["locate.py", "budget.py", "evaluate.py", "report.md"], "check_timeout_s": 240}

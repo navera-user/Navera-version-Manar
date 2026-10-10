@@ -26,7 +26,7 @@ measure test quality, and **launch tests** for ROS nodes.
 |---|---|---|---|
 | **unit** | one function or class, alone | milliseconds | `<package>/test/test_*.py`, run by `navera_tools/run_tests.sh` |
 | **integration** | several real nodes talking over ROS | seconds | `navera_tools/tests/test_*.py`, `run_tests.sh --integration` |
-| **system / simulation** | the whole box with a simulated vehicle | minutes | the simulator (lesson 28), `docs/VALIDATION_STATUS.md` |
+| **system / simulation** | the whole box with a simulated vehicle | minutes | the simulator (lesson 31), `docs/VALIDATION_STATUS.md` |
 | **field** | the real vehicle | hours, money | "field validation pending" |
 
 Most tests should be unit tests: fast, precise about *where* a bug is, and runnable before every

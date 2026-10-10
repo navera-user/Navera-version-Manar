@@ -175,7 +175,7 @@ Worked example (the figure): a vertical edge from 10 to 80 gives gx = 70 + 2·70
 area the weights sum to 0 and so does gx. **Canny** edge detection builds on this: Gaussian blur,
 Sobel gradient, thinning to one-pixel lines (non-maximum suppression), and two thresholds with
 hysteresis. Edges and gradients matter for navigation because they survive changes of brightness:
-a wall is a wall in the morning and in the evening. Lesson 20 builds features on them.
+a wall is a wall in the morning and in the evening. Lesson 21 builds features on them.
 
 ## 6. Geometric transforms: the 2 × 3 affine matrix
 
@@ -247,8 +247,8 @@ bring it back to the top, turn the photo 35° clockwise — θ = **−35** in Op
 
 A pixel-by-pixel comparison (the correlation of the lab) is **not** invariant to rotation or scale:
 you will measure that 10° of heading error is already enough to lose the match. That is why NAVERA
-needs the heading (IMU, lesson 16) and the height above ground before it prepares a frame — or a
-matching method that estimates rotation and scale itself (features, lessons 20–21).
+needs the heading (IMU, lesson 17) and the height above ground before it prepares a frame — or a
+matching method that estimates rotation and scale itself (features, lessons 21–22).
 
 ## 🐦 How birds do it
 

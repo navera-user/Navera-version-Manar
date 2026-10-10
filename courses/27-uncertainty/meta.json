@@ -1,0 +1,3 @@
+{"number": "27", "title": "How sure are we? Covariance, gating and fusion", "module": 6, "duration": "4 h",
+ "summary": "Random variables and covariance matrices, error ellipses by eigen-decomposition, J P Jᵀ propagation, Mahalanobis distance and the chi-square gate, and inverse-variance fusion of two estimates.",
+ "resources": [], "open": ["uncertainty.py", "kalman.py"], "check_timeout_s": 90}

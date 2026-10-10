@@ -57,5 +57,5 @@
   <text x="590" y="330" text-anchor="middle" font-size="11" fill="#1d2733">altitude = MSL + geoid separation</text>
   <text x="590" y="346" text-anchor="middle" font-size="11" fill="#1d2733">σ = 2 m × HDOP (E, N), 2σ vertical</text>
   <text x="590" y="361" text-anchor="middle" font-size="11" fill="#1d2733">+ NavSatFix on /navera/sensors/gps_fix</text>
-  <text x="380" y="392" text-anchor="middle" font-size="11" fill="#5a6b7b">Not checked here: minutes ≥ 60, jumps, HDOP limits — the estimator's plausibility gate comes later (lesson 25).</text>
+  <text x="380" y="392" text-anchor="middle" font-size="11" fill="#5a6b7b">Not checked here: minutes ≥ 60, jumps, HDOP limits — the estimator's plausibility gate comes later (lesson 29).</text>
 </svg>

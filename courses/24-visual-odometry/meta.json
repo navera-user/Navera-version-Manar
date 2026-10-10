@@ -1,0 +1,3 @@
+{"number": "24", "title": "Visual odometry: phase correlation, drift and fusion", "module": 5, "duration": "4 h 45",
+ "summary": "Measure the camera's motion from consecutive frames with an FFT phase correlation you write yourself, turn pixels into metres east/north, model drift as a random walk, and bound it with map fixes — as NAVERA's frame_odometry.py and vision_nav.py do.",
+ "resources": [], "open": ["vo.py", "report.md"], "check_timeout_s": 240}
