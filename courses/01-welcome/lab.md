@@ -184,7 +184,8 @@ python3 where_am_i.py gn
 1. Inside the step loop: two empty lists `H` and `r`, one row each per beacon, then one `lstsq`.
 2. Sign check: `uₓ = (x − beacon_x) / d`; the residual is measured − (d + b).
 3. Jumping away instead of converging? You add `−Δ`, or your residual has the opposite sign.
-4. `operands could not be broadcast … (3,) (0,)`, or the one-step check prints
+4. `operands could not be broadcast … (3,) (0,)`, `only length-1 arrays can be converted to Python
+   scalars`, or the one-step check prints
    `(array([...]), array([]), 3)`: you wrote `delta = np.linalg.lstsq(...)` without `, *_`, so `delta`
    holds all four results.
 </details>
@@ -272,7 +273,7 @@ coming from the true point; in the lab both use b = 0.3) leaves a residual that 
 with more satellites than unknowns, receivers check exactly this (receiver autonomous integrity
 monitoring, RAIM). But a spoofer who knows where you are can tune its fake clock bias so that one real
 satellite also fits (try it in "Going further"); each further real satellite takes one freedom away from
-it, and with as many real satellites as unknowns only the true position fits them all. Better receivers
+it, and with as many real satellites as unknowns only the true position (or, in some geometries, its mirror point) fits them all. Better receivers
 add other partial defences: signal power monitoring, several antennas to see where signals come from,
 signed navigation messages (Galileo OSNMA). Each has limits. A sensor that does not use radio at all (a
 camera, the stars) is not fooled by a radio attack: NAVERA's approach.

@@ -43,7 +43,9 @@ def run(fn, *args, seconds=40):
     except TimeoutError:
         raise CheckFailed(f"{fn.__name__}() did not finish in {seconds} s — is a loop endless?")
     except Exception as e:
-        raise CheckFailed(f"{fn.__name__}() stopped with {type(e).__name__}: {e}")
+        extra = (" — did you write `delta = np.linalg.lstsq(...)` without `, *_`?"
+                 if any(k in str(e) for k in ("could not be broadcast", "length-1 arrays", "0-dimensional arrays")) else "")
+        raise CheckFailed(f"{fn.__name__}() stopped with {type(e).__name__}: {e}{extra}")
     finally:
         signal.alarm(0)
 
@@ -204,6 +206,8 @@ def _():
             dict(t_s=12, gps_x_m=0, gps_y_m=150, vision_x_m=0, vision_y_m=0, vision_sigma_m=20),
             dict(t_s=13, gps_x_m=0, gps_y_m=151, vision_x_m=0, vision_y_m=0, vision_sigma_m=20)]
     got = run(fd, rows)
+    c.ok(got is not None, "with the default k = 5 and margin 50 it finds no disagreement at all, on rows where σ = 20 m: "
+                          "does your limit use each row's vision_sigma_m (not a fixed 30)?")
     c.ok(got == 13, f"with the default k = 5 and margin 50 it gives {got!r} — not the right time "
                     "(return the row's t_s; exactly on the limit is still agreement)")
     got = run(fd, rows, 3.0, 50.0)
@@ -242,10 +246,13 @@ def _():
              "fails, and the link between HDOP and the valley.")
 def _():
     steps, h1, h2, rank, why = answers("GN_STEPS", "HDOP_TRIANGLE", "HDOP_OUTSIDE", "COLLINEAR_RANK", "EXPLAIN_GN")
-    c.near(number(h1, "HDOP_TRIANGLE"), 1.216, 0.02, "HDOP_TRIANGLE")
-    c.near(number(h2, "HDOP_OUTSIDE"), 1.598, 0.02, "HDOP_OUTSIDE")
     s = number(steps, "GN_STEPS")
     c.ok(s == 3, f"GN_STEPS = {steps!r} is not what the `gn` table shows (mismatch below 1e-6, from (5, 5, 0))")
+    h1, h2 = number(h1, "HDOP_TRIANGLE"), number(h2, "HDOP_OUTSIDE")
+    c.ok(abs(h1 - 1.197) > 0.004 and abs(h2 - 1.250) > 0.004,
+         "your HDOP looks computed without the clock: H needs one row [uₓ, u_y, 1] per beacon (lesson §3), so (HᵀH)⁻¹ is 3 × 3")
+    c.near(h1, 1.216, 0.007, "HDOP_TRIANGLE")
+    c.near(h2, 1.598, 0.007, "HDOP_OUTSIDE")
     c.ok(number(rank, "COLLINEAR_RANK") == 2, f"COLLINEAR_RANK = {rank!r} — build H at (4, 0) and print np.linalg.matrix_rank(H)")
     explained("EXPLAIN_GN", why, ((r"linear", r"jacobian", r"derivative", r"gradient", r"\bstep"), "why each step is cheap"),
               ((r"guess", r"start", r"diverg", r"far", r"line", r"singular", r"rank", r"mirror"), "how it could fail"),
@@ -299,7 +306,7 @@ def _():
     predicted("PREDICT_FLIGHT", pred)
     c.ok(number(refused, "FLIGHT_REFUSED") == 0, f"FLIGHT_REFUSED = {refused!r} is not what `flight` prints for the jump gate")
     c.ok(number(caught, "CAUGHT_AT_S") == 450, f"CAUGHT_AT_S = {caught!r} is not what `flight` prints for the cross-check")
-    explained("EXPLAIN_FLIGHT", why, ((r"\b2[45]\d\b",), "when the spoof really started (read it on the plot)"),
+    explained("EXPLAIN_FLIGHT", why, ((r"(?<!\d)2[45]\d(?!\d)",), "when the spoof really started (read it on the plot)"),
               ((r"sea", r"water", r"no (vision|match)", r"vision"), "why vision could not see it earlier"))
 
 

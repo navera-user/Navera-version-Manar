@@ -69,7 +69,7 @@ def call(fn, *args):
         extra = ""
         if isinstance(e, NameError) and "sqrt" in str(e):
             extra = " — write math.sqrt, with `import math` at the top"
-        if "could not be broadcast" in str(e):
+        if any(k in str(e) for k in ("could not be broadcast", "length-1 arrays", "0-dimensional arrays")):
             extra = " — did you write `delta = np.linalg.lstsq(...)` without `, *_`?"
         return None, f"{fn}() stopped with {type(e).__name__}: {e} ({where}){extra}"
 

@@ -334,7 +334,8 @@ In your copy, these rules are four settings of
 > [!WARNING] Common wrong ideas
 > - "Satellites track you." They only broadcast; your receiver computes everything.
 > - "The most precise source wins." Priority wins; precision only sets the state.
-> - "A 1 µs clock error moves the fix 300 m." Only if b is not solved for.
+> - "A 1 µs clock error moves the fix 300 m." It adds 300 m to every *range*; solved as the unknown b, it does
+>   not move the fix at all.
 > - "A strong, clean signal is a true signal." A spoofer's signal is stronger than the real one.
 
 ## 🐦 How birds do it

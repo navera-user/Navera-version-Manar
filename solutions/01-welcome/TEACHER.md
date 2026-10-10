@@ -42,9 +42,9 @@ Not visible to students. Alignment, answer key, rubrics, known difficulties, cla
 - The flight is simulated: `make_flight.py` in this folder regenerates `flight.csv`.
 - Going further: `gnss_fix.py` (fixed seed): PDOP 1.82 / 2.48 / 3.44 / 3.81 with 8 / 6 / 5 / 4 satellites,
   residual RMS exactly 0 at 4 (measurements = unknowns), 3 → NO FIX. Bad start (−20, −20, 0): diverges
-  (|x| ≈ 10¹⁴ after 10 steps). Collinear beacons: from (4, 0, 0) it stays on the line, (3.116, 0, 2.184); from
+  (|x| ≈ 7 × 10¹⁴ after 10 steps). Collinear beacons: from (4, 0, 0) it stays on the line, (3.116, 0, 2.184); from
   (4, ±1, 0) it reaches (3, ±4). Smarter spoofer: b′ = 0.976 km gives mismatch 0 at (7, 2); against a fixed false
-  point two real satellites expose it; three (the unknowns in 2-D) leave only the truth.
+  point two real satellites expose it; three (the unknowns in 2-D) leave only the truth, up to a mirror point.
 
 ## Rubric for the written answers (the check only catches empty or off-topic answers)
 
@@ -52,9 +52,9 @@ Not visible to students. Alignment, answer key, rubrics, known difficulties, cla
 |---|---|---|---|
 | EXPLAIN_CLOCK | b adds the **same** amount to **every** range; solved as an unknown, the residuals vanish | "the bias is found", without "common to all ranges" | repeats the numbers |
 | EXPLAIN_TWO + CURVE | 3 unknowns, 2 measurements → a curve; GPS: x, y, z, b → 4; hyperbola because the range **difference** is fixed | counting right, curve not justified | "not enough beacons" |
-| EXPLAIN_GN | linearisation (Jacobian) → one small least-squares solve per step, fast convergence (quadratic near a zero-residual solution); fails from a bad guess, rank-deficient geometry (beacons on a line: the cross-line position is undetermined), or the mirror solution | one of the two parts | "it is faster" |
+| EXPLAIN_GN | linearisation (Jacobian) → one small least-squares solve per step, fast convergence (quadratic near a zero-residual solution); fails from a bad guess, rank-deficient geometry (beacons on a line: the cross-line position is undetermined), or the mirror solution; larger HDOP outside the triangle (1.22 → 1.60) = flatter valley | two of the three parts | "it is faster" |
 | EXPLAIN_SPOOF | fake ranges are **consistent** (one point explains them) → zero residual; nothing internal to a simple receiver flags it; jamming by contrast removes the signal, so it is noticed | "mismatch 0 so no alarm" without why | "the spoofer is clever" |
-| EXPLAIN_PARTIAL | a spare real range cannot be explained by the same point → non-zero residual (RAIM); a full spoof fakes all and stays consistent; bonus: a smart spoofer can tune its bias to hide one real satellite, and a residual does not say which signal is false | notices the residual but not why | restates the output |
+| EXPLAIN_PARTIAL | a spare real range cannot be explained by the same point → non-zero residual (RAIM); a full spoof fakes all and stays consistent; names one defence better receivers add (power monitoring, antenna array / direction of arrival, OSNMA, or a non-radio sensor); bonus: a smart spoofer can tune its bias to hide one real satellite, and a residual does not say which signal is false | notices the residual but not why | restates the output |
 | EXPLAIN_FLIGHT | start ≈ 250 s, ≈ 2 m/s drag; no vision match over the sea → no independent source → caught only at the coast (450 s), ~400 m off; the gate never fires | timing right, cause vague | "the gate failed" |
 | EXPLAIN_TRADEOFF | tighter v_max lowers the stealth speed (150 → 71 m/s) but needs a margin for multipath (false refusals otherwise); any drag below the gate is never refused: only a cross-check closes it | one side of the trade-off | restates numbers |
 
@@ -88,8 +88,5 @@ Predictions (`PREDICT_…`) are never marked. In class, ask who was surprised, a
    mark them together with the rubric; discuss what NAVERA would and would not have done there.
 
 Unfinished steps (usually 10–11) are finished at home before the debrief: the lab itself takes 2 h 30–4 h.
-The rubric's EXPLAIN_GN line also expects the HDOP–valley link; EXPLAIN_PARTIAL one defence of better receivers
-(power monitoring, antenna arrays, OSNMA, or a non-radio sensor).
-
 **Differentiation.** Fast students: "Going further" (3-D receiver, geometry and `(HᵀH)⁻¹`, a bad start).
 Students who struggle with Python: pairs; TODO 5 with the lesson's worked step on the board.
