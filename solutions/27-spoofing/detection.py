@@ -60,7 +60,10 @@ def patient_accept_time(offset_m, speed_mps, max_speed_mps, margin_m):
     Edge cases (with a = max_speed**2 - speed**2):
         margin >= offset  -> 0.0        (reachable at once)
         a < 0             -> math.inf   (the vehicle is faster than the gate allows: never reachable)
-        a == 0            -> linear:  b*dt + c >= 0  ->  dt = -c / b   (b = 2*max_speed*margin > 0)"""
+        a == 0, b > 0     -> linear:  b*dt + c >= 0  ->  dt = -c / b   (b = 2*max_speed*margin)
+        a == 0, b == 0    -> math.inf   (top speed AND no margin: c = -offset**2 < 0 stays < 0;
+                                         never divide by b = 0)
+    Example: patient_accept_time(2000, 30, 30, 0) -> math.inf"""
     v, s, m, d = max_speed_mps, speed_mps, margin_m, offset_m
     if m >= d:
         return 0.0

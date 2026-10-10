@@ -112,7 +112,9 @@ In [detection.py](file:./detection.py):
   `a·Δt² + b·Δt + c ≥ 0` with `a = v² − s²`, `b = 2·v·m`, `c = m² − D²`, and take the positive root.
   Handle the edge cases: `m ≥ D` → 0; `a < 0` (the vehicle flies faster than the gate's
   `max_speed`) → never reachable → `math.inf`; `a = 0` → the inequality is linear,
-  `b·Δt + c ≥ 0`, so Δt = −c / b.
+  `b·Δt + c ≥ 0`: if `b > 0` (there is a margin), Δt = −c / b; if `b = 0` too (top speed **and** no
+  margin), it says `c ≥ 0`, which is false because `c = −D² < 0` → never reachable → `math.inf`
+  (do not divide by `b = 0`). Example: `patient_accept_time(2000, 30, 30, 0)` → `inf`.
 
 ```bash
 python3 -c "import detection as d; print(d.p_exceed(3.0), d.p_streak(3.0, 5), d.patient_accept_time(2000, 15, 30, 50))"

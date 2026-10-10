@@ -148,7 +148,9 @@ def _():
 
 @c.test("patient_accept_time(): when does a patient spoofer become 'reachable'?",
         hint="Square both sides of v*dt + m >= sqrt((s*dt)^2 + D^2): (v^2 - s^2) dt^2 + 2 v m dt + m^2 - D^2 >= 0. "
-             "Take the positive root. If m >= D the answer is 0; if v <= s it may never happen (math.inf).")
+             "Take the positive root. If m >= D the answer is 0. If v < s: math.inf. If v == s (a = 0) the "
+             "inequality is linear, b*dt + c >= 0: dt = -c/b when b > 0, and math.inf when b == 0 (no margin) "
+             "-- never divide by b = 0.")
 def _():
     (f,) = need(D(), "patient_accept_time")
     c.near(f(2000.0, 15.0, 30.0, 50.0), 74.7658, 0.01, "patient_accept_time(2000 m, 15 m/s, 30 m/s, 50 m)")
