@@ -13,6 +13,10 @@
 
 Each test prints ✔ or ✘ (with the hint); the last line is read by the dashboard.
 A test that fails stops only itself. A test may call c.skip("why") to be skipped.
+
+Also here (Batch 0, 2026-10-10): predicted() / explained() / TEACHER_NOTE for PREDICT_… and
+EXPLAIN_… answers, run(fn, *args, seconds=40) with a time limit, and the ROS guard
+publishers_ok(topic, expected=1) that fails clearly when a leftover node also publishes.
 """
 import importlib.util
 import json
@@ -192,6 +196,126 @@ class Background:
                 pass
             self._out = ""
         return False
+
+
+# ---------------------------------------------------------------- written answers (PREDICT_… / EXPLAIN_…)
+TEACHER_NOTE = (" (Your teacher reads these answers with a rubric: the check only verifies that you "
+                "really answered.)")
+
+
+def words(s):
+    """The words of a text (2+ letters, accents allowed)."""
+    import re
+    return re.findall(r"[A-Za-zÀ-ÿ']{2,}", str(s))
+
+
+def predicted(name, value):
+    """A PREDICT_… answer: graded only as "written" (any honest guess passes)."""
+    if not (isinstance(value, str) and value.strip() != ""):
+        raise CheckFailed(f"{name} is empty — write your guess (any honest guess is fine)")
+
+
+def explained(name, value, *groups, min_words=8):
+    """An EXPLAIN_… answer: a real sentence that touches each group of ideas.
+
+    groups: (keywords, idea) pairs; keywords are regular expressions tried on the lower-case text,
+    one match per group is enough, e.g.
+        explained("EXPLAIN_GATE", a, ([r"speed", r"m/s"], "the speed limit"), ([r"margin"], "the margin"))
+    """
+    import re
+    if not (isinstance(value, str) and value.strip() != ""):
+        raise CheckFailed(f"{name} is still empty")
+    if len(words(value)) < min_words:
+        raise CheckFailed(f"{name} is very short — explain in one to three full sentences")
+    low = value.lower()
+    for keywords, idea in groups:
+        if not any(re.search(k, low) for k in keywords):
+            raise CheckFailed(f"{name} does not explain {idea} yet." + TEACHER_NOTE)
+
+
+# ---------------------------------------------------------------- calling the student's code safely
+def run(fn, *args, seconds=40, **kwargs):
+    """Call a student function with a time limit; its prints are hidden. A crash or an endless loop
+    becomes a clear ✘ (CheckFailed). Uses SIGALRM: call it from the main thread (as check.py does)."""
+    import contextlib
+    import io
+    import signal
+
+    def too_long(*_):
+        raise TimeoutError
+    name = getattr(fn, "__name__", "the function")
+    old = signal.signal(signal.SIGALRM, too_long)
+    signal.alarm(max(1, int(seconds)))
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            return fn(*args, **kwargs)
+    except TimeoutError:
+        raise CheckFailed(f"{name}() did not finish in {seconds} s — is a loop endless?")
+    except NotImplementedError:
+        raise CheckFailed(f"{name}() is not written yet (it still raises NotImplementedError)")
+    except CheckFailed:
+        raise
+    except Exception as e:
+        tb = traceback.extract_tb(e.__traceback__)
+        where = next((f"{os.path.basename(f.filename)} line {f.lineno}" for f in reversed(tb)
+                      if not f.filename.endswith(("check.py", "academy_check.py"))), "")
+        raise CheckFailed(f"{name}() stopped with {type(e).__name__}: {e}" + (f" ({where})" if where else ""))
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old)
+
+
+# ---------------------------------------------------------------- ROS guard: one publisher per topic
+def topic_publishers(topic, spin_s=2):
+    """(count, [node names]) of the publishers on `topic`, from `ros2 topic info -v` (no daemon, so a
+    stale daemon cannot lie). count is None when ros2 could not answer."""
+    import re
+    code, out = sh(f"ros2 topic info -v {topic} --no-daemon --spin-time {spin_s}", timeout=30 + spin_s)
+    m = re.search(r"Publisher count:\s*(\d+)", out)
+    if not m:
+        if "Unknown topic" in out:
+            return 0, []
+        return None, []
+    names, node = [], None
+    for line in out.splitlines():
+        if line.startswith("Node name:"):
+            node = line.split(":", 1)[1].strip()
+        elif line.startswith("Endpoint type:") and "PUBLISHER" in line and node:
+            names.append(node)
+    return int(m.group(1)), names
+
+
+def publishers_ok(topic, expected=1, spin_s=2, tries=2):
+    """Fail with a clear message unless exactly `expected` nodes publish on `topic`.
+
+    Use it before a test that reads a topic: expected=0 before starting the student's node (no
+    leftover from an earlier run), expected=1 once it runs. A leftover node (a terminal still running
+    `ros2 run …` or `python3 my_node.py`, or a node started in the background) also publishes, and the
+    check would read its messages instead of the new ones. Returns the count.
+
+    Discovery is not instant: one `ros2 topic info` can miss a node (tested: "Unknown topic" while two
+    nodes published). So it asks `tries` times and keeps the largest count (a node is never invented),
+    stopping early as soon as there are too many."""
+    best, names = None, []
+    for _ in range(max(1, tries)):
+        n, who = topic_publishers(topic, spin_s)
+        if n is not None and (best is None or n > best):
+            best, names = n, who
+        if best is not None and best > expected:
+            break
+    n = best
+    if n is None:
+        raise CheckFailed(f"the check could not ask ROS 2 who publishes on {topic} (`ros2 topic info` failed)")
+    if n == expected:
+        return n
+    who = f" ({', '.join(sorted(set(names)))})" if names else ""
+    if n > expected:
+        raise CheckFailed(
+            f"{n} node(s) publish on {topic}{who}, but the check expects {expected}. A node from an earlier "
+            "run is probably still running: stop it with Ctrl+C in its terminal (or close that terminal "
+            "tab), then press ✔ Check my work again. `ros2 topic info -v " + topic + "` lists them.")
+    raise CheckFailed(f"{n} node(s) publish on {topic}, the check expects {expected}: is your node "
+                      "running, and does it publish on exactly this topic name?")
 
 
 def wait_for_messages(topic, msg_type, count=1, timeout=10.0):
