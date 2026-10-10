@@ -8,7 +8,7 @@ Not visible to students. Alignment, answer key, rubrics, known difficulties, cla
 |---|---|---|---|
 | 1. Trilateration; the clock makes it a 4-unknown problem | §2, §3 (ship, atomic clock) | Steps 3–5 (TODO 3–4) | 4, 5, 11, 12 |
 | 2. Least squares by brute force and Gauss–Newton | §2 check, §3 worked GN step | Steps 2, 6 (TODO 1, 2, 5) | 2, 3, 6, 13 |
-| 3. Which attacks a receiver notices by itself (jamming, full and partial spoof) | §4 (jammer FSPL) | Step 7 (TODO 6) | 7, 14 |
+| 3. Which attacks a receiver notices by itself (jamming, full and partial spoof), and what better receivers add | §4 (jammer FSPL) | Step 7 (TODO 6) | 7, 14 |
 | 4. Arbiter: priority, states, gate, cross-check and their failures | §5 (two checks) | Steps 1, 8–11 (TODO 7–9) | 1, 8, 9, 10, 15, 16, 17, 18 |
 
 ## Answer key
@@ -18,11 +18,13 @@ Not visible to students. Alignment, answer key, rubrics, known difficulties, cla
 - Step 4: `CLOCK_ERROR_M` = 141 (grid answer (3.1, 4.1), minimum mismatch 0.256). The continuous
   least-squares optimum without bias is (3.071, 4.090), about 115 m. The check accepts 140–142.
 - Step 5: 1 guess fits with A, B, C; 36 with A and B only. `CURVE = "hyperbola"`: for every fitting point,
-  dA − dB = ρA − ρB (the common bias cancels), the definition of a hyperbola with foci A and B. This is
+  dA − dB = ρA − ρB (the common bias cancels), the definition of one branch of a hyperbola with foci A and B. This is
   the principle of TDOA / LORAN navigation.
 - Step 6: from (5, 5, 0), mismatch 0.316 → 3.4e-5 → 8.4e-13: `GN_STEPS = 3` (exact). One step from (4, 4, 0) gives
   (3.021, 3.997, 0.338), the lesson's table (checked). `COLLINEAR_RANK = 2`: at a guess on the line, every row has
-  u_y = 0, so the position across the line cannot be determined (and away from the line, two mirror points exist). Brute force
+  u_y = 0, so the position across the line cannot be determined (and away from the line, two mirror points exist).
+  `HDOP_TRIANGLE = 1.22`, `HDOP_OUTSIDE = 1.60` (C at (10, 10)); there `find_position` misses by about 424 m
+  (continuous 396 m) instead of 141 m. Brute force
   ≈ 0.7 s, Gauss–Newton ≈ 1 ms on the Jetson. The result (3.0002, 4.0001, 0.2998) is not exactly (3, 4, 0.3)
   because the ranges are rounded to 1 m.
 - Step 7: full spoof → (7, 2), b 0.3, mismatch 0, 4 472 m from the truth. Partial (A, B, C faked, D real)
@@ -38,6 +40,11 @@ Not visible to students. Alignment, answer key, rubrics, known difficulties, cla
   and `DEFENDER_STEALTH_MPS = 71` (4.3 km per minute instead of 9 km). On a real vehicle the GPS period
   jitters (σ 0.15 s in `estimator_params.yaml`), so a real attacker would stay a little below these values.
 - The flight is simulated: `make_flight.py` in this folder regenerates `flight.csv`.
+- Going further: `gnss_fix.py` (fixed seed): PDOP 1.82 / 2.48 / 3.44 / 3.81 with 8 / 6 / 5 / 4 satellites,
+  residual RMS exactly 0 at 4 (measurements = unknowns), 3 → NO FIX. Bad start (−20, −20, 0): diverges
+  (|x| ≈ 10¹⁴ after 10 steps). Collinear beacons: from (4, 0, 0) it stays on the line, (3.116, 0, 2.184); from
+  (4, ±1, 0) it reaches (3, ±4). Smarter spoofer: b′ = 0.976 km gives mismatch 0 at (7, 2); against a fixed false
+  point two real satellites expose it; three (the unknowns in 2-D) leave only the truth.
 
 ## Rubric for the written answers (the check only catches empty or off-topic answers)
 
@@ -67,9 +74,9 @@ Predictions (`PREDICT_…`) are never marked. In class, ask who was surprised, a
 - Strong students finish in about 2 h and found the earlier version too easy: Steps 6, 7 (partial),
   10 and 11 are where they work; push them to "Going further".
 
-## Suggested class plan (reading at home, about 1 h + 2 sessions of 2 h; about 5 h in all)
+## Suggested class plan (reading at home, about 1 h 15 + 2 sessions of 2 h; about 5 h in all)
 
-0. **Before session 1:** read the lesson (about 60 min) with the ✏️ checks.
+0. **Before session 1:** read the lesson (about 75 min) with the ✏️ checks.
 1. **Session 1 — hook (10 min):** the Black Sea 2017 case. "How could twenty ships agree on a wrong
    position with no alarm?" Collect hypotheses; come back to them at the end.
 2. **Board (15 min):** the least-squares valley and one Gauss–Newton step by hand (§3 table).
@@ -79,6 +86,10 @@ Predictions (`PREDICT_…`) are never marked. In class, ask who was surprised, a
    who found the lowest stealth speed for a defensible margin?
 6. **Debrief (30 min):** back to the Black Sea hypotheses; read 2–3 EXPLAIN answers (anonymously) and
    mark them together with the rubric; discuss what NAVERA would and would not have done there.
+
+Unfinished steps (usually 10–11) are finished at home before the debrief: the lab itself takes 2 h 30–4 h.
+The rubric's EXPLAIN_GN line also expects the HDOP–valley link; EXPLAIN_PARTIAL one defence of better receivers
+(power monitoring, antenna arrays, OSNMA, or a non-radio sensor).
 
 **Differentiation.** Fast students: "Going further" (3-D receiver, geometry and `(HᵀH)⁻¹`, a bad start).
 Students who struggle with Python: pairs; TODO 5 with the lesson's worked step on the board.

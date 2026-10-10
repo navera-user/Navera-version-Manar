@@ -60,7 +60,7 @@
 
     <rect x="22" y="247" width="240" height="80" rx="16" fill="#ffffff" stroke="#7ccf6a" stroke-width="3"/>
     <text x="40" y="277" font-size="17" font-weight="bold" fill="#243447">Magnetic sense</text>
-    <text x="40" y="307" font-size="15" fill="#d9532f">→ magnetometer (IMU)</text>
+    <text x="40" y="307" font-size="15" fill="#d9532f">→ magnetometer (heading only)</text>
 
     <rect x="22" y="382" width="240" height="80" rx="16" fill="#ffffff" stroke="#7ccf6a" stroke-width="3"/>
     <text x="40" y="412" font-size="17" font-weight="bold" fill="#243447">Inner ear, balance</text>
@@ -79,7 +79,7 @@
 
     <rect x="538" y="382" width="240" height="80" rx="16" fill="#ffffff" stroke="#ffc94d" stroke-width="3"/>
     <text x="556" y="412" font-size="17" font-weight="bold" fill="#243447">Sense of own motion</text>
-    <text x="556" y="442" font-size="15" fill="#d9532f">→ dead reckoning</text>
+    <text x="556" y="442" font-size="15" fill="#d9532f">→ dead reckoning (future)</text>
   </g>
 
   <!-- arbiter card -->

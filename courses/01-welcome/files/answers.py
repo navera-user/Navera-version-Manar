@@ -21,14 +21,16 @@ CURVE = ""           # which curve do the fitting positions draw? (one word)
 
 # ---- Step 6: Gauss–Newton ---------------------------------------------------------------------
 GN_STEPS = 0         # how many steps until the mismatch is below 1e-6 (from `gn`)
+HDOP_TRIANGLE = 0.0  # HDOP at (3, 4) with A, B, C (two decimals)
+HDOP_OUTSIDE = 0.0   # same with C moved to (10, 10)
 COLLINEAR_RANK = 0   # rank of H with three beacons on a line, at a guess on that line
-EXPLAIN_GN = ""      # why so much faster than brute force? what could make it fail (and what is lost on a line)?
+EXPLAIN_GN = ""      # why so much faster? what could make it fail? what is lost on a line? HDOP vs the valley?
 
 # ---- Step 7: spoofing --------------------------------------------------------------------------
 PREDICT_SPOOF = ""   # full spoof: what will your solver find, with what mismatch?
 EXPLAIN_SPOOF = ""   # why mismatch 0 at the fake position? what does it mean? why is jamming noticed?
 PREDICT_PARTIAL = "" # only A, B, C spoofed, D real: what changes?
-EXPLAIN_PARTIAL = "" # why can a receiver with a spare measurement notice a partial spoof?
+EXPLAIN_PARTIAL = "" # spare measurement vs partial / full spoof, and one defence better receivers add
 
 # ---- Step 8: the jump gate --------------------------------------------------------------------
 PREDICT_GATE = ""    # how many fixes refused in attack A (300 m jump)? in attack B (drag)?
@@ -43,7 +45,7 @@ ARBITER_STATE = ""   # "FIX", "DEGRADED" or "NO_FIX"
 PREDICT_FLIGHT = ""  # will the jump gate catch the spoof? will the cross-check? when?
 FLIGHT_REFUSED = -1  # jump gate alone on the whole flight: fixes refused
 CAUGHT_AT_S = -1     # first disagreement (s)
-EXPLAIN_FLIGHT = ""  # when did the spoof really start (look at out/flight.png), and why was it caught so late?
+EXPLAIN_FLIGHT = ""  # when did the spoof start (out/flight.png), how fast does it drag, why caught so late?
 
 # ---- Step 11: attacker vs defender ----------------------------------------------------------
 STEALTH_SPEED_MPS = 0      # NAVERA defaults: highest drag speed (m/s) never refused

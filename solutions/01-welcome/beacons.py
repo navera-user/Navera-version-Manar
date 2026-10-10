@@ -130,9 +130,9 @@ def first_disagreement(rows, k=5.0, margin_m=50.0):
     rows: a list of dicts with keys t_s, gps_x_m, gps_y_m, vision_x_m, vision_y_m, vision_sigma_m
     (the vision values are None when vision has no match).
 
-    Example:  first_disagreement([{"t_s": 0, "gps_x_m": 0, "gps_y_m": 0, "vision_x_m": None, "vision_y_m": None,
-              "vision_sigma_m": None}, {"t_s": 1, "gps_x_m": 500, "gps_y_m": 0, "vision_x_m": 0, "vision_y_m": 0,
-              "vision_sigma_m": 30}])  ->  1
+    Example:  first_disagreement([{"t_s": 100, "gps_x_m": 0, "gps_y_m": 0, "vision_x_m": None, "vision_y_m": None,
+              "vision_sigma_m": None}, {"t_s": 101, "gps_x_m": 500, "gps_y_m": 0, "vision_x_m": 0, "vision_y_m": 0,
+              "vision_sigma_m": 30}])  ->  101
     """
     for r in rows:
         if r["vision_x_m"] is None:

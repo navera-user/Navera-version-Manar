@@ -151,9 +151,9 @@ def read_flight():
 
 # ---------------------------------------------------------------- the scenarios
 def test():
-    flight_example = [{"t_s": 0, "gps_x_m": 0, "gps_y_m": 0, "vision_x_m": None, "vision_y_m": None,
+    flight_example = [{"t_s": 100, "gps_x_m": 0, "gps_y_m": 0, "vision_x_m": None, "vision_y_m": None,
                        "vision_sigma_m": None},
-                      {"t_s": 1, "gps_x_m": 500, "gps_y_m": 0, "vision_x_m": 0, "vision_y_m": 0, "vision_sigma_m": 30}]
+                      {"t_s": 101, "gps_x_m": 500, "gps_y_m": 0, "vision_x_m": 0, "vision_y_m": 0, "vision_sigma_m": 30}]
     cases = [
         ("distance", ((0, 0), (3, 4)), 5.0, 1e-6),
         ("distance", ((10, 0), (3, 4)), math.sqrt(65), 1e-6),
@@ -168,7 +168,7 @@ def test():
         ("gate_ok", ((0, 0), (120, 0), 1.0, 100.0, 50.0), True, 0),
         ("gate_ok", ((0, 0), (500, 0), 1.0, 100.0, 50.0), False, 0),
         ("count_refused", ([(0, 0)] + [(500, 0)] * 6 + [(900, 0)], 1.0, 100.0, 50.0), 5, 0),
-        ("first_disagreement", (flight_example,), 1, 0),
+        ("first_disagreement", (flight_example,), 101, 0),
     ]
     done = 0
     for fn, args, want, tol in cases:
@@ -311,6 +311,11 @@ def flight():
     fixes = [(r["gps_x_m"], r["gps_y_m"]) for r in rows]
     n = need_ok("count_refused", fixes, 1.0, v_max, margin)
     t = need_ok("first_disagreement", rows)
+    shifted = [dict(r, t_s=r["t_s"] + 1000) for r in rows]
+    t2, _ = call("first_disagreement", shifted)
+    if t is not None and t2 is not None and t2 != t + 1000:
+        print("⚠ first_disagreement() seems to return the row number, not the row's t_s "
+              "(here they are equal by chance; the check uses other times).")
     vision = [r for r in rows if r["vision_x_m"] is not None]
     print(f"Simulated survey flight: {len(rows)} s, one GPS fix per second, day vision on {len(vision)} of them.")
     print(f"\n  jump gate alone (count_refused, v_max {v_max:g}, margin {margin:g})  ->  {n} fixes refused")

@@ -140,9 +140,16 @@ def _():
 def _():
     (gn,) = functions("gauss_newton")
     s1 = point(run(gn, [(0, 0), (10, 0), (0, 10)], [5.3, 8.362, 7.008], (4.0, 4.0, 0.0), 1), 3, "gauss_newton")
+    if abs(s1[0] - 3.0002) < 2e-3 and abs(s1[1] - 4.0001) < 2e-3:
+        why = "that is the final answer, not one step — does it use `guess` and `steps`?"
+    elif abs(s1[0] - 4.9793) < 2e-3:
+        why = "the step goes the wrong way — check the signs: u = (p − beacon)/d, residual = measured − (d + b), ADD Δ"
+    elif abs(s1[2]) < 1e-9:
+        why = "the bias did not move — each row of H needs a 1 for the bias, and b must be updated"
+    else:
+        why = "compare your rows of H and r with the lesson's §3 table, beacon by beacon"
     c.ok(abs(s1[0] - 3.0207) < 2e-3 and abs(s1[1] - 3.9971) < 2e-3 and abs(s1[2] - 0.3377) < 2e-3,
-         f"one step from (4, 4, 0) gives {tuple(round(v, 4) for v in s1)}, not the lesson's first step — "
-         "does it use `guess` and `steps`?")
+         f"one step from (4, 4, 0) gives {tuple(round(v, 4) for v in s1)}, not the lesson's first step — {why}")
     p = point(run(gn, BEACONS, LATE), 3, "gauss_newton")
     c.ok(abs(p[0] - 6.2) < 1e-3 and abs(p[1] - 3.7) < 1e-3 and abs(p[2] - 0.45) < 1e-3,
          f"with 3 exact beacons it gives {tuple(round(v, 4) for v in p)} — not the exact solution")
@@ -229,16 +236,20 @@ def _():
     c.ok("hyperbol" in str(curve).lower(), f"CURVE = {curve!r} is not the right curve")
 
 
-@c.test("Step 6: Gauss–Newton — steps, a rank-deficient case, and explanation",
-        hint="Run python3 where_am_i.py gn and count the steps until the mismatch is below 1e-6. "
-             "Explain the linearisation, and one way it can fail.")
+@c.test("Step 6: Gauss–Newton — steps, HDOP, a rank-deficient case, and explanation",
+        hint="Run python3 where_am_i.py gn and count the steps until the mismatch is below 1e-6 (3.36e-05 = 0.0000336 "
+             "is still above 1e-6). HDOP: build H at (3, 4), np.linalg.inv(H.T @ H). Explain the linearisation, how it "
+             "fails, and the link between HDOP and the valley.")
 def _():
-    steps, rank, why = answers("GN_STEPS", "COLLINEAR_RANK", "EXPLAIN_GN")
+    steps, h1, h2, rank, why = answers("GN_STEPS", "HDOP_TRIANGLE", "HDOP_OUTSIDE", "COLLINEAR_RANK", "EXPLAIN_GN")
+    c.near(number(h1, "HDOP_TRIANGLE"), 1.216, 0.02, "HDOP_TRIANGLE")
+    c.near(number(h2, "HDOP_OUTSIDE"), 1.598, 0.02, "HDOP_OUTSIDE")
     s = number(steps, "GN_STEPS")
     c.ok(s == 3, f"GN_STEPS = {steps!r} is not what the `gn` table shows (mismatch below 1e-6, from (5, 5, 0))")
     c.ok(number(rank, "COLLINEAR_RANK") == 2, f"COLLINEAR_RANK = {rank!r} — build H at (4, 0) and print np.linalg.matrix_rank(H)")
     explained("EXPLAIN_GN", why, ((r"linear", r"jacobian", r"derivative", r"gradient", r"\bstep"), "why each step is cheap"),
-              ((r"guess", r"start", r"diverg", r"far", r"line", r"singular", r"rank", r"mirror"), "how it could fail"))
+              ((r"guess", r"start", r"diverg", r"far", r"line", r"singular", r"rank", r"mirror"), "how it could fail"),
+              ((r"hdop", r"valley", r"flat", r"geometr", r"dop"), "the link between HDOP and the geometry"))
 
 
 @c.test("Step 7: full and partial spoof — predictions and explanations",
@@ -253,7 +264,9 @@ def _():
               ((r"cannot", r"can't", r"can not", r"\bnot\b", r"\bno\b", r"nothing", r"never"), "whether the receiver can tell"),
               ((r"jam", r"lose", r"lost", r"no signal", r"noise"), "why jamming, by contrast, is noticed"))
     explained("EXPLAIN_PARTIAL", e2, ((r"residual", r"mismatch"), "what stays in the residuals"),
-              ((r"extra", r"redundan", r"spare", r"more", r"fourth", r"\bd\b", r"real"), "the role of the spare measurement"))
+              ((r"extra", r"redundan", r"spare", r"more", r"fourth", r"\bd\b", r"real"), "the role of the spare measurement"),
+              ((r"power", r"antenna", r"direction", r"osnma", r"authent", r"sign", r"camera", r"vision"),
+               "one defence that better receivers add"))
 
 
 @c.test("Step 8: the jump gate against two attacks",
