@@ -132,6 +132,10 @@ BEFORE: 1736 of 1800 epochs accepted (availability 96.4 %), CEP50 2.28 m, p95 43
 AFTER : gps_node.fix_problem() does not exist yet on your branch — make the change (Step 9), then run me again
 ```
 
+If the AFTER line says instead `NAVERA's gps_node cannot be imported (ModuleNotFoundError: …)`, the
+problem is not your project: ROS and your NAVERA copy are not sourced in this terminal. Run
+`source ~/navera/install/setup.bash` and try again.
+
 A CEP50 of 2.3 m and a p95 of 43 m: the median hides the bad episodes completely.
 
 ### Step 8 — Write the test first

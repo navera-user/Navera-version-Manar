@@ -30,10 +30,30 @@ BLOCK_LEN, N_BOOT, SEED = 60, 2000, 30
 VALID_QUAL = (1, 2, 4, 5)
 MAX_AVAILABILITY_LOSS = 0.10          # acceptance criterion, fixed in the proposal BEFORE measuring
 
+FIX_IMPORT_ERROR = None
 try:                                   # exists only once you made the change on your branch
     from gps_pkg.nodes.gps_node import fix_problem
-except ImportError:
+except Exception as e:                 # ImportError, or a SyntaxError in your edited gps_node.py
     fix_problem = None
+    FIX_IMPORT_ERROR = e
+
+
+def explain_import_error(e):
+    """Say why gps_node.fix_problem could not be imported, with the real error and the likely fix."""
+    err = f"{type(e).__name__}: {e}"
+    if isinstance(e, ImportError) and "cannot import name 'fix_problem'" in str(e):
+        print("AFTER : gps_node.fix_problem() does not exist yet on your branch — make the change "
+              "(Step 9), then run me again")
+    elif isinstance(e, ImportError):
+        print(f"AFTER : NAVERA's gps_node cannot be imported ({err}).")
+        print("        Likely cause: ROS and your NAVERA copy are not sourced in this terminal. Run")
+        print("            source ~/navera/install/setup.bash")
+        print("        then run me again. Still failing? `python3 -c \"import gps_pkg.nodes.gps_node\"` "
+              "shows the full error.")
+    else:
+        print(f"AFTER : your gps_node.py does not load ({err}).")
+        print("        Fix that line in ~/navera/gps_pkg/gps_pkg/nodes/gps_node.py; "
+              "`python3 -c \"import gps_pkg.nodes.gps_node\"` shows the full error.")
 
 
 def error_m(lat, lon, truth):
@@ -102,8 +122,7 @@ def main():
     print(f"{len(epochs)} epochs (GGA lines), {sum(e['crc_ok'] for e in epochs)} with a valid checksum")
     show("BEFORE", sb)
     if fix_problem is None:
-        print("AFTER : gps_node.fix_problem() does not exist yet on your branch — make the change "
-              "(Step 9), then run me again")
+        explain_import_error(FIX_IMPORT_ERROR)
         return
     acc_a = np.array([rule_after(e) for e in epochs])
     sa = summary(acc_a, err)
