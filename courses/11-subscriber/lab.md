@@ -81,6 +81,9 @@ speed drops more.
 > **TODO 3** — in `GpsListener`, subscribe with `qos_profile_sensor_data` (3a) and, in `on_fix`, log
 > exactly one line per message (3b): `fix 12: distance 66.0 m, speed 6.0 m/s, window 6.0 m/s` or
 > `rejected (no fix), 3 so far` (3 = the number of fixes rejected so far **for this reason**).
+> `update()` returns `None` both for the first fix and for a rejected one, and does not give the
+> reason: call `self.tracker.check(...)` **before** `update(...)` to know the reason (`""` = accepted);
+> `self.tracker.rejected[reason]` then holds the count.
 
 **Terminal 1** — start the player:
 

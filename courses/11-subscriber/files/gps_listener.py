@@ -85,8 +85,12 @@ class GpsListener(Node):
     def on_fix(self, msg):
         """Called by ROS for every NavSatFix received. `msg` is the message."""
         # TODO 3b: t = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9  (the MEASUREMENT time)
-        #          speed = self.tracker.update(msg.latitude, msg.longitude, t, msg.status.status)
-        #          then log ONE line per message with self.get_logger().info(...), exactly:
+        #          update() returns None for the first fix AND for a rejected fix, and never says why.
+        #          So FIRST ask the reason with self.tracker.check(lat, lon, t, status) ("" = good fix),
+        #          THEN call self.tracker.update(...) with the same values (it counts the rejection
+        #          or adds the fix). Order matters: after update() accepts a fix, check() of the same
+        #          fix would answer "not newer".
+        #          Then log ONE line per message with self.get_logger().info(...), exactly:
         #            accepted:  fix 12: distance 66.0 m, speed 6.0 m/s, window 6.0 m/s
         #            rejected:  rejected (no fix), 3 so far
         #          where 3 = the number of fixes rejected so far FOR THIS REASON (here: "no fix").

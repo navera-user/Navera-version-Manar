@@ -129,7 +129,8 @@ def run_listener(faults):
 @c.test("TODO 3 — gps_listener.py receives the player's fixes and logs one line per fix",
         hint="Course section 1: 3a subscribes to TOPIC with the sensor-data QoS profile named in the TODO "
              "and on_fix as callback. 3b (section 3, 'Which time?'): the time comes from the message's stamp, not "
-             "the clock; feed the tracker, then log one line in exactly the format given in the TODO comment.")
+             "the clock. Ask the tracker's check() for the reason BEFORE update() (update() returns None for a rejection and "
+             "for the first fix alike), then log one line in exactly the format given in the TODO comment.")
 def _():
     run_listener(False)
 
