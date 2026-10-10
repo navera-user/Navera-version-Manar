@@ -271,7 +271,7 @@ def _():
               ((r"cannot", r"can't", r"can not", r"\bnot\b", r"\bno\b", r"nothing", r"never"), "whether the receiver can tell"),
               ((r"jam", r"lose", r"lost", r"no signal", r"noise"), "why jamming, by contrast, is noticed"))
     explained("EXPLAIN_PARTIAL", e2, ((r"residual", r"mismatch"), "what stays in the residuals"),
-              ((r"extra", r"redundan", r"spare", r"more", r"fourth", r"\bd\b", r"real"), "the role of the spare measurement"),
+              ((r"extra", r"redundan", r"spare", r"more", r"four", r"\b4\b", r"overdetermin", r"raim", r"\bd\b", r"real"), "the role of the spare measurement"),
               ((r"power", r"antenna", r"direction", r"osnma", r"authent", r"sign", r"camera", r"vision"),
                "one defence that better receivers add"))
 

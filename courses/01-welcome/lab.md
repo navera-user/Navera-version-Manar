@@ -298,7 +298,7 @@ python3 where_am_i.py test
 <details><summary>Stuck? Hints</summary>
 
 1. What must you remember from one fix to the next? Create those variables before the loop.
-2. 5 on the table but 3 on the 300 m jump (`test` shows it): `elapsed` is added **after** the test and
+2. 5 on the table but 3 on the 300 m jump (`test` labels both lines; `gate` shows it as attack A): `elapsed` is added **after** the test and
    never restarts — fix 1 arrives dt_s after fixes[0], so add dt_s **before** the test, and restart after an
    accept. 4 instead of 5: `elapsed` does not restart after an accept, or starts one step too high. 2: you
    compare with the previous fix instead of the last trusted one, or you count the accepted fixes.

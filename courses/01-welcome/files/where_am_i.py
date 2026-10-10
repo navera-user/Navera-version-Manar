@@ -167,15 +167,20 @@ def test():
         ("spoof_measurements", ([(0, 0), (10, 0)], (6, 8), 0.5), [10.5, math.sqrt(80) + 0.5], 1e-6),
         ("gate_ok", ((0, 0), (120, 0), 1.0, 100.0, 50.0), True, 0),
         ("gate_ok", ((0, 0), (500, 0), 1.0, 100.0, 50.0), False, 0),
-        ("count_refused", ([(0, 0)] + [(500, 0)] * 6 + [(900, 0)], 1.0, 100.0, 50.0), 5, 0),
-        ("count_refused", ([(0, 0)] + [(300, 0)] * 8, 1.0, 100.0, 50.0), 2, 0),
+        ("count_refused", ([(0, 0)] + [(500, 0)] * 6 + [(900, 0)], 1.0, 100.0, 50.0), 5, 0,
+         "lesson's 7-row table: [(0,0)] + [(500,0)]*6 + [(900,0)], 1.0, 100.0, 50.0"),
+        ("count_refused", ([(0, 0)] + [(300, 0)] * 8, 1.0, 100.0, 50.0), 2, 0,
+         "300 m jump: [(0,0)] + [(300,0)]*8, 1.0, 100.0, 50.0"),
         ("first_disagreement", (flight_example,), 101, 0),
     ]
     done = 0
-    for fn, args, want, tol in cases:
+    for case in cases:
+        fn, args, want, tol = case[:4]
         shown = ", ".join(repr(a) if not isinstance(a, list) or len(a) < 4 else "[…]" for a in args)
         if len(shown) > 70:
             shown = shown[:67] + "…"
+        if len(case) > 4:
+            shown = case[4]
         got, err = call(fn, *args)
         if err:
             print(f"✘ {err}")
