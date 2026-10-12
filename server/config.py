@@ -29,13 +29,27 @@ S_LESSONS = S_HOME + "/lessons"
 S_DATA = "/data"
 
 # Read-only data shared with the sandboxes: (host path, sandbox path).
-def data_mounts():
+def navera_allowed(name):
+    """Real NAVERA (its code, its workspace, running it) is not part of the course: staff only, and the
+    students a teacher grants it to ("navera_access" in users.json)."""
+    import json
+    try:
+        with open(os.path.join(STATE, "users.json")) as f:
+            u = json.load(f).get(name)
+    except (OSError, ValueError):
+        return False
+    return bool(u) and u.get("status", "active") == "active" and (u.get("role") in ("teacher", "admin")
+                                                                  or bool(u.get("navera_access")))
+
+
+def data_mounts(navera=True):
     m = []
     def add(host, inside):
         host = os.path.realpath(os.path.expanduser(host))
         if os.path.exists(host):
             m.append((host, inside))
-    add("~/navera_data", S_DATA + "/navera_data")
+    if navera:                       # NAVERA_WORKSPACE holds NAVERA code: never for a student without access
+        add("~/navera_data", S_DATA + "/navera_data")
     add("~/navera_data_map.mbtiles", S_DATA + "/map.mbtiles")
     add("~/ardupilot", S_DATA + "/ardupilot")
     add("~/.navera_sim/bsc5.dat", S_DATA + "/bsc5.dat")
