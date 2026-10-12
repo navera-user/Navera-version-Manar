@@ -43,6 +43,9 @@ def navera_allowed(name):
 
 
 def data_mounts(navera=True):
+    """navera=False (a student without NAVERA access): only the course's data — the map and
+    /data/academy. NAVERA's own data, the ArduPilot build, the star catalogue of NAVERA's simulator and
+    astrometry.net stay with staff and students given access (mission 26 ships its own catalogue)."""
     m = []
     def add(host, inside):
         host = os.path.realpath(os.path.expanduser(host))
@@ -51,20 +54,21 @@ def data_mounts(navera=True):
     if navera:                       # NAVERA_WORKSPACE holds NAVERA code: never for a student without access
         add("~/navera_data", S_DATA + "/navera_data")
     add("~/navera_data_map.mbtiles", S_DATA + "/map.mbtiles")
-    add("~/ardupilot", S_DATA + "/ardupilot")
-    add("~/.navera_sim/bsc5.dat", S_DATA + "/bsc5.dat")
-    # astrometry.net was unpacked without root; its scripts hold absolute paths.
-    astro = os.path.join(HOME, ".navera_sim", "astrometry")
-    if os.path.isdir(astro):
-        m.append((astro, astro))
-        m.append((astro, S_HOME + "/.navera_sim/astrometry"))
+    if navera:
+        add("~/ardupilot", S_DATA + "/ardupilot")
+        add("~/.navera_sim/bsc5.dat", S_DATA + "/bsc5.dat")
+        # astrometry.net was unpacked without root; its scripts hold absolute paths.
+        astro = os.path.join(HOME, ".navera_sim", "astrometry")
+        if os.path.isdir(astro):
+            m.append((astro, astro))
+            m.append((astro, S_HOME + "/.navera_sim/astrometry"))
     add(os.path.join(ACADEMY, "datasets"), S_DATA + "/academy")
     return m
 
 def missing_data():
-    """The external data the missions need (on the ADATA disk) that is not reachable right now."""
-    need = {"~/navera_data": "flight data and camera frames (missions 2, 8, 25…)",
-            "~/navera_data_map.mbtiles": "the big Sousse map (missions 2, 7, 23, Sim Lite and the full simulator)"}
+    """The external data the missions need (on the ADATA disk) that is not reachable right now: the map
+    only (NAVERA's own data is not part of the course)."""
+    need = {"~/navera_data_map.mbtiles": "the satellite map (missions 7, 8, 18, 21–24 and Sim Lite)"}
     return [{"path": p, "what": w, "target": os.path.realpath(os.path.expanduser(p))}
             for p, w in need.items() if not os.path.exists(os.path.realpath(os.path.expanduser(p)))]
 

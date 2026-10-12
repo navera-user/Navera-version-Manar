@@ -1,25 +1,26 @@
 # Course conventions (one page, for authors)
 
-Every mission uses these conventions. When a mission must use another one (a library, a paper,
-NAVERA's own tool), it says so in one line where it happens and converts explicitly.
-Each rule was checked against NAVERA's code in `base/` (2026-10-10); the file is named after each rule.
+Every mission uses these conventions. When a mission must use another one (a library, a paper, a
+rule NAVERA uses), it says so in one line where it happens and converts explicitly.
+The values are described from NAVERA's documentation (checked 2026-10-10); the code is NAVERA Lite's,
+the course's own stack (`navera_lite/`). Each rule names the NAVERA Lite part that applies it.
 
 ## 1. Frames
 
-| Frame | Axes | Used for | NAVERA source |
+| Frame | Axes | Used for | NAVERA Lite part |
 |---|---|---|---|
-| **World ENU** | x = East, y = North, z = Up | positions on a local flat map, velocities, attitude quaternions | `navera_common/camera_model.py` (module docstring) |
-| **Body FLU** (ROS REP-103) | x = Forward (nose), y = Left, z = Up | the vehicle | same file; `imu_pkg/orientation.py` |
-| **Camera (OpenCV)** | x = image right, y = image down, z = optical axis (out of the lens) | pixels, K, homographies | same file; a nadir camera with no mount offset has the image top towards the nose (`R_BODY_NADIR_CAM`) |
+| **World ENU** | x = East, y = North, z = Up | positions on a local flat map, velocities, attitude quaternions | `geo.py` (06), `rotations.py` (16) |
+| **Body FLU** (ROS REP-103) | x = Forward (nose), y = Left, z = Up | the vehicle | `rotations.py` (16), `imu.py` (17) |
+| **Camera (OpenCV)** | x = image right, y = image down, z = optical axis (out of the lens) | pixels, K, homographies | `camera.py` (18); a nadir camera with no mount offset has the image top towards the nose (`R_BODY_NADIR_CAM`) |
 
-Rotation matrices are named `R_<to>_<from>`: `R_world_cam @ v_cam = v_world`, as in NAVERA.
+Rotation matrices are named `R_<to>_<from>`: `R_world_cam @ v_cam = v_world` (NAVERA uses the same rule).
 
 ## 2. Quaternions: (x, y, z, w)
 
-- ROS messages (`sensor_msgs/Imu`, `geometry_msgs/Quaternion`) and every NAVERA function
-  (`quat_to_matrix`, `body_rpy_enu`, `orientation.quat_mul`, `sensor_history.slerp`) store a
-  quaternion as **(x, y, z, w)** — the scalar part **last**.
-- **Course rule:** course code stores quaternions as (x, y, z, w) too. Maths text may write
+- ROS messages (`sensor_msgs/Imu`, `geometry_msgs/Quaternion`) store a quaternion as
+  **(x, y, z, w)** — the scalar part **last**. NAVERA does the same everywhere (in its words).
+- **Course rule:** course code (NAVERA Lite's `rotations.py`, `imu.py`, `camera.py`) stores
+  quaternions as (x, y, z, w) too. Maths text may write
   q = w + x i + y j + z k, but every function's docstring names the order.
 - A 90° turn to the left (yaw +90° about Up) is q = (0, 0, 0.7071, 0.7071); it turns (1, 0, 0) into (0, 1, 0).
 - Known gap: missions 16, 17 and 20 currently use w-first numpy arrays internally. Their batch
@@ -32,20 +33,20 @@ Rotation matrices are named `R_<to>_<from>`: `R_world_cam @ v_cam = v_world`, as
 | **Heading** (navigation, NAVERA's outputs) | North | **clockwise** (east = 90°) | [0°, 360°) |
 | **ENU yaw** (ROS, maths) | East | **counter-clockwise** (north = 90°) | (−180°, 180°] |
 
-`heading = (90° − yaw_enu) mod 360°` and back `yaw_enu = 90° − heading` (NAVERA:
-`imu_pkg/orientation.py heading_deg`, `camera_model.body_rpy_enu`; `geo.dead_reckon` takes a heading
-clockwise from true north). Check: yaw_enu = 0° (nose east) → heading 90°.
+`heading = (90° − yaw_enu) mod 360°` and back `yaw_enu = 90° − heading` (NAVERA Lite:
+`rotations.heading_deg_from_q`, `rotations.rpy_human`; `geo.offset` and `vehicle.heading_vector` take a
+heading clockwise from true north, as NAVERA does). Check: yaw_enu = 0° (nose east) → heading 90°.
 A compass gives `atan2(east, north)` for a heading, **not** `atan2(north, east)` (that is the ENU yaw).
 
 ## 4. Pitch sign: ROS vs NAVERA's "human" angles
 
-- **ROS (REP-103, fixed axes, `R = Rz(yaw) · Ry(pitch) · Rx(roll)`, `camera_model.rpy_to_matrix`):**
+- **ROS (REP-103, fixed axes, `R = Rz(yaw) · Ry(pitch) · Rx(roll)`, NAVERA Lite `rotations.euler_zyx_to_matrix`):**
   pitch is a rotation about body **+y = left**. By the right-hand rule a **positive** ROS pitch
   turns the nose **down** (`Ry(θ)·(1,0,0) = (cos θ, 0, −sin θ)`).
-- **NAVERA's `body_rpy_enu(q)` reports human angles** in degrees: roll positive **right wing down**,
-  pitch positive **nose up**, heading clockwise from north. In the code:
-  `pitch = −asin(R[2,0])` is the ROS pitch, and the function returns `−pitch`.
-- So a drone 5° nose-down has ROS pitch **+5°** and `body_rpy_enu` pitch **−5°**. Every mission that
+- **"Human" angles** (what NAVERA reports, and NAVERA Lite's `rotations.rpy_human(q)`), in degrees:
+  roll positive **right wing down**, pitch positive **nose up**, heading clockwise from north.
+  `−asin(R[2,0])` is the ROS pitch; the human pitch is its opposite.
+- So a drone 5° nose-down has ROS pitch **+5°** and human pitch **−5°**. Every mission that
   prints a pitch says which one it is ("ROS pitch" or "pitch, nose up").
 
 ## 5. Covariance notation (horizontal 2 × 2 block)
@@ -56,26 +57,37 @@ P = | a  b |     a = σE²       (East variance, m²)        = position_covarian
                  c = σN²       (North variance, m²)       = position_covariance[4]
 ```
 
-- `position_covariance` is 9 numbers, ENU, row-major, m² (`navera_msgs/PositionEstimate.msg`, as
-  `sensor_msgs/NavSatFix`); index 8 = σU².
+- `position_covariance` is 9 numbers, ENU, row-major, m², as in `sensor_msgs/NavSatFix` (and in
+  NAVERA Lite's `estimate.Estimate.cov`); index 8 = σU².
 - Eigenvalues (ellipse axes²): `λ = (a + c)/2 ± sqrt(((a − c)/2)² + b²)`; PSD ⇔ a ≥ 0, c ≥ 0,
-  `a·c − b² ≥ 0` (NAVERA's `estimator_node._sane()` tests `cov[0]*cov[4] − cov[1]*cov[3] ≥ −tol`).
-- Correlation `ρ = b / (σE σN)`. NAVERA's single "stated σ" is `sqrt(max(a, c))` (estimator, day vision).
+  `a·c − b² ≥ 0` up to a small tolerance (NAVERA Lite `estimate.is_covariance`; NAVERA's judge applies
+  the same test, in its words).
+- Correlation `ρ = b / (σE σN)`. The single "stated σ" is `sqrt(max(a, c))` (NAVERA Lite
+  `estimate.stated_sigma`; NAVERA's judge and day vision use the same rule).
 - Known gap: mission 12 uses this notation; mission 29 (old 25) writes b = σN², c = cov — fixed in its batch.
 
 ## 6. Percentiles
 
 - **Course rule:** `np.percentile(x, q)` with numpy's default **linear** interpolation (median,
-  p90, p95, CEP50 = median radial error, CEP95 = p95). Missions 23 and 33 use it; `stats_tools.percentile`
-  in 33 reimplements it.
-- **Named contrast:** NAVERA's `navera_tools/evaluate_session.py pct(v, q)` takes the sorted sample
-  at index `round(q/100 · (n − 1))` — no interpolation, a nearest-sample ("nearest-rank") rule,
-  identical to `np.percentile(x, q, method="nearest")` (checked on 20 000 random cases). Mission 32
-  uses `pct()` only to reproduce NAVERA's tables, and says so.
-- Example, x = 1…10: p50 linear = 5.5, `pct` = 5; p95 linear = 9.55, `pct` = 10.
+  p90, p95, CEP50 = median radial error, CEP95 = p95). NAVERA Lite's `stats.percentile` (32)
+  reimplements it.
+- **Named contrast:** NAVERA's evaluation tool (described in words) takes the sorted sample at index
+  `round(q/100 · (n − 1))` — no interpolation, a nearest-sample ("nearest-rank") rule, identical to
+  `np.percentile(x, q, method="nearest")`. NAVERA Lite's `stats.pct_nearest` (given in 32) applies
+  that rule so mission 32 can compare the two, and says so.
+- Example, x = 1…10: p50 linear = 5.5, nearest = 5; p95 linear = 9.55, nearest = 10.
 
 ## 7. Units and names (short)
 
 Angles in **degrees** at interfaces and in prints, **radians** inside `math`/`numpy` trig calls
 (convert at the boundary, names end in `_deg` / `_rad`). Distances in metres (`_m`), times in seconds
 (`_s`), ROS float fields get floats (`9.0`, not `9`). Latitude before longitude, always.
+
+## 8. NAVERA Lite (the course's stack)
+
+Package `navera_lite/` in each lesson folder, settings in `navera_lite.yaml` (ROS 2 params-file
+format), ROS topics `/navera_lite/*` (fixes `NavSatFix` on `/navera_lite/fix/<source>`, the judge's
+`/navera_lite/position` and `/navera_lite/status`). Import absolutely (`from navera_lite.geo import
+haversine_m`) and run nodes with `python3 -m navera_lite.ros.<node>` from the lesson folder.
+Lessons say "In NAVERA" (the product, in words and numbers only) and then "In NAVERA Lite" (where the
+idea lives in the student's own code). Design: `reviews/fledgling-design.md` (read Fledgling as NAVERA Lite).

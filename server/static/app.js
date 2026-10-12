@@ -124,6 +124,9 @@ function rankFor(passed) {
 function heroScene() {
   return `<svg class="scene" viewBox="0 0 1440 640" preserveAspectRatio="xMidYMid slice"><defs>${DUSK_DEFS}</defs>${oceanScene(1440, 640, 505)}</svg>`;
 }
+// a mission is locked by its class's leg date (locked_until) or until the one before it is passed (locked_after)
+const isLocked = (l) => !!(l.locked_until || l.locked_after);
+const lockText = (l) => l.locked_until ? `opens ${l.locked_until}` : l.locked_after ? `Pass mission ${l.locked_after} first` : '';
 function expeditionSVG(lessons) {
   const W = 1220, H = 380, n = lessons.length;
   const next = lessons.findIndex(l => l.progress.status !== 'passed');
@@ -141,7 +144,7 @@ function placeWaypoints(lessons) {
   let h = '';
   lessons.forEach((l, i) => {
     const q = p.getPointAtLength(L * i / Math.max(1, n - 1)), done = l.progress.status === 'passed', now = i === next;
-    const t = `<title>Mission ${esc(l.number)} · ${esc(l.title)}${done ? ' — complete' : ''}</title>`;
+    const t = `<title>Mission ${esc(l.number)} · ${esc(l.title)}${done ? ' — complete' : isLocked(l) ? ' — 🔒 ' + esc(lockText(l)) : ''}</title>`;
     if (done) h += `<g class="wp" data-id="${esc(l.id)}">${t}<circle class="r" cx="${q.x}" cy="${q.y}" r="10" fill="#ff9f8a" stroke="#f1f6fb" stroke-width="0" filter="url(#gl)"/><path d="M${q.x - 4} ${q.y} l3 3 l5.5 -6" stroke="#3a0f0a" stroke-width="2.2" fill="none" stroke-linecap="round"/></g>`;
     else if (now) h += `<g class="wp" data-id="${esc(l.id)}">${t}<circle cx="${q.x}" cy="${q.y}" r="18" fill="rgba(255,201,176,.25)"><animate attributeName="r" values="13;22;13" dur="2.2s" repeatCount="indefinite"/></circle><circle class="r" cx="${q.x}" cy="${q.y}" r="11" fill="#f1f6fb" stroke="#ff9f8a" stroke-width="3"/><text x="${q.x}" y="${q.y + 4}" font-family="Inter" font-weight="700" font-size="11" text-anchor="middle" fill="#b0453a">${+l.number}</text>${bird(q.x - 22, q.y - 60, 44, '#f1f6fb', .95)}</g>`;
     else h += `<g class="wp" data-id="${esc(l.id)}">${t}<circle class="r" cx="${q.x}" cy="${q.y}" r="9.5" fill="rgba(20,17,42,.55)" stroke="rgba(255,236,200,.6)" stroke-width="1.5"/><text x="${q.x}" y="${q.y + 3.5}" font-family="Inter" font-size="9.5" font-weight="600" text-anchor="middle" fill="rgba(255,236,200,.88)">${+l.number}</text></g>`;
@@ -181,7 +184,7 @@ async function showHome() {
   $('crumb').innerHTML = '';
   const passed = COURSES.filter(l => l.progress.status === 'passed').length;
   // missions of a leg the teacher has not opened yet are locked until their date
-  const next = COURSES.find(l => l.progress.status !== 'passed' && !l.locked_until);
+  const next = COURSES.find(l => l.progress.status !== 'passed' && !isLocked(l));
   const waiting = !next && COURSES.find(l => l.progress.status !== 'passed' && l.locked_until);
   const first = ME.display.split(' ')[0];
   const r = rankFor(passed), xp = passed * XP_PER_MISSION;
@@ -190,10 +193,10 @@ async function showHome() {
   const headline = AS ? `Viewing the work of<br><i>${esc(AS)}.</i>`
     : passed === 0 ? `Find your way<br>when the <i>sky goes quiet.</i>` : `Welcome back,<br><i>${esc(first)}.</i>`;
   const text = passed === 0
-    ? `Every autumn, swallows cross seas and deserts without a single satellite — landmarks, the sun, the stars and an inner compass, each checked against the others. In ${COURSES.length} missions you will build the same skills for machines, on NAVERA's real code.`
+    ? `Every autumn, swallows cross seas and deserts without a single satellite — landmarks, the sun, the stars and an inner compass, each checked against the others. In ${COURSES.length} missions you will build the same skills for machines, building NAVERA Lite, your own navigation stack, on the ideas of IRIS's NAVERA.`
     : passed === COURSES.length ? `All ${COURSES.length} missions complete — ${xp} XP. You have rebuilt the ideas behind NAVERA one by one.`
     : waiting ? `${passed} of ${COURSES.length} missions complete — everything open so far is done. The next leg opens on <b>${esc(waiting.locked_until)}</b>.`
-    : `${passed} of ${COURSES.length} missions complete. Next on your route: <b>${esc(next.title)}</b>. Your NAVERA copy is your own aircraft: change it freely, Reset brings back the factory version.`;
+    : `${passed} of ${COURSES.length} missions complete. Next on your route: <b>${esc(next.title)}</b>.`;
   let h = `<header class="hhero">${heroScene()}<div class="hwrap"><div class="hgrid">
       <div><div class="kicker">${ME.klass ? esc(ME.klass.name) + ' · ' : ''}${next ? `${esc(moduleOf(next.id).leg || '')} · Mission ${esc(next.number)}` : waiting ? 'Next leg coming' : 'Expedition complete'}</div>
         <h1>${headline}</h1><p>${text}</p>
@@ -223,8 +226,8 @@ async function showHome() {
       <div class="lp"><i style="width:${ls.length ? 100 * done / ls.length : 0}%"></i></div><div class="lc">${done} of ${ls.length} complete</div></div><div class="mlist">`;
     for (const l of ls) {
       const st = l.progress.status, isNext = next && next.id === l.id;
-      const cls = st === 'passed' ? 'done' : isNext ? 'now' : l.locked_until ? 'locked' : '';
-      const status = st === 'passed' ? '<span class="status done">Complete</span>' : l.locked_until ? `<span class="status next">🔒 opens ${esc(l.locked_until)}</span>`
+      const cls = st === 'passed' ? 'done' : isNext ? 'now' : isLocked(l) ? 'locked' : '';
+      const status = st === 'passed' ? '<span class="status done">Complete</span>' : isLocked(l) ? `<span class="status next">🔒 ${esc(lockText(l))}</span>`
         : isNext ? `<span class="status now">${st === 'started' ? 'In progress' : 'Up next'}</span>`
         : st === 'started' ? '<span class="status next">Started</span>' : '<span class="status next">Later</span>';
       const res = (l.resources || []).map(x => x === 'simlite' ? 'flies Sim Lite' : x === 'sim' ? 'needs the simulator' : x === 'camera' ? 'needs the camera' : 'needs the sensors').join(' · ');
@@ -351,9 +354,12 @@ function renderMarkdown(el, md) {
     }
     pre.appendChild(b);
   });
-  // links "file:lessons/..." or "file:navera/..." open in the editor
+  // links "file:lessons/..." open in the editor ("file:navera/..." only for staff and students given NAVERA access)
   el.querySelectorAll('a[href^="file:"]').forEach(a => {
     const p = a.getAttribute('href').slice(5).replace(/^\.\//, `lessons/${lid}/`);
+    if (/^(\/|~\/)?navera(\/|$)/.test(p) && !ME.navera) {
+      const c = document.createElement('span'); c.textContent = a.textContent; a.replaceWith(c); return;
+    }
     a.classList.add('file'); a.href = '#';
     a.onclick = (e) => { e.preventDefault(); showPane('editor'); openFile(p, true); };
   });
@@ -401,12 +407,12 @@ $('checkBtn').onclick = async () => {
     const l = await api('/api/lesson/' + LESSON.id); LESSON.progress = l.progress; setStatus(l.progress);
     if (r.passed) {         // the way on: straight to the next mission
       const i = COURSES.findIndex(c => c.id === LESSON.id), nx = COURSES[i + 1];
-      if (nx && !nx.locked_until) {
+      if (nx && !isLocked(nx)) {
         const b2 = document.createElement('button'); b2.className = 'primary'; b2.style.margin = '10px 0 4px';
         b2.textContent = `Next mission → ${nx.number} · ${nx.title}`; b2.onclick = () => openLesson(nx.id);
         $('rout').prepend(b2);
-      } else if (nx && nx.locked_until) {
-        const w = document.createElement('div'); w.className = 'sum'; w.textContent = `The next leg opens on ${nx.locked_until}.`; $('rout').prepend(w);
+      } else if (nx && isLocked(nx)) {
+        const w = document.createElement('div'); w.className = 'sum'; w.textContent = nx.locked_until ? `The next leg opens on ${nx.locked_until}.` : `Mission ${nx.number}: ${lockText(nx)}.`; $('rout').prepend(w);
       }
     }
   } catch (e) { toast(e.message); }

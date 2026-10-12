@@ -278,7 +278,7 @@ async function loadStudents() {
       <td>${s.certificate ? `<a href="/certificate/${esc(s.certificate)}" target="_blank">issued</a>` : '<span style="color:var(--muted)">—</span>'}</td>
       <td class="acts"><button onclick="window.open('/?as=${encodeURIComponent(s.name)}','_blank')">Open</button>
       <select aria-label="More actions" onchange="const a=this.value; this.value=''; if (a) act('${esc(s.name)}', a)">
-        <option value="">More ▾</option><option value="password">New password</option>${moveOpts}${s.navera ? '<option value="reset_navera">Reset NAVERA</option><option value="navera_off">Remove NAVERA access</option>' : '<option value="navera_on">Give full NAVERA access…</option>'}
+        <option value="">More ▾</option><option value="open_mission">Open mission…</option>${(s.open_missions || []).length ? '<option value="close_mission">Close an opened mission…</option>' : ''}<option value="password">New password</option>${moveOpts}${s.navera ? '<option value="reset_navera">Reset NAVERA</option><option value="navera_off">Remove NAVERA access</option>' : '<option value="navera_on">Give full NAVERA access…</option>'}
         <option value="kill">Stop terminals</option><option value="delete">Delete…</option></select></td></tr>`;
   }
   if (!DATA.students.length) h += `<tr><td colspan="7" style="color:var(--muted);white-space:normal">${curClass() ? 'No student yet — print the poster or give them the join code: they appear here as soon as they create their account.' : 'No student here.'}</td></tr>`;
@@ -335,6 +335,23 @@ async function act(name, action) {
     return;
   }
   const who = ((DATA.students || []).find(s => s.name === name) || {}).display || name;
+  if (action === 'open_mission' || action === 'close_mission') {      // missions open in order; open one early for this student
+    const st = (DATA.students || []).find(s => s.name === name) || {}, opened = st.open_missions || [];
+    const ids = action === 'open_mission'
+      ? DATA.lessons.slice(1).filter(l => !opened.includes(l) && !((st.progress || {})[l] || {}).status) : opened;
+    if (!ids.length) { alert(action === 'open_mission' ? `Every mission is already open for ${who}.` : 'No mission to close.'); return; }
+    const v = await modal(action === 'open_mission' ? `Open a mission for ${who}` : `Close an opened mission`,
+      (action === 'open_mission' ? `<p>Missions open in order: each one opens when the one before it is passed. Open one early for ${esc(who)} (the dates of the class's legs still apply).</p>`
+        : `<p>The mission goes back to "pass the one before first" for ${esc(who)} (work already started stays open).</p>`) +
+      `<select>${ids.map(l => `<option value="${esc(l)}">${esc(l)}</option>`).join('')}</select>`, action === 'open_mission' ? 'Open it' : 'Close it');
+    if (!v) return;
+    try {
+      const r = await api(`/api/admin/student/${name}`, {method: 'POST', body: {action, lesson: v[0]}});
+      if (action === 'open_mission') alert(`Done: ${v[0]} is open for ${who}.` + (r.leg_opens ? ` Its leg opens for the class on ${r.leg_opens}.` : ''));
+      loadClasses();
+    } catch (e) { alert(e.message); }
+    return;
+  }
   const msgs = {delete: `Delete ${who}? Their files, backups and progress are removed for good.`,
     reset_navera: `Reset ${who}'s NAVERA copy? Their changes are saved in a backup first.`,
     navera_on: `Give ${who} full access to the real NAVERA?\n\nNAVERA is not part of the course. ${who} will see and change a copy of its code, its data, the original in Sim Lite and the full simulator.`,

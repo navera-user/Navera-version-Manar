@@ -3,7 +3,7 @@
 base/       git repo: NAVERA at one commit of the real repo (git archive, read only on
             the real repo), built with colcon inside a sandbox at /home/student/navera so
             the symlinked install works in every student sandbox. Tag "base".
-students/<name>/home/navera    the student's clone of base (branch "work")
+students/<name>/home/navera    a clone of base (branch "work"): staff and students given NAVERA access only
 students/<name>/home/lessons   the lesson files (starter code, the student's answers)
 students/<name>/backups        git bundles taken before every full reset
 """
@@ -106,7 +106,7 @@ def create_student(name):
         backup(name)
         shutil.rmtree(nav, ignore_errors=True)
     with open(os.path.join(home, ".bashrc"), "w") as f:
-        f.write(BASHRC)
+        f.write(bashrc(config.navera_allowed(name)))
     return home
 
 
@@ -205,13 +205,21 @@ in a backup first). Nothing you do here can change the real product.
   messages (`navera_msgs`) or `setup.py`; Python edits work straight away.
 """
 
+def bashrc(navera):
+    """~/.bashrc of a sandbox. NAVERA's workspace is sourced (and the prompt says "navera") only for staff
+    and students given NAVERA access; everyone else gets a neutral "academy" prompt."""
+    host = "navera" if navera else "academy"
+    src = "[ -f ~/navera/install/setup.bash ] && source ~/navera/install/setup.bash\n" if navera else ""
+    return BASHRC.replace("@NAVERA_SETUP@\n", src).replace("@HOST@", host)
+
+
 BASHRC = r"""# NAVERA Academy sandbox
 [ -f /etc/bash.bashrc ] && . /etc/bash.bashrc
 source /opt/ros/humble/setup.bash
-[ -f ~/navera/install/setup.bash ] && source ~/navera/install/setup.bash
+@NAVERA_SETUP@
 # the ros2 CLI daemon in its own session: a `timeout ros2 …` cannot leave it half-dead
 (setsid ros2 daemon start >/dev/null 2>&1 &)
-export PS1='\[\e[1;36m\]student\[\e[0m\]@\[\e[1;33m\]navera\[\e[0m\]:\[\e[1;34m\]\w\[\e[0m\]\$ '
+export PS1='\[\e[1;36m\]student\[\e[0m\]@\[\e[1;33m\]@HOST@\[\e[0m\]:\[\e[1;34m\]\w\[\e[0m\]\$ '
 alias ll='ls -la --color=auto'
 alias ls='ls --color=auto'
 """

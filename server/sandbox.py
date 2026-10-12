@@ -1,7 +1,7 @@
 """The student sandbox: bubblewrap + a systemd scope (memory / process limits).
 
-Inside, a student sees the system read only, their own home (/home/student, with their
-NAVERA copy and lesson files) read-write, the shared data read only, and nothing else of
+Inside, a student sees the system read only, their own home (/home/student: lesson files, and a
+NAVERA copy only for staff and students given access) read-write, the shared data read only, and nothing else of
 this machine's home folder: not the real ~/Navera, not keys, not other students.
 """
 import glob
@@ -14,7 +14,11 @@ GPU_DEVICES = ["/dev/nvmap", "/dev/nvsciipc", "/dev/nvgpu", "/dev/nvidia0", "/de
                "/dev/nvidia-modeset", "/dev/dri", "/dev/host1x-fence", "/dev/dma_heap"] + sorted(glob.glob("/dev/nvhost-*"))
 
 
-def student_env(name, index, heavy=False, domain=None):
+def student_env(name, index, heavy=False, domain=None, navera=None):
+    """The sandbox's environment. A student without NAVERA access (navera False) gets no NAVERA path or
+    variable: only the course's own (NAVERA_LITE_MAP). navera=None: ask config.navera_allowed(name)."""
+    if navera is None:
+        navera = config.navera_allowed(name)
     dom = str(domain if domain is not None else config.domain_for(index))
     env = {
         "HOME": config.S_HOME,
@@ -27,20 +31,24 @@ def student_env(name, index, heavy=False, domain=None):
         "PYTHONUSERBASE": os.path.join(config.HOME, ".local"),
         "ROS_DOMAIN_ID": dom,
         "ROS_LOCALHOST_ONLY": "1",
-        "NAVERA_SIM_DOMAIN": dom,   # run_sim.sh: the student's own domain
         # system + pip-user matplotlib are mixed: hide the harmless "Unable to import Axes3D" warning
         "PYTHONWARNINGS": "ignore:Unable to import Axes3D",
         "ACADEMY_STUDENT": name,
-        "NAVERA_MBTILES": config.S_DATA + "/map.mbtiles",
-        "NAVERA_ARDUPILOT": config.S_DATA + "/ardupilot",
-        "NAVERA_STHN_DIR": config.S_DATA + "/navera_data/night_pkg/STHN",
-        "NAVERA_STHN_WEIGHTS": config.S_DATA + "/navera_data/night_pkg/STHN/weights/one_stage/model.safetensors",
-        "DAY_DATASET_DIR": config.S_DATA + "/navera_data/day_pkg/day_pkg/dataset",
-        "NAVERA_DAY_IMAGES_DIR": config.S_DATA + "/navera_data/camera_pkg/camera_pkg/data/day",
-        "NAVERA_DAY_CSV": config.S_DATA + "/navera_data/camera_pkg/camera_pkg/data/day/flight_log.csv",
-        "TORCH_HOME": config.S_DATA + "/navera_data/.torch_cache",   # the models (DINOv2…) are cached there, read only
-        "NAVERA_STATE_DIR": config.S_HOME + "/.navera_state",
+        "NAVERA_LITE_MAP": config.S_DATA + "/map.mbtiles",
     }
+    if navera:                  # staff, or a student the teacher gave full NAVERA access
+        env.update({
+            "NAVERA_SIM_DOMAIN": dom,   # run_sim.sh: the student's own domain
+            "NAVERA_MBTILES": config.S_DATA + "/map.mbtiles",
+            "NAVERA_ARDUPILOT": config.S_DATA + "/ardupilot",
+            "NAVERA_STHN_DIR": config.S_DATA + "/navera_data/night_pkg/STHN",
+            "NAVERA_STHN_WEIGHTS": config.S_DATA + "/navera_data/night_pkg/STHN/weights/one_stage/model.safetensors",
+            "DAY_DATASET_DIR": config.S_DATA + "/navera_data/day_pkg/day_pkg/dataset",
+            "NAVERA_DAY_IMAGES_DIR": config.S_DATA + "/navera_data/camera_pkg/camera_pkg/data/day",
+            "NAVERA_DAY_CSV": config.S_DATA + "/navera_data/camera_pkg/camera_pkg/data/day/flight_log.csv",
+            "TORCH_HOME": config.S_DATA + "/navera_data/.torch_cache",   # the models (DINOv2…), read only
+            "NAVERA_STATE_DIR": config.S_HOME + "/.navera_state",
+        })
     for k in ("CUDA_HOME", "LD_LIBRARY_PATH"):
         if os.environ.get(k):
             env[k] = os.environ[k]
@@ -53,8 +61,9 @@ def bwrap_argv(name, home, index, command, resources=(), heavy=False, writable_b
     own network with only a loopback: ROS between the student's own nodes works, but nothing on the
     Jetson (the academy itself, SSH, other students, the teacher's simulator) and no internet is
     reachable. Staff keep the Jetson's network: the full simulator must be reachable by the academy."""
+    navera = bool(writable_base) or config.navera_allowed(name)
     a = ["bwrap", "--die-with-parent", "--unshare-pid", "--unshare-ipc", "--unshare-uts",
-         "--hostname", "navera"]
+         "--hostname", "navera" if navera else "academy"]
     if not host_net:
         a += ["--unshare-net"]
     if not interactive:          # a terminal keeps its tty (job control, Ctrl-C)
@@ -85,11 +94,11 @@ def bwrap_argv(name, home, index, command, resources=(), heavy=False, writable_b
     a += ["--bind", home, config.S_HOME]
     if writable_base:                    # used once, to build the base snapshot
         a += ["--bind", writable_base, config.S_NAVERA]
-    for host, inside in list(config.data_mounts(navera=bool(writable_base) or config.navera_allowed(name))) + list(extra_ro):
+    for host, inside in list(config.data_mounts(navera=navera)) + list(extra_ro):
         a += ["--ro-bind", host, inside]
     a += ["--ro-bind", _passwd(), "/etc/passwd", "--ro-bind", _group(), "/etc/group"]
     a += ["--chdir", config.S_HOME, "--clearenv"]
-    env = student_env(name, index, heavy, domain)
+    env = student_env(name, index, heavy, domain, navera=navera)
     lb = loopback_lib() if "sim" in resources else None
     if lb:                               # the full simulator listens on this machine only (not the Wi-Fi)
         a += ["--ro-bind", lb, "/academy/loopback_bind.so"]
@@ -145,7 +154,7 @@ def _passwd():
     p = os.path.join(config.STATE, "sandbox_passwd")
     uid, gid = os.getuid(), os.getgid()
     lines = [l for l in open("/etc/passwd") if not l.split(":")[2:3] == [str(uid)]]
-    lines.append(f"student:x:{uid}:{gid}:NAVERA student:{config.S_HOME}:/bin/bash\n")
+    lines.append(f"student:x:{uid}:{gid}:Academy student:{config.S_HOME}:/bin/bash\n")
     data = "".join(lines)
     if not os.path.exists(p) or open(p).read() != data:
         os.makedirs(config.STATE, exist_ok=True)

@@ -5,6 +5,7 @@ their functions work: `python3 run_lab.py test`) uses it like this:
 
     import runner_kit as rk
     b = rk.load_student("beacons")                 # a syntax error in beacons.py → a plain message, exit 1
+    a = rk.load_student("navera_lite.arbiter")     # a module of the NAVERA Lite package (navera_lite/arbiter.py)
     v, err = rk.call(b, "distance", (0, 0), (3, 4))
     print(err or f"distance = {v}")
     x, y = rk.need_ok(b, "find_position", beacons, ranges, n=2)   # stops the scenario with a plain message
@@ -20,7 +21,8 @@ mounted in the sandbox ONLY while check.py runs (server/app.py `_course_mounts`,
 nor the PYTHONPATH. tools/try_lesson.py mounts /academy/lib for --shell too, so an
 `import runner_kit` from /academy/lib would PASS the authoring test and FAIL for real students.
 The copy sits next to the runner, so a plain `import runner_kit` works; keep the comment line
-"you don't need to change anything in this file" for students. Version: 2026-10-10 (Batch 0).
+"you don't need to change anything in this file" for students. Version: 2026-10-12 (NAVERA Lite: package
+modules, is_stub shared with academy_check).
 """
 # ---- you don't need to change anything in this file (but you can read it!) ----
 import contextlib
@@ -34,31 +36,54 @@ import traceback
 STUB_MARKS = ("return None   # TODO", "return None  # TODO", "return None # TODO", 'NotImplementedError("TODO')
 
 
+def _path_of(module_name):
+    """navera_lite.arbiter → navera_lite/arbiter.py (a package → its __init__.py)."""
+    rel = module_name.replace(".", os.sep)
+    return os.path.join(rel, "__init__.py") if os.path.isdir(rel) else rel + ".py"
+
+
 def load_student(module_name):
-    """Import the student's module (beacons.py → load_student("beacons")); on any error at import
+    """Import the student's module (beacons.py → load_student("beacons"); navera_lite/arbiter.py →
+    load_student("navera_lite.arbiter")) with this folder first on sys.path; on any error at import
     time, print the error's last line simply and stop (exit 1)."""
-    if not os.path.exists(module_name + ".py"):
-        sys.exit(f"{module_name}.py is missing in this folder — did you rename or move it?")
+    if module_name.endswith(".py"):
+        module_name = module_name[:-3].replace("/", ".")
+    path = _path_of(module_name)
+    if not os.path.exists(path):
+        sys.exit(f"{path} is missing in this folder — did you rename or move it?")
+    here = os.getcwd()
+    if here in sys.path:
+        sys.path.remove(here)
+    sys.path.insert(0, here)
     try:
         with contextlib.redirect_stdout(io.StringIO()):
             return importlib.import_module(module_name)
     except Exception:
-        print(f"{module_name}.py has an error, so it cannot be loaded:\n")
+        print(f"{path} has an error, so it cannot be loaded:\n")
         traceback.print_exc(limit=0, file=sys.stdout)
-        print("\nRead the LAST line above: it names the problem and the line number.")
+        print("\nRead the LAST line above: it names the problem, the file and the line number.")
         sys.exit(1)
 
 
 def _file_of(mod):
-    return os.path.basename(getattr(mod, "__file__", "") or "your file")
+    """The module's file as the student sees it: navera_lite/arbiter.py, or beacons.py."""
+    f = getattr(mod, "__file__", "") or ""
+    if not f:
+        return "your file"
+    rel = os.path.relpath(f)
+    return os.path.basename(f) if rel.startswith("..") else rel
 
 
-def _is_stub(func):
+def is_stub(func):
+    """True if func is still the starter's TODO stub (same rule as academy_check.is_stub)."""
     try:
         src = inspect.getsource(func)
     except (OSError, TypeError):
         return False
     return any(m in src for m in STUB_MARKS)
+
+
+_is_stub = is_stub          # older runners
 
 
 def _hint(e):
@@ -86,7 +111,8 @@ def call(mod, fn, *args, **kwargs):
     The sentence says: not written yet (stub) / returned None (a path without return) /
     which exception, in which function and line — and when the crash is inside another of
     the student's functions, that it was called from fn (the mistake may be in what fn passes)."""
-    f = os.path.splitext(_file_of(mod))[0] + ".py"
+    f = _file_of(mod)
+    mine_path = os.path.abspath(getattr(mod, "__file__", "") or f)
     func = getattr(mod, fn, None)
     if func is None:
         return None, f"{fn}() does not exist in {f} — check the spelling of its name (did you rename it?)"
@@ -97,7 +123,7 @@ def call(mod, fn, *args, **kwargs):
         return None, f"{fn}() is not written yet: write its TODO in {f} and `return` the result"
     except Exception as e:
         tb = traceback.extract_tb(e.__traceback__)
-        mine = [fr for fr in tb if os.path.basename(fr.filename) == f]
+        mine = [fr for fr in tb if os.path.abspath(fr.filename) == mine_path]
         where = f
         if mine:
             deepest = mine[-1]
@@ -109,7 +135,7 @@ def call(mod, fn, *args, **kwargs):
                          f"{fn}() passes to {deepest.name}()")
         return None, f"{fn}() stopped with {type(e).__name__}: {e} ({where}){_hint(e)}"
     if result is None:
-        if _is_stub(func):
+        if is_stub(func):
             return None, f"{fn}() is not written yet: write its TODO in {f} and `return` the result"
         return None, (f"{fn}() returned None for this case: every path must end with a `return` "
                       "(an `if` without `else`? a `return` missing after the loop?)")

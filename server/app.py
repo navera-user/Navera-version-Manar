@@ -654,7 +654,7 @@ def api_courses():
     for lid in lesson_ids():
         m = lesson_meta(lid)
         m["progress"] = prog.get(lid, {})
-        m["locked_until"] = lesson_locked(name, lid)
+        m["locked_until"], m["locked_after"] = lesson_lock(name, lid)
         out.append(m)
     return jsonify(lessons=out, modules=mods)
 
@@ -663,14 +663,42 @@ def lesson_leg(lid):
     return next((i for i, m in enumerate(_load_modules()) if lid in (m.get("lessons") or [])), -1)
 
 
-def lesson_locked(name, lid):
-    """For a student whose class opens legs on dates: the date this mission opens, else ''."""
+def previous_lesson(lid):
+    """The mission before `lid` by number ('' for the first one)."""
+    ids = lesson_ids()
+    i = ids.index(lid) if lid in ids else 0
+    return ids[i - 1] if i > 0 else ""
+
+
+def lesson_lock(name, lid):
+    """(date, previous) — why a student cannot open mission `lid` yet: ("YYYY-MM-DD", "") while their
+    class's leg is not open, ("", "NN") while mission NN (the one before) is not passed, ("", "") when
+    it is open. Staff are never locked; a mission the student started or passed stays open (their own
+    work); the first mission has no previous one; a teacher can open a mission for one student
+    (users.json "open_missions", dashboard "Open mission…"): that lifts the order rule, not the leg date."""
     rec = users().get(name or "", {})
     if rec.get("role") != "student":
-        return ""
-    if _load("progress.json", {}).get(name, {}).get(lid, {}).get("status"):
-        return ""                              # already started or passed: the student keeps their own work
-    return orgs.leg_open_from(orgs.get(rec.get("class") or ""), lesson_leg(lid))
+        return "", ""
+    prog = _load("progress.json", {}).get(name, {})
+    if prog.get(lid, {}).get("status"):
+        return "", ""
+    until = orgs.leg_open_from(orgs.get(rec.get("class") or ""), lesson_leg(lid))
+    if until:
+        return until, ""
+    prev = previous_lesson(lid)
+    if prev and prog.get(prev, {}).get("status") != "passed" and lid not in (rec.get("open_missions") or []):
+        return "", lesson_meta(prev).get("number") or prev[:2]
+    return "", ""
+
+
+def lock_error(name, lid):
+    """The sentence a locked mission answers with (None when it is open)."""
+    until, after = lesson_lock(name, lid)
+    if until:
+        return f"This leg opens on {until}."
+    if after:
+        return f"Pass mission {after} first: missions open in order."
+    return None
 
 
 def _load_modules():
@@ -687,8 +715,8 @@ def api_lesson(lid):
     if lid not in lesson_ids():
         abort(404)
     name, _ = sandbox_user()
-    if lesson_locked(name, lid):
-        return jsonify(error=f"This leg opens on {lesson_locked(name, lid)}."), 403
+    if lock_error(name, lid):
+        return jsonify(error=lock_error(name, lid), locked=True), 403
     workspaces.install_lesson(name, lid)
     base = os.path.join(config.COURSES, lid)
     def read(fn):
@@ -709,6 +737,8 @@ def api_lesson(lid):
 def course_asset(lid, fn):
     if lid not in lesson_ids():
         abort(404)
+    if lock_error(request.user, lid):
+        abort(403)
     return send_from_directory(os.path.join(config.COURSES, lid, "assets"), fn)
 
 
@@ -746,8 +776,8 @@ def api_check(lid):
     if lid not in lesson_ids():
         abort(404)
     name, _ = sandbox_user()
-    if lesson_locked(name, lid):
-        return jsonify(error=f"This leg opens on {lesson_locked(name, lid)}."), 403
+    if lock_error(name, lid):
+        return jsonify(error=lock_error(name, lid), locked=True), 403
     workspaces.install_lesson(name, lid)               # files missing (never opened): put them in place, keep any work
     m = lesson_meta(lid)
     timeout = int(m.get("check_timeout_s", 180))
@@ -792,8 +822,8 @@ def api_lesson_reset(lid):
     if lid not in lesson_ids():
         abort(404)
     name, _ = sandbox_user()
-    if lesson_locked(name, lid):
-        return jsonify(error=f"This leg opens on {lesson_locked(name, lid)}."), 403
+    if lock_error(name, lid):
+        return jsonify(error=lock_error(name, lid), locked=True), 403
     workspaces.install_lesson(name, lid, overwrite=True)
     return jsonify(ok=True)
 
@@ -815,7 +845,15 @@ def _safe(name, rel):
     p = os.path.realpath(os.path.join(home, (rel or "").lstrip("/")))
     if p != home and not p.startswith(home + os.sep):
         abort(403)
+    if _navera_path(home, p) and not config.navera_allowed(name):
+        abort(403)                       # real NAVERA is not part of the course: staff, or given access
     return home, p
+
+
+def _navera_path(home, p):
+    """Is p ~/navera or inside it (the NAVERA copy of staff and students given access)?"""
+    q = os.path.realpath(os.path.join(home, "navera"))
+    return p == q or p.startswith(q + os.sep)
 
 
 @app.get("/api/files")
@@ -826,8 +864,11 @@ def api_files():
     if not os.path.isdir(p):
         abort(404)
     items = []
+    navera = config.navera_allowed(name)
     for e in sorted(os.scandir(p), key=lambda e: (not e.is_dir(), e.name.lower())):
         if e.name in HIDDEN or (e.name.startswith(".") and e.name not in (".bashrc",)):
+            continue
+        if not navera and _navera_path(home, os.path.realpath(e.path)):
             continue
         try:
             isdir = e.is_dir()
@@ -1179,7 +1220,8 @@ def api_admin_students():
         c = certs.for_user(name)
         out.append({"name": name, "display": rec.get("display", name), "index": rec["index"], "class": rec.get("class") or "",
                     "last": last or rec.get("created", ""), "certificate": c["id"] if c and not c.get("revoked") else "",
-                    "email": rec.get("email"), "navera": bool(rec.get("navera_access")), "provider": rec.get("provider", "email" if rec.get("email") else "teacher"),
+                    "email": rec.get("email"), "navera": bool(rec.get("navera_access")),
+                    "open_missions": rec.get("open_missions") or [], "provider": rec.get("provider", "email" if rec.get("email") else "teacher"),
                     "passed": sum(1 for v in pr.values() if v.get("status") == "passed"),
                     "started": sum(1 for v in pr.values() if v.get("status") == "started"),
                     "lessons": n, "progress": pr,
@@ -1273,6 +1315,20 @@ def api_admin_student(name):
             _kill_terminals(name)
             workspaces.create_student(name)                # clones ~/navera, or backs it up and removes it
             return jsonify(ok=True)
+        if action in ("open_mission", "close_mission"):    # missions open in order; the teacher can open one early
+            lid = d.get("lesson") or ""
+            if lid not in lesson_ids():
+                return jsonify(error="Choose a mission."), 400
+            opened = [x for x in (u[name].get("open_missions") or []) if x in lesson_ids() and x != lid]
+            if action == "open_mission":
+                opened.append(lid)
+            if opened:
+                u[name]["open_missions"] = sorted(opened)
+            else:
+                u[name].pop("open_missions", None)
+            _save("users.json", u)
+            until, _ = lesson_lock(name, lid)
+            return jsonify(ok=True, open_missions=opened, leg_opens=until)
         if action == "password":
             pw = secrets.token_urlsafe(8)
             u[name]["pw"] = generate_password_hash(pw)

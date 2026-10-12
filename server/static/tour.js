@@ -30,7 +30,7 @@
       {target: '.mhero', title: 'The mission header', text: 'The leg, the mission number, the time to plan, the XP and the number of tasks. It turns green with "Complete" when you pass.'},
       {target: '.notebook .tabs', title: 'Course, then Lab', text: 'Read the Course tab first: it explains the ideas. Then open the Lab tab: it tells you step by step what to do.'},
       {target: () => document.querySelector('.doc pre .run:not(.copy)'), title: 'Run buttons', text: 'Grey boxes with a ▶ Run button contain a command. Click Run and it is typed in your terminal for you.', optional: true},
-      {target: '#tree', title: 'Your files', text: 'lessons/ holds the files of each mission; navera/ is your own copy of the real NAVERA code. Click a file to open it in the editor.'},
+      {target: '#tree', title: 'Your files', text: 'lessons/ holds the files of each mission, one folder per mission. Click a file to open it in the editor.'},
       {target: '[data-pane=terminal]', title: 'The terminal', text: 'A real Linux terminal on the NAVERA computer, inside your own safe sandbox. Ctrl+C stops a program; the ↑ key repeats an earlier command.'},
       {target: '#checkBtn', title: 'Check my work', text: 'When you finish the tasks, press Check. You get a field report: ✔ green lines are correct, ✘ red lines come with a hint. You can check as many times as you want.'},
       {target: '#resetLesson', title: 'Start a lab again', text: 'Reset lab files puts this mission\'s files back as they were. Your current version is kept in a backup — nothing is lost.'},

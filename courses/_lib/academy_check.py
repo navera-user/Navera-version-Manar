@@ -17,7 +17,13 @@ A test that fails stops only itself. A test may call c.skip("why") to be skipped
 Also here (Batch 0, 2026-10-10): predicted() / explained() / TEACHER_NOTE for PREDICT_… and
 EXPLAIN_… answers, run(fn, *args, seconds=40) with a time limit, and the ROS guard
 publishers_ok(topic, expected=1) that fails clearly when a leftover node also publishes.
+
+NAVERA Lite (2026-10-12): load_student("navera_lite.arbiter") or load_student("navera_lite/arbiter.py")
+imports a module of the student's package with the lesson folder first on sys.path (fresh=True
+re-imports every navera_lite module); is_stub(func) tells a TODO stub (same rule as runner_kit);
+publishers_ok() watches /navera_lite/status by default; sh()/Background() source ROS 2 only.
 """
+import importlib
 import importlib.util
 import json
 import math
@@ -103,9 +109,7 @@ class Checker:
                 if hint:
                     print(f"     💡 Hint: {hint}")
             except Exception as e:  # an error inside the student's code
-                tb = traceback.extract_tb(e.__traceback__)
-                where = next((f"{os.path.basename(f.filename)} line {f.lineno}" for f in reversed(tb)
-                              if not f.filename.endswith(("check.py", "academy_check.py"))), "")
+                where = _where(e)
                 print(f"✘ {i}. {title}\n     → your code raised {type(e).__name__}: {e}"
                       + (f"  ({where})" if where else ""))
                 if hint:
@@ -133,10 +137,89 @@ class StudentError(Exception):
 
 
 _loaded = {}
+PACKAGE = "navera_lite"
+STUB_MARKS = ("return None   # TODO", "return None  # TODO", "return None # TODO", 'NotImplementedError("TODO')
+
+
+def _show(path):
+    """A file name as the student knows it: relative to the lesson folder (navera_lite/arbiter.py)."""
+    try:
+        rel = os.path.relpath(path)
+    except ValueError:
+        return os.path.basename(path)
+    return os.path.basename(path) if rel.startswith("..") else rel
+
+
+def _where(e):
+    """'navera_lite/arbiter.py line 12': the deepest frame of the student's code in a traceback."""
+    tb = traceback.extract_tb(e.__traceback__)
+    return next((f"{_show(f.filename)} line {f.lineno}" for f in reversed(tb)
+                 if not f.filename.endswith(("check.py", "academy_check.py"))
+                 and "importlib" not in f.filename), "")
+
+
+def is_stub(func):
+    """True if func is still the starter's TODO stub (`return None   # TODO…` or
+    `raise NotImplementedError("TODO…")`). The same rule as runner_kit.is_stub."""
+    import inspect
+    try:
+        src = inspect.getsource(func)
+    except (OSError, TypeError):
+        return False
+    return any(m in src for m in STUB_MARKS)
+
+
+def _module_of(filename):
+    """("module.name", "path/of/module.py") for "beacons.py", "navera_lite/arbiter.py" or
+    "navera_lite.arbiter"."""
+    if filename.endswith(".py"):
+        rel = os.path.normpath(filename)
+        return rel[:-3].replace(os.sep, "."), rel
+    rel = filename.replace(".", os.sep)
+    if os.path.isdir(rel):
+        return filename, os.path.join(rel, "__init__.py")
+    return filename, rel + ".py"
 
 
 def load_student(filename, fresh=False):
-    """Import the student's file (in the current lesson folder) as a module."""
+    """Import the student's file (in the current lesson folder) as a module.
+
+    "beacons.py": a single file, loaded by path (as mission 01). "navera_lite/arbiter.py" or
+    "navera_lite.arbiter": a module of the student's package, imported by name with the lesson folder
+    first on sys.path, so `from navera_lite.geo import …` inside it finds the lesson's own copy.
+    fresh=True loads it again (after the check changed a file); for the package it drops every
+    navera_lite module first."""
+    modname, rel = _module_of(filename)
+    if "." not in modname and filename.endswith(".py"):
+        return _load_file(filename, fresh)
+    path = os.path.abspath(rel)
+    if not os.path.exists(path):
+        raise StudentError(f"{rel} is missing — did you delete or rename it?")
+    if path in _loaded and not fresh:
+        return _loaded[path]
+    here = os.getcwd()
+    if here in sys.path:
+        sys.path.remove(here)
+    sys.path.insert(0, here)
+    top = modname.split(".")[0]
+    if fresh:
+        for k in [k for k in sys.modules if k == top or k.startswith(top + ".")]:
+            del sys.modules[k]
+        for k in [k for k in _loaded if k.startswith(os.path.join(here, top) + os.sep)]:
+            del _loaded[k]
+        importlib.invalidate_caches()
+    try:
+        mod = importlib.import_module(modname)
+    except SyntaxError as e:
+        raise StudentError(f"{_show(e.filename or rel)} has a syntax error on line {e.lineno}: {e.msg}")
+    except Exception as e:
+        where = _where(e)
+        raise StudentError(f"{rel} crashed when loading: {type(e).__name__}: {e}" + (f" ({where})" if where else ""))
+    _loaded[path] = mod
+    return mod
+
+
+def _load_file(filename, fresh=False):
     path = os.path.abspath(filename)
     if not os.path.exists(path):
         raise StudentError(f"{filename} is missing — did you delete or rename it?")
@@ -167,8 +250,7 @@ def need(mod, *names):
 
 def sh(cmd, timeout=60, check=False):
     """Run a shell command (with ROS sourced); returns (exit code, output)."""
-    full = "source /opt/ros/humble/setup.bash >/dev/null 2>&1; " \
-           "[ -f ~/navera/install/setup.bash ] && source ~/navera/install/setup.bash >/dev/null 2>&1; " + cmd
+    full = "source /opt/ros/humble/setup.bash >/dev/null 2>&1; " + cmd
     try:
         r = subprocess.run(["bash", "-c", full], capture_output=True, text=True, timeout=timeout)
         out = r.stdout + r.stderr
@@ -191,8 +273,7 @@ class Background:
 
     def __enter__(self):
         import time
-        full = "source /opt/ros/humble/setup.bash >/dev/null 2>&1; " \
-               "[ -f ~/navera/install/setup.bash ] && source ~/navera/install/setup.bash >/dev/null 2>&1; exec " + self.cmd
+        full = "source /opt/ros/humble/setup.bash >/dev/null 2>&1; exec " + self.cmd
         self.p = subprocess.Popen(["bash", "-c", full], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                   text=True, start_new_session=True)
         time.sleep(self.settle)
@@ -276,9 +357,7 @@ def run(fn, *args, seconds=40, **kwargs):
     except CheckFailed:
         raise
     except Exception as e:
-        tb = traceback.extract_tb(e.__traceback__)
-        where = next((f"{os.path.basename(f.filename)} line {f.lineno}" for f in reversed(tb)
-                      if not f.filename.endswith(("check.py", "academy_check.py"))), "")
+        where = _where(e)
         raise CheckFailed(f"{name}() stopped with {type(e).__name__}: {e}" + (f" ({where})" if where else ""))
     finally:
         signal.alarm(0)
@@ -305,7 +384,7 @@ def topic_publishers(topic, spin_s=2):
     return int(m.group(1)), names
 
 
-def publishers_ok(topic, expected=1, spin_s=2, tries=2):
+def publishers_ok(topic="/navera_lite/status", expected=1, spin_s=2, tries=2):
     """Fail with a clear message unless exactly `expected` nodes publish on `topic`.
 
     Use it before a test that reads a topic: expected=0 before starting the student's node (no
