@@ -118,7 +118,8 @@ class Checker:
             needed = [t for t, _, _ in self.tests if any(t.startswith(pre) for pre in prefixes)]
             if needed and all(t in ok_titles for t in needed):
                 reached.append(name)
-                print(f"🏅 {getattr(self, 'milestone_labels', {}).get(name, name)}")
+        if reached:                       # the last milestone reached is the most complete one
+            print(f"🏅 {getattr(self, 'milestone_labels', {}).get(reached[-1], reached[-1])}")
         result = {"passed": passed, "total": total}
         if reached:
             result["milestones"] = reached

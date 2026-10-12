@@ -84,7 +84,7 @@ Predictions (`PREDICT_…`) are never marked. In class, ask who was surprised, a
 ## Suggested class plan (reading at home, about 1 h 15 + 2 sessions of 2 h; about 5 h in all)
 
 0. **Before session 1:** read the lesson (about 75 min) with the ✏️ checks.
-1. **Session 1 — hook (10 min):** play the lesson's 15-second cold open on the projector, then the Black Sea 2017 case. "How could twenty ships agree on a wrong
+1. **Session 1 — hook (10 min):** play the lesson's 18-second cold open on the projector, then the Black Sea 2017 case. "How could twenty ships agree on a wrong
    position with no alarm?" Collect hypotheses; come back to them at the end.
 2. **Board (15 min):** the least-squares valley and one Gauss–Newton step by hand (§3 table).
 3. **Lab (95 min):** Steps 0–6. Everyone starts with Step 0 (the hijack demo, 5 min) together. The session ends

@@ -268,8 +268,9 @@ def _():
             dict(t_s=12, gps_x_m=0, gps_y_m=150, vision_x_m=0, vision_y_m=0, vision_sigma_m=20),
             dict(t_s=13, gps_x_m=0, gps_y_m=151, vision_x_m=0, vision_y_m=0, vision_sigma_m=20)]
     got = run(fd, rows)
-    c.ok(got is not None, "with the default k = 5 and margin 50 it finds no disagreement at all, on rows where σ = 20 m: "
-                          "does your limit use each row's vision_sigma_m (not a fixed 30)?")
+    c.ok(got is not None, "with the default k = 5 and margin 50 it returns None (no disagreement) on rows where σ = 20 m. "
+                          "Not written yet? That is session 2. Written? Does your limit use each row's vision_sigma_m "
+                          "(not a fixed 30)?")
     c.ok(got == 13, f"with the default k = 5 and margin 50 it gives {got!r} — not the right time "
                     "(return the row's t_s; exactly on the limit is still agreement)")
     got = run(fd, rows, 3.0, 50.0)
@@ -332,5 +333,6 @@ def _():
 c.milestone("ghost-hunter", "TODO 1:", "TODO 2:", "TODO 3:", "TODO 4:", "TODO 5:", "TODO 6:",
             "Step 3:", "Step 4:", "Step 5:", "Step 6:",
             label="Session 1 complete: Ghost hunter badge earned (the ✘ lines left, if any, are session 2)")
+c.milestone("gatekeeper", "TODO", "Step", label="Mission complete: Ghost hunter and Gatekeeper badges earned")
 
 c.run()

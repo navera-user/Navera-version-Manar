@@ -1,8 +1,8 @@
-"""Builds courses/01-welcome/assets/cold_open.svg: a 15 s looping SMIL animation (no script),
+"""Builds courses/01-welcome/assets/cold_open.svg: an 18 s looping SMIL animation (no script),
 so it plays inside the lesson page as a normal image."""
 import math, sys
 out = sys.argv[1]
-T = 15                                    # seconds per loop
+T = 18                                    # seconds per loop
 Y0, X0, X1 = 240, 30, 670
 START, CATCH = 0.40, 0.72
 def x_at(u): return X0 + u * (X1 - X0)

@@ -374,7 +374,8 @@ $('checkBtn').onclick = async () => {
     const partly = r.score && r.score.passed > 0;
     $('rimg').src = '/static/img/' + (r.passed ? 'navi-cheer' : partly ? 'navi-think' : 'navi-oops') + '.svg';
     $('rscore').textContent = r.score ? `${r.score.passed}/${r.score.total}` : (r.passed ? '✔' : '✘');
-    $('rhead').innerHTML = r.passed ? 'Mission checks passed<small>Every check is green — well flown.</small>'
+    $('rhead').innerHTML = (r.passed && LESSON && LESSON.id === '01-welcome') ? 'Mission complete — Gatekeeper badge earned<small>Both badges are on your home page. Now do the look-back questions of Step 11.</small>'
+      : r.passed ? 'Mission checks passed<small>Every check is green — well flown.</small>'
       : /syntax error|SyntaxError|IndentationError/.test(r.output || '') ? 'A file does not run yet<small>Python found a syntax error — the ✘ line below gives the file and line number.</small>'
       : (r.score && (r.score.milestones || []).includes('ghost-hunter') && LESSON && LESSON.id === '01-welcome')
         ? 'Session 1 complete — Ghost hunter badge earned<small>The ✘ lines left belong to session 2 (Steps 7–10). If your class session ends here, stop here.</small>'
