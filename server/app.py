@@ -773,6 +773,9 @@ def api_check(lid):
             if score:
                 rec["best"] = max(rec.get("best", 0), score.get("passed", 0))
                 rec["total"] = score.get("total")
+                got = [m for m in (score.get("milestones") or []) if isinstance(m, str) and len(m) < 40]
+                if got:
+                    rec["milestones"] = sorted(set(rec.get("milestones", [])) | set(got))
             if passed:
                 rec["status"] = "passed"
                 rec.setdefault("passed_at", rec["last"])

@@ -1,4 +1,6 @@
-# Welcome: navigation without GNSS
+# Ghost position: navigation without GNSS
+
+![Cold open: a survey drone flies along the coast; over the sea its GPS position is slowly dragged away with no alarm; when the camera sees land again, NAVERA catches the lie 391 m off](assets/cold_open.svg)
 
 > [!NOTE] Mission brief
 > **22 June 2017, Black Sea, near Novorossiysk.** A ship's master reports that his GPS puts him at
@@ -6,9 +8,10 @@
 > nearby ships shows the same spot. The receivers appear to work normally. (Reported to the US
 > Maritime Administration.)
 >
-> In this mission you find out how that is possible by doing it yourself. You **build** a
-> satellite-style position solver, **break** it, **spoof** it, play **detective** on a spoofed flight,
-> and finally fight NAVERA's jump gate as **attacker and defender**.
+> Today you find out how that is possible by doing it yourself. **Session 1 — build & spoof:** you
+> launch an attack in the first five minutes, then build a satellite-style receiver, break it and fool
+> it. **Session 2 — detect & defend:** you play detective on a spoofed flight, then fight NAVERA's jump
+> gate as attacker and defender. Each session ends with a badge: **Ghost hunter**, then **Gatekeeper**.
 
 **Objectives.** After this mission you can:
 
@@ -131,7 +134,7 @@ one more unknown. Solve for `(x, y, z, b)`:
 
 Hence **four satellites**, and GPS gives you the time for free.
 
-**Solver 1: brute force.** Try every point of a grid and keep the smallest mismatch (lab Step 3). Two unknowns: two nested loops,
+**Solver 1: brute force.** Try every point of a grid and keep the smallest mismatch (lab Step 2). Two unknowns: two nested loops,
 101² = 10 201 candidates. With the clock in 21 steps: 214 221. Now
 real GPS at 1 m resolution: x, y, z over ±7 000 km and b over ±300 km is more than 10²⁷ candidates. At a
 billion per second, longer than the age of the universe. We need something smarter.
@@ -186,7 +189,7 @@ second.
 covariance of the solution is σ²(HᵀH)⁻¹, and the horizontal error is about HDOP × σ with
 `HDOP = √((HᵀH)⁻¹ₓₓ + (HᵀH)⁻¹ᵧᵧ)` (x, y = east, north: the first two numbers on the diagonal, not the bias
 one). A flat valley in §2 is a large HDOP; you
-compute it in lab Step 6.
+compute it in lab Step 5.
 
 > [!QUESTION] ✏️ Check
 > 1. A ship knows its altitude. How many satellites does it need?
@@ -213,7 +216,7 @@ for milliseconds. A transmitter on the same band does not need much power to win
 |---|---|---|
 | **Outage** | buildings, terrain, tunnels block the signal | yes: few satellites, poor geometry, or no fix |
 | **Jamming** | noise is transmitted on the GPS band | yes: it loses the signal |
-| **Spoofing** | fake signals are transmitted for a chosen false position | **?** — lab Step 7 |
+| **Spoofing** | fake signals are transmitted for a chosen false position | **?** — lab Step 6 |
 | **Meaconing** | real signals are recorded and re-broadcast later | **?** — same idea |
 
 A spoofer needs no cryptography against civil GPS: it computes, for its chosen false position, the
@@ -286,7 +289,7 @@ other source available**. The GPS jumps 500 m, stays there, then jumps 400 m fur
 
 Refused fixes never become trusted, so `elapsed` grows and the gate widens until the fake position is
 "reachable": alone, the gate only **delays** a jump. What that means for an attacker who moves the fake
-position slowly is your lab Steps 8 and 11.
+position slowly is your lab Steps 7 and 10.
 
 ![The gate grows with the time since the last trusted fix. A 500 m jump is refused for 4 seconds, then accepted.](assets/gate.svg)
 

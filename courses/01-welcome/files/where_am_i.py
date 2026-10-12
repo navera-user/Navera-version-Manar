@@ -1,14 +1,15 @@
 """where_am_i.py — runs YOUR functions of beacons.py on the lab's scenarios, and draws them.
 
+    python3 where_am_i.py hijack     Step 0: watch a ready-made receiver get spoofed (no code needed)
     python3 where_am_i.py test       check each function on its docstring example
-    python3 where_am_i.py clean      exact ranges, brute force                   (Step 3)
-    python3 where_am_i.py clock      receiver clock 1 µs ahead                    (Step 4)
-    python3 where_am_i.py two        three beacons, then only two                 (Step 5)
-    python3 where_am_i.py gn         Gauss–Newton against brute force             (Step 6)
-    python3 where_am_i.py spoof      a full spoof                                 (Step 7)
-    python3 where_am_i.py partial    four beacons, only three spoofed             (Step 7)
-    python3 where_am_i.py gate       the jump gate against two attacks            (Step 8)
-    python3 where_am_i.py flight     the spoofed survey flight                    (Step 10)
+    python3 where_am_i.py clean      exact ranges, brute force                   (Step 2)
+    python3 where_am_i.py clock      receiver clock 1 µs ahead                    (Step 3)
+    python3 where_am_i.py two        three beacons, then only two                 (Step 4)
+    python3 where_am_i.py gn         Gauss–Newton against brute force             (Step 5)
+    python3 where_am_i.py spoof      a full spoof                                 (Step 6)
+    python3 where_am_i.py partial    four beacons, only three spoofed             (Step 6)
+    python3 where_am_i.py gate       the jump gate against two attacks            (Step 7)
+    python3 where_am_i.py flight     the spoofed survey flight                    (Step 9)
 
 Pictures are saved in out/ — click them in the file list of the 📝 Code tab.
 """
@@ -137,7 +138,7 @@ def settings():
     except Exception:
         v = m = 0.0
     if v <= 0 or m <= 0:
-        sys.exit("First write V_MAX_MPS and MARGIN_M in answers.py (Step 1).")
+        sys.exit("First write V_MAX_MPS and MARGIN_M in answers.py (Step 7).")
     return v, m
 
 
@@ -150,6 +151,53 @@ def read_flight():
 
 
 # ---------------------------------------------------------------- the scenarios
+def _reference_receiver(meas):
+    """A ready-made receiver for Step 0: brute force over x, y (0.1 km) and the clock bias (0.05 km), written
+    with numpy arrays instead of loops. You will write your own receiver, step by step, from Step 1 on."""
+    import numpy as np
+    g = np.arange(101) / 10
+    bias = np.arange(21) / 20
+    X, Y, Bb = np.meshgrid(g, g, bias, indexing="ij")
+    cost = sum((m - (np.hypot(X - bx, Y - by) + Bb)) ** 2 for (bx, by), m in zip(BEACONS, meas))
+    i = np.unravel_index(np.argmin(cost), cost.shape)
+    return float(X[i]), float(Y[i]), float(Bb[i]), float(cost[i])
+
+
+def hijack():
+    print("Step 0 — a ready-made receiver, three beacons A, B, C, and a receiver clock 1 µs ahead.\n")
+    true_ranges = [math.dist(TRUTH, s) + 0.3 for s in BEACONS]
+    x, y, b_, m = _reference_receiver(true_ranges)
+    print(f"receiver: you are at ({x:.2f}, {y:.2f}) km     mismatch {m:.4f}")
+    time.sleep(0.8)
+    print("\n>>> spoofer ON: it sends fake signals for a point that moves to (7, 2)")
+    track = [(x, y)]
+    for fake in ((4.0, 3.5), (5.0, 3.0), (6.0, 2.5), (7.0, 2.0)):
+        time.sleep(0.6)
+        meas = [math.dist(fake, s) + 0.3 for s in BEACONS]
+        x, y, b_, m = _reference_receiver(meas)
+        track.append((x, y))
+        print(f"receiver: you are at ({x:.2f}, {y:.2f}) km     mismatch {m:.4f}")
+    time.sleep(0.5)
+    print(f"\nposition error: {math.dist((x, y), TRUTH) * 1000:,.0f} m   ·   alarms raised: 0".replace(",", " "))
+    print("\nThe receiver never noticed: every fake position fits perfectly (mismatch 0).")
+    print("From Step 1 on, you build this receiver yourself — and find out why.")
+    plt = plt_or_none()
+    if plt is None:
+        return
+    os.makedirs("out", exist_ok=True)
+    fig, ax = plt.subplots(figsize=(6, 6))
+    for (bx, by), n in zip(BEACONS, NAMES):
+        ax.plot(bx, by, "s", color="#e8706a", ms=10)
+        ax.annotate(n, (bx, by), xytext=(8, 8), textcoords="offset points", color="#b0453a", weight="bold")
+    ax.plot(*TRUTH, "o", ms=14, mfc="none", mec="k", mew=2, label="where you really are")
+    ax.plot([p[0] for p in track], [p[1] for p in track], "-o", color="#d9634f", label="what the receiver says")
+    ax.set_xlim(-1, 11); ax.set_ylim(-1, 11); ax.set_aspect("equal"); ax.grid(alpha=.3)
+    ax.set_xlabel("x (km)"); ax.set_ylabel("y (km)"); ax.set_title("Hijacked: 4.5 km off, no alarm")
+    ax.legend(loc="upper right", fontsize=8)
+    fig.savefig("out/hijack.png", dpi=90, bbox_inches="tight"); plt.close(fig)
+    print("\n🖼  picture saved: out/hijack.png (open it in the 📝 Code tab)")
+
+
 def test():
     flight_example = [{"t_s": 100, "gps_x_m": 0, "gps_y_m": 0, "vision_x_m": None, "vision_y_m": None,
                        "vision_sigma_m": None},
@@ -310,7 +358,7 @@ def gate():
         print(f"   first {len(line)} fixes (gate_ok):  " + " ".join(line) + "      (✔ accepted, ✘ refused)")
         print(f"   count_refused  ->  {n} refused, final position {fixes[-1][0]} m from the start")
         if len(fixes) <= 11 and n != line.count("✘"):
-            print("   ⚠ count_refused and gate_ok disagree on these fixes: check TODO 8 (see the Step 8 hints)")
+            print("   ⚠ count_refused and gate_ok disagree on these fixes: check TODO 8 (see the Step 7 hints)")
 
 
 def flight():
@@ -356,7 +404,7 @@ def flight():
 
 
 if __name__ == "__main__":
-    steps = {"test": test, "clean": clean, "clock": clock, "two": two, "gn": gn, "spoof": spoof,
+    steps = {"hijack": hijack, "test": test, "clean": clean, "clock": clock, "two": two, "gn": gn, "spoof": spoof,
              "partial": partial, "gate": gate, "flight": flight}
     if len(sys.argv) != 2 or sys.argv[1] not in steps:
         sys.exit(__doc__)

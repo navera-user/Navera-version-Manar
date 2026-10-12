@@ -3,8 +3,8 @@
 **Goal:** write a position solver (brute force, then Gauss–Newton), spoof it fully and partially, play
 detective on a spoofed survey flight, and finish as attacker and defender of NAVERA's jump gate.
 **Time:** 2 h 30 to 4 h (a strong programmer: about 2 h; up to 7 h if Python is new to you).
-**Fast track:** if you know Python and numpy, skip every 🧰 box and every "Stuck?" box. Steps 2–3 should
-take you under 10 minutes; if so, do "A smarter spoofer" from Going further right after Step 7.
+**Fast track:** if you know Python and numpy, skip every 🧰 box and every "Stuck?" box. Steps 1–2 should
+take you under 10 minutes; if so, do "A smarter spoofer" from Going further right after Step 6.
 
 Your files (📝 Code tab): [beacons.py](file:./beacons.py) (**your code**: nine functions, `TODO 1–9`),
 [answers.py](file:./answers.py) (predictions, results, explanations), [where_am_i.py](file:./where_am_i.py)
@@ -13,34 +13,34 @@ Your files (📝 Code tab): [beacons.py](file:./beacons.py) (**your code**: nine
 
 | Lesson | Lab | You write |
 |---|---|---|
-| §2–§3 Least squares, brute force | Steps 2–3 | `distance`, `mismatch`, `find_position` |
-| §3 Clock, Gauss–Newton | Steps 4–6 | `find_position_and_bias`, `gauss_newton` |
-| §4 Attacking GPS | Step 7 | `spoof_measurements` |
-| §5 Arbiter, gate, cross-check | Steps 8–11 | `gate_ok`, `count_refused`, `first_disagreement`, then your own experiments |
+| (nothing to read first) | Step 0 | nothing: you watch a hijack |
+| §2–§3 Least squares, brute force | Steps 1–2 | `distance`, `mismatch`, `find_position` |
+| §3 Clock, Gauss–Newton | Steps 3–5 | `find_position_and_bias`, `gauss_newton` |
+| §4 Attacking GPS | Step 6 | `spoof_measurements` |
+| §5 Arbiter, gate, cross-check | Steps 7–10 | `gate_ok`, `count_refused`, `first_disagreement`, then your own experiments |
 
 > [!NOTE]
 > **Predict, then run.** Each `PREDICT_…` is written **before** you run the step. It is never marked
 > right or wrong; being wrong and finding out why is the point.
 
-## Step 1 — NAVERA's rules
+## Session 1 — Build & spoof (about 2 h)
 
-In the **⌨️ Terminal** (prompt `student@navera:~/lessons/01-welcome$`), search the arbiter's settings
-in your NAVERA copy, or open
-[estimator_params.yaml](file:navera/navera_estimator/navera_estimator/config/estimator_params.yaml):
+## Step 0 — Hijack a position
+
+Open the **⌨️ Terminal** tab. The prompt `student@navera:~/lessons/01-welcome$` tells you the user, the
+computer and the current folder. Press **▶ Run** (or type the command and press `Enter`):
 
 ```bash
-grep -n "max_speed_mps\|gps_jump_margin_m\|gps_timeout_s" ~/navera/navera_estimator/navera_estimator/config/estimator_params.yaml
+python3 where_am_i.py hijack
 ```
 
-> [!TASK]
-> Write `V_MAX_MPS`, `MARGIN_M`, `GPS_TIMEOUT_S` and `DAY_TIMEOUT_S` (how long a day-vision fix stays
-> fresh; it is in neither the lesson nor the grep above: extend the pattern or open the file) in
-> `answers.py` (numbers, no quotes).
->
-> **Predict** (`PREDICT_STEALTH`): with v_max and the margin, and one GPS fix per second, what is the
-> fastest steady drag (m/s) the gate can never refuse? You will measure it in Step 11.
+A ready-made receiver computes your position from three beacons. Then a spoofer switches on. Watch what
+the receiver says, and open `out/hijack.png` in the 📝 Code tab.
 
-## Step 2 — Residuals
+No alarm, 4.5 km off, and the "mismatch" stays exactly zero. Before you can defend against this, you need
+to understand why. From Step 1 on, you build that receiver yourself.
+
+## Step 1 — Residuals
 
 <details><summary>🧰 Python refresher (open if needed)</summary>
 
@@ -77,7 +77,7 @@ The first five lines must be ✔. (`1.08e-07` is zero up to rounding.)
    `measured − (distance + bias)`.
 </details>
 
-## Step 3 — Brute force
+## Step 2 — Brute force
 
 **TODO 3** `find_position`: the grid search of lesson §3, in 2-D (the docstring gives the grid).
 
@@ -93,7 +93,7 @@ python3 where_am_i.py clean
    use `for i in range(101):` and `x = i / 10`.
 </details>
 
-## Step 4 — A clock 1 µs ahead
+## Step 3 — A clock 1 µs ahead
 
 > [!TASK]
 > **Predict** (`PREDICT_CLOCK`): with pseudoranges 0.3 km too long, where does `find_position` land, and
@@ -127,7 +127,7 @@ Return three numbers. Run `clock` again: part 2 must find the true position and 
 > [!TASK]
 > `EXPLAIN_CLOCK`: why does adding the bias as an unknown repair the solution?
 
-## Step 5 — Count the unknowns
+## Step 4 — Count the unknowns
 
 > [!TASK]
 > **Predict** (`PREDICT_TWO`): with beacon C out of range, how many `(x, y, bias)` fit almost
@@ -155,7 +155,7 @@ LORAN, a radio navigation system from the Second World War, found ships.)
 > [!TASK]
 > `EXPLAIN_TWO` (unknowns vs measurements; satellites needed by real GPS) and `CURVE` (one word).
 
-## Step 6 — Gauss–Newton
+## Step 5 — Gauss–Newton
 
 **TODO 5** `gauss_newton(beacons, measured, guess, steps)`: lesson §3. At each step build `H` (one row
 `[uₓ, u_y, 1]` per beacon) and `r` (measured − predicted), solve, update.
@@ -230,7 +230,7 @@ That unknown is lost.
 > force, what could make it fail, and what can it not determine with beacons on a line? Link the larger
 > HDOP to the flatter valley of lesson §2.
 
-## Step 7 — Be the spoofer
+## Step 6 — Be the spoofer
 
 **TODO 6** `spoof_measurements(beacons, fake_position, bias)`: the pseudoranges a receiver at the fake
 position would measure, one per beacon, in a list (`values = []`, then `values.append(…)`).
@@ -283,9 +283,32 @@ camera, the stars) is not fooled by a radio attack: NAVERA's approach.
 > `EXPLAIN_PARTIAL`: why can a receiver with a spare measurement notice a partial spoof, why does that not
 > help against a full one, and one defence that better receivers add.
 
-## Step 8 — The jump gate
+> [!TIP] 🏅 End of session 1 — Ghost hunter
+> Press **✔ Check my work** now. When every session-1 check passes (TODO 1–6 and Steps 3–6), you earn the
+> **Ghost hunter** badge on your home page. If the class session ends here, this is the place to stop:
+> session 2 starts with NAVERA's real rules.
 
-Positions are now in metres. **TODO 7** `gate_ok` (lesson §5): True if accepted. 🧰 `return a <= b`
+## Session 2 — Detect & defend (about 2 h)
+
+## Step 7 — The jump gate
+
+First, NAVERA's own rules. In the **⌨️ Terminal**, search the arbiter's settings in your NAVERA copy, or
+open
+[estimator_params.yaml](file:navera/navera_estimator/navera_estimator/config/estimator_params.yaml):
+
+```bash
+grep -n "max_speed_mps\|gps_jump_margin_m\|gps_timeout_s" ~/navera/navera_estimator/navera_estimator/config/estimator_params.yaml
+```
+
+> [!TASK]
+> Write `V_MAX_MPS`, `MARGIN_M`, `GPS_TIMEOUT_S` and `DAY_TIMEOUT_S` (how long a day-vision fix stays
+> fresh; it is in neither the lesson nor the grep above: extend the pattern or open the file) in
+> `answers.py` (numbers, no quotes).
+>
+> **Predict** (`PREDICT_STEALTH`): with v_max and the margin, and one GPS fix per second, what is the
+> fastest steady drag (m/s) the gate can never refuse? You will measure it in Step 10.
+
+Now the gate itself. Positions are in metres from here on. **TODO 7** `gate_ok` (lesson §5): True if accepted. 🧰 `return a <= b`
 already returns True or False; with an `if`, every path needs a `return`.
 
 **TODO 8** `count_refused`: the least guided function. Redo the lesson's 7-row table by hand first, then
@@ -314,7 +337,7 @@ python3 where_am_i.py test
 python3 where_am_i.py gate
 ```
 
-## Step 9 — Be the arbiter
+## Step 8 — Be the arbiter
 
 No code. It is 12:00:10. The last GPS fix arrived at 12:00:08 with σ 35 m (few satellites visible), and
 GPS has been the active source. Day vision is fresh with σ 30 m; night vision is fresh too.
@@ -322,7 +345,7 @@ GPS has been the active source. Day vision is fresh with σ 30 m; night vision i
 > [!TASK]
 > `ARBITER_SOURCE` and `ARBITER_STATE`.
 
-## Step 10 — The detective
+## Step 9 — The detective
 
 [flight.csv](file:./flight.csv) is a **simulated** survey flight (one row per second): the GPS
 position, and the day-vision position with its σ when vision has a match (empty cells over the sea).
@@ -360,7 +383,7 @@ python3 where_am_i.py flight
 > really start, how fast does it drag, and why was it caught so late? (NAVERA also requires the
 > disagreement to last 3 s; mission 30 adds that.)
 
-## Step 11 — Attacker vs defender
+## Step 10 — Attacker vs defender
 
 Now write your own experiments with your functions (a short script or `python3` in the terminal). A
 drag list of `n` m/s for 60 s is `[(n * t, 0) for t in range(61)]`.
@@ -383,7 +406,7 @@ Save your script as `step11.py` next to the other files and run `python3 step11.
 
 **Defender.** NAVERA's `max_speed_mps` is set per vehicle. Our survey drone flies at 15 m/s. With
 `v_max = 15`, run your `count_refused` on the honest part of the flight (the GPS fixes before the spoof
-started, which you found in Step 10) for several margins. Find `DEFENDER_MARGIN_M`, the smallest whole
+started, which you found in Step 9) for several margins. Find `DEFENDER_MARGIN_M`, the smallest whole
 margin with **zero** refused honest fixes (look at the multipath spikes in `out/flight.png`), and
 `DEFENDER_STEALTH_MPS`, the attacker's best speed against your setting.
 
@@ -399,9 +422,10 @@ margin with **zero** refused honest fixes (look at the multipath spikes in `out/
 > Write the four numbers and `EXPLAIN_TRADEOFF`: what did tightening the gate gain, what does a smaller
 > margin cost on real GPS, and what can the gate still never stop?
 
-## Step 12 — Check, then look back
+## Step 11 — Check, then look back
 
 Press **✔ Check my work**: it also tests your functions on beacons and numbers they have never seen.
+When every check passes, the mission is done and you earn the **Gatekeeper** badge.
 Then look back, without the lesson:
 
 1. Explain to a friend, in three sentences, how twenty ships ended up at an airport, and what NAVERA
@@ -415,7 +439,7 @@ Then look back, without the lesson:
 - **A real receiver in 3-D.** [gnss_fix.py](file:./gnss_fix.py) is your Gauss–Newton in 3-D with 8
   satellites near Sousse. Set `USE_SATELLITES` to 6, 5, 4, 3: why is the residual exactly 0 at 4? Watch
   PDOP grow.
-- **Geometry.** Move beacon C to (10, 10) and redo Step 4. Does the clock error hurt more or less outside
+- **Geometry.** Move beacon C to (10, 10) and redo Step 3. Does the clock error hurt more or less outside
   the triangle? Relate it to the valley of lesson §2 and to `(HᵀH)⁻¹`.
 - **A bad start.** Give `gauss_newton` the guess (−20, −20, 0): what happens? Then put the beacons on a
   line, (0, 0), (5, 0), (10, 0), with the truth at (3, 4) and b = 0.3 (build the ranges with your

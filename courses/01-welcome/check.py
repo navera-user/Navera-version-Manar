@@ -73,19 +73,6 @@ def explained(name, value, *groups):
         c.ok(any(re.search(k, low) for k in keywords), f"{name} does not explain {idea} yet." + TEACHER_NOTE)
 
 
-# ---------------------------------------------------------------- Step 1
-@c.test("Step 1: NAVERA's settings and your stealth prediction",
-        hint="Open estimator_params.yaml (link in Step 1) and find max_speed_mps, gps_jump_margin_m, gps_timeout_s and "
-             "day_timeout_s. "
-             "A NameError in answers.py almost always means text without quotes.")
-def _():
-    v, m, t, d, pred = answers("V_MAX_MPS", "MARGIN_M", "GPS_TIMEOUT_S", "DAY_TIMEOUT_S", "PREDICT_STEALTH")
-    c.ok(number(v, "V_MAX_MPS") == 100.0, f"V_MAX_MPS = {v!r} is not max_speed_mps of the file")
-    c.ok(number(m, "MARGIN_M") == 50.0, f"MARGIN_M = {m!r} is not gps_jump_margin_m of the file")
-    c.ok(number(t, "GPS_TIMEOUT_S") == 3.0, f"GPS_TIMEOUT_S = {t!r} is not gps_timeout_s of the file")
-    c.ok(number(d, "DAY_TIMEOUT_S") == 5.0, f"DAY_TIMEOUT_S = {d!r} is not day_timeout_s of the file")
-    predicted("PREDICT_STEALTH", pred)
-
 
 # ---------------------------------------------------------------- your functions, on unseen numbers
 BEACONS = [(1, 1), (9, 2), (4, 9)]
@@ -95,7 +82,7 @@ FOUR = [(1, 1), (9, 2), (4, 9), (8, 8)]
 NOISY = [6.329181, 3.695668, 6.198467, 5.136545]           # four ranges with small errors
 
 
-@c.test("TODO 1: distance() works for any two points", hint="Lesson §2; the 🧰 refresher of Step 2 shows p[0], ** and math.sqrt.")
+@c.test("TODO 1: distance() works for any two points", hint="Lesson §2; the 🧰 refresher of Step 1 shows p[0], ** and math.sqrt.")
 def _():
     (distance,) = functions("distance")
     c.near(run(distance, (0, 0), (3, 4)), 5.0, 1e-6, "distance((0, 0), (3, 4))")
@@ -105,7 +92,7 @@ def _():
 
 @c.test("TODO 2: mismatch() works for other beacons, with and without a bias",
         hint="Lesson §2: the sum of squared residuals, residual = measured − (distance + bias). "
-             "If your value equals one row of the lesson table, see the Step 2 hints.")
+             "If your value equals one row of the lesson table, see the Step 1 hints.")
 def _():
     (mismatch,) = functions("mismatch")
     c.near(run(mismatch, (4, 4), [(0, 0), (10, 0), (0, 10)], [5.0, 8.062, 6.708]), 1.4086, 0.001,
@@ -171,6 +158,19 @@ def _():
         c.near(g, want, 1e-4, f"value {n}")
 
 
+@c.test("Step 7: NAVERA's settings (V_MAX_MPS, MARGIN_M, GPS_TIMEOUT_S, DAY_TIMEOUT_S) and PREDICT_STEALTH",
+        hint="Open estimator_params.yaml (link in Step 7) and find max_speed_mps, gps_jump_margin_m, gps_timeout_s and "
+             "day_timeout_s. "
+             "A NameError in answers.py almost always means text without quotes.")
+def _():
+    v, m, t, d, pred = answers("V_MAX_MPS", "MARGIN_M", "GPS_TIMEOUT_S", "DAY_TIMEOUT_S", "PREDICT_STEALTH")
+    c.ok(number(v, "V_MAX_MPS") == 100.0, f"V_MAX_MPS = {v!r} is not max_speed_mps of the file")
+    c.ok(number(m, "MARGIN_M") == 50.0, f"MARGIN_M = {m!r} is not gps_jump_margin_m of the file")
+    c.ok(number(t, "GPS_TIMEOUT_S") == 3.0, f"GPS_TIMEOUT_S = {t!r} is not gps_timeout_s of the file")
+    c.ok(number(d, "DAY_TIMEOUT_S") == 5.0, f"DAY_TIMEOUT_S = {d!r} is not day_timeout_s of the file")
+    predicted("PREDICT_STEALTH", pred)
+
+
 @c.test("TODO 7: gate_ok() applies the jump gate",
         hint="Accepted when distance(last, new) ≤ v_max × elapsed + margin; exactly on the limit is accepted.")
 def _():
@@ -186,7 +186,7 @@ def _():
 
 @c.test("TODO 8: count_refused() follows the arbiter's rule",
         hint="Redo the 7-row table of lesson §5 by hand and compare it with your code, row by row. 5 on the table but "
-             "wrong elsewhere: add dt_s BEFORE the gate test and restart after an accept (Step 8 hints).")
+             "wrong elsewhere: add dt_s BEFORE the gate test and restart after an accept (Step 7 hints).")
 def _():
     (count_refused,) = functions("count_refused")
     got = run(count_refused, [(0, 0)] + [(500, 0)] * 6 + [(900, 0)], 1.0, 100.0, 50.0)
@@ -216,7 +216,7 @@ def _():
 
 
 # ---------------------------------------------------------------- what you saw and why
-@c.test("Step 4: a clock 1 µs ahead — prediction, error and explanation",
+@c.test("Step 3: a clock 1 µs ahead — prediction, error and explanation",
         hint="Run python3 where_am_i.py clock: CLOCK_ERROR_M is the distance from the true position in part 1. "
              "EXPLAIN_CLOCK: say that the clock bias is the same on every range, and that it becomes an unknown.")
 def _():
@@ -228,7 +228,7 @@ def _():
               ((r"every", r"\ball\b", r"each", r"same", r"common", r"shared"), "that it is the same for every range"))
 
 
-@c.test("Step 5: two beacons — prediction, explanation and the curve",
+@c.test("Step 4: two beacons — prediction, explanation and the curve",
         hint="Run python3 where_am_i.py two. Count unknowns and measurements. CURVE: not a line — on a bigger grid the "
              "dots bend. Sum of distances to two points constant = ellipse; difference constant = ?")
 def _():
@@ -240,7 +240,7 @@ def _():
     c.ok("hyperbol" in str(curve).lower(), f"CURVE = {curve!r} is not the right curve")
 
 
-@c.test("Step 6: Gauss–Newton — steps, HDOP, a rank-deficient case, and explanation",
+@c.test("Step 5: Gauss–Newton — steps, HDOP, a rank-deficient case, and explanation",
         hint="Run python3 where_am_i.py gn and count the steps until the mismatch is below 1e-6 (3.36e-05 = 0.0000336 "
              "is still above 1e-6). HDOP: H = np.array(H) at (3, 4), M = np.linalg.inv(H.T @ H), sqrt(M[0, 0] + M[1, 1]) — not the bias entry. Explain the linearisation, how it "
              "fails, and the link between HDOP and the valley.")
@@ -259,7 +259,7 @@ def _():
               ((r"hdop", r"valley", r"flat", r"geometr", r"dop"), "the link between HDOP and the geometry"))
 
 
-@c.test("Step 7: full and partial spoof — predictions and explanations",
+@c.test("Step 6: full and partial spoof — predictions and explanations",
         hint="Run python3 where_am_i.py spoof and partial. Why is a full spoof consistent? What does a spare, "
              "real measurement leave in the mismatch?")
 def _():
@@ -276,7 +276,7 @@ def _():
                "one defence that better receivers add"))
 
 
-@c.test("Step 8: the jump gate against two attacks",
+@c.test("Step 7: the jump gate against two attacks",
         hint="Run python3 where_am_i.py gate and copy the two count_refused results.")
 def _():
     pred, jump, drift = answers("PREDICT_GATE", "JUMP_REFUSED", "DRIFT_REFUSED")
@@ -286,7 +286,7 @@ def _():
     c.ok(number(drift, "DRIFT_REFUSED") == 0, f"DRIFT_REFUSED = {drift!r} is not what the gate run gives for attack B")
 
 
-@c.test("Step 9: be the arbiter (ARBITER_SOURCE, ARBITER_STATE)",
+@c.test("Step 8: be the arbiter (ARBITER_SOURCE, ARBITER_STATE)",
         hint="Lesson §5: is the GPS fix fresh? Then the priority order decides (not precision), and the state "
              "depends only on that source's σ (25 m rule).")
 def _():
@@ -298,7 +298,7 @@ def _():
     c.ok(state == "DEGRADED", "the source is right, not the state: compare its σ with 25 m")
 
 
-@c.test("Step 10: the detective — what each defence saw",
+@c.test("Step 9: the detective — what each defence saw",
         hint="Run python3 where_am_i.py flight. Then read out/flight.png: when does the GPS start to leave vision, "
              "and where is the drone at that time?")
 def _():
@@ -310,7 +310,7 @@ def _():
               ((r"sea", r"water", r"no (vision|match)", r"vision"), "why vision could not see it earlier"))
 
 
-@c.test("Step 11: attacker vs defender",
+@c.test("Step 10: attacker vs defender",
         hint="Write a short script with your count_refused: drag lists [(n * t, 0) for t in range(61)] for the attacker; "
              "the GPS fixes of flight.csv before the spoof started, v_max = 15, for the defender.")
 def _():
@@ -326,5 +326,9 @@ def _():
     explained("EXPLAIN_TRADEOFF", why, ((r"false", r"honest", r"noise", r"multipath", r"spike", r"refus"), "the cost on real GPS"),
               ((r"slow", r"drag", r"below", r"under", r"vision", r"cross", r"never"), "what the gate still cannot stop"))
 
+
+# Session 1 (Steps 0–6) earns the "Ghost hunter" badge; the whole mission earns "Gatekeeper".
+c.milestone("ghost-hunter", "TODO 1:", "TODO 2:", "TODO 3:", "TODO 4:", "TODO 5:", "TODO 6:",
+            "Step 3:", "Step 4:", "Step 5:", "Step 6:")
 
 c.run()

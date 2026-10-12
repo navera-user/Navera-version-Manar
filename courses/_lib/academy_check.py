@@ -38,6 +38,12 @@ class Skip(Exception):
 class Checker:
     def __init__(self):
         self.tests = []
+        self.milestones = {}          # name -> list of title prefixes that must all pass
+
+    def milestone(self, name, *title_prefixes):
+        """A named part of a mission (e.g. a session) reached when every check whose title starts with one
+        of title_prefixes passes. Reported in ACADEMY_RESULT; the dashboard can show it as a badge."""
+        self.milestones[name] = list(title_prefixes)
 
     def test(self, title, hint=None):
         def deco(fn):
@@ -75,11 +81,13 @@ class Checker:
 
     def run(self):
         passed = 0
+        ok_titles = []
         print(f"Running {len(self.tests)} checks…\n")
         for i, (title, hint, fn) in enumerate(self.tests, 1):
             try:
                 fn()
                 passed += 1
+                ok_titles.append(title)
                 print(f"✔ {i}. {title}")
             except Skip as e:
                 passed += 1
@@ -103,7 +111,16 @@ class Checker:
         total = len(self.tests)
         print()
         print("🎉 All checks pass!" if passed == total else f"{passed} of {total} checks pass. Keep going!")
-        print("ACADEMY_RESULT " + json.dumps({"passed": passed, "total": total}))
+        reached = []
+        for name, prefixes in self.milestones.items():
+            needed = [t for t, _, _ in self.tests if any(t.startswith(pre) for pre in prefixes)]
+            if needed and all(t in ok_titles for t in needed):
+                reached.append(name)
+                print(f"🏅 Milestone reached: {name}")
+        result = {"passed": passed, "total": total}
+        if reached:
+            result["milestones"] = reached
+        print("ACADEMY_RESULT " + json.dumps(result))
         sys.stdout.flush()
         sys.exit(0 if passed == total else 1)
 

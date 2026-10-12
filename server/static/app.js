@@ -85,6 +85,8 @@ const ICONS = {
   scales: '<g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3v17M7 20h10M5 6h14M5 6l-3 7h6zM19 6l-3 7h6z"/></g>',
   globe: '<g fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18"/></g>',
   moon: '<path fill="none" stroke="currentColor" stroke-width="1.8" d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
+  ghost: '<g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M6 20V11a6 6 0 0 1 12 0v9l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5z"/><circle cx="9.5" cy="11" r=".9" fill="currentColor"/><circle cx="14.5" cy="11" r=".9" fill="currentColor"/></g>',
+  shield: '<g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V6z"/><path d="M9 12l2 2 4-4"/></g>',
   magnify: '<g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l6 6"/></g>',
   stars: '<path fill="currentColor" d="M9 3l1.6 4.4L15 9l-4.4 1.6L9 15l-1.6-4.4L3 9l4.4-1.6zM18 13l.8 2.2 2.2.8-2.2.8L18 19l-.8-2.2L15 16l2.2-.8z"/>',
 };
@@ -160,7 +162,10 @@ function badgesHTML(lessons) {
   const passed = lessons.filter(l => l.progress.status === 'passed').length;
   const list = MODULES.map((m, i) => ({icon: LEG_ICONS[i] || 'compass', name: (m.leg || '').replace(/^Leg \d+ · /, '') || m.title,
     hint: `Leg ${ROMAN[i]}`, on: (m.lessons || []).length > 0 && (m.lessons || []).every(id => st[id] === 'passed')}));
+  const ms = Object.fromEntries(lessons.map(l => [l.id, (l.progress.milestones || [])]));
   list.unshift({icon: 'plane', name: 'First flight', hint: 'pass 1 mission', on: passed >= 1});
+  list.splice(1, 0, {icon: 'ghost', name: 'Ghost hunter', hint: 'mission 1 · session 1', on: (ms['01-welcome'] || []).includes('ghost-hunter') || st['01-welcome'] === 'passed'},
+    {icon: 'shield', name: 'Gatekeeper', hint: 'mission 1', on: st['01-welcome'] === 'passed'});
   list.push({icon: 'moon', name: 'Halfway there', hint: '15 missions', on: passed >= 15});
   list.push({icon: 'magnify', name: 'Spoof hunter', hint: 'mission 30', on: st['30-spoofing'] === 'passed'});
   list.push({icon: 'stars', name: 'Star reader', hint: 'mission 26', on: st['26-stars'] === 'passed'});
