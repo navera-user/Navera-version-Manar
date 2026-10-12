@@ -359,8 +359,11 @@ function renderMarkdown(el, md) {
 }
 function runInTerminal(cmd) {
   showPane('terminal');
-  const t = Terms.active() || Terms.add();
-  const go = () => t.send(cmd + '\r');
+  let t = Terms.active();
+  if (!t || t.ws.readyState > 1) t = t ? Terms.restart(t) : Terms.add();   // a dead terminal would swallow the command
+  const cwd = LESSON ? `lessons/${LESSON.id}` : '';
+  const line = (cwd && t.cwd !== cwd ? `cd ~/${cwd} && ` : '') + cmd;      // a terminal left open in another mission
+  const go = () => { t.send(line + '\r'); t.cwd = cwd || t.cwd; };
   if (t.ready) go(); else t.queue.push(go);
 }
 
@@ -677,7 +680,7 @@ const Terms = {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const cwd = LESSON ? `lessons/${LESSON.id}` : '';
     const ws = new WebSocket(withAs(`${proto}://${location.host}/ws/term?cwd=${encodeURIComponent(cwd)}`));
-    const t = {id, el, term, fit, ws, ready: false, queue: [], send: (s) => ws.readyState === 1 && ws.send(s)};
+    const t = {id, el, term, fit, ws, cwd, ready: false, queue: [], send: (s) => ws.readyState === 1 && ws.send(s)};
     ws.onopen = () => { t.ready = true; this.resize(t); t.queue.splice(0).forEach(f => setTimeout(f, 400)); };
     ws.onmessage = (e) => term.write(e.data);
     ws.onclose = () => { t.ready = false; term.write('\r\n\x1b[90m[disconnected]\x1b[0m\r\n'); };
@@ -686,7 +689,7 @@ const Terms = {
     this.list.push(t); this.select(t); this.renderTabs();
     return t;
   },
-  restart(t) { this.close(t); this.add(); },
+  restart(t) { this.close(t); return this.add(); },
   resize(t) { if (t.ws.readyState === 1) t.ws.send(`\x00resize:${t.term.rows}x${t.term.cols}`); },
   select(t) {
     this.cur = t;
