@@ -272,13 +272,13 @@ async function loadStudents() {
   for (const s of DATA.students) {
     const pct = s.lessons ? Math.round(100 * s.passed / s.lessons) : 0;
     const cls = CLASSES.find(c => c.id === s.class);
-    h += `<tr><td><b>${esc(s.display)}</b> <code style="color:var(--muted)">${esc(s.name)}</code></td><td>${s.email ? esc(s.email) : '<span style="color:var(--muted)">—</span>'}</td>
+    h += `<tr><td><b>${esc(s.display)}</b> <code style="color:var(--muted)">${esc(s.name)}</code>${s.navera ? ' <span class="badge" title="This student can see and run the real NAVERA">🔓 NAVERA</span>' : ''}</td><td>${s.email ? esc(s.email) : '<span style="color:var(--muted)">—</span>'}</td>
       ${showCls ? `<td>${cls ? esc(cls.name) : '<span style="color:var(--muted)">—</span>'}</td>` : ''}
       <td><span class="bar"><i style="width:${pct}%"></i></span> ${s.passed}/${s.lessons}</td><td>${esc((s.last || '').slice(0, 10))}</td>
       <td>${s.certificate ? `<a href="/certificate/${esc(s.certificate)}" target="_blank">issued</a>` : '<span style="color:var(--muted)">—</span>'}</td>
       <td class="acts"><button onclick="window.open('/?as=${encodeURIComponent(s.name)}','_blank')">Open</button>
       <select aria-label="More actions" onchange="const a=this.value; this.value=''; if (a) act('${esc(s.name)}', a)">
-        <option value="">More ▾</option><option value="password">New password</option>${moveOpts}<option value="reset_navera">Reset NAVERA</option>
+        <option value="">More ▾</option><option value="password">New password</option>${moveOpts}${s.navera ? '<option value="reset_navera">Reset NAVERA</option><option value="navera_off">Remove NAVERA access</option>' : '<option value="navera_on">Give full NAVERA access…</option>'}
         <option value="kill">Stop terminals</option><option value="delete">Delete…</option></select></td></tr>`;
   }
   if (!DATA.students.length) h += `<tr><td colspan="7" style="color:var(--muted);white-space:normal">${curClass() ? 'No student yet — print the poster or give them the join code: they appear here as soon as they create their account.' : 'No student here.'}</td></tr>`;
@@ -337,12 +337,16 @@ async function act(name, action) {
   const who = ((DATA.students || []).find(s => s.name === name) || {}).display || name;
   const msgs = {delete: `Delete ${who}? Their files, backups and progress are removed for good.`,
     reset_navera: `Reset ${who}'s NAVERA copy? Their changes are saved in a backup first.`,
+    navera_on: `Give ${who} full access to the real NAVERA?\n\nNAVERA is not part of the course. ${who} will see and change a copy of its code, its data, the original in Sim Lite and the full simulator.`,
+    navera_off: `Remove ${who}'s access to NAVERA? Their NAVERA copy is saved in a backup, then removed; their terminals close.`,
     password: `Give ${who} a new password?`, kill: `Close all of ${who}'s terminals (and the programs in them)?`};
   if (!confirm(msgs[action])) return;
   try {
     const r = await api(`/api/admin/student/${name}`, {method: 'POST', body: {action}});
     if (r.password) alert(`New password for ${who} (login ${name}): ${r.password}`);
     if (action === 'reset_navera') alert(`Done: ${who}'s NAVERA copy is fresh.` + (r.backup ? ` Their old work is kept in the backup ${r.backup}.` : ''));
+    if (action === 'navera_on') alert(`Done: ${who} now has NAVERA (a fresh copy in ~/navera).`);
+    if (action === 'navera_off') alert(`Done: ${who} no longer has NAVERA.`);
     if (action === 'kill') alert(`Done: ${who}'s terminals are closed.`);
     loadClasses();
   } catch (e) { alert(e.message); }

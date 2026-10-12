@@ -594,6 +594,7 @@ def api_me():
     o = orgs.org()
     return jsonify(name=request.user, role=request.urec["role"], status=request.urec.get("status", "active"),
                    staff=is_staff(request.urec), admin=is_admin(request.urec), org=o.get("name", ""),
+                   navera=config.navera_allowed(request.user),
                    klass={"id": c["id"], "name": c["name"], "ranking": c.get("ranking", False)} if c else None,
                    display=request.urec.get("display", request.user),
                    email=request.urec.get("email"), prefs=request.urec.get("prefs", {}),
@@ -934,7 +935,7 @@ def web_tool(tool, sub):
     """Simulator and operator view inside the page, under the academy's address (see webtools.py)."""
     if tool not in webtools.PORTS:
         abort(404)
-    if not is_staff(request.urec) and (config.RESOURCES["sim"].get("teacher_only") or _holder("sim") != request.user):
+    if not config.navera_allowed(request.user) and (config.RESOURCES["sim"].get("teacher_only") or _holder("sim") != request.user):
         return webtools.message("The full simulator is for the teacher",
                                 "You fly <b>Sim Lite</b>: open the 🛩️ <b>Simulator</b> tab. It runs your own NAVERA code, "
                                 "and no booking is needed.", 423, lite=True)
@@ -945,7 +946,7 @@ def web_tool(tool, sub):
 @app.get("/api/simlite/code")
 @login_required()
 def api_simlite_code():
-    teacher = is_staff(request.urec)                       # the original NAVERA: teacher only
+    teacher = config.navera_allowed(request.user)          # the original NAVERA: teacher, or a student given access
     src = "original" if teacher and request.args.get("src") == "original" else "mine"
     try:
         return jsonify(simlite.code(request.user, src, allow_original=teacher))
@@ -1019,7 +1020,7 @@ def api_simlite_tile(z, x, y):
 @login_required()
 def api_bookings():
     b = bookings()
-    teacher = is_staff(request.urec)
+    teacher = config.navera_allowed(request.user)          # the full simulator: staff, or a student given access
     return jsonify({k: {"title": v["title"], "holder": b.get(k, {}).get("user"),
                         "since": b.get(k, {}).get("since")} for k, v in config.RESOURCES.items()
                     if teacher or not v.get("teacher_only")})
@@ -1032,7 +1033,7 @@ def api_book():
     res, action = d.get("resource"), d.get("action", "take")
     if res not in config.RESOURCES:
         abort(404)
-    if config.RESOURCES[res].get("teacher_only") and not is_staff(request.urec):
+    if config.RESOURCES[res].get("teacher_only") and not config.navera_allowed(request.user):
         return jsonify(error="Students fly Sim Lite (Simulator tab): no booking needed."), 403
     name = request.user
     with _lock:
@@ -1100,7 +1101,7 @@ def ws_term(ws):
     cmd = ["bash", "-c", f"cd ~/{cwd} 2>/dev/null; exec bash --rcfile ~/.bashrc -i"]
     argv = sandbox.bwrap_argv(name, workspaces.student_home(name), u["index"], cmd,
                               resources=res, heavy="sim" in res or "camera" in res,
-                              interactive=True, host_net=is_staff(u))
+                              interactive=True, host_net=is_staff(u) or ("sim" in res and config.navera_allowed(name)))
     pid, fd = pty.fork()
     if pid == 0:
         try:
@@ -1178,7 +1179,7 @@ def api_admin_students():
         c = certs.for_user(name)
         out.append({"name": name, "display": rec.get("display", name), "index": rec["index"], "class": rec.get("class") or "",
                     "last": last or rec.get("created", ""), "certificate": c["id"] if c and not c.get("revoked") else "",
-                    "email": rec.get("email"), "provider": rec.get("provider", "email" if rec.get("email") else "teacher"),
+                    "email": rec.get("email"), "navera": bool(rec.get("navera_access")), "provider": rec.get("provider", "email" if rec.get("email") else "teacher"),
                     "passed": sum(1 for v in pr.values() if v.get("status") == "passed"),
                     "started": sum(1 for v in pr.values() if v.get("status") == "started"),
                     "lessons": n, "progress": pr,
@@ -1262,6 +1263,15 @@ def api_admin_student(name):
             else:
                 u[name].pop("class", None)
             _save("users.json", u)
+            return jsonify(ok=True)
+        if action in ("navera_on", "navera_off"):          # real NAVERA is not part of the course: the teacher opens it
+            if action == "navera_on":
+                u[name]["navera_access"] = True
+            else:
+                u[name].pop("navera_access", None)
+            _save("users.json", u)
+            _kill_terminals(name)
+            workspaces.create_student(name)                # clones ~/navera, or backs it up and removes it
             return jsonify(ok=True)
         if action == "password":
             pw = secrets.token_urlsafe(8)

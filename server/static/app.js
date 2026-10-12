@@ -51,7 +51,9 @@ async function init() {
   $('uname').textContent = ME.display;
   $('uinfo').innerHTML = `Logged in as <b>${esc(ME.name)}</b>` + (ME.staff ? ` · ROS domain ${ME.domain}` +
     (ME.base ? `<br>NAVERA base: ${esc(ME.base.subject.slice(0, 60))}` : '') : '');
-  if (ME.staff) { $('mTeacher').style.display = ''; $('opTab').style.display = ''; }   // full simulator: teachers and admins only
+  if (ME.staff) $('mTeacher').style.display = '';
+  if (ME.navera) $('opTab').style.display = '';            // full simulator: staff, or a student the teacher gave NAVERA
+  $('mResetNavera').style.display = ME.navera ? '' : 'none';
   if (AS) { $('asBanner').style.display = ''; $('asBanner').textContent = 'viewing ' + AS; }
   const c = await api('/api/courses');
   COURSES = c.lessons; MODULES = c.modules;
