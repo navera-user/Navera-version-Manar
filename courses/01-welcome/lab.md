@@ -294,12 +294,11 @@ camera, the stars) is not fooled by a radio attack: NAVERA's approach.
 
 ## Step 7 — The jump gate
 
-First, NAVERA's own rules. In the **⌨️ Terminal**, search the arbiter's settings in your NAVERA copy, or
-open
-[estimator_params.yaml](file:navera/navera_estimator/navera_estimator/config/estimator_params.yaml):
+First, NAVERA's own rules. In the **⌨️ Terminal**, search the arbiter's settings sheet, or open
+[navera_settings.yaml](file:./navera_settings.yaml):
 
 ```bash
-grep -n "max_speed_mps\|gps_jump_margin_m\|gps_timeout_s" ~/navera/navera_estimator/navera_estimator/config/estimator_params.yaml
+grep -n "max_speed_mps\|gps_jump_margin_m\|gps_timeout_s" navera_settings.yaml
 ```
 
 > [!TASK]

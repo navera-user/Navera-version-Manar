@@ -221,15 +221,15 @@ def _():
 
 # ---------------------------------------------------------------- session 2: your functions, on unseen numbers
 @c.test("Step 7: NAVERA's settings (V_MAX_MPS, MARGIN_M, GPS_TIMEOUT_S, DAY_TIMEOUT_S) and PREDICT_STEALTH",
-        hint="Open estimator_params.yaml (link in Step 7) and find max_speed_mps, gps_jump_margin_m, gps_timeout_s and "
+        hint="Open navera_settings.yaml (link in Step 7) and find max_speed_mps, gps_jump_margin_m, gps_timeout_s and "
              "day_timeout_s. "
              "A NameError in answers.py almost always means text without quotes.")
 def _():
     v, m, t, d, pred = answers("V_MAX_MPS", "MARGIN_M", "GPS_TIMEOUT_S", "DAY_TIMEOUT_S", "PREDICT_STEALTH")
-    c.ok(number(v, "V_MAX_MPS") == 100.0, f"V_MAX_MPS = {v!r} is not max_speed_mps of the file")
-    c.ok(number(m, "MARGIN_M") == 50.0, f"MARGIN_M = {m!r} is not gps_jump_margin_m of the file")
-    c.ok(number(t, "GPS_TIMEOUT_S") == 3.0, f"GPS_TIMEOUT_S = {t!r} is not gps_timeout_s of the file")
-    c.ok(number(d, "DAY_TIMEOUT_S") == 5.0, f"DAY_TIMEOUT_S = {d!r} is not day_timeout_s of the file")
+    c.ok(number(v, "V_MAX_MPS") == 100.0, f"V_MAX_MPS = {v!r} is not max_speed_mps of the sheet")
+    c.ok(number(m, "MARGIN_M") == 50.0, f"MARGIN_M = {m!r} is not gps_jump_margin_m of the sheet")
+    c.ok(number(t, "GPS_TIMEOUT_S") == 3.0, f"GPS_TIMEOUT_S = {t!r} is not gps_timeout_s of the sheet")
+    c.ok(number(d, "DAY_TIMEOUT_S") == 5.0, f"DAY_TIMEOUT_S = {d!r} is not day_timeout_s of the sheet")
     predicted("PREDICT_STEALTH", pred)
 
 

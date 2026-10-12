@@ -29,7 +29,7 @@ EXPLAIN_PARTIAL = "" # spare measurement vs partial / full spoof, and one defenc
 
 # ======== Session 2 — Detect & defend ========
 
-# ---- Step 7: NAVERA's rules (estimator_params.yaml) -------------------------------------
+# ---- Step 7: NAVERA's rules (navera_settings.yaml) ----------------------------------------
 V_MAX_MPS = 0.0      # max_speed_mps
 MARGIN_M = 0.0       # gps_jump_margin_m
 GPS_TIMEOUT_S = 0.0  # gps_timeout_s

@@ -31,8 +31,7 @@
 <details><summary>Workspace and words (open if you need them)</summary>
 
 Left: **Course**, **Lab**, and **✔ Check my work** (tests your files, gives hints). Right: **📝 Code**
-(editor, `Ctrl+S` saves) and **⌨️ Terminal**. `~/navera/` is your own copy of NAVERA: you may change
-anything (the 👤 menu resets it).
+(editor, `Ctrl+S` saves) and **⌨️ Terminal**. Your files are in `~/lessons/01-welcome/`.
 
 | Word | Meaning | Français |
 |---|---|---|
@@ -306,17 +305,15 @@ the latest vision fix, allowing for what the vehicle can fly between the two:
 
 Day vision matches about every 2 s, so a streak of 5 takes about 10 s: in NAVERA's mission simulator, a
 GPS dragged at 4 m/s was refused about 140 m from the truth. Where vision cannot match (over the sea, on uniform ground) there is no such source, and a
-patient spoof is not detected. NAVERA's documentation
-(`docs/VALIDATION_STATUS.md`) states this limit openly. The lab puts this limit to the test.
+patient spoof is not detected. NAVERA's validation report states this limit openly. The lab puts this limit to the test.
 
-In your copy, these rules are four settings of
-`navera_estimator/navera_estimator/config/estimator_params.yaml` (comments added here):
+These rules are four settings of NAVERA's arbiter (the lab's `navera_settings.yaml` lists them all):
 
 ```yaml
-    gps_timeout_s: 3.0        # older than this: not fresh
-    fix_max_sigma_m: 25.0     # largest σ shown as FIX
-    max_speed_mps: 100.0      # v_max of the jump gate (set per vehicle)
-    gps_jump_margin_m: 50.0   # margin of the jump gate
+gps_timeout_s: 3.0        # older than this: not fresh
+fix_max_sigma_m: 25.0     # largest σ shown as FIX
+max_speed_mps: 100.0      # v_max of the jump gate (set per vehicle)
+gps_jump_margin_m: 50.0   # margin of the jump gate
 ```
 
 > [!QUESTION] ✏️ Check
@@ -331,7 +328,7 @@ In your copy, these rules are four settings of
 </details>
 
 > [!WARNING]
-> NAVERA is **Release 0.2 — field validation pending**. `docs/VALIDATION_STATUS.md` lists what has been
+> NAVERA is **Release 0.2 — field validation pending**. Its validation report lists what has been
 > measured and how, e.g. day vision placed 32 of 33 aerial test photos within 9 m (median 4 m) **on the
 > bench**, with photos not taken by NAVERA's own camera. Always quote a number with its conditions.
 > NAVERA's test map and data cover the region of Sousse, Tunisia.
