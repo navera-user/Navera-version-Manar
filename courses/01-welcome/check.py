@@ -158,63 +158,6 @@ def _():
         c.near(g, want, 1e-4, f"value {n}")
 
 
-@c.test("Step 7: NAVERA's settings (V_MAX_MPS, MARGIN_M, GPS_TIMEOUT_S, DAY_TIMEOUT_S) and PREDICT_STEALTH",
-        hint="Open estimator_params.yaml (link in Step 7) and find max_speed_mps, gps_jump_margin_m, gps_timeout_s and "
-             "day_timeout_s. "
-             "A NameError in answers.py almost always means text without quotes.")
-def _():
-    v, m, t, d, pred = answers("V_MAX_MPS", "MARGIN_M", "GPS_TIMEOUT_S", "DAY_TIMEOUT_S", "PREDICT_STEALTH")
-    c.ok(number(v, "V_MAX_MPS") == 100.0, f"V_MAX_MPS = {v!r} is not max_speed_mps of the file")
-    c.ok(number(m, "MARGIN_M") == 50.0, f"MARGIN_M = {m!r} is not gps_jump_margin_m of the file")
-    c.ok(number(t, "GPS_TIMEOUT_S") == 3.0, f"GPS_TIMEOUT_S = {t!r} is not gps_timeout_s of the file")
-    c.ok(number(d, "DAY_TIMEOUT_S") == 5.0, f"DAY_TIMEOUT_S = {d!r} is not day_timeout_s of the file")
-    predicted("PREDICT_STEALTH", pred)
-
-
-@c.test("TODO 7: gate_ok() applies the jump gate",
-        hint="Accepted when distance(last, new) ≤ v_max × elapsed + margin; exactly on the limit is accepted.")
-def _():
-    (gate_ok,) = functions("gate_ok")
-    cases = [((0, 0), (120, 0), 1.0, 100.0, 50.0, True), ((0, 0), (500, 0), 1.0, 100.0, 50.0, False),
-             ((0, 0), (300, 400), 4.5, 100.0, 50.0, True), ((0, 0), (300, 400), 4.4, 100.0, 50.0, False),
-             ((10, 10), (40, 50), 1.0, 30.0, 20.0, True), ((0, 0), (0, 40), 0.5, 30.0, 20.0, False)]
-    for last, new, el, v, m, want in cases:
-        got = run(gate_ok, last, new, el, v, m)
-        c.ok(got in (True, False), f"gate_ok should return True or False, got {got!r}")
-        c.ok(got == want, f"gate_ok({last}, {new}, elapsed {el} s, v_max {v}, margin {m}) gives {got}")
-
-
-@c.test("TODO 8: count_refused() follows the arbiter's rule",
-        hint="Redo the 7-row table of lesson §5 by hand and compare it with your code, row by row. 5 on the table but "
-             "wrong elsewhere: add dt_s BEFORE the gate test and restart after an accept (Step 7 hints).")
-def _():
-    (count_refused,) = functions("count_refused")
-    got = run(count_refused, [(0, 0)] + [(500, 0)] * 6 + [(900, 0)], 1.0, 100.0, 50.0)
-    c.ok(got == 5, f"on the lesson's 7-row table it gives {got!r} instead of 5")
-    fixes = [(0, 0), (10, 0), (30, 0), (31, 0), (80, 0), (82, 0), (84, 0), (10, 0)]
-    got = run(count_refused, fixes, 0.5, 30.0, 10.0)
-    c.ok(got == 3, f"on other fixes (dt 0.5 s, v_max 30, margin 10) it gives {got!r} — not the right count")
-
-
-@c.test("TODO 9: first_disagreement() applies the cross-check to a log",
-        hint="Skip rows without vision (None). Refuse only when the distance is strictly larger than "
-             "k × sigma + margin. Return the t_s of that row, or None if it never happens.")
-def _():
-    (fd,) = functions("first_disagreement")
-    rows = [dict(t_s=10, gps_x_m=0, gps_y_m=0, vision_x_m=10, vision_y_m=0, vision_sigma_m=20),
-            dict(t_s=11, gps_x_m=100, gps_y_m=0, vision_x_m=None, vision_y_m=None, vision_sigma_m=None),
-            dict(t_s=12, gps_x_m=0, gps_y_m=150, vision_x_m=0, vision_y_m=0, vision_sigma_m=20),
-            dict(t_s=13, gps_x_m=0, gps_y_m=151, vision_x_m=0, vision_y_m=0, vision_sigma_m=20)]
-    got = run(fd, rows)
-    c.ok(got is not None, "with the default k = 5 and margin 50 it finds no disagreement at all, on rows where σ = 20 m: "
-                          "does your limit use each row's vision_sigma_m (not a fixed 30)?")
-    c.ok(got == 13, f"with the default k = 5 and margin 50 it gives {got!r} — not the right time "
-                    "(return the row's t_s; exactly on the limit is still agreement)")
-    got = run(fd, rows, 3.0, 50.0)
-    c.ok(got == 12, f"with k = 3 it gives {got!r} — does your function use its k and margin arguments?")
-    c.ok(run(fd, rows[:3]) is None, "when GPS and vision always agree it should return None")
-
-
 # ---------------------------------------------------------------- what you saw and why
 @c.test("Step 3: a clock 1 µs ahead — prediction, error and explanation",
         hint="Run python3 where_am_i.py clock: CLOCK_ERROR_M is the distance from the true position in part 1. "
@@ -276,13 +219,71 @@ def _():
                "one defence that better receivers add"))
 
 
+# ---------------------------------------------------------------- session 2: your functions, on unseen numbers
+@c.test("Step 7: NAVERA's settings (V_MAX_MPS, MARGIN_M, GPS_TIMEOUT_S, DAY_TIMEOUT_S) and PREDICT_STEALTH",
+        hint="Open estimator_params.yaml (link in Step 7) and find max_speed_mps, gps_jump_margin_m, gps_timeout_s and "
+             "day_timeout_s. "
+             "A NameError in answers.py almost always means text without quotes.")
+def _():
+    v, m, t, d, pred = answers("V_MAX_MPS", "MARGIN_M", "GPS_TIMEOUT_S", "DAY_TIMEOUT_S", "PREDICT_STEALTH")
+    c.ok(number(v, "V_MAX_MPS") == 100.0, f"V_MAX_MPS = {v!r} is not max_speed_mps of the file")
+    c.ok(number(m, "MARGIN_M") == 50.0, f"MARGIN_M = {m!r} is not gps_jump_margin_m of the file")
+    c.ok(number(t, "GPS_TIMEOUT_S") == 3.0, f"GPS_TIMEOUT_S = {t!r} is not gps_timeout_s of the file")
+    c.ok(number(d, "DAY_TIMEOUT_S") == 5.0, f"DAY_TIMEOUT_S = {d!r} is not day_timeout_s of the file")
+    predicted("PREDICT_STEALTH", pred)
+
+
+@c.test("TODO 7: gate_ok() applies the jump gate",
+        hint="Accepted when distance(last, new) ≤ v_max × elapsed + margin; exactly on the limit is accepted.")
+def _():
+    (gate_ok,) = functions("gate_ok")
+    cases = [((0, 0), (120, 0), 1.0, 100.0, 50.0, True), ((0, 0), (500, 0), 1.0, 100.0, 50.0, False),
+             ((0, 0), (300, 400), 4.5, 100.0, 50.0, True), ((0, 0), (300, 400), 4.4, 100.0, 50.0, False),
+             ((10, 10), (40, 50), 1.0, 30.0, 20.0, True), ((0, 0), (0, 40), 0.5, 30.0, 20.0, False)]
+    for last, new, el, v, m, want in cases:
+        got = run(gate_ok, last, new, el, v, m)
+        c.ok(got in (True, False), f"gate_ok should return True or False, got {got!r}")
+        c.ok(got == want, f"gate_ok({last}, {new}, elapsed {el} s, v_max {v}, margin {m}) gives {got}")
+
+
+@c.test("TODO 8: count_refused() follows the arbiter's rule",
+        hint="Redo the 7-row table of lesson §5 by hand and compare it with your code, row by row. 5 on the table but "
+             "wrong elsewhere: add dt_s BEFORE the gate test and restart after an accept (Step 7 hints).")
+def _():
+    (count_refused,) = functions("count_refused")
+    got = run(count_refused, [(0, 0)] + [(500, 0)] * 6 + [(900, 0)], 1.0, 100.0, 50.0)
+    c.ok(got == 5, f"on the lesson's 7-row table it gives {got!r} instead of 5")
+    fixes = [(0, 0), (10, 0), (30, 0), (31, 0), (80, 0), (82, 0), (84, 0), (10, 0)]
+    got = run(count_refused, fixes, 0.5, 30.0, 10.0)
+    c.ok(got == 3, f"on other fixes (dt 0.5 s, v_max 30, margin 10) it gives {got!r} — not the right count")
+
+
+@c.test("TODO 9: first_disagreement() applies the cross-check to a log",
+        hint="Skip rows without vision (None). Refuse only when the distance is strictly larger than "
+             "k × sigma + margin. Return the t_s of that row, or None if it never happens.")
+def _():
+    (fd,) = functions("first_disagreement")
+    rows = [dict(t_s=10, gps_x_m=0, gps_y_m=0, vision_x_m=10, vision_y_m=0, vision_sigma_m=20),
+            dict(t_s=11, gps_x_m=100, gps_y_m=0, vision_x_m=None, vision_y_m=None, vision_sigma_m=None),
+            dict(t_s=12, gps_x_m=0, gps_y_m=150, vision_x_m=0, vision_y_m=0, vision_sigma_m=20),
+            dict(t_s=13, gps_x_m=0, gps_y_m=151, vision_x_m=0, vision_y_m=0, vision_sigma_m=20)]
+    got = run(fd, rows)
+    c.ok(got is not None, "with the default k = 5 and margin 50 it finds no disagreement at all, on rows where σ = 20 m: "
+                          "does your limit use each row's vision_sigma_m (not a fixed 30)?")
+    c.ok(got == 13, f"with the default k = 5 and margin 50 it gives {got!r} — not the right time "
+                    "(return the row's t_s; exactly on the limit is still agreement)")
+    got = run(fd, rows, 3.0, 50.0)
+    c.ok(got == 12, f"with k = 3 it gives {got!r} — does your function use its k and margin arguments?")
+    c.ok(run(fd, rows[:3]) is None, "when GPS and vision always agree it should return None")
+
+
 @c.test("Step 7: the jump gate against two attacks",
         hint="Run python3 where_am_i.py gate and copy the two count_refused results.")
 def _():
     pred, jump, drift = answers("PREDICT_GATE", "JUMP_REFUSED", "DRIFT_REFUSED")
     predicted("PREDICT_GATE", pred)
     c.ok(number(jump, "JUMP_REFUSED") == 2, f"JUMP_REFUSED = {jump!r} is not what a correct count_refused gives for "
-                                            "attack A; if your gate run printed it, fix TODO 8 first (check 9)")
+                                            "attack A; if your gate run printed it, fix TODO 8 first (check 13)")
     c.ok(number(drift, "DRIFT_REFUSED") == 0, f"DRIFT_REFUSED = {drift!r} is not what the gate run gives for attack B")
 
 
@@ -329,6 +330,7 @@ def _():
 
 # Session 1 (Steps 0–6) earns the "Ghost hunter" badge; the whole mission earns "Gatekeeper".
 c.milestone("ghost-hunter", "TODO 1:", "TODO 2:", "TODO 3:", "TODO 4:", "TODO 5:", "TODO 6:",
-            "Step 3:", "Step 4:", "Step 5:", "Step 6:")
+            "Step 3:", "Step 4:", "Step 5:", "Step 6:",
+            label="Session 1 complete: Ghost hunter badge earned (the ✘ lines left, if any, are session 2)")
 
 c.run()

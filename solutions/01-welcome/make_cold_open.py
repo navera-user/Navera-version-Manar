@@ -4,7 +4,7 @@ import math, sys
 out = sys.argv[1]
 T = 15                                    # seconds per loop
 Y0, X0, X1 = 240, 30, 670
-START, CATCH = 0.30, 0.70
+START, CATCH = 0.40, 0.72
 def x_at(u): return X0 + u * (X1 - X0)
 xs, xc = x_at(START), x_at(CATCH)
 DRAG = 112                                # px north at the catch
@@ -20,13 +20,13 @@ def window(t0, t1):
     if t1 >= 1:
         return anim("opacity", "0;1", f"0;{t0}", "discrete")
     return anim("opacity", "0;1;0", f"0;{t0};{t1}", "discrete")
-caps = [(0, .30, "A survey drone flies along the coast. Its GPS looks perfect."),
-        (.30, .50, "Over the sea, a spoofer drags the GPS north, 2 metres every second."),
-        (.50, .66, "No jump, no alarm. Out here, nothing can check the GPS."),
-        (.66, .72, "At the coast, the camera finds the map again…"),
-        (.72, .88, "…and NAVERA catches the lie: 391 m off."),
-        (.88, 1, "Today you do both: the attack, and the catch.")]
-errs = [(0, .30, "0 m"), (.30, .40, "≈ 100 m"), (.40, .50, "≈ 200 m"), (.50, .60, "≈ 290 m"), (.60, .70, "≈ 340 m"), (.70, 1, "391 m")]
+caps = [(0, .40, "A survey drone flies along the coast. Its GPS looks perfect."),
+        (.40, .52, "Over the sea, a spoofer drags the GPS north, 2 metres every second."),
+        (.52, .62, "No jump, no alarm. Out here, nothing can check the GPS."),
+        (.62, .72, "At the coast, the camera finds the map again…"),
+        (.72, .90, "…and NAVERA catches the lie: 391 m off."),
+        (.90, 1, "Today you do both: the attack, and the catch.")]
+errs = [(0, .40, "0 m"), (.40, .48, "≈ 50 m"), (.48, .56, "≈ 150 m"), (.56, .64, "≈ 250 m"), (.64, .72, "≈ 350 m"), (.72, 1, "391 m")]
 s = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 420" font-family="Inter, Segoe UI, sans-serif">',
      '<defs><linearGradient id="sea" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#1d4e6b"/><stop offset="1" stop-color="#13284a"/></linearGradient>',
      '<radialGradient id="glow"><stop offset="0" stop-color="#ff8f7a" stop-opacity=".9"/><stop offset="1" stop-color="#ff8f7a" stop-opacity="0"/></radialGradient></defs>',
@@ -39,6 +39,8 @@ s = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 420" font-family
      '<text x="292" y="305" fill="#9fc4d8" font-size="13" opacity=".85">sea: no vision match</text>',
      '<text x="556" y="285" fill="#cfe3d9" font-size="13" opacity=".85">land again</text>',
      '<text x="20" y="28" fill="#ffb3a3" font-size="11.5" font-weight="700" letter-spacing="3">MISSION 01 · GHOST POSITION</text>',
+     '<circle cx="28" cy="50" r="5" fill="#ff8f7a" stroke="#fff" stroke-width="1.5"/><text x="40" y="54" fill="#e8f0f5" font-size="12.5">where the GPS says you are</text>',
+     '<path d="M23 72 L33 72 M28 67 L28 77" stroke="#7fe0d3" stroke-width="2.5" stroke-linecap="round"/><text x="40" y="76" fill="#e8f0f5" font-size="12.5">where the drone really is</text>',
      f'<line x1="{X0}" y1="{Y0}" x2="700" y2="{Y0}" stroke="#7fe0d3" stroke-width="2" stroke-dasharray="6 6" opacity=".55"/>',
      # gps trail drawn progressively
      f'<path d="M{X0} {Y0} L{xs:.1f} {Y0} L{xc:.1f} {yc}" fill="none" stroke="#ff8f7a" stroke-width="2.5" stroke-dasharray="{L:.1f}" stroke-dashoffset="{L:.1f}">'

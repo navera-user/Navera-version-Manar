@@ -9,9 +9,11 @@
 > Maritime Administration.)
 >
 > Today you find out how that is possible by doing it yourself. **Session 1 — build & spoof:** you
-> launch an attack in the first five minutes, then build a satellite-style receiver, break it and fool
+> launch an attack in Step 0, then build a satellite-style receiver, break it and fool
 > it. **Session 2 — detect & defend:** you play detective on a spoofed flight, then fight NAVERA's jump
 > gate as attacker and defender. Each session ends with a badge: **Ghost hunter**, then **Gatekeeper**.
+>
+> **Start now:** open the 🛠️ **Lab** tab, do **Step 0** (two minutes, no code), then come back here for §1.
 
 **Objectives.** After this mission you can:
 

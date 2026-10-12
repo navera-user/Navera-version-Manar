@@ -40,10 +40,12 @@ class Checker:
         self.tests = []
         self.milestones = {}          # name -> list of title prefixes that must all pass
 
-    def milestone(self, name, *title_prefixes):
+    def milestone(self, name, *title_prefixes, label=None):
         """A named part of a mission (e.g. a session) reached when every check whose title starts with one
         of title_prefixes passes. Reported in ACADEMY_RESULT; the dashboard can show it as a badge."""
         self.milestones[name] = list(title_prefixes)
+        self.milestone_labels = getattr(self, "milestone_labels", {})
+        self.milestone_labels[name] = label or name
 
     def test(self, title, hint=None):
         def deco(fn):
@@ -116,7 +118,7 @@ class Checker:
             needed = [t for t, _, _ in self.tests if any(t.startswith(pre) for pre in prefixes)]
             if needed and all(t in ok_titles for t in needed):
                 reached.append(name)
-                print(f"🏅 Milestone reached: {name}")
+                print(f"🏅 {getattr(self, 'milestone_labels', {}).get(name, name)}")
         result = {"passed": passed, "total": total}
         if reached:
             result["milestones"] = reached

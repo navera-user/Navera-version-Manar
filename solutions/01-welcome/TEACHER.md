@@ -3,7 +3,7 @@
 Not visible to students. Alignment, answer key, rubrics, known difficulties, class plan.
 
 The mission runs in two sessions: **Session 1 — Build & spoof** (Steps 0–6, badge **Ghost hunter**, awarded when
-the checks of TODO 1–6 and Steps 3–6 pass: the `ghost-hunter` milestone of check.py) and **Session 2 — Detect &
+the checks of TODO 1–6 and Steps 3–6 pass, i.e. checks 1–10: the `ghost-hunter` milestone of check.py) and **Session 2 — Detect &
 defend** (Steps 7–11, badge **Gatekeeper** when the mission is passed). The cold open is `assets/cold_open.svg`
 (regenerate with `make_cold_open.py`).
 
@@ -11,10 +11,10 @@ defend** (Steps 7–11, badge **Gatekeeper** when the mission is passed). The co
 
 | Objective | Lesson (✏️ Check) | Lab | check.py test |
 |---|---|---|---|
-| 1. Trilateration; the clock makes it a 4-unknown problem | §2, §3 (ship, atomic clock) | Steps 2–4 (TODO 3–4) | 3, 4, 11, 12 |
-| 2. Least squares by brute force and Gauss–Newton | §2 check, §3 worked GN step | Steps 1, 5 (TODO 1, 2, 5) | 1, 2, 5, 13 |
-| 3. Which attacks a receiver notices by itself (jamming, full and partial spoof), and what better receivers add | §4 (jammer FSPL) | Steps 0, 6 (TODO 6) | 6, 14 |
-| 4. Arbiter: priority, states, gate, cross-check and their failures | §5 (two checks) | Steps 7–10 (TODO 7–9) | 7, 8, 9, 10, 15, 16, 17, 18 |
+| 1. Trilateration; the clock makes it a 4-unknown problem | §2, §3 (ship, atomic clock) | Steps 2–4 (TODO 3–4) | 3, 4, 7, 8 |
+| 2. Least squares by brute force and Gauss–Newton | §2 check, §3 worked GN step | Steps 1, 5 (TODO 1, 2, 5) | 1, 2, 5, 9 |
+| 3. Which attacks a receiver notices by itself (jamming, full and partial spoof), and what better receivers add | §4 (jammer FSPL) | Steps 0, 6 (TODO 6) | 6, 10 |
+| 4. Arbiter: priority, states, gate, cross-check and their failures | §5 (two checks) | Steps 7–10 (TODO 7–9) | 11–18 |
 
 ## Answer key
 
@@ -79,7 +79,7 @@ Predictions (`PREDICT_…`) are never marked. In class, ask who was surprised, a
 - TODO 8: not restarting the time after an accept, or starting it at `dt` (both give 4 instead of 5).
 - `-6²` on a phone calculator gives −36 (weak students, lesson §2 check).
 - Strong students finish in about 2 h and found the earlier version too easy: Steps 5, 6 (partial),
-  10 and 11 are where they work; push them to "Going further".
+  9 and 10 are where they work; push them to "Going further".
 
 ## Suggested class plan (reading at home, about 1 h 15 + 2 sessions of 2 h; about 5 h in all)
 

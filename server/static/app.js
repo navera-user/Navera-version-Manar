@@ -376,6 +376,8 @@ $('checkBtn').onclick = async () => {
     $('rscore').textContent = r.score ? `${r.score.passed}/${r.score.total}` : (r.passed ? '✔' : '✘');
     $('rhead').innerHTML = r.passed ? 'Mission checks passed<small>Every check is green — well flown.</small>'
       : /syntax error|SyntaxError|IndentationError/.test(r.output || '') ? 'A file does not run yet<small>Python found a syntax error — the ✘ line below gives the file and line number.</small>'
+      : (r.score && (r.score.milestones || []).includes('ghost-hunter') && LESSON && LESSON.id === '01-welcome')
+        ? 'Session 1 complete — Ghost hunter badge earned<small>The ✘ lines left belong to session 2 (Steps 7–10). If your class session ends here, stop here.</small>'
       : partly ? 'Almost there<small>Read the ✘ lines and their hints below, fix, save and check again.</small>'
       : 'Not yet<small>Start with the first ✘ line — its hint tells you where to look.</small>';
     $('rout').innerHTML = (r.output.trim() || '(no output)').split('\n').map(line => {

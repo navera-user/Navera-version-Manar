@@ -37,7 +37,8 @@ python3 where_am_i.py hijack
 A ready-made receiver computes your position from three beacons. Then a spoofer switches on. Watch what
 the receiver says, and open `out/hijack.png` in the 📝 Code tab.
 
-No alarm, 4.5 km off, and the "mismatch" stays exactly zero. Before you can defend against this, you need
+No alarm, 4.5 km off, and the "mismatch" (how badly the signals disagree with the computed position)
+stays exactly zero. Before you can defend against this, you need
 to understand why. From Step 1 on, you build that receiver yourself.
 
 ## Step 1 — Residuals
@@ -242,8 +243,9 @@ position would measure, one per beacon, in a list (`values = []`, then `values.a
 </details>
 
 > [!TASK]
-> **Predict** (`PREDICT_SPOOF`): you are at (3, 4); the spoofer fakes (7, 2) on all three beacons. What
-> does your Gauss–Newton find, with what mismatch?
+> **Predict** (`PREDICT_SPOOF`): Step 0 showed a ready-made receiver fooled. Will *your* Gauss–Newton
+> be fooled the same way by a spoofer faking (7, 2) on all three beacons, and what clock bias will it
+> report?
 
 ```bash
 python3 where_am_i.py spoof
@@ -284,7 +286,7 @@ camera, the stars) is not fooled by a radio attack: NAVERA's approach.
 > help against a full one, and one defence that better receivers add.
 
 > [!TIP] 🏅 End of session 1 — Ghost hunter
-> Press **✔ Check my work** now. When every session-1 check passes (TODO 1–6 and Steps 3–6), you earn the
+> Press **✔ Check my work** now. When every session-1 check passes (TODO 1–6 and Steps 3–6: checks 1–10; the other ✘ lines are session 2), you earn the
 > **Ghost hunter** badge on your home page. If the class session ends here, this is the place to stop:
 > session 2 starts with NAVERA's real rules.
 
@@ -402,7 +404,7 @@ rows = read_flight()
 honest = [(r["gps_x_m"], r["gps_y_m"]) for r in rows if r["t_s"] < START]   # START: read it on the plot
 ```
 
-Save your script as `step11.py` next to the other files and run `python3 step11.py`.
+Save your script as `step10.py` next to the other files and run `python3 step10.py`.
 
 **Defender.** NAVERA's `max_speed_mps` is set per vehicle. Our survey drone flies at 15 m/s. With
 `v_max = 15`, run your `count_refused` on the honest part of the flight (the GPS fixes before the spoof
