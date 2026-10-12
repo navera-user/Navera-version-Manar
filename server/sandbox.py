@@ -85,7 +85,7 @@ def bwrap_argv(name, home, index, command, resources=(), heavy=False, writable_b
     a += ["--bind", home, config.S_HOME]
     if writable_base:                    # used once, to build the base snapshot
         a += ["--bind", writable_base, config.S_NAVERA]
-    for host, inside in list(config.data_mounts()) + list(extra_ro):
+    for host, inside in list(config.data_mounts(navera=bool(writable_base) or config.navera_allowed(name))) + list(extra_ro):
         a += ["--ro-bind", host, inside]
     a += ["--ro-bind", _passwd(), "/etc/passwd", "--ro-bind", _group(), "/etc/group"]
     a += ["--chdir", config.S_HOME, "--clearenv"]

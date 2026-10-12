@@ -99,8 +99,12 @@ def create_student(name):
     os.makedirs(os.path.join(home, "lessons"), exist_ok=True)
     os.makedirs(os.path.join(config.STUDENTS, name, "backups"), exist_ok=True)
     nav = os.path.join(home, "navera")
-    if not os.path.exists(nav):
-        _clone(nav)
+    if config.navera_allowed(name):
+        if not os.path.exists(nav):
+            _clone(nav)
+    elif os.path.exists(nav):            # real NAVERA is not part of the course: keep a backup, remove the copy
+        backup(name)
+        shutil.rmtree(nav, ignore_errors=True)
     with open(os.path.join(home, ".bashrc"), "w") as f:
         f.write(BASHRC)
     return home
@@ -129,6 +133,8 @@ def backup(name):
 
 def reset_navera(name):
     """Back to the base: the student's changes are saved in a bundle first."""
+    if not config.navera_allowed(name):
+        raise PermissionError("NAVERA is not part of the course: your teacher can open it for you")
     saved = backup(name)
     nav = os.path.join(student_home(name), "navera")
     shutil.rmtree(nav, ignore_errors=True)

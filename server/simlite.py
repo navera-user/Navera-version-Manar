@@ -28,6 +28,8 @@ def _root(name, src, allow_original):
         if os.path.isdir(nav):
             return nav, "mine"
     if not allow_original:          # students only ever fly their own copy, never the original's code
+        if not config.navera_allowed(name):
+            raise FileNotFoundError("NAVERA is not part of the course: your teacher can open it for you")
         raise FileNotFoundError("your NAVERA copy is missing — press ♻️ Reset my NAVERA copy in the user menu")
     return config.BASE, "original"
 

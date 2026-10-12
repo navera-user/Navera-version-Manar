@@ -801,6 +801,8 @@ def api_lesson_reset(lid):
 @login_required()
 def api_reset_navera():
     name, _ = sandbox_user()
+    if not config.navera_allowed(name):
+        return jsonify(error="NAVERA is not part of the course: your teacher can open it for you"), 403
     _kill_terminals(name)
     saved = workspaces.reset_navera(name)
     return jsonify(ok=True, backup=os.path.basename(saved) if saved else None)
@@ -1281,6 +1283,8 @@ def api_admin_student(name):
             workspaces.delete_student(name)
             return jsonify(ok=True)
     if action == "reset_navera":
+        if not config.navera_allowed(name):
+            return jsonify(error="this student has no NAVERA access"), 403
         _kill_terminals(name)
         return jsonify(ok=True, backup=os.path.basename(workspaces.reset_navera(name) or ""))
     if action == "kill":
