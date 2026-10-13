@@ -17,7 +17,7 @@ A scenario file is a CSV with one fix per row (lesson 12 §5):
             (negative = a stamp in the future); optional, 0 when missing
 
 Parameters: file ("" = the demo), loop (true), rate (1.0 = real time, 2.0 = twice as fast),
-start_delay_s (1.0: time for the other nodes to discover this one), imu_hz (10.0; 0 = no IMU).
+start_delay_s (3.0: time for the other nodes to discover this one; with less, a judge started at the same time can miss the first rows), imu_hz (10.0; 0 = no IMU).
 """
 import csv
 
@@ -111,7 +111,7 @@ class Replay(Node):
         self.declare_parameter("file", "")
         self.declare_parameter("loop", True)
         self.declare_parameter("rate", 1.0)
-        self.declare_parameter("start_delay_s", 1.0)
+        self.declare_parameter("start_delay_s", 3.0)
         self.declare_parameter("imu_hz", 10.0)
         path = self.get_parameter("file").value
         self.rows = read_rows(path) if path else demo_rows()

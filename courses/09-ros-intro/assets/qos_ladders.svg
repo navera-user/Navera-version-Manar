@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 400" font-family="sans-serif" font-size="12">
+  <rect width="760" height="400" fill="#f7fafc"/>
+  <defs>
+    <marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2e7d32"/>
+    </marker>
+    <marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#b3261e"/>
+    </marker>
+  </defs>
+  <text x="380" y="26" text-anchor="middle" font-size="15" font-weight="bold" fill="#1d2733">Offered vs requested: two ladders, one rule</text>
+  <text x="380" y="46" text-anchor="middle" fill="#56606b">An arrow goes from what the publisher OFFERS (left) to what the subscriber REQUESTS (right). The top box is the stronger promise.</text>
+
+  <!-- reliability ladder -->
+  <text x="190" y="80" text-anchor="middle" font-weight="bold" font-size="13" fill="#0b6e8a">Reliability</text>
+  <text x="80" y="102" text-anchor="middle" fill="#56606b">offered</text>
+  <text x="300" y="102" text-anchor="middle" fill="#56606b">requested</text>
+  <rect x="20" y="112" width="120" height="34" rx="6" fill="#ffffff" stroke="#0b6e8a" stroke-width="2"/>
+  <text x="80" y="134" text-anchor="middle" font-weight="bold" fill="#1d2733">RELIABLE</text>
+  <rect x="20" y="192" width="120" height="34" rx="6" fill="#ffffff" stroke="#0b6e8a" stroke-width="2"/>
+  <text x="80" y="214" text-anchor="middle" font-weight="bold" fill="#1d2733">BEST_EFFORT</text>
+  <rect x="240" y="112" width="120" height="34" rx="6" fill="#ffffff" stroke="#0b6e8a" stroke-width="2"/>
+  <text x="300" y="134" text-anchor="middle" font-weight="bold" fill="#1d2733">RELIABLE</text>
+  <rect x="240" y="192" width="120" height="34" rx="6" fill="#ffffff" stroke="#0b6e8a" stroke-width="2"/>
+  <text x="300" y="214" text-anchor="middle" font-weight="bold" fill="#1d2733">BEST_EFFORT</text>
+  <line x1="140" y1="126" x2="238" y2="126" stroke="#2e7d32" stroke-width="2" marker-end="url(#g)"/>
+  <line x1="140" y1="134" x2="238" y2="200" stroke="#2e7d32" stroke-width="2" marker-end="url(#g)"/>
+  <line x1="140" y1="212" x2="238" y2="212" stroke="#2e7d32" stroke-width="2" marker-end="url(#g)"/>
+  <line x1="140" y1="200" x2="238" y2="140" stroke="#b3261e" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#r)"/>
+  <text x="190" y="172" text-anchor="middle" fill="#b3261e" font-weight="bold" font-size="16">✘</text>
+  <text x="190" y="252" text-anchor="middle" fill="#1d2733">"I resend until you confirm" serves both;</text>
+  <text x="190" y="268" text-anchor="middle" fill="#1d2733">"I send once" cannot promise delivery.</text>
+
+  <!-- durability ladder -->
+  <text x="570" y="80" text-anchor="middle" font-weight="bold" font-size="13" fill="#0b6e8a">Durability</text>
+  <text x="460" y="102" text-anchor="middle" fill="#56606b">offered</text>
+  <text x="680" y="102" text-anchor="middle" fill="#56606b">requested</text>
+  <rect x="400" y="112" width="120" height="34" rx="6" fill="#ffffff" stroke="#0b6e8a" stroke-width="2"/>
+  <text x="460" y="134" text-anchor="middle" font-weight="bold" font-size="11" fill="#1d2733">TRANSIENT_LOCAL</text>
+  <rect x="400" y="192" width="120" height="34" rx="6" fill="#ffffff" stroke="#0b6e8a" stroke-width="2"/>
+  <text x="460" y="214" text-anchor="middle" font-weight="bold" fill="#1d2733">VOLATILE</text>
+  <rect x="620" y="112" width="120" height="34" rx="6" fill="#ffffff" stroke="#0b6e8a" stroke-width="2"/>
+  <text x="680" y="134" text-anchor="middle" font-weight="bold" font-size="11" fill="#1d2733">TRANSIENT_LOCAL</text>
+  <rect x="620" y="192" width="120" height="34" rx="6" fill="#ffffff" stroke="#0b6e8a" stroke-width="2"/>
+  <text x="680" y="214" text-anchor="middle" font-weight="bold" fill="#1d2733">VOLATILE</text>
+  <line x1="520" y1="126" x2="618" y2="126" stroke="#2e7d32" stroke-width="2" marker-end="url(#g)"/>
+  <line x1="520" y1="134" x2="618" y2="200" stroke="#2e7d32" stroke-width="2" marker-end="url(#g)"/>
+  <line x1="520" y1="212" x2="618" y2="212" stroke="#2e7d32" stroke-width="2" marker-end="url(#g)"/>
+  <line x1="520" y1="200" x2="618" y2="140" stroke="#b3261e" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#r)"/>
+  <text x="570" y="172" text-anchor="middle" fill="#b3261e" font-weight="bold" font-size="16">✘</text>
+  <text x="570" y="252" text-anchor="middle" fill="#1d2733">"I keep my last messages for late joiners"</text>
+  <text x="570" y="268" text-anchor="middle" fill="#1d2733">serves both; "I keep nothing" cannot.</text>
+
+  <!-- the rule -->
+  <rect x="40" y="296" width="680" height="88" rx="10" fill="#eef6f9" stroke="#0b6e8a" stroke-width="1.5"/>
+  <text x="380" y="320" text-anchor="middle" font-weight="bold" fill="#1d2733">They connect only if, on EVERY policy, the offer is at least as strong as the request.</text>
+  <text x="380" y="342" text-anchor="middle" fill="#1d2733">One red arrow is enough: no connection, no message, no exception — only a WARN line in a log.</text>
+  <text x="380" y="364" text-anchor="middle" fill="#56606b">History and depth are not on any ladder: each side keeps its own queue.</text>
+</svg>

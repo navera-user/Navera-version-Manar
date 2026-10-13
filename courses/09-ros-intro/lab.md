@@ -1,332 +1,573 @@
-# Lab 9 — Measure a live ROS 2 graph, then question NAVERA
+# Lab 9 — The silent listener: map a ROS 2 graph, then repair it
 
-**Goal:** start ROS 2 nodes, observe discovery, ports, message sizes and QoS with your own
-measurements, use a service and an action, then question NAVERA's real arbiter. You record every
-result in [answers.py](file:./answers.py) and write a short analysis in [report.md](file:./report.md).
-**Time:** about 2 h 30 for this lab (about 3 h 30 for the whole mission with the lesson).
+**Goal:** run NAVERA Lite's first judge and its replay node, map their graph with the `ros2` tools, read their code,
+measure what the judge does, then reproduce the I-F3 bug of the brief (a listener that hears nothing), write the rule
+that predicts it, and repair it.
+**Time:** 2 h 30 to 3 h 30 (a student who knows Linux well: about 2 h). **Fast track:** skip the 🧰 boxes and the
+"Stuck?" boxes; after Step 10, do "Going further".
 
-You need **three terminals** at the same time. In the **⌨️ Terminal** tab, click **＋ new** to open
-another one, and click *Terminal 1*, *Terminal 2*… to switch. Every terminal starts in
-`~/lessons/09-ros-intro`. A node runs until you stop it: click in its terminal and press **`Ctrl+C`**.
+Your files (📝 Code tab): [answers.py](file:./answers.py) (everything you measure and explain),
+[imu_listener.py](file:./imu_listener.py) (the integrator's broken listener: **you repair it**),
+[navera_lite/ros/qos.py](file:./navera_lite/ros/qos.py) (**your TODO 1**), [qos_doctor.py](file:./qos_doctor.py)
+(runs your TODO on examples and on the live graph; you don't edit it), and the given nodes you read:
+[arbiter_v0.py](file:./navera_lite/ros/arbiter_v0.py), [replay_node.py](file:./navera_lite/ros/replay_node.py),
+[convert.py](file:./navera_lite/ros/convert.py).
 
-> [!TIP]
-> Values in `answers.py`: text between quotes (`"RELIABLE"`), numbers without quotes (`24`),
-> `True` / `False` with a capital letter, lists in brackets (`["/a", "/b"]`). Save with `Ctrl+S`.
+| Lesson | Lab | You do |
+|---|---|---|
+| (nothing to read first) | Step 0 | watch a listener hear nothing |
+| §1–§3 Graph, messages, nodes | Steps 1–4 | run nodes, map them, read their code, measure the judge |
+| §1, §4 Decoupling, domains | Steps 5–6 | two judges; another domain |
+| §5 QoS | Steps 7–8 | five experiments; TODO 1 `incompatible_policies()` |
+| §5–§6 The detective's toolbox | Steps 9–10 | find the broken pair; repair `imu_listener.py` |
 
-## Step 1 — Your domain and its ports
+> [!WARNING] One terminal tab for the whole lab
+> In this academy each terminal tab is a small private computer of its own: a node started in one tab **cannot be
+> seen** from another tab. Run every command of this lab in the **same** tab, and start the nodes in the
+> background with `&` (the 🧰 box below shows how).
 
-In **Terminal 1**:
+<details><summary>🧰 Several programs in one terminal (open it before Step 0 if <code>&amp;</code> and <code>jobs</code> are new to you)</summary>
 
 ```bash
-echo "domain $ROS_DOMAIN_ID, localhost only: $ROS_LOCALHOST_ONLY"
+python3 -m http.server 8000 > web.log 2>&1 &      # & = run in the background; > web.log 2>&1 = all its output into web.log
+jobs                                              # [1]+  Running   python3 -m http.server 8000 > web.log 2>&1 &
+tail -n 3 web.log                                 # the last 3 lines of its log
+kill -INT %1                                      # job 1 gets SIGINT, exactly what Ctrl+C sends (mission 02 §5)
+jobs                                              # [1]+  Done ... (or nothing): it has stopped
 ```
 
-Compute your discovery port with the formula of the course (the shell can do arithmetic):
+`%1` is the **job number** that `jobs` prints in brackets, not a PID; `%%` means "my most recent background
+job" (the `+` line of `jobs`). A background program cannot read your keyboard, so `Ctrl+C` does not reach it: use
+`kill -INT %N`. Before you start a node, run `jobs`: never leave two copies of the same node running.
+
+- **Forgot the `&`?** The terminal is busy with the node and does not give the prompt back: press `Ctrl+C` and type
+  the command again, with `&`.
+- `jobs` may show `Done`, `Interrupt`, `Exit 2` or `Exit 15` for a job you stopped: all mean "stopped"
+  (`ros2 topic pub` ends with code 2 after `Ctrl+C`).
+- **Retrying a step?** Stop the old copy first (`jobs`, then `kill -INT %N`): with two copies, `%%` points at the
+  newest one only.
+- **Stop everything** that still runs, without complaints when nothing is left (`jobs -rp` = the process numbers of
+  the running jobs):
+  `kill -INT $(jobs -rp) 2>/dev/null; sleep 1; jobs`
+</details>
+
+> [!NOTE]
+> **Predict, then run.** Each `PREDICT_…` is written **before** you run the step. It is never marked right or
+> wrong; being wrong and finding out why is the point. Text in quotes, numbers without, `True`/`False` with a
+> capital letter, lists in brackets.
+
+## Session 1 — Map the graph (about 1 h 15)
+
+## Step 0 — The silent listener
+
+Start the replay node in the background. It publishes a 30 s scenario of position fixes and, ten times per second,
+an IMU message (a "heartbeat": the judge only checks that the IMU is alive):
 
 ```bash
-echo $((7400 + 250 * ROS_DOMAIN_ID))
+python3 -m navera_lite.ros.replay_node > replay.log 2>&1 &
+```
+
+Now run the integrator's listener. It listens to the IMU topic for 5 s and says how many messages it heard:
+
+```bash
+python3 imu_listener.py
+```
+
+Is the data there? Ask ROS for one IMU message (its header only):
+
+```bash
+ros2 topic echo /navera_lite/imu sensor_msgs/msg/Imu --once --field header
+```
+
+Topic present, data present, publisher present, and the listener heard nothing. (It also printed a WARN line: keep
+it in mind, you will understand every word of it in session 2.)
+
+> [!TASK]
+> `PREDICT_SILENT`: how can a listener hear nothing on a topic that exists and that `ros2 topic echo` can read? Any
+> honest guess.
+
+Stop the replay (your most recent background job, `%%`), then read the lesson's §1–§4:
+
+```bash
+kill -INT %%
+```
+
+## Step 1 — Run a node from a package
+
+Your lesson folder holds a **package**, `navera_lite/`: a folder with an `__init__.py`, whose modules import each
+other by their full names (`from navera_lite.estimate import Estimate`).
+
+<details><summary>🧰 Packages and <code>python3 -m</code></summary>
+
+```
+lessons/09-ros-intro/              ← run commands from HERE (the folder that holds the package)
+  weather/                         a package: a folder with an __init__.py
+    __init__.py                    runs once, at the first `import weather…`
+    units.py                       def c_to_f(c): return c * 9 / 5 + 32
+    report.py                      from weather.units import c_to_f   (absolute import)
+```
+
+`python3 -m weather.report` means "run the module weather.report" (dots, no `.py`): Python puts the **current**
+folder first on its search path, so `from weather.units import …` finds the package. `python3 weather/report.py`
+puts only the file's own folder (`weather/`) on the path, where there is no `weather` package. And from inside
+`weather/`, even `-m` fails: the package must be in the current folder.
+</details>
+
+First the wrong way, on purpose. Read the **last** line of the error:
+
+```bash
+python3 navera_lite/ros/arbiter_v0.py
 ```
 
 > [!TASK]
-> Fill `MY_DOMAIN_ID` and `DISCOVERY_PORT` in `answers.py`.
+> `MODULE_ERROR`: the error's name (the first word of the last line).
 
-## Step 2 — A talker, seen from outside
-
-Start the demo **talker** in Terminal 1. It publishes `Hello World: N` once per second:
+Now the right way. Start arbiter v0, the judge, with its settings file (`--ros-args` starts the ROS options;
+`--params-file` gives every parameter of `navera_lite.yaml` to the node):
 
 ```bash
-ros2 run demo_nodes_py talker
+python3 -m navera_lite.ros.arbiter_v0 --ros-args --params-file navera_lite.yaml > arbiter.log 2>&1 &
 ```
 
-Open **Terminal 2**. Which nodes and topics exist?
+A Python ROS node needs 3 to 5 s to start on this computer. This command waits until the log says "started" (it
+checks once per second), then prints the log. If it never comes back, press `Ctrl+C` and read `cat arbiter.log`:
+the node crashed.
+
+```bash
+until grep -q started arbiter.log; do sleep 1; done; cat arbiter.log
+```
+
+It says it started, and its first decision: STARTING (no position received yet). Keep it running until Step 6.
+
+## Step 2 — Read the code, then map the node
+
+Open [arbiter_v0.py](file:./navera_lite/ros/arbiter_v0.py) and find `class ArbiterV0(Node)` and its `__init__`
+(below the line "the ROS node"). With lesson §3's table, list every `create_subscription` and
+`create_publisher`. Two Python details:
+
+- `for name in SOURCES:` creates one subscription per source; `SOURCES` is defined in
+  [estimate.py](file:./navera_lite/estimate.py).
+- `lambda msg, name=name: self.on_fix(name, msg)` is a one-line function: when a message arrives on that fix
+  topic, ROS calls it, and it calls `on_fix` with the source's name.
+
+> [!TASK]
+> `PREDICT_SUBSCRIBES`: from the code only, which topics will `/arbiter` subscribe to? Write them before the next
+> command.
 
 ```bash
 ros2 node list
 ```
 
+Empty, or `/arbiter` missing? Discovery (lesson §4): run it again a few seconds later. Then:
+
+```bash
+ros2 node info /arbiter
+```
+
+`/parameter_events` and `/rosout` belong to every node (parameter changes, log messages); leave them out.
+Now its parameters. `navera_lite.yaml` gave it twelve; how many does it have?
+
+```bash
+ros2 param list /arbiter
+```
+
+Read one value (`ros2 param get` asks the node through one of its services):
+
+```bash
+ros2 param get /arbiter fix_max_sigma_m
+```
+
+> [!TASK]
+> `ARBITER_SUBSCRIBES` and `ARBITER_PUBLISHES` (lists of full topic names, as `ros2 node info` prints them). Did
+> your prediction miss one? Which line of the code was it? `EXTRA_PARAMS`: the parameters of `ros2 param list` that
+> are **not** keys of [navera_lite.yaml](file:./navera_lite.yaml) (a list of names); for each, find where it comes
+> from (`ArbiterV0.__init__`? every node?). `EXPLAIN_LAG`: was a listing empty or incomplete right after a start?
+> Why can that happen, and what do you do (lesson §4)?
+
+## Step 3 — Message types
+
+The fix topics carry `sensor_msgs/msg/NavSatFix`:
+
+```bash
+ros2 interface show sensor_msgs/msg/NavSatFix
+```
+
+The indented lines under `NavSatStatus status` are the nested message, with its constants (the lines with `=`).
+The judge's status is a `DiagnosticStatus`:
+
+```bash
+ros2 interface show diagnostic_msgs/msg/DiagnosticStatus
+```
+
+Which level does arbiter v0 use for each state? Open [convert.py](file:./navera_lite/ros/convert.py) and find
+`LEVELS`. Now look at the judge's status right now (it is still STARTING):
+
+```bash
+ros2 topic echo /navera_lite/status diagnostic_msgs/msg/DiagnosticStatus --once
+```
+
+`level` is a byte, printed `"\x03"` for byte 3. Read it as a chain: `LEVELS["STARTING"]` in convert.py is
+`DiagnosticStatus.STALE`, and the interface says `STALE=3`, hence `"\x03"`. Do the same chain for NO_FIX. (If the
+echo prints *"A message was lost!!!"* first: harmless, the latched status keeps only its last message and the echo
+joined late, so it sees a gap in the message numbers.)
+
+> [!TASK]
+> `STATUS_NO_FIX` (the value of that NavSatStatus constant) and `NO_FIX_LEVEL` (the level number the arbiter
+> puts in its status when the state is NO_FIX).
+
+## Step 4 — Watch the judge decide
+
+Open [replay_node.py](file:./navera_lite/ros/replay_node.py) and read the docstring of `demo_rows()`: the 30 s
+scenario, second by second. The arbiter is running and has heard nothing yet. **Start the replay now** (the order
+matters for this step: the judge must hear the scenario from its first second):
+
+```bash
+python3 -m navera_lite.ros.replay_node > replay.log 2>&1 &
+```
+
+Watch the judge's reasons for 35 s. `--field message` prints only the reason of each status, `grep -v -- ---`
+removes the `---` separators, `uniq` prints a line only when it changes, and `timeout 35` stops it all after
+35 s (it then prints `Terminated`: expected). `PYTHONUNBUFFERED=1` makes the echo (a Python program) pass on each
+line at once: into a pipe, Python would otherwise keep its output in blocks of several kilobytes, and you would see
+nothing:
+
+```bash
+PYTHONUNBUFFERED=1 timeout 35 ros2 topic echo /navera_lite/status diagnostic_msgs/msg/DiagnosticStatus --field message | grep --line-buffered -v -- --- | uniq
+```
+
+Match each line with the scenario (your times may differ by a second). The spoofed GPS of 20–21 s never shows in
+the status: the jump gate refused it before the judge stored it. The arbiter wrote why in its log:
+
+```bash
+grep refused arbiter.log | head -3
+```
+
+> [!TASK]
+> `GATE_ALLOWED_M`: in the **first** `refused` line, the distance the gate allowed (the number after `>`).
+> `EXPLAIN_GATE`: why that much, and not the 150 m of mission 01's example? (Mission 01 §5. In the scenario, when
+> did the gate accept its last GPS fix before the spoof?)
+
+How often does the judge publish its status? `navera_lite.yaml` says `tick_hz: 5.0`.
+
+> [!TASK]
+> **Predict** (`PREDICT_HZ`): how many status messages per second?
+
+```bash
+timeout 8 ros2 topic hz /navera_lite/status
+```
+
+> [!TASK]
+> `STATUS_HZ`: the last `average rate`. `EXPLAIN_HZ`: why that rate? Look in `ArbiterV0` for **every** place that
+> calls `self.step()`.
+
+<details><summary>Stuck? Hints</summary>
+
+1. No `refused` line? The replay must start **after** the arbiter, and the 30 s scenario must reach 20 s. Run the
+   `grep` again after a minute.
+2. Your first `refused` line says `> 150 m in 1.0 s`? The arbiter started in the middle of a scenario lap, so its
+   gate trusted a spoofed fix first. Stop both (`kill -INT $(jobs -p)`), start the arbiter, then the replay, wait
+   30 s, and `grep` again.
+3. `ros2 topic hz` prints nothing for a few seconds: it needs a window of messages; wait for `average rate`.
+</details>
+
+## Step 5 — Two judges
+
+What stops a second judge from publishing on the same status topic? Start one (the same code, so the same node
+name):
+
+```bash
+python3 -m navera_lite.ros.arbiter_v0 --ros-args --params-file navera_lite.yaml > arbiter2.log 2>&1 &
+```
+
+Wait about ten seconds (the node starts, then it counts publishers every 5 s), then:
+
+```bash
+ros2 topic info /navera_lite/status
+```
+
+```bash
+grep ERROR arbiter.log arbiter2.log | head -2
+```
+
+(`ros2 node list` would now also print a WARNING: two nodes share the name `/arbiter`. ROS runs both.)
+
+Arbiter v0 counts the publishers on its own status topic every 5 s and logs an ERROR when there are more than one
+(NAVERA's judge reports a second judge too; the message says "Ctrl+C in its terminal" because a judge normally
+runs in a terminal of its own). Now stop the extra judge, and only that one: it is your most recent background
+job (the `+` line of `jobs`, the one that ends with `arbiter2.log`):
+
+```bash
+jobs
+```
+
+```bash
+kill -INT %%
+```
+
+> [!TASK]
+> `STATUS_PUBLISHERS`: the publisher count you saw with two judges. `EXPLAIN_TWO_JUDGES`: why does ROS allow it
+> (lesson §1), and what does a node that subscribes to the status receive then?
+
+## Step 6 — Another domain is another world
+
+```bash
+echo "domain $ROS_DOMAIN_ID, localhost only: $ROS_LOCALHOST_ONLY"
+```
+
+List the topics from the next domain. The variable is changed for this one command only (mission 02 §4);
+`--no-daemon` asks the network directly instead of the daemon's cache, during `--spin-time 3` seconds:
+
+```bash
+ROS_DOMAIN_ID=$((ROS_DOMAIN_ID + 1)) ros2 topic list --no-daemon --spin-time 3
+```
+
+Compare with your own domain:
+
 ```bash
 ros2 topic list
 ```
 
-You see `/talker`, `/chatter` and two topics that every graph has: `/rosout` (log messages) and
-`/parameter_events` (parameter changes). If a list is empty, wait two seconds and run it again:
-discovery takes a moment. Now the details of `/chatter`, **with QoS** (`-v` = verbose):
-
-```bash
-ros2 topic info -v /chatter
-```
-
-Read the type, then under the publisher's `QoS profile:` the `Reliability` and `Durability` lines.
-Measure the rate (wait for a few `average rate:` lines, then `Ctrl+C`):
-
-```bash
-ros2 topic hz /chatter
-```
-
-and the bandwidth and message size (a few lines, then `Ctrl+C`):
-
-```bash
-ros2 topic bw /chatter
-```
-
-Compare `Message size mean` with the course's CDR calculation (section 2).
+(`/parameter_events` and `/rosout` exist in every domain where at least one node runs: here, the `ros2` command's
+own node.)
 
 > [!TASK]
-> Fill `CHATTER_TYPE`, `CHATTER_RELIABILITY`, `CHATTER_DURABILITY` (one word each, as printed),
-> `TALKER_HZ` and `CHATTER_MSG_BYTES` (the mean size in bytes).
+> `OTHER_DOMAIN_SEES_STATUS` (`True` or `False`). `EXPLAIN_ISOLATION`: NAVERA's WEB-12 (lesson §4) in your words:
+> what could go wrong, and which two settings prevent it?
 
-Now look at the real UDP sockets of your domain. This command lists the ports between your
-discovery port and the next domain's:
+End of session 1: stop every background job, then check that `jobs` prints nothing (or only `Done`,
+`Interrupt` or `Exit` lines):
 
 ```bash
-ss -uln | awk -v lo=$((7400 + 250 * ROS_DOMAIN_ID)) '{n = split($4, a, ":"); p = a[n] + 0; if (p >= lo && p < lo + 250) print p}' | sort -nu
+kill -INT $(jobs -rp) 2>/dev/null; sleep 1; jobs
 ```
 
-You should find your discovery port, then pairs `lo + 10 + 2p` / `lo + 11 + 2p` for each
-participant p (the talker, the ros2 daemon, …). The formula of the course is in front of you.
+Press **✔ Check my work**: checks 1–7 earn the **Cartographer** badge. Before session 2, read lesson §5–§6.
 
-How the command works: `ss -uln` lists the UDP ports that are open on this machine (column 4 is
-`address:port`); `awk` reads it line by line, keeps the number after the last `:` (`split` cuts the
-text at each `:`, `a[n]` is the last piece) and prints it only if it is inside your domain's range
-`lo … lo + 249`; `sort -nu` sorts the numbers and removes duplicates. You do not need to write such a
-line yourself.
+## Session 2 — The silent listener (about 1 h 15 to 2 h)
+
+## Step 7 — Offered vs requested, by hand
+
+Five experiments with hand-made publishers and subscribers (`ros2 topic pub` and `ros2 topic echo` take QoS options).
 
 > [!TASK]
-> Copy the port numbers into `DDS_PORTS` (a list of numbers).
+> **Predict** (`PREDICT_QOS`) with the two tables of lesson §5, before you run anything: in each of the five
+> experiments A1, A2, B1, B2, B3 below, will at least one message arrive?
 
-## Step 3 — Subscribers and a hand-made message
-
-Open **Terminal 3** and start the demo **listener**:
+**A — reliability.** A publisher that offers BEST_EFFORT, twice per second:
 
 ```bash
-ros2 run demo_nodes_py listener
+ros2 topic pub -r 2 /qos_test std_msgs/msg/String "{data: hello}" --qos-reliability best_effort > /dev/null &
 ```
 
-It prints `I heard: [Hello World: 25]`. The talker was not changed: it does not know the listener
-exists. In **Terminal 2**:
+A1, a subscriber that requests RELIABLE (it stops by itself after 6 s):
 
 ```bash
-ros2 topic info /chatter
+timeout 6 ros2 topic echo /qos_test std_msgs/msg/String --qos-reliability reliable
 ```
 
-`Subscription count` is now 1. Save **one** message in a file (`--once` = one message, then stop):
+A2, a subscriber that requests BEST_EFFORT:
 
 ```bash
-ros2 topic echo --once /chatter > chatter.txt
+timeout 6 ros2 topic echo /qos_test std_msgs/msg/String --qos-reliability best_effort
 ```
 
-Now publish your own message, 3 times (`-t 3`, one per second). Change the name to yours:
+Read the WARN lines of A1 (the background publisher prints one too: its errors still reach your terminal). Stop
+the publisher, your most recent background job:
 
 ```bash
-ros2 topic pub -t 3 /chatter std_msgs/msg/String "{data: 'Hello from Salim'}"
+kill -INT %%
 ```
 
-Terminal 3 prints `I heard: [Hello from Salim]`. Why three times and not `--once`? A single message
-can be published before the listener has matched your new publisher (course, section 3: discovery
-is asymmetric) and is then lost. If you try `--once` and nothing arrives, that is the reason — not
-a mistake of yours.
-
-> [!TASK]
-> Fill `CHATTER_SUBSCRIBERS` (the subscription count with exactly one listener and no `echo`).
-> `chatter.txt` must hold one message.
-
-Stop the listener (Terminal 3) with `Ctrl+C`. Keep the talker running.
-
-## Step 4 — Another domain is another world
-
-In **Terminal 2**, list the topics as seen from another domain. The variable is changed for this
-one command only:
+**B — durability: a latched message and late subscribers.** One message, kept for late subscribers (`-w 0`: do not
+wait for a subscriber; `--keep-alive 120`: stay alive 120 s to keep it):
 
 ```bash
-ROS_DOMAIN_ID=$((ROS_DOMAIN_ID + 110)) ros2 topic list --no-daemon --spin-time 3
+ros2 topic pub --once -w 0 --keep-alive 120 --qos-depth 1 --qos-durability transient_local /mission_start std_msgs/msg/String "{data: go}" > /dev/null &
 ```
 
-> [!NOTE]
-> The domain `yours + 110` is between 111 and 211: private to you, and it collides with no other
-> student (the teacher's automatic tests use 200–232, but never while you are working). As the course explains, such domains use ephemeral ports — fine for a 3-second test,
-> not for a product.
-
-> [!TASK]
-> Fill `OTHER_DOMAIN_SEES_CHATTER` (`True` or `False`). Then stop the talker in Terminal 1.
-
-## Step 5 — QoS experiments
-
-**Reliability.** In **Terminal 1**, publish twice per second with BEST_EFFORT:
+Wait a few seconds: every subscriber below arrives **late**. B1, TRANSIENT_LOCAL + RELIABLE:
 
 ```bash
-ros2 topic pub -r 2 /qos_test std_msgs/msg/String "{data: 'best effort'}" --qos-reliability best_effort
+timeout 8 ros2 topic echo --once /mission_start std_msgs/msg/String --qos-durability transient_local --qos-reliability reliable
 ```
 
-In **Terminal 2**, subscribe with RELIABLE. Wait 5 seconds, read, then `Ctrl+C`:
+B2, VOLATILE + RELIABLE:
 
 ```bash
-ros2 topic echo /qos_test --qos-reliability reliable
+timeout 8 ros2 topic echo --once /mission_start std_msgs/msg/String --qos-durability volatile --qos-reliability reliable
 ```
 
-Now subscribe with BEST_EFFORT (`Ctrl+C` after a few messages):
+B3, TRANSIENT_LOCAL + BEST_EFFORT:
 
 ```bash
-ros2 topic echo /qos_test --qos-reliability best_effort
+timeout 8 ros2 topic echo --once /mission_start std_msgs/msg/String --qos-durability transient_local --qos-reliability best_effort
 ```
 
-Stop the publisher in Terminal 1.
-
-**Durability.** In **Terminal 1**, publish **one** latched message and keep it for 60 s
-(`-w 0`: do not wait for a subscriber; depth 1: keep the last message):
+Stop the latched publisher:
 
 ```bash
-ros2 topic pub --once -w 0 --keep-alive 60 --qos-depth 1 --qos-durability transient_local /mission_start std_msgs/msg/String "{data: 'go'}"
-```
-
-In **Terminal 2**, a few seconds later — a late subscriber — first with TRANSIENT_LOCAL:
-
-```bash
-ros2 topic echo --once /mission_start --qos-durability transient_local --qos-reliability reliable
-```
-
-then with VOLATILE (wait 5 s, then `Ctrl+C` if nothing comes):
-
-```bash
-ros2 topic echo --once /mission_start --qos-durability volatile --qos-reliability reliable
-```
-
-> [!NOTE]
-> Why `--qos-reliability reliable` here? DDS sends the stored ("historical") samples only to
-> RELIABLE subscribers: a BEST_EFFORT + TRANSIENT_LOCAL subscriber is matched but receives only new
-> messages. Try it without the option and see.
-
-> [!TASK]
-> Fill the four booleans `BE_PUB_RELIABLE_SUB_RECEIVED`, `BE_PUB_BE_SUB_RECEIVED`,
-> `LATCHED_TRANSIENT_RECEIVED` and `LATCHED_VOLATILE_RECEIVED` with what you observed, and copy the
-> warning line you saw in the RELIABLE case into `report.md`.
-
-## Step 6 — A service and an action
-
-Start a demo **service** server in **Terminal 1** (it adds two integers):
-
-```bash
-ros2 run examples_rclpy_minimal_service service
-```
-
-In **Terminal 2**, list services (ignore the `…/describe_parameters`-style ones: that is the
-parameter machinery) and call it with `a` = your domain number and `b` = 1000:
-
-```bash
-ros2 service list
-```
-
-```bash
-ros2 service call /add_two_ints example_interfaces/srv/AddTwoInts "{a: $ROS_DOMAIN_ID, b: 1000}"
-```
-
-Stop the server. Now an **action**: a server that computes a Fibonacci sequence slowly, with
-feedback after each step. In **Terminal 1**:
-
-```bash
-ros2 run action_tutorials_py fibonacci_action_server
-```
-
-In **Terminal 2** (it takes about 8 seconds; watch the feedback):
-
-```bash
-ros2 action send_goal --feedback /fibonacci action_tutorials_interfaces/action/Fibonacci "{order: 8}"
+kill -INT %%
 ```
 
 > [!TASK]
-> Fill `SERVICE_SUM` and `FIBONACCI_8` (the final `sequence`, as a Python list of numbers). Stop the
-> action server.
+> The five booleans `BE_PUB_RELIABLE_SUB_RECEIVED` (A1), `BE_PUB_BE_SUB_RECEIVED` (A2),
+> `LATE_TL_RELIABLE_RECEIVED` (B1), `LATE_VOLATILE_RECEIVED` (B2), `LATE_TL_BEST_EFFORT_RECEIVED` (B3): what you
+> **saw**. `INCOMPATIBLE_POLICY`: the last word of A1's WARN line. Which of your predictions were wrong? Now open the box "Read this after
+> lab Step 7" in lesson §5: does it explain the surprise?
 
-## Step 7 — Message types of NAVERA
+## Step 8 — TODO 1: `incompatible_policies()`
+
+Open [navera_lite/ros/qos.py](file:./navera_lite/ros/qos.py). The three profiles are given.
+`incompatible_policies(offered, requested)` is yours: the list of the policies that stop a publisher that offers
+`offered` from serving a subscriber that requests `requested`, named like ROS's WARN line (`"RELIABILITY"`,
+`"DURABILITY"`), or `[]` when they connect. The given `compatible()` below it is one line on top of yours. The
+docstring gives two examples.
+
+<details><summary>🧰 QoS profiles in Python</summary>
+
+```python
+from rclpy.qos import HistoryPolicy, QoSProfile
+p = QoSProfile(history=HistoryPolicy.KEEP_ALL, depth=1)
+p.history                                # <HistoryPolicy.KEEP_ALL: 2>  — a named constant (an "enum")
+p.history == HistoryPolicy.KEEP_ALL      # True: compare with the constant, not with the text "KEEP_ALL"
+p.history.name                           # 'KEEP_ALL' — the text, for printing
+```
+
+`ReliabilityPolicy` and `DurabilityPolicy` are imported at the top of `qos.py` and work the same way
+(`ReliabilityPolicy.BEST_EFFORT`, `DurabilityPolicy.VOLATILE`…). A list that grows: `bad = []`, then
+`bad.append("X")`, then `return bad` (mission 03).
+</details>
+
+Test it on the docstring's examples and three more pairs:
 
 ```bash
-ros2 interface show navera_msgs/msg/PositionEstimate
+python3 qos_doctor.py test
+```
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. Two separate questions: can the offered reliability serve the requested one? Can the offered durability serve
+   the requested one? Each "no" adds one name to the list; two "no" give two names.
+2. Each table of lesson §5 has exactly **one** ✘ cell. Write down, for each, the offered and the requested value
+   of that cell: those are the only two reasons to add a name.
+3. Your rule looks right but the doctor never says NO CONNECTION? You probably compared with text
+   (`== "BEST_EFFORT"`). Add `print(offered.reliability)` in the function and run the test again: it prints
+   `ReliabilityPolicy.BEST_EFFORT`, a constant, not text. Compare with the constant (🧰 box above).
+4. `FIX_QOS → SENSOR_QOS` gives NO CONNECTION and `SENSOR_QOS → FIX_QOS` gives connect? You swapped the roles: the
+   **first** argument is the publisher's offer.
+5. `FIX_QOS → FIX_QOS` gives NO CONNECTION? You refuse whenever the policies differ: the ✘ is one precise
+   combination, not "different". `SENSOR_QOS → STATUS_QOS` must list both names.
+</details>
+
+## Step 9 — The doctor on the live graph
+
+Start the replay, the judge and the broken listener (for 30 s), each in the background:
+
+```bash
+python3 -m navera_lite.ros.replay_node > replay.log 2>&1 &
 ```
 
 ```bash
-ros2 interface show navera_msgs/msg/NavStatus
+python3 -m navera_lite.ros.arbiter_v0 --ros-args --params-file navera_lite.yaml > arbiter.log 2>&1 &
 ```
 
-Find the constants (lines with `=`). The same files are in your copy:
-[PositionEstimate.msg](file:navera/navera_msgs/msg/PositionEstimate.msg),
-[NavStatus.msg](file:navera/navera_msgs/msg/NavStatus.msg).
+```bash
+python3 imu_listener.py 30 > listener.log 2>&1 &
+```
+
+Wait until the judge has started (the listener was started at the same time):
+
+```bash
+until grep -q started arbiter.log; do sleep 1; done; sleep 1
+```
+
+`qos_doctor.py` asks ROS who publishes and who subscribes on a topic, prints what each endpoint offers or
+requests, and judges every pair with **your** `incompatible_policies()`:
+
+```bash
+python3 qos_doctor.py /navera_lite/imu
+```
+
+Compare with what ROS itself prints (find the `Reliability:` line of each endpoint):
+
+```bash
+ros2 topic info -v /navera_lite/imu
+```
+
+After 30 s, read the listener's verdict:
+
+```bash
+cat listener.log
+```
 
 > [!TASK]
-> Fill `MODE_REPLAYED` and `STATE_FIX` (numbers).
+> `LISTENER_REQUESTS`: the reliability `imu_listener` requests, as printed. `EXPLAIN_TEN`: `imu_listener.py`
+> never wrote "RELIABLE". Where does it come from (lesson §5)?
 
-## Step 8 — Question NAVERA's arbiter
+## Step 10 — The repair
 
-In **Terminal 1**, start the arbiter of **your NAVERA copy**:
-
-```bash
-ros2 run navera_estimator estimator_node.py
-```
-
-It prints `estimator up (v3 GPS>day>night>cn) …` with its freshness windows. In **Terminal 2**:
+Repair [imu_listener.py](file:./imu_listener.py): change what its subscription **requests** (one line; plus an
+import if you use a profile from another module). Do not touch the given profiles of `qos.py`: in real life the
+publisher is somebody else's driver. The replay still runs, so test at once:
 
 ```bash
-ros2 node info /estimator_node
+python3 imu_listener.py
 ```
 
-Compare `Subscribers:` and `Publishers:` with the course's picture. Its status, once:
+(Fewer than 50 messages in 5 s is normal: the first second or two go to starting the node and discovery.)
+Then let it run in the background and ask the doctor again:
 
 ```bash
-ros2 topic echo --once /navera/nav_status
+python3 imu_listener.py 20 > listener.log 2>&1 &
 ```
-
-No source runs, so it has heard nothing: read `state:` and `reason:`. `state:` is printed as a
-**number**, not a name: the names are constants of the message (`ros2 interface show
-navera_msgs/msg/NavStatus` lists them: `STATE_INITIALIZING=0`, `STATE_NO_FIX=1`…). `FIRST_STATE` is that
-number. Its rate (`Ctrl+C` after a
-few lines):
 
 ```bash
-ros2 topic hz /navera/nav_status
+python3 qos_doctor.py /navera_lite/imu
 ```
 
-A parameter, read through the **service** behind it:
+<details><summary>Stuck? Hints</summary>
 
-```bash
-ros2 service call /estimator_node/get_parameters rcl_interfaces/srv/GetParameters "{names: ['fix_max_sigma_m']}"
-```
-
-The answer contains `double_value=25.0`: `ros2 param get` does exactly this call for you. Finally,
-is there a position?
-
-```bash
-ros2 topic echo --once /navera/position
-```
-
-This one waits forever — press `Ctrl+C`. The arbiter publishes a position **only when it has one**;
-it never repeats an old one as if it were new.
+1. The bug is in the last argument of `create_subscription`.
+2. NAVERA Lite already defines a profile that requests BEST_EFFORT: which one, in `qos.py`? Import it with
+   `from navera_lite.ros.qos import …` (you run the listener from the lesson folder, so the package is found).
+3. Still 0? Run `jobs`: is the replay still running? Did its log (`cat replay.log`) say "replaying"?
+</details>
 
 > [!TASK]
-> Fill `ESTIMATOR_SUBSCRIBES` (5 topics), `ESTIMATOR_PUBLISHES` (the 2 topics starting with
-> `/navera`), `FIRST_STATE` (the number after `state:`), `NAV_STATUS_HZ` and `FIX_MAX_SIGMA_M`. Answer the quiz `Q1`–`Q3`.
-> Stop the arbiter.
+> `EXPLAIN_REPAIR`: what you changed, and why the repair belongs in the **subscriber** and not in the publisher.
 
-## Step 9 — Write the analysis
+Clean up, then press **✔ Check my work**. The check starts its own IMU publishers (one BEST_EFFORT, one
+RELIABLE) and runs your listener against both.
 
-Open [report.md](file:./report.md) and write its three sections, in your own words (at least 40
-words each):
+```bash
+kill -INT $(jobs -rp) 2>/dev/null; sleep 1; jobs
+```
 
-- **Discovery** — your discovery port and the ports you saw, explained with the formula; why the
-  other domain saw nothing.
-- **QoS** — what happened in each of the four experiments of step 5 and why (use the words
-  RELIABLE, BEST_EFFORT, TRANSIENT_LOCAL, VOLATILE), and the warning line.
-- **NAVERA** — what the arbiter subscribes to and publishes, what it said with no source, and one
-  design rule you noticed.
+## Step 11 — Look back (not graded)
 
-Press **✔ Check my work**. The checker starts its own talker and compares your answers with what ROS
-really says.
+1. In Step 0 you guessed why the listener was silent. What would you check first today, and with which command?
+2. The I-F3 fix in NAVERA requested BEST_EFFORT with depth 50 for every vehicle sensor. What does depth 50 protect
+   against that BEST_EFFORT does not?
+3. Arbiter v0 logs an ERROR when a second judge appears, but it keeps publishing. Should it stop? What could go
+   wrong either way?
 
 ## Going further (optional)
 
-- **Remapping.** `ros2 run demo_nodes_py listener --ros-args -r chatter:=/news` listens to `/news`
-  without changing the code; publish on `/news` with `ros2 topic pub -t 3`. NAVERA uses remapping to
-  plug into vehicles whose topics have other names (lesson 13).
-- **Depth and late joiners.** Publish three latched messages with
-  `ros2 topic pub -t 3 -w 0 --keep-alive 60 --qos-depth 3 --qos-durability transient_local /hist std_msgs/msg/String "{data: x}"`,
-  then start a late `ros2 topic echo /hist --qos-durability transient_local --qos-reliability reliable --qos-depth 10`. How many
-  messages does it receive? Repeat with `--qos-depth 1` on the publisher and explain.
-- **Participants.** Start two more listeners and run the `ss` command of step 2 again: count the new
-  port pairs and match them with participant indices.
+- **Late joiners and depth.** Publish three latched messages with `--qos-depth 3`
+  (`ros2 topic pub -t 3 -w 0 --keep-alive 30 --qos-depth 3 --qos-durability transient_local /hist std_msgs/msg/String "{data: x}" > /dev/null &`),
+  then start a late `ros2 topic echo /hist std_msgs/msg/String --qos-durability transient_local --qos-reliability reliable --qos-depth 10`.
+  How many messages arrive? Repeat with `--qos-depth 1` on the publisher and explain.
+- **Namespaces.** Start a second judge in the namespace `/boat`:
+  `python3 -m navera_lite.ros.arbiter_v0 --ros-args -r __ns:=/boat --params-file navera_lite.yaml > boat.log 2>&1 &`.
+  What do `ros2 node list` and `ros2 topic list` show now? Does it hear the replay? Does it trigger the two-judges
+  ERROR? Why (lesson §1, relative names)? Mission 13 builds on this.
+- **Check your rule against ROS's.** rclpy has its own checker:
+  `python3 -c "from rclpy.qos import qos_check_compatible; from navera_lite.ros.qos import *; print(qos_check_compatible(SENSOR_QOS, FIX_QOS))"`.
+  Compare it with your `incompatible_policies()` on the 16 pairs of the two tables. What does a `WARNING` result
+  mean (try `STATUS_QOS, SENSOR_QOS`)? Which policies does it look at that you did not?
+- **A latched probe.** Write `latched_probe.py` (about 15 lines; copy `main()` from `imu_listener.py`): it subscribes
+  to `/navera_lite/status` with a QoS you choose and prints the first status it gets. Start it 10 s after the
+  arbiter. Which profile makes it print at once? Which never does?
+- **Ports.** With a node running, `ss -uln` lists the open UDP ports. Find your domain's discovery port with the
+  formula of the optional box of lesson §4 (`echo $((7400 + 250 * ROS_DOMAIN_ID))`), then the pairs of ports of
+  each program.

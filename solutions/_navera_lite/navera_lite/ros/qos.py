@@ -3,7 +3,7 @@ publisher and a subscriber connect. Part of NAVERA Lite, the course's teaching s
 Written for the course; it is not NAVERA code.
 
 A publisher OFFERS a quality of service, a subscriber REQUESTS one. They connect only if what is offered is
-at least as good as what is requested, policy by policy (lesson 09 §4).
+at least as good as what is requested, policy by policy (lesson 09 §5).
 """
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
 
@@ -27,17 +27,31 @@ def describe(qos):
 
 
 # @part 09 todo 1
-def compatible(offered, requested):
-    """Do a publisher offering `offered` and a subscriber requesting `requested` connect?
-    Look at two policies only, reliability and durability (lesson §4 table):
-      - a BEST_EFFORT offer cannot serve a RELIABLE request;
-      - a VOLATILE offer cannot serve a TRANSIENT_LOCAL request.
-    Every other pair connects. Inputs: two rclpy QoSProfile. Returns True or False.
-    Example: compatible(SENSOR_QOS, FIX_QOS) → False   (the IMU offers BEST_EFFORT, the listener asks RELIABLE)
-             compatible(FIX_QOS, SENSOR_QOS) → True
+def incompatible_policies(offered, requested):
+    """Why would a publisher that OFFERS `offered` and a subscriber that REQUESTS `requested` NOT connect?
+    Returns the list of the policies whose offer cannot serve the request, named as ROS names them in its WARN
+    line ("Last incompatible policy: RELIABILITY"): "RELIABILITY" first, then "DURABILITY"; [] when they connect.
+    Use the two tables of lesson 09 §5. History and depth never decide a connection; deadline and liveliness
+    would, but NAVERA Lite leaves them at their defaults, so they are not part of this function.
+    Inputs: two rclpy QoSProfile (the publisher's first). Returns a list of str.
+    Example: incompatible_policies(SENSOR_QOS, FIX_QOS) → ["RELIABILITY"]   (the IMU offers BEST_EFFORT, the listener asks RELIABLE)
+             incompatible_policies(FIX_QOS, SENSOR_QOS) → []
     """
+    bad = []
     if offered.reliability == ReliabilityPolicy.BEST_EFFORT and requested.reliability == ReliabilityPolicy.RELIABLE:
-        return False
+        bad.append("RELIABILITY")
     if offered.durability == DurabilityPolicy.VOLATILE and requested.durability == DurabilityPolicy.TRANSIENT_LOCAL:
-        return False
-    return True
+        bad.append("DURABILITY")
+    return bad
+
+
+# @part 09
+def compatible(offered, requested):
+    """True if the publisher (offered) and the subscriber (requested) connect: no incompatible policy.
+
+    Example: compatible(SENSOR_QOS, FIX_QOS) → False;  compatible(FIX_QOS, SENSOR_QOS) → True
+    """
+    bad = incompatible_policies(offered, requested)
+    if bad is None:
+        raise NotImplementedError("incompatible_policies() returned None: write TODO 1 first")
+    return len(bad) == 0

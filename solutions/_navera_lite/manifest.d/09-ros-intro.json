@@ -1,0 +1,2 @@
+{"parts": ["ros.arbiter_v0", "ros.replay_node", "ros.qos", "ros.convert"], "todo_missions": [9], "tests": [], "extra": [],
+ "note": "09 runs the given judge (arbiter_v0) and replay_node, reads them, and writes qos.compatible (TODO 1). Closure adds estimate, guard, settings, geo, vehicle (all given/finished)."}

@@ -11,7 +11,7 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from navera_lite.estimate import Estimate
 from navera_lite.ros.convert import (from_navsatfix, level_of, make_status, s_to_stamp, status_values,
                                      stamp_to_s, to_navsatfix)
-from navera_lite.ros.qos import FIX_QOS, SENSOR_QOS, STATUS_QOS, compatible, describe
+from navera_lite.ros.qos import FIX_QOS, SENSOR_QOS, STATUS_QOS, compatible, describe, incompatible_policies
 
 
 def test_stamps_round_trip():
@@ -55,3 +55,5 @@ def test_qos_compatible_offered_vs_requested():
                             durability=DurabilityPolicy.TRANSIENT_LOCAL)
     assert compatible(be_latched, SENSOR_QOS) is True
     assert describe(STATUS_QOS) == "RELIABLE, TRANSIENT_LOCAL, KEEP_LAST 1"
+    assert incompatible_policies(SENSOR_QOS, STATUS_QOS) == ["RELIABILITY", "DURABILITY"]
+    assert incompatible_policies(FIX_QOS, STATUS_QOS) == ["DURABILITY"]

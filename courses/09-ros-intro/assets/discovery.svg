@@ -38,7 +38,7 @@
   <!-- SEDP -->
   <g stroke="#0b6e8a" stroke-width="2" fill="none" marker-end="url(#a)">
     <path d="M525 172 L197 184"/>
-    <path d="M195 212 L523 262"/>
+    <path d="M195 236 L523 262"/>
   </g>
   <text x="360" y="168" text-anchor="middle" fill="#1d2733">B: subscriber, /chatter, String, RELIABLE</text>
   <text x="300" y="268" text-anchor="middle" fill="#1d2733">A: publisher, /chatter, String</text>
@@ -47,11 +47,11 @@
   <rect x="205" y="186" width="122" height="22" rx="5" fill="#e8f5e9" stroke="#2e7d32"/>
   <text x="266" y="201" text-anchor="middle" fill="#2e7d32" font-weight="bold">A: matched ✔</text>
   <!-- message 1 lost -->
-  <path d="M195 222 L452 226" stroke="#b3261e" stroke-width="2" fill="none" stroke-dasharray="6 3" marker-end="url(#r)"/>
+  <path d="M195 216 L452 218" stroke="#b3261e" stroke-width="2" fill="none" stroke-dasharray="6 3" marker-end="url(#r)"/>
   <text x="462" y="231" fill="#b3261e" font-weight="bold">✘</text>
   <text x="560" y="205" fill="#b3261e" font-size="11">message 1 arrives</text>
-  <text x="560" y="219" fill="#b3261e" font-size="11">before B has matched A:</text>
-  <text x="560" y="233" fill="#b3261e" font-size="11">dropped (VOLATILE)</text>
+  <text x="560" y="219" fill="#b3261e" font-size="11">before B knows A:</text>
+  <text x="560" y="233" fill="#b3261e" font-size="11">dropped</text>
   <!-- B matched -->
   <rect x="535" y="262" width="122" height="22" rx="5" fill="#e8f5e9" stroke="#2e7d32"/>
   <text x="596" y="277" text-anchor="middle" fill="#2e7d32" font-weight="bold">B: matched ✔</text>
