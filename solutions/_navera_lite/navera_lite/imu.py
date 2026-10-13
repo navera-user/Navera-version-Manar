@@ -84,7 +84,7 @@ def complementary(q0, t_s, gyro_rad_s, accel_mps2, tau_s):
 
     Example: complementary((0, 0, 0, 1), [0.0, 0.5, 1.0], [[0, 0, 0]] * 3, [[0, 4.905, 8.496]] * 3, 1.5)
              → about [[0, 0, 0, 1], [0.0654, 0, 0, 0.9979], [0.1143, 0, 0, 0.9934]]
-             (no turn measured, gravity says 30° right wing down, α = 0.75: the roll goes 0° → 7.5° → 13.1°)
+             (no turn measured, gravity says 30° right wing down, τ = 1.5 s, dt = 0.5 s: the roll grows step by step towards 30°)
     """
     if not tau_s > 0:
         raise ValueError(f"tau_s must be > 0, got {tau_s}")
