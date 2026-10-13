@@ -1,140 +1,198 @@
-<!-- SPLIT PENDING: rebuild in its batch -->
 # Rotations and quaternions: describing an attitude
 
-> [!NOTE] In short
-> - An **IMU** has three sensors: a gyroscope (turn rates), an accelerometer (gravity + acceleration)
->   and a magnetometer (the Earth's magnetic field).
-> - You will learn three ways to write an attitude: rotation matrices, Euler angles (and gimbal lock),
->   and **quaternions** (and SLERP to interpolate them).
-> - The gyroscope drifts; the accelerometer is noisy and is fooled by acceleration. A
->   **complementary filter** keeps the good part of each.
-> - A compass gives **magnetic** north. Add the **declination** (World Magnetic Model) to get true north.
-> - In the lab you write the rotation toolbox, then estimate the attitude of a simulated flight near
->   Monastir and compare with NAVERA's code.
+![Apollo 11: three gimbals keep the guidance platform still; when the middle one reaches 90°, two axes line up. Collins, two hours after the landing: "How about sending me a fourth gimbal for Christmas."](assets/cold_open.svg)
 
-A NAVERA drone flies at 150 m above the olive groves south of Monastir, in NAVERA's test area in Tunisia.
-The GPS signal is jammed. The downward camera takes a photo and NAVERA wants to find that photo on
-its satellite map. Before any image processing can start, three questions need numbers:
+> [!NOTE] Mission brief
+> **20 July 1969, lunar orbit, about two hours after the Moon landing.** Mission Control calls the command
+> module: *"We noticed you are maneuvering very close to gimbal lock. I suggest you move back away."* Michael
+> Collins steers around it, then jokes: *"How about sending me a fourth gimbal for Christmas."* (NASA, Apollo
+> Lunar Surface Journal, mission time 104:59:35 and 105:00:30.) Apollo's guidance platform hung in **three**
+> gimbals. If the middle one turned to 90°, two of the three axes lined up and one way of turning was lost.
+> Engineers had chosen three gimbals on purpose (simpler hardware); the crews learned to fly around the lock.
+>
+> NAVERA's IMU is a small chip fixed to the vehicle, not a platform in gimbals, so its attitude lives in
+> software, as numbers (its camera may be fixed to the body or carried by a camera gimbal). Every camera
+> photo must be matched to a north-up map, so NAVERA needs the drone's **attitude** (its orientation) at the
+> instant of the photo. A
+> 10° tilt error at 150 m moves the centre of the photo 26 m. Today you build NAVERA Lite's rotation toolbox,
+> watch gimbal lock happen in your own code, and then play **detective** on a colleague's bug that gives no
+> error message at all. Session 1 (matrices and Euler angles) earns **Attitude reader**; session 2
+> (quaternions and the investigation) earns **Quaternion detective**.
+>
+> **Start now:** open the 🛠️ **Lab** tab, do **Step 0** (two minutes, no code), then come back here for §1.
 
-1. **Which way does the top of the photo point?** The map is north-up. If the photo is turned by
-   120°, nothing lines up.
-2. **Was the camera looking straight down?** A multirotor leans its nose down to fly forward and
-   banks in turns. A 10° tilt at 150 m moves the centre of the photo 26 m away from the point under
-   the drone.
-3. **At which exact instant?** The drone turns all the time; the attitude must be the one at the
-   moment of the exposure.
+**Objectives.** After this mission you can:
 
-The sensor that answers the first two questions is the **IMU**. This lesson gives you the
-mathematics engineers use to describe an orientation — rotation matrices, Euler angles and
-quaternions — and the classical algorithms that turn raw IMU samples into an orientation:
-gyroscope integration, accelerometer tilt, the complementary filter and the magnetic compass with
-the **declination** (the angle between magnetic and true north), which changes around the world.
+1. **compose and invert** rotations in the right order, and say what the columns of a rotation matrix mean;
+2. **convert** ZYX Euler angles ↔ rotation matrix, show **gimbal lock** and handle it;
+3. **use quaternions** in ROS order (x, y, z, w): product, conjugate, rotating a vector, **slerp**, and the
+   angle between two attitudes;
+4. **read and check frame conventions** — ENU/FLU, heading vs yaw, ROS pitch vs a pilot's pitch,
+   (x, y, z, w) vs (w, x, y, z) — and **diagnose** a convention bug from its symptoms.
 
-## 1. The sensors and what they really measure
+**You need:** mission 06 §7 (a rotation matrix, R·Rᵀ = I), mission 03 (headings, numpy arrays), and the
+complex numbers of school (a 🧰 box refreshes them). ⏱ Reading: about 70 minutes with the ✏️ checks (up to
+2 h if matrices or trigonometry are rusty): §1–§3 before session 1, §4–§5 before session 2. Lab: 3 to 5 h.
 
-An **IMU** (Inertial Measurement Unit) measures motion from the inside, without looking outside.
-The NAVERA box uses a **BNO085**: a 3-axis accelerometer, a 3-axis gyroscope and a 3-axis
-magnetometer on one chip, with an on-chip fusion processor. It is read over the Jetson's **I²C** bus
-1 (address `0x4A`) at **50 Hz**.
+**Before you start.** Answer without looking; if you miss two, reread mission 06 §3 and §7.
 
-> [!NOTE]
-> **On the box used for this course the BNO085 is not connected.** In the lab you work on a
-> recorded log. The log is **simulated**, and this is useful: it contains the true attitude, so you
-> can measure the error of every method.
+<details><summary>1. (Mission 06) A matrix R has unit rows at right angles. What is R⁻¹, and what does det R = −1 mean?</summary>
+R⁻¹ = Rᵀ (R·Rᵀ = I). det R = −1 is a mirror, not a rotation: two rows swapped or one sign flipped.
+</details>
+<details><summary>2. (Mission 06) A bearing is atan2(east, north). Why not atan2(north, east)?</summary>
+A bearing is counted from north, clockwise; atan2(y, x) measures from the x axis. With x = north and y = east
+you get the angle from north towards east. atan2(north, east) is the maths angle from east, counter-clockwise.
+</details>
+<details><summary>3. (Mission 03) A drone flies heading 090°. Its unit velocity vector (east, north)?</summary>
+(1, 0): heading 90° is due east; (sin h, cos h) = (1, 0).
+</details>
 
-Simple measurement models (subscript *b* = body frame, *w* = world frame):
+<details><summary>Words of this lesson (open if you need them)</summary>
 
-```
-gyroscope       ω_m = ω_b + b_g + n_g            (rad/s)  true body rate + bias + noise
-accelerometer   f_m = Rᵀ (a_w − g_w) + n_a       (m/s²)   specific force, g_w = (0, 0, −9.81) in ENU
-magnetometer    m_m = Rᵀ m_w + n_m               (µT)     Earth's field seen in the body frame
-```
+| Word | Meaning | Français |
+|---|---|---|
+| **attitude** | the orientation of a vehicle: which way its nose, wings and top point | attitude |
+| **frame** | three axes at right angles that we measure coordinates in | repère |
+| **right-hand rule** | thumb along the axis: the fingers curl in the positive direction of turning | règle de la main droite |
+| **rotation matrix** | 3 × 3 matrix that turns body coordinates into world coordinates | matrice de rotation |
+| **Euler angles (ZYX)** | yaw, pitch, roll: three turns about z, then y, then x | angles d'Euler |
+| **gimbal lock** | at pitch ±90° roll and yaw become one angle | blocage de cardan |
+| **quaternion** | four numbers (x, y, z, w) that store a rotation | quaternion |
+| **Hamilton product** | the multiplication of quaternions (⊗); it composes rotations | produit de Hamilton |
+| **conjugate** | q with its vector part negated: the inverse rotation | conjugué |
+| **slerp** | interpolation between two attitudes at a constant turn rate | interpolation sphérique |
+</details>
 
-- The **gyroscope** gives an angular **rate**, not an angle. Its **bias** b_g is small and nearly
-  constant, but it never disappears.
-- The accelerometer measures the **specific force**: acceleration *minus* gravity. A drone at rest
-  measures `Rᵀ (0, 0, +9.81)`: "up", with the size of g. This is how it finds **down**. But any
-  real acceleration (speeding up, turning) is mixed into the same number.
-- The **magnetometer** measures the local magnetic field vector (about 44 µT near Monastir, between about 25 µT and 65 µT around the world). Its
-  horizontal part points to **magnetic** north. Motors, cables and steel disturb it.
+## 1. Frames and signs: the rules everything else depends on
 
-**R** in these equations is the attitude: the rotation from the body frame to the world frame.
-The rest of the lesson is about how to write R, and how to estimate it from these three sensors.
-
-## 2. Frames and conventions
-
-NAVERA follows ROS (REP-103):
+An attitude is a relation between two **frames**. NAVERA, ROS and NAVERA Lite use the same two
+(the course's conventions sheet):
 
 | Frame | x | y | z |
 |---|---|---|---|
-| **body** (FLU) | forward | left | up |
-| **world** (ENU) | east | north | up |
+| **world: ENU** | East | North | Up |
+| **body: FLU** | Forward (the nose) | Left wing | Up (through the top) |
 
-Positive angles follow the **right-hand rule**: thumb along the axis, fingers curl in the positive
-direction. Consequences you must remember:
+Positive angles follow the **right-hand rule**: point your right thumb along the axis; your fingers curl in
+the positive direction. Seen with the axis pointing **at** you, a positive turn is counter-clockwise.
+Three consequences you must know by heart:
 
-- positive **yaw** turns the nose counter-clockwise seen from above (to the left);
-- positive **pitch** (about y = left) puts the nose **down**;
-- positive **roll** (about x = forward) puts the **right** side down.
+![Positive roll puts the right wing down; positive ROS pitch puts the nose DOWN; positive yaw turns the nose left](assets/frames.svg)
 
-![Roll, pitch and yaw](assets/rpy.svg)
+- positive **roll** (about x, the nose) puts the **right wing down**;
+- positive **pitch** (about y, the **left** wing) puts the **nose down**. Thumb along the left wing, fingers
+  curl from the top (+z) towards the nose (+x): the nose dips;
+- positive **yaw** (about z, up) turns the nose to the **left**, counter-clockwise seen from above.
 
-**Yaw is not heading.** The ROS yaw ψ is a maths angle from **east**, counter-clockwise. A compass
-**heading** is measured from **north**, clockwise:
-
-```
-heading = (90° − ψ) mod 360°
-```
-
-Yaw 90° → heading 0° (north); yaw −90° → heading 180° (south). Python's `%` operator gives a
-result in [0, 360) even for negative numbers. And remember: `math.sin`, `np.arctan2` etc. use
-**radians**; ROS messages use radians and rad/s. "Yaw = 1.57" is 90°.
-
-## 3. Rotation matrices
-
-A **rotation matrix** R is a 3×3 matrix that maps a vector written in the body frame into the world
-frame: `v_w = R · v_b`. Its columns are the body axes written in world coordinates. Every rotation
-matrix satisfies
+Pilots do not count that way. A pilot says "pitch 5° up" for a climb, and a compass counts the **heading**
+from north, clockwise. So NAVERA's human-readable attitude and NAVERA Lite's `rpy_human` report
+**pitch_up = −(ROS pitch)**, and
 
 ```
-Rᵀ R = I        (columns are orthonormal: lengths and angles are kept)
-det R = +1      (no mirror)
-R⁻¹ = Rᵀ        (the inverse rotation is just the transpose)
+heading = (90° − yaw) mod 360°          yaw = ROS yaw: from east, counter-clockwise
 ```
 
-The set of these matrices is called **SO(3)**. The three elementary rotations are
+Worked example: yaw 60° → heading 30° (30° east of north); yaw −90° → heading 180° (south).
+Python's `%` keeps the result in [0, 360) even for negative numbers: `(90 - 150) % 360` is 300.
+
+> [!QUESTION] ✏️ Check
+> 1. A ROS message says yaw = −135°. Heading?
+> 2. A ROS message says pitch = +0.2 rad. Is the nose above or below the horizon, and what pitch_up (in
+>    degrees) does a pilot read?
+
+<details><summary>Answer</summary>
+1. (90 − (−135)) mod 360 = 225°: south-west.<br>
+2. Below: positive ROS pitch is nose down. pitch_up = −11.5° (0.2 rad × 180/π = 0.2 × 57.3 = 11.46°).
+</details>
+
+## 2. Rotation matrices: columns are axes, products are sequences
+
+A **rotation matrix** R turns a vector written in the body frame into the same vector written in the
+world frame: `v_world = R · v_body`. The course names it `R_world_body` when the frames matter
+(`R_<to>_<from>`). Mission 06 gave the rules: R·Rᵀ = I, so the inverse is the transpose
+(`R_body_world = Rᵀ`), and det R = +1.
+
+The most useful fact: **the columns of R are the body axes, written in the world frame.** R·(1, 0, 0) is
+the first column, i.e. where the nose points. Read a matrix by its columns and you can see the attitude.
+
+> [!TIP] 🧰 The angles you will meet
+> | α | 0° | 30° | 45° | 60° | 90° | 180° |
+> |---|---|---|---|---|---|---|
+> | sin α | 0 | 0.5 | 0.7071 | 0.866 | 1 | 0 |
+> | cos α | 1 | 0.866 | 0.7071 | 0.5 | 0 | −1 |
+>
+> Radians → degrees: × 180/π (≈ 57.3); back: × π/180 (`math.degrees`, `math.radians`). sin(−α) = −sin α,
+> cos(−α) = cos α.
+
+The three elementary rotations, angle α:
 
 ```
-         ⎡1   0    0  ⎤           ⎡ cos  0  sin⎤           ⎡cos −sin  0⎤
-Rx(φ) =  ⎢0  cos −sin ⎥   Ry(θ) = ⎢  0   1   0 ⎥   Rz(ψ) = ⎢sin  cos  0⎥
-         ⎣0  sin  cos ⎦           ⎣−sin  0  cos⎦           ⎣ 0    0   1⎦
+         ⎡1    0      0  ⎤           ⎡ cos α  0  sin α⎤           ⎡cos α  −sin α  0⎤
+Rx(α) =  ⎢0  cos α  −sin α⎥   Ry(α) = ⎢   0    1    0  ⎥   Rz(α) = ⎢sin α   cos α  0⎥
+         ⎣0  sin α   cos α⎦           ⎣−sin α  0  cos α⎦           ⎣  0       0    1⎦
 ```
 
-Rotations are **composed by matrix multiplication**, and the order matters: `Rz Ry ≠ Ry Rz`. Take
-a book and try "yaw 90°, then roll 90°" and the opposite order — the book ends in two different
-positions.
+Look at Ry: its minus sign is in the **bottom-left** corner, not the top-right as in Rx and Rz. That is the
+right-hand rule about y (z turns towards x), and it is exactly why a positive pitch puts the nose down:
+Ry(α)·(1, 0, 0) = (cos α, 0, −sin α).
 
-## 4. Euler angles (ZYX) and gimbal lock
+**Worked example.** Rz(30°)·(1, 0, 0) = (cos 30°, sin 30°, 0) = (0.866, 0.500, 0): the nose, east at
+first, now points 30° north of east, heading 60°.
 
-Humans prefer three angles. ROS and NAVERA use the **ZYX** convention (also called yaw-pitch-roll):
+> [!TIP] 🧰 Matrix × matrix
+> (A·B) has, in row i and column j, row i of A times column j of B. Example:
+> [[0, −1], [1, 0]] · [[2, 0], [0, 1]] = [[0, −1], [2, 0]], but [[2, 0], [0, 1]] · [[0, −1], [1, 0]] =
+> [[0, −2], [1, 0]]: **A·B ≠ B·A**. To rotate a vector by B and then by A, compute A·(B·v) = (A·B)·v.
+> numpy: `A @ B` (never `A * B`, which multiplies element by element).
+
+**The order matters.** Take a book flat on the table, spine towards you. Turn it 90° about one axis, then
+90° about another; start again in the other order. It ends in two different positions. Rotations do not
+commute:
+
+![Rx(90°)·Ry(90°) and Ry(90°)·Rx(90°): the same two turns in two orders give two different attitudes](assets/order.svg)
+
+How to read a product such as `Rz(ψ) · Ry(θ) · Rx(φ)`: either from **right to left about the fixed world
+axes** (first roll about world x, then pitch about world y, then yaw about world z), or from **left to right
+about the vehicle's own, moving axes** (first yaw, then pitch about the *new* left wing, then roll about the
+*new* nose). Both readings give the same matrix. The second is how a pilot thinks.
+
+> [!TIP] 🧰 One product, two stories — worked example
+> M = Rz(90°)·Ry(90°), followed on the drone's **top** (0, 0, 1).
+> **Right to left, fixed world axes:** pitch 90° about world y (north) carries the top to east (1, 0, 0); then
+> yaw 90° about world up carries east to north → (0, 1, 0).
+> **Left to right, the drone's own axes:** yaw 90° (the top stays up, the left wing now points west); then
+> pitch 90° about the **new** left wing: the nose dips and the top swings to where the nose was, north →
+> (0, 1, 0). Same answer: two descriptions of one matrix.
+
+> [!QUESTION] ✏️ Check
+> Where does the nose (1, 0, 0) point after Rz(90°)·Ry(90°)? After Ry(90°)·Rz(90°)? Work from the right:
+> first apply the right-hand matrix to the vector.
+
+<details><summary>Answer</summary>
+Rz(90°)·Ry(90°)·(1, 0, 0) = Rz(90°)·(0, 0, −1) = (0, 0, −1): straight down.<br>
+Ry(90°)·Rz(90°)·(1, 0, 0) = Ry(90°)·(0, 1, 0) = (0, 1, 0): north. Two different attitudes.
+</details>
+
+## 3. Euler angles (ZYX) and gimbal lock
+
+People prefer three angles. ROS and NAVERA use the **ZYX** convention (yaw, then pitch, then roll about
+the moving axes):
 
 ```
-R = Rz(ψ) · Ry(θ) · Rx(φ)          φ = roll, θ = pitch, ψ = yaw
+R = Rz(yaw) · Ry(pitch) · Rx(roll)          roll φ, pitch θ (ROS sign), yaw ψ, all in radians
 ```
 
-Written out, the bottom row and first column give simple formulas to go back:
+Multiplied out, the bottom row and the first column are simple, and they give the angles back:
 
 ```
-R[2,0] = −sin θ          →  θ = −asin(R[2,0])
-R[2,1] = cos θ sin φ     \
-R[2,2] = cos θ cos φ      →  φ = atan2(R[2,1], R[2,2])
-R[1,0] = sin ψ cos θ     \
-R[0,0] = cos ψ cos θ      →  ψ = atan2(R[1,0], R[0,0])
+R[2][0] = −sin θ                      →  θ = asin(−R[2][0])
+R[2][1] = cos θ sin φ,  R[2][2] = cos θ cos φ   →  φ = atan2(R[2][1], R[2][2])
+R[1][0] = sin ψ cos θ,  R[0][0] = cos ψ cos θ   →  ψ = atan2(R[1][0], R[0][0])
 ```
 
 `atan2(a, b)` is the angle of the point (b, a): it knows the quadrant and never divides by zero.
 
-**Worked example.** Roll 10°, pitch 5° (nose down), yaw 60°:
+**Worked example.** Roll 10°, pitch 5° (ROS: nose 5° down), yaw 60°:
 
 ```
       ⎡ 0.4981  −0.8453   0.1933⎤
@@ -142,411 +200,255 @@ R  =  ⎢ 0.8627   0.5055  −0.0125⎥
       ⎣−0.0872   0.1730   0.9811⎦
 ```
 
-The first column is the nose direction in ENU: (0.498, 0.863, −0.087). It points between north and
-east, and slightly down (−0.087 = −sin 5°). The heading is 90° − 60° = 30°. Going back:
-θ = −asin(−0.0872) = 5°, φ = atan2(0.1730, 0.9811) = 10°, ψ = atan2(0.8627, 0.4981) = 60°. ✔
+The first column, (0.498, 0.863, −0.087), is the nose: between east and north, and slightly down
+(−0.087 = −sin 5°); heading 90° − 60° = 30°. Back: θ = asin(0.0872) = 5°, φ = atan2(0.1730, 0.9811) = 10°,
+ψ = atan2(0.8627, 0.4981) = 60°. ✔ A pilot reads roll 10°, **pitch_up −5°**, heading 30°.
 
-**Gimbal lock.** When θ = ±90° (nose straight down or up), cos θ = 0: the formulas for φ and ψ
-become atan2(0, 0). This is not only a numerical problem. With θ = 90° the matrix becomes
+Rounding can make R[2][0] = −1.0000000002, and `math.asin` then raises `ValueError: math domain error`:
+**clamp** to [−1, 1] first (`max(-1.0, min(1.0, s))`).
 
-```
-R = Rz(ψ) Ry(90°) Rx(φ)   depends only on (ψ − φ)
-```
+**Gimbal lock.** If θ = ±90° (nose straight down or up), cos θ = 0 and the formulas for φ and ψ become
+atan2(0, 0). This is not just a numerical accident. At θ = +90° the matrix depends only on **ψ − φ**: the
+roll axis (the nose) now lies along the yaw axis (vertical), and rolling is the same as yawing.
 
-so (roll 30°, yaw 50°) and (roll 0°, yaw 20°) are the **same** attitude. One degree of freedom is
-lost: you cannot recover roll and yaw separately. The usual convention is to set roll = 0 and put
-the whole angle into yaw: ψ = atan2(−R[0,1], R[1,1]). A navigation filter must never store its state
-as Euler angles for this reason. Also, rounding can make R[2,0] = −1.0000000002, and `asin` then
-raises `ValueError: math domain error`: always **clamp** into [−1, 1] first.
+<details><summary>🧰 See it in the matrix (3 lines)</summary>
 
-## 5. Quaternions
-
-A **quaternion** is a 4-vector q = (w, x, y, z) = w + x·i + y·j + z·k with the rules
-i² = j² = k² = ijk = −1. We write it as a scalar w and a vector v = (x, y, z).
-
-**Hamilton product** (not commutative):
+With θ = 90°, Ry(90°) = [[0, 0, 1], [0, 1, 0], [−1, 0, 0]]. Multiply out Rz(ψ)·Ry(90°)·Rx(φ) and use
+sin(a − b) = sin a cos b − cos a sin b, cos(a − b) = cos a cos b + sin a sin b:
 
 ```
-(p_w, p_v) ⊗ (q_w, q_v) = ( p_w q_w − p_v · q_v ,  p_w q_v + q_w p_v + p_v × q_v )
+R = [[ 0, −sin(ψ − φ), cos(ψ − φ)],
+     [ 0,  cos(ψ − φ), sin(ψ − φ)],
+     [−1,       0,          0     ]]
 ```
 
-For example i ⊗ j = k but j ⊗ i = −k. The **conjugate** is q* = (w, −v). For a **unit**
-quaternion (|q| = 1), q* is the inverse rotation.
+Only ψ − φ appears. And atan2(−R[0][1], R[1][1]) = atan2(sin(ψ − φ), cos(ψ − φ)) = ψ − φ: that is where the
+convention's yaw (with roll = 0) comes from.
+</details>
 
-**Axis-angle.** A rotation by angle α about a unit axis u is
+![At ROS pitch +90°, (roll 0°, yaw 30°), (20°, 50°) and (−15°, 15°) are the same attitude](assets/gimbal.svg)
 
-```
-q = ( cos(α/2),  u · sin(α/2) )
-```
+One degree of freedom is gone: the angles cannot be recovered separately. The usual convention, used by
+NAVERA Lite and by SciPy, sets roll = 0 and puts everything in yaw: ψ = atan2(−R[0][1], R[1][1]). Close
+to the lock it is worse than "undefined": a tiny change of attitude can swing roll and yaw by tens of
+degrees (lab Step 3 measures it). This is Apollo's problem in mathematical form: Euler angles are three
+gimbals on paper. A filter must never store its state as Euler angles.
 
-90° about z: q = (0.7071, 0, 0, 0.7071). Note the **half angle**: q and −q give the **same**
-rotation (a quaternion turns twice around while the rotation turns once).
+> [!QUESTION] ✏️ Check
+> The attitude is roll 10°, ROS pitch +90°, yaw 40°. What does the convention return, and is it the same
+> attitude?
 
-**Rotating a vector.** Put the vector in a "pure" quaternion (0, v):
+<details><summary>Answer</summary>
+Roll 0°, pitch 90°, yaw 30° (ψ − φ = 30°). Yes, the same attitude: only ψ − φ matters at θ = +90°. (And at
+−90°? Lab Step 3 finds out.)
+</details>
 
-```
-(0, v') = q ⊗ (0, v) ⊗ q*
-```
+## 4. Quaternions: rotations without gimbal lock
 
-With q = 90° about z and v = (1, 0, 0) (east) you get v' = (0, 1, 0) (north). ✔
+> [!TIP] 🧰 Complex numbers in five lines
+> i² = −1. A complex number z = a + b·i is the point (a, b). e^{iα} = cos α + i sin α has length 1, and
+> multiplying by it **rotates** a point by α: (1 + 0i)·e^{i·90°} = i, the point (0, 1). Multiplying two of them
+> adds the angles: e^{iα}·e^{iβ} = e^{i(α+β)}. So in 2-D, "a rotation" is "a unit complex number" and
+> "compose" is "multiply". Quaternions do the same in 3-D.
 
-**Quaternion → matrix** (q unit):
-
-```
-      ⎡1 − 2(y² + z²)   2(xy − wz)       2(xz + wy)    ⎤
-R  =  ⎢2(xy + wz)       1 − 2(x² + z²)   2(yz − wx)    ⎥
-      ⎣2(xz − wy)       2(yz + wx)       1 − 2(x² + y²)⎦
-```
-
-**Composition.** q_a ⊗ q_b corresponds to R_a · R_b. The ZYX Euler angles become
-q = q_z(ψ) ⊗ q_y(θ) ⊗ q_x(φ). For the worked example (10°, 5°, 60°):
-q = (0.8638, 0.0537, 0.0812, 0.4943), and its matrix is exactly the R above.
-
-Why use quaternions? Four numbers instead of nine, one simple constraint (|q| = 1, easy to
-re-normalise), no gimbal lock, cheap composition, and smooth interpolation (next section). The BNO085,
-`sensor_msgs/Imu` and every NAVERA module store orientations as quaternions.
-
-> [!WARNING]
-> **The order trap.** ROS messages and NAVERA's code store a quaternion as **(x, y, z, w)** —
-> scalar **last**. Many textbooks, and the lab files of this course, use **(w, x, y, z)** — scalar
-> **first**. The identity is (0, 0, 0, 1) in the first order and (1, 0, 0, 0) in the second. Mixing
-> them up gives no error message, only wrong angles. Convert explicitly (`xyzw_to_wxyz`) at every
-> boundary.
-
-## 6. Interpolation: SLERP
-
-The IMU gives an attitude every 20 ms, but the camera exposure falls *between* two samples
-(lesson 20). We need the attitude at a time t between q0 and q1. Averaging the components (linear
-interpolation) gives a vector shorter than 1 and a rotation speed that is not constant. The correct
-tool is **SLERP** (spherical linear interpolation): move along the great circle of the 4-D unit
-sphere at a constant rate.
-
-![SLERP vs linear interpolation](assets/slerp.svg)
+A **quaternion** has one real part w and three imaginary parts: q = w + x·i + y·j + z·k, with
 
 ```
-cos Θ = q0 · q1                       (4-D dot product)
-if q0 · q1 < 0:  q1 ← −q1             (shortest path: −q1 is the same rotation)
-slerp(q0, q1, t) = [ sin((1 − t)Θ) · q0 + sin(tΘ) · q1 ] / sin Θ ,   t ∈ [0, 1]
+i² = j² = k² = i·j·k = −1          i·j = k,  j·k = i,  k·i = j,   but   j·i = −k   (order matters)
 ```
 
-When Θ is very small, sin Θ ≈ 0: use normalised linear interpolation instead (NAVERA switches when
-q0·q1 > 0.9995).
-
-**Worked example.** Heading 10° (yaw 80°) at t = 0 and heading −10° (yaw 100°) 20 ms later:
-q0 = (0.7660, 0, 0, 0.6428), q1 = (0.6428, 0, 0, 0.7660), cos Θ = 0.9848, Θ = 10° (half of the 20°
-turn). At a quarter of the interval: slerp = (0.7373, 0, 0, 0.6756), i.e. yaw 85°, heading 5°: exactly
-a quarter of the turn.
-
-In the lab you write `slerp(q0, q1, t)` with quaternions as numpy arrays in **(w, x, y, z)** order.
-**Lesson 20 reuses this function** to find the attitude at the exposure instant of each frame.
-
-## 7. Integrating the gyroscope — and why it drifts
-
-The orientation changes with the body rate ω according to the **quaternion kinematics**:
+ROS messages, NAVERA and NAVERA Lite store it as **(x, y, z, w): the scalar last.** A rotation by angle α
+about a unit axis u = (uₓ, u_y, u_z) is
 
 ```
-dq/dt = ½ · q ⊗ (0, ω)
+q = ( uₓ sin(α/2),  u_y sin(α/2),  u_z sin(α/2),  cos(α/2) )
 ```
 
-Over one sample (dt = 20 ms) with ω roughly constant, the exact solution is
+Note the **half angle**. A 90° yaw is q = (0, 0, sin 45°, cos 45°) = (0, 0, 0.7071, 0.7071). No rotation is
+(0, 0, 0, 1). And **q and −q are the same rotation**: turning by α about u, or by α + 360° about u.
+
+**Hamilton product** (⊗). With p = (p_v, p_w) and q = (q_v, q_w), where p_v = (pₓ, p_y, p_z):
 
 ```
-q_{k+1} = q_k ⊗ Δq ,     Δq = ( cos(|ω|dt/2),  ω/|ω| · sin(|ω|dt/2) )
+p ⊗ q = ( p_w·q_v + q_w·p_v + p_v × q_v ,   p_w·q_w − p_v · q_v )
+          ───────── vector part (x, y, z) ─────────   ── scalar part w ──
 ```
 
-Δq is the axis-angle quaternion of the small rotation |ω|dt about the axis ω/|ω|. It multiplies on
-the **right** because ω is measured in the **body** frame. (A rotation of the *world* frame, such as
-the declination correction below, multiplies on the **left**.) Re-normalise q after each step.
+(× is the cross product, · the dot product: a × b = (a_y b_z − a_z b_y, a_z b_x − a_x b_z, a_x b_y − a_y b_x);
+x × y = z.) The cross product is why p ⊗ q ≠ q ⊗ p. The product
+**composes rotations exactly like matrices**: the matrix of p ⊗ q is R(p)·R(q).
 
-The problem is the bias. Integration adds b_g · dt at every step, so the attitude error grows
-**without bound**:
+The **conjugate** q* = (−x, −y, −z, w). For a unit quaternion it is the inverse rotation: q ⊗ q* =
+(0, 0, 0, 1).
 
-```
-error from bias:        e_b(t) = b_g · t
-error from white noise: σ(t)  = σ_g · √(dt · t)      ("angle random walk")
-```
-
-With the log of the lab (b_g = 0.03 °/s on z, σ_g = 0.005 rad/s at 50 Hz): after 300 s the bias
-gives 9.0° and the noise only about 0.7° (1σ). The bias dominates. After one hour the bias alone
-gives 108°: the drone would believe it flies east while it flies north.
-
-![Drift of the gyroscope vs fused attitude](assets/drift.svg)
-
-Gyroscopes are excellent for **fast, short** changes and useless alone for the **long term**. We
-need sensors that do not drift — even if they are noisy.
-
-## 8. Tilt from the accelerometer
-
-When the drone is not accelerating, f_b = Rᵀ (0, 0, g). With R = Rz Ry Rx, the third row of R gives
+**Rotating a vector.** Write v as a "pure" quaternion (vₓ, v_y, v_z, 0) and compute
 
 ```
-f_b = g · ( −sin θ ,  cos θ sin φ ,  cos θ cos φ )
+v' = q ⊗ (v, 0) ⊗ q*          then keep the vector part
 ```
 
-so
+**Worked example.** q = 90° yaw = (0, 0, 0.7071, 0.7071), v = east = (1, 0, 0, 0). First q ⊗ v: vector
+part 0.7071·(1, 0, 0) + 0·(0, 0, 0.7071) + (0, 0, 0.7071) × (1, 0, 0) = (0.7071, 0.7071, 0), scalar
+0 − 0 = 0. Then p = (0.7071, 0.7071, 0, 0) ⊗ q* = (0, 0, −0.7071, 0.7071): vector part
+0·q*_v + 0.7071·(0.7071, 0.7071, 0) + (0.7071, 0.7071, 0) × (0, 0, −0.7071) = (0.5, 0.5, 0) + (−0.5, 0.5, 0)
+= (0, 1, 0); scalar 0·0.7071 − 0 = 0. Result (0, 1, 0, 0): east became **north**. ✔
+
+<details class="further"><summary>🔬 Why the half angle? (optional, 5 minutes)</summary>
+
+Take a unit axis u, a vector v ⟂ u and q = (u sin(α/2), cos(α/2)). With the product above,
+q ⊗ (v, 0) = (cos(α/2)·v + sin(α/2)·u × v, 0), because u · v = 0. Multiply on the right by
+q* = (−u sin(α/2), cos(α/2)): the result is cos²(α/2)·v + 2 sin(α/2) cos(α/2)·u × v − sin²(α/2)·v =
+**cos α · v + sin α · (u × v)**: v turned by α about u. q turns v by α/2 from the left and q* by α/2 from
+the right: that is the half angle. ✏️ Do the middle step yourself.
+</details>
+
+**Quaternion → matrix** (normalise q first):
 
 ```
-roll  φ = atan2(f_y, f_z)
-pitch θ = atan2(−f_x, √(f_y² + f_z²))
+      ⎡1 − 2(y² + z²)    2(xy − wz)       2(xz + wy)   ⎤
+R  =  ⎢2(xy + wz)       1 − 2(x² + z²)    2(yz − wx)   ⎥
+      ⎣2(xz − wy)        2(yz + wx)      1 − 2(x² + y²)⎦
 ```
 
-Yaw does not appear: gravity is vertical, so it says nothing about heading. In cruise with the nose
-4° down, f_x = −9.81 · sin 4° = −0.68 m/s².
+The ZYX Euler angles become q = q_z(ψ) ⊗ q_y(θ) ⊗ q_x(φ), in the same order as Rz·Ry·Rx. For §3's
+example (10°, 5°, 60°): **q = (0.0537, 0.0812, 0.4943, 0.8638)**, and its matrix is exactly §3's R.
 
-These angles do **not drift**, but they are **noisy** (motor vibration: a 0.3 m/s² noise is
-already 1.7° per sample) and they are **wrong whenever the drone accelerates**. The worst case is a
-**coordinated turn**: a multirotor turning at speed v with turn rate ω banks by atan(v ω / g)
-(10 m/s and 14 °/s → 14° of bank), and its thrust — the force the accelerometer feels — stays along
-the body z axis. The accelerometer then believes the drone is **level**. This is not a sensor defect;
-it is physics (Einstein's equivalence principle).
+Why bother? Four numbers instead of nine, one simple constraint (length 1, easy to restore by dividing by
+the length), no gimbal lock, cheap composition, and smooth interpolation (§5). The IMU chip, the ROS
+`sensor_msgs/Imu` message and NAVERA all store attitudes as quaternions.
 
-## 9. The complementary filter
+> [!WARNING] The order trap: (x, y, z, w) or (w, x, y, z)?
+> Many textbooks, Eigen and some libraries write **(w, x, y, z)**, scalar first; ROS writes **(x, y, z, w)**.
+> The same four numbers then mean two different attitudes, and nothing warns you: the length is still 1.
+>
+> ![The four numbers (0, 0, 0, 1): no rotation in ROS order, a 180° turn about z in the other order](assets/qtrap.svg)
+>
+> The course rule: every function says its order in its docstring, and data is converted explicitly where
+> it enters.
 
-Gyro: good at high frequency, bad at low frequency. Accelerometer: the opposite. The
-**complementary filter** takes each where it is good:
+> [!QUESTION] ✏️ Check
+> 1. Write q for 180° about x. Where does it send (0, 1, 0)?
+> 2. Why does a rotation by 360° give q = (0, 0, 0, −1) and not (0, 0, 0, 1)? Is it a problem?
 
-![Complementary filter](assets/complementary.svg)
+<details><summary>Answer</summary>
+1. (sin 90°, 0, 0, cos 90°) = (1, 0, 0, 0). It sends (0, 1, 0) to (0, −1, 0): the left wing to the right.
+Shortcut: the matrix formula with (x, y, z, w) = (1, 0, 0, 0) gives R = diag(1, −1, −1).<br>
+2. cos(360°/2) = cos 180° = −1. No problem for the attitude: −q is the same rotation as q. It matters
+only when you compare or interpolate quaternions (§5).
+</details>
 
-```
-α = τ / (τ + dt)
-φ_k = α · (φ_{k−1} + φ̇ · dt) + (1 − α) · φ_acc,k
-```
+## 5. Between two attitudes: slerp and the angle of a rotation
 
-τ is the **time constant**: roughly, "trust the gyro for τ seconds, then let the accelerometer pull
-the estimate back". In the frequency domain, the accelerometer goes through a low-pass filter and the
-gyroscope through a high-pass filter with the same cut-off f_c = 1 / (2πτ); the two weights add up
-to 1 at every frequency — hence the name.
+The IMU gives an attitude every 20 ms, but a photo is taken between two samples. NAVERA needs the
+attitude at the photo's instant: an **interpolation** between q0 and q1. Averaging the four numbers
+(linear interpolation) gives a vector shorter than 1; once normalised, it turns faster in the middle of the
+interval than at the ends. **Slerp** (spherical linear interpolation) moves along the great circle of the
+4-D unit sphere at a constant rate: the same idea as mission 06's great circles, one dimension up.
 
-The angle rates φ̇, θ̇ are **not** the body rates p, q, r (gyro x, y, z). For ZYX angles:
-
-```
-φ̇ = p + (q sin φ + r cos φ) tan θ
-θ̇ = q cos φ − r sin φ
-ψ̇ = (q sin φ + r cos φ) / cos θ          (cos θ = 0 → gimbal lock again)
-```
-
-During a turn, r (yaw rate) is large and leaks into φ̇ through tan θ: forgetting these terms costs
-degrees.
-
-**The bias is now bounded.** With a constant gyro bias b, the error e of the filter obeys
-e_k = α (e_{k−1} + b · dt). In steady state e = α b dt / (1 − α) = **b · τ**. With b = 0.01 °/s
-and τ = 30 s: 0.3°. The choice of τ is a **trade-off**: a small τ copies the accelerometer's noise and
-its errors in turns; a large τ keeps more gyro bias (b·τ) and recovers slowly from a wrong start. In
-the lab you sweep τ and find the best value for a real-looking flight.
-
-Production systems (the BNO085's own fusion, ArduPilot's EKF) use **Kalman filters** that choose
-this weighting automatically from the noise statistics (lesson 28). The complementary filter is the
-same idea with a fixed gain.
-
-## 10. The compass and the declination
-
-**Tilt-compensated heading.** Remove roll and pitch from the measured field to get the field a
-**level** body would see, then take its angle:
+![Slerp moves along the arc at equal angles; linear interpolation cuts the chord](assets/slerp.svg)
 
 ```
-m_h = Ry(θ) · Rx(φ) · m_b
-magnetic heading = atan2(m_h,y , m_h,x)        (deg, then mod 360)
+d = q0 · q1                                   4-D dot product
+if d < 0:  q1 ← −q1,  d ← −d                  same rotation, shorter way round
+if d > 0.9995:  normalise(q0 + t·(q1 − q0))   almost the same attitude: sin Θ ≈ 0
+else:  Θ = acos(d),  slerp = [sin((1 − t)Θ)·q0 + sin(tΘ)·q1] / sin Θ
 ```
 
-Why compensate? The Earth's field is not horizontal: it dips by the **inclination** I (about 50° in
-Monastir, 66° in London, −13° in Singapore: negative means the field points up). Without compensation, a few degrees of roll mixes the large vertical
-component into the horizontal axes and the heading moves even though the drone does not turn.
+**The angle of the rotation from q0 to q1** follows from the same dot product: angle = 2·acos(|q0 · q1|).
+The absolute value is the "q and −q" rule again. (d > 0.9995 means less than 3.6° apart.)
 
-**True vs magnetic north.** The horizontal field points to **magnetic** north. The angle from
-**true** north (the north of maps) to magnetic north is the **magnetic declination** D, positive to
-the east:
+**Worked example.** Yaw 80° (heading 10°) at t = 0, yaw 100° (heading −10° = 350°) 20 ms later:
+q0 = (0, 0, 0.6428, 0.7660), q1 = (0, 0, 0.7660, 0.6428). d = 0.9848, Θ = 10° (half of the 20° turn, the
+half angle again). At t = 0.25: slerp = (0, 0, 0.6756, 0.7373), a yaw of 85°: exactly a quarter of the
+turn. Over 20° linear interpolation is almost as good (4.9905° instead of 5°: a little behind, as the chord
+predicts). Over a large turn it is not: lab Step 6 measures how much.
 
-```
-true heading = magnetic heading + D
-```
+> [!QUESTION] ✏️ Check
+> Why must slerp replace q1 by −q1 when q0 · q1 < 0? What would happen otherwise?
 
-![True north vs magnetic north](assets/north.svg)
+<details><summary>Answer</summary>
+q1 and −q1 are the same attitude. With a negative dot product the arc from q0 to q1 on the 4-D sphere is
+the long one: the interpolated attitude would turn the long way round (more than 180°) between two
+attitudes that are close.
+</details>
 
-D depends on place and time. It is computed from the **World Magnetic Model** (**WMM**), a
-spherical-harmonic model of the Earth's main field published every five years (WMM2025 is valid
-2025–2030). The Python package **pygeomag** implements it — NAVERA uses it, and so will you. Values
-for mid-October 2026 (WMM2025, sea level):
-
-| Place | Latitude, longitude | Declination D | Inclination I |
-|---|---|---|---|
-| London | 51.50 N, 0.12 W | +1.21° | 66.5° |
-| Reykjavik | 64.15 N, 21.94 W | −11.05° | 75.4° |
-| Cape Town | 33.92 S, 18.42 E | −26.81° | −64.6° |
-| Sydney | 33.87 S, 151.21 E | +12.83° | −64.4° |
-| Singapore | 1.29 N, 103.85 E | +0.24° | −12.9° |
-| Sousse (Tunisia) | 35.83 N, 10.64 E | +3.33° | 50.6° |
-
-The declination can be large (−26.8° in Cape Town: a compass there points more than a quarter of
-a right angle west of true north) or small, and it changes with time (London: +0.91° in 2025,
-+1.76° in 2030). Small does not mean negligible: if you ignore 1.21° in London, after 10 km of
-flight you are 10 000 × tan(1.21°) ≈ **212 m** to the side. Sousse is in the table because NAVERA's
-real test data (map, frames, simulator area) covers Sousse, Tunisia, where NAVERA is developed.
-
-## 11. Straightening the photo
-
-NAVERA does not integrate the IMU to get a **position** (inertial navigation is "not implemented" in
-`docs/VALIDATION_STATUS.md`). It uses the **attitude**: for every frame it takes the attitude at the
-exposure instant, computes the camera's rotation R_world_cam, and **straightens** the photo into the
-view of a level camera looking straight down, with a **homography** H = K · R_virt_cam · K⁻¹
-(lessons 18 and 23). Without it, the centre of the photo is h · tan(tilt) away from the point under
-the drone: 150 m × tan 10° = 26.4 m.
-
-![A tilted camera does not look under the drone](assets/tilt.svg)
-
-The attitude error also limits other methods. `VALIDATION_STATUS.md` says the celestial fix is
-"coarse: bounded by the IMU attitude (~111 km per degree)": 5.5–6.5 km with a perfect attitude,
-24–119 km with a BNO085-class IMU (simulated star fields).
-
-## 🐦 How birds do it
-
-Navi the swallow has no BNO085, but she carries the same three sensors. In the inner ear of every
-bird, as in yours, the **vestibular system** has three **semicircular canals** at roughly right
-angles, filled with fluid: when the head turns, the fluid lags behind and bends sensory hair cells —
-a 3-axis rate sensor, like a gyroscope. Next to them, the **otolith organs** carry small calcium
-carbonate crystals on hair cells: they feel gravity and linear acceleration — an accelerometer, with
-exactly the same ambiguity between tilt and acceleration that you met in section 8. The brain
-resolves it as a complementary filter does: it combines the canals (fast) with the otoliths and with
-vision (slow and absolute).
-
-Birds also **stabilise the head**. A falcon hovering over a cliff, or a kestrel hanging
-in the wind, keeps its head almost fixed in space while the body moves: reflexes driven by the
-vestibular system and the eyes keep the image on the retina still. NAVERA cannot move its camera, so
-it does the same job in software, by straightening the photo with the attitude.
-
-And the compass? In 1972 Wolfgang and Roswitha Wiltschko showed that European robins in an
-orientation cage changed their chosen direction when coils changed the magnetic field around them.
-The bird compass is an **inclination compass**: it uses the angle between the field lines and
-gravity ("towards the pole" vs "towards the equator"), not the polarity. In Europe the
-field dips steeply (66° in London) and is easy to read; at the magnetic equator, where the field is
-horizontal, such a compass cannot tell the two directions apart. Yet millions of migrants cross the
-magnetic equator every year — barn swallows from Europe to southern Africa, Arctic terns from the
-Arctic to the Antarctic, bar-tailed godwits from Alaska to New Zealand — and like NAVERA they
-cannot trust one sensor alone: they cross-check the magnetic field with the sun and the stars
-(lesson 26).
+> [!WARNING] Common wrong ideas
+> - "Positive pitch means nose up." Not in ROS: about the left wing, positive is nose **down**. Say which
+>   pitch you print ("ROS pitch" or "pitch_up").
+> - "Yaw is the heading." Yaw counts from east, counter-clockwise; heading from north, clockwise.
+> - "R·v and Rᵀ·v are almost the same." They are opposite rotations. Check by a column: R·(1, 0, 0) is the nose.
+> - "A quaternion stores the angle." It stores **half** the angle; and q and −q are the same attitude.
+> - "If the length is 1, the quaternion is right." A swapped order still has length 1.
 
 ## In NAVERA
 
-**The driver** — [imu_pkg/imu_pkg/nodes/imu_node.py](file:navera/imu_pkg/imu_pkg/nodes/imu_node.py)
-reads the BNO085 and publishes `sensor_msgs/Imu` on `/navera/sensors/imu` at 50 Hz. Its settings,
-[imu_params.yaml](file:navera/imu_pkg/imu_pkg/config/imu_params.yaml), state honestly that the noise
-values (`orientation_stddev: 0.02` rad, `angular_velocity_stddev: 0.005` rad/s) are "datasheet-derived
-estimates, NOT measured on NAVERA hardware". The fusion itself runs on the chip.
+From NAVERA's architecture and validation documents (Release 0.2, 2026-10-03), in words:
 
-**Quaternion algebra and true north** — [imu_pkg/imu_pkg/orientation.py](file:navera/imu_pkg/imu_pkg/orientation.py),
-order **(x, y, z, w)**:
+- NAVERA reads the attitude as a ROS quaternion in the ENU world frame whose north axis is **true** north
+  (not magnetic; the magnetic correction is mission 17's subject).
+- For **every camera frame**, the attitude is **interpolated at the exposure instant** from the recent
+  IMU history. No attitude within 0.2 s of the exposure → the frame is marked unusable. A camera fixed to
+  the body that turned faster than **30°/s** around the exposure (measured from the rotation between two
+  attitudes 0.2 s apart) is refused, and so is a frame tilted more than **45°** from vertical.
+- Usable frames are **straightened** into a level, straight-down view with the attitude and the camera
+  mount (missions 18 and 23). With a camera gimbal, which keeps the camera level, only the heading is used.
+- The celestial fix loses about **111 km per degree** of attitude error (simulated star fields).
+- NAVERA's human-readable attitude (roll, pitch, heading in degrees) counts pitch **positive nose up**
+  and roll positive right wing down, like `rpy_human`, while its ROS messages carry the ROS signs. Its
+  backlog (item IMU-3) still lists the IMU chip's frame as **to be confirmed on the real chip** with a
+  known heading: conventions are tested, not assumed.
 
-```python
-def quat_mul(a: Sequence[float], b: Sequence[float]) -> Quat:
-    """Hamilton product a * b of (x, y, z, w) quaternions."""
-    ax, ay, az, aw = a
-    bx, by, bz, bw = b
-    return (aw * bx + ax * bw + ay * bz - az * by,
-            aw * by - ax * bz + ay * bw + az * bx,
-            aw * bz + ax * by - ay * bx + az * bw,
-            aw * bw - ax * bx - ay * by - az * bz)
-```
+## In NAVERA Lite
 
-`OrientationCorrector.apply()` turns the magnetic orientation into a true one by rotating the
-**world** frame about "up", so the correction multiplies on the **left**:
-`q = quat_mul((0, 0, sin(d/2), cos(d/2)), q)` with d = −D. The class `Declination` calls
-`GeoMag().calculate(glat=lat, glon=lon, alt=alt_km, time=year).d` and recomputes only when the vehicle
-has moved more than 20 km. Until a position is known, `imu_node` uses the `declination_deg`
-parameter, or logs that the heading is still MAGNETIC.
+[navera_lite/rotations.py](file:./navera_lite/rotations.py) is NAVERA Lite's rotation part: you write
+`rot_y` to `q_angle_deg`; `rot_x`, `q_normalize`, `q_from_euler_zyx`, `heading_deg_from_q` and `rpy_human`
+are given. Mission 17 integrates a gyroscope with your `q_mul` and `q_from_axis_angle`, mission 18 builds a
+camera's rotation with `q_to_matrix`, and mission 20 interpolates the attitude at each photo with `slerp`.
 
-**Matrices** — [navera_common/navera_common/camera_model.py](file:navera/navera_common/navera_common/camera_model.py)
-has `quat_to_matrix(q)` (the matrix of section 5, order x, y, z, w), `rpy_to_matrix(roll, pitch, yaw)`
-(`R = Rz(yaw) Ry(pitch) Rx(roll)`), `camera_rotation()`, `tilt_deg()` and `body_rpy_enu(q)`. Read the
-docstring of `body_rpy_enu`: it reports pitch **positive nose up**, the opposite sign of ROS, because
-it is for humans. Always read how an angle is counted.
+## 🐦 How birds do it
 
-**SLERP** — [navera_common/navera_common/sensor_history.py](file:navera/navera_common/navera_common/sensor_history.py):
+A bird's inner ear has three **semicircular canals**, roughly at right angles, filled with fluid: when the
+head turns, the fluid lags and bends sensory hair cells. Three axes, three rotation sensors, like a
+gyroscope's three axes. A hovering kestrel uses them, with its eyes, to keep its **head** almost still in
+space while its body moves in the wind. NAVERA cannot move its camera, so it does the same job in software:
+it straightens each photo with the attitude.
 
-```python
-def slerp(q0: Sequence[float], q1: Sequence[float], f: float) -> Tuple[float, ...]:
-    """Spherical interpolation of (x, y, z, w) quaternions, shortest path."""
-    d = sum(a * b for a, b in zip(q0, q1))
-    if d < 0:
-        q1, d = [-c for c in q1], -d
-    if d > 0.9995:
-        q = [a + f * (b - a) for a, b in zip(q0, q1)]
-    else:
-        th = math.acos(min(1.0, d))
-        s0, s1 = math.sin((1 - f) * th) / math.sin(th), math.sin(f * th) / math.sin(th)
-        q = [s0 * a + s1 * b for a, b in zip(q0, q1)]
-```
+## Summary
 
-The live camera keeps a `History(maxlen=4000, max_gap_s=0.2, interp=slerp)` of attitudes and asks it
-for the attitude at each exposure.
+1. ENU world, FLU body, right-hand rule: positive roll = right wing down, positive **ROS pitch = nose
+   down**, positive yaw = nose left. heading = (90° − yaw) mod 360°; pitch_up = −ROS pitch.
+2. The columns of R are the body axes in the world; R⁻¹ = Rᵀ; products do not commute.
+3. ZYX: R = Rz(ψ)·Ry(θ)·Rx(φ); back with asin (clamped) and atan2. Euler angles are for people: at
+   θ = ±90° only one combination of ψ and φ exists (ψ − φ at +90°: gimbal lock), roll = 0 by convention.
+   Matrices (9 numbers) rotate many vectors; watch R vs Rᵀ.
+4. Quaternions (x, y, z, w) store, compose and interpolate: half angle, ⊗ composes, q* inverts,
+   v' = q ⊗ v ⊗ q*, q ≡ −q; never read them as (w, x, y, z).
+5. Slerp for attitudes between samples; the angle between two attitudes is 2·acos|q0 · q1|.
 
-**Using the attitude** — [navera_common/navera_common/frame_builder.py](file:navera/navera_common/navera_common/frame_builder.py)
-marks a frame **unusable** if there is no attitude at its exposure ("the camera's tilt is unknown"),
-if the vehicle turns faster than `max_rate_dps` (30 °/s: the tilt at the shutter instant is
-uncertain), or if the tilt is above `max_tilt_deg` (45°). Otherwise it straightens the frame:
+**Next mission:** the IMU — integrating a gyroscope into a quaternion, finding "down" from gravity, and why
+the heading drifts.
 
-```python
-            if tilt > 0.05:
-                H = nadir_homography(self.cam.K_out, R)
-                h, w = out.shape[:2]
-                out = cv2.warpPerspective(out, H, (w, h), flags=cv2.INTER_LINEAR,
-                                          borderMode=cv2.BORDER_CONSTANT)
-            meta["straightened"] = True
-```
+## Check yourself
 
-## Glossary
+Answer without scrolling up.
 
-| Term | Meaning |
-|---|---|
-| **IMU** | Inertial Measurement Unit: accelerometer + gyroscope (+ magnetometer) |
-| **attitude** | the orientation of a vehicle (roll, pitch, yaw / R / q) |
-| **specific force** | what an accelerometer measures: acceleration minus gravity |
-| **bias** | a constant (slowly varying) sensor offset |
-| **drift** | the growing error caused by integrating a bias |
-| **angle random walk** | the angle error from integrating white rate noise, grows as √t |
-| **rotation matrix, SO(3)** | 3×3 orthonormal matrix with det = +1 |
-| **Euler angles (ZYX)** | R = Rz(yaw) Ry(pitch) Rx(roll) |
-| **gimbal lock** | at pitch ±90° roll and yaw become one angle |
-| **quaternion** | (w, x, y, z), unit length; stores a rotation without gimbal lock |
-| **Hamilton product** | quaternion multiplication, ⊗; composes rotations, not commutative |
-| **SLERP** | interpolation along the great circle between two unit quaternions |
-| **complementary filter** | blends a high-passed gyro angle with a low-passed absolute angle |
-| **time constant τ** | how long the filter trusts the gyro; α = τ/(τ+dt) |
-| **inclination** | angle of the magnetic field below the horizontal |
-| **declination** | angle from true north to magnetic north, east positive |
-| **WMM** | World Magnetic Model (WMM2025 valid 2025–2030), used through pygeomag |
-
-## Self-check
-
-<details><summary>1. Show that R⁻¹ = Rᵀ for a rotation matrix, and say why this is useful on the Jetson.</summary>
-The columns of R are orthonormal, so (RᵀR)ij = column i · column j = 1 if i = j, else 0: RᵀR = I,
-hence Rᵀ = R⁻¹. Inverting a rotation is then a free transpose instead of a general 3×3 inversion,
-and it is exact (no numerical error).
+<details><summary>1. What are the three columns of an attitude matrix R?</summary>
+The body's x (nose), y (left wing) and z (top) axes, written in world (ENU) coordinates.
 </details>
-
-<details><summary>2. A quaternion from a ROS message is (0, 0, 0.3827, 0.9239). What is the heading? What happens if you read it as (w, x, y, z)?</summary>
-ROS order is (x, y, z, w): a rotation about z with cos(α/2) = 0.9239 → α = 45° yaw → heading
-90 − 45 = 45° (north-east). Read as (w, x, y, z), w = 0 means a 180° rotation about the axis
-(0, 0.38, 0.92): a completely different attitude (the body's up axis ends 45° from vertical) — with no error message.
+<details><summary>2. A drone flies 4° nose-down. Its ROS pitch? Its pitch_up?</summary>
+ROS pitch +4° (about the left wing, positive = nose down); pitch_up −4°.
 </details>
-
-<details><summary>3. Why does SLERP replace q1 by −q1 when q0·q1 &lt; 0?</summary>
-q1 and −q1 are the same rotation. If the dot product is negative, the arc from q0 to q1 on the
-4-D sphere is longer than 180°, and the interpolation would turn the "long way round" (more than
-180° of rotation). Using −q1 takes the short arc.
+<details><summary>3. Why is "roll" undefined at ROS pitch 90°, and what does a program report then?</summary>
+The nose is vertical, so the roll axis coincides with the yaw axis: only ψ − φ is defined. By convention
+roll = 0 and yaw = atan2(−R[0][1], R[1][1]).
 </details>
-
-<details><summary>4. The roll gyro has a bias of 0.05 °/s. What is the roll error after 10 minutes of pure integration? With the gyro + accelerometer complementary filter of τ = 20 s?</summary>
-Integration: 0.05 × 600 = 30°. Complementary filter (steady state): b · τ = 0.05 × 20 = 1°, and it
-does not grow. (This works for roll and pitch only: gravity says nothing about the heading, so the
-accelerometer cannot correct a heading drift — that is the magnetometer's job, section 10.)
+<details><summary>4. A ROS orientation is (0, 0, 0.5, 0.8660). Heading? What if you read it as (w, x, y, z)?</summary>
+Yaw 2·acos(0.8660) = 60° about z (counter-clockwise from east) → heading 90° − 60° = 30°. Read as
+(w, x, y, z): w = 0, a 180° turn about the axis (0, 0.5, 0.87) — a completely different attitude, and no
+error message.
 </details>
-
-<details><summary>5. A drone turns at 20 °/s at 12 m/s. What roll does its accelerometer report, and what is the true bank?</summary>
-True bank = atan(v ω / g) = atan(12 × 0.349 / 9.81) = 23°. In a coordinated turn the specific force
-stays along the body z axis, so the accelerometer reports a roll of about 0° — an error of 23°.
-</details>
-
-<details><summary>6. A compass reads 359° in Sydney (D = +12.83°). What is the true heading? What side error after 5 km if D is ignored?</summary>
-359 + 12.83 = 371.83 → 11.83° (mod 360): north-north-east. Side error 5000 × tan(12.83°) ≈ 1139 m.
+<details><summary>5. (Mission 06) The rows of the ENU matrix are E, N, U. To go back from ENU to ECEF you used R or Rᵀ?</summary>
+Rᵀ: the inverse of a rotation is its transpose.
 </details>
 
 Now open the **🛠️ Lab** tab.
