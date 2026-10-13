@@ -61,7 +61,8 @@ P = | a  b |     a = σE²       (East variance, m²)        = position_covarian
   NAVERA Lite's `estimate.Estimate.cov`); index 8 = σU².
 - Eigenvalues (ellipse axes²): `λ = (a + c)/2 ± sqrt(((a − c)/2)² + b²)`; PSD ⇔ a ≥ 0, c ≥ 0,
   `a·c − b² ≥ 0`, with up variance ≥ 0 and b the same at both places, all up to a tolerance RELATIVE to the
-  size of the variances (size = max(1, |a|, |c|, |up|): b mismatch beyond tol·size, a·c − b² below −tol·size²;
+  size of the horizontal variances (size = max(1, |a|, |c|) — never the up variance, which can be huge when
+  the altitude is unknown: b mismatch beyond tol·size, a·c − b² below −tol·size²;
   NAVERA Lite `estimate.is_covariance`; NAVERA's judge also scales its tolerance with the variances).
 - Correlation `ρ = b / (σE σN)`. The single "stated σ" is `sqrt(max(a, c))` (NAVERA Lite
   `estimate.stated_sigma`; NAVERA's judge and day vision use the same rule).

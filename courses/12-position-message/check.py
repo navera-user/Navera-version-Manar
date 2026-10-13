@@ -264,6 +264,8 @@ def _():
            ("a=4, b=2.05, c=1 (default tol)", cov9(4, 2.05, 1), "not positive semi-definite"),
            ("a=−1, b=0, c=−1 (determinant +1)", cov9(-1, 0, -1), "negative variance"),
            ("an up variance of −1", cov9(9, 0, 9, -1), "negative variance"),
+           ("a=9, b=10, c=9 with an up variance of 10⁶ m² (altitude unknown)", cov9(9, 10, 9, 1e6),
+            "not positive semi-definite"),
            ("a=−4, b=1, c=4 (negative variance AND negative determinant)", cov9(-4, 1, 4), "negative variance"),
            ("b = 0.5 at index 1, 0.5000001 at index 3", [4.0, 0.5, 0, 0.5000001, 4.0, 0, 0, 0, 1.0], "not symmetric"),
            ("an infinite c", cov9(4, 0, float("inf")), "not finite"),
@@ -299,6 +301,7 @@ def _():
              ("type UNKNOWN, a=c=100", cov9(100, 0, 100), 0, DEFAULTS, None),
              ("type 7 (not a defined type), a=c=100", cov9(100, 0, 100), 7, DEFAULTS, None),
              ("type APPROXIMATED, all 1e-6 m² (σ 1 mm)", cov9(1e-6, 0, 1e-6), 1, DEFAULTS, None),
+             ("type KNOWN, a = c = 1e-4 m² (σ exactly 0.01 m, the minimum)", cov9(1e-4, 0, 1e-4), 3, DEFAULTS, 0.01),
              ("type APPROXIMATED, a=c=9 but b=10 (not PSD)", cov9(9, 10, 9), 1, DEFAULTS, None),
              ("type APPROXIMATED, a=−9, c=4", cov9(-9, 0, 4), 1, DEFAULTS, None),
              ("σ 3 m with min_stated_sigma_m = 5.0", cov9(9, 0, 9), 1, dict(DEFAULTS, min_stated_sigma_m=5.0), None)]
@@ -345,7 +348,8 @@ def _():
              + ("(compute 30 m / the p90 age, then confirm with one run of --speed: about 90 % within 30 m)"
                 if name == "LAG_SPEED_MAX_MPS" else ""))
     explained("EXPLAIN_DEAD", getattr(a, "EXPLAIN_DEAD", ""),
-              ([r"futur", r"ahead", r"later than", r"in advance"], "that the fixes were stamped in the future"),
+              ([r"futur", r"ahead", r"later than", r"in advance", r"negative", r"in front", r"clock", r"before now"],
+               "that the fixes were stamped in the future"),
               ([r"age", r"old", r"negative", r"stale", r"fresh", r"timeout"],
                "what that does to the age / the freshness test"))
     explained("EXPLAIN_LAG", getattr(a, "EXPLAIN_LAG", ""),
@@ -355,7 +359,7 @@ def _():
 
 # ================================================================ Session 2 — attack, then defend
 @c.test("Step 5 — four attacks that fool arbiter v0",
-        hint="attacks/zero.csv, unknown.csv, not_psd.csv, future.csv (header of lesson §5). Each must end with v0 "
+        hint="attacks/zero.csv, unknown.csv, not_psd.csv, future.csv (header in lab Step 5). Each must end with v0 "
              "saying FIX: `python3 contract_lab.py attacks` shows v0's verdict.")
 def _():
     for name in ATTACKS:
@@ -428,6 +432,8 @@ def _():
             text = str(table.get(name, "")).strip()
             c.ok(text, f"{label}[\"{name}\"] is empty")
             state, reason, _ = verdict(attack_rows(name), honest=honest)
+            c.ok(" | " in text, f"{label}[\"{name}\"]: copy the whole LIVE line of `python3 contract_lab.py status`, "
+                                "\"STATE | message\" (the simulation's tables never print it)")
             first = text.split()[0].upper().strip(":,")
             c.ok(first == state, f"{label}[\"{name}\"] starts with {first!r}: for your attacks/{name}.csv this judge "
                                  f"says {state}" + ("" if honest else " (the attack must fool v0)"))
@@ -478,7 +484,7 @@ def _():
 
 
 @c.test("Step 8 — the dead source that comes back",
-        hint="Predict before the 70 s watch, then explain: what does the judge keep from a refused fix, and what "
+        hint="Predict before the 75 s watch, then explain: what does the judge keep from a refused fix, and what "
              "changes when the clock reaches its stamp?")
 def _():
     a = quiet("answers.py")
@@ -498,6 +504,7 @@ def _():
     (t,) = answers("EXPLAIN_HONEST")
     explained("EXPLAIN_HONEST", t,
               ([r"believ", r"trust", r"claim", r"stat", r"says", r"self", r"own", r"valid", r"nothing", r"inside",
+                r"possib", r"true", r"truth", r"real", r"sense", r"plausib", r"accura", r"rule", r"pass", r"check",
                 r"in the message", r"covariance", r"lie", r"honest", r"look(s)? (fine|right|correct|normal)",
                 r"well.formed", r"correct", r"form"], "why the message itself looks fine to the judge"),
               ([r"cross", r"another", r"other source", r"independent", r"compar", r"second", r"validat", r"measur",

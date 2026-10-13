@@ -188,7 +188,8 @@ judge reads nothing else: the east-up and north-up terms (indices 2, 5, 6, 7) ar
 Computers round, so the tests use a tolerance **relative** to the size of the numbers. A celestial fix
 with σE = 3615.9 m, σN = 4706.3 m and ρ = 1 has a·c − b² = 0 exactly, but −0.0625 m⁴ in floating
 point: a fixed 10⁻⁹ would call it impossible. NAVERA Lite allows tol × size on b and tol × size² on
-a·c − b², where size is the largest of 1 and the variances (tol = 10⁻⁹).
+a·c − b², where size is the largest of 1, a and c (tol = 10⁻⁹). Not the up variance: "altitude
+unknown" can mean σU² = 10⁶ m², and a tolerance that large would let an impossible ρ = 1.1 through.
 
 ![Three 2 × 2 blocks: a round error, a tilted ellipse, and nine numbers that are not a covariance](assets/ellipse.svg)
 
@@ -286,8 +287,7 @@ its stamp is *later* than now and the age is **negative**. A freshness test "age
 fires on a negative age: a fix stamped 60 s ahead stays "fresh" for 60 s plus the timeout, **even if
 the source died a second after sending it**. A judge must therefore refuse any stamp more than
 `future_tolerance_s` = 0.5 s ahead (a small tolerance absorbs clock jitter between programs).
-Refusing it *now* is not the end of the story: the judge still holds that fix, and the clock keeps
-running towards its stamp. Lab Step 8 shows what happens then.
+Is refusing it *now* the end of the story? Lab Step 8 answers.
 
 > [!QUESTION] ✏️ Check
 > 1. A drone at 15 m/s; a day fix whose photo is 1.5 s old when used. Staleness? Is it stale for the
@@ -394,8 +394,8 @@ accuracy, an honest "unknown" and a plausibility test, decades before ROS.
 3. The **stated σ** = √max(a, c), believed only for a stated type, a real covariance and σ ≥ 1 cm.
    The judge believes it: honesty is the source's job.
 4. The stamp is the **measurement**: age = now − stamp, latency = published − stamp; a late position
-   costs speed × age metres. A stamp from the future is refused — and a refused fix still waits for
-   its time.
+   costs speed × age metres. A stamp from the future is refused (and lab Step 8 asks what happens
+   next).
 5. A judge's checklist names the **first** broken rule; a judge that skips one has a hole.
 
 **Next mission:** launch files and parameters — start the whole stack with one command, and make your

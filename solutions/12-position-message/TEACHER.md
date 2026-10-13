@@ -48,8 +48,9 @@ Badges: **Contract keeper** = checks 1–7 (session 1), **Honest judge** = all 1
 | Step 7 hand trace (now 500.0; key in the lab, in a details box) | day 495.2 → eligible (4.8 s ≤ 5 s); GPS (0,0) valid False → no position; celestial 500.9 type 2 non-PSD → not a covariance (rule 4 before 5); GPS NaN lat 500.3 → bad position | |
 | fifth hole (Going further) | negative variances (a = c = −4, type 1): v0 reads √max(a, c, 0) = 0 → FIX σ 0.0; honest → NO_FIX "not a covariance". (A NaN covariance is NOT a hole: v0 says DEGRADED σ unknown.) | |
 
-Relative tolerance (fix round 1): `is_covariance` allows tol × size on b and tol × size² on a·c − b², size =
-max(1, |a|, |c|, |σU²|). With an absolute 10⁻⁹, 27 % of valid km-scale covariances with ρ = ±1 were refused
+Relative tolerance (fix rounds 1–2): `is_covariance` allows tol × size on b and tol × size² on a·c − b², size =
+max(1, |a|, |c|) — horizontal only (round 2: with the up variance in size, σU² = 10⁶ let a = 9, b = 10, c = 9 through,
+ρ = 1.11, and the honest judge said FIX). With an absolute 10⁻⁹, 27 % of valid km-scale covariances with ρ = ±1 were refused
 (expert review); lesson §2 example σ 3615.9 / 4706.3 m, ρ = 1 → a·c − b² = −0.0625 in float. The check adds
 σ 1533.1 / 4338.7 m (−0.0156).
 

@@ -151,8 +151,9 @@ The TODO 1 lines must be ✔ (the others are later TODOs).
 4. You get `(True, "ok")` for a = −1, c = −1, b = 0? Its determinant is +1: test the variances
    **before** the determinant. The up variance is index 8.
 5. You refuse the km-sized covariance with correlation exactly 1? Its a·c − b² is −0.0625 after rounding:
-   the tolerance must grow with the numbers (lesson §2: tol × size², size = the largest of 1 and the
-   variances), not a fixed −tol, and not 0.
+   the tolerance must grow with the numbers (lesson §2: tol × size², size = the largest of 1, a and
+   c — not the up variance), not a fixed −tol, and not 0. You accept a = 9, b = 10, c = 9 when the up
+   variance is 10⁶? Your size includes the up variance: leave it out.
 </details>
 
 ## Step 3 — The stated σ (TODO 2)
@@ -185,6 +186,7 @@ python3 contract_lab.py test
    Estimate (`est.cov`, `est.cov_type`). `horizontal(est.cov)` gives `(a, b, c)`.
 3. 11.42 instead of 13.33 for the tilted ellipse (2.55 instead of 3.0 for the example)? You averaged a and c: the contract takes the **larger**.
 4. A number for the all-zero covariance: you forgot the 1 cm minimum. `3.0` for type 0: test the type first.
+   `None` for σ exactly 0.01 m? The minimum itself is believed: refuse only σ **below** it (`<`, not `<=`).
 </details>
 
 ## Step 4 — What a late position costs (TODO 3)
@@ -203,7 +205,7 @@ uses it (published = used, here).
 
 > [!TIP] 🧰 What "within 30 m" means here
 > σ is a *typical* error, not a maximum: if the errors were random with σ = 30 m east and north, about 4 in
-> 10 would fall within 30 m, 86 in 100 within 60 m (2σ), 99 in 100 within 90 m (3σ). This matcher is good to
+> 10 would fall within 30 m (68 % within 1σ is for ONE axis; a 2-D position needs both errors small), 86 in 100 within 60 m (2σ), 99 in 100 within 90 m (3σ). This matcher is good to
 > 1 m, so its "30 m" is meant as a safe bound: we ask how often the position stays inside it. Few fixes
 > inside means the stated accuracy is false.
 
@@ -299,7 +301,9 @@ python3 contract_lab.py judge attacks/zero.csv
 python3 contract_lab.py attacks
 ```
 
-For `future.csv`, one fix is enough. Run the clock long after it and see how long a dead source lives:
+For `future.csv`, one fix is enough, but it must be more than 0.5 s ahead: `delay_s = -0.4` is within the
+tolerance, so even an honest judge accepts it (FIX) and it is no attack. Run the clock long after it and see
+how long a dead source lives:
 
 ```bash
 python3 contract_lab.py judge attacks/future.csv --until 70
@@ -401,7 +405,8 @@ python3 contract_lab.py attacks --eligible
 3. A stamp 0.4 s in the future refused? The rule is "more than `future_tolerance_s` ahead":
    `age < −tolerance`.
 4. A fix exactly 3.0 s old called stale? Stale is **older than** the timeout.
-5. The stale reason must read `stale (5.3 s > 5.0 s)`: one decimal for both, `f"{x:.1f}"`.
+5. The stale reason must read `stale (5.3 s > 5.0 s)`: one decimal for both, `f"{x:.1f}"`. So an age of
+   3.04 s prints `stale (3.0 s > 3.0 s)`: the rounding is only in the text, the test uses the exact age.
 </details>
 
 ## Step 8 — Your judge, live

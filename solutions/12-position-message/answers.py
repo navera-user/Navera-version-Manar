@@ -44,7 +44,7 @@ VERDICTS_MINE = {
     "future": "NO_FIX | no usable source (gps: from the future)",
 }
 
-# ---- Step 8: the dead source that comes back ------------------------------------------------------
+# ---- Step 8: the future attack, watched long ------------------------------------------------------
 PREDICT_REVIVE = "NO_FIX from the future all the time"
 EXPLAIN_REVIVE = ("At about 60 s the dead GPS became FIX again for 3-4 s, then stale: the judge keeps the refused fix "
                   "as the newest one of its source and tests it again at every tick; when the clock reaches its stamp "

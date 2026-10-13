@@ -100,6 +100,9 @@ def test():
          (False, "not symmetric")),
         (1, "a negative north variance", "is_covariance", (cov9(4, 0, -1),), (False, "negative variance")),
         (1, "an up variance of −1", "is_covariance", (cov9(4, 0, 4, -1),), (False, "negative variance")),
+        (1, "an infinite up variance", "is_covariance", (cov9(4, 0, 4, float("inf")),), (False, "not finite")),
+        (1, "a=9, b=10, c=9, up variance 10⁶ (altitude unknown)", "is_covariance", (cov9(9, 10, 9, 1e6),),
+         (False, "not positive semi-definite")),
         (1, "b differs by 1e-12 between its places (rounding)", "is_covariance",
          ([4.0, 1.0, 0, 1.0 + 1e-12, 4.0, 0, 0, 0, 1.0],), (True, "ok")),
         (1, "σ 3.6 km and 4.7 km, correlation exactly 1 (rounding: a·c − b² < 0)", "is_covariance",
@@ -113,6 +116,8 @@ def test():
         (2, "the tilted ellipse of lesson §3", "stated_sigma",
          (Estimate(cov=cov9(83.25, 81.84, 177.75, 36.0), cov_type=est_mod.COV_KNOWN, **gps), D),
          math.sqrt(177.75)),
+        (2, "σ exactly 0.01 m (the minimum is believed)", "stated_sigma",
+         (Estimate(cov=cov9(1e-4, 0, 1e-4), cov_type=est_mod.COV_KNOWN, **gps), D), 0.01),
         (2, "type APPROXIMATED, b too big (not a covariance)", "stated_sigma",
          (Estimate(cov=cov9(9, 10, 9), cov_type=est_mod.COV_APPROXIMATED, **gps), D), None),
         (3, "the docstring example", "staleness_m", (40.0, 2.5), 100.0),
@@ -130,8 +135,8 @@ def test():
     bad = 0
     for todo, label, fn, args, want in cases:
         got, err = rk.call(est_mod, fn, *args)
-        if err and want is None and "returned None for this case" in err:
-            got, err = None, None                     # None is the right answer here
+        if err and "returned None for this case" in err:
+            got, err = None, None                     # judged below: None may be the right answer
         if err:
             ok, note = False, err
         elif _same(got, want):

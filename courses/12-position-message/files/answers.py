@@ -40,7 +40,7 @@ VERDICTS_MINE = {            # arbiter v0 with -p use_eligible:=true: YOUR eligi
     "future": "",
 }
 
-# ---- Step 8: the dead source that comes back ------------------------------------------------------
+# ---- Step 8: the future attack, watched long ------------------------------------------------------
 PREDICT_REVIVE = ""  # your judge refused the future fix; the source is dead: what will it say about 60 s later?
 EXPLAIN_REVIVE = ""  # what did you see, and why? (what does the judge keep, what changes when the clock reaches the stamp)
 

@@ -91,8 +91,8 @@ def is_covariance(cov9, tol=1e-9):
       "negative variance"           a, c or the up variance (index 8) is below 0
       "not positive semi-definite"  the horizontal block breaks lesson §2's determinant rule (beyond the tolerance)
       "ok"                          (True, "ok")
-    The tolerance is RELATIVE (lesson §2): with size = the largest of 1 and the three variances (absolute
-    values), a difference of b counts beyond tol × size, a negative a·c − b² beyond tol × size².
+    The tolerance is RELATIVE (lesson §2): with size = the largest of 1, |a| and |c| (the horizontal
+    variances only), a difference of b counts beyond tol × size, a negative a·c − b² beyond tol × size².
     The east-up and north-up terms (indices 2, 5, 6, 7) are not tested.
     Example: is_covariance([25.0, 30.0, 0, 30.0, 16.0, 0, 0, 0, 1.0]) → (False, "not positive semi-definite")
     """
@@ -105,7 +105,7 @@ def is_covariance(cov9, tol=1e-9):
     if not all(math.isfinite(v) for v in values):
         return False, "not finite"
     a, b, c = values[0], values[1], values[4]
-    size = max(1.0, abs(a), abs(c), abs(values[8]))
+    size = max(1.0, abs(a), abs(c))
     if abs(values[1] - values[3]) > tol * size:
         return False, "not symmetric"
     if a < 0 or c < 0 or values[8] < 0:
