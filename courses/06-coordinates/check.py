@@ -226,6 +226,9 @@ def _():
 def _():
     (f,) = functions("max_offset_km")
     v = num(go(f, (40.4168, -3.7038), (55.7558, 37.6173)), "max_offset_km")
+    if v != v:                                     # nan: comes from haversine_m, not from this function
+        raise CheckFailed("max_offset_km gives nan: your haversine_m (TODO 3) returns nan for these points — "
+                          "fix the TODO 3 check above first (cos of DEGREES?)")
     if abs(v - 295.756) < 0.01:
         raise CheckFailed("Madrid → Moscow gives 295.756: you took the nearest GREAT-CIRCLE point for each line point "
                           "(min over axis 0); the definition wants, for each great-circle point, the nearest LINE point")
@@ -334,8 +337,9 @@ def _():
         x = nums(go(to_ecef, *p), 3, "geodetic_to_ecef")
         lat, lon, h = nums(go(to_geo, *x), 3, f"ecef_to_geodetic of {p}")
         if abs(h - p[2]) > 1000:
-            raise CheckFailed(f"{p}: the height comes back {h:,.0f} m — degrees and radians are mixed up somewhere "
-                              "(radii() takes degrees; sin/cos take radians)")
+            raise CheckFailed(f"{p}: the height comes back {h:,.0f} m — if the TODO 8 check above fails, fix it first "
+                              "(this round trip uses your geodetic_to_ecef); otherwise degrees and radians are mixed up "
+                              "somewhere (radii() takes degrees; sin/cos take radians)")
         if abs(lat - p[0]) < 1e-4:
             tip = ("more iterations? recompute h after the last latitude? If more iterations do not help, the loop "
                    "repeats the first guess: inside it φ = atan2(Z, p·(1 − e²·N/(N + h)))")
