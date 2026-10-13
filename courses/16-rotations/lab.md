@@ -122,8 +122,8 @@ Open `out/order.png`: two drones, three views each.
 ## Step 3 — Back to angles, and gimbal lock (TODO 4)
 
 **TODO 4** `matrix_to_euler_zyx(R)`: lesson §3. Return **four** values: `(roll, pitch, yaw, locked)`.
-Clamp before `asin`. Test for the lock with |cos(pitch)| < 1e-6, which you can compute without dividing:
-cos θ = √(R[0][0]² + R[1][0]²) (`math.hypot`).
+Clamp before `asin`. Test for the lock with |cos(pitch)| < 1e-6. Do not compute it with
+`math.cos(pitch)`: take it straight from the matrix, cos θ = √(R[0][0]² + R[1][0]²) (`math.hypot`).
 
 <details><summary>🧰 Python: returning several values, and a guard first</summary>
 
@@ -315,7 +315,9 @@ Three suspects, all from this lesson:
 - **(b)** R vs Rᵀ: the script used the conjugate q* (the inverse rotation) instead of q;
 - **(c)** the order trap: the script read the four numbers (x, y, z, w) as (w, x, y, z).
 
-On the pad the drone is level, heading 30°. Look at the colleague's pad row in the `head -4` output above.
+On the pad the drone is level (the pilot says so). Its true heading: run your `heading_deg_from_q` (in
+`navera_lite.rotations`) on the four numbers of the log's first row — that is `PAD_HEADING_DEG`. Then look at
+the colleague's pad row in the `head -4` output above.
 
 > [!TASK]
 > **Predict** (`PREDICT_SUSPECT`), before you write any code: for each suspect, what would the pad row show

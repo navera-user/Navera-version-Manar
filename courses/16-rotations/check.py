@@ -233,12 +233,14 @@ def _():
     predicted("PREDICT_ORDER", pred)
     if not (isinstance(why, str) and why.strip()):
         raise CheckFailed("EXPLAIN_ORDER is still empty")
+    w = re.sub(r"\b[AB]\s+(?:is\s+not|isn't|is\s+NOT)\b|\b[Nn]ot\s+[AB]\b", " ", why)   # "A is not …" names no A
     named = set(re.findall(r"\b([AB])\b(?=\s*(?:is|=|:|,|\.|\)|;|because|since|matches|corresponds|gives|reads|does|"
-                           r"means|—|–|-|$))", why))
-    named |= {m.upper() for m in re.findall(r"\b(?:answer|it|one) is ([ab])\b", why.lower())}
+                           r"means|—|–|-|$))", w))
+    named |= {m.upper() for m in re.findall(r"\b(?:answer|it|one) is ([ab])\b", w.lower())}
     if named == {"B"}:
-        raise CheckFailed("EXPLAIN_ORDER: B = rot_x(90°) @ rot_z(90°) read left to right about the moving axes is roll "
-                          "first. Which product starts with the yaw on the LEFT?")
+        raise CheckFailed("EXPLAIN_ORDER: read right to left, B is indeed yaw first — but then the roll is about the "
+                          "WORLD east axis (fixed axes), not about the new nose, which points north after the yaw. Read "
+                          "left to right (moving axes), B is roll first. Which product starts with the yaw on the LEFT?")
     if not named:
         raise CheckFailed("EXPLAIN_ORDER: say clearly which one it is, e.g. \"A is …\" or \"B is …\"")
     explained("EXPLAIN_ORDER", why,
@@ -261,7 +263,7 @@ def _():
                           "surviving angle is different — run your function on this case")
     if abs(x - 50.0) < 0.1:
         raise CheckFailed("LOCK_UP_YAW_DEG is 50: your matrix_to_euler_zyx has no lock test, so it returns rounding "
-                          "noise — add the guard (Step 3, hint 3)")
+                          "noise — add the lock guard (Step 3, hints 3–4)")
     c.near(x, LOCK_UP_YAW, 0.05, "LOCK_UP_YAW_DEG (degrees)")
     c.near(number(b, "NEAR_LOCK_YAW_JUMP_DEG"), NEAR_LOCK_JUMP, 0.05, "NEAR_LOCK_YAW_JUMP_DEG (degrees)")
     explained("EXPLAIN_LOCK", why, ((r"axis", r"axes", r"align", r"line up", r"same", r"coincid", r"parallel"),

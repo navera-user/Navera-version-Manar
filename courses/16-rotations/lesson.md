@@ -115,14 +115,16 @@ world frame: `v_world = R · v_body`. The course names it `R_world_body` when th
 The most useful fact: **the columns of R are the body axes, written in the world frame.** R·(1, 0, 0) is
 the first column, i.e. where the nose points. Read a matrix by its columns and you can see the attitude.
 
-> [!TIP] 🧰 The angles you will meet
-> | α | 0° | 30° | 45° | 60° | 90° | 180° |
-> |---|---|---|---|---|---|---|
-> | sin α | 0 | 0.5 | 0.7071 | 0.866 | 1 | 0 |
-> | cos α | 1 | 0.866 | 0.7071 | 0.5 | 0 | −1 |
->
-> Radians → degrees: × 180/π (≈ 57.3); back: × π/180 (`math.degrees`, `math.radians`). sin(−α) = −sin α,
-> cos(−α) = cos α.
+<details><summary>🧰 The angles you will meet (sin/cos table, radians ↔ degrees)</summary>
+
+| α | 0° | 30° | 45° | 60° | 90° | 180° |
+|---|---|---|---|---|---|---|
+| sin α | 0 | 0.5 | 0.7071 | 0.866 | 1 | 0 |
+| cos α | 1 | 0.866 | 0.7071 | 0.5 | 0 | −1 |
+
+Radians → degrees: × 180/π (≈ 57.3); back: × π/180 (`math.degrees`, `math.radians`). sin(−α) = −sin α,
+cos(−α) = cos α.
+</details>
 
 The three elementary rotations, angle α:
 
@@ -139,11 +141,13 @@ Ry(α)·(1, 0, 0) = (cos α, 0, −sin α).
 **Worked example.** Rz(30°)·(1, 0, 0) = (cos 30°, sin 30°, 0) = (0.866, 0.500, 0): the nose, east at
 first, now points 30° north of east, heading 60°.
 
-> [!TIP] 🧰 Matrix × matrix
-> (A·B) has, in row i and column j, row i of A times column j of B. Example:
-> [[0, −1], [1, 0]] · [[2, 0], [0, 1]] = [[0, −1], [2, 0]], but [[2, 0], [0, 1]] · [[0, −1], [1, 0]] =
-> [[0, −2], [1, 0]]: **A·B ≠ B·A**. To rotate a vector by B and then by A, compute A·(B·v) = (A·B)·v.
-> numpy: `A @ B` (never `A * B`, which multiplies element by element).
+<details><summary>🧰 Matrix × matrix: A·B ≠ B·A (and `@`, not `*`)</summary>
+
+(A·B) has, in row i and column j, row i of A times column j of B. Example:
+[[0, −1], [1, 0]] · [[2, 0], [0, 1]] = [[0, −1], [2, 0]], but [[2, 0], [0, 1]] · [[0, −1], [1, 0]] =
+[[0, −2], [1, 0]]: **A·B ≠ B·A**. To rotate a vector by B and then by A, compute A·(B·v) = (A·B)·v.
+numpy: `A @ B` (never `A * B`, which multiplies element by element).
+</details>
 
 **The order matters.** Take a book flat on the table, spine towards you. Turn it 90° about one axis, then
 90° about another; start again in the other order. It ends in two different positions. Rotations do not
@@ -163,6 +167,8 @@ about the vehicle's own, moving axes** (first yaw, then pitch about the *new* le
 > **Left to right, the drone's own axes:** yaw 90° (the top stays up, the left wing now points west); then
 > pitch 90° about the **new** left wing: the nose dips and the top swings to where the nose was, north →
 > (0, 1, 0). Same answer: two descriptions of one matrix.
+> Careful: in story 1 every turn is about a **fixed** world axis, so "then roll" there means about world x,
+> not about the new nose. "About the new nose / new wing" belongs only to story 2.
 
 > [!QUESTION] ✏️ Check
 > Where does the nose (1, 0, 0) point after Rz(90°)·Ry(90°)? After Ry(90°)·Rz(90°)? Work from the right:
@@ -211,9 +217,10 @@ Rounding can make R[2][0] = −1.0000000002, and `math.asin` then raises `ValueE
 atan2(0, 0). This is not just a numerical accident. At θ = +90° the matrix depends only on **ψ − φ**: the
 roll axis (the nose) now lies along the yaw axis (vertical), and rolling is the same as yawing.
 
-<details><summary>🧰 See it in the matrix (3 lines)</summary>
+<details><summary>🧰 See it in the matrix (two products, 10 minutes)</summary>
 
-With θ = 90°, Ry(90°) = [[0, 0, 1], [0, 1, 0], [−1, 0, 0]]. Multiply out Rz(ψ)·Ry(90°)·Rx(φ) and use
+With θ = 90°, Ry(90°) = [[0, 0, 1], [0, 1, 0], [−1, 0, 0]]. First the two right-hand matrices (row times
+column): Ry(90°)·Rx(φ) = [[0, sin φ, cos φ], [0, cos φ, −sin φ], [−1, 0, 0]]. Then Rz(ψ)·(that), using
 sin(a − b) = sin a cos b − cos a sin b, cos(a − b) = cos a cos b + sin a sin b:
 
 ```
@@ -245,11 +252,13 @@ Roll 0°, pitch 90°, yaw 30° (ψ − φ = 30°). Yes, the same attitude: only 
 
 ## 4. Quaternions: rotations without gimbal lock
 
-> [!TIP] 🧰 Complex numbers in five lines
-> i² = −1. A complex number z = a + b·i is the point (a, b). e^{iα} = cos α + i sin α has length 1, and
-> multiplying by it **rotates** a point by α: (1 + 0i)·e^{i·90°} = i, the point (0, 1). Multiplying two of them
-> adds the angles: e^{iα}·e^{iβ} = e^{i(α+β)}. So in 2-D, "a rotation" is "a unit complex number" and
-> "compose" is "multiply". Quaternions do the same in 3-D.
+<details><summary>🧰 Complex numbers in five lines (a 2-D rotation = multiplying by e^{iα})</summary>
+
+i² = −1. A complex number z = a + b·i is the point (a, b). e^{iα} = cos α + i sin α has length 1, and
+multiplying by it **rotates** a point by α: (1 + 0i)·e^{i·90°} = i, the point (0, 1). Multiplying two of them
+adds the angles: e^{iα}·e^{iβ} = e^{i(α+β)}. So in 2-D, "a rotation" is "a unit complex number" and
+"compose" is "multiply". Quaternions do the same in 3-D.
+</details>
 
 A **quaternion** has one real part w and three imaginary parts: q = w + x·i + y·j + z·k, with
 
@@ -391,7 +400,7 @@ From NAVERA's architecture and validation documents (Release 0.2, 2026-10-03), i
   the body that turned faster than **30°/s** around the exposure (measured from the rotation between two
   attitudes 0.2 s apart) is refused, and so is a frame tilted more than **45°** from vertical.
 - Usable frames are **straightened** into a level, straight-down view with the attitude and the camera
-  mount (missions 18 and 23). With a camera gimbal, which keeps the camera level, only the heading is used.
+  mount (missions 18 and 23). With a camera gimbal, which holds the camera pointing straight down, only the heading is used.
 - The celestial fix loses about **111 km per degree** of attitude error (simulated star fields).
 - NAVERA's human-readable attitude (roll, pitch, heading in degrees) counts pitch **positive nose up**
   and roll positive right wing down, like `rpy_human`, while its ROS messages carry the ROS signs. Its
@@ -410,8 +419,8 @@ camera's rotation with `q_to_matrix`, and mission 20 interpolates the attitude a
 A bird's inner ear has three **semicircular canals**, roughly at right angles, filled with fluid: when the
 head turns, the fluid lags and bends sensory hair cells. Three axes, three rotation sensors, like a
 gyroscope's three axes. A hovering kestrel uses them, with its eyes, to keep its **head** almost still in
-space while its body moves in the wind. NAVERA cannot move its camera, so it does the same job in software:
-it straightens each photo with the attitude.
+space while its body moves in the wind. A camera gimbal does the same for NAVERA's camera; with a camera
+fixed to the body, NAVERA does the job in software: it straightens each photo with the attitude.
 
 ## Summary
 

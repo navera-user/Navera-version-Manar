@@ -20,6 +20,7 @@ from navera_lite import rotations as rot  # noqa: E402
 OUT = os.path.join(ACADEMY, "courses", "16-rotations", "assets")
 INK, BLUE, RED, ORANGE, GREY, BG = "#1d2733", "#0b6e8a", "#d64545", "#a8680d", "#8a96a3", "#f7fafc"
 GREEN = "#2e9e4f"
+TAIL = "#7a8794"
 HEAD = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {{w}} {{h}}" font-family="sans-serif" font-size="13">'
         f'<rect width="{{w}}" height="{{h}}" fill="{BG}"/><defs>'
         + "".join(f'<marker id="m{n}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" '
@@ -27,7 +28,7 @@ HEAD = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {{w}} {{h}}" font
                   for n, c in (("i", INK), ("r", RED), ("b", BLUE), ("o", ORANGE), ("g", GREY))) + "</defs>")
 PLANE = {"fuselage": [(-40, 0, 0), (40, 0, 0)], "nose": [(40, 0, 0), (52, 0, 0)],
          "left wing": [(5, 0, 0), (5, 48, 0)], "right wing": [(5, 0, 0), (5, -48, 0)], "tail": [(-40, 17, 0), (-40, -17, 0)], "fin": [(-40, 0, 0), (-40, 0, 16)]}
-PCOL = {"fuselage": INK, "nose": RED, "left wing": GREEN, "right wing": BLUE, "tail": BLUE, "fin": ORANGE}
+PCOL = {"fuselage": INK, "nose": RED, "left wing": GREEN, "right wing": BLUE, "tail": TAIL, "fin": ORANGE}
 
 
 def text(x, y, s, size=13, color=INK, anchor="middle", weight="normal"):
@@ -146,7 +147,7 @@ def frames():
           lambda cx, cy: (f'<path d="M{cx + 75} {cy + 30} A80 80 0 0 0 {cx + 75} {cy - 30}" fill="none" stroke="{RED}" '
                           f'stroke-width="2.5" marker-end="url(#mr)"/>'),
           "counter-clockwise from above:", "the nose turns LEFT")
-    b.append(text(470, 318, "Body FLU: x = nose (red), y = left wing (green), z = up (fin, orange). Pilot's pitch_up = −(ROS pitch).", 12, INK))
+    b.append(text(470, 318, "Body FLU: x = nose (red), y = left wing (green), z = up (fin, orange; grey = tailplane). Pilot's pitch_up = −(ROS pitch).", 12, INK))
     save("frames.svg", 830, 335, "".join(b))
 
 
@@ -166,7 +167,7 @@ def order():
         names = {0: ("east", "west"), 1: ("north", "south"), 2: ("up", "down")}
         nz = lambda v: names[int(np.argmax(np.abs(v)))][0 if v[int(np.argmax(np.abs(v)))] > 0 else 1]  # noqa: E731
         b.append(text(cx, 250, f"nose → {nz(nose)},  tail fin → {nz(top)}", 13, INK))
-    b.append(text(400, 285, "red = nose, green = left wing, blue = right wing, orange = tail fin (on top). Matrix products do not commute.",
+    b.append(text(400, 285, "red = nose, green = left wing, blue = right wing, grey = tailplane, orange = tail fin (on top).",
                   12, GREY))
     save("order.svg", 800, 300, "".join(b))
 

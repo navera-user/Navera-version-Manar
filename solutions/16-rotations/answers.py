@@ -16,8 +16,8 @@ LOCK_UP_YAW_DEG = 80.0
 NEAR_LOCK_YAW_JUMP_DEG = 63.43
 EXPLAIN_LOCK = ("At pitch 90 degrees the nose (the roll axis) lines up with the vertical yaw axis, so turning about one "
                 "is the same as turning about the other: one degree of freedom is lost and only a combination of roll "
-                "and yaw is defined. Apollo kept three gimbals; the computer warned near the lock and the crews "
-                "steered around it, or realigned the platform on the stars.")
+                "and yaw is defined. Apollo's engineers kept three gimbals on purpose because it was "
+                "simpler; Mission Control watched the angles and the crews steered around the lock.")
 
 # ======== Session 2 — Quaternion detective ========
 POSE_PITCH_UP_DEG = 12.0

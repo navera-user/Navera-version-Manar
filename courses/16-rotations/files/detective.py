@@ -21,8 +21,9 @@ DATA = "/data/academy/16-rotations"
 def misread(q_ros):
     """The quaternion the colleague's script really used, written back in OUR order (x, y, z, w).
 
-    q_ros: the four numbers of one log row, in the file's order (qx, qy, qz, qw). The colleague's script
-    believed the four numbers were (w, x, y, z). Returns a numpy array (x, y, z, w) of what it used.
+    q_ros: the four numbers of one log row, in the file's order (qx, qy, qz, qw). The script read these
+    numbers in a wrong order (lab Step 8: your suspect (a), (b) or (c) — only one of them reorders the
+    numbers). Returns a numpy array (x, y, z, w) of the quaternion it really used.
 
     Example: misread((0.1, 0.2, 0.3, 0.9)) → array([0.2, 0.3, 0.9, 0.1])
     """
@@ -101,6 +102,9 @@ def main():
           f"misread {lengths_m.min():.6f} … {lengths_m.max():.6f}\n")
 
     # 3. tilt along the flight
+    up_down = float(need(tilt_deg, np.array([1.0, 0.0, 0.0, 0.0])))      # 180° about x: on its back
+    if abs(up_down - 180.0) > 0.5:
+        print(f"   ⚠ tilt_deg(on its back) = {up_down:.2f}, expected 180 — degrees? (math.degrees)\n")
     tilt_true = np.array([need(tilt_deg, x) for x in q], dtype=float)
     tilt_mis = np.array([need(tilt_deg, need(misread, x)) for x in q], dtype=float)
     k = int(np.argmax(tilt_mis))

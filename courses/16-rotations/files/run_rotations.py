@@ -184,6 +184,14 @@ def test():
             return False, "w is not LAST: (1, 0, 0, 0) is i in ROS order — unpack as x, y, z, w = p"
         return np.allclose(a, [0, 0, 1, 0]), None
 
+    def sq_chk(v):
+        a = arr(v, (4,))
+        if a is None:
+            return False, f"expected a numpy array of 4 numbers, got {v!r}"
+        if np.allclose(a, [0, 0, 0.96, 1.0], atol=1e-4):
+            return False, "w = p_w·q_w MINUS p_v·q_v (lesson §4): your scalar part adds the dot product"
+        return np.allclose(a, [0, 0, 0.96, 0.28], atol=1e-4), None
+
     def conj_chk(v):
         a = arr(v, (4,))
         if a is not None and np.allclose(a, [0.1, -0.2, 0.3, -0.9]):
@@ -264,12 +272,14 @@ def test():
             return False, f"expected a numpy array of 4 numbers, got {v!r}"
         yaw = math.degrees(2 * math.atan2(a[2], a[3]))
         yaw = (yaw + 180) % 360 - 180
-        if abs(abs(yaw) - 165) < 1:
-            return False, ("from yaw +60° to yaw −30° (given as −q1) you went the LONG way round (yaw ±165° half-way): "
-                           "if q0 · q1 < 0, use −q1 (lesson §5)")
+        if abs(yaw - 127.5) < 1:
+            return False, ("from yaw +60° to yaw −30° (given as −q1) you went the LONG way round (yaw 127.5° at a "
+                           "quarter): if q0 · q1 < 0, use −q1 (lesson §5)")
+        if abs(yaw - 28.08) < 0.1:
+            return False, "you used −q1 but kept the negative d: when you flip q1, flip d too (b, d = -b, -d)"
         if abs(np.linalg.norm(a) - 1) > 1e-6:
             return False, f"the result has length {np.linalg.norm(a):.4f}: return a unit quaternion"
-        return abs(yaw - 15) < 0.01, "expected a yaw of +15° half-way (the short way)"
+        return abs(yaw - 37.5) < 0.01, "expected a yaw of +37.5° at a quarter (the short way: 60° − 90°/4)"
 
     def ang_chk(want):
         def chk(v):
@@ -300,6 +310,8 @@ def test():
         (5, "q_mul(i, j)", lambda: r.q_mul((1, 0, 0, 0), (0, 1, 0, 0)), ij_chk),
         (5, "q_mul((0, 0, 0.6, 0.8), (0, 0.6, 0, 0.8))", lambda: r.q_mul((0.0, 0.0, 0.6, 0.8), (0.0, 0.6, 0.0, 0.8)),
          mul_chk),
+        (5, "q_mul(yaw 73.7°, yaw 73.7°) — same axis, the dot product counts",
+         lambda: r.q_mul((0.0, 0.0, 0.6, 0.8), (0.0, 0.0, 0.6, 0.8)), sq_chk),
         (6, "q_conj((0.1, −0.2, 0.3, 0.9))", lambda: r.q_conj((0.1, -0.2, 0.3, 0.9)), conj_chk),
         (7, "q_from_axis_angle((0, 0, 2), 60°)", lambda: r.q_from_axis_angle((0, 0, 2), D(60)), aa_chk),
         (7, "q_from_axis_angle((0, 0, 0), 1.0) must raise ValueError",
@@ -310,8 +322,8 @@ def test():
         (9, "q_to_matrix of lesson §4's (0.0537, 0.0812, 0.4943, 0.8638) = §3's R",
          lambda: r.q_to_matrix((0.0537, 0.0812, 0.4943, 0.8638)), q2m_full_chk),
         (10, "slerp(no rotation, yaw 180°, 0.5)", lambda: r.slerp((0, 0, 0, 1), (0, 0, 1, 0), 0.5), slerp_chk),
-        (10, "slerp the short way (q1 given as its negative)",
-         lambda: r.slerp((0, 0, 0.5, 0.8660254), (0, 0, 0.2588190, -0.9659258), 0.5), short_chk),
+        (10, "slerp the short way at t = 0.25 (q1 given as its negative)",
+         lambda: r.slerp((0, 0, 0.5, 0.8660254), (0, 0, 0.2588190, -0.9659258), 0.25), short_chk),
         (11, "q_angle_deg(no rotation, yaw 30°)", lambda: r.q_angle_deg((0, 0, 0, 1), (0, 0, 0.258819, 0.965926)),
          ang_chk(30.0)),
         (11, "q_angle_deg(q, −q)", lambda: r.q_angle_deg((0, 0, 0, 1), (0, 0, 0, -1)), ang_chk(0.0)),
@@ -431,9 +443,10 @@ def slerp():
         os.makedirs("out", exist_ok=True)
         fig, ax = plt.subplots(figsize=(6.4, 4))
         ts = [0] + [x[0] for x in rows] + [1]
+        ax.plot([0, 1], [h0, h1], "-", color="#c5ccd3", lw=9, solid_capstyle="butt",
+                label="constant turn rate (slerp lies on it)")
         ax.plot(ts, [h0] + [x[1] for x in rows] + [h1], "o-", label="slerp")
         ax.plot(ts, [h0] + [x[2] for x in rows] + [h1], "s--", label="linear, then normalised")
-        ax.plot([0, 1], [h0, h1], ":", color="grey", label="constant turn rate")
         ax.set_xlabel("t (fraction of the interval)")
         ax.set_ylabel("heading (°)")
         ax.legend()
@@ -448,7 +461,7 @@ PLANE = {  # a small aircraft in body FLU coordinates (m): lines to draw
     "fuselage": [(-4, 0, 0), (4, 0, 0)], "nose": [(4, 0, 0), (5, 0, 0)],
     "left wing": [(0.5, 0, 0), (0.5, 5, 0)], "right wing": [(0.5, 0, 0), (0.5, -5, 0)], "tail": [(-4, 1.8, 0), (-4, -1.8, 0)], "fin": [(-4, 0, 0), (-4, 0, 1.6)],
 }
-COLORS = {"fuselage": "#1d2733", "nose": "#d64545", "left wing": "#2e9e4f", "right wing": "#0b6e8a", "tail": "#0b6e8a", "fin": "#a8680d"}
+COLORS = {"fuselage": "#1d2733", "nose": "#d64545", "left wing": "#2e9e4f", "right wing": "#0b6e8a", "tail": "#7a8794", "fin": "#a8680d"}
 
 
 def draw(items, fname):
@@ -470,7 +483,7 @@ def draw(items, fname):
             ax.set_aspect("equal")
             ax.grid(alpha=0.3)
             ax.set_title(f"{title}\n{vt}" if col == 0 else vt, fontsize=8)
-    fig.suptitle("red = nose, green = LEFT wing, blue = right wing, orange = tail fin (on top)", fontsize=9)
+    fig.suptitle("red = nose, green = LEFT wing, blue = right wing, grey = tailplane, orange = tail fin (on top)", fontsize=9)
     fig.tight_layout()
     fig.savefig(os.path.join("out", fname), dpi=100)
     rk.saved(os.path.join("out", fname))

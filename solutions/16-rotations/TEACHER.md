@@ -48,7 +48,7 @@ Badges: **Attitude reader** = checks 1–7 (session 1), **Quaternion detective**
 | PREDICT_LERP (ungraded) | the lag at t = 0.2: 5.45° (the lesson's 20° turn: 0.0095° at t = 0.25); the error grows much faster than the turn angle | |
 | LERP_ERR_DEG | +5.45 | `slerp`, t = 0.2: slerp 42.00°, linear 36.55° (t = 0.1: 26.00 / 22.25; t = 0.5 equal; lerp length 0.766 at mid) |
 | PREDICT_SUSPECT (ungraded) | (a) pitch sign: pad row unchanged (roll 0, heading 30); (b) conjugate: roll 0, heading 150; (c) order swap: roll 60, heading 270 — only (c) fits the real row | recomputed with the reference |
-| PAD_HEADING_DEG | 30.0 | detective line 1 (t < 9 s) |
+| PAD_HEADING_DEG | 30.0 | heading_deg_from_q of the first log row (30.0); detective line 1 (t < 9 s) |
 | COLLEAGUE_PAD_ROLL_DEG | 60.0 | colleague: roll 60.0°, pitch_up 0.0°, heading 270.0° |
 | COLLEAGUE_MAX_TILT_DEG | 174.0 | at t = 111.7 s, true heading 270.5° (true max tilt 13.5°) |
 | FLIP_T_S | 111.4 (111.5 accepted) | detective line 5: q0·q1 = −1.0000, q_angle_deg 0.356° |
@@ -91,13 +91,13 @@ above 30°/s, tilt > 45° refused, yaw read from true north; straightening bench
 |---|---|---|---|
 | EXPLAIN_PITCH | axis = +y (left wing), right-hand rule carries z → x, so x → −z: nose down; pilot sign opposite | "the convention says so" with the right direction | wrong direction |
 | EXPLAIN_ORDER | names A, and the moving-axes (left-to-right) vs fixed-axes (right-to-left) reading | names A without the reason, or the reason without a clear choice | B / no reason |
-| EXPLAIN_LOCK | roll axis lines up with yaw axis at ±90°, one DOF lost (only ψ ∓ φ); Apollo: 3 gimbals kept, warning/avoid, realign on stars | one of the two halves | "a bug in atan2" |
+| EXPLAIN_LOCK | roll axis lines up with yaw axis at ±90°, one DOF lost (only ψ ∓ φ); Apollo: three gimbals kept on purpose (simpler hardware); Mission Control watched and the crews steered around the lock | one of the two halves | "a bug in atan2" |
 | EXPLAIN_SLERP | chord inside the sphere: short, normalised steps uneven; slower at ends, faster in the middle | "it is not normalised" only | |
 | EXPLAIN_ORACLE | independent code + many random cases vs own (possibly same-misunderstanding) examples; ZYX yaw-first order / (x, y, z, w) | one of the two | |
 | EXPLAIN_DETECTIVE | cause (w read first), what looks wrong (60° roll on pad, near upside-down flying west, heading stuck near 270), what does not (length 1, step angle identical), why (same permutation every sample), and line 5: q and −q are the same attitude (0.36°) | cause + one symptom | no cause |
 | report.md | the three sections answered with numbers; a concrete test (known non-trivial attitude at the input boundary) and/or an independent comparison | numbers but vague prevention | |
 
-## Mutants run (24; all caught; the message is the check's ✘ line)
+## Mutants run (27; all caught; the message is the check's ✘ line)
 
 rot_y sign (check 1 "turns the wrong way… −sin goes in row 2, column 0"; also check 3 via nose); euler order
 Rx·Ry·Rz ("wrong ORDER"); `*` instead of `@` ("multiplies element by element"); no lock guard ("`locked`
@@ -111,7 +111,12 @@ negating w ("changed w"); axis not normalised ("was not normalised"). Round 1 ad
 in one x/y term (check 10; `test` now has lesson §4's non-yaw example: "one of the 2·(…) terms has a wrong
 sign"); q_angle_deg without clamp/normalisation (check 11 "q_angle_deg(q, q) must be 0 (clamp …)"; `test`
 line "rounding makes q · q = 1.0000000003"); no ValueError for a zero axis (check 9; `test` line);
-EXPLAIN_ORDER naming B (expert's overlay) and naming no letter; EXPLAIN_DETECTIVE without the line-5 idea. Each also gets a matching ✘ line in
+EXPLAIN_ORDER naming B (expert's overlay) and naming no letter; EXPLAIN_DETECTIVE without the line-5 idea.
+Round 2 added: EXPLAIN_ORDER "A is not the one. B is …" (negations are stripped before the letter test;
+the B message now explains that right-to-left the roll is about world east); q_mul scalar part `+ pv·qv`
+(check 8; `test` line q_mul(yaw 73.7°, yaw 73.7°) → (0, 0, 0.96, 0.28), bug gives w = 1.0); slerp flipping
+q1 but not d (check 11; `test` short-way line at t = 0.25 → yaw 37.5°, bug 28.08°, long way 127.5°);
+tilt_deg in radians also flagged by detective.py's sanity line "tilt_deg(on its back) = 3.14, expected 180". Each also gets a matching ✘ line in
 `python3 run_rotations.py test` (except misread/tilt, which detective.py line 0 / check 14 report).
 Overlays: /tmp/claude-1000/mut/ when built (regenerate with any small edit of the reference).
 
