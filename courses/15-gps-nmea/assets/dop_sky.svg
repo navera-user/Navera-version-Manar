@@ -51,9 +51,9 @@
   <g transform="translate(570,377)">
     <line x1="-8" y1="0" x2="8" y2="0" stroke="#c7d3dc"/><line x1="0" y1="-8" x2="0" y2="8" stroke="#c7d3dc"/>
     <ellipse rx="48" ry="6.9" transform="rotate(-57)" fill="#d64545" fill-opacity="0.25" stroke="#d64545"/>
-    <text x="44" y="-18" fill="#d64545" font-size="12">32 m along the</text>
-    <text x="44" y="-3" fill="#d64545" font-size="12">satellite direction,</text>
-    <text x="44" y="12" fill="#d64545" font-size="12">4.6 m across</text>
+    <text x="44" y="-18" fill="#d64545" font-size="12">semi-axis 32 m along</text>
+    <text x="44" y="-3" fill="#d64545" font-size="12">the satellites,</text>
+    <text x="44" y="12" fill="#d64545" font-size="12">4.6 m across (1 σ)</text>
   </g>
   <g transform="translate(60,418)">
     <line x1="0" y1="0" x2="15" y2="0" stroke="#1d2733" stroke-width="2"/>
@@ -63,8 +63,8 @@
     <line x1="0" y1="0" x2="15" y2="0" stroke="#1d2733" stroke-width="2"/>
     <text x="21" y="4" font-size="11" fill="#5a6b7b">10 m</text>
   </g>
-  <text x="50" y="342" font-size="11" fill="#5a6b7b">1-σ horizontal error (UERE = 2 m)</text>
-  <text x="430" y="342" font-size="11" fill="#5a6b7b">1-σ horizontal error (UERE = 2 m)</text>
+  <text x="50" y="342" font-size="11" fill="#5a6b7b">1-σ horizontal error (range error σ = 2 m)</text>
+  <text x="430" y="342" font-size="11" fill="#5a6b7b">1-σ horizontal error (range error σ = 2 m)</text>
   <text x="710" y="420" text-anchor="end" font-size="11" fill="#b07a3a">brown arcs: sky hidden</text>
-  <text x="380" y="458" text-anchor="middle" fill="#5a6b7b" font-size="11">Sky plots seen from above: centre = straight up (90°), outer circle = horizon (0°). Ellipse = UERE² · (GᵀG)⁻¹, East-North block.</text>
+  <text x="380" y="458" text-anchor="middle" fill="#5a6b7b" font-size="11">Sky plots seen from above: centre = straight up (90°), outer circle = horizon (0°). Ellipse: (2 m)² · (GᵀG)⁻¹, its East–North block.</text>
 </svg>

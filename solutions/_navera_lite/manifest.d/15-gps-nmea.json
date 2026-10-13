@@ -1,0 +1,2 @@
+{"parts": ["gnss", "geo"], "todo_missions": [15], "tests": [], "extra": [],
+ "note": "Mission 15 introduces gnss.py (TODO 1-10; parse_gsv, fields, to_float/to_int, utc_seconds, read_log given). geo (06, finished) is used by the runner for distances. tests/test_gnss.py exists for later missions; not shipped here (it would show the answers). The design's to_estimate() and ros/nmea_node.py wait for estimate.py (12) and the ROS layer (09-14), rebuilt after this batch."}

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 250" font-family="monospace" font-size="13">
   <rect width="760" height="250" fill="#f7fafc"/>
-  <text x="380" y="24" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#1d2733">Anatomy of a GGA sentence (NAVERA's real receiver, M'saken)</text>
+  <text x="380" y="24" text-anchor="middle" font-family="sans-serif" font-size="15" fill="#1d2733">Anatomy of a GGA sentence (an example at NAVERA's test site, M'saken)</text>
   <!-- the sentence, one box per field -->
   <g font-size="12.5">
     <rect x="10" y="95" width="62" height="30" fill="#e3edf7" stroke="#0b6e8a"/><text x="41" y="115" text-anchor="middle">$GNGGA</text>

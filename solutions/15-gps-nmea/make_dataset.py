@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Regenerates the data of lesson 15 (GNSS and NMEA 0183).
+"""Regenerates the data of mission 15 (GNSS and NMEA 0183). TEACHER ONLY: never copy it into datasets/
+(students can read everything there, and this file says where every trap is).
 
-    python3 datasets/15-gps-nmea/make_dataset.py
+    python3 solutions/15-gps-nmea/make_dataset.py
 
-Writes, next to this script:
-  sousse_drive.nmea  a SYNTHETIC NMEA 0183 log (GPS-only receiver, talker "GP", 1 Hz)
-  truth.csv          the true position of the car every second (utc,lat,lon,alt_msl)
+Writes:
+  datasets/15-gps-nmea/sousse_drive.nmea   the lab's SYNTHETIC NMEA 0183 log (GPS-only receiver, "GP", 1 Hz)
+  datasets/15-gps-nmea/truth.csv           the true position of the car every second (utc,lat,lon,alt_msl)
+  courses/15-gps-nmea/hidden/exam_drive.nmea   the check's UNSEEN log (sealed): another sky (seed 2215),
+                                            other damaged seconds, "GN" talker, NMEA 4.10 GSA (system ID),
+                                            one lower-case checksum, a DGPS stretch, one GGA without HDOP
 
 The drive: a car leaves the Sousse port area and drives south-east along the coast to the
 Ribat of Monastir (about 19 km, roads approximate), in NAVERA's test area (Tunisia). The places are real; the log is invented, so that we
@@ -20,14 +24,16 @@ know the truth exactly. What the synthetic receiver does, on purpose:
   * port area: container stacks hide low satellites to the south-west
   * an (invented) underpass: 5 s of receiver dead reckoning (quality 6), then no fix
   * town centre: buildings hide everything except along the street -> HDOP spikes,
-    some seconds with < 4 satellites (no fix)
+    some seconds with < 4 satellites (no fix); two "alley" blocks where only the sky ahead and the
+    zenith are open -> HDOP 17-19 (sigma = 2 x HDOP > 25 m: DEGRADED)
   * corrupted lines: flipped characters, a cut line, a missing checksum, garbage, two lines
     glued together, a non-ASCII byte, and TWO swapped-digit lines whose checksum is still
     correct (XOR does not see the order of characters): one with minutes >= 60, one with a
     plausible-looking latitude a few tenths of a minute off
     (in this log 0.36', about 0.67 km).
-Deterministic (fixed seeds). check.py of lesson 15 holds numbers computed from this output:
-if you change anything here, recompute them with the solution (analyze_drive.py).
+Deterministic (fixed seeds). check.py and TEACHER.md of mission 15 hold numbers computed from these
+outputs with the reference (solutions/_navera_lite/navera_lite/gnss.py and solutions/15-gps-nmea/expected.py):
+if you change anything here, run expected.py and paste its numbers again.
 """
 import math
 import os
@@ -36,8 +42,10 @@ import random
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT_LOG = os.path.join(HERE, "sousse_drive.nmea")
-OUT_TRUTH = os.path.join(HERE, "truth.csv")
+ACADEMY = os.path.realpath(os.path.join(HERE, "..", ".."))
+OUT_LOG = os.path.join(ACADEMY, "datasets", "15-gps-nmea", "sousse_drive.nmea")
+OUT_TRUTH = os.path.join(ACADEMY, "datasets", "15-gps-nmea", "truth.csv")
+OUT_EXAM = os.path.join(ACADEMY, "courses", "15-gps-nmea", "hidden", "exam_drive.nmea")
 
 R_EARTH = 6371000.0
 WAYPOINTS = [(35.8270, 10.6420),     # near the port of Sousse
@@ -145,6 +153,10 @@ def hidden(az, el, zone, course):
     """True when a building/container stack hides this satellite."""
     if zone == "port":
         return 190 <= az <= 300 and el < 28
+    if zone == "town5":
+        # an alley: walls on both sides and a building across its end; only the sky ahead
+        # (within 40 deg of the course) and the zenith (65 deg and above) are open
+        return not (el >= 65 or abs((az - course + 180) % 360 - 180) <= 40)
     if zone.startswith("town"):
         # buildings along the street: off-axis satellites below a limit elevation are hidden.
         # The limit changes from block to block (town0 = low houses ... town4 = tall buildings).
@@ -156,9 +168,19 @@ def hidden(az, el, zone, course):
     return False
 
 
-def main():
-    rng = random.Random(1507)
-    nrng = np.random.default_rng(1507)
+PUBLIC = dict(seed=1507, pattern="0102315240135210",
+              corrupt={60: "flip_gga", 150: "cut_gga", 230: "nochk_rmc", 300: "garbage",
+                       520: "glue", 610: "nonascii_gsv", 680: "flip_gsa"})
+EXAM = dict(seed=2215, pattern="1025314052130250",
+            corrupt={75: "flip_gga", 170: "cut_gga", 260: "nochk_rmc", 333: "garbage",
+                     470: "glue", 655: "nonascii_gsv", 700: "flip_gsa", 820: "lower_hex"},
+            exam=True)
+
+
+def make(seed, pattern, corrupt, exam=False):
+    """One drive: (lines, truth rows, info). exam=True adds the unseen-log variations (see the top)."""
+    rng = random.Random(seed)
+    nrng = np.random.default_rng(seed)
     pts, seg = route()
     s_total = sum(seg)
     vfun = speed_profile(s_total)
@@ -199,7 +221,7 @@ def main():
             return "under"
         if ss > s_total - 2600:
             k = int((ss - (s_total - 2600)) // 160)
-            return "town" + "0102310240132010"[k % 16]
+            return "town" + pattern[k % 16]
         return "open"
 
     zones = [zone_of(i) for i in range(N)]
@@ -211,9 +233,8 @@ def main():
     last_fix = None                       # (e, n, ve, vn) for dead reckoning
     dr_left = 0
     alt_true = 9.0
-    corrupt = {60: "flip_gga", 150: "cut_gga", 230: "nochk_rmc", 300: "garbage",
-               520: "glue", 610: "nonascii_gsv", 680: "flip_gsa"}
     swap60_done = swapdec_done = False
+    lower_pending = False
     for i, (tt, e, n, course, v) in enumerate(timeline):
         sec = T0 + tt
         hms = f"{sec // 3600:02d}{sec % 3600 // 60:02d}{sec % 60:02d}.00"
@@ -253,7 +274,9 @@ def main():
             alt = alt_true + dx[2]
             la, ns = dm_lat(lat)
             lo, ew = dm_lon(lon)
-            gga = (f"GPGGA,{hms},{la},{ns},{lo},{ew},1,{len(used):02d},{hdop:.2f},"
+            qual = 2 if exam and 400 <= tt < 430 else 1          # exam: a differential (SBAS) stretch
+            hd = "" if exam and tt == 560 else f"{hdop:.2f}"     # exam: one GGA without HDOP
+            gga = (f"GPGGA,{hms},{la},{ns},{lo},{ew},{qual},{len(used):02d},{hd},"
                    f"{alt:.1f},M,{GEO_SEP:.1f},M,,")
             kn = v / 0.514444
             crs = f"{course:.1f}" if v > 0.5 else ""
@@ -294,6 +317,8 @@ def main():
                     else f"{int(30 + 18 * math.sin(math.radians(el)) + rng.uniform(-2, 2)):02d}"
                 parts.append(f"{p:02d},{el:02d},{az:03d},{snr}")
             gsv.append(f"GPGSV,{nmsg},{k + 1},{len(vis):02d}," + ",".join(parts))
+        if exam:                              # a multi-system receiver: GN talker, NMEA 4.10 GSA
+            gga, rmc, gsa = "GN" + gga[2:], "GN" + rmc[2:], "GN" + gsa[2:] + ",1"
         group = [cs(gga), cs(rmc), cs(gsa)] + [cs(x) for x in gsv]
 
         kind = corrupt.get(tt)
@@ -317,6 +342,10 @@ def main():
             s_ = group[2]
             j = s_.rfind(",") + 2
             group[2] = s_[:j] + ("9" if s_[j] != "9" else "3") + s_[j + 1:]
+        if kind == "lower_hex" or lower_pending:   # still VALID: hex digits may be lower case
+            s_ = group[0]
+            lower_pending = not any(ch in "ABCDEF" for ch in s_[-2:])    # wait for a checksum with a letter
+            group[0] = s_[:-2] + s_[-2:].lower()
         # swapped digits: XOR is blind to order -> checksum still correct
         if fix and zone == "open" and tt > 330 and not swap60_done:
             mm = la[2:4]                        # latitude minutes "ab"
@@ -332,15 +361,28 @@ def main():
                 swapdec_done = True
         lines.extend(group)
 
-    with open(OUT_LOG, "w", newline="", encoding="latin-1") as f:
+    info = (f"{len(lines)} lines, {N} s, route {s_total:.0f} m; swap60 {swap60_done}, swapdec {swapdec_done}; "
+            f"zones: {dict((z, zones.count(z)) for z in sorted(set(zones)))}")
+    return lines, truth, info
+
+
+def write_log(path, lines):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", newline="", encoding="latin-1") as f:
         for ln in lines:
             f.write(ln + "\r\n")
+
+
+def main():
+    lines, truth, info = make(**PUBLIC)
+    write_log(OUT_LOG, lines)
     with open(OUT_TRUTH, "w") as f:
         f.write("utc,lat,lon,alt_msl\n")
         f.write("\n".join(truth) + "\n")
-    print(f"{len(lines)} lines, {N} s, route {s_total:.0f} m -> {OUT_LOG}")
-    print(f"swap60 {swap60_done}, swapdec {swapdec_done}; zones:",
-          {z: zones.count(z) for z in sorted(set(zones))})
+    print("public:", info, "->", OUT_LOG)
+    lines, _, info = make(**EXAM)
+    write_log(OUT_EXAM, lines)
+    print("exam:  ", info, "->", OUT_EXAM)
 
 
 if __name__ == "__main__":

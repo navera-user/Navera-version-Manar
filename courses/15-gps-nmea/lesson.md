@@ -1,505 +1,486 @@
 # GNSS receivers and NMEA 0183: from satellites to a trusted fix
 
-> [!NOTE] In short
-> - A GNSS receiver sends one line of text (**NMEA 0183**) per message: you will learn to read GGA, GSA and GSV.
-> - A **checksum** finds most damaged lines, but not two swapped characters.
-> - **DOP** measures the satellite geometry: you will compute it from a 4-column matrix G.
-> - Error in metres ≈ DOP × **UERE** (the error of one range measurement).
-> - In the lab you build a robust parser, recompute the DOPs, estimate the UERE of a synthetic drive
->   near Sousse, and test NAVERA's real GPS driver on a damaged log.
-
-A survey drone flies along a coast, from a port towards an old town. Its GPS receiver
-sends a short line of text to the flight computer every second. One second, a motor starts,
-one bit flips on the cable, and the latitude in that line changes from `3547` to `3574`. Read
-naively, the drone has jumped **50 km** north in one second. Another second, the drone passes
-under a long bridge: the receiver loses the satellites and starts to *guess* positions. Later, in
-the old town, the buildings hide most of the sky: the receiver still gives a "fix", but it can be
-wrong by tens of metres.
-
-A navigation computer must handle all three cases correctly. To do that, it must understand what
-the receiver says (the **NMEA 0183** text protocol), how much each position can be trusted (the
-**geometry** of the satellites, measured by **DOP**), and which lines must never become a position.
-This lesson gives you the theory; in the lab you will build a robust parser, recompute the DOPs
-from the satellite geometry, and test NAVERA's real GPS driver on a damaged log.
-
-## 1. How a GNSS receiver finds its position
-
-**GNSS** (*Global Navigation Satellite System*) is the general name. **GPS** (USA) is one GNSS;
-the others are **GLONASS** (Russia), **Galileo** (Europe) and **BeiDou** (China). Each satellite
-transmits its own position (the **ephemeris**) and the exact time of transmission.
-
-The receiver measures the time the signal took to arrive and multiplies by the speed of light
-*c*. But the receiver's clock is a cheap quartz clock, not an atomic clock: it has an unknown
-offset *b* (in seconds). So the measured distance is not the true range. It is called a
-**pseudorange**:
-
-```
-rho_i = || s_i - x ||  +  c*b  +  eps_i
-```
-
-- `s_i` — position of satellite *i* (known, from the ephemeris)
-- `x`   — position of the receiver (unknown: 3 numbers)
-- `c*b` — receiver clock error in metres (unknown: 1 number)
-- `eps_i` — the measurement error of this pseudorange (ionosphere, troposphere, multipath, noise…)
-
-There are **4 unknowns** (x, y, z and *b*), so the receiver needs **at least 4 satellites**.
-With 3 it can only make a **2D fix** (it assumes an altitude). In the lab log you will see the
-receiver report "no fix" when buildings leave it only 2 or 3 satellites.
-
-The receiver gives its time in **UTC** (world time). GPS has its own time scale, **GPS time**, which
-does not have leap seconds: since January 2017, GPS time is **18 s ahead** of UTC. The receiver
-corrects this for you. Tunisia uses **UTC+1** all year, so `051200` in a sentence means 06:12 in Sousse; in Singapore
-(UTC+8) it would be 13:12.
-
-## 2. The serial link and the NMEA 0183 grammar
-
-The receiver is connected to the Jetson by a **serial port** (UART), `/dev/ttyTHS1` on NAVERA. A
-**baud** rate of 9600 means 9600 bits per second. Each character costs 10 bits (1 start bit,
-8 data bits, 1 stop bit), so the link carries at most **960 characters per second**.
-
-> [!NOTE]
-> **Worked example — data budget.** The lab log has 439 301 bytes for 1069 seconds: 411 bytes/s,
-> that is 43 % of a 9600-baud link. At 5 fixes per second the receiver would need 2055 bytes/s,
-> twice what the link can carry: lines would be lost. This is why receivers are configured to send
-> only the sentences you need, or to use a higher baud rate.
-
-The text format is **NMEA 0183** (National Marine Electronics Association, first published 1983).
-Almost every GNSS receiver speaks it. One message is one line, called a **sentence**:
-
-```
-sentence  = "$" address { "," field } "*" checksum "\r\n"
-address   = talker(2 letters) type(3 letters)        e.g. GP + GGA
-field     = any printable ASCII except "$", "*", "," (may be EMPTY)
-checksum  = 2 hexadecimal digits (upper case)
-length    = at most 82 characters, including "$" and "\r\n"
-```
-
-The **talker** says which system speaks: `GP` = GPS only, `GL` = GLONASS, `GA` = Galileo,
-`GB` = BeiDou, `GN` = a combination of several systems. Sentences that start with `$P` are
-**proprietary** (each manufacturer defines its own). An **empty field** (`,,`) means "no value",
-which is different from a zero.
-
-## 3. The checksum
-
-The checksum is the **XOR** (`^` in Python) of the codes of all the characters **between `$` and
-`*`**, written as 2 hexadecimal digits. XOR compares bits: same bits give 0, different bits give 1.
-
-> [!NOTE]
-> **Worked example.** Body `GPGSA,A,1`:
+> [!NOTE] Mission brief
+> **28 September 2026.** A full code review of NAVERA finds, among others, five problems in the way it
+> reads **and judges** its GPS receiver: the line **checksum was not verified** (GPS-1); a receiver that was only **guessing** its
+> position (GGA quality 6) was **accepted as a fix** (GPS-2); the altitude was the **sea-level** one instead of
+> the ellipsoidal one, and a missing altitude became **0** (GPS-4); a missing HDOP was **invented** (GPS-5); and
+> the judge showed a position as precise whatever its accuracy: "**HDOP 20 = green**" (EST-6). All five were
+> fixed within days (validation report, 3 October 2026). None of them is exotic: each one is a line of code that trusted a
+> line of text.
 >
-> | char | code | bits | running XOR |
-> |---|---|---|---|
-> | G | 71 | 0100 0111 | 0100 0111 = `47` |
-> | P | 80 | 0101 0000 | 0001 0111 = `17` |
-> | G | 71 | 0100 0111 | 0101 0000 = `50` |
-> | S | 83 | 0101 0011 | 0000 0011 = `03` |
-> | A | 65 | 0100 0001 | 0100 0010 = `42` |
-> | , | 44 | 0010 1100 | 0110 1110 = `6E` |
-> | A | 65 | 0100 0001 | 0010 1111 = `2F` |
-> | , | 44 | 0010 1100 | 0000 0011 = `03` |
-> | 1 | 49 | 0011 0001 | 0011 0010 = `32` |
+> You are now the engineer who must make sure that NAVERA Lite, your stack, cannot have any of these bugs.
+> You build its GNSS part, `navera_lite/gnss.py`, then you attack it like a saboteur on the serial cable.
+> **Session 1 — The wire:** read and check the receiver's text (badge **Line inspector**). **Session 2 — The
+> sky:** turn the satellite geometry into an honest σ and a state (badge **Fix judge**).
 >
-> The sentence is `$GPGSA,A,1*32`. In Python: `ord("G")` is 71 and `f"{50:02X}"` is `"32"`.
-> The format `02X` matters: 13 must be written `0D`, not `D`.
+> **Start now:** open the 🛠️ **Lab** tab, do **Step 0** (two minutes, no code), then come back here for §1.
 
-What can this 8-bit checksum detect? Think of it as the XOR of all the bytes:
+**Objectives.** After this mission you can:
 
-- **Any single changed character** is always detected: at least one bit is different, and nothing
-  else can cancel it.
-- **Two changed characters** are missed if their two changes cancel (the same bit pattern changed
-  in both). For random damage, this happens with probability about **1/256**.
-- **Two swapped characters are never detected.** XOR is commutative: `a ^ b == b ^ a`. A latitude
-  `3547.17` written `3574.17` has exactly the same checksum. The lab log contains two such lines.
+1. **validate and parse** NMEA 0183 sentences (checksum, GGA, GSA) so that a damaged line never crashes the
+   reader and never becomes a position, and say what a checksum **cannot** catch;
+2. **convert** degrees-and-minutes to decimal degrees with range checks, and an MSL altitude to an
+   ellipsoidal height;
+3. **compute** the DOPs of a 3-D satellite geometry from (GᵀG)⁻¹, recognise a **singular** geometry, and
+   explain why VDOP is usually larger than HDOP;
+4. **decide** like NAVERA's judge: which fix qualities are measurements, σ = 2 m × HDOP, and FIX / DEGRADED /
+   NO_FIX.
 
-So a correct checksum means "probably not damaged", not "correct". A robust receiver chain adds
-**field checks** (for example, minutes must be below 60) and **plausibility checks** (the vehicle
-cannot move 50 km in one second).
+**You need:** mission 01 (least squares, the Jacobian H, HDOP), mission 06 (ENU, heights), missions 03–04
+(dicts, `None`). ⏱ Reading: about 60 minutes with the ✏️ checks: §1–§4 before session 1, §5–§6 before
+session 2. Lab: 3 to 4 h 30.
 
-## 4. The sentences a navigation computer needs
+**Before you start.** Answer without looking; if you miss two, reread mission 01 §3 and mission 06 §8.
 
-### GGA — the fix
+<details><summary>1. In mission 01, one beacon gave one row of the Jacobian H. What were its three entries, and where did HDOP come from?</summary>
+[uₓ, u_y, 1]: the unit vector from the beacon to the receiver, and 1 for the clock bias. HDOP =
+√((HᵀH)⁻¹ₓₓ + (HᵀH)⁻¹ᵧᵧ): about 1.22 inside the triangle of beacons, 1.60 with C moved outside.
+</details>
+<details><summary>2. A receiver says 12.0 m above mean sea level, geoid separation +32.0 m. What is the ellipsoidal height? And if the altitude field is empty?</summary>
+h = 12.0 + 32.0 = 44.0 m above the WGS84 ellipsoid. Empty: unknown (NaN or None), never 0.
+</details>
+<details><summary>3. <code>d = {"lat": None}</code>. What do <code>d["lat"] is None</code>, <code>d.get("lon")</code> and <code>d["lon"]</code> give?</summary>
+True; None (get returns None for a missing key); KeyError.
+</details>
 
-![The fields of a GGA sentence](assets/gga.svg)
+<details><summary>Words of this lesson (open if you need them)</summary>
 
-The line in the figure was read from NAVERA's own receiver (a u-blox NEO-M8N, `GN` talker) near
-Sousse, Tunisia, where NAVERA is developed. **NAVERA's real recorded data and its test map cover
-Sousse**; the lab log of this lesson is a synthetic drive in the same area, from the port of Sousse to
-Monastir.
+| Word | Meaning | Français |
+|---|---|---|
+| **NMEA 0183** | the text protocol of almost every GNSS receiver: one sentence per line | NMEA 0183 |
+| **sentence, field** | one line `$…*hh`; the values between its commas | trame, champ |
+| **talker** | two letters that say which system speaks: GP (GPS), GN (several systems)… | émetteur |
+| **checksum** | 2 hexadecimal digits that let the reader detect damage | somme de contrôle |
+| **XOR** | "exclusive or": bit by bit, same bits → 0, different bits → 1 (`^` in Python) | OU exclusif |
+| **fix quality** | GGA field 6: how the position was obtained (0 none, 1 GPS, 6 estimated…) | qualité du fix |
+| **dead reckoning** | continuing a position from the last speed and heading, with no measurement | navigation à l'estime |
+| **azimuth, elevation** | direction of a satellite: clockwise from north; angle above the horizon | azimut, élévation |
+| **DOP** | dilution of precision: how much the geometry multiplies the range error | dilution de précision |
+| **covariance type** | how much a stated covariance can be trusted (unknown, approximated…) | type de covariance |
+</details>
+
+## 1. One line of text per message
+
+A GNSS receiver solves the problem of mission 01, many times per second, and tells the flight computer
+the result as **text**, over a serial cable. On NAVERA the receiver (a u-blox NEO-M8N) talks at **9600
+baud**: 9600 bits per second. Each character costs 10 bits (a start bit, 8 data bits, a stop bit), so the
+link carries at most **960 characters per second**. That is little: a receiver must be told to send only
+the sentences you need.
+
+The format is **NMEA 0183** (National Marine Electronics Association, 1983). One message is one line,
+called a **sentence**:
+
+```
+$GPGSA,A,3,02,05,07,09,13,20,23,24,30,,,,1.98,1.15,1.61*0C\r\n
+│└┬┘└┬┘ └───────────── fields, separated by commas ─────────┘ └┬┘
+│ │  type (GSA)                                                checksum: 2 hexadecimal digits
+│ talker (GP = GPS)
+start
+```
+
+- A sentence is at most **82 characters**, including `$` and the final `\r\n`.
+- The **talker** says which system speaks: `GP` GPS, `GL` GLONASS, `GA` Galileo, `GB` BeiDou, `GN` a
+  combination. A reader must accept any talker for the sentence types it knows.
+- An **empty field** (`,,`) means "no value". It is **not** zero: zero is a real latitude, a real altitude.
+
+> [!QUESTION] ✏️ Check
+> A receiver sends GGA (about 72 characters with `\r\n`) and RMC (about 70) **ten** times per second. Does
+> that fit at 9600 baud? At 38 400 baud?
+
+<details><summary>Answer</summary>
+10 × 142 = 1 420 characters per second: more than 960, so lines are lost at 9600 baud. 38 400 baud carries
+3 840 characters per second: it fits, with room for GSA.
+</details>
+
+## 2. The checksum: XOR, and what it cannot see
+
+The two characters after `*` are the **XOR** of the codes of all the characters **between** `$` and `*`,
+written as two hexadecimal digits. XOR compares two numbers bit by bit: same bits give 0, different bits
+give 1.
+
+> [!TIP] 🧰 XOR and hexadecimal in Python
+> ```python
+> ord("G"), ord("P")          # (71, 80): the character codes
+> 71 ^ 80                     # 23: XOR, bit by bit (0100 0111 ^ 0101 0000 = 0001 0111)
+> f"{23:02X}", f"{13:02X}"    # ('17', '0D'): 2 upper-case hex digits, with the leading zero
+> int("0D", 16)               # 13: back from hex
+> "3D".upper()                # '3D' — and "3d".upper() is '3D' too
+> ```
+> Hexadecimal counts 0–9 then A–F: `0D` is 13, `32` is 3 × 16 + 2 = 50.
+
+**Worked example.** Body `GPGSA,A,1`, starting from 0:
+
+| char | code | bits | running XOR |
+|---|---|---|---|
+| G | 71 | 0100 0111 | 0100 0111 = `47` |
+| P | 80 | 0101 0000 | 0001 0111 = `17` |
+| G | 71 | 0100 0111 | 0101 0000 = `50` |
+| S | 83 | 0101 0011 | 0000 0011 = `03` |
+| A | 65 | 0100 0001 | 0100 0010 = `42` |
+| , | 44 | 0010 1100 | 0110 1110 = `6E` |
+| A | 65 | 0100 0001 | 0010 1111 = `2F` |
+| , | 44 | 0010 1100 | 0000 0011 = `03` |
+| 1 | 49 | 0011 0001 | 0011 0010 = `32` |
+
+The sentence is `$GPGSA,A,1*32`. What does an 8-bit XOR detect?
+
+- **One changed character: always.** Its bits differ somewhere, and nothing else changed to cancel them.
+- **Two changed characters: almost always.** They escape only if their changes cancel exactly (the same
+  bits flipped in both): for random damage, about **1 in 256**.
+- **Two swapped characters: never.** XOR does not care about order (a ^ b = b ^ a). `3547.17` written
+  `3574.17` has exactly the same checksum.
+- **A deliberate change: never.** Anyone can recompute the two digits. A checksum detects **accidents**
+  (a noisy cable, a cut line), not **attacks**: it is not a signature.
+
+So a reader must check more than the checksum. The line must start with `$`, have `*` and exactly two hex
+digits, contain no second `$` (two sentences glued together when a line ending was lost), and be at most 82
+characters. Then every **field** must be checked for range: that is §3.
+
+> [!QUESTION] ✏️ Check
+> 1. The body `GPGSA,A,1` is damaged into `GPGSA,A,3`. What is the new checksum, and does the reader notice?
+> 2. A cable error turns one byte into a value above 127 (not ASCII). What should the reader do with the
+>    whole line?
+
+<details><summary>Answer</summary>
+1. '1' (0011 0001) became '3' (0011 0011): one bit differs, so the XOR changes in that bit: 32 → 30. The
+line says *32, the body gives 30: refused.<br>
+2. Refuse the line. Decoding the bytes with <code>errors="replace"</code> turns the bad byte into "�" instead of
+crashing; the checksum then fails, and the line is refused like any other damaged line.
+</details>
+
+## 3. GGA: the fix
+
+![The fields of a GGA sentence: talker and type, UTC time, latitude and longitude in degrees and minutes, fix quality, satellites, HDOP, altitude, geoid separation, checksum](assets/gga.svg)
+
+The **GGA** sentence carries the position. The only line recorded from NAVERA's own receiver (project
+report, 2 June 2026) is an RMC sentence at the test site, M'saken: `$GNRMC,141621.00,A,3544.04006,N,
+01034.55091,E,…`. The GGA in the figure is an example built at the same position; its other fields are
+typical values.
 
 | # | Field | Example | Meaning |
 |---|---|---|---|
 | 1 | UTC time | `141621.00` | hhmmss.ss |
 | 2, 3 | latitude | `3544.04006`, `N` | ddmm.mmmmm, hemisphere |
 | 4, 5 | longitude | `01034.55091`, `E` | dddmm.mmmmm, hemisphere |
-| 6 | fix quality | `1` | see the table below |
+| 6 | fix quality | `1` | how the position was obtained (table below) |
 | 7 | satellites used | `12` | |
-| 8 | HDOP | `0.72` | horizontal dilution of precision (section 5) |
-| 9, 10 | altitude | `95.3`, `M` | above **mean sea level** (the geoid) |
-| 11, 12 | geoid separation | `32.1`, `M` | ellipsoid height − MSL height |
+| 8 | HDOP | `0.72` | horizontal dilution of precision (§5) |
+| 9, 10 | altitude | `95.3`, `M` | above **mean sea level**, metres |
+| 11, 12 | geoid separation | `32.1`, `M` | ellipsoid − mean sea level, metres |
 | 13, 14 | DGPS age, station | empty | only with differential corrections |
 
-**Degrees and minutes.** NMEA writes angles as degrees and **minutes** (1/60 of a degree) glued
-together. The last two digits before the decimal point are the minutes:
+**Degrees and minutes.** NMEA glues degrees and **minutes** (1/60 of a degree) together: the last two
+digits before the decimal point are whole minutes.
 
 ```
-3549.61531,N   ->  35 + 49.61531/60  =  35.826922 deg  (near the port of Sousse)
-01038.52535,E  ->  10 + 38.52535/60  =  10.642089 deg
-degrees = int(v // 100);  minutes = v - 100*degrees;  S and W are negative
+3544.04006, N   →  35 + 44.04006 / 60  =  35.734001°
+01034.55091, E  →  10 + 34.55091 / 60  =  10.575849°           S and W are negative
 ```
 
-Reading `3549.61531` as `35.4961531` is wrong by 0.331°, about 37 km. A robust parser also
-rejects **minutes ≥ 60**: `3574.17098` is not a valid angle, even with a correct checksum.
+These are the 35.734 N, 10.576 E of NAVERA's report (to its three decimals). Reading `3544.04006` as 35.4404006° (divide by
+100) is wrong by 0.29°, about **33 km**. A robust reader also refuses impossible values: **minutes of 60
+or more**, a latitude above 90°, a longitude above 180°. `3574.17098` passes the checksum test if two
+digits were swapped, but 74 minutes is not an angle.
 
-**Fix quality** (field 6):
+**Fix quality** (field 6) says **how** the position was obtained:
 
-| Value | Meaning | NAVERA |
+| Value | Meaning | Measured by satellites? |
 |---|---|---|
-| 0 | no fix | invalid |
-| 1 | GPS fix (standard positioning) | **used** |
-| 2 | differential GPS (DGPS, SBAS) | **used** |
-| 4 | RTK fixed (cm level) | **used** |
-| 5 | RTK float (dm level) | **used** |
-| 6 | estimated: the receiver's own **dead reckoning** | invalid |
-| 7 | manual input | invalid |
-| 8 | simulator mode | invalid |
+| 0 | no fix | no |
+| 1 | GPS fix (standard positioning) | **yes** |
+| 2 | differential GPS (DGPS, SBAS corrections) | **yes** |
+| 3 | PPS (precise military service) | not used by civil receivers |
+| 4 | RTK fixed (centimetres) | **yes** |
+| 5 | RTK float (decimetres) | **yes** |
+| 6 | estimated: the receiver's own **dead reckoning** | **no** |
+| 7 | manual input | no |
+| 8 | simulator | no |
 
-Quality 6 is the dangerous one: in a tunnel, some receivers continue the last motion and print a
-nice position with quality 6. No satellite measured it. NAVERA has better sources for that
-situation (vision, lessons 21–26), so it refuses quality 6, 7 and 8.
+Quality 6 is the dangerous one. In a tunnel, some receivers continue the last speed and heading and print a
+clean-looking position, with quality 6. No satellite measured it: if the car turned in the tunnel, the
+position is simply wrong, and nothing in the line says how wrong. That was NAVERA's GPS-2.
 
-**Two altitudes.** GNSS computes heights above the **WGS84 ellipsoid** (a smooth mathematical
-shape). Maps and pilots use height above **mean sea level**, which follows the **geoid** (the
-shape of the sea surface extended under the land). The receiver writes the MSL altitude in field 9
-and the **geoid separation** *N* in field 11:
+**Heights.** GGA gives the altitude above **mean sea level** (field 9) and the **geoid separation** (field
+11). As in mission 06 §8, the height above the WGS84 ellipsoid is their sum: 95.3 + 32.1 = **127.4 m** in
+the figure. Using field 9 alone as an ellipsoidal height is NAVERA's GPS-4 (about 32 m wrong around Sousse, the
+geoid separation used in this course's logs); turning an
+empty field into 0 is the other half of GPS-4.
 
-```
-h_ellipsoid = H_msl + N
-Sousse (real receiver):     95.3 + 32.1  = 127.4 m
-lab log (synthetic, Sousse):  8.8 + 32.0  =  40.8 m
-```
+> [!QUESTION] ✏️ Check
+> 1. Convert `3355.50000,S` and `01825.40000,E` (Cape Town) to decimal degrees.
+> 2. A GGA reads `…,6,00,,9.9,M,32.0,M,,*5F`: quality 6, 0 satellites, no HDOP, a position. What is it, and
+>    what should a navigation stack do with it?
 
-Around Sousse the geoid is about 32 m above the ellipsoid, so a car near sea level has an
-ellipsoidal height of about +40 m. In other places the geoid is below the ellipsoid (its lowest
-point, about −106 m, is in the Indian Ocean south of India): there a **negative** ellipsoidal
-height is normal — the vehicle is not under the sea. The value 32.0 m is the one written by the
-synthetic receiver of the lab.
+<details><summary>Answer</summary>
+1. −(33 + 55.5/60) = <b>−33.925000°</b>; 18 + 25.4/60 = <b>18.423333°</b>.<br>
+2. The receiver's own dead reckoning. Not a measurement: refuse it as a GPS fix and say why ("receiver dead
+reckoning"), so the judge knows that GPS is missing and can use another source.
+</details>
 
-### RMC — speed, course and date
+## 4. GSA and GSV: which satellites, and where
 
-`$GPRMC,051217.00,A,3549.61531,N,01038.52535,E,11.88,136.6,121026,,,A*5F`
-
-Fields: time, **status** (`A` active, `V` void), position, **speed over ground in knots**
-(1 kn = 0.514444 m/s), **course over ground** (degrees clockwise from **true** north; empty when
-not moving), **date** (ddmmyy). Here 11.88 kn = 6.11 m/s towards 136.6° (south-east).
-
-### GSA — which satellites, and the DOPs
+**GSA** says which satellites the receiver **used** and the DOPs it computed:
 
 `$GPGSA,A,3,02,05,07,09,13,20,23,24,30,,,,1.98,1.15,1.61*0C`
 
 | # | Field | Meaning |
 |---|---|---|
-| 1 | `A` | mode selection: A = automatic, M = manual |
-| 2 | `3` | fix type: 1 = none, 2 = 2D, 3 = 3D |
-| 3–14 | `02,05,…,,,` | the **PRNs** (satellite numbers) **used** in the fix; 12 slots, empty slots `,,` |
-| 15, 16, 17 | `1.98,1.15,1.61` | **PDOP, HDOP, VDOP** |
+| 1 | `A` | mode selection: A automatic, M manual |
+| 2 | `3` | fix type: 1 none, 2 = 2-D, 3 = 3-D |
+| 3–14 | `02,05,…,,,` | the PRNs (satellite numbers) **used**; 12 slots, empty slots `,,` |
+| 15, 16, 17 | `1.98,1.15,1.61` | PDOP, HDOP, VDOP |
 
-NMEA 4.10 and later add an 18th field, the system ID (1 = GPS, 2 = GLONASS, 3 = Galileo…); a `GN` receiver
-then sends one GSA per system. A robust parser must accept both versions.
+NMEA 4.10 and later add an 18th field, the system ID (1 GPS, 2 GLONASS, 3 Galileo…); a multi-system
+receiver then sends one GSA per system. A robust reader accepts both versions.
 
-### GSV — satellites in view
+**GSV** lists the satellites **in view**, four per sentence: PRN, **elevation** (degrees above the
+horizon), **azimuth** (degrees clockwise from north) and signal strength (dB-Hz, empty when the
+satellite is seen but not tracked):
 
-`$GPGSV,3,1,12,02,61,008,45,05,31,051,38,07,20,097,34,09,45,130,41*7F`
+`$GPGSV,3,1,12,02,61,008,45,05,31,051,38,07,20,097,34,09,45,130,41*7F`  — sentence 1 of 3, 12 in view.
 
-Fields: number of GSV sentences in this group (3), this sentence's number (1), satellites in view
-(12), then **blocks of 4** fields: PRN, **elevation** (°, 0–90), **azimuth** (°, clockwise from
-north), **SNR** (signal-to-noise ratio, dB-Hz; empty when the satellite is in view but not tracked).
-Four satellites per sentence, so 12 satellites need 3 sentences. **GSV + GSA together give the
-geometry**: GSV says where each satellite is, GSA says which ones were used.
+GSV tells **where** each satellite is, GSA **which** were used: together, the geometry of the fix (§5).
+`parse_gsv` is given finished; you write `parse_gsa`.
 
-## 5. Dilution of precision: geometry in a matrix
+> [!QUESTION] ✏️ Check
+> A receiver sees 11 satellites. How many GSV sentences does it send, and how many satellites are in the last one?
 
-Why does the same receiver give 1.5 m in an open field and 30 m in a street? The
-pseudorange errors `eps_i` are similar. What changes is the **geometry**.
+<details><summary>Answer</summary>
+Four per sentence: 3 sentences, 4 + 4 + 3. The last one is shorter: a reader must not expect four blocks.
+</details>
 
-**Linearisation.** Start from an approximate solution `x0, b0` and write `x = x0 + dx`,
-`c*b = c*b0 + db`. To first order:
+---
 
-```
-d rho_i  =  -u_i . dx  +  db  +  eps_i
-u_i = unit vector from the receiver to satellite i, in local East, North, Up (ENU):
-u_i = ( cos(el_i) sin(az_i),  cos(el_i) cos(az_i),  sin(el_i) )
-```
+**Session 2 — The sky.** Read §5–§6 before lab Step 6.
 
-Stack the *n* satellites into one matrix equation:
+## 5. Geometry: DOP in three dimensions
 
-```
-d rho = G [dE, dN, dU, db]^T + eps        G (n x 4), row i = [ -uE_i, -uN_i, -uU_i, 1 ]
-```
+**Why.** The same receiver gives about 1.5 m in an open field and 30 m in a narrow street. The range errors
+are similar; the **geometry** changes. Mission 01 showed it in 2-D with three beacons. Now the receiver
+is in 3-D, under real satellites.
 
-**Least squares** (the receiver's solution when n > 4):
+**From mission 01's H to the receiver's G.** In mission 01, each beacon gave a row [uₓ, u_y, 1] of the
+Jacobian, with u the unit vector **from the beacon to the receiver**. A receiver knows each satellite by its
+azimuth and elevation (GSV). The unit vector **from the receiver to the satellite**, in East, North, Up, is
 
 ```
-[dE, dN, dU, db]^T = (G^T G)^-1 G^T d rho
+u = ( cos el · sin az ,  cos el · cos az ,  sin el )
 ```
 
-If the errors `eps_i` are independent, with zero mean and the same standard deviation
-`sigma_UERE`, the covariance of the solution is (covariance propagation, lesson 27):
+![Azimuth seen from above and elevation seen from the side give the three components of the unit vector u](assets/azel.svg)
+
+Mission 01's vector points the other way, so one row of the **geometry matrix G** is
 
 ```
-Cov = sigma_UERE^2 * Q          Q = (G^T G)^-1   (4 x 4, depends ONLY on geometry)
+row of G = [ −u_E,  −u_N,  −u_U,  1 ]          (East, North, Up, clock)
 ```
 
-The **DOPs** are the square roots of parts of the diagonal of Q:
+Same idea, one more column: n satellites give an n × 4 matrix. As in mission 01, with the same independent
+error σ on every range, the solution's covariance is σ² Q with **Q = (GᵀG)⁻¹**, a 4 × 4 matrix that depends
+**only on the geometry**. The DOPs are square roots of parts of its diagonal:
 
 ```
-GDOP = sqrt(Q_EE + Q_NN + Q_UU + Q_bb)     geometric (everything)
-PDOP = sqrt(Q_EE + Q_NN + Q_UU)            position (3D)
-HDOP = sqrt(Q_EE + Q_NN)                   horizontal
-VDOP = sqrt(Q_UU)                          vertical
-TDOP = sqrt(Q_bb)                          time (clock)
+EDOP = √Q_EE     NDOP = √Q_NN     HDOP = √(Q_EE + Q_NN)     VDOP = √Q_UU     TDOP = √Q_bb (clock)
+PDOP = √(Q_EE + Q_NN + Q_UU)       GDOP = √(Q_EE + Q_NN + Q_UU + Q_bb)
 ```
 
-So a DOP is a **multiplier with no unit**: error in metres ≈ DOP × UERE.
+A DOP has no unit: it **multiplies** the range error. With σ = 2 m on every range, the East error is
+σ_E = 2 m × EDOP. (How such errors combine into "95 % of the fixes within x m" is mission 32's subject.)
 
-> [!NOTE]
-> **Worked example (by hand).** Four satellites at elevation 30° towards N, E, S, W, plus one
-> straight overhead. With cos 30° = 0.866 and sin 30° = 0.5:
->
-> ```
-> G = [  0     -0.866  -0.5   1 ]      (az 0,   el 30)
->     [ -0.866  0      -0.5   1 ]      (az 90,  el 30)
->     [  0      0.866  -0.5   1 ]      (az 180, el 30)
->     [  0.866  0      -0.5   1 ]      (az 270, el 30)
->     [  0      0      -1     1 ]      (overhead)
->
-> G^T G = [ 1.5  0    0    0 ]
->         [ 0    1.5  0    0 ]
->         [ 0    0    2   -3 ]
->         [ 0    0   -3    5 ]
-> ```
->
-> The matrix is block-diagonal. The East-North block inverts to 1/1.5 = 0.667 on each axis. The
-> Up-clock block has determinant 2·5 − 9 = 1, so its inverse is `[[5, 3], [3, 2]]`. Then:
->
-> ```
-> HDOP = sqrt(0.667 + 0.667) = 1.155     VDOP = sqrt(5) = 2.236
-> PDOP = sqrt(0.667 + 0.667 + 5) = 2.517 TDOP = sqrt(2) = 1.414    GDOP = 2.887
-> ```
->
-> With UERE = 2 m: σ_E = σ_N = 2 × 0.816 = 1.63 m, σ_U = 2 × 2.236 = 4.47 m.
+**Worked example.** Four satellites at elevation 30° towards N, E, S and W, plus one straight overhead.
+cos 30° = 0.866, sin 30° = 0.5:
 
-Three lessons from this example:
+```
+G = [  0      −0.866  −0.5   1 ]   (az 0)              GᵀG = [ 1.5   0    0    0 ]
+    [ −0.866   0      −0.5   1 ]   (az 90)                   [ 0    1.5   0    0 ]
+    [  0       0.866  −0.5   1 ]   (az 180)                  [ 0    0    2   −3 ]
+    [  0.866   0      −0.5   1 ]   (az 270)                  [ 0    0   −3    5 ]
+    [  0       0      −1     1 ]   (overhead)
+```
 
-1. **VDOP > HDOP** almost always. All satellites are **above** you, never below, so the "up" and
-   "clock" columns of G are strongly correlated (look at the −3 in `G^T G`). Vertical GNSS is
-   typically 1.5–2 times worse than horizontal.
-2. **Remove the overhead satellite** and the four remaining satellites all have the same
-   elevation. Then the Up column is exactly −0.5 × the clock column: `G^T G` is **singular**, it
-   cannot be inverted, and height and clock cannot be separated: the DOPs are **infinite** (the
-   lab's `dops()` returns `math.inf` for all five). Geometry, not the number of satellites, decides.
-3. **Bunched satellites are bad.** In a street, only satellites along the street axis and near
-   the zenith are visible. The error ellipse becomes long in the direction where no satellite
-   constrains the position:
+GᵀG is block-diagonal. The East–North block inverts to 1/1.5 = 0.667 on each axis. The Up–clock block has
+determinant 2 × 5 − 9 = 1, so its inverse is [[5, 3], [3, 2]]. Then **HDOP = √(0.667 + 0.667) = 1.155**,
+**VDOP = √5 = 2.236**, PDOP = 2.517, TDOP = 1.414, GDOP = 2.887. With σ = 2 m: σ_E = σ_N = 1.63 m, σ_U = 4.47 m.
 
-![Two skies: good and bad geometry](assets/dop_sky.svg)
+> [!TIP] 🧰 Inverting a 2 × 2 matrix, and a block-diagonal one
+> [[a, b], [c, d]]⁻¹ = 1/(ad − bc) · [[d, −b], [−c, a]]: swap the two diagonal entries, change the sign of the
+> other two, divide by the determinant ad − bc. Here [[2, −3], [−3, 5]] → 1/1 · [[5, 3], [3, 2]]. A
+> **block-diagonal** matrix (zeros everywhere outside square blocks on its diagonal) is inverted block by
+> block, so the East–North part and the Up–clock part are done separately. In the lab, `np.linalg.inv` does
+> all of this for you.
 
-In the lab log you will recompute PDOP, HDOP and VDOP of every second from the GSV azimuths and
-elevations and the GSA list of used satellites, and compare with what the receiver wrote.
+Three facts to keep:
 
-## 6. From DOP to metres: UERE and accuracy measures
+1. **VDOP > HDOP in an open sky.** Every satellite is **above** you, so every row has −u_U < 0: the Up column
+   looks like a constant times the clock column (see the −3 in GᵀG). A height error and a clock error
+   change the ranges in almost the same way, and the solver cannot separate them well. Horizontally,
+   satellites can surround you.
+2. **Singular geometry.** Remove the overhead satellite: the four left all have −u_U = −0.5, so the Up
+   column is **exactly** −0.5 × the clock column. G has rank 3, GᵀG cannot be inverted, and height and
+   clock cannot be separated **at all**. Four satellites, no 3-D fix: geometry, not the count, decides.
+   (More generally, any four satellites on one circle of the sky, around any axis, are singular; the same
+   elevation is the case where the axis is the vertical.)
+3. **Bunched satellites are bad**, and the error is not round. When all satellites are on one side, every
+   row has the same sign along that direction: as with height in fact 1, moving towards the bunch looks
+   almost like a clock error, and the error is long **along** the bunch.
 
-**UERE** (*User Equivalent Range Error*) is the standard deviation of one pseudorange error. It is
-a sum of independent sources. Typical orders of magnitude for a single-frequency receiver in open
-sky (they vary a lot with the receiver, the place and the time):
+![Two sky plots (drawn like a map, north up), and their 1-σ horizontal error ellipses at the same scale: well spread (HDOP 1.15) and bunched in the north-east behind buildings (HDOP 16.2, a 1-σ ellipse with semi-axes 32 m and 4.6 m)](assets/dop_sky.svg)
 
-| Source | Typical size (1 σ) | Note |
+> [!WARNING] Testing for a singular GᵀG
+> Do not rely on `try: np.linalg.inv(...) except LinAlgError`. Rounding makes a singular matrix look
+> "almost" invertible: on the course computer, for the four satellites at 30°, numpy **returns** numbers with
+> no error (VDOP about 10⁸), while at 40° it raises the error. Another computer may do the opposite: that is
+> exactly why the exception cannot be the test. Test the **rank** first, `np.linalg.matrix_rank(G) < 4`, and then
+> say clearly that there is no answer (NAVERA Lite's `dops` returns `None`).
+
+> [!QUESTION] ✏️ Check
+> 1. Can adding a satellite ever make a DOP **larger**? (Think first: one more measurement adds information,
+>    and Q is the uncertainty. Then the maths: a new row g adds gᵀg to GᵀG.)
+> 2. Four satellites all at elevation 40°, at azimuths 0°, 90°, 180°, 270°. What happens, and why does a
+>    fifth one at elevation 70° fix it?
+
+<details><summary>Answer</summary>
+1. No. GᵀG + gᵀg is "larger" than GᵀG (it adds a term xᵀgᵀgx = (g·x)² ≥ 0 in every direction), so its
+inverse is "smaller": no diagonal entry of Q can grow. A badly placed satellite helps little, but it never
+hurts the geometry. (It can hurt the <b>position</b> if its range is bad: that is another story.)<br>
+2. The Up column is −sin 40° in every row: a multiple of the clock column, rank 3, no 3-D fix. A satellite at
+70° has another −u_U, so the two columns are no longer proportional.
+</details>
+
+## 6. The decision: from HDOP to σ and a state
+
+A judge (NAVERA's arbiter, mission 01 §5) needs two things from each source: is this a **measurement**,
+and what is its **σ**?
+
+**Is it a measurement?** Only fix qualities **1, 2, 4, 5** (§3), with a latitude and a longitude. Quality
+6 is the receiver guessing; quality 0 is no fix. A refused line still says **why**: "receiver dead
+reckoning (quality 6)" tells the judge that GPS is missing, so it can switch to another source.
+This is not mission 01's "propagated → DEGRADED". There, the judge carries **its own** last trusted position
+forward and states a σ that grows. Here, the **receiver** guesses, and nothing says how wrong it is. So the GPS
+source says NO_FIX, and the judge decides what to do without it.
+
+**What σ?** A receiver's NMEA has no accuracy field in metres; it has HDOP. NAVERA assumes a range error
+of **2 m** and states
+
+```
+σ = 2 m × HDOP   on East and on North,     2σ on Up,     no correlation
+```
+
+as a covariance of 9 numbers (ENU, m², as in `sensor_msgs/NavSatFix`), of type **approximated**. 2 m is
+an **assumption**, not a measurement: NAVERA has not measured its receiver's range error yet. (In
+`gnss.py` this 2 m is the constant `UERE_M`, for "user equivalent range error"; mission 32 measures one.) No HDOP →
+the covariance type is **unknown**, and the numbers mean nothing: an accuracy is never invented (GPS-5).
+
+**What state?** The rule of mission 01 §5: **FIX** when the stated σ ≤ 25 m, **DEGRADED** when σ is unknown
+or larger, **NO_FIX** when there is no usable measurement. With σ = 2 m × HDOP, FIX means **HDOP ≤ 12.5**.
+
+**Worked example.**
+
+| GGA | Measurement? | σ (East, North) | State |
+|---|---|---|---|
+| quality 1, HDOP 0.72 (the figure of §3) | yes | 2 × 0.72 = 1.44 m | FIX |
+| quality 1, HDOP 20 | yes | 40 m > 25 m | DEGRADED (EST-6: it used to be "green") |
+| quality 1, HDOP empty | yes | unknown | DEGRADED |
+| quality 6, perfect-looking position | no | — | NO_FIX, "receiver dead reckoning" |
+
+![One GGA line through NAVERA Lite's gnss.py: is_valid, parse_gga, fix_decision, σ from HDOP, fix_state; what each stage refuses, and what none of them can see](assets/judge_flow.svg)
+
+> [!QUESTION] ✏️ Check
+> With a range error of 2 m, theory gives σ_E = 2 m × EDOP and σ_N = 2 m × NDOP. Is NAVERA's "2 m × HDOP on
+> **each** axis" larger or smaller than that, and by how much when EDOP = NDOP?
+
+<details><summary>Answer</summary>
+Larger: HDOP = √(EDOP² + NDOP²) is larger than each part. When EDOP = NDOP, HDOP = √2 × EDOP, so NAVERA's σ
+is √2 ≈ 1.41 times the theory: a <b>conservative</b> choice, on top of an assumed 2 m.
+</details>
+
+> [!WARNING] Common wrong ideas
+> - "A correct checksum means a correct line." It means "probably not damaged by noise". Swaps and
+>   deliberate changes pass.
+> - "A position in a GGA is a GPS fix." Only if its quality says it was measured (1, 2, 4, 5).
+> - "An empty field is 0." Empty is unknown. 0 is a real latitude, a real height.
+> - "More satellites always means a good fix." Geometry decides: four badly placed satellites give no 3-D
+>   fix at all.
+> - "HDOP is an accuracy in metres." It is a multiplier with no unit; the metres come from an assumed
+>   range error.
+
+## Bird's-eye view: what catches what
+
+| Problem on the line | Caught by | In NAVERA Lite |
 |---|---|---|
-| satellite clock and orbit (broadcast) | about 0.5–1 m | |
-| ionosphere, after the broadcast model | about 1–5 m | larger by day and near solar maximum |
-| troposphere, after the model | a few decimetres | |
-| multipath (reflections) | 0.2 m to many metres | worst in streets, ports, near metal |
-| receiver noise | about 0.1–0.5 m | |
-
-The ionospheric delay is largest in two bands about 15° north and south of the magnetic equator,
-the **equatorial ionisation anomaly** (for example over India, Taiwan, West Africa and Brazil),
-especially in the evening. Single-frequency receivers there should not assume a small UERE.
-
-If the horizontal errors are Gaussian, standard accuracy measures follow from UERE × HDOP:
-
-| Measure | Formula | Probability (circular case) |
-|---|---|---|
-| **DRMS** (distance RMS) | sqrt(σ_E² + σ_N²) = UERE × HDOP | about 63 % |
-| **CEP** (circular error probable) | ≈ 0.83 × DRMS | 50 % |
-| **2DRMS** | 2 × UERE × HDOP | about 95–98 % |
-
-> [!NOTE]
-> **Worked example.** HDOP 1.15, UERE 2 m: DRMS = 2.3 m, CEP ≈ 1.9 m, 2DRMS = 4.6 m.
-> In the old town of the lab log, HDOP 5.69: DRMS = 11.4 m, 2DRMS = 22.8 m — with the same receiver.
-
-**Estimating UERE from data.** For each fix, `E[e_h^2] = UERE^2 × HDOP^2`, where `e_h` is the
-horizontal error. When the truth is known, `UERE_est = sqrt(mean((e_h / HDOP)^2))`. You will do
-this in the lab on a synthetic drive whose truth is known. On a real vehicle this needs a reference
-(an RTK receiver or a surveyed point); NAVERA has not measured its own UERE yet.
-
-**NAVERA's choice.** `gps_node` writes `sigma = 2 m × HDOP` on **each** horizontal axis. Theory
-with UERE = 2 m gives `sqrt(σ_E² + σ_N²) = 2 × HDOP`, so about `1.41 × HDOP` per axis. NAVERA's
-per-axis sigma is therefore **√2 larger** than this theory: a conservative choice, written in the
-code as an assumption, not a measurement.
-
-## 7. Robust parsing: never crash, never invent
-
-A parser that reads a serial line in a flying vehicle must follow simple rules:
-
-1. **Validate before parsing**: `$` at the start, `*` + exactly 2 hex digits, correct checksum,
-   at most 82 characters, no second `$` inside (two sentences glued together).
-2. **Every field can be empty or wrong.** Convert with functions that return `None` instead of
-   raising (`to_float("")` → `None`). Check ranges (minutes < 60, quality 0–8, elevation 0–90).
-3. **Never fill a missing value with a default that looks real** (no "0.0 latitude" — that is a
-   real place in the Gulf of Guinea).
-4. **Decode bytes defensively**: `bytes.decode("ascii", errors="replace")` turns a damaged byte into
-   `'�'` instead of crashing; the checksum then fails.
-5. **One line is not enough**: compare with the previous fix (a jump gate) and with other sources.
-
-The lab log `sousse_drive.nmea` contains every kind of damage that a real serial line produces:
-a flipped character, a cut line, a missing checksum, garbage, two glued sentences, a non-ASCII
-byte, and two lines with swapped digits that pass the checksum.
-
-## 🐦 How birds do it
-
-Much of what we know today about bird **migration** comes from tracking tags. In 2007 a satellite
-tag showed that a female **bar-tailed godwit** (known as "E7") flew non-stop from Alaska to New
-Zealand, about 11 700 km in 8 days, without eating or drinking. Light-level loggers of a few grams
-showed that **Arctic terns** breeding in Greenland and Iceland fly about 70 000 km a year, to the
-Antarctic and back. GPS tags on young **white storks** from Europe showed exactly where they cross
-into Africa — over the Strait of Gibraltar or around the eastern Mediterranean — because storks
-glide on warm air and avoid long flights over the sea.
-
-A modern tag is a tiny GNSS receiver plus a battery and a radio. It faces the same problems as
-NAVERA: a bird under a rock ledge or in dense mangroves sees part of the sky only, and the fix has
-a large HDOP. Biologists therefore **filter** the fixes before they draw a route: a common rule is
-to drop fixes with a high HDOP or with too few satellites, and fixes that would need an impossible
-flight speed. That is exactly the quality filter and the jump gate you will write in the lab.
-
-The birds themselves do not need any of this: they combine the Sun, the stars, the Earth's magnetic
-field and landmarks. Navi, our swallow, would say that a navigator who trusts one single sense
-blindly is soon lost.
+| noise, cut line, glued lines, garbage | the checksum and the sentence rules | `is_valid` |
+| impossible field (74 minutes, latitude 95°) | range checks | `dm_to_deg`, `parse_gga` |
+| the receiver guessing (quality 6), no fix | the quality rule | `fix_decision` |
+| poor geometry | DOP → σ → DEGRADED | `dops`, `covariance_from_hdop`, `fix_state` |
+| swapped digits with plausible numbers | nothing on the line: a speed check | the jump gate (mission 01, given in 12) |
+| a spoofer's perfect lines | nothing on the line: another source | the cross-check (mission 30) |
 
 ## In NAVERA
 
-The GPS driver is [gps_node.py](file:navera/gps_pkg/gps_pkg/nodes/gps_node.py). A thread reads
-the serial port line by line and hands each line to the **pynmea2** library:
+From NAVERA's backlog and validation report (Release 0.2, 2026-09-28 to 2026-10-03):
 
-```python
-raw = self.ser.readline().decode("ascii", errors="replace").strip()
-if not raw.startswith("$"):
-    continue
-try:
-    # check=True: a truncated or corrupted line (no/bad *hh
-    # checksum) must never become a fix.
-    msg = pynmea2.parse(raw, check=True)
-except pynmea2.ParseError:
-    continue
-if isinstance(msg, pynmea2.types.talker.GGA):
-    self._publish_fix(msg)
-elif isinstance(msg, pynmea2.types.talker.RMC):
-    self._publish_vel(msg)
-```
+- The GPS driver parses each line with an open-source NMEA library, checksum check on: a line without a
+  checksum or with a wrong one is ignored (GPS-1).
+- Fix qualities 1, 2, 4, 5 are used. For 6, 7, 8 the driver publishes an **invalid** GPS estimate with its
+  reason instead of staying silent, so the judge knows GPS is missing (GPS-2).
+- σ = 2 m × HDOP per horizontal axis, twice that vertically, "approximated"; no HDOP → unknown (GPS-5).
+  The altitude is ellipsoidal; a missing one is "not a number", never 0 (GPS-4). FIX needs σ ≤ 25 m (EST-6).
+- The driver does **not** check plausibility: a swapped-digit line becomes a valid fix, and the judge's
+  jump gate (100 m/s, 50 m) refuses it. A lost serial port makes the driver exit; it restarts every 10 s.
+- NAVERA also **writes** NMEA for an autopilot (GGA + RMC), turning its σ back into an HDOP with the same
+  2 m (mission 31).
+- All of this is bench-tested on a virtual serial port; the real receiver's line from the project report
+  passes through the driver in a test (2026-10-01). No flight yet.
 
-`_publish_fix` applies the quality filter (`_VALID_GPS_QUAL = {1, 2, 4, 5}`), converts the
-altitude to the ellipsoid, and turns HDOP into a covariance:
+## In NAVERA Lite
 
-```python
-hdop = _field_float(msg.horizontal_dil)
-if hdop is not None and hdop > 0:
-    # sigma = HDOP x 2 m (assumed user range error); vertical ~2x horizontal.
-    cov = (hdop * 2.0) ** 2
-    fix.position_covariance = [cov, 0.0, 0.0, 0.0, cov, 0.0, 0.0, 0.0, cov * 4]
-```
+[navera_lite/gnss.py](file:./navera_lite/gnss.py) is your stack's GNSS part: ten functions to write, and
+helpers given finished (`to_float`, `to_int`, `fields`, `utc_seconds`, `parse_gsv`, `read_log`). Mission 31's
+simulator and the final project (33) use it finished.
 
-![What gps_node does with one line](assets/gps_node_flow.svg)
+## 🐦 How birds do it
 
-Important design choices:
+A GPS tag on a migrating bird faces your problems. Under a cliff or in dense mangroves it sees part of the
+sky, and its fixes have a large HDOP. Biologists who draw the route of a white stork or a bar-tailed godwit
+first **filter** the fixes: few satellites or a high HDOP out, then any fix that needs an impossible speed.
+The bird itself needs none of this: it never trusts one sense alone.
 
-- **An invalid fix is published, not swallowed.** Without a usable fix, `gps_node` publishes a
-  `PositionEstimate` with `valid = False`, a NaN position and a **reason**, e.g.
-  `"receiver reports a non-satellite position (qual=6) — not used"`. The estimator then *knows*
-  that GPS is missing.
-- **gps_node does not check plausibility.** A swapped-digit line with a correct checksum becomes a
-  valid fix. The plausibility gate lives in the estimator
-  ([estimator_node.py](file:navera/navera_estimator/navera_estimator/nodes/estimator_node.py),
-  lesson 29): a fix farther from the last trusted fix than
-  `max_speed_mps × elapsed + gps_jump_margin_m` (defaults 100 m/s and 50 m) is refused as
-  "possible spoofing".
-- **Timing is not finished.** The code says `# TODO(step 6): true measurement instant = GGA UTC +
-  date(RMC)/RTC`: today `sensor_stamp` is the publication time. Lesson 20 explains why the true
-  measurement instant matters.
+## Summary
 
-The topics: `/navera/sensors/gps_fix` (`sensor_msgs/NavSatFix`), `/navera/sensors/gps_vel`
-(`geometry_msgs/TwistStamped`, east/north velocity from RMC) and `/navera/estimate/gps`
-(`navera_msgs/PositionEstimate`). Two more files speak NMEA: `navera_tools/sim/nmea_gps.py` (the
-simulator's receiver, which writes real NMEA on a pseudo-terminal) and
-`navera_tools/tests/test_gps_serial.py` (the integration test that feeds good, cut and corrupted
-lines to the real node). `docs/VALIDATION_STATUS.md` lists these behaviours as **bench-tested**;
-none of them has been validated in flight yet (Release 0.x — field validation pending).
+1. NMEA 0183 is text: `$`, comma-separated fields, `*`, two hex digits. Empty is unknown, never 0.
+2. The XOR checksum catches noise, not swaps and not attacks: check fields and ranges too.
+3. GGA: degrees + minutes/60, quality 1/2/4/5 = measured, 6 = the receiver guessing; ellipsoidal height =
+   MSL + geoid separation.
+4. G has rows [−u_E, −u_N, −u_U, 1]; Q = (GᵀG)⁻¹; DOPs are roots of its diagonal; rank < 4 → no answer.
+5. σ = 2 m × HDOP (an assumption); FIX if σ ≤ 25 m, i.e. HDOP ≤ 12.5; DEGRADED if unknown or larger.
 
-## Glossary
+**Next mission:** rotations and quaternions — how a drone describes which way it points.
 
-| Term | Meaning |
-|---|---|
-| **GNSS** | Global Navigation Satellite System: GPS, GLONASS, Galileo, BeiDou |
-| **pseudorange** | measured distance to a satellite, including the receiver clock error |
-| **ephemeris** | the orbit data a satellite broadcasts, to compute its position |
-| **UTC / GPS time** | world time / the GPS time scale (18 s ahead of UTC since 2017) |
-| **baud** | bits per second on a serial line (9600 baud ≈ 960 characters/s) |
-| **NMEA 0183** | text protocol of GNSS receivers: `$`, fields, `*hh` |
-| **talker / sentence type** | `GP`, `GN`… / `GGA`, `RMC`, `GSA`, `GSV` |
-| **checksum (XOR)** | 8-bit XOR of the body; detects single errors, not swaps |
-| **fix quality** | GGA field 6: 0 none, 1 GPS, 2 DGPS, 4/5 RTK, 6 dead reckoning… |
-| **dead reckoning** | continuing a position from the last speed and heading, without measurement |
-| **PRN** | the number that identifies a GPS satellite |
-| **elevation / azimuth** | angle above the horizon / clockwise from north |
-| **SNR (C/N0)** | signal strength in dB-Hz |
-| **geometry matrix G** | n × 4 matrix of the linearised pseudorange equations |
-| **DOP** (G/P/H/V/T) | square roots of diagonal terms of (GᵀG)⁻¹; error multipliers |
-| **UERE** | standard deviation of one pseudorange error (metres) |
-| **DRMS, 2DRMS, CEP** | horizontal accuracy measures (≈ 63 %, ≈ 95–98 %, 50 %) |
-| **geoid / ellipsoid** | mean-sea-level surface / WGS84 mathematical surface |
-| **geoid separation N** | ellipsoid height − MSL height |
-| **jump gate** | rejects a fix that would need an impossible speed |
+## Check yourself
 
-## Check your understanding
+Answer without scrolling up.
 
-<details><summary>1. Convert <code>3355.50000,S,01825.40000,E</code> (Cape Town) to decimal degrees.</summary>
-−(33 + 55.5/60) = <b>−33.925000°</b> (south is negative) and 18 + 25.4/60 = <b>18.423333°</b> E.
+<details><summary>1. Name two kinds of damage a checksum always catches, and two it never catches.</summary>
+Always: one changed character; a cut line (the checksum is missing). Never: two swapped characters; a
+deliberate change with the checksum recomputed.
 </details>
-
-<details><summary>2. Why can the checksum not detect <code>3547.17</code> written as <code>3574.17</code>? Name two other checks that catch it.</summary>
-XOR is commutative, so swapping two characters does not change the XOR of the body. The field
-check "minutes &lt; 60" catches it (74 minutes is impossible), and a jump gate catches it (a 50 km
-jump in 1 s). NAVERA's gps_node does neither; its estimator has the jump gate.
+<details><summary>2. Convert <code>4807.038,N</code> and <code>01131.000,W</code>.</summary>
+48 + 7.038/60 = 48.1173°; −(11 + 31/60) = −11.516667°.
 </details>
-
-<details><summary>3. Four satellites all at elevation 40°, at azimuths 0°, 90°, 180°, 270°. What happens to the DOPs?</summary>
-The Up column of G is −sin 40° for every row, which is a constant multiple of the clock column (all
-ones). The columns are linearly dependent, GᵀG is singular and the DOPs are infinite: height and
-clock cannot be separated. A fifth satellite at another elevation fixes it.
+<details><summary>3. Why is VDOP usually larger than HDOP, and when does G lose rank with four satellites?</summary>
+All satellites are above: the Up column is almost proportional to the clock column. With four satellites, G
+has rank 3 whenever they lie on one circle of the sky (one cone around any axis); the common case is four
+satellites at the same elevation, where the axis is the vertical.
 </details>
-
-<details><summary>4. HDOP = 3.0 and UERE = 2.5 m. Give DRMS and 2DRMS. What sigma does NAVERA write?</summary>
-DRMS = 3.0 × 2.5 = <b>7.5 m</b>, 2DRMS = <b>15 m</b>. NAVERA writes σ = 2 m × 3.0 = <b>6 m</b> on each
-horizontal axis (variance 36 m²) and 12 m vertically — it uses its assumed 2 m, not 2.5 m.
+<details><summary>4. HDOP 14, quality 1. σ, and state? Quality 2, HDOP 3? Quality 6, HDOP 0.8?</summary>
+28 m > 25 m → DEGRADED. 6 m → FIX (differential is a measurement). Quality 6 → NO_FIX, whatever the HDOP.
 </details>
-
-<details><summary>5. Why is VDOP usually larger than HDOP?</summary>
-All satellites are above the horizon. The Up component of every line of sight has the same sign,
-so it is correlated with the clock column of G; the estimate of height is mixed with the estimate
-of the clock. Horizontally, satellites can surround the receiver on all sides.
+<details><summary>5. (Mission 01) A swapped-digit fix lands 400 m from the last trusted one, 2 s later. What does the jump gate with 100 m/s and 50 m say?</summary>
+400 m > 100 × 2 + 50 = 250 m: refused.
 </details>
-
-<details><summary>6. A GGA has quality 6, 0 satellites and a perfect-looking position. What does gps_node publish?</summary>
-A <code>PositionEstimate</code> with <code>valid = False</code>, NaN position, covariance UNKNOWN and
-the reason "receiver reports a non-satellite position (qual=6) — not used". The position is the
-receiver's own dead reckoning, not a measurement.
+<details><summary>6. (Mission 06) Why is a height of 0 m in a log suspicious?</summary>
+0 m is a real height (the sea): a missing value written as 0 cannot be told apart from it. Unknown must be NaN/None.
 </details>
 
 Now open the **🛠️ Lab** tab.
