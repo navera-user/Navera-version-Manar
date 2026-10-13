@@ -22,6 +22,14 @@ NAVERA Lite (2026-10-12): load_student("navera_lite.arbiter") or load_student("n
 imports a module of the student's package with the lesson folder first on sys.path (fresh=True
 re-imports every navera_lite module); is_stub(func) tells a TODO stub (same rule as runner_kit);
 publishers_ok() watches /navera_lite/status by default; sh()/Background() source ROS 2 only.
+
+Sealed checks (2026-10-13, see AUTHORING.md "check.py — security"): the server and try_lesson start
+check.py through academy_sealed.py. check.py and courses/<id>/hidden/ then exist only in the checker's
+memory, load_student() returns proxies of modules that run in a separate student process
+(academy_remote.py), every command started by the check runs without access to them, and the result
+goes to the server through a private channel (an ACADEMY_RESULT line printed by anyone is ignored).
+hidden("name") reads a file of courses/<id>/hidden/. Student files are always compiled from their
+source (never a stale __pycache__).
 """
 import importlib
 import importlib.util
@@ -39,6 +47,42 @@ class CheckFailed(AssertionError):
 
 class Skip(Exception):
     pass
+
+
+_SEALED = None        # set by academy_sealed.py: {"report": fn(result), "hidden": {name: bytes}}
+
+
+def sealed():
+    """True when this check runs sealed (server, try_lesson)."""
+    return _SEALED is not None
+
+
+def hidden(name, text=True):
+    """A file of courses/<id>/hidden/ (test data the student must never see). Sealed: from the
+    checker's memory (never on disk in the sandbox). Run by hand (python3 check.py in the course
+    folder): read from the folder. text=False gives bytes."""
+    if _SEALED is not None:
+        try:
+            data = _SEALED["hidden"][name]
+        except KeyError:
+            raise FileNotFoundError(f"hidden/{name} is not part of this mission's hidden data") from None
+    else:
+        main = sys.modules.get("__main__")
+        base = os.path.dirname(os.path.abspath(getattr(main, "__file__", "") or "."))
+        with open(os.path.join(base, "hidden", name), "rb") as f:
+            data = f.read()
+    return data.decode("utf-8") if text else data
+
+
+def hidden_names():
+    if _SEALED is not None:
+        return sorted(_SEALED["hidden"])
+    main = sys.modules.get("__main__")
+    base = os.path.join(os.path.dirname(os.path.abspath(getattr(main, "__file__", "") or ".")), "hidden")
+    out = []
+    for d, _, fs in os.walk(base):
+        out += [os.path.relpath(os.path.join(d, f), base) for f in fs]
+    return sorted(out)
 
 
 class Checker:
@@ -127,7 +171,10 @@ class Checker:
         result = {"passed": passed, "total": total}
         if reached:
             result["milestones"] = reached
-        print("ACADEMY_RESULT " + json.dumps(result))
+        if _SEALED is not None:
+            _SEALED["report"](result)       # the private channel; nothing printed can fake it
+        else:
+            print("ACADEMY_RESULT " + json.dumps(result))
         sys.stdout.flush()
         sys.exit(0 if passed == total else 1)
 
@@ -152,6 +199,8 @@ def _show(path):
 
 def _where(e):
     """'navera_lite/arbiter.py line 12': the deepest frame of the student's code in a traceback."""
+    if getattr(e, "academy_where", None):          # raised by the student's code in the student process
+        return e.academy_where
     tb = traceback.extract_tb(e.__traceback__)
     return next((f"{_show(f.filename)} line {f.lineno}" for f in reversed(tb)
                  if not f.filename.endswith(("check.py", "academy_check.py"))
@@ -188,7 +237,14 @@ def load_student(filename, fresh=False):
     "navera_lite.arbiter": a module of the student's package, imported by name with the lesson folder
     first on sys.path, so `from navera_lite.geo import …` inside it finds the lesson's own copy.
     fresh=True loads it again (after the check changed a file); for the package it drops every
-    navera_lite module first."""
+    navera_lite module first.
+
+    Sealed: the module is imported in the student process and a proxy comes back (academy_remote).
+    The source is always compiled fresh (no __pycache__)."""
+    if _SEALED is not None:
+        import academy_remote
+        return academy_remote.load(filename, fresh)
+    _fresh_imports()
     modname, rel = _module_of(filename)
     if "." not in modname and filename.endswith(".py"):
         return _load_file(filename, fresh)
@@ -226,7 +282,7 @@ def _load_file(filename, fresh=False):
     if path in _loaded and not fresh:
         return _loaded[path]
     name = "student_" + os.path.splitext(os.path.basename(path))[0]
-    spec = importlib.util.spec_from_file_location(name, path)
+    spec = _spec_fresh(name, path)
     mod = importlib.util.module_from_spec(spec)
     sys.path.insert(0, os.path.dirname(path))
     try:
@@ -239,6 +295,16 @@ def _load_file(filename, fresh=False):
         sys.path.pop(0)
     _loaded[path] = mod
     return mod
+
+
+def _fresh_imports():
+    import academy_remote
+    return academy_remote.install_fresh_source_hook()
+
+
+def _spec_fresh(name, path):
+    import academy_remote
+    return academy_remote.spec_from_file_fresh(name, path)
 
 
 def need(mod, *names):

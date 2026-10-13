@@ -36,6 +36,7 @@ import orgs
 import simlite
 import webtools
 import sandbox
+import sealed
 import workspaces
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -760,14 +761,9 @@ def _default_signals():
 
 
 def _course_mounts(lid=None):
-    """The grader of ONE mission, only while its check runs: a terminal sees no check.py (quiz keys,
-    expected values) and never the missions of a leg that is not open yet."""
-    if not lid:
-        return []
-    lib = os.path.join(config.COURSES, "_lib")
-    m = [(lib, "/academy/lib")] if os.path.isdir(lib) else []
-    m.append((os.path.join(config.COURSES, lid), f"/academy/courses/{lid}"))
-    return m
+    """Public parts of ONE mission (helpers, starter files). check.py, meta.json and hidden/ are never
+    mounted: a check runs sealed (server/sealed.py) and gets them in memory."""
+    return sealed.mounts(lid) if lid else []
 
 
 @app.post("/api/lesson/<lid>/check")
@@ -782,19 +778,12 @@ def api_check(lid):
     m = lesson_meta(lid)
     timeout = int(m.get("check_timeout_s", 180))
     res = [r for r in m.get("resources", []) if _holder(r) == name]
-    code, out = run_in_sandbox(name, ["bash", "-lc",
-                                      f"source ~/.bashrc >/dev/null 2>&1; cd ~/lessons/{lid} && "
-                                      f"PYTHONPATH=/academy/lib:$PYTHONPATH python3 /academy/courses/{lid}/check.py"],
-                               timeout=timeout, resources=res, heavy=bool(res), lid=lid)
-    score = None
-    mres = re.findall(r"^ACADEMY_RESULT (\{.*\})$", out, re.M)
-    if mres:
-        try:
-            score = json.loads(mres[-1])
-        except json.JSONDecodeError:
-            pass
-    out = re.sub(r"^ACADEMY_RESULT .*\n?", "", out, flags=re.M)
-    passed = code == 0 and (score is None or score.get("passed") == score.get("total"))
+    # sealed: check.py and hidden data stay in the checker's memory, the score comes on a private
+    # channel (an ACADEMY_RESULT line printed by the student's code is ignored and removed)
+    u = users()[name]
+    code, out, score = sealed.run_check(name, lid, u["index"], timeout=timeout, resources=res, heavy=bool(res),
+                                        host_net=is_staff(u))
+    passed = sealed.passed(code, score)
     if not is_staff(request.urec) or name == request.user:
         with _lock:
             p = _load("progress.json", {})

@@ -154,14 +154,16 @@ courses/<NN-slug>/
   lab.md         the lab, step by step (the student writes the code)
   assets/        images for lesson.md / lab.md (SVG preferred, PNG/JPG ok; small)
   files/         starter files copied to ~/lessons/<id>/ (code with TODOs, data the lab edits)
-  check.py       the automatic grader ("✔ Check my work")
+  check.py       the automatic grader ("✔ Check my work") — never visible to students (sealed)
+  hidden/        optional test data only check.py reads (hidden("name")) — never visible to students
 solutions/<NN-slug>/   a complete solution (same file names as files/), teacher only — never mounted
 datasets/<NN-slug>/    optional larger read-only data, seen in the sandbox as /data/academy/<NN-slug>/
 ```
 
-`solutions/` and the real repo are **not** visible to students. Everything in `courses/<id>/` is
-visible (read only) at `/academy/courses/<id>/` — do not put answers there (check.py may hold expected
-values, but not the code that solves the exercise).
+`solutions/` and the real repo are **not** visible to students. Of `courses/<id>/`, the sandbox sees
+only `files/` (read only, at `/academy/courses/<id>/files/`) and `courses/_lib/` (at `/academy/lib/`).
+`check.py`, `hidden/` and `meta.json` are never mounted: the check gets them in memory (see
+"check.py — security" below). `datasets/` is public: never put expected answers there.
 
 ## Markdown features of the dashboard
 
@@ -232,6 +234,49 @@ c.run()
   ROS checks call `publishers_ok()` (default topic `/navera_lite/status`) before reading a topic.
 - `tools/try_lesson.py <id> --solution` copies `solutions/<id>/` **with its sub-folders**
   (`navera_lite/`) over the lesson folder. No `_apply.sh` is needed (one is still run if present).
+
+## check.py — security (sealed checks, mandatory)
+
+Every check runs **sealed** (dashboard and `tools/try_lesson.py` alike, `server/sealed.py` →
+`courses/_lib/academy_sealed.py`): the checker gets `check.py` and `hidden/` in memory, is
+non-dumpable (no `/proc/<pid>/mem|environ|fd`), and runs **every piece of student code in another
+process**: commands (`subprocess`, `os.system`, `sh()`, `Background()`) get the student's environment
+(`~/.bashrc` sourced, as before) but see no check.py and no hidden data; `load_student()` and any
+`import` of a module from a writable folder (`~/lessons/…`, `~/navera/…`, after `sys.path.insert`)
+return **proxies** of a module running in a separate student Python process (`academy_remote.py`).
+The score reaches the server on a private pipe with a nonce: an `ACADEMY_RESULT` line printed by
+anyone is ignored (and removed from the output). Student files are always compiled from source (no
+stale `__pycache__`). Attack tests: `python3 -m pytest -q tools/tests/test_sealed_check.py`.
+
+Rules for authors:
+- **Expected values** live in `check.py` (constants) or in `courses/<id>/hidden/` (files, read with
+  `from academy_check import hidden` → `hidden("expected.json")` (str) or `hidden("x.npy", text=False)`
+  (bytes); `hidden_names()` lists them; 64 MB max). Never in `files/`, `datasets/`, `assets/` or a
+  lesson text.
+- **Never write an expected value or hidden data to disk** (`/tmp`, the lesson folder, a temp file):
+  student processes run in the same sandbox and can read it. Data the student's program must
+  *process* (a test log it has never seen) may be written to a temp file just before running it — the
+  student sees that input anyway; keep its expected *output* in memory.
+- **Never execute student code in check.py's process**: no `exec(open(...))`, `runpy`, `importlib`
+  with a path (use `load_student`), `pickle`/`torch.load`/`np.load(allow_pickle=True)` of a student
+  file, `ctypes` of a student library. Read student files as text/JSON/CSV/YAML (`yaml.safe_load`).
+- Values come back by value (numbers, str, list/tuple/dict/set, namedtuple, NumPy, pandas, datetime,
+  ROS messages of installed packages); instances of student classes, generators… are proxies that
+  forward attributes, calls, operators, `len`/`iter`/`[]`/`==`/`float()`. `isinstance(x, list)` on a
+  proxy is False (as `isinstance(proxy, m.Track)` is True). A list/dict/ndarray the student's
+  function changes in place is copied back after the call; deeper sharing (the student keeps a
+  reference to your list and you change it later) is not.
+- Functions/objects you pass to student code become call-only proxies (the student may call them and
+  read their public attributes — not `__globals__`, `__code__` or anything starting with `_`). Never pass
+  a module or an object that holds expected values.
+- `run(fn, …, seconds=N)` (SIGALRM) interrupts the student's code in its process; if it does not stop
+  within 2 s that process is restarted (modules, functions and classes reconnect, other objects are
+  lost: load them again inside the test).
+- An exception keeps its built-in class (`ValueError` stays `ValueError`); `e.academy_where` gives the
+  student's file and line (`_where`/`run()` show it). A student cannot raise the checker's `Skip`.
+- ROS: `wait_for_messages()` runs in the checker: the message type must be an installed package
+  (`/opt/ros`, read only), not a package the student builds.
+- `check.py` itself may read the student's files, run commands and compare outputs as before.
 
 ## Testing — mandatory before you finish
 
