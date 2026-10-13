@@ -9,7 +9,8 @@ and rescue work you "lost" on purpose.
 
 Your files (📝 Code tab): [detective.py](file:./detective.py) (**your code**: `TODO 1–3`),
 [bisect_test.sh](file:./bisect_test.sh) (`TODO 4`), [test_regression.py](file:./test_regression.py)
-(`TODO 5`), [review.md](file:./review.md) (your review), [answers.py](file:./answers.py) (numbers,
+(the **template** of `TODO 5`: in Step 8 you copy it into the repository and write it **there**),
+[review.md](file:./review.md) (your review), [answers.py](file:./answers.py) (numbers,
 predictions, explanations). Given: [run_lab.py](file:./run_lab.py) (runs your functions) and
 [probe_gate.py](file:./probe_gate.py) (tests the jump gate of whatever commit is checked out).
 
@@ -89,8 +90,8 @@ git status
 2. Committed on `main` by mistake? Note the hash (`git log -1 --oneline`). No branch `my-first-change`
    yet: `git switch -c my-first-change`. Otherwise: `git switch my-first-change` and
    `git cherry-pick <hash>`. Then put `main` back where it was: `git branch -f main 1f76dac`.
-3. A long `usage:` list after `git config`, and no `user.name` in `--list`? Your name has spaces: put it
-   in quotes, `"Ana Souza"`.
+3. A long `usage:` list after `git config`, or `--list` shows only your first name? Your name has
+   spaces: put it in quotes, `"Ana Souza"`, and run the command again.
 </details>
 
 ## Step 2 — Read a hunk header
@@ -156,6 +157,9 @@ Save the reviewer's view in a file of the lesson folder (`>` from lesson 2):
 ```bash
 git diff main...kenji/fewer-refusals > ../review_me.patch
 ```
+
+Three dots, not two: `git apply --stat ../review_me.patch` (Step 4) must list **5** files. Six files? You
+saved the two-dot view: it would undo main's newest commits.
 
 **TODO 2** `diff_stat`: how many lines each file of a patch adds and removes. Run `test` again, then
 compare your count with git's own count on the real patch:
@@ -432,8 +436,10 @@ A fix comes with a test that would have caught the bug. Copy the template into t
 cp ../test_regression.py tests/
 ```
 
-**TODO 5**: write the test in [tests/test_regression.py](file:./navera-lite-history/tests/test_regression.py)
-(its docstring says what to assert). It must **fail** now, on main's code:
+**TODO 5**: write the test in **this copy**,
+[tests/test_regression.py](file:./navera-lite-history/tests/test_regression.py), not in the template of
+the lesson folder (its docstring says what to assert). It must **fail** now, on main's code, on an
+`assert … ==` (a `NotImplementedError` means the copy in `tests/` is still the template):
 
 ```bash
 python3 -m pytest -q tests/test_regression.py
@@ -461,16 +467,22 @@ Now look at **everything** the revert removed:
 git show --stat HEAD
 ```
 
-A revert undoes a **whole** commit. `refused_for_s()` and its test, the operator-display feature Amara
-wrote that commit for, are gone too (count the tests before and after), and `CHANGELOG.md` still
-announces it. The other way is to **fix forward**: one new commit that changes only the faulty line
-(see Going further).
+A revert undoes a **whole** commit. Which file besides `guard.py` did it touch, how many tests pass now
+compared with before, and what does `CHANGELOG.md` still announce? The other way is to **fix forward**:
+one new commit that changes only the faulty line (see Going further).
 
 > [!TASK]
 > On `my-first-change`: `tests/test_regression.py` committed (it fails on main's code, passes on your
 > branch), the bad commit reverted, every test passing, and the probe printing 5.
 > `EXPLAIN_REVERT_COST`: what else did the revert remove, and how would one-concern commits (or a
 > fix forward) have avoided it?
+
+<details><summary>Read this after you wrote EXPLAIN_REVERT_COST</summary>
+
+`refused_for_s()` and its test, the operator-display feature Amara wrote that commit for, are gone too
+(14 tests before the revert, 13 after), and `CHANGELOG.md` still announces it. Because the commit mixed a
+feature and a behaviour change, one revert could not keep one and drop the other.
+</details>
 
 <details><summary>Stuck? Hints</summary>
 
@@ -485,6 +497,9 @@ announces it. The other way is to **fix forward**: one new commit that changes o
    expected list** is wrong. pytest says `At index i`: recompute fix i with lesson 1's table (t = 4 s:
    100 × 4 + 50 = 450 m < 500 m → refused, `False`). Commit the corrected test as a new `test(guard): …`
    commit.
+6. pytest says `NotImplementedError: TODO 5`? You wrote your code in the template
+   `~/lessons/05-git/test_regression.py`, not in the copy. `cp ../test_regression.py tests/` again, run
+   pytest, and commit it as a new `test(guard): …` commit.
 </details>
 
 ## Step 9 — Disaster and rescue
@@ -578,7 +593,8 @@ Then look back, without the lesson:
 - **Fix forward instead of reverting.** On a throw-away branch from your test commit
   (`git switch -c fix-forward <hash of your test commit>`), change only `elapsed_s = t_s - self.prev_t_s`
   back to `elapsed_s = t_s - self.last_t_s`. Run all the tests: your regression test passes **and**
-  `test_refused_for_s` stays. Commit it as `fix(guard): …` with a body that names the bad commit. Which of
+  `test_refused_for_s` stays. The `prev_t_s` lines are now unused: remove them in the same commit? Commit it
+  as `fix(guard): …` with a body that names the bad commit. Which of
   the two fixes would you send for review, and why? (Back with `git switch my-first-change`.)
 
 - **Who wrote this line?** `git blame navera_lite/guard.py` and `git log -S prev_t_s --oneline`

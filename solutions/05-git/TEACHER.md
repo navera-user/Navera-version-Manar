@@ -113,6 +113,15 @@ exactly 5 bisect tests.
   Check 14 needs the commit the branch was on just before that reset (the reflog line just below it) to be back
   in the branch (or cherry-picked from the reflog): redoing the work by hand, or rescuing to `HEAD@{2}`, fails it.
   A Step 5 `git reset HEAD~1` (to split a commit) is ignored: only a reset after the Step 8 commits counts.
+  An `--amend` after a real rescue is fine: the rescue is recognised in the reflog even if the tip's hash changed.
+- A review patch saved with **two** dots undoes main's newest commits: its README "typo fix" would delete
+  main's `## Review rule` section. `run_lab.py stat` warns (6 files instead of 5), Step 3 says "must list 5
+  files", and check 6 fails if the section is gone.
+- A bisect script that calls only 7 bad: check 10 also runs it on an unseen commit (made in the check's private
+  clone) where the gate refuses nothing (probe prints 0); it must exit 1.
+- Writing TODO 5 in the template `~/lessons/05-git/test_regression.py` instead of the copy in `tests/`: the lab's
+  file list and Step 8 now say "template", Step 8 hint 6 and check 12 point to it.
+- `lo <= hi` (one test too many): `run_lab.py toy` flags it with "too many tests".
 - A regression test with a wrong expected value: if the probe prints 5 on the branch, check 12 says the
   expected list is wrong (Step 8 hint 5).
 - `git revert` without `--no-edit` opens an editor (nano or vi in the terminal): tell students how to save and quit,

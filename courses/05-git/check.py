@@ -371,6 +371,11 @@ def _():
         c.ok("def test_jump_gate_refuses_a_500_m_jump" in (read("tests/test_guard.py") or ""),
              f"tests/test_guard.py {where} lost test_jump_gate_refuses_a_500_m_jump")
     c.ok("you receive" in (show(tip, "README.md") or ""), "README.md on your branch does not have the accepted change yet")
+    c.ok("## Review rule" in (show(tip, "README.md") or ""),
+         "README.md on your branch lost main's '## Review rule' section: your review_me.patch was made with TWO dots "
+         "(main..kenji/fewer-refusals), so it also undoes main's newest commits. Make it again with three dots "
+         "(Step 3), then: git restore --source=main README.md, git apply --include=README.md ../review_me.patch, "
+         "and commit (or --amend if it is your last commit)")
     geo = show(tip, "navera_lite/geo.py") or ""
     c.ok("2 * EARTH_RADIUS_M * math.asin" in geo, "navera_lite/geo.py on your branch does not have the accepted change yet")
     commits = branch_commits()
@@ -496,6 +501,16 @@ def _():
         code = run_script(cl, broken)
         c.ok(code == 125, f"on the commit '{broken[:7]} wip: guard status line', whose code does not even import, it "
                           f"exits with {code} instead of 125 — such a commit is not bad, it cannot be tested")
+        # an unseen bad commit: a gate that accepts everything (the probe prints 0)
+        cl.checkout(MAIN_TIP)
+        with open(os.path.join(cl.dir, "navera_lite", "guard.py"), "a") as f:
+            f.write("\n\nJumpGate.check = lambda self, t_s, xy: True     # check.py: a gate that refuses nothing\n")
+        git("-c", "user.name=check", "-c", "user.email=check@example.org", "commit", "-q", "-am", "unseen", cwd=cl.dir)
+        _, unseen = git("rev-parse", "HEAD", cwd=cl.dir)
+        code = run_script(cl, unseen)
+        c.ok(1 <= code <= 127 and code != 125,
+             f"on a commit where the gate refuses nothing (the probe prints 0), bisect_test.sh exits with {code}: "
+             "only 5 is good. Exit 0 when the probe printed 5 and 1 for anything else — not only for the 7 you saw")
 
 
 def bisect_log():
@@ -553,7 +568,8 @@ def _():
     c.ok(src is not None, "tests/test_regression.py is not committed on my-first-change "
                           "(cp ../test_regression.py tests/, write it, git add, git commit)")
     c.ok("NotImplementedError" not in src, "tests/test_regression.py on your branch is still the TODO (it raises "
-                                           "NotImplementedError)")
+                                           "NotImplementedError) — did you write it in ~/lessons/05-git/test_regression.py "
+                                           "(the template)? cp ../test_regression.py tests/ again, then commit")
     c.ok("assert" in src, "tests/test_regression.py has no assert")
     with Clone() as cl:
         cl.checkout(f"origin/{BRANCH}")
@@ -615,7 +631,8 @@ def _():
                           "commits: do the disaster of Step 9, then the rescue")
     k = hard[0]
     before = entries[k + 1][0]                       # where the branch was just before the (latest) disaster
-    back = git("merge-base", "--is-ancestor", before, tip)[0] == 0
+    back = (git("merge-base", "--is-ancestor", before, tip)[0] == 0
+            or any(h == before for h, _ in entries[:k]))  # it was put back (an --amend after that is fine)
     picked = any(s.startswith("cherry-pick") for _, s in entries[:k])
     c.ok(back or picked, f"your branch does not have all its commits back: just before the reset it was at "
                          f"{before[:7]}. In git reflog, take the line just BELOW 'reset: moving to HEAD~2', then "

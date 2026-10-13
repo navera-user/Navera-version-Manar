@@ -125,6 +125,13 @@ def stat(path):
     hunks = sum(1 for l in text.splitlines() if l.startswith("@@"))
     print(f"\n{len(git)} file(s), {hunks} hunk(s). " + ("Your diff_stat agrees with git." if same else
           "Your diff_stat does not agree with git yet: compare the ✘ lines (see the Step 3 hints)."))
+    if os.path.basename(path) == "review_me.patch" and os.path.isdir(os.path.join(REPO, ".git")):
+        r = subprocess.run(["git", "diff", "--name-only", "main...kenji/fewer-refusals"], cwd=REPO,
+                           capture_output=True, text=True)
+        view = set(r.stdout.split()) if r.returncode == 0 else None
+        if view is not None and view != set(git):
+            print(f"⚠ This patch has {len(git)} file(s); the reviewer's view (three dots) has {len(view)}. Made with two "
+                  "dots? Make it again: git diff main...kenji/fewer-refusals > ../review_me.patch (Step 3)")
 
 
 def toy():
@@ -145,6 +152,8 @@ def toy():
                 wrong = (bad, v)
             worst = max(worst, len(asked))
         note = "" if wrong is None else f"   ✘ wrong answer: first bad {wrong[0]}, you returned {wrong[1]!r}"
+        if wrong is None and worst > math.ceil(math.log2(n)):
+            note = "   ✘ too many tests (Step 6 hint 4: do you test the last commit?)"
         print(f"{n:9d} {worst:16d} {math.ceil(math.log2(n)):9d}{note}")
 
 
