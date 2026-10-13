@@ -9,13 +9,13 @@ autopilot) and camera (frame timeouts).
 
 ## Range
 
-240 log lines, 27 WARN and 2 ERROR lines. NO_FIX happened 1 time, in the dry valley, when the ridge's
-shadow made the frames too dark. The fake GPS jump of 2412 m was refused by the jump gate, and GPS was
+240 log lines, 27 WARN and 2 ERROR lines. NO_FIX happened 1 time, for about 6 s, when the ridge's
+shadow made the frames too dark for day vision. The fake GPS jump of 2412 m was refused by the jump gate, and GPS was
 accepted again when it agreed with day vision (gap 21 m).
 
 ## Conclusion
 
-Day vision covered both GPS losses over land, but over the sea it cannot find any landmark, so the
+Day vision covered the GPS losses over land, apart from a 6 s gap in the ridge's shadow, but over the sea it cannot find any landmark, so the
 position was only dead-reckoned and then lost, and the autopilot used its own failsafe. Future routes
 should stay over land when jamming is expected, and the camera timeouts of the Sousse flight should be
 investigated before the next test.

@@ -36,12 +36,15 @@ if [ ! -f "$unit" ]; then
     echo "  !! GPS service : no unit file mission/deploy/navera_lite-gps.service yet"
     problems=$((problems + 1))
 elif sed -n '/^\[Service\]/,/^\[Install\]/p' "$unit" \
-        | grep -Eq "^SupplementaryGroups *= *(.* )?${port_group:-?}( |$)"; then
+        | grep -Eq "^SupplementaryGroups *= *([^#]* )?${port_group:-?}( [^#]*)?$"; then
     echo "GPS service      : its user may open the serial port (group $port_group)"
 else
     echo "  !! GPS service : its user may not open the serial port /dev/ttyTHS1"
     if grep -q "SupplementaryGroups" "$unit"; then
         echo "     (a SupplementaryGroups line exists: is it in [Service], with the port's group?)"
+    fi
+    if grep -q "^SupplementaryGroups.*#" "$unit"; then
+        echo "     (a '#' after the value is not a comment in a unit file: systemd reads it as group names)"
     fi
     problems=$((problems + 1))
 fi

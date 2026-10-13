@@ -3,7 +3,8 @@
 **Goal:** work on a NAVERA Lite box entirely from the terminal: explore the stack's skeleton, tidy the
 box's files, repair a permission fault, find and stop an orphan arbiter, restart a hung node; then
 answer questions about two flights with pipelines and write a script that summarises any log.
-**Time:** 2 h 30 to 3 h 30 (up to 5 h if you have never used a terminal: plan the two sessions on two days).
+**Time:** 2 h 30 to 3 h 30 (about 5 h in all, reading included, if you have never used a terminal: plan the
+two sessions on two days).
 
 Your files (📝 Code tab): [answers.py](file:./answers.py) (your answers), [cheatsheet.md](file:./cheatsheet.md)
 (every command), [mission_brief.txt](file:./mission_brief.txt), `box.sh` (the simulated box; you don't
@@ -99,8 +100,10 @@ relative to it (`"navera_lite/geo.py"`).
   Three names: which one is the **source**?
 - **Q3** `find` prints names on its output, but `wc -l` wants names as **arguments**. `xargs CMD` turns
   its input lines into arguments of CMD. Build the pipeline yourself; the last line of `wc` is the total.
-- **Q4** `ls deploy/systemd`, then count only the names that end in `.service` (a wildcard, and `wc -l`).
-- **Q5** search the part files for the words `mission 17`.
+- **Q4** how many systemd **service** units (files ending in `.service`) does the skeleton define?
+  `deploy/systemd` is not the only folder that may hold one, and copies do not count.
+- **Q5** which part file says that you write it in mission 17? One command, no `cd`, run from the
+  skeleton's top folder.
 
 <details><summary>Stuck? Hints</summary>
 
@@ -109,7 +112,8 @@ relative to it (`"navera_lite/geo.py"`).
 2. Q2: the source is the path that does not start with `build/` or `install/`. Drop the `./`.
 3. Q3: `find navera_lite/ros -name "*.py" | xargs wc -l`. The total line says `total`; do not add the
    numbers yourself.
-4. Q4 = 5? The `.target` file is not a service: a wildcard `*.service` keeps only the units.
+4. Q4: `find` with `-name "*.service"`, but where? 4? You looked in `deploy/systemd` only. 10? You
+   counted the copies in `install/` too: search in `deploy`.
 5. Q5: `grep -l` prints only the names of the matching files. Which files are the *part* files
    (`navera_lite/*.py`)?
 </details>
@@ -225,7 +229,7 @@ Open [mission/deploy/navera_lite-gps.service](file:./mission/deploy/navera_lite-
 `[Service]` section, add **one line** that gives the service's user the extra group: the setting is
 called `SupplementaryGroups`. The skeleton's camera unit already does this for its own device: read
 `cat /data/academy/02-terminal/navera_lite_tree/deploy/systemd/navera_lite-camera.service` and do the
-same for the GPS. Unit files are not YAML or Python: write `SupplementaryGroups=` followed directly by
+same for the GPS. Unit files are not YAML or Python: a `#` is a comment only at the start of a line, and you write `SupplementaryGroups=` followed directly by
 the group's name (systemd tolerates spaces around `=`, but the usual style has none). Change nothing
 else. Save, then compare with the original — `diff` prints only the lines that differ:
 
@@ -265,7 +269,10 @@ env | grep ^NAVERA_LITE
 ```
 
 Write **E1** (the value of `ROS_DOMAIN_ID`, a number) and **E2** (the value of `NAVERA_LITE_MAP`, in
-quotes). Now see inheritance. A shell variable is not given to a child process; an exported one is:
+quotes). Now see inheritance. A shell variable is not given to a child process; an exported one is.
+Type the **single** quotes `'…'` of the `bash -c` commands exactly: they stop **your** shell from
+replacing `$MY_SPEED_KMH`, so the child does it (with double quotes, your shell would replace it before
+the child even starts, and the test would prove nothing).
 
 ```bash
 MY_SPEED_KMH=90
@@ -283,8 +290,7 @@ export MY_SPEED_KMH
 bash -c 'echo "child sees: [$MY_SPEED_KMH]"'
 ```
 
-(The single quotes stop **your** shell from replacing `$MY_SPEED_KMH`: the child does it.) A setting for
-one command only: `ROS_DOMAIN_ID= ./mission/bin/preflight.sh` — read its first line.
+A setting for one command only: `ROS_DOMAIN_ID= ./mission/bin/preflight.sh` — read its first line.
 
 A colleague left a note in the environment of this box:
 
@@ -324,7 +330,10 @@ pgrep -a -f navera_lite_arbiter
 Then the parents and start times — write the two PIDs you found after `-p`, separated by a comma (for
 example `ps -o pid,ppid,lstart,args -p 23,71`; your numbers differ). Then look at each **parent**:
 `ps -o pid,args -p PPID`. The whole family: `ps -ef | cut -c1-120` (the very long line of PID 1 is the
-sandbox itself). The box's journal tells the story too (its times and the `STARTED` times of `ps` may
+sandbox itself). Other processes hang from PID 1 too, on purpose: the box's three `supervise` programs
+(they run on their own, like services under systemd) and `ros2cli.daemon`, ROS 2's discovery helper (a
+**daemon**). Leave them alone: an orphan is a process whose **starter** is gone, and the supervised
+arbiter's parent is a supervisor. The box's journal tells the story too (its times and the `STARTED` times of `ps` may
 differ by a second: they are read at slightly different moments):
 
 ```bash
@@ -342,13 +351,23 @@ alive? When you are sure, stop **that PID** politely: `kill` followed by the num
 2. `ps -o pid,args -p` on the other PPID: is it a supervisor of the box?
 3. The command lines differ: `--params-file box/config/sim.yaml` vs `navera_lite.yaml`.
 4. You stopped the wrong one? The supervisor starts it again a second later (see the journal): no harm,
-   and you have already observed the next paragraph. Find the orphan and stop it; no need to restart the box.
+   and you have already observed the next paragraph. Find the orphan and stop it. (If you already
+   stopped the box, `./box.sh start` and do Step 6 in the new run: one correct run is enough.)
 </details>
 
 **Observe your prediction.** The orphan is gone; now see what a supervisor does with a kill. Find the
 PID of the remaining arbiter, `kill` it, wait 2 s, then run `pgrep -a -f navera_lite_arbiter` and
-`tail -n 3 box/log/journal.log`. Same PID or a new one? Compare with your PREDICT_PKILL: what would
+`tail -n 3 box/log/journal.log`. Same PID or a new one? Its exit code is `0`, not 143: it *caught*
+SIGTERM and ended by itself ("shutting down cleanly"); 128 + N is reported only when the signal itself
+ends the program (the camera's 137 below is that case). Compare with your PREDICT_PKILL: what would
 `pkill` have done to the orphan **and** to this one?
+
+So on this box `pkill -f navera_lite_arbiter` would even have *looked* right. It is still wrong:
+(1) for a second the good arbiter was down too: on a flying vehicle, a second with no position;
+(2) `-f` matches every command line that contains the text: another user's test, or your own
+`tail -f …/navera_lite_arbiter.log`; (3) most processes have no supervisor: without one, the good
+arbiter would never have come back. (The check refuses a run where both arbiters got SIGTERM in the
+same second.)
 
 > [!TASK]
 > The orphan arbiter received SIGTERM (its journal line says so); the supervised arbiter was stopped and
@@ -447,7 +466,7 @@ stage, look, add the next):
 
 <details><summary>Stuck? Hints</summary>
 
-1. Q6: it is lesson §6's worked example on another file: the same five stages. Write the name without
+1. Q6: it is lesson §6's worked example on another file: the same six commands. Write the name without
    brackets and colon.
 2. Q7: one hour off? You wrote UTC (`date -u`); Tunisia is UTC+1.
 3. Q8: ERROR lines, then field 3, then `sort -u`, then `wc -l`. 7? You counted lines, not different
@@ -511,7 +530,8 @@ Make it executable, then test it on a log, without an argument, and on a missing
 ```
 
 Compare your WARN count with Step 8. The check also runs your script on **a log it has never seen**:
-it has no ERROR line at all, and INFO messages that contain the words WARN and ERROR. Before you press
+it has no ERROR line at all, INFO messages that contain the words WARN and ERROR, and it sits in a
+folder whose name has a space. Before you press
 Check, make your own test log with no ERROR line and run your script on it:
 
 ```bash
@@ -524,13 +544,15 @@ grep -v "^\[ERROR\]" mission/logs/range_2026-09-22.log > /tmp/no_error.log
 
 <details><summary>Stuck? Hints</summary>
 
-1. The script stops after `WARN:` with no message on a log without ERROR lines: `grep -c` found 0 and
-   exited with 1 under `set -e`. Add `|| true` (lesson §7).
+1. The script stops early (some count lines are missing) with no message on a log without ERROR lines:
+   `grep -c` found 0 and exited with 1 under `set -e`. Add `|| true` (lesson §7).
 2. `file: mission/logs/sousse…`: use `basename`.
 3. `lines: 310 mission/logs/…`: `wc -l < "$log"` prints the number only.
 4. `WARN: 85` instead of 84: anchor the pattern, `"^\[WARN\]"`.
 5. `nodes: 310`, `nodes: 1` or `nodes: 183`: field 3, then `sort -u` (`uniq` alone counts runs), then `wc -l`.
 6. Exit code 0 without an argument: test `$#` and `exit 2`.
+7. The check says the path has a space in it? Every `$log` must be `"$log"`, also inside
+   `$(basename …)` and after `wc -l <` (lesson §7: quote variables).
 </details>
 
 Then save one report per flight with a `for` loop (`basename "$f" .log` also removes the `.log` ending):

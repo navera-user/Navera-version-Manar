@@ -441,6 +441,17 @@ def tree():
           "# navera_lite.target — all NAVERA Lite services: sudo systemctl start navera_lite.target\n"
           "[Unit]\nDescription=NAVERA Lite (all services)\nWants=navera_lite-gps.service "
           "navera_lite-camera.service navera_lite-arbiter.service\n\n[Install]\nWantedBy=multi-user.target\n")
+    write(os.path.join(TREE, "deploy", "bench", "navera_lite-bench-replay.service"),
+          unit("bench-replay", "bench test: replays a recorded flight in a loop", "replay_node"))
+    write(os.path.join(TREE, "deploy", "bench", "README.md"),
+          "# deploy/bench/ — units used only on the test bench, never on a flying box\n")
+    # the packaging tool also installs a COPY of every unit under install/ (never edit it)
+    for dp, _, fns in os.walk(os.path.join(TREE, "deploy")):
+        for fn in fns:
+            if fn.endswith(".service"):
+                rel = os.path.relpath(os.path.join(dp, fn), TREE)
+                write(os.path.join(TREE, "install", "navera_lite", "share", "navera_lite", rel),
+                      open(os.path.join(dp, fn)).read())
     write(os.path.join(TREE, "deploy", "README.md"),
           "# deploy/ — running NAVERA Lite as services on a box\n\n"
           "Each node runs as a systemd service (a `.service` unit file in `systemd/`), as user `navera_lite`.\n"

@@ -14,7 +14,7 @@ Q1 = 0
 Q2 = ""
 # Q3. How many lines, in total, do all the *.py files of navera_lite/ros/ have?
 Q3 = 0
-# Q4. How many systemd unit files (names ending in .service) are in deploy/systemd/?
+# Q4. How many systemd service units (names ending in .service) does the skeleton define? (Copies do not count.)
 Q4 = 0
 # Q5. Which part file says that you write it in mission 17? Just its name, e.g. "geo.py".
 Q5 = ""
@@ -39,7 +39,7 @@ E2 = ""
 PREDICT_PKILL = ""
 # ORPHAN_PPID. The PPID that ps shows for the orphan arbiter.
 ORPHAN_PPID = -1
-# EXPLAIN_ORPHAN. How did you know which arbiter was the orphan? Give two clues.
+# EXPLAIN_ORPHAN. How did you know which arbiter was the orphan? Give two clues. (Its age alone proves nothing.)
 EXPLAIN_ORPHAN = ""
 # KILL_EXIT_CODE. The exit code the supervisor wrote in the journal for the camera reader you killed.
 KILL_EXIT_CODE = 0

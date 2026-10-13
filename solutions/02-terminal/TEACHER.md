@@ -32,8 +32,9 @@ of the NAVERA Lite reference settings (`navera_lite.yaml` is copied into the ske
   and `state NO_FIX … (gps: no message on /sim/fix/gps)` (the orphan, `box/config/sim.yaml`), once per second each.
 - Step 2 (skeleton): **Q1 = 54** (`find navera_lite -name "*.py" | wc -l`; 140 from the top folder with the
   build/install copies, the check names that mistake); **Q2 = `navera_lite/uncertainty.py`**; **Q3 = 134**
-  (`find navera_lite/ros -name "*.py" | xargs wc -l`, total); **Q4 = 4** (gps, arbiter, camera, replay;
-  `navera_lite.target` is not a service); **Q5 = `imu.py`**.
+  (`find navera_lite/ros -name "*.py" | xargs wc -l`, total); **Q4 = 5** (`find deploy -name "*.service"`:
+  gps, arbiter, camera, replay in `deploy/systemd/`, and `bench/navera_lite-bench-replay.service`; 4 = only
+  `deploy/systemd`, 10 = the copies in `install/` too, the check names both); **Q5 = `imu.py`**.
 - Step 3: 10 files in the inbox (3 views, 2 logs, 3 `.tmp`, notes, preflight.sh).
 - Step 4: **P1 = 660** (`crw-rw---- root dialout`); **P2 = `dialout`** (the developer has it, `navera_lite`
   does not). **P3** = the student's own mode: the starter is `rw-r--r--`, so `chmod u+x` gives **744**
@@ -48,6 +49,9 @@ of the NAVERA Lite reference settings (`navera_lite.yaml` is copied into the ske
   and check 5 names that line.
 - Step 5: E1 = the student's `ROS_DOMAIN_ID` (200 + their index; 202 in `try_lesson`), E2 = `/data/map.mbtiles`.
   `ros_env.txt`: `ROS_DISTRO=humble`, `ROS_DOMAIN_ID=…`, `ROS_LOCALHOST_ONLY=1`, `ROS_PYTHON_VERSION=3`, `ROS_VERSION=2`.
+- Step 6, two things that puzzle students (the lab explains both): the three `supervise` processes and
+  `ros2cli.daemon` also show PPID 1 (services and daemons hang from PID 1 on purpose: an orphan is defined by its
+  *starter* being gone); the supervised arbiter exits with code 0, not 143, because it catches SIGTERM.
 - Step 6: `pgrep -a -f navera_lite_arbiter` gives two PIDs. The orphan has **PPID 1** (`ORPHAN_PPID = 1`),
   started ~4 s **later**, by `sim_launcher` (gone), with `--params-file box/config/sim.yaml`; the other's parent
   is `box/bin/supervise arbiter`. Then the student kills the supervised arbiter on purpose ("Observe your
@@ -76,16 +80,22 @@ Wrong solutions tested (each fails with the message shown): no `|| true` → "st
 || true"; unanchored grep → "WARN: 85"; nodes without `sort -u` → "nodes: 310"; no `basename`; usage on
 stdout with exit 0; `wc -l "$log"` → "lines: 310 mission/logs/…"; `Group=dialout` instead of a new line;
 the line in `[Install]` (preflight also refuses it); Q1 = 140, Q7 in UTC; only the supervised arbiter killed
-("the orphan still runs: find it by its parent … no need to restart the box"); the orphan stopped but no
+("the orphan was not stopped: find it by its parent … if the box is still running, no need to restart it; if
+you already stopped it, ./box.sh start …"); `pkill -f navera_lite_arbiter` (both arbiters get SIGTERM in the
+same second: refused, "kill by PID"; the lab explains why pkill is wrong even though the box recovers);
+`SupplementaryGroups=dialout # GPS` (an end-of-line comment: systemd would fail the unit; preflight and check
+4 both refuse it, with a message about `#`); an unquoted `$log` (check 13 also runs the script on a log in a
+folder named `flight logs`); the orphan stopped but no
 observation; `kill -9` on the camera before its SIGTERM line; `kill -9` on the orphan; KILL less than 2 s after
 TERM; `EXPLAIN_ORPHAN = "It was definitely the first one in the list…"` (fails: no parent idea); a flight report
-of numbers plus 40 × "word" (fails: no domain words, no recommendation); `env | grep ROS_` without `^`;
+of numbers plus 40 × "word" (fails: no domain words, no flight words, no recommendation); `env | grep ROS_` without `^`;
 `uniq` instead of `sort -u` (nodes: 183).
 
 Known limits of the grader: the journal is a file in the student's folder, so a student could forge its lines
 (the exact format is needed; the rubric questions reveal it). check.py holds the hidden log of check 13
 (`hidden_log()`) and the expected constants; while a check runs, a student's script could read check.py — a
-platform fix is in progress (not handled in this mission).
+platform fix is in progress (not handled in this mission). Check 15 only looks for a domain word, 25
+different words and a recommendation word: a cleverly padded conclusion can pass; the rubric is the real gate.
 
 ## Rubric for the written answers (the check only catches empty or off-topic answers)
 
@@ -94,7 +104,7 @@ platform fix is in progress (not handled in this mission).
 | EXPLAIN_ORPHAN | two independent clues: PPID 1 (its starter is gone, while the other's parent is the supervisor) **and** command line (`sim.yaml`) or the journal (`sim_launcher started … as pid N`); bonus: it is the *younger* one, so age alone misleads | one clue only, or "it said NO_FIX" without linking it to a process | "the first one in the list", "the oldest" |
 | EXPLAIN_KILL | the reader **caught** SIGTERM and kept waiting (a program may catch or ignore TERM); KILL cannot be caught, so no clean-up and no last message; the supervisor reported 137 (128 + 9) and started a new reader (bonus: a process stuck in the kernel, state D, would not even die from KILL) | two of the three | "kill -9 is stronger" |
 | PREDICT_PKILL, PREDICT_UNIQ | never marked; discuss in class | | |
-| flight_report.md Conclusion | vision covered GPS over land, not over the sea (nothing to match) → NO_FIX and the autopilot's failsafe; a concrete recommendation (route over land under jamming, investigate camera timeouts, a source that works over water) | numbers repeated, vague recommendation | off-topic |
+| flight_report.md Conclusion | vision covered GPS over land (except dark frames in the ridge's shadow: a 6 s NO_FIX on the range), not over the sea (nothing to match) → NO_FIX and the autopilot's failsafe; a concrete recommendation (route over land under jamming, investigate camera timeouts, a source that works over water) | numbers repeated, vague recommendation | off-topic |
 
 ## Difficulties seen in testing (simulated students and the builder's run)
 

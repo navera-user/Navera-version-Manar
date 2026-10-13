@@ -30,7 +30,8 @@
    it has never seen.
 
 **You need:** mission 01. No Linux experience. ⏱ Reading: about 60 minutes with the ✏️ checks. Lab:
-2 h 30 to 3 h 30 (up to 5 h if you have never used a terminal: plan the two sessions on two days). Keep
+2 h 30 to 3 h 30 (about 5 h in all, reading included, if you have never used a terminal: plan the two
+sessions on two days). Keep
 [cheatsheet.md](file:./cheatsheet.md) open: it lists every command and option of this mission.
 
 **Before you start (mission 01).** Answer without looking; if you miss two, reread lesson 01 §5.
@@ -206,27 +207,34 @@ A running program is a **process**, with a number (**PID**) and a parent, the pr
 `NAME`; `ps -o pid,ppid,lstart,args -p 41,77` shows chosen columns (`lstart` = start time).
 
 **Orphans and supervisors.** When a parent ends first, its child keeps running as an **orphan**, adopted
-by process number 1 (systemd on a real computer; the sandbox's first process here). On a desktop,
-`systemd --user` often adopts them instead, so the PPID is that process's PID, not 1: what matters is
-that the parent is no longer the program that started it. On a real box,
+by process number 1 (systemd on a real computer; the sandbox's first process here). So an orphan has
+PPID 1, but PPID 1 alone does not make an orphan: services and **daemons** (background helpers) are
+*meant* to hang from PID 1. What matters is that the program that started it is gone. (On a desktop,
+`systemd --user` often adopts orphans instead of PID 1.) On a real box,
 **systemd** also **supervises** services: with `Restart=always` in its unit file, a service that ends is
 started again. So killing a supervised process does not stop the service; `sudo systemctl stop NAME`
 does. A **unit file** (`/etc/systemd/system/NAME.service`) tells systemd how to run one service:
 
 ```ini
 [Service]
-User=navera_lite                 # never root
+# the service's user: never root
+User=navera_lite
 Group=navera_lite
-SupplementaryGroups=video        # extra groups, for devices (here /dev/video0)
+# extra groups, for devices (here /dev/video0)
+SupplementaryGroups=video
 ExecStart=/usr/bin/python3 -m navera_lite.ros.camera_node
-Restart=always                   # started again when it ends
+# started again 10 s after it ends
+Restart=always
 RestartSec=10
 
 [Install]
-WantedBy=multi-user.target       # started at boot
+# started at boot
+WantedBy=multi-user.target
 ```
 
-`systemctl status NAME` shows its state, `journalctl -u NAME` its messages.
+`systemctl status NAME` shows its state, `journalctl -u NAME` its messages. A `#` starts a comment only
+at the **beginning** of a line: in `User=navera_lite  # never root`, the user name would be the whole
+text after `=`, and systemd refuses the unit.
 
 **Signals** are short messages to a process. A program can **catch** most of them and react (close its
 files), but not SIGKILL.
@@ -284,7 +292,8 @@ starter is gone (PPID 1), 988's is alive and expected.<br>
 
 Every process has three **streams**: **0 = stdin** (input), **1 = stdout** (normal output),
 **2 = stderr** (errors), all the terminal by default. `cmd > f` sends stdout to a file (emptied first;
-`>>` appends), `cmd 2> f` sends stderr, `cmd > f 2>&1` both. A **pipe** `a | b` makes stdout of `a` the stdin of `b`; stderr does not
+`>>` appends), `cmd 2> f` sends stderr, `cmd > f 2>&1` both. `cmd < f` makes the file
+the stdin: the shell opens it, so the program never sees its name (`wc -l < f` prints only the number). A **pipe** `a | b` makes stdout of `a` the stdin of `b`; stderr does not
 enter it. Never redirect into the file you read: `sort a.txt > a.txt` empties `a.txt` first.
 
 > [!TIP] 🧰 Reading `2>&1`
@@ -453,7 +462,7 @@ No x bit. <code>chmod u+x preflight.sh</code> gives <code>rwxr--r--</code> = 744
 
 <details><summary>2. Two copies of the same node run. How do you find the orphan, and stop it?</summary>
 <code>pgrep -a -f</code> for the PIDs, then <code>ps -o pid,ppid,lstart,args</code>: the one whose starter is gone (PPID 1, or a subreaper),
-started earlier, maybe with other settings in its command line. <code>kill PID</code>, check after a few seconds,
+maybe with other settings in its command line (its age alone proves nothing). <code>kill PID</code>, check after a few seconds,
 <code>kill -9 PID</code> only if it is still there.
 </details>
 

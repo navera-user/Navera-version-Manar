@@ -8,6 +8,7 @@ sandbox and cannot see the processes of the student's terminal.
 import glob
 import os
 import re
+import shlex
 import subprocess
 import tempfile
 
@@ -29,7 +30,9 @@ Q1_PY_FILES = 54                        # find navera_lite -name "*.py" | wc -l
 Q1_WITH_COPIES = 140                    # the same from the top folder (build/ and install/ copies)
 Q2_SOURCE = "navera_lite/uncertainty.py"
 Q3_ROS_LINES = 134
-Q4_SERVICES = 4
+Q4_SERVICES = 5                         # find deploy -name "*.service" (4 in systemd/, 1 in bench/)
+Q4_ONLY_SYSTEMD = 4
+Q4_WITH_COPIES = 10
 Q5_PART = "imu.py"
 P1_PORT_MODE = 660
 P2_GROUP = "dialout"
@@ -200,10 +203,19 @@ def orphan_verdict(ev):
             return False, "the orphan received SIGINT, not SIGTERM: stop it with plain `kill PID`"
         if observed:
             return False, ("you stopped the SUPERVISED arbiter (the supervisor started it again, see the journal), "
-                           "but the orphan still runs: find it by its parent (ps -o pid,ppid,lstart,args) and "
-                           "`kill` that PID — no need to restart the box")
+                           "but the orphan was not stopped: find it by its parent (ps -o pid,ppid,lstart,args) and "
+                           "`kill` that PID — if the box is still running, no need to restart it; if you already "
+                           "stopped it, ./box.sh start and do Step 6 in the new run (one correct run is enough)")
         return False, ("the orphan arbiter has no 'received SIGTERM' line in the journal: it is still running, or "
                        "it was killed with kill -9 (SIGKILL cannot be caught, so it could not write anything)")
+    t_orphan = next(t for t, n, p, msg in ev
+                    if n == "navera_lite_arbiter" and p == orphan and msg.startswith("received SIGTERM"))
+    if any(n == "navera_lite_arbiter" and p in supervised and msg.startswith("received SIGTERM")
+           and abs(t - t_orphan) <= 1 for t, n, p, msg in ev):
+        return False, ("both arbiters received SIGTERM in the same second: that is pkill/killall by name (or one "
+                       "kill with both PIDs). Find the orphan by its parent and kill only that PID; then, separately, "
+                       "kill the supervised one to observe its supervisor. Run ./box.sh start for a new run "
+                       "(one correct run is enough)")
     if not observed:
         return False, ("the orphan is stopped. Now observe your PREDICT_PKILL (Step 6): `kill` the remaining "
                        "arbiter by its PID, wait 2 s, and see in the journal what its supervisor does")
@@ -312,6 +324,9 @@ def _():
     c.ok(added, "nothing was added to the unit yet")
     c.ok(len(added) == 1, f"add exactly one line; you added {len(added)}: {', '.join(added)}")
     line = added[0]
+    if "#" in line:
+        raise CheckFailed(f"{line!r}: a unit file has no end-of-line comments — systemd would read '#' and the "
+                          "words after it as group names. Put a comment on its own line above.")
     key, _, val = line.partition("=")
     c.ok(key.strip() == "SupplementaryGroups", f"{line!r}: the setting that adds a group to the service's user is "
                                                "SupplementaryGroups (Group= replaces its own group)")
@@ -366,7 +381,9 @@ def _():
     c.ok(q3 == Q3_ROS_LINES, f"Q3 = {q3} is not the total of the .py files of navera_lite/ros "
                              "(the last line of wc -l)")
     q4 = as_int(answer("Q4"), "Q4")
-    c.ok(q4 == Q4_SERVICES, f"Q4 = {q4} is not right (only names ending in .service)")
+    c.ok(q4 != Q4_ONLY_SYSTEMD, "Q4: deploy/systemd is not the only folder that holds a unit: search all of deploy")
+    c.ok(q4 != Q4_WITH_COPIES, "Q4 counts the copies in install/ too: search the source folder deploy only")
+    c.ok(q4 == Q4_SERVICES, f"Q4 = {q4} is not right (only names ending in .service, copies excluded)")
     q5 = os.path.basename(clean_path(answer("Q5")))
     c.ok(q5 != "", "Q5 is still empty")
     c.ok(q5 == Q5_PART, f"Q5 = {q5!r} is not the part written in mission 17")
@@ -385,8 +402,8 @@ def _():
     explained("EXPLAIN_ORPHAN", answer("EXPLAIN_ORPHAN"),
               ([r"ppid", r"parent", r"\b1\b", r"adopt", r"supervis", r"launcher", r"\binit\b"],
                "what its parent showed"),
-              ([r"start", r"time", r"earlier", r"later", r"younger", r"sim", r"param", r"yaml", r"command",
-                r"no_fix", r"journal"], "a second clue (start time, command line or journal)"))
+              ([r"later", r"after", r"younger", r"newer", r"sim", r"param", r"yaml", r"command",
+                r"no_fix", r"journal"], "a second clue (command line, journal, or its start time — it is the younger one)"))
 
 
 @c.test("the hung camera reader: SIGTERM, a wait, then SIGKILL; the supervisor restarted it",
@@ -464,19 +481,29 @@ def _():
     compare(lines_of(out), report(log_lines(LOGS[0]), LOGS[0]), "Sousse log")
 
 
-@c.test("log_report.sh is right on a log it has never seen (no ERROR line, tricky messages)",
+@c.test("log_report.sh is right on a log it has never seen (no ERROR line, tricky messages, a space in the path)",
         hint="grep -c that counts 0 exits with 1: under set -e, n=$(grep -c …) stops the script (add || true). "
-             "An INFO message may contain the word WARN or ERROR: only the first field counts.")
+             "An INFO message may contain the word WARN or ERROR: only the first field counts. Quote \"$log\".")
 def _():
     lines = hidden_log()
+    name = "harbour_2026-10-02.log"
     with tempfile.TemporaryDirectory() as d:
-        p = os.path.join(d, "harbour_2026-10-02.log")
-        with open(p, "w") as f:
-            f.write("\n".join(lines) + "\n")
-        code, out, err = run_script(p)
-    if code != 0 and len(lines_of(out)) == 4:
-        raise CheckFailed("the script stopped after the WARN line on a log without ERROR lines: grep -c found 0, "
-                          "exited with 1, and set -e stopped the script — add || true")
+        plain, spaced = os.path.join(d, "logs"), os.path.join(d, "flight logs")   # "$log" must be quoted
+        for folder in (plain, spaced):
+            os.makedirs(folder)
+            with open(os.path.join(folder, name), "w") as f:
+                f.write("\n".join(lines) + "\n")
+        code, out, err = run_script(shlex.quote(os.path.join(plain, name)))
+        code2, out2, err2 = run_script(shlex.quote(os.path.join(spaced, name)))
+    if code != 0 and 0 < len(lines_of(out)) < 7:
+        raise CheckFailed(f"the script stopped early (after {len(lines_of(out))} lines, exit code {code}) on a log "
+                          "without ERROR lines: grep -c found 0, exited with 1, and set -e stopped the script — "
+                          "add || true")
+    want = report(lines, name)
+    if code == 0 and lines_of(out) == want and (code2 != 0 or lines_of(out2) != want):
+        raise CheckFailed("right on the new log, but wrong when the log sits in a folder whose name has a space "
+                          "('flight logs'): quote every \"$log\" (lesson §7), also inside $(basename …) and "
+                          "after wc -l <")
     c.ok(code == 0, f"the script failed on the new log (exit code {code}):\n{(err or out)[-400:]}")
     compare(lines_of(out), report(lines, "harbour_2026-10-02.log"), "new log")
 
@@ -515,6 +542,8 @@ def _():
     c.ok(n >= 40, f"the conclusion has {n} words, at least 40 are expected")
     c.ok(len(set(w.lower() for w in re.findall(r"[A-Za-z]+", concl))) >= 25,
          "the conclusion repeats the same few words: write real sentences")
+    c.ok(re.search(r"vision|gps|sea|land|camera|jamm", concl, re.I),
+         "the conclusion does not talk about the flights (vision, GPS, sea, land…)")
     c.ok(re.search(r"recommend|should|next|keep|avoid|investigat|must|plan", concl, re.I),
          "the conclusion has no recommendation for the next test")
 

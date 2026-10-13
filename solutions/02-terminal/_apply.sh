@@ -19,7 +19,7 @@ for pid in $(pgrep -f "box/bin/navera_lite_arbiter"); do
     if [ "$(ps -o ppid= -p "$pid" | tr -d ' ')" = 1 ]; then orphan=$pid; fi
 done
 kill "$orphan"
-sleep 2
+sleep 4                 # a student needs several seconds before the next kill
 # observe the supervisor: stop the supervised arbiter, it comes back with a new PID
 for pid in $(pgrep -f "box/bin/navera_lite_arbiter"); do kill "$pid"; done
 sleep 3
