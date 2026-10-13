@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 400" font-family="sans-serif" font-size="13">
+  <rect width="780" height="400" fill="#f7fafc"/>
+  <defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#5a6b7b"/></marker></defs>
+
+<text x="390" y="24" text-anchor="middle" font-size="15" fill="#1d2733">Inside the fake_gps node: what runs once, and what runs at every tick</text>
+<rect x="14" y="40" width="540" height="345" rx="14" fill="#e6f2f6" stroke="#0b6e8a" stroke-width="2"/>
+<text x="28" y="62" font-weight="bold" fill="#0b6e8a">class FakeGps(Node) — node "fake_gps", kept alive by rclpy.spin()</text>
+<rect x="28" y="76" width="250" height="132" rx="8" fill="#fff" stroke="#a8680d" stroke-width="1.5"/>
+<text x="153" y="95" text-anchor="middle" font-weight="bold" fill="#a8680d">once, in __init__ (given)</text>
+<g font-family="monospace" font-size="12" fill="#1d2733">
+<text x="40" y="118">super().__init__("fake_gps")</text>
+<text x="40" y="140">declare_all()   ✏️ TODO 4</text>
+<text x="52" y="157" font-size="11" fill="#5a6b7b">8 parameters, start position</text>
+<text x="40" y="180">start()         ✏️ TODO 5</text>
+<text x="52" y="197" font-size="11" fill="#5a6b7b">self.pub, one timer: 1 / rate_hz</text>
+</g>
+<rect x="300" y="76" width="240" height="132" rx="8" fill="#fff" stroke="#a8680d" stroke-width="1.5"/>
+<text x="420" y="95" text-anchor="middle" font-weight="bold" fill="#a8680d">parameters (the node's settings)</text>
+<g font-family="monospace" font-size="11.5" fill="#1d2733" xml:space="preserve">
+<text x="312" y="114">rate_hz        1.0</text>
+<text x="312" y="130">speed_mps      10.0</text>
+<text x="312" y="146">heading_deg    90.0</text>
+<text x="312" y="162">start_lat/lon  35.8256, 10.6084</text>
+<text x="312" y="178">sigma_m        3.0</text>
+<text x="312" y="194">stamp_offset_s 0.0</text>
+</g>
+<rect x="28" y="226" width="512" height="146" rx="8" fill="#fff" stroke="#0b6e8a" stroke-width="1.5"/>
+<text x="284" y="245" text-anchor="middle" font-weight="bold" fill="#0b6e8a">at every tick: the timer calls on_timer()   ✏️ TODO 6</text>
+<g font-family="monospace" font-size="12" fill="#1d2733">
+<text x="42" y="270">1. now = the clock;  dt = now − last_t  (the REAL time)</text>
+<text x="42" y="292">2. read speed_mps, heading_deg, sigma_m, stamp_offset_s  ◀</text>
+<text x="42" y="314">3. lat, lon = step(lat, lon, speed, heading, dt)     ✏️ TODO 1</text>
+<text x="42" y="336">4. msg = make_fix(lat, lon, alt, σ, now + offset)    ✏️ TODO 2, 3</text>
+<text x="42" y="358">5. self.pub.publish(msg)</text>
+</g>
+<line x1="520" y1="210" x2="520" y2="282" stroke="#a8680d" stroke-width="1.4" stroke-dasharray="4,3" marker-end="url(#a)"/>
+<rect x="590" y="64" width="176" height="62" rx="8" fill="#fff" stroke="#5a6b7b"/>
+<text x="678" y="86" text-anchor="middle" font-size="12">your terminal</text>
+<text x="678" y="106" text-anchor="middle" font-family="monospace" font-size="11">ros2 param set …</text>
+<line x1="590" y1="110" x2="544" y2="130" stroke="#5a6b7b" stroke-width="1.5" marker-end="url(#a)"/>
+<line x1="540" y1="354" x2="600" y2="354" stroke="#5a6b7b" stroke-width="1.8" marker-end="url(#a)"/>
+<text x="680" y="300" text-anchor="middle" font-family="monospace" font-size="11.5">navera_lite/fix/gps</text>
+<text x="680" y="316" text-anchor="middle" font-size="11" fill="#5a6b7b">NavSatFix, FIX_QOS</text>
+<rect x="604" y="330" width="160" height="48" rx="8" fill="#d7f0d2" stroke="#2f7a2f"/>
+<text x="684" y="351" text-anchor="middle" font-size="12">arbiter v0 (09)</text>
+<text x="684" y="368" text-anchor="middle" font-size="11" fill="#2f7a2f">FIX "gps: σ 3.0 m"</text>
+</svg>

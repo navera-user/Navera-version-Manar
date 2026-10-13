@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 330" font-family="sans-serif" font-size="13">
+  <rect width="860" height="330" fill="#f7fafc"/>
+  <defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#5a6b7b"/></marker></defs>
+
+<text x="430" y="24" text-anchor="middle" font-size="15" fill="#1d2733">A 2 Hz timer on a busy computer: asked, and what really happened</text>
+<text x="148" y="70" text-anchor="end" font-size="12">deadlines (asked)</text>
+<line x1="160.0" y1="58" x2="160.0" y2="78" stroke="#9aa7b4" stroke-width="2"/>
+<line x1="240.0" y1="58" x2="240.0" y2="78" stroke="#9aa7b4" stroke-width="2"/>
+<line x1="320.0" y1="58" x2="320.0" y2="78" stroke="#9aa7b4" stroke-width="2"/>
+<line x1="400.0" y1="58" x2="400.0" y2="78" stroke="#9aa7b4" stroke-width="2"/>
+<line x1="480.0" y1="58" x2="480.0" y2="78" stroke="#9aa7b4" stroke-width="2"/>
+<line x1="560.0" y1="58" x2="560.0" y2="78" stroke="#d64545" stroke-width="2"/>
+<text x="560.0" y="52" text-anchor="middle" font-size="14" fill="#d64545">✕</text>
+<line x1="640.0" y1="58" x2="640.0" y2="78" stroke="#d64545" stroke-width="2"/>
+<text x="640.0" y="52" text-anchor="middle" font-size="14" fill="#d64545">✕</text>
+<line x1="720.0" y1="58" x2="720.0" y2="78" stroke="#9aa7b4" stroke-width="2"/>
+<line x1="800.0" y1="58" x2="800.0" y2="78" stroke="#9aa7b4" stroke-width="2"/>
+<text x="600.0" y="96" text-anchor="middle" font-size="11" fill="#d64545">2 deadlines passed → 1 late call</text>
+<text x="148" y="128" text-anchor="end" font-size="12">calls (real)</text>
+<rect x="492.8" y="112" width="195.2" height="22" fill="#fde2e2" stroke="#d64545" stroke-dasharray="3,2"/>
+<text x="590.4" y="127" text-anchor="middle" font-size="11" fill="#d64545">callback busy 1.22 s</text>
+<circle cx="160.0" cy="123" r="5" fill="#0b6e8a"/>
+<circle cx="240.0" cy="123" r="5" fill="#0b6e8a"/>
+<circle cx="339.20000000000005" cy="123" r="5" fill="#0b6e8a"/>
+<circle cx="404.8" cy="123" r="5" fill="#0b6e8a"/>
+<circle cx="492.8" cy="123" r="5" fill="#0b6e8a"/>
+<circle cx="688.0" cy="123" r="5" fill="#0b6e8a"/>
+<circle cx="720.0" cy="123" r="5" fill="#0b6e8a"/>
+<circle cx="800.0" cy="123" r="5" fill="#0b6e8a"/>
+<line x1="160" y1="150" x2="816.0" y2="150" stroke="#5a6b7b" marker-end="url(#a)"/>
+<text x="160" y="166" text-anchor="middle" font-size="11">0 s</text>
+<text x="320" y="166" text-anchor="middle" font-size="11">1 s</text>
+<text x="480" y="166" text-anchor="middle" font-size="11">2 s</text>
+<text x="640" y="166" text-anchor="middle" font-size="11">3 s</text>
+<text x="800" y="166" text-anchor="middle" font-size="11">4 s</text>
+<text x="148" y="206" text-anchor="end" font-size="12">stamp (s)</text>
+<text x="148" y="232" text-anchor="end" font-size="12" fill="#2f7a2f">real dt → (m)</text>
+<text x="148" y="258" text-anchor="end" font-size="12" fill="#d64545">nominal 0.5 s → (m)</text>
+<text x="160.0" y="206" text-anchor="middle" font-size="11">0.00</text>
+<text x="160.0" y="232" text-anchor="middle" font-size="11" fill="#2f7a2f">0.0</text>
+<text x="160.0" y="258" text-anchor="middle" font-size="11" fill="#d64545">0</text>
+<text x="240.0" y="206" text-anchor="middle" font-size="11">0.50</text>
+<text x="240.0" y="232" text-anchor="middle" font-size="11" fill="#2f7a2f">5.0</text>
+<text x="240.0" y="258" text-anchor="middle" font-size="11" fill="#d64545">5</text>
+<text x="339.20000000000005" y="206" text-anchor="middle" font-size="11">1.12</text>
+<text x="339.20000000000005" y="232" text-anchor="middle" font-size="11" fill="#2f7a2f">11.2</text>
+<text x="339.20000000000005" y="258" text-anchor="middle" font-size="11" fill="#d64545">10</text>
+<text x="404.8" y="206" text-anchor="middle" font-size="11">1.53</text>
+<text x="404.8" y="232" text-anchor="middle" font-size="11" fill="#2f7a2f">15.3</text>
+<text x="404.8" y="258" text-anchor="middle" font-size="11" fill="#d64545">15</text>
+<text x="492.8" y="206" text-anchor="middle" font-size="11">2.08</text>
+<text x="492.8" y="232" text-anchor="middle" font-size="11" fill="#2f7a2f">20.8</text>
+<text x="492.8" y="258" text-anchor="middle" font-size="11" fill="#d64545">20</text>
+<text x="688.0" y="206" text-anchor="middle" font-size="11">3.30</text>
+<text x="688.0" y="232" text-anchor="middle" font-size="11" fill="#2f7a2f">33.0</text>
+<text x="688.0" y="258" text-anchor="middle" font-size="11" fill="#d64545">25</text>
+<text x="720.0" y="206" text-anchor="middle" font-size="11">3.50</text>
+<text x="720.0" y="232" text-anchor="middle" font-size="11" fill="#2f7a2f">35.0</text>
+<text x="720.0" y="258" text-anchor="middle" font-size="11" fill="#d64545">30</text>
+<text x="800.0" y="206" text-anchor="middle" font-size="11">4.00</text>
+<text x="800.0" y="232" text-anchor="middle" font-size="11" fill="#2f7a2f">40.0</text>
+<text x="800.0" y="258" text-anchor="middle" font-size="11" fill="#d64545">35</text>
+<text x="430" y="292" text-anchor="middle" font-size="12" fill="#1d2733">Vehicle at 10 m/s. Distance travelled at each stamp: green = where it really was (10 × stamp),</text>
+<text x="430" y="310" text-anchor="middle" font-size="12" fill="#1d2733">red = 5 m added per call. At 3.30 s it is 8 m behind its stamp; then 5 m behind for good (one tick lost).</text>
+</svg>

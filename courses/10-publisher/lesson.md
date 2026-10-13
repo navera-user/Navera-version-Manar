@@ -1,383 +1,412 @@
 # Your first publisher: a fake GNSS receiver
 
-> [!NOTE] In short
-> - On a test bench there is no aircraft, so engineers use a **fake GNSS receiver** that publishes
->   moving positions.
-> - An `rclpy` node is a class that inherits from `Node`; a **timer** runs its code at a fixed
->   rate.
-> - **Parameters** let you change settings, such as speed and heading, while the node runs.
-> - A `NavSatFix` message carries the position and its uncertainty (the covariance, in m²).
-> - In the lab you build a fake GNSS node that drives from Sousse, measure its timing, and measure
->   the error of the flat-Earth model.
-> - NAVERA's `sensor_sim.py` does the same job to test the whole chain on a bench.
+![A vehicle flies east at 10 m/s with one GPS fix per second. The fix is re-sent five times per second with a fresh stamp: the autopilot computes 0, 0, 0, 0, then 50 m/s](assets/cold_open.svg)
 
-Before a NAVERA box flies, it spends many hours on a **test bench**: a table, a Jetson, cables —
-and no aircraft. The arbiter still needs GNSS positions that *move*, as if the box were flying
-along a coast. So the engineers write a program that **pretends to be a GNSS receiver**:
-it publishes the same message type, at the same rate, with the same honest uncertainty as a real
-receiver. Because of publish/subscribe (lesson 09), the rest of the graph cannot tell the
-difference.
+> [!NOTE] Mission brief
+> **NAVERA in ArduPilot's simulator (validation report, 2026-10-03).** NAVERA hands its position to an
+> autopilot, here ArduPilot in simulation. The vehicle flies at a steady speed, yet the autopilot sees it
+> **stop, then jump**, again and again. The cause: the same GPS fix was re-sent five times per second, each
+> time with a **fresh time stamp**. The report gives no speeds; picture a vehicle at 10 m/s with one fix per
+> second (the figure above): four messages say "still here, now" and the fifth says "10 m further, 0.2 s
+> later", so a listener computes 0 m/s four times, then 50 m/s. NAVERA's code review of 2026-09-28 had found the same
+> mistake inside its judge (backlog EST-1, critical); the output's version is OUT-3 (high). Both are fixed:
+> every position is now published **once**, stamped with the instant it was **measured**. The same review
+> found a missing accuracy that was **invented** (GPS-5), and a launch override typed `1` instead of `1.0`
+> that crashed a node (LOC-30).
+>
+> Today you write the node where those bugs live: a **fake GNSS receiver**, NAVERA Lite's test GPS.
+> **Session 1 — build:** a node with parameters, a timer and a publisher that moves a vehicle with the
+> **real** time between ticks and states its accuracy honestly. **Session 2 — sabotage:** you feed it to the
+> judge of mission 09, arbiter v0, with wrong stamps and missing accuracies, and find what the judge
+> believes that it should not. Badges: **Builder**, then **Saboteur**.
+>
+> **Start now:** open the 🛠️ **Lab** tab, do **Step 0** (two minutes, no code), then come back for §1.
 
-Today you write such a node: a **fake GNSS receiver** that drives from near the Ribat of Sousse,
-in NAVERA's test area (35.8277 N, 10.6388 E), with a speed and a heading you can change while it
-runs. (NAVERA's own recorded data and map cover Sousse, Tunisia, where it is developed; this lab
-uses synthetic data, so a parameter lets you start anywhere in the world.) On the way you will learn how an `rclpy` node is
-built, how timers and clocks behave, what every field of `sensor_msgs/NavSatFix` means — and how
-large the error of a "flat Earth" is.
+**Objectives.** After this mission you can:
+
+1. **write** an rclpy node class with parameters, a timer and a publisher, and **explain** what `spin` does
+   with your callbacks;
+2. **integrate** motion with the real time between ticks, and **measure** a topic's rate and jitter;
+3. **fill** a `sensor_msgs/NavSatFix` honestly: the stamp is the measurement instant, every number a float,
+   variances in m², the type UNKNOWN when nothing is known;
+4. **predict** how a judge reads your stamp and your covariance, and **find** where a naive judge is fooled.
+
+**You need:** classes and `super()` (mission 03), `vehicle.ground_velocity` and `geo.offset` (missions 03 and
+06), topics, QoS and the `ros2` command line (mission 09). ⏱ Reading: about 60 minutes with the ✏️ checks.
+Lab: 2 h 30 to 4 h.
+
+<details><summary>Three questions first (if you miss two, reread lesson 03 on classes, 06 on offset, 09 on QoS)</summary>
+
+1. `class Camera(Sensor)` has its own `__init__` that starts with `super().__init__(name, rate_hz)`. What does
+   that line do, and what is lost without it? — *It runs the parent's constructor, which checks and stores
+   `name` and `rate_hz`. Without it, `Sensor.__init__` never runs: the object has no `self.name`.*
+2. `geo.offset(lat, lon, 100.0, 0.0)` at the equator and at 60° N: which longitude change is larger? — *At
+   60° N, twice as large: a degree of longitude is cos 60° = 0.5 times as long there.*
+3. A publisher offers RELIABLE + VOLATILE; a subscriber asks BEST_EFFORT. Do they connect? — *Yes: what is
+   offered is at least as good as what is asked. The other way round, they would not.*
+</details>
+
+<details><summary>Words of this lesson</summary>
+
+| Word | Plain meaning | Français |
+|---|---|---|
+| **callback** | a function you give to ROS; ROS calls it later, when an event happens | fonction de rappel |
+| **timer, period** | calls a callback again and again; the period is the time between calls, 1 / rate | minuterie, période |
+| **jitter** | the random variation of the real time between two calls | gigue |
+| **parameter** | a named, typed setting of a node, which you can change from outside | paramètre |
+| **stamp** | `header.stamp`: the instant the content of the message was true | horodatage |
+| **variance** | the square of a standard deviation σ; unit m² for a position | variance |
+| **covariance type** | what the sender knows about its covariance: unknown, approximated, diagonal known, known | type de covariance |
+| **nominal** | what was asked for (0.5 s), as opposed to what really happened (0.62 s) | nominal |
+</details>
 
 ## 1. A node is an object
 
-In lesson 03 you learned to write **classes**. An `rclpy` node is an object of a class that
-**inherits** from `rclpy.node.Node`:
+In mission 09 you ran nodes and repaired one line of a listener. Today you write a whole node. In rclpy, a
+node is an object of a class that **inherits** from `rclpy.node.Node`. Here is a small one, not the lab's:
+it publishes a heartbeat twice a second.
 
 ```python
 import rclpy
 from rclpy.node import Node
+from std_msgs.msg import String
 
 
-class FakeGps(Node):                       # a FakeGps IS a Node, plus what we add
+class Heartbeat(Node):                          # a Heartbeat IS a Node, plus what we add
     def __init__(self):
-        super().__init__("fake_gps")       # run Node's own constructor: name in the graph
-        self.count = 0                     # state, kept between two timer calls
-        self.create_timer(0.5, self.on_timer)
+        super().__init__("heartbeat")           # Node's constructor: register the name in the graph
+        self.count = 0                          # state, kept between two calls
+        self.pub = self.create_publisher(String, "beat", 10)
+        self.create_timer(0.5, self.on_timer)   # call self.on_timer every 0.5 s
 
-    def on_timer(self):                    # a METHOD: called by ROS every 0.5 s
+    def on_timer(self):                         # a callback: ROS calls it, you never do
         self.count += 1
-        self.get_logger().info(f"tick {self.count}")
+        self.pub.publish(String(data=f"beat {self.count}"))
 
 
 def main():
-    rclpy.init()                           # 1. start the ROS client library
-    node = FakeGps()                       # 2. create the object (registers the node)
-    rclpy.spin(node)                       # 3. wait for events and run callbacks, until Ctrl+C
-    node.destroy_node()                    # 4. clean up
-    rclpy.shutdown()
+    rclpy.init()                                # 1. start ROS in this process
+    node = Heartbeat()                          # 2. build the node: __init__ runs once
+    rclpy.spin(node)                            # 3. wait for events and run callbacks, until Ctrl+C
 ```
 
-Read it with the vocabulary of lesson 03:
+Read it with mission 03's words:
 
-- `class FakeGps(Node)` — **inheritance**. `FakeGps` gets every method of `Node`:
-  `create_publisher`, `create_timer`, `get_clock`, `get_logger`, `declare_parameter`… We only write
-  what is specific to our node.
-- `super().__init__("fake_gps")` — calls the constructor of the **parent** class. Without this line
-  the object is not registered in ROS and every `create_…` call fails. The string is the node name
-  that `ros2 node list` shows.
-- `self` — the object itself. `self.count = 0` stores an **attribute** in the object; it survives
-  between two calls of `on_timer`. A plain variable `count = 0` inside a method would be **local**:
+- `class Heartbeat(Node)` — inheritance. `Heartbeat` gets every method of `Node`: `create_publisher`,
+  `create_timer`, `declare_parameter`, `get_parameter`, `get_clock`, `get_logger`…
+- `super().__init__("heartbeat")` runs `Node`'s constructor. Without it the object is not a node, and the
+  first `self.create_…` fails.
+- `self.count` is an **attribute**: it lives as long as the object. A plain `count = 0` inside a method is
   forgotten when the method returns.
-- `self.on_timer` without parentheses — a **bound method** given to ROS as a **callback**: ROS
-  will call it later. `self.on_timer()` with parentheses would call it *now*, once, and give ROS
-  its result (`None`) — a classic bug.
+- `self.on_timer`, **without parentheses**, is the method itself, given to ROS as a **callback**.
+  `self.on_timer()` would call it once, now, and give ROS its result, `None`.
+- `create_publisher(String, "beat", 10)`: a plain `10` is the default QoS profile (mission 09); your receiver
+  uses `qos.FIX_QOS`.
 
-`rclpy.spin(node)` turns your program into an **event-driven** one: it does not run from top to
-bottom and stop; it waits, and when a timer expires or a message arrives, it calls the right
-callback. All callbacks of a node run one after the other in this loop (lesson 11 shows how to
-change that), so a callback must be short.
+`rclpy.spin(node)` turns the program into an **event-driven** one. It does not run from top to bottom and
+stop: it waits, and when a timer is due or a message arrives, it calls the right callback. All callbacks of
+the node run **one after the other**, in one thread. So a slow callback delays every other one: §3 shows
+what that does to a timer, and mission 11 to a subscriber.
 
-## 2. Publishers and timers
+In NAVERA Lite, every node's `main()` calls `runner.run_node(NodeClass)` (given in mission 09): it does
+`rclpy.init`, builds the node, spins it, and closes it cleanly on Ctrl+C.
 
-```python
-self.pub = self.create_publisher(NavSatFix, "/fake_gps/fix", 10)
-self.timer = self.create_timer(1.0 / rate_hz, self.on_timer)
-...
-self.pub.publish(msg)
-```
+![Inside the fake_gps node: __init__ runs once and calls declare_all() and start(); the timer then calls on_timer() at every tick, which calls step() and make_fix() and publishes on navera_lite/fix/gps, where arbiter v0 listens](assets/node_anatomy.svg)
 
-`create_publisher(type, topic, qos)`: the third argument is a QoS profile; a plain `10` means the
-default profile (RELIABLE, VOLATILE, KEEP_LAST) with depth 10, as you saw in lesson 09.
-`create_timer(period_s, callback)`: the period is the inverse of the rate — at 2 Hz,
-`1 / 2 = 0.5` s.
+(Look at the white boxes: what runs once, the parameters, and what runs at every tick. The ✏️ marks are your six TODOs.)
 
-### Clocks and time stamps
+> [!QUESTION] ✏️ Check
+> 1. A student writes `self.create_timer(0.5, self.on_timer())`. What happens when the node starts?
+> 2. Another writes `count = 0` in `__init__` and `count += 1` in `on_timer`. What happens at the first tick?
 
-A node reads time with `self.get_clock().now()`. This is **ROS time**: normally the system clock
-(seconds since 1 January 1970, UTC), but when the parameter `use_sim_time` is true, it follows the
-`/clock` topic of a simulator instead — so a replayed or simulated mission runs with the
-simulator's time. A ROS `Time` converts to the message format with `.to_msg()`: two integers,
-`sec` and `nanosec`.
+<details><summary>Answer</summary>
+1. <code>on_timer</code> runs once, while the node is built (it publishes "beat 1" and returns <code>None</code>);
+<code>create_timer</code> then gets <code>None</code> as its callback, and at the first tick the node dies
+with <code>TypeError: 'NoneType' object is not callable</code>. Give the method, not its result.<br>
+2. <code>UnboundLocalError: local variable 'count' referenced before assignment</code>: inside
+<code>on_timer</code>, <code>count</code> is a new local variable. State that must survive between calls
+lives in <code>self</code>.
+</details>
 
-```python
-now = self.get_clock().now()               # rclpy.time.Time
-msg.header.stamp = now.to_msg()            # builtin_interfaces/Time {sec, nanosec}
-t_s = now.nanoseconds / 1e9                # a float, in seconds
-```
+## 2. Parameters: settings you can change from outside
 
-The **stamp is part of the measurement**. An arbiter that receives a position must know *when* it
-was true: at 20 m/s, a fix that is 2 s old is 40 m behind. NAVERA refuses any GPS estimate older
-than 3 s (lesson 11).
-
-### Timers are not perfect: integrate with the real dt
-
-A timer of period T does not fire exactly every T seconds: the operating system schedules your
-process with small delays (**jitter**), and a long callback can delay the next one. rclpy computes
-each deadline from the previous *deadline*, so delays do not accumulate, but individual intervals
-vary. `ros2 topic hz` measures it: `average rate`, `min`, `max` and `std dev` of the intervals.
-
-For a moving vehicle this matters. If you advance the position by `v × T` at every tick, with
-T = 0.5 s fixed, a tick that comes 60 ms late still adds only `v × 0.5`. Measure the real interval
-instead:
-
-```
-dt_k = t_k − t_(k−1)          (from the node's clock)
-north_k = north_(k−1) + v · cos(h) · dt_k
-east_k  = east_(k−1)  + v · sin(h) · dt_k
-```
-
-where v is the speed and h the heading, measured **clockwise from north** (0° = north, 90° = east).
-Then the position is right at the instant of each stamp, whatever the jitter.
-
-## 3. Parameters: settings you can change from outside
-
-A **parameter** is a named, typed setting stored in a node. You declare it with a default, then
-read it:
+A **parameter** is a named setting stored in a node. You **declare** it with a default value, and the type
+comes from that default: `10.0` makes a double, `10` an integer, `"drone"` a string.
 
 ```python
-self.declare_parameter("speed_mps", 5.0)        # name, default (the TYPE comes from it: double)
-v = self.get_parameter("speed_mps").value       # the value now in use
+self.declare_parameter("text", "beat")          # name, default → a string parameter
+word = self.get_parameter("text").value         # the value in use NOW
 ```
 
-You can set it when you start the node, and change it while it runs:
+The value can come from the command line when the node starts, and change while it runs:
 
 ```bash
-python3 fake_gps.py --ros-args -p speed_mps:=12.0 -p heading_deg:=90.0
-ros2 param set /fake_gps heading_deg 180.0
+python3 heartbeat.py --ros-args -p text:=pulse          # at start: overrides the default
+ros2 param set /heartbeat text tick                     # while it runs
+ros2 param list /heartbeat                              # every parameter of the node
 ```
 
-A node that reads the parameter **at every tick** follows a `ros2 param set` immediately; a node
-that reads it once in `__init__` does not. Your fake GPS reads `speed_mps` and `heading_deg` at every
-tick, so you can "drive" it from the terminal. Lesson 13 goes much further (YAML files, launch files,
-validation).
+**When you read matters.** A node that reads `text` inside `on_timer`, at every tick, follows a
+`ros2 param set` at once. A node that reads it once, in `__init__`, never sees the change, although
+`ros2 param set` answers "Set parameter successful". Your fake receiver reads its speed and heading at every
+tick, so you can drive it from the terminal. It reads `rate_hz` once, to build its timer: changing it later
+changes nothing (mission 13 makes it read-only, so the lie disappears).
 
-> [!WARNING]
-> **The type trap.** `-p speed_mps:=12` (no `.0`) is an **integer**, and the parameter was declared
-> as a double: the node stops with `InvalidParameterTypeException … of type 'INTEGER', expecting
-> type 'DOUBLE'`. Write decimals with a dot.
+> [!WARNING] The type trap (NAVERA's LOC-30)
+> `-p speed_mps:=12` is an **integer**, and `speed_mps` was declared with `10.0`, a double. The node does not
+> start: `InvalidParameterTypeException: Trying to set parameter 'speed_mps' to '12' of type 'INTEGER',
+> expecting type 'DOUBLE'`. At run time, `ros2 param set /fake_gps speed_mps 20` answers
+> `Setting parameter failed: Wrong parameter type, expected 'Type.DOUBLE' got 'Type.INTEGER'`. NAVERA had
+> this bug: an override typed `conf_threshold:=1` on its launch command crashed a float parameter. Always
+> write `12.0`.
 
-## 4. The message: sensor_msgs/NavSatFix
+> [!QUESTION] ✏️ Check
+> Your node declares `speed_mps` = 10.0 and reads it at every tick, and `rate_hz` = 1.0, read once in
+> `start()`. Which of these do what the user wants?
+> (a) `--ros-args -p speed_mps:=15` · (b) `--ros-args -p speed_mps:=15.0` ·
+> (c) `ros2 param set /fake_gps speed_mps 15.0` while it runs · (d) `ros2 param set /fake_gps rate_hz 5.0` while it runs
 
-Every GNSS driver in the ROS world publishes **`sensor_msgs/msg/NavSatFix`**. Its fields:
+<details><summary>Answer</summary>
+(b) and (c). (a) crashes at start (INTEGER vs DOUBLE). (d) answers "successful", but the timer was built with
+the old rate and keeps it: a setting that is read once must not look changeable.
+</details>
 
-| Field | Type | Meaning |
+## 3. Time: stamps, timers and the real dt
+
+**The stamp is part of the measurement.** A position without its instant is half a measurement: at 20 m/s,
+a fix that is 2 s old is 40 m behind. The hook's forwarder stamped each message with the instant it **sent**
+it, not the instant the position was **true**. A node reads ROS time with `self.get_clock().now()` (normally
+the computer's clock, seconds since 1970); `now().nanoseconds * 1e-9` gives seconds as a float. A message
+stores it as two integers, `header.stamp.sec` and `.nanosec`; `convert.s_to_stamp(t_s)` (mission 09) converts:
+100.25 s → `sec=100, nanosec=250000000`.
+
+**Timers are not perfect.** A timer of period T keeps its deadlines on a fixed grid (0, T, 2T, …), so the
+average rate stays right. But each call starts a little late, by a different amount each time: that is
+**jitter**. And when the computer is busy, deadlines are **missed and not made up**. Measured on the course's
+Jetson (2026-10-13): a 0.5 s timer whose callback was blocked for 1.3 s was next called 1.303 s after the
+blocked call started, then 0.197 s later, then every 0.500 s again. One tick was lost for good.
+
+![A 2 Hz timer: deadlines every 0.5 s, calls that start late, a busy callback, and two deadlines that pass during the busy call and are served by a single late call, so one tick is lost for good. The real-dt distances match the stamps; the nominal ones fall behind](assets/real_dt.svg)
+
+(Look at the two bottom rows: green follows the stamps, red falls behind after the busy call.)
+
+> [!TIP] In one sentence
+> Measure how much time REALLY passed since the last tick, and move the vehicle by speed × that time.
+
+**So integrate with the real dt.** At each tick, measure the time since the previous tick on the same clock
+as the stamp, and move the vehicle by speed × that time:
+
+```
+dt_k = t_k − t_(k−1)                    (0 at the first tick)
+position_k = position_(k−1) moved by speed × dt_k on the heading
+```
+
+**Worked example.** A vehicle at 10 m/s, a 2 Hz timer, real intervals 0.50, 0.62, 0.41, 0.55 s. With the
+real dt it has moved 10 × 2.08 = **20.8 m** at the stamp 2.08 s (the fifth call; the first one moves 0 m),
+exactly where it was at that instant. A receiver that adds the **nominal** 0.5 s four times says **20.0 m**: 0.8 m behind its own stamp. Its
+listener computes speeds of 5 / 0.50 = 10.0, 5 / 0.62 = 8.1, 5 / 0.41 = 12.2 and 5 / 0.55 = 9.1 m/s for a
+vehicle that never changed speed.
+
+**One step of motion** uses two parts you already have. A heading is measured clockwise from north (mission
+03), so the velocity is east = v·sin h, north = v·cos h: that is `vehicle.ground_velocity(speed, heading)`.
+Multiplied by dt, it gives metres east and north, and `geo.offset(lat, lon, e_m, n_m)` (mission 06, east
+**first**) turns them into a new latitude and longitude. Example: 10 m/s, heading 90°, dt 0.62 s, from
+(35.8256, 10.6084): velocity (10.0, 0.0) m/s, move (6.2, 0.0) m, and since one degree of longitude is
+R·cos(35.8256°)·π/180 = 90 157 m there, the new position is (35.8256, 10.608469). This is lab TODO 1.
+
+> [!TIP] 🧰 Standard deviation, in one line
+> For intervals 0.5, 0.6, 0.4 s: mean 0.5; deviations 0, +0.1, −0.1; std = √((0 + 0.01 + 0.01) / 3) = 0.082 s.
+> `ros2 topic hz` prints the mean rate and the std dev of the intervals. Mission 04 did this with numpy.
+
+> [!QUESTION] ✏️ Check
+> A receiver uses the nominal dt of 0.25 s (4 Hz) at 8 m/s. Its real intervals are 0.25, 0.40, 0.10 s. What
+> speeds does a listener compute from consecutive fixes? Where is the vehicle really at the last stamp, and
+> where does the receiver say it is?
+
+<details><summary>Answer</summary>
+Each fix moves 8 × 0.25 = 2 m: speeds 2 / 0.25 = 8.0, 2 / 0.40 = 5.0, 2 / 0.10 = 20.0 m/s. At the last stamp
+(0.75 s after the first fix) the vehicle has flown 6.0 m; the receiver says 3 × 2 = 6 m too, by luck: the
+lateness of the second tick cancelled. Nominal errors cancel when the timer catches up, but not when a tick is
+lost, and every speed computed in between is wrong.
+</details>
+
+## 4. The message: an honest NavSatFix
+
+Every GNSS driver in the ROS world publishes `sensor_msgs/msg/NavSatFix`
+(`ros2 interface show sensor_msgs/msg/NavSatFix` prints it, with its constants):
+
+| Field | Type | What you put in it |
 |---|---|---|
-| `header.stamp` | Time | when the position was measured |
-| `header.frame_id` | string | the antenna's frame, e.g. `"gps"` |
+| `header.stamp` | Time | the instant the position was **measured** (§3) |
+| `header.frame_id` | string | the source: `"gps"` |
 | `status.status` | int8 | `STATUS_NO_FIX` (−1), `STATUS_FIX` (0), `STATUS_SBAS_FIX` (1), `STATUS_GBAS_FIX` (2) |
-| `status.service` | uint16 | bit mask: `SERVICE_GPS` (1), `GLONASS` (2), `COMPASS` (4, BeiDou), `GALILEO` (8) |
-| `latitude`, `longitude` | float64 | degrees, WGS84 (lesson 06) |
-| `altitude` | float64 | metres above the WGS84 **ellipsoid** (not above sea level) |
-| `position_covariance` | float64[9] | uncertainty, m², ENU, row-major (below) |
+| `status.service` | uint16 | which systems, as bits: `SERVICE_GPS` (1), GLONASS (2), COMPASS (4, BeiDou), GALILEO (8) |
+| `latitude`, `longitude` | float64 | degrees, WGS84 (mission 06) |
+| `altitude` | float64 | metres above the WGS84 **ellipsoid**, not above the sea (mission 06) |
+| `position_covariance` | float64[9] | the uncertainty, m², ENU, row-major (below) |
 | `position_covariance_type` | uint8 | `UNKNOWN` (0), `APPROXIMATED` (1), `DIAGONAL_KNOWN` (2), `KNOWN` (3) |
 
-Recall from lesson 06: WGS84 models the Earth as an **ellipsoid** (a slightly flattened sphere); GPS
-altitude is measured from that mathematical surface. In most places the sea surface (the geoid) is a few
-tens of metres away from the ellipsoid, so "altitude 40 m" in NavSatFix is not "40 m above the sea".
+A message is filled like any object; a nested field takes two dots: `msg.status.status = NavSatStatus.STATUS_FIX`.
+Every field starts at zero. Forget the position and it stays **(0.0, 0.0)**: a real point in the Gulf of
+Guinea, nicknamed Null Island, and nothing warns you. Worse, `status.status` also starts at 0, and 0 is
+`STATUS_FIX`: an empty NavSatFix claims a valid fix at (0, 0). An honest receiver always sets the status
+itself (`STATUS_NO_FIX`, −1, when it has no position).
 
-A message is filled like any Python object; a nested message uses two dots:
-
-```python
-msg = NavSatFix()
-msg.latitude = 35.8277
-msg.status.status = NavSatStatus.STATUS_FIX
-```
-
-Every field starts at zero. If you forget latitude and longitude, they stay **0.0, 0.0** — a real
-place in the Gulf of Guinea, nicknamed **Null Island** — and nothing warns you. This is why NAVERA's
-GPS code refuses exactly (0, 0): in
-[ros_gps_node.py](file:navera/gps_pkg/gps_pkg/nodes/ros_gps_node.py) look for
-`not (m.latitude == 0.0 and m.longitude == 0.0)`.
-
-### Covariance: the uncertainty, in m²
-
-A receiver says "I am here, give or take a few metres". If the error in the east direction, `e_E`, is
-a random variable with mean 0 and **standard deviation** σ_E, its **variance** is σ_E² (unit m²).
-For two directions, the **covariance** `cov(e_E, e_N) = E[e_E · e_N]` says whether the errors are
-linked. The 3 × 3 **covariance matrix** of the (East, North, Up) error collects all of them:
+**Covariance.** A receiver says "here, give or take σ metres". σ is a **standard deviation**; its square σ²
+is a **variance**, in m². The 3 × 3 covariance matrix of the (East, North, Up) error holds the three
+variances on its diagonal and the links between directions elsewhere. NavSatFix stores it **row-major**: row
+0, then row 1, then row 2, so the variances sit at indices **0, 4 and 8**:
 
 ```
-      | σE²        cov(E,N)   cov(E,U) |
-Σ  =  | cov(N,E)   σN²        cov(N,U) |      position_covariance = [Σ00, Σ01, Σ02,
-      | cov(U,E)   cov(U,N)   σU²      |                             Σ10, Σ11, Σ12,
-                                                                     Σ20, Σ21, Σ22]
+| σE²  ·    ·   |     index  0  1  2
+| ·    σN²  ·   |            3  4  5
+| ·    ·    σU² |            6  7  8
 ```
 
-The message stores it **row-major**: row 0, then row 1, then row 2, so the diagonal is at indices
-0, 4 and 8. Worked example: a receiver with σ = 3 m horizontally and 6 m vertically (vertical GNSS
-error is typically about twice the horizontal), errors assumed independent:
+**Worked example.** A receiver states σ = 2.5 m horizontally. NAVERA Lite's rule: σ² on East and North,
+(2σ)² on Up (the vertical error of GNSS is typically 1.5 to 2 times the horizontal one; NAVERA Lite takes 2), 0.0 elsewhere:
 
 ```
-position_covariance = [9.0, 0.0, 0.0,
-                       0.0, 9.0, 0.0,
-                       0.0, 0.0, 36.0]
-position_covariance_type = COVARIANCE_TYPE_DIAGONAL_KNOWN
+position_covariance      = [6.25, 0.0, 0.0,   0.0, 6.25, 0.0,   0.0, 0.0, 25.0]
+position_covariance_type = 1        # APPROXIMATED
 ```
 
-"Diagonal known" says: the three variances are known, the off-diagonal terms are not (they are 0
-here because we assume independence). If you do not know the accuracy at all, the honest choice is
-`COVARIANCE_TYPE_UNKNOWN` and nine zeros — never an invented number. Lesson 12 explains why NAVERA is
-so strict about this.
+Why APPROXIMATED and not DIAGONAL_KNOWN? A single stated σ is an approximation: nobody measured the three
+variances, and the zeros only say "no link assumed". And when the receiver states **nothing**, the honest
+message is nine `0.0` with type **UNKNOWN**, never a number you made up. A made-up σ looks exactly like a
+measured one to everybody downstream (NAVERA's GPS-5).
 
-> [!WARNING]
-> **ROS float fields refuse integers.** `[9, 0, 0, 0, 9, 0, 0, 0, 36]` crashes with
-> `AssertionError: The 'position_covariance' field must be a set or sequence with length 9 and each
-> value of type 'float' and each double in [-1797693…, 1797693…]` — followed by two 300-digit
-> numbers (the smallest and largest float64). Read only the beginning: **"each value of type
-> 'float'"**. Write `9.0` and `0.0`, or compute with floats: `SIGMA_M ** 2` is a float when
-> `SIGMA_M = 3.0`.
+> [!WARNING] ROS float fields refuse integers
+> `msg.position_covariance = [6.25, 0, 0, 0, 6.25, 0, 0, 0, 25.0]` crashes with `AssertionError: The
+> 'position_covariance' field must be a set or sequence with length 9 and each value of type 'float' and
+> each double in [-1797693…`, then two numbers of 300 digits. Read only the start: **"each value of type
+> 'float'"**. The same for `msg.latitude = 36`: write `float(lat)`. `3 ** 2` is the int 9; `3.0 ** 2` is 9.0.
 
-## 5. From metres to degrees: the flat-Earth model and its error
+> [!QUESTION] ✏️ Check
+> A receiver states σ = 4 m. A colleague publishes `[4.0, 0, 0, 0, 4.0, 0, 0, 0, 8.0]` with type 2. Find
+> four problems.
 
-Your node moves in metres (north, east) from a start point (φ0, λ0). To publish, it converts the
-offset to latitude and longitude. Near the start, the Earth looks flat: one degree of latitude is
-`2πR / 360` metres (R = 6 371 000 m, the radius NAVERA uses: 111 195 m), and a degree of
-longitude is shorter by cos φ0. So:
+<details><summary>Answer</summary>
+(1) 4.0 is σ, not the variance: 16.0 m². (2) Up must be (2σ)² = 64.0, not 8.0. (3) The zeros are ints: the
+message refuses them (write 0.0). (4) Type 2, DIAGONAL_KNOWN, claims the variances were measured; a stated σ is
+APPROXIMATED (1).
+</details>
 
-```
-φ = φ0 + (north / R)            [radians]   →  in degrees: φ0 + degrees(north / R)
-λ = λ0 + east / (R · cos φ0)    [radians]   →  in degrees: λ0 + degrees(east / (R cos φ0))
-```
+## 5. How a judge reads your fix
 
-This is the **equirectangular** (local flat) approximation.
+Your receiver is a **witness**; arbiter v0, which you ran in mission 09, is a **judge**. It listens on
+`navera_lite/fix/gps` and decides on every arrival and five times per second. Its rules for GPS, in words:
 
-> [!NOTE]
-> Do not mix it up with lesson 6. There, NAVERA's day vision uses the shortcut
-> `M_PER_DEG = 111 320.0` m per degree (the WGS84 equator radius a·π/180). Here, the node uses the
-> sphere of radius R = 6 371 000 m, as `navera_common/geo.py` does: 111 195 m per degree. The two
-> models differ by 0.1 % (about 125 m per degree); use one model consistently in one program.
+- **Fresh?** The **age** is now − `header.stamp`. A GPS fix is usable while its age is at most
+  `gps_timeout_s`, 3.0 s.
+- **How precise?** From your covariance it takes a = index 0 and c = index 4, and σ = √max(a, c).
+- **Which state?** FIX if σ ≤ `fix_max_sigma_m` (25 m), DEGRADED if σ is larger, NO_FIX when no source is
+  usable. The reason is written in the status, for example `gps: σ 3.0 m`.
+- (It also passes each GPS fix through mission 01's jump gate.)
 
-The flat-Earth step of the node treats north and east as a flat grid. In Sousse, cos(35.8277°) =
-0.8108, so one degree of longitude is 90 155 m. How wrong is it? Compare with a **great circle**, the true
-"straight line" on a sphere, which NAVERA computes in `navera_common/geo.py` (`dead_reckon`).
+**Worked example.** A fix arrives stamped 1.2 s ago, with `position_covariance[0]` = `[4]` = 16.0: age 1.2 ≤
+3.0, fresh; σ = √16 = 4.0 m ≤ 25 m: **FIX**, reason `gps: σ 4.0 m`.
 
-Worked example: drive **due east** for d metres from latitude φ0. A great circle that starts towards
-the east does not stay on the parallel φ0; it bends towards the equator. For small d, its distance
-from the parallel is about
+> [!QUESTION] ✏️ Check
+> A fix arrives stamped 2.5 s ago with index 0 = 400.0 and index 4 = 100.0. State and reason? And 1 s later,
+> if no new fix arrives?
 
-```
-y ≈ d² · tan(φ0) / (2R)
-```
+<details><summary>Answer</summary>
+σ = √max(400, 100) = 20.0 m, age 2.5 s: FIX, <code>gps: σ 20.0 m</code>. One second later the age is 3.5 s
+&gt; 3.0 s: the fix is stale, and with no other source the judge says NO_FIX.
+</details>
 
-In Sousse, tan(35.8277°) = 0.7220. For d = 10 km: y ≈ 10⁸ × 0.7220 / (2 × 6.371 × 10⁶) ≈ **5.7 m**.
-For d = 100 km: about **567 m** — the error grows with d², so 10 times farther means 100 times
-larger. For other headings a second term appears (the length of a degree of longitude changes as
-the latitude changes), and the lab measures the total with NAVERA's own function. Conclusion: the
-flat model is excellent for a bench test of a few kilometres, and unacceptable for a 100 km flight
-plan. NAVERA uses the spherical formula wherever a position is carried far.
+These rules look reasonable. In session 2 you turn the knobs of your own receiver (its stamp, its σ) and
+check whether the judge believes things it should not. Predict first, from the rules above.
 
-## 🐦 How birds do it
+<details><summary>Read this after lab Step 9</summary>
 
-**Babblers** are songbirds of dry scrub in Africa and Asia. Their groups feed on the ground, where
-they cannot see much — so one bird often climbs to a high perch and keeps watch: a **sentinel**.
-Studies of Arabian babblers in the Negev desert (Jonathan Wright and colleagues, 2001) found that sentinels go
-on guard mostly after they have fed well, and that the sentinel is the first to call when a raptor
-appears. In a related species, the southern pied babbler of the Kalahari, the sentinel also gives a
-quiet, regular **"watchman's song"** while on duty; Linda Hollén, Matthew Bell and Andrew Radford
-showed in 2008 that foragers who hear it spend less time looking up and more time feeding.
+Arbiter v0 never asks two questions. **Is the stamp in the future?** A negative age is "at most 3 s", so v0
+calls it fresh, and keeps a dead receiver's last fix fresh for as long as you measured. **Does the covariance mean
+anything?** Nine zeros with type UNKNOWN give σ = 0.0 m: v0 shows the most honest message, "I don't know my
+accuracy", as a perfect FIX. NAVERA had the first hole (EST-2, "future timestamp kept a dead source fresh");
+its judge now refuses a stamp more than 0.5 s in the future, and a fix with an all-zero covariance or an
+undefined type is DEGRADED "uncertainty unknown" (validation report, 2026-10-03). And its jump gate (mission 01)
+assumes that stamps only move forward: a fix stamped before the last trusted one gives a negative elapsed time,
+and a reachable fix is refused. NAVERA once refused a late GPS fix as "possible spoofing"; it now drops a fix
+stamped before the newest one as old news (validation report). In mission 12 you write
+these checks yourself and plug them into arbiter v0 with `-p use_eligible:=true`.
+</details>
 
-That is a periodic publisher with a heartbeat:
-
-- the sentinel publishes on a channel everyone nearby can hear, without knowing who listens;
-- it publishes **regularly**, so that silence itself is information ("nobody is watching");
-- an alarm call is a different message type with a different meaning.
-
-NAVERA does the same with `/navera/nav_status`: five messages per second even when nothing changes,
-so that an operator notices at once when the arbiter goes silent.
-
-> [!NOTE]
-> **Time matters for birds too.** A pigeon's sun compass needs a correct internal clock, because the
-> sun moves across the sky. In classic clock-shift experiments, pigeons kept for days under lights
-> switched on and off 6 hours early flew off about 90° away from home — a quarter of the sun's
-> daily turn. A wrong time stamp gives a wrong direction, for birds and for robots.
+> [!WARNING] Common wrong ideas
+> - "The stamp is when I publish." It is when the content was true. Here they are the same instant only
+>   because the fake receiver measures and publishes in the same callback.
+> - "`ros2 param set` answered successful, so the node uses the new value." Only if the node reads it again.
 
 ## In NAVERA
 
-NAVERA's engineers have a fake sensor node too:
-[navera_tools/sensor_sim.py](file:navera/navera_tools/sensor_sim.py). It publishes simulated GPS,
-IMU and clock data on the **real** topic names to test the whole chain on a bench. Its GPS tick
-(compare with your `make_fix`):
+NAVERA's GPS driver reads the receiver's NMEA sentences (mission 15) and publishes each fix **once**. Its
+position message carries two instants: the measurement instant (for a GPS fix, the instant of the NMEA
+sentence) and the publication instant, and the judge decides freshness on the first one (a fix of the
+2026-09-28 review, EST-7). Altitude is above the ellipsoid and NaN when unknown (it was above sea level, and
+0 when missing: GPS-4). An accuracy that is missing stays UNKNOWN (GPS-5). The GPS path was bench-tested with
+scripted tests, a virtual serial port and simulated sensors (validation report, 2026-10-03): fake receivers,
+like yours. Each position is published once (EST-1), and the output to the autopilot sends each position
+once, stamped with its measurement instant (OUT-3).
 
-```python
-def tick_gps(self):
-    lat, lon, v_e, v_n, _, _, _ = self.state()
-    now = self._stamp()
-    cov = [SIGMA_M**2, 0.0, 0.0, 0.0, SIGMA_M**2, 0.0, 0.0, 0.0, (2*SIGMA_M)**2]
-    ...
-    fix = NavSatFix()
-    fix.header.stamp = now
-    fix.header.frame_id = "gps_link"
-    fix.status.status = NavSatStatus.STATUS_FIX
-    fix.status.service = NavSatStatus.SERVICE_GPS
-    fix.latitude, fix.longitude, fix.altitude = lat, lon, ALT_M
-    fix.position_covariance = cov
-    fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_DIAGONAL_KNOWN
-    self.pub_fix.publish(fix)
-```
+## In NAVERA Lite
 
-and its timers: `self.create_timer(0.20, self.tick_gps)   # 5 Hz`. Notice one safety habit at the
-top of that file: it **refuses to run** unless `NAVERA_ALLOW_SIM=1` is set, because fake data on the
-real topic names must never reach a real box by accident:
+You write `navera_lite/ros/gps_node.py`, the node `fake_gps`: `step` (TODO 1), `covariance_from_sigma`
+(TODO 2), `make_fix` (TODO 3) and three methods of `FakeGps` (TODO 4–6). It publishes on
+`navera_lite/fix/gps`, a **relative** name (in the namespace `/drone` it becomes `/drone/navera_lite/fix/gps`).
+Missions 11–13 subscribe to it, make the judge refuse your sabotage and check its parameters; mission 15
+replaces the fake σ by one computed from HDOP.
 
-```python
-if os.environ.get("NAVERA_ALLOW_SIM") != "1":
-    sys.exit("refusing to run: this publishes simulated sensor data on the real "
-             "NAVERA topics. Set NAVERA_ALLOW_SIM=1 on a test machine to allow it.")
-```
+## 🐦 How birds do it
 
-Your fake GPS uses its own topic, `/fake_gps/fix`, which no NAVERA node reads unless you ask it to —
-you will connect it to NAVERA in lesson 11.
+A homing pigeon steers by the sun, and the sun's direction depends on the time of day: the bird needs a
+correct clock. In classic clock-shift experiments, pigeons kept for days under lights switched on and off
+6 hours early flew off about 90° away from home when released: a quarter of the sun's daily turn. Their
+measurement (the sun's direction) was right; its time stamp was wrong, so the position they computed was
+wrong. Your receiver's stamp matters for the same reason.
 
-## Common errors
+## Summary
 
-| Message | Cause | Fix |
-|---|---|---|
-| `AssertionError: The 'position_covariance' field must be … of type 'float' …` | an `int` in a float field | `9.0`, not `9` |
-| `AttributeError: 'NoneType' object has no attribute 'publish'` | `self.pub` never created | `self.pub = self.create_publisher(...)` in `__init__` |
-| `TypeError: 'NoneType' object is not callable` (in a timer) | `create_timer(T, self.on_timer())` | no parentheses after the callback |
-| `InvalidParameterTypeException … 'INTEGER', expecting type 'DOUBLE'` | `-p speed_mps:=12` | `-p speed_mps:=12.0` |
-| nothing on the topic, no error | an exception inside the timer callback is printed in the node's terminal | read the node's terminal |
+1. A node is an object: state in `self`, callbacks given without `()`, and `spin` runs them one after the
+   other.
+2. Parameters are declared with a typed default and read when needed: read at every tick, they follow
+   `ros2 param set`. A float is written `12.0`.
+3. Timers jitter and lose ticks on a busy computer: integrate with the **real** dt, measured on the stamp's
+   clock, so each fix is where the vehicle was at its stamp.
+4. An honest NavSatFix: the measurement instant, floats, variances in m² at indices 0, 4, 8, type
+   APPROXIMATED for a stated σ, UNKNOWN with zeros when nothing is stated.
+5. A judge decides from your stamp and your covariance; a naive one can be fooled by both.
 
-## Glossary
+**Next mission:** the subscriber side, with a trip computer that refuses bad fixes and a watchdog that hears
+silence.
 
-| Term | Meaning |
-|---|---|
-| **rclpy** | the Python client library of ROS 2 |
-| **inheritance / `super().__init__`** | a class built on a parent class / calling the parent's constructor |
-| **attribute / bound method** | data stored in an object (`self.x`) / a method attached to an object (`self.on_timer`) |
-| **callback** | a function given to ROS, called later when an event happens |
-| **spin** | the event loop that waits and runs callbacks |
-| **timer / jitter** | calls a callback every period / the random variation of the real intervals |
-| **ROS time / use_sim_time** | the node's clock / follow a simulator's `/clock` instead of the system clock |
-| **parameter** | a named, typed setting of a node, changeable from outside |
-| **NavSatFix** | the standard ROS message for a satellite-navigation position |
-| **variance / standard deviation (σ)** | expected squared error (m²) / its square root (m) |
-| **covariance matrix (ENU, row-major)** | the 3 × 3 table of variances and covariances, stored row after row |
-| **ellipsoid (WGS84)** | the mathematical surface GPS altitudes refer to |
-| **equirectangular approximation** | local flat-Earth conversion of metres to degrees |
-| **great circle** | the shortest path on a sphere |
+## Check yourself
 
-## Check what you learned
+Answer without scrolling up.
 
-<details><summary>1. Why does <code>FakeGps.__init__</code> start with <code>super().__init__("fake_gps")</code>? What happens without it?</summary>
-It runs the constructor of the parent class <code>Node</code>, which registers the node in ROS with that
-name and prepares its clock, logger and graph connections. Without it the object is not a working
-node and <code>self.create_publisher</code> fails.
+<details><summary>1. Why does on_timer measure dt instead of using 1 / rate_hz?</summary>
+The real interval varies (jitter) and a busy computer loses ticks. With the real dt each fix is where the
+vehicle was at its stamp, and a listener computes the true speed.
 </details>
 
-<details><summary>2. A GNSS receiver states σ = 2.5 m horizontally and 5 m vertically, independent errors. Write <code>position_covariance</code>.</summary>
-<code>[6.25, 0.0, 0.0, 0.0, 6.25, 0.0, 0.0, 0.0, 25.0]</code> — variances in m², row-major, ENU, floats.
+<details><summary>2. Write position_covariance and its type for a stated σ of 0.8 m.</summary>
+<code>[0.64, 0.0, 0.0, 0.0, 0.64, 0.0, 0.0, 0.0, 2.56]</code>, type 1 (APPROXIMATED).
 </details>
 
-<details><summary>3. The timer is set to 0.5 s, but <code>ros2 topic hz</code> shows min 0.46 s, max 0.56 s. Why should the motion use the measured dt?</summary>
-Each interval differs from 0.5 s (jitter). Integrating <code>v × 0.5</code> would put the position at the
-wrong place for the stamp it carries; <code>v × dt</code> with dt from the clock keeps position and stamp consistent.
+<details><summary>3. The receiver states no accuracy. What do you publish, and why?</summary>
+Nine 0.0 and type UNKNOWN (0): an invented σ would look like a measured one to every reader.
 </details>
 
-<details><summary>4. Using the formula y ≈ d² tan φ0 / (2R), estimate the flat-Earth error after 50 km due east from Reykjavik (64.14° N).</summary>
-tan(64.14°) ≈ 2.063; y ≈ (5 × 10⁴)² × 2.063 / (2 × 6.371 × 10⁶) ≈ 2.5 × 10⁹ × 2.063 / 1.274 × 10⁷ ≈ 405 m
-(near the equator, in Quito, it would be almost 0: tan φ0 ≈ 0).
+<details><summary>4. A node reads speed_mps once in __init__. You run ros2 param set … speed_mps 20.0. What happens?</summary>
+"Set parameter successful", and the node keeps its old speed: it never reads the parameter again.
 </details>
 
-<details><summary>5. You forget to fill latitude and longitude. What do subscribers receive, and how does NAVERA protect itself?</summary>
-0.0 and 0.0 ("Null Island") with no error. NAVERA's GPS code treats exactly (0, 0) as invalid.
+<details><summary>5. (Mission 06) geo.offset(lat, lon, 50.0, 0.0) at 60° N: how many degrees of longitude, roughly?</summary>
+One degree of longitude is about 111 195 × cos 60° ≈ 55 600 m there, so about 0.0009°.
+</details>
+
+<details><summary>6. (Mission 01) GPS is 2 s old with σ 4 m, day vision is fresh with σ 30 m. Which source does NAVERA's arbiter use, in which state?</summary>
+GPS: it is fresh (2 s ≤ 3 s) and first in priority; σ 4 m ≤ 25 m, so FIX.
 </details>
 
 Now open the **🛠️ Lab** tab.

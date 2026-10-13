@@ -10,10 +10,10 @@
     day_timeout_s: 5.0          # day vision: one match every 1–4 s
     night_timeout_s: 5.0        # night vision
     celestial_timeout_s: 45.0   # celestial (star) fixes are rare
-    future_tolerance_s: 0.5     # a stamp at most this far in the future is still accepted (clock jitter)
+    future_tolerance_s: 0.5     # used by the position contract (mission 12)
     # states
     fix_max_sigma_m: 25.0       # FIX only if the source states a σ of at most this; otherwise DEGRADED
-    min_stated_sigma_m: 0.01    # a stated σ below 1 cm is not believed (an all-zero covariance states nothing)
+    min_stated_sigma_m: 0.01    # used by the position contract (mission 12)
     # switching
     switch_holdoff_s: 2.0       # a higher-priority source must stay usable this long before it takes over
     tick_hz: 5.0                # the judge decides on every arrival and also at this rate
