@@ -9,8 +9,8 @@ The node "blocking_demo" has two callbacks:
     python3 blocking_demo.py shared                two threads, but both callbacks in the node's default group
     python3 blocking_demo.py single --work 0.1     a lighter callback
 
-Start a GPS first, in another terminal (5 fixes a second):
-    python3 -m navera_lite.ros.gps_node --ros-args -p rate_hz:=5.0
+Start a GPS first, in the background in this terminal (5 fixes a second):
+    python3 -m navera_lite.ros.gps_node --ros-args -p rate_hz:=5.0 > gps.log 2>&1 &
 It runs for 10 s, then prints what happened.
 """
 import argparse
@@ -83,7 +83,8 @@ def main():
     span = (node.stamps[-1] - node.stamps[0]) if len(node.stamps) > 1 else 0.0
     if not ages:
         print("\nNo fix arrived. Is the GPS running (`python3 -m navera_lite.ros.gps_node --ros-args -p "
-              "rate_hz:=5.0` in another terminal)? Wait 2 s after starting it, then try again.")
+              "rate_hz:=5.0 > gps.log 2>&1 &` in THIS terminal, in the background; `jobs` shows it)? Wait 2 s after "
+              "starting it, then try again.")
     else:
         print(f"\n  timer ticks        {len(node.ticks):3d} of {int(DURATION_S / PERIOD_S)}")
         print(f"  longest timer gap  {1000 * max(gaps):5.0f} ms   (it should be {1000 * PERIOD_S:.0f} ms)")

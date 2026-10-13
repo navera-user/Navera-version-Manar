@@ -60,12 +60,13 @@ def test():
     tc = tn.TripComputer()
     steps = [("first fix at t = 0 s", fix(0.0, 0.0), (True, "first fix")),
              ("10 m east, 1 s later", fix(1.0, 10.0), (True, "ok")),
-             ("5 km east, 1 s later", fix(2.0, 5000.0), (False, "jump")),
-             ("valid=False (the source has no position)", fix(2.0, 20.0, valid=False), (False, "no position")),
-             ("latitude NaN", fix(2.0, 20.0, lat=math.nan), (False, "bad position")),
-             ("stamped t = 0.5 s, 70 m behind the last accepted", fix(0.5, -60.0), (False, "old fix")),
-             ("20 m east, at t = 2 s", fix(2.0, 20.0), (True, "ok")),
-             ("stamped t = 2 s again (the SAME stamp), 25 m east", fix(2.0, 25.0), (False, "old fix"))]
+             ("130 m east, 1 s later (gate: 100 × 1 + 50 = 150 m)", fix(2.0, 130.0), (True, "ok")),
+             ("5 km east, 1 s later", fix(3.0, 5000.0), (False, "jump")),
+             ("valid=False (the source has no position)", fix(3.0, 140.0, valid=False), (False, "no position")),
+             ("latitude NaN", fix(3.0, 140.0, lat=math.nan), (False, "bad position")),
+             ("stamped t = 0.5 s, 190 m behind the last accepted", fix(0.5, -60.0), (False, "old fix")),
+             ("140 m east, at t = 3 s", fix(3.0, 140.0), (True, "ok")),
+             ("stamped t = 3 s again (the SAME stamp), 145 m east", fix(3.0, 145.0), (False, "old fix"))]
     good = 0
     for text, est, want in steps:
         got, err = judge(tc, est)
@@ -77,10 +78,10 @@ def test():
         if good:
             print("  (summary lines skipped: fix the ✘ lines above first)")
     else:
-        good += show(abs(tc.distance_m - 20.0) < 0.05, f"self.distance_m after it: {tc.distance_m:.2f} m",
-                     "about 20.0 m (two steps of 10 m)", round(tc.distance_m, 2))
-        good += show(len(tc.fixes) == 3 and tc.refused == 5,
-                     f"{len(tc.fixes)} fixes remembered, {tc.refused} refused", "3 fixes, 5 refused",
+        good += show(abs(tc.distance_m - 140.0) < 0.05, f"self.distance_m after it: {tc.distance_m:.2f} m",
+                     "about 140.0 m (10 + 120 + 10)", round(tc.distance_m, 2))
+        good += show(len(tc.fixes) == 4 and tc.refused == 5,
+                     f"{len(tc.fixes)} fixes remembered, {tc.refused} refused", "4 fixes, 5 refused",
                      (len(tc.fixes), tc.refused))
         good += show(tc.last_refusal == "old fix", f"self.last_refusal = {tc.last_refusal!r}", "old fix",
                      tc.last_refusal)
@@ -97,9 +98,15 @@ def test():
     else:
         show(isinstance(v, (int, float)) and abs(v - 19.83) < 0.01,
              f"speed_window(docstring example, 6.0) → {v!r}", "about 19.83", v)
-        for args, text in (((ex[:1], 6.0), "one fix only"), (([ex[0], ex[2]], 6.0), "one fix in the window")):
-            v = tn.speed_window(*args)
-            show(v is None, f"speed_window({text}) → {v!r}", None if v is None else "None", v)
+        for args, text in (((ex[:1], 6.0), "one fix only"), (([ex[0], ex[2]], 6.0), "one fix in the window"),
+                           (([], 6.0), "no fix at all: the node's first tick")):
+            v, err = rk.call(tn, "speed_window", *args)
+            if err and "returned None" in err:
+                v, err = None, None
+            if err:
+                print(f"✘ speed_window({text}): {err}")
+            else:
+                show(v is None, f"speed_window({text}) → {v!r}", None if v is None else "None", v)
     print("\nTODO 3 — Watchdog.silent():")
     w = tn.Watchdog(3.0)
     v, err = rk.call(method(w, "silent"), "silent", 0.0)

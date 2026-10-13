@@ -158,7 +158,8 @@ fewer messages, or the heavy work moved out of the callback.
 1. The callback groups: both callbacks are still in the node's default mutually exclusive group, so
 they never run at the same time, whatever the number of threads.<br>
 2. ρ = 0.15 / 0.1 = 1.5 &gt; 1: no. Once the queue is full, about 10 × 0.1 = 1 s old, and one fix in
-three is dropped (10 come per second, about 6.7 are handled).
+three is dropped (10 come per second, about 6.7 are handled). (× T, not × S: the queue holds the 10 newest
+fixes, which <b>arrived</b> 0.1 s apart, so the oldest of them came about 10 × 0.1 s ago.)
 </details>
 
 ## 3. Memory: judge each fix, by its stamp

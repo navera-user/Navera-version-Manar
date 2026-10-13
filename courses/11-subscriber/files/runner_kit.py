@@ -97,7 +97,8 @@ def _hint(e):
         return (" — two arrays of different shapes were combined: print the .shape of each one. "
                 "(With np.linalg.lstsq: it returns four things, write `x, *_ = np.linalg.lstsq(A, b, rcond=None)`.)")
     if isinstance(e, TypeError) and "'NoneType'" in s:
-        return " — a function you call returned None: does every path end with `return`?"
+        return (" — one value on that line is None: a function that did not `return`, or a variable that "
+                "starts as None (like an attribute set to None in __init__). Print the values on that line")
     if isinstance(e, ValueError) and "math domain error" in s:
         return " — math.sqrt / math.asin / math.acos got a value out of range (negative, or beyond ±1)"
     if isinstance(e, TypeError) and "cannot be interpreted as an integer" in s:

@@ -51,14 +51,17 @@ given) instead of a TODO; the polling bug (OUT-5) is reproduced in pure Python (
   | single: ticks / longest gap / max age | 33 / 302 ms / 1.97 s | 43 / 374 ms / 1.99 s |
   | multi | 100 / 101 ms / 1.97 s | 100 / 103 ms / 1.98 s |
   | shared | 34 / 320 ms / 1.97 s | 33 / 396 ms / 1.99 s |
-  | single --work 0.1 | 100 / 113 ms / 0.00 s | 100 / 119 ms / 0.00 s |
+  | single --work 0.1 | 100 / 113 ms / 0.00 s | 100 / 119–205 ms / last 0.00 s (first/max 0.14–0.40 s, start-up) |
+
+  With `--work 0.1` the gap can reach one period plus one callback (≈ 200 ms; reviewers measured 145–205 ms); the
+  check names it if a student copies that run as GAP_SINGLE_MS.
 
   Max age ≈ depth × T = 10 × 0.2 s = 2 s (the queue holds the 10 newest; the callback takes the oldest). About 7 fixes
   in 8 s are never handled. The check accepts GAP_SINGLE_MS 250–900, GAP_MULTI_MS 90–200, AGE_MULTI_S 1.3–2.7.
 - **Step 8**: "GPS silent for … s" values 3.12, 3.04, 3.01 (host) and 3.08, 3.02, 3.16 (sandbox): `gps_timeout_s`
   3.0 s by stamp + at most one 0.2 s tick (5 Hz) + a few ms of latency. The trip node logs `GPS silent` usually 0–1 s
   later (its watchdog is checked by the 1 Hz publishing timer: 3–4 s after the last arrival; sandbox: 0.5–0.9 s later),
-  rarely a few hundredths earlier. The check accepts
+  sometimes up to ~0.2 s earlier (reviewers saw −0.02 to −0.13 s). The check accepts
   2.95–3.7 s and refuses the example values of answers.py. (Measured from the moment of Ctrl+C the silence is 2–4 s,
   since the last fix came up to 1 s before; that is why the listener measures from the last fix's stamp.)
 - Lesson checks: answers are in the lesson's `<details>`; numbers verified: §2 longest gap 0.3 s (rclpy runs a ready timer before a ready subscription), ρ 0.6, queue +0.33/s, full ≈ 30 s,
@@ -66,10 +69,10 @@ given) instead of a TODO; the polling bug (OUT-5) is reproduced in pure Python (
   §5 3.5 s, check 3.0–3.25 s; Check yourself 1: ρ 1.2, 2.5 s.
 
 **Unseen data in check.py** (constants; computed with the reference `trip_node.py`): 4 fixes near Quito (distance
-83.269 m); a 10-fix sequence near Reykjavik with `TripComputer(20.0, 10.0)` that separates the common mistakes (gate
-from a refused fix, "old fix" against a refused stamp, gate before stamp, first rule wins, Null Island, ±∞;
-4 accepted, 6 refused, 124.0 m); 5 irregular fixes near Sydney (windows 5 / 6 / 100 s → 10.0884 / 10.0731 /
-9.1327 m/s; 0.5 s → None); a `Watchdog(2.5)` boundary sequence; and on the wire a 14-row scenario near Reykjavik
+83.269 m); an 11-fix sequence near Reykjavik with `TripComputer(20.0, 10.0)` that separates the common mistakes (gate
+from a refused fix, "old fix" against a refused stamp, same stamp as the last accepted, gate before stamp, first rule wins, Null Island, ±∞;
+4 accepted, 7 refused, 124.0 m); 5 irregular fixes near Sydney (windows 5 / 6 / 100 s → 10.0884 / 10.0731 /
+9.1327 m/s; 0.5 s and an empty list → None); a `Watchdog(2.5)` boundary sequence; and on the wire a 14-row scenario near Reykjavik
 played by `replay_node` at rate 2 (expected: fixes 10, refused 4, last "bad position", 104.0 m, then silent).
 
 ## Rubric for the written answers (the check only catches empty or off-topic answers)
@@ -116,7 +119,7 @@ PREDICT_… items are graded as "written" only. Use the most-wrong predictions i
 ## Suggested class plan (reading at home 1 h; two sessions, about 4 h 30 in all)
 
 - Before session 1: the lesson, with its ✏️ checks.
-- **Session 1 (1 h 30):** 5 min Step 0 together (predict on the board, then run: the class sees 13/13, then 0/0
+- **Session 1 (1 h 30):** 5 min Step 0 together (predict on the board, then run: the class sees 30 dropped / 30 doubled, then 0/0
   without jitter). 50 min TODO 1–3 with `run_trip.py test`. 20 min Step 4; 10 min discussion: why a parked car shows
   5.5 m/s and why the odometer reads 993 m. Badge.
 - **Session 2 (1 h 45):** 30 min TODO 4–5 and Step 5; 20 min Step 6; 20 min Step 7 (ask two students to put their

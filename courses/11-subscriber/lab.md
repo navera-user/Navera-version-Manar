@@ -109,6 +109,9 @@ The TODO 1 lines must all be ✔ (TODO 2 and 3 come in Step 3).
 6. Distance 5010 m, or 4 fixes remembered: a refused fix was appended or added; append and add only
    after every rule has passed.
 7. `(True, 'ok')` for the fix with the SAME stamp as the last accepted one: "not newer" means `<=`, not `<`.
+8. `(False, 'jump')` for "130 m east, 1 s later" (or every fix after the first is `jump` in Step 2's trace): your
+   elapsed time is negative. It is **new stamp − last accepted stamp** (lesson §3: 1.2 − 2.0 = −0.8 s is the late
+   fix's case, not the normal one).
 </details>
 
 ## Step 2 — Trace the lesson's plane
@@ -143,7 +146,8 @@ python3 run_trip.py test
    fewer than 2 of them, return `None`; otherwise distance (haversine) between the first and the last
    kept, divided by the difference of their times.
 2. About 14.9 instead of 19.83 for the docstring example, or a number instead of `None` for "one fix in
-   the window": you used the whole list, not only the fixes inside the window.
+   the window": you used the whole list, not only the fixes inside the window. About 16.5: you divided by
+   `window_s`; divide by the time between the first and the last fix you kept (here 10 − 5 = 5 s).
 3. `ZeroDivisionError`: you divided with fewer than two fixes in the window.
 4. TODO 3: `False` before any message? `self.last_s is None` means nothing ever came: that is silence.
 5. `True` at exactly 3.0 s (13.0): the docstring says MORE than `silence_s`: `>`, not `>=`.
@@ -246,7 +250,7 @@ ros2 topic echo /navera_lite/trip diagnostic_msgs/msg/DiagnosticStatus --once
 ```
 
 Run the echo a few times: `fixes` and `distance_m` grow, `speed_mps` settles near the fake GPS's 10 m/s,
-`silent` is `false`. `cat trip.log` again: `GPS talking`. Stop both nodes:
+`silent` is `false`. (`level: "\0"` is fine: the level is one byte, 0 = OK, 1 = WARN.) `cat trip.log` again: `GPS talking`. Stop both nodes:
 
 ```bash
 kill -INT $(jobs -p); sleep 1; jobs
@@ -262,6 +266,9 @@ kill -INT $(jobs -p); sleep 1; jobs
 4. `fixes` stays `'0'`: is the topic name exactly `navera_lite/fix/gps`? `ros2 node info /trip` shows
    what you subscribed to.
 5. `silent` stays `'true'` while fixes come in: the watchdog is never kicked.
+6. trip.log ends with `IndexError: list index out of range` in `speed_window`: at the node's first tick there is
+   no fix yet, and `speed_window([], 5.0)` must return `None` (test the length before `fixes[-1]`). The error is in
+   TODO 2, not in TODO 4.
 </details>
 
 ## Step 6 — Bad fixes on the wire
@@ -295,6 +302,8 @@ grep WARN trip.log
 ```bash
 ros2 topic echo /navera_lite/trip diagnostic_msgs/msg/DiagnosticStatus --once
 ```
+
+(`silent` is `true` and the message `GPS silent` by now: the scenario has ended. That is your watchdog working.)
 
 > [!TASK]
 > Write `TRIP_FIXES`, `TRIP_REFUSED`, `TRIP_LAST_REFUSAL` and `TRIP_DISTANCE_M`. Then stop both nodes
@@ -335,8 +344,10 @@ python3 blocking_demo.py shared
 python3 blocking_demo.py single --work 0.1
 ```
 
-(`single --work 0.1`: ρ = 0.5, every fix is handled at once (age 0.00 s), yet the timer can still wait up
-to one callback: its longest gap is a little more than its 100 ms period.)
+(`single --work 0.1`: ρ = 0.5, so every fix is handled as it comes (the `last` age is 0.00 s; the `first` can
+show 0.1–0.4 s while the node starts). Yet a tick that falls during a callback still waits for it: the longest
+gap can reach one period plus one callback, about 200 ms (measured 145–205 ms). Do not copy this run as
+`GAP_SINGLE_MS`.)
 
 > [!TASK]
 > Write `GAP_SINGLE_MS`, `GAP_MULTI_MS` and `AGE_MULTI_S` (the `max` age of the `multi` run), and
@@ -397,16 +408,19 @@ brackets on each log line is the time in seconds):
 grep -h "NO_FIX\|GPS silent" listener.log trip.log
 ```
 
+(The first `GPS silent` of trip.log is from its start, before the GPS ran: skip it.)
+
 > [!TASK]
-> Write `SILENCE_S` (your values, a list) and `EXPLAIN_SILENCE`: where do these numbers come from, and
-> why does your trip node *usually* say "GPS silent" later than the judge (by up to about 1 s)?
+> Write `SILENCE_S` (your values, a list) and `EXPLAIN_SILENCE`: where do these numbers come from, which
+> one spoke first each time, and why: the judge or your trip node?
 
 <details><summary>Read this after you measured: the two watchdogs</summary>
 The judge: 3.0 s after the <b>stamp</b> of the last fix, checked 5 times a second → 3.0 to 3.2 s (measured
 while building this lab: 3.08, 3.02, 3.16 s). Your trip node: 3.0 s after the <b>arrival</b> of the last fix
 (<code>self.now_s()</code> in <code>on_fix</code>), checked once a second → 3.0 to 4.0 s after it; in the same
-runs it logged "GPS silent" 0.5 to 0.9 s after the judge's NO_FIX. When its 1 Hz tick falls just after 3.0 s,
-it can even come a few hundredths of a second <i>before</i> the judge: both answers are right if you explain them.
+runs it logged "GPS silent" 0.5 to 0.9 s after the judge's NO_FIX; reviewers also saw it 0.02 to 0.13 s
+<i>before</i> the judge. When its 1 Hz tick falls just after 3.0 s and the judge's 5 Hz tick comes late, it can
+come up to about 0.2 s before the judge: both answers are right if you explain them.
 </details>
 
 **Stop everything,** then check that nothing is left (a judge left running would disturb the next
@@ -437,7 +451,7 @@ you earn the **Watchdog** badge. Then look back, without the lesson:
   Run `gps_node` with `-p stamp_offset_s:=-0.8` (each fix 0.8 s old when sent): what does your trip
   computer do, and what would it do with arrival times instead of stamps?
 - **The age, exactly.** Once the queue is full, derive the age of a fix when its callback starts, from depth, T and S,
-  and compare with the max age of Step 7 (1.97–1.99 s). Which detail of the queue decides the last 0.1 s?
+  and compare with the max age of Step 7 (about 1.96–2.00 s). Which detail of the queue decides the last 0.1 s?
 - **Reentrant.** In a copy of `blocking_demo.py`, put the subscription in a `ReentrantCallbackGroup` with
   3 threads. How old are the fixes now? Then imagine `self.count += 1` inside `on_fix`: what can go
   wrong when two copies run at once?

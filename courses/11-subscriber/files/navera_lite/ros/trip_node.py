@@ -43,11 +43,12 @@ class TripComputer:
     # TODO 1 -----------------------------------------------------------------------------------
     def update(self, est):
         """Judge one GPS Estimate; remember it only if it is good. Returns (ok, reason).
-        Four reasons to refuse (lesson §3 decides their ORDER: the first rule broken gives the reason):
-          the source says it has no position (est.valid is False)            → (False, "no position")
-          not a usable latitude/longitude (geo.is_finite_latlon)             → (False, "bad position")
-          its stamp is not newer than the last ACCEPTED fix's stamp         → (False, "old fix")
+        Four reasons to refuse, listed here in NO particular order — the order is yours (lesson §3: the first
+        rule broken gives the reason, and one wrong order gives a false spoofing alarm):
           mission 01's jump gate refuses it, from the last ACCEPTED fix      → (False, "jump")
+          its stamp is not newer than the last ACCEPTED fix's stamp         → (False, "old fix")
+          not a usable latitude/longitude (geo.is_finite_latlon)             → (False, "bad position")
+          the source says it has no position (est.valid is False)            → (False, "no position")
         Otherwise: (True, "first fix") for the very first one, else (True, "ok").
         Memory: accepted fixes are kept in self.fixes as (stamp_s, lat, lon), and self.distance_m is the
         great-circle length along them; a refused fix only counts in self.refused and self.last_refusal.

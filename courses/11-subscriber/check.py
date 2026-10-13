@@ -100,8 +100,8 @@ WHY_WRONG = {
 
 @c.test("TODO 1: update() refuses bad fixes with the first rule broken, and a refusal changes nothing",
         hint="The four rules in order: no position, bad position, old fix (vs the last ACCEPTED stamp), jump (mission 01's "
-             "gate from the last ACCEPTED fix, with the time between the stamps). A refused fix only adds to self.refused "
-             "and sets self.last_refusal.")
+             "gate from the last ACCEPTED fix; elapsed = new stamp − last accepted stamp, a negative value means 'no time': "
+             "only the margin). A refused fix only adds to self.refused and sets self.last_refusal.")
 def _():
     m, E = trip(), estimate_cls()
     (TC,) = need(m, "TripComputer")
@@ -142,6 +142,12 @@ def _():
             raise CheckFailed(str(e) + extra)
     got = run(sw, fixes, 0.5)
     c.ok(got is None, f"speed_window(..., 0.5) returned {got!r}: only one fix is inside a 0.5 s window, so None")
+    try:
+        got = run(sw, [], 5.0)
+    except CheckFailed as e:
+        raise CheckFailed(f"speed_window([], 5.0) crashed ({e}) — it must return None: the trip node calls it once a "
+                          "second, also before the first fix")
+    c.ok(got is None, f"speed_window([], 5.0) returned {got!r}: with no fix at all it must return None")
     got = run(sw, fixes[:1], 5.0)
     c.ok(got is None, f"speed_window(one fix, 5.0) returned {got!r}, expected None")
     c.ok(fixes == [tuple(f) for f in SYDNEY], "speed_window() changed the list it was given — it must only read it")
@@ -195,11 +201,29 @@ def _():
                                    "trip computer — run it again after `python3 run_trip.py test` is all ✔")
     explained("EXPLAIN_WINDOW", ex,
               ([r"nois", r"std", r"spread", r"smooth", r"averag", r"precis", r"stable", r"jump"], "what the window buys (less noise)"),
-              ([r"delay", r"lag", r"late", r"slow", r"behind", r"react", r"takes? (about )?\d", r"past"], "what it costs (a delay)"))
+              ([r"delay", r"lag", r"late", r"slow", r"behind", r"react", r"takes? (about )?\d", r"past",
+                r"needs?", r"wait", r"after the stop", r"cost", r"~? ?\d+(\.\d+)? ?s\b", r"seconds?"], "what it costs (a delay)"))
 
 
 # ======================================================================== Session 2 — on the wire
 NODE = "python3 -m navera_lite.ros.trip_node"
+def stub_or_crash(text):
+    """A plain sentence for a trip node that died: which TODO the traceback points to."""
+    for k, v in TODO_MSG.items():
+        if k in text:
+            return v
+    if "'NavSatFix' object has no attribute" in text:
+        return ("on_fix gives update() the NavSatFix itself: update() wants an Estimate — convert the message with "
+                "from_navsatfix(msg, source=\"gps\", now_s=...) first (TODO 5)")
+    for fn, todo in (("in speed_window", "TODO 2 (speed_window)"), ("in silent", "TODO 3 (Watchdog.silent)"),
+                     ("in update", "TODO 1 (update)")):
+        if fn in text:
+            last = [line for line in text.splitlines() if line.strip()][-1:] or ["?"]
+            return (f"{last[0].strip()} in {todo}, not in TODO 4/5: the node calls it once a second, also before the "
+                    "first fix (speed_window([]) must return None) — run `python3 run_trip.py test`")
+    return None
+
+
 TODO_MSG = {"TODO 4": "TripNode.listen() is still the TODO 4 stub", "TODO 5": "TripNode.on_fix() is still the TODO 5 stub"}
 
 
@@ -210,9 +234,9 @@ def start_trip():
         bg.__enter__()
     except CheckFailed as e:
         s = str(e)
-        for k, v in TODO_MSG.items():
-            if k in s:
-                raise CheckFailed(f"your trip node stops at start: {v}")
+        why = stub_or_crash(s)
+        if why:
+            raise CheckFailed(f"your trip node stops at start: {why}")
         last = [line for line in s.splitlines() if line.strip()][-1:] or ["?"]
         raise CheckFailed(f"your trip node stops at start: {last[0].strip()} — run `{NODE}` to see the whole error")
     return bg
@@ -322,9 +346,9 @@ def _():
             msgs = collect("/navera_lite/trip", done, 20.0)
             if bg.p.poll() is not None:
                 out = bg.p.stdout.read()
-                for k, v in TODO_MSG.items():
-                    if k in out:
-                        raise CheckFailed(f"your trip node died when the first fix arrived: {v}")
+                why = stub_or_crash(out)
+                if why:
+                    raise CheckFailed(f"your trip node died during the scenario: {why}")
                 last = [line for line in out.splitlines() if line.strip()][-1:] or ["?"]
                 extra = (" — update() wants an Estimate: convert the message with from_navsatfix(msg, source=\"gps\", "
                          "now_s=...) first" if "'NavSatFix' object has no attribute" in out else "")
@@ -379,12 +403,15 @@ def _():
     p, g1, g2, age, ex = answers("PREDICT_BLOCKING", "GAP_SINGLE_MS", "GAP_MULTI_MS", "AGE_MULTI_S", "EXPLAIN_BLOCKING")
     predicted("PREDICT_BLOCKING", p)
     g1, g2, age = number(g1, "GAP_SINGLE_MS"), number(g2, "GAP_MULTI_MS"), number(age, "AGE_MULTI_S")
+    runs = evidence("out/blocking.json", "Step 7 (blocking_demo.py)")
+    light = [r for r in runs if r.get("mode") == "single" and r.get("work_s") != 0.3 and r.get("gap_ms") is not None]
+    c.ok(not any(abs(r["gap_ms"] - g1) <= 1 for r in light) or 250 <= g1,
+         f"GAP_SINGLE_MS = {g1:g} is your `single --work 0.1` run: copy the plain `single` run (0.3 s of work)")
     c.ok(250 <= g1 <= 900, f"GAP_SINGLE_MS = {g1:g} ms is not a gap the single run can give with 0.3 s of work per "
                             "fix — was the GPS running at 5 Hz, and is it in milliseconds?")
     c.ok(90 <= g2 <= 200, f"GAP_MULTI_MS = {g2:g} ms: the multi run keeps the 10 Hz timer close to 100 ms — copy the "
                            "`longest timer gap` of `python3 blocking_demo.py multi`")
     c.ok(1.3 <= age <= 2.7, f"AGE_MULTI_S = {age:g} s is not the `max` age of the multi run (GPS at 5 Hz, in seconds)")
-    runs = evidence("out/blocking.json", "Step 7 (blocking_demo.py)")
     single = [r for r in runs if r.get("mode") == "single" and r.get("work_s") == 0.3 and r.get("gap_ms") is not None]
     multi = [r for r in runs if r.get("mode") == "multi" and r.get("work_s") == 0.3 and r.get("gap_ms") is not None]
     c.ok(any(abs(r["gap_ms"] - g1) <= 1 for r in single),
@@ -401,7 +428,7 @@ def _():
 
 
 @c.test("Step 8: the judge notices a silent GPS — your measurements",
-        hint="With arbiter_v0, status_listener.py and the GPS running, stop the GPS (Ctrl+C) and copy the `GPS silent for "
+        hint="With arbiter_v0, status_listener.py and the GPS running, stop the GPS (`kill -INT %%`) and copy the `GPS silent for "
              "… s` values (at least 2) into SILENCE_S as a list of numbers. EXPLAIN_SILENCE: the 3 s timeout, the 5 Hz "
              "tick, and your node's 1 Hz timer.")
 def _():

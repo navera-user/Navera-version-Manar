@@ -7,7 +7,7 @@ and prints a line ONLY when the decision (state, source) changes. When the judge
 prints how long the GPS had been silent: the time of that status minus the stamp of the last GPS fix
 (each value is also added to out/silence.json).
 
-    python3 status_listener.py          (with arbiter v0 running; Ctrl+C to stop)
+    python3 status_listener.py > listener.log 2>&1 &    (in the background, as in lab Step 8; stop it with kill -INT)
 """
 import json
 import os
