@@ -438,7 +438,7 @@ def _():
     explained("EXPLAIN_LOW", low,
               ([r"clock", r"\bbias", r"proportional", r"separat", r"up column", r"u_u", r"−u_u|-u_u", r"vertical column"],
                "the Up/clock link (lesson §5, fact 1)"),
-              ([r"low", r"horizon", r"small", r"different", r"elevation", r"near zero", r"close to (0|zero)"],
+              ([r"low", r"horizon", r"small", r"different", r"elevation", r"near (0|zero)", r"close to (0|zero)", r"unlike"],
                "what the low satellite changes"))
     dd = number(diff, "DOP_MAX_DIFF")
     c.ok(0.0 <= dd <= 0.006, f"DOP_MAX_DIFF = {diff!r}: python3 run_gnss.py dop prints the three largest "

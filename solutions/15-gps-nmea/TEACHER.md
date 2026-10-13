@@ -41,7 +41,7 @@ Badges: **Line inspector** = checks 1–7 (session 1), **Fix judge** = all 15.
 | BAD_LINES | 7 | lines 361 (GGA flipped digit, 05:13:00), 901 (GGA cut), 1382 (RMC, no checksum), 1801 (garbage), 3122 (GGA+RMC glued), 3664 (GSV non-ASCII byte), 4083 (GSA flipped VDOP "1906") |
 | IMPOSSIBLE_UTC | "051731" | `3574.17098` (74′, digits swapped; checksum still right). Also printed by Step 0's naive table: the task is now completed by IMPOSSIBLE_WHY |
 | IMPOSSIBLE_WHY | dm_to_deg's minutes < 60 rule refuses it; XOR is blind to the order of characters | graded on topic (two keyword groups) |
-| FORGE_KM | depends on the swap; e.g. 2001.509; class record 8 546.9 km | brute force over the 804 one-swaps that stay FIX: best `01045.14417` → `11045.04417` (110.75° E); `35`→`53` in the latitude; `01045`→`10045` in the longitude moves 7 786.5 km (100.75° E, still ≤ 180°). Check: exactly one swap, valid XOR, lat ≤ 90 / lon ≤ 180 / minutes < 60, > 1 km, FORGE_KM within 1 % |
+| FORGE_KM | depends on the swap; e.g. 2001.509; class record 8 546.9 km | brute force over the 804 one-swaps that stay FIX: the 8 546.9 km record swaps the longitude's leading `0` with the `1` of the satellite count `12` (it becomes `02` — the lab's "12 → 02" question), or with the `1` of `2.1` or the last `1` of `14417`; `01045.14417` → `11045.04417` gives 8 546.8 km; `35`→`53` in the latitude; `01045`→`10045` in the longitude moves 7 786.5 km (100.75° E, still ≤ 180°). Check: exactly one swap, valid XOR, lat ≤ 90 / lon ≤ 180 / minutes < 60, > 1 km, FORGE_KM within 1 % |
 | STREET_EDOP / NDOP | 3.26 / 0.80 | `sky` part 3 (az 5, 350, 175, 190, 120, 260; el 30, 55, 40, 65, 75, 80) |
 | PREDICT_LOW (ungraded) / EXPLAIN_LOW | VDOP drops more (2.32 → 1.75) than HDOP (1.36 → 1.22) | the low satellite's −u_U ≈ −0.21, unlike the others' strongly negative values: the Up column stops looking like the clock column, so height and clock separate; horizontally it is one more direction among six |
 | PREDICT_ROTATE (ungraded) | HDOP, VDOP unchanged (1.36, 2.32); EDOP/NDOP swap roles (0.86/1.06 → 1.04/0.89) | geometry turns with the sky; HDOP = trace of a block, invariant under rotation |
@@ -108,7 +108,7 @@ Each mutant below was run against check.py and the runner; the message it gets i
 Answer traps with their own messages: LINK_LOAD_PCT with 8 bits (34.2), STREET_EDOP/NDOP swapped,
 SIGMA_MAX_M = 18.8 (the HDOP), FORGE_KM in metres, a forged line with two changes or 74 minutes.
 
-## Class plan (2 sessions of about 2 h 15 to 2 h 30, plus 1 h of reading; meta 5 h 30)
+## Class plan (session 1: 1 h 45 to 2 h 15, session 2: 2 h to 2 h 30, plus 1 h of reading; meta 5 h 30)
 
 - **Before session 1:** lesson §1–§4 (30 min). **Session 1:** Step 0 together on the projector (the naive
   reader's 50 km spike: it lands at sea, in the Gulf of Hammamet), then Steps 1–5. At the end, collect two forged lines on the board: who moved the fix
