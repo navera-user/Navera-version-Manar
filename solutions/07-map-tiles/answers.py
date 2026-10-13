@@ -19,14 +19,18 @@ TMS_ROW_KANTAOUI_Z18 = 159107
 EXPLAIN_GUARD = ("2**z for a huge z is an enormous number: a billion costs about 6 s of CPU and 125 MB, so a few bad "
                  "requests could stall the server; checking z first costs nothing. With ? placeholders the values "
                  "are sent as values, never as SQL text, so they cannot change what the query does.")
-PREDICT_CORNER = "half at 60° (cos 60° = 0.5); Longyearbyen about 216 × cos 78.2° ≈ 44 m"
-CORNER_QUITO_M = 216.0
+PREDICT_CORNER = "half at 60° (cos 60° = 0.5); 100 m at acos(100/216) ≈ 62.4°, between Anchorage and Reykjavik"
+CORNER_QUITO_M = 215.95
 EXPLAIN_CORNER = ("The error is half the tile diagonal. Near the equator cos(latitude) is larger, the Mercator "
                   "stretch smaller, so a zoom-17 tile covers more ground (306 m wide in Quito, 248 m in Sousse).")
 EXPLAIN_FIX = ("The centre is right only if the photo's centre fell on the tile's centre; otherwise it can still be off "
                "by up to half the diagonal, 175 m at Sousse. The right position is the matched pixel itself: "
                "pixel_to_latlon(u, v, z, tx, ty), the point of the tile where the photo's centre landed.")
 CIRCLE_TILES_REYKJAVIK = 62
+EXPLAIN_MARGIN = ("A tile k columns away has its centre at least (k − ½)·w away, so it can be within r_m only if "
+                  "k ≤ r_m/w + ½: rounding r_m/w up is enough on one row. But tiles get smaller in metres towards the "
+                  "north (w changes with latitude, cos φ), so for large radii or high latitudes the rows above need "
+                  "more tiles; one extra tile of margin is cheap and never misses one.")
 COVER_WEST_Z13_DEG = 10.4590
 EXPLAIN_BOUNDS = ("The bounds are a rectangle in degrees, but the file holds whole tiles: every tile that touches the "
                   "rectangle is stored, so the coverage snaps outwards to the tile grid. A zoom-13 tile is about 4 km "

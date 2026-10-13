@@ -36,11 +36,12 @@ EXPLAIN_GUARD = ""          # why check z before computing 2**z? and why pass z,
 
 # ---- Step 7: the corner bug and the search circle ---------------------------------------------------
 PREDICT_CORNER = ""         # before the run: at which latitude is the zoom-17 corner bug half of its size on
-                            # the equator? about how many metres at Longyearbyen (78.2° N)?
+                            # the equator? at which latitude is it exactly 100 m?
 CORNER_QUITO_M = 0.0        # corner -> centre distance of Quito's zoom-17 tile (m), computed by you
 EXPLAIN_CORNER = ""         # why is the same bug larger near the equator?
 EXPLAIN_FIX = ""            # how far off can "publish the tile's centre" still be? what is the right position?
 CIRCLE_TILES_REYKJAVIK = 0  # tiles_in_circle(Reykjavik, 600 m, zoom 17): how many tiles?
+EXPLAIN_MARGIN = ""         # how many tiles on each side for a radius r_m, and why one extra tile of margin?
 
 # ---- Step 8: metadata against measurement -----------------------------------------------------------
 COVER_WEST_Z13_DEG = 0.0    # the west edge (longitude) of the zoom-13 tiles, from your SQL + tile_to_latlon

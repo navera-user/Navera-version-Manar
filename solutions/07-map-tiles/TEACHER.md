@@ -36,10 +36,11 @@ Badges: **Cartographer** = checks 1–7 (session 1), **Tile hunter** = all 17.
 | EXPLAIN_SHARED_CORNER | — | z15 tile 17352/12886 even/even = top-left child of z14 8676/6443 (odd row: bottom child of z13 4338/3221) |
 | KANTAOUI_TILE_Z18 | (138 788, 103 036) | tile_xy(35.8930, 10.5965, 18) = (138 788.136, 103 036.450) |
 | BEST_ZOOM_SOUSSE_1000 | 16 (map: 15) | GSD = 2000·tan 42°/1536 = 1.1724 m; log2(126 949.7/1.1724) = 16.72 |
-| ALT_MAX_Z19_SOUSSE_M | 206.5 (±1) | m_per_px(35.8277, 19) = 0.24214 m; H = 0.24214·1536/(2 tan 42°) = 206.49 m (degrees in tan: 81.1 — caught) |
+| ALT_MAX_Z19_SOUSSE_M | 206.5 (±0.3; 207 = first height that is not 19, refused with a message) | m_per_px(35.8277, 19) = 0.24214 m; H = 0.24214·1536/(2 tan 42°) = 206.49 m (degrees in tan: 81.1 — caught) |
 | TMS_ROW_KANTAOUI_Z18 | 159 107 | 262 143 − 103 036 |
-| CORNER_QUITO_M | 215.95 (±0.08) | computed by the student (Quito and Singapore removed from `corner`); flat width/√2 = 216.2 refused. `corner` table: Lagos 214.6, Mexico City 203.7, Cape Town 179.2, Sousse 175.1, London 134.4, Anchorage 104.0, Reykjavik 94.2, Longyearbyen 44.1) |
-| PREDICT_CORNER (ungraded) | 60°; ≈ 44 m | cos φ = 0.5; Longyearbyen 44.1 m |
+| CORNER_QUITO_M | 215.95 (±0.08; point → centre 116.3 refused) | computed by the student (Quito and Singapore removed from `corner`); flat width/√2 = 216.2 refused. `corner` table: Lagos 214.6, Mexico City 203.7, Cape Town 179.2, Sousse 175.1, London 134.4, Anchorage 104.0, Reykjavik 94.2, Longyearbyen 44.1) |
+| PREDICT_CORNER (ungraded) | 60°; 62.4° | cos φ = 0.5; 100/215.95 → acos = 62.4°, between Anchorage (104.0 m) and Reykjavik (94.2 m) |
+| EXPLAIN_MARGIN | — | a tile k columns away is ≥ (k − ½)·w from the point → k ≤ r/w + ½, ceil(r/w) suffices on one row; tiles shrink northwards (w ∝ cos φ), so a margin of one tile covers large radii/high latitudes. `int(r/w)` without margin fails the Cape Town 500 m z17 case (8 instead of 12) |
 | EXPLAIN_FIX | — | centre fix still off by up to half a diagonal (175 m) when the photo is not centred; publish pixel_to_latlon(u, v, z, tx, ty) of the matched pixel |
 | CIRCLE_TILES_REYKJAVIK | 62 | tiles_in_circle(64.1417, −21.9266, 600, 17); Ribat 21 (= NAVERA's "about 21"); check uses Cape Town 600 m z17 → 16, Longyearbyen 300 m → 69, Ribat 1 000 m z16 → 13, Kantaoui 130 m → 1 |
 | COVER_WEST_Z13_DEG | 10.459 | student's SQL MIN(tile_column) = 4334 + tile_to_latlon (10.5029 = east side, refused; `coverage` now shows z15–19 only). z13 tiles 4334–4340 × 3217–3225: W 10.4590, E 10.7666, S 35.6751, N 35.9958; from z15 on the edges snap to 10.4700 (z15–19), 10.7501/10.7556 E |
@@ -78,14 +79,19 @@ SQL built with an f-string (source check "three ? placeholders"), latlon_to_pixe
 /256, row[0] on None. Answer mutants with dedicated messages: TMS row instead of XYZ, map table's zoom 15 / height
 150–200, degrees in tan (81 m), tile width 305.7 instead of the corner distance, metadata 10.47 instead of 10.459.
 Runner (`run_tiles.py test`/`guard`) shows the same mistakes before the checker; lab hints quote the real wrong values
-(1.775599, 66 003.30, 64 067.93, 1.484422, 0.3385, 305.67, 19 for round, 10 without clamp, (1.53, 1.69), 104.21).
+(1.775599, 66 003.31, 64 067.90, 1.484422, 0.3385, 305.67, 19 for round, 10 without clamp, (1.53, 1.69), 104.21).
 
-## Class plan (2 × 2 h + reading)
+## Class plan (2 sessions + reading; honest times after fix round 2)
 
-- Before session 1: lesson §1–§3 (30 min). Session 1: Step 0 on the board (collect predictions of the tile count), Step 1
-  (20 min, SQL box together), Steps 2–3 (40 min), Step 4 with the zoom prediction (40 min). Badge.
-- Before session 2: §4–§6 (25 min). Session 2: Step 5 (30 min), Step 6 (15 min; discuss WEB-4 and why placeholders),
-  Step 7 with the Reykjavik prediction (35 min), Step 8 (10 min), report (25 min).
+Measured with simulated students (round 2): strong ≈ 50 min lesson + 2 h 50 lab; weak (B1, new to SQL and logs)
+≈ 1 h 30 lesson + 4 h 20 lab ≈ 5 h 50. meta.json says 5 h 30; lab.md says 3 h 30–4 h 30 (strong ≈ 2 h 45).
+
+- Before session 1: lesson §1–§3 (30–50 min). Session 1 (1 h–1 h 50): Step 0 on the board (collect tile-count
+  predictions), Step 1 (15–25 min, SQL box together), Steps 2–3 (20–40 min), Step 4 with the zoom prediction (25–40 min).
+  Badge.
+- Before session 2: §4–§6 (25–40 min). Session 2 (1 h 50–2 h 30): Step 5 (20–30 min), Step 6 (10 min; discuss WEB-4 and
+  placeholders), Step 7 with the corner prediction, TODO 10 and the EXPLAIN items (40–60 min), Step 8 (15 min), report
+  (20–30 min).
 
 **Fast students:** Going further (EPSG:3395, quadkeys, ratio ≠ 4, map_patch + patch_origin, fly your own geo).
 **Struggling students:** give the 🧰 SQL box and the "raise" box first; pair them on TODO 7; let them do Step 4 item 2
@@ -120,3 +126,17 @@ drawn-map sentence; accuracy items (South Atlantic, Arctic Siberia, 1.775599, 64
 175 m", "fixed and tested, says the backlog", quote import explained, example-line counts, "under a second", zoom-15 wording,
 birds attribution). Coast mosaic removed (no purpose). Durations unchanged (TODO 10 adds ~15 min; meta 4 h 45 still inside
 55 min + 3–4 h).
+
+## Fix round 2 (2026-10-13)
+
+Reviews r2 (strong 9/10/9/9, weak 9/9/8, expert 9/9). NumPy integers: sqlite3 binds np.int64 as an 8-byte BLOB → the
+reference converts with int() after the checks; docstring, 🧰 box, runner test line and check 10 message name the cause.
+Order check accepts a named limit (expert's regex: any comparison on z before 2**z / 1 << z). TMS off-by-one no longer
+circular: runner test compares read_tile's bytes with its own read of the small map (neighbour tile named), Step 5 checks
+the Kantaoui tile against the known 9 767 bytes and the Ribat picture, Step 7 hint 3 names the one-tile shift. best_zoom
+with math.log (13 for Singapore) diagnosed. TODO 10: hint 5 is a question, check hint no longer gives the margin, new
+EXPLAIN_MARGIN, Cape Town 500 m z17 case (12 tiles; int(r/w) fails), runner test lines 600 m → 21 and r < 0. uri wording
+corrected (absolute path fails, relative creates a file); guard text 6.4 s and says `1 << z` is caught only by the
+checker. PREDICT_CORNER: 60° and 62.4° (100 m). Small items: sousse prompt, open_map test line, "Lagos to Longyearbyen",
+check 15 wording, ALT 207 refused (±0.3), −0.000000 printed as 0.000000, TEACHER values/plan, Quito 215.95, honest
+durations (meta 5 h 30).

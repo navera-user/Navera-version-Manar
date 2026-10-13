@@ -3,7 +3,7 @@
 **Goal:** write NAVERA Lite's map part (`navera_lite/tiles.py`), use it to explore the course's map file of
 Sousse, choose zooms for a camera, read tiles safely, build mosaics, reproduce NAVERA's corner bug (LOC-1)
 and measure it around the world, then write a short map memo.
-**Time:** 3 to 4 h (a strong programmer: about 2 h 30; 4 h if SQL is new to you).
+**Time:** 3 h 30 to 4 h 30 (a strong programmer: about 2 h 45; 4 h 30 or more if SQL and logarithms are new to you).
 **Fast track:** if you know SQL and numpy, skip the 🧰 boxes and the "Stuck?" boxes; do "Going further".
 
 Your files (📝 Code tab): [navera_lite/tiles.py](file:./navera_lite/tiles.py) (**your code**: ten functions,
@@ -68,7 +68,8 @@ tile per zoom (it reads every tile of zooms 13–16, about 4 000 tiles: under a 
 python3 run_tiles.py explore "SELECT zoom_level, COUNT(*), AVG(length(tile_data)) FROM tiles WHERE zoom_level <= 16 GROUP BY zoom_level"
 ```
 
-Every tile is 256 × 256 pixels, yet the files get smaller as the zoom grows.
+Every tile is 256 × 256 pixels, yet the files get smaller as the zoom grows. (`length(tile_data)` is a tile's size in bytes;
+`tile_data > 10000` would compare the bytes themselves and count every tile.)
 
 > [!TASK]
 > Write your own SQL (lesson §5 🧰: `COUNT(*)`, `length(tile_data)`, `WHERE … AND …`):
@@ -159,7 +160,7 @@ python3 run_tiles.py test
 python3 run_tiles.py world
 ```
 
-The table runs your functions from Quito to Longyearbyen (Svalbard, 78° N); it does not use a camera. For
+The table runs your functions from Lagos to Longyearbyen (Svalbard, 78° N); it does not use a camera. For
 the tasks below, the lab's camera is the one of lesson §3's worked example: field of view 84°, 1 536 pixels
 across. `math.tan` takes radians: `math.tan(math.radians(42))`.
 
@@ -171,7 +172,8 @@ across. `math.tan` takes radians: `math.tan(math.radians(42))`.
 > With your functions (a `python3 -c "…"` line or a short script):
 > 1. `BEST_ZOOM_SOUSSE_1000`: `best_zoom` for the lab's camera at 1 000 m over Sousse (35.8277°).
 > 2. `ALT_MAX_Z19_SOUSSE_M`: the highest flying height (m, one decimal) at which `best_zoom` still gives 19
->    over Sousse. Find it with algebra (when is the GSD equal to the zoom-19 pixel?) or with a loop.
+>    over Sousse. Find it with algebra (when is the GSD equal to the zoom-19 pixel?). A loop of 1 m steps finds
+>    the first height that is NOT 19 (207 m): the answer is the last one that is, to one decimal.
 > 3. `EXPLAIN_ZOOM`: compare your rule with the map's table at 300 m and at 1 000 m. Which one is coarser, and
 >    why can that be a good choice for matching photos with the map? (Think of the number of tiles and of
 >    small details.)
@@ -180,7 +182,8 @@ across. `math.tan` takes radians: `math.tan(math.radians(42))`.
 
 1. `m_per_px(1.2834, 17)` gives 0.3385: `math.cos` got degrees. 305.67: the 256 pixels of a tile are missing.
 2. best_zoom(0.352, 1.2834) gives 19: you rounded (`round`) or rounded up (`math.ceil`); the rule rounds
-   DOWN, `math.floor`. 10 for the 100 m case: the result is not kept inside [zmin, zmax] (🧰 box).
+   DOWN, `math.floor`. 10 for the 100 m case: the result is not kept inside [zmin, zmax] (🧰 box). 13 for
+   Singapore: you used `math.log` (ln); the zoom rule needs `math.log2` (log₂).
 3. ✘ "it is a float": `np.floor` or `math.log2` alone give floats; `math.floor` gives an int. Wrap the
    final result in `int(…)` to be safe.
 4. GSD = 2·H·tan(42°)/1536 (radians inside tan!). Zoom 15 at 1 000 m, the same as the map's table: tan got
@@ -218,6 +221,8 @@ def scale(v):
         raise ValueError(f"v must be in [0, 10], got {v}")
     return 2 ** v
 scale(3)       # 8          scale(np.int64(3)) also gives 8;  scale(3.0) raises ValueError
+# sqlite3 does not know NumPy integers: it sends np.int64(17) as 8 raw bytes, and the query silently finds
+# nothing. After the checks, convert:  z, x, y = int(z), int(x), int(y)
 scale("3")     # ValueError: v must be a whole number, got '3'
 ```
 </details>
@@ -230,7 +235,8 @@ python3 run_tiles.py test
 python3 run_tiles.py tile 35.8277 10.6388 19
 ```
 
-Open `out/tile_19_277637_206190.png`: the Ribat seen from above, 62 m wide. Now a place that is not in the
+Open `out/tile_19_277637_206190.png`: the Ribat seen from above, 62 m wide — a square fort with a courtyard in
+the middle. Streets or a park instead: your TMS row is one off (hint 5). Now a place that is not in the
 map:
 
 ```bash
@@ -240,25 +246,25 @@ python3 run_tiles.py tile 1.2834 103.8607 17
 The tile number is computed, but `read_tile` must return `None`: the course map has no tile of Singapore.
 
 > [!TASK]
-> Write `TMS_ROW_KANTAOUI_Z18`: the `tile_row` stored in the file for your `KANTAOUI_TILE_Z18`. Then check it:
-> 1. `python3 run_tiles.py tile 35.8930 10.5965 18` reads the tile with your `read_tile` and prints its size
->    in bytes;
-> 2. `python3 run_tiles.py explore "SELECT length(tile_data) FROM tiles WHERE zoom_level=18 AND tile_column=X AND tile_row=ROW"`
->    (your numbers in place of X and ROW) prints the size of the tile at YOUR row.
->
-> The same size means the same tile. A different size is a neighbour tile: being one off in the row number is
-> the classic mistake (a neighbour also returns a row, so "one row came back" proves nothing).
+> Write `TMS_ROW_KANTAOUI_Z18`: the `tile_row` stored in the file for your `KANTAOUI_TILE_Z18`. Then check it
+> against a known fact: the zoom-18 tile of Port El Kantaoui marina is **9 767 bytes** long.
+> `python3 run_tiles.py explore "SELECT length(tile_data) FROM tiles WHERE zoom_level=18 AND tile_column=X AND tile_row=ROW"`
+> (your numbers in place of X and ROW) must print 9767. Another size is a neighbour tile: being one off in the
+> row number is the classic mistake (a neighbour also returns a row, so "one row came back" proves nothing).
 
 <details><summary>Stuck? Hints</summary>
 
 1. The connect line is in lesson §5's 🧰 box; with the path in a variable, build the text with `quote(path)`
-   (already imported at the top of tiles.py). Keep `uri=True`: some SQLite builds ignore `?mode=ro` without it.
+   (already imported at the top of tiles.py). Keep `uri=True`: without it some SQLite builds read the whole text as a file name, `?mode=ro` included.
 2. read_tile returns `None` for the Ribat: the TMS flip is missing (you asked for row y, the file has
    2^z − 1 − y), or the order of the values in the tuple is not the order of the `?`.
 3. `Incorrect number of bindings`: three `?`, three values in the tuple.
 4. `TypeError: 'NoneType' object is not subscriptable`: `fetchone()` found no row (wrong TMS row?) and you
    wrote `row[0]` before checking `row is None`.
-5. Sizes differ by one tile (your row is 159 108?): 2^z − 1 − y, the − 1 matters.
+5. A size other than 9 767 (your row is 159 108?), or a Ribat picture without the fort: (2^z − 1) − y, the
+   − 1 matters.
+6. `run_tiles.py test` says NumPy integers give None: sqlite3 sends `np.int64` as 8 raw bytes; after your checks
+   convert with `int()` (🧰 box).
 </details>
 
 ## Step 6 — Impossible addresses
@@ -271,8 +277,9 @@ and times each answer (a check of z is instant; building 2**z for a billion take
 python3 run_tiles.py guard
 ```
 
-All five must say ✔ `ValueError`, quickly. "took 6.2 s" or "still running" means your function built 2**z (or
-1 << z) before checking z.
+All five must say ✔ `ValueError`, quickly. "took 6.4 s" or "still running" means your function built 2**z before
+checking z. `1 << z` is fast enough to pass this timer (0.02 s) but still builds a 125 MB number: ✔ Check my work
+also reads the order of your code.
 
 > [!TASK]
 > `EXPLAIN_GUARD`: why must z be checked before 2**z is computed, and why are z, x, y passed as `?` values
@@ -306,7 +313,8 @@ tool also converts the red pixel back: it must give the point again.
 
 > [!TASK]
 > **Predict** (`PREDICT_CORNER`) before the next run: at which latitude is the zoom-17 corner bug exactly
-> **half** of its size on the equator? And about how many metres is it at Longyearbyen (78.2° N)?
+> **half** of its size on the equator? And at which latitude is it exactly **100 m**? (The table will show
+> whether you are right: look between the two places that bracket your answer.)
 
 ```bash
 python3 run_tiles.py corner
@@ -337,16 +345,24 @@ python3 run_tiles.py test
 > about 21), and `CIRCLE_TILES_REYKJAVIK`: how many at Reykjavik (64.1417, −21.9266), same radius and zoom?
 > Why so many more?
 
+> [!TASK]
+> `EXPLAIN_MARGIN`: a tile k columns away has its centre at least (k − ½)·w from the point (w = the tile width in
+> metres). How many tiles on each side does that ask you to look at for a radius r_m? Why might one extra tile of
+> margin still be wise? (Think of how a tile's size in metres changes from row to row, and of large radii.)
+
 <details><summary>Stuck? Hints</summary>
 
 1. latlon_to_pixel gives (1.53, 1.69) instead of (390.88, 432.45): multiply by `TILE_PX`.
 2. pixel_to_latlon(128.0, 128.0, 17, 103350, 65068) gives a longitude near 104.21 (about 39 km off):
    pixels and tile numbers are not the same unit.
 3. The mosaic's red circle is not on the fort but the yellow and green marks look right: latlon_to_pixel
-   subtracted the wrong tile (x0, y0 is the TOP-LEFT tile of the mosaic, not the point's tile).
+   subtracted the wrong tile (x0, y0 is the TOP-LEFT tile of the mosaic, not the point's tile). If the whole
+   map looks shifted by exactly one tile (the fort 256 px below the red circle) and TODO 8 is ✔ in `test`, it is
+   not latlon_to_pixel: your read_tile reads the neighbouring row (TMS flip, Step 5 hint 5).
 4. TODO 10 returns 1 tile at the Ribat for 300 m instead of 5: you looked at the point's tile only; a 248 m
    tile means the circle reaches into its neighbours. A list that is right but in another order: `sorted(…)`.
-5. TODO 10, how far to look: r_m divided by the tile width in metres, rounded up, plus one tile of margin.
+5. TODO 10, how far to look: how close to the point can the centre of a tile k columns away be, at the least?
+   Write it with the tile width w, then ask which k can still be within r_m.
 </details>
 
 ## Step 8 — Metadata against measurement

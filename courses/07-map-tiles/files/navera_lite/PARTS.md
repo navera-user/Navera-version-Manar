@@ -5,4 +5,4 @@ Mission 07. Finished parts come from the course's reference: read them, use them
 | Part | Mission | Status |
 |---|---|---|
 | `geo.py` | 06 | finished |
-| `tiles.py` | 07 | ✏️ YOUR TODOs: best_zoom, latlon_to_pixel, m_per_px, mercator_y, open_map, pixel_to_latlon, read_tile, tile_to_latlon, tile_xy, tiles_in_circle |
+| `tiles.py` | 07 | ✏️ YOUR TODOs: mercator_y, tile_xy, tile_to_latlon, m_per_px, best_zoom, open_map, read_tile, latlon_to_pixel, pixel_to_latlon, tiles_in_circle |

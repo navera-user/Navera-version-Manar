@@ -25,7 +25,7 @@
 
 **You need:** mission 06 (degrees vs radians, `geo.haversine_m`, the WGS84 radius a), mission 03 (tuples,
 `math`), mission 04 (`int`, floats). ⏱ Reading: about 55 minutes with the ✏️ checks (up to 1 h 15 if SQL
-is new to you): §1–§3 before session 1, §4–§6 before session 2. Lab: 3 to 4 h.
+is new to you): §1–§3 before session 1, §4–§6 before session 2. Lab: 3 h 30 to 4 h 30.
 
 **Before you start.** Answer without looking; if you miss two, reread mission 06 §1–§3.
 
@@ -269,7 +269,8 @@ EXPLAIN QUERY PLAN SELECT tile_data FROM tiles WHERE zoom_level=17 AND tile_colu
 > `SELECT` columns `FROM` a table `WHERE` a condition; `COUNT(*)` counts rows; `length(tile_data)` is the
 > size of a BLOB. `uri=True` tells Python to read the text as a URI with options, here `mode=ro` (**read-only**).
 > Some SQLite builds (this computer's, 3.37) read URIs even without it; others take the whole text as a file
-> name and quietly create a new, empty, writable file. Always pass `uri=True`. If the path is in a variable,
+> name: with an absolute path that fails ("unable to open database file"), with a relative one it quietly
+> creates a new, empty, writable file called `file:…?mode=ro`. Always pass `uri=True`. If the path is in a variable,
 > build the text as `"file:" + quote(path) + "?mode=ro"` (`from urllib.parse import quote`): a path that
 > contains `?`, `#` or `%` would otherwise be cut. Note `("minzoom",)`: a tuple of one value needs the comma.
 
@@ -378,7 +379,7 @@ From NAVERA's backlog (code review of 2026-09-28) and validation report (Release
 
 - NAVERA's day vision matches each camera photo against **zoom-17** map tiles, after rescaling the photo to
   the map's metres per pixel from the altitude and the camera's field of view. It searches only the tiles
-  within **600 m** of its last position: about **21 tiles** per frame (you write that search in lab Step 7).
+  within **600 m** of its last position: 18 to 21 tiles per frame, depending on where in its tile the drone is (you write that search in lab Step 7).
 - **LOC-1** (critical, fixed): the tile's north-west corner was published as the position, a 175 m bias; the
   fix uses the centre (fixed and tested, says the backlog). **WEB-4** (high, fixed): 2^z computed from a zoom typed
   into a web request.

@@ -131,7 +131,8 @@ def read_tile(db, z, x, y):
     """The bytes of tile z/x/y (XYZ numbering) from an open MBTiles connection, or None when the map has no
     such tile. The file stores TMS rows, counted from the south. Raises ValueError for an impossible tile
     address: z, x, y must be whole numbers (a Python int or a NumPy integer — not a float, a bool or a text),
-    0 ≤ z ≤ 30, and 0 ≤ x, y < 2**z (check z BEFORE computing 2**z).
+    0 ≤ z ≤ 30, and 0 ≤ x, y < 2**z (check z BEFORE computing 2**z). After the checks, convert them with int():
+    sqlite3 does not know NumPy integers and sends np.int64(17) as 8 raw bytes, so the query would find nothing.
 
     Inputs: db from open_map(), whole numbers z, x, y. Returns bytes (a JPEG file: b'\\xff\\xd8\\xff…') or None.
     Example: read_tile(open_map(SMALL_MAP), 17, 69409, 51547)[:3] → b'\\xff\\xd8\\xff'   (the Ribat of Sousse)

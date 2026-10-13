@@ -105,12 +105,12 @@ def close(got, want, tol):
 def show(v):
     if isinstance(v, (tuple, list)):
         try:
-            return "(" + ", ".join(f"{float(x):.6f}" for x in v) + ")"
+            return "(" + ", ".join(f"{float(x) + 0.0:.6f}" for x in v) + ")"
         except (TypeError, ValueError):
             return repr(v)
     if isinstance(v, bytes):
         return f"{len(v)} bytes starting with {v[:3]!r}"
-    return f"{v:.6f}" if isinstance(v, float) else repr(v)
+    return f"{v + 0.0:.6f}" if isinstance(v, float) else repr(v)
 
 
 def fmt_args(args):
@@ -140,6 +140,8 @@ def test():
         (9, "pixel_to_latlon", (128.0, 128.0, 17, 103350, 65068), (1.283920, 103.860626), 1e-6, None),
         (10, "tiles_in_circle", (35.8277, 10.6388, 300.0, 17),
          [(69408, 51547), (69409, 51546), (69409, 51547), (69409, 51548), (69410, 51547)], None, None),
+        (10, "tiles_in_circle", (35.8277, 10.6388, 600.0, 17), 21, None, None),
+        (10, "tiles_in_circle", (35.8277, 10.6388, -1.0, 17), ValueError, None, None),
     ]
     done = total = 0
     unwritten = set()
@@ -148,13 +150,19 @@ def test():
             total += 1
             continue
         if fn == "read_tile":                                   # TODO 6 + 7 together, on the small map
-            total += 3
+            total += 4
             db, err = rk.call(t, "open_map", small)
             if err:
                 print(f"✘ TODO  6  {err}")
                 continue
-            print(f"✔ TODO  6  open_map  ->  {type(db).__name__} (writing through it must fail: Step 5 tests that)")
+            print(f"✔ TODO  6  open_map  ->  {type(db).__name__} (read-only, with uri=True: ✔ Check my work tests that)")
             done += 1
+            truth = sqlite3.connect("file:" + small + "?mode=ro", uri=True)        # the runner's own reading
+
+            def true_tile(z, x, y):
+                r = truth.execute("SELECT tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?",
+                                  (z, x, 2 ** z - 1 - y)).fetchone()
+                return None if r is None else bytes(r[0])
             got, err = rk.call(t, "read_tile", db, 17, 69409, 51547)
             if err:
                 if "NoneType" in err and "subscriptable" in err:
@@ -162,10 +170,18 @@ def test():
                            "(lesson §4)? And test `row is None` before `row[0]`.")
                 print(f"✘ TODO  7  {err}")
                 continue
-            ok = isinstance(got, bytes) and got[:3] == b"\xff\xd8\xff"
-            print(f"{'✔' if ok else '✘'} TODO  7  read_tile(db, 17, 69409, 51547)  ->  {show(got)}" + (
-                "" if ok else ("   (None: the Ribat IS in the map — is the TMS row flipped? lesson §4)" if got is None
-                               else "   (the docstring says JPEG bytes starting with b'\\xff\\xd8\\xff')")))
+            want_b = true_tile(17, 69409, 51547)
+            ok = isinstance(got, bytes) and got == want_b
+            if ok:
+                why7 = ""
+            elif got is None:
+                why7 = "   (None: the Ribat IS in the map — is the TMS row flipped? lesson §4)"
+            elif got in (true_tile(17, 69409, 51546), true_tile(17, 69409, 51548)):
+                why7 = (f"   (that is the NEIGHBOUR tile, one row north or south — the Ribat's tile is {len(want_b)} bytes: "
+                        "the TMS row is (2**z − 1) − y, lesson §4)")
+            else:
+                why7 = f"   (not the Ribat's tile, which is {len(want_b)} bytes starting with b'\\xff\\xd8\\xff')"
+            print(f"{'✔' if ok else '✘'} TODO  7  read_tile(db, 17, 69409, 51547)  ->  {show(got)}" + why7)
             missing = None
             try:
                 missing = t.read_tile(db, 17, 103350, 65068)
@@ -174,7 +190,24 @@ def test():
             ok2 = missing is None
             print(f"{'✔' if ok2 else '✘'} TODO  7  read_tile(db, 17, 103350, 65068)  ->  {missing!r}" + (
                 "" if ok2 else "   (Singapore is not in the map: return None when no row comes back)"))
-            done += ok + ok2
+            import numpy as np
+            try:
+                got_np = t.read_tile(db, np.int64(17), np.int64(69409), np.int64(51547))
+            except Exception as e:                              # noqa: BLE001 — shown to the student
+                got_np = e
+            ok3 = isinstance(got_np, bytes) and got_np == want_b
+            if ok3:
+                why_np = ""
+            elif got_np is None:
+                why_np = ("   (None: sqlite3 sends NumPy integers as 8 raw bytes, so the query finds nothing — after "
+                          "your checks convert with int(), 🧰 box of Step 5)")
+            elif isinstance(got_np, ValueError):
+                why_np = "   (NumPy integers are whole numbers too: accept numbers.Integral, 🧰 box of Step 5)"
+            else:
+                why_np = "   (the same address with NumPy integers must give the same bytes)"
+            print(f"{'✔' if ok3 else '✘'} TODO  7  read_tile(db, np.int64(17), np.int64(69409), np.int64(51547))  ->  "
+                  f"{show(got_np) if not isinstance(got_np, Exception) else repr(got_np)[:80]}" + why_np)
+            done += ok + ok2 + ok3
             continue
         total += 1
         if want is ValueError:
@@ -185,12 +218,12 @@ def test():
                 done += 1
             except Exception as e:                              # noqa: BLE001 — shown to the student
                 print(f"✘ TODO {k:2d}  {fn}{fmt_args(args)}  ->  {type(e).__name__}: {e}   (the docstring asks for "
-                      "ValueError when gsd_m ≤ 0: check it first)")
+                      "ValueError for this input: check it first)")
             else:
                 if rk.is_stub(getattr(t, fn)):
                     continue
-                print(f"✘ TODO {k:2d}  {fn}{fmt_args(args)}  ->  {got!r}   (the docstring asks for ValueError when "
-                      "gsd_m ≤ 0: check it first)")
+                print(f"✘ TODO {k:2d}  {fn}{fmt_args(args)}  ->  {repr(got)[:60]}   (the docstring asks for ValueError "
+                      "for this input: check it first)")
             continue
         got, err = rk.call(t, fn, *args)
         if err:
@@ -202,6 +235,18 @@ def test():
             ok = isinstance(got, int) and not isinstance(got, bool) and got == want
             if got == want and not isinstance(got, int):
                 note = f"the value is right but it is a {type(got).__name__}: return int(...)"
+        elif fn == "tiles_in_circle" and isinstance(want, int):
+            try:
+                n_got = len(got)
+            except TypeError:
+                n_got = None
+            ok = n_got == want
+            got = f"{n_got} tiles"
+            if n_got is not None and n_got < want:
+                note = (f"{n_got} tiles instead of {want}: your search square is too small for 600 m — how many tile "
+                        "widths does r_m reach? (hint 5)")
+            elif not ok:
+                note = f"the 600 m search at the Ribat compares {want} tiles (NAVERA says about 21)"
         elif fn == "tiles_in_circle":
             try:
                 got_l = [tuple(int(v) for v in p) for p in got]
@@ -214,6 +259,10 @@ def test():
                 note = f"{len(got_l)} tile(s) instead of 5: the circle reaches into the neighbour tiles (lab hint 4)"
         else:
             ok = close(got, want, tol)
+        if not ok and fn == "best_zoom" and got == 13 and args[0] == 0.352:
+            note = "13 = floor(ln …): the zoom rule uses log₂ — math.log2, not math.log"
+        if not ok and fn == "m_per_px" and isinstance(got, (int, float)) and got > 1000 * want:
+            note = "far too large: you multiplied by 2**z — divide by (TILE_PX * 2**z), with brackets"
         if not ok and fn == "mercator_y" and close(got, 0.456915, 1e-5):
             note = "0.456915: you used math.log10 — ln, the natural logarithm, is math.log"
         if not ok and fn == "tile_to_latlon" and close(got, (math.radians(85.051129), -180.0), 1e-3):
@@ -221,7 +270,7 @@ def test():
         if not ok and fn == "tile_xy" and isinstance(got, (tuple, list)) and len(got) == 2 and close(got[0], 103350.53, 0.01):
             note = "x is right, y is not: y counts rows from the NORTH (lesson §2); is your mercator_y ✔ above?"
         why = f"   ({note})" if note else f"   (the docstring says {show(want)})"
-        shown = show(got) if fn != "tiles_in_circle" else repr(got)
+        shown = show(got) if fn != "tiles_in_circle" else (got if isinstance(got, str) else repr(got))
         print(f"{'✔' if ok else '✘'} TODO {k:2d}  {fn}{fmt_args(args)}  ->  {shown}" + ("" if ok else why))
         done += ok
     print(f"\n{done} of {total} example lines give the docstring's result.")
@@ -274,7 +323,7 @@ def sousse(args):
               f"({corner[0]:.6f}, {corner[1]:.6f})")
     back = rk.need_ok(t, "tile_to_latlon", *t.tile_xy(lat, lon, 17), 17, n=2)
     print(f"\ntile_to_latlon(tile_xy(Ribat, 17)) = ({back[0]:.10f}, {back[1]:.10f})   (it must give the Ribat back)")
-    print("From one zoom to the next, what happens to x and y? (Step 3 asks.)")
+    print("Zooms 14 and 15 share the same NW corner, 13 and 14 do not: why? (Step 3 asks.)")
 
 
 # ------------------------------------------------------------------ world (Step 4)

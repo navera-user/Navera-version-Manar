@@ -191,6 +191,9 @@ def _():
         if args == (0.5, -1.2921) and z == 19:
             raise CheckFailed("best_zoom(0.5, Nairobi) gives 19: you rounded (or rounded up); the map must not be "
                               "finer than the photo — round DOWN with math.floor")
+        if args == (0.5, -1.2921) and z == 13:
+            raise CheckFailed("best_zoom(0.5, Nairobi) gives 13 (= floor of ln): the zoom rule uses log₂ — math.log2, "
+                              "not math.log")
         if args == (3.0, -54.8019) and z == 15:
             raise CheckFailed("best_zoom(3.0, Ushuaia) gives 15 (log2 = 14.88): you rounded to the nearest; the rule "
                               "rounds DOWN with math.floor")
@@ -254,7 +257,10 @@ def _():
                           "(GSD = m_per_px(35.8277, 19))")
     if abs(alt - 81.1) < 1:
         raise CheckFailed("ALT_MAX_Z19_SOUSSE_M about 81 m: tan got DEGREES — math.tan(math.radians(42))")
-    c.near(alt, 206.5, 1.0, "ALT_MAX_Z19_SOUSSE_M (m)")
+    if abs(alt - 207.0) < 0.05:
+        raise CheckFailed("ALT_MAX_Z19_SOUSSE_M = 207: that is the first height where best_zoom is NOT 19 — give the last "
+                          "height where it is, to one decimal (algebra: GSD = zoom-19 pixel)")
+    c.near(alt, 206.5, 0.3, "ALT_MAX_Z19_SOUSSE_M (m)")
     explained("EXPLAIN_ZOOM", why,
               ((r"coarse", r"table", r"lower", r"one level", r"less detail", r"bigger pixel"), "which one is coarser"),
               ((r"fast", r"speed", r"time", r"fewer", r"less tiles", r"number of tiles", r"compute", r"cheap"),
@@ -331,6 +337,9 @@ def _():
                               "is the TMS row 2**z − 1 − y, and are the values in the order of the ? ?")
         c.ok(isinstance(got, bytes), f"read_tile should return bytes, got a {type(got).__name__}: bytes(row[0])")
         c.ok(got[:3] == JPEG, f"tile {z}/{x}/{y} does not start with the JPEG bytes FF D8 FF: {got[:8]!r}")
+        if got in (ref_tile(ref, z, x, y - 1), ref_tile(ref, z, x, y + 1)):
+            raise CheckFailed(f"read_tile(db, {z}, {x}, {y}) returned the NEIGHBOUR tile, one row north or south "
+                              f"({what}): the TMS row is (2**z − 1) − y — the − 1 matters (lesson §4)")
         c.ok(got == ref_tile(ref, z, x, y), f"read_tile(db, {z}, {x}, {y}) returned other bytes than the tile "
                                             f"{z}/{x}/{y} ({what}) — the TMS row?")
     for z, x, y in [(17, 103350, 65068), (17, 69420, 51547), (16, 34704, 25774 + 40)]:
@@ -366,6 +375,10 @@ def _():
         raise CheckFailed(f"read_tile(db, np.int64(17), np.int32(69409), np.int64(51547)): {str(e).split(' — ')[0]} — "
                           "NumPy integers are whole numbers too (later missions compute tiles with NumPy): accept "
                           "numbers.Integral, refuse bool, float and text")
+    if got is None:
+        raise CheckFailed("read_tile(db, np.int64(17), np.int32(69409), np.int64(51547)) returned None: sqlite3 sends "
+                          "NumPy integers as 8 raw bytes, so the query finds nothing — after your checks convert z, x, "
+                          "y with int() (lab Step 5, 🧰 box)")
     c.ok(isinstance(got, bytes) and got[:3] == JPEG, "read_tile with NumPy integers should return the Ribat's JPEG bytes")
     import time
     t0 = time.perf_counter()
@@ -387,9 +400,9 @@ def _():
     m = re.search(r"^def read_tile\(.*?(?=^def |^# @part|^# TODO|\Z)", src, re.S | re.M)
     body = re.sub(r'""".*?"""|#[^\n]*', "", m.group(0) if m else "", flags=re.S)
     first_pow = re.search(r"2\s*\*\*\s*\(?\s*(int\()?\s*z\b|1\s*<<\s*\(?\s*(int\()?\s*z\b|pow\(\s*2\s*,\s*z\b", body)
-    z_check = re.search(r"(<=?|>=?)\s*30\b|\b30\s*(<=?|>=?)|\b31\b", body)
+    z_check = re.search(r"\b3[01]\b|(?<![<>])[<>]=?\s*z\b|\bz\s*[<>]=?(?![<>])", body)   # any comparison on z
     c.ok(first_pow is None or (z_check is not None and z_check.start() < first_pow.start()),
-         "read_tile computes 2**z (or 1 << z) before checking 0 ≤ z ≤ 30: check z first — even 1 << z builds a "
+         "read_tile computes 2**z (or 1 << z) before comparing z with its limit (0 ≤ z ≤ 30): check z first — even 1 << z builds a "
          "125 MB number for z = 10**9 (WEB-4, lesson §5)")
     c.ok(body.count("?") >= 3, "read_tile's SQL should have three ? placeholders (lesson §5)")
     c.ok(not re.search(r"f[\"'][^\"']*SELECT|\.format\(|%\s*\(|SELECT[^\"']*[\"']\s*\+", body, re.I),
@@ -483,12 +496,12 @@ def _():
 
 
 @c.test("TODO 10: tiles_in_circle() — every tile whose centre is within the radius, on unseen places",
-        hint="The docstring: tile centres (tile_to_latlon of x + 0.5, y + 0.5) within r_m by geo.haversine_m; look far "
-             "enough around the point's tile (r_m over the tile width in metres, plus a margin); sorted list of "
-             "(x, y); ValueError for r_m < 0.")
+        hint="The docstring: tiles whose CENTRE is within r_m by geo.haversine_m; look far enough around the point's tile "
+             "(how many tile widths does r_m reach?); a sorted list of (x, y); ValueError for r_m < 0.")
 def _():
     (f,) = functions("tiles_in_circle")
     for args, n, first in [((-33.9249, 18.4241, 600.0, 17), 16, (72242, 78678)),
+                           ((-33.9249, 18.4241, 500.0, 17), 12, (72242, 78679)),
                            ((78.2232, 15.6267, 300.0, 17), 69, (71221, 18144)),
                            ((35.8277, 10.6388, 1000.0, 16), 13, (34703, 25772)),
                            ((35.8930, 10.5965, 130.0, 17), 1, (69394, 51518))]:
@@ -499,7 +512,8 @@ def _():
             raise CheckFailed(f"tiles_in_circle{args} should return a list of (x, y), got {got!r}"[:300])
         if sorted(tl) == tl and len(tl) < n:
             raise CheckFailed(f"tiles_in_circle{args} finds {len(tl)} tiles, too few: the search square around the "
-                              "point's tile is too small (a high latitude has small tiles) — look further")
+                              "point's tile is too small for this radius — how many tile widths does r_m reach, and how "
+                              "close can a tile k columns away come? (lab Step 7, hint 5 and EXPLAIN_MARGIN)")
         c.ok(sorted(tl) == tl, f"tiles_in_circle{args}: the list is not sorted — return sorted(…)")
         c.ok(len(set(tl)) == len(tl), f"tiles_in_circle{args}: a tile appears twice")
         c.ok(len(tl) == n and tl[0] == first, f"tiles_in_circle{args} gives {len(tl)} tiles — not the tiles whose "
@@ -519,12 +533,12 @@ def _():
 
 @c.test("Steps 7–8: the corner bug and the fix, the search circle, the map's real coverage and growth",
         hint="Step 7: Quito's corner → centre with your functions and geo.haversine_m; your tiles_in_circle at "
-             "Reykjavik. Step 8: your SQL (MIN(tile_column) at zoom 13) and tile_to_latlon. The EXPLAIN items: tile "
+             "Reykjavik; EXPLAIN_MARGIN: the (k − ½)·w question. Step 8: your SQL (MIN(tile_column) at zoom 13) and tile_to_latlon. The EXPLAIN items: tile "
              "size and latitude; the matched pixel; whole tiles; tiles on the edge.")
 def _():
-    p, cq, why, fix, ncirc, west, wb, gr = answers("PREDICT_CORNER", "CORNER_QUITO_M", "EXPLAIN_CORNER", "EXPLAIN_FIX",
-                                                   "CIRCLE_TILES_REYKJAVIK", "COVER_WEST_Z13_DEG", "EXPLAIN_BOUNDS",
-                                                   "EXPLAIN_GROWTH")
+    p, cq, why, fix, ncirc, west, wb, gr, mg = answers("PREDICT_CORNER", "CORNER_QUITO_M", "EXPLAIN_CORNER",
+                                                       "EXPLAIN_FIX", "CIRCLE_TILES_REYKJAVIK", "COVER_WEST_Z13_DEG",
+                                                       "EXPLAIN_BOUNDS", "EXPLAIN_GROWTH", "EXPLAIN_MARGIN")
     predicted("PREDICT_CORNER", p)
     cq = number(cq, "CORNER_QUITO_M")
     if abs(cq - 305.7) < 0.5:
@@ -546,6 +560,11 @@ def _():
                       "(64.1417, −21.9266)")
     c.ok(ncirc == 62, f"CIRCLE_TILES_REYKJAVIK = {ncirc:g} is not what tiles_in_circle(64.1417, −21.9266, 600.0, 17) "
                       "gives with a correct TODO 10 (if the TODO 10 check fails, fix it first)")
+    explained("EXPLAIN_MARGIN", mg,
+              ((r"half", r"½", r"0\.5", r"ceil", r"round(ed|ing)? up", r"k ?[-−] ?1/2", r"r_?m ?/ ?w", r"tile width"),
+               "how far a tile k columns away can be"),
+              ((r"north", r"latitude", r"\brow", r"smaller", r"cos", r"shrink", r"large", r"km", r"size"),
+               "why a margin can matter"))
     west = number(west, "COVER_WEST_Z13_DEG")
     c.ok(abs(west - 10.47) > 0.002, "COVER_WEST_Z13_DEG = 10.47 is the metadata; compute what the zoom-13 tiles cover")
     if abs(west - 10.5029) < 0.001:
