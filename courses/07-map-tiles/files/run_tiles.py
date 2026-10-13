@@ -33,6 +33,8 @@ _kit_hint = rk._hint
 def _hint(e):
     """This mission's extra sentence for the errors students meet most."""
     s = str(e)
+    if isinstance(e, TypeError) and "for ^" in s:
+        return " — ^ in Python is XOR, not a power: write 2 ** z (lesson §2)"
     if isinstance(e, ValueError) and "math domain error" in s:
         return (" — math.log() got a number ≤ 0: a latitude in DEGREES went into math.tan, which takes RADIANS "
                 "(lesson §1: convert with math.radians first)")
@@ -296,9 +298,21 @@ def test():
                 note = "far too large: you multiplied by 2**z — divide by (TILE_PX * 2**z), with brackets"
         if not ok and fn == "mercator_y" and close(got, 0.456915, 1e-5):
             note = "0.456915: you used math.log10 — ln, the natural logarithm, is math.log"
+        if not ok and fn in ("tile_xy", "tile_to_latlon") and isinstance(got, (tuple, list)) and len(got) == 2:
+            nx = 2 ^ args[-1]
+            if fn == "tile_xy":
+                lat_, lon_ = args[0], args[1]
+                xor_v = ((lon_ + 180.0) / 360.0 * nx,
+                         (1.0 - math.log(math.tan(math.pi / 4 + math.radians(lat_) / 2)) / math.pi) / 2.0 * nx)
+            else:
+                xx, yy = args[0], args[1]
+                xor_v = (math.degrees(math.atan(math.sinh(math.pi * (1.0 - 2.0 * yy / nx)))), xx / nx * 360.0 - 180.0)
+            if close(got, xor_v, 1e-6 * (1 + max(abs(v) for v in xor_v))):
+                note = f"2 ^ z in Python is XOR (2 ^ {args[-1]} = {nx}), not a power: write 2 ** z"
         if not ok and fn == "tile_to_latlon" and close(got, (math.radians(85.051129), -180.0), 1e-3):
             note = "the latitude is in RADIANS: wrap it in math.degrees(…)"
-        if not ok and fn == "tile_xy" and isinstance(got, (tuple, list)) and len(got) == 2 and close(got[0], 103350.53, 0.01):
+        if not ok and fn == "tile_xy" and isinstance(got, (tuple, list)) and len(got) == 2 and close(got[0], 103350.53, 0.01) \
+                and "XOR" not in (note or ""):
             note = "x is right, y is not: y counts rows from the NORTH (lesson §2); is your mercator_y ✔ above?"
         why = f"   ({note})" if note else f"   (the docstring says {show(want)})"
         shown = show(got) if fn != "tiles_in_circle" else (got if isinstance(got, str) else repr(got))

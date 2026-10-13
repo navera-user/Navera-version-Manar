@@ -65,7 +65,8 @@ def pair(v, what):
     return vals
 
 
-TIPS = [("math domain error", " — math.log got a number ≤ 0: a latitude in DEGREES went into math.tan (lesson §1)"),
+TIPS = [("for ^", " — ^ in Python is XOR, not a power: write 2 ** z (lesson §2)"),
+        ("math domain error", " — math.log got a number ≤ 0: a latitude in DEGREES went into math.tan (lesson §1)"),
         ("unable to open database", " — open the map with sqlite3.connect('file:' + path + '?mode=ro', uri=True)"),
         ("Incorrect number of bindings", " — three ? in the SQL, three values in the tuple (lesson §5)"),
         ("'NoneType' object is not subscriptable", " — a query that finds nothing gives None: test `row is None` "
@@ -126,6 +127,9 @@ def _():
 def _():
     (f,) = functions("tile_xy")
     x, y = pair(go(f, -1.2921, 36.8219, 15), "tile_xy(Nairobi, 15)")
+    if abs(x - (36.8219 + 180.0) / 360.0 * (2 ^ 15)) < 1e-6:
+        raise CheckFailed(f"x of Nairobi at zoom 15 is {x:.2f}: ^ in Python is XOR (2 ^ 15 = 13), not a power — "
+                          "write 2 ** z")
     c.near(x, 19735.611164, 1e-5, "x of Nairobi at zoom 15")
     if abs(y - (32768 - 16501.619783)) < 1e-3:
         raise CheckFailed("y of Nairobi is mirrored: XYZ rows count from the NORTH — y = (1 − mercator_y/π)/2·n")
@@ -146,6 +150,9 @@ def _():
 def _():
     to_ll, to_xy = functions("tile_to_latlon", "tile_xy")
     lat, lon = pair(go(to_ll, 19293.25, 12345.75, 15), "tile_to_latlon(19293.25, 12345.75, 15)")
+    if abs(lon - (19293.25 / (2 ^ 15) * 360.0 - 180.0)) < 1e-6:
+        raise CheckFailed(f"the longitude of (19293.25, 12345.75) at zoom 15 is {lon:,.1f}: ^ in Python is XOR "
+                          "(2 ^ 15 = 13), not a power — write 2 ** z")
     if abs(lat - math.radians(40.499181)) < 1e-4:
         raise CheckFailed("the latitude is in RADIANS: wrap it in math.degrees(…)")
     if abs(lon - 31.959228) < 1e-5 or abs(lat - 40.505446) < 1e-5:
@@ -540,6 +547,8 @@ def _():
                 raise CheckFailed(f"tiles_in_circle{args} did not finish in 20 s: far too many tiles scanned — is your "
                                   "half-width in TILES? The tile width in metres is m_per_px(lat, z) × TILE_PX "
                                   "(m_per_px alone is one pixel)")
+            if "for ^" in str(e):
+                raise CheckFailed(str(e) + " — ^ in Python is XOR, not a power: write 2 ** z (lesson §2)")
             raise
         if time.perf_counter() - t0 > 3.0:
             raise CheckFailed(f"tiles_in_circle{args} took {time.perf_counter() - t0:.0f} s: far too many "
