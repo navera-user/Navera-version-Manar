@@ -1,0 +1,60 @@
+"""ROS smoke test: start arbiter v0 and the replay node as real processes, and listen to the judge's status
+on the ROS graph (about 10 s). Written for the course; it is not NAVERA code.
+
+Run from the lesson folder:  python3 -m pytest navera_lite/tests/test_ros_smoke.py -q
+It needs ROS 2 sourced (it is, in your terminal). It uses your ROS_DOMAIN_ID: stop your own arbiter first,
+or the test will hear two judges.
+"""
+import os
+import signal
+import subprocess
+import sys
+import time
+
+import pytest
+
+rclpy = pytest.importorskip("rclpy")
+from diagnostic_msgs.msg import DiagnosticStatus  # noqa: E402
+
+from navera_lite.ros.convert import status_values  # noqa: E402
+from navera_lite.ros.qos import STATUS_QOS  # noqa: E402
+
+LESSON = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def start(module, *ros_args):
+    cmd = [sys.executable, "-m", f"navera_lite.ros.{module}"] + (["--ros-args", *ros_args] if ros_args else [])
+    return subprocess.Popen(cmd, cwd=LESSON, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                            start_new_session=True)
+
+
+def stop(p):
+    if p.poll() is None:
+        os.killpg(p.pid, signal.SIGINT)
+        try:
+            p.wait(5)
+        except subprocess.TimeoutExpired:
+            os.killpg(p.pid, signal.SIGKILL)
+            p.wait()
+    return p.stdout.read()
+
+
+def test_arbiter_v0_judges_the_replayed_demo():
+    procs = [start("arbiter_v0"), start("replay_node", "-p", "rate:=2.0", "-p", "start_delay_s:=0.5")]
+    states, logs = [], []
+    rclpy.init()
+    node = rclpy.create_node("smoke_listener")
+    try:
+        node.create_subscription(DiagnosticStatus, "/navera_lite/status",
+                                 lambda m: states.append(status_values(m)["state"]), STATUS_QOS)
+        deadline = time.monotonic() + 25.0
+        while time.monotonic() < deadline and not ("FIX" in states and "DEGRADED" in states):
+            rclpy.spin_once(node, timeout_sec=0.2)
+            if any(p.poll() is not None for p in procs):
+                break
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+        logs = [stop(p) for p in procs]
+    assert states, "no status at all: is the arbiter running?\n" + "\n".join(logs)[-2000:]
+    assert "FIX" in states and "DEGRADED" in states, f"states seen: {sorted(set(states))}\n" + logs[0][-1500:]

@@ -664,3 +664,17 @@ talks standard messages on `/fledgling/*`; no `navera_msgs` build step.
    pairs of real frames (photo↔photo) where a map is not required.
 4. **Mission order:** a mission opens only when the previous one is passed; the teacher can open any mission for
    a student (server change).
+
+## 8. Interfaces as built (overrides §2 where they differ)
+- **tiles.py (07):** `open_map(path=None)` → connection; `read_tile(conn, z, x, y)` raises ValueError for impossible
+  addresses (z checked before 2**z); `mercator_y` is a TODO; given `map_patch(..., path=None)`, `patch_origin`,
+  `decode_tile`, `stamp_attribution`; `MAP_PATH` from env `NAVERA_LITE_MAP` (not FLEDGLING_MAP). Missions 21–25 build
+  on `map_patch` + `patch_origin`.
+- **geo.py (06):** `offset(lat, lon, e_m, n_m)` takes east/north metres.
+- **vehicle.py (03):** `Multirotor` has no own `__init__` (adds `hover_s`); `Vehicle.endurance_s(reserve)` is a method.
+- **settings:** `navera_lite.yaml` key `celestial_timeout_s`.
+- **gnss.py (15):** pure Python, no ROS. `to_estimate()` and `ros/nmea_node.py` are DEFERRED to the 09–14 rebuild
+  (they need estimate.py from 12 and the ROS layer). `dops` returns None for rank < 4. GSV parsing is given.
+- **rotations.py (16):** radians in, numpy out. TODOs rot_y, rot_z, euler_zyx_to_matrix, matrix_to_euler_zyx →
+  (roll, pitch, yaw, locked), q_mul, q_conj, q_from_axis_angle, q_rotate, q_to_matrix, slerp, q_angle_deg; given
+  rot_x, q_normalize, q_from_euler_zyx, heading_deg_from_q, rpy_human (pitch_up = −ROS pitch), IDENTITY_Q.

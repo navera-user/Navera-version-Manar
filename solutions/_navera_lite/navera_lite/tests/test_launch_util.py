@@ -1,0 +1,44 @@
+"""Tests of navera_lite/ros/launch_util.py and the launch file (mission 13), without launching anything.
+Written for the course; it is not NAVERA code.
+
+Run from the lesson folder:  python3 -m pytest navera_lite/tests/test_launch_util.py -q
+"""
+import os
+
+from launch import LaunchContext, LaunchDescription
+from launch.actions import DeclareLaunchArgument, ExecuteProcess
+from launch.utilities import perform_substitutions
+
+from navera_lite.ros.launch_util import LESSON_DIR, fl_node, ros_value
+
+
+def command(action, args=None):
+    ctx = LaunchContext()
+    for k, v in (args or {}).items():
+        ctx.launch_configurations[k] = v
+    return [perform_substitutions(ctx, part) for part in action.cmd]
+
+
+def test_ros_value():
+    assert (ros_value(12.0), ros_value(True), ros_value(12), ros_value("boat")) == ("12.0", "true", "12", "boat")
+
+
+def test_fl_node_builds_the_terminal_command():
+    a = fl_node("gps_node", "fake_gps", namespace="drone", params_file="navera_lite.yaml",
+                params={"speed_mps": 12.0}, remaps=[("navera_lite/fix/gps", "/x/fix")])
+    cmd = command(a)
+    assert cmd[1:] == ["-m", "navera_lite.ros.gps_node", "--ros-args", "-r", "__node:=fake_gps", "-r",
+                       "__ns:=/drone", "--params-file", os.path.join(LESSON_DIR, "navera_lite.yaml"),
+                       "-p", "speed_mps:=12.0", "-r", "navera_lite/fix/gps:=/x/fix"]
+    assert os.path.isdir(os.path.join(LESSON_DIR, "navera_lite"))
+
+
+def test_the_launch_file_has_two_receivers_and_one_judge():
+    from navera_lite.ros.navera_lite_launch import generate_launch_description
+    ld = generate_launch_description()
+    assert isinstance(ld, LaunchDescription)
+    args = [e.name for e in ld.entities if isinstance(e, DeclareLaunchArgument)]
+    procs = [e for e in ld.entities if isinstance(e, ExecuteProcess)]
+    assert sorted(args) == ["gps_source", "use_boat"] and len(procs) == 3
+    judge = [p for p in procs if "navera_lite.ros.arbiter_v0" in command(p, {"gps_source": "boat"})][0]
+    assert "navera_lite/fix/gps:=/boat/navera_lite/fix/gps" in command(judge, {"gps_source": "boat"})

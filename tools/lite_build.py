@@ -450,7 +450,11 @@ def build(lid, ref=REF, out_root=ACADEMY, verify=True, quiet=False):
 
 def _run(cmd, cwd):
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
-    env.pop("PYTHONPATH", None)
+    # keep only ROS 2's own entries (rclpy, messages, launch: the ros/ parts and their tests need them, as in
+    # the student's terminal, which sources /opt/ros/humble); drop anything else that could shadow the copy
+    ros = [p for p in env.pop("PYTHONPATH", "").split(os.pathsep) if p.startswith("/opt/ros/")]
+    if ros:
+        env["PYTHONPATH"] = os.pathsep.join(ros)
     return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, env=env, timeout=600)
 
 

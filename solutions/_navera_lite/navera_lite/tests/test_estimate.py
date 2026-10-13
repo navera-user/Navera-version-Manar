@@ -1,0 +1,85 @@
+"""Tests of navera_lite/estimate.py (given in 09, completed in 12). Written for the course; it is not NAVERA
+code.
+
+Run from the lesson folder:  python3 -m pytest navera_lite/tests/test_estimate.py -q
+"""
+import math
+
+import pytest
+
+from navera_lite.estimate import (COV_APPROXIMATED, COV_DIAGONAL_KNOWN, COV_UNKNOWN, Estimate, classify,
+                                  eligible, horizontal, is_covariance, staleness_m, stated_sigma)
+from navera_lite.settings import DEFAULTS
+
+DIAG9 = (9.0, 0.0, 0.0, 0.0, 9.0, 0.0, 0.0, 0.0, 36.0)
+
+
+def est(**kw):
+    base = dict(source="gps", lat=35.8256, lon=10.6084, stamp_s=100.0, cov=DIAG9, cov_type=COV_APPROXIMATED)
+    base.update(kw)
+    return Estimate(**base)
+
+
+def test_horizontal_reads_a_b_c():
+    assert horizontal([9.0, 1.0, 0, 1.0, 4.0, 0, 0, 0, 36.0]) == (9.0, 1.0, 4.0)
+
+
+@pytest.mark.parametrize("cov,ok,reason", [
+    (DIAG9, True, "ok"),
+    ([0.0] * 9, True, "ok"),
+    ([25.0, 30.0, 0, 30.0, 16.0, 0, 0, 0, 1.0], False, "not positive semi-definite"),
+    ([9.0, 1.0, 0, 2.0, 9.0, 0, 0, 0, 1.0], False, "not symmetric"),
+    ([-1.0, 0, 0, 0, 9.0, 0, 0, 0, 1.0], False, "negative variance"),
+    ([9.0, 0, 0, 0, 9.0, 0, 0, 0, -1.0], False, "negative variance"),
+    ([math.nan] + [0.0] * 8, False, "not finite"),
+    ([1.0] * 8, False, "not 9 numbers"),
+    ("abcdefghi", False, "not 9 numbers"),
+    ([4.0, 6.0, 0, 6.0, 9.0, 0, 0, 0, 1.0], True, "ok"),                 # ρ = 1 exactly: allowed
+])
+def test_is_covariance(cov, ok, reason):
+    assert is_covariance(cov) == (ok, reason)
+
+
+def test_stated_sigma_believes_only_a_stated_covariance():
+    assert stated_sigma(est(cov=(9.0, 0, 0, 0, 4.0, 0, 0, 0, 36.0), cov_type=COV_DIAGONAL_KNOWN), DEFAULTS) == 3.0
+    assert stated_sigma(est(cov_type=COV_UNKNOWN), DEFAULTS) is None
+    assert stated_sigma(est(cov_type=7), DEFAULTS) is None                    # an undefined type
+    assert stated_sigma(est(cov=(0.0,) * 9), DEFAULTS) is None               # all zero: states nothing
+    assert stated_sigma(est(cov=(25.0, 30.0, 0, 30.0, 16.0, 0, 0, 0, 1.0)), DEFAULTS) is None
+    assert stated_sigma(est(cov=(1e-6, 0, 0, 0, 1e-6, 0, 0, 0, 1.0)), DEFAULTS) is None   # σ 1 mm
+
+
+def test_staleness():
+    assert staleness_m(40.0, 2.5) == 100.0
+    assert staleness_m(0.0, 9.0) == 0.0
+    with pytest.raises(ValueError):
+        staleness_m(-1.0, 1.0)
+    with pytest.raises(ValueError):
+        staleness_m(1.0, -1.0)
+
+
+@pytest.mark.parametrize("kw,now,want", [
+    ({}, 101.0, (True, "eligible")),
+    ({"valid": False}, 101.0, (False, "no position")),
+    ({"lat": 0.0, "lon": 0.0}, 101.0, (False, "null island")),
+    ({"lat": math.nan}, 101.0, (False, "bad position")),
+    ({"lat": 91.0}, 101.0, (False, "bad position")),
+    ({"cov": (25.0, 30.0, 0, 30.0, 16.0, 0, 0, 0, 1.0)}, 101.0, (False, "not a covariance")),
+    ({"cov": (25.0, 30.0, 0, 30.0, 16.0, 0, 0, 0, 1.0), "cov_type": COV_UNKNOWN}, 101.0, (True, "eligible")),
+    ({}, 99.4, (False, "from the future")),
+    ({}, 99.6, (True, "eligible")),                                          # 0.4 s ahead: tolerated
+    ({}, 103.4, (False, "stale (3.4 s > 3.0 s)")),
+    ({"source": "day"}, 103.4, (True, "eligible")),
+    ({"source": "celestial"}, 140.0, (True, "eligible")),
+    ({"source": "radar"}, 101.0, (False, "unknown source")),
+])
+def test_eligible(kw, now, want):
+    assert eligible(est(**kw), now, DEFAULTS) == want
+
+
+def test_classify_uses_the_lesson_1_table():
+    assert classify(3.0, DEFAULTS) == ("FIX", "σ 3.0 m")
+    assert classify(25.0, DEFAULTS) == ("FIX", "σ 25.0 m")
+    assert classify(30.0, DEFAULTS) == ("DEGRADED", "σ 30.0 m > 25.0 m")
+    assert classify(None, DEFAULTS) == ("DEGRADED", "σ unknown")
+    assert classify(math.nan, DEFAULTS) == ("DEGRADED", "σ unknown")
