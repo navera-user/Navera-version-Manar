@@ -28,5 +28,5 @@
 <text x="460" y="247" fill="#1d2733" font-size="12.5" font-weight="bold">The ground drops below the plane:</text>
 <text x="460" y="268" fill="#1d2733" font-size="12.5">u ≈ −d² / (2R)</text>
 <text x="460" y="289" fill="#1d2733" font-size="12.5">1 km → −8 cm,  10 km → −7.8 m</text>
-<text x="460" y="310" fill="#1d2733" font-size="12.5">Rome seen from Sousse: u = −38 km</text>
+<text x="460" y="310" fill="#1d2733" font-size="12.5">50 km → −196 m (it grows like d²)</text>
 </svg>

@@ -1,7 +1,11 @@
-# Reference: the distance ON THE WGS84 ELLIPSOID (Vincenty's inverse formula, 1975).
-# You do not need to change this file. error_study.py uses it as the "truth" to measure
-# how wrong the spherical haversine is. Accuracy: better than 1 mm for any two points that
-# are not almost opposite on the Earth (then the iteration may not converge -> ValueError).
+"""geodesic_ref.py — a third-party method: the distance ON THE WGS84 ELLIPSOID by Vincenty's inverse
+formula (T. Vincenty, Survey Review, 1975), written for the course from the published formula.
+
+You do not need to change this file. compare_oracle.py uses it as an independent "oracle" to check your
+functions and to measure how wrong the sphere is. Accuracy: better than 1 mm for any two points that
+are not almost opposite on the Earth (then the iteration may not converge -> ValueError).
+"""
+# ---- you don't need to change anything in this file (but you can read it!) ----
 import math
 
 A = 6_378_137.0
