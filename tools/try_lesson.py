@@ -24,6 +24,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "server"))
 import config  # noqa: E402
+import netns  # noqa: E402
 import sandbox  # noqa: E402
 import workspaces  # noqa: E402
 
@@ -77,8 +78,11 @@ if not a.shell:                          # the check, sealed exactly like the da
         r = subprocess.run(sandbox.bwrap_argv(name, workspaces.student_home(name), 0,
                                               ["bash", "-lc", f"cd ~/lessons/{lid} && {pre[:-4]}"], domain=domain,
                                               extra_ro=sealed.mounts(lid)))    # what a student's terminal sees
-    code, _, score = sealed.run_check(name, lid, 0, timeout=a.timeout, resources=res, heavy=bool(res),
-                                      domain=domain, stream=sys.stdout)
+    try:
+        code, _, score = sealed.run_check(name, lid, 0, timeout=a.timeout, resources=res, heavy=bool(res),
+                                          domain=domain, stream=sys.stdout)
+    finally:
+        netns.release(name)         # its private network: stopped unless a sandbox still uses it
     if code == 124:
         sys.exit(f"TIMEOUT after {a.timeout} s")
     print("ACADEMY_RESULT " + json.dumps(score) if score else "NO RESULT: the checker reported nothing (crash?)")
@@ -96,3 +100,5 @@ try:
     sys.exit(r.returncode)
 except subprocess.TimeoutExpired:
     sys.exit(f"TIMEOUT after {a.timeout} s")
+finally:
+    netns.release(name)

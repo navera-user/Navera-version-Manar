@@ -9,6 +9,7 @@ import os
 import subprocess
 
 import config
+import netns
 
 GPU_DEVICES = ["/dev/nvmap", "/dev/nvsciipc", "/dev/nvgpu", "/dev/nvidia0", "/dev/nvidiactl",
                "/dev/nvidia-modeset", "/dev/dri", "/dev/host1x-fence", "/dev/dma_heap"] + sorted(glob.glob("/dev/nvhost-*"))
@@ -57,15 +58,24 @@ def student_env(name, index, heavy=False, domain=None, navera=None):
 
 def bwrap_argv(name, home, index, command, resources=(), heavy=False, writable_base=None, extra_ro=(),
                interactive=False, domain=None, host_net=False):
-    """argv that runs `command` (list) in the student's sandbox. Without host_net (students) it has its
-    own network with only a loopback: ROS between the student's own nodes works, but nothing on the
-    Jetson (the academy itself, SSH, other students, the teacher's simulator) and no internet is
-    reachable. Staff keep the Jetson's network: the full simulator must be reachable by the academy."""
+    """argv that runs `command` (list) in the student's sandbox. Without host_net (students) it runs in
+    the student's own network (netns.py: only a loopback, shared by ALL sandboxes of this student:
+    terminal tabs, the sealed check, try_lesson): ROS between the student's own nodes works across
+    tabs, but nothing on the Jetson (the academy itself, SSH, other students, the teacher's simulator)
+    and no internet is reachable. Staff keep the Jetson's network: the full simulator must be reachable
+    by the academy."""
     navera = bool(writable_base) or config.navera_allowed(name)
     a = ["bwrap", "--die-with-parent", "--unshare-pid", "--unshare-ipc", "--unshare-uts",
          "--hostname", "navera" if navera else "academy"]
+    join = []
     if not host_net:
-        a += ["--unshare-net"]
+        if netns.enabled():
+            try:
+                join = netns.prefix(name)        # nsenter into the student's network, then bwrap
+            except Exception:                    # noqa: BLE001 — never break the sandbox for this
+                join = []
+        if not join:
+            a += ["--unshare-net"]               # a private network for this sandbox alone (as before)
     if not interactive:          # a terminal keeps its tty (job control, Ctrl-C)
         a += ["--new-session"]
     for d in ("/usr", "/etc", "/opt", "/var/lib", "/sys", "/snap"):
@@ -77,8 +87,10 @@ def bwrap_argv(name, home, index, command, resources=(), heavy=False, writable_b
             a += ["--symlink", os.readlink(p), p]
         elif os.path.isdir(p):
             a += ["--ro-bind", p, p]
-    a += ["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--tmpfs", "/run",
-          "--tmpfs", "/dev/shm", "--tmpfs", "/home", "--tmpfs", "/media", "--tmpfs", "/mnt"]
+    a += ["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--tmpfs", "/run"]
+    # the student's own network shares one /dev/shm too (ROS 2 shared-memory transport, netns.py)
+    a += ["--bind", netns.shm(name), "/dev/shm"] if join else ["--tmpfs", "/dev/shm"]
+    a += ["--tmpfs", "/home", "--tmpfs", "/media", "--tmpfs", "/mnt"]
     if os.path.exists("/run/systemd/resolve"):
         a += ["--ro-bind", "/run/systemd/resolve", "/run/systemd/resolve"]   # DNS (pip, git)
     for d in GPU_DEVICES:
@@ -110,7 +122,7 @@ def bwrap_argv(name, home, index, command, resources=(), heavy=False, writable_b
     scope = ["systemd-run", "--user", "--scope", "--quiet", "--collect",
              "--unit", f"academy-{name}-{os.getpid()}-{_counter()}",
              "-p", f"MemoryMax={mem}", "-p", "MemorySwapMax=0", "-p", f"TasksMax={config.PIDS_MAX}"]
-    return scope + a
+    return scope + join + a
 
 
 def loopback_lib():

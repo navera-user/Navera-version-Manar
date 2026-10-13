@@ -16,6 +16,7 @@ import tarfile
 import tempfile
 
 import config
+import netns
 import sandbox
 
 ADMIN_NAME = "_builder"
@@ -190,6 +191,7 @@ def install_lesson(name, lesson_id, overwrite=False):
 
 
 def delete_student(name):
+    netns.stop(name)                     # the student's private network (sandbox.py / netns.py)
     shutil.rmtree(os.path.join(config.STUDENTS, name), ignore_errors=True)
 
 

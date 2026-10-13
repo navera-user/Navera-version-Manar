@@ -35,6 +35,7 @@ import config
 import orgs
 import simlite
 import webtools
+import netns
 import sandbox
 import sealed
 import workspaces
@@ -1866,11 +1867,23 @@ def no_cache(r):
     return r
 
 
+def _netns_reaper():
+    """Every minute: stop the private network of a student nobody used for netns.IDLE seconds
+    (no terminal, no check): the next sandbox of that student starts a new one."""
+    while True:
+        try:
+            netns.reap()
+        except Exception as e:                 # noqa: BLE001 — never let the reaper die
+            print("netns reaper:", e, flush=True)
+        time.sleep(60)
+
+
 if __name__ == "__main__":
     if not workspaces.base_info():
         raise SystemExit("no base yet: python3 -c 'import workspaces; workspaces.build_base(\"<commit>\")'")
     ensure_teacher()
     workspaces.create_student("teacher")
+    threading.Thread(target=_netns_reaper, daemon=True).start()
     if not orgs.configured():
         orgs.setup_code()               # printed on the sticker; asked on the first-start page
     print(f"NAVERA Academy on http://{_host_ip()}:{config.PORT}")
