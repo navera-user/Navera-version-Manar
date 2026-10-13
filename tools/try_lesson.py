@@ -27,6 +27,7 @@ ap.add_argument("--solution", action="store_true")
 ap.add_argument("--shell", help="run this command in the lesson folder instead of the check")
 ap.add_argument("--resources", default="", help="comma list: sim,camera,sensors (only when free!)")
 ap.add_argument("--clean", action="store_true")
+ap.add_argument("--fresh", action="store_true", help="with --shell: start again from the starter files")
 ap.add_argument("--timeout", type=int, default=600)
 ap.add_argument("--who", default="", help="a separate throw-away student per tester (e.g. strong, weak, expert): "
                                           "parallel testers of one lesson never share files")
@@ -43,7 +44,8 @@ if a.clean:
     print("removed", name)
     sys.exit(0)
 workspaces.create_student(name)
-workspaces.install_lesson(name, lid, overwrite=True)
+# a check run or --solution starts from the starter files; --shell alone keeps the tester's work (like a student)
+workspaces.install_lesson(name, lid, overwrite=a.fresh or a.solution or not a.shell)
 dst = workspaces.lesson_dir(name, lid)
 if a.solution:
     sol = os.path.join(config.ACADEMY, "solutions", lid)
@@ -59,7 +61,10 @@ pre = ""
 if a.solution and os.path.exists(os.path.join(dst, "_apply.sh")):   # optional (older missions only)
     pre = "bash ./_apply.sh && "
 inner = a.shell or f"PYTHONPATH=/academy/lib:$PYTHONPATH python3 /academy/courses/{lid}/check.py"
-cmd = ["bash", "-lc", f"source ~/.bashrc >/dev/null 2>&1; cd ~/lessons/{lid} && {pre}{inner}"]
+# the command goes in a file, not on bash's command line: `pgrep -f <name>` must not find the wrapper itself
+with open(os.path.join(workspaces.student_home(name), ".try_cmd.sh"), "w") as f:
+    f.write(f"source ~/.bashrc >/dev/null 2>&1\ncd ~/lessons/{lid} || exit 1\n{pre}{inner}\n")
+cmd = ["bash", "-l", "/home/student/.try_cmd.sh"]
 res = [r for r in a.resources.split(",") if r]
 argv = sandbox.bwrap_argv(name, workspaces.student_home(name), 0, cmd, resources=res, heavy=bool(res),
                           domain=config.TEST_DOMAINS[(int(lid[:2]) + 40 * WHO.get(a.who, 0)) % len(config.TEST_DOMAINS)],  # unique per lesson and tester

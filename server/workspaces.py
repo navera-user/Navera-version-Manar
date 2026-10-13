@@ -176,7 +176,7 @@ def install_lesson(name, lesson_id, overwrite=False):
     if os.path.exists(dst) and not overwrite:
         return dst
     if os.path.exists(dst):
-        ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")     # two resets in one second: two backups
         bk = os.path.join(config.STUDENTS, name, "backups", f"{lesson_id}-{ts}")
         shutil.copytree(dst, bk, symlinks=True)
         shutil.rmtree(dst)
