@@ -1,32 +1,35 @@
-# Code review — review_me.patch
+# Code review — branch kenji/fewer-refusals
 
 Reviewer: Test Student
-Patch author: Kenji Sato — "fix(estimator): fewer false GPS refusals; geo: use EARTH_RADIUS_M"
+Change: one commit by Kenji Sato, "fix: fewer false GPS refusals, tidy geo"
 
-## What the patch does
+## Hunk 1 — README.md
+Verdict: accept
+Why: It only fixes the spelling of "receive" in a sentence. No code changes, nothing to measure.
 
-git apply --stat shows two files with one line each: haversine_m() in
-navera_common/geo.py, and gps_jump_margin_m in the estimator's parameter file.
-git apply --check found no conflict with my branch. The two changes have nothing to do with
-each other, so the patch mixes two concerns in one commit.
+## Hunk 2 — navera_lite.yaml
+Verdict: reject
+Why: gps_jump_margin_m goes from 50 to 500 m, so one second after the last trusted fix the gate accepts a
+jump of 600 m instead of 150 m. A spoofer can move the position 600 m in one step. No measurement shows
+that the false refusals come from the margin.
 
-## Applied
+## Hunk 3 — navera_lite/geo.py
+Verdict: accept
+Why: haversine_m uses the EARTH_RADIUS_M constant instead of the same value 6371000.0 written again; the
+result is unchanged (London–Paris test still 343556 m) and the tests pass.
 
-I applied only the geo.py change with git apply --exclude on the yaml file. It replaces the
-literal 6_371_000.0 by the module constant EARTH_RADIUS_M, which has the same value, so the
-result does not change. py_compile passed and git diff showed exactly one line. I committed it
-alone as refactor(geo).
+## Hunk 4 — navera_lite/guard.py
+Verdict: reject
+Why: after 10 s of refusals the new fix is trusted whatever it is, so a patient spoofer only has to wait:
+a fake fix 50 km away is accepted at t = 12 s. It treats the symptom (GPS locked out) without finding why
+the gate does not widen any more.
 
-## Rejected
-
-I rejected the change of gps_jump_margin_m from 50.0 to 5000.0 m. The arbiter refuses a GPS fix
-that is farther than max_speed_mps × elapsed + margin from the last trusted fix. With 5000 m, a
-spoofer could move the position by almost 5 km in one step without being refused, so the
-anti-jump and anti-spoofing gate would be practically switched off. It also breaks the rule
-"one concern per commit" and the claim "fewer false refusals" comes with no measurement.
+## Hunk 5 — tests/test_guard.py
+Verdict: reject
+Why: it deletes the test that refuses a 500 m jump; the test is not flaky, it fails because of the new
+500 m margin. Removing a failing test hides the problem instead of fixing it.
 
 ## Advice to the author
-
-Split the patch into two commits. For the gate, first measure the false refusals (which fixes,
-which speeds and times) and propose a targeted change, for example a correct max_speed for the
-vehicle, with the numbers in the commit message and a test that a 2 km jump is still refused.
+Split the change: one commit for the typo, one for the constant, and the gate change alone. Do not change
+the margin without a measurement of real false refusals. First find why GPS stays refused after a jump
+(bisect between v0.1 and main), add a test that fails, then fix the cause and keep every test.

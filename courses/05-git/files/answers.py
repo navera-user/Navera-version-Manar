@@ -1,51 +1,38 @@
-# Lab 5 — answers. Save with Ctrl+S when you are done.
+# Lab 5 — your answers. Numbers without quotes (KENJI_GATE_1S_M = 12.5). Text in quotes ("…").
+# PREDICT_… : your guess BEFORE you run the step. Never marked right or wrong: write it honestly.
+# EXPLAIN_… : after the step, in your own words (one to three sentences). Your teacher reads them.
 
-# 1. The short hash of YOUR FIRST commit on the branch my-first-change.
-#    git -C ~/navera log --oneline --decorate
-#    It is the FIRST word of the line that shows YOUR first message (the README one).
-#    Not a hash from the "NAVERA base — …" line.
-FIRST_COMMIT = ""
+# ======== Session 1 — Reviewer ========
 
-# 2. The base commit's line looks like:   b0e06dc NAVERA base — fa775cd fix(bench): …
-#    Its message contains a SECOND hash: the commit of the real NAVERA repository the
-#    academy copied. Write that second hash (7 characters) here.
-NAVERA_SOURCE_COMMIT = ""
+# ---- Step 3: two dots and three dots ----------------------------------------------------------
+TWO_DOT_FILES = 0       # how many files `git diff --stat main..kenji/fewer-refusals` lists
+THREE_DOT_FILES = 0     # how many files `git diff --stat main...kenji/fewer-refusals` lists
+EXPLAIN_DOTS = ""       # why are they different? which one does a reviewer want, and why?
 
-# For the questions below, write ONE letter between the quotes, e.g.  Q1 = "b"
+# ---- Step 4: what Kenji's patch would do --------------------------------------------------------
+KENJI_GATE_1S_M = 0     # with Kenji's settings: the largest jump accepted 1 s after the last trusted fix (m)
+SPOOF_ACCEPTED_AT_S = 0 # with Kenji's code: trusted fix at t = 0 s, then a fake fix 50 km away at
+                        # t = 1, 2, 3 … s (one per second). At which t is the fake fix accepted?
 
-# Q1. What does `git add file` do?
-#   a) it saves the file in the history for ever
-#   b) it puts the current change of this file in the staging area: it will be in the NEXT commit
-#   c) it sends the file to the academy server
-Q1 = ""
+# ======== Session 2 — Detective ========
 
-# Q2. What does `git diff base...my-first-change` (three dots) show?
-#   a) everything that differs between base and the files in your folder now
-#   b) the changes made on base since your branch started
-#   c) the changes made on my-first-change since it left base
-Q2 = ""
+# ---- Step 6: the bug report ---------------------------------------------------------------------
+PREDICT_PROBE = ""      # what will probe_gate.py print on your branch? (5 would be right)
+PROBE_BRANCH = -1       # what it prints on your branch my-first-change
+PROBE_V01 = -1          # what it prints at the tag v0.1
+PREDICT_TESTS = ""      # how many commits will git bisect have to test between v0.1 and main? why?
 
-# Q3. You press "Reset my NAVERA copy" in the dashboard. What happens to your commits?
-#   a) they are lost for ever
-#   b) they are saved in a git bundle in your backup folder, then ~/navera becomes a fresh clone of the base
-#   c) they are sent to the real NAVERA product
-Q3 = ""
+# ---- Step 7: git bisect -------------------------------------------------------------------------
+FIRST_BAD = ""          # the hash of the first bad commit (at least 7 characters)
+TESTS_RUN = 0           # how many commits your bisect_test.sh was run on (count them in bisect.log)
+EXPLAIN_BISECT = ""     # why so few tests for 30 commits? and why must a broken commit give exit code 125?
+EXPLAIN_CAUSE = ""      # which line of the bad commit breaks the gate, why GPS is then locked out,
+                        # and what that says about Kenji's patch
 
-# Q4. git status says: "Your branch is up to date with 'base/work'". It means:
-#   a) work points at the same commit as base/work, the remote's branch as recorded at the clone;
-#      nothing was sent or received
-#   b) your commits were uploaded to the academy server
-#   c) the real NAVERA repository has no new commits
-Q4 = ""
+# ---- Step 8: test, then revert ---------------------------------------------------------------
+EXPLAIN_REVERT_COST = ""  # what else did the revert remove, and how would one-concern commits
+                          # (or a fix forward) have avoided it?
 
-# Q5. You merge my-first-change into a branch that has no commit of its own since they split. Git:
-#   a) always creates a merge commit with two parents
-#   b) refuses: branches can never be merged back
-#   c) can fast-forward: the branch label simply moves to the last commit, no new commit
-Q5 = ""
-
-# Q6. Annotated tag vs lightweight tag:
-#   a) they are exactly the same
-#   b) an annotated tag is an object with its own author, date and message; a lightweight tag is just a name
-#   c) an annotated tag moves forward with every new commit
-Q6 = ""
+# ---- Step 9: rescue -----------------------------------------------------------------------------
+EXPLAIN_RESCUE = ""     # where were your two "lost" commits, how did you find them, and what could git
+                        # NOT have given back?

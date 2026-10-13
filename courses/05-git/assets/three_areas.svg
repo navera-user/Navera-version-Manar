@@ -11,7 +11,7 @@
   <!-- three boxes -->
   <rect x="20" y="40" width="190" height="120" rx="10" fill="#fde7c5" stroke="#d6a65c"/>
   <text x="115" y="64" text-anchor="middle" font-weight="bold" fill="#1d2733">working folder</text>
-  <text x="115" y="84" text-anchor="middle" fill="#4a5866">~/navera: the files</text>
+  <text x="115" y="84" text-anchor="middle" fill="#4a5866">the files</text>
   <text x="115" y="100" text-anchor="middle" fill="#4a5866">you edit and save</text>
   <text x="115" y="134" text-anchor="middle" font-family="monospace" fill="#a8680d">git status, git diff</text>
   <rect x="255" y="40" width="190" height="120" rx="10" fill="#d7e3ee" stroke="#8aa3b8"/>
