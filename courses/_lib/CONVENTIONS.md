@@ -34,8 +34,8 @@ Rotation matrices are named `R_<to>_<from>`: `R_world_cam @ v_cam = v_world` (NA
 | **ENU yaw** (ROS, maths) | East | **counter-clockwise** (north = 90°) | (−180°, 180°] |
 
 `heading = (90° − yaw_enu) mod 360°` and back `yaw_enu = 90° − heading` (NAVERA Lite:
-`rotations.heading_deg_from_q`, `rotations.rpy_human`; `geo.offset` and `vehicle.heading_vector` take a
-heading clockwise from true north, as NAVERA does). Check: yaw_enu = 0° (nose east) → heading 90°.
+`rotations.heading_deg_from_q`, `rotations.rpy_human`; `vehicle.heading_vector` and `geo.bearing_deg` use a
+heading clockwise from true north, as NAVERA does; `geo.offset(lat, lon, e_m, n_m)` takes east and north metres). Check: yaw_enu = 0° (nose east) → heading 90°.
 A compass gives `atan2(east, north)` for a heading, **not** `atan2(north, east)` (that is the ENU yaw).
 
 ## 4. Pitch sign: ROS vs NAVERA's "human" angles

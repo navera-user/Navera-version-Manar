@@ -94,8 +94,8 @@ def _hint(e):
     if isinstance(e, NameError) and "'np'" in s:
         return " — add `import numpy as np` at the top of the file"
     if "could not be broadcast" in s or "inhomogeneous shape" in s:
-        return (" — did you write `x = np.linalg.lstsq(...)` without `, *_`? lstsq returns four things: "
-                "write `x, *_ = np.linalg.lstsq(A, b, rcond=None)`")
+        return (" — two arrays of different shapes were combined: print the .shape of each one. "
+                "(With np.linalg.lstsq: it returns four things, write `x, *_ = np.linalg.lstsq(A, b, rcond=None)`.)")
     if isinstance(e, TypeError) and "'NoneType'" in s:
         return " — a function you call returned None: does every path end with `return`?"
     if isinstance(e, ValueError) and "math domain error" in s:
