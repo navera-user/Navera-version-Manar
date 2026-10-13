@@ -83,18 +83,25 @@ the line in `[Install]` (preflight also refuses it); Q1 = 140, Q7 in UTC; only t
 ("the orphan was not stopped: find it by its parent … if the box is still running, no need to restart it; if
 you already stopped it, ./box.sh start …"); `pkill -f navera_lite_arbiter` (both arbiters get SIGTERM in the
 same second: refused, "kill by PID"; the lab explains why pkill is wrong even though the box recovers);
-`SupplementaryGroups=dialout # GPS` (an end-of-line comment: systemd would fail the unit; preflight and check
+`SupplementaryGroups=dialout # GPS` (an end-of-line comment: systemd loads the unit with a warning, then the service fails to start,
+216/GROUP, because `#`, `GPS`… are read as group names; preflight and check
 4 both refuse it, with a message about `#`); an unquoted `$log` (check 13 also runs the script on a log in a
 folder named `flight logs`); the orphan stopped but no
 observation; `kill -9` on the camera before its SIGTERM line; `kill -9` on the orphan; KILL less than 2 s after
 TERM; `EXPLAIN_ORPHAN = "It was definitely the first one in the list…"` (fails: no parent idea); a flight report
 of numbers plus 40 × "word" (fails: no domain words, no flight words, no recommendation); `env | grep ROS_` without `^`;
-`uniq` instead of `sort -u` (nodes: 183).
+`uniq` instead of `sort -u` (nodes: 183); `SupplementaryGroups=video dialout` (least privilege: keep only the
+port's group); `SupplementaryGroups="dialout"` (no quotes in a unit file; preflight says so too); `chmod 777`
+on preflight.sh (check 3: the others-write bit); `[$# -ne 1]` without spaces (check 11 names `[0: command not
+found`; in a terminal the script hangs on a grep reading the keyboard, lab hint 8); `^[WARN]` without the
+backslash (all counts 0, lab hint 4); the flight-report time written `8:45:24` (accepted).
 
 Known limits of the grader: the journal is a file in the student's folder, so a student could forge its lines
-(the exact format is needed; the rubric questions reveal it). check.py holds the hidden log of check 13
-(`hidden_log()`) and the expected constants; while a check runs, a student's script could read check.py — a
-platform fix is in progress (not handled in this mission). Check 15 only looks for a domain word, 25
+(the exact format is needed; the rubric questions reveal it). The hidden log of check 13 is `courses/02-terminal/hidden/harbour_2026-10-02.log`
+(34 lines), delivered sealed to the checker; its expected 7-line summary is computed in memory. Check 13
+writes the log to a temporary folder (`logs/` and `flight logs/`) only while the student's `log_report.sh`
+runs on it, and deletes it right after: a student script could copy the log during that one run (it is
+the script's input, so this reveals the test data, never the expected answer). Check 15 only looks for a domain word, 25
 different words and a recommendation word: a cleverly padded conclusion can pass; the rubric is the real gate.
 
 ## Rubric for the written answers (the check only catches empty or off-topic answers)

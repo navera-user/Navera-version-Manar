@@ -12,7 +12,7 @@ import shlex
 import subprocess
 import tempfile
 
-from academy_check import CheckFailed, Checker, explained, load_student, need, predicted, sh
+from academy_check import CheckFailed, Checker, StudentError, explained, hidden, load_student, need, predicted, sh
 
 c = Checker()
 LESSON = os.path.dirname(os.path.abspath(__file__))        # /academy/courses/02-terminal
@@ -49,7 +49,12 @@ def same_bytes(a, b):
 
 
 def answers():
-    return load_student("answers.py")
+    try:
+        return load_student("answers.py")
+    except StudentError as e:
+        if "syntax error" in str(e):
+            raise StudentError(f"{e} — is a text answer missing its quotes? (E2 = \"/data/…\", Q6 = \"…\")")
+        raise
 
 
 def answer(name):
@@ -96,25 +101,10 @@ def report(lines, name):
 
 
 def hidden_log():
-    """A log the student never saw: no ERROR line, the words WARN and ERROR inside INFO messages, a node
-    that appears once, a NO_FIX inside a WARN line."""
-    t = 1790500000
-    plan = ([("INFO", "navera_lite_arbiter", "arbiter started: priority gps > day > night > star"),
-             ("INFO", "navera_lite_arbiter", "state FIX source=gps")]
-            + [("INFO", "nmea", f"fix OK, {9 + i % 4} satellites, hdop 1.1") for i in range(11)]
-            + [("WARN", "nmea", "no fix for 2.0 s (jamming simulated)"),
-               ("WARN", "navera_lite_arbiter", "state DEGRADED source=day (gps: stale)")]
-            + [("INFO", "day_vision", f"match OK, {20 + i} inliers, sigma 30 m") for i in range(8)]
-            + [("WARN", "day_vision", "no match: sea, nothing to recognise")] * 4
-            + [("WARN", "navera_lite_arbiter", "state NO_FIX: no source usable (day: stale)"),
-               ("INFO", "navera_lite_arbiter", "WARN threshold reached, no ERROR raised (test message)"),
-               ("INFO", "day_vision", "match OK, 31 inliers, sigma 30 m"),
-               ("INFO", "clock", "clock synchronised, no ERROR"),
-               ("WARN", "navera_lite_arbiter", "state DEGRADED source=day (gps: stale)"),
-               ("INFO", "nmea", "fix OK, 8 satellites, hdop 1.7"),
-               ("INFO", "navera_lite_arbiter", "state FIX source=gps")])
-    return [f"[{lvl}] [{t + 3 * i}.{(i * 7919) % 10**9:09d}] [{node}]: {msg}"
-            for i, (lvl, node, msg) in enumerate(plan)]
+    """A log the student never saw (courses/02-terminal/hidden/, sealed: never on disk in the sandbox): no
+    ERROR line, the words WARN and ERROR inside INFO messages, a node that appears once, a NO_FIX inside a
+    WARN line. Written to a temp file only while the student's script reads it (check 13)."""
+    return hidden("harbour_2026-10-02.log").splitlines()
 
 
 def run_script(args):
@@ -301,6 +291,8 @@ def _():
     c.ok(same_bytes(p, os.path.join(INBOX, "preflight.sh")), f"{p} was changed — only move it and chmod it")
     mode = os.stat(p).st_mode & 0o777
     c.ok(mode & 0o100, f"{p} has no execute (x) bit for its owner yet")
+    c.ok(not mode & 0o002, f"{p} runs, but its mode lets every user change a script the box runs (the w bit for "
+                           "others, as in chmod 777): chmod it back, then use chmod u+x (lesson §3)")
     p3 = as_int(answer("P3"), "P3")
     c.ok(p3 == int(oct(mode)[2:]), f"P3 = {p3} is not the mode of your preflight.sh (ls -l shows "
                                    f"{''.join('rwx'[i % 3] if mode >> (8 - i) & 1 else '-' for i in range(9))})")
@@ -330,6 +322,11 @@ def _():
     key, _, val = line.partition("=")
     c.ok(key.strip() == "SupplementaryGroups", f"{line!r}: the setting that adds a group to the service's user is "
                                                "SupplementaryGroups (Group= replaces its own group)")
+    if val.strip().strip("\"'") == P2_GROUP and val.strip() != P2_GROUP:
+        raise CheckFailed(f"{line!r}: no quotes in a unit file — write SupplementaryGroups={P2_GROUP}")
+    if P2_GROUP in val.split() and val.strip() != P2_GROUP:
+        raise CheckFailed(f"{line!r}: the GPS reader needs only the serial port's group; every extra group is "
+                          "access it does not need (least privilege). Keep only the port's group.")
     c.ok(val.strip() == P2_GROUP, f"{line!r}: is that the group of /dev/ttyTHS1 in the evidence?")
     i, s, inst = m.index(line), m.index("[Service]"), m.index("[Install]")
     c.ok(s < i < inst, "the line is not in the [Service] section (systemd ignores it elsewhere)")
@@ -415,7 +412,8 @@ def _():
     c.ok(code == 137, f"KILL_EXIT_CODE = {code}: read the supervisor's line about the camera in the journal")
     explained("EXPLAIN_KILL", answer("EXPLAIN_KILL"),
               ([r"catch", r"caught", r"trap", r"ignor", r"handl", r"cannot", r"can't", r"can not", r"stuck",
-                r"driver", r"wait"], "why SIGTERM was not enough and SIGKILL was"),
+                r"driver", r"wait", r"hung", r"hang", r"block", r"busy", r"freez", r"frozen"],
+               "why SIGTERM was not enough and SIGKILL was"),
               ([r"restart", r"again", r"new", r"supervis", r"systemd"], "what the supervisor did next"))
 
 
@@ -462,6 +460,11 @@ def _():
     c.ok(first.startswith("#!") and "bash" in first, f"the first line is {first!r}, expected #!/bin/bash")
     c.ok(os.stat(SCRIPT).st_mode & 0o100, f"{SCRIPT} is not executable (x) yet")
     code, out, err = run_script("")
+    m = re.search(r"\[\S*: command not found", err)
+    if m:
+        raise CheckFailed(f"bash said '{m.group(0)}': your [ … ] test is missing a space, so bash ran a command "
+                          "called '[…'. Write if [ $# -ne 1 ]; then (spaces inside the brackets). Without it the "
+                          "script goes on with no file and, in a terminal, waits for the keyboard (Ctrl+C).")
     c.ok(code == 2, f"without an argument the exit code is {code}, expected 2")
     c.ok(out.strip() == "", f"without an argument the script printed on stdout: {out.strip()[:80]!r} — use >&2")
     c.ok(err.strip() != "", "without an argument the script printed no message on stderr")
@@ -501,9 +504,12 @@ def _():
                           "add || true")
     want = report(lines, name)
     if code == 0 and lines_of(out) == want and (code2 != 0 or lines_of(out2) != want):
+        first = next((l for l in err2.splitlines() if l.strip()), "")
+        bad = next((g for g, w in zip(lines_of(out2), want) if g != w), "")
         raise CheckFailed("right on the new log, but wrong when the log sits in a folder whose name has a space "
                           "('flight logs'): quote every \"$log\" (lesson §7), also inside $(basename …) and "
-                          "after wc -l <")
+                          "after wc -l <" + (f". Bash said: {first.strip()[:160]}" if first else "")
+                          + (f". Wrong line: \"{bad}\"" if bad else ""))
     c.ok(code == 0, f"the script failed on the new log (exit code {code}):\n{(err or out)[-400:]}")
     compare(lines_of(out), report(lines, "harbour_2026-10-02.log"), "new log")
 
@@ -533,7 +539,8 @@ def _():
         c.ok(has_number(body, sum(l.startswith("[ERROR]") for l in lines)),
              f"the {title} section does not give its number of ERROR lines")
     sousse = section(md, "Sousse")
-    c.ok(Q7_TIME in sousse, "the Sousse section does not give the Tunisian time of the first NO_FIX")
+    c.ok(Q7_TIME in sousse or re.search(r"(?<![\d:])" + re.escape(Q7_TIME.lstrip("0")), sousse),
+         "the Sousse section does not give the Tunisian time of the first NO_FIX (HH:MM:SS, as date +%T prints it)")
     c.ok(re.search(r"sea|water|vision|match|dead.?reckon", sousse, re.I),
          "the Sousse section gives numbers but does not say what happened (where was the drone, why did vision fail?)")
     concl = section(md, "Conclusion")

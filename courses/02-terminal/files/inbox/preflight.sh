@@ -46,6 +46,9 @@ else
     if grep -q "^SupplementaryGroups.*#" "$unit"; then
         echo "     (a '#' after the value is not a comment in a unit file: systemd reads it as group names)"
     fi
+    if grep -q "^SupplementaryGroups *= *[\"']" "$unit"; then
+        echo "     (no quotes in a unit file: SupplementaryGroups=GROUP, as in the camera unit)"
+    fi
     problems=$((problems + 1))
 fi
 

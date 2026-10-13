@@ -3,5 +3,7 @@
 # journal: "Oct 13 09:14:02 box NAME[PID]: text".
 JOURNAL="$BOX/log/journal.log"
 say() {
-    echo "$(date '+%b %d %T') box $NAME[$$]: $*" >> "$JOURNAL"
+    local ts
+    printf -v ts '%(%b %d %T)T' -1          # the time without starting a date process
+    echo "$ts box $NAME[$$]: $*" >> "$JOURNAL"
 }

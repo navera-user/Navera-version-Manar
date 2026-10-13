@@ -234,7 +234,8 @@ WantedBy=multi-user.target
 
 `systemctl status NAME` shows its state, `journalctl -u NAME` its messages. A `#` starts a comment only
 at the **beginning** of a line: in `User=navera_lite  # never root`, the user name would be the whole
-text after `=`, and systemd refuses the unit.
+text after `=`, `# never root` included: no such user exists, so the service fails every time it starts
+(`systemctl status` shows `status=217/USER`).
 
 **Signals** are short messages to a process. A program can **catch** most of them and react (close its
 files), but not SIGKILL.

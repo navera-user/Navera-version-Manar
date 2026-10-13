@@ -194,7 +194,8 @@ bash mission/bin/preflight.sh
 ```
 
 Now give the **owner** the execute permission with `chmod` (type it yourself), check with `ls -l`, and run
-`./mission/bin/preflight.sh` again. It now runs, and reports a problem with the GPS service.
+`./mission/bin/preflight.sh` again. It now runs, and reports a problem with the GPS service. (Not
+`chmod 777`, which you may find on forums: then anyone could edit a script the box runs.)
 
 **4b. A service without its group.** The engineer of a test box saved some evidence:
 
@@ -230,7 +231,8 @@ Open [mission/deploy/navera_lite-gps.service](file:./mission/deploy/navera_lite-
 called `SupplementaryGroups`. The skeleton's camera unit already does this for its own device: read
 `cat /data/academy/02-terminal/navera_lite_tree/deploy/systemd/navera_lite-camera.service` and do the
 same for the GPS. Unit files are not YAML or Python: a `#` is a comment only at the start of a line, and you write `SupplementaryGroups=` followed directly by
-the group's name (systemd tolerates spaces around `=`, but the usual style has none). Change nothing
+the group's name, **without quotes** (quotes are for Python, as in answers.py; systemd tolerates spaces
+around `=`, but the usual style has none). Change nothing
 else. Save, then compare with the original — `diff` prints only the lines that differ:
 
 ```bash
@@ -364,8 +366,8 @@ ends the program (the camera's 137 below is that case). Compare with your PREDIC
 
 So on this box `pkill -f navera_lite_arbiter` would even have *looked* right. It is still wrong:
 (1) for a second the good arbiter was down too: on a flying vehicle, a second with no position;
-(2) `-f` matches every command line that contains the text: another user's test, or your own
-`tail -f …/navera_lite_arbiter.log`; (3) most processes have no supervisor: without one, the good
+(2) `-f` matches every command line that contains the text: a test you started in another terminal, or
+your own `tail -f …/navera_lite_arbiter.log` (and, under sudo, other users' processes too); (3) most processes have no supervisor: without one, the good
 arbiter would never have come back. (The check refuses a run where both arbiters got SIGTERM in the
 same second.)
 
@@ -510,7 +512,8 @@ Open [mission/bin/log_report.sh](file:./mission/bin/log_report.sh). The specific
 Lesson §7's `count_level.sh` shows every piece you need, but not this script: write it yourself.
 
 > [!TIP] 🧰 Build it in 4 runs, not 1
-> (1) shebang, `set -e`, the `$#` test with `>&2` and `exit 2`; `chmod u+x`; test without an argument.
+> (1) shebang, `set -e`, the `$#` test with `>&2` and `exit 2`; `chmod u+x`; test without an argument (if it hangs,
+> `Ctrl+C`: see hint 8).
 > (2) the `-f` test and `exit 1`; test on `/tmp/nothing.log`. (3) the `file:` and `lines:` lines only;
 > run it on the Sousse log. (4) the counts, one per line; compare WARN with Step 8. Run after each part:
 > one new error at a time is much easier to find.
@@ -542,17 +545,32 @@ grep -v "^\[ERROR\]" mission/logs/range_2026-09-22.log > /tmp/no_error.log
 ./mission/bin/log_report.sh /tmp/no_error.log; echo "exit code: $?"
 ```
 
+The check also uses a folder whose name has a space. Test that too: any `No such file or directory` or
+`ambiguous redirect` here shows which `$log` you forgot to quote.
+
+```bash
+mkdir -p "/tmp/flight logs" && cp mission/logs/range_2026-09-22.log "/tmp/flight logs/"
+```
+
+```bash
+./mission/bin/log_report.sh "/tmp/flight logs/range_2026-09-22.log"
+```
+
 <details><summary>Stuck? Hints</summary>
 
 1. The script stops early (some count lines are missing) with no message on a log without ERROR lines:
    `grep -c` found 0 and exited with 1 under `set -e`. Add `|| true` (lesson §7).
 2. `file: mission/logs/sousse…`: use `basename`.
 3. `lines: 310 mission/logs/…`: `wc -l < "$log"` prints the number only.
-4. `WARN: 85` instead of 84: anchor the pattern, `"^\[WARN\]"`.
+4. `WARN: 85` instead of 84: anchor the pattern, `"^\[WARN\]"`. All counts 0 (or the script stops right
+   after `lines:`)? You wrote `[WARN]` without `\`: in grep, `[…]` means "one of these letters".
 5. `nodes: 310`, `nodes: 1` or `nodes: 183`: field 3, then `sort -u` (`uniq` alone counts runs), then `wc -l`.
 6. Exit code 0 without an argument: test `$#` and `exit 2`.
 7. The check says the path has a space in it? Every `$log` must be `"$log"`, also inside
    `$(basename …)` and after `wc -l <` (lesson §7: quote variables).
+8. Your script **hangs** (no prompt comes back)? Press `Ctrl+C`. A `grep` got no file name and is reading
+   the keyboard: your `$#` test did not stop the script. Look at the first error printed:
+   `[0: command not found` means `[` needs spaces: `if [ $# -ne 1 ]; then`.
 </details>
 
 Then save one report per flight with a `for` loop (`basename "$f" .log` also removes the `.log` ending):

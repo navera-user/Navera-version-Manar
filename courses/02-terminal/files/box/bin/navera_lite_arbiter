@@ -8,17 +8,22 @@ NAME=navera_lite_arbiter
 params="$2"
 pidfile="$BOX/run/arbiter-$$.pid"
 echo $$ > "$pidfile"
-topic="$(grep -o 'gps_topic: *[^ ]*' "$params" 2> /dev/null | awk '{print $2}')"
+topic=""
+while read -r line; do                    # pure bash: no child process shows the arbiter's command line
+    [[ $line =~ gps_topic:\ *([^ ]+) ]] && topic="${BASH_REMATCH[1]}"
+done < "$params"
+exec {tick}<> <(:)                        # a pipe nobody writes to: `read -t 1` on it waits 1 s without a
+                                          # `sleep` process (a forked sleep would briefly look like a third arbiter)
 trap 'say "received SIGTERM, shutting down cleanly"; rm -f "$pidfile"; exit 0' TERM
 trap 'say "received SIGINT, shutting down cleanly"; rm -f "$pidfile"; exit 0' INT
 say "started"
 while true; do
-    now="$(date +%s.%N)"
+    now="${EPOCHREALTIME}000"            # bash 5.1+: the time without a date process
     if [ "$topic" = "/navera_lite/fix/gps" ]; then
         echo "[INFO] [$now] [navera_lite_arbiter]: state FIX source=gps sigma 4.0 m" >> "$BOX/log/decisions.log"
     else
         echo "[WARN] [$now] [navera_lite_arbiter]: state NO_FIX: no source usable (gps: no message on ${topic:-?})" \
             >> "$BOX/log/decisions.log"
     fi
-    sleep 1
+    read -r -t 1 -u "$tick" _ || true
 done
