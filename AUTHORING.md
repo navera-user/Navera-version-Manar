@@ -260,6 +260,9 @@ Rules for authors:
 - **Never execute student code in check.py's process**: no `exec(open(...))`, `runpy`, `importlib`
   with a path (use `load_student`), `pickle`/`torch.load`/`np.load(allow_pickle=True)` of a student
   file, `ctypes` of a student library. Read student files as text/JSON/CSV/YAML (`yaml.safe_load`).
+  Exception for trained models (design §7.5): a student's weights file may be read with
+  `torch.load(path, map_location="cpu", weights_only=True)` (torch ≥ 2.6) after a size limit, and loaded with
+  `load_state_dict` into a network the CHECK builds from the specification — never the student's class.
 - Values come back by value (numbers, str, list/tuple/dict/set, namedtuple, NumPy, pandas, datetime,
   ROS messages of installed packages); instances of student classes, generators… are proxies that
   forward attributes, calls, operators, `len`/`iter`/`[]`/`==`/`float()`. `isinstance(x, list)` on a

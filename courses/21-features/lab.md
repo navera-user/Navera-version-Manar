@@ -1,262 +1,465 @@
-# Lab 21 — Corners, scale and descriptors, measured
+# Lab 21 — Scout the ground, build a detector, train a descriptor
 
-**Goal:** implement the Harris detector from its maths, find the characteristic scale of a blob, compare
-your Harris with OpenCV's ORB and SIFT on pictures with a known transform (repeatability), measure binary
-descriptor distances, score the "matchability" of different terrains, and write a short report.
-**Time:** 2½ – 3 hours for this lab (about 3 h 45 for the whole mission with the lesson).
+**Goal:** rank terrains by eye, then by measurement; write the Harris detector of NAVERA Lite from its maths and
+measure it against OpenCV's ORB and SIFT; compare binary descriptors; then build, train and test your own neural
+network that describes ground patches, and measure it against OpenCV.
+**Time:** 4 h 30 to 6 h in two sessions (a strong programmer: about 3 h 30; more if PyTorch is new to you, which is
+expected). Training runs take seconds on the GPU and 2–5 minutes on the CPU.
+**Fast track:** if you know numpy and PyTorch, write the TODOs from the docstrings without the 🧰 and "Stuck?" boxes,
+then do "Going further" and write the results in `LOOK_BACK`.
 
-Your pictures are in `/data/academy/21-features/` (read only). They are cut from **NAVERA's satellite
-map of Sousse, Tunisia** (the only map NAVERA has today):
+Your files (📝 Code tab): [navera_lite/features.py](file:./navera_lite/features.py) (**your code**: TODO 1–6),
+[navera_lite/learned_desc.py](file:./navera_lite/learned_desc.py) (**your code**: TODO 7–9),
+[answers.py](file:./answers.py), [report.md](file:./report.md), and the ready-made runner
+[run_features.py](file:./run_features.py) (runs your functions on the lab's pictures and draws them; you don't edit
+it). `python3 run_features.py test` tries every docstring example and names the symptom of a wrong result.
 
-| File | What it is |
-|---|---|
-| `terrain_city.jpg`, `terrain_olives.jpg`, `terrain_farms.jpg`, `terrain_hills.jpg`, `terrain_coast_water.jpg`, `terrain_sea.jpg` | 512 × 512 map patches, zoom 17 (≈ 0.97 m/px, ≈ 500 m of ground) |
-| `terrain.csv` | one line per patch: file, terrain, lat, lon, zoom, m_per_px, description |
-| `pair_*.jpg` + `pairs.json` | synthetic 640 × 480 "drone photos" of some patches — turned, closer (made from the zoom 18–19 map) — with the **exact** 3 × 3 transform `H` from the patch to the photo |
-| `drone_city.jpg`, `drone_city_blurry_dark.jpg` | a drone view of the medina, clear and very blurred/dark |
-| `real_aerial_frame.jpeg` | a real aerial photo of a Sousse district (picture only: the position in its flight log is **wrong**) |
+The pictures are in `/data/academy/21-features/` (read only): map patches and drone photos drawn from OpenStreetMap
+data of Sousse, Tunisia (NAVERA's test area; map data © OpenStreetMap contributors), made by us so that we know the
+exact truth, plus two real aerial frames from NAVERA's day-camera test data and 14 336 pairs of patches.
 
-Your code goes in [features.py](file:./features.py) (TODOs 0–8). Helper programs: `peek.py`,
-`scale_demo.py`, `clahe_demo.py`, `measure.py`, `my_spot.py` — read them, do not change them.
-
-## Step 1 — Look at the data
-
-```bash
-ls -l /data/academy/21-features/
-```
-
-```bash
-python3 -c "import json; [print(p['name'], p['scale'], p['heading_deg'], p['what']) for p in json.load(open('/data/academy/21-features/pairs.json'))]"
-```
-
-Copy the two pictures into your lesson folder, then click them in the file tree (⟳ to refresh it) to
-see them in the editor:
-
-```bash
-cp /data/academy/21-features/terrain_city.jpg /data/academy/21-features/pair_city_zoom4.jpg .
-```
-
-The second one shows the north-west part of the first, 3.9 times closer.
-
-> [!QUESTION]
-> Before measuring: which terrain do you expect to have the most keypoints, and which the fewest? Which
-> detector do you expect to suffer most from the ×3.9 zoom? Write your guesses down.
-
-## Step 2 — Gradients (TODO 1)
-
-Run the demo once:
-
-```bash
-python3 features.py
-```
-
-It prints `(TODO 1 is not done yet)`. Open [features.py](file:./features.py).
-The demo scripts (`features.py`, `scale_demo.py`, `peek.py`, `measure.py`, `my_spot.py`) say which TODO is
-missing. The short `python3 -c "…"` test commands of the next steps do not: if a TODO is not done, they end
-with `NotImplementedError: TODO N`. That only means "write TODO N first".
-
-> [!TASK]
-> **TODO 1.** `image_gradients(grey)` returns `(Ix, Iy)` as `float32` arrays of the picture's shape.
-> Use the 3 × 3 Sobel derivative of lesson section 1, divided by `SOBEL_NORM` (= 8, see the lesson's
-> worked example), so that a ramp `I = 3x` gives `Ix = 3`.
-
-Run `python3 features.py` again: the line `TODO 1  ramp I = 3x: Ix = 3.00` must show 3.00 and 0.00.
-
-> [!WARNING]
-> If you get `Ix = 0` on half of a test, you probably used an 8-bit output depth: negative gradients were
-> cut to 0. Use `cv2.CV_32F`.
-
-## Step 3 — Harris (TODOs 2 and 3)
-
-> [!TASK]
-> **TODO 2.** `harris_response(grey, sigma=1.5, k=0.05)` returns the Harris response `R` of lesson
-> section 2 at every pixel, as a `float32` array of the picture's shape. The window is a Gaussian of
-> standard deviation `sigma`. No Python loops over the pixels.
->
-> **TODO 3.** `harris_corners(grey, n=500, sigma=1.5, k=0.05, nms_radius=4, rel_threshold=0.01)` returns
-> the `n` strongest corners (or fewer) as a `float32` array of shape `(m, 2)` with columns **x, y**,
-> strongest first. Keep a pixel only when it passes both tests of "From R to points" (lesson section 2).
-> Careful: numpy gives indices as **(row, column)**, that is (y, x).
-
-```bash
-python3 features.py
-```
-
-Open `harris_city.png`: the 300 strongest corners are yellow crosses.
-
-> [!QUESTION]
-> Are the crosses on roof corners, on straight walls, inside flat courtyards? Compare with the table
-> "flat / edge / corner" of the lesson. Then check your understanding of the sign of R with the
-> self-check question 1 of the lesson.
-
-Compare your `R` with OpenCV's (which uses a box window instead of a Gaussian):
-
-```bash
-python3 -c "import cv2, numpy as np; from features import *; g = cv2.imread(DATA + '/terrain_city.jpg', 0); r = harris_response(g); o = cv2.cornerHarris(g.astype(np.float32), 5, 3, 0.05); print('correlation', np.corrcoef(r.ravel(), o.ravel())[0, 1])"
-```
-
-You should see a correlation above 0.9. The values differ by a constant factor (OpenCV does not divide
-the Sobel output by 8, and averages with a 5 × 5 box): only the **shape** of R matters for detection.
-
-## Step 4 — Characteristic scale (TODO 4)
-
-> [!TASK]
-> **TODO 4.** `characteristic_scale(grey, x, y, sigmas)` returns the value of `sigmas` (a float) where the
-> **scale-normalised Laplacian** of lesson section 3 has its largest absolute value at the pixel
-> column `x`, row `y`. Work in float32.
-
-```bash
-python3 scale_demo.py
-```
-
-The table must show `sigma*` close to `r/sqrt2` for r = 4, 8, 16. Open `scale_curves.png`: your σ* for
-radii 3 to 20 px lies on the straight line r/√2 — the measured scale is **proportional** to the size of the
-blob. Doubling the radius doubles σ*. This is the principle of SIFT's scale selection. (The small steps come
-from the list of σ values tried, 8 % apart.)
-
-## Step 5 — OpenCV's ORB and SIFT (TODOs 5 and 0)
-
-> [!TASK]
-> **TODO 5.** `detect_keypoints(img, method="ORB", max_points=10000)` accepts a colour (BGR) or grey
-> picture and returns `(keypoints, descriptors)`: a Python **list** of `cv2.KeyPoint` and the descriptor
-> array. `method` is `"ORB"` or `"SIFT"` (OpenCV's detectors with default settings, at most `max_points`
-> points); any other name raises `ValueError`. The "In NAVERA" section of the lesson shows how NAVERA
-> creates its SIFT detector.
-
-```bash
-python3 features.py
-```
-
-Open `keypoints_city.png`: each circle is a keypoint, its radius the keypoint's `size` (scale), the line its
-`angle`. Now look inside the descriptors:
-
-```bash
-python3 peek.py
-```
-
-> [!TASK]
-> **TODO 0.** At the top of `features.py`, set `ORB_BYTES` and `SIFT_LENGTH` to the length of **one**
-> descriptor (the second number of `descriptor array shape`). Note also the `dtype` of each.
-
-## Step 6 — Hamming distance (TODO 6)
-
-> [!TASK]
-> **TODO 6.** `hamming(a, b)`: the number of different bits between two `uint8` descriptors (lesson
-> section 4). Return a Python `int`. Do it with numpy, without a loop over the bits.
-
-Test it against OpenCV:
-
-```bash
-python3 -c "import numpy as np, cv2; from features import hamming; a = np.array([0b10110000], np.uint8); b = np.array([0b10010001], np.uint8); print(hamming(a, b), cv2.norm(a, b, cv2.NORM_HAMMING))"
-```
-
-Both numbers must be 2 (the lesson's worked example).
-
-## Step 7 — Repeatability (TODO 7)
-
-> [!TASK]
-> **TODO 7.** `project(points, H)` maps `(N, 2)` points with the homography `H` (homogeneous coordinates,
-> lesson section 5) and returns `(N, 2)`.
-> `repeatability(pts_a, pts_b, H, shape_b, eps=3.0)`: take only the A points whose projection falls
-> **inside** B (`0 ≤ x < w` and `0 ≤ y < h`); return the share of them that have a B point within `eps`
-> pixels of their projection. Return `0.0`
-> when no A point falls inside. `scipy.spatial.cKDTree` (already imported) finds nearest neighbours fast:
-> read its `query` method in the scipy documentation (`help(cKDTree.query)` in Python).
-
-Test it on one pair, Harris against Harris:
-
-```bash
-python3 -c "import cv2, json, numpy as np; from features import *; p = json.load(open(DATA + '/pairs.json'))[0]; a = cv2.imread(DATA + '/' + p['map'], 0); b = cv2.imread(DATA + '/' + p['photo'], 0); print(p['name'], repeatability(harris_corners(a, 1000), harris_corners(b, 1000), np.array(p['H']), b.shape))"
-```
-
-You should get about 0.6 for `city_rot35`.
-
-## Step 8 — Spread and matchability (TODO 8), CLAHE
-
-> [!TASK]
-> **TODO 8.** `spread(keypoints, shape, grid=(4, 4), min_per_cell=3)`: cut the picture into a grid of
-> `grid = (columns, rows)` equal cells and return the share (0 to 1) of cells that hold at least
-> `min_per_cell` keypoints. A keypoint's position is `kp.pt = (x, y)`; a point on the right or bottom
-> border must still land in a cell. `matchability(img, enough=300)`: the score of lesson section 6,
-> with ORB keypoints and `max_points=500`.
-
-```bash
-python3 features.py
-```
-
-The last lines list the matchability of six pictures: about 1 for the city, the olives and the clear drone
-photo, 0 for the water and the blurry dark photo. Now see what contrast stretching does:
-
-```bash
-python3 clahe_demo.py
-```
-
-```bash
-python3 clahe_demo.py terrain_coast_water.jpg
-```
-
-Open `clahe_demo.png` after each run (left: original, right: CLAHE).
+| Lesson | Lab | You write |
+|---|---|---|
+| (nothing to read first) | Step 0 | a ranking |
+| §1 gradients | Step 1 | `gradients` |
+| §2 structure tensor, Harris | Steps 2–3 | `structure_tensor`, `eigen2`, `harris` |
+| §3–§4 scale, repeatability | Step 4 | `repeatability` |
+| §6 texture, matchability | Step 5 | (no new code) |
+| §5 descriptors | Step 6 | `hamming` |
+| §7 tensors and layers | Step 7 | `PatchNet` |
+| §8 loss, gradient descent | Steps 8–9 | `triplet_loss`, `train` |
+| §9 validation, overfitting | Steps 10–11 | (experiments) |
+| all | Step 12 | the report |
 
 > [!NOTE]
-> On the water picture, `clahe_demo.py` says **68** keypoints before CLAHE, but `measure.py` (Step 9)
-> will say only about **5** for the same picture. This is not a bug. `clahe_demo.py` uses NAVERA's
-> setting `contrastThreshold=0.02`, which keeps weaker points. Your `detect_keypoints()` and
-> `measure.py` use OpenCV's default, 0.04 (lesson section 3, *Going further — SIFT in four steps*, "Rejection"). (The dark drone photo also
-> gives 68 before CLAHE, by chance.)
->
-> On the dark drone photo, CLAHE brings the city back. On the water, the new keypoints sit on ripples
-> and on the shadows of sea plants — will they be there on the next satellite picture?
+> **Predict, then run.** Each `PREDICT_…` in `answers.py` is written **before** you run the step. It is never
+> marked right or wrong; being wrong and finding out why is the point.
 
-## Step 9 — Measure everything and write the report
+## Session 1 — Scout & detector (about 2 h 30)
 
-`measure.py` runs your functions on all the pairs and terrains and saves `results.json`:
+## Step 0 — The scout
+
+No code. You are the scout of a survey team: before the drone flies, you say where its camera will find its way.
+Open the six map patches (they are also the picture at the top of the lesson):
 
 ```bash
-python3 measure.py
+mkdir -p look && cp /data/academy/21-features/terrain_*.png look/
 ```
 
-It prints a table of repeatability (Harris / ORB / SIFT / chance) for each pair, the ORB Hamming medians,
-the SIFT counts per terrain and the matchability scores. Open `results.json` too.
+Click them in the file tree (⟳ to refresh). Each is about 500 m × 500 m of ground: city, olives, fields, saltpans,
+coast, sea.
 
 > [!TASK]
-> **Report.** Open [report.md](file:./report.md) and replace each TODO with at least 40 words of your own:
->
-> 1. **Scale** — quote the `city_zoom4` repeatability of Harris and SIFT (from your results.json, e.g.
->    `0.32` or `32 %`), and of `city_rot35`; explain the difference with the lesson's ideas; compare with
->    the chance level.
-> 2. **Descriptors** — quote both Hamming medians (same point, random) and explain the random value.
-> 3. **Terrain** — which terrains are easy or hopeless, with numbers; why the olive grove is a trap; what
->    CLAHE did on water.
-> 4. **World** — discuss at least two real places on Earth (a city such as Paris or Singapore, the Sahara
->    or Namib dunes, the Alps or Andes, the open ocean, the Wadden Sea, the Salar de Uyuni, Greenland…):
->    what would the camera see, what would SIFT and the matchability score do? (The lesson's block
->    *Going further — Terrains around the world*, in section 6, gives ideas.)
->
-> The check verifies the four headings, the word counts, the quoted numbers and the named places — and it
-> recomputes one repeatability value with your code, so run `measure.py` again after any change.
+> **Predict** (`PREDICT_RANK`): rank the six from the most keypoints to the fewest, and say which one you would
+> trust most to be found again on a map. Save the file (`Ctrl+S`). Then read lesson Part A (§1–§6).
 
-## Step 10 — Check your work
+## Step 1 — Gradients (TODO 1)
 
-Press **✔ Check my work**. There are 14 checks: each TODO is tested on synthetic cases with known answers
-(a ramp, a white square, disks, random bytes) and on the dataset, then `results.json` and `report.md`.
-Read the hint of any red line, fix, save, check again.
+Open [navera_lite/features.py](file:./navera_lite/features.py). Each `TODO` function keeps its docstring and ends
+with `return None   # TODO…`: replace that line with your code. The finished functions (`harris_corners`, `detect`,
+`clahe`, `warp_points`, `spread`, `matchability`) are for you to read and use.
+
+**TODO 1** `gradients(gray)`: lesson §1, with OpenCV.
+
+<details><summary>🧰 OpenCV's Sobel</summary>
+
+```python
+import cv2, numpy as np
+img = np.array([[0, 0, 10, 10]] * 3, np.uint8)
+cv2.Sobel(img, cv2.CV_32F, 1, 0, ksize=3)     # float32 result; (1, 0) = derivative in x, (0, 1) = in y
+# row 1 → [0., 40., 40., 0.]: the raw sums (a step of 10, Sobel weights 1 2 1 → 40). Divide by 8 for the course rule.
+```
+</details>
+
+```bash
+python3 run_features.py test
+```
+
+The TODO 1 line must be ✔ (the others are later TODOs).
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. Two calls to `cv2.Sobel`, one with (1, 0), one with (0, 1); both with `cv2.CV_32F` and `ksize=3`.
+2. [0, 24, 24, 24, 24, 0] instead of [0, 3, 3, 3, 3, 0]: the raw sums are 8 times the slope — divide by 8.
+3. Negative gradients missing (all values ≥ 0), or a uint8 result: the output depth must be `cv2.CV_32F`, not `-1`.
+4. The order of the result: `return gx, gy` (x first).
+</details>
+
+## Step 2 — The structure tensor and its eigenvalues (TODO 2, TODO 3)
+
+**TODO 2** `structure_tensor(gx, gy, sigma=1.5)`: lesson §2, "In code". **TODO 3** `eigen2(sxx, syy, sxy)`: the 🧰
+formula of lesson §2; it must work on plain numbers and on whole arrays (use `np.sqrt`, not `math.sqrt`).
+
+<details><summary>🧰 A Gaussian window with OpenCV</summary>
+
+```python
+a = np.zeros((7, 7), np.float32); a[3, 3] = 1.0
+b = cv2.GaussianBlur(a, (0, 0), 1.5)     # (0, 0): OpenCV chooses the kernel size from sigma = 1.5
+b.sum()                                   # ≈ 1.0 — a weighted average: the weights sum to 1
+```
+</details>
+
+```bash
+python3 run_features.py test
+```
+
+```bash
+python3 run_features.py house
+```
+
+`house` prints Sxx, Syy, Sxy at three points of `house.png` (a synthetic top view of one house: an L-shaped roof with
+a courtyard, a garden wall, a water tank, a road; `cp /data/academy/21-features/house.png look/` to see it).
+
+> [!TASK]
+> With your `eigen2` (a `python3 -c "…"` line or a small file) and the Harris formula (k = 0.04), classify each point:
+> `KIND_1`, `KIND_2`, `KIND_3` (`"flat"`, `"edge"` or `"corner"`), write `R_POINT_3` (no decimals), and `EXPLAIN_EIGEN`:
+> what do the two eigenvalues say about a window, and why does Harris not compute them?
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. TODO 2: three products `gx * gx`, `gy * gy`, `gx * gy`, each blurred with `cv2.GaussianBlur(…, (0, 0), sigma)`;
+   return the three (sxx, syy, sxy).
+2. eigen2(5, 5, 3) gives (6.73, 3.27): under the root you wrote sxy, not sxy². eigen2(400, 0, 0) gives
+   (600, −200): it is ((a − c)/2)², not (a − c)².
+3. (2, 8) instead of (8, 2): l1 is the larger one — the "+" root first.
+4. `TypeError: only size-1 arrays` or `only length-1 arrays`: `math.sqrt` cannot take an array, `np.sqrt` can.
+5. `python3 -c "from navera_lite.features import eigen2; print(eigen2(103.1, 103.3, 57.2))"`
+</details>
+
+## Step 3 — Harris (TODO 4)
+
+**TODO 4** `harris(gray, k=0.04, sigma=1.5)`: lesson §2, with your TODO 1 and TODO 2. No Python loop over pixels:
+numpy works on the whole arrays at once.
+
+```bash
+python3 run_features.py test
+```
+
+```bash
+python3 run_features.py house
+```
+
+Open `out/house_corners.png`: the 12 strongest corners (red crosses), found by the given `harris_corners` with your
+`harris`. Are they on roof corners, on the wall, on the water tank? Then the city:
+
+```bash
+python3 run_features.py corners
+```
+
+Open `out/harris_city.png`.
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. R > 0 everywhere, even on the sides of the square? Check the sign: det − k·trace², det = Sxx·Syy − Sxy².
+2. `harris_corners` finds nothing on the house: is your R a 2-D array of the picture's shape?
+3. Use the parameters: `structure_tensor(gx, gy, sigma)`, and `k` in the formula — the check changes them.
+</details>
+
+## Step 4 — Repeatability (TODO 5)
+
+**TODO 5** `repeatability(pts1, pts2, H, shape2, tol_px=3.0)`: lesson §4. Project with the given `warp_points(H,
+pts1)`, keep the projections inside picture 2, and find for each the nearest point of picture 2.
+
+<details><summary>🧰 Nearest neighbours with numpy broadcasting</summary>
+
+```python
+p = np.array([[0.0, 0.0], [10.0, 0.0]])            # 2 points
+q = np.array([[1.0, 0.0], [10.0, 5.0], [9.0, 1.0]]) # 3 points
+d = np.hypot(p[:, None, 0] - q[None, :, 0], p[:, None, 1] - q[None, :, 1])   # (2, 3): every distance
+d.min(axis=1)                                        # [1.0, 1.414…]: each p's nearest q
+(d.min(axis=1) <= 1.2).mean()                        # 0.5: the share of True
+```
+(`p[:, None, 0]` has shape (2, 1) and `q[None, :, 0]` shape (1, 3): numpy repeats them into (2, 3).)
+</details>
+
+> [!TASK]
+> **Predict** (`PREDICT_ZOOM`): in a photo **4 times closer** than the map, which detector, Harris, ORB or SIFT, will
+> find the fewest of its map points again, and why?
+
+```bash
+python3 run_features.py test
+```
+
+```bash
+python3 run_features.py repeat
+```
+
+It measures Harris (yours), ORB and SIFT with 1 000 points each on six photo pairs, and the chance level. Open
+`out/repeat.png`.
+
+> [!TASK]
+> Write `REP_HARRIS_ROT35`, `REP_HARRIS_ZOOM4`, `REP_SIFT_ZOOM4` and `CHANCE` (two decimals), and `EXPLAIN_SCALE`:
+> why does Harris survive the 35° turn but not the 4× zoom, while SIFT survives both?
+
+<details><summary>Read this after you ran `repeat`: what the table says</summary>
+Harris's R depends only on the eigenvalues, so a turn changes nothing; but its window is fixed (1.5 px): 4 times
+closer, it finds the photo's small details (windows, low walls, parked cars) that the map does not have at its pixel
+size. SIFT picks a scale per point, so it finds the same structures at both sizes. ORB's pyramid has only 8 levels, 1.2 apart: at 4× most of its map points have no level that fits, and a fixed
+3 px tolerance punishes points found on coarse levels. Every
+detector is far above chance here: the map is a clean drawing. Repeatable positions are necessary, not sufficient:
+Harris gives no scale and no direction, so it has no descriptor that could be compared across a 4× zoom.
+</details>
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. Three parts: `p = warp_points(H, pts1)`; a boolean mask "inside" with `0 ≤ x ≤ w − 1` and `0 ≤ y ≤ h − 1`
+   (`h, w = shape2[:2]`); then the 🧰 distances from the inside points to `pts2`.
+2. 1/3 instead of 0.5 on the docstring example: (50, 50) is outside the 20 × 20 picture 2 — keep only the inside
+   points before you divide.
+3. `ValueError: zero-size array` or `nan`: no point inside, or `pts2` empty — return 0.0 first.
+4. 0.0 when you expect 0.5: compare with `<= tol_px`, and take the minimum over picture 2's points (axis=1).
+</details>
+
+## Step 5 — The scout's terrains (no new code)
+
+```bash
+python3 run_features.py terrain
+```
+
+It counts SIFT keypoints (with OpenCV's default contrast threshold 0.04, and with NAVERA's 0.02), and computes the
+given `matchability` of every terrain, of two drone views of the city (clear, and at dusk with motion blur) and of
+the two real frames. Then CLAHE on the dark photo. Open `out/terrains.png` and `out/clahe_dark.png`.
+
+> [!TASK]
+> Write `MOST_KEYPOINTS` (a terrain name: `"city"`, `"olives"`…), `SIFT_FIELDS`, `DARK_SIFT_BEFORE`,
+> `DARK_SIFT_AFTER` (whole numbers) and `EXPLAIN_TERRAIN`: which terrain fooled your Step 0 ranking, and why do many
+> keypoints not mean easy matching? Look at `real_coast.jpg` too (copy it into `look/`): the real sea is not empty.
+> Will its keypoints be on the map?
+
+<details><summary>Stuck? Hints</summary>
+
+1. The numbers are in the first column of the table (`SIFT`), not the `SIFT 0.02` one.
+2. "Fooled": compare your `PREDICT_RANK` with the SIFT column; then think of lesson §6's three traps and Step 4's
+   `olives_rot35_zoom` line (ORB).
+</details>
+
+> [!TIP] 🏅 End of session 1 — Corner hunter
+> Press **✔ Check my work**. When checks 1–7 pass (TODO 1–5 and Steps 0–5; the others are session 2), you earn the
+> **Corner hunter** badge. If the class session ends here, stop here, and read lesson Part B before session 2.
+
+## Session 2 — Learner (about 2 h 30 to 3 h)
+
+## Step 6 — Binary descriptors (TODO 6)
+
+**TODO 6** `hamming(d1, d2)`: lesson §5 and its 🧰 box. Return a Python `int` (`int(...)`).
+
+```bash
+python3 run_features.py test
+```
+
+```bash
+python3 run_features.py hamming
+```
+
+It pairs the ORB keypoints of the map patch and of the photo turned by 35° whose positions match under H, and
+compares their descriptors with your `hamming`; then random pairs. Open `out/hamming.png`.
+
+> [!TASK]
+> Write `HAMMING_SAME`, `HAMMING_RANDOM` and `EXPLAIN_HAMMING`: why is the random median close to 128, and what does
+> the gap between the two allow a matcher to do?
+
+<details><summary>Stuck? Hints</summary>
+
+1. `np.bitwise_xor(a, b)` then `np.unpackbits(…)` then `.sum()`; make both uint8 first (`np.asarray(d, np.uint8)`).
+2. 6 instead of 2: you counted the bits that are EQUAL — count the ones of the XOR.
+</details>
+
+## Step 7 — The network (TODO 7)
+
+Open [navera_lite/learned_desc.py](file:./navera_lite/learned_desc.py). Read `to_tensor` first: it turns uint8
+patches into the network's input.
+
+> [!TASK]
+> **Predict** (`PREDICT_PARAMS`): how many numbers will PatchNet learn? Then count `conv1`'s parameters by hand
+> (lesson §7's worked example does `conv2`): `N_PARAMS_CONV1`.
+
+**TODO 7** `PatchNet`: write `__init__` (the four layers of the docstring's table, **with those names**: your weights
+are loaded into them by the check, mission 22 and Sim Lite) and `forward` (the table in order). Lesson §7's 🧰 box
+shows the pieces; two more:
+
+<details><summary>🧰 PyTorch: functions without parameters</summary>
+
+```python
+import torch, torch.nn.functional as F
+x = torch.randn(5, 8, 6, 6)          # 5 samples, 8 maps of 6 × 6
+F.relu(x).min()                       # ≥ 0: negatives set to 0
+F.max_pool2d(x, 2).shape              # torch.Size([5, 8, 3, 3]): half the width and height
+x.flatten(1).shape                    # torch.Size([5, 288]): each sample's maps in one row (8 · 6 · 6)
+F.normalize(torch.tensor([[3.0, 4.0]]), dim=1)   # tensor([[0.6, 0.8]]): each row divided by its length
+```
+</details>
+
+```bash
+python3 run_features.py test
+```
+
+The TODO 7 line must say 88 896 parameters, output (2, 64), row lengths 1.0.
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. `__init__`: first `super().__init__()`, then `self.conv1 = nn.Conv2d(1, 16, 3, padding=1)` and the three others
+   from the table.
+2. `forward`: three times "conv, `F.relu`, `F.max_pool2d(…, 2)`", then `x.flatten(1)`, then `self.fc`, then
+   `F.normalize(…, dim=1)`; return it.
+3. `mat1 and mat2 shapes cannot be multiplied (2x4096 and 1024x64)`: one pooling is missing (8 × 8 maps instead of
+   4 × 4); `(2x16384 …)`: two are missing; `(2x65536 …)`: no pooling at all.
+4. Parameters wrong (e.g. 88 880): a layer without its bias, or another kernel size; rows of length ≠ 1: the last
+   `F.normalize` is missing.
+5. `cannot assign module before Module.__init__() call`: `super().__init__()` must come first.
+</details>
+
+## Step 8 — The loss (TODO 8)
+
+**TODO 8** `triplet_loss(da, dp, margin=0.5)`: lesson §8. Work on the whole batch at once with tensors: no loop, no
+`.item()`, no numpy (the loss must keep its gradient).
+
+<details><summary>🧰 PyTorch: all the distances of a batch, and the diagonal</summary>
+
+```python
+a = torch.tensor([[0.0, 0.0], [1.0, 0.0]]); b = torch.tensor([[0.0, 1.0], [1.0, 1.0], [3.0, 0.0]])
+d = torch.cdist(a, b)                 # (2, 3): d[i, j] = ‖a[i] − b[j]‖ → [[1.0, 1.414, 3.0], [1.414, 1.0, 2.0]]
+d.diagonal()                          # tensor([1., 1.]): d[0, 0], d[1, 1]
+mask = torch.eye(2, 3, dtype=torch.bool)               # True on the diagonal
+d.masked_fill(mask, float("inf")).min(dim=1).values    # tensor([1.414, 1.414]): each row's smallest OFF the diagonal
+torch.clamp(torch.tensor([-0.2, 0.3]), min=0)          # tensor([0.0, 0.3]) — max(0, x); F.relu(x) is the same
+```
+</details>
+
+```bash
+python3 run_features.py test
+```
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. Three quantities for the whole batch: every distance anchor ↔ photo (one matrix), each anchor's distance to ITS
+   photo, each anchor's distance to the closest OTHER photo. The 🧰 box has one tool for each.
+2. 0.2620 instead of 0.7620 (exactly 0.5 too small): the margin is missing.
+3. 0.5000 on the second line: the diagonal was not left out, so d_neg = d_pos and each loss is exactly the margin.
+4. `element 0 of tensors does not require grad`: somewhere you left PyTorch (`.item()`, `float()`, numpy, or
+   `torch.tensor(...)` of a result).
+5. On the GPU: `torch.eye(len(da), dtype=torch.bool, device=da.device)`. Last hint, the last line:
+   `return F.relu(margin + d_pos - d_neg).mean()`.
+</details>
+
+## Step 9 — Train it (TODO 9)
+
+**TODO 9** `train(model, train_a, train_p, val_a, val_p, …)`: the least guided function. The docstring is the
+specification; lesson §8 gives the four lines of one step. First write, on paper, the plan: what happens once, what
+happens every epoch, what happens every batch, and what happens after each epoch to measure the validation loss
+(without learning: `model.eval()` and `with torch.no_grad():`). Then code it.
+
+<details><summary>🧰 PyTorch: an optimiser, a random order, and no gradients</summary>
+
+```python
+opt = torch.optim.Adam(model.parameters(), lr=1e-3)    # once, before the epochs
+g = torch.Generator().manual_seed(0)
+order = torch.randperm(10, generator=g)                # tensor([4, 1, 7, …]): 0..9 shuffled, the same every run
+order[0:4], order[4:8], order[8:12]                    # batches of 4 (the last one has only 2)
+x[order[0:4]]                                          # those 4 samples of a tensor x
+with torch.no_grad():                                  # inside: no gradients are recorded (faster, no learning)
+    v = model(x[:4])
+float(loss), loss.item()                               # a 1-number tensor as a Python float (only for printing)
+```
+(On the GPU, move the order to the data: `order.to(train_a.device)`.)
+</details>
+
+A quick run on 512 pairs first:
+
+```bash
+python3 run_features.py train --n-train 512 --epochs 3
+```
+
+The training loss should go down. Then the real training (about 15 s on the GPU; on the CPU add
+`--device cpu --n-train 4096 --epochs 4`, about 2–5 minutes; 8 epochs on all pairs take 10–25 minutes there):
+
+```bash
+python3 run_features.py train
+```
+
+It prints one line per epoch, saves your weights in `my_desc.pt` and the curves in `out/loss_12288.png` (or the
+number of pairs you used), and prints the matching score on the validation pairs.
+
+> [!TASK]
+> Write `VAL_SCORE_FULL` (three decimals, from the last line).
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. Once: an Adam optimiser on `model.parameters()` with `lr`, a seeded `torch.Generator`, an empty `history`.
+   Every epoch: `model.train()`, a new `torch.randperm(n, generator=g)`, then the batches.
+2. Every batch: `idx = order[start:start + batch]` (skip it if it has fewer than 2 pairs), the loss on
+   `model(train_a[idx])` and `model(train_p[idx])`, then the three lines of lesson §8. Keep `loss.item()` in a list.
+3. After the batches: `model.eval()`, `with torch.no_grad():` the loss of each validation batch; the row
+   `{"epoch": e, "train_loss": mean, "val_loss": mean}`; `history.append(row)`; `if log: log(row)`.
+4. The training loss does not move: `opt.zero_grad()` missing (gradients pile up) or `opt.step()` missing; it moves
+   but the validation loss is computed with `model.train()` and gradients: wrap it in `torch.no_grad()`.
+5. `Expected all tensors to be on the same device`: `order = torch.randperm(...).to(train_a.device)`.
+</details>
+
+## Step 10 — Overfitting, live
+
+> [!TASK]
+> **Predict** (`PREDICT_OVERFIT`): with only 300 training pairs and 30 epochs, what will the training loss and the
+> validation loss do? Then run (it does not overwrite `my_desc.pt`):
+
+```bash
+python3 run_features.py train --n-train 300 --epochs 30 --out overfit.pt
+```
+
+Open `out/loss_300.png` next to `out/loss_12288.png`.
+
+> [!TASK]
+> `EXPLAIN_OVERFIT`: what happened to the two losses with 300 pairs, and why? At which epoch would you have stopped?
+
+## Step 11 — Learned vs OpenCV
+
+```bash
+python3 run_features.py compare
+```
+
+It measures the matching score (lesson §9) on the 2 048 validation pairs for raw pixels, ORB, SIFT, an untrained
+PatchNet (random weights) and yours. Open `out/compare.png`. Try `--weights overfit.pt` too.
+
+> [!TASK]
+> Write `SCORE_ORB`, `SCORE_SIFT`, `SCORE_UNTRAINED`, `SCORE_LEARNED` (three decimals) and `EXPLAIN_LEARNED`: why does
+> your network win here, and what would you need to measure before trusting it on a real drone?
+
+<details><summary>Read this after you ran `compare`: a fair comparison?</summary>
+The descriptors are compared on the same patches, at the same place, upright (a matcher turns the photo north-up
+from the drone's heading first, as mission 08's like_map did, and NAVERA does). SIFT was given its best patch size
+(we tried several). ORB and SIFT were designed for any picture; your network was trained for <b>this</b> kind of pair:
+drawn map views with this blur, these turns and this noise. It wins on its home ground. A real camera brings other
+light, seasons, shadows, 3-D buildings and a lens: the honest next step is a test set of real frames.
+</details>
+
+## Step 12 — The report
+
+Write [report.md](file:./report.md) (180–450 words, your own words, keep the four headings): the scout (your ranking
+against the measurement), the detector (repeatability numbers and scale), descriptors (Hamming medians), and the
+learner (your training, overfitting, and learned vs ORB/SIFT with the scores). Quote your numbers.
+
+> [!TASK]
+> report.md has the four headings, at least 180 words, and quotes your `REP_SIFT_ZOOM4`, your two Hamming medians and
+> your learned and SIFT scores.
+
+## Step 13 — Check, then look back
+
+Press **✔ Check my work**. It tests your functions on pictures and numbers they have never seen, loads your
+`my_desc.pt` safely (numbers only) and measures it on 1 024 patch pairs from places you never saw: it must reach a
+matching score of 0.85 (keep `my_desc.pt` from the full training of Step 9, not `overfit.pt`). When every check
+passes, you earn the **Learner** badge. Then look back, without the lesson:
+
+1. Explain to a colleague, in three sentences, why Ingenuity's camera lost its way and what NAVERA does about it.
+2. Which of your predictions was the most wrong? What did you assume?
+3. Your network beat SIFT on drawn views. What data would you collect to know whether it beats SIFT on a real drone?
+
+Write your answers in `LOOK_BACK` in `answers.py` if you want your teacher to read them (not graded).
 
 ## Going further (optional)
 
-- **A fairer tolerance.** A fixed ε = 3 px punishes keypoints detected at a coarse scale. Change a copy of
-  `repeatability` so that ε grows with the keypoint's `size` (for example `ε = max(3, 0.5·size)`). Does ORB
-  catch up with SIFT?
-- **Your own spot.** `my_spot.py` cuts a patch of the real map anywhere around Sousse and scores it:
-
-  ```bash
-  python3 my_spot.py 35.8256 10.6370
-  ```
-
-  Try the port, the beach, the salt lake (sebkha) south of Sousse, the motorway. Which places would you
-  avoid if you had to navigate by camera?
-- **Repetition detector.** For each SIFT descriptor of the olive grove, compute the distance to its nearest
-  *other* descriptor in the same picture (`cv2.BFMatcher().knnMatch(des, des, k=2)`, take the second
-  neighbour). Compare the median with the city's. A small value means "I have a twin" — the problem the
-  **ratio test** of lesson 22 solves.
-- **The real frame.** Count the SIFT keypoints of `real_aerial_frame.jpeg` per 10 000 pixels and compare
-  with the map patches. Is a real camera frame more or less textured than the satellite map?
+- **Your own scale test.** Make a fifth pair: `cv2.resize` a terrain patch by 3 and measure Harris and SIFT
+  repeatability with H = diag(3, 3, 1) (careful with the pixel centres: x' = 3x + 1).
+- **Harder negatives.** In `train`, also use the hardest impostor among the anchors (`torch.cdist(da, da)`, diagonal
+  left out). Does the validation score improve?
+- **Rotation.** Turn each validation photo patch by 45° (`np.rot90` gives 90°) and compare again: which descriptor
+  breaks? Why does ORB not break?
+- **Fly your own parts.** Mission 22 loads `my_desc.pt` from this folder: keep it.

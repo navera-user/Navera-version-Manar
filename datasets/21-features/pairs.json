@@ -1,21 +1,21 @@
 [
  {
   "name": "city_rot35",
-  "map": "terrain_city.jpg",
+  "map": "terrain_city.png",
   "photo": "pair_city_rot35.jpg",
   "heading_deg": 35.0,
-  "scale": 0.9983,
-  "what": "rotation 35 deg, same scale",
+  "zoom": 1.0,
+  "photo_m_per_px": 0.9683,
   "H": [
    [
-    0.817771,
-    0.572609,
-    -35.651011
+    0.819152044,
+    0.573576436,
+    -36.342126804
    ],
    [
-    -0.572609,
-    0.817771,
-    177.647533
+    -0.573576436,
+    0.819152044,
+    176.755432172
    ],
    [
     0.0,
@@ -26,21 +26,21 @@
  },
  {
   "name": "city_zoom2",
-  "map": "terrain_city.jpg",
+  "map": "terrain_city.png",
   "photo": "pair_city_zoom2.jpg",
   "heading_deg": 0.0,
-  "scale": 1.9966,
-  "what": "same orientation, 2x closer (scale change x2)",
+  "zoom": 2.0,
+  "photo_m_per_px": 0.4842,
   "H": [
    [
-    1.996628,
+    2.0,
     0.0,
-    -190.887116
+    -191.5
    ],
    [
     0.0,
-    1.996628,
-    -270.387959
+    2.0,
+    -271.5
    ],
    [
     0.0,
@@ -51,21 +51,21 @@
  },
  {
   "name": "city_zoom4",
-  "map": "terrain_city.jpg",
+  "map": "terrain_city.png",
   "photo": "pair_city_zoom4.jpg",
   "heading_deg": 0.0,
-  "scale": 3.8735,
-  "what": "same orientation, 4x closer (scale change x4)",
+  "zoom": 4.0,
+  "photo_m_per_px": 0.2421,
   "H": [
    [
-    3.873458,
+    4.0,
     0.0,
-    -671.121005
+    -702.5
    ],
    [
     0.0,
-    3.873458,
-    -750.152641
+    4.0,
+    -782.5
    ],
    [
     0.0,
@@ -76,21 +76,21 @@
  },
  {
   "name": "city_rot35_zoom",
-  "map": "terrain_city.jpg",
+  "map": "terrain_city.png",
   "photo": "pair_city_rot35_zoom.jpg",
   "heading_deg": 35.0,
-  "scale": 1.6139,
-  "what": "rotation 35 deg and scale x1.6 (like drone_city.jpg)",
+  "zoom": 1.6,
+  "photo_m_per_px": 0.6052,
   "H": [
    [
-    1.322063,
-    0.925718,
-    -254.919592
+    1.310643271,
+    0.917722298,
+    -249.847402886
    ],
    [
-    -0.925718,
-    1.322063,
-    138.915873
+    -0.917722298,
+    1.310643271,
+    139.108691475
    ],
    [
     0.0,
@@ -101,21 +101,21 @@
  },
  {
   "name": "olives_rot35_zoom",
-  "map": "terrain_olives.jpg",
+  "map": "terrain_olives.png",
   "photo": "pair_olives_rot35_zoom.jpg",
   "heading_deg": 35.0,
-  "scale": 1.6166,
-  "what": "olive groves, rotation 35 deg and scale x1.6",
+  "zoom": 1.6,
+  "photo_m_per_px": 0.6059,
   "H": [
    [
-    1.324268,
-    0.927262,
-    -256.060761
+    1.310643271,
+    0.917722298,
+    -249.847402886
    ],
    [
-    -0.927262,
-    1.324268,
-    138.134754
+    -0.917722298,
+    1.310643271,
+    139.108691475
    ],
    [
     0.0,
@@ -125,22 +125,22 @@
   ]
  },
  {
-  "name": "hills_rot35_zoom",
-  "map": "terrain_hills.jpg",
-  "photo": "pair_hills_rot35_zoom.jpg",
+  "name": "fields_rot35_zoom",
+  "map": "terrain_fields.png",
+  "photo": "pair_fields_rot35_zoom.jpg",
   "heading_deg": 35.0,
-  "scale": 1.6145,
-  "what": "dry hills, rotation 35 deg and scale x1.6",
+  "zoom": 1.6,
+  "photo_m_per_px": 0.6059,
   "H": [
    [
-    1.322489,
-    0.926017,
-    -254.956297
+    1.310643271,
+    0.917722298,
+    -249.847402886
    ],
    [
-    -0.926017,
-    1.322489,
-    138.040088
+    -0.917722298,
+    1.310643271,
+    139.108691475
    ],
    [
     0.0,

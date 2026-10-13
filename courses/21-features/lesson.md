@@ -1,463 +1,486 @@
 # Local features: corners, scale and descriptors
 
-> [!NOTE] In short
-> - To find a photo on a map, vision looks for a few **distinctive points** (keypoints), not for every pixel.
-> - You will learn the maths of the **Harris corner** (image gradients and the structure tensor).
-> - You will learn how SIFT finds the **scale** of a point, and how SIFT and ORB **describe** it with a vector.
-> - You will measure **repeatability** (does the detector find the same points again after a turn or a zoom?).
-> - In the lab you build Harris from scratch, use OpenCV's ORB and SIFT, and score which terrains can be matched.
+![Six terrains of NAVERA's test map, drawn from OpenStreetMap data: city, olive grove, fields, salt pans, coast and open sea. Which of them could a camera find again on a map?](assets/terrains.jpg)
 
-⏱ Core reading ~16 min · optional deep-dives marked *Going further*.
+> [!NOTE] Mission brief
+> **18 January 2024, Jezero crater, Mars.** NASA's Ingenuity helicopter takes off for its 72nd flight. Its
+> navigation tracks visual features on the ground with a downward camera, a system designed for well-textured,
+> flat terrain. That day it flies over steep, almost featureless sand ripples. About 20 seconds after take-off,
+> the flight data show that the navigation can no longer find enough features to track. Ingenuity touches down
+> with a high horizontal speed, pitches and rolls, and breaks its rotor blades. (NASA/JPL accident investigation,
+> December 2024: "the most likely scenario", since there was no black box.)
+>
+> NAVERA meets the same enemy on Earth: its validation report (3 October 2026) states that **day vision is
+> unreliable over uniform terrain** (desert, sea). Today you learn what a "feature" is, how to measure one, and
+> how to *learn* one. **Session 1 — Scout & detector:** you rank terrains by eye, build the Harris corner detector
+> from its maths and measure detectors against the truth. **Session 2 — Learner:** you compare binary descriptors,
+> then build, train and test your own neural network that describes ground patches, and you measure it against
+> OpenCV. Each session ends with a badge: **Corner hunter**, then **Learner**.
+>
+> **Start now:** open the 🛠️ **Lab** tab, do **Step 0** (five minutes, no code), then come back here for §1.
 
-A survey drone flies along a busy coast at 300 m, from one harbour town to the next.
-Halfway, its GPS receiver is jammed. The camera still works: it sees roofs, roads, palm groves,
-the beach. On board, NAVERA has a satellite map of the area. The question of this module ("Eyes on
-the ground") is easy to say and hard to answer: **where on the map is this photo?**
+**Objectives.** After this mission you can:
 
-Sliding the photo over the map pixel by pixel and comparing brightness does not work. The photo was
-taken on another day, under another sun, with another camera. It is turned (the drone's heading) and
-at another size (its height). The pixel values never agree.
+1. compute image **gradients** and the **structure tensor**, and classify a window as flat, edge or corner from
+   its **eigenvalues** and the **Harris response**;
+2. **measure** a detector: its **repeatability** against a known homography, compared with chance, and explain
+   why scale matters;
+3. compare **descriptors** (ORB's 256 bits with the Hamming distance, SIFT's 128 numbers), and predict and test
+   how **matchable** a terrain is;
+4. explain the parts of training a **neural network**: tensors, layers, a loss, gradient descent, a
+   training/validation split, and **overfitting**;
+5. **train** a small convolutional network as a patch descriptor and compare it, **measured**, with ORB and SIFT.
 
-So computer vision does what a pilot does: it ignores most of the picture and looks for a few
-**distinctive points** — the corner of a building, a crossroads, a single tree — then checks that they
-sit in the same arrangement on the map. These points are called **local features** or **keypoints**.
-This lesson is about finding them (**detection**) and summarising each one with a vector of numbers
-(**description**). Lesson 22 matches them; lesson 23 turns the match into a position.
+**You need:** convolution and the Sobel kernel divided by 8 (mission 08), homogeneous coordinates and homographies
+(mission 18), numpy arrays. Matrices 2 × 2 and derivatives are refreshed in 🧰 boxes; PyTorch is new and taught
+here. ⏱ Reading: about 100 minutes with the ✏️ checks (Part A, §1–§6, before session 1, about 55 minutes; Part B,
+§7–§9, before session 2). Lab: 4 h 30 to 6 h in two sessions.
 
-> [!NOTE]
-> NAVERA's test map and recorded frames cover **Sousse, Tunisia**, where NAVERA is developed. All the
-> pictures in the lab come from that map. The examples in the text use places from around the world; the
-> method is the same everywhere.
+**Before you start** — answer without looking (if you miss two, reread mission 08 §4 and mission 18 §7):
 
-## 1. Image gradients
+<details><summary>1. A grey ramp climbs 5 grey levels per pixel to the right. What does the course's Sobel (divided by 8) give for gx and gy?</summary>
+gx = 5, gy = 0. The raw 3 × 3 Sobel sums give 8 × 5 = 40; the course divides by 8 so that the result is in grey levels per pixel.
+</details>
 
-A grey image is a function `I(x, y)`: brightness (0–255) at column `x` and row `y`. In OpenCV and in
-this course, `x` goes right and `y` goes **down**. The **gradient** is the vector of partial
-derivatives:
+<details><summary>2. H = [[2, 0, 10], [0, 2, 0], [0, 0, 1]]. Where does it send the pixel (3, 4)?</summary>
+H · [3, 4, 1] = [16, 8, 1], so (16, 8): a zoom by 2 and a shift of 10 px to the right.
+</details>
 
-```
-∇I = (Ix, Iy) = (∂I/∂x, ∂I/∂y)
-```
+<details><summary>3. Why is cv2.Sobel(img, -1, 1, 0) on a uint8 image a trap?</summary>
+The output keeps the input's dtype, uint8: every negative gradient (brightness falling) becomes 0.
+</details>
 
-On a discrete image we estimate the derivatives with a small **convolution kernel**. The **Sobel**
-kernel for `Ix` combines a central difference (along x) with a smoothing (along y):
+<details><summary>Workspace and words (open if you need them)</summary>
 
-```
-        [-1  0  +1]
-Sx  =   [-2  0  +2]        Sy = Sxᵀ
-        [-1  0  +1]
-```
+Your files are in `~/lessons/21-features/`. The parts of NAVERA Lite you write are
+[navera_lite/features.py](file:./navera_lite/features.py) and [navera_lite/learned_desc.py](file:./navera_lite/learned_desc.py).
 
-**Worked example.** On a ramp `I(x, y) = 3x` every row is `… 0 3 6 9 …`. One Sobel row gives
-`-1·0 + 1·6 = 6`, and the weights 1, 2, 1 of the three rows add up to 4: `Sx * I = 6 × 4 = 24`, that
-is **8 times** the true slope of 3. This is why the lab divides the Sobel output by `SOBEL_NORM = 8`:
-then a ramp `I = a·x` gives exactly `Ix = a`.
+| Word | Meaning | Français |
+|---|---|---|
+| **keypoint** (local feature) | a small place in an image that can be found again: a corner, a blob | point d'intérêt |
+| **structure tensor** | 2 × 2 matrix of averaged gradient products in a window | tenseur de structure |
+| **eigenvalue** | a number λ with M·v = λ·v; here, how fast the window's content changes in one direction | valeur propre |
+| **repeatability** | share of keypoints found again in another picture of the same place | répétabilité |
+| **descriptor** | a vector that summarises the neighbourhood of a keypoint | descripteur |
+| **Hamming distance** | number of bits that differ between two binary strings | distance de Hamming |
+| **tensor** (PyTorch) | an n-dimensional array that can remember how it was computed | tenseur |
+| **loss** | one number that says how wrong the network is; training makes it smaller | fonction de perte |
+| **gradient descent** | changing every weight a little against its derivative | descente de gradient |
+| **overfitting** | learning the training examples by heart instead of the rule | surapprentissage |
+</details>
 
-> [!WARNING]
-> Gradients are negative where brightness falls. If you ask OpenCV for a `uint8` result
-> (`cv2.Sobel(img, -1, …)` on a `uint8` image), every negative value is cut to 0. Always ask for
-> `cv2.CV_32F`.
+# Part A — Classic features (read before session 1)
+
+## 1. Gradients: where brightness changes
+
+To find a photo on a map, a matcher does not compare every pixel: the light, the camera and the date differ. It
+looks for a few **distinctive places** (a roof corner, a crossroads, a lone tree) and checks that they sit in the
+same arrangement. Finding them is **detection**; summarising each one by a vector is **description**. Mission 22
+matches them; mission 23 turns the match into a position.
+
+A grey image is a function I(x, y), x to the right and y **down**. Its **gradient** (gx, gy) = (∂I/∂x, ∂I/∂y) is
+estimated with the Sobel kernel of mission 08, divided by 8 (the course rule): a ramp that climbs a grey levels per
+pixel gives exactly a. OpenCV computes it in one call, about 50 times faster than mission 08's loops, but only if
+you ask for a float result (`cv2.CV_32F`): a uint8 result cuts every negative gradient to 0.
+
+A uniform region has gradient (0, 0). An edge has a large gradient across it. A corner has large gradients in **two**
+directions. That is all a detector needs; the trick is to look at a whole small window, not one pixel.
 
 ## 2. The structure tensor and the Harris corner
 
-Take a small window `W` around a pixel and shift it by `(u, v)`. How much does the content change?
-The **sum of squared differences**, weighted by a window function `w` (a Gaussian), is
+![Flat, edge and corner: move a small window and watch whether its content changes](assets/corner_edge_flat.svg)
+
+Shift a small window by (u, v) and measure how much its content changes: the sum of squared differences, weighted
+by a Gaussian window w. For a small shift, I(x+u, y+v) ≈ I + gx·u + gy·v (a first-order Taylor expansion), so
 
 ```
-E(u, v) = Σ w(x, y) · [ I(x+u, y+v) − I(x, y) ]²
+E(u, v) ≈ Σ w·(gx·u + gy·v)²  =  [u v] · M · [u v]ᵀ           M = [ Sxx  Sxy ]     Sxx = Σ w·gx²
+                                                                 [ Sxy  Syy ]     Syy = Σ w·gy²,  Sxy = Σ w·gx·gy
 ```
 
-For a small shift, a first-order Taylor expansion gives `I(x+u, y+v) ≈ I(x, y) + Ix·u + Iy·v`, so
+M is the **structure tensor**. In code, Sxx is simply the image gx·gx blurred by a Gaussian of standard deviation σ
+(the window), and the same for Syy and Sxy: three products, three blurs.
 
-```
-E(u, v) ≈ Σ w · (Ix·u + Iy·v)²  =  [u v] · M · [u v]ᵀ
+> [!TIP] 🧰 Eigenvalues of a symmetric 2 × 2 matrix
+> For M = [[a, b], [b, c]] the two eigenvalues are λ = (a + c)/2 ± √(((a − c)/2)² + b²). They are real, and
+> λ1·λ2 = det M = ac − b², λ1 + λ2 = trace M = a + c. Example: [[5, 3], [3, 5]] gives 5 ± √(0 + 9) = **8 and 2**.
+> Each λ says how fast E grows when the window moves in one particular direction (its eigenvector).
 
-            [ Σ w·Ix²     Σ w·Ix·Iy ]     [ Sxx  Sxy ]
-with   M =  [                       ]  =  [          ]
-            [ Σ w·Ix·Iy   Σ w·Iy²   ]     [ Sxy  Syy ]
-```
-
-`M` is the **structure tensor** (also called the second-moment matrix). It is symmetric and positive
-semi-definite, so it has two real eigenvalues `λ1 ≥ λ2 ≥ 0`. `E(u, v)` is a quadratic form: the
-eigenvalues say how fast the content changes in the two principal directions.
-
-![Flat, edge and corner](assets/corner_edge_flat.svg)
-
-| Region | Eigenvalues | Moving the window… |
+| Window | Eigenvalues | Moving the window… |
 |---|---|---|
-| **Flat** (calm sea, a sabkha) | `λ1 ≈ λ2 ≈ 0` | changes nothing in any direction |
-| **Edge** (a road side, the shoreline) | `λ1 ≫ λ2 ≈ 0` | changes only across the edge |
-| **Corner** (a roof corner, a crossroads) | `λ1, λ2` both large | changes in every direction |
+| **flat** (calm sea, an empty field) | λ1 ≈ λ2 ≈ 0 | changes nothing in any direction |
+| **edge** (a road side, the shoreline) | λ1 ≫ λ2 ≈ 0 | changes only across the edge |
+| **corner** (a roof corner, a crossroads) | λ1 and λ2 both large | changes in every direction: one exact place |
 
-Computing eigenvalues at every pixel is slow. Harris and Stephens (1988) used two invariants of the
-2 × 2 matrix instead — `det M = λ1·λ2` and `trace M = λ1 + λ2` — in the **Harris response**
+Harris and Stephens (1988) avoided computing eigenvalues at every pixel by using det and trace:
 
 ```
-R = det M − k · (trace M)²  =  Sxx·Syy − Sxy² − k·(Sxx + Syy)²      (k ≈ 0.04 – 0.06)
+R = det M − k·(trace M)²  =  Sxx·Syy − Sxy² − k·(Sxx + Syy)²          k ≈ 0.04 (the course's value)
 ```
 
-`R > 0` and large at corners, `R < 0` on edges, `|R|` small in flat regions.
+**Worked example** (k = 0.04). A window where half the pixels have gradient (20, 0) and half (0, 20), weights
+summing to 1: Sxx = 200, Syy = 200, Sxy = 0. Eigenvalues 200 and 200: both large, a corner.
+R = 40 000 − 0.04 · 400² = **33 600**. Now Sxx = 200, Syy = 2, Sxy = 0: eigenvalues 200 and 2, an edge;
+R = 400 − 0.04 · 202² = **−1 232**. A diagonal edge (all gradients (14.1, 14.1)): Sxx = Syy = Sxy = 200, eigenvalues
+400 and 0, R = 0 − 0.04 · 400² = −6 400. Same Sxx and Syy as the corner: only Sxy tells them apart.
 
 ![The Harris response in the plane of the two eigenvalues](assets/harris_regions.svg)
 
-**Worked example** (k = 0.05). Three windows, the weights summing to 1:
+R > 0 and large: corner; R < 0: edge; |R| small: flat. R depends only on the eigenvalues, which do not change when
+the picture turns: the Harris response is **rotation invariant**.
 
-| Window | Gradients inside | Sxx | Syy | Sxy | det | trace | R |
-|---|---|---|---|---|---|---|---|
-| corner | half the pixels `(20, 0)`, half `(0, 20)` | 200 | 200 | 0 | 40 000 | 400 | 40 000 − 0.05·160 000 = **+32 000** |
-| vertical edge | all `(20, 0)` | 400 | 0 | 0 | 0 | 400 | **−8 000** |
-| diagonal edge | all `(14.1, 14.1)` | 200 | 200 | 200 | 0 | 400 | **−8 000** |
+> [!QUESTION] ✏️ Check
+> At a pixel, Sxx = 300, Syy = 280, Sxy = 0 (k = 0.04). R? What kind of window? And if Sxy = 289?
 
-The diagonal edge has the same `Sxx` and `Syy` as the corner; only `Sxy` tells them apart. Its
-eigenvalues are 400 and 0 — the same as the vertical edge, because eigenvalues do not depend on the
-orientation. The Harris response is therefore **rotation invariant**.
-
-**From R to points.** Two more steps turn the response map into a list of corners:
-
-1. **Threshold**: keep pixels with `R > 0.01 · max(R)`.
-2. **Non-maximum suppression (NMS)**: a corner makes a small "hill" of high `R`; keep only the top of
-   each hill — the pixels whose `R` equals the maximum of their `(2r+1) × (2r+1)` neighbourhood.
-   With OpenCV: `R == cv2.dilate(R, kernel)` (dilation replaces each pixel by the maximum around it).
-
-<details class="further"><summary>Going further (optional) — Relatives of Harris: Shi–Tomasi and FAST</summary>
-
-A close relative, **Shi–Tomasi** ("good features to track", `cv2.goodFeaturesToTrack`), uses
-`min(λ1, λ2)` instead of `R`. **FAST**, used by ORB, is a much faster corner test: it compares 16 pixels
-on a circle with the centre and needs 9 contiguous ones all brighter or all darker.
-
+<details><summary>Answer</summary>
+det = 84 000, trace = 580, R = 84 000 − 0.04 · 336 400 = <b>70 544 &gt; 0: a corner</b>. With Sxy = 289: det =
+84 000 − 83 521 = 479, R = 479 − 13 456 ≈ <b>−12 977 &lt; 0: an edge</b> (eigenvalues ≈ 579.2 and 0.8: the gradients
+are all nearly parallel).
 </details>
 
-## 3. Scale: the same roof from 150 m and from 600 m
+**From R to points.** Keep a pixel when its R is the largest of its neighbourhood (**non-maximum suppression**: a
+corner makes a little hill of R, keep only the top) and larger than 1 % of the picture's largest R; sort by R. NAVERA
+Lite's `harris_corners` does this for you with OpenCV's `dilate` (each pixel replaced by the maximum around it).
 
-Harris uses a fixed window (σ = 1.5 px in the lab). A roof corner is a corner at any height, but a
-round water tank that fills the window at 600 m becomes a big flat disk at 150 m — the window then
-sees only its flat inside. A detector that should work at any height needs to choose, for each point,
-**its own size**. This is the idea of **scale space** (Lindeberg, 1994).
+## 3. Scale: one window does not fit all
 
-The scale space of an image is the family of blurred images
+The window σ is fixed (1.5 px here). A roof corner is a corner at any height, but fly 4 times lower and the photo
+shows details the map never had: windows, parapets, cars, each a "corner" of its own for a small window. A detector
+that must work at any height should choose, for every point, **its own size**. This is **scale space**: blur the
+picture with growing σ and look, at each point, for the σ where a blob detector (the Laplacian, scaled by σ²) answers
+most strongly. That σ grows in proportion to the structure's size, so the same roof is found at a σ four times larger
+in a photo four times closer. **SIFT** (Lowe, 2004) is built on this idea; **ORB** (Rublee et al., 2011) uses a
+simpler pyramid of 8 shrunken copies of the picture.
 
-```
-L(x, y, σ) = G(σ) * I        G(σ) = Gaussian of standard deviation σ
-```
-
-A blob detector looks at the **Laplacian** `∇²L = Lxx + Lyy`. Blurring makes all derivatives smaller,
-so the responses at different σ are compared after multiplying by σ² — the **scale-normalised
-Laplacian** `σ²·∇²L`. For a bright disk of radius `r`, `|σ²·∇²L|` at its centre is largest at
-
-```
-σ* = r / √2
-```
-
-This is the **characteristic scale** of the disk. Make the disk twice as big, and σ* doubles: the
-detector measures the size of the structure, which is exactly what you need to compare a photo taken at
-150 m with one taken at 600 m. In the lab you will check `σ* = r/√2` numerically.
+<details class="further"><summary>Optional — SIFT in four steps, and the pyramid</summary>
 
 ![Scale space and the difference of Gaussians](assets/scale_space.svg)
 
-<details class="further"><summary>Going further (optional) — SIFT in four steps (Lowe, 2004)</summary>
+1. **Difference of Gaussians.** D = L(kσ) − L(σ) ≈ (k − 1)·σ²·∇²L: the scale-normalised Laplacian almost for free.
+   Scales come in **octaves** (σ doubles, the picture is halved), 3 intervals per octave, k = 2^(1/3) ≈ 1.26.
+2. **Extrema.** A keypoint is larger (or smaller) than its 26 neighbours: 8 in its DoG image, 9 above and 9 below in
+   scale. Position and scale are refined to sub-pixel accuracy.
+3. **Rejection.** Low-contrast extrema are dropped (OpenCV's contrastThreshold 0.04); points on edges are dropped
+   with the same eigenvalue idea as Harris, on the 2 × 2 Hessian.
+4. **Orientation.** A histogram of gradient directions around the point gives its main direction; the descriptor
+   is computed in that turned, scaled frame: rotation and scale invariance.
 
-1. **Difference of Gaussians (DoG).** Computing a Laplacian at every scale is expensive. Lowe used the
-   difference of two neighbouring blurred images, `D = L(kσ) − L(σ) ≈ (k − 1)·σ²·∇²L` — the
-   scale-normalised Laplacian almost for free. The scales are grouped in **octaves** (σ doubles; the
-   image is then halved), with 3 intervals per octave: `k = 2^(1/3) ≈ 1.26`.
-2. **Extrema.** A keypoint is a pixel larger (or smaller) than its 26 neighbours: 8 in its own DoG image
-   and 9 in each of the two neighbouring scales. Its position and scale are refined to sub-pixel accuracy
-   by fitting a quadratic.
-3. **Rejection.** Low-contrast extrema are dropped (`contrastThreshold`: OpenCV's default is 0.04;
-   NAVERA uses 0.02 because satellite pictures are often pale). Extrema on edges are dropped with a test
-   on the 2 × 2 Hessian of D: `trace² / det < (r + 1)² / r` with `r = 10` — the same eigenvalue idea as
-   Harris.
-4. **Orientation.** A 36-bin histogram of the gradient directions around the point (weighted by
-   magnitude) gives the dominant direction θ. The descriptor is computed in a frame turned by θ and
-   scaled by σ: that is what makes it **rotation and scale invariant**.
-
+ORB: FAST corners (16 pixels on a circle compared with the centre) on 8 pyramid levels, 1.2 apart, ranked by the
+Harris response; orientation from the intensity centroid; 256 binary comparisons of smoothed pixel pairs (BRIEF,
+turned by the orientation).
 </details>
 
-## 4. Descriptors: a vector per keypoint
+Which detector suffers most when the photo is 4 times closer is your prediction in lab Step 4: think about it with
+the paragraph above, then measure.
 
-Detection says *where*. To recognise the same point in two pictures we need a **descriptor**: a vector
-computed from the neighbourhood, close for the same ground point, far for different ones.
+## 4. Repeatability: measuring a detector
 
-![SIFT and ORB descriptors](assets/descriptor.svg)
-
-**SIFT descriptor — 128 floats.** A 16 × 16 neighbourhood (in the keypoint's own scale and rotation) is
-cut into 4 × 4 cells; each cell gets an 8-bin histogram of gradient orientations: `4 × 4 × 8 = 128`.
-The vector is normalised to unit length, values above 0.2 are clipped and it is normalised again: this
-makes it robust to contrast changes (another sun, another camera). OpenCV returns `float32` values from
-0 to 255. Two descriptors are compared with the **Euclidean (L2) distance**.
-
-**ORB descriptor — 256 bits** (Rublee et al., 2011). ORB = oriented FAST + rotated BRIEF:
-
-- FAST corners on an 8-level image pyramid (scale factor 1.2 per level), ranked by the Harris response;
-- an orientation from the **intensity centroid**: with the moments `m_pq = Σ x^p·y^q·I(x, y)` of the patch,
-  `θ = atan2(m01, m10)`;
-- 256 binary tests "is pixel `p_i` brighter than pixel `q_i`?" on a smoothed 31 × 31 patch turned by θ.
-  The 256 answers are packed in **32 bytes** (`uint8`).
-
-Two binary descriptors are compared with the **Hamming distance**: the number of bits that differ,
+A detector is useful only if it finds **the same ground points** in two pictures of the same place. Our lab photos
+were made from the map with a chosen turn and zoom, so the exact homography H from the map patch to the photo is
+known (mission 18). The **repeatability** is
 
 ```
-d_H(a, b) = popcount(a XOR b)        0 ≤ d_H ≤ 256
+repeatability = (points of picture 1 whose image H·p has a point of picture 2 within ε pixels)
+                / (points of picture 1 whose image H·p falls inside picture 2)
 ```
 
-**Worked example.** `a = 10110000`, `b = 10010001`: `a XOR b = 00100001`, two ones, `d_H = 2`.
+![Repeatability: project picture 1's points with H, look for a point of picture 2 within ε](assets/repeatability.svg)
 
-For two *unrelated* descriptors, each bit differs with probability about ½, so `d_H` is close to
-256/2 = **128**. In the lab you will measure the median for the same ground point (in the map and in a
-turned photo): it is far below that. A computer compares 32 bytes with a few XOR and "count bits"
-instructions; a SIFT comparison needs 128 subtractions, multiplications and additions on floats. This is
-why ORB is popular on small processors, and why SIFT (or a learned descriptor on the GPU, lesson 23) is
-preferred when accuracy matters.
+A point that falls outside picture 2 could never be found: it does not count, neither above nor below the line.
 
-| | SIFT | ORB |
-|---|---|---|
-| Detector | DoG extrema in scale space | FAST corners on a pyramid, Harris ranking |
-| Scale | continuous (characteristic scale) | 8 pyramid levels × 1.2 |
-| Orientation | gradient histogram | intensity centroid |
-| Descriptor | 128 × float32 (512 bytes) | 256 bits (32 bytes) |
-| Distance | Euclidean | Hamming |
-| In OpenCV | `cv2.SIFT_create()` | `cv2.ORB_create()` |
-
-## 5. Repeatability: measuring a detector
-
-A detector is useful only if it finds **the same ground points** in two pictures of the same place.
-Given two pictures A and B and the exact transform `H` (a 3 × 3 matrix) that maps a pixel of A to the
-corresponding pixel of B, the **repeatability** is
-
-```
-rep = (number of A points whose projection H·p has a B point within ε pixels)
-      / (number of A points whose projection falls inside B)
-```
-
-The projection uses **homogeneous coordinates**: `[x', y', w']ᵀ = H·[x, y, 1]ᵀ`, then the pixel is
-`(x'/w', y'/w')`. For a rotation + scale + shift the last row of `H` is `[0, 0, 1]` and `w' = 1`; lesson
-21 shows how to *estimate* `H` from matches. Here it is known, because the lab's "drone photos" were
-made from the map with a chosen rotation and scale.
-
-**Chance level.** Even random points are sometimes "repeated". With `N` points spread over `w × h`
-pixels, the probability that at least one falls within ε of a given position is about
+**Chance level.** Even random points are sometimes "repeated". With N points spread over w × h pixels, the chance
+that at least one falls within ε of a given position is about
 
 ```
 p_chance ≈ 1 − exp(−N·π·ε² / (w·h))
 ```
 
-**Worked example.** `N = 1000`, ε = 3 px, a 640 × 480 photo: `1000 · π · 9 / 307 200 = 0.092`, so
-`p_chance ≈ 1 − e^(−0.092) ≈ 0.088`. A detector scoring 0.10 is no better than chance. The lab compares
-every detector with this level, and always with the **same number of points** — more points per pixel
+**Worked example.** N = 500, ε = 2 px, a 512 × 512 picture: 500 · π · 4 / 262 144 = 0.024, so p_chance ≈ 0.024. A
+detector must be compared with this level, and always with the **same number of points**: more points per pixel
 raise the score without making the detector better.
 
-<details class="further"><summary>Going further (optional) — What the lab measures (compare with your own results after Step 9)</summary>
+> [!QUESTION] ✏️ Check
+> A detector scores 0.15 with 2 000 points on a 640 × 480 photo, ε = 3 px. Is it good?
 
-**What the lab measures** (OpenCV 4.11, 1000 points per detector, ε = 3 px, synthetic photos made from
-the Sousse map):
-
-![Repeatability measured in the lab](assets/repeatability.svg)
-
-| Pair (map patch → photo) | Harris | ORB | SIFT | chance |
-|---|---|---|---|---|
-| city, turned 35°, same scale | 0.64 | 0.69 | 0.53 | 0.10 |
-| city, 2× closer | 0.82 | 0.38 | 0.84 | 0.10 |
-| city, **3.9× closer** | **0.32** | 0.07 | **0.79** | 0.10 |
-| city, 35° and 1.6× | 0.89 | 0.53 | 0.81 | 0.10 |
-
-Read it carefully — it is more interesting than the textbook story:
-
-- **Harris is rotation invariant** (0.64 at 35°) and survives moderate zoom on sharp building corners: a
-  sharp corner is a corner at every scale.
-- At **×3.9** the close-up photo shows small details (windows, low roof walls, cars) that do not exist at the
-  map's resolution; Harris with its fixed window prefers them, and its repeatability falls to 0.32.
-  SIFT chooses a scale per point and stays at 0.79.
-- **ORB** scores low here partly because of the metric: its points on coarse pyramid levels are only
-  located to ±1.2ᴸ pixels, and a fixed 3 px tolerance punishes them. Repeatability depends on how you
-  measure it — always say which ε and how many points.
-- Even where Harris repeats well, it gives **no scale and no orientation**, so no invariant descriptor:
-  you could not *match* its corners between a map at 0.97 m/px and a photo at 0.25 m/px. Repeatable
-  positions are necessary, not sufficient.
-
+<details><summary>Answer</summary>
+Chance: 2 000 · π · 9 / 307 200 = 0.184, p ≈ 1 − e^(−0.184) ≈ <b>0.17</b>. 0.15 is <b>no better than random points</b>.
 </details>
 
-## 6. Texture and matchability: cities, dunes, the open sea
+## 5. Descriptors: a vector per keypoint
 
-A picture with many distinct, well-spread features has rich **texture**. The lab counts SIFT keypoints in
-six 512 × 512 patches of the Sousse map at zoom 17 (0.97 m per pixel, about 500 m × 500 m of ground):
+Detection says *where*. To recognise the same point in two pictures you need a **descriptor**: close for the same
+ground point, far for different ones.
 
-![Keypoints per terrain](assets/terrain_counts.svg)
+![SIFT and ORB descriptors](assets/descriptor.svg)
 
-The two extremes: the city patch gives about **6600** SIFT keypoints, the open-sea patch (`terrain_sea`)
-gives **0**, and the coast with water (`terrain_coast_water`) only about **5**. These counts use OpenCV's
-default `contrastThreshold` of 0.04. With NAVERA's lower value, 0.02, the same coast patch gives about
-68 — still very few, and mostly on the shoreline.
+- **SIFT**: a 16 × 16 neighbourhood (in the keypoint's own scale and direction) cut into 4 × 4 cells, an 8-bin
+  histogram of gradient directions in each: **128 numbers**, normalised. Compared with the Euclidean (L2) distance.
+- **ORB**: **256 bits** (32 bytes, uint8), each the answer to "is pixel p brighter than pixel q?" for a fixed list
+  of pixel pairs. Compared with the **Hamming distance**, the number of bits that differ:
 
-<details class="further"><summary>Going further (optional) — Terrains around the world (useful for report section 4)</summary>
+```
+d_H(a, b) = number of 1 bits in (a XOR b)          0 ≤ d_H ≤ 256
+```
 
-Now think about the whole world:
+**Worked example.** a = 10110000, b = 10010001: a XOR b = 00100001, two 1 bits, **d_H = 2**. A computer compares
+32 bytes with a few XOR and "count bits" instructions; that is why ORB is popular on small processors.
 
-- **Towns and farms** (Paris, Singapore, the farmland of the Nile delta): roofs, walls, roads and
-  field borders — thousands of corners and blobs, like the Sousse medina. The best case.
-- **Palm, olive and orange plantations**: many blobs, but all alike and in rows. Many keypoints is not
-  the same as many *distinct* keypoints: this is **repetitive texture**. A tree in the photo can be
-  matched to the wrong tree on the map (lesson 22's ratio test exists for this).
-- **The Sahara's sand seas** and the **Namib** dunes: long dune ridges, low contrast,
-  repetitive, and the dunes move with the wind — the satellite map may be several years old. Few
-  keypoints, and the ones found may not be on the map any more.
-- **Mountains** (the Alps, the Andes, the Himalaya): valleys, ridges and terraces give strong texture; the
-  difficulty there is relief — the camera's height above the ground changes fast, so the scale changes
-  (lesson 23).
-- **The sea** (the Mediterranean off Sousse, the open Atlantic or Pacific): nearly uniform, with waves that change every
-  second. Zero useful keypoints. The **coastline** gives an edge, not corners: positions along it are
-  badly constrained.
-- **Tidal flats and salt flats** (the Wadden Sea in Europe, the Salar de Uyuni in Bolivia): wide, flat,
-  and changed by tides or flooding — few features. Snow and ice (Greenland, Antarctica) are even worse.
+> [!TIP] 🧰 Bits in numpy
+> `np.unpackbits(np.array([5, 255], np.uint8))` → the 16 bits `0 0 0 0 0 1 0 1 1 1 1 1 1 1 1 1`;
+> `np.bitwise_xor(np.uint8(12), np.uint8(10))` → 6 (1100 XOR 1010 = 0110); `.sum()` counts the ones.
 
+> [!QUESTION] ✏️ Check
+> Two ORB descriptors of unrelated places: about how many of their 256 bits do you expect to differ, and why?
+
+<details><summary>Answer</summary>
+About <b>128</b>: for unrelated patches each comparison is a coin toss, so each bit differs with probability about ½.
+The same ground point must give far fewer; lab Step 6 measures how many.
 </details>
 
-Three more enemies of texture come from the camera: **blur** (vibration, speed), **darkness** (dusk,
-shadows) and **haze** (dust or smog in the air, very common over deserts and big cities). All three remove the small
-brightness changes detectors need.
+## 6. Texture, matchability and contrast
 
-**CLAHE** (*Contrast Limited Adaptive Histogram Equalisation*) stretches the contrast in small tiles,
-with a limit on the stretch so that noise is not amplified too much:
+A picture with many distinct, well-spread features has rich **texture**. Three traps:
 
-```python
-clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-boosted = clahe.apply(grey)
-```
+- **Uniform ground** (calm sea, sand, salt flats, a ploughed field) gives no keypoints, or a few on noise.
+- **Repetitive texture** (rows of trees, dunes) gives many keypoints that **look alike**: a tree in the photo may be
+  matched to the wrong tree on the map. Many keypoints is not the same as many *distinct* keypoints.
+- **Bunched points**: all on one road or one shoreline. A fit is then poorly constrained in rotation and scale.
 
-It brings back features in a dull picture — and also "finds" texture in ripples and noise on water,
-features that will never be on the map. More keypoints help only when they belong to things that stay
-put.
-
-**Matchability.** Before trying to match a photo, the lab scores it from 0 to 1:
+NAVERA Lite's `matchability(gray)` turns this into a score from 0 to 1 with a reason:
 
 ```
-matchability = min(1, N / 300) × spread        spread = share of 4 × 4 grid cells with ≥ 3 keypoints
+fewer than 10 ORB keypoints               → (0.0, "too few features")
+score = min(1, N / 300) × spread           spread = share of the 4 × 4 grid cells holding ≥ 3 keypoints
+spread < 0.25                              → (score, "features bunched"), otherwise (score, "ok")
 ```
 
-The spread matters as much as the count: points all on one road or one shoreline give a fit that is
-poorly constrained in rotation and scale (lesson 22).
+(N is the number of ORB keypoints, at most 500.) The camera brings three more enemies: **blur**, **darkness** and
+**haze**. **CLAHE** (Contrast Limited Adaptive Histogram Equalisation) stretches the contrast in small tiles, with a
+limit so that noise is not amplified too much. It brings back features in a dull picture, and also "finds" texture
+in ripples and noise on water, features that will never be on the map.
 
-## 🐦 How birds do it
+> [!QUESTION] ✏️ Check
+> A photo has 400 ORB keypoints, all on a straight coastal road: 3 of the 16 grid cells hold 3 or more. Score and
+> reason?
 
-Homing pigeons use landmarks. GPS loggers on pigeons near Rome and Oxford showed that, on familiar
-routes, they follow roads, rivers and field borders — long, stable, high-contrast structures — sometimes
-turning at the same motorway junctions each time (Lipp et al., 2004; Biro et al., 2004). Like a good
-keypoint, a good landmark is distinctive and stays put.
+<details><summary>Answer</summary>
+spread = 3/16 = 0.1875, score = min(1, 400/300) × 0.1875 = <b>0.19, "features bunched"</b>: many points, one line.
+</details>
 
-Large soaring birds avoid long sea crossings. Every autumn, hundreds of thousands of **white storks** and
-raptors flying from Europe to Africa gather at the **Strait of Gibraltar**, where the sea is only about
-14 km wide, or at the **Bosphorus** in Istanbul, instead of crossing the Mediterranean directly. Be careful with
-the reason. The main one is energy: soaring birds climb in **thermals** (rising warm air), which form over
-sun-heated land, not over the sea, so a long crossing means tiring flapping. A small extra reason is the
-one from this lesson: the open sea has no landmarks.
+> [!WARNING] Common wrong ideas (Part A)
+> - "A strong gradient is a corner." An edge has a strong gradient too, in **one** direction only: look at both eigenvalues.
+> - "More keypoints, better matching." Rows of olive trees give thousands of look-alike keypoints.
+> - "Repeatability 0.10 is low but useful." Compare it with chance first.
+> - "`cv2.Sobel(img, -1, …)` is fine." On uint8 it cuts negative gradients to 0: ask for `cv2.CV_32F`.
+> - "numpy gives (x, y)." `np.nonzero` gives (rows, columns) = (y, x).
 
-Navi is a **barn swallow**. Swallows flap all the way and cross the sea and the desert on a broad front,
-catching insects as they fly. She does not need the coast — but she would not try to recognise a wave.
+# Part B — Learning a descriptor (read before session 2)
 
-NAVERA cannot choose its route, but it can do the next best thing: **measure** how much texture a picture
-has, and say honestly when day vision has nothing to hold on to.
+## 7. From hand-made to learned: tensors and layers
+
+SIFT and ORB were **designed by hand**: someone chose 4 × 4 cells, 8 directions, 256 pixel pairs. A **neural
+network** instead *learns* its own description from examples: thousands of pairs of patches that show the same
+ground point, one from the map and one from a "drone photo" (turned a little, scaled, tilted, blurred, darker,
+noisier). The lab's pairs come from views of NAVERA's test map rendered with exact ground truth, so every pair is
+known to be right. This is how NAVERA's own vision works today: much of it is learned (In NAVERA, below).
+
+> [!TIP] 🧰 PyTorch in ten lines
+> ```python
+> import torch
+> x = torch.tensor([[1.0, 2.0], [3.0, 4.0]])   # a tensor: like a numpy array, shape torch.Size([2, 2])
+> x.shape, x.mean(), x @ x.T                   # the same operations as numpy (@ is the matrix product)
+> w = torch.tensor(3.0, requires_grad=True)    # a number PyTorch must be able to differentiate
+> loss = (w * 2.0 - 10.0) ** 2                 # 16.0 — PyTorch remembers how it was computed
+> loss.backward()                              # computes d(loss)/dw for every tensor that requires it
+> w.grad                                       # tensor(-16.) = 2·(2w − 10)·2 at w = 3
+> torch.nn.Conv2d(1, 16, 3, padding=1)         # a layer: 16 learnable 3 × 3 filters (weights + 16 biases)
+> x.to("cuda")                                 # move a tensor (or a model) to the GPU, if there is one
+> ```
+> A model is a class derived from `torch.nn.Module`: its `__init__` creates the layers (after `super().__init__()`),
+> its `forward(x)` says in which order they are applied. `model(x)` calls `forward`.
+
+**A layer** is a function with **parameters** (numbers that training changes):
+
+- a **convolution** `Conv2d(c_in, c_out, 3)` is mission 08's 3 × 3 kernel, but c_out of them, each looking at all
+  c_in input maps, and their 9·c_in weights are learned instead of chosen; `padding=1` keeps the size;
+- **ReLU** replaces negative values by 0 (without it, many layers would collapse into one linear function);
+- **max-pooling 2 × 2** keeps the largest value of each 2 × 2 block: half the width, half the height;
+- a **linear** layer `Linear(n_in, n_out)` is a matrix n_out × n_in plus a bias: every output sees every input.
+
+![PatchNet, the network you build: three conv blocks, flatten, one linear layer, then length 1](assets/patchnet.svg)
+
+At the end, each 64-number output is divided by its length, so every descriptor is a unit vector: distances
+between descriptors then lie between 0 and 2, whatever the patch's contrast.
+
+**Worked example — counting parameters.** `conv2 = Conv2d(16, 32, 3)`: each of its 32 filters has 16 × 3 × 3 = 144
+weights and 1 bias, so 32 × 145 = **4 640** parameters. A linear layer from 1 024 inputs to 64 outputs:
+64 × 1 024 + 64 = 65 600. Your whole network has fewer than 100 000: tiny next to the millions of modern vision
+models, small enough to train in seconds on the Jetson's GPU.
+
+> [!QUESTION] ✏️ Check
+> After `conv1` (padding 1) and one 2 × 2 pooling, what is the shape of the output for one 1 × 32 × 32 patch? And
+> after the three blocks?
+
+<details><summary>Answer</summary>
+16 × 16 × 16 (16 maps, half the size); after three blocks 64 × 4 × 4 = 1 024 numbers, which `flatten` turns into one
+vector for the linear layer.
+</details>
+
+## 8. A loss and gradient descent
+
+Training needs one number that says how wrong the network is: the **loss**. Ours is the **triplet loss**. For a batch
+of B pairs, da[i] and dp[i] are the descriptors of the same ground point (the **anchor** from the map, the
+**positive** from the photo). Every other dp[j] is an **impostor**. Let d_pos = ‖da[i] − dp[i]‖ and d_neg the distance
+to the **closest** impostor in the batch (the hardest one). Then
+
+```
+loss_i = max(0, margin + d_pos − d_neg)          loss = mean over the batch          margin = 0.5
+```
+
+![The triplet loss pulls the true pair together and pushes the impostor away](assets/triplet.svg)
+
+**Worked example.** d_pos = 0.3, d_neg = 0.9: 0.5 + 0.3 − 0.9 = −0.1 → loss 0: this point is already well
+described, nothing to learn. d_pos = 0.3, d_neg = 0.6: loss **0.2**: the impostor is too close.
+
+**Gradient descent.** Every weight w gets a small step against the derivative of the loss: w ← w − lr · ∂loss/∂w (lr,
+the **learning rate**, sets the step size). One weight, worked: loss(w) = (2w − 6)², lr = 0.05, start w = 0.
+∂loss/∂w = 2(2w − 6)·2 = −24, so w becomes 0 + 0.05 · 24 = 1.2 and the loss falls from 36 to (2.4 − 6)² = 12.96; next
+step: derivative −14.4, w = 1.92, loss 4.67. It slides towards w = 3, where the loss is 0.
+
+A network has 88 896 weights, not one. PyTorch's `loss.backward()` computes all 88 896 derivatives at once
+(**backpropagation**: the chain rule, applied backwards through the layers), and an **optimiser** applies the
+steps. The lab uses **Adam**, a gradient descent that adapts the step of each weight. One training step is always the
+same four lines: compute the loss on a batch, `opt.zero_grad()` (forget the previous derivatives),
+`loss.backward()`, `opt.step()`. One pass over all the training pairs is an **epoch**.
+
+> [!QUESTION] ✏️ Check
+> Continue the one-weight example for one more step from w = 1.92. And what goes wrong with lr = 0.3?
+
+<details><summary>Answer</summary>
+Derivative 2(3.84 − 6)·2 = −8.64, w = 1.92 + 0.432 = <b>2.352</b>, loss (4.704 − 6)² ≈ 1.68. With lr = 0.3 from w = 0:
+w = 7.2, loss (14.4 − 6)² = 70.6: the step jumps over the minimum and the loss grows. A learning rate too large
+diverges; too small, training crawls.
+</details>
+
+## 9. Training, validation, and overfitting
+
+A network can learn the training pairs **by heart**: a patch's exact pixels instead of what makes a ground point
+recognisable. To see it, keep pairs it never trains on, the **validation** set, and measure the loss there after
+each epoch, without learning from it. In the lab, validation pairs come from **other places** on the map: the
+question is "does it work on ground it has never seen?", which is what a drone needs.
+
+![What overfitting looks like: training loss keeps falling, validation loss stops falling and rises](assets/overfit.svg)
+
+While both losses fall, the network is learning something general. When the training loss keeps falling and the
+validation loss stops or rises, it is **overfitting**: memorising. More (and more varied) data, fewer epochs, or a
+smaller network fight it. A third set, the **test** set, is kept for the very end: the check of this mission
+measures your trained network on pairs you never see.
+
+**The matching score.** Losses compare runs of one network; to compare a network with SIFT or ORB, measure the job:
+in groups of 256 pairs, take each map patch, find the nearest of the 256 photo descriptors, and count how often it
+is the right one. Random descriptors score 1/256 ≈ 0.004 at best by luck; a perfect descriptor 1.0.
+
+> [!QUESTION] ✏️ Check
+> Your network scores 0.99 on its training pairs and 0.70 on validation pairs from other places. What do you
+> conclude, and what would you try?
+
+<details><summary>Answer</summary>
+Overfitting: it learned the training places, not the rule. More training pairs from more places, fewer epochs (stop
+where the validation loss is lowest), or a smaller network. Never judge a network on the pairs it trained on.
+</details>
+
+> [!WARNING] Common wrong ideas (Part B)
+> - "The training loss went down, so the network works." Only the validation (and later the test) score says that.
+> - "A neural network is magic." It is 88 896 numbers changed by gradient descent to make one loss smaller: it learns
+>   exactly what the data and the loss ask for, including the data's flaws (here: a drawn map, not a real camera).
+> - "`loss.item()` inside the loss is fine." A plain Python number has no gradient: keep tensors until `backward()`.
+> - "Validate on random pairs of the training places." Neighbouring patches share ground: that measures memory.
+> - "Learned beats hand-made, always." It wins on the kind of data it was trained on. Measure on other data.
 
 ## In NAVERA
 
-Open [local_matcher.py](file:navera/day_pkg/day_pkg/local_matcher.py) in your NAVERA copy. It is NAVERA's
-day-vision matcher. Its class `TileFeatures` computes the SIFT features of each map tile once, with a
-border taken from the neighbouring tiles, and keeps them in a cache:
+NAVERA's day vision, IRIS's product, matches the camera frame against map tiles with **SIFT** features (described
+in words): at most 300 keypoints per map tile, a contrast threshold of 0.02 instead of OpenCV's 0.04 because map
+pictures are often pale, **CLAHE** (clip 2.0, 8 × 8 tiles) before detection, and up to 1 500 keypoints in the frame.
+A frame with fewer than 10 keypoints is refused at once ("too few features: uniform ground, blur, darkness"), and a
+weak match whose inliers cover less than a quarter of the frame (a 4 × 2 grid, 3 inliers per cell) is rejected: the
+idea of `spread`. On the bench (1 October 2026), this local matching placed 32 of 33 aerial test frames within 9 m
+(median 4 m), with frames from another source, not NAVERA's camera.
 
-```python
-class TileFeatures:
-    """SIFT features of the map tiles of an area, computed lazily and cached."""
-    PAD = 48                          # border taken from the neighbours
+NAVERA also uses learned models. Its former day method compared whole tiles with **DINOv2**, a pretrained network
+(median error 442 m on labelled replay frames: not accurate enough, kept as a fallback), and night vision uses
+**STHN**, a network that predicts a homography between a thermal frame and the map (8–13 m median on synthetic
+frames, not validated on real thermal). Over uniform terrain near Gabès, in simulation, the former method gave a
+median error of 351 m and the autopilot failed safe after 45 s: "day vision is unreliable over uniform terrain"
+(validation report, 3 October 2026). NAVERA is Release 0.2, field validation pending.
 
-    def __init__(self, images_dir, zoom=17, per_tile=300, cache_tiles=3000):
-        ...
-        self.sift = cv2.SIFT_create(nfeatures=per_tile, contrastThreshold=0.02)
-        self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-```
+## In NAVERA Lite
 
-and in `_compute()`: `kp, d = self.sift.detectAndCompute(self.clahe.apply(big), None)`.
+| You write | It does | Lesson |
+|---|---|---|
+| `gradients`, `structure_tensor`, `eigen2`, `harris` (features.py) | the Harris detector from its maths | §1–§2 |
+| `repeatability` | how a detector is measured | §4 |
+| `hamming` | the distance of binary descriptors | §5 |
+| `PatchNet`, `triplet_loss`, `train` (learned_desc.py) | a learned patch descriptor | §7–§9 |
 
-Everything from this lesson is there: **SIFT** (scale and rotation invariant, 128-float descriptors), at
-most **300 keypoints per 256 × 256 tile** at zoom 17, a **lower contrast threshold** (0.02) for pale
-satellite pictures, **CLAHE** before detection, and a 48-pixel border so that a roof cut by a tile edge is
-still seen whole. The camera frame gets the same treatment in `LocalMatcher.locate()` (up to 1500
-keypoints, after the frame is resized to the map's resolution). A frame with too little texture is
-refused at once:
+Given: `harris_corners`, `detect` (OpenCV's ORB and SIFT), `clahe`, `warp_points`, `spread`, `matchability`,
+`to_tensor`, `describe`, `nn_accuracy`, `load_weights`, and mission 08's `image.py`. Your trained weights file,
+`my_desc.pt`, is a part of your stack too: mission 22 matches with it, and Sim Lite (31) can fly it.
 
-```python
-kq, dq = self.sift.detectAndCompute(q, None)
-if dq is None or len(kq) < 10:
-    res.update(reason="too few features in the frame (uniform ground, blur, darkness)")
-    return res
-```
+## 🐦 How birds do it
 
-The function `inlier_spread()` in the same file measures how much of the frame the matched points cover,
-on a 4 × 2 grid with at least 3 points per cell — the idea of your `spread()`. In
-[vision_nav.py](file:navera/day_pkg/day_pkg/vision_nav.py) a fix whose inliers cover too little of the
-frame is rejected — but only when it is also weak: fewer than 30 inliers **and** a spread below
-`min_spread=0.25`.
+Homing pigeons with GPS loggers, near Oxford and Rome, follow roads, rivers and field borders on familiar routes,
+sometimes turning at the same motorway junctions every time (Biro et al., 2004; Lipp et al., 2004): long, stable,
+high-contrast landmarks, like good keypoints. And they **learn** them: the routes become faithful only after several
+flights over the same ground, as your network becomes faithful only after it has seen enough pairs. Navi the swallow
+crosses the Mediterranean on a broad front: over open water she has no landmarks either, and relies on her compass.
 
-<details class="further"><summary>Going further (optional) — What NAVERA measured over uniform terrain and over the sea</summary>
+## Summary
 
-What happens over uniform terrain is written in `docs/VALIDATION_STATUS.md`. In a simulated flight over
-uniform terrain near Gabès (southern Tunisia), the former whole-tile method gave a median error of 351 m:
-**"Day vision is unreliable over uniform terrain (desert, sea)"**. Local SIFT matching did much better on
-the same simulated flight (147 matches, none rejected) — but the document warns that this simulated
-camera is cut from the map's own imagery, which is optimistic. Over the sea there is nothing to match:
-NAVERA carries its last position along the measured track (lesson 24). In the simulator it was carried
-90 s over a bay stating ±300 m, with a true error of at most 146 m. All these figures are from the
-simulator or the bench; NAVERA is at **Release 0.x — field validation pending**.
+1. The structure tensor M (averaged gx², gy², gx·gy) says how a window changes: two small eigenvalues = flat, one
+   large = edge, two large = corner; Harris uses R = det M − k·(trace M)² instead of the eigenvalues.
+2. A detector is measured: repeatability against a known H, with the same number of points, against chance. A fixed
+   window suffers under zoom; scale space (SIFT) chooses a size per point.
+3. A descriptor makes a point recognisable: ORB's 256 bits with the Hamming distance, SIFT's 128 numbers.
+   Many keypoints is not the same as distinct, well-spread keypoints.
+4. A network learns a descriptor: layers with parameters, a loss (triplet), gradient descent (backward, step), and a
+   validation set from other places to catch overfitting.
+5. Learned vs hand-made is a measurement on the data you care about, not a belief.
 
+**Next mission:** matching. You pair the keypoints of a photo with the map's, with your descriptor and SIFT, throw
+out the wrong pairs with RANSAC, and see why NAVERA's scale check matters.
+
+## Check yourself
+
+Answer without scrolling up.
+
+<details><summary>1. Sxx = 50, Syy = 50, Sxy = 50. Eigenvalues, R (k = 0.04), and the kind of window?</summary>
+λ = 50 ± √(0 + 2 500) = 100 and 0; R = 0 − 0.04 · 100² = −400: an edge (a diagonal one).
 </details>
 
-## Glossary
-
-| Term | Meaning |
-|---|---|
-| **local feature / keypoint** | a small, distinctive image location that can be found again: a corner or a blob |
-| **gradient** `(Ix, Iy)` | partial derivatives of brightness; estimated with the Sobel kernel |
-| **structure tensor** `M` | 2 × 2 matrix of window-averaged gradient products; its eigenvalues describe the local structure |
-| **Harris response** `R` | `det M − k·(trace M)²`: positive at corners, negative on edges |
-| **non-maximum suppression (NMS)** | keeping only the local maxima of a response map |
-| **scale space** | the family of images blurred with growing σ |
-| **characteristic scale** | the σ where the scale-normalised Laplacian is extreme; proportional to the structure's size |
-| **DoG** | difference of Gaussians, SIFT's fast approximation of the scale-normalised Laplacian |
-| **descriptor** | a vector describing a keypoint's neighbourhood (SIFT: 128 floats; ORB: 256 bits) |
-| **Hamming distance** | number of differing bits between two binary descriptors |
-| **invariant** | unchanged by a transformation (rotation, scale, brightness) |
-| **repeatability** | share of points found again in a second picture, within ε pixels |
-| **homogeneous coordinates** | `(x, y)` written `(x, y, 1)` so a 3 × 3 matrix can map points |
-| **repetitive texture** | many features that look alike (rows of trees, dunes): easy to confuse |
-| **CLAHE** | local contrast stretching with a limit, used before detection |
-
-## Check what you learned
-
-<details><summary>1. At a pixel, Sxx = 300, Syy = 280, Sxy = 0. With k = 0.05, what is R, and what kind of region is it? What if Sxy = 289?</summary>
-det = 300·280 − 0 = 84 000, trace = 580, R = 84 000 − 0.05·336 400 = 84 000 − 16 820 = <b>67 180 &gt; 0: a corner</b>.
-With Sxy = 289: det = 84 000 − 83 521 = 479, R = 479 − 16 820 ≈ −16 300 &lt; 0: an <b>edge</b> (a diagonal one —
-the gradients are all nearly parallel, one eigenvalue is close to 0).
+<details><summary>2. Why must a point of picture 1 whose image falls outside picture 2 be left out of the repeatability?</summary>
+It cannot be found again, whatever the detector: counting it would punish the detector for the photo's frame.
 </details>
 
-<details><summary>2. Why does R not change when the picture is turned by 35°?</summary>
-R uses only det M = λ1·λ2 and trace M = λ1 + λ2. Turning the picture turns the gradients, which changes M to
-Q·M·Qᵀ with a rotation Q — the eigenvalues, hence det and trace, are unchanged.
+<details><summary>3. Two ORB descriptors differ in 121 of 256 bits. Same ground point?</summary>
+Probably not: unrelated descriptors differ in about 128 bits; 121 is in the "random" range.
 </details>
 
-<details><summary>3. A round water tank of radius 6 px gives its strongest scale-normalised Laplacian at σ ≈ 4.2. The drone climbs and the tank now has a radius of 3 px. What σ do you expect, and why does this matter?</summary>
-σ* = r/√2 ≈ 2.1: half. The detector measures the size of the structure, so the descriptor can be computed on a
-window of the same <i>ground</i> size at both heights. That is scale invariance.
+<details><summary>4. Write the four lines of one training step in PyTorch, in order.</summary>
+loss = triplet_loss(model(a), model(p)); opt.zero_grad(); loss.backward(); opt.step().
 </details>
 
-<details><summary>4. Two ORB descriptors differ in 121 of their 256 bits. Is it probably the same ground point?</summary>
-Probably not: unrelated descriptors differ in about half the bits (≈ 128). In the lab the same ground point gives a
-median of about 73 bits. 121 is in the "random" range.
+<details><summary>5. Training loss 0.01, validation loss rising since epoch 10. What is happening, and which weights do you keep?</summary>
+Overfitting; keep the weights of the epoch with the lowest validation loss, or train again with more data.
 </details>
 
-<details><summary>5. A detector finds the same points again in 12 % of cases, with 1000 points on a 640 × 480 photo and ε = 3 px. Is it a good detector?</summary>
-No. Random points would score about 1 − exp(−1000·π·9/307 200) ≈ 9 %. 12 % is barely above chance.
+<details><summary>6. (Mission 18) Why can one 3 × 3 homography map a nadir map patch onto a turned, zoomed nadir photo of flat ground?</summary>
+A turn, a zoom and a shift of a plane are a similarity, a special homography (last row [0, 0, 1]); the ground is flat,
+so every ground point follows the same 3 × 3 matrix.
 </details>
 
-<details><summary>6. Over the Sahara's sand dunes the camera finds 2000 SIFT keypoints. Give two reasons why matching may still fail.</summary>
-Repetitive texture (dune ridges look alike, so descriptors have near-twins), and change (dunes move with the wind and
-the map may be years old, so the keypoints are not where the map shows them). Low contrast and haze make it worse.
+<details><summary>7. (Mission 08) What does a 3 × 3 kernel do at the border of an image in OpenCV, by default?</summary>
+It mirrors the image without repeating the edge pixel ("reflect 101"): … c b | a b c …
 </details>
 
 Now open the **🛠️ Lab** tab.

@@ -708,3 +708,9 @@ talks standard messages on `/fledgling/*`; no `navera_msgs` build step.
 - **20 timing.py (as built):** frame timing is its own part `navera_lite/timing.py` (TODOs 1–6); `usable(q, rate_dps,
   cfg)`; camera settings in a lesson-folder `camera.yaml` (settings.py refuses unknown keys); given
   `ros/camera_node.py` replays a recorded flight (raw OSM-rendered frames, hidden true delay) — real camera optional.
+- **21 features.py + learned_desc.py (as built):** `detect` returns `(pts (N,2) float32, des)` (not cv2.KeyPoint);
+  `repeatability(pts1, pts2, H, shape2, tol_px)`; `spread`, `matchability` given; `eigen2` a TODO. Learned part:
+  `learned_desc.PatchNet` (layers conv1, conv2, conv3, fc; 88 896 parameters; 64-number unit rows), `describe`,
+  `load_weights`; the student's weights `~/lessons/21-features/my_desc.pt` (22–25 and Sim Lite load that file, or
+  the reference `my_desc.pt` when a student's is missing). Hidden test: 1 024 pairs, pass ≥ 0.85 (ORB 0.718,
+  SIFT 0.825, reference net 0.940, overfitted 0.766). Training ≈ 15 s GPU, 2–5 min CPU (reduced run).

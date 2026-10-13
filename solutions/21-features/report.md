@@ -1,40 +1,28 @@
 # Lab 21 — report
 
-## 1. Scale: Harris versus SIFT
+## 1. The scout
 
-On city_zoom4 (the photo is 3.9 times closer than the map) Harris finds only 0.32 of its points again,
-while SIFT keeps 0.79 (785 of every 1000). The chance level is 0.10, so Harris is still above chance but
-weak. With its fixed window (sigma 1.5 px) Harris picks the small details of the close-up photo — windows,
-parapets, cars — that do not exist at the map's 0.97 m per pixel. SIFT chooses a scale for each point, so
-it detects the same structures at both resolutions. On city_rot35 (rotation only) Harris scores 0.64 and
-SIFT 0.53: Harris is rotation invariant, and a sharp roof corner stays a corner. But Harris gives no
-scale and no orientation, so it has no invariant descriptor: even repeatable corners could not be matched
-between a 0.97 m/px map and a 0.25 m/px photo.
+I ranked the city first, then the olives, the coast, the fields, the salt pans and the sea. The measurement disagreed:
+the olive grove has 13 504 SIFT keypoints, three times the city's 4 032, and the fields only 71, although they looked
+textured to me. The sea gave 0 and the score said "too few features". The olives are a trap: thousands of trees that
+look alike. The city had the best matchability, 1.00, against 0.81 for the olives.
 
-## 2. Descriptors: Hamming distances
+## 2. The detector
 
-For ORB descriptors of the same ground point (map patch and the photo turned by 35 degrees, 1126 pairs) the
-median Hamming distance is 73 bits out of 256. For random pairs it is 127 bits. Unrelated descriptors
-differ in each bit with probability about one half, so the expected distance is 256 / 2 = 128. The two
-distributions are well apart, so a threshold around 90–100 bits removes most wrong pairs, but some true
-pairs are above it and some random ones below it: a fixed threshold alone is not enough, which is why the
-ratio test of lesson 22 compares the best and second-best candidates.
+After the 35° turn my Harris kept 0.85 of its points and SIFT 0.73, far above the chance level of 0.08. In the photo 4
+times closer Harris fell to 0.39 while SIFT kept 0.78: the Harris window is fixed, so it finds small details that the
+map does not show, while SIFT chooses a scale for each point.
 
-## 3. Terrain and matchability
+## 3. Descriptors
 
-SIFT finds 6628 keypoints on the medina, 5855 in the olive grove, 3993 on the farms and 2567 on the
-dry hills, but only 4 on the coast water and 0 on the open sea. Matchability is 0.94 for the city, 1.00 for
-the olives and 0.00 for both water patches; the blurry dark drone photo also scores 0.00. The olive grove
-is hard despite its thousands of keypoints because the trees all look alike and stand in rows: repetitive
-texture gives descriptors with near twins. CLAHE raised the keypoints on the coast water a lot, but they
-sit on ripples and seagrass shadows that move and are not on the map.
+For ORB descriptors of the same ground point the median Hamming distance was 61 bits, for random pairs 127. Unrelated
+descriptors differ in about half of their 256 bits, 128. The gap lets a matcher keep the nearest descriptor and refuse
+pairs whose distance is close to the random level.
 
-## 4. World: where would day vision struggle?
+## 4. The learner
 
-Over Paris, Singapore and the farms of the Nile delta the camera sees roofs, walls, roads
-and field borders, like the Sousse medina: thousands of SIFT keypoints and a matchability near 1. The orchards
-and plantations are a risk of repetitive texture, as the olives were. Over the Sahara and Namib sand seas the dune ridges are low
-contrast, repetitive and moving, and the map may be years old: few distinct keypoints, and the ones found
-may not match. Over the open Atlantic the score would be 0, like terrain_sea, and the coastline alone
-gives an edge, not corners. In the Alps and the Andes there is strong texture but the height above ground
-changes quickly, so the scale is uncertain. The mudflats of the Wadden Sea are flat and change with the tide.
+I trained PatchNet on 12 288 pairs for 8 epochs on the GPU in about 14 s: both losses fell, the validation loss to
+0.15. With 300 pairs the training loss fell to almost 0 but the validation loss stayed near 0.35 and rose after epoch
+12: overfitting. On the 2 048 validation pairs the matching score was 0.756 for ORB, 0.875 for SIFT, 0.530 for the
+untrained network and 0.957 for mine. It wins because it was trained on this kind of drawn views; before trusting it on
+a real drone I would measure it on real camera frames against the map.

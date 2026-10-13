@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 380" font-family="sans-serif" font-size="13">
   <rect width="640" height="380" fill="#f7fafc"/>
-  <text x="320" y="22" text-anchor="middle" fill="#1d2733" font-weight="bold">Harris response in the plane of the eigenvalues of M (k = 0.05)</text>
+  <text x="320" y="22" text-anchor="middle" fill="#1d2733" font-weight="bold">Harris response in the plane of the eigenvalues of M (k = 0.04)</text>
   <!-- corner region: between the two lines R = 0, away from the origin -->
-  <polygon points="60,330 76.7,40 360,40 360,313.3" fill="#d64545" fill-opacity="0.13"/>
-  <polygon points="60,330 76.7,40 60,40" fill="#f2a33a" fill-opacity="0.25"/>
-  <polygon points="60,330 360,313.3 360,330" fill="#f2a33a" fill-opacity="0.25"/>
+  <polygon points="60,330 72.6,40 360,40 360,317.0" fill="#d64545" fill-opacity="0.13"/>
+  <polygon points="60,330 72.6,40 60,40" fill="#f2a33a" fill-opacity="0.25"/>
+  <polygon points="60,330 360,317.0 360,330" fill="#f2a33a" fill-opacity="0.25"/>
   <path d="M60,330 L60,290 A40,40 0 0 1 100,330 Z" fill="#cfe3ea"/>
   <!-- axes -->
   <g stroke="#1d2733" stroke-width="1.5">
@@ -19,7 +19,7 @@
   </g>
   <!-- the two lines R = 0 -->
   <g stroke="#a8680d" stroke-width="1.5" stroke-dasharray="5 4">
-    <line x1="60" y1="330" x2="360" y2="313.3"/><line x1="60" y1="330" x2="76.7" y2="40"/>
+    <line x1="60" y1="330" x2="360" y2="317.0"/><line x1="60" y1="330" x2="72.6" y2="40"/>
   </g>
   <!-- region labels -->
   <text x="225" y="120" text-anchor="middle" fill="#b03030" font-weight="bold">CORNER</text>
@@ -33,11 +33,11 @@
   <g fill="#1d2733">
     <text x="400" y="70" font-weight="bold">Reading it</text>
     <text x="400" y="94">● (200, 200): the lesson's corner,</text>
-    <text x="414" y="111">R = +32 000</text>
+    <text x="414" y="111">R = +33 600</text>
     <text x="400" y="135">● (400, 0): the vertical and the</text>
-    <text x="414" y="152">diagonal edges, R = −8 000</text>
+    <text x="414" y="152">diagonal edges, R = −6 400</text>
     <text x="400" y="176">Dashed lines: R = 0, that is</text>
-    <text x="414" y="193">λ2 = 0.056·λ1 and λ1 = 0.056·λ2</text>
+    <text x="414" y="193">λ2 = 0.044·λ1 and λ1 = 0.044·λ2</text>
     <text x="400" y="217">Near the origin |R| is small:</text>
     <text x="414" y="234">flat ground, removed by the</text>
     <text x="414" y="251">threshold R &gt; 0.01·max(R)</text>

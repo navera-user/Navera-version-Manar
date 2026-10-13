@@ -1,26 +1,20 @@
 # Lab 21 — report
 
-Write 40 words or more in each section, in your own words. Quote the numbers from YOUR results.json.
-Replace every TODO.
+Replace each TODO with your own words (180–450 words in all). Quote your numbers with their names.
 
-## 1. Scale: Harris versus SIFT
+## 1. The scout
 
-TODO: compare the repeatability of Harris and SIFT on city_zoom4 (scale x3.9) and on city_rot35.
-Why does Harris fall at x3.9? Even where Harris repeats well, why can't it be matched between a
-map and a much closer photo? Compare with the chance level.
+TODO: your Step 0 ranking against the measured keypoints and matchability; which terrain fooled you, and why.
 
-## 2. Descriptors: Hamming distances
+## 2. The detector
 
-TODO: give the median ORB Hamming distance for the same ground point and for random pairs. Explain
-the value for random pairs (why near 128?). Would a threshold separate them?
+TODO: repeatability of Harris and SIFT after the 35° turn and the 4× zoom, against chance; what scale has to do with it.
 
-## 3. Terrain and matchability
+## 3. Descriptors
 
-TODO: which terrains of the dataset are easy, which are hopeless (numbers)? Why can the olive grove be
-hard even with thousands of keypoints? What did CLAHE do on the coast water?
+TODO: the two Hamming medians, what the random one should be and why; what a matcher can do with the gap.
 
-## 4. World: where would day vision struggle?
+## 4. The learner
 
-TODO: a drone must fly across several continents by camera only. Discuss at least two real places (for
-example Paris or Singapore, the Sahara or Namib dunes, the Alps or Andes, the open ocean, the Wadden Sea,
-the Salar de Uyuni, Greenland): what texture would the camera see, and what would you expect from SIFT and from the matchability score?
+TODO: your training (pairs, epochs, the two loss curves), what overfitting looked like, and the matching scores of ORB,
+SIFT and your network; what you would need to trust it on a real drone.

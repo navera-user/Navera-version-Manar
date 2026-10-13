@@ -1,7 +1,7 @@
-file,terrain,lat,lon,zoom,m_per_px,description
-terrain_city.jpg,city,35.8256,10.637,17,0.968,"Sousse medina: roofs, narrow streets"
-terrain_olives.jpg,olives,35.693,10.6348,17,0.97,olive groves: rows of trees on bare soil
-terrain_farms.jpg,farms,35.9389,10.459,17,0.967,farm fields with roads and hedges
-terrain_hills.jpg,hills,35.8,10.3711,17,0.969,dry hills with ravines
-terrain_coast_water.jpg,coast_water,35.8552,10.6269,17,0.968,shallow sea with seagrass patches
-terrain_sea.jpg,sea,35.83,10.7,17,0.968,open sea
+file,terrain,lat,lon,m_per_px
+terrain_city.png,city,35.8277,10.6388,0.9683
+terrain_olives.png,olives,35.7409,10.7377,0.9694
+terrain_fields.png,fields,35.7373,10.7235,0.9694
+terrain_saltpans.png,saltpans,35.7607,10.7176,0.9692
+terrain_coast.png,coast,35.8563,10.6191,0.968
+terrain_sea.png,sea,35.83,10.7,0.9683
