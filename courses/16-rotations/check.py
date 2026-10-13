@@ -473,7 +473,7 @@ def _():
         if abs(got - math.radians(want)) < 1e-6 and want > 1:
             raise CheckFailed("tilt_deg returns radians: convert to degrees")
         c.ok(abs(got - want) < 1e-6, f"tilt_deg on an unseen attitude gives {got:.3f}° — the angle between the body's "
-                                     "up axis and the world's up")
+                                     "up axis and the world's up (if check 8 fails, fix q_mul first: tilt_deg uses q_rotate)")
     lvl = num(go(tilt, (0.0, 0.0, 0.0, 1.0)), "tilt_deg of a level attitude")
     c.ok(abs(lvl) < 1e-6, "tilt_deg of a level attitude must be 0 (clamp before acos)")
     sus, a, b, m, ft, why = answers("PREDICT_SUSPECT", "PAD_HEADING_DEG", "COLLEAGUE_PAD_ROLL_DEG",
