@@ -148,7 +148,7 @@ class Replay(Node):
                 self.lap += 1
                 self.next_row = 0
             elif self.next_row == len(self.rows):
-                self.get_logger().info("scenario finished (loop:=false); Ctrl+C to stop", once=True)
+                self.get_logger().info("scenario finished (loop:=false); stop it with kill -INT (Ctrl+C if it runs in the foreground)", once=True)
 
     def on_imu(self):
         msg = Imu()

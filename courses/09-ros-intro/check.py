@@ -150,8 +150,8 @@ def _():
                                           "with the replay running")
     low = str(why_hz).lower()
     if re.search(r"jitter|imprecis|inaccura|not exact|twice|duplicat|resend|retransmi", low) and \
-            not re.search(r"on_fix|arriv|fix", low):
-        raise CheckFailed("EXPLAIN_HZ: the timer is not imprecise — look at who else calls self.step() in ArbiterV0")
+            not re.search(r"on_fix|step\(?\)?|calls? (self\.)?step", low):
+        raise CheckFailed("EXPLAIN_HZ: neither timer jitter nor resending explains it — look at who else calls self.step() in ArbiterV0")
     explained("EXPLAIN_HZ", why_hz, ((r"tick", r"timer", r"5 ?hz", r"five", r"\b5\b", r"0\.2"), "the regular tick"),
               ((r"arriv", r"each fix", r"every fix", r"new fix", r"receiv\w* (a |each |every |new )?(\w+ )?fix", r"on_fix",
                 r"when a fix"),
@@ -393,21 +393,43 @@ def _():
            "--qos-reliability reliable /navera_lite/status diagnostic_msgs/msg/DiagnosticStatus "
            f"\"{{message: '{token}'}}\"")
     with Background(pub, settle=4.0):
-        code, out = sh("timeout 40 python3 latched_probe.py 7", timeout=60)
-    if "Traceback" in out and "first status" not in out:
-        tail = "\n".join(out.strip().splitlines()[-4:])
-        raise CheckFailed(f"latched_probe.py stopped with an error. The end of its output:\n{tail}")
+        probe = Background("python3 latched_probe.py 12", settle=5.0)
+        try:
+            with probe:
+                # while the probe runs, ask the graph what it requests (discovery shares reliability and durability)
+                _, info = sh("ros2 topic info -v /navera_lite/status --no-daemon --spin-time 3", timeout=30)
+                import time
+                time.sleep(3.0)
+        except CheckFailed:
+            raise CheckFailed("latched_probe.py stopped right away. Run `python3 latched_probe.py` yourself and read the "
+                              "last line of the error")
+        out = probe.output()
     if f"first status: {token}" in out:
         return
+    if "Traceback" in out:
+        tail = "\n".join(out.strip().splitlines()[-4:])
+        raise CheckFailed(f"latched_probe.py stopped with an error. The end of its output:\n{tail}")
     if "first status:" in out:
         raise CheckFailed("latched_probe.py printed a status, but not the one the check published — print msg.message "
                           "of the message you receive")
-    pol = re.search(r"Last incompatible policy: (\w+)", out)
-    if pol:
-        raise CheckFailed(f"latched_probe.py heard nothing, and ROS says why: \"incompatible QoS … {pol.group(1)}\"")
-    raise CheckFailed("latched_probe.py heard nothing from a publisher that published ONCE before it started: as a late "
-                      "subscriber it must ask for the kept message — what does it request (durability AND reliability, "
-                      "lab Step 7 B1–B3)? Is the callback given to create_subscription, and does it print?")
+    rel = dur = None
+    for block in info.split("Node name:")[1:]:
+        if block.strip().startswith("latched_probe") and "SUBSCRIPTION" in block:
+            m1 = re.search(r"Reliability:\s*(\w+)", block)
+            m2 = re.search(r"Durability:\s*(\w+)", block)
+            rel, dur = (m1.group(1) if m1 else None), (m2.group(1) if m2 else None)
+    if rel is None:
+        raise CheckFailed("latched_probe.py creates no subscription on /navera_lite/status (the graph shows none from "
+                          "the node latched_probe): is create_subscription called in __init__, on TOPIC?")
+    if dur != "TRANSIENT_LOCAL":
+        raise CheckFailed(f"your probe requests {rel} + {dur}: a late {dur} subscriber never gets the kept message (lab "
+                          "Step 7, B2). A plain number also gives VOLATILE (the default profile)")
+    if rel != "RELIABLE":
+        raise CheckFailed(f"your probe requests {rel} + {dur}: it is matched, but with Fast DDS the kept message comes "
+                          "only over RELIABLE (Step 7, B3, and the box after Step 7)")
+    raise CheckFailed("the QoS is right (RELIABLE + TRANSIENT_LOCAL), but nothing was printed: does on_status print "
+                      "`first status: …` with flush=True, and is it the callback given to create_subscription? Did you "
+                      "change main() (it must spin)?")
 
 
 @c.test("Steps 9–10: what the listener requested, and why the repair belongs in the subscriber",
@@ -420,7 +442,8 @@ def _():
     c.ok(w == "RELIABLE", f"LISTENER_REQUESTS = {req!r} is not the reliability the broken listener requests")
     explained("EXPLAIN_TEN", ten, ((r"default",), "the default profile"),
               ((r"depth", r"queue", r"keep_last", r"history", r"how many"), "what the number itself sets (only ...)"))
-    if re.search(r"10 (is|means) (the )?(code|value|number)? ?(of )?reliable", str(ten).lower()):
+    if re.search(r"\b10\b (is|means|stands for|=|gives) (the |a )?(code |value |number |constant )?(for |of )?reliable",
+                 str(ten).lower()):
         raise CheckFailed("EXPLAIN_TEN: 10 is not a code for RELIABLE — what does a plain number set, and where does "
                           "RELIABLE come from (lesson §5)?")
     if re.search(r"(chang|set|modif|edit)\w* (the |its )?(publisher|sensor_qos|replay)", str(why).lower()):

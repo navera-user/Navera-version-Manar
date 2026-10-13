@@ -56,7 +56,7 @@ def test():
              ("FIX_QOS → STATUS_QOS", q.FIX_QOS, q.STATUS_QOS, ["DURABILITY"]),
              ("SENSOR_QOS → STATUS_QOS", q.SENSOR_QOS, q.STATUS_QOS, ["RELIABILITY", "DURABILITY"])]
     print("offered → requested                    yours                         lesson §5")
-    good, never_no = 0, True
+    good, never_no, early = 0, True, False
     for label, off, req, want in cases:
         text, ok = verdict(off, req)
         if not ok:
@@ -66,10 +66,15 @@ def test():
         never_no = never_no and text == "connect"
         expect = "connect" if not want else "NO CONNECTION (" + ", ".join(want) + ")"
         mark = "✔" if text == expect else "✘"
+        got_names = set(text[len("NO CONNECTION ("):-1].split(", ")) if text.startswith("NO CONNECTION (") else set()
+        early = early or (mark == "✘" and len(want) > 1 and got_names < set(want))
         good += mark == "✔"
         print(f"{mark} {label:<36} {text:<29} {expect}")
+    if early:
+        print("\n  ✘ only one name where both policies fail: did you return after the first one? bad = [], append each "
+              "name, return bad at the end")
     print(f"\n{good}/{len(cases)} as in the lesson's tables." +
-          ("" if good == len(cases) else "  Which policy does each ✘ line differ on? Read the tables of lesson §5 "
+          ("" if good == len(cases) or early else "  Which policy does each ✘ line differ on? Read the tables of lesson §5 "
                                           "again: who OFFERS (the first profile), who REQUESTS (the second)?"))
     if never_no:
         print("Your function never finds an incompatible policy: do you compare with the constants "

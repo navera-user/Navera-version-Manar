@@ -9,7 +9,8 @@ that predicts it, and repair it.
 Your files (📝 Code tab): [answers.py](file:./answers.py) (everything you measure and explain),
 [imu_listener.py](file:./imu_listener.py) (the integrator's broken listener: **you repair it**),
 [navera_lite/ros/qos.py](file:./navera_lite/ros/qos.py) (**your TODO 1**), [qos_doctor.py](file:./qos_doctor.py)
-(runs your TODO on examples and on the live graph; you don't edit it), and the given nodes you read:
+(runs your TODO on examples and on the live graph; you don't edit it), [latched_probe.py](file:./latched_probe.py)
+(**your TODO 2**, Step 11), and the given nodes you read:
 [arbiter_v0.py](file:./navera_lite/ros/arbiter_v0.py), [replay_node.py](file:./navera_lite/ros/replay_node.py),
 [convert.py](file:./navera_lite/ros/convert.py).
 
