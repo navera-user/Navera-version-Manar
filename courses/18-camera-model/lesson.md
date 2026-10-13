@@ -437,7 +437,7 @@ The same ideas live in [navera_lite/camera.py](file:./navera_lite/camera.py), th
 | `nadir_homography` | the straightening homography | §7 |
 
 Given: `R_BODY_NADIR_CAM`, `camera_rotation`, `camera_rotation_hpr`, `off_nadir_deg`, `warp_point`, and mission
-16's `rotations.py`. The part grows: mission 19 adds the fisheye lens, mission 20 the timing, and the vision
+16's `rotations.py`. The stack grows: mission 19 adds the fisheye lens (`fisheye.py`), mission 20 the timing (`timing.py`), and the vision
 missions use your GSD and straightening.
 
 ## 🐦 How birds do it

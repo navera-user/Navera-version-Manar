@@ -1,0 +1,9 @@
+{
+ "centre_lat": 35.829,
+ "centre_lon": 10.633,
+ "gsd_m": 0.6,
+ "width_px": 3600,
+ "height_px": 3600,
+ "pixel_of_enu": "u = width_px / 2 + east_m / gsd_m,  v = height_px / 2 - north_m / gsd_m",
+ "attribution": "\u00a9 OpenStreetMap contributors (map data ODbL; synthetic rendering for the course)"
+}

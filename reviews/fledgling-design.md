@@ -701,3 +701,10 @@ talks standard messages on `/fledgling/*`; no `navera_msgs` build step.
 - **17 imu.py (as built):** quaternions (x, y, z, w); `complementary(q0, t_s, gyro, accel, tau_s)` takes the start
   attitude first and keeps a quaternion state (gyro step multiplied on the right, gravity correction on the left);
   `mag_heading` takes one sample; new `q_true_north`; `StaleDetector.__init__` given, only `update` is a TODO.
+- **19 fisheye.py (as built):** the fisheye model is its own part `navera_lite/fisheye.py` (TODOs 1–8: fisheye_project,
+  theta_from_theta_d, stretch_at, undistort, board_points, calibrate_fisheye, reprojection_rms, holdout_rms) plus the
+  given tool `python3 -m navera_lite.tools.calibrate`; camera.py (18) is unchanged. load_calibration/undistort come
+  from `navera_lite.fisheye`.
+- **20 timing.py (as built):** frame timing is its own part `navera_lite/timing.py` (TODOs 1–6); `usable(q, rate_dps,
+  cfg)`; camera settings in a lesson-folder `camera.yaml` (settings.py refuses unknown keys); given
+  `ros/camera_node.py` replays a recorded flight (raw OSM-rendered frames, hidden true delay) — real camera optional.
