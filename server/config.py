@@ -85,7 +85,7 @@ HEAVY_MEMORY_MAX = os.environ.get("ACADEMY_HEAVY_MEMORY_MAX", "4500M")  # holder
 PIDS_MAX = 400
 # ROS domains in the range ROS documents as safe on Linux (1–101), without NAVERA's own 77–79.
 STUDENT_DOMAINS = [d for d in range(1, 102) if d not in (77, 78, 79)]
-TEST_DOMAINS = list(range(200, 233))     # tools/try_lesson.py: domain 200 + lesson number
+TEST_DOMAINS = list(range(215, 233))     # tools/try_lesson.py: inside ROS 2's safe range on Linux (0-101, 215-232)
 
 
 def domain_for(index):
