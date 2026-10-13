@@ -665,6 +665,26 @@ talks standard messages on `/fledgling/*`; no `navera_msgs` build step.
 4. **Mission order:** a mission opens only when the previous one is passed; the teacher can open any mission for
    a student (server change).
 
+5. **AI and OpenCV (2026-10-14):** NAVERA is built on AI, so the course must teach it, not only name it.
+   OpenCV stays the working vision tool (18–25). AI goes INSIDE the existing vision missions (no new missions),
+   and the student builds the NAVERA Lite parts themselves "from training to simulation": they train small
+   networks with PyTorch on data they generate (synthetic views of the OSM map, with exact ground truth), use a
+   pretrained model where NAVERA does (DINOv2 ViT-S/14 weights + code, Apache-2.0, copied as data from the local
+   torch hub cache — third-party, not NAVERA code), and their own trained models run in Sim Lite (31).
+   Plan (each mission keeps its OpenCV classic method and compares it with the learned one, measured):
+   - **21 Features:** neural-network foundations (tensors, a layer, loss, gradient descent, train/val split,
+     overfitting) by training a small CNN patch descriptor (triplet/contrastive loss) on patches whose true
+     correspondences come from render_view; compare with ORB/SIFT (OpenCV) on repeatability/matching score.
+   - **22 Matching:** match with the student's learned descriptor vs SIFT; ratio test + RANSAC (OpenCV).
+   - **23 Locate on map:** global retrieval with embeddings: pretrained DINOv2 on map tiles vs the student's own
+     small trained embedding net, measured against baselines (NAVERA's 442 m / 480 m / 536 m story in words).
+   - **25 Night:** train a small deep homography network (HomographyNet-style, 4-point output) on synthetic
+     thermal-like pairs; compare with NCC; STHN (NAVERA's network) described in words and numbers.
+   - **24 VO / 31 Sim Lite:** the student's trained models are loaded by navera_lite and run in the simulation.
+   Constraints: shared Jetson Orin Nano 8 GB (torch 2.8, CUDA) — each training run ≤ ~5 min GPU or ≤ ~10 min CPU,
+   small models (< 1 M parameters), batch sizes that fit while other students train; checks never retrain (they
+   load the student's saved weights with a safe loader — weights_only=True — and evaluate on hidden data).
+
 ## 8. Interfaces as built (overrides §2 where they differ)
 - **tiles.py (07):** `open_map(path=None)` → connection; `read_tile(conn, z, x, y)` raises ValueError for impossible
   addresses (z checked before 2**z); `mercator_y` is a TODO; given `map_patch(..., path=None)`, `patch_origin`,
