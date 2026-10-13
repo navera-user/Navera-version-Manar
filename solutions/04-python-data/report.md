@@ -1,33 +1,44 @@
-# Lab 4 — Flight-test campaign report
+# Flight-test campaign of 15 September 2026 — test report
 
-## Data cleaning
+## Data and cleaning
 
-The raw log had 1556 rows. I removed 3 exact duplicates written twice by the logger and 2
-glitch rows: one fix at latitude and longitude 0 (Null Island) on the Monastir coast flight and
-one altitude of 9999 m on the Sahel hills flight. 1551 rows are left. The NO_FIX rows have an empty
-position but they are real moments of the flight: removing them would make the outages look
-shorter than they were.
+The raw log had 1402 rows for four flights of the drone LITE-2. I applied three written rules in this
+order: exact duplicates (3 rows, written twice by the logger), positions at latitude and longitude 0
+("Null Island", 1 row on monastir_coast) and impossible altitudes outside −100 to 5000 m (1 row of 9999 m on
+sahel_hills). 1397 rows are left. The 31 NO_FIX rows with an empty position were kept: they are real moments
+when no source had a position, and dropping them would shorten the outages. dropna() would have lost 119 rows.
 
-## Flights
+## Corrections
 
-The grid survey was the longest in distance (13.03 km in 720 s, mean logged speed
-18.05 m/s, at 150 m). The Monastir coast flight covered 7.81 km, the Sousse port flight 8.79 km
-and the Sahel hills flight 9.05 km at up to 251.5 m. The Sahel hills distance is too large: during
-its long day-vision outage the positions are noisier, and the noise adds length. The Sousse port
-distance is too small because the
-steps across the NO_FIX gap are missing.
+The sahel_hills log starts at 10:10:00 while the sheet gives its take-off at 09:10:00 UTC: exactly 3600 s,
+so the logger kept local time (Tunisia, UTC+1); it also overlapped grid_survey, flown by the same drone. I
+applied a clock correction of −3600 s to sahel_hills. On grid_survey the logged speed had a median of 71.9
+while the positions gave 20.0 m/s, a ratio of 3.6, and 72 is above the drone's 30 m/s limit: the column
+speed_mps was in km/h, so I multiplied it by 1/3.6 (0.2778). The raw files were not edited: the corrections
+are written in answers.py and applied in code.
 
 ## Outages
 
-The grid survey had one outage of 16 s and the Monastir coast flight one of 60 s. Sousse port had
-2 outages, 160 s in total, the longest 100 s. The longest outage was on the Sahel hills flight
-(sahel_hills): 416 s, from the
-middle of the flight until landing; 40.5 % of its rows were DEGRADED and 2.3 % NO_FIX. Day
-vision carried the drone home, but at the end even vision had no position.
+monastir_coast had one outage of 60 s, grid_survey one of 16 s, sousse_port two (60 s and 100 s, 160 s in
+total). The longest outage was on sahel_hills: 292 s, from 09:19:20 UTC until the landing, during the planned
+long jamming. Every outage matches a jamming window except one: sousse_port from 08:27:00 to 08:28:40 UTC,
+near the port, which the plan does not explain and must be investigated. During the outages the judge
+reported DEGRADED (day vision) and, when even vision had nothing, NO_FIX: on sahel_hills 31.8 % of the rows
+were DEGRADED and 2.6 % NO_FIX; on sousse_port 18.1 % and 6.0 %.
 
-## Speed check
+## Noise of the sources
 
-For GPS rows, the median difference between the logged speed and the speed from positions is
-0.77 m/s and the 95th percentile 2.28 m/s. For day vision it is 3.26 m/s and 7.80 m/s, about
-four times more: vision positions are noisier, and a speed computed from two noisy positions
-2 s apart amplifies that noise. Speeds from vision should be smoothed before they are used.
+With the corrections, the robust σ (1.4826 × MAD) of the speed error is 1.19 m/s for gps (1095 errors) and
+3.75 m/s for day vision (224 errors). The lesson's formula predicts 1.10 and 4.25 m/s for position errors of
+1.5 m and 6 m with 2 s between rows and 0.3 m/s of logged-speed noise: the right size. The gaps (−12 % and +8 %) are
+sampling: with 224 errors a robust σ scatters by about 7–8 % between campaigns made the same way. For gps std is 1.19 m/s and p95 of |error| 2.17 m/s. For day vision std is
+35.69 m/s and p95 9.19 m/s: four matches jumped 300 to 520 m, and their speed errors of up to 265 m/s
+dominate std. The robust σ describes the typical noise; the jumps are real failures of the source and are
+reported as the tail.
+
+## Limits
+
+The data is synthetic, made for the course, so the numbers describe the method, not NAVERA. The samples are
+small (224 vision errors, five outages), with one drone on one day. The logged speed is not the
+truth: its own noise is part of each error, and a speed computed from noisy positions is biased upward
+(about +0.9 m/s for day vision at 10 m/s), so the day median error of +1.08 m/s is expected. The unplanned outage near the port has no explanation yet.
