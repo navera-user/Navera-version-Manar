@@ -40,9 +40,9 @@ function restartWorker(why) {
 }
 
 // ---------------------------------------------------------------- map
-const map = L.map('map', { zoomControl: true, attributionControl: false }).setView([35.80, 10.72], 12);
-// online satellite imagery underneath (when this computer has internet), the academy's map files on top
-const online = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxNativeZoom: 18, maxZoom: 19 }).addTo(map);
+const map = L.map('map', { zoomControl: true, attributionControl: true }).setView([35.80, 10.62], 12);
+map.attributionControl.setPrefix(false);
+map.attributionControl.addAttribution('© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors');
 // the academy's map files (NAVERA's onboard map) cover only some areas, given as boxes: the Jetson is asked
 // for a tile only when it touches one of them
 const LocalTiles = L.TileLayer.extend({ _isValidTile(c) {
@@ -55,8 +55,6 @@ api('/api/simlite/map').then(r => r.json()).then(m => {
   visionNote();
   if (!m.available || !S.mapBoxes.length) return;
   const local = new LocalTiles('/api/simlite/tiles/{z}/{x}/{y}.jpg', { maxNativeZoom: Math.min(17, m.max_native_zoom), maxZoom: 19, minZoom: 9 }).addTo(map);
-  // with internet, the wide views use the online imagery only: no seam where the onboard map ends, no tiles built
-  online.once('tileload', () => { local.options.minZoom = 13; local.redraw(); });
 }).catch(() => { visionNote(); });
 const legend = L.control({ position: 'topleft' });
 legend.onAdd = () => { const d = L.DomUtil.create('div', 'legend'); d.innerHTML =

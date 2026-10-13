@@ -3,7 +3,7 @@
   code(name, src)      the student's NAVERA files the browser runs: navera_common, the estimator,
                        navera_msgs/*.msg — from their own copy ("mine") or the base ("original")
   script / save        the student's flight script, kept outside their NAVERA copy (a reset keeps it)
-  tile(z, x, y)        satellite map tiles from the map file; missing low zooms are built from
+  tile(z, x, y)        OpenStreetMap tiles from the map file; missing low zooms are built from
                        the zoom-17 tiles once and cached
 """
 import glob
@@ -16,8 +16,7 @@ import config
 import workspaces
 
 MAX_FILE = 400_000
-MAPS = [("~/navera_data_map.mbtiles", 19), ("~/.navera_sim/world_tiles.mbtiles", 17),
-        (os.path.join(config.ACADEMY, "datasets", "07-map-tiles", "sousse_small.mbtiles"), 19)]
+MAPS = [(config.OSM_MAP, 19)]      # OpenStreetMap only (licence): © OpenStreetMap contributors
 CACHE = os.path.join(config.ACADEMY, "state", "tilecache")
 _db = threading.local()
 
@@ -291,7 +290,7 @@ def _compose(z, x, y, depth):
     from PIL import Image
     kids = [(dx, dy, tile(z + 1, 2 * x + dx, 2 * y + dy, depth - 1)) for dx in (0, 1) for dy in (0, 1)]
     if not all(k[2] for k in kids):
-        return None          # an incomplete square would paint dark holes over the satellite imagery underneath
+        return None          # an incomplete square would paint dark holes over the map underneath
     canvas = Image.new("RGB", (512, 512), (18, 40, 66))
     for dx, dy, data in kids:
         if data:

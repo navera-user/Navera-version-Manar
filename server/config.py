@@ -29,6 +29,10 @@ S_LESSONS = S_HOME + "/lessons"
 S_DATA = "/data"
 
 # Read-only data shared with the sandboxes: (host path, sandbox path).
+# The course's map: OpenStreetMap data rendered by datasets/_map/make_map.sh (© OpenStreetMap contributors).
+OSM_MAP = os.path.expanduser("~/academy-data/osm_sousse.mbtiles")
+
+
 def navera_allowed(name):
     """Real NAVERA (its code, its workspace, running it) is not part of the course: staff only, and the
     students a teacher grants it to ("navera_access" in users.json)."""
@@ -53,7 +57,7 @@ def data_mounts(navera=True):
             m.append((host, inside))
     if navera:                       # NAVERA_WORKSPACE holds NAVERA code: never for a student without access
         add("~/navera_data", S_DATA + "/navera_data")
-    add("~/navera_data_map.mbtiles", S_DATA + "/map.mbtiles")
+    add(OSM_MAP, S_DATA + "/map.mbtiles")           # OpenStreetMap, rendered by datasets/_map
     if navera:
         add("~/ardupilot", S_DATA + "/ardupilot")
         add("~/.navera_sim/bsc5.dat", S_DATA + "/bsc5.dat")
@@ -68,7 +72,7 @@ def data_mounts(navera=True):
 def missing_data():
     """The external data the missions need (on the ADATA disk) that is not reachable right now: the map
     only (NAVERA's own data is not part of the course)."""
-    need = {"~/navera_data_map.mbtiles": "the satellite map (missions 7, 8, 18, 21–24 and Sim Lite)"}
+    need = {OSM_MAP: "the OpenStreetMap map of Sousse (missions 7, 8, 18, 21–24 and Sim Lite)"}
     return [{"path": p, "what": w, "target": os.path.realpath(os.path.expanduser(p))}
             for p, w in need.items() if not os.path.exists(os.path.realpath(os.path.expanduser(p)))]
 

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Map srs="epsg:3857" background-color="transparent" buffer-size="64">
+<Style name="b"><Rule><PolygonSymbolizer fill="[roof]"/><LineSymbolizer stroke="[roofd]" stroke-width="1"/></Rule></Style>
+<Layer name="buildings" srs="epsg:3857" cache-features="true"><StyleName>b</StyleName><Datasource><Parameter name="type">sqlite</Parameter><Parameter name="file">@DB@</Parameter><Parameter name="table">buildings</Parameter><Parameter name="geometry_field">geom</Parameter><Parameter name="key_field">id</Parameter><Parameter name="wkb_format">generic</Parameter><Parameter name="use_spatial_index">true</Parameter></Datasource></Layer>
+</Map>
