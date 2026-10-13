@@ -1,0 +1,4 @@
+{"parts": ["geo", "vehicle", "track", "settings", "estimate", "guard", "ros.qos", "ros.convert", "ros.arbiter_v0", "ros.replay_node", "ros.gps_node", "ros.trip_node", "ros.launch_util", "ros.navera_lite_launch"], "todo_missions": [14], 
+ "tests": ["test_geo.py", "test_vehicle.py", "test_track.py", "test_settings.py", "test_estimate.py", "test_guard.py", "test_convert.py", "test_arbiter_v0.py", "test_gps_node.py", "test_trip.py", "test_launch_util.py", "test_ros_smoke.py"], 
+ "extra": ["navera_lite/tools/init_repo.sh"], 
+ "note": "14: no stack TODO; the whole 09-13 stack finished plus its reference suite (pytest navera_lite/tests) and tools/init_repo.sh (git repo of the lesson folder, tag start; 33 reuses it). The students' test TODOs are mission files."}

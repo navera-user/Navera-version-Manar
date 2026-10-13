@@ -1,3 +1,3 @@
-{"number": "14", "title": "Testing robotics code: examples, properties, mutants and launch tests", "module": 3, "duration": "3 h 45",
- "summary": "pytest with fixtures and parametrize, property-based tests with hypothesis, mutation thinking to measure your tests, and a launch_testing test of NAVERA's real arbiter. You also run NAVERA's 359 unit tests, break NAVERA on purpose and restore it with git.",
- "resources": [], "open": ["test_geo_tools.py", "test_properties.py", "test_navera_geo.py", "test_estimator_launch.py", "report.md"], "check_timeout_s": 300}
+{"number": "14", "title": "Testing robotics code: examples, properties, mutants and launch tests", "module": 3, "duration": "5 h 30",
+ "summary": "Run your stack's own suite, break it on purpose and restore it with git; write example tests and hypothesis properties strong enough to kill mutants you have never seen; play saboteur against the stack's own tests; then write a launch test that starts NAVERA Lite's judge and proves that a 5 km jump is refused and a NaN fix gives NO_FIX.",
+ "resources": [], "open": ["test_geo_examples.py", "test_geo_properties.py", "test_arbiter_launch.py", "answers.py"], "check_timeout_s": 420}

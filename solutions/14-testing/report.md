@@ -1,27 +1,25 @@
-# Lab 14 — analysis
+# Mission 14 — report
 
-## NAVERA's tests
+## Bugs pinned
 
-`navera_tools/run_tests.sh` ran 359 unit tests in about 75 seconds and printed ALL TESTS PASSED (in
-one run a GPU test failed while the machine was busy and passed when I ran its file alone). When I
-replaced the last line of is_finite_latlon by `return True`, 2 tests of test_geo.py failed:
-test_is_finite_latlon[0.0-0.0-False] and test_invalid_start_is_refused. The second one tests
-dead_reckon, which calls is_finite_latlon to refuse a bad start, so one broken helper broke two
-behaviours.
+The stack's suite ran 89 tests in about 11 s; the ROS smoke test alone takes about 10 s because it starts
+two real nodes. When I made is_finite_latlon accept (0, 0), only one test failed,
+test_null_island_and_bad_values_are_refused. The judge and the trip node use the function but their tests
+never send (0, 0). My parametrized test now pins every rule with 13 cases, and my gate test pins the exact
+150 m limit and the negative time.
 
 ## Mutants
 
-My first version had only the two example tests plus three tests of haversine and meters_to_degrees
-along a meridian. The checker reported that "ignores the longitude", "swaps north and east" and
-"divides by zero" survived. I added a test of one degree of longitude on the equator and at 60°, a
-test that a move north keeps the longitude, and the parametrized dt test. The asymmetric haversine
-(cos(lat1) squared) is the mutant that a symmetry property catches immediately, because all my
-first examples had two points on the same latitude.
+My first version of the example tests killed 4 of the 6 training mutants; at the end 5 of 6. Mutant 3 is
+equivalent: the range test still refuses a NaN or infinite longitude. My three mutants widen the longitude
+limit to 360°, remove the wrap of offset and remove the error for opposite points; the stack's suite has no
+test there, and three new tests of mine (a longitude of 180.5, a move across the date line, opposite
+points) kill them.
 
-## Properties
+## Properties and the launch test
 
-With the whole Earth as domain, hypothesis printed "Falsifying example: lat0=86.6134765190408,
-lon0=173.22695303808192, north=0.0, east=44488.48530754529". Near the pole 44 km east is several
-degrees of longitude, so the flat helper returned a longitude above 180°, which is invalid because it
-does not wrap. I restricted the property to |lat0| ≤ 80° and |lon0| ≤ 170°, the documented domain.
-NAVERA's dead_reckon wraps the longitude with (lon + 540) % 360 − 180 and has a regression test for it.
+On the whole Earth, hypothesis found lat0 = 89.55°, n = 49 751 m: the result is past the North Pole. I
+restricted the start to ±80°. The cos(p1)² mutant of haversine passes my meridian and equator examples but
+fails symmetry at once. The launch test starts the real judge and checks over ROS that a 5 km jump is
+refused, that only one position is published, and that a NaN fix gives NO_FIX: wiring, QoS and timers that
+no unit test touches.
