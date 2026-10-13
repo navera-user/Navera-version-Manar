@@ -25,7 +25,7 @@ from navera_lite.ros.launch_util import fl_node  # noqa: E402
 
 # @part 13 todo 5
 def generate_launch_description():
-    """What `ros2 launch` starts (lesson 13 §4):
+    """What `ros2 launch` starts (lesson 13 §5):
       - two launch arguments: use_boat (default "true") and gps_source (default "drone");
       - fake_gps (module gps_node) in the namespace "drone", with vehicle "drone" and speed_mps 12.0;
       - fake_gps in the namespace "boat", with vehicle "boat", speed_mps 5.0 and heading_deg 0.0 — only

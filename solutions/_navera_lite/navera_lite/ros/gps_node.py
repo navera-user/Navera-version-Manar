@@ -12,7 +12,7 @@ It publishes on navera_lite/fix/gps (a relative name: in the namespace /drone it
 """
 import math
 
-from rcl_interfaces.msg import FloatingPointRange, ParameterDescriptor, SetParametersResult
+from rcl_interfaces.msg import FloatingPointRange, ParameterDescriptor, SetParametersResult   # used from mission 13
 from rclpy.node import Node
 from sensor_msgs.msg import NavSatFix, NavSatStatus
 
@@ -21,7 +21,7 @@ from navera_lite.geo import offset
 from navera_lite.ros.convert import s_to_stamp
 from navera_lite.ros.qos import FIX_QOS
 from navera_lite.ros.runner import run_node
-from navera_lite.vehicle import VEHICLES, ground_velocity
+from navera_lite.vehicle import VEHICLES, ground_velocity       # VEHICLES: used from mission 13
 
 # @part 10
 TOPIC = "navera_lite/fix/gps"

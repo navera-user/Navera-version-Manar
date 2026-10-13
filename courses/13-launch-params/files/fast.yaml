@@ -1,0 +1,4 @@
+# fast.yaml — one more parameters file, for the precedence experiment (lab Step 6).
+/drone/fake_gps:
+  ros__parameters:
+    speed_mps: 25.0

@@ -1,21 +1,19 @@
-# Parameters of TWO fake GNSS receivers (teacher solution).
-/**:                                 # every node: put the common values FIRST (the last match wins)
+# my_gps.yaml — the parameters of TWO fake GNSS receivers (teacher solution).
+/**:                              # every node: common values FIRST (the lowest matching row wins)
   ros__parameters:
-    rate_hz: 1.0                    # like NAVERA's real receiver (1.000 Hz measured)
+    rate_hz: 1.0
     sigma_m: 3.0
 
-/car/fake_gps:
+/drone/fake_gps:
   ros__parameters:
-    vehicle: "car"
-    start_lat: 35.8250              # in Sousse (NAVERA's test area), Tunisia
-    start_lon: 10.5950
-    speed_mps: 12.0
-    heading_deg: 90.0               # due east
+    vehicle: "drone"
+    speed_mps: 18.0
+    heading_deg: 90.0
 
 /boat/fake_gps:
   ros__parameters:
     vehicle: "boat"
-    start_lat: 35.7800              # at sea, off Monastir
+    speed_mps: 6.0
+    heading_deg: 45.0
+    start_lat: 35.7800             # at sea, off Monastir
     start_lon: 10.8600
-    speed_mps: 5.0
-    heading_deg: 45.0               # north-east, out to sea

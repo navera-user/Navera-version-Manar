@@ -4,7 +4,7 @@ teaching stack (given in mission 13). Written for the course; it is not NAVERA c
 
 Product packages are built with colcon and started with launch_ros.actions.Node(package=..., executable=...).
 NAVERA Lite is not built, so fl_node() gives the same command line to a plain ExecuteProcess. The two map
-one to one (lesson 13 §4):
+one to one (lesson 13 §5):
     Node(package="pkg", executable="exe", name="n", namespace="ns",
          parameters=["file.yaml", {"k": v}], remappings=[("from", "to")])
     fl_node("exe", "n", namespace="ns", params_file="file.yaml", params={"k": v}, remaps=[("from", "to")])
