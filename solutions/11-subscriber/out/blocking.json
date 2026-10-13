@@ -1,0 +1,2 @@
+[{"mode": "single", "work_s": 0.3, "ticks": 33, "gap_ms": 302, "max_age_s": 1.97, "time": "10:12:01"},
+ {"mode": "multi", "work_s": 0.3, "ticks": 100, "gap_ms": 101, "max_age_s": 1.97, "time": "10:12:13"}]

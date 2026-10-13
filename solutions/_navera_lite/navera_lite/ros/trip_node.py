@@ -41,18 +41,16 @@ class TripComputer:
 
     # @part 11 todo 1
     def update(self, est):
-        """Judge one GPS Estimate and remember it if it is good. Returns (ok, reason), first rule broken:
-          est.valid is False                         → (False, "no position")
-          is_finite_latlon refuses it                → (False, "bad position")
-          stamp not newer than the last accepted     → (False, "old fix")
-          the jump gate refuses it (guard.gate_ok, with enu_flat from the last accepted fix, the time
-          between the two stamps, self.max_speed_mps and self.margin_m) → (False, "jump")
-          the very first good fix                    → (True, "first fix")
-          otherwise                                  → (True, "ok")
-        An accepted fix is appended to self.fixes as (stamp_s, lat, lon) and adds its haversine distance
-        from the previous one to self.distance_m. A refused one adds 1 to self.refused and keeps the
-        reason in self.last_refusal.
-        Example: after (35.8256, 10.6084) at t = 0.0, a fix 5 km away at t = 1.0 → (False, "jump")
+        """Judge one GPS Estimate; remember it only if it is good. Returns (ok, reason).
+        Four reasons to refuse (lesson §3 decides their ORDER: the first rule broken gives the reason):
+          the source says it has no position (est.valid is False)            → (False, "no position")
+          not a usable latitude/longitude (geo.is_finite_latlon)             → (False, "bad position")
+          its stamp is not newer than the last ACCEPTED fix's stamp         → (False, "old fix")
+          mission 01's jump gate refuses it, from the last ACCEPTED fix      → (False, "jump")
+        Otherwise: (True, "first fix") for the very first one, else (True, "ok").
+        Memory: accepted fixes are kept in self.fixes as (stamp_s, lat, lon), and self.distance_m is the
+        great-circle length along them; a refused fix only counts in self.refused and self.last_refusal.
+        Example: after a first fix (35.8256, 10.6084) at t = 0.0, a fix 5 km away at t = 1.0 → (False, "jump")
         """
         ok, why = True, "ok"
         if not est.valid:
@@ -84,10 +82,9 @@ def speed_window(fixes, window_s):
     """The average speed (m/s) over the last window_s seconds: the haversine distance from the OLDEST fix
     whose time is ≥ (newest time − window_s) to the newest fix, divided by the time between them.
     fixes: a list of (t_s, lat, lon), oldest first. None when fewer than 2 fixes are in the window.
-    A long window averages the GPS noise away (lesson §3): σ 3 m per fix gives about 4.2 m/s of noise
-    over 1 s, 0.42 m/s over 10 s.
-    Example: speed_window([(0.0, 35.8256, 10.6084), (5.0, 35.8256, 10.60895), (10.0, 35.8256, 10.6095)], 6.0)
-             → about 9.92   (the fixes at 5 s and 10 s: 49.6 m in 5 s)
+    A long window averages the GPS noise away, and pays with a delay (lesson §4).
+    Example: speed_window([(0.0, 35.8256, 10.6084), (5.0, 35.8256, 10.60895), (10.0, 35.8256, 10.61005)], 6.0)
+             → about 19.83   (only the fixes at 5 s and 10 s are inside: 99.2 m in 5 s)
     """
     if len(fixes) < 2:
         return None
@@ -142,17 +139,16 @@ class TripNode(Node):
 
     # @part 11 todo 4
     def listen(self):
-        """Subscribe to navera_lite/fix/gps (NavSatFix, qos.FIX_QOS) with self.on_fix as the callback, and
-        keep the subscription in self.sub (an object nobody keeps is destroyed).
+        """Subscribe to navera_lite/fix/gps (type NavSatFix, QoS qos.FIX_QOS) with self.on_fix as the callback,
+        and keep the subscription in self.sub (so that you can look at it later, e.g. self.sub.topic_name).
         Example: after it, `ros2 node info /trip` lists /navera_lite/fix/gps under Subscribers
         """
         self.sub = self.create_subscription(NavSatFix, "navera_lite/fix/gps", self.on_fix, FIX_QOS)
 
     # @part 11 todo 5
     def on_fix(self, msg):
-        """Called for every NavSatFix: kick the watchdog with the node's clock (self.now_s()), turn the
-        message into an Estimate (convert.from_navsatfix, source "gps"), give it to self.computer.update,
-        and log a warning with the reason when it is refused.
+        """The callback, called once for every NavSatFix that arrives: the watchdog and the trip computer must
+        hear about it, and a refused fix must leave a warning that says why (lesson §1, §3, §5).
         Example: a fix 5 km away → the terminal shows "[WARN] [...] [trip]: fix refused: jump"
         """
         now = self.now_s()

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 320" font-family="sans-serif" font-size="12">
+<rect width="720" height="320" fill="#f7fafc"/>
+<text x="360.0" y="24.0" fill="#1d2733" text-anchor="middle" font-size="14" font-weight="bold">Positions arriving at 5 Hz, forwarded by a 5 Hz timer or on arrival</text>
+<line x1="130.0" y1="42" x2="130.0" y2="262" stroke="#d5dde5"/>
+<text x="130.0" y="40.0" fill="#56606b" text-anchor="middle" font-size="11">0.0 s</text>
+<line x1="220.0" y1="42" x2="220.0" y2="262" stroke="#d5dde5"/>
+<text x="220.0" y="40.0" fill="#56606b" text-anchor="middle" font-size="11">0.2 s</text>
+<line x1="310.0" y1="42" x2="310.0" y2="262" stroke="#d5dde5"/>
+<text x="310.0" y="40.0" fill="#56606b" text-anchor="middle" font-size="11">0.4 s</text>
+<line x1="400.0" y1="42" x2="400.0" y2="262" stroke="#d5dde5"/>
+<text x="400.0" y="40.0" fill="#56606b" text-anchor="middle" font-size="11">0.6 s</text>
+<line x1="490.0" y1="42" x2="490.0" y2="262" stroke="#d5dde5"/>
+<text x="490.0" y="40.0" fill="#56606b" text-anchor="middle" font-size="11">0.8 s</text>
+<line x1="580.0" y1="42" x2="580.0" y2="262" stroke="#d5dde5"/>
+<text x="580.0" y="40.0" fill="#56606b" text-anchor="middle" font-size="11">1.0 s</text>
+<line x1="670.0" y1="42" x2="670.0" y2="262" stroke="#d5dde5"/>
+<text x="670.0" y="40.0" fill="#56606b" text-anchor="middle" font-size="11">1.2 s</text>
+<text x="14.0" y="80.0" fill="#1d2733" text-anchor="start" font-weight="bold">arrive</text>
+<text x="14.0" y="95.0" fill="#56606b" text-anchor="start" font-size="11">(jitter)</text>
+<path d="M152.5 62 v26" stroke="#1d2733" stroke-width="3"/><text x="152.5" y="104.0" fill="#1d2733" text-anchor="middle" font-weight="bold">#0</text>
+<path d="M242.5 62 v26" stroke="#1d2733" stroke-width="3"/><text x="242.5" y="104.0" fill="#1d2733" text-anchor="middle" font-weight="bold">#1</text>
+<path d="M377.5 62 v26" stroke="#b3261e" stroke-width="3"/><text x="377.5" y="104.0" fill="#b3261e" text-anchor="middle" font-weight="bold">#2</text>
+<path d="M422.5 62 v26" stroke="#1d2733" stroke-width="3"/><text x="422.5" y="104.0" fill="#1d2733" text-anchor="middle" font-weight="bold">#3</text>
+<path d="M512.5 62 v26" stroke="#1d2733" stroke-width="3"/><text x="512.5" y="104.0" fill="#1d2733" text-anchor="middle" font-weight="bold">#4</text>
+<path d="M602.5 62 v26" stroke="#1d2733" stroke-width="3"/><text x="602.5" y="104.0" fill="#1d2733" text-anchor="middle" font-weight="bold">#5</text>
+<text x="332.5" y="120.0" fill="#b3261e" text-anchor="middle" font-size="11">#2 is 100 ms late</text>
+<text x="14.0" y="160.0" fill="#1d2733" text-anchor="start" font-weight="bold">poll</text>
+<text x="14.0" y="175.0" fill="#56606b" text-anchor="start" font-size="11">5 Hz timer</text>
+<rect x="181.0" y="142" width="6" height="26" fill="#0b6e8a"/><text x="184.0" y="184.0" fill="#0b6e8a" text-anchor="middle" font-weight="bold">#0</text>
+<rect x="271.0" y="142" width="6" height="26" fill="#0b6e8a"/><text x="274.0" y="184.0" fill="#0b6e8a" text-anchor="middle" font-weight="bold">#1</text>
+<rect x="361.0" y="142" width="6" height="26" fill="#b3261e"/><text x="364.0" y="184.0" fill="#b3261e" text-anchor="middle" font-weight="bold">#1 again</text>
+<rect x="451.0" y="142" width="6" height="26" fill="#b3261e"/><text x="454.0" y="184.0" fill="#b3261e" text-anchor="middle" font-weight="bold">#3</text>
+<rect x="541.0" y="142" width="6" height="26" fill="#0b6e8a"/><text x="544.0" y="184.0" fill="#0b6e8a" text-anchor="middle" font-weight="bold">#4</text>
+<rect x="631.0" y="142" width="6" height="26" fill="#0b6e8a"/><text x="634.0" y="184.0" fill="#0b6e8a" text-anchor="middle" font-weight="bold">#5</text>
+<text x="364.0" y="200.0" fill="#b3261e" text-anchor="middle" font-size="11">double</text>
+<text x="454.0" y="200.0" fill="#b3261e" text-anchor="middle" font-size="11">#2 never sent</text>
+<text x="14.0" y="232.0" fill="#1d2733" text-anchor="start" font-weight="bold">on arrival</text>
+<text x="14.0" y="247.0" fill="#56606b" text-anchor="start" font-size="11">callback</text>
+<rect x="149.5" y="216" width="6" height="26" fill="#2e7d32"/><text x="162.5" y="236.0" fill="#2e7d32" text-anchor="start" font-size="11">#0</text>
+<rect x="239.5" y="216" width="6" height="26" fill="#2e7d32"/><text x="252.5" y="236.0" fill="#2e7d32" text-anchor="start" font-size="11">#1</text>
+<rect x="374.5" y="216" width="6" height="26" fill="#2e7d32"/><text x="387.5" y="236.0" fill="#2e7d32" text-anchor="start" font-size="11">#2</text>
+<rect x="419.5" y="216" width="6" height="26" fill="#2e7d32"/><text x="432.5" y="236.0" fill="#2e7d32" text-anchor="start" font-size="11">#3</text>
+<rect x="509.5" y="216" width="6" height="26" fill="#2e7d32"/><text x="522.5" y="236.0" fill="#2e7d32" text-anchor="start" font-size="11">#4</text>
+<rect x="599.5" y="216" width="6" height="26" fill="#2e7d32"/><text x="612.5" y="236.0" fill="#2e7d32" text-anchor="start" font-size="11">#5</text>
+<text x="360.0" y="290.0" fill="#56606b" text-anchor="middle" font-size="11">The timer forwards the newest position it holds: a late one makes one tick find nothing new</text>
+<text x="360.0" y="306.0" fill="#56606b" text-anchor="middle" font-size="11">(it repeats the old one) and the next find two (it keeps only the newest). On arrival, each is sent once.</text>
+</svg>

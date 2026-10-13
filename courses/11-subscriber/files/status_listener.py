@@ -1,86 +1,77 @@
-#!/usr/bin/env python3
-"""status_listener.py — listen to NAVERA's arbiter and say, in words, what it decided.
+"""status_listener.py — listen to the judge (arbiter v0) and say, in words, what it decided.
 
-It subscribes to /navera/nav_status (navera_msgs/NavStatus, 5 times per second) and logs a line
-ONLY when the decision (the state or the active source) changes. When GPS goes silent and the
-arbiter falls to NO_FIX, it also logs how long GPS had been silent.
+A second subscriber WITH MEMORY. It subscribes to two topics:
+  navera_lite/status    the judge's decision (DiagnosticStatus, 5 or more a second, latched)
+  navera_lite/fix/gps   the GPS fixes, only to remember the stamp of the last one
+and prints a line ONLY when the decision (state, source) changes. When the judge falls to NO_FIX, it also
+prints how long the GPS had been silent: the time of that status minus the stamp of the last GPS fix
+(each value is also added to out/silence.json).
 
-    python3 status_listener.py       (with NAVERA's estimator running)
+    python3 status_listener.py          (with arbiter v0 running; Ctrl+C to stop)
 """
-import rclpy
-from navera_msgs.msg import NavStatus, SourceHealth
-from rclpy.executors import ExternalShutdownException
+import json
+import os
+
+from diagnostic_msgs.msg import DiagnosticStatus
 from rclpy.node import Node
+from sensor_msgs.msg import NavSatFix
 
-TOPIC = "/navera/nav_status"
+from navera_lite.ros.convert import stamp_to_s, status_values
+from navera_lite.ros.qos import FIX_QOS, STATUS_QOS
+from navera_lite.ros.runner import run_node
 
-
-def state_name(state):
-    """The name of a NavStatus state number: "INITIALIZING", "NO_FIX", "FIX" or "DEGRADED"."""
-    # TODO 5: return the right name for each of the 4 states, using the constants of the message
-    #         (NavStatus.STATE_INITIALIZING, NavStatus.STATE_NO_FIX, ...) — never the bare numbers.
-    #         For any other number, return f"UNKNOWN STATE {state}".
-    return "?"
+# ---- you don't need to change anything in this file (but you can read it!) ----
 
 
-SOURCE_NAMES = {
-    NavStatus.SOURCE_UNKNOWN: "none",
-    NavStatus.SOURCE_GPS: "GPS",
-    NavStatus.SOURCE_DAY_VISION: "day vision",
-    NavStatus.SOURCE_NIGHT_VISION: "night vision",
-    NavStatus.SOURCE_CELESTIAL: "celestial",
-}
-
-
-def describe(msg):
-    """One line of text for a NavStatus message, e.g.  "FIX | source: GPS | GPS fix"."""
-    source = SOURCE_NAMES.get(msg.active_source, str(msg.active_source))
-    return f"{state_name(msg.state)} | source: {source} | {msg.reason}"
-
-
-def to_s(stamp):
-    """A builtin_interfaces/Time in seconds (float)."""
-    return stamp.sec + stamp.nanosec * 1e-9
-
-
-def gps_silence_s(msg):
-    """How long GPS has been silent when this status was computed: header.stamp minus the
-    last_seen of the GPS entry of msg.sources. None if GPS was never heard (last_seen is 0)."""
-    # TODO 6: find the entry of msg.sources whose .source == SourceHealth.SOURCE_GPS; if its
-    #         last_seen is zero (never heard) or there is none, return None; else return
-    #         to_s(msg.header.stamp) - to_s(entry.last_seen).
-    return None
+def log_value(path, value):
+    """Append one measurement to a JSON list in out/ (the check compares your answers with it)."""
+    try:
+        with open(path) as f:
+            values = json.load(f)
+    except (OSError, ValueError):
+        values = []
+    values.append(value)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(values, f)
 
 
 class StatusListener(Node):
     def __init__(self):
         super().__init__("status_listener")
-        self.last_key = None            # (state, active_source) of the last line logged
-        # TODO 7a: subscribe to NavStatus on TOPIC (depth 10) with the callback self.on_status
-        self.get_logger().info(f"listening to {TOPIC}")
+        self.last_key = None          # memory 1: (state, source) of the last line printed
+        self.last_gps_stamp = None    # memory 2: the stamp (s) of the newest GPS fix heard
+        self.status_sub = self.create_subscription(DiagnosticStatus, "navera_lite/status", self.on_status,
+                                                   STATUS_QOS)
+        self.gps_sub = self.create_subscription(NavSatFix, "navera_lite/fix/gps", self.on_gps, FIX_QOS)
+        self.get_logger().info(f"listening to {self.resolve_topic_name('navera_lite/status')}")
+
+    def now_s(self):
+        return self.get_clock().now().nanoseconds * 1e-9
+
+    def on_gps(self, msg):
+        self.last_gps_stamp = stamp_to_s(msg.header.stamp)
 
     def on_status(self, msg):
-        # TODO 7b: when (msg.state, msg.active_source) differs from self.last_key:
-        #            - log describe(msg)
-        #            - if the new state is NO_FIX and gps_silence_s(msg) is not None, also log
-        #              exactly:  GPS silent for 3.12 s      (two decimals)
-        #            - store the new key in self.last_key
-        #          Otherwise do nothing: NAVERA publishes 5 statuses per second.
-        pass
+        values = status_values(msg)
+        key = (values.get("state", "?"), values.get("source", ""))
+        if key == self.last_key:
+            return                    # nothing new: stay quiet
+        self.last_key = key
+        self.get_logger().info(f"{key[0]} | source: {key[1] or 'none'} | {msg.message}")
+        if key[0] == "NO_FIX":
+            if self.last_gps_stamp is None:
+                self.get_logger().info("GPS silent: not measured (no GPS fix heard since the last NO_FIX — "
+                                       "let the GPS run 5 s after FIX before you stop it)")
+            else:
+                silent = self.now_s() - self.last_gps_stamp
+                self.get_logger().info(f"GPS silent for {silent:.2f} s (since the stamp of its last fix)")
+                log_value("out/silence.json", round(silent, 2))
+            self.last_gps_stamp = None    # each measurement needs fixes heard in THIS run of the GPS
 
 
-# ---- you don't need to change anything below this line ----
-def main():
-    rclpy.init()
-    node = StatusListener()
-    try:
-        rclpy.spin(node)
-    except (KeyboardInterrupt, ExternalShutdownException):
-        pass
-    finally:
-        node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+def main(args=None):
+    run_node(StatusListener, args)
 
 
 if __name__ == "__main__":

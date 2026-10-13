@@ -37,8 +37,8 @@ def test_speed_window():
     assert speed_window(fixes, 5.0) == pytest.approx(10.0, rel=1e-3)
     assert speed_window(fixes[:1], 5.0) is None
     assert speed_window([fixes[0], fixes[10]], 5.0) is None          # only one fix in the window
-    assert speed_window([(0.0, 35.8256, 10.6084), (5.0, 35.8256, 10.60895), (10.0, 35.8256, 10.6095)],
-                        6.0) == pytest.approx(9.92, abs=0.01)
+    assert speed_window([(0.0, 35.8256, 10.6084), (5.0, 35.8256, 10.60895), (10.0, 35.8256, 10.61005)],
+                        6.0) == pytest.approx(19.83, abs=0.01)
 
 
 def test_watchdog():
