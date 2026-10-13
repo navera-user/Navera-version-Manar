@@ -74,6 +74,49 @@ np.linalg.matrix_rank(np.array([[1, 2], [2, 4]]))   # 1: the rows are parallel, 
 `x, *_ = …`. Forgetting it gives `ValueError: … inhomogeneous shape` or "could not be broadcast"
 when you then add it to an array. A list has no `.T`: write `H = np.array(H)` first.
 
+### Python 6 — dataclasses (first needed in mission 12)
+
+```python
+from dataclasses import dataclass, field, replace, asdict
+
+@dataclass                         # writes __init__, __repr__ and == for you, from the fields below
+class Reading:
+    sensor: str                    # a field without default: required
+    value: float
+    t_s: float = 0.0               # fields with a default come AFTER those without
+    tags: list = field(default_factory=list)   # a list default: never `= []` (it would be shared)
+
+r = Reading("baro", 1013.2)        # Reading(sensor='baro', value=1013.2, t_s=0.0, tags=[])
+r.value, r.t_s                     # 1013.2 and 0.0
+r == Reading("baro", 1013.2)       # True: compared field by field
+r2 = replace(r, value=1009.8)      # a copy with one field changed; r.value is still 1013.2
+asdict(r)                          # {'sensor': 'baro', 'value': 1013.2, 't_s': 0.0, 'tags': []}
+```
+
+The type after `:` is a note for the reader: Python does not check it (`Reading("baro", "high")` is
+accepted). Check the values yourself where it matters, and raise `ValueError` with a clear sentence.
+
+### Python 7 — packages and `python3 -m` (first needed in mission 09)
+
+```
+lessons/09-ros-intro/              ← run commands from HERE (the folder that holds the package)
+  weather/                         a package: a folder with an __init__.py
+    __init__.py                    runs once, at the first `import weather…`
+    units.py                       def c_to_f(c): return c * 9 / 5 + 32
+    report.py                      from weather.units import c_to_f   (absolute import)
+```
+
+```bash
+python3 -m weather.report          # 70.7 — "run the module weather.report": dots, no .py
+python3 weather/report.py          # ModuleNotFoundError: No module named 'weather'
+cd weather && python3 -m weather.report   # same error: weather/ must be in the CURRENT folder
+```
+
+`python3 -m` puts the current folder first on Python's search path, so `from weather.units import …`
+finds the package wherever the module lives. Running the file by its path puts only the file's own
+folder (`weather/`) on the path, where there is no `weather` package. NAVERA Lite works the same way:
+`python3 -m navera_lite.ros.arbiter_v0` from the lesson folder.
+
 ---
 
 ### Maths 1 — scientific notation

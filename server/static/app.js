@@ -127,6 +127,12 @@ function heroScene() {
 // a mission is locked by its class's leg date (locked_until) or until the one before it is passed (locked_after)
 const isLocked = (l) => !!(l.locked_until || l.locked_after);
 const lockText = (l) => l.locked_until ? `opens ${l.locked_until}` : l.locked_after ? `Pass mission ${l.locked_after} first` : '';
+// open a mission from the home page, or say plainly why it is still locked
+function goLesson(id) {
+  const l = COURSES.find(c => c.id === id);
+  if (l && isLocked(l)) { toast(`🔒 Mission ${l.number}: ${l.locked_until ? 'this leg opens on ' + l.locked_until : lockText(l) + ' (missions open in order)'}.`); return; }
+  location.hash = 'lesson/' + id;
+}
 function expeditionSVG(lessons) {
   const W = 1220, H = 380, n = lessons.length;
   const next = lessons.findIndex(l => l.progress.status !== 'passed');
@@ -160,7 +166,7 @@ function placeWaypoints(lessons) {
     lab += `<text x="${x}" y="368">${ROMAN[k]} · ${esc(m.short || (m.title || '').split(/[:,]/)[0])}</text>`;
   });
   labels.innerHTML = lab;
-  g.querySelectorAll('.wp').forEach(w => w.onclick = () => { location.hash = 'lesson/' + w.dataset.id; });
+  g.querySelectorAll('.wp').forEach(w => w.onclick = () => goLesson(w.dataset.id));
 }
 function badgesHTML(lessons) {
   const st = Object.fromEntries(lessons.map(l => [l.id, l.progress.status]));
@@ -239,7 +245,7 @@ async function showHome() {
   h += `<div class="foot"><a class="iris-foot" href="https://iris-systems.tn" target="_blank" rel="noopener" style="color:var(--ink)"><img src="/static/img/iris-icon.svg" alt="">${'<span class="iris-mark" role="img" aria-label="IRIS"><span>IRIS</span></span>'}</a><div style="margin-top:8px">NAVERA Academy · NAVERA is developed by IRIS Systems · Release 0.x — field validation pending</div></div></div>`;
   $('home').innerHTML = h;
   placeWaypoints(COURSES);
-  $('home').querySelectorAll('.mitem').forEach(c => c.onclick = () => { location.hash = 'lesson/' + c.dataset.id; });
+  $('home').querySelectorAll('.mitem').forEach(c => c.onclick = () => goLesson(c.dataset.id));
   ['goNext', 'goNext2'].forEach(id => { if ($(id)) $(id).onclick = () => { location.hash = 'lesson/' + next.id; }; });
   $('goMap').onclick = () => $('mapHead').scrollIntoView({behavior: 'smooth'});
   $('goIntro').onclick = () => Intro.show();
@@ -259,7 +265,9 @@ async function openLesson(id) {
   $('checkBtn').style.display = l.has_check ? '' : 'none';
   setStatus(l.progress);
   const idx = COURSES.findIndex(c => c.id === id);
-  $('prevBtn').disabled = idx <= 0; $('nextBtn').disabled = idx < 0 || idx >= COURSES.length - 1;
+  const nx = idx >= 0 ? COURSES[idx + 1] : null;
+  $('prevBtn').disabled = idx <= 0; $('nextBtn').disabled = !nx || isLocked(nx);
+  $('nextBtn').title = nx && isLocked(nx) ? `🔒 Mission ${nx.number}: ${lockText(nx)}` : '';
   $('prevBtn').onclick = () => { location.hash = 'lesson/' + COURSES[idx - 1].id; };
   $('nextBtn').onclick = () => { location.hash = 'lesson/' + COURSES[idx + 1].id; };
   $('result').className = 'result';
@@ -407,6 +415,7 @@ $('checkBtn').onclick = async () => {
     const l = await api('/api/lesson/' + LESSON.id); LESSON.progress = l.progress; setStatus(l.progress);
     if (r.passed) {         // the way on: straight to the next mission
       const i = COURSES.findIndex(c => c.id === LESSON.id), nx = COURSES[i + 1];
+      $('nextBtn').disabled = !nx || isLocked(nx); $('nextBtn').title = '';
       if (nx && !isLocked(nx)) {
         const b2 = document.createElement('button'); b2.className = 'primary'; b2.style.margin = '10px 0 4px';
         b2.textContent = `Next mission → ${nx.number} · ${nx.title}`; b2.onclick = () => openLesson(nx.id);

@@ -251,7 +251,7 @@ NAVERA runs on a small NVIDIA computer next to the autopilot.
   **day vision** (camera matched against a stored satellite map); **night vision** (thermal image
   against the map); **celestial** (stars). The **IMU** gives the attitude; integrated for position it
   drifts fast, so NAVERA does not use it as a position source today.
-- **The arbiter (judge)**, `estimator_node`, decides whenever an estimate arrives and at least five
+- **The arbiter (judge)**, NAVERA's estimator node, decides whenever an estimate arrives and at least five
   times per second. A source is eligible if it is valid and **fresh** (GPS: younger than 3 s). Among
   eligible sources the **priority** order wins: **GPS > day > night > celestial**. Not the most
   precise one: the first in priority. (A higher-priority source that comes back waits a hold-off

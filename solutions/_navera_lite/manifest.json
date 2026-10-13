@@ -1,0 +1,6 @@
+{
+  "package": "navera_lite",
+  "version": "course-2026.1",
+  "settings_file": "navera_lite.yaml",
+  "note": "Global settings only. Each mission has its own fragment manifest.d/<NN-slug>.json (parts, todo_missions, tests, extra): see tools/lite_build.py."
+}

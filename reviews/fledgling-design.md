@@ -186,7 +186,7 @@ and `settings.load()`. Values = mission 01's sheet + lesson 1 §5 (described NAV
 ```yaml
 /**:
   ros__parameters:
-    gps_timeout_s: 3.0        day_timeout_s: 5.0     night_timeout_s: 5.0   star_timeout_s: 45.0
+    gps_timeout_s: 3.0        day_timeout_s: 5.0     night_timeout_s: 5.0   celestial_timeout_s: 45.0
     future_tolerance_s: 0.5   fix_max_sigma_m: 25.0  min_stated_sigma_m: 0.01
     switch_holdoff_s: 2.0     tick_hz: 5.0
     max_speed_mps: 100.0      gps_jump_margin_m: 50.0

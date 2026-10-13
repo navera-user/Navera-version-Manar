@@ -1,8 +1,14 @@
 # NAVERA Academy — how to write a lesson
 
 The academy is a web dashboard (`server/`, port 8300) where students read a lesson beside a code
-editor, a terminal and the simulator. Every student works in a **sandbox** with their own copy of
-NAVERA (`~/navera`, reset button) and their own lesson files (`~/lessons/<id>/`).
+editor, a terminal and the simulator. Every student works in a **sandbox** with their own lesson
+files (`~/lessons/<id>/`), where they build **NAVERA Lite**, the course's own navigation stack (see
+"NAVERA Lite" below).
+
+**The rule.** Students never see, run, import, grep or edit NAVERA's code or files. Lessons describe
+NAVERA, IRIS's product, in **words and numbers** (design, rules, settings values, measured results with
+dates). Everything a student runs is course-written code. (A teacher can give one student full NAVERA
+access from the dashboard; no lesson may rely on it.)
 
 ## Audience — read this twice
 
@@ -17,7 +23,7 @@ NAVERA (`~/navera`, reset button) and their own lesson files (`~/lessons/<id>/`)
   an intuition and a worked numeric example before the formula, and never using a concept before it
   is introduced. Basics (terminal, Python, git) are taught too, with examples: do not assume students
   will look things up.
-- Labs are substantial (2–4 h): implement, test, measure, compare with NAVERA's real code, and a short
+- Labs are substantial (2–4 h): implement, test, measure, compare with the course's reference values or a third-party library, and a short
   written analysis (results.json / report.md that the check verifies). Each lab ends with
   "Going further" challenges for strong students.
 - **International context**: no single country is the setting. Worked examples use well-known places
@@ -163,8 +169,8 @@ values, but not the code that solves the exercise).
   `[!QUESTION]` ("❓ Think").
 - ```` ```bash ```` blocks get a **▶ Run** button that types the command in the student's terminal
   (one command per block is best; the terminal starts in `~/lessons/<id>/`). Other languages get **Copy**.
-- `[label](file:./name.py)` opens `~/lessons/<id>/name.py` in the editor;
-  `[label](file:navera/day_pkg/day_pkg/vision_nav.py)` opens a file of the NAVERA copy.
+- `[label](file:./name.py)` opens `~/lessons/<id>/name.py` in the editor
+  (`file:./navera_lite/geo.py` for a part of the student's stack). There are no links to NAVERA files.
 - Images: `![alt](assets/x.svg)`. Tables, `<details><summary>Question</summary>Answer</details>` for
   self-quizzes. No external images or links needed to understand the lesson (internet may be absent).
 
@@ -172,8 +178,9 @@ values, but not the code that solves the exercise).
 
 Follow "Teaching method" above, in this order: objectives → how to study / what you already know →
 Words of this lesson → the problem (a concrete situation) → numbered sections (Why → idea → worked
-example → ✏️ Your turn → Remember), with Common mistakes boxes → "In NAVERA" (where it lives in the
-real code; excerpts ≤ 15 lines the student can read) → 🐦 birds (short) → Summary → Check yourself →
+example → ✏️ Your turn → Remember), with Common mistakes boxes → "In NAVERA" (how the product does it, in
+**words and numbers only**: no code, no file or package names) followed by "In NAVERA Lite" (where the
+idea lives in the student's own `navera_lite/` code) → 🐦 birds (short) → Summary → Check yourself →
 "Now open the **🛠️ Lab** tab."
 
 ## lab.md — the lab
@@ -185,7 +192,7 @@ real code; excerpts ≤ 15 lines the student can read) → 🐦 birds (short) �
   (function name, file, output). Then "Press **✔ Check my work**".
 - A "Look back" step (reflection, not graded), then "Going further (optional)" with 2–3 ungraded
   challenges for fast students.
-- Commands must work **in the sandbox**: `python3`, `ros2`, `colcon`, `git`, `pytest`, OpenCV,
+- Commands must work **in the sandbox**: `python3`, `python3 -m navera_lite.…`, `ros2`, `git`, `pytest`, OpenCV,
   numpy, matplotlib (Agg backend — save PNGs and let the student open them in the editor, which shows
   images), torch on the GPU. No `sudo`, no `apt`, no GUI windows (`cv2.imshow`, `rqt`, `rviz` fail).
 
@@ -219,9 +226,12 @@ c.run()
 - 5–15 checks, from easy to hard, each with a **hint that guides without giving the code**.
 - Deterministic, fast (whole check well under `check_timeout_s`), no internet.
 - Must not crash on a starter file: a missing function / wrong type must produce a ✘ with a message.
-- When the lab changes the NAVERA copy (`~/navera/...`), check those files / behaviour there.
-  A solution that changes `~/navera` provides `solutions/<id>/_apply.sh` (run from the lesson folder
-  by the test tool before checking) that makes those changes (e.g. `cp`, `sed`, `git apply`).
+- Everything the check reads is in the lesson folder. A NAVERA Lite module is loaded with
+  `load_student("navera_lite.arbiter")` (or `"navera_lite/arbiter.py"`): the lesson folder comes first
+  on `sys.path`, `fresh=True` re-imports every `navera_lite` module; `is_stub(func)` tells a TODO stub.
+  ROS checks call `publishers_ok()` (default topic `/navera_lite/status`) before reading a topic.
+- `tools/try_lesson.py <id> --solution` copies `solutions/<id>/` **with its sub-folders**
+  (`navera_lite/`) over the lesson folder. No `_apply.sh` is needed (one is still run if present).
 
 ## Testing — mandatory before you finish
 
@@ -239,17 +249,14 @@ uses its own ROS domain in the test tool, so several lessons can be tested at th
 
 | Path in the sandbox | What |
 |---|---|
-| `/data/map.mbtiles` | Satellite map of the Sousse region, zoom 13–19 (10 GB, SQLite, tiles `z/x/y`, TMS row order — see `simulation_web/simulation_web/web_common.py` `MBTilesReader`) |
-| `/data/navera_data/day_pkg/day_pkg/dataset/images/` + `dataset.csv` | 1120 satellite tiles z17 with lat/lon of each (`filename,lat,lon`; NW corner — check the code) |
-| `/data/navera_data/camera_pkg/camera_pkg/data/day/frame_*.jpeg` | 31 real aerial frames 1536×730. **Their `flight_log.csv` positions are WRONG (different places) — never use them as ground truth** |
-| `/data/navera_data/camera_pkg/camera_pkg/data/thermal/` | thermal frames with lat/lon/alt in the file name |
-| `/data/navera_data/camera_pkg/camera_pkg/data/celestial/etoiles.jpeg` | a star photo |
-| `/data/bsc5.dat` | Yale Bright Star Catalogue |
-| `/data/ardupilot/` | ArduPilot SITL build (simulator) |
+| `/data/map.mbtiles` | The course map of the Sousse region (SQLite MBTiles, tiles `z/x/y`, TMS row order; `navera_lite/tiles.py` reads it). It is being switched to OpenStreetMap-based tiles (design §7.3): show "© OpenStreetMap contributors" wherever a tile is shown |
 | `/data/academy/<id>/` | your lesson's dataset (from `datasets/<id>/`) |
-| `~/navera/` | the student's NAVERA copy (built, `--symlink-install`: Python edits work without rebuild) |
 
-Synthetic "drone photos" with exact ground truth are easy to make from `/data/map.mbtiles` (crop,
+NAVERA's own data folder, the ArduPilot build and NAVERA's star catalogue are **not** mounted for students
+(staff and students given NAVERA access only). Data copied from NAVERA (photos, frames, calibration views —
+never code) goes into `datasets/<id>/` (owner decision §7.2).
+
+Synthetic "drone photos" with exact ground truth are easy to make from the map (crop,
 rotate, scale, blur, change brightness) — preferred for vision labs. The real frames are good for
 "looks like a real flight" demos. Prepare datasets with a script run on the host (copy the script
 into `datasets/<id>/make_dataset.py` so the teacher can regenerate them), keep each dataset ≤ 50 MB.
@@ -258,8 +265,43 @@ into `datasets/<id>/make_dataset.py` so the teacher can regenerate them), keep e
 
 - NVIDIA Jetson Orin Nano 8 GB, Ubuntu 22.04, ROS 2 Humble, Python 3.10, torch 2.8 (CUDA works).
 - `ROS_LOCALHOST_ONLY=1`, a `ROS_DOMAIN_ID` per student: students never see each other's topics.
-- The simulator (`navera_tools/run_sim.sh`), the camera and the I²C/serial sensors are shared by the
+- Students fly NAVERA Lite in **Sim Lite** (the browser). NAVERA's full simulator is staff-only (described in
+  words in lessons). The camera and the I²C/serial sensors are shared by the
   class: a lab that needs them lists them in `meta.json` `resources`; the student books them in the
   dashboard. Such a lab must still teach something (and its check must pass or `c.skip`) when the
   hardware is absent — say so in the lab.
 - The student's home is `/home/student`; `whoami` says `student`.
+
+## NAVERA Lite — the students' stack
+
+Design: `reviews/fledgling-design.md` (§7 owner decisions override it: read "Fledgling" as NAVERA Lite,
+`fledgling` as `navera_lite`, topics `/navera_lite/*`, settings `navera_lite.yaml`). Conventions:
+`courses/_lib/CONVENTIONS.md`.
+
+- **What it is.** A small GPS-denied navigation stack (pure Python + numpy + OpenCV, a thin rclpy layer on
+  standard messages, no colcon build) with NAVERA's *shape* (witnesses → judge → messenger). Students
+  complete one part per mission; earlier parts ship finished (the course's reference, not the student's
+  own version). Lessons say "NAVERA Lite, the stack you build" vs "NAVERA, IRIS's product".
+- **One source.** `solutions/_navera_lite/` (teacher only) holds the complete reference: `navera_lite/<part>.py`,
+  `navera_lite/tests/`, `navera_lite.yaml`. Every top-level function/class has a tag line right above it:
+  `# @part NN todo K` (introduced in mission NN as its TODO K) or `# @part NN` (given). A method may carry
+  its own tag. The student-facing docstring (goal, inputs/outputs with units, one `Example:` with its
+  result) is written once, there. Write it from the lessons and the design, **never from NAVERA's code**.
+- **One manifest fragment per mission**: `solutions/_navera_lite/manifest.d/<NN-slug>.json` =
+  `{"parts": [...], "todo_missions": [NN], "tests": ["test_<part>.py"], "extra": []}`. Missions are built in
+  parallel, so there is no shared list to edit: `manifest.json` holds global settings only, and the
+  `PARTS` table of each copy's `navera_lite/__init__.py` is **generated** from the tags (never hand-edit
+  `navera_lite/__init__.py` to register a part; adding `vehicle.py` for 03 and `geo.py` for 06 touches no
+  common file). `tools/lite_build.py --parts` prints the table.
+- **Build:** `python3 tools/lite_build.py <id>` (or `--all`) writes `courses/<id>/files/navera_lite/`
+  (tags < NN finished, tags == NN stubbed to signature + docstring + `return None   # TODO: write your code
+  above, and return the result` or `raise NotImplementedError("TODO K")`, tags > NN removed, plus `PARTS.md`)
+  and `solutions/<id>/navera_lite/` (complete), then verifies: the starter imports, its TODOs are stubs,
+  every TODO docstring has an `Example:`, the shipped tests pass on the solution, lite_lint is clean.
+  Both folders are generated: edit the reference and rebuild. Runners, answers.py, report.md and play tools
+  stay hand-written in `courses/<id>/files/`.
+- **Lint:** `python3 tools/lite_lint.py <id>` (or `--all`) refuses NAVERA's identifiers (package, node,
+  message and class names, `~/navera`, NAVERA's data folder, `file:navera/` links, `/navera/…` topics) and
+  any 6 consecutive non-trivial lines identical to a file of NAVERA's base snapshot. The words "NAVERA" and
+  `navera_lite` are fine. A mission is not done until its lint is clean.
+- **Tests of the tools:** `python3 -m pytest -q tools/tests`.

@@ -1,5 +1,7 @@
 # NAVERA Academy: redesign briefs for missions 02–30
 
+> **Superseded in part (2026-10-13):** every data/code reference to NAVERA here is replaced by `reviews/fledgling-design.md` §3 (per-mission NAVERA Lite table), and §7 of that file (owner decisions: NAVERA Lite / `navera_lite`, OpenStreetMap map, missions open in order) overrides both documents.
+
 I only read files; nothing was edited. Sources: AUTHORING.md; mission 01 (lesson, lab, beacons.py, where_am_i.py, TEACHER.md); meta.json and lesson/lab outlines for 02–30; the 10 student-sim reports; base/docs (VALIDATION_STATUS, ARCHITECTURE, ENGINEERING_BACKLOG, ACCEPTANCE_FINDINGS); the server code (app.py, orgs.py, simlite.py).
 
 ## A. Structure decision

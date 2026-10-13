@@ -6,6 +6,8 @@
     tools/try_lesson.py 03-python-basics --solution --shell "python3 distance.py"
 
 The throw-away student is "_try_<id>" (removed with --clean). Never touches ~/Navera.
+--solution copies solutions/<id>/ with its sub-folders (navera_lite/) over the lesson folder; a
+solutions/<id>/_apply.sh is optional (run first when present) and not needed for NAVERA Lite missions.
 """
 import argparse
 import os
@@ -43,13 +45,14 @@ if a.solution:
     sol = os.path.join(config.ACADEMY, "solutions", lid)
     if not os.path.isdir(sol):
         sys.exit(f"no solutions/{lid}/")
-    shutil.copytree(sol, dst, dirs_exist_ok=True, symlinks=True)
-    hook = os.path.join(sol, "_apply.sh")    # optional: changes the solution makes outside the lesson folder
+    # sub-folders too (navera_lite/ made by tools/lite_build.py); no _apply.sh is needed
+    shutil.copytree(sol, dst, dirs_exist_ok=True, symlinks=True,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache"))
 mounts = [(os.path.join(config.COURSES, "_lib"), "/academy/lib")] + \
          [(os.path.join(config.COURSES, d), f"/academy/courses/{d}") for d in sorted(os.listdir(config.COURSES))
           if os.path.isfile(os.path.join(config.COURSES, d, "meta.json"))]
 pre = ""
-if a.solution and os.path.exists(os.path.join(dst, "_apply.sh")):
+if a.solution and os.path.exists(os.path.join(dst, "_apply.sh")):   # optional (older missions only)
     pre = "bash ./_apply.sh && "
 inner = a.shell or f"PYTHONPATH=/academy/lib:$PYTHONPATH python3 /academy/courses/{lid}/check.py"
 cmd = ["bash", "-lc", f"source ~/.bashrc >/dev/null 2>&1; cd ~/lessons/{lid} && {pre}{inner}"]
