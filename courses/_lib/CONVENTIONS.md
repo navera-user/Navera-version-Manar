@@ -23,8 +23,8 @@ Rotation matrices are named `R_<to>_<from>`: `R_world_cam @ v_cam = v_world` (NA
   quaternions as (x, y, z, w) too. Maths text may write
   q = w + x i + y j + z k, but every function's docstring names the order.
 - A 90° turn to the left (yaw +90° about Up) is q = (0, 0, 0.7071, 0.7071); it turns (1, 0, 0) into (0, 1, 0).
-- Known gap: missions 17 and 20 currently use w-first numpy arrays internally; their batch switches them to
-  this rule (16 is done: NAVERA Lite `rotations.py`, and it teaches the (w, x, y, z) trap as its detective step).
+- Missions 16 (NAVERA Lite `rotations.py`, which teaches the (w, x, y, z) trap as its detective step) and 17
+  (`imu.py`) follow this rule; mission 20 switches to it in its rebuild.
 
 ## 3. Heading vs ENU yaw
 

@@ -1,326 +1,538 @@
+"""Check of mission 17 — the IMU. Sealed: never shown to students.
+
+Unseen inputs everywhere. Oracles: SciPy's Rotation (x, y, z, w, like ROS) for integration, tilt, compass and
+north; the course reference's outputs on hidden inputs for the complementary filter (hidden/expected.json, made
+by solutions/17-imu/make_expected.py). Expected values of the lab's answers are constants below (computed from
+the course reference on datasets/17-imu; solutions/17-imu/TEACHER.md lists them).
+"""
+import contextlib
+import io
 import json
 import math
-import os
 import re
 
 import numpy as np
 
-from academy_check import Checker, load_student, need, sh
+from academy_check import CheckFailed, Checker, explained, hidden, is_stub, load_student, need, predicted, run
 
 c = Checker()
-LOG = "/data/academy/17-imu/imu_log.csv"
-rng = np.random.default_rng(16)
+G = 9.80665
 
-# Expected values for the dataset (computed with the reference solution; tolerances allow
-# small differences between correct implementations).
-EXP = {"gyro_heading_error_end_deg": (-9.42, 0.35), "declination_deg": (3.348, 0.01),
-       "accel_roll_max_deg": (19.3, 0.6), "true_heading_rms_deg": (1.37, 0.2),
-       "no_tilt_comp_rms_deg": (4.92, 0.4), "fused_true_heading_rms_deg": (0.20, 0.05)}
-WORLD = {"London": 1.213, "Reykjavik": -11.049, "Cape Town": -26.808, "Sydney": 12.827, "Singapore": 0.240}
+PAD_BIAS = (0.0636, -0.0321, 0.0946)    # °/s, mean of gx, gy, gz for t_s < 10
+GYRO_ERR_300 = -28.42                   # run_imu.py gyro, heading error at 300 s
+CORR_ERR_300 = -1.75                    # run_imu.py gyro 0.0636 -0.0321 0.0946 (rounding of the typed bias: ± 0.3)
+TURN_BANK, TURN_ACC = 15.1, 0.9         # run_imu.py tilt, turn at t = 99.8 s
+TAUS = (0.3, 1.0, 3.0, 10.0, 30.0, 100.0, 300.0)
+BEST_TAU, BEST_RMS = 30.0, 1.85         # run_imu.py tau
+TILT_RMS = {0.3: 4.82, 1.0: 4.63, 3.0: 3.92, 10.0: 2.56, 30.0: 1.85, 100.0: 2.26, 300.0: 2.67}
+DECL = 3.348                            # WMM at (35.76, 10.75), 2026.79
+NO_TILT_RMS, TILT_RMS_TRUE, ACC_TILT_RMS = 4.98, 0.81, 4.37   # run_imu.py compass, true-heading RMS
+CHIP_MEAN = -3.35                       # run_imu.py compass, chip as delivered
+CAPE_SIDE = 2254.5                      # 5000 · sin(26.80°)
+FROZEN_T, SMALL_N_T = 13.34, 5.08       # run_imu.py stale / stale 5
 
 
-def arr(x, shape, what):
-    c.ok(x is not None, f"{what} still returns None")
-    a = np.asarray(x, dtype=float)
-    c.ok(a.shape == shape, f"{what} should have shape {shape}, got {a.shape}")
+def oracle():
+    try:
+        from scipy.spatial.transform import Rotation
+    except ImportError:
+        c.skip("SciPy is not installed on this computer: this check needs it as the oracle (tell your teacher)")
+    return Rotation
+
+
+def imu():
+    with contextlib.redirect_stdout(io.StringIO()):
+        return load_student("navera_lite.imu", fresh=True)
+
+
+def functions(*names):
+    fns = need(imu(), *names)
+    for f in fns:
+        if is_stub(f):
+            raise CheckFailed(f"{f.__name__}() is not written yet (it is still the TODO stub in navera_lite/imu.py)")
+    return fns
+
+
+def answers(*names):
+    with contextlib.redirect_stdout(io.StringIO()):
+        return need(load_student("answers.py", fresh=True), *names)
+
+
+def number(v, name):
+    if isinstance(v, bool) or isinstance(v, str) or v is None:
+        raise CheckFailed(f"{name} should be a number without quotes, got {v!r}")
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        raise CheckFailed(f"{name} should be a number, got {v!r}")
+
+
+def quats(v, n, what):
+    if v is None:
+        raise CheckFailed(f"{what} returned None — does every path end with `return`?")
+    try:
+        a = np.asarray(v, dtype=float)
+    except (TypeError, ValueError):
+        raise CheckFailed(f"{what} should return an N × 4 numpy array, got {type(v).__name__}")
+    if a.shape != (n, 4):
+        raise CheckFailed(f"{what} should return one quaternion per sample, shape ({n}, 4); got shape {a.shape}"
+                          + (" — row 0 must be q0 itself" if a.shape == (n - 1, 4) else ""))
+    if not np.all(np.isfinite(a)):
+        raise CheckFailed(f"{what} returned nan/inf (a division by a zero length?)")
     return a
 
 
-def Q():
-    return load_student("quaternions.py")
+def num(v, what):
+    if v is None:
+        raise CheckFailed(f"{what} returned None — does every path end with `return`?")
+    if isinstance(v, (tuple, list)) or (hasattr(v, "shape") and np.shape(v) != ()):
+        raise CheckFailed(f"{what} should return one number, got {v!r}")
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        raise CheckFailed(f"{what} should return one number, got {v!r}")
 
 
-def rand_rpy():
-    return rng.uniform(-1.2, 1.2), rng.uniform(-1.2, 1.2), rng.uniform(-3.1, 3.1)
+def ang(R, q):
+    """Angle (degrees) between a SciPy rotation and a quaternion (x, y, z, w)."""
+    Rotation = oracle()
+    return math.degrees((R.inv() * Rotation.from_quat(np.asarray(q, dtype=float))).magnitude())
 
 
-def _aa(axis, ang):
-    a = np.asarray(axis, float) / np.linalg.norm(axis)
-    return np.r_[math.cos(ang / 2), math.sin(ang / 2) * a]
+def go(fn, *args, **kw):
+    try:
+        return run(fn, *args, **kw)
+    except CheckFailed as e:
+        msg = str(e)
+        if "rotation axis must not be zero" in msg:
+            raise CheckFailed(msg + " — a rate of (0, 0, 0) has no axis: when the turn angle is 0, skip the turn")
+        if "only length-1 arrays" in msg or "only size-1 arrays" in msg:
+            raise CheckFailed(msg + " — math.atan2/math.hypot take single numbers: use np.arctan2 and np.hypot")
+        if "truth value of an array" in msg:
+            raise CheckFailed(msg + " — == on numpy arrays gives an array: compare tuples of numbers")
+        if "math domain error" in msg:
+            raise CheckFailed(msg + " — asin/acos got a value just outside [−1, 1]: clamp it first")
+        if "'NoneType'" in msg:
+            raise CheckFailed(msg + " — a function it calls returned None: is an earlier TODO still a stub?")
+        raise
 
 
-def _qmul(p, q):
-    w = p[0] * q[0] - np.dot(p[1:], q[1:])
-    v = p[0] * np.asarray(q[1:]) + q[0] * np.asarray(p[1:]) + np.cross(p[1:], q[1:])
-    return np.r_[w, v]
+def wrap(e):
+    return (e + 180.0) % 360.0 - 180.0
 
 
-def same_rot(qa, qb):
-    return abs(abs(float(np.dot(qa, qb))) - 1.0) < 1e-9
-
-
-@c.test("quaternions.py runs without errors",
-        hint="Run `python3 quaternions.py` in the terminal and read the LAST line of the error.")
+# ======================================================================== session 1 — Drift hunter
+@c.test("TODO 1: integrate_gyro() on unseen rates — body frame, rate of sample k−1, uneven dt, zero rates (oracle: SciPy)",
+        hint="Lesson §2: each step turns by the rate of sample k−1 during dt = t[k] − t[k−1], about the BODY axes (so on "
+             "which side of q?). A zero rate means no turn. Row 0 is q0 normalised.")
 def _():
-    code, out = sh("python3 quaternions.py", timeout=30)
-    c.ok(code == 0, "the program stopped with an error:\n" + out[-600:])
+    Rotation = oracle()
+    (f,) = functions("integrate_gyro")
+    rng = np.random.default_rng(1702)
+    n = 25
+    dt = rng.uniform(0.01, 0.08, n - 1)
+    t = np.concatenate([[12.0], 12.0 + np.cumsum(dt)])
+    w = rng.normal(0.0, 0.8, (n, 3))
+    w[4] = 0.0
+    w[n - 1] = 0.0
+    R0 = Rotation.from_euler("ZYX", [2.1, 0.4, -0.7])
+    q0 = 1.7 * R0.as_quat()                                    # not of length 1 on purpose
+    got = quats(go(f, q0, t.tolist(), w), n, "integrate_gyro")
+    if abs(np.linalg.norm(got[0]) - 1.0) > 1e-6:
+        raise CheckFailed("row 0 must be q0 NORMALISED (q0 here has length 1.7): q_normalize(q0)")
+
+    def build(rule):
+        R, out = R0, [R0]
+        for k in range(1, n):
+            step = t[k] - t[k - 1] if rule != "dt0" else t[1] - t[0]
+            wk = w[k - 1] if rule != "k" else w[k]
+            d = Rotation.from_rotvec(wk * step)
+            R = d * R if rule == "left" else R * d
+            out.append(R)
+        return out
+    good = build("good")
+    errs = [ang(good[k], got[k]) for k in range(n)]
+    if max(errs) > 1e-6:
+        for rule, msg in (("left", "the small turn multiplies on the LEFT (world axes): the gyro measures in the BODY "
+                                   "frame, so it is q ⊗ Δq (lesson §2)"),
+                          ("k", "you used the rate of sample k for the step k−1 → k: use ω[k−1], the rate measured at "
+                                "the start of the step"),
+                          ("dt0", "dt changes from step to step here: use t[k] − t[k−1] at every step")):
+            alt = build(rule)
+            if max(ang(alt[k], got[k]) for k in range(n)) < 1e-6:
+                raise CheckFailed(msg)
+        k = int(np.argmax(errs))
+        raise CheckFailed(f"integrate_gyro on unseen rates: row {k} is {errs[k]:.3f}° away from the right attitude "
+                          "(the first rows are fine?) — check the half angle (q_from_axis_angle does it) and dt")
+    c.ok(True)
 
 
-@c.test("euler_to_matrix: a rotation (RᵀR = I, det = 1) equal to NAVERA's rpy_to_matrix",
-        hint="R = Rz(yaw) @ Ry(pitch) @ Rx(roll) — the order matters, and the angles are radians.")
+@c.test("TODO 2: tilt_from_accel() on unseen attitudes — numbers and whole arrays, ROS signs, radians",
+        hint="Lesson §3: roll = arctan2(ay, az), ROS pitch = arctan2(−ax, hypot(ay, az)), in radians, with np.arctan2 and "
+             "np.hypot so that arrays work. The size of the force does not matter (only its direction).")
 def _():
-    from navera_common.camera_model import rpy_to_matrix
-    (f,) = need(Q(), "euler_to_matrix")
-    for _ in range(20):
-        r, p, y = rand_rpy()
-        R = arr(f(r, p, y), (3, 3), "euler_to_matrix()")
-        c.ok(np.allclose(R.T @ R, np.eye(3), atol=1e-9), "RᵀR is not the identity: this is not a rotation")
-        c.ok(abs(np.linalg.det(R) - 1) < 1e-9, f"det(R) = {np.linalg.det(R):.4f}, expected 1")
-        c.ok(np.allclose(R, rpy_to_matrix(r, p, y), atol=1e-9),
-             f"for roll={r:.2f} pitch={p:.2f} yaw={y:.2f} rad your matrix differs from NAVERA's")
+    Rotation = oracle()
+    (f,) = functions("tilt_from_accel")
+    rng = np.random.default_rng(1703)
+    yaw = rng.uniform(-3, 3, 8)
+    pitch = rng.uniform(-1.2, 1.2, 8)
+    roll = rng.uniform(-2.5, 2.5, 8)
+    roll[0], pitch[0] = 1.05, 0.35                             # roll 60°, pitch 20°: atan2(−fx, fz) is far off
+    R = Rotation.from_euler("ZYX", np.stack([yaw, pitch, roll], 1))
+    fb = np.array([R[i].inv().apply([0, 0, G]) for i in range(8)]) * rng.uniform(0.9, 1.2, (8, 1))
+    got = go(f, fb[:, 0], fb[:, 1], fb[:, 2])
+    if not (isinstance(got, (tuple, list)) and len(got) == 2):
+        raise CheckFailed(f"tilt_from_accel should return two values (roll_rad, pitch_rad), got {got!r}")
+    try:
+        r, p = (np.asarray(x, dtype=float).reshape(-1) for x in got)
+    except (TypeError, ValueError):
+        raise CheckFailed("tilt_from_accel on arrays should return two numpy arrays")
+    if r.shape != (8,) or p.shape != (8,):
+        raise CheckFailed(f"on arrays of 8 samples tilt_from_accel should return two arrays of 8 values, got sizes "
+                          f"{r.size} and {p.size} — use np.arctan2 / np.hypot on whole arrays")
+    if np.allclose(np.radians(r), roll, atol=1e-6):
+        raise CheckFailed("these are degrees: return radians (np.arctan2 already gives radians)")
+    if np.allclose(r, roll, atol=1e-6) and np.allclose(p, -pitch, atol=1e-6):
+        raise CheckFailed("the pitch has the wrong sign: a positive ROS pitch is nose DOWN, so pitch = arctan2(−ax, …)")
+    if np.allclose(r, roll, atol=1e-6) and abs(p[0] - math.atan2(-fb[0, 0], fb[0, 2])) < 1e-6:
+        raise CheckFailed("the pitch uses only az below the line: with a 60° roll it is wrong — the denominator is "
+                          "hypot(ay, az), the size of the force in the y–z plane")
+    c.ok(np.allclose(r, roll, atol=1e-6), f"the roll on unseen attitudes is off by up to "
+                                          f"{np.degrees(np.abs(r - roll)).max():.2f}°: roll = arctan2(ay, az)")
+    c.ok(np.allclose(p, pitch, atol=1e-6), f"the ROS pitch on unseen attitudes is off by up to "
+                                           f"{np.degrees(np.abs(p - pitch)).max():.2f}°")
+    one = go(f, 0.0, -2.0, 9.6)
+    if not (isinstance(one, (tuple, list)) and len(one) == 2):
+        raise CheckFailed(f"tilt_from_accel(0.0, −2.0, 9.6) should return (roll_rad, pitch_rad), got {one!r}")
+    c.ok(abs(float(one[0]) - math.atan2(-2.0, 9.6)) < 1e-9 and abs(float(one[1])) < 1e-9,
+         "on single numbers, tilt_from_accel(0.0, −2.0, 9.6) should give roll atan2(−2.0, 9.6) and pitch 0")
 
 
-@c.test("matrix_to_euler gives the angles back, and survives gimbal lock (pitch = ±90°)",
-        hint="pitch = −asin(R[2,0]) with R[2,0] clamped into [−1, 1]; at gimbal lock return roll 0 and "
-             "yaw = atan2(−R[0,1], R[1,1]).")
+@c.test("Steps 1–2: the pad bias, the drift forecast, the drift measured with and without the bias",
+        hint="GYRO_BIAS_DEG_S: the mean of gx, gy, gz for t_s < 10, converted to °/s (three numbers, 4 decimals). "
+             "DRIFT_FORECAST_DEG: your z bias × 300 s. Then python3 run_imu.py gyro, and run_imu.py gyro BX BY BZ with your "
+             "bias: the heading error at 300 s. EXPLAIN_DRIFT: the sign (heading = 90° − yaw) and what is left after.")
 def _():
-    m = Q()
-    f, e2m = need(m, "matrix_to_euler", "euler_to_matrix")
-    for _ in range(20):
-        want = rand_rpy()
-        got = f(e2m(*want))
-        c.ok(got is not None and len(got) == 3, "matrix_to_euler() should return (roll, pitch, yaw)")
-        for g, w, n in zip(got, want, ("roll", "pitch", "yaw")):
-            c.near(g, w, 1e-6, what=f"{n} (rad) for {np.round(want, 2)}")
-    for pitch in (math.pi / 2, -math.pi / 2):
-        R = e2m(0.4, pitch, 0.9)
-        R[2, 0] = -math.copysign(1.0 + 1e-12, pitch)       # rounding noise past ±1
-        got = f(R)
-        c.ok(got is not None and all(math.isfinite(float(v)) for v in got),
-             "matrix_to_euler() crashed or returned NaN at gimbal lock")
-        c.near(got[1], pitch, 1e-6, what="pitch at gimbal lock")
-        c.ok(np.allclose(e2m(*got), e2m(0.4, pitch, 0.9), atol=1e-6),
-             "at gimbal lock your (roll, pitch, yaw) do not give the same matrix back")
+    b, fc, pred, e1, e2, why = answers("GYRO_BIAS_DEG_S", "DRIFT_FORECAST_DEG", "PREDICT_DRIFT_SIGN",
+                                       "GYRO_HEADING_ERR_DEG", "CORRECTED_HEADING_ERR_DEG", "EXPLAIN_DRIFT")
+    if not (isinstance(b, (tuple, list)) and len(b) == 3):
+        raise CheckFailed(f"GYRO_BIAS_DEG_S should be three numbers (x, y, z) in °/s, like (0.1, -0.2, 0.3); got {b!r}")
+    b = [number(x, "GYRO_BIAS_DEG_S") for x in b]
+    if all(abs(math.radians(x) - y) < 2e-5 for x, y in zip(PAD_BIAS, b)):
+        raise CheckFailed("GYRO_BIAS_DEG_S is in rad/s: the log is in rad/s, convert the means to °/s (np.degrees)")
+    for name, x, y in zip("xyz", b, PAD_BIAS):
+        c.ok(abs(x - y) < 0.0012, f"the {name} bias {x:.4f} °/s is not the mean of g{name} on the pad (t_s < 10, the "
+                                  "first 500 samples), in °/s")
+    fc = number(fc, "DRIFT_FORECAST_DEG")
+    c.ok(abs(abs(fc) - abs(b[2]) * 300.0) < 0.5, f"DRIFT_FORECAST_DEG = {fc}: it should be your z bias × 300 s "
+                                                 f"(about {abs(b[2]) * 300:.1f}°), with the size of the bias the log shows")
+    predicted("PREDICT_DRIFT_SIGN", pred)
+    e1 = number(e1, "GYRO_HEADING_ERR_DEG")
+    if abs(e1 + GYRO_ERR_300) < 0.15:
+        raise CheckFailed("GYRO_HEADING_ERR_DEG has the wrong sign: copy the heading error of run_imu.py gyro at 300 s")
+    c.near(e1, GYRO_ERR_300, 0.15, "GYRO_HEADING_ERR_DEG (degrees, at 300 s)")
+    e2 = number(e2, "CORRECTED_HEADING_ERR_DEG")
+    c.near(e2, CORR_ERR_300, 0.35, "CORRECTED_HEADING_ERR_DEG (run_imu.py gyro with YOUR three bias numbers, at 300 s)")
+    explained("EXPLAIN_DRIFT", why,
+              ((r"yaw", r"counter", r"clockwise", r"90", r"left", r"heading.*(decreas|smaller|less)",
+                r"(increas|grow).*yaw"), "why the sign is negative (a positive z bias, yaw and heading)"),
+              ((r"left", r"remain", r"residual", r"estimat", r"noise", r"random", r"not exact", r"average", r"√", r"sqrt",
+                r"error of the (mean|bias)", r"small"), "what is left after the bias is removed"))
 
 
-@c.test("quat_mul is the Hamilton product (i⊗j = k, j⊗i = −k, and 20 random products)",
-        hint="(pw, pv)⊗(qw, qv) = (pw·qw − pv·qv, pw·qv + qw·pv + pv × qv). The scalar w is FIRST.")
+@c.test("Step 3: the coordinated turn fools the accelerometer — prediction, numbers, explanation",
+        hint="python3 run_imu.py tilt, the turn at t ≈ 99.8 s: true roll and accelerometer roll (1 s averages). "
+             "EXPLAIN_TURN: the accelerometer feels thrust, which stays along the body's z axis in a coordinated turn.")
 def _():
-    from imu_pkg.orientation import quat_mul as nav_mul
-    (f,) = need(Q(), "quat_mul")
-    i, j = np.array([0, 1.0, 0, 0]), np.array([0, 0, 1.0, 0])
-    c.ok(np.allclose(arr(f(i, j), (4,), "quat_mul()"), [0, 0, 0, 1]), f"i⊗j = {f(i, j)}, expected (0, 0, 0, 1)")
-    c.ok(np.allclose(f(j, i), [0, 0, 0, -1]), f"j⊗i = {f(j, i)}, expected (0, 0, 0, −1)")
-    for _ in range(20):
-        p, q = rng.normal(size=4), rng.normal(size=4)
-        nav = nav_mul((p[1], p[2], p[3], p[0]), (q[1], q[2], q[3], q[0]))
-        c.ok(np.allclose(f(p, q), [nav[3], nav[0], nav[1], nav[2]], atol=1e-9),
-             "a random product differs from NAVERA's quat_mul (remember: NAVERA's order is x, y, z, w)")
+    pred, a, b, why = answers("PREDICT_SPEEDUP", "TURN_TRUE_BANK_DEG", "TURN_ACCEL_ROLL_DEG", "EXPLAIN_TURN")
+    predicted("PREDICT_SPEEDUP", pred)
+    a, b = number(a, "TURN_TRUE_BANK_DEG"), number(b, "TURN_ACCEL_ROLL_DEG")
+    if abs(a - TURN_ACC) < 0.15 and abs(b - TURN_BANK) < 0.15:
+        raise CheckFailed("TURN_TRUE_BANK_DEG and TURN_ACCEL_ROLL_DEG are swapped")
+    c.near(a, TURN_BANK, 0.15, "TURN_TRUE_BANK_DEG (the turn at t ≈ 99.8 s)")
+    c.near(b, TURN_ACC, 0.15, "TURN_ACCEL_ROLL_DEG (the turn at t ≈ 99.8 s)")
+    explained("EXPLAIN_TURN", why,
+              ((r"thrust", r"lift", r"rotor", r"propel", r"body.?s? z", r"\bz\b", r"along the body", r"perpendicular",
+                r"specific force", r"total force", r"same direction"), "which force the accelerometer feels"),
+              ((r"centripet", r"turn", r"accelerat", r"bank", r"circle", r"sideways", r"lateral"),
+               "the acceleration of the turn"),
+              ((r"level", r"cannot tell", r"can't tell", r"same as", r"equivalen", r"indistinguish", r"looks like",
+                r"believ", r"thinks", r"fool", r"no (roll|tilt)", r"zero"), "why it then looks level"))
 
 
-@c.test("quat_from_axis_angle and quat_rotate: 90° about z turns east into north",
-        hint="q = (cos(θ/2), sin(θ/2)·axis/|axis|); rotate with q ⊗ (0, v) ⊗ q*, keep the last 3 numbers.")
+# ======================================================================== session 2 — Attitude engineer
+@c.test("TODO 3: complementary() on unseen data — a still drone, a gyro bias (b·τ), a bumpy flight",
+        hint="Lesson §4: each step, (1) turn with the gyro exactly as integrate_gyro; (2) seen_up = q_rotate(q, f/|f|); "
+             "error = angle between seen_up and (0, 0, 1); (3) q ← q_from_axis_angle(seen_up × (0, 0, 1), (1 − α)·error) ⊗ q "
+             "with α = τ/(τ + dt) — on the LEFT. Normalise.")
 def _():
-    m = Q()
-    fa, fr = need(m, "quat_from_axis_angle", "quat_rotate")
-    q = arr(fa((0, 0, 2.0), math.pi / 2), (4,), "quat_from_axis_angle()")
-    c.ok(np.allclose(q, [math.sqrt(0.5), 0, 0, math.sqrt(0.5)], atol=1e-9),
-         f"90° about (0, 0, 2) gives {np.round(q, 4)}, expected (0.7071, 0, 0, 0.7071) — normalise the axis")
-    v = arr(fr(q, (1.0, 0.0, 0.0)), (3,), "quat_rotate()")
-    c.ok(np.allclose(v, [0, 1, 0], atol=1e-9), f"(1, 0, 0) rotated gives {np.round(v, 4)}, expected (0, 1, 0)")
-    for _ in range(10):
-        ax, ang, vec = rng.normal(size=3), rng.uniform(-3, 3), rng.normal(size=3)
-        k = ax / np.linalg.norm(ax)
-        rod = (vec * math.cos(ang) + np.cross(k, vec) * math.sin(ang)
-               + k * np.dot(k, vec) * (1 - math.cos(ang)))
-        c.ok(np.allclose(fr(fa(ax, ang), vec), rod, atol=1e-9), "a random rotation of a vector is wrong")
+    Rotation = oracle()
+    (f,) = functions("complementary")
+    data = json.loads(hidden("expected.json"))
+    for name in ("still", "bias", "bumpy"):
+        k = data[name]
+        n = len(k["t"])
+        got = quats(go(f, k["q0"], k["t"], np.array(k["gyro"]), np.array(k["acc"]), k["tau"], seconds=60),
+                    n, "complementary")
+        want = np.array(k["expected"])
+        errs = np.array([ang(Rotation.from_quat(want[i]), got[i]) for i in range(n)])
+        if errs.max() < 0.02:
+            continue
+        last = Rotation.from_quat(got[-1])
+        up_got, up_want = last.apply([0, 0, 1]), Rotation.from_quat(want[-1]).apply([0, 0, 1])
+        tilt_got = math.degrees(math.acos(max(-1.0, min(1.0, up_got[2]))))
+        tilt_want = math.degrees(math.acos(max(-1.0, min(1.0, up_want[2]))))
+        if name == "still":
+            r1 = Rotation.from_quat(got[1]).apply([0, 0, 1])[:2]
+            w1 = Rotation.from_quat(want[1]).apply([0, 0, 1])[:2]
+            if np.linalg.norm(r1) < 1e-9 and tilt_got < 1.0:
+                raise CheckFailed("a still drone whose gravity says 'tilted 22°': your filter never tilted — is the gravity "
+                                  "step there, and is (1 − α) not 0?")
+            if np.linalg.norm(r1) > 20 * np.linalg.norm(w1):
+                raise CheckFailed("in the first step (τ = 2 s, dt = 0.02 s) the tilt jumped almost all the way: α and 1 − α "
+                                  "are swapped? The GYRO side keeps α = τ/(τ + dt), gravity gets the small share 1 − α")
+            turn = math.degrees(abs(math.atan2(r1[0] * w1[1] - r1[1] * w1[0], float(r1 @ w1))))
+            if turn > 150:
+                raise CheckFailed("the nudge tilts the drone AWAY from what gravity says: the axis is seen_up × (0, 0, 1), in "
+                                  "that order (np.cross(seen_up, up))")
+            if turn > 10:
+                raise CheckFailed("the nudge tilts the drone in the wrong direction when the heading is not 90°: it is a turn "
+                                  "of the WORLD about a world axis, so it multiplies on the LEFT: q_mul(nudge, q)")
+            if abs(tilt_got - tilt_want) < 0.05:
+                raise CheckFailed("the tilt is right but the attitude is turned about the vertical: the gravity nudge is a "
+                                  "rotation about the horizontal axis seen_up × (0, 0, 1), multiplied on the LEFT (world "
+                                  "frame) — not a blend of Euler angles")
+            raise CheckFailed(f"a still drone, τ = 2 s: after 4 s your tilt is {tilt_got:.2f}° instead of {tilt_want:.2f}°")
+        if name == "bias":
+            roll_err = math.degrees(math.asin(max(-1.0, min(1.0, -up_got[1]))))
+            if abs(abs(roll_err) - 0.5 * 30.0) < 1.0:
+                raise CheckFailed("with a gyro bias of 0.5 °/s for 30 s your roll error is ~15°, like the gyro alone: the "
+                                  "gravity step does not act (is 1 − α almost 0?)")
+            raise CheckFailed(f"a level drone, gyro bias 0.5 °/s on x, τ = 4 s: after 30 s the roll error should settle "
+                              f"near b·τ = 2.0°; yours is {abs(roll_err):.2f}°")
+        i = int(np.argmax(errs))
+        raise CheckFailed(f"on a bumpy unseen flight (uneven dt, τ = 0.4 s) your attitude at row {i} is {errs[i]:.2f}° "
+                          "from the right one: is dt = t[k] − t[k−1]? the gyro step uses ω[k−1], gravity uses the force "
+                          "of sample k")
+    c.ok(True)
 
 
-@c.test("quat_to_matrix equals NAVERA's quat_to_matrix (after converting the order)",
-        hint="Use the matrix of the course with w FIRST in your order; normalise q first.")
+@c.test("Step 4: choosing τ — prediction, the best τ of the sweep, its error, and the trade-off",
+        hint="python3 run_imu.py tau: the τ with the smallest tilt RMS and that RMS. EXPLAIN_TAU: what goes wrong with a "
+             "small τ (the fooled accelerometer, its noise) and with a large τ (the gyro bias, b·τ).")
 def _():
-    from navera_common.camera_model import quat_to_matrix as nav_q2m
-    m = Q()
-    f, conv = need(m, "quat_to_matrix", "wxyz_to_xyzw")
-    for _ in range(20):
-        q = rng.normal(size=4)
-        q *= rng.uniform(0.9, 1.1) / np.linalg.norm(q)
-        R = arr(f(q), (3, 3), "quat_to_matrix()")
-        c.ok(np.allclose(R, nav_q2m(conv(q)), atol=1e-9),
-             f"for q = {np.round(q, 3)} your matrix differs from NAVERA's")
+    pred, t, r, why = answers("PREDICT_TAU", "BEST_TAU_S", "BEST_TILT_RMS_DEG", "EXPLAIN_TAU")
+    predicted("PREDICT_TAU", pred)
+    t = number(t, "BEST_TAU_S")
+    if t not in TAUS:
+        raise CheckFailed(f"BEST_TAU_S = {t}: choose one of the seven values of the sweep {TAUS}")
+    if t != BEST_TAU:
+        raise CheckFailed(f"BEST_TAU_S = {t:g} s: in the table of run_imu.py tau, look at the 'tilt RMS' column — which τ "
+                          "gives the smallest?")
+    c.near(number(r, "BEST_TILT_RMS_DEG"), BEST_RMS, 0.03, "BEST_TILT_RMS_DEG (the tilt RMS at that τ)")
+    explained("EXPLAIN_TAU", why,
+              ((r"small", r"short", r"low", r"fast", r"follow", r"turn", r"accelerat", r"fool", r"noise", r"vibrat"),
+               "what a small τ does (it follows the fooled, noisy accelerometer)"),
+              ((r"large", r"big", r"long", r"high", r"slow", r"bias", r"drift", r"b ?·? ?τ", r"b\*tau", r"b ?x ?τ"),
+               "what a large τ does (the gyro bias, b·τ)"),
+              ((r"trade", r"balance", r"compromise", r"between", r"both", r"middle", r"best", r"optimum", r"minimum"),
+               "that the best τ is a trade-off"))
 
 
-@c.test("slerp: endpoints, constant angular speed, shortest path, same as NAVERA's sensor_history.slerp",
-        hint="If q0·q1 < 0 use −q1. θ = acos(d); weights sin((1−t)θ)/sin θ and sin(tθ)/sin θ. "
-             "Normalise the result.")
+@c.test("TODOs 4–5: mag_heading() and true_heading() on unseen attitudes and fields (north and south, tilted)",
+        hint="Lesson §5: level = rot_y(pitch) @ rot_x(roll) @ m, heading = atan2(level[1], level[0]) in degrees, % 360. "
+             "In FLU (y = LEFT) it is atan2(y, x), not atan2(−y, x). true = (magnetic + D) % 360.")
 def _():
-    from navera_common.sensor_history import slerp as nav_slerp
-    m = Q()
-    f, fa = need(m, "slerp", "quat_from_axis_angle")
-    q0, q1 = fa((0, 0, 1), 0.0), fa((0, 0, 1), math.radians(120))
-    c.ok(np.allclose(arr(f(q0, q1, 0.0), (4,), "slerp()"), q0, atol=1e-9), "slerp(q0, q1, 0) must be q0")
-    c.ok(np.allclose(f(q0, q1, 1.0), q1, atol=1e-9), "slerp(q0, q1, 1) must be q1")
-    for t in (0.25, 0.5, 0.8):
-        ang = math.degrees(2 * math.acos(min(1.0, abs(float(np.dot(q0, f(q0, q1, t)))))))
-        c.near(ang, 120 * t, 1e-6, what=f"angle from q0 at t = {t} (deg)")
-    c.ok(same_rot(f(q0, -q1, 0.5), f(q0, q1, 0.5)), "slerp to −q1 must give the same rotation as to q1 "
-                                                    "(take the shortest path)")
-    for _ in range(15):
-        a, b, t = rng.normal(size=4), rng.normal(size=4), rng.uniform(0, 1)
-        a, b = a / np.linalg.norm(a), b / np.linalg.norm(b)
-        nav = nav_slerp((a[1], a[2], a[3], a[0]), (b[1], b[2], b[3], b[0]), t)
-        mine = f(a, b, t)
-        c.ok(same_rot(mine, [nav[3], nav[0], nav[1], nav[2]]), "a random slerp differs from NAVERA's")
-    tiny = fa((1, 0, 0), 1e-7)
-    out = f(q0, tiny, 0.5)
-    c.ok(np.all(np.isfinite(out)), "slerp of two almost equal quaternions gave NaN (divide by sin θ ≈ 0?)")
+    Rotation = oracle()
+    mh, th = functions("mag_heading", "true_heading")
+    cases = ((37.0, 12.0, -18.0, 22.0, 41.0), (251.0, -25.0, 9.0, 31.0, -63.0), (152.0, 3.0, 28.0, 39.0, -1.0),
+             (318.0, 15.0, -5.0, 18.0, 70.0))
+    for hdg, roll, pitch, H, incl in cases:                      # heading, roll, ROS pitch (deg), field H µT, inclination
+        Z = H * math.tan(math.radians(incl))
+        m_world = np.array([0.0, H, -Z])                         # magnetic-north ENU: north H, down Z (up −Z)
+        R = Rotation.from_euler("ZYX", [math.radians(90 - hdg), math.radians(pitch), math.radians(roll)])
+        mb = R.inv().apply(m_world)
+        got = num(go(mh, mb, math.radians(roll), math.radians(pitch)), "mag_heading")
+        if not 0.0 <= got < 360.0:
+            raise CheckFailed(f"mag_heading returned {got:.2f}: a heading is in [0, 360) — use % 360.0")
+        if abs(wrap(got - (360.0 - hdg))) < 0.01:
+            raise CheckFailed("mag_heading is the mirror image (360° − the right heading): in FLU, y points LEFT, so "
+                              "heading = atan2(y, x) of the level field; atan2(−y, x) is for frames whose y points right")
+        nocomp = math.degrees(math.atan2(mb[1], mb[0])) % 360.0
+        if abs(wrap(got - nocomp)) < 0.01 and abs(wrap(nocomp - hdg)) > 0.1:
+            raise CheckFailed(f"mag_heading gives {got:.2f}° for a heading of {hdg:.0f}° with roll {roll:.0f}°, ROS pitch "
+                              f"{pitch:.0f}°: there is no tilt compensation — turn the field with rot_y(pitch) @ "
+                              "rot_x(roll) first")
+        bad = np.array([[1, 0, 0], [0, math.cos(math.radians(roll)), -math.sin(math.radians(roll))],
+                        [0, math.sin(math.radians(roll)), math.cos(math.radians(roll))]]) @ \
+            np.array([[math.cos(math.radians(pitch)), 0, math.sin(math.radians(pitch))], [0, 1, 0],
+                      [-math.sin(math.radians(pitch)), 0, math.cos(math.radians(pitch))]]) @ mb
+        if abs(wrap(got - math.degrees(math.atan2(bad[1], bad[0])))) < 0.01 and abs(wrap(got - hdg)) > 0.01:
+            raise CheckFailed("the two turns are in the wrong order: undo the roll FIRST, then the pitch — "
+                              "rot_y(pitch) @ rot_x(roll) @ m (the matrix next to m acts first)")
+        c.ok(abs(wrap(got - hdg)) < 0.01, f"mag_heading on an unseen tilted case gives {got:.2f}° instead of {hdg:.2f}° "
+                                          f"(roll {roll:.0f}°, ROS pitch {pitch:.0f}°, inclination {incl:.0f}°)")
+    for mag, d, want in ((355.0, 12.8, 7.8), (4.0, -26.8, 337.2), (181.5, -11.0, 170.5)):
+        got = num(go(th, mag, d), "true_heading")
+        if abs(got - (mag - d) % 360) < 0.01:
+            raise CheckFailed("true_heading subtracts the declination: true = magnetic + D (D is positive EAST)")
+        if abs(got - want) > 0.01 and abs(got - (want if want < 180 else want - 360)) < 0.01:
+            raise CheckFailed(f"true_heading({mag}, {d}) gives {got:.2f}: keep it in [0, 360) with % 360.0")
+        c.ok(abs(got - want) < 0.01, f"true_heading({mag}, {d}) gives {got:.2f}")
 
 
-@c.test("integrate_gyro: body rates multiply on the RIGHT (yaw 90°, then roll about the BODY x)",
-        hint="q[k] = q[k−1] ⊗ dq with dq = quat_from_axis_angle(ω, |ω|·dt). Body rates → right side.")
+@c.test("TODO 6: q_true_north() on unseen tilted attitudes and both signs of D (oracle: SciPy)",
+        hint="Lesson §5: true north = the magnetic-north world turned by −D about Up: "
+             "q_from_axis_angle((0, 0, 1), −radians(D)) ⊗ q_mag — on the LEFT (a world-frame turn).")
 def _():
-    f, = need(load_student("imu_filters.py"), "integrate_gyro")
-    fa = _aa
-    t = np.arange(0, 10.001, 0.01)
-    out = arr(f(t, np.tile([0.0, 0.0, 0.1], (len(t), 1)), np.array([1.0, 0, 0, 0])), (len(t), 4),
-              "integrate_gyro()")
-    c.ok(same_rot(out[-1], fa((0, 0, 1), 1.0)), "0.1 rad/s about z for 10 s should give a 1 rad yaw")
-    q0 = fa((0, 0, 1), math.pi / 2)                     # nose north
-    t = np.arange(0, 1.0001, 0.01)
-    out = f(t, np.tile([math.pi / 6, 0.0, 0.0], (len(t), 1)), q0)
-    want = _qmul(q0, fa((1, 0, 0), math.pi / 6))  # roll about the body x (= north)
-    c.ok(same_rot(out[-1], want), "after a 30° roll about the BODY x axis the attitude is wrong "
-                                  "(did you multiply dq on the left?)")
-    c.near(np.linalg.norm(out[-1]), 1.0, 1e-9, what="norm of the last quaternion")
+    Rotation = oracle()
+    (f,) = functions("q_true_north")
+    for (yaw, pitch, roll), d in (((0.7, 0.3, -0.5), 3.35), ((-2.4, -0.2, 0.6), -26.8), ((2.9, 0.45, 0.25), 12.8)):
+        Rm = Rotation.from_euler("ZYX", [yaw, pitch, roll])
+        turn = Rotation.from_rotvec([0, 0, -math.radians(d)])
+        got = go(f, Rm.as_quat(), d)
+        try:
+            q = np.asarray(got, dtype=float).reshape(4)
+        except (TypeError, ValueError):
+            raise CheckFailed(f"q_true_north should return 4 numbers (x, y, z, w), got {got!r}")
+        if ang(Rm * turn, q) < 1e-6:
+            raise CheckFailed("q_true_north multiplies on the RIGHT (a turn about the drone's own up axis): the "
+                              "declination turns the WORLD frame, so it multiplies on the LEFT")
+        if ang(Rotation.from_rotvec([0, 0, math.radians(d)]) * Rm, q) < 1e-6:
+            raise CheckFailed("the correction turns the wrong way: true heading = magnetic + D, so the world turns by "
+                              "−D about Up (the yaw decreases by D)")
+        if ang(Rotation.from_rotvec([0, 0, -d]) * Rm, q) < 1e-6:
+            raise CheckFailed("D is in degrees: convert it with math.radians before building the turn")
+        c.ok(abs(np.linalg.norm(q) - 1.0) < 1e-6, "q_true_north must return a unit quaternion")
+        c.ok(ang(turn * Rm, q) < 1e-6, f"q_true_north on an unseen tilted attitude (D = {d}°) is "
+                                       f"{ang(turn * Rm, q):.3f}° away from the right attitude")
 
 
-@c.test("accel_roll_pitch: level, nose down 10°, right side down 20° (ROS signs)",
-        hint="roll = atan2(f_y, f_z), pitch = atan2(−f_x, √(f_y² + f_z²)); work on whole numpy arrays.")
+@c.test("Steps 5–6: declination, the compass with and without tilt, Cape Town, the chip — numbers and explanations",
+        hint="python3 run_imu.py compass: the declination; the true-heading RMS without and with the TRUE tilt; the chip's "
+             "mean error as delivered. CAPE_TOWN_SIDE_M = 5000 · sin(|D|) with declination_deg(−33.92, 18.42, 2026.79).")
 def _():
-    m = load_student("imu_filters.py")
-    (f,) = need(m, "accel_roll_pitch")
-    from navera_common.camera_model import rpy_to_matrix as e2m
-    cases = [(0, 0), (0, 10), (20, 0), (-15, 25)]
-    acc = np.array([e2m(math.radians(r), math.radians(p), 0.7).T @ [0, 0, 9.81] for r, p in cases])
-    out = f(acc)
-    c.ok(out is not None and len(out) == 2, "accel_roll_pitch() should return (roll_array, pitch_array)")
-    roll, pitch = np.degrees(np.asarray(out[0], float)), np.degrees(np.asarray(out[1], float))
-    for k, (r, p) in enumerate(cases):
-        c.near(roll[k], r, 1e-6, what=f"roll for true roll {r}°, pitch {p}°")
-        c.near(pitch[k], p, 1e-6, what=f"pitch for true roll {r}°, pitch {p}° (nose down is POSITIVE)")
+    d, a, b, cape, chip, w1, w2 = answers("DECLINATION_DEG", "COMPASS_NO_TILT_RMS_DEG", "COMPASS_TILT_RMS_DEG",
+                                          "CAPE_TOWN_SIDE_M", "CHIP_MEAN_ERR_DEG", "EXPLAIN_COMPASS", "EXPLAIN_NORTH")
+    d = number(d, "DECLINATION_DEG")
+    if abs(d + DECL) < 0.02:
+        raise CheckFailed("DECLINATION_DEG has the wrong sign: east is positive (the run prints it with its sign)")
+    c.near(d, DECL, 0.02, "DECLINATION_DEG")
+    a, b = number(a, "COMPASS_NO_TILT_RMS_DEG"), number(b, "COMPASS_TILT_RMS_DEG")
+    if abs(a - TILT_RMS_TRUE) < 0.05 and abs(b - NO_TILT_RMS) < 0.05:
+        raise CheckFailed("COMPASS_NO_TILT_RMS_DEG and COMPASS_TILT_RMS_DEG are swapped")
+    if abs(b - ACC_TILT_RMS) < 0.05:
+        raise CheckFailed("COMPASS_TILT_RMS_DEG: take the line compensated with the TRUE roll and pitch (the "
+                          "accelerometer's tilt is fooled in the turns — that is the next line)")
+    c.near(a, NO_TILT_RMS, 0.05, "COMPASS_NO_TILT_RMS_DEG (true-heading RMS, no tilt compensation)")
+    c.near(b, TILT_RMS_TRUE, 0.05, "COMPASS_TILT_RMS_DEG (true-heading RMS, compensated with the true tilt)")
+    cape = number(cape, "CAPE_TOWN_SIDE_M")
+    if abs(cape - 5000 * math.tan(math.radians(26.8015))) < 10:
+        raise CheckFailed("CAPE_TOWN_SIDE_M: after flying 5 km in a straight line at an angle D off the intended track, "
+                          "the drone is 5000 · sin(D) to the side (tan would be for 5 km measured along the track)")
+    c.near(cape, CAPE_SIDE, 10.0, "CAPE_TOWN_SIDE_M (metres)")
+    chip = number(chip, "CHIP_MEAN_ERR_DEG")
+    if abs(chip - DECL) < 0.05:
+        raise CheckFailed("CHIP_MEAN_ERR_DEG has the wrong sign: it is the chip's heading − the true heading")
+    c.near(chip, CHIP_MEAN, 0.05, "CHIP_MEAN_ERR_DEG (the chip as delivered: mean of heading − true heading)")
+    explained("EXPLAIN_COMPASS", w1,
+              ((r"vertical", r"down", r"inclin", r"dip", r"\bz\b", r"steep", r"50"), "the vertical part of the field"),
+              ((r"tilt", r"roll", r"pitch", r"bank", r"lean"), "what a tilt does"),
+              ((r"horizontal", r"mix", r"leak", r"into", r"x and y", r"project"), "where the vertical part goes"))
+    explained("EXPLAIN_NORTH", w2,
+              ((r"declination", r"magnetic north", r"\bd\b", r"3\.3", r"true north", r"wmm"),
+               "why the chip's error is about −D"),
+              ((r"world", r"left", r"frame", r"map", r"north", r"up axis", r"vertical", r"earth"),
+               "why the correction multiplies on the left (it turns the world frame)"),
+              ((r"right", r"body", r"own", r"tilt", r"bank", r"level", r"drone's up"),
+               "what multiplying on the right would do instead"))
 
 
-@c.test("complementary_tilt on the log: RMS errors as expected for tau = 1 s and tau = 30 s",
-        hint="Predict with the Euler-angle kinematics (gyro of sample k−1), then blend: "
-             "alpha·prediction + (1 − alpha)·accelerometer, alpha = tau/(tau + dt). Angles in RADIANS.")
+@c.test("TODO 7: StaleDetector.update() on unseen streams — whole sample, exact count, starts again, recovers",
+        hint="Lesson §6: compare the WHOLE sample (as a tuple of floats) with the previous one; count the exact repeats "
+             "in a row; a different sample starts the count again; True from the max_repeat-th repeat on (trace the "
+             "docstring example by hand).")
 def _():
-    m = load_student("imu_filters.py")
-    f, load = need(m, "complementary_tilt", "load_log")
-    L = load(LOG)
-    t = L["t_s"]
-    g = np.stack([L["gx"], L["gy"], L["gz"]], 1)
-    a = np.stack([L["ax"], L["ay"], L["az"]], 1)
-    out = f(t, g, a, 1.0)
-    c.ok(out is not None and len(out) == 2, "complementary_tilt() should return (roll_array, pitch_array)")
-    er = math.sqrt(np.mean((np.degrees(out[0]) - L["true_roll_deg"]) ** 2))
-    ep = math.sqrt(np.mean((np.degrees(out[1]) - L["true_pitch_deg"]) ** 2))
-    c.near(er, 4.23, 0.2, what="roll RMS error (deg) with tau = 1 s")
-    c.near(ep, 1.84, 0.2, what="pitch RMS error (deg) with tau = 1 s")
-    out30 = f(t, g, a, 30.0)
-    er30 = math.sqrt(np.mean((np.degrees(out30[0]) - L["true_roll_deg"]) ** 2))
-    c.near(er30, 0.53, 0.15, what="roll RMS error (deg) with tau = 30 s")
+    m = imu()
+    cls = need(m, "StaleDetector")[0]
+    if is_stub(getattr(cls, "update", None)):
+        raise CheckFailed("StaleDetector.update() is not written yet (navera_lite/imu.py, TODO 7)")
+
+    def feed(seq, n):
+        d = go(cls, max_repeat=n)
+        out = []
+        for s in seq:
+            v = go(d.update, s)
+            if v is None:
+                raise CheckFailed("update() returned None: return True or False for every sample")
+            out.append(bool(v))
+        return out
+    A, B, C = (0.12, -0.5, 9.81), (0.12, -0.5, 9.80), (0.13, -0.5, 9.81)
+    seq = [A, A, A, A, B, B, B, A, A, C, C, C, C, C]
+    want = [False, False, False, True, False, False, False, False, False, False, False, False, True, True]
+    got = feed(seq, 3)
+    if got == [False, False, True, True, False, False, True, False, False, False, False, True, True, True]:
+        raise CheckFailed("one sample too early: the FIRST sample is not a repeat — True only at the max_repeat-th REPEAT")
+    if got == [False, False, False, False, False, False, False, False, False, False, False, False, False, True]:
+        raise CheckFailed("one sample too late: with max_repeat = 3 the 3rd repeat (the 4th equal sample) is frozen")
+    if got[:5] == [False, False, False, True, True]:
+        raise CheckFailed("after a frozen run, a DIFFERENT sample (it changed only its last number) must give False: "
+                          "compare the whole sample, and start the count again")
+    if got[4:7] != [False, False, False] and got[6]:
+        raise CheckFailed("the count did not start again after a different sample: set repeats back to 0 there")
+    c.ok(got == want, f"StaleDetector(3) on an unseen stream returns {got}, expected True only at the 3rd repeat and "
+                      "after it, and False as soon as the sample changes")
+    got = feed([[1.0, 2.0], [1.0, 2.0], [1.0, 2.0]], 2)
+    c.ok(got == [False, False, True], "samples may come as LISTS too: turn each into a tuple of floats before comparing "
+                                      f"(got {got})")
+    got = feed([(5, 1)] * 6, 1)
+    c.ok(got == [False, True, True, True, True, True], f"StaleDetector(1) on six equal samples returns {got}")
 
 
-@c.test("mag_heading is tilt-compensated (field of Monastir, drone tilted 15°/−10°, 8 headings)",
-        hint="m_h = Ry(pitch) @ Rx(roll) @ m_body, then atan2(m_h[1], m_h[0]) in degrees, % 360.")
+@c.test("Step 7: the frozen IMU — when it is caught, a too-small max_repeat, and why",
+        hint="python3 run_imu.py stale (max_repeat 50) and python3 run_imu.py stale 5: the first 'frozen' times. "
+             "EXPLAIN_STALE: noise makes real samples differ; the timestamps kept coming; the hiccup at 5 s.")
 def _():
-    m = load_student("imu_filters.py")
-    (f,) = need(m, "mag_heading")
-    from navera_common.camera_model import rpy_to_matrix as e2m
-    m_enu = np.array([1.650, 28.202, -34.298])          # WMM near Monastir, microtesla (E, N, U)
-    D = math.degrees(math.atan2(m_enu[0], m_enu[1]))
-    heads = np.arange(0, 360, 45.0)
-    r, p = math.radians(15), math.radians(-10)
-    mags = np.array([e2m(r, p, math.radians(90 - h)).T @ m_enu for h in heads])
-    out = f(mags, np.full(len(heads), r), np.full(len(heads), p))
-    c.ok(out is not None, "mag_heading() still returns None")
-    out = np.asarray(out, float)
-    c.ok(out.shape == (len(heads),), f"mag_heading() should return one heading per sample, got {out.shape}")
-    for h, got in zip(heads, out):
-        c.ok(0 <= got < 360, f"heading {got:.2f} is not in [0, 360)")
-        d = (got - (h - D) + 180) % 360 - 180
-        c.ok(abs(d) < 1e-6, f"true heading {h:.0f}° (magnetic {(h - D) % 360:.2f}°): you give {got:.2f}°")
+    pred, a, b, why = answers("PREDICT_STALE", "FROZEN_T_S", "SMALL_N_T_S", "EXPLAIN_STALE")
+    predicted("PREDICT_STALE", pred)
+    a, b = number(a, "FROZEN_T_S"), number(b, "SMALL_N_T_S")
+    if abs(a - 12.34) < 0.03 or abs(a - 12.36) < 0.03:
+        raise CheckFailed("FROZEN_T_S is when the data STOPPED changing; the question is when YOUR detector says "
+                          "'frozen' (run_imu.py stale)")
+    c.near(a, FROZEN_T, 0.011, "FROZEN_T_S (s)")
+    c.near(b, SMALL_N_T, 0.011, "SMALL_N_T_S (s, with max_repeat = 5)")
+    explained("EXPLAIN_STALE", why,
+              ((r"noise", r"never (repeat|the same|identical)", r"always (chang|differ)", r"last digit", r"random"),
+               "why a live sensor never repeats exactly"),
+              ((r"time ?stamp", r"stamp", r"clock", r"time", r"fresh", r"arriv", r"still (come|publish)"),
+               "why fresh timestamps do not prove fresh data"),
+              ((r"hiccup", r"5 ?s", r"5\.0", r"short", r"false", r"too (small|early|soon)", r"glitch", r"missed",
+                r"trade", r"slow", r"1 ?s", r"one second"), "the trade-off in max_repeat (the hiccup at 5 s)"),
+              min_words=20)
 
 
-@c.test("declination_at matches the World Magnetic Model in Cape Town, Sydney and Sousse",
-        hint="Two lines, as in NAVERA's class Declination: GeoMag().calculate(glat=…, glon=…, alt=0, time=year).d")
+@c.test("Step 8: the attitude memo in report.md",
+        hint="Keep the three headings; 150–350 words in your own words; quote the best τ (in s) with its tilt RMS (in °), "
+             "and the declination near Monastir (in °).")
 def _():
-    (f,) = need(load_student("imu_filters.py"), "declination_at")
-    for lat, lon, year, want in ((-33.925, 18.424, 2026.79, -26.808), (-33.869, 151.209, 2026.79, 12.827),
-                                 (35.8256, 10.636, 2026.75, 3.333)):
-        got = f(lat, lon, year)
-        c.ok(got is not None, "declination_at() still returns None")
-        c.near(got, want, 0.01, what=f"declination_at({lat}, {lon}, {year})")
+    try:
+        text = open("report.md", encoding="utf-8").read()
+    except FileNotFoundError:
+        raise CheckFailed("report.md is missing")
+    body = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+    for h in ("## The gyroscope alone", "## Choosing τ", "## Compass, north and trust"):
+        c.ok(h in body, f"report.md must keep the heading '{h}'")
+    words = re.findall(r"[A-Za-zÀ-ÿ0-9°'.-]+", re.sub(r"^#.*$", "", body, flags=re.M))
+    c.ok(len(words) >= 150, f"report.md has {len(words)} words: write at least 150")
+    c.ok(len(words) <= 420, f"report.md has {len(words)} words: a memo is short — aim for 350 (the limit is 420)")
+    low = body.lower()
+    c.ok(re.search(r"\b30(\.0)?\s*s\b|τ\s*=\s*30|tau\s*=\s*30|\b30(\.0)?\s*sec", low) is not None,
+         "quote the best τ of the sweep, with its unit (e.g. 'τ = … s')")
+    c.ok(re.search(r"\b1\.8[0-9]?\s*°|\b1\.8[0-9]?\s*deg", low) is not None, "quote the tilt RMS at that τ, in degrees")
+    c.ok(re.search(r"\b3\.3[0-9]*\s*°|\b3\.3[0-9]*\s*deg", low) is not None,
+         "quote the declination near Monastir, in degrees")
 
 
-@c.test("imu_filters.py runs and writes results.json and attitude.png with the right numbers",
-        hint="Run `python3 imu_filters.py`; it must reach 'saved results.json'. A wrong number here "
-             "points to the TODO that produced it.")
-def _():
-    for fn in ("results.json", "attitude.png"):
-        if os.path.exists(fn):
-            os.remove(fn)
-    code, out = sh("python3 imu_filters.py", timeout=100)
-    c.ok(code == 0, "the program stopped with an error:\n" + out[-600:])
-    c.file_exists("results.json")
-    c.file_exists("attitude.png")
-    with open("results.json") as fh:
-        res = json.load(fh)
-    for k, (want, tol) in EXP.items():
-        c.ok(k in res, f"results.json has no '{k}' (did the program stop early?)")
-        c.near(res[k], want, tol, what=f"results.json {k}")
-    c.eq(float(res.get("best_tau_s", -1)), 30.0, what="best_tau_s")
-    for k, want in WORLD.items():
-        c.near(res.get("world_declination_deg", {}).get(k), want, 0.01, what=f"declination in {k}")
-
-
-def sections():
-    c.file_exists("report.md")
-    text = open("report.md").read()
-    parts = re.split(r"^##\s+", text, flags=re.M)
-    out = {}
-    for p in parts[1:]:
-        title, _, body = p.partition("\n")
-        out[title.strip()[:1]] = body
-    return text, out
-
-
-def numbers(s):
-    return [float(x) for x in re.findall(r"[-+]?\d+(?:\.\d+)?", s.replace("−", "-"))]
-
-
-def has_near(s, want, tol):
-    return any(abs(abs(v) - abs(want)) <= tol for v in numbers(s))
-
-
-@c.test("report.md: five sections written, no TODO left, at least 30 words each",
-        hint="Keep the headings '## 1.' … '## 5.' and replace each TODO paragraph with your text.")
-def _():
-    text, sec = sections()
-    c.ok("TODO" not in text, "report.md still contains 'TODO'")
-    for k in "12345":
-        c.ok(k in sec, f"report.md has no section '## {k}. …'")
-        n = len(re.findall(r"[A-Za-z]{2,}", sec[k]))
-        c.ok(n >= 30, f"section {k} has only {n} words; explain a little more (≥ 30)")
-
-
-@c.test("report.md: the numbers match your results (drift, best tau, declinations, side error)",
-        hint="Section 1: the 300 s heading error; 2: the best tau; 3: the declination of the log; "
-             "4: London and Cape Town declinations (2 decimals) and the side error after 10 km from London (m).")
-def _():
-    _, sec = sections()
-    for k in "1234":
-        c.ok(k in sec, f"report.md has no section '## {k}. …'")
-    c.ok(has_near(sec["1"], 9.42, 0.3), "section 1 does not give the gyroscope heading error after 300 s")
-    c.ok(has_near(sec["1"], 9.0, 0.05), "section 1 does not give the bias × time prediction")
-    c.ok(has_near(sec["2"], 30, 0.01), "section 2 does not give the best tau of the sweep")
-    c.ok(has_near(sec["3"], 3.35, 0.02), "section 3 does not give the declination at the log's place")
-    c.ok(has_near(sec["4"], 1.21, 0.011), "section 4 does not give the declination in London")
-    c.ok(has_near(sec["4"], 26.81, 0.011), "section 4 does not give the declination in Cape Town")
-    c.ok(has_near(sec["4"], 212, 6), "section 4 does not give the side error after 10 km from London (m)")
-    s5 = sec.get("5", "")
-    c.ok("sensor_history" in s5 or "camera_model" in s5,
-         "section 5 should name the NAVERA files/functions (camera_model, sensor_history)")
-
-
+c.milestone("drift", "TODO 1", "TODO 2", "Steps 1–2", "Step 3", label="Drift hunter")
+c.milestone("engineer", "TODO", "Step", label="Attitude engineer")
 c.run()

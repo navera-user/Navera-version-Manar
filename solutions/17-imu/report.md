@@ -1,54 +1,28 @@
-# Lab 17 — report
+# Attitude memo — NAVERA Lite's IMU part
 
-## 1. Gyroscope drift
+## The gyroscope alone
 
-After 300 s the gyroscope-only heading is wrong by -9.42 degrees. The z bias of the log is
-0.03 deg/s, so I predicted 0.03 × 300 = 9.0 degrees. The difference of about 0.4 degrees comes
-from the white noise (a random walk) and from the small biases on x and y, which leak into the
-heading when the drone is tilted. The error only grows: nothing in the gyroscope can correct it.
-The sign is negative because a positive z bias makes the integrated yaw grow too fast, and the
-heading is 90 degrees minus the yaw, so the heading becomes too small.
+On the pad the drone is still, so the mean gyro reading is its bias: (0.0636, −0.0321, 0.0946) °/s.
+Integrated alone for 300 s, the z bias turns the yaw to the left by about 0.0946 × 300 = 28.4°, and the
+heading error at 300 s is −28.42°: the heading is 90° − yaw, so a yaw that grows too fast makes the heading
+too small. With the pad bias subtracted, the error at 300 s falls to −1.75°. What is left comes from the
+error of the bias estimate (500 noisy samples) and from the random walk of the noise. The gyro is excellent
+for seconds, useless alone for minutes.
 
-## 2. Tilt: accelerometer and complementary filter
+## Choosing τ
 
-The accelerometer alone has a roll error of up to 19.3 degrees. It happens in the turns: the
-drone banks about 14 degrees, but in a coordinated turn the specific force stays along the body
-z axis, so the accelerometer believes the drone is level. Its RMS roll error is 4.82 degrees.
-The best time constant of my sweep is tau = 30 s (roll RMS 0.53 degrees, pitch RMS 1.32 degrees).
-But 30 s is the edge of the sweep. When I extended it, tau = 100 s was even better (roll 0.34,
-pitch 0.78 degrees) and tau = 300 s was worse again (roll 0.51, pitch 0.92 degrees), so the
-minimum for this simulated sensor is near 100 s.
-A very small tau trusts the accelerometer, so the filter copies its noise and its errors in
-turns and accelerations. A very large tau trusts the gyroscope, so the bias error b × tau grows
-and the filter needs a long time to recover from a wrong start.
+The accelerometer does not drift, but it cannot tell a tilt from an acceleration: in the turn at 99.8 s the
+drone banks 15.1° while the accelerometer says 0.9°, because the thrust stays along the body z axis. In the
+sweep, a small τ copies those errors (tilt RMS 4.82° at τ = 0.3 s), a large τ keeps the gyro bias for
+longer (b·τ, 2.67° at τ = 300 s). The best of the sweep is τ = 30 s with a tilt RMS of 1.85°. For NAVERA
+Lite I would keep τ = 30 s and re-check it on a real flight log, since the best τ depends on how often the
+vehicle turns and on the gyro's bias.
 
-## 3. Compass and true north
+## Compass, north and trust
 
-The declination at the place of the log (near Monastir, October 2026) is +3.35 degrees. My true
-heading (tilt-compensated magnetic heading + declination) has an RMS error of 1.37 degrees.
-Without tilt compensation the RMS error is 4.92 degrees. Near Monastir the field dips about 50 degrees
-below the horizon, so a large vertical component leaks into the horizontal axes as soon as the
-drone pitches or rolls, and the heading moves even when the drone does not turn.
-
-## 4. Declination around the world
-
-| Place | Declination (deg, east +) |
-|---|---|
-| London | +1.21 |
-| Reykjavik | -11.05 |
-| Cape Town | -26.81 |
-| Sydney | +12.83 |
-| Singapore | +0.24 |
-
-If the declination of London is ignored, the side error after 10 km is
-10000 × tan(1.21°) = 212 m. This is much larger than the accuracy that a navigation system wants.
-In Cape Town the error would be 10000 × tan(26.81°) = 5053 m: there a compass without the
-declination is useless for navigation.
-
-## 5. Comparison with NAVERA
-
-NAVERA's `quat_to_matrix` in navera_common/camera_model.py does the same job as my
-`quat_to_matrix`, and `slerp` in navera_common/sensor_history.py does the same job as my `slerp`.
-NAVERA (like ROS) stores a quaternion as (x, y, z, w), with the scalar LAST; my code uses
-(w, x, y, z), with the scalar FIRST. I must convert with xyzw_to_wxyz before I compare them,
-otherwise the numbers are silently wrong.
+Near Monastir the field dips about 50°, so a tilt mixes its large vertical part into the horizontal axes:
+without tilt compensation the true-heading RMS is 4.98°, with the true tilt 0.81°. The WMM declination
+there is +3.35°; the chip's attitude, referenced to magnetic north, is off by −3.35° on average until
+q_true_north turns the world frame by −D (on the left). Finally, a frozen chip is caught by counting exact
+repeats: 50 in a row trips at 13.34 s, one second after the freeze; 5 would raise a false alarm at the
+5.08 s read hiccup.

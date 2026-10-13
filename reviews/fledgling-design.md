@@ -698,3 +698,6 @@ talks standard messages on `/fledgling/*`; no `navera_msgs` build step.
 - **rotations.py (16):** radians in, numpy out. TODOs rot_y, rot_z, euler_zyx_to_matrix, matrix_to_euler_zyx →
   (roll, pitch, yaw, locked), q_mul, q_conj, q_from_axis_angle, q_rotate, q_to_matrix, slerp, q_angle_deg; given
   rot_x, q_normalize, q_from_euler_zyx, heading_deg_from_q, rpy_human (pitch_up = −ROS pitch), IDENTITY_Q.
+- **17 imu.py (as built):** quaternions (x, y, z, w); `complementary(q0, t_s, gyro, accel, tau_s)` takes the start
+  attitude first and keeps a quaternion state (gyro step multiplied on the right, gravity correction on the left);
+  `mag_heading` takes one sample; new `q_true_north`; `StaleDetector.__init__` given, only `update` is a TODO.

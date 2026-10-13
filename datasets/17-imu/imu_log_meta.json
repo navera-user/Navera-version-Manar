@@ -1,22 +1,20 @@
 {
- "place": "near Monastir, Tunisia (synthetic flight)",
+ "place": "near Monastir, Tunisia (synthetic flight in NAVERA's test area)",
  "lat": 35.76,
  "lon": 10.75,
+ "alt_km": 0.0,
  "decimal_year": 2026.79,
  "date": "2026-10-15",
  "rate_hz": 50.0,
  "duration_s": 300.0,
  "simulated": true,
- "note": "simulated log; the BNO085 of the NAVERA box is not connected",
- "sensor_model": {
-  "gyro_bias_deg_s": [
-   0.01,
-   -0.01,
-   0.03
-  ],
-  "gyro_noise_rad_s": 0.005,
-  "accel_noise_m_s2": 0.3,
-  "mag_noise_uT": 0.4,
-  "quat_noise_deg": 0.2
- }
+ "units": {
+  "t_s": "s",
+  "g": "rad/s, body FLU",
+  "a": "m/s^2 specific force, body FLU",
+  "m": "microtesla, body FLU",
+  "chip_q": "(x, y, z, w), ENU with MAGNETIC north",
+  "true_*": "degrees: roll right wing down +, pitch nose UP +, heading clockwise from TRUE north"
+ },
+ "pad": "the drone sits still on the pad for the first 10 s"
 }
