@@ -450,7 +450,7 @@ def topic_publishers(topic, spin_s=2):
     return int(m.group(1)), names
 
 
-def publishers_ok(topic="/navera_lite/status", expected=1, spin_s=2, tries=2):
+def publishers_ok(topic="/navera_lite/status", expected=1, spin_s=2, tries=2, wait_s=8.0):
     """Fail with a clear message unless exactly `expected` nodes publish on `topic`.
 
     Use it before a test that reads a topic: expected=0 before starting the student's node (no
@@ -460,13 +460,20 @@ def publishers_ok(topic="/navera_lite/status", expected=1, spin_s=2, tries=2):
 
     Discovery is not instant: one `ros2 topic info` can miss a node (tested: "Unknown topic" while two
     nodes published). So it asks `tries` times and keeps the largest count (a node is never invented),
-    stopping early as soon as there are too many."""
+    stopping early as soon as there are too many; while it still sees too FEW (a node just launched is
+    not discovered yet) it keeps asking until `wait_s` seconds have passed."""
+    import time
     best, names = None, []
-    for _ in range(max(1, tries)):
+    deadline = time.monotonic() + wait_s
+    asked = 0
+    while True:
         n, who = topic_publishers(topic, spin_s)
+        asked += 1
         if n is not None and (best is None or n > best):
             best, names = n, who
         if best is not None and best > expected:
+            break
+        if asked >= max(1, tries) and (best == expected or time.monotonic() >= deadline):
             break
     n = best
     if n is None:
@@ -477,8 +484,8 @@ def publishers_ok(topic="/navera_lite/status", expected=1, spin_s=2, tries=2):
     if n > expected:
         raise CheckFailed(
             f"{n} node(s) publish on {topic}{who}, but the check expects {expected}. A node from an earlier "
-            "run is probably still running: stop it with Ctrl+C in its terminal (or close that terminal "
-            "tab), then press ✔ Check my work again. `ros2 topic info -v " + topic + "` lists them.")
+            "run is probably still running: list your background jobs with `jobs` and stop them with "
+            "`kill -INT %1` (or `kill -INT $(jobs -rp)`), then press ✔ Check my work again. `ros2 topic info -v " + topic + "` lists them.")
     raise CheckFailed(f"{n} node(s) publish on {topic}, the check expects {expected}: is your node "
                       "running, and does it publish on exactly this topic name?")
 
