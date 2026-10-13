@@ -5,7 +5,8 @@ positions in three drone photos, find out what wrong heights and wrong attitudes
 photo, check everything against OpenCV, and write a short memo.
 **Time:** 3 h to 4 h 30 (a strong programmer: about 2 h 30; more if numpy matrices are new to you).
 **Fast track:** if you know numpy, write the TODOs from the docstrings without the 🧰 boxes and the "Stuck?" boxes;
-then do "Going further" (*Sloped ground*, *A scale gate in numbers*) — your teacher reads them.
+then do "Going further" (*Sloped ground*, *A scale gate in numbers*) and write the results under *Going further*
+in `answers.py`; your teacher reads them.
 
 `python3 run_camera.py test` names the **symptom** of a wrong result and the hint to open ("Lab Step 2, hint 4"):
 try to find the mistake yourself first, then open that hint.
@@ -242,9 +243,11 @@ Step 5.)
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
-1. 0.337 instead of 0.2083 for `gsd`: `math.tan` got degrees.
+1. 0.337 instead of 0.2083 for `gsd`: `math.tan` got degrees. 0.104: you used half the footprint — the whole
+   width is 2·h·tan(HFOV/2).
 2. `rows, cols = np.nonzero(orange_mask(img))`; no orange pixel → `return None`.
-3. 10 instead of 11 on the test image: "both included" — add 1. 3: you counted rows.
+3. 10 instead of 11 on the test image: "both included" — add 1. 3 instead of 11: you counted rows (np.nonzero
+   gives rows first).
 4. Return an `int`: `int(cols.max() - cols.min() + 1)`.
 5. TODO C: 3.33 or 0.48 instead of 300 for (1000, 12, 40)? One pixel covers size_m / n_px metres of ground, and
    at nadir that GSD is h / f: solve for h.
@@ -274,6 +277,7 @@ The last line back-projects the pad's centre with your `backproject_ground` and 
 >    (`camera_rotation_hpr(40)`): how far is that point from the pad?
 > 2. `HEIGHT_SHIFT_M`: the right attitude, but a height of 150 m instead of 170 m: how far does the pad move?
 >    Compare with 20/170 of the pad's distance from the point under the drone: why exactly that?
+>    (`EXPLAIN_HEIGHT_SHIFT`)
 >
 > Then `EXPLAIN_LEVEL`: what did the level assumption get wrong, and what does a matcher need to avoid it?
 

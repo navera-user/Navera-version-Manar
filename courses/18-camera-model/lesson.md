@@ -373,7 +373,7 @@ the real camera's axes (undo K, §3), the ray is written in world axes (the real
 the axes of the virtual level camera (orientation R_wv: world → camera, as in §2), and the virtual camera's K
 turns it back into a pixel. Four 3 × 3 matrices, one product: a 3 × 3 matrix H that maps pixels to pixels (up to
 the last-number division of §2). Such a matrix is a **homography**; you write it in lab Step 9 from this trace.
-OpenCV's `cv2.warpPerspective(img, H, (w, h))` applies it to a whole image. You choose the virtual camera: level and straight down, with the image top towards the heading
+OpenCV's `cv2.warpPerspective(img, H, (w, H_img))` applies it to a whole image. You choose the virtual camera: level and straight down, with the image top towards the heading
 (NAVERA keeps the heading) or towards north (then the photo looks like the map, as mission 08's `like_map`
 prepared by rotating).
 

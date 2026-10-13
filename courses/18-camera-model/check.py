@@ -106,7 +106,7 @@ def go(fn, *args, **kw):
 
 # ======================================================================== session 1 — Measurer
 @c.test("TODO 1–2: focal_px() and K_from_hfov() on unseen cameras",
-        hint="Lesson §2: f = (w/2) / tan(HFOV/2), the angle in RADIANS. K = [[f, 0, w/2], [0, f, h/2], [0, 0, 1]] "
+        hint="Lesson §2: f = (w/2) / tan(HFOV/2), the angle in RADIANS. K = [[f, 0, w/2], [0, f, H_img/2], [0, 0, 1]] "
              "as a numpy array of floats.")
 def _():
     fp, kf = functions("focal_px", "K_from_hfov")
@@ -283,6 +283,9 @@ def _():
               ((r"back", r"behind", r"rear", r"tail", r"south"), "which way the optical axis goes"))
     re_, rn = number(re_, "CENTRE_ROLL_E_M"), number(rn, "CENTRE_ROLL_N_M")
     c.ok(re_ != 0 or rn != 0, "CENTRE_ROLL_E_M / _N_M are still 0: compute them with your backproject_ground (Step 3)")
+    if abs(re_ - 6.5) < 0.5 and abs(rn - 64.5) < 0.5:
+        raise CheckFailed("CENTRE_ROLL: (6.5, 64.5) is the camera pitched nose UP — the task's pitch is −15 "
+                          "(camera_rotation_hpr(40, -15, 10))")
     if abs(re_ + 17.58) < 0.3 and abs(rn + 62.41) < 0.3:
         raise CheckFailed("CENTRE_ROLL_E_M / _N_M are swapped: backproject_ground returns [east, north]")
     c.near(re_, -62.41, 0.3, "CENTRE_ROLL_E_M (m)")
@@ -326,6 +329,11 @@ def _():
         raise CheckFailed("HEIGHT_SHIFT_M = 20: that is the height difference; back-project the pad's pixel with "
                           "C = (0, 0, 150) and measure how far the GROUND point moves")
     c.near(hsh, 8.04, 0.15, "HEIGHT_SHIFT_M (m)")
+    (why_hs,) = answers("EXPLAIN_HEIGHT_SHIFT")
+    explained("EXPLAIN_HEIGHT_SHIFT", why_hs,
+              ((r"ray", r"same pixel", r"direction", r"λ", r"lambda", r"angle"), "that the pixel's ray stays the same"),
+              ((r"proportion", r"scale", r"linear", r"ratio", r"times", r"/ ?170", r"\bh\b", r"height"),
+               "why the distance follows the height"), min_words=6)
     explained("EXPLAIN_LEVEL", why_lev,
               ((r"pitch", r"roll", r"tilt", r"attitude", r"angle", r"orientation", r"nose"), "what the level assumption ignores"),
               ((r"imu", r"attitude", r"straighten", r"rotation", r"orientation", r"know", r"measure", r"sensor"),

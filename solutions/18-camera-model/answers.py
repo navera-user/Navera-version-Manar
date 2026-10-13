@@ -25,7 +25,7 @@ CENTRE_ROLL_E_M = -62.41
 CENTRE_ROLL_N_M = -17.58
 EXPLAIN_T = "project goes world to camera, so it must undo R_wc with its inverse, the transpose R_wcᵀ; backproject_ground goes the other way, camera to world, which is exactly what R_wc does."
 
-# ---- Step 4: measure the height (TODO 5, TODO A, python3 measure_pad.py) -----------------------------
+# ---- Step 4: measure the height (TODO 5, TODO A, TODO C, python3 measure_pad.py) -----------------------------
 PREDICT_PAD = "A: the pad is bigger in pixels there, so one pixel is a smaller fraction of it."
 HEIGHT_A_M = 134.0
 HEIGHT_B_M = 261.8
@@ -37,6 +37,7 @@ PAD_T_E_M = -17.9
 PAD_T_N_M = -66.0
 LEVEL_ERROR_M = 45.9
 HEIGHT_SHIFT_M = 8.04
+EXPLAIN_HEIGHT_SHIFT = "The pixel's ray is fixed; the ground point is C + λ·d with λ = −h/d_z, so its distance from the point under the drone is proportional to h: 150 instead of 170 m shortens it by 20/170."
 EXPLAIN_LEVEL = "Assuming a level camera ignores the 14° nose-down pitch and 5° roll, so every ray is turned and lands tens of metres away (45.9 m here). A matcher needs the attitude at the photo instant (from the IMU) to back-project or straighten the photo first."
 
 # ======== Session 2 — Straightener ========
@@ -68,3 +69,8 @@ EXPLAIN_STRAIGHT = "The real and the level camera share the same centre and only
 
 # ---- Step 12: look back (not graded; for you and your teacher) -------------------------------------
 LOOK_BACK = ""
+
+# ======== Going further (optional, not graded) ========
+SLOPE_SHIFT_M = 0.0
+GATE_REFUSED_PCT = 0.0
+GOING_FURTHER = ""

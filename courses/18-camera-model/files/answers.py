@@ -25,7 +25,7 @@ CENTRE_ROLL_E_M = 0.0     # YOUR backproject_ground: the image centre (480, 270)
 CENTRE_ROLL_N_M = 0.0     # pitch −15°, roll +10° (camera_rotation_hpr) — metres east and north
 EXPLAIN_T = ""            # why does project() need R_wc.T while backproject_ground() uses R_wc itself?
 
-# ---- Step 4: measure the height (TODO 5, TODO A, python3 measure_pad.py) -----------------------------
+# ---- Step 4: measure the height (TODO 5, TODO A, TODO C, python3 measure_pad.py) -----------------------------
 PREDICT_PAD = ""            # before running: which photo, A or B, will give the more precise height? why?
 HEIGHT_A_M = 0.0            # height of the camera of photo A (m, one decimal)
 HEIGHT_B_M = 0.0            # height of the camera of photo B (m, one decimal)
@@ -39,6 +39,7 @@ LEVEL_ERROR_M = 0.0         # YOUR backproject_ground with a LEVEL camera (camer
                             # pixel: its distance to the pad (m)
 HEIGHT_SHIFT_M = 0.0        # YOUR backproject_ground with the right attitude but 150 m instead of 170 m:
                             # how far the pad moves (m)
+EXPLAIN_HEIGHT_SHIFT = ""    # why is the shift exactly 20/170 of the pad's distance from the point under the drone?
 EXPLAIN_LEVEL = ""          # what did the level assumption get wrong, and what does a matcher need to avoid it?
 
 # ======== Session 2 — Straightener ========
@@ -70,3 +71,8 @@ EXPLAIN_STRAIGHT = ""       # why can a single 3 × 3 matrix straighten the whol
 
 # ---- Step 12: look back (not graded; for you and your teacher) -------------------------------------
 LOOK_BACK = ""
+
+# ======== Going further (optional, not graded; your teacher reads them) ========
+SLOPE_SHIFT_M = 0.0         # Sloped ground: how far photo T's pad moves if the ground rises 5 % towards the north (m)
+GATE_REFUSED_PCT = 0.0      # A scale gate in numbers: share of correct matches refused by a ±15 % gate (%)
+GOING_FURTHER = ""          # anything else you tried (2σ/h gate, heading-up view, your own rotations…)

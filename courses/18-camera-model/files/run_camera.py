@@ -92,7 +92,7 @@ def test():
          "the same camera, 50 m east and 20 m south of the origin. [-16.82, -14.83]? Lab Step 3, hint 4"),
         (4, "backproject_ground", (K, cam.camera_rotation_hpr(0.0, 80.0, 0.0), C, 480, 0), None, None,
          "nose 80° UP, the top row of the image: that ray never meets the ground. Lab Step 3, hint 5"),
-        (5, "gsd", (100.0, 90.0, 960), 0.208333, 1e-6, "the docstring says 0.20833. 0.337? Lab Step 4, hint 1"),
+        (5, "gsd", (100.0, 90.0, 960), 0.208333, 1e-6, "the docstring says 0.20833. 0.337 or 0.104? Lab Step 4, hint 1"),
         (6, "footprint", (K, R0, C, 960, 540),
          [[-100, 56.25], [100, 56.25], [100, -56.25], [-100, -56.25]], 1e-6,
          "the right corners in another order? Lab Step 6, hint 2"),
@@ -184,12 +184,13 @@ def _homography_symptom(got):
         return "it should be a 3 × 3 array"
     if a.shape != (3, 3):
         return f"it should be a 3 × 3 array, not shape {a.shape}"
+    s = a / a[2, 2] if abs(a[2, 2]) > 1e-12 else a                # compare the shape first, the scale last
+    if close(s, [[1.398, -0.502, 61.11], [0.796, 1.272, -501.355], [0.0, 0.0, 1.0]], 0.01):
+        return "[[1.398, −0.502, 61.1], …] (once scaled)? Lab Step 9, hint 3"
+    if close(s, [[0.654, 0.62, -7.981], [-0.549, 0.877, 181.419], [0.0, 0.0, 1.0]], 0.01):
+        return "[[0.654, 0.620, −7.98], …] (once scaled)? Lab Step 9, hint 4"
     if abs(a[2, 2] - 1.0) > 1e-6:
         return f"H[2, 2] = {a[2, 2]:.3f}, not 1: lab Step 9, hint 2"
-    if close(a, [[1.398, -0.502, 61.11], [0.796, 1.272, -501.355], [0.0, 0.0, 1.0]], 0.01):
-        return "[[1.398, −0.502, 61.1], …]? Lab Step 9, hint 3"
-    if close(a, [[0.654, 0.62, -7.981], [-0.549, 0.877, 181.419], [0.0, 0.0, 1.0]], 0.01):
-        return "[[0.654, 0.620, −7.98], …]? Lab Step 9, hint 4"
     return "not the right matrix: trace the four matrices on paper again (lab Step 9)"
 
 
