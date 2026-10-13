@@ -34,8 +34,8 @@
 
 **You need:** mission 16 (quaternions in ROS order, `q_mul`, `q_from_axis_angle`, `q_rotate`, heading =
 90° − yaw, ROS pitch = nose down), mission 04 (numpy columns, a mask, a mean), mission 06 (sin, a
-distance to the side). ⏱ Reading: about 70 minutes with the ✏️ checks: §1–§3 before session 1, §4–§6
-before session 2. Lab: 3 to 5 h.
+distance to the side). ⏱ Reading: about 85 minutes with the ✏️ checks: §1–§3 before session 1, §4–§6
+before session 2. Lab: 3 h 30 to 4 h 30.
 
 **Before you start.** Answer without looking; if you miss two, reread mission 16 §1–§2 and §4.
 
@@ -189,10 +189,16 @@ These angles **never drift**. But they have two weaknesses.
   Example: 12 m/s at 20°/s = 0.349 rad/s → v·ω = 4.19 m/s², bank = atan(4.19/9.81) = **23.1°**, and
   the accelerometer reads (0, 0, 10.67): roll 0°.
 
+In **steady** flight (constant speed and direction) a = 0 and the formula is right again, even when a
+multirotor holds its nose a few degrees down against the air drag: that tilt is real, and the accelerometer
+sees it. Only **changes** of speed or direction fool it: the accelerometer does not see the part of the tilt
+that makes the speed change. Braking is the mirror of speeding up: the drone pitches nose **up**, and the
+accelerometer reads much less nose-up than the truth (it can even read slightly nose-down).
+
 This is physics, not a bad sensor (Einstein's equivalence principle: you cannot tell gravity from
-acceleration from the inside). Pilots know it as the *somatogravic illusion*: on a dark take-off, a strong
-forward acceleration feels like a nose-up tilt, and accident investigators have named it in several night
-take-off crashes.
+acceleration from the inside). Pilots know it as the *somatogravic illusion*: in the dark, a strong forward
+acceleration feels like a nose-up tilt. Investigators named it as a likely factor in the crash of Gulf Air
+flight 072 (Bahrain, 2000), during a night go-around over the sea.
 
 > [!QUESTION] ✏️ Check
 > A car accelerates at 2 m/s² on a flat road. What pitch does `tilt_from_accel` give for it (ROS sign)?
@@ -231,9 +237,15 @@ roll 0°, gravity says 10°. One step moves the estimate by 0.196°; after 1 s (
   wrong value by about E·(1 − e^(−T/τ)). A 12 s turn with E = 23°: τ = 1 s copies all 23°; τ = 30 s moves
   only 7.6°.
 
-A small τ copies gravity's noise and its errors in turns; a large τ keeps more of the gyro bias (b·τ) and
-recovers slowly from a wrong start. The best τ depends on the gyro, the vibration and how the vehicle flies.
-Engineers measure it. That is your job in the lab.
+A small τ copies gravity's noise and its errors in turns; a large τ keeps more of the gyro bias and needs
+about τ seconds to forget a wrong start. The best τ depends on the gyro, the vibration and how the vehicle
+flies. Engineers measure it. That is your job in the lab.
+
+**b·τ is a worst case.** It is the error once the filter has settled (after a few τ), for a vehicle that
+keeps its heading. A bias on the body x or y axis turns **with** the drone: after a 180° turn the same body
+bias tilts the estimate the other way, so on a flight with many turns its effect partly cancels. And with τ
+of a few minutes, a 5-minute flight never settles. A large τ then costs less than b·τ: keep this in mind when
+you read the lab's table.
 
 ![Block diagram of the complementary filter, and a 1-D simulation: τ = 1 s follows the fooled gravity during a turn, τ = 30 s barely moves but keeps b·τ](assets/complementary.svg)
 
@@ -246,6 +258,14 @@ lock), and does the same two things at every step:
    between them, and the axis that turns seen_up towards up is `seen_up × (0, 0, 1)`, a **horizontal**
    world axis. Turn the **world** by (1 − α)·error about it: q ← Δ_gravity ⊗ q, on the **left**
    (a world-frame turn).
+
+**Worked example (one gravity step).** The estimate is level, q = (0, 0, 0, 1), but the drone is really
+banked 30° right wing down, still: f = (0, 4.905, 8.496). seen_up = q_rotate(q, f/|f|) = (0, 0.5, 0.866):
+the estimate thinks gravity's push leans towards the left wing. Axis = seen_up × (0, 0, 1) = (0.5, 0, 0):
+along world x, horizontal (turning seen_up towards up is a positive turn about it, by the right-hand rule).
+Error = atan2(|axis|, seen_up_z) = atan2(0.5, 0.866) = 30°. With τ = 1.5 s and dt = 0.5 s, α = 0.75: the
+world turns by (1 − 0.75) × 30° = 7.5° about x, and the roll goes 0° → 7.5°, exactly the 1-D formula
+0.75 × 0° + 0.25 × 30°. (Use atan2 for the angle: |axis| alone is sin(error), 0.5 here, not 30°.)
 
 ![The gravity step: seen_up, the true up, the error angle and the horizontal axis of the small correction](assets/nudge.svg)
 
@@ -274,8 +294,9 @@ and growing.
 ## 5. The compass: tilt compensation and true north
 
 **Heading from a level magnetometer.** On a level drone with heading h, magnetic north is at angle h to the
-**right** of the nose, so in FLU (y = **left**) the horizontal field reads (H·cos h, H·sin h): nose east
-(h = 90°) puts north on the left, +y. So
+**left** of the nose (counter-clockwise seen from above: the nose is h clockwise from north), so in FLU
+(y = **left**) the horizontal field reads (H·cos h, H·sin h): nose east (h = 90°) puts north on the left,
++y. So
 
 ```
 magnetic heading = atan2(m_y, m_x)        in FLU, degrees, mod 360
@@ -339,7 +360,7 @@ wrong as soon as it banks.
 
 <details><summary>Answer</summary>
 1. 359 + 12.83 = 371.83 → 11.83°.<br>
-2. 75 + 3.35 = 78.35°.
+2. 75 + 3.34 = 78.34° (the table's D for Sousse; the lab's log, near Monastir, has 3.35°).
 </details>
 
 ## 6. Can you trust the numbers? A frozen sensor
@@ -349,9 +370,10 @@ its cached last report, and the node published it with new timestamps. **A fresh
 the message was sent, not when the sample was measured.**
 
 The giveaway is that a living sensor is never perfectly still: its noise changes at least one digit at
-every sample. With typical steps of 0.002 rad/s (gyro), 0.004 m/s² (accelerometer) and 0.06 µT
-(magnetometer) and the noise of this mission's log, one gyro axis repeats its previous value about one
-sample in five at rest, but all nine readings at once about once in 4·10¹³ samples. So: **N exact repeats
+every sample. A real chip reports in fixed steps, its resolution: about 0.002 rad/s (gyro), 0.004 m/s²
+(accelerometer) and 0.06 µT (magnetometer) on a BNO085. With that resolution and this mission's noise, one
+gyro axis repeats its previous value about one sample in five at rest, but all nine readings at once only
+about once in 4·10¹³ samples. (The lab's log is written with more digits, so it repeats even less.) So: **N exact repeats
 of the whole sample in a row = frozen**.
 
 Choosing N is again a trade-off. Too small, and a short hiccup (a few failed reads that return the cached

@@ -4,7 +4,8 @@
 Monastir: measure the gyroscope's bias and drift, catch gravity being fooled in a turn, choose the
 complementary filter's time constant from measured errors, correct a compass and a whole attitude to true
 north, and build the frozen-sensor detector that NAVERA's item IMU-1 needed.
-**Time:** 3 to 5 h (a strong programmer: about 2 h 30; 5 h if numpy or mission 16 is rusty).
+**Time:** 3 h 30 to 4 h 30 (session 1: 1 h 30–2 h, session 2: 2 h–2 h 30); a strong programmer who knows
+numpy and quaternions: about 2 h 30.
 **Fast track:** if you know numpy and quaternions well, skip the 🧰 boxes and the "Stuck?" boxes; do
 "Going further" at the end.
 
@@ -77,7 +78,8 @@ Try it in `python3` (the interactive prompt) or in one line: `python3 -c "…"`.
 
 1. Three steps: load `/data/academy/17-imu/imu_log.csv`, mask `L["t_s"] < 10`, mean of each gyro column.
 2. The columns are in rad/s: `np.degrees(…)` after the mean.
-3. `python3 -c "import numpy as np; L = np.genfromtxt('/data/academy/17-imu/imu_log.csv', delimiter=',', names=True); p = L['t_s'] < 10; print(np.degrees(L['gx'][p].mean()))"` — then the same for `gy` and `gz`.
+3. One column at a time: the mask selects the pad rows of `L['gx']`, `.mean()` averages them, `np.degrees`
+   converts. Print it, then the same for `gy` and `gz` (a `python3 -c "…"` line or the `python3` prompt).
 4. You get numbers like 3.6 or 5.4? Those are degrees of rad/s converted twice, or not averaged: check one step at a time.
 </details>
 
@@ -147,6 +149,8 @@ python3 run_imu.py gyro 0.0 0.0 0.0
    compute `dt` inside the loop.
 6. Your z bias is positive but the heading error is negative? Not a bug: what does a positive rate about Up
    do to the yaw, and what does that do to heading = 90° − yaw?
+7. ✘ "you used the first-order update q + ½·dt·q ⊗ ω" (a formula found online): it is close (0.01°) but not
+   exact. Build the exact small turn with `q_from_axis_angle(ω, |ω|·dt)` (lesson §2).
 </details>
 
 ## Step 3 — Tilt from gravity, and the turn that fools it (TODO 2)
@@ -168,10 +172,15 @@ python3 run_imu.py tilt
 ```
 
 Open `out/tilt.png`: the grey cloud is single samples (vibration), the coloured line their 1-second average.
+In steady cruise (60–85 s, for example) the accelerometer agrees with the truth: −4.0°, the nose-down tilt
+that holds the drone against the air drag. The braking row (280–290 s) is the mirror of the speed-up: the
+accelerometer misses the nose-up tilt that slows the drone and keeps only the drag tilt, so it even reads
+slightly nose-down (lesson §3).
 
 > [!TASK]
 > Write `TURN_TRUE_BANK_DEG` and `TURN_ACCEL_ROLL_DEG`: the true roll and the accelerometer's roll in the
-> turn at t ≈ 99.8 s. `EXPLAIN_TURN`: why does the accelerometer report that (which force does it feel, and
+> turn at t ≈ 99.8 s. (Not exactly 0: a 1-second average still carries some vibration, and the simulated
+> drone wobbles about 1°.) `EXPLAIN_TURN`: why does the accelerometer report that (which force does it feel, and
 > where does that force point in a coordinated turn)?
 
 <details><summary>Stuck? Hints</summary>
@@ -195,9 +204,12 @@ Read lesson §4–§6 first.
 ## Step 4 — The complementary filter, and your choice of τ (TODO 3)
 
 **TODO 3** `complementary(q0, t_s, gyro_rad_s, accel_mps2, tau_s)`: lesson §4, "In three dimensions". Each
-step has two parts: the gyro step of TODO 1, then the gravity step. Before you code, trace the docstring
-example by hand: with τ = 1.5 s and dt = 0.5 s, what are α and 1 − α? The drone is level and gravity says
-30° right wing down: how far does the roll move in the first step?
+step has two parts: the gyro step of TODO 1, then the gravity step.
+
+> [!TASK]
+> **Before you code**, trace the docstring example by hand (lesson §4, "one gravity step", does the same with
+> other words): τ = 1.5 s, dt = 0.5 s, the estimate is level and gravity says 30° right wing down. What are α
+> and 1 − α? Write `TRACE_FIRST_ROLL_DEG`: the roll (degrees) after the first step.
 
 <details><summary>🧰 numpy: the cross product and an angle from atan2</summary>
 
@@ -229,7 +241,20 @@ Open `out/tau.png`.
 
 > [!TASK]
 > Write `BEST_TAU_S` and `BEST_TILT_RMS_DEG` (the "tilt RMS" column). `EXPLAIN_TAU`: what goes wrong with a
-> small τ, and with a large τ? Use the table: which errors grow at each end?
+> small τ, and with a large τ, and why is the best τ in between? Use the table: which errors grow at each end?
+
+> [!QUESTION] Check one number
+> Your pad bias on x is about 0.064 °/s, so b·τ at τ = 300 s would be about 19°. The table says 2.7°. Look at
+> `out/gyro.png` from Step 2 (the roll error changes sign at the turns): why is the large-τ end so gentle on
+> *this* flight? (Lesson §4, "b·τ is a worst case".)
+
+<details><summary>Read this after you wrote EXPLAIN_TAU</summary>
+A body-axis bias turns with the drone: after each 180° turn it tilts the estimate the other way, so over
+this flight it partly cancels; and with τ = 300 s the filter never settles in 5 minutes, so b·τ is never
+reached. On a long straight flight the large-τ end would be much worse. The runs also start from the true
+attitude, so the other cost of a large τ (forgetting a wrong start slowly) does not show here: Going further
+shows it.
+</details>
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
@@ -237,11 +262,16 @@ Open `out/tau.png`.
 2. `f = accel[k]`; skip the gravity step if `np.linalg.norm(f)` is 0. `seen_up = q_rotate(q, f / norm)`.
 3. `axis = np.cross(seen_up, (0, 0, 1))`; `s = np.linalg.norm(axis)`; if `s` is (almost) 0 there is nothing
    to correct. Otherwise `error = math.atan2(s, seen_up[2])`, `alpha = tau_s / (tau_s + dt)`.
-4. The nudge turns the **world**, so it goes on the **left**:
-   `q = q_mul(q_from_axis_angle(axis, (1 - alpha) * error), q)`. Normalise, store in `out[k]`.
+4. The nudge is `q_from_axis_angle(axis, …)` by gravity's share of the error. Which side of `q` does it go,
+   and why? (Lesson §4, Common wrong ideas, 3rd bullet.) Normalise, store in `out[k]`.
 5. ✘ "α and 1 − α are swapped": gravity gets the small share, 1 − α. ✘ "the roll went the WRONG way": the
    axis is `seen_up × up`, in that order. ✘ "the heading moved": the nudge multiplies on the left.
-6. `tau` stops with "nan/inf from row …"? A division by a zero length: the skip of hint 2 or 3 is missing.
+   ✘ "7.16° instead of 7.5°": you used s = |seen_up × up| (the sine) as the angle; use
+   `error = math.atan2(s, seen_up[2])`.
+6. ✘ "seen_up is exactly up" or ✘ "f = (0, 0, 0)", or `tau` stops with "nan/inf from row …": a division by a
+   zero length — the skips of hints 2 and 3 are missing. They are not optional: a level drone at rest, or a
+   free-fall sample, happens in real data.
+7. Still stuck? The nudge line is `q = q_mul(q_from_axis_angle(axis, (1 - alpha) * error), q)`.
 </details>
 
 ## Step 5 — A compass that knows where true north is (TODO 4, TODO 5)
@@ -285,7 +315,8 @@ python3 -c "from navera_lite.imu import declination_deg; print(declination_deg(-
 3. ✘ "23.7° = no tilt compensation": you took atan2 of the raw field. ✘ the tilted line fails but the level
    one passes, by a little: the order — the roll is undone first, so `rot_x` is next to the vector.
 4. `true_heading`: ✘ "you subtracted the declination": true = magnetic + D. Keep the result in [0, 360).
-5. Cape Town: D is negative; the distance to the side is 5000 · sin(|D|).
+5. Cape Town: D is negative; the distance to the side is 5000 · sin(|D|), with D in **degrees**:
+   `math.sin(math.radians(abs(D)))`. 4976 m means sin was given degrees as if they were radians.
 </details>
 
 ## Step 6 — True north for a whole attitude (TODO 6)
@@ -334,17 +365,18 @@ python3 run_imu.py test
 python3 run_imu.py stale
 ```
 
-NAVERA uses 50 repeats (1 s at 50 Hz). Why not 5? Have a look at the file around t = 5 s:
-
-```bash
-sed -n 245,262p /data/academy/17-imu/imu_frozen.csv
-```
-
 > [!TASK]
-> **Predict** (`PREDICT_STALE`): what will a detector with `max_repeat = 5` do on this file? Then:
+> **Predict** (`PREDICT_STALE`): NAVERA uses 50 repeats (1 s at 50 Hz). Would 5 (0.1 s, ten times faster) be
+> better? What will a detector with `max_repeat = 5` do on this file? Then:
 
 ```bash
 python3 run_imu.py stale 5
+```
+
+Surprised? Look at the file around t = 5 s:
+
+```bash
+sed -n 245,262p /data/academy/17-imu/imu_frozen.csv
 ```
 
 > [!TASK]
@@ -358,9 +390,9 @@ python3 run_imu.py stale 5
 2. Two cases: `s` equals `self.last` (one more repeat), or not (remember `s`, the count starts again at 0).
 3. Then one comparison decides the answer. Check it on the docstring's trace: the 3rd sample (the 2nd
    repeat) is the first True.
-4. ✘ "one sample too late/early": compare your trace with the docstring's list. ✘ "it stays True after the
-   data changed": the count must start again. ✘ "only part of the sample is compared": compare the whole
-   tuple.
+4. ✘ "one sample too late/early": compare your trace with the docstring's list. ✘ "it says True for (1, 6)
+   after (1, 5)": the count must start again, and the whole tuple is compared. Two bugs at once? The test line
+   prints what each sample should give: trace `self.last` and `self.repeats` after each sample.
 </details>
 
 ## Step 8 — The attitude memo
@@ -386,6 +418,11 @@ lesson:
 Write your answers in `LOOK_BACK` in `answers.py` if you want your teacher to read them (not graded).
 
 ## Going further (optional)
+
+- **A wrong start.** `python3 run_imu.py tau 10` starts every run with a 10° roll error (a drone that took
+  off from a sloping pad with a wrong initial tilt). How does the table change at the large-τ end? Why?
+- **Why does the roll error flip?** In `out/gyro.png` the gyro-alone roll error reverses at the big turns.
+  Rotate the pad bias (0.064, −0.032) °/s from the body into the world frame for heading 0° and 180°.
 
 - **The filter's tilt for the compass.** `python3 run_imu.py compass 30` adds a line compensated with your
   filter's tilt. Where does it fall between the true tilt and the accelerometer's? Why?

@@ -115,12 +115,12 @@ def forces():
         for s in (-1, 1):
             out.append(line(cx + s * 46 * px - 18 * px, cy + s * 46 * py - 18 * py - 4 * 0,
                             cx + s * 46 * px + 18 * px, cy + s * 46 * py + 18 * py, GREY, 3))
-        out.append(arrow(cx, cy, cx + 60 * ux, cy + 60 * uy, ORANGE, "o", 2, "4 3"))
+        out.append(arrow(cx - 6, cy, cx - 6 + 60 * ux, cy + 60 * uy, ORANGE, "o", 2, "4 3"))
         out.append(text(cx + 68 * ux + 4, cy + 68 * uy, "body z", 10, ORANGE, "start"))
         if f_len > 0:
             k = 5.5
             out.append(arrow(cx + 6, cy, cx + 6 + f_len * k * ux, cy + f_len * k * uy, RED, "r", 3))
-            out.append(text(cx + 14 + f_len * k * ux, cy + f_len * k * uy + 14, f_label, 11, RED, "start"))
+            out.append(text(cx + 20 + f_len * k * ux, cy + f_len * k * uy + 14, f_label, 11, RED, "start"))
         out.append(arrow(cx - 70, cy + 10, cx - 70, cy + 52, GREY, "g", 2))
         out.append(text(cx - 70, cy + 66, "gravity", 10, GREY))
         if accel:
@@ -256,7 +256,7 @@ def compass():
     b = [text(415, 24, "The Earth's field near Monastir (WMM2025, October 2026), and the two norths", 14, weight="bold")]
     ox, oy, k = 60, 90, 4.2
     b.append(line(30, oy, 330, oy, GREY, 1, "5 4"))
-    b.append(text(326, oy + 16, "horizontal, towards magnetic north →", 10, GREY, "end"))
+    b.append(text(ox + H * k + 10, oy + 16, "horizontal, to magnetic north →", 10, GREY, "start"))
     b.append(arrow(ox, oy, ox + H * k, oy + Z * k, RED, "r", 3))
     b.append(text(ox + H * k + 6, oy + Z * k + 4, f"F = {F:.1f} µT", 12, RED, "start"))
     b.append(arrow(ox, oy, ox + H * k, oy, BLUE, "b", 2))

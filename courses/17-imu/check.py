@@ -161,6 +161,18 @@ def _():
             alt = build(rule)
             if max(ang(alt[k], got[k]) for k in range(n)) < 1e-6:
                 raise CheckFailed(msg)
+        q, first = np.asarray(R0.as_quat(), dtype=float), [R0]
+        for kk in range(1, n):                                  # the textbook first-order update q + ½·dt·q ⊗ (ω, 0)
+            x, y, z, ww = q
+            wx, wy, wz = w[kk - 1]
+            dq = 0.5 * np.array([ww * wx + y * wz - z * wy, ww * wy - x * wz + z * wx,
+                                 ww * wz + x * wy - y * wx, -x * wx - y * wy - z * wz])
+            q = q + (t[kk] - t[kk - 1]) * dq
+            q = q / np.linalg.norm(q)
+            first.append(Rotation.from_quat(q))
+        if max(ang(first[kk], got[kk]) for kk in range(n)) < 1e-6:
+            raise CheckFailed("you used the first-order update q + ½·dt·q ⊗ ω: it is close (0.01°) but not exact; build "
+                              "the exact small turn with q_from_axis_angle(ω, |ω|·dt) (lesson §2)")
         k = int(np.argmax(errs))
         raise CheckFailed(f"integrate_gyro on unseen rates: row {k} is {errs[k]:.3f}° away from the right attitude "
                           "(the first rows are fine?) — check the half angle (q_from_axis_angle does it) and dt")
@@ -234,10 +246,10 @@ def _():
     e2 = number(e2, "CORRECTED_HEADING_ERR_DEG")
     c.near(e2, CORR_ERR_300, 0.35, "CORRECTED_HEADING_ERR_DEG (run_imu.py gyro with YOUR three bias numbers, at 300 s)")
     explained("EXPLAIN_DRIFT", why,
-              ((r"yaw", r"counter", r"clockwise", r"90", r"left", r"heading.*(decreas|smaller|less)",
+              ((r"yaw", r"counter", r"clockwise", r"90", r"heading.*(decreas|smaller|less|negative)",
                 r"(increas|grow).*yaw"), "why the sign is negative (a positive z bias, yaw and heading)"),
-              ((r"left", r"remain", r"residual", r"estimat", r"noise", r"random", r"not exact", r"average", r"√", r"sqrt",
-                r"error of the (mean|bias)", r"small"), "what is left after the bias is removed"))
+              ((r"remain", r"residual", r"estimat", r"noise", r"random", r"not exact", r"average", r"√", r"sqrt",
+                r"error of the (mean|bias)", r"500"), "what is left after the bias is removed"))
 
 
 @c.test("Step 3: the coordinated turn fools the accelerometer — prediction, numbers, explanation",
@@ -252,7 +264,7 @@ def _():
     c.near(a, TURN_BANK, 0.15, "TURN_TRUE_BANK_DEG (the turn at t ≈ 99.8 s)")
     c.near(b, TURN_ACC, 0.15, "TURN_ACCEL_ROLL_DEG (the turn at t ≈ 99.8 s)")
     explained("EXPLAIN_TURN", why,
-              ((r"thrust", r"lift", r"rotor", r"propel", r"body.?s? z", r"\bz\b", r"along the body", r"perpendicular",
+              ((r"thrust", r"lift", r"rotor", r"propel", r"body.?s? z", r"along the body", r"perpendicular",
                 r"specific force", r"total force", r"same direction"), "which force the accelerometer feels"),
               ((r"centripet", r"turn", r"accelerat", r"bank", r"circle", r"sideways", r"lateral"),
                "the acceleration of the turn"),
@@ -268,6 +280,19 @@ def _():
 def _():
     Rotation = oracle()
     (f,) = functions("complementary")
+    for label, acc, msg in (
+            ("a level drone reading exactly (0, 0, 9.81)", [[0.0, 0.0, 9.81]] * 3,
+             "seen_up is exactly up: the axis seen_up × up has length 0 and there is nothing to correct — skip the "
+             "gravity step when the axis length is (almost) 0"),
+            ("a free-fall sample f = (0, 0, 0)", [[0.0, 0.0, 9.81], [0.0, 0.0, 0.0], [0.0, 0.0, 9.81]],
+             "f = (0, 0, 0) has no direction (free fall): skip the gravity step when |f| is 0")):
+        try:
+            got = quats(run(f, (0.0, 0.0, 0.0, 1.0), [0.0, 0.02, 0.04], np.zeros((3, 3)), np.array(acc), 1.0),
+                        3, "complementary")
+        except CheckFailed as e:
+            raise CheckFailed(f"on {label}: {e} — {msg}")
+        if not np.all(np.abs(np.abs(got[:, 3]) - 1.0) < 1e-9):
+            raise CheckFailed(f"on {label} with no turn measured, the attitude must stay level — {msg}")
     data = json.loads(hidden("expected.json"))
     for name in ("still", "bias", "bumpy"):
         k = data[name]
@@ -298,6 +323,12 @@ def _():
             if turn > 10:
                 raise CheckFailed("the nudge tilts the drone in the wrong direction when the heading is not 90°: it is a turn "
                                   "of the WORLD about a world axis, so it multiplies on the LEFT: q_mul(nudge, q)")
+            r1_tilt = math.degrees(math.acos(max(-1.0, min(1.0, Rotation.from_quat(got[1]).apply([0, 0, 1])[2]))))
+            w1_tilt = math.degrees(math.acos(max(-1.0, min(1.0, Rotation.from_quat(want[1]).apply([0, 0, 1])[2]))))
+            if r1_tilt < w1_tilt * 0.99 and abs(tilt_got - tilt_want) < 0.05:
+                raise CheckFailed("the first nudge is a little too small: turn by (1 − α) × the ANGLE between seen_up and "
+                                  "up, error = atan2(|seen_up × up|, seen_up_z) — |seen_up × up| alone is sin(error), "
+                                  "not the angle")
             if abs(tilt_got - tilt_want) < 0.05:
                 raise CheckFailed("the tilt is right but the attitude is turned about the vertical: the gravity nudge is a "
                                   "rotation about the horizontal axis seen_up × (0, 0, 1), multiplied on the LEFT (world "
@@ -318,10 +349,15 @@ def _():
 
 
 @c.test("Step 4: choosing τ — prediction, the best τ of the sweep, its error, and the trade-off",
-        hint="python3 run_imu.py tau: the τ with the smallest tilt RMS and that RMS. EXPLAIN_TAU: what goes wrong with a "
+        hint="TRACE_FIRST_ROLL_DEG: α = τ/(τ + dt), gravity moves the roll by (1 − α) × 30°. python3 run_imu.py tau: the τ with the smallest tilt RMS and that RMS. EXPLAIN_TAU: what goes wrong with a "
              "small τ (the fooled accelerometer, its noise) and with a large τ (the gyro bias, b·τ).")
 def _():
-    pred, t, r, why = answers("PREDICT_TAU", "BEST_TAU_S", "BEST_TILT_RMS_DEG", "EXPLAIN_TAU")
+    tr, pred, t, r, why = answers("TRACE_FIRST_ROLL_DEG", "PREDICT_TAU", "BEST_TAU_S", "BEST_TILT_RMS_DEG", "EXPLAIN_TAU")
+    tr = number(tr, "TRACE_FIRST_ROLL_DEG")
+    if abs(tr - 22.5) < 0.1:
+        raise CheckFailed("TRACE_FIRST_ROLL_DEG = 22.5: that gives gravity the big share. α = 1.5/(1.5 + 0.5) = 0.75 is "
+                          "the GYRO's share; gravity gets 1 − α = 0.25 of the 30°")
+    c.near(tr, 7.5, 0.1, "TRACE_FIRST_ROLL_DEG (α = τ/(τ + dt); gravity moves the roll by (1 − α) × 30°)")
     predicted("PREDICT_TAU", pred)
     t = number(t, "BEST_TAU_S")
     if t not in TAUS:
@@ -331,12 +367,12 @@ def _():
                           "gives the smallest?")
     c.near(number(r, "BEST_TILT_RMS_DEG"), BEST_RMS, 0.03, "BEST_TILT_RMS_DEG (the tilt RMS at that τ)")
     explained("EXPLAIN_TAU", why,
-              ((r"small", r"short", r"low", r"fast", r"follow", r"turn", r"accelerat", r"fool", r"noise", r"vibrat"),
+              ((r"noise", r"vibrat", r"turn", r"accelerat", r"fool", r"follow", r"copies"),
                "what a small τ does (it follows the fooled, noisy accelerometer)"),
-              ((r"large", r"big", r"long", r"high", r"slow", r"bias", r"drift", r"b ?·? ?τ", r"b\*tau", r"b ?x ?τ"),
+              ((r"bias", r"drift", r"b ?·? ?τ", r"b\*tau", r"b ?x ?τ", r"b times", r"recover", r"slow"),
                "what a large τ does (the gyro bias, b·τ)"),
-              ((r"trade", r"balance", r"compromise", r"between", r"both", r"middle", r"best", r"optimum", r"minimum"),
-               "that the best τ is a trade-off"))
+              ((r"trade", r"balance", r"compromise", r"between", r"middle", r"optimum", r"minimum", r"smallest sum"),
+               "why the best τ lies in between (a trade-off)"))
 
 
 @c.test("TODOs 4–5: mag_heading() and true_heading() on unseen attitudes and fields (north and south, tilted)",
@@ -430,21 +466,24 @@ def _():
     if abs(cape - 5000 * math.tan(math.radians(26.8015))) < 10:
         raise CheckFailed("CAPE_TOWN_SIDE_M: after flying 5 km in a straight line at an angle D off the intended track, "
                           "the drone is 5000 · sin(D) to the side (tan would be for 5 km measured along the track)")
+    if abs(cape - 5000 * abs(math.sin(26.8015))) < 10:
+        raise CheckFailed("CAPE_TOWN_SIDE_M ≈ 4976 m: math.sin got 26.8 DEGREES as if they were radians — use "
+                          "math.sin(math.radians(abs(D)))")
     c.near(cape, CAPE_SIDE, 10.0, "CAPE_TOWN_SIDE_M (metres)")
     chip = number(chip, "CHIP_MEAN_ERR_DEG")
     if abs(chip - DECL) < 0.05:
         raise CheckFailed("CHIP_MEAN_ERR_DEG has the wrong sign: it is the chip's heading − the true heading")
     c.near(chip, CHIP_MEAN, 0.05, "CHIP_MEAN_ERR_DEG (the chip as delivered: mean of heading − true heading)")
     explained("EXPLAIN_COMPASS", w1,
-              ((r"vertical", r"down", r"inclin", r"dip", r"\bz\b", r"steep", r"50"), "the vertical part of the field"),
+              ((r"vertical", r"inclin", r"dip", r"\bz\b", r"steep", r"50"), "the vertical part of the field"),
               ((r"tilt", r"roll", r"pitch", r"bank", r"lean"), "what a tilt does"),
-              ((r"horizontal", r"mix", r"leak", r"into", r"x and y", r"project"), "where the vertical part goes"))
+              ((r"horizontal", r"mix", r"leak", r"x and y", r"project"), "where the vertical part goes"))
     explained("EXPLAIN_NORTH", w2,
               ((r"declination", r"magnetic north", r"\bd\b", r"3\.3", r"true north", r"wmm"),
                "why the chip's error is about −D"),
-              ((r"world", r"left", r"frame", r"map", r"north", r"up axis", r"vertical", r"earth"),
+              ((r"world", r"frame", r"map", r"up axis", r"vertical", r"earth", r"enu"),
                "why the correction multiplies on the left (it turns the world frame)"),
-              ((r"right", r"body", r"own", r"tilt", r"bank", r"level", r"drone's up"),
+              ((r"body", r"own", r"tilt", r"bank", r"level", r"drone's up", r"nose"),
                "what multiplying on the right would do instead"))
 
 
@@ -504,7 +543,7 @@ def _():
     explained("EXPLAIN_STALE", why,
               ((r"noise", r"never (repeat|the same|identical)", r"always (chang|differ)", r"last digit", r"random"),
                "why a live sensor never repeats exactly"),
-              ((r"time ?stamp", r"stamp", r"clock", r"time", r"fresh", r"arriv", r"still (come|publish)"),
+              ((r"time ?stamp", r"stamp", r"fresh", r"still (come|publish)", r"message"),
                "why fresh timestamps do not prove fresh data"),
               ((r"hiccup", r"5 ?s", r"5\.0", r"short", r"false", r"too (small|early|soon)", r"glitch", r"missed",
                 r"trade", r"slow", r"1 ?s", r"one second"), "the trade-off in max_repeat (the hiccup at 5 s)"),

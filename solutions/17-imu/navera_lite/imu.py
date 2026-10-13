@@ -78,9 +78,9 @@ def complementary(q0, t_s, gyro_rad_s, accel_mps2, tau_s):
     """The complementary filter: the gyroscope turns the attitude at every step (as integrate_gyro), then
     gravity pulls the TILT back by a small fraction 1 − α, with α = τ / (τ + dt). The pull is a rotation
     about a horizontal WORLD axis (it multiplies on the left): gravity cannot see the heading, so it never
-    turns the attitude about the vertical. q0, t_s,
-    gyro_rad_s as integrate_gyro; accel_mps2: N × 3 specific forces (m/s², body); tau_s > 0: the time
-    constant (s). Returns an N × 4 numpy array of unit quaternions (x, y, z, w); row 0 is q0 normalised.
+    turns the attitude about the vertical. q0, t_s and gyro_rad_s as integrate_gyro; accel_mps2: N × 3
+    specific forces (m/s², body); tau_s > 0: the time constant (s). When there is nothing to correct (a force
+    of length 0, as in free fall, or seen_up exactly up) the gravity step is skipped. Returns an N × 4 numpy array of unit quaternions (x, y, z, w); row 0 is q0 normalised.
 
     Example: complementary((0, 0, 0, 1), [0.0, 0.5, 1.0], [[0, 0, 0]] * 3, [[0, 4.905, 8.496]] * 3, 1.5)
              → about [[0, 0, 0, 1], [0.0654, 0, 0, 0.9979], [0.1143, 0, 0, 0.9934]]

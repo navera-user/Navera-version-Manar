@@ -27,10 +27,11 @@ EXPLAIN_TURN = ""           # why does the accelerometer report that?
 # ======== Session 2 — Attitude engineer (fusion, compass, trust) ========
 
 # ---- Step 4: choosing τ (python3 run_imu.py tau) -------------------------------------------------------
+TRACE_FIRST_ROLL_DEG = 0.0   # by hand, before coding TODO 3: the roll after the first step of its docstring example (degrees)
 PREDICT_TAU = ""            # before running: which τ of 0.3, 1, 3, 10, 30, 100, 300 s will give the smallest tilt error? why?
 BEST_TAU_S = 0.0            # the τ of the sweep with the smallest tilt RMS (seconds)
 BEST_TILT_RMS_DEG = 0.0     # its tilt RMS (degrees)
-EXPLAIN_TAU = ""            # what goes wrong with a small τ, and with a large τ?
+EXPLAIN_TAU = ""            # what goes wrong with a small τ, and with a large τ? why is the best τ in between?
 
 # ---- Steps 5–6: compass and true north (python3 run_imu.py compass) -----------------------------------
 DECLINATION_DEG = 0.0       # the declination at the log's place (degrees, east positive)

@@ -4,7 +4,7 @@
     python3 run_imu.py look              the log: what the three sensors say                          (Step 1)
     python3 run_imu.py gyro [BX BY BZ]   the gyroscope alone; optionally subtract a bias (°/s) first   (Step 2)
     python3 run_imu.py tilt              tilt from gravity vs the truth, in turns and speed changes    (Step 3)
-    python3 run_imu.py tau               the complementary filter for seven time constants             (Step 4)
+    python3 run_imu.py tau [ROLL]        the complementary filter for seven τ (optional wrong start, °) (Step 4)
     python3 run_imu.py compass [TAU]     compass, declination and the chip's own attitude              (Steps 5–6)
     python3 run_imu.py stale [N]         a frozen IMU: when does StaleDetector(max_repeat=N) trip?     (Step 7)
 
@@ -186,6 +186,9 @@ def test():
             if abs(wrap(heads[-1] - want_heading)) > 0.05:
                 return False, (f"the heading moved ({heads[-1]:.2f}° instead of {want_heading:.2f}°): gravity's nudge is "
                                "about a horizontal WORLD axis, so it multiplies on the LEFT (lesson §4)")
+            if len(rolls) > 1 and abs(rolls[1] - 7.16) < 0.05 and abs(want_roll[1] - 7.5) < 0.01:
+                return False, ("the first step moved 7.16°, not 7.5°: |seen_up × up| is sin(error); the angle is "
+                               "math.atan2(s, seen_up[2])")
             ok = all(abs(x - y) < 0.05 for x, y in zip(rolls, want_roll))
             return ok, f"the roll goes {[round(x, 2) for x in rolls]}°, expected {list(want_roll)}°"
         return chk
@@ -230,7 +233,27 @@ def test():
             for bad, m in msgs:
                 if got == bad:
                     return False, m
-            return got == want, f"got {got}"
+            return got == want, (f"expected {want}: trace it by hand — after each sample write self.last and "
+                                 "self.repeats (two bugs at once give lists no single message names)")
+        return chk
+
+    def zero_case(acc):
+        def go():
+            try:
+                v = imu.complementary((0, 0, 0, 1), [0.0, 0.02, 0.04], [[0, 0, 0]] * 3, acc, 1.0)
+            except Exception as e:                       # noqa: BLE001 — turned into one sentence below
+                return f"crash: {type(e).__name__}: {e}"
+            return v
+        return go
+
+    def zero_chk(msg):
+        def chk(v):
+            if isinstance(v, str):
+                return False, f"{v} — {msg}"
+            a = np.asarray(v, dtype=float)
+            if a.shape != (3, 4) or not np.all(np.isfinite(a)):
+                return False, f"got nan/inf or a wrong shape — {msg}"
+            return bool(np.all(np.abs(np.abs(a[:, 3]) - 1.0) < 1e-9)), f"the attitude must stay level — {msg}"
         return chk
 
     a1 = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
@@ -258,6 +281,13 @@ def test():
         (3, "complementary: heading 30°, same tilt — the heading must not move",
          lambda: imu.complementary(rot.q_from_euler_zyx(0.0, 0.0, D(60)), [0.0, 0.5, 1.0], a1, [[0, 4.905, 8.496]] * 3, 1.5),
          comp_chk((0.0, 7.5, 13.12), 30.0)),
+        (3, "complementary: level, gravity exactly (0, 0, 9.81) — nothing to correct",
+         zero_case([[0.0, 0.0, 9.81]] * 3),
+         zero_chk("seen_up is exactly up: the axis is zero, nothing to correct — skip the gravity step when the "
+                  "axis length is (almost) 0 (hint 3)")),
+        (3, "complementary: a free-fall sample f = (0, 0, 0)",
+         zero_case([[0.0, 0.0, 9.81], [0.0, 0.0, 0.0], [0.0, 0.0, 9.81]]),
+         zero_chk("f = (0, 0, 0) has no direction (free fall): skip the gravity step when |f| is 0 (hint 2)")),
         (4, "mag_heading level, magnetic north on the left (docstring)", lambda: imu.mag_heading((0.0, 28.2, -34.3), 0.0, 0.0),
          deg_chk(90.0, msgs=((270.0, "270° is the mirror image: in FLU (y = LEFT) the heading is atan2(y, x) of the level "
                                      "field; tutorials written for y = RIGHT use atan2(−y, x)"),
@@ -288,12 +318,15 @@ def test():
                    ([False, True, True, True, False, True], "one sample too early: the first sample is not a repeat"),
                    ([False, False, True, True, True, True], "it says True for (1, 6) after (1, 5): a DIFFERENT sample must "
                                                             "start the count again — compare the WHOLE sample (all its "
-                                                            "numbers), and set the count back to 0 when it differs")))),
-        (7, "StaleDetector(2): A, A, B, A, A, A — the count starts again after B",
-         stale_run([(1, 5), (1, 5), (2, 0), (1, 5), (1, 5), (1, 5)], 2),
-         list_chk([False, False, False, False, False, True],
-                  (([False, False, False, False, True, True], "the count did not start again after a different sample: "
-                                                              "set repeats back to 0"),))),
+                                                            "numbers), and set the count back to 0 when it differs"),
+                   ([False, False, False, True, True, True], "two bugs: one sample too late (use >=: the max_repeat-th "
+                                                             "repeat is already frozen) AND the count does not start "
+                                                             "again after (1, 6)")))),
+        (7, "StaleDetector(2): A, A, A, B, A, A, A — the count starts again after B",
+         stale_run([(1, 5), (1, 5), (1, 5), (2, 0), (1, 5), (1, 5), (1, 5)], 2),
+         list_chk([False, False, True, False, False, False, True],
+                  (([False, False, True, True, True, True, True], "the count did not start again after a different "
+                                                                  "sample: set repeats back to 0"),))),
     ]
     names = {1: "integrate_gyro", 2: "tilt_from_accel", 3: "complementary", 4: "mag_heading", 5: "true_heading",
              6: "q_true_north", 7: "StaleDetector.update"}
@@ -322,7 +355,8 @@ def test():
             shown = np.asarray(got, dtype=float)[-1].round(4).tolist()
             shown = f"last row {shown}"
         elif isinstance(got, tuple) and len(got) == 2:
-            shown = "(" + ", ".join(str(np.round(np.degrees(np.asarray(x, dtype=float)), 2).tolist()) for x in got) + ") in degrees"
+            shown = "(" + ", ".join(str((np.round(np.degrees(np.asarray(x, dtype=float)), 2) + 0.0).tolist())
+                                    for x in got) + ") in degrees"
         elif isinstance(got, (float, int, np.floating)):
             shown = f"{float(got):.4f}"
         elif hasattr(got, "shape"):
@@ -470,13 +504,21 @@ def tilt():
     rk.saved("out/tilt.png")
 
 
-def tau():
+def tau(args=()):
     L = load()
     t = L["t_s"]
     g, a = columns(L, "gx", "gy", "gz"), columns(L, "ax", "ay", "az")
     q0 = start_attitude(L)
+    start = "from the true start"
+    if args:
+        try:
+            wrong = float(args[0])
+        except ValueError:
+            sys.exit("give the wrong start as a roll in degrees, e.g.  python3 run_imu.py tau 10")
+        q0 = rot.q_mul(rot.q_from_axis_angle((1.0, 0.0, 0.0), math.radians(wrong)), q0)
+        start = f"from a WRONG start: {wrong:g}° of extra roll"
     tr, tp = L["true_roll_deg"], L["true_pitch_up_deg"]
-    print("The complementary filter on the whole flight (raw gyro: no bias subtracted), from the true start.")
+    print(f"The complementary filter on the whole flight (raw gyro: no bias subtracted), {start}.")
     print("Errors against the truth, in degrees. tilt error = √(roll error² + pitch_up error²). About 3 s per τ…\n")
     print("   τ (s)    roll RMS   pitch_up RMS   tilt RMS   worst tilt")
     keep, rms = {}, []
@@ -584,7 +626,8 @@ def stale(args):
     cols = ("gx", "gy", "gz", "ax", "ay", "az", "mx", "my", "mz")
     gaps = np.diff(t)
     print(f"imu_frozen.csv: {len(t)} samples over {t[-1] - t[0]:.2f} s; a new timestamp every "
-          f"{gaps.min():.2f}–{gaps.max():.2f} s, from start to end.")
+          + (f"{gaps.min():.2f} s" if abs(gaps.max() - gaps.min()) < 1e-6 else f"{gaps.min():.2f}–{gaps.max():.2f} s")
+          + ", from start to end.")
     if rk.is_stub(getattr(imu.StaleDetector, "update", None)):
         sys.exit("StaleDetector.update() is not written yet: write TODO 7 in navera_lite/imu.py")
     try:
@@ -609,11 +652,11 @@ def stale(args):
         print(f"   first 'frozen' at t = {first:.2f} s; {count} samples called frozen in all.")
 
 
-MODES = {"test": test, "look": look, "tilt": tilt, "tau": tau}
+MODES = {"test": test, "look": look, "tilt": tilt}
 
 if __name__ == "__main__":
-    if len(sys.argv) >= 2 and sys.argv[1] in ("gyro", "compass", "stale"):
-        {"gyro": gyro, "compass": compass, "stale": stale}[sys.argv[1]](sys.argv[2:])
+    if len(sys.argv) >= 2 and sys.argv[1] in ("gyro", "compass", "stale", "tau"):
+        {"gyro": gyro, "compass": compass, "stale": stale, "tau": tau}[sys.argv[1]](sys.argv[2:])
     elif len(sys.argv) == 2 and sys.argv[1] in MODES:
         MODES[sys.argv[1]]()
     else:

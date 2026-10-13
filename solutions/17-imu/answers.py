@@ -27,10 +27,11 @@ EXPLAIN_TURN = "In a coordinated turn the thrust provides the centripetal accele
 # ======== Session 2 — Attitude engineer (fusion, compass, trust) ========
 
 # ---- Step 4: choosing τ (python3 run_imu.py tau) -------------------------------------------------------
+TRACE_FIRST_ROLL_DEG = 7.5   # by hand, before coding TODO 3: the roll after the first step of its docstring example (degrees)
 PREDICT_TAU = "3 s, because the turns last about 10 s."            # before running: which τ of 0.3, 1, 3, 10, 30, 100, 300 s will give the smallest tilt error? why?
 BEST_TAU_S = 30.0            # the τ of the sweep with the smallest tilt RMS (seconds)
 BEST_TILT_RMS_DEG = 1.85     # its tilt RMS (degrees)
-EXPLAIN_TAU = "A small tau follows the accelerometer, which is noisy and fooled in turns and speed changes; a large tau trusts the gyro longer, so its bias gives an error of about b times tau and the filter recovers slowly. The best tau is the compromise between the two."            # what goes wrong with a small τ, and with a large τ?
+EXPLAIN_TAU = "A small tau follows the accelerometer, which is noisy and fooled in turns and speed changes (tilt RMS 4.8° at 0.3 s). A large tau trusts the gyro longer, so its bias pushes the estimate away (up to b times tau) and the filter forgets errors slowly (2.7° at 300 s). The best tau is in between, where the sum of the two errors is smallest: 30 s on this flight."            # what goes wrong with a small τ, and with a large τ? why is the best τ in between?
 
 # ---- Steps 5–6: compass and true north (python3 run_imu.py compass) -----------------------------------
 DECLINATION_DEG = 3.35       # the declination at the log's place (degrees, east positive)

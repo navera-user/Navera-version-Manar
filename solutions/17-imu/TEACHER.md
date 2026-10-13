@@ -57,8 +57,9 @@ Badges: **Drift hunter** = checks 1–4 (session 1), **Attitude engineer** = all
 | PREDICT_SPEEDUP (ungraded) | less nose-down: the accelerometer misses the atan(a/g) part | `tilt`: at 16.0 s true pitch_up −11.8°, accelerometer −3.1°; slowing at 285.3 s: +7.1° vs −2.1° |
 | TURN_TRUE_BANK_DEG | 15.1 (± 0.15) | `tilt`, turn at 99.8 s (others: 35.6 s +14.4/+0.4, 165.4 s −14.7/−0.7, 239.8 s +15.1/+0.4) |
 | TURN_ACCEL_ROLL_DEG | 0.9 (± 0.15) | 1-s average at 99.8 s. Whole flight, single samples: roll RMS 4.85°, pitch_up RMS 2.42° |
+| TRACE_FIRST_ROLL_DEG | 7.5 (± 0.1; 22.5 = α swapped, own message) | α = 1.5/2.0 = 0.75, gravity's share 0.25 × 30° (lesson §4 'one gravity step') |
 | PREDICT_TAU (ungraded) | any | |
-| BEST_TAU_S | 30 (exactly, one of the sweep) | `tau`: tilt RMS 4.82 / 4.63 / 3.92 / 2.56 / **1.85** / 2.26 / 2.67° for τ = 0.3 … 300 s; roll RMS best at 30 s (0.99°), pitch_up RMS best at 100 s (1.58°): the combined tilt decides |
+| BEST_TAU_S | 30 (exactly, one of the sweep) | `tau`: tilt RMS 4.82 / 4.63 / 3.92 / 2.56 / **1.85** / 2.26 / 2.67° for τ = 0.3 … 300 s; roll RMS best at 30 s (0.99°), pitch_up RMS best at 30 s too (1.56°; 100 s is close: 1.58°); the pitch curve is flat from 30 to 300 s because the speed changes fool it far less than the turns fool the roll. Why the large-τ end is gentle (2.67° at 300 s while b·τ = 0.064 × 300 ≈ 19°): the body-axis bias turns with the drone and reverses at every 180° turn, and with τ = 300 s nothing settles in 5 min (lesson §4 'b·τ is a worst case', lab 'Check one number'). Wrong start (`tau 10`, Going further, ungraded): tilt RMS 4.82 / 4.65 / 3.99 / **2.96** / 3.20 / 5.22 / 7.63° — the best moves to 10 s, the large-τ end pays for forgetting slowly |
 | BEST_TILT_RMS_DEG | 1.85 (± 0.03) | worst tilt at 30 s: 3.07° |
 | DECLINATION_DEG | 3.348 (± 0.02) | WMM2025 at (35.76, 10.75), 2026.79 |
 | COMPASS_NO_TILT_RMS_DEG | 4.98 (± 0.05) | true-heading RMS, no compensation (mean +0.31°) |
@@ -80,9 +81,9 @@ Complementary figure (1-D, bias 0.1 °/s): τ = 30 s peaks at 9.1° (7.6° + bia
 Monastir H 28.25, Z 34.30, F 44.4 µT, I 50.5°; nose north, 10° bank: body (28.25, −5.96, −33.78) µT,
 uncompensated 348.1°; table D/I from pygeomag 2026.79 (London +1.21/66.5, Reykjavik −11.05/75.4, Sydney
 +12.83/−64.4, Singapore +0.24/−12.9, Sousse +3.34/50.6); London 10 km → 212 m; ✏️ Sydney 11.83°, chip 75° →
-78.35°. §6: one gyro axis quantised at 0.002 rad/s, σ 0.003: P(repeat) = Δ/(2σ√π) = 0.19; accelerometer
+78.34° (Sousse's table D 3.34°). §6: one gyro axis quantised at 0.002 rad/s, σ 0.003: P(repeat) = Δ/(2σ√π) = 0.19; accelerometer
 (0.004 m/s², σ 0.3) 0.0038; magnetometer (0.06 µT, σ 0.4) 0.042; all nine at once 2.7·10⁻¹⁴ (≈ 1 in 4·10¹³).
-The quantisation steps are "typical" values, stated as such (not a BNO085 datasheet claim).
+The steps are the BNO085's output resolution (1/512 rad/s, 1/256 m/s², 1/16 µT, rounded); the lab's log is written with more digits, so it never repeats (0 % per gyro axis) — the lesson now says so.
 
 **NAVERA facts used** (VALIDATION_STATUS.md Release 0.2 of 2026-10-03; ENGINEERING_BACKLOG.md from the
 2026-09-28 review; ARCHITECTURE.md; base code read only to check the frozen rule and the 20 km
@@ -106,7 +107,14 @@ degree, 5.5–6.5 km perfect attitude, 24–119 km BNO085-class (simulated star 
 | EXPLAIN_STALE | noise changes ≥ 1 digit each sample (whole 9-number sample never repeats); stamps say when sent, not when measured; N trades false alarms (hiccup at 5 s with N = 5) against delay (1 s with 50) | two of three | |
 | report.md | three sections with the numbers (bias, drift, τ = 30 s with 1.85°, D 3.35°, 4.98 → 0.81°, 13.34 s), an engineering choice and its limits (one simulated flight) | numbers without reasons | |
 
-## Mutants run (32; all caught — the ✘ line of the check, and the runner's `test` line when it applies)
+## Round 1 fixes (2026-10-13)
+
+Reviews r1_{strong,weak,expert}.md: see ~/academy-test/review/17-imu/reports/r1_fixes.md. EXPLAIN_ keyword groups
+tightened with the expert's lists (the six shallow answers of the expert now each fail; the solution passes);
+EXPLAIN_TAU now asks "why is the best τ in between"; complementary must skip |f| = 0 and a zero axis (runner and
+check test both); TRACE_FIRST_ROLL_DEG added; sin(error) and first-order-update variants get their own messages.
+
+## Mutants run (round 0: 32; all caught — the ✘ line of the check, and the runner's `test` line when it applies)
 
 Check messages (sealed run with `tools/try_lesson.py 17-imu --solution --overlay`): integrate on the left
 ("multiplies on the LEFT (world axes)…"); rate of sample k ("you used the rate of sample k…"); no zero-rate
