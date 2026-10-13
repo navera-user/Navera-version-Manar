@@ -53,7 +53,8 @@ def test():
              ("SENSOR_QOS → FIX_QOS   (docstring)", q.SENSOR_QOS, q.FIX_QOS, ["RELIABILITY"]),
              ("FIX_QOS → SENSOR_QOS   (docstring)", q.FIX_QOS, q.SENSOR_QOS, []),
              ("STATUS_QOS → STATUS_QOS", q.STATUS_QOS, q.STATUS_QOS, []),
-             ("FIX_QOS → STATUS_QOS", q.FIX_QOS, q.STATUS_QOS, ["DURABILITY"])]
+             ("FIX_QOS → STATUS_QOS", q.FIX_QOS, q.STATUS_QOS, ["DURABILITY"]),
+             ("SENSOR_QOS → STATUS_QOS", q.SENSOR_QOS, q.STATUS_QOS, ["RELIABILITY", "DURABILITY"])]
     print("offered → requested                    yours                         lesson §5")
     good, never_no = 0, True
     for label, off, req, want in cases:

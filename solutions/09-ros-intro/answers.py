@@ -21,7 +21,7 @@ EXPLAIN_LAG = "The first ros2 node list was empty because discovery takes a mome
 
 # ---- Step 3: message types ---------------------------------------------------------------------
 STATUS_NO_FIX = -1   # the value of NavSatStatus's constant STATUS_NO_FIX
-NO_FIX_LEVEL = 2   # the level NUMBER the arbiter puts in its status when the state is NO_FIX
+DEGRADED_LEVEL = 1   # the level NUMBER the arbiter puts in its status while the state is DEGRADED (Step 3, seen in Step 4)
 
 # ---- Step 4: watch the judge -------------------------------------------------------------------
 PREDICT_HZ = "5 per second, the tick rate."   # how many status messages per second? (tick_hz is 5.0)

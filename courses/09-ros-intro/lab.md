@@ -3,7 +3,7 @@
 **Goal:** run NAVERA Lite's first judge and its replay node, map their graph with the `ros2` tools, read their code,
 measure what the judge does, then reproduce the I-F3 bug of the brief (a listener that hears nothing), write the rule
 that predicts it, and repair it.
-**Time:** 2 h 30 to 3 h 30 (a student who knows Linux well: about 2 h). **Fast track:** skip the 🧰 boxes and the
+**Time:** 2 h 45 to 3 h 45 (a student who knows Linux well: about 2 h 15). **Fast track:** skip the 🧰 boxes and the
 "Stuck?" boxes; after Step 10, do "Going further".
 
 Your files (📝 Code tab): [answers.py](file:./answers.py) (everything you measure and explain),
@@ -20,6 +20,7 @@ Your files (📝 Code tab): [answers.py](file:./answers.py) (everything you meas
 | §1, §4 Decoupling, domains | Steps 5–6 | two judges; another domain |
 | §5 QoS | Steps 7–8 | five experiments; TODO 1 `incompatible_policies()` |
 | §5–§6 The detective's toolbox | Steps 9–10 | find the broken pair; repair `imu_listener.py` |
+| §5 Latched topics, Step 7's B3 | Step 11 | TODO 2: `latched_probe.py`, a late listener of your own |
 
 > [!WARNING] One terminal tab for the whole lab
 > In this academy each terminal tab is a small private computer of its own: a node started in one tab **cannot be
@@ -207,13 +208,13 @@ ros2 topic echo /navera_lite/status diagnostic_msgs/msg/DiagnosticStatus --once
 ```
 
 `level` is a byte, printed `"\x03"` for byte 3. Read it as a chain: `LEVELS["STARTING"]` in convert.py is
-`DiagnosticStatus.STALE`, and the interface says `STALE=3`, hence `"\x03"`. Do the same chain for NO_FIX. (If the
+`DiagnosticStatus.STALE`, and the interface says `STALE=3`, hence `"\x03"`. Do the same chain for DEGRADED: in Step 4 you will **see** that byte. (If the
 echo prints *"A message was lost!!!"* first: harmless, the latched status keeps only its last message and the echo
 joined late, so it sees a gap in the message numbers.)
 
 > [!TASK]
-> `STATUS_NO_FIX` (the value of that NavSatStatus constant) and `NO_FIX_LEVEL` (the level number the arbiter
-> puts in its status when the state is NO_FIX).
+> `STATUS_NO_FIX` (the value of that NavSatStatus constant) and `DEGRADED_LEVEL` (the level number the arbiter
+> will put in its status while the state is DEGRADED: your prediction from the chain, checked live in Step 4).
 
 ## Step 4 — Watch the judge decide
 
@@ -236,7 +237,16 @@ PYTHONUNBUFFERED=1 timeout 35 ros2 topic echo /navera_lite/status diagnostic_msg
 ```
 
 Match each line with the scenario (your times may differ by a second). The spoofed GPS of 20–21 s never shows in
-the status: the jump gate refused it before the judge stored it. The arbiter wrote why in its log:
+the status: the jump gate refused it before the judge stored it.
+
+Now the same watch on the `level` field (the scenario loops, so the next lap shows the same phases). The tools print
+the byte as `b'\x01'` (byte 1). Did the byte during the GPS gap match your `DEGRADED_LEVEL`?
+
+```bash
+PYTHONUNBUFFERED=1 timeout 35 ros2 topic echo /navera_lite/status diagnostic_msgs/msg/DiagnosticStatus --field level | grep --line-buffered -v -- --- | uniq
+```
+
+The arbiter wrote why it refused the spoof in its log:
 
 ```bash
 grep refused arbiter.log | head -3
@@ -265,7 +275,7 @@ timeout 8 ros2 topic hz /navera_lite/status
 1. No `refused` line? The replay must start **after** the arbiter, and the 30 s scenario must reach 20 s. Run the
    `grep` again after a minute.
 2. Your first `refused` line says `> 150 m in 1.0 s`? The arbiter started in the middle of a scenario lap, so its
-   gate trusted a spoofed fix first. Stop both (`kill -INT $(jobs -p)`), start the arbiter, then the replay, wait
+   gate trusted a spoofed fix first. Stop both (`kill -INT $(jobs -rp) 2>/dev/null; sleep 1; jobs`), start the arbiter, then the replay, wait
    30 s, and `grep` again.
 3. `ros2 topic hz` prints nothing for a few seconds: it needs a window of messages; wait for `average rate`.
 </details>
@@ -494,7 +504,8 @@ Compare with what ROS itself prints (find the `Reliability:` line of each endpoi
 ros2 topic info -v /navera_lite/imu
 ```
 
-After 30 s, read the listener's verdict:
+After 30 s, read the listener's verdict (no `heard` line yet? it is still listening: wait a few seconds and
+`cat` again):
 
 ```bash
 cat listener.log
@@ -536,14 +547,69 @@ python3 qos_doctor.py /navera_lite/imu
 > [!TASK]
 > `EXPLAIN_REPAIR`: what you changed, and why the repair belongs in the **subscriber** and not in the publisher.
 
-Clean up, then press **✔ Check my work**. The check starts its own IMU publishers (one BEST_EFFORT, one
-RELIABLE) and runs your listener against both.
+## Step 11 — TODO 2: a late listener of your own
+
+The judge's status is latched: a node that starts long after the judge should still learn its last decision at
+once. Write that node. Open [latched_probe.py](file:./latched_probe.py): `main()` is given (it is
+`imu_listener.py`'s); in `LatchedProbe` you write the subscription and the callback (both marked TODO 2). The QoS is
+the whole point: the B1–B3 experiments of Step 7, and the box of lesson §5 you opened after them, tell you what a
+**late** subscriber must request. A profile in `navera_lite/ros/qos.py` may already be the right one.
+
+<details><summary>🧰 Import and subscribe (the pattern of imu_listener.py)</summary>
+
+```python
+from sensor_msgs.msg import Imu                          # the message type, from its package
+from navera_lite.ros.qos import SENSOR_QOS               # a profile from your stack
+self.create_subscription(Imu, "navera_lite/imu", self.on_imu, SENSOR_QOS)   # type, topic, callback, QoS
+```
+</details>
+
+The judge still runs from Step 9 (`jobs`). Its status is published 5 times per second, so a probe started now gets a
+status anyway, whatever it requests. A fair test needs a publisher that publishes **once** and then stays silent:
+
+```bash
+ros2 topic pub --once -w 0 --keep-alive 60 --qos-depth 1 --qos-durability transient_local --qos-reliability reliable /latched_test diagnostic_msgs/msg/DiagnosticStatus "{message: 'kept for late subscribers'}" > /dev/null &
+```
+
+Wait a few seconds (your probe must be **late**), then run the probe on that topic with a remap (`-r old:=new`
+renames a topic for this run only; mission 13 explains it):
+
+```bash
+python3 latched_probe.py 6 --ros-args -r navera_lite/status:=/latched_test
+```
+
+`first status: kept for late subscribers`? Your probe works as a late subscriber. Then on the real status:
+
+```bash
+python3 latched_probe.py
+```
+
+Stop the one-shot publisher, then clean up everything:
+
+```bash
+kill -INT %%
+```
 
 ```bash
 kill -INT $(jobs -rp) 2>/dev/null; sleep 1; jobs
 ```
 
-## Step 11 — Look back (not graded)
+<details><summary>Stuck? Hints</summary>
+
+1. `no status received` on `/latched_test`? Compare what you request with B1, B2 and B3 of Step 7: which one printed
+   `go`?
+2. `NameError: name 'DiagnosticStatus' is not defined`: import it (`from diagnostic_msgs.msg import DiagnosticStatus`).
+3. It prints a status for every message, not only the first? Test `self.first is None` before you keep it.
+4. `usage: …` or the remap ignored? Put the seconds **before** `--ros-args`, as in the command above.
+</details>
+
+> [!TASK]
+> `latched_probe.py` prints the first status it receives, also as a **late** subscriber of a one-shot latched
+> publisher. Press **✔ Check my work**: the check starts its own IMU publishers for your listener (one
+> BEST_EFFORT, one RELIABLE) and its own one-shot latched publisher for your probe, with a message you have never
+> seen.
+
+## Step 12 — Look back (not graded)
 
 1. In Step 0 you guessed why the listener was silent. What would you check first today, and with which command?
 2. The I-F3 fix in NAVERA requested BEST_EFFORT with depth 50 for every vehicle sensor. What does depth 50 protect
@@ -565,9 +631,6 @@ kill -INT $(jobs -rp) 2>/dev/null; sleep 1; jobs
   `python3 -c "from rclpy.qos import qos_check_compatible; from navera_lite.ros.qos import *; print(qos_check_compatible(SENSOR_QOS, FIX_QOS))"`.
   Compare it with your `incompatible_policies()` on the 16 pairs of the two tables. What does a `WARNING` result
   mean (try `STATUS_QOS, SENSOR_QOS`)? Which policies does it look at that you did not?
-- **A latched probe.** Write `latched_probe.py` (about 15 lines; copy `main()` from `imu_listener.py`): it subscribes
-  to `/navera_lite/status` with a QoS you choose and prints the first status it gets. Start it 10 s after the
-  arbiter. Which profile makes it print at once? Which never does?
 - **Ports.** With a node running, `ss -uln` lists the open UDP ports. Find your domain's discovery port with the
   formula of the optional box of lesson §4 (`echo $((7400 + 250 * ROS_DOMAIN_ID))`), then the pairs of ports of
   each program.

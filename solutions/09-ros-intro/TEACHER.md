@@ -2,9 +2,11 @@
 
 Rebuilt 2026-10-13 on NAVERA Lite (no NAVERA code, files or topics). Students run the given nodes
 `navera_lite.ros.arbiter_v0` and `navera_lite.ros.replay_node`, map them with the `ros2` CLI, write **one** stack
-TODO (`ros/qos.py` `incompatible_policies()`, which `compatible()` (given) wraps), and repair a mission file (`imu_listener.py`, the I-F3 bug).
-Duration on the card: 5 h (reading 60–90 min, lab 2 h 30–3 h 30; weak reviewer measured 85 min + 3 h 20). Two sessions, badges **Cartographer**
-(checks 1–7) and **QoS detective** (all 12).
+TODO (`ros/qos.py` `incompatible_policies()`, which `compatible()` (given) wraps), repair a mission file (`imu_listener.py`, the I-F3 bug), and write TODO 2 `latched_probe.py` (a late
+subscriber of a latched topic; graded since round 2: it is the only rclpy code they write from scratch and closes
+the B3 loop with their own node; ≈ 15 min, inside the 5 h card).
+Duration on the card: 5 h (reading 60–90 min, lab 2 h 45–3 h 45; weak reviewer measured 85 min + 3 h 20 before TODO 2 was added). Two sessions, badges **Cartographer**
+(checks 1–7) and **QoS detective** (all 13).
 
 **Platform fact the whole lab is built around:** each dashboard terminal tab (and the check) runs in its own
 bubblewrap sandbox with `--unshare-net`, so ROS nodes started in one tab are invisible in another. Everything is
@@ -20,7 +22,8 @@ top of lab.md becomes too strong.
 | 2. read rclpy code → edges of the graph | §3 (Replay worked example, ✏️ logger) | Steps 1–2 (`python3 -m`, ArbiterV0.__init__), Step 4 (who calls `step()`) | 2, 3, 5 |
 | 3. explain discovery, domains, localhost | §4 (WEB-12 worked example) | Steps 2 (lag, EXPLAIN_LAG), 6 | 3, 7 |
 | 4. predict QoS compatibility, write it | §5 (ladders, tables, worked pairs) | Steps 7–8 | 8, 9, 10 |
-| 5. diagnose and repair a QoS mismatch | §5 plain-number trap, §6 detective table | Steps 0, 9, 10 | 11, 12 |
+| 5. diagnose and repair a QoS mismatch | §5 plain-number trap, §6 detective table | Steps 0, 9, 10 | 11, 13 |
+| 4–5. latched topics, late subscribers | §5 latched (box after Step 7) | Step 7 B1–B3, Step 11 TODO 2 | 8, 12 |
 
 ## Answer key
 
@@ -31,7 +34,8 @@ top of lab.md becomes too strong.
 | ARBITER_PUBLISHES | /navera_lite/position, /navera_lite/status | idem (without /rosout, /parameter_events) |
 | EXTRA_PARAMS | use_eligible (declared in ArbiterV0.__init__), use_sim_time (every rclpy node) | `ros2 param list /arbiter` (14 names) vs the 12 yaml keys |
 | STATUS_NO_FIX | −1 | `ros2 interface show sensor_msgs/msg/NavSatFix` |
-| NO_FIX_LEVEL | 2 (ERROR) | convert.LEVELS + DiagnosticStatus constants; STARTING prints `"\x03"` |
+| DEGRADED_LEVEL | 1 (WARN) | convert.LEVELS + DiagnosticStatus constants (STARTING worked: STALE = 3); seen live in Step 4's `--field level` watch: `b'\x00'`, `b'\x01'`, `b'\x00'` (and `b'\x03'` if the watch starts before the first fix) |
+| TODO 2 latched_probe.py | subscription with STATUS_QOS (RELIABLE + TRANSIENT_LOCAL), print the first `msg.message` | check: one-shot latched publisher with a random message, probe started 4 s later; VOLATILE and BEST_EFFORT+TL fail (Fast DDS) |
 | STATUS_HZ | 5.4–7.5 measured (check accepts 5.2–8.0, refuses exactly 5.0) | 5 Hz tick + one decision per arriving fix (GPS 1/s + day 0.5/s ⇒ ≈ 6.5; ≈ 5.5 during the GPS gap) |
 | GATE_ALLOWED_M | 950 (check 930–970) | first refusal: `jump 4990 m > 950 m in 9.0 s` (last trusted fix at t = 11 s, spoof at 20 s: 100 × 9 + 50); second `4980 m > 1050 m in 10.0 s` |
 | STATUS_PUBLISHERS | 2 | `ros2 topic info /navera_lite/status`; both logs print the "2 judges" ERROR within 5 s |
@@ -40,7 +44,7 @@ top of lab.md becomes too strong.
 | B1 / B2 / B3 | True / False / False | late TL+RELIABLE gets "go"; VOLATILE gets nothing old; TL+BEST_EFFORT matched but no history (Fast DDS, Humble's default; RMW-dependent) — B3 is the intended surprise: the lesson's explanation sits in a "read after Step 7" box |
 | INCOMPATIBLE_POLICY | RELIABILITY | the WARN line of A1 |
 | LISTENER_REQUESTS | RELIABLE | doctor / `ros2 topic info -v` |
-| incompatible_policies() | "RELIABILITY" if offer BEST_EFFORT ∧ request RELIABLE; "DURABILITY" if offer VOLATILE ∧ request TRANSIENT_LOCAL; [] otherwise | 7 of 16 combinations non-empty, 1 with both names; matches the WARN line's "Last incompatible policy" |
+| incompatible_policies() | "RELIABILITY" if offer BEST_EFFORT ∧ request RELIABLE; "DURABILITY" if offer VOLATILE ∧ request TRANSIENT_LOCAL; [] otherwise | 7 of 16 combinations non-empty, 1 with both names; same names as the WARN line; for a pair where both fail the WARN line shows only RELIABILITY, the function returns both |
 | imu_listener repair | `SENSOR_QOS` (or `qos_profile_sensor_data`, or any BEST_EFFORT+VOLATILE profile) | measured 27–51 msgs in 5 s after the repair (discovery eats ≈ 1–2 s) |
 
 Step 0 / Step 9: the broken listener prints `heard 0 IMU messages in 5.0 s` and itself logs the incompatible-QoS WARN;
@@ -82,7 +86,7 @@ Step 0 / Step 9: the broken listener prints `heard 0 IMU messages in 5.0 s` and 
 - Session 1 (1 h 15–1 h 30): 5 min Step 0 together (project the silent listener) → students read §1–§4 (25 min) →
   Steps 1–6. Debrief: draw the graph on the board from their `node info`; ask "who stops a third judge?".
 - Session 2 (1 h 15–2 h): read §5–§6 (20 min) → Step 7 predictions in pairs before running → Step 8 TODO →
-  Steps 9–10. Debrief with I-F3: one line, 4/4 → 3/3 frames.
+  Steps 9–10 → Step 11 TODO 2. Debrief with I-F3: one line, 4/4 → 3/3 frames.
 - Fast students: Going further (late joiners with depth 3 → 3 messages; namespaces `/boat`; ports with `ss -uln`).
 - Struggling students: the 🧰 jobs box first; pair them for Step 7; Step 8 hints 1–5 (hint 3: print(offered.reliability) for the text-vs-constant trap).
 

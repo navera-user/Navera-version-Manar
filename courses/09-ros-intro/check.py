@@ -120,17 +120,18 @@ def _():
 
 @c.test("Step 3: two constants, read from the message definitions",
         hint="`ros2 interface show sensor_msgs/msg/NavSatFix`: lines with = are constants (NavSatStatus is nested "
-             "inside). For NO_FIX_LEVEL: in navera_lite/ros/convert.py, LEVELS says which DiagnosticStatus constant "
-             "NO_FIX uses; `ros2 interface show diagnostic_msgs/msg/DiagnosticStatus` gives its number.")
+             "inside). For DEGRADED_LEVEL: in navera_lite/ros/convert.py, LEVELS says which DiagnosticStatus constant "
+             "DEGRADED uses; `ros2 interface show diagnostic_msgs/msg/DiagnosticStatus` gives its number; Step 4's "
+             "`--field level` watch shows it live during the GPS gap.")
 def _():
-    nofix, level = answers("STATUS_NO_FIX", "NO_FIX_LEVEL")
+    nofix, level = answers("STATUS_NO_FIX", "DEGRADED_LEVEL")
     c.ok(number(nofix, "STATUS_NO_FIX") == -1, f"STATUS_NO_FIX = {nofix!r} is not the value of that constant "
                                                 "(watch the sign)")
-    lv = number(level, "NO_FIX_LEVEL")
-    c.ok(lv != 1, "NO_FIX_LEVEL = 1 is WARN, the level of DEGRADED: look at the NO_FIX line of LEVELS in convert.py")
-    c.ok(lv != 3, "NO_FIX_LEVEL = 3 is STALE, the level of STARTING (the \\x03 you saw): follow the same chain for "
-                  "NO_FIX: LEVELS[\"NO_FIX\"] → which constant → which number")
-    c.ok(lv == 2, f"NO_FIX_LEVEL = {level!r} — which constant does LEVELS give NO_FIX, and what number does "
+    lv = number(level, "DEGRADED_LEVEL")
+    known = {0: "OK, the level of FIX", 2: "ERROR, the level of NO_FIX", 3: "STALE, the level of STARTING (the \\x03 you saw)"}
+    c.ok(lv not in known, f"DEGRADED_LEVEL = {level!r} is {known.get(lv, '')}: follow the chain for DEGRADED — "
+                          "LEVELS[\"DEGRADED\"] → which constant → which number; Step 4's level watch shows it")
+    c.ok(lv == 1, f"DEGRADED_LEVEL = {level!r} — which constant does LEVELS give DEGRADED, and what number does "
                   "DiagnosticStatus define for it?")
 
 
@@ -148,10 +149,12 @@ def _():
     c.ok(HZ_RANGE[0] <= h <= HZ_RANGE[1], f"STATUS_HZ = {hz!r} is not a rate `ros2 topic hz` gives for the status "
                                           "with the replay running")
     low = str(why_hz).lower()
-    if re.search(r"jitter|imprecis|inaccura|not exact", low) and not re.search(r"on_fix|arriv|fix", low):
+    if re.search(r"jitter|imprecis|inaccura|not exact|twice|duplicat|resend|retransmi", low) and \
+            not re.search(r"on_fix|arriv|fix", low):
         raise CheckFailed("EXPLAIN_HZ: the timer is not imprecise — look at who else calls self.step() in ArbiterV0")
     explained("EXPLAIN_HZ", why_hz, ((r"tick", r"timer", r"5 ?hz", r"five", r"\b5\b", r"0\.2"), "the regular tick"),
-              ((r"arriv", r"each fix", r"every fix", r"new fix", r"receiv", r"on_fix", r"when a fix"),
+              ((r"arriv", r"each fix", r"every fix", r"new fix", r"receiv\w* (a |each |every |new )?(\w+ )?fix", r"on_fix",
+                r"when a fix"),
                "the extra decisions when a fix arrives"))
     a = number(allowed, "GATE_ALLOWED_M")
     if a == 150:
@@ -325,6 +328,9 @@ def _():
     wrong_name = [(p, g, w) for p, g, w in zip(PAIRS, got, WANT) if sorted(g) != sorted(w)]
     if wrong_name:
         p, g, w = wrong_name[0]
+        if set(g) < set(w):
+            raise CheckFailed(f"{label(p)} → you say {g!r}: here BOTH policies fail — did you return after the first "
+                              "one? Use bad = [], append each failing name, return bad at the end")
         raise CheckFailed(f"{len(wrong_name)} pairs name the wrong policy, e.g. {label(p)} → you say {g!r} — which "
                           "of the two tables has the ✘ for that pair? (When BOTH fail, the list has both names.)")
 
@@ -376,6 +382,34 @@ def _():
                   "something a RELIABLE + VOLATILE publisher cannot give (TRANSIENT_LOCAL?)")
 
 
+@c.test("TODO 2: latched_probe.py gets the kept status as a LATE subscriber",
+        hint="Lab Step 11: a late subscriber of a latched topic must request TRANSIENT_LOCAL, and (Step 7, B3) RELIABLE "
+             "too: STATUS_QOS of navera_lite/ros/qos.py is exactly that. Print the first status with "
+             "print(f\"first status: {msg.message}\", flush=True).")
+def _():
+    import random
+    token = f"check {random.randint(10000, 99999)}"
+    pub = ("ros2 topic pub --once -w 0 --keep-alive 60 --qos-depth 1 --qos-durability transient_local "
+           "--qos-reliability reliable /navera_lite/status diagnostic_msgs/msg/DiagnosticStatus "
+           f"\"{{message: '{token}'}}\"")
+    with Background(pub, settle=4.0):
+        code, out = sh("timeout 40 python3 latched_probe.py 7", timeout=60)
+    if "Traceback" in out and "first status" not in out:
+        tail = "\n".join(out.strip().splitlines()[-4:])
+        raise CheckFailed(f"latched_probe.py stopped with an error. The end of its output:\n{tail}")
+    if f"first status: {token}" in out:
+        return
+    if "first status:" in out:
+        raise CheckFailed("latched_probe.py printed a status, but not the one the check published — print msg.message "
+                          "of the message you receive")
+    pol = re.search(r"Last incompatible policy: (\w+)", out)
+    if pol:
+        raise CheckFailed(f"latched_probe.py heard nothing, and ROS says why: \"incompatible QoS … {pol.group(1)}\"")
+    raise CheckFailed("latched_probe.py heard nothing from a publisher that published ONCE before it started: as a late "
+                      "subscriber it must ask for the kept message — what does it request (durability AND reliability, "
+                      "lab Step 7 B1–B3)? Is the callback given to create_subscription, and does it print?")
+
+
 @c.test("Steps 9–10: what the listener requested, and why the repair belongs in the subscriber",
         hint="LISTENER_REQUESTS: `python3 qos_doctor.py /navera_lite/imu` or `ros2 topic info -v` while the broken "
              "listener runs. EXPLAIN_TEN: what does create_subscription do with a plain number (lesson §5)? "
@@ -386,6 +420,9 @@ def _():
     c.ok(w == "RELIABLE", f"LISTENER_REQUESTS = {req!r} is not the reliability the broken listener requests")
     explained("EXPLAIN_TEN", ten, ((r"default",), "the default profile"),
               ((r"depth", r"queue", r"keep_last", r"history", r"how many"), "what the number itself sets (only ...)"))
+    if re.search(r"10 (is|means) (the )?(code|value|number)? ?(of )?reliable", str(ten).lower()):
+        raise CheckFailed("EXPLAIN_TEN: 10 is not a code for RELIABLE — what does a plain number set, and where does "
+                          "RELIABLE come from (lesson §5)?")
     if re.search(r"(chang|set|modif|edit)\w* (the |its )?(publisher|sensor_qos|replay)", str(why).lower()):
         raise CheckFailed("EXPLAIN_REPAIR: the publisher was not changed (and must not be): say what the SUBSCRIPTION "
                           "requests now")

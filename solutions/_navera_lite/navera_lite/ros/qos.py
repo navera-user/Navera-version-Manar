@@ -30,7 +30,8 @@ def describe(qos):
 def incompatible_policies(offered, requested):
     """Why would a publisher that OFFERS `offered` and a subscriber that REQUESTS `requested` NOT connect?
     Returns the list of the policies whose offer cannot serve the request, named as ROS names them in its WARN
-    line ("Last incompatible policy: RELIABILITY"): "RELIABILITY" first, then "DURABILITY"; [] when they connect.
+    line ("Last incompatible policy: RELIABILITY"; that line shows only one name, your list shows every one):
+    "RELIABILITY" first, then "DURABILITY"; [] when they connect.
     Use the two tables of lesson 09 §5. History and depth never decide a connection; deadline and liveliness
     would, but NAVERA Lite leaves them at their defaults, so they are not part of this function.
     Inputs: two rclpy QoSProfile (the publisher's first). Returns a list of str.

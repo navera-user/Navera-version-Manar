@@ -27,7 +27,7 @@
 
 **You need:** mission 01 (the arbiter's states, priority and jump gate), mission 02 (environment variables,
 signals, `Ctrl+C`), mission 03 (classes, `self`, `super().__init__`). ⏱ Reading: 60 to 90 minutes with the ✏️
-checks: §1–§4 before session 1, §5–§6 before session 2. Lab: 2 h 30 to 3 h 30.
+checks: §1–§4 before session 1, §5–§6 before session 2. Lab: 2 h 45 to 3 h 45.
 
 **Before you start.** Answer without looking; if you miss two, reread mission 01 §5 and mission 02 §4.
 
@@ -310,7 +310,8 @@ History and depth are **not** in the rule: each side keeps its own queue, and di
 all of them: lab "Going further".)
 
 **An incompatible pair fails in silence.** No exception in your code, no message: only a `WARN` line in the log of
-the programs involved, which names the policy that failed (your TODO 1 does the same), for example *"New publisher discovered on topic …, offering incompatible QoS. No messages
+the programs involved, which names **one** policy that failed (when both fail, Fast DDS names only the last one it checked, here
+RELIABILITY; your TODO 1 lists both), for example *"New publisher discovered on topic …, offering incompatible QoS. No messages
 will be received from it. Last incompatible policy: RELIABILITY"*. `ros2 topic info -v <topic>` shows the
 reliability and durability of every endpoint: the detective's first command.
 
@@ -346,6 +347,8 @@ say "matched"; whether it also gets the kept message, lab experiment B3 shows yo
 > middleware of ROS 2 Humble used here, it never receives the kept message (lab Step 7, B3): the kept messages are
 > handed over by the reliable protocol. Other DDS implementations may differ, so never rely on it: for a latched
 > topic, request RELIABLE + TRANSIENT_LOCAL.
+
+Latched in practice = RELIABLE + TRANSIENT_LOCAL on both sides.
 </details>
 
 **Choosing a depth.** The queue must cover the worst burst the callback cannot process. An IMU at 200 Hz and a
@@ -383,9 +386,9 @@ Messages you will meet, and what they mean:
 
 | You see | It means | Do |
 |---|---|---|
-| empty `ros2 node list`, *"Unable to find node"* | discovery has not finished | wait 2 s, run it again |
+| empty `ros2 node list`, *"Unable to find node"* | discovery has not finished | wait until the node's log says it started, then run it again |
 | *"Could not determine the type for the passed topic"* | the tool has not seen a publisher yet | give the type: `ros2 topic echo /t pkg/msg/Type` |
-| *"A message was lost!!!"* in `ros2 topic echo` | the subscriber saw a gap in the publisher's message numbers (e.g. it joined late a topic whose publisher keeps only the last message) | harmless for watching |
+| *"A message was lost!!!"* in `ros2 topic echo` | the subscriber saw a gap in the publisher's message numbers (e.g. it joined, late, a topic whose publisher keeps only the last message) | harmless for watching |
 | `WARN … incompatible QoS … Last incompatible policy: X` | a pair that will never connect | `ros2 topic info -v`, compare policy X |
 | a long error ending in `!rclpy.ok()` | the ros2 daemon is in a bad state | `ros2 daemon stop`, try again |
 
@@ -407,9 +410,9 @@ your subscriber can connect.
 
 | Symptom | First command | Usual cause |
 |---|---|---|
-| the node is not in `ros2 node list` | run it twice, 2 s apart; `jobs` | discovery lag, the node crashed, another domain or another terminal tab |
+| the node is not in `ros2 node list` | wait for its log line, run it twice; `jobs` | discovery lag, the node crashed, another domain or another terminal tab |
 | node present, topic present, no data | `ros2 topic info -v /t` | incompatible QoS (or a different type) |
-| a late subscriber misses a state | `ros2 topic info -v /t` | VOLATILE or BEST_EFFORT request on a latched topic |
+| a late subscriber misses a state | `ros2 topic info -v /t` | its request does not ask for the kept message (durability; lab Step 7 shows one more case) |
 | two different answers on one topic | `ros2 topic info /t` → Publisher count | a second node publishing on the same name |
 | data from a "stranger" | `echo $ROS_DOMAIN_ID $ROS_LOCALHOST_ONLY` | an open network, a shared domain |
 
@@ -442,6 +445,7 @@ Your stack has the same shape, built from standard messages (the parts are in yo
 | Part | Role |
 |---|---|
 | `navera_lite/ros/qos.py` | the three profiles of §5, `describe()`, and ✏️ **your TODO 1: `incompatible_policies()`**; `compatible()` (given) uses it |
+| `latched_probe.py` (lesson folder) | ✏️ **your TODO 2**: a late listener of the latched status |
 | `navera_lite/ros/replay_node.py` | node `/replay`: plays a 30 s scenario of fixes and an IMU heartbeat (given) |
 | `navera_lite/ros/arbiter_v0.py` | node `/arbiter`: NAVERA Lite's first judge, naive on purpose (given; mission 12 attacks it, mission 29 replaces it) |
 | `navera_lite/ros/convert.py` | Estimate ↔ NavSatFix, the decision → DiagnosticStatus (given) |
@@ -465,7 +469,7 @@ needs. The analogy stops there: a bird picks neighbours by sight, a node by topi
    join: NAVERA's WEB-12 fix.
 5. **QoS**: a pair connects only if the offer is at least as strong as the request, policy by policy; a mismatch
    is silent (I-F3) except for one WARN line. A plain number means the default, RELIABLE. Latched = TRANSIENT_LOCAL on
-   both sides (and RELIABLE: lab Step 7).
+   both sides (lab Step 7 adds one condition).
 
 **Next mission:** you write your own publisher, a fake GPS receiver, and let arbiter v0 judge it.
 

@@ -21,7 +21,7 @@ EXPLAIN_LAG = ""             # a listing was empty/incomplete right after a star
 
 # ---- Step 3: message types ---------------------------------------------------------------------
 STATUS_NO_FIX = None            # the value of NavSatStatus's constant STATUS_NO_FIX
-NO_FIX_LEVEL = None            # the level NUMBER the arbiter puts in its status when the state is NO_FIX
+DEGRADED_LEVEL = None            # the level NUMBER the arbiter puts in its status while the state is DEGRADED (Step 3, seen in Step 4)
 
 # ---- Step 4: watch the judge -------------------------------------------------------------------
 PREDICT_HZ = ""              # how many status messages per second? (tick_hz is 5.0)
