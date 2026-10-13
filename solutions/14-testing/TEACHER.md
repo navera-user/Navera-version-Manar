@@ -26,18 +26,19 @@ rule; review of 1 October 2026: R-5) and VALIDATION_STATUS.md (last updated 2026
 - **Step 0:** `PREDICT_SUITE` first (the lesson gives no count). `89 passed in 11.1–11.3 s`. `--durations=3`: `10.35s call navera_lite/tests/test_ros_smoke.py::
   test_arbiter_v0_judges_the_replayed_demo`, then 0.05 s (test_convert) and 0.01 s. `N_TESTS = 89`,
   `SLOWEST_TEST` contains `test_ros_smoke` (the check accepts any text with "smoke").
-- **Step 1:** `init_repo.sh` → "git repository created …, 51 files committed, tagged 'start'" (the count
-  includes the student's starter files). With `return in_range`: **1 failed, 88 passed** —
+- **Step 1:** `init_repo.sh` → "git repository created …, 43 files committed, tagged 'start'" (the starter;
+  51 with the solution's extra files). With `return in_range`: **1 failed, 88 passed** —
   `test_geo.py::test_null_island_and_bad_values_are_refused`, line 16, `assert not True`. `N_FAILED = 1`.
   The grep lists `estimate.py:170` (eligible, which has its own "null island" rule first), `ros/trip_node.py:60`,
   `ros/arbiter_v0.py:79` (jump gate only for valid GPS) and `:97` (`usable`). Arbiter v0 would now take (0, 0) as a
   usable GPS fix and say FIX; no test of the judge or of the trip node sends (0, 0). That is NAVERA's LOC-4 in
   miniature. `git restore` → clean, 89 passed again.
 - **Step 2:** the starter's 5 given tests pass (4 parametrized bearing cases + 1). The reference solution has 40
-  example tests (41 with the given property in `hunt.py test`). Training mutants (`hunt.py`): reference **5 of
-  6 killed**, survivor 3 (equivalent). A typical first attempt (no limits, no non-numbers, gate only at 1 s,
-  build/wrong/w1) kills **2 of 6** (1 and 4): mutant 2 survives a test at 200° (outside 190°), 5 needs a date-line
-  `enu_flat` test, 6 needs an elapsed time ≠ 1 s.
+  example tests (41 with the given property in `hunt.py test`). Training mutants (`hunt.py`, 7 since round 1): reference
+  **6 of 7 killed**, survivor 3 (equivalent). A typical first attempt (no limits, no non-numbers, gate only at
+  1 s, build/wrong/w1) kills **2 of 7** (1 and 4): mutant 2 survives a test at 200° (outside 190°), 5 needs a
+  date-line `enu_flat` test, 6 an elapsed time ≠ 1 s, 7 a distance that only the "negative time counts as 0" rule
+  accepts (40 m at −1 s; the suite's 60 m at −1 s is refused either way and pins nothing).
 - **Step 3:** whole Earth, `max_examples=2000`: `Falsifying example: … lat0=89.55257463757103, lon0=0.0, e=0.0,
   n=49751.430354205564` → `offset` gives (90.00000000000001, 0.0). Found with 4 of 5 seeds tried while building;
   the other run passed (the lab says: run again). The round trip c) on the whole Earth fails more rarely (seen with
@@ -47,17 +48,22 @@ rule; review of 1 October 2026: R-5) and VALIDATION_STATUS.md (last updated 2026
 - **Step 4:** `EQUIVALENT_MUTANT = 3` (`finite = math.isfinite(la)`): a NaN or infinite longitude is still refused by
   `abs(lo) <= 180.0` (any comparison with NaN is False, ∞ > 180), the null-island test is unchanged, so every input
   gives the same result.
-- **Step 5 (TODO 6):** survivors of the suite that are easy to find: `abs(lo) <= 180.0 → 360.0` (or 181.0; the suite
-  never tests a longitude beyond 180), `lon2 = (lon2 + 180.0) % 360.0 - 180.0 → lon2 = lon2` (the round-trip test of
+- **Step 5 (TODO 6):** rules since round 1: one line per mutant, no overlap with a training mutant (so the
+  longitude limit `abs(lo) <= 180.0` no longer counts), code must change. Survivors of the suite that are easy to
+  find: `lon2 = (lon2 + 180.0) % 360.0 - 180.0 → lon2 = lon2` (the round-trip test of
   the suite starts far from ±180°), `if math.pi - d < 1e-9: → < 0.0` (opposite points never tested), `abs(la) <= 90.0 →
   < 90.0` (the poles), `np.minimum(1.0, a) → a` (killed only by the lesson's near-antipodal numbers). The docstring
-  example (`abs(la) <= 95.0`) is killed by `test_estimate.py` and `test_geo.py`. The reference uses the first three.
+  example (`abs(la) <= 95.0`) is killed by `test_estimate.py` and `test_geo.py`. The reference uses the poles, the
+  wrap of offset and the opposite points; its TODO 2–3 tests already kill all three (the lab says: then name them
+  in the report).
 - **Step 6 (TODO 7):** the starter launch test: test_0 ok, test_1/test_2 `AssertionError: TODO 7a/7b`,
   `FAILED (failures=2)`, shutdown test OK (≈ 3 s after the judge starts; ≈ 8 s in all). Solution: `Ran 3 tests in
   3.9 s OK`, judge log `gps fix refused: jump 5000 m > 152 m in 1.0 s` (elapsed 1.02 s), `NO_FIX: no usable source
   (gps: bad position)`; post-shutdown OK; exit code 0. With `if True:` (re-publishing judge): test_1 fails
-  `12 != 1 : one measurement, one position`; **test_2 failed too** in the measured run (a re-published position
-  still in flight after `positions.clear()`), so `REPUBLISH_FAILED` must name test_1 and may name test_2.
+  `12 != 1` or `13 != 1` (2 s × 5 Hz + one per arrival; `REPUBLISH_COUNT`, graded 8–16). test_2 passes: it
+  sends the NaN fix, then `drain()`s what was on its way, and a judge in NO_FIX has nothing to re-publish
+  (round 1 measured test_2 failing 1 run in 8 before the drain was added). The check runs the student's file on
+  this judge itself: test_1 must fail, test_2 must not; `REPUBLISH_FAILED` names test_1 only.
 - **Lesson numbers:** 1° of longitude at 60°: parallel 55 597.46 m, great circle 55 596.93 m (9.5 × 10⁻⁶); at 45°:
   78 626.69 / 78 626.19 (6.3 × 10⁻⁶); at 75°: 28 779.36 / 28 779.02 (1.18 × 10⁻⁵). cos² mutant: London → Paris
   341 098.8 m, Paris → London 346 134.6 m, truth 343 556.1 m; the meridian, equator and 60° parallel examples give
@@ -90,11 +96,18 @@ rule; review of 1 October 2026: R-5) and VALIDATION_STATUS.md (last updated 2026
 - my_mutants: copying the docstring example (killed by the suite), a docstring-only change (refused: "changes no
   code"), a mutant their own tests miss (`abs(lo) <= 181.0` vs a test at 200°).
 - Launch test without the position count: the re-publishing judge survives (check 12 names EST-1). Without
-  `positions.clear()` at the start of test_2/test_1: lists from earlier tests leak in.
+  `drain()` at the start of test_2 (test_1 is unaffected: test_0 sends no fix): test_1's position leaks in.
 - Reading the reason words: students search the status message; the lab's hint points at `usable()` in arbiter_v0.py.
 - A test file that reads the stack's source (`open(geo.__file__)`) would "kill" every mutant: the check refuses
   `open(`, `__file__`, `inspect`, `importlib`, … in the two test files (rule 3, build/wrong/w3). hunt.py does the same.
 - `.hypothesis/` makes a found counterexample come back first: students who ran d) twice see it at once.
+
+- Round 1 (reviewers): copying the stack's `test_guard.py` killed every gate mutant → a hidden mutant measures the
+  distance as east + north (only a DIAGONAL jump kills it; the suite misses it); TODO 3 now asks
+  `pytest.raises` for opposite points of `great_circle_points` (hidden mutant: the refusal removed), so objective
+  1's `raises` is practised and graded; `math.cos(60)` in degrees (weak) → hint 5 of TODO 1; NaN comparisons →
+  🧰 box in lesson §4 and a hint ladder in Step 4.
+- Real time (round 1): strong ≈ 4 h 05 in all, weak ≈ 6 h 50 (reading ≈ 110 min): meta.json says 6 h.
 
 ## Class plan (2 × 2 h)
 
@@ -116,7 +129,7 @@ rule; review of 1 October 2026: R-5) and VALIDATION_STATUS.md (last updated 2026
   `start`), `pytest.ini` (hides launch_testing's private-API warning), `answers.py`, `report.md`.
 - `solutions/14-testing/`: the four student files, answers, report, `_apply.sh` (runs init_repo.sh, as Step 1 does).
   No dataset.
-- `check.py`: 21 hidden mutants (18 of geo.py/guard.py in 5 families, 3 of arbiter_v0.py) as string replacements of
+- `check.py`: 23 hidden mutants (20 of geo.py/guard.py in 5 families, 3 of arbiter_v0.py) as string replacements of
   the GIVEN starter files (read from `/academy/courses/14-testing/files`); every run copies the given stack into a
   temporary folder, so a student's own edits never matter; hypothesis runs derandomized without shrinking (same
   profile as hunt.py). **If geo.py, guard.py or arbiter_v0.py change in the reference, re-run the check on the

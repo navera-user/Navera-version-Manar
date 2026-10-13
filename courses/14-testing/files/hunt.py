@@ -1,7 +1,7 @@
 """hunt.py — the mutant hunter's runner (mission 14). It never changes your navera_lite/.
 
     python3 hunt.py test    your two test files on the stack as given: do they pass, and keep the rules?
-    python3 hunt.py         the same, then your tests against 6 TRAINING mutants: which ones they kill
+    python3 hunt.py         the same, then your tests against 7 TRAINING mutants: which ones they kill
     python3 hunt.py mine    your own mutants (my_mutants.py, TODO 6): does the stack's own suite miss them,
                             and do your tests kill them?
 
@@ -40,6 +40,8 @@ TRAINING = [
      "dlon = (lon - lon0 + 180.0) % 360.0 - 180.0", "dlon = lon - lon0"),
     (6, "guard.py", "gate_ok: the elapsed time is ignored (the gate never grows)",
      "v_max_mps * max(0.0, elapsed_s) + margin_m", "v_max_mps + margin_m"),
+    (7, "guard.py", "gate_ok: a negative elapsed time shrinks the gate",
+     "max(0.0, elapsed_s)", "elapsed_s"),
 ]
 
 # rule 3 of the test files: through inputs and outputs only (a test that reads the source would "kill"
@@ -47,7 +49,7 @@ TRAINING = [
 FORBIDDEN = [r"\bopen\s*\(", r"__file__", r"\binspect\b", r"getsource", r"\bhashlib\b", r"__code__", r"co_code",
              r"\bimportlib\b", r"sys\.modules", r"\bsubprocess\b", r"os\.system", r"\bpathlib\b", r"read_text",
              r"read_bytes", r"\bexec\s*\(", r"\beval\s*\(", r"\blinecache\b", r"__loader__", r"__spec__",
-             r"\bmarshal\b", r"\bdis\b", r"\bcompile\s*\("]
+             r"\bmarshal\b", r"\bimport\s+dis\b", r"\bfrom\s+dis\b", r"(?<!re\.)\bcompile\s*\("]
 
 CONFTEST = '''from hypothesis import Phase, settings
 settings.register_profile("hunt", derandomize=True, database=None, deadline=None,
@@ -195,6 +197,23 @@ def without_docstrings(tree):
     return ast.dump(tree)
 
 
+def span_of(name, old, sources):
+    """(file, first line, last line) of `old` in the given file."""
+    start = sources[name].index(old)
+    first = sources[name].count("\n", 0, start)
+    return name, first, first + old.count("\n")
+
+
+def training_overlap(name, old, sources):
+    a = sources[name].index(old), sources[name].index(old) + len(old)
+    for _, t_name, _, t_old, _ in TRAINING:
+        if t_name == name:
+            b = sources[name].index(t_old), sources[name].index(t_old) + len(t_old)
+            if a[0] < b[1] and b[0] < a[1]:
+                return True
+    return False
+
+
 def check_mutant(m, sources):
     """(file, mutated text) or raise ValueError with a plain reason."""
     if not (isinstance(m, (list, tuple)) and len(m) == 3 and all(isinstance(x, str) for x in m)):
@@ -206,6 +225,8 @@ def check_mutant(m, sources):
     if n != 1:
         raise ValueError(f"the old text appears {n} times in navera_lite/{name}; it must appear exactly once "
                          "(copy it exactly, spaces included, or take a longer piece)")
+    if training_overlap(name, old, sources):
+        raise ValueError("it changes the same code as a training mutant of hunt.py: find a hole of your own")
     text = sources[name].replace(old, new)
     try:
         tree = ast.parse(text)
@@ -230,10 +251,11 @@ def run_mine(files):
         except ValueError as e:
             say(f"  {i}. refused: {e}")
             continue
-        if text in seen:
-            say(f"  {i}. refused: the same change as an earlier mutant")
+        f_, first, last = span_of(name, m[1], sources)
+        if any(f_ == g and first <= l2 and l1 <= last for g, l1, l2 in seen):
+            say(f"  {i}. refused: it changes the same line as an earlier mutant — three DIFFERENT holes")
             continue
-        seen.add(text)
+        seen.add((f_, first, last))
         d = copy_of_stack({name: text})
         try:
             code_suite, out_suite = pytest(d, suite)

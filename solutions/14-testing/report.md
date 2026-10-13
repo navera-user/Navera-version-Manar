@@ -10,11 +10,11 @@ never send (0, 0). My parametrized test now pins every rule with 13 cases, and m
 
 ## Mutants
 
-My first version of the example tests killed 4 of the 6 training mutants; at the end 5 of 6. Mutant 3 is
-equivalent: the range test still refuses a NaN or infinite longitude. My three mutants widen the longitude
-limit to 360°, remove the wrap of offset and remove the error for opposite points; the stack's suite has no
-test there, and three new tests of mine (a longitude of 180.5, a move across the date line, opposite
-points) kill them.
+My first version of the example tests killed 4 of the 7 training mutants; at the end 6 of 7. Mutant 3 is
+equivalent: the range test still refuses a NaN or infinite longitude. My three mutants refuse the poles
+(`<` instead of `<=` for the latitude), remove the wrap of offset and remove the error for opposite points;
+the stack's suite has no test there. My TODO 2 and TODO 3 tests (a latitude of exactly 90, a move across the
+date line, pytest.raises for opposite points) already kill all three.
 
 ## Properties and the launch test
 

@@ -30,5 +30,6 @@ EXPLAIN_EQUIVALENT = ("A NaN or infinite longitude is still refused by the range
                       "mutant returns the same result: no test can show a difference.")
 
 # ---- Step 6
-PREDICT_REPUBLISH = "The jump test, because it counts the positions."
-REPUBLISH_FAILED = "test_1_a_5_km_jump_is_refused (and test_2, which received a re-published position too)"
+PREDICT_REPUBLISH = "test_1, about 10 positions: 5 per second for 2 s."
+REPUBLISH_FAILED = "test_1_a_5_km_jump_is_refused"
+REPUBLISH_COUNT = 12

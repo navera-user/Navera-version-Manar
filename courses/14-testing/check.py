@@ -62,8 +62,15 @@ OFFSET = [
      "enu_flat of a point placed by hand EAST of you, far from the equator"),
     ("geo.py", "n = math.radians(lat - lat0) * EARTH_RADIUS_M", "n = math.radians(lat0 - lat) * EARTH_RADIUS_M",
      "enu_flat has north and south swapped", "enu_flat of a point placed by hand NORTH of you (n > 0)"),
+    ("geo.py", "if math.pi - d < 1e-9:", "if math.pi - d < 0.0:",
+     "great_circle_points no longer refuses two opposite points",
+     "pytest.raises(ValueError) for two opposite points, e.g. (10, 20) and (−10, −160)"),
 ]
 GATE = [
+    ("guard.py", "d = math.hypot(new_xy[0] - last_xy[0], new_xy[1] - last_xy[1])",
+     "d = abs(new_xy[0] - last_xy[0]) + abs(new_xy[1] - last_xy[1])",
+     "gate_ok measures the distance as east + north instead of the straight line",
+     "a DIAGONAL jump: e.g. (100, 100) after 1 s is 141 m, accepted; a test that moves only east misses it"),
     ("guard.py", "return d <= v_max_mps * max(0.0, elapsed_s) + margin_m",
      "return d < v_max_mps * max(0.0, elapsed_s) + margin_m",
      "gate_ok refuses a fix exactly at the limit", "a jump of exactly v_max × elapsed + margin is accepted (≤)"),
@@ -93,10 +100,18 @@ JUDGE = [
      "TODO 7a: exactly ONE position published since the test began"),
 ]
 
+TRAINING_OLD = [("geo.py", "d = 2.0 * EARTH_RADIUS_M * np.arcsin"), ("geo.py", "abs(lo) <= 180.0"),
+                ("geo.py", "finite = math.isfinite(la) and math.isfinite(lo)"),
+                ("geo.py", "lat2 = lat + math.degrees(n_m / EARTH_RADIUS_M)"),
+                ("geo.py", "dlon = (lon - lon0 + 180.0) % 360.0 - 180.0"),
+                ("guard.py", "v_max_mps * max(0.0, elapsed_s) + margin_m"), ("guard.py", "max(0.0, elapsed_s)")]
+REPUBLISH = JUDGE[2]
+REPUBLISH_RANGE = (8, 16)        # measured 12–13 (2 s × 5 Hz + one per arrival); generous for a loaded machine
+
 FORBIDDEN = [r"\bopen\s*\(", r"__file__", r"\binspect\b", r"getsource", r"\bhashlib\b", r"__code__", r"co_code",
              r"\bimportlib\b", r"sys\.modules", r"\bsubprocess\b", r"os\.system", r"\bpathlib\b", r"read_text",
              r"read_bytes", r"\bexec\s*\(", r"\beval\s*\(", r"\blinecache\b", r"__loader__", r"__spec__",
-             r"\bmarshal\b", r"\bdis\b", r"\bcompile\s*\("]
+             r"\bmarshal\b", r"\bimport\s+dis\b", r"\bfrom\s+dis\b", r"(?<!re\.)\bcompile\s*\("]
 
 CONFTEST = '''from hypothesis import Phase, settings
 settings.register_profile("check", derandomize=True, database=None, deadline=None,
@@ -185,8 +200,10 @@ def passes_as_given(name):
     if code == 5 or "no tests ran" in out:
         raise CheckFailed(f"pytest finds no test in {name}")
     if code != 0:
+        deg = (" — math.cos takes RADIANS: math.cos(math.radians(60)) is 0.5, math.cos(60) is −0.95"
+               if re.search(r"math\.cos\(\s*-?\d", student_file(name)) else "")
         raise CheckFailed(f"{name} does NOT pass on the stack as given — a test that fails on correct code is a "
-                          "wrong test (expected value? metres or degrees? tolerance?). pytest says:\n" + tail(out))
+                          f"wrong test (expected value? metres or degrees? tolerance?){deg}. pytest says:\n" + tail(out))
     m = re.search(r"(\d+) passed", out)
     return int(m.group(1)) if m else 0
 
@@ -230,6 +247,39 @@ def offset_ref(lat, lon, e_m, n_m):
     return lat2, (lon2 + 180.0) % 360.0 - 180.0
 
 
+def _num(node):
+    """The value of a numeric literal expression (-90 + 10, 80.0, -80), or ValueError."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) and not isinstance(node.value, bool):
+        return float(node.value)
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
+        v = _num(node.operand)
+        return -v if isinstance(node.op, ast.USub) else v
+    if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div)):
+        a, b = _num(node.left), _num(node.right)
+        return {ast.Add: a + b, ast.Sub: a - b, ast.Mult: a * b}.get(type(node.op)) if not isinstance(node.op, ast.Div) \
+            else a / b
+    raise ValueError("not a number")
+
+
+def _bound(node, assigns, depth=0):
+    """The largest |value| a float strategy expression can draw, 0 if restricted by .filter/.map, None if unknown."""
+    if depth > 5:
+        return None
+    if isinstance(node, ast.Name):
+        return _bound(assigns[node.id], assigns, depth + 1) if node.id in assigns else None
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in ("filter", "map"):
+        return 0.0                                  # restricted by the student's own function: trusted
+    if isinstance(node, ast.Call) and ast.unparse(node.func).endswith("floats"):
+        vals = list(node.args[:2]) + [k.value for k in node.keywords if k.arg in ("min_value", "max_value")]
+        if len(vals) < 2:
+            return None                             # an open side: NaN, infinity or ±1e308
+        try:
+            return max(abs(_num(v)) for v in vals)
+        except ValueError:
+            return None
+    return None
+
+
 def funcs(tree):
     return [n for n in tree.body if isinstance(n, ast.FunctionDef)]
 
@@ -251,7 +301,8 @@ def _():
     predicted("PREDICT_FAILS", pf)
     c.ok(number(nf, "N_FAILED") == N_FAILED, "N_FAILED is not the number of tests that failed after the small change")
     explained("EXPLAIN_ONE_TEST", ex, ([r"\bone\b", r"\bonly\b", r"single", r"\b1\b"], "how many tests guard the rule"),
-              ([r"arbiter", r"judge", r"v0", r"trip", r"eligible", r"estimate", r"other part", r"caller", r"use"],
+              ([r"arbiter", r"judge", r"v0", r"trip", r"eligible", r"estimate", r"other part", r"caller",
+                r"\bus(e|es|ed|ing)\b"],
                "which other parts use is_finite_latlon"))
     code, out = sh("git rev-parse --verify -q 'refs/tags/start^{commit}'", timeout=20)
     c.ok(code == 0, "your lesson folder is not a git repository with the tag `start` yet: "
@@ -303,7 +354,7 @@ def _():
 
 
 for _todo, _group, _what in ((1, HAVERSINE, "haversine_m"), (2, VALIDITY, "is_finite_latlon"),
-                             (3, OFFSET, "offset / enu_flat"), (4, GATE, "the jump gate")):
+                             (3, OFFSET, "offset / enu_flat / great_circle_points"), (4, GATE, "the jump gate")):
     @c.test(f"TODO {_todo}: your example tests kill {len(_group)} wrong versions of {_what} you have not seen",
             hint="For each survivor, write a test that the given stack passes and the wrong version fails. Train with "
                  "`python3 hunt.py`. Only test_geo_examples.py runs here.")
@@ -322,20 +373,24 @@ def _():
     c.ok(len(props) >= 5, f"{len(props)} property test(s) with @given in {PROPERTIES} (1 was given): write the "
                           "four of TODO 5")
     c.ok(n >= 5, f"pytest ran only {n} tests in {PROPERTIES}")
-    names = {t.id: ast.unparse(node.value) for node in tree.body if isinstance(node, ast.Assign)
-             for t in node.targets if isinstance(t, ast.Name)}
+    assigns = {t.id: node.value for node in tree.body if isinstance(node, ast.Assign)
+               for t in node.targets if isinstance(t, ast.Name)}
     for f in props:
         if "offset(" not in ast.unparse(f):
             continue
         given = next(d for d in f.decorator_list if "given" in ast.unparse(d))
-        first = given.args[0] if isinstance(given, ast.Call) and given.args else None
-        text = ast.unparse(first) if first is not None else ""
-        text = names.get(text, text) if first is not None and isinstance(first, ast.Name) else text
+        lat_name = f.args.args[0].arg if f.args.args else None
+        strat = next((k.value for k in getattr(given, "keywords", []) if k.arg == lat_name), None)
+        if strat is None and isinstance(given, ast.Call) and given.args:
+            strat = given.args[0]
+        b = _bound(strat, assigns) if strat is not None else None
         assumes = [ast.unparse(n) for n in ast.walk(f) if isinstance(n, ast.Call) and ast.unparse(n.func) == "assume"]
-        by_assume = any(re.search(r"\d", re.sub(r"is_finite_latlon\([^)]*\)", "", a)) for a in assumes)
-        c.ok(not re.search(r"(?<![\d.])90(\.0*)?\b", text) or by_assume,
-             f"{f.name} still draws its start latitude from the whole Earth ({text}): a start near a pole and a move "
-             "towards it leave the domain of offset, even when a run is lucky (lab Step 3: restrict the domain)")
+        stripped = [re.sub(r"is_finite_latlon\([^)]*\)", "", a) for a in assumes]
+        by_assume = any(lat_name and re.search(rf"\b{lat_name}\b", a) and re.search(r"\d", a) for a in stripped)
+        c.ok((b is not None and b <= 89.5) or by_assume,
+             f"{f.name} still draws its start latitude ({lat_name}) from the whole Earth, or from a strategy the check "
+             "cannot read: a start near a pole and a move towards it leave the domain of offset, even when a run is "
+             "lucky (lab Step 3: st.floats(-80.0, 80.0), a .filter(…) or an assume(abs(lat0) <= 80))")
     report_survivors(PROPERTIES, survivors(PROPERTIES, PROPERTY_ONLY), len(PROPERTY_ONLY))
 
 
@@ -407,10 +462,20 @@ def _():
         except SyntaxError:
             notes.append(f"mutant {i}: the mutated {name} is not valid Python")
             continue
-        if same or text in seen:
-            notes.append(f"mutant {i}: changes no code (a comment, a docstring, the layout) or repeats another one")
+        if same:
+            notes.append(f"mutant {i}: changes no code (a comment, a docstring, the layout)")
             continue
-        seen.add(text)
+        a0 = src.index(old)
+        if any(t_name == name and a0 < src.index(t_old) + len(t_old) and src.index(t_old) < a0 + len(old)
+               for t_name, t_old in TRAINING_OLD):
+            notes.append(f"mutant {i}: it changes the same code as a training mutant of hunt.py — find a hole of your own")
+            continue
+        first = src.count("\n", 0, a0)
+        lines = (name, first, first + old.count("\n"))
+        if any(g == name and first <= l2 and l1 <= lines[2] for g, l1, l2 in seen):
+            notes.append(f"mutant {i}: it changes the same line as another of your mutants — three DIFFERENT holes")
+            continue
+        seen.add(lines)
         code_suite, _ = pytest_on([], (name, text), run=suite)
         if code_suite != 0:
             notes.append(f"mutant {i} ({old.strip()[:40]} → {new.strip()[:40]}): the stack's own suite kills it")
@@ -434,8 +499,18 @@ def _code(text):
     return ast.dump(tree)
 
 
+_RUNS = {}
+
+
 def launch_run(changed=None):
-    """launch_test of the student's file against the given judge (or a broken one). (code, output)"""
+    """launch_test of the student's file against the given judge (or a broken one), cached. (code, output)"""
+    key = changed[1] if changed else ""
+    if key not in _RUNS:
+        _RUNS[key] = _launch_once(changed)
+    return _RUNS[key]
+
+
+def _launch_once(changed):
     d = stack_copy(changed, [LAUNCH])
     try:
         return sh(f"cd {d} && timeout 90 launch_test {LAUNCH}", timeout=120)
@@ -490,12 +565,20 @@ def _():
 @c.test("Step 6: a judge that re-publishes, caught by your launch test",
         hint="Lab Step 6: the change `if True:` in arbiter_v0.py, launch_test, read which test FAILED, then git restore.")
 def _():
-    p, name = answers("PREDICT_REPUBLISH", "REPUBLISH_FAILED")
+    launch_ok()
+    code, out = launch_run(mutate(REPUBLISH))
+    c.ok(code != 0 and re.search(r"FAIL: test_1", out),
+         "your launch test does not fail on the judge that re-publishes: test_1 must count the positions "
+         "(exactly one since it began)")
+    c.ok(not re.search(r"FAIL: test_2", out), "on the re-publishing judge your test_2 fails too: it must drain() "
+         "after the NaN fix (positions re-published BEFORE the NaN fix arrived are not its business)")
+    p, name, n = answers("PREDICT_REPUBLISH", "REPUBLISH_FAILED", "REPUBLISH_COUNT")
     predicted("PREDICT_REPUBLISH", p)
-    c.ok(isinstance(name, str) and ("test_1" in name or "5_km" in name),
-         "REPUBLISH_FAILED does not name the test that must fail when the judge re-publishes (the one that counts "
-         "the positions)")
-    c.ok("test_0" not in name, "REPUBLISH_FAILED: test_0 does not fail on that judge (it publishes no fix)")
+    c.ok(isinstance(name, str) and ("test_1" in name or "5_km" in name) and "test_2" not in name
+         and "test_0" not in name, "REPUBLISH_FAILED is not the one test that fails on the re-publishing judge")
+    lo, hi = REPUBLISH_RANGE
+    c.ok(lo <= number(n, "REPUBLISH_COUNT") <= hi, "REPUBLISH_COUNT is not the number of positions test_1 counted "
+         "(the number before `!= 1` in launch_test's output)")
 
 
 @c.test("Step 7: report.md — three headings, your words and your numbers",

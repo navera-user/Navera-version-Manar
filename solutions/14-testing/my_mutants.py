@@ -12,7 +12,7 @@ Example, which does NOT count — the stack's suite kills it (test_geo.py tests 
 """
 
 MUTANTS = [
-    ("geo.py", "abs(lo) <= 180.0", "abs(lo) <= 360.0"),                       # longitudes up to 360° accepted
+    ("geo.py", "abs(la) <= 90.0", "abs(la) < 90.0"),                          # the poles refused
     ("geo.py", "lon2 = (lon2 + 180.0) % 360.0 - 180.0", "lon2 = lon2"),        # offset never wraps
     ("geo.py", "if math.pi - d < 1e-9:", "if math.pi - d < 0.0:"),             # opposite points: no error
 ]

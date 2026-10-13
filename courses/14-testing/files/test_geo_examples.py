@@ -13,7 +13,7 @@ import math
 import pytest
 
 from navera_lite.estimate import Estimate
-from navera_lite.geo import bearing_deg, enu_flat, haversine_m, is_finite_latlon, offset
+from navera_lite.geo import bearing_deg, enu_flat, great_circle_points, haversine_m, is_finite_latlon, offset
 from navera_lite.guard import JumpGate, gate_ok
 from navera_lite.settings import DEFAULTS
 
@@ -71,10 +71,11 @@ def test_a_point_is_at_zero_metres_from_itself(quito):
 # crash. Compare with `is True` / `is False`.
 
 
-# ======== TODO 3 — offset and enu_flat: at least 3 tests ================================================
+# ======== TODO 3 — offset, enu_flat, great_circle_points: at least 4 tests ==============================
 # Done when: a move north changes only the latitude, by the right amount; a move east far from the equator
 # has the right size in degrees; enu_flat gives back the metres of a point you placed by hand; the ±180°
-# meridian behaves as offset's docstring says.
+# meridian behaves as offset's docstring says; and great_circle_points refuses what its docstring says it
+# refuses (pytest.raises, lesson §2).
 
 
 # ======== TODO 4 — the jump gate: at least 3 tests ======================================================

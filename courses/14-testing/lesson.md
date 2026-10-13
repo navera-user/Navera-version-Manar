@@ -23,7 +23,7 @@
 
 **Objectives.** After this mission you can:
 
-1. write **example tests** with pytest (tolerances you can justify, `is`, `raises`, parametrized cases,
+1. write **example tests** with pytest (tolerances you can justify, `is`, `pytest.raises`, parametrized cases,
    fixtures) that pin each rule of a specification;
 2. write **property tests** with hypothesis, read the counterexample it finds, and decide whether it is
    a bug or a limit of the function's **domain**;
@@ -33,8 +33,8 @@
    and checks its behaviour at its topics.
 
 **You need:** missions 05 (git), 06 (`navera_lite/geo.py`), 01 and 09 (the jump gate, arbiter v0), 13
-(`fl_node`, launch files). ⏱ Reading: about 80 minutes with the ✏️ checks. Lab: 3 h 30 to 4 h 30 in two
-sessions (up to 5 h 30 if Python classes are still new to you).
+(`fl_node`, launch files). ⏱ Reading: 80 to 110 minutes with the ✏️ checks (§3 and §5 bring new tools).
+Lab: 3 h 30 to 5 h in two sessions. In all: about 5 h to 6 h 30.
 
 **Before you start** — three questions from earlier missions. If you miss two, reread lesson 06 §1 and
 lesson 05 §1.
@@ -73,6 +73,7 @@ judge. **pytest** and **hypothesis** are installed.
 | **mutant** | a copy of the code with one small, deliberate bug | mutant |
 | **mutation score** | killed mutants / mutants that can be killed | score de mutation |
 | **regression test** | a test written after a bug, so that it cannot come back unnoticed | test de non-régression |
+| **to pin (a rule, a bug)** | to write a test that fails as soon as the rule is broken | verrouiller par un test |
 | **launch test** | a test that starts nodes, talks to them, and checks how they stop | test de lancement |
 </details>
 
@@ -102,8 +103,8 @@ One question to ask of every test you write: **which bug would make this test fa
 cannot fail proves nothing.
 
 > [!QUESTION] ✏️ Check
-> `test_arbiter_v0.py` runs in a tenth of a second; `test_ros_smoke.py` takes about 10 s. Both test the
-> judge. Why the difference, and which bug could only the slow one find?
+> `test_arbiter_v0.py` runs in a tenth of a second; one of the stack's ROS tests takes about 10 s. Both test
+> the judge. Why the difference, and which bug could only the slow one find?
 
 <details><summary>Answer</summary>
 The first calls <code>NaiveJudge</code> in Python: no process, no network. The second starts two real
@@ -246,8 +247,8 @@ Falsifying example: test_pack_round_trip(
 E       struct.error: short format requires (-0x7fff - 1) <= number <= 0x7fff
 ```
 
-Shrinking found the **smallest** failing speed: 327.675 m/s rounds to 32 768 cm/s, one more than a
-16-bit integer can hold. That is flight 501 in four lines. Now the engineer must decide: is the bug in
+Shrinking walked it down to the edge: from 327.675 m/s on, the speed rounds to 32 768 cm/s, one more
+than a 16-bit integer can hold (hypothesis stopped one rounding step above it). That is flight 501 in four lines. Now the engineer must decide: is the bug in
 the code, or in the domain? Three honest answers: refuse speeds above 327.67 m/s with a clear error (and
 test that it is raised), clamp them (and say so), or use a wider field. The wrong answer is to leave the
 domain unwritten.
@@ -280,7 +281,9 @@ unpacks correctly. The domain is now written in the code and pinned by tests.
 
 <details><summary>Read this after lab Step 3: the validity property of offset</summary>
 On the whole Earth, hypothesis finds a start very close to a pole and a move towards it, for example
-lat0 = 89.55°, n = 49 751 m: the result is a latitude above 90°. The flat-Earth shortcut adds degrees;
+lat0 = 89.5526°, n = 49 751 m (50 km north, from 50 km below the pole): the result is a latitude of
+90.00002°, just above 90°. Yours will differ: any start within 50 km of a pole, with a move towards it,
+fails. The flat-Earth shortcut adds degrees;
 it does not know that a move over the pole comes down on the other side (latitude decreases, longitude
 jumps by 180°). It is a limit of the shortcut's domain, not a slip in its code: <code>offset</code> is
 meant for small moves far from the poles. Restricting the start to |lat0| ≤ 80° (50 km is at most 0.45°
@@ -322,6 +325,11 @@ mutant equivalent. In `haversine_m`, removing `np.minimum(1.0, a)` looks harmles
 cannot exceed 1. Yet for the points (−44.0875753669041, −1.6433686469012514) and their opposite point,
 rounding gives a = 1.0000000000000002, and without the guard the function returns NaN. "Almost
 equivalent" mutants are exactly the bugs that reach the field.
+
+> [!TIP] 🧰 NaN in comparisons
+> Every comparison with NaN is False: `nan < 1`, `nan <= 180`, `nan > 0`, `nan == nan` all give `False`
+> (only `!=` gives `True`). So `abs(x) <= 180.0` is already `False` for NaN, and for ±infinity too. Try it:
+> `python3 -c "import math; print(math.nan <= 180, abs(-math.inf) <= 180)"`.
 
 **The saboteur's view.** The mutants that survive a real suite show what it does not protect. Tools such
 as mutmut generate thousands of mutants automatically; in the lab you write them yourself, and the
@@ -408,7 +416,9 @@ From NAVERA's engineering backlog and validation report (in words; its code is n
   done only when it is fixed, **tested** and committed, and the commit is listed.
 - **LOC-4 (critical):** day vision could publish a rejected match, or (0, 0), and use it as its anchor.
   **EST-1 (critical):** the judge re-published the same measurement at 5 Hz as new measured fixes. Both
-  fixed.
+  fixed. Why EST-1 is critical: a filter downstream (an autopilot's EKF) that fuses each message as an
+  independent measurement then believes one fix five times per second. Its uncertainty shrinks on
+  information it does not have, and an old position keeps "arriving" after the GPS has stopped.
 - The validation report (last updated 3 October 2026) lists bench robustness tests of the judge, for
   example: one measurement → published once ("it was re-published at 5 Hz"); a GPS jump of 5 km in 1 s →
   refused as possible spoofing, re-accepted once plausible again; an all-zero covariance → DEGRADED
@@ -453,9 +463,10 @@ the sky, the chosen direction turns by the same angle" — designed so that it c
 
 Answer without scrolling up.
 
-<details><summary>1. Why is <code>assert haversine_m(10, 20, 11, 20) == 111194.92664455873</code> a bad test, even though it passes today?</summary>
-It compares floats exactly: any harmless change in the order of operations breaks it. Use
-<code>pytest.approx(M_PER_DEG, rel=1e-9)</code>, with the expected value computed independently.
+<details><summary>1. <code>assert haversine_m(10, 20, 11, 20) == M_PER_DEG</code> fails, although the function is correct and one degree of a meridian is exactly M_PER_DEG. Why, and what do you write instead?</summary>
+The function returns 111 194.92664455871 m, the formula 111 194.92664455873 m: two different roundings of the
+same number, 2 × 10⁻¹¹ m apart. Floats are compared with a tolerance chosen between the honest gap and the
+bug: <code>pytest.approx(M_PER_DEG, rel=1e-9)</code>.
 </details>
 
 <details><summary>2. All 30 of your tests pass; 12 mutants are run, 4 survive, and 1 of the 4 is equivalent. What is the mutation score, and what do you do next?</summary>

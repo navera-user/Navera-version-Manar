@@ -4,8 +4,7 @@
 tests and properties of `geo.py` and `guard.py` strong enough to kill wrong versions of them; measure
 your tests with mutants and find holes in the stack's own suite; then write a launch test of the
 running judge.
-**Time:** 3 h 30 to 4 h 30 in two sessions (a fast student: about 3 h; up to 5 h 30 if Python classes are
-still new to you).
+**Time:** 3 h 30 to 5 h in two sessions (a fast student: about 3 h), after 80 to 110 minutes of reading.
 
 Your files (📝 Code tab): [test_geo_examples.py](file:./test_geo_examples.py) (**TODO 1–4, 6b**),
 [test_geo_properties.py](file:./test_geo_properties.py) (**TODO 5**), [my_mutants.py](file:./my_mutants.py)
@@ -148,6 +147,8 @@ the equator, or the docstring's London → Paris). Each tolerance gets a comment
    correct code fails it.
 4. Obtained about 111 or 55.6? Your expected value is in metres and the result in kilometres, or the
    reverse: `haversine_m` returns metres.
+5. Expected value negative, or strange like −105 903? `math.cos` takes **radians**:
+   `math.cos(math.radians(60))` is 0.5, `math.cos(60)` is −0.95.
 </details>
 
 **TODO 2 — `is_finite_latlon`, one parametrized test, at least 8 cases.** First, on paper: list the
@@ -179,8 +180,10 @@ def test_length(word, n):                                         # the same nam
 5. "Not numbers at all": `None`, or a text such as `"35.8"`. The docstring says the result is False.
 </details>
 
-**TODO 3 — `offset` and `enu_flat`, at least 3 tests.** Read both docstrings again (mission 06). Place a
-point by hand (for example 0.01° north and 0.02° east of a start), and compute its metres yourself.
+**TODO 3 — `offset`, `enu_flat` and `great_circle_points`, at least 4 tests.** Read the docstrings again
+(mission 06). Place a point by hand (for example 0.01° north and 0.02° east of a start), and compute its
+metres yourself. For `great_circle_points`, its docstring says when it raises a `ValueError`: pin it with
+`pytest.raises` (lesson §2).
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
@@ -190,19 +193,23 @@ point by hand (for example 0.01° north and 0.02° east of a start), and compute
    `cos(radians(mean latitude))`.
 4. The ±180° meridian: offset's docstring has an example (5 km east of 179.99°). What range must the
    longitude stay in?
+5. `with pytest.raises(ValueError):` then, indented under it, the one call that must raise. Two points are
+   opposite when their latitudes have opposite signs and their longitudes differ by 180°.
 </details>
 
 **TODO 4 — the jump gate, at least 3 tests.** The least help: the docstrings of `gate_ok` and `JumpGate`
 in [navera_lite/guard.py](file:./navera_lite/guard.py) are your specification, and mission 01's lesson
 table is a regression test waiting to be written. Before you code, trace by hand: with 100 m/s and 50 m,
-which distances are accepted after 0 s, 1 s and 2 s? And what does "a refused fix changes nothing" mean
-for the NEXT fix?
+which distances are accepted after 0 s, 1 s and 2 s? What does "a refused fix changes nothing" mean
+for the NEXT fix? And does every one of your jumps move only east?
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
 1. `gate_ok((0.0, 0.0), (d, 0.0), elapsed_s, 100.0, 50.0)`: choose `d` exactly on the limit, and just
    above it (lesson §4's check).
-2. The docstring says what a negative elapsed time means. Test it.
+2. The docstring says what a negative elapsed time means. Choose a distance that ONLY that rule accepts:
+   if −1 s counts as 0 s, the gate is the margin, 50 m; if it does not, the gate is −50 m. Which distance
+   tells the two apart? (60 m is refused either way and pins nothing.)
 3. With the `gate` fixture and the `gps(e_m, t_s)` helper: a first fix, then a jump that must be refused,
    then a fix that would be accepted from the jump but not from the first fix.
 4. `gate.check(…)` returns a tuple `(ok, reason)`: compare `[0]` with `is True` / `is False`.
@@ -219,7 +226,7 @@ python3 hunt.py test
 ```
 
 > [!TASK]
-> **Predict** (`PREDICT_TRAINING`): `hunt.py` will try 6 wrong versions of `geo.py` and `guard.py`
+> **Predict** (`PREDICT_TRAINING`): `hunt.py` will try 7 wrong versions of `geo.py` and `guard.py`
 > (it prints each change). How many will your tests kill?
 
 ```bash
@@ -231,11 +238,12 @@ survivor is left, then go on (Step 4 comes back to the last one).
 
 <details><summary>Stuck? Hints for survivors</summary>
 
-1. Mutant 5 survives? Your `enu_flat` tests never cross the ±180° meridian: two points 0.1° apart on
-   either side of it are 0.1° apart, not 359.9°.
-2. Mutant 6 survives? Every gate test of yours uses `elapsed_s = 1.0`, where `v_max × elapsed` and
-   `v_max` are equal. Test another elapsed time.
-3. Mutant 2 survives? A longitude of 185 must be refused.
+1. Mutant 5 survives? Which pair of longitudes is 0.1° apart on the globe but 359.9° apart as numbers?
+   Write an `enu_flat` test for that pair.
+2. Mutant 6 survives? At which single value of `elapsed_s` are `v_max × elapsed_s` and `v_max` equal?
+   Every one of your gate tests probably uses it.
+3. Mutant 2 survives? Which of the docstring's rules has no "just outside" case in your list?
+4. Mutant 7 survives? Hint 2 of TODO 4.
 </details>
 
 ## Step 3 — Properties (TODO 5)
@@ -262,9 +270,10 @@ b) the triangle inequality, run them; then c) the round trip and d) validity, **
 python3 -m pytest -q test_geo_properties.py
 ```
 
-Read the `Falsifying example` of d) (scroll up to it). If d) passes, run the command again: the search is
-random, and once found, an example is stored in `.hypothesis/` and tried first. (c) may fail on the whole
-Earth too, more rarely.)
+Read the `Falsifying example` of d) (scroll up to it). If d) passes, run it again (up to three times): a
+50 km move can only fail within 0.45° of a pole, a band that holds 0.5 % of the latitudes hypothesis draws —
+lesson §3's point about rare edges. Once found, an example is stored in `.hypothesis/` and tried first.
+c) may fail on the whole Earth too, more rarely.
 
 > [!TASK]
 > `COUNTEREXAMPLE`: its four numbers as `(lat0, lon0, e_m, n_m)`, and `EXPLAIN_COUNTEREXAMPLE`: what
@@ -288,6 +297,9 @@ python3 -m pytest -q test_geo_properties.py
 5. `DeadlineExceeded`? A property without `@settings(deadline=None)`.
 6. `Unsatisfiable` or `FailedHealthCheck: … filter`? An `assume` throws away almost every example: draw
    from a domain where it is rarely false instead.
+7. The check reads the strategy of your start latitude in c) and d): `st.floats(-80.0, 80.0)`, a
+   `.filter(…)`, or an `assume(abs(lat0) <= 80)` all work; the whole-Earth `LAT` does not, even when a run
+   is lucky.
 </details>
 
 Commit your tests, as in mission 05 (one concern per commit):
@@ -301,7 +313,7 @@ git commit -m "test(geo): examples and properties of geo and guard"
 ```
 
 > [!TIP] 🏅 End of session 1 — Bug pinner
-> Press **✔ Check my work**. It runs your two files against **18 mutants you have not seen**, each
+> Press **✔ Check my work**. It runs your two files against **20 mutants you have not seen**, each
 > function family on its own, and tells you, for each survivor, what kind of test would kill it. When
 > the checks of Steps 0–1, TODO 1–5 and Step 3 pass, you earn the **Bug pinner** badge (the other ✘
 > lines are session 2).
@@ -321,6 +333,16 @@ what does the rest of the function do with those inputs?
 > [!TASK]
 > `EQUIVALENT_MUTANT` (its number) and `EXPLAIN_EQUIVALENT`.
 
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. Look at the survivor's change: it removes `math.isfinite(lo)`. Which longitudes could now get further
+   than before? Only NaN, +infinity and −infinity.
+2. Follow one of them through the next line, `in_range = finite and abs(la) <= 90.0 and abs(lo) <= 180.0`.
+   What is `abs(math.inf) <= 180.0`? And `math.nan <= 180.0` (lesson §4's 🧰 box)? Try both in `python3`.
+3. If `in_range` is False for every such input in both versions, the result is the same for every input:
+   no test can tell them apart.
+</details>
+
 ## Step 5 — The saboteur (TODO 6)
 
 Now attack the **stack's own suite**. Read [navera_lite/tests/test_geo.py](file:./navera_lite/tests/test_geo.py)
@@ -330,14 +352,16 @@ a mutant survives.
 
 **TODO 6**: in [my_mutants.py](file:./my_mutants.py), write three mutants, each a tuple
 `(file, old, new)`, that make the stack wrong but that the suite does not notice. Its docstring has an
-example that does **not** count. Try them:
+example that does **not** count. Three rules: each one changes a different line, none of them repeats a
+training mutant of `hunt.py`, and each one changes code (not a comment). Try them:
 
 ```bash
 python3 hunt.py mine
 ```
 
 Each mutant needs two ✔: "the stack's own suite misses it", then "your tests kill it". For the second,
-**TODO 6b**: add tests at the end of `test_geo_examples.py` until `hunt.py mine` says 3 good mutants.
+**TODO 6b**: add tests at the end of `test_geo_examples.py` until `hunt.py mine` says 3 good mutants. If
+your TODO 1–4 tests already kill all three, good: say in report.md which of your tests kills each one.
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
@@ -367,12 +391,12 @@ jobs
 launch_test test_arbiter_launch.py
 ```
 
-About 10 seconds: the judge's log lines (`[arbiter-1] …`) appear between the test results. test_0
+About 3 to 6 seconds: the judge's log lines (`[arbiter-1] …`) appear between the test results. test_0
 passes; test_1 and test_2 **fail** with `AssertionError: TODO 7a` / `TODO 7b`; at the end
 `FAILED (failures=2)`, and then the shutdown test: `OK`.
 
 **TODO 7a** and **TODO 7b**: their docstrings say what "done" means. Use the helpers of the class
-(`send_gps`, `spin_for`, `last_status`) and the 🧰 unittest box of lesson §5.
+(`send_gps`, `spin_for`, `drain`, `last_status`) and the 🧰 unittest box of lesson §5.
 
 ```bash
 launch_test test_arbiter_launch.py
@@ -380,17 +404,21 @@ launch_test test_arbiter_launch.py
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
-1. 7a in four moves: forget old positions (`self.positions.clear()`), send a good fix, wait about 1 s,
-   send a fix 5000 m east, wait about 1 s, then assert.
+1. 7a in four moves: start from a clean list (`self.drain()`), send a good fix, wait about 1 s, send a
+   fix 5000 m east, wait about 1 s, then assert.
 2. `last_status()` returns `(values, message)`. The GPS source's own line is `values["src.gps"]`;
-   print it once to see its words (`print(values)`, the output shows in the test log).
-3. "Exactly one position": `len(self.positions)`, and that one has the good fix's longitude
-   (`assertAlmostEqual(…, places=7)`).
+   print it once to see its words (`print(values)`, the output shows in the test log). The number in it
+   is the gate for the REAL time between your two fixes (`jump 5000 m > 153 m in 1.0 s` after 1.03 s):
+   assert that `"jump"` is in it, not the exact text.
+3. "Exactly one position": `len(self.positions)`, and that one has the good fix's longitude:
+   `self.positions[0].longitude` (a NavSatFix has `.latitude` and `.longitude`), compared with
+   `assertAlmostEqual(…, places=7)`.
 4. 7b: `send_gps(lat=math.nan, lon=math.nan)`. The reason's words are in
    [arbiter_v0.py](file:./navera_lite/ros/arbiter_v0.py), in `usable()`.
 5. `values["src.gps"]` says `nothing received`? You read the status before the fix arrived: wait
    (`spin_for`) after each `send_gps`.
-6. test_1 says `2 != 1` positions? Did you clear the list at the start of the test?
+6. test_2 says `Lists differ: [sensor_msgs.msg.NavSatFix(…)] != []`? The list still holds test_1's
+   position: one judge, one tester node, one list for all tests. Start each test with `self.drain()`.
 </details>
 
 **Break the judge on purpose.** NAVERA's EST-1 was a judge that re-published the same measurement five
@@ -399,7 +427,8 @@ times per second. Make arbiter v0 do it: in
 `if key != self.last_sent:` by `if True:` and save.
 
 > [!TASK]
-> **Predict** (`PREDICT_REPUBLISH`): which of your launch tests will fail now?
+> **Predict** (`PREDICT_REPUBLISH`): which test will fail, and how many positions will test_1 count
+> instead of 1? (The judge ticks at 5 Hz; test_1 lasts about 2 s.)
 
 ```bash
 launch_test test_arbiter_launch.py
@@ -414,9 +443,11 @@ git status
 ```
 
 > [!TASK]
-> `REPUBLISH_FAILED`: the name(s) of the test(s) that failed. `git status` must show no change in
-> `navera_lite/` (the check compares it with the given stack). If test_1 did not fail, your TODO 7a does
-> not count the positions yet.
+> `REPUBLISH_FAILED`: the name of the test that failed, and `REPUBLISH_COUNT`: how many positions it
+> counted (the number before `!= 1`). `git status` must show no change in `navera_lite/` (the check
+> compares it with the given stack). If test_1 did not fail, your TODO 7a does not count the positions
+> yet. test_2 does not fail: it drains the list after the NaN fix has arrived, and then the judge, in
+> NO_FIX, has nothing to re-publish. The check runs your tests on this broken judge too.
 
 ## Step 7 — Report, check, look back
 

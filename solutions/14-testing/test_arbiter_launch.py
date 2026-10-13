@@ -65,6 +65,11 @@ class TestJudge(unittest.TestCase):
         while time.monotonic() < end:
             rclpy.spin_once(self.node, timeout_sec=0.05)
 
+    def drain(self, seconds=0.3):
+        """Let the messages already on their way arrive, then forget them: the test starts from a clean list."""
+        self.spin_for(seconds)
+        self.positions.clear()
+
     def send_gps(self, e_m=0.0, lat=None, lon=None):
         """Publish one GPS fix stamped NOW with σ 3 m: e_m metres east of START, or at (lat, lon) if given.
         Returns the (lat, lon) sent."""
@@ -94,8 +99,8 @@ class TestJudge(unittest.TestCase):
         """TODO 7a — goal: one good fix, then 1 s later a fix 5 km east (a spoofer's jump).
         Done when you assert, after the jump: the judge still says FIX (on the good fix, still fresh);
         its status names the jump for the GPS source; and it published exactly ONE position since the
-        test began — the good fix, never the jump, never the same one twice (NAVERA's EST-1)."""
-        self.positions.clear()
+        test began (drain() first) — the good fix, never the jump, never the same one twice."""
+        self.drain()
         good = self.send_gps(0.0)
         self.spin_for(1.0)
         self.send_gps(5000.0)
@@ -109,9 +114,9 @@ class TestJudge(unittest.TestCase):
     def test_2_a_nan_fix_gives_no_fix(self):
         """TODO 7b — goal: a GPS fix whose latitude and longitude are NaN (a broken receiver).
         Done when you assert: the judge says NO_FIX, its message says why (arbiter_v0.py has the words),
-        and it published no position since this test began."""
-        self.positions.clear()
+        and it published no position AFTER the NaN fix arrived (send it, then drain(), then wait 1 s)."""
         self.send_gps(lat=math.nan, lon=math.nan)
+        self.drain()                                                   # what was on its way before
         self.spin_for(1.0)
         values, message = self.last_status()
         self.assertEqual(values["state"], "NO_FIX")

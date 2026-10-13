@@ -13,7 +13,7 @@ import math
 import pytest
 
 from navera_lite.estimate import Estimate
-from navera_lite.geo import bearing_deg, enu_flat, haversine_m, is_finite_latlon, offset
+from navera_lite.geo import bearing_deg, enu_flat, great_circle_points, haversine_m, is_finite_latlon, offset
 from navera_lite.guard import JumpGate, gate_ok
 from navera_lite.settings import DEFAULTS
 
@@ -100,7 +100,7 @@ def test_is_finite_latlon(lat, lon, ok):
     assert is_finite_latlon(lat, lon) is ok
 
 
-# ======== TODO 3 — offset and enu_flat ==================================================================
+# ======== TODO 3 — offset, enu_flat, great_circle_points =================================================
 def test_a_move_north_changes_only_the_latitude(quito):
     lat, lon = offset(*quito, 0.0, M_PER_DEG)
     assert lat == pytest.approx(quito[0] + 1.0, abs=1e-9)
@@ -131,6 +131,11 @@ def test_offset_crosses_the_date_line():
     assert -180.0 <= lon < -179.9
 
 
+def test_opposite_points_have_no_unique_path():
+    with pytest.raises(ValueError):                           # the docstring: no unique shortest path
+        great_circle_points((10.0, 20.0), (-10.0, -160.0), 3)
+
+
 # ======== TODO 4 — the jump gate ========================================================================
 @pytest.mark.parametrize("dist_m, elapsed_s, ok", [
     (150.0, 1.0, True),         # exactly the limit 100 × 1 + 50: accepted (≤)
@@ -143,6 +148,11 @@ def test_offset_crosses_the_date_line():
 ])
 def test_gate_ok_is_mission_01s_rule(dist_m, elapsed_s, ok):
     assert gate_ok((0.0, 0.0), (dist_m, 0.0), elapsed_s, 100.0, 50.0) is ok
+
+
+def test_the_gate_measures_a_diagonal_jump_in_a_straight_line():
+    # 100 m east AND 100 m north = 141.4 m (not 200 m): within 150 m after 1 s
+    assert gate_ok((0.0, 0.0), (100.0, 100.0), 1.0, 100.0, 50.0) is True
 
 
 def test_a_refused_fix_never_becomes_trusted(gate):
@@ -162,9 +172,3 @@ def test_longitudes_beyond_180_are_refused(lon):
 def test_offset_brings_the_longitude_back():
     lat, lon = offset(10.0, 179.0, 300_000.0, 0.0)            # ~2.7° east of 179°
     assert -180.0 <= lon < 180.0
-
-
-def test_opposite_points_have_no_unique_path():
-    from navera_lite.geo import great_circle_points
-    with pytest.raises(ValueError):
-        great_circle_points((0.0, 0.0), (0.0, 180.0), 3)
