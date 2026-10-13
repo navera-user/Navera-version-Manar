@@ -2,9 +2,9 @@
 
 **Goal:** write the lens part of NAVERA Lite (`navera_lite/fisheye.py`): the fisheye model, where it is valid,
 how wide a straight view should be, the straightening; then calibrate the real lens from 36 real views, test
-the result on views it never saw, write a calibration file with NAVERA Lite's tool, and explain why your numbers
-are not the bench's.
-**Time:** 4 h to 5 h 30 in two sessions (a strong programmer: about 3 h 30).
+the result on views it never saw, write a calibration file with NAVERA Lite's tool, and compare it with the
+bench's.
+**Time:** 4 h to 5 h 30 in two sessions (a strong programmer: about 3 h 30; up to 6 h 30 if numpy is new to you).
 **Fast track:** if you know numpy and OpenCV, write the TODOs from the docstrings without the 🧰 and "Stuck?"
 boxes, then do "Going further" (*Zhang by hand*) and write `ZHANG_FX` in `answers.py`.
 
@@ -66,10 +66,7 @@ cp /data/academy/19-calibration/views/f0216.jpg .
 ```
 
 Open [f0216.jpg](file:./f0216.jpg): the screen's edges and the window frame are curved; in the room they are
-straight.
-
-> [!TASK]
-> Write `CALIB_SIZE`: the picture size the calibration is for, `(width, height)`.
+straight. Note the picture size the calibration is for: it must match the camera's picture exactly.
 
 ## Step 2 — The fisheye projection (TODO 1)
 
@@ -133,10 +130,27 @@ print(fisheye_project(np.array([[1.0, 0.5, 2.0]]), K, D))      # the lesson's wo
 
 ## Step 3 — Where is the model valid? (TODO 2)
 
-**TODO 2** `theta_from_theta_d(theta_d, D)`: lesson §3 and its 🧰 bisection box. Plan it on paper first:
+Read lesson §3 first.
+
+**TODO 2** `theta_from_theta_d(theta_d, D)`: lesson §3 and the 🧰 bisection box below. Plan it on paper first:
 (1) where does the rising part of θ_d(θ) end on [0, π/2]? (evaluate `theta_d_of` on a fine grid, e.g. 20 001
 points, and find the first place where it stops increasing: `np.diff`); (2) which θ_d have no answer?
 (3) bisection on the rising part.
+
+<details><summary>🧰 Bisection</summary>
+
+To solve g(θ) = target where g rises on [lo, hi]: take the middle m; if g(m) < target the answer is in [m, hi], else in
+[lo, m]. Each step halves the interval; 60 steps are far more than enough.
+
+```python
+lo, hi = 0.0, 2.0                  # solve x**3 = 5 on [0, 2]
+for _ in range(60):
+    m = (lo + hi) / 2
+    if m ** 3 < 5: lo = m
+    else: hi = m
+print(lo)                          # 1.7099759466766968
+```
+</details>
 
 <details><summary>🧰 numpy: where does an array stop rising?</summary>
 
@@ -168,9 +182,10 @@ Open `out/lens_curve.png`: the pinhole, the ideal fisheye and the bench calibrat
 
 1. Bisection needs an interval where the function **rises**: [0, θ_top], with θ_top where the grid values stop
    increasing.
-2. θ_d = 1.2 has two answers (one rising, one falling): 1.249 is on the falling part; the rising one is about
-   1.083. Search only in [0, θ_top].
-3. θ_d above the top value (or negative): `return float("nan")` before any search.
+2. θ_d = 1.2 has two angles: θ ≈ 1.083 rad (62.0°) on the rising part and θ ≈ 1.249 rad (71.5°) on the falling
+   part. Return the rising one: search only in [0, θ_top].
+3. θ_d above the top value (or negative): `return float("nan")` before any search. Never type the top of this
+   lens (1.249) into your code: find it with the grid, so the function works for any lens (the check uses others).
 4. A result near 29.2 instead of 0.5097: you returned degrees; the function returns radians.
 5. PIXEL_ANGLE_DEG: a' = (u − cx)/fx and b' = (v − cy)/fy use **different** focal lengths; θ_d = √(a'² + b'²);
    then `math.degrees(theta_from_theta_d(...))`. 48.3°? You used fx for both. 51.8°? That is θ_d in degrees: the
@@ -178,6 +193,8 @@ Open `out/lens_curve.png`: the pinhole, the ideal fisheye and the bench calibrat
 </details>
 
 ## Step 4 — How wide should the straight view be? (TODO 3)
+
+Read lesson §5 first.
 
 You are the **trade-off engineer**: the drone's straight view must keep detail for map matching and cover as
 much ground as possible.
@@ -212,7 +229,7 @@ Open `out/stretch.png`.
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
-1. Degrees in, radians inside: `t = math.radians(theta_deg)`.
+1. Degrees in, radians inside: `t = math.radians(theta_deg)`. A result near 0 or negative: θ is still in degrees.
 2. 1.702 instead of 1.474 for (40°, 659.79): you used fx alone below the line; the lens' pixels per radian at θ
    are fx·θ_d′(θ).
 3. 1.602: that is θ_d/θ (an average), not the derivative 1 + 3k1θ² + 5k2θ⁴ + 7k3θ⁶ + 9k4θ⁸. 0.679: upside down
@@ -221,6 +238,8 @@ Open `out/stretch.png`.
 </details>
 
 ## Step 5 — Straighten a real view (TODO 4)
+
+Read lesson §4 first.
 
 **TODO 4** `undistort(img, K, D, K_new)`: lesson §4 and §8 — the map once, then remap. No rotation
 (`np.eye(3)`), map type `cv2.CV_16SC2`, bilinear interpolation, a constant (black) border.
@@ -270,7 +289,8 @@ Read lesson §6–§8 first.
 ## Step 6 — The board (TODO 5)
 
 **TODO 5** `board_points(cols, rows, square_m)`: lesson §8, "Corners": the board is the plane Z = 0, in the
-detector's order, shape (cols·rows, 1, 3), float64.
+detector's order, shape (cols·rows, 1, 3), float64. Fast track: one line with `np.mgrid` (or `np.meshgrid`) and
+`reshape`.
 
 ```bash
 python3 calibrate_lab.py test
@@ -291,9 +311,19 @@ python3 calibrate_lab.py detect
 
 ## Step 7 — Calibrate (TODO 6) — and the detective
 
-**TODO 6** `calibrate_fisheye(obj, views, size)`: lesson §8, the call and the flags table: the three flags the
-docstring describes, `CRITERIA` (given at the top of the file), K0 = identity, D0 = four zeros. **Do not** catch
+**TODO 6** `calibrate_fisheye(obj, views, size)`: lesson §8, the call, with the three flags the docstring describes,
+`CRITERIA` (given at the top of the file), K0 = identity, D0 = four zeros (placeholders: lesson §8). **Do not** catch
 `cv2.error`: the given `calibrate_robust()` reads the refused view's number in it.
+
+| Flag | Meaning |
+|---|---|
+| `cv2.fisheye.CALIB_RECOMPUTE_EXTRINSIC` | re-estimate every board pose at each step of the refinement |
+| `cv2.fisheye.CALIB_CHECK_COND` | refuse a view whose pose cannot be estimated reliably (ill-conditioned) |
+| `cv2.fisheye.CALIB_FIX_SKEW` | keep K[0, 1] = 0 |
+| `cv2.fisheye.CALIB_FIX_K3`, `…_FIX_K4` | freeze some k's (not today; "Going further") |
+| `cv2.fisheye.CALIB_USE_INTRINSIC_GUESS` | start from your K0 instead of the picture's size (not today) |
+
+Flags are combined with `|`.
 
 > [!TASK]
 > **Predict** (`PREDICT_FX`): will your fx be the bench's 660.5 px? Then:
@@ -313,13 +343,15 @@ per view: its RMS (once TODO 7 is done), its farthest corner from the axis and t
 > Write `MY_FX`, `MY_RMS`, `VIEWS_USED`, `REFUSED_VIEWS` and `FARTHEST_USED_DEG`. You are now the **detective**:
 > compare the refused views' lines with the others (and look at them: `cp /data/academy/19-calibration/views/f0208.jpg .`).
 > `EXPLAIN_REFUSED`: what do the refused views have in common, and why can OpenCV not estimate their pose
-> reliably? What does refusing them cost the calibration (lesson §3)?
+> reliably? What does refusing them cost the calibration? Compare `FARTHEST_USED_DEG` with the 52° of lesson §3:
+> where were the corners between 43° and 52°, and what does your calibration now know about the edges of the 111°
+> view (55.5°)?
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
 1. `cv2.fisheye.calibrate([obj] * len(views), views, size, np.eye(3), np.zeros((4, 1)), flags=…, criteria=CRITERIA)`
    returns five things: return them as they come.
-2. Flags are combined with `|`: the three of the lesson's table that recompute the poses, check the conditioning
+2. Flags are combined with `|`: the three of the table above that recompute the poses, check the conditioning
    and fix the skew.
 3. The test says the skew K[0, 1] ≠ 0: the "fix skew" flag is missing. calibrate_robust refuses nothing and the
    RMS looks fine? `CALIB_CHECK_COND` is missing.
@@ -373,11 +405,13 @@ Your RMS must now equal OpenCV's (to 10⁻⁶ px), and every view has its own RM
 python3 calibrate_lab.py stability
 ```
 
-It calibrates random subsets of 8, 12, 20 and 30 views, 10 times each, with your functions (about 30 s).
+It calibrates random subsets of 8, 12, 20 and 30 views, 10 times each, with your functions (about 30 s), and prints
+the mean, std, min and max of fx for each size.
 
 > [!TASK]
-> Write `FX_STD_8` and `FX_STD_30`, and `EXPLAIN_STABILITY`: what do these spreads say about a calibration with
-> "RMS 0.5 px", and about how many views to take?
+> **Before you run it, predict** (`PREDICT_STD`): the std of fx, in px, with 8 views and with 30 views. Then run it,
+> write `FX_STD_8` and `FX_STD_30`, and `EXPLAIN_STABILITY`: what do these spreads say about a calibration with
+> "RMS 0.5 px", and about how many views to take? Keep the 30-view min and max in mind for Step 11.
 
 ## Step 10 — The honest test (TODO 8)
 
@@ -393,28 +427,36 @@ python3 calibrate_lab.py test
 python3 calibrate_lab.py holdout
 ```
 
-It calibrates on 28 views, tests on the 8 others with your `holdout_rms`, then does the same with the
-Brown–Conrady model (given). Then draw the lens curves of your calibration, the bench's and Brown–Conrady's:
+It keeps 8 fixed test views, calibrates on the 28 others (OpenCV refuses some of them: the runner says how many
+were used), tests with your `holdout_rms`, then does the same with the Brown–Conrady model (given). Then compare
+the three models where it matters, the angle each one gives to the same pixel:
 
 ```bash
 python3 calibrate_lab.py curves
 ```
 
-Open `out/my_curves.png`.
+Open `out/my_curves.png`: along the principal point's row, the angle each model gives to a pixel, against the
+pixel's distance from the principal point. Grey: beyond the farthest corner your calibration used.
+
+> [!NOTE]
+> Brown–Conrady's fx (≈ 740–750 px) is not comparable with the fisheye's (≈ 670 px): another formula, so another
+> meaning of fx, with its own principal point and its own board distances (lesson §7, point 3). That is also why,
+> inside the data, its angles differ from the fisheye's by 1–3° while both predict the same corners: each model
+> places the boards differently. Look at what happens beyond the grey line, near the picture's edges.
 
 > [!TASK]
 > Write `TRAIN_RMS`, `TEST_RMS`, `BC_TEST_RMS` (three decimals), and `REASON_BC`: the lesson says a fisheye lens
 > needs the fisheye model, yet Brown–Conrady does as well on the hold-out. Why is there no contradiction? (Where
-> are the test corners? Where do the curves part?)
+> are the test corners? Where do the curves part, and what does Brown–Conrady do near the picture's edge?)
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
 1. For each test view: `cv2.fisheye.undistortPoints(view, K, D)` gives the corners as ideal pinhole rays
    (normalised coordinates).
-2. `cv2.solvePnP(obj, those_rays, np.eye(3), None)` returns `ok, rvec, tvec`: the board's pose, with K = identity
-   because the rays are already normalised.
+2. `cv2.solvePnP` finds the board's pose from those rays, with K = identity and no distortion, because the rays are
+   already normalised. It returns three things: `ok, rvec, tvec`.
 3. Collect the rvecs and tvecs, then your `reprojection_rms(obj, test_views, rvecs, tvecs, K, D)` does the rest.
-4. About 13 px instead of about 0.57? You ran solvePnP on the raw fisheye pixels with K and no distortion: the
+4. About 13 px instead of about half a pixel? You ran solvePnP on the raw fisheye pixels with K and no distortion: the
    pose is wrong. Undo the lens first (hint 1).
 </details>
 
@@ -422,6 +464,10 @@ Open `out/my_curves.png`.
 
 NAVERA Lite's calibration tool does what NAVERA's does (lesson, "In NAVERA"), with **your** `board_points` and
 `calibrate_fisheye`:
+
+> [!TASK]
+> **Before** you run the tool, compute from your `MY_FX` the `out_hfov_deg` it will write (lesson §5, NAVERA's
+> rule; two decimals): `CLI_HFOV_DEG`. Then run it and check.
 
 ```bash
 python3 -m navera_lite.tools.calibrate --images /data/academy/19-calibration/views --board 9x6 --square-mm 32.94 --out my_calib.yaml
@@ -435,15 +481,23 @@ python3 -m navera_lite.tools.calibrate --images /data/academy/19-calibration/vie
 cat my_calib.yaml
 ```
 
-Same detector, same flags, same views: its fx should be yours. Now three facts disagree with the bench file:
-your fx is not 660.5 px, the file's `out_hfov_deg` is not 111, and (Step 10) Brown–Conrady was as good as the
-fisheye model. You explained the third in `REASON_BC`. Two facts help with the first: the course's 36 views are
-36 of the bench session's 39 (three were left out of the dataset, two because a person's face is visible), and
-your Step 9 spread.
+Same detector, same flags, same views: its fx should be yours, and its `out_hfov_deg` your `CLI_HFOV_DEG`. Now
+three facts disagree with the bench file: your fx is not 660.5 px, the file's `out_hfov_deg` is not 111, and
+(Step 10) Brown–Conrady was as good as the fisheye model. You explained the third in `REASON_BC`. Three facts help
+with the first: (1) the course's 36 views are 36 of the bench session's 39: three were left out of the dataset, two
+of them because a person's face is visible; (2) in Step 9, none of your 30-view subsets came near 660.5 px: compare
+their min and max with 660.5; (3) your calibration and the bench's both say RMS ≈ 0.5 px.
 
 > [!TASK]
-> Write `CLI_HFOV_DEG` (from `my_calib.yaml`), `REASON_FX` (two reasons why your fx is not the bench's) and
-> `REASON_HFOV` (why your file says `CLI_HFOV_DEG` and not 111°: lesson §5).
+> Write `REASON_FX` (two reasons why your fx is not the bench's) and `REASON_HFOV` (why your file says
+> `CLI_HFOV_DEG` and not 111°: lesson §5).
+
+<details><summary>Read this after you wrote REASON_FX</summary>
+Measured on the host from the original bench frames: the 36 course views give fx 670.2 px before any JPEG re-save
+and with no view refused. Refusing f0023 and f0208 changes fx by 0.04 px, and the JPEG re-save moves the corners by
+about 0.01 px. The 10 px come from the three views the dataset left out: which views you take moves fx more than the
+RMS can show, and fx trades against the boards' distance at the same RMS (lesson §7, point 3).
+</details>
 
 ## Step 12 — The memo, then look back
 
@@ -461,7 +515,8 @@ check passes, you earn the **Calibrator** badge. Then look back, without the les
 
 1. Explain to a colleague in three sentences why NAVERA throws away a third of its lens' view.
 2. Which of your predictions was the most wrong? What did you assume?
-3. The bench views reach 52° from the axis; the 111° view needs 55.5°. What would you change in the photo session?
+3. The bench views reach 52° from the axis, but the corners your calibration kept stop at 43°; the 111° view needs
+   55.5°. What would you change in the photo session?
 
 Write your answers in `LOOK_BACK` in `answers.py` if you want your teacher to read them (not graded).
 
@@ -469,13 +524,23 @@ Write your answers in `LOOK_BACK` in `answers.py` if you want your teacher to re
 
 - **Zhang by hand.** Take 5 views from `corners.npz`, turn their corners into ideal pinhole pixels with
   `cv2.fisheye.undistortPoints(view, K, D, P=K)` (your calibration), fit one homography per view with
-  `cv2.findHomography(board_xy, pixels)`, build the two equations per view of the lesson's optional box on
+  `cv2.findHomography(board_xy, pixels)`, build the two equations per view of the box below on
   b = (B11, B12, B22, B13, B23, B33), solve V·b = 0 with `np.linalg.svd`, and recover fx, fy, cx, cy (Zhang 2000,
   appendix B). How close is `ZHANG_FX` to your refined fx?
+
+  <details><summary>The two equations of Zhang's closed form</summary>
+
+With the board at Z = 0, s·[u, v, 1]ᵀ = K [r1 r2 r3 t] [X, Y, 0, 1]ᵀ = K [r1 r2 t] [X, Y, 1]ᵀ = H [X, Y, 1]ᵀ.
+Write H = [h1 h2 h3] = λ K [r1 r2 t]: then r1 = K⁻¹h1/λ and r2 = K⁻¹h2/λ. Perpendicular columns of equal length
+give h1ᵀ B h2 = 0 and h1ᵀ B h1 = h2ᵀ B h2, with B = K⁻ᵀK⁻¹ symmetric: two equations, <b>linear</b> in the 6 entries
+of B. Stack them for N ≥ 3 views, solve V·b = 0 with an SVD, and recover K from B (a Cholesky factorisation),
+then each pose from H_i and K.
+  </details>
+
 - **Fewer numbers.** Add `cv2.fisheye.CALIB_FIX_K3 | cv2.fisheye.CALIB_FIX_K4` to your flags (keep a copy of your
   function first). How do the RMS, the hold-out error and the curve beyond 45° change? Does the curve still turn
   back?
 - **Your calibration at work.** Straighten f0216 with `out/my_fisheye.yaml` instead of the bench file, at
-  110.15°. Is the chessboard as straight?
+  the width your `my_calib.yaml` says. Is the chessboard as straight?
 - **Fly your own camera part.** Swap in your mission-18 `camera.py` (keep a backup) and run `python3 run_lens.py
   stretch` again: `cp navera_lite/camera.py camera_course.py && cp ../18-camera-model/navera_lite/camera.py navera_lite/`.

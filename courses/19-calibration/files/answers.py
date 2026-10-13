@@ -9,9 +9,6 @@ PREDICT_EDGE = ""           # Two cameras with the same f = 600 px: a pinhole (r
                             # (r = f·θ). A ray at 80° and a ray at 40° from the axis: for EACH camera, how many
                             # times farther from the centre is the 80° ray than the 40° ray? (a guess)
 
-# ---- Step 1: the data -------------------------------------------------------------------------------
-CALIB_SIZE = (0, 0)         # the picture size the bench calibration is for: (width, height) in pixels
-
 # ---- Step 2: the fisheye projection (TODO 1) ---------------------------------------------------------
 STEP2_U = 0.0               # YOUR fisheye_project of X_c = (−1.6, 0.4, 1.4) m with the bench calibration: u (px)
 STEP2_V = 0.0               # ... and v (px), two decimals
@@ -49,6 +46,7 @@ EXPLAIN_REFUSED = ""        # detective: what do the refused views have in commo
 WORST_VIEW = ""             # the used view with the largest RMS, e.g. "f0001"
 
 # ---- Step 9: stability (python3 calibrate_lab.py stability) --------------------------------------------
+PREDICT_STD = ""            # before running: the std of fx (px) with 8 views and with 30 views (a guess)
 FX_STD_8 = 0.0              # the spread (std) of fx with 8 views (px, one decimal)
 FX_STD_30 = 0.0             # ... with 30 views
 EXPLAIN_STABILITY = ""      # what do these spreads say about "RMS 0.5 px" and about how many views to take?
@@ -58,10 +56,10 @@ TRAIN_RMS = 0.0             # fisheye: train RMS (px, three decimals)
 TEST_RMS = 0.0              # fisheye: test RMS on the 8 unseen views (px, three decimals)
 BC_TEST_RMS = 0.0           # Brown–Conrady: test RMS on the same 8 views (px, three decimals)
 REASON_BC = ""              # the lesson says a fisheye lens needs the fisheye model, yet Brown–Conrady does as well on
-                            # the hold-out. Why is there no contradiction? (my_curves.png helps)
+                            # the hold-out. Why is there no contradiction? (where do the test corners stop? where do the curves part?)
 
 # ---- Step 11: the calibration tool --------------------------------------------------------------------------
-CLI_HFOV_DEG = 0.0          # the straight-view width your my_calib.yaml says (out_hfov_deg)
+CLI_HFOV_DEG = 0.0          # BEFORE running the tool: the out_hfov_deg it will write, from your MY_FX (two decimals)
 REASON_FX = ""              # why is your fx (and the tool's) not the bench's 660.5 px? Give two reasons.
 REASON_HFOV = ""            # why does your file say CLI_HFOV_DEG and not 111°?
 

@@ -7,9 +7,6 @@
 # ---- Step 0: pinhole or fisheye? (no code) ---------------------------------------------------------
 PREDICT_EDGE = "Pinhole: tan 80 / tan 40 is about 6.8 times; fisheye: 80 / 40 = 2 times."
 
-# ---- Step 1: the data -------------------------------------------------------------------------------
-CALIB_SIZE = (1920, 540)
-
 # ---- Step 2: the fisheye projection (TODO 1) ---------------------------------------------------------
 STEP2_U = 331.98
 STEP2_V = 482.88
@@ -52,6 +49,7 @@ EXPLAIN_REFUSED = ("Both refused views put the board far to the right, with corn
 WORST_VIEW = "f0022"
 
 # ---- Step 9: stability (python3 calibrate_lab.py stability) --------------------------------------------
+PREDICT_STD = "About 10 px with 8 views and 2 px with 30."
 FX_STD_8 = 38.9
 FX_STD_30 = 3.4
 EXPLAIN_STABILITY = ("Each subset fits its own corners to about 0.5 px, yet fx moves by tens of pixels with 8 views "
@@ -62,15 +60,15 @@ EXPLAIN_STABILITY = ("Each subset fits its own corners to about 0.5 px, yet fx m
 TRAIN_RMS = 0.474
 TEST_RMS = 0.567
 BC_TEST_RMS = 0.570
-REASON_BC = ("All the test corners are within about 45 degrees of the axis, where tan is still small and a "
-             "Brown–Conrady polynomial can follow the lens; the curves only part beyond the corners, where the "
-             "hold-out does not test, and Brown–Conrady cannot reach 90 degrees at all.")
+REASON_BC = ("All the test corners are within about 43 degrees of the axis, where tan is still small and a "
+             "Brown–Conrady polynomial can follow the lens; the angle curves part beyond the corners, where the "
+             "hold-out does not test, and Brown–Conrady runs away towards its tan 90 degrees limit at the edges.")
 
 # ---- Step 11: the calibration tool --------------------------------------------------------------------------
 CLI_HFOV_DEG = 110.15
-REASON_FX = ("Different views: the course has 36 of the bench session's 39 views and OpenCV refused 2, so 34 views "
-             "against the bench's 38. And fx is not well determined: my subsets of 30 views already spread by "
-             "3 to 4 px, and fx trades against the board distance with the same RMS.")
+REASON_FX = ("Different views: the course has 36 of the bench session's 39 views, and the three left out are enough to "
+             "move fx, since none of my 30-view subsets reached 660.5 px (664.8 to 675.1). And fx trades against the "
+             "board distance with the same RMS of about 0.5 px, so the RMS cannot tell 660 from 670.")
 REASON_HFOV = ("NAVERA's rule keeps f_new at least fx: with my fx of 670.3 px the widest view is "
                "2 atan(960 / 670.3) = 110.15 degrees, narrower than with the bench fx of 660.5 px.")
 

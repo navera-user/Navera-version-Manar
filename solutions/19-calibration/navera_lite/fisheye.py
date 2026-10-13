@@ -101,7 +101,8 @@ def calibrate_robust(obj, views, size, names=None, min_views=6):
 
     Returns ((rms, K, D, rvecs, tvecs), kept_names, dropped_names). Names default to the view indices.
     Raises the last cv2.error if fewer than min_views views would remain.
-    Example: calibrate_robust(obj, views, (1920, 540), names)[2] → ['f0023', 'f0208'] on the course's views
+    Example: calibrate_robust(obj, views, (1920, 540), names)[2] → the names of the views OpenCV refused, in the order
+             they were refused ([] when none was)
     """
     views = list(views)
     names = list(names) if names is not None else list(range(len(views)))
@@ -248,8 +249,8 @@ def calibrate_fisheye(obj, views, size):
     obj: board_points (N, 1, 3); views: a list of detected corners, each (N, 1, 2) float64; size: (width, height).
     Returns (rms_px, K, D, rvecs, tvecs) exactly as OpenCV gives them: a float, a 3 × 3 array, a 4 × 1 array and
     two lists of 3 × 1 arrays (one per view).
-    Example: calibrate_fisheye(obj, views_34, (1920, 540))[0] → about 0.506 (views_34: the 34 course views that
-             OpenCV accepts; with all 36, OpenCV refuses one and raises cv2.error)
+    Example: on 10 made-up views of a lens with fx 520, fy 540 (python3 calibrate_lab.py test):
+             K[0, 0] → 520.00, K[1, 1] → 540.00, rms → about 0 (an exact lens, exact corners)
     """
     flags = cv2.fisheye.CALIB_RECOMPUTE_EXTRINSIC | cv2.fisheye.CALIB_CHECK_COND | cv2.fisheye.CALIB_FIX_SKEW
     objs = [np.asarray(obj, dtype=np.float64).reshape(-1, 1, 3)] * len(views)
@@ -289,7 +290,7 @@ def holdout_rms(obj, test_views, K, D):
     fixed; then the error is measured exactly as reprojection_rms() does.
 
     Returns (rms over all corners in px, [rms of each view in px]).
-    Example: a calibration made from 28 of the course's views, tested on the 8 others → about (0.57, [...])
+    Example: 4 unseen exact views of a lens, with its true K and D (python3 calibrate_lab.py test) → (about 1e-8, [4 values])
     """
     rvecs, tvecs = [], []
     O = np.asarray(obj, dtype=np.float64).reshape(-1, 1, 3)

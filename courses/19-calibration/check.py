@@ -217,6 +217,9 @@ def _():
             raise CheckFailed("theta_from_theta_d returns DEGREES: return radians")
         c.near(v, want, 1e-5, f"theta_from_theta_d({td}) (radians, another lens)")
     v = num(go(f, 1.1018511, D3), "theta_from_theta_d(1.10185)")
+    if abs(v - 1.1762) < 2e-3:
+        raise CheckFailed("theta_from_theta_d(1.10185) on another lens = 1.1762: that is the BENCH lens' top — find each "
+                          "lens' own top with a grid and np.diff, never type a number (lab Step 3, plan (1))")
     if v > 1.26:
         raise CheckFailed(f"theta_from_theta_d(1.10185) = {v:.4f}: past the top of this lens' curve (1.2424 rad). Find "
                           "where θ_d(θ) stops rising first, and search only up to there (lab Step 3, the plan)")
@@ -241,7 +244,11 @@ def _():
              "inside; nan when θ_d′ ≤ 0 or θ ≥ 90°.")
 def _():
     (f,) = functions("stretch_at")
-    v = num(go(f, 50.0, 380.0, K3, D3), "stretch_at(50, 380)")
+    v = go(f, 50.0, 380.0, K3, D3)
+    if isnan(v) or (v is not None and not isinstance(v, (tuple, list)) and abs(float(v)) < 1e-6):
+        raise CheckFailed(f"stretch_at(50, 380) = {v!r} on a lens valid up to 71°: is θ still in DEGREES inside cos and the "
+                          "polynomial? t = math.radians(theta_deg)")
+    v = num(v, "stretch_at(50, 380)")
     for bad, why in ((1.83941, "you left out the lens' slope θ_d′(θ): the lens records fx·θ_d′(θ) pixels per radian"),
                      (1.86314, "that is θ_d/θ (an average), not the derivative θ_d′(θ)"),
                      (0.48060, "upside down: straight-view pixels per radian on top, lens pixels per radian below")):
@@ -274,9 +281,12 @@ def _():
          "the size is (width, height)")
     c.ok(a.dtype == np.uint8, f"undistort() must return a uint8 image, got {a.dtype}")
     black = np.all(want == 0, axis=2)
+    diff = np.abs(a.astype(int) - want.astype(int))
+    if float(diff[~black].mean()) > 2.0:
+        raise CheckFailed(f"undistort() differs from the straightened picture by {diff[~black].mean():.1f} grey levels on "
+                          "average: check K_new (the 4th argument), the identity rotation and bilinear interpolation")
     if black.any() and not np.all(a[black] == 0):
         raise CheckFailed("undistort(): directions the lens picture does not contain must stay BLACK — a constant border")
-    diff = np.abs(a.astype(int) - want.astype(int))
     c.ok(float(diff.mean()) < 0.5, f"undistort() differs from the straightened picture by {diff.mean():.1f} grey levels on "
          "average: check K_new (the 4th argument), the identity rotation and bilinear interpolation")
     grey = go(f, cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), K2, D2, K_new)
@@ -284,21 +294,14 @@ def _():
          "(take the size from img.shape[:2])")
 
 
-@c.test("Steps 0–3: prediction, the size, your projection, a pixel's angle",
-        hint="Step 1: the size in the yaml (width, height). Step 2: your fisheye_project of (−1.6, 0.4, 1.4) m and its "
+@c.test("Steps 0–3: prediction, your projection, a pixel's angle",
+        hint="Step 2: your fisheye_project of (−1.6, 0.4, 1.4) m and its "
              "distance to (fx·a + cx, fy·b + cy). Step 3: a' = (u − cx)/fx, b' = (v − cy)/fy, θ_d = √(a'² + b'²), "
              "then your theta_from_theta_d, in degrees.")
 def _():
-    pe, size, u, v, gap, ang, why = answers("PREDICT_EDGE", "CALIB_SIZE", "STEP2_U", "STEP2_V", "PINHOLE_GAP_PX",
-                                            "PIXEL_ANGLE_DEG", "EXPLAIN_TURN_BACK")
+    pe, u, v, gap, ang, why = answers("PREDICT_EDGE", "STEP2_U", "STEP2_V", "PINHOLE_GAP_PX", "PIXEL_ANGLE_DEG",
+                                      "EXPLAIN_TURN_BACK")
     predicted("PREDICT_EDGE", pe)
-    try:
-        w, h = (int(x) for x in size)
-    except (TypeError, ValueError):
-        raise CheckFailed(f"CALIB_SIZE should be two numbers (width, height), got {size!r}")
-    if (w, h) == (540, 1920):
-        raise CheckFailed("CALIB_SIZE is (height, width): write (width, height), as the yaml's image_width first")
-    c.ok((w, h) == (1920, 540), f"CALIB_SIZE = {size!r}: read image_width and image_height in insta360_top.yaml")
     u, v = number(u, "STEP2_U"), number(v, "STEP2_V")
     if abs(u - 182.22) < 0.5 and abs(v - 523.77) < 0.5:
         raise CheckFailed("STEP2_U / STEP2_V: that is the PINHOLE pixel; write your fisheye_project's pixel")
@@ -469,10 +472,11 @@ def _():
         hint="Run python3 calibrate_lab.py calibrate (fx, RMS, views used and refused, farthest corner used, the worst "
              "view) and stability (the std of fx for 8 and 30 views). EXPLAIN_…: in your own words.")
 def _():
-    pf, fx, rms, used, refused, far, why_ref, worst, s8, s30, why_st = answers(
+    pf, fx, rms, used, refused, far, why_ref, worst, ps, s8, s30, why_st = answers(
         "PREDICT_FX", "MY_FX", "MY_RMS", "VIEWS_USED", "REFUSED_VIEWS", "FARTHEST_USED_DEG", "EXPLAIN_REFUSED",
-        "WORST_VIEW", "FX_STD_8", "FX_STD_30", "EXPLAIN_STABILITY")
+        "WORST_VIEW", "PREDICT_STD", "FX_STD_8", "FX_STD_30", "EXPLAIN_STABILITY")
     predicted("PREDICT_FX", pf)
+    predicted("PREDICT_STD", ps)
     fx, rms = number(fx, "MY_FX"), number(rms, "MY_RMS")
     if abs(fx - 660.48) < 0.5:
         raise CheckFailed("MY_FX = 660.5 is the BENCH file's fx: write the one YOUR calibration printed")
@@ -505,9 +509,9 @@ def _():
 
 
 @c.test("Steps 10–11: the hold-out, the calibration tool's file, and the three reasons",
-        hint="Step 10: calibrate_lab.py holdout (train, test, Brown–Conrady test). Step 11: run python3 -m "
-             "navera_lite.tools.calibrate … --out my_calib.yaml in the lesson folder; CLI_HFOV_DEG = its out_hfov_deg. "
-             "REASON_…: the lesson's §3, §5 and §7, and lab Steps 9 and 11.")
+        hint="Step 10: calibrate_lab.py holdout (train, test, Brown–Conrady test). Step 11: CLI_HFOV_DEG from your fx "
+             "and NAVERA's rule (lesson §5), then run python3 -m navera_lite.tools.calibrate … --out my_calib.yaml in the "
+             "lesson folder. REASON_…: the lesson's §3, §5 and §7, and lab Steps 9 and 11 (its three facts).")
 def _():
     tr, te, bc, why_bc, hf, why_fx, why_hf = answers("TRAIN_RMS", "TEST_RMS", "BC_TEST_RMS", "REASON_BC", "CLI_HFOV_DEG",
                                                      "REASON_FX", "REASON_HFOV")
@@ -535,14 +539,19 @@ def _():
     c.ok(int(cal.get("views", 0)) == 34 and [int(cal.get("image_width", 0)), int(cal.get("image_height", 0))] == [1920, 540],
          "my_calib.yaml: 34 views of 1920 × 540 expected — run the tool on the course's views")
     hf = number(hf, "CLI_HFOV_DEG")
-    c.near(hf, out_hfov, 0.006, "CLI_HFOV_DEG (copy out_hfov_deg from my_calib.yaml)")
+    if abs(hf - 110.94) < 0.01:
+        raise CheckFailed("CLI_HFOV_DEG = 110.94 is the BENCH lens' width: use YOUR fx")
+    c.near(hf, out_hfov, 0.006, "CLI_HFOV_DEG (it should equal the out_hfov_deg of your my_calib.yaml)")
     c.near(hf, 110.15, 0.01, "CLI_HFOV_DEG (degrees)")
     explained("REASON_FX", why_fx,
-              ((r"view", r"photo", r"image", r"frame", r"\b3[468]\b", r"refus", r"dataset", r"face", r"left out",
-                r"remov"), "that the views are not the same"),
+              ((r"left out", r"\b39\b", r"three (views|photos|frames|images)", r"\b3 (views|photos|frames|images)",
+                r"face", r"dataset", r"remov", r"missing", r"exclud", r"not (the )?same (views|photos|frames|images)",
+                r"different (views|photos|frames|images|set)", r"other (views|photos|frames|images)",
+                r"which (views|photos|frames|images)", r"set of (views|photos|frames|images)"),
+               "that the course's views are not the bench's (which views were left out)"),
               ((r"spread", r"std", r"stab", r"vary", r"varies", r"uncertain", r"distance", r"trade", r"correlat",
-                r"subset", r"not well", r"determin", r"jpeg", r"compress", r"\b3\.4\b", r"noise"),
-               "a second reason (how well fx is determined, or how the data changed)"), min_words=12)
+                r"subset", r"never", r"660", r"not well", r"determin", r"cannot tell", r"same rms"),
+               "how poorly the views pin fx down (your Step 9 subsets, the trade with the distance)"), min_words=12)
     explained("REASON_HFOV", why_hf,
               ((r"fx", r"focal", r"f_new", r"670"), "which number sets the width"),
               ((r"atan", r"2 ?·? ?atan", r"960", r"rule", r"larger", r"longer", r"bigger", r"narrow", r"≥", r">="),
@@ -551,7 +560,7 @@ def _():
 
 @c.test("report.md: the memo — three sections, ≥ 150 words, the key numbers",
         hint="Keep the headings '## Lens model', '## My calibration', '## Recommendation'. Quote the widest straight "
-             "view (about 111° / 110.9°), your fx (about 670 px) and your hold-out (test) RMS (about 0.57 px).")
+             "view (Step 4, in °), your fx (Step 7, MY_FX, in px) and your hold-out (test) RMS (Step 10, TEST_RMS, in px).")
 def _():
     c.file_exists("report.md")
     text = open("report.md", encoding="utf-8").read()

@@ -4,21 +4,17 @@
 
 > [!NOTE] Mission brief
 > **6 October 2026, NAVERA's bench.** NAVERA's camera, the top lens of an Insta360 ONE R, was calibrated from
-> 38 photos of a chessboard shown on a computer screen: **8 numbers** in a small file, reprojection error
-> 0.525 px. Those 8 numbers turn every pixel into a direction in space; without them, map matching is
-> impossible.
->
-> Now load that file on the wrong picture. Suppose the camera is switched to 1280 × 720 and simply scales its
-> picture, while the file still describes 1920 × 540. Nothing crashes. But the pixel in the middle of the
-> picture is believed to look **27.7°** away from where it really looks: from 150 m, about **79 m** on the
-> ground, on every frame. This is why NAVERA's live camera **refuses** a calibration made at another
-> resolution or with another camera. And a second puzzle: this lens sees about **166°** across, yet NAVERA
-> straightens only the central **111°**. Why throw a third of the view away?
+> 39 photos of a chessboard on a computer screen (OpenCV kept 38): **8 numbers** that turn every pixel into a
+> direction in space. Now load that file on the wrong picture: the camera is switched to 1280 × 720, so the top
+> lens arrives scaled by 2/3 (1280 × 360). Nothing crashes, but the middle pixel, (640, 180), is believed to look
+> **27.7°** away from where it really looks: from 150 m, about **79 m** on the ground, on every frame. This is why
+> NAVERA's live camera **refuses** a calibration made at another resolution or with another camera. Second
+> puzzle: the lens sees roughly **166°** across, yet NAVERA straightens only the central **111°**. Why?
 >
 > **Session 1 — Lens modeller:** you write the fisheye lens model, find where it stops being valid, and choose
 > the width of the straight view with numbers. **Session 2 — Calibrator:** you calibrate the real lens from
-> 36 real views, test the result on views it never saw, and find out why your numbers are not the bench's.
-> Each session ends with a badge.
+> 36 real views, test the result on views it never saw, and compare your numbers with the bench's. Each session
+> ends with a badge.
 >
 > **Start now:** open the 🛠️ **Lab** tab, do **Step 0** (two minutes, no code), then come back here for §1.
 
@@ -31,9 +27,10 @@
    never saw;
 4. **justify** the width of a straightened view (NAVERA's 111°) with numbers.
 
-**You need:** the pinhole model, K and f = (w/2) / tan(HFOV/2) (mission 18), a pose as R and t (missions 16 and
-18), numpy arrays (mission 04). ⏱ Reading: about 75 minutes with the ✏️ checks, pencil and calculator. Lab:
-4 h to 5 h 30, in two sessions.
+**You need:** the pinhole model, K and f = (w/2) / tan(HFOV/2) (mission 18), rotation matrices (mission 16),
+numpy arrays (mission 04). ⏱ Reading: about 90 minutes with the ✏️ checks, pencil and calculator (up to 2 h if
+English or the maths are slow for you), in two halves: §1–§5 before session 1, §6–§8 before session 2.
+Lab: 4 h to 5 h 30 (up to 6 h 30 if numpy is new for you).
 
 **Before you start** — answer without looking (if you miss two, reread mission 18, §2 and §7):
 
@@ -61,74 +58,57 @@ Your files are in `~/lessons/19-calibration/`; the part of NAVERA Lite you write
 | **equidistant projection** | the ideal fisheye: r = f·θ | projection équidistante |
 | **calibration** | measuring a camera's own numbers (K and the distortion) from photos | étalonnage (calibration) |
 | **intrinsic / extrinsic parameters** | the camera's own numbers / the pose of the board in one photo | paramètres intrinsèques / extrinsèques |
-| **chessboard corner** | an inner point where four squares meet | coin intérieur du damier |
 | **reprojection error, RMS** | distance between a detected corner and the model's prediction; root mean square of those | erreur de reprojection, moyenne quadratique |
 | **hold-out test** | measuring the error on data the fit never saw | test sur données réservées |
 | **ill-conditioned** | a problem where tiny changes of the data change the answer a lot | mal conditionné |
-| **straightening (undistortion)** | rebuilding the picture an ideal pinhole camera would take | redressement (correction de distorsion) |
+| **straightening (undistortion)** | rebuilding the picture an ideal pinhole camera would take | redressement |
 | **extrapolation** | using a fitted model outside the range of its data | extrapolation |
 </details>
 
 ## 1. A pinhole cannot see 166°
 
-In mission 18, a point at angle **θ** (theta) from the **optical axis** lands at a distance r from the
-principal point:
-
-```
-pinhole:   r = f · tan θ          (r and f in pixels)
-```
-
-This works well for narrow and normal lenses, and it keeps straight lines straight. But tan θ explodes as θ
-grows:
+A pinhole puts a ray at angle **θ** (theta) from the **optical axis** at **r = f · tan θ** from the principal point
+(mission 18). That keeps straight lines straight, but tan θ explodes:
 
 | θ | 30° | 45° | 55.5° | 70° | 80° | 83° | 90° |
 |---|---|---|---|---|---|---|---|
 | tan θ | 0.58 | 1.00 | 1.46 | 2.75 | 5.67 | 8.14 | ∞ |
 
-**Worked example.** The Insta360 top lens sees about 83° to each side of its axis. A pinhole picture whose
-edge is at 55.5° has its edge at 1.46 f from the centre; to reach 83° it would need 8.14 f: the edge of a
-166° pinhole view lies 8.14 / 1.46 = **5.6 times** farther out. At 90° it would need an infinite sensor. A
-pinhole picture of 166° is possible on paper, but almost all its pixels would be spent on the edges.
+**Worked example.** The Insta360 top lens sees about 83° to each side (estimated with the ideal fisheye of §2,
+r = fx·θ: the left edge is 937 px from the centre, 937/660.5 = 1.42 rad = 81°, the right edge 85°; the calibration
+itself cannot describe the edges, §3). A pinhole view with its edge at 55.5° has the edge at 1.46 f; at 83° it would
+need 8.14 f, **5.6 times** farther out. At 90°, an infinite sensor.
 
 ![Pinhole versus fisheye: how rays reach the sensor](assets/rays.svg)
 
 > [!QUESTION] ✏️ Check
-> A pinhole camera with f = 600 px. How far from the principal point do rays at 30°, 60° and 80° land? How
-> wide must the sensor be (in pixels) to show ±80°?
+> A pinhole camera with f = 600 px. How far from the principal point do rays at 30°, 60° and 80° land?
 
 <details><summary>Answer</summary>
-600·tan 30° = <b>346 px</b>, 600·tan 60° = <b>1 039 px</b>, 600·tan 80° = <b>3 403 px</b>. A ±80° view needs
-about 6 800 px across: ten times wider than for ±30°, for the same detail at the centre.
+<b>346 px</b>, <b>1 039 px</b>, <b>3 403 px</b>: ±80° needs 6 800 px across, ten times more than ±30°.
 </details>
 
 ## 2. The fisheye model
 
-A **fisheye lens** uses strongly curved glass so that the distance on the sensor grows with the **angle**
-itself. The simplest ideal is the **equidistant projection**:
-
-```
-ideal fisheye:   r = f · θ          (θ in radians)
-```
-
-At 83° (1.449 rad), r = 1.449 f instead of 8.14 f. Straight lines become curves: the price of a wide view.
+A **fisheye lens** makes the distance on the sensor grow with the **angle** itself. The simplest ideal is the
+**equidistant projection**, **r = f · θ** (θ in radians): at 83° (1.449 rad), r = 1.449 f instead of 8.14 f.
+Straight lines become curves: the price of a wide view.
 
 ![A grid seen straight, and the same grid through a fisheye lens](assets/barrel.svg)
 
-No real lens is exactly equidistant. OpenCV's fisheye model (the **Kannala–Brandt** model, used by NAVERA and by
-NAVERA Lite) bends the ideal with a short polynomial of θ:
+No real lens is exactly equidistant. OpenCV's fisheye model (the **Kannala–Brandt** model, used by NAVERA and
+NAVERA Lite) corrects the angle with a short polynomial:
 
 ```
 θ_d = θ · (1 + k1·θ² + k2·θ⁴ + k3·θ⁶ + k4·θ⁸)          D = [k1, k2, k3, k4]
 ```
 
-θ_d is the angle the *ideal* fisheye would need to put the point where the real lens puts it. With all four
-k = 0, θ_d = θ and we are back to r = f·θ.
+θ_d is a corrected angle: the real lens puts the point at distance f·θ_d from the centre (an ideal fisheye would
+put it at f·θ). With all four k = 0, θ_d = θ.
 
 > [!TIP] 🧰 A polynomial in θ
-> θ·(1 + k1θ² + k2θ⁴ + …) = θ + k1θ³ + k2θ⁵ + …: only **odd** powers. Close to the axis (small θ) the higher
-> powers are tiny, so θ_d ≈ θ: every lens behaves like the ideal near its centre. The k's only matter far from
-> the axis. (This is the same idea as a Taylor series: a smooth curve written as a sum of powers, each one
-> mattering at larger θ.) With k1 = 0.2, θ = 0.1 rad: 0.1 + 0.2·0.001 = 0.1002; at θ = 1.0 rad: 1.2.
+> θ·(1 + k1θ² + …) = θ + k1θ³ + k2θ⁵ + …: for small θ the high powers are tiny, so θ_d ≈ θ near the centre; the k's
+> matter far from the axis. With k1 = 0.2: θ = 0.1 rad gives 0.1002, θ = 1.0 rad gives 1.2.
 
 **The projection, step by step.** A point X_c = (X, Y, Z) in the camera frame (mission 18: x right, y down, z
 along the axis):
@@ -141,9 +121,10 @@ along the axis):
 5. apply K            u = fx · a' + cx,      v = fy · b' + cy
 ```
 
-Step 4 keeps the **direction** of the point in the image (a and b scaled by the same number) and changes only
-its **distance** from the centre, from r to θ_d. Two focal lengths fx and fy appear because this camera's
-pixels do not cover the same angle across and up-down (§8).
+Step 4 keeps the **direction** of the point in the picture (a and b are multiplied by the same number) and changes
+only its **distance** from the centre, from r to θ_d. There are two focal lengths: here fy/fx = 1.09, because the
+camera stores the lens picture with a different scale across and up-down; the calibration measures it, whatever
+its cause.
 
 **Worked example**, with the real bench calibration (fx = 660.48, fy = 721.40, cx = 937.06, cy = 317.66;
 k1 = 0.2319, k2 = −0.4170, k3 = 0.5338, k4 = −0.2386). The point X_c = (1.0, 0.5, 2.0) m:
@@ -156,22 +137,21 @@ a = 0.5,  b = 0.25,  r = 0.5590
 u = 660.48 · 0.4743 + 937.06 = 1250.35 px        v = 721.40 · 0.2372 + 317.66 = 488.75 px
 ```
 
-An ideal pinhole with the same K puts the point at (1267.30, 498.01): already **19.3 px** away, only 29° off
-the axis. Farther out the gap grows fast (lab Step 2).
+An ideal pinhole with the same K puts the point at (1267.30, 498.01): already **19.3 px** away, only 29° off the
+axis. Farther out the gap grows fast (lab Step 2).
 
 > [!WARNING]
-> On the optical axis (a = b = 0), r = 0 and θ_d / r is 0/0: numpy gives `nan`. The limit of θ_d / r is 1
-> (θ_d ≈ θ ≈ r near the axis), so the point lands on (cx, cy). Also: θ is the angle **from the axis**,
-> atan(r) — not the direction in the image, atan2(b, a).
+> On the optical axis (a = b = 0), r = 0 and θ_d / r is 0/0: numpy gives `nan`. Near the axis θ_d ≈ θ ≈ r, so
+> θ_d / r → 1 and the point lands on (cx, cy). Also: θ is the angle **from the axis**, atan(r), not the direction
+> in the picture, atan2(b, a).
 
 > [!QUESTION] ✏️ Check
-> With the bench calibration, a ray at θ = 0.8 rad. Compute θ_d, then how far from the principal point
-> (in px, along a row) it lands. Compare with an ideal fisheye and with a pinhole of the same fx.
+> With the bench calibration, a ray at θ = 0.8 rad. Compute θ_d, then its distance from the principal point
+> along a row (px). Compare with an ideal fisheye and with a pinhole of the same fx.
 
 <details><summary>Answer</summary>
 θ² = 0.64: θ_d = 0.8·(1 + 0.2319·0.64 − 0.4170·0.4096 + 0.5338·0.2621 − 0.2386·0.1678) = <b>0.862</b>, so
-r = 660.48 · 0.862 = <b>569 px</b>. Ideal fisheye: 660.48 · 0.8 = 528 px. Pinhole: 660.48·tan 0.8 = 680 px.
-The real lens sits between the two.
+r = 660.48 · 0.862 = <b>569 px</b>. Ideal fisheye: 528 px. Pinhole: 660.48·tan 0.8 = 680 px.
 </details>
 
 ## 3. Where is the model valid?
@@ -182,110 +162,75 @@ Map matching needs the opposite direction: **which ray does a pixel see?** Undo 
 a' = (u − cx) / fx,    b' = (v − cy) / fy,    θ_d = √(a'² + b'²)      then solve θ_d(θ) = θ_d for θ
 ```
 
-There is no formula for the last step: θ_d(θ) is a 9th-degree polynomial. But it is easy to solve
-numerically, *if* the curve rises.
+θ_d(θ) is a 9th-degree polynomial: there is no formula for θ, but a computer can solve it by **bisection**
+(halve an interval that contains the answer, again and again: lab Step 3), *if* the curve rises.
 
-> [!TIP] 🧰 Bisection
-> To solve g(θ) = target on an interval [lo, hi] where g rises and g(lo) ≤ target ≤ g(hi): take the middle m;
-> if g(m) < target the answer is in [m, hi], else in [lo, m]. Each step halves the interval: after 60 steps
-> it is 2⁻⁶⁰ of the start, far below any useful precision.
-> ```python
-> lo, hi = 0.0, 2.0                  # solve x**3 = 5 on [0, 2]
-> for _ in range(60):
->     m = (lo + hi) / 2
->     if m ** 3 < 5: lo = m
->     else: hi = m
-> print(lo)                          # 1.7099759466766968
-> ```
+Draw the bench calibration's curve r = fx·θ_d(θ) (lab Step 3): it rises, reaches **825 px at θ = 67.4°**, then
+**turns back down**. A real lens never does that: a ray farther from the axis never lands closer to the centre.
+The polynomial does it because no corner was photographed there, so nothing in the data forbids it. Look where
+the corners are:
 
-Draw the bench calibration's curve r = fx·θ_d(θ) (lab Step 3 does it): it rises, reaches **825 px at θ = 67.4°**,
-then **turns back down**. A real lens never does that: a ray farther from the axis never lands closer to the
-centre. The polynomial does it because nothing told it otherwise: look where the calibration views put their
-corners.
+![Every corner of the 36 calibration views on the 1920 × 540 picture, with rings of constant angle. Nothing lies beyond about 52°, and only one view gets past 45°](assets/coverage.png)
 
-![Every corner of the 36 calibration views on the 1920 × 540 picture, with rings of constant angle. Nothing lies beyond about 52°](assets/coverage.png)
+The corners of the 36 views stop at about **52°** from the axis, and only one view gets past 45° (look at this
+again after lab Step 7). Beyond the corners, the polynomial **extrapolates**: four numbers fitted on the data say
+nothing reliable about 70°. Two consequences:
 
-The corners stop at about **52°** from the axis. Beyond that, the polynomial is **extrapolating**: four
-numbers fitted on 0–52° say nothing reliable about 70°. Two consequences:
-
-- the picture's left edge is 937 px from the principal point and its right edge 983 px; both are above the
-  curve's top (825 px): **no angle** of the model gives them. The calibration cannot describe the outer
-  110 px on the left and 160 px on the right, although the lens obviously sees something there;
-- between 52° and 67.4° the model gives an answer, but an untested one.
-
-**Worked example.** Which ray does pixel (300, 200) see? a' = (300 − 937.06)/660.48 = −0.9645, b' =
-(200 − 317.66)/721.40 = −0.1631, θ_d = 0.9782; bisection on the rising part gives θ = 0.894 rad = **51.2°**.
-That pixel is at the edge of the data: trust it, but not much farther.
+- the picture's edges are 937 px (left) and 983 px (right) from the principal point, above the curve's top
+  (825 px): **no angle** gives them. The outer 110 px on the left and 160 px on the right cannot be described;
+- between the last corners and 67.4°, the model gives an answer, but an untested one.
 
 > [!QUESTION] ✏️ Check
 > Pixel (100, 270) of the bench picture. Compute θ_d. Can the model give its angle?
 
 <details><summary>Answer</summary>
 a' = (100 − 937.06)/660.48 = −1.267, b' = (270 − 317.66)/721.40 = −0.066, θ_d = <b>1.269</b>. The curve's top is
-θ_d = 825/660.48 = 1.249 < 1.269: <b>no angle</b> of the rising part gives it. The honest answer is "not
-describable" (`nan`), not a number from the falling part.
+825/660.48 = 1.249 < 1.269: <b>no angle</b> gives it. The honest answer is "not describable" (`nan`).
 </details>
 
 ## 4. Straightening a fisheye picture
 
-Day vision compares the camera with a map. A straight-down **pinhole** picture of flat ground is a scaled,
-turned copy of the map (mission 18): straight roads stay straight. A fisheye picture is not. So NAVERA first turns the fisheye picture into the picture an **ideal pinhole camera K_new** at
-the same place would take. For each pixel (u, v) of the **new** picture:
+Day vision compares the camera with a map. A straight-down **pinhole** picture of flat ground is a scaled, turned
+copy of the map (mission 18); a fisheye picture is not. So NAVERA first builds the picture an **ideal pinhole
+camera K_new** at the same place would take. For each pixel (u, v) of the **new** picture:
 
 ```
-1. its ray in the new camera:        [a, b, 1] = K_new⁻¹ · [u, v, 1]          (mission 18, §3)
-2. where the fisheye puts that ray:  (u_f, v_f) = fisheye projection of (a, b, 1)   (§2)
+1. its ray in the new camera:        [a, b, 1] = K_new⁻¹ · [u, v, 1]                 (mission 18, §3)
+2. where the fisheye puts that ray:  (u_f, v_f) = fisheye projection of (a, b, 1)     (§2)
 3. copy the colour found at (u_f, v_f), interpolated between the 4 nearest pixels (bilinear)
 ```
 
-This is **inverse mapping**: we start from each output pixel and fetch its colour, so every output pixel gets
-exactly one value and there are no holes. Steps 1–2 do not depend on the picture, only on K, D and K_new: OpenCV
-computes them once for all pixels (`cv2.fisheye.initUndistortRectifyMap`, a "map" of 1920 × 540 source
-positions), then `cv2.remap` applies the map to each frame in a few milliseconds. An output pixel whose source
-falls outside the fisheye picture has no colour: it is filled **black** (a constant border).
+This is **inverse mapping**: each output pixel fetches its colour, so there are no holes where the picture is
+stretched. Steps 1–2 depend only on K, D and K_new: OpenCV computes them once (`cv2.fisheye.initUndistortRectifyMap`,
+a "map"), then `cv2.remap` applies the map to each frame in milliseconds. A source outside the fisheye picture
+gives **black**.
 
 The 111° straight view of the Insta360 (K_new = `K_from_hfov(111, 1920, 540)` from mission 18, f = 659.79 px)
-takes its colours from fisheye columns ≈ 230 to ≈ 1645 only: the outer ~230 px on each side of the lens
-picture are not used. Its bottom rows are black: cy = 317.7, so the lens' axis points below the middle of the
-picture, and the straight view, centred on its own middle, looks lower than the lens sees.
-
-> [!QUESTION] ✏️ Check
-> Why does straightening build its map from the **output** pixels backwards, instead of sending each fisheye
-> pixel forwards to its place in the straight picture?
-
-<details><summary>Answer</summary>
-Forwards, the stretched parts of the output would receive no pixel at all (holes) and the squeezed parts several
-(overwrites). Backwards, every output pixel asks for exactly one colour. It also needs only the forward lens
-model of §2, which has a formula; the forwards route would need the inverse of §3 for every pixel.
-</details>
+takes its colours from fisheye columns ≈ 225 to ≈ 1645 only: the outer ≈ 225 px on the left and ≈ 275 px on the
+right are not used. Its bottom rows are black: the straight view is centred on its middle row (270), but the lens'
+axis is at row 317.7, lower; so the bottom rows of the straight view ask for rays below the fisheye picture.
 
 ## 5. How wide should the straight view be?
 
-A straight view w pixels wide with a field of view H has (mission 18)
+A straight view w pixels wide with a field of view H has (mission 18) **f_new = (w/2) / tan(H/2)**. Choose H and
+you choose f_new. Two numbers judge the choice:
 
-```
-f_new = (w/2) / tan(H/2)
-```
-
-Choose H and you choose f_new. Two numbers judge the choice:
-
-- **At the centre**, the straight view has f_new pixels per radian, the lens has fx. The ratio **f_new / fx** is
-  the share of the lens' centre detail the straight view keeps: below 1, real detail is thrown away.
-- **Away from the centre**, a pinhole picture spends f_new / cos²θ pixels per radian (the derivative of
-  f_new·tan θ), while the lens records only fx·θ_d′(θ), with the derivative of the polynomial:
+- **At the centre**, the straight view has f_new pixels per radian, the lens fx. The ratio **f_new / fx** is the
+  share of the lens' centre detail the straight view keeps: below 1, real detail is thrown away.
+- **Away from the centre**, the pinhole picture spends f_new / cos²θ pixels per radian, the lens only
+  fx · θ_d′(θ). Their ratio is the **stretch**:
 
 ```
 θ_d′(θ) = 1 + 3k1θ² + 5k2θ⁴ + 7k3θ⁶ + 9k4θ⁸          stretch(θ) = (f_new / cos²θ) / (fx · θ_d′(θ))
 ```
 
-The **stretch** is the number of straight-view pixels made from one lens pixel, along a radius. Above 1, the
-extra pixels are **invented** by interpolation: they cost memory and matching time and add no detail. Where
-θ_d′ ≤ 0 (past the curve's top), the model is not valid and the stretch has no meaning.
+> [!TIP] 🧰 Pixels per radian = a derivative
+> If r(θ) is the distance on the picture, a small change dθ of the angle moves the point by r′(θ)·dθ pixels: r′ is
+> the number of pixels per radian at θ. For the pinhole r = f·tan θ, and (tan θ)′ = 1/cos²θ, so r′ = f/cos²θ: f at
+> 0°, 4f at 60°. For the lens r = fx·θ_d(θ), so r′ = fx·θ_d′(θ), with the rule (c·θⁿ)′ = n·c·θⁿ⁻¹.
 
-**Worked example** (111° view, f_new = 659.79 px, bench calibration) at θ = 30° = 0.5236 rad:
-θ_d′ = 1 + 3·0.2319·0.2742 − 5·0.4170·0.0752 + 7·0.5338·0.0206 − 9·0.2386·0.0057 = 1.099;
-stretch = (659.79 / 0.75) / (660.48 · 1.099) = 879.7 / 725.8 = **1.21**. A pure 1/cos² estimate would say 1.33:
-the real lens spreads its pixels a little more at 30° than the ideal fisheye, so less is invented.
+Above 1, pixels are **invented** by interpolation: they cost time and add no detail. Where θ_d′ ≤ 0 (past the
+curve's top) the stretch has no meaning.
 
 | Straight view H | f_new (w = 1920) | centre detail kept f_new / fx | stretch at 30° | the view's edge (H/2) |
 |---|---|---|---|---|
@@ -293,15 +238,18 @@ the real lens spreads its pixels a little more at 30° than the ideal fisheye, s
 | 150° | 257.2 px | 38.9 % | 0.47 | 75°: not valid (> 67.4°) |
 | 166° | 117.9 px | 17.8 % | 0.22 | 83°: not valid |
 
-A 150° view would throw away 61 % of the centre's detail, the part that matters most for matching, to show
-edges the calibration does not even describe. NAVERA's rule is **never make f_new shorter than fx**:
+(111° view at 30°: θ_d′ = 1.099, stretch = (659.79 / 0.75) / (660.48 · 1.099) = 1.21.) A 150° view throws away 61 % of
+the centre's detail, the part that matters most for matching, to show edges the calibration does not describe.
+NAVERA's rule is **never make f_new shorter than fx**:
 
 ```
 H_max = 2 · atan((w/2) / fx) = 2 · atan(960 / 660.48) = 110.94°
 ```
 
-That is the **111°** in the bench file (`out_hfov_deg: 111.0`, which the code caps to 110.94°). Its vertical field
-of view is 2·atan(270 / 659.79) = 44.5°, and from 150 m it covers 436 m across, 0.227 m per pixel (mission 18).
+That is the **111°** of the bench file (`out_hfov_deg: 111.0`, which the code caps to 110.94°; NAVERA's calibration
+tool now writes the capped value, as NAVERA Lite's does). The rule looks at fx only: this lens has fy = 721.4, so
+vertically the straight view keeps 659.8 / 721.4 = 91.5 % of the centre detail. A square-pixel view cannot match
+both.
 
 ![The centre detail kept as a function of the straight view's width](assets/crop.svg)
 
@@ -309,120 +257,97 @@ of view is 2·atan(270 / 659.79) = 44.5°, and from 150 m it covers 436 m across
 > Another camera: fx = 800 px, pictures 1 280 px wide. Following NAVERA's rule, what is the widest straight view?
 
 <details><summary>Answer</summary>
-H_max = 2·atan(640 / 800) = <b>77.3°</b>. A longer focal length (more pixels per degree) gives a narrower view
-for the same width.
+H_max = 2·atan(640 / 800) = <b>77.3°</b>: more pixels per degree give a narrower view for the same width.
 </details>
 
 > [!WARNING] Common wrong ideas (session 1)
 > - "Straightening adds detail." It only resamples: above a stretch of 1 the new pixels are interpolated.
-> - "The fisheye's k1…k4 are the same as Brown–Conrady's k1, k2." Same letters, another model (§8).
-> - "If the model gives an angle, it is right." Past the last corners (here ~52°) it extrapolates; past 67.4° it
->   even answers from the falling part of the curve.
-> - "A wider straight view is always better for navigation." It covers more ground but each metre gets fewer
->   pixels at the centre, and its edges are stretched and unmeasured.
-> - "The black parts of the straightened picture are a bug." They are directions the lens picture does not
->   contain; filling them with a repeated border colour would create false features.
+> - "f_new = fx keeps all the detail." Only across: here fy > fx.
+> - "If the model gives an angle, it is right." Past the last corners it extrapolates; past 67.4° it even answers
+>   from the falling part of the curve.
+> - "The black parts of the straightened picture are a bug." They are directions the lens picture does not contain.
 
 ## 6. Calibration: finding K and D from photos
 
-Everything above assumed we know fx, fy, cx, cy and k1…k4. **Calibration** measures them. The idea: photograph
-an object whose geometry is known exactly (a chessboard: 9 × 6 inner corners, squares of 32.94 mm), many
-times, from different positions, and find the numbers that best predict where its corners appear.
+**Calibration** measures fx, fy, cx, cy and k1…k4: photograph a chessboard (9 × 6 inner corners, squares of
+32.94 mm) many times from different positions, and find the numbers that best predict where its corners appear.
 
-**What is unknown.** The 8 **intrinsic** parameters (fx, fy, cx, cy, k1…k4; the skew, a slanted pixel grid, is
-fixed to 0 on modern sensors), plus, for every photo, where the board was: its **pose**, a rotation (3 numbers,
-a **Rodrigues vector** `rvec`: direction = rotation axis, length = angle in radians; `cv2.Rodrigues` turns it
-into the 3 × 3 matrix R) and a translation `tvec` (3 numbers, metres). These 6 per view are **extrinsic**
-parameters: they say nothing about the camera, but they must be found too. With N views of 54 corners:
-
-```
-unknowns  = 8 + 6·N                  equations = 54 corners × 2 coordinates × N = 108·N
-```
-
-Even N = 1 gives more equations than unknowns, yet one view is never enough: the equations are not
-independent. A board seen face-on cannot separate "long focal length, board far away" from "short focal length,
-board close". Tilted boards, boards near the picture's edges and at several distances make the unknowns
+**What is unknown.** The 8 **intrinsic** parameters (the skew is fixed to 0), plus each photo's board **pose**: a
+rotation `rvec` (a **Rodrigues vector**: direction = axis, length = angle in radians; `cv2.Rodrigues` gives the matrix
+R) and a translation `tvec` (metres). N views of 54 corners give 8 + 6·N unknowns and 108·N equations (54 corners × 2
+coordinates), yet one view is never enough: a board seen face-on cannot separate "long focal length, board far" from
+"short focal length, board close". Tilted boards, near the picture's edges, at several distances make the unknowns
 **observable**.
 
-**Zhang's idea (2000).** Put the board's own frame on the board, so every corner has Z = 0. For a pinhole camera
-the board-to-picture mapping then becomes a 3 × 3 **homography** H_i per view. Because the columns of a rotation
-are perpendicular and of equal length, each H_i gives **two equations on K alone**; K has 5 unknowns
-(fx, fy, cx, cy and the skew), so 3 views fix a first K, without any initial guess. That first guess
-(distortion set to 0) is then **refined**: an iterative least-squares method (Levenberg–Marquardt) moves K, D and
-every pose together to make the predicted corners match the detected ones:
+**Zhang's idea (2000).** Put the board's own frame on the board, so every corner has Z = 0. For a pinhole camera the
+board-to-picture mapping is a 3 × 3 **homography** per view, and each gives **two equations on K alone**: 3 views fix a
+first K (the closed form: lab "Going further"). Then K, D and every pose are **refined** together until the predicted
+corners match the detected ones as well as possible:
 
 ```
 minimise   Σ over views i, corners j   ‖ u_ij − project(K, D, rvec_i, tvec_i, X_j) ‖²
 ```
 
-where X_j is corner j on the board (Z = 0), u_ij where it was detected in view i, and `project` the model of §2
-after the pose (X_c = R_i·X_j + t_i). OpenCV's `cv2.fisheye.calibrate` follows this recipe for the fisheye model.
+> [!TIP] 🧰 Least squares in one example
+> "Least squares" = choose the unknown numbers so that the **sum of the squared errors** is as small as possible.
+> Three measurements of one length: 10.0, 10.4 and 10.2 cm. Which single value x fits best? The sum
+> (10.0 − x)² + (10.4 − x)² + (10.2 − x)² is 0.20 at x = 10.0, 0.08 at x = 10.2, 0.20 at x = 10.4: smallest at 10.2,
+> the mean. Calibration does the same with 8 + 6·N unknowns. Because the model is not a straight line in its
+> unknowns (atan, the polynomial, the rotation), there is no formula: the computer starts from a first guess and
+> improves it step by step ("iterative"). **Levenberg–Marquardt** is the usual way to choose each step.
+
+`cv2.calibrateCamera` (pinhole) follows this recipe exactly. `cv2.fisheye.calibrate` keeps its idea (a flat board, a
+homography per view for a first pose, one joint refinement of K, D and every pose), but it starts K from the
+picture's size instead of Zhang's closed form.
 
 ![Zhang's method in five steps](assets/zhang.svg)
 
-<details class="further"><summary>Optional: the two equations of Zhang's closed form</summary>
-With the board at Z = 0, s·[u, v, 1]ᵀ = K [r1 r2 r3 t] [X, Y, 0, 1]ᵀ = K [r1 r2 t] [X, Y, 1]ᵀ = H [X, Y, 1]ᵀ.
-Write H = [h1 h2 h3] = λ K [r1 r2 t]: then r1 = K⁻¹h1/λ and r2 = K⁻¹h2/λ. Perpendicular columns of equal length
-give h1ᵀ B h2 = 0 and h1ᵀ B h1 = h2ᵀ B h2, with B = K⁻ᵀK⁻¹ symmetric: two equations, <b>linear</b> in the 6 entries
-of B. Stack them for N ≥ 3 views, solve V·b = 0 with an SVD, and recover K from B (a Cholesky factorisation),
-then each pose from H_i and K. The lab's "Going further" asks you to do it.
-</details>
-
 > [!QUESTION] ✏️ Check
-> 20 views of a 9 × 6 board, fisheye model with no skew. How many unknowns, how many equations? Why does
-> a camera fixed on a tripod, photographing one board placed in one spot 20 times, still calibrate badly?
+> 20 views of a 9 × 6 board, fisheye model with no skew. How many unknowns and equations? Why does a camera on a
+> tripod, photographing one board in one spot 20 times, still calibrate badly?
 
 <details><summary>Answer</summary>
-8 + 6·20 = <b>128</b> unknowns, 108·20 = <b>2 160</b> equations. Twenty identical views are one view twenty times:
-the same poses, the same corners, no new angle. Nothing separates f from the distance, and nothing at the
-picture's edges constrains k1…k4.
+<b>128</b> unknowns, <b>2 160</b> equations. Twenty identical views are one view twenty times: nothing separates f from
+the distance, and nothing at the picture's edges constrains k1…k4.
 </details>
 
 ## 7. The reprojection error, and what it does not tell you
 
-After the fit, every corner is projected again with the calibration and its view's pose, and compared with
-where it was detected. One corner's **reprojection error** is the distance between the two (pixels). The
-summary is the **RMS** (root mean square) over all M corners of all views:
-
-```
-RMS = √( (1/M) · Σ ‖u_detected − u_projected‖² )
-```
+After the fit, every corner is projected again with the calibration and its view's pose, and compared with where it
+was detected. One corner's **reprojection error** is the distance between the two (pixels). The summary is the
+**RMS** (root mean square) over all M corners of all views: **RMS = √( (1/M) · Σ ‖u_detected − u_projected‖² )**.
 
 > [!TIP] 🧰 RMS
-> Square, average, square root, in that order. Three errors (0.3, 0.4), (0, 1) and (0.6, 0.8) px have lengths
-> 0.5, 1 and 1: their squares 0.25, 1, 1, mean 0.75, RMS = √0.75 = **0.87 px**. The RMS weighs big errors more
-> than the plain mean (0.83). Over several views, square **every corner**, then average them all: the mean of
-> the per-view RMS values is not the RMS.
+> Square, average, square root, in that order. Errors (0.3, 0.4), (0, 1) and (0.6, 0.8) px have lengths 0.5, 1 and
+> 1: squares 0.25, 1, 1, mean 0.75, RMS = √0.75 = **0.87 px** (the plain mean is 0.83). Over several views, square
+> **every corner**, then average them all: the mean of the per-view RMS values is not the RMS.
 
-The bench calibration says **RMS 0.525 px**: the model explains the corners it was fitted on to about half a
-pixel. Large values mean blurred corners, a board that is not flat, a wrong board size or the wrong model. Three
-things it does **not** say:
+The bench calibration says **RMS 0.525 px**: the model explains the corners it was fitted on to about half a pixel.
+Three things it does **not** say:
 
 1. **It is a training error.** The parameters were tuned on those corners. The honest test is a **hold-out**:
-   calibrate on some views, measure on views the calibration never saw. For an unseen view, the board's pose is
-   unknown: find it first, with K and D held fixed (undo the lens with `cv2.fisheye.undistortPoints`, which gives
-   ideal pinhole rays, then find the pose with `cv2.solvePnP` and K = identity), then measure as above.
-2. **It says nothing where no corner was seen** (§3): an RMS of 0.5 px from corners within 52° says nothing at 60°.
-3. **It does not measure stability.** fx and the board's distance can trade against each other: a 1.5 % larger fx
-   with every board 1.5 % farther away predicts almost the same corners. Two calibrations with the same RMS
-   can disagree on fx by several pixels. In the lab you measure that spread.
+   calibrate on some views, measure on views the calibration never saw. For an unseen view the board's pose is
+   unknown: find it first with K and D held fixed (`cv2.fisheye.undistortPoints` turns the corners into ideal
+   pinhole rays, then `cv2.solvePnP` with K = identity finds the pose), then measure as above.
+2. **It says nothing where no corner was seen** (§3).
+3. **It does not measure stability.** fx and the board's distance trade against each other: a 1.5 % larger fx with
+   every board 1.5 % farther away predicts almost the same corners. Calibrations with the same RMS can disagree on fx
+   by several pixels: the lab measures that spread.
 
 > [!QUESTION] ✏️ Check
-> Calibration A: RMS 0.30 px from 8 views, all near the picture's centre. Calibration B: RMS 0.50 px from 35
-> views spread over the picture. Which do you trust for a 111° straight view, and why?
+> Calibration A: RMS 0.30 px from 8 views near the picture's centre. Calibration B: RMS 0.50 px from 35 views spread
+> over the picture. Which do you trust for a 111° straight view, and why?
 
 <details><summary>Answer</summary>
-<b>B</b>. A's small RMS is a training error on little data: its parameters are unstable (fx can move by tens of
-pixels between 8-view calibrations), and nothing constrains its edges, where the 111° view reaches 55.5°. B's
-corners cover more angles and its parameters are pinned down by more views.
+<b>B</b>. A's small RMS is a training error on little data: unstable parameters, nothing at the edges (where the 111°
+view reaches 55.5°). B's corners cover more angles, and more views pin its numbers down.
 </details>
 
 ## 8. Calibrating with OpenCV
 
-**Corners.** `cv2.findChessboardCornersSB(grey, (9, 6), flags)` finds the 54 inner corners with sub-pixel
-accuracy, **row by row, the column index changing fastest**. The 3-D board points you give OpenCV must be in the
-same order: (0, 0, 0), (s, 0, 0), …, (8s, 0, 0), then (0, s, 0)… with s = 0.03294 m, as an array of shape
-(54, 1, 3).
+**Corners.** `cv2.findChessboardCornersSB` finds the 54 inner corners with sub-pixel accuracy, **row by row, the
+column index changing fastest**. The board points you give OpenCV must be in the same order, (0, 0, 0), (s, 0, 0), …,
+(8s, 0, 0), (0, s, 0)…, with s = 0.03294 m, as an array of shape (54, 1, 3), float64.
 
 **The fisheye calibration.**
 
@@ -431,98 +356,64 @@ rms, K, D, rvecs, tvecs = cv2.fisheye.calibrate(object_points, image_points, (wi
                                                 flags=flags, criteria=criteria)
 ```
 
-`object_points` and `image_points` are **lists** with one array per view ((54, 1, 3) and (54, 1, 2), float64);
-K0 = the identity and D0 = four zeros are the starting values; `criteria` says when to stop the refinement.
-The flags you need:
+`object_points` and `image_points` are **lists**, one array per view. K0 and D0 are where a guess would go: OpenCV
+reads K0 only with the flag `CALIB_USE_INTRINSIC_GUESS`; otherwise it starts from f = max(w, h)/π and the picture's
+centre, so passing the identity and four zeros is a placeholder. The size is **(width, height)**, while `img.shape`
+is (height, width, 3). The flags you need are listed in lab Step 7.
 
-| Flag | Meaning |
-|---|---|
-| `cv2.fisheye.CALIB_RECOMPUTE_EXTRINSIC` | re-estimate every board pose at each step of the refinement (recommended) |
-| `cv2.fisheye.CALIB_CHECK_COND` | refuse a view whose pose cannot be estimated reliably (ill-conditioned) |
-| `cv2.fisheye.CALIB_FIX_SKEW` | keep K[0, 1] = 0 |
-| `cv2.fisheye.CALIB_FIX_K3`, `…_FIX_K4`, `…_USE_INTRINSIC_GUESS` | freeze some numbers, or start from a given K |
+With the flag `CALIB_CHECK_COND`, OpenCV **refuses** a view whose pose cannot be estimated reliably: the call stops
+with *"CALIB_CHECK_COND - Ill-conditioned matrix for input array 17"*. NAVERA's tool, and NAVERA Lite's given
+`calibrate_robust()`, then remove that view and calibrate again. Write down **which** views get refused.
 
-Flags are combined with `|`. With `CALIB_CHECK_COND`, a refused view stops the whole call with an error that names
-it: *"CALIB_CHECK_COND - Ill-conditioned matrix for input array 17"*. The usual reply (NAVERA's tool does it, and
-NAVERA Lite's given `calibrate_robust()`) is to remove that view and calibrate again. Write down **which** views
-get refused: often the most extreme ones, exactly those that would teach the model about the edges.
-
-**Formats that trip everyone.** The size is **(width, height)**, while `img.shape` is (height, width, 3).
-D has 4 numbers in the fisheye model.
-
-**The other model: Brown–Conrady.** OpenCV's ordinary calibration (`cv2.calibrateCamera`) keeps the pinhole
-r = tan θ and corrects it with a polynomial in r: a_d = a·(1 + k1r² + k2r⁴ + k3r⁶) plus two "tangential" terms
-p1, p2 for a lens slightly tilted against the sensor; D = [k1, k2, p1, p2, k3]. It wants **float32** points
-(otherwise: *"objectPoints should contain vector of vectors of points of type Point3f"*). Its weakness is in the
-formula: it starts from tan θ, which is infinite at 90°, so no correction can describe a lens that sees beyond
-90°. Within 45° of the axis, though, it can fit as well as the fisheye model: the lab measures it.
+**The other model: Brown–Conrady.** OpenCV's ordinary `cv2.calibrateCamera` keeps the pinhole r = tan θ and corrects
+it with a polynomial in r (k1, k2, k3) plus two "tangential" terms (p1, p2); it wants float32 points. Starting from
+tan θ, it cannot describe a ray at 90° or beyond. Its fx is not comparable with the fisheye's: the two models split the
+same bending differently between f and their k's.
 
 > [!WARNING] Common wrong ideas (session 2)
 > - "A low RMS means an accurate camera." It means the model fits the corners it was given, where they were.
-> - "More parameters are always better." Each extra number can bend the curve where no corner was seen.
-> - "One calibration is the truth." Calibrate twice from different views and fx moves; know by how much.
-> - "A calibration is a property of the lens." It belongs to one lens, at one resolution, with one crop: K is
->   in pixels of one specific picture.
-> - "Catch the error and carry on." A refused view must be removed, not ignored silently inside the function.
+> - "One calibration is the truth." Calibrate from other views and fx moves; know by how much.
+> - "A calibration belongs to the lens." It belongs to one lens, at one resolution, with one crop: K is in pixels
+>   of one specific picture.
 
 ## In NAVERA
 
-NAVERA's calibration tool takes chessboard photos from a folder or live from the camera, finds the corners, runs
-OpenCV's fisheye calibration with the three flags of §8, drops the views OpenCV refuses one at a time, and writes
-a small YAML file: the model, the picture size, K (9 numbers), D (4 numbers), the RMS, the number of views, the
-straight view's width, the **crop** (the Insta360 picture is two lenses one above the other; NAVERA uses the top
-half, 1920 × 540) and, for a USB camera calibrated live, the camera's identity. The bench file of 6 October 2026:
-fisheye model, 38 views, RMS 0.525 px, fx 660.5 px, fy 721.4 px, out_hfov_deg 111.
+NAVERA's calibration tool does what NAVERA Lite's does (below): fisheye calibration, refused views dropped one at a
+time, a small file with the model, size, K, D, RMS, views, straight width, the **crop** (the Insta360 picture is two
+lenses one above the other; NAVERA uses the top half) and, for a USB camera calibrated live, the camera's identity.
+The bench file of 6 October 2026: 38 views kept of 39, RMS 0.525 px, fx 660.5 px, fy 721.4 px.
 
-The live camera (ARCHITECTURE §5, in words) straightens every frame with that file before day vision sees it, and
-**refuses** a file made at another resolution or, for a USB camera, with another camera, rather than run with
-wrong rays. It builds the straightening map once, then remaps each frame, and publishes a straight view at most
-as wide as f_new ≥ fx allows (110.94° for this lens). NAVERA is Release 0.2, field validation pending: its day
-vision is "not yet measured with NAVERA's camera" (VALIDATION_STATUS, 2026-10-03), and the edges of the 111° view
-(55.5°) lie beyond the corners the bench session recorded (about 52°): one more open problem.
+The live camera (NAVERA's architecture notes) straightens every frame with that file before day vision sees it, and
+**refuses** a file made at another resolution, with another crop or, for a USB camera, with another camera, rather
+than run with wrong rays. NAVERA is Release 0.2, field validation pending: its day vision is "not yet measured with
+NAVERA's camera" (NAVERA's validation status, 2026-10-03). And the edges of the 111° view (55.5°) lie beyond the
+corners of the bench session (about 52°, and that from a single view): one more open problem.
 
 ## In NAVERA Lite
 
-The same ideas live in [navera_lite/fisheye.py](file:./navera_lite/fisheye.py), the part you write today:
-
-| You write | It does | Lesson |
-|---|---|---|
-| `fisheye_project` | camera-frame points → fisheye pixels | §2 |
-| `theta_from_theta_d` | the ray angle of a pixel, or `nan` where the model is not valid | §3 |
-| `stretch_at` | straight-view pixels per lens pixel at an angle | §5 |
-| `undistort` | the straightened picture | §4 |
-| `board_points`, `calibrate_fisheye` | the board's corners, one OpenCV calibration | §6, §8 |
-| `reprojection_rms`, `holdout_rms` | the training error, and the honest error on unseen views | §7 |
-
-Given: `load_calibration`, `save_calibration`, `theta_d_of`, `find_corners`, `calibrate_robust`, and the
-command-line tool `python3 -m navera_lite.tools.calibrate`, which uses your `board_points` and
-`calibrate_fisheye` to write a calibration file like NAVERA's. From mission 18 you reuse `camera.K_from_hfov`.
-Mission 20 puts the straightened picture on the live camera, with its timing.
+[navera_lite/fisheye.py](file:./navera_lite/fisheye.py), the part you write today: `fisheye_project` (§2),
+`theta_from_theta_d` (§3), `stretch_at` (§5), `undistort` (§4), `board_points` and `calibrate_fisheye` (§6, §8),
+`reprojection_rms` and `holdout_rms` (§7). Given: `load_calibration`, `save_calibration`, `theta_d_of`,
+`find_corners`, `calibrate_robust`, and the tool `python3 -m navera_lite.tools.calibrate` (built on your
+`board_points` and `calibrate_fisheye`). Reused: `camera.K_from_hfov` (mission 18).
 
 ## 🐦 How birds do it
 
-A **woodcock** has eyes so far back on its head that it sees almost 360° around, and even above: two natural
-fisheye lenses, perfect to spot a predator while its bill probes the soil. **Falcons** make NAVERA's other choice:
-a wide field at modest resolution, plus a deep central **fovea** packed with receptors where the detail is
-needed to measure. And the brain calibrates its eyes: when scientists fitted young barn owls with prism
-spectacles that shifted their view sideways, the owls' brains slowly re-learned where things are. A calibration
-belongs to one set of optics.
+A **woodcock** has eyes so far back on its head that it sees almost all around, even above: two natural fisheye
+lenses. **Falcons** make NAVERA's choice: a wide field at modest resolution, plus a deep central **fovea** packed
+with receptors where detail is needed. And brains calibrate too: young barn owls fitted with prism spectacles
+slowly re-aligned where they *heard* things with where they now *saw* them.
 
 ## Summary
 
-1. A pinhole puts a ray at f·tan θ and cannot reach 90°; a fisheye puts it at f·θ_d(θ), with
-   θ_d = θ(1 + k1θ² + k2θ⁴ + k3θ⁶ + k4θ⁸) (OpenCV, NAVERA). On the axis, θ_d / r → 1.
-2. A calibration is only measured where its corners were (here up to ~52°); past the curve's top (67.4°, 825 px)
-   it cannot describe a pixel at all.
-3. Straightening fetches, for every pixel of an ideal pinhole view K_new, the fisheye pixel that saw the same ray
-   (a map built once, then remap); directions the lens picture lacks stay black.
-4. A straight view w wide with f_new < fx throws away centre detail; NAVERA's rule f_new ≥ fx gives
-   2·atan(960 / 660.48) = 110.94° ≈ 111°. Its edges are still stretched (more pixels than the lens recorded there).
-5. Zhang: a flat board gives one homography per view and two equations on K per view; the refinement fits K, D
-   and every pose together. The RMS is a training error: test on unseen views, and measure how much fx moves.
+1. Pinhole: r = f·tan θ, never 90°. Fisheye: r = f·θ_d, θ_d = θ(1 + k1θ² + k2θ⁴ + k3θ⁶ + k4θ⁸); on the axis θ_d/r → 1.
+2. A calibration is measured only where its corners were; past the curve's top (67.4°, 825 px) a pixel has no angle.
+3. Straightening fetches, for each pixel of an ideal pinhole view, the fisheye pixel that saw the same ray.
+4. NAVERA's rule f_new ≥ fx gives 2·atan(960 / 660.48) = 110.94° ≈ 111°.
+5. Zhang + least squares fit K, D and every pose; the RMS is a training error: test on unseen views, measure the spread.
 
-**Next mission:** the straightened picture goes live. Frames arrive late and the drone turns while they travel:
-you measure the camera's delay and take the attitude at the right instant.
+**Next mission:** the straightened picture goes live. Frames arrive late and the drone turns while they travel: you
+measure the camera's delay and take the attitude at the right instant.
 
 ## Check yourself
 
@@ -534,19 +425,18 @@ v = fy·b' + cy. Step 4: at r = 0 use θ_d/r = 1.
 </details>
 
 <details><summary>2. Why can the bench calibration not give the angle of the picture's left-edge pixels?</summary>
-Their θ_d (937/660.5 = 1.42) is above the top of the polynomial's rising part (1.249, at 67.4°): no angle gives
-it. The polynomial was fitted on corners within ~52° and bends back where it has no data.
+Their θ_d (937/660.5 = 1.42) is above the top of the polynomial's rising part (1.249, at 67.4°): no angle gives it.
+The polynomial was fitted on corners much closer to the axis and bends back where it has no data.
 </details>
 
 <details><summary>3. Your calibration has train RMS 0.47 px and hold-out RMS 0.57 px. Is it broken?</summary>
-No. A hold-out error a little above the training error is normal: the training error is optimistic because the
-parameters were tuned on those corners. The hold-out number is the honest accuracy, within the angles tested.
+No. The training error is optimistic (the parameters were tuned on those corners); the hold-out number is the honest
+accuracy, within the angles tested.
 </details>
 
 <details><summary>4. A partner sets the Insta360 to 1280 × 720 and keeps the bench file. What goes wrong, and what does NAVERA do?</summary>
-K is in pixels of the 1920 × 540 top half: every ray is wrong (27.7° at the image centre in the brief's example,
-about 79 m on the ground from 150 m). NAVERA's live camera refuses a file made at another resolution; the camera
-must be calibrated again at the new size.
+K is in pixels of the 1920 × 540 top half: every ray is wrong (27.7° at the picture's middle in the brief, about 79 m
+on the ground from 150 m). NAVERA refuses the file; the camera must be calibrated again at the new size.
 </details>
 
 <details><summary>5. (Mission 18) A level camera at 150 m with an attitude 1° wrong. How far is the centre point off on the ground?</summary>

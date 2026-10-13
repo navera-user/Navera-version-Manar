@@ -6,7 +6,7 @@ and test the calibration honestly.
     python3 calibrate_lab.py calibrate    YOUR calibration on every view: refused views, RMS, each view    (Steps 7-8)
     python3 calibrate_lab.py stability    fx from random subsets of 8, 12, 20 and 30 views (about 30 s)  (Step 9)
     python3 calibrate_lab.py holdout      train on 28 views, test on 8 unseen ones; Brown–Conrady too      (Step 10)
-    python3 calibrate_lab.py curves       the lens curves: the bench file, yours, Brown–Conrady              (Step 10)
+    python3 calibrate_lab.py curves       the angle of the same pixels: the bench file, yours, Brown–Conrady (Step 10)
 
 Pictures and your calibration go to out/ — click them in the file list of the 📝 Code tab.
 """
@@ -310,12 +310,15 @@ def holdout():
                                                  SIZE, None, None)
     os.makedirs(OUT, exist_ok=True)
     with open(os.path.join(OUT, "brown_conrady.txt"), "w") as f:
-        f.write(" ".join(str(float(x)) for x in [Kall[0, 0]] + list(np.asarray(dall).ravel()[:5])) + "\n")
-    print(f"Brown–Conrady on all {len(views)} views: RMS {rall:.3f} px, fx {Kall[0, 0]:.1f} (saved for `curves`)")
+        f.write(" ".join(str(float(x)) for x in [Kall[0, 0], Kall[1, 1], Kall[0, 2], Kall[1, 2]]
+                         + list(np.asarray(dall).ravel()[:5])) + "\n")
+    print(f"Brown–Conrady on all {len(views)} views: RMS {rall:.3f} px, fx {Kall[0, 0]:.1f} (saved for `curves`; its fx "
+          "is not comparable with the fisheye's: another model)")
 
 
 # ------------------------------------------------------------------------------------------------ curves
 def curves():
+    cv2 = need_cv2()
     plt = rk.plt_or_none()
     bench = fe.load_calibration(CALIB)
     mine_path = os.path.join(OUT, "my_fisheye.yaml")
@@ -324,37 +327,51 @@ def curves():
     mine = fe.load_calibration(mine_path)
     note = open(mine_path).readline()
     far = float(note.split("farthest corner used ")[1].split()[0]) if "farthest corner used" in note else 43.0
-    th = np.radians(np.linspace(0, 85, 500))
-    deg = np.degrees(th)
-    rb = bench["K"][0, 0] * fe.theta_d_of(th, bench["D"])
-    rm = mine["K"][0, 0] * fe.theta_d_of(th, mine["D"])
-    gap = np.abs(rb - rm)
-    print("Distance r from the principal point along a row (px), bench file vs YOUR calibration:")
-    for t in (10, 20, 30, 40, 50, 55.5, 60, 70):
-        i = int(np.argmin(np.abs(deg - t)))
-        print(f"  θ = {t:4.1f}°   bench {rb[i]:7.1f}   yours {rm[i]:7.1f}   difference {gap[i]:6.1f} px")
-    print(f"(the corners your calibration used reach {far:.1f}° from the axis)")
+    K, D = mine["K"], mine["D"]
+    cx, cy = K[0, 2], K[1, 2]
+    bc = None
+    bc_path = os.path.join(OUT, "brown_conrady.txt")
+    if os.path.exists(bc_path):
+        vals = [float(x) for x in open(bc_path).read().split()]
+        if len(vals) == 9:
+            fxb, fyb, cxb, cyb = vals[:4]
+            bc = (np.array([[fxb, 0.0, cxb], [0.0, fyb, cyb], [0.0, 0.0, 1.0]]), np.array(vals[4:]))
+
+    def fisheye_angle(cal, u):
+        td = math.hypot((u - cal["K"][0, 2]) / cal["K"][0, 0], (cy - cal["K"][1, 2]) / cal["K"][1, 1])
+        t, err = rk.call(fe, "theta_from_theta_d", td, cal["D"])
+        if err and "returned None" not in err:
+            sys.exit(err)
+        return float("nan") if t is None else math.degrees(t)
+
+    def bc_angle(u):
+        n = cv2.undistortPoints(np.array([[[u, cy]]], np.float64), bc[0], bc[1]).ravel()
+        return math.degrees(math.atan(math.hypot(n[0], n[1])))
+
+    print(f"The angle (deg) each model gives to the pixel at distance d from YOUR principal point, along row {cy:.0f}:")
+    print("      d (px)    bench fisheye    your fisheye    Brown–Conrady")
+    for d in (-800, -600, -400, -200, 200, 400, 600, 800):
+        u = cx + d
+        b_ = f"{bc_angle(u):9.2f}" if bc else "  (run holdout)"
+        print(f"   {d:+8d}    {fisheye_angle(bench, u):10.2f}       {fisheye_angle(mine, u):10.2f}       {b_}")
+    r_far = K[0, 0] * fe.theta_d_of(math.radians(far), D)
+    print(f"(your calibration used corners up to {far:.1f} deg from the axis: about {r_far:.0f} px along this row)")
     if plt is None:
         return
+    ds = np.linspace(-950, 950, 381)
     fig, ax = plt.subplots(figsize=(8.5, 5))
-    ax.plot(deg, bench["K"][0, 0] * np.tan(th), color="#868e96", label="ideal pinhole f·tan θ (bench fx)")
-    ax.plot(deg, rb, lw=3, color="#d64545", label=f"bench file (fx {bench['K'][0, 0]:.1f}, 38 views)")
-    ax.plot(deg, rm, ":", lw=2.5, color="#0b6e8a", label=f"your fisheye (fx {mine['K'][0, 0]:.1f})")
-    bc = os.path.join(OUT, "brown_conrady.txt")
-    if os.path.exists(bc):
-        f, k1, k2, p1, p2, k3 = (float(x) for x in open(bc).read().split())
-        r = np.tan(th)
-        ax.plot(deg, f * r * (1 + k1 * r ** 2 + k2 * r ** 4 + k3 * r ** 6), "-.", lw=2, color="#f08c00",
-                label=f"Brown–Conrady (fx {f:.1f}), along a radius")
-    ax.axvspan(far, 85, color="grey", alpha=0.12)
-    ax.text(far + 1, 1450, "no corner used by\nyour calibration", color="grey", fontsize=9)
-    ax.axhline(bench["K"][0, 2], color="grey", ls=":")
-    ax.set_ylim(0, 1600)
-    ax.set_xlabel("angle θ of the ray from the optical axis (°)")
-    ax.set_ylabel("distance r from the principal point (px)")
-    ax.set_title("Three lens models fitted to the same kind of corners")
+    ax.plot(ds, [fisheye_angle(bench, cx + d) for d in ds], lw=3, color="#d64545", label="bench fisheye (38 views)")
+    ax.plot(ds, [fisheye_angle(mine, cx + d) for d in ds], ":", lw=2.5, color="#0b6e8a", label="your fisheye")
+    if bc:
+        ax.plot(ds, [bc_angle(cx + d) for d in ds], "-.", lw=2, color="#f08c00", label="Brown–Conrady")
+    for side in (-1, 1):
+        ax.axvspan(side * r_far, side * 950, color="grey", alpha=0.12)
+    ax.text(r_far + 10, 8, "no corner used\nby your calibration", color="grey", fontsize=8)
+    ax.set_xlabel("distance from your principal point along its row (px; left negative)")
+    ax.set_ylabel("angle of the pixel's ray from the optical axis (deg)")
+    ax.set_title("The same pixels, three models (gaps: the fisheye model cannot describe the pixel)", fontsize=10)
     ax.grid(alpha=0.3)
-    ax.legend(loc="upper left", fontsize=8)
+    ax.legend(loc="upper center", fontsize=8)
     fig.tight_layout()
     os.makedirs(OUT, exist_ok=True)
     fig.savefig(os.path.join(OUT, "my_curves.png"), dpi=80)

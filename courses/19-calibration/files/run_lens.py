@@ -121,7 +121,7 @@ def test():
     cases = [(0.5303, 0.50972, 1e-4, "the docstring says about 0.5097"),
              (0.0, 0.0, 1e-9, "θ_d = 0 is the optical axis: θ = 0"),
              (1.2, 1.08296, 1e-4, "1.2 is reached TWICE by the curve (rising, then falling): return the RISING-part "
-                                  "angle, about 1.083 (1.249 is on the falling part). Lab Step 3, hint 2")]
+                                  "angle, about 1.083. Lab Step 3, hint 2")]
     for td, want, tol, note in cases:
         got, err = rk.call(fe, "theta_from_theta_d", td, D)
         if err:
@@ -139,12 +139,28 @@ def test():
             line(2, False, err)
         else:
             line(2, isnan(got), f"theta_from_theta_d({td:.4f}) = {show(got)}",
-                 "the curve never reaches this θ_d (its top is 1.249): return float('nan'). Lab Step 3, hint 3")
+                 "the curve never reaches this θ_d: return float('nan'). Find the curve's top with a grid and "
+                 "np.diff (never type a number): Lab Step 3, plan (1) and hint 3")
+    D4 = [0.10, -0.30, 0.25, -0.08]                  # another lens: its curve's top is θ_d = 1.1285 (at 1.2767 rad)
+    for td, want in ((1.0156, 1.056433), (1.1385, None)):
+        got, err = rk.call(fe, "theta_from_theta_d", td, D4)
+        if err and "returned None" in err and want is None:
+            got, err = None, None
+        if err:
+            line(2, False, err)
+        elif want is None:
+            line(2, isnan(got), f"another lens, theta_from_theta_d({td}) = {show(got)}",
+                 "this lens' curve tops at θ_d = 1.1285: return nan above it. Your code must find each lens' own top "
+                 "(Lab Step 3, plan (1))")
+        else:
+            line(2, (not isnan(got)) and close(got, want, 1e-4), f"another lens, theta_from_theta_d({td}) = {show(got)}",
+                 "another lens (D = [0.10, −0.30, 0.25, −0.08]): about 1.0564. Your code must work for any D")
 
     # TODO 3 — stretch_at
     for args, want, note in (((0.0, 659.79), 0.998943, "the docstring says about 0.999 = f_new / fx at the centre"),
                              ((40.0, 659.79), 1.473577,
-                              "the docstring says about 1.474. 1.702? The lens' own pixels per radian are missing "
+                              "the docstring says about 1.474. About 0, negative or nan? θ is still in degrees (hint 1). "
+                              "1.702? The lens' own pixels per radian are missing "
                               "(its slope). 1.602? That is θ_d/θ, not the slope. 0.679? Upside down. Lab Step 4, hints 2–3"),
                              ((30.0, 257.23), 0.472553, "a 150° view at 30° from the axis")):
         got, err = rk.call(fe, "stretch_at", *args, K, D)
