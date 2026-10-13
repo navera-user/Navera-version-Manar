@@ -20,7 +20,7 @@ ROUTE_GC_KM = 0.0           # great circle (your haversine_m), km
 EXPLAIN_COS = ""            # which version comes closest to the server's 1750 km? why is the mean latitude better?
 
 # ---- Step 4: the corridor audit (python3 run_geo.py route) ---------------------------------------
-PREDICT_LEG = ""        # before reading the leg line: offset of the 10 km mid-route leg, scaled from OFFSET_KM (m)
+PREDICT_LEG = ""            # before the run: offset of the 10 km mid-route leg, scaled from max_offset_km (m)
 OFFSET_KM = 0.0             # max_offset_km(Paris, Tunisia), km
 LEG_OFFSET_M = 0.0          # max offset of the 10 km leg in the middle of the route, in METRES
 EXPLAIN_ROUTE = ""          # which side does the great circle pass? what did it mean for a ±1 km corridor?
@@ -34,8 +34,8 @@ SCALE_NORTH_ZERO_LAT_DEG = 0.0    # latitude where 1° of latitude is exactly 11
 
 # ---- Step 6: ECEF --------------------------------------------------------------------------------
 GEOCENTRIC_DIFF_DEG = 0.0   # geodetic − geocentric latitude of a surface point at 30°, in degrees
-EXPLAIN_GEOCENTRIC = ""  # why is the difference largest there? (where must the two angles agree?)
 GEOCENTRIC_MAX_AT_DEG = 0.0 # the latitude where that difference is largest (degrees)
+EXPLAIN_GEOCENTRIC = ""     # why is the difference largest there? (where must the two angles agree?)
 
 # ---- Step 7: ENU, and heights ----------------------------------------------------------------------
 PREDICT_DROP = ""           # Tallinn (sea level) seen from Helsinki's ENU frame (sea level): up = ?
@@ -44,7 +44,7 @@ H_ELLIPSOID_M = 0.0         # a receiver says: 312.4 m above mean sea level, geo
                             # Height above the WGS84 ellipsoid (m)?
 
 # ---- Step 8: the oracle (python3 compare_oracle.py) -----------------------------------------------
-PREDICT_SPHERE = ""  # from radii(0) alone: sphere error (%) 100 km north and east of Quito, signs?
+PREDICT_SPHERE = ""         # from radii(0) alone: sphere error (%) 100 km north and east of Quito, signs?
 SPHERE_ERR_NORTH_PCT_QUITO = 0.0  # sphere error, 100 km due north of Quito (%, with its sign)
 SPHERE_ERR_EAST_PCT_QUITO = 0.0   # sphere error, 100 km due east of Quito (%, with its sign)
 EXPLAIN_SPHERE = ""               # why is the sphere too long north-south and too short east-west at the equator?

@@ -20,7 +20,8 @@ ROUTE_GC_KM = 1767.8           # great circle (your haversine_m), km
 EXPLAIN_COS = "The start column (cos of the Paris latitude) gives 1746.9 km, the closest to the server's 1750 km, so the server most likely took cos at the start (or 111 320 m per degree, 1748.9 km). Paris is the northern end, where the parallels are shortest, so every east metre is shrunk; the mean latitude is the typical latitude of the route and lands within 2 km of the great circle."            # which version comes closest to the server's 1750 km? why is the mean latitude better?
 
 # ---- Step 4: the corridor audit (python3 run_geo.py route) ---------------------------------------
-PREDICT_LEG = "About 1.1 m: 34.2 km x (10/1768)^2."  # before reading the leg line: offset of the 10 km mid-route leg, scaled from OFFSET_KM (m)
+# before the run: offset of the 10 km mid-route leg, scaled from max_offset_km (m)
+PREDICT_LEG = "About 1.1 m: 34.2 km x (10/1768)^2."
 OFFSET_KM = 34.2             # max_offset_km(Paris, Tunisia), km
 LEG_OFFSET_M = 1.09          # max offset of the 10 km leg in the middle of the route, in METRES
 EXPLAIN_ROUTE = "The great circle passes north-east of the straight lat/lon line, towards the pole, up to 34 km away, so a corridor of plus or minus 1 km around the straight line held almost none of the tiles under the real path. With short legs of 10 km the great circle and the straight line between the leg ends are only about 1 m apart, so the map corridor and the flown path agree."          # which side does the great circle pass? what did it mean for a ±1 km corridor?
@@ -34,8 +35,9 @@ SCALE_NORTH_ZERO_LAT_DEG = 54.81    # latitude where 1° of latitude is exactly 
 
 # ---- Step 6: ECEF --------------------------------------------------------------------------------
 GEOCENTRIC_DIFF_DEG = 0.1664   # geodetic − geocentric latitude of a surface point at 30°, in degrees
-EXPLAIN_GEOCENTRIC = "The two latitudes agree at the equator and at the pole, by symmetry, so the gap is zero at both ends and peaks in between, near 45.1 degrees."  # why is the difference largest there? (where must the two angles agree?)
 GEOCENTRIC_MAX_AT_DEG = 45.1 # the latitude where that difference is largest (degrees)
+# why is the difference largest there? (where must the two angles agree?)
+EXPLAIN_GEOCENTRIC = "The two latitudes agree at the equator and at the pole, by symmetry, so the gap is zero at both ends and peaks in between, near 45.1 degrees."
 
 # ---- Step 7: ENU, and heights ----------------------------------------------------------------------
 PREDICT_DROP = "About 100 m below."           # Tallinn (sea level) seen from Helsinki's ENU frame (sea level): up = ?
@@ -44,7 +46,8 @@ H_ELLIPSOID_M = 283.8         # a receiver says: 312.4 m above mean sea level, g
                             # Height above the WGS84 ellipsoid (m)?
 
 # ---- Step 8: the oracle (python3 compare_oracle.py) -----------------------------------------------
-PREDICT_SPHERE = "North +0.56 % (6371/6335.4 - 1), east -0.11 %."  # from radii(0) alone: sphere error (%) 100 km north and east of Quito, signs?
+# from radii(0) alone: sphere error (%) 100 km north and east of Quito, signs?
+PREDICT_SPHERE = "North +0.56 % (6371/6335.4 - 1), east -0.11 %."
 SPHERE_ERR_NORTH_PCT_QUITO = 0.561  # sphere error, 100 km due north of Quito (%, with its sign)
 SPHERE_ERR_EAST_PCT_QUITO = -0.112   # sphere error, 100 km due east of Quito (%, with its sign)
 EXPLAIN_SPHERE = "At the equator the meridian radius M is 6335 km, smaller than the sphere's 6371 km, so the sphere makes north-south distances too long; the east-west radius N is 6378 km, larger than 6371 km, so east-west distances come out too short."               # why is the sphere too long north-south and too short east-west at the equator?

@@ -131,7 +131,8 @@ long flight out and back: the two take-off bearings are not 180° apart.
 1. `TypeError: only length-1 arrays…` in the array line: you used `math.sin` / `min`; use `np.sin`,
    `np.cos`, `np.arcsin`, `np.sqrt`, `np.minimum`.
 2. 171 778.0 instead of 343 556.1: the factor 2 of `2 R asin(√a)` is missing. 615 391.4: the `/2` inside
-   sin² is missing.
+   sin² is missing. 301 398.6: cos φ1 · cos φ2 got DEGREES — convert lat1 and lat2 with `np.radians` too, not
+   only the differences (the array line stays ✔ because its latitudes are 0).
 3. Bearing 301.884 instead of 148.12: `atan2(north, east)` — east goes first. −58.12: that mistake and a
    missing `% 360` together. 2.585: still radians,
    apply `math.degrees`. Negative bearings in `bearings`: add `% 360`.
@@ -147,8 +148,10 @@ runner computes the length three ways: flat with cos of the **start** latitude, 
 
 > [!TASK]
 > **Predict** (`PREDICT_COS`), on paper, before running: by how many km will the start-latitude version
-> and the mean-latitude version miss the 1 768 km? Two numbers. (London → Paris in lesson §2 gives you
-> the ratios for a 344 km route spanning 2.65° of latitude; this one spans 15°.)
+> and the mean-latitude version miss the 1 768 km? Two numbers. (Scaling London → Paris's percentages
+> does not work: the east share of this route is smaller. Use the method of §2: Paris → Tunisia spans
+> Δφ ≈ −15.0° and Δλ ≈ +7.05°; compute the east part with cos 48.85° (start) and with cos 41.35° (mean),
+> the north part once, then each distance √(east² + north²).)
 
 ```bash
 python3 run_geo.py cos
@@ -217,6 +220,11 @@ Your `haversine_m` broadcasts the same way: a (101, 1) column of latitudes/longi
 (1, 1001) row gives a (101, 1001) table of distances.
 </details>
 
+> [!TASK]
+> **Predict** (`PREDICT_LEG`) before the run: the offset of a great circle from its lat/lon chord grows like
+> the square of its length. From `max_offset_km` (call it yourself on Paris → Tunisia, e.g. with
+> `python3 -c "…"`) and the route length (1 768 km), how many metres for the 10 km leg in the middle?
+
 ```bash
 python3 run_geo.py route
 ```
@@ -224,11 +232,7 @@ python3 run_geo.py route
 Open `out/route.png` and compare with your `PREDICT_ROUTE`.
 
 > [!TASK]
-> **Predict** (`PREDICT_LEG`), before you read the last line of the output: the offset of a great circle
-> from its lat/lon chord grows like the square of its length. From your max offset and the route length
-> (1 768 km), how many metres for the 10 km leg in the middle of the route?
->
-> Then write `OFFSET_KM` (km) and `LEG_OFFSET_M` (metres, from the run), and
+> Write `OFFSET_KM` (km) and `LEG_OFFSET_M` (metres, from the run), and
 > `EXPLAIN_ROUTE`: which side does the great circle pass, what did it mean for a ±1 km corridor, and
 > why do ≤ 10 km great-circle legs fix it?
 
@@ -239,7 +243,8 @@ Open `out/route.png` and compare with your `PREDICT_ROUTE`.
 2. 2.558 instead of 2.48 on London → Paris: you compared points at the **same fraction** (point k with
    point k); the definition wants the **nearest** line point for each great-circle point.
    2.984: you took `min(axis=0)` (nearest great-circle point for each line point): wrong direction.
-3. About 0: your TODO 5 still draws the straight line. 2 480: metres, divide by 1000.
+3. About 0: your TODO 5 still draws the straight line. 2 480: metres, divide by 1000. 3.294 on London →
+   Paris with a correct TODO 5: your haversine_m is still wrong (Step 2 hint 2).
 4. The last line can be `return float(table.min(axis=1).max()) / 1000.0`.
 </details>
 
@@ -270,7 +275,7 @@ python3 run_geo.py test
 
 1. `python3 -c "from navera_lite.geo import radii; print(radii(61.2181))"` prints (M, N) in metres.
 2. 6 347 285 for M at −41.3°, or a wrong M at 45° only: `math.sin` got degrees. (6 378 137.0, 6 335 439.3)
-   at 0°: M and N are swapped.
+   at 0°: M and N are swapped. M about HALF (3 167 719.7 at 0°): `w**3/2` is (w³)/2 — write `w ** 1.5`.
 3. 1° of longitude = N · cos φ · π/180 with φ in radians: at Anchorage between 50 and 60 km. A negative
    number: `math.cos` got degrees.
 4. The zero: M grows from the equator to the pole, so `for lat in np.arange(0, 90, 0.001)` and stop at the
@@ -310,13 +315,17 @@ not at, the middle.
 <details><summary>Stuck? Hints</summary>
 
 1. `TypeError: can only concatenate tuple (not "float") to tuple`: `radii()` returns two numbers (M, N);
-   keep only N with `_, n = radii(lat)`.
+   keep only N with `_, n = radii(lat)`. All three coordinates about 0.7 % too small at Singapore
+   (−1 512 931.0, …): you kept M — N is the SECOND value.
 2. Z wrong but X and Y right: Z uses `N·(1 − e²) + h`.
 3. A wrong height on the 60° test line (about 16 084 m if lat stays in radians through the loop, 19.3 m if
    only the call to `radii()` gets radians, instead of 100 m; Singapore 26.9 m instead of 15.02 m), or round
    trips of ~100 m to kilometres in `ecef`: radians given to `radii()` (it takes degrees), or degrees given
    to `math.cos`. Near the equator the mistake is much smaller: look at the 60° line.
 4. Round trips of 0.6 mm to 0.4 m, or 99.997 m on the 60° line: too few iterations.
+5. Round trips that do NOT improve with more iterations (100.50 m on the 60° line, about 67 m for the
+   airliner in `ecef`, Singapore still ✔): your loop repeats the first guess. Inside the loop the latitude
+   is φ = atan2(Z, p·(1 − e²·N/(N + h))), with the N and h you just computed.
 </details>
 
 ## Step 7 — The local frame (TODO 10–12) and heights
@@ -345,7 +354,9 @@ python3 run_geo.py enu
 <details><summary>Stuck? Hints</summary>
 
 1. `TypeError: unsupported operand type(s) for -: 'tuple' and 'tuple'`: wrap each ECEF in `np.array(…)`.
-2. `det(R) = −1`: two rows swapped (north first?) or a sign; R·Rᵀ not the identity: degrees in sin/cos.
+2. `det(R) = −1`: two rows swapped (north first?) or a sign; R·Rᵀ not the identity: degrees in sin/cos, or
+   one sign lost inside a row — compare each of the nine entries with lesson §7 (the N row has two minus
+   signs). The (0°, 0°) test cannot see a sign next to sin φ0: the Helsinki test line and `run_geo.py enu` can.
 3. The way back lands at (60.43, 26.10, −42 423 m): you used `R` instead of `R.T`.
 </details>
 
@@ -427,7 +438,8 @@ of the 50 m margin.
    cos); that point's (lat, lon) from your exact frame (`g.enu_to_geodetic`, up 0, home height 0); then
    what `g.enu_flat` says, seen from home.
 3. 5.613 right but Wellington 24.645: only the first bearing counts — your `return` is inside the loop.
-   Wellington 66.005: the bearing went to `math.sin` in degrees.
+   Wellington 66.005: the bearing went to `math.sin` in degrees. 2005.613 at (0, 0, 1 km): enu_flat's
+   arguments are reversed — home first, `g.enu_flat(lat0, lon0, lat, lon)`.
 4. `math.hypot(dx, dy)` is the horizontal distance; keep the largest with `max(worst, …)`.
 </details>
 

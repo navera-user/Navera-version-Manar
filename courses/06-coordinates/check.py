@@ -145,6 +145,9 @@ def _():
     (f,) = functions("haversine_m")
     c.near(num(go(f, -1.2921, 36.8219, -1.2921, 36.8219), "haversine_m"), 0.0, 1e-6, "distance of a point to itself")
     v = num(go(f, -33.8688, 151.2093, -33.4489, -70.6693), "haversine_m")
+    if abs(v - 7390010) < 1000:
+        raise CheckFailed("Sydney → Santiago is 7 390 km: cos φ1 · cos φ2 got DEGREES — convert lat1 and lat2 with "
+                          "np.radians too, not only the differences")
     if abs(2 * v - 11346715.12) < 1:
         raise CheckFailed("Sydney → Santiago is exactly half the right distance: d = 2 R asin(√a) — the 2 is missing")
     c.near(v, 11346715.12, 0.5, "Sydney → Santiago (m)")
@@ -293,6 +296,8 @@ def _():
     for lat, want in [(-41.2865, (6363237.747, 6387451.978)), (78.2232, (6396899.590, 6398695.488)),
                       (19.4326, (6342487.564, 6380501.370))]:
         m, n = nums(go(f, lat), 2, f"radii({lat})")
+        if abs(2 * m - want[0]) < 0.05 * want[0]:
+            raise CheckFailed(f"M at {lat}° is about HALF the right value: `w**3/2` is (w³)/2 — write w ** 1.5")
         if lat == -41.2865 and abs(m - 6347285.09) < 0.1:
             raise CheckFailed("M at −41.2865° is 6 347 285 m: math.sin() got the latitude in DEGREES — convert to radians")
         if abs(m - want[1]) < 0.01 and abs(n - want[0]) < 0.01:
@@ -310,6 +315,9 @@ def _():
                           ((78.2232, 15.6267, 10.0), (1257701.197, 351788.348, 6222079.835), "Longyearbyen"),
                           ((19.4326, -99.1332, 2240.0), (-955419.121, -5942828.351, 2109313.009), "Mexico City")]:
         x = nums(go(f, *p), 3, f"geodetic_to_ecef{p}")
+        if what == "Wellington" and abs(x[0] - -4761620) < 100:
+            raise CheckFailed("Wellington: all three coordinates are a little too small — you used M; N is the SECOND "
+                              "value of radii()")
         if abs(x[2] - want[2]) > 1 and abs(x[0] - want[0]) < 0.01:
             raise CheckFailed(f"{what}: X and Y are right but Z is not — Z uses N·(1 − e²) + h, not N + h")
         for k, axis in enumerate("XYZ"):
@@ -329,7 +337,8 @@ def _():
             raise CheckFailed(f"{p}: the height comes back {h:,.0f} m — degrees and radians are mixed up somewhere "
                               "(radii() takes degrees; sin/cos take radians)")
         if abs(lat - p[0]) < 1e-4:
-            tip = "more iterations? recompute h after the last latitude?"
+            tip = ("more iterations? recompute h after the last latitude? If more iterations do not help, the loop "
+                   "repeats the first guess: inside it φ = atan2(Z, p·(1 − e²·N/(N + h)))")
         else:
             tip = "radii() takes DEGREES: keep lat in degrees between iterations, radians only inside sin/cos/atan2"
         c.ok(abs(lat - p[0]) < 1e-8 and abs(lon - p[1]) < 1e-8 and abs(h - p[2]) < 1e-3,
@@ -350,7 +359,8 @@ def _():
         raise CheckFailed(f"enu_matrix should return a 3 × 3 numpy array, got {r!r}")
     c.ok(r.shape == (3, 3), f"enu_matrix should return shape (3, 3), got {r.shape}")
     c.ok(np.allclose(r @ r.T, np.eye(3), atol=1e-12), "R @ R.T is not the identity: the rows are not unit vectors at "
-                                                       "right angles (radians? a sign?)")
+                                                       "right angles — degrees in sin/cos, or one sign lost inside a "
+                                                       "row (the N row has two minus signs)")
     det = float(np.linalg.det(r))
     c.ok(abs(det - 1.0) < 1e-9, f"det(R) = {det:+.3f}: R is a mirror, not a rotation — two rows swapped, or one row "
                                 "(E, N or U) with the wrong sign")
@@ -401,7 +411,7 @@ def _():
     c.near(zero, 54.81, 0.02, "SCALE_NORTH_ZERO_LAT_DEG (degrees)")
     c.near(number(gdiff, "GEOCENTRIC_DIFF_DEG"), 0.1664, 0.001, "GEOCENTRIC_DIFF_DEG (geodetic − geocentric, at 30°)")
     c.near(number(gmax, "GEOCENTRIC_MAX_AT_DEG"), 45.1, 0.2, "GEOCENTRIC_MAX_AT_DEG (degrees)")
-    explained("EXPLAIN_GEOCENTRIC", gwhy, ((r"equator", r"\b0 ?°?", r"zero"), "where the two angles agree (one end)"),
+    explained("EXPLAIN_GEOCENTRIC", gwhy, ((r"equator", r"\b0 ?°", r"\b0 deg", r"zero"), "where the two angles agree (one end)"),
               ((r"pole", r"\b90"), "where they agree (other end)"), min_words=6)
     predicted("PREDICT_DROP", pred)
     drop = number(drop, "DROP_M")
@@ -442,6 +452,9 @@ def _():
     if v > 1e6:
         raise CheckFailed(f"worst_flat_error_m gives {v:,.0f} m: for points WEST of home your enu_flat says tens of "
                           "thousands of km east — its Δλ wrap must be (Δλ + 180) % 360 − 180 (lesson §1)")
+    if abs(v - 40024.645) < 0.01:
+        raise CheckFailed("worst_flat_error_m gives 40024.645 m at Wellington: enu_flat's arguments are reversed — "
+                          "home first, g.enu_flat(lat0, lon0, lat, lon)")
     if abs(v - 24.645) < 0.01:
         raise CheckFailed("worst_flat_error_m looks at the first bearing only: is the `return` inside the loop?")
     if abs(v - 66.005) < 0.01:

@@ -32,7 +32,7 @@ Badges: **Navigator** = checks 1–9 (session 1), **Surveyor** = all 18.
 | GEOCENTRIC_MAX_AT_DEG | 45.1 (45.096°; check accepts ±0.2) | tan φ = 1/√(1 − e²); max 0.1924°; EXPLAIN_GEOCENTRIC: the angles agree at 0° and 90° (graded on topic) |
 | PREDICT_LEG (ungraded) | ≈ 1.10 m | 34.21 km × (10.044/1 767.8)²; run prints 1.09 m |
 | PREDICT_SPHERE (ungraded) | +0.56 % / −0.11 % | 6 371/6 335.4 − 1, 6 371/6 378.1 − 1 |
-| PREDICT_COS (ungraded) | ≈ −23 km / ≈ +2 km | §2's linearisation scaled to the route; true −20.9 / +1.9 km; within a factor 2 on the start version shows the idea |
+| PREDICT_COS (ungraded) | ≈ −22 km / ≈ +1 km | lab's method: Δφ −15.0°, Δλ +7.05°, east with cos 48.85° / cos 41.35°, then √(e² + n²) (−21.9 / +0.9 km with these rounded spans); true −20.9 / +1.9 km. Scaling London → Paris's percentages gives about −72 km: that is the trap the lab warns about |
 | Oracle Part 2 | gap −4.1 mm / −0.51 m = s³/(6R²); last column 7.8 / 196 m = d²/2R | a reversed Up axis is caught by the extra u = +100 line |
 | DROP_M | −530.6 | Tallinn in Helsinki's ENU (e −10 486.5, n −81 634.7) |
 | H_ELLIPSOID_M | 283.8 | 312.4 + (−28.6) |
@@ -81,7 +81,7 @@ end points.
   iteration; one iteration only (0.6 mm–0.4 m); E/N rows swapped (det −1); R instead of R.T; tuple
   subtraction without numpy.
 - TODO A: `return` inside the loop (24.645), bearing in degrees (66.005).
-All of these (30 mutants, list in the round-1 fix log) were run against check.py and give the named
+All of these (43 mutants, lists in the round-1, round-2 and round-3 fix logs) were run against check.py and give the named
 message; the runner self-tests (run_geo.py test, error_study.py self-test, compare_oracle direction check)
 catch the same ones before the checker, except `% 360` (shown by `run_geo.py bearings`).
 

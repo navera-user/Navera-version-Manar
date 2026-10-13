@@ -92,8 +92,10 @@ def test():
         (9, "ecef_to_geodetic", (-1523121.7, 6191803.0, 149494.2), (1.3521, 103.8198, 15.02), 0.05),
         (9, "ecef_to_geodetic", (2897606.0985, 1351175.9140, 5500563.7365), (60.0, 25.0, 100.0), 0.001,
          "a point at (60°, 25°, 100 m), far from the equator: expected (60.0, 25.0, 100.0) to 1 mm — keep lat in "
-         "DEGREES for radii(), radians only in sin/cos/atan2; enough iterations?"),
+         "DEGREES for radii(), radians only in sin/cos/atan2; enough iterations? (100.50 m: the loop repeats the "
+         "first guess — inside it, φ = atan2(Z, p·(1 − e²·N/(N + h))))"),
         (10, "enu_matrix", (0.0, 0.0), None, None),
+        (10, "enu_matrix", (60.1699, 24.9384), None, None),
         (11, "geodetic_to_enu", (-33.80, 151.30, 0.0, -33.8688, 151.2093, 0.0), (8398.9, 7627.5, -10.1), 0.1),
         (12, "enu_to_geodetic", (8398.9, 7627.5, -10.1, -33.8688, 151.2093, 0.0), (-33.80, 151.30, 0.0), 0.01),
     ]
@@ -119,6 +121,15 @@ def test():
             if (not ok and isinstance(got, list) and len(got) == 3
                     and abs(float(got[1][1]) - math.pi / 4) < 1e-6):
                 note = "(0, 0.785398) is (0, 45°) in RADIANS: atan2 returns radians — wrap lat and lon in math.degrees(…)"
+        elif fn == "enu_matrix" and args[0] != 0.0:
+            a = np.asarray(got, dtype=float) if not isinstance(got, str) else None
+            ok = (a is not None and a.shape == (3, 3) and np.allclose(a @ a.T, np.eye(3), atol=1e-9)
+                  and abs(np.linalg.det(a) - 1.0) < 1e-9 and np.allclose(a[2], [0.45105, 0.209738, 0.867504], atol=1e-5))
+            got_s = "Helsinki: R @ R.T = I, det = +1, Up row right" if ok else "Helsinki: " + (
+                "shape is not (3, 3)" if a is None or a.shape != (3, 3) else
+                f"R @ R.T is not I or det = {np.linalg.det(a):+.3f} — a sign lost inside a row, or two rows swapped")
+            want_s = "R @ R.T = I, det = +1"
+            note = "compare each of the nine entries with lesson §7 (the N row has two minus signs)"
         elif fn == "enu_matrix":
             a = np.asarray(got, dtype=float) if not isinstance(got, str) else None
             ok = a is not None and a.shape == (3, 3) and np.allclose(a, [[0, 1, 0], [0, 0, 1], [1, 0, 0]], atol=1e-12)

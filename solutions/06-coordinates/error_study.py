@@ -81,6 +81,9 @@ def main():
         raise SystemExit("✘ Wellington gives 24.645: only the first bearing counts — is your `return` inside the loop?")
     if abs(w - 66.005) < 0.01:
         raise SystemExit("✘ Wellington gives 66.005: math.sin/math.cos got the bearing in DEGREES — use math.radians")
+    if abs(v - 2005.613) < 0.01:
+        raise SystemExit("✘ 2005.613 at (0, 0, 1 km): enu_flat sees home from the point — call "
+                         "g.enu_flat(lat0, lon0, lat, lon), home first")
     if v > 1e6 or w > 1e6:
         raise SystemExit("✘ errors of thousands of km: for points WEST of home your enu_flat gives tens of thousands "
                          "of km EAST — check its Δλ wrap, (Δλ + 180) % 360 − 180 (lesson §1), even if run_geo.py test "
