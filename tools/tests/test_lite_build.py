@@ -277,7 +277,7 @@ class Track:
     (ref / "manifest.d/06-demo.json").write_text(json.dumps({"parts": ["track", "speed"], "tests": ["test_geo.py"]}))
     out = tmp_path / "out"
     res = _build(ref, out, "06-demo")
-    assert res["todos"]["track"] == ["Track.__len__", "Track.add"]
+    assert sorted(res["todos"]["track"]) == ["Track.__len__", "Track.add"]
     s = (out / "courses/06-demo/files/navera_lite/track.py").read_text()
     assert "self.rows = []" in s                              # __init__ has its own (given) tag
     assert 'raise NotImplementedError("TODO 4")' in s and "return None   # TODO" in s

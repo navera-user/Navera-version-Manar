@@ -289,8 +289,11 @@ def render(path, nn, todo_missions, stub):
         out[first - 1:last] = repl
     text = "\n".join(out)
     text = re.sub(r"\n{4,}", "\n\n\n", text).rstrip("\n") + "\n"
-    todos = sorted({_qualname(it) for it in items if it["todo"] is not None and it["mission"] == nn
-                    and nn in todo_missions and it["kind"] == "def"})
+    mine = {}                                     # in TODO order (PARTS.md lists them as the lab does)
+    for it in items:
+        if it["todo"] is not None and it["mission"] == nn and nn in todo_missions and it["kind"] == "def":
+            mine.setdefault(_qualname(it), int(it["todo"]))
+    todos = sorted(mine, key=lambda q: (mine[q], q))
     return text, todos, stubbed
 
 
