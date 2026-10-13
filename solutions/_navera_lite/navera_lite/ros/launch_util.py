@@ -3,8 +3,10 @@ in a terminal (`python3 -m navera_lite.ros.<module> --ros-args ...`). Part of NA
 teaching stack (given in mission 13). Written for the course; it is not NAVERA code.
 
 Product packages are built with colcon and started with launch_ros.actions.Node(package=..., executable=...).
-NAVERA Lite is not built, so fl_node() gives the same command line to a plain ExecuteProcess. The two map
-one to one (lesson 13 §5):
+NAVERA Lite is not built, so fl_node() gives the same command line to a plain ExecuteProcess. The two give
+the same command line except for `params`: Node writes the dict into a temporary params file under the node's
+full name, which overrides that node's section of an earlier file; fl_node writes `-p`, which goes in the `/**`
+row (lesson 13 §3, §5):
     Node(package="pkg", executable="exe", name="n", namespace="ns",
          parameters=["file.yaml", {"k": v}], remappings=[("from", "to")])
     fl_node("exe", "n", namespace="ns", params_file="file.yaml", params={"k": v}, remaps=[("from", "to")])

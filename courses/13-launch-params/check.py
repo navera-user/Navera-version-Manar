@@ -26,12 +26,13 @@ SETTINGS_CASES = [
     ({"celestial_timeout_s": 45, "gps_jump_margin_m": True}, ["celestial_timeout_s", "gps_jump_margin_m"]),
     ({"vehicle": "car", "max_speed_mps": 5.0}, ["vehicle"]),
     ({"vehicle": "boat", "max_speed_mps": "fast"}, ["max_speed_mps"]),
+    ({"min_stated_sigma_m": -0.1, "fix_max_sigma_m": -0.2}, ["min_stated_sigma_m", "fix_max_sigma_m"]),
     ({"night_timeout_s": 0, "vehicle": "boat", "max_speed_mps": 12.0, "fix_max_sigma_m": 0.01},
      ["night_timeout_s", "night_timeout_s", "fix_max_sigma_m", "max_speed_mps"]),
 ]
 N_INTEGRATOR = 4
 PRECEDENCE = {"SPEED_DEFAULT": 10.0, "SPEED_FILE": 18.0, "SPEED_FILE_THEN_P": 18.0, "SPEED_P_THEN_FILE": 18.0,
-              "SPEED_TWO_FILES": 25.0}
+              "SPEED_TWO_FILES": 25.0, "SPEED_F": 30.0}
 MY_GPS = {"/**": {"rate_hz": 1.0, "sigma_m": 3.0},
           "/drone/fake_gps": {"vehicle": "drone", "speed_mps": 18.0, "heading_deg": 90.0},
           "/boat/fake_gps": {"vehicle": "boat", "speed_mps": 6.0, "heading_deg": 45.0, "start_lat": 35.78,
@@ -183,6 +184,8 @@ def read_yaml(path):
 
 def block(doc, key, path):
     sec = doc.get(key) if isinstance(doc, dict) else None
+    if sec is None and isinstance(doc, dict) and key.startswith("/") and key != "/**":
+        sec = doc.get(key[1:])               # ROS reads `boat/fake_gps:` as `/boat/fake_gps`
     if not isinstance(sec, dict) or not isinstance(sec.get("ros__parameters"), dict):
         raise CheckFailed(f"{path} has no section `{key}:` with `ros__parameters:` under it")
     return sec["ros__parameters"]
@@ -290,15 +293,21 @@ def _():
         keys = [x.split()[0] if x.split() else "" for x in got]
         if len(got) != len(want):
             raise CheckFailed(f"{what} returned {len(got)} problem(s): {got}" + (
-                " — these settings break no rule" if not want else ""))
-        c.ok(keys == want, f"{what} returned {got}: each sentence must start with its key, in the docstring's order")
+                " — these settings break no rule" if not want else f" — expected sentences about: {want}"))
+        c.ok(keys == want, f"{what} returned {got}: expected sentences about {want}, in this order (each sentence "
+                           "starts with its key; the docstring numbers the rules)")
+        for x in got:
+            m = re.search(r"write (\S+)\.0, not", x)
+            c.ok(not m or re.fullmatch(r"[+-]?\d+", m.group(1)), f"{what}: {x!r} — 'write ….0' only fits a whole "
+                 "number; any other value gets \"must be a float, got …\" (rule 1 of the docstring)")
 
 
 @c.test("Step 0: the integer trap and the silent `ros2 param set`",
         hint="Lab Step 0: read the reply of `ros2 param set` and the judge's message AFTER it. Lesson §2, 'Read once'.")
 def _():
-    p, ok, st, ex = answers("PREDICT_INT", "SET_REPORTED_OK", "STATE_AFTER_SET", "EXPLAIN_SILENT")
+    p, ps, ok, st, ex = answers("PREDICT_INT", "PREDICT_SET", "SET_REPORTED_OK", "STATE_AFTER_SET", "EXPLAIN_SILENT")
     predicted("PREDICT_INT", p)
+    predicted("PREDICT_SET", ps)
     c.ok(boolean(ok, "SET_REPORTED_OK") is True, "SET_REPORTED_OK: what did `ros2 param set` print?")
     c.ok(state(st, "STATE_AFTER_SET") == "FIX", "STATE_AFTER_SET is not what the judge said after the set")
     explained("EXPLAIN_SILENT", ex, ([r"once", r"start", r"init", r"restart", r"begin"], "when the judge reads its settings"),
@@ -336,6 +345,8 @@ def _():
     keys = list(doc.keys()) if isinstance(doc, dict) else []
     c.ok(keys, "my_gps.yaml has no section yet (lab Step 5)")
     c.ok(keys[:1] == ["/**"], f"the first section of my_gps.yaml is {keys[:1]}: put /** first (lesson §3)")
+    c.ok(not ({"fake_gps", "/fake_gps"} & set(keys)), "my_gps.yaml has a section `fake_gps:`: it means /fake_gps, "
+                                                     "which matches neither /drone/fake_gps nor /boat/fake_gps")
     for sec, values in MY_GPS.items():
         got = block(doc, sec, "my_gps.yaml")
         for k, v in values.items():
@@ -405,6 +416,12 @@ def _():
     judge = find(res[0], "arbiter_v0", None)
     c.ok("__node:=arbiter" in judge["cmd"], "the judge is not named arbiter")
     pf = [judge["cmd"][i + 1] for i, x in enumerate(judge["cmd"][:-1]) if x == "--params-file"]
+    for args, r in zip(combos, res):
+        src = args.get("gps_source", "drone")
+        j = find(r, "arbiter_v0", None)
+        c.ok(f"vehicle:={src}" in j["cmd"], f"with {args or 'no arguments'} the judge gets "
+             f"{[x for x in j['cmd'] if x.startswith('vehicle:=')] or 'no vehicle'}, expected vehicle:={src} "
+             "(the value of gps_source, a substitution in params)")
     c.ok(len(pf) == 1 and pf[0].endswith("/navera_lite.yaml"), f"the judge's params file is {pf}, expected navera_lite.yaml")
     for args, r in zip(combos, res):
         src = args.get("gps_source", "drone")
@@ -418,7 +435,7 @@ def _():
 
 
 @c.test("Step 7 + Step 9: the launch file runs — three nodes, the judge follows the boat, DEGRADED at 2 m",
-        hint="Stop every node of the earlier steps first. The judge must subscribe to /boat/navera_lite/fix/gps with "
+        hint="Run `jobs` and stop every node of the earlier steps first (`kill -INT $(jobs -p)`). The judge must subscribe to /boat/navera_lite/fix/gps with "
              "gps_source:=boat; navera_lite.yaml must hold fix_max_sigma_m: 2.0 (lab Step 9).")
 def _():
     from diagnostic_msgs.msg import DiagnosticStatus
@@ -457,7 +474,7 @@ def _():
              f"the judge says {last.message!r}: with fix_max_sigma_m 2.0 in navera_lite.yaml it should be DEGRADED")
         judges = max((topic_publishers("/navera_lite/status")[0] or 0) for _ in range(2))
         c.ok(judges <= 1, f"{judges} nodes publish on /navera_lite/status: a judge from an earlier step still runs — "
-                          "stop it (Ctrl+C in its terminal) and check again")
+                          "run `jobs`, then `kill -INT $(jobs -p)`, and check again")
         pos = wait_for_messages("/navera_lite/position", NavSatFix, count=3, timeout=8.0)
         c.ok(len(pos) >= 2, "the judge published no positions")
         c.ok(all(abs(p.longitude - START[1]) < 1e-6 for p in pos) and pos[-1].latitude > START[0],
@@ -502,7 +519,8 @@ def _():
     c.ok(old.get("fix_max_sigma_m") == 25.0, "navera_lite.yaml.orig is not the original (fix_max_sigma_m 25.0)")
     diff = sorted(k for k in set(new) | set(old) if new.get(k) != old.get(k))
     c.ok(diff == ["fix_max_sigma_m"], f"navera_lite.yaml and its .orig differ in {diff}: only fix_max_sigma_m may change")
-    st, msg = answers("SIGMA_STATE", "SIGMA_MESSAGE")
+    ps, st, msg = answers("PREDICT_SIGMA", "SIGMA_STATE", "SIGMA_MESSAGE")
+    predicted("PREDICT_SIGMA", ps)
     c.ok(state(st, "SIGMA_STATE") == "DEGRADED", "SIGMA_STATE is not what the judge said")
     c.ok(isinstance(msg, str) and "3.0" in msg and "2.0" in msg, f"SIGMA_MESSAGE {msg!r} is not the judge's message")
 

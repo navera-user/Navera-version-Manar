@@ -31,7 +31,8 @@ def generate_launch_description():
       - fake_gps (module gps_node) in the namespace "drone", with vehicle "drone" and speed_mps 12.0;
       - fake_gps in the namespace "boat", with vehicle "boat", speed_mps 5.0 and heading_deg 0.0 — only
         when use_boat is true (IfCondition);
-      - the judge: module arbiter_v0, name "arbiter", no namespace, params_file "navera_lite.yaml", and its
+      - the judge: module arbiter_v0, name "arbiter", no namespace, params_file "navera_lite.yaml", the
+        parameter vehicle set to the value of gps_source (so its settings name the vehicle it judges), and its
         navera_lite/fix/gps remapped to /<gps_source>/navera_lite/fix/gps.
     Returns a LaunchDescription.
     Example: after `ros2 launch navera_lite/ros/navera_lite_launch.py`, `ros2 node list` →
@@ -45,6 +46,6 @@ def generate_launch_description():
         fl_node("gps_node", "fake_gps", namespace="drone", params={"vehicle": "drone", "speed_mps": 12.0}),
         fl_node("gps_node", "fake_gps", namespace="boat",
                 params={"vehicle": "boat", "speed_mps": 5.0, "heading_deg": 0.0}, condition=IfCondition(use_boat)),
-        fl_node("arbiter_v0", "arbiter", params_file="navera_lite.yaml",
+        fl_node("arbiter_v0", "arbiter", params_file="navera_lite.yaml", params={"vehicle": gps_source},
                 remaps=[("navera_lite/fix/gps", ["/", gps_source, "/navera_lite/fix/gps"])]),
     ])

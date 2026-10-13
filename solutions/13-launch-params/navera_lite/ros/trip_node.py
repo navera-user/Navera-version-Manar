@@ -42,17 +42,15 @@ class TripComputer:
 
     # from mission 11 — finished: read it, use it, do not change it
     def update(self, est):
-        """Judge one GPS Estimate; remember it only if it is good. Returns (ok, reason) for the FIRST rule
-        broken, in this order:
-          1. the source says it has no position (est.valid is False)        → (False, "no position")
-          2. not a usable latitude/longitude (geo.is_finite_latlon says no)  → (False, "bad position")
-          3. its stamp is not newer than the last ACCEPTED fix's stamp      → (False, "old fix")
-          4. the jump gate of mission 01 (guard.gate_ok) refuses it, measured from the last accepted fix
-             over the time between the two stamps, with self.max_speed_mps and self.margin_m → (False, "jump")
-          otherwise it is accepted: (True, "first fix") for the very first one, else (True, "ok").
-        Memory: an accepted fix is appended to self.fixes as (stamp_s, lat, lon) and adds its great-circle
-        distance from the previous accepted fix to self.distance_m. A refused fix changes nothing except
-        self.refused (+1) and self.last_refusal (its reason).
+        """Judge one GPS Estimate; remember it only if it is good. Returns (ok, reason).
+        Four reasons to refuse (lesson §3 decides their ORDER: the first rule broken gives the reason):
+          the source says it has no position (est.valid is False)            → (False, "no position")
+          not a usable latitude/longitude (geo.is_finite_latlon)             → (False, "bad position")
+          its stamp is not newer than the last ACCEPTED fix's stamp         → (False, "old fix")
+          mission 01's jump gate refuses it, from the last ACCEPTED fix      → (False, "jump")
+        Otherwise: (True, "first fix") for the very first one, else (True, "ok").
+        Memory: accepted fixes are kept in self.fixes as (stamp_s, lat, lon), and self.distance_m is the
+        great-circle length along them; a refused fix only counts in self.refused and self.last_refusal.
         Example: after a first fix (35.8256, 10.6084) at t = 0.0, a fix 5 km away at t = 1.0 → (False, "jump")
         """
         ok, why = True, "ok"
@@ -86,8 +84,8 @@ def speed_window(fixes, window_s):
     whose time is ≥ (newest time − window_s) to the newest fix, divided by the time between them.
     fixes: a list of (t_s, lat, lon), oldest first. None when fewer than 2 fixes are in the window.
     A long window averages the GPS noise away, and pays with a delay (lesson §4).
-    Example: speed_window([(0.0, 35.8256, 10.6084), (5.0, 35.8256, 10.60895), (10.0, 35.8256, 10.6095)], 6.0)
-             → about 9.92   (the fixes at 5 s and 10 s: 49.6 m in 5 s)
+    Example: speed_window([(0.0, 35.8256, 10.6084), (5.0, 35.8256, 10.60895), (10.0, 35.8256, 10.61005)], 6.0)
+             → about 19.83   (only the fixes at 5 s and 10 s are inside: 99.2 m in 5 s)
     """
     if len(fixes) < 2:
         return None
@@ -150,10 +148,8 @@ class TripNode(Node):
 
     # from mission 11 — finished: read it, use it, do not change it
     def on_fix(self, msg):
-        """The callback: the executor calls it once for every NavSatFix that arrives. Three jobs: tell the
-        watchdog that a message came (use the node's clock, self.now_s()); let self.computer judge the fix
-        (it wants an Estimate of source "gps": convert.from_navsatfix makes one); and when the fix is
-        refused, log a WARNING that gives the reason.
+        """The callback, called once for every NavSatFix that arrives: the watchdog and the trip computer must
+        hear about it, and a refused fix must leave a warning that says why (lesson §1, §3, §5).
         Example: a fix 5 km away → the terminal shows "[WARN] [...] [trip]: fix refused: jump"
         """
         now = self.now_s()

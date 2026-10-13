@@ -3,7 +3,7 @@
 **Goal:** give NAVERA Lite's fake GNSS receiver guarded parameters, write the start-time check of the
 judge's settings, write a settings file for two vehicles and measure which value wins, write the stack's
 launch file, and then break and repair a configuration the way R-1 did.
-**Time:** 3 to 4 h in two sessions (a fast student: about 2 h 30).
+**Time:** 3 to 4 h in two sessions (a fast student: about 2 h 30; up to 5 h if ROS is still new to you).
 
 Your files (📝 Code tab):
 [navera_lite/ros/gps_node.py](file:./navera_lite/ros/gps_node.py) (**TODO 1–3**, at the bottom: mission 10's
@@ -29,9 +29,10 @@ Your files (📝 Code tab):
 
 > [!NOTE]
 > **Predict, then run.** Each `PREDICT_…` is written **before** you run the step. It is never marked
-> right or wrong. **Discovery takes a moment:** after you start a node, wait 2 s before you ask about it.
-> If `ros2 param get` says `Node not found`, ask again; the first `ros2 node list` after a pause can be
-> empty or incomplete.
+> right or wrong. **Discovery takes a moment:** after you start a node, wait until its log shows its
+> first line (`cat gps.log`: `fake GPS on …`), then about 2 s more. If `ros2 param get` says `Node not
+> found`, ask again (up to 3 times): the first questions after a start often miss the node. If the log
+> shows an error instead, the node is dead: read its last line.
 
 ## Session 1 — Guard the knobs (about 1 h 45)
 
@@ -58,6 +59,10 @@ The judge needs a GPS. Your `gps_node` cannot start before TODO 2, so play the d
 ```bash
 python3 -m navera_lite.ros.replay_node > replay.log 2>&1 &
 ```
+
+> [!TASK]
+> **Predict** (`PREDICT_SET`): after `ros2 param set /arbiter fix_max_sigma_m 2.0`, what will the judge's
+> verdict be? (The demo states σ 3 m.)
 
 Wait about 5 s for a FIX, then ask the judge to be stricter than 3 m, and read its verdict again:
 
@@ -86,7 +91,8 @@ kill -INT $(jobs -p)
 
 > [!TASK]
 > `SET_REPORTED_OK` (True / False), `STATE_AFTER_SET` ("FIX", "DEGRADED" or "NO_FIX": `gps: σ 3.0 m` with
-> no "> …" is FIX) and `EXPLAIN_SILENT`: why did the verdict not follow? (Lesson §2, "Read once".)
+> no "> …" is FIX) and `EXPLAIN_SILENT`: why did the verdict not follow? Then open lesson §2's box
+> "Read this after lab Step 0".
 
 ## Step 1 — Descriptors (TODO 1)
 
@@ -125,8 +131,10 @@ The TODO 1 lines must be ✔. The other groups fail until you write them.
 
 **TODO 2** `CheckedGps.declare_all`: like mission 10's `FakeGps.declare_all` (just above, finished), but
 each `declare_parameter` gets a third argument, and the callback is registered after the loop.
-(`on_set_parameters` is still a stub: ROS will refuse every change that reaches it with "Callback
-returned an invalid type". That is expected until Step 3.)
+(`on_set_parameters` is still a stub, so a `ros2 param set` that passes the descriptor is refused with
+"Callback returned an invalid type": expected until Step 3. But if **`run_lab13.py test`** says the node
+*did not start* with that message, your callback was registered **before** the loop, and ROS called it for
+each declaration: move the line after the loop.)
 
 ```bash
 python3 run_lab13.py test
@@ -145,7 +153,8 @@ ros2 param describe /fake_gps speed_mps
 ```
 
 > [!TASK]
-> **Predict** (`PREDICT_GUARDS`): which of the next three commands are refused, and by which guard?
+> **Predict** (`PREDICT_GUARDS`), from the lesson §2 table without looking back: which of the next three
+> commands are refused, and by which guard?
 > `ros2 param set /fake_gps rate_hz 5.0`, `ros2 param set /fake_gps speed_mps 500.0`, and starting the
 > node with `-p speed_mps:=150.0`.
 
@@ -176,8 +185,9 @@ python3 -m navera_lite.ros.gps_node --ros-args -p speed_mps:=150.0
 2. Do not forget the two lines that set `self.lat` and `self.lon` (copy them from `FakeGps.declare_all`).
 3. `add_on_set_parameters_callback(self.on_set_parameters)` — the method itself, **no** brackets after
    its name.
-4. The node crashes at start with `ParameterNotDeclaredException`? You registered the callback before
-   the loop (lesson §2: it is then called for each declaration).
+4. The node does not start, with `Callback returned an invalid type` (TODO 3 not written yet) or
+   `ParameterNotDeclaredException` (TODO 3 written)? You registered the callback before the loop
+   (lesson §2: it is then called for each declaration).
 </details>
 
 ## Step 3 — A rule across two parameters (TODO 3), then attack it
@@ -240,7 +250,8 @@ ros2 param get /fake_gps speed_mps
 
 > [!TASK]
 > `ATTACK_SPEED`: the value you read. `EXPLAIN_GUARDS`: why did the callback not refuse it, and which
-> guard, or which check, acts at start? Stop the node (`kill -INT %%`).
+> guard, or which check, acts at start? Stop the node (`kill -INT %%`), then open lesson §2's box
+> "Read this after lab Step 3".
 
 ## Step 4 — Check a whole settings file (TODO 4)
 
@@ -253,6 +264,7 @@ five rules **by hand** to [integrator.yaml](file:./integrator.yaml) and write do
 ```python
 isinstance(3.0, float), isinstance(3, float), isinstance(3, int)   # True False True
 isinstance(True, int)          # True!  a bool is a kind of int in Python: test bool first
+isinstance("fast", float)      # False: a text is not a float either (rule 1 reports it, without "write …")
 [k for k in {"a_s": 1, "b": 2} if k.endswith("_s")]                 # ['a_s']
 ```
 </details>
@@ -318,18 +330,20 @@ ros2 topic list
 <details><summary>Stuck? Hints</summary>
 
 1. Copy the lesson §3 example and change it: two levels of indentation (2 and 4 spaces).
-2. `start_lat` stays 35.8256? The section name must be the full name `/boat/fake_gps`, with the first slash.
+2. `start_lat` stays 35.8256? The section name does not match the node: write its full name
+   `/boat/fake_gps`. (`boat/fake_gps:` also works, but `fake_gps:` alone means `/fake_gps`.)
 3. The node crashes with `InvalidParameterTypeException`: a number without `.0`.
 </details>
 
 ## Step 6 — Who wins? Measure it
 
-Each command below starts the **drone** in the background. After each one: wait 2 s, ask
+Each command below starts the **drone** in the background. After each one: wait for its log line, ask
 `ros2 param get /drone/fake_gps speed_mps`, then stop it with `kill -INT %%` before the next one.
 [fast.yaml](file:./fast.yaml) is given: open it.
 
 > [!TASK]
-> **Predict** (`PREDICT_PRECEDENCE`): the five values, with the lesson §3 model (rows!). Then measure.
+> **Predict** (`PREDICT_PRECEDENCE`): the six values, with the lesson §3 model: draw the rows of each
+> command on paper. Then measure.
 
 (a)
 
@@ -361,6 +375,12 @@ python3 -m navera_lite.ros.gps_node --ros-args -r __ns:=/drone -p speed_mps:=25.
 python3 -m navera_lite.ros.gps_node --ros-args -r __ns:=/drone --params-file my_gps.yaml --params-file fast.yaml > gps.log 2>&1 &
 ```
 
+(f) — the files in the other order, then a `-p`:
+
+```bash
+python3 -m navera_lite.ros.gps_node --ros-args -r __ns:=/drone --params-file fast.yaml --params-file my_gps.yaml -p speed_mps:=30.0 > gps.log 2>&1 &
+```
+
 The question, after each one, then the stop:
 
 ```bash
@@ -372,9 +392,8 @@ kill -INT %%
 ```
 
 > [!TASK]
-> `SPEED_DEFAULT`, `SPEED_FILE`, `SPEED_FILE_THEN_P`, `SPEED_P_THEN_FILE`, `SPEED_TWO_FILES`, and
-> `EXPLAIN_PRECEDENCE`: why did `-p` lose in (c), and why did `fast.yaml` win in (e)? Draw the rows of (c)
-> and (e) on paper first.
+> `SPEED_DEFAULT`, `SPEED_FILE`, `SPEED_FILE_THEN_P`, `SPEED_P_THEN_FILE`, `SPEED_TWO_FILES`, `SPEED_F`,
+> and `EXPLAIN_PRECEDENCE`: explain (c), (e) and (f) with the rows of lesson §3.
 
 ## Step 7 — The launch file (TODO 5)
 
@@ -390,7 +409,8 @@ python3 run_lab13.py launch
 python3 run_lab13.py launch use_boat:=false gps_source:=boat
 ```
 
-Read every command line: namespaces, `-p` values (with `.0`?), and the judge's remap. Then for real:
+Read every command line: namespaces, `-p` values (a ⚠ line warns about an integer), the judge's
+`vehicle` and its remap. Then for real:
 
 ```bash
 ros2 launch navera_lite/ros/navera_lite_launch.py > launch.log 2>&1 &
@@ -401,6 +421,8 @@ Wait 3 s; `cat launch.log` shows every process's lines, prefixed with its name. 
 ```bash
 ros2 node list
 ```
+
+You must see **three** nodes. Only two? One process died: `grep -i -B3 died launch.log` shows why.
 
 ```bash
 ros2 node info /arbiter
@@ -447,13 +469,15 @@ ros2 topic echo /navera_lite/status diagnostic_msgs/msg/DiagnosticStatus --once
 ```
 
 > [!TASK]
-> `NO_BOAT_STATE` (level 0 = FIX, 1 = DEGRADED, 2 = NO_FIX, 3 = STARTING; the message says it too) and
-> `EXPLAIN_REMAP`. Stop the launch (`kill -INT %%`).
+> `NO_BOAT_STATE` and `EXPLAIN_REMAP`. `ros2 topic echo` prints the level as a byte: `"\0"` = 0 FIX,
+> `"\x01"` = 1 DEGRADED, `"\x02"` = 2 NO_FIX, `"\x03"` = 3 STARTING; the line `- key: state` under
+> `values:` says it in words. Stop the launch (`kill -INT %%`).
 
 <details><summary>Stuck? Hints</summary>
 
 1. Five items in the list: two `DeclareLaunchArgument`, three `fl_node`.
-2. The judge's remap target is a **list** joined at run time: `["/", gps_source, "/navera_lite/fix/gps"]`.
+2. The judge's remap target is a **list** joined at run time: `["/", gps_source, "/navera_lite/fix/gps"]`;
+   its `vehicle` is the substitution itself, in `params` (lesson §5, example line 13).
 3. `TypeError: can only concatenate str (not "LaunchConfiguration")`: lesson §5.
 4. A receiver dies with `InvalidParameterTypeException`: `speed_mps: 5` instead of `5.0` (or heading `0`).
 5. The boat still starts with `use_boat:=false`? `condition=IfCondition(LaunchConfiguration("use_boat"))`
@@ -517,7 +541,13 @@ Your client demands FIX only within 2 m. Your receivers state σ 3 m. Keep a cop
 cp navera_lite.yaml navera_lite.yaml.orig
 ```
 
-In [navera_lite.yaml](file:./navera_lite.yaml) set `fix_max_sigma_m: 2.0` (keep the 4 spaces before it), save, and launch:
+In [navera_lite.yaml](file:./navera_lite.yaml) set `fix_max_sigma_m: 2.0` (keep the 4 spaces before it) and save.
+
+> [!TASK]
+> **Predict** (`PREDICT_SIGMA`): with `fix_max_sigma_m: 2.0` and receivers that state σ 3 m, what state and
+> what message will the judge show?
+
+Launch:
 
 ```bash
 ros2 launch navera_lite/ros/navera_lite_launch.py > launch.log 2>&1 &
@@ -559,7 +589,13 @@ Look back (not graded):
   `use_robot`, and make `gps_source:=robot` work. How many lines did it take?
 - **Your own settings file in the launch.** Give the receivers `params_file="my_gps.yaml"` and remove their
   `params`. With the §3 model, predict what changes; check with `ros2 param get`.
-- **A real package.** Make `navera_lite` an `ament_python` package (`package.xml`, `setup.py` with the
-  launch file in `share/`), build it with `colcon build --symlink-install` in a workspace under your home,
-  and start it with `ros2 launch navera_lite navera_lite_launch.py`. Which line of the launch file is no
-  longer needed?
+- **Node against fl_node.** With launch_ros, write a launch file that starts any demo node with a name, a
+  namespace and `parameters=["my_gps.yaml", {"speed_mps": 25.0}]`. Predict with the rows (lesson §5), then
+  `ros2 param get`. Open the `/tmp/launch_params_*` file its command line names (`cat launch.log`).
+- **A real package.** A ROS 2 **package** is a folder with a `package.xml` (name, dependencies) and, for
+  Python, a `setup.py`. `colcon build` copies it into `install/`, launch and config files into
+  `install/<pkg>/share/<pkg>/` (found by `get_package_share_directory`); `--symlink-install` links instead
+  of copying, so an edited file is used without rebuilding; `source install/setup.bash` lets `ros2 launch
+  <pkg> <file>` find it. That is how NAVERA is installed. Make `navera_lite` an `ament_python` package in a
+  workspace under your home, build it, and start it with `ros2 launch navera_lite navera_lite_launch.py`.
+  Which line of the launch file is no longer needed?

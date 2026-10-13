@@ -80,15 +80,17 @@ def age_s(est, now_s):
 
 # from mission 12 — finished: read it, use it, do not change it
 def is_covariance(cov9, tol=1e-9):
-    """Can these 9 numbers be a covariance (lesson §2)? Returns (ok, reason); the reason names the FIRST
-    problem found, in this order:
+    """Can these 9 numbers be a covariance for the judge (lesson §2)? Returns (ok, reason); the reason names
+    the FIRST problem found, in this order:
       "not 9 numbers"               not a sequence of exactly 9 numbers (None, 8 numbers, text…)
       "not finite"                  one of them is nan or infinite
-      "not symmetric"               b is not the same at both of its places (beyond tol)
-      "negative variance"           a, c or the up variance is below 0
-      "not positive semi-definite"  the horizontal block breaks lesson §2's determinant rule (beyond tol)
-      "ok"                          a covariance: (True, "ok")
-    Only the horizontal block and the up variance are tested.
+      "not symmetric"               b is not the same at both of its places (beyond the tolerance)
+      "negative variance"           a, c or the up variance (index 8) is below 0
+      "not positive semi-definite"  the horizontal block breaks lesson §2's determinant rule (beyond the tolerance)
+      "ok"                          (True, "ok")
+    The tolerance is RELATIVE (lesson §2): with size = the largest of 1, |a| and |c| (the horizontal
+    variances only), a difference of b counts beyond tol × size, a negative a·c − b² beyond tol × size².
+    The east-up and north-up terms (indices 2, 5, 6, 7) are not tested.
     Example: is_covariance([25.0, 30.0, 0, 30.0, 16.0, 0, 0, 0, 1.0]) → (False, "not positive semi-definite")
     """
     try:
@@ -100,11 +102,12 @@ def is_covariance(cov9, tol=1e-9):
     if not all(math.isfinite(v) for v in values):
         return False, "not finite"
     a, b, c = values[0], values[1], values[4]
-    if abs(values[1] - values[3]) > tol:
+    size = max(1.0, abs(a), abs(c))
+    if abs(values[1] - values[3]) > tol * size:
         return False, "not symmetric"
     if a < 0 or c < 0 or values[8] < 0:
         return False, "negative variance"
-    if a * c - b * b < -tol:
+    if a * c - b * b < -tol * size * size:
         return False, "not positive semi-definite"
     return True, "ok"
 

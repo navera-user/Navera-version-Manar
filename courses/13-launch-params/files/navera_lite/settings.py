@@ -53,16 +53,19 @@ def load(path="navera_lite.yaml"):
 def check_settings(cfg):
     """Every rule a set of settings breaks, as one short sentence each (an empty list: all good).
 
-    cfg: a dict like DEFAULTS. The rules, in this order:
-      - a key whose default is a float holds a float, not an int or a bool:
-            "gps_timeout_s must be a float: write 3.0, not 3"
-      - every key ending in _timeout_s, and tick_hz, is > 0:      "tick_hz must be > 0, got 0.0"
-      - fix_max_sigma_m > min_stated_sigma_m >= 0:
+    cfg: a dict like DEFAULTS. Each sentence starts with the key. The rules, in this order:
+      1. a key whose default is a float holds a float — not an int, a bool or a text (keys in DEFAULTS order):
+            "gps_timeout_s must be a float: write 3.0, not 3"          (an int)
+            "max_speed_mps must be a float, got 'fast'"               (anything else: a bool, a text…)
+      2. every key ending in _timeout_s (DEFAULTS order), then tick_hz, is > 0:   "tick_hz must be > 0, got 0.0"
+      3. min_stated_sigma_m >= 0:                                  "min_stated_sigma_m must be >= 0, got -1.0"
+      4. fix_max_sigma_m > min_stated_sigma_m:
             "fix_max_sigma_m must be > min_stated_sigma_m (0.01), got 0.0"
-      - vehicle is a key of VEHICLES:                              "vehicle must be one of drone, plane, boat, robot, got 'car'"
-      - max_speed_mps is at least the vehicle's top speed (else its real fixes would be refused):
+      5. vehicle is a key of VEHICLES:                             "vehicle must be one of drone, plane, boat, robot, got 'car'"
+      6. max_speed_mps is at least the vehicle's top speed (else its real fixes would be refused):
             "max_speed_mps must be >= 100.0 for a plane, got 30.0"
-    A rule that needs a value that is already wrong (a str where a number should be) is skipped.
+    Rules 2–6 need numbers: they skip a value that is not a number (rule 1 already reported it); an int is still a
+    number for them (an int 0 timeout breaks rules 1 and 2).
     Example: check_settings(dict(DEFAULTS, gps_timeout_s=3)) → ["gps_timeout_s must be a float: write 3.0, not 3"]
     """
     return None   # TODO: write your code above, and return the result

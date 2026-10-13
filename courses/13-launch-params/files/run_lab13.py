@@ -58,7 +58,11 @@ def test_node(g):
         except NotImplementedError:
             return show(False, "CheckedGps.declare_all() is not written yet (TODO 2)")
         except Exception as e:
-            return show(False, f"the node did not start: {type(e).__name__}: {e} — look at declare_all() "
+            text = f"{type(e).__name__}: {e}"
+            if "invalid type" in text or "ParameterNotDeclared" in text:
+                return show(False, f"the node did not start: {text}\n    → your callback was called DURING the "
+                                   "declarations: register it AFTER the loop in declare_all() (TODO 2, lesson §2)")
+            return show(False, f"the node did not start: {text} — look at declare_all() "
                                "(TODO 2), and at on_set_parameters() if the error comes from there")
         ok = show(node.get_parameter("vehicle").value == "boat" and node.get_parameter("speed_mps").value == 10.0,
                   f"started: vehicle {node.get_parameter('vehicle').value!r}, speed_mps "
@@ -130,6 +134,25 @@ def settings(path):
 
 
 # ------------------------------------------------------------------------------------------- TODO 5
+def float_keys():
+    """Names of the parameters whose default is a float (the fake GPS's and the judge's)."""
+    g = rk.load_student("navera_lite.ros.gps_node")
+    s = rk.load_student("navera_lite.settings")
+    keys = {k for k, v in g.DEFAULTS.items() if isinstance(v, float)}
+    return keys | {k for k, v in s.DEFAULTS.items() if isinstance(v, float)}
+
+
+def int_traps(cmd, floats):
+    """The `-p name:=value` items of a command that give a whole number to a float parameter (LOC-30)."""
+    bad = []
+    for i, x in enumerate(cmd[:-1]):
+        if x == "-p" and ":=" in cmd[i + 1]:
+            k, v = cmd[i + 1].split(":=", 1)
+            if k in floats and v.lstrip("+-").isdigit():
+                bad.append(f"-p {k}:={v}")
+    return bad
+
+
 def plan(args):
     """[(name, started, command)] of the student's launch file with these launch arguments."""
     from launch import LaunchContext, LaunchDescription
@@ -156,7 +179,7 @@ def plan(args):
         if isinstance(e, DeclareLaunchArgument):
             continue
         if not isinstance(e, ExecuteProcess):
-            out.append((type(e).__name__, None, "(not a process: this runner does not show it)"))
+            out.append((type(e).__name__, None, "(not a process: this runner does not show it)", []))
             continue
         try:
             started = e.condition is None or e.condition.evaluate(ctx)
@@ -165,7 +188,7 @@ def plan(args):
         except Exception as ex:
             sys.exit(f"a launch value could not be computed: {type(ex).__name__}: {ex} — is every launch "
                      "argument you use declared with DeclareLaunchArgument?")
-        out.append((name, started, " ".join(c.replace(sys.executable, "python3") for c in cmd)))
+        out.append((name, started, " ".join(c.replace(sys.executable, "python3") for c in cmd), cmd))
     return declared, out
 
 
@@ -177,10 +200,13 @@ def launch(argv):
         k, v = a.split(":=", 1)
         args[k] = v
     declared, out = plan(args)
+    floats = float_keys()
     print(f"launch arguments declared: {', '.join(declared) or 'none'}   given: {args or 'none'}")
-    for name, started, cmd in out:
+    for name, started, cmd, parts in out:
         mark = "·" if started is None else ("▶ starts " if started else "✘ skipped")
         print(f"\n{mark} {name}\n    {cmd}")
+        for b in int_traps(parts, floats):
+            print(f"    ⚠ {b} is an INTEGER and this parameter is a float: the node will stop (write {b.split(':=')[1]}.0)")
     print("\nNothing was started. To run it: ros2 launch navera_lite/ros/navera_lite_launch.py "
           + " ".join(argv))
 
@@ -192,6 +218,11 @@ def test_launch():
     ok = show(sorted(declared) == ["gps_source", "use_boat"], f"launch arguments: {declared}")
     ok &= show(len(procs) == 3, f"{len(procs)} process(es): {', '.join(o[0] for o in procs)}   "
                                 "(`python3 run_lab13.py launch` shows their commands)")
+    floats = float_keys()
+    for name, _, _, parts in procs:
+        bad = int_traps(parts, floats)
+        if bad:
+            ok &= show(False, f"{name}: {', '.join(bad)} is an integer for a float parameter: that node would stop")
     return ok
 
 
