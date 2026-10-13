@@ -23,13 +23,15 @@ ANALYTIC_WIND_MPS = 0.0   # the same limit for a pure head/tailwind, solved by a
 
 # ======== Session 2 — Fleet and track detective ========
 
-# ---- Step 7: inheritance (python3 plan_mission.py fleet) -----------------------------------
-WHERE_ENDURANCE_FROM = ""   # wing.endurance_s() runs the code of which class? (a class name)
-SUPER_ERROR = ""            # the exception name when FixedWing's super().__init__(...) line is missing
-EXPLAIN_SUPER = ""          # why that error? what did super().__init__(...) do?
-WING_TRIP_MIN = 0.0         # the wing's round trip (min, 2 decimals)
-PRINT_WING = ""     # what print(wing) shows
-WHERE_REPR_FROM = ""     # whose __repr__ runs for print(wing)? (a class name)
+# ---- Step 7: inheritance (python3 plan_mission.py fleet, then print(wing)) ------------------
+WING_TRIP_MIN = 0.0   # the wing's round trip, with YOUR heading_for_track at 20 m/s (min, 2 decimals)
+WING_DECISION = ""   # "GO" or "NO-GO" for the wing
+WHERE_ENDURANCE_FROM = ""   # wing.endurance_s() runs the code of which class? (ONE class name)
+PRINT_WING = ""   # the line print(wing) shows
+WHERE_REPR_FROM = ""   # whose __repr__ runs for print(wing)? (ONE class name)
+EXPLAIN_REPR = ""   # why does print(wing) say FixedWing, although that __repr__ ran?
+SUPER_ERROR = ""   # the exception name when FixedWing's super().__init__(...) line is missing
+EXPLAIN_SUPER = ""   # why that error? what did super().__init__(...) do?
 
 # ---- Step 9: the harbour survey (python3 plan_mission.py track) ----------------------------
 TRACK_POINTS = 0
@@ -45,7 +47,7 @@ BAD_FIX_T_S = 0             # the time (s) of the WRONG fix
 EXPLAIN_GLITCH = ""         # why does one wrong fix give that many entries?
 FLAGGED_AT_15 = 0           # len(glitches(15)) on the harbour track
 FLAGGED_AT_100 = None     # what tr.glitches(100) returns (the plane's limit)
-EXPLAIN_THRESHOLD = ""      # why is the vehicle's max speed a better threshold than 15 m/s?
+EXPLAIN_THRESHOLD = ""      # what 15 m/s costs, what 100 m/s misses, why the vehicle's max speed
 GLITCH_EXTRA_M = 0.0        # how many metres the wrong fix adds to the track length (1 decimal)
 
 # ---- Step 11: a loop against NumPy (python3 plan_mission.py speed) -------------------------

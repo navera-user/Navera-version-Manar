@@ -51,8 +51,11 @@ Teacher scripts here: `my_limit.py` (Step 5), `no_glitch.py` (Step 10).
   wind is 98.5 % along the track, the rest crosswind, which costs less).
 - Step 7 (`fleet`): quad endurance 21.94 min, range 15.80 km still / 7.90 km in a 6 m/s headwind, trip 27.67
   min NO-GO; wing endurance 32.73 min, range 39.27 / 27.49 km, **trip 13.72 min**, GO; turn radius 70.6 m
-  at 30°; quad hover at 300 W 25.6 min. `PRINT_WING = "FixedWing('wing', cruise 20 m/s)"`,
-  `WHERE_REPR_FROM = "Vehicle"` (Vehicle's `__repr__` runs; `type(self).__name__` is the class of the object). `WHERE_ENDURANCE_FROM = "Vehicle"`, `SUPER_ERROR = "AttributeError"`
+  at 30°; quad hover at 420 W 18.3 min (more than cruise: U-shaped power). `fleet` prints endurance and ranges only;
+  the student computes `WING_TRIP_MIN` (13.72) and `WING_DECISION = "GO"`. `PRINT_WING = "FixedWing('wing', cruise 20 m/s)"`,
+  `WHERE_REPR_FROM = "Vehicle"` (one class name, exact), `EXPLAIN_REPR`: Vehicle's `__repr__` writes
+  `type(self).__name__`, the class of the object (FixedWing). `WHERE_ENDURANCE_FROM` and `SUPER_ERROR` are also
+  checked as exact single names (hedges such as "NameError or AttributeError" are refused). `WHERE_ENDURANCE_FROM = "Vehicle"`, `SUPER_ERROR = "AttributeError"`
   (`'FixedWing' object has no attribute 'battery_wh'`; `stall_mps` prints 12 because FixedWing stores it
   itself).
 - Step 9 (`track` prints length, median, mean; positions and max from the student's own one-liner): **263** positions, **3 270.1 m**, median **12.05**, mean 12.48, max **54.34 m/s** (speed
@@ -62,9 +65,10 @@ Teacher scripts here: `my_limit.py` (Step 5), `no_glitch.py` (Step 10).
   (honest maximum 18.9 m/s; at 18 m/s: [141, 150, 151, 196]). `FLAGGED_AT_100 = []`: with a plane's limit
   (R-1's wrong-vehicle case) the 54 m/s glitch passes unseen. Without the fix: 3 179.2 m →
   **GLITCH_EXTRA_M = 90.9**; max speed then 18.9 m/s, median 12.03.
-- Step 11 (`speed`, Jetson, 200 000 positions): loop ≈ 165 ms, `speeds_mps()` ≈ 38 ms (≈ 4×), of which
-  `arrays()` ≈ 29 ms; the maths alone ≈ 19×. Any value > 1 passes; discuss that the list → array conversion
+- Step 11 (`speed`, Jetson, 200 000 positions, best of 5 runs each): loop ≈ 165 ms, `speeds_mps()` ≈ 33 ms
+  (≈ 5×), of which `arrays()` ≈ 29 ms; the maths alone ≈ 20–40× (it is only 4–9 ms, so it stays noisy). Any value > 1 passes; discuss that the list → array conversion
   dominates (the reason real code keeps data in arrays).
+- Step 5 prediction (not graded): the true limit (2.72) is above both answers — between is the common guess.
 - Look-back Q4: add a margin (mission 01's `+ margin`), or compare with the last trusted fix over the elapsed time.
 - Going further (answers also collapsed in the lab): exact limit 2.72 m/s; longest wing round trip on track 020° (along the wind axis, 13.74 min), shortest on 110°
   (crosswind, 13.10 min); a 50 m turn circle at 20 m/s needs 39.2° of bank; `suspect.max_speed_mps` returns
@@ -75,11 +79,12 @@ Teacher scripts here: `my_limit.py` (Step 5), `no_glitch.py` (Step 10).
 | Item | 2 — good | 1 — partial | 0 — not yet |
 |---|---|---|---|
 | EXPLAIN_TRIP | time = distance / speed: the slow headwind leg lasts long (20.7 min), the fast leg is short (7.0 min), so time lost > time gained; bonus: 2LV/(V² − w²) > 2L/V | "headwind is worse" without the time argument | "the wind is strong" |
+| EXPLAIN_REPR | `type(self)` is the object's class (FixedWing), not Vehicle where the code lives | "it is a FixedWing" | restates the output |
 | EXPLAIN_SUPER | `__init__` of FixedWing replaces Vehicle's; without `super()` Vehicle's checks and attributes (battery_wh, power_w…) never exist, so the inherited `endurance_s` fails; `stall_mps` exists because FixedWing sets it | names AttributeError, no cause | restates the error |
 | EXPLAIN_MEDIAN | one extreme value (54 m/s) moves the mean and sets the max; the median (middle value) stays at the cruise ≈ 12 m/s | "median is more accurate" | numbers only |
 | EXPLAIN_GLITCH | one wrong fix → two fast segments (into and out of it); only the first listed position is wrong | "two glitches" | "the GPS failed twice" |
 | EXPLAIN_THRESHOLD | 15 m/s is inside the honest noise (33 false alarms); 100 m/s (a plane's) misses the glitch ([]); nothing physical can exceed the vehicle's max speed, so it is the right limit — and with a noisy GPS it needs a margin (mission 01: v_max × elapsed + margin; honest max 18.9 vs 20 here) | two of the three ideas | "15 is too small" |
-| ANALYTIC_WIND_MPS (+ the not-graded comparison) | correct algebra and units (2.70); explains sweep < algebra (0.5 m/s grid) and algebra < true limit (pure headwind is the worst case) | right number, comparison missing | minutes in the formula (≈ 0.04) |
+| ANALYTIC_WIND_MPS (+ the not-graded comparison) | correct algebra and units (2.70); explains sweep < algebra (0.5 m/s grid) and algebra < true limit (pure headwind is the worst case) | right number, comparison missing | minutes in the formula (negative under the root: math domain error / nan) |
 
 Predictions are never marked. In class, ask who predicted "same time" for the round trip (usually most).
 
@@ -95,23 +100,44 @@ Predictions are never marked. In class, ask who predicted "same time" for the ro
 - `speeds_mps` returning lengths (dividing by 1 s); `glitches` returning speed indices ([2] instead of [3]);
   NumPy ints in the list (fixed by `.tolist()`).
 - `MAX_WIND_MPS`: comparing seconds with minutes (everything NO-GO). Forgetting the "from" → "towards"
-  conversion does NOT change the round-trip limit (out and back legs swap), but it gives wrong headings in
-  Step 3: use it to discuss why a correct-looking result is not proof.
+  conversion does NOT change the round-trip limit (out and back legs swap): the lab now has a visible
+  self-test (print the 6 m/s wind: −2.05 −5.64) and the check looks at the winds the script really uses.
 
-Simulated wrong solutions run against check.py (2026-10-13, round 1 fixes included), each fails with the named message: sin/cos
-swapped (✘1, "east and north are swapped"), heading + crab (✘4 "wrong side of the track"), minutes (✘6
-"looks like minutes"), reserve `> 1` (✘6 "returned 0.0 instead of raising"), no `super()` (✘11 "call
-super().__init__ first"), speed indices (✘15 "SPEED indices"), no division by dt (✘14 "segment LENGTHS"),
-`range_m` without else-return (✘11 "returned None"), cross sign (✘3 "wrong sign"), append-before-test (✘14
-"refuses the FIRST position"), loops in `length_m`/`speeds_mps` including the reviewers' dodges — `map()`,
-`sum()`, a dict/set comprehension, a module-level helper with the loop (✘15 "uses a Python loop"),
-no `|cross| > V` test (✘5 "the ValueError comes from math.asin"), `glitches` returning an ndarray (✘16
-".tolist()") or ndarray speed indices (✘16 "SPEED indices"), a misnamed `self.battery` (✘10, and ✘12 now says
-"fix TODO 6 first"), no `my_limit.py` / a script that only prints 2.5 / a script comparing with minutes (✘8:
-"does not exist", "does not use your heading_for_track()", "never found a GO speed"), ANALYTIC in minutes (✘9),
-WHERE_REPR_FROM = "FixedWing" (✘13), BAD_FIX_T_S = 151 (✘18, neutral "far from BOTH neighbours"),
-FLAGGED_AT_100 = 0 (✘18). Known pass: a `my_limit.py` using `heading_vector(20)` (from/to swapped) still
-prints 2.5 (legs swapped on an out-and-back trip) — Step 5 hint 5 makes the student check the wind vector.
+Simulated wrong solutions (2026-10-13, after review round 2: 48 mutants, all fail with the named message,
+except the deliberately correct ones):
+- code: sin/cos swapped (✘1 "east and north are swapped"); heading + crab (✘4 "wrong side of the track");
+  cross sign (✘3 "wrong sign"); no `|cross| > V` test, or `cross > V` without abs (✘5 "the ValueError comes
+  from math.asin", with the leftward case named); minutes (✘6 "looks like minutes"); reserve `> 1` (✘6
+  "returned 0.0 instead of raising"); misnamed `self.battery` (✘10, and ✘12 "fix TODO 6 first"); `range_m`
+  without a return on one path (✘11 "returned None"); no `super()` (✘12 "call super().__init__ first");
+  append-before-test (✘14 "refuses the FIRST position"); ints stored without `float()` (✘14); no division by
+  dt (✘15 "segment LENGTHS"); ndarray / speed indices / a loop in `glitches` (✘16 ".tolist()", "SPEED
+  indices", "loops over the speeds").
+- loops in `length_m`/`speeds_mps` (✘15 "uses a Python loop"): for, map/sum, dict/set comprehension,
+  module-level helper, `@staticmethod` helper, `functools.reduce`, `np.vectorize(lambda…)`,
+  `np.apply_along_axis`, a loop moved into `arrays()`. The test is behavioural: it counts the Python lines of
+  the student's own files run by the method on a 2 000-position track (threshold 100; the reference runs 4),
+  plus a short list of C-level iterators the trace cannot see (map, filter, sum, range, zip, enumerate,
+  sorted, reversed, iter, next, functools.reduce). Accepted (checked): `from numpy import diff, hypot`,
+  `round()`, `min()`, `np.sum`.
+- `my_limit.py` (✘8, behavioural: the check runs the script with counting stand-ins for `heading_for_track`
+  and `endurance_s` and records the wind it passes): no script ("does not exist"); a script that only prints
+  2.5, even with the imports or the names in a comment ("called your heading_for_track() 0 times"); minutes
+  vs seconds ("never found a GO speed"); the wind built FROM 020° (`heading_vector(20)`: "blowing towards the
+  north-east … that is where the wind comes FROM").
+- answers: ANALYTIC in minutes (✘9); WHERE_REPR_FROM "FixedWing", "object (not Vehicle)" or two-in-one
+  ("write ONE class name"); SUPER_ERROR / WHERE_ENDURANCE_FROM hedges; PRINT_WING not the exact line;
+  EXPLAIN_REPR empty; WING_TRIP_MIN / WING_DECISION wrong (all ✘13); BAD_FIX_T_S = 151 (✘18 "far from BOTH
+  neighbours"); FLAGGED_AT_100 = 0; GLITCHES with a non-number (✘18).
+- correct answers that must pass, and do: the strong student's EXPLAIN_GLITCH ("the return to the true
+  track at 151 is fast too, so the good fix 151 is listed as well").
+
+**What a determined student can still do** (the grader is "harder to dodge than to do", not perfect): write
+`my_limit.py` that calls `heading_for_track`/`endurance_s` 12+ times for show and prints a hard-coded 2.5; hide
+a loop in a C extension or in another installed module; copy numbers from a classmate; write keyword-stuffed
+EXPLAIN answers (the rubric, not the check, grades them). check.py itself is readable while a check runs (a
+platform change is in progress to stop that). The teacher's rubric and the debrief remain the real assessment
+of understanding.
 
 ## Suggested class plan (reading at home ≈ 70 min + 2 sessions of 2 h)
 

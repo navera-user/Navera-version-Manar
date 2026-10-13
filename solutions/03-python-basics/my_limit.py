@@ -2,6 +2,8 @@
 from navera_lite.vehicle import endurance_s, heading_for_track, heading_vector
 
 endurance = endurance_s(160.0, 350.0, 0.2)
+e, n = heading_vector(200.0)                     # self-test: from 020° = towards 200°
+print("wind for 6 m/s:", round(6 * e, 2), round(6 * n, 2))   # must be -2.05 -5.64
 last_go = None
 for i in range(25):                              # 0.0, 0.5, … 12.0 m/s
     speed = i * 0.5

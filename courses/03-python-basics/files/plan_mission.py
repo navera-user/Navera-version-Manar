@@ -88,6 +88,18 @@ def test():
     except SystemExit:
         pass
 
+    class GoodRefused(Exception):
+        pass
+
+    def third_add():
+        tr = T()
+        try:
+            tr.add(0, 0, 0)
+            tr.add(1, 3, 4)
+        except ValueError as e:
+            raise GoodRefused(str(e))
+        tr.add(1, 6, 8)
+
     def track_of(points):
         tr = T()
         for p in points:
@@ -105,6 +117,8 @@ def test():
          (323.13, 8.0), 0.01, veh.heading_for_track),
         ("heading_for_track(0.0, 10.0, 11.0, 0.0)  (too windy)", lambda: veh.heading_for_track(0.0, 10.0, 11.0, 0.0),
          "ValueError", 0, veh.heading_for_track),
+        ("heading_for_track(0.0, 10.0, -11.0, 0.0)  (too windy, pushing LEFT)",
+         lambda: veh.heading_for_track(0.0, 10.0, -11.0, 0.0), "ValueError", 0, veh.heading_for_track),
         ("heading_for_track(0.0, 10.0, 0.0, -10.0)  (headwind = airspeed)",
          lambda: veh.heading_for_track(0.0, 10.0, 0.0, -10.0), "ValueError", 0, veh.heading_for_track),
         ("endurance_s(50.0, 200.0, 0.1)", lambda: veh.endurance_s(50.0, 200.0, 0.1), 810.0, 1e-6, veh.endurance_s),
@@ -122,8 +136,7 @@ def test():
     if T is not None:
         cases += [
             ("Track: add (0,0,0), (1,3,4) → len", lambda: len(track_of([(0, 0, 0), (1, 3, 4)])), 2, 0, T.add),
-            ("Track: add(1, 6, 8) after time 1", lambda: track_of([(0, 0, 0), (1, 3, 4), (1, 6, 8)]), "ValueError", 0,
-             T.add),
+            ("Track: add(1, 6, 8) after time 1", third_add, "ValueError", 0, T.add),
             ("Track (0,0), (6,8), (6,20): length_m()",
              lambda: track_of([(0, 0, 0), (2, 6, 8), (3, 6, 20)]).length_m(), 22.0, 1e-9, T.length_m),
             ("Track … at 0, 2, 3 s: speeds_mps()",
@@ -139,7 +152,9 @@ def test():
             print(f"·  {label}: not written yet ({e})")
             continue
         except Exception as e:
-            if want == "ValueError" and isinstance(e, ValueError) and "math domain" in str(e):
+            if type(e).__name__ == "GoodRefused":
+                print(f"✘ {label}  ->  your add() refused a GOOD position ({e}): test, then append (Step 8 hint 2)")
+            elif want == "ValueError" and isinstance(e, ValueError) and "math domain" in str(e):
                 print(f"✘ {label}  ->  ValueError: {e}   (math.asin refused, not YOUR code: check "
                       "abs(cross) > tas_mps yourself, before math.asin, and raise your own ValueError)")
             elif want == "ValueError" and isinstance(e, ValueError):
@@ -228,20 +243,18 @@ def fleet():
     we, wn = wind_vector()
     print(f"Mission: {LEG_M / 1000:g} km out on {TRACK_OUT_DEG:03.0f}° and back, wind from {WIND_FROM_DEG:03.0f}° at "
           f"{WIND_MPS:g} m/s\n")
-    print(f"{'vehicle':<34}{'endurance':>11}{'range, still':>14}{'range, 6 m/s head':>19}{'round trip':>12}  decision")
+    print(f"{'vehicle':<34}{'endurance':>11}{'range, still':>14}{'range, 6 m/s head':>19}")
     for v in (quad, wing):
         if not hasattr(v, "cruise_mps"):
             sys.exit(f"{v.__class__.__name__} has no attribute cruise_mps — did its __init__ store it, or call super().__init__(...)?")
         endu = need(f"{v.name}.endurance_s()", v.endurance_s)
         r0 = need(f"{v.name}.range_m()", v.range_m)
         r1 = need(f"{v.name}.range_m(-6.0)", v.range_m, -6.0)
-        (h1, g1), (h2, g2) = legs(v.cruise_mps)
-        trip = LEG_M / g1 + LEG_M / g2
-        print(f"{v!r:<34}{endu / 60:>8.2f} min{r0 / 1000:>11.2f} km{r1 / 1000:>16.2f} km{trip / 60:>8.2f} min  "
-              f"{'GO' if trip <= endu else 'NO-GO'}")
+        print(f"{v!r:<34}{endu / 60:>8.2f} min{r0 / 1000:>11.2f} km{r1 / 1000:>16.2f} km")
+    print("\n(the round trips and the decisions: yours to compute, lab Step 7)")
     print(f"\nisinstance(wing, Vehicle) = {isinstance(wing, veh.Vehicle)};  "
           f"wing turn radius at 30° bank = {wing.turn_radius_m():.1f} m")
-    print(f"quad hover time at 300 W = {quad.hover_s(300.0) / 60:.1f} min")
+    print(f"quad hover time at 420 W = {quad.hover_s(420.0) / 60:.1f} min  (cruise at 12 m/s draws only 350 W)")
 
 
 def load():
@@ -326,20 +339,28 @@ def speed():
             tr.add(float(i), e[i], n[i])
         except Exception as ex:
             sys.exit(f"Track.add stopped with {type(ex).__name__}: {ex}")
-    t0 = time.perf_counter()
-    loop = []
-    for i in range(N - 1):                      # the plain Python way, one segment at a time
-        d = math.hypot(tr.e_m[i + 1] - tr.e_m[i], tr.n_m[i + 1] - tr.n_m[i])
-        loop.append(d / (tr.t_s[i + 1] - tr.t_s[i]))
-    t_loop = time.perf_counter() - t0
-    t0 = time.perf_counter()
+    def python_loop():
+        out = []
+        for i in range(N - 1):                  # the plain Python way, one segment at a time
+            d = math.hypot(tr.e_m[i + 1] - tr.e_m[i], tr.n_m[i + 1] - tr.n_m[i])
+            out.append(d / (tr.t_s[i + 1] - tr.t_s[i]))
+        return out
+
+    def best(f, repeat=5):                      # the fastest of 5 runs: less noise from a busy computer
+        times = []
+        for _ in range(repeat):
+            t0 = time.perf_counter()
+            f()
+            times.append(time.perf_counter() - t0)
+        return min(times)
+
+    loop = python_loop()
     s = need("speeds_mps()", tr.speeds_mps)
-    t_np = time.perf_counter() - t0
-    t0 = time.perf_counter()
-    tr.arrays()                                 # the list → array conversion alone
-    t_conv = time.perf_counter() - t0
+    t_loop = best(python_loop)
+    t_np = best(tr.speeds_mps)
+    t_conv = best(tr.arrays)                    # the list → array conversion alone
     same = len(s) == len(loop) and np.allclose(s, loop)
-    print(f"{N} positions, same results: {same}")
+    print(f"{N} positions, same results: {same}   (each time: the best of 5 runs)")
     print(f"  Python loop                     {t_loop * 1000:8.1f} ms")
     print(f"  your speeds_mps()               {t_np * 1000:8.1f} ms")
     print(f"     of which lists → arrays      {t_conv * 1000:8.1f} ms   (arrays())")

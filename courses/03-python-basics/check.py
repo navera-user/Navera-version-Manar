@@ -2,6 +2,7 @@ import ast
 import contextlib
 import inspect
 import io
+import re
 import textwrap
 
 from academy_check import (CheckFailed, Checker, StudentError, explained, is_stub, load_student, need, predicted,
@@ -67,25 +68,53 @@ def angle_gap(a, b):
     return (a - b + 180.0) % 360.0 - 180.0
 
 
-SELF_OK = {"arrays", "speeds_mps", "length_m"}           # methods of Track that are themselves loop-free
-NAME_OK = {"float", "len", "int", "isinstance", "abs"}   # builtins that do not iterate over the track
+# C-level iterators a line trace cannot see (they loop without running a Python line of the student's file)
+LOOPY = {"map", "filter", "sum", "range", "zip", "enumerate", "sorted", "reversed", "iter", "next", "reduce"}
 
 
 def loops_in(fn):
-    """A Python-level loop in fn: for/while, any comprehension, map/filter/range/sum/zip/…, or a call to a
-    helper function of the student's own module (which could hide the loop)."""
+    """A loop the line count below cannot see: for/while, a comprehension, or map/sum/range/… written in fn."""
     tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
     for n in ast.walk(tree):
         if isinstance(n, (ast.For, ast.While, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
             return True
         if isinstance(n, ast.Call):
             f = n.func
-            if isinstance(f, ast.Name) and f.id not in NAME_OK:
-                return True                          # map(), sum(), range(), or a helper of your own
-            if (isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and f.value.id == "self"
-                    and f.attr not in SELF_OK):
+            if isinstance(f, ast.Name) and f.id in LOOPY:          # builtins (np.sum etc. are fine)
+                return True
+            if isinstance(f, ast.Attribute) and f.attr == "reduce" and getattr(f.value, "id", "") == "functools":
                 return True
     return False
+
+
+def python_lines_run(T, method, *args, n=2000):
+    """How many Python lines of the student's own files run while tr.method(*args) works on an n-position
+    track. A whole-array version runs a handful; a loop hidden anywhere (a helper, a lambda in np.vectorize,
+    a loop moved into arrays()…) runs thousands."""
+    import os
+    import sys
+    tr = T()
+    for i in range(n):
+        tr.add(i, 3.0 * i, 4.0 * i)
+    here = os.getcwd() + os.sep
+    count = [0]
+
+    def tracer(frame, event, arg):
+        if frame.f_code.co_filename.startswith(here):
+            if event == "line":
+                count[0] += 1
+            return tracer
+        return None
+    sys.settrace(tracer)
+    try:
+        getattr(tr, method)(*args)
+    finally:
+        sys.settrace(None)
+    return count[0]
+
+
+def vectorised(T, method, *args):
+    return not loops_in(getattr(T, method)) and python_lines_run(T, method, *args) < 100
 
 
 def make_track(T, points):
@@ -179,7 +208,9 @@ def _():
     (f,) = veh("heading_for_track")
     done(f, "heading_for_track()")
     for args, what in (((0, 10, 11, 0), "heading_for_track(0, 10, 11, 0) (crosswind 11 m/s, airspeed 10 m/s)"),
-                       ((90, 8, 1, -9), "heading_for_track(90, 8, 1, -9) (crosswind 9 m/s, airspeed 8 m/s)")):
+                       ((90, 8, 1, -9), "heading_for_track(90, 8, 1, -9) (crosswind 9 m/s, airspeed 8 m/s)"),
+                       ((0, 10, -11, 0), "heading_for_track(0, 10, -11, 0) (crosswind 11 m/s pushing LEFT, "
+                                         "airspeed 10 m/s: is your test `abs(cross) > tas_mps`?)")):
         raises(f, *args, what=what)
         try:
             f(*args)
@@ -212,8 +243,8 @@ def _():
 
 
 @c.test("Step 3–4: the lighthouse mission — wind, go/no-go, explanation",
-        hint="Run python3 plan_mission.py wind and gonogo, and copy the numbers (heading and speeds to 2 decimals, "
-             "minutes to 2 decimals). DECISION is \"GO\" or \"NO-GO\". EXPLAIN_TRIP: compare the time LOST on the "
+        hint="Heading and ground speeds: your heading_for_track with the wind vector printed by plan_mission.py "
+             "wind (2 decimals); TRIP_MIN: add the two legs printed by gonogo (minutes, 2 decimals). DECISION is \"GO\" or \"NO-GO\". EXPLAIN_TRIP: compare the time LOST on the "
              "slow leg with the time GAINED on the fast one.")
 def _():
     (pw, h, g1, g2, pt, trip, endu, dec, why) = answers(
@@ -222,7 +253,7 @@ def _():
     predicted("PREDICT_WIND", pw)
     predicted("PREDICT_TRIP", pt)
     h = number(h, "OUT_HEADING_DEG")
-    c.ok(abs(h - 30) > 0.5, "OUT_HEADING_DEG is the track itself: the wind run prints the heading to FLY")
+    c.ok(abs(h - 30) > 0.5, "OUT_HEADING_DEG is the track itself: heading_for_track gives the heading to FLY")
     c.near(h, 25.02, 0.05, "OUT_HEADING_DEG")
     c.near(number(g1, "OUT_GS_MPS"), 6.05, 0.02, "OUT_GS_MPS")
     c.near(number(g2, "BACK_GS_MPS"), 17.86, 0.02, "BACK_GS_MPS")
@@ -234,7 +265,7 @@ def _():
     c.ok(str(dec).strip().upper().replace(" ", "-").replace("_", "-") in ("GO", "NO-GO"),
          f"DECISION = {dec!r}: write \"GO\" or \"NO-GO\"")
     c.ok(str(dec).strip().upper().replace(" ", "-").replace("_", "-") == "NO-GO",
-         "DECISION is not what gonogo decides")
+         "DECISION: compare your TRIP_MIN with ENDURANCE_MIN — GO only if the round trip is shorter")
     explained("EXPLAIN_TRIP", why,
               ([r"head", r"against", r"slow", r"out"], "the slow (headwind) leg"),
               ([r"tail", r"back", r"fast", r"return"], "the fast (tailwind) leg"),
@@ -252,21 +283,47 @@ def _():
     import subprocess
     import sys
     c.ok(os.path.exists("my_limit.py"), "my_limit.py does not exist yet in the lesson folder (Step 5)")
-    src = open("my_limit.py").read()
-    for name in ("heading_for_track", "endurance_s"):
-        c.ok(name in src, f"my_limit.py does not use your {name}(): the limit must come from your NAVERA Lite part")
+    probe = (
+        "import runpy, sys\n"
+        "import navera_lite.vehicle as v\n"
+        "calls = {'h': 0, 'e': 0}; winds = []\n"
+        "h0, e0 = v.heading_for_track, v.endurance_s\n"
+        "def h(*a, **k):\n"
+        "    calls['h'] += 1\n"
+        "    names = ('track_deg', 'tas_mps', 'wind_e', 'wind_n')\n"
+        "    d = dict(zip(names, a)); d.update(k)\n"
+        "    winds.append((float(d.get('wind_e', 0)), float(d.get('wind_n', 0))))\n"
+        "    return h0(*a, **k)\n"
+        "def e(*a, **k):\n"
+        "    calls['e'] += 1\n"
+        "    return e0(*a, **k)\n"
+        "v.heading_for_track, v.endurance_s = h, e\n"
+        "try:\n"
+        "    runpy.run_path('my_limit.py', run_name='__main__')\n"
+        "finally:\n"
+        "    sys.stdout.flush()\n"
+        "    print('PROBE', calls['h'], calls['e'], sum(1 for we, wn in winds if we > 0.01 and wn > 0.01), flush=True)\n")
     try:
-        r = subprocess.run([sys.executable, "my_limit.py"], capture_output=True, text=True, timeout=30)
+        r = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, timeout=60)
     except subprocess.TimeoutExpired:
-        raise CheckFailed("my_limit.py did not finish in 30 s — is its loop endless?")
+        raise CheckFailed("my_limit.py did not finish in 60 s — is its loop endless?")
     out = r.stdout + r.stderr
     if r.returncode:
         raise CheckFailed("my_limit.py stops with an error: " + (out.strip().splitlines() or ["?"])[-1])
+    pr = re.findall(r"^PROBE (\d+) (\d+) (\d+)$", r.stdout, re.M)
+    c.ok(pr, "my_limit.py could not be run by the check (does it run with python3 my_limit.py?)")
+    nh, ne, wrongway = (int(x) for x in pr[-1])
     found = re.findall(r"MAX_WIND_MPS\s*=\s*(\S+)", r.stdout)
     c.ok(found, "my_limit.py does not print a line `MAX_WIND_MPS = …` (its last line, Step 5)")
     if found[-1] in ("None", "0", "0.0"):
         raise CheckFailed(f"my_limit.py prints MAX_WIND_MPS = {found[-1]}: it never found a GO speed, even in "
                           "still air — compare seconds with seconds (endurance_s gives seconds) and add both legs")
+    c.ok(nh >= 12, f"my_limit.py called your heading_for_track() {nh} times: the round trip must be computed with "
+                   "it, two legs for each wind speed 0.0, 0.5, … up to the first NO-GO")
+    c.ok(ne >= 1, "my_limit.py never calls your endurance_s(): compare the round trip with the quad's endurance")
+    c.ok(wrongway == 0, "my_limit.py builds the wind blowing towards the north-east (+e, +n): that is where the wind "
+                        "comes FROM. Wind from 020° blows TOWARDS 200°: for 6 m/s, print(we, wn) must show "
+                        "-2.05 -5.64 (lesson §2, Step 5 hint 5)")
     try:
         printed = float(found[-1])
     except ValueError:
@@ -352,26 +409,36 @@ def _():
 
 
 @c.test("Step 7: inheritance — where methods come from, and what super() does",
-        hint="Run python3 plan_mission.py fleet and print(wing). WHERE_ENDURANCE_FROM: the class whose code runs for "
+        hint="Run python3 plan_mission.py fleet and print(wing). One class name per WHERE_… field; reasons go in "
+             "the EXPLAIN_… fields. WHERE_ENDURANCE_FROM: the class whose code runs for "
              "wing.endurance_s(). SUPER_ERROR: the exception name on the LAST line of the traceback when the "
              "super().__init__ line is commented out (then put it back!).")
 def _():
-    where, err, why, wt, pw, rf = answers("WHERE_ENDURANCE_FROM", "SUPER_ERROR", "EXPLAIN_SUPER", "WING_TRIP_MIN",
-                                          "PRINT_WING", "WHERE_REPR_FROM")
-    c.ok("FixedWing(" in str(pw), f"PRINT_WING = {pw!r} is not what print(wing) shows")
-    r = str(rf).strip().lower()
-    c.ok("fixed" not in r and "vehicle" in r, f"WHERE_REPR_FROM = {rf!r}: FixedWing defines no __repr__ — whose "
-         "__repr__ runs? (it writes type(self).__name__, the class of the OBJECT)")
-    w = str(where).strip().lower()
-    c.ok(w != "", "WHERE_ENDURANCE_FROM is empty")
-    c.ok("fixed" not in w, "WHERE_ENDURANCE_FROM: FixedWing does not define endurance_s() — look in its parent")
-    c.ok("vehicle" in w, f"WHERE_ENDURANCE_FROM = {where!r}: which class defines endurance_s()?")
-    c.ok("attributeerror" in str(err).lower().replace(" ", ""),
-         f"SUPER_ERROR = {err!r} is not the exception Python raises (read the last line of the traceback)")
+    where, err, why, wt, wd, pw, rf, wr = answers("WHERE_ENDURANCE_FROM", "SUPER_ERROR", "EXPLAIN_SUPER",
+                                                  "WING_TRIP_MIN", "WING_DECISION", "PRINT_WING", "WHERE_REPR_FROM",
+                                                  "EXPLAIN_REPR")
+    one = lambda v: re.sub(r"[^a-z]", "", str(v).lower())
+    c.ok(one(where) != "", "WHERE_ENDURANCE_FROM is empty")
+    c.ok(one(where) in ("vehicle", "fixedwing"), f"WHERE_ENDURANCE_FROM = {where!r}: write ONE class name, no "
+         "explanation")
+    c.ok(one(where) == "vehicle", "WHERE_ENDURANCE_FROM: FixedWing does not define endurance_s() — look in its parent")
+    c.ok(one(err) == "attributeerror",
+         f"SUPER_ERROR = {err!r} is not the exception name on the last line of the traceback (one name, exactly)")
     explained("EXPLAIN_SUPER", why,
               ([r"super", r"parent", r"vehicle", r"__init__", r"init"], "which constructor did not run"),
               ([r"attribute", r"battery", r"self\.", r"power", r"cruise", r"name"], "what is missing in the object"))
-    c.near(number(wt, "WING_TRIP_MIN"), 13.72, 0.05, "WING_TRIP_MIN")
+    c.ok(re.sub(r"\s+", " ", str(pw)).strip().replace('"', "'") in ("FixedWing('wing', cruise 20 m/s)",
+                                                                   "FixedWing('wing', cruise 20.0 m/s)"),
+         f"PRINT_WING = {pw!r} is not the line print(wing) shows (copy it exactly)")
+    c.ok(one(rf) in ("vehicle", "fixedwing"), f"WHERE_REPR_FROM = {rf!r}: write ONE class name (the reason goes in "
+         "EXPLAIN_REPR)")
+    c.ok(one(rf) == "vehicle", "WHERE_REPR_FROM: FixedWing defines no __repr__ — whose __repr__ runs?")
+    explained("EXPLAIN_REPR", wr,
+              ([r"type", r"class of", r"object", r"instance"], "what type(self) gives"),
+              ([r"fixed", r"wing"], "which class the object is"), min_words=6)
+    c.near(number(wt, "WING_TRIP_MIN"), 13.72, 0.05, "WING_TRIP_MIN (your heading_for_track at 20 m/s, two legs)")
+    c.ok(one(wd) in ("go", "nogo"), f"WING_DECISION = {wd!r}: write \"GO\" or \"NO-GO\"")
+    c.ok(one(wd) == "go", "WING_DECISION: compare the wing's round trip with its endurance (fleet prints it)")
 
 
 # ================================================================ Session 2 — track.py with NumPy
@@ -394,7 +461,8 @@ def _():
                           "and only when the track is not empty")
     tr = make_track(T, [(10, 1, 2), (12, "7", 9)])
     c.ok(len(tr) == 2, f"after two add() the track has {len(tr)} positions")
-    c.ok(tr.t_s == [10.0, 12.0] and tr.e_m == [1.0, 7.0] and tr.n_m == [2.0, 9.0],
+    c.ok(tr.t_s == [10.0, 12.0] and tr.e_m == [1.0, 7.0] and tr.n_m == [2.0, 9.0]
+         and all(type(x) is float for x in tr.t_s + tr.e_m + tr.n_m),
          f"the lists are t_s={tr.t_s!r}, e_m={tr.e_m!r}, n_m={tr.n_m!r} — store float(...) of each value")
     raises(tr.add, 12, 0, 0, what="add(12, …) after time 12 (same time)")
     raises(tr.add, 11, 0, 0, what="add(11, …) after time 12 (going back)")
@@ -418,8 +486,8 @@ def _():
     one = make_track(T, [(0, 3, 3)])
     c.near(run(one.length_m), 0.0, 1e-12, "length_m() with one position")
     c.near(run(T().length_m), 0.0, 1e-12, "length_m() of an empty track")
-    c.ok(not loops_in(T.length_m), "length_m() uses a Python loop (for / while / a comprehension / map / sum / range / a helper "
-         "function): use np.diff, np.hypot and np.sum on whole arrays")
+    c.ok(vectorised(T, "length_m"), "length_m() uses a Python loop (for/while, a comprehension, map/sum/…, or a "
+         "helper that loops): use np.diff, np.hypot and np.sum on whole arrays")
     done(T.speeds_mps, "Track.speeds_mps")
     s = run(a.speeds_mps)
     c.ok(isinstance(s, np.ndarray), f"speeds_mps() returned a {type(s).__name__}: a NumPy array is expected")
@@ -430,8 +498,8 @@ def _():
     c.ok(np.allclose(s, [5.0, 0.0, 3.75, 30.0]), f"speeds_mps() gives {np.round(s, 3).tolist()}: not the right speeds")
     e = run(one.speeds_mps)
     c.ok(isinstance(e, np.ndarray) and e.size == 0, f"speeds_mps() with one position must be an empty array, got {e!r}")
-    c.ok(not loops_in(T.speeds_mps), "speeds_mps() uses a Python loop (for / while / a comprehension / map / range / a helper function): "
-         "use whole-array operations")
+    c.ok(vectorised(T, "speeds_mps"), "speeds_mps() uses a Python loop (for/while, a comprehension, map/sum/…, or "
+         "a helper that loops): use whole-array operations")
 
 
 @c.test("TODO 13: glitches() lists the positions reached too fast",
@@ -453,6 +521,8 @@ def _():
     b = make_track(T, [(0, 0, 0), (1, 5, 5), (2, 60, 5), (3, 10, 6), (4, 15, 6), (5, 15, 80)])
     c.eq(run(b.glitches, 30), [2, 3, 5], "glitches(30) on another track")
     c.eq(run(b.glitches, 55), [5], "glitches(55): exactly 55 m/s is not faster than 55")
+    c.ok(vectorised(T, "glitches", 50.0), "glitches() loops over the speeds in Python: use a mask and "
+         "np.flatnonzero (lesson §4)")
 
 
 @c.test("Step 9: the harbour survey in numbers",
@@ -480,14 +550,16 @@ def _():
                                                       "FLAGGED_AT_15", "FLAGGED_AT_100", "EXPLAIN_THRESHOLD",
                                                       "GLITCH_EXTRA_M")
     predicted("PREDICT_GLITCH", pg)
-    c.ok(isinstance(g, (list, tuple)) and [int(x) for x in g if isinstance(x, (int, float))] == [150, 151],
+    c.ok(isinstance(g, (list, tuple)) and list(g) == [150, 151],
          f"GLITCHES = {g!r} is not what glitch prints (a list, like [1, 2])")
     b = number(bad, "BAD_FIX_T_S")
     c.ok(b != 151, "BAD_FIX_T_S = 151: look at out/glitch.png — which listed point is far from BOTH its neighbours?")
     c.ok(b == 150, f"BAD_FIX_T_S = {bad!r} is not the time of the wrong fix")
     explained("EXPLAIN_GLITCH", why,
-              ([r"two", r"\b2\b", r"both", r"twice"], "why one wrong fix makes two fast segments"),
-              ([r"into", r"out", r"leav", r"arriv", r"to and from", r"back", r"next", r"after", r"before"],
+              ([r"two", r"\b2\b", r"both", r"twice", r"\btoo\b", r"also", r"as well", r"second", r"each"],
+               "why one wrong fix makes two fast segments"),
+              ([r"into", r"out", r"leav", r"arriv", r"to and from", r"back", r"next", r"after", r"before",
+                r"return", r"previous", r"neighbo"],
                "the segment into and the segment out of the wrong fix"))
     c.ok(number(f15, "FLAGGED_AT_15") == 33, f"FLAGGED_AT_15 = {f15!r} is not len(glitches(15)) on the harbour track")
     c.ok(isinstance(f100, (list, tuple)) and len(f100) == 0 and f100 is not None,

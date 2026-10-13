@@ -67,6 +67,7 @@ f"{7.020985:.2f}|{263:5d}|"
 exit()
 ```
 
+`0.49999999999999994` is 0.5 up to float rounding (like `6.1e-17` in Step 2).
 `math.asin(9 / 8)` stops with `ValueError: math domain error`: no angle has a sine above 1. That is the
 crosswind case of lesson §2, and the reason your function will check first.
 
@@ -206,10 +207,10 @@ are yours.
 
 > [!TASK]
 > Write `TRIP_MIN` (the round trip with the wind), `ENDURANCE_MIN` (2 decimals) and `DECISION` (`"GO"` or
-> `"NO-GO"`). Then
+> `"NO-GO"`). (Adding the two rounded legs may give 27.68 instead of 27.67: both are fine.) Then
 > `EXPLAIN_TRIP`: why does the wind cost time on a round trip, although it helps on the way back?
 
-<details><summary>Read this after you ran it: the asymmetry</summary>
+<details><summary>Read this after you wrote EXPLAIN_TRIP: the asymmetry</summary>
 Time = distance ÷ speed. The slow leg lasts long, so the headwind acts for a long time; the fast leg is
 short, so the tailwind has little time to give anything back. With a pure head/tailwind w:
 L/(V − w) + L/(V + w) = 2LV/(V² − w²), always more than 2L/V. Here the out leg takes 20.7 min, the back
@@ -243,6 +244,10 @@ for i in range(5):                   # i = 0, 1, 2, 3, 4
 ```
 </details>
 
+**Self-test before the loop.** Make your script first print the wind vector for 6 m/s: `print(we, wn)` must
+show −2.05 −5.64, the same as `plan_mission.py wind`. +2.05 +5.64 means you built the wind blowing FROM
+020°, not TOWARDS 200° (the check looks at the winds your script really uses).
+
 ```bash
 python3 my_limit.py
 ```
@@ -268,15 +273,16 @@ python3 my_limit.py
 `python3`.
 
 > [!TASK]
-> `ANALYTIC_WIND_MPS` (2 decimals). Compare it with `MAX_WIND_MPS`: why is it higher than your sweep's
-> answer, and why is it a little lower than the true limit of the real wind (from 020°, not exactly along
-> the track)? (Not graded; Going further finds the true limit.)
+> `ANALYTIC_WIND_MPS` (2 decimals). Compare it with `MAX_WIND_MPS`, and predict where the true limit of
+> the real wind (from 020°, not exactly along the track) lies: below, between or above your two values?
+> Why? (Not graded; Going further finds it.)
 
 <details><summary>Stuck? Hints</summary>
 
 1. V² − w² = 2LV / endurance, so w = √(V² − 2LV / endurance).
 2. L = 7500 m (one leg), V = 12 m/s, endurance = your `endurance_s(160.0, 350.0, 0.2)` in seconds.
-3. A value near 0.04: the endurance was in minutes.
+3. `ValueError: math domain error` (or `nan`): a negative number under the root — the endurance was in
+   minutes, so 2LV / endurance is far bigger than V².
 </details>
 
 > [!TIP] 🏅 End of session 1 — Flight planner
@@ -305,8 +311,9 @@ python3 plan_mission.py test
 
 1. `AttributeError: 'Vehicle' object has no attribute 'battery_wh'`: a `self.battery_wh = battery_wh` line
    is missing (or misspelt) in `__init__`.
-2. `range_m` returns `None` for a strong headwind: the `if` has a `return 0.0`, but is there a `return`
-   on the other path? Every path must end with a `return`.
+2. `range_m` returns `None` (for example `range_m(-0.5) -> None`): a path of your `if`/`else` has no
+   `return`. Write `return …` on BOTH paths: `return 0.0` when stopped, `return gs * self.endurance_s(reserve)`
+   otherwise.
 3. `RecursionError` in `endurance_s`: you wrote `self.endurance_s(...)` inside `endurance_s`: it calls
    itself forever. Call the module function, with `self.battery_wh` and `self.power_w`.
    `TypeError: Vehicle.endurance_s() takes from 1 to 2 positional arguments but 4 were given`: the same
@@ -332,8 +339,17 @@ python3 plan_mission.py fleet
 ```
 
 > [!TASK]
-> `WING_TRIP_MIN` (2 decimals). `WHERE_ENDURANCE_FROM`: `FixedWing` defines no `endurance_s()`. The line
-> `wing.endurance_s()` runs the code of which class? (one class name)
+> `WING_TRIP_MIN` (2 decimals): the fleet table gives the wing's endurance only; compute its round trip
+> yourself with your `heading_for_track` at 20 m/s (your `my_limit.py` already does it for the quad), and
+> `WING_DECISION` (`"GO"` or `"NO-GO"`). `WHERE_ENDURANCE_FROM`: `FixedWing` defines no `endurance_s()`. The
+> line `wing.endurance_s()` runs the code of which class? (one class name)
+
+<details><summary>Stuck? Hint</summary>
+
+The same two legs as the quad, with the wing's airspeed: `heading_for_track(30.0, 20.0, we, wn)` and
+`heading_for_track(210.0, 20.0, we, wn)` with the 6 m/s wind vector of Step 3; time = 7500 / ground speed per
+leg, in minutes. Compare with the endurance printed by `fleet`.
+</details>
 
 Now print a wing:
 
@@ -342,9 +358,9 @@ python3 -c "from navera_lite.vehicle import FixedWing; wing = FixedWing('wing', 
 ```
 
 > [!TASK]
-> `PRINT_WING`: the text printed. `WHERE_REPR_FROM`: `print` calls `__repr__`; FixedWing has none. Whose
-> `__repr__` ran (a class name), and why does the text still say `FixedWing`? (Read `__repr__`:
-> `type(self)` is the class of the object, not of the code.)
+> `PRINT_WING`: the text printed. `WHERE_REPR_FROM`: `print` calls `__repr__`; FixedWing has none — whose
+> `__repr__` ran? (one class name). `EXPLAIN_REPR`: why does the text still say `FixedWing`? (Read
+> `__repr__`: `type(self)` is the class of the object, not of the code.)
 
 Now break it on purpose. In `FixedWing.__init__`, put a `#` in front of the `super().__init__(...)` line,
 save, and run:
@@ -438,7 +454,7 @@ python3 plan_mission.py test
 
 <details><summary>Stuck? Hints</summary>
 
-1. `fast = self.speeds_mps() > max_mps` is a mask; `np.flatnonzero(fast)` gives its True indices.
+1. Which NumPy function from lesson §4 turns a mask into indices?
 2. The example gives `[2]` instead of `[3]`: those are speed indices; the position reached is one more.
 3. `glitches() must return a list of Python ints`: end with `.tolist()`.
 </details>
@@ -457,7 +473,7 @@ Open `out/glitch.png` (labels are times in seconds).
 > Write `GLITCHES` (the list printed), `BAD_FIX_T_S` (the time of the **wrong** fix: which listed point is
 > far from its neighbours?) and `EXPLAIN_GLITCH`: why does one wrong fix give that many entries?
 
-<details><summary>Read this after you ran it</summary>
+<details><summary>Read this after you wrote BAD_FIX_T_S and EXPLAIN_GLITCH</summary>
 A wrong fix makes two fast segments: the one INTO it and the one OUT of it, back to the true track. The
 second listed position is a good fix, reached "fast" only because its segment starts at the wrong one. A
 detector that deletes every listed position throws away a good fix; mission 01's jump gate avoids that by
@@ -506,7 +522,8 @@ python3 plan_mission.py speed
 ```
 
 > [!TASK]
-> `SPEEDUP_X`: the first "times faster" number (it depends on the computer and the moment). Look at the
+> `SPEEDUP_X`: the first "times faster" number (it depends on the computer and the moment: run it twice; if
+> the numbers differ a lot, the computer was busy — take the higher one). Look at the
 > second one too: what costs the most in your `speeds_mps()`?
 
 ## Step 12 — Check, then look back
@@ -523,9 +540,10 @@ When every check passes, you earn the **Track detective** badge. Then look back,
 
 ## Going further (optional)
 
-- **The exact limit.** Your sweep says 2.5 m/s, the algebra (pure headwind) about 2.70. Find the true
-  limit of the real wind from 020° to 0.01 m/s by **bisection**: start from the last GO and the first
-  NO-GO, test the middle, keep the half where GO changes to NO-GO, repeat.
+- **The exact limit.** Your sweep gives the limit to 0.5 m/s, your algebra the pure-headwind value. Find
+  the true limit of the real wind from 020° to 0.01 m/s by **bisection**: start from the last GO and the
+  first NO-GO, test the middle, keep the half where GO changes to NO-GO, repeat. Where does it fall
+  compared with your two answers, and why?
   <details><summary>Answer</summary>About 2.72 m/s: a little above the pure-headwind value, because the
   real wind is not exactly along the track (part of it is crosswind, which costs less).</details>
 - **Best heading for the round trip.** For the wing (20 m/s), which outbound track (0°–359°, 1° steps)
@@ -539,7 +557,7 @@ When every check passes, you earn the **Track detective** badge. Then look back,
   wing turn inside a 50 m circle? Why does a camera's view tilt during such a turn (mission 20)?
   <details><summary>Answer</summary>tan φ = v² / (g r) = 400 / (9.81 × 50) → φ ≈ 39.2°. The camera is
   fixed to the airframe, so it banks with it and looks sideways instead of straight down.</details>
-- **The unit saboteur.** [suspect.py](file:./suspect.py) has four helpers "all in SI units". One is not.
+- **The unit saboteur.** [suspect.py](file:./suspect.py) has four helpers whose names promise their units. One lies.
   Without reading the code, write `test_suspect.py` with `assert` lines that check physics you trust
   (compare with `VEHICLES`, with a leg you can compute by hand…) and run
   `python3 -m pytest -q test_suspect.py`. Which function lies, in which unit?

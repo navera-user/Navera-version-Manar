@@ -1,6 +1,6 @@
 """suspect.py — a small helper module found on a shared drive (Going further of lab 3).
 
-Its author swears every function works in SI units (m, s, m/s). One of them does not.
+Its author swears every function returns what its name says (m, s, m/s). One of them does not.
 Write tests (plain `assert` lines in a file test_suspect.py, run with `python3 -m pytest -q test_suspect.py`)
 that EXPOSE the wrong one, using physics you know and NAVERA Lite's finished functions.
 Do not read the code first: find it with tests, as you would in a real code review.

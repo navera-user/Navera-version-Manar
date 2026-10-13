@@ -191,6 +191,9 @@ along = w · u(T)               > 0: tailwind,  < 0: headwind
 cross = w · u(T + 90°)         > 0: pushes the drone to the RIGHT of the track
 ```
 
+Why T + 90°? Clockwise from north, +90° is a quarter turn to the right: facing north (0°), your right hand
+points east (90°).
+
 The drone cancels `cross` by pointing into the wind by the **crab angle** c, with `V · sin c = cross`.
 Then its own velocity has `V · cos c` left along the track. Why `V · sin c`? Turn the nose by c: your
 air velocity gets a sideways part `V · sin c` and keeps `V · cos c` along the track (a right triangle
@@ -212,8 +215,9 @@ GS = 12 · cos 17.1° − 3.54 = 11.47 − 3.54 = 7.93 m/s
 ![Air velocity + wind = ground velocity: the drone points 17.1° left of its track and moves east at 7.93 m/s](assets/wind_triangle.svg)
 
 **When there is no answer.** If `|cross| > V`, no heading cancels the crosswind (and `math.asin` would
-crash with "math domain error"). If `GS ≤ 0`, the drone points the right way but makes no progress (GS = 0) or is blown backwards (GS < 0). Both
-are impossible requests: the lab's `heading_for_track` raises `ValueError`, before calling `asin`.
+crash with "math domain error"). If `GS ≤ 0`, the drone points the right way but makes no progress
+(GS = 0) or is blown backwards (GS < 0). Both are impossible requests: the lab's `heading_for_track` raises
+`ValueError`, before calling `asin`.
 
 > [!QUESTION] ✏️ Check
 > 1. Track 000° (north), V = 10 m/s, wind towards 090° (east) at 6 m/s. Along, cross, heading, ground
