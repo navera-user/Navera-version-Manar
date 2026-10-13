@@ -38,7 +38,7 @@ def no_library_shortcut():
         for m in names:
             if m.split(".")[0] in BANNED:
                 raise CheckFailed(f"navera_lite/image.py imports {m}: TODO 4–7 are written with numpy and math only — "
-                                  "OpenCV is what you compare WITH (lab Step 2, lesson §4, §6)")
+                                  "OpenCV is what you compare WITH (lab: the 'Your files' paragraph at the top)")
 
 
 def image():
@@ -358,6 +358,10 @@ def _():
                                                       flags=cv2.WARP_INVERSE_MAP)).mean() < 0.6:
         raise CheckFailed("your warp treats M as the map from destination to source: you used A, not A⁻¹ — "
                           "np.linalg.inv(M[:, :2]) (lesson §6)")
+    M2 = np.hstack([M[:, :2], (M[:, :2] @ M[:, 2])[:, None]])
+    if d.mean() > 0.6 and np.abs(got - cv2.warpAffine(g.astype(np.float32), M2, (300, 260))).mean() < 0.6:
+        raise CheckFailed("you subtracted t after multiplying by A⁻¹: the source of (u, v) is A⁻¹·((u, v) − t) — "
+                          "compute u − t[0], v − t[1] first, then multiply (lesson §6)")
     if d.mean() > 0.6 and np.abs(got.astype(np.float64) - near).mean() < 0.6:
         raise CheckFailed("your warp takes the NEAREST pixel: blend the 4 neighbours (bilinear, lesson §6)")
     c.ok(d.mean() < 0.6, f"on an unseen photo your warp differs from cv2.warpAffine by {d.mean():.2f} grey levels on "
@@ -526,8 +530,9 @@ def _():
     for pat, what in [(r"\b238\b", "the naive cast value of the thermal frame (Step 2)"),
                       (r"\b0?\.7[34]\d*\b", "the NCC with the compass heading (Step 7)"),
                       (r"\b0?\.9[56]\d*\b", "the NCC at the best heading (Step 8)"),
-                      (r"(?<![\d.])35(?:\.0+)?(?!\d|\.\d)", "the best heading (Step 8)"),
-                      (r"±\s*1\.5|\b1\.5\s*°|±\s*[12](\.\d)?\b", "the heading tolerance for NCC ≥ 0.9, as ± (Step 8)")]:
+                      (r"(?<![\d.])(?:34\.[5-9]\d*|35(?:\.[0-4]\d*)?)(?![\d]|\.\d)", "the best heading (Step 8)"),
+                      (r"(?:±|\+/-|\+-|plus or minus)\s*[12](?:\.\d+)?\b|\b1\.\d+\s*(?:°|deg)",
+                       "the heading tolerance for NCC ≥ 0.9, as ± (Step 8)")]:
         c.ok(re.search(pat, body) is not None, f"report.md does not quote {what}")
 
 

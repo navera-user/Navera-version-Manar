@@ -85,7 +85,7 @@ frame with a hot chimney?
 | EXPLAIN_SCALE | names the heading as the costlier error with numbers, and height/lens vs compass/IMU | one of the two | — |
 | report.md | the three sections with numbers (238, ≈ 230 vs 5 ms, 0.746 → 0.965, 35°, ±1.5°, ±2.3 %), the rule "compute in float, round/clip/convert", and a consequence for a pixel-matching system | numbers without reasoning | — |
 
-## Difficulties expected (from 50 wrong-solution mutants, all caught, and the round-1 student reviews)
+## Difficulties expected (from 52 wrong-solution mutants, all caught, and the round-1 student reviews)
 
 - `astype` without clip (300 → 44) or without rint (254.6 → 254): runner and check name each case.
 - `to_float01` dividing uint16 by 255 (values up to 257); float64 returned.
@@ -127,3 +127,11 @@ SCALE_TOL_PCT and EXPLAIN_SCALE added (Step 8b, about 15 min; meta 6 h).
   are optimistic compared with a real camera against a satellite map. The lesson says the data are drawn.
 - The warp tolerance (mean 0.6 grey level vs cv2.warpAffine) is set because OpenCV rounds its bilinear weights;
   the reference is at 0.07 on the real frame, 0.42 on random noise.
+
+## Fix round 2 (2026-10-13)
+
+The report check accepts any best heading from 34.5 to 35.4x (e.g. 35, 35.0, 35.05, 35.1) but not the latitude
+"35.8° N", and tolerances written ±1.5, +/-1.5, +-1.5, 1.5 deg, 1.5 degrees or 1.5°. Fine sweeps (step < 0.5°) print
+the NCC with 4 decimals (35.0° 0.9648 vs 35.1° 0.9647). The refine example in the lab is `sweep 26.5 30.5 0.1`
+(unrelated to the answer). TODO 6: a test/check case with A ≠ I and t ≠ 0 catches "A⁻¹·(u, v) − t" (subtracting t
+after the inverse), with a ⚠ in `warp`. `test` has a bool case for to_float01. affine.svg label moved off the edge.

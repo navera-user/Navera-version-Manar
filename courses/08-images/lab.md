@@ -255,7 +255,8 @@ python3 run_images.py warp
    every pixel (subtract t first, then multiply by a_inv, written out entry by entry); `x0`, `fx`, `y0`,
    `fy`; the blend.
 2. `test` says "the picture moved the wrong way" or "you multiplied by A, not by its INVERSE", or `warp`
-   shows a mean difference of tens of grey levels (with a ⚠ line): the source of (u, v) is A⁻¹·((u, v) − t).
+   shows a mean difference of tens of grey levels (with a ⚠ line): the source of (u, v) is A⁻¹·((u, v) − t),
+   so subtract t FIRST ("you subtracted t after multiplying" means the order is wrong).
    Did you call `np.linalg.inv(M[:, :2])` and use **that** in the two lines for x and y?
 3. "no blending": a missing weight or `np.rint` instead of `np.floor`. The four reads are `(y0, x0)`,
    `(y0, x0 + 1)`, `(y0 + 1, x0)`, `(y0 + 1, x0 + 1)` — rows first.
@@ -301,7 +302,8 @@ python3 run_images.py like
    `to_uint8`.
 2. "the photo's top mark lands WEST" (heading 90°): you turned by +heading; the angle is −heading (lesson §7
    figure).
-3. "the photo's centre lands at (28.69, 28.38)" or "(28.22, 27.84)" instead of (28.50, 28.50): half a pixel
+3. "the photo's centre lands at (28.69, 28.38)" or "(28.22, 27.84)" (other numbers, e.g. swapped, if your turn is
+   also wrong) instead of (28.50, 28.50): half a pixel
    off — the centres are ((w − 1)/2, (h − 1)/2) and ((side − 1)/2, (side − 1)/2), not w/2. A centre far off: you did not add (c_out − c_in) to `M[0, 2]` and `M[1, 2]`.
 4. Shape (58, 58) expected, yours smaller: side = round(hypot(w, h) · s), `math.hypot`. A dark, flat result
    in `like`: you normalised after the warp.
@@ -309,7 +311,7 @@ python3 run_images.py like
 
 ## Step 8 — How good was the compass?
 
-`info.json` gives the heading the drone's compass reported. Compasses are not perfect. If you give
+`info.json` gives the heading the drone's compass (its IMU) reported: `heading_imu_deg`, the "compass heading". Compasses are not perfect. If you give
 `like_map` other headings, the one whose result looks most like the map (highest NCC) is the best estimate
 of the true heading. `python3 run_images.py sweep` tries 10° either side of the compass heading in steps of
 0.5°; `python3 run_images.py sweep FROM TO STEP` tries your own range.
@@ -322,11 +324,14 @@ of the true heading. `python3 run_images.py sweep` tries 10° either side of the
 python3 run_images.py sweep
 ```
 
-Open `out/sweep.png`. Then refine around your peak with a step of 0.1°, e.g.:
+Open `out/sweep.png`. Then refine around your peak with a step of 0.1°: `python3 run_images.py sweep FROM TO 0.1`,
+with FROM and TO 2° either side of your peak. For example, for a peak at 28.5°:
 
 ```bash
-python3 run_images.py sweep 33 37 0.1
+python3 run_images.py sweep 26.5 30.5 0.1
 ```
+
+(Fine sweeps print the NCC with 4 decimals, so neighbouring headings do not tie.)
 
 > [!TASK]
 > `BEST_HEADING_DEG` (the heading of the highest NCC, to 0.1°), `COMPASS_ERROR_DEG` (true − compass, with its sign),
@@ -369,6 +374,7 @@ cast, your filters against OpenCV, and the photo → map numbers with what they 
 > [!TASK]
 > report.md has the three headings, at least 150 words, and quotes the naive cast value (Step 2), the NCC
 > with the compass heading and at the best heading, the best heading, and the ± tolerance (Step 8).
+> Write a tolerance as ±0.8° or +/-0.8 deg (your own number, of course); both work.
 
 ## Step 10 — Check, then look back
 

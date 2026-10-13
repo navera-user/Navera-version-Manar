@@ -158,7 +158,7 @@ def test():
     lib = library_shortcut()
     if lib:
         print(f"✘ navera_lite/image.py imports {lib}: TODO 1–7 are written with numpy and math only — OpenCV is what "
-              "you compare WITH (lab Step 2). The check refuses it.\n")
+              "you compare WITH (lab: the 'Your files' paragraph at the top). The check refuses it.\n")
     A = np.array
     cases = [  # (TODO, function, args, expected result, expected dtype or None, notes for wrong results)
         (1, "to_uint8", (A([-7.2, 0.4, 99.5, 254.6, 300.0]),), A([0, 0, 100, 255, 255]), np.uint8,
@@ -167,6 +167,8 @@ def test():
           (A([0, 0, 99, 254, 44]), "254.6 → 254 and 300 → 44: astype alone truncates and wraps — np.rint, then "
                                    "np.clip, then .astype")]),
         (2, "to_float01", (A([0, 51, 255], np.uint8),), A([0.0, 0.2, 1.0]), np.float32, []),
+        (2, "to_float01", (A([True, False]),), "ValueError", None,
+         "a bool array is not a picture: raise ValueError (np.issubdtype(a.dtype, np.integer) is False for bool)"),
         (2, "to_float01", (A([0, 13107, 65535], np.uint16),), A([0.0, 0.2, 1.0]), np.float32,
          [(A([0.0, 51.4, 257.0]), "a uint16 image divided by 255: divide by the largest value of ITS dtype, "
                                   "np.iinfo(a.dtype).max (🧰 lab Step 2)")]),
@@ -200,12 +202,39 @@ def test():
          A([[0.0, 5.0], [10.0, 15.0]]), np.float32,
          [(A([[0.0, 0.0], [0.0, 0.0]]), "a zoom × 2 gave zeros: you multiplied by A, not by its INVERSE — the source of "
                                        "(u, v) is np.linalg.inv(M[:, :2]) · ((u, v) − t) (lesson §6)")]),
+        (6, "warp_affine", (A([[0.0, 10.0], [20.0, 30.0]]), A([[2.0, 0.0, 1.0], [0.0, 2.0, 1.0]]), (3, 3)),
+         A([[0.0, 0.0, 2.5], [0.0, 0.0, 5.0], [5.0, 10.0, 15.0]]), np.float32,
+         [(A([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]),
+           "zoom × 2 shifted by (1, 1) gave zeros: you subtracted t AFTER multiplying by A⁻¹ — the source of (u, v) "
+           "is A⁻¹·((u, v) − t): first u − t[0] and v − t[1], then a_inv (lesson §6)")]),
     ]
     done = 0
     failed = set()
     unwritten = set()
     for k, fn, args, want, kind, traps in cases:
         if fn in unwritten:
+            failed.add(k)
+            continue
+        if isinstance(want, str):                                 # the call must raise this exception
+            try:
+                with __import__("contextlib").redirect_stdout(__import__("io").StringIO()):
+                    getattr(im, fn)(*args)
+            except NotImplementedError:
+                unwritten.add(fn)
+                failed.add(k)
+                continue
+            except Exception as e:
+                if type(e).__name__ == want:
+                    print(f"✔ TODO {k}  {fn}({fmt(args[0])}) raises {want}")
+                    done += 1
+                else:
+                    print(f"✘ TODO {k}  {fn}({fmt(args[0])}) raised {type(e).__name__}: {traps}")
+                    failed.add(k)
+                continue
+            if rk.is_stub(getattr(im, fn)):
+                failed.add(k)
+                continue
+            print(f"✘ TODO {k}  {fn}({fmt(args[0])}) returned a result: {traps}")
             failed.add(k)
             continue
         got, err = rk.call(im, fn, *args)
@@ -355,7 +384,7 @@ def cast():
         print(f"\nyour normalise() returned {getattr(v, 'dtype', type(v).__name__)} {getattr(v, 'shape', '')}: "
               f"expected uint8 {t.shape}")
         return
-    print(f"your normalise(t):         dtype {v.dtype}, darkest pixel {v.min()}, brightest {v.max()}")
+    print(f"\nyour normalise(t), NOT the naive cast: dtype {v.dtype}, darkest pixel {v.min()}, brightest {v.max()}")
     save("thermal_normalised.png", label(label(v, "normalise(t)"), "synthetic thermal-like frame; " + OSM))
 
 
@@ -447,6 +476,10 @@ def warp():
         if np.abs(mine.astype(np.float64) - inv).mean() < 1.0:
             print("   ⚠ your warp treats M as the map from destination to source: you used A, not A⁻¹ — "
                   "a_inv = np.linalg.inv(M[:, :2]) (lab Step 6 hint 1)")
+        M2 = np.hstack([M[:, :2], (M[:, :2] @ M[:, 2])[:, None]])
+        if np.abs(mine.astype(np.float64) - cv2.warpAffine(g, M2, (w, h))).mean() < 1.0:
+            print("   ⚠ you subtracted t after multiplying by A⁻¹: the source of (u, v) is A⁻¹·((u, v) − t) — compute "
+                  "u − t[0], v − t[1] first, then multiply (lab Step 6 hint 1)")
     u8, err = rk.call(im, "to_uint8", mine)
     if err:
         sys.exit(err)
@@ -502,10 +535,10 @@ def _range(args, default, what):
     return lo, hi, st
 
 
-def _table(rows, name, fmt_x):
+def _table(rows, name, fmt_x, decimals=3):
     print(f" {name:>8}   NCC")
     for x, s in rows:
-        print(f" {fmt_x(x):>8}  {s:6.3f}  " + "#" * max(0, int(round(s * 40))))
+        print(f" {fmt_x(x):>8}  {s:7.{decimals}f}  " + "#" * max(0, int(round(s * 40))))
 
 
 def sweep(*args):
@@ -521,7 +554,7 @@ def sweep(*args):
         rows.append((float(hd), similarity(middle(ready), map_mid)))
     print(f"NCC of like_map(photo, heading, {gp}, {gm:.4f}) with the map, middle {CROP} × {CROP} px, headings "
           f"{lo:g}° to {hi:g}° step {st:g}° ({time.perf_counter() - t0:.1f} s)\n")
-    _table(rows, "heading", lambda x: f"{x:.1f}" if st >= 0.1 else f"{x:.2f}")
+    _table(rows, "heading", lambda x: f"{x:.1f}" if st >= 0.1 else f"{x:.2f}", 4 if st < 0.5 else 3)
     plt = rk.plt_or_none()
     if plt is not None:
         os.makedirs(OUT, exist_ok=True)
@@ -552,7 +585,7 @@ def scale(*args):
     rows = [(float(g), similarity(middle(_prepared(photo, hd, float(g), gm)), map_mid))
             for g in np.arange(lo, hi + st / 2, st)]
     print(f"NCC of like_map(photo, {hd:g}, photo m/px, {gm:.4f}) with the map, middle {CROP} × {CROP} px\n")
-    _table(rows, "m/px", lambda x: f"{x:.3f}")
+    _table(rows, "m/px", lambda x: f"{x:.3f}", 4 if st < 0.005 else 3)
 
 
 MODES = {"test": test, "cast": cast, "explore": explore, "filters": filters, "warp": warp, "like": like,

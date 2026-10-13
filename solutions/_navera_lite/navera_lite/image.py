@@ -6,6 +6,9 @@ DOWNWARDS. Colour images are (H, W, 3) in OpenCV's order BLUE, GREEN, RED; grey 
 Stored pictures are uint8 (0..255); computations are done in float32. Angles in degrees; a positive
 image angle turns the picture COUNTER-CLOCKWISE on the screen (OpenCV's rule); a heading is clockwise
 from north, like a bearing (CONVENTIONS.md §3).
+
+Mission 08's TODOs are written with numpy and math only (no cv2, scipy, skimage or PIL in this file): OpenCV is the
+reference you compare with, and the check refuses those imports here.
 """
 import math
 
