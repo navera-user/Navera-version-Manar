@@ -83,16 +83,18 @@ def age_s(est, now_s):
 
 # @part 12 todo 1
 def is_covariance(cov9, tol=1e-9):
-    """Can these 9 numbers be a covariance (lesson §2)? Returns (ok, reason), with the first rule broken:
-      not 9 numbers                     → (False, "not 9 numbers")
-      one of them is nan or infinite    → (False, "not finite")
-      cov9[1] != cov9[3] (beyond tol)   → (False, "not symmetric")
-      a < 0, c < 0 or cov9[8] < 0       → (False, "negative variance")
-      a·c − b² < −tol                   → (False, "not positive semi-definite")
-      otherwise                         → (True, "ok")
-    The vertical entries other than cov9[8] are not checked.
+    """Can these 9 numbers be a covariance for the judge (lesson §2)? Returns (ok, reason); the reason names
+    the FIRST problem found, in this order:
+      "not 9 numbers"               not a sequence of exactly 9 numbers (None, 8 numbers, text…)
+      "not finite"                  one of them is nan or infinite
+      "not symmetric"               b is not the same at both of its places (beyond the tolerance)
+      "negative variance"           a, c or the up variance (index 8) is below 0
+      "not positive semi-definite"  the horizontal block breaks lesson §2's determinant rule (beyond the tolerance)
+      "ok"                          (True, "ok")
+    The tolerance is RELATIVE (lesson §2): with size = the largest of 1 and the three variances (absolute
+    values), a difference of b counts beyond tol × size, a negative a·c − b² beyond tol × size².
+    The east-up and north-up terms (indices 2, 5, 6, 7) are not tested.
     Example: is_covariance([25.0, 30.0, 0, 30.0, 16.0, 0, 0, 0, 1.0]) → (False, "not positive semi-definite")
-             (25 × 16 − 30² = −500: a correlation of 1.5, impossible)
     """
     try:
         values = [float(v) for v in cov9]
@@ -103,21 +105,22 @@ def is_covariance(cov9, tol=1e-9):
     if not all(math.isfinite(v) for v in values):
         return False, "not finite"
     a, b, c = values[0], values[1], values[4]
-    if abs(values[1] - values[3]) > tol:
+    size = max(1.0, abs(a), abs(c), abs(values[8]))
+    if abs(values[1] - values[3]) > tol * size:
         return False, "not symmetric"
     if a < 0 or c < 0 or values[8] < 0:
         return False, "negative variance"
-    if a * c - b * b < -tol:
+    if a * c - b * b < -tol * size * size:
         return False, "not positive semi-definite"
     return True, "ok"
 
 
 # @part 12 todo 2
 def stated_sigma(est, cfg):
-    """The one accuracy number the source states, in metres: √max(a, c) (CONVENTIONS §5) — or None when
-    it states none: cov_type not in STATED_TYPES (COV_UNKNOWN or an undefined number), the 9 numbers are
-    not a covariance (is_covariance), or σ is below cfg["min_stated_sigma_m"] (an all-zero covariance
-    states nothing: nobody knows a position to the millimetre).
+    """The one accuracy number this estimate states, in metres (lesson §3) — or None when it states none:
+    its cov_type does not state an accuracy (STATED_TYPES lists the types that do), its 9 numbers are not
+    a covariance (TODO 1), or the σ is below cfg["min_stated_sigma_m"] (an all-zero covariance states
+    nothing: nobody knows a position to the millimetre).
     Example: stated_sigma(Estimate("gps", 35.8, 10.6, 0.0, cov=(9.0, 0, 0, 0, 4.0, 0, 0, 0, 36.0),
              cov_type=COV_DIAGONAL_KNOWN), {"min_stated_sigma_m": 0.01}) → 3.0
     """
@@ -136,7 +139,7 @@ def stated_sigma(est, cfg):
 # @part 12 todo 3
 def staleness_m(speed_mps, age_s):
     """How far (m) a vehicle moving at speed_mps has gone since a position age_s seconds old was
-    measured: the error of using that position NOW (lesson §3). Raises ValueError if speed_mps or age_s
+    measured: the error of using that position NOW (lesson §4). Raises ValueError if speed_mps or age_s
     is negative.
     Example: staleness_m(40.0, 2.5) → 100.0   (a plane at 40 m/s, a vision fix 2.5 s old)
     """
@@ -149,17 +152,18 @@ def staleness_m(speed_mps, age_s):
 
 # @part 12 todo 4
 def eligible(est, now_s, cfg):
-    """May the judge use this estimate at now_s? Returns (ok, reason), with the first rule broken:
-      est.valid is False                              → (False, "no position")
-      lat, lon exactly (0, 0)                         → (False, "null island")
-      any other position is_finite_latlon refuses     → (False, "bad position")
-      cov_type in STATED_TYPES but not a covariance   → (False, "not a covariance")
-      stamped more than future_tolerance_s ahead      → (False, "from the future")
-      source not in TIMEOUT_KEY                       → (False, "unknown source")
-      age > the source's timeout                      → (False, "stale (3.4 s > 3.0 s)")   (one decimal)
-      otherwise                                       → (True, "eligible")
-    cfg: the settings (DEFAULTS keys). A position with an unknown accuracy is still eligible: classify()
-    makes it DEGRADED.
+    """May the judge use this estimate at now_s (lesson §5)? Returns (ok, reason); the reason names the
+    FIRST rule broken, in this order:
+      "no position"         the source says it has no position (valid is False)
+      "null island"         latitude and longitude are exactly 0 and 0
+      "bad position"        any other position geo.is_finite_latlon refuses (nan, out of range)
+      "not a covariance"    it claims an accuracy (a stated type) but its 9 numbers are not a covariance
+      "from the future"     stamped more than cfg["future_tolerance_s"] after now_s
+      "unknown source"      est.source has no timeout (not in TIMEOUT_KEY)
+      "stale (3.4 s > 3.0 s)"  older than its source's timeout: age, then timeout, one decimal each
+      "eligible"            none of the above: (True, "eligible")
+    cfg: the settings (the keys of settings.DEFAULTS). An estimate that states no accuracy can still be
+    eligible: the judge then calls it DEGRADED (classify).
     Example: eligible(Estimate("gps", 35.8, 10.6, 100.0), 103.4, DEFAULTS) → (False, "stale (3.4 s > 3.0 s)")
     """
     if not est.valid:

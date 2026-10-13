@@ -1,223 +1,490 @@
-# Lab 12 — Fill the contract, then let the arbiter judge it
+# Lab 12 — Fill the contract, fool the naive judge, then make it honest
 
-**Goal:** implement the covariance mathematics of the course in [my_source.py](file:./my_source.py)
-and [probability.py](file:./probability.py), publish a complete `PositionEstimate` to NAVERA's real
-arbiter, inject twelve faults and record each verdict in [verdicts.py](file:./verdicts.py), then
-argue a design question in [report.md](file:./report.md).
-**Time:** about 3 h for this lab (about 4 h for the whole mission with the lesson).
+**Goal:** write the four checks of NAVERA Lite's position contract in `navera_lite/estimate.py`, measure
+what a late position costs, fool arbiter v0 with four scenario files, then plug your own `eligible()`
+into it, watch the attacks fail — and find the one that comes back.
+**Time:** 3 h 30 to 4 h 30 in two sessions (a strong programmer: about 2 h 30).
+**Fast track:** if you know Python, skip the 🧰 boxes and the "Stuck?" boxes; do "Going further".
 
-Your source publishes on `/navera/estimate/day`, the arbiter's **day-vision mailbox**: the arbiter has
-four mailboxes (gps, day, night, cn) and no day vision runs in your sandbox, so we borrow that one.
-(On a real box, two programs publishing on the same estimate topic would be a serious mistake.)
+Your files (📝 Code tab): [navera_lite/estimate.py](file:./navera_lite/estimate.py) (**your code**: four
+functions, `TODO 1–4`), [answers.py](file:./answers.py), the folder `attacks/` (your scenario files), and
+the runner [contract_lab.py](file:./contract_lab.py), which runs your functions on the lab's situations
+and reads the live judge for you (you only run it). Everything else in `navera_lite/` is given finished:
+arbiter v0, the replay node and convert (09), the fake GPS (10). The data:
+`/data/academy/12-position-message/day_vision_lag.csv`, a **synthetic** bench log of a day-vision
+matcher (read only).
 
-You need **three terminals** for Part B. Keep them organised:
-
-| Terminal | Runs |
-|---|---|
-| 1 | NAVERA's arbiter (start it once, leave it running) |
-| 2 | your source (you will restart it many times) |
-| 3 | the arbiter's verdict |
-
-## Part A — The mathematics, without ROS
-
-### Step 1 — Build a covariance (TODO 1)
-
-> [!TASK]
-> **TODO 1** — `enu_covariance(sigma_along, sigma_cross, heading_deg, sigma_up)` returns the nine
-> floats of Σ = R·diag(σ_a², σ_c²)·Rᵀ (course, section 2), plus σ_up² at index 8.
-
-```bash
-python3 -c "from my_source import *; print([round(x, 2) for x in enu_covariance(15, 6, 30, 6)]); print(enu_covariance(10, 2, 0))"
-```
-
-Expected: `[83.25, 81.84, 0.0, 81.84, 177.75, 0.0, 0.0, 0.0, 36.0]` — the course's worked example —
-and for heading 0° (along = north): `[4.0, 0.0, 0.0, 0.0, 100.0, 0.0, 0.0, 0.0, 0.0]`.
-
-### Step 2 — Is it a covariance? Which ellipse? (TODO 2 and 3)
-
-> [!TASK]
-> **TODO 2** — `is_psd_2x2(cov)`: finite, symmetric, non-negative variances, non-negative determinant.
-> **TODO 3** — `error_ellipse(cov)`: semi-axes from the eigenvalues, heading of the major axis.
-
-```bash
-python3 -c "from my_source import *; c = enu_covariance(15, 6, 30, 6); print(is_psd_2x2(c), error_ellipse(c)); print(is_psd_2x2([100, 120, 0, 120, 100, 0, 0, 0, 0]), is_psd_2x2([4, 1, 0, 2, 4, 0, 0, 0, 0]))"
-```
-
-Expected: `True (15.0, 6.0, 30.0)` (with tiny rounding), then `False False` — the first is not PSD
-(determinant 10 000 − 14 400 < 0), the second not symmetric. Now compare your rule with **NAVERA's
-own** `_sane` (imported from your NAVERA copy) on the same matrix:
-
-```bash
-python3 -c "from navera_estimator.nodes.estimator_node import EstimatorNode as E; from navera_msgs.msg import PositionEstimate as P; m = P(latitude=35.8277, longitude=10.6388, position_covariance=[100.0, 120.0, 0.0, 120.0, 100.0, 0.0, 0.0, 0.0, 0.0]); print(E._sane(m))"
-```
-
-`False`: the arbiter applies exactly the criterion of the course.
-
-### Step 3 — Probability inside the ellipse (TODO 6 and 7)
-
-> [!TASK]
-> **TODO 6** — `mahalanobis2(e_east, e_north, cov)` in `probability.py`: d² = eᵀ Σ⁻¹ e. Invert the
-> 2 × 2 block by hand and expand the product (course, section 3).
-> **TODO 7** — `p_inside(k)`: the 2-D probability law of course section 3.
-
-```bash
-python3 probability.py
-```
-
-It samples 100 000 errors from your covariance and prints the fractions inside the 1, 2 and
-2.448-sigma ellipses next to the theory, the 1-D fraction for the east error, and — part 2 — NAVERA's
-**stated σ** next to your ellipse's largest σ for the default and the "tilted" covariance. Everything
-is saved in `results.json`. The sampled values must agree with the theory to about ±0.006.
-
-## Part B — The arbiter's verdict
-
-### Step 4 — Fill the form (TODO 4)
-
-First, see how the arbiter judges the starter. **Terminal 1**:
-
-```bash
-ros2 run navera_estimator estimator_node.py
-```
-
-**Terminal 2**:
-
-```bash
-python3 my_source.py
-```
-
-**Terminal 3** (5 lines per second; `Ctrl+C` to stop):
-
-```bash
-ros2 topic echo /navera/nav_status --field reason
-```
-
-You read something like `day: stale (1791…s>3.0s)`. The starter never fills the stamps, so they are 0
-— 1 January 1970 — and the arbiter judged your position to be 56 years old. Every empty field has a
-value, and the jury takes it seriously. Stop the echo.
-
-> [!TASK]
-> **TODO 4** — complete `build_estimate(lat, lon, cov, cov_type, stamp)`: every field of the contract.
-
-Ask NAVERA's code what it thinks of your message, without ROS running:
-
-```bash
-python3 -c "from my_source import *; from builtin_interfaces.msg import Time; from navera_estimator.nodes.estimator_node import EstimatorNode as E; m = build_estimate(LAT, LON, enu_covariance(15, 6, 30, 6), PositionEstimate.COVARIANCE_TYPE_APPROXIMATED, Time(sec=100)); print(E._sane(m), E._stated_sigma(m))"
-```
-
-You want `True 13.33…`: a sane message whose stated σ is √177.75 (course, section 6). Restart your
-source in **Terminal 2** (`Ctrl+C`, then `↑` and `Enter`):
-
-```bash
-python3 my_source.py
-```
-
-and read the verdict in **Terminal 3**:
-
-```bash
-ros2 topic echo /navera/nav_status --field reason
-```
-
-**`day vision fix`** — accepted. Check the state and the position NAVERA now publishes:
-
-```bash
-ros2 topic echo --once /navera/nav_status --field state
-```
-
-```bash
-ros2 topic echo --once /navera/position
-```
-
-`state` 2 (FIX). In `/navera/position`: your latitude, `source: 2`, your covariance, and
-`producer: navera_estimator` — the arbiter writes its own name in `producer` (it "signs" the
-output), but it keeps your `sensor_stamp`, `model_id` and `frame_index`: traceability.
-
-> [!TIP]
-> `ros2 topic echo --once` sometimes prints nothing for a few seconds: it must first discover the
-> topic. Wait about 5 s. If it still prints nothing, press `Ctrl+C` and run it again.
-
-### Step 5 — Twelve faults for the jury (TODO 5)
-
-> [!TASK]
-> **TODO 5** — complete `apply_fault(est, fault)`: one `if` / `elif` per fault, each changing
-> **only** what its comment says.
-
-For each fault: in **Terminal 2**, stop your source and start it with the fault; in **Terminal 3**,
-read the reason (`Ctrl+C` after a few lines) and the state, then write both into `VERDICTS` in
-`verdicts.py`. The first one:
-
-```bash
-python3 my_source.py nan
-```
-
-The verdict commands, in Terminal 3 each time:
-
-```bash
-ros2 topic echo /navera/nav_status --field reason
-```
-
-```bash
-ros2 topic echo --once /navera/nav_status --field state
-```
-
-Then the same with each of: `not_psd`, `stale`, `latency`, `future`, `invalid`, `replayed`, `held`,
-`propagated`, `unknown_cov`, `big_sigma`, `tilted` — for example:
-
-```bash
-python3 my_source.py stale
-```
+| Lesson | Lab | You write |
+|---|---|---|
+| (nothing to read first) | Step 0 | nothing: a dead GPS that stays alive |
+| §1 the form | Step 1 | `MY_ESTIMATE` |
+| §2 covariance | Step 2 | `is_covariance` (TODO 1) |
+| §3 stated σ | Step 3 | `stated_sigma` (TODO 2) |
+| §4 stamps | Step 4 | `staleness_m` (TODO 3), the lag study |
+| §5 checklist, attacker's view | Steps 5–6 | four attacks in `attacks/` |
+| §5 checklist | Steps 7–8 | `eligible` (TODO 4), your judge live, the dead fix that comes back |
+| §3 warning | Step 9 | one explanation |
 
 > [!NOTE]
-> Your source publishes once per second and the arbiter keeps the last message of each source, so
-> the first line after a switch may still show the previous verdict. Wait two seconds.
+> **Predict, then run.** Each `PREDICT_…` in `answers.py` is written **before** you run the step. It is
+> never marked right or wrong. Each TODO's docstring says its goal and gives one example with its result;
+> `python3 contract_lab.py test` tries every example. The lesson shows how; the code is yours.
 
-When the state is **NO_FIX**, the reason has one part per source, for example
-`GPS: none received; day: stale (10.0s>3.0s); night: none received; cn: none received`. Copy only the
-`day: …` part. When the state is **FIX** or **DEGRADED**, the reason is one short sentence about the
-winning source (for example `day vision fix, uncertainty unknown`): copy all of it.
+> [!WARNING] One terminal tab for the whole lab
+> As in mission 09, a node started in one tab cannot be seen from another tab. Run everything in **one**
+> tab and start the nodes in the background with `&`, their output in a log file. `jobs` lists them,
+> `kill -INT %%` stops the most recent one (Ctrl+C for a background job), `kill -INT $(jobs -p)` stops all.
+> `python3 contract_lab.py status` prints the live judge's state and message in one line.
 
-What each one teaches (the exact texts printed by the arbiter):
+## Session 1 — The contract (1 h 30 to 2 h)
 
-- `nan`, `not_psd` → `day: non-finite position or covariance`: `_sane()` refused them, even with
-  `valid` true. (The wording also covers a non-PSD matrix.)
-- `stale` → `day: stale (10.0s>3.0s)` although **published now**: freshness is judged on
-  `sensor_stamp`. You will see between 10.0 and about 11.0 s: your source publishes once per second,
-  so the last message is up to 1 s older when the arbiter judges it.
-- `latency` → still `day vision fix` (FIX): the photo is 2 s old, inside the 3 s window. Latency is
-  allowed; staleness is not.
-- `future` → `day: timestamp 4.5s in the future (clock problem)`. The number is between about 4.0
-  and 5.0 s, not exactly 5.0, for the same reason: time passes between publication and judgement.
-- `invalid` → `day: invalid (lens covered)`: your own `reason` reaches the operator.
-  `replayed`, `held` → `day: replayed not usable`, `day: held not usable`.
-- `propagated` → used, but DEGRADED: `day vision solution is propagated (dead-reckoned)`.
-- `unknown_cov` → used, DEGRADED: `day vision fix, uncertainty unknown`.
-- `big_sigma` → DEGRADED: `day vision fix, uncertainty 30 m > 25 m`.
-- `tilted` → **FIX** (`day vision fix`) — although its ellipse is 30 m long. Compare with
-  `big_sigma` and with your `results.json` (`stated_vs_max`): this is the design question of the
-  report.
+## Step 0 — A dead GPS
 
-The checker only looks for the key words (for example `stale` and `>3.0s`), so 10.1 s or 4.5 s is
-correct.
+No code. Check that nothing runs yet (`jobs` prints nothing), then start the judge and mission 10's fake
+GPS with a clock 30 s ahead (a badly set computer clock):
 
-Stop everything (`Ctrl+C` in each terminal) and answer `Q1` and `Q2` in `verdicts.py`.
+```bash
+jobs
+```
 
-## Step 6 — Write the analysis
+```bash
+python3 -m navera_lite.ros.arbiter_v0 --ros-args --params-file navera_lite.yaml > arbiter.log 2>&1 &
+```
 
-Fill [report.md](file:./report.md) (at least 40 words per section): **Covariance** (your matrix,
-determinant, ellipse; what a non-PSD matrix would mean), **Probability** (sampled versus theory, 1-D
-versus 2-D, what "σ = 15 m" means for an operator), **Stated sigma** (tilted versus big_sigma, and
-your argued design choice).
+```bash
+python3 -m navera_lite.ros.gps_node --ros-args -p stamp_offset_s:=30.0 > gps.log 2>&1 &
+```
 
-Press **✔ Check my work**. The checker tests your functions against NAVERA's own rules, then starts
-the arbiter and runs your source with seven faults. About a minute and a half.
+Ask the judge (it listens 6 s, then prints the state and the message):
+
+```bash
+python3 contract_lab.py status
+```
+
+FIX on GPS.
+
+> [!TASK]
+> **Predict** (`PREDICT_DEAD` in `answers.py`): you are about to kill the GPS. What will the judge say
+> 10 s later? (Mission 11 measured a GPS that stops.)
+
+Kill the GPS (your most recent job), then watch the judge for 45 s: each change is printed with the time
+since the watch started.
+
+```bash
+kill -INT %%
+```
+
+```bash
+python3 contract_lab.py status --watch 45
+```
+
+How long does the dead GPS stay FIX? Stop the judge, then read the lesson's §1 (keep "why?" for §4):
+
+```bash
+kill -INT $(jobs -p)
+```
+
+## Step 1 — Fill the contract
+
+Open `navera_lite/estimate.py` and read the class `Estimate` (lesson §1, 🧰 dataclasses). Make one and
+look at its default values:
+
+```bash
+python3 -c "from navera_lite.estimate import *; e = Estimate('gps', 35.8256, 10.6084, 100.0); print(e); print(e.alt_m, e.cov_type)"
+```
+
+> [!TASK]
+> In `answers.py`, write `MY_ESTIMATE = Estimate(...)` for this message: *Night vision (the thermal
+> camera) matched a frame taken at t = 812.4 s on the judge's clock; the result was published at
+> t = 813.5 s. Position 35.7712° N, 10.8265° E. Its error model gives σ 18 m east, 24 m north and 30 m up;
+> it does not estimate the correlations. Altitude: not measured.* Use the constants (`COV_…`), not bare
+> numbers, and `math.nan` where needed (`answers.py` already imports them).
+
+```bash
+python3 -c "import answers; print(answers.MY_ESTIMATE)"
+```
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. Five questions, five groups of fields (lesson §1 table). Which instant is the measurement?
+2. `cov` holds **variances**, m²: σ = 18 m → 324. Nine numbers, row-major: east at index 0, north at
+   index 4, up at index 8, the correlations (indices 1, 3, and the others) 0.0.
+3. The variances are known, the correlations are not: that is exactly one of the four types (lesson §3).
+4. Fields with a default that you need to change: name them, e.g. `cov_type=…, alt_m=…`.
+</details>
+
+## Step 2 — Is it a covariance? (TODO 1)
+
+Read lesson §2. **TODO 1** `is_covariance(cov9, tol=1e-9)` is lesson §2's test, with a reason for the
+first rule broken (the docstring lists them in order). It must answer `(ok, reason)` for **anything** it
+receives: nine good numbers, eight numbers, `None`, a word.
+
+<details><summary>🧰 Python: refuse what is not a list of numbers, without crashing</summary>
+
+```python
+def as_floats(x):
+    try:
+        return [float(v) for v in x]      # TypeError if x is None or a number (not iterable),
+    except (TypeError, ValueError):       # ValueError if an item is text like "abc"
+        return None
+as_floats([1, "2.5"]), as_floats(None), as_floats("ab")   # ([1.0, 2.5], None, None)
+import math
+math.isfinite(float("nan")), math.isfinite(1e308 * 10)    # (False, False) — nan and inf
+all(v > 0 for v in [1.0, 2.0, -3.0])                      # False: one of them is not
+a, b, c = v[0], v[1], v[4]                                # three names at once (unpacking)
+```
+</details>
+
+```bash
+python3 contract_lab.py test
+```
+
+The TODO 1 lines must be ✔ (the others are later TODOs).
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. Follow the docstring's order: each rule is one `if … : return False, "…"`; the last line returns
+   `True, "ok"`.
+2. `TypeError: 'NoneType' object is not iterable` or `object of type 'float' has no len()`: convert inside a
+   `try` first (🧰 box) and answer `(False, "not 9 numbers")` when it fails or when the length is not 9.
+3. Symmetry: compare the two places of b with a tolerance, never with `!=` (1.0 and 1.0 + 1e-12 are "equal").
+4. You get `(True, "ok")` for a = −1, c = −1, b = 0? Its determinant is +1: test the variances
+   **before** the determinant. The up variance is index 8.
+5. You refuse the km-sized covariance with correlation exactly 1? Its a·c − b² is −0.0625 after rounding:
+   the tolerance must grow with the numbers (lesson §2: tol × size², size = the largest of 1 and the
+   variances), not a fixed −tol, and not 0.
+</details>
+
+## Step 3 — The stated σ (TODO 2)
+
+Read lesson §3. **TODO 2** `stated_sigma(est, cfg)` takes an **Estimate** and the settings. Use your
+`is_covariance` (do not test the rules again) and the constant `STATED_TYPES`. Read the minimum from
+`cfg["min_stated_sigma_m"]`, never as a written number: mission 13 changes settings.
+
+<details><summary>🧰 Python: membership, and a function that may return None</summary>
+
+```python
+3 in (1, 2, 3), 7 in (1, 2, 3)        # (True, False)
+ok, _ = (False, "not finite")         # _ = "a value I do not need"
+def first_positive(xs):
+    for x in xs:
+        if x > 0:
+            return x
+    return None                       # say it explicitly: "no answer"
+```
+</details>
+
+```bash
+python3 contract_lab.py test
+```
+
+<details><summary>Stuck? Hints</summary>
+
+1. Three ways to return `None`, one way to return a number (lesson §3 list).
+2. `AttributeError: 'tuple' object has no attribute 'cov'`: you called it with nine numbers; it takes an
+   Estimate (`est.cov`, `est.cov_type`). `horizontal(est.cov)` gives `(a, b, c)`.
+3. 11.42 instead of 13.33 for the tilted ellipse (2.55 instead of 3.0 for the example)? You averaged a and c: the contract takes the **larger**.
+4. A number for the all-zero covariance: you forgot the 1 cm minimum. `3.0` for type 0: test the type first.
+</details>
+
+## Step 4 — What a late position costs (TODO 3)
+
+Read lesson §4. **TODO 3** `staleness_m(speed_mps, age_s)`: one line of maths, and a `ValueError` with a
+clear sentence for a negative input (`raise ValueError("…")`).
+
+```bash
+python3 contract_lab.py test
+```
+
+Now the bench log: 160 day-vision fixes, each with the instant its photo was taken and the instant its
+position was published. The matcher states σ = 30 m for every fix, and is good to 1 m at the photo's
+instant. The runner uses **your** `staleness_m` to compute where each position really is when the judge
+uses it (published = used, here).
+
+> [!TIP] 🧰 What "within 30 m" means here
+> σ is a *typical* error, not a maximum: if the errors were random with σ = 30 m east and north, about 4 in
+> 10 would fall within 30 m, 86 in 100 within 60 m (2σ), 99 in 100 within 90 m (3σ). This matcher is good to
+> 1 m, so its "30 m" is meant as a safe bound: we ask how often the position stays inside it. Few fixes
+> inside means the stated accuracy is false.
+
+> [!TASK]
+> **Predict** (`PREDICT_LAG`): a drone at 15 m/s; the fixes are about 1.6 s old. What percentage of them
+> will be within the 30 m they state? Then run:
+
+```bash
+python3 contract_lab.py lag
+```
+
+Open `out/lag.png` now (each `--speed` run replaces it). NAVERA's simulator found a median of 83 m at
+40 m/s (mission brief): its vision fixes were 1 to 2.5 s old, this bench log's are younger.
+
+Now the fastest vehicle this matcher can serve honestly, with 90 % of its fixes within 30 m. **Compute it
+first** from the lines the runner printed: the error is about speed × age, and 90 % of the ages are below
+the p90 age, so which speed puts the p90 fix exactly 30 m behind? Then confirm it with **one** run, e.g.:
+
+```bash
+python3 contract_lab.py lag --speed 14
+```
+
+> [!TASK]
+> Write `LAG_PLANE_MEDIAN_M`, `LAG_PLANE_WITHIN_PCT`, `LAG_DRONE_WITHIN_PCT` (15 m/s),
+> `LAG_OLD_WINDOW_REFUSED` (fixes older than 3.0 s: NAVERA's old day-vision timeout, now 5 s) and
+> `LAG_SPEED_MAX_MPS` (your computed speed, one decimal; your run should give about 90 % — a little less,
+> because the match error adds up to 1 m). Then `EXPLAIN_LAG`, and now that you have read §4,
+> `EXPLAIN_DEAD` (Step 0: what was the age of the fake GPS's fixes when the judge received them?).
+
+<details><summary>Stuck? Hints</summary>
+
+1. `staleness_m() returned None`: the stub's `return None` is still there.
+2. The test says it must raise ValueError but yours returns a number: test `speed_mps < 0` and `age_s < 0`
+   before computing.
+3. For `LAG_SPEED_MAX_MPS`: 90 % within 30 m ⇔ the p90 error ≤ 30 m. Error ≈ speed × age, so
+   speed ≈ 30 m ÷ (p90 age). The runner prints the p90 age on its first line.
+</details>
+
+> [!TIP] 🏅 End of session 1 — Contract keeper
+> Press **✔ Check my work**: it tests your functions on cases they have never seen. When checks 1–7 pass,
+> you earn the **Contract keeper** badge. If the class session ends here, stop here.
+
+## Session 2 — Attack, then defend (1 h 45 to 2 h 30)
+
+Read lesson §5 first, the attacker's view included.
+
+## Step 5 — Four attacks on arbiter v0
+
+You are the attacker. Arbiter v0 never asks some questions of the checklist. Write **four** scenario
+files for the replay node, one per hole, in `attacks/`. Each must end with arbiter v0 saying **FIX** about
+a fix that an honest judge must not call FIX:
+
+| File | The hole it uses |
+|---|---|
+| `attacks/zero.csv` | a covariance that states a type but whose numbers are all zero |
+| `attacks/unknown.csv` | numbers that the type says mean nothing |
+| `attacks/not_psd.csv` | numbers that state a type but are not a covariance |
+| `attacks/future.csv` | a stamp from the future — and a source that dies right after |
+
+A scenario file has one fix per line, under this header:
+
+```
+t_s,source,lat,lon,a,b,c,cov_type,valid,delay_s
+0.0,gps,35.8256,10.6084,9.0,0.0,9.0,1,1,0.0
+```
+
+`t_s` is when the replay node publishes the row; `a, b, c` the horizontal covariance (lesson §2);
+`valid` 1 or 0; `delay_s` how old the measurement already is when it is published (`header.stamp` =
+now − delay_s, so a **negative** delay is a stamp in the future). Start from the given honest scenario
+(three GPS fixes, σ 3 m). Look at it and at what v0 does with it (simulated clock, no ROS):
+
+```bash
+cat attacks/honest.csv
+```
+
+```bash
+python3 contract_lab.py judge attacks/honest.csv
+```
+
+Make a copy for each attack and edit it in the 📝 Code tab (one copy shown; the others the same way):
+
+```bash
+cp attacks/honest.csv attacks/zero.csv
+```
+
+Test one attack against the simulated judge, then all of them:
+
+```bash
+python3 contract_lab.py judge attacks/zero.csv
+```
+
+```bash
+python3 contract_lab.py attacks
+```
+
+For `future.csv`, one fix is enough. Run the clock long after it and see how long a dead source lives:
+
+```bash
+python3 contract_lab.py judge attacks/future.csv --until 70
+```
+
+> [!TASK]
+> The four files exist, each one makes v0 say **FIX**, and each uses its own hole. Keep the positions in
+> the test area (a few metres apart): a 5 km jump is refused by the jump gate, which is not the hole you
+> are after.
+
+<details><summary>Stuck? Hints</summary>
+
+1. v0's σ is √max(a, c, 0) "straight from the numbers": what σ does it read from zeros? From numbers that
+   type 0 says are meaningless?
+2. For `not_psd`, pick a and c ≥ 0 and a b too large for them (lesson §2): v0 must still read a σ ≤ 25 m.
+3. `delay_s` is how old the fix is when published; what is a negative age?
+4. `DEGRADED gps: σ 30.0 m > 25.0 m`: your numbers give v0 a σ above 25 m; make them smaller.
+   `NO_FIX … bad position`: check lat and lon. `source must be one of …`: gps, day, night or celestial.
+</details>
+
+## Step 6 — The attacks, live
+
+The simulation says what v0 *should* do; now the real node. Start the judge, then play one attack:
+
+```bash
+python3 -m navera_lite.ros.arbiter_v0 --ros-args --params-file navera_lite.yaml > arbiter.log 2>&1 &
+```
+
+```bash
+python3 -m navera_lite.ros.replay_node --ros-args -p file:=attacks/zero.csv > replay.log 2>&1 &
+```
+
+```bash
+python3 contract_lab.py status
+```
+
+Stop that replay (your most recent job) and play the next file the same way (`unknown`, `not_psd`):
+
+```bash
+kill -INT %%
+```
+
+For `future.csv`, play it **once** and watch the judge for 20 s after its only fix (the first line may
+still be the previous file's fix going stale; the replay sends its fix about 3 s after it starts):
+
+```bash
+python3 -m navera_lite.ros.replay_node --ros-args -p file:=attacks/future.csv -p loop:=false > replay.log 2>&1 &
+```
+
+```bash
+python3 contract_lab.py status --watch 20
+```
+
+> [!TASK]
+> In `VERDICTS_V0`, copy for each attack the line the **live** judge printed, e.g. `"FIX | gps: σ 0.0 m"`.
+> If it differs from the simulation, a node from an earlier run is probably still playing (`jobs`). Then
+> stop everything:
+
+```bash
+kill -INT $(jobs -p)
+```
+
+<details><summary>No status, or the old verdict?</summary>
+"no status in this time": the judge is not running in this tab (`jobs`; read `arbiter.log`). The replay
+waits 3 s before its first fix (discovery, mission 09) and the judge keeps the newest fix of each source:
+read the status at least 5 s after you start a file. An ERROR "2 judges publish" in `arbiter.log`: two
+arbiters run — `kill -INT $(jobs -p)` and start one.
+</details>
+
+## Step 7 — Your judge (TODO 4)
+
+**TODO 4** `eligible(est, now_s, cfg)`: lesson §5's checklist, with the reasons of the docstring, in its
+order. Use what you have: `is_covariance` (TODO 1), `age_s`, `TIMEOUT_KEY`, `STATED_TYPES` and
+`is_finite_latlon` (already imported). Read every limit from `cfg`.
+
+**Trace it by hand first** (defaults, now = 500.0 s); write your four verdicts as a comment above the
+function: a day fix stamped 495.2 s · a GPS fix at (0, 0), `valid=False` · a celestial fix stamped 500.9 s,
+type 2, a = 10⁸, b = 2·10⁸, c = 10⁸ · a GPS fix stamped 500.3 s with a NaN latitude. Then write the code.
+
+<details><summary>Check your trace (after you wrote it)</summary>
+Day 495.2 s → age 4.8 s ≤ 5 s: eligible · GPS (0, 0), valid False → "no position" (rule 1 comes before
+rule 2) · celestial → "not a covariance": 10⁸·10⁸ − (2·10⁸)² &lt; 0, and rule 4 comes before rule 5 (it is
+also 0.9 s in the future) · GPS with a NaN latitude → "bad position" (0.3 s ahead is within the tolerance
+anyway).
+</details>
+
+```bash
+python3 contract_lab.py test
+```
+
+```bash
+python3 contract_lab.py attacks --eligible
+```
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. Eight outcomes, eight `return`s, in the docstring's order: the first rule broken decides.
+2. `KeyError: 'radar'`: test whether the source has a timeout (`in TIMEOUT_KEY`) before you look it up.
+3. A stamp 0.4 s in the future refused? The rule is "more than `future_tolerance_s` ahead":
+   `age < −tolerance`.
+4. A fix exactly 3.0 s old called stale? Stale is **older than** the timeout.
+5. The stale reason must read `stale (5.3 s > 5.0 s)`: one decimal for both, `f"{x:.1f}"`.
+</details>
+
+## Step 8 — Your judge, live
+
+Arbiter v0 with **your** `eligible()` and `stated_sigma()`:
+
+```bash
+python3 -m navera_lite.ros.arbiter_v0 --ros-args --params-file navera_lite.yaml -p use_eligible:=true > arbiter.log 2>&1 &
+```
+
+Play your attacks again, as in Step 6, one after the other, and read the live verdict each time:
+
+```bash
+python3 -m navera_lite.ros.replay_node --ros-args -p file:=attacks/not_psd.csv > replay.log 2>&1 &
+```
+
+```bash
+python3 contract_lab.py status
+```
+
+```bash
+kill -INT %%
+```
+
+> [!TASK]
+> Write `VERDICTS_MINE`: the live line for each of the four attacks (state | message). Replay
+> `attacks/honest.csv` too: your judge must still say FIX.
+
+Last, the future attack, live, **once**, with a long watch. Your judge refuses it. The source is dead
+after its only fix.
+
+> [!TASK]
+> **Predict** (`PREDICT_REVIVE`): what will your judge say about this GPS 60 s later? Then run the two
+> commands below and read the whole watch (75 s).
+
+```bash
+python3 -m navera_lite.ros.replay_node --ros-args -p file:=attacks/future.csv -p loop:=false > replay.log 2>&1 &
+```
+
+```bash
+python3 contract_lab.py status --watch 75
+```
+
+> [!TASK]
+> `EXPLAIN_REVIVE`: what did you see, and why? (What does the judge keep from a fix it refused? What
+> changes when the clock reaches that fix's stamp?) `python3 contract_lab.py judge attacks/future.csv
+> --eligible --until 70` shows the same thing in a second.
+
+Your `eligible()` is right: the fix *was* from the future when it was tested. The hole is in the judge
+around it, which keeps a refused fix and tests it again at every tick. Arbiter v0 stays as it is (it is
+naive on purpose); the real arbiter you write in mission 29 must decide what to do with such a fix.
+
+**Stop every node** before you press ✔ Check my work (the check starts its own judge, with your
+`eligible()`, and plays its own attack):
+
+```bash
+kill -INT $(jobs -p)
+```
+
+## Step 9 — The limit of any checklist
+
+Your judge now refuses impossible numbers, fake accuracies and, while they are in the future, stamps from
+the future. Now imagine a source that states σ 3 m and is 500 m off.
+
+> [!TASK]
+> `EXPLAIN_HONEST`: why can no `eligible()` refuse that source, and what can? (Lesson §3, the warning.)
+
+Press **✔ Check my work**. About 30 s (one check starts ROS nodes).
+
+## Look back (not graded)
+
+- Which of your four attacks would be the most dangerous on a real vehicle, and why?
+- NAVERA stamps vision positions at the photo's exposure since a bug fix (LOC-17). What did the old
+  stamp hide from the judge?
+- Write `LOOK_BACK` in `answers.py`: one thing you will check in every message you publish from now on.
 
 ## Going further (optional)
 
-- **The 3-D ellipsoid.** Write `ellipsoid_axes(cov)` with `numpy.linalg.eigh` on the full 3 × 3 matrix
-  and check it against your 2-D formula when the up terms are uncorrelated.
-- **Correlated up.** Set Σ_EU = Σ_UE to a value that makes the 3 × 3 matrix non-PSD but keeps the
-  horizontal block PSD. Does NAVERA's `_sane` notice? Read its docstring: what does it promise to check?
-- **GPS beats you.** Keep your good source running, then start lesson 11's player
-  (`python3 ~/lessons/11-subscriber/gps_track_player.py`) and NAVERA's bridge
-  (`ros2 run gps_pkg ros_gps_node.py --ros-args -p fix_topic:=/fake_gps/fix`). Watch `--field
-  active_source`: the switch to GPS is not immediate. Find `switch_holdoff_s` in
-  `navera_estimator/navera_estimator/config/estimator_params.yaml` to know why.
+- **A fifth hole.** Arbiter v0 has one more covariance hole, different from your four. Find it, write
+  `attacks/fifth.csv`, and show that your judge closes it.
+- **Close the revival.** In a copy of `NaiveJudge` (in your own file, not in `navera_lite/`), make
+  `receive()` forget a fix that arrives from the future. Test it with the offline `play()` of
+  `contract_lab.py`. What else must the judge then remember about that source?
+- **Your own witness.** Write `my_source.py`: a node that publishes an honest day-vision `NavSatFix` on
+  `navera_lite/fix/day` once every 2 s (use `convert.to_navsatfix` on an `Estimate`, stamped 1.5 s before
+  "now", σ 30 m). Run it with the arbiter and no GPS: which state, and why?

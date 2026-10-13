@@ -1,0 +1,2 @@
+t_s,source,lat,lon,a,b,c,cov_type,valid,delay_s
+0.0,gps,35.7604,10.8113,9.0,0.0,9.0,1,1,-60.0

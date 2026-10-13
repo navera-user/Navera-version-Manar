@@ -60,8 +60,9 @@ P = | a  b |     a = σE²       (East variance, m²)        = position_covarian
 - `position_covariance` is 9 numbers, ENU, row-major, m², as in `sensor_msgs/NavSatFix` (and in
   NAVERA Lite's `estimate.Estimate.cov`); index 8 = σU².
 - Eigenvalues (ellipse axes²): `λ = (a + c)/2 ± sqrt(((a − c)/2)² + b²)`; PSD ⇔ a ≥ 0, c ≥ 0,
-  `a·c − b² ≥ 0` up to a small tolerance (NAVERA Lite `estimate.is_covariance`; NAVERA's judge applies
-  the same test, in its words).
+  `a·c − b² ≥ 0`, with up variance ≥ 0 and b the same at both places, all up to a tolerance RELATIVE to the
+  size of the variances (size = max(1, |a|, |c|, |up|): b mismatch beyond tol·size, a·c − b² below −tol·size²;
+  NAVERA Lite `estimate.is_covariance`; NAVERA's judge also scales its tolerance with the variances).
 - Correlation `ρ = b / (σE σN)`. The single "stated σ" is `sqrt(max(a, c))` (NAVERA Lite
   `estimate.stated_sigma`; NAVERA's judge and day vision use the same rule).
 - Known gap: mission 12 uses this notation; mission 29 (old 25) writes b = σN², c = cov — fixed in its batch.

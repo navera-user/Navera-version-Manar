@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 360" font-family="sans-serif" font-size="13">
+  <rect width="780" height="360" fill="#f7fafc"/>
+  <text x="390" y="26" text-anchor="middle" font-size="15" fill="#1d2733">Three horizontal blocks [a b; b c] (m²), drawn as 1-σ error ellipses (5 px = 1 m)</text>
+  <defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#5a6b7b"/></marker></defs>
+  <!-- panel 1 -->
+  <rect x="12" y="44" width="240" height="300" rx="10" fill="#fff" stroke="#c9d3dd"/>
+  <text x="132" y="66" text-anchor="middle" font-weight="bold" fill="#2f7a2f">a = 100, b = 0, c = 100</text>
+  <g stroke="#aab4be" stroke-width="1"><line x1="132" y1="90" x2="132" y2="260"/><line x1="47" y1="175" x2="217" y2="175"/></g>
+  <text x="136" y="100" fill="#56606b" font-size="11">N</text><text x="210" y="170" fill="#56606b" font-size="11">E</text>
+  <circle cx="132" cy="175" r="50" fill="#d7f0d2" fill-opacity="0.6" stroke="#2f7a2f" stroke-width="2"/>
+  <text x="132" y="282" text-anchor="middle">σ 10 m in every direction</text>
+  <text x="132" y="300" text-anchor="middle">ρ = 0, a·c − b² = 10 000</text>
+  <text x="132" y="322" text-anchor="middle" fill="#2f7a2f">stated σ = √max(a, c) = 10.0 m</text>
+  <!-- panel 2 -->
+  <rect x="270" y="44" width="240" height="300" rx="10" fill="#fff" stroke="#c9d3dd"/>
+  <text x="390" y="66" text-anchor="middle" font-weight="bold" fill="#2f7a2f">a = 83.25, b = 81.84, c = 177.75</text>
+  <g stroke="#aab4be" stroke-width="1"><line x1="390" y1="90" x2="390" y2="260"/><line x1="305" y1="175" x2="475" y2="175"/></g>
+  <text x="394" y="100" fill="#56606b" font-size="11">N</text><text x="468" y="170" fill="#56606b" font-size="11">E</text>
+  <rect x="344.4" y="108.3" width="91.2" height="133.4" fill="none" stroke="#0b6e8a" stroke-dasharray="4 3"/>
+  <ellipse cx="390" cy="175" rx="75" ry="30" transform="rotate(-60 390 175)" fill="#d7f0d2" fill-opacity="0.6" stroke="#2f7a2f" stroke-width="2"/>
+  <text x="440" y="114" fill="#0b6e8a" font-size="11.5">√c = 13.3 m</text>
+  <text x="300" y="254" fill="#0b6e8a" font-size="11.5">√a = 9.1 m</text>
+  <text x="390" y="282" text-anchor="middle">tilted: east and north errors go together</text>
+  <text x="390" y="300" text-anchor="middle">ρ = 0.67, a·c − b² = 8100 ≥ 0</text>
+  <text x="390" y="322" text-anchor="middle" fill="#2f7a2f">stated σ = √177.75 = 13.3 m (dashed box)</text>
+  <text x="390" y="338" text-anchor="middle" fill="#56606b" font-size="11">its longest axis: 15 m — mission 27</text>
+  <!-- panel 3 -->
+  <rect x="528" y="44" width="240" height="300" rx="10" fill="#fff" stroke="#e3b3b3"/>
+  <text x="648" y="66" text-anchor="middle" font-weight="bold" fill="#d64545">a = 25, b = 30, c = 16</text>
+  <g stroke="#aab4be" stroke-width="1"><line x1="648" y1="90" x2="648" y2="260"/><line x1="563" y1="175" x2="733" y2="175"/></g>
+  <text x="652" y="100" fill="#56606b" font-size="11">N</text><text x="726" y="170" fill="#56606b" font-size="11">E</text>
+  <line x1="648" y1="175" x2="700" y2="227" stroke="#d64545" stroke-width="2" marker-end="url(#a)"/>
+  <text x="664" y="250" fill="#d64545" font-size="12">south-east:</text>
+  <text x="664" y="266" fill="#d64545" font-size="12">variance −9.5 m²</text>
+  <text x="600" y="130" fill="#d64545" font-size="40" font-weight="bold">✗</text>
+  <text x="648" y="282" text-anchor="middle">no ellipse exists</text>
+  <text x="648" y="300" text-anchor="middle">ρ = 1.5, a·c − b² = −500 &lt; 0</text>
+  <text x="648" y="322" text-anchor="middle" fill="#d64545">not a covariance: not used at all</text>
+</svg>

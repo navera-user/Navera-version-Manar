@@ -1,30 +1,37 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 220" font-family="sans-serif" font-size="13">
-  <rect width="660" height="220" fill="#f7fafc"/>
-  <defs>
-    <marker id="f" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-      <path d="M0 0 L10 5 L0 10 z" fill="#1d2733"/>
-    </marker>
-  </defs>
-  <text x="330" y="24" text-anchor="middle" font-size="15" font-weight="bold" fill="#1d2733">Two clocks in one message: measured, then published</text>
-  <line x1="30" y1="120" x2="630" y2="120" stroke="#1d2733" stroke-width="2" marker-end="url(#f)"/>
-  <text x="612" y="142" fill="#56606b">time</text>
-  <!-- exposure -->
-  <circle cx="120" cy="120" r="8" fill="#a8680d"/>
-  <text x="120" y="92" text-anchor="middle" font-weight="bold" fill="#a8680d">sensor_stamp</text>
-  <text x="120" y="74" text-anchor="middle" fill="#1d2733">the photo is taken</text>
-  <!-- processing -->
-  <rect x="134" y="108" width="236" height="24" fill="#e6f2f6" stroke="#0b6e8a"/>
-  <text x="252" y="125" text-anchor="middle" fill="#0b6e8a">vision computes the position…</text>
-  <!-- publish -->
-  <circle cx="384" cy="120" r="8" fill="#0b6e8a"/>
-  <text x="384" y="92" text-anchor="middle" font-weight="bold" fill="#0b6e8a">header.stamp</text>
-  <text x="384" y="74" text-anchor="middle" fill="#1d2733">the message is published</text>
-  <!-- now -->
-  <line x1="540" y1="96" x2="540" y2="144" stroke="#d64545" stroke-width="2" stroke-dasharray="4 3"/>
-  <text x="540" y="88" text-anchor="middle" font-weight="bold" fill="#d64545">now</text>
-  <!-- age -->
-  <line x1="120" y1="168" x2="536" y2="168" stroke="#d64545" stroke-width="1.5" marker-end="url(#f)"/>
-  <text xml:space="preserve" x="330" y="188" text-anchor="middle" fill="#d64545">age of the position = now − sensor_stamp   (NAVERA's freshness rule)</text>
-  <text x="252" y="156" text-anchor="middle" fill="#56606b" font-size="12">latency = header.stamp − sensor_stamp</text>
-  <text x="330" y="210" text-anchor="middle" fill="#56606b" font-size="12">The drone kept flying during the latency: a position is as old as its photo, not as its message.</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 330" font-family="sans-serif" font-size="13">
+  <rect width="760" height="330" fill="#f7fafc"/>
+  <text x="380" y="26" text-anchor="middle" font-size="15" fill="#1d2733">A position is as old as its photo: the plane keeps flying at 40 m/s</text>
+  <defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#5a6b7b"/></marker></defs>
+  <!-- time axis: 0 s at x=90, 1 s = 300 px -->
+  <line x1="70" y1="150" x2="720" y2="150" stroke="#5a6b7b" stroke-width="1.6" marker-end="url(#a)"/>
+  <text x="728" y="154" fill="#56606b">t</text>
+  <g font-size="11.5" fill="#56606b" text-anchor="middle">
+    <line x1="90" y1="146" x2="90" y2="154" stroke="#5a6b7b"/><text x="90" y="170">1000.0 s</text>
+    <line x1="270" y1="146" x2="270" y2="154" stroke="#5a6b7b"/><text x="270" y="170">1000.6</text>
+    <line x1="450" y1="146" x2="450" y2="154" stroke="#5a6b7b"/><text x="450" y="170">1001.2</text>
+    <line x1="630" y1="146" x2="630" y2="154" stroke="#5a6b7b"/><text x="630" y="170">1001.8</text>
+  </g>
+  <circle cx="90" cy="150" r="7" fill="#0b6e8a"/>
+  <text x="90" y="118" text-anchor="middle" font-weight="bold" fill="#0b6e8a">measured</text>
+  <text x="90" y="134" text-anchor="middle" font-size="11.5" fill="#0b6e8a">photo taken = header.stamp</text>
+  <circle cx="570" cy="150" r="7" fill="#8a6d0b"/>
+  <text x="560" y="118" text-anchor="middle" font-weight="bold" fill="#8a6d0b">published</text>
+  <text x="560" y="134" text-anchor="middle" font-size="11.5" fill="#8a6d0b">1001.6 s</text>
+  <circle cx="630" cy="150" r="7" fill="#2f7a2f"/>
+  <text x="670" y="118" text-anchor="middle" font-weight="bold" fill="#2f7a2f">used (now)</text>
+  <text x="670" y="134" text-anchor="middle" font-size="11.5" fill="#2f7a2f">1001.8 s</text>
+  <g stroke-width="1.4">
+    <line x1="90" y1="192" x2="570" y2="192" stroke="#8a6d0b"/><line x1="90" y1="186" x2="90" y2="198" stroke="#8a6d0b"/><line x1="570" y1="186" x2="570" y2="198" stroke="#8a6d0b"/>
+    <line x1="90" y1="222" x2="630" y2="222" stroke="#2f7a2f"/><line x1="90" y1="216" x2="90" y2="228" stroke="#2f7a2f"/><line x1="630" y1="216" x2="630" y2="228" stroke="#2f7a2f"/>
+  </g>
+  <text x="330" y="188" text-anchor="middle" fill="#8a6d0b">latency = published − measured = 1.6 s (how slow the source is)</text>
+  <text x="360" y="218" text-anchor="middle" fill="#2f7a2f">age = now − measured = 1.8 s (what the judge tests)</text>
+  <!-- the plane -->
+  <g transform="translate(90,262)"><path d="M-14,0 L10,0 L16,-3 L10,-6 L-14,-6 Z M-4,-3 L-10,-14 L-4,-14 L4,-3 Z" fill="#0b6e8a" opacity="0.45"/></g>
+  <g transform="translate(630,262)"><path d="M-14,0 L10,0 L16,-3 L10,-6 L-14,-6 Z M-4,-3 L-10,-14 L-4,-14 L4,-3 Z" fill="#0b6e8a"/></g>
+  <line x1="112" y1="270" x2="612" y2="270" stroke="#d64545" stroke-width="1.6" marker-end="url(#a)"/>
+  <text x="362" y="290" text-anchor="middle" fill="#d64545">staleness = 40 m/s × 1.8 s = 72 m flown since the photo</text>
+  <text x="90" y="290" text-anchor="middle" font-size="11.5" fill="#56606b">where the position says</text>
+  <text x="640" y="290" text-anchor="middle" font-size="11.5" fill="#56606b">where the plane is</text>
+  <text x="380" y="318" text-anchor="middle" font-size="12" fill="#56606b">The matcher states σ 30 m. It may be right at 1000.0 s — and still 72 m off when the judge uses it.</text>
 </svg>
