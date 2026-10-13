@@ -29,7 +29,7 @@ EXPLAIN_FIX = ("The centre is right only if the photo's centre fell on the tile'
 CIRCLE_TILES_REYKJAVIK = 62
 EXPLAIN_MARGIN = ("A tile k columns away has its centre at least (k − ½)·w away, so it can be within r_m only if "
                   "k ≤ r_m/w + ½: rounding r_m/w up is enough on one row. But tiles get smaller in metres towards the "
-                  "north (w changes with latitude, cos φ), so for large radii or high latitudes the rows above need "
+                  "poles (w changes with latitude, cos φ), so for large radii or high latitudes the rows nearer the pole need "
                   "more tiles; one extra tile of margin is cheap and never misses one.")
 COVER_WEST_Z13_DEG = 10.4590
 EXPLAIN_BOUNDS = ("The bounds are a rectangle in degrees, but the file holds whole tiles: every tile that touches the "

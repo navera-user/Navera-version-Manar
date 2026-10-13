@@ -118,7 +118,8 @@ N/M, about 0.4 % at Sousse): fine for matching photos, wrong for surveying.
 ## 2. The tile pyramid and tile numbers
 
 After projection the world (to ±85.05°) is a square. **Zoom 0**: one 256 × 256 tile. **Zoom 1**: 2 × 2.
-**Zoom z**: n = 2^z tiles per side, 4^z in all. Each tile is cut into four at the next zoom.
+**Zoom z**: n = 2^z tiles per side, 4^z in all (in Python `2 ** z`; `2 ^ z` is something
+else, a bitwise XOR: 2 ^ 17 = 19). Each tile is cut into four at the next zoom.
 
 ![Zoom levels: each tile is cut into four at the next level](assets/zoom_pyramid.svg)
 
@@ -228,10 +229,10 @@ you ask for the tile at the mirror latitude, about 35.8° **south**: in the Sout
 the course map has nothing. Your reader returns "no tile", and the bug hides as "the map has a hole".
 
 > [!QUESTION] ✏️ Check
-> At zoom 2, y = 1 is which TMS row? And at zoom 0?
+> At zoom 3, y = 5 is which TMS row? And at zoom 0?
 
 <details><summary>Answer</summary>
-3 − 1 = 2; at zoom 0 there is one tile: row 0 both ways.
+7 − 5 = 2; at zoom 0 there is one tile: row 0 both ways.
 </details>
 
 ## 5. Inside an MBTiles file

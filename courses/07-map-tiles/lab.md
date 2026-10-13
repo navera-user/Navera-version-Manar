@@ -172,8 +172,8 @@ across. `math.tan` takes radians: `math.tan(math.radians(42))`.
 > With your functions (a `python3 -c "…"` line or a short script):
 > 1. `BEST_ZOOM_SOUSSE_1000`: `best_zoom` for the lab's camera at 1 000 m over Sousse (35.8277°).
 > 2. `ALT_MAX_Z19_SOUSSE_M`: the highest flying height (m, one decimal) at which `best_zoom` still gives 19
->    over Sousse. Find it with algebra (when is the GSD equal to the zoom-19 pixel?). A loop of 1 m steps finds
->    the first height that is NOT 19 (207 m): the answer is the last one that is, to one decimal.
+>    over Sousse: give the height at which the GSD exactly equals the zoom-19 pixel, rounded to one decimal
+>    (algebra). A loop of 1 m steps only shows that 207 m is no longer 19.
 > 3. `EXPLAIN_ZOOM`: compare your rule with the map's table at 300 m and at 1 000 m. Which one is coarser, and
 >    why can that be a good choice for matching photos with the map? (Think of the number of tiles and of
 >    small details.)
@@ -183,7 +183,8 @@ across. `math.tan` takes radians: `math.tan(math.radians(42))`.
 1. `m_per_px(1.2834, 17)` gives 0.3385: `math.cos` got degrees. 305.67: the 256 pixels of a tile are missing.
 2. best_zoom(0.352, 1.2834) gives 19: you rounded (`round`) or rounded up (`math.ceil`); the rule rounds
    DOWN, `math.floor`. 10 for the 100 m case: the result is not kept inside [zmin, zmax] (🧰 box). 13 for
-   Singapore: you used `math.log` (ln); the zoom rule needs `math.log2` (log₂).
+   Singapore: `math.log` (ln) instead of `math.log2`, or the ratio upside down (`gsd / m0` gives a negative zoom,
+   clamped to 13): 2^z = (m/px at zoom 0) / GSD.
 3. ✘ "it is a float": `np.floor` or `math.log2` alone give floats; `math.floor` gives an int. Wrap the
    final result in `int(…)` to be safe.
 4. GSD = 2·H·tan(42°)/1536 (radians inside tan!). Zoom 15 at 1 000 m, the same as the map's table: tan got
@@ -194,7 +195,7 @@ across. `math.tan` takes radians: `math.tan(math.radians(42))`.
 > Press **✔ Check my work**. When the checks of TODO 1–5 and Steps 1–4 pass, you earn the **Cartographer**
 > badge. If the class session ends here, stop here.
 
-## Session 2 — Tile hunter (about 1 h 45)
+## Session 2 — Tile hunter (about 2 h; 2 h 30 if SQL is new to you)
 
 Read lesson §4–§6 first.
 
@@ -222,7 +223,8 @@ def scale(v):
     return 2 ** v
 scale(3)       # 8          scale(np.int64(3)) also gives 8;  scale(3.0) raises ValueError
 # sqlite3 does not know NumPy integers: it sends np.int64(17) as 8 raw bytes, and the query silently finds
-# nothing. After the checks, convert:  z, x, y = int(z), int(x), int(y)
+# nothing. Convert RIGHT AFTER the whole-number test, before any arithmetic (2 ** np.int64(17) and n - 1 - y
+# are NumPy integers too):  z, x, y = int(z), int(x), int(y)
 scale("3")     # ValueError: v must be a whole number, got '3'
 ```
 </details>
@@ -263,8 +265,8 @@ The tile number is computed, but `read_tile` must return `None`: the course map 
    wrote `row[0]` before checking `row is None`.
 5. A size other than 9 767 (your row is 159 108?), or a Ribat picture without the fort: (2^z − 1) − y, the
    − 1 matters.
-6. `run_tiles.py test` says NumPy integers give None: sqlite3 sends `np.int64` as 8 raw bytes; after your checks
-   convert with `int()` (🧰 box).
+6. `run_tiles.py test` says NumPy integers give None: sqlite3 sends `np.int64` as 8 raw bytes; convert with
+   `int()` right after the whole-number test, before any arithmetic (🧰 box).
 </details>
 
 ## Step 6 — Impossible addresses
@@ -333,8 +335,8 @@ python3 run_tiles.py corner
 **TODO 10** `tiles_in_circle(lat, lon, r_m, z)`, the least guided function of the mission: NAVERA's day vision
 compares a photo only with the tiles within 600 m of its last position (lesson "In NAVERA"). Read the
 docstring twice. Before coding, answer on paper: around which tile do you search, and how many tiles on each
-side must you look at so that no tile whose centre is within r_m is missed? (`m_per_px` gives the size of a
-tile in metres.)
+side must you look at so that no tile whose centre is within r_m is missed? (`m_per_px(lat, z) * TILE_PX` is the
+width of one tile in metres: 248 m at the Ribat.)
 
 ```bash
 python3 run_tiles.py test

@@ -40,7 +40,7 @@ Badges: **Cartographer** = checks 1–7 (session 1), **Tile hunter** = all 17.
 | TMS_ROW_KANTAOUI_Z18 | 159 107 | 262 143 − 103 036 |
 | CORNER_QUITO_M | 215.95 (±0.08; point → centre 116.3 refused) | computed by the student (Quito and Singapore removed from `corner`); flat width/√2 = 216.2 refused. `corner` table: Lagos 214.6, Mexico City 203.7, Cape Town 179.2, Sousse 175.1, London 134.4, Anchorage 104.0, Reykjavik 94.2, Longyearbyen 44.1) |
 | PREDICT_CORNER (ungraded) | 60°; 62.4° | cos φ = 0.5; 100/215.95 → acos = 62.4°, between Anchorage (104.0 m) and Reykjavik (94.2 m) |
-| EXPLAIN_MARGIN | — | a tile k columns away is ≥ (k − ½)·w from the point → k ≤ r/w + ½, ceil(r/w) suffices on one row; tiles shrink northwards (w ∝ cos φ), so a margin of one tile covers large radii/high latitudes. `int(r/w)` without margin fails the Cape Town 500 m z17 case (8 instead of 12) |
+| EXPLAIN_MARGIN | — | a tile k columns away is ≥ (k − ½)·w from the point → k ≤ r/w + ½, ceil(r/w) suffices on one row; tiles shrink towards the poles (w ∝ cos φ), so a margin of one tile covers large radii/high latitudes. `int(r/w)` without margin fails the Cape Town 500 m z17 case (8 instead of 12) |
 | EXPLAIN_FIX | — | centre fix still off by up to half a diagonal (175 m) when the photo is not centred; publish pixel_to_latlon(u, v, z, tx, ty) of the matched pixel |
 | CIRCLE_TILES_REYKJAVIK | 62 | tiles_in_circle(64.1417, −21.9266, 600, 17); Ribat 21 (= NAVERA's "about 21"); check uses Cape Town 600 m z17 → 16, Longyearbyen 300 m → 69, Ribat 1 000 m z16 → 13, Kantaoui 130 m → 1 |
 | COVER_WEST_Z13_DEG | 10.459 | student's SQL MIN(tile_column) = 4334 + tile_to_latlon (10.5029 = east side, refused; `coverage` now shows z15–19 only). z13 tiles 4334–4340 × 3217–3225: W 10.4590, E 10.7666, S 35.6751, N 35.9958; from z15 on the edges snap to 10.4700 (z15–19), 10.7501/10.7556 E |
@@ -69,7 +69,7 @@ log2 18.76 → 18; zoom 17 from 509 m over Singapore; Ribat tile 17/69409/51547,
 
 ## Difficulties expected (from wrong-solution testing; pilot with real students still to do)
 
-27 mutants of `tiles.py` (17 of the build + 10 of fix round 1: math.log10, `1 << z` before the z check, int-only type test refusing NumPy integers, no uri=True, tiles_in_circle with own tile only / too small search square / unsorted / corners instead of centres / no ValueError) were run against check.py (scratch script `mut.py`, overlays via `try_lesson --overlay`); every
+34 variants of `tiles.py` after fix round 2 (32 wrong, each failing with a named message; 2 correct that pass: a named z limit `MAX_Z`, `ceil(r/w)`), plus the round-3 ones listed below. Of the wrong ones, 17 come from the build, 10 from fix round 1 ( math.log10, `1 << z` before the z check, int-only type test refusing NumPy integers, no uri=True, tiles_in_circle with own tile only / too small search square / unsorted / corners instead of centres / no ValueError) were run against check.py (scratch script `mut.py`, overlays via `try_lesson --overlay`); every
 one fails with a named message: mercator in degrees (math domain error + tip), rows from the south ("mirrored"),
 tile_to_latlon in radians, floor inside tile_to_latlon, m_per_px with cos in degrees (0.657126 message), best_zoom
 round (Ushuaia 14.88 message), no clamp, no ValueError for GSD 0 (ZeroDivisionError named), open_map without
@@ -140,3 +140,17 @@ corrected (absolute path fails, relative creates a file); guard text 6.4 s and s
 checker. PREDICT_CORNER: 60° and 62.4° (100 m). Small items: sousse prompt, open_map test line, "Lagos to Longyearbyen",
 check 15 wording, ALT 207 refused (±0.3), −0.000000 printed as 0.000000, TEACHER values/plan, Quito 215.95, honest
 durations (meta 5 h 30).
+
+## Fix round 3 (2026-10-13)
+
+Reviews r3 (strong 10/10/10/9, weak 9/9/9, expert 10/10). open_map() with NO argument is now tested (runner test line and
+check 8): an `os.path.exists(None)` before the default broke map_patch, which later missions call. New wrong-cause messages
+(runner and checker): `2 ^ z` (XOR, both `TILE_PX * 2 ^ z` and `TILE_PX * (2 ^ z)`), log2 ratio upside down (distinguished
+from math.log by a second call with zmin 0), math.radians applied to π/4 too (−4.289729), NumPy integers converted after
+arithmetic ("convert right after the whole-number test, before any arithmetic"; docstring and 🧰 box say so), whole-tile
+pixels from floor(tile_xy), tiles_in_circle scanning ~1.5 M tiles with a pixel width ("far too many tiles … half-width in
+TILES?", 20 s cap, > 3 s refused). Check 13's round-trip message says it also uses TODO 8. Lab: tile width = m_per_px ×
+TILE_PX (248 m), ALT sentence ("height where the GSD equals the zoom-19 pixel, rounded to one decimal"), session 2 "about
+2 h; 2 h 30 if SQL is new". Lesson: `2 ** z` vs `2 ^ z` note in §2; §4 ✏️ now zoom 3, y = 5 (answer 2) so the figure does
+not answer it. Runner prints round(v, 6) + 0.0 (no −0.000000). "towards the poles" in EXPLAIN_MARGIN. Mutants: 40 variants
+(38 wrong, each with a named message; 2 correct that pass).

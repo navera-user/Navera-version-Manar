@@ -103,6 +103,10 @@ def ref_tile(db, z, x, y):
              "the equator, π at MAX_LAT, and mercator_y(−φ) = −mercator_y(φ).")
 def _():
     (f,) = functions("mercator_y")
+    v0 = num(go(f, 0.0), "mercator_y(0.0)")
+    if abs(v0 - -4.2897288) < 1e-5:
+        raise CheckFailed("mercator_y(0.0) gives −4.289729: math.radians was applied to π/4 as well — π/4 is already in "
+                          "radians, convert only the latitude")
     v = num(go(f, -22.9068), "mercator_y(-22.9068)")
     if abs(v - 1.0793546) < 1e-5 or abs(v) > 3.2:
         raise CheckFailed(f"mercator_y(−22.9068) gives {v:.6f}: the latitude went into math.tan in DEGREES — "
@@ -167,6 +171,9 @@ def _():
 def _():
     (f,) = functions("m_per_px")
     v = num(go(f, -1.2921, 16), "m_per_px(-1.2921, 16)")
+    if abs(v - 8694.6239) < 0.01 or abs(v - 75880.354) < 0.01:
+        raise CheckFailed(f"m_per_px(Nairobi, 16) gives {v:,.1f}: ^ in Python is XOR (2 ^ 16 = 18), not a power — "
+                          "write 2 ** z")
     if abs(v - 2.3880498 * 256) < 1:
         raise CheckFailed("m_per_px is 256 times too large: a tile has TILE_PX = 256 pixels per side")
     if abs(v - 0.6571263) < 1e-4:
@@ -192,6 +199,10 @@ def _():
             raise CheckFailed("best_zoom(0.5, Nairobi) gives 19: you rounded (or rounded up); the map must not be "
                               "finer than the photo — round DOWN with math.floor")
         if args == (0.5, -1.2921) and z == 13:
+            wide = go(f, 0.5, -1.2921, 0, 30)
+            if wide is not None and wide <= 0:
+                raise CheckFailed("best_zoom(0.5, Nairobi) gives 13 because the ratio is upside down (a negative zoom, "
+                                  "clamped): 2^z = (m/px at zoom 0) / GSD, so log2(m0 / gsd_m)")
             raise CheckFailed("best_zoom(0.5, Nairobi) gives 13 (= floor of ln): the zoom rule uses log₂ — math.log2, "
                               "not math.log")
         if args == (3.0, -54.8019) and z == 15:
@@ -299,6 +310,15 @@ def _():
             with contextlib.suppress(Exception):
                 db.close()
         c.ok(open(copy, "rb").read() == before, "the map file changed after open_map: it must be read-only")
+        if os.path.exists("/data/map.mbtiles"):
+            try:
+                d0 = run(f, seconds=20)
+            except CheckFailed as e:
+                raise CheckFailed(f"open_map() with no path: {str(e).split(' — ')[0]} — None must become MAP_PATH BEFORE "
+                                  "os.path.exists (map_patch, which later missions use, calls open_map() like this)")
+            c.ok(d0 is not None, "open_map() with no path returned None: open MAP_PATH")
+            n0 = d0.execute("SELECT COUNT(*) FROM tiles WHERE zoom_level = 13").fetchone()
+            c.ok(tuple(n0)[0] > 0, "open_map() with no path did not open the course map (MAP_PATH)")
         missing = os.path.join(tmp, "no_such_map.mbtiles")
         try:
             f(missing)
@@ -377,8 +397,9 @@ def _():
                           "numbers.Integral, refuse bool, float and text")
     if got is None:
         raise CheckFailed("read_tile(db, np.int64(17), np.int32(69409), np.int64(51547)) returned None: sqlite3 sends "
-                          "NumPy integers as 8 raw bytes, so the query finds nothing — after your checks convert z, x, "
-                          "y with int() (lab Step 5, 🧰 box)")
+                          "NumPy integers as 8 raw bytes, so the query finds nothing — convert z, x, y with int() RIGHT "
+                          "AFTER the whole-number test, before any arithmetic (2 ** np.int64(17) and n − 1 − y are "
+                          "NumPy integers too; lab Step 5, 🧰 box)")
     c.ok(isinstance(got, bytes) and got[:3] == JPEG, "read_tile with NumPy integers should return the Ribat's JPEG bytes")
     import time
     t0 = time.perf_counter()
@@ -433,6 +454,9 @@ def _():
 def _():
     (f,) = functions("latlon_to_pixel")
     px, py = pair(go(f, -1.2921, 36.8219, 15, 19733, 16502), "latlon_to_pixel")
+    if px % 256 == 0 and py % 256 == 0:
+        raise CheckFailed(f"latlon_to_pixel gives ({px:g}, {py:g}): whole tiles only — use the FRACTIONAL tile_xy, not "
+                          "math.floor/int of it")
     if abs(px - 2.611164) < 1e-4:
         raise CheckFailed("latlon_to_pixel gives tile units: multiply by TILE_PX (256)")
     c.near(px, 668.458098, 1e-4, "px of Nairobi in a mosaic starting at tile (19733, 16502)")
@@ -458,7 +482,9 @@ def _():
     for la, lo, z, x0, y0 in [(64.8378, -147.7164, 17, 13760, 32001), (-33.9249, 18.4241, 19, 288970, 314714)]:
         p = pair(go(to_px, la, lo, z, x0, y0), "latlon_to_pixel")
         back = pair(go(to_ll, *p, z, x0, y0), "pixel_to_latlon")
-        c.ok(math.dist(back, (la, lo)) < 1e-9, f"pixel → lat/lon → pixel round trip near ({la}, {lo}) gives {back}")
+        c.ok(math.dist(back, (la, lo)) < 1e-9, f"lat/lon → pixel → lat/lon round trip near ({la}, {lo}) gives {back} "
+                                               "(this uses your latlon_to_pixel too: if the TODO 8 check fails, fix it "
+                                               "first)")
 
 
 @c.test("map_patch() works with your functions: a picture of the small map that matches the tiles pixel for pixel",
@@ -505,7 +531,20 @@ def _():
                            ((78.2232, 15.6267, 300.0, 17), 69, (71221, 18144)),
                            ((35.8277, 10.6388, 1000.0, 16), 13, (34703, 25772)),
                            ((35.8930, 10.5965, 130.0, 17), 1, (69394, 51518))]:
-        got = go(f, *args)
+        import time
+        t0 = time.perf_counter()
+        try:
+            got = run(f, *args, seconds=20)
+        except CheckFailed as e:
+            if "did not finish" in str(e):
+                raise CheckFailed(f"tiles_in_circle{args} did not finish in 20 s: far too many tiles scanned — is your "
+                                  "half-width in TILES? The tile width in metres is m_per_px(lat, z) × TILE_PX "
+                                  "(m_per_px alone is one pixel)")
+            raise
+        if time.perf_counter() - t0 > 3.0:
+            raise CheckFailed(f"tiles_in_circle{args} took {time.perf_counter() - t0:.0f} s: far too many "
+                              "tiles scanned — is your half-width in TILES? The tile width in metres is "
+                              "m_per_px(lat, z) × TILE_PX (m_per_px alone is one pixel)")
         try:
             tl = [tuple(int(v) for v in p) for p in got]
         except (TypeError, ValueError):

@@ -105,12 +105,12 @@ def close(got, want, tol):
 def show(v):
     if isinstance(v, (tuple, list)):
         try:
-            return "(" + ", ".join(f"{float(x) + 0.0:.6f}" for x in v) + ")"
+            return "(" + ", ".join(f"{round(float(x), 6) + 0.0:.6f}" for x in v) + ")"
         except (TypeError, ValueError):
             return repr(v)
     if isinstance(v, bytes):
         return f"{len(v)} bytes starting with {v[:3]!r}"
-    return f"{v + 0.0:.6f}" if isinstance(v, float) else repr(v)
+    return f"{round(v, 6) + 0.0:.6f}" if isinstance(v, float) else repr(v)
 
 
 def fmt_args(args):
@@ -150,13 +150,21 @@ def test():
             total += 1
             continue
         if fn == "read_tile":                                   # TODO 6 + 7 together, on the small map
-            total += 4
+            total += 4 + os.path.exists(t.MAP_PATH)
             db, err = rk.call(t, "open_map", small)
             if err:
                 print(f"✘ TODO  6  {err}")
                 continue
             print(f"✔ TODO  6  open_map  ->  {type(db).__name__} (read-only, with uri=True: ✔ Check my work tests that)")
             done += 1
+            if os.path.exists(t.MAP_PATH):
+                d0, err0 = rk.call(t, "open_map")
+                if err0:
+                    print(f"✘ TODO  6  open_map() with no path: {err0} — None must become MAP_PATH BEFORE "
+                          "os.path.exists (map_patch, used by later missions, calls open_map() like this)")
+                else:
+                    print(f"✔ TODO  6  open_map()  ->  {type(d0).__name__} on MAP_PATH")
+                    done += 1
             truth = sqlite3.connect("file:" + small + "?mode=ro", uri=True)        # the runner's own reading
 
             def true_tile(z, x, y):
@@ -199,8 +207,9 @@ def test():
             if ok3:
                 why_np = ""
             elif got_np is None:
-                why_np = ("   (None: sqlite3 sends NumPy integers as 8 raw bytes, so the query finds nothing — after "
-                          "your checks convert with int(), 🧰 box of Step 5)")
+                why_np = ("   (None: sqlite3 sends NumPy integers as 8 raw bytes, so the query finds nothing — convert "
+                          "with int() RIGHT AFTER the whole-number test, before any arithmetic: 2 ** np.int64(17) and "
+                          "n − 1 − y are NumPy integers too; 🧰 box of Step 5)")
             elif isinstance(got_np, ValueError):
                 why_np = "   (NumPy integers are whole numbers too: accept numbers.Integral, 🧰 box of Step 5)"
             else:
@@ -225,7 +234,10 @@ def test():
                 print(f"✘ TODO {k:2d}  {fn}{fmt_args(args)}  ->  {repr(got)[:60]}   (the docstring asks for ValueError "
                       "for this input: check it first)")
             continue
+        import time as _time
+        t_start = _time.perf_counter()
         got, err = rk.call(t, fn, *args)
+        slow = _time.perf_counter() - t_start
         if err:
             if "not written yet" in err:
                 unwritten.add(fn)
@@ -240,9 +252,14 @@ def test():
                 n_got = len(got)
             except TypeError:
                 n_got = None
-            ok = n_got == want
+            ok = n_got == want and slow < 2.0
             got = f"{n_got} tiles"
-            if n_got is not None and n_got < want:
+            if n_got == want and slow >= 2.0:
+                note = (f"right, but it took {slow:.0f} s: far too many tiles scanned — is your half-width in TILES? "
+                        "The tile width in metres is m_per_px(lat, z) × TILE_PX (m_per_px alone is one pixel)")
+            if note is not None:
+                pass
+            elif n_got is not None and n_got < want:
                 note = (f"{n_got} tiles instead of {want}: your search square is too small for 600 m — how many tile "
                         "widths does r_m reach? (hint 5)")
             elif not ok:
@@ -260,9 +277,23 @@ def test():
         else:
             ok = close(got, want, tol)
         if not ok and fn == "best_zoom" and got == 13 and args[0] == 0.352:
-            note = "13 = floor(ln …): the zoom rule uses log₂ — math.log2, not math.log"
-        if not ok and fn == "m_per_px" and isinstance(got, (int, float)) and got > 1000 * want:
-            note = "far too large: you multiplied by 2**z — divide by (TILE_PX * 2**z), with brackets"
+            wide, _ = rk.call(t, "best_zoom", 0.352, 1.2834, 0, 30)
+            if wide is not None and wide <= 0:
+                note = "the ratio is upside down: 2^z = (m/px at zoom 0) / GSD, so log2(m0 / gsd_m), not gsd_m / m0"
+            else:
+                note = "13 = floor(ln …): the zoom rule uses log₂ — math.log2, not math.log"
+        if not ok and fn == "mercator_y" and args == (0.0,) and close(got, -4.289729, 1e-5):
+            note = "math.radians was applied to π/4 as well: π/4 is already in radians — convert only the latitude"
+        if not ok and fn == "latlon_to_pixel" and isinstance(got, (tuple, list)) and len(got) == 2 and all(
+                isinstance(v, (int, float)) and float(v) % 256 == 0 for v in got):
+            note = "whole tiles only: use the FRACTIONAL tile_xy, not math.floor/int of it"
+        if not ok and fn == "m_per_px" and isinstance(got, (int, float)):
+            xor = t.EQUATOR_M * math.cos(math.radians(args[0])) / (t.TILE_PX * (2 ^ args[1]))
+            xor2 = t.EQUATOR_M * math.cos(math.radians(args[0])) / ((t.TILE_PX * 2) ^ args[1])
+            if close(got, xor, 1e-3 * xor) or close(got, xor2, 1e-3 * xor2):
+                note = "2 ^ z in Python is XOR (2 ^ 0 = 2, 2 ^ 17 = 19), not a power: write 2 ** z"
+            elif got > 1000 * want:
+                note = "far too large: you multiplied by 2**z — divide by (TILE_PX * 2**z), with brackets"
         if not ok and fn == "mercator_y" and close(got, 0.456915, 1e-5):
             note = "0.456915: you used math.log10 — ln, the natural logarithm, is math.log"
         if not ok and fn == "tile_to_latlon" and close(got, (math.radians(85.051129), -180.0), 1e-3):
