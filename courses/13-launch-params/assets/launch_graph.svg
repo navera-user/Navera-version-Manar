@@ -18,9 +18,10 @@
 <text x="105" y="251" fill="#d8eef5" text-anchor="middle" font-size="11">boat · 5.0 m/s · 000°</text>
 <text x="40" y="282" fill="#1d2733" font-size="12">/boat/navera_lite/fix/gps</text>
 <!-- judge -->
-<rect x="466" y="160" width="230" height="60" rx="8" fill="#2f855a"/>
-<text x="581" y="184" fill="#fff" text-anchor="middle" font-weight="bold">arbiter (no namespace)</text>
-<text x="581" y="204" fill="#e3f4ea" text-anchor="middle" font-size="11">--params-file navera_lite.yaml</text>
+<rect x="466" y="156" width="230" height="74" rx="8" fill="#2f855a"/>
+<text x="581" y="178" fill="#fff" text-anchor="middle" font-weight="bold">arbiter (no namespace)</text>
+<text x="581" y="198" fill="#e3f4ea" text-anchor="middle" font-size="11">--params-file navera_lite.yaml</text>
+<text x="581" y="216" fill="#e3f4ea" text-anchor="middle" font-size="11">-p vehicle:=boat</text>
 <!-- arrows -->
 <path d="M200 278 C 380 278, 400 210, 466 200" fill="none" stroke="#2f855a" stroke-width="3"/>
 <polygon points="466,200 456,194 457,206" fill="#2f855a"/>
@@ -28,6 +29,6 @@
 <text x="345" y="140" fill="#888" font-size="11">not read (gps_source is boat)</text>
 <text x="350" y="300" fill="#2f855a" font-size="12">remap: navera_lite/fix/gps :=</text>
 <text x="350" y="316" fill="#2f855a" font-size="12">/boat/navera_lite/fix/gps</text>
-<text x="470" y="245" fill="#1d2733" font-size="12">→ /navera_lite/status</text>
-<text x="470" y="262" fill="#1d2733" font-size="12">→ /navera_lite/position</text>
+<text x="470" y="250" fill="#1d2733" font-size="12">→ /navera_lite/status</text>
+<text x="470" y="267" fill="#1d2733" font-size="12">→ /navera_lite/position</text>
 </svg>

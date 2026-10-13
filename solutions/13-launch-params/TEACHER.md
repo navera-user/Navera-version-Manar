@@ -13,7 +13,7 @@ day-vision 5 s (production) vs 3 s (node default) from ARCHITECTURE.md.
 
 | Objective | Lesson (✏️ Check) | Lab | check.py test |
 |---|---|---|---|
-| 1. Typed parameters, descriptors, validation callback; which guard acts when | §1, §2 (robot heading) | Steps 0–3 (TODO 1–3) | 1, 2, 3, 5, 6 |
+| 1. Typed parameters, descriptors, validation callback; which guard acts when | §1, §2 (guard table, read-after boxes); Check yourself 1, 3 | Steps 0–3 (TODO 1–3) | 1, 2, 3, 5, 6 |
 | 2. Predict and measure precedence | §3 (b.yaml / c.yaml, four commands) | Steps 5–6 (my_gps.yaml, six commands incl. (f)) | 8, 9 |
 | 3. A launch file: namespaces, arguments, condition, remap | §4 (judge in /test), §5 (string default, int param) | Step 7 (TODO 5) | 10, 11, 12 |
 | 4. Change a setting, predict the verdict; check a whole file against the vehicle (R-1) | §6 (bridge gap, plane 80/90 m/s) | Steps 4, 8 (PREDICT_PLANE), 9 (PREDICT_SIGMA) (TODO 4) | 4, 7, 11, 13, 14, 15 |
@@ -62,7 +62,8 @@ day-vision 5 s (production) vs 3 s (node default) from ARCHITECTURE.md.
   §5 `default_value` is text; `"rate": 2` crashes replay; a launch argument without a default is required ("missing
   required argument 'file'", measured); §6 bridge: boat 18 m/s, limit 10, margin 50, 7 s gap → 126 m > 120 m, locked out
   (safe gaps < 50 / 8 ≈ 6.25 s); plane 80 m/s accepted (80 ≤ 80) only without a lost fix (160 > 110), 90 m/s locked out.
-  Check yourself 3 (robot heading) → starts with 270.0, set 200.0 refused.
+  Check yourself 3 (rate_hz: 0.05 at start → stops; 5.0 at start → accepted; set 5.0 → read-only refusal). The robot
+  heading case (starts with 270.0, set 200.0 refused) is now Look back 4 of the lab (it spoiled the Step 3 attacker).
 - launch_ros `Node(parameters=[file, {dict}])` writes the dict to a temporary params file under the node's full name:
   it beats the file's node section; `fl_node`'s `-p` does not (lesson §5; launch_util docstring).
 

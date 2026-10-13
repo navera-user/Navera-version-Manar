@@ -17,7 +17,7 @@ Your files (📝 Code tab):
 | §1 Types | Step 0 | nothing: two traps, live |
 | §2 Guards | Steps 1–3 | `make_descriptor`, `CheckedGps.declare_all`, `CheckedGps.on_set_parameters` |
 | §6 Whole-file check | Step 4 | `check_settings` |
-| §3 Files, precedence | Steps 5–6 | `my_gps.yaml`, five measurements |
+| §3 Files, precedence | Steps 5–6 | `my_gps.yaml`, six measurements (a)–(f) |
 | §4–§5 Names, launch | Step 7 | `generate_launch_description` |
 | §6, In NAVERA | Steps 8–9 | `plane.yaml`, one edit of `navera_lite.yaml` |
 
@@ -146,7 +146,8 @@ The first three TODO 2–3 lines must be ✔. Then start your node in the backgr
 python3 -m navera_lite.ros.gps_node > gps.log 2>&1 &
 ```
 
-Two seconds later, read what an integrator now sees:
+When `cat gps.log` shows `fake GPS on …`, read what an integrator now sees (`Node not found`: ask again, see the
+NOTE):
 
 ```bash
 ros2 param describe /fake_gps speed_mps
@@ -233,8 +234,9 @@ ros2 param set /fake_gps speed_mps 25.0
    there, else `self.get_parameter(…).value`.
 2. The vehicle test comes first: `VEHICLES[vehicle]` of an unknown vehicle is a `KeyError`.
 3. `ros2 param set … speed_mps 25.0` is accepted for the boat? You compared the **current** speed, not the
-   new one. `KeyError: 'vehicle'`? You read only the new values: a change of the speed alone does not
-   carry the vehicle.
+   new one, or took the vehicle from `DEFAULTS` ("drone", 30 m/s) instead of the node's **current** one,
+   `self.get_parameter("vehicle").value`. `KeyError: 'vehicle'`? You read only the new values: a change of
+   the speed alone does not carry the vehicle.
 4. "Callback returned an invalid type": return `SetParametersResult(successful=…, reason=…)`, not `True`.
 </details>
 
@@ -257,7 +259,7 @@ ros2 param get /fake_gps speed_mps
 
 **TODO 4** `check_settings(cfg)` in [settings.py](file:./navera_lite/settings.py): every rule broken, as a
 list of sentences, in the docstring's order. The last TODO with the least help: before you code, apply the
-five rules **by hand** to [integrator.yaml](file:./integrator.yaml) and write down what you expect.
+six rules of the docstring **by hand** to [integrator.yaml](file:./integrator.yaml) and write down what you expect.
 
 <details><summary>🧰 Types: <code>isinstance</code>, and why <code>True</code> is an int</summary>
 
@@ -287,7 +289,7 @@ python3 run_lab13.py settings integrator.yaml
 
 <details><summary>Stuck? Hints</summary>
 
-1. Five loops or blocks, one per rule, each appending sentences to one list; return the list at the end.
+1. Six blocks, one per rule of the docstring, each appending sentences to one list; return the list at the end.
 2. Rule 1 loops over `DEFAULTS.items()`: the type of the **default** says what the value must be.
 3. `max_speed_mps must be >= …` never appears? The rule needs the vehicle's limit: `VEHICLES[vehicle]`,
    and only when the vehicle is known.
@@ -481,7 +483,8 @@ ros2 topic echo /navera_lite/status diagnostic_msgs/msg/DiagnosticStatus --once
 3. `TypeError: can only concatenate str (not "LaunchConfiguration")`: lesson §5.
 4. A receiver dies with `InvalidParameterTypeException`: `speed_mps: 5` instead of `5.0` (or heading `0`).
 5. The boat still starts with `use_boat:=false`? `condition=IfCondition(LaunchConfiguration("use_boat"))`
-   belongs to the boat's `fl_node`.
+   belongs to the boat's `fl_node`. `expected one of [true, 1, false, 0] but got 'use_boat'`? You wrote
+   `IfCondition("use_boat")`, the text, not its value.
 </details>
 
 ## Step 8 — One speed for every vehicle (R-1)
@@ -579,6 +582,9 @@ Look back (not graded):
 1. Which guard would have stopped NAVERA's R-1 before the first flight, and which would not?
 2. Which of your Step 6 predictions was wrong, and what did you believe about `-p`?
 3. A wrong remap gave silence, not an error. How would you make that mistake loud?
+4. A node has the range 0 … 360 for `heading_deg` and a callback that refuses more than 180.0 for a robot.
+   Started with `-p vehicle:=robot -p heading_deg:=270.0`, what does it hold? What does the Going-further
+   "Guard the start too" change?
 
 ## Going further (optional)
 
@@ -591,7 +597,8 @@ Look back (not graded):
   `params`. With the §3 model, predict what changes; check with `ros2 param get`.
 - **Node against fl_node.** With launch_ros, write a launch file that starts any demo node with a name, a
   namespace and `parameters=["my_gps.yaml", {"speed_mps": 25.0}]`. Predict with the rows (lesson §5), then
-  `ros2 param get`. Open the `/tmp/launch_params_*` file its command line names (`cat launch.log`).
+  `ros2 param get`. Open the `/tmp/launch_params_*` file its command line names (`cat launch.log`). Then
+  remove `namespace=` (give it with `ros_arguments=["-r", "__ns:=/drone"]`) and predict again.
 - **A real package.** A ROS 2 **package** is a folder with a `package.xml` (name, dependencies) and, for
   Python, a `setup.py`. `colcon build` copies it into `install/`, launch and config files into
   `install/<pkg>/share/<pkg>/` (found by `get_package_share_directory`); `--symlink-install` links instead

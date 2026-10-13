@@ -387,7 +387,9 @@ def _():
     res = student_json(LAUNCH_SCRIPT, combos, "your launch file")
     for args, r in zip(combos, res):
         if "error" in r:
-            raise CheckFailed(f"with {args or 'no arguments'}: {r['error']}")
+            extra = (" — you gave IfCondition the TEXT 'use_boat'; give it IfCondition(LaunchConfiguration(\"use_boat\"))"
+                     if "got 'use_boat'" in r["error"] else "")
+            raise CheckFailed(f"with {args or 'no arguments'}: {r['error'][:200]}{extra}")
     c.ok(sorted(res[0]["declared"]) == ["gps_source", "use_boat"],
          f"declared launch arguments: {res[0]['declared']} (expected use_boat and gps_source)")
     c.ok(len(res[0]["procs"]) == 3 and not res[0]["other"],

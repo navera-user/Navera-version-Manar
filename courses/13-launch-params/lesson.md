@@ -265,7 +265,7 @@ Node(package="pkg", executable="gps_node", name="fake_gps", namespace="boat",
      parameters=["file.yaml", {"speed_mps": 5.0}], remappings=[("from", "to")])
 # starts: ... --ros-args -r __node:=fake_gps -r __ns:=/boat --params-file file.yaml
 #             --params-file /tmp/launch_params_xxxx -r from:=to
-#   (the dict goes into a temporary file, in a section named /boat/fake_gps)
+#   (the dict goes into a temporary file, in a section /boat/fake_gps — or /** if name or namespace is missing)
 fl_node("gps_node", "fake_gps", namespace="boat",
         params_file="file.yaml", params={"speed_mps": 5.0}, remaps=[("from", "to")])
 # starts: ... --ros-args -r __node:=fake_gps -r __ns:=/boat --params-file file.yaml
@@ -273,7 +273,8 @@ fl_node("gps_node", "fake_gps", namespace="boat",
 ```
 
 If file.yaml starts with `/**` and has its own `/boat/fake_gps: speed_mps`, `Node`'s dict wins (same
-section name: it overwrites that row) and `fl_node`'s `-p` loses (the `/**` row, above). NAVERA Lite's
+section name: it overwrites that row) and `fl_node`'s `-p` loses (the `/**` row, above). Leave out `name` or
+`namespace` in `Node(...)` and its dict is written under `/**` too, and loses the same way. NAVERA Lite's
 launch file never gives a key twice, so the lab does not show it.
 
 **A complete example** (not the one you write): replay a CSV file into a judge, with a launch argument
@@ -342,7 +343,7 @@ the next fix is 18 × 7 = 126 m from the last trusted one, the gate 10 × 7 + 50
 gap now grows 18 m per second, the gate only 10: every later fix is refused, and the judge loses GPS for
 good on a healthy boat. A vehicle faster than `max_speed_mps` survives only gaps shorter than
 margin / (speed − max_speed_mps), here 50 / 8 ≈ 6 s, and GPS gaps are what NAVERA is built for. That is
-R-1 (lab Step 8 shows the faster case: locked out at the second fix). The rule: `max_speed_mps` ≥ the
+R-1; lab Step 8 tries a faster vehicle. The rule: `max_speed_mps` ≥ the
 vehicle's top speed, so that no healthy vehicle depends on the margin.
 
 So the rules are checked **once, at start, on the whole file**: your `check_settings(cfg)` (TODO 4)
@@ -429,10 +430,9 @@ plane).
 9.0: rows boat (4.0), then <code>/**</code> (7.0, overwritten with 9.0); the lowest matching row wins.
 </details>
 
-<details><summary>3. A node declares <code>heading_deg</code> with the range 0.0 … 360.0 and a callback that refuses more than 180.0 for a robot. Started with <code>-p vehicle:=robot -p heading_deg:=270.0</code>: does it start? Then <code>ros2 param set … heading_deg 200.0</code>?</summary>
-It starts with 270.0: the range allows it, and the callback is not called for start values. The set to
-200.0 is refused by the callback. The node holds a value its own rule forbids: start values need a
-check of their own.
+<details><summary>3. <code>rate_hz</code> is read-only with the range 0.1 … 50.0. Which of these is refused, and when: <code>-p rate_hz:=0.05</code> at start; <code>-p rate_hz:=5.0</code> at start; <code>ros2 param set … rate_hz 5.0</code>?</summary>
+0.05 at start: refused by the range, the node stops. 5.0 at start: accepted (read-only allows start values).
+The set: refused ("Trying to set a read-only parameter"): a timer's period cannot change while it runs.
 </details>
 
 <details><summary>4. Node <code>fake_gps</code> in namespace <code>/boat</code> publishes on <code>navera_lite/fix/gps</code>. Full topic name? And if the code had written <code>/navera_lite/fix/gps</code>?</summary>

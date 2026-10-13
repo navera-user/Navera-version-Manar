@@ -23,19 +23,24 @@ def show(ok, text):
 # ------------------------------------------------------------------------------------------- TODO 1
 def test_descriptor(g):
     print("TODO 1  make_descriptor()")
-    d, err = rk.call(g, "make_descriptor", "speed_mps", 10.0)
-    if err:
-        return show(False, err)
-    if type(d).__name__ != "ParameterDescriptor":
-        return show(False, f"make_descriptor() must return a ParameterDescriptor, it returned {d!r}")
-    r = list(d.floating_point_range)
-    good = show(len(r) == 1 and (r[0].from_value, r[0].to_value) == (0.0, 100.0) and not d.read_only,
-                f"speed_mps: range {[(x.from_value, x.to_value) for x in r]}, read_only {d.read_only}"
-                "   (the docstring's table says what it should be)")
+    good = True
+    for name, value, lim in (("speed_mps", 10.0, (0.0, 100.0)), ("heading_deg", 90.0, (0.0, 360.0)),
+                             ("sigma_m", 3.0, (0.0, 1000.0)), ("rate_hz", 1.0, (0.1, 50.0))):
+        d, err = rk.call(g, "make_descriptor", name, value)
+        if err:
+            if "_value' field must be of type" in err:
+                err += "\n    → a limit written as a whole number (1000) instead of a float (1000.0)?"
+            return show(False, err)
+        if type(d).__name__ != "ParameterDescriptor":
+            return show(False, f"make_descriptor() must return a ParameterDescriptor, it returned {d!r}")
+        r = [(x.from_value, x.to_value) for x in d.floating_point_range]
+        good &= show(r == [lim], f"{name}: range {r}   (the docstring's table says what it should be)")
     d, err = rk.call(g, "make_descriptor", "rate_hz", 1.0)
     if err:
         return show(False, err)
     good &= show(bool(d.read_only), f"rate_hz: read_only {d.read_only}")
+    d, err = rk.call(g, "make_descriptor", "speed_mps", 10.0)
+    good &= show(not d.read_only, f"speed_mps: read_only {d.read_only}")
     d, err = rk.call(g, "make_descriptor", "vehicle", "drone")
     if err:
         return show(False, err)
@@ -59,6 +64,9 @@ def test_node(g):
             return show(False, "CheckedGps.declare_all() is not written yet (TODO 2)")
         except Exception as e:
             text = f"{type(e).__name__}: {e}"
+            if "_value' field must be of type" in text:
+                return show(False, f"the node did not start: {text}\n    → the error comes from make_descriptor() "
+                                   "(TODO 1): a limit written 1000 instead of 1000.0?")
             if "invalid type" in text or "ParameterNotDeclared" in text:
                 return show(False, f"the node did not start: {text}\n    → your callback was called DURING the "
                                    "declarations: register it AFTER the loop in declare_all() (TODO 2, lesson §2)")
@@ -186,7 +194,12 @@ def plan(args):
             cmd = [perform_substitutions(ctx, part) for part in e.cmd]
             name = perform_substitutions(ctx, e.name) if e.name else "?"
         except Exception as ex:
-            sys.exit(f"a launch value could not be computed: {type(ex).__name__}: {ex} — is every launch "
+            text = f"{type(ex).__name__}: {ex}"
+            given = [a for a in declared if f"got '{a}'" in text]
+            if given:
+                sys.exit(f"a launch value could not be computed: {text}\n→ you gave IfCondition the TEXT "
+                         f"'{given[0]}'; give it the value: IfCondition(LaunchConfiguration(\"{given[0]}\"))")
+            sys.exit(f"a launch value could not be computed: {text} — is every launch "
                      "argument you use declared with DeclareLaunchArgument?")
         out.append((name, started, " ".join(c.replace(sys.executable, "python3") for c in cmd), cmd))
     return declared, out

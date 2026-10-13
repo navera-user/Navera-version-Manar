@@ -13,7 +13,7 @@ STATE_AFTER_SET = ""      # the judge's state AFTER that set: "FIX", "DEGRADED" 
 EXPLAIN_SILENT = ""       # why did the state not follow the new value?
 
 # ---- Step 2: descriptors at work -------------------------------------------------------------
-PREDICT_GUARDS = ""       # which of the three commands of Step 2 will be refused, and with what message?
+PREDICT_GUARDS = ""       # which of the three commands of Step 2 will be refused, and by which guard?
 RATE_SET_OK = None        # ros2 param set ... rate_hz 5.0 accepted?            True / False
 SPEED_500_OK = None       # ros2 param set ... speed_mps 500.0 accepted?        True / False
 START_150_RUNS = None     # does the node start with -p speed_mps:=150.0?       True / False
