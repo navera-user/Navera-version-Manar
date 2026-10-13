@@ -31,7 +31,7 @@ SOURCE (teacher only, never mounted): solutions/_navera_lite/
 OUTPUT for mission NN (both folders are generated: never edit them by hand):
     courses/<id>/files/navera_lite/   tags < NN finished; tags == NN with a todo: signature + docstring +
                                       stub; tags > NN removed; __init__.py with PARTS; PARTS.md
-    courses/<id>/files/navera_lite.yaml   (only if absent: it is the student's file once shipped)
+    courses/<id>/files/navera_lite.yaml   (always refreshed from the reference; the solution copy only if absent)
     solutions/<id>/navera_lite/       the same parts, complete
     A stub is `return None   # TODO: write your code above, and return the result`, or
     `raise NotImplementedError("TODO K")` for a function that returns nothing.
@@ -437,9 +437,11 @@ def build(lid, ref=REF, out_root=ACADEMY, verify=True, quiet=False):
                 _write(dst, open(src).read())
     _write(os.path.join(starter_dir, "PARTS.md"), _parts_md(nn, stub, intro, todos_by_part))
     yml = os.path.join(ref, g["settings_file"])
-    for d in (os.path.dirname(starter_dir), os.path.dirname(solution_dir)):
+    # the STARTER copy always follows the reference (a fixed comment must reach the students); the SOLUTION
+    # copy is written only if absent: a mission's solution may hold edited values (e.g. 13's fix_max_sigma_m)
+    for d, always in ((os.path.dirname(starter_dir), True), (os.path.dirname(solution_dir), False)):
         dst = os.path.join(d, g["settings_file"])
-        if os.path.exists(yml) and not os.path.exists(dst):
+        if os.path.exists(yml) and (always or not os.path.exists(dst)):
             _write(dst, open(yml).read())
     say(f"  wrote {os.path.relpath(starter_dir)} and {os.path.relpath(solution_dir)}: "
         f"{len(stub)} part(s), TODOs: {sum(len(v) for v in todos_by_part.values())}")
