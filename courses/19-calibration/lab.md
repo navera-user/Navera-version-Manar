@@ -1,270 +1,481 @@
-# Lab 19 — Model, calibrate and straighten the real Insta360 lens
+# Lab 19 — Model, straighten and calibrate the real Insta360 lens
 
-**Goal:** write the fisheye lens model by hand and check it against OpenCV, straighten a real frame
-and measure the result, calibrate the lens yourself from 36 real chessboard views, test the
-calibration (stability, hold-out, other model), reproduce it with NAVERA's own tool, and write a
-short engineering report.
-**Time:** about 3 hours for this lab (about 4 h for the whole mission with the lesson).
+**Goal:** write the lens part of NAVERA Lite (`navera_lite/fisheye.py`): the fisheye model, where it is valid,
+how wide a straight view should be, the straightening; then calibrate the real lens from 36 real views, test
+the result on views it never saw, write a calibration file with NAVERA Lite's tool, and explain why your numbers
+are not the bench's.
+**Time:** 4 h to 5 h 30 in two sessions (a strong programmer: about 3 h 30).
+**Fast track:** if you know numpy and OpenCV, write the TODOs from the docstrings without the 🧰 and "Stuck?"
+boxes, then do "Going further" (*Zhang by hand*) and write `ZHANG_FX` in `answers.py`.
 
-| File | What you do |
-|---|---|
-| [fisheye_model.py](file:./fisheye_model.py) | Part A — TODOs 1–7: the lens model and the straightening |
-| [calibrate_lab.py](file:./calibrate_lab.py) | Part B — TODOs 8–10: your own calibration |
-| [report.md](file:./report.md) | Part C — your analysis (5 sections) |
-| [answers.py](file:./answers.py) | 3 quiz questions |
+`python3 run_lens.py test` (session 1) and `python3 calibrate_lab.py test` (session 2) name the **symptom** of a
+wrong result and the hint to open: try to find the mistake yourself first, then open that hint.
+
+Your files (📝 Code tab): [navera_lite/fisheye.py](file:./navera_lite/fisheye.py) (**your code**: eight
+functions, `TODO 1–8`), [answers.py](file:./answers.py), [report.md](file:./report.md), and two tools you only
+run: [run_lens.py](file:./run_lens.py) (session 1) and [calibrate_lab.py](file:./calibrate_lab.py) (session 2).
+
+| Lesson | Lab | You write |
+|---|---|---|
+| (nothing to read first) | Step 0 | a prediction |
+| §1–§2 pinhole vs fisheye, the model | Steps 1–2 | `fisheye_project` |
+| §3 where the model is valid | Step 3 | `theta_from_theta_d` |
+| §5 how wide | Step 4 | `stretch_at` |
+| §4 straightening | Step 5 | `undistort` |
+| §6, §8 calibration with OpenCV | Steps 6–7 | `board_points`, `calibrate_fisheye` |
+| §7 reprojection error, hold-out | Steps 8–10 | `reprojection_rms`, `holdout_rms` |
+| all | Steps 11–12 | the calibration tool, the memo |
+
+The data, in `/data/academy/19-calibration/`, are **real**: 36 frames of NAVERA's Insta360 ONE R recorded during
+the bench calibration of 6 October 2026 (top lens only, 1920 × 540; the chessboard is shown on a computer screen),
+and the bench's calibration file `insta360_top.yaml`. No camera is needed.
 
 > [!NOTE]
-> All pictures are **real**: top-lens frames of the Insta360 ONE R recorded during the bench
-> calibration of 6 October 2026, with the chessboard shown on a computer screen. Only the top half of
-> each frame is given (the half NAVERA uses; the bottom lens filmed the room and is never shared).
-> No camera is needed.
+> **Predict, then run.** Each `PREDICT_…` in `answers.py` is written **before** you run the step. It is never
+> marked right or wrong. Each function's docstring says its goal and gives one example with its result; the
+> runners' `test` mode tries every example. The lesson shows how; the code is yours.
 
-## Step 1 — Look at the data (5 min)
+## Session 1 — Lens modeller (about 2 h 30)
+
+## Step 0 — Pinhole or fisheye?
+
+No code. Two cameras have the same f = 600 px: a pinhole (r = f·tan θ) and an ideal fisheye (r = f·θ).
+
+> [!TASK]
+> **Predict** (`PREDICT_EDGE` in `answers.py`): a ray at 80° and a ray at 40° from the optical axis. For **each**
+> camera, how many times farther from the image centre does the 80° ray land than the 40° ray? Save the file
+> (`Ctrl+S`). Then read lesson §1–§2.
+
+## Step 1 — Look at the data
 
 ```bash
-ls /data/academy/19-calibration /data/academy/19-calibration/views | head -50
+ls /data/academy/19-calibration /data/academy/19-calibration/views
 ```
-
-You see the bench calibration `insta360_top.yaml`, 36 views `fNNNN.jpg` (1920 × 540) and
-`corners_ref.npz` (the corners, used by the grader). Print the calibration:
 
 ```bash
 cat /data/academy/19-calibration/insta360_top.yaml
 ```
 
-Find the model, the size, the 9 numbers of `camera_matrix` (K row by row), the 4 numbers of
-`distortion` (k1…k4), `rms_px`, `views`, `out_hfov_deg` and `crop`. Copy one view and open it:
+Find the model, the picture size, the 9 numbers of `camera_matrix` (K, row by row), the 4 numbers of
+`distortion` (k1…k4), `rms_px`, `views`, `out_hfov_deg` and `crop`. Then open
+[navera_lite/fisheye.py](file:./navera_lite/fisheye.py): read the conventions at the top and the given
+`load_calibration()` (it turns the file into K, D and the size) and `theta_d_of()` (the lens polynomial).
 
 ```bash
 cp /data/academy/19-calibration/views/f0216.jpg .
 ```
 
-Open [f0216.jpg](file:./f0216.jpg). The screen's edges, the window frame and the chessboard rows are
-curved. In the real room they are straight. This is the view Part A straightens.
-
-## Step 2 — Read the calibration and project points (TODOs 1 and 2, 25 min)
-
-**TODO 1** — `load_calibration(path)` returns `K` (3 × 3 float array), `D` (4 floats) and
-`size = (width, height)`. Use the file you printed in Step 1 to find the right keys.
-
-**TODO 2** — `project_fisheye(X_cam, K, D)`: the five steps of section 2.3 of the course, for an
-array of N points at once (numpy works on whole columns: `X[:, 0] / X[:, 2]`). Return an (N, 2) array.
-One step divides by r: a point on the optical axis has r = 0. Decide what that step must give there.
-
-Test it on the worked example of the course:
-
-```bash
-python3 -c "import numpy as np, fisheye_model as m; K, D, s = m.load_calibration(m.CALIB_FILE); print(m.project_fisheye(np.array([[1.0, 0.5, 2.0], [0.0, 0.0, 5.0]]), K, D))"
-```
-
-You must see about `[[1250.35 488.75] [937.06 317.66]]` (the second point is on the axis: it lands
-on the principal point). `nan` in the second row means you divided by r = 0.
+Open [f0216.jpg](file:./f0216.jpg): the screen's edges and the window frame are curved; in the room they are
+straight.
 
 > [!TASK]
-> TODOs 1 and 2. The grader compares your `project_fisheye()` with `cv2.fisheye.projectPoints` on 42
-> points: the largest difference must be below 10⁻⁶ px.
+> Write `CALIB_SIZE`: the picture size the calibration is for, `(width, height)`.
 
-## Step 3 — Where is the model valid? (TODO 3, 20 min)
+## Step 2 — The fisheye projection (TODO 1)
 
-`theta_d_of(theta, D)` (given) computes θ_d = θ (1 + k1 θ² + … + k4 θ⁸). **TODO 3** —
-`theta_from_theta_d(theta_d, D)` inverts it: given θ_d (the distance from the principal point divided
-by f), find θ. The polynomial rises, reaches a maximum, then falls (course, section 6), so:
+**TODO 1** `fisheye_project(X_cam, K, D)`: lesson §2, the five steps and the worked example, for **N points at
+once**.
 
-1. find where the rising part ends (evaluate `theta_d_of` on a fine grid of [0, π/2] and find the
-   first index where `np.diff` is ≤ 0);
-2. if θ_d is negative or above the maximum: return `float("nan")`;
-3. otherwise solve θ_d_of(θ) = θ_d on the rising part. **Bisection** is safe: keep an interval
-   [lo, hi] that contains the root and halve it 60–80 times.
+<details><summary>🧰 numpy: work on whole columns, and protect one division</summary>
 
-Test it:
+```python
+P = np.array([[1.0, 2.0, 4.0],
+              [3.0, 0.0, 2.0]])           # 2 points, one per row
+x = P[:, 0] / P[:, 2]                     # array([0.25, 1.5 ]) — column 0 divided by column 2, row by row
+np.hypot(x, P[:, 1])                      # √(x² + y²), element by element
+s = np.ones_like(x)                       # array([1., 1.])
+ok = x > 0.5                              # array([False,  True]) — a mask
+s[ok] = 3.0 / x[ok]                       # divide ONLY where the mask is True; elsewhere s stays 1
+np.stack([x, s], axis=1)                  # shape (2, 2): one row per point
+```
+</details>
 
 ```bash
-python3 -c "import fisheye_model as m; K, D, s = m.load_calibration(m.CALIB_FILE); print([m.theta_from_theta_d(t, D) for t in (0.0, 0.5303, 1.249, 1.30)])"
+python3 run_lens.py test
 ```
 
-Expected: about `[0.0, 0.5097, 1.17…, nan]` — 0.5097 rad is the 29.2° of the worked example.
+The TODO 1 lines must be ✔ (the others are later TODOs). Then compare your model with OpenCV's on 1000
+directions, and look at the picture it draws:
+
+```bash
+python3 run_lens.py project
+```
 
 > [!TASK]
-> TODO 3. Round trips θ → θ_d → θ must give θ back (to 10⁻⁵ rad), and θ_d = 1.30 and the image edge
-> (cx / fx = 1.419) must give `nan`.
+> With your `fisheye_project` and the bench calibration (a `python3 -c "…"` line or a small file), the pixel of
+> X_c = (−1.6, 0.4, 1.4) m: `STEP2_U`, `STEP2_V`; then `PINHOLE_GAP_PX`, its distance to the ideal pinhole pixel
+> (fx·a + cx, fy·b + cy) with the same K. Compare with the 19.3 px of the lesson's example.
 
-## Step 4 — Reprojection error, straightening, straightness (TODOs 4–7, 40 min)
+<details><summary>🧰 a small file to compute with your part</summary>
 
-**TODO 4** — `reprojection_rms(obj_pts, img_pts_list, rvecs, tvecs, K, D)`: the RMS of course
-section 4, over all corners, and the list of per-view RMS. For each view, the pose (`rvec`, `tvec`)
-puts the board into the camera frame; `cv2.Rodrigues()` turns a Rodrigues vector into a 3 × 3
-matrix. Project with **your** `project_fisheye()` and compare with the detected corners. Watch the
-array shapes: OpenCV stores points as (N, 1, 3) and (N, 1, 2). (This function is used in Part B.)
+```python
+# try_it.py — run it with: python3 try_it.py
+import numpy as np
+from navera_lite.fisheye import load_calibration, fisheye_project
+cal = load_calibration("/data/academy/19-calibration/insta360_top.yaml")
+K, D = cal["K"], cal["D"]
+print(fisheye_project(np.array([[1.0, 0.5, 2.0]]), K, D))      # the lesson's worked example
+```
+</details>
 
-**TODO 5** — `straight_camera_matrix(hfov_deg, size)`: the K of a perfect pinhole camera (course
-section 8 and lesson 18), principal point at (w/2, h/2). Check by hand: 90° on a 1000 × 500 image
-gives f = 500.
+<details><summary>Stuck? Hints, one at a time</summary>
 
-**TODO 6** — `undistort(img, K, D, K_new)`: course section 7 and the API table of section 5. No
-rotation, the new camera `K_new`, map type `cv2.CV_16SC2`, bilinear interpolation and a constant
-(black) border.
+1. θ is the angle from the **axis**: `np.arctan(r)`, with r = √(a² + b²). Not `np.arctan2(b, a)` (that is the
+   direction in the image).
+2. [[1267.30, 498.01]] is the ideal pinhole and [[1238.19, 482.11]] the ideal fisheye: the lens polynomial
+   `theta_d_of(theta, D)` (given) is missing.
+3. a and b are multiplied by θ_d / r, the same number for both.
+4. v uses fy = `K[1, 1]` and cy = `K[1, 2]`, u uses `K[0, 0]` and `K[0, 2]`.
+5. Return one row per point: `np.stack([u, v], axis=1)`, shape (N, 2).
+6. `nan` for the point on the axis: start a scale array at 1 (`np.ones_like(r)`) and divide θ_d by r only where
+   r > 1e-12 (🧰 above).
+</details>
 
-**TODO 7** — `line_bend_px(points)`: the straightness of a row of corners. Fit the best straight line
-through the points, then return the **largest** distance between a point and that line (a float).
-`cv2.fitLine` returns a unit direction (vx, vy) and one point (x0, y0) of the line; the distance
-formula comes from the cross product of 2D vectors.
+## Step 3 — Where is the model valid? (TODO 2)
 
-> [!TIP]
-> Why not `np.polyfit` (y = a·x + b)? A chessboard **column** is almost vertical: x hardly changes,
-> and y = a·x + b cannot describe a vertical line. `cv2.fitLine` fits in every direction.
+**TODO 2** `theta_from_theta_d(theta_d, D)`: lesson §3 and its 🧰 bisection box. Plan it on paper first:
+(1) where does the rising part of θ_d(θ) end on [0, π/2]? (evaluate `theta_d_of` on a fine grid, e.g. 20 001
+points, and find the first place where it stops increasing: `np.diff`); (2) which θ_d have no answer?
+(3) bisection on the rising part.
 
-Now run Part A:
+<details><summary>🧰 numpy: where does an array stop rising?</summary>
+
+```python
+y = np.array([0.0, 1.0, 3.0, 4.0, 3.5, 2.0])
+np.diff(y)                                # array([ 1. ,  2. ,  1. , -0.5, -1.5]) — y[i+1] − y[i]
+np.nonzero(np.diff(y) <= 0)[0]            # array([3, 4]) — y stops rising after index 3
+y[3]                                      # 4.0 — the top
+```
+</details>
 
 ```bash
-python3 fisheye_model.py
+python3 run_lens.py test
 ```
 
-You should see: your projection equal to OpenCV's (difference ~10⁻¹³ px), the worked example, the
-ideal field of view 166.5° × 42.8°, the curve peak at 67.4° / 825 px, the left edge "not describable",
-f = 659.8 px for 111°, a line like `most bent chessboard line: before 5.12 px, after 0.63 px`, and the
-trade-off table of the course. Open [before_after.jpg](file:./before_after.jpg): the red lines join the
-first and last corner of each row — before, the corners sag away from them; after, they sit on them.
-The black areas are directions the lens never saw.
+```bash
+python3 run_lens.py curve
+```
 
-> [!QUESTION]
-> Why is the "after" value 0.6 px and not 0? Think of the RMS of the calibration (0.5 px), of the
-> corner detector, and of a computer screen that is not perfectly flat.
+Open `out/lens_curve.png`: the pinhole, the ideal fisheye and the bench calibration.
 
 > [!TASK]
-> TODOs 4–7, then run `fisheye_model.py`: it writes the `model` part of `results.json` and
-> `before_after.jpg`. The grader also checks that your straightened picture is NAVERA's picture.
+> With **your** `theta_from_theta_d`: the angle from the optical axis of pixel (1500, 100) of the bench picture,
+> in degrees (`PIXEL_ANGLE_DEG`; lesson §3 shows the way back from a pixel to θ_d). Then `EXPLAIN_TURN_BACK`:
+> why does the calibrated curve turn back down after 67.4°, when a real lens never does? (lesson §3, the
+> corners' picture)
 
-## Step 5 — Compare with NAVERA's code (5 min)
+<details><summary>Stuck? Hints, one at a time</summary>
 
-```bash
-python3 compare_navera.py
-```
+1. Bisection needs an interval where the function **rises**: [0, θ_top], with θ_top where the grid values stop
+   increasing.
+2. θ_d = 1.2 has two answers (one rising, one falling): 1.249 is on the falling part; the rising one is about
+   1.083. Search only in [0, θ_top].
+3. θ_d above the top value (or negative): `return float("nan")` before any search.
+4. A result near 29.2 instead of 0.5097: you returned degrees; the function returns radians.
+5. PIXEL_ANGLE_DEG: a' = (u − cx)/fx and b' = (v − cy)/fy use **different** focal lengths; θ_d = √(a'² + b'²);
+   then `math.degrees(theta_from_theta_d(...))`. 48.3°? You used fx for both. 51.8°? That is θ_d in degrees: the
+   polynomial is not inverted.
+</details>
 
-NAVERA's `CameraModel` straightens the same frame. You should read `max_out_hfov_deg() = 110.94 deg`,
-the 111° asked in the file **capped** to 110.94°, `K_out` focal length 660.48 px (= fx), and a mean
-difference of 0.000: your code and NAVERA's give the same picture. The three test points show
-NAVERA's `undistort_points()`: the fisheye pixel (200, 100), near the top-left corner, lands at
-(−125.5, −23.5) — outside the 111° straight picture. That part of the lens is what the crop gives up. Find `max_out_hfov_deg()` and
-`undistort()` in [camera_model.py](file:navera/navera_common/navera_common/camera_model.py).
+## Step 4 — How wide should the straight view be? (TODO 3)
 
-## Step 6 — Calibrate the lens yourself (TODOs 8–10, 40 min)
+You are the **trade-off engineer**: the drone's straight view must keep detail for map matching and cover as
+much ground as possible.
 
-Open [calibrate_lab.py](file:./calibrate_lab.py).
+**TODO 3** `stretch_at(theta_deg, f_new_px, K, D)`: lesson §5, the stretch, with the derivative θ_d′(θ) of the
+lens polynomial. Return `nan` where the model is not valid (θ_d′ ≤ 0) and at or beyond 90°.
 
-**TODO 8** — `board_points(cols, rows, square_m)`: the 3D corners in the board frame, Z = 0 (Zhang),
-as a (54, 1, 3) float64 array, row by row with the column index changing fastest. Corner 1 is at
-(s, 0, 0) and corner 9 at (0, s, 0) for s = 0.03294 m.
+<details><summary>🧰 the derivative of a polynomial</summary>
 
-**TODO 9** — `calibrate_fisheye(obj, views, size)`: one call of `cv2.fisheye.calibrate` (course
-section 5) on all the views. Choose the three flags described in the docstring from the list in
-section 5. Do **not** catch `cv2.error`: the given `calibrate_robust()` needs it to drop refused views.
-
-**TODO 10** — `calibrate_pinhole(obj, views, size)`: the Brown–Conrady model with
-`cv2.calibrateCamera`. Read "Formats that trip everyone" in section 5 first — the same trap is the
-bug of NAVERA's `--model pinhole` (course, "In NAVERA").
-
-Run it (the corner detection takes about 1 minute the first time, then it is cached in
-`corners.npz`; the whole script takes about 2 minutes):
-
-```bash
-python3 calibrate_lab.py
-```
-
-Read the output carefully:
-
-1. **Your calibration**: views used and refused, fx, fy, cx, cy, D, and the RMS computed by OpenCV
-   **and** by your `reprojection_rms()` — they must be equal. The worst and best views. The farthest
-   corner angle in the views used and in all views: compare them — which views did OpenCV refuse?
-   You should see 2 refused views, `f0023` and `f0208`. They are among the most extreme views
-   (the board far to the right, where the distortion is strong). This is why Part A uses `f0216`, a view that
-   the calibration keeps.
-2. **Stability**: fx from random subsets of 8, 12, 20 and 30 views. How does the spread change?
-3. **Hold-out**: calibration on 28 views, error measured on the 8 others.
-4. **Brown–Conrady** on the same views: its RMS, its fx, its hold-out error.
+The derivative of c·θⁿ is n·c·θⁿ⁻¹. So θ·(1 + k1θ²) = θ + k1θ³ has the derivative 1 + 3k1θ². Example:
+k1 = 0.2, θ = 0.5: θ + k1θ³ = 0.525 and its derivative 1 + 3·0.2·0.25 = 1.15.
+</details>
 
 > [!TASK]
-> TODOs 8–10, then run `calibrate_lab.py`: it writes the `calibration` part of `results.json`. The
-> grader checks your functions on 12 real views, your RMS against OpenCV's, the subset experiment
-> (fx must be more stable with 30 views than with 8), the hold-out and the Brown–Conrady fit.
-
-## Step 7 — Calibrate with NAVERA's own tool (5 min)
-
-Run NAVERA's real calibration tool on the same folder:
+> **Predict** (`PREDICT_STRETCH`): at the left and right edges of the 111° straight view, how many straight-view
+> pixels are made from one lens pixel? Then run:
 
 ```bash
-python3 ~/navera/navera_tools/calibrate_camera.py --images /data/academy/19-calibration/views --board 9x6 --square-mm 32.94 --out my_calib.yaml
+python3 run_lens.py test
 ```
 
-- `--board 9x6`: the inner corners, 9 columns × 6 rows; `--square-mm 32.94`: the side of one square.
-- The model is `fisheye` by default. The views are already the top halves, so no `--crop` is needed
-  here. For a live calibration of the full 1920 × 1080 picture you would add `--crop top`, so that the
-  file records the crop that `live_camera.py` checks.
+```bash
+python3 run_lens.py stretch
+```
 
-It prints `board found` for each view, then a line like
-`fisheye calibration from 34 views: RMS 0.506 px (usable); NAVERA will publish a 110.2 deg wide …`.
+Open `out/stretch.png`.
+
+> [!TASK]
+> Write `STRETCH_EDGE_111`, `H_MAX_DEG` (lesson §5, NAVERA's rule f_new ≥ fx, two decimals) and
+> `H_MAX_PARTNER_DEG`: the same rule for a partner's camera with fx = 540 px and pictures 1920 px wide. Then
+> `EXPLAIN_FOV`: as the trade-off engineer, why 111° and not 150°? Quote two numbers from the table.
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. Degrees in, radians inside: `t = math.radians(theta_deg)`.
+2. 1.702 instead of 1.474 for (40°, 659.79): you used fx alone below the line; the lens' pixels per radian at θ
+   are fx·θ_d′(θ).
+3. 1.602: that is θ_d/θ (an average), not the derivative 1 + 3k1θ² + 5k2θ⁴ + 7k3θ⁶ + 9k4θ⁸. 0.679: upside down
+   (straight pixels per radian on top).
+4. `nan` cases: `if not 0 <= t < math.pi / 2` and `if slope <= 0`: `return float("nan")`.
+</details>
+
+## Step 5 — Straighten a real view (TODO 4)
+
+**TODO 4** `undistort(img, K, D, K_new)`: lesson §4 and §8 — the map once, then remap. No rotation
+(`np.eye(3)`), map type `cv2.CV_16SC2`, bilinear interpolation, a constant (black) border.
+
+<details><summary>🧰 OpenCV: the two calls</summary>
+
+```python
+m1, m2 = cv2.fisheye.initUndistortRectifyMap(K, D, R, K_new, (width, height), cv2.CV_16SC2)
+out = cv2.remap(img, m1, m2, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+```
+R is the rotation of the new camera (none here); `(width, height)` is the size of the NEW picture.
+</details>
+
+```bash
+python3 run_lens.py test
+```
+
+```bash
+python3 run_lens.py straighten
+```
+
+Open `out/before_after.jpg`: the red lines join each row's first and last corner. Before, the corners sag away
+from them; after, they sit on them. Try another view too: `python3 run_lens.py straighten f0323`.
+
+> [!TASK]
+> Write `BEND_BEFORE_PX` and `BEND_AFTER_PX` (f0216, two decimals), and `EXPLAIN_RESIDUAL`: why is the "after"
+> value not 0? (Think of the calibration's RMS, the corner detector and a screen that is not perfectly flat.)
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. The two calls of the 🧰 box, with R = `np.eye(3)` and the NEW camera `K_new`.
+2. Wrong shape, or an OpenCV size error: the size is `(w, h)` with `h, w = img.shape[:2]`.
+3. The centre of the straight view takes its colour from (cx, cy) of the fisheye picture: if not, check K_new
+   (the 4th argument) and the rotation (identity).
+4. A coloured bottom row where black is expected: the border mode must be `cv2.BORDER_CONSTANT`
+   (`BORDER_REPLICATE` or `BORDER_REFLECT` invent colours where the lens saw nothing).
+</details>
+
+> [!TIP] 🏅 End of session 1 — Lens modeller
+> Press **✔ Check my work**. When checks 1–6 pass (TODO 1–4 and Steps 0–5; the others are session 2), you earn
+> the **Lens modeller** badge. If the class session ends here, stop here.
+
+## Session 2 — Calibrator (about 2 h 30)
+
+Read lesson §6–§8 first.
+
+## Step 6 — The board (TODO 5)
+
+**TODO 5** `board_points(cols, rows, square_m)`: lesson §8, "Corners": the board is the plane Z = 0, in the
+detector's order, shape (cols·rows, 1, 3), float64.
+
+```bash
+python3 calibrate_lab.py test
+```
+
+Then find the corners in the 36 real views (about 30 s; the result is cached in `corners.npz`):
+
+```bash
+python3 calibrate_lab.py detect
+```
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. Two loops, rows outside, columns inside: the point of row r, column c is (c·s, r·s, 0).
+2. [[0, 0, 0], [0, 0.5, 0], [0.5, 0, 0], …]: the ROW index changes fastest — swap the loops.
+3. Start from `np.zeros((rows * cols, 1, 3))` and fill `obj[i, 0, 0]` and `obj[i, 0, 1]`; zeros are float64.
+</details>
+
+## Step 7 — Calibrate (TODO 6) — and the detective
+
+**TODO 6** `calibrate_fisheye(obj, views, size)`: lesson §8, the call and the flags table: the three flags the
+docstring describes, `CRITERIA` (given at the top of the file), K0 = identity, D0 = four zeros. **Do not** catch
+`cv2.error`: the given `calibrate_robust()` reads the refused view's number in it.
+
+> [!TASK]
+> **Predict** (`PREDICT_FX`): will your fx be the bench's 660.5 px? Then:
+
+```bash
+python3 calibrate_lab.py test
+```
+
+```bash
+python3 calibrate_lab.py calibrate
+```
+
+It calibrates with all the views, dropping those OpenCV refuses, prints fx, fy, cx, cy, D, the RMS, and one line
+per view: its RMS (once TODO 7 is done), its farthest corner from the axis and the board's columns in the picture.
+
+> [!TASK]
+> Write `MY_FX`, `MY_RMS`, `VIEWS_USED`, `REFUSED_VIEWS` and `FARTHEST_USED_DEG`. You are now the **detective**:
+> compare the refused views' lines with the others (and look at them: `cp /data/academy/19-calibration/views/f0208.jpg .`).
+> `EXPLAIN_REFUSED`: what do the refused views have in common, and why can OpenCV not estimate their pose
+> reliably? What does refusing them cost the calibration (lesson §3)?
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. `cv2.fisheye.calibrate([obj] * len(views), views, size, np.eye(3), np.zeros((4, 1)), flags=…, criteria=CRITERIA)`
+   returns five things: return them as they come.
+2. Flags are combined with `|`: the three of the lesson's table that recompute the poses, check the conditioning
+   and fix the skew.
+3. The test says the skew K[0, 1] ≠ 0: the "fix skew" flag is missing. calibrate_robust refuses nothing and the
+   RMS looks fine? `CALIB_CHECK_COND` is missing.
+4. "returned None" from calibrate_robust: a `try/except` inside your function swallowed the error — remove it.
+</details>
+
+## Step 8 — The reprojection error (TODO 7)
+
+**TODO 7** `reprojection_rms(obj, views, rvecs, tvecs, K, D)`: lesson §7. For each view: R from the Rodrigues
+vector (`cv2.Rodrigues(rvec)[0]`), the board corners in the camera frame X_c = R·X + t, **your**
+`fisheye_project`, then the errors against the detected corners. Return the RMS over all corners and the list of
+per-view RMS values.
+
+<details><summary>🧰 numpy: R·X for many points at once</summary>
+
+```python
+O = np.array([[1.0, 0.0, 0.0],
+              [0.0, 2.0, 0.0]])          # 2 points, one per row
+R = np.array([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
+t = np.array([[0.0], [0.0], [5.0]])      # OpenCV gives a (3, 1) column
+O @ R.T + t.reshape(1, 3)                # array([[ 0., 1., 5.], [-2., 0., 5.]]) — each row is R·X + t
+```
+</details>
+
+```bash
+python3 calibrate_lab.py test
+```
+
+```bash
+python3 calibrate_lab.py calibrate
+```
+
+Your RMS must now equal OpenCV's (to 10⁻⁶ px), and every view has its own RMS.
+
+> [!TASK]
+> Write `WORST_VIEW`: the used view with the largest RMS.
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. `O = np.asarray(obj, dtype=float).reshape(-1, 3)` and `np.asarray(view).reshape(-1, 2)`: OpenCV's (N, 1, 3)
+   and (N, 1, 2) arrays become (N, 3) and (N, 2).
+2. Use `O @ R.T`, not `O @ R`: the 🧰 box applies R to each row.
+3. 0.7 instead of 0.5 in the test: a distance is √(du² + dv²), not du + dv. 0.25: take the square root.
+4. 0.5 instead of 0.7071: you averaged the per-view RMS values. Collect the squared errors of **all** corners
+   (a list, then `np.concatenate`), average them, then the square root.
+</details>
+
+## Step 9 — How stable is fx?
+
+```bash
+python3 calibrate_lab.py stability
+```
+
+It calibrates random subsets of 8, 12, 20 and 30 views, 10 times each, with your functions (about 30 s).
+
+> [!TASK]
+> Write `FX_STD_8` and `FX_STD_30`, and `EXPLAIN_STABILITY`: what do these spreads say about a calibration with
+> "RMS 0.5 px", and about how many views to take?
+
+## Step 10 — The honest test (TODO 8)
+
+**TODO 8** `holdout_rms(obj, test_views, K, D)`: the least guided function. Lesson §7, point 1, says what is
+missing for an unseen view and which two OpenCV calls find it; the docstring says what to return. Plan on paper:
+what does each call need and give, and which of **your** functions finishes the job?
+
+```bash
+python3 calibrate_lab.py test
+```
+
+```bash
+python3 calibrate_lab.py holdout
+```
+
+It calibrates on 28 views, tests on the 8 others with your `holdout_rms`, then does the same with the
+Brown–Conrady model (given). Then draw the lens curves of your calibration, the bench's and Brown–Conrady's:
+
+```bash
+python3 calibrate_lab.py curves
+```
+
+Open `out/my_curves.png`.
+
+> [!TASK]
+> Write `TRAIN_RMS`, `TEST_RMS`, `BC_TEST_RMS` (three decimals), and `REASON_BC`: the lesson says a fisheye lens
+> needs the fisheye model, yet Brown–Conrady does as well on the hold-out. Why is there no contradiction? (Where
+> are the test corners? Where do the curves part?)
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. For each test view: `cv2.fisheye.undistortPoints(view, K, D)` gives the corners as ideal pinhole rays
+   (normalised coordinates).
+2. `cv2.solvePnP(obj, those_rays, np.eye(3), None)` returns `ok, rvec, tvec`: the board's pose, with K = identity
+   because the rays are already normalised.
+3. Collect the rvecs and tvecs, then your `reprojection_rms(obj, test_views, rvecs, tvecs, K, D)` does the rest.
+4. About 13 px instead of about 0.57? You ran solvePnP on the raw fisheye pixels with K and no distortion: the
+   pose is wrong. Undo the lens first (hint 1).
+</details>
+
+## Step 11 — Your calibration file, made by a tool
+
+NAVERA Lite's calibration tool does what NAVERA's does (lesson, "In NAVERA"), with **your** `board_points` and
+`calibrate_fisheye`:
+
+```bash
+python3 -m navera_lite.tools.calibrate --images /data/academy/19-calibration/views --board 9x6 --square-mm 32.94 --out my_calib.yaml
+```
+
+- `--board 9x6`: the inner corners, 9 columns × 6 rows; `--square-mm 32.94`: one square's side.
+- The views are already the top halves. For full two-lens pictures you would add `--crop top`, and the file
+  would record the crop, as NAVERA's does.
 
 ```bash
 cat my_calib.yaml
 ```
 
-Compare `camera_matrix[0]` (fx) and `rms_px` with your `results.json`. Same detector, same flags, same
-views, same order: you should find the **same** numbers. Compare also with the bench file (fx 660.5 px
-from 38 views). Is the difference larger or smaller than the spread you measured in Step 6?
+Same detector, same flags, same views: its fx should be yours. Now three facts disagree with the bench file:
+your fx is not 660.5 px, the file's `out_hfov_deg` is not 111, and (Step 10) Brown–Conrady was as good as the
+fisheye model. You explained the third in `REASON_BC`. Two facts help with the first: the course's 36 views are
+36 of the bench session's 39 (three were left out of the dataset, two because a person's face is visible), and
+your Step 9 spread.
 
 > [!TASK]
-> Produce `my_calib.yaml` in your lesson folder. Its fx must agree with your own calibration within
-> 1 px and with the bench within 3 %, with an RMS below 1 px.
+> Write `CLI_HFOV_DEG` (from `my_calib.yaml`), `REASON_FX` (two reasons why your fx is not the bench's) and
+> `REASON_HFOV` (why your file says `CLI_HFOV_DEG` and not 111°: lesson §5).
 
-## Step 8 — Draw the lens curves (10 min)
+## Step 12 — The memo, then look back
 
-```bash
-python3 lens_curve.py
-```
-
-Open [lens_curve.png](file:./lens_curve.png): the distance r from the principal point as a function of
-the ray angle θ, for the ideal pinhole (f tan θ), the ideal fisheye (f θ), the bench calibration, your
-fisheye calibration and your Brown–Conrady fit. The grey zone starts at the farthest corner used by
-your calibration. Answer for yourself:
-
-- The two **fisheye** curves (bench and yours): up to which angle do they agree? Why there?
-- The Brown–Conrady curve leaves the others early (near 25°), because its fx is larger (about
-  738 px against about 670 px). It is a different model with different parameters. What happens to
-  it at large angles, and why (look at its formula: it starts from tan θ)?
-- Your fisheye calibration and the bench one turn back down at different angles. Which one is "right"?
-
-## Step 9 — Report and quiz (30 min)
-
-Fill [report.md](file:./report.md): keep the five `## ` headings, write at least 40 words under each,
-in full sentences, with **your** numbers.
-
-1. **My calibration** — fx, fy, cx, cy, RMS, views detected / used / refused; comparison with the
-   bench file and with `my_calib.yaml`.
-2. **Stability and hold-out** — std of fx with 8 and 30 views; train vs test RMS; what they mean.
-3. **Fisheye or Brown–Conrady** — both RMS, both hold-out errors, why they are similar, where the
-   models differ (use `lens_curve.png`), which one NAVERA must use and why.
-4. **The 111° crop** — f_new at 111°, 150° and 166°, centre detail kept, edge stretch, ground sampling
-   distance at 150 m.
-5. **Recommendation** — 3–5 concrete rules for calibrating a new NAVERA unit before a field test (for
-   example in a partner's workshop in Singapore).
-
-Then answer the three questions in [answers.py](file:./answers.py).
+Fill [report.md](file:./report.md) (150–400 words, your own words, keep the three headings): what the lens model
+says and how wide the straight view should be; your calibration and how far you trust it; and your
+**recommendation** for calibrating a new NAVERA unit before a field test (for example in a partner's workshop in
+Singapore): 3–5 concrete rules, from your numbers.
 
 > [!TASK]
-> `report.md` with the five sections (≥ 40 words each); section 1 must quote your fx (± 1 px) and
-> section 4 the focal length of a 150° straight view. Quiz answered.
+> report.md has the three headings and at least 150 words, and quotes the widest straight view (Step 4), your fx
+> and your hold-out (test) RMS (Steps 7 and 10).
 
-Press **✔ Check my work**.
+Press **✔ Check my work**: it tests your functions on lenses, views and pictures they have never seen. When every
+check passes, you earn the **Calibrator** badge. Then look back, without the lesson:
+
+1. Explain to a colleague in three sentences why NAVERA throws away a third of its lens' view.
+2. Which of your predictions was the most wrong? What did you assume?
+3. The bench views reach 52° from the axis; the 111° view needs 55.5°. What would you change in the photo session?
+
+Write your answers in `LOOK_BACK` in `answers.py` if you want your teacher to read them (not graded).
 
 ## Going further (optional)
 
-- **Zhang's closed form, by hand.** Take 5 views from `corners.npz`, convert the corners to ideal
-  pinhole pixels with `cv2.fisheye.undistortPoints(..., P=K)` (your calibration), estimate one
-  homography per view with `cv2.findHomography(board_xy, pixels)`, build the 2 equations per view on
-  b = (B11, B12, B22, B13, B23, B33), solve V b = 0 with `np.linalg.svd`, and recover fx, fy, cx, cy
-  (Zhang 2000, appendix B). How close is the closed form to the refined K?
-- **Fewer parameters.** Add `cv2.fisheye.CALIB_FIX_K3 | cv2.fisheye.CALIB_FIX_K4` to your flags and
-  run again. How do the RMS, the hold-out error and the curve beyond 45° change? Is a simpler model
-  better here?
-- **Your calibration at work.** In `fisheye_model.py`, set `CALIB_FILE = "my_calib.yaml"` and run it.
-  Is the straightened chessboard as straight as with the bench file? Then try `HFOV = 150.0` and look
-  at how small the chessboard becomes in `before_after.jpg`.
+- **Zhang by hand.** Take 5 views from `corners.npz`, turn their corners into ideal pinhole pixels with
+  `cv2.fisheye.undistortPoints(view, K, D, P=K)` (your calibration), fit one homography per view with
+  `cv2.findHomography(board_xy, pixels)`, build the two equations per view of the lesson's optional box on
+  b = (B11, B12, B22, B13, B23, B33), solve V·b = 0 with `np.linalg.svd`, and recover fx, fy, cx, cy (Zhang 2000,
+  appendix B). How close is `ZHANG_FX` to your refined fx?
+- **Fewer numbers.** Add `cv2.fisheye.CALIB_FIX_K3 | cv2.fisheye.CALIB_FIX_K4` to your flags (keep a copy of your
+  function first). How do the RMS, the hold-out error and the curve beyond 45° change? Does the curve still turn
+  back?
+- **Your calibration at work.** Straighten f0216 with `out/my_fisheye.yaml` instead of the bench file, at
+  110.15°. Is the chessboard as straight?
+- **Fly your own camera part.** Swap in your mission-18 `camera.py` (keep a backup) and run `python3 run_lens.py
+  stretch` again: `cp navera_lite/camera.py camera_course.py && cp ../18-camera-model/navera_lite/camera.py navera_lite/`.

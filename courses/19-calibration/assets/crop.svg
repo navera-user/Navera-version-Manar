@@ -38,12 +38,12 @@
 <text x="514.9" y="265.1" text-anchor="end" fill="#a8680d" font-weight="bold">166°: f = 118 px, 18 %</text>
 <text x="80" y="124" fill="#0b6e8a">f_new ≥ fx:</text>
 <text x="80" y="140" fill="#0b6e8a">no centre detail lost</text>
-<text x="655" y="70" text-anchor="middle" font-weight="bold" fill="#1d2733">edge stretch</text>
-<text x="655" y="88" text-anchor="middle" fill="#3f4d5c" font-size="12">1 / cos²(hfov / 2)</text>
-<text x="575" y="118" font-weight="bold" fill="#1d2733">view</text><text x="625" y="118" font-weight="bold" fill="#1d2733">f_new</text><text x="693" y="118" font-weight="bold" fill="#1d2733">edge ×</text>
-<text x="575" y="142" font-weight="normal" fill="#1d2733">111°</text><text x="625" y="142" font-weight="normal" fill="#1d2733">660 px</text><text x="693" y="142" font-weight="normal" fill="#1d2733">3.1</text>
-<text x="575" y="166" font-weight="normal" fill="#1d2733">150°</text><text x="625" y="166" font-weight="normal" fill="#1d2733">257 px</text><text x="693" y="166" font-weight="normal" fill="#1d2733">15</text>
-<text x="575" y="190" font-weight="normal" fill="#1d2733">166°</text><text x="625" y="190" font-weight="normal" fill="#1d2733">118 px</text><text x="693" y="190" font-weight="normal" fill="#1d2733">67</text>
+<text x="655" y="70" text-anchor="middle" font-weight="bold" fill="#1d2733">vertical view</text>
+<text x="655" y="88" text-anchor="middle" fill="#3f4d5c" font-size="12">2·atan(270 / f_new)</text>
+<text x="575" y="118" font-weight="bold" fill="#1d2733">view</text><text x="625" y="118" font-weight="bold" fill="#1d2733">f_new</text><text x="693" y="118" font-weight="bold" fill="#1d2733">VFOV</text>
+<text x="575" y="142" font-weight="normal" fill="#1d2733">111°</text><text x="625" y="142" font-weight="normal" fill="#1d2733">660 px</text><text x="693" y="142" font-weight="normal" fill="#1d2733">44.5°</text>
+<text x="575" y="166" font-weight="normal" fill="#1d2733">150°</text><text x="625" y="166" font-weight="normal" fill="#1d2733">257 px</text><text x="693" y="166" font-weight="normal" fill="#1d2733">92.8°</text>
+<text x="575" y="190" font-weight="normal" fill="#1d2733">166°</text><text x="625" y="190" font-weight="normal" fill="#1d2733">118 px</text><text x="693" y="190" font-weight="normal" fill="#1d2733">132.8°</text>
 <text x="575" y="232" fill="#d64545" font-size="12">red zone: wider than</text>
 <text x="575" y="248" fill="#d64545" font-size="12">the lens itself (166.5°)</text>
 </svg>

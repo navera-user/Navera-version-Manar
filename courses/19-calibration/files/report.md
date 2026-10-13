@@ -1,35 +1,23 @@
-# Lab 19 — Calibration report: Insta360 ONE R top lens
+# Memo — the Insta360 lens, and how to calibrate a NAVERA unit
 
-<!-- Write in your own words, in full sentences. Keep the five "## " headings exactly.
-     At least 40 words per section. Quote YOUR numbers from results.json and my_calib.yaml.
-     Text inside these comment marks is not counted. -->
+<!-- Write 150–400 words in your own words, for the engineer who will calibrate the next NAVERA unit.
+     Keep the three headings exactly as they are. Quote your numbers with their units (px, °).
+     Delete these comment lines if you want. -->
 
-## 1. My calibration
+## Lens model
 
-<!-- fx, fy, cx, cy and the RMS of your calibration (calibrate_lab.py); how many views were
-     detected, used and refused (and which); compare with the bench file (660.5 px, 0.525 px,
-     38 views) and with my_calib.yaml from NAVERA's tool. -->
+<!-- Where the bench calibration is valid (the corners, the curve's top, the picture's edges), and how wide
+     the straight view should be: the widest view with f_new ≥ fx (Step 4), the centre detail kept and the
+     stretch at the edges, and what a 150° view would cost. -->
 
-## 2. Stability and hold-out
+## My calibration
 
-<!-- The std of fx with 8 and with 30 views. The train RMS and the test RMS of the hold-out.
-     What do they say about how many views a calibration needs, and about how far you can
-     trust "RMS 0.5 px"? -->
+<!-- Your fx, RMS and views used/refused (Step 7), the spread of fx (Step 9), your train and hold-out RMS
+     (Step 10), and how far you trust your calibration: at which angles, and why your numbers differ from
+     the bench's. -->
 
-## 3. Fisheye or Brown–Conrady
+## Recommendation
 
-<!-- RMS and hold-out RMS of both models. Why can both fit these views about equally well?
-     Use lens_curve.png and the farthest corner angle: where do the two models disagree?
-     Which model must NAVERA use for a 166° lens, and why? -->
-
-## 4. The 111° crop
-
-<!-- f of the straight view at 111°, 150° and 166°; the share of the lens' centre resolution
-     each keeps; the edge stretch 1/cos²(hfov/2). Ground sampling distance at 150 m for the
-     111° view. Why is 111° the right choice for NAVERA? -->
-
-## 5. Recommendation
-
-<!-- You must calibrate a new NAVERA unit before a field test (for example in a partner's workshop
-     in Singapore). Give 3–5 concrete rules: board, number and placement of views, what to check
-     in the result, and when to recalibrate. -->
+<!-- 3–5 concrete rules for calibrating a new NAVERA unit before a field test (for example in a partner's
+     workshop in Singapore): board, number and placement of the views, what to check in the result
+     (which numbers, which limits), and when to calibrate again. -->

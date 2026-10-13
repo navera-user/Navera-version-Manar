@@ -1,4 +1,4 @@
-# NAVERA camera calibration (navera_tools/calibrate_camera.py) — NAVERA_CAMERA_CALIBRATION
+# camera calibration written by NAVERA Lite (python3 -m navera_lite.tools.calibrate) — 34 views of a 9x6 board, 32.94 mm squares
 model: fisheye
 image_width: 1920
 image_height: 540
@@ -19,5 +19,9 @@ distortion:
 - -0.3607479676785249
 rms_px: 0.506
 views: 34
-created: '2026-10-07T12:06:54Z'
 out_hfov_deg: 110.15
+crop:
+- 0
+- 0
+- 1920
+- 540

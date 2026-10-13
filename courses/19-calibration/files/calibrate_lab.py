@@ -1,200 +1,369 @@
-# Lab 19 — Part B: calibrate the Insta360 top lens yourself, and test the calibration.
-#
-# Run:  python3 calibrate_lab.py
-# 1. finds the 9x6 chessboard corners in the 36 real views (about 1 minute the first time,
-#    then cached in corners.npz),
-# 2. calibrates with YOUR calibrate_fisheye() and recomputes the RMS with YOUR
-#    reprojection_rms() from fisheye_model.py,
-# 3. measures how stable fx is with 8 / 12 / 20 / 30 views, and the error on views the
-#    calibration has never seen (hold-out),
-# 4. fits the Brown–Conrady (pinhole) model with YOUR calibrate_pinhole() on the same views,
-# and writes the "calibration" part of results.json.
+"""calibrate_lab.py — calibrate the Insta360 top lens with YOUR functions of navera_lite/fisheye.py (session 2),
+and test the calibration honestly.
+
+    python3 calibrate_lab.py test         check TODO 5-8 on made-up views (no detection needed)
+    python3 calibrate_lab.py detect       find the chessboard in the 36 real views (about 30 s) -> corners.npz
+    python3 calibrate_lab.py calibrate    YOUR calibration on every view: refused views, RMS, each view    (Steps 7-8)
+    python3 calibrate_lab.py stability    fx from random subsets of 8, 12, 20 and 30 views (about 30 s)  (Step 9)
+    python3 calibrate_lab.py holdout      train on 28 views, test on 8 unseen ones; Brown–Conrady too      (Step 10)
+    python3 calibrate_lab.py curves       the lens curves: the bench file, yours, Brown–Conrady              (Step 10)
+
+Pictures and your calibration go to out/ — click them in the file list of the 📝 Code tab.
+"""
 import glob
 import math
 import os
-import re
-import time
+import sys
 
-import cv2
 import numpy as np
 
-import fisheye_model as fm
+import runner_kit as rk
 
-VIEWS = "/data/academy/19-calibration/views"
-BOARD = (9, 6)          # inner corners: 9 columns x 6 rows
-SQUARE_M = 0.03294      # side of one square on the screen, in metres
+# ---- you don't need to change anything in this file (but you can read it!) ----
 
-
-def board_points(cols, rows, square_m):
-    """3D coordinates of the inner corners in the BOARD frame (the board is the plane Z = 0):
-    an array (cols*rows, 1, 3) of float64, in the order the detector returns them —
-    row by row, the column index changing fastest: (0,0,0), (s,0,0), (2s,0,0), ..."""
-    # TODO 8: lesson section 3.1 (the board is the plane Z = 0) and 3.2 (the corner order).
-    return None
-
-
-def calibrate_fisheye(obj, views, size):
-    """One call of cv2.fisheye.calibrate on all views. Returns (rms, K, D, rvecs, tvecs).
-    Flags: recompute the board poses at each iteration, refuse ill-conditioned views,
-    no skew."""
-    # TODO 9: lesson section 5 (the API table and the flags). Start from K = identity and
-    #   D = 4 zeros. Stop criteria: (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 200, 1e-9).
-    #   Do NOT catch cv2.error here (calibrate_robust() below needs it to drop the refused views).
-    return None
+fe = rk.load_student("navera_lite.fisheye")
+DATA = "/data/academy/19-calibration"
+VIEWS = os.path.join(DATA, "views")
+CALIB = os.path.join(DATA, "insta360_top.yaml")
+SIZE = (1920, 540)
+OUT = "out"
+CACHE = "corners.npz"
+_kit_hint = rk._hint
 
 
-def calibrate_pinhole(obj, views, size):
-    """The Brown–Conrady model (k1, k2, p1, p2, k3) with cv2.calibrateCamera on the same
-    views. Returns (rms, K, dist, rvecs, tvecs). Careful: this function wants float32."""
-    # TODO 10: the same idea as TODO 9 with cv2.calibrateCamera (no starting K or dist needed).
-    #   Read "Formats that trip everyone" in lesson section 5 before you start.
-    return None
+def _hint(e):
+    s = str(e)
+    if "objectPoints should contain vector of vectors of points of type Point3f" in s or "Point3f" in s:
+        return " — the board points must be float64 for cv2.fisheye (float32 for cv2.calibrateCamera), shape (N, 1, 3)"
+    if "CALIB_CHECK_COND" in s:
+        return " — OpenCV refused a view: do not catch cv2.error in calibrate_fisheye (calibrate_robust drops the view)"
+    if "imagePoints" in s or "objectPoints" in s:
+        return " — OpenCV wants a LIST of arrays, one per view: board points (N, 1, 3), corners (N, 1, 2)"
+    if "could not broadcast" in s or "operands could not" in s:
+        return " — two arrays of different shapes: print the .shape of each (OpenCV corners are (N, 1, 2))"
+    return _kit_hint(e)
 
 
-# ---- you don't need to change anything below this line ----
-def detect_all():
-    """Corners of every view, cached in corners.npz (the detection is the slow part)."""
-    files = sorted(glob.glob(os.path.join(VIEWS, "*.jpg")))
-    if os.path.exists("corners.npz"):
-        z = np.load("corners.npz")
-        if len(z["names"]) and set(z["names"]) <= {os.path.basename(f)[:-4] for f in files}:
-            print(f"corners.npz: {len(z['names'])} views (delete it to detect again)")
-            return list(z["names"]), list(z["corners"]), tuple(int(v) for v in z["size"])
-    names, views, size = [], [], None
-    t0 = time.time()
-    for f in files:
-        img = cv2.cvtColor(cv2.imread(f), cv2.COLOR_BGR2GRAY)     # exactly as calibrate_camera.py
-        size = (img.shape[1], img.shape[0])
-        ok, c = cv2.findChessboardCornersSB(img, BOARD, flags=cv2.CALIB_CB_EXHAUSTIVE | cv2.CALIB_CB_ACCURACY)
-        print(f"  {os.path.basename(f)}: {'board found' if ok else 'no board'}", flush=True)
-        if ok:
-            names.append(os.path.basename(f)[:-4])
-            views.append(c.astype(np.float64).reshape(-1, 1, 2))
-    print(f"detection: {len(views)}/{len(files)} views in {time.time() - t0:.0f} s -> corners.npz")
-    np.savez("corners.npz", names=np.array(names), corners=np.array(views), size=np.array(size))
-    return names, views, size
+rk._hint = _hint
 
 
-def calibrate_robust(obj, views, size, names=None):
-    """Your calibrate_fisheye(), dropping the views OpenCV refuses (CALIB_CHECK_COND), as
-    navera_tools/calibrate_camera.py does. Returns (result, kept names, dropped names)."""
-    views, names = list(views), list(names or range(len(views)))
-    dropped = []
-    while True:
+def need_cv2():
+    import cv2
+    return cv2
+
+
+def obj_points():
+    obj = rk.need_ok(fe, "board_points", fe.BOARD[0], fe.BOARD[1], fe.SQUARE_M)
+    obj = np.asarray(obj)
+    if obj.shape != (54, 1, 3):
+        sys.exit(f"board_points(9, 6, …) must return shape (54, 1, 3), got {obj.shape}: python3 calibrate_lab.py test")
+    return obj
+
+
+def load_views():
+    if not os.path.exists(CACHE):
+        sys.exit("no corners.npz yet: run  python3 calibrate_lab.py detect  first (about 30 s)")
+    z = np.load(CACHE)
+    return [str(n) for n in z["names"]], [c for c in z["corners"]]
+
+
+def angles_deg(corners, K, D):
+    """Angle from the optical axis (degrees) of each corner, with the calibration (K, D)."""
+    cv2 = need_cv2()
+    n = cv2.fisheye.undistortPoints(np.asarray(corners, dtype=np.float64).reshape(-1, 1, 2), K, D).reshape(-1, 2)
+    return np.degrees(np.arctan(np.hypot(n[:, 0], n[:, 1])))
+
+
+# ------------------------------------------------------------------------------------------------ made-up views
+def synthetic_views(K, D, n_views=10, seed=5, noise_px=0.0):
+    """Views of the board seen by a known fisheye camera, made with OpenCV's own projection (for the test)."""
+    cv2 = need_cv2()
+    rng = np.random.default_rng(seed)
+    obj = np.zeros((54, 1, 3))
+    obj[:, 0, :2] = np.array([(c * fe.SQUARE_M, r * fe.SQUARE_M) for r in range(6) for c in range(9)])
+    views, rvecs, tvecs = [], [], []
+    for _ in range(n_views):
+        rv = rng.uniform(-0.45, 0.45, 3)
+        tv = np.array([rng.uniform(-0.35, 0.1), rng.uniform(-0.2, 0.05), rng.uniform(0.35, 0.6)])
+        p, _ = cv2.fisheye.projectPoints(obj, rv.reshape(3, 1), tv.reshape(3, 1), K, D)
+        views.append(p.reshape(-1, 1, 2) + rng.normal(0, noise_px, p.reshape(-1, 1, 2).shape))
+        rvecs.append(rv.reshape(3, 1))
+        tvecs.append(tv.reshape(3, 1))
+    return obj, views, rvecs, tvecs
+
+
+def test():
+    K_t = np.array([[520.0, 0.0, 640.0], [0.0, 540.0, 360.0], [0.0, 0.0, 1.0]])
+    D_t = np.array([0.05, -0.02, 0.01, -0.004])
+    done = total = 0
+
+    def line(k, ok, text, note=None):
+        nonlocal done, total
+        total += 1
+        done += bool(ok)
+        print(("✔" if ok else "✘") + f" TODO {k}  {text}" + ("" if ok or not note else f"   ({note})"))
+
+    # TODO 5
+    got, err = rk.call(fe, "board_points", 3, 2, 0.5)
+    want = np.array([[0, 0, 0], [0.5, 0, 0], [1.0, 0, 0], [0, 0.5, 0], [0.5, 0.5, 0], [1.0, 0.5, 0]], float)
+    if err:
+        line(5, False, err)
+    else:
+        a = np.asarray(got)
+        note = "the docstring's example. Lab Step 6, hints 1–3"
+        if a.shape != (6, 1, 3):
+            note = f"shape {a.shape}: OpenCV wants (N, 1, 3) — one point per row, with a middle axis of 1. Lab Step 6, hint 3"
+        elif np.allclose(a.reshape(-1, 3), want[[0, 3, 1, 4, 2, 5]]):
+            note = "the column index must change FASTEST (row by row, like reading). Lab Step 6, hint 2"
+        elif a.dtype != np.float64:
+            note = f"dtype {a.dtype}: cv2.fisheye wants float64"
+        line(5, a.shape == (6, 1, 3) and a.dtype == np.float64 and np.allclose(a.reshape(-1, 3), want, atol=1e-12),
+             f"board_points(3, 2, 0.5)[:, 0] = {np.asarray(got).reshape(-1, 3).tolist() if a.size == 18 else got!r}", note)
+    # TODO 6
+    obj, views, rv_true, tv_true = synthetic_views(K_t, D_t, 10, seed=5)
+    res, err = rk.call(fe, "calibrate_fisheye", obj, views, (1280, 720))
+    if err:
+        line(6, False, err)
+    else:
         try:
-            r = calibrate_fisheye(obj, views, size)
-            if r is None:
-                raise SystemExit("calibrate_fisheye() is not written yet — it returns None")
-            return r, names, dropped
-        except cv2.error as e:
-            m = re.search(r"input array (\d+)", str(e))
-            if not m or len(views) <= 8:
-                raise
-            bad = int(m.group(1))
-            dropped.append(names[bad])
-            del views[bad], names[bad]
+            rms, K, D, rvecs, tvecs = res
+            K, D = np.asarray(K, float), np.asarray(D, float).ravel()
+            ok = abs(K[0, 0] - 520) < 0.5 and abs(K[1, 1] - 540) < 0.5 and np.allclose(D, D_t, atol=2e-3) and len(rvecs) == 10
+            note = "a perfect made-up camera fx 520, fy 540, D (0.05, −0.02, 0.01, −0.004) must come back. Lab Step 7, hints 1–3"
+            if abs(K[0, 1]) > 1e-9:
+                note = "K[0, 1] (the skew) must be 0: the 'no skew' flag. Lab Step 7, hint 2"
+            line(6, ok and abs(K[0, 1]) < 1e-9, f"calibrate_fisheye(10 made-up views of a known lens): fx {K[0, 0]:.2f}, "
+                 f"fy {K[1, 1]:.2f}, RMS {float(rms):.2e} px", note)
+        except (TypeError, ValueError):
+            line(6, False, f"calibrate_fisheye must return (rms, K, D, rvecs, tvecs) as OpenCV gives them, got {res!r}"[:300])
+    obj_n, noisy, _, _ = synthetic_views(K_t, D_t, 10, seed=5, noise_px=0.3)
+    res, err = rk.call(fe, "calibrate_fisheye", obj_n, noisy, (1280, 720))
+    if err:
+        line(6, False, err)
+    else:
+        try:
+            skew = float(np.asarray(res[1], float)[0, 1])
+            line(6, abs(skew) < 1e-12, f"calibrate_fisheye(10 made-up views with 0.3 px of noise): skew K[0, 1] = {skew:.3g}",
+                 "with real (noisy) corners the skew must stay exactly 0: the 'no skew' flag. Lab Step 7, hint 3")
+        except (TypeError, ValueError, IndexError):
+            line(6, False, f"calibrate_fisheye must return (rms, K, D, rvecs, tvecs), got {res!r}"[:300])
+    # TODO 7
+    shifted = [v + np.array([0.3, 0.4]) for v in views]                       # every corner 0.5 px away
+    got, err = rk.call(fe, "reprojection_rms", obj, shifted, rv_true, tv_true, K_t, D_t)
+    if err:
+        line(7, False, err)
+    else:
+        try:
+            total_rms, per_view = got
+            ok = abs(float(total_rms) - 0.5) < 1e-6 and len(per_view) == 10 and all(abs(float(p) - 0.5) < 1e-6 for p in per_view)
+            note = "every corner is exactly 0.5 px (0.3 across, 0.4 down) from its projection: RMS 0.5. Lab Step 8, hints 1–4"
+            if abs(float(total_rms) - 0.7) < 1e-6:
+                note = "0.7 = 0.3 + 0.4: a distance is √(du² + dv²). Lab Step 8, hint 3"
+            elif abs(float(total_rms) - 0.25) < 1e-6:
+                note = "0.25 is the MEAN SQUARE: take the square root (RMS). Lab Step 8, hint 3"
+            line(7, ok, f"reprojection_rms(corners shifted by (0.3, 0.4) px) = {float(total_rms):.6g}, "
+                 f"{len(per_view)} per-view values", note)
+        except (TypeError, ValueError):
+            line(7, False, f"reprojection_rms must return (rms, [rms of each view]), got {got!r}"[:300])
+    obj2, uneven, rv2, tv2 = synthetic_views(K_t, D_t, 2, seed=8)
+    uneven = [uneven[0] + np.array([0.0, 1.0]), uneven[1]]                   # view 0 off by 1 px, view 1 exact
+    got, err = rk.call(fe, "reprojection_rms", obj2, uneven, rv2, tv2, K_t, D_t)
+    if not err:
+        try:
+            total_rms, per_view = got
+            note = "view 0 is 1 px off, view 1 exact: per view [1, 0], overall √((54·1 + 54·0) / 108) = 0.7071"
+            if abs(float(total_rms) - 0.5) < 1e-6:
+                note = "0.5 is the MEAN of the per-view values: the RMS is over ALL corners together. Lab Step 8, hint 4"
+            line(7, abs(float(total_rms) - math.sqrt(0.5)) < 1e-6 and np.allclose([float(p) for p in per_view], [1, 0], atol=1e-6),
+                 f"reprojection_rms(one view 1 px off, one exact) = {float(total_rms):.6g}", note)
+        except (TypeError, ValueError):
+            line(7, False, f"reprojection_rms must return (rms, [rms of each view]), got {got!r}"[:300])
+    else:
+        line(7, False, err)
+    # TODO 8
+    _, unseen, _, _ = synthetic_views(K_t, D_t, 4, seed=11, noise_px=0.0)
+    got, err = rk.call(fe, "holdout_rms", obj, unseen, K_t, D_t)
+    if err:
+        line(8, False, err)
+    else:
+        try:
+            r, per = got
+            ok = float(r) < 1e-3 and len(per) == 4
+            note = "4 unseen views of the SAME lens, no noise: the error must be ~0 once each pose is found. Lab Step 10, hints"
+            line(8, ok, f"holdout_rms(4 unseen exact views, the true K and D) = {float(r):.2e} px", note)
+        except (TypeError, ValueError):
+            line(8, False, f"holdout_rms must return (rms, [rms of each view]), got {got!r}"[:300])
+    print(f"\n{done} of {total} examples right.")
 
 
-def holdout_rms_fisheye(obj, test_views, K, D):
-    """Error on views NOT used for calibration: the pose of the board is estimated from the
-    undistorted corners (solvePnP), then the corners are projected with YOUR project_fisheye."""
+# ------------------------------------------------------------------------------------------------ detect
+def detect():
+    cv2 = need_cv2()
+    files = sorted(glob.glob(os.path.join(VIEWS, "*.jpg")))
+    names, views = [], []
+    for f in files:
+        c = fe.find_corners(cv2.imread(f))
+        name = os.path.basename(f)[:-4]
+        print(f"  {name}: {'board found' if c is not None else 'no board'}", flush=True)
+        if c is not None:
+            names.append(name)
+            views.append(c)
+    np.savez(CACHE, names=np.array(names), corners=np.array(views))
+    print(f"{len(views)} of {len(files)} views show the whole board -> {CACHE}")
+
+
+# ------------------------------------------------------------------------------------------------ calibrate
+def calibrate_all(names, views, obj):
+    cv2 = need_cv2()
+    try:
+        return fe.calibrate_robust(obj, views, SIZE, names)
+    except cv2.error as e:
+        sys.exit("OpenCV stopped your calibration: " + str(e).strip().splitlines()[-1] + _hint(e))
+    except ValueError as e:
+        sys.exit(str(e))
+
+
+def calibrate():
+    obj = obj_points()
+    names, views = load_views()
+    (rms, K, D, rvecs, tvecs), kept, dropped = calibrate_all(names, views, obj)
+    K, D = np.asarray(K, float), np.asarray(D, float).ravel()
+    print(f"YOUR fisheye calibration: {len(kept)} views used, {len(dropped)} refused {dropped}")
+    if not dropped:
+        print("  ⚠ no view refused: is cv2.fisheye.CALIB_CHECK_COND in your flags? (lab Step 7, hint 3)")
+    print(f"  fx {K[0, 0]:.2f}  fy {K[1, 1]:.2f}  cx {K[0, 2]:.2f}  cy {K[1, 2]:.2f}   D {np.round(D, 4).tolist()}")
+    kept_views = [views[names.index(n)] for n in kept]
+    mine, err = rk.call(fe, "reprojection_rms", obj, kept_views, rvecs, tvecs, K, D)
+    if err:
+        print(f"  RMS: OpenCV {float(rms):.4f} px   (per-view RMS: {err})")
+        per_view = [float("nan")] * len(kept)
+    else:
+        try:
+            total, per_view = mine
+            per_view = [float(p) for p in per_view]
+        except (TypeError, ValueError):
+            sys.exit(f"reprojection_rms() must return (rms, [rms of each view]), it returned {mine!r}"[:300])
+        print(f"  RMS: OpenCV {float(rms):.4f} px   your reprojection_rms() {float(total):.4f} px"
+              + ("   ✔ equal" if abs(float(total) - float(rms)) < 1e-6 else
+                 "   ✘ not equal yet (python3 calibrate_lab.py test)"))
+    print("\n  view    RMS (px)   farthest corner from the axis   board's columns in the picture")
+    for n, v, r in zip(kept, kept_views, per_view):
+        a = angles_deg(v, K, D)
+        print(f"  {n}   {r:6.3f}       {a.max():5.1f}°                    {v[:, 0, 0].min():5.0f} – {v[:, 0, 0].max():5.0f}")
+    for n in dropped:
+        v = views[names.index(n)]
+        a = angles_deg(v, K, D)
+        print(f"  {n}   refused      {a.max():5.1f}°                    {v[:, 0, 0].min():5.0f} – {v[:, 0, 0].max():5.0f}")
+    used = np.concatenate([angles_deg(v, K, D) for v in kept_views])
+    print(f"\n  farthest corner used by the calibration: {used.max():.1f}° from the optical axis")
+    os.makedirs(OUT, exist_ok=True)
+    fe.save_calibration(os.path.join(OUT, "my_fisheye.yaml"), K, D, SIZE, float(rms), len(kept),
+                        note=f"calibrate_lab.py; farthest corner used {used.max():.1f} deg")
+    print("  saved out/my_fisheye.yaml (used by `curves`)")
+
+
+# ------------------------------------------------------------------------------------------------ stability
+def stability():
+    cv2 = need_cv2()
+    obj = obj_points()
+    names, views = load_views()
+    rng = np.random.default_rng(19)
+    print("fx of YOUR calibration from random subsets of the views (10 draws per size, refused views dropped):")
+    for n in (8, 12, 20, 30):
+        fxs, fails = [], 0
+        for _ in range(10):
+            idx = sorted(rng.choice(len(views), n, replace=False))
+            try:
+                (r, K, *_), _, _ = fe.calibrate_robust(obj, [views[i] for i in idx], SIZE)
+                fxs.append(float(np.asarray(K)[0, 0]))
+            except cv2.error:
+                fails += 1
+        print(f"  {n:2d} views: fx = {np.mean(fxs):6.1f} ± {np.std(fxs):5.1f} px  (std of {len(fxs)} draws; "
+              f"min {min(fxs):.1f}, max {max(fxs):.1f}; {fails} failed)", flush=True)
+
+
+# ------------------------------------------------------------------------------------------------ holdout
+def holdout():
+    cv2 = need_cv2()
+    obj = obj_points()
+    names, views = load_views()
+    test_i = [i for i in range(len(views)) if i % 5 == 0]
+    train_i = [i for i in range(len(views)) if i % 5 != 0]
+    print(f"test views (never used to calibrate): {[names[i] for i in test_i]}")
+    (tr, K, D, *_), kept, dropped = calibrate_all([names[i] for i in train_i], [views[i] for i in train_i], obj)
+    te, per = rk.need_ok(fe, "holdout_rms", obj, [views[i] for i in test_i], K, D)
+    print(f"fisheye:       train RMS {float(tr):.3f} px on {len(kept)} views ({len(dropped)} refused)   "
+          f"test RMS {float(te):.3f} px on {len(test_i)} unseen views   fx {np.asarray(K)[0, 0]:.1f}")
+    print("               per test view: " + ", ".join(f"{names[i]} {float(p):.2f}" for i, p in zip(test_i, per)))
+    o32 = obj.reshape(-1, 3).astype(np.float32)
+    tr_views = [views[i].reshape(-1, 2).astype(np.float32) for i in train_i]
+    rp, Kp, dp, _, _ = cv2.calibrateCamera([o32] * len(tr_views), tr_views, SIZE, None, None)
     sq = []
-    for v in test_views:
-        n = cv2.fisheye.undistortPoints(v.reshape(-1, 1, 2), K, D)
-        ok, rv, tv = cv2.solvePnP(obj.astype(np.float64), n, np.eye(3), None)
-        R, _ = cv2.Rodrigues(rv)
-        Xc = obj.reshape(-1, 3) @ R.T + tv.reshape(1, 3)
-        p = fm.project_fisheye(Xc, K, D)
-        if p is None:
-            raise SystemExit("project_fisheye() is not written yet (fisheye_model.py, TODO 2)")
-        e = p - v.reshape(-1, 2)
-        sq.append((e ** 2).sum(axis=1))
-    return float(np.sqrt(np.concatenate(sq).mean()))
+    for i in test_i:
+        v = views[i].reshape(-1, 2).astype(np.float32)
+        ok, rv, tv = cv2.solvePnP(o32, v, Kp, dp)
+        p, _ = cv2.projectPoints(o32, rv, tv, Kp, dp)
+        sq.append(((p.reshape(-1, 2) - v) ** 2).sum(axis=1))
+    print(f"Brown–Conrady: train RMS {rp:.3f} px on {len(tr_views)} views               "
+          f"test RMS {math.sqrt(np.concatenate(sq).mean()):.3f} px on {len(test_i)} unseen views   fx {Kp[0, 0]:.1f}")
+    rall, Kall, dall, _, _ = cv2.calibrateCamera([o32] * len(views), [v.reshape(-1, 2).astype(np.float32) for v in views],
+                                                 SIZE, None, None)
+    os.makedirs(OUT, exist_ok=True)
+    with open(os.path.join(OUT, "brown_conrady.txt"), "w") as f:
+        f.write(" ".join(str(float(x)) for x in [Kall[0, 0]] + list(np.asarray(dall).ravel()[:5])) + "\n")
+    print(f"Brown–Conrady on all {len(views)} views: RMS {rall:.3f} px, fx {Kall[0, 0]:.1f} (saved for `curves`)")
 
 
-def holdout_rms_pinhole(obj, test_views, K, dist):
-    sq = []
-    for v in test_views:
-        ok, rv, tv = cv2.solvePnP(obj.astype(np.float32), v.astype(np.float32), K, dist)
-        p, _ = cv2.projectPoints(obj.astype(np.float32), rv, tv, K, dist)
-        sq.append(((p.reshape(-1, 2) - v.reshape(-1, 2)) ** 2).sum(axis=1))
-    return float(np.sqrt(np.concatenate(sq).mean()))
+# ------------------------------------------------------------------------------------------------ curves
+def curves():
+    plt = rk.plt_or_none()
+    bench = fe.load_calibration(CALIB)
+    mine_path = os.path.join(OUT, "my_fisheye.yaml")
+    if not os.path.exists(mine_path):
+        sys.exit("run  python3 calibrate_lab.py calibrate  first (it saves out/my_fisheye.yaml)")
+    mine = fe.load_calibration(mine_path)
+    note = open(mine_path).readline()
+    far = float(note.split("farthest corner used ")[1].split()[0]) if "farthest corner used" in note else 43.0
+    th = np.radians(np.linspace(0, 85, 500))
+    deg = np.degrees(th)
+    rb = bench["K"][0, 0] * fe.theta_d_of(th, bench["D"])
+    rm = mine["K"][0, 0] * fe.theta_d_of(th, mine["D"])
+    gap = np.abs(rb - rm)
+    print("Distance r from the principal point along a row (px), bench file vs YOUR calibration:")
+    for t in (10, 20, 30, 40, 50, 55.5, 60, 70):
+        i = int(np.argmin(np.abs(deg - t)))
+        print(f"  θ = {t:4.1f}°   bench {rb[i]:7.1f}   yours {rm[i]:7.1f}   difference {gap[i]:6.1f} px")
+    print(f"(the corners your calibration used reach {far:.1f}° from the axis)")
+    if plt is None:
+        return
+    fig, ax = plt.subplots(figsize=(8.5, 5))
+    ax.plot(deg, bench["K"][0, 0] * np.tan(th), color="#868e96", label="ideal pinhole f·tan θ (bench fx)")
+    ax.plot(deg, rb, lw=3, color="#d64545", label=f"bench file (fx {bench['K'][0, 0]:.1f}, 38 views)")
+    ax.plot(deg, rm, ":", lw=2.5, color="#0b6e8a", label=f"your fisheye (fx {mine['K'][0, 0]:.1f})")
+    bc = os.path.join(OUT, "brown_conrady.txt")
+    if os.path.exists(bc):
+        f, k1, k2, p1, p2, k3 = (float(x) for x in open(bc).read().split())
+        r = np.tan(th)
+        ax.plot(deg, f * r * (1 + k1 * r ** 2 + k2 * r ** 4 + k3 * r ** 6), "-.", lw=2, color="#f08c00",
+                label=f"Brown–Conrady (fx {f:.1f}), along a radius")
+    ax.axvspan(far, 85, color="grey", alpha=0.12)
+    ax.text(far + 1, 1450, "no corner used by\nyour calibration", color="grey", fontsize=9)
+    ax.axhline(bench["K"][0, 2], color="grey", ls=":")
+    ax.set_ylim(0, 1600)
+    ax.set_xlabel("angle θ of the ray from the optical axis (°)")
+    ax.set_ylabel("distance r from the principal point (px)")
+    ax.set_title("Three lens models fitted to the same kind of corners")
+    ax.grid(alpha=0.3)
+    ax.legend(loc="upper left", fontsize=8)
+    fig.tight_layout()
+    os.makedirs(OUT, exist_ok=True)
+    fig.savefig(os.path.join(OUT, "my_curves.png"), dpi=80)
+    rk.saved("out/my_curves.png")
 
 
 if __name__ == "__main__":
-    obj = board_points(*BOARD, SQUARE_M)
-    if obj is None:
-        raise SystemExit("board_points() is not written yet — it returns None")
-    print(f"board: {obj.shape[0]} corners, last one at {obj[-1].ravel()} m")
-    names, views, size = detect_all()
-
-    # 1. the calibration on every view
-    t0 = time.time()
-    (rms, K, D, rvecs, tvecs), kept, dropped = calibrate_robust(obj, views, size, names)
-    print(f"\nfisheye calibration: {len(kept)} views used, {len(dropped)} refused {dropped}, "
-          f"{time.time() - t0:.1f} s")
-    np.set_printoptions(precision=2, suppress=True)
-    print(f"  fx {K[0, 0]:.1f}  fy {K[1, 1]:.1f}  cx {K[0, 2]:.1f}  cy {K[1, 2]:.1f}  D {D.ravel()}")
-    kept_views = [views[names.index(n)] for n in kept]
-    mine, per_view = fm.reprojection_rms(obj, kept_views, rvecs, tvecs, K, D.ravel())
-    if mine is None:
-        raise SystemExit("reprojection_rms() is not written yet")
-    print(f"  RMS: OpenCV {rms:.4f} px, your reprojection_rms() {mine:.4f} px")
-    worst = int(np.argmax(per_view))
-    print(f"  worst view {kept[worst]}: {per_view[worst]:.3f} px; best {min(per_view):.3f} px")
-    def farthest_deg(vs):
-        nrm = cv2.fisheye.undistortPoints(np.vstack(vs).reshape(-1, 1, 2), K, D).reshape(-1, 2)
-        return float(np.degrees(np.arctan(np.hypot(nrm[:, 0], nrm[:, 1]))).max())
-    max_angle, max_angle_all = farthest_deg(kept_views), farthest_deg(views)
-    print(f"  farthest corner: {max_angle:.1f} deg from the optical axis in the views used, "
-          f"{max_angle_all:.1f} deg in all the views detected")
-
-    # 2. stability: random subsets of views
-    rng = np.random.default_rng(18)
-    subsets = {}
-    print("\nstability of fx (6 random subsets per size):")
-    for n in (8, 12, 20, 30):
-        fxs, fails = [], 0
-        for _ in range(6):
-            idx = sorted(rng.choice(len(views), n, replace=False))
-            try:
-                (r_, K_, *_), _, _ = calibrate_robust(obj, [views[i] for i in idx], size)
-                fxs.append(float(K_[0, 0]))
-            except cv2.error:
-                fails += 1
-        subsets[str(n)] = {"fx": [round(v, 2) for v in fxs], "mean": float(np.mean(fxs)),
-                           "std": float(np.std(fxs)), "failures": fails}
-        print(f"  {n:2d} views: fx = {np.mean(fxs):6.1f} ± {np.std(fxs):5.1f} px  ({fails} failed)")
-
-    # 3. hold-out: calibrate on 4/5 of the views, test on the others
-    test_i = [i for i in range(len(views)) if i % 5 == 0]
-    train_i = [i for i in range(len(views)) if i % 5 != 0]
-    (tr_rms, Kt, Dt, *_), _, _ = calibrate_robust(obj, [views[i] for i in train_i], size)
-    te_rms = holdout_rms_fisheye(obj, [views[i] for i in test_i], Kt, Dt)
-    print(f"\nhold-out (fisheye): train RMS {tr_rms:.3f} px on {len(train_i)} views, "
-          f"test RMS {te_rms:.3f} px on {len(test_i)} unseen views")
-
-    # 4. Brown–Conrady on the same views
-    pres = calibrate_pinhole(obj, views, size)
-    if pres is None:
-        raise SystemExit("calibrate_pinhole() is not written yet — it returns None")
-    p_rms, Kp, dp = pres[0], pres[1], pres[2]
-    rp, Kpt, dpt, *_ = calibrate_pinhole(obj, [views[i] for i in train_i], size)
-    p_te = holdout_rms_pinhole(obj, [views[i] for i in test_i], Kpt, dpt)
-    print(f"Brown–Conrady (pinhole) model: RMS {p_rms:.3f} px, fx {Kp[0, 0]:.1f} px, "
-          f"dist {np.asarray(dp).ravel()}; hold-out test RMS {p_te:.3f} px")
-
-    fm.save_results("calibration", {
-        "views_detected": len(views), "views_used": len(kept), "dropped": dropped,
-        "fx": float(K[0, 0]), "fy": float(K[1, 1]), "cx": float(K[0, 2]), "cy": float(K[1, 2]),
-        "D": [float(v) for v in D.ravel()],
-        "rms_opencv_px": float(rms), "rms_mine_px": float(mine),
-        "worst_view": kept[worst], "worst_view_rms_px": per_view[worst],
-        "max_corner_angle_deg": max_angle, "max_corner_angle_all_deg": max_angle_all,
-        "subsets": subsets,
-        "holdout": {"train_rms_px": float(tr_rms), "test_rms_px": te_rms,
-                    "train_views": len(train_i), "test_views": len(test_i)},
-        "pinhole": {"rms_px": float(p_rms), "fx": float(Kp[0, 0]),
-                    "dist": [float(v) for v in np.asarray(dp).ravel()], "test_rms_px": p_te},
-    })
-    print("\nwrote the 'calibration' part of results.json")
+    modes = {"test": test, "detect": detect, "calibrate": calibrate, "stability": stability, "holdout": holdout,
+             "curves": curves}
+    if len(sys.argv) != 2 or sys.argv[1] not in modes:
+        sys.exit(__doc__)
+    modes[sys.argv[1]]()
