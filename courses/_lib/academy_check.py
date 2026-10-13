@@ -215,7 +215,25 @@ def is_stub(func):
         src = inspect.getsource(func)
     except (OSError, TypeError):
         return False
-    return any(m in src for m in STUB_MARKS)
+    if not any(m in src for m in STUB_MARKS):
+        return False
+    # A stub only when the stub line is the WHOLE body (after the docstring): code written above or
+    # below the old `return None   # TODO…` line counts as written.
+    import ast
+    import textwrap
+    try:
+        tree = ast.parse(textwrap.dedent(src))
+    except SyntaxError:
+        return True
+    fn = next((n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))), None)
+    if fn is None:
+        return True
+    body = list(fn.body)
+    if body and isinstance(body[0], ast.Expr) and isinstance(getattr(body[0], "value", None), ast.Constant) \
+            and isinstance(body[0].value.value, str):
+        body = body[1:]
+    lines = textwrap.dedent(src).splitlines()
+    return len(body) == 1 and any(m in lines[body[0].lineno - 1] for m in STUB_MARKS)
 
 
 def _module_of(filename):
