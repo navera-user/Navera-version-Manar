@@ -37,7 +37,7 @@ def no_library_shortcut():
             names.append(str(node.args[0].value))
         for m in names:
             if m.split(".")[0] in BANNED:
-                raise CheckFailed(f"navera_lite/image.py imports {m}: TODO 4–7 are written with numpy and math only — "
+                raise CheckFailed(f"navera_lite/image.py imports {m}: TODO 1–7 are written with numpy and math only — "
                                   "OpenCV is what you compare WITH (lab: the 'Your files' paragraph at the top)")
 
 

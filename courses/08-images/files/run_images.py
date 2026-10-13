@@ -555,6 +555,10 @@ def sweep(*args):
     print(f"NCC of like_map(photo, heading, {gp}, {gm:.4f}) with the map, middle {CROP} × {CROP} px, headings "
           f"{lo:g}° to {hi:g}° step {st:g}° ({time.perf_counter() - t0:.1f} s)\n")
     _table(rows, "heading", lambda x: f"{x:.1f}" if st >= 0.1 else f"{x:.2f}", 4 if st < 0.5 else 3)
+    best = max(range(len(rows)), key=lambda i: rows[i][1])
+    if best in (0, len(rows) - 1):
+        print(f"\n⚠ the highest NCC is at the EDGE of your range ({rows[best][0]:g}°): the peak may be outside it — "
+              "sweep again around it")
     plt = rk.plt_or_none()
     if plt is not None:
         os.makedirs(OUT, exist_ok=True)

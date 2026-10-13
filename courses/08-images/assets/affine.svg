@@ -7,7 +7,7 @@
 <circle cx="150" cy="150" r="4" fill="#d64545"/><text x="150" y="137" fill="#d64545" font-size="12" text-anchor="middle">c = (cx, cy)</text>
 <path d="M220 150 A70 70 0 0 0 210.6 115.0" fill="none" stroke="#2f855a" stroke-width="2" marker-end="url(#a)"/>
 <line x1="150" y1="150" x2="230" y2="150" stroke="#2f855a" stroke-dasharray="3 3"/>
-<text x="224" y="128" fill="#2f855a" font-size="12">θ = +30°</text>
+<text x="256" y="122" fill="#2f855a" font-size="12">θ = +30°</text>
 <text x="40" y="250" fill="#1d2733" font-size="12">blue: source picture · orange: θ = +30°, s = 0.6</text>
 <text x="40" y="268" fill="#1d2733" font-size="12">the y axis points DOWN, so a positive θ</text>
 <text x="40" y="286" fill="#1d2733" font-size="12">turns counter-clockwise on the screen</text>
