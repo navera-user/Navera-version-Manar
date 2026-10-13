@@ -6,8 +6,8 @@
   <text x="16" y="24" fill="#1d2733" font-weight="bold">Pinhole projection (side view, camera frame)</text>
   <!-- formula box -->
   <rect x="300" y="40" width="326" height="84" rx="8" fill="#ffffff" stroke="#0b6e8a"/>
-  <text x="314" y="62" fill="#1d2733" font-weight="bold">u = fx · X / Z + cx</text>
-  <text x="474" y="62" fill="#1d2733" font-weight="bold">v = fy · Y / Z + cy</text>
+  <text x="314" y="62" fill="#1d2733" font-weight="bold">u = f · X / Z + cx</text>
+  <text x="474" y="62" fill="#1d2733" font-weight="bold">v = f · Y / Z + cy</text>
   <text x="314" y="86" fill="#1d2733">matrix form:  λ · [u, v, 1]ᵀ = K · X_c</text>
   <text x="314" y="108" fill="#1d2733">camera coordinates:  X_c = R_wcᵀ (X_world − C)</text>
   <!-- optical axis -->

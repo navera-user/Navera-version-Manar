@@ -1,0 +1,2 @@
+{"parts": ["camera"], "todo_missions": [18], "tests": [], "extra": [],
+ "note": "Mission 18 introduces camera.py (TODO 1-8: pinhole/K, projection, ground back-projection, GSD, footprint, tilt error, nadir homography); it needs rotations.py (16, given finished). Fisheye (19) and timing/attitude (20) are added by those missions. tests/test_camera.py is for later missions (pytest is taught in 14 but the mission 18 TODOs would be given away), not shipped here."}

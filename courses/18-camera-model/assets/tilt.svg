@@ -7,7 +7,7 @@
   <!-- ground -->
   <rect x="0" y="280" width="640" height="80" fill="#cde6c8"/>
   <!-- field of view on the ground -->
-  <polygon points="300,70 55.4,280 334.8,280" fill="#f2a33a" fill-opacity="0.22" stroke="#f2a33a" stroke-width="2"/>
+  <polygon points="300,70 95.6,280 315.6,280" fill="#f2a33a" fill-opacity="0.22" stroke="#f2a33a" stroke-width="2"/>
   <!-- vertical -->
   <line x1="300" y1="70" x2="300" y2="280" stroke="#1d2733" stroke-dasharray="4 4"/>
   <!-- optical axis -->
@@ -27,24 +27,24 @@
   <!-- ground points -->
   <circle cx="300" cy="280" r="5" fill="#1d2733"/>
   <circle cx="223.6" cy="280" r="5" fill="#d64545"/>
-  <circle cx="55.4" cy="280" r="4" fill="#a8680d"/>
-  <circle cx="334.8" cy="280" r="4" fill="#a8680d"/>
+  <circle cx="95.6" cy="280" r="4" fill="#a8680d"/>
+  <circle cx="315.6" cy="280" r="4" fill="#a8680d"/>
   <text x="306" y="300" fill="#1d2733">under the drone</text>
   <text x="150" y="300" fill="#d64545">image centre</text>
-  <text x="20" y="300" fill="#a8680d">far edge</text>
-  <text x="340" y="272" fill="#a8680d">near edge</text>
+  <text x="60" y="300" fill="#a8680d">far edge</text>
+  <text x="322" y="272" fill="#a8680d">near edge</text>
   <!-- distances -->
   <line x1="223.6" y1="318" x2="300" y2="318" stroke="#d64545" stroke-width="2"/>
   <text x="150" y="338" fill="#d64545">h · tan θ behind</text>
   <!-- height -->
   <text x="306" y="190" fill="#1d2733">h</text>
   <!-- box -->
-  <rect x="402" y="88" width="226" height="168" rx="8" fill="#ffffff" stroke="#7a8794"/>
-  <text x="414" y="110" fill="#1d2733" font-weight="bold">h = 150 m, θ = 20°, VFOV 58.7°</text>
-  <text x="414" y="132" fill="#1d2733">centre: 150 · tan 20° = 54.6 m</text>
-  <text x="414" y="150" fill="#1d2733">behind the drone</text>
-  <text x="414" y="172" fill="#1d2733">far: 150 · tan 49.4° = 175 m behind</text>
-  <text x="414" y="190" fill="#1d2733">near: 150 · tan 9.4° = 25 m ahead</text>
-  <text x="414" y="214" fill="#0b6e8a">each ray:  X = C + λ d</text>
-  <text x="414" y="234" fill="#0b6e8a">ground z = 0  ⇒  λ = −h / d_z</text>
+  <rect x="366" y="88" width="266" height="168" rx="8" fill="#ffffff" stroke="#7a8794"/>
+  <text x="378" y="110" fill="#1d2733" font-weight="bold">h = 120 m, θ = 20°, VFOV 48.5°</text>
+  <text x="378" y="132" fill="#1d2733">centre: 120 · tan 20° = 43.7 m</text>
+  <text x="378" y="150" fill="#1d2733">behind the drone</text>
+  <text x="378" y="172" fill="#1d2733">far: 120 · tan 44.2° = 117 m behind</text>
+  <text x="378" y="190" fill="#1d2733">near: 120 · tan 4.2° = 9 m ahead</text>
+  <text x="378" y="214" fill="#0b6e8a">each ray:  X = C + λ d</text>
+  <text x="378" y="234" fill="#0b6e8a">ground z = 0  ⇒  λ = −h / d_z</text>
 </svg>

@@ -1,453 +1,489 @@
 # The camera as a measuring instrument
 
-> [!NOTE] In short
-> - A camera is a point in the air that looks along **rays**: the **pinhole model** and the
->   **intrinsic matrix K** turn a 3D point into a pixel.
-> - You will learn to go back from a pixel to the ground, and to find the **footprint** of a tilted camera.
-> - You will compute how many metres one pixel covers (**GSD**) and which map zoom fits the photo.
-> - You will see how a height error becomes a **scale** error, and a tilt error becomes a position error.
-> - In the lab you build these functions, compare them with NAVERA's code, and measure a landing pad in drone photos.
+![A tilted drone camera and the same camera turned level: one 3 × 3 matrix moves every pixel so that the point under the drone lands at the image centre](assets/straighten.svg)
 
-A survey drone flies at 300 m over a coastal city. Its GPS is jammed. The
-camera under the drone takes a photo of roads, trees and roofs, and NAVERA must find this
-photo on its satellite map. Before any image matching can start, NAVERA needs to answer three
-geometric questions:
+> [!NOTE] Mission brief
+> **2 October 2026, NAVERA's bench.** 33 **simulated** camera views of the Sousse area, from 120 to 250 m, the
+> camera tilted by up to 12° as a drone tilts when it brakes, turns or fights the wind, with a slightly biased
+> IMU. NAVERA's day vision placed all 33 within 2.6 m of the truth (median 1.1 m). The same views with one
+> change, the old assumption that the camera looks **straight down**: median error **28 m**, and one view matched
+> at a wrong place. (Offline test, simulated camera over the map's own imagery: NAVERA's report calls such
+> results optimistic. The effect of the tilt is what matters here.)
+>
+> A few degrees of tilt cost 28 m. Today you find out why, and how to fix it. **Session 1 — Measurer:** you
+> build the camera model of NAVERA Lite and measure heights and positions in drone photos. **Session 2 —
+> Straightener:** you quantify what wrong heights and wrong attitudes cost, then straighten a tilted photo
+> with one 3 × 3 matrix and check your work against OpenCV. Each session ends with a badge.
+>
+> **Start now:** open the 🛠️ **Lab** tab, do **Step 0** (two minutes, no code), then come back here for §1.
 
-1. **Which ground point does each pixel show?** The camera is not a picture frame laid on the
-   map: it is a point in the air that looks along rays.
-2. **How many metres of ground does one pixel cover?** The map has a fixed resolution per zoom
-   level; the photo's resolution depends on the height. If the two do not agree, nothing matches.
-3. **How wrong can these answers be?** The height is never known exactly, and the drone is never
-   perfectly level.
+**Objectives.** After this mission you can:
 
-This lesson gives you the mathematical model that answers all three: the **pinhole camera** with
-its **intrinsic matrix K** and its **pose (R, C)**. You will project 3D points into the image,
-shoot rays from pixels back to the ground, compute the **footprint** of a tilted camera, and see
-how an error in height becomes an error in **scale**. Distortion of real lenses (fisheye) is the
-topic of lesson 19; here the camera is ideal.
+1. **project** a 3-D point into a pixel with the intrinsic matrix K and the camera's pose, and
+   **back-project** a pixel onto flat ground;
+2. compute the **footprint** and the **ground sampling distance** (GSD) of a camera, and measure a height
+   from an object of known size;
+3. **quantify** how a height error becomes a scale error, and how an attitude error becomes a position error;
+4. **straighten** a tilted view with the homography K·R·K⁻¹, and say what it needs and what it cannot fix.
 
-## 1. Three coordinate frames
+**You need:** rotation matrices and the pitch sign rule (mission 16), images as numpy arrays (mission 08),
+the metres per pixel of a map tile (mission 07). ⏱ Reading: about 75 minutes with the ✏️ checks, pencil and
+calculator. Lab: 3 h to 4 h 30.
 
-A **coordinate frame** is an origin plus three perpendicular axes. We need three of them; NAVERA
-uses exactly these conventions (`navera_common/camera_model.py`):
+**Before you start** — answer without looking (if you miss two, reread mission 16 on rotation matrices and
+mission 08 on image arrays):
+
+<details><summary>1. R is a rotation matrix. How do you get R⁻¹ without computing an inverse?</summary>
+R⁻¹ = Rᵀ, the transpose: the columns of a rotation are unit vectors at right angles.
+</details>
+
+<details><summary>2. A drone flies 5° nose down. What is its ROS pitch, and its "human" pitch (positive nose up)?</summary>
+ROS pitch +5° (a rotation about +y = left turns the nose down); human pitch −5°.
+</details>
+
+<details><summary>3. In numpy, img[200, 50] is which pixel: column 200 or row 200?</summary>
+Row 200, column 50: the first index is the row. A pixel written (u, v) is (column, row), so this is (u, v) = (50, 200).
+</details>
+
+<details><summary>Workspace and words (open if you need them)</summary>
+
+Your files are in `~/lessons/18-camera-model/`; the part of NAVERA Lite you write is
+[navera_lite/camera.py](file:./navera_lite/camera.py).
+
+| Word | Meaning | Français |
+|---|---|---|
+| **pinhole camera** | ideal camera: every ray passes through one point, the camera centre | sténopé |
+| **focal length in pixels (f)** | distance from the centre to the image plane, measured in pixels | focale en pixels |
+| **principal point (cx, cy)** | the pixel where the optical axis meets the image | point principal |
+| **intrinsic matrix K** | 3 × 3 matrix of f, cx, cy: the camera's own geometry | matrice intrinsèque |
+| **pose** (extrinsics) | where the camera is (C) and how it is turned (R) | pose (paramètres extrinsèques) |
+| **homogeneous coordinates** | a pixel written [u, v, 1], equal up to a scale factor | coordonnées homogènes |
+| **back-projection** | from a pixel to the ray of points that project there | rétroprojection |
+| **footprint** | the ground area covered by one image | emprise au sol |
+| **GSD** | ground sampling distance: metres of ground per pixel | résolution au sol |
+| **nadir / AGL** | straight down / height above the ground below (not above the sea) | nadir / hauteur sol |
+| **homography** | a 3 × 3 matrix that maps one image plane onto another | homographie |
+</details>
+
+## 1. Three frames and the camera's pose
+
+Three **frames** (an origin and three axes at right angles) are needed, the ones of the course's
+conventions sheet:
 
 | Frame | Axes | Used for |
 |---|---|---|
-| **world (ENU)** | x = east, y = north, z = up, in metres. In this lesson the origin is **on the ground under the drone**, so the ground is the plane z = 0 | positions on the ground |
-| **body (FLU)** | x = forward (nose), y = left, z = up | the drone's attitude (lesson 16) |
-| **camera (OpenCV)** | x = image right, y = image **down**, z = **optical axis** (where the camera looks) | pixels |
+| **world (ENU)** | x = east, y = north, z = up, metres. The ground is the plane z = 0 | positions on the ground |
+| **body (FLU)** | x = forward (nose), y = left, z = up | the drone's attitude (mission 16) |
+| **camera (OpenCV)** | x = image right, y = image **down**, z = the **optical axis** (where the lens looks) | pixels |
 
-The **camera centre** C is the position of the pinhole in the world: for a drone at height h,
-C = (0, 0, h). The **orientation** is a rotation matrix **R_wc** ("world from camera"): it turns a
-vector written in camera axes into the same vector written in world axes:
+![The three frames for a camera fixed under the drone, looking down: the image top points to the nose](assets/frames.svg)
+
+The **camera centre** C is where the pinhole is, in world coordinates: a drone h metres above the ground has
+C = (e, n, h). The camera's orientation is the rotation **R_wc** ("world from camera"):
 
 ```
-v_world = R_wc · v_cam          v_cam = R_wcᵀ · v_world        (R⁻¹ = Rᵀ for a rotation, lesson 16)
+v_world = R_wc · v_cam          v_cam = R_wcᵀ · v_world        (R⁻¹ = Rᵀ, mission 16)
 ```
 
-The columns of R_wc are the camera axes written in world coordinates. Example: a camera looking
-straight down from a drone whose nose points north. The image right is east, the image down is
-**south**, the optical axis is **down**:
+Read R_wc by its **columns**: they are the camera axes written in world coordinates. A level drone, nose north,
+camera looking straight down: image right = east, image down = **south**, optical axis = **down**:
 
 ```
          x_cam  y_cam  z_cam
-R_wc = [  1      0      0  ]     (east)
-       [  0     -1      0  ]     (north)
-       [  0      0     -1  ]     (up)
+R_wc = [  1      0      0  ]     east
+       [  0     -1      0  ]     north
+       [  0      0     -1  ]     up
 ```
 
-In the lab, `camera_rotation(heading, pitch, roll)` builds R_wc for any attitude. It takes the
-**human angles** that NAVERA's `body_rpy_enu()` reports (lesson 16, "In NAVERA"): heading clockwise
-from north, pitch positive **nose up**, roll positive right wing down. Careful: this pitch has the
-opposite sign of the ROS pitch θ of lesson 16 §1 (positive nose **down**), so a nose-down drone has a
-**negative** pitch here (−12°, −20°…):
-R_wc = Rz(90° − heading) · Ry(−pitch) · Rx(roll) · R_body→camera.
-The **−pitch** turns the human pitch (nose up) back into the ROS angle θ (nose down) that the
-right-hand rotation Ry needs; 90° − heading does the same for the yaw (clockwise from north → ENU
-counter-clockwise from east). This is the inverse of NAVERA's `body_rpy_enu()`.
+The camera is screwed to the body, so R_wc = R_world_body · R_body_cam: the body's attitude, then the
+**mount** (`R_BODY_NADIR_CAM` for a camera looking down, image top towards the nose). NAVERA Lite gives two
+finished helpers: `camera_rotation(q_body)` from an IMU quaternion (x, y, z, w), and
+`camera_rotation_hpr(heading, pitch, roll)` from the "human" angles: heading clockwise from north, **pitch
+positive nose up** (nose down is negative, e.g. −14°), roll positive right wing down.
 
-## 2. The pinhole model and the intrinsic matrix K
+> [!QUESTION] ✏️ Check
+> A level drone points its nose **east**. Write the three columns of R_wc (image right, image down, optical
+> axis) in world coordinates.
+
+<details><summary>Answer</summary>
+Image top = nose = east, so image down = <b>west</b> (−1, 0, 0). Image right = the drone's right = <b>south</b>
+(0, −1, 0). Optical axis = down (0, 0, −1). R_wc = [[0, −1, 0], [−1, 0, 0], [0, 0, −1]].
+</details>
+
+## 2. The pinhole model and K
 
 ![Pinhole projection: the image point divides X and Y by the depth Z](assets/pinhole.svg)
 
-In the camera frame a 3D point has coordinates X_c = (X, Y, Z), where Z is its **depth** along
-the optical axis. All light rays pass through the camera centre, and the image plane is at a
-distance **f** in front of it. By similar triangles, the point appears at
+In camera coordinates a point is X_c = (X, Y, Z), where Z is its **depth** along the optical axis. Every ray
+passes through the centre, and the image plane sits f pixels in front of it. Similar triangles give
 
 ```
-u = fx · X / Z + cx
-v = fy · Y / Z + cy
+u = f · X / Z + cx          v = f · Y / Z + cy
 ```
 
-- **fx, fy** — the **focal length in pixels** (horizontal and vertical). For square pixels fx = fy = f.
-- **(cx, cy)** — the **principal point**, the pixel where the optical axis meets the image; for an
-  ideal camera it is the image centre (w/2, h/2).
-- The division by Z is the **perspective division**: far objects look smaller.
-
-Engineers write this as one matrix product with **homogeneous coordinates** (a pixel (u, v) is
-written [u, v, 1] and is defined up to a scale factor λ):
+**f** is the **focal length in pixels**; (cx, cy), the **principal point**, is the image centre for an ideal
+camera. The division by Z is why far things look small. In matrix form:
 
 ```
-λ · [u, v, 1]ᵀ = K · X_c ,        K = [ fx   s   cx ]
-                                      [  0   fy  cy ]
-                                      [  0   0    1 ]
+λ · [u, v, 1]ᵀ = K · X_c          K = [ f  0  cx ]
+                                      [ 0  f  cy ]
+                                      [ 0  0   1 ]
 ```
 
-**K** is the **intrinsic matrix**: it contains only properties of the camera (s is the **skew**,
-0 for every modern sensor). Combining with the pose gives the full **projection**:
+> [!TIP] 🧰 Homogeneous coordinates
+> [u, v, 1] and [2u, 2v, 2] are the same pixel: to read a pixel from [a, b, c], divide by the last number,
+> (a/c, b/c). That is how K · X_c (three numbers) becomes a pixel: K · (30, −45, 150) with f = 800 and
+> (cx, cy) = (640, 360) is (120 000, 18 000, 150), and dividing by 150 gives (800, 120). The factor λ is the
+> depth Z.
+
+Add the pose and you have the whole camera:
 
 ```
-X_c = R_wcᵀ · (X_world − C)            (world → camera: the extrinsics)
-λ · [u, v, 1]ᵀ = K · X_c                (camera → pixel: the intrinsics)
+X_c = R_wcᵀ · (X_world − C)           world → camera (the pose)
+λ · [u, v, 1]ᵀ = K · X_c               camera → pixel (K)
 ```
 
-Often this is written λ·x = K [R | t] X with R = R_wcᵀ and t = −R_wcᵀ C: it is the same thing.
-If Z ≤ 0 the point is **behind** the camera and has no image.
+If Z ≤ 0 the point is behind the camera and has no image. (Books write λx = K[R | t]X, R = R_wcᵀ, t = −R_wcᵀC.)
 
-### Field of view
-
-The **horizontal field of view** (HFOV) is the angle between the rays of the left and right image
-edges. The right half of the image (w/2 pixels) is seen under HFOV/2, so
+**Field of view.** The right half of the image, w/2 pixels, is seen under HFOV/2, so
 
 ```
-tan(HFOV / 2) = (w / 2) / f        ⇔        f = (w / 2) / tan(HFOV / 2)
-VFOV = 2 · atan((h / 2) / f)       (the same f, the image height h in pixels)
+tan(HFOV / 2) = (w / 2) / f        ⇔        f = (w / 2) / tan(HFOV / 2)        VFOV = 2 · atan((H_img / 2) / f)
 ```
+
+(w and H_img are the image's width and height in pixels; from §3 on, h is the camera's height in metres.)
 
 | Camera | Size (px) | HFOV | f (px) | VFOV |
 |---|---|---|---|---|
-| the lab's synthetic camera | 960 × 540 | 90° | 480 | 58.7° |
-| NAVERA's Insta360 top lens, straightened | 1920 × 540 | 111° | 659.8 | 44.5° |
-| a narrow zoom camera | 1920 × 1080 | 30° | 3583 | 17.2° |
+| this lesson's examples | 1280 × 720 | 77.3° | 800 | 48.5° |
+| NAVERA's Insta360 view, straightened | 1920 × 540 | 111° | 659.8 | lab Step 1 |
+| a narrow zoom camera | 1920 × 1080 | 30° | 3 582.8 | 17.1° |
 
-> [!NOTE]
-> The second line is NAVERA's real camera. The top lens of the Insta360 ONE R was calibrated on
-> the bench (lesson 19) with **fx ≈ 660 px**. NAVERA straightens its picture into an ideal pinhole
-> view of 1920 × 540 px, 111° wide: 2·atan(960 / 660) ≈ 111°. A wider straight view would stretch
-> the edges and lose detail in the centre — lesson 19 explains this trade-off.
+The second line is NAVERA's real camera, the top lens of an Insta360 ONE R: a fisheye, calibrated on the bench
+on 6 October 2026, whose picture NAVERA turns into an ideal pinhole view 111° wide. Its f = 659.8 px follows from
+1920 px and 111°; the fisheye's own calibration numbers belong to another lens model (mission 19 explains them,
+and why 111°).
 
 > [!WARNING]
-> Python's `math.tan()` and numpy's `np.tan()` take **radians**: `math.tan(math.radians(45))` is
-> 1.0, but `math.tan(45)` is 1.62. This is the most frequent bug in this lab.
+> `math.tan` and `np.tan` take **radians**: `math.tan(math.radians(45))` is 1.0, `math.tan(45)` is 1.62.
+> This is the most frequent bug of this mission.
 
-### Worked example 1 — projecting a ground point
-
-The lab camera (K with f = 480, cx = 480, cy = 270) looks straight down from h = 150 m, nose
-north. Where does the ground point X = (30, 45, 0) — 30 m east, 45 m north — appear?
+**Worked example 1.** The lesson camera (f = 800, centre (640, 360)) looks straight down from 150 m, nose
+north. Where does the ground point 30 m east, 45 m north appear?
 
 ```
-X − C   = (30, 45, −150)
-X_c     = R_wcᵀ (X − C) = (30, −45, 150)       (x = east, y = south, z = down: depth 150 m)
-u       = 480 · 30 / 150 + 480 = 576
-v       = 480 · (−45) / 150 + 270 = 126
+X − C = (30, 45, −150)
+X_c   = R_wcᵀ (X − C) = (30, −45, 150)       x = east, y = south (so −45), z = down: depth 150 m
+                                             (here R_wcᵀ = R_wc = diag(1, −1, −1): keep x, flip y and z)
+u     = 800 · 30 / 150 + 640 = 800
+v     = 800 · (−45) / 150 + 360 = 120
 ```
 
-The point is right of the centre (east) and above it (north): the image top points north.
+Right of the centre (east) and above it (north): the image top is north, as the camera's columns said.
+
+> [!QUESTION] ✏️ Check
+> 1. A camera sees 70° across 1 600 px. What is f? What is its VFOV if the image is 900 px high?
+> 2. With f = 800 and (cx, cy) = (640, 360), which pixel shows X_c = (−20, 10, 200)?
+
+<details><summary>Answer</summary>
+1. f = 800 / tan 35° = <b>1 142.5 px</b>; VFOV = 2 · atan(450 / 1 142.5) = <b>43.0°</b>.<br>
+2. u = 800 · (−20)/200 + 640 = <b>560</b>, v = 800 · 10/200 + 360 = <b>400</b>.
+</details>
 
 ## 3. Back-projection: from a pixel to the ground
 
-The opposite question — *which ground point does pixel (u, v) show?* — is what NAVERA needs to
-place a photo on the map. A single pixel does not give a 3D point, only a **ray** (the depth is
-lost). The ray leaves C in the direction
+To place a photo on a map, NAVERA needs the opposite: *which ground point does pixel (u, v) show?* A pixel
+gives no depth, only a **ray** from C:
 
 ```
-d = R_wc · K⁻¹ · [u, v, 1]ᵀ          (direction in the world frame)
+d = R_wc · K⁻¹ · [u, v, 1]ᵀ          the ray's direction in the world
 X(λ) = C + λ · d,   λ > 0
 ```
 
-To find where it hits the **ground plane** z = 0, solve C_z + λ · d_z = 0:
+> [!TIP] 🧰 K⁻¹ without inverting
+> K⁻¹ · [u, v, 1] = ((u − cx)/f, (v − cy)/f, 1): undo the shift, then the scale. With f = 800 and centre
+> (640, 360), pixel (800, 120) gives (0.2, −0.3, 1), a direction in camera axes. In numpy,
+> `np.linalg.solve(K, b)` or `np.linalg.inv(K) @ b` does it for any K.
+
+The ray meets the **ground plane** z = 0 where C_z + λ·d_z = 0:
 
 ```
-λ = −C_z / d_z = −h / d_z          valid only if d_z < 0 (the ray goes down)
+λ = −C_z / d_z          only if d_z < 0 (the ray goes down)
 X_ground = C + λ · d
 ```
 
-If d_z ≥ 0 the ray goes to the horizon or the sky and never touches the ground. This is a
-**ray–plane intersection**; for a general plane n·X = c, λ = (c − n·C) / (n·d). We assume flat
-ground; over mountains that is a strong assumption (a digital elevation model would
-be needed).
+If d_z ≥ 0 the ray goes to the horizon or the sky. This **ray–plane intersection** assumes **flat ground**.
 
-![A nose-down drone: the down-looking camera sees the ground behind it](assets/tilt.svg)
+![A nose-down drone: its fixed down-looking camera sees the ground behind it](assets/tilt.svg)
 
-### Worked example 2 — a tilted camera
-
-The drone flies north at h = 150 m and pitches **nose down 20°** to accelerate. The camera is fixed
-to the body, so its optical axis also rotates by 20° — and because the nose goes down, the belly
-(and the camera) turns **backwards**. For the image centre, K⁻¹[480, 270, 1]ᵀ = (0, 0, 1) and
+**Worked example 2 — a tilted camera.** The lesson camera flies north at 120 m and pitches **nose down 20°**
+to accelerate. The camera turns with the body: the nose goes down, so the belly, and the lens, turn
+**backwards**. For the image centre, K⁻¹[640, 360, 1] = (0, 0, 1), and
 
 ```
 d = R_wc · (0, 0, 1) = (0, −sin 20°, −cos 20°) = (0, −0.342, −0.940)
-λ = −150 / −0.940 = 159.6 m                 (the slant range)
-X_ground = (0, 0, 150) + 159.6 · d = (0, −54.6, 0)
+λ = −120 / −0.940 = 127.7 m                       the slant range
+X_ground = (0, 0, 120) + 127.7 · d = (0, −43.7, 0)
 ```
 
-The image centre shows the ground **54.6 m behind** the drone (h · tan 20°). If NAVERA matched this
-photo and said "the drone is at the image centre", it would be 55 m wrong. Many people guess
-"in front" — draw it once and you will not forget.
+The image centre shows the ground **43.7 m behind** the drone (h · tan 20°). A matcher that puts the drone
+at the photo's centre is 44 m wrong.
 
-## 4. The footprint
+> [!TIP] 🧰 Where does d = (0, −sin 20°, −cos 20°) come from?
+> R_wc · (0, 0, 1) is simply the **third column** of R_wc: the optical axis written in world axes. Level, nose
+> north, it is (0, 0, −1), straight down. Pitch the nose down 20° about the east axis: the belly, and that column,
+> turn 20° towards the south (backwards), so down becomes (0, −sin 20°, −cos 20°). In the lab you never build
+> R_wc by hand: `camera_rotation_hpr(0, -20)` returns it, and its third column `R[:, 2]` is this vector.
 
-The **footprint** is the part of the ground the image covers: back-project the four image corners
-and join them.
+<details><summary>Read this after lab Step 2: flat ground is an assumption</summary>
+A mast, a roof or a hill top is closer to the camera than the ground, so the same east/north offset is divided by
+a smaller depth and appears farther from the image centre (for a level camera; in general, farther from the point
+under the drone). Tall things <b>lean away from the centre</b> (relief displacement). Back-projected as if they
+were on the ground, their tops land at the wrong place.
+</details>
 
-**Nadir camera** (looking straight down): the footprint is a rectangle
+> [!QUESTION] ✏️ Check
+> 1. A ray leaves C = (0, 0, 120) with direction d = (0.2, 0.1, −0.8). Where does it hit the ground?
+> 2. A drone flies **east** at 300 m and pitches nose down 10°. Where is the ground point of the image centre?
 
-```
-W = 2 h tan(HFOV/2)        H = 2 h tan(VFOV/2)        area = W · H
-```
+<details><summary>Answer</summary>
+1. λ = −120 / −0.8 = 150, X = (150 · 0.2, 150 · 0.1) = <b>(30 m east, 15 m north)</b>.<br>
+2. Behind the drone, so <b>west</b>: 300 · tan 10° = <b>52.9 m</b> west of the point under it.
+</details>
 
-The lab camera at 150 m covers 300 m × 168.75 m = 50 625 m². The Insta360 view at 150 m covers
-436.5 m × 122.8 m.
+## 4. Footprint, GSD and measuring with a photo
 
-**Tilted camera**: the footprint becomes a **trapezoid**. In the plane of the tilt θ, the near and
-far edges are at h·tan(θ − VFOV/2) and h·tan(θ + VFOV/2) from the point under the drone; in the
-example above, 25 m **ahead** and 175 m **behind**. The far side is much wider than the near side
-because it is further away (perspective). When θ + VFOV/2 reaches 90°, the far edge looks at the
-horizon and the footprint is infinite. The area of any polygon with vertices (x_i, y_i) is given
-by the **shoelace formula**:
+The **footprint** is the ground the image covers: back-project the four corners and join them.
 
-```
-A = ½ · | Σ_i ( x_i · y_(i+1) − x_(i+1) · y_i ) |       (indices modulo N)
-```
+![A nadir camera at height h covers W = 2·h·tan(HFOV/2) of ground across the image](assets/footprint.svg)
 
-| Pitch (nose down), h = 150 m, lab camera | 0° | −10° | −20° | −30° |
-|---|---|---|---|---|
-| image centre behind the drone (m) | 0 | 26.4 | 54.6 | 86.6 |
-| footprint area (m²) | 50 625 | 54 063 | 66 466 | 97 405 |
-
-You will draw these four footprints in the lab.
-
-## 5. Ground sampling distance (GSD)
-
-The **ground sampling distance** is the ground size of one pixel. For a nadir camera:
+**Looking straight down**, the footprint is a rectangle w·h/f wide and H_img·h/f tall (similar triangles
+again: w/2 pixels for h·tan(HFOV/2) metres). The lesson camera at 120 m covers 192 m × 108 m. Dividing by
+the pixels gives the **ground sampling distance**:
 
 ```
-GSD = W / w = 2 h tan(HFOV/2) / w = h / f          (metres per pixel)
+GSD = 2 · h · tan(HFOV/2) / w = h / f          metres per pixel, at nadir
 ```
 
-The Insta360 view at 150 m: 150 / 659.8 = **0.227 m/px** (a 4.5 m car is about 20 px long). The
-GSD is **proportional to the height**: twice as high, half the detail.
+The lesson camera at 120 m: 0.15 m/px. NAVERA's Insta360 view at 150 m: 150 / 659.8 = **0.227 m/px**, so a
+4.5 m car is about 20 px long. The GSD is **proportional to the height**: twice as high, half the detail.
 
-For a tilted camera the GSD changes across the image. At the image centre the slant range is
-h / cos θ; a pixel there covers h / (f cos θ) across the tilt direction and h / (f cos² θ) along it
-(the ground is seen at a grazing angle). At 150 m and θ = 20°: 0.333 m and 0.354 m instead of 0.3125 m.
-This non-uniform scale is one more reason why NAVERA **straightens** tilted frames into the view of
-a level nadir camera before matching (see *In NAVERA* below).
+**Tilted**, the footprint becomes a **trapezoid**: with the nose down, the image bottom looks far behind and
+covers a wide strip. Lesson camera at 120 m, nose north:
 
-## 6. Matching the map's zoom level
+| Pitch (nose up +) | 0° | −15° | −30° |
+|---|---|---|---|
+| image centre behind the drone | 0 m | 32.2 m | 69.3 m |
+| far edge (image bottom): behind, width | 54 m, 192 m | 98 m, 226 m | 167 m, 300 m |
+| area (shoelace formula, computed by the lab's runner) | 20 736 m² | 23 693 m² | 36 714 m² |
 
-NAVERA's map is a **Web Mercator** tile pyramid (lesson 07): 256 × 256 px tiles, and at zoom z the
-whole world is 256 · 2^z pixels wide **along every parallel**. A parallel at latitude φ is shorter
-than the equator by cos φ, so
+When the tilt plus half the VFOV reaches 90°, the far edge looks at the horizon: the footprint is infinite.
 
-```
-map_mpp(φ, z) = 40 075 016.7 · cos φ / (256 · 2^z)       (metres per pixel)
-```
-
-| zoom | 15 | 16 | 17 | 18 | 19 |
-|---|---|---|---|---|---|
-| Singapore (1.3° N) | 4.78 | 2.39 | 1.19 | 0.597 | 0.299 |
-| Sousse (35.8° N) | 3.87 | 1.94 | 0.968 | 0.484 | 0.242 |
-| Reykjavik (64.2° N) | 2.08 | 1.04 | 0.521 | 0.260 | 0.130 |
-
-The same zoom level is **coarse near the equator and fine near the poles**: a zoom-17 pixel covers
-1.19 m in Singapore but only 0.52 m in Reykjavik. NAVERA's test map covers Sousse, Tunisia (where
-NAVERA is developed), so the lab photos come from there; the formulas are the same for a map of
-any other place.
-
-To compare a photo with the map, both must have the same metres per pixel. NAVERA keeps the map
-and **resizes the photo** by
+**Measuring with a known object.** Turn the pinhole model around: an object of S metres seen as n pixels by a
+nadir camera gives GSD = S/n, so
 
 ```
-s = GSD_photo / map_mpp        (s < 1: the photo is shrunk)
+h = f · S / n
 ```
 
-The **best zoom** for a given height is the one closest in **ratio** — minimise |log(map_mpp / GSD)|,
-because a map twice too fine and a map twice too coarse are equally bad. Equivalently,
-z* ≈ log₂(40 075 016.7 · cos φ / (256 · GSD)), rounded. At 300 m the Insta360 GSD is 0.455 m/px:
-zoom 18 in Singapore (0.597) and in Sousse (0.484), but zoom 17 in Reykjavik (0.521). The height at
-which the photo has exactly the zoom-17 resolution is h = f · map_mpp: 788 m over Singapore, 639 m
-over Sousse, 344 m over Reykjavik.
+A 4.5 m car that is 30 px long in the lesson camera: h = 800 · 4.5 / 30 = 120 m; at 31 px, 116.1 m. The
+**pixel count limits the precision**.
 
-## 7. Uncertainty: from height error to scale error
+**From the photo to the map.** Map tiles have their own metres per pixel (mission 07: Sousse, zoom 18,
+0.484 m/px), so NAVERA first resizes the photo by s = GSD_photo / map_mpp: the Insta360 view at 150 m
+(0.227 m/px) shrinks to 0.47 of its size. That needs h.
 
-Everything above needs h, the height **above the ground** (AGL). It is never exact. Since GSD ∝ h,
+> [!QUESTION] ✏️ Check
+> A 12 m long bus is 40 px long in a nadir photo taken by a camera with f = 1 000 px. How high is the
+> camera? And if the measurement is off by one pixel either way?
+
+<details><summary>Answer</summary>
+h = 1 000 · 12 / 40 = <b>300 m</b>; 39 px → 307.7 m, 41 px → 292.7 m: about ±2.5 %, because one pixel is 1/40 of
+the object.
+</details>
+
+<details class="further"><summary>Optional: the GSD of a tilted camera</summary>
+At the centre of a camera tilted by θ, the slant range is h / cos θ. One pixel covers h / (f cos θ) across the
+tilt direction, and h / (f cos² θ) along it, because the ground is seen at a grazing angle. Lesson camera,
+120 m, θ = 20°: 0.160 m across and 0.170 m along, instead of 0.150 m. The scale changes across a tilted image,
+one more reason to straighten it first (§7). Lab "Going further" checks it numerically.
+</details>
+
+## 5. Height error → scale error
+
+Everything above needs h, the height **above the ground below** (AGL), never known exactly. The GSD is
+proportional to h, so
 
 ```
-s_true / s_assumed = h_true / h_assumed         ⇒        δs / s = δh / h
+fitted scale s = GSD_true / GSD_predicted = h_true / h_predicted          ⇒   δs / s = δh / h
 ```
 
-A 10 % height error is a 10 % scale error. Feature matching tolerates only a limited scale
-difference, and NAVERA uses the scale as a **sanity check**: a match is fitted with a
-rotation + scale + translation, and the fitted scale must be 1 ± 15 % (the scale the height
-predicts). A wrong place almost never matches at the right scale. In NAVERA's validation document,
-on 33 labelled replay frames around Sousse, adding this scale check took the wrong accepted
-matches from 1 to 0 (measured on replay data, not in flight).
+A 10 % height error is a 10 % scale error. NAVERA's day vision fits each match with a rotation, a scale and a
+shift, and accepts it only if the fitted scale is the one the height predicts, within **±15 %**: a wrong place
+almost never matches at the right scale. Run backwards, the gate **measures** the height:
+h_true = h_predicted · s. Predicted 150 m, fitted scale 1.2: the drone was at 180 m.
 
-The check also works backwards: if the match is right, the fitted scale **measures the height**:
-h_true = h_assumed · s. A fitted scale of 1.2 at an assumed 150 m means the drone was at 180 m.
+Without a rangefinder, the height is often "GPS altitude − ground altitude at take-off", which fails over
+hills: take off in a valley at 500 m above sea level, fly at 2 300 m over a plateau at 2 000 m. The estimate
+says 1 800 m, the truth is 300 m: a scale of 0.17, far outside any gate. On NAVERA's bench (2 October 2026,
+real aerial photos), heights **40 % too high** gave 0 matches out of 33; with an altitude-uncertainty window
+(a wider gate when the height is uncertain), 27 of 33, the height measured within 0.4 %.
 
-How large is δh in practice? NAVERA's `altitude.py` ranks the sources: a **rangefinder** (laser,
-best), then the height measured by earlier matches, then a reference altitude minus the ground
-height at take-off (barometer or GPS), whose uncertainty grows with height because the terrain
-changes. When the height is uncertain, NAVERA widens the gate to 2·σh/h, at most 35 %.
+> [!QUESTION] ✏️ Check
+> The predicted height is 250 m, the match fits a scale of 0.92, the gate is ±15 %. Accepted? What height does
+> it measure?
 
-**A mountain example.** A drone takes off in a mountain valley, for example in the Alps (ground
-about 500 m above sea level), climbs to 2 300 m GPS altitude and flies over a high plateau (ground
-about 2 000 m). "GPS
-altitude − take-off ground" says 1 800 m AGL; the truth is 300 m. The photo shows 6 times less
-ground than predicted: the matcher would need a scale of 0.17, far outside any gate. Only a
-rangefinder, a terrain model or a height measured from the image can save this flight.
+<details><summary>Answer</summary>
+|0.92 − 1| = 0.08 ≤ 0.15: <b>accepted</b>. Measured height 250 · 0.92 = <b>230 m</b>.
+</details>
 
-Attitude errors matter too. The image centre lands h·tan θ from the point under the drone, so an
-error δθ moves it by about h·δθ/cos²θ: at 150 m and θ = 10°, **1° of attitude error is 2.7 m**
-on the ground. Lesson 17's IMU accuracy limits the position accuracy.
+## 6. Attitude error → position error
 
-## 8. 🐦 How birds do it
+The ground point of the optical axis lies h·tan θ from the point under the drone (θ = the tilt from straight
+down). If the attitude is wrong by δθ, that point moves by
 
-From high above a coastal lagoon such as the Camargue in France, a flock of flamingos sees
-kilometres of mudflat; low over the water, a tern sees a few square metres — but every small fish in them. That is this lesson's rule
-for any eye: **footprint and detail trade against each other**, and the trade is set by height.
+```
+Δ = h · tan(θ + δθ) − h · tan θ   ≈   h · δθ / cos² θ        (δθ in radians, small)
+```
 
-Birds of prey push the detail. Their retina has a deep central **fovea** packed with
-photoreceptors (many raptors have a second, shallower one for looking sideways), and the best
-eagles resolve detail roughly twice as fine as a person. Golden eagles, from the Alps to the
-Rocky Mountains, scan the ground from great heights and still spot small prey: like a camera with a long focal
-length in the middle of a wide field of view.
+**Worked example.** 150 m, θ = 10°, δθ = 1°: Δ = 150 · (tan 11° − tan 10°) = **2.71 m**; the small-angle
+formula gives 2.70 m. Straight down (θ = 0) it is h · tan 1° = 2.62 m. The slope 1/cos² θ grows with the tilt:
+a tilted camera needs a better attitude.
 
-The **common kestrel**, seen from Europe to Africa and Asia, solves the other problem of this lesson — the pose.
-When it **hovers** into the wind, its wings and tail work constantly, but its **head stays almost
-perfectly still** in space. A fixed viewpoint means a stable projection: any small movement in the
-image is the prey, not the bird. NAVERA cannot hold its camera still, so it measures the pose with
-the IMU and computes the projection instead. Navi, our swallow, does not hover; she trusts her
-fast eyes and keeps low — a small GSD.
+Back to the hook: ignoring a tilt is an attitude error as large as the tilt. An illustration (the report does
+not give the views' tilts one by one): at 185 m, the middle of the bench's heights, a tilt of 8.6° alone moves the
+centre point by 185 · tan 8.6° = 28 m, the bench's median. Tilts of a few degrees, up to 12°, are enough to
+explain it. The attitude at the instant of the photo (missions 17 and 20) is part of the camera chain.
+
+> [!QUESTION] ✏️ Check
+> A level camera at 300 m, an IMU whose attitude is 2° wrong. How far off is the centre point? Is that inside
+> the 30 m σ that NAVERA's day vision states?
+
+<details><summary>Answer</summary>
+300 · tan 2° = <b>10.5 m</b>: inside 30 m. Independent errors add in quadrature, so √(30² − 10.5²) = 28.1 m are
+left for everything else (matching, map, height).
+</details>
+
+## 7. Straightening a tilted view with a homography
+
+Turn a camera about its centre and every pixel's ray simply turns with it: no point moves in the world,
+only the axes we read it in. So the image a **level** camera at the same place would have taken can be
+computed from the tilted one, pixel by pixel, without knowing any depth. Follow one pixel: it becomes a ray in
+the real camera's axes (undo K, §3), the ray is written in world axes (the real camera's rotation R_wc), then in
+the axes of the virtual level camera (orientation R_wv: world → camera, as in §2), and the virtual camera's K
+turns it back into a pixel. Four 3 × 3 matrices, one product: a 3 × 3 matrix H that maps pixels to pixels (up to
+the last-number division of §2). Such a matrix is a **homography**; you write it in lab Step 9 from this trace.
+OpenCV's `cv2.warpPerspective(img, H, (w, h))` applies it to a whole image. You choose the virtual camera: level and straight down, with the image top towards the heading
+(NAVERA keeps the heading) or towards north (then the photo looks like the map, as mission 08's `like_map`
+prepared by rotating).
+
+**Worked example 3.** The lesson camera, nose north, pitched 10° nose down, straightened to a level camera
+with the image top north. The tilted image centre (640, 360) looks 10° behind vertical: in the level view it
+appears 800 · tan 10° = 141.1 px below the centre, at (640, 501.1). And the pixel that showed the point under
+the drone in the tilted view, (640, 218.9), comes to (640, 360). The straightened view behaves like the nadir
+camera of §4: metres = pixels from the centre × GSD.
+
+Straightening needs K and the attitude, nothing else. It cannot fix a wrong attitude (§6), a wrong height (for
+the metres, §5) or the relief displacement of hills and buildings (§3): the straightened view is exactly what a
+level camera would see, hills included, so reading metres in it still assumes flat ground. NAVERA refuses frames tilted more than **45°**: there the ground is seen at a grazing
+angle and the far edge runs towards the horizon.
+
+> [!QUESTION] ✏️ Check
+> The lesson camera, nose north, level in pitch but rolled 8° right wing down, straightened to a level camera,
+> image top north. Where does the tilted image centre appear in the level view? Which side of the drone is
+> that ground point?
+
+<details><summary>Answer</summary>
+Right wing down turns the belly, and the lens, to the <b>left</b> (west): 800 · tan 8° = 112.4 px left of the
+centre, at <b>(527.6, 360)</b>; the ground point is 112.4 × GSD west of the drone.
+</details>
+
+> [!WARNING] Common wrong ideas
+> - "Nose down, so the camera looks ahead." The camera is fixed to the belly: nose down turns it **backwards**.
+> - "R_wc turns world into camera." It turns camera vectors into world vectors; world → camera is **R_wcᵀ**. With
+>   a level camera, nose north, R_wc is symmetric (R_wc = R_wcᵀ), so the mistake is invisible: test with a tilted
+>   camera. Memory aid: project goes world → camera (R_wcᵀ, the "T" for "to the camera"); back-projection goes
+>   camera → world (R_wc).
+> - "cv2.projectPoints wants my R_wc." OpenCV's rvec / tvec (also what solvePnP returns) are world → camera:
+>   rvec = Rodrigues(R_wcᵀ), tvec = −R_wcᵀ·C. Lab Step 10 does exactly this.
+> - "The pixel (u, v) is img[u, v]." It is `img[v, u]`: row first in numpy, column first in a pixel.
+> - "The GSD is the same all over the photo." Only for a nadir camera over flat ground.
+> - "A homography needs the depth of every pixel." Not for a pure rotation about the camera centre; it is
+>   **measuring** metres in the result that needs the height and flat ground.
 
 ## In NAVERA
 
-The formulas of this lesson are in your NAVERA copy, almost word for word.
+NAVERA's live camera node prepares every frame before day vision sees it (in words, from its architecture
+document): it stamps the exposure instant, takes the IMU attitude at that instant, removes the lens distortion
+(mission 19), **straightens** the frame to a level, straight-down view (with a gimbal, only the heading is
+used), refuses frames tilted more than 45°, and attaches the **height above the ground**: a downward
+rangefinder if there is one, else the height measured by earlier matches, carried forward by the barometer or
+by the GPS altitude above the take-off ground. Day vision then scales the frame to the map from that height and
+the field of view, fits a rotation + scale + shift (mission 22), and accepts a match only with at least
+6 inliers **and** a scale within ±15 % of the prediction. On an earlier benchmark (1 October 2026: 33 real aerial
+frames from another source, not NAVERA's camera, a different set from the brief's simulated views), the scale check took the wrong accepted matches from 1 to 0. All these numbers come
+from the bench or simulation: NAVERA is Release 0.2, field validation pending.
 
-[navera_common/camera_model.py](file:navera/navera_common/navera_common/camera_model.py) builds K for
-an ideal lens and the camera rotation from the attitude:
+## In NAVERA Lite
 
-```python
-    @classmethod
-    def ideal(cls, hfov_deg: float, size: Tuple[int, int]) -> "CameraModel":
-        w, h = int(size[0]), int(size[1])
-        f = (w / 2.0) / math.tan(math.radians(hfov_deg) / 2.0)
-        return cls([[f, 0, w / 2.0], [0, f, h / 2.0], [0, 0, 1]], [], (w, h), "pinhole", hfov_deg)
+The same ideas live in [navera_lite/camera.py](file:./navera_lite/camera.py), the part you write today:
 
-def camera_rotation(q_body_enu, mount_rpy_deg=(0.0, 0.0, 0.0)) -> np.ndarray:
-    R_wb = quat_to_matrix(q_body_enu)
-    R_mount = rpy_to_matrix(*(math.radians(float(a)) for a in mount_rpy_deg))
-    return R_wb @ R_mount @ R_BODY_NADIR_CAM
+| You write | It does | Lesson |
+|---|---|---|
+| `focal_px`, `K_from_hfov` | f and K of an ideal camera | §2 |
+| `project`, `backproject_ground` | world point → pixel, pixel → ground point | §2, §3 |
+| `gsd`, `footprint` | metres per pixel at nadir, the four ground corners | §4 |
+| `tilt_position_error` | what an attitude error costs on the ground | §6 |
+| `nadir_homography` | the straightening homography | §7 |
 
-def tilt_deg(R_world_cam: np.ndarray) -> float:
-    """Angle between the optical axis and straight down (deg)."""
-    z = R_world_cam @ np.array([0.0, 0.0, 1.0])
-    return math.degrees(math.acos(max(-1.0, min(1.0, -z[2]))))
+Given: `R_BODY_NADIR_CAM`, `camera_rotation`, `camera_rotation_hpr`, `off_nadir_deg`, `warp_point`, and mission
+16's `rotations.py`. The part grows: mission 19 adds the fisheye lens, mission 20 the timing, and the vision
+missions use your GSD and straightening.
 
-def ground_m_per_px(altitude_agl_m: float, hfov_deg: float, width_px: int) -> float:
-    return 2.0 * altitude_agl_m * math.tan(math.radians(hfov_deg) / 2.0) / width_px
+## 🐦 How birds do it
 
-def altitude_from_scale(predicted_altitude_m: float, fitted_scale: float) -> float:
-    return predicted_altitude_m * fitted_scale
-```
+A hovering **common kestrel**, from Europe to Africa and Asia, beats its wings and twists its body against the
+wind, yet its **head stays almost perfectly still** in space: a stable pose means a stable projection, and
+anything that moves in the image is prey. NAVERA cannot hold its camera still, so it measures the attitude and
+straightens the image instead. High above, **golden eagles** spot small prey with a deep central fovea, a long
+"focal length" in the middle of a wide field of view: footprint and detail, traded as in §4.
 
-The same file has `nadir_homography(K, R)`: x_virt ~ K · R_virt←cam · K⁻¹ · x_cam, the image
-transform that turns a tilted frame into the view of a level nadir camera at the same place, so
-that **the image centre is the point under the drone**. In the lab you will verify this with your
-own `project()`. [navera_common/frame_builder.py](file:navera/navera_common/navera_common/frame_builder.py)
-applies it to every live frame and refuses frames tilted more than `max_tilt_deg` (45° by default).
+## Summary
 
-[day_pkg/local_matcher.py](file:navera/day_pkg/day_pkg/local_matcher.py), the day-vision matcher:
+1. A pinhole camera is K (f, cx, cy) plus a pose (R_wc, C): X_c = R_wcᵀ(X − C), then divide K·X_c by the depth.
+2. A pixel is a ray d = R_wc·K⁻¹·[u, v, 1]; over flat ground it hits z = 0 at λ = −h / d_z, only if d_z < 0.
+3. At nadir the footprint is h·w/f wide and GSD = h/f; tilted, the footprint is a trapezoid, far side wide.
+4. A height error is a scale error (s = h_true / h_predicted, NAVERA gates it at ±15 %); an attitude error
+   moves the ground point by about h·δθ / cos²θ.
+5. A rotation about the camera centre is a homography, H = K·R_wvᵀ·R_wc·K⁻¹: it straightens a tilted view
+   without depth; measuring metres in it needs the height and flat ground.
 
-```python
-def map_m_per_px(lat: float, z: int) -> float:
-    return EQUATOR_M * math.cos(math.radians(lat)) / 2 ** z / 256.0
-...
-        mpp_map = map_m_per_px(prior[0], self.z)
-        s = frame_m_per_px / mpp_map                     # frame pixels → map pixels
-        if not (math.isfinite(s) and 0.02 < s < 50):
-            res.update(error=f"frame scale {s:.3f} of the map resolution is not plausible")
-...
-        scale = math.hypot(A[0, 0], A[1, 0])              # 1.0 when the altitude/FOV prediction is right
-...
-        elif abs(scale - 1.0) > tol:
-            res["reason"] = (f"fitted scale {scale:.2f} ≠ 1 expected from the altitude (±{tol:.0%}): "
-                             "wrong place")
-```
+**Next mission:** real lenses are not pinholes. You calibrate NAVERA's fisheye camera and find out why its
+straightened view stops at 111°.
 
-Its `locate_any_height()` handles a completely unknown height: it tries heights from 30 m to
-1500 m, each 1.5 × the previous, with a ±30 % scale window, and returns the height measured by the
-best match (h_tried × fitted scale).
+## Check yourself
 
-[day_pkg/nodes/day_subscriber.py](file:navera/day_pkg/day_pkg/nodes/day_subscriber.py) widens the
-scale gate with the height uncertainty and refuses to guess the GSD:
+Answer without scrolling up.
 
-```python
-    def _scale_tol(self, meta):
-        tol = self.local.scale_tol
-        rel = 2.0 * float(meta.get("altitude_sigma_m")) / float(meta.get("altitude_m"))
-        if math.isfinite(rel):
-            tol = min(max(tol, rel), self.local_scale_tol_max)     # 0.15 ... 0.35
-    ...
-    def _frame_m_per_px(self, img, meta):
-        if not math.isfinite(hfov) or not 1.0 < hfov < 179.0:
-            return None, "camera_hfov_deg unknown"
-        if not (math.isfinite(alt) and alt > 5.0):
-            return None, "frame altitude unknown or on the ground"
-        return LocalMatcher.frame_m_per_px(img.shape[1], alt, hfov), None
-```
-
-(Excerpts are shortened; open the files to read the full code.)
-
-## Glossary
-
-| Term | Meaning |
-|---|---|
-| **coordinate frame** | an origin and three perpendicular axes (world ENU, body FLU, camera OpenCV) |
-| **camera centre C** | the position of the pinhole in the world |
-| **R_wc** | rotation matrix from camera axes to world axes; R_wcᵀ goes back |
-| **extrinsics** | the pose of the camera (R, C or R, t) |
-| **intrinsic matrix K** | the 3×3 matrix with fx, fy, cx, cy (and skew s) |
-| **focal length in pixels (f)** | distance from the pinhole to the image plane, measured in pixels |
-| **principal point (cx, cy)** | the pixel where the optical axis crosses the image |
-| **homogeneous coordinates** | [u, v, 1], defined up to a scale factor λ |
-| **perspective division** | dividing by the depth Z: far things look small |
-| **back-projection** | from a pixel to the ray of 3D points that project there |
-| **ray–plane intersection** | the point where a ray meets a plane: λ = −h / d_z for the ground |
-| **field of view (HFOV, VFOV)** | the angle seen across the image width / height |
-| **footprint** | the ground area covered by the image |
-| **GSD** | ground sampling distance: metres of ground per pixel (h / f at nadir) |
-| **nadir** | the direction straight down |
-| **AGL** | above ground level: height above the ground below, not above the sea |
-| **scale gate** | NAVERA's rule that a match's fitted scale must be 1 ± tolerance |
-
-## Check what you learned
-
-<details><summary>1. A camera has HFOV 60° on 1280 px. What is f? What is its VFOV if the image is 720 px high?</summary>
-f = 640 / tan 30° = 1108.5 px. VFOV = 2·atan(360 / 1108.5) = 2 · 18.0° = <b>36.0°</b>.
+<details><summary>1. Write the two steps from a world point to a pixel, and say what Z ≤ 0 means.</summary>
+X_c = R_wcᵀ(X − C), then (u, v) = (f·X/Z + cx, f·Y/Z + cy). Z ≤ 0: the point is behind the camera, no image.
 </details>
 
-<details><summary>2. With f = 480, cx = 480, cy = 270, a point in camera coordinates X_c = (−20, 10, 200). Which pixel?</summary>
-u = 480·(−20)/200 + 480 = <b>432</b>, v = 480·10/200 + 270 = <b>294</b>.
+<details><summary>2. A drone pitches nose down 25° at 100 m. Where is the ground point of the image centre?</summary>
+Behind the drone, 100 · tan 25° = 46.6 m.
 </details>
 
-<details><summary>3. A ray from C = (0, 0, 120) has world direction d = (0.2, 0.1, −0.8). Where does it hit the ground?</summary>
-λ = −120 / −0.8 = 150; X = (0 + 150·0.2, 0 + 150·0.1, 0) = <b>(30 m east, 15 m north)</b>.
+<details><summary>3. Your height estimate is 20 % too low. What scale does a correct match fit, and does a ±15 % gate accept it?</summary>
+s = h_true / h_predicted = 1/0.8 = 1.25: refused by a ±15 % gate.
 </details>
 
-<details><summary>4. A drone flying east pitches nose down 15° at 200 m. Where is the ground point at the image centre?</summary>
-Behind the drone: 200 · tan 15° ≈ <b>54 m west</b> of the point under the drone (the belly turns backwards).
+<details><summary>4. Why can a homography straighten a photo of a hilly city, yet the metres you read in the straightened view are wrong on the hills?</summary>
+Straightening is a pure rotation of rays (no depth needed). Reading metres uses GSD = h/f with one ground height:
+a hill top is closer to the camera, so its scale and position are off.
 </details>
 
-<details><summary>5. Which zoom matches the Insta360 view (f = 659.8 px) at 600 m over Reykjavik?</summary>
-GSD = 600 / 659.8 = 0.909 m/px. Zoom 16 is 1.041 m/px (ratio 1.15), zoom 17 is 0.521 (ratio 0.57):
-|log 1.15| = 0.14 < |log 0.57| = 0.56, so <b>zoom 16</b> (over Sousse it would be zoom 17).
-</details>
-
-<details><summary>6. NAVERA assumes 250 m, the fitted scale is 0.92 and the gate is 15 %. Accepted? What height does it measure?</summary>
-|0.92 − 1| = 0.08 ≤ 0.15: <b>accepted</b>. Measured height = 250 · 0.92 = <b>230 m</b>.
+<details><summary>5. (Mission 07) Why does the same zoom level have fewer metres per pixel in Reykjavik than in Singapore?</summary>
+Web Mercator stretches the map by 1/cos(latitude): a pixel covers 40 075 km · cos φ / (256 · 2^z), smaller at high latitude.
 </details>
 
 Now open the **🛠️ Lab** tab.
