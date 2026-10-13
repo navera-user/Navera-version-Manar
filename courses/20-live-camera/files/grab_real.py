@@ -8,7 +8,8 @@ camera in the dashboard (or you have your own USB camera on your own computer).
 
 It opens the camera like a live camera program does (V4L2, MJPG, 1920 × 1080 asked, a buffer of ONE frame),
 grabs every frame, stamps each grab on the computer's clock, decodes only the last frame, and writes
-out/real_camera.json and out/real_last.jpg. It never opens a camera that another program is using.
+out/real_camera.json and out/real_last.jpg. It refuses a camera that another program in your session is
+using (fuser); the dashboard booking is what keeps other users off the shared camera.
 """
 import argparse
 import glob

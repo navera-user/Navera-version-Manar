@@ -140,6 +140,7 @@ class CameraNode(Node):
         self.duration_s = max(self.frames[-1]["grab_s"], self.imu[-1][0]) + 0.1
         self.start_s = float(p["start_s"])
         self.queue = deque()
+        self.pending = None
         self.offered = 0
         self.pub_imu = self.create_publisher(Imu, "navera_lite/imu", SENSOR_QOS)
         self.pub_img = self.create_publisher(Image, "navera_lite/camera/image", 10)
@@ -162,6 +163,7 @@ class CameraNode(Node):
         self.i_frame = next((k for k, f in enumerate(self.frames) if f["grab_s"] >= self.start_s), len(self.frames))
         self.queue.clear()
         self.newest = None
+        self.pending = None
         self.hist_t, self.hist_q = [], []
 
     def on_imu(self, msg):
@@ -206,17 +208,25 @@ class CameraNode(Node):
             elif len(self.queue) < self.queue_len:
                 self.queue.append((f, arrival))              # a full queue loses the new frame
             self.i_frame += 1
-        if now >= self.next_offer:
+        if self.pending is None and now >= self.next_offer:
             self.next_offer += 1.0 / self.rate_hz
             if self.next_offer < now:
                 self.next_offer = now + 1.0 / self.rate_hz
             if self.queue_len == 1 and self.newest is not None:
                 f, arrival = self.newest
                 self.newest = None
-                self.offer(f, grab=arrival, arrival=arrival, now=now)
+                self.pending = (f, arrival, arrival)
             elif self.queue_len > 1 and self.queue:
                 f, arrival = self.queue.popleft()
-                self.offer(f, grab=now, arrival=arrival, now=now)
+                self.pending = (f, now, arrival)
+        if self.pending is not None:
+            f, grab, arrival = self.pending
+            # like a real node, wait (at most 0.3 s) until the IMU samples after the exposure have ARRIVED: on a busy
+            # computer the IMU messages can come a little late, and attitude_at would then hold an old sample
+            have = self.hist_t and self.hist_t[-1] >= exposure_time(grab, self.latency_s)
+            if have or now - grab > 0.3 or not self.publish_imu:
+                self.pending = None
+                self.offer(f, grab=grab, arrival=arrival, now=now)
 
     def offer(self, f, grab, arrival, now):
         tm = self.timing
@@ -259,7 +269,7 @@ class CameraNode(Node):
         self.offered += 1
         waited = f", waited {now - arrival:.2f} s in the queue" if self.queue_len > 1 else ""
         self.get_logger().info(
-            f"frame {f['frame']:3d}{waited}: roll {roll:5.1f}°, rate {nice(rate, 1):>5} °/s → "
+            f"frame {f['frame']:3d}{waited}: roll used {roll:5.1f}°, rate {nice(rate, 1):>5} °/s → "
             f"{'usable' if ok else 'REFUSED'} ({reason}); attitude error {att_err:.2f}°")
         if self.save_dir:
             os.makedirs(self.save_dir, exist_ok=True)

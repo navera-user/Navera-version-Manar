@@ -5,7 +5,7 @@
     python3 solutions/20-live-camera/make_dataset.py --no-ortho # keep the rendered map, redo the CSVs
 
 Outputs (deterministic, seeded):
-  bench/frame_000..029.jpg, bench/insta360_top.yaml   REAL data from NAVERA's bench (2026-10-06), copied as data
+  bench/frame_000..029.jpg, bench/top_lens_calibration.yaml   REAL data from NAVERA's bench (2026-10-06), copied as data
                                                       (kept as they are; moved here from the old frames/ folder)
   grab_log.csv        60 s of grab times of a USB camera at 28.8 fps: jitter, dropped frames, one stall
   flashes.csv         a simulated screen-flash bench: when the program turned the screen white
@@ -243,7 +243,7 @@ README = """Mission 20 — live camera: data
 bench/frame_000..029.jpg  REAL frames of NAVERA's Insta360 ONE R (USB webcam mode, MJPG 1920 x 1080), recorded on
                           NAVERA's bench on 2026-10-06 while its top lens was being calibrated. Top half = top lens,
                           bottom half = bottom lens (pixelated: it filmed people in the room).
-bench/insta360_top.yaml   the real calibration file of that top lens (copied as data).
+bench/top_lens_calibration.yaml   the real calibration of that top lens (copied as data).
 
 The other files are SYNTHETIC (simulated, seeded), made for this lab:
 grab_log.csv              60 s of grab times of a USB camera (a monotonic clock, seconds).
@@ -268,8 +268,9 @@ def main():
     bench = os.path.join(OUT, "bench")
     if os.path.isdir(old) and not os.path.isdir(bench):
         shutil.move(old, bench)
-    if os.path.exists(os.path.join(OUT, "insta360_top.yaml")):
-        shutil.move(os.path.join(OUT, "insta360_top.yaml"), os.path.join(bench, "insta360_top.yaml"))
+    for old_name in (os.path.join(OUT, "insta360_top.yaml"), os.path.join(bench, "insta360_top.yaml")):
+        if os.path.exists(old_name):                 # a neutral name: students see data, not NAVERA's file names
+            shutil.move(old_name, os.path.join(bench, "top_lens_calibration.yaml"))
     for stale in ("flash_frames.csv", "grab_times.csv", "turn_frames.csv", "turn_imu.csv", "make_dataset.py",
                   "README.txt"):
         p = os.path.join(OUT, stale)

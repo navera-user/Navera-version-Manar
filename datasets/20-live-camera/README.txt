@@ -3,7 +3,7 @@ Mission 20 — live camera: data
 bench/frame_000..029.jpg  REAL frames of NAVERA's Insta360 ONE R (USB webcam mode, MJPG 1920 x 1080), recorded on
                           NAVERA's bench on 2026-10-06 while its top lens was being calibrated. Top half = top lens,
                           bottom half = bottom lens (pixelated: it filmed people in the room).
-bench/insta360_top.yaml   the real calibration file of that top lens (copied as data).
+bench/top_lens_calibration.yaml   the real calibration of that top lens (copied as data).
 
 The other files are SYNTHETIC (simulated, seeded), made for this lab:
 grab_log.csv              60 s of grab times of a USB camera (a monotonic clock, seconds).

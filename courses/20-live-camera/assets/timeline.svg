@@ -38,12 +38,12 @@
   <!-- latest sample before the grab -->
   <circle cx="372" cy="170" r="6" fill="#e0a030"/>
   <text x="372" y="232" text-anchor="middle" fill="#b5651d">latest sample before the grab:</text>
-  <text x="372" y="248" text-anchor="middle" fill="#b5651d">the WRONG attitude (138 ms too new)</text>
+  <text x="372" y="248" text-anchor="middle" fill="#b5651d">the WRONG attitude (L too new)</text>
   <line x1="372" y1="218" x2="372" y2="180" stroke="#b5651d" stroke-width="1.2" marker-end="url(#b)"/>
 
   <!-- delay arrow -->
   <line x1="204" y1="95" x2="373" y2="95" stroke="#1d2733" stroke-width="1.5" marker-end="url(#a)"/>
-  <text x="290" y="88" text-anchor="middle" fill="#1d2733">latency L = 0.138 s</text>
+  <text x="290" y="88" text-anchor="middle" fill="#1d2733">latency L (NAVERA: 0.138 s)</text>
   <text x="290" y="120" text-anchor="middle" fill="#1d2733">tₑ = t_g − L</text>
 
   <!-- slerp box -->
@@ -52,5 +52,5 @@
   <text x="442" y="116" fill="#1d2733">f = (tₑ − t₀) / (t₁ − t₀)</text>
   <text x="442" y="132" fill="#1d2733">q(tₑ) = slerp(q₀, q₁, f)</text>
 
-  <text x="20" y="282" fill="#5a6775">Rolling at 25°/s: 25 × 0.138 ≈ 3.5° of error — at 150 m above ground, 150 × tan 3.5° ≈ 9 m.</text>
+  <text x="20" y="282" fill="#5a6775">Rolling at 25°/s with L = 0.138 s: 25 × 0.138 ≈ 3.5° of error — at 150 m above ground, 150 × tan 3.5° ≈ 9 m.</text>
 </svg>

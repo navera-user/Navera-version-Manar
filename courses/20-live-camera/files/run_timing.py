@@ -14,7 +14,9 @@ Data: /data/academy/20-live-camera/. Settings: camera.yaml (the delay setting la
 Pictures are saved in out/ — click them in the file list of the 📝 Code tab.
 """
 import bisect
+import contextlib
 import csv
+import io
 import math
 import os
 import statistics
@@ -38,8 +40,8 @@ def _hint(e):
     """This mission's extra sentence for the errors students meet most."""
     s = str(e)
     if "not supported between instances of 'NoneType'" in s:
-        return (" — a value is None: an attitude_at() call returned None (no IMU sample near that time) "
-                "and the code compares or uses it without testing `is None` first")
+        return (" — a value is None and the code compares it: test `is None` first (rate_dps can be None, and "
+                "attitude_at() returns None when no IMU sample is near) — lab Step 8, hint 6")
     if "ambiguous" in s and "truth value" in s:
         return " — `if q:` on a numpy array is ambiguous: write `if q is None:`"
     if "list index out of range" in s or "index out of bounds" in s:
@@ -70,6 +72,25 @@ def settings():
         return tm.load_camera_settings("camera.yaml")
     except ValueError as e:
         sys.exit(f"camera.yaml: {e}")
+
+
+def only_stub(func):
+    """True if the function's body is still ONLY the starter's stub line (code written above the stub counts as
+    written: the stub line below it is never reached)."""
+    import ast
+    import inspect
+    import textwrap
+    try:
+        body = ast.parse(textwrap.dedent(inspect.getsource(func))).body[0].body
+    except (OSError, TypeError, SyntaxError, IndexError, AttributeError):
+        return False
+    body = [b for b in body if not (isinstance(b, ast.Expr) and isinstance(b.value, ast.Constant))]
+    if len(body) != 1:
+        return False
+    b = body[0]
+    if isinstance(b, ast.Return):
+        return b.value is None or (isinstance(b.value, ast.Constant) and b.value.value is None)
+    return isinstance(b, ast.Raise)
 
 
 def close(got, want, tol):
@@ -147,7 +168,7 @@ def test():
     note = err or _check_stats(got)
     report(1, note is None, "frame_stats([0, 0.1, 0.2, 0.4, 0.5])" + ("" if note else f" = {show(got)}"), note)
     f = getattr(tm, "frame_stats", None)
-    if f is not None and not rk.is_stub(f):
+    if f is not None and not only_stub(f):
         try:
             f([3.0])
             report(1, False, "frame_stats([3.0]) must raise ValueError (one stamp: no interval)",
@@ -166,23 +187,38 @@ def test():
              (([1.0, 2.0], [0.9, 1.12, 1.3, 1.9, 2.15, 2.3], [30, 200, 205, 32, 120, 210]), [0.12, 0.3],
               "two flashes, the second frame half lit", "the half-lit frame (120 < (32 + 210) / 2) is not "
               "the first one above the midpoint — lab Step 3, hint 2")]
+    doc_ok = True
     for args, want, label, hint in cases:
         got, err = rk.call(tm, "delay_from_flashes", *args)
         ok = (err is None and isinstance(got, (list, tuple)) and len(got) == len(want) and
               all((w is None and g is None) or (w is not None and g is not None and close(g, w, 1e-9))
                   for g, w in zip(got, want)))
+        if "docstring" in label:
+            doc_ok = ok
+        elif "EXACTLY" in label and not doc_ok:
+            hint = ("the same mistake as the docstring line above: compare with the MIDPOINT, not with dark "
+                    "— lab Step 3, hint 2")
         report(2, ok, f"delay_from_flashes: {label}" + ("" if err else f" → {show(got)}"), None if ok else (err or hint))
     # TODO 3
-    got, err = rk.call(tm, "time_error_m", 100.0, 20.0, 0.1)
-    note = err
-    if not err:
-        if close(got, 218.50, 0.1):
-            note = "218.5: math.tan got DEGREES — math.tan(math.radians(…))"
-        elif close(got, 3.4907, 1e-3):
-            note = "3.4907 = h × angle: the small-angle formula; the docstring wants the exact tangent"
-        elif not close(got, 3.492077, 1e-5):
-            note = f"{show(got)} — the docstring says about 3.492 (rate × dt is the angle, in degrees)"
-    report(3, note is None, "time_error_m(100, 20, 0.1)" + ("" if err else f" = {show(got)}"), note)
+    for args, want in (((100.0, 20.0, 0.1, 30.0), (3.492077, 3.0)), ((150.0, -25.0, 0.14), (9.174393, 0.0)),
+                       ((80.0, 10.0, -0.2, 15.0), (2.793662, 3.0))):
+        got, err = rk.call(tm, "time_error_m", *args)
+        note = err
+        if not err:
+            if not (isinstance(got, (tuple, list)) and len(got) == 2):
+                note = f"time_error_m must return TWO numbers (attitude_m, position_m), got {show(got)} — lab Step 5"
+            else:
+                a, p = got
+                if close(abs(float(a)), 218.50, 0.1) or abs(float(a)) > 1000:
+                    note = f"{show(a)}: math.tan got DEGREES — math.tan(math.radians(…)) — lab Step 5, hint 1"
+                elif close(a, 3.4907, 1e-3):
+                    note = "3.4907 = h × angle: the small-angle formula; the docstring wants the exact tangent — lab Step 5, hint 2"
+                elif not close(a, want[0], 1e-5):
+                    note = (f"attitude_m = {show(a)}, expected about {want[0]:.3f} (rate × dt is the angle, in degrees; "
+                            "a distance is ≥ 0) — lab Step 5, hints 1–2")
+                elif not close(p, want[1], 1e-9):
+                    note = f"position_m = {show(p)}, expected {want[1]:g}: speed × time, ≥ 0 — lab Step 5, hint 4"
+        report(3, note is None, f"time_error_m{args}" + ("" if err else f" = {show(got)}"), note)
     # TODO 4
     T2, Q2 = [0.0, 0.2], [I, QZ20]
     cases4 = [((0.05, T2, Q2), [0, 0, 0.0436194, 0.9990482], "between two samples (the docstring example)",
@@ -197,6 +233,9 @@ def test():
                "away: None — lab Step 6, hint 5"),
               ((0.15, [0.0, 0.3], [I, QZ20]), [0, 0, 0.0871557, 0.9961947], "in the middle of a 0.3 s hole",
                "the nearest sample is 0.15 s away (≤ 0.2): interpolate"),
+              ((0.1, [0.0, 0.8], [I, QZ20]), [0, 0, 0.0218149, 0.9997620], "0.1 s into a 0.8 s hole (f = 0.125)",
+               "the sample at 0.0 is 0.1 s away: interpolate. Only the NEAREST sample's distance counts, not the "
+               "hole's width — lab Step 6, hint 5"),
               ((1.0, [], []), None, "an empty history", "no sample at all: None")]
     for args, want, label, hint in cases4:
         got, err = rk.call(tm, "attitude_at", *args)
@@ -220,12 +259,19 @@ def test():
                                                 np.allclose(np.abs(a), [0, 0, 0.1305262, 0.9914449], atol=1e-4)):
                 hint = ("close, but not the slerp result: call rotations.slerp(q0, q1, f) — a formula of your own "
                         "(averaging the four numbers) is not exact")
+        if not ok and not err and "before the first" in label:
+            a = np.asarray(got, dtype=float) if got is not None else None
+            if a is not None and a.shape == (4,):
+                hint = ("not the first sample — if you used imu_q[i - 1]: with i = 0, imu_q[i - 1] is imu_q[-1] (Python counts -1 from "
+                        "the end, without an error) — test i == 0 first — lab Step 6, hint 4")
         if err and "returned None" in err:
             err = f"it returned None, but a sample is within max_gap_s — {hint}"
         report(4, ok, f"attitude_at: {label}" + ("" if err else f" → {show(got)}"), None if ok else (err or hint))
     # TODO 5
     got, err = rk.call(tm, "rotation_rate_dps", 0.2, T2, Q2)
-    note = err or (None if close(got, 100.0, 1e-3) else f"{show(got)} — 20° in 0.2 s is 100 °/s. "
+    note = err or (None if close(got, 100.0, 1e-3) else
+                   f"{show(got)} — the two attitudes are the same: is your window BEFORE t (t − window_s)? — lab Step "
+                   "8, hint 1" if close(got, 0.0, 1e-6) else f"{show(got)} — 20° in 0.2 s is 100 °/s. "
                    "20.0? divide the angle by window_s — lab Step 8, hint 1")
     report(5, note is None, "rotation_rate_dps(0.2, …) (20° in 0.2 s)" + ("" if err else f" = {show(got)}"), note)
     got, err = rk.call(tm, "rotation_rate_dps", 0.9, [0.0, 1.0], [I, QZ20])
@@ -280,14 +326,14 @@ def bench():
     cv2.imwrite(os.path.join(OUT, "bench_top.jpg"), img[: h // 2])
     cv2.imwrite(os.path.join(OUT, "bench_bottom.jpg"), img[h // 2:])
     lat = None
-    for line in open(_need_data("bench/insta360_top.yaml")):
+    for line in open(_need_data("bench/top_lens_calibration.yaml")):
         if line.startswith("latency_s:"):
             lat = float(line.split(":")[1])
     print("NAVERA's camera on the bench (Insta360 ONE R, USB webcam mode, MJPG) — a real recorded frame:")
     print(f"  picture        {w} × {h} pixels, two halves of {w} × {h // 2} (top lens, bottom lens)")
     print(f"  as a JPEG      {len(raw) / 1000:.0f} kB          decoded (3 bytes per pixel): {w * h * 3 / 1e6:.1f} MB")
     print(f"  decode time    {decode_ms:.1f} ms per frame on THIS computer (median of 20 decodes, cv2.imdecode)")
-    print(f"  latency_s      {lat} s in NAVERA's calibration file of the top lens (insta360_top.yaml)")
+    print(f"  latency_s      {lat} s in NAVERA's calibration of the top lens (a flash-bench median: an upper bound)")
     print("  the two halves: out/bench_top.jpg (the lens NAVERA uses) and out/bench_bottom.jpg (pixelated: people)")
 
 
@@ -314,8 +360,20 @@ def stats():
     if plt:
         d = np.diff(t) * 1000.0
         fig, ax = plt.subplots(figsize=(9, 3.6))
-        ax.plot(np.array(t[1:]) - t[0], d, ".", ms=3)
+        x = np.array(t[1:]) - t[0]
+        ax.plot(x, d, ".", ms=3)
         ax.set_yscale("log")
+        ticks = [20, 35, 50, 70, 100, 200, 400]
+        ax.set_yticks(ticks)
+        ax.set_yticklabels([str(v) for v in ticks])
+        ax.minorticks_off()
+        med = float(np.median(d))
+        ax.axhline(1.5 * med, color="C1", ls=":", lw=1)
+        ax.text(x[-1], 1.5 * med * 1.04, "1.5 × median: above it, frames were dropped", ha="right", fontsize=8,
+                color="C1")
+        k = int(np.argmax(d))
+        ax.annotate(f"largest gap {d[k]:.0f} ms", (x[k], d[k]), xytext=(x[k] - 18, d[k] * 0.9),
+                    arrowprops=dict(arrowstyle="->", lw=0.8), fontsize=8)
         ax.set_xlabel("time since the first frame (s)")
         ax.set_ylabel("interval to the previous frame (ms, log scale)")
         ax.set_title("60 s of grab times: each dot is one interval")
@@ -379,13 +437,19 @@ def flashes_mode():
 
 # ============================================================================ budget (Step 5)
 def budget():
-    rk.need_ok(tm, "time_error_m", 100.0, 20.0, 0.1, kind=float)
+    rk.need_ok(tm, "time_error_m", 100.0, 20.0, 0.1, 30.0, n=2)
+    dts = (0.010, 0.138, 0.5)
     for h in (150.0, 300.0):
-        print(f"\nground error (m) at {h:.0f} m above flat ground, by rotation rate and time error:")
-        dts = (0.010, 1 / 28.8, 0.138, 0.5)
+        print(f"\nattitude part (m) at {h:.0f} m above flat ground, by rotation rate and time error:")
         print(f"{'rate':>10s}" + "".join(f"{f'δt {1000 * x:.0f} ms':>14s}" for x in dts))
         for rate in (5.0, 13.0, 25.0, 30.0, 60.0):
-            print(f"{rate:6.0f} °/s" + "".join(f"{rk.need_ok(tm, 'time_error_m', h, rate, x):14.2f}" for x in dts))
+            print(f"{rate:6.0f} °/s" + "".join(f"{rk.need_ok(tm, 'time_error_m', h, rate, x, n=2)[0]:14.2f}"
+                                              for x in dts))
+    print("\nposition part (m), by speed and time error:")
+    print(f"{'speed':>10s}" + "".join(f"{f'δt {1000 * x:.0f} ms':>14s}" for x in dts))
+    for v in (5.0, 15.0, 25.0, 40.0):
+        print(f"{v:6.0f} m/s" + "".join(f"{rk.need_ok(tm, 'time_error_m', 150.0, 0.0, x, v, n=2)[1]:14.2f}"
+                                          for x in dts))
 
 
 # ============================================================================ the flight (Steps 7–9)
@@ -450,7 +514,7 @@ def turn(latency=None):
         print(f"{name:40s}{np.median(v):8.2f}{np.percentile(v, 95):8.2f}{v.max():8.2f}{len(e) - v.size:13d}")
     print("(the first line does not use latency_s at all: it is the same for every setting)")
     # the decisions
-    have = [hasattr(tm, n) and not rk.is_stub(getattr(tm, n)) for n in ("rotation_rate_dps", "usable")]
+    have = [hasattr(tm, n) and not only_stub(getattr(tm, n)) for n in ("rotation_rate_dps", "usable")]
     counts, decisions = {}, []
     if all(have):
         for row in rows:
@@ -467,7 +531,7 @@ def turn(latency=None):
             key = {"no": "no attitude", "rotation": "rate unknown"}.get(key, key)
             counts[key] = counts.get(key, 0) + 1
             decisions.append((r["grab_s"], ok, rate))
-        print("\nYOUR usable() on every frame (settings of camera.yaml):")
+        print(f"\nYOUR usable() on every frame (rules of camera.yaml, exposure = grab − {lat:.3f} s):")
         for key in ("ok", "no attitude", "rate unknown", "turning", "tilted"):
             print(f"  {key:14s}{counts.get(key, 0):5d}")
         other = {k: v for k, v in counts.items() if k not in ("ok", "no attitude", "rate unknown", "turning", "tilted")}
@@ -518,6 +582,15 @@ def _matrix(q):
 
 
 def scan():
+    with contextlib.redirect_stdout(io.StringIO()):
+        try:
+            ans = rk.load_student("answers")
+        except SystemExit:
+            ans = None
+    mine = getattr(ans, "LATENCY_SETTING_S", 0.0) if ans is not None else 0.0
+    if not isinstance(mine, (int, float)) or mine == 0 or abs(settings()["latency_s"] - 0.138) < 1e-9:
+        sys.exit("Step 9 checks YOUR bench setting against the flight: do Step 4 first — LATENCY_SETTING_S in "
+                 "answers.py and latency_s in camera.yaml (not NAVERA's 0.138), saved — then run scan again.")
     it, iq, fr = flight()
     rk.need_ok(tm, "attitude_at", 0.05, [0.0, 0.2], [I, QZ20])
     lats = np.round(np.arange(0.060, 0.2001, 0.002), 3)

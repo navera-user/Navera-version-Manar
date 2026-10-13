@@ -1,6 +1,6 @@
 # camera.yaml — the settings of your camera chain (read by navera_lite.timing.load_camera_settings and the
 # camera node). A missing key takes its value from DEFAULTS in navera_lite/timing.py.
-latency_s: 0.138       # exposure → grab, seconds. NAVERA's value for ITS camera (an Insta360): Step 5 measures yours
+latency_s: 0.138       # exposure → grab, seconds. NAVERA's value for ITS camera (an Insta360): Steps 3–4 measure yours
 max_gap_s: 0.2         # no IMU sample within this time of the exposure → no attitude → the frame is refused
 rate_window_s: 0.2     # the rotation rate is measured over this window, just before the exposure
 max_rate_dps: 30.0     # a fixed camera's frame taken while turning faster than this is refused

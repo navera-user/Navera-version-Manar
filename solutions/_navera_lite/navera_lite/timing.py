@@ -139,15 +139,16 @@ def delay_from_flashes(flash_s, frame_s, brightness, window_s=0.5, min_rise=20.0
 
 
 # @part 20 todo 3
-def time_error_m(h_m, rate_dps, dt_s):
-    """How far (metres) the ground point under the image centre moves when the attitude used for a frame is
-    dt_s seconds off, while the vehicle rotates at rate_dps (degrees per second), h_m metres above flat ground:
-    the angle error is the rotation during dt_s; the camera looks straight down. Exact, not small-angle.
-
-    Returns one float ≥ 0 (metres).
-    Example: time_error_m(100.0, 20.0, 0.1) → about 3.492    (2° of error seen from 100 m)
+def time_error_m(h_m, rate_dps, dt_s, speed_mps=0.0):
+    """What a time error of dt_s seconds costs on the ground, in metres, as two numbers (attitude_m, position_m):
+      attitude_m  how far the ground point under the image centre moves when the attitude used is dt_s off while
+                  the vehicle rotates at rate_dps (degrees per second), h_m metres above flat ground, the camera
+                  looking straight down (the angle error is the rotation during dt_s). Exact, not small-angle.
+      position_m  how far the vehicle itself moves in dt_s at speed_mps (m/s).
+    Both ≥ 0 (a time error or a rotation in the other direction costs the same). Returns a tuple of two floats.
+    Example: time_error_m(100.0, 20.0, 0.1, 30.0) → about (3.492, 3.0)    (2° of error seen from 100 m; 3 m flown)
     """
-    return abs(h_m * math.tan(math.radians(rate_dps * dt_s)))
+    return abs(h_m * math.tan(math.radians(rate_dps * dt_s))), abs(speed_mps * dt_s)
 
 
 # ============================================================================ session 2 — the attitude at the exposure

@@ -4,7 +4,7 @@
 camera's delay on a flash bench and choose its setting, put a price on time errors, give every frame of a turning
 plane the attitude of its exposure, refuse the frames you cannot trust, run the live camera over ROS, and write a
 memo to your team.
-**Time:** 3 h to 4 h 30 (a strong programmer: about 2 h 30). **No camera is needed**: every step uses recorded or
+**Time:** 3 h to 5 h (a strong programmer: about 2 h 30; weaker programmers: plan the full 5 h). **No camera is needed**: every step uses recorded or
 simulated data. A real camera is an optional extra (Step 12).
 **Fast track:** if you know numpy, write the TODOs from the docstrings without the 🧰 boxes and the "Stuck?" boxes;
 then do "Going further" and write your results in `LOOK_BACK`; your teacher reads them.
@@ -13,7 +13,7 @@ then do "Going further" and write your results in `LOOK_BACK`; your teacher read
 try to find the mistake yourself first, then open that hint.
 
 Your files (📝 Code tab): [navera_lite/timing.py](file:./navera_lite/timing.py) (**your code**: six functions,
-`TODO 1–6`), [answers.py](file:./answers.py), [camera.yaml](file:./camera.yaml) (your camera's settings),
+`TODO 1–6`), [phase.py](file:./phase.py) (**your code**: `TODO P`), [answers.py](file:./answers.py), [camera.yaml](file:./camera.yaml) (your camera's settings),
 [report.md](file:./report.md) (the memo), and ready-made tools you only run: [run_timing.py](file:./run_timing.py)
 (runs your functions on the lab's data and draws them), `navera_lite/ros/camera_node.py` (the live camera) and
 [grab_real.py](file:./grab_real.py) (Step 12, optional).
@@ -23,9 +23,9 @@ Your files (📝 Code tab): [navera_lite/timing.py](file:./navera_lite/timing.py
 | (nothing to read first) | Step 0 | a prediction |
 | §1 a frame is an instant | Step 1 | (no code: NAVERA's real frames) |
 | §2 describing a stream | Step 2 | `frame_stats` |
-| §3 the flash bench | Steps 3–4 | `delay_from_flashes`; the delay setting |
+| §3 the flash bench | Steps 3–4 | `delay_from_flashes`, `flash_phase` (phase.py); the delay setting |
 | §4 what a time error costs | Step 5 | `time_error_m` |
-| §5 the attitude at the exposure | Steps 6–7 | `attitude_at` |
+| §4–§5 the attitude at the exposure | Steps 6–7 | `attitude_at`; the rate of a steady bank |
 | §6 refusing frames | Step 8 | `rotation_rate_dps`, `usable` |
 | §3 and §5 together | Step 9 | (no code: check the bench against the flight) |
 | §1 the newest frame | Step 10 | (no code: the live camera over ROS) |
@@ -135,8 +135,8 @@ A camera faces a screen; 21 times, the program turns the screen white and record
 (lesson §3's figure). The camera is the class's test camera, a USB camera like NAVERA's (not NAVERA's Insta360).
 
 > [!TASK]
-> **Predict first** (`PREDICT_DELAY`), before you read lesson §3: will the 20 delays be (almost) equal? If not, how
-> far apart? Then read §3.
+> **Predict first** (`PREDICT_DELAY`), before you read lesson §3: will the delays of the 21 flashes be (almost)
+> equal? If not, how far apart? Then read §3.
 
 <details><summary>🧰 Python: two lists side by side, and the first match</summary>
 
@@ -168,9 +168,9 @@ It prints one delay per flash and their statistics. Open [out/flashes.png](file:
 brightness around every flash; right, one delay per flash.
 
 > [!TASK]
-> Write `DELAY_MEDIAN_MS`, `DELAY_MIN_MS`, `DELAY_MEAN_MS` (one decimal), `UNSEEN_FLASH` (the number of the flash
-> the camera did not see), `OUTLIER_FLASH` (the flash whose delay is far from all the others) and
-> `EXPLAIN_SPREAD`: why do the normal delays spread over about one frame period, even on a perfect clock?
+> Write `DELAY_MEDIAN_MS`, `DELAY_MIN_MS` (one decimal), `UNSEEN_FLASH` (the number of the flash the camera did
+> not see), `OUTLIER_FLASH` (the flash whose delay is far from all the others) and `EXPLAIN_SPREAD`: why do the
+> normal delays spread over about one frame period, even on a perfect clock?
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
@@ -183,6 +183,30 @@ brightness around every flash; right, one delay per flash.
 4. Fewer entries than flashes: every flash gets an entry, None included — the list must keep the flashes' order.
 </details>
 
+**Step 3b — see the wait w.** Lesson §3 says the spread comes from w, the wait for the next exposure. Test it. The
+**phase** of a flash is how long before the flash the program grabbed its last frame. Open
+[phase.py](file:./phase.py) and write **TODO P** `flash_phase(t0, frame_s)` (the docstring; the 🧰 box of Step 3 has
+what you need). The script then plots each delay against its phase and fits a straight line.
+
+> [!TASK]
+> **Predict** (`PREDICT_PHASE`): if the spread really comes from where the flash falls between two frames, what slope
+> do you expect for "delay against phase"? Then run:
+
+```bash
+python3 phase.py
+```
+
+> [!TASK]
+> Open [out/phase.png](file:./out/phase.png). Write `PHASE_SLOPE` (two decimals) and `EXPLAIN_PHASE`: what does this
+> slope tell you about the spread of the delays?
+
+<details><summary>Stuck? Hints</summary>
+
+1. The frames with t ≤ t0, as in TODO 2; the last one is the one just before the flash; return t0 minus its time.
+2. No frame before t0: return None (the script skips that flash).
+3. The slope is a ratio: how many milliseconds of delay change for one millisecond of phase.
+</details>
+
 ## Step 4 — Choose the delay setting (no new code)
 
 The bench screen's own delay was measured separately with a photodiode: **s = 20 ms**. The camera runs at 28.8
@@ -191,20 +215,24 @@ frames per second (T = 34.7 ms).
 > [!TASK]
 > Choose the camera's delay setting from your bench numbers and lesson §3. Write it as `LATENCY_SETTING_S` in
 > `answers.py` (seconds, three decimals) **and** as `latency_s` in [camera.yaml](file:./camera.yaml) (it holds
-> NAVERA's 0.138 s for its own camera: replace it). Save both. Then `EXPLAIN_LATENCY`: how did you get it, and why
-> not the median as it is?
+> NAVERA's 0.138 s for its own camera: replace it). Save both. Then `EXPLAIN_LATENCY`: start from your bench median,
+> say what you removed and why (and why not the median as it is). Step 9 checks your setting against the flight: it
+> only runs once your setting is in both files.
 
 <details><summary>Stuck? Hints</summary>
 
 1. Lesson §3, consequence 3: each delay is s + w + L, and the median of w is about T/2.
 2. 0.156? That is the median itself: it still holds the screen and half a period. 0.141? The minimum still holds
-   the screen. 0.136? You removed the screen but not the half period.
+   the screen. 0.136? You removed the screen but not the half period. 0.138? That is NAVERA's value for another
+   camera, not a result of this bench.
 3. In camera.yaml write a number in seconds, `latency_s: 0.123` (no quotes, no "ms").
 </details>
 
 ## Step 5 — What a time error costs (TODO 3)
 
-Read lesson §4. **TODO 3** `time_error_m(h_m, rate_dps, dt_s)`: the formula of §4, exact (with the tangent).
+Read lesson §4. **TODO 3** `time_error_m(h_m, rate_dps, dt_s, speed_mps=0.0)`: both parts of §4 — the attitude
+part (exact, with the tangent) and the position part (the distance flown) — returned as a tuple of two numbers.
+Both are distances: never negative, even for a negative rate or time.
 
 ```bash
 python3 run_timing.py test
@@ -215,7 +243,8 @@ python3 run_timing.py budget
 ```
 
 > [!TASK]
-> 1. `BUDGET_300_M`: 300 m above the ground, rotating at 30 °/s, a stamp wrong by one frame period (1/28.8 s).
+> 1. `BUDGET_500_M`: 500 m above the ground, rotating at 45 °/s, a stamp wrong by one frame period (1/28.8 s): the
+>    attitude part, with your function. `ALONG_60_M`: a plane at 60 m/s, the same stamp error: the position part.
 > 2. `DT_FOR_30M_S`: at 150 m and 25 °/s, how large a time error moves the image centre by 30 m (the σ that day
 >    vision states)? Solve the formula for δt by hand (atan), or search with your function (two decimals).
 > 3. `EXPLAIN_BUDGET`: why does the same time error cost more at 300 m than at 150 m, and more in a turn than in
@@ -223,9 +252,11 @@ python3 run_timing.py budget
 
 <details><summary>Stuck? Hints</summary>
 
-1. 218.5 instead of 3.492 in the test: `math.tan` got degrees — `math.tan(math.radians(rate_dps * dt_s))`.
+1. −218.5 or 218.5 instead of 3.492 in the test: `math.tan` got degrees — convert the angle with `math.radians`.
 2. 3.4907 instead of 3.4921: that is h × angle (small-angle); the docstring asks for the tangent.
-3. DT_FOR_30M_S: tan δθ = 30 / 150, so δθ = atan(0.2) in degrees, and δt = δθ / 25.
+3. DT_FOR_30M_S: find the angle whose tangent is 30 / 150 (`math.atan`, then degrees), then the time that rotation
+   takes at 25 °/s.
+4. position_m: speed × time, as a positive distance; return `attitude_m, position_m` (a tuple).
 </details>
 
 > [!TIP] 🏅 End of session 1 — Timekeeper
@@ -236,7 +267,12 @@ python3 run_timing.py budget
 
 ## Step 6 — The attitude at the exposure (TODO 4)
 
-Read lesson §5. **TODO 4** `attitude_at(t_s, imu_t, imu_q, max_gap_s=0.2)`: bracket with `bisect` (🧰 in §5),
+> [!TASK]
+> **Before you read lesson §5**, predict (`PREDICT_METHODS`): the flight of Step 7 gives three attitudes to each
+> frame — the IMU sample held at the grab, the nearest sample to the exposure, and slerp at the exposure. Rank them
+> from the worst to the best, once for NAVERA's 0.138 s and once for your own setting. Save `answers.py`.
+
+Now read lesson §5. **TODO 4** `attitude_at(t_s, imu_t, imu_q, max_gap_s=0.2)`: bracket with `bisect` (🧰 in §5),
 handle the two ends and the "no sample within max_gap_s" rule, then slerp. `slerp` is imported at the top of the
 file, finished (mission 16's).
 
@@ -245,7 +281,14 @@ file, finished (mission 16's).
 ```python
 times = [0.0, 0.2, 1.0]
 i = bisect.bisect_right(times, 0.5)          # 2: between times[1] and times[2]
-near = min(abs(0.5 - times[j]) for j in (i - 1, i) if 0 <= j < len(times))   # 0.3 — careful at both ends
+near = []                                    # the distances to the neighbours that EXIST
+if i - 1 >= 0:
+    near.append(abs(0.5 - times[i - 1]))     # the sample before: 0.3
+if i < len(times):
+    near.append(abs(0.5 - times[i]))         # the sample after: 0.5
+min(near)                                    # 0.3
+times[-1]                                    # 1.0 — index −1 is the LAST one: with i = 0, times[i - 1] is NOT
+                                             # "before the first", and Python gives no error
 qs = [(0, 0, 0, 1), (0, 0, 0.17, 0.98)]     # a list of tuples, or a numpy array of shape (n, 4):
 qs[-1]                                       # both give the last quaternion the same way
 ```
@@ -255,7 +298,7 @@ qs[-1]                                       # both give the last quaternion the
 python3 run_timing.py test
 ```
 
-The eight TODO 4 lines must be ✔.
+The nine TODO 4 lines must be ✔.
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
@@ -265,9 +308,10 @@ The eight TODO 4 lines must be ✔.
    `max_gap_s`, return None. An empty history: return None at once.
 3. Yaw 15° instead of 5°: the fraction is upside down — f = (t_s − t₀) / (t₁ − t₀) goes from 0 at t₀ to 1 at t₁.
 4. A value 0.1 s after the last sample: return that last sample (`q_normalize(imu_q[-1])`), never extrapolate;
-   the same before the first.
+   the same before the first — and test `i == 0` BEFORE you read `imu_t[i - 1]` (with i = 0 it is the last sample).
 5. A value in the middle of a 1 s hole: both neighbours are 0.5 s away → None. The middle of a 0.3 s hole is
-   0.15 s from both: interpolate.
+   0.15 s from both: interpolate. A point 0.1 s into a 0.8 s hole is 0.1 s from a sample: interpolate (f = 0.125).
+   Only the nearest sample's distance counts, not the hole's width.
 6. The ✔ value has its large number first, like [0.999, 0, 0, 0.044]? You built (w, x, y, z): the course stores
    (x, y, z, w). Pass the samples to slerp as they are.
 </details>
@@ -275,12 +319,9 @@ The eight TODO 4 lines must be ✔.
 ## Step 7 — The plane's turn
 
 The flight: 150 m above Sousse, 25 m/s; it banks right to 30° (3–5 s), turns, levels (11–13 s), its IMU is silent
-for 0.6 s (14.6–15.2 s), it banks left to 48° in one second (17–18 s), then levels slowly (20–23 s).
-
-> [!TASK]
-> **Predict** (`PREDICT_METHODS`): rank the three attitudes from the worst to the best — the IMU sample held at
-> the grab, the nearest sample to the exposure, and your slerp at the exposure. Then run, first with NAVERA's
-> setting for its own camera, then with yours (camera.yaml):
+for 0.6 s (14.6–15.2 s), it banks left to 48° in one second (17–18 s), then levels slowly (20–23 s). Its camera is
+the class test camera of Steps 3–4: the same delay. Run the three attitudes, first with NAVERA's setting for its own
+camera, then with yours (camera.yaml):
 
 ```bash
 python3 run_timing.py turn --latency 0.138
@@ -290,8 +331,8 @@ python3 run_timing.py turn --latency 0.138
 python3 run_timing.py turn
 ```
 
-Open [out/turn.png](file:./out/turn.png): top, the true roll; bottom, the error of each method for every frame
-(logarithmic axis). Then look at one frame of the first roll:
+Open [out/turn.png](file:./out/turn.png): top, the true roll (and, after Step 8, your rotation rate and your
+refused frames); bottom, the error of each method for every frame (logarithmic axis). Then look at one frame of the first roll:
 
 ```bash
 python3 run_timing.py straighten
@@ -302,10 +343,14 @@ frame straightened (mission 18's `nadir_homography`) with each attitude and laid
 lines = a wrong attitude.
 
 > [!TASK]
-> Write `GRAB_MEDIAN_M`, `GRAB_MAX_M` ("held at the grab"), `COPIED_MEDIAN_M` (yours with `--latency 0.138`),
-> `MINE_MEDIAN_M` (yours with your camera.yaml), `STRAIGHT_GRAB_M` (straighten, "held at the grab"), and
-> `EXPLAIN_TURN`: when in the flight is "held at the grab" most wrong, and why then? Compare with your
-> `PREDICT_METHODS`.
+> Write `GRAB_MEDIAN_M` ("held at the grab"), `COPIED_MEDIAN_M` (yours with `--latency 0.138`), `MINE_MEDIAN_M`
+> (yours with your camera.yaml) and `EXPLAIN_TURN`: when in the flight is "held at the grab" most wrong, and why
+> then? Compare with your `PREDICT_METHODS`.
+>
+> Then look at 5–11 s on turn.png: the roll is a steady 30°, yet "held at the grab" is still about 3.5 m wrong.
+> Compute the plane's rotation rate there (lesson §4, "A steady bank is still a rotation", v = 25 m/s):
+> `STEADY_RATE_DPS` (°/s, two decimals), and `EXPLAIN_STEADY`: where does the rotation come from, and why does it
+> cost metres?
 
 <details><summary>Stuck? Hints</summary>
 
@@ -351,12 +396,17 @@ The end of the printout now counts your decisions; on out/turn.png red crosses m
    sign, the spaces, one decimal (`:.1f`).
 4. A ✘ on "rolled 50° AND 41.23 °/s": the rate rule must come before the tilt rule.
 5. The tilt: `tilt_deg(q)` is given at the top of the file.
+6. "TypeError: '>' not supported … 'NoneType'": rate_dps is None — test `rate_dps is None` (rule 2) before you
+   compare it (rule 3).
+7. Your counts differ from your neighbour's with the same camera.yaml? Run `python3 run_timing.py test` — a wrong gap
+   rule in `attitude_at` (Step 6, hint 5) changes the "no attitude" count.
 </details>
 
 ## Step 9 — Check the bench against the flight
 
 In a simulation we know the truth, so we can ask the flight itself which delay is right: try many settings and keep
-the one whose attitudes agree best with the truth.
+the one whose attitudes agree best with the truth. (`scan` runs only once Step 4's setting is in answers.py and
+camera.yaml: the point is to test YOUR bench result, not to replace it.)
 
 ```bash
 python3 run_timing.py scan
@@ -379,15 +429,15 @@ then stop it with `Ctrl+C`:
 python3 -m navera_lite.ros.camera_node
 ```
 
-Each line is one frame: its roll, your rotation rate, your decision, and the attitude error (the replay knows the
-truth). Open [out/live_frame.jpg](file:./out/live_frame.jpg): the last frame offered, as the camera saw it. Its
+Each line is one frame: the roll of the attitude your program **used** for it, your rotation rate, your decision,
+and the attitude error (the replay knows the truth). Open [out/live_frame.jpg](file:./out/live_frame.jpg): the last frame offered, as the camera saw it. Its
 meta is a standard ROS message; while the node runs, a second terminal (**+** in the terminal tab) can read one:
 
 ```bash
 ros2 topic echo /navera_lite/camera/meta diagnostic_msgs/msg/DiagnosticStatus --once
 ```
 
-(Discovery takes a second or two: run it again if it waits.) Now two wrong programs. Stamp the frames at the grab
+(Discovery takes a second or two: run it again if it waits. `level: "\0"` is level 0, OK = usable.) Now two wrong programs. Stamp the frames at the grab
 (no delay at all), watch the attitude error during the first roll (frames 90 to 150), then `Ctrl+C`:
 
 ```bash
@@ -402,7 +452,8 @@ python3 -m navera_lite.ros.camera_node --ros-args -p queue:=4
 
 > [!TASK]
 > Write `QUEUE_WAITED_S` (a typical "waited … s in the queue", two decimals) and `EXPLAIN_QUEUE`: the node
-> subtracts the right delay — why is the attitude still wrong with a queue? (Lesson §1, the queue figure.)
+> subtracts the right delay — why is the attitude still wrong with a queue (lesson §1, the queue figure)? And every
+> queued frame was "usable": why did none of your refusal rules catch them?
 
 ## Step 11 — The memo
 
@@ -436,6 +487,10 @@ look back, without the lesson:
 Write your answers in `LOOK_BACK` in `answers.py` if you want your teacher to read them (not graded).
 
 ## Going further (optional)
+
+- **Can the phase fit give L?** phase.py's intercept is about 173.8 ms. Compare it with 5 × T. Show that, without
+  jitter, delay = m·T − phase for a whole number m: the intercept only says that s + L lies between (m − 1)·T and
+  m·T. Why is "intercept − T − s" close to L on this bench, and when would it be 30 ms wrong?
 
 - **A robust jitter.** Add `"mad_ms"` to a copy of your `frame_stats`: 1.4826 × median(|dᵢ − median|). Compare it
   with the jitter on the first 40 s and on the whole 60 s of `grab_log.csv`. Which number would you use to raise a

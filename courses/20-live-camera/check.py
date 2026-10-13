@@ -71,6 +71,7 @@ ATT = {1.005: [0.002102319, 0.000583025, 0.26092506, 0.965356594],
        1.50: [0.117937006, 0.078222136, 0.383442453, 0.912657682],
        1.04: [0.014370698, 0.013197559, 0.275438482, 0.961120674],
        1.315: [0.116108668, 0.077145281, 0.381617708, 0.913747945]}
+ATT_HOLE08 = [0.001796404, 0.001649756, 0.260906177, 0.965361082]      # 2.1 s in a 2.0–2.8 s hole
 ATT_F_INVERTED = [0.006306957, 0.001749074, 0.265129697, 0.964190545]     # 1.005 with the fraction upside down
 
 DEFAULTS = {"latency_s": 0.138, "max_gap_s": 0.2, "rate_window_s": 0.2, "max_rate_dps": 30.0, "max_tilt_deg": 45.0,
@@ -89,10 +90,11 @@ USABLE = [("level, 19.9 °/s", ((0.0, 0.0, 0.0, 1.0), 19.9, CFG2), (True, "ok"))
 
 # ---- the lab's data, measured with the course reference (lab Steps 1–9) -------------------------------------------
 FPS_LOG, DROPPED_LOG, JITTER_40S_MS, JITTER_60S_MS = 28.2655, 32, 5.00, 9.72
-DELAY_MEDIAN_MS, DELAY_MIN_MS, DELAY_MEAN_MS, UNSEEN_FLASH, OUTLIER_FLASH = 156.3, 141.1, 166.1, 8, 14
+DELAY_MEDIAN_MS, DELAY_MIN_MS, UNSEEN_FLASH, OUTLIER_FLASH = 156.3, 141.1, 8, 14
+PHASE_SLOPE = -0.990                      # phase.py on the bench, flash 14 left out (r = −0.995)
 T_MS, SCREEN_MS = 1000.0 / 28.8, 20.0
-BUDGET_300_M, DT_FOR_30M_S = 5.4542, 0.4524
-STRAIGHT_GRAB_M = 7.4
+BUDGET_500_M, ALONG_60_M, DT_FOR_30M_S = 13.6388, 2.0833, 0.4524
+STEADY_RATE_DPS = 12.9805                 # g·tan 30° / 25 m/s
 
 
 def tm():
@@ -100,11 +102,34 @@ def tm():
         return load_student("navera_lite.timing", fresh=True)
 
 
-def functions(*names):
-    fns = need(tm(), *names)
+def only_stub(func, path):
+    """True if the function's body is ONLY the starter's stub (a docstring plus `return None` / `raise …`). Code
+    written above the stub line counts as written (the stub below it is never reached). The student's file is read as
+    text (never executed here)."""
+    import ast
+    if not is_stub(func):
+        return False
+    try:
+        tree = ast.parse(open(path, encoding="utf-8").read())
+    except (OSError, SyntaxError, ValueError):
+        return True
+    name = getattr(func, "__name__", "")
+    defs = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == name]
+    if not defs:
+        return True
+    body = [x for x in defs[-1].body if not (isinstance(x, ast.Expr) and isinstance(x.value, ast.Constant))]
+    if len(body) != 1:
+        return False
+    x = body[0]
+    return isinstance(x, ast.Raise) or (isinstance(x, ast.Return) and (x.value is None or (
+        isinstance(x.value, ast.Constant) and x.value.value is None)))
+
+
+def functions(*names, module=None, path="navera_lite/timing.py"):
+    fns = need(module or tm(), *names)
     for f in fns:
-        if is_stub(f):
-            raise CheckFailed(f"{f.__name__}() is not written yet (it is still the TODO stub in navera_lite/timing.py)")
+        if only_stub(f, path):
+            raise CheckFailed(f"{f.__name__}() is not written yet (it is still the TODO stub in {path})")
     return fns
 
 
@@ -133,8 +158,23 @@ def num(v, what):
         raise CheckFailed(f"{what} should return one number, got {v!r}")
 
 
+TIPS = [("not supported between instances of 'NoneType'", " — a value is None and is compared: test `is None` "
+                                                           "first (usable: rate_dps can be None — lab Step 8, hint 6)"),
+        ("list index out of range", " — an index past the end: with bisect, i can be 0 or len(…) (lab Step 6, hints "
+                                    "1 and 4)"),
+        ("index out of bounds", " — an index past the end: with bisect, i can be 0 or len(…) (lab Step 6, hints 1 "
+                                "and 4)")]
+
+
 def go(fn, *args, **kw):
-    return run(fn, *args, seconds=20, **kw)
+    try:
+        return run(fn, *args, seconds=20, **kw)
+    except CheckFailed as e:
+        msg = str(e)
+        for key, tip in TIPS:
+            if key in msg:
+                raise CheckFailed(msg + tip)
+        raise
 
 
 def camera_yaml():
@@ -207,9 +247,7 @@ def mentions(text, value, tol):
 
 # ======================================================================== session 1 — Timekeeper
 @c.test("TODO 1: frame_stats() on unseen streams (drops, a stall, two frames, too few stamps)",
-        hint="Lesson §2: the n − 1 intervals; fps = (n − 1) / span; median, std (ddof = 0) and max of the intervals in "
-             "ms; dropped = Σ round(d / median) − 1 over the intervals longer than 1.5 × the median. ValueError for "
-             "fewer than 2 stamps.")
+        hint="Lesson §2 and lab Step 2 (hints 2–5); python3 run_timing.py test names the symptom of each mistake.")
 def _():
     (f,) = functions("frame_stats")
     got = go(f, STREAM_A)
@@ -242,9 +280,8 @@ def _():
 
 
 @c.test("TODO 2: delay_from_flashes() on an unseen bench (no frame before, not seen, half lit, exactly the midpoint)",
-        hint="Lesson §3 and the docstring: dark = the last frame at or before t0; bright = the brightest frame in "
-             "(t0, t0 + window_s]; the delay is the first frame of the window STRICTLY brighter than the midpoint, "
-             "minus t0; None when there is no frame before, no frame in the window, or bright − dark < min_rise.")
+        hint="Read the docstring of delay_from_flashes again, word by word (dark, bright, STRICTLY brighter, None); lab "
+             "Step 3, hints 1–4.")
 def _():
     (f,) = functions("delay_from_flashes")
     fl, ft, fb = bench2()
@@ -272,27 +309,42 @@ def _():
 
 
 @c.test("TODO 3: time_error_m() on unseen heights, rates and times — exact, positive",
-        hint="Lesson §4: the angle error is rate × dt (degrees); the ground error is h · tan(angle), with the angle "
-             "in RADIANS inside tan; a distance is positive.")
+        hint="Lesson §4 and lab Step 5 (hints 1, 2 and 4); python3 run_timing.py test names the symptom.")
 def _():
     (f,) = functions("time_error_m")
-    v = num(go(f, 250.0, 35.0, 0.05), "time_error_m(250, 35, 0.05)")
-    if abs(v - 7.635682) < 1e-3:
-        raise CheckFailed("time_error_m(250, 35, 0.05) = 7.636: that is h × angle (small-angle); the docstring wants "
-                          "the tangent")
-    if abs(v) > 100:
-        raise CheckFailed(f"time_error_m(250, 35, 0.05) = {v:.1f}: math.tan got DEGREES — math.radians first")
-    c.near(v, 7.638191, 1e-5, "time_error_m(250, 35, 0.05)")
-    v = num(go(f, 80.0, -20.0, 0.2), "time_error_m(80, −20, 0.2)")
-    c.ok(v >= 0, f"time_error_m(80, −20, 0.2) = {v:.3f}: a rotation the other way is the same error — abs(…)")
-    c.near(v, 5.594145, 1e-5, "time_error_m(80, −20, 0.2)")
-    c.near(num(go(f, 400.0, 30.0, 0.0), "time_error_m(400, 30, 0)"), 0.0, 1e-9, "time_error_m(400, 30, 0)")
-    c.near(num(go(f, 600.0, 45.0, 1.0), "time_error_m(600, 45, 1)"), 600.0, 1e-6, "time_error_m(600, 45, 1)")
+
+    def pair(args):
+        got = go(f, *args)
+        if not (isinstance(got, (tuple, list)) and len(got) == 2):
+            raise CheckFailed(f"time_error_m{args} must return two numbers (attitude_m, position_m), got {got!r}")
+        return num(got[0], f"time_error_m{args}[0]"), num(got[1], f"time_error_m{args}[1]")
+
+    a, p = pair((250.0, 35.0, 0.05, 20.0))
+    if abs(a - 7.635682) < 1e-3:
+        raise CheckFailed("time_error_m(250, 35, 0.05, …) attitude part = 7.636: that is h × angle (small-angle); the "
+                          "docstring wants the tangent (lab Step 5, hint 2)")
+    if abs(a) > 100:
+        raise CheckFailed(f"time_error_m(250, 35, 0.05, …) attitude part = {a:.1f}: math.tan got DEGREES (lab Step 5, "
+                          "hint 1)")
+    c.near(a, 7.638191, 1e-5, "time_error_m(250, 35, 0.05, 20) attitude part")
+    c.near(p, 1.0, 1e-9, "time_error_m(250, 35, 0.05, 20) position part (speed × time)")
+    a, p = pair((80.0, -20.0, 0.2))
+    c.ok(a >= 0, f"time_error_m(80, −20, 0.2) attitude part = {a:.3f}: a rotation the other way is the same error — "
+                 "a distance is ≥ 0")
+    c.near(a, 5.594145, 1e-5, "time_error_m(80, −20, 0.2) attitude part")
+    c.near(p, 0.0, 1e-12, "time_error_m(80, −20, 0.2) position part (speed_mps defaults to 0)")
+    a, p = pair((400.0, 30.0, -0.1, 50.0))
+    c.ok(a >= 0 and p >= 0, f"time_error_m(400, 30, −0.1, 50) = ({a:.3f}, {p:.3f}): a time error in the other "
+                            "direction costs the same — both parts are distances, ≥ 0")
+    c.near(a, 400 * math.tan(math.radians(3.0)), 1e-6, "time_error_m(400, 30, −0.1, 50) attitude part")
+    c.near(p, 5.0, 1e-9, "time_error_m(400, 30, −0.1, 50) position part")
+    a, p = pair((600.0, 45.0, 1.0))
+    c.near(a, 600.0, 1e-6, "time_error_m(600, 45, 1) attitude part")
 
 
 @c.test("Steps 0–1: your guess, the decode time and what it costs",
-        hint="Step 1: run python3 run_timing.py bench; CORES_ALL_FRAMES = 28.8 × DECODE_MS / 1000. EXPLAIN_DECODE: "
-             "in your own words.")
+        hint="Lab Step 1: run python3 run_timing.py bench; CORES_ALL_FRAMES: lab Step 1, hint 1. EXPLAIN_DECODE: in "
+             "your own words.")
 def _():
     pe, dm, cores, why = answers("PREDICT_ERROR", "DECODE_MS", "CORES_ALL_FRAMES", "EXPLAIN_DECODE")
     predicted("PREDICT_ERROR", pe)
@@ -309,15 +361,16 @@ def _():
     c.ok(abs(cores - want) <= max(0.015, 0.05 * want), f"CORES_ALL_FRAMES = {cores}: with your DECODE_MS = {dm}, "
          "28.8 decodes per second keep 28.8 × DECODE_MS / 1000 cores busy")
     explained("EXPLAIN_DECODE", why,
-              ((r"decod", r"cpu", r"core", r"cost", r"time", r"expensive", r"slow", r"\bms\b", r"heavy", r"comput"),
+              ((r"cpu", r"core", r"expensive", r"\d+ ?ms", r"heavy", r"processing (time|power)", r"computing"),
                "what decoding costs"),
-              ((r"one", r"only", r"need", r"send", r"use", r"newest", r"latest", r"last", r"second"),
-               "why one frame is enough"))
+              ((r"only (one|the|a few)", r"one (frame )?(per|a|each) second", r"(about|around) one", r"1 frame",
+                r"sends? (only )?one", r"needs? (only )?one", r"rest are (thrown|dropped|discarded)", r"newest",
+                r"latest"), "why decoding one frame is enough"))
 
 
 @c.test("Step 2: the grab log — rate, drops, jitter with and without the stall",
-        hint="Run python3 run_timing.py stats after TODO 1: copy the fps and dropped of 'the whole 60 s', and the "
-             "jitter_ms of both lines (two decimals). EXPLAIN_JITTER: look at out/intervals.png.")
+        hint="Lab Step 2: python3 run_timing.py stats after TODO 1 (two decimals). EXPLAIN_JITTER: look at "
+             "out/intervals.png — what is different in the last 20 s?")
 def _():
     fps, dr, j40, j60, why = answers("FPS_LOG", "DROPPED_LOG", "JITTER_40S_MS", "JITTER_60S_MS", "EXPLAIN_JITTER")
     fps = number(fps, "FPS_LOG")
@@ -333,49 +386,78 @@ def _():
     c.near(j40, JITTER_40S_MS, 0.01, "JITTER_40S_MS")
     c.near(j60, JITTER_60S_MS, 0.01, "JITTER_60S_MS")
     explained("EXPLAIN_JITTER", why,
-              ((r"stall", r"pause", r"gap", r"freez", r"stop", r"\b38\d", r"0\.3", r"long", r"outlier", r"big",
-                r"large", r"spike"), "what happens in the last 20 s"),
-              ((r"median", r"normal", r"typical", r"usual", r"rhythm", r"risk", r"worst", r"max"),
-               "which number describes what"))
+              ((r"stall", r"pause", r"gap", r"freez", r"\b38\d", r"0\.38", r"outlier", r"spike"),
+               "what happens in the last 20 s"),
+              ((r"median", r"normal", r"typical", r"usual", r"rhythm"), "which number describes the normal rhythm"),
+              ((r"risk", r"worst", r"max", r"largest", r"jitter", r"std", r"standard deviation"),
+               "which number describes the risk"))
 
 
-@c.test("Step 3: the flash bench — median, minimum, mean, the unseen flash, the odd one",
-        hint="Run python3 run_timing.py flashes after TODO 2 and copy its numbers (ms, one decimal); the flash "
-             "numbers are in the left column. EXPLAIN_SPREAD: lesson §3, consequence 1.")
+@c.test("Step 3: the flash bench — median, minimum, the unseen flash, the odd one; TODO P and the phase fit",
+        hint="Lab Step 3 (python3 run_timing.py flashes, ms, one decimal) and Step 3b (TODO P in phase.py, then "
+             "python3 phase.py). EXPLAIN_…: in your own words.")
 def _():
-    pd, med, mn, mean, uf, of, why = answers("PREDICT_DELAY", "DELAY_MEDIAN_MS", "DELAY_MIN_MS", "DELAY_MEAN_MS",
-                                             "UNSEEN_FLASH", "OUTLIER_FLASH", "EXPLAIN_SPREAD")
+    pd, med, mn, uf, of, why = answers("PREDICT_DELAY", "DELAY_MEDIAN_MS", "DELAY_MIN_MS", "UNSEEN_FLASH",
+                                       "OUTLIER_FLASH", "EXPLAIN_SPREAD")
     predicted("PREDICT_DELAY", pd)
-    med, mn, mean = number(med, "DELAY_MEDIAN_MS"), number(mn, "DELAY_MIN_MS"), number(mean, "DELAY_MEAN_MS")
+    med, mn = number(med, "DELAY_MEDIAN_MS"), number(mn, "DELAY_MIN_MS")
     if abs(med - DELAY_MEDIAN_MS / 1000) < 0.001:
         raise CheckFailed("DELAY_MEDIAN_MS is in seconds: write milliseconds (× 1000)")
+    c.ok(med != 0, "DELAY_MEDIAN_MS is still 0: run python3 run_timing.py flashes (Step 3)")
     c.near(med, DELAY_MEDIAN_MS, 0.11, "DELAY_MEDIAN_MS")
     c.near(mn, DELAY_MIN_MS, 0.11, "DELAY_MIN_MS")
-    c.near(mean, DELAY_MEAN_MS, 0.11, "DELAY_MEAN_MS")
     c.ok(number(uf, "UNSEEN_FLASH") == UNSEEN_FLASH, f"UNSEEN_FLASH = {uf}: which line says 'not seen'?")
     c.ok(number(of, "OUTLIER_FLASH") == OUTLIER_FLASH, f"OUTLIER_FLASH = {of}: which flash's delay is far from all "
                                                        "the others? (out/flashes.png, right)")
     explained("EXPLAIN_SPREAD", why,
               ((r"wait", r"next (frame|exposure|image|picture)", r"random", r"phase", r"between (two )?(frames|exposures)",
-                r"\bw\b", r"period", r"34", r"35", r"28\.8", r"sync"), "the random wait for the next exposure"),
+                r"\bw\b", r"sync", r"any (time|moment)", r"when the flash"), "the random wait for the next exposure"),
               ((r"frame", r"exposure", r"period", r"image", r"picture"), "that frames come only every period"))
+    with contextlib.redirect_stdout(io.StringIO()):
+        ph_mod = load_student("phase.py", fresh=True)
+    (fp,) = functions("flash_phase", module=ph_mod, path="phase.py")
+    got = go(fp, 2.0, [1.9, 1.95, 1.99, 2.0, 2.03])
+    if got is not None and abs(float(got) - 0.01) < 1e-9:
+        raise CheckFailed("flash_phase(2.0, …): a frame grabbed exactly at t0 counts (at or before t0): the phase is 0")
+    c.ok(got is not None and abs(float(got)) < 1e-9, f"flash_phase(2.0, frames 1.9 … 2.03 with one AT 2.0) should be "
+                                                     f"0.0, got {got!r}")
+    got = go(fp, 2.02, [1.9, 1.95, 1.99, 2.0, 2.03])
+    if got is not None and abs(float(got) + 0.01) < 1e-6:
+        raise CheckFailed("flash_phase: the LAST frame at or before t0, not the first one after it")
+    c.ok(got is not None and abs(float(got) - 0.02) < 1e-9, f"flash_phase(2.02, …) should be 0.02 s, got {got!r}")
+    got = go(fp, 1.5, [1.9, 1.95])
+    c.ok(got is None, f"flash_phase(1.5, …) with no frame before 1.5: None, not {got!r}")
+    pp, sl, whyp = answers("PREDICT_PHASE", "PHASE_SLOPE", "EXPLAIN_PHASE")
+    predicted("PREDICT_PHASE", pp)
+    sl = number(sl, "PHASE_SLOPE")
+    c.ok(sl != 0, "PHASE_SLOPE is still 0: run python3 phase.py (Step 3b)")
+    if abs(sl + PHASE_SLOPE) < 0.02:
+        raise CheckFailed("PHASE_SLOPE: look at the sign in phase.py's printout — the delay goes DOWN as the phase grows")
+    c.near(sl, PHASE_SLOPE, 0.011, "PHASE_SLOPE")
+    explained("EXPLAIN_PHASE", whyp,
+              ((r"later", r"each (ms|millisecond)", r"one (ms|millisecond)", r"one for one", r"less", r"shorter",
+                r"inverse", r"opposite", r"minus one", r"−1", r"-1", r"decreas"), "what a slope of −1 means"),
+              ((r"wait", r"phase", r"where", r"when the flash", r"between (two )?(frames|exposures|grabs)", r"\bw\b",
+                r"not noise", r"not random", r"explain"), "that the spread is the flash's place between frames"))
 
 
 @c.test("Step 4: your delay setting, from the bench (in answers.py and in camera.yaml)",
-        hint="Lesson §3, consequence 3: the median holds the screen's delay (20 ms) and about half a frame period "
-             "(T/2 = 17.4 ms). Write the setting in seconds in answers.py AND as latency_s in camera.yaml.")
+        hint="Lab Step 4: which parts of a measured delay are not the camera? Lesson §3, 'What does one delay "
+             "contain?'. Write the setting in seconds in answers.py AND as latency_s in camera.yaml.")
 def _():
     lat, why = answers("LATENCY_SETTING_S", "EXPLAIN_LATENCY")
     lat = number(lat, "LATENCY_SETTING_S")
     c.ok(lat != 0, "LATENCY_SETTING_S is still 0 (Step 4)")
     if lat > 1:
         raise CheckFailed(f"LATENCY_SETTING_S = {lat}: write seconds (0.1…), not milliseconds")
+    if abs(lat - 0.138) < 0.0005:
+        raise CheckFailed("LATENCY_SETTING_S = 0.138 is NAVERA's setting for ITS camera (the Insta360); this bench "
+                          "measured another camera — compute yours from your bench numbers (lab Step 4)")
     traps = {DELAY_MEDIAN_MS: "the median as it is: it still holds the screen's delay and about half a period",
              DELAY_MIN_MS: "the minimum: it still holds the screen's delay (20 ms)",
              DELAY_MEDIAN_MS - SCREEN_MS: "the median minus the screen: half a frame period (T/2) is still in it",
              DELAY_MEDIAN_MS - T_MS / 2: "the median minus T/2: the screen's 20 ms are still in it",
-             DELAY_MEAN_MS - T_MS / 2 - SCREEN_MS: "the MEAN minus T/2 and s: one odd flash pulls the mean — use the "
-                                                    "median"}
+             166.1 - T_MS / 2 - SCREEN_MS: "the MEAN minus T/2 and s: one odd flash pulls the mean — use the median"}
     for v, why_trap in traps.items():
         if abs(lat * 1000 - v) < 1.5 and not (110 <= lat * 1000 <= 128):
             raise CheckFailed(f"LATENCY_SETTING_S = {lat}: that is {why_trap}")
@@ -385,30 +467,36 @@ def _():
     c.ok(abs(y - lat) <= 0.0005, f"camera.yaml says latency_s: {y}, answers.py says {lat}: write the same value in "
                                  "both and save both files")
     explained("EXPLAIN_LATENCY", why,
-              ((r"screen", r"\bs\b", r"20 ?ms", r"0\.02", r"monitor", r"display"), "the screen's delay"),
-              ((r"half", r"t/2", r"17", r"period", r"wait", r"\bw\b"), "the wait for the next exposure"))
+              ((r"screen", r"20 ?ms", r"0\.02\b", r"monitor", r"display"), "the screen's delay"),
+              ((r"half", r"t/2", r"17", r"wait"), "the wait for the next exposure (half a period)"))
+    c.ok(mentions(str(why), DELAY_MEDIAN_MS, 0.6) or mentions(str(why), DELAY_MEDIAN_MS / 1000, 0.0006),
+         "EXPLAIN_LATENCY: start from your bench median (in ms or s) and say what you removed from it")
 
 
-@c.test("Step 5: what a time error costs (two numbers and why)",
-        hint="BUDGET_300_M = your time_error_m(300, 30, 1/28.8). DT_FOR_30M_S: tan(δθ) = 30/150, δt = δθ / 25 (δθ in "
-             "degrees). EXPLAIN_BUDGET: h · tan(ω · δt).")
+@c.test("Step 5: what a time error costs (three numbers and why)",
+        hint="Lab Step 5: BUDGET_500_M and ALONG_60_M come from your time_error_m (one frame period = 1/28.8 s); "
+             "DT_FOR_30M_S: lab Step 5, hint 3. EXPLAIN_BUDGET: which two factors multiply?")
 def _():
-    b, dt, why = answers("BUDGET_300_M", "DT_FOR_30M_S", "EXPLAIN_BUDGET")
-    b = number(b, "BUDGET_300_M")
-    c.ok(b != 0, "BUDGET_300_M is still 0: use your time_error_m (Step 5)")
-    if abs(b - 300 * math.tan(math.radians(30 * 0.138))) < 0.05:
-        raise CheckFailed("BUDGET_300_M: the time error is ONE FRAME PERIOD, 1/28.8 s (34.7 ms), not 0.138 s")
-    c.near(b, BUDGET_300_M, 0.02, "BUDGET_300_M (m)")
+    b, al, dt, why = answers("BUDGET_500_M", "ALONG_60_M", "DT_FOR_30M_S", "EXPLAIN_BUDGET")
+    b = number(b, "BUDGET_500_M")
+    c.ok(b != 0, "BUDGET_500_M is still 0: use your time_error_m (Step 5)")
+    if abs(b - 500 * math.tan(math.radians(45 * 0.138))) < 0.5:
+        raise CheckFailed("BUDGET_500_M: the time error is ONE FRAME PERIOD, 1/28.8 s (34.7 ms), not 0.138 s")
+    c.near(b, BUDGET_500_M, 0.02, "BUDGET_500_M (m)")
+    al = number(al, "ALONG_60_M")
+    c.near(al, ALONG_60_M, 0.006, "ALONG_60_M (m)")
     dt = number(dt, "DT_FOR_30M_S")
     if abs(dt - 0.2 / math.radians(25)) < 0.003:
         raise CheckFailed("DT_FOR_30M_S = 0.46: you used the small-angle formula (or radians per second); atan(0.2) "
                           "is 11.31°, and 11.31 / 25 = …")
     c.near(dt, DT_FOR_30M_S, 0.006, "DT_FOR_30M_S (s)")
     explained("EXPLAIN_BUDGET", why,
-              ((r"height", r"high", r"altitude", r"\bh\b", r"farther", r"further", r"distance", r"300", r"lever"),
+              ((r"height", r"high", r"altitude", r"\bh\b", r"300", r"lever", r"farther from the ground"),
                "why height multiplies the error"),
-              ((r"rate", r"turn", r"rotat", r"ω", r"omega", r"angle", r"°/s", r"fast", r"roll"),
-               "why a turn makes the time error an angle error"))
+              ((r"rate", r"rotat", r"ω", r"omega", r"°/s", r"turn"), "that the rotation rate turns a time error into an "
+                                                                    "angle error"),
+              ((r"level", r"straight", r"no rotation", r"not rotat", r"zero", r"0 °/s", r"does not turn",
+                r"doesn't turn", r"constant attitude"), "why straight, level flight costs nothing"))
 
 
 # ======================================================================== session 2 — Shutter
@@ -421,10 +509,8 @@ def att_close(got, want, tol=1e-6):
     return a.shape == (4,) and (np.allclose(a, w, atol=tol) or np.allclose(-a, w, atol=tol))
 
 
-@c.test("TODO 4: attitude_at() on an unseen IMU history (a sign flip, a hole, both ends, numpy arrays)",
-        hint="Lesson §5: bracket with bisect; None if the nearest sample is farther than max_gap_s (or no sample); an "
-             "end sample before the first / after the last; otherwise slerp at f = (t − t₀) / (t₁ − t₀). Quaternions "
-             "(x, y, z, w).")
+@c.test("TODO 4: attitude_at() on an unseen IMU history (a sign flip, holes, both ends, numpy arrays)",
+        hint="Lesson §5 and lab Step 6, hints 1–6; python3 run_timing.py test names the symptom of each mistake.")
 def _():
     (f,) = functions("attitude_at")
     got = go(f, 1.005, IT, IQ)
@@ -445,7 +531,8 @@ def _():
         if got is None:
             raise CheckFailed(f"attitude_at({t}) returned None, but a sample is within 0.2 s")
         if not att_close(got, ATT[t]):
-            what = {1.04: "exactly on a sample: that sample", 0.85: "0.15 s before the first sample: the first sample",
+            what = {1.04: "exactly on a sample: that sample", 0.85: "0.15 s before the first sample: the first sample — with i = 0, imu_q[i - 1] is imu_q[-1], the LAST "
+                    "sample: test i == 0 first (lab Step 6, hint 4)",
                     1.50: "0.18 s after the last sample: the last sample (never extrapolate)",
                     1.17: "inside a 0.26 s hole, 0.13 s from its start: interpolate across it",
                     1.25: "inside a 0.26 s hole, 0.05 s from its end: interpolate"}.get(t, "between two samples")
@@ -454,6 +541,11 @@ def _():
     for t, why in ((1.55, "0.23 s after the last sample"), (0.70, "0.30 s before the first sample")):
         got = go(f, t, IT, IQ)
         c.ok(got is None, f"attitude_at({t}): {why} (> max_gap_s = 0.2) — return None, not {got!r}")
+    got = go(f, 2.1, [2.0, 2.8], [IQ[0], IQ[2]])
+    c.ok(got is not None, "inside a 0.8 s hole but 0.1 s from its start: the nearest sample is within max_gap_s — "
+                          "interpolate (lesson §5 ✏️: 17.1 s → yes); only the NEAREST sample counts, not the hole's "
+                          "width (lab Step 6, hint 5)")
+    c.ok(att_close(got, ATT_HOLE08), f"attitude_at(2.1) in a 0.8 s hole: f = 0.125 of the way, got {got!r}")
     got = go(f, 2.25, [2.0, 2.5], [IQ[0], IQ[2]])
     c.ok(got is None, f"in the middle of a 0.5 s hole both samples are 0.25 s away: None, not {got!r}")
     got = go(f, 1.03, IT, IQ, max_gap_s=0.005)
@@ -466,8 +558,7 @@ def _():
 
 
 @c.test("TODO 5: rotation_rate_dps() on an unseen turn (40 °/s), other windows, and with no attitude",
-        hint="Lesson §6: the angle (q_angle_deg) between attitude_at(t − window_s) and attitude_at(t), divided by "
-             "window_s; None if either attitude is None. Pass max_gap_s on to attitude_at.")
+        hint="Lesson §6 and lab Step 8, hint 1. The window lies BEFORE t (from t − window_s to t).")
 def _():
     (f,) = functions("rotation_rate_dps")
     ht = [round(0.02 * k, 2) for k in range(40)]
@@ -478,7 +569,11 @@ def _():
     c.near(v, 40.0, 1e-3, "rotation_rate_dps(0.5, a 40 °/s turn)")
     c.near(num(go(f, 0.5, ht, hq, window_s=0.1), "rotation_rate_dps(…, window_s=0.1)"), 40.0, 1e-3,
            "rotation_rate_dps with window_s = 0.1")
-    c.near(num(go(f, 0.73, ht, hq, window_s=0.3), "rotation_rate_dps(0.73, …, window_s=0.3)"), 40.0, 1e-3,
+    got = go(f, 0.73, ht, hq, window_s=0.3)
+    if got is None:
+        raise CheckFailed("rotation_rate_dps(0.73, …, window_s=0.3) returned None although IMU samples exist at both "
+                          "0.43 s and 0.73 s: is your window BEFORE t (t − window_s to t)? (lab Step 8, hint 1)")
+    c.near(num(got, "rotation_rate_dps(0.73, …, window_s=0.3)"), 40.0, 1e-3,
            "rotation_rate_dps(0.73) with window_s = 0.3")
     got = go(f, 1.2, ht, hq)
     c.ok(got is None, f"at 1.2 s the last sample is 0.42 s old: no attitude, so no rate — None, not {got!r}")
@@ -488,8 +583,7 @@ def _():
 
 
 @c.test("TODO 6: usable() with unseen settings (max 20 °/s, max 30°), the rule order, a gimbal",
-        hint="The docstring's five rules in order, each a return with the exact words and one decimal: no attitude → "
-             "rate unknown → turning → tilted → ok; with a gimbal only rule 1. Use cfg's numbers, not 30 and 45.")
+        hint="The docstring of usable(), rule by rule and in its order; lab Step 8, hints 2–6.")
 def _():
     (f,) = functions("usable")
     for label, args, want in USABLE:
@@ -518,17 +612,16 @@ def _():
                               f"got {why!r}")
 
 
-@c.test("Step 7: the plane's turn — three attitudes, two delay settings, one straightened frame",
-        hint="python3 run_timing.py turn --latency 0.138 and python3 run_timing.py turn (your camera.yaml), then "
-             "python3 run_timing.py straighten: copy the medians and the max (m, two decimals).")
+@c.test("Steps 6–7: the plane's turn — three attitudes, two delay settings, a steady bank",
+        hint="Lab Steps 6–7: python3 run_timing.py turn --latency 0.138, then turn (your camera.yaml), two decimals. "
+             "STEADY_RATE_DPS: lesson §4, 'A steady bank is still a rotation'.")
 def _():
-    pm, gm, gx, cm, mm, sg, why = answers("PREDICT_METHODS", "GRAB_MEDIAN_M", "GRAB_MAX_M", "COPIED_MEDIAN_M",
-                                          "MINE_MEDIAN_M", "STRAIGHT_GRAB_M", "EXPLAIN_TURN")
+    pm, gm, cm, mm, why, sr, why_s = answers("PREDICT_METHODS", "GRAB_MEDIAN_M", "COPIED_MEDIAN_M", "MINE_MEDIAN_M",
+                                             "EXPLAIN_TURN", "STEADY_RATE_DPS", "EXPLAIN_STEADY")
     predicted("PREDICT_METHODS", pm)
     meta = table()["meta"]
     c.ok(number(gm, "GRAB_MEDIAN_M") != 0, "GRAB_MEDIAN_M is still 0: run python3 run_timing.py turn (Step 7)")
     c.near(number(gm, "GRAB_MEDIAN_M"), meta["grab_median_m"], 0.011, "GRAB_MEDIAN_M ('held at the grab', median)")
-    c.near(number(gx, "GRAB_MAX_M"), meta["grab_max_m"], 0.011, "GRAB_MAX_M ('held at the grab', max)")
     cm = number(cm, "COPIED_MEDIAN_M")
     if abs(cm - 0.357) < 0.011:
         raise CheckFailed("COPIED_MEDIAN_M: that is the 'nearest sample' line; write YOUR attitude_at's line")
@@ -536,17 +629,30 @@ def _():
     lat = my_latency()
     c.near(number(mm, "MINE_MEDIAN_M"), row_for(lat)["median_m"], 0.011,
            f"MINE_MEDIAN_M (yours with camera.yaml's latency_s = {lat}; run `turn` again if you changed it)")
-    c.near(number(sg, "STRAIGHT_GRAB_M"), STRAIGHT_GRAB_M, 0.051, "STRAIGHT_GRAB_M (straighten, 'held at the grab')")
     explained("EXPLAIN_TURN", why,
-              ((r"roll", r"bank", r"turn", r"enter", r"start", r"rotat", r"3 ?(–|-|to) ?5", r"17", r"18", r"fast"),
-               "when in the flight"),
-              ((r"rate", r"fast", r"speed", r"°/s", r"quick", r"rotat", r"chang", r"late", r"old", r"delay", r"0\.1"),
-               "why then (the rotation during the delay)"))
+              ((r"roll(s|ing)? (in|into|out)", r"bank(s|ing)? (in|into|out|change)", r"enter", r"start of the (turn|bank)",
+                r"3 ?(–|-|to) ?5", r"1[78] ?s", r"17", r"while (it|the plane) (rolls|banks)", r"chang\w* (its )?(bank|roll)"),
+               "when in the flight (the roll changes)"),
+              ((r"rate", r"°/s", r"fast", r"quick"), "the rotation rate"),
+              ((r"late", r"old", r"delay", r"latency", r"0\.1", r"after the exposure", r"too new"),
+               "why the delay matters then"))
+    sr = number(sr, "STEADY_RATE_DPS")
+    c.ok(sr != 0, "STEADY_RATE_DPS is still 0: compute it (lesson §4, 'A steady bank is still a rotation')")
+    if abs(sr - math.radians(STEADY_RATE_DPS)) < 0.01:
+        raise CheckFailed("STEADY_RATE_DPS = 0.23: that is rad/s — the question asks °/s")
+    if abs(sr - 9.81 * math.tan(math.radians(30)) / 25 * 1000) < 1:
+        raise CheckFailed("STEADY_RATE_DPS: g·tan φ / v gives rad/s; convert with × 57.3")
+    c.near(sr, STEADY_RATE_DPS, 0.03, "STEADY_RATE_DPS (°/s)")
+    explained("EXPLAIN_STEADY", why_s,
+              ((r"turn", r"heading", r"yaw"), "that the banked plane is turning (its heading changes)"),
+              ((r"13", r"rate", r"°/s", r"rotat"), "the rotation rate it has"),
+              ((r"late", r"old", r"delay", r"latency", r"0\.1", r"after the exposure", r"too new", r"grab"),
+               "why that rate still costs metres with the attitude held at the grab"))
 
 
 @c.test("Steps 8–9: your refusals on the flight, and the delay the flight prefers",
-        hint="python3 run_timing.py turn after TODO 5–6 (with camera.yaml's rules unchanged): copy the counts. "
-             "python3 run_timing.py scan: the setting with the smallest median.")
+        hint="Lab Step 8 (python3 run_timing.py turn after TODO 5–6, camera.yaml's rules unchanged) and Step 9 "
+             "(python3 run_timing.py scan).")
 def _():
     nt, nl, nn, why_r, best, why_s = answers("N_TURNING", "N_TILTED", "N_NO_ATTITUDE", "EXPLAIN_REFUSE",
                                              "BEST_LATENCY_S", "EXPLAIN_SCAN")
@@ -554,26 +660,29 @@ def _():
     row = row_for(my_latency())
     for name, v, key in (("N_TURNING", nt, "turning"), ("N_TILTED", nl, "tilted"), ("N_NO_ATTITUDE", nn, "no attitude")):
         v = number(v, name)
-        c.ok(v == row[key], f"{name} = {v:g} is not what the rules give with your camera.yaml (latency_s "
-                            f"{my_latency()}): run python3 run_timing.py turn again and copy its count")
+        c.ok(v == row[key], f"{name} = {v:g} is not what the lesson's rules give on this flight with your camera.yaml "
+                            f"(latency_s {my_latency()}). If `turn` prints this number, one of your functions differs "
+                            "from the rules (lab Step 8, hint 7); if not, run `turn` again after your last change")
     explained("EXPLAIN_REFUSE", why_r,
-              ((r"blur", r"rolling", r"shutter", r"exposure (time|lasts)", r"few ms", r"uncertain", r"error", r"residual",
-                r"not exact", r"jitter", r"ms"), "what timing error is left"),
-              ((r"rate", r"fast", r"60", r"grow", r"larger", r"bigger", r"multipl", r"ω", r"°/s"),
+              ((r"blur", r"rolling", r"shutter", r"exposure (time|lasts|takes)", r"few (ms|milliseconds)",
+                r"uncertain", r"residual", r"not (exact|perfect)", r"jitter", r"leftover", r"left over",
+                r"(setting|latency|delay) (is )?(only )?(known|accurate|precise)"), "what timing error is left"),
+              ((r"rate", r"60", r"grow", r"multipl", r"ω", r"°/s", r"proportional"),
                "why it matters more at a high rate"))
     best = number(best, "BEST_LATENCY_S")
     if best > 1:
         raise CheckFailed("BEST_LATENCY_S: write seconds, not milliseconds")
     c.near(best, float(table()["meta"]["best_scan_s"]), 0.0025, "BEST_LATENCY_S (s)")
     explained("EXPLAIN_SCAN", why_s,
-              ((r"bench", r"agree", r"close", r"same", r"match", r"differ", r"0\.1[0-9]", r"1[12]\d ?ms", r"setting"),
-               "the comparison with your bench setting"),
+              ((r"bench", r"step 4"), "your bench setting"),
+              ((r"agree", r"close", r"same", r"match", r"differ", r"0\.11\d", r"0\.12\d", r"1[12]\d ?ms"),
+               "how the two compare"),
               ((r"truth", r"true", r"reference", r"know", r"ground.?truth", r"simulat"), "what a real plane lacks"))
 
 
 @c.test("Step 10: the live camera node runs YOUR timing functions over ROS, and the queue experiment",
         hint="Lab Step 10. If no meta message comes, run python3 -m navera_lite.ros.camera_node in your terminal: its "
-             "log names the function that fails. QUEUE_WAITED_S: a typical 'waited … s in the queue' with -p queue:=4.")
+             "log names the function that fails.")
 def _():
     from diagnostic_msgs.msg import DiagnosticStatus
     functions("attitude_at", "rotation_rate_dps", "usable")
@@ -585,7 +694,7 @@ def _():
         tail = "\n".join((bg.output() or "").strip().splitlines()[-6:])
         raise CheckFailed(f"the camera node published {len(msgs)} meta message(s) in 15 s (4 or more expected). Its "
                           f"last lines:\n{tail}")
-    usable_n = 0
+    usable_n, good = 0, 0
     for m in msgs:
         v = {kv.key: kv.value for kv in m.values}
         for k in ("grab_s", "exposure_s", "latency_s", "usable", "att_err_deg"):
@@ -599,13 +708,14 @@ def _():
              f"the node stamped exposure = grab − {g - e:.3f} s; camera.yaml says {lat}: start it without -p latency_s")
         if v["usable"] == "true":
             usable_n += 1
-            err = float(v["att_err_deg"])
-            c.ok(err < 1.5, f"frame {v.get('frame')}: the attitude your attitude_at gave live is {err:.2f}° from the "
-                            "truth (expected well under 1°): is your delay setting right (Step 4)?")
+            good += float(v["att_err_deg"]) < 1.5
         c.ok(m.message in ("ok", "no attitude at the exposure", "rotation rate unknown") or
              m.message.startswith(("turning ", "tilted ")), f"an unknown reason {m.message!r}: use the docstring's words")
     c.ok(usable_n >= 2, f"only {usable_n} of {len(msgs)} frames of a gentle roll were usable: check usable() and "
                         "rotation_rate_dps() (run_timing.py test)")
+    c.ok(good >= 0.75 * usable_n, f"only {good} of {usable_n} usable frames had an attitude within 1.5° of the truth "
+                                  "live (a well-stamped frame is well under 1°): is your delay setting right (Step 4)? "
+                                  "Does run_timing.py test pass?")
     w, why = answers("QUEUE_WAITED_S", "EXPLAIN_QUEUE")
     w = number(w, "QUEUE_WAITED_S")
     c.ok(w != 0, "QUEUE_WAITED_S is still 0: run the node with -p queue:=4 (Step 10)")
@@ -613,8 +723,10 @@ def _():
                           "line, once the queue is full (after the first 2 s): copy a typical value")
     explained("EXPLAIN_QUEUE", why,
               ((r"wait", r"queue", r"old", r"buffer", r"stale", r"behind", r"\b2(\.0)? ?s"), "that the frame waited"),
-              ((r"stamp", r"grab", r"now", r"time", r"exposure", r"latency", r"delay", r"not (include|count|know)"),
-               "why the stamp does not know it"))
+              ((r"stamp", r"now", r"not (include|count|know|see)", r"does(n't| not) (include|count|know|see)",
+                r"unknown"), "why the stamp does not know it"),
+              ((r"rule", r"usable", r"refus", r"accept", r"catch", r"check"), "why the refusal rules accepted the frames"),
+              min_words=20)
 
 
 @c.test("Step 11: the memo (report.md)",
