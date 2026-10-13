@@ -66,10 +66,10 @@ corrections · 10 Step 6 unplanned outage · 11 Step 7 · 12 TODO 7 · 13 result
   4.28).
   **Measured vs predicted.** Regenerating the campaign with 40 other seeds (`make_dataset.py --seed 1000…1039`,
   verified 2026-10-13, also reproduced by the expert reviewer) gives day 4.11 ± 0.31 (3.41–4.69) and gps 1.11 ± 0.03
-  (1.04–1.19) m/s. GPS: the formula is right (1.10). Seed 404's 1.188 is 2.2 spreads high with the 1.17/√n scatter of
-  0.036 (2.6–2.7 with the lab's rounded 1.11 ± 0.03: accept anything from 2 to 3), higher than all 40 other
-  seeds (max 1.187): an unlucky campaign (a 2.2-spread gap either way happens about 1 time in 35), and with 1 095 errors the
-  scatter is only 3 % (1.17/√n). A student who says "larger than the scatter" is right. Day: 3.75 is 1.2 spreads
+  (1.04–1.19) m/s. GPS: the formula is right (1.10). Seed 404's 1.188 is about 2 spreads high with the 1.17/√n scatter of
+  0.039 m/s, i.e. 3.5 % (2.0–2.3 spreads; 2.6–2.7 with the lab's rounded 1.11 ± 0.03: accept anything from 2 to 3), higher than all 40 other
+  seeds (max 1.187): an unlucky campaign (a 2-spread gap either way happens about 1 time in 20), and with 1 095 errors the
+  scatter is only 3.5 % (1.17/√n). A student who says "larger than the scatter" is right. Day: 3.75 is 1.2 spreads
   below 4.11, ordinary sampling with 224 errors (8 %). And 4.11 itself is about 3 % below the formula's 4.25: not
   sampling (standard error of the 40-seed mean 0.05), but the limit of a linear formula: a 6 m noise is not small
   against a 20 m step, so part of it becomes the positive bias below and not spread (expert's simulation: 4.07 at

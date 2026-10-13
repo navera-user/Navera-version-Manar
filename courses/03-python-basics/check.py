@@ -416,6 +416,10 @@ def _():
             raise CheckFailed("Vehicle.__init__ (TODO 6) does not store self.battery_wh (a misspelt name?): fix "
                               "TODO 6 first")
         raise CheckFailed("the FixedWing has no battery_wh: call super().__init__(...) first")
+    p = run(V, "probe", 10.0, 12.0, 100.0, 100.0)
+    if abs(run(p.range_m, 0.0, 0.3) - run(p.range_m)) < 1e-6 or abs(run(p.endurance_s, 0.0) - run(p.endurance_s)) < 1e-6:
+        raise CheckFailed("FixedWing inherits range_m and endurance_s from Vehicle, which ignore their reserve "
+                          "(✘11): fix TODO 7–8 first; your FixedWing.__init__ is not the problem")
     c.near(run(w.endurance_s), 4800.0, 1e-6, "FixedWing('albatross', 25, 40, 300, 180, 14).endurance_s()")
     c.near(run(w.range_m, -5, 0.3), 84000.0, 1e-6, "….range_m(-5, 0.3)")
     raises(FW, "brick", 14, 40, 300, 180, 14, what="FixedWing('brick', 14, 40, 300, 180, 14) (cruise = stall)")

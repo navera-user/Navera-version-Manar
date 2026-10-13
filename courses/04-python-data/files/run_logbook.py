@@ -251,7 +251,8 @@ def test():
             elif abs(float(r["p95_abs_mps"]) - 1.0) < 0.01:
                 v = f"{v} — p95 of the SIGNED errors: take it on |err|"
         except (KeyError, TypeError, ValueError) as ex:
-            v = f"a DataFrame without the row 'gps' or a column ({ex})"
+            msg = str(ex.args[0]) if ex.args else str(ex)
+            v = msg if msg.startswith("a 'none' row") else f"a DataFrame without the row 'gps' or a column ({ex})"
     show("noise_by_source(errors −30 −2 −1 0 0 1 1)", v, err, ok,
          "n 7, mean −4.429, std 11.33, median 0.0, mad_sigma 1.483, p95_abs 21.6")
 
