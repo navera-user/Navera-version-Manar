@@ -178,7 +178,7 @@ else:
     out["set_at"] = len(fixes)
     try:
         node.set_parameters([Parameter("heading_deg", value=180.0), Parameter("speed_mps", value=9.0),
-                             Parameter("sigma_m", value=2.0), Parameter("stamp_offset_s", value=-2.0)])
+                             Parameter("sigma_m", value=2.0), Parameter("stamp_offset_s", value=-5.0)])
         out["set"] = "ok"
     except Exception as e:
         out["set"] = f"{type(e).__name__}: {e}"
@@ -305,6 +305,9 @@ def _():
         if "ValueError" in str(e):
             return
         raise
+    if isinstance(got, BaseException) or "Error(" in repr(got):
+        raise CheckFailed(f"step(35.0, 10.0, 5.0, 45.0, -0.3) RETURNED {got!r}: write `raise ValueError(...)`, not "
+                          "`return` (🧰 box of lab Step 2)")
     raise CheckFailed(f"step(35.0, 10.0, 5.0, 45.0, -0.3) returned {got!r}: a negative time step is impossible — "
                       "raise ValueError instead of moving the vehicle backwards")
 
@@ -409,7 +412,7 @@ def _():
 LATE = {"rate_hz": "2.0", "speed_mps": "8.0", "heading_deg": "30.0", "start_lat": "-33.9249",
         "start_lon": "18.4241", "sigma_m": "1.5"}
 TURN = {"rate_hz": "4.0", "speed_mps": "6.0", "heading_deg": "0.0", "start_lat": "51.5074",
-        "start_lon": "-0.1278", "sigma_m": "0.0", "stamp_offset_s": "-5.0"}
+        "start_lon": "-0.1278", "sigma_m": "0.0", "stamp_offset_s": "-2.0"}
 
 
 @c.test("TODO 6: the node moves at speed_mps on heading_deg with the REAL time between ticks (random delays)",
@@ -448,10 +451,17 @@ def _():
          "with -p sigma_m:=0.0 (no accuracy stated) the fixes must say COV_UNKNOWN and nine 0.0: pass sigma_m "
          "from the parameters to make_fix")
     lag = before[-1]["recv"] - before[-1]["t"]
-    c.ok(3.5 < lag < 7.0, f"with -p stamp_offset_s:=-5.0 the stamps are {lag:.1f} s behind the clock instead of "
-                          "about 5 s: stamp = now + stamp_offset_s")
+    if -3.5 < lag < -0.5:
+        raise CheckFailed(f"with -p stamp_offset_s:=-2.0 the stamps are {-lag:.1f} s AHEAD of the clock: you subtracted "
+                          "the offset. The stamp is now + stamp_offset_s")
+    c.ok(0.5 < lag < 3.5, f"with -p stamp_offset_s:=-2.0 the stamps are {lag:.1f} s behind the clock instead of "
+                          "about 2 s: stamp = now + stamp_offset_s")
     pair_report(before, 6.0, 0.0, "before the change, 6.0 m/s north")
     c.ok(res.get("set") == "ok", f"the check could not set the parameters of your node: {res.get('set')}")
+    if "ValueError" in res.get("error", ""):
+        raise CheckFailed("after stamp_offset_s changed from -2.0 to -5.0, " + last_error(res["error"])
+                          + " — dt is the REAL time between two ticks (now − last_t, on the clock you read), BEFORE "
+                          "stamp_offset_s is added: the offset moves the stamp, never the vehicle")
     after = need_fixes(res, res["fixes"][res.get("after_from", k):], 4, "after the change")
     a, b = after[-2], after[-1]
     d, h = dist_dir(a["lat"], a["lon"], b["lat"], b["lon"])
@@ -464,14 +474,16 @@ def _():
         stuck.append("speed_mps (still 6.0 m/s)")
     if b["type"] == 0:
         stuck.append("sigma_m (still no σ)")
-    if lag2 > 3.5:
+    if lag2 < 3.5:
         stuck.append(f"stamp_offset_s (stamps still {lag2:.1f} s behind)")
-    c.ok(not stuck, "after the check set heading_deg 180.0, speed_mps 9.0, sigma_m 2.0 and stamp_offset_s -2.0 "
+    c.ok(not stuck, "after the check set heading_deg 180.0, speed_mps 9.0, sigma_m 2.0 and stamp_offset_s -5.0 "
                     "(what `ros2 param set` does), these did not change: " + ", ".join(stuck) + ". Read them from "
                     "the parameters at EVERY tick, inside on_timer")
     pair_report(after, 9.0, 180.0, "after the change, 9.0 m/s south")
     c.ok(abs(b["cov"][0] - 4.0) < 1e-9, f"after sigma_m 2.0 the covariance[0] is {b['cov'][0]}, not 4.0")
-    c.ok(0.5 < lag2 < 3.5, f"after stamp_offset_s -2.0 the stamps are {lag2:.1f} s behind the clock, not about 2 s")
+    c.ok(not -7.0 < lag2 < -3.5, f"after stamp_offset_s -5.0 the stamps are {-lag2:.1f} s AHEAD of the clock: you "
+                                 "subtracted the offset. The stamp is now + stamp_offset_s")
+    c.ok(3.5 < lag2 < 7.0, f"after stamp_offset_s -5.0 the stamps are {lag2:.1f} s behind the clock, not about 5 s")
 
 
 @c.test("The judge: arbiter v0 shows your receiver as FIX with the σ it states",
@@ -569,7 +581,8 @@ def _():
     (ex, frozen, jump) = answers("EXPLAIN_HOLES", "FROZEN_S", "EXPLAIN_JUMP")
     f = number(frozen, "FROZEN_S")
     c.ok(20 <= f <= 45, f"FROZEN_S = {frozen}: how many seconds v0 kept saying FIX after you stopped the receiver of "
-                        "experiment D (watch the status for 40 s; about how long?)")
+                        "experiment D: the time in brackets of the NO_FIX line in arbiter.log minus the number `date +%s` printed "
+                        "when you stopped the receiver (Step 9) — not the time you waited")
     explained("EXPLAIN_HOLES", ex, ([r"future", r"negative", r"ahead", r"30"], "the stamp from the future"),
               ([r"unknown", r"no accuracy", r"not stated", r"zero", r"σ ?0", r"sigma ?0", r"0\.0", r"type"],
                "the receiver that states no accuracy"), min_words=15)

@@ -6,7 +6,8 @@ stack (mission 10; mission 13 adds checked parameters). Written for the course; 
     python3 -m navera_lite.ros.gps_node                                       defaults (DEFAULTS below)
     python3 -m navera_lite.ros.gps_node --ros-args -p speed_mps:=12.0         write 12.0, not 12
     ros2 param set /fake_gps heading_deg 90.0                                 turn east while it runs
-    ros2 topic echo /navera_lite/fix/gps                                      watch it (another terminal)
+    ros2 topic echo /navera_lite/fix/gps sensor_msgs/msg/NavSatFix --once     watch it (same terminal: start
+                                                                              the node in the background, with &)
 
 It publishes on navera_lite/fix/gps (a relative name: in the namespace /drone it becomes
 /drone/navera_lite/fix/gps), so arbiter v0 can use it directly.

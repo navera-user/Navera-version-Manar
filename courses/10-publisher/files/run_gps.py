@@ -123,7 +123,9 @@ def test():
         v2, err2 = rk.call(gps, "step", SOUSSE[0], SOUSSE[1], 10.0, 90.0, -1.0)
         line(err2 is not None and "ValueError" in err2, "TODO 1 step, dt_s = −1.0",
              "ValueError ✔" if err2 and "ValueError" in err2 else
-             f"must raise ValueError (time does not run backwards), got {short(v2) if not err2 else err2}")
+             ("you RETURNED a ValueError: write `raise ValueError(...)`, not `return` (🧰 box of Step 2)"
+              if isinstance(v2, BaseException) else
+              f"must raise ValueError (time does not run backwards), got {short(v2) if not err2 else err2}"))
 
     # TODO 2
     v, err = rk.call(gps, "covariance_from_sigma", 3.0)
@@ -146,6 +148,13 @@ def test():
         elif typ == 2:
             why = " — the type is APPROXIMATED (1): a stated σ is an approximation, not a known diagonal (lesson §4)"
         line(good, "TODO 2 covariance_from_sigma(3.0)", f"{short(cov, 70)}, type {typ!r}{why}")
+        v, err = rk.call(gps, "covariance_from_sigma", 2)
+        if err:
+            line(False, "TODO 2 covariance_from_sigma(2), a whole number", err)
+        elif isinstance(v, (tuple, list)) and len(v) == 2:
+            ok_int = isinstance(v[0], (list, tuple)) and all(isinstance(x, float) for x in v[0])
+            line(ok_int, "TODO 2 covariance_from_sigma(2), a whole number",
+                 f"{short(v[0], 60)}" + ("" if ok_int else " — 2 ** 2 is the int 4: write float(sigma_m) ** 2"))
         for bad in (None, 0.0, float("nan")):
             v, err = rk.call(gps, "covariance_from_sigma", bad)
             if err:
@@ -155,7 +164,9 @@ def test():
             good = list(cov) == [0.0] * 9 and typ == 0 and all(isinstance(x, float) for x in cov)
             line(good, f"TODO 2 covariance_from_sigma({bad})",
                  f"{short(cov, 50)}, type {typ!r}" + ("" if good else " — nothing is stated: nine 0.0 and "
-                                                     "COV_UNKNOWN (0), never an invented number"))
+                                                     "COV_UNKNOWN (0), never an invented number"
+                                                     + (" (nan <= 0 is False: use math.isfinite, 🧰 box)"
+                                                        if bad != bad else "")))
 
     # TODO 3
     v, err = rk.call(gps, "make_fix", SOUSSE[0], SOUSSE[1], 40.0, 3.0, 100.5)
@@ -327,6 +338,8 @@ def node(args):
         lat, lon = n.get_parameter("start_lat").value, n.get_parameter("start_lon").value
         line(n.lat == lat and n.lon == lon, "TODO 4 start position",
              f"self.lat, self.lon = {n.lat}, {n.lon}" + ("" if (n.lat, n.lon) == (lat, lon) else
+                                                       " — you stored the Parameter object: add `.value` (lesson §2)"
+                                                       if type(n.lat).__name__ == "Parameter" else
                                                        f" — the parameters say ({lat}, {lon}): read them"))
     pubs = [p for p in n.publishers if p.topic_name.endswith("navera_lite/fix/gps")]
     if n.pub is None or not pubs:
@@ -428,6 +441,9 @@ def jitter(args):
     lag = sum(r - t for r, t in zip(recv, st)) / len(st)
     if abs(lag + JITTER_OFFSET) < 0.6:
         print(f"✔ stamp_offset_s {JITTER_OFFSET}: the stamps are {lag:.2f} s behind the clock.")
+    elif abs(lag - JITTER_OFFSET) < 0.6:
+        print(f"✘ stamp_offset_s {JITTER_OFFSET}: the stamps are {-lag:.2f} s AHEAD of the clock: you subtracted the "
+              "offset. The stamp is now + stamp_offset_s (Step 6, hint 3).")
     else:
         print(f"✘ stamp_offset_s {JITTER_OFFSET} is ignored: the stamps are {lag:.2f} s behind the clock, not about "
               f"{-JITTER_OFFSET:.1f} s. The stamp is now + stamp_offset_s, read at every tick (Step 6, hint 3).")

@@ -194,7 +194,8 @@ blocked call started, then 0.197 s later, then every 0.500 s again. One tick was
 > Measure how much time REALLY passed since the last tick, and move the vehicle by speed × that time.
 
 **So integrate with the real dt.** At each tick, measure the time since the previous tick on the same clock
-as the stamp, and move the vehicle by speed × that time:
+as the stamp (the clock reading itself, before `stamp_offset_s` is added: the offset moves the stamp, never the
+vehicle), and move the vehicle by speed × that time:
 
 ```
 dt_k = t_k − t_(k−1)                    (0 at the first tick)

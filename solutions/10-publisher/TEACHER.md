@@ -49,7 +49,7 @@ Every number below is printed by the runner or measured in the student sandbox
 | V0_COARSE (B, σ 40.0) | DEGRADED | "gps: σ 40.0 m > 25.0 m" |
 | V0_COARSE_REASON | `gps: σ 40.0 m > 25.0 m` (exact) | the status `message` of B: only a run gives the wording |
 | EXPLAIN_FIX | e.g. to_navsatfix takes frame_id from the Estimate's source and sets service 0 (or STATUS_NO_FIX when invalid, altitude NaN by default) | convert.py vs make_fix |
-| EXPLAIN_JUMP | A's stamps are 5 s behind, so its first fix is stamped BEFORE the previous receiver's last trusted fix: elapsed < 0, the gate allows only the margin and refuses reachable fixes; the gate assumes stamps only move forward | `arbiter.log`: "gps fix refused: jump 90 m > 50 m in -0.1 s" (value depends on the restart delay) |
+| EXPLAIN_JUMP | A's stamps are 5 s behind, so its first fix is stamped BEFORE the previous receiver's last trusted fix: elapsed < 0, the gate allows only the margin and refuses reachable fixes; the gate assumes stamps only move forward | `arbiter.log`: "gps fix refused: jump 280 m > 50 m in -3.1 s" (one-line restart after a 30 s Step 8; the distance grows with the length of Step 8; a restart gap over about 3.7 s gives no negative line, hence the one-line restart in the lab) |
 | V0_NO_SIGMA (C, σ 0.0) | FIX — **wrong** | "gps: σ 0.0 m": v0 reads √max(0, 0) and ignores type UNKNOWN |
 | V0_FUTURE (D, offset +30.0) | FIX — **wrong** | "gps: σ 3.0 m", age_s ≈ −29.4 |
 | AGE_FUTURE_S | about −29.5 (accepted −31.5 to −28) | −30 plus the age of the fix at the moment of the echo (0 to 1 s) |
@@ -61,7 +61,8 @@ Every number below is printed by the runner or measured in the student sandbox
 Check 6 (real dt) passes only if every pair of consecutive fixes moves 8.0 m/s ± 2 % on heading 30° ± 2°,
 while the driver delays each `on_timer` call by 0–0.2 s and one call by 1.2 s (the runner's `jitter` uses
 1.3 s: both are deliberate). Check 7 changes heading, speed, σ and stamp offset while the node runs and requires
-all four to take effect. All live checks run ONE script in the student's Python (their node, arbiter v0 and a
+all four to take effect. It moves stamp_offset_s from −2.0 to −5.0, so a dt computed from the offset stamps
+goes negative and is caught (mutant m24); a subtracted offset gets "you subtracted the offset". All live checks run ONE script in the student's Python (their node, arbiter v0 and a
 listener in one process, namespace /check10): terminal tabs and the checker have separate networks. A nominal-dt node gives speeds
 such as 6.6–9.5 m/s and fails with certainty.
 
@@ -102,8 +103,8 @@ naming the mistake (full list in the build report):
 - Students coming from 09 run nodes in several terminals and forget them: the check runs its own nodes in the
   namespace `/check10`, so leftovers in the student's terminals do not disturb it.
 - The arbiter's jump gate may log "gps fix refused: jump …" when a receiver is restarted far from the last
-  trusted fix (the lab says so). After experiment D the gate holds a future fix: the lab asks to restart the
-  arbiter.
+  trusted fix (the lab says so): 15 s to about a minute after a long Step 8. After experiment D the gate holds
+  a future fix: the lab stops everything (`kill -INT $(jobs -p)`).
 
 ## Class plan (session 1: 2 h to 2 h 30, session 2: 1 h 15 to 1 h 30, plus 1 h of reading; meta 4 h 30)
 
@@ -111,7 +112,7 @@ Session 1: Step 0 together on the projector (5 min, then the hook figure). 15 mi
 node typed live (show the `self.on_timer()` error). Students: Steps 1–5 (60–75 min). Stop at Step 3 for a
 2-minute class discussion of the busy-computer figure. Step 6 trace by hand in pairs before coding TODO 6.
 End with the Builder check.
-Session 2: three terminals is the hard part for beginners — demonstrate Step 8 once. Collect the four
+Session 2: two background jobs plus the echo in one tab is the hard part for beginners — demonstrate Step 8 once. Collect the four
 predictions on the board before anyone runs A–D; reveal D last (the 33 s of a dead receiver kept alive is the
 moment of the mission). Memo in the last 20 minutes.
 

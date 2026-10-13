@@ -17,12 +17,13 @@
 <rect x="300" y="76" width="240" height="132" rx="8" fill="#fff" stroke="#a8680d" stroke-width="1.5"/>
 <text x="420" y="95" text-anchor="middle" font-weight="bold" fill="#a8680d">parameters (the node's settings)</text>
 <g font-family="monospace" font-size="11.5" fill="#1d2733" xml:space="preserve">
-<text x="312" y="114">rate_hz        1.0</text>
-<text x="312" y="130">speed_mps      10.0</text>
-<text x="312" y="146">heading_deg    90.0</text>
-<text x="312" y="162">start_lat/lon  35.8256, 10.6084</text>
-<text x="312" y="178">sigma_m        3.0</text>
-<text x="312" y="194">stamp_offset_s 0.0</text>
+<text x="312" y="112">rate_hz        1.0</text>
+<text x="312" y="126">speed_mps      10.0</text>
+<text x="312" y="140">heading_deg    90.0</text>
+<text x="312" y="154">start_lat/lon  35.8256, 10.6084</text>
+<text x="312" y="168">sigma_m        3.0</text>
+<text x="312" y="182">stamp_offset_s 0.0</text>
+<text x="312" y="196">vehicle        "drone" (13)</text>
 </g>
 <rect x="28" y="226" width="512" height="146" rx="8" fill="#fff" stroke="#0b6e8a" stroke-width="1.5"/>
 <text x="284" y="245" text-anchor="middle" font-weight="bold" fill="#0b6e8a">at every tick: the timer calls on_timer()   ✏️ TODO 6</text>

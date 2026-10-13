@@ -358,8 +358,10 @@ Your receiver has two knobs that a real fault can turn: `stamp_offset_s` (header
 
 - **The jump gate (mission 01) also watches your restarts.** A new receiver starts again at the start point,
   far from the last trusted fix, so `arbiter.log` may get `WARN … gps fix refused: jump … m > … m in … s` for
-  a few seconds. Keep an eye on these lines: one of the experiments gives a strange one.
-- **Check your knob first.** In A, the status must end up saying `gps: stale (5.x s > 3.0 s)` about YOUR fix.
+  15 s to about a minute (the longer the previous receiver flew, the farther it is from the start point). Keep an eye on these lines: one of the experiments gives a strange one.
+- **Check your knob first.** In A, the status must end up saying `gps: stale (5.x s > 3.0 s)` about YOUR fix
+  (between 5 and 6 s: the offset plus the time since the last fix; not a stale fix of 10 s or more: that one is
+  still Step 8's receiver, so wait).
   If the judge says FIX with an age of 0–1 s instead, your on_timer ignores `stamp_offset_s` (Step 6, hint 3):
   fix it before B, C and D.
 
@@ -376,18 +378,17 @@ Four experiments, **in this order**:
 > **Predict** (`PREDICT_SABOTAGE`) the state v0 shows in A, B, C and D. Use lesson §5's rules only (do not read
 > `arbiter_v0.py` first: you are the attacker, you only see the judge from outside).
 
-For each experiment: stop the receiver (it is your most recent job, `kill -INT %%`), then start it again with
-the knob **right away** (press ↑ to get a command back and edit it). Experiment A:
+For each experiment, stop the receiver (your most recent job) and start it again with the knob **in one line**,
+so the new receiver starts within 2 s (press ↑ to get the line back and edit the knob for B, C, D).
+Experiment A:
 
 ```bash
-kill -INT %%
+kill -INT %%; python3 -m navera_lite.ros.gps_node --ros-args -p stamp_offset_s:=-5.0 > gps.log 2>&1 &
 ```
 
-```bash
-python3 -m navera_lite.ros.gps_node --ros-args -p stamp_offset_s:=-5.0 > gps.log 2>&1 &
-```
-
-Wait about 15 s (the jump gate's refusals), then read the status (`state`, `message`, `age_s`):
+Wait until the status `message` no longer says `last fix refused` (15 s to about a minute: the longer your
+Step 8 receiver flew, the farther it is from the start point), then read the status (`state`, `message`,
+`age_s`):
 
 ```bash
 ros2 topic echo /navera_lite/status diagnostic_msgs/msg/DiagnosticStatus --once
@@ -396,12 +397,14 @@ ros2 topic echo /navera_lite/status diagnostic_msgs/msg/DiagnosticStatus --once
 and the gate's lines in the judge's log:
 
 ```bash
-grep "refused" arbiter.log | tail -n 4
+grep "refused" arbiter.log | head -n 4
 ```
 
-When A started, the gate's refusal lines say `… in -… s`, a **negative** time.
+When A started, the gate's first refusal lines say `… in -… s`, a **negative** time (Step 8 has no refusals,
+so `head` shows A's first ones).
 
-Then B, C, D the same way (`kill -INT %%`, then `… --ros-args -p sigma_m:=40.0 > gps.log 2>&1 &`, …). In B,
+Then B, C, D the same way, one line each
+(`kill -INT %%; python3 -m navera_lite.ros.gps_node --ros-args -p sigma_m:=40.0 > gps.log 2>&1 &`, …). In B,
 copy the `message` exactly. In D, read `age_s` too. Then, still in D, stop your receiver and print the clock at
 once (seconds since 1970), in one line:
 
@@ -409,11 +412,12 @@ once (seconds since 1970), in one line:
 kill -INT %%; date +%s
 ```
 
-Wait a minute, then find the judge's next state change, `NO_FIX`, in its log: the first number in brackets is
-the time in the same seconds.
+Wait a minute, then find the judge's **last** `NO_FIX` line in its log (the one stamped after the `date` you
+printed; an earlier NO_FIX can come from the gap while you restarted a receiver). The first number in brackets
+is the time in the same seconds.
 
 ```bash
-tail -n 3 arbiter.log
+grep NO_FIX arbiter.log | tail -n 1
 ```
 
 The difference is how long the judge kept a dead receiver alive.

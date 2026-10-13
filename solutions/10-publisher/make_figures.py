@@ -67,8 +67,8 @@ s.append('<rect x="300" y="76" width="240" height="132" rx="8" fill="#fff" strok
 s.append('<text x="420" y="95" text-anchor="middle" font-weight="bold" fill="#a8680d">parameters (the node\'s settings)</text>')
 s.append('<g font-family="monospace" font-size="11.5" fill="#1d2733" xml:space="preserve">')
 for i, (k, v) in enumerate([("rate_hz", "1.0"), ("speed_mps", "10.0"), ("heading_deg", "90.0"), ("start_lat/lon", "35.8256, 10.6084"),
-                            ("sigma_m", "3.0"), ("stamp_offset_s", "0.0")]):
-    s.append(f'<text x="312" y="{114+i*16}">{k:<15}{v}</text>')
+                            ("sigma_m", "3.0"), ("stamp_offset_s", "0.0"), ("vehicle", '"drone" (13)')]):
+    s.append(f'<text x="312" y="{112+i*14}">{k:<15}{v}</text>')
 s.append('</g>')
 # every tick
 s.append('<rect x="28" y="226" width="512" height="146" rx="8" fill="#fff" stroke="#0b6e8a" stroke-width="1.5"/>')

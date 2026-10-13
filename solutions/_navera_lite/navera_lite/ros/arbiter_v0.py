@@ -1,5 +1,6 @@
 """navera_lite/ros/arbiter_v0.py — arbiter v0, NAVERA Lite's first judge: NAIVE ON PURPOSE. Part of NAVERA
-Lite, the course's teaching stack (given in mission 09; you attack it in 12; mission 29 replaces it).
+Lite, the course's teaching stack (given in mission 09; you attack it from outside in 10 and fix its holes in 12;
+mission 29 replaces it).
 Written for the course; it is not NAVERA code.
 
     python3 -m navera_lite.ros.arbiter_v0 --ros-args --params-file navera_lite.yaml
