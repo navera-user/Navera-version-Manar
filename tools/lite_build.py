@@ -289,7 +289,7 @@ def render(path, nn, todo_missions, stub):
         out[first - 1:last] = repl
     text = "\n".join(out)
     text = re.sub(r"\n{4,}", "\n\n\n", text).rstrip("\n") + "\n"
-    todos = sorted({it["node"].name for it in items if it["todo"] is not None and it["mission"] == nn
+    todos = sorted({_qualname(it) for it in items if it["todo"] is not None and it["mission"] == nn
                     and nn in todo_missions and it["kind"] == "def"})
     return text, todos, stubbed
 
@@ -335,6 +335,24 @@ def _init_text(g, nn, parts_here, intro, header):
             f"Written for the course; it is not NAVERA code. PARTS lists the parts this copy holds and the\n"
             f'mission that introduces each one (PARTS.md says which ones you write here)."""\n'
             f'__version__ = "{g["version"]}"\n\nPARTS = {{{body}}}\n')
+
+
+def _qualname(it):
+    """`func` for a module function, `Class.method` for a method: a given method may share a TODO's name."""
+    return (it["parent"]["node"].name + "." if it["parent"] is not None else "") + it["node"].name
+
+
+def _defs_by_qualname(tree):
+    """{"func": [node], "Class.method": [node]} for the module's functions and its classes' methods."""
+    defs = {}
+    for n in tree.body:
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            defs.setdefault(n.name, []).append(n)
+        elif isinstance(n, ast.ClassDef):
+            for sub in n.body:
+                if isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    defs.setdefault(f"{n.name}.{sub.name}", []).append(sub)
+    return defs
 
 
 def _parts_md(nn, parts_here, intro, todos_by_part):
@@ -443,10 +461,7 @@ def _verify(lid, pkg, starter_dir, solution_dir, stubs_by_part, todos_by_part, t
     for m, names in todos_by_part.items():               # every TODO of the starter is a stub
         text = open(os.path.join(starter_dir, *m.split(".")) + ".py").read()
         tree = ast.parse(text)
-        defs = {}
-        for n in ast.walk(tree):
-            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                defs.setdefault(n.name, []).append(n)
+        defs = _defs_by_qualname(tree)
         for name in names:
             for fn in defs.get(name, []):
                 seg = "\n".join(text.split("\n")[fn.lineno - 1:fn.end_lineno])   # with its comments

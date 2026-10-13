@@ -277,7 +277,7 @@ class Track:
     (ref / "manifest.d/06-demo.json").write_text(json.dumps({"parts": ["track", "speed"], "tests": ["test_geo.py"]}))
     out = tmp_path / "out"
     res = _build(ref, out, "06-demo")
-    assert res["todos"]["track"] == ["__len__", "add"]
+    assert res["todos"]["track"] == ["Track.__len__", "Track.add"]
     s = (out / "courses/06-demo/files/navera_lite/track.py").read_text()
     assert "self.rows = []" in s                              # __init__ has its own (given) tag
     assert 'raise NotImplementedError("TODO 4")' in s and "return None   # TODO" in s
@@ -285,3 +285,47 @@ class Track:
     (ref / "navera_lite/track.py").write_text(track + "\n\n# @part 06\n\n\ndef stray():\n    pass\n")
     with pytest.raises(lb.BuildError):
         _build(ref, tmp_path / "o2", "06-demo")
+
+
+def test_given_method_shares_a_todo_name(ref, tmp_path):
+    """A given method (Multirotor.__init__) next to a TODO of the same name (Vehicle.__init__) builds."""
+    (ref / "navera_lite/vehicle.py").write_text('''"""Vehicles."""
+
+
+# @part 06 todo 1
+class Vehicle:
+    """A vehicle.
+
+    Example:  Vehicle(3.0).mass_kg  ->  3.0
+    """
+
+    def __init__(self, mass_kg):
+        """Keep the mass.
+
+        Example:  Vehicle(3.0).mass_kg  ->  3.0
+        """
+        self.mass_kg = mass_kg
+
+
+# @part 06
+class Multirotor(Vehicle):
+    """A multirotor (given)."""
+
+    def __init__(self, mass_kg, rotors=4):
+        super().__init__(mass_kg)
+        self.rotors = rotors
+
+
+# @part 06 todo 2
+def endurance_s(energy_j, power_w):
+    """Seconds of flight.
+
+    Example:  endurance_s(100.0, 10.0)  ->  10.0
+    """
+    return energy_j / power_w
+''')
+    (ref / "manifest.d/06-demo.json").write_text(json.dumps({"parts": ["vehicle"], "tests": []}))
+    res = _build(ref, tmp_path / "out", "06-demo")
+    assert res["todos"]["vehicle"] == ["Vehicle.__init__", "endurance_s"]
+    s = (tmp_path / "out/courses/06-demo/files/navera_lite/vehicle.py").read_text()
+    assert "self.rotors = rotors" in s                         # the given method stays whole
