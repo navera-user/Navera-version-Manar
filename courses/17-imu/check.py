@@ -171,7 +171,7 @@ def _():
             q = q / np.linalg.norm(q)
             first.append(Rotation.from_quat(q))
         if max(ang(first[kk], got[kk]) for kk in range(n)) < 1e-6:
-            raise CheckFailed("you used the first-order update q + ½·dt·q ⊗ ω: it is close (0.01°) but not exact; build "
+            raise CheckFailed("you used the first-order update q + ½·dt·q ⊗ ω: it is close at 50 Hz (0.01°) but not exact; build "
                               "the exact small turn with q_from_axis_angle(ω, |ω|·dt) (lesson §2)")
         k = int(np.argmax(errs))
         raise CheckFailed(f"integrate_gyro on unseen rates: row {k} is {errs[k]:.3f}° away from the right attitude "
@@ -246,10 +246,12 @@ def _():
     e2 = number(e2, "CORRECTED_HEADING_ERR_DEG")
     c.near(e2, CORR_ERR_300, 0.35, "CORRECTED_HEADING_ERR_DEG (run_imu.py gyro with YOUR three bias numbers, at 300 s)")
     explained("EXPLAIN_DRIFT", why,
-              ((r"yaw", r"counter", r"clockwise", r"90", r"heading.*(decreas|smaller|less|negative)",
-                r"(increas|grow).*yaw"), "why the sign is negative (a positive z bias, yaw and heading)"),
-              ((r"remain", r"residual", r"estimat", r"noise", r"random", r"not exact", r"average", r"√", r"sqrt",
-                r"error of the (mean|bias)", r"500"), "what is left after the bias is removed"))
+              ((r"yaw", r"counter", r"clockwise", r"90", r"heading.*(decreas|smaller|less|negative|goes down|go down|went down)",
+                r"(increas|grow).*yaw", r"turns? (to the )?left", r"up axis", r"positive.*(yaw|turn)"),
+               'why the sign is negative (e.g. "a positive z rate turns the yaw left, so heading = 90° − yaw goes down")'),
+              ((r"remain", r"residual", r"estimat", r"noise", r"random", r"not exact", r"not perfect", r"average", r"√",
+                r"sqrt", r"error of the (mean|bias)", r"500", r"small error", r"measured", r"10 ?s"),
+               'what is left after the bias is removed (e.g. "my bias, measured on 500 noisy samples, is not exact")'))
 
 
 @c.test("Step 3: the coordinated turn fools the accelerometer — prediction, numbers, explanation",
@@ -265,11 +267,12 @@ def _():
     c.near(b, TURN_ACC, 0.15, "TURN_ACCEL_ROLL_DEG (the turn at t ≈ 99.8 s)")
     explained("EXPLAIN_TURN", why,
               ((r"thrust", r"lift", r"rotor", r"propel", r"body.?s? z", r"along the body", r"perpendicular",
-                r"specific force", r"total force", r"same direction"), "which force the accelerometer feels"),
+                r"specific force", r"total force", r"same direction"), 'which force the accelerometer feels (e.g. "it feels the thrust, along the body z axis")'),
               ((r"centripet", r"turn", r"accelerat", r"bank", r"circle", r"sideways", r"lateral"),
-               "the acceleration of the turn"),
+               'the acceleration of the turn (e.g. "the turn needs a sideways acceleration")'),
               ((r"level", r"cannot tell", r"can't tell", r"same as", r"equivalen", r"indistinguish", r"looks like",
-                r"believ", r"thinks", r"fool", r"no (roll|tilt)", r"zero"), "why it then looks level"))
+                r"believ", r"thinks", r"fool", r"no (roll|tilt)", r"zero"),
+               'why it then looks level (e.g. "so it reads like a level drone: roll about 0")'))
 
 
 # ======================================================================== session 2 — Attitude engineer
@@ -368,11 +371,11 @@ def _():
     c.near(number(r, "BEST_TILT_RMS_DEG"), BEST_RMS, 0.03, "BEST_TILT_RMS_DEG (the tilt RMS at that τ)")
     explained("EXPLAIN_TAU", why,
               ((r"noise", r"vibrat", r"turn", r"accelerat", r"fool", r"follow", r"copies"),
-               "what a small τ does (it follows the fooled, noisy accelerometer)"),
-              ((r"bias", r"drift", r"b ?·? ?τ", r"b\*tau", r"b ?x ?τ", r"b times", r"recover", r"slow"),
-               "what a large τ does (the gyro bias, b·τ)"),
-              ((r"trade", r"balance", r"compromise", r"between", r"middle", r"optimum", r"minimum", r"smallest sum"),
-               "why the best τ lies in between (a trade-off)"))
+               'what a small τ does (e.g. "it follows the accelerometer, noisy and fooled in the turns")'),
+              ((r"bias", r"drift", r"b ?·? ?τ", r"b\*tau", r"b ?x ?τ", r"b times", r"recover", r"slow",
+                r"gyro (error|mistake)"), 'what a large τ does (e.g. "it keeps the gyro bias longer")'),
+              ((r"trade", r"balance", r"compromise", r"between", r"middle", r"optimum", r"minimum", r"smallest sum",
+                r"best of both", r"both", r"neither"), 'why the best τ lies in between (e.g. "30 s is a compromise between the two")'))
 
 
 @c.test("TODOs 4–5: mag_heading() and true_heading() on unseen attitudes and fields (north and south, tilted)",
@@ -460,6 +463,9 @@ def _():
     if abs(b - ACC_TILT_RMS) < 0.05:
         raise CheckFailed("COMPASS_TILT_RMS_DEG: take the line compensated with the TRUE roll and pitch (the "
                           "accelerometer's tilt is fooled in the turns — that is the next line)")
+    if abs(a - 5.83) < 0.05 or abs(b - 3.44) < 0.05:
+        raise CheckFailed("that is the LEFT column (your mag_heading − true heading, still magnetic): take the RIGHT "
+                          "column, true_heading(…, D) − true heading")
     c.near(a, NO_TILT_RMS, 0.05, "COMPASS_NO_TILT_RMS_DEG (true-heading RMS, no tilt compensation)")
     c.near(b, TILT_RMS_TRUE, 0.05, "COMPASS_TILT_RMS_DEG (true-heading RMS, compensated with the true tilt)")
     cape = number(cape, "CAPE_TOWN_SIDE_M")
@@ -475,16 +481,19 @@ def _():
         raise CheckFailed("CHIP_MEAN_ERR_DEG has the wrong sign: it is the chip's heading − the true heading")
     c.near(chip, CHIP_MEAN, 0.05, "CHIP_MEAN_ERR_DEG (the chip as delivered: mean of heading − true heading)")
     explained("EXPLAIN_COMPASS", w1,
-              ((r"vertical", r"inclin", r"dip", r"\bz\b", r"steep", r"50"), "the vertical part of the field"),
-              ((r"tilt", r"roll", r"pitch", r"bank", r"lean"), "what a tilt does"),
-              ((r"horizontal", r"mix", r"leak", r"x and y", r"project"), "where the vertical part goes"))
+              ((r"vertical", r"inclin", r"dip", r"\bz\b", r"steep", r"50", r"down", r"into the ground"),
+               'the vertical part of the field (e.g. "the field dips 50.5° down")'),
+              ((r"tilt", r"roll", r"pitch", r"bank", r"lean"), 'what a tilt does (e.g. "when the drone tilts")'),
+              ((r"horizontal", r"mix", r"leak", r"x and y", r"project", r"\bm_?x\b", r"\bm_?y\b", r"\bx,? ?y\b",
+                r"into (the )?(x|y|mx|my|m_x|m_y|horizontal)", r"enters"),
+               'where the vertical part goes (e.g. "into the x and y readings")'))
     explained("EXPLAIN_NORTH", w2,
               ((r"declination", r"magnetic north", r"\bd\b", r"3\.3", r"true north", r"wmm"),
-               "why the chip's error is about −D"),
+               'why the chip\'s error is about −D (e.g. "the chip uses magnetic north, D east of true north")'),
               ((r"world", r"frame", r"map", r"up axis", r"vertical", r"earth", r"enu"),
-               "why the correction multiplies on the left (it turns the world frame)"),
+               'why the correction multiplies on the left (e.g. "it turns the world frame")'),
               ((r"body", r"own", r"tilt", r"bank", r"level", r"drone's up", r"nose"),
-               "what multiplying on the right would do instead"))
+               'what multiplying on the right would do (e.g. "turn about the drone\'s own up axis: wrong when banked")'))
 
 
 @c.test("TODO 7: StaleDetector.update() on unseen streams — whole sample, exact count, starts again, recovers",
@@ -542,11 +551,11 @@ def _():
     c.near(b, SMALL_N_T, 0.011, "SMALL_N_T_S (s, with max_repeat = 5)")
     explained("EXPLAIN_STALE", why,
               ((r"noise", r"never (repeat|the same|identical)", r"always (chang|differ)", r"last digit", r"random"),
-               "why a live sensor never repeats exactly"),
+               'why a live sensor never repeats exactly (e.g. "noise changes the last digit")'),
               ((r"time ?stamp", r"stamp", r"fresh", r"still (come|publish)", r"message"),
-               "why fresh timestamps do not prove fresh data"),
+               'why fresh timestamps prove nothing (e.g. "the timestamps kept coming")'),
               ((r"hiccup", r"5 ?s", r"5\.0", r"short", r"false", r"too (small|early|soon)", r"glitch", r"missed",
-                r"trade", r"slow", r"1 ?s", r"one second"), "the trade-off in max_repeat (the hiccup at 5 s)"),
+                r"trade", r"slow", r"1 ?s", r"one second"), 'the trade-off in max_repeat (e.g. "5 trips on the hiccup at 5 s")'),
               min_words=20)
 
 

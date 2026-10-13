@@ -25,6 +25,8 @@ DATA = os.environ.get("IMU_DATA", "/data/academy/17-imu")
 imu = rk.load_student("navera_lite.imu")
 rot = rk.load_student("navera_lite.rotations")
 TAUS = (0.3, 1.0, 3.0, 10.0, 30.0, 100.0, 300.0)
+FIRST_ORDER = ("you used the first-order update q + ½·dt·q ⊗ ω (a formula found online): close at 50 Hz, but not "
+               "exact on these long steps — build the exact small turn with q_from_axis_angle(ω, |ω|·dt)")
 
 
 def wrap(e):
@@ -147,6 +149,8 @@ def test():
         if abs(p - 28.65) < 0.1 and abs(r) < 0.1:
             return False, ("the turn was applied about the WORLD axes (the nose went up): the gyro measures in the "
                            "BODY frame, so the small turn multiplies on the RIGHT, q ⊗ Δq (lesson §2)")
+        if abs(r - 28.50) < 0.02:
+            return False, FIRST_ORDER
         return abs(r - 28.65) < 0.05 and abs(p) < 0.05 and abs(h) < 0.05, \
             f"expected roll 28.65°, pitch_up 0°, heading 0° (a roll about the nose); got {r:.2f}°, {p:.2f}°, {h:.2f}°"
 
@@ -261,12 +265,16 @@ def test():
     cases += [
         (1, "integrate_gyro: 0.6 rad/s about up for 1 s (docstring)",
          lambda: imu.integrate_gyro((0, 0, 0, 1), [0.0, 0.5, 1.0], [[0, 0, 0.6]] * 3),
-         rows_chk([[0, 0, 0, 1], [0, 0, 0.149438, 0.988771], [0, 0, 0.295520, 0.955336]])),
+         rows_chk([[0, 0, 0, 1], [0, 0, 0.149438, 0.988771], [0, 0, 0.295520, 0.955336]],
+                  extra=lambda a: (FIRST_ORDER if abs(a[-1][2] - 0.2934) < 2e-4 else None))),
         (1, "integrate_gyro: heading north, then 0.5 rad/s about the NOSE for 1 s",
          lambda: imu.integrate_gyro((0, 0, 0.7071068, 0.7071068), [0.0, 0.5, 1.0], [[0.5, 0, 0]] * 3), body_chk),
         (1, "integrate_gyro: uneven times, changing rates, then no rate at all",
          lambda: imu.integrate_gyro((0, 0, 0, 1), [0.0, 0.5, 2.0, 2.5], [[0, 0, 0.2], [0, 0, 0.4], [0, 0, 0], [0, 0, 0]]),
-         yaw_after(0.7, ((0.2, "you used the rate of sample k for the step k−1 → k: use the rate of sample k−1 (the "
+         yaw_after(0.7, ((0.6828303804, "you used the first-order update q + ½·dt·q ⊗ ω (a formula found online): "
+                                        "close at 50 Hz, but 1° off on these long steps — build the exact small turn "
+                                        "with q_from_axis_angle(ω, |ω|·dt)"),
+                         (0.2, "you used the rate of sample k for the step k−1 → k: use the rate of sample k−1 (the "
                                 "rate measured at the START of the step)"),
                          (0.3, "dt is not the same for every step here: use t_s[k] − t_s[k−1] at each step")))),
         (2, "tilt_from_accel(0, 0, 9.81) — level", lambda: imu.tilt_from_accel(0.0, 0.0, 9.81), tilt_chk([[0.0, 0.0]])),
@@ -361,7 +369,8 @@ def test():
             shown = f"{float(got):.4f}"
         elif hasattr(got, "shape"):
             shown = np.asarray(got, dtype=float).round(4).tolist()
-        print(f"{'✔' if ok else '✘'} TODO {k}  {label}  ->  {shown}" + ("" if ok else f"\n          ({note or 'not the docstring result'})"))
+        print(f"{'✔' if ok else '✘'} TODO {k}  {label}  ->  {shown}" + ("" if ok else "\n          (" + (note or ("not the docstring result" if "docstring" in label
+                                                    else "not the expected result — fix the line above first")) + ")"))
         done += bool(ok)
     print(f"\n{done} of {len(cases)} examples give the expected result.")
 
@@ -548,8 +557,9 @@ def tau(args=()):
     axs[1].legend(fontsize=8)
     axs[1].grid(alpha=0.3)
     fig.tight_layout()
-    fig.savefig("out/tau.png", dpi=90)
-    rk.saved("out/tau.png")
+    name = "out/tau_wrong_start.png" if args else "out/tau.png"
+    fig.savefig(name, dpi=90)
+    rk.saved(name)
 
 
 def compass(args):

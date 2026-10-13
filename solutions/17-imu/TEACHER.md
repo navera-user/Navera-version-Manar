@@ -78,7 +78,7 @@ after 1 s 20.05°; 0.01 °/s → 6° in 600 s; noise 0.003 rad/s at 50 Hz → 0.
 20°/s: v·ω = 4.19 m/s², bank 23.1°, |f| = 10.67; car −11.5°; noise 1.75°. §4: α = 0.9804, 0.196°/step,
 6.28° after 1 s (63 %), b·τ; 23° turn of 12 s: τ = 1 s → 23.0°, τ = 30 s → 7.6°; ✏️ α = 0.9960, 1.0°, 12°.
 Complementary figure (1-D, bias 0.1 °/s): τ = 30 s peaks at 9.1° (7.6° + bias) and keeps b·τ = 3°. §5:
-Monastir H 28.25, Z 34.30, F 44.4 µT, I 50.5°; nose north, 10° bank: body (28.25, −5.96, −33.78) µT,
+Monastir H 28.25, Z 34.30, F 44.4 µT, I 50.5°; nose north, 10° bank: body (28.24, −5.95, −33.74) µT (from the rounded F 44.4, I 50.5°),
 uncompensated 348.1°; table D/I from pygeomag 2026.79 (London +1.21/66.5, Reykjavik −11.05/75.4, Sydney
 +12.83/−64.4, Singapore +0.24/−12.9, Sousse +3.34/50.6); London 10 km → 212 m; ✏️ Sydney 11.83°, chip 75° →
 78.34° (Sousse's table D 3.34°). §6: one gyro axis quantised at 0.002 rad/s, σ 0.003: P(repeat) = Δ/(2σ√π) = 0.19; accelerometer
@@ -113,6 +113,15 @@ Reviews r1_{strong,weak,expert}.md: see ~/academy-test/review/17-imu/reports/r1_
 tightened with the expert's lists (the six shallow answers of the expert now each fail; the solution passes);
 EXPLAIN_TAU now asks "why is the best τ in between"; complementary must skip |f| = 0 and a zero axis (runner and
 check test both); TRACE_FIRST_ROLL_DEG added; sin(error) and first-order-update variants get their own messages.
+
+## Round 2 fixes (2026-10-13)
+
+r2_fixes.md: first-order update named in all three `test` lines of TODO 1 (yaw 0.6828 in the uneven case); `tau 10` saves
+out/tau_wrong_start.png; §5 worked vector (28.24, −5.95, −33.74) from the rounded F/I; keyword groups widened with
+the weak student's correct phrasings (the expert's shallow answers still fail) and every "does not explain" message
+carries an example phrase; lesson §4 worked gravity step now 20°, τ = 1 s, dt = 0.25 s → α 0.8, roll 0° → 4° (the
+lab's trace keeps 30°/1.5 s/0.5 s → 7.5°, so it is a transfer, not a copy); COMPASS RMS: the LEFT (magnetic) column
+5.83 / 3.44 has its own message.
 
 ## Mutants run (round 0: 32; all caught — the ✘ line of the check, and the runner's `test` line when it applies)
 

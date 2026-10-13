@@ -260,12 +260,13 @@ lock), and does the same two things at every step:
    (a world-frame turn).
 
 **Worked example (one gravity step).** The estimate is level, q = (0, 0, 0, 1), but the drone is really
-banked 30° right wing down, still: f = (0, 4.905, 8.496). seen_up = q_rotate(q, f/|f|) = (0, 0.5, 0.866):
-the estimate thinks gravity's push leans towards the left wing. Axis = seen_up × (0, 0, 1) = (0.5, 0, 0):
-along world x, horizontal (turning seen_up towards up is a positive turn about it, by the right-hand rule).
-Error = atan2(|axis|, seen_up_z) = atan2(0.5, 0.866) = 30°. With τ = 1.5 s and dt = 0.5 s, α = 0.75: the
-world turns by (1 − 0.75) × 30° = 7.5° about x, and the roll goes 0° → 7.5°, exactly the 1-D formula
-0.75 × 0° + 0.25 × 30°. (Use atan2 for the angle: |axis| alone is sin(error), 0.5 here, not 30°.)
+banked 20° right wing down, still: f = 9.81·(0, sin 20°, cos 20°) = (0, 3.355, 9.218). seen_up =
+q_rotate(q, f/|f|) = (0, 0.342, 0.940): the estimate thinks gravity's push leans towards the left wing.
+Axis = seen_up × (0, 0, 1) = (0.342, 0, 0): along world x, horizontal (turning seen_up towards up is a
+positive turn about it, by the right-hand rule). Error = atan2(|axis|, seen_up_z) = atan2(0.342, 0.940) =
+20°. With τ = 1 s and dt = 0.25 s, α = 0.8: the world turns by (1 − 0.8) × 20° = 4° about x, and the roll
+goes 0° → 4°, exactly the 1-D formula 0.8 × 0° + 0.2 × 20°. (Use atan2 for the angle: |axis| alone is
+sin(error), 0.342 here, not 20°.)
 
 ![The gravity step: seen_up, the true up, the error angle and the horizontal axis of the small correction](assets/nudge.svg)
 
@@ -317,7 +318,7 @@ magnetic heading = atan2(m_level,y, m_level,x)
 ```
 
 **Worked example (near Monastir).** Nose to magnetic north, banked 10° right wing down. The body reads
-m = (28.25, −5.96, −33.78) µT. Without compensation, atan2(−5.96, 28.25) = −11.9° → **348.1°**, while the
+m = (28.24, −5.95, −33.74) µT. Without compensation, atan2(−5.95, 28.24) = −11.9° → **348.1°**, while the
 drone points at 0°. With Rx(10°) undone first: 0.0°.
 
 ![The field near Monastir dips 50.5°; true north, magnetic north and the declination D](assets/compass.svg)

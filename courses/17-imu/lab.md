@@ -149,7 +149,7 @@ python3 run_imu.py gyro 0.0 0.0 0.0
    compute `dt` inside the loop.
 6. Your z bias is positive but the heading error is negative? Not a bug: what does a positive rate about Up
    do to the yaw, and what does that do to heading = 90° − yaw?
-7. ✘ "you used the first-order update q + ½·dt·q ⊗ ω" (a formula found online): it is close (0.01°) but not
+7. ✘ "you used the first-order update q + ½·dt·q ⊗ ω" (a formula found online): it is 0.01° off at 50 Hz but 1° off on the test's long steps: not
    exact. Build the exact small turn with `q_from_axis_angle(ω, |ω|·dt)` (lesson §2).
 </details>
 
@@ -207,8 +207,8 @@ Read lesson §4–§6 first.
 step has two parts: the gyro step of TODO 1, then the gravity step.
 
 > [!TASK]
-> **Before you code**, trace the docstring example by hand (lesson §4, "one gravity step", does the same with
-> other words): τ = 1.5 s, dt = 0.5 s, the estimate is level and gravity says 30° right wing down. What are α
+> **Before you code**, trace the docstring example by hand (lesson §4, "one gravity step", shows the method with
+> other numbers): τ = 1.5 s, dt = 0.5 s, the estimate is level and gravity says 30° right wing down. What are α
 > and 1 − α? Write `TRACE_FIRST_ROLL_DEG`: the roll (degrees) after the first step.
 
 <details><summary>🧰 numpy: the cross product and an angle from atan2</summary>
@@ -419,8 +419,8 @@ Write your answers in `LOOK_BACK` in `answers.py` if you want your teacher to re
 
 ## Going further (optional)
 
-- **A wrong start.** `python3 run_imu.py tau 10` starts every run with a 10° roll error (a drone that took
-  off from a sloping pad with a wrong initial tilt). How does the table change at the large-τ end? Why?
+- **A wrong start.** `python3 run_imu.py tau 10` starts every run with a 10° roll error and saves `out/tau_wrong_start.png`
+  (your `out/tau.png` is kept), like a drone that took off from a sloping pad with a wrong initial tilt. How does the table change at the large-τ end? Why?
 - **Why does the roll error flip?** In `out/gyro.png` the gyro-alone roll error reverses at the big turns.
   Rotate the pad bias (0.064, −0.032) °/s from the body into the world frame for heading 0° and 180°.
 
