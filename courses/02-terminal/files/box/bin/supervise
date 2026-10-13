@@ -1,0 +1,42 @@
+#!/bin/bash
+# supervise SERVICE — keeps one program of the box running, like systemd does with Restart=always.
+# It starts the program, waits until it ends, writes how it ended in the journal, and starts it again
+# one second later (unless the box is stopping). Part of the lab-02 bench box; you do not change it.
+BOX="$(cd "$(dirname "$0")/.." && pwd)"
+NAME=supervise
+. "$BOX/bin/_common.sh"
+cd "$BOX/.." || exit 1
+service="$1"
+case "$service" in
+    arbiter) cmd=(box/bin/navera_lite_arbiter --params-file box/config/navera_lite.yaml) ;;
+    nmea)    cmd=(box/bin/nmea --port box/config/ttyTHS1) ;;
+    camera)  cmd=(box/bin/camera --device /dev/video0) ;;
+    *) echo "supervise: unknown service $service" >&2; exit 2 ;;
+esac
+prog="$(basename "${cmd[0]}")"
+echo $$ > "$BOX/run/supervise-$service.pid"
+stopping=""
+child=""
+trap 'stopping=1; [ -n "$child" ] && kill -TERM "$child" 2>/dev/null' TERM INT
+while [ -z "$stopping" ] && [ ! -e "$BOX/run/stopping" ]; do
+    "${cmd[@]}" < /dev/null > /dev/null 2>&1 &
+    child=$!
+    say "started $prog as pid $child (service $service)"
+    wait "$child"
+    code=$?
+    while kill -0 "$child" 2> /dev/null; do      # wait was cut short by a signal sent to us: wait again
+        wait "$child"
+        code=$?
+    done
+    if [ -n "$stopping" ] || [ -e "$BOX/run/stopping" ]; then
+        say "$prog[$child] ended (exit code $code); not restarted: the box is stopping"
+        break
+    fi
+    if [ "$code" -gt 128 ]; then
+        say "$prog[$child] ended by signal $(kill -l $((code - 128))) (exit code $code); restarting in 1 s"
+    else
+        say "$prog[$child] exited with code $code; restarting in 1 s"
+    fi
+    sleep 1
+done
+rm -f "$BOX/run/supervise-$service.pid"

@@ -1,310 +1,310 @@
-[INFO] [1789975800.233740568] [estimator_node]: arbiter started: priority GPS > day > night > cn
-[INFO] [1789975800.464891434] [gps_node]: serial port /dev/ttyTHS1 open at 9600 baud
-[INFO] [1789975800.609867096] [imu_node]: IMU ready, declination 3.3 deg
-[INFO] [1789975800.851122379] [live_camera]: day camera streaming, 2 frames per second
-[INFO] [1789975801.020878792] [day_subscriber]: map loaded, search radius 600 m
-[INFO] [1789975801.422134638] [vehicle_output_node]: MAVLink link to autopilot up
-[INFO] [1789975803.012207508] [estimator_node]: state FIX source=GPS
-[INFO] [1789975805.050486088] [gps_node]: fix OK, 11 satellites, hdop 1.0
-[INFO] [1789975815.096040010] [gps_node]: fix OK, 12 satellites, hdop 0.9
-[INFO] [1789975820.801536083] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789975825.108875751] [gps_node]: fix OK, 12 satellites, hdop 1.2
-[INFO] [1789975830.695086241] [imu_node]: attitude OK, heading 305.3 deg
-[INFO] [1789975835.007477045] [gps_node]: fix OK, 11 satellites, hdop 1.3
-[INFO] [1789975845.113952637] [gps_node]: fix OK, 11 satellites, hdop 1.1
-[INFO] [1789975850.829313755] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789975855.124741554] [gps_node]: fix OK, 12 satellites, hdop 1.4
-[INFO] [1789975865.242470741] [gps_node]: fix OK, 11 satellites, hdop 0.7
-[INFO] [1789975875.050482750] [gps_node]: fix OK, 13 satellites, hdop 0.7
-[INFO] [1789975880.889660120] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789975885.152902365] [gps_node]: fix OK, 13 satellites, hdop 1.2
-[INFO] [1789975890.735361576] [imu_node]: attitude OK, heading 292.7 deg
-[INFO] [1789975895.167217016] [gps_node]: fix OK, 13 satellites, hdop 0.8
-[INFO] [1789975905.180490017] [gps_node]: fix OK, 11 satellites, hdop 1.2
-[INFO] [1789975910.743555307] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789975915.106362104] [gps_node]: fix OK, 11 satellites, hdop 1.1
-[INFO] [1789975925.226495028] [gps_node]: fix OK, 13 satellites, hdop 0.7
-[INFO] [1789975935.119149208] [gps_node]: fix OK, 11 satellites, hdop 1.2
-[INFO] [1789975940.942335367] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789975945.169586658] [gps_node]: fix OK, 10 satellites, hdop 1.3
-[INFO] [1789975950.617316246] [imu_node]: attitude OK, heading 327.8 deg
-[INFO] [1789975955.076858997] [gps_node]: fix OK, 10 satellites, hdop 1.1
-[INFO] [1789975965.010415316] [gps_node]: fix OK, 11 satellites, hdop 1.0
-[INFO] [1789975970.791810989] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789975975.002210379] [gps_node]: fix OK, 11 satellites, hdop 0.9
-[INFO] [1789975985.203679800] [gps_node]: fix OK, 10 satellites, hdop 0.8
-[INFO] [1789975995.103839636] [gps_node]: fix OK, 11 satellites, hdop 0.8
-[INFO] [1789976000.927223206] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789976005.032367945] [gps_node]: fix OK, 11 satellites, hdop 0.8
-[INFO] [1789976010.637466431] [imu_node]: attitude OK, heading 292.0 deg
-[INFO] [1789976015.140222788] [gps_node]: fix OK, 12 satellites, hdop 1.4
-[INFO] [1789976025.103019953] [gps_node]: fix OK, 13 satellites, hdop 1.1
-[INFO] [1789976030.947115183] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789976035.227022171] [gps_node]: fix OK, 12 satellites, hdop 1.4
-[INFO] [1789976045.060220003] [gps_node]: fix OK, 10 satellites, hdop 1.2
-[INFO] [1789976055.215763330] [gps_node]: fix OK, 10 satellites, hdop 1.3
-[INFO] [1789976060.855354548] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789976065.193243265] [gps_node]: fix OK, 11 satellites, hdop 0.9
-[INFO] [1789976070.654603243] [imu_node]: attitude OK, heading 312.7 deg
-[INFO] [1789976075.126675844] [gps_node]: fix OK, 12 satellites, hdop 0.9
-[INFO] [1789976085.222245693] [gps_node]: fix OK, 12 satellites, hdop 1.1
-[INFO] [1789976090.711935997] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789976095.029215574] [gps_node]: fix OK, 11 satellites, hdop 1.2
-[WARN] [1789976102.159248829] [gps_node]: no fix for 2.0 s (jamming simulated)
-[WARN] [1789976103.067234755] [estimator_node]: state DEGRADED source=day vision (GPS lost)
-[INFO] [1789976104.191433907] [day_subscriber]: match OK, 30 inliers, sigma 30 m
-[INFO] [1789976106.228065729] [day_subscriber]: match OK, 54 inliers, sigma 30 m
-[INFO] [1789976108.212048769] [day_subscriber]: match OK, 53 inliers, sigma 30 m
-[INFO] [1789976110.146600485] [day_subscriber]: match OK, 42 inliers, sigma 30 m
-[WARN] [1789976112.059504032] [gps_node]: no fix for 12.0 s
-[INFO] [1789976112.086275101] [day_subscriber]: match OK, 55 inliers, sigma 30 m
-[INFO] [1789976114.168672323] [day_subscriber]: match OK, 58 inliers, sigma 30 m
-[INFO] [1789976116.020488977] [day_subscriber]: match OK, 60 inliers, sigma 30 m
-[INFO] [1789976118.109834194] [day_subscriber]: match OK, 44 inliers, sigma 30 m
-[INFO] [1789976120.111252069] [day_subscriber]: match OK, 36 inliers, sigma 30 m
-[INFO] [1789976120.753521204] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789976122.044962645] [day_subscriber]: match OK, 51 inliers, sigma 30 m
-[INFO] [1789976124.166731834] [day_subscriber]: match OK, 19 inliers, sigma 30 m
-[WARN] [1789976126.128201008] [day_subscriber]: no match: 5 inliers < 6
-[INFO] [1789976128.130656719] [day_subscriber]: match OK, 49 inliers, sigma 30 m
-[INFO] [1789976130.044500351] [day_subscriber]: match OK, 51 inliers, sigma 30 m
-[INFO] [1789976130.742497444] [imu_node]: attitude OK, heading 336.2 deg
-[WARN] [1789976132.005921841] [gps_node]: no fix for 32.0 s
-[INFO] [1789976132.078643322] [day_subscriber]: match OK, 38 inliers, sigma 30 m
-[WARN] [1789976134.129260302] [day_subscriber]: no match: 5 inliers < 6
-[INFO] [1789976136.146787882] [day_subscriber]: match OK, 53 inliers, sigma 30 m
-[INFO] [1789976138.194203377] [day_subscriber]: match OK, 30 inliers, sigma 30 m
-[INFO] [1789976140.124504566] [day_subscriber]: match OK, 23 inliers, sigma 30 m
-[INFO] [1789976142.164933681] [day_subscriber]: match OK, 29 inliers, sigma 30 m
-[INFO] [1789976144.117584705] [day_subscriber]: match OK, 39 inliers, sigma 30 m
-[INFO] [1789976146.043034315] [day_subscriber]: match OK, 38 inliers, sigma 30 m
-[INFO] [1789976148.196451902] [day_subscriber]: match OK, 53 inliers, sigma 30 m
-[INFO] [1789976150.117819548] [day_subscriber]: match OK, 34 inliers, sigma 30 m
-[INFO] [1789976150.799171448] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[WARN] [1789976152.080962896] [day_subscriber]: no match: 4 inliers < 6
-[WARN] [1789976152.109330177] [gps_node]: no fix for 52.0 s
-[INFO] [1789976154.172763348] [day_subscriber]: match OK, 46 inliers, sigma 30 m
-[ERROR] [1789976155.231397867] [live_camera]: frame timeout: no frame for 2.4 s
-[INFO] [1789976156.149792910] [day_subscriber]: match OK, 58 inliers, sigma 30 m
-[INFO] [1789976158.001269817] [day_subscriber]: match OK, 59 inliers, sigma 30 m
-[WARN] [1789976160.117874861] [day_subscriber]: no match: 5 inliers < 6
-[INFO] [1789976162.173051357] [day_subscriber]: match OK, 51 inliers, sigma 30 m
-[INFO] [1789976164.104818106] [day_subscriber]: match OK, 24 inliers, sigma 30 m
-[INFO] [1789976166.142241001] [day_subscriber]: match OK, 22 inliers, sigma 30 m
-[WARN] [1789976168.131181717] [day_subscriber]: no match: 4 inliers < 6
-[INFO] [1789976170.137135744] [day_subscriber]: match OK, 52 inliers, sigma 30 m
-[WARN] [1789976172.107560873] [gps_node]: no fix for 72.0 s
-[INFO] [1789976172.173894644] [day_subscriber]: match OK, 28 inliers, sigma 30 m
-[WARN] [1789976174.136154890] [day_subscriber]: no match: 2 inliers < 6
-[WARN] [1789976176.079728365] [day_subscriber]: no match: 1 inliers < 6
-[INFO] [1789976178.170290470] [day_subscriber]: match OK, 44 inliers, sigma 30 m
-[INFO] [1789976180.158228397] [day_subscriber]: match OK, 34 inliers, sigma 30 m
-[INFO] [1789976180.910537243] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789976182.129454613] [day_subscriber]: match OK, 49 inliers, sigma 30 m
-[INFO] [1789976184.125269651] [day_subscriber]: match OK, 20 inliers, sigma 30 m
-[INFO] [1789976186.016404390] [day_subscriber]: match OK, 47 inliers, sigma 30 m
-[INFO] [1789976188.035085678] [day_subscriber]: match OK, 37 inliers, sigma 30 m
-[INFO] [1789976190.198680401] [day_subscriber]: match OK, 22 inliers, sigma 30 m
-[INFO] [1789976190.690690756] [imu_node]: attitude OK, heading 313.3 deg
-[INFO] [1789976192.109268427] [day_subscriber]: match OK, 43 inliers, sigma 30 m
-[WARN] [1789976192.217451811] [gps_node]: no fix for 92.0 s
-[INFO] [1789976194.238348484] [day_subscriber]: match OK, 36 inliers, sigma 30 m
-[INFO] [1789976196.037936211] [day_subscriber]: match OK, 23 inliers, sigma 30 m
-[INFO] [1789976198.004992723] [day_subscriber]: match OK, 31 inliers, sigma 30 m
-[WARN] [1789976200.033374786] [day_subscriber]: no match: 4 inliers < 6
-[INFO] [1789976202.193674326] [day_subscriber]: match OK, 23 inliers, sigma 30 m
-[INFO] [1789976204.069411993] [day_subscriber]: match OK, 18 inliers, sigma 30 m
-[INFO] [1789976206.088045120] [day_subscriber]: match OK, 54 inliers, sigma 30 m
-[INFO] [1789976208.241225481] [day_subscriber]: match OK, 37 inliers, sigma 30 m
-[INFO] [1789976210.194494486] [day_subscriber]: match OK, 27 inliers, sigma 30 m
-[INFO] [1789976210.823624134] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[WARN] [1789976212.126981974] [gps_node]: no fix for 112.0 s
-[INFO] [1789976212.147439480] [day_subscriber]: match OK, 59 inliers, sigma 30 m
-[INFO] [1789976214.010124683] [day_subscriber]: match OK, 34 inliers, sigma 30 m
-[INFO] [1789976216.083427668] [day_subscriber]: match OK, 55 inliers, sigma 30 m
-[WARN] [1789976218.223297834] [day_subscriber]: no match: 2 inliers < 6
-[INFO] [1789976220.218576670] [gps_node]: fix OK, 9 satellites, hdop 1.6
-[INFO] [1789976221.106529474] [estimator_node]: GPS agrees with day vision (gap 14 m): accepted
-[INFO] [1789976223.448229074] [estimator_node]: state FIX source=GPS
-[INFO] [1789976224.024478912] [estimator_node]: previous WARN cleared, GPS trusted again
-[INFO] [1789976225.108344078] [gps_node]: fix OK, 13 satellites, hdop 1.2
-[INFO] [1789976235.149518490] [gps_node]: fix OK, 13 satellites, hdop 0.8
-[INFO] [1789976240.845969200] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789976245.076410770] [gps_node]: fix OK, 12 satellites, hdop 1.3
-[INFO] [1789976250.599290609] [imu_node]: attitude OK, heading 319.4 deg
-[INFO] [1789976255.069877863] [gps_node]: fix OK, 11 satellites, hdop 1.1
-[INFO] [1789976265.045652866] [gps_node]: fix OK, 10 satellites, hdop 1.2
-[INFO] [1789976270.725363255] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789976275.199927568] [gps_node]: fix OK, 12 satellites, hdop 1.1
-[INFO] [1789976285.027331114] [gps_node]: fix OK, 13 satellites, hdop 1.1
-[INFO] [1789976295.030546904] [gps_node]: fix OK, 10 satellites, hdop 1.2
-[INFO] [1789976300.815982819] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789976305.203124762] [gps_node]: fix OK, 10 satellites, hdop 1.3
-[INFO] [1789976310.559560299] [imu_node]: attitude OK, heading 334.6 deg
-[INFO] [1789976315.249735594] [gps_node]: fix OK, 11 satellites, hdop 1.2
-[INFO] [1789976325.127377987] [gps_node]: fix OK, 11 satellites, hdop 0.8
-[INFO] [1789976330.761596918] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789976335.082881212] [gps_node]: fix OK, 10 satellites, hdop 1.0
-[INFO] [1789976345.000098944] [gps_node]: fix OK, 13 satellites, hdop 0.8
-[INFO] [1789976355.100748539] [gps_node]: fix OK, 11 satellites, hdop 0.7
-[INFO] [1789976360.832669258] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789976365.187771797] [gps_node]: fix OK, 10 satellites, hdop 0.7
-[INFO] [1789976370.735930920] [imu_node]: attitude OK, heading 333.5 deg
-[INFO] [1789976375.053053856] [gps_node]: fix OK, 13 satellites, hdop 1.2
-[INFO] [1789976385.083367348] [gps_node]: fix OK, 12 satellites, hdop 1.1
-[INFO] [1789976390.784238338] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789976395.184453487] [gps_node]: fix OK, 13 satellites, hdop 0.8
-[INFO] [1789976405.241262436] [gps_node]: fix OK, 13 satellites, hdop 1.2
-[INFO] [1789976415.226499557] [gps_node]: fix OK, 12 satellites, hdop 1.0
-[INFO] [1789976420.942799091] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789976425.108535767] [gps_node]: fix OK, 10 satellites, hdop 1.1
-[INFO] [1789976430.615747452] [imu_node]: attitude OK, heading 338.6 deg
-[INFO] [1789976435.135821342] [gps_node]: fix OK, 13 satellites, hdop 1.3
-[INFO] [1789976445.210890770] [gps_node]: fix OK, 10 satellites, hdop 1.4
-[INFO] [1789976450.744942665] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789976455.189240217] [gps_node]: fix OK, 12 satellites, hdop 1.1
-[INFO] [1789976465.217692852] [gps_node]: fix OK, 10 satellites, hdop 1.3
-[INFO] [1789976475.205611467] [gps_node]: fix OK, 13 satellites, hdop 0.9
-[INFO] [1789976480.874712467] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789976485.141934395] [gps_node]: fix OK, 11 satellites, hdop 1.3
-[INFO] [1789976490.547333956] [imu_node]: attitude OK, heading 332.9 deg
-[INFO] [1789976495.183982372] [gps_node]: fix OK, 13 satellites, hdop 1.1
-[INFO] [1789976505.012165546] [gps_node]: fix OK, 10 satellites, hdop 1.1
-[INFO] [1789976510.823777437] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789976515.235784769] [gps_node]: fix OK, 10 satellites, hdop 0.7
-[INFO] [1789976525.080342054] [gps_node]: fix OK, 10 satellites, hdop 0.7
-[INFO] [1789976535.202327490] [gps_node]: fix OK, 11 satellites, hdop 1.2
-[INFO] [1789976540.879083395] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789976545.047306061] [gps_node]: fix OK, 13 satellites, hdop 1.1
-[INFO] [1789976550.681969881] [imu_node]: attitude OK, heading 337.3 deg
-[INFO] [1789976555.042332411] [gps_node]: fix OK, 13 satellites, hdop 0.8
-[INFO] [1789976565.188859463] [gps_node]: fix OK, 12 satellites, hdop 1.3
-[INFO] [1789976570.865920544] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789976575.082215548] [gps_node]: fix OK, 11 satellites, hdop 0.7
-[INFO] [1789976585.197154284] [gps_node]: fix OK, 12 satellites, hdop 1.2
-[INFO] [1789976595.156799793] [gps_node]: fix OK, 13 satellites, hdop 0.9
-[INFO] [1789976600.735927582] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[WARN] [1789976602.206926346] [gps_node]: no fix for 2.0 s (jamming simulated)
-[WARN] [1789976603.209526777] [estimator_node]: state DEGRADED source=day vision (propagated)
-[WARN] [1789976604.184473276] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976608.043330431] [day_subscriber]: no match: sea, nothing to recognise
-[INFO] [1789976610.562938929] [imu_node]: attitude OK, heading 330.0 deg
-[WARN] [1789976612.110924244] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976612.146695614] [gps_node]: no fix for 12.0 s
-[WARN] [1789976616.141566753] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976620.200690031] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976624.011349678] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976628.103197575] [day_subscriber]: no match: sea, nothing to recognise
-[INFO] [1789976630.831572533] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[WARN] [1789976632.005738735] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976632.136703253] [gps_node]: no fix for 32.0 s
-[WARN] [1789976636.073537827] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976640.206030369] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976644.096471310] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976648.053734541] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976652.109878063] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976652.173726797] [gps_node]: no fix for 52.0 s
-[WARN] [1789976656.149842739] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976660.112486839] [day_subscriber]: no match: sea, nothing to recognise
-[INFO] [1789976660.758112192] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[WARN] [1789976664.057506323] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976668.128269434] [day_subscriber]: no match: sea, nothing to recognise
-[INFO] [1789976670.630152464] [imu_node]: attitude OK, heading 302.2 deg
-[WARN] [1789976672.137084961] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976672.212575436] [gps_node]: no fix for 72.0 s
-[WARN] [1789976676.131020546] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976680.035497665] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976684.002435446] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976688.152208328] [day_subscriber]: no match: sea, nothing to recognise
-[INFO] [1789976690.706049919] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[WARN] [1789976692.041707516] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976692.118415833] [gps_node]: no fix for 92.0 s
-[WARN] [1789976696.118714333] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976700.218199015] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976704.101954460] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976708.162894487] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976712.140120268] [gps_node]: no fix for 112.0 s
-[WARN] [1789976712.204355478] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976716.209802866] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976720.131556988] [day_subscriber]: no match: sea, nothing to recognise
-[INFO] [1789976720.939612627] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[WARN] [1789976724.005215883] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976724.070430279] [estimator_node]: state NO_FIX: no source usable (dead-reckoning limit 120 s)
-[WARN] [1789976728.245655298] [day_subscriber]: no match: sea, nothing to recognise
-[ERROR] [1789976729.137360334] [vehicle_output_node]: no position for 5.0 s: autopilot uses its own failsafe
-[INFO] [1789976730.511192560] [imu_node]: attitude OK, heading 330.3 deg
-[WARN] [1789976732.016744137] [gps_node]: no fix for 132.0 s
-[WARN] [1789976732.184844255] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976736.020045757] [day_subscriber]: no match: sea, nothing to recognise
-[ERROR] [1789976739.217073441] [vehicle_output_node]: no position for 5.0 s: autopilot uses its own failsafe
-[WARN] [1789976740.062495708] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976744.029375315] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976748.201550961] [day_subscriber]: no match: sea, nothing to recognise
-[ERROR] [1789976749.234624624] [vehicle_output_node]: no position for 5.0 s: autopilot uses its own failsafe
-[INFO] [1789976750.919309855] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[WARN] [1789976752.155504465] [gps_node]: no fix for 152.0 s
-[WARN] [1789976752.167337179] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976756.054583311] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976760.112894058] [day_subscriber]: no match: sea, nothing to recognise
-[INFO] [1789976760.134770393] [day_subscriber]: match OK, 22 inliers, sigma 30 m
-[WARN] [1789976760.515648842] [estimator_node]: state DEGRADED source=day vision (GPS lost)
-[WARN] [1789976764.202408314] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976768.115285635] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976772.000965357] [gps_node]: no fix for 172.0 s
-[WARN] [1789976772.070631027] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976775.074589729] [estimator_node]: state NO_FIX: no source usable (day vision stale)
-[WARN] [1789976776.015331030] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976780.233784199] [day_subscriber]: no match: sea, nothing to recognise
-[INFO] [1789976780.925937653] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[ERROR] [1789976784.057557583] [live_camera]: frame timeout: no frame for 3.1 s
-[WARN] [1789976784.216151953] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976788.066600084] [day_subscriber]: no match: sea, nothing to recognise
-[INFO] [1789976790.566018343] [imu_node]: attitude OK, heading 312.8 deg
-[WARN] [1789976792.199254274] [gps_node]: no fix for 192.0 s
-[WARN] [1789976792.214752436] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976796.027646065] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976800.131730080] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976804.014963865] [day_subscriber]: no match: sea, nothing to recognise
-[WARN] [1789976808.039063692] [day_subscriber]: no match: sea, nothing to recognise
-[INFO] [1789976810.244688034] [gps_node]: fix OK, 9 satellites, hdop 1.6
-[INFO] [1789976810.822047710] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789976811.004078388] [estimator_node]: GPS returned after 211 s, no independent source: accepted (reachable)
-[INFO] [1789976813.343518496] [estimator_node]: state FIX source=GPS
-[INFO] [1789976815.185021639] [gps_node]: fix OK, 13 satellites, hdop 1.3
-[INFO] [1789976825.005584717] [gps_node]: fix OK, 13 satellites, hdop 1.3
-[INFO] [1789976835.224323511] [gps_node]: fix OK, 12 satellites, hdop 0.8
-[INFO] [1789976840.829678297] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789976845.032020092] [gps_node]: fix OK, 12 satellites, hdop 1.0
-[INFO] [1789976850.506038427] [imu_node]: attitude OK, heading 302.5 deg
-[INFO] [1789976855.152866364] [gps_node]: fix OK, 13 satellites, hdop 0.7
-[INFO] [1789976865.223666191] [gps_node]: fix OK, 10 satellites, hdop 0.8
-[INFO] [1789976870.821656466] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789976875.235395908] [gps_node]: fix OK, 13 satellites, hdop 1.0
-[INFO] [1789976885.164209127] [gps_node]: fix OK, 13 satellites, hdop 1.3
-[INFO] [1789976895.220708609] [gps_node]: fix OK, 10 satellites, hdop 1.4
-[INFO] [1789976900.776190042] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789976905.059076309] [gps_node]: fix OK, 11 satellites, hdop 1.4
-[INFO] [1789976910.718947411] [imu_node]: attitude OK, heading 329.9 deg
-[INFO] [1789976915.180473328] [gps_node]: fix OK, 13 satellites, hdop 1.1
-[INFO] [1789976925.111018181] [gps_node]: fix OK, 10 satellites, hdop 0.8
-[INFO] [1789976930.813290596] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789976935.233484745] [gps_node]: fix OK, 11 satellites, hdop 1.1
-[INFO] [1789976945.215161085] [gps_node]: fix OK, 11 satellites, hdop 1.1
-[INFO] [1789976955.241897821] [gps_node]: fix OK, 10 satellites, hdop 1.3
-[INFO] [1789976960.904314280] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789976965.038990259] [gps_node]: fix OK, 11 satellites, hdop 1.3
-[INFO] [1789976970.511916399] [imu_node]: attitude OK, heading 294.8 deg
-[INFO] [1789976975.014469624] [gps_node]: fix OK, 10 satellites, hdop 0.7
-[INFO] [1789976985.241945028] [gps_node]: fix OK, 11 satellites, hdop 1.0
-[INFO] [1789976990.722395897] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789976995.070671558] [gps_node]: fix OK, 10 satellites, hdop 1.2
-[INFO] [1789977005.147781610] [gps_node]: fix OK, 12 satellites, hdop 0.8
-[INFO] [1789977015.136875629] [gps_node]: fix OK, 13 satellites, hdop 1.1
-[INFO] [1789977020.829018354] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789977025.218538046] [gps_node]: fix OK, 13 satellites, hdop 0.8
-[INFO] [1789977030.609627962] [imu_node]: attitude OK, heading 296.2 deg
-[INFO] [1789977035.100437880] [gps_node]: fix OK, 11 satellites, hdop 0.8
-[INFO] [1789977045.141334772] [gps_node]: fix OK, 13 satellites, hdop 0.8
-[INFO] [1789977050.740216732] [vehicle_output_node]: GPS_INPUT sent to autopilot
-[INFO] [1789977055.029061079] [gps_node]: fix OK, 13 satellites, hdop 0.9
-[INFO] [1789977055.099324465] [estimator_node]: shutdown requested (SIGINT)
+[INFO] [1789975800.233740568] [navera_lite_arbiter]: arbiter started: priority gps > day > night > star
+[INFO] [1789975800.464891434] [nmea]: serial port /dev/ttyTHS1 open at 9600 baud
+[INFO] [1789975800.609867096] [imu]: IMU ready, declination 3.3 deg
+[INFO] [1789975800.851122379] [camera]: camera streaming, 2 frames per second
+[INFO] [1789975801.020878792] [day_vision]: map loaded, search radius 600 m
+[INFO] [1789975801.422134638] [output]: MAVLink link to autopilot up
+[INFO] [1789975803.012207508] [navera_lite_arbiter]: state FIX source=gps
+[INFO] [1789975805.050486088] [nmea]: fix OK, 11 satellites, hdop 1.0
+[INFO] [1789975815.096040010] [nmea]: fix OK, 12 satellites, hdop 0.9
+[INFO] [1789975820.801536083] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789975825.108875751] [nmea]: fix OK, 12 satellites, hdop 1.2
+[INFO] [1789975830.695086241] [imu]: attitude OK, heading 305.3 deg
+[INFO] [1789975835.007477045] [nmea]: fix OK, 11 satellites, hdop 1.3
+[INFO] [1789975845.113952637] [nmea]: fix OK, 11 satellites, hdop 1.1
+[INFO] [1789975850.829313755] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789975855.124741554] [nmea]: fix OK, 12 satellites, hdop 1.4
+[INFO] [1789975865.242470741] [nmea]: fix OK, 11 satellites, hdop 0.7
+[INFO] [1789975875.050482750] [nmea]: fix OK, 13 satellites, hdop 0.7
+[INFO] [1789975880.889660120] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789975885.152902365] [nmea]: fix OK, 13 satellites, hdop 1.2
+[INFO] [1789975890.735361576] [imu]: attitude OK, heading 292.7 deg
+[INFO] [1789975895.167217016] [nmea]: fix OK, 13 satellites, hdop 0.8
+[INFO] [1789975905.180490017] [nmea]: fix OK, 11 satellites, hdop 1.2
+[INFO] [1789975910.743555307] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789975915.106362104] [nmea]: fix OK, 11 satellites, hdop 1.1
+[INFO] [1789975925.226495028] [nmea]: fix OK, 13 satellites, hdop 0.7
+[INFO] [1789975935.119149208] [nmea]: fix OK, 11 satellites, hdop 1.2
+[INFO] [1789975940.942335367] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789975945.169586658] [nmea]: fix OK, 10 satellites, hdop 1.3
+[INFO] [1789975950.617316246] [imu]: attitude OK, heading 327.8 deg
+[INFO] [1789975955.076858997] [nmea]: fix OK, 10 satellites, hdop 1.1
+[INFO] [1789975965.010415316] [nmea]: fix OK, 11 satellites, hdop 1.0
+[INFO] [1789975970.791810989] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789975975.002210379] [nmea]: fix OK, 11 satellites, hdop 0.9
+[INFO] [1789975985.203679800] [nmea]: fix OK, 10 satellites, hdop 0.8
+[INFO] [1789975995.103839636] [nmea]: fix OK, 11 satellites, hdop 0.8
+[INFO] [1789976000.927223206] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789976005.032367945] [nmea]: fix OK, 11 satellites, hdop 0.8
+[INFO] [1789976010.637466431] [imu]: attitude OK, heading 292.0 deg
+[INFO] [1789976015.140222788] [nmea]: fix OK, 12 satellites, hdop 1.4
+[INFO] [1789976025.103019953] [nmea]: fix OK, 13 satellites, hdop 1.1
+[INFO] [1789976030.947115183] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789976035.227022171] [nmea]: fix OK, 12 satellites, hdop 1.4
+[INFO] [1789976045.060220003] [nmea]: fix OK, 10 satellites, hdop 1.2
+[INFO] [1789976055.215763330] [nmea]: fix OK, 10 satellites, hdop 1.3
+[INFO] [1789976060.855354548] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789976065.193243265] [nmea]: fix OK, 11 satellites, hdop 0.9
+[INFO] [1789976070.654603243] [imu]: attitude OK, heading 312.7 deg
+[INFO] [1789976075.126675844] [nmea]: fix OK, 12 satellites, hdop 0.9
+[INFO] [1789976085.222245693] [nmea]: fix OK, 12 satellites, hdop 1.1
+[INFO] [1789976090.711935997] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789976095.029215574] [nmea]: fix OK, 11 satellites, hdop 1.2
+[WARN] [1789976102.159248829] [nmea]: no fix for 2.0 s (jamming simulated)
+[WARN] [1789976103.067234755] [navera_lite_arbiter]: state DEGRADED source=day (gps: stale)
+[INFO] [1789976104.191433907] [day_vision]: match OK, 30 inliers, sigma 30 m
+[INFO] [1789976106.228065729] [day_vision]: match OK, 54 inliers, sigma 30 m
+[INFO] [1789976108.212048769] [day_vision]: match OK, 53 inliers, sigma 30 m
+[INFO] [1789976110.146600485] [day_vision]: match OK, 42 inliers, sigma 30 m
+[WARN] [1789976112.059504032] [nmea]: no fix for 12.0 s
+[INFO] [1789976112.086275101] [day_vision]: match OK, 55 inliers, sigma 30 m
+[INFO] [1789976114.168672323] [day_vision]: match OK, 58 inliers, sigma 30 m
+[INFO] [1789976116.020488977] [day_vision]: match OK, 60 inliers, sigma 30 m
+[INFO] [1789976118.109834194] [day_vision]: match OK, 44 inliers, sigma 30 m
+[INFO] [1789976120.111252069] [day_vision]: match OK, 36 inliers, sigma 30 m
+[INFO] [1789976120.753521204] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789976122.044962645] [day_vision]: match OK, 51 inliers, sigma 30 m
+[INFO] [1789976124.166731834] [day_vision]: match OK, 19 inliers, sigma 30 m
+[WARN] [1789976126.128201008] [day_vision]: no match: 5 inliers < 6
+[INFO] [1789976128.130656719] [day_vision]: match OK, 49 inliers, sigma 30 m
+[INFO] [1789976130.044500351] [day_vision]: match OK, 51 inliers, sigma 30 m
+[INFO] [1789976130.742497444] [imu]: attitude OK, heading 336.2 deg
+[WARN] [1789976132.005921841] [nmea]: no fix for 32.0 s
+[INFO] [1789976132.078643322] [day_vision]: match OK, 38 inliers, sigma 30 m
+[WARN] [1789976134.129260302] [day_vision]: no match: 5 inliers < 6
+[INFO] [1789976136.146787882] [day_vision]: match OK, 53 inliers, sigma 30 m
+[INFO] [1789976138.194203377] [day_vision]: match OK, 30 inliers, sigma 30 m
+[INFO] [1789976140.124504566] [day_vision]: match OK, 23 inliers, sigma 30 m
+[INFO] [1789976142.164933681] [day_vision]: match OK, 29 inliers, sigma 30 m
+[INFO] [1789976144.117584705] [day_vision]: match OK, 39 inliers, sigma 30 m
+[INFO] [1789976146.043034315] [day_vision]: match OK, 38 inliers, sigma 30 m
+[INFO] [1789976148.196451902] [day_vision]: match OK, 53 inliers, sigma 30 m
+[INFO] [1789976150.117819548] [day_vision]: match OK, 34 inliers, sigma 30 m
+[INFO] [1789976150.799171448] [output]: GPS_INPUT sent to autopilot
+[WARN] [1789976152.080962896] [day_vision]: no match: 4 inliers < 6
+[WARN] [1789976152.109330177] [nmea]: no fix for 52.0 s
+[INFO] [1789976154.172763348] [day_vision]: match OK, 46 inliers, sigma 30 m
+[ERROR] [1789976155.231397867] [camera]: frame timeout: no frame for 2.4 s
+[INFO] [1789976156.149792910] [day_vision]: match OK, 58 inliers, sigma 30 m
+[INFO] [1789976158.001269817] [day_vision]: match OK, 59 inliers, sigma 30 m
+[WARN] [1789976160.117874861] [day_vision]: no match: 5 inliers < 6
+[INFO] [1789976162.173051357] [day_vision]: match OK, 51 inliers, sigma 30 m
+[INFO] [1789976164.104818106] [day_vision]: match OK, 24 inliers, sigma 30 m
+[INFO] [1789976166.142241001] [day_vision]: match OK, 22 inliers, sigma 30 m
+[WARN] [1789976168.131181717] [day_vision]: no match: 4 inliers < 6
+[INFO] [1789976170.137135744] [day_vision]: match OK, 52 inliers, sigma 30 m
+[WARN] [1789976172.107560873] [nmea]: no fix for 72.0 s
+[INFO] [1789976172.173894644] [day_vision]: match OK, 28 inliers, sigma 30 m
+[WARN] [1789976174.136154890] [day_vision]: no match: 2 inliers < 6
+[WARN] [1789976176.079728365] [day_vision]: no match: 1 inliers < 6
+[INFO] [1789976178.170290470] [day_vision]: match OK, 44 inliers, sigma 30 m
+[INFO] [1789976180.158228397] [day_vision]: match OK, 34 inliers, sigma 30 m
+[INFO] [1789976180.910537243] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789976182.129454613] [day_vision]: match OK, 49 inliers, sigma 30 m
+[INFO] [1789976184.125269651] [day_vision]: match OK, 20 inliers, sigma 30 m
+[INFO] [1789976186.016404390] [day_vision]: match OK, 47 inliers, sigma 30 m
+[INFO] [1789976188.035085678] [day_vision]: match OK, 37 inliers, sigma 30 m
+[INFO] [1789976190.198680401] [day_vision]: match OK, 22 inliers, sigma 30 m
+[INFO] [1789976190.690690756] [imu]: attitude OK, heading 313.3 deg
+[INFO] [1789976192.109268427] [day_vision]: match OK, 43 inliers, sigma 30 m
+[WARN] [1789976192.217451811] [nmea]: no fix for 92.0 s
+[INFO] [1789976194.238348484] [day_vision]: match OK, 36 inliers, sigma 30 m
+[INFO] [1789976196.037936211] [day_vision]: match OK, 23 inliers, sigma 30 m
+[INFO] [1789976198.004992723] [day_vision]: match OK, 31 inliers, sigma 30 m
+[WARN] [1789976200.033374786] [day_vision]: no match: 4 inliers < 6
+[INFO] [1789976202.193674326] [day_vision]: match OK, 23 inliers, sigma 30 m
+[INFO] [1789976204.069411993] [day_vision]: match OK, 18 inliers, sigma 30 m
+[INFO] [1789976206.088045120] [day_vision]: match OK, 54 inliers, sigma 30 m
+[INFO] [1789976208.241225481] [day_vision]: match OK, 37 inliers, sigma 30 m
+[INFO] [1789976210.194494486] [day_vision]: match OK, 27 inliers, sigma 30 m
+[INFO] [1789976210.823624134] [output]: GPS_INPUT sent to autopilot
+[WARN] [1789976212.126981974] [nmea]: no fix for 112.0 s
+[INFO] [1789976212.147439480] [day_vision]: match OK, 59 inliers, sigma 30 m
+[INFO] [1789976214.010124683] [day_vision]: match OK, 34 inliers, sigma 30 m
+[INFO] [1789976216.083427668] [day_vision]: match OK, 55 inliers, sigma 30 m
+[WARN] [1789976218.223297834] [day_vision]: no match: 2 inliers < 6
+[INFO] [1789976220.218576670] [nmea]: fix OK, 9 satellites, hdop 1.6
+[INFO] [1789976221.106529474] [navera_lite_arbiter]: gps agrees with day vision (gap 14 m): accepted
+[INFO] [1789976223.448229074] [navera_lite_arbiter]: state FIX source=gps
+[INFO] [1789976224.024478912] [navera_lite_arbiter]: previous WARN cleared, gps trusted again
+[INFO] [1789976225.108344078] [nmea]: fix OK, 13 satellites, hdop 1.2
+[INFO] [1789976235.149518490] [nmea]: fix OK, 13 satellites, hdop 0.8
+[INFO] [1789976240.845969200] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789976245.076410770] [nmea]: fix OK, 12 satellites, hdop 1.3
+[INFO] [1789976250.599290609] [imu]: attitude OK, heading 319.4 deg
+[INFO] [1789976255.069877863] [nmea]: fix OK, 11 satellites, hdop 1.1
+[INFO] [1789976265.045652866] [nmea]: fix OK, 10 satellites, hdop 1.2
+[INFO] [1789976270.725363255] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789976275.199927568] [nmea]: fix OK, 12 satellites, hdop 1.1
+[INFO] [1789976285.027331114] [nmea]: fix OK, 13 satellites, hdop 1.1
+[INFO] [1789976295.030546904] [nmea]: fix OK, 10 satellites, hdop 1.2
+[INFO] [1789976300.815982819] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789976305.203124762] [nmea]: fix OK, 10 satellites, hdop 1.3
+[INFO] [1789976310.559560299] [imu]: attitude OK, heading 334.6 deg
+[INFO] [1789976315.249735594] [nmea]: fix OK, 11 satellites, hdop 1.2
+[INFO] [1789976325.127377987] [nmea]: fix OK, 11 satellites, hdop 0.8
+[INFO] [1789976330.761596918] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789976335.082881212] [nmea]: fix OK, 10 satellites, hdop 1.0
+[INFO] [1789976345.000098944] [nmea]: fix OK, 13 satellites, hdop 0.8
+[INFO] [1789976355.100748539] [nmea]: fix OK, 11 satellites, hdop 0.7
+[INFO] [1789976360.832669258] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789976365.187771797] [nmea]: fix OK, 10 satellites, hdop 0.7
+[INFO] [1789976370.735930920] [imu]: attitude OK, heading 333.5 deg
+[INFO] [1789976375.053053856] [nmea]: fix OK, 13 satellites, hdop 1.2
+[INFO] [1789976385.083367348] [nmea]: fix OK, 12 satellites, hdop 1.1
+[INFO] [1789976390.784238338] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789976395.184453487] [nmea]: fix OK, 13 satellites, hdop 0.8
+[INFO] [1789976405.241262436] [nmea]: fix OK, 13 satellites, hdop 1.2
+[INFO] [1789976415.226499557] [nmea]: fix OK, 12 satellites, hdop 1.0
+[INFO] [1789976420.942799091] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789976425.108535767] [nmea]: fix OK, 10 satellites, hdop 1.1
+[INFO] [1789976430.615747452] [imu]: attitude OK, heading 338.6 deg
+[INFO] [1789976435.135821342] [nmea]: fix OK, 13 satellites, hdop 1.3
+[INFO] [1789976445.210890770] [nmea]: fix OK, 10 satellites, hdop 1.4
+[INFO] [1789976450.744942665] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789976455.189240217] [nmea]: fix OK, 12 satellites, hdop 1.1
+[INFO] [1789976465.217692852] [nmea]: fix OK, 10 satellites, hdop 1.3
+[INFO] [1789976475.205611467] [nmea]: fix OK, 13 satellites, hdop 0.9
+[INFO] [1789976480.874712467] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789976485.141934395] [nmea]: fix OK, 11 satellites, hdop 1.3
+[INFO] [1789976490.547333956] [imu]: attitude OK, heading 332.9 deg
+[INFO] [1789976495.183982372] [nmea]: fix OK, 13 satellites, hdop 1.1
+[INFO] [1789976505.012165546] [nmea]: fix OK, 10 satellites, hdop 1.1
+[INFO] [1789976510.823777437] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789976515.235784769] [nmea]: fix OK, 10 satellites, hdop 0.7
+[INFO] [1789976525.080342054] [nmea]: fix OK, 10 satellites, hdop 0.7
+[INFO] [1789976535.202327490] [nmea]: fix OK, 11 satellites, hdop 1.2
+[INFO] [1789976540.879083395] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789976545.047306061] [nmea]: fix OK, 13 satellites, hdop 1.1
+[INFO] [1789976550.681969881] [imu]: attitude OK, heading 337.3 deg
+[INFO] [1789976555.042332411] [nmea]: fix OK, 13 satellites, hdop 0.8
+[INFO] [1789976565.188859463] [nmea]: fix OK, 12 satellites, hdop 1.3
+[INFO] [1789976570.865920544] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789976575.082215548] [nmea]: fix OK, 11 satellites, hdop 0.7
+[INFO] [1789976585.197154284] [nmea]: fix OK, 12 satellites, hdop 1.2
+[INFO] [1789976595.156799793] [nmea]: fix OK, 13 satellites, hdop 0.9
+[INFO] [1789976600.735927582] [output]: GPS_INPUT sent to autopilot
+[WARN] [1789976602.206926346] [nmea]: no fix for 2.0 s (jamming simulated)
+[WARN] [1789976603.209526777] [navera_lite_arbiter]: state DEGRADED source=day (propagated)
+[WARN] [1789976604.184473276] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976608.043330431] [day_vision]: no match: sea, nothing to recognise
+[INFO] [1789976610.562938929] [imu]: attitude OK, heading 330.0 deg
+[WARN] [1789976612.110924244] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976612.146695614] [nmea]: no fix for 12.0 s
+[WARN] [1789976616.141566753] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976620.200690031] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976624.011349678] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976628.103197575] [day_vision]: no match: sea, nothing to recognise
+[INFO] [1789976630.831572533] [output]: GPS_INPUT sent to autopilot
+[WARN] [1789976632.005738735] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976632.136703253] [nmea]: no fix for 32.0 s
+[WARN] [1789976636.073537827] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976640.206030369] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976644.096471310] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976648.053734541] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976652.109878063] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976652.173726797] [nmea]: no fix for 52.0 s
+[WARN] [1789976656.149842739] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976660.112486839] [day_vision]: no match: sea, nothing to recognise
+[INFO] [1789976660.758112192] [output]: GPS_INPUT sent to autopilot
+[WARN] [1789976664.057506323] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976668.128269434] [day_vision]: no match: sea, nothing to recognise
+[INFO] [1789976670.630152464] [imu]: attitude OK, heading 302.2 deg
+[WARN] [1789976672.137084961] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976672.212575436] [nmea]: no fix for 72.0 s
+[WARN] [1789976676.131020546] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976680.035497665] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976684.002435446] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976688.152208328] [day_vision]: no match: sea, nothing to recognise
+[INFO] [1789976690.706049919] [output]: GPS_INPUT sent to autopilot
+[WARN] [1789976692.041707516] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976692.118415833] [nmea]: no fix for 92.0 s
+[WARN] [1789976696.118714333] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976700.218199015] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976704.101954460] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976708.162894487] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976712.140120268] [nmea]: no fix for 112.0 s
+[WARN] [1789976712.204355478] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976716.209802866] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976720.131556988] [day_vision]: no match: sea, nothing to recognise
+[INFO] [1789976720.939612627] [output]: GPS_INPUT sent to autopilot
+[WARN] [1789976724.005215883] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976724.070430279] [navera_lite_arbiter]: state NO_FIX: no source usable (dead-reckoning limit 120 s)
+[WARN] [1789976728.245655298] [day_vision]: no match: sea, nothing to recognise
+[ERROR] [1789976729.137360334] [output]: no position for 5.0 s: autopilot uses its own failsafe
+[INFO] [1789976730.511192560] [imu]: attitude OK, heading 330.3 deg
+[WARN] [1789976732.016744137] [nmea]: no fix for 132.0 s
+[WARN] [1789976732.184844255] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976736.020045757] [day_vision]: no match: sea, nothing to recognise
+[ERROR] [1789976739.217073441] [output]: no position for 5.0 s: autopilot uses its own failsafe
+[WARN] [1789976740.062495708] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976744.029375315] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976748.201550961] [day_vision]: no match: sea, nothing to recognise
+[ERROR] [1789976749.234624624] [output]: no position for 5.0 s: autopilot uses its own failsafe
+[INFO] [1789976750.919309855] [output]: GPS_INPUT sent to autopilot
+[WARN] [1789976752.155504465] [nmea]: no fix for 152.0 s
+[WARN] [1789976752.167337179] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976756.054583311] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976760.112894058] [day_vision]: no match: sea, nothing to recognise
+[INFO] [1789976760.134770393] [day_vision]: match OK, 22 inliers, sigma 30 m
+[WARN] [1789976760.515648842] [navera_lite_arbiter]: state DEGRADED source=day (gps: stale)
+[WARN] [1789976764.202408314] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976768.115285635] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976772.000965357] [nmea]: no fix for 172.0 s
+[WARN] [1789976772.070631027] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976775.074589729] [navera_lite_arbiter]: state NO_FIX: no source usable (day: stale)
+[WARN] [1789976776.015331030] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976780.233784199] [day_vision]: no match: sea, nothing to recognise
+[INFO] [1789976780.925937653] [output]: GPS_INPUT sent to autopilot
+[ERROR] [1789976784.057557583] [camera]: frame timeout: no frame for 3.1 s
+[WARN] [1789976784.216151953] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976788.066600084] [day_vision]: no match: sea, nothing to recognise
+[INFO] [1789976790.566018343] [imu]: attitude OK, heading 312.8 deg
+[WARN] [1789976792.199254274] [nmea]: no fix for 192.0 s
+[WARN] [1789976792.214752436] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976796.027646065] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976800.131730080] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976804.014963865] [day_vision]: no match: sea, nothing to recognise
+[WARN] [1789976808.039063692] [day_vision]: no match: sea, nothing to recognise
+[INFO] [1789976810.244688034] [nmea]: fix OK, 9 satellites, hdop 1.6
+[INFO] [1789976810.822047710] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789976811.004078388] [navera_lite_arbiter]: gps returned after 211 s, no independent source: accepted (reachable)
+[INFO] [1789976813.343518496] [navera_lite_arbiter]: state FIX source=gps
+[INFO] [1789976815.185021639] [nmea]: fix OK, 13 satellites, hdop 1.3
+[INFO] [1789976825.005584717] [nmea]: fix OK, 13 satellites, hdop 1.3
+[INFO] [1789976835.224323511] [nmea]: fix OK, 12 satellites, hdop 0.8
+[INFO] [1789976840.829678297] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789976845.032020092] [nmea]: fix OK, 12 satellites, hdop 1.0
+[INFO] [1789976850.506038427] [imu]: attitude OK, heading 302.5 deg
+[INFO] [1789976855.152866364] [nmea]: fix OK, 13 satellites, hdop 0.7
+[INFO] [1789976865.223666191] [nmea]: fix OK, 10 satellites, hdop 0.8
+[INFO] [1789976870.821656466] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789976875.235395908] [nmea]: fix OK, 13 satellites, hdop 1.0
+[INFO] [1789976885.164209127] [nmea]: fix OK, 13 satellites, hdop 1.3
+[INFO] [1789976895.220708609] [nmea]: fix OK, 10 satellites, hdop 1.4
+[INFO] [1789976900.776190042] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789976905.059076309] [nmea]: fix OK, 11 satellites, hdop 1.4
+[INFO] [1789976910.718947411] [imu]: attitude OK, heading 329.9 deg
+[INFO] [1789976915.180473328] [nmea]: fix OK, 13 satellites, hdop 1.1
+[INFO] [1789976925.111018181] [nmea]: fix OK, 10 satellites, hdop 0.8
+[INFO] [1789976930.813290596] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789976935.233484745] [nmea]: fix OK, 11 satellites, hdop 1.1
+[INFO] [1789976945.215161085] [nmea]: fix OK, 11 satellites, hdop 1.1
+[INFO] [1789976955.241897821] [nmea]: fix OK, 10 satellites, hdop 1.3
+[INFO] [1789976960.904314280] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789976965.038990259] [nmea]: fix OK, 11 satellites, hdop 1.3
+[INFO] [1789976970.511916399] [imu]: attitude OK, heading 294.8 deg
+[INFO] [1789976975.014469624] [nmea]: fix OK, 10 satellites, hdop 0.7
+[INFO] [1789976985.241945028] [nmea]: fix OK, 11 satellites, hdop 1.0
+[INFO] [1789976990.722395897] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789976995.070671558] [nmea]: fix OK, 10 satellites, hdop 1.2
+[INFO] [1789977005.147781610] [nmea]: fix OK, 12 satellites, hdop 0.8
+[INFO] [1789977015.136875629] [nmea]: fix OK, 13 satellites, hdop 1.1
+[INFO] [1789977020.829018354] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789977025.218538046] [nmea]: fix OK, 13 satellites, hdop 0.8
+[INFO] [1789977030.609627962] [imu]: attitude OK, heading 296.2 deg
+[INFO] [1789977035.100437880] [nmea]: fix OK, 11 satellites, hdop 0.8
+[INFO] [1789977045.141334772] [nmea]: fix OK, 13 satellites, hdop 0.8
+[INFO] [1789977050.740216732] [output]: GPS_INPUT sent to autopilot
+[INFO] [1789977055.029061079] [nmea]: fix OK, 13 satellites, hdop 0.9
+[INFO] [1789977055.099324465] [navera_lite_arbiter]: shutdown requested (SIGINT)

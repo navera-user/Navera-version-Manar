@@ -1,5 +1,5 @@
 #!/bin/bash
-# log_report.sh — a 7-line summary of one NAVERA (ROS 2 console) log.
+# log_report.sh — a 7-line summary of one log in the ROS 2 console format.
 # usage: log_report.sh LOGFILE
 set -e
 
@@ -16,7 +16,9 @@ fi
 echo "file: $(basename "$log")"
 echo "lines: $(wc -l < "$log")"
 for level in INFO WARN ERROR; do
-    echo "$level: $(grep -c "^\[$level\]" "$log" || true)"
+    n=$(grep -c "^\[$level\]" "$log" || true)
+    echo "$level: $n"
 done
 echo "nodes: $(cut -d' ' -f3 "$log" | sort -u | wc -l)"
-echo "no_fix: $(grep -c "state NO_FIX" "$log" || true)"
+n=$(grep -c "state NO_FIX" "$log" || true)
+echo "no_fix: $n"

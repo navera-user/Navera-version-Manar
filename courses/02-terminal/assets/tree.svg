@@ -1,50 +1,54 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 448" font-family="sans-serif" font-size="13">
-<rect width="760" height="448" fill="#f7fafc"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 450" font-family="sans-serif" font-size="13">
+<rect width="760" height="450" fill="#f7fafc"/>
 <rect x="16" y="18" width="17" height="24" rx="4" fill="#d7e3ee" stroke="#b6c2cc"/>
 <text x="22" y="35" fill="#1d2733" font-family="monospace">/</text>
 <text x="45" y="35" fill="#4a5866">the root of the whole file system</text>
-<path d="M26 42 V64 H50" fill="none" stroke="#7a8794" stroke-width="1.4"/>
-<rect x="50" y="52" width="41" height="24" rx="4" fill="#e8e3f3" stroke="#b6c2cc"/>
-<text x="56" y="69" fill="#1d2733" font-family="monospace">etc/</text>
-<text x="103" y="69" fill="#4a5866">system settings (navera.env lives in /etc/navera on a box)</text>
-<path d="M26 42 V98 H50" fill="none" stroke="#7a8794" stroke-width="1.4"/>
-<rect x="50" y="86" width="41" height="24" rx="4" fill="#e8e3f3" stroke="#b6c2cc"/>
-<text x="56" y="103" fill="#1d2733" font-family="monospace">dev/</text>
-<text x="103" y="103" fill="#4a5866">devices as files: /dev/ttyTHS1 (GPS serial), /dev/video0</text>
-<path d="M26 42 V132 H50" fill="none" stroke="#7a8794" stroke-width="1.4"/>
-<rect x="50" y="120" width="48" height="24" rx="4" fill="#e8e3f3" stroke="#b6c2cc"/>
-<text x="56" y="137" fill="#1d2733" font-family="monospace">proc/</text>
-<text x="110" y="137" fill="#4a5866">live information on processes: /proc/&lt;PID&gt;/</text>
-<path d="M26 42 V166 H50" fill="none" stroke="#7a8794" stroke-width="1.4"/>
-<rect x="50" y="154" width="41" height="24" rx="4" fill="#e8e3f3" stroke="#b6c2cc"/>
-<text x="56" y="171" fill="#1d2733" font-family="monospace">tmp/</text>
-<text x="103" y="171" fill="#4a5866">temporary files, emptied at reboot</text>
-<path d="M26 42 V200 H50" fill="none" stroke="#7a8794" stroke-width="1.4"/>
-<rect x="50" y="188" width="48" height="24" rx="4" fill="#e8e3f3" stroke="#b6c2cc"/>
-<text x="56" y="205" fill="#1d2733" font-family="monospace">data/</text>
-<text x="110" y="205" fill="#4a5866">read-only course data: map.mbtiles, academy/…</text>
-<path d="M26 42 V234 H50" fill="none" stroke="#7a8794" stroke-width="1.4"/>
-<rect x="50" y="222" width="112" height="24" rx="4" fill="#d7e3ee" stroke="#b6c2cc"/>
-<text x="56" y="239" fill="#1d2733" font-family="monospace">home/student/</text>
-<text x="174" y="239" fill="#4a5866">your home = ~  (the same as /home/student)</text>
-<path d="M60 246 V268 H84" fill="none" stroke="#7a8794" stroke-width="1.4"/>
-<rect x="84" y="256" width="64" height="24" rx="4" fill="#cfe8cf" stroke="#b6c2cc"/>
-<text x="90" y="273" fill="#1d2733" font-family="monospace">navera/</text>
-<text x="160" y="273" fill="#4a5866">your copy of NAVERA = ~/navera</text>
-<path d="M94 280 V302 H118" fill="none" stroke="#7a8794" stroke-width="1.4"/>
-<rect x="118" y="290" width="135" height="24" rx="4" fill="#e7f3e7" stroke="#b6c2cc"/>
-<text x="124" y="307" fill="#1d2733" font-family="monospace">navera_msgs/msg/</text>
-<text x="265" y="307" fill="#4a5866">message definitions</text>
-<path d="M128 314 V336 H152" fill="none" stroke="#7a8794" stroke-width="1.4"/>
-<rect x="152" y="324" width="167" height="24" rx="4" fill="#ffffff" stroke="#b6c2cc"/>
-<text x="158" y="341" fill="#1d2733" font-family="monospace">PositionEstimate.msg</text>
-<text x="331" y="341" fill="#4a5866">a file (no / at the end)</text>
-<path d="M94 280 V370 H118" fill="none" stroke="#7a8794" stroke-width="1.4"/>
-<rect x="118" y="358" width="135" height="24" rx="4" fill="#eeeeee" stroke="#b6c2cc"/>
-<text x="124" y="375" fill="#1d2733" font-family="monospace">build/  install/</text>
-<text x="265" y="375" fill="#4a5866">made by colcon: copies, not sources</text>
-<path d="M60 246 V404 H84" fill="none" stroke="#7a8794" stroke-width="1.4"/>
-<rect x="84" y="392" width="167" height="24" rx="4" fill="#ffe9c7" stroke="#b6c2cc"/>
-<text x="90" y="409" fill="#1d2733" font-family="monospace">lessons/02-terminal/</text>
-<text x="263" y="409" fill="#a3322b" font-weight="bold">you start here</text>
+<path d="M26 42 V62 H50" fill="none" stroke="#7a8794" stroke-width="1.4"/>
+<rect x="50" y="50" width="41" height="24" rx="4" fill="#e8e3f3" stroke="#b6c2cc"/>
+<text x="56" y="67" fill="#1d2733" font-family="monospace">etc/</text>
+<text x="103" y="67" fill="#4a5866">system settings (text files); a box's site settings live here</text>
+<path d="M26 42 V94 H50" fill="none" stroke="#7a8794" stroke-width="1.4"/>
+<rect x="50" y="82" width="41" height="24" rx="4" fill="#e8e3f3" stroke="#b6c2cc"/>
+<text x="56" y="99" fill="#1d2733" font-family="monospace">dev/</text>
+<text x="103" y="99" fill="#4a5866">devices as files: /dev/ttyTHS1 (GPS serial port), /dev/video0 (camera)</text>
+<path d="M26 42 V126 H50" fill="none" stroke="#7a8794" stroke-width="1.4"/>
+<rect x="50" y="114" width="49" height="24" rx="4" fill="#e8e3f3" stroke="#b6c2cc"/>
+<text x="56" y="131" fill="#1d2733" font-family="monospace">proc/</text>
+<text x="111" y="131" fill="#4a5866">live information on processes: /proc/&lt;PID&gt;/</text>
+<path d="M26 42 V158 H50" fill="none" stroke="#7a8794" stroke-width="1.4"/>
+<rect x="50" y="146" width="41" height="24" rx="4" fill="#e8e3f3" stroke="#b6c2cc"/>
+<text x="56" y="163" fill="#1d2733" font-family="monospace">tmp/</text>
+<text x="103" y="163" fill="#4a5866">temporary files, emptied at reboot</text>
+<path d="M26 42 V190 H50" fill="none" stroke="#7a8794" stroke-width="1.4"/>
+<rect x="50" y="178" width="49" height="24" rx="4" fill="#e8e3f3" stroke="#b6c2cc"/>
+<text x="56" y="195" fill="#1d2733" font-family="monospace">data/</text>
+<text x="111" y="195" fill="#4a5866">read-only course data: map.mbtiles, academy/…</text>
+<path d="M60 202 V222 H84" fill="none" stroke="#7a8794" stroke-width="1.4"/>
+<rect x="84" y="210" width="169" height="24" rx="4" fill="#e7f3e7" stroke="#b6c2cc"/>
+<text x="90" y="227" fill="#1d2733" font-family="monospace">academy/02-terminal/</text>
+<text x="265" y="227" fill="#4a5866">this mission's data</text>
+<path d="M94 234 V254 H118" fill="none" stroke="#7a8794" stroke-width="1.4"/>
+<rect x="118" y="242" width="145" height="24" rx="4" fill="#cfe8cf" stroke="#b6c2cc"/>
+<text x="124" y="259" fill="#1d2733" font-family="monospace">navera_lite_tree/</text>
+<text x="275" y="259" fill="#4a5866">the skeleton of NAVERA Lite (read only)</text>
+<path d="M128 266 V286 H152" fill="none" stroke="#7a8794" stroke-width="1.4"/>
+<rect x="152" y="274" width="105" height="24" rx="4" fill="#ffffff" stroke="#b6c2cc"/>
+<text x="158" y="291" fill="#1d2733" font-family="monospace">navera_lite/</text>
+<text x="269" y="291" fill="#4a5866">the source package: one file per part</text>
+<path d="M128 266 V318 H152" fill="none" stroke="#7a8794" stroke-width="1.4"/>
+<rect x="152" y="306" width="137" height="24" rx="4" fill="#eeeeee" stroke="#b6c2cc"/>
+<text x="158" y="323" fill="#1d2733" font-family="monospace">build/  install/</text>
+<text x="301" y="323" fill="#4a5866">COPIES made by a packaging tool: not sources</text>
+<path d="M128 266 V350 H152" fill="none" stroke="#7a8794" stroke-width="1.4"/>
+<rect x="152" y="338" width="129" height="24" rx="4" fill="#ffffff" stroke="#b6c2cc"/>
+<text x="158" y="355" fill="#1d2733" font-family="monospace">deploy/systemd/</text>
+<text x="293" y="355" fill="#4a5866">one unit file per service</text>
+<path d="M26 42 V382 H50" fill="none" stroke="#7a8794" stroke-width="1.4"/>
+<rect x="50" y="370" width="113" height="24" rx="4" fill="#d7e3ee" stroke="#b6c2cc"/>
+<text x="56" y="387" fill="#1d2733" font-family="monospace">home/student/</text>
+<text x="175" y="387" fill="#4a5866">your home = ~  (the same as /home/student)</text>
+<path d="M60 394 V414 H84" fill="none" stroke="#7a8794" stroke-width="1.4"/>
+<rect x="84" y="402" width="169" height="24" rx="4" fill="#ffe9c7" stroke="#b6c2cc"/>
+<text x="90" y="419" fill="#1d2733" font-family="monospace">lessons/02-terminal/</text>
+<text x="265" y="419" font-weight="bold" fill="#a3322b">you start here</text>
 </svg>

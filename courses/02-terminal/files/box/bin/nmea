@@ -1,0 +1,13 @@
+#!/bin/bash
+# nmea — a PRETEND GPS reader for the lab-02 bench box. It only runs, and stops cleanly on SIGTERM.
+BOX="$(cd "$(dirname "$0")/.." && pwd)"
+NAME=nmea
+. "$BOX/bin/_common.sh"
+pidfile="$BOX/run/nmea-$$.pid"
+echo $$ > "$pidfile"
+trap 'say "received SIGTERM, shutting down cleanly"; rm -f "$pidfile"; exit 0' TERM
+trap 'say "received SIGINT, shutting down cleanly"; rm -f "$pidfile"; exit 0' INT
+say "started, reading NMEA sentences (simulated)"
+while true; do
+    sleep 1
+done

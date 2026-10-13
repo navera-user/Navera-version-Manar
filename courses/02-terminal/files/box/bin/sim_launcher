@@ -1,0 +1,14 @@
+#!/bin/bash
+# sim_launcher — a PRETEND mission simulator run, started on the box a few seconds after boot for a test.
+# It starts an arbiter for the simulated flight, then the simulator itself stops (a watchdog restart)
+# WITHOUT stopping the arbiter it started. Part of the lab-02 bench box; you do not change it.
+BOX="$(cd "$(dirname "$0")/.." && pwd)"
+NAME=sim_launcher
+. "$BOX/bin/_common.sh"
+cd "$BOX/.." || exit 1
+say "mission simulator: starting a simulated flight"
+box/bin/navera_lite_arbiter --params-file box/config/sim.yaml < /dev/null > /dev/null 2>&1 &
+say "started navera_lite_arbiter as pid $!"
+sleep 1
+say "watchdog restart: the simulator stops (the processes it started keep running)"
+exit 0

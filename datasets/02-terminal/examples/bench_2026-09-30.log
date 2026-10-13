@@ -1,0 +1,17 @@
+[INFO] [1790758800.124228239] [navera_lite_arbiter]: arbiter started: priority gps > day > night > star
+[INFO] [1790758800.608846664] [nmea]: serial port /dev/ttyUSB0 open at 38400 baud
+[INFO] [1790758801.169258356] [camera]: camera streaming, 2 frames per second
+[INFO] [1790758802.195884705] [navera_lite_arbiter]: state FIX source=gps
+[WARN] [1790758810.059679985] [nmea]: no fix for 2.0 s (antenna cable loose)
+[WARN] [1790758811.181146383] [navera_lite_arbiter]: state DEGRADED source=day (gps: stale)
+[WARN] [1790758812.082577467] [camera]: exposure too long: 40 ms
+[WARN] [1790758820.171756744] [nmea]: no fix for 12.0 s
+[INFO] [1790758825.134741783] [day_vision]: match OK, 31 inliers, sigma 30 m
+[WARN] [1790758830.191355467] [nmea]: no fix for 22.0 s
+[ERROR] [1790758831.193063021] [nmea]: serial port /dev/ttyUSB0 closed by the device
+[WARN] [1790758832.172838449] [camera]: exposure too long: 45 ms
+[WARN] [1790758840.112361670] [nmea]: no fix for 32.0 s
+[INFO] [1790758841.220623732] [nmea]: serial port /dev/ttyUSB0 open at 38400 baud
+[INFO] [1790758844.005953074] [nmea]: fix OK, 11 satellites, hdop 0.9
+[INFO] [1790758845.013380051] [navera_lite_arbiter]: state FIX source=gps
+[INFO] [1790758850.152091265] [navera_lite_arbiter]: a WARN above was about the cable, not the software

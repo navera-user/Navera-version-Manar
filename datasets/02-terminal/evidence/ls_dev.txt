@@ -1,0 +1,2 @@
+$ ls -l /dev/ttyTHS1
+crw-rw---- 1 root dialout 238, 1 Sep 30 09:12 /dev/ttyTHS1

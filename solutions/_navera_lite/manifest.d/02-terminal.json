@@ -1,0 +1,7 @@
+{
+  "parts": [],
+  "todo_missions": [2],
+  "tests": [],
+  "extra": [],
+  "note": "Mission 02 writes no part. It ships the empty package (PARTS.md, navera_lite.yaml) so students see where their stack will grow; the full skeleton tree they explore is data: datasets/02-terminal/navera_lite_tree/ (made by datasets/02-terminal/make_dataset.py)."
+}
