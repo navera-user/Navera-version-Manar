@@ -91,3 +91,11 @@ img, meta = render_view(..., return_meta=True)  # true pose, effects drawn, corn
 ORB check (3000 features, 512 px, see `~/academy-data/previews/orb_comparison.txt`): pseudo views
 give ~2 500–3 000 keypoints everywhere (map style: 1–2 300, almost none in the countryside); a
 pseudo view with `effects='medium'` still matches the clean one with 75–1 100 RANSAC inliers.
+
+## Pixel-centre convention (important for vision missions)
+`render_view` puts the requested (lat, lon) at pixel (w/2, h/2) — the corner-based convention — while the course
+(mission 08 `like_map`, OpenCV-style) uses the pixel CENTRE (w−1)/2, (h−1)/2. The difference is half a pixel and
+it rotates with the heading. Mission 08 compensates by rendering one extra pixel each way and cropping the first
+row and column (solutions/08-images/make_dataset.py). A constant ≈0.2 map-pixel offset remains inside render_view.
+Missions 21–25: do the same, or state the convention you use. Mission 18's photos are unaffected (no sub-pixel
+truth is graded there).

@@ -1,3 +1,3 @@
-{"number": "08", "title": "Digital images: arrays, filters and geometric transforms", "module": 2, "duration": "7 h",
- "summary": "dtypes and their traps, colour and histograms (normalise, equalise, CLAHE), convolution with Gaussian and Sobel kernels, 2 × 3 affine warps with bilinear resampling — implemented in numpy, checked against OpenCV, and used to bring a drone photo to the map.",
- "resources": [], "open": ["images_lab.py", "report.md"], "check_timeout_s": 150}
+{"number": "08", "title": "Digital images: arrays, filters and geometric transforms", "module": 2, "duration": "6 h",
+ "summary": "Pixels, dtypes and their traps (a 16-bit thermal frame wrapped to nonsense), convolution with Gaussian and Sobel kernels, the 2 × 3 affine matrix and a bilinear warp: you write NAVERA Lite's image part, check it against OpenCV, turn a drone photo north-up at the map's scale, and find out how wrong its compass was.",
+ "resources": [], "open": ["navera_lite/image.py", "answers.py"], "check_timeout_s": 150}

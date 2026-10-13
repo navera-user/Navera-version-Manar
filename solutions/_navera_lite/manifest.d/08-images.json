@@ -1,0 +1,2 @@
+{"parts": ["image"], "todo_missions": [8], "tests": [], "extra": [],
+ "note": "Mission 08 introduces image.py (TODO 1-7: to_uint8, to_float01, normalise, convolve2d, affine_matrix, warp_affine, like_map; given: to_gray, histogram, gaussian_kernel, SOBEL_X, sobel, pixel_or_zero). tests/test_image.py exists for mission 14 onward; not shipped here. tiles.py (07) is not needed: the map patch is a dataset file."}
