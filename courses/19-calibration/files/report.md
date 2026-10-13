@@ -19,5 +19,5 @@
 ## Recommendation
 
 <!-- 3–5 concrete rules for calibrating a new NAVERA unit before a field test (for example in a partner's
-     workshop in Singapore): board, number and placement of the views, what to check in the result
+     workshop in Singapore): board, number, placement and orientations of the views, what to check in the result
      (which numbers, which limits), and when to calibrate again. -->

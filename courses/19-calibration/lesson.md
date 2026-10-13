@@ -5,9 +5,9 @@
 > [!NOTE] Mission brief
 > **6 October 2026, NAVERA's bench.** NAVERA's camera, the top lens of an Insta360 ONE R, was calibrated from
 > 39 photos of a chessboard on a computer screen (OpenCV kept 38): **8 numbers** that turn every pixel into a
-> direction in space. Now load that file on the wrong picture: the camera is switched to 1280 × 720, so the top
-> lens arrives scaled by 2/3 (1280 × 360). Nothing crashes, but the middle pixel, (640, 180), is believed to look
-> **27.7°** away from where it really looks: from 150 m, about **79 m** on the ground, on every frame. This is why
+> direction in space. Now load that file on the wrong picture: the camera is switched to 1280 × 720 (its picture holds
+> both lenses, one above the other), so the top lens arrives scaled by 2/3 (1280 × 360). Nothing crashes, but the middle pixel, (640, 180), is believed to look
+> **27.7°** away from where it really looks: from 150 m, about **78 m** on the ground, on every frame. This is why
 > NAVERA's live camera **refuses** a calibration made at another resolution or with another camera. Second
 > puzzle: the lens sees roughly **166°** across, yet NAVERA straightens only the central **111°**. Why?
 >
@@ -206,7 +206,7 @@ a "map"), then `cv2.remap` applies the map to each frame in milliseconds. A sour
 gives **black**.
 
 The 111° straight view of the Insta360 (K_new = `K_from_hfov(111, 1920, 540)` from mission 18, f = 659.79 px)
-takes its colours from fisheye columns ≈ 225 to ≈ 1645 only: the outer ≈ 225 px on the left and ≈ 275 px on the
+takes its colours from fisheye columns ≈ 230 to ≈ 1645 only: the outer ≈ 230 px on the left and ≈ 275 px on the
 right are not used. Its bottom rows are black: the straight view is centred on its middle row (270), but the lens'
 axis is at row 317.7, lower; so the bottom rows of the straight view ask for rays below the fisheye picture.
 
@@ -276,8 +276,8 @@ H_max = 2·atan(640 / 800) = <b>77.3°</b>: more pixels per degree give a narrow
 rotation `rvec` (a **Rodrigues vector**: direction = axis, length = angle in radians; `cv2.Rodrigues` gives the matrix
 R) and a translation `tvec` (metres). N views of 54 corners give 8 + 6·N unknowns and 108·N equations (54 corners × 2
 coordinates), yet one view is never enough: a board seen face-on cannot separate "long focal length, board far" from
-"short focal length, board close". Tilted boards, near the picture's edges, at several distances make the unknowns
-**observable**.
+"short focal length, board close". Boards tilted **in different directions** (not all parallel to each other), near the picture's
+edges, at several distances make the unknowns **observable**.
 
 **Zhang's idea (2000).** Put the board's own frame on the board, so every corner has Z = 0. For a pinhole camera the
 board-to-picture mapping is a 3 × 3 **homography** per view, and each gives **two equations on K alone**: 3 views fix a
@@ -296,7 +296,8 @@ minimise   Σ over views i, corners j   ‖ u_ij − project(K, D, rvec_i, tvec_
 > unknowns (atan, the polynomial, the rotation), there is no formula: the computer starts from a first guess and
 > improves it step by step ("iterative"). **Levenberg–Marquardt** is the usual way to choose each step.
 
-`cv2.calibrateCamera` (pinhole) follows this recipe exactly. `cv2.fisheye.calibrate` keeps its idea (a flat board, a
+`cv2.calibrateCamera` (pinhole) follows this recipe, with a simpler first K (the principal point at the picture's
+centre, only fx and fy from the homographies). `cv2.fisheye.calibrate` keeps its idea (a flat board, a
 homography per view for a first pose, one joint refinement of K, D and every pose), but it starts K from the
 picture's size instead of Zhang's closed form.
 
@@ -328,7 +329,8 @@ Three things it does **not** say:
 1. **It is a training error.** The parameters were tuned on those corners. The honest test is a **hold-out**:
    calibrate on some views, measure on views the calibration never saw. For an unseen view the board's pose is
    unknown: find it first with K and D held fixed (`cv2.fisheye.undistortPoints` turns the corners into ideal
-   pinhole rays, then `cv2.solvePnP` with K = identity finds the pose), then measure as above.
+   pinhole rays, then `cv2.solvePnP` with K = identity finds the pose), then measure as above. (It tests the model's shape, not
+   its absolute scale: point 3.)
 2. **It says nothing where no corner was seen** (§3).
 3. **It does not measure stability.** fx and the board's distance trade against each other: a 1.5 % larger fx with
    every board 1.5 % farther away predicts almost the same corners. Calibrations with the same RMS can disagree on fx
@@ -378,7 +380,7 @@ same bending differently between f and their k's.
 
 ## In NAVERA
 
-NAVERA's calibration tool does what NAVERA Lite's does (below): fisheye calibration, refused views dropped one at a
+NAVERA's calibration tool does what NAVERA Lite's does: fisheye calibration, refused views dropped one at a
 time, a small file with the model, size, K, D, RMS, views, straight width, the **crop** (the Insta360 picture is two
 lenses one above the other; NAVERA uses the top half) and, for a USB camera calibrated live, the camera's identity.
 The bench file of 6 October 2026: 38 views kept of 39, RMS 0.525 px, fx 660.5 px, fy 721.4 px.
@@ -435,7 +437,7 @@ accuracy, within the angles tested.
 </details>
 
 <details><summary>4. A partner sets the Insta360 to 1280 × 720 and keeps the bench file. What goes wrong, and what does NAVERA do?</summary>
-K is in pixels of the 1920 × 540 top half: every ray is wrong (27.7° at the picture's middle in the brief, about 79 m
+K is in pixels of the 1920 × 540 top half: every ray is wrong (27.7° at the picture's middle in the brief, about 78 m
 on the ground from 150 m). NAVERA refuses the file; the camera must be calibrated again at the new size.
 </details>
 

@@ -105,7 +105,10 @@ def pair(v, what):
         raise CheckFailed(f"{what} should return (rms, [rms of each view]), got {v!r}"[:300])
 
 
-TIPS = [("too many indices", " — X_cam is an (N, 3) array: take its columns with X[:, 0], X[:, 1], X[:, 2]"),
+TIPS = [("list indices must be integers", " — X_cam can be a plain list: X = np.asarray(X_cam, dtype=float) first"),
+        ("is out of bounds for axis 0 with size 0", " — an empty index array: this lens' curve never stops rising, so "
+                                                    "its top is the grid's last value (lab Step 3, 🧰 box)"),
+        ("too many indices", " — X_cam is an (N, 3) array: take its columns with X[:, 0], X[:, 1], X[:, 2]"),
         ("Point3f", " — cv2.fisheye wants float64 board points of shape (N, 1, 3), in a LIST with one array per view"),
         ("CALIB_CHECK_COND", " — OpenCV refused a view (that is expected here; do not catch the error)"),
         ("'NoneType'", " — a function you call returned None (an earlier TODO?)"),
@@ -231,6 +234,10 @@ def _():
         v = go(f, td, D3)
         c.ok(v is not None and isnan(v), f"theta_from_theta_d({td}) must be nan (no angle of the rising part gives it), "
              f"got {v!r}")
+    v = go(f, 1.0, [0.0, 0.0, 0.0, 0.0])
+    if v is None or isnan(v) or abs(num(v, "theta_from_theta_d(1.0, ideal lens)") - 1.0) > 1e-6:
+        raise CheckFailed(f"the ideal fisheye D = [0, 0, 0, 0]: theta_from_theta_d(1.0) must be 1.0, got {v!r}. Its curve "
+                          "rises all the way to 90°: when np.diff never becomes ≤ 0, the rising part is the whole [0, π/2]")
     rng = np.random.default_rng(3)
     worst = 0.0
     for t in rng.uniform(0.01, 1.2, 12):
@@ -369,6 +376,8 @@ def _():
     a = arr(go(f, 4, 3, 0.025), (12, 1, 3), "board_points(4, 3, 0.025)")
     want = np.array([[cc * 0.025, r * 0.025, 0.0] for r in range(3) for cc in range(4)])
     swapped = np.array([[cc * 0.025, r * 0.025, 0.0] for cc in range(4) for r in range(3)])
+    if np.allclose(a.reshape(-1, 3), want[:, [1, 0, 2]]):
+        raise CheckFailed("board_points: the order is right but x and y are swapped — x is the COLUMN (c·s), y the ROW (r·s)")
     if np.allclose(a.reshape(-1, 3), swapped):
         raise CheckFailed("board_points: the ROW index changes fastest; the detector goes row by row, the COLUMN index "
                           "changing fastest")
@@ -442,7 +451,8 @@ def _():
     if total > 2.0:
         raise CheckFailed(f"reprojection_rms over 12 real views = {total:.3g} px, far too large for a good calibration: "
                           "are the corners placed in the camera frame right? X_c = R·X + t for every corner, i.e. "
-                          "O @ R.T + t (lab Step 8, hint 2)")
+                          "O @ R.T + t (lab Step 8, hint 2). Hundreds of px: (N, 2) minus (N, 1, 2) broadcasts to "
+                          "(N, N, 2) — reshape the detected corners to (N, 2) (hint 1)")
     c.near(total, SUB12_RMS, 1e-5, "reprojection_rms over all corners of 12 real views")
     c.ok(len(per) == 12 and np.allclose(per, SUB12_PER_VIEW, atol=1e-5), "the per-view RMS values are not right "
          "(one RMS per view, over that view's 54 corners)")
@@ -543,14 +553,15 @@ def _():
         raise CheckFailed("CLI_HFOV_DEG = 110.94 is the BENCH lens' width: use YOUR fx")
     c.near(hf, out_hfov, 0.006, "CLI_HFOV_DEG (it should equal the out_hfov_deg of your my_calib.yaml)")
     c.near(hf, 110.15, 0.01, "CLI_HFOV_DEG (degrees)")
+    V = r"(views|photos|frames|images|pictures)"
     explained("REASON_FX", why_fx,
-              ((r"left out", r"\b39\b", r"three (views|photos|frames|images)", r"\b3 (views|photos|frames|images)",
-                r"face", r"dataset", r"remov", r"missing", r"exclud", r"not (the )?same (views|photos|frames|images)",
-                r"different (views|photos|frames|images|set)", r"other (views|photos|frames|images)",
-                r"which (views|photos|frames|images)", r"set of (views|photos|frames|images)"),
+              ((r"left out", r"\b39\b", r"three " + V, r"\b3 " + V, r"face", r"not (the )?same " + V,
+                r"different " + V, r"different set", r"other " + V, r"which " + V, r"set of " + V,
+                r"(remov|exclud|drop|miss|omit)\w* (from|in|of) the (dataset|course)",
+                r"(dataset|course) (has|uses|keeps|contains) (only )?36", r"\b36\b.{0,40}\b(39|bench)"),
                "that the course's views are not the bench's (which views were left out)"),
               ((r"spread", r"std", r"stab", r"vary", r"varies", r"uncertain", r"distance", r"trade", r"correlat",
-                r"subset", r"never", r"660", r"not well", r"determin", r"cannot tell", r"same rms"),
+                r"subset", r"never", r"not well", r"determin", r"cannot tell", r"same rms", r"step 9"),
                "how poorly the views pin fx down (your Step 9 subsets, the trade with the distance)"), min_words=12)
     explained("REASON_HFOV", why_hf,
               ((r"fx", r"focal", r"f_new", r"670"), "which number sets the width"),

@@ -52,7 +52,7 @@ def load_calibration(path):
 def save_calibration(path, K, D, size, rms_px, views, out_hfov_deg=111.0, crop=None, note=""):
     """Write a calibration file in the same YAML layout as the bench file (load_calibration reads it back).
 
-    Example: save_calibration("my_calib.yaml", K, D, (1920, 540), 0.51, 34) writes my_calib.yaml
+    Example: save_calibration("my_calib.yaml", K, D, (1280, 720), 0.42, 25) writes my_calib.yaml
     """
     K = np.asarray(K, dtype=float)
     data = {"model": "fisheye", "image_width": int(size[0]), "image_height": int(size[1]),

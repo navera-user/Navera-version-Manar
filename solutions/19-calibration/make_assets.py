@@ -31,14 +31,14 @@ fig, ax = plt.subplots(figsize=(9.6, 3.6))
 ax.add_patch(plt.Rectangle((0, 0), 1920, 540, fill=True, color="#f1f3f5", zorder=0))
 ax.plot(pts[:, 0], pts[:, 1], ".", ms=2.2, color="#0b6e8a", label="the 1 944 corners of the 36 views")
 az = np.linspace(0, 2 * np.pi, 400)
-for deg, style, col, lab in ((20, ":", "#868e96", "20°"), (40, ":", "#868e96", "40°"),
+for deg, style, col, lab in ((20, ":", "#868e96", "20°"), (40, ":", "#868e96", "40°"), (50, ":", "#868e96", "50°"),
                              (55.5, "--", "#d64545", "55.5°: left and right edges of the 111° straight view"),
                              (67.4, "-", "#000000", "67.4°: the calibrated curve stops rising")):
     t = math.radians(deg)
     ring = np.stack([np.sin(t) * np.cos(az), np.sin(t) * np.sin(az), np.full_like(az, np.cos(t))], axis=1)
     p = fe.fisheye_project(ring, K, D)
     ax.plot(p[:, 0], p[:, 1], style, color=col, lw=1.6, label=lab if deg > 50 else None)
-    if deg < 50:
+    if deg <= 50:
         ax.text(K[0, 2] + (p[:, 0].max() - K[0, 2]) + 6, K[1, 2] + 4, lab, color=col, fontsize=8)
 ax.plot(K[0, 2], K[1, 2], "k+", ms=10, mew=2)
 ax.set_xlim(0, 1920)

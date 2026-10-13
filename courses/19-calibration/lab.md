@@ -125,7 +125,10 @@ print(fisheye_project(np.array([[1.0, 0.5, 2.0]]), K, D))      # the lesson's wo
 4. v uses fy = `K[1, 1]` and cy = `K[1, 2]`, u uses `K[0, 0]` and `K[0, 2]`.
 5. Return one row per point: `np.stack([u, v], axis=1)`, shape (N, 2).
 6. `nan` for the point on the axis: start a scale array at 1 (`np.ones_like(r)`) and divide θ_d by r only where
-   r > 1e-12 (🧰 above).
+   r > 1e-12 (🧰 above). `np.where(r > 0, θ_d / r, 1)` also works, but numpy still computes 0/0 first and prints a
+   RuntimeWarning: harmless; the mask avoids it.
+7. "list indices must be integers" or "tuple indices": X_cam can be a plain list (the docstring's example is one):
+   start with `X = np.asarray(X_cam, dtype=float)`.
 </details>
 
 ## Step 3 — Where is the model valid? (TODO 2)
@@ -158,6 +161,7 @@ print(lo)                          # 1.7099759466766968
 y = np.array([0.0, 1.0, 3.0, 4.0, 3.5, 2.0])
 np.diff(y)                                # array([ 1. ,  2. ,  1. , -0.5, -1.5]) — y[i+1] − y[i]
 np.nonzero(np.diff(y) <= 0)[0]            # array([3, 4]) — y stops rising after index 3
+# an EMPTY result (no index at all)? The array rises everywhere: its top is its last value (a lens like that exists)
 y[3]                                      # 4.0 — the top
 ```
 </details>
@@ -305,7 +309,9 @@ python3 calibrate_lab.py detect
 <details><summary>Stuck? Hints, one at a time</summary>
 
 1. Two loops, rows outside, columns inside: the point of row r, column c is (c·s, r·s, 0).
-2. [[0, 0, 0], [0, 0.5, 0], [0.5, 0, 0], …]: the ROW index changes fastest — swap the loops.
+2. If the ROW index changes fastest in your list ([[0, 0, 0], [0, 0.5, 0], [0.5, 0, 0], …]): swap the loops. If the
+   order is right but x and y are swapped ([[0, 0, 0], [0, 0.5, 0], [0, 1.0, 0], [0.5, 0, 0], …] for 3 × 2): x is
+   the COLUMN (c·s), y the ROW (r·s) — swap the values, not the loops.
 3. Start from `np.zeros((rows * cols, 1, 3))` and fill `obj[i, 0, 0]` and `obj[i, 0, 1]`; zeros are float64.
 </details>
 
@@ -346,6 +352,13 @@ per view: its RMS (once TODO 7 is done), its farthest corner from the axis and t
 > reliably? What does refusing them cost the calibration? Compare `FARTHEST_USED_DEG` with the 52° of lesson §3:
 > where were the corners between 43° and 52°, and what does your calibration now know about the edges of the 111°
 > view (55.5°)?
+
+<details><summary>Read this after you wrote EXPLAIN_REFUSED</summary>
+f0023 and f0208 reach farthest to the right (44.6° and 51.8°), where no other view has corners. In that part of the
+picture the lens model is still poorly known while OpenCV estimates the poses, and nothing else ties those two poses
+down, so their equations are nearly dependent (ill-conditioned): tiny corner errors would swing the pose a lot.
+OpenCV drops them, and with them every corner beyond 43°.
+</details>
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
@@ -441,7 +454,8 @@ pixel's distance from the principal point. Grey: beyond the farthest corner your
 > [!NOTE]
 > Brown–Conrady's fx (≈ 740–750 px) is not comparable with the fisheye's (≈ 670 px): another formula, so another
 > meaning of fx, with its own principal point and its own board distances (lesson §7, point 3). That is also why,
-> inside the data, its angles differ from the fisheye's by 1–3° while both predict the same corners: each model
+> inside the data, its angles differ from the fisheye's by up to about 3.5° (more on the left, where its principal
+> point is shifted; it does not give 0° at your principal point) while both predict the same corners: each model
 > places the boards differently. Look at what happens beyond the grey line, near the picture's edges.
 
 > [!TASK]
@@ -494,8 +508,9 @@ their min and max with 660.5; (3) your calibration and the bench's both say RMS 
 
 <details><summary>Read this after you wrote REASON_FX</summary>
 Measured on the host from the original bench frames: the 36 course views give fx 670.2 px before any JPEG re-save
-and with no view refused. Refusing f0023 and f0208 changes fx by 0.04 px, and the JPEG re-save moves the corners by
-about 0.01 px. The 10 px come from the three views the dataset left out: which views you take moves fx more than the
+and with no view refused. The JPEG re-save moves the corners by about 0.01 px. Refusing f0023 and f0208 together
+changes fx by only 0.02 px, but only because they cancel: without f0023 alone fx is 667.6 px, without f0208 alone
+672.6 px. The 10 px come from the three views the dataset left out: which views you take moves fx more than the
 RMS can show, and fx trades against the boards' distance at the same RMS (lesson §7, point 3).
 </details>
 
@@ -526,7 +541,11 @@ Write your answers in `LOOK_BACK` in `answers.py` if you want your teacher to re
   `cv2.fisheye.undistortPoints(view, K, D, P=K)` (your calibration), fit one homography per view with
   `cv2.findHomography(board_xy, pixels)`, build the two equations per view of the box below on
   b = (B11, B12, B22, B13, B23, B33), solve V·b = 0 with `np.linalg.svd`, and recover fx, fy, cx, cy (Zhang 2000,
-  appendix B). How close is `ZHANG_FX` to your refined fx?
+  appendix B). How close is `ZHANG_FX` to your refined fx? Expect a surprise. Then print the third column of each
+  view's R (`cv2.Rodrigues(rvec)[0][:, 2]`, the board's normal) from your calibration: what do the normals have in
+  common? Zhang (2000, §3.3) explains why that breaks the closed form, while the joint refinement (which starts from
+  the picture's size, lesson §6) still converges. Check your code on made-up views with varied orientations (as
+  `calibrate_lab.py test` makes them): it should recover their fx.
 
   <details><summary>The two equations of Zhang's closed form</summary>
 

@@ -29,6 +29,8 @@ _kit_hint = rk._hint
 def _hint(e):
     """This mission's extra sentence for the errors students meet most."""
     s = str(e)
+    if "list indices must be integers" in s or "tuple indices must be integers" in s:
+        return " — X_cam can be a plain list: turn it into an array first, X = np.asarray(X_cam, dtype=float)"
     if "too many indices" in s:
         return " — X_cam is an (N, 3) array: take its columns with X[:, 0], X[:, 1], X[:, 2]"
     if "ssize.width > 0" in s or "size.width" in s or "Expected Ptr<cv::UMat>" in s:
@@ -116,6 +118,13 @@ def test():
         else:
             line(1, close(a, [[937.0585, 317.6612], [1131.5387, 176.0502]], 1e-3),
                  f"fisheye_project(two points, one on the axis) = {show(a)}", "the axis point must land on (cx, cy)")
+    got, err = rk.call(fe, "fisheye_project", [[1.0, 0.5, 2.0]], K, D)          # a plain list, as in the docstring
+    if err:
+        line(1, False, err + "   (X_cam may be a list, as in the docstring: start with X = np.asarray(X_cam, "
+                             "dtype=float). Lab Step 2, hint 7)")
+    else:
+        line(1, close(got, [[1250.3469, 488.7522]], 1e-3), f"fisheye_project(a plain list [[1.0, 0.5, 2.0]]) = {show(got)}",
+             "a list must give the same pixel as an array: np.asarray(X_cam, dtype=float). Lab Step 2, hint 7")
 
     # TODO 2 — theta_from_theta_d
     cases = [(0.5303, 0.50972, 1e-4, "the docstring says about 0.5097"),
@@ -130,6 +139,13 @@ def test():
         if isinstance(got, (int, float, np.floating)) and abs(float(got) - math.degrees(want)) < 0.01 and want > 0:
             note = "that is in DEGREES: the function returns radians. Lab Step 3, hint 4"
         line(2, (not isnan(got)) and close(got, want, tol), f"theta_from_theta_d({td}) = {show(got)}", note)
+    got, err = rk.call(fe, "theta_from_theta_d", 1.0, [0.0, 0.0, 0.0, 0.0])
+    if err:
+        line(2, False, err + "   (the ideal fisheye D = [0, 0, 0, 0] rises all the way to 90°: when np.diff never "
+                             "becomes ≤ 0, the rising part is the whole [0, π/2]. Lab Step 3, 🧰 box and hint 3)")
+    else:
+        line(2, (not isnan(got)) and close(got, 1.0, 1e-6), f"the ideal fisheye, theta_from_theta_d(1.0, [0, 0, 0, 0]) = "
+             f"{show(got)}", "θ_d = θ for the ideal lens: 1.0. Its curve never turns back: the top is the grid's last value")
     for td in (1.30, (1920 - K[0, 2]) / K[0, 0]):
         got, err = rk.call(fe, "theta_from_theta_d", td, D)
         if err and "returned None" in err:
@@ -205,9 +221,12 @@ def test():
                  f"undistort: the left edge of the straight view (3, 270) took its colour from column {edge[0] * 8}",
                  "a ray 55.4° to the left: about column 230 of the fisheye picture. Check K_new and the size")
             bottom = a[538, 960].astype(int).tolist()
+            centre_ok = abs(centre[0] - 117) <= 1 and abs(centre[1] - 79) <= 1
             line(4, bottom == [0, 0, 0], f"undistort: the bottom row of the straight view, (960, 538), is {bottom}",
-                 "it looks below the fisheye picture's lower edge: it must stay BLACK — a constant border "
-                 "(cv2.BORDER_CONSTANT). Lab Step 5, hint 4")
+                 ("it looks below the fisheye picture's lower edge: it must stay BLACK — a constant border "
+                  "(cv2.BORDER_CONSTANT). Lab Step 5, hint 4") if centre_ok else
+                 "fix the first TODO 4 line first (K_new, the rotation): with the wrong new camera this row looks "
+                 "elsewhere too")
     print(f"\n{done} of {total} examples right.")
 
 

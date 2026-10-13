@@ -64,8 +64,8 @@ table 111/150/166°: f_new 659.79 / 257.23 / 117.87, centre 99.9 / 38.9 / 17.8 %
 nan / nan; VFOV 44.5 / 92.8 / 132.8°; H_max 110.94°; fx 800 on 1280 → 77.3°; 150 m footprint 436 m, GSD 0.227 m;
 RMS example 0.87 (mean 0.83); unknowns 20 views 128 / 2160; hook: the whole picture scaled by 2/3 (top lens 1280 × 360),
 its middle pixel (640, 180) believed 27.0° off-axis, really 4.3° (true source (960, 270)): 27.7° between the rays,
-150·tan 27.7° = 78.7 m. (A reviewer's 27.83° is another scenario: one lens at 1280 × 720, pixel (640, 360) — not the
-Insta360's two-half picture.) Straight 111° view: columns ≈ 225–1645 used (≈ 225 px left, ≈ 275 px right unused);
+150·tan 27.7° = 78.7 m (78.2 m between the two ground points for a straight-down camera: "about 78 m"). (A reviewer's 27.83° is another scenario: one lens at 1280 × 720, pixel (640, 360) — not the
+Insta360's two-half picture.) Straight 111° view: columns ≈ 229–1645 used (≈ 229 px left, ≈ 275 px right unused);
 vertical centre detail 659.8/721.4 = 91.5 %; calibration valid up to 2 × 67.4° = 134.8° (crop.svg).
 
 Why the student's fx (670.3) is not the bench's (660.5) — measured on the host from the bench recording: the bench
@@ -73,11 +73,13 @@ calibrated 39 original top halves, OpenCV refused f0023, 38 used → fx 660.48, 
 The course's 36 originals (no f0273/f0274: faces; no f0309) → fx 670.24, nothing refused; re-encoded as the dataset →
 670.28, f0023 and f0208 refused, RMS 0.506. Removing f0309 alone gives 662.3. So: **the set of views** (3 left out, and
 which ones OpenCV refuses) moves fx by ~10 px; JPEG re-encoding moves the corners by 0.01 px median (0.17 px max) and
-fx by 0.04 px but changes which views are refused and the RMS. fx and the board distance trade against each other, so
+fx, together with the two refusals, by 0.04 px in total. On the course's corners (no CHECK_COND): all 36 → 670.26,
+both refused views removed → 670.28 (0.02 px), but without f0023 alone → 667.59 and without f0208 alone → 672.64: the
+two refusals cancel (±2.5 px each) — the best illustration of "which views you take moves fx". fx and the board distance trade against each other, so
 the RMS cannot tell 660 from 670. Step 9's 30-view subsets range 664.8–675.1 px and never reach 660.5 (≈ 2.9 σ):
 the view set matters more than the RMS shows. Accept: the view set (3 left out; the subsets never reach 660.5) +
-fx poorly determined (spread, trade with distance). JPEG re-saving and the 2 refused views are *measured* to change
-fx by 0.04 px each: score them 1 (partial) and show the lab's reveal box. The check requires both ideas (keywords
+fx poorly determined (spread, trade with distance). JPEG re-saving plus the 2 refusals change fx by 0.04 px in total
+(the pair 0.02 px, each alone ±2.5 px in opposite directions): score them 1 (partial) and show the lab's reveal box. The check requires both ideas (keywords
 for "views left out / not the same views" and for "spread / subsets / distance"); "jpeg" and "refused" alone do not
 pass.
 
@@ -96,12 +98,12 @@ are described in words from reading NAVERA's code; no code shown.
 | EXPLAIN_RESIDUAL | calibration RMS ~0.5 px + detector noise + non-flat screen (+ interpolation) | one cause | — |
 | EXPLAIN_REFUSED | farthest-reaching views (44.6°, 51.8°, far right) with no other corners there → pose ill-conditioned; refusing them leaves no corner beyond 43° (edges unmeasured) | "they are blurred / bad" | — |
 | EXPLAIN_STABILITY | RMS ~0.5 for every subset, yet fx spread 39 → 3 px: RMS hides it; take ≥ 30 varied views | numbers without conclusion | — |
-| REASON_BC | test corners lie within ~43°, where both models fit the corner pixels (each with its own fx, principal point and board poses, so their angles differ by 1–3° inside the data); the hold-out does not test the edges, where BC runs away towards tan 90° (its angle curve flattens near 60° in my_curves.png) | one of the two | "BC is better" |
-| REASON_FX | the view set (3 left out; subsets never reach 660.5) and fx poorly determined (spread, trade with distance) | one of those, or JPEG / refused views (measured 0.04 px each) | — |
+| REASON_BC | test corners lie within ~43°, where both models fit the corner pixels (each with its own fx, principal point and board poses, so their angles differ by up to ≈ 3.5° inside the data, more on the left); the hold-out does not test the edges, where BC runs away towards tan 90° (its angle curve flattens near 60° in my_curves.png) | one of the two | "BC is better" |
+| REASON_FX | the view set (3 left out; subsets never reach 660.5) and fx poorly determined (spread, trade with distance) | one of those, or JPEG / refused views (measured: 0.04 px together) | — |
 | REASON_HFOV | the rule f_new ≥ fx; larger fx → 2·atan(960/670.3) = 110.15° | rule without the number | — |
 | report.md | three sections with numbers; validity limits; a recommendation with checkable limits (views to 60°, RMS and hold-out limits, fx stability, recalibrate on resolution/crop/camera change) | numbers without reasoning | — |
 
-## Typical mistakes (verified on 25 mutants: runner `test` line and check message)
+## Typical mistakes (verified on 31 mutants: runner `test` line and check message)
 
 | Mistake | Runner shows | Check says |
 |---|---|---|
@@ -131,7 +133,7 @@ corners in `hidden/corners.npz`.
   result; OpenCV starts from f = max(w, h)/π and the picture's centre). If a student asks why K0 = I works, that is why.
 - **Brown–Conrady's fx (738–752 px)** is not comparable with the fisheye's: another model, its own principal point
   (cx 920.9, cy 354.9) and board distances. `curves` now plots the angle of the same pixels (row through the student's
-  principal point): inside the data the models differ by 1–3°, beyond it the fisheye has no answer and BC flattens.
+  principal point): inside the data the models differ by up to ≈ 3.5° (3.4° at −400 px), beyond it the fisheye has no answer and BC flattens.
 - **Radians vs degrees** (θ, stretch_at) and **(width, height) vs img.shape** — the runners name both.
 - The **r = 0** case: most students divide directly; the runner's second TODO 1 line catches it.
 - **Bisection on a curve that turns back**: weak students search [0, π/2]; insist on the paper plan of Step 3.
@@ -147,6 +149,12 @@ corners in `hidden/corners.npz`.
    badge **Lens modeller**. Fast: "Fewer numbers" later, or §6 early.
 2. Before session 2: lesson §4–§8 (35 min). Session 2: Steps 6–11, 15 min group discussion of REASON_FX (show the
    "Why the student's fx" paragraph above), memo; badge **Calibrator**.
+
+Zhang by hand (Going further) on the course views gives fx ≈ 1 044 px with 5 views and ≈ 797 px with the 34 used
+views (refined: 670.3): the boards are almost parallel (normals ≈ (0.14, −0.34, 0.92), std 0.07 / 0.05 / 0.02, all
+within 11° of their mean), Zhang's degenerate case (Zhang 2000, §3.3). Expected answer: name the parallel boards; the
+joint refinement still converges because OpenCV starts it from the picture's size. On made-up varied views the
+closed form recovers fx. Lesson §6 now asks for boards "tilted in different directions".
 
 Differentiation: fast — "Zhang by hand" (ZHANG_FX), "Fewer numbers" (FIX_K3/K4); struggling — pair on TODO 2 and 8
 with the paper plan first, give the 🧰 boxes printed.

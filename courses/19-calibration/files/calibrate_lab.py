@@ -114,7 +114,10 @@ def test():
         if a.shape != (6, 1, 3):
             note = f"shape {a.shape}: OpenCV wants (N, 1, 3) — one point per row, with a middle axis of 1. Lab Step 6, hint 3"
         elif np.allclose(a.reshape(-1, 3), want[[0, 3, 1, 4, 2, 5]]):
-            note = "the column index must change FASTEST (row by row, like reading). Lab Step 6, hint 2"
+            note = "the column index must change FASTEST (row by row, like reading): swap the loops. Lab Step 6, hint 2"
+        elif np.allclose(a.reshape(-1, 3), want[:, [1, 0, 2]]):
+            note = ("the order is right, but x and y are swapped: x is the COLUMN (c·s), y the ROW (r·s) — swap the "
+                    "values, not the loops. Lab Step 6, hints 1–2")
         elif a.dtype != np.float64:
             note = f"dtype {a.dtype}: cv2.fisheye wants float64"
         line(5, a.shape == (6, 1, 3) and a.dtype == np.float64 and np.allclose(a.reshape(-1, 3), want, atol=1e-12),
@@ -161,6 +164,9 @@ def test():
                 note = "0.7 = 0.3 + 0.4: a distance is √(du² + dv²). Lab Step 8, hint 3"
             elif abs(float(total_rms) - 0.25) < 1e-6:
                 note = "0.25 is the MEAN SQUARE: take the square root (RMS). Lab Step 8, hint 3"
+            elif float(total_rms) > 20:
+                note = ("hundreds of px? (N, 2) minus (N, 1, 2) silently makes an (N, N, 2) array: reshape the detected "
+                        "corners to (N, 2) first. Lab Step 8, hint 1")
             line(7, ok, f"reprojection_rms(corners shifted by (0.3, 0.4) px) = {float(total_rms):.6g}, "
                  f"{len(per_view)} per-view values", note)
         except (TypeError, ValueError):

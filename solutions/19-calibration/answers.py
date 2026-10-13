@@ -1,4 +1,4 @@
-# Lab 19 — your answers. Numbers without quotes (MY_FX = 671.2). Text in quotes ("…").
+# Lab 19 — your answers. Numbers without quotes (H_MAX_DEG = 98.76). Text in quotes ("…").
 # PREDICT_… : your guess BEFORE you run the step. Never marked right or wrong: write it honestly.
 # EXPLAIN_… / REASON_… : after the run, in your own words (one to three sentences). Your teacher reads them.
 
