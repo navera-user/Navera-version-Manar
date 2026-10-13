@@ -47,4 +47,5 @@ PREDICT_SILENCE = "Between 3.0 and 3.2 s: the timeout plus at most one 0.2 s tic
 SILENCE_S = [3.12, 3.04, 3.01]
 EXPLAIN_SILENCE = ("No message arrives when the GPS stops, so only the arbiter's 5 Hz timer can notice: the "
                    "fix becomes stale after 3.0 s and the next tick, at most 0.2 s later, says NO_FIX. My "
-                   "trip node checks its watchdog only once a second, so it says silent up to 1 s later.")
+                   "trip node times from the ARRIVAL of the last fix and checks only once a second, so it usually says "
+                   "silent later (up to about 1 s), but it can also come up to about 0.2 s before the judge.")

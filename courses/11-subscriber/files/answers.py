@@ -38,4 +38,4 @@ EXPLAIN_BLOCKING = ""  # why does multi rescue the timer but not the fixes? and 
 # ---- Step 8: the judge notices a silent GPS (status_listener.py) -------------------------------
 PREDICT_SILENCE = ""   # arbiter v0 (gps_timeout_s 3.0, tick_hz 5.0): how long after the last fix's stamp is NO_FIX?
 SILENCE_S = []         # the "GPS silent for … s" values you saw, e.g. [7.25, 7.31] (at least 2)
-EXPLAIN_SILENCE = ""   # where do the numbers come from, and why does your trip node say "GPS silent" later?
+EXPLAIN_SILENCE = ""   # where do the numbers come from, which one spoke first each time (the judge or your trip node), and why?

@@ -346,7 +346,7 @@ python3 blocking_demo.py single --work 0.1
 
 (`single --work 0.1`: ρ = 0.5, so every fix is handled as it comes (the `last` age is 0.00 s; the `first` can
 show 0.1–0.4 s while the node starts). Yet a tick that falls during a callback still waits for it: the longest
-gap can reach one period plus one callback, about 200 ms (measured 145–205 ms). Do not copy this run as
+gap can reach one period plus one callback, about 200 ms (measured 110–205 ms). Do not copy this run as
 `GAP_SINGLE_MS`.)
 
 > [!TASK]

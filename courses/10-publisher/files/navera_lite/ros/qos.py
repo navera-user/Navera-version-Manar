@@ -25,15 +25,32 @@ def describe(qos):
 
 
 # from mission 09 — finished: read it, use it, do not change it
-def compatible(offered, requested):
-    """Do a publisher that OFFERS `offered` and a subscriber that REQUESTS `requested` connect?
-    Apply the two tables of lesson 09 §5, reliability and durability; the other policies (history, depth)
-    never decide a connection here. Inputs: two rclpy QoSProfile (the publisher's first). Returns True or False.
-    Example: compatible(SENSOR_QOS, FIX_QOS) → False   (the IMU offers BEST_EFFORT, the listener asks RELIABLE)
-             compatible(FIX_QOS, SENSOR_QOS) → True
+def incompatible_policies(offered, requested):
+    """Why would a publisher that OFFERS `offered` and a subscriber that REQUESTS `requested` NOT connect?
+    Returns the list of the policies whose offer cannot serve the request, named as ROS names them in its WARN
+    line ("Last incompatible policy: RELIABILITY"; that line shows only one name, your list shows every one):
+    "RELIABILITY" first, then "DURABILITY"; [] when they connect.
+    Use the two tables of lesson 09 §5. History and depth never decide a connection; deadline and liveliness
+    would, but NAVERA Lite leaves them at their defaults, so they are not part of this function.
+    Inputs: two rclpy QoSProfile (the publisher's first). Returns a list of str.
+    Example: incompatible_policies(SENSOR_QOS, FIX_QOS) → ["RELIABILITY"]   (the IMU offers BEST_EFFORT, the listener asks RELIABLE)
+             incompatible_policies(FIX_QOS, SENSOR_QOS) → []
     """
+    bad = []
     if offered.reliability == ReliabilityPolicy.BEST_EFFORT and requested.reliability == ReliabilityPolicy.RELIABLE:
-        return False
+        bad.append("RELIABILITY")
     if offered.durability == DurabilityPolicy.VOLATILE and requested.durability == DurabilityPolicy.TRANSIENT_LOCAL:
-        return False
-    return True
+        bad.append("DURABILITY")
+    return bad
+
+
+# from mission 09 — finished: read it, use it, do not change it
+def compatible(offered, requested):
+    """True if the publisher (offered) and the subscriber (requested) connect: no incompatible policy.
+
+    Example: compatible(SENSOR_QOS, FIX_QOS) → False;  compatible(FIX_QOS, SENSOR_QOS) → True
+    """
+    bad = incompatible_policies(offered, requested)
+    if bad is None:
+        raise NotImplementedError("incompatible_policies() returned None: write TODO 1 first")
+    return len(bad) == 0

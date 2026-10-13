@@ -53,7 +53,7 @@ given) instead of a TODO; the polling bug (OUT-5) is reproduced in pure Python (
   | shared | 34 / 320 ms / 1.97 s | 33 / 396 ms / 1.99 s |
   | single --work 0.1 | 100 / 113 ms / 0.00 s | 100 / 119–205 ms / last 0.00 s (first/max 0.14–0.40 s, start-up) |
 
-  With `--work 0.1` the gap can reach one period plus one callback (≈ 200 ms; reviewers measured 145–205 ms); the
+  With `--work 0.1` the gap can reach one period plus one callback (≈ 200 ms; measured 113–205 ms); the
   check names it if a student copies that run as GAP_SINGLE_MS.
 
   Max age ≈ depth × T = 10 × 0.2 s = 2 s (the queue holds the 10 newest; the callback takes the oldest). About 7 fixes
@@ -82,7 +82,7 @@ played by `replay_node` at rate 2 (expected: fixes 10, refused 4, last "bad posi
 | EXPLAIN_POLLING | a late or early (jittered) position crosses a tick → that tick repeats the old one, the next sees two and forwards only the newest; on arrival = one send per position, no clock to cross; mentions that a perfect clock (jitter 0) shows nothing, which is why the bug is intermittent | the drop/double mechanism without jitter, or "on arrival" without why | "the timer is too slow" |
 | EXPLAIN_WINDOW | the same two-fix noise over a 10× longer time → ~10× less spread (0.40 vs 4.11); cost: the value describes the last 10 s, ~9 s to read "stopped"; a driver gets the window speed (the parked 5.5 m/s is absurd) | one side only | repeats the numbers |
 | EXPLAIN_BLOCKING | two threads AND two groups let the timer run while the fix callback works; the fix callback is still one exclusive callback with ρ = 1.5 → queue full, fixes ~2 s old (depth × T); shared group = default exclusive group → threads cannot help | timer part right, fixes not explained (or the reverse) | "multi is faster" |
-| EXPLAIN_SILENCE | no message → no callback; the 5 Hz tick finds the fix stale once its age > 3.0 s → 3.0–3.2 s after the stamp; the trip node checks once a second → up to 1 s later | the timeout without the tick (or the reverse) | "the GPS was stopped" |
+| EXPLAIN_SILENCE | no message → no callback; the 5 Hz tick finds the fix stale once its age > 3.0 s → 3.0–3.2 s after the stamp; the trip node times from the arrival and checks once a second → usually later (up to ~1 s), sometimes up to ~0.2 s earlier; either order is right if explained | the timeout without the tick (or the reverse) | "the GPS was stopped" |
 
 PREDICT_… items are graded as "written" only. Use the most-wrong predictions in class (Look back 3).
 
