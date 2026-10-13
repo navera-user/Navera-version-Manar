@@ -41,7 +41,7 @@ Badges: **Line inspector** = checks 1–7 (session 1), **Fix judge** = all 15.
 | BAD_LINES | 7 | lines 361 (GGA flipped digit, 05:13:00), 901 (GGA cut), 1382 (RMC, no checksum), 1801 (garbage), 3122 (GGA+RMC glued), 3664 (GSV non-ASCII byte), 4083 (GSA flipped VDOP "1906") |
 | IMPOSSIBLE_UTC | "051731" | `3574.17098` (74′, digits swapped; checksum still right). Also printed by Step 0's naive table: the task is now completed by IMPOSSIBLE_WHY |
 | IMPOSSIBLE_WHY | dm_to_deg's minutes < 60 rule refuses it; XOR is blind to the order of characters | graded on topic (two keyword groups) |
-| FORGE_KM | depends on the swap; e.g. 2001.509; class record 8 546.9 km | brute force over the 804 one-swaps that stay FIX: best `01045.14417` → `11045.04417` (110.75° E). | `35`→`53` in the latitude; `01045`→`10045` in the longitude moves 7 786.5 km (100.75° E, still ≤ 180°). Check: exactly one swap, valid XOR, lat ≤ 90 / lon ≤ 180 / minutes < 60, > 1 km, FORGE_KM within 1 % |
+| FORGE_KM | depends on the swap; e.g. 2001.509; class record 8 546.9 km | brute force over the 804 one-swaps that stay FIX: best `01045.14417` → `11045.04417` (110.75° E); `35`→`53` in the latitude; `01045`→`10045` in the longitude moves 7 786.5 km (100.75° E, still ≤ 180°). Check: exactly one swap, valid XOR, lat ≤ 90 / lon ≤ 180 / minutes < 60, > 1 km, FORGE_KM within 1 % |
 | STREET_EDOP / NDOP | 3.26 / 0.80 | `sky` part 3 (az 5, 350, 175, 190, 120, 260; el 30, 55, 40, 65, 75, 80) |
 | PREDICT_LOW (ungraded) / EXPLAIN_LOW | VDOP drops more (2.32 → 1.75) than HDOP (1.36 → 1.22) | the low satellite's −u_U ≈ −0.21, unlike the others' strongly negative values: the Up column stops looking like the clock column, so height and clock separate; horizontally it is one more direction among six |
 | PREDICT_ROTATE (ungraded) | HDOP, VDOP unchanged (1.36, 2.32); EDOP/NDOP swap roles (0.86/1.06 → 1.04/0.89) | geometry turns with the sky; HDOP = trace of a block, invariant under rotation |
@@ -72,7 +72,7 @@ theory when EDOP = NDOP.
 | EXPLAIN_JUMP | valid checksum, minutes < 60, quality 1 → every gnss check passes; σ 1.5 m from HDOP 0.77 describes noise, not damage; refused by the jump gate (665 m > 150 m) | two of three | — |
 | report.md | the three parts with the numbers, distinguishes damage (wire) / guessing (quality) / geometry (σ) / plausibility (gate), names what still gets through (slow drag, spoofer → cross-check, mission 30) | numbers without reasoning | — |
 
-## Difficulties expected (from 24 wrong-solution tests; pilot with real students still to do)
+## Difficulties expected (from 29 wrong-solution tests; pilot with real students still to do)
 
 Each mutant below was run against check.py and the runner; the message it gets is in quotes.
 
@@ -100,6 +100,10 @@ Each mutant below was run against check.py and the runner; the message it gets i
 | h_ell_m with only the geoid tested (crash on empty altitude; r1 weak) | check 4; runner | TypeError + "add the two heights only when BOTH exist" |
 | latitude accepting E/W (r1 strong) | check 4; runner | "a latitude needs hemisphere N or S, a longitude E or W" |
 | negative raw degrees-minutes accepted | check 3 | "a negative value … must give None" |
+| length tested before strip (r2 weak) | check 2; runner | an 80-character line + \r\n → True: "strip BEFORE you test the length" |
+| 90° limit also for E/W (r2 weak) | check 3; runner; `forge` | "a longitude may go up to 180°…" / forge: "X° E is a real longitude…" |
+| `if … return True` without `return False` | check 2; runner | "is_valid returned None: … finish the function with `return False`" |
+| geoid from field 10 | check 4; runner | "geoid_m is None, expected 32.1 — the geoid separation is field 11" |
 
 Answer traps with their own messages: LINK_LOAD_PCT with 8 bits (34.2), STREET_EDOP/NDOP swapped,
 SIGMA_MAX_M = 18.8 (the HDOP), FORGE_KM in metres, a forged line with two changes or 74 minutes.
@@ -122,4 +126,4 @@ SIGMA_MAX_M = 18.8 (the HDOP), FORGE_KM in metres, a forged line with two change
 - The data is synthetic (the only real NAVERA receiver record is one RMC line). The receiver model is simple:
   integer az/el, unweighted DOPs, a single "alley" block for DEGRADED. Real receivers weight satellites and
   smooth positions.
-- Pilot with real students and simulated-student reviews: still to do (timing 3–4 h 30 is an estimate).
+- Pilot with real students and simulated-student reviews: still to do (timing 3–5 h of lab is an estimate).

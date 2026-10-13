@@ -29,7 +29,7 @@
 
 **You need:** mission 01 (least squares, the Jacobian H, HDOP), mission 06 (ENU, heights), missions 03–04
 (dicts, `None`). ⏱ Reading: about 60 minutes with the ✏️ checks: §1–§4 before session 1, §5–§6 before
-session 2. Lab: 3 to 4 h 30.
+session 2. Lab: 3 to 5 h.
 
 **Before you start.** Answer without looking; if you miss two, reread mission 01 §3 and mission 06 §8.
 
@@ -302,6 +302,8 @@ G = [  0      −0.866  −0.5   1 ]   (az 0)              GᵀG = [ 1.5   0    
 GᵀG is block-diagonal. The East–North block inverts to 1/1.5 = 0.667 on each axis. The Up–clock block has
 determinant 2 × 5 − 9 = 1, so its inverse is [[5, 3], [3, 2]]. Then **HDOP = √(0.667 + 0.667) = 1.155**,
 **VDOP = √5 = 2.236**, PDOP = 2.517, TDOP = 1.414, GDOP = 2.887. With σ = 2 m: σ_E = σ_N = 1.63 m, σ_U = 4.47 m.
+(Each entry of GᵀG is one column times another, summed over the rows: Up·Up = 4 × 0.25 + 1 = 2,
+Up·clock = 4 × (−0.5) + (−1) = −3, clock·clock = 5, East·East = 0.75 + 0.75 = 1.5.)
 
 > [!TIP] 🧰 Inverting a 2 × 2 matrix, and a block-diagonal one
 > [[a, b], [c, d]]⁻¹ = 1/(ad − bc) · [[d, −b], [−c, a]]: swap the two diagonal entries, change the sign of the
@@ -413,7 +415,7 @@ is √2 ≈ 1.41 times the theory: a <b>conservative</b> choice, on top of an as
 | impossible field (74 minutes, latitude 95°) | range checks | `dm_to_deg`, `parse_gga` |
 | the receiver guessing (quality 6), no fix | the quality rule | `fix_decision` |
 | poor geometry | DOP → σ → DEGRADED | `dops`, `covariance_from_hdop`, `fix_state` |
-| swapped digits with plausible numbers | nothing on the line: a speed check | the jump gate (mission 01, given in 12) |
+| swapped digits with plausible numbers | nothing on the line: a speed check | the jump gate (mission 01's rule; Step 8's runner applies it; mission 30) |
 | a spoofer's perfect lines | nothing on the line: another source | the cross-check (mission 30) |
 
 ## In NAVERA

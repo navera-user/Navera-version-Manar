@@ -21,7 +21,7 @@ IMPOSSIBLE_WHY = ("dm_to_deg refuses it because 74 minutes is not below 60. The 
 PREDICT_FORGE_KM = "maybe 50 km, like the 74-minute line"   # how far (km) can ONE swap of two characters move the position and still pass?
 FORGED_LINE = "$GPGGA,052200.00,5345.89257,N,01045.14417,E,1,12,0.77,2.1,M,32.0,M,,*59"        # your forged line: the original with two characters swapped (keep the quotes)
 FORGE_KM = 2001.509          # how far your forged line moves the position (python3 run_gnss.py forge)
-EXPLAIN_FORGE = ("XOR does not depend on the order of the characters, so a swap keeps the checksum, and 53° is a possible latitude. Only a plausibility check can see it: the jump gate compares it with the last trusted fix and 2000 km in one second is impossible.")      # why does the checksum not see it, and what in a navigation stack could?
+EXPLAIN_FORGE = ("XOR does not depend on the order of the characters, so a swap keeps the checksum, and 53° is a possible latitude. Only a plausibility check can see it: the jump gate compares it with the last trusted fix and 2000 km in one second is impossible.")      # why do the checksum AND your range checks not see it, and what in a stack could?
 
 # ======== Session 2 — The sky ========
 

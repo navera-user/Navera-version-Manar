@@ -218,7 +218,10 @@ fix the **farthest** while your parser still says FIX? (Your teacher keeps the c
 A range check refuses <b>impossible</b> values (74 minutes, a latitude of 95°), not <b>wrong</b> ones: 53° N is
 a real latitude, 110° E a real longitude (in China). One swap can move the fix by thousands of kilometres and
 still look like a perfect FIX with σ 1.5 m. Only something that knows where the vehicle <b>can</b> be — a jump
-gate, a geofence, another source — refuses it.
+gate, a geofence, another source — refuses it.<br>
+Look again at your farthest line: did it also change the number of satellites (12 → 02)? Quality 1 with 2
+satellites is impossible (a 3-D fix needs 4): a consistency check between fields is one more cheap guard — but
+it would not stop the longitude swap alone.
 </details>
 
 > [!TIP] 🏅 End of session 1 — Line inspector

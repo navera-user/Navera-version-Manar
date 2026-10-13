@@ -123,8 +123,9 @@ def dm_to_deg(value, hemisphere):
     """NMEA degrees-and-minutes → signed decimal degrees. The last two digits before the decimal point
     are whole minutes: "3544.04006" is 35° 44.04006′; "01034.55091" is 10° 34.55091′. S and W are negative.
 
-    Returns None (never an exception) when the value is empty or not a number, the hemisphere is not one
-    of "N", "S", "E", "W", the minutes are not in [0, 60), or the angle is beyond 90° (N/S) or 180° (E/W).
+    Returns None (never an exception) when the value is empty, not a number or negative (the sign is the
+    hemisphere's job), the hemisphere is not one of "N", "S", "E", "W", the minutes are not in [0, 60), or
+    the angle is beyond 90° (N/S) or 180° (E/W).
     Example: dm_to_deg("3544.04006", "N") → about 35.734001;  dm_to_deg("3574.17098", "N") → None
     """
     v = to_float(value)

@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 330" font-family="sans-serif" font-size="13">
-  <rect width="760" height="330" fill="#f7fafc"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 350" font-family="sans-serif" font-size="13">
+  <rect width="760" height="350" fill="#f7fafc"/>
   <text x="380" y="24" text-anchor="middle" font-size="15" fill="#1d2733">Where is the satellite? Azimuth and elevation give the unit vector u (East, North, Up)</text>
 
   <!-- left: seen from above (azimuth) -->
@@ -41,5 +41,5 @@
     <text x="-6" y="18" text-anchor="end" fill="#1d2733" font-size="12">receiver</text>
   </g>
   <text x="590" y="315" text-anchor="middle" fill="#1d2733">Side view: elevation, above the horizon</text>
-  <text x="380" y="292" text-anchor="middle" fill="#0b6e8a" font-size="13">u = ( cos el · sin az ,  cos el · cos az ,  sin el )   — a vector of length 1</text>
+  <text x="380" y="340" text-anchor="middle" fill="#0b6e8a" font-size="13">u = ( cos el · sin az ,  cos el · cos az ,  sin el )   — a vector of length 1</text>
 </svg>

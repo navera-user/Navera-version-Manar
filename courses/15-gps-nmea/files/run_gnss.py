@@ -55,6 +55,12 @@ DATA = "/data/academy/15-gps-nmea"
 LOG = os.path.join(DATA, "sousse_drive.nmea")
 TRUTH = os.path.join(DATA, "truth.csv")
 OUT = "out"
+def _short(v, n=44):
+    """repr(v), cut to n characters but keeping its closing quote."""
+    r = repr(v)
+    return r if len(r) <= n else r[:n - 2] + "…" + r[-1]
+
+
 REAL = "$GNGGA,141621.00,3544.04006,N,01034.55091,E,1,12,0.72,95.3,M,32.1,M,,*70"   # lesson §3
 FORGE_BASE = "$GPGGA,052200.00,3545.89257,N,01045.14417,E,1,12,0.77,2.1,M,32.0,M,,*59"   # the log, 05:22:00
 GATE_V_MPS, GATE_MARGIN_M = 100.0, 50.0           # mission 01's jump gate (navera_lite.yaml)
@@ -159,6 +165,19 @@ def close(got, want, tol):
         return False
 
 
+def _first_wrong_key(v):
+    """The note for the lesson's GGA: name the first key that differs from the docstring Example."""
+    want = {"t_utc_s": 51381.0, "lat": 35.734001, "lon": 10.5758485, "qual": 1, "sats": 12, "hdop": 0.72,
+            "alt_msl_m": 95.3, "geoid_m": 32.1, "h_ell_m": 127.4}
+    if not isinstance(v, dict):
+        return "parse_gga should return a dict"
+    for k, w in want.items():
+        if not close(v.get(k), w, 1e-6):
+            extra = " — the geoid separation is field 11 (field 10 is its unit, 'M')" if k == "geoid_m" else ""
+            return f"{k} is {v.get(k)!r}, expected {w}{extra}"
+    return "compare each key with the docstring Example"
+
+
 def test():
     import numpy as np
     rows = []          # (todo, label, ok, got-string, note)
@@ -197,9 +216,12 @@ def test():
             ("$GPGSA,A,1*3", False, "only one hex digit", "exactly 2 characters after *"),
             ("$GPGSA,A,1", False, "no checksum", "no * → False"),
             ("$GPGSA,A,1$GPGSA,A,1*32", False, "two sentences glued", "a $ inside the body → False"),
+            ("$GPTXT,01,01,02,XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX*15\r\n", True,
+             "a legal 80-character line + \\r\\n", "strip BEFORE you test the length (80 characters without \\r\\n)"),
             (None, False, "None", "test isinstance(line, str) first"), ("", False, "empty line", "")]:
-        add(2, f"is_valid({line!r:.40}) → {want}  ({label})", "is_valid", (line,), lambda v, w=want: v is w,
-            note=why or "is_valid must return True or False (not None)")
+        add(2, f"is_valid({_short(line)}) → {want}  ({label})", "is_valid", (line,), lambda v, w=want: v is w,
+            note=lambda v, why=why: ("is_valid returned None: one path ends without a return — finish the function "
+                                     "with `return False`" if v is None else why or "expected the other answer"))
     add(3, 'dm_to_deg("3544.04006", "N") → 35.734001', "dm_to_deg", ("3544.04006", "N"),
         lambda v: close(v, 35.734001, 1e-6), note="35.4404006: you divided by 100 — the last two digits before "
         "the point are MINUTES (lesson §3)")
@@ -209,13 +231,15 @@ def test():
                         else "W and S are negative"))
     add(3, 'dm_to_deg("3574.17098", "N") → None (74 minutes)', "dm_to_deg", ("3574.17098", "N"), lambda v: v is None,
         note="minutes must be in [0, 60)")
+    add(3, 'dm_to_deg("10045.14417", "E") → 100.752403 (a real longitude)', "dm_to_deg", ("10045.14417", "E"),
+        lambda v: close(v, 100.7524028, 1e-6), note="a longitude may go up to 180°: the 90° limit is for N/S only")
     add(3, 'dm_to_deg("", "N") → None', "dm_to_deg", ("", "N"), lambda v: v is None,
         note="an empty field is no value: use to_float(), which gives None")
     add(4, "parse_gga(the line of lesson §3)", "parse_gga", (REAL,),
         lambda v: isinstance(v, dict) and v.get("qual") == 1 and v.get("sats") == 12 and close(v.get("lat"), 35.734001, 1e-6)
         and close(v.get("lon"), 10.5758485, 1e-6) and close(v.get("hdop"), 0.72, 1e-9)
         and close(v.get("h_ell_m"), 127.4, 1e-6) and close(v.get("t_utc_s"), 51381.0, 1e-6),
-        show=lambda v: repr(v)[:140], note="compare each key with the docstring Example")
+        show=lambda v: repr(v)[:140], note=_first_wrong_key)
     add(4, "parse_gga(a no-fix GGA): qual 0, lat None, h_ell_m None", "parse_gga",
         ("$GPGGA,052009.00,,,,,0,00,99.99,,,,,,*68",),
         lambda v: isinstance(v, dict) and v.get("qual") == 0 and v.get("lat") is None and v.get("h_ell_m") is None,
@@ -224,7 +248,9 @@ def test():
         ("$GPGGA,101013.00,3544.04006,N,01034.55091,E,1,08,1.10,,M,32.1,M,,*72",),
         lambda v: isinstance(v, dict) and v.get("alt_msl_m") is None and close(v.get("geoid_m"), 32.1, 1e-9)
         and v.get("h_ell_m") is None, show=lambda v: repr(v)[:140],
-        note="add the two heights only when BOTH are not None")
+        note=lambda v: ("geoid_m should be 32.1: read field 11 (field 10 is its unit, 'M')"
+                        if isinstance(v, dict) and v.get("geoid_m") is None
+                        else "add the two heights only when BOTH are not None"))
     add(4, "parse_gga(latitude with hemisphere E, longitude with N) → lat None, lon None", "parse_gga",
         ("$GPGGA,101014.00,3544.04006,E,01034.55091,N,1,08,1.10,12.0,M,32.1,M,,*68",),
         lambda v: isinstance(v, dict) and v.get("lat") is None and v.get("lon") is None,
@@ -254,7 +280,8 @@ def test():
         lambda v: isinstance(v, dict) and close(v.get("HDOP"), 1.1547, 1e-3) and close(v.get("VDOP"), 2.2361, 1e-3)
         and close(v.get("TDOP"), 1.4142, 1e-3) and close(v.get("GDOP"), 2.8868, 1e-3) and close(v.get("EDOP"), 0.8165, 1e-3),
         show=lambda v: repr({k: round(x, 3) for k, x in v.items()}) if isinstance(v, dict) else repr(v),
-        note="Q = inverse of GᵀG; HDOP = √(Q_EE + Q_NN), VDOP = √Q_UU … (lesson §5)")
+        note=lambda v: ("you forgot the square root: HDOP² = 1.333" if isinstance(v, dict) and close(v.get("HDOP"), 4 / 3, 1e-3)
+                        else "Q = inverse of GᵀG; HDOP = √(Q_EE + Q_NN), VDOP = √Q_UU … (lesson §5)"))
     add(7, "dops(lesson §5 example without the overhead satellite) → None", "dops", ([0, 90, 180, 270], [30, 30, 30, 30]),
         lambda v: v is None, show=lambda v: repr({k: f"{x:.3g}" for k, x in v.items()}) if isinstance(v, dict) else repr(v),
         note="singular geometry: return None — numpy's inv() does not fail here: test the rank of G before inverting")
@@ -283,7 +310,8 @@ def test():
     for k, r in enumerate(rows):
         first = [t for t in needs.get(r[0], ()) if t in failed]
         if not r[2] and first:
-            rows[k] = r[:4] + ((r[4] + " " if r[4] else "") + f"(fix TODO {first[0]} first: TODO {r[0]} uses it)",)
+            which = " and ".join(str(t) for t in first)
+            rows[k] = r[:4] + ((r[4] + " " if r[4] else "") + f"(fix TODO {which} first: TODO {r[0]} uses it)",)
     last = None
     for todo, label, ok, got, note in rows:
         if todo != last:
@@ -348,7 +376,18 @@ def forge(line):
         d = geo.haversine_m(p0["lat"], p0["lon"], p["lat"], p["lon"])
         print(f"\nthe position moved by {d / 1000:.3f} km" + ("  ✔ more than 1 km" if d > 1000 else "  (not 1 km yet)"))
     else:
-        print("\nyour parser refused the position: the forgery did not get through. Try other characters.")
+        msg = "\nyour parser refused the position: the forgery did not get through. Try other characters."
+        f = line.split("*")[0].split(",")
+        if p0 and p0.get("lon") is not None and p.get("lat") is not None and p.get("lon") is None and len(f) > 5:
+            try:
+                x = float(f[4])
+                deg = int(x // 100) + (x - 100 * int(x // 100)) / 60.0
+            except ValueError:
+                deg = None
+            if deg is not None and deg <= 180.0 and 0 <= x - 100 * int(x // 100) < 60 and f[5] in ("E", "W"):
+                msg = (f"\nyour parser refused the longitude, but {deg:.2f}° {f[5]} is a real longitude: does your "
+                       "dm_to_deg use the 90° limit for E/W too? (docstring: 180° for E/W)")
+        print(msg)
 
 
 # ======================================================================================== sky (Step 6)
@@ -381,15 +420,18 @@ def sky():
         return
     import numpy as np
     os.makedirs(OUT, exist_ok=True)
-    fig, axes = plt.subplots(1, 3, figsize=(13, 4.6), subplot_kw={"projection": "polar"})
+    fig, axes = plt.subplots(1, 4, figsize=(16, 4.6), subplot_kw={"projection": "polar"})
     for ax, (title, az, el) in zip(axes, [("lesson §5", ex_az, ex_el), ("open sky", open_az, open_el),
-                                          ("north–south street", st_az, st_el)]):
+                                          ("north–south street", st_az, st_el),
+                                          ("open sky + 1 low (ESE, 12°)", open_az + [110], open_el + [12])]):
         ax.set_theta_zero_location("N")
         ax.set_theta_direction(-1)
         ax.set_rlim(0, 90)
         ax.set_yticks([30, 60, 90])
         ax.set_yticklabels(["60°", "30°", "0°"], fontsize=8)
         ax.plot(np.radians(az), [90 - e for e in el], "o", ms=10, color="#0b6e8a")
+        if "low" in title:                                    # the 7th satellite of part 4 stands out
+            ax.plot(np.radians(az[-1:]), [90 - el[-1]], "o", ms=12, color="#d64545")
         ax.set_title(title)
     fig.suptitle("Sky plots, drawn like a map (north up, east right): centre = straight up, edge = horizon")
     fig.tight_layout()

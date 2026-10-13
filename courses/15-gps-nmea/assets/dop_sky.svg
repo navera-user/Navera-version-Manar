@@ -48,12 +48,13 @@
     <circle r="2.4" fill="#3a8d3a" fill-opacity="0.45" stroke="#2f7a2f"/>
     <text x="14" y="-12" fill="#2f7a2f" font-size="12">σE = σN = 1.6 m</text>
   </g>
-  <g transform="translate(570,377)">
+  <g transform="translate(570,386)">
     <line x1="-8" y1="0" x2="8" y2="0" stroke="#c7d3dc"/><line x1="0" y1="-8" x2="0" y2="8" stroke="#c7d3dc"/>
     <ellipse rx="48" ry="6.9" transform="rotate(-57)" fill="#d64545" fill-opacity="0.25" stroke="#d64545"/>
-    <text x="44" y="-18" fill="#d64545" font-size="12">semi-axis 32 m along</text>
-    <text x="44" y="-3" fill="#d64545" font-size="12">the satellites,</text>
-    <text x="44" y="12" fill="#d64545" font-size="12">4.6 m across (1 σ)</text>
+    <text x="34" y="-22" fill="#d64545" font-size="11">semi-axes (1 σ):</text>
+    <text x="34" y="-9" fill="#d64545" font-size="11">32 m along the</text>
+    <text x="34" y="4" fill="#d64545" font-size="11">satellites, 4.6 m</text>
+    <text x="34" y="17" fill="#d64545" font-size="11">across</text>
   </g>
   <g transform="translate(60,418)">
     <line x1="0" y1="0" x2="15" y2="0" stroke="#1d2733" stroke-width="2"/>

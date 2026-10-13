@@ -163,6 +163,8 @@ def _():
     cases = [(good + "\r\n", True, "a good line ending with \\r\\n"),
              ("  " + good, True, "a good line with spaces in front"),
              ("$GNGSA,A,3,07,12,30,05,,,,,,,,,3.1,1.8,2.5,1*3f", True, "lower-case hex digits"),
+             (cs("GPTXT,01,01,02," + "X" * 61) + "\r\n", True,
+              "a legal 80-character sentence ending with \\r\\n (strip BEFORE the length test)"),
              (cs("GPGGA,1$GPGGA,2"), False, "a $ inside the body, even with a matching XOR (two sentences glued)"),
              (good.replace("2850.4", "2850.5"), False, "one changed character"),
              (good[:40], False, "a cut line"),
@@ -439,8 +441,8 @@ def _():
               ([r"low", r"horizon", r"small", r"different", r"elevation", r"near zero", r"close to (0|zero)"],
                "what the low satellite changes"))
     dd = number(diff, "DOP_MAX_DIFF")
-    c.ok(0.0 <= dd <= 0.006, f"DOP_MAX_DIFF = {diff!r}: python3 run_gnss.py dop prints the largest HDOP difference "
-                             "(it should be tiny if your dops() is right)")
+    c.ok(0.0 <= dd <= 0.006, f"DOP_MAX_DIFF = {diff!r}: python3 run_gnss.py dop prints the three largest "
+                             "differences (HDOP, PDOP, VDOP) — write the largest (it should be tiny if your dops() is right)")
     lab_number("HDOP_MAX", hmax, "python3 run_gnss.py dop")
 
 

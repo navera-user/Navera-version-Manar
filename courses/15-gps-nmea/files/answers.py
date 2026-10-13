@@ -21,7 +21,7 @@ IMPOSSIBLE_WHY = ""  # which check of yours refuses it, and why did the checksum
 PREDICT_FORGE_KM = ""   # how far (km) can ONE swap of two characters move the position and still pass?
 FORGED_LINE = ""        # your forged line: the original with two characters swapped (keep the quotes)
 FORGE_KM = 0.0          # how far your forged line moves the position (python3 run_gnss.py forge)
-EXPLAIN_FORGE = ""      # why does the checksum not see it, and what in a navigation stack could?
+EXPLAIN_FORGE = ""      # why do the checksum AND your range checks not see it, and what in a stack could?
 
 # ======== Session 2 — The sky ========
 
