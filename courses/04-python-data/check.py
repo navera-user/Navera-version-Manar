@@ -219,6 +219,13 @@ def _():
     out1 = frame(run(outage_table, t, 1.0), "outage_table", ("longest_s", "total_s"))
     c.ok(float(out1.loc["m", "longest_s"]) == 5.0 and float(out1.loc["m", "total_s"]) == 7.0,
          "with dt_s = 1.0 the durations do not change: use the dt_s argument, not DT_S")
+    t2 = pd.DataFrame({"flight_id": ["a"] * 4 + ["b"] * 4, "time_s": [0, 5, 10, 15, 100, 102, 104, 106],
+                       "gps_valid": [1, 1, 1, 1, 1, 0, 0, 1]})
+    out2 = frame(run(outage_table, t2, 2.0), "outage_table", ("longest_s",))
+    c.ok(float(out2.loc["b", "longest_s"]) == 4.0,
+         f"flight b (the 2nd flight, times 100–106) has longest_s {float(out2.loc['b', 'longest_s']):g} instead of a "
+         "short outage: the run's indices are positions INSIDE the flight — take the times from the flight's own rows "
+         "(f['time_s'].to_numpy()), not from df (Step 5, hint 2)")
 
 
 @c.test("TODO 5: state_shares() gives percentages per flight, with all three states",
@@ -236,6 +243,9 @@ def _():
              f"the value for flight {fid} should be a dict with exactly FIX, DEGRADED, NO_FIX; got {row!r}")
         if all(abs(float(row[k]) - want[k] / 100) < 1e-9 for k in want):
             raise CheckFailed("the shares are fractions (0.4), not percentages (40.0): multiply by 100")
+        if abs(sum(float(x) for x in row.values()) - 100.0) > 0.01:
+            raise CheckFailed(f"flight {fid} gives {row}: the shares of one flight must add up to 100 — divide by that "
+                              "flight's rows, not by all the rows of df")
         c.ok(all(abs(float(row[k]) - want[k]) < 1e-6 for k in want), f"flight {fid} gives {row} — not the right shares")
         c.ok(all(type(v) is float for v in row.values()), f"the values should be plain Python floats (float(x)), got "
                                                            f"{[type(v).__name__ for v in row.values()]}")
@@ -251,10 +261,15 @@ def _():
     rows = ([("day", 10.0 + e, 10.0) for e in day] + [("gps", 8.0 + e, 8.0) for e in gps]
             + [("gps", nan, 8.0), ("gps", 9.0, nan), ("none", nan, 7.0)])
     n = pd.DataFrame(rows, columns=["source", "pos_speed_mps", "speed_mps"])
+    n["battery_pct"] = 80.0
+    n.loc[0, "battery_pct"] = nan          # an empty cell in ANOTHER column, on a usable day row
     cols = ("n", "mean_mps", "std_mps", "median_mps", "mad_sigma_mps", "p95_abs_mps")
     out = frame(run(noise_by_source, n), "noise_by_source", cols)
     c.ok("none" not in list(out.index), "a source with no usable error (all NaN) should not appear: drop NaN rows first")
     c.ok(list(out.index) == ["day", "gps"], f"the index should be the sources, sorted: got {list(out.index)}")
+    if int(out.loc["day", "n"]) == 7:
+        raise CheckFailed("day has n = 7 instead of 8: a row with an empty battery_pct was dropped — drop only the rows "
+                          "where the error is NaN, not df.dropna() on the whole log")
     c.ok(int(out.loc["gps", "n"]) == 5, f"gps has n = {out.loc['gps', 'n']!r}: count only rows where BOTH speeds are known")
     want = {"day": (8.625, 20.9348, 2.0, 3.7065, 40.75), "gps": (-0.36, 1.57258, 0.2, 1.03782, 2.6)}
     for src, (mean, std, med, mad, p95) in want.items():
@@ -333,18 +348,25 @@ def _():
     (unit_suspects,) = functions("unit_suspects")
     rows = [("p", 27.75, 7.5), ("p", 27.6, 7.5), ("p", nan, 7.6), ("p", 27.8, 7.4),
             ("q", 3.9, 2.0), ("q", 3.88, 2.0), ("q", 3.92, 2.0), ("q", 3.9, 40.0),
-            ("r", 10.4, 10.0), ("r", 10.4, 10.0), ("r", 10.4, nan), ("s", 13.0, 10.0), ("s", 13.0, 10.0)]
+            ("r", 10.4, 10.0), ("r", 10.4, 10.0), ("r", 10.4, nan), ("s", 13.0, 10.0), ("s", 13.0, 10.0),
+            ("t", 19.5, 10.0), ("t", 19.4, 10.0), ("w", 5.0, 10.0), ("w", 5.0, 10.0)]
     u = pd.DataFrame(rows, columns=["flight_id", "speed_mps", "pos_speed_mps"])
     got = run(unit_suspects, u)
     c.ok(isinstance(got, dict), f"unit_suspects() should return a dict, got {type(got).__name__}")
     c.ok("r" not in got, f"flight r (ratio 1.04) looks right with tol 0.05 and must be left out; got {got}")
+    if got.get("t") != "kn":
+        raise CheckFailed(f"flight t (ratio 1.945, knots) gives {got.get('t')!r}: ratio = median logged speed / median "
+                          "speed from positions, compared with KN_PER_MPS (1 m/s = 1.944 kn)")
+    if "w" not in got:
+        raise CheckFailed("flight w (ratio 0.5) is missing: a ratio far BELOW 1 is suspect too ('?'): "
+                          "|ratio − 1| > tol on both sides")
     if got.get("q") == "?":
         raise CheckFailed("flight q (knots, one wild position speed of 40 m/s) gives '?': use the MEDIANS, not the means")
     if got.get("p") == "?":
         raise CheckFailed("flight p (ratio 3.70, 2.8 % from 3.6) gives '?': the tolerance is RELATIVE, |ratio / 3.6 − 1| ≤ tol")
-    c.ok(got == {"p": "km/h", "q": "kn", "s": "?"}, f"unit_suspects gives {got} — not the right labels")
+    c.ok(got == {"p": "km/h", "q": "kn", "s": "?", "t": "kn", "w": "?"}, f"unit_suspects gives {got} — not the right labels")
     got2 = run(unit_suspects, u, 0.02)
-    c.ok(got2 == {"p": "?", "q": "kn", "r": "?", "s": "?"}, f"with tol = 0.02 it gives {got2}: use the tol argument")
+    c.ok(got2 == {"p": "?", "q": "kn", "r": "?", "s": "?", "t": "kn", "w": "?"}, f"with tol = 0.02 it gives {got2}: use the tol argument")
 
 
 @c.test("Step 9: results.json, made by the runner with your functions and your corrections",
@@ -360,7 +382,7 @@ def _():
     c.ok(r.get("rows_raw") == 1402 and r.get("rows_clean") == 1397, f"results.json: {r.get('rows_raw')} raw rows, "
          f"{r.get('rows_clean')} clean rows — check clean() (TODO 1)")
     lo = r.get("longest_outage", {})
-    c.ok(lo.get("flight_id") == "sahel_hills" and lo.get("duration_s") == 292.0, f"results.json: longest outage {lo}")
+    c.ok(lo.get("flight_id") == "sahel_hills" and lo.get("duration_s") == 292.0, f"results.json: longest outage {lo}, expected sahel_hills with 292 s — check outage_table (TODO 4) and your clock correction")
     c.ok(r.get("jamming_without_outage") == [], "results.json: a jamming window still has no outage: the clock "
                                                 "correction is missing or wrong")
     un = r.get("unplanned_outages", [])
@@ -380,12 +402,17 @@ def _():
     rep = open("report.md").read()
     heads = re.findall(r"^##\s+(.+)$", rep, re.M)
     c.ok(len(heads) >= 5, f"report.md has {len(heads)} '##' headings: keep the five of the template")
-    c.ok("(write here)" not in rep, "report.md still contains '(write here)': replace each one with your text")
+    body = rep[rep.find("## "):] if "## " in rep else rep
+    c.ok("(write here)" not in body, "report.md still contains '(write here)' under a heading: replace each one with your text")
     n = len(words(re.sub(r"^#.*$", "", rep, flags=re.M)))
     c.ok(n >= 200, f"report.md has {n} words of text: write at least 200, in full sentences")
     low = rep.lower()
     if "1.98" in low and "1.19" not in low:
         raise CheckFailed("report.md gives the gps σ of the table WITHOUT corrections (1.98): use the second table")
+    if re.search(r"3\.7(?![0-9])", low) and not re.search(r"3\.7[45]", low):
+        raise CheckFailed("report.md gives day vision's robust σ with one decimal: write it with two (as in results.json)")
+    if re.search(r"(?<![0-9])1\.2(?![0-9])", low) and not re.search(r"1\.19", low):
+        raise CheckFailed("report.md gives the gps robust σ with one decimal: write it with two (as in results.json)")
     if re.search(r"35\.69", low) and not re.search(r"3\.7[45]", low):
         raise CheckFailed("report.md gives day vision's std (35.69) but not its robust σ (mad_sigma_mps)")
     for pats, what in (((r"1\s?397", r"1\s?402"), "the number of rows (raw or left)"),

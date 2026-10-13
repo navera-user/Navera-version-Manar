@@ -64,15 +64,21 @@ corrections · 10 Step 6 unplanned outage · 11 Step 7 · 12 TODO 7 · 13 result
   1.078, **mad_sigma 3.745**, p95 9.192. Without corrections: gps mean −14.2, std 23.3, median −0.55, mad_sigma 1.98,
   p95 53.5 — the km/h flight is a third of the GPS rows, so the robust statistics moved too (1.19 → 1.98; day 3.75 →
   4.28).
-  **Why 3.75 is below 4.25 and 1.19 above 1.10: sampling.** Regenerating the campaign with 40 other seeds
-  (`make_dataset.py --seed 1000…1039`, verified 2026-10-13) gives day 4.11 ± 0.31 and gps 1.11 ± 0.03 m/s: the
-  formula is right on average, and seed 404 is about 1.2 spreads low for day and 2.3 spreads high for gps. The
-  gps→day transition steps (about 5) have no measurable effect. Use it in the debrief: a miss of 8–12 % is not a
-  failed theory when n = 224. The lab's Step 7 TIP gives students the "4.1 ± 0.3 / 1.11 ± 0.03" figures.
+  **Measured vs predicted.** Regenerating the campaign with 40 other seeds (`make_dataset.py --seed 1000…1039`,
+  verified 2026-10-13, also reproduced by the expert reviewer) gives day 4.11 ± 0.31 (3.41–4.69) and gps 1.11 ± 0.03
+  (1.04–1.19) m/s. GPS: the formula is right (1.10). Seed 404's 1.19 is 2.2 spreads high, higher than all 40 other
+  seeds: an unlucky campaign (a 2.2-spread gap either way happens about 1 time in 35), and with 1 095 errors the
+  scatter is only 3 % (1.17/√n). A student who says "larger than the scatter" is right. Day: 3.75 is 1.2 spreads
+  below 4.11, ordinary sampling with 224 errors (8 %). And 4.11 itself is about 3 % below the formula's 4.25: not
+  sampling (standard error of the 40-seed mean 0.05), but the limit of a linear formula: a 6 m noise is not small
+  against a 20 m step, so part of it becomes the positive bias below and not spread (expert's simulation: 4.07 at
+  10 m/s, 4.15 at 14, 4.20 at 20). The gps↔day transition rows change nothing measurable. Debrief: one gap is chance,
+  one is the limit of a linear formula; telling them apart needs the scatter (1.17/√n) and a simulation. The lab's
+  Step 7 "read after the run" box gives students these figures (collapsed, so it does not spoil PREDICT_NOISE).
   **Day's median error is positive (+1.08; 0.98 ± 0.27 over the 40 seeds):** a speed from positions is the length of
   a noisy step; cross-track noise always lengthens it, by about σ²/(v·Δt) metres, i.e. σ²/(v·Δt²) in speed: +0.9 m/s
-  at 10 m/s (sahel, most day rows), +0.64 at 14 m/s, +0.03 for GPS. Verified by simulation (200 000 steps: median
-  bias 0.89 / 0.63 / 0.03 m/s). The jumps add only positive errors (7 beyond +20 m/s, none below −20: `out/noise.png`).
+  at 10 m/s (sahel, most day rows), +0.64 at 14 m/s; GPS +0.06 at 10 m/s, +0.03 at 20. Verified by simulation
+  (median bias 0.89 / 0.63 m/s for day, 0.054 / 0.026 for GPS). The jumps add only positive errors (7 beyond +20 m/s, none below −20: `out/noise.png`).
 - Step 8 (TODO 7): on the raw campaign `unit_suspects` → `{"grid_survey": "km/h"}`; check 12 uses a knots flight with
   a wild position speed (medians needed), a km/h flight 2.8 % off 3.6 (relative tolerance needed), a 1.04 flight
   (left out with tol 0.05, "?" with tol 0.02) and a 1.30 flight ("?").
@@ -92,7 +98,7 @@ corrections · 10 Step 6 unplanned outage · 11 Step 7 · 12 TODO 7 · 13 result
 | EXPLAIN_KEEP_NOFIX | NO_FIX rows are real moments with no position; dropping them shortens or removes outages and hides the time the judge had nothing; only written rules remove rows | "they are real data" without the outage consequence | "NaN is fine" |
 | EXPLAIN_DETECTIVE | clock: log vs sheet, exactly 3600 s, local time UTC+1 (and/or the overlap with grid_survey); speed: ratio 3.6 of two independent measures (and/or > 30 m/s) → km/h; both with numbers | one correction justified with numbers | corrections stated with no evidence |
 | EXPLAIN_ROBUST | a few huge errors (vision jumps, 160–265 m/s) dominate std because errors are squared; MAD-based σ = typical noise; report adds the tail (p95/max) and n; robust statistics did not protect against the km/h flight (systematic, a third of the GPS rows: 1.98 → 1.19 after correction) | two of the three ideas | "std is bigger because vision is worse" |
-| report.md | five sections with numbers and units; cleaning counts and why NO_FIX stays; both corrections with evidence and "raw not edited"; outages incl. the unplanned one flagged; both robust σ compared with theory, the gap judged against the ±7–8 % sampling scatter, the tail explained; honest limits (synthetic, n, logged speed not truth, the small upward bias of speeds from positions) | numbers right but little explanation, or one section thin | lists of numbers copied from results.json |
+| report.md | five sections with numbers and units; cleaning counts and why NO_FIX stays; both corrections with evidence and "raw not edited"; outages incl. the unplanned one flagged; both robust σ compared with theory, each gap judged against its own scatter (day ±8 %: sampling; gps ±3 %: 2 spreads, flagged or explained), the tail explained; honest limits (synthetic, n, logged speed not truth, the small upward bias of speeds from positions) | numbers right but little explanation, or one section thin | lists of numbers copied from results.json |
 
 Predictions (`PREDICT_…`) are never marked. In class, ask who expected the jammer to be broken in Step 6.
 
@@ -112,8 +118,14 @@ Each wrong version below was run against check.py and the runner's `test`; both 
 - `state_shares`: fractions (✘ "multiply by 100"); numpy floats (✘ in the check AND in the runner's test now).
 - `noise_by_source`: `np.std` (✘ "ddof 0"), MAD not scaled, error sign reversed, p95 of signed errors (✘ "take it on
   |err|").
-- `unit_suspects`: means instead of medians, absolute tolerance, flights that look right included, `tol` ignored:
-  each named.
+- `unit_suspects`: means instead of medians, absolute tolerance, flights that look right included, `tol` ignored,
+  ratios below 1 never flagged (✘ "a ratio far BELOW 1 is suspect too"), ratio inverted or knots factor 0.5144
+  (✘ "flight t … compared with KN_PER_MPS"): each named (round 2).
+- `noise_by_source` with `df.dropna()` on the whole log (✘ check 8 "a row with an empty battery_pct was dropped";
+  the runner's test shows n 6 too); `outage_table` taking the times from the whole table instead of the flight
+  (✘ check 6 "flight b …"; the runner's test has the same case) (round 2).
+- report.md: a student who keeps the template's intro paragraph must pass check 14 (only the text after the first
+  `## ` is searched for "(write here)"); a σ with one decimal gets "write it with two" (round 2).
 - Answers: ROWS_RAW 1403, MOST_ROWS_FLIGHT "flight_id", clock +3600, factor 3.6, clock not fixed (UNPLANNED
   "sahel_hills"), report with the uncorrected or non-robust σ: each gets its own message.
 - Weak student (round 1): about 6 h in all (lesson 95 min, sessions 2 h 30 and 2 h 45); give-up points were

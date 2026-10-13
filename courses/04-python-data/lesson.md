@@ -65,7 +65,7 @@ row, one row every 2 s. Every value in the file is text; an empty cell means "no
 
 ```
 flight_id,time_s,lat,lon,alt_m,speed_mps,battery_pct,gps_valid,source,state
-harbour_a,43200,-33.906,18.421,40.2,8.10,97.5,1,gps,FIX
+harbour_a,43200,35.825,10.640,40.2,8.10,97.5,1,gps,FIX
 harbour_a,43202,,,40.6,8.30,97.4,0,none,NO_FIX
 ```
 
@@ -264,6 +264,8 @@ of two independent errors of σ each has variance σ² + σ² = 2σ² (variances
 ```
 
 The logged speed has its own small noise; the two add as variances (0.3 m/s gives √(2.12² + 0.3²) = 2.14).
+Forget the √2 and you predict 30 % too little. The formula assumes the position noise is small next to the
+step v·Δt; lab Step 7 shows what changes when it is not.
 
 > [!QUESTION] ✏️ Check
 > A source's errors have σ = 9.5 m/s but a MAD-based σ of 1.6 m/s. What does that say about its
@@ -318,7 +320,8 @@ log is BEHIND UTC, so the correction ADDS +18 000 s. Check the sign by recomputi
 NAVERA's validation report states each result with its **conditions** and **several statistics**,
 never a mean alone: for example, day vision during a 13 km simulated flight over uniform desert with
 GPS jammed, 185 matches, **median 351 m, p90 853 m** (simulator, 2026-10-01; that was the tile-retrieval
-method of the time: with local feature matching, the same flight held to the end of the test); after a motion gate was
+method of the time: with local feature matching, added later, the same flight kept a usable fix until the end of
+the test); after a motion gate was
 added to day vision, over 4 GPS losses in the mission simulator, **median 83 m, p90 258 m, max 448 m**
 (QA campaign of 2026-09-30, backlog item QA-9). NAVERA's evaluation tool groups errors per source, as your
 `noise_by_source` does. Its percentile takes the sorted sample at index `round(q/100 × (n − 1))`,

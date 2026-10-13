@@ -136,16 +136,23 @@ def test():
                           "lat": [36.0, 35.0, 35.0, 0.0, 0.0, 35.0, np.nan], "lon": [11.0, 10.0, 10.0, 0.0, 0.0, 10.0, np.nan],
                           "alt_m": [50.0, 60.0, 55.0, 58.0, 58.0, 60.0, 52.0]})        # rows 3-4 and 1-5: written twice
     want = {"duplicates": 2, "null_island": 1, "bad_altitude": 0}
+    before = seven.copy()
     v, err = rk.call(lb, "clean", seven)
     ok = False
     if not err and not (isinstance(v, tuple) and len(v) == 2 and isinstance(v[0], pd.DataFrame)):
         v = f"a {type(v).__name__}, not two things: return (clean_df, removed)"
     elif not err:
+        keys = list(zip(v[0]["flight_id"], v[0]["time_s"])) if {"flight_id", "time_s"} <= set(v[0].columns) else []
         ok = len(v[0]) == 4 and isinstance(v[1], dict) and {k: int(x) for k, x in v[1].items()} == want \
-            and v[0]["lat"].isna().sum() == 1 and list(v[0].index) == [0, 1, 2, 3]
-        v = f"{len(v[0])} rows ({int(v[0]['lat'].isna().sum())} with an empty position), index {list(v[0].index)}, {v[1]}"
+            and v[0]["lat"].isna().sum() == 1 and list(v[0].index) == [0, 1, 2, 3] and keys == sorted(keys) \
+            and seven.equals(before)
+        why = ("" if seven.equals(before) else " — it CHANGED the table it received") + \
+              ("" if keys == sorted(keys) else " — not sorted by flight_id THEN time_s")
+        v = f"{len(v[0])} rows ({int(v[0]['lat'].isna().sum())} with an empty position), index {list(v[0].index)}, " \
+            f"{v[1]}{why}"
     show("clean(7-row log, the (0, 0) row written twice)", v, err, ok,
-         "4 rows (1 with an empty position), index [0, 1, 2, 3], {'duplicates': 2, 'null_island': 1, 'bad_altitude': 0}")
+         "4 rows (1 with an empty position), index [0, 1, 2, 3], {'duplicates': 2, 'null_island': 1, 'bad_altitude': 0}"
+         ", sorted by flight then time")
 
     d = pd.DataFrame({"flight_id": ["f1", "f1", "f1", "f2"], "time_s": [0, 2, 6, 0], "lat": [35.0, 35.0002, 35.0004, 36.0],
                       "lon": [10.0, 10.0, 10.0, 11.0]})
@@ -154,8 +161,15 @@ def test():
     if not err and isinstance(v, pd.DataFrame) and {"dt_s", "step_m", "pos_speed_mps"} <= set(v.columns):
         r2 = lambda col: [round(float(x), 2) if x == x else "NaN" for x in v[col]]
         ok = r2("dt_s") == ["NaN", 2.0, 4.0, "NaN"] and r2("pos_speed_mps") == ["NaN", 11.12, 5.56, "NaN"] \
-            and r2("step_m")[3] == "NaN"
-        v = f"dt_s {r2('dt_s')}, step_m {r2('step_m')}, pos_speed_mps {r2('pos_speed_mps')}"
+            and r2("step_m")[3] == "NaN" and "dt_s" not in d.columns
+        why = ""
+        if "dt_s" in d.columns:
+            why = " — it CHANGED the table it received: start with out = df.copy()"
+        elif r2("dt_s")[3] != "NaN" or r2("step_m")[3] != "NaN":
+            why = " — the first row of f2 is not NaN: shift time, lat AND lon inside the groupby"
+        elif r2("pos_speed_mps")[2] == 11.12:
+            why = " — after the 4 s gap the speed is twice too big: divide by dt_s, not by DT_S"
+        v = f"dt_s {r2('dt_s')}, step_m {r2('step_m')}, pos_speed_mps {r2('pos_speed_mps')}{why}"
     elif not err and isinstance(v, pd.DataFrame):
         v = f"a DataFrame without dt_s, step_m and pos_speed_mps (columns: {list(v.columns)})"
     show("add_motion(f1: 0, 2, 6 s; f2: 0 s)", v, err, ok,
@@ -181,34 +195,60 @@ def test():
             ok = False
         v = v.to_dict(orient="index")
     show("outage_table(a: 1 0 0 1, b: 1 1)", v, err, ok, "a: 1, 4.0, 4.0; b: 0, 0.0, 0.0")
+    t2 = pd.DataFrame({"flight_id": ["a"] * 4 + ["b"] * 4, "time_s": [0, 5, 10, 15, 100, 102, 104, 106],
+                       "gps_valid": [1, 1, 1, 1, 1, 0, 0, 1]})
+    v, err = rk.call(lb, "outage_table", t2, 2.0)
+    ok = False
+    if not err and isinstance(v, pd.DataFrame):
+        try:
+            got = float(v.loc["b", "longest_s"])
+            ok = got == 4.0
+            why = "" if ok else (" — + dt_s is missing" if got == 2.0 else " — take the times from the flight's own rows "
+                                 "(f['time_s'].to_numpy()), not from the whole table")
+            v = f"b longest_s {got:g}{why}"
+        except (KeyError, TypeError, ValueError):
+            v = v.to_dict(orient="index")
+    show("outage_table(a: no outage, times 0 5 10 15; b: 1 0 0 1)", v, err, ok, "b longest_s 4")
 
-    s = pd.DataFrame({"flight_id": ["a"] * 4, "state": ["FIX", "FIX", "FIX", "DEGRADED"]})
+    s = pd.DataFrame({"flight_id": ["a"] * 4 + ["b"] * 2, "state": ["FIX", "FIX", "FIX", "DEGRADED", "NO_FIX", "FIX"]})
     v, err = rk.call(lb, "state_shares", s)
-    want = {"a": {"FIX": 75.0, "DEGRADED": 25.0, "NO_FIX": 0.0}}
+    want = {"a": {"FIX": 75.0, "DEGRADED": 25.0, "NO_FIX": 0.0}, "b": {"FIX": 50.0, "DEGRADED": 0.0, "NO_FIX": 50.0}}
     ok = v == want and all(type(x) is float for row in v.values() for x in row.values())
+    if not err and isinstance(v, dict) and not ok and v != want:
+        try:
+            if any(abs(sum(float(x) for x in row.values()) - 100.0) > 0.01 for row in v.values()):
+                v = f"{v} — each flight's shares must add up to 100: divide by THAT flight's rows"
+        except (TypeError, ValueError, AttributeError):
+            pass
     if not err and v == want and not ok:
         v = f"{v} — the right numbers, but not plain Python floats: write float(x)"
-    show("state_shares(FIX FIX FIX DEGRADED)", v, err, ok, want)
+    show("state_shares(a: FIX FIX FIX DEGRADED; b: NO_FIX FIX)", v, err, ok, want)
 
-    e = np.array([-1.0, 0.0, 0.0, 1.0, 1.0, 2.0, 30.0])
-    n = pd.DataFrame({"source": ["gps"] * 7, "pos_speed_mps": e + 5.0, "speed_mps": [5.0] * 7})
+    e = np.array([-30.0, -2.0, -1.0, 0.0, 0.0, 1.0, 1.0])
+    n = pd.DataFrame({"source": ["gps"] * 7, "pos_speed_mps": e + 5.0, "speed_mps": [5.0] * 7,
+                      "battery_pct": [np.nan] + [80.0] * 6})       # an empty cell in another column: not a reason to drop
     v, err = rk.call(lb, "noise_by_source", n)
     ok = False
     if not err and isinstance(v, pd.DataFrame):
         try:
             r = v.loc["gps"]
-            ok = all(abs(float(r[k]) - w) < 0.01 for k, w in (("n", 7), ("mean_mps", 4.714), ("std_mps", 11.19),
-                     ("median_mps", 1.0), ("mad_sigma_mps", 1.483), ("p95_abs_mps", 21.6)))
-            v = {k: round(float(x), 3) for k, x in r.items()}
+            ok = all(abs(float(r[k]) - w) < 0.01 for k, w in (("n", 7), ("mean_mps", -4.429), ("std_mps", 11.33),
+                     ("median_mps", 0.0), ("mad_sigma_mps", 1.483), ("p95_abs_mps", 21.6)))
+            v = {k: (int(x) if k == "n" else round(float(x), 3)) for k, x in r.items()}
+            if v.get("n") == 6:
+                v = f"{v} — a row was dropped for an empty battery_pct: drop only rows where the error is NaN"
+            elif abs(float(r["p95_abs_mps"]) - 1.0) < 0.01:
+                v = f"{v} — p95 of the SIGNED errors: take it on |err|"
         except (KeyError, TypeError, ValueError) as ex:
             v = f"a DataFrame without the row 'gps' or a column ({ex})"
-    show("noise_by_source(errors −1 0 0 1 1 2 30)", v, err, ok,
-         "n 7, mean 4.714, std 11.19, median 1.0, mad_sigma 1.483, p95_abs 21.6")
+    show("noise_by_source(errors −30 −2 −1 0 0 1 1)", v, err, ok,
+         "n 7, mean −4.429, std 11.33, median 0.0, mad_sigma 1.483, p95_abs 21.6")
 
     u = pd.DataFrame({"flight_id": ["a"] * 2 + ["b"] * 2 + ["c"] * 2, "speed_mps": [19.5, 19.5, 10.1, 10.1, 5.0, 5.0],
                       "pos_speed_mps": [10.0] * 6})
     v, err = rk.call(lb, "unit_suspects", u)
     show("unit_suspects(ratios 1.95, 1.01, 0.5)", v, err, v == {"a": "kn", "c": "?"}, {"a": "kn", "c": "?"})
+    print("\n(The check tests every function on more cases than these: a ✔ here is a good sign, not a guarantee.)")
 
 
 def clean_step():
@@ -317,14 +357,18 @@ def schedule_step():
         for fid in clock:
             if fid in sheet.index:
                 first = df.loc[df["flight_id"] == fid, "time_s"].min()
-                print(f"  {fid:15s} first row now {hms(first)} UTC, take-off on the sheet {sheet.loc[fid, 'takeoff_utc']}")
+                good = abs(first - sec_of_day(sheet.loc[fid, "takeoff_utc"])) <= 5
+                print(f"  {fid:15s} first row now {hms(first)} UTC, take-off on the sheet {sheet.loc[fid, 'takeoff_utc']}   "
+                      + ("✔ equal" if good else "✘ must be equal: check the sign and the unit (seconds) of CLOCK_FIX_S"))
             else:
                 print(f"  {fid!r} is not a flight of the sheet: check the spelling")
         for fid in speed:
             f = m[m["flight_id"] == fid]
             if len(f):
-                print(f"  {fid:15s} corrected logged speed / speed from positions (medians): "
-                      f"{f['speed_mps'].median() / f['pos_speed_mps'].median():.2f}")
+                r = f["speed_mps"].median() / f["pos_speed_mps"].median()
+                print(f"  {fid:15s} corrected logged speed / speed from positions (medians): {r:.2f}   "
+                      + ("✔ close to 1.00" if abs(r - 1) <= 0.05 else
+                         "✘ must be close to 1.00: the factor MULTIPLIES speed_mps (try its inverse?)"))
             else:
                 print(f"  {fid!r} is not a flight of the log: check the spelling")
 

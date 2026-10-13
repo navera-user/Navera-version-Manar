@@ -1,7 +1,7 @@
 # Lab 4 — The flight-test analyst
 
 **Goal:** write NAVERA Lite's flight-log toolkit (`navera_lite/logbook.py`, TODO 1–7), use it on a messy
-four-flight campaign, find the clock and the column that lie, measure how noisy each position source is,
+four-flight campaign, find which labels of the data lie, measure how noisy each position source is,
 and write the test report.
 **Time:** 2 h 30 to 5 h (a strong programmer: about 2 h 15; 5 h or a little more if pandas and numpy are new
 to you: plan the two sessions, and finish at home).
@@ -125,7 +125,8 @@ python3 run_logbook.py clean
 3. The runner says fewer than 31 empty positions kept? You used `dropna()`, or wrote a rule as "keep where
    …", which is False for NaN. Write each rule as "remove where …" and keep `~mask`.
 4. The check says null_island = 2 when the (0, 0) row is written twice: you computed that mask on `df`
-   instead of on what the duplicate rule left.
+   instead of on what the duplicate rule left. (A pandas `UserWarning: Boolean Series key will be
+   reindexed` has the same cause.)
 5. The runner says "a DataFrame, not two things": you returned only the DataFrame; return `out, removed`.
 </details>
 
@@ -170,7 +171,12 @@ the fastest step of each flight. Is any of them possible for a drone whose top s
    the groupby (`out["time_s"].shift()` crosses from one flight to the next).
 4. The runner says the DataFrame has no `dt_s`: you added the columns to `out` but returned `df` (or the
    reverse).
+5. `pos_speed_mps` 11.12 where the test expects 5.56 (after the 4 s gap)? You divided by the constant
+   `DT_S`: divide by each row's own `dt_s`.
 </details>
+
+Look again at the `motion` rows: is anything else odd in them, apart from the fastest steps? Note it for
+Step 6.
 
 > [!TASK]
 > `FASTEST_SOURCE`: the source of those fastest steps (`"gps"`, `"day"` or `"none"`). Keep them in mind
@@ -265,7 +271,8 @@ Open `out/outages.png`.
 </details>
 
 Nothing to copy into answers.py here: the numbers go into your report (Step 9). Look at the picture
-instead: which outage is longest, and what did the judge report meanwhile?
+instead: which outage is longest, and what does the `shares` table say the judge reported on that flight
+(DEGRADED or NO_FIX)?
 
 ## Step 6 — The detective
 
@@ -290,7 +297,7 @@ prints, **per flight**:
 ```python
 import pandas as pd
 from navera_lite.logbook import load_log, clean, add_motion
-pd.set_option("display.width", 200)                             # show every column, no "..."
+pd.set_option("display.max_columns", None); pd.set_option("display.width", 200)   # every column, no "..."
 df, removed = clean(load_log("/data/academy/04-python-data/campaign.csv"))   # clean returns TWO things
 df = add_motion(df)
 sheet = pd.read_csv("/data/academy/04-python-data/flight_sheet.csv").set_index("flight_id")
@@ -365,15 +372,26 @@ Open `out/noise.png`. Compare the two tables: without and with your corrections.
    `from_dict`) works here too.
 3. MAD: the median of `(e - e.median()).abs()`, times `MAD_TO_SIGMA`. p95: `np.percentile(e.abs(), 95)`
    (or `e.abs().quantile(0.95)`: the same linear rule).
-4. std 11.19 expected but you get 10.36 on the docstring example: you used numpy's `np.std` (ddof 0);
-   pandas' `e.std()` is ddof 1. 1.0 instead of 1.483 for mad_sigma: you forgot `MAD_TO_SIGMA`.
-5. A sign the other way (mean −4.714): the error is `pos_speed_mps − speed_mps`, not the reverse.
+4. std 11.33 expected but you get 10.49 on the docstring example: you used numpy's `np.std` (ddof 0);
+   pandas' `e.std()` is ddof 1. 1.0 instead of 1.483 for mad_sigma: you forgot `MAD_TO_SIGMA`. p95_abs 1.0
+   instead of 21.6: you took the percentile of the signed errors, not of `|err|`.
+5. A sign the other way (mean +4.429): the error is `pos_speed_mps − speed_mps`, not the reverse. n = 6
+   instead of 7: you dropped a row for an empty cell in another column; drop only rows where `err` is NaN.
 </details>
 
-> [!TIP]
-> Your measured σ will not equal your prediction. With 224 errors, a robust σ scatters by about 7–8 % from
-> one campaign to the next (40 other campaigns made the same way give day vision 4.1 ± 0.3 m/s and GPS
-> 1.11 ± 0.03 m/s). In the report, say whether your gap is larger than that.
+<details><summary>Read after the run: is your gap from the prediction a problem?</summary>
+
+First your prediction: the §5 formula gives GPS √2·1.5/2 = 1.06 m/s (1.10 with the 0.3 m/s of the logged
+speed) and day vision √2·6/2 = 4.24 m/s (4.25). If your PREDICT_NOISE is far from these, find the step of §5
+you skipped (the √2? Δt = 2 s?).
+
+Then the measurement. A robust σ from n errors changes from one campaign to the next by about 1.17/√n of
+itself: about 8 % for day vision's 224 errors, only 3.5 % for GPS's 1 095. Forty other campaigns made the
+same way give day vision 4.1 ± 0.3 m/s (from 3.4 to 4.7) and GPS 1.11 ± 0.03 m/s (from 1.04 to 1.19). Day
+vision's 4.1 is a little below the formula's 4.25 for the reason in the next box: a 6 m noise is not small
+against a 20 m step. In the report, say for each source how many "spreads" your value is from these, and
+whether that is plausible.
+</details>
 
 > [!TASK]
 > `EXPLAIN_ROBUST`: why is day vision's `std_mps` so much bigger than its `mad_sigma_mps` (look at Step 3),
@@ -385,7 +403,7 @@ Open `out/noise.png`. Compare the two tables: without and with your corrections.
 A speed from positions is the LENGTH of a noisy step. Noise along the track makes it longer or shorter
 equally, but noise across the track always makes it longer (Pythagoras). On average the step gains about
 σ²/(v·Δt) metres, so the speed gains about σ²/(v·Δt²): with σ = 6 m, v = 10 m/s, Δt = 2 s, about +0.9 m/s
-(+0.6 at 14 m/s). For GPS (σ = 1.5 m) it is about +0.03 m/s: invisible. This is a small **systematic**
+(+0.6 at 14 m/s). For GPS (σ = 1.5 m) it is about +0.06 m/s at 10 m/s and +0.03 at 20 m/s: invisible. This is a small **systematic**
 error of the method itself, and a reason to compute speeds over longer intervals.
 </details>
 
@@ -404,7 +422,8 @@ python3 run_logbook.py test
 python3 run_logbook.py units
 ```
 
-The check tests it on flights it has never seen (one in knots, one with a wild value, one almost right, and
+`test` only runs the docstring example; the check tests it on flights it has never seen (one in knots, one with a
+wild value, one almost right, one far below 1, and
 another tolerance).
 
 <details><summary>Only if you are stuck after 20 minutes</summary>

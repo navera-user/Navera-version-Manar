@@ -3,6 +3,7 @@ import pandas as pd
 
 from navera_lite.logbook import add_motion, clean, load_log
 
+pd.set_option("display.max_columns", None)
 pd.set_option("display.width", 200)
 
 DATA = "/data/academy/04-python-data/"

@@ -51,10 +51,10 @@ def test_outage_table_and_shares():
 
 
 def test_noise_by_source_example():
-    e = np.array([-1.0, 0.0, 0.0, 1.0, 1.0, 2.0, 30.0])
+    e = np.array([-30.0, -2.0, -1.0, 0.0, 0.0, 1.0, 1.0])
     df = pd.DataFrame({"source": ["gps"] * 7, "pos_speed_mps": e + 5.0, "speed_mps": [5.0] * 7})
     r = noise_by_source(df).loc["gps"]
-    assert r["n"] == 7 and abs(r["std_mps"] - 11.19) < 0.01 and abs(r["mad_sigma_mps"] - 1.4826) < 1e-6
+    assert r["n"] == 7 and abs(r["std_mps"] - 11.33) < 0.01 and abs(r["mad_sigma_mps"] - 1.4826) < 1e-6
     assert abs(r["p95_abs_mps"] - 21.6) < 1e-9
 
 

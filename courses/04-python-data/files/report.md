@@ -1,7 +1,7 @@
 # Flight-test campaign of 15 September 2026 — test report
 
 Write 2–5 sentences under each heading, in your own words, with numbers and units from results.json
-(`python3 run_logbook.py report`) and from what the runner prints. Replace every "(write here)" and keep
+(`python3 run_logbook.py report`) and from what the runner prints. Replace each placeholder paragraph below and keep
 the five `##` headings. A reader who never saw the data must understand what was done and what to trust.
 
 ## Data and cleaning

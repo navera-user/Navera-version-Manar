@@ -178,8 +178,8 @@ def noise_by_source(df):
       p95_abs_mps     95th percentile of |err| (linear interpolation, the course rule)
     df has the columns of add_motion().
 
-    Example: one source "gps" with errors [−1, 0, 0, 1, 1, 2, 30] →
-             n 7, mean 4.714, std 11.19, median 1.0, mad_sigma 1.483, p95_abs 21.6
+    Example: one source "gps" with errors [−30, −2, −1, 0, 0, 1, 1] →
+             n 7, mean −4.429, std 11.33, median 0.0, mad_sigma 1.483, p95_abs 21.6
     """
     d = pd.DataFrame({"source": df["source"], "err": df["pos_speed_mps"] - df["speed_mps"]}).dropna()
     rows = {}
@@ -197,11 +197,12 @@ KMH_PER_MPS, KN_PER_MPS = 3.6, 1.0 / 0.5144   # 1 m/s = 3.6 km/h = 1.944 kn
 
 # @part 04 todo 7
 def unit_suspects(df, tol=0.05):
-    """Flights whose logged speed is probably in the wrong unit. For each flight,
-    ratio = median of speed_mps / median of pos_speed_mps (df has the columns of add_motion()).
-    Returns {flight_id: label} for every flight whose ratio is NOT within tol (relative) of 1:
-    "km/h" if the ratio is within tol of KMH_PER_MPS, "kn" if within tol of KN_PER_MPS, otherwise "?".
-    Flights that look right are left out; "within tol of r" means |ratio / r − 1| ≤ tol.
+    """Flights whose logged speed is probably in the wrong unit. Decide, for each flight, whether its logged
+    speed_mps is in m/s, in km/h or in knots, by comparing it with the speed computed from the positions
+    (df has the columns of add_motion()). Your test must not be fooled by a few wild values (vision jumps,
+    a speed spike). tol is a RELATIVE tolerance on the ratio of the two speeds (KMH_PER_MPS and KN_PER_MPS
+    give the ratios of the two wrong units). Returns {flight_id: "km/h" | "kn" | "?"} for the flights that
+    are NOT in m/s ("?" = in no known unit); flights in m/s are left out.
 
     Example: flight a logged in knots (ratio 1.95), flight b right (ratio 1.01), flight c with ratio 0.5 →
              {"a": "kn", "c": "?"}
