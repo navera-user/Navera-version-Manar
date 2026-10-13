@@ -42,7 +42,7 @@ If you miss two, reread lesson 1 §5 and the scripts part of lesson 2.
 matching lines), as text.
 </details>
 
-⏱ Reading: about 60 minutes with the ✏️ checks. Lab: 3 h to 4 h (up to 5 h if the terminal is still
+⏱ Reading: about 80 minutes with the ✏️ checks. Lab: 3 h to 4 h (up to 5 h if the terminal is still
 new to you).
 
 <details><summary>Workspace and words (open if you need them)</summary>
@@ -496,7 +496,7 @@ the text after <code>@@</code> says it is inside <code>check()</code>.
 </details>
 
 <details><summary>5. You reset your branch two commits back by mistake. Which command, and what do you look for?</summary>
-<code>git reflog</code>; the entry before <code>reset: moving to HEAD~2</code>, i.e. <code>HEAD@{1}</code>; then
+<code>git reflog</code>; the line just below <code>reset: moving to HEAD~2</code>, i.e. <code>HEAD@{1}</code>; then
 <code>git reset --hard HEAD@{1}</code>.
 </details>
 

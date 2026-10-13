@@ -31,7 +31,7 @@ PROBE = next((p for p in ("/academy/courses/05-git/files/probe_gate.py", os.path
 # ---------------------------------------------------------------- helpers
 def git(*args, cwd=REPO, env=None):
     r = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, env=env)
-    return r.returncode, r.stdout.strip()
+    return r.returncode, r.stdout.rstrip()          # keep the first column of `status --porcelain`
 
 
 def git_ok(*args, cwd=REPO):
@@ -354,7 +354,7 @@ def _():
 
     def worktree(path):
         try:
-            return open(os.path.join(REPO, path), errors="replace").read().strip()    # as show() strips
+            return open(os.path.join(REPO, path), errors="replace").read().rstrip()    # as show() does
         except OSError:
             return None
 
@@ -381,7 +381,8 @@ def _():
         c.ok(not other, f"commit {h[:7]} mixes the geo.py change with {', '.join(other)}: one concern per commit")
         c.ok("README.md" not in files_of(h),
              f"commit {h[:7]} mixes the geo.py refactor with the README typo: two concerns, so two commits. "
-             "Undo the commit but keep the changes (git reset --soft HEAD~1), then add and commit each file alone")
+             "Undo the commit but keep your edits: git reset HEAD~1 (both files become unstaged), then git add README.md "
+             "+ git commit, then git add navera_lite/geo.py + git commit")
     code, dirty = git("status", "--porcelain", "--untracked-files=no", "--", "README.md", "navera_lite/geo.py")
     c.ok(dirty == "", "an accepted change is applied but not committed:\n" + dirty)
 
@@ -557,7 +558,11 @@ def _():
     with Clone() as cl:
         cl.checkout(f"origin/{BRANCH}")
         code, last = cl.pytest("tests/test_regression.py")
-        c.ok(code == 0, f"on your branch, tests/test_regression.py fails: {last[0]}")
+        if code != 0:
+            fixed = cl.probe(f"origin/{BRANCH}") == "5"
+            raise CheckFailed(f"on your branch, tests/test_regression.py fails: {last[0]}" +
+                              (" — the probe prints 5 there, so the gate is right: one of your expected True/False "
+                               "values is wrong (Step 8 hint 5)" if fixed else " (is the bad commit reverted yet?)"))
         cl.checkout("main")
         with open(os.path.join(cl.dir, "tests", "test_regression.py"), "w") as f:
             f.write(src)
@@ -595,13 +600,26 @@ def _():
 def _():
     need_branch()
     (why,) = answers("EXPLAIN_RESCUE")
-    _, log = git("reflog", "show", "--format=%gs", f"refs/heads/{BRANCH}")
-    c.ok(re.search(r"reset: moving to HEAD[~^]", log), "the reflog of my-first-change shows no `git reset --hard "
-                                                     "HEAD~2`: do the disaster of Step 9 (then the rescue)")
-    c.ok(not re.match(r"reset: moving to HEAD[~^]", log.splitlines()[0]) and
-         show(f"refs/heads/{BRANCH}", "tests/test_regression.py") is not None,
-         "your branch is still where the reset left it: git reflog, then git reset --hard HEAD@{1} (the line "
-         "just below the reset)")
+    # The disaster = a `reset: moving to HEAD~…` made AFTER the Step 8 test was committed (Step 5's
+    # `git reset HEAD~1` to split a commit does not count). The rescue = the branch again contains the commit
+    # it was on just before that reset (or that work was cherry-picked back from the reflog).
+    tip = f"refs/heads/{BRANCH}"
+    _, out = git("reflog", "show", "--format=%H %gs", tip)
+    entries = [l.split(" ", 1) for l in out.splitlines() if " " in l]          # newest first
+    hard = [i for i, (h, s) in enumerate(entries) if re.match(r"reset: moving to HEAD[~^]", s)
+            and i + 1 < len(entries) and show(entries[i + 1][0], "tests/test_regression.py") is not None]
+    if not hard:
+        c.ok(show(tip, "tests/test_regression.py") is not None,
+             "do Step 8 first: tests/test_regression.py is not committed on your branch yet")
+        raise CheckFailed("the reflog of my-first-change shows no `git reset --hard HEAD~2` after your Step 8 "
+                          "commits: do the disaster of Step 9, then the rescue")
+    k = hard[0]
+    before = entries[k + 1][0]                       # where the branch was just before the (latest) disaster
+    back = git("merge-base", "--is-ancestor", before, tip)[0] == 0
+    picked = any(s.startswith("cherry-pick") for _, s in entries[:k])
+    c.ok(back or picked, f"your branch does not have all its commits back: just before the reset it was at "
+                         f"{before[:7]}. In git reflog, take the line just BELOW 'reset: moving to HEAD~2', then "
+                         f"git reset --hard {before[:7]} (redoing the work by hand is not the rescue)")
     c.ok(os.path.isfile(os.path.join(REPO, "navera_lite", "guard.py")), "navera_lite/guard.py is still deleted — "
                                                                         "git restore brings it back")
     _, head = git("symbolic-ref", "-q", "HEAD")

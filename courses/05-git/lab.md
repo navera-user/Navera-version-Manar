@@ -89,6 +89,8 @@ git status
 2. Committed on `main` by mistake? Note the hash (`git log -1 --oneline`). No branch `my-first-change`
    yet: `git switch -c my-first-change`. Otherwise: `git switch my-first-change` and
    `git cherry-pick <hash>`. Then put `main` back where it was: `git branch -f main 1f76dac`.
+3. A long `usage:` list after `git config`, and no `user.name` in `--list`? Your name has spaces: put it
+   in quotes, `"Ana Souza"`.
 </details>
 
 ## Step 2 — Read a hunk header
@@ -277,6 +279,9 @@ git log --oneline main..my-first-change
    `git restore --source=main <file>`, then commit that correction.
 2. `nothing added to commit`: you forgot `git add`.
 3. A wrong message on your last commit (not shared yet): `git commit --amend -m "…"`.
+4. Both files in one commit? `git reset HEAD~1` undoes the commit and keeps your edits, unstaged. Then add
+   and commit **one** file at a time. (After `git reset --soft HEAD~1` both files stay **staged**, and the
+   next `git commit` takes both again: `git restore --staged navera_lite/geo.py` first.)
 </details>
 
 > [!TIP] 🏅 End of session 1 — Reviewer
@@ -290,8 +295,9 @@ git log --oneline main..my-first-change
 > **Bug report (Priya, test pilot):** "Replay test, lesson 1's table: after a 500 m GPS jump, the GPS
 > is never accepted again. With v0.1 it was accepted after 5 s."
 
-[probe_gate.py](file:./probe_gate.py) replays lesson 1's table (the trusted fix at t = 0 s, then the table's 7 rows: 8 fixes) through the `JumpGate` of the
-commit checked out now and prints how many fixes it refuses (5 is right).
+[probe_gate.py](file:./probe_gate.py) replays lesson 1's table (the trusted fix at t = 0 s, then the
+table's 7 rows: 8 fixes) through the `JumpGate` of the commit checked out now, and prints how many
+fixes it refuses (5 is right).
 
 > [!TASK]
 > **Predict** (`PREDICT_PROBE`): what will it print on your branch? (Spotted a suspicious line of
@@ -475,6 +481,10 @@ announces it. The other way is to **fix forward**: one new commit that changes o
    `git restore --source=main navera_lite/guard.py`, commit that, and revert again.
 4. `error: Your local changes … would be overwritten by revert`: a file is still changed since Step 5
    (often a rejected hunk you applied). `git status`, then `git restore <file>`, and revert again.
+5. After the revert the probe prints 5 but your test still fails? Then the gate is right and **your
+   expected list** is wrong. pytest says `At index i`: recompute fix i with lesson 1's table (t = 4 s:
+   100 × 4 + 50 = 450 m < 500 m → refused, `False`). Commit the corrected test as a new `test(guard): …`
+   commit.
 </details>
 
 ## Step 9 — Disaster and rescue
@@ -539,6 +549,13 @@ git format-patch main --stdout > ../my_changes.patch
 
 ```bash
 git apply --stat ../my_changes.patch
+```
+
+Does it apply to `main`? Test it on `main` itself, in detached HEAD, then come back (`--check` on your
+own branch would fail: your changes are already there):
+
+```bash
+git switch --detach main && git apply --check ../my_changes.patch && echo "applies to main"; git switch my-first-change
 ```
 
 > [!TASK]

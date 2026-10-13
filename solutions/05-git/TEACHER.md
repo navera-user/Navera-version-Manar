@@ -102,7 +102,7 @@ exactly 5 bisect tests.
   string prints an error but still exits non-zero (works by accident: show `[ "$n" = "5" ]`).
 - TODO 5: a test that only checks the first refusal passes on main's code: the check says so.
 - Students who commit README + geo in one commit (`fix(readme,geo): …`) now get check 7 ✘ (two scopes) and
-  check 6 ✘ (two concerns): `git reset --soft HEAD~1`, then two commits.
+  check 6 ✘ (two concerns): `git reset HEAD~1` (edits kept, unstaged), then two commits (Step 5 hint 4).
 - Kenji's hunks applied but not committed (only README + geo committed): check 6 reads the working folder too,
   so no Reviewer badge with a 500 m margin lying in the folder; Step 8 hint 4 covers the revert refusal it causes.
 - `lo = mid` used to freeze `run_lab.py test`; the runner now stops after 2n + 5 calls with a message, and Step 6
@@ -110,19 +110,25 @@ exactly 5 bisect tests.
   shows at Step 3, not only at Check time.
 - Counting the `# first bad commit` line in `TESTS_RUN` (8 instead of 7): the Step 7 task now says not to.
 - A `reset --hard HEAD~2` without the rescue, and a `my_changes.patch` made before it: checks 14 and 15 say so.
+  Check 14 needs the commit the branch was on just before that reset (the reflog line just below it) to be back
+  in the branch (or cherry-picked from the reflog): redoing the work by hand, or rescuing to `HEAD@{2}`, fails it.
+  A Step 5 `git reset HEAD~1` (to split a commit) is ignored: only a reset after the Step 8 commits counts.
+- A regression test with a wrong expected value: if the probe prints 5 on the branch, check 12 says the
+  expected list is wrong (Step 8 hint 5).
 - `git revert` without `--no-edit` opens an editor (nano or vi in the terminal): tell students how to save and quit,
   or insist on `--no-edit`.
 - Forgetting `git bisect reset`, or saving `bisect.log` after the reset (then it is empty).
 - Committing on `main` in Step 5: check 6 says main has moved; Step 1's hint gives the repair.
 
-## Suggested class plan (reading at home about 1 h + 2 sessions of 2 h; about 5 h in all)
+## Suggested class plan (reading at home about 1 h 20 + 2 sessions of 2 h; about 5 h 15 in all)
 
-0. **Before session 1:** read the lesson (about 60 min) with the ✏️ checks.
+0. **Before session 1:** read the lesson (about 80 min) with the ✏️ checks.
 1. **Session 1 — hook (10 min):** EST-9 read aloud from the brief; "a commit hash in a backlog: what does it prove?"
 2. **Board (15 min):** decode one hunk header together; the four review questions on the lesson's timeout patch.
 3. **Lab (90 min):** Steps 0–5. Stop at the Reviewer box. Last 10 min: two students read their hunk 4 verdict.
 4. **Session 2 — retrieval (10 min):** Check-yourself 2–4 on paper; one bisect by hand on the board (16 commits).
-5. **Lab (90 min):** Steps 6–10.
+5. **Lab (90 min):** Steps 6–10. Students who have not finished Step 10 finish it at home (the lab
+   announces about 1 h 45 per session); the Detective badge needs no class time.
 6. **Debrief (20 min):** Kenji's patch vs the cause found by bisect (symptom vs cause); revert vs fix forward;
    who needed 7 bisect tests and why (skip).
 

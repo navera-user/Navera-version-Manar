@@ -102,14 +102,15 @@ def numstat(path):
 
 
 def stat(path):
-    path = os.path.join(START, os.path.expanduser(path))
+    path = os.path.normpath(os.path.join(START, os.path.expanduser(path)))
+    tip = (". Run this from INSIDE navera-lite-history:  cd ~/lessons/05-git/navera-lite-history"
+           if os.path.basename(START) != "navera-lite-history" else "")
     if not os.path.isfile(path):
-        sys.exit(f"there is no file {path} — make it first (lab Step 3), or check the name"
-                 + (". Run this from INSIDE navera-lite-history:  cd ~/lessons/05-git/navera-lite-history"
-                    if os.path.basename(START) != "navera-lite-history" else ""))
+        sys.exit(f"there is no file {path} — make it first (lab Step 3), or check the name" + tip)
     text = open(path, errors="replace").read()
     if "diff --git" not in text:
-        sys.exit(f"{path} contains no diff (is it empty? was the git diff command right?)")
+        sys.exit(f"{path} contains no diff (is it empty? was the git diff command right?)"
+                 + (tip + ", then make the patch again (Step 3)" if tip else ""))
     mine = rk.need_ok(d, "diff_stat", text, kind=dict)
     git = numstat(path)
     print(f"{'file':32s} {'yours (+/−)':>14s} {'git (+/−)':>12s}")
