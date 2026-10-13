@@ -28,12 +28,16 @@ ap.add_argument("--shell", help="run this command in the lesson folder instead o
 ap.add_argument("--resources", default="", help="comma list: sim,camera,sensors (only when free!)")
 ap.add_argument("--clean", action="store_true")
 ap.add_argument("--timeout", type=int, default=600)
+ap.add_argument("--who", default="", help="a separate throw-away student per tester (e.g. strong, weak, expert): "
+                                          "parallel testers of one lesson never share files")
 a = ap.parse_args()
 
 lid = a.lesson
 if not os.path.isfile(os.path.join(config.COURSES, lid, "meta.json")):
     sys.exit(f"no lesson {lid}")
-name = "_try_" + re.sub(r"[^a-z0-9]", "", lid.lower())[:16]
+WHO = {"": 0, "strong": 1, "weak": 2, "expert": 3, "fix": 4}
+name = "_try_" + re.sub(r"[^a-z0-9]", "", lid.lower())[:16] + \
+       ("_" + re.sub(r"[^a-z0-9]", "", a.who.lower())[:12] if a.who else "")
 if a.clean:
     workspaces.delete_student(name)
     print("removed", name)
@@ -58,7 +62,7 @@ inner = a.shell or f"PYTHONPATH=/academy/lib:$PYTHONPATH python3 /academy/course
 cmd = ["bash", "-lc", f"source ~/.bashrc >/dev/null 2>&1; cd ~/lessons/{lid} && {pre}{inner}"]
 res = [r for r in a.resources.split(",") if r]
 argv = sandbox.bwrap_argv(name, workspaces.student_home(name), 0, cmd, resources=res, heavy=bool(res),
-                          domain=config.TEST_DOMAINS[int(lid[:2]) % len(config.TEST_DOMAINS)],  # 200 + NN, unique per lesson
+                          domain=config.TEST_DOMAINS[(int(lid[:2]) + 40 * WHO.get(a.who, 0)) % len(config.TEST_DOMAINS)],  # unique per lesson and tester
                           extra_ro=mounts)
 try:
     import signal
