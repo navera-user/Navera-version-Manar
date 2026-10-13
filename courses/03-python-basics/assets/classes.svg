@@ -1,52 +1,39 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" font-family="sans-serif" font-size="13">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 340" font-family="sans-serif" font-size="13">
   <defs>
-    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#555"/></marker>
     <marker id="tri" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="11" markerHeight="11" orient="auto"><path d="M0 0 L12 6 L0 12 Z" fill="#fff" stroke="#1f6fb2" stroke-width="1.5"/></marker>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#777"/></marker>
   </defs>
-  <rect width="640" height="360" fill="#f7fafc"/>
+  <rect width="660" height="340" fill="#f7fafc"/>
   <text x="20" y="26" font-size="15" font-weight="bold" fill="#1d2733">Classes (blueprints)</text>
-  <text x="390" y="26" font-size="15" font-weight="bold" fill="#1d2733">Objects (instances)</text>
-  <!-- Vehicle class -->
-  <rect x="20" y="40" width="250" height="135" rx="6" fill="#e8f1fb" stroke="#1f6fb2" stroke-width="1.5"/>
-  <text x="32" y="62" font-weight="bold" fill="#1f6fb2">class Vehicle</text>
+  <text x="420" y="26" font-size="15" font-weight="bold" fill="#1d2733">Objects (one value each)</text>
+  <rect x="20" y="40" width="250" height="110" rx="6" fill="#e8f1fb" stroke="#1f6fb2" stroke-width="1.5"/>
+  <text x="32" y="62" font-weight="bold" fill="#1f6fb2">class Sensor</text>
   <line x1="20" y1="70" x2="270" y2="70" stroke="#1f6fb2"/>
-  <text x="32" y="88" fill="#1d2733">self.name, self.cruise_ms,</text>
-  <text x="32" y="104" fill="#1d2733">self.battery_wh, self.power_w</text>
-  <line x1="20" y1="114" x2="270" y2="114" stroke="#1f6fb2"/>
-  <text x="32" y="132" fill="#1d2733" font-family="monospace">__init__(self, name, …)</text>
-  <text x="32" y="148" fill="#1d2733" font-family="monospace">endurance_s(self, …)</text>
-  <text x="32" y="164" fill="#1d2733" font-family="monospace">range_m(self, …)</text>
-  <!-- FixedWing class -->
-  <rect x="20" y="225" width="250" height="115" rx="6" fill="#eaf6ee" stroke="#2e8b57" stroke-width="1.5"/>
-  <text x="32" y="247" font-weight="bold" fill="#2e8b57">class FixedWing(Vehicle)</text>
-  <line x1="20" y1="255" x2="270" y2="255" stroke="#2e8b57"/>
-  <text x="32" y="273" fill="#1d2733">+ self.stall_ms</text>
-  <line x1="20" y1="283" x2="270" y2="283" stroke="#2e8b57"/>
-  <text x="32" y="301" fill="#1d2733" font-family="monospace">__init__: super().__init__(…)</text>
-  <text x="32" y="317" fill="#1d2733" font-family="monospace">+ turn_radius_m(self, …)</text>
-  <text x="32" y="333" fill="#666" font-size="12">endurance_s, range_m: inherited</text>
-  <!-- inheritance arrow -->
-  <line x1="145" y1="225" x2="145" y2="178" stroke="#1f6fb2" stroke-width="1.5" marker-end="url(#tri)"/>
-  <text x="153" y="206" fill="#1f6fb2" font-size="12">inherits from</text>
-  <!-- objects -->
-  <rect x="390" y="45" width="230" height="110" rx="6" fill="#ffffff" stroke="#1f6fb2" stroke-dasharray="5 3"/>
-  <text x="402" y="65" font-weight="bold" fill="#1d2733">quad</text>
-  <text x="402" y="84" fill="#1d2733">name = "quad"</text>
-  <text x="402" y="102" fill="#1d2733">cruise_ms = 12.0</text>
-  <text x="402" y="120" fill="#1d2733">battery_wh = 160.0</text>
-  <text x="402" y="138" fill="#1d2733">power_w = 350.0</text>
-  <rect x="390" y="215" width="230" height="130" rx="6" fill="#ffffff" stroke="#2e8b57" stroke-dasharray="5 3"/>
-  <text x="402" y="234" font-weight="bold" fill="#1d2733">wing</text>
-  <text x="402" y="252" fill="#1d2733">name = "wing"</text>
-  <text x="402" y="268" fill="#1d2733">cruise_ms = 20.0</text>
-  <text x="402" y="286" fill="#1d2733">battery_wh = 150.0</text>
-  <text x="402" y="304" fill="#1d2733">power_w = 220.0</text>
-  <text x="402" y="322" fill="#1d2733">stall_ms = 12.0</text>
-  <!-- built-from arrows -->
-  <line x1="272" y1="102" x2="386" y2="102" stroke="#555" stroke-width="1.5" marker-end="url(#ar)"/>
-  <text x="282" y="94" fill="#555" font-size="12">Vehicle(…)</text>
-  <line x1="272" y1="282" x2="386" y2="282" stroke="#555" stroke-width="1.5" marker-end="url(#ar)"/>
-  <text x="282" y="274" fill="#555" font-size="12">FixedWing(…)</text>
-  <text x="390" y="180" fill="#555" font-size="12">each object has its OWN attributes;</text>
-  <text x="390" y="196" fill="#555" font-size="12">wing.endurance_s() uses wing's values</text>
+  <text x="32" y="88" fill="#1d2733">attributes: self.name, self.rate_hz</text>
+  <line x1="20" y1="98" x2="270" y2="98" stroke="#1f6fb2"/>
+  <text x="32" y="116" fill="#1d2733" font-family="monospace">__init__(self, name, rate_hz)</text>
+  <text x="32" y="134" fill="#1d2733" font-family="monospace">period_s(self)</text>
+  <rect x="20" y="200" width="250" height="110" rx="6" fill="#fdf3e4" stroke="#d17a00" stroke-width="1.5"/>
+  <text x="32" y="222" font-weight="bold" fill="#b06400">class Camera(Sensor)</text>
+  <line x1="20" y1="230" x2="270" y2="230" stroke="#d17a00"/>
+  <text x="32" y="248" fill="#1d2733">+ self.hfov_deg</text>
+  <line x1="20" y1="258" x2="270" y2="258" stroke="#d17a00"/>
+  <text x="32" y="276" fill="#1d2733" font-family="monospace">__init__: super().__init__(…)</text>
+  <text x="32" y="294" fill="#1d2733" font-family="monospace">+ footprint_m(self, altitude_m)</text>
+  <line x1="145" y1="200" x2="145" y2="152" stroke="#1f6fb2" stroke-width="1.5" marker-end="url(#tri)"/>
+  <text x="152" y="182" fill="#1f6fb2">inherits period_s()</text>
+  <rect x="420" y="50" width="215" height="70" rx="6" fill="#fff" stroke="#1f6fb2"/>
+  <text x="432" y="72" font-family="monospace" fill="#1d2733">imu = Sensor("imu", 50)</text>
+  <text x="432" y="92" fill="#1d2733">name "imu", rate_hz 50</text>
+  <text x="432" y="110" fill="#1d2733">imu.period_s() → 0.02</text>
+  <rect x="420" y="200" width="215" height="90" rx="6" fill="#fff" stroke="#d17a00"/>
+  <text x="432" y="222" font-family="monospace" fill="#1d2733">cam = Camera("day", 10, 90)</text>
+  <text x="432" y="242" fill="#1d2733">name "day", rate_hz 10, hfov 90</text>
+  <text x="432" y="262" fill="#1d2733">cam.period_s() → 0.1 (Sensor's)</text>
+  <text x="432" y="280" fill="#1d2733">cam.footprint_m(100) → 200.0</text>
+  <line x1="272" y1="95" x2="416" y2="85" stroke="#777" stroke-dasharray="5 4" marker-end="url(#ar)"/>
+  <line x1="272" y1="255" x2="416" y2="245" stroke="#777" stroke-dasharray="5 4" marker-end="url(#ar)"/>
+  <text x="300" y="80" fill="#777">built from</text>
+  <text x="300" y="240" fill="#777">built from</text>
+  <text x="20" y="330" fill="#1d2733">A Camera IS a Sensor: isinstance(cam, Sensor) is True. Each object keeps its own attribute values.</text>
 </svg>

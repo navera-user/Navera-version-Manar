@@ -259,7 +259,9 @@ never code) goes into `datasets/<id>/` (owner decision §7.2).
 Synthetic "drone photos" with exact ground truth are easy to make from the map (crop,
 rotate, scale, blur, change brightness) — preferred for vision labs. The real frames are good for
 "looks like a real flight" demos. Prepare datasets with a script run on the host (copy the script
-into `datasets/<id>/make_dataset.py` so the teacher can regenerate them), keep each dataset ≤ 50 MB.
+into `solutions/<id>/make_dataset.py` so the teacher can regenerate them), keep each dataset ≤ 50 MB.
+Generators never go in `datasets/<id>/` (students can read it: a generator's comments give the answers away):
+`datasets/<id>/` holds the generated outputs only, plus at most a neutral README.
 
 ## Environment facts
 

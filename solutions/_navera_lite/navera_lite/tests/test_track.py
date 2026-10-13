@@ -1,0 +1,39 @@
+"""Tests of navera_lite/track.py (mission 03). Written for the course; it is not NAVERA code."""
+import numpy as np
+import pytest
+
+from navera_lite.track import Track, load_track
+
+
+def make(points):
+    tr = Track()
+    for p in points:
+        tr.add(*p)
+    return tr
+
+
+def test_add_refuses_time_going_back():
+    tr = make([(0, 0, 0), (1, 3, 4)])
+    assert len(tr) == 2 and tr.e_m == [0.0, 3.0]
+    with pytest.raises(ValueError):
+        tr.add(1, 6, 8)
+
+
+def test_length_and_speeds():
+    tr = make([(0, 0, 0), (2, 6, 8), (3, 6, 20)])
+    assert tr.length_m() == pytest.approx(22.0)
+    assert np.allclose(tr.speeds_mps(), [5.0, 12.0])
+    assert make([(0, 1, 1)]).length_m() == 0.0 and len(make([]).speeds_mps()) == 0
+
+
+def test_glitches_are_the_points_reached():
+    tr = make([(0, 0, 0), (1, 10, 0), (2, 20, 0), (3, 95, 0)])
+    g = tr.glitches(50.0)
+    assert g == [3] and all(type(i) is int for i in g)
+    assert make([(0, 0, 0), (1, 10, 0), (2, 90, 0), (3, 30, 0)]).glitches(50.0) == [2, 3]
+
+
+def test_load_track(tmp_path):
+    p = tmp_path / "t.csv"
+    p.write_text("t_s,e_m,n_m\n0,0,0\n1,3,4\n")
+    assert len(load_track(str(p))) == 2
