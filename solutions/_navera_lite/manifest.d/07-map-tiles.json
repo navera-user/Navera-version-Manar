@@ -1,0 +1,2 @@
+{"parts": ["tiles"], "todo_missions": [7], "tests": [], "extra": [],
+ "note": "Mission 07 introduces tiles.py (TODO 1-9; given: constants, MAP_PATH, decode_tile, patch_origin, map_patch, stamp_attribution). geo.py (06) comes finished through the import closure. tests/test_tiles.py is for mission 14 onward."}
