@@ -115,20 +115,25 @@ except the deliberately correct ones):
   indices", "loops over the speeds").
 - loops in `length_m`/`speeds_mps` (✘15 "uses a Python loop"): for, map/sum, dict/set comprehension,
   module-level helper, `@staticmethod` helper, `functools.reduce`, `np.vectorize(lambda…)`,
-  `np.apply_along_axis`, a loop moved into `arrays()`. The test is behavioural: it counts the Python lines of
+  `np.apply_along_axis`, a loop moved into `arrays()`, `np.vectorize(math.hypot)` / `np.frompyfunc`. The test is behavioural: it counts the Python lines of
   the student's own files run by the method on a 2 000-position track (threshold 100; the reference runs 4),
   plus a short list of C-level iterators the trace cannot see (map, filter, sum, range, zip, enumerate,
-  sorted, reversed, iter, next, functools.reduce). Accepted (checked): `from numpy import diff, hypot`,
-  `round()`, `min()`, `np.sum`.
+  sorted, reversed, iter, next, functools.reduce). Accepted (checked): `from numpy import *` / `from numpy import diff, hypot, sum`, `np.add.reduce`,
+  `np.linalg.norm`, complex numbers, `round()`, `min()`, `map(np.array, (…))`; in `glitches()`,
+  `[int(i) for i in idx]` and `list(map(int, idx))`. Comprehensions and for/while are judged by the line count
+  only; a loop inside `speeds_mps()` is reported by ✘15 only, not again by ✘16.
 - `my_limit.py` (✘8, behavioural: the check runs the script with counting stand-ins for `heading_for_track`
   and `endurance_s` and records the wind it passes): no script ("does not exist"); a script that only prints
   2.5, even with the imports or the names in a comment ("called your heading_for_track() 0 times"); minutes
   vs seconds ("never found a GO speed"); the wind built FROM 020° (`heading_vector(20)`: "blowing towards the
-  north-east … that is where the wind comes FROM").
+  north-east … that is where the wind comes FROM"). (a back leg computed by symmetry, `heading_for_track(30, V, -we, -wn)`, is accepted)
 - answers: ANALYTIC in minutes (✘9); WHERE_REPR_FROM "FixedWing", "object (not Vehicle)" or two-in-one
   ("write ONE class name"); SUPER_ERROR / WHERE_ENDURANCE_FROM hedges; PRINT_WING not the exact line;
   EXPLAIN_REPR empty; WING_TRIP_MIN / WING_DECISION wrong (all ✘13); BAD_FIX_T_S = 151 (✘18 "far from BOTH
   neighbours"); FLAGGED_AT_100 = 0; GLITCHES with a non-number (✘18).
+- weak-student slips with their own message: `reserve` not passed on in `Vehicle.endurance_s`/`range_m`
+  (✘11 "your method ignores its reserve"); `break` instead of `continue` in `no_glitch.py` (✘18
+  "GLITCH_EXTRA_M ≈ 1451 … break leaves the loop").
 - correct answers that must pass, and do: the strong student's EXPLAIN_GLITCH ("the return to the true
   track at 151 is fast too, so the good fix 151 is listed as well").
 

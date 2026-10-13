@@ -143,12 +143,12 @@ vector, for the way out (030°) and the way back (210°).
 
 <details><summary>🧰 calling your function from the terminal</summary>
 
-```python
-python3 -c "from navera_lite.vehicle import heading_for_track; print(heading_for_track(TRACK, 12.0, WE, WN))"
+```bash
+python3 -c "from navera_lite.vehicle import heading_for_track; print(heading_for_track(0.0, 10.0, 6.0, 0.0))"
 ```
 
-Replace `TRACK`, `WE` and `WN` by numbers (the wind vector printed by `wind`). Or open `python3` and type
-the two lines.
+This is the docstring's example (track 000°, 10 m/s, wind (6, 0)). Replace the four numbers by your track,
+the airspeed 12.0 and the wind vector printed by `wind`. Or open `python3` and type the two lines.
 </details>
 
 Then open `out/wind.png`: drawn with your heading, the air velocity plus the wind must land on the dashed
@@ -318,6 +318,9 @@ python3 plan_mission.py test
    itself forever. Call the module function, with `self.battery_wh` and `self.power_w`.
    `TypeError: Vehicle.endurance_s() takes from 1 to 2 positional arguments but 4 were given`: the same
    mistake; `self.endurance_s` is the method (it only takes `reserve`). Python counts `self` as an argument.
+4. Right with the default but wrong with another reserve (`endurance_s(0.0)` gives the same as
+   `endurance_s()`): you do not pass `reserve` on. Write `endurance_s(self.battery_wh, self.power_w, reserve)`,
+   and `self.endurance_s(reserve)` in `range_m`.
 </details>
 
 ## Step 7 — Inheritance: a fixed wing (TODO 9)
@@ -329,8 +332,10 @@ first (lesson §3, `Camera`), then refuse a cruise speed that is not above the s
 
 <details><summary>Stuck? Hints</summary>
 
-1. `TypeError: Vehicle.__init__() takes 6 positional arguments but 7 were given`: remove `self` from
-   `super().__init__(...)`; Python passes it for you (lesson §3, `Camera`).
+1. `TypeError: Vehicle.__init__() takes 6 positional arguments but 7 were given`: you pass one value too
+   many to `super().__init__(...)`. Either `self` (Python passes it for you, lesson §3, `Camera`) or
+   `stall_mps` (Vehicle does not know it: pass exactly `name, cruise_mps, max_speed_mps, battery_wh, power_w`,
+   and store `stall_mps` yourself after).
 2. No `ValueError` for cruise = stall: "above" means `cruise_mps <= stall_mps` is refused.
 </details>
 
@@ -500,7 +505,8 @@ wrong fix (a loop over `range(len(tr))` and your `add`), and print both lengths.
 <details><summary>🧰 one position of a track, and skipping one</summary>
 
 Position i of a track is `tr.t_s[i], tr.e_m[i], tr.n_m[i]` (`tr[i]` does not exist: `Track` has no
-`__getitem__`). Skip one with `if i == bad: continue`. Here times start at 0, one per second, so the index
+`__getitem__`). Skip one with `if i == bad: continue` (`break` would leave the loop: your new track would stop at 149 s
+and be about 1 450 m shorter). Here times start at 0, one per second, so the index
 of time 150 s is 150. Create the new track with `Track()` (import `Track` from `navera_lite.track`).
 </details>
 

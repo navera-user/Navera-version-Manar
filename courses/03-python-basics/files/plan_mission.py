@@ -127,6 +127,8 @@ def test():
          lambda: veh.Vehicle("rover", 2.0, 3.0, 400.0, 100.0).max_speed_mps, 3.0, 0, veh.Vehicle.__init__),
         ('Vehicle("rover", 2.0, 3.0, 400.0, 100.0).endurance_s()',
          lambda: veh.Vehicle("rover", 2.0, 3.0, 400.0, 100.0).endurance_s(), 11520.0, 1e-6, veh.Vehicle.endurance_s),
+        ('Vehicle("rover", 2.0, 3.0, 400.0, 100.0).endurance_s(0.0)',
+         lambda: veh.Vehicle("rover", 2.0, 3.0, 400.0, 100.0).endurance_s(0.0), 14400.0, 1e-6, veh.Vehicle.endurance_s),
         ('Vehicle("rover", 2.0, 3.0, 400.0, 100.0).range_m(-0.5)',
          lambda: veh.Vehicle("rover", 2.0, 3.0, 400.0, 100.0).range_m(-0.5), 17280.0, 1e-6, veh.Vehicle.range_m),
         ('FixedWing("glider", 15.0, 25.0, 60.0, 80.0, 9.0).endurance_s()',

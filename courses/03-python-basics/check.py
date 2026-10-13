@@ -73,16 +73,23 @@ LOOPY = {"map", "filter", "sum", "range", "zip", "enumerate", "sorted", "reverse
 
 
 def loops_in(fn):
-    """A loop the line count below cannot see: for/while, a comprehension, or map/sum/range/… written in fn."""
+    """A loop the line count below cannot see: a builtin iterator (map, sum, zip, …) over the data, or a NumPy
+    wrapper that calls a function once per element. Python-level loops (for/while, comprehensions, helpers)
+    are left to the line count, so a comprehension over two lists or a .tolist()-like conversion is not refused."""
+    import builtins
     tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+    g, local = getattr(fn, "__globals__", {}), set(fn.__code__.co_varnames)
     for n in ast.walk(tree):
-        if isinstance(n, (ast.For, ast.While, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+        if not isinstance(n, ast.Call):
+            continue
+        f = n.func
+        if isinstance(f, ast.Attribute) and (f.attr in ("vectorize", "frompyfunc")
+                                             or f.attr == "reduce" and getattr(f.value, "id", "") == "functools"):
             return True
-        if isinstance(n, ast.Call):
-            f = n.func
-            if isinstance(f, ast.Name) and f.id in LOOPY:          # builtins (np.sum etc. are fine)
-                return True
-            if isinstance(f, ast.Attribute) and f.attr == "reduce" and getattr(f.value, "id", "") == "functools":
+        if isinstance(f, ast.Name) and f.id in LOOPY and f.id not in local \
+                and g.get(f.id, getattr(builtins, f.id, None)) is getattr(builtins, f.id, None):
+            data = n.args[1:] if f.id == "map" else n.args
+            if not all(isinstance(x, (ast.Tuple, ast.List)) for x in data):   # map(np.array, (a, b)) is fine
                 return True
     return False
 
@@ -302,7 +309,9 @@ def _():
         "    runpy.run_path('my_limit.py', run_name='__main__')\n"
         "finally:\n"
         "    sys.stdout.flush()\n"
-        "    print('PROBE', calls['h'], calls['e'], sum(1 for we, wn in winds if we > 0.01 and wn > 0.01), flush=True)\n")
+        "    ne = sum(1 for we, wn in winds if we > 0.01 and wn > 0.01)\n"
+        "    sw = sum(1 for we, wn in winds if we < -0.01 and wn < -0.01)\n"
+        "    print('PROBE', calls['h'], calls['e'], ne if sw == 0 else 0, flush=True)\n")
     try:
         r = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, timeout=60)
     except subprocess.TimeoutExpired:
@@ -376,12 +385,19 @@ def _():
     v = run(V, "van", 3.5, 5, 200, 150)
     big = run(V, "barge", 2.0, 3.0, 900, 100)
     c.near(run(v.endurance_s), 3840.0, 1e-6, "Vehicle('van', 3.5, 5, 200, 150).endurance_s()")
-    c.near(run(v.endurance_s, 0.0), 4800.0, 1e-6, "….endurance_s(0.0)")
+    e0 = run(v.endurance_s, 0.0)
+    c.ok(not (isinstance(e0, (int, float)) and abs(e0 - 3840.0) < 1e-6),
+         "Vehicle('van', 3.5, 5, 200, 150).endurance_s(0.0) gives the same as endurance_s() (3840 s): your method "
+         "ignores its reserve — pass it on to the module function (Step 6 hint 4)")
+    c.near(e0, 4800.0, 1e-6, "Vehicle('van', 3.5, 5, 200, 150).endurance_s(0.0)")
     c.near(run(big.endurance_s), 25920.0, 1e-6, "another vehicle's endurance_s() (does it use self.?)")
     done(V.range_m, "Vehicle.range_m")
     for args, want in (((), 13440.0), ((1.5,), 19200.0), ((-1,), 9600.0), ((-4,), 0.0), ((0.0, 0.0), 16800.0)):
         got = run(v.range_m, *args)
         c.ok(got is not None, f"van.range_m{args} returned None: every path needs a `return` (0.0 when stopped)")
+        if args == (0.0, 0.0) and isinstance(got, (int, float)) and abs(got - 13440.0) < 1e-6:
+            raise CheckFailed("range_m(0.0, 0.0) equals range_m(): range_m ignores its reserve — call "
+                              "self.endurance_s(reserve) (Step 6 hint 4)")
         c.near(got, want, 1e-6, f"Vehicle('van', 3.5, 5, 200, 150).range_m{args if args else '()'}")
 
 
@@ -521,8 +537,9 @@ def _():
     b = make_track(T, [(0, 0, 0), (1, 5, 5), (2, 60, 5), (3, 10, 6), (4, 15, 6), (5, 15, 80)])
     c.eq(run(b.glitches, 30), [2, 3, 5], "glitches(30) on another track")
     c.eq(run(b.glitches, 55), [5], "glitches(55): exactly 55 m/s is not faster than 55")
-    c.ok(vectorised(T, "glitches", 50.0), "glitches() loops over the speeds in Python: use a mask and "
-         "np.flatnonzero (lesson §4)")
+    if vectorised(T, "speeds_mps"):          # a loop inside speeds_mps() is ✘15's business, not glitches()'s
+        c.ok(python_lines_run(T, "glitches", 50.0) < 100, "glitches() loops over the speeds in Python: use a mask "
+             "and np.flatnonzero (lesson §4)")
 
 
 @c.test("Step 9: the harbour survey in numbers",
@@ -568,6 +585,8 @@ def _():
               ([r"false", r"honest", r"noise", r"good", r"real", r"too many", r"alarm"], "what a low threshold costs"),
               ([r"max", r"physic", r"vehicle", r"cannot", r"can't", r"faster", r"20"],
                "why the vehicle's maximum speed is the right limit"))
+    c.ok(not 1400 < number(extra, "GLITCH_EXTRA_M") < 1500, "GLITCH_EXTRA_M ≈ 1451: your new track stops at the "
+         "bad fix — `break` leaves the loop, `continue` skips only that position")
     c.near(number(extra, "GLITCH_EXTRA_M"), 90.9, 1.0, "GLITCH_EXTRA_M")
 
 

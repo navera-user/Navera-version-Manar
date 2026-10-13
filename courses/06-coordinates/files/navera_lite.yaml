@@ -15,6 +15,7 @@
     # switching
     switch_holdoff_s: 2.0       # a higher-priority source must stay usable this long before it takes over
     # jump gate: a GPS fix farther than max_speed_mps × elapsed + gps_jump_margin_m from the last
-    # trusted fix is refused (max speed set per vehicle)
+    # trusted fix is refused
+    # 100 m/s is the plane's limit, the same for every vehicle: NAVERA's R-1 (lesson 03); mission 13 sets it per vehicle from VEHICLES
     max_speed_mps: 100.0
     gps_jump_margin_m: 50.0
