@@ -75,6 +75,9 @@ def test():
         (1, "enu_flat", (*LON, *PAR), (176585.4, -294755.5), 0.1),
         (1, "enu_flat", (-17.0, 179.99, -17.0, -179.99), (2126.7, 0.0), 0.1,
          "across the ±180° meridian near Fiji: expected (2126.7, 0.0) — bring Δλ into [−180, 180), lesson §1"),
+        (1, "enu_flat", (-17.0, -179.99, -17.0, 179.99), (-2126.7, 0.0), 0.1,
+         "WEST across the ±180° meridian: expected (−2126.7, 0.0). Tens of thousands of km EAST: your wrap is "
+         "`% 360` only — the rule is Δλ = (λ − λ0 + 180) % 360 − 180, lesson §1"),
         (2, "offset", (-33.9249, 18.4241, 1000.0, 2000.0), (-33.906914, 18.434937), 1e-6),
         (2, "offset", (0.0, 179.99, 5000.0, 0.0), (0.0, -179.965034), 1e-6,
          "5 km east of 179.99°: expected (0.0, −179.965034) — bring the new longitude into [−180, 180), lesson §1"),
@@ -86,7 +89,7 @@ def test():
         (7, "radii", (0.0,), (6335439.327, 6378137.0), 0.001),
         (7, "radii", (45.0,), (6367381.8, 6388838.3), 0.1),
         (8, "geodetic_to_ecef", (1.3521, 103.8198, 15.0), (-1523121.7, 6191803.0, 149494.2), 0.1),
-        (9, "ecef_to_geodetic", (-1523121.7, 6191803.0, 149494.2), (1.3521, 103.8198, 15.0), 0.05),
+        (9, "ecef_to_geodetic", (-1523121.7, 6191803.0, 149494.2), (1.3521, 103.8198, 15.02), 0.05),
         (9, "ecef_to_geodetic", (2897606.0985, 1351175.9140, 5500563.7365), (60.0, 25.0, 100.0), 0.001,
          "a point at (60°, 25°, 100 m), far from the equator: expected (60.0, 25.0, 100.0) to 1 mm — keep lat in "
          "DEGREES for radii(), radians only in sin/cos/atan2; enough iterations?"),
@@ -106,11 +109,16 @@ def test():
             mid = got[1] if isinstance(got, list) and len(got) == 3 else got
             ok = close(mid, want, tol)
             want_s, got_s = f"middle point {show(want)}", f"middle point {show(mid)}"
+            if not ok and close(mid, (0.0, 0.0), 1.6):
+                note = "these look like RADIANS: atan2 returns radians — wrap lat and lon in math.degrees(…)"
         elif fn == "great_circle_points":
             ok = (isinstance(got, list) and len(got) == 3
                   and all(close(p, q, 1e-9) for p, q in zip(got, [(0.0, 0.0), (0.0, 45.0), (0.0, 90.0)])))
             want_s = "[(0, 0), (0, 45), (0, 90)]"
             got_s = repr([tuple(round(float(x), 6) for x in p) for p in got]) if isinstance(got, list) else repr(got)
+            if (not ok and isinstance(got, list) and len(got) == 3
+                    and abs(float(got[1][1]) - math.pi / 4) < 1e-6):
+                note = "(0, 0.785398) is (0, 45°) in RADIANS: atan2 returns radians — wrap lat and lon in math.degrees(…)"
         elif fn == "enu_matrix":
             a = np.asarray(got, dtype=float) if not isinstance(got, str) else None
             ok = a is not None and a.shape == (3, 3) and np.allclose(a, [[0, 1, 0], [0, 0, 1], [1, 0, 0]], atol=1e-12)

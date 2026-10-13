@@ -74,14 +74,17 @@ The TODO 1 and TODO 2 lines must be ✔, including the two date-line lines (the 
 1. Convert every angle difference to radians before multiplying by `EARTH_RADIUS_M`; use
    `math.radians`, never `* 3.14 / 180`.
 2. east 171 638.9 instead of 176 585.4: you used cos of the **start** latitude. 274 803.0: `math.cos`
-   got degrees. north −16 888 246.8: Δφ is still in degrees.
+   got degrees. north −16 888 246.8: Δφ is still in degrees. Tens of thousands of km EAST for a point to the
+   WEST (the "WEST across ±180°" line): your wrap is `% 360` only; the rule of §1 is
+   `(Δλ + 180) % 360 − 180`.
 3. offset gives (−33.924586, 18.424289): you added metres / R (radians) straight to degrees — wrap it in
    `math.degrees(…)`. Latitude unchanged (−33.9249): `math.radians` instead of `math.degrees`.
    18.434938 instead of 18.434937 (the 7th decimal): your cos uses the old latitude only; enu_flat uses
    the mean of the two, so the inverse must too. 180.034966 or 179.990785 on the date-line line: the new
    longitude is not brought back into [−180°, 180°).
-4. Check the inverse yourself: `python3 -c "from navera_lite.geo import *; print(enu_flat(10, 20, *offset(10, 20, 500.0, -300.0)))"`
-   must print (500.0, −300.0) to rounding.
+4. Check the inverse yourself, in both directions:
+   `python3 -c "from navera_lite.geo import *; print(enu_flat(10, 20, *offset(10, 20, 500.0, -300.0)), enu_flat(10, 20, *offset(10, 20, -500.0, 300.0)))"`
+   must print (500.0, −300.0) and (−500.0, 300.0) to rounding.
 </details>
 
 ## Step 2 — Distance and bearing (TODO 3, TODO 4)
@@ -129,7 +132,8 @@ long flight out and back: the two take-off bearings are not 180° apart.
    `np.cos`, `np.arcsin`, `np.sqrt`, `np.minimum`.
 2. 171 778.0 instead of 343 556.1: the factor 2 of `2 R asin(√a)` is missing. 615 391.4: the `/2` inside
    sin² is missing.
-3. Bearing 301.884 instead of 148.12: `atan2(north, east)` — east goes first. 2.585: still radians,
+3. Bearing 301.884 instead of 148.12: `atan2(north, east)` — east goes first. −58.12: that mistake and a
+   missing `% 360` together. 2.585: still radians,
    apply `math.degrees`. Negative bearings in `bearings`: add `% 360`.
 4. TURN_DEG about 184.7: the bearing Tunisia → Paris points back north; add 180° (and `% 360`) to get
    the heading you arrive with.
@@ -152,9 +156,12 @@ python3 run_geo.py cos
 
 > [!TASK]
 > Write `ROUTE_FLAT_START_KM` and `ROUTE_GC_KM` (one decimal) and `EXPLAIN_COS`: which version comes
-> closest to the server's 1 750 km, and why does the mean latitude do better? (The closest is about 3 km
-> below 1 750: the same formula with the constant 111 320 m per degree of lesson §5 gives 1 748.9 km, and
-> the server's exact end points are not recorded. 3 km is small next to the 21 km bug.)
+> closest to the server's 1 750 km, and why does the mean latitude do better?
+
+<details><summary>Why not exactly 1 750? (open after you wrote EXPLAIN_COS)</summary>
+The closest is about 3 km below 1 750: the same formula with the constant 111 320 m per degree of lesson §5
+gives 1 748.9 km, and the server's exact end points are not recorded. 3 km is small next to the 21 km bug.
+</details>
 
 ## Step 4 — Audit 2: the corridor (R-2) (TODO 5, TODO 6)
 
@@ -176,7 +183,9 @@ k / (n - 1)                        # for k in range(n): 0, …, 1 — n points i
 
 1. `a = unit_vector(*p1)`, same for b; `d = math.acos(a @ b)`; then a loop over k with `f = k / (n − 1)`.
 2. The middle point (0, 30) instead of (0, 45) on the equator: `f = k / n` never reaches 1; use `n − 1`.
-3. London → Paris middle point (50.182, 1.1122): that is the straight line, you interpolated the angles;
+3. (0, 0.785398) on the equator, or a middle point near (0.88, 0.02): radians — `atan2` returns radians;
+   wrap lat and lon in `math.degrees(…)`.
+4. London → Paris middle point (50.182, 1.1122): that is the straight line, you interpolated the angles;
    interpolate the **vectors** with the slerp of §4. (50.1942, 1.1466): the latitude must be
    `atan2(z, √(x² + y²))`, not `atan2(z, x)`.
 </details>
@@ -215,7 +224,11 @@ python3 run_geo.py route
 Open `out/route.png` and compare with your `PREDICT_ROUTE`.
 
 > [!TASK]
-> Write `OFFSET_KM` (km) and `LEG_OFFSET_M` (metres: the 10 km leg in the middle of the route), and
+> **Predict** (`PREDICT_LEG`), before you read the last line of the output: the offset of a great circle
+> from its lat/lon chord grows like the square of its length. From your max offset and the route length
+> (1 768 km), how many metres for the 10 km leg in the middle of the route?
+>
+> Then write `OFFSET_KM` (km) and `LEG_OFFSET_M` (metres, from the run), and
 > `EXPLAIN_ROUTE`: which side does the great circle pass, what did it mean for a ±1 km corridor, and
 > why do ≤ 10 km great-circle legs fix it?
 
@@ -285,16 +298,24 @@ must be below 1 mm.
 > `GEOCENTRIC_DIFF_DEG`: for a surface point at latitude 30° (h = 0), the geodetic latitude minus the
 > geocentric one (the angle seen from the centre, `atan2(Z, √(X² + Y²))`, lesson §5), in degrees, four
 > decimals. Then `GEOCENTRIC_MAX_AT_DEG`: with a loop over latitudes, where is this difference largest?
-> Why there? (Think of where the two angles must agree.)
+> `EXPLAIN_GEOCENTRIC`: why there? (Think of where the two angles must agree.) Bonus: derive the exact
+> latitude from tan ψ = (1 − e²) tan φ, ψ the geocentric latitude.
+
+<details><summary>After you found it</summary>
+Not exactly 45°: the difference φ − ψ is largest where tan φ = 1/√(1 − e²), φ = 45.096°. A loop with a
+0.01° step finds 45.10°. The two angles agree at the equator and at the poles, so the maximum is near, but
+not at, the middle.
+</details>
 
 <details><summary>Stuck? Hints</summary>
 
 1. `TypeError: can only concatenate tuple (not "float") to tuple`: `radii()` returns two numbers (M, N);
    keep only N with `_, n = radii(lat)`.
 2. Z wrong but X and Y right: Z uses `N·(1 − e²) + h`.
-3. A wrong height (the 60° test line gives 19.3 m instead of 100 m; kilometres elsewhere), or round trips
-   of ~100 m in `ecef`: radians given to `radii()` (it takes degrees), or degrees given to `math.cos`.
-   The Singapore line can still pass: near the equator the mistake hardly shows.
+3. A wrong height on the 60° test line (about 16 084 m if lat stays in radians through the loop, 19.3 m if
+   only the call to `radii()` gets radians, instead of 100 m; Singapore 26.9 m instead of 15.02 m), or round
+   trips of ~100 m to kilometres in `ecef`: radians given to `radii()` (it takes degrees), or degrees given
+   to `math.cos`. Near the equator the mistake is much smaller: look at the 60° line.
 4. Round trips of 0.6 mm to 0.4 m, or 99.997 m on the 60° line: too few iterations.
 </details>
 
@@ -335,15 +356,21 @@ Your code passes its own examples, but you wrote both the code and the examples'
 written from the published 1975 formula), and pyproj, the library behind most GIS software, if this
 computer has it.
 
+> [!TASK]
+> **Predict** (`PREDICT_SPHERE`) from your `radii(0.0)` alone: by how many %, and with which signs, will
+> the sphere (6 371 km) be wrong 100 km due north and 100 km due east of Quito?
+
 ```bash
 python3 compare_oracle.py
 ```
 
 Part 1 measures your sphere against the ellipsoid, 100 km north and east of three places. Part 2 checks
-your exact ENU against Vincenty, in distance **and** direction. The directions must agree (a mirrored frame
-fails here). The distances agree to millimetres up to a few km, then drift apart (4 mm at 10 km, 0.5 m at
-50 km): your ENU distance is measured in the flat plane at home, Vincenty's along the curved ellipsoid.
-That is not a bug: compare the last column with lesson §7's d²/2R.
+your exact ENU against Vincenty, in distance **and** direction. The directions must agree: swapped or
+reversed East/North axes fail here; a last line checks that Up points up. The distances agree to millimetres
+up to a few km, then drift apart (4 mm at 10 km, 0.5 m at 50 km). That is not a bug: your ENU distance is
+measured in the flat plane at home, Vincenty's along the curved ground. On a sphere a point at arc length s
+is R·sin(s/R) from home in the plane, so the gap is about s³/(6R²) (sin x ≈ x − x³/6): check it at 50 km.
+The last column, the height of the plane above the ground, is §7's d²/2R.
 
 > [!TASK]
 > Write `SPHERE_ERR_NORTH_PCT_QUITO` and `SPHERE_ERR_EAST_PCT_QUITO` (with their signs) and
@@ -385,9 +412,11 @@ Near home the flat shortcut's error grows <b>like the distance</b> (slope 1), no
 <b>scale</b> error, because <code>enu_flat</code> uses the sphere's 6 371 km where the ellipsoid has M and N
 (0.22 % at Sousse, 0.56 % north–south on the equator). Curvature and the convergence of the meridians grow
 like d² and take over beyond tens of kilometres (slope 2 at Sousse and Reykjavik; weak on the equator,
-where the meridians are parallel). A scale error cancels when the same function converts both ways; it
-does not when metres are compared with real metres. Mission 01's jump gate is such a case: 0.3 % of a
-10 km gap is 30 m, more than half of the 50 m margin.
+where the meridians are parallel; at Quito the far slope is even below 1, 0.88, because there the far-field
+terms partly cancel the scale error instead of adding to it). A scale error cancels when the same function
+converts both ways; it does not when metres are compared with real metres. Mission 01's jump gate is such a
+case: it compares a distance with v_max × elapsed, real metres; 0.2 % of a 10 km gap is 20 m, almost half
+of the 50 m margin.
 </details>
 
 <details><summary>Stuck? Hints</summary>

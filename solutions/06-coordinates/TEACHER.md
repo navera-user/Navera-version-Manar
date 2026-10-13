@@ -29,7 +29,11 @@ Badges: **Navigator** = checks 1–9 (session 1), **Surveyor** = all 18.
 | KM_PER_DEG_LON_ANCHORAGE | 53.736 | N(61.2181) = 6 394 600.3 m |
 | SCALE_NORTH_ZERO_LAT_DEG | 54.81 | bisection on M·π/180 = 111 320 m (54.8085°) |
 | GEOCENTRIC_DIFF_DEG | 0.1664 | 30° − 29.8336° |
-| GEOCENTRIC_MAX_AT_DEG | 45 (±0.5) | max 0.1924° near 45.1°; the two angles agree at 0° and 90° |
+| GEOCENTRIC_MAX_AT_DEG | 45.1 (45.096°; check accepts ±0.2) | tan φ = 1/√(1 − e²); max 0.1924°; EXPLAIN_GEOCENTRIC: the angles agree at 0° and 90° (graded on topic) |
+| PREDICT_LEG (ungraded) | ≈ 1.10 m | 34.21 km × (10.044/1 767.8)²; run prints 1.09 m |
+| PREDICT_SPHERE (ungraded) | +0.56 % / −0.11 % | 6 371/6 335.4 − 1, 6 371/6 378.1 − 1 |
+| PREDICT_COS (ungraded) | ≈ −23 km / ≈ +2 km | §2's linearisation scaled to the route; true −20.9 / +1.9 km; within a factor 2 on the start version shows the idea |
+| Oracle Part 2 | gap −4.1 mm / −0.51 m = s³/(6R²); last column 7.8 / 196 m = d²/2R | a reversed Up axis is caught by the extra u = +100 line |
 | DROP_M | −530.6 | Tallinn in Helsinki's ENU (e −10 486.5, n −81 634.7) |
 | H_ELLIPSOID_M | 283.8 | 312.4 + (−28.6) |
 | SPHERE_ERR_NORTH/EAST_PCT_QUITO | +0.561 / −0.112 | `compare_oracle.py` part 1 |
@@ -41,14 +45,15 @@ Lesson numbers: London→Paris haversine 343 556.1 m, flat 341 087.6 / 343 603.3
 (50.1820, 1.1122): 2.56 km; New York–London figure max offset 736 km; WGS84 b = 6 356 752.314 m,
 e² = 0.00669438; at 45° M 6 367 381.8, N 6 388 838.3, 111.132 / 78.847 km; Quito ECEF
 (1 275 671.8, −6 252 140.0, −19 989.7); Cape Town → Cape Point ENU (6 706.6, −47 910.4, −184.1),
-d²/2R at 48.4 km = 183.7 m; acos at 1 m gives 0.996 m.
+d²/2R at 48.4 km = 183.7 m; acos at 1 m north gives 0.996 m at 48° N, 1.005 m at 45° N.
 
 **About R-2's "~17 km".** The backlog says the straight line was "~17 km" from the flown path. With the
 route's endpoints (from NAVERA's own route test) the max gap is 34.2 km (nearest-point definition) or
 34.7 km (same fraction); NAVERA's own test comment says "~35 km". The lesson does not quote 17 km
 (rebuild-plan risk 11). If a student finds the 17 km in the backlog, it is a fine discussion: a figure
-in a report must say how it was measured. R-6's 1 750 km is reproduced by cos(start latitude): 1 746.9
-km with R = 6 371 km, 1 748.9 km with 111 320 m/°.
+in a report must say how it was measured. R-6's 1 750 km is best matched by cos(start latitude): 1 746.9
+km with R = 6 371 km, 1 748.9 km with 111 320 m/°; the backlog does not record the formula or the exact
+end points.
 
 ## Rubric for written answers (check only verifies "written and on topic")
 
@@ -82,10 +87,10 @@ catch the same ones before the checker, except `% 360` (shown by `run_geo.py bea
 
 ## Class plan (2 × 2 h 30 + reading)
 
-- Before session 1: lesson §1–§4 (40 min). Session 1: Step 0 together (2 min, collect predictions on
+- Before session 1: lesson §1–§4 (25 min). Session 1: Step 0 together (2 min, collect predictions on
   the board: east/west?), Steps 1–2 (45 min), Step 3 audit + short discussion "which latitude did the
   server use?" (15 min), Step 4 (45 min). Badge check.
-- Before session 2: §5–§8 (35 min). Session 2: Steps 5–7 (70 min), Step 8 (10 min), Step 9 with
+- Before session 2: §5–§8 (25 min). Session 2: Steps 5–7 (70 min), Step 8 (10 min), Step 9 with
   predictions first (30 min), report (20 min).
 
 **Fast students:** Going further (Bowring, ellipsoidal flat frame, rhumb line, two haversines).
@@ -100,3 +105,5 @@ TODO 6's broadcasting with a double loop (it passes the check, just slower).
 - F-22 date-line failure, February 2007: verified by the expert review (CNN/DoD-reported; cause unpublished — the lesson says so).
 - Durations (round 1 fix): lesson cut to about 3 800 words incl. formulas (reading 50 min, up to 1 h 15);
   lab 3–5 h; meta 5 h 30. The weak simulated student needed 1 h 45 + 5 h on the longer first version.
+- Forward references: the lesson now says only "later missions use geo.py, finished". When 10 and 23 are
+  rebuilt, mission 10 should move its simulated GPS with `geo.offset` and 23 use `geo` for photo → position.

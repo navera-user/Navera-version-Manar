@@ -110,6 +110,10 @@ def _():
     c.ok(abs(e) < 1e5, f"across the ±180° meridian (Fiji) east is {e:,.0f} m: Δλ = −359.92° must become +0.08° "
                        "(lesson §1, the date line)")
     c.near(e, 8474.73, 0.05, "east across the date line (m)")
+    e, n = nums(go(f, -17.69, -179.97, -17.70, 179.95), 2, "enu_flat west across the date line")
+    c.ok(abs(e) < 1e5, f"WEST across the ±180° meridian east is {e:,.0f} m: `% 360` alone turns every westward Δλ "
+                       "into about +360° — use (Δλ + 180) % 360 − 180 (lesson §1)")
+    c.near(e, -8474.73, 0.05, "east, going west across the date line (m)")
 
 
 @c.test("TODO 2: offset() is the exact inverse of enu_flat() on unseen moves",
@@ -191,6 +195,9 @@ def _():
          "the first point must be p1 and the last p2")
     if abs(pts[2][0] - 48.0863) < 0.01 and abs(pts[2][1] - 16.9568) < 0.01:
         c.ok(False, "the middle point is the middle of the straight lat/lon line — that is not the great circle (lesson §4)")
+    if all(abs(v) <= math.pi + 1e-9 for p in pts[1:4] for v in p):
+        raise CheckFailed(f"the inner points are {[tuple(round(v, 4) for v in p) for p in pts[1:4]]}: radians — atan2 "
+                          "returns radians; wrap lat and lon in math.degrees(…)")
     want = [(45.501640, 4.273089), (49.926407, 13.719150), (53.440709, 24.853721)]
     for k, (p, q) in enumerate(zip(pts[1:4], want), 1):
         c.ok(abs(p[0] - q[0]) < 1e-5 and abs(p[1] - q[1]) < 1e-5,
@@ -267,8 +274,9 @@ def _():
         hint="Run python3 run_geo.py route. OFFSET_KM in km, LEG_OFFSET_M in metres. EXPLAIN_ROUTE: on which side "
              "the great circle passes (look at out/route.png), and why short legs fix the corridor.")
 def _():
-    p0, off, leg, why = answers("PREDICT_ROUTE", "OFFSET_KM", "LEG_OFFSET_M", "EXPLAIN_ROUTE")
+    p0, pl, off, leg, why = answers("PREDICT_ROUTE", "PREDICT_LEG", "OFFSET_KM", "LEG_OFFSET_M", "EXPLAIN_ROUTE")
     predicted("PREDICT_ROUTE", p0)
+    predicted("PREDICT_LEG", pl)
     c.near(number(off, "OFFSET_KM"), 34.2, 0.1, "OFFSET_KM")
     c.near(number(leg, "LEG_OFFSET_M"), 1.09, 0.02, "LEG_OFFSET_M (metres!)")
     explained("EXPLAIN_ROUTE", why, ((r"north", r"pole", r"\beast", r"right", r"above"), "on which side the great circle passes"),
@@ -343,7 +351,9 @@ def _():
     c.ok(r.shape == (3, 3), f"enu_matrix should return shape (3, 3), got {r.shape}")
     c.ok(np.allclose(r @ r.T, np.eye(3), atol=1e-12), "R @ R.T is not the identity: the rows are not unit vectors at "
                                                        "right angles (radians? a sign?)")
-    c.near(float(np.linalg.det(r)), 1.0, 1e-9, "det(R) (−1 = a mirror: two rows swapped or one sign wrong)")
+    det = float(np.linalg.det(r))
+    c.ok(abs(det - 1.0) < 1e-9, f"det(R) = {det:+.3f}: R is a mirror, not a rotation — two rows swapped, or one row "
+                                "(E, N or U) with the wrong sign")
     want = [[-0.0910462512, -0.9958466650, 0.0], [-0.6570841644, 0.0600745596, 0.7514196219],
             [-0.7482987244, 0.0684139396, -0.6598246372]]
     for k, name in enumerate(("East (row 0)", "North (row 1)", "Up (row 2)")):
@@ -377,10 +387,11 @@ def _():
              "points, at 30° and over all latitudes. Step 7: `up` of Tallinn in run_geo.py enu; ellipsoidal "
              "height = sea-level height + geoid separation.")
 def _():
-    km, zero, gdiff, gmax, pred, drop, h = answers("KM_PER_DEG_LON_ANCHORAGE", "SCALE_NORTH_ZERO_LAT_DEG",
-                                                   "GEOCENTRIC_DIFF_DEG", "GEOCENTRIC_MAX_AT_DEG", "PREDICT_DROP",
-                                                   "DROP_M", "H_ELLIPSOID_M")
+    km, zero, gdiff, gmax, gwhy, pred, drop, h = answers(
+        "KM_PER_DEG_LON_ANCHORAGE", "SCALE_NORTH_ZERO_LAT_DEG", "GEOCENTRIC_DIFF_DEG", "GEOCENTRIC_MAX_AT_DEG",
+        "EXPLAIN_GEOCENTRIC", "PREDICT_DROP", "DROP_M", "H_ELLIPSOID_M")
     km = number(km, "KM_PER_DEG_LON_ANCHORAGE")
+    c.ok(km != 0, "KM_PER_DEG_LON_ANCHORAGE is still 0: do Step 5")
     c.ok(not 50000 < km < 60000, "KM_PER_DEG_LON_ANCHORAGE is in metres: write kilometres")
     c.ok(km > 0, "KM_PER_DEG_LON_ANCHORAGE is negative: math.cos got the latitude in degrees")
     c.near(km, 53.736, 0.01, "KM_PER_DEG_LON_ANCHORAGE (km)")
@@ -389,19 +400,24 @@ def _():
                                     "not of a meridian — search where M·π/180 equals it")
     c.near(zero, 54.81, 0.02, "SCALE_NORTH_ZERO_LAT_DEG (degrees)")
     c.near(number(gdiff, "GEOCENTRIC_DIFF_DEG"), 0.1664, 0.001, "GEOCENTRIC_DIFF_DEG (geodetic − geocentric, at 30°)")
-    c.near(number(gmax, "GEOCENTRIC_MAX_AT_DEG"), 45.0, 0.5, "GEOCENTRIC_MAX_AT_DEG (degrees)")
+    c.near(number(gmax, "GEOCENTRIC_MAX_AT_DEG"), 45.1, 0.2, "GEOCENTRIC_MAX_AT_DEG (degrees)")
+    explained("EXPLAIN_GEOCENTRIC", gwhy, ((r"equator", r"\b0 ?°?", r"zero"), "where the two angles agree (one end)"),
+              ((r"pole", r"\b90"), "where they agree (other end)"), min_words=6)
     predicted("PREDICT_DROP", pred)
     drop = number(drop, "DROP_M")
     c.ok(drop < 0, "DROP_M: Tallinn is BELOW Helsinki's horizontal plane — the up value is negative")
     c.near(drop, -530.6, 0.2, "DROP_M (m)")
-    c.near(number(h, "H_ELLIPSOID_M"), 283.8, 0.05, "H_ELLIPSOID_M (m)")
+    h = number(h, "H_ELLIPSOID_M")
+    c.ok(abs(h - 341.0) > 0.05, "H_ELLIPSOID_M = 341.0: you subtracted a negative separation — h = 312.4 + (−28.6)")
+    c.near(h, 283.8, 0.05, "H_ELLIPSOID_M (m)")
 
 
 @c.test("Step 8: the oracle — how wrong is the sphere at the equator, and why",
         hint="Run python3 compare_oracle.py and copy the two Quito percentages (with their sign). EXPLAIN_SPHERE: "
              "compare EARTH_RADIUS_M with M and N at the equator (lesson §5).")
 def _():
-    n, e, why = answers("SPHERE_ERR_NORTH_PCT_QUITO", "SPHERE_ERR_EAST_PCT_QUITO", "EXPLAIN_SPHERE")
+    ps, n, e, why = answers("PREDICT_SPHERE", "SPHERE_ERR_NORTH_PCT_QUITO", "SPHERE_ERR_EAST_PCT_QUITO", "EXPLAIN_SPHERE")
+    predicted("PREDICT_SPHERE", ps)
     c.near(number(n, "SPHERE_ERR_NORTH_PCT_QUITO"), 0.561, 0.005, "SPHERE_ERR_NORTH_PCT_QUITO (%)")
     c.near(number(e, "SPHERE_ERR_EAST_PCT_QUITO"), -0.112, 0.005, "SPHERE_ERR_EAST_PCT_QUITO (%)")
     explained("EXPLAIN_SPHERE", why, ((r"\bm\b", r"meridian", r"north.?south", r"radius", r"radii", r"curvature"),
@@ -423,6 +439,9 @@ def _():
     if is_stub(f):
         raise CheckFailed("worst_flat_error_m() is not written yet (TODO A in error_study.py)")
     v = num(go(f, -41.2865, 174.7762, 20000.0, seconds=60), "worst_flat_error_m")
+    if v > 1e6:
+        raise CheckFailed(f"worst_flat_error_m gives {v:,.0f} m: for points WEST of home your enu_flat says tens of "
+                          "thousands of km east — its Δλ wrap must be (Δλ + 180) % 360 − 180 (lesson §1)")
     if abs(v - 24.645) < 0.01:
         raise CheckFailed("worst_flat_error_m looks at the first bearing only: is the `return` inside the loop?")
     if abs(v - 66.005) < 0.01:

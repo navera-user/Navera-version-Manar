@@ -152,7 +152,8 @@ bearing = atan2(east, north) → degrees → % 360
 ```
 
 Maths measures angles from the x axis counter-clockwise; navigation from north, clockwise: so **east goes
-first**, and `% 360` turns −90° into 270°.
+first**, and `% 360` turns −90° into 270°. The other way round: a distance d on bearing β is
+east = d·sin β, north = d·cos β (β in radians).
 
 **Worked example.** London → Paris: **343 556.1 m**, bearing **148.1°**. Paris → London: **330.0°**, not
 148.1° + 180° = 328.1°: along a great circle the angle with the local meridian changes, because the
@@ -354,8 +355,9 @@ NAVERA's test map and data cover Sousse, Tunisia. From its backlog and validatio
 2026-10-01 to 2026-10-03):
 
 - Distances are computed on a 6 371 000 m sphere with the haversine (position arbiter, day vision, the tool
-  that scores test flights). Day vision converts small displacements with 111 320 m per degree; it carries
-  its position with the same constant, so the error cancels there, and stays in numbers in metres.
+  that scores test flights). Day vision converts small displacements with 111 320 m per degree; it converts
+  its position back with the same constant, so the error cancels in the position; it remains in any
+  distance it reports in metres.
 - Since R-2 and R-6 were fixed, routes are measured on great circles and mapped **and** flown as the same
   legs of at most 10 km. Paris → Tunisia was mapped as 79 775 tiles (980 MB); day vision flew its last 13 km.
 - Heights: output altitude above the WGS84 ellipsoid, NaN if unknown (GPS-4 fixed an earlier sea-level
@@ -364,8 +366,7 @@ NAVERA's test map and data cover Sousse, Tunisia. From its backlog and validatio
 ## In NAVERA Lite
 
 [navera_lite/geo.py](file:./navera_lite/geo.py) is NAVERA Lite's geodesy part. Every later mission that
-touches a latitude uses it, finished (mission 10 moves a simulated GPS with `offset`, mission 23 turns a
-matched photo into a position).
+touches a latitude uses it, finished from the course's reference.
 
 ## 🐦 How birds do it
 

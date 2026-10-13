@@ -6,9 +6,10 @@ Part 1  your haversine_m (sphere) against Vincenty's formula on the WGS84 ellips
         100 km due north and due east of three places — how wrong is the sphere, and in which direction?
 Part 2  your exact ENU frame against Vincenty: distance AND direction. For short distances the horizontal
         ENU distance and the distance along the ellipsoid agree to millimetres; farther away they drift
-        apart (the ENU plane is flat, Vincenty follows the curved ground: lesson §7). The direction of
-        the point in your ENU frame, atan2(e, n), must match Vincenty's azimuth: a mirrored or swapped
-        frame fails here.
+        apart (the ENU plane is flat, Vincenty follows the curved ground: the gap is about d³/(6R²)).
+        The direction of the point in your ENU frame, atan2(e, n), must match Vincenty's azimuth: East
+        and North swapped, or one of them reversed, fails here. A last line checks that Up points up
+        (a point 100 m above home must have u = +100).
 Part 3  pyproj, the geodesy library used by most GIS software, if it is installed here: its ECEF and its
         distances against yours. (Not installed? Part 3 is skipped; parts 1–2 are enough.)
 """
@@ -57,9 +58,13 @@ def part2():
         worst_dir = max(worst_dir, abs((az - az_ref + 180.0) % 360.0 - 180.0))
         print(f"   {d / 1000:6.1f} km:  ENU {enu_d:12.4f} m  Vincenty {s_ell:12.4f} m  diff {1000 * (enu_d - s_ell):+9.3f} mm"
               f"  |  direction ENU {az:8.4f}°  Vincenty {az_ref:8.4f}°  |  plane {h:7.3f} m above ground")
-    print("   " + ("✔ directions agree (better than 0.01°): your frame is not mirrored" if worst_dir < 0.01 else
-                 f"✘ directions differ by up to {worst_dir:.2f}°: is your ENU frame mirrored (E and N rows swapped,"
-                 " or a sign)? Check det(R) with python3 run_geo.py enu"))
+    print("   " + ("✔ directions agree (better than 0.01°): your East and North axes point the right way"
+                 if worst_dir < 0.01 else
+                 f"✘ directions differ by up to {worst_dir:.2f}°: East and North swapped, or one reversed? "
+                 "Check det(R) with python3 run_geo.py enu"))
+    up = rk.need_ok(g, "geodetic_to_enu", lat0, lon0, 100.0, lat0, lon0, 0.0, n=3)[2]
+    print("   " + (f"✔ a point 100 m above home has u = {up:+.3f} m: Up points up" if abs(up - 100.0) < 1e-3 else
+                 f"✘ a point 100 m above home has u = {up:+.3f} m: your Up row is reversed or wrong (det(R) = −1?)"))
 
 
 def part3():
