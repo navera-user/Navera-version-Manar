@@ -33,7 +33,7 @@ With the corrections, the robust σ (1.4826 × MAD) of the speed error is 1.19 m
 1.5 m and 6 m with 2 s between rows and 0.3 m/s of logged-speed noise: the right size. The gaps are +8 % for gps and −12 % for day vision. Forty
 campaigns made the same way give 1.11 ± 0.03 and 4.1 ± 0.3 m/s: day vision's gap is ordinary sampling with
 224 errors (the formula is also a little high when a 6 m noise is compared with a 20 m step), while gps's is
-2 spreads, an unlucky campaign rather than a wrong formula, to check on the next one. For gps std is 1.19 m/s and p95 of |error| 2.17 m/s. For day vision std is
+2 to 3 spreads, an unlucky campaign rather than a wrong formula, to check on the next one. For gps std is 1.19 m/s and p95 of |error| 2.17 m/s. For day vision std is
 35.69 m/s and p95 9.19 m/s: four matches jumped 300 to 520 m, and their speed errors of up to 265 m/s
 dominate std. The robust σ describes the typical noise; the jumps are real failures of the source and are
 reported as the tail.

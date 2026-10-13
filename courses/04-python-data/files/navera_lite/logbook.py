@@ -65,7 +65,7 @@ def apply_corrections(df, clock_fix_s=None, speed_factor=None):
 # TODO 1 ---------------------------------------------------------------------------------------
 def clean(df):
     """Apply the campaign's three cleaning rules, in this order, and count what each one removed:
-      1. "duplicates":   a row identical to an earlier row (the logger wrote it twice) — keep the first;
+      1. "duplicates":   a row identical to an earlier row in EVERY column (the logger wrote it twice) — keep the first;
       2. "null_island":  lat == 0 and lon == 0 (a receiver that wrote zeros instead of nothing);
       3. "bad_altitude": alt_m below ALT_MIN_M or above ALT_MAX_M.
     A row is counted under the first rule that removes it. Rows with EMPTY cells (NaN) are kept: an empty

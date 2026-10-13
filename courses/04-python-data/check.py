@@ -68,6 +68,19 @@ def raw_table():
     return pd.DataFrame(rows, columns=["flight_id", "time_s", "lat", "lon", "alt_m"])
 
 
+MASK_HELP = " — combine masks with | or &, with brackets around each comparison (Step 2 hint 6)"
+
+
+def run_masks(fn, *args):
+    """run(), plus one sentence for the and/or-between-masks errors."""
+    try:
+        return run(fn, *args)
+    except CheckFailed as e:
+        if any(k in str(e) for k in ("truth value of a Series is ambiguous", "'ror_'", "'rand_'")):
+            raise CheckFailed(str(e) + MASK_HELP)
+        raise
+
+
 @c.test("TODO 1: clean() applies the three rules on a table it has never seen",
         hint="Lesson §2 and the docstring: one mask per rule, each on what the previous rule left; write each rule as "
              "'remove where …' so that empty cells stay; return (clean_df, removed).")
@@ -75,7 +88,7 @@ def _():
     (clean,) = functions("clean")
     df = raw_table()
     before = df.copy()
-    got = run(clean, df)
+    got = run_masks(clean, df)
     if isinstance(got, pd.DataFrame):
         raise CheckFailed("clean() returned only the DataFrame: return two things, `return out, removed`")
     c.ok(isinstance(got, tuple) and len(got) == 2, f"clean() should return (clean_df, removed), got {type(got).__name__}")
@@ -413,6 +426,9 @@ def _():
         raise CheckFailed("report.md gives day vision's robust σ with one decimal: write it with two (as in results.json)")
     if re.search(r"(?<![0-9])1\.2(?![0-9])", low) and not re.search(r"1\.19", low):
         raise CheckFailed("report.md gives the gps robust σ with one decimal: write it with two (as in results.json)")
+    if re.search(r"4\.2[78]", low) and not re.search(r"3\.7[45]", low):
+        raise CheckFailed("report.md gives day vision's robust σ of the table WITHOUT corrections (4.28): use the "
+                          "corrected table (the second table, or results.json)")
     if re.search(r"35\.69", low) and not re.search(r"3\.7[45]", low):
         raise CheckFailed("report.md gives day vision's std (35.69) but not its robust σ (mad_sigma_mps)")
     for pats, what in (((r"1\s?397", r"1\s?402"), "the number of rows (raw or left)"),

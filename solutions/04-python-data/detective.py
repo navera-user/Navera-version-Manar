@@ -15,7 +15,7 @@ landing = pd.to_timedelta(sheet["landing_utc"]).dt.total_seconds()
 g = df.groupby("flight_id")
 clock = pd.DataFrame({"log_first_s": g["time_s"].min(), "sheet_takeoff_s": takeoff,
                       "log_last_s": g["time_s"].max(), "sheet_landing_s": landing})
-clock["first_minus_takeoff_s"] = clock["log_first_s"] - clock["sheet_takeoff_s"]
+clock["first_minus_takeoff_s"] = (clock["log_first_s"] - clock["sheet_takeoff_s"]).round(1) + 0.0   # no "-0.0"
 print(clock.round(1), "\n")
 speed = pd.DataFrame({"logged_median": g["speed_mps"].median(), "from_positions_median": g["pos_speed_mps"].median()})
 speed["ratio"] = speed["logged_median"] / speed["from_positions_median"]

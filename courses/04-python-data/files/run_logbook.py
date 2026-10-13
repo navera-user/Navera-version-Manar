@@ -64,7 +64,11 @@ def need_df(fn, *args, columns=()):
 
 
 def cleaned():
-    v = rk.need_ok(lb, "clean", raw_log())
+    v, err = rk.call(lb, "clean", raw_log())
+    if err:
+        if any(k in err for k in ("truth value of a Series is ambiguous", "'ror_'", "'rand_'")):
+            err += " — combine masks with | or &, with brackets around each comparison (Step 2 hint 6)"
+        sys.exit(err)
     if not (isinstance(v, tuple) and len(v) == 2 and isinstance(v[0], pd.DataFrame) and isinstance(v[1], dict)):
         sys.exit(f"clean() must return TWO things, (clean_df, removed): a DataFrame and a dict — it returned "
                  f"{type(v).__name__}{' of length ' + str(len(v)) if isinstance(v, tuple) else ''}.")
@@ -138,6 +142,8 @@ def test():
     want = {"duplicates": 2, "null_island": 1, "bad_altitude": 0}
     before = seven.copy()
     v, err = rk.call(lb, "clean", seven)
+    if err and any(k in err for k in ("truth value of a Series is ambiguous", "'ror_'", "'rand_'")):
+        err += " — combine masks with | or &, with brackets around each comparison (Step 2 hint 6)"
     ok = False
     if not err and not (isinstance(v, tuple) and len(v) == 2 and isinstance(v[0], pd.DataFrame)):
         v = f"a {type(v).__name__}, not two things: return (clean_df, removed)"
@@ -216,7 +222,9 @@ def test():
     ok = v == want and all(type(x) is float for row in v.values() for x in row.values())
     if not err and isinstance(v, dict) and not ok and v != want:
         try:
-            if any(abs(sum(float(x) for x in row.values()) - 100.0) > 0.01 for row in v.values()):
+            if all(abs(sum(float(x) for x in row.values()) - 1.0) < 0.01 for row in v.values()):
+                v = f"{v} — fractions, not percentages: multiply by 100"
+            elif any(abs(sum(float(x) for x in row.values()) - 100.0) > 0.01 for row in v.values()):
                 v = f"{v} — each flight's shares must add up to 100: divide by THAT flight's rows"
         except (TypeError, ValueError, AttributeError):
             pass
@@ -225,12 +233,15 @@ def test():
     show("state_shares(a: FIX FIX FIX DEGRADED; b: NO_FIX FIX)", v, err, ok, want)
 
     e = np.array([-30.0, -2.0, -1.0, 0.0, 0.0, 1.0, 1.0])
-    n = pd.DataFrame({"source": ["gps"] * 7, "pos_speed_mps": e + 5.0, "speed_mps": [5.0] * 7,
-                      "battery_pct": [np.nan] + [80.0] * 6})       # an empty cell in another column: not a reason to drop
+    n = pd.DataFrame({"source": ["gps"] * 7 + ["none"], "pos_speed_mps": list(e + 5.0) + [np.nan],
+                      "speed_mps": [5.0] * 8,
+                      "battery_pct": [np.nan] + [80.0] * 7})   # empty cells: in another column (keep), in err (drop)
     v, err = rk.call(lb, "noise_by_source", n)
     ok = False
     if not err and isinstance(v, pd.DataFrame):
         try:
+            if "none" in v.index:
+                raise KeyError("a 'none' row: drop the rows where err is NaN (no position) before grouping")
             r = v.loc["gps"]
             ok = all(abs(float(r[k]) - w) < 0.01 for k, w in (("n", 7), ("mean_mps", -4.429), ("std_mps", 11.33),
                      ("median_mps", 0.0), ("mad_sigma_mps", 1.483), ("p95_abs_mps", 21.6)))

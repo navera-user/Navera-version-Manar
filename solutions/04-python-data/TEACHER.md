@@ -66,8 +66,9 @@ corrections · 10 Step 6 unplanned outage · 11 Step 7 · 12 TODO 7 · 13 result
   4.28).
   **Measured vs predicted.** Regenerating the campaign with 40 other seeds (`make_dataset.py --seed 1000…1039`,
   verified 2026-10-13, also reproduced by the expert reviewer) gives day 4.11 ± 0.31 (3.41–4.69) and gps 1.11 ± 0.03
-  (1.04–1.19) m/s. GPS: the formula is right (1.10). Seed 404's 1.19 is 2.2 spreads high, higher than all 40 other
-  seeds: an unlucky campaign (a 2.2-spread gap either way happens about 1 time in 35), and with 1 095 errors the
+  (1.04–1.19) m/s. GPS: the formula is right (1.10). Seed 404's 1.188 is 2.2 spreads high with the 1.17/√n scatter of
+  0.036 (2.6–2.7 with the lab's rounded 1.11 ± 0.03: accept anything from 2 to 3), higher than all 40 other
+  seeds (max 1.187): an unlucky campaign (a 2.2-spread gap either way happens about 1 time in 35), and with 1 095 errors the
   scatter is only 3 % (1.17/√n). A student who says "larger than the scatter" is right. Day: 3.75 is 1.2 spreads
   below 4.11, ordinary sampling with 224 errors (8 %). And 4.11 itself is about 3 % below the formula's 4.25: not
   sampling (standard error of the 40-seed mean 0.05), but the limit of a linear formula: a 6 m noise is not small
@@ -81,7 +82,8 @@ corrections · 10 Step 6 unplanned outage · 11 Step 7 · 12 TODO 7 · 13 result
   (median bias 0.89 / 0.63 m/s for day, 0.054 / 0.026 for GPS). The jumps add only positive errors (7 beyond +20 m/s, none below −20: `out/noise.png`).
 - Step 8 (TODO 7): on the raw campaign `unit_suspects` → `{"grid_survey": "km/h"}`; check 12 uses a knots flight with
   a wild position speed (medians needed), a km/h flight 2.8 % off 3.6 (relative tolerance needed), a 1.04 flight
-  (left out with tol 0.05, "?" with tol 0.02) and a 1.30 flight ("?").
+  (left out with tol 0.05, "?" with tol 0.02), a 1.30 flight ("?"), a second knots flight t (ratio 1.945: catches an
+  inverted ratio or the 0.5144 factor) and a flight w with ratio 0.5 ("?": catches a one-sided test).
 - Step 9: results.json (rows 1402 → 1397, longest sahel 292 s, one unplanned outage, no jamming window without
   outage, noise as Step 7). The runner prints only a one-line summary; the file is read in the editor. A model report
   is `report.md` in this folder.
@@ -98,7 +100,7 @@ corrections · 10 Step 6 unplanned outage · 11 Step 7 · 12 TODO 7 · 13 result
 | EXPLAIN_KEEP_NOFIX | NO_FIX rows are real moments with no position; dropping them shortens or removes outages and hides the time the judge had nothing; only written rules remove rows | "they are real data" without the outage consequence | "NaN is fine" |
 | EXPLAIN_DETECTIVE | clock: log vs sheet, exactly 3600 s, local time UTC+1 (and/or the overlap with grid_survey); speed: ratio 3.6 of two independent measures (and/or > 30 m/s) → km/h; both with numbers | one correction justified with numbers | corrections stated with no evidence |
 | EXPLAIN_ROBUST | a few huge errors (vision jumps, 160–265 m/s) dominate std because errors are squared; MAD-based σ = typical noise; report adds the tail (p95/max) and n; robust statistics did not protect against the km/h flight (systematic, a third of the GPS rows: 1.98 → 1.19 after correction) | two of the three ideas | "std is bigger because vision is worse" |
-| report.md | five sections with numbers and units; cleaning counts and why NO_FIX stays; both corrections with evidence and "raw not edited"; outages incl. the unplanned one flagged; both robust σ compared with theory, each gap judged against its own scatter (day ±8 %: sampling; gps ±3 %: 2 spreads, flagged or explained), the tail explained; honest limits (synthetic, n, logged speed not truth, the small upward bias of speeds from positions) | numbers right but little explanation, or one section thin | lists of numbers copied from results.json |
+| report.md | five sections with numbers and units; cleaning counts and why NO_FIX stays; both corrections with evidence and "raw not edited"; outages incl. the unplanned one flagged; both robust σ compared with theory, each gap judged against its own scatter (day ±8 %: sampling; gps ±3 %: 2–3 spreads, flagged or explained), the tail explained; honest limits (synthetic, n, logged speed not truth, the small upward bias of speeds from positions) | numbers right but little explanation, or one section thin | lists of numbers copied from results.json |
 
 Predictions (`PREDICT_…`) are never marked. In class, ask who expected the jammer to be broken in Step 6.
 

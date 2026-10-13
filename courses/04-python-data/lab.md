@@ -128,6 +128,10 @@ python3 run_logbook.py clean
    instead of on what the duplicate rule left. (A pandas `UserWarning: Boolean Series key will be
    reindexed` has the same cause.)
 5. The runner says "a DataFrame, not two things": you returned only the DataFrame; return `out, removed`.
+6. `ValueError: The truth value of a Series is ambiguous` (do NOT follow its advice to use `.any()`): you
+   wrote `and` / `or` between two masks. Use `&` / `|`, with brackets around each comparison:
+   `(out["alt_m"] < ALT_MIN_M) | (out["alt_m"] > ALT_MAX_M)` (lesson §1). Without the brackets you get
+   `TypeError: Cannot perform 'ror_' …`: same fix.
 </details>
 
 > [!TASK]
@@ -387,9 +391,11 @@ you skipped (the √2? Δt = 2 s?).
 
 Then the measurement. A robust σ from n errors changes from one campaign to the next by about 1.17/√n of
 itself: about 8 % for day vision's 224 errors, only 3.5 % for GPS's 1 095. Forty other campaigns made the
-same way give day vision 4.1 ± 0.3 m/s (from 3.4 to 4.7) and GPS 1.11 ± 0.03 m/s (from 1.04 to 1.19). Day
-vision's 4.1 is a little below the formula's 4.25 for the reason in the next box: a 6 m noise is not small
-against a 20 m step. In the report, say for each source how many "spreads" your value is from these, and
+same way give day vision 4.1 ± 0.3 m/s (from 3.4 to 4.7) and GPS 1.11 ± 0.03 m/s (from 1.044 to 1.187). Day
+vision's 4.1 is a little below the formula's 4.25 because a 6 m noise is not small against a 20 m step:
+cross-track noise can only add length to a step, so part of the noise turns into the positive bias of the
+next box instead of spread (a simulation gives 4.07 m/s at 10 m/s, 4.15 at 14, 4.20 at 20). In the report,
+say for each source how many "spreads" your value is from these (about 2 to 3 is unusual but possible), and
 whether that is plausible.
 </details>
 
@@ -440,7 +446,7 @@ python3 run_logbook.py report
 ```
 
 It writes `results.json` with everything, corrections applied (open it in the 📝 Code tab). Now fill
-[report.md](file:./report.md): keep the five `##` headings and replace every "(write here)", at least 200
+[report.md](file:./report.md): keep the five `##` headings and replace each placeholder paragraph, at least 200
 words in all. The check looks for the rows left or removed, both corrections with their numbers, the
 longest outage (flight and seconds), the unplanned outage (flight and UTC time), and the two robust σ
 (`mad_sigma_mps`, with your corrections) with two decimals. Explain, do not only list: a reader must know
