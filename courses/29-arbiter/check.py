@@ -369,7 +369,7 @@ def _():
               ([r"came back", r"come back", r"revi", r"again", r"clock", r"reach", r"catch", r"no longer", r"30 ?s",
                 r"32", r"stamp", r"stale position", r"old position", r"400", r"430", r"behind"],
                "why an old position became FIX later"),
-              ([r"jump", r"gate", r"trusted", r"410", r"0\.5 ?s", r"measured from"],
+              ([r"jump", r"gate", r"trusted", r"410", r"(?<![\d.])0\.5 ?s", r"measured from"],
                "why honest fixes were then refused as jumps (the gate measured them from the old trusted fix)"),
               min_words=15)
 
