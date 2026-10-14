@@ -98,6 +98,9 @@ def test():
         got, err = rk.call(A, fn, *args)
         if err and "returned None for this case" in err and want is None:
             got, err = None, None                     # None may be the right answer
+        if err and "returned None for this case" in err and fn == "pick":
+            err = (f"returned None (no winner), the docstring/lesson says {want!r} — when the current winner is not a "
+                   "candidate (lost, or None), there is no hold-off: the first candidate wins at once (Step 2, hint 1)")
         if err:
             line(todo, label, False, err)
         elif _same(got, want):
@@ -179,7 +182,8 @@ def test():
     line(4, "a GPS fix stamped NaN: bad stamp (a NaN passes every `x > limit` test and never ages)",
          not err and _same(got, (False, "bad stamp")) and a.latest == {},
          err or f"returned {got!r}, latest has {sorted(a.latest)} — the docstring says (False, 'bad stamp'), "
-         "nothing stored")
+         "nothing stored: test it with math.isfinite(est.stamp_s) (NaN == NaN is False, so `== float('nan')` "
+         "never catches it)")
     a = fresh()
     a.receive(Estimate("gps", 35.8, 10.6, 120.0), 100.0)
     got, err = rk.call(a, "receive", _gps(100.4), 100.5)
@@ -350,7 +354,7 @@ def play(path, mode, until):
 
     for t, d, refusal in run:
         if refusal:
-            key = re.sub(r"[0-9.]+", "#", refusal)
+            key = refusal if refusal.startswith("jump") else re.sub(r"[0-9.]+", "#", refusal)
             if same and key == same_key[0]:
                 same.append(t)
             else:

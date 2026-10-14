@@ -358,7 +358,8 @@ def _():
 
 @c.test("Step 5 — the door left open",
         hint="Predict first, then run `python3 judge_lab.py play /data/academy/29-arbiter/lockout.csv --open-door` "
-             "and explain both effects: what happened to the honest fixes, and why an old position came back as FIX.")
+             "and explain the three effects: what happened to the honest fixes, why an old position came back as FIX, "
+             "and why honest fixes were then refused as jumps.")
 def _():
     a = answers()
     predicted("PREDICT_LOCKOUT", getattr(a, "PREDICT_LOCKOUT", ""))
@@ -366,8 +367,10 @@ def _():
               ([r"old news", r"older", r"newer", r"drop", r"ignor", r"refus", r"locked", r"lock", r"order", r"thrown",
                 r"discard", r"rejected", r"blocked"], "what happened to the honest GPS fixes (and why)"),
               ([r"came back", r"come back", r"revi", r"again", r"clock", r"reach", r"catch", r"no longer", r"30 ?s",
-                r"32", r"stamp", r"stale position", r"old position", r"400", r"430", r"behind", r"jump"],
+                r"32", r"stamp", r"stale position", r"old position", r"400", r"430", r"behind"],
                "why an old position became FIX later"),
+              ([r"jump", r"gate", r"trusted", r"410", r"0\.5 ?s", r"measured from"],
+               "why honest fixes were then refused as jumps (the gate measured them from the old trusted fix)"),
               min_words=15)
 
 

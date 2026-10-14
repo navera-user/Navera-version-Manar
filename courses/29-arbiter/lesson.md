@@ -26,7 +26,7 @@
 1. describe a judge as a **state machine** (inputs, a small explicit memory, outputs) and predict
    its next decision from that memory;
 2. code **eligibility and priority**, and a **door** that refuses impossible inputs (unknown source,
-   future stamp, old news, GPS jump) so that a refused fix can **never come back**;
+   bad stamp, future stamp, old news, GPS jump) so that a refused fix can **never come back**;
 3. implement **hysteresis** (a hold-off) and **measure its cost** in unused GPS time;
 4. map the winner to **FIX / DEGRADED / NO_FIX** with a reason a human can read;
 5. argue **selection versus fusion** with numbers (correlation, a spoofed source).
@@ -178,8 +178,9 @@ from the future when it arrived proves that its source's clock is wrong: nothing
 trusted later. So the rule is: **a fix refused at the door is never stored, and therefore can never
 come back**. The judge remembers only *why* it refused (`refused["gps"]`), to tell the operator.
 NAVERA's code review of 2026-09-28 listed a bug of the same family: "a future timestamp kept a dead
-source fresh" (EST-2, critical, fixed). NAVERA's documented rule today is the one you just read: a fix
-stamped in the future does not set the order, and it is refused (architecture document).
+source fresh" (EST-2, critical, fixed). NAVERA's architecture document states its rule this way: "a fix
+stamped in the future does not set the order; it is refused by eligibility". Your door gets both
+effects by never storing such a fix.
 
 A stored future fix does even more damage than the revival. You will find two more effects in lab
 Step 5; read the box below only after it.
@@ -309,7 +310,8 @@ min(G, T) seconds of each gap, so its **availability** is E[min(G, T)] / E[G] (E
 > [!TIP] 🧰 Two integrals you need
 > ∫ₐᵇ g dg = (b² − a²)/2: the area under the line y = g, a trapezium. ∫ₐᵇ T dg = T·(b − a): a rectangle.
 > E.g. ∫₁³ g dg = (9 − 1)/2 = 4 and ∫₃⁴ 3 dg = 3 × 1 = 3. For gaps uniform between a and b, the mean of
-> anything is its integral divided by (b − a).
+> anything is its integral divided by (b − a). And min(g, T) is g while g < T and T after it: so
+> cut the integral at T — ∫ₐᵀ g dg + ∫ᵀᵇ T dg.
 
 **Worked example.** Gaps uniform between 1 and 4 s: E[G] = 2.5 s. For T = 3 s, E[min(G, 3)] =
 (1/3)·(∫₁³ g dg + ∫₃⁴ 3 dg) = (1/3)·(4 + 3) = 2.33 s: availability 2.33 / 2.5 = **93 %**. For
@@ -402,7 +404,7 @@ against it. Navi the swallow does not change course at every flicker of one cue 
 1. The judge is a **state machine**: same inputs and same memory (latest, refused, since, current,
    switches) give the same decision — so it can be replayed and tested.
 2. **Candidates** are the stored fixes that are eligible now; the winner follows a fixed **priority**.
-3. **The door** refuses unknown sources, future stamps, old news and GPS jumps, and **stores
+3. **The door** refuses unknown sources, bad (NaN) stamps, future stamps, old news and GPS jumps, and **stores
    nothing it refuses**: a refused fix can never come back.
 4. **Hysteresis**: a source replaces a working winner only after a 2 s hold-off without a break; a
    lost winner is replaced at once. It removes chattering and costs unused GPS time.

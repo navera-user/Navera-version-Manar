@@ -14,8 +14,8 @@ questions on its source: gone (students never see NAVERA code). The race is now 
 the same scenario, recorded by `make_dataset.py`. The arbiter-v0 thread of missions 09–12 ends here: the revival found in
 mission 12 (`PREDICT_REVIVE`/`EXPLAIN_REVIVE`) is closed by the door (`receive`), and Step 5 shows two more effects of a
 stored future fix (lockout by "old news", poisoned jump gate). **Never present the revival as a NAVERA fact**: the lesson quotes NAVERA's documented EST-2 ("a future timestamp kept
-a dead source fresh", critical, fixed, review 2026-09-28) and NAVERA's documented rule (ARCHITECTURE §3: a fix stamped in
-the future does not set the order and is refused) — nothing about NAVERA's mechanism. The door also refuses a non-finite
+a dead source fresh", critical, fixed, review 2026-09-28) and NAVERA's documented rule (ARCHITECTURE §3, quoted: "a fix stamped in
+the future does not set the order; it is refused by eligibility"; the course's door gets both effects by never storing it) — nothing about NAVERA's mechanism. The door also refuses a non-finite
 stamp ("bad stamp", fix round 1: a NaN passes every `x > limit` test and would never age; note for mission 12's owner:
 `estimate.eligible` could refuse a non-finite age too). Selection vs fusion: experiment.py's given `fuse()` calls mission 27's `navera_lite.uncertainty.fuse` (σ² I covariances).
 
@@ -84,7 +84,7 @@ EST-3), ARCHITECTURE §3 (rules, windows, hold-off, prior from the arbiter's out
 
 | Item | Good (2) | Partial (1) | Weak (0) |
 |---|---|---|---|
-| EXPLAIN_LOCKOUT | both effects: honest fixes dropped as old news because the stored future fix is "newer"; at ≈ 30 s it became eligible, waited the hold-off and won FIX with a 20 s old position (and/or the gate trusted it, so honest fixes were jumps) | one effect, or "the clock caught up" without what was stored | "the GPS was bad" |
+| EXPLAIN_LOCKOUT (the check needs three keyword groups: old news / old position FIX / jump-gate) | the three effects: honest fixes dropped as old news because the stored future fix is "newer"; at ≈ 30 s it became eligible, waited the hold-off and won FIX with a 20 s old position (and/or the gate trusted it, so honest fixes were jumps) | one effect, or "the clock caught up" without what was stored | "the GPS was bad" |
 | EXPLAIN_WAIT | hold-off: GPS eligible since 14.0 s, needs 2 s without a break, takes over at 16.0 s | "hold-off" without numbers | "GPS is worse" (σ does not choose the winner) |
 | EXPLAIN_HOLDOFF | numbers from table A for both sides (31.1 → 12.1 changes/min; 228.8 s unused, share 0.62 → 0.24) and a judgement | one side only | no numbers |
 | report §1–3 | own numbers, a choice argued with them, the cost named | numbers without argument | copied lesson text |

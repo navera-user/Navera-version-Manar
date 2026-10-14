@@ -11,8 +11,8 @@ inputs update. The whole memory is in the Arbiter object, in plain sight:
     switches  every change of winner: (time, old source, new source)
 
 Its rules (lesson 29; the values are in navera_lite.yaml):
-  - the door (receive): an unknown source, a fix stamped in the future, a fix not newer than the stored one
-    ("old news") and a GPS jump are refused, and a refused fix is NEVER stored: it cannot come back later;
+  - the door (receive): an unknown source, a stamp that is not a finite number, a fix stamped in the future,
+    a fix not newer than the stored one ("old news") and a GPS jump are refused, and a refused fix is NEVER stored: it cannot come back later;
   - eligible = estimate.eligible() (mission 12): valid, a real position, a covariance when one is stated,
     not from the future, fresh for its source's timeout;
   - priority GPS > day > night > celestial, with a HOLD-OFF: a higher-priority source takes over only after

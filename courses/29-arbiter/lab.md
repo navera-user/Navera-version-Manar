@@ -130,7 +130,7 @@ python3 judge_lab.py test
 
 ## Step 3 — The door (TODO 4)
 
-**TODO 4 — `Arbiter.receive(est, now_s)`.** The docstring lists the four refusals **in their order**,
+**TODO 4 — `Arbiter.receive(est, now_s)`.** The docstring lists the five refusals **in their order**,
 with their words. Lesson §3 explains why a fix refused at the door must never be stored, and why the
 future test comes before the jump gate. The jump gate is ready: `self.gate.check(est)` returns
 `(ok, reason)`, like in mission 01 (and it remembers the trusted fix itself).
@@ -161,6 +161,8 @@ python3 judge_lab.py test
    source from `self.refused` (`self.refused.pop(name, None)` does not fail when the key is missing).
 5. "a fix older than the stored one" ✘ and the stored stamp became 99.1? You stored before you tested
    the order: every test comes BEFORE `self.latest[...] = est`.
+6. Bad stamp: `math.isfinite(est.stamp_s)` (math is imported) is False for nan and inf.
+   `est.stamp_s == float("nan")` never works: a NaN is equal to nothing, not even to itself.
 </details>
 
 ## Step 4 — The decision (TODO 5)
@@ -198,6 +200,7 @@ Compare with Step 0 (and `out/flapping_mine.png` with `out/flapping_v0.png`): ho
 > Write `MINE_FLAP_SWITCHES` (your judge's "changes of winner" on `flapping.csv`) and `EXPLAIN_FLAP`:
 > between 2.5 s and 24.5 s the GPS was usable several times, yet your judge stayed on day vision. Why?
 > Which run of GPS fixes finally took over, and why that one?
+
 Then the revival of mission 12 — first mission 12's judge (v0 with your old `eligible()`), then yours:
 
 ```bash
@@ -278,10 +281,10 @@ python3 play_scenario.py
 ```
 
 A judge remembers. **Before each new race, restart it** (the player refuses a judge that is not
-STARTING):
+STARTING). `wait` returns when the old judge has really stopped, so the new one is job 1 again:
 
 ```bash
-kill -INT %1
+kill -INT %1; wait
 ```
 
 ```bash
@@ -298,7 +301,7 @@ python3 -m navera_lite.ros.arbiter_node --ros-args --params-file navera_lite.yam
 check (the check starts its own, with your code, on a hidden scenario):
 
 ```bash
-kill -INT $(jobs -p)
+kill -INT $(jobs -p); wait
 ```
 
 ## Step 7 — The price of the hold-off (TODO A)
