@@ -8,7 +8,8 @@
 - `photos.json` — for each photo: the UTC time, the IMU chip's attitude at the exposure (quaternion
   x, y, z, w; its north is MAGNETIC north), a prior position (the operating area), and the truth (true
   position and attitude, for measuring errors). Also the camera's K matrix and its mounting.
-- `photo01_stars.csv` — where the catalogue stars fall in `night_01.png` (pixels, with their magnitude).
+- `photo01_stars.csv`, `photo02_stars.csv` — where the catalogue stars fall in `night_01.png` and `night_02.png`
+  (pixels, with their magnitude).
 
 The photos are rendered for the course from the catalogue; they are not real sky photos.
 
@@ -17,5 +18,7 @@ The photos are rendered for the course from the catalogue; they are not real sky
 `bright_stars.csv` is a subset (columns and stars brighter than 6.5 kept, common names added) of
 **The Bright Star Catalogue, 5th Revised Edition (Preliminary Version)**, D. Hoffleit and W. H. Warren Jr.,
 Astronomical Data Center, NSSDC/ADC, 1991 — CDS catalogue V/50,
-https://cdsarc.cds.unistra.fr/viz-bin/cat/V/50. The catalogue's machine-readable documentation describes it
-as public domain; it is shared here for teaching with this citation. If you use it, cite it as above.
+https://cdsarc.cds.unistra.fr/viz-bin/cat/V/50. Neither the CDS ReadMe nor the Harvard readme of the catalogue
+states a licence; an earlier documentation file of the machine-readable catalogue describes it as public domain.
+It is distributed freely by CDS, which asks users to acknowledge it, and is shared here for teaching with this
+citation: "This research has made use of the VizieR catalogue access tool, CDS, Strasbourg, France."

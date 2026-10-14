@@ -17,9 +17,10 @@ VEGA_SHIFT_KM = 0.0         # that angle as a distance on the Earth (km)
 EXPLAIN_SIDEREAL = ""       # why does the sky's clock gain on yours, and why does it matter for a star fix?
 
 # ---- Step 3: the sky over Cape Town (python3 run_stars.py sky capetown) --------------------------------------
+PREDICT_ACHERNAR = ""       # by hand, before running: Achernar's highest altitude seen from Cape Town (90° − |φ − δ|,
+                            # δ ≈ −57.1° of date)? Tonight's table will show less: is it before or after its transit?
 ACHERNAR_ALT_DEG = 0.0      # Achernar's altitude (degrees)
 ACHERNAR_AZ_DEG = 0.0       # Achernar's azimuth (degrees)
-POLARIS_CAPE_ALT_DEG = 0.0  # Polaris' altitude seen from Cape Town (degrees, with its sign)
 
 # ---- Step 4: latitude from Polaris (python3 run_stars.py polaris) -------------------------------------------
 PREDICT_POLARIS = ""        # before running: with the correction, which place keeps the largest error? why?
@@ -39,9 +40,10 @@ EXPLAIN_CENTROID = ""       # why weight the centre by brightness? why do the si
                             # matter (photo 2)?
 
 # ---- Step 6: which stars are these? (python3 run_stars.py solve) --------------------------------------------
+PREDICT_PIXEL = ""          # before running "solve": the camera is 60° wide on 1 280 px. Is one pixel at the image
+                            # CENTRE 60°/1280 = 2.81′, more, or less? why? (K: f = 640 / tan 30° px)
 SOLVE_RMS_ARCSEC = 0.0      # the plate solve's fit residual (″)
-PIXEL_ARCMIN = 0.0          # one pixel at the image centre, on the sky (′)
-PIXEL_KM = 0.0              # that angle as a distance on the Earth (km)
+PIXEL_ARCMIN = 0.0          # one pixel at the image centre, on the sky (′, printed by solve)
 
 # ---- Step 8: two roots, one prior (python3 run_stars.py fix / fix truth / fix magnetic / fix oneroot) -------
 TRACE_PSI_DEG = 0.0         # by hand, before coding TODO 7: ψ for the docstring example (degrees)
@@ -49,19 +51,20 @@ MEDIAN_FIX_KM = 0.0         # fix: the median error with the IMU (km)
 NO_FIX_PHOTO = 0            # fix: the photo number that gives no position
 PERFECT_MAX_KM = 0.0        # fix truth: the largest error with a perfect attitude (km)
 PREDICT_MAGNETIC = ""       # before "fix magnetic": how many km does forgetting the declination (≈ +3.3°) move photo 1's fix?
-MAGNETIC_ERR_01_KM = 0.0    # fix magnetic: photo 1's error (km)
+MAGNETIC_ERR_01_KM = 0.0    # fix magnetic: photo 1's error to the truth (km)
+MAGNETIC_MOVE_01_KM = 0.0   # fix magnetic: how far photo 1's fix MOVED from `fix` (km): compare with your prediction
 ONE_ROOT_ERR_03_KM = 0.0    # fix oneroot: photo 3's error (km)
 EXPLAIN_ROOTS = ""          # why can one direction give two places? why is the asin root wrong for photo 3? why does
                             # photo 6 give no position?
-EXPLAIN_NORTH = ""          # why does forgetting the declination move photo 1 so far? why do photos 3–5 then give
-                            # no position at all?
+EXPLAIN_NORTH = ""          # forgetting the declination: the move vs your prediction, and why the ERROR is larger
+                            # still (which two things add up)? why do photos 3–5 then give no position at all?
 
 # ---- Step 9: the error budget (python3 run_stars.py budget) -------------------------------------------------
 PREDICT_BUDGET = ""         # before running: measured RMS close to your formula, above, or below? and the median?
 FORMULA_KM = 0.0            # your error_km for photo 1 (km)
 MC_RMS_KM = 0.0             # the measured RMS error (km)
 MC_MEDIAN_KM = 0.0          # the measured median error (km)
-MOUNT_BIAS_MAX_DEG = 0.0    # the largest fixed tilt (perfect IMU) that keeps the fix within 55 km (degrees)
+MOUNT_BIAS_MAX_DEG = 0.0    # the largest fixed tilt (perfect IMU) that keeps the fix within 55 km (degrees, 3 decimals)
 EXPLAIN_BUDGET = ""         # which term dominates for photo 1? why is the median smaller than the RMS? why do the
                             # formula and the simulation differ?
 

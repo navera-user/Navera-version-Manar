@@ -25,9 +25,10 @@ show the answers).
 ## The data (`/data/academy/26-stars/`)
 
 - `bright_stars.csv`: 8 404 stars with V ≤ 6.5 from **the Bright Star Catalogue, 5th rev. ed. (Hoffleit & Warren
-  1991, CDS V/50)**, J2000 positions (RA to 0.1 s, Dec to 1″), common names added by hand for 55 stars. Licence: the
-  catalogue's machine-readable documentation describes it as public domain (no current licence statement exists
-  at CDS/Yale; a web search 2026-10-14 found the same); the dataset README cites it. NAVERA's own copy of the BSC
+  1991, CDS V/50)**, J2000 positions (RA to 0.1 s, Dec to 1″), common names added by hand for 55 stars. Licence: no
+  licence is stated in the CDS ReadMe (2022 version) nor in the Harvard bsc5 readme (both checked 2026-10-14); an
+  earlier documentation file of the machine-readable catalogue describes it as public domain. NASA/ADC work, freely
+  distributed by CDS, which asks for an acknowledgement; the dataset README says exactly this, with the citation. NAVERA's own copy of the BSC
   is not used and stays staff-only.
 - `photos/night_01…06.png`: SYNTHETIC star-camera photos, 1280 × 960, 8-bit, ideal pinhole 60° wide (f = 1108.5 px,
   K centre (640, 480)), camera axis 20° from body up towards the nose. Rendered with the reference's own sky model
@@ -35,7 +36,12 @@ show the answers).
   pixels, total signal 60 DN at V = 6.0, sky 18 DN (+6 towards the bottom), read noise 2.5 DN, 40 hot pixels
   (120–255). Photo 2 adds a glow (+70 DN, σ 380 px, bottom-right corner) and an aircraft trail. Because the world
   and the solver share one model, the "perfect attitude" fixes are within 0.2 km — far better than NAVERA's real
-  5.5–6.5 km (astrometry.net's 2.9′ fit, real optics). The lesson says the photos are synthetic; say it again.
+  5.5–6.5 km. Lab Step 8's note "Why 0.2 km here and 5.5–6.5 km in NAVERA?" says so to the students: NAVERA's
+  number is mostly astrometry.net's 2.9′ centre fit (5.4 km); refraction would add 0.8–1.3 km at these altitudes
+  (Bennett; `fix truth refraction` measures 1.0 km for photo 1, 1.2 km for photo 3), aberration ≤ 0.6 km,
+  nutation ≤ 0.5 km. Owner decision (round 1): no lens distortion, no attempt to make the budget "real".
+- `photo01_stars.csv`, `photo02_stars.csv`: true pixel positions of every catalogue star in photos 1 and 2 (the
+  runner's `detect 1|2` truth comparison; photo 2 adds "stars found in the glowing corner").
 - `photos.json`: UTC time, the chip quaternion (truth + BNO085-class errors σ 0.3° roll, 0.3° pitch, 1.5° heading,
   then turned to MAGNETIC north by the WMM declination at the truth), prior, truth (position, human angles, q).
 
@@ -49,7 +55,7 @@ show the answers).
 | 6 | Reykjavik 64.15, −21.94 | 21 Oct 00:30 | 45 / −15 / 0 | +0.36, +0.23, −1.01 | −11.05 | 64.00, −21.20 |
 
 Sun altitude at every photo below −30° (astropy). Photo 3 looks north 55° high: two valid roots, the asin root is
-the wrong one (40.35 N, 161.04 W, 7 784 km away with the true attitude) — the CN-1 situation. Photo 6 is near the
+the wrong one (40.35 N, 161.04 W, 7 784 km away with the true attitude) — the LOC-10 situation. Photo 6 is near the
 "fold" of the two roots: with the true attitude they are 157 km apart (both within 5° of the prior → no position);
 with the IMU's attitude there is no root at all.
 
@@ -74,8 +80,8 @@ Badges: **Stargazer** = checks 1–6 (session 1), **Star navigator** = all 15.
 | TRANSIT_SHIFT_S | 235.9 (± 0.3; the negative gets its own message) | `clock`: 20 Oct 15:58:46.44 UTC, 21 Oct 15:54:50.53 UTC |
 | VEGA_SHIFT_ARCMIN | 10.62 (± 0.03) | `clock` (Polaris 9.12′, Sirius 17.30′) |
 | VEGA_SHIFT_KM | 19.67 (± 0.15 around the student's arcmin × 1.852; × 111.2 gets a message) | |
-| ACHERNAR_ALT_DEG / AZ | 55.96 / 144.30 (± 0.02; swapped → message) | `sky capetown` (GMST 329.291°) |
-| POLARIS_CAPE_ALT_DEG | −33.60 (± 0.02; sign → message) | `sky capetown` |
+| PREDICT_ACHERNAR (ungraded) | 90 − |−33.92 + 57.10| = 66.8° at transit; table 55.96° at az 144° (SE): before transit (H = −37°) | |
+| ACHERNAR_ALT_DEG / AZ | 55.96 / 144.30 (± 0.02; swapped → message) | `sky capetown` (GMST 329.291°; Polaris −33.60°, below the horizon) |
 | PREDICT_POLARIS (ungraded) | Reykjavik: the p² term grows with tan φ | |
 | NAIVE_MAX_ERR_KM | 69.52 (± 0.1) | `polaris`: Reykjavik 69.50, London 69.47, Sousse 69.52, Singapore 69.42 |
 | CORRECTED_MAX_ERR_KM | 0.781 (± 0.005) | Reykjavik 0.781, London 0.475, Sousse 0.274, Singapore 0.009 |
@@ -83,24 +89,39 @@ Badges: **Stargazer** = checks 1–6 (session 1), **Star navigator** = all 15.
 | N_STARS_01 | 134 with the reference; the check compares with the student's OWN detector (exact) | `detect`: 122 of the 125 stars ≤ 5.0 found, RMS 0.174 px, worst 0.483 px, 0 "not stars" |
 | CENTROID_RMS_PX | 0.174 with the reference; checked against the student's own detector (± 0.002), must be < 0.3 | |
 | SOLVE_RMS_ARCSEC | 31.1 (10–60 and ± 8 of 31.1) | `solve`: 134 matched, centre ra 16.9916°, dec +44.3995° (of date) |
-| PIXEL_ARCMIN / PIXEL_KM | 3.10 (± 0.01) / 5.74 (± 0.03 around the student's ′ × 1.852) | atan(1/1108.5) |
+| PREDICT_PIXEL (ungraded) | more: 3.10′ = atan(1/1108.5) at the centre; 60°/1280 = 2.81′ is the average (edge pixels cover less) | |
+| PIXEL_ARCMIN | 3.10 (± 0.01; 2.81 → message "the average") | atan(1/1108.5); × 1.852 = 5.74 km |
 | TRACE_PSI_DEG | 29.19 (± 0.03; 60.81 = atan2 arguments swapped → message) | p = sin 37.13° = 0.6036, q = cos 37.13° · cos 295.02° = 0.3373 |
 | MEDIAN_FIX_KM | 116.9 (± 2) | `fix`: 1 116.9, 2 30.2, 3 121.5, 4 49.5, 5 147.4 km, 6 no position (0 roots) |
 | NO_FIX_PHOTO | 6 | |
 | PERFECT_MAX_KM | 0.2 (accepted 0 < x < 1) | `fix truth`: 0.1, 0.1, 0.2, 0.1, 0.1; photo 6 no position (2 roots 157 km apart, both near the prior) |
 | PREDICT_MAGNETIC (ungraded) | rule: 3.3° × cos 66° × 111.2 ≈ 150 km | |
+| MAGNETIC_MOVE_01_KM | 197.4 (± 3; swapped with the error → message) | `fix magnetic`, column "moved from `fix`": 1 197.4, 2 152.4 km. 197.4 ≈ 1.30 × 150: the heading stretch of §7's box |
 | MAGNETIC_ERR_01_KM | 313.7 (± 3) | `fix magnetic`: 1 313.7, 2 148.5; 3, 4, 5, 6 no position (roots beyond 5° of the prior) |
 | ONE_ROOT_ERR_03_KM | 7 834.3 (± 20) | `fix oneroot`: photo 3 takes the asin root (39.88 N, 163.78 W) |
 | PREDICT_BUDGET (ungraded) | any; measured RMS is ABOVE the formula, median below | |
 | FORMULA_KM | 82.6 (± 0.2) | `error_km(0.424, 1.5, 66.00)` |
 | MC_RMS_KM / MC_MEDIAN_KM | 103.1 / 74.8 (± 1.5; swapped → message) | `budget` (seed 26, 2 000 draws): p90 164.6, max 369.8, 0 no-fix |
-| MOUNT_BIAS_MAX_DEG | 0.495 (± 0.005) | 55 / 111.195 |
+| MOUNT_BIAS_MAX_DEG | 0.495 (± 0.005; the lab asks for 3 decimals) | 55 / 111.195 |
 | report.md | headings, 150–420 words, a km value 110–125 (median), "0.x km" (perfect), "111 km" | |
 
-Why the formula (82.6 km) and the simulation (103.1 km RMS) differ (EXPLAIN_BUDGET): (a) a sideways error of the
-boresight is stretched by about cos φ / cos δ in the longitude (photo 1: δ = 44.4°, φ = 35.8° → ×1.13; the box "after
-Step 9"); (b) the rule's "tilt" is the total tilt σ, but a roll error moves a 20°-leaning camera axis by only cos 20°;
-(c) RMS includes the tail. Near the celestial pole (photos 3, 6) the stretch is much larger: try it in Going further.
+Why 82.6 km (rule) and 103.1 km (simulation) differ (EXPLAIN_BUDGET): the heading part is stretched by
+cos φ / (cos δ · |cos H|) = 1.30 for photo 1 (H = −29.5° = the boresight's hour angle), the tilt part by about 1.05:
+111.2 × √((0.424·1.05)² + (0.61·1.30)²) = 101 km. Roll on the 20°-leaning axis (cos 20°) slightly *lowers* the
+simulation. Median < RMS: a 2-D error's median is about 0.83 × RMS even for Gaussian errors, and photo 1's tail makes
+it 0.73. Photo 6 sits at the fold (H = −91°, stretch ×56): `budget 6` gives 1 858 / 2 000 draws with no position.
+Photo 4 (×1.60, `budget 4`: RMS 125.8 km vs rule 84.8) is stretched more than photo 3 (×1.37, 140.8 vs 106.7), so
+"near the pole" is not the reason; |cos H| is. The single-root (asin) formula is right exactly when |H| < 90°
+(checked by the expert reviewer on 19 946 random cases; photo 3 has H = 180°, Capella in §6 H = −123°). NAVERA's
+document says "southern half of the sky" in NAVERA's own formulation; the lesson quotes it as NAVERA's statement and
+gives the |H| condition for ours. Accept either reason (stretch / approximation of the rule) in the rubric.
+
+Domain note (expert, round 1): the lab's one-direction method is NAVERA's. The full-rotation ("zenith") method —
+`plate_solve`'s `R_eq_cam` + the IMU's vertical, φ = δ and λ = α − GMST of the zenith — is heading-free and unique:
+errors 37.8 / 50.0 / 56.1 / 48.6 / 40.3 / 46.1 km with the chip attitude as delivered (magnetic does not matter);
+2 000-draw RMS 47 km on every photo (tilt term 0.424° × 111.2). It is a lesson paragraph (end of §6) and a Going
+further item, not graded. Use it for the "what would improve NAVERA" discussion (NAVERA's own advice: a levelled
+camera and a better attitude source).
 
 ## Rubric for the EXPLAIN items (the check only catches empty or off-topic answers — keyword groups)
 
@@ -110,8 +131,8 @@ Step 9"); (b) the rule's "tilt" is the total tilt σ, but a roll error moves a 2
 | EXPLAIN_POLARIS | p ≈ 0.63° → up to ~70 km; p cos H puts Polaris back on its circle; the residual p² term grows with tan φ (Reykjavik) | two of three | restates the numbers |
 | EXPLAIN_CENTROID | weighted mean gives sub-pixel centres (1 px ≈ 5.7 km); size limits refuse hot pixels/trail; local background keeps stars in the glow | two of three | "OpenCV finds stars" |
 | EXPLAIN_ROOTS | sin takes each value twice (x, 180° − x); asin only returns [−90°, 90°], photo 3's φ + ψ > 90°; photo 6's roots too close (or none) → no position | two of three | "it is ambiguous" |
-| EXPLAIN_NORTH | forgotten D = a heading error, × cos alt × 111 km, adds to the IMU error; large D (Tromsø, Cape Town, Quito) pushes the roots beyond 5° of the prior → refused | two | "magnetic is wrong" |
-| EXPLAIN_BUDGET | heading term dominates (1.5° × cos 66° = 0.61° vs 0.42° tilt); a long tail → RMS > median; the rule is approximate (sideways stretch / geometry) | two | numbers only |
+| EXPLAIN_NORTH | forgotten D = a heading error, × cos alt × 111 km (moved 197 km ≈ 1.3 × the rule's 150), the error adds to the IMU's own heading error; large D (Tromsø, Cape Town, Quito) pushes the roots beyond 5° of the prior → refused | two | "magnetic is wrong" |
+| EXPLAIN_BUDGET | heading term dominates (1.5° × cos 66° = 0.61° vs 0.42° tilt); median ≈ 0.83 × RMS even for Gaussian, a tail widens it; the rule is approximate (heading stretch cos φ / (cos δ |cos H|) = 1.3) | two | numbers only |
 
 ## Mutants run (wrong-but-plausible code; every one fails with its own message)
 
@@ -143,7 +164,42 @@ Step 9"); (b) the rule's "tilt" is the total tilt σ, but a roll error moves a 2
 | error_km added | "the two errors are ADDED" | same |
 | error_km without cos | "the heading error is not multiplied by cos(alt)" | same |
 
-## Difficulties expected (not yet tested with simulated students — do it before release)
+Round 1 (2026-10-14, `--who fix1m`): 5 more of mine and the expert reviewer's 12 (`expert1/mut/`), all caught except
+the expert's stable reverse sort (equivalent code, passes correctly):
+
+| Mutant | check message (✘) | runner test |
+|---|---|---|
+| uint8 subtraction (`gray - bg` wraps) | "464 detections … did you subtract two uint8 arrays?" | grey-sky case "… uint8 … wraps around"; `detect` prints a ⚠ uint8 line |
+| choose with a lat/lon box | "0.38° from the prior on the sphere … cos 64°" | "a latitude/longitude box is wrong" |
+| both_roots without the no-root guard | "math domain error — … no root (return [])" | same; `fix` now shows the crash instead of "0 roots" |
+| minutes not added | "the minutes (and seconds) are not added" | "30 minutes short" |
+| error_km cos of degrees | "cos got degrees" | "cos got DEGREES" |
+| expert: np.std σ | "nothing found … ROBUST σ (1.4826 × MAD)" | — |
+| expert: mean-blur background | "almost: … Is your background a MEDIAN?" | — |
+| expert: no T²/T³ in GMST | "the T² and T³ terms are missing" | — |
+| expert: Polaris with sin H | "the correction uses sin H" | — |
+| expert: error_km with sin(alt) | "the heading term uses sin(alt)" | — |
+| expert: hours without minutes | "the minutes (and seconds) are not added" | "30 minutes short" |
+| expert: raw-image weights, unwrapped azimuth, lon in [0, 360), choose `<` window, cos degrees | own messages (flux rank, % 360, wrap, max_sep, cos degrees) | — |
+
+## Round 1 reviews (strong 8/9/9/8, weak 7/8/7, expert 8/7) — what changed
+
+- Time: the weak persona needed ≈ 8 h 30 (strong ≈ 3 h 40). meta.json now says 7 h 30, the lab "4 h to 6 h", the
+  lesson "90 min (2 h if spherical trigonometry is new)". Load cut: POLARIS_CAPE_ALT_DEG and PIXEL_KM removed (copy
+  tasks), replaced by two predictions (PREDICT_ACHERNAR: culmination by hand; PREDICT_PIXEL: 2.81′ vs 3.10′);
+  MAGNETIC_MOVE_01_KM added so the magnetic prediction is compared with the move, not the error.
+- Lesson: §6 🧰 derivation of R sin(φ + ψ), the "no root" case (text, ✏️ item 3, figure), the |H| < 90° rule for the
+  asin root (LOC-10, not CN-1), the whole-rotation paragraph; §7 box rewritten (stretch cos φ / (cos δ |cos H|),
+  the fold); brief quotes "southern half" as NAVERA's wording; worked arithmetic collapsed; Emlen, median 0.83,
+  aberration, UT1 fixed.
+- Lab: Step 8 note on 0.2 km vs NAVERA's 5.5–6.5 km; `fix truth refraction`, `budget N`, the fold, the whole rotation
+  and the stretch derivation in Going further; quoting note for the one-liner; uint8 hint first in Step 5.
+- Runner: `detect 2` truth numbers (98 of 101 stars ≤ 5.0, 14 of 14 in the glowing corner, 0 not stars, RMS
+  0.144 px), uint8 warning, both_roots errors shown, |lat| > 90° refused, "moved from `fix`" column, roots note,
+  daylight note on Vega's transit, 24 test cases (grey sky, no root, one valid root across 180°, 64° N box, named
+  traps for minutes, unwrapped azimuth, cos of degrees).
+
+## Difficulties expected (weak-student test round 1 done; see above)
 
 - `detect_stars` is the first OpenCV function the students write from scratch with several steps: the uint8
   wrap-around (`img - bg`), label 0 (background), `np.bincount` weights. The 🧰 box and hints 1–4 carry it; a loop

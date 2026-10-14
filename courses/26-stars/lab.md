@@ -4,8 +4,8 @@
 latitude from Polaris, a star detector in OpenCV, the camera's direction from the IMU, the two roots and the
 prior that chooses. Then fly it on six night photos taken at five places and measure what the IMU's attitude
 costs.
-**Time:** 4 h to 5 h (session 1: 1 h 30–2 h, session 2: 2 h 30–3 h); a strong programmer who knows numpy and
-OpenCV: about 3 h.
+**Time:** 4 h to 6 h (session 1: 1 h 30–2 h, session 2: 2 h 30–4 h; the detector and the two roots take the
+longest if numpy or trigonometry is rusty); a strong programmer who knows numpy and OpenCV: about 3 h.
 **Fast track:** if you know numpy and OpenCV well, skip the 🧰 boxes and the "Stuck?" boxes; do "Going
 further" at the end.
 
@@ -65,8 +65,9 @@ m = np.array([1.2, 4.6, 3.0, 4.5, 5.9])
 m <= 4.5                        # array([ True, False,  True,  True, False])
 int((m <= 4.5).sum())           # 3 — True counts as 1
 ```
-In the terminal: `python3 -c "from navera_lite.stars import load_catalogue; cat = load_catalogue(); print(…)"`,
-with the count of `cat["vmag"] <= 4.5` in place of `…`.
+In the terminal: `python3 -c 'from navera_lite.stars import load_catalogue; cat = load_catalogue(); print(…)'`,
+with the count of `cat["vmag"] <= 4.5` in place of `…`. Mind the quotes: **single quotes outside**, double
+quotes inside (double inside double ends the command early).
 </details>
 
 > [!TASK]
@@ -139,7 +140,12 @@ np.ndim(np.float64(3.0)), np.ndim(ra)  # (0, 1) — 0 for a single number
 python3 run_stars.py test
 ```
 
-Then the sky over **Cape Town** on 20 October 2026, 20:00 UTC (22:00 local time):
+Then the sky over **Cape Town** on 20 October 2026, 20:00 UTC (22:00 local time).
+
+> [!TASK]
+> **By hand first** (`PREDICT_ACHERNAR`): Achernar has δ ≈ −57.1° (of date). How high does it stand at its
+> highest, seen from Cape Town (φ = −33.92°; lesson §2's ✏️ check has the rule)? Tonight's table will show a
+> lower altitude: from its azimuth, is Achernar before or after its transit? Then:
 
 ```bash
 python3 run_stars.py sky capetown
@@ -149,7 +155,7 @@ Open `out/sky_capetown.png` (centre = zenith, north up, east to the RIGHT as on 
 over your head shows east on the left). You may also try `sousse`, `reykjavik`, `quito`, `sydney`.
 
 > [!TASK]
-> Write `ACHERNAR_ALT_DEG` and `ACHERNAR_AZ_DEG` (Cape Town, from the table) and `POLARIS_CAPE_ALT_DEG`.
+> Write `ACHERNAR_ALT_DEG` and `ACHERNAR_AZ_DEG` (Cape Town, from the table). Where is Polaris for Cape Town?
 
 <details><summary>Stuck? Hints</summary>
 
@@ -160,6 +166,7 @@ over your head shows east on the left). You may also try `sousse`, `reykjavik`, 
 3. ✘ "the azimuth goes the wrong way round" or "measured from south": compare your num and den with lesson §2.
    ✘ "the longitude has the wrong sign": LST = gst + lon (east positive), H = LST − ra.
 4. ✘ "only length-1 arrays can be converted": a `math.` function got an array: use `np.`.
+   ✘ "the azimuth is negative": `% 360.0` at the end of the azimuth line.
 5. Return `(float(alt), float(az))` for one star; the arrays themselves for arrays (`np.ndim(alt) == 0` tells
    them apart).
 </details>
@@ -221,7 +228,8 @@ python3 run_stars.py detect
 ```
 
 Open `out/detect_01.png` (circles = your stars; the right panel zooms on the brightest, + = your centre). Then
-photo 2, which has a glowing corner and an aircraft trail:
+photo 2, which has a glowing corner and an aircraft trail (the runner counts the stars found in the corner
+and the detections that are not stars):
 
 ```bash
 python3 run_stars.py detect 2
@@ -247,13 +255,20 @@ python3 run_stars.py detect 2
 5. ✘ "(4.0, 4.0) is the plain centre": you used the centroids of `connectedComponentsWithStats`; weight by
    `resid`. ✘ "u and v are swapped": u is the column. ✘ "the hot pixel was kept": the size limits.
    ✘ the runner says "sort the stars BRIGHTEST FIRST": `np.argsort(-flux)`.
-6. Photo 2 loses the stars of the bright corner, or `detect` reports detections far from every star? Your
+6. **Thousands of detections** on photo 1, or ✘ "on a grey, noisy sky"? You subtracted two uint8 arrays:
+   19 − 20 = 255 on uint8. Write `g.astype(float) - bg`.
+7. Photo 2 loses the stars of the bright corner, or `detect` reports a few detections far from every star? Your
    background is not local (a fixed threshold?) or the trail is kept (max_area).
 </details>
 
 ## Step 6 — Which stars are these?
 
 The given `plate_solve` (lesson §5) identifies your detections and finds where the image centre points.
+
+> [!TASK]
+> **Predict** (`PREDICT_PIXEL`): the camera is 60° wide on 1 280 pixels, so one pixel is 60°/1280 = 2.81′ on
+> average. Is one pixel at the image **centre** 2.81′, more, or less? Use K: f = 640 / tan 30° = 1108.5 px.
+> Then:
 
 ```bash
 python3 run_stars.py solve
@@ -262,8 +277,8 @@ python3 run_stars.py solve
 Open `out/solve_01.png`: the green circles are identified stars, the red + the image centre.
 
 > [!TASK]
-> Write `SOLVE_RMS_ARCSEC` (the fit residual), `PIXEL_ARCMIN` (one pixel at the image centre, printed) and
-> `PIXEL_KM`: that angle as a distance on the Earth.
+> Write `SOLVE_RMS_ARCSEC` (the fit residual) and `PIXEL_ARCMIN` (one pixel at the image centre, printed). Was
+> your prediction right? Why do the pixels near the edge cover less sky?
 
 ## Step 7 — Where does the camera point? (TODO 6)
 
@@ -290,7 +305,7 @@ python3 run_stars.py test
 
 > [!TASK]
 > **Before you code**, trace the docstring example by hand (lesson §6's table shows the method with other
-> numbers): a = 37.13°, A = 295.02°. Write `TRACE_PSI_DEG`: ψ in degrees.
+> numbers): a = 37.13°, A = 295.02°. Write `TRACE_PSI_DEG`: ψ in degrees (ψ = atan2(q, p): q first).
 
 **TODO 8** `choose(roots, prior_lat, prior_lon, max_sep_deg=5.0)`: lesson §6, "Choosing". The given
 `sep_deg(lat1, lon1, lat2, lon2)` measures the angle between two places (on the sphere, so it is right across
@@ -331,6 +346,16 @@ python3 run_stars.py fix truth
 
 > [!TASK]
 > Write `PERFECT_MAX_KM` (the largest error with the true attitude).
+
+> [!NOTE] Why 0.2 km here and 5.5–6.5 km in NAVERA?
+> These photos are **synthetic**: they were drawn with the same sky model your code uses (precession, GMST, an
+> ideal pinhole), without refraction, aberration, nutation or lens distortion. So with a perfect attitude only
+> your centroids are left: 0.2 km. That tests your **code**, not the sky. A real system adds (camera 55–66° high):
+> refraction 0.8–1.3 km (3 km at 30°), aberration ≤ 0.6 km, nutation ≤ 0.5 km, the clock 0.46 km per second, and
+> above all its plate solver's own error. NAVERA's astrometry.net fit is 2.9′ at the centre, i.e. 5.4 km: most of
+> its 5.5–6.5 km. Next to the IMU's 50–120 km, all of this is still small. (Going further measures refraction.)
+
+> [!TASK]
 > **Predict** (`PREDICT_MAGNETIC`): if the declination is forgotten (about +3.3° near Sousse, camera about 66° high),
 > how many km does photo 1's fix move? Use lesson §7's rule. Then:
 
@@ -345,10 +370,12 @@ python3 run_stars.py fix oneroot
 `oneroot` does what NAVERA's first code did: it keeps only the asin root and no prior check.
 
 > [!TASK]
-> Write `MAGNETIC_ERR_01_KM` (photo 1, declination forgotten) and `ONE_ROOT_ERR_03_KM` (photo 3, one root).
-> `EXPLAIN_ROOTS`: why can one direction give two places, why is the asin root wrong for photo 3, and why does
-> photo 6 give no position? `EXPLAIN_NORTH`: why does forgetting the declination move photo 1 so far, and why do
-> photos 3–5 then give no position at all?
+> Write `MAGNETIC_MOVE_01_KM` (how far photo 1's fix **moved** from `fix`: compare it with your prediction),
+> `MAGNETIC_ERR_01_KM` (photo 1's error to the truth, declination forgotten) and `ONE_ROOT_ERR_03_KM` (photo 3,
+> one root). `EXPLAIN_ROOTS`: why can one direction give two places, why is the asin root wrong for photo 3,
+> and why does photo 6 give no position? `EXPLAIN_NORTH`: the move against your prediction, and why the
+> **error** is larger still (which two things add up)? Why do photos 3–5 then give no position at all? (The
+> move is a little larger than the rule: lesson §7's box explains why — read it after Step 9.)
 
 ## Step 9 — The error budget (TODO 9)
 
@@ -375,7 +402,7 @@ Open `out/budget.png`.
 > [!TASK]
 > Write `FORMULA_KM`, `MC_RMS_KM` and `MC_MEDIAN_KM` from the run. **Your role: the integrator who mounts the
 > star camera.** A mounting error is a fixed tilt (a bias), not noise. With a perfect IMU, how large may it be so
-> that the fix stays within 55 km? Write `MOUNT_BIAS_MAX_DEG`. `EXPLAIN_BUDGET`: which error term dominates for
+> that the fix stays within 55 km? Write `MOUNT_BIAS_MAX_DEG` (degrees, 3 decimals). `EXPLAIN_BUDGET`: which error term dominates for
 > photo 1, why the median is smaller than the RMS, and why the formula and the simulation differ.
 
 <details><summary>Stuck? Hints</summary>
@@ -410,12 +437,24 @@ Write your answers in `LOOK_BACK` in `answers.py` if you want your teacher to re
 
 - **The unweighted centre.** Change `detect_stars` to use the plain centres of `connectedComponentsWithStats`
   (keep a copy of yours!) and run `detect` again. How much worse is the RMS, and how much does `fix truth` change?
-- **Near the pole.** Photos 3 and 6 look north, not far from the celestial pole. Run `budget` on them (change
-  the photo number in `budget()` in `run_stars.py`) and compare with photo 1. Read lesson §7's box after
-  Step 9.
-- **Refraction.** The air lifts every star by about 1′ × cot(alt) (a simple rule). If a solver ignored it,
-  which way would it push the fix from a camera 60° high, and by how many km? Is it worth correcting next to
-  the IMU's error?
+- **The fold.** Run `budget` on photos 3, 4 and 6 (`python3 run_stars.py budget 3`, …). Compute each
+  boresight's hour angle H = GMST + λ − α. Which photo is worst, and why is it not the one nearest the pole?
+  Read lesson §7's box after Step 9.
+- **Refraction, measured.** The air lifts every star (Bennett's rule: about 1′ × cot(alt + 7.31/(alt + 4.4))).
+  A solver that ignores it reads the star field slightly too high, so the IMU's altitude and the sky direction
+  disagree by that amount. `python3 run_stars.py fix truth refraction` puts it in. How many km for photo 1
+  (66° high) and photo 3 (55°)? Worth correcting next to a 50 km IMU error? Next to a levelled camera with a
+  0.05° attitude (5.6 km)?
+- **The whole rotation (about 20 lines).** `plate_solve` also returns `R_eq_cam` (camera → sky). Write
+  `fix_zenith(sol, q, gst)`: the vertical in the body frame `up_body = q_rotate(q_conj(q), (0, 0, 1))`, into the
+  camera frame and onto the sky `z = sol["R_eq_cam"] @ R_BODY_STAR_CAM.T @ up_body`, `ra, dec = vec_to_radec(z)`,
+  then lat = dec, lon = ra − gst wrapped (lesson §6, last paragraph). Run it with the chip's attitude **as
+  delivered** (magnetic!) on the six photos. Which photos improve? Does photo 6 give a position now? Does the
+  declination still matter, and why? (Reference: errors 38–56 km, photo 6 included.)
+- **The stretch factor (maths).** Moving the observer by (dφ north, dλ east) turns the local frame by
+  ω = (−dφ, dλ cos φ, dλ sin φ) (ENU). A heading error is ω = (0, 0, Δ). The star stays put if the difference is
+  parallel to the star's direction s. Solve for dφ, dλ and show that the move is Δ cos a cos φ / |s_U cos φ −
+  s_N sin φ|, i.e. Δ cos a · cos φ / (cos δ |cos H|). Check it on photo 1 (about 59 km per degree of heading).
 - **A zenith camera.** Change `CAM_AXIS_BODY` to (0, 0, 1) for a test of the easy case of lesson §6: does the
   heading still matter?
 - **Fly your own parts.** This mission ships the course's `imu.py`. Copy yours over it

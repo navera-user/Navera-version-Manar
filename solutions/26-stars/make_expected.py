@@ -134,6 +134,7 @@ def runner_numbers():
         n["PERFECT_MAX_KM"] = f(r"largest ([0-9.]+) km", out)
         out = run("fix", "magnetic")
         n["MAGNETIC_ERR_01_KM"] = f(r"(?m)^\s+1\s[^\n]*?\)\s+([0-9.]+) km", out)
+        n["MAGNETIC_MOVE_01_KM"] = f(r"(?m)^\s+1\s[^\n]*?\)\s+[0-9.]+ km\s+([0-9.]+) km", out)
         out = run("fix", "oneroot")
         n["ONE_ROOT_ERR_03_KM"] = f(r"(?m)^\s+3\s[^\n]*?\)\s+([0-9.]+) km", out)
         out = run("budget")

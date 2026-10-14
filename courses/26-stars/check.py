@@ -86,12 +86,13 @@ def wrap180(x):
 
 
 # ======================================================================== session 1 — Stargazer
-def jd_variant(y, mo, d, h=0, mi=0, s=0.0, shift=True, B=True, mins=60.0, secs=True, half=1524.5, hours=True):
+def jd_variant(y, mo, d, h=0, mi=0, s=0.0, shift=True, B=True, mins=60.0, secs=True, half=1524.5, hours=True,
+               minutes=True):
     if shift and mo <= 2:
         y, mo = y - 1, mo + 12
     a = math.floor(y / 100)
     b = 2 - a + math.floor(a / 4) if B else 0
-    t = (h + mi / mins + (s / 3600.0 if secs else 0.0)) / 24.0 if hours else 0.0
+    t = (h + (mi / mins if minutes else 0.0) + (s / 3600.0 if secs and minutes else 0.0)) / 24.0 if hours else 0.0
     return math.floor(365.25 * (y + 4716)) + math.floor(30.6001 * (mo + 1)) + d + t + b - half
 
 
@@ -109,6 +110,7 @@ def _():
                         ({"B": False}, "the Gregorian correction B = 2 − A + floor(A/4) is missing"),
                         ({"mins": 100.0}, "the minutes count as hundredths of an hour: hours = h + mi/60 + s/3600"),
                         ({"secs": False}, "the seconds are ignored: hours = h + mi/60 + s/3600"),
+                        ({"minutes": False}, "the minutes (and seconds) are not added: hours = h + mi/60 + s/3600"),
                         ({"half": 1524.0}, "half a day off: the constant is − 1524.5 (a Julian day starts at noon)"),
                         ({"hours": False}, "the time of day is not added: + (h + mi/60 + s/3600) / 24")):
             if abs(got - jd_variant(*date, **kw)) < 1e-6:
@@ -131,6 +133,9 @@ def _():
         if abs(got - math.radians(want)) < 1e-6:
             raise CheckFailed("gmst_deg returns radians: the function returns DEGREES")
         d = jd - 2451545.0
+        if abs(got - (280.46061837 + 360.98564736629 * d) % 360) < 1e-7 and abs(got - want) > 1e-7:
+            raise CheckFailed("the T² and T³ terms are missing: they are tiny (millionths of a degree here), but the "
+                              "check wants the full IAU formula of lesson §1")
         if abs(got - (280.46061837 + 360.98564736629 * d / 36525.0) % 360) < 1e-4:
             raise CheckFailed("the 360.9856° per DAY term multiplies d (days since J2000), not T (centuries)")
         c.ok(abs(got - want) < 2e-6, f"gmst_deg({jd}) = {got:.6f}° is {got - want:+.6f}° off")
@@ -213,6 +218,9 @@ def _():
             raise CheckFailed("the correction has the wrong sign: at H = 0 Polaris is ABOVE the pole, φ = a − p·cos H")
         if abs(got - (a - p * math.cos(h))) < 1e-9:
             raise CheckFailed("cos got degrees: math.cos(math.radians(ha_deg))")
+        if abs(got - (a - p * math.sin(math.radians(h)))) < 1e-9 or abs(got - (a + p * math.sin(math.radians(h)))) < 1e-9:
+            raise CheckFailed("the correction uses sin H: Polaris stands p·cos H above the pole (H = 0: straight above), "
+                              "φ = a − p·cos H")
         if abs(got - (a - 0.6253 * math.cos(math.radians(h)))) < 1e-9 and abs(p - 0.6253) > 1e-6:
             raise CheckFailed("p_deg is ignored: use the p_deg argument (its default is POLARIS_P_DEG)")
         c.ok(abs(got - want) < 1e-9, f"lat_from_polaris({a}, {h}, {p}) gives {got:.5f}")
@@ -249,21 +257,18 @@ def _():
 
 
 @c.test("Steps 3–4: the sky over Cape Town and latitude from Polaris — numbers, prediction, explanation",
-        hint="python3 run_stars.py sky capetown: Achernar's altitude and azimuth, and Polaris' altitude (negative: below "
-             "the horizon). python3 run_stars.py polaris: the largest error of each column. EXPLAIN_POLARIS: p ≈ 0.63°, "
+        hint="PREDICT_ACHERNAR by hand first; python3 run_stars.py sky capetown: Achernar's altitude and azimuth. "
+             "python3 run_stars.py polaris: the largest error of each column. EXPLAIN_POLARIS: p ≈ 0.63°, "
              "the hour angle, and what is left (p² terms growing with tan φ).")
 def _():
-    a, z, pc, pred, nv, cr, why = answers("ACHERNAR_ALT_DEG", "ACHERNAR_AZ_DEG", "POLARIS_CAPE_ALT_DEG", "PREDICT_POLARIS",
+    pa, a, z, pred, nv, cr, why = answers("PREDICT_ACHERNAR", "ACHERNAR_ALT_DEG", "ACHERNAR_AZ_DEG", "PREDICT_POLARIS",
                                           "NAIVE_MAX_ERR_KM", "CORRECTED_MAX_ERR_KM", "EXPLAIN_POLARIS")
+    predicted("PREDICT_ACHERNAR", pa)
     a, z = number(a, "ACHERNAR_ALT_DEG"), number(z, "ACHERNAR_AZ_DEG")
     if abs(a - LAB["ACHERNAR_AZ_DEG"]) < 0.05 and abs(z - LAB["ACHERNAR_ALT_DEG"]) < 0.05:
         raise CheckFailed("ACHERNAR_ALT_DEG and ACHERNAR_AZ_DEG are swapped")
     c.near(a, LAB["ACHERNAR_ALT_DEG"], 0.02, "ACHERNAR_ALT_DEG")
     c.near(z, LAB["ACHERNAR_AZ_DEG"], 0.02, "ACHERNAR_AZ_DEG")
-    pc = number(pc, "POLARIS_CAPE_ALT_DEG")
-    if abs(pc + LAB["POLARIS_CAPE_ALT_DEG"]) < 0.05:
-        raise CheckFailed("POLARIS_CAPE_ALT_DEG: keep its sign — Polaris is BELOW the horizon of Cape Town")
-    c.near(pc, LAB["POLARIS_CAPE_ALT_DEG"], 0.02, "POLARIS_CAPE_ALT_DEG")
     predicted("PREDICT_POLARIS", pred)
     nv, cr = number(nv, "NAIVE_MAX_ERR_KM"), number(cr, "CORRECTED_MAX_ERR_KM")
     if abs(nv - LAB["CORRECTED_MAX_ERR_KM"]) < 0.02 and abs(cr - LAB["NAIVE_MAX_ERR_KM"]) < 0.2:
@@ -344,6 +349,12 @@ def _():
     tiny = np.zeros((11, 11), np.uint8)
     tiny[4:7, 3:6] = [[0, 10, 0], [10, 60, 30], [0, 10, 0]]
     pts, flux = det_arrays(go(f, tiny))
+    if len(pts) == 0:
+        raise CheckFailed("nothing found on a black image with one bright star: is your σ the ROBUST one (1.4826 × MAD)? "
+                          "np.std is inflated by the star itself, and the threshold ends up above it")
+    if len(pts) == 1 and abs(pts[0, 0] - 4.16667) > 1e-3 and abs(pts[0, 0] - 4.16667) < 0.02 and abs(pts[0, 1] - 5.0) < 0.02:
+        raise CheckFailed(f"almost: the centre is {pts[0].round(4).tolist()} instead of about (4.167, 5.0). Is your background a "
+                          "MEDIAN (cv2.medianBlur)? A mean or Gaussian blur is pulled up by the star's own light")
     if len(pts) == 1 and abs(pts[0, 0] - 5.0) < 1e-6 and abs(pts[0, 1] - 4.1667) < 1e-3:
         raise CheckFailed("u and v are swapped: u is the COLUMN (x), v the ROW (y)")
     if len(pts) == 1 and abs(pts[0, 0] - 4.0) < 1e-6 and abs(pts[0, 1] - 5.0) < 1e-6:
@@ -369,6 +380,9 @@ def _():
     if np.mean(d_swap < 1.0) > 0.8 and np.mean(d_true < 1.0) < 0.5:
         raise CheckFailed("u and v are swapped: pts[:, 0] is the column (x), pts[:, 1] the row (y)")
     far = [p for p in pts if np.hypot(S_[:, 0] - p[0], S_[:, 1] - p[1]).min() > 3.0]
+    if len(far) > 60:
+        raise CheckFailed(f"{len(pts)} detections on an image with {len(S_)} stars, {len(far)} of them noise: did you subtract "
+                          "two uint8 arrays? On uint8, 19 − 20 = 255. Convert to float first: gray.astype(float) - bg")
     on_hot = [p for p in far if np.hypot(hots[:, 0] - p[0], hots[:, 1] - p[1]).min() < 1.5]
     on_trail = [p for p in far if dist_seg(np.asarray(p, dtype=float)) < 4.0]
     if on_hot:
@@ -508,6 +522,9 @@ def _():
             raise CheckFailed("the heading error is not multiplied by cos(alt): a camera at the zenith does not see it")
         if abs(got - KM * math.hypot(t, h * math.cos(a))) < 1e-6 and h > 0:
             raise CheckFailed("cos got degrees: math.cos(math.radians(alt_deg))")
+        if abs(got - KM * math.hypot(t, h * math.sin(math.radians(a)))) < 1e-6 and h > 0 and a != 45.0:
+            raise CheckFailed("the heading term uses sin(alt): it is cos(alt) — a camera at the zenith (alt 90°) does not "
+                              "see the heading at all")
         c.ok(abs(got - want) < 1e-6, f"error_km({t}, {h}, {a}) gives {got:.3f} km")
 
 
@@ -531,11 +548,12 @@ def student_detect_photo1():
 
 @c.test("Steps 5–6: your detector on photo 1, and what one pixel is worth — numbers and explanation",
         hint="python3 run_stars.py detect: how many stars, and the centre error RMS. python3 run_stars.py solve: the fit "
-             "residual and one pixel in ′; × 1.852 km. EXPLAIN_CENTROID: brightness weighting (a fraction of a pixel), hot "
+             "residual and one pixel in ′ (PREDICT_PIXEL before). EXPLAIN_CENTROID: brightness weighting (a fraction of a pixel), hot "
              "pixels and the trail (size limits), the glowing corner (local background).")
 def _():
-    pred, n, rms, why, srms, parc, pkm = answers("PREDICT_DETECT", "N_STARS_01", "CENTROID_RMS_PX", "EXPLAIN_CENTROID",
-                                                 "SOLVE_RMS_ARCSEC", "PIXEL_ARCMIN", "PIXEL_KM")
+    pred, n, rms, why, pp, srms, parc = answers("PREDICT_DETECT", "N_STARS_01", "CENTROID_RMS_PX", "EXPLAIN_CENTROID",
+                                                "PREDICT_PIXEL", "SOLVE_RMS_ARCSEC", "PIXEL_ARCMIN")
+    predicted("PREDICT_PIXEL", pp)
     predicted("PREDICT_DETECT", pred)
     mine_n, mine_rms = student_detect_photo1()
     n = number(n, "N_STARS_01")
@@ -554,16 +572,15 @@ def _():
     c.ok(10.0 < srms < 60.0 and abs(srms - LAB["SOLVE_RMS_ARCSEC"]) < 8.0,
          f"SOLVE_RMS_ARCSEC = {srms:g}: copy the fit residual (″) of python3 run_stars.py solve")
     parc = number(parc, "PIXEL_ARCMIN")
+    if abs(parc - 60.0 * 60.0 / 1280.0) < 0.01:
+        raise CheckFailed("PIXEL_ARCMIN = 2.81′ is 60°/1280, the AVERAGE over the width: copy what `solve` prints for the "
+                          "image centre (atan(1/f))")
     c.near(parc, LAB["PIXEL_ARCMIN"], 0.01, "PIXEL_ARCMIN (′)")
-    pkm = number(pkm, "PIXEL_KM")
-    if abs(pkm - parc * KM) < 1.0:
-        raise CheckFailed("PIXEL_KM: 111.2 km is ONE DEGREE; one arcminute is 1.852 km")
-    c.near(pkm, parc * 1.852, 0.03, "PIXEL_KM (your arcminutes × 1.852 km)")
 
 
 @c.test("Step 8: the fixes — median, no position, perfect attitude, magnetic north, one root — and why",
         hint="python3 run_stars.py fix (median error, the photo with no position), fix truth (largest error), fix magnetic "
-             "(photo 1), fix oneroot (photo 3). TRACE_PSI_DEG = atan2(cos a cos A, sin a) with a = 37.13°, A = 295.02°.")
+             "(photo 1: the error to the truth AND how far the fix moved), fix oneroot (photo 3). TRACE_PSI_DEG = atan2(cos a cos A, sin a) with a = 37.13°, A = 295.02°.")
 def _():
     tp, med, nofix, perf, pm, mag, one, w1, w2 = answers(
         "TRACE_PSI_DEG", "MEDIAN_FIX_KM", "NO_FIX_PHOTO", "PERFECT_MAX_KM", "PREDICT_MAGNETIC", "MAGNETIC_ERR_01_KM",
@@ -578,7 +595,12 @@ def _():
     perf = number(perf, "PERFECT_MAX_KM")
     c.ok(0.0 < perf < 1.0, f"PERFECT_MAX_KM = {perf:g} km: copy the largest error of python3 run_stars.py fix truth")
     predicted("PREDICT_MAGNETIC", pm)
-    c.near(number(mag, "MAGNETIC_ERR_01_KM"), LAB["MAGNETIC_ERR_01_KM"], 3.0, "MAGNETIC_ERR_01_KM (fix magnetic, photo 1, km)")
+    mag = number(mag, "MAGNETIC_ERR_01_KM")
+    mv = number(answers("MAGNETIC_MOVE_01_KM")[0], "MAGNETIC_MOVE_01_KM")
+    if abs(mag - LAB["MAGNETIC_MOVE_01_KM"]) < 3.0 and abs(mv - LAB["MAGNETIC_ERR_01_KM"]) < 3.0:
+        raise CheckFailed("MAGNETIC_ERR_01_KM and MAGNETIC_MOVE_01_KM are swapped")
+    c.near(mag, LAB["MAGNETIC_ERR_01_KM"], 3.0, "MAGNETIC_ERR_01_KM (fix magnetic, photo 1: error to the truth, km)")
+    c.near(mv, LAB["MAGNETIC_MOVE_01_KM"], 3.0, "MAGNETIC_MOVE_01_KM (fix magnetic, photo 1: moved from `fix`, km)")
     c.near(number(one, "ONE_ROOT_ERR_03_KM"), LAB["ONE_ROOT_ERR_03_KM"], 20.0, "ONE_ROOT_ERR_03_KM (fix oneroot, photo 3, km)")
     explained("EXPLAIN_ROOTS", w1,
               ((r"two", r"both", r"twice", r"180", r"sine", r"sin", r"mirror", r"same (alt|value|measure)"),
@@ -590,7 +612,8 @@ def _():
     explained("EXPLAIN_NORTH", w2,
               ((r"declination", r"magnetic", r"3\.3", r"true north", r"heading"), 'what forgetting the declination does '
                '(e.g. "the heading is 3.34° off")'),
-              ((r"cos", r"111", r"km", r"azimuth", r"direction", r"sideways", r"attitude", r"degree", r"adds", r"plus"),
+              ((r"cos", r"111", r"km", r"azimuth", r"direction", r"sideways", r"attitude", r"degree", r"adds", r"plus",
+                r"move", r"stretch", r"same direction", r"imu"),
                'why that is so many km (e.g. "3.34° × cos(66°) × 111 km, added to the IMU\'s own error")'),
               ((r"prior", r"5 ?°", r"far", r"no position", r"refus", r"none", r"larger declination", r"−26|-26",
                 r"cape town", r"−11|-11", r"−5|-5", r"bigger"),
@@ -617,7 +640,8 @@ def _():
                'even × cos 66°")'),
               ((r"tail", r"outlier", r"large error", r"big error", r"square", r"skew", r"few", r"rare", r"extreme"),
                'why the median is below the RMS (e.g. "a few large errors pull the RMS up")'),
-              ((r"pole", r"sideways", r"longitude", r"cos.*dec", r"stretch", r"approximat", r"rule of thumb",
+              ((r"pole", r"sideways", r"longitude", r"cos.*dec", r"stretch", r"approximat", r"rule of thumb", r"hour angle",
+                r"cos ?h\b", r"1\.3", r"fold", r"0\.83", r"gaussian",
                 r"not (exactly|linear)", r"geometry", r"assum", r"simplif"),
                'why formula and simulation differ (e.g. "the rule assumes 1:1, but sideways errors are stretched")'))
 

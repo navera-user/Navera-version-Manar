@@ -78,7 +78,7 @@ ROOTS = S.both_roots(round(CAP_ALT, 4), round(CAP_AZ, 4), CAP_RA, CAP_DEC, GST)
 
 
 def cold_open():
-    w, h = 900, 300
+    w, h = 920, 320
     b = [f'<rect x="20" y="40" width="300" height="225" fill="{NIGHT}" rx="6"/>',
          text(170, 28, "a star photo (synthetic)", 13, INK, weight="bold")]
     rng = np.random.default_rng(3)
@@ -87,8 +87,8 @@ def cold_open():
         b.append(circle(x, y, 0.6 + 2.2 * m ** 3, "#ffffff", "#ffffff", 0.2))
     b.append(circle(170, 152, 9, "#e0a020", width=1.5))
     b.append(text(170, 280, "the centre: ra, dec (plate solve) + alt, az (IMU)", 11, GREY))
-    b.append(arrow(330, 152, 380, 152, INK, "i", 2.5))
-    x0, y0, W, H = 395, 50, 480, 215
+    b.append(arrow(328, 152, 368, 152, INK, "i", 2.5))
+    x0, y0, W, H = 420, 50, 470, 215
     X = lambda lon: x0 + W * (lon + 30.0) / 130.0                       # noqa: E731
     Y = lambda lat: y0 + H * (75.0 - lat) / 90.0                        # noqa: E731
     b.append(f'<rect x="{x0}" y="{y0}" width="{W}" height="{H}" fill="#e8eef3" stroke="{GREY}"/>')
@@ -98,13 +98,16 @@ def cold_open():
     for lat in (-15, 0, 15, 30, 45, 60, 75):
         b.append(line(x0, Y(lat), x0 + W, Y(lat), GREY, 0.6, "3 3"))
         b.append(text(x0 - 4, Y(lat) + 4, f"{lat}°", 10, GREY, "end"))
+    b.append(text(x0 + W / 2, y0 + H + 30, "longitude (° E)", 11, INK))
+    b.append(f'<text x="{x0 - 32}" y="{y0 + H / 2}" text-anchor="middle" font-size="11" fill="{INK}" '
+             f'transform="rotate(-90 {x0 - 32} {y0 + H / 2})">latitude (°)</text>')
     (la1, lo1), (la2, lo2) = ROOTS
     d = S.sep_deg(la1, lo1, la2, lo2) * S.KM_PER_DEG
     b.append(line(X(lo2), Y(la2), X(lo1), Y(la1), RED, 1.5, "6 4"))
     b.append(circle(X(lo2), Y(la2), 6, GREEN, GREEN))
     b.append(text(X(lo2) + 10, Y(la2) - 8, "root 2: London (true)", 12, GREEN, "start", "bold"))
     b.append(circle(X(lo1), Y(la1), 6, RED, RED))
-    b.append(text(X(lo1) - 10, Y(la1) - 10, f"root 1 (asin): {la1:.1f}°, {lo1:.1f}° — {d:,.0f} km away".replace(",", " "),
+    b.append(text(X(lo1) - 12, Y(la1) - 14, f"root 1 (asin): {la1:.1f}°, {lo1:.1f}° — {d:,.0f} km away".replace(",", " "),
                   12, RED, "end", "bold"))
     b.append(text(x0 + W / 2, 28, "the same measurement fits two places on Earth", 13, INK, weight="bold"))
     save("cold_open.svg", w, h, "".join(b))
@@ -200,9 +203,9 @@ def triangle():
 def centroid():
     patch = np.zeros((5, 5))
     patch[1:4, 1:4] = [[0, 10, 0], [10, 60, 30], [0, 10, 0]]
-    w, h, c = 700, 300, 46
-    x0, y0 = 40, 50
-    b = [text(350, 26, "A star covers a few pixels: its centre is a weighted mean", 14, INK, weight="bold")]
+    w, h, c = 760, 320, 46
+    x0, y0 = 100, 50
+    b = [text(380, 26, "A star covers a few pixels: its centre is a weighted mean", 14, INK, weight="bold")]
     for r in range(5):
         for k in range(5):
             v = patch[r, k]
@@ -215,6 +218,8 @@ def centroid():
                 b.append(text(x0 + k * c + c / 2, y0 + r * c + c / 2 + 5, f"{v:.0f}", 13, INK if v > 30 else "#ffffff"))
     for k in range(5):
         b.append(text(x0 + k * c + c / 2, y0 - 6, f"u = {k + 2}", 10, GREY))
+        b.append(text(x0 + k * c + c / 2, y0 + 5 * c + 16, f"Σ {patch[:, k].sum():.0f}", 11, RED))
+    b.append(text(x0 - 4, y0 + 5 * c + 16, "column sums:", 10, RED, "end"))
     w_sum = patch.sum()
     u = (patch * (np.arange(5) + 2)).sum() / w_sum
     v = (patch.T * (np.arange(5) + 2)).sum() / w_sum
@@ -224,7 +229,7 @@ def centroid():
     qx = x0 + 2.5 * c
     b.append(f'<path d="M{qx - 7},{pv - 7}L{qx + 7},{pv + 7}M{qx - 7},{pv + 7}L{qx + 7},{pv - 7}" stroke="{BLUE}" '
              f'stroke-width="2.5"/>')
-    tx = 300
+    tx = 380
     rows = [("pixels above the background (one star)", INK, "bold"),
             ("× plain centre of the 5 pixels: u = 4.00", BLUE, "normal"),
             (f"+ weighted centre: u = (3·10 + 4·80 + 5·30) / 120 = {u:.3f}", RED, "normal"),
@@ -242,10 +247,10 @@ def two_roots():
     Rr = math.hypot(p, q)
     psi = math.degrees(math.atan2(q, p))
     sd = math.sin(math.radians(CAP_DEC))
-    w, h = 640, 320
-    x0, y0, W, H = 70, 40, 520, 220
+    w, h = 660, 350
+    x0, y0, W, H = 60, 40, 470, 220
     X = lambda phi: x0 + W * (phi + 90.0) / 180.0                        # noqa: E731
-    Y = lambda val: y0 + H * (1.0 - val) / 2.0                            # noqa: E731
+    Y = lambda val: y0 + H * (1.25 - val) / 2.25                          # noqa: E731
     b = [text(320, 24, "Which latitudes φ give the measured altitude?", 14, INK, weight="bold"),
          line(x0, Y(0), x0 + W, Y(0), GREY, 0.8), line(x0, y0, x0, y0 + H, INK), line(x0, y0 + H, x0 + W, y0 + H, INK)]
     for phi in (-90, -45, 0, 45, 90):
@@ -258,16 +263,22 @@ def two_roots():
     b.append(text(X(-85), Y(Rr * math.sin(math.radians(-85 + psi))) - 8, "sin a·sin φ + cos a·cos A·cos φ = R·sin(φ + ψ)",
                   11.5, BLUE, "start"))
     b.append(line(x0, Y(sd), x0 + W, Y(sd), ORANGE, 1.6, "6 4"))
-    b.append(text(x0 + W - 4, Y(sd) - 6, f"sin δ = {sd:.4f}", 12, ORANGE, "end"))
+    b.append(text(x0 + W + 6, Y(sd) + 8, f"sin δ = {sd:.4f}", 11.5, ORANGE, "start"))
+    b.append(line(x0, Y(Rr), x0 + W, Y(Rr), GREY, 1.0, "2 3"))
+    b.append(text(x0 + W + 6, Y(Rr) + 2, f"R = {Rr:.4f}", 11.5, GREY, "start"))
+    b.append(line(x0, Y(0.93), x0 + W, Y(0.93), RED, 1.2, "6 4"))
+    b.append(text(x0 + W + 6, Y(0.93) - 4, "no root", 11.5, RED, "start"))
+    b.append(text(330, 324, "dotted: the top of the curve, R — if sin δ = R the two roots merge (|H| = 90°);", 11, GREY))
+    b.append(text(330, 340, "dashed red: a line above the top (|sin δ| > R) meets the curve nowhere: no root at all", 11, GREY))
     for (la, lo), col, lab in ((ROOTS[0], RED, "root 1 (asin)"), (ROOTS[1], GREEN, "root 2")):
         b.append(circle(X(la), Y(sd), 6, col, col))
         b.append(text(X(la), Y(sd) + 22, f"{lab}: {la:.2f}°", 12, col, weight="bold"))
-    b.append(text(320, 306, f"Capella from London: a = {a:.2f}°, A = {A:.2f}° → R = {Rr:.4f}, ψ = {psi:.2f}°", 12, GREY))
+    b.append(text(330, 306, f"Capella from London: a = {a:.2f}°, A = {A:.2f}° → R = {Rr:.4f}, ψ = {psi:.2f}°", 12, GREY))
     save("two_roots.svg", w, h, "".join(b))
 
 
 def budget():
-    w, h = 660, 320
+    w, h = 660, 340
     b = [text(330, 24, "An attitude error becomes a position error", 14, INK, weight="bold")]
     cx, cy, R = 170, 280, 115
     b.append(f'<path d="M{cx - R},{cy} A{R},{R} 0 0 1 {cx + R},{cy}" stroke="{GREY}" fill="#e8eef3" stroke-width="1.5"/>')
@@ -288,6 +299,8 @@ def budget():
             ("independent errors: √(tilt² + (heading·cos alt)²)", RED, "bold")]
     for k, (r, col, wt) in enumerate(rows):
         b.append(text(345, 90 + 32 * k, r, 12.5, col, "start", wt))
+    b.append(text(330, 330, "(the one-direction method of lesson §6; with the plate solve's whole rotation the heading "
+                            "drops out)", 10.5, GREY))
     save("budget.svg", w, h, "".join(b))
 
 
