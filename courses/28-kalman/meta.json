@@ -1,3 +1,3 @@
-{"number": "28", "title": "The Kalman filter: predict, update, and stay honest", "module": 6, "duration": "4 h",
- "summary": "Predict and update in 1-D then 2-D, give Q and R a meaning, gate the measurements, test the filter's honesty with NEES, and prove your filter identical to NAVERA's own height filter.",
- "resources": [], "open": ["uncertainty.py", "kalman.py"], "check_timeout_s": 90}
+{"number": "28", "title": "The Kalman filter: predict, update, and stay honest", "module": 6, "duration": "6 h",
+ "summary": "Build the Kalman filter from its two steps: a constant-velocity model with an honest Q, a height filter that must give exactly the course's reference numbers (the model NAVERA's day vision uses for its height), the NEES test with a band you simulate, and a 2-D tracker with a χ² gate that survives a 40-second jam and wrong fixes — then tune it, honest first.",
+ "resources": [], "open": ["navera_lite/kalman.py", "answers.py"], "check_timeout_s": 240}

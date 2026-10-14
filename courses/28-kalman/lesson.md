@@ -1,461 +1,497 @@
-<!-- SPLIT PENDING: rebuild in its batch -->
 # The Kalman filter: predict, update, and stay honest
 
-> [!NOTE] In short
-> - When GPS comes back after a gap, NAVERA must decide if a fix is plausible, so it needs to know
->   how wrong each position may be.
-> - This "how wrong" is the **covariance**: you draw it as an ellipse and propagate it with J P
->   Jᵀ.
-> - The **chi-square gate** tests if a measurement is plausible, and inverse-variance fusion
->   combines two estimates.
-> - A **Kalman filter** carries the covariance from second to second, and the **NEES** test checks
->   if the filter is honest.
-> - In the lab you build a 2-D Kalman filter with a chi-square gate, and prove that your 1-D
->   filter is NAVERA's real height filter.
+![Simulator, 2026-10-01: NAVERA's day vision stated ±300 m while its true error had a median of 351 m; the autopilot's Kalman filter gave up after 45 s](assets/cold_open.svg)
 
-A survey drone leaves Monastir harbour and flies west-north-west along the coast towards Sousse. Every second its GPS says
-*"you are here, ±5 m"*. Then, near the port, a jammer silences the GPS for 40 seconds. When the
-fixes come back, the first one is 150 m away from where the drone thinks it is. Is the drone lost,
-or is this fix wrong? To answer, the navigation software needs more than positions: it needs to
-know **how wrong each position may be**, in every direction, and how that uncertainty **grows**
-when no measurement arrives.
+> [!NOTE] Mission brief
+> **1 October 2026, NAVERA's long-route test in the simulator.** GPS is jammed over flat, uniform ground near
+> Gabès (southern Tunisia). The drone's autopilot keeps flying on NAVERA's day-vision positions. Each position
+> arrives with a stated accuracy, **±300 m**. Its true error had a median of **351 m**, and 10 % of the
+> positions were more than **853 m** off. The autopilot runs a **Kalman filter** (its EKF, the extended
+> Kalman filter of ArduPilot): it weighed every position as ±300 m, the positions were worse than that, its
+> own consistency checks kept failing, and after **45 seconds** it gave up and landed the drone (a **failsafe**). Stating ±500 m
+> delayed the failsafe to 91 s; only a better vision method (local feature matching) kept the drone flying,
+> 230 s to the end of the test. (Source: NAVERA's validation document, Release 0.2, 2026-10-03.)
+>
+> The lesson: a Kalman filter is only as good as the uncertainties it is given, and the uncertainty it
+> **states** is a promise that others will use. Today you build the filter and you test that promise.
+> **Session 1 — Height keeper:** a filter on height and climb rate, built from two steps, predict and update,
+> that must give **exactly** the same numbers as the course's reference (the model NAVERA's day vision uses
+> for its height). **Session 2 — Tracker:** a 2-D filter that follows a drone through a 40-second jam and six
+> wrong fixes, a **gate** that refuses the wrong ones, and the **NEES** test that tells an honest filter from
+> a liar.
+>
+> **Start now:** open the 🛠️ **Lab** tab, do **Step 0** (two minutes, no code), then come back here for §1.
 
-That "how wrong" is the **covariance**. In this lesson you will treat it as a mathematical object:
-you will draw it as an ellipse with an eigen-decomposition, propagate it through a function, use it
-to test whether a measurement is plausible (the **chi-square gate**), combine two estimates with it
-(**inverse-variance fusion**), and run a **Kalman filter** that carries it from second to second.
-Finally you will check whether a filter is *honest* about its own error (the **NEES test**). All of
-this exists in NAVERA's code, and you will compare your filter with NAVERA's real one.
+**Objectives.** After this mission you can:
 
-## 1. Error, uncertainty and random variables
+1. **run** the two steps of a Kalman filter, predict and update, **by hand** in 1-D and 2-D and **in code**,
+   and **explain** the gain as the inverse-variance blend of mission 24;
+2. **build** the constant-velocity model (F and Q) and **give** q and R a physical meaning with numbers;
+3. **reproduce** a filter described in words to 10⁻⁶ m, and **explain** why every start value matters;
+4. **write** a 2-D tracker with a χ² gate that survives an outage and wrong fixes, and **explain** how an
+   overconfident filter locks itself out;
+5. **test** a filter's honesty with NEES, using a band you obtain by simulation, and **tune** q with it.
 
-- The **error** is `estimate − truth`. You can only compute it when the truth is known: in a test,
-  in a simulation, or with a much better reference.
-- The **uncertainty** is what the estimator *states* about its error, before anyone knows the truth.
+**You need:** mission 24 §8 (the inverse-variance blend: `blend`), mission 27 (covariance, J P Jᵀ, the
+Mahalanobis d² and the χ² gate), the 🧰 Maths 5 box (variance and standard deviation), numpy's `@` and `.T`
+(mission 16). ⏱ Reading: about 90 minutes with the ✏️ checks: §1–§4 before session 1, §5–§7 before
+session 2. Lab: 4 h 30 to 6 h.
 
-In flight nobody knows the truth, so the autopilot must trust the stated uncertainty. A stated
-uncertainty that is too small is dangerous: the autopilot believes it.
+**Before you start.** Answer without looking; if you miss two, reread mission 24 §8 and mission 27.
 
-We model the error as a **random variable** `e`: a quantity whose value changes from one trial to
-the next, described by a probability distribution. For a 2-D position error `e = (e_east, e_north)`:
+<details><summary>1. (Mission 24) blend(100.0, 9.0, 106.0, 3.0): the blended value and its variance?</summary>
+x = (100·3 + 106·9) / (9 + 3) = 104.5; v = 9·3 / 12 = 2.25. The more certain input (variance 3) counts three
+times more, and the result is more certain than both.
+</details>
+<details><summary>2. (🧰 Maths 5) Two independent errors of σ 3 m and 4 m add up. The σ of the sum?</summary>
+√(9 + 16) = 5 m: independent errors add their VARIANCES, not their σ.
+</details>
+<details><summary>3. (Mission 27) A 2-D innovation r = (3, 4) m with S = diag(9, 16) m². Its d²? Does a 99 % gate accept it?</summary>
+d² = rᵀ S⁻¹ r = 9/9 + 16/16 = 2. The 99 % threshold for 2 dimensions is 9.21: accepted.
+</details>
 
-```
-mean        μ = E[e]                         (E[·] = the expected value, the "long-run average")
-covariance  P = E[(e − μ)(e − μ)ᵀ]  =  [ σe²    ρ σe σn ]
-                                        [ ρ σe σn   σn²  ]
-```
+<details><summary>Words of this lesson (open if you need them)</summary>
 
-- The diagonal holds the **variances** `σe²`, `σn²` (m²). Their square roots are the standard
-  deviations σ.
-- The off-diagonal term is the **covariance** of east and north. `ρ` (the **correlation
-  coefficient**, between −1 and 1) says how much the two errors move together. ρ = 0: independent.
-- P is always **symmetric** and **positive semi-definite** (PSD): `vᵀ P v ≥ 0` for every vector v,
-  because `vᵀ P v` is the variance of the error in direction v, and a variance is never negative.
+| Word | Meaning | Français |
+|---|---|---|
+| **state** x | the numbers the filter estimates (height and climb rate; position and velocity) | état |
+| **covariance** P | how sure the filter is about its state: variances on the diagonal | covariance |
+| **predict** | move the state forward in time with a model; P grows | prédiction |
+| **update** | correct the state with a measurement; P shrinks | mise à jour, correction |
+| **innovation** ν, S | the surprise z − H x, and its covariance H P Hᵀ + R | innovation |
+| **Kalman gain** K | how much of the surprise the update believes | gain de Kalman |
+| **process noise** q, Q | how much the true motion may differ from the model in one step | bruit de processus |
+| **measurement noise** R | the measurement's own covariance (σ²) | bruit de mesure |
+| **NEES** | errᵀ P⁻¹ err: the true error measured in the filter's own σ | NEES (erreur normalisée) |
+| **consistent / overconfident / pessimistic** | P matches / is smaller than / is larger than the real error | cohérent / trop sûr / trop prudent |
+| **gate** | refuse a measurement whose d² is too large | porte (test de validation) |
+</details>
 
-From N samples we estimate P with the **sample covariance**:
+## 1. One number, two steps
 
-```
-x̄ = (1/N) Σ xᵢ            P̂ = 1/(N − 1) · Σ (xᵢ − x̄)(xᵢ − x̄)ᵀ
-```
+**The problem.** A drone's height comes from a barometer once per second, with σ 5 m. Between two readings
+the height may change. One reading alone is ±5 m. Can we do better by keeping a running estimate?
 
-Dividing by `N − 1` instead of N makes the estimate **unbiased** (one degree of freedom was used to
-compute x̄). `numpy.cov` does exactly this.
+**The idea.** Keep two numbers: the estimate x and its variance P (how sure we are). Then repeat two steps.
 
-Most navigation errors are modelled as **Gaussian** (normal): many small independent causes add up
-(receiver noise, atmosphere, vibration). A Gaussian is fully described by μ and P. That is why
-"how sure are we?" fits in a 2 × 2 (or 3 × 3) matrix.
+- **Predict.** Time passes; the true height may have drifted. The estimate stays where it is, but we are less
+  sure: P grows. In the simplest model (a **random walk**: the state drifts by a random amount, with variance w
+  per second), after dt seconds
 
-## 2. The covariance is an ellipse
+  ```
+  x⁻ = x          P⁻ = P + w·dt
+  ```
+  (The minus sign ⁻ means "predicted, before the measurement".)
 
-A symmetric matrix can always be **eigen-decomposed**:
+- **Update.** A measurement z arrives, with variance R. Blend it with the prediction, exactly as in mission 24
+  (§8): each one weighted by the **other's** variance. Written with a **gain** K:
 
-```
-P = V Λ Vᵀ         Λ = diag(λ1, λ2)   (eigenvalues, λ1 ≥ λ2 ≥ 0)
-                   V = [v1 v2]        (eigenvectors, orthonormal columns)
-```
+  ```
+  K = P⁻ / (P⁻ + R)          x = x⁻ + K·(z − x⁻)          P = (1 − K)·P⁻
+  ```
 
-The eigenvectors are the **principal directions** of the error; the eigenvalues are the variances
-along them. So the points at "one sigma" form an **ellipse** with
+  This is mission 24's `blend` written differently: x = (x⁻·R + z·P⁻)/(P⁻ + R). K is the share of the
+  **surprise** z − x⁻ that we believe: near 1 when the prediction is vague (P⁻ ≫ R), near 0 when the
+  measurement is vague. The new variance is smaller than both P⁻ and R.
 
-```
-semi-major axis  a = √λ1        along v1
-semi-minor axis  b = √λ2        along v2
-angle            θ = atan2(v1_north, v1_east)     (from east towards north)
-```
+That is the whole **Kalman filter**: predict, update, predict, update. Rudolf Kálmán published it in 1960. One
+of its first practical uses was the navigation of the Apollo spacecraft to the Moon: Stanley Schmidt's team at
+NASA Ames adapted it for the on-board computer in the early 1960s (the history is told by McGee and Schmidt,
+NASA TM-86847, 1985).
 
-![The 1-sigma ellipse of a covariance matrix](assets/ellipse.svg)
-
-**Worked example.** `P = [[12, 5], [5, 6]]` m². The trace is 18 and the determinant 12·6 − 5·5 = 47,
-so `λ = 9 ± √(81 − 47) = 9 ± 5.83`: λ1 = 14.83, λ2 = 3.17. The ellipse has a = 3.85 m, b = 1.78 m,
-and its long axis points θ = 29.5° north of east. Notice: the largest *diagonal* term is 12
-(σe = 3.46 m), smaller than λ1 = 14.83. For a tilted ellipse, **no single axis of the map shows the
-worst direction** — only the eigenvalue does. Keep this in mind for the "In NAVERA" section.
-
-### How many points fall inside?
-
-The **Mahalanobis distance** measures a vector `r` in units of its own uncertainty:
-
-```
-d² = rᵀ P⁻¹ r
-```
-
-For a Gaussian error in n dimensions, `d²` follows a **chi-square distribution with n degrees of
-freedom** (written χ²ₙ). The "k-sigma ellipse" is the set `d² ≤ k²`. In 2-D the probability has a
-closed form, `P(d² ≤ k²) = 1 − exp(−k²/2)`:
-
-| k (ellipse "size") | 1 | 2 | 2.45 | 3 | 3.03 |
-|---|---|---|---|---|---|
-| share of 2-D points inside | 39.3 % | 86.5 % | 95 % | 98.9 % | 99 % |
-
-On **one** axis the familiar numbers are 68 / 95 / 99.7 % for 1 / 2 / 3 σ. In 2-D the same circles
-hold fewer points, because the error has two chances to be large:
-
-![1, 2, 3 sigma on one axis and on a map](assets/sigma.svg)
-
-So a GPS that states σ = 3 m per axis says: *about 4 fixes in 10 within 3 m, 86 % within 6 m*. And
-for a **correlated** error, use the ellipse (`d²`), not a circle: a circle sized for the long axis
-is far too pessimistic across it.
-
-## 3. Propagating a covariance: J P Jᵀ
-
-Often we know the uncertainty of some quantities `x` and need the uncertainty of `y = f(x)`. If f
-is **linear**, `y = A x`, then exactly:
+**Worked example.** Start: x = 50 m, P = 100 m² (σ 10 m). A reading z = 60 m with R = 25 m² (σ 5 m).
 
 ```
-Cov(y) = A P Aᵀ
+K = 100 / (100 + 25) = 0.8          x = 50 + 0.8·(60 − 50) = 58 m          P = (1 − 0.8)·100 = 20 m²  (σ 4.47 m)
+one second later, w = 1 m²/s:       x⁻ = 58 m                               P⁻ = 20 + 1 = 21 m²       (σ 4.58 m)
 ```
 
-If f is **non-linear**, we linearise it around the estimate with its **Jacobian** `J = ∂f/∂x`
-(the matrix of first derivatives) and use the same formula, `P_y ≈ J P Jᵀ`. This is first-order
-error propagation; it is good when the errors are small compared with the curvature of f.
+Repeat it every second and σ draws a **sawtooth**: up a little in each predict, down in each update. It
+settles where what the update removes equals what the prediction adds: here σ = 2.13 m just after each update,
+better than any single reading (5 m), and K settles near 0.18.
 
-**Worked example — a coastal radar.** Imagine a radar station on a headland that measures a boat at range
-r = 2000 m (σr = 5 m) and bearing b = 60° from north, clockwise (σb = 0.5°). Then
-`east = r sin b`, `north = r cos b`, and
+![σ of the 1-D filter: a sawtooth that settles at 2.13 m](assets/sawtooth.svg)
 
-```
-J = [ ∂e/∂r  ∂e/∂b ]   = [ sin b    r cos b ]   = [ 0.866   1000 ]
-    [ ∂n/∂r  ∂n/∂b ]     [ cos b   −r sin b ]     [ 0.5    −1732 ]
+> [!QUESTION] ✏️ Check
+> Same filter, but the sensor gets worse: R = 100 m² (σ 10 m). Does the settled gain go up or down? Does the
+> filter follow a real change of height faster or slower?
 
-P_polar = diag(σr², σb²) = diag(25, (0.5·π/180)²) = diag(25, 7.62e-5)
+<details><summary>Answer</summary>
+Down: each reading is trusted less, so K is smaller (it settles near 0.095). The estimate is smoother but
+follows a real change more slowly. What matters is the ratio of w (how much the truth may move) to R (how
+noisy the sensor is), not each number alone.
+</details>
 
-P_en = J P_polar Jᵀ = [  94.9  −121.1 ]  m²
-                      [ −121.1   234.7 ]
-```
+## 2. A state with a velocity: F, Q and the prediction
 
-σ_east = 9.7 m, σ_north = 15.3 m, strongly correlated. The bearing error (0.5°) dominates: at 2 km
-it is 2000 × 0.0087 = 17.5 m across the line of sight, three times the range error. **The ellipse is
-long across the line of sight and thin along it.** In the lab you check this formula with a Monte
-Carlo simulation of 20 000 random radar measurements. Two classic mistakes: forgetting to convert σb
-to **radians** (the derivative of sin is cos only in radians), and writing `J P J` instead of `J P Jᵀ`.
+**The problem.** A random walk does not know that a climbing drone keeps climbing. When it climbs at 2 m/s, the
+1-D filter is always behind. Better: estimate the **climb rate** too, and use it to predict.
 
-## 4. Is this measurement plausible? The chi-square gate
-
-A new measurement `z` arrives. We predicted `ẑ` with covariance `P_pred`, and the measurement has
-its own noise covariance R. If both are honest and independent, the **innovation** `ν = z − ẑ`
-(the "surprise") has covariance
+**The idea.** The state is a vector, x = [h, v] (height in m, climb rate in m/s), with a 2 × 2 covariance P.
+Over a time step dt, at constant velocity, the height moves by v·dt:
 
 ```
-S = P_pred + R          (in general S = H P Hᵀ + R, see section 6)
+x⁻ = F x          F = | 1  dt |          (h⁻ = h + v·dt,   v⁻ = v)
+                      | 0   1 |
 ```
 
-and `d² = νᵀ S⁻¹ ν` follows χ² with n = dim(z) degrees of freedom. The **chi-square gate** accepts
-the measurement when
+The covariance moves with the same matrix. You know this from mission 27: a linear function y = F x turns a
+covariance P into F P Fᵀ. Then we add **Q**, what the model cannot know: real accelerations.
 
 ```
-d² ≤ χ²ₙ(p)          e.g. n = 2:  p = 0.95 → 5.99,   p = 0.99 → 9.21
+P⁻ = F P Fᵀ + Q
 ```
 
-**Worked example.** Predicted position (0, 0) with `P_pred = [[12, 5], [5, 6]]`; a measurement
-(6, −2) m with R = 0 for simplicity. `d² = 8.17`. With p = 0.99 (threshold 9.21) it is accepted;
-with p = 0.95 (threshold 5.99) it is refused. The same 6.3 m offset in the direction of the long
-axis would be much more plausible than across it: the gate is **direction-aware**, a distance
-threshold is not.
-
-The choice of p is a trade-off you will measure in the lab:
-
-- a gate at probability p refuses a fraction **1 − p of good measurements** (false alarms), by
-  definition;
-- a wider gate lets more **outliers** (wrong map matches, spoofed fixes) through.
-
-And a warning: the gate is only as good as S. If the filter is **overconfident** (P too small), the
-gate refuses good measurements — and a filter that refuses every measurement never corrects itself.
-You will see this failure in the lab.
-
-## 5. Combining two estimates: inverse-variance fusion
-
-Two independent unbiased estimates of the same quantity, `x1` (variance P1) and `x2` (variance P2).
-The **minimum-variance** linear combination weights each by its **information** (inverse variance):
+**Where Q comes from.** Suppose that during each step the vehicle has an unknown acceleration a, constant during
+the step, random from one step to the next, with mean 0 and variance q = σ_a² (σ_a in m/s²). Over dt it moves
+the height by a·dt²/2 and the velocity by a·dt. So the step adds the random vector a·g, with g = [dt²/2, dt]:
 
 ```
-P = (P1⁻¹ + P2⁻¹)⁻¹
-x = P (P1⁻¹ x1 + P2⁻¹ x2)
+Q = q · g gᵀ = q · | dt⁴/4   dt³/2 |
+                   | dt³/2   dt²   |
 ```
 
-**1-D worked example.** A says 100 m (σ 10 m, variance 100), B says 110 m (σ 5 m, variance 25).
-Information 0.01 and 0.04: `x = (0.01·100 + 0.04·110) / 0.05 = 108 m`, `P = 1/0.05 = 20 m²`,
-σ = 4.47 m — **better than both inputs**. Information adds up; that is why fusion helps.
+The off-diagonal terms are not zero: the same acceleration pushes height and velocity together. With several
+axes (east and north) each axis gets the same model; with the state ordered [e, n, v_e, v_n], the 4 × 4 F and Q
+are built with `np.kron(F1, np.eye(2))`, which copies each number of the 2 × 2 block onto a 2 × 2 identity.
 
-In 2-D the same formula works with matrices, and it does something a scalar weight cannot: a GPS
-ellipse long in one direction, fused with a round vision error, is corrected mostly **along its long
-axis**, where it is weak.
+<details><summary>🧰 numpy: outer product and Kronecker product</summary>
 
-Three conditions, all necessary:
+```python
+import numpy as np
+g = np.array([1.0, 2.0])
+np.outer(g, g)                       # [[1. 2.] [2. 4.]] — every g[i]·g[j]: the matrix g gᵀ
+A = np.array([[1.0, 3.0], [0.0, 1.0]])
+np.kron(A, np.eye(2))                # 4 × 4: [[1 0 3 0] [0 1 0 3] [0 0 1 0] [0 0 0 1]]
+```
+`np.kron(A, np.eye(2))` puts the block a·I₂ in place of each number a of A. The order matters:
+`np.kron(np.eye(2), A)` gives another matrix (the two copies of A side by side on the diagonal).
+</details>
 
-1. the stated covariances are **honest** (a source stating 5 m while being 50 m off pulls the result
-   away, with a small stated σ, so nobody notices);
-2. the errors are **independent** (fusing the same information twice makes you overconfident);
-3. **no outliers**: gate first, then fuse. One wrong match 150 m away, fused with weight, moves the
-   answer by tens of metres.
-
-These conditions are why NAVERA's arbiter today **selects** one source (lesson 29) and uses the other
-sources to **check** the GPS (lesson 30) rather than averaging them.
-
-## 6. The Kalman filter
-
-A **Kalman filter** applies sections 3–5 recursively, every time step. It holds a **state** `x`
-(for example position and velocity) and its covariance `P`, and alternates two steps.
-
-![One Kalman step](assets/kalman.svg)
-
-**Model.** For a vehicle at roughly constant velocity, on one axis, with state `[p, v]`:
+**Worked example.** A drone at 100 m climbs at 1.5 m/s: x = [100, 1.5], P = diag(4, 1) (σ 2 m and 1 m/s).
+Predict over dt = 2 s with σ_a = 0.5 m/s² (q = 0.25 m²/s⁴):
 
 ```
-x_k = F x_{k-1} + w,      F = [ 1  dt ]       w ~ N(0, Q)
-                              [ 0   1 ]
-
-Q = q · [ dt⁴/4   dt³/2 ]     (white-noise acceleration of spectral density q, m²/s³)
-        [ dt³/2   dt²   ]
+x⁻ = [100 + 1.5·2, 1.5] = [103, 1.5]
+F P Fᵀ = | 4 + 2·2·0 + 2²·1    0 + 2·1 |  = | 8  2 |        g = [2, 2],   Q = 0.25 · | 4  4 |  = | 1  1 |
+         | 0 + 2·1             1       |    | 2  1 |                               | 4  4 |    | 1  1 |
+P⁻ = | 9  3 |        σ of the height: 2 m → 3 m;   covariance 3 m²/s: a higher height goes with a faster climb
+     | 3  2 |
 ```
 
-(The **spectral density** q measures how strong the random acceleration is: in one step the
-velocity changes by a random amount whose variance is the bottom-right entry of Q. A larger q lets the velocity change faster.)
+Without any measurement, the prediction repeats and P keeps growing, and **not** in a straight line: the velocity
+error multiplies time, and the random accelerations add up on top. How fast? You will measure it (lab Step 1).
 
-Q says how much the vehicle can change its velocity between two steps (a turn, a gust). For two
-axes with state `[e, n, ve, vn]`, `F = kron(F1, I₂)` and `Q = kron(Q1, I₂)` (the **Kronecker product**
-`kron(A, I₂)` replaces each entry a of A by the block a·I₂, so it copies the 1-axis model for each axis).
+> [!QUESTION] ✏️ Check
+> In the worked example, where does the 3 in P⁻[0][1] come from? And why can the height's σ grow even when
+> q = 0?
 
-**Predict** (propagation, section 3 with J = F):
+<details><summary>Answer</summary>
+2 from F P Fᵀ (dt × the velocity variance: the height error now contains dt × the velocity error) and 1 from Q
+(q·dt³/2 = 0.25·4). With q = 0 the velocity error alone still grows the height error: P[0][0] gains dt²·P[1][1].
+</details>
 
-```
-x ← F x
-P ← F P Fᵀ + Q              (the ellipse grows)
-```
+## 3. The update with matrices
 
-**Update** with a measurement `z = H x + noise`, noise covariance R (for a position fix,
-`H = [I₂ 0]`, it picks the position out of the state):
+**The problem.** The measurement z is a height only, but the state has two numbers. How does a height correct
+a climb rate nobody measured?
 
-```
-ν = z − H x                 innovation
-S = H P Hᵀ + R              innovation covariance  (use it for the gate, section 4)
-K = P Hᵀ S⁻¹                Kalman gain
-x ← x + K ν
-P ← (I − K H) P             (the ellipse shrinks)
-```
-
-With `H = I` the update is exactly the fusion of section 5 between the prediction and the
-measurement. The gain K is "how much to believe the measurement": in 1-D, `K = P / (P + R)`.
-
-**Worked example (1-D, height above ground).** State `[h, climb] = [80 m, 0]`, `P = diag(9, 4)`,
-dt = 1 s, q = 0.3.
+**The idea.** Say what the sensor measures with a matrix H: here z = H x + noise with H = [1, 0] ("the first
+number of the state"), noise covariance R. Then the 1-D update of §1 becomes:
 
 ```
-predict:  x = [80, 0]
-          P = [[9 + 2·0 + 4 + 0.075,  0 + 4 + 0.15], [4.15, 4 + 0.3]] = [[13.075, 4.15], [4.15, 4.3]]
-update with a barometer height z = 83 m, σ = 1.5 m (R = 2.25):
-          ν = 3,  S = 13.075 + 2.25 = 15.325,  K = [13.075, 4.15] / 15.325 = [0.853, 0.271]
-          x = [80 + 0.853·3, 0 + 0.271·3] = [82.56 m, 0.81 m/s]
-          P = [[1.92, 0.61], [0.61, 3.18]]
+ν = z − H x⁻               the innovation (the surprise)
+S = H P⁻ Hᵀ + R            its covariance: the prediction's uncertainty, seen by the sensor, plus the sensor's
+K = P⁻ Hᵀ S⁻¹              the gain: one number per state entry
+x = x⁻ + K ν
+P = (I − K H) P⁻
 ```
 
-Notice two things. The height σ fell from √13.1 = 3.6 m to √1.92 = 1.4 m, better than the barometer
-alone (1.5 m). And the filter learned a **climb rate** (0.81 m/s) that nobody measured: the
-correlation term in P (4.15) carried the information from height to climb rate.
+Compare with §1: with one state number and H = 1 it is exactly K = P⁻/(P⁻ + R). With H = [1, 0], S is a single
+number, P⁻ Hᵀ is the **first column** of P⁻, and K = [P⁻₀₀/S, P⁻₁₀/S]. The second gain is not zero when P⁻₁₀
+is not zero: the update moves the climb rate **through the covariance**. The tilted ellipse below shows why: a
+height above the prediction is more likely if the drone climbed faster.
 
-**No measurement?** Only predict. P grows by Q at every step. During a 40 s GPS outage at
-q = 0.3 the position σ grows from about 3 m to about 90 m — the honest answer to "where am I?" after
-40 s without a fix.
+![A height-only measurement moves the climb rate too](assets/update2d.svg)
 
-## 7. Is the filter honest? NEES
-
-A filter is **consistent** when its P describes its real error. In a simulation, where the truth is
-known, compute at every step the **Normalised Estimation Error Squared**:
+**Worked example** (continuing §2). A height z = 106 m arrives, with σ 3 m (R = 9 m²):
 
 ```
-NEES_k = e_kᵀ P_k⁻¹ e_k        e_k = estimate − truth  (position: n = 2)
+ν = 106 − 103 = 3 m         S = 9 + 9 = 18 m²          K = [9/18, 3/18] = [0.5, 0.167]
+x = [103 + 0.5·3, 1.5 + 0.167·3] = [104.5 m, 2.0 m/s]
+P = (I − K H) P⁻ = | 9 − 0.5·9      3 − 0.5·3   |  = | 4.5  1.5 |       σ height: 3 m → 2.12 m
+                   | 3 − 0.167·9    2 − 0.167·3 |    | 1.5  1.5 |       σ climb: 1.41 m/s → 1.22 m/s
 ```
 
-If the filter is consistent, `NEES_k ~ χ²ₙ`, so its **average is n**. For the mean over N steps,
-`N · mean ~ χ²_{nN}` (if the steps were independent), which gives a 95 % band:
+The climb rate learned 0.5 m/s from a height measurement. The number νᵀ S⁻¹ ν = 3²/18 = 0.5 is the
+**normalised innovation squared** (**NIS**): mission 27's d², computed **before** the update. It says how
+surprising the measurement is, in the filter's own σ; your `kf_update` returns it, so that a caller can still
+refuse the measurement (§5).
+
+<details><summary>🧰 numpy: inverse, solve, and the 2 × 2 inverse by hand</summary>
+
+```python
+S = np.array([[4.0, 1.0], [1.0, 2.0]]); nu = np.array([1.0, 3.0])
+np.linalg.inv(S)                     # [[ 0.2857 -0.1429] [-0.1429  0.5714]]
+nu @ np.linalg.solve(S, nu)          # 5.0 — νᵀ S⁻¹ ν without forming the inverse
+```
+By hand: the inverse of [[a, b], [c, d]] is [[d, −b], [−c, a]] / (ad − bc). Here 1/7 · [[2, −1], [−1, 4]].
+`H.T` is the transpose; a Python list has no `.T`, so convert inputs with `np.asarray(x, dtype=float)` first.
+A one-number measurement is still an array: z = [106.0], H = [[1.0, 0.0]], R = [[9.0]].
+</details>
+
+> [!QUESTION] ✏️ Check
+> Same prediction (x⁻ = [103, 1.5], P⁻ = [[9, 3], [3, 2]]), but the height comes from a much better sensor:
+> R = 1 m². Is the new height closer to 103 or to 106? Does the climb rate move more or less than 0.5 m/s?
+
+<details><summary>Answer</summary>
+S = 10, K = [0.9, 0.3]: the height becomes 105.7 (close to the measurement) and the climb rate moves by
+0.3·3 = 0.9 m/s, more than before. A better sensor is believed more, for both numbers.
+</details>
+
+## 4. What q and R mean, and a race
+
+**R** is the easy one: the variance the sensor states for its measurement. A barometer with σ 1.5 m: R = 2.25 m².
+A height from the camera with σ 3 % of the height, at 120 m: σ 3.6 m, R = 12.96 m². Each measurement may come
+with its own R: the filter weighs each one by its own quality.
+
+**q** is the model's honesty about motion: σ_a = √q is the typical random acceleration in one step. With σ_a
+= 0.5 m/s² and one-second steps, the climb rate's variance grows by q = 0.25 (m/s)² per step: after 10 s without
+a measurement, σ of the climb rate has grown by √(10·0.25) = 1.6 m/s. A small drone that goes from level flight
+to a 3 m/s climb in 5 s accelerates at 0.6 m/s².
+
+**The trade-off.** A filter with too small a q believes its model too much: it is smooth, but **late** in every
+climb, and it states a small σ while its error is large (**overconfident**). Too large a q believes every
+measurement: it follows the noise and states a large σ (**pessimistic**). You will measure both (lab Step 4).
+
+![Three values of q on the same heights](assets/q_tradeoff.svg)
+
+**The race.** NAVERA's day vision (Release 0.2) keeps the drone's **height above the ground** in a filter of
+exactly this form. Described in words:
+
+- state [height, climb rate]; constant climb rate with random climb accelerations of **σ_a = 0.5 m/s²**, so
+  q = 0.25 m²/s⁴, predicted over the true time since the last height;
+- the **first** height starts the filter at [that height, 0] with P = diag(σ², 4): the climb rate is unknown
+  (σ 2 m/s);
+- every independent height (GPS altitude minus the ground's, the barometer, a rangefinder, and the height the
+  camera measures, stated at **3 % of the height**, 5 % when few features matched) is an update with H = [1, 0]
+  and R = σ²;
+- a height that is not positive ("no reading") is ignored; there is no gate on heights.
+
+NAVERA Lite's `Height1D` (TODO 4) is that model. The course ran it once on the lab's heights and saved the
+outputs in `reference_heights.csv`: in lab Step 3 your filter must give the **same numbers to 10⁻⁶ m**. That is
+how filters are checked in industry: the same model, the same start, the same inputs, the same outputs. One
+detail wrong (σ instead of σ², q = 0.5 instead of 0.25, a start climb variance of 0 instead of 4) and the race
+is lost.
+
+> [!QUESTION] ✏️ Check
+> Why does the start covariance say 4 for the climb rate and not 0? What would a filter that starts with a climb
+> variance of 0 do during the first climb?
+
+<details><summary>Answer</summary>
+0 would mean "I know the climb rate is exactly 0". Then K's second number starts at 0 and the climb rate can only
+grow through q, slowly: the first climb would be followed late. 4 (σ 2 m/s) says honestly "I do not know yet".
+</details>
+
+> [!TIP] 🏅 End of session 1 reading. Do lab Steps 1–4, then read §5–§7.
+
+## 5. A 2-D tracker, a gate, and how a filter locks itself out
+
+**The tracker.** For a drone on a map the state is x = [e, n, v_e, v_n] (east and north in m, velocities in
+m/s), F and Q from §2 with two axes, and a position fix measures H = [I₂ 0] (the first two numbers) with
+R = σ_z² I₂. The first fix starts the filter at [e₀, n₀, 0, 0] with P = diag(σ_z², σ_z², 20², 20²) (the velocity
+is unknown: σ 20 m/s). Then, at every time step: predict; if a fix arrived, update. When there is no fix (a
+jammed second), only predict: the state moves on at the estimated velocity and P grows. That is **dead
+reckoning with an honest σ**.
+
+**The gate.** A wrong fix (a bad map match 150 m away, a spoofed position) pulls a filter off the track, and
+because P shrinks after every update, the filter then **believes** its wrong position. Mission 27's gate stops
+it: compute the NIS d² = νᵀ S⁻¹ ν (S includes P⁻ **and** R), and refuse the fix when d² is larger than the χ²
+threshold for 2 dimensions: −2 ln(1 − p), 9.21 for p = 0.99 (NAVERA Lite's `gate_threshold(p)`). A refused fix
+changes nothing: the state stays the prediction.
+
+**Worked example.** The filter predicts a position with σ 40 m per axis (P⁻ = 1600 I); a fix with σ 5 m
+(R = 25 I) arrives 40 m east of the prediction. S = 1625 I, d² = 40²/1625 = 0.98: accepted. Another filter states
+σ 10 m for the same prediction: S = 125 I, d² = 1600/125 = 12.8 > 9.21: **refused**.
+
+![The same fix, two filters](assets/gate.svg)
+
+The gate is as wide as the filter's own σ. That is its strength (a confident filter refuses wild fixes) and
+its danger. Picture an **overconfident** filter after a jam: its stated σ is small, its true error large. The
+first good fix is "too far": refused. The prediction moves on, still confident, still wrong; the next fix is
+farther: refused. Every later fix is refused and the filter never comes back. This is a **lock-out** (also
+called divergence). It is why the filter must be **honest first**: a small q looks smooth on a plot and can lose
+the aircraft.
+
+> [!QUESTION] ✏️ Check (the judge)
+> After a jam, a filter states σ 60 m per axis. The first fix (σ 5 m) is 150 m north of the prediction. Accept it
+> with a 99 % gate? With a 95 % gate (5.99)? And if the filter had stated σ 20 m?
+
+<details><summary>Answer</summary>
+S = 3600 + 25 = 3625 per axis, d² = 150²/3625 = 6.2: accepted at 99 % (9.21), refused at 95 % (5.99). With σ 20 m:
+d² = 22 500/425 = 53: refused, and very likely the next ones too — the lock-out.
+</details>
+
+## 6. Is the filter honest? NEES
+
+**The problem.** P is what the filter **says** about its error. Is it true? In flight nobody knows the truth.
+In a simulation (or a test with a much better reference), we do.
+
+**The idea.** At each step, measure the true error in the filter's own σ's: the **normalised estimation error
+squared**
 
 ```
-[ χ²_{nN}(0.025) / N ,  χ²_{nN}(0.975) / N ]      n = 2, N = 361:  [1.80, 2.21]
+NEES = errᵀ P⁻¹ err          err = estimate − truth   (here the position: 2 numbers, P its 2 × 2 block)
 ```
 
-- mean NEES **above** the band: the filter is **overconfident** (P too small — q too small, R too
-  small, or outliers accepted);
-- mean NEES **below** the band: it is **pessimistic** (P too large) — safe but wasteful: gates too
-  wide, fusion that trusts the measurements too much.
+It is mission 27's d², applied to the error the filter does not know. If the filter is honest, err behaves like
+a Gaussian with covariance P, so NEES follows a χ² distribution with n = 2 degrees of freedom: its **average
+is n = 2**.
 
-Successive errors of a filter are correlated, so the band is approximate; it is still the standard
-first test. The same idea, with real flights, is what `evaluate_session.py` does in NAVERA (below).
+- mean NEES clearly **above** n: the filter is **overconfident** (P too small). A mean NEES of 8 says the true
+  errors are about √(8/2) = 2 times the stated σ.
+- mean NEES clearly **below** n: **pessimistic** (P too large): safe, but its gates are too wide and it
+  believes measurements too much.
+
+**How close to 2 is "clearly"?** One step's NEES spreads widely: for 2-D, 95 % of honest values lie between
+0.05 and 7.38 (mission 27's χ² table). The **mean** over N steps spreads much less, and the more steps, the
+narrower. Rather than a formula, get the band **by simulation**: draw thousands of honest "flights" (N steps of
+n standard normal numbers squared and summed), average each flight, and keep the middle 95 % of those averages
+(lab Step 5, TODO 6). If your filter's mean NEES falls outside the band of your flight's length, it is very
+unlikely to be honest.
+
+Two remarks. First, the errors of a filter from one step to the next are **correlated** (today's error is
+yesterday's, moved), so the real spread of the mean is wider than the simulated band: the band is the standard
+first test, not a proof. Second, in flight, without the truth, the NIS of the fixes plays the same role: for an
+honest filter its average is the dimension of z (2 for a position fix). A filter whose NIS keeps averaging 10
+is overconfident, and the autopilot downstream would like to know.
+
+> [!QUESTION] ✏️ Check
+> A filter's mean NEES over a long test is 0.5 for a 2-D position. What does it tell you, and is it
+> dangerous?
+
+<details><summary>Answer</summary>
+Pessimistic: the true errors are about √(0.5/2) = half the stated σ. Not dangerous in itself, but wasteful: the
+gate is twice too wide (wrong fixes get through) and a consumer that fuses this position gives it too little
+weight.
+</details>
+
+## 7. Tuning: honest first, then accurate
+
+**Your role in session 2: the tuner.** You get a flight with the truth, and one knob, q. The method:
+
+1. sweep q over a wide range (factors of 3);
+2. for each value, compute the mean NEES and the error;
+3. **keep only the honest values** (mean NEES in the band); among them, take the smallest error.
+
+Why honest first? Because the filter's σ is used by others: by its own gate (§5), and by every consumer
+downstream. NAVERA's arbiter forwards a position to the autopilot with its stated σ, and the autopilot's own
+Kalman filter weighs it with that σ: the mission brief showed what an overconfident ±300 m did. A slightly
+larger error with an honest σ is safe; a slightly smaller error with a lying σ is not.
+
+<details class="further"><summary>Going further: the Joseph form and one big step</summary>
+
+`P = (I − K H) P⁻` is exact only with the optimal K, and rounding can make it slightly asymmetric over thousands
+of steps. Long-running filters often use the **Joseph form** P = (I − KH) P⁻ (I − KH)ᵀ + K R Kᵀ, which stays
+symmetric and positive. And the Q of §2 assumes the acceleration is constant during the step: one prediction of
+40 s is not the same as forty predictions of 1 s (try it in the lab's Going further). Predict at the rate the
+vehicle really changes its acceleration.
+</details>
+
+> [!WARNING] Common wrong ideas
+> - "The filter averages the measurements." It weighs them by their variances and by how much the truth may have
+>   moved since (q). A good sensor and a fast-changing truth give a large K; a noisy sensor a small one.
+> - "A smaller q gives a better filter, look how smooth it is." Smooth, late, and overconfident. With a gate, it
+>   can lock itself out for good.
+> - "P is the error." P is what the filter **claims**; NEES compares the claim with the truth.
+> - "The climb rate needs its own sensor." It is learned through the covariance P⁻₁₀ (§3).
+> - "R = σ." R is a **variance**: σ² (m²). With R = σ the filter trusts a 3 m sensor as if it were 1.7 m.
+> - "Gate with the distance |ν| < 3σ_z." The gate uses S = H P⁻ Hᵀ + R: after a jam, the filter's own
+>   uncertainty is most of S.
+
+## In NAVERA
+
+From NAVERA's validation and architecture documents (Release 0.2, 2026-10-03) and its engineering backlog, in
+words:
+
+- **NAVERA's arbiter selects; it does not fuse.** It forwards the position of one source at a time (GPS, day
+  vision, night vision, celestial), with that source's stated accuracy. The arbiter runs no Kalman filter on the
+  position: the filter that fuses NAVERA's position with the vehicle's own sensors is the **autopilot's**
+  (ArduPilot's EKF in NAVERA's tests). So NAVERA's most important number is an **honest σ**. After the tests of
+  the mission brief, the default accuracy stated for forwarded vision positions was raised to **±500 m**, with a
+  warning below 450 m (backlog R-10: ±300 m had been stated while the measured median of the former vision method
+  was 442 m). Mission 29 compares selecting and fusing.
+- **A Kalman filter on the height above ground.** Day vision keeps its height in the two-state filter of §4
+  (σ_a 0.5 m/s², start diag(σ², 4), independent heights, the camera's height at 3 %). Your `Height1D` is the
+  same model, written by the course.
+- **Dead reckoning without a Kalman filter** (implemented 2026-10-02, **simulator only**). When day vision finds
+  no match (sea, uniform ground), it carries the last measured position along the ground velocity fitted to the
+  last 20 s of fixes, turned by the heading change the IMU measured, and states an accuracy that **grows by a
+  rule**: velocity error × time + a 5° heading error × distance, for at most 120 s or 500 m. Land route: no
+  failsafe, median error 10 m, max 33 m. Across a bay: carried 90 s over the sea stating ±300 m; the true error
+  stayed below 146 m. Compare with your tracker's jam: the same idea (predict, let σ grow), with σ from a rule
+  instead of from P.
+- **A position carried to the present.** A vision position from a photo 1.5 s old, at 40 m/s, is moved 60 m and
+  its stated accuracy grows to ±31.5 m (unit tests and simulator): one predict step, done by hand.
+- **No inertial navigation.** NAVERA does **not** integrate its IMU's accelerations into a position: the IMU gives
+  the attitude (to straighten camera frames and to aim the star camera) and heading changes, and the arbiter
+  watches the IMU topic only to know that the sensor is alive. "IMU dead-reckoning" is an open backlog item
+  (FEAT-2). An inertial navigator is the Kalman filter of this lesson with a 100–400 Hz prediction driven by the
+  measured accelerations; it is what would bridge the gaps where vision has no match. NAVERA does not have one
+  yet.
+
+## In NAVERA Lite
+
+[navera_lite/kalman.py](file:./navera_lite/kalman.py) is NAVERA Lite's Kalman part. You write `cv_model`,
+`kf_predict`, `kf_update`, `Height1D.update`, `nees` and `run_filter`; `gate_threshold` is given. The NEES band
+is a lab experiment ([band_sim.py](file:./band_sim.py)), not part of the stack. Mission 29's arbiter will select
+between sources the way NAVERA does, and rely on the honest σ you tested here; in mission 33 your `run_filter` can
+bridge the gaps of a vision source.
 
 ## 🐦 How birds do it
 
-Every spring and autumn, the Wadden Sea on the North Sea coast of the Netherlands, Germany and
-Denmark hosts millions of migrating shorebirds; it is one of the most important stopover wetlands
-in the world. Many of
-these birds arrive in flocks after flights of thousands of kilometres. How precise is one bird?
+Pigeons navigate with several cues: a sun compass (the sun's direction, corrected by their internal clock), a
+magnetic sense, and familiar landmarks near home. In **clock-shift** experiments, biologists shift a pigeon's
+internal clock by six hours: its sun compass is then about 90° wrong, and pigeons released far from home, over
+unfamiliar ground, fly off about 90° away from home. Released over landscape they know well, many pigeons
+deviate **less**: they weigh a second cue against the compass. Like a filter, they do not trust one sense
+blindly; how they weigh the cues is still being studied, and nobody claims birds compute a gain.
 
-Release homing pigeons one by one from the same place and their vanishing directions are
-**scattered**: each bird's estimate of "home is that way" is a random variable with a spread.
-Biologists measure it with a mean direction and a measure of dispersion — the circular version of
-μ and σ.
+## Summary
 
-The **"many wrongs" hypothesis** (proposed by Andrew Simons in 2004) says that if each bird's error
-is independent, a flock that pools its members' opinions should navigate more accurately than any
-single bird — this is section 5, where information adds up. Experiments with homing pigeons found
-that small flocks often fly home on more efficient routes than single birds.
+1. A Kalman filter alternates **predict** (x⁻ = F x, P⁻ = F P Fᵀ + Q: σ grows) and **update** (ν, S = H P⁻ Hᵀ + R,
+   K = P⁻ Hᵀ S⁻¹, x = x⁻ + K ν, P = (I − K H) P⁻: σ shrinks). In 1-D the update is mission 24's blend.
+2. Q comes from random accelerations: q·g gᵀ, g = [dt²/2, dt], q = σ_a². R is the measurement's variance. Small q:
+   smooth, late, overconfident; large q: noisy, pessimistic.
+3. A state you do not measure (the climb rate, the velocity) is learned through the covariance.
+4. A gate on the NIS refuses wrong fixes; an overconfident filter's gate refuses the good ones too and locks out.
+5. NEES = errᵀ P⁻¹ err averages n for an honest filter; get its band by simulation; tune q **honest first**.
 
-But a study of pigeon **pairs** (Biro and colleagues, 2006) adds the important condition. When the
-two birds' preferred routes were close, they flew a compromise. When the routes were very different,
-they did **not** average: one bird led and the other followed, or they split up. Averaging two very
-different opinions would put both birds on a route neither believed in. In our words: when the
-Mahalanobis distance between two estimates is small, fuse; when it is large, the gate says "these
-cannot both be right" — choose. Navi, NAVERA's swallow, would agree.
+**Next mission:** the arbiter. NAVERA does not fuse its sources into one Kalman filter: it **selects** one, with
+rules for freshness, honesty and switching. You will write that judge.
 
-## 8. In NAVERA
+## Check yourself
 
-NAVERA's real data covers **Sousse, Tunisia**, where NAVERA is developed; the data of this lab is
-simulated, and placed in the same test area. The ideas are the same.
+Answer without scrolling up.
 
-| What | Where in your copy (`~/navera/…`) |
-|---|---|
-| GPS covariance from HDOP: `σ = HDOP × 2 m`, vertical variance 4 × horizontal, type APPROXIMATED | `gps_pkg/gps_pkg/nodes/gps_node.py` |
-| The covariance contract (9 numbers, ENU, row-major) and its 4 types | `navera_msgs/msg/PositionEstimate.msg` |
-| "Is this a real covariance?" — finite, variances ≥ 0, symmetric, horizontal block PSD | `navera_estimator/…/nodes/estimator_node.py`, `_sane()` |
-| "Which σ does the source state?" | `estimator_node.py`, `_stated_sigma()` |
-| GPS "in doubt": covariance inflated to the disagreement with vision | `estimator_node.py`, `_in_doubt()` |
-| A 2-state Kalman filter on [height, climb rate] | `day_pkg/day_pkg/vision_nav.py`, `_height_predict()` / `_height_update()` |
-| A 3-sigma gate on vision fixes | `vision_nav.py`, `gate_k` |
-| Are stated σ honest on a real flight? (39 / 86 / 99 %) | `navera_tools/evaluate_session.py` |
-
-The arbiter's covariance checks (a consumer's filter would break on anything else):
-
-```python
-cov = list(msg.position_covariance)
-if not all(math.isfinite(c) for c in cov):
-    return False
-if not all(cov[i] >= 0.0 for i in (0, 4, 8)):                 # variances
-    return False
-tol = 1e-9 * max(1.0, cov[0], cov[4], cov[8])
-if any(abs(cov[i] - cov[j]) > tol for i, j in ((1, 3), (2, 6), (5, 7))):
-    return False                                               # symmetric
-return cov[0] * cov[4] - cov[1] * cov[3] >= -tol               # 2x2 PSD: det >= 0
-```
-
-For a 2 × 2 symmetric matrix with non-negative diagonal, `det ≥ 0` is exactly "both eigenvalues
-≥ 0". And `_stated_sigma()`:
-
-```python
-sigma = math.sqrt(max(msg.position_covariance[0], msg.position_covariance[4]))
-return sigma if sigma >= MIN_STATED_SIGMA_M else None          # < 1 cm: "unknown"
-```
-
-It reads the larger **diagonal** term. Section 2 showed that, for a tilted ellipse, the largest
-eigenvalue is larger than both diagonal terms: in the lab you will measure how much this
-underestimates the worst direction for a correlated covariance. (Today NAVERA's GPS covariance is
-diagonal, so the two agree.)
-
-The height filter of the day-vision navigator is the filter of section 6, written out by hand:
-
-```python
-def _height_predict(self, t):
-    (h, v), P, th = self._h
-    dt = max(0.0, t - th)
-    q = self.climb_accel ** 2                     # 0.5 m/s² -> q = 0.25
-    P = [[P[0][0] + dt * (P[0][1] + P[1][0]) + dt * dt * P[1][1] + q * dt ** 4 / 4,
-          P[0][1] + dt * P[1][1] + q * dt ** 3 / 2],
-         [P[1][0] + dt * P[1][1] + q * dt ** 3 / 2, P[1][1] + q * dt * dt]]
-    return (h + v * dt, v), P, t
-
-def _height_update(self, t, z, sigma, source):
-    ...
-        S = P[0][0] + sigma * sigma
-        k0, k1 = P[0][0] / S, P[1][0] / S
-        r = z - h
-        self._h = ((h + k0 * r, v + k1 * r),
-                   [[(1 - k0) * P[0][0], (1 - k0) * P[0][1]],
-                    [P[1][0] - k1 * P[0][0], P[1][1] - k1 * P[0][1]]], t)
-```
-
-Expand `F P Fᵀ + Q` for `F = [[1, dt], [0, 1]]` and you get exactly these lines. In the lab, your
-matrix version must give the same heights to 10⁻⁶ m.
-
-The vision gate refuses a weak fix when its distance to the prediction exceeds
-`gate_k · hypot(σ_pred, σ_fix)` with gate_k = 3. With round errors, that is `d² > 9` on a χ²₂
-variable: a gate at probability 1 − exp(−4.5) — you will compute it. NAVERA's estimator uses the same
-reasoning to cross-check GPS against an independent source: a disagreement beyond 3σ makes GPS
-"in doubt", beyond 5σ (plus margins) refuses it (lesson 30).
-
-Honest numbers from VALIDATION_STATUS.md (**unit tests and simulator only**): a vision position
-carried to the present from a 1.5 s old photo at 40 m/s is moved 60 m and its stated accuracy grows
-to ±31.5 m; a GPS "in doubt" gets an accuracy no better than its disagreement with vision.
-
-## Glossary
-
-| Word | Meaning |
-|---|---|
-| **random variable** | a quantity whose value varies from trial to trial, described by a distribution |
-| **covariance matrix P** | `E[(e − μ)(e − μ)ᵀ]`: variances on the diagonal, co-variations off it |
-| **positive semi-definite (PSD)** | `vᵀPv ≥ 0` for every v; all eigenvalues ≥ 0 |
-| **eigen-decomposition** | `P = V Λ Vᵀ`: principal directions (V) and variances along them (Λ) |
-| **error ellipse** | the set `d² ≤ k²`; semi-axes `k√λ` |
-| **Jacobian J** | the matrix of first derivatives of a function; `P_y ≈ J P Jᵀ` |
-| **Mahalanobis distance** | `d² = rᵀ S⁻¹ r`: a distance measured in sigmas, direction-aware |
-| **chi-square χ²ₙ** | the distribution of d² for an n-dimensional Gaussian |
-| **gate** | accept a measurement only if `d² ≤ χ²ₙ(p)` |
-| **innovation ν, S** | `z − Hx` and its covariance `HPHᵀ + R` |
-| **information** | inverse covariance; it adds up when independent estimates are fused |
-| **Kalman gain K** | `P Hᵀ S⁻¹`: how much the update believes the measurement |
-| **process noise Q, q** | how much the model allows the state to change unpredictably |
-| **NEES** | `eᵀ P⁻¹ e`; its mean should equal the dimension n for an honest filter |
-| **consistent / overconfident / pessimistic** | P matches / is smaller than / is larger than the real error |
-
-## Check what you learned
-
-<details><summary>1. P = [[25, 0], [0, 4]] m². Give a, b and θ of the 1-sigma ellipse, and the share of fixes inside the 2-sigma ellipse.</summary>
-The matrix is already diagonal: λ1 = 25, λ2 = 4, so a = 5 m, b = 2 m, θ = 0° (the long axis points
-east). Inside k = 2: 1 − exp(−2) = 86.5 %.
+<details><summary>1. Write the five update equations and say in one sentence what K means.</summary>
+ν = z − H x⁻; S = H P⁻ Hᵀ + R; K = P⁻ Hᵀ S⁻¹; x = x⁻ + K ν; P = (I − K H) P⁻. K is how much of the surprise ν the
+filter believes, for each state number.
 </details>
-
-<details><summary>2. The radar of section 3 now sees the boat at 4000 m, same σr and σb. Which σ changes most, and roughly by how much?</summary>
-The cross-range error r·σb doubles (from 17.5 m to 35 m) while the range error stays 5 m. The ellipse
-becomes longer across the line of sight; its area roughly doubles.
+<details><summary>2. dt = 1 s, q = 4 m²/s⁴. Write Q for one axis.</summary>
+g = [0.5, 1], Q = 4·[[0.25, 0.5], [0.5, 1]] = [[1, 2], [2, 4]].
 </details>
-
-<details><summary>3. A gate at p = 0.99 is applied to 300 good measurements from a consistent filter. How many are refused, roughly? And if the filter's P is 4 times too small?</summary>
-About 1 %, so 3. If P (and so S, when R is small compared with P) is 4 times too small, every d² is
-about 4 times too large: a good measurement is refused when its true d² > 9.21/4 = 2.3, which happens
-with probability exp(−1.15) ≈ 32 % in 2-D — about 95 good measurements refused.
+<details><summary>3. Why can an overconfident filter with a gate lose the track for good after a jam?</summary>
+Its small P makes S small, so the first good fix after the jam has a large d² and is refused; the prediction
+drifts on, the next fix is farther still: every fix is refused.
 </details>
-
-<details><summary>4. Fuse 50 m (σ 4 m) and 60 m (σ 4 m). Then fuse 50 m (σ 4 m) and 90 m (σ 4 m). What should you do differently in the second case?</summary>
-Both give the average with σ = 4/√2 = 2.8 m: 55 m and 70 m. But in the second case the difference
-40 m has σ = √(16 + 16) = 5.66 m, so d² = (40/5.66)² = 50 ≫ 6.63 (χ²₁ at 99 %): the two estimates are
-not compatible. Gate first: one of them is wrong; do not fuse.
+<details><summary>4. A 2-D filter's mean NEES is 18 over a long test. How much larger are its true errors than its stated σ?</summary>
+About √(18/2) = 3 times. It is overconfident: raise q (or find the outliers it accepted).
 </details>
-
-<details><summary>5. After a 40 s GPS outage the first fix is 150 m from the prediction. The filter's σ is 90 m per axis, R is 5 m. Accept it?</summary>
-S ≈ (90² + 5²) per axis. If the 150 m is along one axis, d² ≈ 150² / 8125 = 2.8 &lt; 9.21: accept. The
-large P after the outage makes the gate wide, which is right: the filter itself says it may be 150 m
-off. With a filter that kept σ = 10 m (too small q), d² = 180: refused, and every later fix too.
-</details>
-
-<details><summary>6. A filter's mean NEES over 361 steps is 12. What does it tell you, and what two causes would you check first?</summary>
-Far above the band [1.80, 2.21]: the filter is overconfident, its real error is about √(12/2) ≈ 2.4
-times larger than it states. Check the process noise q (too small for how the vehicle really moves)
-and outliers that were accepted (no gate, or a gate too wide).
+<details><summary>5. (Mission 17) The complementary filter mixes gyro and accelerometer with a fixed time constant. What does a Kalman filter do differently?</summary>
+Its gain is computed from P and R at every step (large at the start, when it knows little; smaller once it is
+sure), and it states its own uncertainty. A Kalman filter that has settled has a nearly fixed gain: a complementary
+filter is close to a settled Kalman filter, without the σ.
 </details>
 
 Now open the **🛠️ Lab** tab.
