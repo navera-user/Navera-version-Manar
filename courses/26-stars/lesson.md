@@ -1,542 +1,475 @@
-<!-- SPLIT PENDING: rebuild in its batch -->
 # Navigating by the stars
 
-> [!NOTE] In short
-> - At night the day camera sees nothing, but heat and the stars still give information about
->   position.
-> - A thermal camera sees heat, and SIFT fails between thermal and day images, so NAVERA's night
->   vision uses a learned matcher (STHN).
-> - Celestial navigation uses the exact time and a star camera: a **plate solver** finds where the
->   camera points.
-> - Night vision gives metres, but celestial navigation gives tens of kilometres: one degree of
->   error costs 111 km.
-> - In the lab you compute the sky (Julian date, sidereal time, altitude and azimuth) and
->   re-implement the geometry of NAVERA's night localizer.
-> - NAVERA's night vision is **not yet validated** on real thermal images.
-
-⏱ Core reading ~16 min · optional deep-dives marked *Going further*.
-
-It is 21:00 in October. A survey drone flies over the foothills of a mountain range, far
-from any city. GPS has been jammed for ten minutes. In lessons 21–24 the drone found
-itself by matching its camera picture with the satellite map. Now it is **dark**: the day camera
-sees nothing. Two things still carry information about position:
-
-1. **Heat.** Roads, roofs, rock, sand and water keep different temperatures after sunset. A
-   **thermal camera** sees them, so the shapes on the ground are still there — with different
-   brightness.
-2. **The stars.** For centuries, sailors crossed the Indian Ocean, the Atlantic and the Pacific by
-   measuring the altitude of stars above the horizon. Much later, accurate clocks and printed star tables made this method
-   precise. A camera pointed at the sky can do the same.
-
-NAVERA has one source for each: **night vision** (`night_pkg`, a learned thermal-to-map matcher
-called STHN) and **celestial navigation** (`cn_pkg`, a star camera with a plate solver). This
-lesson gives the physics and the mathematics of both, and explains why the first gives metres
-and the second gives tens of kilometres.
-
-> [!NOTE]
-> NAVERA's test map and recorded frames cover **Sousse, Tunisia**, where NAVERA is developed. The
-> lab uses them as they are. The star computations use sites on several continents (Teide
-> Observatory on Tenerife, New York, London, Paris), because the sky works the same everywhere.
-
-> [!TIP]
-> **How to study this lesson.** It has two independent parts: **Part 1, night vision** (about 1 h of
-> reading) and **Part 2, celestial navigation** (about 1.5 h). The lab is split the same way
-> (Part A = the sky, Part B = night vision). Plan **two sessions**, one per part; you can do them in
-> either order. Sections marked **📖 Read, do not memorise** are background (folded into *Going further* blocks): understand the idea and
-> the numbers; you do not need to reproduce their formulas. The lab only uses §2.1–2.3, §2.5, §2.7
-> and the zenith case of §2.6.
-
-## Part 1 — Night vision with a thermal camera
-
-### 1.1 What a thermal camera measures
-
-<details class="further"><summary>Going further (optional) — The physics: Stefan–Boltzmann, Wien and emissivity</summary>
-
-Every surface emits electromagnetic radiation because of its temperature. For a perfect emitter
-(a **black body**) the total power per square metre is the **Stefan–Boltzmann law**
-
-```
-M = ε · σ · T⁴          σ = 5.67e-8 W m⁻² K⁻⁴,  T in kelvin,  0 < ε ≤ 1 (emissivity)
-```
-
-and the wavelength of maximum emission follows **Wien's law**, `λ_max = 2898 µm·K / T`. For the
-ground at night, T ≈ 290–300 K, so λ_max ≈ 10 µm: the **long-wave infrared** (LWIR, 8–14 µm).
-A thermal camera is a camera whose sensor (usually a **microbolometer** array, 640 × 480 or
-640 × 512 pixels) is sensitive to this band. Each pixel reports a **radiance**, which depends on
-the temperature **and** on the **emissivity** ε of the surface: water (ε ≈ 0.98) looks like its
-true temperature, a bare metal roof (low ε) reflects the cold sky and looks colder than it is.
-
-Worked example: wet sand at 300 K and dry rock at 295 K, both ε ≈ 0.95. The ratio of their
-emissions is (300/295)⁴ = 1.07: a 5 K difference gives 7 % more radiance, easily measured by a
-sensor with 0.05 K sensitivity.
-
-</details>
-
-### 1.2 Why the night picture is not the day map
-
-What makes thermal images hard to use is **thermal inertia**: how fast a material heats and cools.
-Sand and dry soil cool fast after sunset; rock, concrete and buildings release stored heat for
-hours; water barely changes. So the brightness of a place in a thermal image depends on the
-material, the hour and the weather.
-
-![Satellite photo, thermal at noon, thermal at night](assets/thermal.svg)
-
-<details class="further"><summary>Going further (optional) — Satellite photo against thermal image, feature by feature</summary>
-
-| | Satellite photo (the map) | Thermal image |
-|---|---|---|
-| What a pixel means | reflected sunlight (colour) | emitted radiance (temperature × emissivity) |
-| Shadows | sharp sun shadows beside every building | none, but "heat shadows" can remain after sunset |
-| A road | grey | bright at noon (hot asphalt), medium at night |
-| Water, a canal or a pool | dark blue | cold at noon, **warmer** than the ground at night |
-| Trees along a river | dark green | cooler than bare soil by day, often warmer at night |
-
-</details>
-
-Twice a day, near dawn and dusk, warm and cold materials pass through the **same** temperature:
-the **thermal crossover**. The contrast then nearly disappears. In the sand seas of the Sahara the dunes are
-almost uniform in temperature and texture: like the open sea, they give a thermal matcher very
-little to hold on to.
-
-### 1.3 Why SIFT fails across modalities
-
-The features of lesson 21 describe the **gradients** around a point. If a road is darker than the
-ground in the map but brighter in the thermal frame, every gradient across it turns by 180°. The
-SIFT orientation histogram and the 128 descriptor values change completely, so the nearest
-neighbour in the map is a wrong point and the ratio test (lesson 22) rejects most matches. This is
-the general problem of **cross-modal matching**: the two images measure different physical
-quantities, so their brightness is related by an unknown, non-monotonic, place-dependent function.
-
-### 1.4 NAVERA's answer: a learned homography (STHN)
-
-NAVERA uses **STHN**, a published deep network for **thermal-to-satellite homography** estimation.
-The intuition, in four steps, is in the block below.
-
-<details class="further"><summary>Going further (optional) — STHN's four steps</summary>
-
-1. Two convolutional **encoders** turn the thermal frame and the satellite patch into feature
-   maps. They are **trained** on many aligned thermal/satellite pairs, so they learn features that
-   stay the same in both modalities (edges of roads and fields, block layouts), whatever the sign of
-   the contrast.
-2. A **correlation volume** compares every feature of the frame with every feature of the map
-   around it.
-3. An **iterative refinement** (a small recurrent network) moves the four corners of the frame on
-   the map, step by step, to where the correlation is best.
-4. The four corner displacements define a **homography** (8 degrees of freedom, lesson 22). The
-   frame centre, carried through it, is the position.
-
-</details>
-
-A learned model does not tell you when it is wrong. In NAVERA's tests its **consistency score**
-stayed near 0.9 on wrong matches. So NAVERA protects it in two ways: it gives the network exactly
-the input it was trained on, and it checks the output with physics.
-
-### 1.5 Preparing the frame: scale, north-up, coverage
-
-STHN was trained on a **512 × 512 px** query at the map's resolution (zoom 17, ≈ 0.97 m/px at
-Sousse), north-up, searched in a **1536 px** square of the map. A nadir camera at height h with a
-horizontal field of view θ sees a strip of width
-
-```
-footprint_w = 2 · h · tan(θ / 2)        gsd_cam = footprint_w / width_px        scale = gsd_cam / gsd_map
-```
-
-(the footprint of lesson 18). The frame is resized by `scale`, turned by the heading so that north
-is up, and cropped to 512 × 512. A turned rectangle does not fill a square: the corners stay
-empty.
-
-![Coverage of the reference square by a turned frame](assets/coverage.svg)
-
-Worked example — a 640 × 480 thermal camera with θ = 84° at h = 300 m over Sousse:
-
-```
-footprint  = 2 · 300 · tan 42° = 540 m wide, 540 · 480/640 = 405 m high
-in map px  = 540 / 0.968 = 558 px  ×  405 / 0.968 = 419 px
-heading 0° : the 512 px square is covered on its full width, 419 of 512 rows → 0.82
-heading 45°: the corners are empty                                        → 0.77
-```
-
-NAVERA refuses any frame covering less than 85 % of the square (`MIN_QUERY_COVERAGE = 0.85`):
-"fly higher". This rule comes from a measurement: at 0.77 coverage (exactly this example), tracking
-**ran away to 2.4 km** while the consistency stayed around 0.9. In the lab you will compute the
-coverage for any height and heading, and find the minimum height by bisection.
-
-### 1.6 Checking the answer: the motion gate
-
-Between two accepted fixes, the vehicle cannot move faster than its maximum speed. NAVERA's night
-node keeps the last accepted fix (the **anchor**) and rejects a new one when
-
-```
-jump = haversine(anchor, new fix)   >   reach = max_speed_mps · (t − t_anchor) + gate_margin_m
-```
-
-with `max_speed_mps = 30` and `gate_margin_m = 30` by default. A rejected frame does not move the
-anchor: the next frame is tried again from the last good position.
-
-### 1.7 What was measured (docs/VALIDATION_STATUS.md)
-
-<details class="further"><summary>Going further (optional) — The measured numbers</summary>
-
-| Test | Result |
-|---|---|
-| Synthetic frames (grey renders of the map), frames scaled and turned north-up, 250–600 m | 8–13 m median |
-| One 320 m shift (synthetic) | failed: 238 m error, consistency 0.93 (not flagged) |
-| Mission simulator, drone at 400 m, GPS jammed | 290 matches, median 6 m, p90 11 m, max 37 m |
-| GPU time on the Jetson | ~225 ms per frame (fp32) |
-| Real thermal imagery | **not validated** |
-
-</details>
-
-These numbers are **optimistic**: a grey render of the satellite map is much easier than a real
-thermal image. The validation document also states that the replay set in
-`camera_pkg/data/thermal/` cannot be used for night vision — in the lab you will find out why.
-
-## Part 2 — Celestial navigation
-
-### 2.1 Two coordinate systems on the sky
-
-The stars are so far away that only **directions** matter. We place them on a unit sphere centred
-on the observer, the **celestial sphere**.
-
-- **Equatorial coordinates** are fixed to the stars: **declination** δ (angle north or south of the
-  celestial equator) and **right ascension** α (angle along the equator, measured eastward from the
-  **vernal equinox**). Catalogues give them; NAVERA uses the **Yale Bright Star Catalogue**
-  (`/data/bsc5.dat`, 9 110 stars).
-- **Horizontal coordinates** are fixed to the observer: **altitude** a (angle above the horizon,
-  90° at the **zenith**) and **azimuth** A (clockwise from true north: 90° = east).
-
-![Altitude and azimuth](assets/altaz.svg)
-
-The link between them is the rotation of the Earth, measured by **sidereal time**.
-
-### 2.2 Time: Julian date, GMST, GAST, hour angle
-
-Astronomers count days continuously with the **Julian date** (JD): JD 2451545.0 is 2000-01-01
-12:00 (the epoch J2000.0). Meeus' algorithm converts a calendar date (year Y, month M, day D,
-with January and February counted as months 13 and 14 of the previous year):
-
-```
-A = floor(Y / 100)      B = 2 − A + floor(A / 4)
-JD = floor(365.25 (Y + 4716)) + floor(30.6001 (M + 1)) + D + B − 1524.5  (+ hours / 24)
-```
-
-The **Greenwich Mean Sidereal Time** is the angle between the vernal equinox and the Greenwich
-meridian (IAU 1982 formula, d = JD − 2451545.0, T = d / 36525):
-
-```
-GMST = 280.46061837° + 360.98564736629° · d + 0.000387933° · T² − T³ / 38 710 000     (mod 360°)
-```
-
-The sky turns 360.9856° per solar day: one turn in 23 h 56 min 4 s. The **apparent** sidereal time
-adds the **equation of the equinoxes** (nutation, at most ≈ 1.2 s of time):
-`GAST = GMST + Δψ cos ε`. Then for an observer at longitude λ (east positive) and a star at α:
-
-```
-LST = GAST + λ          (local sidereal time)
-H   = LST − α           (hour angle: how far the star has turned west of your meridian)
-```
-
-<details class="further"><summary>Going further (optional) — UT1, UTC and the IERS</summary>
-
-Strictly, the formula wants **UT1** (time by the Earth's rotation), not UTC (atomic time). The
-difference UT1 − UTC is kept below 0.9 s by leap seconds and is published by the **IERS**.
-
-</details>
-
-### 2.3 From (α, δ) to (a, A): the navigational triangle
-
-<details class="further"><summary>Going further (optional) — Primer: triangles on a sphere (London–Paris example)</summary>
-
-> [!NOTE]
-> **Primer: triangles on a sphere.** On a sphere of radius 1, the "straight lines" are **great
-> circles** (circles whose centre is the centre of the sphere, like the equator or a meridian). A
-> **spherical triangle** has three great-circle arcs as sides. Two facts are all you need:
-> 1. **A side is an angle.** The length of an arc on a unit sphere equals the angle it makes at the
->    centre. So sides are written in degrees (on the Earth, 1° of arc = 111.2 km).
-> 2. **The spherical law of cosines.** For sides a, b, c and the angle C between sides a and b
->    (C is the corner opposite side c):
->    **cos c = cos a · cos b + sin a · sin b · cos C**.
->    For a very small triangle, cos x ≈ 1 − x²/2 and sin x ≈ x, and this becomes the flat cosine
->    rule c² = a² + b² − 2ab cos C that you know from school.
+![One star photo and one IMU attitude give two possible places on Earth: London, and a point in the Indian Ocean 8 808 km away](assets/cold_open.svg)
+
+> [!NOTE] Mission brief
+> **30 September 2026, NAVERA's first end-to-end celestial test.** NAVERA's star fix had never been run
+> from photo to position. Its validation document (2026-10-03) and engineering backlog (items LOC-10 and
+> CN-1) list what that run and the code reviews before it found. The latitude formula kept **one** root of
+> an equation that has **two**: any camera facing the southern half of the sky gave positions **hundreds to
+> thousands of kilometres** off. The plate solver's fit was anchored near an image edge and came out about
+> **1° off at the centre: 111 km**. The star coordinates were not corrected for the slow turn of the Earth's
+> axis: about **0.4° in 2026, tens of km**. All three were fixed. The next day, a real sky photo was
+> identified **1.7′ (arcminutes)** from an independent solution.
 >
-> Example, London (51.51° N, 0.13° W) to Paris (48.86° N, 2.35° E): take the triangle North
-> pole – London – Paris. Its sides from the pole are a = 90° − 51.51° = 38.49° and
-> b = 90° − 48.86° = 41.14°, and the angle at the pole is the longitude difference
-> C = 2.35° − (−0.13°) = 2.48°.
-> cos c = 0.7827 · 0.7531 + 0.6224 · 0.6579 · 0.9991 = 0.99855, so c = 3.09° = **343 km** — the
-> great-circle distance London–Paris. The navigational triangle below is the same idea with the
-> pole, your zenith and a star.
+> Today you build NAVERA Lite's star fix and meet each of these traps yourself. **Session 1 — Stargazer:**
+> the clock of the sky, where a star appears, and your latitude from Polaris. **Session 2 — Star
+> navigator:** find the stars in a photo with OpenCV, identify them, turn them into a position with the
+> IMU, choose between two roots, and measure what one degree of attitude costs.
+>
+> **Start now:** open the 🛠️ **Lab** tab, do **Step 0** (two minutes, no code), then come back here for §1.
 
+**Objectives.** After this mission you can:
+
+1. **convert** a UTC time into a Julian date and a sidereal time, and **explain** why a star rises
+   3 min 56 s earlier every night;
+2. **compute** where a star stands in your sky (altitude, azimuth), and your **latitude from Polaris**
+   with its hour-angle correction;
+3. **find** stars in a night photo with OpenCV and **measure** their centres to a fraction of a pixel;
+   **explain** what a plate solver does;
+4. **turn** one camera direction, known on the sky and in the IMU's frame, into a position: **two
+   roots**, and a prior that chooses or **refuses**;
+5. **budget** the position error from attitude errors (1° ≈ 111 km) and **check** the budget by simulation.
+
+**You need:** missions 16–17 (quaternions, `q_rotate`, true north and the declination, `q_true_north`),
+18 (the pinhole camera and K), 08 (grey images, uint8), 06 (the great circle: 1° of arc on the Earth),
+04 (numpy masks). ⏱ Reading: about 90 minutes with the ✏️ checks: §1–§3 before session 1, §4–§7 before
+session 2. Lab: 4 h to 5 h.
+
+**Before you start.** Answer without looking; if you miss two, reread mission 17 §5 and mission 06 §1.
+
+<details><summary>1. (Mission 17) An IMU chip reports heading 80° magnetic where the declination is −5°. True heading?</summary>
+80 + (−5) = 75°. True = magnetic + D, with D positive east.
+</details>
+<details><summary>2. (Mission 16) q is the attitude (body → world). Which call gives the world direction of the body's nose?</summary>
+`q_rotate(q, (1, 0, 0))`: rotate the body vector by q. (In mission 18 the camera's axis was turned the same way.)
+</details>
+<details><summary>3. (Mission 06) How long is 1° of great circle on a sphere of radius 6 371 km?</summary>
+2π · 6371 / 360 = 111.2 km. One arcminute (1/60°) is 1.853 km: almost exactly the nautical mile (1.852 km).
 </details>
 
-Three points on the sphere — the celestial **pole** P, the **zenith** Z and the star X — form the
-**navigational triangle**. Its sides are 90° − φ, 90° − a and 90° − δ; its angle at P is the
-hour angle H, its angle at Z is the azimuth A.
+<details><summary>Words of this lesson (open if you need them)</summary>
 
-![The navigational triangle PZX](assets/celestial_triangle.svg)
+| Word | Meaning | Français |
+|---|---|---|
+| **celestial sphere** | the sky drawn as a sphere around you; only directions matter | sphère céleste |
+| **right ascension α, declination δ** | a star's "longitude" and "latitude" on the sky, fixed to the stars | ascension droite, déclinaison |
+| **altitude, azimuth** | a direction in YOUR sky: angle above the horizon, angle clockwise from north | hauteur, azimut |
+| **sidereal time** | the sky's clock: which right ascension is crossing your meridian | temps sidéral |
+| **hour angle H** | how far a star has turned west of your meridian | angle horaire |
+| **precession** | the slow turn of the Earth's axis that shifts every catalogue position | précession |
+| **centroid** | the brightness-weighted centre of a star's pixels | centroïde, barycentre |
+| **plate solving** | finding which stars a photo shows, hence where the camera points | résolution astrométrique |
+| **boresight** | the direction the camera's centre looks at | axe de visée |
+| **prior** | a position you already roughly know (the operating area, the last fix) | a priori |
+</details>
 
-The spherical law of cosines on the side ZX (with cos(90° − x) = sin x), and the sine/cosine rules
-for the azimuth, give
+## 1. The sky as a sphere, and its clock
+
+The stars are so far away that only their **directions** matter: draw them on a sphere around you, the
+**celestial sphere**. Two coordinate systems live on it (figure).
+
+- **Fixed to the stars.** The Earth's axis, extended, meets the sky at the celestial poles; the Earth's
+  equator, extended, is the **celestial equator**. A star's **declination δ** is its angle north (+) or
+  south (−) of that equator, like a latitude. Its **right ascension α** is its angle along the equator,
+  measured **eastward** from a reference point called the vernal equinox, like a longitude. Catalogues
+  list (α, δ); they do not change during the night.
+- **Fixed to you.** Your **zenith** is straight up; your **horizon** is the plane at right angles to it.
+  A star's **altitude a** is its angle above the horizon (90° at the zenith); its **azimuth A** is
+  measured clockwise from **true** north (90° = east), like a heading.
+
+![Left: right ascension and declination, fixed to the stars. Right: altitude and azimuth, fixed to the observer.](assets/sky_frames.svg)
+
+The Earth turns under the sky, so the link between the two frames is a **time**. Relative to the stars,
+the Earth turns once in **23 h 56 min 4 s** (a **sidereal day**), not 24 h: in 24 h it also moves about
+1/365 of its orbit around the Sun, so it must turn about 361° for the Sun to come back to the same place.
+The extra degree costs 24 h / 365 ≈ 3 min 56 s. So every star rises, culminates and sets **3 min 56 s
+earlier** each night, and the night sky slowly changes through the year.
+
+**The sky's clock.** To use formulas, astronomers count time in days without months: the **Julian date**
+(JD), the number of days since noon on 1 January 4713 BC. Noon, 1 January 2000 is JD 2451545.0 (a moment
+called J2000.0). From a UTC calendar date, a recipe from Meeus' *Astronomical Algorithms* gives it. Its
+constants look strange; each has a job. January and February count as months 13 and 14 of the previous
+year (so the leap day falls at the end of the "year"); `30.6001` gives the right number of days before each
+month; `B` corrects for the Gregorian calendar's skipped leap years:
+
+```
+if month ≤ 2:   year = year − 1,   month = month + 12
+A = floor(year / 100)          B = 2 − A + floor(A / 4)
+JD = floor(365.25·(year + 4716)) + floor(30.6001·(month + 1)) + day + hours/24 + B − 1524.5
+```
+
+(`hours` includes the minutes and seconds: h + mi/60 + s/3600.) Then the **Greenwich Mean Sidereal Time**,
+the angle between the vernal equinox and the Greenwich meridian (IAU 1982), with d = JD − 2451545.0 and
+T = d / 36525 (centuries):
+
+```
+GMST = 280.46061837° + 360.98564736629°·d + 0.000387933°·T² − T³/38 710 000     (mod 360°)
+```
+
+The second term is the sidereal day: 360.9856° per solar day. For an observer at longitude λ (**east
+positive**), the **local** sidereal time is LST = GMST + λ, and a star's **hour angle** H = LST − α: how far
+it has turned west of your meridian (0° = due south of the pole, at its highest).
+
+**Worked example: London (51.50° N, 0.12° W), 7 October 2026, 20:00 UTC.** year 2026, month 10:
+A = 20, B = 2 − 20 + 5 = −13; floor(365.25 · 6742) = 2 462 515; floor(30.6001 · 11) = 336; day + hours/24 =
+7.833333. JD = 2462515 + 336 + 7.833333 − 13 − 1524.5 = **2 461 321.333333**. Then d = 9 776.333333 and
+GMST = 280.46062 + 360.98564737 · 9776.333333 = 3 529 396.4778… → mod 360 = **316.4778°** (the T² term adds
+0.00003°). LST = 316.4778 + (−0.12) = **316.3578°**. Capella (α = 79.6672° of date) has H = 316.3578 −
+79.6672 = **236.6906°**: it is still in the east, rising.
+
+> [!QUESTION] ✏️ Check
+> Sirius rises at 22:10 local time on 1 November. At about what time does it rise on 1 December? Why does
+> nobody see Orion in a June night sky?
+
+<details><summary>Answer</summary>
+30 days × 3 min 56 s = 118 min earlier: about 20:12. In June the Sun stands in the part of the sky where
+Orion is (the 3 min 56 s add up to 12 h in half a year): Orion is up during the day.
+</details>
+
+**Catalogue positions move too.** The Earth's axis turns slowly like a spinning top's, once in about
+26 000 years (**precession**). The equator and the equinox move with it, so the (α, δ) of a catalogue
+made for **J2000** are a little wrong in 2026. NAVERA Lite gives you `precess(ra, dec, jd)`, which turns
+J2000 positions to the date (IAU 1976 formulas). You measure how far Vega moved in lab Step 2.
+
+## 2. Where is that star in my sky?
+
+Three points on the celestial sphere make a triangle: the **pole P**, your **zenith Z** and the **star X**.
+Its sides are **angles** (on a sphere of radius 1, an arc's length is the angle it spans): PZ = 90° − φ
+(φ your latitude: the pole stands φ above your horizon), ZX = 90° − a, PX = 90° − δ. Its angle at P is the
+hour angle H; its angle at Z is the azimuth A.
+
+![The navigational triangle: pole, zenith, star](assets/triangle.svg)
+
+The **spherical law of cosines** (the curved cousin of a² = b² + c² − 2bc cos A) on the side ZX, with
+cos(90° − x) = sin x, gives the altitude; the azimuth comes from the same triangle with `atan2`, which
+keeps the right quadrant:
 
 ```
 sin a = sin δ · sin φ + cos δ · cos φ · cos H
-A     = atan2( −cos δ · sin H ,  sin δ · cos φ − cos δ · sin φ · cos H )      (then mod 360°)
+A     = atan2( −cos δ · sin H ,  sin δ · cos φ − cos δ · sin φ · cos H )      then mod 360°
 ```
 
-Equivalently, this is a rotation of the unit vector of the star by the matrix R_y(90° − φ) · R_z(H)
-(lesson 16): the code with `atan2` keeps the right quadrant automatically.
-
-**Worked example — Vega from Teide Observatory, Tenerife (φ = 28.30° N, λ = 16.51° W, so
-λ = −16.51°), 2026-10-07 20:00 UTC (21:00 local time on Tenerife).**
+**Worked example: Capella from London**, same moment (δ = 46.0254° of date, φ = 51.50°, H = 236.6906°):
 
 ```
-JD   = 2461321.333333
-GMST = 316.47786°     GAST (NAVERA gast_deg) = 316.48003°   (+0.52 s of time)
-Vega, apparent of date: α = 279.45960°, δ = 38.81067°
-LST  = 316.48003 + (−16.51) = 299.97003°      H = 299.97003 − 279.45960 = 20.5104°
-sin a = 0.62675 · 0.47409 + 0.77922 · 0.88048 · 0.93661 = 0.29713 + 0.64259 = 0.93973
-a = 70.01°
-A = atan2(−0.77922 · 0.35038, 0.62675 · 0.88048 − 0.77922 · 0.47409 · 0.93661)
-  = atan2(−0.27302, 0.20584) = −52.99°  →  307.01°   (north-west)
+sin a = 0.71965 · 0.78261 + 0.69434 · 0.62251 · (−0.54916) = 0.56320 − 0.23737 = 0.32583   →  a = 19.02°
+A = atan2( −0.69434 · (−0.83572),  0.71965 · 0.62251 − 0.69434 · 0.78261 · (−0.54916) )
+  = atan2( 0.58027,  0.74640 )  =  37.86°                                                (north-east)
 ```
 
-astropy gives 70.00612° and 307.01331°: the same to better than one arcsecond. Look up at
-21:00 in October from Tenerife and Vega is there, high in the north-west. Note the sign: a
-place **west** of Greenwich has a **negative** longitude, so its LST is smaller than GAST.
+Capella is 19° up in the north-east: rising, as its hour angle said. (Astropy, the astronomers' Python
+library, agrees within 0.01°; the difference is two small effects we leave out, nutation and aberration,
+each under 20″.)
 
-### 2.4 Catalogue positions, precession and the offline IERS problem — 📖 Read, do not memorise
+> [!QUESTION] ✏️ Check
+> A star culminates (H = 0) at altitude 90° − |φ − δ|. Can you ever see Canopus (δ = −52.7°) from London
+> (φ = 51.5°)? From Quito (φ = −0.2°)?
 
-<details class="further"><summary>Going further (optional) — Precession, nutation, aberration and the offline IERS tables</summary>
+<details><summary>Answer</summary>
+London: 90 − |51.5 + 52.7| = −14.2°: never above the horizon. Quito: 90 − 52.5 = 37.5°: yes, 37° up in the
+south. From the equator you can see every star of the sky during a year.
+</details>
 
-Catalogues give α, δ for the epoch J2000. The Earth's axis **precesses** (one turn in about
-26 000 years) and also makes a small periodic "nodding" motion called **nutation** (at most about 17″, period 18.6 years), and the Earth's motion shifts apparent positions by up to
-20″ (**aberration**). From 2000 to 2026 precession alone moves right ascensions by about 0.36° —
-tens of kilometres if ignored. NAVERA converts with astropy (`apparent_radec`: ICRS → TETE, the
-true equator and equinox of date) and pairs the result with GAST.
+## 3. Latitude from Polaris
 
-astropy wants the IERS tables (UT1 − UTC, polar motion) and normally **downloads** them. A drone in
-flight, and your sandbox, have no internet. The lab uses the same workaround as NAVERA's offline
-tests:
+The celestial pole stands exactly **φ** above your northern horizon: that is why sailors measured
+Polaris. But Polaris is not exactly at the pole: in 2026 it is **p = 90° − δ ≈ 0.63°** away, and it turns
+around the pole on a small circle once a sidereal day. When its hour angle is H, it stands p·cos H above
+(or below) the pole. To first order in p:
+
+```
+φ ≈ a − p · cos H
+```
+
+![Polaris on its small circle around the pole; the pole stands φ above the horizon](assets/polaris.svg)
+
+**Worked example.** From a ship you measure Polaris at a = 47.20°, at a moment when its hour angle is 140°:
+φ ≈ 47.20 − 0.6253 · cos 140° = 47.20 + 0.479 = **47.68°**. Taking a = φ would have put you 0.479° too
+far south: 53 km.
+
+The formula leaves out terms of order p², the **refraction** of the air (it lifts
+every star, about 1′ at 45° altitude and much more near the horizon) and, at sea, the dip of the horizon.
+And Polaris is useless south of the equator: no bright star marks the south pole. A general method is
+needed: §6.
+
+> [!QUESTION] ✏️ Check
+> Without a clock you cannot know H. What is then the largest latitude error, in km, of "φ = altitude of
+> Polaris"? And with a perfect clock?
+
+<details><summary>Answer</summary>
+Up to p = 0.63°, i.e. 0.63 × 111 = about 70 km (when H = 0° or 180°). With the clock, the error drops to the
+p² terms (lab Step 4 measures them).
+</details>
+
+<details><summary>Read this after lab Step 4</summary>
+The second-order term is about (p²/2)·sin²H·tan φ: with p = 0.0109 rad it is under 0.01° at mid latitudes, but
+tan φ grows quickly towards the pole, so the high-latitude places keep the largest residual.
+</details>
+
+## 4. Finding stars in a photo
+
+A star is a point, but its image is a small blob of a few pixels: the lens and the air spread its light.
+A night photo also holds **noise** (every pixel jitters), a **background** that is not flat (town glow, the
+Moon), **hot pixels** (single sensor pixels that always read bright) and sometimes an **aircraft trail**.
+A star detector must keep the first and refuse the others. Five steps, all OpenCV and numpy:
+
+1. **Background.** A median filter over a window much larger than a star (e.g. 21 × 21 pixels) gives the
+   local sky level; subtract it. A star is too small to move a median.
+2. **Noise σ.** Use a **robust** spread that the stars themselves cannot inflate: the median absolute
+   deviation (MAD) × 1.4826 equals σ for Gaussian noise.
+3. **Threshold.** Keep the pixels brighter than k·σ above the background (k = 5: noise alone almost never
+   does that).
+4. **Groups.** Touching pixels form one object (`cv2.connectedComponentsWithStats`). Refuse objects that
+   are too small (a hot pixel is 1 pixel) or too large (a trail is hundreds).
+5. **Centre and flux.** The **centroid** is the brightness-weighted mean of the object's pixel positions;
+   the flux is the sum of their brightness (above the background). Sort the stars brightest first.
+
+<details><summary>🧰 Robust σ, and three OpenCV/numpy tools</summary>
 
 ```python
-from astropy.utils import iers
-iers.conf.auto_download = False                 # never try the internet
-iers.conf.iers_degraded_accuracy = "ignore"     # outside the bundled table: UT1 - UTC taken as 0
+x = np.array([20, 21, 19, 22, 18, 20, 95.0])     # six noisy pixels and one star
+x.std()                                          # 26.3 — the star inflates it
+1.4826 * np.median(np.abs(x - np.median(x)))     # 1.48 — the noise only
+
+bg = cv2.medianBlur(img, 21)                     # img: 2-D uint8; ksize odd; result uint8
+n, labels, stats, cents = cv2.connectedComponentsWithStats(mask.astype(np.uint8), connectivity=8)
+#   labels: the object number of every pixel (0 = background); stats[i, cv2.CC_STAT_AREA]: its size
+#   cents: the PLAIN centres (not weighted by brightness)
+np.bincount([0, 1, 1, 2], weights=[5.0, 1.0, 2.0, 4.0])   # array([5., 3., 4.]) — sums per label
 ```
-
-The cost is at most 0.9 s of UT1, i.e. 0.004° of sky rotation (0.9 × 0.464 km ≈ 0.42 km at most, on the equator): negligible next to the
-attitude error below.
-
+Careful: `img - bg` on two uint8 arrays wraps around below 0 (3 − 5 = 254). Convert to float first.
 </details>
 
-### 2.5 Latitude from Polaris
+**Why weight the centre?** Look at one star's pixels above the background:
 
-The celestial pole has altitude φ above the northern horizon (in the triangle, PZ = 90° − φ).
-**Polaris** is close to the pole: in 2026 its declination is 89.374°, so its **polar distance**
-is p = 90° − δ = 0.626°. As the sky turns it describes a small circle around the pole, and
+![A 3 × 3 star image: the plain centre and the brightness-weighted centre](assets/centroid.svg)
 
-```
-φ ≈ a − p · cos H        (first order in p; H = Polaris' hour angle)
-```
+The plain mean of the five lit pixels is u = 4.00; the weighted mean is (3·10 + 4·80 + 5·30) / 120 =
+**4.167**: the bright side pulls it. The weighted centre finds the true centre of the light to a tenth of a
+pixel or better. Why that matters: for a camera 40° wide on 1 000 pixels, one pixel is 0.04° = 2.4′ on the
+sky, i.e. **4.4 km** on the Earth (§7).
 
-Without the correction, "latitude = altitude of Polaris" is wrong by up to p = 0.626° = 70 km. With
-it, the remaining error is of order p² (you will measure about 0.3 km at most from New York).
-In New York (40.7° N), Polaris is about 40.7° up, and a real measurement also needs the
-**atmospheric refraction** correction (about 1′ · cot a ≈ 1.2′ ≈ 2 km at 41°; much more for a
-low star, about 4 km at 23°) and, with a sextant,
-the dip of the horizon.
+> [!QUESTION] ✏️ Check
+> A faint star is only 2 pixels above the threshold, and your detector refuses objects smaller than 3 pixels.
+> What happens to it? Is that a problem for navigation?
 
-![The altitude of Polaris equals your latitude](assets/polaris.svg)
-
-### 2.6 Plate solving: where does the camera point?
-
-NAVERA's star camera looks up and takes a photo with tens to hundreds of stars. **Plate solving**
-finds which stars they are. astrometry.net (`solve-field`, called from `cn_pkg/.../solver.py`)
-takes groups of four stars (**quads**), computes a code from their relative positions that does
-not change with rotation, scale or translation (**geometric hashing**), and looks it up in an index
-built from star catalogues. A match gives the **WCS** (World Coordinate System) of the image:
-for every pixel, its (α, δ). NAVERA's settings expect a 50–70° wide field and skip two
-astrometry.net steps that crash with NumPy ≥ 1.24.
-
-The simplest fix: if the camera points **exactly** at the zenith, its centre has δ = φ and
-α = LST. So
-
-```
-φ = δ_centre          λ = α_centre − GAST        (wrapped to −180°…180°)
-```
-
-<details class="further"><summary>Going further (optional) — The general case: a tilted camera and its two latitude solutions</summary>
-
-📖 **Read, do not memorise (the rest of this section).** In general the camera is tilted. The IMU
-gives the boresight's (a, A) (`boresight_altaz` turns the
-IMU quaternion into them), the solver gives its (α, δ), and the triangle is solved for the observer
-(`observer_candidates`):
-
-```
-sin δ        =  sin a · sin φ + cos a · cos φ · cos A      (1)  → two solutions for φ
-cos δ · sin H = −cos a · sin A                              (2)
-cos δ · cos H =  sin a · cos φ − cos a · sin φ · cos A      (3)  → H, then λ = α + H − GAST
-```
-
-Equation (1) has **two** latitude solutions in general, both geometrically valid. Why? With a and A
-known, the right side of (1) is p · sin φ + q · cos φ (p = sin a, q = cos a · cos A), which can be
-written R · sin(φ + ψ) with R = √(p² + q²) and ψ = atan2(q, p). And a sine takes the same value at
-two angles: sin x = sin(180° − x). So φ + ψ has two possible values, hence two latitudes. (The
-"Two answers" experiment at the end of the lab shows both solutions.)
-`choose_candidate` keeps the one within 5° of a **prior** (the operating area, the last GPS fix);
-if the prior cannot separate them, NAVERA publishes **no position**.
-
+<details><summary>Answer</summary>
+It is refused, like a hot pixel. Not a problem: a plate solver needs tens of stars, and the brightest are the
+most precise (more light, less noise). The size limit trades a few faint stars for zero hot pixels.
 </details>
 
-### 2.7 Error budget: why one degree costs 111 km
+## 5. Plate solving: which stars are these?
 
-Only directions matter, so an error in the measured direction becomes the same angle on the
-Earth's surface:
+A list of bright dots says nothing until you know **which** stars they are. **Plate solving** answers that
+without knowing where the camera points ("lost in space"). The key fact: the **angle between two stars**
+does not depend on where the camera points or how it is turned. With the camera matrix K (mission 18), every
+pixel becomes a direction, so every pair of detections gives an angle (e.g. Vega–Deneb: 23.85°) that can be
+looked up in a table of catalogue angles.
+
+- **astrometry.net**, the solver NAVERA uses, takes groups of four stars ("quads"), computes a code from their
+  shape that does not change with rotation and scale, and looks it up in a large index built from star
+  catalogues.
+- **NAVERA Lite's `plate_solve`** (given, course-written) is simpler: each pair angle that matches a
+  catalogue pair "votes" for the identities of its two stars; the best-voted identities give a first
+  **rotation** from the camera frame to the sky (the 3-D cousin of mission 22's similarity fit); then every
+  catalogue star is projected into the image with it, matched, and the rotation fitted again on all
+  matches.
+
+The result is where the **image centre** points on the sky: the **boresight** (α, δ), of date. An error at
+this step goes straight into the position (§7): NAVERA's first fit, anchored near the image edge, missed the
+centre by about 1°, i.e. 111 km; fixed to 2.9′.
+
+## 6. One direction, two frames: a position
+
+The plate solve gives the boresight **on the sky**: (α, δ). The IMU gives it **in your local frame**: rotate
+the camera's axis by the vehicle's attitude (`q_rotate`, mission 16), and read its altitude and azimuth. Mind
+the north: an IMU chip with a compass works in a **magnetic**-north frame, so turn it to true north first
+(`q_true_north` with the WMM declination, mission 17). Knowing the same direction in both frames, at a known
+time, is enough to find where you are.
+
+**The easy case first.** A camera pointing exactly at the zenith sees, at its centre, δ = φ and α = LST:
 
 ```
-1°  of great circle = 2π · 6371 km / 360 = 111.2 km
-1′  of great circle = 1.852 km = 1 nautical mile (this is how the nautical mile is defined)
+φ = δ_centre          λ = α_centre − GMST      (wrapped to [−180°, 180°))
 ```
 
-| Error source | Size | Position error |
-|---|---|---|
-| tilt (pitch/roll) error of the IMU | 0.3° | 33 km |
-| heading error, camera at altitude a | 1.5° | 1.5° · cos a · 111 km = 43 km at a = 75°, 0 at the zenith |
-| clock error | 1 s | 15.04″ of longitude = 0.464 km · cos φ = 0.35 km at New York |
-| UT1 ignored (offline IERS) | < 0.9 s | < 0.42 km |
-| plate solution | ~3′ (measured, VALIDATION_STATUS) | ~5.5 km |
+**The general case.** The altitude equation of §2, with your latitude φ now the unknown:
 
-For a camera at 75° with a BNO085-class IMU (0.3° tilt, 1.5° heading, independent errors):
-√(0.3² + (1.5 · cos 75°)²) = 0.49° → about 55 km RMS. NAVERA measured **24–119 km, ~50 km
-typical** in simulation, and 5.5–6.5 km with a perfect attitude. The clock (a DS3231, ±2 ppm) is
-far from being the limit; the **attitude** is.
+```
+sin δ = sin a · sin φ + cos a · cos A · cos φ       =  p·sin φ + q·cos φ
+with p = sin a,  q = cos a · cos A,  R = √(p² + q²),  ψ = atan2(q, p):     p·sin φ + q·cos φ = R·sin(φ + ψ)
+```
 
-So celestial is a **coarse fix**: it tells which region you are in and can expose a GPS that
-claims you are in another country. It is never a position to fly a mission on. NAVERA states it
-as `attitude_sigma_deg × 111 195 m` and does not forward positions coarser than 1 km
-(`max_forward_sigma_m`) to the autopilot: in a QA test, a ±55 km celestial fix once moved the
-autopilot's position by 125 km.
+So sin(φ + ψ) = sin δ / R, and a sine takes each value **twice**: φ + ψ = x or 180° − x, with
+x = asin(sin δ / R). Two latitudes, φ₁ = x − ψ and φ₂ = 180° − x − ψ (keep those in [−90°, 90°]). For each,
+the hour angle comes from the other two triangle equations, and then the longitude:
 
-## 🐦 How birds do it
+```
+H = atan2( −cos a · sin A ,  sin a · cos φ − cos a · sin φ · cos A )
+λ = α + H − GMST            (wrapped to [−180°, 180°))
+```
 
-Many songbirds migrate **at night**. Each autumn, warblers, shrikes, flycatchers and wheatears
-from Europe and Central Asia cross the Mediterranean and the Sahara towards Africa, and most of
-them fly in the dark. How do they keep their direction?
+![The left side of the altitude equation as a function of the latitude: a sine curve meets the line sin δ twice](assets/two_roots.svg)
 
-In the 1960s and 1970s the biologist **Stephen Emlen** placed young **indigo buntings** (a North
-American night migrant) under the artificial sky of a **planetarium**. The birds did not use one
-star: they **learned** which part of the sky turns around a fixed point and took that point as
-north. Birds raised under a sky that turned around Betelgeuse later treated Betelgeuse as north.
-This is a learned, pattern-based solution — closer to plate solving and to STHN than to a single
-sextant reading.
+**Worked example: pretend the camera's centre is on Capella** (seen from London at a = 19.0162°, A =
+37.8624°; α = 79.6672°, δ = 46.0254°, GMST 316.4778°). p = 0.32584, q = 0.74640, R = 0.81442,
+ψ = 66.42°; sin δ / R = 0.71965 / 0.81442 = 0.88364, so x = 62.08°:
 
-By day, pigeons and starlings use the **sun compass**, which needs an internal clock because the
-sun's azimuth changes during the day. In **clock-shift** experiments, pigeons kept for days under
-lights shifted by six hours flew off at a large angle from the correct direction — close to the
-90° a six-hour error predicts. Navi, our swallow, flies mostly by day, but she follows the same
-rule as NAVERA: a perfect sky is useless with a wrong clock or a wrong sense of "up".
+| root | φ | H | λ = α + H − GMST |
+|---|---|---|---|
+| 1: x − ψ | 62.08 − 66.42 = **−4.33°** | −56.69° | 79.67 − 56.69 − 316.48 = −293.50 → **66.50°** |
+| 2: 180° − x − ψ | 180 − 62.08 − 66.42 = **51.50°** | −123.31° | −360.12 → **−0.12°** |
+
+Root 2 is London. Root 1, the one `asin` gives, is in the Indian Ocean, **8 808 km** away: the same
+measurement fits both places. Code that keeps one root is right for half of the cameras' directions and
+wildly wrong for the others: NAVERA's item CN-1.
+
+**Choosing.** A navigator usually knows roughly where she is: the operating area, the last GPS fix. NAVERA
+keeps the root that matches such a **prior**, and reports **no position** when the prior cannot tell the two
+apart. NAVERA Lite's rule: keep the roots within **5°** (about 550 km) of the prior; exactly one → that root;
+both, or none → no position. No position is honest; a wrong one is dangerous.
+
+> [!QUESTION] ✏️ Check
+> 1. A camera pointing at the zenith sees α = 120°, δ = 35° at its centre when GMST = 100°. Where are you?
+> 2. The two roots are 300 km apart and your prior is "the middle of the operating area", 200 km from each.
+>    What does the rule return, and why is that right?
+
+<details><summary>Answer</summary>
+1. φ = 35° N, λ = 120 − 100 = 20° E.<br>
+2. Both roots are within 5°: no position. The prior cannot tell them apart, so any choice would be a coin
+toss with a 300 km error half of the time.
+</details>
+
+## 7. The error budget: one degree costs 111 km
+
+The fix is a direction turned into a place, so **angles become distances**: an error of ε in the computed
+zenith moves the position by ε along the Earth, 111.2 km per degree, **1.852 km per arcminute** (that is why
+the nautical mile exists).
+
+![An attitude error tilts your zenith; the position moves by the same angle](assets/budget.svg)
+
+- A **tilt** error (roll or pitch) of the IMU moves the camera's direction by the same angle.
+- A **heading** error turns the direction about the vertical: it moves it by heading × cos(alt). A camera at
+  the zenith does not care about the heading; one near the horizon does fully.
+- Independent errors add as squares: **error ≈ 111.2 km × √(tilt² + (heading · cos alt)²)**.
+
+**Worked example.** Tilt error 0.5°, heading error 2°, camera 75° high: √(0.25 + (2 · 0.259)²) = 0.720° →
+**80 km**. With the tilt error alone: 0.5 × 111.2 = 55.6 km. NAVERA's simulations measured 53 km for a 0.5°
+tilt error and 91 km with a 2° heading error added (2026-09-30): a rule of thumb, close but not exact. You
+compare yours with a simulation in the lab.
+
+The other terms are much smaller: a clock error of 1 s turns the sky by 15″, i.e. 0.46 km × cos φ;
+precession left out costs tens of km (§1); the plate solve's own error (NAVERA: 2.9′) a few km. The
+**attitude** dominates.
+
+> [!QUESTION] ✏️ Check
+> How good must the tilt be for a 10 km star fix? Does a 2° heading error matter for a camera pointing at
+> the zenith?
+
+<details><summary>Answer</summary>
+10 / 111.2 = 0.09°: far better than a small drone's IMU. At the zenith cos 90° = 0: the heading does not
+matter (but the image's rotation then carries no information about the azimuth either).
+</details>
+
+<details><summary>Read this after lab Step 9</summary>
+The rule treats a sideways error of the direction like an error along the vertical. It is not always so.
+The longitude comes from the hour angle, and near the celestial pole a small sideways move of the direction
+changes its right ascension a lot: the sideways part of the error is stretched by about cos φ / cos δ. For a
+camera looking near the pole it can be several times larger; on the celestial equator it shrinks a little.
+That is one reason the measured RMS and the formula differ, and why photos taken towards the pole give the
+worst fixes.
+</details>
+
+> [!WARNING] Common wrong ideas
+> - "The stars give the position by themselves." A star photo gives the camera's direction on the **sky**.
+>   Without the attitude (the same direction in **your** frame) and the time, there is no position.
+> - "One `asin`, one latitude." The altitude equation has **two** roots; `asin` returns only the one in
+>   [−90°, 90°] for φ + ψ.
+> - "Sidereal time is clock time." The sky's clock gains 3 min 56 s a day on yours.
+> - "The magnetic heading is fine for the stars." Every degree of declination you forget is a heading
+>   error: × cos(alt) × 111 km.
+> - "The mean error is the typical error." With a long tail, the median is smaller than the RMS; quote which
+>   one you mean.
 
 ## In NAVERA
 
-**Night: preparing the frame** —
-[night_localizer.py](file:navera/night_pkg/night_pkg/nodes/night_localizer.py), `normalize_query`:
+From NAVERA's validation and architecture documents (Release 0.2, 2026-10-03) and its engineering backlog,
+in words:
 
-```python
-footprint_w = 2.0 * altitude_m * math.tan(math.radians(hfov_deg) / 2.0)
-gsd_cam = footprint_w / w
-gsd_map = ground_resolution_m(lat, zoom)
-scale = gsd_cam / gsd_map
-...
-coverage = float(np.count_nonzero(out_mask)) / (q * q)
-if coverage < MIN_QUERY_COVERAGE:
-    info["reason"] = (f"camera footprint too small for night matching ... — fly higher")
-    return None, info
-```
+- The celestial source photographs the sky, finds which stars it shows with **astrometry.net** (a plate
+  solve against index files built from the Tycho-2 catalogue), takes the IMU attitude **at the frame's exposure** (CN-2: it used to
+  be read at processing time, degrees off on a moving drone), and solves for the position. It computes
+  **both** latitude roots and keeps the one that matches a prior; when the prior cannot tell them apart, it
+  reports no position. A round trip over 20 000 random camera pointings gave **0 wrong positions, 1–2 %
+  ambiguous**. Without a measured attitude it reports nothing.
+- Star coordinates are corrected for precession to the date of the photo (the error had been about 0.4° in
+  right ascension in 2026).
+- **End to end, 2026-09-30**, on star fields drawn from the Yale Bright Star Catalogue, 60° camera: with a
+  **perfect attitude, 5.5–6.5 km** (solve 3–13 s); tilt error 0.5°: 53 km; plus 2° of heading: 91 km; a
+  simulated **BNO085-class IMU (0.3° / 1.5°)** in flight: **24–119 km, about 50 km typical**. In NAVERA's
+  words: each degree of attitude error costs about **111 km**; celestial is a **coarse fix** (which region,
+  is the GPS lying by a whole country?), never a position to fly a mission on. A levelled star camera and a
+  better attitude source are what would improve it.
+- In the arbiter, celestial comes **last** in priority (GPS > day > night > celestial) and stays fresh for
+  **45 s**. In a test (QA-2), a ±55 km celestial fix was forwarded to the autopilot, whose own position jumped
+  125 km; positions coarser than 1 km are no longer forwarded.
+- **Not validated**: a real sky photo with a known time, place and attitude; clouds and town light; a real
+  IMU. The first real photo (2026-10-01) checked the star identification only (1.7′ from Siril's solution).
 
-**Night: the motion gate** —
-[night_subscriber.py](file:navera/night_pkg/night_pkg/nodes/night_subscriber.py):
+## In NAVERA Lite
 
-```python
-jump = haversine_m(self._anchor_lat, self._anchor_lon, float(result["lat"]), float(result["lon"]))
-reach = self.max_speed_mps * max(0.0, t_now - self._anchor_time) + self.gate_margin_m
-if jump > reach:
-    gated = (f"implausible jump {jump:.0f} m in {t_now - self._anchor_time:.1f} s "
-             f"(max {reach:.0f} m) — rejected, retrying from the last position")
-```
+[navera_lite/stars.py](file:./navera_lite/stars.py) is NAVERA Lite's star part. You write `julian_date`,
+`gmst_deg`, `altaz`, `lat_from_polaris`, `detect_stars`, `boresight_altaz`, `both_roots`, `choose` and
+`error_km`. Given: the catalogue reader, `precess`, the vector helpers and `plate_solve`. The catalogue is
+a public one (a subset of the Yale Bright Star Catalogue, `/data/academy/26-stars/bright_stars.csv`); the
+IMU part (`q_true_north`, `declination_deg`) is your mission 17, shipped finished. Mission 29's arbiter will
+take the star fix as its last source.
 
-**Celestial** — [celestial_math.py](file:navera/cn_pkg/cn_pkg/nodes/celestial_math.py):
-`apparent_radec` (ICRS → TETE with astropy), `gast_deg`, `observer_candidates` (equations 1–3,
-both roots), `choose_candidate` (the prior), `local_to_radec` (the inverse, for tests) and
-`boresight_altaz` (IMU quaternion → camera alt/az). The stated accuracy is in
-[cn_subscriber.py](file:navera/cn_pkg/cn_pkg/nodes/cn_subscriber.py):
+## 🐦 How birds do it
 
-```python
-def _sigma_m(self):
-    """Stated 1-sigma horizontal accuracy: attitude error x ~111 km/deg (NaN = unknown)."""
-    s = self.attitude_sigma_deg
-    return s * 111_195.0 if math.isfinite(s) and s > 0 else None
-```
+Many songbirds migrate at night. In the 1960s Stephen Emlen put young **indigo buntings** under a planetarium
+sky. They did not follow one star: they **learned** which part of the sky turns around a fixed point and took
+that point as north. Birds raised under a sky that turned around Betelgeuse later flew "north" towards
+Betelgeuse. Like NAVERA, they read the sky's rotation, not a single star; unlike NAVERA, they use it for a
+**direction** only. A position from the stars needs a precise clock and a precise "up", which no bird is
+known to have.
 
-## Glossary
+## Summary
 
-| Word | Meaning |
-|---|---|
-| **LWIR** | long-wave infrared, 8–14 µm: where objects at ~300 K emit most |
-| **emissivity** ε | how well a surface emits compared with a black body (0 to 1) |
-| **thermal inertia** | resistance of a material to temperature change; sets how fast it cools at night |
-| **thermal crossover** | the time near dawn/dusk when different materials have the same temperature: low contrast |
-| **cross-modal matching** | matching two images of different physical quantities (heat vs reflected light) |
-| **STHN** | the deep network NAVERA uses to fit a homography from a thermal frame to the satellite map |
-| **coverage** | share of STHN's 512 px reference square filled by the scaled, north-up frame |
-| **motion gate** | rejection of a fix farther than the vehicle could have travelled |
-| **great circle** | a circle on a sphere whose centre is the centre of the sphere (the equator, a meridian): the "straight line" of the sphere |
-| **spherical triangle** | three great-circle arcs; its sides are angles; cos c = cos a cos b + sin a sin b cos C |
-| **nutation** | a small periodic "nodding" of the Earth's axis (about 17″, period 18.6 years) on top of precession |
-| **declination δ / right ascension α** | a star's coordinates on the celestial sphere, fixed to the stars |
-| **altitude a / azimuth A** | a star's direction in the observer's sky |
-| **Julian date (JD)** | a continuous day count; JD 2451545.0 = 2000-01-01 12:00 |
-| **GMST / GAST** | Greenwich mean / apparent sidereal time: the Earth's rotation angle relative to the stars |
-| **hour angle H** | LST − α: how far a star has turned west of the local meridian |
-| **precession, nutation** | slow motions of the Earth's axis that change α, δ over years |
-| **IERS, UT1** | the service publishing the Earth's rotation; UT1 is time by that rotation |
-| **plate solving** | identifying the stars in a photo to get the sky coordinates of every pixel |
-| **nautical mile** | 1.852 km = 1′ of great circle |
+1. The sky turns once in 23 h 56 min 4 s. Julian date → GMST → LST = GMST + λ → hour angle H = LST − α.
+2. Altitude and azimuth come from the navigational triangle: sin a = sin δ sin φ + cos δ cos φ cos H, A with
+   atan2. Catalogues are J2000: precess them to the date.
+3. Polaris: φ ≈ a − p cos H (p ≈ 0.63°); "φ = altitude" is up to 70 km off; no pole star in the south.
+4. A star detector: background (median), robust σ (MAD), threshold, connected components, size limits,
+   brightness-weighted centroid. A plate solver turns star angles into the camera's pointing on the sky.
+5. The same direction on the sky (plate solve) and in your frame (IMU, true north) gives the position: **two
+   roots**, a prior to choose, or no position. 1° of attitude ≈ 111 km; the attitude dominates the budget.
 
-## Check what you learned
+**Next mission:** uncertainty. A star fix stated as "±55 km" and a GPS fix as "±3 m" must be compared and
+combined; that needs covariance.
 
-<details><summary>1. Why do SIFT descriptors fail between a satellite photo and a night thermal image?</summary>
-The two images measure different quantities. Where the contrast reverses (water warmer than the
-ground at night, for example), the gradients turn by 180°, so the orientation and the 128 values of
-the descriptor change. Nearest neighbours become wrong points and the ratio test rejects them. A
-learned network trained on paired images learns features that survive the change.
+## Check yourself
+
+Answer without scrolling up.
+
+<details><summary>1. Why does a star rise 3 min 56 s earlier every night?</summary>
+The Earth turns about 361° per solar day relative to the stars (it also moves along its orbit), so the sky's
+clock gains 1/365 of a day: 3 min 56 s.
 </details>
-
-<details><summary>2. A 640 × 480 thermal camera (84°) flies at 300 m with heading 45°. Will NAVERA's night localizer use the frame? What should the pilot do?</summary>
-No. The scaled frame (558 × 419 map px) turned by 45° covers only 77 % of the 512 px square, below
-the 85 % limit, so the frame is refused ("fly higher"). At about 335 m the coverage passes 85 % at
-every heading.
+<details><summary>2. Write the altitude formula and say what each angle is.</summary>
+sin a = sin δ sin φ + cos δ cos φ cos H: δ the star's declination, φ your latitude, H its hour angle (LST − α).
 </details>
-
-<details><summary>3. Compute the hour angle of a star with α = 100° seen from New York (λ = 74.01° W) when GAST = 200°.</summary>
-West longitudes are negative: λ = −74.01°. LST = 200 − 74.01 = 125.99°, H = 125.99 − 100 = 25.99°:
-the star is a little west of the meridian (it crossed it about 1 h 44 min ago), so it is probably
-high in the sky.
+<details><summary>3. Why does a star detector refuse objects of 1 pixel, and of 500 pixels?</summary>
+A star's image covers several pixels: 1 pixel is a hot pixel; 500 pixels in a line is an aircraft or a
+satellite trail.
 </details>
-
-<details><summary>4. Polaris is measured at 41.30° from New York while its hour angle is 0° (p = 0.626°). What latitude do you get with and without the correction?</summary>
-Without: 41.30°. With: 41.30 − 0.626 · cos 0° = 40.67° (New York is at 40.71° N). The correction is largest when Polaris is
-on the meridian (H = 0° or 180°) and zero when H = ±90°.
+<details><summary>4. A camera points 60° high. The IMU has a 0.3° tilt error and a 2° heading error. Expected error?</summary>
+111.2 × √(0.09 + (2 · 0.5)²) = 111.2 × 1.04 = 116 km.
 </details>
-
-<details><summary>5. Why does the heading error of the IMU hardly matter for a camera pointing straight up, but a lot for a camera at 30° altitude?</summary>
-A heading error rotates the boresight around the vertical. At the zenith that rotation leaves the
-direction unchanged (it only turns the picture). At altitude a, the boresight moves by
-(heading error) · cos a: 87 % of the heading error at a = 30°, 26 % at 75°, 0 at 90°.
-</details>
-
-<details><summary>6. Your clock is 10 s wrong. How large is the celestial error at New York, and is it the main problem?</summary>
-10 s × 15.04″/s = 150″ = 2.5′ of longitude, i.e. 2.5 · 1.852 · cos 40.7° ≈ 3.5 km. It is much smaller
-than the 30–50 km from a typical IMU attitude error: the attitude is the main problem.
+<details><summary>5. (Mission 17) Why must the IMU's attitude be turned to true north before the star fix?</summary>
+The sky's azimuths are measured from true north; a magnetic-north attitude adds the declination to the
+heading, an error of D × cos(alt) × 111 km.
 </details>
 
 Now open the **🛠️ Lab** tab.

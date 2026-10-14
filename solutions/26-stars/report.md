@@ -1,45 +1,24 @@
-# Lab 26 — report
+# Star-fix memo — NAVERA Lite's star part
 
-## Sidereal time
+## The sky's clock and a star's place
 
-My GMST from the Meeus formula is 316.47785 degrees, only 0.04 arcseconds from astropy's mean
-sidereal time, so the formula and my Julian date are right. NAVERA's gast_deg gives the apparent
-sidereal time, 0.52 seconds of time later: that is the equation of the equinoxes, caused by
-nutation (the small nodding of the Earth's axis). 0.52 s of time is 7.8 arcseconds of rotation,
-about 0.2 km of longitude here: small next to the attitude error, but free to correct, so NAVERA
-uses GAST with apparent star positions.
+The sky turns once in 23 h 56 min, so a star crosses the meridian 236 s earlier every night. From a UTC time I
+compute the Julian date and the Greenwich sidereal time, then each star's hour angle, altitude and azimuth with
+the navigational triangle. Catalogue positions are J2000: precession moved Vega by 10.6′ (about 20 km) by October
+2026, so they are turned to the date first. Polaris alone gives the latitude within 70 km; with its hour angle,
+within 0.8 km.
 
-## Polaris
+## From a photo to a position
 
-From New York over a whole sidereal day, "latitude = altitude of Polaris" is wrong by up to 0.626
-degrees, about 70 km, because Polaris turns around the pole on a small circle. With the first-order
-correction altitude minus p cos(H) the worst error drops to 0.0029 degrees, 0.33 km. A real
-measurement would also need the atmospheric refraction correction (about 1.2 arcminutes at 41 degrees
-altitude, so about 2 km) and the dip of the horizon for a sextant.
+My detector subtracts a local median background, keeps groups of 3 to 150 pixels above 5 robust σ and measures
+brightness-weighted centres: 134 stars in photo 1, 0.17 px RMS from the truth. The plate solver identifies them
+and gives the image centre on the sky. The IMU, turned to true north, gives the same direction in the local
+frame. The altitude equation then has two roots; a prior within 5° keeps one, or none. Photo 3's asin root was
+7 834 km away, and photo 6 gave no position because the prior could not choose.
 
-## Error budget
+## How good is it?
 
-With a BNO085-class IMU (0.3 degrees tilt, 1.5 degrees heading) and the camera at 75 degrees, the
-Monte Carlo median error is 47.4 km and the p90 is 92.6 km, with no ambiguous fix. With the camera
-straight up the median is 22.6 km: a heading error only rotates the picture around the zenith, so
-the pointing direction does not change and only the tilt counts. This agrees with
-VALIDATION_STATUS.md (24-119 km, about 50 km typical). The clock costs 0.35 km per second at
-New York, so a clock good to one second (the DS3231 RTC) is far from being the limit.
-
-## Night geometry
-
-For a 640 x 480 thermal camera with an 84 degree field of view, 85 percent coverage of the 512 px
-reference square needs 312 m at heading 0 and 333 m at heading 45, because the turned rectangle
-leaves the square's corners empty. At 300 m and 45 degrees the coverage is 0.77, exactly the case
-in VALIDATION_STATUS.md where tracking ran away. The 56.7 x 48 degree camera needs 473 m, close to
-the documented 480 m. The motion gate rejected the 2194 m jump in 4 s (reach 150 m): STHN can be
-confident and wrong, physics cannot.
-
-## The night replay set
-
-Every night frame correlates at about 0.90 with exactly one day frame and about 0.10 with all the
-others, and the twin is always day frame number + 8 (modulo 30). So the "thermal" frames are
-darkened copies of the day replay frames, which are known to show other places than their labels.
-The positions in their file names cannot be used as ground truth. A real validation needs a real
-thermal camera flown with GPS logging, at night, at a height where the footprint covers the
-reference.
+With a perfect attitude every fix was within 0.2 km. With the IMU's errors the median error was 116.9 km. One
+degree of attitude costs 111 km; forgetting the 3.3° declination moved photo 1 to 314 km. For photo 1 my rule of
+thumb says 82.6 km, the simulation 103.1 km RMS and 74.8 km median: the heading error dominates. A star fix is a
+coarse check of the region, not a position to fly on.
