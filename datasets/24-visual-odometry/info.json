@@ -1,11 +1,14 @@
 {
- "frames": 80,
+ "frames": 90,
  "width_px": 320,
  "height_px": 240,
  "camera_hfov_deg": 70.0,
- "altitude_m": 110.8,
  "time_between_frames_s": 1.0,
- "start_lat": 35.8112466,
- "start_lon": 10.599484,
- "note": "altitude_m is what the barometer says. Images are 'north-up' according to the IMU."
+ "start_lat": 35.82764,
+ "start_lon": 10.63457,
+ "camera": "fixed under the drone, looking straight down; the TOP of each frame points to the drone's heading (heading-up)",
+ "heading_deg": "from the IMU, clockwise from north",
+ "baro_alt_m": "height above the ground from the barometer (the ground is flat)",
+ "map_fixes": "map-matching positions (mission 23): only where the map could be matched",
+ "attribution": "Map data \u00a9 OpenStreetMap contributors"
 }

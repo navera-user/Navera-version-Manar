@@ -1,85 +1,80 @@
-"""Lesson 24 — Drift as a random walk: how fast does dead-reckoning error grow?
+"""drift_sim.py — dead reckoning in one axis, simulated many times: how does the error of a sum of steps grow?
 
-Run:   python3 drift_sim.py        simulate, fit the growth exponents, save drift_sim.png, update results.json
+    python3 drift_sim.py          (lab Step 6) — needs TODO 5 (drift_sigma in navera_lite/vo.py) and TODO 6 below
+
+Every simulated step has an error = a bias (the same at every step) + a random part (new at every step). The program
+compares YOUR simulation with YOUR formula drift_sigma(), fits the growth exponent p (error ∝ nᵖ) and draws
+out/drift.png on log-log axes.
 """
-import json
-import math
+import os
+import sys
 
 import numpy as np
 
+import runner_kit as rk
 
-# TODO 9: Monte Carlo of the position error after n steps
-def simulate_drift(n_steps, sigma=0.5, bias=0.0, trials=2000, seed=0):
-    """RMS position error (m) after 1, 2, ..., n_steps steps.
 
-    Each step adds an error vector (ex, ey): ex = bias + N(0, sigma), ey = N(0, sigma)
-    (bias: a systematic error in metres per step, along x). The position error after n
-    steps is the SUM of the first n error vectors. Do `trials` independent flights
-    (rng = np.random.default_rng(seed)) and return a numpy array of length n_steps:
-    rms[n-1] = sqrt(mean over trials of |error after n steps|^2)."""
+# TODO 6 -------------------------------------------------------------------------------------------
+def simulate_drift(n_steps, sigma_m, bias_m, trials=2000, seed=0):
+    """Monte Carlo of dead reckoning in ONE axis (lesson §7): `trials` simulated flights of n_steps steps each.
+    Every step's error is bias_m plus a random number drawn from a normal distribution of mean 0 and standard
+    deviation sigma_m (use np.random.default_rng(seed), so that a run can be repeated exactly).
+    Returns a numpy array of n_steps numbers: entry k is the RMS, over the trials, of the accumulated error after
+    k + 1 steps.
+    Example: simulate_drift(100, 0.0, 0.1) → array([0.1, 0.2, 0.3, …, 10.0])   (no randomness: exactly n · bias)
+             simulate_drift(100, 0.5, 0.0)[-1] → about 5.0   (a few % either way: it is random)
+    """
     rng = np.random.default_rng(seed)
-    ex = bias + rng.normal(0.0, sigma, (trials, n_steps))
-    ey = rng.normal(0.0, sigma, (trials, n_steps))
-    cx, cy = np.cumsum(ex, axis=1), np.cumsum(ey, axis=1)
-    return np.sqrt(np.mean(cx ** 2 + cy ** 2, axis=0))
-
-
-# TODO 10: growth exponent from a log-log fit
-def growth_exponent(rms):
-    """p in rms(n) ~ C n^p: slope of log(rms) against log(n), n = 1..len(rms) (np.polyfit, degree 1)."""
-    n = np.arange(1, len(rms) + 1)
-    slope, _ = np.polyfit(np.log(n), np.log(np.asarray(rms, float)), 1)
-    return float(slope)
+    err = bias_m + rng.normal(0.0, sigma_m, size=(trials, n_steps))
+    total = np.cumsum(err, axis=1)
+    return np.sqrt(np.mean(total ** 2, axis=0))
 
 
 # ---- you don't need to change anything below this line ----
 
+def growth_exponent(rms):
+    """The slope p of log(rms) against log(n), n = 1 … len(rms): error ∝ nᵖ."""
+    n = np.arange(1, len(rms) + 1)
+    return float(np.polyfit(np.log(n), np.log(rms), 1)[0])
+
+
 def main():
-    n = 200
-    random_only = simulate_drift(n, sigma=0.5, bias=0.0)
-    bias_only = simulate_drift(n, sigma=0.0, bias=0.1)
-    both = simulate_drift(n, sigma=0.5, bias=0.1)
-    pr, pb = growth_exponent(random_only), growth_exponent(bias_only)
-    print(f"random errors only (0.5 m per step, per axis): after 100 steps {random_only[99]:.2f} m "
-          f"(theory sigma*sqrt(2n) = {0.5 * math.sqrt(200):.2f} m), exponent {pr:.3f}")
-    print(f"bias only (0.1 m per step):                    after 100 steps {bias_only[99]:.2f} m "
-          f"(theory b*n = {0.1 * 100:.2f} m), exponent {pb:.3f}")
-    # where the bias starts to dominate: b n = sigma sqrt(2n)  ->  n = 2 sigma^2 / b^2
-    cross = 2 * 0.5 ** 2 / 0.1 ** 2
-    print(f"both: after 100 steps {both[99]:.2f} m; the bias dominates beyond n = 2 sigma^2 / b^2 = {cross:.0f} steps")
-    import warnings
-    warnings.filterwarnings("ignore")
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    k = np.arange(1, n + 1)
-    fig, ax = plt.subplots(figsize=(6.5, 4.2))
-    ax.loglog(k, random_only, color="#0b6e8a", label=f"random only: slope {pr:.2f}")
-    ax.loglog(k, bias_only, color="#d64545", label=f"bias only: slope {pb:.2f}")
-    ax.loglog(k, both, color="#1d2733", ls="--", label="both")
-    ax.set_xlabel("number of steps n")
-    ax.set_ylabel("RMS position error (m)")
-    ax.grid(alpha=0.3, which="both")
-    ax.legend()
-    fig.savefig("drift_sim.png", dpi=90, bbox_inches="tight")
-    plt.close(fig)
-    print("saved drift_sim.png")
-    try:
-        with open("results.json") as f:
-            res = json.load(f)
-    except (OSError, ValueError):
-        res = {}
-    res["drift_sim"] = {"exponent_random": round(pr, 3), "exponent_bias": round(pb, 3),
-                        "rms_random_100": round(float(random_only[99]), 3),
-                        "rms_bias_100": round(float(bias_only[99]), 3)}
-    with open("results.json", "w") as f:
-        json.dump(res, f, indent=1)
-    print("results.json updated (drift_sim)")
+    here = sys.modules[__name__]
+    vo = rk.load_student("navera_lite.vo")
+    n = 400
+    cases = (("random only", 0.5, 0.0), ("bias only", 0.0, 0.1), ("both", 0.5, 0.1))
+    curves = {}
+    print(f"{n} steps, 2000 simulated flights each (one axis)\n")
+    print(f"{'case':12s}{'sigma':>7s}{'bias':>7s}{'RMS after 100':>15s}{'drift_sigma(100)':>18s}{'exponent p':>12s}")
+    for name, s, b in cases:
+        rms = rk.need_ok(here, "simulate_drift", n, s, b)
+        rms = np.asarray(rms, dtype=float)
+        if rms.shape != (n,):
+            sys.exit(f"simulate_drift({n}, …) must return {n} numbers (one per step), got shape {rms.shape}")
+        theory = rk.need_ok(vo, "drift_sigma", np.arange(1, n + 1), s, b)
+        theory = np.asarray(theory, dtype=float)
+        if theory.shape != (n,):
+            sys.exit("drift_sigma() on an array of n's must return one number per n (use numpy, not math)")
+        curves[name] = (rms, theory)
+        p = growth_exponent(rms) if name != "both" else float("nan")
+        print(f"{name:12s}{s:7.2f}{b:7.2f}{rms[99]:13.2f} m{theory[99]:16.2f} m{p:12.2f}")
+    print("\n(the exponent of 'both' is not one number: look at its curve)")
+    plt = rk.plt_or_none()
+    if plt:
+        fig, ax = plt.subplots(figsize=(7, 4.6))
+        steps = np.arange(1, n + 1)
+        for (name, (rms, theory)), col in zip(curves.items(), ("#0b6e8a", "#d64545", "#1d2733")):
+            ax.loglog(steps, rms, "-", color=col, label=f"{name}: simulated")
+            ax.loglog(steps, theory, "--", color=col, lw=1, label=f"{name}: drift_sigma")
+        ax.set_xlabel("steps n")
+        ax.set_ylabel("RMS error (m), one axis")
+        ax.grid(alpha=0.3, which="both")
+        ax.legend(fontsize=8)
+        os.makedirs("out", exist_ok=True)
+        fig.savefig("out/drift.png", dpi=80, bbox_inches="tight")
+        plt.close(fig)
+        rk.saved("out/drift.png")
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except NotImplementedError as e:
-        print(f"Not finished yet: {e} is still to do. Read the lab, fill it in, save, and run again.")
-        raise SystemExit(1)
+    main()
