@@ -8,6 +8,11 @@
 PREDICT_FLAP = ""      # in 30 s, how many times will arbiter v0 change its winner? (before you run it)
 V0_FLAP_SWITCHES = -1  # the number judge_lab.py printed after "changes of winner:" for v0 (--v0)
 
+# ---- Step 4: your judge on the same GPS (flapping.csv) -----------------------------------------------
+MINE_FLAP_SWITCHES = -1  # the number after "changes of winner:" for YOUR judge
+EXPLAIN_FLAP = ""       # 2.5 s to 24.5 s: GPS usable several times, your judge stayed on day vision: why?
+                       # which run of GPS fixes finally took over, and why that one?
+
 # ---- Step 5: the door left open (lockout.csv) ---------------------------------------------------------
 PREDICT_LOCKOUT = ""   # a judge whose door lets a fix stamped 20 s ahead in: what happens to the HONEST GPS
                        # fixes that arrive after it, and what does the judge say between 10 s and 40 s?

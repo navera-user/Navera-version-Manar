@@ -93,6 +93,8 @@ RECEIVE = [
                (spec("gps", 403.0, 3.0, e=60.0), 403.0)]},
     {"name": "a GPS with no position, then a fix", "cfg": {},
      "steps": [(spec("gps", 500.0, None, valid=False, lat=NAN, lon=NAN), 500.0), (spec("gps", 501.0, 3.0), 501.0)]},
+    {"name": "a GPS fix with a NaN stamp, then a good one", "cfg": {},
+     "steps": [(spec("gps", NAN, 3.0), 900.0), (spec("gps", 900.5, 3.0), 900.5)]},
     {"name": "a source the judge does not know", "cfg": {},
      "steps": [(spec("radar", 600.0, 5.0), 600.0)]},
     {"name": "day vision 5 km away (the jump gate is for GPS only)", "cfg": {},
@@ -109,6 +111,7 @@ def run_receive(seq):
     for s, now in seq["steps"]:
         ok, why = a.receive(est(s), now)
         out.append({"stored": ok, "why": why, "latest": {k: v.stamp_s for k, v in a.latest.items()},
+                    "t_recv": a.latest[s["source"]].t_recv_s if ok else None,
                     "refused": sorted(a.refused)})
     return out
 

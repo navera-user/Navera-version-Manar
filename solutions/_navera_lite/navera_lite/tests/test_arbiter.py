@@ -54,6 +54,9 @@ def test_receive_door():
     assert not ok and why.startswith("jump") and a.latest["gps"].stamp_s == 99.6
     assert a.receive(Estimate("gps", math.nan, math.nan, 101.0, valid=False), 101.0) == (True, "stored")
     assert a.receive(Estimate("radar", 35.8, 10.6, 101.0), 101.0)[0] is False
+    assert a.receive(gps(math.nan), 102.0) == (False, "bad stamp") and a.refused["gps"] == "bad stamp"
+    assert a.receive(gps(102.5), 102.5) == (True, "stored") and "gps" not in a.refused
+    assert a.latest["gps"].t_recv_s == 102.5
 
 
 def test_step_states_and_switches():

@@ -8,6 +8,13 @@
 PREDICT_FLAP = "about 10 changes"
 V0_FLAP_SWITCHES = 29
 
+# ---- Step 4: your judge on the same GPS (flapping.csv) -----------------------------------------------
+MINE_FLAP_SWITCHES = 7  # the number after "changes of winner:" for YOUR judge
+EXPLAIN_FLAP = ("Each GPS return before 22.5 s lasted less than the 2 s hold-off (a 'no fix' broke it and since "
+                "was forgotten), so it never replaced day vision; the run that started at 22.5 s was the first to "
+                "stay eligible 2 s, so GPS took over at 24.5 s.")       # 2.5 s to 24.5 s: GPS usable several times, your judge stayed on day vision: why?
+                       # which run of GPS fixes finally took over, and why that one?
+
 # ---- Step 5: the door left open (lockout.csv) ---------------------------------------------------------
 PREDICT_LOCKOUT = "the judge refuses the future fix and the honest ones keep it at FIX"
 EXPLAIN_LOCKOUT = ("Once the fix stamped 30.5 s was stored, every honest fix had an older stamp, so the door dropped "

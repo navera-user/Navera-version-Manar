@@ -8,7 +8,8 @@
 > FIX, NO_FIX on **20 to 60 % of the samples**, and the autopilot **landed** during a gap of 6.7–9.2 s.
 > A code review a few days earlier (2026-09-28) had listed the opposite disease: when the GPS came and
 > went, the output **zig-zagged** between GPS and vision, because nothing made a returning source
-> wait. Both are fixed today (simulator and bench, validation report of 2026-10-03).
+> wait. Both were fixed by 2026-10-03 (the window in the simulator, the hold-off on the bench;
+> validation report of 2026-10-03).
 >
 > In mission 12 you met a third disease: arbiter v0 brought a **dead GPS back to life** 60 s after a fix
 > stamped in the future. Arbiter v0 stays naive on purpose. Today you replace it. **Session 1 — the
@@ -32,7 +33,7 @@
 
 **You need:** mission 01 (the jump gate), 09 (arbiter v0, the status topic), 11 (a silent source
 goes stale), 12 (`eligible()`, `stated_sigma()`, the revival), 24 and 27 (`blend()`,
-`uncertainty.fuse()`: inverse-variance fusion). ⏱ Reading: about 70 minutes with the ✏️ checks. Lab: 4 to 5 h 30 in two sessions.
+`uncertainty.fuse()`: inverse-variance fusion). ⏱ Reading: about 70 minutes with the ✏️ checks. Lab: 4 h 30 to 6 h in two sessions (6 to 7 h 30 in all).
 
 **What you already know** — answer without looking; if you miss two, reread the mission named.
 
@@ -156,11 +157,13 @@ Before it decides, the judge receives. Each new message passes a **door** (`Arbi
 only then is it stored as the newest of its source. The door refuses, in this order:
 
 1. **an unknown source** — nothing to compare it with, no timeout;
-2. **a stamp in the future** (more than 0.5 s ahead of the judge's clock);
-3. **old news** — a stamp not newer than the fix already stored for that source. Messages can
+2. **a bad stamp** — not a finite number (NaN): every test `x > limit` is False for NaN, so it would
+   pass them all and never age;
+3. **a stamp in the future** (more than 0.5 s ahead of the judge's clock);
+4. **old news** — a stamp not newer than the fix already stored for that source. Messages can
    arrive late: a serial buffer, the network reordering two packets. A late GPS fix must not replace
    a newer one (and must not be scored as a jump: it is old, not far);
-4. **a GPS jump** — mission 01's gate: farther from the last trusted GPS fix than the vehicle can fly
+5. **a GPS jump** — mission 01's gate: farther from the last trusted GPS fix than the vehicle can fly
    (`max_speed_mps` × elapsed + 50 m). Only GPS goes through it: GPS is the source a spoofer imitates.
 
 **Why test the future at the door?** Remember mission 12. Arbiter v0 with your `eligible()` refused
@@ -174,9 +177,9 @@ FIX again, with a position as old as the message.
 from the future when it arrived proves that its source's clock is wrong: nothing it says can be
 trusted later. So the rule is: **a fix refused at the door is never stored, and therefore can never
 come back**. The judge remembers only *why* it refused (`refused["gps"]`), to tell the operator.
-The same class of bug — a judge that keeps a message it has refused, and lets the clock rehabilitate
-it — has been found in a real product's code review; NAVERA's own review of 2026-09-28 also listed a
-future timestamp that kept a dead source "fresh" (EST-2, fixed).
+NAVERA's code review of 2026-09-28 listed a bug of the same family: "a future timestamp kept a dead
+source fresh" (EST-2, critical, fixed). NAVERA's documented rule today is the one you just read: a fix
+stamped in the future does not set the order, and it is refused (architecture document).
 
 A stored future fix does even more damage than the revival. You will find two more effects in lab
 Step 5; read the box below only after it.
@@ -188,21 +191,26 @@ stamped 20 s ahead makes **every honest fix** of the next 20 s older than it: al
 honest GPS is locked out, and the judge falls back to vision.
 
 **It poisons the jump gate.** If the future fix reaches the gate, the gate accepts it easily (its
-stamp is far ahead, so the distance allowed is huge) and makes it the trusted fix. The next honest
-fixes then look like jumps: their time from the trusted fix is negative, so the gate allows only its
-50 m margin. A fake fix 800 m away with a clock 30 s ahead would lock the real GPS out for 30 s. That
-is why the door tests the future **before** the gate.
+stamp is far ahead, so the distance allowed is huge) and makes it the trusted fix. Once the clock
+passes its stamp, the honest fixes are newer again, but the gate measures them from a position that
+is 20 s old, with only a few seconds elapsed: in Step 5, `jump 410 m > 100 m in 0.5 s`. They are
+refused until 100 m/s × elapsed + 50 m catches up (about t = 35 s), and GPS wins again at 37 s after
+the hold-off. A fake fix 800 m away with a clock 30 s ahead would keep the real GPS out for 30 s (old
+news), then for about 7.5 s more (jumps). (A door that ran the gate **before** the future test would
+be worse still: it refuses the fix but leaves it trusted, so the honest fixes get a *negative* time
+from it and only the 50 m margin.) That is why the door tests the future **before** the gate.
 </details>
 
 > [!QUESTION] ✏️ Check
 > Stored: GPS stamped 299.5 s. now = 300.0 s, 100 m/s, margin 50 m. What does the door say to: (a) a
 > day fix stamped 300.3; (b) a GPS fix stamped 301.0; (c) a GPS fix stamped 299.2; (d) a GPS fix
-> stamped 300.0, 800 m from the GPS fix of 299.5 (the last trusted one)?
+> stamped 300.0, 800 m from the GPS fix of 299.5 (the last trusted one); (e) a GPS fix stamped NaN?
 
 <details><summary>Answer</summary>
 (a) stored (0.3 s ahead is within the tolerance); (b) refused, from the future (1.0 s ahead), and
 remembered in `refused["gps"]`; (c) old news (not newer than 299.5); (d) the gate allows
-100 × 0.5 + 50 = 100 m: refused, a jump.
+100 × 0.5 + 50 = 100 m: refused, a jump. (e) refused, "bad stamp": a NaN
+would pass every test and never age.
 </details>
 
 ## 4. Hysteresis: make a returning source wait
@@ -298,6 +306,11 @@ mission 12's **staleness** = speed × age.
 If the gaps G between photos are random and independent, a source with timeout T is usable for
 min(G, T) seconds of each gap, so its **availability** is E[min(G, T)] / E[G] (E[·] = the mean).
 
+> [!TIP] 🧰 Two integrals you need
+> ∫ₐᵇ g dg = (b² − a²)/2: the area under the line y = g, a trapezium. ∫ₐᵇ T dg = T·(b − a): a rectangle.
+> E.g. ∫₁³ g dg = (9 − 1)/2 = 4 and ∫₃⁴ 3 dg = 3 × 1 = 3. For gaps uniform between a and b, the mean of
+> anything is its integral divided by (b − a).
+
 **Worked example.** Gaps uniform between 1 and 4 s: E[G] = 2.5 s. For T = 3 s, E[min(G, 3)] =
 (1/3)·(∫₁³ g dg + ∫₃⁴ 3 dg) = (1/3)·(4 + 3) = 2.33 s: availability 2.33 / 2.5 = **93 %**. For
 T = 2 s: (1/3)·(1.5 + 4) = 1.83 s, only **73 %**. The cost of T = 3 s at 40 m/s: a used position can
@@ -307,7 +320,8 @@ be up to 3 × 40 = 120 m behind the vehicle.
 > Gaps uniform between 2 and 6 s, T = 5 s. Availability? Largest staleness at 15 m/s?
 
 <details><summary>Answer</summary>
-E[G] = 4 s; E[min(G, 5)] = (1/4)·(10.5 + 5) = 3.875 s; 3.875 / 4 = 96.9 %. At most 5 × 15 = 75 m.
+E[G] = (2 + 6)/2 = 4 s. E[min(G, 5)] = (1/4)·(∫₂⁵ g dg + ∫₅⁶ 5 dg), with ∫₂⁵ g dg = (25 − 4)/2 = 10.5
+and ∫₅⁶ 5 dg = 5 × 1 = 5: (1/4)·15.5 = 3.875 s. Availability 3.875 / 4 = 96.9 %. At most 5 × 15 = 75 m.
 </details>
 
 ## 7. Select or fuse?
@@ -356,8 +370,9 @@ with hidden correlations. Fusion can win later — when every σ is measured and
 NAVERA's arbiter applies the same policy (architecture document, and validation report of
 2026-10-03): priority GPS, day, night, celestial; eligibility = valid, a measured or dead-reckoned
 mode, fresh for its source (GPS 3 s, day 5 s, night 5 s, celestial 45 s) and not more than 0.5 s
-in the future, a finite position, a real covariance; a hold-off of 2 s; FIX only when a σ ≤ 25 m is
-stated — today only GPS: day vision states a conservative 30 m until its accuracy is measured with
+in the future, a finite position, a real covariance; a hold-off of 2 s; its first state is called
+INITIALIZING (NAVERA Lite says STARTING); FIX only for a measured (not dead-reckoned) position that
+states σ ≤ 25 m — today only GPS: day vision states a conservative 30 m until its accuracy is measured with
 NAVERA's own camera. On the bench, a GPS flapping every 0.5 s gave **one source switch in 8 s, no
 zig-zag**; a fix stamped 60 s in the future was refused ("clock problem"); a GPS fix 0.8 s late,
 60 m behind a vehicle at 75 m/s, is **dropped as old news** and GPS stays FIX (before, it was refused

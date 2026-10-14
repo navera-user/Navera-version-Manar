@@ -21,6 +21,7 @@ Its rules (lesson 29; the values are in navera_lite.yaml):
   - the state: STARTING before anything arrives, NO_FIX without a winner (the reason says why, source by
     source), else FIX if the winner states σ ≤ fix_max_sigma_m (estimate.stated_sigma), DEGRADED otherwise.
 """
+import math
 from dataclasses import dataclass, field
 
 from navera_lite.estimate import SOURCES, TIMEOUT_KEY, Estimate, classify, eligible, stated_sigma
@@ -147,13 +148,15 @@ class Arbiter:
 
         Refused, in this order (nothing is stored, and a refused fix can never come back later):
           - a source with no timeout (not in estimate.TIMEOUT_KEY):  (False, "unknown source 'radar'")
+          - a stamp that is not a finite number (nan, inf):          (False, "bad stamp")
           - stamped over cfg["future_tolerance_s"] after now_s:      (False, "from the future (20.0 s ahead)")
-            — remember the reason in self.refused[source]
+            — for these two, remember the reason in self.refused[source]
           - a stamp not newer than the one stored for that source:   (False, "old news")
           - a GPS fix with a real position (valid, finite) that the jump gate (self.gate.check) refuses:
             (False, the gate's reason) — remember it in self.refused["gps"]
-        Otherwise: store it in self.latest, forget the source's refusal, record now_s in est.t_recv_s and
-        return (True, "stored"). A fix with valid False is stored: the source is alive and says "no position".
+        Otherwise: record now_s in est.t_recv_s (when it arrived), store it in self.latest, forget the
+        source's refusal and return (True, "stored"). A fix with valid False is stored: the source is alive
+        and says "no position".
         Example: a = Arbiter(DEFAULTS); a.receive(Estimate("gps", 35.8, 10.6, 120.0), 100.0)
                  → (False, "from the future (20.0 s ahead)")   and a.latest is still {}
         """

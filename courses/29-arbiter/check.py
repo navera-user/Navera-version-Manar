@@ -38,6 +38,7 @@ HOLD = {0.0: (31.1, 0.624, 0.0), 0.5: (24.5, 0.4983, 75.4), 1.0: (20.3, 0.3937, 
         2.0: (12.1, 0.2427, 228.8), 4.0: (4.4, 0.0993, 314.8), 8.0: (0.8, 0.034, 354.0)}
 FUSION = {"claimed_sigma_m": 2.4807, "true_sigma_m": 2.6576, "spoofed_fused_m": 1476.92}
 V0_FLAP_SWITCHES = 29          # judge_lab.py play flapping.csv --v0: "changes of winner: 29"
+MINE_FLAP_SWITCHES = 7         # judge_lab.py play flapping.csv (a correct judge): "changes of winner: 7"
 REPORT_HEADS = ["## 1. The hold-off", "## 2. The freshness window", "## 3. Selection or fusion",
                 "## 4. The door, the race and your design"]
 
@@ -71,7 +72,8 @@ def answers():
 
 
 TIPS = [("KeyError", " — since[...] of a source that is not in since? track_since (TODO 2) must give every candidate "
-                     "its instant before pick() reads it; or a cfg key misspelt (the names of navera_lite.yaml)"),
+                     "its instant, and step() must call track_since() BEFORE pick(); or a cfg key misspelt "
+                     "(the names of navera_lite.yaml)"),
         ("'NoneType' object is not iterable", " — one of your functions returned None where a list or a pair was "
                                               "expected: is that TODO written?"),
         ("'NoneType' object has no attribute", " — a TODO returns None (not written yet?), or self.latest.get() of a "
@@ -233,13 +235,14 @@ def _():
 
 
 @c.test("TODO 4 — receive(): the door refuses what it must and stores the rest",
-        hint="The docstring lists the refusals in their order: unknown source, stamp in the future (beyond "
-             "future_tolerance_s), not newer than the stored fix (old news), a GPS jump (self.gate). A refused fix is "
-             "never stored; refused[source] remembers a future or jump refusal until a fix of that source is stored.")
+        hint="The docstring lists the refusals in their order: unknown source, a stamp that is not a finite number "
+             "(nan), a stamp in the future (beyond future_tolerance_s), not newer than the stored fix (old news), a GPS jump (self.gate). A refused fix is "
+             "never stored; refused[source] remembers a bad-stamp, future or jump refusal until a fix of that source is stored.")
 def _():
     m = arbiter_class("receive")
     m_est = quiet("navera_lite.estimate")
-    keys = {"from the future": "future", "old news": "old news", "jump": "jump", "unknown source": "unknown"}
+    keys = {"from the future": "future", "old news": "old news", "jump": "jump", "unknown source": "unknown",
+            "bad stamp": "bad stamp"}
     for seq in CASES["receive"]:
         a = m.Arbiter(cfg(seq["cfg"]))
         for k, ((s, now), want) in enumerate(zip(seq["steps"], seq["want"])):
@@ -257,6 +260,11 @@ def _():
             if latest != want["latest"]:
                 raise CheckFailed(f"{label}: after it, self.latest holds the stamps {latest!r} — a refused fix must "
                                   "not be stored, a stored one replaces the older one of its source")
+            if want["stored"]:
+                tr = dict(a.latest)[s["source"]].t_recv_s
+                if not isinstance(tr, (int, float)) or abs(tr - now) > 1e-9:
+                    raise CheckFailed(f"{label}: the stored fix's t_recv_s is {tr!r}: record when it arrived "
+                                      f"(now_s = {now:g}) in est.t_recv_s before you store it")
             if sorted(dict(a.refused)) != want["refused"]:
                 raise CheckFailed(f"{label}: after it, self.refused has the sources {sorted(dict(a.refused))!r}, "
                                   f"it should have {want['refused']!r}")
@@ -322,9 +330,9 @@ def _():
     compare_scenario(sc, "the unseen flight")
 
 
-@c.test("Step 0 — arbiter v0 on a flapping GPS",
-        hint="Run `python3 judge_lab.py play /data/academy/29-arbiter/flapping.csv --v0` and copy the number after "
-             "\"changes of winner:\". PREDICT_FLAP is your guess before the run.")
+@c.test("Steps 0 and 4 — arbiter v0 and your judge on a flapping GPS",
+        hint="Run `python3 judge_lab.py play /data/academy/29-arbiter/flapping.csv --v0` (Step 0), then without --v0 "
+             "(Step 4), and copy each number after \"changes of winner:\". PREDICT_FLAP is your guess before the run.")
 def _():
     a = answers()
     predicted("PREDICT_FLAP", getattr(a, "PREDICT_FLAP", ""))
@@ -334,6 +342,18 @@ def _():
     if v != V0_FLAP_SWITCHES:
         raise CheckFailed(f"V0_FLAP_SWITCHES = {v}: that is not what judge_lab.py prints for arbiter v0 (--v0) on "
                           "flapping.csv — copy the number after \"changes of winner:\"")
+    v = getattr(a, "MINE_FLAP_SWITCHES", None)
+    if isinstance(v, bool) or not isinstance(v, int):
+        raise CheckFailed(f"MINE_FLAP_SWITCHES should be a whole number without quotes, got {v!r} (lab Step 4)")
+    if v != MINE_FLAP_SWITCHES:
+        raise CheckFailed(f"MINE_FLAP_SWITCHES = {v}: not what a correct judge gives on flapping.csv (lab Step 4). "
+                          "Run `python3 judge_lab.py play /data/academy/29-arbiter/flapping.csv` again after "
+                          "`python3 judge_lab.py test` is all ✔")
+    explained("EXPLAIN_FLAP", getattr(a, "EXPLAIN_FLAP", ""),
+              ([r"hold", r"2 ?s", r"two seconds", r"wait", r"hysteres", r"short", r"break", r"since"],
+               "why the short GPS returns never took over (the hold-off)"),
+              ([r"22", r"24", r"long", r"stay", r"first", r"unbroken", r"without a break", r"enough"],
+               "which GPS run took over and why"))
 
 
 @c.test("Step 5 — the door left open",
@@ -381,10 +401,19 @@ def _():
             node.create_subscription(DiagnosticStatus, "/navera_lite/status", got.append, qos)
             try:
                 with Background(f"python3 -m navera_lite.ros.replay_node --ros-args -p file:={path} -p loop:=false "
-                                "-p imu_hz:=0.0", settle=0.5):
-                    end = time.time() + 3.5 + live["rows"][-1]["t_s"] + 7.0
-                    while time.time() < end:
+                                "-p imu_hz:=0.0 -p start_delay_s:=2.0", settle=0.5):
+                    # the deadline counts from the judge's first fix (a loaded machine may need seconds to start
+                    # the replay), with a hard cap
+                    t_start, first = time.time(), None
+                    while True:
                         rclpy.spin_once(node, timeout_sec=0.1)
+                        now = time.time()
+                        if first is None and got and \
+                                {kv.key: kv.value for kv in got[-1].values}.get("state") != "STARTING":
+                            first = now
+                        if (first is not None and now > first + live["rows"][-1]["t_s"] + 8.0) or \
+                                now > t_start + 75.0:
+                            break
                         if got and {kv.key: kv.value for kv in got[-1].values}.get("state") == "NO_FIX" and \
                                 len({kv.value for m in got for kv in m.values if kv.key == "source"}) >= 3:
                             break
@@ -413,11 +442,15 @@ def _():
     mine = [k for k, _ in seq]
     if mine != want:
         k = next((i for i, (x, y) in enumerate(zip(mine, want)) if x != y), min(len(mine), len(want)))
-        yours = f"{mine[k][0]} on {mine[k][1]!r} ({seq[k][1]})" if k < len(mine) else "nothing more"
-        raise CheckFailed(f"live, change n°{k + 1} of your judge was {yours}; before it: "
-                          + " → ".join(f"{s} {src or ''}".strip() for s, src in mine[:k])
-                          + ". Does `python3 judge_lab.py test` pass? (The hidden scenario: GPS, day vision stating "
-                            "20 m, GPS lost and back, a celestial fix stamped 30 s ahead.)")
+        steps = " → ".join(f"{st} {src or ''}".strip() for st, src in mine)
+        if k >= len(mine):
+            nxt = f"{want[k][0]} {want[k][1] or ''}".strip()
+            raise CheckFailed(f"live, your judge said: {steps}, and then nothing more. The next decision should be "
+                              f"{nxt}. A source refused once and never cleared? (self.refused.pop when a fix is "
+                              "stored, TODO 4) Does `python3 judge_lab.py test` pass?")
+        raise CheckFailed(f"live, your judge said: {steps}. Decision n°{k + 1} ({mine[k][0]} on {mine[k][1]!r}: "
+                          f"{seq[k][1]}) is not the right one. Does `python3 judge_lab.py test` pass? (The hidden "
+                          "scenario: GPS, day vision stating 20 m, GPS lost and back, a celestial fix 30 s ahead.)")
     if "future" not in seq[-1][1]:
         raise CheckFailed(f"live, your last NO_FIX says {seq[-1][1]!r}: it should also say that the celestial fix "
                           "was refused as from the future (self.refused, TODO 4)")
@@ -589,7 +622,7 @@ def _():
         raise CheckFailed(f"report.md has {total} words in its four sections: write at least 250")
 
 
-c.milestone("session1", "TODO 1", "TODO 2", "TODO 3", "TODO 4", "TODO 5", "TODOs", "Step 0", "Step 5",
+c.milestone("session1", "TODO 1", "TODO 2", "TODO 3", "TODO 4", "TODO 5", "TODOs", "Steps 0", "Step 5",
             label="Fair judge")
 c.milestone("session2", "TODO", "Step", label="Steady hand")
 c.run()

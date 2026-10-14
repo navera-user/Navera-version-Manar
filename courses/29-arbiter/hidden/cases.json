@@ -537,6 +537,7 @@
      "stored": false,
      "why": "from the future (0.6 s ahead)",
      "latest": {},
+     "t_recv": null,
      "refused": [
       "gps"
      ]
@@ -547,6 +548,7 @@
      "latest": {
       "gps": 200.9
      },
+     "t_recv": 200.5,
      "refused": []
     }
    ]
@@ -651,6 +653,7 @@
      "latest": {
       "day": 300.0
      },
+     "t_recv": 300.5,
      "refused": []
     },
     {
@@ -659,6 +662,7 @@
      "latest": {
       "day": 300.0
      },
+     "t_recv": null,
      "refused": []
     },
     {
@@ -667,6 +671,7 @@
      "latest": {
       "day": 300.0
      },
+     "t_recv": null,
      "refused": []
     },
     {
@@ -675,6 +680,7 @@
      "latest": {
       "day": 301.0
      },
+     "t_recv": 301.5,
      "refused": []
     }
    ]
@@ -760,6 +766,7 @@
      "latest": {
       "gps": 400.0
      },
+     "t_recv": 400.0,
      "refused": []
     },
     {
@@ -768,6 +775,7 @@
      "latest": {
       "gps": 400.0
      },
+     "t_recv": null,
      "refused": [
       "gps"
      ]
@@ -778,6 +786,7 @@
      "latest": {
       "gps": 403.0
      },
+     "t_recv": 403.0,
      "refused": []
     }
    ]
@@ -838,6 +847,7 @@
      "latest": {
       "gps": 500.0
      },
+     "t_recv": 500.0,
      "refused": []
     },
     {
@@ -846,6 +856,77 @@
      "latest": {
       "gps": 501.0
      },
+     "t_recv": 501.0,
+     "refused": []
+    }
+   ]
+  },
+  {
+   "name": "a GPS fix with a NaN stamp, then a good one",
+   "cfg": {},
+   "steps": [
+    [
+     {
+      "source": "gps",
+      "lat": 35.7712,
+      "lon": 10.82650000000001,
+      "stamp_s": NaN,
+      "cov": [
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       36.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     900.0
+    ],
+    [
+     {
+      "source": "gps",
+      "lat": 35.7712,
+      "lon": 10.82650000000001,
+      "stamp_s": 900.5,
+      "cov": [
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       36.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     900.5
+    ]
+   ],
+   "want": [
+    {
+     "stored": false,
+     "why": "bad stamp",
+     "latest": {},
+     "t_recv": null,
+     "refused": [
+      "gps"
+     ]
+    },
+    {
+     "stored": true,
+     "why": "stored",
+     "latest": {
+      "gps": 900.5
+     },
+     "t_recv": 900.5,
      "refused": []
     }
    ]
@@ -882,6 +963,7 @@
      "stored": false,
      "why": "unknown source 'radar'",
      "latest": {},
+     "t_recv": null,
      "refused": []
     }
    ]
@@ -942,6 +1024,7 @@
      "latest": {
       "day": 700.0
      },
+     "t_recv": 700.0,
      "refused": []
     },
     {
@@ -950,6 +1033,7 @@
      "latest": {
       "day": 701.0
      },
+     "t_recv": 701.0,
      "refused": []
     }
    ]
@@ -1164,6 +1248,7 @@
      "latest": {
       "gps": 800.0
      },
+     "t_recv": 800.0,
      "refused": []
     },
     {
@@ -1172,6 +1257,7 @@
      "latest": {
       "gps": 800.0
      },
+     "t_recv": null,
      "refused": [
       "gps"
      ]
@@ -1182,6 +1268,7 @@
      "latest": {
       "gps": 802.0
      },
+     "t_recv": 802.0,
      "refused": []
     },
     {
@@ -1190,6 +1277,7 @@
      "latest": {
       "gps": 803.0
      },
+     "t_recv": 803.0,
      "refused": []
     },
     {
@@ -1198,6 +1286,7 @@
      "latest": {
       "gps": 804.0
      },
+     "t_recv": 804.0,
      "refused": []
     },
     {
@@ -1206,6 +1295,7 @@
      "latest": {
       "gps": 805.0
      },
+     "t_recv": 805.0,
      "refused": []
     },
     {
@@ -1214,6 +1304,7 @@
      "latest": {
       "gps": 806.0
      },
+     "t_recv": 806.0,
      "refused": []
     },
     {
@@ -1222,6 +1313,7 @@
      "latest": {
       "gps": 807.0
      },
+     "t_recv": 807.0,
      "refused": []
     },
     {
@@ -1230,6 +1322,7 @@
      "latest": {
       "gps": 808.0
      },
+     "t_recv": 808.0,
      "refused": []
     }
    ]

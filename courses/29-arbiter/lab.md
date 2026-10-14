@@ -3,7 +3,7 @@
 **Goal:** write NAVERA Lite's real judge (`navera_lite/arbiter.py`, five TODOs) as a state machine, make
 sure a fix refused at the door can never come back, run it live on ROS against the course's reference,
 then measure the price of the hold-off, of the freshness window and of fusion.
-**Time:** 4 h to 5 h 30 in two sessions (a strong programmer: about 3 h).
+**Time:** 4 h 30 to 6 h in two sessions (a strong programmer: about 3 h).
 **Fast track:** if you know Python, skip the 🧰 boxes and the "Stuck?" boxes; do "Going further".
 
 Your files (📝 Code tab): [navera_lite/arbiter.py](file:./navera_lite/arbiter.py) (**your code**:
@@ -100,7 +100,8 @@ Python tools (`dict.get` with a default, a dict built in one line).
    candidate: night's next eligibility must start again from zero.
 </details>
 
-**TODO 3 — `pick(cands, current, since, now_s, cfg)`.** First a hand trace (on paper, 3 minutes):
+**TODO 3 — `pick(cands, current, since, now_s, cfg)`.** (Fast track: write it from lesson §4 only,
+without reading the docstring's second paragraph, then run the test.) First a hand trace (on paper, 3 minutes):
 hold-off 2 s, current winner `"night"`, `since = {"gps": 99.5, "day": 90.0, "night": 80.0}`, now
 100.0 s, candidates `["gps", "day", "night"]`. Who wins? And with candidates `["gps", "day"]` only
 (night has just gone stale)? Check your answers in the box, then write TODO 3.
@@ -192,6 +193,11 @@ python3 judge_lab.py play /data/academy/29-arbiter/flapping.csv
 ```
 
 Compare with Step 0 (and `out/flapping_mine.png` with `out/flapping_v0.png`): how many changes now?
+
+> [!TASK]
+> Write `MINE_FLAP_SWITCHES` (your judge's "changes of winner" on `flapping.csv`) and `EXPLAIN_FLAP`:
+> between 2.5 s and 24.5 s the GPS was usable several times, yet your judge stayed on day vision. Why?
+> Which run of GPS fixes finally took over, and why that one?
 Then the revival of mission 12 — first mission 12's judge (v0 with your old `eligible()`), then yours:
 
 ```bash
@@ -234,7 +240,8 @@ python3 judge_lab.py play /data/academy/29-arbiter/lockout.csv
 
 > [!TASK]
 > `EXPLAIN_LOCKOUT`: what happened to the honest fixes, and why? Why did an old position win as FIX
-> around t = 32 s, and why were honest fixes then refused as jumps? (Then read the box of lesson §3
+> around t = 32 s, and why were honest fixes then refused as jumps? (Read the lines 31.0–37.0 s of the
+> run: "in 0.5 s" measures the time from which fix?) (Then read the box of lesson §3
 > "Read this after lab Step 5".)
 
 Press **✔ Check my work**: checks 1–9 are Session 1 (badge **Fair judge**). The check tries your judge
@@ -317,7 +324,7 @@ python3 experiment.py test
 
 > [!TASK]
 > **Predict** (`PREDICT_HOLDOFF`): changes of winner per minute with no hold-off, and with 2 s? Then run
-> the experiment (about 15 s):
+> the experiment (a few seconds):
 
 ```bash
 python3 experiment.py
@@ -381,6 +388,9 @@ what these synthetic experiments cannot tell you.
 - **Your own scenario.** Write `my_scenario.csv` (mission 12's format) where the "first candidate that
   has waited" rule of `pick()` matters: night vision wins, day vision comes back, then GPS. Play it with
   `judge_lab.py play`, then live with `python3 play_scenario.py my_scenario.csv`.
+- **Can a lost winner still chatter?** A lost winner is replaced at once by the first candidate, even a
+  GPS that came back 0.1 s ago. When the fallback source is itself intermittent, can the output still
+  chatter? Build a CSV that shows it, and propose a rule.
 - **A hold-off per source?** Would you make the celestial source (fixes every 15–45 s) wait 2 s like GPS?
   Edit `switch_holdoff_s` in your `navera_lite.yaml`, replay `race.csv` offline, and argue.
 - **Fly your own contract.** Mission 12's checklist is the course's version here. Try yours:

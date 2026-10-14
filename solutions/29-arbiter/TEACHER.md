@@ -13,9 +13,11 @@ plain sentence when a TODO is missing). Mission files (hand-written): `judge_lab
 questions on its source: gone (students never see NAVERA code). The race is now against the course's reference run on
 the same scenario, recorded by `make_dataset.py`. The arbiter-v0 thread of missions 09–12 ends here: the revival found in
 mission 12 (`PREDICT_REVIVE`/`EXPLAIN_REVIVE`) is closed by the door (`receive`), and Step 5 shows two more effects of a
-stored future fix (lockout by "old news", poisoned jump gate). **Never present the revival as a NAVERA fact**: the lesson
-says only that "the same class of bug has been found in a real product's code review", and quotes NAVERA's documented
-EST-2 (a future timestamp that kept a dead source fresh, fixed). Selection vs fusion: experiment.py's given `fuse()` calls mission 27's `navera_lite.uncertainty.fuse` (σ² I covariances).
+stored future fix (lockout by "old news", poisoned jump gate). **Never present the revival as a NAVERA fact**: the lesson quotes NAVERA's documented EST-2 ("a future timestamp kept
+a dead source fresh", critical, fixed, review 2026-09-28) and NAVERA's documented rule (ARCHITECTURE §3: a fix stamped in
+the future does not set the order and is refused) — nothing about NAVERA's mechanism. The door also refuses a non-finite
+stamp ("bad stamp", fix round 1: a NaN passes every `x > limit` test and would never age; note for mission 12's owner:
+`estimate.eligible` could refuse a non-finite age too). Selection vs fusion: experiment.py's given `fuse()` calls mission 27's `navera_lite.uncertainty.fuse` (σ² I covariances).
 
 Course decision in `pick()`: the winner is the first candidate (priority order) that is the current winner or has waited
 the hold-off; a lost winner is replaced at once. So day vision that has waited replaces night even while a returning GPS
@@ -38,13 +40,14 @@ cases.json`: the check's unseen cases and the reference's answers). Run both fro
 | 4 winner → FIX / DEGRADED / NO_FIX with a reason | §5 (figure, table, ✏️) | Step 4 (TODO 5), Step 6 live | 6, 7, 10, 11 |
 | 5 selection vs fusion with numbers | §6 (availability worked, ✏️), §7 (worked 3/30 m, ρ 0.8, spoof, ✏️) | Step 8 (TODO B, tables B and C), Step 9 report | 13, 14, 15 |
 
-Badges: **Fair judge** = checks 1–9 (Session 1, offline), **Steady hand** = all 15.
+Badges: **Fair judge** = checks 1–9 (check 8 = Steps 0 and 4) (Session 1, offline), **Steady hand** = all 15.
 
 ## Answer key
 
 | Item | Value | Where it comes from |
 |---|---|---|
-| Step 0 `V0_FLAP_SWITCHES` | **29** (v0 on flapping.csv; the student's judge: 7) | `judge_lab.py play … --v0`; the check requires 29 |
+| Step 0 `V0_FLAP_SWITCHES` | **29** (v0 on flapping.csv) | `judge_lab.py play … --v0`; the check requires 29 |
+| Step 4 `MINE_FLAP_SWITCHES` / `EXPLAIN_FLAP` | **7**; day vision 2.5–24.5 s: every GPS return before 22.5 s was broken by a "no fix" before 2 s (since forgotten); the run from 22.5 s is the first to last 2 s → GPS at 24.5 s (then lost at 25.0, back at 29.5) | the check requires 7 and keywords (hold-off; which run) |
 | `PREDICT_FLAP` | ungraded; most students guess 5–15 | |
 | TODO 1 docstring | `["day"]` | GPS 4.0 s old > 3 s |
 | TODO 2 docstring | `{"gps": 100.0, "day": 90.0}` | night forgotten |
@@ -68,7 +71,7 @@ Badges: **Fair judge** = checks 1–9 (Session 1, offline), **Steady hand** = al
 Lesson numbers: §1 table 41.0/42.0/43.0 → switch at 43.0 (2.0 s ≥ 2 s); ✏️ 43.5 day at once, 44.0 since = 44.0,
 GPS from 46.0. §2 worked: GPS 3.2 s stale, day 2.0 s, night no position, celestial 30 s ≤ 45 s → `["day", "celestial"]`;
 ✏️ `["gps", "day", "celestial"]` (day 0.3 s ahead is within 0.5 s). §3 ✏️ (a) stored, (b) future 1.0 s, (c) old news,
-(d) gate 100 × 0.5 + 50 = 100 m < 800 m: jump. §4 e^(−2/3) = 0.513; ✏️ 54.0 s; e^(−0.5) = 0.607. Figure holdoff.svg:
+(d) gate 100 × 0.5 + 50 = 100 m < 800 m: jump; (e) bad stamp. §4 e^(−2/3) = 0.513; ✏️ 54.0 s; e^(−0.5) = 0.607. Figure holdoff.svg:
 6 changes vs 2, unused 0.8 + 0.7 + 2.0 = 3.5 s. §6 uniform 1–4: 7/3 / 2.5 = 93.3 %, T = 2: 1.833 / 2.5 = 73.3 %,
 120 m; ✏️ uniform 2–6, T = 5: 3.875 / 4 = 96.9 %, 75 m. §7 w₁ = 100/101 = 0.990, σ̂ = 2.985 m, ρ 0.8 → 3.213 m,
 spoof 1980 m; ✏️ σ 4 / 12: w₁ 0.900, σ̂ 3.79 m, 450 m. NAVERA facts (words only): VALIDATION_STATUS 2026-10-03
@@ -107,6 +110,8 @@ Mutants (17, `~/academy-test/review/29-arbiter/build/mutants/`): every one fails
 naming the input; see the build report.
 
 ## Class plan
+
+Honest duration (fix round 1, weak persona measured ≈ 7 h 20): 6 to 7 h 30 in all.
 
 - **Session 1 (≈ 3 h).** 10 min Step 0 together (count the zig-zags on the projector) · 45 min lesson §1–§3 with the
   ✏️ in pairs · 20 min TODO 1 · 40 min TODO 2–3 (hand trace on the board first) · 30 min TODO 4 · 40 min TODO 5 and the

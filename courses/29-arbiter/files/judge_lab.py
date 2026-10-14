@@ -36,8 +36,9 @@ def _hint(e):
     """This mission's extra sentence for the errors students meet most."""
     s = str(e)
     if isinstance(e, KeyError):
-        return (" — a dict has no such key: since[...] of a source that is not in since? (TODO 2 must give every "
-                "candidate its instant) — or a cfg key misspelt (the names of navera_lite.yaml)")
+        return (" — a dict has no such key: since[...] of a source that is not in since? TODO 2 must give every "
+                "candidate its instant, AND step() must call track_since() BEFORE pick() (lab Step 4, hint 3) — "
+                "or a cfg key misspelt (the names of navera_lite.yaml)")
     if isinstance(e, TypeError) and "'NoneType' object is not iterable" in s:
         return " — a function returned None where a list or a pair was expected: is that TODO written?"
     if isinstance(e, AttributeError) and "'NoneType'" in s:
@@ -105,8 +106,16 @@ def test():
             line(todo, label, False, f"returned {got!r}, the docstring/lesson says {want!r}")
 
     # TODO 1
-    case(1, "candidates(), the docstring example", "candidates",
-         ({"day": Estimate("day", 35.8, 10.6, 98.5), "gps": Estimate("gps", 35.8, 10.6, 96.0)}, 100.0, D), ["day"])
+    got, err = rk.call(A, "candidates", {"day": Estimate("day", 35.8, 10.6, 98.5),
+                                         "gps": Estimate("gps", 35.8, 10.6, 96.0)}, 100.0, D)
+    if err:
+        line(1, "candidates(), the docstring example", False, err)
+    else:
+        note = repr(got) if got == ["day"] else f"returned {got!r}, the docstring says ['day']"
+        if got != ["day"] and isinstance(got, list) and "gps" in got:
+            note += (" — the GPS fix is 4.0 s old (stale): eligible() returns a PAIR (ok, reason), and a pair is "
+                     "always true in an `if`: use eligible(...)[0]")
+        line(1, "candidates(), the docstring example", got == ["day"], note)
     case(1, "a dict in the 'wrong' order: the answer is in PRIORITY order", "candidates",
          ({"celestial": Estimate("celestial", 35.8, 10.6, 80.0), "day": _day(99.0), "gps": _gps(99.5)}, 100.0, D),
          ["gps", "day", "celestial"])
@@ -165,6 +174,23 @@ def test():
         got, err = rk.call(a, "receive", Estimate("radar", 35.8, 10.6, 101.0), 101.0)
         line(4, "an unknown source is refused", not err and isinstance(got, (tuple, list)) and got and got[0] is False,
              err or f"{got!r}")
+    a = fresh()
+    got, err = rk.call(a, "receive", _gps(float("nan")), 100.0)
+    line(4, "a GPS fix stamped NaN: bad stamp (a NaN passes every `x > limit` test and never ages)",
+         not err and _same(got, (False, "bad stamp")) and a.latest == {},
+         err or f"returned {got!r}, latest has {sorted(a.latest)} — the docstring says (False, 'bad stamp'), "
+         "nothing stored")
+    a = fresh()
+    a.receive(Estimate("gps", 35.8, 10.6, 120.0), 100.0)
+    got, err = rk.call(a, "receive", _gps(100.4), 100.5)
+    ok = not err and _same(got, (True, "stored")) and "gps" not in a.refused
+    line(4, "a good fix stored after a refused one clears the refusal", ok,
+         err or (repr(a.refused) if ok else f"returned {got!r}, refused = {a.refused!r} — storing a fix forgets its "
+                 "source's refusal (self.refused.pop(name, None))"))
+    if not err and "gps" in a.latest:
+        tr = a.latest["gps"].t_recv_s
+        line(4, "the stored fix records when it arrived (est.t_recv_s = now_s)", tr == 100.5,
+             f"t_recv_s = {tr!r}" + ("" if tr == 100.5 else " — the docstring says 100.5 (now_s)"))
     # TODO 5
     a = fresh()
     d, err = rk.call(a, "step", 0.0)
@@ -179,15 +205,33 @@ def test():
          err or f"{got!r}, switches {a.switches!r}" + ("" if got == want else f" — the docstring says {want!r}"))
     if not err:
         a.receive(_day(102.0), 102.4)
-        d = a.step(104.0)                   # GPS stale (4.5 s > 3.0 s): day, σ 30 m
-        got = (d.state, d.source, d.reason)
-        line(5, "GPS 4.5 s old, a day fix: DEGRADED on day", got == ("DEGRADED", "day", "day: σ 30.0 m > 25.0 m"),
-             repr(got))
-        d = a.step(108.0)
-        ok = d.state == "NO_FIX" and d.reason.startswith("no usable source (gps: stale")
-        line(5, "everything old: NO_FIX with the reasons", ok, repr((d.state, d.reason)))
-        line(5, "the switches so far", a.switches == [(100.0, None, "gps"), (104.0, "gps", "day"), (108.0, "day", None)],
-             repr(a.switches))
+        d, err = rk.call(a, "step", 104.0)            # GPS stale (4.5 s > 3.0 s): day, σ 30 m
+        want = ("DEGRADED", "day", "day: σ 30.0 m > 25.0 m")
+        got = None if err else (d.state, d.source, d.reason)
+        line(5, "GPS 4.5 s old, a day fix: DEGRADED on day", got == want,
+             err or repr(got) + ("" if got == want else f" — the docstring/lesson says {want!r}"))
+        d, err = rk.call(a, "step", 108.0)
+        ok = not err and d.state == "NO_FIX" and d.reason.startswith("no usable source (gps: stale")
+        line(5, "everything old: NO_FIX with the reasons", ok,
+             err or repr((d.state, d.reason)) + ("" if ok else " — the docstring says NO_FIX, "
+                                                 "'no usable source (gps: stale (8.5 s > 3.0 s); day: stale …)'"))
+        want_sw = [(100.0, None, "gps"), (104.0, "gps", "day"), (108.0, "day", None)]
+        line(5, "the switches so far", a.switches == want_sw,
+             repr(a.switches) + ("" if a.switches == want_sw else f" — the docstring says {want_sw!r}: a change "
+                                 "TO None (no winner) is a switch too"))
+    a = fresh()
+    a.receive(_day(99.8), 100.0)
+    d0, err = rk.call(a, "step", 100.0)
+    if not err:
+        a.receive(_gps(100.4), 100.5)
+        d, err = rk.call(a, "step", 100.5)
+        got = None if err else (d.state, d.source)
+        want = ("DEGRADED", "day")
+        msg = err or repr(got) + ("" if got == want else f" — it should be {want!r} (GPS has waited 0.0 s)")
+        if err and "KeyError" in err:
+            msg = (f"{err.split(' (')[0]} — step() must bring self.since up to date (track_since) BEFORE it calls "
+                   "pick(): pick() reads since[\"gps\"] of the new candidate")
+        line(5, "a new candidate while day vision wins: since is updated BEFORE pick()", got == want, msg)
     _end(bad)
 
 
@@ -266,7 +310,7 @@ def simulate(judge, rows, until, tick_s=TICK_S, clock0=CLOCK0):
             return out
 
 
-def _short(state, reason, width=86):
+def _short(state, reason, width=130):
     text = f"{state:8s} {reason}"
     return text if len(text) <= width else text[:width - 1] + "…"
 
@@ -342,17 +386,17 @@ def _picture(path, who, run, mode):
     if plt is None:
         return
     srcs = ["celestial", "night", "day", "gps"]
-    fig, ax = plt.subplots(figsize=(9.0, 3.0))
+    fig, ax = plt.subplots(figsize=(9.0, 3.4))
     for (t0, d, _), (t1, _, _) in zip(run, run[1:]):
         y = srcs.index(d.source) if d.source in srcs else -1
         ax.plot([t0, t1], [y, y], color=COLORS.get(d.state, "k"), lw=6, solid_capstyle="butt")
     ax.set_yticks(range(-1, 4))
     ax.set_yticklabels(["(none)"] + srcs)
     ax.set_xlabel("time since the start of the scenario (s)")
-    ax.set_title(f"{os.path.basename(path)} — {who}", fontsize=9)
+    ax.set_title(f"{os.path.basename(path)} — {who}", fontsize=9, pad=22)
     for state, col in COLORS.items():
         ax.plot([], [], color=col, lw=6, label=state)
-    ax.legend(loc="upper right", fontsize=7, ncol=4)
+    ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), fontsize=7, ncol=4, frameon=False)
     ax.grid(axis="x", alpha=0.3)
     fig.tight_layout()
     os.makedirs(OUT, exist_ok=True)

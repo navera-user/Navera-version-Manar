@@ -4,7 +4,7 @@
     python3 play_scenario.py FILE            any scenario, live: every change of your judge, with the time
     python3 play_scenario.py --offline       the race on a simulated clock with your Arbiter (no ROS), same table
 
-Before a live run, start YOUR judge in the background, in this terminal (lab Step 5):
+Before a live run, start YOUR judge in the background, in this terminal (lab Step 6):
     python3 -m navera_lite.ros.arbiter_node --ros-args --params-file navera_lite.yaml > arbiter.log 2>&1 &
 and restart it before each run (a judge remembers: kill -INT %1, then start it again).
 
@@ -81,7 +81,7 @@ def live(path):
         first = {kv.key: kv.value for kv in got[-1][1].values}.get("state")
         if first != "STARTING":
             sys.exit(f"your judge already says {first}: it remembers an earlier run. Restart it (kill -INT %1, "
-                     "then start it again, lab Step 5) and play again.")
+                     "then start it again, lab Step 6) and play again.")
         t_end = time.monotonic() + EXTRA_DELAY_S
         while time.monotonic() < t_end:
             rclpy.spin_once(node, timeout_sec=0.02)
