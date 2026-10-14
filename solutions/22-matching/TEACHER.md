@@ -87,8 +87,10 @@ solutions/21-features/my_desc.pt as shipped in courses/22-matching/files/ref_des
   refused, 0 wrong (h04, h12, h15, h16 need the network; h14 is a σ = 15° prior 37° off). SIFT only: 6 (fails, the
   message names the unused network); limit 5: 6; network first: 10 right, 0 wrong (the network then answers h02, h06,
   h13 too); no gates or gates on all pairs: wrong positions accepted (h07, h11). At the strict end of the check-10
-  window: ref/m10/s4e4 0.65 → 10, seed1 0.65 → 9, fc 0.75 → 9, s2 0.65 → 8 (h12 and h16 refused): a stricter threshold
-  costs matches on shaken photos. The check prints how many right answers came from the network and how many scenes the
+  window, with each network's envelope measured at that ratio and limit = E/2: ref/m10/oldref 0.65 → 10,
+  exp/cpu4k/s3m03 0.7 → 10, seed1 0.65 → 9, fc 0.75 → 9, s2 0.65 → 8 (h12 and h16 refused), s4e4 0.65 → 7 with 1 by
+  the network (its envelope falls to 15° at 0.65, so the limit is ≤ 7: exactly on the line — tell a student there that
+  a slightly looser ratio widens the envelope): a stricter threshold costs matches on shaken photos. The check prints how many right answers came from the network and how many scenes the
   limit let the network see with the prior outside the student's measured envelope (`mission` prints the same).
 - Check 13 (crafted): the student's sift_pairs is replaced, inside the student process, by two crafted pair sets: 40
   inliers in one corner + 30 spread wrong pairs (must be refused: "inliers bunched"), and a zoom-4 match whose map points

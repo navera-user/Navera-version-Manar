@@ -764,7 +764,7 @@ def mission_cmd():
         hp = "unknown" if pr["heading_deg"] is None else f"{pr['heading_deg']:.0f}° ± {pr['heading_sigma_deg']:.0f}°"
         print(f"{s['name']:6s} {s.get('desc', ''):30s} {hp:>14} {pr['zoom']:5.2f}  {'accept' if v['ok'] else 'refuse':7s} "
               f"{str(v['method']):8s} "
-              f"{int(v['inliers']):7d} {str(v['reason']):16s} {verdict} {note}  ({dt:.1f} s)", flush=True)
+              f"{int(v['inliers']):7d} {str(v['reason']):16s} {verdict}{' (' + note + ')' if note else ''}  ({dt:.1f} s)", flush=True)
     acc = ", ".join(f"{m} {len(x)} (mean {np.mean(x):.0f} inliers)" for m, x in inl_by.items() if x)
     print(f"\naccepted by method: {acc or 'none'}; total time {t_all:.1f} s")
     print(f"right {counts['right']}, refused {counts['refused']}, WRONG {counts['WRONG']} "
