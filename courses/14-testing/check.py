@@ -98,6 +98,9 @@ JUDGE = [
     ("ros/arbiter_v0.py", "if key != self.last_sent:", "if True:",
      "a judge that re-publishes the same position at 5 Hz (NAVERA's EST-1)",
      "TODO 7a: exactly ONE position published since the test began"),
+    ("ros/arbiter_v0.py", 'return False, "bad position"', 'return False, "no position"',
+     "a judge that says NO_FIX for a NaN fix but gives the wrong reason",
+     "TODO 7b: its message says WHY (the words of arbiter_v0.py's usable())"),
 ]
 
 TRAINING_OLD = [("geo.py", "d = 2.0 * EARTH_RADIUS_M * np.arcsin"), ("geo.py", "abs(lo) <= 180.0"),
@@ -261,15 +264,48 @@ def _num(node):
     raise ValueError("not a number")
 
 
+_FLIP = {ast.Lt: ast.Gt, ast.LtE: ast.GtE, ast.Gt: ast.Lt, ast.GtE: ast.LtE}
+
+
+def _cmp_bound(node, name):
+    """The largest |name| the comparisons in `node` let through (abs(name) <= 80, -80 <= name <= 80,
+    name < 80 and name > -80), or None if `name` is not bounded on both sides."""
+    lo, hi = -math.inf, math.inf
+    for cmp in ast.walk(node):
+        if not isinstance(cmp, ast.Compare):
+            continue
+        items = [cmp.left] + list(cmp.comparators)
+        for a, op, b in zip(items, cmp.ops, items[1:]):
+            for x, y, flip in ((a, b, False), (b, a, True)):
+                try:
+                    v = _num(y)
+                except ValueError:
+                    continue
+                o = _FLIP.get(type(op), type(op)) if flip else type(op)
+                xs = ast.unparse(x)
+                if xs == f"abs({name})" and o in (ast.Lt, ast.LtE):
+                    lo, hi = max(lo, -v), min(hi, v)
+                elif xs == name and o in (ast.Lt, ast.LtE):
+                    hi = min(hi, v)
+                elif xs == name and o in (ast.Gt, ast.GtE):
+                    lo = max(lo, v)
+    return max(-lo, hi) if math.isfinite(lo) and math.isfinite(hi) else None
+
+
 def _bound(node, assigns, depth=0):
     """The largest |value| a float strategy expression can draw, 0 if restricted by .filter/.map, None if unknown."""
     if depth > 5:
         return None
     if isinstance(node, ast.Name):
         return _bound(assigns[node.id], assigns, depth + 1) if node.id in assigns else None
-    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in ("filter", "map"):
-        return 0.0                                  # restricted by the student's own function: trusted
-    if isinstance(node, ast.Call) and ast.unparse(node.func).endswith("floats"):
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "filter":
+        fn = node.args[0] if node.args else None
+        if isinstance(fn, ast.Lambda) and fn.args.args:          # LAT.filter(lambda x: abs(x) <= 80): read it
+            found = [b for b in (_cmp_bound(fn.body, fn.args.args[0].arg),
+                                 _bound(node.func.value, assigns, depth + 1)) if b is not None]
+            return min(found) if found else None
+        return 0.0                                  # a named function of the student's: trusted
+    if isinstance(node, ast.Call) and ast.unparse(node.func).endswith(("floats", "integers")):
         vals = list(node.args[:2]) + [k.value for k in node.keywords if k.arg in ("min_value", "max_value")]
         if len(vals) < 2:
             return None                             # an open side: NaN, infinity or ±1e308
@@ -379,18 +415,21 @@ def _():
         if "offset(" not in ast.unparse(f):
             continue
         given = next(d for d in f.decorator_list if "given" in ast.unparse(d))
-        lat_name = f.args.args[0].arg if f.args.args else None
+        params = [a.arg for a in f.args.args]
+        lat_name = next((p for p in params if "lat" in p.lower()), params[0] if params else None)
         strat = next((k.value for k in getattr(given, "keywords", []) if k.arg == lat_name), None)
-        if strat is None and isinstance(given, ast.Call) and given.args:
-            strat = given.args[0]
+        if strat is None and isinstance(given, ast.Call) and lat_name in params:
+            i = params.index(lat_name) - (len(params) - len(given.args))   # @given fills the RIGHTMOST parameters
+            strat = given.args[i] if 0 <= i < len(given.args) else None
         b = _bound(strat, assigns) if strat is not None else None
-        assumes = [ast.unparse(n) for n in ast.walk(f) if isinstance(n, ast.Call) and ast.unparse(n.func) == "assume"]
-        stripped = [re.sub(r"is_finite_latlon\([^)]*\)", "", a) for a in assumes]
-        by_assume = any(lat_name and re.search(rf"\b{lat_name}\b", a) and re.search(r"\d", a) for a in stripped)
+        by_assume = any((_cmp_bound(n, lat_name) or 99.0) <= 89.5 for n in ast.walk(f)
+                        if isinstance(n, ast.Call) and ast.unparse(n.func) == "assume")
         c.ok((b is not None and b <= 89.5) or by_assume,
              f"{f.name} still draws its start latitude ({lat_name}) from the whole Earth, or from a strategy the check "
              "cannot read: a start near a pole and a move towards it leave the domain of offset, even when a run is "
-             "lucky (lab Step 3: st.floats(-80.0, 80.0), a .filter(…) or an assume(abs(lat0) <= 80))")
+             "lucky (lab Step 3: st.floats(-80.0, 80.0), a .filter(…) or an assume(abs(lat0) <= 80) — the check reads "
+             "the number: it must stop the start at least 50 km (0.45°) before a pole, so 89.9 or 90 is not a "
+             "restriction)")
     report_survivors(PROPERTIES, survivors(PROPERTIES, PROPERTY_ONLY), len(PROPERTY_ONLY))
 
 
@@ -428,7 +467,9 @@ def _():
     explained("EXPLAIN_EQUIVALENT", ex,
               ([r"range", r"abs", r"180", r"compar", r"in_range", r"<="], "what still refuses NaN and infinity"),
               ([r"every input", r"any input", r"all input", r"no input", r"same", r"never", r"cannot", r"can't",
-                r"impossible", r"identical", r"always"], "why no test can show a difference"))
+                r"impossible", r"identical", r"always", r"both versions", r"\bboth\b", r"no test",
+                r"tell (them|the two) apart", r"every \w+ input", r"for all", r"whatever"],
+               "why no test can show a difference"))
 
 
 @c.test("TODO 6: three mutants of your own — missed by the stack's suite, killed by your tests",
@@ -454,7 +495,9 @@ def _():
             continue
         src = given_text(name)
         if not old or src.count(old) != 1:
-            notes.append(f"mutant {i}: its old text appears {src.count(old) if old else 0} times in {name}, not once")
+            k = src.count(old) if old else 0
+            notes.append(f"mutant {i}: its old text appears {k} times in {name}, not once "
+                         + ("(copy it exactly, or take a shorter piece)" if k == 0 else "(take a longer, unique piece)"))
             continue
         text = src.replace(old, new)
         try:
@@ -476,6 +519,11 @@ def _():
             notes.append(f"mutant {i}: it changes the same line as another of your mutants — three DIFFERENT holes")
             continue
         seen.add(lines)
+        if probe_results((name, text)) == probe_results(None):
+            notes.append(f"mutant {i} ({old.strip()[:40]} → {new.strip()[:40]}): gives no wrong result on several hundred "
+                         "inputs (only a message, a type or an unused detail changes): find a change that makes the stack "
+                         "WRONG")
+            continue
         code_suite, _ = pytest_on([], (name, text), run=suite)
         if code_suite != 0:
             notes.append(f"mutant {i} ({old.strip()[:40]} → {new.strip()[:40]}): the stack's own suite kills it")
@@ -486,6 +534,94 @@ def _():
             continue
         good += 1
     c.ok(good >= 3, f"{good} good mutant(s) of 3:\n" + "\n".join("  • " + x for x in notes))
+
+
+PROBE = r'''
+import math, random, sys, warnings
+sys.path.insert(0, sys.argv[1])
+import numpy as np
+warnings.simplefilter("ignore")
+np.seterr(all="ignore")
+from navera_lite import geo
+from navera_lite.guard import JumpGate, gate_ok
+from navera_lite.estimate import Estimate
+from navera_lite.settings import DEFAULTS
+
+
+def norm(v):
+    if isinstance(v, (list, tuple)):
+        return "(" + ",".join(norm(x) for x in v) + ")"
+    if isinstance(v, np.ndarray):
+        return norm(v.tolist())
+    if isinstance(v, (bool, np.bool_)):
+        return str(bool(v))
+    if isinstance(v, (int, float, np.floating, np.integer)):
+        return f"{float(v):.10g}"
+    return repr(v)
+
+
+def call(f, *a):
+    try:
+        return norm(f(*a))
+    except Exception as e:
+        return "raise " + type(e).__name__
+
+
+rng = random.Random(14)
+pts = [(rng.uniform(-89.0, 89.0), rng.uniform(-180.0, 180.0)) for _ in range(150)]
+pts += [(90.0, 0.0), (-90.0, 180.0), (0.0, 0.0), (0.0, 180.0), (89.99, 10.0), (35.8, 179.99), (-17.0, -179.95),
+        (-44.0875753669041, -1.6433686469012514)]
+odd = [(math.nan, 1.0), (1.0, math.nan), (math.inf, 1.0), (1.0, -math.inf), (None, 1.0), ("35.8", 10.6),
+       (True, 1.0), (90.0001, 1.0), (1.0, 180.0001), (-90.0001, 1.0), (1.0, -180.0001), (0.0, 1e-300)]
+out = []
+for la, lo in pts + odd:
+    out.append(call(geo.is_finite_latlon, la, lo))
+for (a, b), (c, d) in zip(pts, pts[1:] + pts[:1]):
+    out.append(call(geo.haversine_m, a, b, c, d))
+    out.append(call(geo.bearing_deg, a, b, c, d))
+    out.append(call(geo.enu_flat, a, b, a + (c - a) * 0.01, b + (d - b) * 0.01))
+    out.append(call(geo.offset, a, b, rng.uniform(-60000, 60000), rng.uniform(-60000, 60000)))
+    out.append(call(geo.great_circle_points, (a, b), (c, d), 4))
+    out.append(call(geo.radii, a))
+    out.append(call(geo.geodetic_to_ecef, a, b, 100.0))
+    out.append(call(geo.geodetic_to_enu, c, d, 50.0, a, b, 10.0))
+out.append(call(geo.haversine_m, -44.0875753669041, -1.6433686469012514, 44.0875753669041, 178.35663135409874))
+out.append(call(geo.offset, -17.0, 179.99, 5000.0, 0.0))
+out.append(call(geo.enu_flat, -17.0, 179.95, -17.0, -179.95))
+out.append(call(geo.great_circle_points, (10.0, 20.0), (-10.0, -160.0), 3))
+out.append(call(geo.great_circle_points, (10.0, 20.0), (-5.0, 40.0), 1))
+out.append(call(geo.great_circle_points, (10.0, 20.0), (10.0, 20.0), 3))
+out.append(call(geo.max_offset_km, (51.5, -0.13), (48.86, 2.35)))
+out.append(call(geo.haversine_m, np.array([0.0, 10.0]), 0.0, 0.0, np.array([1.0, 90.0])))
+for d in (0.0, 49.9, 50.0, 50.1, 120.0, 150.0, 150.1, 250.0, 500.0):
+    for t in (-2.0, -1.0, 0.0, 0.5, 1.0, 2.0, 3.7):
+        for ang in (0.0, 0.6, 1.2, 2.5):
+            out.append(call(gate_ok, (3.0, -4.0), (3.0 + d * math.cos(ang), -4.0 + d * math.sin(ang)), t, 100.0, 50.0))
+for seq in ([(0, 0), (500, 1), (500, 2), (500, 5), (900, 6), (900, 7)], [(0, 0), (5000, 1), (120, 2), (5000, 30)],
+            [(0, 5), (100, 4), (300, 7), (-200, 8)]):
+    g = JumpGate(DEFAULTS)
+    for e, t in seq:
+        la, lo = geo.offset(35.8256, 10.6084, float(e), float(e) * 0.5)
+        r = g.check(Estimate("gps", la, lo, float(t)))
+        out.append(norm(r[0]) + " " + r[1].split(" ")[0])
+    g.reset()
+    out.append(norm(g.check(Estimate("gps", 1.0, 1.0, 50.0))[0]))
+print("\n".join(out))
+'''
+_PROBED = {}
+
+
+def probe_results(changed):
+    """What the given stack (or a mutant of it) RETURNS on the probe's inputs, as text (same probe as hunt.py)."""
+    key = changed[1] if changed else ""
+    if key not in _PROBED:
+        d = stack_copy(changed)
+        try:
+            code, out = sh(f"cd {d} && timeout 120 python3 -B - {d} <<'CHK14PROBE'\n{PROBE}\nCHK14PROBE", timeout=150)
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+        _PROBED[key] = out if code == 0 else f"crash {code} {out[-200:]}"
+    return _PROBED[key]
 
 
 def _code(text):
@@ -549,7 +685,7 @@ def _():
     c.ok(len(re.findall(r"Ran \d+ tests?", out)) >= 2, "the post-shutdown test (exit code) did not run")
 
 
-@c.test("TODO 7: your launch test catches 3 broken judges",
+@c.test("TODO 7: your launch test catches 4 broken judges",
         hint="TODO 7a: after the jump assert the state, the jump in the GPS source's status AND the number of positions; "
              "TODO 7b: the state, the reason AND no position. Lab Step 6 shows one of the broken judges.")
 def _():
@@ -576,7 +712,8 @@ def _():
     predicted("PREDICT_REPUBLISH", p)
     c.ok(isinstance(name, str) and ("test_1" in name or "5_km" in name) and "test_2" not in name
          and "test_0" not in name, "REPUBLISH_FAILED is not the one test that fails on the re-publishing judge")
-    lo, hi = REPUBLISH_RANGE
+    seen_n = re.search(r"(\d+) != 1", out)
+    lo, hi = (int(seen_n.group(1)) - 3, int(seen_n.group(1)) + 3) if seen_n else REPUBLISH_RANGE
     c.ok(lo <= number(n, "REPUBLISH_COUNT") <= hi, "REPUBLISH_COUNT is not the number of positions test_1 counted "
          "(the number before `!= 1` in launch_test's output)")
 

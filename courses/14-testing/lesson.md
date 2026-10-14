@@ -321,10 +321,14 @@ latitudes and longitudes different, if you thought of writing it.
 
 **Equivalent mutants.** Some changes do not change the behaviour at all: no input can show a
 difference, so no test can kill them, and they are left out of the score. Be careful before you call a
-mutant equivalent. In `haversine_m`, removing `np.minimum(1.0, a)` looks harmless, since a sine squared
-cannot exceed 1. Yet for the points (−44.0875753669041, −1.6433686469012514) and their opposite point,
-rounding gives a = 1.0000000000000002, and without the guard the function returns NaN. "Almost
-equivalent" mutants are exactly the bugs that reach the field.
+mutant equivalent, and before you call it harmful. In `haversine_m`, removing `np.minimum(1.0, a)` looks
+dangerous: rounding does push a above 1. For the points (−44.0875753669041, −1.6433686469012514) and their
+opposite point, a = 1.0000000000000002, and `np.arcsin(1.0000000000000002)` is NaN. Yet the code takes the
+square root first, and √1.0000000000000002 rounds back to exactly 1.0, so the arcsine gets 1.0. Among
+2 million near-opposite pairs we found no a large enough to survive the square root: as far as we can
+measure, this mutant is equivalent. The guard stays as cheap insurance (a formula that took the arcsine
+of a directly would need it). Calling a mutant equivalent takes an argument about **every** input, not
+one example.
 
 > [!TIP] 🧰 NaN in comparisons
 > Every comparison with NaN is False: `nan < 1`, `nan <= 180`, `nan > 0`, `nan == nan` all give `False`
@@ -465,7 +469,7 @@ Answer without scrolling up.
 
 <details><summary>1. <code>assert haversine_m(10, 20, 11, 20) == M_PER_DEG</code> fails, although the function is correct and one degree of a meridian is exactly M_PER_DEG. Why, and what do you write instead?</summary>
 The function returns 111 194.92664455871 m, the formula 111 194.92664455873 m: two different roundings of the
-same number, 2 × 10⁻¹¹ m apart. Floats are compared with a tolerance chosen between the honest gap and the
+same number, one float step apart (1.5 × 10⁻¹¹ m). Floats are compared with a tolerance chosen between the honest gap and the
 bug: <code>pytest.approx(M_PER_DEG, rel=1e-9)</code>.
 </details>
 

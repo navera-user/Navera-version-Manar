@@ -29,6 +29,6 @@ EQUIVALENT_MUTANT = 0     # the number of the training mutant that NO test can k
 EXPLAIN_EQUIVALENT = ""   # why can no input show a difference?
 
 # ---- Step 6: the launch test ------------------------------------------------------------------------
-PREDICT_REPUBLISH = ""    # the judge re-publishes at 5 Hz: which test fails, and how many positions will it count?
+PREDICT_REPUBLISH = ""    # the judge re-publishes at 5 Hz: which of your tests fails, and how many positions will it count?
 REPUBLISH_FAILED = ""     # the name of the test that really failed (from launch_test's output)
 REPUBLISH_COUNT = 0       # how many positions it counted instead of 1 (the number before "!= 1")

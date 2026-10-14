@@ -5,7 +5,7 @@
 launch_test (lesson §5) (1) calls generate_test_description() and starts what it returns: here the real
 arbiter v0, as `ros2 launch` would; (2) runs the tests of TestJudge WHILE the judge runs — they talk to it
 over ROS like any other node; (3) stops the judge and runs TestShutdown, which checks its exit code.
-About 10 seconds. Run `jobs` first: no other judge may run in your terminal (lesson 09).
+About 5 to 10 seconds. Run `jobs` first: no other judge may run in your terminal (lesson 09).
 """
 import math
 import os

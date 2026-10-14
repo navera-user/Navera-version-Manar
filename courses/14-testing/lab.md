@@ -149,6 +149,8 @@ the equator, or the docstring's London → Paris). Each tolerance gets a comment
    reverse: `haversine_m` returns metres.
 5. Expected value negative, or strange like −105 903? `math.cos` takes **radians**:
    `math.cos(math.radians(60))` is 0.5, `math.cos(60)` is −0.95.
+6. Testing the docstring's London → Paris? It says *about* 343 556.1: rounded to 0.1 m, so the tolerance
+   must be at least `abs=0.05`.
 </details>
 
 **TODO 2 — `is_finite_latlon`, one parametrized test, at least 8 cases.** First, on paper: list the
@@ -353,7 +355,9 @@ a mutant survives.
 **TODO 6**: in [my_mutants.py](file:./my_mutants.py), write three mutants, each a tuple
 `(file, old, new)`, that make the stack wrong but that the suite does not notice. Its docstring has an
 example that does **not** count. Three rules: each one changes a different line, none of them repeats a
-training mutant of `hunt.py`, and each one changes code (not a comment). Try them:
+training mutant of `hunt.py`, and each one gives a WRONG RESULT for some input. A different error message,
+a comment, or a float that becomes a numpy float does not count: `hunt.py` and the check compare what the
+stack returns before and after your change on several hundred inputs. Try them:
 
 ```bash
 python3 hunt.py mine
@@ -391,7 +395,7 @@ jobs
 launch_test test_arbiter_launch.py
 ```
 
-About 3 to 6 seconds: the judge's log lines (`[arbiter-1] …`) appear between the test results. test_0
+About 5 to 10 seconds: the judge's log lines (`[arbiter-1] …`) appear between the test results. test_0
 passes; test_1 and test_2 **fail** with `AssertionError: TODO 7a` / `TODO 7b`; at the end
 `FAILED (failures=2)`, and then the shutdown test: `OK`.
 
@@ -417,7 +421,7 @@ launch_test test_arbiter_launch.py
    [arbiter_v0.py](file:./navera_lite/ros/arbiter_v0.py), in `usable()`.
 5. `values["src.gps"]` says `nothing received`? You read the status before the fix arrived: wait
    (`spin_for`) after each `send_gps`.
-6. test_2 says `Lists differ: [sensor_msgs.msg.NavSatFix(…)] != []`? The list still holds test_1's
+6. test_2 says `Lists differ: [sensor_msgs.msg.NavSatFix(…)] != []` (or `1 != 0` if you count with `len`)? The list still holds test_1's
    position: one judge, one tester node, one list for all tests. Start each test with `self.drain()`.
 </details>
 
@@ -427,8 +431,8 @@ times per second. Make arbiter v0 do it: in
 `if key != self.last_sent:` by `if True:` and save.
 
 > [!TASK]
-> **Predict** (`PREDICT_REPUBLISH`): which test will fail, and how many positions will test_1 count
-> instead of 1? (The judge ticks at 5 Hz; test_1 lasts about 2 s.)
+> **Predict** (`PREDICT_REPUBLISH`): which of your tests will fail, and how many positions will it count
+> instead of 1? (The judge ticks at 5 Hz; read your test to see how long it listens.)
 
 ```bash
 launch_test test_arbiter_launch.py
@@ -453,7 +457,7 @@ git status
 
 Fill [report.md](file:./report.md) (three headings, at least 40 words each, with your numbers), then
 press **✔ Check my work**. It runs your files against mutants you have not seen, runs the stack's suite
-against your own mutants, and runs your launch test four times: on the real judge and on three broken
+against your own mutants, and runs your launch test five times: on the real judge and on four broken
 ones (about two minutes). Every check passed: **Mutant hunter** badge.
 
 Look back (not graded):
@@ -468,9 +472,10 @@ Look back (not graded):
 
 ## Going further (optional)
 
-- **Equivalent or not?** Lesson §4's `np.minimum(1.0, a)` mutant: add it to `TRAINING` in a copy of
-  `hunt.py`, then write the example test that kills it with the lesson's numbers. Would a property have
-  found those points?
+- **Equivalent or not?** Lesson §4's `np.minimum(1.0, a)` mutant: how large must `a` be for
+  `np.arcsin(np.sqrt(a))` to give NaN? Search for such points (numpy, a few million near-opposite pairs),
+  or argue why none exist. Then add the mutant to `TRAINING` in a copy of `hunt.py`: what does your
+  score do?
 - **Test the trip computer.** Mission 11's `TripComputer` (in `navera_lite/ros/trip_node.py`): write
   properties — the distance never decreases; a refused fix changes nothing; a vehicle that does not move
   has speed 0.

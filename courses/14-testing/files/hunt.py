@@ -197,6 +197,87 @@ def without_docstrings(tree):
     return ast.dump(tree)
 
 
+# What the stack RETURNS on several hundred inputs (results rounded to 10 digits, exceptions by type only):
+# a mutant that changes none of it gives no wrong result (only a message, a type, an unused detail).
+PROBE = r'''
+import math, random, sys, warnings
+sys.path.insert(0, sys.argv[1])
+import numpy as np
+warnings.simplefilter("ignore")
+np.seterr(all="ignore")
+from navera_lite import geo
+from navera_lite.guard import JumpGate, gate_ok
+from navera_lite.estimate import Estimate
+from navera_lite.settings import DEFAULTS
+
+
+def norm(v):
+    if isinstance(v, (list, tuple)):
+        return "(" + ",".join(norm(x) for x in v) + ")"
+    if isinstance(v, np.ndarray):
+        return norm(v.tolist())
+    if isinstance(v, (bool, np.bool_)):
+        return str(bool(v))
+    if isinstance(v, (int, float, np.floating, np.integer)):
+        return f"{float(v):.10g}"
+    return repr(v)
+
+
+def call(f, *a):
+    try:
+        return norm(f(*a))
+    except Exception as e:
+        return "raise " + type(e).__name__
+
+
+rng = random.Random(14)
+pts = [(rng.uniform(-89.0, 89.0), rng.uniform(-180.0, 180.0)) for _ in range(150)]
+pts += [(90.0, 0.0), (-90.0, 180.0), (0.0, 0.0), (0.0, 180.0), (89.99, 10.0), (35.8, 179.99), (-17.0, -179.95),
+        (-44.0875753669041, -1.6433686469012514)]
+odd = [(math.nan, 1.0), (1.0, math.nan), (math.inf, 1.0), (1.0, -math.inf), (None, 1.0), ("35.8", 10.6),
+       (True, 1.0), (90.0001, 1.0), (1.0, 180.0001), (-90.0001, 1.0), (1.0, -180.0001), (0.0, 1e-300)]
+out = []
+for la, lo in pts + odd:
+    out.append(call(geo.is_finite_latlon, la, lo))
+for (a, b), (c, d) in zip(pts, pts[1:] + pts[:1]):
+    out.append(call(geo.haversine_m, a, b, c, d))
+    out.append(call(geo.bearing_deg, a, b, c, d))
+    out.append(call(geo.enu_flat, a, b, a + (c - a) * 0.01, b + (d - b) * 0.01))
+    out.append(call(geo.offset, a, b, rng.uniform(-60000, 60000), rng.uniform(-60000, 60000)))
+    out.append(call(geo.great_circle_points, (a, b), (c, d), 4))
+    out.append(call(geo.radii, a))
+    out.append(call(geo.geodetic_to_ecef, a, b, 100.0))
+    out.append(call(geo.geodetic_to_enu, c, d, 50.0, a, b, 10.0))
+out.append(call(geo.haversine_m, -44.0875753669041, -1.6433686469012514, 44.0875753669041, 178.35663135409874))
+out.append(call(geo.offset, -17.0, 179.99, 5000.0, 0.0))
+out.append(call(geo.enu_flat, -17.0, 179.95, -17.0, -179.95))
+out.append(call(geo.great_circle_points, (10.0, 20.0), (-10.0, -160.0), 3))
+out.append(call(geo.great_circle_points, (10.0, 20.0), (-5.0, 40.0), 1))
+out.append(call(geo.great_circle_points, (10.0, 20.0), (10.0, 20.0), 3))
+out.append(call(geo.max_offset_km, (51.5, -0.13), (48.86, 2.35)))
+out.append(call(geo.haversine_m, np.array([0.0, 10.0]), 0.0, 0.0, np.array([1.0, 90.0])))
+for d in (0.0, 49.9, 50.0, 50.1, 120.0, 150.0, 150.1, 250.0, 500.0):
+    for t in (-2.0, -1.0, 0.0, 0.5, 1.0, 2.0, 3.7):
+        for ang in (0.0, 0.6, 1.2, 2.5):
+            out.append(call(gate_ok, (3.0, -4.0), (3.0 + d * math.cos(ang), -4.0 + d * math.sin(ang)), t, 100.0, 50.0))
+for seq in ([(0, 0), (500, 1), (500, 2), (500, 5), (900, 6), (900, 7)], [(0, 0), (5000, 1), (120, 2), (5000, 30)],
+            [(0, 5), (100, 4), (300, 7), (-200, 8)]):
+    g = JumpGate(DEFAULTS)
+    for e, t in seq:
+        la, lo = geo.offset(35.8256, 10.6084, float(e), float(e) * 0.5)
+        r = g.check(Estimate("gps", la, lo, float(t)))
+        out.append(norm(r[0]) + " " + r[1].split(" ")[0])
+    g.reset()
+    out.append(norm(g.check(Estimate("gps", 1.0, 1.0, 50.0))[0]))
+print("\n".join(out))
+'''
+
+
+def results(folder):
+    r = subprocess.run([sys.executable, "-B", "-", folder], input=PROBE, capture_output=True, text=True, timeout=120)
+    return r.stdout if r.returncode == 0 else "crash " + r.stderr[-300:]
+
+
 def span_of(name, old, sources):
     """(file, first line, last line) of `old` in the given file."""
     start = sources[name].index(old)
@@ -224,7 +305,8 @@ def check_mutant(m, sources):
     n = sources[name].count(old) if old else 0
     if n != 1:
         raise ValueError(f"the old text appears {n} times in navera_lite/{name}; it must appear exactly once "
-                         "(copy it exactly, spaces included, or take a longer piece)")
+                         + ("(copy it exactly from the file, spaces included, or take a shorter piece)" if n == 0
+                            else "(take a longer piece, so that it is unique)"))
     if training_overlap(name, old, sources):
         raise ValueError("it changes the same code as a training mutant of hunt.py: find a hole of your own")
     text = sources[name].replace(old, new)
@@ -257,6 +339,11 @@ def run_mine(files):
             continue
         seen.add((f_, first, last))
         d = copy_of_stack({name: text})
+        if results(d) == results(HERE):
+            shutil.rmtree(d, ignore_errors=True)
+            say(f"  {i}. refused: {m[1].strip()[:40]} → {m[2].strip()[:40]} gives no wrong result on several hundred "
+                "inputs (only a message, a type or an unused detail changes): find a change that makes the stack WRONG")
+            continue
         try:
             code_suite, out_suite = pytest(d, suite)
             code_mine, _ = pytest(d, files)

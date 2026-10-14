@@ -17,7 +17,7 @@ rule; review of 1 October 2026: R-5) and VALIDATION_STATUS.md (last updated 2026
 |---|---|---|---|
 | 1. Example tests: tolerances, `is`, `raises`, parametrize, fixtures, limits | §2 (60° tolerance worked example; ✏️ 45°/75°, `valid_heading`) | Step 2, TODO 1–4 (+ `hunt.py`) | 2, 3, 4, 5, 6 |
 | 2. Property tests, counterexamples, bug or domain | §3 (`pack_speed` = Ariane in miniature; ✏️ tests after the fix; read-after box) | Step 3, TODO 5 | 7, 8 |
-| 3. Mutants, mutation score, equivalent mutants | §4 (cos² table, `np.minimum` "almost equivalent", ✏️ gate `<`) | Steps 2, 4, 5 (TODO 6, 6b) | 3–7, 9, 10 |
+| 3. Mutants, mutation score, equivalent mutants | §4 (cos² table, `np.minimum` (looks harmful, measured equivalent), ✏️ gate `<`) | Steps 2, 4, 5 (TODO 6, 6b) | 3–7, 9, 10 |
 | 4. Run the suite, break/restore with git, launch test of a node | §1 (✏️ unit vs smoke), §5 (✏️ flaky) | Steps 0–1, 6 (TODO 7) | 1, 11, 12, 13 |
 | (all) written analysis | — | Step 7 | 14 |
 
@@ -42,25 +42,29 @@ rule; review of 1 October 2026: R-5) and VALIDATION_STATUS.md (last updated 2026
 - **Step 3:** whole Earth, `max_examples=2000`: `Falsifying example: … lat0=89.55257463757103, lon0=0.0, e=0.0,
   n=49751.430354205564` → `offset` gives (90.00000000000001, 0.0). Found with 4 of 5 seeds tried while building;
   the other run passed (the lab says: run again). The round trip c) on the whole Earth fails more rarely (seen with
-  2000 examples: lat0 ≈ 89.7–89.86). Restricting the start to ±80° (or ±89°) makes all pass; the check refuses an
-  offset property still drawn from ±90° unless an `assume` restricts it. `COUNTEREXAMPLE` is graded by recomputing
+  2000 examples: lat0 ≈ 89.7–89.86). Restricting the start to ±80° (or ±89°) makes all pass; the check reads the bound of the
+  start latitude (strategy, a lambda filter or an `assume` comparison, found by parameter name) and wants ≤ 89.5°;
+  `assume(abs(lat0) <= 90)`, `abs(lat0) < 89.9` or a Null Island assume is refused (round 2). `COUNTEREXAMPLE` is graded by recomputing
   `offset` (valid start, |e|, |n| ≤ 50 km, invalid result): any true counterexample passes, e.g. the shrunk one.
 - **Step 4:** `EQUIVALENT_MUTANT = 3` (`finite = math.isfinite(la)`): a NaN or infinite longitude is still refused by
   `abs(lo) <= 180.0` (any comparison with NaN is False, ∞ > 180), the null-island test is unchanged, so every input
   gives the same result.
-- **Step 5 (TODO 6):** rules since round 1: one line per mutant, no overlap with a training mutant (so the
+- **Step 5 (TODO 6):** rules since round 2: a mutant must change what the stack RETURNS on a probe of ~1 700 calls
+  (results rounded to 10 digits, exceptions by type; same probe in hunt.py and the check), so a new ValueError
+  message or `return float(d) if … else d → return d` is refused. Since round 1: one line per mutant, no overlap with a training mutant (so the
   longitude limit `abs(lo) <= 180.0` no longer counts), code must change. Survivors of the suite that are easy to
   find: `lon2 = (lon2 + 180.0) % 360.0 - 180.0 → lon2 = lon2` (the round-trip test of
   the suite starts far from ±180°), `if math.pi - d < 1e-9: → < 0.0` (opposite points never tested), `abs(la) <= 90.0 →
-  < 90.0` (the poles), `np.minimum(1.0, a) → a` (killed only by the lesson's near-antipodal numbers). The docstring
+  < 90.0` (the poles), `np.minimum(1.0, a) → a` is refused since round 2 (no wrong result on the check's probe: equivalent as far as measured). The docstring
   example (`abs(la) <= 95.0`) is killed by `test_estimate.py` and `test_geo.py`. The reference uses the poles, the
   wrap of offset and the opposite points; its TODO 2–3 tests already kill all three (the lab says: then name them
   in the report).
 - **Step 6 (TODO 7):** the starter launch test: test_0 ok, test_1/test_2 `AssertionError: TODO 7a/7b`,
-  `FAILED (failures=2)`, shutdown test OK (≈ 3 s after the judge starts; ≈ 8 s in all). Solution: `Ran 3 tests in
+  `FAILED (failures=2)`, shutdown test OK (starter 6–6.5 s, solution 7.5–8 s wall: "about 5 to 10 seconds" everywhere). Solution: `Ran 3 tests in
   3.9 s OK`, judge log `gps fix refused: jump 5000 m > 152 m in 1.0 s` (elapsed 1.02 s), `NO_FIX: no usable source
   (gps: bad position)`; post-shutdown OK; exit code 0. With `if True:` (re-publishing judge): test_1 fails
-  `12 != 1` or `13 != 1` (2 s × 5 Hz + one per arrival; `REPUBLISH_COUNT`, graded 8–16). test_2 passes: it
+  `12 != 1` or `13 != 1` (2 s × 5 Hz + one per arrival; `REPUBLISH_COUNT`, graded ±3 around the count the check itself
+  measures on the student's file; 8–16 if none). test_2 passes: it
   sends the NaN fix, then `drain()`s what was on its way, and a judge in NO_FIX has nothing to re-publish
   (round 1 measured test_2 failing 1 run in 8 before the drain was added). The check runs the student's file on
   this judge itself: test_1 must fail, test_2 must not; `REPUBLISH_FAILED` names test_1 only.
@@ -68,7 +72,8 @@ rule; review of 1 October 2026: R-5) and VALIDATION_STATUS.md (last updated 2026
   78 626.69 / 78 626.19 (6.3 × 10⁻⁶); at 75°: 28 779.36 / 28 779.02 (1.18 × 10⁻⁵). cos² mutant: London → Paris
   341 098.8 m, Paris → London 346 134.6 m, truth 343 556.1 m; the meridian, equator and 60° parallel examples give
   identical values. `np.minimum` removed: (−44.0875753669041, −1.6433686469012514) and its antipode give a =
-  1.0000000000000002 → NaN (found by a 200 000-point random search). `pack_speed` property: shrunk to
+  1.0000000000000002 (np.arcsin of it is NaN), but √a rounds to exactly 1.0, so haversine still returns πR; 2
+  million near-opposite numpy pairs never gave a > 1.0000000000000002 (round 2: the round-1 text claimed NaN, wrong). `pack_speed` property: shrunk to
   v = 327.67500000000007 with every seed (round → 32 768); the examples 0, 12.34, 30, 100 pass. Midpoint property of
   `great_circle_points`: 100 examples × seeds 1–3 never drew opposite points. Check yourself 2: 8/11 ≈ 73 %.
 
@@ -129,7 +134,8 @@ rule; review of 1 October 2026: R-5) and VALIDATION_STATUS.md (last updated 2026
   `start`), `pytest.ini` (hides launch_testing's private-API warning), `answers.py`, `report.md`.
 - `solutions/14-testing/`: the four student files, answers, report, `_apply.sh` (runs init_repo.sh, as Step 1 does).
   No dataset.
-- `check.py`: 23 hidden mutants (20 of geo.py/guard.py in 5 families, 3 of arbiter_v0.py) as string replacements of
+- `check.py`: 24 hidden mutants (20 of geo.py/guard.py in 5 families, 4 of arbiter_v0.py: no gate, NaN usable,
+  re-publishing, wrong NO_FIX reason) as string replacements of
   the GIVEN starter files (read from `/academy/courses/14-testing/files`); every run copies the given stack into a
   temporary folder, so a student's own edits never matter; hypothesis runs derandomized without shrinking (same
   profile as hunt.py). **If geo.py, guard.py or arbiter_v0.py change in the reference, re-run the check on the
