@@ -1,0 +1,266 @@
+[
+ {
+  "name": "m01",
+  "map": "map_city.png",
+  "photo": "photos/m01.jpg",
+  "prior": {
+   "heading_deg": null,
+   "heading_sigma_deg": 180.0,
+   "zoom": 1.6
+  },
+  "map_m_per_px": 0.9683,
+  "H": [
+   [
+    -1.225671109,
+    1.028460175,
+    369.887393507
+   ],
+   [
+    -1.028460175,
+    -1.225671109,
+    815.430543187
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "m02",
+  "map": "map_city.png",
+  "photo": "photos/m02.jpg",
+  "prior": {
+   "heading_deg": 147.0,
+   "heading_sigma_deg": 8.0,
+   "zoom": 1.6
+  },
+  "map_m_per_px": 0.9683,
+  "H": [
+   [
+    -1.225671109,
+    1.028460175,
+    369.887393507
+   ],
+   [
+    -1.028460175,
+    -1.225671109,
+    815.430543187
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "m03",
+  "map": "map_olives.png",
+  "photo": "photos/m03.jpg",
+  "prior": {
+   "heading_deg": null,
+   "heading_sigma_deg": 180.0,
+   "zoom": 1.6
+  },
+  "map_m_per_px": 0.9694,
+  "H": [
+   [
+    -0.547232229,
+    -1.503508193,
+    843.464177969
+   ],
+   [
+    1.503508193,
+    -0.547232229,
+    -4.828508786
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "m04",
+  "map": "map_olives.png",
+  "photo": "photos/m04.jpg",
+  "prior": {
+   "heading_deg": 244.0,
+   "heading_sigma_deg": 8.0,
+   "zoom": 1.6
+  },
+  "map_m_per_px": 0.9694,
+  "H": [
+   [
+    -0.547232229,
+    -1.503508193,
+    843.464177969
+   ],
+   [
+    1.503508193,
+    -0.547232229,
+    -4.828508786
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "m05",
+  "map": "map_olives.png",
+  "photo": "photos/m05.jpg",
+  "prior": {
+   "heading_deg": null,
+   "heading_sigma_deg": 180.0,
+   "zoom": 1.6
+  },
+  "map_m_per_px": 0.9694,
+  "H": [
+   [
+    -0.547232229,
+    -1.503508193,
+    843.464177969
+   ],
+   [
+    1.503508193,
+    -0.547232229,
+    -4.828508786
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "m06",
+  "map": "map_olives.png",
+  "photo": "photos/m06.jpg",
+  "prior": {
+   "heading_deg": 15.0,
+   "heading_sigma_deg": 8.0,
+   "zoom": 1.6
+  },
+  "map_m_per_px": 0.9694,
+  "H": [
+   [
+    1.575692405,
+    0.277837084,
+    -154.076784462
+   ],
+   [
+    -0.277837084,
+    1.575692405,
+    -92.102034401
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "m07",
+  "map": "map_harbour.png",
+  "photo": "photos/m07.jpg",
+  "prior": {
+   "heading_deg": 185.0,
+   "heading_sigma_deg": 30.0,
+   "zoom": 1.6
+  },
+  "map_m_per_px": 0.9688,
+  "H": [
+   [
+    -1.575692405,
+    -0.277837084,
+    793.076784462
+   ],
+   [
+    0.277837084,
+    -1.575692405,
+    571.102034401
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "m08",
+  "map": "map_sea.png",
+  "photo": "photos/m08.jpg",
+  "prior": {
+   "heading_deg": 5.0,
+   "heading_sigma_deg": 8.0,
+   "zoom": 1.6
+  },
+  "map_m_per_px": 0.9683,
+  "H": [
+   [
+    1.6,
+    0.0,
+    -89.3
+   ],
+   [
+    0.0,
+    1.6,
+    -169.3
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "m09",
+  "map": "map_olives.png",
+  "photo": "photos/m09.jpg",
+  "prior": {
+   "heading_deg": 90.0,
+   "heading_sigma_deg": 8.0,
+   "zoom": 1.6
+  },
+  "map_m_per_px": 0.9694,
+  "H": null
+ },
+ {
+  "name": "m10",
+  "map": "map_city.png",
+  "photo": "photos/m10.jpg",
+  "prior": {
+   "heading_deg": 300.0,
+   "heading_sigma_deg": 8.0,
+   "zoom": 1.6
+  },
+  "map_m_per_px": 0.9683,
+  "H": [
+   [
+    1.1,
+    -1.905255888,
+    525.242879467
+   ],
+   [
+    1.905255888,
+    1.1,
+    -528.342879467
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ }
+]

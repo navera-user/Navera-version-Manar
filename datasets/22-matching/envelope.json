@@ -1,0 +1,380 @@
+[
+ {
+  "name": "env_city_sharp",
+  "place": "city",
+  "effect": "sharp",
+  "map": "map_city.png",
+  "photo": "photos/env_city_sharp.jpg",
+  "heading_deg": 50.0,
+  "zoom": 1.6,
+  "map_m_per_px": 0.9683,
+  "H": [
+   [
+    1.028460175,
+    1.225671109,
+    -256.430543187
+   ],
+   [
+    -1.225671109,
+    1.028460175,
+    289.887393507
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "env_city_blur2",
+  "place": "city",
+  "effect": "blur2",
+  "map": "map_city.png",
+  "photo": "photos/env_city_blur2.jpg",
+  "heading_deg": 50.0,
+  "zoom": 1.6,
+  "map_m_per_px": 0.9683,
+  "H": [
+   [
+    1.028460175,
+    1.225671109,
+    -256.430543187
+   ],
+   [
+    -1.225671109,
+    1.028460175,
+    289.887393507
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "env_city_blur3",
+  "place": "city",
+  "effect": "blur3",
+  "map": "map_city.png",
+  "photo": "photos/env_city_blur3.jpg",
+  "heading_deg": 50.0,
+  "zoom": 1.6,
+  "map_m_per_px": 0.9683,
+  "H": [
+   [
+    1.028460175,
+    1.225671109,
+    -256.430543187
+   ],
+   [
+    -1.225671109,
+    1.028460175,
+    289.887393507
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "env_city_blur4",
+  "place": "city",
+  "effect": "blur4",
+  "map": "map_city.png",
+  "photo": "photos/env_city_blur4.jpg",
+  "heading_deg": 50.0,
+  "zoom": 1.6,
+  "map_m_per_px": 0.9683,
+  "H": [
+   [
+    1.028460175,
+    1.225671109,
+    -256.430543187
+   ],
+   [
+    -1.225671109,
+    1.028460175,
+    289.887393507
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "env_city_shake9",
+  "place": "city",
+  "effect": "shake9",
+  "map": "map_city.png",
+  "photo": "photos/env_city_shake9.jpg",
+  "heading_deg": 50.0,
+  "zoom": 1.6,
+  "map_m_per_px": 0.9683,
+  "H": [
+   [
+    1.028460175,
+    1.225671109,
+    -256.430543187
+   ],
+   [
+    -1.225671109,
+    1.028460175,
+    289.887393507
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "env_city_shake13",
+  "place": "city",
+  "effect": "shake13",
+  "map": "map_city.png",
+  "photo": "photos/env_city_shake13.jpg",
+  "heading_deg": 50.0,
+  "zoom": 1.6,
+  "map_m_per_px": 0.9683,
+  "H": [
+   [
+    1.028460175,
+    1.225671109,
+    -256.430543187
+   ],
+   [
+    -1.225671109,
+    1.028460175,
+    289.887393507
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "env_city_shake17",
+  "place": "city",
+  "effect": "shake17",
+  "map": "map_city.png",
+  "photo": "photos/env_city_shake17.jpg",
+  "heading_deg": 50.0,
+  "zoom": 1.6,
+  "map_m_per_px": 0.9683,
+  "H": [
+   [
+    1.028460175,
+    1.225671109,
+    -256.430543187
+   ],
+   [
+    -1.225671109,
+    1.028460175,
+    289.887393507
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "env_olives_sharp",
+  "place": "olives",
+  "effect": "sharp",
+  "map": "map_olives.png",
+  "photo": "photos/env_olives_sharp.jpg",
+  "heading_deg": 50.0,
+  "zoom": 1.6,
+  "map_m_per_px": 0.9694,
+  "H": [
+   [
+    1.028460175,
+    1.225671109,
+    -256.430543187
+   ],
+   [
+    -1.225671109,
+    1.028460175,
+    289.887393507
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "env_olives_blur2",
+  "place": "olives",
+  "effect": "blur2",
+  "map": "map_olives.png",
+  "photo": "photos/env_olives_blur2.jpg",
+  "heading_deg": 50.0,
+  "zoom": 1.6,
+  "map_m_per_px": 0.9694,
+  "H": [
+   [
+    1.028460175,
+    1.225671109,
+    -256.430543187
+   ],
+   [
+    -1.225671109,
+    1.028460175,
+    289.887393507
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "env_olives_blur3",
+  "place": "olives",
+  "effect": "blur3",
+  "map": "map_olives.png",
+  "photo": "photos/env_olives_blur3.jpg",
+  "heading_deg": 50.0,
+  "zoom": 1.6,
+  "map_m_per_px": 0.9694,
+  "H": [
+   [
+    1.028460175,
+    1.225671109,
+    -256.430543187
+   ],
+   [
+    -1.225671109,
+    1.028460175,
+    289.887393507
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "env_olives_blur4",
+  "place": "olives",
+  "effect": "blur4",
+  "map": "map_olives.png",
+  "photo": "photos/env_olives_blur4.jpg",
+  "heading_deg": 50.0,
+  "zoom": 1.6,
+  "map_m_per_px": 0.9694,
+  "H": [
+   [
+    1.028460175,
+    1.225671109,
+    -256.430543187
+   ],
+   [
+    -1.225671109,
+    1.028460175,
+    289.887393507
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "env_olives_shake9",
+  "place": "olives",
+  "effect": "shake9",
+  "map": "map_olives.png",
+  "photo": "photos/env_olives_shake9.jpg",
+  "heading_deg": 50.0,
+  "zoom": 1.6,
+  "map_m_per_px": 0.9694,
+  "H": [
+   [
+    1.028460175,
+    1.225671109,
+    -256.430543187
+   ],
+   [
+    -1.225671109,
+    1.028460175,
+    289.887393507
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "env_olives_shake13",
+  "place": "olives",
+  "effect": "shake13",
+  "map": "map_olives.png",
+  "photo": "photos/env_olives_shake13.jpg",
+  "heading_deg": 50.0,
+  "zoom": 1.6,
+  "map_m_per_px": 0.9694,
+  "H": [
+   [
+    1.028460175,
+    1.225671109,
+    -256.430543187
+   ],
+   [
+    -1.225671109,
+    1.028460175,
+    289.887393507
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ },
+ {
+  "name": "env_olives_shake17",
+  "place": "olives",
+  "effect": "shake17",
+  "map": "map_olives.png",
+  "photo": "photos/env_olives_shake17.jpg",
+  "heading_deg": 50.0,
+  "zoom": 1.6,
+  "map_m_per_px": 0.9694,
+  "H": [
+   [
+    1.028460175,
+    1.225671109,
+    -256.430543187
+   ],
+   [
+    -1.225671109,
+    1.028460175,
+    289.887393507
+   ],
+   [
+    0.0,
+    0.0,
+    1.0
+   ]
+  ]
+ }
+]

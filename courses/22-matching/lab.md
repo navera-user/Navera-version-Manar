@@ -1,264 +1,474 @@
-# Lab 22 — Your own DLT and RANSAC, against OpenCV and NAVERA
+# Lab 22 — From pairs to a trusted match, then your network as a matcher
 
-**Goal:** implement the homography pipeline yourself (homogeneous coordinates, Hartley
-normalisation, DLT with the SVD, the RANSAC sample formula, adaptive RANSAC, decomposition of H),
-use it to lay synthetic drone views onto the satellite map, compare it with `cv2.findHomography`,
-apply NAVERA's trust gates, and write a short analysis of your measurements.
-**Time:** 4–5 h for this lab (about 5 h 15 for the whole mission with the lesson; the maths of Steps 3–6 takes most students longer than they expect).
+**Goal:** write NAVERA Lite's matcher: the ratio test, a similarity and a homography (your own DLT), RANSAC and the
+trust gates, measured against the truth and against OpenCV; then match with your own network from mission 21,
+**decide** its threshold and when to use it from your measurements, and write the matcher's policy.
+**Time:** 5 h to 6 h 30 in two sessions (a strong programmer: about 4 h). Nothing is trained today: every run takes
+seconds (the slowest, `envelope`, about a minute).
+**Fast track:** if you know least squares and RANSAC, write the TODOs from the docstrings without the 🧰 and "Stuck?"
+boxes, then do "Going further".
 
-Your files:
+Your files (📝 Code tab): [navera_lite/match.py](file:./navera_lite/match.py) (**your code**: TODO 1–6),
+[navera_lite/learned_match.py](file:./navera_lite/learned_match.py) (**your code**: TODO 7–9),
+[answers.py](file:./answers.py), [report.md](file:./report.md), and the ready-made runner
+[run_match.py](file:./run_match.py) (runs your functions on the lab's pictures, measures them against the truth and
+draws them; you don't edit it). `python3 run_match.py test` tries every docstring example and names the symptom of a
+wrong result.
 
-| File | What you do |
-|---|---|
-| [geometry.py](file:./geometry.py) | TODO 1–6: the maths, numpy only |
-| [matching.py](file:./matching.py) | TODO 7–9: ratio test, matching two pictures, trust gates |
-| `experiments.py` | given: runs the measurements and writes `results.json` |
-| [analysis.md](file:./analysis.md) | your written analysis (5 sections) |
+The pictures are in `/data/academy/22-matching/` (read only): map patches and drone photos drawn from OpenStreetMap
+data of Sousse, Tunisia (NAVERA's test area; map data © OpenStreetMap contributors), made by us so that we know the
+exact truth: `pairs.json` gives, for each photo, the true 3 × 3 matrix from a map pixel to a photo pixel.
 
-The pictures are in `/data/academy/22-matching/` (read only). They are cut from NAVERA's test map,
-which covers Sousse, Tunisia.
-
-## Step 1 — The data
-
-```bash
-ls -l /data/academy/22-matching
-```
-
-```bash
-python3 -c "import json; t = json.load(open('/data/academy/22-matching/truth.json')); [print(k, v['rotation_deg'], v['scale'], v['centre'], v['view_source']) for k, v in t.items() if k != 'line']"
-```
-
-There are four pairs. `patch_<name>.jpg` is an 800 × 800 piece of the map at zoom 18 (≈ 0.48 m per
-pixel); `view_<name>.jpg` is a 480 × 360 synthetic drone view of a place inside it, turned, scaled,
-blurred, with another brightness and noise. `truth.json` gives the true rotation, scale (patch
-pixels per view pixel) and the patch pixel of the view centre.
-
-| Pair | Content | Difficulty |
+| Lesson | Lab | You write |
 |---|---|---|
-| `city` | Sousse medina, 30°, scale 0.8 | easy |
-| `olives` | olive grove, −60°, scale 1.2 | repetitive texture |
-| `otherdate` | a **2022** image matched against today's map, 120°, scale 1.5 | hard: other shadows, new buildings |
-| `sea` | open water | impossible — must be refused |
-
-## Step 2 — Homogeneous coordinates (TODO 1)
-
-Run the self-test of `geometry.py`. Every TODO prints a line when it works:
-
-```bash
-python3 geometry.py
-```
-
-> [!TASK]
-> **TODO 1a** `apply_homography(H, pts)`: (N, 2) points → (N, 2) points. Add a column of ones
-> (`np.hstack`), multiply by `H.T`, divide the first two columns by the third.
-> **TODO 1b** `reprojection_errors(H, src, dst)`: the (N,) array of ‖H(srcᵢ) − dstᵢ‖.
-
-> [!WARNING]
-> Common error: forgetting the division by W. With h20 = h21 = 0 it does not show (W = 1), so the
-> check uses an H with perspective terms.
-
-## Step 3 — Hartley normalisation (TODO 2)
-
-> [!TASK]
-> **TODO 2** `normalise_points(pts)` returns `(pts_n, T)`: the centroid moved to (0, 0), the mean
-> distance to it equal to √2, and the 3 × 3 matrix T that does the same thing (course, section 4).
-
-```bash
-python3 geometry.py
-```
-
-You should see `centroid [0. 0.], mean distance 1.4142`.
-
-## Step 4 — The DLT (TODO 3)
-
-> [!TASK]
-> **TODO 3a** `build_dlt_matrix(src, dst)`: the 2N × 9 matrix A, two rows per pair, exactly as in
-> the course.
-> **TODO 3b** `dlt_homography(src, dst, normalise=True)`: normalise both sets (when asked), build A,
-> `np.linalg.svd(A)`, take the last row of Vᵀ, reshape to 3 × 3, de-normalise with
-> `np.linalg.inv(T_dst) @ Hn @ T_src`, divide by `H[2, 2]`. Fewer than 4 pairs → `ValueError`.
-
-```bash
-python3 geometry.py
-```
-
-The DLT on the true inliers must give almost exactly `H_true`. Compare with OpenCV's own DLT
-(method `0` = plain least squares, no RANSAC) on noise-free pairs (`noise_px=0.0`, no outliers):
-
-```bash
-python3 -c "import cv2, numpy as np, geometry as g; s, d, H, m = g.synthetic_pairs(outlier_ratio=0.0, noise_px=0.0); np.set_printoptions(precision=5, suppress=True); print('mine\n', g.dlt_homography(s, d)); print('opencv\n', cv2.findHomography(s, d, 0)[0])"
-```
-
-Now see why normalisation matters: 50 sets of 8 noisy pairs (1 px), with the map side moved to
-global tile pixels (+3.55 × 10⁷, like NAVERA's map points), with and without normalisation:
-
-```bash
-python3 -c "import numpy as np, geometry as g; P = [g.synthetic_pairs(n=8, outlier_ratio=0.0, noise_px=1.0, seed=k) for k in range(50)]; grid = np.array([[0, 0], [640, 0], [640, 480], [0, 480], [320, 240]]); [print('normalise =', n, '  median error over 50 trials:', round(float(np.median([g.reprojection_errors(g.dlt_homography(s, d + 3.55e7, normalise=n), grid, g.apply_homography(H, grid) + 3.55e7).mean() for s, d, H, m in P])), 2), 'px') for n in (True, False)]"
-```
-
-Expected: about **1.9 px** normalised, about **39 px** raw (raw is about 20 × worse).
+| (nothing to read first) | Step 0 | a prediction |
+| §1 ratio test | Step 1 | `ratio_test` |
+| §2 similarity | Step 2 | `fit_similarity` |
+| §3 homography, DLT | Step 3 | `dlt_homography` |
+| §4 RANSAC | Steps 4–5 | `ransac_iterations`, `ransac` |
+| §5 gates | Step 6 | `gates` |
+| §6 a learned matcher | Steps 7–8 | `learned_pairs` |
+| §7 a threshold | Step 9 | `ratio_curve` + a DECISION |
+| §8 envelope, policy | Steps 10–11 | a DECISION + `match_photo` |
+| all | Step 12 | the report |
 
 > [!NOTE]
-> The lesson's table (section 4, block *Going further — What experiments.py measures*) says 1.35 px / 25.3 px. Both are right: they are **two different experiments**.
-> This quick test uses 50 different random sets of 8 pairs and measures the error at a grid of
-> **5 points**. The lesson's numbers come from `experiments.py` (Step 11): 200 draws of 8 pairs from
-> one fixed set of 300 pairs, error averaged over a grid of **63 points**; you will find them in
-> `results.json` → `normalisation`. Different samples give different numbers; the conclusion is the
-> same: without normalisation the error is about 20 × larger.
+> **Predict, then run.** Each `PREDICT_…` in `answers.py` is written **before** you run the step. It is never
+> marked right or wrong. The **DECISIONS** of session 2 are different: they are yours to choose, and the check
+> measures them on scenes you never saw.
 
-> [!QUESTION]
-> Look at the columns of A for a point near 3.55 × 10⁷: what is the ratio between the largest and
-> the smallest entries? What does that do to the SVD in 64-bit floating point (≈ 16 significant digits)?
+## Session 1 — Geometer (about 2 h 45)
 
-## Step 5 — How many samples? (TODO 4)
+## Step 0 — Look before you match
+
+No code. Copy the pictures into a folder you can open:
+
+```bash
+python3 run_match.py look
+```
+
+Click the maps and photos in `look/` (⟳ to refresh). Eight pairs: a city, the same city with a tilted camera, olive
+groves (sharp, then shaken by the drone), a harbour, the open sea, a photo taken somewhere else than the drone
+believes (`wrong_place`), and a photo taken lower than the altimeter says (`hills`).
 
 > [!TASK]
-> **TODO 4** `ransac_iterations(p, w, s)` = ⌈log(1 − p) / log(1 − wˢ)⌉ as an `int`. w = 1 → 1;
-> w ≤ 0 or p outside (0, 1) → `ValueError`.
+> **Predict** (`PREDICT_HARDEST`): which pair will be the hardest to match **correctly**, and why? Save (`Ctrl+S`).
+> Then read lesson Part A (§1–§5).
+
+## Step 1 — The ratio test (TODO 1)
+
+Open [navera_lite/match.py](file:./navera_lite/match.py). Each `TODO` function keeps its docstring and ends with
+`return None   # TODO…`: replace that line with your code. The finished functions (`distance_matrix`,
+`similarity_matrix`, `normalise_points`, `fit_model`, `ransac_similarity`) are for you to read and use.
+
+**TODO 1** `ratio_test(dist, ratio=0.8)`: lesson §1. No Python loop is needed over the rows.
+
+<details><summary>🧰 The two smallest values of each row</summary>
+
+```python
+d = np.array([[5.0, 1.0, 3.0], [2.0, 9.0, 4.0]])
+o = np.argsort(d, axis=1)          # [[1, 2, 0], [0, 2, 1]]: the columns of each row, smallest first
+rows = np.arange(len(d))           # [0, 1]
+d[rows, o[:, 0]]                   # [1.0, 2.0]: each row's smallest value
+d[rows, o[:, 1]]                   # [3.0, 4.0]: each row's second smallest
+keep = np.array([True, False])
+rows[keep], o[keep, 0]             # [0] and [1]: the kept rows and their best columns
+np.column_stack([[0], [1]])        # [[0, 1]]: two columns side by side → shape (K, 2)
+```
+</details>
 
 ```bash
-python3 geometry.py
+python3 run_match.py test
 ```
 
-You should get N = 5, 17, 72, 567 for w = 0.9, 0.7, 0.5, 0.3 (s = 4, p = 0.99). Check one by hand
-with the worked example of the course.
+The TODO 1 line must be ✔. Then on the city pair:
 
-## Step 6 — RANSAC (TODO 5)
+```bash
+python3 run_match.py ratio
+```
+
+It pairs every SIFT point of the map with its nearest photo point, counts the right ones (the truth knows), then
+applies your ratio test with 0.6, 0.7, 0.8 and 0.9. Open `out/ratio_city.png`.
 
 > [!TASK]
-> **TODO 5** `ransac_homography(src, dst, threshold=5.0, p=0.999, max_iters=5000, seed=0)` returns
-> `(H, mask)`. Use `rng = np.random.default_rng(seed)` and `rng.choice(n, 4, replace=False)`; skip
-> degenerate samples with the given `_degenerate()`; after each better model, set the number of
-> samples still needed to `ransac_iterations(p, inliers / n, 4)` (adaptive); stop at `max_iters`.
-> Refit on all the inliers at the end and recompute the mask. Fewer than 4 pairs → `(None, mask)`.
+> Write `PRECISION_NONE`, `KEPT_08`, `PRECISION_08` (from the table) and `EXPLAIN_RATIO`: why does comparing with the
+> SECOND-nearest throw out wrong pairs?
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. Sort each row (`np.argsort(dist, axis=1)`), read the best and the second distance of every row, compare
+   `best < ratio * second`, and keep the rows where it is True with their best column.
+2. Every row kept, even the ties? You compared with `<=`, or with the largest distance: the test is strict, against
+   the **second** smallest.
+3. `IndexError` with one column: when `dist.shape[1] < 2`, return `np.zeros((0, 2), dtype=int)` first.
+4. The right rows but the wrong columns: j is the column of the **smallest** distance, `o[:, 0]`.
+</details>
+
+## Step 2 — The similarity (TODO 2)
+
+**TODO 2** `fit_similarity(src, dst)`: lesson §2 — its 🧰 box (a, b instead of s, θ) and the two rows per pair.
+
+<details><summary>🧰 Building a system with two rows per point</summary>
+
+```python
+p = np.array([[1.0, 2.0], [3.0, 4.0]])          # two points (x, y)
+n = len(p)
+A = np.zeros((2 * n, 3))
+A[0::2] = np.column_stack([p[:, 0], np.ones(n), np.zeros(n)])   # rows 0, 2, 4…: [x, 1, 0]
+A[1::2] = np.column_stack([p[:, 1], np.zeros(n), np.ones(n)])   # rows 1, 3, 5…: [y, 0, 1]
+b = np.array([[10.0, 20.0], [30.0, 40.0]]).reshape(-1)          # [10, 20, 30, 40]: x then y of each point
+x, *_ = np.linalg.lstsq(A, b, rcond=None)                        # least squares (mission 01)
+math.hypot(3.0, 4.0), math.degrees(math.atan2(1.0, 1.0))         # 5.0 and 45.0
+```
+</details>
 
 ```bash
-python3 geometry.py
+python3 run_match.py test
 ```
 
-Expected: `RANSAC: 141 inliers, 141 of them true inliers` on 200 pairs with 59 outliers.
+<details><summary>Stuck? Hints, one at a time</summary>
 
-> [!TIP]
-> If your RANSAC is slow, print the number of samples it ran. With 30 % outliers the adaptive N
-> should drop to a few dozen after the first good sample.
+1. Unknowns [a, b, tx, ty]; for each pair the rows [x1, −y1, 1, 0] (= x2) and [y1, x1, 0, 1] (= y2); `lstsq`; then
+   s = hypot(a, b), θ = degrees(atan2(b, a)).
+2. θ = −90 instead of 90 on the docstring example: a sign in your rows; compare them with the model of lesson §2.
+3. θ = 1.5708: radians — `math.degrees`.
+4. The ValueError cases: check `len(src) < 2` and "all the src points are the same" (`np.allclose(src, src[0])`)
+   **before** solving; `raise ValueError("…")`.
+</details>
 
-## Step 7 — Rotation and scale (TODO 6)
+## Step 3 — The homography: your DLT (TODO 3)
+
+**TODO 3** `dlt_homography(src, dst)`: lesson §3. Normalise with the given `normalise_points`, two rows of A per pair,
+the SVD, undo the normalisations, divide by H[2, 2].
+
+<details><summary>🧰 Pairs of points, and the SVD</summary>
+
+```python
+for (x, y), (u, v) in zip([[1, 2], [3, 4]], [[5, 6], [7, 8]]):   # walks the two lists side by side
+    print(x, y, u, v)                                            # 1 2 5 6, then 3 4 7 8
+A = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+U, S, Vt = np.linalg.svd(A)        # S: singular values, largest first; Vt: (3, 3), one unit vector per row
+h = Vt[-1]                         # the unit vector that makes ‖A·h‖ smallest
+np.abs(A @ h).max() < 1e-12        # True: here A·h = 0 exactly (2 equations, 3 unknowns)
+h.reshape(3, 1).shape, np.linalg.inv(np.eye(3))  # reshape a vector; invert a 3 × 3 matrix
+```
+</details>
+
+```bash
+python3 run_match.py test
+```
+
+Then fit both models to the pairs the truth calls right, on the sharp city photo and on the tilted one, and compare
+with OpenCV:
+
+```bash
+python3 run_match.py fit
+```
 
 > [!TASK]
-> **TODO 6** `similarity_params(H)` returns a dict with `rotation_deg`, `scale`, `anisotropy`,
-> `perspective`, `tx`, `ty` — the SVD (polar) reading of section 6 of the course.
+> Write `RESID_SIM_TILT`, `RESID_H_TILT` (the median residuals on city_tilt) and `EXPLAIN_DOF`: why can the similarity
+> not fit the tilted photo, and what does the homography cost?
 
-```bash
-python3 geometry.py
-```
+<details><summary>Stuck? Hints, one at a time</summary>
 
-You should read rotation ≈ 35° and scale ≈ 1.2.
+1. `sn, T1 = normalise_points(src)`, the same for dst (T2); the rows of lesson §3 with the NORMALISED coordinates;
+   `Vt[-1].reshape(3, 3)` is Hn; then `H = np.linalg.inv(T2) @ Hn @ T1`; `return H / H[2, 2]`.
+2. The transposed matrix on the docstring example: `reshape(3, 3)` reads row by row — check the order of your 9
+   columns (h1 h2 h3 for u, h4 h5 h6 for v, h7 h8 h9 for the bottom row).
+3. Exact on the docstring example but the check says "badly scaled": you built A from the raw points, not from `sn`
+   and `dn`, or you forgot to undo T1 and T2.
+4. Fewer than 4 pairs: `raise ValueError(…)` first.
+</details>
 
-## Step 8 — The ratio test on real pictures (TODO 7)
-
-> [!TASK]
-> **TODO 7** in `matching.py`: `ratio_test(knn_pairs, ratio)` keeps `best` when
-> `best.distance < ratio * second.distance`.
-
-See the trade-off on the city pair (one long line — press ▶ Run):
-
-```bash
-python3 -c "import cv2, matching as m; v, p = m.load_pair('city'); _, a = m.features(v); _, b = m.features(p); pairs = cv2.BFMatcher(cv2.NORM_L2).knnMatch(a, b, k=2); print(len(pairs), 'view keypoints'); [print('ratio', r, '->', len(m.ratio_test(pairs, r)), 'matches kept') for r in (0.6, 0.7, 0.8, 0.9, 1.0)]"
-```
-
-## Step 9 — Lay the views onto the map (TODO 8)
+## Step 4 — How many samples? (TODO 4)
 
 > [!TASK]
-> **TODO 8** `match_views(view, patch, ratio=0.8, method="opencv", threshold=5.0)`:
-> 8a the good matches; 8b `src`, `dst` as (N, 2) `float32` arrays (store them in `details`);
-> 8c `"opencv"` → `cv2.findHomography(src.reshape(-1, 1, 2), dst.reshape(-1, 1, 2), cv2.RANSAC, threshold)`,
-> `"mine"` → `geometry.ransac_homography(src, dst, threshold)`, anything else → `ValueError`.
-> Store a **boolean** (N,) mask in `details["mask"]`; return `(H, number of inliers, details)`.
+> **Predict** (`PREDICT_ITERS`): with w = 0.2 and p = 0.99, how many samples does a homography need? A guess, before
+> you write the code.
 
-> [!WARNING]
-> OpenCV returns its mask as an (N, 1) array of `uint8` 0/1. `mask.ravel().astype(bool)` makes it
-> the (N,) boolean array the rest of the code expects. OpenCV also wants `float32` (or `float64`)
-> points — a list of tuples or an `int` array gives an error about the input type.
+**TODO 4** `ransac_iterations(p=0.99, w=0.5, s=2)`: lesson §4's formula, rounded UP, an `int`; w = 1 → 1; w ≤ 0 or
+w > 1 → ValueError.
 
 ```bash
-python3 matching.py
+python3 run_match.py test
 ```
 
-For every pair you get one line for OpenCV and one for your RANSAC: good matches, inliers, time,
-rotation, scale and the centre error against the truth. On the city and the olives both should be
-within 0.1° and 0.5 px; open `overlay_city.png` (the view laid onto the map with H: the streets
-must continue without a seam) and `matches_otherdate.png` (the inlier pairs).
-
-> [!QUESTION]
-> On `olives` your RANSAC finds more inliers than OpenCV (341 against 327). Both refit on their
-> inliers; OpenCV then refines H on the pixel error. Why can a different final H accept or reject
-> a few borderline pairs at a 5 px threshold?
-
-## Step 10 — Trust gates (TODO 9)
+```bash
+python3 run_match.py iters
+```
 
 > [!TASK]
-> **TODO 9** `trust(H, src_inliers, view_shape, expected_scale, expected_rotation_deg=None, ...)`
-> returns `(ok, reason)`. Refuse, in this order: no H; fewer than `min_inliers` (8); rotation further
-> than `rotation_tol_deg` (20°) from the expected one (wrap the difference to −180…180); scale outside
-> ±`scale_tol` (15 %) of the expected one; fewer than 30 inliers **and** `inlier_spread()` below
-> `min_spread` (0.25). The reasons must contain the words `homography`, `inliers`, `rotation`,
-> `scale`, `spread`. Use `geometry.similarity_params(H)`.
+> Write `ITERS_SIM_W02` and `ITERS_H_W02` (the w = 0.2 row).
+
+<details><summary>Stuck? Hints</summary>
+
+1. `math.log(1 - p) / math.log(1 - w ** s)`, then `int(math.ceil(…))`.
+2. 16 instead of 17 on the docstring example: you rounded down (`int()` alone cuts the decimals).
+3. `ZeroDivisionError` or `math domain error` with w = 1: 1 − wˢ = 0 — return 1 before the formula.
+</details>
+
+## Step 5 — RANSAC (TODO 5)
+
+**TODO 5** `ransac(src, dst, kind="similarity", thr_px=6.0, iters=100, rng=None)`: the least guided function. Its
+docstring lists the rules every RANSAC of the course follows. First, **on paper**: what happens once before the loop,
+what happens in each iteration (four things), and what happens after the loop. Then trace by hand the docstring's
+example for two iterations: which samples could give 8 inliers, which could give fewer?
+
+<details><summary>🧰 Random samples and boolean masks</summary>
+
+```python
+rng = np.random.default_rng(1)
+idx = rng.choice(10, 2, replace=False)    # e.g. [4 9]: 2 different indices among 0..9 (rng.choice(n, s, replace=False))
+src = np.arange(20.0).reshape(10, 2)
+src[idx]                                   # the 2 rows of the sample
+err = np.array([0.5, 7.0, 2.0])
+inl = err <= 3.0                           # [True, False, True]: a boolean mask
+inl.sum(), src[:3][inl]                    # 2, and the rows where the mask is True
+best = None
+if best is None or inl.sum() > best.sum(): # remember the best mask so far
+    best = inl
+np.zeros(5, dtype=bool)                    # five False
+```
+</details>
 
 ```bash
-python3 matching.py otherdate
+python3 run_match.py test
 ```
-
-In the demo the expected rotation and scale come from `truth.json`. In NAVERA they come from the IMU
-heading and from the height and the camera's field of view (lesson 18).
-
-## Step 11 — Measure and write the analysis
 
 ```bash
-python3 experiments.py
+python3 run_match.py ransac
 ```
 
-It takes about 30 s and saves `results.json`: the N table, a Monte Carlo test of the N formula,
-the normalisation experiment, OpenCV vs yours on the four pairs (with your trust gates), and a sweep
-of the ratio from 0.6 to 1.0 on `otherdate`.
+It runs your RANSAC on the tilted city pair, first with the number of samples your `ransac_iterations` asks for
+(with the share w of right pairs measured from the truth), then with 500 samples, and OpenCV's for comparison.
+Open `out/ransac_city_tilt.png`.
 
 > [!TASK]
-> Fill in [analysis.md](file:./analysis.md): five sections (**Ratio test**, **Normalisation**,
-> **RANSAC iterations**, **OpenCV vs mine**, **Trust gates**), each at least 40 words of your own,
-> using the numbers of your `results.json`. The section *RANSAC iterations* must quote N for
-> p = 0.99, w = 0.5 with s = 4 and s = 2. Delete the `>` prompt lines.
+> Write `CENTRE_ERR_SIM_TILT` and `CENTRE_ERR_H_TILT` (the **500-sample** rows: how far from the truth the model puts
+> the photo's centre, in metres).
 
-## Step 12 — The same in NAVERA
+<details><summary>Read this after you ran `ransac`: the first two rows</summary>
+With w = 0.91 the formula asks for 3 and 4 samples, and the homography found only 5 inliers, 82 m off. The formula
+promises that one sample is <b>clean</b> (no wrong pair) with probability p; it does not promise that a clean sample is
+a <b>good</b> one. Four right pairs bunched together, each with a pixel of noise, give a homography that is wrong
+everywhere else. That is why real systems use a margin (NAVERA: up to 5 000 iterations) and refit on all the inliers.
+The similarity, with 2 points, is far less sensitive.
+</details>
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. Before the loop: `n_min = MIN_SAMPLE[kind]`, a default rng, `best = None`; if there are fewer than `n_min` pairs,
+   return `(None, np.zeros(len(src), dtype=bool))`.
+2. Each iteration: a sample `idx = rng.choice(len(src), n_min, replace=False)`; `M = fit_model(kind, src[idx],
+   dst[idx])`; `None` → `continue` (it still counted); distances between `warp_points(M, src)` and `dst`; the mask
+   `err <= thr_px`; keep it if it has MORE inliers than the best so far.
+3. After the loop: no best → (None, all False); else `fit_model(kind, src[best], dst[best])` and return it with `best`.
+4. The check says "with iters = 1 … the inliers are …": draw the sample with exactly
+   `rng.choice(len(src), n_min, replace=False)`, once per iteration, before anything else uses the rng.
+5. The inliers are right but the check says M is not the refit: you returned the best SAMPLE's model.
+</details>
+
+## Step 6 — The gates (TODO 6)
+
+> [!TASK]
+> **Predict** (`PREDICT_GATES`): which of the eight pairs will your gates refuse, and with which reason?
+
+**TODO 6** `gates(fit, inlier_pts, shape, predicted_scale, min_inliers=6, scale_tol=0.15, min_spread=0.25)`: lesson §5,
+in the docstring's order. The given `spread` (mission 21) measures the coverage.
 
 ```bash
-grep -n "ratio\|RANSAC\|min_inliers\|scale_tol\|heading_tol\|def inlier_spread\|def fix_sigma_m" ~/navera/day_pkg/day_pkg/local_matcher.py
+python3 run_match.py test
 ```
 
 ```bash
-grep -n "min_spread\|gate_k\|strong_inliers" ~/navera/day_pkg/day_pkg/vision_nav.py
+python3 run_match.py gates
 ```
 
-Open [local_matcher.py](file:navera/day_pkg/day_pkg/local_matcher.py) and read `locate()` from
-`idx, val = self._knn2(dq, dm)` to the end. Find: the ratio 0.8, the similarity model with
-`ransacReprojThreshold=self.ransac_px` (6 px), `maxIters=5000`, `confidence=0.999`, the three
-refusals, and `fix_sigma_m`. Which of your gates live in `vision_nav.py` instead?
+Every pair goes through SIFT, your ratio test, your RANSAC and your gates. The column "prototype" is NAVERA's first
+rule (≥ 12 inliers, no scale check).
 
-## Step 13 — Check your work
+> [!TASK]
+> Write `REASON_WRONG_PLACE`, `REASON_HILLS` (your gates' exact words), `PROTOTYPE_WRONG` (the pair the prototype
+> accepts at another place) and `EXPLAIN_GATES`: what does the scale gate cost (look at `hills`), and why does NAVERA
+> keep it anyway?
 
-Press **✔ Check my work**. It tests every function on hand-made cases (exact matrices, a pair at
-global coordinates, 30 % outliers), runs your matcher on the real pairs, and reads `results.json`
-and `analysis.md`. The whole check takes about 20 s.
+<details><summary>Read this after you ran `gates`: wrong altitude</summary>
+<code>hills</code> is a right match refused: the photo was taken lower than the altimeter says, so its scale is 40 % off.
+NAVERA's report (3 October 2026) measured the same with its SIFT matcher on real aerial frames: with the altitude 40 % wrong (hills), 0 of
+33 frames were accepted, until an altitude-uncertainty window (trying several heights) brought it to 27 of 33. A gate
+that refuses right matches costs availability; one that accepts a wrong place costs the drone.
+</details>
+
+<details><summary>Stuck? Hints</summary>
+
+1. Four `if`s in the docstring's order, each returning `(False, "…")`; at the end `return True, "ok"`.
+2. The scale test: `abs(fit[0] / predicted_scale - 1) > scale_tol`.
+3. The spread: `spread(inlier_pts, shape, grid=(4, 2), min_per_cell=3) < min_spread`.
+4. "fit None (even with few points: the first gate)": test `fit is None` before counting the points.
+</details>
+
+> [!TIP] 🏅 End of session 1 — Geometer
+> Press **✔ Check my work**. When checks 1–7 pass (TODO 1–6 and Steps 0–6; the others are session 2), you earn the
+> **Geometer** badge. If the class session ends here, stop here, and read lesson Part B before session 2.
+
+## Session 2 — Learned matcher (about 2 h 30 to 3 h 30)
+
+## Step 7 — Bring your network
+
+Mission 21 saved your trained network in `~/lessons/21-features/my_desc.pt`. This copies it here, or the course's
+network (`ref_desc.pt`, in this folder) if yours is missing:
+
+```bash
+test -f ../21-features/my_desc.pt && cp ../21-features/my_desc.pt my_desc.pt || cp ref_desc.pt my_desc.pt
+```
+
+```bash
+ls -l my_desc.pt
+```
+
+About 360 kB of numbers: the 88 896 weights of your PatchNet. The runner and the check load it with
+`learned_desc.load_weights` (weights only, never code).
+
+## Step 8 — Your network as a matcher (TODO 7)
+
+Open [navera_lite/learned_match.py](file:./navera_lite/learned_match.py). Read the given functions first: `upright`,
+`keypoints`, `patches_at`, and `sift_pairs` (the same job with SIFT: your model for TODO 7).
+
+**TODO 7** `learned_pairs(map_gray, photo_gray, heading_deg, zoom, model, ratio=0.8, max_dist=None)`: lesson §6.
+`learned_desc.describe(model, patches)` gives the descriptors.
+
+```bash
+python3 run_match.py learned
+```
+
+It runs SIFT and your network on the shaken olive grove, and saves `out/learned_olives_shaken.png` and
+`out/upright_olives_shaken.png` (the photo as your network sees it). Try `python3 run_match.py learned city` too.
+
+> [!TASK]
+> Write `PAIRS_SIFT_SHAKEN` and `PAIRS_LEARNED_SHAKEN` (the "pairs" column).
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. `up, valid, A = upright(photo_gray, heading_deg, zoom)`; `p1 = keypoints(map_gray)`; `p2 = keypoints(up,
+   valid=valid)`; the descriptors of `patches_at(map_gray, p1)` and `patches_at(up, p2)`.
+2. `d = distance_matrix(d1, d2)`; `m = ratio_test(d, ratio)`; with `max_dist`, keep the rows of m where
+   `d[m[:, 0], m[:, 1]] < max_dist`.
+3. Pairs found but almost all wrong in the table? The photo points are still in the upright picture:
+   `warp_points(np.linalg.inv(A), p2[m[:, 1]])`.
+4. Return `(p1[m[:, 0]], …)` as float arrays; with fewer than 2 keypoints on one side, two `np.zeros((0, 2))`.
+</details>
+
+## Step 9 — DECISION: your network's threshold (TODO 8)
+
+**TODO 8** `ratio_curve(best, second, correct, ratios)`: lesson §7, the table that decides.
+
+```bash
+python3 run_match.py test
+```
+
+```bash
+python3 run_match.py curve
+```
+
+On 12 pairs with the truth (other photos than the check's), it prints three tables: SIFT with the ratio test, your
+network with the ratio test, and your network with a distance cut alone (a distance cut is a ratio test against 1:
+`ratio_curve(best, 1, …)`). Open `out/curve.png`.
+
+> [!TASK]
+> **DECISION.** Choose your network's rule: `LEARNED_RATIO` and `LEARNED_MAX_DIST` (`None` for no distance cut, or a
+> number). Write `EXPLAIN_THRESHOLD`: justify it with **your** numbers (precision, right pairs kept) and compare it with
+> SIFT's 0.8. The check applies your rule, with your network, to unseen photos: it must keep a clean set (precision ≥
+> 0.85) without throwing away most of the right pairs (at least half of what a loose 0.95 finds).
+
+<details><summary>Stuck? Hints</summary>
+
+1. ratio_curve: for each t, `kept = best < t * second` (arrays), `right = kept & correct`; append a dict with the two
+   counts as `int` and the precision (`None` when nothing is kept).
+2. Deciding: in the table, where does the precision start to fall fast? What does one more step of the ratio buy in
+   right pairs, and cost in wrong ones? (lesson §7's worked example)
+</details>
+
+## Step 10 — DECISION: where can your network be trusted?
+
+Your network was trained on photo patches turned by at most ±20° and scaled by 0.8–1.25, with blur and noise.
+
+> [!TASK]
+> **Predict** (`PREDICT_ENVELOPE`): up to what error of the heading prior will it still match? Will it beat SIFT
+> anywhere?
+
+```bash
+python3 run_match.py envelope
+```
+
+About a minute. Three tables, each cell "inliers verdict": A, the heading prior wrong by 0–90°; B, the zoom prior wrong
+by ×1.0–1.45 (a wrong altitude); C, blur and shake. `ok` means accepted by your gates AND right.
+
+> [!TASK]
+> **DECISION.** `HEADING_LIMIT_DEG`: your matcher will use the network only when the heading prior's σ is at most this.
+> Write `EXPLAIN_ENVELOPE`: where does your network beat SIFT, where does it fail, and what in its training explains
+> both?
+
+## Step 11 — Your matcher's policy (TODO 9)
+
+**TODO 9** `match_photo(map_gray, photo_gray, prior, model, cfg)`: lesson §8. Your policy: which matcher first, when
+the other, and the gates for each attempt. `cfg` holds your decisions (the runner and the check build it from
+`answers.py`). The docstring says what to return.
+
+```bash
+python3 run_match.py mission
+```
+
+Ten scenes: sharp and shaken, heading known or not, the sea, another place, a wrong altitude. Each line: your answer,
+the method, the gates' reason, and the verdict from the truth: **right**, **refused** or **WRONG**.
+
+> [!TASK]
+> `mission` shows no WRONG and you understand every refusal. Write `EXPLAIN_POLICY`. The check runs your policy on 13
+> unseen scenes: zero wrong positions, at least 7 right.
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. A list of methods to try: `["sift"]`, plus `"learned"` when `prior["heading_deg"] is not None` and
+   `prior["heading_sigma_deg"] <= cfg["heading_limit_deg"]` (or the other order: your decision — measure both).
+2. For each: the pairs (`sift_pairs(map_gray, photo_gray, SIFT_RATIO)` or your `learned_pairs(…, cfg["learned_ratio"],
+   cfg["learned_max_dist"])`), then `fit, inl = ransac_similarity(src, dst, RANSAC_PX, RANSAC_ITERS,
+   np.random.default_rng(0))`, then `gates(fit, dst[inl], photo_gray.shape, prior["zoom"])`.
+3. Accepted → return the dict at once; otherwise remember it and try the next; after the loop, return the last one with
+   `"ok": False` and `"fit": None`.
+4. A WRONG line: some attempt was accepted without your gates, or with the wrong `predicted_scale` (it is the prior's
+   zoom).
+</details>
+
+## Step 12 — The report
+
+Write [report.md](file:./report.md) (200–500 words, your own words, keep the four headings): pairs and models, RANSAC
+and the gates, your network as a matcher, your policy. Quote your numbers.
+
+> [!TASK]
+> report.md has the four headings, 200–500 words, and quotes your `KEPT_08`, `RESID_H_TILT`, `LEARNED_RATIO` and
+> `HEADING_LIMIT_DEG`.
+
+## Step 13 — Check, then look back
+
+Press **✔ Check my work** (about 2 minutes: it runs your matcher with your network on many unseen photos). It tests
+your functions on unseen numbers, measures your threshold and your policy on photos you never saw, and loads your
+`my_desc.pt` safely (numbers only). When every check passes, you earn the **Matchmaker** badge. Then look back,
+without the lesson:
+
+1. Explain to a colleague, in three sentences, why NAVERA's prototype accepted a position 1 097 m off, and what fixed it.
+2. Which of your predictions was the most wrong? What did you assume?
+3. Your network beat SIFT on shaken olive groves. What would you need to measure before flying it instead of SIFT on a
+   real drone?
+
+Write your answers in `LOOK_BACK` in `answers.py` if you want your teacher to read them (not graded).
 
 ## Going further (optional)
 
-- **Similarity RANSAC.** Write `ransac_similarity(src, dst)`: a similarity from 2 pairs has a
-  closed form (treat points as complex numbers: z' = a·z + b, with a = (u₁ − u₂)/(z₁ − z₂)). Compare
-  the number of samples and the inliers with your homography RANSAC on `otherdate`, and with
-  `cv2.estimateAffinePartial2D`.
-- **Better RANSAC.** Try `cv2.findHomography(src, dst, cv2.USAC_MAGSAC, 5.0)` on `otherdate` and
-  `olives`. MAGSAC++ does not need a hard threshold. Does it change the inliers or the centre error?
-- **Threshold study.** Run your RANSAC on `synthetic_pairs(noise_px=2.0)` with thresholds 1, 2, 5, 10,
-  20 px. Plot (matplotlib, save a PNG) the share of true inliers found and the H error. Where is
-  2.45 σ on your plot?
-- **Your own pair.** `navmap.py` (lesson 7's helpers) is here: cut a patch with
-  `navmap.map_patch(lat, lon, 18, 800, 800)`, make a view with `cv2.getRotationMatrix2D` +
-  `cv2.warpAffine`, and test your matcher on farms (35.9389, 10.4590) or hills (35.80, 10.3711).
+- **Learned first?** Swap the order of your policy (network first when the heading is good). Count right, refused and
+  WRONG on `mission`, and the inliers of the accepted matches. Which order would you fly, and why?
+- **The homography in RANSAC.** Run `ransac` on `city_tilt` with your homography and the number of samples of the w = 0.2 row of `iters`: how long
+  does it take compared with OpenCV's `findHomography`? Where does the time go?
+- **A rotation-proof network.** In mission 21's `train`, turn the photo patches by a random multiple of 90°
+  (`torch.rot90`) and train again. Copy the new weights here and run `envelope`: did table A change? What did it cost in
+  table C?
+- **Mutual matching.** Keep a pair only if j's nearest map point is also i (a cross-check). Does it fix the many-to-one
+  pairs of `wrong_place` before the gates do?

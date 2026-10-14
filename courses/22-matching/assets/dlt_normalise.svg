@@ -3,16 +3,16 @@
   <text x="20" y="26" fill="#1d2733" font-weight="bold">Hartley normalisation before the DLT</text>
   <!-- left: raw -->
   <rect x="20" y="44" width="280" height="200" rx="8" fill="#ffffff" stroke="#9cc7d6"/>
-  <text x="34" y="66" fill="#1d2733" font-weight="bold">Raw map points (global zoom-18 px)</text>
+  <text x="34" y="66" fill="#1d2733" font-weight="bold">Raw points (pixels of a big picture)</text>
   <line x1="40" y1="225" x2="280" y2="225" stroke="#1d2733"/>
   <line x1="40" y1="225" x2="40" y2="80" stroke="#1d2733"/>
-  <text x="46" y="94" fill="#5b6b7a">origin far away: x ≈ 35 536 853</text>
+  <text x="46" y="94" fill="#5b6b7a">origin (0, 0) far away</text>
   <g fill="#0b6e8a"><circle cx="232" cy="118" r="3"/><circle cx="244" cy="126" r="3"/><circle cx="238" cy="134" r="3"/><circle cx="252" cy="116" r="3"/><circle cx="248" cy="140" r="3"/><circle cx="258" cy="130" r="3"/></g>
-  <text x="52" y="140" fill="#1d2733">a tiny cloud,</text>
-  <text x="52" y="158" fill="#1d2733">800 px wide,</text>
-  <text x="52" y="176" fill="#1d2733">at 3.55 × 10⁷</text>
-  <text x="34" y="268" fill="#d64545">columns of A: from 1 to 2 × 10¹⁰</text>
-  <text x="34" y="288" fill="#d64545">cond(A) ≈ 8.5 × 10¹⁷ → error 25 px</text>
+  <text x="52" y="140" fill="#1d2733">20 points,</text>
+  <text x="52" y="158" fill="#1d2733">600 px wide,</text>
+  <text x="52" y="176" fill="#1d2733">near (1 300, 1 300)</text>
+  <text x="34" y="268" fill="#d64545">entries of A: from 1 to 2.5 × 10⁶</text>
+  <text x="34" y="288" fill="#d64545">σ1/σ8 ≈ 3.7 × 10⁷ → mean error 9.9 px</text>
   <!-- arrow -->
   <path d="M308 144 H352" stroke="#1d2733" stroke-width="2"/><path d="M352 138 L364 144 L352 150 Z" fill="#1d2733"/>
   <text x="312" y="132" fill="#1d2733" font-weight="bold">T</text>
@@ -26,6 +26,6 @@
   <circle cx="497" cy="150" r="4" fill="#d64545"/>
   <text x="508" y="214" fill="#a8680d">mean distance √2</text>
   <text x="386" y="268" fill="#0b6e8a">centroid at (0, 0), all entries ≈ 1</text>
-  <text x="386" y="288" fill="#0b6e8a">cond(A) ≈ 571 → error 1.3 px</text>
-  <text x="620" y="312" fill="#1d2733" text-anchor="end">H = inv(T_dst) · Hn · T_src   (8 noisy pairs, 1 px noise; numbers from the lab)</text>
+  <text x="386" y="288" fill="#0b6e8a">σ1/σ8 ≈ 3.6 → mean error 0.9 px</text>
+  <text x="620" y="312" fill="#1d2733" text-anchor="end">H = inv(T_dst) · Hn · T_src   (20 pairs, 1 px noise)</text>
 </svg>

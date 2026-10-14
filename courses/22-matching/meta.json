@@ -1,3 +1,3 @@
-{"number": "22", "title": "Matching and geometry: ratio test, DLT and RANSAC", "module": 5, "duration": "5 h 15",
- "summary": "Pair SIFT descriptors with the ratio test, fit a homography with your own normalised DLT and RANSAC, compare with OpenCV, read rotation and scale out of H, and apply NAVERA's trust gates.",
- "resources": [], "open": ["geometry.py", "matching.py", "analysis.md"], "check_timeout_s": 180}
+{"number": "22", "title": "Matching and geometry: ratio test, DLT and RANSAC", "module": 5, "duration": "7 h 30",
+ "summary": "Pair descriptors with the ratio test, fit a similarity and your own normalised DLT homography, find them among wrong pairs with RANSAC and write NAVERA's trust gates — then match with the neural network you trained in mission 21: decide its threshold from measurements, measure where it beats SIFT and where it fails, and write the matcher's policy.",
+ "resources": [], "open": ["navera_lite/match.py", "navera_lite/learned_match.py", "answers.py"], "check_timeout_s": 300}

@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 330" font-family="sans-serif" font-size="13">
+  <rect width="680" height="330" fill="#f7fafc"/>
+  <text x="20" y="26" fill="#1d2733" font-weight="bold">Matching with your network: prepare the photo with the prior, match, come back</text>
+  <!-- photo -->
+  <text x="30" y="56" fill="#1d2733" font-weight="bold">1. the photo</text>
+  <g transform="translate(95 150) rotate(-35)">
+    <rect x="-64" y="-48" width="128" height="96" fill="#e8dcc0" stroke="#0b6e8a" stroke-width="2"/>
+    <path d="M-64 -10 L64 18" stroke="#7a6a50" stroke-width="5"/><rect x="-20" y="-35" width="22" height="16" fill="#ffffff" stroke="#555"/>
+    <path d="M0 -48 L0 -62" stroke="#d64545" stroke-width="2"/><text x="4" y="-62" fill="#d64545" font-size="11">top</text>
+  </g>
+  <text x="30" y="240" fill="#5b6b7a">top points to heading h</text>
+  <text x="30" y="258" fill="#5b6b7a">(35° here), 1.6× sharper</text>
+  <!-- arrow A -->
+  <path d="M178 150 H232" stroke="#1d2733" stroke-width="2"/><path d="M230 144 L242 150 L230 156 Z" fill="#1d2733"/>
+  <text x="182" y="138" fill="#1d2733" font-weight="bold">A</text>
+  <text x="176" y="206" fill="#5b6b7a" font-size="11">turn by h,</text>
+  <text x="176" y="220" fill="#5b6b7a" font-size="11">÷ zoom</text>
+  <!-- upright -->
+  <text x="250" y="56" fill="#1d2733" font-weight="bold">2. upright (north up)</text>
+  <rect x="250" y="80" width="140" height="140" fill="#ffffff" stroke="#9cc7d6"/>
+  <g transform="translate(320 150)"><rect x="-40" y="-30" width="80" height="60" fill="#e8dcc0" stroke="#0b6e8a" stroke-width="2"/>
+    <path d="M-40 -6 L40 11" stroke="#7a6a50" stroke-width="4"/><rect x="-12" y="-22" width="14" height="10" fill="#ffffff" stroke="#555"/></g>
+  <text x="250" y="240" fill="#5b6b7a">the map's scale and turn:</text>
+  <text x="250" y="258" fill="#5b6b7a">what the network knows</text>
+  <!-- map -->
+  <text x="470" y="56" fill="#1d2733" font-weight="bold">3. the map patch</text>
+  <rect x="470" y="80" width="140" height="140" fill="#e8dcc0" stroke="#0b6e8a" stroke-width="2"/>
+  <path d="M470 140 L610 172" stroke="#7a6a50" stroke-width="4"/><rect x="528" y="118" width="14" height="10" fill="#ffffff" stroke="#555"/>
+  <path d="M398 150 H462" stroke="#2e8b57" stroke-width="2" stroke-dasharray="5 4"/>
+  <text x="402" y="140" fill="#2e8b57" font-size="12">patches,</text><text x="402" y="172" fill="#2e8b57" font-size="12">descriptors,</text>
+  <text x="402" y="186" fill="#2e8b57" font-size="12">ratio test</text>
+  <!-- back -->
+  <path d="M320 272 V300 H95 V272" stroke="#d64545" stroke-width="2" fill="none"/><path d="M89 274 L95 262 L101 274 Z" fill="#d64545"/>
+  <text x="130" y="292" fill="#d64545">4. bring the photo-side points back: p_photo = A⁻¹ · p_upright, then RANSAC</text>
+  <text x="470" y="250" fill="#5b6b7a" font-size="12">map data © OpenStreetMap</text><text x="470" y="264" fill="#5b6b7a" font-size="12">contributors (drawing)</text>
+</svg>

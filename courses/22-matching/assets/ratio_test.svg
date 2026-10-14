@@ -36,5 +36,5 @@
   <text x="412" y="168" fill="#1d2733">tell which one is right:</text>
   <text x="412" y="186" fill="#1d2733">better to drop the match.</text>
   <text x="412" y="222" fill="#0b6e8a">NAVERA: ratio = 0.8</text>
-  <text x="412" y="240" fill="#0b6e8a">(local_matcher.py)</text>
+  <text x="412" y="240" fill="#0b6e8a">(Lowe, 2004)</text>
 </svg>

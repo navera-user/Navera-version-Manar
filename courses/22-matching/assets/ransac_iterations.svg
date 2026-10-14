@@ -38,6 +38,6 @@
 <line x1="465" y1="118" x2="495" y2="118" stroke="#f2a33a" stroke-width="3"/><text x="502" y="122" fill="#1d2733">s = 4</text>
 <text x="502" y="138" fill="#5b6b7a">homography</text>
 <line x1="465" y1="166" x2="495" y2="166" stroke="#d64545" stroke-width="3"/><text x="502" y="170" fill="#1d2733">s = 8</text>
-<text x="502" y="186" fill="#5b6b7a">fundamental matrix</text>
+<text x="502" y="186" fill="#5b6b7a">an 8-point model</text>
 <text x="465" y="225" fill="#1d2733">Each extra point per</text><text x="465" y="243" fill="#1d2733">sample multiplies N</text><text x="465" y="261" fill="#1d2733">by about 1/w.</text>
 </svg>
