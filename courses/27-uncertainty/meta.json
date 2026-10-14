@@ -1,3 +1,3 @@
-{"number": "27", "title": "How sure are we? Covariance, gating and fusion", "module": 6, "duration": "4 h",
- "summary": "Random variables and covariance matrices, error ellipses by eigen-decomposition, J P Jᵀ propagation, Mahalanobis distance and the chi-square gate, and inverse-variance fusion of two estimates.",
- "resources": [], "open": ["uncertainty.py", "kalman.py"], "check_timeout_s": 90}
+{"number": "27", "title": "How sure are we? Covariance, gating and fusion", "module": 6, "duration": "5 h 30",
+ "summary": "Turn a cloud of fixes into a covariance and an error ellipse, learn the χ² law by simulation, carry a covariance through a function with J P Jᵀ, judge and attack a χ² gate after a GPS outage, fuse GPS with day vision by their information — and measure when fusion hurts. You write NAVERA Lite's uncertainty part on top of mission 12's position contract.",
+ "resources": [], "open": ["navera_lite/uncertainty.py", "answers.py"], "check_timeout_s": 180}

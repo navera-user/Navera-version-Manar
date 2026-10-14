@@ -1,39 +1,26 @@
-# Lab 27 — report
+# Memo — what NAVERA Lite's σ means, and what we do with it
 
-## 1. The error ellipse
+<!-- 150 to 350 words, your own words. Keep the three headings. Quote YOUR numbers with their units. -->
 
-The sample covariance of the 400 fixes in Sousse harbour gives a 1-sigma ellipse with a semi-major axis
-a = 4.17 m and a semi-minor axis b = 1.52 m. The major axis points 29.8 degrees north of east. The
-share of fixes inside the 1-sigma ellipse is 39.75 %, very close to the theory for a 2-D Gaussian
-(39.3 %), and 95.5 % fall inside the 95 % ellipse. A circle describes this receiver badly because
-the error is almost three times larger along one direction than across it: a circle large enough
-for the long axis is far too pessimistic across it, and a smaller circle misses fixes along it.
+## What our σ means
 
-## 2. Fusion and gating
+Our position comes with a covariance in m², east and north. It is an ellipse, not a circle: on our harbour
+receiver it was 3.36 m by 1.53 m, tilted −57°. One sigma on a map is a weak promise: only 39 % of honest fixes
+fall inside the 1-sigma ellipse (38.5 % measured), 95 % inside 2.45 sigma. Our judge prints one σ, the largest
+diagonal term, which can be up to √2 shorter than the long axis: in the street canyon it said 22.8 m (FIX) while
+the long axis was 29.3 m, for 64 seconds of the drive.
 
-The good vision fix has d² = 0.64, far below 9.21, so the gate accepts it and the fused ellipse
-shrinks to 3.70 m by 1.50 m. The bad vision fix has d² = 27.35, so the gate refuses it and the GPS
-estimate is kept. On the coastal track the RMSE with the gate is 4.48 m and the RMSE without the gate
-is 11.31 m. The gate caught 6 of 6 outliers and refused 3 good fixes. With a 99 % gate we expect
-about 1 % false alarms, so about 3 of 321 fixes: the result matches the theory. The price of fewer
-false alarms would be a wider gate that lets more outliers in.
+## When we refuse a position
 
-## 3. Consistency (NEES)
+We compare each position with what we expected, in sigmas: d² with S = our predicted covariance plus the
+position's own. Above 9.21 (99 %) it is refused. This refuses 1 % of honest positions by design, and a
+spoofer can still hide inside the ellipse, up to 182 m along our track after a 40 s outage but only 76 m
+across. If our own covariance is too small we refuse the truth and stay locked out, so it must grow honestly
+when nothing is measured.
 
-The mean NEES of the gated filter is 1.93, inside the 95 % band 1.80 to 2.21 for 361 steps, so the
-filter is consistent: its covariance describes its real error. Without the gate the mean NEES is
-12.31 because outliers pull the state while the covariance stays small. With q too small (0.003 or
-0.03) the filter believes the drone flies straight, its covariance is too small, the NEES explodes
-(536 and 55) and after the 40 s gap the gate refuses every true fix: the filter is lost for good.
-With q too large (3 or 30) the NEES falls below 2 (pessimistic) and the RMSE grows a little
-(4.91 m and 5.91 m) because the filter follows the noise.
+## When we fuse, and when we must not
 
-## 4. NAVERA
-
-My 1-D filter gives the same heights as NAVERA's VisionNavigator height filter: the largest
-difference is about 3e-14 m, so it is the same filter. The raw heights have an RMSE of 2.94 m and the
-filter 1.65 m. NAVERA's vision gate with 3 x hypot(sigma_pred, sigma_fix) is a chi-square test with
-threshold 9 for 2 dof when the error is round: its probability is 98.89 %, close to our 99 % gate.
-For the harbour covariance, _stated_sigma() reads sqrt(13.67) = 3.70 m, while the true semi-major axis
-is a = 4.17 m. For a tilted ellipse the largest diagonal term underestimates the worst direction, so
-the stated sigma is slightly optimistic; the eigenvalue would be the cautious choice.
+We fuse GPS and vision only after the gate. On a 400 s drive, fusing every pair gave an RMS of 33.3 m, worse
+than GPS alone (19.0 m), because 24 wrong matches pulled it away; gate then fuse gave 12.1 m with a coverage of
+93 %, close to the honest 95 %. When vision stated 5 m instead of 15 m the coverage fell to 75.5 % and the gate
+refused 159 good fixes. So we fuse only honest, independent and gated sources.

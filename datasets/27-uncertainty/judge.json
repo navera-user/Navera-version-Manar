@@ -1,0 +1,9 @@
+{
+ "story": "GPS jammed for 40 s; the drone flew on visual odometry. Prediction at (0, 0) m. Each candidate is ONE fix in a separate situation, in metres east and north of the prediction.",
+ "track_bearing_deg": 120.0,
+ "P_pred": [[2856.25, -1288.21], [-1288.21, 1368.75]],
+ "P_pred_never_grown": [[25.0, 0.0], [0.0, 25.0]],
+ "gps_sigma_m": 3.0,
+ "circle_rule_m": 160.0,
+ "candidates": {"A": [129.9, -75.0], "B": [75.0, 129.9], "C": [-76.6, 67.3], "D": [346.4, -200.0], "E": [52.0, 60.0], "F": [-100.4, 6.0]}
+}

@@ -1,461 +1,458 @@
-<!-- SPLIT PENDING: rebuild in its batch -->
 # How sure are we? Covariance, gating and fusion
 
-> [!NOTE] In short
-> - When GPS comes back after a gap, NAVERA must decide if a fix is plausible, so it needs to know
->   how wrong each position may be.
-> - This "how wrong" is the **covariance**: you draw it as an ellipse and propagate it with J P
->   Jᵀ.
-> - The **chi-square gate** tests if a measurement is plausible, and inverse-variance fusion
->   combines two estimates.
-> - A **Kalman filter** carries the covariance from second to second, and the **NEES** test checks
->   if the filter is honest.
-> - In the lab you build a 2-D Kalman filter with a chi-square gate, and prove that your 1-D
->   filter is NAVERA's real height filter.
+![Two true stories from NAVERA's simulator: vision told the autopilot ±300 m while it was off by a median 351 m, and a ±55 km star fix reached the autopilot, whose position jumped 125 km](assets/cold_open.svg)
 
-A survey drone leaves Monastir harbour and flies west-north-west along the coast towards Sousse. Every second its GPS says
-*"you are here, ±5 m"*. Then, near the port, a jammer silences the GPS for 40 seconds. When the
-fixes come back, the first one is 150 m away from where the drone thinks it is. Is the drone lost,
-or is this fix wrong? To answer, the navigation software needs more than positions: it needs to
-know **how wrong each position may be**, in every direction, and how that uncertainty **grows**
-when no measurement arrives.
+> [!NOTE] Mission brief
+> **1 October 2026, NAVERA's mission simulator, a desert route in southern Tunisia.** GPS is jammed. Day
+> vision matches the camera's frames against the map, but over uniform terrain its median error is **351 m** (p90:
+> **853 m**), and it tells the autopilot **±300 m**. After **45 s** the autopilot's navigation filter gives up
+> and the drone lands. Told a more honest **±500 m**, the same flight lasts **91 s**. A day earlier, in the
+> QA campaign of **30 September**, a star fix good to about **±55 km** reached the autopilot: the autopilot's
+> own position jumped **125 km**. (NAVERA's validation report and backlog; both bugs are fixed.)
+>
+> The receiver of a σ does arithmetic with it: it **weighs** positions by it and **refuses** positions that
+> disagree too much with what it expects. A wrong σ is not a cosmetic error. Today you learn that arithmetic.
+> **Session 1 — Ellipse maker:** you turn a cloud of fixes into a matrix, the matrix into an ellipse, and
+> you discover by simulation how many honest errors an ellipse holds. **Session 2 — Gatekeeper:** you judge
+> six fixes after a GPS outage, attack your own gate, fuse GPS with vision on a city drive, and publish the
+> result in the contract of mission 12. Badges: **Ellipse maker**, then **Gatekeeper**.
+>
+> **Start now:** open the 🛠️ **Lab** tab, do **Step 0** (two minutes, no code), then come back for §1.
 
-That "how wrong" is the **covariance**. In this lesson you will treat it as a mathematical object:
-you will draw it as an ellipse with an eigen-decomposition, propagate it through a function, use it
-to test whether a measurement is plausible (the **chi-square gate**), combine two estimates with it
-(**inverse-variance fusion**), and run a **Kalman filter** that carries it from second to second.
-Finally you will check whether a filter is *honest* about its own error (the **NEES test**). All of
-this exists in NAVERA's code, and you will compare your filter with NAVERA's real one.
+**Objectives.** After this mission you can:
 
-## 1. Error, uncertainty and random variables
+1. compute a **covariance** from a cloud of fixes and draw its **error ellipse** (axes, angle), by hand and
+   in code, and say what a single σ misses;
+2. measure a surprise in sigmas (**Mahalanobis d²**) and say, from the **χ²** law you simulate, how many
+   honest errors fall inside an ellipse;
+3. carry a covariance through a function with **J P Jᵀ**, and check it — and its limits — by Monte Carlo;
+4. **gate** a fix with a χ² threshold and **fuse** two estimates by their information, and name what each
+   costs (refused truths, accepted lies, over-confidence);
+5. **publish** the result honestly in the position contract of mission 12.
 
-- The **error** is `estimate − truth`. You can only compute it when the truth is known: in a test,
-  in a simulation, or with a much better reference.
-- The **uncertainty** is what the estimator *states* about its error, before anyone knows the truth.
+**You need:** mission 12 (the covariance a, b, c, the judge's σ), 24 (the 1-D variance blend), 11 (the
+noise of a speed from two fixes), 01 (a Jacobian). ⏱ Reading: about 70 minutes with the ✏️ checks. Lab:
+3 h to 4 h 30 in two sessions.
 
-In flight nobody knows the truth, so the autopilot must trust the stated uncertainty. A stated
-uncertainty that is too small is dangerous: the autopilot believes it.
+**What you already know** — answer without looking; if you miss two, reread the mission named.
 
-We model the error as a **random variable** `e`: a quantity whose value changes from one trial to
-the next, described by a probability distribution. For a 2-D position error `e = (e_east, e_north)`:
+<details><summary>1. Mission 12: is a = 25, b = 30, c = 16 a covariance? And what σ does the judge read from a = 400, b = 0, c = 144?</summary>
+No: a·c − b² = 400 − 900 &lt; 0 (ρ = 1.5). The judge reads √max(a, c) = √400 = 20 m.
+</details>
+
+<details><summary>2. Mission 24: blend 20 m (variance 4 m²) with 26 m (variance 12 m²). Result and its variance?</summary>
+(20 × 12 + 26 × 4) / (4 + 12) = 21.5 m, variance 4 × 12 / 16 = 3 m²: closer to the better estimate, and
+better than both.
+</details>
+
+<details><summary>3. Mission 11: two fixes 1 s apart, each off by σ = 3 m per axis, independently. σ of the speed per axis?</summary>
+√2 × 3 / 1 = 4.24 m/s: the variances of the two errors add (9 + 9 = 18).
+</details>
+
+<details><summary>Words of this lesson</summary>
+
+| Word | Plain meaning | Français |
+|---|---|---|
+| **covariance matrix** P | the 2 × 2 table [[a, b], [b, c]] of variances and covariance of an error (m²) | matrice de covariance |
+| **eigenvector, eigenvalue** | a direction a matrix only stretches, and by how much | vecteur propre, valeur propre |
+| **error ellipse** | the curve "one sigma away" in every direction; k-sigma: k times larger | ellipse d'erreur |
+| **Mahalanobis distance** d² | a squared distance counted in sigmas of a covariance | distance de Mahalanobis |
+| **χ² (chi-square) law** | the law of d² for honest Gaussian errors | loi du khi-deux |
+| **degrees of freedom** | how many independent error components are added in d² (2 on a map) | degrés de liberté |
+| **Monte Carlo** | checking a formula by simulating thousands of random cases | Monte-Carlo |
+| **innovation** | the surprise: measured minus predicted | innovation |
+| **gate** | accept a measurement only if its d² is below a threshold | porte (test de validation) |
+| **information** | the inverse of a covariance, P⁻¹: it adds up when estimates are fused | information |
+| **coverage** | the share of cases where the truth lies inside the stated ellipse | taux de couverture |
+</details>
+
+## 1. One cloud, one matrix
+
+**Why.** A receiver says "±3 m". On a map an error has two components, east and north, and they can be
+linked: a wall that reflects signals stretches the errors along one line. One number cannot say that.
+
+**The idea.** Mission 12 gave you the language: a = σE², c = σN² and the covariance b, in one symmetric
+matrix P = [[a, b], [b, c]]. From N recorded errors **eᵢ** = (eE, eN) we **estimate** it: subtract the mean
+error **ē**, multiply each deviation by itself as a column times a row (an **outer product**, a 2 × 2
+matrix), add them up and divide by N − 1:
 
 ```
-mean        μ = E[e]                         (E[·] = the expected value, the "long-run average")
-covariance  P = E[(e − μ)(e − μ)ᵀ]  =  [ σe²    ρ σe σn ]
-                                        [ ρ σe σn   σn²  ]
+P̂ = 1/(N − 1) · Σᵢ (eᵢ − ē)(eᵢ − ē)ᵀ          a = mean of dE²,  b = mean of dE·dN,  c = mean of dN²  (÷ N − 1)
 ```
 
-- The diagonal holds the **variances** `σe²`, `σn²` (m²). Their square roots are the standard
-  deviations σ.
-- The off-diagonal term is the **covariance** of east and north. `ρ` (the **correlation
-  coefficient**, between −1 and 1) says how much the two errors move together. ρ = 0: independent.
-- P is always **symmetric** and **positive semi-definite** (PSD): `vᵀ P v ≥ 0` for every vector v,
-  because `vᵀ P v` is the variance of the error in direction v, and a variance is never negative.
+Why N − 1 and not N? The mean ē was computed from the same points, so the deviations are a little smaller
+than the true errors; dividing by N − 1 corrects that exactly (numpy's `np.cov` does the same). With N = 1
+there is no spread to see at all: N − 1 = 0, and the formula refuses to answer.
 
-From N samples we estimate P with the **sample covariance**:
+**Worked example.** Four errors (m): (2, 1), (−1, −2), (3, 2), (−4, −1). Their mean is (0, 0).
+Sum of dE² = 4 + 1 + 9 + 16 = 30; sum of dE·dN = 2 + 2 + 6 + 4 = 14; sum of dN² = 1 + 4 + 4 + 1 = 10.
+Divided by N − 1 = 3: **P̂ = [[10, 4.67], [4.67, 3.33]]** m², ρ = 4.67 / √(10 × 3.33) = **0.81**: when the
+error is east it is mostly north too.
 
-```
-x̄ = (1/N) Σ xᵢ            P̂ = 1/(N − 1) · Σ (xᵢ − x̄)(xᵢ − x̄)ᵀ
-```
+> [!QUESTION] ✏️ Check
+> Three errors: (1, 0), (−1, 0), (0, 3). Compute P̂. Which axis is worse, and are the errors correlated?
 
-Dividing by `N − 1` instead of N makes the estimate **unbiased** (one degree of freedom was used to
-compute x̄). `numpy.cov` does exactly this.
-
-Most navigation errors are modelled as **Gaussian** (normal): many small independent causes add up
-(receiver noise, atmosphere, vibration). A Gaussian is fully described by μ and P. That is why
-"how sure are we?" fits in a 2 × 2 (or 3 × 3) matrix.
+<details><summary>Answer</summary>
+Mean (0, 1). Deviations (1, −1), (−1, −1), (0, 2). Sums: dE² = 2, dE·dN = −1 + 1 + 0 = 0, dN² = 1 + 1 + 4 = 6.
+÷ 2: P̂ = [[1, 0], [0, 3]] m². North is worse (σN = 1.73 m against 1 m); b = 0, no correlation. Forgetting to
+subtract the mean gives dN² = 9 and a wrong c = 4.5.
+</details>
 
 ## 2. The covariance is an ellipse
 
-A symmetric matrix can always be **eigen-decomposed**:
+**Why.** The judge of mission 12 reads one σ = √max(a, c). Is that the worst direction?
+
+**The idea.** Mission 12 gave the variance along any unit direction u = (uE, uN):
+`a·uE² + 2b·uE·uN + c·uN²`. Turn u all around: the variance is largest along one direction and smallest along
+the perpendicular one. These two directions are the **eigenvectors** of P, and the two extreme variances are
+its **eigenvalues** λ₁ ≥ λ₂. The points one sigma away in every direction form an **ellipse** with semi-axes
+√λ₁ and √λ₂; the **k-sigma ellipse** is k times larger.
+
+![The covariance ellipse: semi-axes √λ₁ and √λ₂ along the eigenvectors, the long axis at θ from east; the judge's √max(a, c) is shorter than the long axis](assets/ellipse.svg)
+
+> [!TIP] 🧰 Maths toolbox — the eigenvalues of a symmetric 2 × 2 matrix, by hand
+> For P = [[a, b], [b, c]]:
+> ```
+> λ₁, λ₂ = (a + c)/2 ± √( ((a − c)/2)² + b² )           θ = ½ · atan2(2b, a − c)
+> ```
+> θ is the angle of the long axis, from **east towards north** (like an ENU yaw, CONVENTIONS §3), between
+> −90° and 90°: an axis has no arrow (θ and θ + 180° are the same line). If b = 0 and a = c, the ellipse is a
+> circle and θ = 0 by convention. Check: λ₁ + λ₂ = a + c and λ₁·λ₂ = a·c − b² (the **determinant** of P):
+> that is why mission 12's rule a·c − b² ≥ 0 means "no negative variance".
+
+**Worked example.** P = [[12, 5], [5, 6]] m². (a + c)/2 = 9; (a − c)/2 = 3; √(3² + 5²) = √34 = 5.83. So
+λ₁ = 14.83, λ₂ = 3.17 m²: the ellipse has **a = 3.85 m** and **b = 1.78 m**. Its angle:
+θ = ½ · atan2(10, 6) = ½ × 59.04° = **29.5°** north of east. Check: along u = (cos 29.5°, sin 29.5°) =
+(0.870, 0.493) the variance is 12 × 0.757 + 2 × 5 × 0.429 + 6 × 0.243 = 14.83 ✓.
+
+The judge's σ is √max(12, 6) = **3.46 m**, shorter than a = 3.85 m. A diagonal term is the variance along
+east or north only; when the ellipse is **tilted**, the worst direction is neither. How bad can it get?
+λ₁ ≤ λ₁ + λ₂ = a + c ≤ 2·max(a, c), so √max(a, c) misses the long axis by **at most a factor √2**
+(the worst case is a thin ellipse at 45°). For a round or axis-aligned ellipse the two agree.
+
+> [!QUESTION] ✏️ Check
+> 1. P = [[10, 6], [6, 10]] m². Give a, b, θ, and the judge's σ.
+> 2. P = [[4, 0], [0, 25]]. Give a, b, θ. Why is θ = 90° and not −90°?
+
+<details><summary>Answer</summary>
+1. λ = 10 ± √(0 + 36) = 16 and 4 → a = 4 m, b = 2 m; θ = ½ atan2(12, 0) = 45°. The judge reads √10 = 3.16 m:
+21 % short of the long axis.<br>
+2. λ = 25 and 4 → a = 5 m (north), b = 2 m; θ = ½ atan2(0, −21) = ½ × 180° = 90°. −90° is the same line; the
+range (−90°, 90°] keeps one name for it, so two programs print the same angle.
+</details>
+
+## 3. How far is a surprise? Mahalanobis distance and the χ² law
+
+**Why.** A fix lands 6 m from where you expected it. Is that a lot? Along the long axis of the ellipse
+above, 6 m is 1.6 sigma; across it, 3.4 sigma. A distance in metres does not know the ellipse.
+
+**The idea.** Count the distance **in sigmas**, direction by direction. For a surprise vector r and a
+covariance P:
 
 ```
-P = V Λ Vᵀ         Λ = diag(λ1, λ2)   (eigenvalues, λ1 ≥ λ2 ≥ 0)
-                   V = [v1 v2]        (eigenvectors, orthonormal columns)
+d² = rᵀ P⁻¹ r            (the squared Mahalanobis distance; d is in sigmas)
 ```
 
-The eigenvectors are the **principal directions** of the error; the eigenvalues are the variances
-along them. So the points at "one sigma" form an **ellipse** with
+On a round error of σ per axis, d² = |r|²/σ²; in general, d² = (part of r along v₁)²/λ₁ + (part along v₂)²/λ₂.
+The k-sigma ellipse is exactly the curve d² = k².
+
+**Worked example.** r = (6, −2) m, P = [[12, 5], [5, 6]]. The inverse of a 2 × 2 matrix:
+P⁻¹ = 1/(a·c − b²) · [[c, −b], [−b, a]] = 1/47 · [[6, −5], [−5, 12]]. Then
 
 ```
-semi-major axis  a = √λ1        along v1
-semi-minor axis  b = √λ2        along v2
-angle            θ = atan2(v1_north, v1_east)     (from east towards north)
+d² = (6·6·6  +  2·(−5)·6·(−2)  +  12·(−2)²) / 47 = (216 + 120 + 48) / 47 = 384 / 47 = 8.17      d = 2.86 sigmas
 ```
 
-![The 1-sigma ellipse of a covariance matrix](assets/ellipse.svg)
-
-**Worked example.** `P = [[12, 5], [5, 6]]` m². The trace is 18 and the determinant 12·6 − 5·5 = 47,
-so `λ = 9 ± √(81 − 47) = 9 ± 5.83`: λ1 = 14.83, λ2 = 3.17. The ellipse has a = 3.85 m, b = 1.78 m,
-and its long axis points θ = 29.5° north of east. Notice: the largest *diagonal* term is 12
-(σe = 3.46 m), smaller than λ1 = 14.83. For a tilted ellipse, **no single axis of the map shows the
-worst direction** — only the eigenvalue does. Keep this in mind for the "In NAVERA" section.
-
-### How many points fall inside?
-
-The **Mahalanobis distance** measures a vector `r` in units of its own uncertainty:
+**How many honest errors fall inside an ellipse?** Take an error that is exactly as large as its covariance
+says. Measured in sigmas along its own axes, it is a pair (x, y) of independent standard normal numbers
+(mean 0, σ 1), and d² = x² + y². Square and add two such numbers 10 000 times (you do it in lab Step 3): about
+**39 %** of the results are ≤ 1, **86 %** ≤ 4, **99 %** ≤ 9; 95 % of them stay below **5.99**, 99 % below
+**9.21**. This is the **χ² law with 2 degrees of freedom**. For two dimensions it has a closed form:
 
 ```
-d² = rᵀ P⁻¹ r
+share inside the k-sigma ellipse = 1 − exp(−k²/2)          95 % ⇔ k² = 5.99,   99 % ⇔ k² = 9.21
 ```
 
-For a Gaussian error in n dimensions, `d²` follows a **chi-square distribution with n degrees of
-freedom** (written χ²ₙ). The "k-sigma ellipse" is the set `d² ≤ k²`. In 2-D the probability has a
-closed form, `P(d² ≤ k²) = 1 − exp(−k²/2)`:
+![One axis against a map: ±1σ holds 68 % of the errors on one axis, but the 1-sigma ellipse holds only 39 % on a map](assets/inside.svg)
 
-| k (ellipse "size") | 1 | 2 | 2.45 | 3 | 3.03 |
+| k | 1 | 2 | 2.45 | 3 | 3.03 |
 |---|---|---|---|---|---|
-| share of 2-D points inside | 39.3 % | 86.5 % | 95 % | 98.9 % | 99 % |
+| on ONE axis, within ±kσ | 68.3 % | 95.4 % | 98.6 % | 99.7 % | 99.8 % |
+| on a MAP, inside the k-sigma ellipse | **39.3 %** | 86.5 % | 95 % | 98.9 % | 99 % |
 
-On **one** axis the familiar numbers are 68 / 95 / 99.7 % for 1 / 2 / 3 σ. In 2-D the same circles
-hold fewer points, because the error has two chances to be large:
+On a map the error has two chances to be large, so the same "1 sigma" holds far fewer fixes. A GPS that states
+σ = 3 m per axis puts only about 4 fixes in 10 within 3 m. (The mean of d² is the number of dimensions: 2
+on a map, 1 on one axis.)
 
-![1, 2, 3 sigma on one axis and on a map](assets/sigma.svg)
+**The length of a round error.** When σ is the same on both axes and b = 0, the distance r = σ·d from the
+truth follows the **Rayleigh law**: mean **1.25 σ** (√(π/2)), median **1.18 σ** (√(2 ln 2)), 95 % within
+**2.45 σ**. It explains mission 11's parked car: each 1-s step had noise √2 × 3 = 4.24 m per axis, so the
+"speed" of a car standing still averaged 1.25 × 4.24 = **5.3 m/s**. Mission 32 measures accuracy with it.
 
-So a GPS that states σ = 3 m per axis says: *about 4 fixes in 10 within 3 m, 86 % within 6 m*. And
-for a **correlated** error, use the ellipse (`d²`), not a circle: a circle sized for the long axis
-is far too pessimistic across it.
+> [!QUESTION] ✏️ Check
+> 1. With P = [[12, 5], [5, 6]], compute d² for r = (−2, 6). Same length as (6, −2): why so different?
+> 2. A receiver states a round σ = 4 m. Within what radius are half of its fixes? 95 %?
 
-## 3. Propagating a covariance: J P Jᵀ
+<details><summary>Answer</summary>
+1. (6 × 4 + 2 × (−5) × (−2) × 6 + 12 × 36) / 47 = (24 + 120 + 432) / 47 = 12.3, against 8.17. (−2, 6) points
+north-north-west, close to the short axis of an ellipse tilted 29.5° north of east: few sigmas fit in that
+direction.<br>
+2. Median 1.18 × 4 = 4.7 m; 95 %: 2.45 × 4 = 9.8 m.
+</details>
 
-Often we know the uncertainty of some quantities `x` and need the uncertainty of `y = f(x)`. If f
-is **linear**, `y = A x`, then exactly:
+## 4. Carrying a covariance: J P Jᵀ
+
+**Why.** We often know the noise of what we **measure** (a range, a bearing, a speed) but need the noise of
+what we **want** (east, north).
+
+**The idea.** If y = A x and the error of x has covariance P, then the error of y is A times the error of
+x, and
 
 ```
-Cov(y) = A P Aᵀ
+Cov(y) = E[(A e)(A e)ᵀ] = A E[e eᵀ] Aᵀ = A P Aᵀ
 ```
 
-If f is **non-linear**, we linearise it around the estimate with its **Jacobian** `J = ∂f/∂x`
-(the matrix of first derivatives) and use the same formula, `P_y ≈ J P Jᵀ`. This is first-order
-error propagation; it is good when the errors are small compared with the curvature of f.
+Example: the difference of two independent fixes (mission 11's speed), A = [1, −1], P = diag(9, 9) →
+A P Aᵀ = 9 + 9 = 18 m², σ = 4.24 m ✓. If y = f(x) is **not** linear, use its **Jacobian** J = ∂f/∂x at the
+estimate (the derivatives you met in mission 01) in place of A: **P_y ≈ J P Jᵀ**. It is a straight-line
+approximation of f, good while the errors are small compared with the curvature of f.
 
-**Worked example — a coastal radar.** Imagine a radar station on a headland that measures a boat at range
-r = 2000 m (σr = 5 m) and bearing b = 60° from north, clockwise (σb = 0.5°). Then
-`east = r sin b`, `north = r cos b`, and
+**Worked example — a coastal radar.** A radar on a headland sees a boat at range r = 2 000 m (σr = 5 m),
+bearing β = 60° clockwise from north (σβ = 0.5°). Then east = r sin β, north = r cos β, and
 
 ```
-J = [ ∂e/∂r  ∂e/∂b ]   = [ sin b    r cos b ]   = [ 0.866   1000 ]
-    [ ∂n/∂r  ∂n/∂b ]     [ cos b   −r sin b ]     [ 0.5    −1732 ]
+J = [ ∂e/∂r  ∂e/∂β ]  = [ sin β    r cos β ]  = [ 0.866    1000 ]        (β and σβ in RADIANS)
+    [ ∂n/∂r  ∂n/∂β ]    [ cos β   −r sin β ]    [ 0.5     −1732 ]
 
-P_polar = diag(σr², σb²) = diag(25, (0.5·π/180)²) = diag(25, 7.62e-5)
+P_polar = diag(σr², σβ²) = diag(25, (0.5 × π/180)²) = diag(25, 7.62e-5)
 
-P_en = J P_polar Jᵀ = [  94.9  −121.1 ]  m²
+P_en = J P_polar Jᵀ = [  94.9  −121.1 ]   m²          ellipse: a = 17.5 m (across the line of sight), b = 5.0 m
                       [ −121.1   234.7 ]
 ```
 
-σ_east = 9.7 m, σ_north = 15.3 m, strongly correlated. The bearing error (0.5°) dominates: at 2 km
-it is 2000 × 0.0087 = 17.5 m across the line of sight, three times the range error. **The ellipse is
-long across the line of sight and thin along it.** In the lab you check this formula with a Monte
-Carlo simulation of 20 000 random radar measurements. Two classic mistakes: forgetting to convert σb
-to **radians** (the derivative of sin is cos only in radians), and writing `J P J` instead of `J P Jᵀ`.
+The bearing error, 0.5° = 0.0087 rad, becomes r·σβ = 2 000 × 0.0087 = **17.5 m** across the line of sight,
+three times the range error. The ellipse is **long across the line of sight and thin along it**. Two classic
+mistakes: σβ left in degrees (the derivative of sin is cos only in radians: the ellipse becomes 57 times too
+long), and J P J instead of J P Jᵀ.
 
-## 4. Is this measurement plausible? The chi-square gate
+![A range and a bearing give an ellipse long across the line of sight; with a large bearing error the true cloud bends into a banana that no ellipse fits](assets/radar.svg)
 
-A new measurement `z` arrives. We predicted `ẑ` with covariance `P_pred`, and the measurement has
-its own noise covariance R. If both are honest and independent, the **innovation** `ν = z − ẑ`
-(the "surprise") has covariance
+**Where the straight line stops.** With σβ = 10°, the boat's possible positions lie on an **arc** of the
+circle of radius r, which bends away from the straight tangent of J P Jᵀ. No ellipse fits a banana: lab
+Step 4 counts how many simulated positions still fall inside the 95 % ellipse.
 
-```
-S = P_pred + R          (in general S = H P Hᵀ + R, see section 6)
-```
+> [!QUESTION] ✏️ Check
+> Same radar (σr = 5 m, σβ = 0.5°), boat at 500 m. Which σ dominates now, and what shape is the ellipse?
 
-and `d² = νᵀ S⁻¹ ν` follows χ² with n = dim(z) degrees of freedom. The **chi-square gate** accepts
-the measurement when
+<details><summary>Answer</summary>
+Across: 500 × 0.0087 = 4.4 m; along: 5 m. About equal: the ellipse is almost a circle of radius 4.4–5 m. The
+cross-range error grows with distance; the range error does not.
+</details>
 
-```
-d² ≤ χ²ₙ(p)          e.g. n = 2:  p = 0.95 → 5.99,   p = 0.99 → 9.21
-```
+## 5. Is this fix plausible? The χ² gate
 
-**Worked example.** Predicted position (0, 0) with `P_pred = [[12, 5], [5, 6]]`; a measurement
-(6, −2) m with R = 0 for simplicity. `d² = 8.17`. With p = 0.99 (threshold 9.21) it is accepted;
-with p = 0.95 (threshold 5.99) it is refused. The same 6.3 m offset in the direction of the long
-axis would be much more plausible than across it: the gate is **direction-aware**, a distance
-threshold is not.
+**Why.** After 40 s of GPS jamming, the drone flew on visual odometry (mission 24). GPS comes back with a
+fix 80 m from the prediction. Believe it, or is it a spoofer?
 
-The choice of p is a trade-off you will measure in the lab:
-
-- a gate at probability p refuses a fraction **1 − p of good measurements** (false alarms), by
-  definition;
-- a wider gate lets more **outliers** (wrong map matches, spoofed fixes) through.
-
-And a warning: the gate is only as good as S. If the filter is **overconfident** (P too small), the
-gate refuses good measurements — and a filter that refuses every measurement never corrects itself.
-You will see this failure in the lab.
-
-## 5. Combining two estimates: inverse-variance fusion
-
-Two independent unbiased estimates of the same quantity, `x1` (variance P1) and `x2` (variance P2).
-The **minimum-variance** linear combination weights each by its **information** (inverse variance):
+**The idea.** Compare the **innovation** r = z − ẑ (measured minus predicted) with its covariance. The
+prediction's error (P_pred) and the measurement's error (R) are independent, so §4 with A = [I, −I] gives
 
 ```
-P = (P1⁻¹ + P2⁻¹)⁻¹
-x = P (P1⁻¹ x1 + P2⁻¹ x2)
+S = P_pred + R                accept the fix  ⇔  d² = rᵀ S⁻¹ r ≤ χ²₂(p)      (5.99 for p = 95 %, 9.21 for 99 %)
 ```
 
-**1-D worked example.** A says 100 m (σ 10 m, variance 100), B says 110 m (σ 5 m, variance 25).
-Information 0.01 and 0.04: `x = (0.01·100 + 0.04·110) / 0.05 = 108 m`, `P = 1/0.05 = 20 m²`,
-σ = 4.47 m — **better than both inputs**. Information adds up; that is why fusion helps.
+**Worked example.** The drone flew east; odometry drifts mostly along the track: P_pred = diag(40², 10²) m².
+GPS states σ = 3 m: R = diag(9, 9), so S = diag(1 609, 109). Fix 1 is **80 m east**:
+d² = 6 400/1 609 = **3.98** → accepted at 95 % and 99 %. Fix 2 is **40 m north**: d² = 1 600/109 = **14.7**
+→ refused. The nearer fix is refused: across the track, the drone cannot be 40 m off. A distance rule
+("refuse beyond 50 m") would get both wrong.
 
-In 2-D the same formula works with matrices, and it does something a scalar weight cannot: a GPS
-ellipse long in one direction, fused with a round vision error, is corrected mostly **along its long
-axis**, where it is weak.
+![The gate is the k-sigma ellipse of S: a fix far along the track is plausible, a nearer fix across it is not; a circle cannot tell them apart](assets/gate.svg)
 
-Three conditions, all necessary:
+**What a gate costs.**
 
-1. the stated covariances are **honest** (a source stating 5 m while being 50 m off pulls the result
-   away, with a small stated σ, so nobody notices);
-2. the errors are **independent** (fusing the same information twice makes you overconfident);
-3. **no outliers**: gate first, then fuse. One wrong match 150 m away, fused with weight, moves the
-   answer by tens of metres.
+- An honest fix is refused in a share **1 − p** of the cases, by definition: 1 % at p = 99 %.
+- A false fix inside the ellipse is **accepted**. The attacker's best place is the far end of the long axis:
+  the largest offset the gate accepts in a direction of eigenvalue λ is **√(χ²₂(p) · λ)** — here
+  √(9.21 × 1 609) = **122 m** east, but only √(9.21 × 109) = **32 m** north.
+- The gate is only as good as S. A predictor that forgets to **grow** its covariance during the outage (an
+  over-confident one) refuses the true GPS when it comes back — and the next fix, and the next: it never
+  corrects itself. This is the most dangerous failure of a gate: it locks the truth out.
 
-These conditions are why NAVERA's arbiter today **selects** one source (lesson 29) and uses the other
-sources to **check** the GPS (lesson 30) rather than averaging them.
+> [!QUESTION] ✏️ Check
+> Same S. 1. Is a fix 30 m north accepted at 95 %? 2. With a 95 % gate, what is the largest accepted offset
+> due east?
 
-## 6. The Kalman filter
+<details><summary>Answer</summary>
+1. d² = 900/109 = 8.26 &gt; 5.99: refused (at 99 %: 8.26 ≤ 9.21, accepted).<br>
+2. √(5.99 × 1 609) = 98 m.
+</details>
 
-A **Kalman filter** applies sections 3–5 recursively, every time step. It holds a **state** `x`
-(for example position and velocity) and its covariance `P`, and alternates two steps.
+## 6. Fusing two estimates
 
-![One Kalman step](assets/kalman.svg)
+**Why.** Two witnesses saw the same position. Can we do better than either?
 
-**Model.** For a vehicle at roughly constant velocity, on one axis, with state `[p, v]`:
-
-```
-x_k = F x_{k-1} + w,      F = [ 1  dt ]       w ~ N(0, Q)
-                              [ 0   1 ]
-
-Q = q · [ dt⁴/4   dt³/2 ]     (white-noise acceleration of spectral density q, m²/s³)
-        [ dt³/2   dt²   ]
-```
-
-(The **spectral density** q measures how strong the random acceleration is: in one step the
-velocity changes by a random amount whose variance is the bottom-right entry of Q. A larger q lets the velocity change faster.)
-
-Q says how much the vehicle can change its velocity between two steps (a turn, a gust). For two
-axes with state `[e, n, ve, vn]`, `F = kron(F1, I₂)` and `Q = kron(Q1, I₂)` (the **Kronecker product**
-`kron(A, I₂)` replaces each entry a of A by the block a·I₂, so it copies the 1-axis model for each axis).
-
-**Predict** (propagation, section 3 with J = F):
+**The idea.** Mission 24 blended two numbers by their variances. With matrices, each estimate counts with
+its **information** P⁻¹, and information adds:
 
 ```
-x ← F x
-P ← F P Fᵀ + Q              (the ellipse grows)
+P = (P₁⁻¹ + P₂⁻¹)⁻¹             x = P (P₁⁻¹ x₁ + P₂⁻¹ x₂)
 ```
 
-**Update** with a measurement `z = H x + noise`, noise covariance R (for a position fix,
-`H = [I₂ 0]`, it picks the position out of the state):
+In 1-D this is exactly mission 24's blend: x = (x₁/v₁ + x₂/v₂)/(1/v₁ + 1/v₂) = (x₁v₂ + x₂v₁)/(v₁ + v₂). In 2-D
+it does what a single weight cannot: each estimate corrects the other **where the other is weak**.
+
+**Worked example.** In a street canyon running east–west, GPS is good across the street and bad along it:
+x₁ = (0, 0), P₁ = diag(900, 36) (σ 30 m east, 6 m north). Day vision states a round 15 m: x₂ = (30, 10),
+P₂ = diag(225, 225). Both matrices are diagonal, so each axis is a mission-24 blend:
 
 ```
-ν = z − H x                 innovation
-S = H P Hᵀ + R              innovation covariance  (use it for the gate, section 4)
-K = P Hᵀ S⁻¹                Kalman gain
-x ← x + K ν
-P ← (I − K H) P             (the ellipse shrinks)
+east:  P = 1/(1/900 + 1/225) = 180 m² (σ 13.4 m)    x = 180 × (0/900 + 30/225) = 24.0 m      (vision wins)
+north: P = 1/(1/36 + 1/225)  = 31.0 m² (σ 5.6 m)    x = 31.0 × (0/36 + 10/225) = 1.4 m       (GPS wins)
 ```
 
-With `H = I` the update is exactly the fusion of section 5 between the prediction and the
-measurement. The gain K is "how much to believe the measurement": in 1-D, `K = P / (P + R)`.
+The fused ellipse is smaller than both inputs in every direction.
 
-**Worked example (1-D, height above ground).** State `[h, climb] = [80 m, 0]`, `P = diag(9, 4)`,
-dt = 1 s, q = 0.3.
+![A long GPS ellipse and a round vision circle fuse into a small ellipse; one wrong vision match drags the fused position hundreds of metres unless it is gated first](assets/fusion.svg)
 
-```
-predict:  x = [80, 0]
-          P = [[9 + 2·0 + 4 + 0.075,  0 + 4 + 0.15], [4.15, 4 + 0.3]] = [[13.075, 4.15], [4.15, 4.3]]
-update with a barometer height z = 83 m, σ = 1.5 m (R = 2.25):
-          ν = 3,  S = 13.075 + 2.25 = 15.325,  K = [13.075, 4.15] / 15.325 = [0.853, 0.271]
-          x = [80 + 0.853·3, 0 + 0.271·3] = [82.56 m, 0.81 m/s]
-          P = [[1.92, 0.61], [0.61, 3.18]]
-```
+**Three conditions, all necessary.**
 
-Notice two things. The height σ fell from √13.1 = 3.6 m to √1.92 = 1.4 m, better than the barometer
-alone (1.5 m). And the filter learned a **climb rate** (0.81 m/s) that nobody measured: the
-correlation term in P (4.15) carried the information from height to climb rate.
+1. **Honest σ.** A source that states 5 m while it is off by 15 m pulls the result towards itself and makes
+   the fused σ small: nobody notices. The test is **coverage**: over many cases, the truth must fall inside
+   the stated 95 % ellipse about 95 % of the time.
+2. **Independent errors.** Fuse a fix with itself: P halves, the error does not change. Over-confidence for
+   free. Two sources that share an input (a map, a prior, a clock) are not independent.
+3. **No outliers: gate first, then fuse.** A wrong vision match at (300, 0) would give an east value of
+   180 × 300/225 = **240 m**. Its innovation has S = P₁ + P₂ = diag(1 125, 261): d² = 300²/1 125 = **80** →
+   refused. The good match (30, 10) has d² = 900/1 125 + 100/261 = 1.18 → fused.
 
-**No measurement?** Only predict. P grows by Q at every step. During a 40 s GPS outage at
-q = 0.3 the position σ grows from about 3 m to about 90 m — the honest answer to "where am I?" after
-40 s without a fix.
+> [!QUESTION] ✏️ Check
+> You fuse GPS (σ 3 m, round) with vision (σ 15 m, round), both honest. 1. Fused σ? Is it worth it?
+> 2. Vision secretly uses the last GPS fix as the centre of its search. Which condition breaks?
 
-## 7. Is the filter honest? NEES
+<details><summary>Answer</summary>
+1. 1/(1/9 + 1/225) = 8.65 m² → σ 2.94 m instead of 3: a 2 % gain, plus a risk if vision is ever wrong. In open
+sky, selecting GPS is nearly as good; fusion pays when one source is weak in some direction (the canyon).<br>
+2. Independence: vision's errors now follow GPS's errors, and so does a spoofed GPS. Fusing them counts the
+same information twice.
+</details>
 
-A filter is **consistent** when its P describes its real error. In a simulation, where the truth is
-known, compute at every step the **Normalised Estimation Error Squared**:
+## 7. Publishing it honestly
 
-```
-NEES_k = e_kᵀ P_k⁻¹ e_k        e_k = estimate − truth  (position: n = 2)
-```
+**Why.** A fused covariance is only useful if the next program can read it: the judge (mission 29), an
+autopilot. Mission 12's contract carries it as 9 numbers, ENU, row-major, m², with a **type**.
 
-If the filter is consistent, `NEES_k ~ χ²ₙ`, so its **average is n**. For the mean over N steps,
-`N · mean ~ χ²_{nN}` (if the steps were independent), which gives a 95 % band:
+**The idea.** `make_covariance` (lab TODO 9) writes P into the contract and says how much of it is known:
 
-```
-[ χ²_{nN}(0.025) / N ,  χ²_{nN}(0.975) / N ]      n = 2, N = 361:  [1.80, 2.21]
-```
+| You know | 9 numbers | Type |
+|---|---|---|
+| nothing (P is None) | nine 0.0 | `COV_UNKNOWN` (0): never invent a value |
+| P and the up σ, with an east-north term | a, b, 0, b, c, 0, 0, 0, σU² | `COV_KNOWN` (3) |
+| P and the up σ, b = 0 | a, 0, 0, 0, c, 0, 0, 0, σU² | `COV_DIAGONAL_KNOWN` (2) |
+| P, but the up σ is a guess (the course's rule since mission 10: twice the horizontal σ, so 4·max(a, c)) | a, b, 0, b, c, 0, 0, 0, 4·max(a, c) | `COV_APPROXIMATED` (1) |
 
-- mean NEES **above** the band: the filter is **overconfident** (P too small — q too small, R too
-  small, or outliers accepted);
-- mean NEES **below** the band: it is **pessimistic** (P too large) — safe but wasteful: gates too
-  wide, fusion that trusts the measurements too much.
+And it **refuses**: if the 9 numbers fail mission 12's `is_covariance`, it raises ValueError instead of
+"repairing" them. A matrix that cannot be a covariance means a bug upstream; publishing it would break the
+next filter.
 
-Successive errors of a filter are correlated, so the band is approximate; it is still the standard
-first test. The same idea, with real flights, is what `evaluate_session.py` does in NAVERA (below).
+**What the judge reads.** Mission 12's judge reads √max(a, c) and shows FIX up to 25 m. From §2 it can miss
+the long axis by up to √2. Example: a GPS ellipse 28 m × 6 m at 45° has a = c = (28² + 6²)/2 = 410 m²: the
+judge reads **20.2 m → FIX**, while in one direction the error is 28 m. Lab Step 8 counts how often that
+happens on a real-looking drive.
+
+> [!WARNING] Common wrong ideas
+> - "σ = 3 m means within 3 m." On one axis, 68 % of the time; on a map, inside the 1-sigma ellipse, 39 %.
+> - "The largest diagonal term is the worst direction." Only when the ellipse is not tilted (§2).
+> - "A bigger gate is safer." It lets more lies in. A smaller gate, or a too-small S, refuses the truth and
+>   can lock it out for good (§5).
+> - "Fusing always helps." Only honest, independent and gated estimates (§6): an outlier or a liar pulls the
+>   result towards itself and shrinks its σ at the same time.
+> - In code: σβ in degrees, `J @ P @ J` without `.T`, comparing d (not d²) with 9.21, dividing by N.
+
+## In NAVERA
+
+NAVERA, IRIS's product, publishes every position with a covariance in m², ENU, row-major, and "UNKNOWN rather
+than an invented value"; its judge refuses a covariance that is not one ("it would break a consumer's
+filter") and shows FIX only for a stated σ ≤ 25 m, read from the horizontal variances (mission 12's rule).
+Its validation report (2026-10-03) and engineering backlog describe how σ is made honest — in words:
+
+- **σ grows when nothing is measured.** When day vision cannot match (sea, uniform ground), it carries its
+  last position along the measured ground velocity and states an accuracy that grows with "velocity error ×
+  time + 5° heading error × distance", for at most 120 s and 500 m (simulator, 2026-10-02). The second term
+  is §4's cross-range error r·σβ: 5° is 8.7 % of the distance flown. NAVERA **adds** the two terms, which is
+  larger than the root-sum-square of independent errors: a cautious choice. Across a bay it was carried 90 s
+  stating ±300 m with a true error of at most 146 m. A vision position carried to the present grows too: a
+  1.5 s old photo at 40 m/s is moved 60 m and stated ±31.5 m (unit tests, simulator).
+- **σ grows when sources disagree.** From 2 vision fixes in a row beyond 3 σ, GPS is shown "in doubt": its
+  published accuracy is made no better than the gap, up to 500 m (2026-10-03). Its cross-check counts
+  distances in sigmas (3 σ, 5 σ + 50 m): mission 30 studies it.
+- **σ is capped where it is useless.** Since the QA campaign of 2026-09-30, positions coarser than 1 km are
+  never forwarded to the autopilot (the 125 km jump), and a forwarded position carries the larger of its
+  own σ and the configured one (the ±55 km star fix was sent as ±300 m). After the 2026-10-01 review, vision
+  is forwarded at ±500 m by default (it had been ±300 m while measuring 442 m median on replay frames).
+- **Selection, not fusion.** NAVERA's judge selects one source by priority (missions 01, 29) and uses the
+  others to check GPS. §6's conditions explain why: day vision takes its search area from the judge's own
+  output, so it is not independent of GPS, and its stated 30 m is not yet measured with NAVERA's own camera.
+
+## In NAVERA Lite
+
+Your nine functions live in [navera_lite/uncertainty.py](file:./navera_lite/uncertainty.py) (TODO 4 in `chi2_sim.py`); `make_covariance` calls
+mission 12's `estimate.is_covariance`. Mission 28's Kalman filter is built on `propagate` and `gate`, mission
+29 compares selection with your `fuse`, and mission 30's cross-check is a gate on two sources.
 
 ## 🐦 How birds do it
 
-Every spring and autumn, the Wadden Sea on the North Sea coast of the Netherlands, Germany and
-Denmark hosts millions of migrating shorebirds; it is one of the most important stopover wetlands
-in the world. Many of
-these birds arrive in flocks after flights of thousands of kilometres. How precise is one bird?
+Homing pigeons released one by one leave in scattered directions: each bird's "home is that way" has a
+spread. The **"many wrongs"** idea (A. Simons, 2004) says a flock that pools independent errors should
+navigate better than one bird: information adds up (§6). Pigeon **pairs** (D. Biro and colleagues, 2006) add
+the condition: when the two birds' habitual routes were close, they flew a compromise; when they were far
+apart, they did not average — one led, or they split. Small disagreement: fuse. Large disagreement: gate.
 
-Release homing pigeons one by one from the same place and their vanishing directions are
-**scattered**: each bird's estimate of "home is that way" is a random variable with a spread.
-Biologists measure it with a mean direction and a measure of dispersion — the circular version of
-μ and σ.
+## Summary
 
-The **"many wrongs" hypothesis** (proposed by Andrew Simons in 2004) says that if each bird's error
-is independent, a flock that pools its members' opinions should navigate more accurately than any
-single bird — this is section 5, where information adds up. Experiments with homing pigeons found
-that small flocks often fly home on more efficient routes than single birds.
+1. A cloud of errors gives a **covariance** P (÷ N − 1); P **is** an ellipse: semi-axes √λ₁, √λ₂, angle
+   ½·atan2(2b, a − c). One σ = √max(a, c) can miss the long axis by up to √2.
+2. **d² = rᵀ P⁻¹ r** counts a surprise in sigmas. For honest 2-D errors it follows **χ²₂**: 39 % inside the
+   1-sigma ellipse, 95 % below 5.99, 99 % below 9.21.
+3. **J P Jᵀ** carries a covariance through a function; it is a straight-line approximation — check it by
+   Monte Carlo when the errors are large.
+4. A **gate** accepts a fix when d² ≤ χ²₂(p), with S = P_pred + R: direction-aware, it refuses 1 − p of the
+   truths, accepts lies inside its ellipse, and locks the truth out if S is too small.
+5. **Fusion** adds information: P = (P₁⁻¹ + P₂⁻¹)⁻¹. Only for honest, independent, gated estimates. Then
+   publish the result with an honest **type**, and never a matrix that is not a covariance.
 
-But a study of pigeon **pairs** (Biro and colleagues, 2006) adds the important condition. When the
-two birds' preferred routes were close, they flew a compromise. When the routes were very different,
-they did **not** average: one bird led and the other followed, or they split up. Averaging two very
-different opinions would put both birds on a route neither believed in. In our words: when the
-Mahalanobis distance between two estimates is small, fuse; when it is large, the gate says "these
-cannot both be right" — choose. Navi, NAVERA's swallow, would agree.
+**Next mission:** the Kalman filter — §4 and §6, repeated every time step.
 
-## 8. In NAVERA
+## Check yourself
 
-NAVERA's real data covers **Sousse, Tunisia**, where NAVERA is developed; the data of this lab is
-simulated, and placed in the same test area. The ideas are the same.
+Answer without scrolling up.
 
-| What | Where in your copy (`~/navera/…`) |
-|---|---|
-| GPS covariance from HDOP: `σ = HDOP × 2 m`, vertical variance 4 × horizontal, type APPROXIMATED | `gps_pkg/gps_pkg/nodes/gps_node.py` |
-| The covariance contract (9 numbers, ENU, row-major) and its 4 types | `navera_msgs/msg/PositionEstimate.msg` |
-| "Is this a real covariance?" — finite, variances ≥ 0, symmetric, horizontal block PSD | `navera_estimator/…/nodes/estimator_node.py`, `_sane()` |
-| "Which σ does the source state?" | `estimator_node.py`, `_stated_sigma()` |
-| GPS "in doubt": covariance inflated to the disagreement with vision | `estimator_node.py`, `_in_doubt()` |
-| A 2-state Kalman filter on [height, climb rate] | `day_pkg/day_pkg/vision_nav.py`, `_height_predict()` / `_height_update()` |
-| A 3-sigma gate on vision fixes | `vision_nav.py`, `gate_k` |
-| Are stated σ honest on a real flight? (39 / 86 / 99 %) | `navera_tools/evaluate_session.py` |
-
-The arbiter's covariance checks (a consumer's filter would break on anything else):
-
-```python
-cov = list(msg.position_covariance)
-if not all(math.isfinite(c) for c in cov):
-    return False
-if not all(cov[i] >= 0.0 for i in (0, 4, 8)):                 # variances
-    return False
-tol = 1e-9 * max(1.0, cov[0], cov[4], cov[8])
-if any(abs(cov[i] - cov[j]) > tol for i, j in ((1, 3), (2, 6), (5, 7))):
-    return False                                               # symmetric
-return cov[0] * cov[4] - cov[1] * cov[3] >= -tol               # 2x2 PSD: det >= 0
-```
-
-For a 2 × 2 symmetric matrix with non-negative diagonal, `det ≥ 0` is exactly "both eigenvalues
-≥ 0". And `_stated_sigma()`:
-
-```python
-sigma = math.sqrt(max(msg.position_covariance[0], msg.position_covariance[4]))
-return sigma if sigma >= MIN_STATED_SIGMA_M else None          # < 1 cm: "unknown"
-```
-
-It reads the larger **diagonal** term. Section 2 showed that, for a tilted ellipse, the largest
-eigenvalue is larger than both diagonal terms: in the lab you will measure how much this
-underestimates the worst direction for a correlated covariance. (Today NAVERA's GPS covariance is
-diagonal, so the two agree.)
-
-The height filter of the day-vision navigator is the filter of section 6, written out by hand:
-
-```python
-def _height_predict(self, t):
-    (h, v), P, th = self._h
-    dt = max(0.0, t - th)
-    q = self.climb_accel ** 2                     # 0.5 m/s² -> q = 0.25
-    P = [[P[0][0] + dt * (P[0][1] + P[1][0]) + dt * dt * P[1][1] + q * dt ** 4 / 4,
-          P[0][1] + dt * P[1][1] + q * dt ** 3 / 2],
-         [P[1][0] + dt * P[1][1] + q * dt ** 3 / 2, P[1][1] + q * dt * dt]]
-    return (h + v * dt, v), P, t
-
-def _height_update(self, t, z, sigma, source):
-    ...
-        S = P[0][0] + sigma * sigma
-        k0, k1 = P[0][0] / S, P[1][0] / S
-        r = z - h
-        self._h = ((h + k0 * r, v + k1 * r),
-                   [[(1 - k0) * P[0][0], (1 - k0) * P[0][1]],
-                    [P[1][0] - k1 * P[0][0], P[1][1] - k1 * P[0][1]]], t)
-```
-
-Expand `F P Fᵀ + Q` for `F = [[1, dt], [0, 1]]` and you get exactly these lines. In the lab, your
-matrix version must give the same heights to 10⁻⁶ m.
-
-The vision gate refuses a weak fix when its distance to the prediction exceeds
-`gate_k · hypot(σ_pred, σ_fix)` with gate_k = 3. With round errors, that is `d² > 9` on a χ²₂
-variable: a gate at probability 1 − exp(−4.5) — you will compute it. NAVERA's estimator uses the same
-reasoning to cross-check GPS against an independent source: a disagreement beyond 3σ makes GPS
-"in doubt", beyond 5σ (plus margins) refuses it (lesson 30).
-
-Honest numbers from VALIDATION_STATUS.md (**unit tests and simulator only**): a vision position
-carried to the present from a 1.5 s old photo at 40 m/s is moved 60 m and its stated accuracy grows
-to ±31.5 m; a GPS "in doubt" gets an accuracy no better than its disagreement with vision.
-
-## Glossary
-
-| Word | Meaning |
-|---|---|
-| **random variable** | a quantity whose value varies from trial to trial, described by a distribution |
-| **covariance matrix P** | `E[(e − μ)(e − μ)ᵀ]`: variances on the diagonal, co-variations off it |
-| **positive semi-definite (PSD)** | `vᵀPv ≥ 0` for every v; all eigenvalues ≥ 0 |
-| **eigen-decomposition** | `P = V Λ Vᵀ`: principal directions (V) and variances along them (Λ) |
-| **error ellipse** | the set `d² ≤ k²`; semi-axes `k√λ` |
-| **Jacobian J** | the matrix of first derivatives of a function; `P_y ≈ J P Jᵀ` |
-| **Mahalanobis distance** | `d² = rᵀ S⁻¹ r`: a distance measured in sigmas, direction-aware |
-| **chi-square χ²ₙ** | the distribution of d² for an n-dimensional Gaussian |
-| **gate** | accept a measurement only if `d² ≤ χ²ₙ(p)` |
-| **innovation ν, S** | `z − Hx` and its covariance `HPHᵀ + R` |
-| **information** | inverse covariance; it adds up when independent estimates are fused |
-| **Kalman gain K** | `P Hᵀ S⁻¹`: how much the update believes the measurement |
-| **process noise Q, q** | how much the model allows the state to change unpredictably |
-| **NEES** | `eᵀ P⁻¹ e`; its mean should equal the dimension n for an honest filter |
-| **consistent / overconfident / pessimistic** | P matches / is smaller than / is larger than the real error |
-
-## Check what you learned
-
-<details><summary>1. P = [[25, 0], [0, 4]] m². Give a, b and θ of the 1-sigma ellipse, and the share of fixes inside the 2-sigma ellipse.</summary>
-The matrix is already diagonal: λ1 = 25, λ2 = 4, so a = 5 m, b = 2 m, θ = 0° (the long axis points
-east). Inside k = 2: 1 − exp(−2) = 86.5 %.
+<details><summary>1. P = [[25, 0], [0, 4]] m². a, b and θ of the 1-sigma ellipse, and the share of fixes inside the 2-sigma ellipse?</summary>
+a = 5 m (east), b = 2 m, θ = 0°. Inside k = 2: 1 − exp(−2) = 86.5 %.
 </details>
 
-<details><summary>2. The radar of section 3 now sees the boat at 4000 m, same σr and σb. Which σ changes most, and roughly by how much?</summary>
-The cross-range error r·σb doubles (from 17.5 m to 35 m) while the range error stays 5 m. The ellipse
-becomes longer across the line of sight; its area roughly doubles.
+<details><summary>2. The radar of §4 sees the boat at 4 000 m (same σ). Which axis of the ellipse changes, and by how much?</summary>
+The cross-range one doubles: 4 000 × 0.0087 = 35 m. The range one stays 5 m.
 </details>
 
-<details><summary>3. A gate at p = 0.99 is applied to 300 good measurements from a consistent filter. How many are refused, roughly? And if the filter's P is 4 times too small?</summary>
-About 1 %, so 3. If P (and so S, when R is small compared with P) is 4 times too small, every d² is
-about 4 times too large: a good measurement is refused when its true d² > 9.21/4 = 2.3, which happens
-with probability exp(−1.15) ≈ 32 % in 2-D — about 95 good measurements refused.
+<details><summary>3. A 99 % gate sees 300 honest fixes from an honest predictor. About how many are refused? And if S is 4 times too small?</summary>
+About 1 %: 3. With S 4 times too small every d² is 4 times too large: an honest fix is refused when its true
+d² &gt; 9.21/4 = 2.3, which happens in exp(−2.3/2) = 32 % of the cases: about 95 refused truths.
 </details>
 
-<details><summary>4. Fuse 50 m (σ 4 m) and 60 m (σ 4 m). Then fuse 50 m (σ 4 m) and 90 m (σ 4 m). What should you do differently in the second case?</summary>
-Both give the average with σ = 4/√2 = 2.8 m: 55 m and 70 m. But in the second case the difference
-40 m has σ = √(16 + 16) = 5.66 m, so d² = (40/5.66)² = 50 ≫ 6.63 (χ²₁ at 99 %): the two estimates are
-not compatible. Gate first: one of them is wrong; do not fuse.
+<details><summary>4. Fuse 50 m (σ 4 m) and 60 m (σ 4 m), then 50 m (σ 4 m) and 90 m (σ 4 m), on one axis. What should you do differently in the second case?</summary>
+Both give the average with σ = 4/√2 = 2.8 m: 55 m and 70 m. But the second difference, 40 m, has σ = √(16 + 16)
+= 5.66 m: d² = (40/5.66)² = 50, far above χ²₁(99 %) = 6.63. The two cannot both be right: gate, do not fuse.
 </details>
 
-<details><summary>5. After a 40 s GPS outage the first fix is 150 m from the prediction. The filter's σ is 90 m per axis, R is 5 m. Accept it?</summary>
-S ≈ (90² + 5²) per axis. If the 150 m is along one axis, d² ≈ 150² / 8125 = 2.8 &lt; 9.21: accept. The
-large P after the outage makes the gate wide, which is right: the filter itself says it may be 150 m
-off. With a filter that kept σ = 10 m (too small q), d² = 180: refused, and every later fix too.
+<details><summary>5. (Mission 12) Why does make_covariance raise ValueError for [[4, 1], [2, 4]] instead of using b = 1.5?</summary>
+The 9 numbers would not be symmetric: is_covariance says "not symmetric". A non-symmetric "covariance" is a bug
+upstream; averaging hides it and publishes a number nobody measured.
 </details>
 
-<details><summary>6. A filter's mean NEES over 361 steps is 12. What does it tell you, and what two causes would you check first?</summary>
-Far above the band [1.80, 2.21]: the filter is overconfident, its real error is about √(12/2) ≈ 2.4
-times larger than it states. Check the process noise q (too small for how the vehicle really moves)
-and outliers that were accepted (no gate, or a gate too wide).
+<details><summary>6. (Mission 24) Your odometry blend weighted two speeds by their variances. What is that, in today's words?</summary>
+Inverse-variance (information) fusion in one dimension: x = (x₁/v₁ + x₂/v₂)/(1/v₁ + 1/v₂), variance
+1/(1/v₁ + 1/v₂). Its conditions are the same: honest, independent, gated first (mission 24's vo_gate).
 </details>
 
 Now open the **🛠️ Lab** tab.
