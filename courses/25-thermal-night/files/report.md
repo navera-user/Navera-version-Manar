@@ -1,36 +1,21 @@
-# Lab 25 — report
+# Mission 25 — Night vision: my report
 
-Write each section in your own words (at least 40 words each). Quote the numbers your programs
-printed (they are also in results.json). Delete the comment lines `<!-- ... -->` if you like:
-the check ignores them.
+Write 200–500 words in your own words. Keep the four headings. Quote your numbers (from answers.py).
 
-## Sidereal time
+## 1. The data auditor
 
-<!-- How far is your GMST from astropy's (arcseconds)? What is the difference between GMST and
-NAVERA's GAST (in seconds of time), what causes it, and how many km of longitude would it cost
-if you ignored it? -->
+TODO: what the replay set's night frames really are, how your NCC showed it (your best-NCC median), and what you
+would ask before training or testing on a dataset.
 
-## Polaris
+## 2. Geometry and NCC
 
-<!-- Worst latitude error over a whole night from New York with "latitude = altitude", and with the
-p·cos(H) correction. What else would a real sextant or camera measurement need to correct
-(hint: the atmosphere bends light near the horizon)? -->
+TODO: coverage and the minimum height of the first simulator camera (your numbers), and where NCC works and fails.
 
-## Error budget
+## 3. The learned homography
 
-<!-- Your Monte Carlo median and p90 for the camera at 75° and at 90°. Why does the heading error
-hardly matter when the camera points straight up? Compare with docs/VALIDATION_STATUS.md
-("24-119 km, ~50 km typical"). What clock accuracy is needed so that the clock is not the
-limit? -->
+TODO: your pairs, your network, its training (overfitting with 6 places), and its night error next to NCC's.
 
-## Night geometry
+## 4. Limits and honesty
 
-<!-- The minimum flying height for 85 % coverage at heading 0° and at 45° (84° camera), and for
-the 56.7° x 48° camera. Compare with VALIDATION_STATUS.md (0.77 at 300 m diagonal, ~350 m,
-~480 m). Which motion-gate decision did you see, and why is the gate needed at all? -->
-
-## The night replay set
-
-<!-- What did find_day_twin show (best and second-best NCC, the frame-number offset)? What does
-it mean for the positions written in the night frames' file names? What would you need to
-validate NAVERA's night vision for real? -->
+TODO: noon, dawn, sea, a large shift, strict loading, the gate's lock-in: what a night fix from your network would
+still need before a real flight.

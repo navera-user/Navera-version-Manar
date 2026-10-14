@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 240" font-family="sans-serif" font-size="13">
   <rect width="560" height="240" fill="#f7fafc"/>
-  <g font-weight="bold" fill="#1d2733"><text x="20" y="22">satellite photo</text><text x="205" y="22">thermal at noon</text><text x="390" y="22">thermal at night</text></g>
+  <g font-weight="bold" fill="#1d2733"><text x="20" y="22">day aerial photo</text><text x="205" y="22">thermal at noon</text><text x="390" y="22">thermal at night</text></g>
   <!-- day colour -->
   <g transform="translate(20,35)">
     <rect width="160" height="150" fill="#d9c79c"/><rect x="0" y="62" width="160" height="22" fill="#6b6b6b"/>

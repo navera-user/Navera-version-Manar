@@ -1,45 +1,34 @@
-# Lab 25 — report
+# Mission 25 — Night vision: my report
 
-## Sidereal time
+## 1. The data auditor
 
-My GMST from the Meeus formula is 316.47785 degrees, only 0.04 arcseconds from astropy's mean
-sidereal time, so the formula and my Julian date are right. NAVERA's gast_deg gives the apparent
-sidereal time, 0.52 seconds of time later: that is the equation of the equinoxes, caused by
-nutation (the small nodding of the Earth's axis). 0.52 s of time is 7.8 arcseconds of rotation,
-about 0.2 km of longitude here: small next to the attitude error, but free to correct, so NAVERA
-uses GAST with apparent star positions.
+NAVERA's night replay set is not thermal. With my ncc, each of the 30 night frames has one day frame with an NCC of
+about 0.9 (median best 0.90), while the second best is only about 0.1. The night frames are the day frames made
+darker: they show sharp sun shadows, which a thermal camera cannot see at night, and night frame 1 is day frame 9,
+so the labels put every frame 8 frames away from its real place. Before training or testing on a dataset I would ask
+how it was recorded, look for shadows, and compare it with the other sets.
 
-## Polaris
+## 2. Geometry and NCC
 
-From New York over a whole sidereal day, "latitude = altitude of Polaris" is wrong by up to 0.626
-degrees, about 70 km, because Polaris turns around the pole on a small circle. With the first-order
-correction altitude minus p cos(H) the worst error drops to 0.0029 degrees, 0.33 km. A real
-measurement would also need the atmospheric refraction correction (about 1.2 arcminutes at 41 degrees
-altitude, so about 2 km) and the dip of the horizon for a sextant.
+The reference square is 496 m. The first simulator camera (56.7° × 48°) needs 474 m at heading 0° and 524 m at 45°
+to cover 85 % of it, so a drone limited to 400 m can never get a night fix with it. At 45° the corners of the square
+stick out of the turned rectangle. NCC is perfect day vs day (100 % good) because it removes gain and offset, but at
+night it is good in only 0.23 of the pairs and 0.39 with the night inverted: roads reverse, trees do not, and dawn
+has no contrast at all.
 
-## Error budget
+## 3. The learned homography
 
-With a BNO085-class IMU (0.3 degrees tilt, 1.5 degrees heading) and the camera at 75 degrees, the
-Monte Carlo median error is 47.4 km and the p90 is 92.6 km, with no ambiguous fix. With the camera
-straight up the median is 22.6 km: a heading error only rotates the picture around the zenith, so
-the pointing direction does not change and only the tilt counts. This agrees with
-VALIDATION_STATUS.md (24-119 km, about 50 km typical). The clock costs 0.35 km per second at
-New York, so a clock good to one second (the DS3231 RTC) is far from being the limit.
+I made pairs from 293 training places: a random square of the day reference, random offsets for the 4 corners, and
+the night picture warped inside them, with the camera's noise and gain. The 8 offsets are the label, exact and free.
+My network (192 600 parameters) trained in about half a minute on the GPU. With only 6 places it overfitted: the
+training loss fell to 0.01 while the validation loss rose after epoch 11. On validation places at night its median
+error is 3.8 px (about 29 m), against 14.5 px for NCC and 9.5 px for the prior alone.
 
-## Night geometry
+## 4. Limits and honesty
 
-For a 640 x 480 thermal camera with an 84 degree field of view, 85 percent coverage of the 512 px
-reference square needs 312 m at heading 0 and 333 m at heading 45, because the turned rectangle
-leaves the square's corners empty. At 300 m and 45 degrees the coverage is 0.77, exactly the case
-in VALIDATION_STATUS.md where tracking ran away. The 56.7 x 48 degree camera needs 473 m, close to
-the documented 480 m. The motion gate rejected the 2194 m jump in 4 s (reach 150 m): STHN can be
-confident and wrong, physics cannot.
-
-## The night replay set
-
-Every night frame correlates at about 0.90 with exactly one day frame and about 0.10 with all the
-others, and the twin is always day frame number + 8 (modulo 30). So the "thermal" frames are
-darkened copies of the day replay frames, which are known to show other places than their labels.
-The positions in their file names cannot be used as ground truth. A real validation needs a real
-thermal camera flown with GPS logging, at night, at a height where the footprint covers the
-reference.
+At noon (12.1 px) and dawn the network is no better than the prior: it learned nights only, and it answers with the
+same confidence. Over the coast and with a prior wrong by more than 16 px it is weaker too. Loading my weights with
+strict=False under other names gave no error and a random network, exactly LOC-6. The motion gate refused the wrong
+fix at 8 s, but after a 14 s gap it accepted a wrong one and then refused every correct fix. Before a real flight I
+would need real thermal frames with surveyed positions, other seasons and times, and a check that does not trust only
+its own last decision.

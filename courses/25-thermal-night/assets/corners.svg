@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 330" font-family="sans-serif" font-size="13">
+  <rect width="660" height="330" fill="#f7fafc"/>
+  <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#d95f02"/></marker></defs>
+  <text x="20" y="24" font-weight="bold" fill="#1d2733">The reference patch (64 × 64 px, north up)</text>
+  <rect x="40" y="45" width="256" height="256" fill="#e9eef2" stroke="#1d2733" stroke-width="2"/>
+  <polygon points="80,63 300,80 285,295 66,283" fill="#cde6c8" fill-opacity="0.55" stroke="#1b9e77" stroke-width="2.5"/>
+  <g stroke="#d95f02" stroke-width="2" marker-end="url(#ar)">
+    <line x1="40" y1="45" x2="78" y2="62"/><line x1="296" y1="45" x2="299" y2="78"/>
+    <line x1="296" y1="301" x2="285" y2="293"/><line x1="40" y1="301" x2="66" y2="284"/>
+  </g>
+  <g fill="#1d2733" font-size="12">
+    <text x="8" y="40">0</text><text x="300" y="40">1</text><text x="300" y="318">2</text><text x="10" y="318">3</text>
+  </g>
+  <circle cx="168" cy="173" r="4" fill="#1d2733"/><circle cx="183" cy="181" r="5" fill="#1b9e77"/>
+  <line x1="168" y1="173" x2="181" y2="180" stroke="#1d2733" stroke-dasharray="3 2"/>
+  <text x="330" y="70" fill="#1d2733">grey square: where the thermal frame would lie if the prior</text>
+  <text x="330" y="88" fill="#1d2733">were exact (corners 0, 1, 2, 3 = TL, TR, BR, BL)</text>
+  <text x="330" y="118" fill="#1b9e77">green: where it really lies (its 4 corners)</text>
+  <text x="330" y="148" fill="#d95f02">orange arrows: the 4-point label, 8 numbers</text>
+  <text x="330" y="166" fill="#d95f02">(x0, y0, x1, y1, x2, y2, x3, y3), in pixels</text>
+  <text x="330" y="196" fill="#1d2733">4 corner pairs → the homography H (8 unknowns)</text>
+  <text x="330" y="226" fill="#1d2733">black dot: the prior (patch centre); green dot: the</text>
+  <text x="330" y="244" fill="#1d2733">ground under the frame's centre = H × centre</text>
+  <text x="330" y="274" fill="#1d2733">its offset (dx, dy) × metres per pixel = the correction</text>
+  <text x="330" y="292" fill="#1d2733">to the prior: east = dx · m/px, north = −dy · m/px</text>
+</svg>

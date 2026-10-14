@@ -21,11 +21,11 @@
 
   <g font-size="12" fill="#1d2733">
     <rect x="20" y="372" width="14" height="10" fill="none" stroke="#1d2733" stroke-dasharray="4 3"/>
-    <text x="40" y="381">STHN's reference square: 512 map px ≈ 496 m (z17)</text>
+    <text x="40" y="381">the reference square: 512 map px at zoom 17 ≈ 496 m</text>
     <rect x="20" y="390" width="14" height="10" fill="none" stroke="#0b6e8a" stroke-width="2"/>
-    <text x="40" y="399">the frame, scaled to the map and turned north-up (640 × 480 px, 84°, 300 m)</text>
+    <text x="40" y="399">the frame, scaled to the map and turned north-up (84° × 68° camera at 300 m)</text>
     <rect x="20" y="408" width="14" height="10" fill="#f6c9c3"/>
-    <text x="40" y="417">no data: filled with the mean grey. NAVERA needs ≥ 85 % covered</text>
-    <text x="40" y="434">(MIN_QUERY_COVERAGE), else "fly higher".</text>
+    <text x="40" y="417">no data (0 in NAVERA Lite). NAVERA needs ≥ 85 % covered,</text>
+    <text x="40" y="434">else the frame is refused: "fly higher".</text>
   </g>
 </svg>

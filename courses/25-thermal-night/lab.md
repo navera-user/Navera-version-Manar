@@ -1,271 +1,582 @@
-# Lab 25 — The sky over Tenerife, and an honest look at night data
+# Lab 25 — Night watch, then night navigator
 
-**Goal:** build the celestial chain yourself (Julian date → sidereal time → alt/az), check it
-against astropy and NAVERA's `cn_pkg`, measure what clock and attitude errors cost a celestial fix
-with a Monte Carlo on NAVERA's own solver; then re-implement the geometry of NAVERA's night
-localizer (scale, coverage, minimum height, motion gate) and test whether the night replay frames
-can be trusted.
-**Time:** about 5 h for this lab, in **two sessions**: Part A (the sky, ~2 h 30) and Part B (night
-vision, ~2 h), then the report (~30 min); about 7 h 30 for the whole mission with the lesson. The two parts are independent: you can
-do Part B first.
+**Goal:** audit a night dataset, compute what a thermal camera covers, prepare night frames and find them with NCC,
+guard the fixes with the motion gate; then make your own training pairs from the map, build and train a small
+homography network, measure it against NCC in five conditions, sabotage it as LOC-6 did, and fly a night flight.
+**Time:** 4 h 30 to 6 h in two sessions (a strong programmer: about 3 h 30). The full training takes under a minute
+on the GPU.
+**Fast track:** if you know numpy, OpenCV and PyTorch, write the TODOs from the docstrings without the 🧰 and
+"Stuck?" boxes, then do "Going further".
 
-| File | What you do |
-|---|---|
-| [stars.py](file:./stars.py) | Part A — TODO 1–3 and 5–8: the sky, Polaris, the error budget, the Monte Carlo (`visible_stars`, number 4, is given) |
-| [thermal.py](file:./thermal.py) | Part B — TODO 10, 11, 13–15: night geometry, the motion gate, the data check (`parse_thermal_name` and `min_altitude`, numbers 9 and 12, are given) |
-| [compare_navera.py](file:./compare_navera.py) | given: your coverage against NAVERA's `normalize_query` |
-| [report.md](file:./report.md) | your written analysis (5 sections) |
+Your files (📝 Code tab): [navera_lite/night.py](file:./navera_lite/night.py) (**your code**: TODO 1–6),
+[navera_lite/homography_net.py](file:./navera_lite/homography_net.py) (**your code**: TODO 7–11),
+[answers.py](file:./answers.py), [report.md](file:./report.md), and the ready-made runner
+[run_night.py](file:./run_night.py) (runs your functions on the lab's data and draws them; you don't edit it).
+`python3 run_night.py test` tries every docstring example and names the symptom of a wrong result.
 
-Both programs write their numbers into `results.json`; the check reads it, and so should you when
-you write the report.
+The data is in `/data/academy/25-thermal-night/` (read only): squares of ground drawn from OpenStreetMap data of
+Sousse, Tunisia (NAVERA's test area; map data © OpenStreetMap contributors), each as a day aerial view and as
+thermal-like "temperature" pictures, made by us so that the truth is exact; a simulated night flight; and NAVERA's
+night and day replay frames, copied as data.
 
-> [!WARNING]
-> Common errors in this lab: `math.sin` wants **radians** (use `np.radians` / `math.radians`);
-> `math.sin` refuses numpy arrays (use `np.sin`); pictures read by OpenCV are **uint8**, so
-> `255 - a` or `a * b` overflow unless you convert to float first.
+| Lesson | Lab | You write |
+|---|---|---|
+| §1 thermal | Steps 0, 2 | (no code) |
+| §2 NCC | Steps 1, 6 | `ncc`, `ncc_locate` |
+| §3 footprint, coverage | Steps 3–4 | `footprint_m`, `coverage` |
+| §4 preparing | Step 5 | `prepare` |
+| §5 motion gate | Step 7 | `motion_gate` |
+| §6, §8 corners, pairs | Step 8 | `cut_pair` |
+| §7 the network | Steps 9–10 | `to_input`, `HomographyNet` |
+| §6, §8 H, training | Steps 11–12 | `offsets_to_H`, `train` |
+| §9 measuring, limits | Steps 13–15 | (experiments) |
+| all | Step 16 | the report |
 
-## Part A — the sky
+> [!NOTE]
+> **Predict, then run.** Each `PREDICT_…` in `answers.py` is written **before** you run the step. It is never
+> marked right or wrong; being wrong and finding out why is the point.
 
-### Step 1 — The star catalogue
+## Session 1 — Night watch (about 2 h 30)
 
-```bash
-grep "Alp UMi" /data/bsc5.dat
-```
+## Step 0 — Look
 
-This is Polaris (alpha of the Little Bear). In the middle of the line, `023148.7+891551` is its J2000
-position: α = 02 h 31 min 48.7 s (1 h = 15°), δ = +89° 15′ 51″. A few columns later `2.02` is its
-visual **magnitude** (smaller = brighter). `load_bright_stars()` at the bottom of `stars.py` reads
-these fixed columns for you.
-
-Run the program once before changing anything:
-
-```bash
-python3 stars.py
-```
-
-It stops at `(TODO 1 is not done yet)`. Read `offline_astropy()` at the bottom of the file: these
-lines stop astropy from trying to download the IERS tables (there is no internet here, and none on
-a drone). Keep them.
-
-### Step 2 — The clock of the sky (TODO 1, 2)
-
-> [!TASK]
-> **TODO 1.** `julian_date(year, month, day, hour=0, minute=0, second=0.0)` with Meeus' algorithm
-> (the comment above the function gives it). Use `math.floor`, not `int()` (they differ for
-> negative numbers).
->
-> **TODO 2.** `gmst_deg(jd)`: the IAU 1982 GMST formula, result in 0…360.
-
-Test with the epoch J2000.0 (must be exactly 2451545.0) and with Meeus' example 12.a
-(1987-04-10 0h UT → GMST 197.693195°):
+No code.
 
 ```bash
-python3 -c "from stars import julian_date; print(julian_date(2000, 1, 1, 12))"
+python3 run_night.py look
+```
+
+Open `out/look.png` (click it in the file tree; ⟳ to refresh). A is the day aerial view a drone carries as its
+reference; B, C, D are the same ground as a thermal-like camera would see it at night, at noon and at dawn
+(bright = warm).
+
+> [!TASK]
+> **Predict** (`PREDICT_LOOK`): which of B, C, D will be easiest to match with A by comparing pixels, which hardest,
+> and why? Save the file (`Ctrl+S`). Then read lesson Part A (§1–§5).
+
+## Step 1 — NCC (TODO 1)
+
+Open [navera_lite/night.py](file:./navera_lite/night.py). Each `TODO` function keeps its docstring and ends with
+`return None   # TODO…`: replace that line with your code. The given parts (`min_altitude`, the constants) are for
+you to read and use.
+
+**TODO 1** `ncc(a, b)`: lesson §2. Work in float64: uint8 arithmetic wraps around (200 + 100 = 44).
+
+<details><summary>🧰 numpy: means, sums and floats</summary>
+
+```python
+import numpy as np
+x = np.asarray([[1, 2], [3, 4]], dtype=np.float64)    # a float copy (uint8 would overflow)
+x.mean(), (x * x).sum()                                # 2.5, 30.0 — over all the pixels
+float(np.float64(0.5))                                 # 0.5 as a Python float
+```
+</details>
+
+```bash
+python3 run_night.py test
+```
+
+The three `ncc` lines must be ✔ (the others are later TODOs).
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. Three lines of numpy: subtract each picture's mean; the sum of the products; the square root of the product of the
+   two sums of squares. Then the ratio.
+2. You get 0.999… or 0.98 instead of 1.0 on the first case: you did not subtract the means (or only one of them).
+3. `nan` or `RuntimeWarning: invalid value` on the uniform case: the denominator is 0 — test it (`if den == 0:` or
+   `< 1e-12`) and return 0.0 first.
+4. `|NCC| > 1`: you divided by the sum of squares, not by its square root.
+</details>
+
+## Step 2 — The data auditor (no new code)
+
+NAVERA's replay data has a set of 30 "night" frames and a set of 30 day frames
+(`ls /data/academy/25-thermal-night/replay/`). Each set carries labels (`night_labels.csv`, `day_labels.csv`).
+
+> [!TASK]
+> **Predict** (`PREDICT_AUDIT`): if the night frames are real thermal pictures, about what NCC do you expect between a
+> night frame and the day frame of the same place (lesson §1–§2)?
+
+```bash
+python3 run_night.py audit
+```
+
+It compares every night frame with every day frame using your `ncc` (on reduced copies) and prints, for each night
+frame, the day frame with the best NCC, the best and the second-best score, and the mean brightness. Open
+`out/audit.png` (night frame 1, contrast stretched, above its best day match). Compare the labels too:
+`head -3 /data/academy/25-thermal-night/replay/*_labels.csv`.
+
+> [!TASK]
+> Write `TWIN_OF_NIGHT_01` (a frame number), `AUDIT_BEST_NCC` (the median best NCC, two decimals) and
+> `EXPLAIN_AUDIT`: what are the "night" frames really? Give two clues (look at the scores, the shadows, the labels).
+
+<details><summary>Stuck? Hints</summary>
+
+1. The first line of the table: night frame 1, its best day frame, the NCC.
+2. Clues: how high is the best NCC compared with the second best and with your prediction? Are there sun shadows in
+   `out/audit.png`? Does the place in night frame 1's label match the place of its best day frame's label?
+</details>
+
+## Step 3 — Footprint and coverage (TODO 2, TODO 3)
+
+**TODO 2** `footprint_m(alt_m, hfov_deg, vfov_deg)`: lesson §3, the two formulas. **TODO 3**
+`coverage(width_m, height_m, heading_deg, ref_m)`: the share of the square covered by the turned rectangle. Choose
+your method:
+
+<details><summary>🧰 Method A — a grid of sample points (simple)</summary>
+
+Put a fine grid of points over the square (e.g. 400 × 400), turn each point into the rectangle's own axes, and count
+those inside. Pieces you need:
+
+```python
+n = 4
+s = (np.arange(n) + 0.5) / n * 10.0 - 5.0      # 4 centres of cells over [−5, 5]: [-3.75, -1.25, 1.25, 3.75]
+X, Y = np.meshgrid(s, s)                       # two (4, 4) arrays: every (x, y) of the grid
+inside = (np.abs(X) <= 2.0) & (np.abs(Y) <= 4.0)
+inside.mean()                                  # 0.25: the share of True (here 1 column pair of 4 … in x, all 4 in y)
+```
+To express a point (x, y) in axes turned by an angle a: u = x·cos a + y·sin a, v = −x·sin a + y·cos a (the sign of a
+does not change the area).
+</details>
+
+<details><summary>🧰 Method B — exact polygon overlap with OpenCV</summary>
+
+```python
+import cv2
+sq  = np.float32([[0, 0], [2, 0], [2, 2], [0, 2]])
+tri = np.float32([[1, 1], [3, 1], [1, 3]])
+area, pts = cv2.intersectConvexConvex(sq, tri)   # 0.5: the area of the overlap (and its corners)
+```
+The four corners of the turned rectangle (centred on 0): turn (±w/2, ±h/2) by the heading with the matrix
+[[cos a, −sin a], [sin a, cos a]] — in order around the rectangle.
+</details>
+
+```bash
+python3 run_night.py test
+```
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. `footprint_m`: `2 * alt_m * math.tan(math.radians(hfov_deg) / 2)`, and the same with vfov_deg.
+2. footprint_m gives (324.0, −1281.1) or other strange numbers: `math.tan` takes radians.
+3. coverage gives 1.0 on the docstring example: the rectangle reaches w/2 and h/2 on each side of its centre — compare
+   |u| with width_m / 2 and |v| with height_m / 2, not with the full sizes.
+4. 0.75 at 0° but 0.78 at 90°: the heading must be turned into radians (`math.radians(heading_deg)`).
+</details>
+
+## Step 4 — Coverage and minimum height (no new code)
+
+> [!TASK]
+> **Predict** (`PREDICT_FIRST_CAM`): NAVERA's simulator first had a thermal camera of 56.7° × 48°, and its simulated
+> drone flies at most 400 m. Could it ever give a night fix (85 % coverage of the 496 m square)?
+
+```bash
+python3 run_night.py coverage
+```
+
+It prints the lesson camera's coverage at five heights and four headings, then the minimum height of three cameras
+(the given `min_altitude`, a bisection with your two functions).
+
+> [!TASK]
+> Write `COV_350_30` (three decimals), `MIN_ALT_FIRST_0`, `MIN_ALT_FIRST_45` (whole metres) and `EXPLAIN_COVERAGE`:
+> why does 45° need more height than 0°, and what does that mean for the first camera on a drone limited to 400 m?
+
+## Step 5 — Preparing night frames (TODO 4)
+
+**TODO 4** `prepare(frame, alt_m, hfov_deg, vfov_deg, heading_deg, map_m_per_px, out_px, need=MIN_COVERAGE)`:
+lesson §4. First the coverage (your two functions, with the square's side out_px · map_m_per_px), then the warp.
+
+<details><summary>🧰 One affine warp with OpenCV</summary>
+
+```python
+M = np.float32([[0.5, 0.0, 10.0],          # x_out = 0.5·x_in + 0·y_in + 10
+                [0.0, 0.5, 20.0]])         # y_out = 0·x_in + 0.5·y_in + 20
+out = cv2.warpAffine(img, M, (64, 64), flags=cv2.INTER_AREA, borderValue=0)   # (width, height) of the output
+```
+M sends INPUT pixel coordinates to OUTPUT coordinates. For "scale by s then turn": the 2 × 2 part is the product of
+the turn and the scale; then choose the last column so that the input centre lands on the output centre
+(c_out = A · c_in + t, so t = c_out − A · c_in).
+</details>
+
+<details><summary>🧰 Which way to turn (picture coordinates, y down)</summary>
+
+The frame's top points at heading_deg (clockwise from north). In the north-up output, the frame's "up" direction
+(0, −1) must become (sin h, −cos h), and its "right" direction (1, 0) must become (cos h, sin h). The matrix whose
+columns are these two vectors is the turn.
+</details>
+
+```bash
+python3 run_night.py test
 ```
 
 ```bash
-python3 -c "from stars import julian_date, gmst_deg; print(gmst_deg(julian_date(1987, 4, 10)))"
+python3 run_night.py prepare
 ```
 
-Then run `python3 stars.py` again. It prints your JD and GMST next to astropy's, and NAVERA's GAST.
-Your GMST should agree with astropy to a small fraction of an arcsecond. GAST is about 0.5 s of time
-later: the equation of the equinoxes (nutation).
-
-### Step 3 — Equatorial to horizontal (TODO 3)
+It prepares the 12 frames of a simulated night flight (640 × 512, 75° × 63°) at the reference's 7.75 m per pixel and
+draws three of them next to the day reference at their true place: `out/prepared.png`. The roads and field edges of
+your prepared frame should line up with the reference's, north up.
 
 > [!TASK]
-> **TODO 3.** `radec_to_altaz(ra_deg, dec_deg, lat_deg, lon_deg, gst_deg)` — **vectorised**: it
-> must accept one star or numpy arrays of stars. Formulas in the course (section 2.3) and above the
-> function.
+> Write `REFUSED_FRAME`: the frame `prepare` refused.
 
-**Given 4** — `visible_stars(...)` is already written below TODO 3: read it. It calls your
-`radec_to_altaz` **once** on arrays of all the stars (no Python loop over the stars for the maths)
-and sorts the visible ones, brightest first. This is the pattern "vectorise, then filter".
+<details><summary>Stuck? Hints, one at a time</summary>
 
-Check the worked example of the course (Vega from Teide Observatory on Tenerife, apparent coordinates, GAST —
-note the negative longitude, because the site is west of Greenwich):
+1. Plan: `fw, fh = footprint_m(...)`; `cov = coverage(fw, fh, heading_deg, out_px * map_m_per_px)`; if cov < need,
+   return (None, cov, a sentence with "fly higher"); else the warp, and return (patch, cov, "ok").
+2. Scale: one output pixel is map_m_per_px metres, one frame pixel is fw / w metres along x (and fh / h along y): the
+   frame grows by (fw / w) / map_m_per_px.
+3. The patch is upside down or mirrored in `out/prepared.png`: check the turn with the 🧰 box: frame "up" → (sin h, −cos h).
+4. The test says the centre pixel is not 200: the centre must go to ((out_px − 1)/2, (out_px − 1)/2) — compute t
+   with c_in = ((w − 1)/2, (h − 1)/2).
+</details>
+
+## Step 6 — Template matching with NCC (TODO 5)
+
+**TODO 5** `ncc_locate(template, search)`: lesson §2, "Template matching".
+
+<details><summary>🧰 cv2.matchTemplate</summary>
+
+```python
+search = np.random.default_rng(0).integers(0, 255, (20, 30)).astype(np.uint8)
+tpl = search[5:12, 8:17]                                   # 7 rows × 9 columns, top-left at x = 8, y = 5
+r = cv2.matchTemplate(search, tpl, cv2.TM_CCOEFF_NORMED)   # (20 − 7 + 1, 30 − 9 + 1) = (14, 22) scores
+lo, hi, lo_xy, hi_xy = cv2.minMaxLoc(r)                    # hi ≈ 1.0, hi_xy = (8, 5): (x, y) of the TOP-LEFT corner
+```
+</details>
 
 ```bash
-python3 -c "from stars import radec_to_altaz; print(radec_to_altaz(279.45960, 38.81067, 28.30, -16.51, 316.48003))"
+python3 run_night.py test
 ```
 
-You should get about `(70.006, 307.013)`. Run `python3 stars.py`: it now compares your alt/az of the
-10 brightest stars with astropy's full `AltAz` transformation (worst difference: about half an
-arcsecond), lists the 44 stars brighter than 2.5 above Teide Observatory (the
-brightest is Arcturus, low in the west) and draws **sky.png**. Open
-[sky.png](file:./sky.png): zenith in the centre, horizon on the edge, north at the top and east on
-the **left** (you lie on your back, head to the north). Polaris is the orange dot.
-
-> [!QUESTION]
-> The program moves every catalogue position to the date with NAVERA's `apparent_radec` before
-> calling your function. Polaris' right ascension moves by more than 9°, Vega's by 0.2°. Why is the
-> change so large near the pole? (Think of how lines of longitude meet at the Earth's poles.)
-
-### Step 4 — Polaris and the zenith fix (TODO 5, 6)
-
 > [!TASK]
-> **TODO 5.** `polaris_latitude(alt_deg, ha_deg=None, polar_dist_deg=None)`: the altitude itself
-> without the optional arguments; `alt − p·cos(H)` with them.
->
-> **TODO 6.** `zenith_fix(ra_deg, dec_deg, gst_deg)`: the position of a camera pointing exactly
-> up, from its plate-solved centre (course, section 2.6). Longitude in −180…180.
-
-`python3 stars.py` now follows Polaris from New York during a whole sidereal day (every 15 min) and
-prints the worst latitude error with and without the correction (about 70 km → 0.3 km). It also
-"plate-solves" a perfect zenith camera at Teide Observatory and gets the site back.
-
-### Step 5 — The error budget (TODO 7)
-
-> [!TASK]
-> **TODO 7.** `attitude_error_km(error_deg)` and `clock_error_km(dt_s, lat_deg)` — both ≥ 0.
-> Use the constants `EARTH_KM_PER_DEG` and `SIDEREAL_DEG_PER_S` at the top of the file.
-
-Check yourself: 4 s of clock error at the equator must be about 1.86 km — one nautical mile, the
-old navigators' rule of thumb ("4 seconds, one mile").
-
-### Step 6 — Monte Carlo on NAVERA's solver (TODO 8)
-
-This is the important measurement of Part A. You will use NAVERA's **own** functions
-(`observer_candidates`, `choose_candidate`, `local_to_radec`, passed to you as `cn`) as a black box,
-and feed them a noisy attitude.
-
-> [!TASK]
-> **TODO 8.** `monte_carlo_fix(cn, site, gst, cam_alt, cam_az, sigma_tilt_deg, sigma_heading_deg,
-> n=2000, seed=24)`:
-> 1. `rng = np.random.default_rng(seed)`;
-> 2. the camera really points at (`cam_alt`, `cam_az`): compute once the (α, δ) it sees with
->    `cn.local_to_radec(site[0], site[1], cam_alt, cam_az, gst)` — this is what the plate solver
->    would report;
-> 3. for each of the n draws, the IMU reports `cam_alt + rng.normal(0, sigma_tilt_deg)` and
->    `cam_az + rng.normal(0, sigma_heading_deg)` (draw the tilt first, then the heading); solve with
->    `cn.observer_candidates(...)` and `cn.choose_candidate(cands, site[0], site[1])`;
-> 4. return `(np.array(errors_km), number_of_None_results)`, the errors measured with
->    `haversine_km(site, fix)`.
+> **Predict** (`PREDICT_NCC`): the runner will search the thermal patch's centre in the reference in five
+> conditions: day vs day (the same kind of picture), night, the night picture inverted (255 − x), noon, dawn. In
+> which will NCC find the right place, in which not, and why?
 
 ```bash
-python3 stars.py
+python3 run_night.py ncc
 ```
 
-The end of the output gives the median and p90 for a camera at 75° (towards the north-east) and at
-90°, with a BNO085-class IMU (0.3° tilt, 1.5° heading). Compare with the course: about 55 km RMS
-predicted for 75°; NAVERA measured 24–119 km, ~50 km typical. Why is the 90° camera so much better?
+Open `out/ncc.png`.
 
-The program writes the `"stars"` section of **results.json**. Open it.
+> [!TASK]
+> Write `NCC_GOOD_SAME`, `NCC_GOOD_NIGHT`, `NCC_GOOD_INVERTED` (shares 0–1, two decimals) and `EXPLAIN_NCC`: why does
+> NCC work day vs day but not at night, and why does inverting the night picture not fix it?
 
-## Part B — night vision
+<details><summary>Stuck? Hints, one at a time</summary>
 
-Part B does not use anything from Part A. If this is your second session, start here.
+1. `cv2.matchTemplate(search, template, cv2.TM_CCOEFF_NORMED)`, then `cv2.minMaxLoc`: the 2nd value is the best
+   score, the 4th the (x, y) of the best top-left corner.
+2. The test says (3.0, 1.0, 1.0): that is the top-left corner. The template's centre is at
+   x + (tw − 1)/2; the search area's centre at (sw − 1)/2.
+3. (−1.0, 1.0, …) or (1.0, 1.0, …): a sign — dy > 0 means DOWN, like the picture's y.
+</details>
 
-### Step 7 — The night replay frames (TODO 10)
+<details><summary>Read this after you ran `ncc`: what the table says</summary>
+Day vs day, NCC is almost perfect: the same kind of picture up to noise and gain. At night the brightness order of
+the materials changes (lesson §1): roads reverse, trees do not, so no gain and no offset map one picture onto the
+other; NCC's best place is then often wrong. Inverting helps where the night is a negative of the day (roads, soil),
+and hurts where it is not (trees, water). Dawn has almost no contrast: the camera's automatic gain stretches noise.
+</details>
+
+## Step 7 — The motion gate (TODO 6)
+
+**TODO 6** `motion_gate(anchor, t_anchor_s, fix, t_s, v_max_mps=V_MAX_MPS, margin_m=GATE_MARGIN_M)`: lesson §5. The
+distance is `haversine_m` (mission 06), already imported at the top of night.py. Build the reason with an f-string;
+`f"{238.4:.0f}"` gives `'238'`.
 
 ```bash
-head -5 /data/navera_data/camera_pkg/camera_pkg/data/thermal/flight_ready.csv
+python3 run_night.py test
 ```
-
-Each frame's file name holds a position and a height, e.g.
-`frame_0002_lat35.83026_lon10.64111_alt400m.jpg`; five frames say `NOGPS`.
-
-**Given 9** — `parse_thermal_name(filename)` (already written: read it) turns such a name into
-`(lat, lon, alt)` floats, or `None` without a position; it accepts a full path and negative numbers.
-
-> [!TASK]
-> **TODO 10.** `scale_to_map(altitude_m, hfov_deg, width_px, lat_deg, zoom=17)`: the resize factor of
-> `normalize_query` (course, section 1.5). `m_per_px` is imported from `navmap.py` (lesson 7).
-
-### Step 8 — Coverage and minimum height (TODO 11)
-
-> [!TASK]
-> **TODO 11.** `query_coverage(width_px, height_px, altitude_m, hfov_deg, heading_deg, lat_deg)`:
-> the share of the 512 × 512 reference square covered by the scaled frame turned by its heading.
-> Sample the square at its pixel centres with `np.meshgrid`, rotate the samples into the frame's
-> axes (formula above the function), test the two half-sizes, take the mean. No loops.
-
-**Given 12** — `min_altitude(width_px, height_px, hfov_deg, heading_deg, lat_deg, need=0.85)` is
-already written: read it. It finds the lowest height by **bisection** between 50 m and 2000 m, to
-0.5 m, calling your `query_coverage`. Coverage only grows with height: that is what makes bisection
-valid.
-
-Now compare your coverage with NAVERA's real `normalize_query` (it imports PyTorch: ~10 s):
 
 ```bash
-python3 compare_navera.py
+python3 run_night.py gate
 ```
 
-The two columns must agree to about 0.001. NAVERA counts pixels of a warped mask; you count
-sample points of an exact rectangle: small differences come from pixel rounding.
-
-### Step 9 — The motion gate (TODO 13)
+A night matcher's fixes on another flight (25 m/s, one every 2 s, no usable frame between 18 and 32 s) go through
+your gate; the runner moves the anchor only when your gate accepts.
 
 > [!TASK]
-> **TODO 13.** `motion_gate(anchor, t_anchor, fix, t, max_speed_mps=30.0, margin_m=30.0)` →
-> `(accepted, jump_m, reach_m)`, as in `night_subscriber.py` (course, section 1.6). A clock that
-> goes backwards must not make `reach` smaller than the margin.
+> Write `GATE_REFUSED` (the times, in seconds, of the refused fixes, as a list) and `EXPLAIN_GATE`: why was the fix
+> at 8 s refused, why was the one at 32 s accepted, and what happened after it?
 
-### Step 10 — Can we trust the night frames? (TODO 14, 15)
+<details><summary>Stuck? Hints, one at a time</summary>
 
-Before you use a dataset to measure accuracy, check that it is what it claims to be. Here, a
-quantitative check: compare each night frame with each of the 30 **day** replay frames.
+1. Three cases: no anchor → (True, "first fix"); jump > reach → (False, "implausible jump … m in … s (max … m)");
+   otherwise (True, "ok"). dt = max(0.0, t_s − t_anchor_s).
+2. The test expects a refusal at t = 1.0 and you accept: is reach = v_max_mps × dt + margin_m (not v × t_s)? Do you
+   use the ARGUMENTS v_max_mps and margin_m (the check changes them)?
+3. `haversine_m(anchor[0], anchor[1], fix[0], fix[1])`: latitude first.
+</details>
 
-> [!TASK]
-> **TODO 14.** `ncc(a, b)`: the normalised cross-correlation of two equal-size pictures
-> (−1…1; 0.0 for a uniform picture). Convert to float first.
->
-> **TODO 15.** `find_day_twin(thermal_path, day_paths, size=(192, 91))`: the basename of the day
-> frame with the highest NCC, that NCC, and the second-best NCC. Work on grey thumbnails
-> (`cv2.IMREAD_GRAYSCALE`, `cv2.resize(..., size, interpolation=cv2.INTER_AREA)`).
+<details><summary>Read this after you ran `gate`: the lock-in</summary>
+The fix at 32 s was wrong by about 300 m, but after 14 s without an accepted fix the reach was 450 m: it passed and
+became the anchor. Every correct fix after it was then "too far" from that wrong anchor and refused, and the reach
+grows by only 30 m/s while the true distance stays about 300 m too large for several frames. A gate that only
+compares with its own last decision can lock onto a wrong anchor; NAVERA compares night fixes with the arbiter's
+output (the prior) and other sources too (missions 29–30).
+</details>
+
+> [!TIP] 🏅 End of session 1 — Night watch
+> Press **✔ Check my work**. When checks 1–9 pass (TODO 1–6 and Steps 0–7; the others are session 2), you earn the
+> **Night watch** badge. If the class session ends here, stop here, and read lesson Part B before session 2.
+
+## Session 2 — Night navigator (about 2 h 30 to 3 h)
+
+## Step 8 — Making training pairs (TODO 7)
+
+Open [navera_lite/homography_net.py](file:./navera_lite/homography_net.py) and read its first lines (the patch
+coordinates and the 4-point label), then `thermal_camera` and `random_pair`: they draw the random numbers and call
+your function.
+
+**TODO 7** `cut_pair(ref_scene, thermal_scene, corner_xy, offsets)`: lesson §8, steps 2–4.
+
+<details><summary>🧰 A perspective warp from four corners</summary>
+
+```python
+src = np.float32([[10, 10], [50, 12], [52, 48], [8, 50]])   # 4 points of a picture (a quadrilateral)
+dst = np.float32([[0, 0], [39, 0], [39, 39], [0, 39]])        # where they must go: the corners of a 40 px square
+H = cv2.getPerspectiveTransform(src, dst)                     # the 3 × 3 matrix: src[k] → dst[k]
+out = cv2.warpPerspective(img, H, (40, 40))                    # the picture inside src, as a 40 × 40 square
+```
+Both arrays must be float32, shape (4, 2), in the same corner order.
+</details>
 
 ```bash
-python3 thermal.py
+python3 run_night.py test
 ```
 
-It takes about 30 s (30 × 30 comparisons). It prints the scale of a replay frame, the coverage table
-of a 640 × 480 thermal camera (84°), the minimum heights, the gate decisions on a run-away track,
-then the twin of every night frame, and draws **thermal_vs_map.png**: the night frame at map scale,
-the map at the position of its label, and that map in grey (what NAVERA's synthetic night tests
-fed to STHN). Open [thermal_vs_map.png](file:./thermal_vs_map.png).
+```bash
+python3 run_night.py pairs
+```
 
-> [!QUESTION]
-> Look at the twin table. Is there a pattern between the night frame number and its day twin's
-> number? What does a best NCC of ~0.9 against a second best of ~0.1 tell you? What do you conclude
-> about the positions written in the night frames' names, given that the day frames' positions are
-> already known to be wrong (`docs/VALIDATION_STATUS.md`)?
-
-## Step 11 — Write the report
-
-Open [report.md](file:./report.md) and answer the questions in each of its five sections, in your
-own words, with the numbers from `results.json` (at least 40 words per section).
+Open `out/pairs.png`: eight pairs, the green outline marks the true place of the thermal patch's corners in the
+reference patch.
 
 > [!TASK]
-> **report.md** — five sections: *Sidereal time*, *Polaris*, *Error budget*, *Night geometry*,
-> *The night replay set*. The check verifies that each section exists and is long enough, and that
-> you quote your Monte Carlo median (Error budget), your minimum height at heading 45° (Night
-> geometry) and the frame-number offset you found (The night replay set).
+> `EXPLAIN_CORNERS`: what do the 8 numbers of a label mean, and why does the network predict corners rather than the
+> 9 entries of H?
 
-## Step 12 — Check your work
+<details><summary>Stuck? Hints, one at a time</summary>
 
-Press **✔ Check my work**. The check calls your functions with its own inputs, then runs
-`stars.py` and `thermal.py` itself (about one minute in total) and reads `results.json` and
-`report.md`. Read the hint of any red line, fix, save, check again.
+1. The square's corners in the scene: `SQUARE + (x0, y0)`; the thermal corners: those + `offsets.reshape(4, 2)`.
+2. Two `getPerspectiveTransform`s to `SQUARE` (one from the square, one from the thermal corners), two
+   `warpPerspective`s of size (PATCH_PX, PATCH_PX).
+3. The test says the thermal patch moved LEFT: you warped from SQUARE to the corners (the inverse), or subtracted the
+   offsets.
+4. `error: (-215:Assertion failed) src.checkVector(2, CV_32F) == 4`: the points must be `np.float32`, shape (4, 2).
+</details>
+
+## Step 9 — The network's input (TODO 8)
+
+**TODO 8** `to_input(pairs, device="cpu")`: lesson §7, "Input normalisation". Torch operations only.
+
+<details><summary>🧰 Statistics per channel in PyTorch</summary>
+
+```python
+x = torch.arange(16.0).reshape(1, 2, 2, 4)        # 1 pair, 2 channels of 2 × 4
+x.mean(dim=(2, 3), keepdim=True)                  # shape (1, 2, 1, 1): tensor([[[[ 3.5]], [[11.5]]]])
+x.std(dim=(2, 3), keepdim=True)                   # each channel's std, same shape (broadcasts against x)
+torch.as_tensor(np.zeros((2, 2), np.uint8)).float()   # numpy uint8 → float32 tensor
+```
+</details>
+
+```bash
+python3 run_night.py test
+```
+
+> [!TASK]
+> `EXPLAIN_NORM`: why is each channel of each pair normalised on its own, and what does the "+ 1.0" protect?
+
+<details><summary>Stuck? Hints</summary>
+
+1. Accept both numpy and tensors: `x = pairs if torch.is_tensor(pairs) else torch.as_tensor(np.asarray(pairs))`, then
+   `.to(device).float()`.
+2. −1.16 instead of −0.84 on the test: you divided by the std alone — the docstring says (std + 1.0).
+</details>
+
+## Step 10 — The network (TODO 9)
+
+> [!TASK]
+> **Predict** (`PREDICT_PARAMS`): which layer holds most of the 192 600 parameters? Then count `fc1`'s parameters by
+> hand (lesson §7 does `conv3`): `N_PARAMS_FC1`.
+
+**TODO 9** `HomographyNet`: `__init__` (the six layers of the docstring's table, **with those names**: the check
+and Sim Lite load your weights into them) and `forward` (the table in order). Mission 21's PatchNet is the same
+kind of code; one new piece:
+
+<details><summary>🧰 A loop over layers</summary>
+
+```python
+for conv in (self.conv1, self.conv2):      # a tuple of layers: the same three operations for each
+    x = F.max_pool2d(F.relu(conv(x)), 2)
+```
+</details>
+
+```bash
+python3 run_night.py test
+```
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. `super().__init__()` first; then `self.conv1 = nn.Conv2d(2, 16, 3, padding=1)` and the five others from the table.
+2. `forward`: four times "conv, ReLU, 2 × 2 max-pooling", `x.flatten(1)`, `fc1`, ReLU, `fc2`. No ReLU after fc2.
+3. `mat1 and mat2 shapes cannot be multiplied (3x4096 and 1024x128)`: one pooling is missing.
+4. Parameters wrong: a layer without its bias, another kernel size, or padding missing.
+</details>
+
+## Step 11 — From corners to H, and training (TODO 10, TODO 11)
+
+**TODO 10** `offsets_to_H(offsets, side=PATCH_PX)`: lesson §6 (the 🧰 box of Step 8 has the OpenCV call).
+
+**TODO 11** `train(model, train_x, train_y, val_x, val_y, …)`: the least guided function. Mission 21's `train` had
+the same plan; what changes: the loss (mean squared error against offsets / RHO_PX), and the data stays on the CPU:
+each **batch** goes through your `to_input` to the device. Write the plan on paper first: once, every epoch, every
+batch, after each epoch.
+
+<details><summary>🧰 The mean squared error, and a batch to the GPU</summary>
+
+```python
+import torch.nn.functional as F
+F.mse_loss(torch.tensor([0.5, -0.5]), torch.tensor([0.25, 0.0]))   # tensor(0.1562) = mean of 0.0625 and 0.25
+idx = order[0:4]                                                    # 4 random indices (a CPU tensor)
+xb = to_input(train_x[idx], device); yb = train_y[idx].to(device) / RHO_PX
+```
+</details>
+
+```bash
+python3 run_night.py test
+```
+
+A quick run first (seconds):
+
+```bash
+python3 run_night.py train --n-train 3000 --epochs 3 --out quick.pt
+```
+
+The training loss should go down from about 0.21. Then the real training (about 30–60 s on the GPU; if the class's
+three GPU slots are busy the runner waits, then uses the CPU; on the CPU use `--device cpu --n-train 3000 --epochs 6`,
+about 11 minutes on a busy Jetson, for a weaker network that still passes the check):
+
+```bash
+python3 run_night.py train
+```
+
+It prints one line per epoch, saves your weights in `my_homography.pt`, the curves in `out/loss_my_homography.png`,
+and the median errors on the validation pairs.
+
+> [!TASK]
+> Write `VAL_CENTRE_PX` (two decimals, the median centre error of the last line).
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. Once: `torch.Generator().manual_seed(seed)`, `torch.optim.Adam(model.parameters(), lr=lr)`, `history = []`.
+   Every epoch: `model.train()`, `order = torch.randperm(n, generator=g)`, then the batches.
+2. Every batch: `idx = order[start:start + batch]`; the loss of `model(to_input(train_x[idx], device))` against
+   `train_y[idx].to(device) / RHO_PX`; then `opt.zero_grad()`, `loss.backward()`, `opt.step()`; keep `loss.item()`.
+3. After the batches: `model.eval()`, `with torch.no_grad():` the loss of each validation batch; the row
+   `{"epoch": e, "train_loss": mean, "val_loss": mean}`; append; `if log: log(row)`.
+4. The loss stays at about 0.21 (as good as answering 0): `opt.step()` or `zero_grad()` missing, or the targets
+   are not divided by RHO_PX; `Expected all tensors to be on the same device`: `.to(device)` on the targets.
+5. offsets_to_H gives [[1, 0, −2], [0, 1, 1], …]: the inverse — from the square to the square + offsets.
+</details>
+
+## Step 12 — Overfitting, live
+
+> [!TASK]
+> **Predict** (`PREDICT_OVERFIT`): with 2 000 pairs from only 6 places and 30 epochs, what will the training loss
+> and the validation loss do? Then run (it does not overwrite `my_homography.pt`):
+
+```bash
+python3 run_night.py train --scenes 6 --n-train 2000 --epochs 30 --out overfit.pt
+```
+
+Open `out/loss_overfit.png` next to `out/loss_my_homography.png`.
+
+> [!TASK]
+> `EXPLAIN_OVERFIT`: what did the two losses do with 6 places, and why? At which epoch would you have stopped?
+
+## Step 13 — Learned vs NCC, in five conditions
+
+```bash
+python3 run_night.py compare
+```
+
+It measures, on validation places, the median centre error and the share within 3 px for: the prior alone, NCC (your
+`ncc_locate`), an untrained network (random weights) and yours, at night, at dawn, at noon, over the coast, and with
+a prior wrong by up to 26 px (more than the ρ = 16 px of training). Open `out/compare.png`.
+
+> [!TASK]
+> Write `NET_NIGHT_PX`, `NCC_NIGHT_PX`, `NET_NOON_PX` (one decimal) and `EXPLAIN_LEARNED`: why does your network win
+> at night but not at noon or at dawn? What would you need before trusting it on a real drone?
+
+<details><summary>Read this after you ran `compare`: is that a good result?</summary>
+At night your network roughly halves the prior's error and beats NCC by far; at noon and dawn it is no better than
+the prior, or worse: it learned the night's relation between materials and nothing else, and it says so with the
+same confidence. A one-pass network like this one is coarse (the original HomographyNet's corner error was also about
+a third of ρ); NAVERA's STHN refines its corners in several steps. And everything here is a drawing of the map:
+real thermal frames, with their own surprises, are the test that counts.
+</details>
+
+## Step 14 — Sabotage: LOC-6 in your hands
+
+> [!TASK]
+> **Predict** (`PREDICT_STRICT`): the runner saves your weights again under names that start with `module.` (as a
+> script that wraps the network would) and loads them with `strict=False` (lesson §9). What median error will this
+> network have at night: near your trained network's, near the prior's (about 9.5 px), or much worse? Why?
+
+```bash
+python3 run_night.py sabotage
+```
+
+> [!TASK]
+> Write `MISSING_KEYS` and `EXPLAIN_STRICT`: why is `strict=False` dangerous, and what did NAVERA change after LOC-6
+> (lesson, In NAVERA)?
+
+## Step 15 — Fly the night
+
+```bash
+python3 run_night.py fly
+```
+
+The night flight end to end: each frame is prepared (your `prepare`), the reference patch is cut around the prior,
+your network predicts the corners, your `offsets_to_H` and the given `centre_shift` give the correction, and your
+motion gate checks the fix. Errors against the true positions, with NCC for comparison.
+
+> [!TASK]
+> Write `FLY_MEDIAN_M` (the last line).
+
+## Step 16 — The report
+
+Write [report.md](file:./report.md) (200–500 words, your own words, keep the four headings): the auditor, geometry
+and NCC, the learned homography, limits and honesty. Quote your numbers.
+
+> [!TASK]
+> report.md has the four headings, at least 200 words, and quotes your `AUDIT_BEST_NCC`, your `MIN_ALT_FIRST_0`, your
+> `NCC_GOOD_NIGHT` and your `NET_NIGHT_PX`.
+
+## Step 17 — Check, then look back
+
+Press **✔ Check my work**. It tests your functions on numbers and pictures they have never seen, loads your
+`my_homography.pt` safely (numbers only, strictly) and measures it on 512 night pairs from places you never saw: the
+median centre error must be 6.5 px or less (the prior alone: about 9.5; a full GPU training: about 3.5). When every
+check passes, you earn the **Night navigator** badge. Then look back, without the lesson:
+
+1. Explain to a colleague, in three sentences, what LOC-6 was and why no test caught it for weeks.
+2. Which of your predictions was the most wrong? What did you assume?
+3. Your network was trained on drawings. What data would you collect to know whether it works on a real thermal
+   camera over Sousse?
+
+Write your answers in `LOOK_BACK` in `answers.py` if you want your teacher to read them (not graded).
 
 ## Going further (optional)
 
-- **Two answers.** Ask NAVERA which places see a given star at altitude 45°, azimuth 0° (due north)
-  at our instant, when that star is the one seen from New York in that direction:
-
-  ```bash
-  python3 -W ignore -c "from cn_pkg.nodes.celestial_math import local_to_radec as l2r, observer_candidates as oc; ra, dec = l2r(40.71, -74.01, 45, 0, 316.48003); print(oc(45, 0, ra, dec, 316.48003))"
-  ```
-
-  You get two positions: New York and a second place on the other side of the world (in
-  Mongolia). Both are exact solutions of
-  equation (1). Try azimuth 180°: is there still a second solution? Explain with the triangle PZX.
-- **Second-order Polaris.** Derive the next term of the Polaris correction from
-  sin a = sin δ sin φ + cos δ cos φ cos H with δ = 90° − p, and show that it removes most of the
-  remaining 0.3 km. Then add Bennett's refraction R = 1′ · cot(a + 7.31/(a + 4.4)) (a in degrees)
-  and compute the error of an uncorrected measurement at New York.
-- **A better IMU.** Change the Monte Carlo to a tactical-grade attitude (0.05° tilt, 0.2° heading)
-  and to a gimballed camera pointing at the zenith. What position accuracy would make celestial
-  useful as more than a "which region am I in" check?
-- **Your own evening.** Change `WHEN` to tonight's date at 21:00 of your local time, written in UTC
-  (for example UTC + 1: subtract 1 h), and the site to your own town (west longitudes negative), run `python3 stars.py`, and go outside to check sky.png against the real
-  sky. Put the original values back before you press ✔ Check.
+- **Two passes.** Warp the thermal patch with your first H (so it is almost aligned), run the network again, and
+  compose the two homographies. Does the night error fall? (This is the idea behind STHN's refinement.)
+- **Train for dawn and noon too.** Copy `train_pairs` into your own script and mix night, noon and dawn pairs from
+  the training places (`scenes_train.npz` has night only: use `scenes_val.npz`'s first half for training and its
+  second half for validation). What happens to the night error?
+- **NCC on edges.** Replace both patches by their gradient magnitude (mission 08's Sobel) before `ncc_locate`. Does
+  it survive the night better? Why could it?
+- **Fly your own parts.** Sim Lite (mission 31) can load `my_homography.pt` for night flights: keep it.
