@@ -4,7 +4,7 @@
 trust gates, measured against the truth and against OpenCV; then match with your own network from mission 21,
 **decide** its threshold and when to use it from your measurements, and write the matcher's policy.
 **Time:** 5 h to 6 h 30 in two sessions (a strong programmer: about 4 h). Nothing is trained today: every run takes
-seconds (the slowest, `envelope`, about a minute).
+seconds to minutes (the slowest, `envelope`, two to three minutes).
 **Fast track:** if you know least squares and RANSAC, write the TODOs from the docstrings without the 🧰 and "Stuck?"
 boxes, then do "Going further".
 
@@ -182,10 +182,6 @@ python3 run_match.py fit
 
 ## Step 4 — How many samples? (TODO 4)
 
-> [!TASK]
-> **Predict** (`PREDICT_ITERS`): with w = 0.2 and p = 0.99, how many samples does a homography need? A guess, before
-> you write the code.
-
 **TODO 4** `ransac_iterations(p=0.99, w=0.5, s=2)`: lesson §4's formula, rounded UP, an `int`; w = 1 → 1; w ≤ 0 or
 w > 1 → ValueError.
 
@@ -239,13 +235,18 @@ python3 run_match.py test
 python3 run_match.py ransac
 ```
 
+> [!TASK]
+> **Predict** (`PREDICT_RANSAC_MIN`), before you run it: on the tilted city pair 91 % of the pairs are right, so
+> `ransac_iterations` asks for only 4 samples for a homography. Will that RANSAC put the photo's centre within 5 m of the
+> truth? Why?
+
 It runs your RANSAC on the tilted city pair, first with the number of samples your `ransac_iterations` asks for
 (with the share w of right pairs measured from the truth), then with 500 samples, and OpenCV's for comparison.
 Open `out/ransac_city_tilt.png`.
 
 > [!TASK]
 > Write `CENTRE_ERR_SIM_TILT` and `CENTRE_ERR_H_TILT` (the **500-sample** rows: how far from the truth the model puts
-> the photo's centre, in metres).
+> the photo's centre, in metres). After any change to `ransac`, run it again and copy again.
 
 <details><summary>Read this after you ran `ransac`: the first two rows</summary>
 With w = 0.91 the formula asks for 3 and 4 samples, and the homography found only 5 inliers, 82 m off. The formula
@@ -370,15 +371,19 @@ python3 run_match.py test
 python3 run_match.py curve
 ```
 
-On 12 pairs with the truth (other photos than the check's), it prints three tables: SIFT with the ratio test, your
-network with the ratio test, and your network with a distance cut alone (a distance cut is a ratio test against 1:
-`ratio_curve(best, 1, …)`). Open `out/curve.png`.
+About a minute. On 12 pairs with the truth (other photos than the check's; 4 of them as shaken as a drone in wind), it
+prints four tables: SIFT with the ratio test, your network with the ratio test, your network with a distance cut alone
+(a distance cut is a ratio test against 1: `ratio_curve(best, 1, …)`), and your network on the **shaken photos only**.
+The last column, "right / right at 0.95", is the share of the right pairs a loose rule finds that yours keeps. Open
+`out/curve.png`.
 
 > [!TASK]
 > **DECISION.** Choose your network's rule: `LEARNED_RATIO` and `LEARNED_MAX_DIST` (`None` for no distance cut, or a
 > number). Write `EXPLAIN_THRESHOLD`: justify it with **your** numbers (precision, right pairs kept) and compare it with
-> SIFT's 0.8. The check applies your rule, with your network, to unseen photos: it must keep a clean set (precision ≥
-> 0.85) without throwing away most of the right pairs (at least half of what a loose 0.95 finds).
+> SIFT's 0.8. The check applies your rule, with your network, to 7 unseen photos, most of them shaken: it must keep a
+> clean set (**precision ≥ 0.90**) and **at least half** of the right pairs your own network finds there with a loose
+> 0.95. The unseen photos are a little easier than the hardest curve photos: a rule whose precision on ALL the curve
+> photos is about 0.85–0.90, and that keeps about half the right pairs in the SHAKEN table, is usually right.
 
 <details><summary>Stuck? Hints</summary>
 
@@ -400,13 +405,17 @@ Your network was trained on photo patches turned by at most ±20° and scaled by
 python3 run_match.py envelope
 ```
 
-About a minute. Three tables, each cell "inliers verdict": A, the heading prior wrong by 0–90°; B, the zoom prior wrong
-by ×1.0–1.45 (a wrong altitude); C, blur and shake. `ok` means accepted by your gates AND right.
+Two to three minutes. Three tables, each cell "inliers verdict": A, the heading prior wrong by 0–90°; B, the zoom prior
+wrong by ×1.0–1.45 (a wrong altitude); C, blur and shake. `ok` means accepted by your gates AND right. Under table A it
+prints the largest heading **error** your network takes on both places.
 
 > [!TASK]
-> **DECISION.** `HEADING_LIMIT_DEG`: your matcher will use the network only when the heading prior's σ is at most this.
-> Write `EXPLAIN_ENVELOPE`: where does your network beat SIFT, where does it fail, and what in its training explains
-> both?
+> Copy that error into `NETWORK_MAX_ERR_DEG`. **DECISION.** `HEADING_LIMIT_DEG`: your matcher will use the network only
+> when the heading prior's **σ** is at most this. A σ is not an error (lesson §8): about 1 photo in 20 is more than 2σ
+> off. The check verifies your NETWORK_MAX_ERR_DEG with your network and wants 2 × HEADING_LIMIT_DEG inside it. A limit
+> too strict costs right matches: the scenes' compass priors have σ from 5° to 30° (see `mission.json`), and shaken
+> olive groves need your network. Write `EXPLAIN_ENVELOPE`: where does your network beat SIFT, where does it fail, what
+> in its training explains both, and why your σ limit is about half the error it survives.
 
 ## Step 11 — Your matcher's policy (TODO 9)
 
@@ -418,12 +427,13 @@ the other, and the gates for each attempt. `cfg` holds your decisions (the runne
 python3 run_match.py mission
 ```
 
-Ten scenes: sharp and shaken, heading known or not, the sea, another place, a wrong altitude. Each line: your answer,
-the method, the gates' reason, and the verdict from the truth: **right**, **refused** or **WRONG**.
+Twelve scenes: sharp and shaken, heading known or not, a poor compass, the sea, another place, a wrong altitude. Each
+line: what the photo shows, your answer, the method, the gates' reason, and the verdict from the truth: **right**,
+**refused** or **WRONG**; at the end, the inliers of each method's accepted matches and the total time.
 
 > [!TASK]
-> `mission` shows no WRONG and you understand every refusal. Write `EXPLAIN_POLICY`. The check runs your policy on 13
-> unseen scenes: zero wrong positions, at least 7 right.
+> `mission` shows no WRONG and you understand every refusal. Write `EXPLAIN_POLICY`. The check runs your policy on 16
+> unseen scenes (zero wrong positions, at least 8 right), and on two crafted cases that test how you call the gates.
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
@@ -431,7 +441,8 @@ the method, the gates' reason, and the verdict from the truth: **right**, **refu
    `prior["heading_sigma_deg"] <= cfg["heading_limit_deg"]` (or the other order: your decision — measure both).
 2. For each: the pairs (`sift_pairs(map_gray, photo_gray, SIFT_RATIO)` or your `learned_pairs(…, cfg["learned_ratio"],
    cfg["learned_max_dist"])`), then `fit, inl = ransac_similarity(src, dst, RANSAC_PX, RANSAC_ITERS,
-   np.random.default_rng(0))`, then `gates(fit, dst[inl], photo_gray.shape, prior["zoom"])`.
+   np.random.default_rng(0))`, then `gates(fit, dst[inl], photo_gray.shape, prior["zoom"])`: the INLIERS' PHOTO points
+   (not every pair, not the map points), and the prior's zoom.
 3. Accepted → return the dict at once; otherwise remember it and try the next; after the loop, return the last one with
    `"ok": False` and `"fit": None`.
 4. A WRONG line: some attempt was accepted without your gates, or with the wrong `predicted_scale` (it is the prior's
@@ -464,7 +475,8 @@ Write your answers in `LOOK_BACK` in `answers.py` if you want your teacher to re
 ## Going further (optional)
 
 - **Learned first?** Swap the order of your policy (network first when the heading is good). Count right, refused and
-  WRONG on `mission`, and the inliers of the accepted matches. Which order would you fly, and why?
+  WRONG on `mission`, the inliers of the accepted matches and the time. NAVERA's product runs its learned matcher first
+  when it has a heading (lesson, "In NAVERA"): does your measurement agree with that choice?
 - **The homography in RANSAC.** Run `ransac` on `city_tilt` with your homography and the number of samples of the w = 0.2 row of `iters`: how long
   does it take compared with OpenCV's `findHomography`? Where does the time go?
 - **A rotation-proof network.** In mission 21's `train`, turn the photo patches by a random multiple of 90°

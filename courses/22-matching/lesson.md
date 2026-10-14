@@ -10,12 +10,10 @@
 > predicts, ±15 %", brings it to **21 of 33, worst error 5 m, no wrong position** (validation report,
 > 3 October 2026). The geometry did not change; the **judgement** did.
 >
-> Today you build that judgement for NAVERA Lite, and then you put your own neural network from mission 21 to work
-> inside it. **Session 1 — Geometer:** pair descriptors with the ratio test, fit a similarity and a homography (your
-> own DLT), find them among wrong pairs with RANSAC, and write the gates. **Session 2 — Learned matcher:** match
-> with your network, **decide** its threshold from measurements, **measure** where it beats SIFT and where it fails,
-> and write the matcher's policy. The check measures your decisions on scenes you never saw. Badges: **Geometer**,
-> then **Matchmaker**.
+> Today you build that judgement for NAVERA Lite. **Session 1 — Geometer:** the ratio test, a similarity and your own
+> DLT homography, RANSAC, the gates. **Session 2 — Learned matcher:** your mission-21 network as a matcher; you
+> **decide** its threshold and when to trust it from your own measurements, and the check measures those decisions on
+> scenes you never saw. Badges: **Geometer**, then **Matchmaker**.
 >
 > **Start now:** open the 🛠️ **Lab** tab, do **Step 0** (five minutes, no code), then come back here for §1.
 
@@ -55,7 +53,6 @@ Your files are in `~/lessons/22-matching/`. The parts of NAVERA Lite you write a
 
 | Word | Meaning | Français |
 |---|---|---|
-| **pair** (candidate match) | a point of the map and a point of the photo that might be the same ground point | appariement |
 | **ratio test** | keep a pair only if its best distance is clearly smaller than the second best | test du rapport |
 | **precision** | the share of right pairs among the pairs you kept | précision |
 | **inlier / outlier** | a pair that agrees with the model (within a threshold) / one that does not | point conforme / aberrant |
@@ -64,7 +61,6 @@ Your files are in `~/lessons/22-matching/`. The parts of NAVERA Lite you write a
 | **degrees of freedom** | how many independent numbers a model has | degrés de liberté |
 | **SVD** | singular value decomposition: A = U·S·Vᵀ | décomposition en valeurs singulières |
 | **RANSAC** | fit many small random samples, keep the model most pairs agree with | RANSAC |
-| **gate** | a test a result must pass before anyone trusts it | barrière, critère d'acceptation |
 | **prior** | what the drone already believes before the photo (heading, altitude) | a priori |
 | **operating envelope** | the conditions inside which a method was measured to work | domaine de fonctionnement |
 </details>
@@ -92,9 +88,8 @@ keep the pair (i, j)  if  d_best < ratio × d_second          (ratio = 0.8 for S
 *unique* a pair is, not how close.
 
 How good is a set of pairs? When the truth is known (our photos are made from the map, so it is), count the
-**precision** = right pairs ÷ kept pairs. Lowe chose 0.8 by measuring it on his own pictures: it removed about 90 %
-of the false matches and lost under 5 % of the right ones. It is a measured number for SIFT, not a law of nature
-(Part B comes back to that).
+**precision** = right pairs ÷ kept pairs. Lowe chose 0.8 by measurement: on his pictures it removed about 90 % of
+the false matches and lost under 5 % of the right ones — a number for SIFT, not a law (Part B).
 
 > [!QUESTION] ✏️ Check
 > Best distance 250, second 290. Is the pair kept with ratio 0.8? With 0.9? What does a ratio of 1.0 keep?
@@ -114,9 +109,8 @@ y2 = s·(sin θ · x1 + cos θ · y1) + ty              (y points DOWN: a positi
 ```
 
 > [!TIP] 🧰 A turn of the plane, and a trick that makes it linear
-> R(θ) = [[cos θ, −sin θ], [sin θ, cos θ]] turns a vector by θ. Example: θ = 90°, (1, 0) → (0, 1); with y down,
-> (0, 1) is *below* (1, 0) on the screen: a clockwise turn. In the model, s and θ appear inside sin and cos: not
-> linear. Rename **a = s·cos θ** and **b = s·sin θ**: then x2 = a·x1 − b·y1 + tx and y2 = b·x1 + a·y1 + ty are
+> R(θ) = [[cos θ, −sin θ], [sin θ, cos θ]] turns a vector by θ (clockwise on the screen, since y points down). In the
+> model, s and θ appear inside sin and cos: not linear. Rename **a = s·cos θ** and **b = s·sin θ**: then x2 = a·x1 − b·y1 + tx and y2 = b·x1 + a·y1 + ty are
 > **linear** in (a, b, tx, ty). Solve for them, then s = √(a² + b²) and θ = atan2(b, a).
 
 Each pair gives two equations. With N pairs: 2N equations, 4 unknowns, noise everywhere: exactly mission 01's
@@ -155,8 +149,8 @@ The similarity has 4: it is a special homography whose last row is [0, 0, 1].
 
 ![A homography lays the drone view onto the map: four corners are enough to define it](assets/homography.svg)
 
-**The Direct Linear Transform (DLT).** For a pair (x, y) → (u, v), u = (h1·x + h2·y + h3) / (h7·x + h8·y + h9).
-Multiply out and every pair gives two equations that are **linear** in the 9 numbers h:
+**The Direct Linear Transform (DLT).** Every pair (x, y) → (u, v) gives two equations that are **linear** in the 9
+numbers h of H (read row by row):
 
 ```
 [ −x  −y  −1   0   0   0   u·x  u·y  u ] · h = 0
@@ -171,29 +165,30 @@ and noise it is a least-squares answer.
 0, 1]. The pair (1, 0) → (3, 2) gives the rows [−1, 0, −1, 0, 0, 0, 3, 0, 3] and [0, 0, 0, −1, 0, −1, 2, 0, 2]. First
 row · h = −2 − 1 + 3 = 0; second row · h = −2 + 2 = 0. The true h solves them.
 
+<details class="further"><summary>Optional — where the two rows come from</summary>
+
+u = (h1·x + h2·y + h3) / (h7·x + h8·y + h9). Multiply by the denominator: u·(h7·x + h8·y + h9) − (h1·x + h2·y + h3) = 0,
+which is the first row · h = 0. The same with v and (h4, h5, h6) gives the second.
+</details>
+
 > [!TIP] 🧰 The SVD in one paragraph
 > Any matrix A can be written A = U · S · Vᵀ (`U, S, Vt = np.linalg.svd(A)`): S holds the **singular values**, largest
 > first, and the rows of Vt are unit vectors. The unit vector h that makes ‖A·h‖ smallest is the **last row of Vt**
-> (the one of the smallest singular value). Example: `np.linalg.svd(np.array([[3.0, 0.0], [0.0, 0.5]]))[2][-1]` →
-> [0, 1] (up to its sign): moving along y changes A·h least.
+> (the one of the smallest singular value). Why: for a unit h, ‖A·h‖² is a mix of the squared singular values, weighted
+> by how much h points along each row of Vt; all the weight on the smallest gives the smallest value (0 with 4 exact
+> pairs). Example: `np.linalg.svd(np.array([[3.0, 0.0], [0.0, 0.5]]))[2][-1]` → [0, 1] (up to its sign).
 
-**Hartley's normalisation.** In pixels, the entries of A range from 1 to millions (u·x ≈ 1 300 × 1 300), and the
-SVD's answer becomes very sensitive to the noise. The fix (Hartley, 1997): move each point set so that its centroid
+**Hartley's normalisation.** In pixels, one column of A holds numbers like 1 690 000 (u·x ≈ 1 300 × 1 300) and
+another holds 1: an error of 1 % in the big ones swamps the small ones, and the SVD's answer becomes very sensitive to
+the noise. The fix (Hartley, 1997): move each point set so that its centroid
 is (0, 0) and its mean distance from it is √2 (a matrix T, given as `normalise_points`), run the DLT on the
 normalised points, and undo it: **H = T_dst⁻¹ · H_n · T_src**, then divide by H[2, 2].
 
 ![Hartley normalisation: the same points, centred and scaled, make a well-conditioned system](assets/dlt_normalise.svg)
 
-In a test with 20 pairs near (1 300, 1 300) px and 1 px of noise, the raw DLT mapped a grid of points **9.9 px** away
-from the truth on average; the normalised one **0.9 px**. Same data, same algebra: only the units changed.
-
-> [!QUESTION] ✏️ Check
-> How many pairs does a homography need at least, and a similarity? Why does that matter for the next section?
-
-<details><summary>Answer</summary>
-A homography 4 (8 unknowns, 2 equations per pair), a similarity 2 (4 unknowns). RANSAC draws samples of that size:
-the larger the sample, the harder it is to draw one with no wrong pair (§4).
-</details>
+In a test with 20 pairs near (1 300, 1 300) px, a strong perspective and 1 px of noise, the raw DLT mapped a grid of
+points **14 px** away from the truth on average; the normalised one **1.1 px**. Same data, same algebra: only the units
+changed.
 
 ## 4. RANSAC: a model from pairs that are mostly wrong
 
@@ -208,9 +203,8 @@ Least squares trusts every pair. One wrong pair 300 px away pulls the whole fit.
 
 ![RANSAC on a line: try a line through 2 random points and count who agrees](assets/ransac_line.svg)
 
-A sample that cannot give a model (two copies of one point, four points on one line) is simply a failed try: it still
-counts as one of the N. In NAVERA Lite every RANSAC follows the same rules (the docstring of `ransac` lists them), so
-that every student's RANSAC gives the same answer on the same data.
+A sample that cannot give a model (two copies of one point, four points on one line) is a failed try that still counts
+as one of the N (the docstring of `ransac` lists the course's rules, so every RANSAC gives the same answer).
 
 **How many samples?** If a share **w** of the pairs are right, a sample of s pairs is clean with probability wˢ. After
 N samples, the chance that none was clean is (1 − wˢ)ᴺ. We want that below 1 − p (p = 0.99 in the course; NAVERA
@@ -222,7 +216,8 @@ N = log(1 − p) / log(1 − wˢ)          rounded UP
 
 **Worked example.** w = 0.3, p = 0.99. Similarity, s = 2: wˢ = 0.09, N = ln 0.01 / ln 0.91 = −4.605 / −0.0943 =
 48.8 → **49**. Homography, s = 4: wˢ = 0.0081, N = −4.605 / −0.00813 = 566.2 → **567**. Twice the sample, eleven
-times the work.
+times the work. In practice w is unknown before the fit: OpenCV (and NAVERA through it) starts from a maximum and,
+each time a model with more inliers appears, recomputes N from that model's w, so clean data stop the loop early.
 
 ![RANSAC samples needed against the inlier share, for samples of 2, 4 and 8 pairs](assets/ransac_iterations.svg)
 
@@ -263,18 +258,16 @@ one corner, constrain the turn and the scale badly.
 >   one at 300 is kept.
 > - "More inliers = a better match." A wrong place on repetitive ground can collect many inliers; the gates look at the
 >   scale and the spread, not only the count.
-> - "The DLT works the same in pixels." Without normalisation it is badly scaled: 10 times the error in the test above.
-> - "N samples guarantee the answer." N gives a probability p that one **clean** sample was drawn, if your w is right.
-> - "θ is the heading." With y down and a north-up map, θ = −heading.
+> - "The DLT works the same in pixels." Without normalisation it is badly scaled: more than 10 times the error above.
 
 # Part B — Your network as a matcher (read before session 2)
 
 ## 6. A learned descriptor needs a prior
 
-SIFT gives every keypoint its own **scale** and **orientation**: it can compare a photo turned by 120° and zoomed
-1.6 times with the map, without knowing anything else. Your PatchNet cannot: it describes a fixed 32 × 32 window, upright.
-Mission 21 trained it on pairs whose photo patch was turned by at most **±20°** and scaled by **0.8 to 1.25**, with
-blur, noise and light changes. Outside that, it has never seen an example.
+SIFT gives every keypoint its own **scale** and **orientation**, so it can match a photo turned by 120° without any
+prior. Your PatchNet describes a fixed upright 32 × 32 window, and mission 21 trained it on photo patches turned by at
+most **±20°** and scaled by **0.8 to 1.25** (with blur, noise and light changes): outside that, it has never seen an
+example.
 
 A drone is not blind, though: its compass and IMU give a **heading** (± a few degrees), and its altitude gives the
 **zoom**. So we prepare the photo with this **prior**: turn it north up and bring it to the map's scale
@@ -288,7 +281,9 @@ A⁻¹ · p_upright** (homogeneous coordinates, as always).
 
 **Worked example.** Heading 90° (the photo's top looks east), zoom 2. A point 100 px to the right of the photo's
 centre: the photo's right is south, and 100 photo pixels are 50 map pixels. In the upright picture it is **50 px below
-the centre**. A = [[0, −0.5, …], [0.5, 0, …], [0, 0, 1]]: A·(100, 0) gives (0, 50), the same answer.
+the centre**. With `upright`'s matrix for a 640 × 480 photo (side round(800 / 2) = 400, centres (319.5, 239.5) and
+(199.5, 199.5)): A = [[0, −0.5, 319.25], [0.5, 0, 39.75], [0, 0, 1]], and A·(419.5, 239.5, 1) = (199.5, 249.5, 1): 50 px
+below the upright centre.
 
 > [!QUESTION] ✏️ Check
 > Heading 180°, zoom 1.6. A point 80 px above the photo's centre: where is it in the upright picture?
@@ -297,10 +292,6 @@ the centre**. A = [[0, −0.5, …], [0.5, 0, …], [0, 0, 1]]: A·(100, 0) give
 The photo's top looks south, so "above" is south: down in the upright picture, 80 / 1.6 = <b>50 px below the
 centre</b>.
 </details>
-
-`keypoints` (given) also removes duplicate positions: SIFT reports one point twice when it has two orientations. For
-SIFT the two descriptors differ; for your network they would be identical patches, the second-nearest distance would
-equal the nearest, and the ratio test would drop both every time.
 
 ## 7. Choosing a threshold is a measurement
 
@@ -318,18 +309,10 @@ you keep. A strict threshold keeps few, clean pairs; a loose one keeps more righ
 to 0.95, 12 right pairs for 78 wrong ones. A wrong pair is not free: RANSAC needs more samples (w falls), and a photo
 of another place collects more chance inliers.
 
-Two kinds of rules are possible: a **ratio** test, or a cut on the **distance** itself (keep a pair if d < d_max). For
-SIFT the raw distance means little (it depends on the picture's contrast). For unit-length learned descriptors trained
-with a margin, a distance can mean something. Lab Step 9 measures both, for SIFT and for your network, on 12 pairs
-with the truth. The check then measures **your** rule on photos you never saw.
-
-> [!QUESTION] ✏️ Check
-> Why must the threshold be chosen on pairs other than the ones the check (or a flight) will use?
-
-<details><summary>Answer</summary>
-For the same reason as mission 21's validation set: a threshold tuned on the test photos fits their quirks and
-overstates how well it works on new ground.
-</details>
+Lab Step 9 measures a ratio test and a distance cut (d < d_max) for SIFT and for your network, on 12 pairs with the
+truth, and again on the shaken ones alone: for unit-length descriptors trained with a margin, the distance itself can
+mean something. Expect your network's number **not** to be 0.8: the check measures your rule on unseen shaken photos and
+wants a precision of at least 0.90 while keeping at least half of the right pairs your network can find.
 
 ## 8. Operating envelope and policy
 
@@ -338,52 +321,49 @@ engineering question is not "is it better than SIFT?" but "**where** is it bette
 system know which case it is in?". You will measure three axes: the error of the **heading** prior, the error of the
 **altitude** (zoom) prior, and **blur and shake**.
 
-A matcher then needs a **policy**: which method to run first, when to try the other, and when to refuse. Two
-facts frame it:
+> [!TIP] σ is not the error
+> A prior comes with its uncertainty σ: the error is usually below σ, but a compass with σ = 20° is more than 40° off on
+> about **1 photo in 20** (beyond 2σ, for a normal error). Your envelope measures an **error** the network can take; the
+> policy can only see the **σ**. A limit "use the network when σ ≤ L" lets errors of 2L reach it on about 5 % of the
+> photos: L should be about half the error your network survives.
 
-- **The costs are not symmetric.** A refused frame costs one frame; the drone flies on its last position and the
-  next photo. An accepted wrong position (1 097 m in the prototype) can send the autopilot away. NAVERA's rule for
-  wrong accepted positions is **zero**.
-- **The gates are the safety net of every method.** Whatever produced the pairs, the same RANSAC and the same gates
-  judge the result.
+A matcher then needs a **policy**: which method to run first, when to try the other, and when to refuse. The costs are
+not symmetric: a refused frame costs one frame, an accepted wrong position (1 097 m in the prototype) can send the
+autopilot away; NAVERA's rule for wrong accepted positions is **zero**. And whatever produced the pairs, the same RANSAC
+and the same gates judge the result: they are the safety net of every method.
 
-Lab Step 11 runs your policy on ten scenes; the check runs it on thirteen others and counts right, refused and
+Lab Step 11 runs your policy on twelve scenes; the check runs it on sixteen others and counts right, refused and
 wrong.
 
 > [!WARNING] Common wrong ideas (Part B)
 > - "The network learned to match, so it matches anything." It learned the pairs it was shown: the turns, scales and
 >   effects of its training data. Outside them, measure before you trust.
-> - "SIFT's 0.8 works for every descriptor." It was measured for SIFT. Your network's number comes from your network's
->   curve.
 > - "The upright points can go straight to RANSAC." They are in the upright picture's pixels; the truth and the gates
 >   speak about the photo's pixels: A⁻¹ first.
 > - "Better = more right pairs." A method that adds one right match and one wrong accepted position is worse.
+> - "σ = 20° means at most 20° off." About 1 photo in 20 is more than 40° off.
 
 ## In NAVERA
 
-NAVERA's day vision, IRIS's product, has two local matchers. By default it uses a **learned** one when its models
-load on the GPU: learned keypoints and descriptors (DISK) paired by a learned matcher (LightGlue) — the same idea as
-your session 2, at a much larger scale. Its fallback, and the matcher measured in the validation report, is classic
-and works in words like this: the frame is
-first scaled to the map's resolution from the altitude and the camera's field of view; SIFT features of the frame are
-paired with those of the tiles in the search circle with Lowe's ratio test at **0.8**; a rotation + scale + shift is
-fitted with RANSAC (**6 px** threshold, confidence **0.999**, at most 5 000 iterations); and a match is accepted only
-with **≥ 6 inliers** and a fitted scale within **±15 %** of the one the altitude predicts. A weak match whose inliers
-cover less than a quarter of the frame (a 4 × 2 grid, 3 inliers per cell) is rejected too.
+NAVERA's day vision, IRIS's product, has two local matchers, and its policy is the one you build in session 2. By
+default it uses a **learned** matcher when its models load on the GPU: learned keypoints and descriptors (DISK) paired by
+a learned matcher (LightGlue). Like your PatchNet, these are **not rotation invariant**: NAVERA turns the frame north up
+from its heading before matching — the attitude's heading or, without one, the rotation its previous match measured.
+With no heading, or when the learned match fails, it tries SIFT. So: **learned first when a heading is known, SIFT as
+the fallback**, and a fitted rotation that disagrees with the heading by more than ±20° is refused as a wrong place.
 
-| Variant (bench, 33 aerial frames, validation report 3 October 2026) | Accepted | Error of accepted | Wrong accepted |
-|---|---|---|---|
-| prototype, no scale check, ≥ 12 inliers | 10/33 | median 4 m, worst 1 097 m | 1 |
-| + scale check | 21/33 | median 4 m, worst 5 m | 0 |
-| + frame pre-scaled, map features per tile | 32/33 | median 4 m, worst 9 m | 0 |
-| product module (≥ 6 inliers, GPU matching) | 30/33 | median 4 m, worst 5 m | 0 |
+The SIFT fallback is the matcher measured in the validation report (3 October 2026): the frame is scaled to the map's
+resolution from the altitude and the camera's field of view; its SIFT features are paired with the map's with Lowe's
+ratio test at **0.8**; a rotation + scale + shift is fitted with RANSAC (**6 px**, confidence **0.999**, at most 5 000
+iterations); a match is accepted with enough inliers (the report used **6**) and a fitted scale within **±15 %** of the
+altitude's prediction. A match with **fewer than 30 inliers** covering less than a quarter of the frame (4 × 2 grid, 3
+inliers per cell) is refused too; NAVERA Lite's spread gate is stricter: it applies at any inlier count.
 
-The frames come from another source and date than the map, rotated about 50° and at about 3 times the map's
-resolution; they are **not** frames from NAVERA's camera. The table measures the SIFT matcher; the validation report
-(3 October 2026) gives no figures for the learned DISK + LightGlue matcher, so none are quoted here. NAVERA's other
-learned models: DINOv2 for whole-tile retrieval (a separate fallback, median error 442 m) and STHN for night
-homographies (8–13 m median on synthetic frames). NAVERA is Release 0.2, field
-validation pending.
+On the report's bench (33 aerial frames from another source and date than the map, rotated about 50°, not NAVERA's
+camera), the prototype without the scale check accepted **10/33** with a worst error of **1 097 m** (1 wrong); the scale
+check gave 21/33 (worst 5 m, 0 wrong), and the product module **30/33, median 4 m, worst 5 m, 0 wrong**. The report gives
+no figures for the learned matcher, so none are quoted here (DINOv2 retrieval, a separate fallback: median 442 m).
+NAVERA is Release 0.2, field validation pending.
 
 ## In NAVERA Lite
 
@@ -395,9 +375,8 @@ validation pending.
 | `gates` | the trust gates | §5 |
 | `learned_pairs`, `ratio_curve`, `match_photo` (learned_match.py) | your network as a matcher, the threshold table, the policy | §6–§8 |
 
-Given: `distance_matrix`, `similarity_matrix`, `normalise_points`, `fit_model`, `ransac_similarity` (missions 23–25
-call it), `upright`, `keypoints`, `patches_at`, `sift_pairs`, and missions 08 and 21's parts. Your decisions
-(threshold, heading limit) are part of your stack: mission 23 locates photos on the map with your matcher.
+Given: the helpers of both files (`ransac_similarity` is the one missions 23–25 call) and missions 08 and 21's parts.
+Your decisions (threshold, heading limit) are part of your stack: mission 23 locates photos with your matcher.
 
 ## 🐦 How birds do it
 
@@ -415,8 +394,8 @@ her compass again.
    homography (8 degrees of freedom), fitted by the DLT on **normalised** points with the SVD.
 3. RANSAC fits minimal samples and keeps the model most pairs agree with; N = log(1 − p) / log(1 − wˢ) grows fast with s.
 4. Gates (inliers, scale, spread) refuse what RANSAC cannot judge; the scale gate stops most wrong places.
-5. A learned descriptor works inside its envelope: prepare the photo with the prior, choose its threshold by
-   measurement, measure where it beats SIFT, and let the policy and the gates decide.
+5. A learned descriptor works inside its envelope: prepare the photo with the prior, choose its threshold and its
+   heading limit (a σ, about half the error it survives) by measurement; the gates judge every result.
 
 **Next mission:** locate on the map. You turn your matcher's fit into a latitude and longitude, search the map around a
 prior, build an error budget, and compare retrieval with a pretrained network and with your own.
@@ -429,33 +408,30 @@ Answer without scrolling up.
 0.42 / 0.50 = 0.84 > 0.8: dropped (ambiguous).
 </details>
 
-<details><summary>2. Write the two rows of the similarity's least-squares system for the pair (3, 1) → (7, 9).</summary>
-[3, −1, 1, 0] · [a, b, tx, ty] = 7 and [1, 3, 0, 1] · [a, b, tx, ty] = 9.
-</details>
-
-<details><summary>3. Why is the last row of Vt the DLT's answer, and why normalise first?</summary>
+<details><summary>2. Why is the last row of Vt the DLT's answer, and why normalise first?</summary>
 It is the unit vector h that makes ‖A·h‖ smallest (the smallest singular value). Normalising makes all the entries of A
 of similar size, so the noise does not dominate the answer.
 </details>
 
-<details><summary>4. w = 0.5: how many samples for a similarity (p = 0.99)? For a homography?</summary>
+<details><summary>3. w = 0.5: how many samples for a similarity (p = 0.99)? For a homography?</summary>
 17 and 72 (0.25 and 0.0625 per sample).
 </details>
 
-<details><summary>5. A RANSAC fit has 40 inliers, well spread, s = 0.02 while the altitude predicts 1.6. Accept?</summary>
+<details><summary>4. A RANSAC fit has 40 inliers, well spread, s = 0.02 while the altitude predicts 1.6. Accept?</summary>
 No: "scale off". Forty points mapped onto almost one point: a degenerate fit, typical of a wrong place or many map points
 paired with the same photo point.
 </details>
 
-<details><summary>6. Your network was trained on turns of ±20°. The compass is ± 40° off. What do you do?</summary>
-Do not trust the network for that photo: use SIFT (which needs no heading) or refuse; the gates judge either way.
+<details><summary>5. Your network survives heading errors up to 20°. Today's compass has σ = 15°. Use the network?</summary>
+Not by default: about 1 photo in 20 is more than 30° off, outside the envelope. A limit near 10° keeps it inside; above
+it, SIFT (no heading needed) or refuse — the gates judge either way.
 </details>
 
-<details><summary>7. (Mission 21) Your network scores 0.99 on its training pairs, 0.70 on validation pairs. Conclusion?</summary>
+<details><summary>6. (Mission 21) Your network scores 0.99 on its training pairs, 0.70 on validation pairs. Conclusion?</summary>
 Overfitting: it learned the training places, not the rule. Never judge it on its training pairs.
 </details>
 
-<details><summary>8. (Mission 18) Why does one homography describe a tilted photo of flat ground, but not of a city with tall buildings?</summary>
+<details><summary>7. (Mission 18) Why does one homography describe a tilted photo of flat ground, but not of a city with tall buildings?</summary>
 The homography holds for points on one plane; roofs and streets are at different heights, so their points follow
 different mappings (parallax).
 </details>

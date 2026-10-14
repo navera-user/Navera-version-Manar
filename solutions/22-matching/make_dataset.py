@@ -24,7 +24,7 @@ courses/22-matching/files/ref_desc.pt: a copy of mission 21's reference weights 
 and courses/22-matching/hidden/ (check only):
   lp_map.png, lp_photo.png, lp_expected.npz   one unseen pair and the reference learned_pairs() result on it with
                                               ref_desc.pt (prior heading 75°, zoom 1.6; ratio 0.8 and 0.9/0.6)
-  scenes.npz + scenes.json                    13 unseen scenarios (town, olives, fields; sharp, blurred, shaken,
+  scenes.npz + scenes.json                    16 unseen scenarios (town, olives, fields; sharp, blurred, shaken,
                                               heading known or not, a wrong place, a wrong altitude) with truth H
 
 How the truth is exact (as mission 21): for each place ONE fine north-up orthophoto is rendered (render_view, pseudo,
@@ -239,8 +239,9 @@ def main():
         hd = float(rng.uniform(0, 360))
         fx = dict(MILD, blur=float(rng.uniform(0.5, 2.5)), noise=float(rng.uniform(2, 8)),
                   brightness=float(rng.uniform(0.6, 1.1)), gamma=float(rng.uniform(0.8, 1.4)))
-        if i % 4 == 1:
-            fx["motion_blur"] = int(rng.choice([7, 9, 11]))
+        shaken = i in (1, 4, 6, 11)              # as shaken as the check's photos: the decision is made on data like them
+        if shaken:
+            fx["motion_blur"] = int(rng.choice([11, 13, 15, 17]))
             fx["motion_deg"] = float(rng.uniform(0, 180))
         img, Hm = P[place].photo(hd, float(rng.uniform(1.4, 1.8)), fx, 300 + i)
         zoom_true = float(np.sqrt(abs(np.linalg.det(Hm[:2, :2]))))
@@ -249,7 +250,8 @@ def main():
         prior = {"heading_deg": round(hd + float(rng.uniform(-10, 10)), 1), "heading_sigma_deg": 10.0,
                  "zoom": round(zoom_true * float(rng.uniform(0.95, 1.05)), 3)}
         curve.append({"name": name, "map": f"map_{place}.png", "photo": f"photos/{name}.jpg", "prior": prior,
-                      "map_m_per_px": round(P[place].mpp, 4), "H": rnd(Hm)})
+                      "effects": "shaken" if shaken else "mild", "map_m_per_px": round(P[place].mpp, 4),
+                      "H": rnd(Hm)})
     json.dump(curve, open(os.path.join(OUT, "curve.json"), "w"), indent=1)
 
     # ---------------------------------------------------------------- session 2: the envelope
@@ -268,24 +270,30 @@ def main():
 
     # ---------------------------------------------------------------- session 2: mission scenarios (public)
     unknown = lambda z=1.6: {"heading_deg": None, "heading_sigma_deg": 180.0, "zoom": z}  # noqa: E731
-    MS = [  # name, map, photo place, heading, zoom, effects, prior
-        ("m01", "city", "city", 140.0, 1.6, MILD, unknown()),
-        ("m02", "city", "city", 140.0, 1.6, dict(MILD, motion_blur=15), known(147.0, 8.0)),
-        ("m03", "olives", "olives", 250.0, 1.6, MILD, unknown()),
-        ("m04", "olives", "olives", 250.0, 1.6, dict(MILD, motion_blur=13, motion_deg=30.0), known(244.0, 8.0)),
-        ("m05", "olives", "olives", 250.0, 1.6, dict(MILD, motion_blur=13, motion_deg=30.0), unknown()),
-        ("m06", "olives", "olives", 10.0, 1.6, dict(MILD, blur=4.5), known(15.0, 8.0)),
-        ("m07", "harbour", "harbour", 190.0, 1.6, dict(MILD, blur=2.5), known(185.0, 30.0)),
-        ("m08", "sea", "sea", 0.0, 1.6, MILD, known(5.0, 8.0)),
-        ("m09", "olives", "grove", 90.0, 1.6, MILD, known(90.0, 8.0)),
-        ("m10", "city", "city", 300.0, 2.2, MILD, known(300.0, 8.0, 1.6)),
+    MS = [  # name, map, photo place, heading, zoom, effects, prior, description (shown by the runner)
+        ("m01", "city", "city", 140.0, 1.6, MILD, unknown(), "city, sharp"),
+        ("m02", "city", "city", 140.0, 1.6, dict(MILD, motion_blur=15), known(147.0, 8.0), "city, shaken"),
+        ("m03", "olives", "olives", 250.0, 1.6, MILD, unknown(), "olives, sharp"),
+        ("m04", "olives", "olives", 250.0, 1.6, dict(MILD, motion_blur=13, motion_deg=30.0), known(244.0, 8.0),
+         "olives, shaken"),
+        ("m05", "olives", "olives", 250.0, 1.6, dict(MILD, motion_blur=13, motion_deg=30.0), unknown(),
+         "olives, shaken"),
+        ("m06", "olives", "olives", 10.0, 1.6, dict(MILD, blur=4.5), known(15.0, 8.0), "olives, heavy blur"),
+        ("m07", "harbour", "harbour", 190.0, 1.6, dict(MILD, blur=2.5), known(185.0, 30.0), "harbour, blurred"),
+        ("m08", "sea", "sea", 0.0, 1.6, MILD, known(5.0, 8.0), "open sea"),
+        ("m09", "olives", "grove", 90.0, 1.6, MILD, known(90.0, 8.0), "another place than the map"),
+        ("m10", "city", "city", 300.0, 2.2, MILD, known(300.0, 8.0, 1.6), "city, altitude wrong"),
+        ("m11", "olives", "olives", 160.0, 1.6, dict(MILD, motion_blur=13, motion_deg=80.0), known(197.0, 15.0),
+         "olives, shaken, poor compass"),
+        ("m12", "olives", "olives", 70.0, 1.6, dict(MILD, motion_blur=11, motion_deg=150.0), known(77.0, 8.0),
+         "olives, shaken"),
     ]
     mission = []
-    for i, (name, mp, pp, hd, z, fx, prior) in enumerate(MS):
+    for i, (name, mp, pp, hd, z, fx, prior, desc) in enumerate(MS):
         img, Hm = P[pp].photo(hd, z, fx, 700 + i, map_of=P[mp])
         save_jpg(os.path.join(OUT, "photos", f"{name}.jpg"), img)
-        mission.append({"name": name, "map": f"map_{mp}.png", "photo": f"photos/{name}.jpg", "prior": prior,
-                        "map_m_per_px": round(P[mp].mpp, 4), "H": rnd(Hm)})
+        mission.append({"name": name, "desc": desc, "map": f"map_{mp}.png", "photo": f"photos/{name}.jpg",
+                        "prior": prior, "map_m_per_px": round(P[mp].mpp, 4), "H": rnd(Hm)})
     json.dump(mission, open(os.path.join(OUT, "mission.json"), "w"), indent=1)
 
     # ---------------------------------------------------------------- hidden (check only)
@@ -322,6 +330,9 @@ def main():
         ("h11", "farm", "grove2", 300.0, 1.6, MILD, known(300.0, 8.0)),
         ("h12", "plain", "plain", 30.0, 1.6, dict(MILD, motion_blur=15, motion_deg=90.0), known(36.0, 8.0)),
         ("h13", "farm", "farm", 300.0, 1.6, dict(MILD, motion_blur=11, motion_deg=10.0), known(293.0, 8.0)),
+        ("h14", "farm", "farm", 20.0, 1.6, dict(MILD, motion_blur=13, motion_deg=70.0), known(57.0, 15.0)),
+        ("h15", "farm", "farm", 200.0, 1.6, dict(MILD, motion_blur=13, motion_deg=20.0), known(212.0, 8.0)),
+        ("h16", "farm", "farm", 100.0, 1.6, dict(MILD, motion_blur=15, motion_deg=140.0), known(104.0, 6.0)),
     ]
     arrays, meta = {}, []
     for i, (name, mp, pp, hd, z, fx, prior) in enumerate(HS):

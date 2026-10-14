@@ -12,7 +12,7 @@
   <text x="52" y="158" fill="#1d2733">600 px wide,</text>
   <text x="52" y="176" fill="#1d2733">near (1 300, 1 300)</text>
   <text x="34" y="268" fill="#d64545">entries of A: from 1 to 2.5 × 10⁶</text>
-  <text x="34" y="288" fill="#d64545">σ1/σ8 ≈ 3.7 × 10⁷ → mean error 9.9 px</text>
+  <text x="34" y="288" fill="#d64545">σ1/σ8 ≈ 3.7 × 10⁷ → mean error 14 px</text>
   <!-- arrow -->
   <path d="M308 144 H352" stroke="#1d2733" stroke-width="2"/><path d="M352 138 L364 144 L352 150 Z" fill="#1d2733"/>
   <text x="312" y="132" fill="#1d2733" font-weight="bold">T</text>
@@ -26,6 +26,6 @@
   <circle cx="497" cy="150" r="4" fill="#d64545"/>
   <text x="508" y="214" fill="#a8680d">mean distance √2</text>
   <text x="386" y="268" fill="#0b6e8a">centroid at (0, 0), all entries ≈ 1</text>
-  <text x="386" y="288" fill="#0b6e8a">σ1/σ8 ≈ 3.6 → mean error 0.9 px</text>
+  <text x="386" y="288" fill="#0b6e8a">σ1/σ8 ≈ 3.6 → mean error 1.1 px</text>
   <text x="620" y="312" fill="#1d2733" text-anchor="end">H = inv(T_dst) · Hn · T_src   (20 pairs, 1 px noise)</text>
 </svg>

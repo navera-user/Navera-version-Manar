@@ -21,14 +21,14 @@ the prototype 1097 m.
 ## 3. Your network as a matcher
 
 My network sees only upright patches at the map's scale, so the photo is turned with the prior heading first. On the
-shaken olives SIFT finds 2 pairs, my network 47. My curve table showed that SIFT's 0.8 is not right for my network:
-precision 0.843 against 0.946 at 0.7, for only 3.5 % fewer right pairs, so LEARNED_RATIO = 0.7, no distance cut. The
-envelope shows it works up to a 20° heading error, only just at 30° on the city, and fails beyond: it was trained on turns of ±20°. It beats SIFT
-on shaken olive groves (31 against 3 inliers), because its training pairs were blurred and noisy.
+shaken olives SIFT finds 2 pairs, my network 40. My curve table showed that SIFT's 0.8 is not right for my network:
+precision 0.829 against 0.934 at 0.7, for 5 % fewer right pairs (and half of the shaken photos' right pairs), so LEARNED_RATIO = 0.7, no distance cut. The
+envelope shows it works up to a 25° heading error and fails from 30°: it was trained on turns of ±20°. It beats SIFT
+on shaken olive groves (34 against 3 inliers), because its training pairs were blurred and noisy.
 
 ## 4. Your matcher's policy
 
-SIFT first, because it needs no prior. When the gates refuse it and the heading σ is at most HEADING_LIMIT_DEG = 20,
+SIFT first, because it needs no prior. When the gates refuse it and the heading σ is at most HEADING_LIMIT_DEG = 10 (less than half of the 25° error my network survived, because a compass is more than 2σ off on about 1 photo in 20),
 my network tries. On the ten mission scenes it gave 5 right, 5 refused and no wrong position; the network rescued one
 shaken olive grove. Everything here is drawn from a map: before trusting it on a drone I would measure it on real
 frames from NAVERA's camera, with real blur, shadows and seasons.

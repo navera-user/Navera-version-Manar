@@ -6,8 +6,8 @@ course's teaching stack (mission 22). Written for the course; it is not NAVERA c
 Picture 1 is the map patch (north up, the map's metres per pixel), picture 2 the photo (640 × 480 in the lab).
 zoom = map metres per pixel ÷ photo metres per pixel (1.6: the photo is 1.6 times sharper than the map); it is
 what the altitude and the camera predict, so it is also the similarity's expected scale. heading_deg is where
-the photo's TOP points, clockwise from north (CONVENTIONS.md §3). Points are (x, y) pixels, centre of the
-top-left pixel = (0, 0), as in match.py.
+the photo's TOP points, clockwise from north (a compass heading, missions 06 and 16). Points are (x, y)
+pixels, centre of the top-left pixel = (0, 0), as in match.py.
 
 Your PatchNet was trained on pairs whose photo patch was turned by at most ±20° and scaled by 0.8–1.25 against
 the map patch (mission 21's data). It has no orientation and no scale of its own: before describing, the photo
@@ -173,7 +173,7 @@ def ratio_curve(best, second, correct, ratios):
 
 SIFT_RATIO = 0.8           # Lowe's value, and NAVERA's (lesson §1)
 RANSAC_PX = 6.0            # NAVERA's RANSAC threshold, in photo pixels
-RANSAC_ITERS = 500         # enough for w = 0.2 with p = 0.99 (ransac_iterations gives 113): margin for worse
+RANSAC_ITERS = 500         # enough for w = 0.2 with p = 0.99, with a margin for worse
 
 
 # TODO 9 ---------------------------------------------------------------------------------------

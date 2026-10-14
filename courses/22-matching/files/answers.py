@@ -20,11 +20,12 @@ RESID_H_TILT = 0.0       # median residual (px) of YOUR homography on city_tilt
 EXPLAIN_DOF = ""         # why can the similarity not fit the tilted photo, and what does the homography cost?
 
 # ---- Step 4: how many samples? ---------------------------------------------------------------------------
-PREDICT_ITERS = ""       # before you run `iters`: with w = 0.2, how many samples for a homography? (a guess)
 ITERS_SIM_W02 = 0        # from `iters`: w = 0.2, s = 2
 ITERS_H_W02 = 0          # w = 0.2, s = 4
 
 # ---- Step 5: RANSAC ----------------------------------------------------------------------------------------
+PREDICT_RANSAC_MIN = ""     # before `ransac`: with only the samples ransac_iterations asks for (w = 0.91: 4 for a
+                            # homography), will your homography RANSAC put the photo's centre within 5 m of the truth?
 CENTRE_ERR_SIM_TILT = 0.0   # from `ransac city_tilt`: centre error (m) of YOUR similarity RANSAC (one decimal)
 CENTRE_ERR_H_TILT = 0.0     # and of YOUR homography RANSAC
 
@@ -42,13 +43,14 @@ PAIRS_SIFT_SHAKEN = 0       # from `learned olives_shaken`: the pairs SIFT finds
 PAIRS_LEARNED_SHAKEN = 0    # the pairs your network finds
 
 # ---- Step 9: DECISION — your network's threshold -------------------------------------------------------------
-LEARNED_RATIO = 0.8      # DECISION: the ratio test of your network (a number, 0 < r ≤ 1)
+LEARNED_RATIO = None     # DECISION (Step 9): your network's ratio (0 < r ≤ 1), from YOUR curve tables
 LEARNED_MAX_DIST = None  # DECISION: None (no distance cut), or a descriptor distance d: keep a pair only if dist < d
 EXPLAIN_THRESHOLD = ""   # justify it with numbers of `curve` (precision, right pairs kept), against SIFT's 0.8
 
 # ---- Step 10: DECISION — where your network can be trusted -------------------------------------------------------
 PREDICT_ENVELOPE = ""    # before `envelope`: up to what heading error will your network work, and why?
-HEADING_LIMIT_DEG = 20   # DECISION: your matcher uses the network only when the heading prior's σ is ≤ this (degrees)
+NETWORK_MAX_ERR_DEG = None  # from `envelope`: the heading ERROR printed under table A (degrees)
+HEADING_LIMIT_DEG = None    # DECISION (Step 10): the network is used only when the heading prior's σ is ≤ this (degrees)
 EXPLAIN_ENVELOPE = ""    # where does your network beat SIFT, where does it fail, and what in its training explains both?
 
 # ---- Step 11: your matcher's policy ----------------------------------------------------------------------------------

@@ -3,7 +3,7 @@
 Not visible to students. Alignment, answer key, rubrics, known difficulties, class plan.
 
 Two sessions: **Session 1 — Geometer** (Steps 0–6, badge **Geometer** = checks 1–7, milestone `geometer`) and
-**Session 2 — Learned matcher** (Steps 7–13, badge **Matchmaker** = all 13 checks). Lesson Part A (§1–§5) before
+**Session 2 — Learned matcher** (Steps 7–13, badge **Matchmaker** = all 15 checks). Lesson Part A (§1–§5) before
 session 1, Part B (§6–§8) before session 2. Owner decision §7.5 (2026-10-14): the student builds NAVERA Lite "from
 training to simulation"; here the network trained in mission 21 becomes a matcher, and the AI half is **decisions
 graded by measurement** (a threshold, a heading limit, a policy), not transcription. Owner instruction for this
@@ -17,7 +17,7 @@ rebuild: the student writes the DLT homography (the plan had moved it to optiona
 | 2. Similarity (LSQ) and homography (normalised DLT), degrees of freedom | §2 (s = 1.6, θ = −120°; s ≈ 2.15), §3 (4 vs 2 pairs) | Steps 2–3 (TODO 2–3), `fit` | 2, 3, 7 |
 | 3. RANSAC sample count, RANSAC | §4 (11; 74) | Steps 4–5 (TODO 4–5), `iters`, `ransac` | 4, 5, 7 |
 | 4. Trust gates: what each costs and protects | §5 (bunched) | Step 6 (TODO 6), `gates` | 6, 7 |
-| 5. A learned descriptor as a matcher: prior, threshold, envelope, policy | §6 (upright point), §7, §8 | Steps 7–11 (TODO 7–9 + 3 DECISIONS) | 8, 9, 10, 11, 12, 13 |
+| 5. A learned descriptor as a matcher: prior, threshold, envelope, policy | §6 (upright point), §7, §8 | Steps 7–11 (TODO 7–9 + 3 DECISIONS) | 8–14 |
 
 ## Answer key (recomputed on the Jetson, OpenCV 4.11, torch 2.8, 2026-10-14, reference weights = mission 21's
 solutions/21-features/my_desc.pt as shipped in courses/22-matching/files/ref_desc.pt)
@@ -50,32 +50,45 @@ solutions/21-features/my_desc.pt as shipped in courses/22-matching/files/ref_des
 
   **REASON_WRONG_PLACE = REASON_HILLS = "scale off"**, **PROTOTYPE_WRONG = wrong_place**. The wrong place's 14 inliers
   are many map points paired with almost one photo point (scale 0.00): the classic many-to-one failure.
-- Step 8 (`learned olives_shaken`, prior 126° ± 5°): SIFT **2 pairs** (both right), network (ratio 0.8) **47 pairs**,
-  46 right, 46 inliers, 1.53 m. `learned city`: SIFT 571/534, network 222/208 (0.06 m).
-- Step 9 (`curve`, 12 pairs, 15 876 SIFT and 6 532 network map points). SIFT ratio: 0.5 2 049/2 039 (0.995), 0.6
-  0.987, 0.7 2 814/2 707 (0.962), 0.75 0.933, **0.8 3 401/2 948 (0.867)**, 0.85 0.749, 0.9 0.568, 0.95 0.375. Network
-  ratio: 0.5 1 185/1 168 (0.986), 0.6 1 339/1 303 (0.973), **0.7 1 439/1 361 (0.946)**, 0.75 1 522/1 388 (0.912), **0.8
-  1 672/1 410 (0.843)**, 0.85 0.742, 0.9 0.591, 0.95 3 680/1 463 (0.398). Network distance cut: 0.3 0.966, 0.4
-  1 229/1 175 (0.956), 0.5 1 419/1 334 (0.940), 0.6 1 549/1 391 (0.898), 0.7 0.778, 0.8 0.594.
-  **Defensible decisions:** ratio 0.7–0.8, or a distance cut 0.5–0.6 (alone or with a ratio ≤ 0.9). SIFT's 0.8 copied
-  without looking passes the check (0.895 precision on the hidden photos) but EXPLAIN_THRESHOLD must compare it.
-- Hidden decision test (check 10, 5 unseen photos, reference network): 0.5 → 151 right (fails: too strict, minimum
-  224 = 0.4 × 561), 0.6 → 302 right, 0.99 precision; 0.7 → 415 right, 0.97; 0.8 → 0.895; 0.85 → 0.76 (fails: precision
-  < 0.85); 0.95 → 0.35. Distance cut 0.6 alone: 0.95; 0.7 alone: 0.81 (fails).
-- Step 10 (`envelope`, ratio 0.7): A — heading error 0/10/20/30/45/90°: city 240/207/104/**11 ok**/2/2, olives
-  92/87/42/**0**/0/0. The network's envelope ends between 20° and 30° (trained on ±20°). B — zoom prior ×1.1 ok for
-  both; ×1.2 and beyond "scale off" for **both** methods (the gate, ±15 %). C — blur2/3/4, shake9/13/17: city both
-  always ok; olives network 50/4/0/46/**26**/5, SIFT 125/5/3/11/**3**/2: the network wins on shaken repetitive ground
-  (shake13), both fail on strong Gaussian blur over olives. **HEADING_LIMIT_DEG**: 20 is the natural answer (15–25 is
-  defensible; < 8 fails check 12 because the hidden shaken groves come with σ = 6–8°).
-- Step 11 (`mission`, reference policy SIFT → network): m01 sift 570 right; m02 sift 121; m03 sift 385; **m04 network
-  14 inliers right** (SIFT alone: refused); m05 refused (heading unknown, shaken); m06 refused (blur 4.5); m07 sift 51
-  (σ 30°: no network); m08 sea refused; m09 another place refused; m10 wrong altitude refused (scale off).
-  **5 right, 5 refused, 0 wrong.**
-- Hidden policy test (check 12, 13 scenes): reference 8 right, 5 refused, 0 wrong (h04 and h12 need the network).
-  SIFT only: 6 right (fails: ≥ 7 needed, message names the unused network); heading limit 5: 6 (fails); network first:
-  10 right, 0 wrong (passes); no gates (≥ 6 inliers only): **2 wrong** (h07 beach photo at the town map, 30 inliers at
-  scale 0.0; h11 another grove, 15 inliers) — fails.
+- Step 5 prediction (PREDICT_RANSAC_MIN): most say yes ("91 % right: 4 samples are plenty"); the run shows 5 inliers and
+  82 m off — a clean but bad sample.
+- Step 8 (`learned olives_shaken`, prior 126° ± 5°): SIFT **2 pairs** (both right), network (ratio 0.8) **40 pairs**,
+  36 right, 1.50 m. `learned city`: SIFT 571/534, network 224/206 (0.06 m). Check 12 compares PAIRS_LEARNED_SHAKEN with
+  the student's OWN network on that pair (± 10 %), so a weaker network's honest count passes.
+- Step 9 (`curve`, 12 pairs, 4 of them shaken 11–17 px like the hidden photos; reference network). SIFT ratio: 0.7
+  0.944, 0.75 0.901, **0.8 2 586/2 139 (0.827)**. Network ratio (precision; share of the right pairs found at 0.95):
+  0.6 0.973 / 0.82, 0.65 0.963 / 0.86, **0.7 0.934 / 0.89**, **0.75 0.893 / 0.92**, **0.8 0.829 / 0.94**, 0.85 0.699.
+  Shaken photos only: 0.6 1.000 / 0.25, 0.65 0.986 / 0.38, **0.7 0.938 / 0.50**, 0.75 0.871 / 0.64, 0.8 0.779 / 0.74.
+  Distance cut: 0.5 0.940, 0.6 0.900, 0.7 0.820. **Defensible decisions for the reference: ratio 0.7–0.75** (0.65
+  if justified by the shaken table), or a distance cut 0.6 — always from the student's own tables.
+- Hidden decision test (check 10, 7 unseen photos h02 h04 h06 h12 h13 h15 h16, shaken or blurred, σ ≤ 8°). Bars:
+  precision ≥ **0.90** and ≥ **50 %** of the right pairs the STUDENT'S network keeps with a loose 0.95 (computed by the
+  check, so it adapts to the network). Reference network (641 loose right pairs): 0.6 → 44 % (fails, too strict), 0.65
+  → 0.986 / 56 %, 0.7 → 0.977 / 66 %, 0.75 → 0.951 / 76 %, **0.8 → 0.878 (fails)**, distance 0.6 → 0.955 / 66 %.
+  Other networks (expert's set, ratio passing window): seed1 0.65–0.75, m10 0.65–0.75, cpu4k 0.7–0.75, exp **only
+  0.7**, fc **only 0.75**; quick (fails mission 21's 0.85) has none. The lab's rule of thumb — the loosest ratio whose
+  precision on ALL curve photos is about 0.85–0.90, checking that the SHAKEN table keeps about half — lands in the
+  window for every network that passes mission 21 (cpu4k 0.75, exp 0.7, fc 0.75, m10 0.75, seed1 0.75, ref 0.75).
+- Step 10 (`envelope`, ratio 0.7): A — heading error 0/5/10/15/20/25/30/35/40/60/90°: city 240/215/209/194/108/37/7…,
+  olives 92/88/87/74/44/9/2/0…; both ok up to **NETWORK_MAX_ERR_DEG = 25** (the expert's networks: 20, m10 25, quick
+  10). B — zoom ×1.1 ok for both; ×1.2 and beyond "scale off" for both (the gate, ±15 %). C — olives shake13: network
+  34 inliers ok, SIFT 3 refused; both fail on Gaussian blur 3–4 over olives. **HEADING_LIMIT_DEG**: the check wants
+  2 × limit ≤ NETWORK_MAX_ERR_DEG (σ vs error, lesson §8: about 1 photo in 20 is beyond 2σ), and the hidden scenes need
+  the network at σ 6–8°, so the window is **8–10°** for a 20° network, 8–12.5° for 25°. 180 fails (2σ rule), 5 fails
+  (policy: 6 right).
+- Step 11 (`mission`, 12 scenes, reference policy SIFT → network, ratio 0.7, limit 10): m01 sift 570, m02 sift 121,
+  m03 sift 385, **m04 network 16**, m05 refused (no heading, shaken), m06 refused (blur 4.5), m07 sift 51, m08 sea
+  refused, m09 another place refused, m10 wrong altitude refused (scale off), **m11 refused** (σ 15° > limit: SIFT only;
+  with a limit ≥ 15 the network is tried 37° off and refused), **m12 network 24**. **6 right, 6 refused, 0 wrong**,
+  ≈ 10–16 s.
+- Hidden policy test (check 14, 16 scenes, ≥ 8 right, 0 wrong): reference 10 right, 6 refused, 0 wrong (h04, h12, h15,
+  h16 need the network; h14 is a σ = 15° prior 37° off). SIFT only: 6 (fails, the message names the unused network);
+  limit 5: 6; network first: 10 right, 0 wrong (the network then answers h02, h06, h13 too); no gates or gates on all
+  pairs: wrong positions accepted (h07, h11). Every expert network with its window decisions: 9–10 right, 0 wrong.
+- Check 13 (crafted): the student's sift_pairs is replaced, inside the student process, by two crafted pair sets: 40
+  inliers in one corner + 30 spread wrong pairs (must be refused: "inliers bunched"), and a zoom-4 match whose map points
+  are in one corner but photo points spread (must be accepted). It catches gates on all pairs, gates on the map
+  points, and a wrong predicted scale.
 
 ## Rubric for the written answers (the check only catches empty or off-topic answers)
 
@@ -85,22 +98,23 @@ solutions/21-features/my_desc.pt as shipped in courses/22-matching/files/ref_des
 | EXPLAIN_DOF | perspective/trapezoid needs 8 DOF; the similarity's 4 cannot; cost = 4-point samples, many more iterations (567 vs 49), more sensitive to noise | one half | "homography is better" |
 | EXPLAIN_GATES | hills: a right match refused because the altitude is wrong (availability lost); kept because wrong places almost never match at the right scale, and a wrong accepted fix (1 097 m) is far worse than a missed frame | names the cost or the benefit | describes the table |
 | EXPLAIN_THRESHOLD | quotes their own curve (precision and right at 2+ thresholds), compares with SIFT at 0.8, explains the trade (RANSAC w, wrong-place risk vs too few pairs on blurred photos) | numbers without trade-off, or trade-off without numbers | "0.8 like SIFT" |
-| EXPLAIN_ENVELOPE | fails beyond ≈ 20–30° of heading error and outside the scale gate; beats SIFT on shaken/blurred repetitive ground; links both to the training data (±20°, 0.8–1.25, blur, noise; no orientation/scale of its own) | measurements without the training link | "AI is better/worse" |
+| EXPLAIN_ENVELOPE | fails beyond ≈ 20–30° of heading error and outside the scale gate; beats SIFT on shaken repetitive ground; links both to the training data (±20°, 0.8–1.25, blur, noise; no orientation/scale of its own); the σ limit is half the error because 1 photo in 20 is beyond 2σ | measurements without the training link or the σ argument | "AI is better/worse" |
 | EXPLAIN_POLICY | order and why (SIFT needs no prior; network only with a trusted heading), every attempt through the same gates with the prior's zoom, refusal when none passes; mentions what the mission run showed | the order without the safety net | describes the code line by line |
 | report.md | four sections with their own numbers, the decisions justified, honest about synthetic data (drawn map, not a camera) | numbers without interpretation | copy of the runner output |
 
 Predictions are never marked. In class, ask who predicted the sea as the hardest pair and who the wrong place.
 
-## Difficulties seen in testing (mutants of the reference; no student pilot yet)
+## Difficulties seen in testing (mutants and the round-1 reviews; no student pilot yet)
 
-13 wrong-but-plausible versions, each run through the full check (`~/academy-test/review/22-matching/build/mut/`):
-see the build report for every message. Main ones: ratio test with `<=` or against the farthest distance (check 1
-names it); θ sign error (check 2, "θ has the wrong sign"); DLT without normalisation (check 3, "badly scaled", 9.9 px
-vs 0.9 px); `int()` instead of ceil (check 4); RANSAC without the final refit (check 5), sampling with
-`rng.integers` (check 5's iters = 1 test names the sampling rule); gates in the wrong order (check 6); learned_pairs
-leaving the photo points in the upright picture (check 8 names A⁻¹); ratio_curve with `<=` (check 9); a policy without
-gates (check 12: wrong positions accepted); decisions too loose (ratio 0.95, check 10) or a heading limit of 5° (check
-12 names the unused network).
+21 wrong-but-plausible versions run through the full check (`~/academy-test/review/22-matching/build/mut/`, list and
+messages in reports/r1_fixes.md): ratio test `<=` / against the farthest (check 1); θ sign (2); DLT without
+normalisation (3: "badly scaled", 14 px vs 1.1 px); floor instead of ceil (4); no refit, `rng.integers` sampling (5);
+gate order (6); learned_pairs without A⁻¹ or without `valid` (8, each with its own diagnosis), ignoring max_dist (8);
+ratio_curve `<=` (9); decisions None, ratio 0.95, 0.8 or 0.5 (10); NETWORK_MAX_ERR_DEG copied wrong, limit 180 (11);
+gates on map points or on all pairs (13); no gates, limit 5 (14). The weak reviewer's worst moment ("`test` is all ✔,
+the check 0/13") is fixed: `run_match.py test` now runs the edge cases (ties, one column, ValueErrors, big-pixel DLT,
+refit, empty input, gate order, strict ratio_curve). Students copy stale numbers after fixing code: the check says
+"run the step again".
 
 ## Class plan (two sessions of about 3 h)
 
@@ -117,8 +131,8 @@ gates (check 12: wrong positions accepted); decisions too loose (ratio 0.95, che
 
 - `make_dataset.py` (teacher only): 10 places, fine orthophotos rendered once (render_view, pseudo), map patches and
   photos resampled from them with exact H (SIFT + RANSAC residual median 0.36–0.61 px on the session-1 pairs).
-  ≈ 12 min from scratch, ≈ 20 s with `--cache DIR`. datasets/22-matching = 6.0 MB (maps, 47 photos, 4 JSON files,
-  README with © OpenStreetMap contributors). Hidden: lp pair + expected learned_pairs (reference weights), 13 scenes
+  ≈ 12 min from scratch, ≈ 20 s with `--cache DIR`. datasets/22-matching = 6.2 MB (maps, 49 photos, 4 JSON files,
+  README with © OpenStreetMap contributors). Hidden: lp pair + expected learned_pairs (reference weights), 16 scenes
   (`scenes.npz` 3.7 MB, `scenes.json`). Places are ≥ 0.8 km from every place of mission 21's patch sets (the two
   "only photographed" wrong places excepted: beach 0.7 km).
 - **ref_desc.pt** is in `courses/22-matching/files/` (copied by make_dataset.py from solutions/21-features/my_desc.pt),
@@ -126,9 +140,13 @@ gates (check 12: wrong positions accepted); decisions too loose (ratio 0.95, che
   again** (lp_expected.npz depends on it).
 - No training in this mission; the network runs on the CPU (2 threads, `academy_gpu.limit_threads`), no GPU slot is
   taken. Measured 2026-10-14: `describe` of 1 000 patches 1.6 s at load 18; `learned_pairs` 2.4 s, `match_photo`
-  0.5–4 s per scene; `envelope` ≈ 60 s; `curve` ≈ 20 s; the whole check 100 s at low load, **169 s at load 21**
-  (before the decision check was halved; re-measure on the class machine). Memory: ≈ 400 MB per Python process with
+  0.5–4 s per scene; `envelope` ≈ 90 s at load 10 (more rows in table A); `curve` ≈ 30–60 s; the whole check (15
+  checks) 41 s at load 10, ≈ 2 min at load 13. Memory: ≈ 400 MB per Python process with
   torch (no GPU memory).
-- NAVERA facts: its default day matcher is learned (DISK + LightGlue, GPU) with SIFT local matching as fallback and DINOv2 retrieval as a separate fallback; the validation report (2026-10-03) measures only the SIFT matcher, so the lesson quotes no figures for the learned one.
+- NAVERA facts (base docs and code, in words): default day matcher learned (DISK + LightGlue, GPU), frame turned north up
+  from the heading (or the previous match's rotation), learned first with a heading and SIFT as the fallback, a ±20°
+  heading gate on the fitted rotation; DINOv2 retrieval a separate fallback. The validation report (2026-10-03) measures
+  only the SIFT matcher (≥ 6 inliers in that bench; the product's current setting is 8); NAVERA's spread rejection
+  applies below 30 inliers only. No numbers are quoted for the learned matcher (only code comments have them).
 - Nondeterminism: on a loaded machine the network's inlier counts move by a few units between runs (CPU float
   order); the checks use tolerances or outcomes, never exact network counts. SIFT numbers are exact.

@@ -334,7 +334,11 @@ def _():
 
 
 def near(v, want, tol, name):
-    c.near(number(v, name), want, tol, name)
+    try:
+        c.near(number(v, name), want, tol, name)
+    except CheckFailed as e:
+        raise CheckFailed(f"{e}. If you changed your code since you copied it, run the step again and copy the new "
+                          "number")
 
 
 @c.test("Steps 0–6: the numbers of the runs, the gates' verdicts, your explanations",
@@ -343,7 +347,7 @@ def near(v, want, tol, name):
 def _():
     (ph, pn, k8, p8, why_r, rs, rh, why_d, pi, i2, i4, es, eh, pg, rw, rhl, pw, why_g) = answers(
         "PREDICT_HARDEST", "PRECISION_NONE", "KEPT_08", "PRECISION_08", "EXPLAIN_RATIO", "RESID_SIM_TILT",
-        "RESID_H_TILT", "EXPLAIN_DOF", "PREDICT_ITERS", "ITERS_SIM_W02", "ITERS_H_W02", "CENTRE_ERR_SIM_TILT",
+        "RESID_H_TILT", "EXPLAIN_DOF", "PREDICT_RANSAC_MIN", "ITERS_SIM_W02", "ITERS_H_W02", "CENTRE_ERR_SIM_TILT",
         "CENTRE_ERR_H_TILT", "PREDICT_GATES", "REASON_WRONG_PLACE", "REASON_HILLS", "PROTOTYPE_WRONG", "EXPLAIN_GATES")
     predicted("PREDICT_HARDEST", ph)
     if number(p8, "PRECISION_08") > 1 or number(pn, "PRECISION_NONE") > 1:
@@ -364,7 +368,7 @@ def _():
                "what the tilt does that a similarity cannot model"),
               ((r"4 point", r"four point", r"8 ", r"eight", r"more sample", r"more iteration", r"more point", r"567",
                 r"2876", r"2 876", r"degree", r"freedom", r"unknown", r"overfit", r"noise"), "what the homography costs"))
-    predicted("PREDICT_ITERS", pi)
+    predicted("PREDICT_RANSAC_MIN", pi)
     c.eq(int(number(i2, "ITERS_SIM_W02")), 113, "ITERS_SIM_W02")
     c.eq(int(number(i4, "ITERS_H_W02")), 2876, "ITERS_H_W02")
     if abs(number(es, "CENTRE_ERR_SIM_TILT") - 1.23) < 0.06:
@@ -442,8 +446,22 @@ def _():
                                       "photo with warp_points(np.linalg.inv(A), …)")
         raise CheckFailed(f"on an unseen pair with the course's network (ratio 0.8) you return {len(src)} pairs, "
                           f"{hit} of them the expected ones (expected {n}). Lab Step 8 hints")
-    c.ok(len(src) <= n + max(2, n // 50), f"you return {len(src)} pairs where {n} are expected: keep only the pairs your "
-         "ratio test accepts (pass `ratio` on)")
+    if hit >= 0.9 * n and len(src) > n + max(2, n // 50):
+        import cv2
+        _, valid, A = go(lm.upright, pg, 75.0, 1.6)
+        inside = cv2.erode((np.asarray(valid) > 0).astype(np.uint8), np.ones((49, 49), np.uint8))
+        q = np.round(warp(np.asarray(A, float), dst)).astype(int)
+        q[:, 0] = np.clip(q[:, 0], 0, inside.shape[1] - 1)
+        q[:, 1] = np.clip(q[:, 1], 0, inside.shape[0] - 1)
+        cut = int((inside[q[:, 1], q[:, 0]] == 0).sum())
+        if cut >= 0.5 * (len(src) - n):
+            raise CheckFailed(f"you return {len(src)} pairs where {n} are expected, {cut} of them with a patch that is "
+                              "partly OUTSIDE the photo in the upright picture (half black): keypoints(up, valid=valid) "
+                              "keeps only whole patches")
+        raise CheckFailed(f"you return {len(src)} pairs where {n} are expected (the expected ones among them): keep only "
+                          "the pairs YOUR ratio_test accepts with the given `ratio`")
+    c.ok(len(src) <= n + max(2, n // 50), f"you return {len(src)} pairs where {n} are expected: pass `ratio` on to "
+         "ratio_test, and find the upright picture's keypoints with keypoints(up, valid=valid)")
     got = go(f, mg, pg, 75.0, 1.6, net, 0.9, 0.6, seconds=120)
     src, dst, hit = same_pairs(got, exp["r90_d60_src"], exp["r90_d60_dst"], "learned_pairs(ratio 0.9, max_dist 0.6)")
     n = len(exp["r90_d60_src"])
@@ -504,66 +522,146 @@ def student_net():
         raise CheckFailed(f"my_desc.pt does not fit PatchNet's layers: {str(e).splitlines()[0][:160]}")
 
 
-def decisions():
-    lr, md, hl = answers("LEARNED_RATIO", "LEARNED_MAX_DIST", "HEADING_LIMIT_DEG")
+def threshold():
+    lr, md = answers("LEARNED_RATIO", "LEARNED_MAX_DIST")
+    if lr is None:
+        raise CheckFailed("LEARNED_RATIO is not decided yet (None): lab Step 9 — choose it from YOUR `curve` table")
     lr = number(lr, "LEARNED_RATIO")
     if not 0 < lr <= 1:
-        raise CheckFailed(f"LEARNED_RATIO = {lr}: a ratio is in (0, 1]")
+        raise CheckFailed(f"LEARNED_RATIO = {lr:g}: a ratio is more than 0 and at most 1")
     if md is not None:
         md = number(md, "LEARNED_MAX_DIST")
         if not 0 < md <= 2:
-            raise CheckFailed(f"LEARNED_MAX_DIST = {md}: None, or a distance between unit vectors (0 to 2)")
+            raise CheckFailed(f"LEARNED_MAX_DIST = {md:g}: None, or a distance between unit vectors (more than 0, at most 2)")
+    return lr, md
+
+
+def heading_limit():
+    (hl,) = answers("HEADING_LIMIT_DEG")
+    if hl is None:
+        raise CheckFailed("HEADING_LIMIT_DEG is not decided yet (None): lab Step 10 — choose it from YOUR `envelope` table A")
     hl = number(hl, "HEADING_LIMIT_DEG")
     if not 0 < hl <= 180:
-        raise CheckFailed(f"HEADING_LIMIT_DEG = {hl}: a heading σ in degrees, 0 to 180")
-    return {"learned_ratio": lr, "learned_max_dist": md, "heading_limit_deg": hl}
+        raise CheckFailed(f"HEADING_LIMIT_DEG = {hl:g}: a heading σ in degrees, more than 0 and at most 180")
+    return hl
 
 
-RULE_SCENES = ("h02", "h04", "h09", "h12", "h13")
-P_MIN = 0.85
-LOOSE_RIGHT = 561            # right pairs the course's network keeps on these 5 photos with ratio 0.95 (no cut)
-RIGHT_MIN = 0.4 * LOOSE_RIGHT
+def decisions():
+    lr, md = threshold()
+    return {"learned_ratio": lr, "learned_max_dist": md, "heading_limit_deg": heading_limit()}
 
 
-@c.test("Step 9 — your DECISION, measured: your network's threshold on 5 unseen photos",
-        hint="Lab Step 9: choose LEARNED_RATIO (and LEARNED_MAX_DIST, or None) from YOUR `curve` table: the share of "
-             "right pairs among those kept must stay high, without throwing most right pairs away. Justify with numbers.")
+RULE_SCENES = ("h02", "h04", "h06", "h12", "h13", "h15", "h16")      # shaken or blurred, heading known (σ ≤ 8°)
+P_MIN = 0.90
+RIGHT_SHARE = 0.5            # of the right pairs YOUR network keeps with a loose ratio 0.95 on the same photos
+
+
+@c.test("Step 9 — your DECISION, measured: your network's threshold on 7 unseen photos",
+        hint="Lab Step 9: choose LEARNED_RATIO (and LEARNED_MAX_DIST, or None) from YOUR `curve` tables — all photos AND "
+             "shaken photos: the share of right pairs among those kept must stay high (≥ 0.90 here), and you must keep at "
+             "least half of the right pairs your network finds with a loose 0.95. Justify with numbers.")
 def _():
     torch_threads()
     student_net()
-    cfg = decisions()
+    lr, md = threshold()
     why = answers("EXPLAIN_THRESHOLD")[0]
     explained("EXPLAIN_THRESHOLD", why,
               ((r"precision", r"right", r"wrong", r"correct", r"outlier", r"false"), "what the threshold trades"),
               ((r"\d",), "your numbers from the curve table"),
               ((r"sift", r"0\.8", r"lowe"), "how your choice compares with SIFT's 0.8"))
     ld = module("navera_lite.learned_desc")
-    (f,) = functions("learned_match", "learned_pairs")
+    lm = module("navera_lite.learned_match")
+    mt = module("navera_lite.match")
     net = go(ld.load_weights, "my_desc.pt")
     arrays, meta = scenes()
-    right = kept = 0
+    right = kept = loose = 0
     for s in meta:
         if s["name"] not in RULE_SCENES:
             continue
-        pr = s["prior"]
-        got = go(f, arrays["map_" + s["map"]], arrays[s["name"] + "_photo"], pr["heading_deg"], pr["zoom"], net,
-                 cfg["learned_ratio"], cfg["learned_max_dist"], seconds=120)
-        src, dst = (arr(x, "learned_pairs").reshape(-1, 2) for x in got)
-        ok = np.hypot(*(warp(np.array(s["H"]), src) - dst).T) <= 6.0 if len(src) else np.zeros(0, bool)
-        right += int(ok.sum())
-        kept += len(src)
+        pr, H = s["prior"], np.array(s["H"])
+        mg, pg = arrays["map_" + s["map"]], arrays[s["name"] + "_photo"]
+        up, valid, A = go(lm.upright, pg, pr["heading_deg"], pr["zoom"])
+        q1 = arr(go(lm.keypoints, mg), "keypoints").reshape(-1, 2)
+        q2 = arr(go(lm.keypoints, up, valid=valid), "keypoints").reshape(-1, 2)
+        d = arr(go(mt.distance_matrix, go(ld.describe, net, go(lm.patches_at, mg, q1), seconds=120),
+                   go(ld.describe, net, go(lm.patches_at, up, q2), seconds=120)), "distances")
+        if d.shape[0] == 0 or d.shape[1] < 2:
+            continue
+        o = np.argsort(d, axis=1, kind="stable")[:, :2]
+        r = np.arange(len(d))
+        b, s2 = d[r, o[:, 0]], d[r, o[:, 1]]
+        ok = np.hypot(*(warp(H, q1) - warp(np.linalg.inv(np.asarray(A, float)), q2[o[:, 0]])).T) <= 6.0
+        keep = b < lr * s2
+        if md is not None:
+            keep &= b < md
+        right += int((keep & ok).sum())
+        kept += int(keep.sum())
+        loose += int(((b < 0.95 * s2) & ok).sum())
     prec = right / kept if kept else 0.0
-    print(f"  your rule on 5 unseen photos: {kept} pairs kept, {right} right: precision {prec:.3f} (the course's network "
-          f"with a loose ratio 0.95 keeps {LOOSE_RIGHT} right pairs)")
-    if kept and prec < 0.3:
-        raise CheckFailed(f"only {prec:.2f} of your kept pairs are right on unseen photos: that is not a threshold "
-                          "problem — learned_pairs itself is wrong (check 8 first: are the photo points brought back "
-                          "with the inverse of A?)")
-    c.ok(prec >= P_MIN, f"with your rule {cfg['learned_ratio']}, {cfg['learned_max_dist']} only {prec:.2f} of the kept "
-         f"pairs are right on unseen photos (at least {P_MIN} needed): RANSAC then needs many more samples and a wrong "
-         "place can collect inliers. Look at your `curve` table again: a stricter threshold")
-    c.ok(right >= RIGHT_MIN, f"your rule keeps only {right} right pairs on these photos (at least {RIGHT_MIN:.0f} "
-         "needed): too strict, the blurred photos will not reach the gates. A looser threshold")
+    share = right / max(1, loose)
+    print(f"  your rule on 7 unseen photos: {kept} pairs kept, {right} right: precision {prec:.3f}; your network keeps "
+          f"{loose} right pairs with a loose 0.95, your rule {share:.0%} of them")
+    c.ok(prec >= P_MIN, f"with your rule (ratio {lr:g}, max_dist {md}) only {prec:.2f} of the kept pairs are right on "
+         f"unseen photos (at least {P_MIN} needed): RANSAC then needs many more samples and a wrong place collects "
+         "inliers. Look at your `curve` tables again: a stricter threshold")
+    c.ok(share >= RIGHT_SHARE, f"your rule keeps {share:.0%} of the {loose} right pairs your network finds with a loose "
+         f"0.95 (at least {RIGHT_SHARE:.0%} needed): too strict for shaken photos — read the SHAKEN table of `curve`, "
+         "then a looser threshold")
+
+
+def env_attempt(lm, mt, net, e, err_deg, lr, md):
+    """Your network on one envelope photo with the heading prior wrong by err_deg: accepted by YOUR gates AND right?"""
+    mg = cv2_read(e["map"])
+    pg = cv2_read(e["photo"])
+    got = go(lm.learned_pairs, mg, pg, e["heading_deg"] + err_deg, e["zoom"], net, lr, md, seconds=120)
+    src, dst = (arr(x, "learned_pairs").reshape(-1, 2) for x in got)
+    fit, inl = go(mt.ransac_similarity, src, dst, 6.0, 500, np.random.default_rng(0))
+    inl = np.asarray(inl, bool)
+    ok, _ = go(mt.gates, fit, dst[inl] if len(dst) else dst, pg.shape, e["zoom"])
+    if not ok:
+        return False
+    cpt = np.array([[319.5, 239.5]])
+    M = sim_matrix(*[float(x) for x in fit])
+    err = float(np.hypot(*(warp(np.linalg.inv(M), cpt) - warp(np.linalg.inv(np.array(e["H"])), cpt))[0]))
+    return err * e["map_m_per_px"] <= 10.0
+
+
+def cv2_read(rel):
+    import cv2
+    img = cv2.imread(os.path.join(DATA, rel), cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        raise CheckFailed(f"cannot read {DATA}/{rel}: is the data folder mounted? (tell your teacher)")
+    return img
+
+
+@c.test("Step 10 — your DECISION: the heading limit, from your network's envelope (a σ, not an error)",
+        hint="Lab Step 10: NETWORK_MAX_ERR_DEG = the error printed under table A of `envelope`; HEADING_LIMIT_DEG is a σ: "
+             "a compass with σ is more than 2σ off about once in 20 photos, so 2 × HEADING_LIMIT_DEG must stay inside "
+             "NETWORK_MAX_ERR_DEG.")
+def _():
+    torch_threads()
+    student_net()
+    lr, md = threshold()
+    hl = heading_limit()
+    (me,) = answers("NETWORK_MAX_ERR_DEG")
+    if me is None:
+        raise CheckFailed("NETWORK_MAX_ERR_DEG is still None: copy the error printed under table A of `envelope`")
+    me = number(me, "NETWORK_MAX_ERR_DEG")
+    ld = module("navera_lite.learned_desc")
+    lm = module("navera_lite.learned_match")
+    mt = module("navera_lite.match")
+    net = go(ld.load_weights, "my_desc.pt")
+    env = {(e["place"], e["effect"]): e for e in json.load(open(os.path.join(DATA, "envelope.json")))}
+    sharp = [env[("city", "sharp")], env[("olives", "sharp")]]
+    at = [env_attempt(lm, mt, net, e, me, lr, md) for e in sharp]
+    c.ok(all(at), f"NETWORK_MAX_ERR_DEG = {me:g}: with that heading error your network does not match both places "
+         "(`envelope`, table A, with your LEARNED_RATIO): copy the error printed under table A")
+    if me < 40:
+        nxt = [env_attempt(lm, mt, net, e, me + 5, lr, md) for e in sharp]
+        c.ok(not all(nxt), f"NETWORK_MAX_ERR_DEG = {me:g}: your network still matches both places at {me + 5:g}°: "
+             "copy the LAST error of the unbroken run of oks (printed under table A)")
+    c.ok(2 * hl <= me + 0.5, f"HEADING_LIMIT_DEG = {hl:g}: with σ up to {hl:g}°, about 1 photo in 20 is more than "
+         f"2σ = {2 * hl:g}° off, beyond the {me:g}° your network can take. Choose σ ≤ {me / 2:g}° (lesson §8)")
 
 
 @c.test("Steps 8 and 10: your network against SIFT, and its envelope",
@@ -573,16 +671,77 @@ def _():
     ps, pl, pe, why = answers("PAIRS_SIFT_SHAKEN", "PAIRS_LEARNED_SHAKEN", "PREDICT_ENVELOPE", "EXPLAIN_ENVELOPE")
     near(ps, 2, 0, "PAIRS_SIFT_SHAKEN")
     pl = number(pl, "PAIRS_LEARNED_SHAKEN")
-    c.ok(10 <= pl <= 200, f"PAIRS_LEARNED_SHAKEN = {pl:g}: the 'pairs' column of your network's line in "
-         "`learned olives_shaken`")
+    if os.path.exists("my_desc.pt"):
+        torch_threads()
+        student_net()
+        ld = module("navera_lite.learned_desc")
+        lm = module("navera_lite.learned_match")
+        net = go(ld.load_weights, "my_desc.pt")
+        p = {q["name"]: q for q in json.load(open(os.path.join(DATA, "pairs.json")))}["olives_shaken"]
+        got = go(lm.learned_pairs, cv2_read(p["map"]), cv2_read(p["photo"]), p["prior"]["heading_deg"],
+                 p["prior"]["zoom"], net, 0.8, None, seconds=120)
+        n = len(arr(got[0], "learned_pairs").reshape(-1, 2))
+        c.ok(abs(pl - n) <= max(3, 0.1 * n), f"PAIRS_LEARNED_SHAKEN = {pl:g}, but your network gives {n} pairs on "
+             "olives_shaken (ratio 0.8): run `learned olives_shaken` again and copy the 'pairs' column")
     predicted("PREDICT_ENVELOPE", pe)
     explained("EXPLAIN_ENVELOPE", why,
               ((r"blur", r"shak", r"motion", r"sharp"), "where your network beats SIFT (blur, shake)"),
               ((r"heading", r"rotat", r"turn", r"angle", r"orient", r"\d+ ?°", r"\d+ deg"), "where it fails (the heading)"),
-              ((r"train", r"learn", r"data", r"±", r"20", r"saw", r"seen"), "what in its training explains it"))
+              ((r"train", r"learn", r"data", r"±", r"20", r"saw", r"seen"), "what in its training explains it"),
+              ((r"σ", r"sigma", r"2 ?σ", r"twice", r"1 in 20", r"one in 20", r"5 ?%", r"double"),
+               "why your σ limit is about half the error your network can take"))
 
 
-@c.test("TODO 9 + your decisions: match_photo() on 13 unseen scenes — no wrong position, enough right ones",
+def crafted(kind):
+    """Pairs the given sift_pairs is made to return (map → photo): exact inliers plus spread outliers."""
+    r = np.random.default_rng(7 if kind == "bunched" else 8)
+    if kind == "bunched":            # all the inliers in ONE cell of the 4 × 2 grid, the wrong pairs all over the photo
+        M = sim_matrix(1.6, -30.0, 120.0, 260.0)
+        dst_in = np.column_stack([r.uniform(10, 150, 40), r.uniform(10, 230, 40)])
+    else:                            # zoom 4: inliers all over the photo, their MAP points in one corner of the map
+        M = sim_matrix(4.0, 0.0, 0.0, 0.0)
+        dst_in = np.column_stack([r.uniform(8, 632, 60), r.uniform(8, 472, 60)])
+    src_in = warp(np.linalg.inv(M), dst_in)
+    src_out = np.column_stack([r.uniform(0, 511, 30), r.uniform(0, 511, 30)])
+    dst_out = np.column_stack([r.uniform(0, 639, 30), r.uniform(0, 479, 30)])
+    return np.vstack([src_in, src_out]), np.vstack([dst_in, dst_out])
+
+
+@c.test("TODO 9: match_photo() uses YOUR gates on the INLIERS' PHOTO points, with the prior's zoom (two crafted cases)",
+        hint="Lab Step 11, hint 2: gates(fit, dst[inl], photo shape, prior['zoom']) — the spread is measured on the photo, "
+             "with the inliers only; the scale is compared with the prior's zoom.")
+def _():
+    lm = module("navera_lite.learned_match")
+    (f,) = need(lm, "match_photo")
+    if is_stub(f):
+        raise CheckFailed("match_photo() is not written yet (it is still the TODO stub in navera_lite/learned_match.py)")
+    calls = []
+    cfg = {"learned_ratio": 0.8, "learned_max_dist": None, "heading_limit_deg": 10.0}
+    mg, pg = np.zeros((512, 512), np.uint8), np.zeros((480, 640), np.uint8)
+    out = {}
+    for kind, zoom in (("bunched", 1.6), ("spread", 4.0)):
+        pairs = crafted(kind)
+
+        def fake(map_gray, photo_gray, ratio=0.8, n=1500, _p=pairs):
+            calls.append(1)
+            return _p[0].copy(), _p[1].copy()
+        lm.sift_pairs = fake
+        out[kind] = go(f, mg, pg, {"heading_deg": None, "heading_sigma_deg": 180.0, "zoom": zoom}, None, cfg, seconds=60)
+    if not calls:
+        raise CheckFailed("match_photo never called sift_pairs: use the given sift_pairs (ratio SIFT_RATIO) for SIFT")
+    for v in out.values():
+        if not isinstance(v, dict) or "ok" not in v:
+            raise CheckFailed(f"match_photo must return a dict with ok, method, fit, inliers, reason — got {v!r:.150}")
+    c.ok(not out["bunched"]["ok"], "a fit whose 40 inliers sit in ONE corner of the photo, with 30 wrong pairs spread "
+         "over it, was ACCEPTED: the spread gate must see the INLIERS' photo points (dst[inl]), not every pair")
+    if not out["spread"]["ok"] and out["spread"].get("reason") == "inliers bunched":
+        raise CheckFailed("60 inliers spread over the whole photo were refused as 'inliers bunched': you gave gates() "
+                          "the MAP points — the spread is measured on the PHOTO points dst[inl]")
+    c.ok(out["spread"]["ok"], f"a right, well-spread match at zoom 4 (the prior's zoom 4) was refused "
+         f"({out['spread'].get('reason')!r}): give gates() the prior's zoom as predicted_scale, and dst[inl]")
+
+
+@c.test("TODO 9 + your decisions: match_photo() on 16 unseen scenes — no wrong position, enough right ones",
         hint="Lab Step 11: SIFT and/or your network, each through ransac_similarity and YOUR gates with the prior's zoom; "
              "the network only when the heading prior is known and its σ ≤ cfg['heading_limit_deg']; refuse when no "
              "attempt passes. Run `python3 run_match.py mission` first.")
@@ -594,7 +753,7 @@ def _():
     (f,) = functions("learned_match", "match_photo")
     net = go(ld.load_weights, "my_desc.pt")
     arrays, meta = scenes()
-    right, wrong, refused, lines = 0, [], 0, []
+    right, wrong, refused = 0, [], 0
     used_learned = 0
     for s in meta:
         v = go(f, arrays["map_" + s["map"]], arrays[s["name"] + "_photo"], dict(s["prior"]), net, dict(cfg), seconds=120)
@@ -618,16 +777,17 @@ def _():
             right += 1
         else:
             wrong.append(f"{s['name']} ({e:.0f} m off)")
-    print(f"  your matcher on 13 unseen scenes: {right} right, {refused} refused, {len(wrong)} wrong")
+    print(f"  your matcher on {len(meta)} unseen scenes: {right} right, {refused} refused, {len(wrong)} wrong; your "
+          f"network gave {used_learned} of the answers")
     c.ok(not wrong, f"your matcher ACCEPTED {len(wrong)} wrong position(s): {', '.join(wrong)}. NAVERA's rule is zero: "
          "every accepted attempt must pass YOUR gates with the prior's zoom")
-    if right < 7 and used_learned == 0:
-        raise CheckFailed(f"only {right} of 13 scenes matched, and your network was never used: shaken photos of olive "
-                          "groves need it when the heading is known (is HEADING_LIMIT_DEG too strict, or is the network "
-                          "never tried after SIFT is refused?)")
-    c.ok(right >= 7, f"only {right} of 13 unseen scenes matched (at least 7 are possible with SIFT, your network and the "
-         "gates): try the second matcher when the first is refused (and if a check of TODO 1–7 fails, fix it first: "
-         "match_photo runs them)")
+    if right < 8 and used_learned == 0:
+        raise CheckFailed(f"only {right} of {len(meta)} scenes matched, and your network was never used: shaken photos of "
+                          "olive groves need it when the heading is known (σ 6–8° here): is HEADING_LIMIT_DEG too strict, "
+                          "or is the network never tried after SIFT is refused?")
+    c.ok(right >= 8, f"only {right} of {len(meta)} unseen scenes matched (at least 8 are possible with SIFT, your network "
+         "and the gates): try the second matcher when the first is refused (and if a check of TODO 1–7 fails, fix it "
+         "first: match_photo runs them)")
     explained("EXPLAIN_POLICY", answers("EXPLAIN_POLICY")[0],
               ((r"sift", r"network", r"learned"), "which matcher you run"),
               ((r"heading", r"σ", r"sigma", r"prior", r"compass"), "when the network may be used"),
