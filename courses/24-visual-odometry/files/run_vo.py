@@ -248,7 +248,7 @@ def test():
          note)
     v, e = rk.call(vo, "integrate", [], (7.0, 8.0))
     if e:
-        e = (f"integrate([], (7, 8)) — no step at all — stopped: {str(e).split(' — ')[0]}. With no step, np.array([]) "
+        e = (f"integrate([], (7, 8)) — no step at all — {str(e).split(' — ')[0]}. With no step, np.array([]) "
              "has shape (0,), not (0, 2): np.asarray(steps, dtype=float).reshape(-1, 2) (Lab Step 3, hint 5)")
     line(3, "integrate", v if e else np.asarray(v), e,
          not e and isinstance(v, np.ndarray) and v.shape == (1, 2) and close(v, [[7, 8]], 1e-9),
