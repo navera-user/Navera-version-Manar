@@ -75,7 +75,7 @@ Badges: **Timekeeper** = checks 1–8 (session 1), **Shutter** = all 15.
 | GRAB_MEDIAN_M | 1.91 | `turn` (independent of the setting): level 0.13, turning 4.31, p95 9.46, max 28.50 |
 | COPIED_MEDIAN_M | 0.32 | `turn --latency 0.138`, slerp line (nearest line 0.24 caught). Turning column: nearest 0.65, slerp 0.75 — about equal (both ≈ 19 ms off); p95 1.93 vs 1.63, max 7.47 vs 5.13 favour slerp. The all-frames median (0.24 vs 0.32) is a bimodal-median effect (396 level frames ≈ 0.04 m, 454 turning): not a rule. With 0.119: turning nearest 0.18, slerp 0.06 |
 | MINE_MEDIAN_M | 0.05 at 0.119 | table lookup for the student's camera.yaml latency (0.118: 0.05, 0.121: 0.06, 0.156: 0.66) |
-| STEADY_RATE_DPS | 12.98 (± 0.03) | g·tan 30° / 25 = 0.2266 rad/s; rad/s (0.23) caught. Held at the grab in the steady bank (6–10.5 s): real image-centre error median 2.13 m (the centre, 87 m from nadir, swings with the heading); the old h·tan yardstick said 3.66 m. Not graded: `straighten` frame 111 (3.85 s), held at the grab 7.4 m, yours 0.1 m at 0.119 |
+| STEADY_RATE_DPS | 12.98 (± 0.03) | g·tan 30° / 25 = 0.2266 rad/s; rad/s (0.23) caught. Held at the grab in the steady bank (6–10.5 s): real image-centre error median 2.13 m (the centre, 87 m from nadir, swings with the heading); the old h·tan yardstick said 3.66 m. Not graded: `straighten` frame 119 (4.13 s), held at the grab 7.5 m, yours 0.1 m at 0.119 |
 | N_TILTED / BANK48_RATE_DPS | 69 at 0.119 / 24.97 (± 0.05) | N_TILTED: table lookup (other counts at 0.119: turning 23, no attitude 7, rate unknown 5, ok 746). BANK48 = g·tan 48° / 25; rad/s caught; EXPLAIN_BANK48: 25 °/s < 30 °/s but the tilt 48° > 45° |
 | BEST_LATENCY_S | 0.120 (accepted 0.118–0.122) | `scan` (0.060–0.200 by 2 ms) on the image-centre error: 0.051 m at 0.120, 0.053 at 0.118. On a 1 ms grid the best is 0.119 (≈ L + 1 ms: the grab jitter's positive mean) |
 | QUEUE_WAITED_S | ≈ 1.98 (accepted 1.5–2.5) | `-p queue:=4`, 2 frames/s: each frame waits 4 × 0.5 s; attitude error ≈ 25° |
@@ -107,7 +107,7 @@ aerial photos from another camera, "not yet measured with NAVERA's camera".
 | EXPLAIN_STEADY | a banked plane turns (heading) at 13 °/s; × ~0.12 s ≈ 1.5° of heading error; a rotation about the vertical swings the centre, 87 m from nadir, by ≈ 2 m | "it is turning" only | "the rate" |
 | EXPLAIN_PHASE | slope −1: each ms later after a grab = 1 ms less wait; the spread is the flash's place between frames, not noise | "negative slope" with a vague reason | restates the number |
 | EXPLAIN_REFUSE | leftover timing error (setting ± ms, exposure blur, rolling shutter) × rate | "too fast" | — |
-| EXPLAIN_SCAN | 0.118 vs bench 0.119 agree; a real plane has no true attitude (only a simulator) | one of the two | — |
+| EXPLAIN_SCAN | 0.120 vs bench 0.119 agree (truth 0.118); a real plane has no true attitude (only a simulator) | one of the two | — |
 | EXPLAIN_QUEUE | the frame waited ~2 s, the stamp "now − L" does not know it; no setting fixes it; the rules see a normal attitude and rate at the stamped instant, nothing in them measures age | two of the three | — |
 
 ## Difficulties (build mutants + round-1 simulated students, 2026-10-13: strong 3 h 10, weak ≈ 95 min reading + 4 h 50 lab)

@@ -303,8 +303,9 @@ def _():
             raise CheckFailed(f"flash {k} was seen (a clear rise), but you returned None for it")
     g1, g3 = float(got[1]), float(got[3])
     if abs(g3 - 0.10) < 1e-6:
-        raise CheckFailed("flash 3: you took the first frame brighter than DARK; the rule is brighter than the MIDPOINT "
-                          "(half-lit frames do not count)")
+        raise CheckFailed("flash 3: you counted a half-lit frame: the rule is brighter than the MIDPOINT LEVEL "
+                          "(dark + bright) / 2 — not brighter than dark, and not half the rise (bright − dark) / 2 "
+                          "(lab Step 3, hint 2)")
     if abs(g1 - 0.10) < 1e-6:
         raise CheckFailed("flash 1: a frame EXACTLY at the midpoint is not brighter than it — use >, not >=")
     for k in (1, 3, 4):
