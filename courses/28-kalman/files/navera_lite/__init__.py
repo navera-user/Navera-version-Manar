@@ -5,4 +5,4 @@ Written for the course; it is not NAVERA code. PARTS lists the parts this copy h
 mission that introduces each one (PARTS.md says which ones you write here)."""
 __version__ = "course-2026.1"
 
-PARTS = {"kalman": 28}
+PARTS = {"estimate": 9, "geo": 6, "kalman": 28, "uncertainty": 27}

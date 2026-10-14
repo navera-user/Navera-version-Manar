@@ -218,7 +218,15 @@ def test():
                   mats([[82.0, 2.0], [[13.0625, 4.125], [4.125, 4.25]]], (
                       ([[82.0, 2.0], [[13.0, 4.0], [4.0, 4.0]]], "Q is not added: P = F P Fᵀ + Q"),
                       ([[82.0, 2.0], [[9.0625, 0.125], [0.125, 4.25]]], "P is not moved by F: P = F P Fᵀ + Q"),
-                      ([[82.0, 2.0], [[13.0625, 8.125], [0.125, 4.25]]], "F P Fᵀ: the transpose is missing (F @ P @ F)")))))
+                      ([[82.0, 2.0], [[9.0625, 13.125], [0.125, 4.25]]], "F P Fᵀ: the transpose is missing (F @ P @ F)")))))
+    def plain_lists(v):
+        ok, note = mats([[82.0, 2.0], [[13.0625, 4.125], [4.125, 4.25]]], (
+            ([[82.0, 2.0], [[9.0625, 13.125], [0.125, 4.25]]], "F P Fᵀ: the transpose is missing (F @ P @ F)"),
+            ([[82.0, 2.0], [[13.0, 4.0], [4.0, 4.0]]], "Q is not added: P = F P Fᵀ + Q")))(v)
+        return ok, note
+    cases.append((2, "kf_predict", "kf_predict with plain lists (F and Q too)",
+                  lambda: kf.kf_predict([80.0, 2.0], [[9.0, 0.0], [0.0, 4.0]], F1.tolist(), Q1.tolist()),
+                  plain_lists))
     cases.append((3, "kf_update", "kf_update([82, 2], P, [85], [[1, 0]], [[2.25]]) (docstring)",
                   lambda: kf.kf_update([82.0, 2.0], [[13.0625, 4.125], [4.125, 4.25]], [85.0], [[1.0, 0.0]], [[2.25]]),
                   mats([[84.5591837, 2.8081633], [[1.9193878, 0.6061224], [0.6061224, 3.1387755]], 0.5877551], (
@@ -261,6 +269,25 @@ def test():
         return True, None
     cases.append((4, "Height1D.update", "Height1D: 80 m, then 83 m, then 0.0 (docstring)", h1d, h1d_chk))
 
+    def noread():
+        f = kf.Height1D()
+        a = f.update(0.0, 0.0, 3.0)
+        b = f.update(1.0, float("nan"), 3.0)
+        c = f.update(2.0, 80.0, 3.0)
+        return [a, b, c]
+
+    def noread_chk(v):
+        a, b, c = v
+        if a is not None:
+            return False, f"the first call is 'no reading' (0.0) and the filter has no state yet: return None, got {a}"
+        if b is not None:
+            return False, ("a nan height must be ignored too: nan > 0 is False, but nan <= 0 is False as well — test "
+                           f"`not h > 0`; got {b}")
+        if c is None or abs(float(c[0]) - 80.0) > 1e-9 or abs(float(c[1]) - 3.0) > 1e-9:
+            return False, f"the first USABLE height (80 m) starts the filter: (80.0, 3.0) expected, got {c}"
+        return True, None
+    cases.append((4, "Height1D.update", "Height1D: 0.0 and nan before the first height, then 80 m", noread, noread_chk))
+
     def back():
         f = kf.Height1D()
         f.update(5.0, 80.0, 3.0)
@@ -299,6 +326,9 @@ def test():
             return False, "d2[2] is None: a fix arrived at t = 2 s"
         d2 = float(r["d2"][2])
         if abs(d2 - 0.5446293) > 1e-5:
+            if abs(d2 - 1.9989) < 1e-3:
+                return False, ("d2[2] = 1.9989: the prediction at t = 1 s (no fix) was skipped — predict at EVERY "
+                               "time, then update only if there is a fix")
             if abs(d2 - 1.2163) < 2e-3:
                 return False, "d2 looks like it skipped a prediction: predict at EVERY time, also when there is no fix"
             return False, f"d2[2] = {d2:.4f}, expected 0.5446 (the nis of kf_update)"
@@ -488,10 +518,12 @@ def heights(args):
     err = [mine[i][0] - truth[i] for i in usable]
     climb = [i for i in usable if 20.0 <= rows[i][0] <= 60.0]
     flat = [i for i in usable if rows[i][0] < 20.0 or 70.0 <= rows[i][0] <= 100.0]
+    down = [i for i in usable if 100.0 <= rows[i][0] <= 125.0]
     print(f"Height1D with climb_accel = {a:g} m/s² (q = {a * a:g} m²/s⁴), {len(usable)} usable heights.\n")
     print(f"   RMS error, whole flight          {rms(err):6.3f} m")
     print(f"   RMS error, in the climb (20–60 s) {rms([mine[i][0] - truth[i] for i in climb]):6.3f} m")
-    print(f"   RMS error, level flight           {rms([mine[i][0] - truth[i] for i in flat]):6.3f} m")
+    print(f"   RMS error, in the descent (100–125 s) {rms([mine[i][0] - truth[i] for i in down]):6.3f} m")
+    print(f"   RMS error, level (0–20, 70–100 s) {rms([mine[i][0] - truth[i] for i in flat]):6.3f} m")
     print(f"   largest error                     {max(abs(e) for e in err):6.3f} m")
     print(f"   stated σ at the end               {mine[-1][1]:6.3f} m")
     draw_heights(rows, mine, a, f"out/heights_{a:g}.png")
@@ -597,8 +629,9 @@ def track(args):
                                                f"gate p = {gate_p:g} (refuse d² > {kf.gate_threshold(gate_p):.2f})") + "\n")
     print(f"   RMS error at the {len(f['fixes'])} seconds with a fix:  good fixes alone {raw:6.2f} m,  "
           f"your filter {rmse:7.2f} m")
-    print(f"   during the jam: σ east at its end {sj:7.1f} m,  true error at its end "
-          f"{math.hypot(*f['err'][j1]):7.1f} m")
+    s2 = math.sqrt(f["P"][j1][0, 0] + f["P"][j1][1, 1])
+    print(f"   at the end of the jam: σ east {sj:7.1f} m;  stated 2-D σ √(σe² + σn²) {s2:7.1f} m,  "
+          f"true 2-D error |x − truth| {math.hypot(*f['err'][j1]):7.1f} m")
     d2a = f["r"]["d2"][after]
     print(f"   first fix after the jam (t = {f['t'][after]:.0f} s): d² = "
           + ("—" if d2a is None else f"{float(d2a):.2f}") + f", accepted: {f['r']['accepted'][after]}")
@@ -670,9 +703,10 @@ def sweep(args):
         if lost:
             verdict = "LOST the track after the jam"
         elif band and mn > band[1]:
-            verdict = "overconfident"
+            verdict = "above the band: overconfident" if mn > 1.1 * band[1] else "just above the band (a hint)"
         elif band and mn < band[0]:
-            verdict = "pessimistic"
+            verdict = ("below the band: pessimistic side" if mn < 0.9 * band[0]
+                       else "just below the band (a hint: pessimistic side)")
         elif band:
             verdict = "honest (inside the band)"
         else:

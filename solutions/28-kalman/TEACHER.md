@@ -7,7 +7,8 @@ TODO 6 `nees_band` lives in the lesson folder's `band_sim.py` (an experiment, no
 needed (no dependency on mission 27's `uncertainty.py`, rebuilt in parallel). This is the SECOND HALF of the old
 mission 26 (covariance/gating/fusion is mission 27 now). No NAVERA code, no NAVERA file: the old lab imported
 NAVERA's own day-vision class to race against; now the race target is `reference_heights.csv`, made by the course's
-own `Height1D`, and the model is described as NAVERA's day-vision height filter **in words**.
+own `Height1D`, and the model is described **in words** as the height filter in NAVERA's day-vision code (it exists
+there with unit tests, but the running system does not fly on it: see the NAVERA facts below).
 
 Regenerate (from the repository root, on the host):
 - `python3 tools/lite_build.py 28-kalman` — starter + solution of the part;
@@ -62,7 +63,9 @@ Badges: **Height keeper** = checks 1–6 (session 1), **Tracker** = all 14.
 Lesson numbers (all recomputed): §1 K 0.8, x 58, P 20 → 21; steady state σ 2.13 m, K 0.18 (✏️ R = 100: K 0.095);
 §2 P⁻ [[9, 3], [3, 2]]; §3 S 18, K [0.5, 0.167], x [104.5, 2.0], P [[4.5, 1.5], [1.5, 1.5]], NIS 0.5 (✏️ R = 1:
 K [0.9, 0.3], 105.7 m, +0.9 m/s); §4 R 2.25 / 12.96 m², √(10·0.25) = 1.6 m/s; §5 d² 0.98 / 12.8, ✏️ 6.2 / 53;
-§6 0.05–7.38 (χ²₂ 2.5 / 97.5 %), √(8/2) = 2, √(0.5/2) = 0.5; check-yourself Q = [[1, 2], [2, 4]], √(18/2) = 3.
+§6 0.05–7.38 (χ²₂ 2.5 / 97.5 %, from mission 27's closed form 1 − exp(−d²/2)); real band of the lab's tracker
+(200 simulated flights, q 0.3, 99 % gate, `build/real_band.py`): 1.61–2.64 (q 1: 1.36–1.99, q 0.1: 2.45–14.1); NIS of
+accepted fixes behind the 99 % gate 1.93, √(8/2) = 2, √(0.5/2) = 0.5; check-yourself Q = [[1, 2], [2, 4]], √(18/2) = 3.
 
 ## Rubric for the EXPLAIN items (the check only catches empty or off-topic answers — keyword groups)
 
@@ -71,7 +74,7 @@ K [0.9, 0.3], 105.7 m, +0.9 m/s); §4 R 2.25 / 12.96 m², √(10·0.25) = 1.6 m/
 | EXPLAIN_GROW | the velocity error × t (40 m) AND the random accelerations making the velocity error itself grow (variance ∝ t³) | one of the two | "it grows" |
 | EXPLAIN_Q | small q: lags in the climb (worse than raw), states a small σ because it trusts the model (overconfident); large q: follows the noise in level flight | two of three | restates the numbers |
 | EXPLAIN_GATE | 1 % of honest fixes refused by definition (≈ 3 of 315; 5 is chance); wrong fixes believed with a small P pull the estimate far, NEES explodes | one | "the gate works" |
-| EXPLAIN_TUNE | σ too small during the jam → first fix after it has d² > 9.21 → refused → prediction drifts, next fix farther → every fix refused (lock-out); 0.1 has NEES 3.2 above the band: overconfident, honest first | two of three | "q too small" |
+| EXPLAIN_TUNE | σ too small during the jam (32 m vs 118 m true error) → first fix after it has d² 14.7 > 9.21 → refused → prediction drifts, next fix farther → every fix refused (lock-out, one form of divergence); 0.1 has NEES 3.2 far above the band: overconfident, honest first; + notes that q = 1 (1.74) is a hint, not a verdict (the iid band is ~2.5× too narrow, lesson §6) | two of three | "q too small" |
 
 ## Mutants run (wrong-but-plausible code; every one fails with its own message)
 
@@ -89,6 +92,9 @@ caught; the build report lists each mutant's ✘ message.
 - `nees_band` with numpy axes: summing over the steps (band ≈ 722) and averaging over dimensions (band ≈ 1) are the
   two classic slips; both are named by the check, and band_sim.py itself warns when the one-step band is not χ²₂.
 - Downstream checks (Height1D, run_filter) say when the real fault is in TODOs 1–3.
+- Measured (round 1, weak persona): 7 h 35 in all; meta.json says 7 h, the lesson 6 h to 7 h 30.
+- `nees_band` computed analytically (χ² quantiles) instead of simulated would pass the check (indistinguishable);
+  objective 5 asks for the simulation — look at the code if in doubt.
 
 ## Class plan (2 sessions)
 
@@ -100,16 +106,23 @@ caught; the build report lists each mutant's ✘ message.
 - Fast students: Going further (one big step: 440 m vs 89 m; NIS in flight; Joseph form; a height gate).
   Struggling: give the Step 2 hand trace on the board; pair for TODO 7 with the trace.
 
-## NAVERA facts quoted (words and numbers only; base/docs: VALIDATION_STATUS 2026-10-03, ARCHITECTURE, backlog)
+## NAVERA facts quoted (words and numbers only; base/docs: VALIDATION_STATUS 2026-10-03, ARCHITECTURE, TROUBLESHOOTING, ARDUPILOT_INTEGRATION, backlog)
 
 Long route (simulator, 2026-10-01): day vision over uniform terrain near Gabès, median 351 m, p90 853 m; forwarded
 at ±300 m → ArduCopter EKF failsafe after 45 s; small map 61 s; ±500 m 91 s; with local feature matching 147
-matches and the autopilot held 230 s (end of test). R-10: ±300 m stated vs 442 m measured median → default 500 m,
-warning below 450 m. Dead reckoning along the measured track (2026-10-02, simulator only): 20 s velocity fit, IMU
-heading change, σ = velocity error × t + 5° × distance, max 120 s / 500 m; land median 10 m, max 33 m; bay 90 s at
-±300 m, true error ≤ 146 m. Vision carried to the present: 1.5 s at 40 m/s → 60 m, ±31.5 m. Inertial navigation
-**not implemented** (the IMU gives attitude and heading changes; the arbiter watches the IMU topic for liveness
-only); FEAT-2 (IMU dead-reckoning) open. The arbiter selects one source (no position filter). The day-vision height
-filter's model (σ_a 0.5 m/s², P0 diag(σ², 4), vision height 3 % / 5 % with few inliers, heights ≤ 0 ignored, no
-gate) is not in the docs: it was checked by reading NAVERA's base code (facts only, nothing copied) and is said in
-words. Apollo / Schmidt / NASA TM-86847 (1985): public history.
+matches and the autopilot held 230 s (end of test). Mechanism: TROUBLESHOOTING.md's cause row "the EKF rejects
+positions that jump more than it was told". ArduPilot's EKF3 uses at most 100 m whatever is stated
+(ARDUPILOT_INTEGRATION §3, repeated in TROUBLESHOOTING). R-10: ±300 m stated vs 442 m measured median → default
+500 m, warning below 450 m. Dead reckoning along the measured track (2026-10-02, simulator only): 20 s velocity fit,
+IMU heading change, σ = velocity error × t + 5° × distance, max 120 s, σ capped at 500 m; land median 10 m, max
+33 m; bay 90 s at ±300 m, true error ≤ 146 m. Vision carried to the present: 1.5 s at 40 m/s → 60 m, ±31.5 m.
+Inertial navigation **not implemented** (the IMU gives attitude and heading changes; the arbiter watches the IMU
+topic for liveness only); FEAT-2 (IMU dead-reckoning) open. The arbiter selects one source (no position filter).
+
+The day-vision height filter (σ_a 0.5 m/s², P0 diag(σ², 4), match height 3 % / 5 % with few inliers, heights ≤ 0
+ignored, no gate, dt clamped at 0 for a late height — the course raises ValueError instead, said as a course choice)
+is not in the docs: it was checked by reading NAVERA's base code (facts only, nothing copied). It exists in day
+vision's code (navigation helper, unit tests), but the running node in the base snapshot does not feed it: the
+camera's height comes from the priority rule of ARCHITECTURE §"Height above ground" (rangefinder, else the matched
+height carried by baro/GPS, else baro or GPS minus the ground). Do not tell students NAVERA flies on it.
+Apollo / Schmidt / NASA TM-86847 (1985): public history.

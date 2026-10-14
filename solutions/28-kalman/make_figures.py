@@ -102,7 +102,7 @@ def cold_open():
         b.append(text(x0 - 6, y + 15, lab, 11, INK, "end"))
         b.append(rect(x0, y, v * sc, 22, c, rx=3))
         b.append(text(x0 + 6 + v * sc, y + 16, s, 12, c, "start", "bold"))
-    b.append(text(x0 + W / 2, y0 + 190, "the filter downstream believed ±300 m", 11, GREY))
+    b.append(text(x0 + W / 2, y0 + 190, "the filter downstream was told ±300 m (and uses at most 100 m)", 11, GREY))
     # right: time to failsafe
     x1, W2 = 600, 260
     b.append(text(x1 + W2 / 2, 54, "time until the autopilot gave up (failsafe)", 12, INK, weight="bold"))
@@ -115,7 +115,7 @@ def cold_open():
         b.append(rect(x1, y, v * sc2, 20, c, rx=3, opacity=0.85))
         b.append(text(x1 + 6 + v * sc2 if v < 200 else x1 + v * sc2 - 6, y + 15, s, 11,
                       c if v < 200 else "#ffffff", "start" if v < 200 else "end", "bold"))
-    b.append(text(450, 300, "Source: NAVERA VALIDATION_STATUS.md, Release 0.2 (2026-10-03), \"Long route\" — "
+    b.append(text(450, 300, "Sources: NAVERA validation, troubleshooting and ArduPilot guides, Release 0.2 (2026-10-03) — "
                             "simulation, not a real flight.", 11, GREY))
     save("cold_open.svg", w, h, "".join(b))
 

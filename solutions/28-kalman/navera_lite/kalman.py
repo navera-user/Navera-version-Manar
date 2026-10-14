@@ -15,6 +15,8 @@ import math
 
 import numpy as np
 
+from navera_lite.uncertainty import chi2_threshold
+
 
 # ====================================================================== the model and the two steps
 
@@ -76,8 +78,8 @@ def kf_update(x, P, z, H, R):
 # given — this class is finished except its TODO methods
 class Height1D:
     """A Kalman filter on [height above ground, climb rate] fed by independent heights (barometer, GPS minus
-    the ground, vision), each with its own σ. The model the lesson describes as NAVERA's day-vision height
-    filter (§4): constant climb rate with random climb accelerations of σ_a = climb_accel (m/s²), so
+    the ground, vision), each with its own σ. The model the lesson describes as the height filter in NAVERA's
+    day-vision code (§4): constant climb rate with random climb accelerations of σ_a = climb_accel (m/s²), so
     q = climb_accel². f.x and f.P hold the state and its covariance (None before the first height), f.t the
     time of the state.
     """
@@ -98,7 +100,8 @@ class Height1D:
           update with z = [h], H = [[1, 0]], R = [[sigma²]]. Two heights at the same time are fine (dt = 0).
         - A height that is not > 0 (0 = "no reading", negative, nan) is ignored: nothing changes, and the call
           returns the current (height, σ), or None before the first usable height.
-        - A time before self.t raises ValueError("t must not go backwards: …").
+        - A time before self.t raises ValueError("t must not go backwards: …") (a course choice: NAVERA's code
+          treats such a height as dt = 0).
 
         Example: f = Height1D(); f.update(0.0, 80.0, 3.0) → (80.0, 3.0)
                  then f.update(1.0, 83.0, 1.5) → (82.559…, 1.385…)
@@ -139,13 +142,11 @@ def nees(err, P):
 
 # given — read it and use it, no need to change it
 def gate_threshold(p):
-    """The d² below which a share p of honest 2-D innovations fall (χ² with 2 degrees of freedom, mission 27):
+    """The d² below which a share p of honest 2-D innovations fall: mission 27's chi2_threshold(p, 2) =
     −2 ln(1 − p). Example: gate_threshold(0.99) → 9.21…   gate_threshold(0.95) → 5.99…
     """
     # from mission 28 — finished: read it, use it, do not change it
-    if not 0.0 < p < 1.0:
-        raise ValueError(f"p must be between 0 and 1, got {p}")
-    return -2.0 * math.log(1.0 - p)
+    return chi2_threshold(p, 2)
 
 
 # TODO 7 ---------------------------------------------------------------------------------------

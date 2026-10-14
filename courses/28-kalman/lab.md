@@ -3,8 +3,8 @@
 **Goal:** write NAVERA Lite's Kalman part (`navera_lite/kalman.py`): the constant-velocity model, the predict and
 update steps, a height filter that must give exactly the course's reference numbers, an honesty test, and a 2-D
 tracker with a gate. Then fly the tracker through a jam and six wrong fixes, and tune it.
-**Time:** 4 h 30 to 6 h (session 1: 2–2 h 30, session 2: 2 h 30–3 h 30; the matrix shapes and the tracker loop
-take the longest if numpy is rusty); a strong programmer who knows numpy: about 3 h.
+**Time:** 4 h 30 (up to 6 h if numpy is rusty) plus 1 h 30 of reading (session 1: 2–2 h 30, session 2: 2 h 30–3 h
+30; the matrix shapes and the tracker loop take the longest); a strong programmer who knows numpy: about 3 h.
 **Fast track:** if you know numpy well, skip the 🧰 boxes and the "Stuck?" boxes; do "Going further" at the end.
 
 Your files (📝 Code tab): [navera_lite/kalman.py](file:./navera_lite/kalman.py) (**your code**: TODO 1–5 and 7),
@@ -19,6 +19,7 @@ Your files (📝 Code tab): [navera_lite/kalman.py](file:./navera_lite/kalman.py
 | §4 q, R and the race | Steps 3–4 | `Height1D.update` (TODO 4) |
 | §6 NEES | Step 5 | `nees` (TODO 5), `nees_band` (TODO 6, band_sim.py) |
 | §5 tracker and gate | Steps 6–7 | `run_filter` (TODO 7) |
+| (session 2: read §5–§7 first; Step 5 uses §6, then Steps 6–7 use §5) | | |
 | §7 tuning | Step 8 | (you measure) |
 | all | Step 9 | the filter memo |
 
@@ -39,7 +40,9 @@ No code, no lesson yet.
 
 > [!TASK]
 > **Predict** (`PREDICT_GROW` in `answers.py`): a drone flies east at 12 m/s. Its navigation knows its position
-> to σ 3 m and its velocity to σ 1 m/s. Then the GPS is jammed for 40 s and it carries on with its last velocity.
+> to σ 3 m and its velocity to σ 1 m/s. Then the GPS is jammed for 40 s. It carries on with its last
+> velocity, but the drone's real velocity keeps changing a little (gusts, small random accelerations of about
+> 0.5 m/s²).
 > After 40 s, is the σ of its position about 3 + 1 × 40 = 43 m, clearly less, or clearly more? Write one reason.
 > Save the file (`Ctrl+S`). Then read lesson §1–§4.
 
@@ -78,7 +81,8 @@ python3 run_kalman.py grow
 
 > [!TASK]
 > Write `SIGMA_40S_M` (σ of the position after 40 s, from the run). `EXPLAIN_GROW`: compare with your prediction:
-> why does σ grow faster than a straight line? Name the two things that add up (lesson §2's ✏️ check helps).
+> why does σ grow faster than a straight line? Name the two things that add up (lesson §2's ✏️ check helps). (What
+> would σ be with q = 0, the velocity error alone? √(3² + (1·40)²) = 40.1 m: a straight line. Only q bends it.)
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
@@ -177,7 +181,7 @@ FILTER**.
 
 ## Step 4 — What q means
 
-The race used NAVERA's σ_a = 0.5 m/s². Is it the best value for these heights?
+The race used σ_a = 0.5 m/s², the value in NAVERA's code. Is it the best value for these heights?
 
 > [!TASK]
 > **Predict** (`PREDICT_Q`): with climb_accel 0.05 m/s² and with 5 m/s², which will have the larger RMS error over
@@ -199,7 +203,7 @@ Open the three `out/heights_….png`.
 
 > [!TASK]
 > Write `RMSE_CA_005_M` and `RMSE_CA_5_M` (whole flight). `EXPLAIN_Q`: what goes wrong with each, where in the
-> flight (climb or level), and why does the smallest value state the smallest σ while being the most wrong?
+> flight (climb, descent or level), and why does the smallest value state the smallest σ while being the most wrong?
 
 > [!TIP] 🏅 End of session 1 — Height keeper
 > Press **✔ Check my work**. When the checks of TODO 1–4 and Steps 1–4 pass (checks 1–6; the others are
@@ -230,7 +234,7 @@ np.percentile([1, 2, 3, 4, 5], [10, 90])   # array([1.4, 4.6])
 
 > [!TASK]
 > **Predict** (`PREDICT_BAND`): an honest 2-D filter flies 361 s. Its mean NEES is near 2. Between which two
-> numbers will it fall in 95 % of such flights? (One step: 0.05 to 7.38. And 361 steps?) Then:
+> numbers will it fall in 95 % of such flights? (One step: 0.05 to 7.38, lesson §6. And 361 steps?) Then:
 
 ```bash
 python3 run_kalman.py test
@@ -240,7 +244,8 @@ python3 run_kalman.py test
 python3 band_sim.py
 ```
 
-Open `out/band.png`.
+Open `out/band.png`. (The first row, one step, uses only 4 000 flights: expect about 0.05–7.4, a few % off the
+exact χ² values.)
 
 > [!TASK]
 > Write `BAND_LOW` and `BAND_HIGH` (n = 2, N = 361, p = 0.95, two decimals).
@@ -270,6 +275,18 @@ gate". The least guided TODO: the docstring states the contract and has an examp
 python3 run_kalman.py test
 ```
 
+<details><summary>🧰 Python: walking two lists together, and a dict of lists</summary>
+
+```python
+times = [0.0, 1.0, 2.0]; zs = [(0, 0), None, (30, 0)]
+for k, (t, z) in enumerate(zip(times, zs)):   # k = 0, 1, 2; t and z from the same position
+    print(k, t, z, times[k] - times[k - 1] if k > 0 else None)
+out = {"x": [], "d2": []}
+out["x"].append(np.array([1.0, 2.0]).copy())   # .copy(): later changes to the array do not change the stored one
+out["d2"].append(None)
+```
+</details>
+
 <details><summary>Stuck? Hints, one at a time</summary>
 
 1. Before the loop: H (2 × 4: an identity on the left, zeros on the right — `np.hstack` puts two arrays side by
@@ -293,7 +310,8 @@ linear up to 10 m, then logarithmic).
 
 > [!TASK]
 > Write `NEES_NO_GATE` (mean NEES), `SIGMA_END_JAM_M` (σ east at the end of the jam) and `ERR_END_JAM_M` (the
-> true error at the end of the jam). Is the stated σ honest during the jam?
+> true 2-D error |x − truth| at the end of the jam). Is the stated σ honest during the jam? Compare like with like:
+> the 2-D error with the 2-D σ √(σe² + σn²) that `track` also prints, not with σ east.
 
 ## Step 7 — The gate
 
@@ -320,12 +338,15 @@ python3 run_kalman.py track 0.3 0.99
 python3 run_kalman.py sweep
 ```
 
-The same flight with the 99 % gate and seven values of q, from 0.01 to 10. The verdict uses your NEES band.
+The same flight with the 99 % gate and seven values of q, from 0.01 to 10. The verdict uses your NEES band. A value
+just outside the band (1.74) is a weak verdict, and lesson §6 says why the band is narrower than reality; q = 0.3
+wins because it is honest AND the most accurate.
 
 > [!TASK]
 > Write `Q_BEST`: the value of q you would fly (lesson §7's rule: honest first, then the smallest error).
 > `EXPLAIN_TUNE`: what happened to q = 0.01 and 0.03 after the jam (why, step by step), and why is q = 0.1 not
-> chosen although its error is close to the best?
+> chosen although its error is close to the best? And is q = 1 (1.74) clearly dishonest, or only just outside a
+> band that lesson §6 says is too narrow?
 
 ```bash
 python3 run_kalman.py track 0.03 0.99
@@ -360,8 +381,13 @@ Write your answers in `LOOK_BACK` in `answers.py` if you want your teacher to re
 - **One big step.** In `grow`, the 40 s are predicted in 40 steps of 1 s. Predict them in ONE step of 40 s (a
   three-line script: `from navera_lite.kalman import cv_model, kf_predict`). σ after 40 s? Why is it so much
   larger? Which one describes a drone whose accelerations change every second?
-- **NIS in flight.** Without the truth, the NIS of the accepted fixes should average 2. Compute it from
+- **NIS in flight.** Without the truth, the NIS of the accepted fixes should average 2 (slightly less, about 1.9,
+  behind a 99 % gate, which cuts off the tail). Compute it from
   `run_filter(...)["d2"]` for q = 0.03, 0.3 and 3 (with the gate). Does it tell the same story as NEES?
+- **The real band.** Re-simulate 100 flights of the lab's model (truth: `cv_model(1.0, 0.3)` with one random
+  acceleration of variance 0.3 per axis and second; fixes with σ 5 m; no fix from 150 to 189 s) and run your
+  tracker with q = 0.3 and the 99 % gate on each. The 2.5 % and 97.5 % points of the mean NEES? Compare with your
+  band from `band_sim.py`. (Reference: about 1.6–2.6.)
 - **The Joseph form.** Write the update with P = (I − KH) P⁻ (I − KH)ᵀ + K R Kᵀ in a copy of your function and
   compare on the flight: largest difference in P? Why do long-running filters prefer it?
 - **A height gate.** NAVERA's height filter has no gate. Add a wrong height (200 m at t = 70 s) to a copy of the

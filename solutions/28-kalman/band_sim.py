@@ -54,6 +54,7 @@ def main():
         print(f"\n✘ one step, n = 2: an honest NEES is χ² with 2 degrees of freedom, 95 % between 0.05 and 7.38, but your "
               f"band is {lo1:.3f} – {hi1:.3f}. Check: the sum over the DIMENSIONS, the mean over the STEPS, and "
               f"(1 − p)/2 cut at EACH end.")
+        return
     lo, hi = res[(2, 361, 0.95)]
     print(f"\nThe lab's flight lasts 361 s: an honest 2-D tracker's mean NEES falls in {lo:.2f} – {hi:.2f} "
           "95 % of the time.")

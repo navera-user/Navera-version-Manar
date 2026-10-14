@@ -61,7 +61,9 @@ def go(fn, *args, **kw):
         if "has no attribute 'T'" in msg:
             raise CheckFailed(msg + " — a list has no .T: convert the inputs with np.asarray(…, dtype=float) first")
         if "'NoneType'" in msg:
-            raise CheckFailed(msg + " — a function it calls returned None: is an earlier TODO still a stub?")
+            raise CheckFailed(msg + " — something is None: either a function it calls returned None (an earlier TODO "
+                              "still a stub?) or a value you use is still None (in Height1D: self.x and self.P are None "
+                              "until the first usable height)")
         raise
 
 
@@ -295,7 +297,12 @@ def _():
     f = go(cls, H["climb_accel"])
     for i, ((t, h, s), want) in enumerate(zip(H["seq"], H["out"])):
         h = float("nan") if h is None else h
-        got = go(f.update, t, h, s)
+        try:
+            got = go(f.update, t, h, s)
+        except CheckFailed as e:
+            raise CheckFailed(f"update({t}, {h}, {s}) — call {i + 1} of the sequence"
+                              + (" (a 'no reading' before any usable height: return None)" if want is None else "")
+                              + f": {e}")
         if want is None:
             c.ok(got is None, f"update({t}, {h}, {s}) before any usable height should return None, got {got!r} — a "
                               "height that is not > 0 is 'no reading': ignore it")
@@ -493,7 +500,10 @@ def compare_run(r, want, label):
             if wa is False:
                 raise CheckFailed(f"{label}: the fix at k = {k} (d2 = {wd:.2f}) should be REFUSED by the gate "
                                   f"(threshold gate_threshold(p))")
-            raise CheckFailed(f"{label}: accepted[{k}] is {r['accepted'][k]!r}, expected {wa!r}")
+            raise CheckFailed(f"{label}: accepted[{k}] is {r['accepted'][k]!r}, expected {wa!r}"
+                              + (f" (its d2 is {wd:.2f} ≤ the threshold): the gate compares d2 — the nis of kf_update, "
+                                 "which includes P and R — with gate_threshold(gate_p), not a distance in metres or "
+                                 "in σ_z" if wa is True and wd is not None else ""))
         if not np.allclose(x, want["x"][k], atol=1e-6):
             hint = ""
             if k > 0 and want["accepted"][k] is False:
@@ -503,8 +513,12 @@ def compare_run(r, want, label):
             raise CheckFailed(f"{label}: the state at k = {k} is {np.round(x, 3)}, expected "
                               f"{np.round(want['x'][k], 3)}" + (upstream_note() or hint))
         if abs(P[0, 0] - want["P00"][k]) > 1e-6 or abs(P[2, 3] - want["P23"][k]) > 1e-6:
+            refused = [j for j in range(1, k + 1) if want["accepted"][j] is False]
+            hint = (f" — a refused fix must change nothing (k = {refused[-1]} was refused): keep the predicted x AND P "
+                    "(x, P = x_u, P_u only when the fix is accepted)") if refused else \
+                " — append a copy of P after each time"
             raise CheckFailed(f"{label}: P at k = {k} is off (P[0][0] {P[0, 0]:.4f}, expected {want['P00'][k]:.4f})"
-                              + (upstream_note() or " — append a copy of P after each time"))
+                              + (upstream_note() or hint))
     return True
 
 
@@ -612,7 +626,10 @@ def _():
                 r"all (the )?fix"),
                'what happened to 0.01 and 0.03 after the jam (e.g. "the gate refused every fix: the filter locked out")'),
               ((r"small (σ|sigma|p)", r"too (sure|confident)", r"overconfiden", r"σ stayed", r"sigma stayed",
-                r"did ?n.t grow", r"underestimat", r"(p|σ|sigma) (was |is )?too small"),
+                r"did ?n.t grow", r"underestimat", r"(p|σ|sigma) (was |is )?too small",
+                r"grew (only|too little|too slow)", r"only (grew|reached|rose)",
+                r"(smaller|less|lower) than (the |its )?(true |real |actual )?error", r"while the (true|real|actual) error",
+                r"(σ|sigma|\bp)\b.{0,40}\b(small|slow|little)", r"not grow enough", r"\d+(\.\d+)? ?> ?9\.2"),
                'why it happened (e.g. "σ stayed too small during the jam, so the first good fix looked too far")'),
               ((r"band", r"nees", r"honest", r"overconfiden", r"3\.1", r"3\.2", r"above"),
                'why not q = 0.1 (e.g. "its mean NEES 3.2 is above the band: overconfident")'))

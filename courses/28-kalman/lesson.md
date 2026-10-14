@@ -7,16 +7,18 @@
 > Gabès (southern Tunisia). The drone's autopilot keeps flying on NAVERA's day-vision positions. Each position
 > arrives with a stated accuracy, **±300 m**. Its true error had a median of **351 m**, and 10 % of the
 > positions were more than **853 m** off. The autopilot runs a **Kalman filter** (its EKF, the extended
-> Kalman filter of ArduPilot): it weighed every position as ±300 m, the positions were worse than that, its
-> own consistency checks kept failing, and after **45 seconds** it gave up and landed the drone (a **failsafe**). Stating ±500 m
-> delayed the failsafe to 91 s; only a better vision method (local feature matching) kept the drone flying,
-> 230 s to the end of the test. (Source: NAVERA's validation document, Release 0.2, 2026-10-03.)
+> Kalman filter of ArduPilot). It was told ±300 m — and ArduPilot uses at most 100 m whatever it is told, so it
+> trusted those positions even more. The positions jumped much farther than that: in the words of NAVERA's
+> troubleshooting guide, "the EKF rejects positions that jump more than it was told". After **45 seconds** it
+> gave up and landed the drone (a **failsafe**). Stating ±500 m delayed the failsafe to 91 s; only a better
+> vision method (local feature matching) kept the drone flying, 230 s to the end of the test. (Sources: NAVERA's
+> validation document, its troubleshooting guide and its ArduPilot integration guide, Release 0.2, 2026-10-03.)
 >
 > The lesson: a Kalman filter is only as good as the uncertainties it is given, and the uncertainty it
 > **states** is a promise that others will use. Today you build the filter and you test that promise.
 > **Session 1 — Height keeper:** a filter on height and climb rate, built from two steps, predict and update,
-> that must give **exactly** the same numbers as the course's reference (the model NAVERA's day vision uses
-> for its height). **Session 2 — Tracker:** a 2-D filter that follows a drone through a 40-second jam and six
+> that must give **exactly** the same numbers as the course's reference (a filter written exactly as in
+> NAVERA's day-vision code). **Session 2 — Tracker:** a 2-D filter that follows a drone through a 40-second jam and six
 > wrong fixes, a **gate** that refuses the wrong ones, and the **NEES** test that tells an honest filter from
 > a liar.
 >
@@ -34,8 +36,8 @@
 
 **You need:** mission 24 §8 (the inverse-variance blend: `blend`), mission 27 (covariance, J P Jᵀ, the
 Mahalanobis d² and the χ² gate), the 🧰 Maths 5 box (variance and standard deviation), numpy's `@` and `.T`
-(mission 16). ⏱ Reading: about 90 minutes with the ✏️ checks: §1–§4 before session 1, §5–§7 before
-session 2. Lab: 4 h 30 to 6 h.
+(mission 16). ⏱ About 6 h in all: reading 1 h 30 with the ✏️ checks (§1–§4 before session 1, §5–§7 before
+session 2), lab 4 h 30; up to 7 h 30 if numpy or matrices are rusty.
 
 **Before you start.** Answer without looking; if you miss two, reread mission 24 §8 and mission 27.
 
@@ -108,7 +110,9 @@ one second later, w = 1 m²/s:       x⁻ = 58 m                               P
 
 Repeat it every second and σ draws a **sawtooth**: up a little in each predict, down in each update. It
 settles where what the update removes equals what the prediction adds: here σ = 2.13 m just after each update,
-better than any single reading (5 m), and K settles near 0.18.
+better than any single reading (5 m), and K settles near 0.18. (To see it, repeat the two steps 30 times in a
+loop, or solve "what the update removes = what the prediction adds": P² + w·P − w·R = 0 gives P = 4.52 m²,
+σ = 2.13 m, then K = 5.52 / (5.52 + 25) = 0.18.)
 
 ![σ of the 1-D filter: a sawtooth that settles at 2.13 m](assets/sawtooth.svg)
 
@@ -173,14 +177,20 @@ Predict over dt = 2 s with σ_a = 0.5 m/s² (q = 0.25 m²/s⁴):
 
 ```
 x⁻ = [100 + 1.5·2, 1.5] = [103, 1.5]
-F P Fᵀ = | 4 + 2·2·0 + 2²·1    0 + 2·1 |  = | 8  2 |        g = [2, 2],   Q = 0.25 · | 4  4 |  = | 1  1 |
-         | 0 + 2·1             1       |    | 2  1 |                               | 4  4 |    | 1  1 |
+F P    = | 1  2 | · | 4  0 |  = | 4  2 |          then (F P) Fᵀ = | 4  2 | · | 1  0 |  = | 8  2 |
+         | 0  1 |   | 0  1 |    | 0  1 |                          | 0  1 |   | 2  1 |    | 2  1 |
+g = [2, 2],   Q = 0.25 · | 4  4 |  = | 1  1 |
+                         | 4  4 |    | 1  1 |
 P⁻ = | 9  3 |        σ of the height: 2 m → 3 m;   covariance 3 m²/s: a higher height goes with a faster climb
      | 3  2 |
 ```
 
-Without any measurement, the prediction repeats and P keeps growing, and **not** in a straight line: the velocity
-error multiplies time, and the random accelerations add up on top. How fast? You will measure it (lab Step 1).
+Without any measurement, the prediction repeats and P keeps growing. The velocity error alone, multiplied by
+time, would give a straight line (σ ≈ σ_v·t). But the random accelerations make the velocity error itself grow,
+and that growing error is multiplied by time too: the curve bends **upward** (the variance grows like q·t³/3).
+How fast? You will measure it (lab Step 1). One more property: this Q assumes the acceleration is constant during
+a step, so it depends on the step length — 40 predictions of 1 s and one prediction of 40 s do not give the same
+P (lab, Going further). A q tuned for 1 s steps does not carry over to 0.1 s steps.
 
 > [!QUESTION] ✏️ Check
 > In the worked example, where does the 3 in P⁻[0][1] come from? And why can the height's σ grow even when
@@ -256,8 +266,9 @@ A height from the camera with σ 3 % of the height, at 120 m: σ 3.6 m, R = 12.9
 with its own R: the filter weighs each one by its own quality.
 
 **q** is the model's honesty about motion: σ_a = √q is the typical random acceleration in one step. With σ_a
-= 0.5 m/s² and one-second steps, the climb rate's variance grows by q = 0.25 (m/s)² per step: after 10 s without
-a measurement, σ of the climb rate has grown by √(10·0.25) = 1.6 m/s. A small drone that goes from level flight
+= 0.5 m/s² and one-second steps, the climb rate's variance grows by q = 0.25 (m/s)² per step: after 10 one-second
+steps without a measurement, the climb rate's **variance** has grown by 10 · 0.25 = 2.5 (m/s)². Starting from a
+perfectly known climb rate, its σ would now be √2.5 = 1.6 m/s (variances add, not σ's: 🧰 Maths 5). A small drone that goes from level flight
 to a 3 m/s climb in 5 s accelerates at 0.6 m/s².
 
 **The trade-off.** A filter with too small a q believes its model too much: it is smooth, but **late** in every
@@ -266,19 +277,23 @@ measurement: it follows the noise and states a large σ (**pessimistic**). You w
 
 ![Three values of q on the same heights](assets/q_tradeoff.svg)
 
-**The race.** NAVERA's day vision (Release 0.2) keeps the drone's **height above the ground** in a filter of
-exactly this form. Described in words:
+**The race.** NAVERA's day-vision code (Release 0.2) contains a filter of exactly this form for the drone's
+**height above the ground**, in its navigation helper, with unit tests. (The height NAVERA's camera actually uses
+in flight comes from a simpler rule, by priority: a rangefinder if there is one, else the height measured by the
+last map match carried by the barometer's or the GPS's change, else barometer or GPS minus the ground — a
+**selection**, like the arbiter's, not a filter.) The filter, described in words:
 
 - state [height, climb rate]; constant climb rate with random climb accelerations of **σ_a = 0.5 m/s²**, so
   q = 0.25 m²/s⁴, predicted over the true time since the last height;
 - the **first** height starts the filter at [that height, 0] with P = diag(σ², 4): the climb rate is unknown
   (σ 2 m/s);
-- every independent height (GPS altitude minus the ground's, the barometer, a rangefinder, and the height the
-  camera measures, stated at **3 % of the height**, 5 % when few features matched) is an update with H = [1, 0]
-  and R = σ²;
+- every height (GPS altitude minus the ground's, the barometer, a rangefinder — the independent ones — and the
+  height a map match measures, stated at **3 % of the height**, 5 % when few features matched) is an update with
+  H = [1, 0] and R = σ²;
 - a height that is not positive ("no reading") is ignored; there is no gate on heights.
 
-NAVERA Lite's `Height1D` (TODO 4) is that model. The course ran it once on the lab's heights and saved the
+NAVERA Lite's `Height1D` (TODO 4) is that model. (One difference, on purpose: NAVERA's code treats a height
+stamped before the last one as dt = 0; the course's filter refuses it with an error.) The course ran it once on the lab's heights and saved the
 outputs in `reference_heights.csv`: in lab Step 3 your filter must give the **same numbers to 10⁻⁶ m**. That is
 how filters are checked in industry: the same model, the same start, the same inputs, the same outputs. One
 detail wrong (σ instead of σ², q = 0.5 instead of 0.25, a start climb variance of 0 instead of 4) and the race
@@ -319,8 +334,8 @@ changes nothing: the state stays the prediction.
 The gate is as wide as the filter's own σ. That is its strength (a confident filter refuses wild fixes) and
 its danger. Picture an **overconfident** filter after a jam: its stated σ is small, its true error large. The
 first good fix is "too far": refused. The prediction moves on, still confident, still wrong; the next fix is
-farther: refused. Every later fix is refused and the filter never comes back. This is a **lock-out** (also
-called divergence). It is why the filter must be **honest first**: a small q looks smooth on a plot and can lose
+farther: refused. Every later fix is refused and the filter never comes back. This is a **lock-out**, one form of
+filter **divergence**. It is why the filter must be **honest first**: a small q looks smooth on a plot and can lose
 the aircraft.
 
 > [!QUESTION] ✏️ Check (the judge)
@@ -346,7 +361,8 @@ NEES = errᵀ P⁻¹ err          err = estimate − truth   (here the position:
 
 It is mission 27's d², applied to the error the filter does not know. If the filter is honest, err behaves like
 a Gaussian with covariance P, so NEES follows a χ² distribution with n = 2 degrees of freedom: its **average
-is n = 2**.
+is n = 2**. (Why n: in the filter's own σ's, an honest error is n independent standard normal numbers; NEES is
+the sum of their squares, and each square averages 1, the variance of a standard normal. Two squares: average 2.)
 
 - mean NEES clearly **above** n: the filter is **overconfident** (P too small). A mean NEES of 8 says the true
   errors are about √(8/2) = 2 times the stated σ.
@@ -354,16 +370,19 @@ is n = 2**.
   believes measurements too much.
 
 **How close to 2 is "clearly"?** One step's NEES spreads widely: for 2-D, 95 % of honest values lie between
-0.05 and 7.38 (mission 27's χ² table). The **mean** over N steps spreads much less, and the more steps, the
+0.05 and 7.38 (mission 27's formula 1 − exp(−d²/2): 2.5 % fall below 0.05, 2.5 % above 7.38). The **mean** over N steps spreads much less, and the more steps, the
 narrower. Rather than a formula, get the band **by simulation**: draw thousands of honest "flights" (N steps of
 n standard normal numbers squared and summed), average each flight, and keep the middle 95 % of those averages
 (lab Step 5, TODO 6). If your filter's mean NEES falls outside the band of your flight's length, it is very
 unlikely to be honest.
 
 Two remarks. First, the errors of a filter from one step to the next are **correlated** (today's error is
-yesterday's, moved), so the real spread of the mean is wider than the simulated band: the band is the standard
-first test, not a proof. Second, in flight, without the truth, the NIS of the fixes plays the same role: for an
-honest filter its average is the dimension of z (2 for a position fix). A filter whose NIS keeps averaging 10
+yesterday's, moved), so the real spread of the mean is wider than the simulated band. How much? For the lab's
+tracker (the same flight model, 200 simulated flights) the honest filter's mean NEES spreads about 1.6–2.6, not
+1.8–2.2. The band is the standard first test, not a proof: a value far outside it (3.2, 11.8) is a verdict; a
+value just outside it (1.74) is only a hint. Second, in flight, without the truth, the NIS of the fixes plays the
+same role: for an honest filter its average is the dimension of z (2 for a position fix; slightly less, about
+1.9, behind a 99 % gate, which cuts off the tail). A filter whose NIS keeps averaging 10
 is overconfident, and the autopilot downstream would like to know.
 
 > [!QUESTION] ✏️ Check
@@ -386,7 +405,8 @@ weight.
 
 Why honest first? Because the filter's σ is used by others: by its own gate (§5), and by every consumer
 downstream. NAVERA's arbiter forwards a position to the autopilot with its stated σ, and the autopilot's own
-Kalman filter weighs it with that σ: the mission brief showed what an overconfident ±300 m did. A slightly
+Kalman filter weighs it with that σ (ArduPilot: with at most 100 m — above that it trusts the position more than
+stated, and cannot know how bad it is): the mission brief showed what an overconfident ±300 m did. A slightly
 larger error with an honest σ is safe; a slightly smaller error with a lying σ is not.
 
 <details class="further"><summary>Going further: the Joseph form and one big step</summary>
@@ -420,14 +440,16 @@ words:
   (ArduPilot's EKF in NAVERA's tests). So NAVERA's most important number is an **honest σ**. After the tests of
   the mission brief, the default accuracy stated for forwarded vision positions was raised to **±500 m**, with a
   warning below 450 m (backlog R-10: ±300 m had been stated while the measured median of the former vision method
-  was 442 m). Mission 29 compares selecting and fusing.
-- **A Kalman filter on the height above ground.** Day vision keeps its height in the two-state filter of §4
-  (σ_a 0.5 m/s², start diag(σ², 4), independent heights, the camera's height at 3 %). Your `Height1D` is the
-  same model, written by the course.
+  was 442 m); NAVERA's ArduPilot guide adds that ArduPilot's EKF uses at most 100 m whatever is stated, so above
+  100 m the autopilot cannot know how bad a position is. Mission 29 compares selecting and fusing.
+- **A Kalman filter on the height above ground — in the code.** Day vision's code contains the two-state filter
+  of §4 (σ_a 0.5 m/s², start diag(σ², 4), the match height at 3 %). In Release 0.2 the height the camera uses
+  comes from a priority rule (rangefinder, else the matched height carried by the barometer or GPS), not from that
+  filter. Your `Height1D` is the same model, written by the course.
 - **Dead reckoning without a Kalman filter** (implemented 2026-10-02, **simulator only**). When day vision finds
   no match (sea, uniform ground), it carries the last measured position along the ground velocity fitted to the
   last 20 s of fixes, turned by the heading change the IMU measured, and states an accuracy that **grows by a
-  rule**: velocity error × time + a 5° heading error × distance, for at most 120 s or 500 m. Land route: no
+  rule**: velocity error × time + a 5° heading error × distance, for at most 120 s, and only while its stated accuracy stays under 500 m. Land route: no
   failsafe, median error 10 m, max 33 m. Across a bay: carried 90 s over the sea stating ±300 m; the true error
   stayed below 146 m. Compare with your tracker's jam: the same idea (predict, let σ grow), with σ from a rule
   instead of from P.
@@ -443,10 +465,9 @@ words:
 ## In NAVERA Lite
 
 [navera_lite/kalman.py](file:./navera_lite/kalman.py) is NAVERA Lite's Kalman part. You write `cv_model`,
-`kf_predict`, `kf_update`, `Height1D.update`, `nees` and `run_filter`; `gate_threshold` is given. The NEES band
+`kf_predict`, `kf_update`, `Height1D.update`, `nees` and `run_filter`; `gate_threshold` is given (it calls mission 27's `chi2_threshold(p, 2)`). The NEES band
 is a lab experiment ([band_sim.py](file:./band_sim.py)), not part of the stack. Mission 29's arbiter will select
-between sources the way NAVERA does, and rely on the honest σ you tested here; in mission 33 your `run_filter` can
-bridge the gaps of a vision source.
+between sources the way NAVERA does, and rely on the honest σ you tested here.
 
 ## 🐦 How birds do it
 
