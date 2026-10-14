@@ -52,7 +52,7 @@ def go(fn, *args, seconds=60, **kw):
         if "does not require grad" in msg:
             msg += " — the loss lost its gradient: torch operations only (no .item(), numpy or torch.tensor of a result)"
         if "mat1 and mat2" in msg:
-            msg += " — the Linear layer gets the wrong size: three 2 × 2 poolings, then flatten to 64 * 4 * 4"
+            msg += " — the Linear layer gets the wrong size: count maps × height × width after the third pooling"
         raise CheckFailed(msg)
 
 
@@ -405,6 +405,8 @@ def run_log(name):
     if not os.path.exists(path):
         raise CheckFailed(f"logs/{name}.json is missing: train {name} with `python3 run_features.py train` (it writes "
                           "the weights and their log together)")
+    if os.path.getsize(path) > 1_000_000:
+        raise CheckFailed(f"logs/{name}.json is too large to be a training log: train {name} again with the runner")
     try:
         with open(path, encoding="utf-8") as f:
             log = json.load(f)
@@ -412,6 +414,16 @@ def run_log(name):
         raise CheckFailed(f"logs/{name}.json is not readable JSON: train {name} again with the runner")
     if not isinstance(log, dict):
         raise CheckFailed(f"logs/{name}.json is not a training log: train {name} again with the runner")
+    kinds = {"sha256": str, "n_train": int, "epochs": int, "batch": int, "margin": (int, float), "negatives": str,
+             "seed": int, "train": str, "device": str, "seconds": (int, float), "val_score": (int, float),
+             "history": list}
+    for k, t in kinds.items():
+        if isinstance(log.get(k), bool) or not isinstance(log.get(k), t):
+            raise CheckFailed(f"logs/{name}.json is not a log the runner wrote ({k} missing): train {name} again with "
+                              "the runner")
+    if len(log["history"]) != log["epochs"] or not all(isinstance(r, dict) for r in log["history"]):
+        raise CheckFailed(f"logs/{name}.json: {len(log['history'])} history rows for {log['epochs']} epochs — train "
+                          f"{name} again with the runner")
     return log
 
 
@@ -540,13 +552,14 @@ def ref_train(net, ta, tp, va, vp, epochs, lr, batch, seed, variant=None):
         losses = []
         for s in range(0, len(ta), batch):
             idx = order[s:s + batch]
-            if len(idx) < 2:
+            if len(idx) < (batch if variant == "full-batches" else 2):
                 continue
             loss = ref_loss(net(ta[idx]), net(tp[idx]))
             if variant != "no-zero-grad":
                 opt.zero_grad()
             loss.backward()
-            opt.step()
+            if variant != "no-step":
+                opt.step()
             losses.append(loss.item())
             if variant == "first-batch":
                 break
@@ -572,9 +585,9 @@ def _():
     t = go(ld.triplet_loss, ld.torch.tensor(TA), ld.torch.tensor(TB))
     if t is None or abs(float(t) - 0.2694832) > 1e-4:
         raise CheckFailed("fix TODO 8 (triplet_loss) first: train() uses it, so this check cannot judge train() yet")
-    ta, tp = val_patches(128)
-    va, vp = val_patches(192)
-    va, vp = va[128:], vp[128:]
+    ta, tp = val_patches(136)                          # 4 batches of 32 and a last one of 8
+    va, vp = val_patches(200)
+    va, vp = va[136:], vp[136:]
     torch.manual_seed(5)
     ref = reference_net()
     fd, path = tempfile.mkstemp(suffix=".pt")
@@ -630,7 +643,11 @@ def _():
                              ("first-batch", "only the FIRST batch of each epoch is used: loop over every batch of the "
                               "order"),
                              ("no-shuffle", "the pairs are never shuffled: each epoch's order must be "
-                              "torch.randperm(n, generator=g)")):
+                              "torch.randperm(n, generator=g)"),
+                             ("no-step", "the weights did not change during the epoch: opt.step() is missing, or "
+                              "opt.zero_grad() sits between backward() and step()"),
+                             ("full-batches", "the last, smaller batch was skipped: only a batch of FEWER THAN 2 pairs "
+                              "is skipped (here the last batch has 8)")):
             wrong = ref_train(copy.deepcopy(ref), *tens, 2, 3e-3, 32, 1, variant)
             if abs(mine1 - wrong[0]["train_loss"]) < 2e-4:
                 raise CheckFailed(f"your first epoch's training loss is {mine1:.4f}, the specification gives "
@@ -691,9 +708,9 @@ def logged_score(name):
              "(weights + biases of the four layers). Run the overfitting training of Step 11. Explain in your own words.")
 def _():
     threads()
-    (hs, hr, why_h, ph, pp, npar, vs, why_f, po, why_o, so, ss, su, sl, why_b, why_l) = answers(
+    (hs, hr, why_h, ph, pp, npar, vs, pf, why_f, po, why_o, so, ss, su, sl, why_b, why_l) = answers(
         "HAMMING_SAME", "HAMMING_RANDOM", "EXPLAIN_HAMMING", "PREDICT_HARD", "PREDICT_PARAMS", "N_PARAMS",
-        "VAL_SCORE_FULL", "EXPLAIN_FILTERS", "PREDICT_OVERFIT", "EXPLAIN_OVERFIT", "SCORE_ORB", "SCORE_SIFT",
+        "VAL_SCORE_FULL", "PREDICT_FILTERS", "EXPLAIN_FILTERS", "PREDICT_OVERFIT", "EXPLAIN_OVERFIT", "SCORE_ORB", "SCORE_SIFT",
         "SCORE_UNTRAINED", "SCORE_LEARNED", "EXPLAIN_BASELINES", "EXPLAIN_LEARNED")
     c.near(number(hs, "HAMMING_SAME"), 61, 1, "HAMMING_SAME (bits)")
     c.near(number(hr, "HAMMING_RANDOM"), 127, 1, "HAMMING_RANDOM (bits)")
@@ -717,11 +734,17 @@ def _():
             c.ok(abs(vs - logged) <= 0.0015, f"VAL_SCORE_FULL = {vs}, but your last training of my_desc.pt printed "
                  f"{logged:.3f} (logs/my_desc.pt.json)")
     c.ok(0.8 <= vs <= 1.0, f"VAL_SCORE_FULL = {vs}: the score printed at the end of the full training (Step 10)")
+    predicted("PREDICT_FILTERS", pf)
+    low = str(why_f).lower()
+    if re.search(r"sobel|derivative", low) and not re.search(r"\bnot\b|n't|\bno\b|unlike|barely|hardly|little|"
+                                                            r"neither|\bnor\b|already|random|same|similar", low):
+        raise CheckFailed("EXPLAIN_FILTERS says the filters became Sobel-like: the printed layer changes and the "
+                          "'difference' rows of out/filters.png do not show that. Say what the numbers show")
     explained("EXPLAIN_FILTERS", why_f,
-              ((r"edge", r"gradient", r"derivat", r"sobel", r"dark", r"bright", r"side", r"contrast", r"direction",
-                r"stripe", r"line", r"change"), "the pattern you see in the trained filters"),
-              ((r"edge", r"corner", r"gradient", r"structure", r"detect", r"recogni", r"shape", r"outline", r"light",
-                r"brightness", r"robust", r"invarian"), "why it helps to recognise a ground point"))
+              ((r"conv1", r"first", r"least", r"little", r"barely", r"hardly", r"small", r"\bfc\b", r"last", r"most",
+                r"\d\.\d"), "which layer moved most and which least (the printed numbers)"),
+              ((r"random", r"already", r"combin", r"later", r"deeper", r"\bfc\b", r"last layer", r"enough", r"edge",
+                r"bright", r"dark"), "why almost random first filters still work, and where the learning happened"))
     predicted("PREDICT_OVERFIT", po)
     if not os.path.exists(os.path.join("logs", "overfit.pt.json")):
         raise CheckFailed("logs/overfit.pt.json is missing: run Step 11's command "
@@ -742,6 +765,9 @@ def _():
     c.ok(0.35 <= su <= 0.70, f"SCORE_UNTRAINED = {su}: the 'untrained' line of `compare`")
     if weights_ok("my_desc.pt"):
         mine = logged_score("my_desc.pt")
+        part = my_val_score("my_desc.pt", 512)                # the check's own measurement, on 2 groups
+        c.ok(abs(part - mine) <= 0.04, f"my_desc.pt scores {part:.3f} on part of the validation pairs, far from the "
+             f"{mine:.3f} of its log: train it again with the runner")
         c.ok(abs(sl - mine) <= 0.0025, f"SCORE_LEARNED = {sl}, but your my_desc.pt scores {mine:.3f} on the validation "
              "pairs: run `compare` again after your last training and copy its line")
     explained("EXPLAIN_BASELINES", why_b,
@@ -758,8 +784,9 @@ def _():
                "what you would need before trusting it on a drone"))
 
 
-EXPERIMENTS = {"margin": ("margin", (0.85, 0.99)), "batch": ("batch", (0.84, 0.99)),
-               "pairs": ("n_train", (0.80, 0.97)), "negatives": ("negatives", (0.82, 0.97))}
+EXPERIMENTS = {"margin": ("margin", (0.2, 1.0), (0.85, 0.99)), "batch": ("batch", (64, 1024), (0.84, 0.99)),
+               "pairs": ("n_train", (1024,), (0.78, 0.97)), "negatives": ("negatives", ("all",), (0.82, 0.97)),
+               "freeze": ("train", ("fc",), (0.83, 0.95))}
 
 
 @c.test("Step 13: your experiment — one change, predicted, run, measured, explained",
@@ -770,7 +797,7 @@ def _():
     ex, pe, es, why = answers("EXPERIMENT", "PREDICT_EXPERIMENT", "EXP_SCORE", "EXPLAIN_EXPERIMENT")
     ex = str(ex).strip().lower().strip(".")
     if ex not in EXPERIMENTS:
-        raise CheckFailed(f'EXPERIMENT = {ex!r}: write one of "margin", "batch", "pairs", "negatives"')
+        raise CheckFailed(f'EXPERIMENT = {ex!r}: write one of "margin", "batch", "pairs", "negatives", "freeze"')
     predicted("PREDICT_EXPERIMENT", pe)
     if not weights_ok("exp.pt"):
         raise CheckFailed("exp.pt is missing: run your Step 13 command with --out exp.pt")
@@ -779,8 +806,11 @@ def _():
     if not os.path.exists(os.path.join("logs", "my_desc.pt.json")):
         raise CheckFailed("logs/my_desc.pt.json is missing: the experiment is compared with your my_desc.pt run (Step 10)")
     base = run_log("my_desc.pt")
-    key, (lo, hi) = EXPERIMENTS[ex]
-    keys = ("margin", "batch", "n_train", "negatives")
+    if log.get("sha256") == base.get("sha256"):
+        raise CheckFailed("exp.pt is the same file as my_desc.pt: train your experiment with Step 13's command "
+                          "(--out exp.pt) — a copy is not an experiment")
+    key, allowed, (lo, hi) = EXPERIMENTS[ex]
+    keys = ("margin", "batch", "n_train", "negatives", "train", "seed")
     changed = [k for k in keys if log.get(k) != base.get(k)]
     if key not in changed:
         raise CheckFailed(f"exp.pt was trained with the same {key} as my_desc.pt ({base.get(key)!r}): change it "
@@ -789,8 +819,11 @@ def _():
     if others:
         raise CheckFailed(f"exp.pt differs from my_desc.pt in more than one setting ({', '.join(changed)}): change ONE "
                           "thing, keep the rest of my_desc.pt's command (epochs too), or the result cannot be read")
-    c.ok(log.get("epochs") == base.get("epochs") or key == "n_train",
+    c.ok(log.get("epochs") == base.get("epochs"),
          f"exp.pt ran {log.get('epochs')} epochs, my_desc.pt {base.get('epochs')}: keep the epochs the same")
+    if log.get(key) not in allowed:
+        raise CheckFailed(f"exp.pt changed {key} to {log.get(key)!r}: for the graded experiment use a value of Step 13's "
+                          f"table ({', '.join(map(str, allowed))}); other values are welcome in Going further")
     mine = logged_score("exp.pt")
     es = number(es, "EXP_SCORE")
     c.ok(abs(es - mine) <= 0.0015, f"EXP_SCORE = {es}, but exp.pt scored {mine:.3f} on the validation pairs (the last "
@@ -801,10 +834,19 @@ def _():
     c.ok(lo <= mine <= hi, f"exp.pt scores {mine:.3f}: not a plausible result for a '{ex}' change of this recipe "
          f"({lo:.2f}–{hi:.2f} in the author's runs) — train it again with the runner")
     explained("EXPLAIN_EXPERIMENT", why,
-              ((r"score", r"higher", r"lower", r"better", r"worse", r"same", r"noise", r"drop", r"rose", r"increas",
-                r"decreas", r"\d\.\d"), "what changed in the result, compared with my_desc.pt"),
-              ((r"margin", r"batch", r"impostor", r"negativ", r"pair", r"data", r"example", r"hard", r"push", r"gradient"),
-               "what it tells you about that setting"))
+              ((r"score", r"\d\.\d"), "how the SCORE changed, compared with my_desc.pt (the scores, not the losses)"),
+              ((r"noise", r"seed", r"random start", r"run to run", r"run-to-run", r"within", r"significan", r"larger than",
+                r"smaller than"), "whether the difference is larger than your run-to-run noise"),
+              ((r"margin", r"batch", r"impostor", r"negativ", r"pair", r"data", r"example", r"hard", r"push", r"gradient",
+                r"conv", r"\bfc\b", r"freez", r"layer"), "what it tells you about that setting"))
+    low = str(why).lower()
+    if ex in ("batch", "negatives", "margin") and re.search(r"lower loss|loss (is |was |went |got )?(lower|smaller)",
+                                                           low) and re.search(r"learn\w* better|better learn|better "
+                                                                              r"network|improv", low) \
+            and not re.search(r"not comparable|cannot compare|can't compare|not (any )?better|does not mean|doesn't mean|"
+                              r"meaning|other function|another function|different function|fewer impostors", low):
+        raise CheckFailed("EXPLAIN_EXPERIMENT reads a lower loss as better learning: with another batch, margin or "
+                          "loss the loss numbers are not comparable (Step 13's note) — compare the scores")
 
 
 c.milestone("learner", "TODO", "Step", "Your trained", label="Learner")

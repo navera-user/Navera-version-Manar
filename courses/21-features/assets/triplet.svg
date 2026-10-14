@@ -1,9 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 250" font-family="sans-serif" font-size="13">
-  <rect width="640" height="250" fill="#f7fafc"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 270" font-family="sans-serif" font-size="13">
+  <rect width="640" height="270" fill="#f7fafc"/>
   <text x="320" y="22" text-anchor="middle" fill="#1d2733" font-weight="bold">The triplet loss pulls the true pair together and pushes the impostor away</text>
   <g transform="translate(0,10)">
   <text x="150" y="50" text-anchor="middle" fill="#1d2733">before a step</text>
-  <circle cx="80" cy="140" r="9" fill="#0b6e8a"/><text x="80" y="170" text-anchor="middle">anchor (map)</text>
+  <circle cx="80" cy="140" r="9" fill="#0b6e8a"/><text x="48" y="168" text-anchor="middle">anchor (map)</text>
   <circle cx="200" cy="100" r="9" fill="#1b9e77"/><text x="210" y="82" text-anchor="middle">positive (photo, same point)</text>
   <circle cx="160" cy="185" r="9" fill="#d64545"/><text x="190" y="215" text-anchor="middle">hardest impostor</text>
   <line x1="80" y1="140" x2="200" y2="100" stroke="#1b9e77" stroke-width="2"/><text x="150" y="113" fill="#1b9e77">d_pos</text>

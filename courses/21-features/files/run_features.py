@@ -14,7 +14,8 @@ pictures and patches, and draws them.
           options:  --n-train N (default: all 12 288 pairs)  --epochs E (default 8)  --device cpu
                     --out FILE (default my_desc.pt)   and for Step 13 ONE of:
                     --margin M (default 0.5)  --batch B (default 256)  --negatives all (default: hardest)
-    python3 run_features.py filters       conv1's 16 filters: your trained network vs an untrained one             (Step 11)
+                    --train fc (only the last layer learns)   --seed S (the random start, default 0)
+    python3 run_features.py filters       conv1 before/after training, and how far each layer moved                (Step 11)
     python3 run_features.py compare       matching score of raw pixels, ORB, SIFT and your network; its failures   (Step 12)
           option:   --weights FILE (default my_desc.pt)
 
@@ -63,6 +64,9 @@ def _hint(e):
                 "torch.tensor(...) of a result)")
     if "cannot assign module before Module.__init__()" in s:
         return " — write super().__init__() as the FIRST line of PatchNet.__init__"
+    if "out of memory" in s.lower():
+        return (" — the GPU (or the computer) has no memory left: classmates are training too. Run the command "
+                "again in a minute, or train on the CPU: --device cpu --n-train 4096 --epochs 4")
     if "mask" in s and ("device" in s or "cuda" in s):
         return (" — the MASK lives on the CPU while the distances are on the GPU: create it on the data's device, "
                 "torch.eye(len(da), dtype=torch.bool, device=da.device) (lab Step 9, hint 5). The runner already "
@@ -179,6 +183,14 @@ def test():
         good = r.shape == (40, 40) and r[10, 10] > 0 and r[20, 10] < 0
         line(4, "harris", f"R[10, 10] = {r[10, 10]:.4g} (corner), R[20, 10] = {r[20, 10]:.4g} (edge)", None, good,
              "a corner must be > 0 and the middle of a side < 0: Lab Step 3, hint 1")
+        v2, e2 = rk.call(feat, "harris", sq, 0.06, 1.0)
+        if not e2:
+            same = np.allclose(np.asarray(v2, dtype=float), r)
+            line(4, "harris(k=0.06, sigma=1.0)", "differs from the defaults" if not same else "same as the defaults",
+                 None, not same, "another k and sigma must give another R: use the arguments k and sigma (lab Step 3, "
+                 "hint 3)")
+        else:
+            line(4, "harris(k=0.06, sigma=1.0)", None, e2, False, "")
     else:
         line(4, "harris", None, e, False, "")
     v, e = rk.call(feat, "repeatability", [[1, 1], [5, 5], [50, 50]], [[3.0, 1.0], [9.0, 9.0]], np.eye(3), (20, 20))
@@ -188,12 +200,20 @@ def test():
     elif not e and close(v, 0.0, 1e-6):
         note += "0: is the distance test ≤ tol_px, and do you take the NEAREST point of picture 2?"
     line(5, "repeatability", v, e, not e and close(v, 0.5, 1e-9), note)
+    for args, why in ((([[1.0, 1.0]], np.zeros((0, 2)), np.eye(3), (20, 20)), "picture 2 has no point"),
+                      (([[50.0, 50.0]], [[1.0, 1.0]], np.eye(3), (20, 20)), "no point falls inside")):
+        v, e = rk.call(feat, "repeatability", *args)
+        good = not e and v is not None and not np.isnan(float(v)) and abs(float(v)) < 1e-12
+        line(5, f"repeatability, {why}", v, e, good, "the docstring says 0.0 in this case (lab Step 4, hint 3)")
     v, e = rk.call(feat, "hamming", np.array([0b10110000], np.uint8), np.array([0b10010001], np.uint8))
-    note = "the docstring says 2. "
-    if not e and v == 6:
-        note += "6 = bits that are EQUAL: count the ones of the XOR (lab Step 6)"
-    line(6, "hamming", v, e, not e and v == 2 and isinstance(v, int) and not isinstance(v, bool),
-         note + ("" if e or isinstance(v, int) else " Return a Python int: int(...)"))
+    is_int = isinstance(v, int) and not isinstance(v, bool)
+    if not e and v == 2 and not is_int:
+        note = f"the value is right but it is a {type(v).__name__}: return a Python int, int(...)"
+    elif not e and v == 6:
+        note = "the docstring says 2. 6 = bits that are EQUAL: count the ones of the XOR (lab Step 6)"
+    else:
+        note = "the docstring says 2"
+    line(6, "hamming", v, e, not e and v == 2 and is_int, note)
 
     ld = learned()
     try:
@@ -486,7 +506,10 @@ def patches_mode():
         strip = np.full((20, width), 255, np.uint8)
         cv2.putText(strip, text, (4, 14), cv2.FONT_HERSHEY_SIMPLEX, 0.45, 0, 1, cv2.LINE_AA)
         return strip
-    grid = np.vstack([label("map patches"), row(ta[idx]), label("the SAME places in the drone photo"), row(tp[idx]),
+    numbers = np.full((20, width), 255, np.uint8)
+    for k in range(8):
+        cv2.putText(numbers, str(k + 1), (k * 102 + 42, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, 0, 1, cv2.LINE_AA)
+    grid = np.vstack([numbers, label("map patches"), row(ta[idx]), label("the SAME places in the drone photo"), row(tp[idx]),
                       label("8 OTHER places in the drone photo (non-pairs)"), row(tp[other])])
     out = cv2.cvtColor(grid, cv2.COLOR_GRAY2BGR)
     os.makedirs(OUT, exist_ok=True)
@@ -544,6 +567,10 @@ def train_mode():
     margin = option("--margin", 0.5, float)
     batch = option("--batch", 256, int)
     negatives = option("--negatives", "hardest")
+    seed = option("--seed", 0, int)
+    part = option("--train", "all")
+    if part not in ("all", "fc"):
+        sys.exit("--train is 'all' (the default) or 'fc' (only the last layer learns)")
     if negatives not in ("hardest", "all"):
         sys.exit("--negatives is 'hardest' (the default) or 'all'")
     if out.endswith(".json") or "/" in out:
@@ -556,9 +583,13 @@ def train_mode():
         ld.triplet_loss = functools.partial(all_negatives_loss, margin=margin)        # the course's variant
     elif margin != 0.5:
         ld.triplet_loss = functools.partial(ld.triplet_loss, margin=margin)          # YOUR loss, another margin
+    torch.manual_seed(seed)                       # the network's random start: the same for the same --seed
     model, err = rk.call(ld, "PatchNet")
     if err:
         sys.exit(err)
+    if part == "fc":                              # Step 13 "freeze": the three conv blocks keep their random start
+        for name in ("conv1", "conv2", "conv3"):
+            getattr(model, name).requires_grad_(False)
     want_cpu = option("--device", "auto") == "cpu"
     if want_cpu:
         limit_threads()
@@ -566,7 +597,8 @@ def train_mode():
         model = model.to(device)
         t0 = time.time()
         print(f"Training PatchNet on {len(ta)} pairs ({epochs} epochs, {device}, batch {batch}, margin {margin}, "
-              f"negatives {negatives}); validation: {len(va)} pairs of other places.")
+              f"negatives {negatives}, seed {seed}{', only fc learns' if part == 'fc' else ''}); validation: {len(va)} "
+              "pairs of other places.")
         print("  epoch  train loss  val loss   elapsed")
 
         def log(row):
@@ -590,7 +622,7 @@ def train_mode():
         took = time.time() - t0
     os.makedirs("logs", exist_ok=True)
     record = {"weights": out, "sha256": sha256(out), "n_train": len(ta), "epochs": epochs, "batch": batch,
-              "margin": margin, "negatives": negatives, "device": device, "seconds": round(took, 1),
+              "margin": margin, "negatives": negatives, "seed": seed, "train": part, "device": device, "seconds": round(took, 1),
               "val_score": round(float(acc), 4), "history": history}
     with open(os.path.join("logs", out + ".json"), "w") as f:
         json.dump(record, f, indent=1)
@@ -627,31 +659,44 @@ def filters_mode():
     import torch
     ld = learned()
     limit_threads()
-    mine = load_or_exit(ld, option("--weights", "my_desc.pt"))
-    torch.manual_seed(0)
-    fresh, err = rk.call(ld, "PatchNet")
+    weights = option("--weights", "my_desc.pt")
+    mine = load_or_exit(ld, weights)
+    seed = 0
+    try:
+        with open(os.path.join("logs", weights + ".json")) as f:
+            seed = int(json.load(f).get("seed", 0))
+    except (OSError, ValueError, TypeError):
+        print(f"(no log for {weights}: assuming it started from --seed 0)")
+    torch.manual_seed(seed)
+    fresh, err = rk.call(ld, "PatchNet")          # the same random start as your training run
     if err:
         sys.exit(err)
     plt = rk.plt_or_none()
     if not plt:
         sys.exit("matplotlib is missing: cannot draw the filters")
-    fig, axes = plt.subplots(4, 8, figsize=(9, 5))
-    for r, (net, title) in enumerate(((fresh, "untrained"), (mine, "trained"))):
-        w = net.conv1.weight.detach().cpu().numpy()[:, 0]
+    before = fresh.conv1.weight.detach().cpu().numpy()[:, 0]
+    after = mine.conv1.weight.detach().cpu().numpy()[:, 0]
+    m = float(np.abs(before).max()) or 1.0
+    fig, axes = plt.subplots(6, 8, figsize=(9, 7.2))
+    for r, (w, title) in enumerate(((before, "before"), (after, "after"), (after - before, "difference"))):
         for i in range(16):
             ax = axes[2 * r + i // 8, i % 8]
-            m = float(np.abs(w[i]).max()) or 1.0
             ax.imshow(w[i], cmap="RdBu_r", vmin=-m, vmax=m)
             ax.set_xticks([])
             ax.set_yticks([])
-            if i == 0:
+            if i % 8 == 0:
                 ax.set_ylabel(title, fontsize=9)
-    fig.suptitle("conv1's 16 filters (3 × 3): red = positive weight, blue = negative")
+    fig.suptitle(f"conv1's 16 filters (3 × 3) of {weights}, one colour scale: red = positive, blue = negative")
     fig.tight_layout()
     os.makedirs(OUT, exist_ok=True)
     fig.savefig(os.path.join(OUT, "filters.png"), dpi=90)
-    print("Top two rows: an untrained PatchNet (random weights). Bottom two rows: your trained network.")
-    print("Compare with mission 08's Sobel kernel [[1, 0, −1], [2, 0, −2], [1, 0, −1]] / 8.")
+    print(f"Rows 1–2: conv1 before training (seed {seed}, the start of {weights}); rows 3–4: after; rows 5–6: after − "
+          "before.")
+    print("How far each layer moved from its start, ‖after − before‖ / ‖before‖:")
+    for name in ("conv1", "conv2", "conv3", "fc"):
+        a = getattr(mine, name).weight.detach().cpu()
+        b = getattr(fresh, name).weight.detach().cpu()
+        print(f"  {name:6s} {float((a - b).norm() / b.norm()):.2f}")
     rk.saved("out/filters.png")
 
 

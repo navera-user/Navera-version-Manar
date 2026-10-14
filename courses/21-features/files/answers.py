@@ -47,8 +47,9 @@ N_PARAMS = 0             # the parameters of the whole PatchNet, worked out by h
 
 # ---- Steps 10–11: training, filters, overfitting ------------------------------------------------------
 VAL_SCORE_FULL = 0.0     # the matching score printed after your full training of my_desc.pt (three decimals)
-EXPLAIN_FILTERS = ""     # out/filters.png: what pattern do many trained filters show that random ones do not, and why
-                         # would it help to recognise a ground point?
+PREDICT_FILTERS = ""     # BEFORE `filters`: which layer will change most, which least? Will conv1 look like Sobel?
+EXPLAIN_FILTERS = ""     # how far did each layer move? did conv1 change visibly? why can almost random first filters
+                         # still work, and where did the network do most of its learning?
 PREDICT_OVERFIT = ""     # with only 300 training pairs and 30 epochs: what will the two loss curves do?
 EXPLAIN_OVERFIT = ""     # what happened to the train and validation losses with 300 pairs, and why?
 
@@ -62,10 +63,10 @@ EXPLAIN_LEARNED = ""     # why does your network win here, what do its failures 
                          # what would you need before trusting it on a real drone?
 
 # ---- Step 13: your experiment (ONE change) -----------------------------------------------------------
-EXPERIMENT = ""          # "margin", "batch", "pairs" or "negatives"
+EXPERIMENT = ""          # "margin", "batch", "pairs", "negatives" or "freeze"
 PREDICT_EXPERIMENT = ""  # BEFORE you run it: will the score go up, down or stay, and why?
 EXP_SCORE = 0.0          # the matching score of exp.pt (three decimals, from the end of its training)
-EXPLAIN_EXPERIMENT = ""  # what happened compared with my_desc.pt, and what it tells you about that setting
+EXPLAIN_EXPERIMENT = ""  # how the SCORE changed vs my_desc.pt, compared with the run-to-run noise, and what it tells you
 
 # ---- Look back (not graded) ----
 LOOK_BACK = ""

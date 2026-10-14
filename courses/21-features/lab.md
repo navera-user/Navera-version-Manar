@@ -4,8 +4,9 @@
 measure it against OpenCV's ORB and SIFT; compare binary descriptors; then build, train and test your own neural
 network that describes ground patches, and measure it against OpenCV.
 **Time:** two sessions, lab 3 h 30 (a strong programmer) to 6 h (new to PyTorch, which is expected); with the
-lesson, the mission takes 5 h to 8 h. Training runs take about 15 s on the GPU (if three classmates are already
-training, the runner waits for its turn) and about 11 minutes each on the Jetson's CPU (add about 30 minutes).
+lesson, the mission takes 5 h to 8 h. A training run takes 15 s to about a minute on the GPU (longer when classmates
+share it; if three are already training, the runner waits for its turn) and about 11 minutes on the Jetson's CPU
+(add about 30 minutes in all).
 **Fast track:** if you know numpy and PyTorch, write the TODOs from the docstrings without the 🧰 and "Stuck?" boxes,
 then do "Going further" and write the results in `LOOK_BACK`.
 
@@ -370,7 +371,7 @@ If the computer has a GPU, `test` also runs your loss there (the training will).
    `torch.tensor(...)` of a result).
 5. "triplet_loss (GPU)" fails with a device or mask message: a tensor you create (the mask) is on the CPU while the
    distances are on the GPU — create it on the data's device: `torch.eye(len(da), dtype=torch.bool, device=da.device)`.
-   The formula per anchor is max(0, margin + d_pos − d_neg): which 🧰 line gives max(0, ·) for a whole vector?
+6. The formula per anchor is max(0, margin + d_pos − d_neg): which 🧰 line gives max(0, ·) for a whole vector?
 </details>
 
 ## Step 10 — Train it (TODO 9)
@@ -403,7 +404,7 @@ python3 run_features.py train --n-train 512 --epochs 3 --out quick.pt
 ```
 
 The training loss should go down. Then the real training, which writes `my_desc.pt` and its log
-`logs/my_desc.pt.json` (about 15 s on the GPU; on the CPU add `--device cpu --n-train 4096 --epochs 4`: about
+`logs/my_desc.pt.json` (15 s to about a minute on the GPU; on the CPU add `--device cpu --n-train 4096 --epochs 4`: about
 11 minutes on the Jetson's CPU, score about 0.93):
 
 ```bash
@@ -413,6 +414,8 @@ python3 run_features.py train
 It prints one line per epoch, saves the curves in `out/loss_my_desc.png`, and the matching score on the validation
 pairs. The check measures `my_desc.pt` on pairs you never see, and checks that its fingerprint is the one in
 `logs/my_desc.pt.json`: a weights file trained by someone else, or retrained without the runner, does not pass.
+If you change `train` after this run (for example after a ✘ of check 11), run `python3 run_features.py train` again:
+Steps 11 and 13 compare other runs with this one.
 
 > [!TASK]
 > Write `VAL_SCORE_FULL` (three decimals, from the last line).
@@ -431,20 +434,31 @@ pairs. The check measures `my_desc.pt` on pairs you never see, and checks that i
    `opt.zero_grad()` called before EVERY `backward()` (otherwise the gradients of all earlier batches pile up)? Is a
    new `randperm` drawn each epoch from the SAME generator? Does the loop cover every batch, not only the first?
 5. `Expected all tensors to be on the same device`: `order = torch.randperm(...).to(train_a.device)`.
+6. `Killed` with no other message, or "out of memory": the computer ran out of memory (classmates are training too).
+   Run the command again in a minute, or add `--device cpu --n-train 4096 --epochs 4`.
 </details>
 
 ## Step 11 — What did it learn? Filters, and overfitting
+
+Every training starts from the same random weights (`--seed`, 0 by default), so the runner can rebuild your
+network's start and compare it with the end.
+
+> [!TASK]
+> **Predict** (`PREDICT_FILTERS`): which of the four layers will training change the most, and which the least? Will
+> conv1's trained 3 × 3 filters look like mission 08's Sobel kernel?
 
 ```bash
 python3 run_features.py filters
 ```
 
-Open `out/filters.png`: conv1's 16 filters, 3 × 3 numbers each, of an untrained network (top) and of yours (bottom).
-Nobody told your network about gradients.
+It prints how far each layer moved from its start (‖after − before‖ / ‖before‖) and draws conv1's 16 filters before
+training, after, and the difference, on one colour scale (`out/filters.png`).
 
 > [!TASK]
-> `EXPLAIN_FILTERS`: what pattern do many of your trained filters show that the random ones do not (compare with
-> mission 08's Sobel kernel), and why would such filters help to recognise a ground point?
+> `EXPLAIN_FILTERS`: which layer moved the most and which the least (the printed numbers)? Do conv1's filters look
+> different after training? Say honestly what you see. Many random 3 × 3 filters already have a bright side and a dark
+> side: why can the network keep almost random first filters and still score so well? Where did it do most of its
+> learning?
 
 Now overfitting, live.
 
@@ -492,23 +506,41 @@ seasons, shadows, 3-D buildings and a lens: the honest next step is a test set o
 
 ## Step 13 — Your experiment
 
-You know the recipe; now change ONE thing and measure what it does. Choose one:
+You know the recipe; now change ONE thing and measure what it does. Choose one row, and use one of its values (the
+check knows what they give; other values are welcome in Going further):
 
 | `EXPERIMENT` | What you change | Command |
 |---|---|---|
 | `"margin"` | the triplet margin, 0.5 → 0.2 or 1.0 | `python3 run_features.py train --margin 1.0 --out exp.pt` |
 | `"batch"` | the batch size, 256 → 64 or 1 024 (fewer or more impostors per batch) | `… train --batch 64 --out exp.pt` |
-| `"pairs"` | the number of training pairs, all → 1 024 | `… train --n-train 1024 --out exp.pt` |
+| `"pairs"` | the number of training pairs, → 1 024 | `… train --n-train 1024 --out exp.pt` |
 | `"negatives"` | every impostor of the batch instead of the hardest one (the course's variant of the loss) | `… train --negatives all --out exp.pt` |
+| `"freeze"` | only fc learns: the three conv blocks keep their random start | `… train --train fc --out exp.pt` |
 
-On the CPU, add the same `--device cpu --n-train 4096 --epochs 4` as for `my_desc.pt` (except for `"pairs"`, where you
-change `--n-train` only): the experiment must differ from your `my_desc.pt` run in that ONE setting.
+On the CPU, add the same `--device cpu --n-train 4096 --epochs 4` as for `my_desc.pt` (for `"pairs"`, write
+`--n-train 1024` instead of 4096): the experiment must differ from your `my_desc.pt` run in that ONE setting, epochs
+included.
+
+How large is a difference that means something? The same recipe with another random start:
+
+```bash
+python3 run_features.py train --seed 1 --out seed1.pt
+```
+
+The difference between `seed1.pt`'s score and `my_desc.pt`'s is your run-to-run noise. (On the CPU, skip this run:
+the course measured the noise of the GPU recipe at about ±0.004, scores 0.955–0.963.)
+
+> [!NOTE]
+> Compare **scores**, not losses. With another margin or with `--negatives all`, the loss is another function: its
+> numbers are not comparable at all. With another `batch` the loss changes meaning too: 64 pairs per batch means 63
+> impostors instead of 255, so the hardest one is easier and the loss is smaller **without the network being any
+> better** (lesson §9). Look at the loss curves' shape only for `batch` and `pairs`.
 
 > [!TASK]
 > Write `EXPERIMENT` and `PREDICT_EXPERIMENT` (will the validation score go up, down or stay the same, and why?)
 > **before** you run your command. Then write `EXP_SCORE` (three decimals, the last line of the run) and
-> `EXPLAIN_EXPERIMENT`: what changed compared with `my_desc.pt` (score and loss curves, `out/loss_exp.png`), and what
-> does it tell you about that setting? A difference of ±0.005 is within the noise of two runs: say so if you see it.
+> `EXPLAIN_EXPERIMENT`: how did the **score** change compared with `my_desc.pt`, is that larger than your run-to-run
+> noise, and what does it tell you about that setting?
 
 ## Step 14 — Check, then look back
 
@@ -533,5 +565,6 @@ Write your answers in `LOOK_BACK` in `answers.py` if you want your teacher to re
 - **Rotation.** Turn each validation photo patch by 90° (`np.rot90`) and compare again: which descriptor breaks? Why
   would ORB with its own orientation not break? Then add a random `torch.rot90` to the photo patches in a copy of your
   `train`: does augmentation buy the invariance?
-- **A second experiment.** Try another row of Step 13's table, or two epochs instead of eight.
+- **A second experiment.** Try another row of Step 13's table, other values (margin 0.05 or 2.0, batch 16, 300
+  pairs), or two epochs instead of eight.
 - **Fly your own parts.** Mission 22 loads `my_desc.pt` from this folder: keep it.

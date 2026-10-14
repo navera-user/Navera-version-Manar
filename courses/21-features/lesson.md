@@ -283,8 +283,9 @@ SIFT and ORB were **designed by hand**: someone chose 4 × 4 cells, 8 directions
 network** instead *learns* its own description from examples: thousands of pairs of patches that show the same
 ground point, one from the map and one from a "drone photo" (turned a little, scaled, tilted, blurred, darker,
 noisier). The lab's pairs come from views of NAVERA's test map rendered with exact ground truth, so every pair is
-known to be right. NAVERA uses learned networks too, for its former day method and for its night vision, while its
-current day matching uses SIFT (In NAVERA, below): which one wins is measured, not believed.
+known to be right. NAVERA relies on learned features too: its day matching first tries a learned detector, descriptor
+and matcher, with SIFT as the fallback, and its former day method and its night vision are networks (In NAVERA,
+below). Which one wins is measured, not believed.
 
 > [!TIP] 🧰 PyTorch in ten lines
 > ```python
@@ -405,15 +406,18 @@ where the validation loss is lowest), or a smaller network. Never judge a networ
 
 ## In NAVERA
 
-NAVERA's day vision, IRIS's product, matches the camera frame against map tiles with **SIFT** features (described
-in words): at most 300 keypoints per map tile, a contrast threshold of 0.02 instead of OpenCV's 0.04 because map
+NAVERA's day vision, IRIS's product, matches the camera frame against map tiles with local features (described in
+words). When its models load on the GPU, it first uses a **learned** pair: DISK keypoints and descriptors, matched by
+LightGlue, two published neural networks; like your network, DISK is not rotation invariant, so the frame is first
+turned north-up from the heading. Its fallback is a **SIFT** matcher: at most 300 keypoints per map tile, a contrast threshold of 0.02 instead of OpenCV's 0.04 because map
 pictures are often pale, **CLAHE** (clip 2.0, 8 × 8 tiles) before detection, and up to 1 500 keypoints in the frame.
 A frame with fewer than 10 keypoints is refused at once ("too few features: uniform ground, blur, darkness"), and a
 weak match whose inliers cover less than a quarter of the frame (a 4 × 2 grid, 3 inliers per cell) is rejected: the
-idea of `spread`. On the bench (1 October 2026), this local matching placed 32 of 33 aerial test frames within 9 m
-(median 4 m), with frames from another source, not NAVERA's camera.
+idea of `spread`. On the bench (1 October 2026), the SIFT local matching placed 32 of 33 aerial test frames within
+9 m (median 4 m), with frames from another source, not NAVERA's camera; the validation report (3 October 2026) gives
+no figure yet for the learned pair, and neither is measured with NAVERA's camera.
 
-NAVERA also uses learned models. Its former day method compared whole tiles with **DINOv2**, a pretrained network
+NAVERA uses other learned models too. Its former day method compared whole tiles with **DINOv2**, a pretrained network
 (median error 442 m on labelled replay frames: not accurate enough, kept as a fallback), and night vision uses
 **STHN**, a network that predicts a homography between a thermal frame and the map (8–13 m median on synthetic
 frames, not validated on real thermal). Over uniform terrain near Gabès, in simulation, the former method gave a
