@@ -325,7 +325,9 @@ system know which case it is in?". You will measure three axes: the error of the
 > A prior comes with its uncertainty σ: the error is usually below σ, but a compass with σ = 20° is more than 40° off on
 > about **1 photo in 20** (beyond 2σ, for a normal error). Your envelope measures an **error** the network can take; the
 > policy can only see the **σ**. A limit "use the network when σ ≤ L" lets errors of 2L reach it on about 5 % of the
-> photos: L should be about half the error your network survives.
+> photos: L should be about half the error your network survives. In the lab the gates catch the attempts
+> outside the envelope; NAVERA adds a gate for this (a fitted rotation more than ±20° from the heading is refused). The
+> limit is a margin you do not spend on luck.
 
 A matcher then needs a **policy**: which method to run first, when to try the other, and when to refuse. The costs are
 not symmetric: a refused frame costs one frame, an accepted wrong position (1 097 m in the prototype) can send the
@@ -345,12 +347,14 @@ wrong.
 
 ## In NAVERA
 
-NAVERA's day vision, IRIS's product, has two local matchers, and its policy is the one you build in session 2. By
+NAVERA's day vision, IRIS's product, has two local matchers and a policy of the kind you build in session 2, in an
+order you may not have chosen. By
 default it uses a **learned** matcher when its models load on the GPU: learned keypoints and descriptors (DISK) paired by
 a learned matcher (LightGlue). Like your PatchNet, these are **not rotation invariant**: NAVERA turns the frame north up
 from its heading before matching — the attitude's heading or, without one, the rotation its previous match measured.
 With no heading, or when the learned match fails, it tries SIFT. So: **learned first when a heading is known, SIFT as
 the fallback**, and a fitted rotation that disagrees with the heading by more than ±20° is refused as a wrong place.
+The course's reference NAVERA Lite policy runs SIFT first; yours may run either: lab Going further measures both orders.
 
 The SIFT fallback is the matcher measured in the validation report (3 October 2026): the frame is scaled to the map's
 resolution from the altitude and the camera's field of view; its SIFT features are paired with the map's with Lowe's

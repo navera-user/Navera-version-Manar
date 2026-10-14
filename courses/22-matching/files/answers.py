@@ -50,6 +50,7 @@ EXPLAIN_THRESHOLD = ""   # justify it with numbers of `curve` (precision, right 
 # ---- Step 10: DECISION — where your network can be trusted -------------------------------------------------------
 PREDICT_ENVELOPE = ""    # before `envelope`: up to what heading error will your network work, and why?
 NETWORK_MAX_ERR_DEG = None  # from `envelope`: the heading ERROR printed under table A (degrees)
+ENV_OLIVES_INLIERS = None   # from `envelope` table A, row NETWORK_MAX_ERR_DEG: your network's olives inliers
 HEADING_LIMIT_DEG = None    # DECISION (Step 10): the network is used only when the heading prior's σ is ≤ this (degrees)
 EXPLAIN_ENVELOPE = ""    # where does your network beat SIFT, where does it fail, and what in its training explains both?
 

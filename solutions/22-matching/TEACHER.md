@@ -70,8 +70,10 @@ solutions/21-features/my_desc.pt as shipped in courses/22-matching/files/ref_des
   precision on ALL curve photos is about 0.85–0.90, checking that the SHAKEN table keeps about half — lands in the
   window for every network that passes mission 21 (cpu4k 0.75, exp 0.7, fc 0.75, m10 0.75, seed1 0.75, ref 0.75).
 - Step 10 (`envelope`, ratio 0.7): A — heading error 0/5/10/15/20/25/30/35/40/60/90°: city 240/215/209/194/108/37/7…,
-  olives 92/88/87/74/44/9/2/0…; both ok up to **NETWORK_MAX_ERR_DEG = 25** (the expert's networks: 20, m10 25, quick
-  10). B — zoom ×1.1 ok for both; ×1.2 and beyond "scale off" for both (the gate, ±15 %). C — olives shake13: network
+  olives 92/88/87/74/44/9/2/0…; both ok up to **NETWORK_MAX_ERR_DEG = 25**, olives 9 inliers there (**ENV_OLIVES_INLIERS = 9**, checked against the
+  student's own network so the error cannot be guessed from the ±20° training range). At ratio 0.75: ref, seed1, m10,
+  oldref 25; exp, cpu4k, fc and three networks trained with today's runner (seeds 2–4) 20; quick 10 — no network passing
+  mission 21 had 15. B — zoom ×1.1 ok for both; ×1.2 and beyond "scale off" for both (the gate, ±15 %). C — olives shake13: network
   34 inliers ok, SIFT 3 refused; both fail on Gaussian blur 3–4 over olives. **HEADING_LIMIT_DEG**: the check wants
   2 × limit ≤ NETWORK_MAX_ERR_DEG (σ vs error, lesson §8: about 1 photo in 20 is beyond 2σ), and the hidden scenes need
   the network at σ 6–8°, so the window is **8–10°** for a 20° network, 8–12.5° for 25°. 180 fails (2σ rule), 5 fails
@@ -80,11 +82,14 @@ solutions/21-features/my_desc.pt as shipped in courses/22-matching/files/ref_des
   m03 sift 385, **m04 network 16**, m05 refused (no heading, shaken), m06 refused (blur 4.5), m07 sift 51, m08 sea
   refused, m09 another place refused, m10 wrong altitude refused (scale off), **m11 refused** (σ 15° > limit: SIFT only;
   with a limit ≥ 15 the network is tried 37° off and refused), **m12 network 24**. **6 right, 6 refused, 0 wrong**,
-  ≈ 10–16 s.
-- Hidden policy test (check 14, 16 scenes, ≥ 8 right, 0 wrong): reference 10 right, 6 refused, 0 wrong (h04, h12, h15,
-  h16 need the network; h14 is a σ = 15° prior 37° off). SIFT only: 6 (fails, the message names the unused network);
-  limit 5: 6; network first: 10 right, 0 wrong (the network then answers h02, h06, h13 too); no gates or gates on all
-  pairs: wrong positions accepted (h07, h11). Every expert network with its window decisions: 9–10 right, 0 wrong.
+  10–45 s depending on load.
+- Hidden policy test (check 14, 16 scenes, ≥ 7 right with at least one by the network, 0 wrong): reference 10 right, 6
+  refused, 0 wrong (h04, h12, h15, h16 need the network; h14 is a σ = 15° prior 37° off). SIFT only: 6 (fails, the
+  message names the unused network); limit 5: 6; network first: 10 right, 0 wrong (the network then answers h02, h06,
+  h13 too); no gates or gates on all pairs: wrong positions accepted (h07, h11). At the strict end of the check-10
+  window: ref/m10/s4e4 0.65 → 10, seed1 0.65 → 9, fc 0.75 → 9, s2 0.65 → 8 (h12 and h16 refused): a stricter threshold
+  costs matches on shaken photos. The check prints how many right answers came from the network and how many scenes the
+  limit let the network see with the prior outside the student's measured envelope (`mission` prints the same).
 - Check 13 (crafted): the student's sift_pairs is replaced, inside the student process, by two crafted pair sets: 40
   inliers in one corner + 30 spread wrong pairs (must be refused: "inliers bunched"), and a zoom-4 match whose map points
   are in one corner but photo points spread (must be accepted). It catches gates on all pairs, gates on the map
@@ -114,7 +119,10 @@ ratio_curve `<=` (9); decisions None, ratio 0.95, 0.8 or 0.5 (10); NETWORK_MAX_E
 gates on map points or on all pairs (13); no gates, limit 5 (14). The weak reviewer's worst moment ("`test` is all ✔,
 the check 0/13") is fixed: `run_match.py test` now runs the edge cases (ties, one column, ValueErrors, big-pixel DLT,
 refit, empty input, gate order, strict ratio_curve). Students copy stale numbers after fixing code: the check says
-"run the step again".
+"run the step again". Round 2: 11 networks (`expert2/drive_all.json`) — the lab's rule of thumb
+passes all 15 checks for every network that passes mission 21; exp and fc have a single-value window (0.7 / 0.75),
+reached because the SHAKEN table keeps under half at the stricter step. ratio_test returning shape (0,) when empty is now
+refused by `test` and check 1 (it used to crash `envelope` inside learned_pairs).
 
 ## Class plan (two sessions of about 3 h)
 
@@ -140,8 +148,8 @@ refit, empty input, gate order, strict ratio_curve). Students copy stale numbers
   again** (lp_expected.npz depends on it).
 - No training in this mission; the network runs on the CPU (2 threads, `academy_gpu.limit_threads`), no GPU slot is
   taken. Measured 2026-10-14: `describe` of 1 000 patches 1.6 s at load 18; `learned_pairs` 2.4 s, `match_photo`
-  0.5–4 s per scene; `envelope` ≈ 90 s at load 10 (more rows in table A); `curve` ≈ 30–60 s; the whole check (15
-  checks) 41 s at load 10, ≈ 2 min at load 13. Memory: ≈ 400 MB per Python process with
+  0.5–4 s per scene; `envelope` 130–250 s at load 13–18; `curve` ≈ 30–75 s; the whole check 1 min 10 s – 2 min 30 s
+  at load 10–18 (sealed 2 min 23 s at load 11). Memory: ≈ 400 MB per Python process with
   torch (no GPU memory).
 - NAVERA facts (base docs and code, in words): default day matcher learned (DISK + LightGlue, GPU), frame turned north up
   from the heading (or the previous match's rotation), learned first with a heading and SIFT as the fallback, a ±20°

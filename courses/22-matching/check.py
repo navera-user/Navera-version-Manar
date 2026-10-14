@@ -121,8 +121,11 @@ def _():
     if [3, 0] in g or [3, 1] in g:
         raise CheckFailed("row 3 has a tie (4.0 and 4.0): with best < ratio × second STRICTLY, even ratio 1.0 drops it")
     c.ok(g == [[0, 2], [1, 1], [2, 1], [4, 1], [5, 0], [6, 0]], f"ratio 1.0 gives {g}: expected other pairs")
-    v = go(f, np.array([[1.0], [2.0]]), 0.8)
-    c.ok(v is not None and np.asarray(v).size == 0, f"with a single column nothing can be judged: an empty result, got {v!r}")
+    for D, why in ((np.array([[1.0], [2.0]]), "a single column"), (np.array([[4.0, 4.0, 9.0]]), "one row with a tie")):
+        v = go(f, D, 1.0)
+        c.ok(v is not None and np.asarray(v).shape == (0, 2), f"with {why} nothing is kept: the result must still have "
+             f"shape (0, 2), got {np.asarray(v).shape if v is not None else None} — np.array([]) has shape (0,); "
+             "use np.zeros((0, 2), dtype=int) (lab Step 1, hint 3)")
 
 
 SRC2 = [[20.898, 191.276], [52.429, 113.261], [149.458, 3.721], [121.742, 76.374], [21.931, 78.509], [66.338, 133.991],
@@ -619,11 +622,11 @@ def env_attempt(lm, mt, net, e, err_deg, lr, md):
     inl = np.asarray(inl, bool)
     ok, _ = go(mt.gates, fit, dst[inl] if len(dst) else dst, pg.shape, e["zoom"])
     if not ok:
-        return False
+        return False, int(inl.sum())
     cpt = np.array([[319.5, 239.5]])
     M = sim_matrix(*[float(x) for x in fit])
     err = float(np.hypot(*(warp(np.linalg.inv(M), cpt) - warp(np.linalg.inv(np.array(e["H"])), cpt))[0]))
-    return err * e["map_m_per_px"] <= 10.0
+    return err * e["map_m_per_px"] <= 10.0, int(inl.sum())
 
 
 def cv2_read(rel):
@@ -654,12 +657,20 @@ def _():
     env = {(e["place"], e["effect"]): e for e in json.load(open(os.path.join(DATA, "envelope.json")))}
     sharp = [env[("city", "sharp")], env[("olives", "sharp")]]
     at = [env_attempt(lm, mt, net, e, me, lr, md) for e in sharp]
-    c.ok(all(at), f"NETWORK_MAX_ERR_DEG = {me:g}: with that heading error your network does not match both places "
-         "(`envelope`, table A, with your LEARNED_RATIO): copy the error printed under table A")
+    c.ok(all(a[0] for a in at), f"NETWORK_MAX_ERR_DEG = {me:g}: with that heading error your network does not match "
+         "both places (`envelope`, table A, with your LEARNED_RATIO): copy the error printed under table A")
+    (ei,) = answers("ENV_OLIVES_INLIERS")
+    if ei is None:
+        raise CheckFailed("ENV_OLIVES_INLIERS is still None: copy your network's olives inliers from the row of table A "
+                          "at NETWORK_MAX_ERR_DEG")
+    n_ol = at[1][1]
+    c.ok(abs(number(ei, "ENV_OLIVES_INLIERS") - n_ol) <= max(3, 0.2 * n_ol), f"ENV_OLIVES_INLIERS = {ei}: that is not "
+         f"what your network finds on olives at {me:g}° — copy the number from YOUR `envelope` table A, row "
+         "NETWORK_MAX_ERR_DEG")
     if me < 40:
-        nxt = [env_attempt(lm, mt, net, e, me + 5, lr, md) for e in sharp]
-        c.ok(not all(nxt), f"NETWORK_MAX_ERR_DEG = {me:g}: your network still matches both places at {me + 5:g}°: "
-             "copy the LAST error of the unbroken run of oks (printed under table A)")
+        nxt = [env_attempt(lm, mt, net, e, me + 5, lr, md)[0] for e in sharp]
+        c.ok(not all(nxt), f"NETWORK_MAX_ERR_DEG = {me:g}: your network still matches both places beyond {me:g}°: "
+             "copy the error printed under table A of YOUR `envelope` run")
     c.ok(2 * hl <= me + 0.5, f"HEADING_LIMIT_DEG = {hl:g}: with σ up to {hl:g}°, about 1 photo in 20 is more than "
          f"2σ = {2 * hl:g}° off, beyond the {me:g}° your network can take. Choose σ ≤ {me / 2:g}° (lesson §8)")
 
@@ -754,14 +765,20 @@ def _():
     net = go(ld.load_weights, "my_desc.pt")
     arrays, meta = scenes()
     right, wrong, refused = 0, [], 0
-    used_learned = 0
+    tried_learned = accepted_learned = outside = 0
+    (me,) = answers("NETWORK_MAX_ERR_DEG")
     for s in meta:
+        pr = s["prior"]
+        if pr["heading_deg"] is not None and pr["heading_sigma_deg"] <= cfg["heading_limit_deg"] and s["H"] is not None:
+            Hs = np.array(s["H"])
+            off = abs((pr["heading_deg"] + np.degrees(np.arctan2(Hs[1, 0], Hs[0, 0])) + 180.0) % 360.0 - 180.0)
+            outside += isinstance(me, (int, float)) and not isinstance(me, bool) and off > me
         v = go(f, arrays["map_" + s["map"]], arrays[s["name"] + "_photo"], dict(s["prior"]), net, dict(cfg), seconds=120)
         if not isinstance(v, dict) or not {"ok", "method", "fit", "inliers", "reason"} <= set(v):
             raise CheckFailed(f"match_photo must return a dict with ok, method, fit, inliers, reason — got {v!r:.150}")
         if v["method"] not in ("sift", "learned", None):
             raise CheckFailed(f"method must be 'sift', 'learned' or None, got {v['method']!r}")
-        used_learned += v["method"] == "learned"
+        tried_learned += v["method"] == "learned"
         if not v["ok"]:
             refused += 1
             continue
@@ -775,19 +792,22 @@ def _():
         e = float(np.hypot(*(warp(np.linalg.inv(M), cpt) - warp(np.linalg.inv(np.array(s["H"])), cpt))[0])) * s["map_m_per_px"]
         if e <= 10.0:
             right += 1
+            accepted_learned += v["method"] == "learned"
         else:
             wrong.append(f"{s['name']} ({e:.0f} m off)")
     print(f"  your matcher on {len(meta)} unseen scenes: {right} right, {refused} refused, {len(wrong)} wrong; your "
-          f"network gave {used_learned} of the answers")
+          f"network gave {accepted_learned} of the right answers; your limit let it see {outside} scene(s) with the "
+          "prior outside its measured envelope")
     c.ok(not wrong, f"your matcher ACCEPTED {len(wrong)} wrong position(s): {', '.join(wrong)}. NAVERA's rule is zero: "
          "every accepted attempt must pass YOUR gates with the prior's zoom")
-    if right < 8 and used_learned == 0:
-        raise CheckFailed(f"only {right} of {len(meta)} scenes matched, and your network was never used: shaken photos of "
+    if accepted_learned == 0 and tried_learned == 0:
+        raise CheckFailed(f"{right} of {len(meta)} scenes matched, and your network was never used: shaken photos of "
                           "olive groves need it when the heading is known (σ 6–8° here): is HEADING_LIMIT_DEG too strict, "
                           "or is the network never tried after SIFT is refused?")
-    c.ok(right >= 8, f"only {right} of {len(meta)} unseen scenes matched (at least 8 are possible with SIFT, your network "
-         "and the gates): try the second matcher when the first is refused (and if a check of TODO 1–7 fails, fix it "
-         "first: match_photo runs them)")
+    c.ok(right >= 7 and accepted_learned >= 1, f"only {right} of {len(meta)} unseen scenes matched, {accepted_learned} of "
+         "them by your network (at least 7, and at least one by your network, are possible with SIFT, your network and the "
+         "gates): try the second matcher when the first is refused (and if a check of TODO 1–7 fails, fix it first: "
+         "match_photo runs them)")
     explained("EXPLAIN_POLICY", answers("EXPLAIN_POLICY")[0],
               ((r"sift", r"network", r"learned"), "which matcher you run"),
               ((r"heading", r"σ", r"sigma", r"prior", r"compass"), "when the network may be used"),

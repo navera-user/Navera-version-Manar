@@ -27,10 +27,10 @@
   <text x="520" y="88" fill="#1d2733">It tells where</text>
   <text x="520" y="106" fill="#1d2733">every view pixel</text>
   <text x="520" y="124" fill="#1d2733">lands on the map.</text>
-  <text x="520" y="152" fill="#0b6e8a" font-size="12">Here: a tilted view.</text>
-  <text x="520" y="170" fill="#0b6e8a" font-size="12">A rectangle becomes</text>
-  <text x="520" y="188" fill="#0b6e8a" font-size="12">a trapezoid, which</text>
-  <text x="520" y="206" fill="#0b6e8a" font-size="12">no turn + scale makes.</text>
+  <text x="520" y="152" fill="#0b6e8a" font-size="11">Here: a tilted view.</text>
+  <text x="520" y="170" fill="#0b6e8a" font-size="11">A rectangle becomes</text>
+  <text x="520" y="188" fill="#0b6e8a" font-size="11">a trapezoid: no turn</text>
+  <text x="520" y="206" fill="#0b6e8a" font-size="11">and scale can do that.</text>
   <text x="520" y="234" fill="#a8680d">4 corners (orange)</text>
   <text x="520" y="252" fill="#a8680d">define it.</text>
   <text x="630" y="288" fill="#1d2733" text-anchor="end">centre on the map → map pixel → latitude/longitude (mission 23)</text>

@@ -4,7 +4,7 @@
 trust gates, measured against the truth and against OpenCV; then match with your own network from mission 21,
 **decide** its threshold and when to use it from your measurements, and write the matcher's policy.
 **Time:** 5 h to 6 h 30 in two sessions (a strong programmer: about 4 h). Nothing is trained today: every run takes
-seconds to minutes (the slowest, `envelope`, two to three minutes).
+seconds to minutes (the slowest, `envelope`, three to four minutes).
 **Fast track:** if you know least squares and RANSAC, write the TODOs from the docstrings without the 🧰 and "Stuck?"
 boxes, then do "Going further".
 
@@ -100,7 +100,7 @@ applies your ratio test with 0.6, 0.7, 0.8 and 0.9. Open `out/ratio_city.png`.
    `best < ratio * second`, and keep the rows where it is True with their best column.
 2. Every row kept, even the ties? You compared with `<=`, or with the largest distance: the test is strict, against
    the **second** smallest.
-3. `IndexError` with one column: when `dist.shape[1] < 2`, return `np.zeros((0, 2), dtype=int)` first.
+3. `IndexError` with one column, or an empty result of shape (0,): when `dist.shape[1] < 2`, return `np.zeros((0, 2), dtype=int)` first, and build the kept pairs so that "nothing kept" still has shape (0, 2) (`.reshape(-1, 2)`).
 4. The right rows but the wrong columns: j is the column of the **smallest** distance, `o[:, 0]`.
 </details>
 
@@ -237,8 +237,8 @@ python3 run_match.py ransac
 
 > [!TASK]
 > **Predict** (`PREDICT_RANSAC_MIN`), before you run it: on the tilted city pair 91 % of the pairs are right, so
-> `ransac_iterations` asks for only 4 samples for a homography. Will that RANSAC put the photo's centre within 5 m of the
-> truth? Why?
+> `ransac_iterations` asks for 4 samples for a homography (p = 0.99). Will that RANSAC put the photo's centre within 5 m
+> of the truth? Write yes or no, and your reason.
 
 It runs your RANSAC on the tilted city pair, first with the number of samples your `ransac_iterations` asks for
 (with the share w of right pairs measured from the truth), then with 500 samples, and OpenCV's for comparison.
@@ -405,17 +405,21 @@ Your network was trained on photo patches turned by at most ±20° and scaled by
 python3 run_match.py envelope
 ```
 
-Two to three minutes. Three tables, each cell "inliers verdict": A, the heading prior wrong by 0–90°; B, the zoom prior
+Three to four minutes (longer on a busy machine). Three tables, each cell "inliers verdict": A, the heading prior wrong by 0–90°; B, the zoom prior
 wrong by ×1.0–1.45 (a wrong altitude); C, blur and shake. `ok` means accepted by your gates AND right. Under table A it
 prints the largest heading **error** your network takes on both places.
 
 > [!TASK]
-> Copy that error into `NETWORK_MAX_ERR_DEG`. **DECISION.** `HEADING_LIMIT_DEG`: your matcher will use the network only
+> Copy that error into `NETWORK_MAX_ERR_DEG`, and the olives-network inliers on that row into `ENV_OLIVES_INLIERS`. **DECISION.** `HEADING_LIMIT_DEG`: your matcher will use the network only
 > when the heading prior's **σ** is at most this. A σ is not an error (lesson §8): about 1 photo in 20 is more than 2σ
 > off. The check verifies your NETWORK_MAX_ERR_DEG with your network and wants 2 × HEADING_LIMIT_DEG inside it. A limit
-> too strict costs right matches: the scenes' compass priors have σ from 5° to 30° (see `mission.json`), and shaken
+> too strict costs right matches: the scenes' compass priors have σ from 8° to 30° (see `mission.json`; the check's scenes 6° to 40°), and shaken
 > olive groves need your network. Write `EXPLAIN_ENVELOPE`: where does your network beat SIFT, where does it fail, what
 > in its training explains both, and why your σ limit is about half the error it survives.
+>
+> Then try it: set `HEADING_LIMIT_DEG = 20`, run `python3 run_match.py mission` again and look at m11 (a poor compass,
+> σ 15°): the runner prints how far its prior really is from the truth and whether that is outside your envelope. Who
+> saved you? Put your limit back.
 
 ## Step 11 — Your matcher's policy (TODO 9)
 
@@ -433,12 +437,13 @@ line: what the photo shows, your answer, the method, the gates' reason, and the 
 
 > [!TASK]
 > `mission` shows no WRONG and you understand every refusal. Write `EXPLAIN_POLICY`. The check runs your policy on 16
-> unseen scenes (zero wrong positions, at least 8 right), and on two crafted cases that test how you call the gates.
+> unseen scenes (zero wrong positions, at least 7 right, your network among them), and on two crafted cases that test
+> how you call the gates.
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
 1. A list of methods to try: `["sift"]`, plus `"learned"` when `prior["heading_deg"] is not None` and
-   `prior["heading_sigma_deg"] <= cfg["heading_limit_deg"]` (or the other order: your decision — measure both).
+   `prior["heading_sigma_deg"] <= cfg["heading_limit_deg"]` (or the other order: see Going further).
 2. For each: the pairs (`sift_pairs(map_gray, photo_gray, SIFT_RATIO)` or your `learned_pairs(…, cfg["learned_ratio"],
    cfg["learned_max_dist"])`), then `fit, inl = ransac_similarity(src, dst, RANSAC_PX, RANSAC_ITERS,
    np.random.default_rng(0))`, then `gates(fit, dst[inl], photo_gray.shape, prior["zoom"])`: the INLIERS' PHOTO points

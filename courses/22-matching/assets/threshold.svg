@@ -11,6 +11,6 @@
   <rect x="440" y="58" width="185" height="70" rx="8" fill="#e3f4ea" stroke="#2e8b57"/>
   <text x="450" y="80" fill="#1d2733">too strict: clean, but the</text><text x="450" y="98" fill="#1d2733">blurred photo keeps too few</text><text x="450" y="116" fill="#1d2733">pairs to pass the gates</text>
   <rect x="440" y="170" width="185" height="70" rx="8" fill="#fbe4e4" stroke="#d64545"/>
-  <text x="450" y="192" fill="#1d2733">too loose: many wrong pairs:</text><text x="450" y="210" fill="#1d2733">RANSAC needs more samples,</text><text x="450" y="228" fill="#1d2733">a wrong place collects inliers</text>
+  <text x="450" y="192" fill="#1d2733">too loose: many wrong pairs:</text><text x="450" y="210" fill="#1d2733">RANSAC needs more tries,</text><text x="450" y="228" fill="#1d2733">a wrong place collects inliers</text>
   <text x="70" y="316" fill="#5b6b7a" font-size="12">A sketch, not your data: lab Step 9 draws the real curves of SIFT and of YOUR network.</text>
 </svg>

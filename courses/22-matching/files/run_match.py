@@ -206,7 +206,7 @@ def test():
     def line(todo, name, got, err, good, note):
         nonlocal ok_all
         if err:
-            print(f"✘ {todo:<4} {name:20s} {err}")
+            print(f"✘ {todo:<4} {name:20s} {err}" + (f" — {note}" if note else ""))
             ok_all = False
         elif good:
             print(f"✔ {todo:<4} {name:20s} {got}")
@@ -304,11 +304,15 @@ def test():
         return False, "returned a value, no ValueError"
 
     v, e = rk.call(match, "ratio_test", np.array([[4.0, 4.0, 9.0]]), 1.0)
-    line(1, "ratio_test, a tie", None if e else np.asarray(v).tolist(), e, not e and np.asarray(v).size == 0,
-         "best 4 and second 4: 4 < 1.0 × 4 is False — the test is strict (<)")
+    shp = None if e else np.asarray(v).shape
+    note = ("best 4 and second 4: 4 < 1.0 × 4 is False — the test is strict (<)" if shp != (0,) else
+            "nothing kept must still have shape (0, 2): np.array([]) has shape (0,); use np.zeros((0, 2), dtype=int) "
+            "or .reshape(-1, 2) (lab Step 1, hint 3)")
+    line(1, "ratio_test, a tie", None if e else f"{np.asarray(v).tolist()} shape {shp}", e, not e and shp == (0, 2), note)
     v, e = rk.call(match, "ratio_test", np.array([[1.0], [2.0]]), 0.8)
-    line(1, "ratio_test, 1 column", None if e else np.asarray(v).tolist(), e, not e and np.asarray(v).size == 0,
-         "one column has no second-nearest: return np.zeros((0, 2), dtype=int)")
+    shp = None if e else np.asarray(v).shape
+    line(1, "ratio_test, 1 column", None if e else f"{np.asarray(v).tolist()} shape {shp}", e, not e and shp == (0, 2),
+         "one column has no second-nearest: return np.zeros((0, 2), dtype=int) — shape (0, 2), not (0,) (hint 3)")
     for args, why in ((([[1.0, 2.0]], [[3.0, 4.0]]), "one pair"), (([[3.0, 3.0], [3.0, 3.0]], [[1.0, 1.0], [2.0, 2.0]]),
                                                                     "one point twice")):
         ok, e = raises("fit_similarity", *args)
@@ -350,10 +354,17 @@ def test():
         good = not e and isinstance(v, tuple) and len(v) == 2 and (bool(v[0]), v[1]) == want
         line(6, f"gates, {why}", v, e, good, f"expected {want}: the gates in the docstring's order")
     v, e = rk.call(lm(), "ratio_curve", [1.0, 0.2], [1.0, 0.5], [True, False], [1.0, 0.1])
-    good = (not e and isinstance(v, list) and len(v) == 2 and all(isinstance(r, dict) for r in v)
-            and v[0].get("kept") == 1 and v[0].get("right") == 0 and v[1].get("kept") == 0 and v[1].get("precision") is None)
-    line(8, "ratio_curve, tie, none kept", v, e, good, "expected kept 1 (1.0 < 1.0 × 1.0 is False: strict <), right 0; "
-         "then kept 0 with precision None (no division by 0)")
+    ok_shape = not e and isinstance(v, list) and len(v) == 2 and all(isinstance(r, dict) for r in v)
+    notes = []
+    if ok_shape:
+        if v[0].get("kept") != 1 or v[0].get("right") != 0:
+            notes.append(f"with ratio 1.0: kept {v[0].get('kept')}, right {v[0].get('right')}, expected kept 1, right 0 "
+                         "(1.0 < 1.0 × 1.0 is False: a tie is not kept, strict <)")
+        if v[1].get("kept") != 0 or v[1].get("precision") is not None:
+            notes.append(f"with ratio 0.1: kept {v[1].get('kept')}, precision {v[1].get('precision')!r}, expected kept 0 "
+                         "and precision None, not nan (no division by 0)")
+    line(8, "ratio_curve, tie, none kept", v, e, ok_shape and not notes,
+         "; ".join(notes) or "ratio_curve must return a list of 2 dicts here")
     print("\nTODO 7 (learned_pairs) and TODO 9 (match_photo) need the data and your network: "
           "`python3 run_match.py learned` and `python3 run_match.py mission`.")
     print("\nAll these examples pass. They are not the check: ✔ here means the docstring examples and these edge "
@@ -717,6 +728,8 @@ def mission_cmd():
           f"{'inliers':>7} {'reason':16s} verdict")
     counts = {"right": 0, "refused": 0, "WRONG": 0}
     t_all, inl_by = 0.0, {"sift": [], "learned": []}
+    env_max = getattr(rk.load_student("answers"), "NETWORK_MAX_ERR_DEG", None)
+    outside = 0
     for s in load_json("mission.json"):
         mg, pg = gray(s["map"]), gray(s["photo"])
         H = None if s["H"] is None else np.array(s["H"])
@@ -740,6 +753,14 @@ def mission_cmd():
         else:
             verdict, note = "refused", ""
         counts[verdict] += 1
+        allowed = pr["heading_deg"] is not None and pr["heading_sigma_deg"] <= cfg["heading_limit_deg"]
+        if allowed and H is not None:                                   # the true heading: θ = −heading (lesson §2)
+            true_h = -math.degrees(math.atan2(H[1, 0], H[0, 0]))
+            off = abs((pr["heading_deg"] - true_h + 180.0) % 360.0 - 180.0)
+            note += ("; " if note else "") + f"network allowed, prior {off:.0f}° off"
+            if isinstance(env_max, (int, float)) and not isinstance(env_max, bool) and off > env_max:
+                note += f": OUTSIDE your {env_max:g}° envelope"
+                outside += 1
         hp = "unknown" if pr["heading_deg"] is None else f"{pr['heading_deg']:.0f}° ± {pr['heading_sigma_deg']:.0f}°"
         print(f"{s['name']:6s} {s.get('desc', ''):30s} {hp:>14} {pr['zoom']:5.2f}  {'accept' if v['ok'] else 'refuse':7s} "
               f"{str(v['method']):8s} "
@@ -748,6 +769,9 @@ def mission_cmd():
     print(f"\naccepted by method: {acc or 'none'}; total time {t_all:.1f} s")
     print(f"right {counts['right']}, refused {counts['refused']}, WRONG {counts['WRONG']} "
           "(a WRONG accepted match is the worst outcome: NAVERA's rule is zero)")
+    if isinstance(env_max, (int, float)) and not isinstance(env_max, bool):
+        print(f"your limit allowed the network on {outside} scene(s) with the prior OUTSIDE your {env_max:g}° envelope"
+              + (" — only the gates stood between them and a wrong position" if outside else ""))
 
 
 # ================================================================================================= main

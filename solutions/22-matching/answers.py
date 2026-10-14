@@ -49,6 +49,7 @@ EXPLAIN_THRESHOLD = "On the curve table my network at 0.8 has precision 0.829 (S
 # ---- Step 10: DECISION — where your network can be trusted -------------------------------------------------------
 PREDICT_ENVELOPE = "It was trained with turns up to ±20°, so it should fail beyond about 20–30°."    # before `envelope`: up to what heading error will your network work, and why?
 NETWORK_MAX_ERR_DEG = 25
+ENV_OLIVES_INLIERS = 9
 HEADING_LIMIT_DEG = 10   # DECISION: your matcher uses the network only when the heading prior's σ is ≤ this (degrees)
 EXPLAIN_ENVELOPE = "My network works up to a 25° heading error on both places and fails from 30°, because it was trained only on pairs turned by ±20° and has no orientation of its own. It beats SIFT on shaken olives (34 against 3 inliers at shake13) because its training data had blur and noise. A zoom error above 15 % is refused by the scale gate for both. My limit is a σ: a compass is more than 2σ off on 1 photo in 20, so I keep 2σ inside 25°: σ ≤ 10°."    # where does your network beat SIFT, where does it fail, and what in its training explains both?
 
