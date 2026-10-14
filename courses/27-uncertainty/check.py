@@ -118,6 +118,10 @@ def _():
         raw = x.T @ x / (n - 1)
         if same(got, raw, 1e-6) or same(got, x.T @ x / n, 1e-6):
             raise CheckFailed(f"sample_cov of {n} points far from (0, 0): the mean point is not subtracted")
+        dg = x - x.mean()
+        if same(got, dg.T @ dg / (n - 1), 1e-6) or same(got, dg.T @ dg / n, 1e-6):
+            raise CheckFailed(f"sample_cov of {n} points: you subtracted ONE number (x.mean() of the whole table): the "
+                              "mean point is x.mean(axis=0), one mean per column")
         if same(got, np.diag(np.diag(want)), 1e-6):
             raise CheckFailed("the off-diagonal term (the covariance b) is missing")
         raise CheckFailed(f"sample_cov of {n} points gives {np.round(got, 3).tolist()}: wrong values")
@@ -273,16 +277,19 @@ def _():
                                                               "tilt: check the signs and the order of J's rows")
 
 
-@c.test("Steps 0–3: the cloud, its ellipse, the circle and the χ² simulation — numbers and explanation",
-        hint="python3 run_uncertainty.py cloud: a, b, angle, the judge's σ, the shares inside the 1-sigma ellipse and the "
-             "judge's circle (k = 1); python3 chi2_sim.py: the 95 % line. EXPLAIN_CHI2: two squared errors are added on "
-             "a map, so d² is larger than on one axis.")
+@c.test("Steps 0–3: the cloud, its ellipse as a compass direction, circle against ellipse, the χ² simulation",
+        hint="python3 run_uncertainty.py cloud: a, b, angle, the judge's σ, the shares inside the 1- and 3-sigma ellipses "
+             "and inside the judge's circle at k = 3; the bearing of the long axis = 90° − angle, in [0, 180); "
+             "python3 chi2_sim.py: the 95 % line. EXPLAIN_CHI2: two squared errors are added on a map; the circle is "
+             "shorter than the long axis.")
 def _():
-    p0, a, b, ang, js, pc, ins, circ, p95, why = answers(
-        "PREDICT_INSIDE", "ELLIPSE_A_M", "ELLIPSE_B_M", "ELLIPSE_ANGLE_DEG", "JUDGE_SIGMA_M", "PREDICT_CIRCLE",
-        "INSIDE_1SIGMA_PCT", "CIRCLE_1_PCT", "SIM_P95", "EXPLAIN_CHI2")
+    p0, pcl, a, b, ang, brg, js, pc, ins1, ins3, circ3, p95, why = answers(
+        "PREDICT_INSIDE", "PREDICT_CLOUD", "ELLIPSE_A_M", "ELLIPSE_B_M", "ELLIPSE_ANGLE_DEG", "LONG_AXIS_BEARING_DEG",
+        "JUDGE_SIGMA_M", "PREDICT_CIRCLE", "INSIDE_1SIGMA_PCT", "INSIDE_3SIGMA_PCT", "CIRCLE_3_PCT", "SIM_P95",
+        "EXPLAIN_CHI2")
     L = LAB["cloud"]
     predicted("PREDICT_INSIDE", p0)
+    predicted("PREDICT_CLOUD", pcl)
     a, b, ang, js = (number(v, n) for v, n in ((a, "ELLIPSE_A_M"), (b, "ELLIPSE_B_M"), (ang, "ELLIPSE_ANGLE_DEG"),
                                                 (js, "JUDGE_SIGMA_M")))
     if abs(a - L["b_m"]) < 0.02 and abs(b - L["a_m"]) < 0.02:
@@ -292,15 +299,30 @@ def _():
     if abs(ang - (L["angle_deg"] + 180.0)) < 0.5:
         raise CheckFailed("ELLIPSE_ANGLE_DEG is outside (−90, 90]: the same line, but write the angle your ellipse() prints")
     c.near(ang, L["angle_deg"], 0.5, "ELLIPSE_ANGLE_DEG (degrees from east)")
+    brg = number(brg, "LONG_AXIS_BEARING_DEG")
+    want_brg = (90.0 - L["angle_deg"]) % 180.0
+    if abs(brg - (want_brg + 180.0)) < 0.6:
+        raise CheckFailed("LONG_AXIS_BEARING_DEG: the same line, but an axis has no arrow — give it in [0, 180)")
+    if abs(brg - L["angle_deg"]) < 0.6 or abs(brg - (L["angle_deg"] % 180.0)) < 0.6:
+        raise CheckFailed("LONG_AXIS_BEARING_DEG is the ENU angle again: a bearing counts from NORTH, clockwise "
+                          "(bearing = 90° − angle, lesson §2)")
+    if abs(brg - (90.0 + L["angle_deg"]) % 180.0) < 0.6:
+        raise CheckFailed("LONG_AXIS_BEARING_DEG: a bearing is 90° − angle, not 90° + angle (a negative angle points "
+                          "south of east)")
+    c.near(brg, want_brg, 0.6, "LONG_AXIS_BEARING_DEG (degrees clockwise from north, in [0, 180))")
     c.near(js, L["judge_sigma_m"], 0.02, "JUDGE_SIGMA_M (m)")
     predicted("PREDICT_CIRCLE", pc)
-    ins, circ = number(ins, "INSIDE_1SIGMA_PCT"), number(circ, "CIRCLE_1_PCT")
-    if ins < 1.0 or circ < 1.0:
+    ins1, ins3, circ3 = (number(v, n) for v, n in ((ins1, "INSIDE_1SIGMA_PCT"), (ins3, "INSIDE_3SIGMA_PCT"),
+                                                    (circ3, "CIRCLE_3_PCT")))
+    if min(ins1, ins3, circ3) <= 1.0:
         raise CheckFailed("write the shares in percent (38.5, not 0.385)")
-    if abs(ins - L["circle1_pct"]) < 0.3 and abs(circ - L["inside1_pct"]) < 0.3:
-        raise CheckFailed("INSIDE_1SIGMA_PCT and CIRCLE_1_PCT are swapped")
-    c.near(ins, L["inside1_pct"], 0.3, "INSIDE_1SIGMA_PCT (%)")
-    c.near(circ, L["circle1_pct"], 0.3, "CIRCLE_1_PCT (%)")
+    if abs(ins3 - L["circle3_pct"]) < 0.1 and abs(circ3 - L["inside3_pct"]) < 0.1:
+        raise CheckFailed("INSIDE_3SIGMA_PCT and CIRCLE_3_PCT are swapped")
+    if abs(circ3 - L["circle1_pct"]) < 0.3:
+        raise CheckFailed("CIRCLE_3_PCT is the k = 1 line: write the k = 3 line of the circle column")
+    c.near(ins1, L["inside1_pct"], 0.3, "INSIDE_1SIGMA_PCT (%)")
+    c.near(ins3, L["inside3_pct"], 0.1, "INSIDE_3SIGMA_PCT (%)")
+    c.near(circ3, L["circle3_pct"], 0.1, "CIRCLE_3_PCT (%)")
     p95 = number(p95, "SIM_P95")
     if abs(p95 - 3.84) < 0.3:
         raise CheckFailed("SIM_P95 is the ONE-axis value (x² alone): write the 2-D column")
@@ -312,7 +334,10 @@ def _():
                'why fewer fit on a map (e.g. "on a map two squared errors are added, so d² is larger")'),
               ((r"5\.99", r"6\b", r"χ", r"chi", r"threshold", r"tail", r"mean", r"larger", r"bigger", r"spread",
                 r"1\.96", r"3\.84", r"distribution", r"law"),
-               'why 95 % is near 6 and not 4 (e.g. "the χ² law with 2 degrees of freedom: its 95 % point is 5.99")'))
+               'why 95 % is near 6 and not 4 (e.g. "the χ² law with 2 degrees of freedom: its 95 % point is 5.99")'),
+              ((r"long axis", r"longer", r"shorter", r"along", r"tilt", r"3\.36", r"2\.95", r"√ ?max", r"diagonal",
+                r"radius", r"escape", r"outside", r"far", r"tail"),
+               'why the circle loses at k = 3 (e.g. "its radius is shorter than the long axis: far fixes along it escape")'))
 
 
 @c.test("Step 4: the radar — J P Jᵀ against 20 000 draws, and where it fails",
@@ -355,10 +380,15 @@ def _():
             raise CheckFailed(f"gate should return True or False, got {got!r} (a {type(got).__name__})")
         if bool(got) == want:
             continue
-        rr, SS = np.array(r), np.array(S)
+        rr, SS = np.array(r, dtype=float), np.array(S, dtype=float)
         d2 = float(rr @ np.linalg.solve(SS, rr))
         t1 = {0.99: 6.635, 0.95: 3.841}[p]
         t2 = {0.99: 9.210, 0.95: 5.991}[p]
+        if len(r) == 1:
+            if not want and d2 <= t2:
+                raise CheckFailed(f"gate({r}, {S}, p={p}) accepts d² = {d2:.2f}: one number in r means 1 degree of "
+                                  f"freedom ({t1:.2f} here) — chi2_threshold(p, len(r)), not chi2_threshold(p)")
+            raise CheckFailed(f"gate({r}, {S}, p={p}) returned {got}: d² is {d2:.2f}, the 1-D threshold {t1:.2f}")
         if want and 9.0 <= d2 <= t2:
             raise CheckFailed(f"gate({r}, {S}, p={p}) refuses d² = {d2:.2f}: the threshold is chi2_threshold(p, 2) "
                               f"({t2:.2f} here), not 3 sigma (9)")
@@ -454,8 +484,8 @@ def _():
              "accepted offsets. EXPLAINs: direction matters (across the track the prediction is sure); an over-confident "
              "predictor locks the truth out; the attacker goes along the long axis, √(χ²·λ).")
 def _():
-    pj, d2a, n99, wj, amax, amin, wa = answers("PREDICT_JUDGE", "D2_A", "N_ACCEPT_99", "EXPLAIN_JUDGE", "ATTACK_MAX_M",
-                                               "ATTACK_MIN_M", "EXPLAIN_ATTACK")
+    pj, d2a, n99, wj, pa, amax, amin, wa = answers("PREDICT_JUDGE", "D2_A", "N_ACCEPT_99", "EXPLAIN_JUDGE",
+                                                   "PREDICT_ATTACK", "ATTACK_MAX_M", "ATTACK_MIN_M", "EXPLAIN_ATTACK")
     J = LAB["judge"]
     predicted("PREDICT_JUDGE", pj)
     d2a = number(d2a, "D2_A")
@@ -473,6 +503,7 @@ def _():
                'what the never-grown predictor does next (e.g. "it refuses the true GPS, and every later fix: locked out")'),
               ((r"\bb\b", r"spoof", r"circle", r"160", r"fake", r"attack"),
                'what the 160 m circle does (e.g. "the circle accepts the spoofer B")'))
+    predicted("PREDICT_ATTACK", pa)
     amax, amin = number(amax, "ATTACK_MAX_M"), number(amin, "ATTACK_MIN_M")
     A = LAB["attack"]
     if abs(amax - A["min_m"]) < 0.5 and abs(amin - A["max_m"]) < 0.5:

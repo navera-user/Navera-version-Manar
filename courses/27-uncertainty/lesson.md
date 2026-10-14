@@ -1,14 +1,17 @@
 # How sure are we? Covariance, gating and fusion
 
-![Two true stories from NAVERA's simulator: vision told the autopilot ±300 m while it was off by a median 351 m, and a ±55 km star fix reached the autopilot, whose position jumped 125 km](assets/cold_open.svg)
+![Two true stories from NAVERA's simulator: vision forwarded as ±300 m (used as ±100 m by the autopilot) with a median error of 351 m and a long tail, and a ±55 km star fix that made the autopilot's position jump 125 km](assets/cold_open.svg)
 
 > [!NOTE] Mission brief
 > **1 October 2026, NAVERA's mission simulator, a desert route in southern Tunisia.** GPS is jammed. Day
-> vision matches the camera's frames against the map, but over uniform terrain its median error is **351 m** (p90:
-> **853 m**), and it tells the autopilot **±300 m**. After **45 s** the autopilot's navigation filter gives up
-> and the drone lands. Told a more honest **±500 m**, the same flight lasts **91 s**. A day earlier, in the
-> QA campaign of **30 September**, a star fix good to about **±55 km** reached the autopilot: the autopilot's
-> own position jumped **125 km**. (NAVERA's validation report and backlog; both bugs are fixed.)
+> vision matches the camera's frames against the map, but over uniform terrain its median error is **351 m**,
+> with a long tail (p90: **853 m**, jumps of 360–570 m). NAVERA forwards it as **±300 m**, and the autopilot
+> uses at most **±100 m** of any accuracy it is told. After **45 s** the autopilot's navigation filter gives
+> up and the drone lands. A second flight, forwarded at ±500 m, lasted **91 s**. A day earlier, in the QA
+> campaign of **30 September**, a star fix good to about **±55 km** reached the autopilot as ±300 m: the
+> autopilot's own position jumped **125 km**. (NAVERA's validation report, ArduPilot guide and backlog. The
+> 125 km jump is fixed: such positions are no longer forwarded. The desert flight was saved only later, in the
+> simulator, by a better vision matcher.)
 >
 > The receiver of a σ does arithmetic with it: it **weighs** positions by it and **refuses** positions that
 > disagree too much with what it expects. A wrong σ is not a cosmetic error. Today you learn that arithmetic.
@@ -31,8 +34,8 @@
 5. **publish** the result honestly in the position contract of mission 12.
 
 **You need:** mission 12 (the covariance a, b, c, the judge's σ), 24 (the 1-D variance blend), 11 (the
-noise of a speed from two fixes), 01 (a Jacobian). ⏱ Reading: about 70 minutes with the ✏️ checks. Lab:
-3 h to 4 h 30 in two sessions.
+noise of a speed from two fixes), 01 (a Jacobian). ⏱ Reading: 70 to 100 minutes with the ✏️ checks
+(eigenvalues and χ² are new for many). Lab: 3 h to 5 h in two sessions.
 
 **What you already know** — answer without looking; if you miss two, reread the mission named.
 
@@ -77,7 +80,7 @@ error **ē**, multiply each deviation by itself as a column times a row (an **ou
 matrix), add them up and divide by N − 1:
 
 ```
-P̂ = 1/(N − 1) · Σᵢ (eᵢ − ē)(eᵢ − ē)ᵀ          a = mean of dE²,  b = mean of dE·dN,  c = mean of dN²  (÷ N − 1)
+P̂ = 1/(N − 1) · Σᵢ (eᵢ − ē)(eᵢ − ē)ᵀ          a = Σ dE² / (N − 1),  b = Σ dE·dN / (N − 1),  c = Σ dN² / (N − 1)
 ```
 
 Why N − 1 and not N? The mean ē was computed from the same points, so the deviations are a little smaller
@@ -106,7 +109,8 @@ subtract the mean gives dN² = 9 and a wrong c = 4.5.
 `a·uE² + 2b·uE·uN + c·uN²`. Turn u all around: the variance is largest along one direction and smallest along
 the perpendicular one. These two directions are the **eigenvectors** of P, and the two extreme variances are
 its **eigenvalues** λ₁ ≥ λ₂. The points one sigma away in every direction form an **ellipse** with semi-axes
-√λ₁ and √λ₂; the **k-sigma ellipse** is k times larger.
+**a_m = √λ₁** and **b_m = √λ₂** (metres; the names of the code, not to be confused with the matrix entries a and
+b); the **k-sigma ellipse** is k times larger.
 
 ![The covariance ellipse: semi-axes √λ₁ and √λ₂ along the eigenvectors, the long axis at θ from east; the judge's √max(a, c) is shorter than the long axis](assets/ellipse.svg)
 
@@ -118,26 +122,31 @@ its **eigenvalues** λ₁ ≥ λ₂. The points one sigma away in every directio
 > θ is the angle of the long axis, from **east towards north** (like an ENU yaw, CONVENTIONS §3), between
 > −90° and 90°: an axis has no arrow (θ and θ + 180° are the same line). If b = 0 and a = c, the ellipse is a
 > circle and θ = 0 by convention. Check: λ₁ + λ₂ = a + c and λ₁·λ₂ = a·c − b² (the **determinant** of P):
-> that is why mission 12's rule a·c − b² ≥ 0 means "no negative variance".
+> that is why mission 12's rule a·c − b² ≥ 0 means "no negative variance". You do not need to derive these
+> formulas: use them, and check them with λ₁ + λ₂ = a + c.
 
 **Worked example.** P = [[12, 5], [5, 6]] m². (a + c)/2 = 9; (a − c)/2 = 3; √(3² + 5²) = √34 = 5.83. So
-λ₁ = 14.83, λ₂ = 3.17 m²: the ellipse has **a = 3.85 m** and **b = 1.78 m**. Its angle:
+λ₁ = 14.83, λ₂ = 3.17 m²: the ellipse has **a_m = √λ₁ = 3.85 m** and **b_m = √λ₂ = 1.78 m**. Its angle:
 θ = ½ · atan2(10, 6) = ½ × 59.04° = **29.5°** north of east. Check: along u = (cos 29.5°, sin 29.5°) =
 (0.870, 0.493) the variance is 12 × 0.757 + 2 × 5 × 0.429 + 6 × 0.243 = 14.83 ✓.
 
-The judge's σ is √max(12, 6) = **3.46 m**, shorter than a = 3.85 m. A diagonal term is the variance along
+The judge's σ is √max(12, 6) = **3.46 m**, shorter than a_m = 3.85 m. A diagonal term is the variance along
 east or north only; when the ellipse is **tilted**, the worst direction is neither. How bad can it get?
 λ₁ ≤ λ₁ + λ₂ = a + c ≤ 2·max(a, c), so √max(a, c) misses the long axis by **at most a factor √2**
 (the worst case is a thin ellipse at 45°). For a round or axis-aligned ellipse the two agree.
 
+**Reading the angle as a compass direction.** θ is counted from east towards north; a bearing is counted from
+north, clockwise: bearing = 90° − θ (CONVENTIONS §3). A negative θ points south of east: θ = −57° is the line
+towards bearing 147° (south-south-east), and, since an axis has no arrow, also 327° (north-north-west).
+
 > [!QUESTION] ✏️ Check
-> 1. P = [[10, 6], [6, 10]] m². Give a, b, θ, and the judge's σ.
-> 2. P = [[4, 0], [0, 25]]. Give a, b, θ. Why is θ = 90° and not −90°?
+> 1. P = [[10, 6], [6, 10]] m². Give a_m, b_m, θ, and the judge's σ.
+> 2. P = [[4, 0], [0, 25]]. Give a_m, b_m, θ. Why is θ = 90° and not −90°?
 
 <details><summary>Answer</summary>
-1. λ = 10 ± √(0 + 36) = 16 and 4 → a = 4 m, b = 2 m; θ = ½ atan2(12, 0) = 45°. The judge reads √10 = 3.16 m:
+1. λ = 10 ± √(0 + 36) = 16 and 4 → a_m = 4 m, b_m = 2 m; θ = ½ atan2(12, 0) = 45°. The judge reads √10 = 3.16 m:
 21 % short of the long axis.<br>
-2. λ = 25 and 4 → a = 5 m (north), b = 2 m; θ = ½ atan2(0, −21) = ½ × 180° = 90°. −90° is the same line; the
+2. λ = 25 and 4 → a_m = 5 m (north), b_m = 2 m; θ = ½ atan2(0, −21) = ½ × 180° = 90°. −90° is the same line; the
 range (−90°, 90°] keeps one name for it, so two programs print the same angle.
 </details>
 
@@ -157,17 +166,24 @@ On a round error of σ per axis, d² = |r|²/σ²; in general, d² = (part of r 
 The k-sigma ellipse is exactly the curve d² = k².
 
 **Worked example.** r = (6, −2) m, P = [[12, 5], [5, 6]]. The inverse of a 2 × 2 matrix:
-P⁻¹ = 1/(a·c − b²) · [[c, −b], [−b, a]] = 1/47 · [[6, −5], [−5, 12]]. Then
+P⁻¹ = 1/(a·c − b²) · [[c, −b], [−b, a]] = 1/47 · [[6, −5], [−5, 12]]. Written out for r = (rE, rN):
 
 ```
-d² = (6·6·6  +  2·(−5)·6·(−2)  +  12·(−2)²) / 47 = (216 + 120 + 48) / 47 = 384 / 47 = 8.17      d = 2.86 sigmas
+d² = (c·rE² − 2b·rE·rN + a·rN²) / (a·c − b²)
+   = (6·6²  −  2·5·6·(−2)  +  12·(−2)²) / 47 = (216 + 120 + 48) / 47 = 384 / 47 = 8.17      d = 2.86 sigmas
 ```
 
 **How many honest errors fall inside an ellipse?** Take an error that is exactly as large as its covariance
 says. Measured in sigmas along its own axes, it is a pair (x, y) of independent standard normal numbers
-(mean 0, σ 1), and d² = x² + y². Square and add two such numbers 10 000 times (you do it in lab Step 3): about
-**39 %** of the results are ≤ 1, **86 %** ≤ 4, **99 %** ≤ 9; 95 % of them stay below **5.99**, 99 % below
-**9.21**. This is the **χ² law with 2 degrees of freedom**. For two dimensions it has a closed form:
+(mean 0, σ 1), and d² = x² + y². On ONE axis, ±1σ holds 68 % of the errors. On a map, what share has d² ≤ 1?
+Below which d² do 95 % of the errors stay? Do not guess from one axis: **go to lab Step 3 now**, square and add
+two such numbers 10 000 times, and come back.
+
+<details><summary>Read this after lab Step 3: the χ² law, and the length of a round error</summary>
+
+Your simulation found about **39 %** of the results ≤ 1, **86 %** ≤ 4, **99 %** ≤ 9; 95 % of them stay below
+about **5.99**, 99 % below **9.21**. This is the **χ² law with 2 degrees of freedom**. For two dimensions it has a
+closed form:
 
 ```
 share inside the k-sigma ellipse = 1 − exp(−k²/2)          95 % ⇔ k² = 5.99,   99 % ⇔ k² = 9.21
@@ -182,19 +198,38 @@ share inside the k-sigma ellipse = 1 − exp(−k²/2)          95 % ⇔ k² = 5
 
 On a map the error has two chances to be large, so the same "1 sigma" holds far fewer fixes. A GPS that states
 σ = 3 m per axis puts only about 4 fixes in 10 within 3 m. (The mean of d² is the number of dimensions: 2
-on a map, 1 on one axis.)
+on a map, 1 on one axis.) We write **χ²₂(p)** for "the χ² threshold with 2 degrees of freedom for probability
+p": the d² that a share p of honest 2-D errors stays below (5.99 for 95 %, 9.21 for 99 %). On ONE axis it is
+**χ²₁(p)**: 3.84 for 95 %, 6.63 for 99 % (1.96² and 2.58²).
 
 **The length of a round error.** When σ is the same on both axes and b = 0, the distance r = σ·d from the
-truth follows the **Rayleigh law**: mean **1.25 σ** (√(π/2)), median **1.18 σ** (√(2 ln 2)), 95 % within
-**2.45 σ**. It explains mission 11's parked car: each 1-s step had noise √2 × 3 = 4.24 m per axis, so the
-"speed" of a car standing still averaged 1.25 × 4.24 = **5.3 m/s**. Mission 32 measures accuracy with it.
+truth follows the **Rayleigh law**: mean **1.25 σ** (√(π/2)), median **1.18 σ** (√(2 ln 2)), 90 % within
+**2.15 σ**, 95 % within **2.45 σ**. It explains mission 11's parked car: each 1-s step had noise √2 × 3 = 4.24 m
+per axis, so the "speed" of a car standing still averaged 1.25 × 4.24 = **5.3 m/s**. Mission 32 measures
+accuracy with it.
+
+> [!QUESTION] ✏️ Check — back to the mission brief
+> Day vision was forwarded as ±300 m (round) and measured a median error of 351 m, p90 853 m. 1. Was ±300 m
+> wrong about the median? 2. About the tail? 3. The autopilot used ±100 m. What median did it expect, and how
+> many of its sigmas were typical errors and the tail?
+
+<details><summary>Answer</summary>
+1. No: a round σ = 300 m predicts a median of 1.18 × 300 = 353 m, about what was measured.<br>
+2. Yes: it predicts a p90 of 2.15 × 300 = 644 m, but 853 m was measured. These errors are not Gaussian (wrong
+matches, jumps): the tail is fatter than any σ says.<br>
+3. A median of 1.18 × 100 = 118 m. Typical errors (351 m) were then about 3.5 of its sigmas and the tail (853 m)
+about 8.5. A gate refuses them (§5), the filter stops getting positions it accepts, and it gives up. Both the
+stated σ and what the receiver does with it matter.
+</details>
+
+</details>
 
 > [!QUESTION] ✏️ Check
 > 1. With P = [[12, 5], [5, 6]], compute d² for r = (−2, 6). Same length as (6, −2): why so different?
-> 2. A receiver states a round σ = 4 m. Within what radius are half of its fixes? 95 %?
+> 2. (After lab Step 3.) A receiver states a round σ = 4 m. Within what radius are half of its fixes? 95 %?
 
 <details><summary>Answer</summary>
-1. (6 × 4 + 2 × (−5) × (−2) × 6 + 12 × 36) / 47 = (24 + 120 + 432) / 47 = 12.3, against 8.17. (−2, 6) points
+1. (6 × 4 − 2 × 5 × (−2) × 6 + 12 × 36) / 47 = (24 + 120 + 432) / 47 = 12.3, against 8.17. (−2, 6) points
 north-north-west, close to the short axis of an ellipse tilted 29.5° north of east: few sigmas fit in that
 direction.<br>
 2. Median 1.18 × 4 = 4.7 m; 95 %: 2.45 × 4 = 9.8 m.
@@ -226,12 +261,12 @@ J = [ ∂e/∂r  ∂e/∂β ]  = [ sin β    r cos β ]  = [ 0.866    1000 ]    
 
 P_polar = diag(σr², σβ²) = diag(25, (0.5 × π/180)²) = diag(25, 7.62e-5)
 
-P_en = J P_polar Jᵀ = [  94.9  −121.1 ]   m²          ellipse: a = 17.5 m (across the line of sight), b = 5.0 m
+P_en = J P_polar Jᵀ = [  94.9  −121.1 ]   m²          ellipse: a_m = 17.5 m (across the line of sight), b_m = 5.0 m
                       [ −121.1   234.7 ]
 ```
 
 The bearing error, 0.5° = 0.0087 rad, becomes r·σβ = 2 000 × 0.0087 = **17.5 m** across the line of sight,
-three times the range error. The ellipse is **long across the line of sight and thin along it**. Two classic
+3.5 times the range error. The ellipse is **long across the line of sight and thin along it**. Two classic
 mistakes: σβ left in degrees (the derivative of sin is cos only in radians: the ellipse becomes 57 times too
 long), and J P J instead of J P Jᵀ.
 
@@ -258,7 +293,8 @@ fix 80 m from the prediction. Believe it, or is it a spoofer?
 prediction's error (P_pred) and the measurement's error (R) are independent, so §4 with A = [I, −I] gives
 
 ```
-S = P_pred + R                accept the fix  ⇔  d² = rᵀ S⁻¹ r ≤ χ²₂(p)      (5.99 for p = 95 %, 9.21 for 99 %)
+S = P_pred + R                accept the fix  ⇔  d² = rᵀ S⁻¹ r ≤ χ²_n(p)      n = the length of r (§3)
+                                                     2-D: 5.99 for p = 95 %, 9.21 for 99 %;  1-D: 3.84, 6.63
 ```
 
 **Worked example.** The drone flew east; odometry drifts mostly along the track: P_pred = diag(40², 10²) m².
@@ -355,8 +391,11 @@ And it **refuses**: if the 9 numbers fail mission 12's `is_covariance`, it raise
 "repairing" them. A matrix that cannot be a covariance means a bug upstream; publishing it would break the
 next filter.
 
+Mission 12's type 2 says "correlations not known". We also use it when b came out exactly 0, the usual choice of
+GNSS drivers: a consumer reads the same 9 numbers either way.
+
 **What the judge reads.** Mission 12's judge reads √max(a, c) and shows FIX up to 25 m. From §2 it can miss
-the long axis by up to √2. Example: a GPS ellipse 28 m × 6 m at 45° has a = c = (28² + 6²)/2 = 410 m²: the
+the long axis by up to √2. Example: a GPS ellipse with a_m = 28 m, b_m = 6 m at 45° has a = c = (28² + 6²)/2 = 410 m²: the
 judge reads **20.2 m → FIX**, while in one direction the error is 28 m. Lab Step 8 counts how often that
 happens on a real-looking drive.
 
@@ -382,23 +421,31 @@ Its validation report (2026-10-03) and engineering backlog describe how σ is ma
   is §4's cross-range error r·σβ: 5° is 8.7 % of the distance flown. NAVERA **adds** the two terms, which is
   larger than the root-sum-square of independent errors: a cautious choice. Across a bay it was carried 90 s
   stating ±300 m with a true error of at most 146 m. A vision position carried to the present grows too: a
-  1.5 s old photo at 40 m/s is moved 60 m and stated ±31.5 m (unit tests, simulator).
+  1.5 s old photo at 40 m/s is moved 60 m, and its accuracy grows by the speed error × its age: ±30 m → ±31.5 m
+  (unit tests, simulator).
 - **σ grows when sources disagree.** From 2 vision fixes in a row beyond 3 σ, GPS is shown "in doubt": its
   published accuracy is made no better than the gap, up to 500 m (2026-10-03). Its cross-check counts
   distances in sigmas (3 σ, 5 σ + 50 m): mission 30 studies it.
 - **σ is capped where it is useless.** Since the QA campaign of 2026-09-30, positions coarser than 1 km are
   never forwarded to the autopilot (the 125 km jump), and a forwarded position carries the larger of its
   own σ and the configured one (the ±55 km star fix was sent as ±300 m). After the 2026-10-01 review, vision
-  is forwarded at ±500 m by default (it had been ±300 m while measuring 442 m median on replay frames).
+  is forwarded at ±500 m by default (it had been ±300 m against a 442 m median on replay frames). With ±500 m
+  the desert flight lasted 91 s instead of 45 s: one flight each, and both reached the autopilot as ±100 m
+  (next point), so the cause is not proven. The desert problem itself is still open in NAVERA's backlog.
+- **The receiver does arithmetic too.** ArduPilot uses at most **100 m** of any stated accuracy (NAVERA's
+  ArduPilot guide), so every forwarded position stated above 100 m reaches its filter as more confident than
+  stated. NAVERA's troubleshooting guide names the result: "the EKF rejects positions that jump more than it
+  was told" — §5's lock-out, caused by the consumer.
 - **Selection, not fusion.** NAVERA's judge selects one source by priority (missions 01, 29) and uses the
   others to check GPS. §6's conditions explain why: day vision takes its search area from the judge's own
   output, so it is not independent of GPS, and its stated 30 m is not yet measured with NAVERA's own camera.
 
 ## In NAVERA Lite
 
-Your nine functions live in [navera_lite/uncertainty.py](file:./navera_lite/uncertainty.py) (TODO 4 in `chi2_sim.py`); `make_covariance` calls
-mission 12's `estimate.is_covariance`. Mission 28's Kalman filter is built on `propagate` and `gate`, mission
-29 compares selection with your `fuse`, and mission 30's cross-check is a gate on two sources.
+Eight of your nine functions live in [navera_lite/uncertainty.py](file:./navera_lite/uncertainty.py); the
+ninth, `d2_samples` (TODO 4), is in `chi2_sim.py`. `make_covariance` calls mission 12's `estimate.is_covariance`.
+Mission 28's Kalman filter repeats §4 (F P Fᵀ + Q) and §5 (a gate on its innovation) at every time step,
+mission 29 compares selection with your `fuse`, and mission 30's cross-check is a gate on two sources.
 
 ## 🐦 How birds do it
 
@@ -427,8 +474,8 @@ apart, they did not average — one led, or they split. Small disagreement: fuse
 
 Answer without scrolling up.
 
-<details><summary>1. P = [[25, 0], [0, 4]] m². a, b and θ of the 1-sigma ellipse, and the share of fixes inside the 2-sigma ellipse?</summary>
-a = 5 m (east), b = 2 m, θ = 0°. Inside k = 2: 1 − exp(−2) = 86.5 %.
+<details><summary>1. P = [[25, 0], [0, 4]] m². a_m, b_m and θ of the 1-sigma ellipse, and the share of fixes inside the 2-sigma ellipse?</summary>
+a_m = 5 m (east), b_m = 2 m, θ = 0°. Inside k = 2: 1 − exp(−2) = 86.5 %.
 </details>
 
 <details><summary>2. The radar of §4 sees the boat at 4 000 m (same σ). Which axis of the ellipse changes, and by how much?</summary>

@@ -261,6 +261,8 @@ def test():
                 return f"the semi-axes should be ({wa:g}, {wb:g})"
             if abs(g - wg) < 1e-3:
                 return None
+            if abs(g - math.radians(wg)) < 1e-3 and abs(wg) > 1:
+                return "the angle is in RADIANS: the interface uses degrees (math.degrees)"
             if abs((g - wg + 90.0) % 180.0 - 90.0) < 1e-3:
                 return "the right line, but the angle must be in (−90, 90]: add or remove 180°"
             return f"the angle should be {wg:g}° (from east towards north)"
@@ -313,7 +315,12 @@ def test():
     run(1, "sample_cov", [
         ("the docstring example", lambda f: f(pts),
          mat_is([[4.0, 1.0], [1.0, 1.0]], (([[8 / 3, 2 / 3], [2 / 3, 2 / 3]], "you divided by N: divide by N − 1"),
-                                           ([[10.0, 4.0], [4.0, 2.5]], "the mean point is not subtracted")))),
+                                           ([[10.0, 4.0], [4.0, 2.5]], "the mean point is not subtracted"),
+                                           ([[35 / 8, 5 / 8], [5 / 8, 11 / 8]],
+                                            "you subtracted ONE number (the mean of all values): the mean point is "
+                                            "x.mean(axis=0), one mean per column"),
+                                           ([[35 / 12, 5 / 12], [5 / 12, 11 / 12]],
+                                            "x.mean() without axis=0 (one number for both columns), and divided by N")))),
         ("one point only", lambda f: raises(f, [[1.0, 2.0]]),
          lambda v: None if v == "ValueError" else "with N − 1 = 0 there is no spread: raise ValueError"),
     ])
@@ -322,7 +329,7 @@ def test():
         ("k = 3", lambda f: f([[13.6, 4.8], [4.8, 6.4]], k=3), ellipse_is((12.0, 6.0, 26.5651))),
         ("long axis due north", lambda f: f([[4.0, 0.0], [0.0, 9.0]]), ellipse_is((3.0, 2.0, 90.0))),
         ("a round error", lambda f: f([[4.0, 0.0], [0.0, 4.0]]), ellipse_is((2.0, 2.0, 0.0))),
-        ("errors on one line (ρ = 1)", lambda f: f([[9.0, 12.0], [12.0, 16.0]]), ellipse_is((5.0, 0.0, 53.1301))),
+        ("errors on one line (ρ = 1)", lambda f: f([[16.0, 8.48], [8.48, 4.4944]]), ellipse_is((4.52707, 0.0, 27.9236))),
     ])
     run(3, "mahalanobis2", [
         ("the docstring example", lambda f: f([6.0, 0.0], [[9.0, 0.0], [0.0, 1.0]]),
@@ -342,7 +349,10 @@ def test():
         w, _ = attempt(lambda: f4(20000, seed=5))
         a = arr(v).reshape(-1) if v is not None and arr(v) is not None else np.array([])
         m = a.mean() if a.size else float("nan")
-        if err:
+        if err and "as a data type" in err:
+            line(4, "d2_samples", False, "TypeError \"Cannot interpret '2' as a data type\": the shape is ONE argument, "
+                                          "a tuple — rng.standard_normal((n, 2)), not standard_normal(n, 2)")
+        elif err:
             line(4, "d2_samples", False, err)
         elif a.shape != (20000,):
             line(4, "d2_samples", False, f"d2_samples(20000) returned {a.size} numbers, not 20000")
@@ -388,13 +398,18 @@ def test():
          bool_is(False, "False expected: d² = 36 — did you compare d (6), not d², with the threshold?")),
         ("d² = 7.29 at p = 0.99, two numbers", lambda f: f([2.7, 0.0], [[1.0, 0.0], [0.0, 1.0]]),
          bool_is(True, "True expected: a 2-D r uses 2 degrees of freedom (chi2_threshold(p, len(r)))")),
+        ("one number, d² = 7.29 at p = 0.99", lambda f: f([2.7], [[1.0]]),
+         bool_is(False, "False expected: a 1-number r has 1 degree of freedom (6.63 at 99 %): chi2_threshold(p, len(r))")),
     ])
     run(8, "fuse", [
         ("the docstring example", lambda f: f([0.0, 0.0], [[4.0, 0.0], [0.0, 100.0]], [10.0, 10.0],
                                               [[100.0, 0.0], [0.0, 4.0]]),
          pair_is([0.384615, 9.615385], [[3.846154, 0.0], [0.0, 3.846154]],
-                 ((lambda x, P: close(x, [9.615385, 0.384615], 1e-4), "x moves towards the WORSE estimate on each axis: "
-                                                                       "weigh each x with its OWN information"),))),
+                 ((lambda x, P: not (np.all(np.isfinite(x)) and np.all(np.isfinite(P))),
+                   "nan or inf: did you write 1 / P? It divides each NUMBER, so the zeros become inf — the inverse of "
+                   "a matrix is np.linalg.inv(P)"),
+                  (lambda x, P: close(x, [9.615385, 0.384615], 1e-4), "x moves towards the WORSE estimate on each axis: "
+                                                                       "weigh each x with its OWN information")))),
         ("the same estimate twice", lambda f: f([5.0, 5.0], [[8.0, 2.0], [2.0, 8.0]], [5.0, 5.0], [[8.0, 2.0], [2.0, 8.0]]),
          pair_is([5.0, 5.0], [[4.0, 1.0], [1.0, 4.0]],
                  ((lambda x, P: close(P, np.linalg.inv([[8.0, 2.0], [2.0, 8.0]]) * 2, 1e-4),
@@ -465,7 +480,8 @@ def cloud():
             inside[k], circ[k] = pe, pc
             print(f"k = {k} ({k}-sigma):       {pe:17.1f} %{pc:30.1f} %{100 * un.p_inside(k):16.1f} %")
         res["cloud"].update({"inside1_pct": round(inside[1], 2), "inside2_pct": round(inside[2], 2),
-                             "inside3_pct": round(inside[3], 2), "circle1_pct": round(circ[1], 2)})
+                             "inside3_pct": round(inside[3], 2), "circle1_pct": round(circ[1], 2),
+                             "circle3_pct": round(circ[3], 2)})
     else:
         print("\n(write TODO 3, mahalanobis2, then run this again: it will count the fixes inside each ellipse)")
     save_results(res)
@@ -619,11 +635,9 @@ def attack():
         lim.append((brg, lo))
     longest = max(lim, key=lambda x: x[1])
     shortest = min(lim, key=lambda x: x[1])
-    a, b, ang = ell(S, k=math.sqrt(un.chi2_threshold(0.99)))
     print(f"longest accepted offset:  {longest[1]:7.1f} m  at bearing {longest[0]:3d}°")
     print(f"shortest accepted offset: {shortest[1]:7.1f} m  at bearing {shortest[0]:3d}°")
-    print(f"your ellipse(S, k = √{un.chi2_threshold(0.99):.2f}): a = {a:.1f} m, b = {b:.1f} m, long axis at {ang:.1f}° "
-          f"from east (bearing {(90 - ang) % 180:.0f}° / {(90 - ang) % 180 + 180:.0f}°)")
+    print("(compare with your PREDICT_ATTACK; you can check it with your own ellipse(S, k=math.sqrt(9.21)))")
     save_results({"attack": {"max_m": round(longest[1], 1), "max_bearing_deg": longest[0],
                              "min_m": round(shortest[1], 1), "min_bearing_deg": shortest[0]}})
     plt = plt_ready()

@@ -8,20 +8,25 @@
 PREDICT_INSIDE = ""         # a GPS states σ = 3 m (east and north, independent): how many fixes in 100 are within
                             # 3 m of the truth? one number and one reason
 
+# ---- Step 1: the data (python3 run_uncertainty.py look) ----------------------------------------------------
+PREDICT_CLOUD = ""          # from the ranges look prints: which axis is worse? correlated errors? sign of ρ?
+
 # ---- Step 2: the cloud (python3 run_uncertainty.py cloud) ----------------------------------------------------
 ELLIPSE_A_M = 0.0           # the long semi-axis of the 1-sigma ellipse (m)
 ELLIPSE_B_M = 0.0           # the short semi-axis (m)
 ELLIPSE_ANGLE_DEG = 0.0     # the angle of the long axis, from east towards north (degrees)
+LONG_AXIS_BEARING_DEG = 0.0 # the same axis as a compass bearing, clockwise from north, in [0, 180) (by hand)
 JUDGE_SIGMA_M = 0.0         # the judge's one σ, √max(a, c) (m)
 
 # ---- Step 3: distances in sigmas (cloud again, then python3 chi2_sim.py) --------------------------------------
-PREDICT_CIRCLE = ""         # before running: the judge's circle (radius = JUDGE_SIGMA_M) or the 1-sigma ellipse —
-                            # which one holds more of the 600 fixes? why?
+PREDICT_CIRCLE = ""         # before running: at k = 1 the judge's circle is bigger than the 1-sigma ellipse. At k = 3
+                            # (circle of radius 3 × JUDGE_SIGMA_M against the 3-sigma ellipse), which holds more? why?
 INSIDE_1SIGMA_PCT = 0.0     # the share of the 600 fixes inside the 1-sigma ellipse (%)
-CIRCLE_1_PCT = 0.0          # the share inside the judge's circle, k = 1 (%)
+INSIDE_3SIGMA_PCT = 0.0     # the share inside the 3-sigma ellipse (%)
+CIRCLE_3_PCT = 0.0          # the share inside the judge's circle, k = 3 (%)
 SIM_P95 = 0.0               # chi2_sim.py: the d² that 95 % of your simulated errors stay below
 EXPLAIN_CHI2 = ""           # why ~39 % inside the 1-sigma ellipse on a map, when ±1σ holds 68 % on one axis?
-                            # and why is the 95 % threshold near 6, not 4?
+                            # and why is the 95 % threshold near 6, not 4? and why does the circle lose at k = 3?
 
 # ---- Step 4: J P Jᵀ (python3 run_uncertainty.py radar, then radar wide) --------------------------------------
 PREDICT_RADAR = ""          # by hand, before running: the long semi-axis a of the J P Jᵀ ellipse at 3 000 m, σβ 1° (m)
@@ -41,6 +46,8 @@ EXPLAIN_JUDGE = ""          # why is E refused although nearer than A? what woul
                             # 160 m circle do, and what happens to the never-grown predictor next?
 
 # ---- Step 6: the attacker (python3 run_uncertainty.py attack) -------------------------------------------------
+PREDICT_ATTACK = ""         # by hand, before running: the longest and shortest offsets your 99 % gate accepts, and
+                            # their bearings (lesson §5 and your ellipse)
 ATTACK_MAX_M = 0.0          # the longest offset your gate accepts (m)
 ATTACK_MIN_M = 0.0          # the shortest (m)
 EXPLAIN_ATTACK = ""         # which direction does the attacker choose, why, which formula gives the two numbers?

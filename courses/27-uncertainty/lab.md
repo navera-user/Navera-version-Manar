@@ -4,7 +4,7 @@
 fixes, its ellipse, the distance of a surprise in sigmas, J P Jᵀ, the χ² gate, information fusion, and the
 honest way to publish the result. You discover the χ² law by simulation, judge six fixes after a GPS outage,
 attack your own gate, and measure on a 400 s drive when fusion helps and when it hurts.
-**Time:** 3 h to 4 h 30 (session 1: 1 h 30–2 h, session 2: 1 h 30–2 h 30; the ellipse and the radar take the
+**Time:** 3 h to 5 h (session 1: 1 h 30–2 h 30, session 2: 1 h 30–2 h 30; the ellipse and the radar take the
 longest if matrices are rusty). A strong programmer who knows numpy: about 2 h 30.
 **Fast track:** if you know numpy well, skip the 🧰 boxes and the "Stuck?" boxes; do "Going further" at the end.
 
@@ -12,7 +12,8 @@ Your files (📝 Code tab): [navera_lite/uncertainty.py](file:./navera_lite/unce
 TODO 1–3 and 5–9), [chi2_sim.py](file:./chi2_sim.py) (TODO 4), [answers.py](file:./answers.py),
 [report.md](file:./report.md), and a tool you only run: [run_uncertainty.py](file:./run_uncertainty.py).
 `navera_lite/estimate.py` (mission 12's part, finished: the course's reference) gives `is_covariance`,
-`stated_sigma` and `classify`: read them, use them, do not change them.
+`stated_sigma` and `classify`: read them, use them, do not change them (their docstrings' "lesson §" and "TODO"
+numbers refer to mission 12).
 
 | Lesson | Lab | You write |
 |---|---|---|
@@ -35,7 +36,7 @@ TODO 1–3 and 5–9), [chi2_sim.py](file:./chi2_sim.py) (TODO 4), [answers.py](
 > marked right or wrong. `python3 run_uncertainty.py test` tries every docstring example and a few traps.
 > Matrices are numpy arrays; `A @ B` is the matrix product, `A.T` the transpose.
 
-## Session 1 — Ellipse maker (about 1 h 30; 2 h if matrices are new)
+## Session 1 — Ellipse maker (about 1 h 30; 2 h 30 if matrices are new)
 
 ## Step 0 — Three metres
 
@@ -58,6 +59,11 @@ head -4 /data/academy/27-uncertainty/static_fixes.csv
 
 `static_fixes.csv` is the error of each fix from the surveyed point, one fix every 10 s (so that consecutive
 errors are nearly independent).
+
+> [!TASK]
+> **Predict** (`PREDICT_CLOUD`), from the ranges `look` printed (east −6.8 … 7.2 m, north −10.7 … 8.9 m) and the
+> four rows of `head`: which axis is worse? Do you expect east and north errors to be correlated, and with which
+> sign of ρ? Step 2 tells you.
 
 ## Step 2 — The cloud becomes a matrix and an ellipse (TODO 1, TODO 2)
 
@@ -107,28 +113,31 @@ Open `out/cloud.png`: the 600 fixes, your 1-, 2- and 3-sigma ellipses, and the c
 
 > [!TASK]
 > Write `ELLIPSE_A_M`, `ELLIPSE_B_M`, `ELLIPSE_ANGLE_DEG` (the 1-sigma ellipse) and `JUDGE_SIGMA_M` (the judge's
-> σ). Which way does the long axis point, as a compass direction (lesson §2: the angle is from east towards
-> north)?
+> σ). Then, **by hand** (the runner does not print it), `LONG_AXIS_BEARING_DEG`: the long axis as a compass
+> bearing, clockwise from north, in [0, 180) — lesson §2, "Reading the angle as a compass direction". A negative
+> angle points south of east. Was your `PREDICT_CLOUD` right?
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
 1. `sample_cov`: four lines — the array, a check (fewer than 2 rows → `raise ValueError(...)`), the deviations,
    then `d.T @ d / (N − 1)` with N = the number of rows (`x.shape[0]`).
 2. ✘ "you divided by N": the lesson divides by N − 1 (as `np.cov` does). ✘ "the mean point is not subtracted":
-   the deviations are `x - x.mean(axis=0)`, not the points themselves.
+   the deviations are `x - x.mean(axis=0)`, not the points themselves. ✘ "you subtracted ONE number": `x.mean()`
+   without `axis=0` averages the whole table — one mean for east and north together.
 3. `ellipse`: read a, b, c from P (`P[0][0]`, `P[0][1]`, `P[1][1]`), then the 🧰 formulas of lesson §2; return
    `(k * math.sqrt(lam1), k * math.sqrt(lam2), angle)`.
 4. ✘ "the right line, but the angle must be in (−90, 90]": an eigenvector may point either way along its axis
    (south-west instead of north-east): add or remove 180°. ✘ "a round error": with a circle any direction is "the
    long axis"; the convention is 0.0 (½·atan2(0, 0) gives it for free). ✘ "those are variances (m²)": the
-   semi-axes are √λ.
+   semi-axes are √λ. ✘ "the angle is in RADIANS": `math.degrees(...)`.
 5. ✘ "math domain error" (or nan) for "errors on one line (ρ = 1)": λ₂ came out as −1e-15. `max(lam2, 0.0)`.
 </details>
 
 ## Step 3 — Distances in sigmas, and the χ² law (TODO 3, TODO 4)
 
-Read lesson §3. **TODO 3** `mahalanobis2(r, S)` in `navera_lite/uncertainty.py`. **TODO 4** `d2_samples(n,
-seed=0)` in `chi2_sim.py`: the simulation of lesson §3, two lines of numpy.
+Read lesson §3 up to the box "Read this after lab Step 3" (do not open it yet). **TODO 3** `mahalanobis2(r, S)`
+in `navera_lite/uncertainty.py`. **TODO 4** `d2_samples(n, seed=0)` in `chi2_sim.py`: the simulation of lesson
+§3, two lines of numpy.
 
 <details><summary>🧰 numpy: solve instead of invert, and random numbers</summary>
 
@@ -148,8 +157,9 @@ python3 run_uncertainty.py test
 ```
 
 > [!TASK]
-> **Predict** (`PREDICT_CIRCLE`): the judge's circle (radius = the judge's σ of Step 2) and the 1-sigma ellipse
-> — which one will hold more of the 600 fixes, and why? Then:
+> **Predict** (`PREDICT_CIRCLE`): the judge's circle (radius k × the judge's σ of Step 2) against the k-sigma
+> ellipse. At k = 1 the circle is bigger than the ellipse (look at `out/cloud.png`), so it holds more. At k = 3,
+> which one holds more of the 600 fixes, and why? Then:
 
 ```bash
 python3 run_uncertainty.py cloud
@@ -162,10 +172,11 @@ python3 chi2_sim.py
 Open `out/chi2.png`.
 
 > [!TASK]
-> Write `INSIDE_1SIGMA_PCT` (fixes inside the 1-sigma ellipse, `cloud`), `CIRCLE_1_PCT` (inside the judge's
-> circle, k = 1) and `SIM_P95` (the d² that 95 % of your simulated errors stay below, `chi2_sim.py`).
-> `EXPLAIN_CHI2`: why does the 1-sigma ellipse hold about 39 % on a map when ±1σ holds 68 % on one axis, and
-> why is the 95 % threshold near 6 and not 4?
+> Write `INSIDE_1SIGMA_PCT` and `INSIDE_3SIGMA_PCT` (fixes inside the 1- and 3-sigma ellipses, `cloud`),
+> `CIRCLE_3_PCT` (inside the judge's circle, k = 3) and `SIM_P95` (the d² that 95 % of your simulated errors stay
+> below, `chi2_sim.py`). Now open lesson §3's box "Read this after lab Step 3". `EXPLAIN_CHI2`: why does the
+> 1-sigma ellipse hold about 39 % on a map when ±1σ holds 68 % on one axis, why is the 95 % threshold near 6 and
+> not 4, and why does the circle lose at k = 3?
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
@@ -179,6 +190,8 @@ Open `out/chi2.png`.
 5. ✘ "uniform numbers (rng.random)?": `rng.random` draws between 0 and 1; you need `rng.standard_normal`.
    ✘ "that is the distance d": no square root. ✘ "(x + y)² is not x² + y²": square each number, then add.
    ✘ "two runs with the same seed give different numbers": create `rng` inside the function, from `seed`.
+   ✘ "Cannot interpret '2' as a data type": `rng.standard_normal(n, 2)` — the shape is ONE argument, a tuple:
+   `rng.standard_normal((n, 2))`.
 </details>
 
 ## Step 4 — Carrying a covariance through a function (TODO 5, TODO 6)
@@ -215,7 +228,8 @@ python3 run_uncertainty.py radar
 > **Predict** (`PREDICT_WIDE`): with a bearing σ of 10° (a radio direction finder), what share of the draws
 > will fall inside the 95 % ellipse of J P Jᵀ? Then run it, open `out/radar_wide.png`, and write
 > `WIDE_INSIDE_PCT`. `EXPLAIN_RADAR`: why is the ellipse long across the line of sight, and why does J P Jᵀ fail
-> with 10°?
+> with 10°? (Bonus, not graded: the runner prints the draws' mean, about 45 m closer to the radar than the true
+> position. Why, and can J P Jᵀ see it?)
 
 ```bash
 python3 run_uncertainty.py radar wide
@@ -253,10 +267,12 @@ cat /data/academy/27-uncertainty/judge.json
 ```
 
 The drone flew 40 s on visual odometry along a track at bearing 120°; `P_pred` is its predicted covariance,
-GPS states σ 3 m. Six candidate fixes, A–F, each one a separate situation.
+GPS states σ 3 m. Six candidate fixes, A–F: six separate situations, each with one fix arriving.
 
 > [!TASK]
 > **Predict** (`PREDICT_JUDGE`): from the numbers only (no running yet), which of A–F will a 99 % gate accept?
+> A guess from each fix's distance and its direction against the track (bearing 120°) is enough: no need to
+> compute six d².
 > Then:
 
 ```bash
@@ -267,8 +283,8 @@ Open `out/judge.png`. The column "never-grown" is a predictor that kept σ 5 m f
 is a rule that accepts any fix within 160 m.
 
 > [!TASK]
-> Write `D2_A` (fix A's d²) and `N_ACCEPT_99` (how many fixes your 99 % gate accepts). Suppose the truth is A
-> (odometry drifted along the track) and B is a spoofer. `EXPLAIN_JUDGE`: why is E refused although it is
+> Write `D2_A` (fix A's d²) and `N_ACCEPT_99` (how many fixes your 99 % gate accepts). Take two of the six
+> situations: in A's, the fix is the true GPS (odometry drifted along the track); in B's, it is a spoofer. `EXPLAIN_JUDGE`: why is E refused although it is
 > nearer than A? What would the never-grown predictor and the 160 m circle each do here, and what happens to
 > the never-grown predictor on the next fixes?
 
@@ -276,7 +292,8 @@ is a rule that accepts any fix within 160 m.
 
 1. `gate`: r as a float array, its d² (your TODO 3), the threshold from the given `chi2_threshold(p, len(r))`,
    and `bool(d2 <= threshold)`.
-2. ✘ "a 2-D r uses 2 degrees of freedom": you used dof = 1 (6.63). ✘ "did you compare d (6), not d², with the
+2. ✘ "a 2-D r uses 2 degrees of freedom": you used dof = 1 (6.63). ✘ "a 1-number r has 1 degree of freedom": you
+   used dof = 2 for every r — use `len(r)`. ✘ "did you compare d (6), not d², with the
    threshold?": every fix passes, even D. ✘ (Check my work) "not 3 sigma (9)": the threshold comes from
    `chi2_threshold`, not from k = 3. ✘ "a bool": return `bool(…)`, not the number.
 </details>
@@ -285,6 +302,10 @@ is a rule that accepts any fix within 160 m.
 
 You are now the spoofer. Where can a fake fix go without being refused? The runner moves a fake fix away from
 the prediction every 5°, and finds by bisection the largest offset your gate accepts.
+
+> [!TASK]
+> **Predict** (`PREDICT_ATTACK`), by hand from lesson §5 (or with your own `ellipse` on S = P_pred + R in a
+> `python3 -c` line): the longest and shortest offsets your 99 % gate accepts, and their bearings. Then:
 
 ```bash
 python3 run_uncertainty.py attack
@@ -340,8 +361,8 @@ Open `out/fuse.png`.
    P, then the fused x. x1 and x2 as float arrays.
 2. ✘ "P is the SUM of the informations": P is the inverse of that sum.
 3. ✘ "x moves towards the WORSE estimate": x = P (P1⁻¹ x1 + P2⁻¹ x2) — each x with its OWN information.
-4. ✘ "is the inverse a matrix inverse (np.linalg.inv), not 1 / P?": `1 / P` divides each number; it is right
-   only for diagonal matrices, which is why the docstring example passes.
+4. ✘ "nan or inf: did you write 1 / P?": `1 / P` divides each NUMBER, so the zeros off the diagonal become inf
+   and x comes out as [nan, nan]. The inverse of a matrix is `np.linalg.inv(P)`.
 </details>
 
 ## Step 8 — Publishing it honestly (TODO 9)
@@ -349,6 +370,12 @@ Open `out/fuse.png`.
 **TODO 9** `make_covariance(P2, sigma_up_m=None)`: lesson §7 and its table. This one has the least help: the
 docstring gives the rules, the lesson the table. **Trace it by hand first:** P2 = [[16, −4], [−4, 9]], no up σ.
 Which 9 numbers, which type? Then P2 = [[16, −4], [−3, 9]] with sigma_up_m = 2.0?
+
+<details><summary>Check your trace</summary>
+
+[16.0, −4.0, 0.0, −4.0, 9.0, 0.0, 0.0, 0.0, 64.0] and type 1, APPROXIMATED (the up variance is a guess: 4 × 16).
+The second one raises ValueError "… not symmetric": −4 at index 1, −3 at index 3 (sigma_up_m does not matter).
+</details>
 
 <details><summary>🧰 Python: plain floats, and an error with a reason</summary>
 
@@ -394,7 +421,7 @@ seconds where GPS alone is shown **FIX** while the long axis of its ellipse is l
 
 An integrator connects NAVERA Lite to an autopilot and asks: "what does your σ mean, when do you refuse a
 position, and why not average all your sources?" Open [report.md](file:./report.md) and answer under its three
-headings, 150 to 350 words, in your own words, with **your** numbers (units!): at least the coverage and RMS of
+headings, 150 to 350 words (the check refuses more than 420), in your own words, with **your** numbers (units!): at least the coverage and RMS of
 "gate, then fuse", and the 39 % of a 1-sigma ellipse.
 
 > [!TASK]
@@ -402,9 +429,10 @@ headings, 150 to 350 words, in your own words, with **your** numbers (units!): a
 
 ## Step 10 — Look back (not graded)
 
-Write `LOOK_BACK` in `answers.py`: 1. The mission brief's drone landed after 45 s when vision said ±300 m and
-lasted 91 s with ±500 m. Using §5, give one way a too-small σ can make an autopilot's filter give up. 2. Which
-of your nine functions would you test first in a real flight log, and with what data?
+Write `LOOK_BACK` in `answers.py`: 1. The mission brief's autopilot was told ±300 m but used ±100 m, against a
+median error of 351 m and a p90 of 853 m. Using §3 and §5, explain how this can make its filter give up. Why do
+the ±500 m flight's 91 s not prove that the stated σ was the cause? 2. Which of your nine functions would you
+test first in a real flight log, and with what data?
 
 ## Going further (optional)
 

@@ -66,36 +66,48 @@ def save(name, body, w, h):
 
 # ------------------------------------------------------------------ 1. cold open
 def cold_open():
-    w, h = 760, 330
+    w, h = 760, 340
     s = [text(w / 2, 26, "What the autopilot was told, and what was true (NAVERA's simulator, 2026)", 15, weight="bold")]
-    # panel A: vision over uniform terrain
-    cx, cy, k = 190, 185, 0.13                      # px per metre
+    # panel A: vision over uniform terrain — log-normal radial errors with the measured median (351 m) and p90 (853 m)
+    cx, cy, k = 190, 180, 0.085                     # px per metre
     s.append(text(cx, 52, "1 Oct · desert route, GPS jammed: day vision", 13, BLUE, weight="bold"))
     rng = np.random.default_rng(3)
-    for _ in range(70):
-        r = 351 * math.sqrt(-2 * math.log(1 - rng.uniform(0, 0.97))) / 1.1774
+    sig = math.log(853.0 / 351.0) / 1.2816
+    for _ in range(90):
+        r = min(351.0 * math.exp(sig * rng.standard_normal()), 1350.0)
         t = rng.uniform(0, 2 * math.pi)
-        s.append(dot(cx + k * r * math.cos(t), cy + k * r * math.sin(t), GREY, 2.2))
+        s.append(dot(cx + k * r * math.cos(t), cy + k * r * math.sin(t), GREY, 2.0))
+    s.append(circle(cx, cy, 853 * k, GREY, width=1.0, dash="2 3"))
     s.append(circle(cx, cy, 300 * k, RED, width=2.2))
-    s.append(circle(cx, cy, 500 * k, ORANGE, width=2.2, dash="6 4"))
-    s.append(dot(cx, cy, INK, 4))
-    s.append(text(cx + 300 * k * 0.72 + 8, cy - 300 * k * 0.72 - 4, "told ±300 m", 12, RED, "start"))
-    s.append(text(cx - 500 * k * 0.72 - 6, cy - 500 * k * 0.72 - 6, "told ±500 m", 12, ORANGE, "end"))
-    s.append(text(cx, 292, "matches: median error 351 m, p90 853 m", 12))
-    s.append(text(cx, 310, "±300 m → autopilot failsafe after 45 s · ±500 m → 91 s", 12, RED))
-    # panel B: a star fix
-    bx = 560
-    s.append(text(bx, 52, "30 Sep · QA campaign: a star (celestial) fix", 13, BLUE, weight="bold"))
-    s.append(circle(bx, 175, 95, PURPLE, fill=PURPLE, opacity=0.08, width=2))
-    s.append(text(bx, 92, "its real accuracy: about ±55 km", 12, PURPLE))
-    s.append(dot(bx - 20, 190, INK, 4))
-    s.append(text(bx - 26, 208, "where the drone was", 11, INK, "end"))
-    s.append(dot(bx + 52, 150, RED, 5))
-    s.append(line(bx - 16, 187, bx + 46, 153, RED, 1.6, arrow="r"))
-    s.append(text(bx + 58, 146, "the fix", 11, RED, "start"))
-    s.append(text(bx, 292, "it reached the autopilot (forwarded as ±300 m):", 12))
-    s.append(text(bx, 310, "the autopilot's own position jumped 125 km", 12, RED))
-    s.append(line(380, 50, 380, 318, GREY, 1, "3 4"))
+    s.append(circle(cx, cy, 500 * k, ORANGE, width=2.0, dash="6 4"))
+    s.append(circle(cx, cy, 100 * k, INK, width=1.6))
+    s.append(dot(cx, cy, INK, 3))
+    s.append(text(cx + 853 * k * 0.72 + 4, cy - 853 * k * 0.72 - 2, "p90: 853 m", 11, GREY, "start"))
+    s.append(text(cx + 300 * k + 4, cy + 4, "told ±300 m", 11, RED, "start"))
+    s.append(text(cx - 500 * k - 4, cy + 4, "±500 m", 11, ORANGE, "end"))
+    s.append(text(cx - 46, cy - 104, "used: ±100 m", 10, INK, "end"))
+    s.append(line(cx - 44, cy - 100, cx - 6, cy - 6, INK, 0.8))
+    s.append(text(cx, 294, "matches: median error 351 m, a long tail (p90 853 m)", 12))
+    s.append(text(cx, 312, "told ±300 m, the autopilot used ±100 m → failsafe after 45 s", 12, RED))
+    s.append(text(cx, 328, "(a second flight told ±500 m: 91 s — also used as ±100 m)", 11, GREY))
+    # panel B: a star fix, to scale (0.6 px per km)
+    bx, by, kk = 520, 185, 0.6
+    s.append(text(560, 52, "30 Sep · QA campaign: a star (celestial) fix", 13, BLUE, weight="bold"))
+    fx = bx + 125 * kk
+    s.append(circle(fx, by, 55 * kk, PURPLE, fill=PURPLE, opacity=0.08, width=2))
+    s.append(dot(bx, by, INK, 4))
+    s.append(text(bx - 6, by + 20, "where the drone was", 11, INK, "end"))
+    s.append(dot(fx, by, RED, 5))
+    s.append(line(bx + 5, by, fx - 6, by, RED, 1.6, arrow="r"))
+    s.append(text(fx + 4, by - 40, "the fix, stated by the star", 11, PURPLE, "start"))
+    s.append(text(fx + 4, by - 26, "solver as ±55 km (circle)", 11, PURPLE, "start"))
+    s.append(text(fx + 4, by + 46, "forwarded as ±300 m:", 11, RED, "start"))
+    s.append(text(fx + 4, by + 60, "too small to see here", 11, RED, "start"))
+    s.append(text(bx + 125 * kk / 2, by - 8, "125 km", 11, RED))
+    s.append(text(560, 294, "it reached the autopilot as ±300 m:", 12))
+    s.append(text(560, 312, "the autopilot's own position jumped 125 km", 12, RED))
+    s.append(text(560, 328, "(drawn to scale: 0.6 px per km)", 11, GREY))
+    s.append(line(380, 50, 380, 330, GREY, 1, "3 4"))
     save("cold_open.svg", "".join(s), w, h)
 
 
@@ -118,8 +130,8 @@ def ellipse_fig():
     t = math.radians(ang)
     s.append(line(cx, cy, cx + a * sc * math.cos(t), cy - a * sc * math.sin(t), RED, 2.2, arrow="r"))
     s.append(line(cx, cy, cx - b * sc * math.sin(t), cy - b * sc * math.cos(t), BLUE, 2.2, arrow="b"))
-    s.append(text(cx + a * sc * math.cos(t) + 10, cy - a * sc * math.sin(t) - 4, f"a = √λ₁ = {a:.2f} m", 13, RED, "start"))
-    s.append(text(cx - b * sc * math.sin(t) - 10, cy - b * sc * math.cos(t) - 6, f"b = √λ₂ = {b:.2f} m", 13, BLUE, "end"))
+    s.append(text(cx + a * sc * math.cos(t) + 10, cy - a * sc * math.sin(t) - 4, f"a_m = √λ₁ = {a:.2f} m", 13, RED, "start"))
+    s.append(text(cx - b * sc * math.sin(t) - 58, cy - b * sc * math.cos(t) - 22, f"b_m = √λ₂ = {b:.2f} m", 13, BLUE, "end"))
     s.append(f'<path d="M{cx + 45:.1f} {cy:.1f} A45 45 0 0 0 {cx + 45 * math.cos(t):.1f} {cy - 45 * math.sin(t):.1f}" '
              f'fill="none" stroke="{INK}"/>')
     s.append(text(cx + 58, cy - 10, f"θ = {ang:.1f}°", 12, INK, "start"))
@@ -192,7 +204,7 @@ def radar_fig():
     zoom = 2.2
     s.append(ell(tx, ty, a * zoom, b * zoom, ang, RED, 2.0, fill=RED, opacity=0.1))
     s.append(dot(tx, ty, RED, 3))
-    s.append(text(30, 122, "3-sigma ellipse (drawn ×2.2):", 11, RED, "start"))
+    s.append(text(30, 122, "3-sigma ellipse (enlarged 20×):", 11, RED, "start"))
     s.append(text(30, 138, f"{3 * 17.5:.0f} m across, {3 * 5:.0f} m along", 11, RED, "start"))
     s.append(text(170, 64, "2 000 m, σr 5 m, σβ 0.5°", 13, BLUE, weight="bold"))
     s.append(text(170, 82, "J P Jᵀ is right: r·σβ = 17.5 m across", 12))
@@ -209,7 +221,7 @@ def radar_fig():
     s.append(ell(ox + en2[0] * sc2, oy - en2[1] * sc2, a2 * sc2, max(b2 * sc2, 1.0), g2, RED, 1.8))
     s.append(dot(ox, oy, INK, 5))
     s.append(text(ox, oy + 20, "radar", 12))
-    s.append(text(560, 64, "3 000 m, σr 8 m, σβ 10°", 13, BLUE, weight="bold"))
+    s.append(text(560, 64, "3 000 m, bearing 30°, σr 8 m, σβ 10°", 13, BLUE, weight="bold"))
     s.append(text(610, 280, "the true cloud is an arc (grey):", 12))
     s.append(text(610, 298, "no ellipse fits it", 12))
     s.append(text(610, 316, "(red: the 95 % ellipse of J P Jᵀ)", 12, RED))
@@ -238,7 +250,7 @@ def gate_fig():
     s.append(text(cx + 80 * sc + 12, cy - 72, "80 m east: d² = 3.98 ✓", 12, GREEN))
     s.append(dot(cx, cy - 40 * sc, INK, 6))
     s.append(line(cx, cy - 4, cx, cy - 40 * sc + 6, INK, 1, "2 3"))
-    s.append(text(cx + 12, cy - 40 * sc - 12, "40 m north: d² = 14.7 ✗", 12, INK, "start"))
+    s.append(text(cx + 14, cy - 40 * sc - 26, "40 m north: d² = 14.7 ✗", 12, INK, "start"))
     s.append(text(cx + a99 * sc - 4, cy + 70, f"99 %: up to {a99:.0f} m east, {b99:.0f} m north", 11, RED, "end"))
     s.append(text(cx - 50 * sc - 4, cy + 50 * sc + 2, "a 50 m circle gets both wrong", 11, GREY, "end"))
     x0 = 520

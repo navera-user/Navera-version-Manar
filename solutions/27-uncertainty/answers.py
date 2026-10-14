@@ -2,18 +2,23 @@
 
 PREDICT_INSIDE = "About 39: on a map the error has two chances to be large, so fewer fall inside 3 m than the 68 % of one axis."
 
+PREDICT_CLOUD = "North is worse (wider range); east and north look negatively correlated (ρ < 0)."
+
 ELLIPSE_A_M = 3.36
 ELLIPSE_B_M = 1.53
 ELLIPSE_ANGLE_DEG = -57.3
+LONG_AXIS_BEARING_DEG = 147.3
 JUDGE_SIGMA_M = 2.95
 
-PREDICT_CIRCLE = "The circle: its radius 2.95 m is close to the long axis 3.36 m and it is wider than the ellipse across, so its area is larger."
+PREDICT_CIRCLE = "The ellipse: at k = 3 the circle (8.8 m) is shorter than the ellipse's long axis (10.1 m), so far fixes along that axis escape it."
 INSIDE_1SIGMA_PCT = 38.5
-CIRCLE_1_PCT = 53.3
+INSIDE_3SIGMA_PCT = 99.2
+CIRCLE_3_PCT = 98.8
 SIM_P95 = 6.03
 EXPLAIN_CHI2 = ("On a map d² = x² + y² adds two squared normal errors, so it is larger than one axis alone: only 39 % "
                 "stay below 1 against 68 % for x² alone, and the 95 % threshold is 5.99 instead of 3.84 (1.96²) — "
-                "the mean of d² is 2, one per dimension.")
+                "the mean of d² is 2, one per dimension. At k = 3 the circle's radius (3 × 2.95 m) is shorter than the "
+                "long axis (3 × 3.36 m): the far fixes along the long axis escape it.")
 
 PREDICT_RADAR = "a = r × σβ in radians = 3000 × 0.01745 = 52.4 m"
 RADAR_A_M = 52.4
@@ -32,6 +37,7 @@ EXPLAIN_JUDGE = ("E is only 79 m away but across the track, where the predicted 
                  "predictor refuses A, the truth, and will keep refusing every later fix: it is locked out. The 160 m "
                  "circle accepts the spoofer B.")
 
+PREDICT_ATTACK = "Along the track: √(9.21 × 3609) ≈ 182 m at bearing 120°/300°; across √(9.21 × 634) ≈ 76 m at 30°/210°."
 ATTACK_MAX_M = 182.3
 ATTACK_MIN_M = 76.4
 EXPLAIN_ATTACK = ("The attacker goes along the long axis of S, along the track (bearing 120° or 300°): the largest "
