@@ -36,6 +36,7 @@ def student_env(name, index, heavy=False, domain=None, navera=None):
         "PYTHONWARNINGS": "ignore:Unable to import Axes3D",
         "ACADEMY_STUDENT": name,
         "NAVERA_LITE_MAP": config.S_DATA + "/map.mbtiles",
+        "ACADEMY_GPU_SLOTS": f"{config.S_GPU_SLOTS}:{config.GPU_SLOTS}",
     }
     if navera:                  # staff, or a student the teacher gave full NAVERA access
         env.update({
@@ -103,6 +104,8 @@ def bwrap_argv(name, home, index, command, resources=(), heavy=False, writable_b
     # Python packages installed with pip --user (torch for Jetson, kornia, lightglue…).
     if os.path.isdir(config.PYTHON_USER_SITE):
         a += ["--ro-bind", config.PYTHON_USER_SITE, config.PYTHON_USER_SITE]
+    os.makedirs(config.GPU_SLOT_DIR, exist_ok=True)
+    a += ["--bind", config.GPU_SLOT_DIR, config.S_GPU_SLOTS]    # shared GPU slot locks (academy_gpu.py)
     a += ["--bind", home, config.S_HOME]
     if writable_base:                    # used once, to build the base snapshot
         a += ["--bind", writable_base, config.S_NAVERA]

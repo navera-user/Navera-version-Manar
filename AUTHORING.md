@@ -263,6 +263,9 @@ Rules for authors:
   Exception for trained models (design §7.5): a student's weights file may be read with
   `torch.load(path, map_location="cpu", weights_only=True)` (torch ≥ 2.6) after a size limit, and loaded with
   `load_state_dict` into a network the CHECK builds from the specification — never the student's class.
+- **Shared GPU (design §7.5):** every torch training or heavy inference — runners, solutions, checks — goes through
+  `courses/_lib/academy_gpu.py`: `with torch_device() as device:` (at most 3 GPU jobs in the whole class, the
+  others wait or fall back to the CPU; torch limited to 2 CPU threads). Missions ship a copy in files/ like runner_kit.
 - Values come back by value (numbers, str, list/tuple/dict/set, namedtuple, NumPy, pandas, datetime,
   ROS messages of installed packages); instances of student classes, generators… are proxies that
   forward attributes, calls, operators, `len`/`iter`/`[]`/`==`/`float()`. `isinstance(x, list)` on a

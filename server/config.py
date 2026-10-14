@@ -13,6 +13,11 @@ BASE = os.path.join(ACADEMY, "base")                  # the students' starting p
 COURSES = os.path.join(ACADEMY, "courses")            # NN-slug/{lesson.md, lab.md, files/, check.py, meta.json}
 STUDENTS = os.path.join(ACADEMY, "students")          # <name>/home  (mounted as /home/student)
 STATE = os.path.join(ACADEMY, "state")                # users.json, progress.json, bookings.json
+# GPU slots shared by every sandbox (lock files): at most GPU_SLOTS trainings on the GPU at once
+# (one training ≈ 1.2 GB on top of ≈ 2.7 GB used by the system, 7.6 GB in all; measured 2026-10-15).
+GPU_SLOT_DIR = os.path.join(STATE, "gpu_slots")
+GPU_SLOTS = 3
+S_GPU_SLOTS = "/run/academy_gpu"
 LOGS = os.path.join(ACADEMY, "logs")
 
 # Paths of NAVERA left out of the students' copy (personal paths / old experiments).
