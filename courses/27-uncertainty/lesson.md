@@ -5,7 +5,8 @@
 > [!NOTE] Mission brief
 > **1 October 2026, NAVERA's mission simulator, a desert route in southern Tunisia.** GPS is jammed. Day
 > vision matches the camera's frames against the map, but over uniform terrain its median error is **351 m**,
-> with a long tail (p90: **853 m**, jumps of 360–570 m). NAVERA forwards it as **±300 m**, and the autopilot
+> with a long tail (p90: **853 m**), and NAVERA's own motion gate refused 44 more frames that jumped 360–570 m.
+> NAVERA forwards it as **±300 m**, and the autopilot
 > uses at most **±100 m** of any accuracy it is told. After **45 s** the autopilot's navigation filter gives
 > up and the drone lands. A second flight, forwarded at ±500 m, lasted **91 s**. A day earlier, in the QA
 > campaign of **30 September**, a star fix good to about **±55 km** reached the autopilot as ±300 m: the
@@ -218,8 +219,10 @@ accuracy with it.
 2. Yes: it predicts a p90 of 2.15 × 300 = 644 m, but 853 m was measured. These errors are not Gaussian (wrong
 matches, jumps): the tail is fatter than any σ says.<br>
 3. A median of 1.18 × 100 = 118 m. Typical errors (351 m) were then about 3.5 of its sigmas and the tail (853 m)
-about 8.5. A gate refuses them (§5), the filter stops getting positions it accepts, and it gives up. Both the
-stated σ and what the receiver does with it matter.
+about 8.5. A 99 % χ² gate (§5) would refuse even the typical errors. ArduPilot's own gate is set in standard deviations
+(EK3_POS_I_GATE, 1 to 10 σ in ArduPilot's parameter list; several σ wide), so it can accept the typical errors as if they were good to 100 m
+(its position jumps by hundreds of metres) and refuse the tail. Either way its consistency tests stay far above
+normal and its failsafe trips. Both the stated σ and what the receiver does with it matter.
 </details>
 
 </details>
@@ -468,7 +471,7 @@ apart, they did not average — one led, or they split. Small disagreement: fuse
 5. **Fusion** adds information: P = (P₁⁻¹ + P₂⁻¹)⁻¹. Only for honest, independent, gated estimates. Then
    publish the result with an honest **type**, and never a matrix that is not a covariance.
 
-**Next mission:** the Kalman filter — §4 and §6, repeated every time step.
+**Next mission:** the Kalman filter — §4, §5 and §6, repeated every time step.
 
 ## Check yourself
 

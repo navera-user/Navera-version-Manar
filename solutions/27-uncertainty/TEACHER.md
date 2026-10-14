@@ -97,7 +97,7 @@ b 1.78, θ 29.5°, √12 = 3.46; ✏️ (4, 2, 45°), √10 = 3.16 (21 % short),
   (round 1, expert): by §3's Rayleigh rule a round ±300 m PREDICTS a median of 353 m — the stated σ was right about
   the median and wrong about the tail (p90 853 m vs 644 m predicted); both flights reached the EKF as ±100 m. The
   brief, the new §3 ✏️ "back to the mission brief" and "In NAVERA" say so. Expected Step 10 answer: told 100 m,
-  errors 3.5–8.5σ → innovation gate refuses → no accepted position → failsafe; the 45 vs 91 s are single flights
+  errors 3.5–8.5σ → large normalised innovations: the tail refused by the EKF's innovation gate (EK3_POS_I_GATE, set in standard deviations, range 1–10 σ in ArduPilot's parameter list — not a NAVERA doc; its default was not verified here, check the firmware's parameter list), the rest accepted as over-precise jumps → failsafe; the 45 vs 91 s are single flights
   with different rejection counts, both clamped at 100 m: not causal evidence. The desert problem is still open
   (backlog R-11 🔧); the 125 km jump is fixed (QA-2 ✅, max_forward_sigma_m 1 km).
 

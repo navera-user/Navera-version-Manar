@@ -73,8 +73,9 @@ def cold_open():
     s.append(text(cx, 52, "1 Oct · desert route, GPS jammed: day vision", 13, BLUE, weight="bold"))
     rng = np.random.default_rng(3)
     sig = math.log(853.0 / 351.0) / 1.2816
-    for _ in range(90):
-        r = min(351.0 * math.exp(sig * rng.standard_normal()), 1350.0)
+    from statistics import NormalDist
+    for i in range(90):                                    # quantile-matched: 45 dots inside 351 m, 9 beyond 853 m
+        r = min(351.0 * math.exp(sig * NormalDist().inv_cdf((i + 0.5) / 90)), 1100.0)   # clear of the caption
         t = rng.uniform(0, 2 * math.pi)
         s.append(dot(cx + k * r * math.cos(t), cy + k * r * math.sin(t), GREY, 2.0))
     s.append(circle(cx, cy, 853 * k, GREY, width=1.0, dash="2 3"))
@@ -131,7 +132,7 @@ def ellipse_fig():
     s.append(line(cx, cy, cx + a * sc * math.cos(t), cy - a * sc * math.sin(t), RED, 2.2, arrow="r"))
     s.append(line(cx, cy, cx - b * sc * math.sin(t), cy - b * sc * math.cos(t), BLUE, 2.2, arrow="b"))
     s.append(text(cx + a * sc * math.cos(t) + 10, cy - a * sc * math.sin(t) - 4, f"a_m = √λ₁ = {a:.2f} m", 13, RED, "start"))
-    s.append(text(cx - b * sc * math.sin(t) - 58, cy - b * sc * math.cos(t) - 22, f"b_m = √λ₂ = {b:.2f} m", 13, BLUE, "end"))
+    s.append(text(cx - b * sc * math.sin(t) + 30, cy - b * sc * math.cos(t) - 62, f"b_m = √λ₂ = {b:.2f} m", 13, BLUE, "end"))
     s.append(f'<path d="M{cx + 45:.1f} {cy:.1f} A45 45 0 0 0 {cx + 45 * math.cos(t):.1f} {cy - 45 * math.sin(t):.1f}" '
              f'fill="none" stroke="{INK}"/>')
     s.append(text(cx + 58, cy - 10, f"θ = {ang:.1f}°", 12, INK, "start"))
@@ -251,7 +252,7 @@ def gate_fig():
     s.append(dot(cx, cy - 40 * sc, INK, 6))
     s.append(line(cx, cy - 4, cx, cy - 40 * sc + 6, INK, 1, "2 3"))
     s.append(text(cx + 14, cy - 40 * sc - 26, "40 m north: d² = 14.7 ✗", 12, INK, "start"))
-    s.append(text(cx + a99 * sc - 4, cy + 70, f"99 %: up to {a99:.0f} m east, {b99:.0f} m north", 11, RED, "end"))
+    s.append(text(cx + a99 * sc - 4, cy + 50 * sc + 14, f"99 %: up to {a99:.0f} m east, {b99:.0f} m north", 11, RED, "end"))
     s.append(text(cx - 50 * sc - 4, cy + 50 * sc + 2, "a 50 m circle gets both wrong", 11, GREY, "end"))
     x0 = 520
     for i, (t_, c_) in enumerate((("accept ⇔ rᵀ S⁻¹ r ≤ χ²₂(p)", INK), ("99 %: 9.21 · 95 %: 5.99", INK),
@@ -280,8 +281,8 @@ def fusion_fig():
     s.append(dot(cx + x[0] * sc, cy - x[1] * sc, GREEN, 4))
     s.append(text(cx - a1 * sc + 4, cy + b1 * sc + 62, "GPS in a canyon: σ 30 m east, 6 m north", 12, BLUE, "start"))
     s.append(text(cx + x2[0] * sc, cy - x2[1] * sc - 15 * sc - 8, "vision: σ 15 m", 12, ORANGE))
-    s.append(text(cx + x[0] * sc + 62, cy - x[1] * sc + 2, f"fused: ({x[0]:.1f}, {x[1]:.1f}) m,", 12, GREEN, "start"))
-    s.append(text(cx + x[0] * sc + 62, cy - x[1] * sc + 18, f"σ {math.sqrt(P[0, 0]):.1f} m × {math.sqrt(P[1, 1]):.1f} m",
+    s.append(text(cx + x[0] * sc + 78, cy - x[1] * sc + 2, f"fused: ({x[0]:.1f}, {x[1]:.1f}) m,", 12, GREEN, "start"))
+    s.append(text(cx + x[0] * sc + 78, cy - x[1] * sc + 18, f"σ {math.sqrt(P[0, 0]):.1f} m × {math.sqrt(P[1, 1]):.1f} m",
                   12, GREEN, "start"))
     # outlier panel
     ox = 560
