@@ -27,7 +27,7 @@ Your files (📝 Code tab): [navera_lite/stars.py](file:./navera_lite/stars.py) 
 | all | Step 10 | the star-fix memo |
 
 > [!NOTE]
-> **The data** (`/data/academy/26-stars/`, described in its README): a public star catalogue (HYG v4.1, CC BY-SA 4.0: 8 920 stars
+> **The data** (`/data/academy/26-stars/`, described in its README): a public star catalogue (the HYG database v4.1 by D. Nash / astronexus, CC BY-SA 4.0 — share-alike: a copy or change of it must keep the same licence; 8 920 stars
 > brighter than magnitude 6.5, J2000), and six **synthetic** night photos from NAVERA Lite's star camera
 > (1280 × 960, 60° wide, its axis leaning 20° towards the drone's nose), rendered for the course with exact
 > truth. `photos.json` gives, for each photo, the UTC time, the IMU chip's attitude at the exposure (magnetic
@@ -127,7 +127,7 @@ three stars since J2000.
 ## Step 3 — Where is that star? (TODO 3)
 
 **TODO 3** `altaz(ra_deg, dec_deg, lat, lon, gst_deg)`: lesson §2. H = gst + lon − ra, then the two formulas.
-ra and dec may be arrays (the runner sends 1 630 stars at once).
+ra and dec may be arrays (the runner sends 1 637 stars at once).
 
 <details><summary>🧰 numpy: one formula for a whole array</summary>
 
@@ -220,7 +220,7 @@ box. Your first OpenCV detector: background, robust σ, threshold, groups, sizes
 
 > [!TASK]
 > **Predict** (`PREDICT_DETECT`): photo 1 holds 121 catalogue stars brighter than magnitude 5.0, and 40 hot
-> pixels. How many of the 125 will your detector find, and how many hot pixels will it report as stars? Why?
+> pixels. How many of the 121 will your detector find, and how many hot pixels will it report as stars? Why?
 
 ```bash
 python3 run_stars.py test

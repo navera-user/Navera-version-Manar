@@ -113,7 +113,7 @@ Why 82.6 km (rule) and 103.1 km (simulation) differ (EXPLAIN_BUDGET): every SIDE
 (H = −29.5° = the boresight's hour angle; a sideways tilt moves the fix ×1.19 = sin 66° × 1.30, strong reviewer r2);
 the up-down part is not. Heading term only: 111.2 × √(0.42² + (0.61·1.30)²) ≈ 100 km; tilt split 0.30 up-down /
 0.30 sideways and both sideways parts stretched: 111.2 × √(0.30² + (0.30² + 0.61²)·1.30²) ≈ 104 km; simulated 103.1.
-Photo 2 (H = +26°, ×1.01) is the counter-example: its magnetic move (152 km) is about the rule (155 km). Median < RMS:
+Photo 2 (H = +26°, ×1.01) is the counter-example: its magnetic move (152 km) is about the rule (151 km). Median < RMS:
 a round 2-D Gaussian error has median ≈ 0.83 × RMS; photo 1's spread is elongated (sideways σ ≈ 0.85° vs 0.32°
 along), which gives 0.74 for a Gaussian and 0.726 simulated (74.9 / 103.1): elongation, not a tail. Photo 6 sits at the fold (H = −91°, stretch ×56): `budget 6` gives 1 858 / 2 000 draws with no position.
 Photo 4 (×1.60, `budget 4`: RMS 125.8 km vs rule 84.8) is stretched more than photo 3 (×1.37, 140.8 vs 106.7), so

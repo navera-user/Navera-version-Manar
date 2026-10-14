@@ -15,7 +15,7 @@ ACHERNAR_ALT_DEG = 55.96
 ACHERNAR_AZ_DEG = 144.30
 PREDICT_POLARIS = "Reykjavik, the highest latitude: what is left grows with tan of the latitude."
 NAIVE_MAX_ERR_KM = 69.52
-CORRECTED_MAX_ERR_KM = 0.781
+CORRECTED_MAX_ERR_KM = 0.782
 EXPLAIN_POLARIS = ("Polaris is p = 0.63° from the pole, so its altitude is up to 0.63° x 111 km = 70 km from the "
                    "latitude. The correction p cos H puts it back on its circle around the pole. What is left are the "
                    "p squared terms, which grow with tan of the latitude: largest at Reykjavik.")

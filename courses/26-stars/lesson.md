@@ -419,7 +419,7 @@ angle of the camera's direction).
   heading · cos alt, and the part of the tilt that moves the camera sideways) is stretched by about
   **cos φ / (cos δ · |cos H|)**; the up-down part is not. ×1.30 for photo 1 (H = −29.5°; a sideways tilt there
   moves the fix ×1.19 = sin 66° × 1.30), but ×1.01 for photo 2 (H = +26°): its magnetic move, 152 km, is about
-  the rule's 155 km. For photo 1, stretching only the heading term gives 111.2 × √(0.42² + (1.5 · cos 66° · 1.30)²) ≈ 100 km;
+  the rule's 151 km. For photo 1, stretching only the heading term gives 111.2 × √(0.42² + (1.5 · cos 66° · 1.30)²) ≈ 100 km;
   splitting the 0.42° tilt into 0.30° up-down and 0.30° sideways and stretching the sideways part too gives
   111.2 × √(0.30² + (0.30² + (1.5 · cos 66°)²) · 1.30²) ≈ 104 km. The simulation says 103 km. Photo 4 (Cape
   Town, ×1.60) is stretched more than photo 3 (Tromsø, ×1.37), although photo 3 looks nearer the pole.
@@ -472,7 +472,7 @@ in words:
 `gmst_deg`, `altaz`, `lat_from_polaris`, `detect_stars`, `boresight_altaz`, `both_roots`, `choose` and
 `error_km`. Given: the catalogue reader, `precess`, the vector helpers and `plate_solve`. The catalogue is
 a public one: a subset of the HYG star database v4.1 (Hipparcos, Yale and Gliese catalogues combined; by
-D. Nash / astronexus, licence CC BY-SA 4.0), `/data/academy/26-stars/bright_stars.csv`; the
+D. Nash / astronexus, licence CC BY-SA 4.0, share-alike: copies and changes keep that licence), `/data/academy/26-stars/bright_stars.csv`; the
 IMU part (`q_true_north`, `declination_deg`) is your mission 17, shipped finished. Mission 29's arbiter will
 take the star fix as its last source.
 

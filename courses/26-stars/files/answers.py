@@ -34,7 +34,7 @@ EXPLAIN_POLARIS = ""        # why is the naive error about that size? what does 
 # ======== Session 2 — Star navigator (a fix from a photo) ========
 
 # ---- Step 5: find the stars (python3 run_stars.py detect, detect 2) -----------------------------------------
-PREDICT_DETECT = ""         # before running: how many of the 125 stars brighter than 5.0 will you find, and how
+PREDICT_DETECT = ""         # before running: how many of the 121 stars brighter than 5.0 will you find, and how
                             # many of the 40 hot pixels will you report as stars? why?
 N_STARS_01 = 0              # how many stars your detector finds in photo 1
 CENTROID_RMS_PX = 0.0       # the RMS centre error against the truth (pixels)
