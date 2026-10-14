@@ -790,7 +790,7 @@ EXPERIMENTS = {"margin": ("margin", (0.2, 1.0), (0.85, 0.99)), "batch": ("batch"
 
 
 @c.test("Step 13: your experiment — one change, predicted, run, measured, explained",
-        hint="Lab Step 13: EXPERIMENT is \"margin\", \"batch\", \"pairs\" or \"negatives\"; train exp.pt with the SAME "
+        hint="Lab Step 13: EXPERIMENT is \"margin\", \"batch\", \"pairs\", \"negatives\" or \"freeze\"; train exp.pt with the SAME "
              "command as my_desc.pt plus that ONE change and --out exp.pt; EXP_SCORE is the last line of that run.")
 def _():
     threads()

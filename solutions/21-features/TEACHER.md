@@ -60,7 +60,7 @@ Sim Lite (31) can fly it.
   `--device cpu --n-train 4096 --epochs 4`: 1 min 40 s on a quiet Jetson with 2 threads, **11 min 16 s** measured by
   the weak reviewer on a busy one; score ≈ 0.93. The full run on the CPU: 30–45 min (do not).
 - Step 11 (`filters`, measured round 2 by the author and two reviewers independently): conv1 barely moves —
-  ‖after − before‖/‖before‖ conv1 0.13–0.14, conv2 0.54, conv3 0.66–0.69, fc 1.08–1.16. The trained conv1 filters are
+  ‖after − before‖/‖before‖ conv1 0.13–0.14, conv2 0.54, conv3 0.64–0.69, fc 1.07–1.16. The trained conv1 filters are
   their random start, nudged: no more Sobel-like than random ones (median best correlation with an oriented Sobel
   0.58 before, 0.60 after; random seeds 0.41–0.58). Random zero-mean 3 × 3 filters already respond to edges in some
   direction; the learning is in conv2, conv3 and fc (freezing the convs and training fc alone gives 0.917, above
@@ -83,7 +83,7 @@ Sim Lite (31) can fly it.
   ± 0.0015, its own score of 512 pairs within 0.04, and a plausibility range per row (margin 0.85–0.99, batch
   0.84–0.99, pairs 0.78–0.97, negatives 0.82–0.97, freeze 0.83–0.95).
 - Hidden test (check 12, 1 024 pairs from 4 places in no other set): raw 0.729, ORB 0.718, SIFT 0.825, untrained
-  0.491, reference networks 0.938–0.940, the 4 096-pair runs 0.908/0.916, overfit 0.766. Threshold **0.85**.
+  0.491, reference networks 0.938–0.943, the 4 096-pair runs 0.908/0.916, overfit 0.766. Threshold **0.85**.
 - Integrity: the runner writes logs/<file>.json with the SHA-256 of the saved weights and the run settings; checks
   12–14 require the fingerprint and the runner's full log (every field, one history row per epoch, < 1 MB), and
   re-score 512 validation pairs of my_desc.pt and exp.pt themselves. A copied weights file fails; exp.pt copied from
