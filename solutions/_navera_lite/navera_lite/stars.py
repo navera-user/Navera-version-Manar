@@ -43,43 +43,40 @@ R_BODY_STAR_CAM = np.array([[0.0, math.cos(math.radians(CAM_TILT_DEG)), math.sin
 
 # @part 26
 def load_catalogue(path=None, mag_max=6.5):
-    """The star catalogue shipped with the mission (a subset of the Yale Bright Star Catalogue, J2000).
-    Returns a dict of numpy arrays, one entry per star brighter than mag_max (smaller magnitude =
-    brighter): "hr" (catalogue number), "name" (common or Bayer name, text), "ra_deg", "dec_deg" (J2000),
-    "vmag" (visual magnitude).
+    """The star catalogue shipped with the mission: a subset of the HYG star database v4.1 (Hipparcos, Yale,
+    Gliese; by D. Nash / astronexus, CC BY-SA 4.0), J2000. Returns a dict of numpy arrays, one entry per star
+    brighter than mag_max (smaller magnitude = brighter): "id" (HYG number), "name" (common or Bayer name, text),
+    "ra_deg", "dec_deg" (J2000), "vmag" (visual magnitude).
 
-    Example: cat = load_catalogue(); len(cat["ra_deg"]) → 8404 stars; find_star(cat, "Polaris") → its index
+    Example: cat = load_catalogue(); len(cat["ra_deg"]) → 8920 stars; find_star(cat, "Polaris") → its index
     """
     path = path or CATALOGUE_PATH
     if not os.path.exists(path):
         raise FileNotFoundError(f"the star catalogue {path} is missing (the course data is not mounted here)")
-    hr, name, ra, dec, mag = [], [], [], [], []
+    ids, name, ra, dec, mag = [], [], [], [], []
     with open(path, newline="", encoding="utf-8") as f:
         for row in csv.DictReader(f):
             m = float(row["vmag"])
             if m > mag_max:
                 continue
-            hr.append(int(row["hr"]))
+            ids.append(int(row["id"]))
             name.append(row["common"] or row["bayer"])
             ra.append(float(row["ra_deg"]))
             dec.append(float(row["dec_deg"]))
             mag.append(m)
-    return {"hr": np.array(hr), "name": np.array(name), "ra_deg": np.array(ra), "dec_deg": np.array(dec),
+    return {"id": np.array(ids), "name": np.array(name), "ra_deg": np.array(ra), "dec_deg": np.array(dec),
             "vmag": np.array(mag)}
 
 
 # @part 26
 def find_star(cat, name):
-    """Index of a star in a catalogue from load_catalogue, by its name ("Vega", "Alp Lyr") or its "HR 7001"
-    number. Raises KeyError when there is no such star.
+    """Index of a star in a catalogue from load_catalogue, by its name ("Vega", "Alp Lyr", "HIP 91262").
+    Raises KeyError when there is no such star.
 
     Example: cat["name"][find_star(cat, "Vega")] → 'Vega'
     """
     key = name.strip().lower()
-    if key.startswith("hr "):
-        hits = np.flatnonzero(cat["hr"] == int(key[3:]))
-    else:
-        hits = np.flatnonzero(np.char.lower(cat["name"].astype(str)) == key)
+    hits = np.flatnonzero(np.char.lower(cat["name"].astype(str)) == key)
     if len(hits) == 0:
         raise KeyError(f"no star called {name!r} in the catalogue")
     return int(hits[0])

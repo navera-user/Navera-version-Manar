@@ -27,7 +27,7 @@ Your files (📝 Code tab): [navera_lite/stars.py](file:./navera_lite/stars.py) 
 | all | Step 10 | the star-fix memo |
 
 > [!NOTE]
-> **The data** (`/data/academy/26-stars/`, described in its README): a public star catalogue (8 404 stars
+> **The data** (`/data/academy/26-stars/`, described in its README): a public star catalogue (HYG v4.1, CC BY-SA 4.0: 8 920 stars
 > brighter than magnitude 6.5, J2000), and six **synthetic** night photos from NAVERA Lite's star camera
 > (1280 × 960, 60° wide, its axis leaning 20° towards the drone's nose), rendered for the course with exact
 > truth. `photos.json` gives, for each photo, the UTC time, the IMU chip's attitude at the exposure (magnetic
@@ -100,14 +100,17 @@ The lines of TODO 1 and 2 must be ✔ (the other TODOs show "not written yet").
 python3 run_stars.py clock
 ```
 
-It prints Julian dates and sidereal times, finds when Vega crosses the meridian of Sousse on two nights in a
-row (with your two functions), and shows how far precession has moved three stars since J2000.
+**Before running it**, predict `TRANSIT_SHIFT_S` from lesson §1 (one line of arithmetic) and write it in
+`answers.py`: the run only confirms it. `clock` prints Julian dates and sidereal times, finds when Vega crosses
+the meridian of Sousse on two nights in a row (with your two functions), and shows how far precession has moved
+three stars since J2000.
 
 > [!TASK]
-> Write `TRANSIT_SHIFT_S`: by how many seconds the transit comes earlier the next night. `VEGA_SHIFT_ARCMIN`:
-> how far precession moved Vega (in ′). `VEGA_SHIFT_KM`: that angle as a distance on the Earth (lesson §7:
-> 1′ = 1.852 km). `EXPLAIN_SIDEREAL`: why does the sky's clock gain on yours, and why does it matter for a star
-> fix?
+> Check your `TRANSIT_SHIFT_S` against the run (seconds earlier the next night). `VEGA_SHIFT_ARCMIN`: how far
+> precession moved Vega (in ′). `VEGA_SHIFT_KM`: that angle as a distance on the Earth (lesson §7: 1′ = 1.852 km).
+> `EXPLAIN_SIDEREAL`: why does the sky's clock gain on yours, and why does it matter for a star fix? And: Polaris'
+> **right ascension** moved 8.8°, but Polaris moved only 9.1′ on the sky. Why? (One degree of ra is cos δ
+> degrees on the sky.)
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
@@ -206,7 +209,7 @@ python3 run_stars.py polaris
 > Press **✔ Check my work**. When the checks of TODO 1–4 and Steps 1–4 pass (checks 1–6; the others are
 > session 2), you earn the **Stargazer** badge. If the class session ends here, stop here.
 
-## Session 2 — Star navigator (about 2 h 30; 3 h if OpenCV is new)
+## Session 2 — Star navigator (2 h 30–4 h; the longer end if OpenCV or trigonometry is new)
 
 Read lesson §4–§7 first.
 
@@ -216,7 +219,7 @@ Read lesson §4–§7 first.
 box. Your first OpenCV detector: background, robust σ, threshold, groups, sizes, weighted centres, sorted.
 
 > [!TASK]
-> **Predict** (`PREDICT_DETECT`): photo 1 holds 125 catalogue stars brighter than magnitude 5.0, and 40 hot
+> **Predict** (`PREDICT_DETECT`): photo 1 holds 121 catalogue stars brighter than magnitude 5.0, and 40 hot
 > pixels. How many of the 125 will your detector find, and how many hot pixels will it report as stars? Why?
 
 ```bash
@@ -374,8 +377,8 @@ python3 run_stars.py fix oneroot
 > `MAGNETIC_ERR_01_KM` (photo 1's error to the truth, declination forgotten) and `ONE_ROOT_ERR_03_KM` (photo 3,
 > one root). `EXPLAIN_ROOTS`: why can one direction give two places, why is the asin root wrong for photo 3,
 > and why does photo 6 give no position? `EXPLAIN_NORTH`: the move against your prediction, and why the
-> **error** is larger still (which two things add up)? Why do photos 3–5 then give no position at all? (The
-> move is a little larger than the rule: lesson §7's box explains why — read it after Step 9.)
+> **error** is larger still (which two things add up)? Why do photos 3–5 then give no position at all? (Photo 1's
+> move is about 1.3 × the rule, photo 2's about the rule: lesson §7's box explains why — read it after Step 9.)
 
 ## Step 9 — The error budget (TODO 9)
 
@@ -441,20 +444,26 @@ Write your answers in `LOOK_BACK` in `answers.py` if you want your teacher to re
   boresight's hour angle H = GMST + λ − α. Which photo is worst, and why is it not the one nearest the pole?
   Read lesson §7's box after Step 9.
 - **Refraction, measured.** The air lifts every star (Bennett's rule: about 1′ × cot(alt + 7.31/(alt + 4.4))).
-  A solver that ignores it reads the star field slightly too high, so the IMU's altitude and the sky direction
-  disagree by that amount. `python3 run_stars.py fix truth refraction` puts it in. How many km for photo 1
+  So the stars at the image centre truly stand R lower than where the camera points: the plate solve's direction
+  is R below the IMU's altitude. A fix that ignores it is off by that angle. `python3 run_stars.py fix truth refraction` puts it in. How many km for photo 1
   (66° high) and photo 3 (55°)? Worth correcting next to a 50 km IMU error? Next to a levelled camera with a
   0.05° attitude (5.6 km)?
 - **The whole rotation (about 20 lines).** `plate_solve` also returns `R_eq_cam` (camera → sky). Write
   `fix_zenith(sol, q, gst)`: the vertical in the body frame `up_body = q_rotate(q_conj(q), (0, 0, 1))`, into the
   camera frame and onto the sky `z = sol["R_eq_cam"] @ R_BODY_STAR_CAM.T @ up_body`, `ra, dec = vec_to_radec(z)`,
-  then lat = dec, lon = ra − gst wrapped (lesson §6, last paragraph). Run it with the chip's attitude **as
-  delivered** (magnetic!) on the six photos. Which photos improve? Does photo 6 give a position now? Does the
+  then lat = dec, lon = ra − gst wrapped (lesson §6, last paragraph). Write it in a new file `zenith.py` next to
+  `run_stars.py`: `from navera_lite.rotations import q_conj, q_rotate`, `from navera_lite.stars import
+  R_BODY_STAR_CAM, vec_to_radec, sep_deg, KM_PER_DEG`, `import run_stars as rs`; then for n in 1–6:
+  `_, p, _, _, _, jd, sol, _ = rs.solve_photo(n)`, `q = p["chip_q"]`, `gst = rs.gst_of(jd)`, and compare your
+  (lat, lon) with `p["truth"]["lat"], p["truth"]["lon"]` (`sep_deg(…) * KM_PER_DEG`). Run `python3 zenith.py`
+  with the chip's attitude **as delivered** (magnetic!). Which photos improve? Does photo 6 give a position now? Does the
   declination still matter, and why? (Reference: errors 38–56 km, photo 6 included.)
 - **The stretch factor (maths).** Moving the observer by (dφ north, dλ east) turns the local frame by
   ω = (−dφ, dλ cos φ, dλ sin φ) (ENU). A heading error is ω = (0, 0, Δ). The star stays put if the difference is
   parallel to the star's direction s. Solve for dφ, dλ and show that the move is Δ cos a cos φ / |s_U cos φ −
   s_N sin φ|, i.e. Δ cos a · cos φ / (cos δ |cos H|). Check it on photo 1 (about 59 km per degree of heading).
+  Then repeat with a tilt about the horizontal axis along the camera's azimuth, ω = ε·(sin A, cos A, 0): what
+  changes? (Photo 1: ×1.19 = sin 66° × 1.30.)
 - **A zenith camera.** Change `CAM_AXIS_BODY` to (0, 0, 1) for a test of the easy case of lesson §6: does the
   heading still matter?
 - **Fly your own parts.** This mission ships the course's `imu.py`. Copy yours over it

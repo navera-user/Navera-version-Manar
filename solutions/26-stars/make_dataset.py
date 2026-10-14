@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """Make datasets/26-stars/ for mission 26 (teacher only — never copy this file into datasets/).
 
-    python3 solutions/26-stars/make_dataset.py [--raw catalog.gz]      (on the host, from the repository root)
+    python3 solutions/26-stars/make_dataset.py [--raw hygdata_v41.csv]   (on the host, from the repository root)
 
---raw: the Bright Star Catalogue file `catalog.gz` of CDS V/50 (Hoffleit & Warren 1991), downloaded from
-https://cdsarc.cds.unistra.fr/ftp/V/50/catalog.gz when not given. Deterministic (seed 2626).
+--raw: the HYG star database v4.1 (`hygdata_v41.csv`, https://github.com/astronexus/HYG-Database, by David Nash /
+astronexus, licence CC BY-SA 4.0; derived from the Hipparcos, Yale Bright Star and Gliese catalogues), downloaded
+from the URL below when not given (the file used for the course: sha256 d9f69fd8…bebe4ebd, 2026-10-14).
+Deterministic (seed 2626).
 
 Writes:
-    bright_stars.csv   the BSC subset: every star with a J2000 position and V ≤ 6.5 (hr, bayer, common, ra_deg,
-                       dec_deg, vmag); common names added by hand for ~50 bright stars
+    bright_stars.csv   the HYG subset: every star with V ≤ 6.5 except the Sun (id, hip, hr, bayer, common, ra_deg,
+                       dec_deg, vmag; J2000); common names added by hand for ~55 bright stars. CC BY-SA 4.0 (share
+                       alike: the subset keeps the licence)
     photos/night_01.png … night_06.png   SYNTHETIC star-camera photos (1280 × 960, 8-bit grey, 60° wide) from
                        NAVERA Lite's star camera (axis 20° from body up, towards the nose), rendered from that
                        catalogue precessed to the date (IAU 1976), GMST, an ideal pinhole, a Gaussian star image
@@ -29,6 +32,7 @@ import io
 import json
 import math
 import os
+import re
 import sys
 import urllib.request
 
@@ -44,7 +48,7 @@ from navera_lite import stars as S                       # noqa: E402  (the cour
 from navera_lite.camera import K_from_hfov               # noqa: E402
 from navera_lite.rotations import q_from_axis_angle, q_from_euler_zyx, q_mul, q_to_matrix  # noqa: E402
 
-URL = "https://cdsarc.cds.unistra.fr/ftp/V/50/catalog.gz"
+URL = "https://raw.githubusercontent.com/astronexus/HYG-Database/main/hyg/CURRENT/hygdata_v41.csv"
 W, H, HFOV = 1280, 960, 60.0
 PSF_SIGMA = 1.0
 F_MAG6 = 60.0                       # total signal (DN) of a V = 6.0 star
@@ -80,35 +84,31 @@ PHOTOS = [
 ]
 
 
-def read_bsc(raw):
+def read_hyg(raw):
+    """The HYG v4.1 database (CC BY-SA 4.0): every star with V ≤ 6.5, except the Sun."""
     if raw is None:
-        with urllib.request.urlopen(URL, timeout=60) as r:
-            data = r.read()
+        with urllib.request.urlopen(URL, timeout=120) as r:
+            text = r.read().decode("utf-8")
     else:
-        data = open(raw, "rb").read()
+        text = open(raw, encoding="utf-8").read()
     rows = []
-    for line in gzip.GzipFile(fileobj=io.BytesIO(data)).read().decode("ascii").splitlines():
-        line = line.ljust(197)
-        if not line[75:77].strip() or not line[102:107].strip():
-            continue                                         # novae / extragalactic objects: no position
-        hr = int(line[0:4])
-        name = line[4:14]
-        flam, greek, const = name[0:3].strip(), name[3:7].strip(), name[7:10].strip()
-        if greek:
-            bayer = name[3:].strip()                         # e.g. "Alp UMi", "Alp1Cen"
-        elif flam:
-            bayer = f"{flam} {const}"                        # Flamsteed only, e.g. "61 Cyg"
-        else:
-            bayer = f"HR {hr}"
-        ra = (int(line[75:77]) + int(line[77:79]) / 60.0 + float(line[79:83]) / 3600.0) * 15.0
-        dec = int(line[84:86]) + int(line[86:88]) / 60.0 + int(line[88:90]) / 3600.0
-        if line[83] == "-":
-            dec = -dec
-        vmag = float(line[102:107])
+    for r in csv.DictReader(io.StringIO(text)):
+        if r["proper"] == "Sol" or not r["mag"]:
+            continue
+        vmag = float(r["mag"])
         if vmag > 6.5:
             continue
-        rows.append({"hr": hr, "bayer": bayer, "common": COMMON.get(bayer, ""), "ra_deg": round(ra, 5),
-                     "dec_deg": round(dec, 5), "vmag": vmag})
+        flam, rest = re.match(r"^(\d*)(.*)$", r["bf"].strip()).groups()
+        rest = rest.strip()
+        if re.match(r"^[A-Z][a-z]{2}\d?\s*[A-Z][A-Za-z]{2}$", rest):
+            bayer = rest                                     # Greek letter first, e.g. "Alp UMi", "Alp1Cen"
+        elif flam:
+            bayer = f"{flam} {rest}"                         # Flamsteed only, e.g. "61 Cyg"
+        else:
+            bayer = f"HIP {r['hip']}" if r["hip"] else f"HYG {r['id']}"
+        rows.append({"id": int(r["id"]), "hip": r["hip"], "hr": r["hr"], "bayer": bayer,
+                     "common": COMMON.get(bayer, ""), "ra_deg": round(float(r["ra"]) * 15.0, 6),
+                     "dec_deg": round(float(r["dec"]), 6), "vmag": round(vmag, 2)})
     missing = set(COMMON) - {r["bayer"] for r in rows}
     if missing:
         raise SystemExit(f"common names not found in the catalogue: {sorted(missing)}")
@@ -186,9 +186,9 @@ def main():
     ap.add_argument("--raw", default=None)
     args = ap.parse_args()
     os.makedirs(os.path.join(OUT, "photos"), exist_ok=True)
-    rows = read_bsc(args.raw)
+    rows = read_hyg(args.raw)
     with open(os.path.join(OUT, "bright_stars.csv"), "w", newline="", encoding="utf-8") as f:
-        wr = csv.DictWriter(f, fieldnames=["hr", "bayer", "common", "ra_deg", "dec_deg", "vmag"])
+        wr = csv.DictWriter(f, fieldnames=["id", "hip", "hr", "bayer", "common", "ra_deg", "dec_deg", "vmag"])
         wr.writeheader()
         wr.writerows(rows)
     cat = S.load_catalogue(os.path.join(OUT, "bright_stars.csv"), mag_max=6.5)
@@ -218,23 +218,23 @@ def main():
         if k in (0, 1):
             with open(os.path.join(OUT, f"photo{k + 1:02d}_stars.csv"), "w", newline="") as f:
                 wr = csv.writer(f)
-                wr.writerow(["hr", "name", "vmag", "u_px", "v_px"])
+                wr.writerow(["id", "name", "vmag", "u_px", "v_px"])
                 for i in idx:
                     if 0 <= u[i] < W and 0 <= v[i] < H:
-                        wr.writerow([int(cat["hr"][i]), cat["name"][i], cat["vmag"][i], round(float(u[i]), 3),
+                        wr.writerow([int(cat["id"][i]), cat["name"][i], cat["vmag"][i], round(float(u[i]), 3),
                                      round(float(v[i]), 3)])
     with open(os.path.join(OUT, "photos.json"), "w") as f:
         json.dump(meta, f, indent=1)
     with open(os.path.join(OUT, "README.md"), "w") as f:
-        f.write(README)
+        f.write(README.format(n=f"{len(rows):,}".replace(",", " ")))
     print("written:", OUT)
 
 
 README = """# Mission 26 data
 
-- `bright_stars.csv` — 8 404 stars brighter than magnitude 6.5: catalogue number `hr`, Bayer/Flamsteed name
-  `bayer`, a `common` name for about 50 bright stars, position `ra_deg`, `dec_deg` (equinox and epoch J2000)
-  and visual magnitude `vmag` (smaller = brighter).
+- `bright_stars.csv` — {n} stars brighter than magnitude 6.5: HYG id `id`, Hipparcos number `hip`, Yale/HR number
+  `hr` (when it has one), Bayer/Flamsteed name `bayer`, a `common` name for about 55 bright stars, position `ra_deg`,
+  `dec_deg` (equinox and epoch J2000) and visual magnitude `vmag` (smaller = brighter).
 - `photos/night_01.png … night_06.png` — synthetic photos from NAVERA Lite's star camera (1280 × 960 pixels,
   8-bit grey, 60° wide, ideal lens), at night, at six places.
 - `photos.json` — for each photo: the UTC time, the IMU chip's attitude at the exposure (quaternion
@@ -247,13 +247,14 @@ The photos are rendered for the course from the catalogue; they are not real sky
 
 ## Source and licence of the catalogue
 
-`bright_stars.csv` is a subset (columns and stars brighter than 6.5 kept, common names added) of
-**The Bright Star Catalogue, 5th Revised Edition (Preliminary Version)**, D. Hoffleit and W. H. Warren Jr.,
-Astronomical Data Center, NSSDC/ADC, 1991 — CDS catalogue V/50,
-https://cdsarc.cds.unistra.fr/viz-bin/cat/V/50. Neither the CDS ReadMe nor the Harvard readme of the catalogue
-states a licence; an earlier documentation file of the machine-readable catalogue describes it as public domain.
-It is distributed freely by CDS, which asks users to acknowledge it, and is shared here for teaching with this
-citation: "This research has made use of the VizieR catalogue access tool, CDS, Strasbourg, France."
+`bright_stars.csv` is derived from the **HYG star database v4.1** by David Nash (astronexus),
+https://github.com/astronexus/HYG-Database, licensed under the Creative Commons Attribution-ShareAlike 4.0
+International licence (CC BY-SA 4.0, https://creativecommons.org/licenses/by-sa/4.0/). HYG combines the Hipparcos,
+Yale Bright Star and Gliese catalogues. Changes made for the course: only stars brighter than magnitude 6.5 kept
+(the Sun removed), right ascension converted from hours to degrees, columns reduced, a `bayer` and a `common`
+column added. This subset is shared under the same licence, CC BY-SA 4.0.
+
+Attribution: "HYG star database v4.1, David Nash / astronexus, CC BY-SA 4.0 (subset)."
 """
 
 if __name__ == "__main__":

@@ -13,8 +13,8 @@ catalogue; now the student writes the maths and the catalogue is a public one sh
 
 Regenerate (from the repository root, on the host):
 - `python3 tools/lite_build.py 26-stars` — starter + solution of the part;
-- `python3 solutions/26-stars/make_dataset.py [--raw catalog.gz]` — `datasets/26-stars/` (seed 2626; downloads the
-  BSC from CDS when `--raw` is not given; 3.9 MB). The generator lives HERE, never in datasets/;
+- `python3 solutions/26-stars/make_dataset.py [--raw hygdata_v41.csv]` — `datasets/26-stars/` (seed 2626; downloads
+  HYG v4.1 from GitHub when `--raw` is not given; 4.1 MB). The generator lives HERE, never in datasets/;
 - `python3 solutions/26-stars/make_expected.py` — `courses/26-stars/hidden/expected.json`: unseen inputs and the
   reference's outputs for TODOs 1–4 and 6–9 (seed 2627), and every lab number, read back from `run_stars.py`
   run on the reference (so the check's constants are exactly what a correct student sees);
@@ -24,12 +24,15 @@ show the answers).
 
 ## The data (`/data/academy/26-stars/`)
 
-- `bright_stars.csv`: 8 404 stars with V ≤ 6.5 from **the Bright Star Catalogue, 5th rev. ed. (Hoffleit & Warren
-  1991, CDS V/50)**, J2000 positions (RA to 0.1 s, Dec to 1″), common names added by hand for 55 stars. Licence: no
-  licence is stated in the CDS ReadMe (2022 version) nor in the Harvard bsc5 readme (both checked 2026-10-14); an
-  earlier documentation file of the machine-readable catalogue describes it as public domain. NASA/ADC work, freely
-  distributed by CDS, which asks for an acknowledgement; the dataset README says exactly this, with the citation. NAVERA's own copy of the BSC
-  is not used and stays staff-only.
+- `bright_stars.csv`: 8 920 stars with V ≤ 6.5 (the Sun removed) from the **HYG star database v4.1** by David Nash
+  (astronexus), https://github.com/astronexus/HYG-Database — **licence CC BY-SA 4.0**; HYG combines the Hipparcos,
+  Yale Bright Star and Gliese catalogues (J2000, epoch 2000). File used: `hygdata_v41.csv`, sha256 d9f69fd8…bebe4ebd,
+  downloaded 2026-10-14 (copy in `~/academy-test/review/26-stars/build/hyg/`). Changes: magnitude cut, ra hours →
+  degrees, columns reduced, `bayer` (from HYG's `bf`) and `common` (55 names by hand) added. Share-alike: the subset is
+  CC BY-SA 4.0 too. Attribution line (README, make_dataset.py, the lesson's "In NAVERA Lite", stars.py docstring):
+  "HYG star database v4.1, David Nash / astronexus, CC BY-SA 4.0 (subset)". Round 2 switched from the Yale BSC (CDS
+  V/50): the only "public domain" wording found concerns the 1964 3rd edition, not the 5th edition, so its licence was
+  unclear. NAVERA's own copy of the BSC is not used and stays staff-only.
 - `photos/night_01…06.png`: SYNTHETIC star-camera photos, 1280 × 960, 8-bit, ideal pinhole 60° wide (f = 1108.5 px,
   K centre (640, 480)), camera axis 20° from body up towards the nose. Rendered with the reference's own sky model
   (precess + GMST + altaz, no nutation/aberration/refraction/distortion), Gaussian PSF σ 1.0 px integrated over
@@ -56,7 +59,7 @@ show the answers).
 
 Sun altitude at every photo below −30° (astropy). Photo 3 looks north 55° high: two valid roots, the asin root is
 the wrong one (40.35 N, 161.04 W, 7 784 km away with the true attitude) — the LOC-10 situation. Photo 6 is near the
-"fold" of the two roots: with the true attitude they are 157 km apart (both within 5° of the prior → no position);
+"fold" of the two roots: with the true attitude they are 159 km apart (both within 5° of the prior → no position);
 with the IMU's attitude there is no root at all.
 
 ## Alignment
@@ -76,7 +79,7 @@ Badges: **Stargazer** = checks 1–6 (session 1), **Star navigator** = all 15.
 | Item | Value (check tolerance) | Where it comes from |
 |---|---|---|
 | PREDICT_SIDEREAL (ungraded) | a little earlier (3 min 56 s) | §1 |
-| N_VOTE_STARS | 904 (exact; 903/905 or < 100 get the "≤ 4.5" message) | `(cat["vmag"] <= 4.5).sum()` |
+| N_VOTE_STARS | 925 (exact; 924/926 or < 100 get the "≤ 4.5" message) | `(cat["vmag"] <= 4.5).sum()` |
 | TRANSIT_SHIFT_S | 235.9 (± 0.3; the negative gets its own message) | `clock`: 20 Oct 15:58:46.44 UTC, 21 Oct 15:54:50.53 UTC |
 | VEGA_SHIFT_ARCMIN | 10.62 (± 0.03) | `clock` (Polaris 9.12′, Sirius 17.30′) |
 | VEGA_SHIFT_KM | 19.67 (± 0.15 around the student's arcmin × 1.852; × 111.2 gets a message) | |
@@ -84,37 +87,41 @@ Badges: **Stargazer** = checks 1–6 (session 1), **Star navigator** = all 15.
 | ACHERNAR_ALT_DEG / AZ | 55.96 / 144.30 (± 0.02; swapped → message) | `sky capetown` (GMST 329.291°; Polaris −33.60°, below the horizon) |
 | PREDICT_POLARIS (ungraded) | Reykjavik: the p² term grows with tan φ | |
 | NAIVE_MAX_ERR_KM | 69.52 (± 0.1) | `polaris`: Reykjavik 69.50, London 69.47, Sousse 69.52, Singapore 69.42 |
-| CORRECTED_MAX_ERR_KM | 0.781 (± 0.005) | Reykjavik 0.781, London 0.475, Sousse 0.274, Singapore 0.009 |
-| PREDICT_DETECT (ungraded) | about 120 of 125; 0 hot pixels | |
-| N_STARS_01 | 134 with the reference; the check compares with the student's OWN detector (exact) | `detect`: 122 of the 125 stars ≤ 5.0 found, RMS 0.174 px, worst 0.483 px, 0 "not stars" |
-| CENTROID_RMS_PX | 0.174 with the reference; checked against the student's own detector (± 0.002), must be < 0.3 | |
-| SOLVE_RMS_ARCSEC | 31.1 (10–60 and ± 8 of 31.1) | `solve`: 134 matched, centre ra 16.9916°, dec +44.3995° (of date) |
+| CORRECTED_MAX_ERR_KM | 0.782 (± 0.005) | Reykjavik 0.782, London 0.476, Sousse 0.274, Singapore 0.009 |
+| PREDICT_DETECT (ungraded) | about 120 of 121; 0 hot pixels | |
+| N_STARS_01 | 132 with the reference; the check compares with the student's OWN detector (exact) | `detect`: 119 of the 121 stars ≤ 5.0 found, RMS 0.173 px, worst 0.487 px, 0 "not stars"; `detect 2`: 97 of 99, 13 of 13 in the glowing corner, 0 not stars, RMS 0.137 px |
+| CENTROID_RMS_PX | 0.173 with the reference; checked against the student's own detector (± 0.002), must be < 0.3 | |
+| SOLVE_RMS_ARCSEC | 30.0 (10–60 and ± 8 of 30.0) | `solve`: 132 matched, centre ra 16.9914°, dec +44.3998° (of date) |
 | PREDICT_PIXEL (ungraded) | more: 3.10′ = atan(1/1108.5) at the centre; 60°/1280 = 2.81′ is the average (edge pixels cover less) | |
 | PIXEL_ARCMIN | 3.10 (± 0.01; 2.81 → message "the average") | atan(1/1108.5); × 1.852 = 5.74 km |
 | TRACE_PSI_DEG | 29.19 (± 0.03; 60.81 = atan2 arguments swapped → message) | p = sin 37.13° = 0.6036, q = cos 37.13° · cos 295.02° = 0.3373 |
-| MEDIAN_FIX_KM | 116.9 (± 2) | `fix`: 1 116.9, 2 30.2, 3 121.5, 4 49.5, 5 147.4 km, 6 no position (0 roots) |
+| MEDIAN_FIX_KM | 116.9 (± 2) | `fix`: 1 116.9, 2 30.2, 3 121.5, 4 49.6, 5 147.4 km, 6 no position (0 roots) |
 | NO_FIX_PHOTO | 6 | |
-| PERFECT_MAX_KM | 0.2 (accepted 0 < x < 1) | `fix truth`: 0.1, 0.1, 0.2, 0.1, 0.1; photo 6 no position (2 roots 157 km apart, both near the prior) |
+| PERFECT_MAX_KM | 0.2 (accepted 0 < x < 1) | `fix truth`: 0.1, 0.1, 0.2, 0.0, 0.1; photo 6 no position (2 roots 159 km apart, both near the prior) |
 | PREDICT_MAGNETIC (ungraded) | rule: 3.3° × cos 66° × 111.2 ≈ 150 km | |
 | MAGNETIC_MOVE_01_KM | 197.4 (± 3; swapped with the error → message) | `fix magnetic`, column "moved from `fix`": 1 197.4, 2 152.4 km. 197.4 ≈ 1.30 × 150: the heading stretch of §7's box |
 | MAGNETIC_ERR_01_KM | 313.7 (± 3) | `fix magnetic`: 1 313.7, 2 148.5; 3, 4, 5, 6 no position (roots beyond 5° of the prior) |
-| ONE_ROOT_ERR_03_KM | 7 834.3 (± 20) | `fix oneroot`: photo 3 takes the asin root (39.88 N, 163.78 W) |
+| ONE_ROOT_ERR_03_KM | 7 834.4 (± 20) | `fix oneroot`: photo 3 takes the asin root (39.88 N, 163.78 W) |
 | PREDICT_BUDGET (ungraded) | any; measured RMS is ABOVE the formula, median below | |
 | FORMULA_KM | 82.6 (± 0.2) | `error_km(0.424, 1.5, 66.00)` |
-| MC_RMS_KM / MC_MEDIAN_KM | 103.1 / 74.8 (± 1.5; swapped → message) | `budget` (seed 26, 2 000 draws): p90 164.6, max 369.8, 0 no-fix |
+| MC_RMS_KM / MC_MEDIAN_KM | 103.1 / 74.9 (± 1.5; swapped → message) | `budget` (seed 26, 2 000 draws): p90 164.5, max 369.8, 0 no-fix |
 | MOUNT_BIAS_MAX_DEG | 0.495 (± 0.005; the lab asks for 3 decimals) | 55 / 111.195 |
 | report.md | headings, 150–420 words, a km value 110–125 (median), "0.x km" (perfect), "111 km" | |
 
-Why 82.6 km (rule) and 103.1 km (simulation) differ (EXPLAIN_BUDGET): the heading part is stretched by
-cos φ / (cos δ · |cos H|) = 1.30 for photo 1 (H = −29.5° = the boresight's hour angle), the tilt part by about 1.05:
-111.2 × √((0.424·1.05)² + (0.61·1.30)²) = 101 km. Roll on the 20°-leaning axis (cos 20°) slightly *lowers* the
-simulation. Median < RMS: a 2-D error's median is about 0.83 × RMS even for Gaussian errors, and photo 1's tail makes
-it 0.73. Photo 6 sits at the fold (H = −91°, stretch ×56): `budget 6` gives 1 858 / 2 000 draws with no position.
+Why 82.6 km (rule) and 103.1 km (simulation) differ (EXPLAIN_BUDGET): every SIDEWAYS error of the camera direction
+(heading · cos alt, and the sideways part of the tilt) is stretched by cos φ / (cos δ · |cos H|) = 1.30 for photo 1
+(H = −29.5° = the boresight's hour angle; a sideways tilt moves the fix ×1.19 = sin 66° × 1.30, strong reviewer r2);
+the up-down part is not. Heading term only: 111.2 × √(0.42² + (0.61·1.30)²) ≈ 100 km; tilt split 0.30 up-down /
+0.30 sideways and both sideways parts stretched: 111.2 × √(0.30² + (0.30² + 0.61²)·1.30²) ≈ 104 km; simulated 103.1.
+Photo 2 (H = +26°, ×1.01) is the counter-example: its magnetic move (152 km) is about the rule (155 km). Median < RMS:
+a round 2-D Gaussian error has median ≈ 0.83 × RMS; photo 1's spread is elongated (sideways σ ≈ 0.85° vs 0.32°
+along), which gives 0.74 for a Gaussian and 0.726 simulated (74.9 / 103.1): elongation, not a tail. Photo 6 sits at the fold (H = −91°, stretch ×56): `budget 6` gives 1 858 / 2 000 draws with no position.
 Photo 4 (×1.60, `budget 4`: RMS 125.8 km vs rule 84.8) is stretched more than photo 3 (×1.37, 140.8 vs 106.7), so
 "near the pole" is not the reason; |cos H| is. The single-root (asin) formula is right exactly when |H| < 90°
 (checked by the expert reviewer on 19 946 random cases; photo 3 has H = 180°, Capella in §6 H = −123°). NAVERA's
-document says "southern half of the sky" in NAVERA's own formulation; the lesson quotes it as NAVERA's statement and
-gives the |H| condition for ours. Accept either reason (stretch / approximation of the rule) in the rubric.
+document says "southern half of the sky"; its pre-fix formulation is not documented, and in the R sin(φ+ψ) form (the
+lesson's) the asin root fails for |H| > 90° — mostly the northern sky for a northern observer. The lesson quotes the
+sentence as NAVERA's and gives the exact |H| condition; do not defend "southern half" in class. Accept either reason (stretch / approximation of the rule) in the rubric.
 
 Domain note (expert, round 1): the lab's one-direction method is NAVERA's. The full-rotation ("zenith") method —
 `plate_solve`'s `R_eq_cam` + the IMU's vertical, φ = δ and λ = α − GMST of the zenith — is heading-free and unique:
@@ -132,7 +139,7 @@ camera and a better attitude source).
 | EXPLAIN_CENTROID | weighted mean gives sub-pixel centres (1 px ≈ 5.7 km); size limits refuse hot pixels/trail; local background keeps stars in the glow | two of three | "OpenCV finds stars" |
 | EXPLAIN_ROOTS | sin takes each value twice (x, 180° − x); asin only returns [−90°, 90°], photo 3's φ + ψ > 90°; photo 6's roots too close (or none) → no position | two of three | "it is ambiguous" |
 | EXPLAIN_NORTH | forgotten D = a heading error, × cos alt × 111 km (moved 197 km ≈ 1.3 × the rule's 150), the error adds to the IMU's own heading error; large D (Tromsø, Cape Town, Quito) pushes the roots beyond 5° of the prior → refused | two | "magnetic is wrong" |
-| EXPLAIN_BUDGET | heading term dominates (1.5° × cos 66° = 0.61° vs 0.42° tilt); median ≈ 0.83 × RMS even for Gaussian, a tail widens it; the rule is approximate (heading stretch cos φ / (cos δ |cos H|) = 1.3) | two | numbers only |
+| EXPLAIN_BUDGET | heading term dominates (1.5° × cos 66° = 0.61° vs 0.42° tilt); median ≈ 0.83 × RMS for round Gaussian errors, elongation (or a tail) widens it; the rule is approximate (sideways stretch cos φ / (cos δ |cos H|) = 1.3) | two | numbers only |
 
 ## Mutants run (wrong-but-plausible code; every one fails with its own message)
 
@@ -199,7 +206,25 @@ the expert's stable reverse sort (equivalent code, passes correctly):
   daylight note on Vega's transit, 24 test cases (grey sky, no root, one valid root across 180°, 64° N box, named
   traps for minutes, unwrapped azimuth, cos of degrees).
 
-## Difficulties expected (weak-student test round 1 done; see above)
+## Round 2 reviews (strong 9/9/10/10, weak 9/10/9, expert 9/9) — what changed
+
+- Catalogue switched to HYG v4.1 (CC BY-SA 4.0); photos re-rendered with the same places, times, attitudes and noise
+  seed (the IMU error draws are identical). Lab numbers that moved: N_VOTE_STARS 904 → 925, N_STARS_01 134 → 132,
+  CENTROID_RMS 0.174 → 0.173, SOLVE_RMS 31.1″ → 30.0″, CORRECTED_MAX 0.781 → 0.782, photo 4 fix 49.5 → 49.6, ONE_ROOT
+  7 834.3 → 7 834.4, MC median 74.8 → 74.9; Capella worked example α 79.6672° → 79.6670° (H 236.6908°, a 19.0163°,
+  A 37.8626°; roots and 8 808 km unchanged). All others unchanged.
+- φ₂ wrap: lesson §6 sentence + ✏️ item 4 (290° = −70°), runner test case both_roots(55, 180, 130, −75, 10) with a
+  named trap, a specific check message ("the second root is 290.0° before wrapping …"); the |φ| filter messages add
+  "if φ is still in radians, compare with math.pi / 2".
+- §7 box: every sideways error is stretched (×1.19 for photo 1's sideways tilt), photo 2 ×1.01 as counter-example,
+  ≈ 100 km (heading only) / ≈ 104 km (both sideways parts) vs 103 simulated. Median/RMS by elongation (lesson,
+  rubric, hint, keywords, reference answer).
+- Step 2: TRANSIT_SHIFT_S predicted before `clock`; EXPLAIN_SIDEREAL also asks why Polaris' ra moved 8.8° but the
+  star only 9.1′ (graded keyword group: cos δ / pole). Brief and TEACHER: "southern half" quoted as NAVERA's sentence,
+  the exact |H| condition given. Birds: NAVERA matches a pattern in one photo. Refraction and whole-rotation
+  Going-further items reworded (zenith.py recipe). Figures: cold-open label, two-roots labels.
+
+## Difficulties expected (weak-student test rounds 1–2 done; see above)
 
 - `detect_stars` is the first OpenCV function the students write from scratch with several steps: the uint8
   wrap-around (`img - bg`), label 0 (background), `np.bincount` weights. The 🧰 box and hints 1–4 carry it; a loop
@@ -217,7 +242,7 @@ the expert's stable reverse sort (equivalent code, passes correctly):
 - Session 2 (3 h): 20 min §4 (draw a 5 × 5 star on the board, plain vs weighted centre), Step 5; 10 min §5 demo
   `solve` on the projector; 30 min §6 two-roots figure, students trace ψ; Steps 7–8; 15 min §7, Step 9; memo as
   homework.
-- Fast students: Going further (unweighted centre, near-pole budget, refraction). Struggling: give hint 3 of Step 5
+- Fast students: Going further (unweighted centre, the fold with budget 3/4/6, refraction, the whole rotation, the stretch derivation). Struggling: give hint 3 of Step 5
   as a worked snippet; pair them for TODO 7 with the lesson's table open.
 
 ## NAVERA facts quoted (words and numbers only; from base/docs, VALIDATION_STATUS 2026-10-03, backlog)

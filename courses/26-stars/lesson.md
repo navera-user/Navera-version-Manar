@@ -7,8 +7,9 @@
 > from photo to position. Its validation document (2026-10-03) and engineering backlog (items LOC-10 and
 > CN-1) list what that run and the code reviews before it found. The latitude formula kept **one** root of
 > an equation that has **two**: for a whole half of the camera's directions it gave positions **hundreds to
-> thousands of kilometres** off (NAVERA's document says "any camera facing the southern half of the sky", in
-> NAVERA's own formulation; §6 finds exactly which half it is in yours). The plate solver's fit was anchored near an image edge and came out about
+> thousands of kilometres** off (NAVERA's document says "any camera facing the southern half of the sky"; §6
+> finds the exact condition, and it is not north or south: it is the hour angle of the camera's direction). The
+> plate solver's fit was anchored near an image edge and came out about
 > **1° off at the centre: 111 km**. The star coordinates were not corrected for the slow turn of the Earth's
 > axis: about **0.4° in 2026, tens of km**. All three were fixed. The next day, a real sky photo was
 > identified **1.7′ (arcminutes)** from an independent solution.
@@ -114,8 +115,8 @@ positive**), the **local** sidereal time is LST = GMST + λ, and a star's **hour
 it has turned west of your meridian (0° = due south of the pole, at its highest).
 
 **Worked example: London (51.50° N, 0.12° W), 7 October 2026, 20:00 UTC.** JD = **2 461 321.333333**,
-GMST = **316.4778°**, LST = 316.4778 + (−0.12) = **316.3578°**. Capella (α = 79.6672° of date) has
-H = 316.3578 − 79.6672 = **236.6906°**: it is still in the east, rising.
+GMST = **316.4778°**, LST = 316.4778 + (−0.12) = **316.3578°**. Capella (α = 79.6670° of date) has
+H = 316.3578 − 79.6670 = **236.6908°**: it is still in the east, rising.
 
 <details><summary>The worked numbers, step by step (open them to check your own code)</summary>
 
@@ -157,7 +158,7 @@ sin a = sin δ · sin φ + cos δ · cos φ · cos H
 A     = atan2( −cos δ · sin H ,  sin δ · cos φ − cos δ · sin φ · cos H )      then mod 360°
 ```
 
-**Worked example: Capella from London**, same moment (δ = 46.0254° of date, φ = 51.50°, H = 236.6906°):
+**Worked example: Capella from London**, same moment (δ = 46.0254° of date, φ = 51.50°, H = 236.6908°):
 **a = 19.02°, A = 37.86°**. Capella is 19° up in the north-east: rising, as its hour angle said. (Astropy,
 the astronomers' Python library, agrees within 0.01°; the difference is two small effects we leave out,
 nutation and aberration, each about 20″ at most.)
@@ -319,8 +320,8 @@ R·cos ψ = p and R·sin ψ = q: the point (p, q) at distance R and angle ψ, so
 </details>
 
 So sin(φ + ψ) = sin δ / R, and a sine takes each value **twice** — or **never**, if |sin δ / R| > 1:
-φ + ψ = x or 180° − x, with x = asin(sin δ / R). Two latitudes, φ₁ = x − ψ and φ₂ = 180° − x − ψ (keep those
-in [−90°, 90°]). If |sin δ| > R there is no root at all: no latitude puts that direction at that altitude and
+φ + ψ = x or 180° − x, with x = asin(sin δ / R). Two latitudes, φ₁ = x − ψ and φ₂ = 180° − x − ψ: wrap each
+into [−180°, 180°) **first** (290° is −70°), then keep those in [−90°, 90°]. If |sin δ| > R there is no root at all: no latitude puts that direction at that altitude and
 azimuth. Near the top of the sine curve the two roots are close together, and a small attitude error can lift
 the line sin δ above the curve: both roots vanish (lab photo 6). For each root,
 the hour angle comes from the other two triangle equations, and then the longitude:
@@ -332,8 +333,8 @@ H = atan2( −cos a · sin A ,  sin a · cos φ − cos a · sin φ · cos A )
 
 ![The left side of the altitude equation as a function of the latitude: a sine curve meets the line sin δ twice; a line above the curve's top meets it never](assets/two_roots.svg)
 
-**Worked example: pretend the camera's centre is on Capella** (seen from London at a = 19.0162°, A =
-37.8624°; α = 79.6672°, δ = 46.0254°, GMST 316.4778°). p = 0.32584, q = 0.74640, R = 0.81442,
+**Worked example: pretend the camera's centre is on Capella** (seen from London at a = 19.0163°, A =
+37.8626°; α = 79.6670°, δ = 46.0254°, GMST 316.4778°). p = 0.32584, q = 0.74640, R = 0.81442,
 ψ = 66.42°; sin δ / R = 0.71965 / 0.81442 = 0.88364, so x = 62.08°:
 
 | root | φ | H | λ = α + H − GMST |
@@ -357,12 +358,16 @@ both, or none → no position. No position is honest; a wrong one is dangerous.
 > 2. The two roots are 300 km apart and your prior is "the middle of the operating area", 200 km from each.
 >    What does the rule return, and why is that right?
 > 3. sin δ = 0.95 and R = 0.93. How many roots?
+> 4. A camera looks due south (A = 180°), 55° high: ψ = −35°. With x = −75°, what is φ₂, and is it a valid
+>    latitude?
 
 <details><summary>Answer</summary>
 1. φ = 35° N, λ = 120 − 100 = 20° E.<br>
 2. Both roots are within 5°: no position. The prior cannot tell them apart, so any choice would be a coin
 toss with a 300 km error half of the time.<br>
-3. None: sin(φ + ψ) would have to be 1.02. The fix reports no position.
+3. None: sin(φ + ψ) would have to be 1.02. The fix reports no position.<br>
+4. φ₂ = 180 + 75 + 35 = 290°, i.e. −70° once wrapped: valid (a camera looking south from the far south). Test
+|φ| ≤ 90° before wrapping and you throw away a good root.
 </details>
 
 **A better way, which this lab does not use.** The plate solve gives more than the centre's direction: it gives
@@ -410,10 +415,14 @@ angle of the camera's direction).
 - Near **|H| = 90°** the slope is zero: the sine curve of §6's figure just touches the line sin δ, the two
   roots merge, and every error is multiplied by about 1/|cos H|. Photo 6 (H ≈ −91°) sits there: about ×55, or no root
   at all. It is not a matter of being near the pole.
-- Elsewhere, the heading part is still stretched by about **cos φ / (cos δ · |cos H|)**: ×1.30 for photo 1
-  (H = −29.5°). Put that into the rule: 111.2 × √(0.42² + (1.5 · cos 66° · 1.30)²) ≈ 101 km, the simulation's
-  RMS. Photo 4 (Cape Town, ×1.60) is stretched more than photo 3 (Tromsø, ×1.37), although photo 3 looks
-  nearer the pole.
+- Elsewhere, every **sideways** error of the camera's direction (across its azimuth: the heading part,
+  heading · cos alt, and the part of the tilt that moves the camera sideways) is stretched by about
+  **cos φ / (cos δ · |cos H|)**; the up-down part is not. ×1.30 for photo 1 (H = −29.5°; a sideways tilt there
+  moves the fix ×1.19 = sin 66° × 1.30), but ×1.01 for photo 2 (H = +26°): its magnetic move, 152 km, is about
+  the rule's 155 km. For photo 1, stretching only the heading term gives 111.2 × √(0.42² + (1.5 · cos 66° · 1.30)²) ≈ 100 km;
+  splitting the 0.42° tilt into 0.30° up-down and 0.30° sideways and stretching the sideways part too gives
+  111.2 × √(0.30² + (0.30² + (1.5 · cos 66°)²) · 1.30²) ≈ 104 km. The simulation says 103 km. Photo 4 (Cape
+  Town, ×1.60) is stretched more than photo 3 (Tromsø, ×1.37), although photo 3 looks nearer the pole.
 - And the rule of §6: the asin root is the right one exactly when |H| < 90°. Photo 3 looks at H = 180°: its asin
   root is the wrong one.
 </details>
@@ -428,8 +437,8 @@ angle of the camera's direction).
 > - "The magnetic heading is fine for the stars." Every degree of declination you forget is a heading
 >   error: × cos(alt) × 111 km.
 > - "The mean error is the typical error." A distance error is never negative and the RMS squares the big
->   ones: even for Gaussian errors the median is about 0.83 × the RMS, and a long tail widens the gap. Quote
->   which one you mean.
+>   ones: for round Gaussian errors the median is about 0.83 × the RMS; an error spread mostly in one direction
+>   (an elongated ellipse) or a long tail widens the gap. Quote which one you mean.
 
 ## In NAVERA
 
@@ -462,7 +471,8 @@ in words:
 [navera_lite/stars.py](file:./navera_lite/stars.py) is NAVERA Lite's star part. You write `julian_date`,
 `gmst_deg`, `altaz`, `lat_from_polaris`, `detect_stars`, `boresight_altaz`, `both_roots`, `choose` and
 `error_km`. Given: the catalogue reader, `precess`, the vector helpers and `plate_solve`. The catalogue is
-a public one (a subset of the Yale Bright Star Catalogue, `/data/academy/26-stars/bright_stars.csv`); the
+a public one: a subset of the HYG star database v4.1 (Hipparcos, Yale and Gliese catalogues combined; by
+D. Nash / astronexus, licence CC BY-SA 4.0), `/data/academy/26-stars/bright_stars.csv`; the
 IMU part (`q_true_north`, `declination_deg`) is your mission 17, shipped finished. Mission 29's arbiter will
 take the star fix as its last source.
 
@@ -471,8 +481,9 @@ take the star fix as its last source.
 Many songbirds migrate at night. Around 1970 Stephen Emlen put young **indigo buntings** under a planetarium
 sky. They did not follow one star: they **learned** which part of the sky turns around a fixed point and took
 that point as north. Birds raised under a planetarium sky that turned around Betelgeuse later took Betelgeuse
-for north: in autumn they tried to leave "south", away from it. Like NAVERA, they read the sky's rotation, not a single star; unlike NAVERA, they use it for a
-**direction** only. A position from the stars needs a precise clock and a precise "up", which no bird is
+for north: in autumn they tried to leave "south", away from it. Like NAVERA, they use the pattern of many
+stars, not a single star; but they learn it from the sky's rotation over hours, where NAVERA identifies it in
+one photo, and they use it for a **direction** only. A position from the stars needs a precise clock and a precise "up", which no bird is
 known to have.
 
 ## Summary

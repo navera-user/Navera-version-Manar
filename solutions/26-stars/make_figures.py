@@ -72,7 +72,9 @@ def save(name, w, h, body):
 JD = S.julian_date(2026, 10, 7, 20)
 GST = S.gmst_deg(JD)
 LAT, LON = 51.50, -0.12                                      # London
-CAP_RA, CAP_DEC = S.precess(79.1725, 45.99806, JD)            # Capella, of date
+_CAT = S.load_catalogue(os.path.join(ACADEMY, "datasets", "26-stars", "bright_stars.csv"))
+_I = S.find_star(_CAT, "Capella")
+CAP_RA, CAP_DEC = S.precess(_CAT["ra_deg"][_I], _CAT["dec_deg"][_I], JD)   # Capella, of date
 CAP_ALT, CAP_AZ = S.altaz(CAP_RA, CAP_DEC, LAT, LON, GST)
 ROOTS = S.both_roots(round(CAP_ALT, 4), round(CAP_AZ, 4), CAP_RA, CAP_DEC, GST)
 
@@ -107,7 +109,7 @@ def cold_open():
     b.append(circle(X(lo2), Y(la2), 6, GREEN, GREEN))
     b.append(text(X(lo2) + 10, Y(la2) - 8, "root 2: London (true)", 12, GREEN, "start", "bold"))
     b.append(circle(X(lo1), Y(la1), 6, RED, RED))
-    b.append(text(X(lo1) - 12, Y(la1) - 14, f"root 1 (asin): {la1:.1f}°, {lo1:.1f}° — {d:,.0f} km away".replace(",", " "),
+    b.append(text(X(lo1) - 12, Y(la1) + 18, f"root 1 (asin): {abs(la1):.1f}° S, {lo1:.1f}° E — {d:,.0f} km away".replace(",", " "),
                   12, RED, "end", "bold"))
     b.append(text(x0 + W / 2, 28, "the same measurement fits two places on Earth", 13, INK, weight="bold"))
     save("cold_open.svg", w, h, "".join(b))
@@ -272,7 +274,7 @@ def two_roots():
     b.append(text(330, 340, "dashed red: a line above the top (|sin δ| > R) meets the curve nowhere: no root at all", 11, GREY))
     for (la, lo), col, lab in ((ROOTS[0], RED, "root 1 (asin)"), (ROOTS[1], GREEN, "root 2")):
         b.append(circle(X(la), Y(sd), 6, col, col))
-        b.append(text(X(la), Y(sd) + 22, f"{lab}: {la:.2f}°", 12, col, weight="bold"))
+        b.append(text(X(la), Y(sd) + 36, f"{lab}: {la:.2f}°", 12, col, weight="bold"))
     b.append(text(330, 306, f"Capella from London: a = {a:.2f}°, A = {A:.2f}° → R = {Rr:.4f}, ψ = {psi:.2f}°", 12, GREY))
     save("two_roots.svg", w, h, "".join(b))
 

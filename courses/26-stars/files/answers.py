@@ -11,10 +11,12 @@ PREDICT_SIDEREAL = ""       # a star is due south at 21:00 tonight. Tomorrow: 21
 N_VOTE_STARS = 0            # how many catalogue stars have vmag ≤ 4.5?
 
 # ---- Step 2: the clock of the sky (python3 run_stars.py clock) ----------------------------------------------
-TRANSIT_SHIFT_S = 0.0       # by how many seconds does Vega's transit come earlier the next night?
+TRANSIT_SHIFT_S = 0.0       # BEFORE running clock, from lesson §1: by how many seconds does Vega's transit come earlier
+                            # the next night? (the run confirms it)
 VEGA_SHIFT_ARCMIN = 0.0     # how far precession moved Vega since J2000 (arcminutes, ′)
 VEGA_SHIFT_KM = 0.0         # that angle as a distance on the Earth (km)
-EXPLAIN_SIDEREAL = ""       # why does the sky's clock gain on yours, and why does it matter for a star fix?
+EXPLAIN_SIDEREAL = ""       # why does the sky's clock gain on yours, and why does it matter for a star fix? And why
+                            # did Polaris' ra move 8.8° while Polaris moved only 9.1′ on the sky?
 
 # ---- Step 3: the sky over Cape Town (python3 run_stars.py sky capetown) --------------------------------------
 PREDICT_ACHERNAR = ""       # by hand, before running: Achernar's highest altitude seen from Cape Town (90° − |φ − δ|,

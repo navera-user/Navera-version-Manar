@@ -178,7 +178,8 @@ def test():
                 return False, f"expected a list of (lat, lon) tuples, got {v!r}"
             if any(abs(g[0]) > 90.0 + 1e-9 for g in got):
                 return False, (f"a root has latitude beyond ±90° {[(round(a, 2), round(b, 2)) for a, b in got]}: keep only "
-                               "the valid roots, |φ| ≤ 90° (lesson §6)")
+                               "the valid roots, |φ| ≤ 90° (lesson §6) — if φ is still in radians there, compare with "
+                               "math.pi / 2 or convert first")
             for bad, m in msgs:
                 if len(got) == len(bad) and all(near(g[0], b[0], 0.02) and near(g[1], b[1], 0.02) for g, b in zip(got, bad)):
                     return False, m
@@ -307,6 +308,11 @@ def test():
         (7, "both_roots", "both_roots: one valid root only (the other latitude is beyond 90°), across the 180° meridian",
          lambda: st.both_roots(70.0, 95.0, 89.6092315, 7.6903777, 250.0),
          roots_chk([(10.0, 179.5)], (([(10.0, -180.5)], "the longitude is not wrapped into [−180, 180)"),))),
+        (7, "both_roots", "both_roots: a camera looking south, 55° high, from the far south (φ₂ comes out as 290° = −70°)",
+         lambda: st.both_roots(55.0, 180.0, 130.0, -75.0, 10.0),
+         roots_chk([(-40.0, 120.0), (-70.0, -60.0)],
+                   (([(-40.0, 120.0)], "the second root came out as 290°: wrap φ into [−180°, 180°) BEFORE the "
+                                       "|φ| ≤ 90° test (290° is −70°, a valid latitude; lesson §6)"),))),
         (7, "both_roots", "both_roots: a direction that no latitude can give (|sin δ| > R)",
          lambda: st.both_roots(20.0, 90.0, 10.0, 80.0, 0.0), roots_chk([])),
         (8, "choose", "choose: max_sep_deg 1.0 (docstring)",
@@ -400,7 +406,7 @@ def clock():
     d = times[1] - times[0]
     print(f"  one day later the transit comes {abs(d):.1f} s {'earlier' if d < 0 else 'later'}")
     print("  (Sousse is UTC+1: these transits are in the afternoon, in daylight. The sky's clock does not care; at night")
-    print("   Vega is still up, west of the meridian — you will see it 37° high at 20:30 UTC in Step 3's docstring.)")
+    print("   Vega is still up, west of the meridian — you will see it 37° high at 20:30 UTC in altaz's docstring, TODO 3.)")
     jd = jd_of((2026, 10, 20, 20, 30, 0))
     print("\nPrecession, J2000 → 20 October 2026 (the given precess()):")
     for name in ("Vega", "Polaris", "Sirius"):
@@ -608,7 +614,7 @@ def solve(args):
     for m, nm, d in sorted(names)[:25]:
         u, v = pts[d]
         ax.plot(u, v, "o", mfc="none", mec="#2e9e4f", ms=9)
-        if not nm[:1].isdigit() and not nm.startswith("HR"):
+        if not nm[:1].isdigit() and not nm.startswith(("HR", "HIP", "HYG")):
             ax.annotate(nm, (u, v), color="#7fd99a", fontsize=7, xytext=(6, -6), textcoords="offset points")
     ax.plot(K[0, 2], K[1, 2], "+", color="#d64545", ms=18)
     ax.set_title(f"photo {n}: identified stars; + = image centre → ra {sol['ra_deg']:.2f}°, dec {sol['dec_deg']:+.2f}°",
@@ -636,7 +642,8 @@ def roots_of(v):
     except (TypeError, ValueError, IndexError):
         sys.exit(f"both_roots() must return a list of (lat, lon) tuples, but it returned {v!r}")
     if any(abs(r[0]) > 90.0 + 1e-9 for r in roots):
-        sys.exit(f"both_roots() returned a root with |latitude| > 90°: {roots} — keep only the valid roots (lesson §6)")
+        sys.exit(f"both_roots() returned a root with |latitude| > 90°: {roots} — keep only the valid roots (lesson §6); "
+                 "if φ is still in radians there, compare with math.pi / 2 or convert first")
     return roots
 
 

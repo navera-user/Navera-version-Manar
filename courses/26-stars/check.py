@@ -229,7 +229,7 @@ def _():
 @c.test("Steps 1–2: the catalogue, the sidereal day and precession — numbers and explanation",
         hint="N_VOTE_STARS: count cat['vmag'] <= 4.5. python3 run_stars.py clock: the transit shift (s, as a positive "
              "number) and Vega's precession (′); 1′ = 1.852 km. EXPLAIN_SIDEREAL: 361° per day, 3 min 56 s, and a "
-             "clock error turns into a longitude error.")
+             "clock error turns into a longitude error; Polaris: 1° of ra is cos δ degrees on the sky.")
 def _():
     pred, n, sh, arc, km, why = answers("PREDICT_SIDEREAL", "N_VOTE_STARS", "TRANSIT_SHIFT_S", "VEGA_SHIFT_ARCMIN",
                                         "VEGA_SHIFT_KM", "EXPLAIN_SIDEREAL")
@@ -253,7 +253,10 @@ def _():
               ((r"361", r"orbit", r"around the sun", r"sun", r"365", r"23 ?h", r"sidereal day", r"one degree", r"1°",
                 r"extra"), 'why the sky gains (e.g. "the Earth also moves on its orbit, so it turns 361° per day")'),
               ((r"clock", r"time", r"second", r"longitude", r"15", r"position", r"east", r"west", r"km"),
-               'why it matters for a fix (e.g. "the time decides the longitude: a clock error moves the fix east or west")'))
+               'why it matters for a fix (e.g. "the time decides the longitude: a clock error moves the fix east or west")'),
+              ((r"cos", r"pole", r"declination", r"δ", r"dec\b", r"89", r"converg", r"meridians", r"small circle"),
+               'why Polaris\' right ascension moved 8.8° but Polaris only 9.1′ (e.g. "near the pole one degree of ra is '
+               'only cos δ degrees on the sky")'))
 
 
 @c.test("Steps 3–4: the sky over Cape Town and latitude from Polaris — numbers, prediction, explanation",
@@ -465,12 +468,20 @@ def _():
             raise CheckFailed(f"both_roots should return a list of (lat, lon) tuples, got {got!r}")
         want = [tuple(w) for w in k["want"]]
         if any(abs(r[0]) > 90.0 + 1e-9 for r in g):
-            raise CheckFailed("a root has |latitude| > 90°: keep only the valid roots (|φ| ≤ 90°)")
+            raise CheckFailed("a root has |latitude| > 90°: keep only the valid roots (|φ| ≤ 90°) — if φ is still in "
+                              "radians there, compare with math.pi / 2 or convert first")
         if any(not -180.0 <= r[1] < 180.0 for r in g):
             same = len(g) == len(want) and all(abs(r[0] - w[0]) < 1e-6 and abs(wrap180(r[1] - w[1])) < 1e-6
                                                for r, w in zip(g, want))
             raise CheckFailed("a longitude is outside [−180, 180)" + (": wrap it, (lon + 180) % 360 − 180" if same else ""))
         if len(want) == 2 and len(g) == 1 and abs(g[0][0] - want[0][0]) < 1e-6:
+            a_, A_, _, d_, _ = k["args"]
+            p_, q_ = math.sin(math.radians(a_)), math.cos(math.radians(a_)) * math.cos(math.radians(A_))
+            raw2 = (180.0 - math.degrees(math.asin(math.sin(math.radians(d_)) / math.hypot(p_, q_)))
+                    - math.degrees(math.atan2(q_, p_)))
+            if abs(raw2) > 180.0:
+                raise CheckFailed(f"the second root is {raw2:.1f}° before wrapping, i.e. {wrap180(raw2):.1f}°: wrap φ into "
+                                  "[−180°, 180°) BEFORE the |φ| ≤ 90° test (lesson §6)")
             raise CheckFailed("only the asin root: the altitude equation has TWO solutions, x and 180° − x (lesson §6)")
         if len(want) == 2 and len(g) == 2 and all(abs(r[0] - w[0]) < 1e-6 for r, w in zip(g[::-1], want)):
             raise CheckFailed("the roots are in the other order: the asin root (x − ψ) first")
@@ -622,7 +633,7 @@ def _():
 
 @c.test("Step 9: the error budget — formula, simulation, the mounting bias — and why they differ",
         hint="python3 run_stars.py budget: your formula, the RMS and the median. MOUNT_BIAS_MAX_DEG: 55 km / 111.2 km per "
-             "degree. EXPLAIN_BUDGET: the heading term, the long tail, the sideways stretch.")
+             "degree. EXPLAIN_BUDGET: the heading term, the elongated spread, the sideways stretch.")
 def _():
     pred, fk, rms, med, mount, why = answers("PREDICT_BUDGET", "FORMULA_KM", "MC_RMS_KM", "MC_MEDIAN_KM",
                                              "MOUNT_BIAS_MAX_DEG", "EXPLAIN_BUDGET")
@@ -638,8 +649,10 @@ def _():
     explained("EXPLAIN_BUDGET", why,
               ((r"heading", r"1\.5", r"cos", r"azimuth", r"yaw"), 'which term dominates (e.g. "the 1.5° heading error, '
                'even × cos 66°")'),
-              ((r"tail", r"outlier", r"large error", r"big error", r"square", r"skew", r"few", r"rare", r"extreme"),
-               'why the median is below the RMS (e.g. "a few large errors pull the RMS up")'),
+              ((r"tail", r"outlier", r"large error", r"big error", r"square", r"skew", r"few", r"rare", r"extreme",
+                r"elongat", r"ellips", r"one direction", r"spread", r"0\.83"),
+               'why the median is below the RMS (e.g. "the error spreads mostly in one direction, and the RMS squares the '
+               'big ones")'),
               ((r"pole", r"sideways", r"longitude", r"cos.*dec", r"stretch", r"approximat", r"rule of thumb", r"hour angle",
                 r"cos ?h\b", r"1\.3", r"fold", r"0\.83", r"gaussian",
                 r"not (exactly|linear)", r"geometry", r"assum", r"simplif"),

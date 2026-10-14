@@ -1,8 +1,8 @@
 # Mission 26 data
 
-- `bright_stars.csv` — 8 404 stars brighter than magnitude 6.5: catalogue number `hr`, Bayer/Flamsteed name
-  `bayer`, a `common` name for about 50 bright stars, position `ra_deg`, `dec_deg` (equinox and epoch J2000)
-  and visual magnitude `vmag` (smaller = brighter).
+- `bright_stars.csv` — 8 920 stars brighter than magnitude 6.5: HYG id `id`, Hipparcos number `hip`, Yale/HR number
+  `hr` (when it has one), Bayer/Flamsteed name `bayer`, a `common` name for about 55 bright stars, position `ra_deg`,
+  `dec_deg` (equinox and epoch J2000) and visual magnitude `vmag` (smaller = brighter).
 - `photos/night_01.png … night_06.png` — synthetic photos from NAVERA Lite's star camera (1280 × 960 pixels,
   8-bit grey, 60° wide, ideal lens), at night, at six places.
 - `photos.json` — for each photo: the UTC time, the IMU chip's attitude at the exposure (quaternion
@@ -15,10 +15,11 @@ The photos are rendered for the course from the catalogue; they are not real sky
 
 ## Source and licence of the catalogue
 
-`bright_stars.csv` is a subset (columns and stars brighter than 6.5 kept, common names added) of
-**The Bright Star Catalogue, 5th Revised Edition (Preliminary Version)**, D. Hoffleit and W. H. Warren Jr.,
-Astronomical Data Center, NSSDC/ADC, 1991 — CDS catalogue V/50,
-https://cdsarc.cds.unistra.fr/viz-bin/cat/V/50. Neither the CDS ReadMe nor the Harvard readme of the catalogue
-states a licence; an earlier documentation file of the machine-readable catalogue describes it as public domain.
-It is distributed freely by CDS, which asks users to acknowledge it, and is shared here for teaching with this
-citation: "This research has made use of the VizieR catalogue access tool, CDS, Strasbourg, France."
+`bright_stars.csv` is derived from the **HYG star database v4.1** by David Nash (astronexus),
+https://github.com/astronexus/HYG-Database, licensed under the Creative Commons Attribution-ShareAlike 4.0
+International licence (CC BY-SA 4.0, https://creativecommons.org/licenses/by-sa/4.0/). HYG combines the Hipparcos,
+Yale Bright Star and Gliese catalogues. Changes made for the course: only stars brighter than magnitude 6.5 kept
+(the Sun removed), right ascension converted from hours to degrees, columns reduced, a `bayer` and a `common`
+column added. This subset is shared under the same licence, CC BY-SA 4.0.
+
+Attribution: "HYG star database v4.1, David Nash / astronexus, CC BY-SA 4.0 (subset)."
