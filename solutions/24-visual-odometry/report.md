@@ -19,8 +19,8 @@ is 1.032 times my step length and my steps point 2.01° clockwise: the barometer
 A turn breaks phase correlation: by hand its limit is about 0.36°, and after 4° it found 1 pair of 8 (OK_PHASE_TURN4
 = 1). Turned by the IMU heading change first, it found 8 of 8 at every turn. On the coast, phase correlation with the IMU
 found 6 of 8 because it uses every pixel, while ORB found only about 6 matches per pair and 4 of 8 right. My PatchNet
-was as precise as phase correlation on the city, but about ten times slower, and without the IMU its matches fell from
-206 to 107 at 30°, past its training range. Over the sea every method failed.
+was as precise as phase correlation on the city, but about ten times slower, and without the IMU its matches at 30° fell to 107 against 198 on the same frames derotated, past its
+training range. Over the sea every method failed.
 
 ## 4. The navigator
 

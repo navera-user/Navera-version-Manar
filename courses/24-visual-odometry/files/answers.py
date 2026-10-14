@@ -28,8 +28,8 @@ PREDICT_RACE = ""        # on the coast pairs, which odometers will fail, and wh
                          # find as many matches after a 30° turn as on straight pairs?
 OK_PHASE_TURN4 = 0       # `odometers`: row turn4, column "phase" — pairs right (of 8)
 OK_ORB_COAST = 0         # `odometers`: row coast, column "ORB+IMU" — pairs right (of 8)
-LEARNED_MATCHES_STRAIGHT = 0   # the matches table, column "learned fit", row straight
-LEARNED_MATCHES_TURN30 = 0     # the matches table, column "learned fit", row turn30
+LEARNED_IMU_TURN30 = 0         # the matches table, row turn30, column "learned+IMU" (the turn removed first)
+LEARNED_MATCHES_TURN30 = 0     # the matches table, row turn30, column "learned fit" (the same frames, no IMU)
 EXPLAIN_ODOMETERS = ""   # why does phase correlation need the IMU, and why does it still beat keypoints on the coast;
                          # what does your PatchNet cost, and what happens to it past its training range?
 

@@ -12,8 +12,8 @@ TODO: the drift of the first leg (DRIFT_BARO), its two causes and how you found 
 
 ## 3. The odometer race
 
-TODO: what a turn does to phase correlation (OK_PHASE_TURN4) and how the IMU fixes it; keypoints and your learned
-descriptor: precision and cost; the sea.
+TODO: what a turn does to phase correlation (OK_PHASE_TURN4) and how the IMU fixes it; the coast: who survives and why;
+your learned descriptor: cost, and what happens past its training range; the sea.
 
 ## 4. The navigator
 

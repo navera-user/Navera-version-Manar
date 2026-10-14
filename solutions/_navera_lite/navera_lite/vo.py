@@ -50,6 +50,8 @@ def opencv_shift(a, b):
     """OpenCV's phase correlation: (dx, dy, response) of picture b against picture a, with a Hanning window.
     The same sign convention as your phase_shift (content moved right/down = positive). OpenCV's `response` is
     computed differently from yours (lesson §3): compare shifts, not responses.
+    to_gray32 makes copies on purpose: with a window, cv2.phaseCorrelate overwrites the two pictures it is given
+    (OpenCV 4.11).
 
     Example: opencv_shift(a, np.roll(a, 3, axis=1)) → about (3.0, 0.0, 0.95)   (a: a textured picture)
     """
@@ -123,6 +125,7 @@ def integrate(steps, start=(0.0, 0.0)):
     Inputs: steps — a list (or array) of n (east_m, north_m) steps; start — (east_m, north_m).
     Returns a float numpy array of shape (n + 1, 2): row 0 is the start, row i the position after i steps.
     Example: integrate([(1.0, 0.0), (0.0, 2.0)], start=(10.0, 10.0)) → array([[10., 10.], [11., 10.], [11., 12.]])
+             integrate([], start=(7.0, 8.0)) → array([[7., 8.]])   (no step: only the start)
     """
     s = np.asarray(steps, dtype=float).reshape(-1, 2)
     out = np.zeros((len(s) + 1, 2))

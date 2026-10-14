@@ -52,12 +52,21 @@ Expected values in check.py: `solutions/24-visual-odometry/check_values.py`.
   Mean mutual matches: ORB ≈ 254–266 on the city, **6** on the coast, 3 at sea; learned fit (no IMU) **206** straight →
   198 (4°) → 168 (12°) → **107** (30°): past PatchNet's ±20° training range it loses half of its matches (RANSAC still
   copes). ms/pair (GPU, loaded Jetson): phase 17–19, OpenCV 6, ORB 16–17, learned 150–165; on the CPU learned ≈ 3–4 s
-  per pair (the whole command ≈ 6 min). OK_PHASE_TURN4 = 1 (0–2 accepted), **OK_ORB_COAST = 4**; LEARNED_MATCHES_* depend
-  on the student's weights: the check only asks turn30 < straight. The coast group (pairs 40–47) was chosen by texture
+  per pair (the whole command ≈ 6 min). OK_PHASE_TURN4 = 1, **OK_ORB_COAST = 4**, LEARNED_IMU_TURN30 = 198,
+  LEARNED_MATCHES_TURN30 = 107 (review round 2): the runner saves out/odometers.json and the check compares the copied
+  numbers with the student's own run (±1; a swapped column is named). The learned pair isolates rotation from overlap:
+  the same frames with and without derotation (a straight-vs-30° comparison could never fail: any turn lowers the overlap,
+  ORB+IMU 266 → 254). A network that keeps its matches without the IMU (≥ 90 % of the derotated count, e.g. rot90
+  augmentation from mission 21's Going further) is accepted when EXPLAIN_ODOMETERS says what was trained differently.
+  Coast, the window: pair 43 fails only with the numpy Hann product (10.3 px off); OpenCV's √ window keeps the border
+  texture (0.5 px) — the reason for OpenCV+IMU 8/8 against phase+IMU 6/8; a Going-further task. cv2.phaseCorrelate with
+  a window overwrites its inputs (OpenCV 4.11, verified): opencv_shift copies via to_gray32. (NAVERA builds fresh arrays
+  before its call, so this is not a product problem.) The coast group (pairs 40–47) was chosen by texture
   only (35–65 % water, < 40 ORB corners in the clean frame), never by any odometer's result.
 - **Step 6 (`drift_sim.py`):** after 100 steps random 5.03 m (theory 5.00), bias 10.00 (10.00), both 11.22 (11.18);
-  **EXPONENT_RANDOM = 0.50**, **EXPONENT_BIAS = 1.00**; PREDICT_GROWTH (now: the Monte-Carlo error, ≈ 0.6 % here; ∝ 1/√trials, so
-  200 flights ≈ √10 ≈ 3× farther — not in the lesson); **N_CROSS = σ²/b² = 25** (5 or 50 named by the check).
+  **EXPONENT_RANDOM = 0.50**, **EXPONENT_BIAS = 1.00**; PREDICT_GROWTH (the Monte-Carlo error, not in the lesson): ≈ 0.6 % in
+  drift_sim's table (5.03 m), 2.2 % for simulate_drift(100, 0.5, 0) alone, spread over seeds about ±1.6 %
+  (1/√(2·2000)); ∝ 1/√trials, so 200 flights ≈ √10 ≈ 3× wider (the lab's five-seed command shows it); **N_CROSS = σ²/b² = 25** (5 or 50 named by the check).
 - **Step 7 (`responses`, 89 steps):** right steps' lowest responses 0.040 (step 51, coast), 0.051 (78), 0.092 (79),
   0.111 (80); wrong steps: 26 over the water and the coast approach (steps 52–77, 0.020–**0.030**), and the 7 overlay
   steps 81–87 (0.288–0.465). **SEA_MAX_RESPONSE = 0.030**; **MIN_RESPONSE** in (0.030, 0.040] (check: 0.0305–0.0401, the failure names step 51 / steps 66 and 77; the window is knife-edge by design and the lab
@@ -75,7 +84,8 @@ Expected values in check.py: `solutions/24-visual-odometry/check_values.py`.
 
   GATE_REFUSED = **7** (steps 81–87). Coverage story (review round 1, data NOT re-seeded): the misses are frames
   **20–39 only**, right after the fixes at 20 and 30, which are 7.0 and 6.5 m from the truth against a stated σ of 4 m per
-  axis (the generator draws σ = 3 m: these are unlucky ≈ 2σ draws). `--bias 0.9` → 85 % removes only the late-tooth misses
+  axis (the generator draws σ = 3 m: 2.3σ draws for it, 1.7σ per axis against the stated 4 m; right after a fix the
+  stated 2σ is ≈ 7.1 m and both fixes are 6.5–7 m off to the south, so the track sits on the band's edge). `--bias 0.9` → 85 % removes only the late-tooth misses
   (20–25 and 30–36 remain). Frames are correlated (about 7 fix intervals), so 78 % against 86 % is weak evidence. Do not
   teach "the bias 0.7 is too small, so σ is optimistic": 0.92 m per step is a total length, 0.7 m is per axis.
 - **Unseen-flight check (5):** 12 steps, 18 m/s, 90 m high, 5 × 6° turn: reference largest error 0.13 m (pass < 0.6 m).
@@ -88,7 +98,7 @@ Expected values in check.py: `solutions/24-visual-odometry/check_values.py`.
 | EXPLAIN_BIAS | height 3 % → scale; heading 2° → direction; same error every step, adds linearly | one cause | "noise" |
 | EXPLAIN_ODOMETERS | translation only → derotate with the IMU; coast: phase uses every pixel, ORB starves (≈ 6 matches); PatchNet ≈ 10× slower and loses half its matches past ±20° without the IMU | two of three | "learned is best" |
 | EXPLAIN_THRESHOLD | moving water: no common motion, flat surface; overlay: static, high peak at zero → threshold blind; margin only 0.01 → not safe alone | two of three | "the sea is dark" |
-| EXPLAIN_FUSION | fix pulls back (saw-tooth); worst at the end of the sea gap; misses right after fixes 20 and 30 (7.0 / 6.5 m off) → the fixes' stated σ, not only the VO bias, decides coverage; one correlated flight is a hint | three of four | "σ is dishonest" with no evidence |
+| EXPLAIN_FUSION (typical weak answer: "78 % is near 86 %, σ is fine" with no one-flight caveat → 1) | fix pulls back (saw-tooth); worst at the end of the sea gap; misses right after fixes 20 and 30 (7.0 / 6.5 m off) → the fixes' stated σ, not only the VO bias, decides coverage; one correlated flight is a hint | three of four | "σ is dishonest" with no evidence |
 
 ## Difficulties expected (not yet seen with simulated students — to be filled after the review rounds)
 

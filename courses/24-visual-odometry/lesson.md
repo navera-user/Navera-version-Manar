@@ -214,8 +214,11 @@ peak **compared with noise**, and you will measure both on the lab's flight.
 **OpenCV.** `cv2.phaseCorrelate(a, b, window)` does the same in one call (float32 or float64 pictures only: a uint8
 picture raises an assertion error) and returns `((dx, dy), response)`. It refines the peak with a weighted
 **centroid** of the 5 × 5 values around it, not a parabola, and its "response" is a sum around the peak, not the peak
-value: on good frames it is near 1 where yours is near 0.2. Compare **shifts** with OpenCV, never responses. Both
-methods find the same integer peak; their sub-pixel answers differ a little, and you will measure by how much.
+value: on good frames it is near 1 where yours is near 0.2. Compare **shifts** with OpenCV, never responses. On
+textured ground both methods find the same integer peak; their sub-pixel answers differ a little, and you will measure
+by how much. (On ground with very little texture the gentler OpenCV window can keep edges that yours fades away, and
+the two can disagree.) Careful: with a window, `phaseCorrelate` overwrites the two pictures you pass (OpenCV 4.11 here);
+pass copies (`a.copy()`), as the given `opencv_shift` does.
 
 > [!QUESTION] ✏️ Check
 > A 320 × 240 frame pair gives its peak at index (row 5, column 310). What is the shift (dx, dy)? Which way did the

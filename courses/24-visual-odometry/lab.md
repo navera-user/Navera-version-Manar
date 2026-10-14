@@ -1,7 +1,7 @@
 # Lab 24 — An odometer from two frames, and a navigator that knows when it lies
 
 **Goal:** write phase correlation with numpy's FFT and measure it against OpenCV; turn pixel shifts into metres east and
-north and follow a drone along a 90-second flight over Sousse; find the two hidden causes of its drift; race six
+north and follow a drone along a 90-second flight over Sousse; find the two hidden causes of its drift; race seven
 odometers, one of them with the descriptor you trained in mission 21; then simulate drift, choose when to refuse a
 step, and bound the error with map fixes.
 **Time:** 4 h 30 to 6 h in two sessions (a strong programmer: about 3 h 30).
@@ -15,7 +15,7 @@ edit it). `python3 run_vo.py test` tries every docstring example and names the s
 
 The data is in `/data/academy/24-visual-odometry/` (read only): a synthetic flight drawn from OpenStreetMap data of
 Sousse, Tunisia (NAVERA's test area; map data © OpenStreetMap contributors), made by us so that we know the exact
-truth, and 40 frame pairs. Like a real drone, the flight has defects you are **not told about**.
+truth, and 48 frame pairs. Like a real drone, the flight has defects you are **not told about**.
 
 | Lesson | Lab | You write |
 |---|---|---|
@@ -176,6 +176,8 @@ Now `pair` also prints the drone's motion east/north next to the truth.
    drone flew forward.
 3. `(0.0, 5.0)`: east and north swapped, or the heading not used.
 4. TODO 3: 4 rows for 4 steps? Row 0 is the start. The track ignores `start`? Add start to every running sum.
+5. `shapes (0,) (2,)` (or a broadcast error) on an empty list of steps: `np.asarray(steps, dtype=float).reshape(-1, 2)`
+   makes it shape (0, 2), and the result is just the start.
 </details>
 
 ## Step 4 — The first leg: drift, and its two causes
@@ -258,7 +260,9 @@ Open `out/odometers.png` too: the median error of each method in each group (log
 
 > [!TASK]
 > Write `OK_PHASE_TURN4` (row turn4, column phase) and `OK_ORB_COAST` (row coast, column ORB+IMU), pairs right of 8;
-> `LEARNED_MATCHES_STRAIGHT` and `LEARNED_MATCHES_TURN30` (the matches table, column "learned fit"); and
+> `LEARNED_IMU_TURN30` and `LEARNED_MATCHES_TURN30` (the matches table, row turn30: column "learned+IMU", then the last
+> column "learned fit" — the same frames, with and without the turn removed; if your network does **not** lose matches
+> without the IMU, say in EXPLAIN_ODOMETERS what you trained differently); and
 > `EXPLAIN_ODOMETERS`: why does phase correlation need the IMU, and why does it still beat keypoints on the coast; what
 > does your PatchNet cost, and what happens to it past its training range (mission 21: turns within ±20°)?
 
@@ -269,8 +273,9 @@ beach with a few edges still gives a peak, while the keypoint detector finds few
 votes is noise. That, and a cost that does not depend on the texture, is why NAVERA uses phase correlation for odometry,
 with the IMU for the turns. Your PatchNet was trained to match <b>map</b> patches with <b>drone</b> patches, within
 ±20° of heading error. After derotation it matches two frames of the same camera (an easier job) as precisely as the
-others; without the IMU, past its training range, it loses about half of its matches at 30° — the RANSAC fit still
-copes, but the network is not rotation-proof. And it pays a CNN forward pass on hundreds of patches (several times
+others. Now compare the two learned columns at 30°: with the course's network the matches fall from about 200
+(derotated) to about 107 (not derotated), about half — your own network may lose more or less. The RANSAC fit still
+copes, but a network is only as rotation-proof as its training. And it pays a CNN forward pass on hundreds of patches (several times
 slower on the GPU, far slower on the CPU). Learned features earn their cost on the hard job: a frame against the map
 (missions 22–23). Over the sea no method has anything to follow.
 </details>
@@ -314,14 +319,22 @@ python3 run_vo.py test
 
 > [!TASK]
 > **Predict** (`PREDICT_GROWTH`): with 2000 simulated flights, how far (in %) will your simulated RMS after 100 steps be
-> from `drift_sigma(100, 0.5, 0)`? Would 200 flights be twice as far, or only about 3 times (√10)?
+> from `drift_sigma(100, 0.5, 0)`? With 200 flights instead of 2000, would it be ten times farther, or only about
+> √10 ≈ 3 times?
 
 ```bash
 python3 drift_sim.py
 ```
 
 Open `out/drift.png`: your simulation (solid) against your formula (dashed), for random errors only, a bias only, and
-both.
+both. Now see the Monte-Carlo error itself — five seeds with 200 flights, then five with 2000 (the error in % of the
+theory, 5 m):
+
+```bash
+python3 -c "from drift_sim import simulate_drift as s; [print(t, [round(100 * (s(100, 0.5, 0, trials=t, seed=k)[-1] / 5 - 1), 1) for k in range(5)]) for t in (200, 2000)]"
+```
+
+Which scatter is wider, and by about how much? (Five seeds are few: compare the spreads, not single numbers.)
 
 > [!TASK]
 > Write `EXPONENT_RANDOM`, `EXPONENT_BIAS` (two decimals) and `N_CROSS`: with σ = 0.5 m and a bias of 0.1 m, after how
@@ -406,15 +419,16 @@ python3 run_vo.py fuse
 
 Open `out/fuse.png`: the four tracks, then D's true error with its stated 2σ, and C's error without fixes.
 
-> [!TASK]
-Coverage is 78 %, not about 86 %. Is the stated σ dishonest? Observe before you judge. The runner lists the frames
-where D's true error leaves the 2σ band, and how far each map fix is from the truth. Then try another bias:
+Compare stage D's "within 2σ" with the 86 % of lesson §7. Is the stated σ dishonest? Observe before you judge: the
+runner lists the frames where D's true error leaves the 2σ band, and how far each map fix is from the truth. Then try
+another bias:
 
 ```bash
 python3 run_vo.py fuse --bias 0.9
 ```
 
-Which misses go away, and which stay?
+> [!QUESTION]
+> Which misses go away with `--bias 0.9`, and which stay? Look at the frames right after the fixes at 20 and 30.
 
 > [!TASK]
 > Write `GATE_REFUSED`, `WORST_NO_FIX` (stage C), `WORST_FUSED` (stage D), `COVERAGE` (stage D, with the default bias)
@@ -454,6 +468,10 @@ Write your answers in `LOOK_BACK` in `answers.py` if you want your teacher to re
 
 ## Going further (optional)
 
+- **The window and the coast.** On the coast your phase+IMU gets fewer pairs right than OpenCV+IMU. In a copy of
+  `phase_shift`, replace your window by its square root (OpenCV's) and rerun the coast pairs: which come back, and what
+  does a strong window cost on a picture whose little texture lies near its borders? (If you call `cv2.phaseCorrelate`
+  yourself, pass copies: with a window it overwrites its two input pictures.)
 - **Calibrate on the fly.** Between two map fixes, compare the direction and the length of your odometry with the
   fix-to-fix vector: their ratio is the scale error, their angle the heading error. Correct the steps after each fix and
   measure the new worst error.

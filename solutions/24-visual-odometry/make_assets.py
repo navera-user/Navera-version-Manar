@@ -98,7 +98,7 @@ def sawtooth():
     ax.plot(t, 2 * np.array(sig), "--", color=BLUE, lw=1, label="2σ stated")
     for f in fixes:
         ax.axvline(f, color=AMBER, ls=":", lw=1)
-    ax.annotate("no fix here:\na longer tooth", (100, 33), xytext=(62, 40), fontsize=9,
+    ax.annotate("no fix at frame 80:\na longer tooth", (100, 33), xytext=(62, 40), fontsize=9,
                 arrowprops={"arrowstyle": "->", "color": INK})
     ax.set_xlabel("frame (dotted: a map fix)")
     ax.set_ylabel("metres")

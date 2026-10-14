@@ -21,6 +21,7 @@ Pictures are saved in out/ — click them in the file list of the 📝 Code tab.
 contributors.
 """
 import csv
+import json
 import math
 import os
 import sys
@@ -44,7 +45,8 @@ _kit_hint = rk._hint
 def _hint(e):
     s = str(e)
     if "operands could not be broadcast" in s:
-        return " — a and b must have the same shape; the window must have the image's shape (h, w), in that order"
+        return (" — two arrays of different shapes were combined: print the .shape of each one (in phase_shift: a and b "
+                "must have the same shape, and the window the image's shape (h, w), in that order)")
     if "math domain" in s or "must be real number, not" in s:
         return " — math.sin/cos take one number in radians: math.radians(heading_deg)"
     if "unhashable type" in s:
@@ -173,6 +175,9 @@ def test():
     if not e and not (isinstance(v, tuple) and len(v) == 3):
         e = f"phase_shift() must return three numbers (dx, dy, response), got {v!r}"
     note = "the docstring says about (-5.00, 2.00, 0.93). "
+    if not e and any(np.iscomplexobj(np.asarray(x)) for x in v):
+        e = ("the result is complex: the correlation surface is the REAL part, r = np.real(np.fft.ifft2(R)) "
+             "(lesson §3, step 4)")
     if not e:
         dx, dy, r = (float(x) for x in v)
         if abs(dx - 75) < 0.6:
@@ -220,6 +225,8 @@ def test():
                  "turned the wrong way: east = forward·sin θ + right·cos θ")
     elif not e and close(v, (0.0, -5.0), 1e-6):
         note += "a heading of 0 instead of 90? or math.sin of degrees? (math.radians)"
+    elif not e and close(v, (4.4699, -2.2402), 1e-3):
+        note += "math.sin/cos got degrees: th = math.radians(heading_deg) (lesson §5, Python details)"
     else:
         note += "Lab Step 3, hints"
     line(2, "px_to_en", v, e, not e and close(v, (5.0, 0.0), 1e-6), note)
@@ -239,6 +246,11 @@ def test():
     line(3, "integrate", v if e else np.asarray(v), e,
          not e and isinstance(v, np.ndarray) and v.shape == (3, 2) and close(v, [[10, 10], [11, 10], [11, 12]], 1e-9),
          note)
+    v, e = rk.call(vo, "integrate", [], (7.0, 8.0))
+    line(3, "integrate", v if e else np.asarray(v), e,
+         not e and isinstance(v, np.ndarray) and v.shape == (1, 2) and close(v, [[7, 8]], 1e-9),
+         "integrate([], (7, 8)) must give [[7., 8.]] (shape (1, 2)): with no step, np.array([]) has shape (0,) — "
+         "np.asarray(steps, dtype=float).reshape(-1, 2) makes it (0, 2) (Lab Step 3, hint 5)")
     v, e = rk.call(vo, "median_shift", [(0, 0), (10, 10), (50, 5)], [(3, 1), (13, 11), (0, 0)])
     note = "the docstring says (3.0, 1.0, 2). "
     if not e and isinstance(v, tuple) and len(v) == 3 and close(v[:2], (-14.67, -1.0), 0.02):
@@ -278,10 +290,12 @@ def test():
     line(7, "blend", v, e, not e and close(v, (14.5, 2.25), 1e-9), note)
     v, e = rk.call(vo, "vo_gate", (20.0, 0.0), (19.0, 1.0), 1.0)
     v2, e2 = rk.call(vo, "vo_gate", (0.0, 0.0), (20.0, 0.0), 2.0)
-    line(8, "vo_gate", (v, v2) if not (e or e2) else None, e or e2, not (e or e2) and v is True and v2 is False,
+    isb = (bool, np.bool_)
+    line(8, "vo_gate", (v, v2) if not (e or e2) else None, e or e2,
+         not (e or e2) and isinstance(v, isb) and isinstance(v2, isb) and bool(v) and not bool(v2),
          "the docstring says (True, False); return a bool (True/False), from the distance between the two vectors")
     v3, e3 = rk.call(vo, "vo_gate", (20.0, 0.0), (-20.0, 0.0), 2.0)
-    line(8, "vo_gate", v3, e3, not e3 and v3 is False,
+    line(8, "vo_gate", v3, e3, not e3 and isinstance(v3, isb) and not bool(v3),
          "(20, 0) against (−20, 0) must be False: the same speed, the opposite way — compare the VECTORS (lesson §9)")
     print()
     print("All the examples work. Run the lab's commands now." if ok_all else
@@ -503,9 +517,10 @@ def odometers(weights=None):
         cells = []
         for m in METHODS:
             e = np.array(err[(g, m)])
-            med = np.median(e)
-            cells.append(f"{int((e <= 1.0).sum())}/{len(e)} ({med:6.2f})" if med < 1e3 else
-                         f"{int((e <= 1.0).sum())}/{len(e)} (  —  )")
+            got = e[e < 1e8]                             # the pairs that returned a shift
+            med = np.median(got) if len(got) else None
+            cells.append(f"{int((e <= 1.0).sum())}/{len(e)} (  —  )" if med is None else
+                         f"{int((e <= 1.0).sum())}/{len(e)} ({med:6.2f}{'*' if len(got) < len(e) else ' '})")
         print(f"{g:9s}" + "".join(f"{c:>15s}" for c in cells))
     print(f"\n{'matches':9s}" + "".join(f"{'':15s}" for m in METHODS[:3])
           + "".join(f"{m:>15s}" for m in MATCHERS))
@@ -515,23 +530,35 @@ def odometers(weights=None):
     print("\nphase = your phase_shift; +IMU = frame a turned by the IMU heading change first (derotate);"
           "\nORB/learned = keypoints matched with ORB's bits or YOUR PatchNet, then YOUR median_shift;"
           "\nfit = the same matches without the IMU, then OpenCV's RANSAC fit of a turn and a shift;"
-          "\nmatches = mutual matches per pair (mean). Times: this machine, now (they change when it is busy).")
+          "\nmatches = mutual matches per pair (mean). Times: this machine, now (they change when it is busy)."
+          "\n* = the median of the pairs that returned a shift (the others found too few matches); — = none did.")
+    import hashlib
+    summary = {"weights": path, "weights_sha256": hashlib.sha256(open(path, "rb").read()).hexdigest(),
+               "right": {g: {m: int((np.array(err[(g, m)]) <= 1.0).sum()) for m in METHODS} for g in groups},
+               "matches": {g: {m: round(float(np.mean(nmatch[(g, m)])), 1) for m in MATCHERS} for g in groups}}
+    os.makedirs(OUT, exist_ok=True)
+    with open(os.path.join(OUT, "odometers.json"), "w") as f:
+        json.dump(summary, f, indent=1)
+    print(f"(the table is also saved in {OUT}/odometers.json: the check compares your answers with it)")
     plt = rk.plt_or_none()
     if plt:
         fig, ax = plt.subplots(1, 2, figsize=(12, 4.2), gridspec_kw={"width_ratios": [3, 1.3]})
         for m in METHODS:
             med = [min(300.0, max(0.02, float(np.median(err[(g, m)])))) for g in groups]
-            ax[0].semilogy(range(len(groups)), med, "o-", label=m)
+            ax[0].semilogy(np.arange(len(groups)) + 0.06 * (METHODS.index(m) - 3), med, "o", label=m)
         ax[0].axhline(1.0, color="k", lw=0.8, ls=":")
         ax[0].set_xticks(range(len(groups)))
         ax[0].set_xticklabels(groups)
         ax[0].set_ylabel("median error (px, log; 300 = failed)")
         ax[0].legend(fontsize=8, ncol=2)
         ax[0].grid(alpha=0.3, which="both")
-        ax[1].barh(range(len(METHODS)), [np.mean([x for gg in groups for x in ms[(gg, m)]]) for m in METHODS])
+        tms = [np.mean([x for gg in groups for x in ms[(gg, m)]]) for m in METHODS]
+        bars = ax[1].barh(range(len(METHODS)), tms)
+        ax[1].bar_label(bars, labels=[f"{t:.0f} ms" for t in tms], fontsize=8, padding=2)
         ax[1].set_yticks(range(len(METHODS)))
         ax[1].set_yticklabels(METHODS, fontsize=8)
         ax[1].set_xscale("log")
+        ax[1].set_xlim(1, 30 * max(tms))
         ax[1].set_xlabel("ms per pair (log)")
         ax[1].grid(alpha=0.3, axis="x", which="both")
         os.makedirs(OUT, exist_ok=True)

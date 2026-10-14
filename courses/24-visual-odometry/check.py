@@ -49,13 +49,22 @@ def go(fn, *args, seconds=60, **kw):
     except CheckFailed as e:
         msg = str(e)
         if "could not be broadcast" in msg:
-            msg += " — the window must have the image's shape (h, w): np.outer(np.hanning(h), np.hanning(w))"
+            if getattr(fn, "__name__", "") == "phase_shift":
+                msg += " — the window must have the image's shape (h, w): np.outer(np.hanning(h), np.hanning(w))"
+            else:
+                msg += " — two arrays of different shapes were combined: print the .shape of each one"
         if "must be real number" in msg or "only size-1 arrays" in msg or "only length-1 arrays" in msg:
             msg += " — math functions take one number; on arrays use numpy (np.sqrt, np.median…)"
         raise CheckFailed(msg)
 
 
 def three(v, what):
+    try:
+        if any(np.iscomplexobj(np.asarray(x)) for x in v):
+            raise CheckFailed(f"{what} returned a complex number: the correlation surface is the REAL part, "
+                              "r = np.real(np.fft.ifft2(R)) (lesson §3, step 4)")
+    except TypeError:
+        pass
     try:
         a, b, r = v
         return float(a), float(b), float(r)
@@ -188,7 +197,12 @@ def _():
     v = go(f, np.array([[1.0, 1.0]] * 3))
     c.ok(isinstance(v, np.ndarray) and np.allclose(v, [[0, 0], [1, 1], [2, 2], [3, 3]]),
          "integrate() of a numpy array of 3 steps (default start (0, 0)) is not [[0, 0], [1, 1], [2, 2], [3, 3]]")
-    v = go(f, [], (7.0, 8.0))
+    try:
+        v = go(f, [], (7.0, 8.0))
+    except CheckFailed as e:
+        raise CheckFailed(f"integrate([], (7, 8)) — no step at all — {e}. With no step, np.array([]) has shape (0,), not "
+                          "(0, 2): np.asarray(steps, dtype=float).reshape(-1, 2) (Lab Step 3, hint 5); the result must "
+                          "be [[7., 8.]]")
     c.ok(isinstance(v, np.ndarray) and np.asarray(v).reshape(-1, 2).shape == (1, 2) and np.allclose(v, [[7, 8]]),
          "integrate([], (7, 8)) must give one row, the start: [[7., 8.]] (shape (1, 2))")
 
@@ -294,30 +308,52 @@ def _():
 
 
 @c.test("Step 5: the odometer race — turns, the coast, keypoints, your learned descriptor",
-        hint="Copy the two counts from the table of `python3 run_vo.py odometers` (right pairs out of 8) and explain "
-             "in your own words.")
+        hint="Compute TURN_LIMIT_DEG by hand; copy OK_PHASE_TURN4, OK_ORB_COAST and the two turn30 match counts from "
+             "`python3 run_vo.py odometers` (it also saves out/odometers.json); explain in your own words.")
 def _():
-    tl, pt, okt, okc, ls, lt, why = answers("TURN_LIMIT_DEG", "PREDICT_RACE", "OK_PHASE_TURN4", "OK_ORB_COAST",
-                                            "LEARNED_MATCHES_STRAIGHT", "LEARNED_MATCHES_TURN30", "EXPLAIN_ODOMETERS")
+    import json
+    tl, pt, okt, okc, li, lt, why = answers("TURN_LIMIT_DEG", "PREDICT_RACE", "OK_PHASE_TURN4", "OK_ORB_COAST",
+                                            "LEARNED_IMU_TURN30", "LEARNED_MATCHES_TURN30", "EXPLAIN_ODOMETERS")
     tl = number(tl, "TURN_LIMIT_DEG")
     if abs(tl - 20.5) < 1.5:
         raise CheckFailed("TURN_LIMIT_DEG: math.asin works in radians — convert the result with math.degrees")
     c.ok(0.30 <= tl <= 0.40, f"TURN_LIMIT_DEG = {tl:g}: solve 160 · sin θ = 1 px for θ, in degrees (lesson §4: the "
          "edges of a 320 px frame are 160 px from its centre)")
     predicted("PREDICT_RACE", pt)
+    if not os.path.exists("out/odometers.json"):
+        raise CheckFailed("out/odometers.json is missing: run `python3 run_vo.py odometers` (Step 5)")
+    try:
+        run_ = json.load(open("out/odometers.json"))
+        right, matches = run_["right"], run_["matches"]
+        r_t4, r_coast = right["turn4"]["phase"], right["coast"]["ORB+IMU"]
+        m_imu, m_fit = matches["turn30"]["learned+IMU"], matches["turn30"]["learned fit"]
+    except (ValueError, KeyError, TypeError):
+        raise CheckFailed("out/odometers.json cannot be read: run `python3 run_vo.py odometers` again (Step 5)")
     okt, okc = number(okt, "OK_PHASE_TURN4"), number(okc, "OK_ORB_COAST")
-    c.ok(0 <= okt <= 2, f"OK_PHASE_TURN4 = {okt:g}: the 'turn4' row, column 'phase' (without the IMU), pairs right "
-         "out of 8")
-    c.ok(okc == 4, f"OK_ORB_COAST = {okc:g}: the 'coast' row, column 'ORB+IMU', pairs right out of 8")
-    ls, lt = number(ls, "LEARNED_MATCHES_STRAIGHT"), number(lt, "LEARNED_MATCHES_TURN30")
-    c.ok(0 < lt < ls <= 500, f"LEARNED_MATCHES_STRAIGHT = {ls:g}, LEARNED_MATCHES_TURN30 = {lt:g}: the 'matches' table, "
-         "column 'learned fit', rows straight and turn30 (your network finds fewer matches after a 30° turn)")
+    c.ok(okt == r_t4, f"OK_PHASE_TURN4 = {okt:g}, but your run says {r_t4}: the 'turn4' row, column 'phase' (without the "
+         "IMU)")
+    c.ok(0 <= r_t4 <= 2, f"your raw phase correlation got {r_t4} of 8 right after a 4° turn: it should break (≤ 2). Is "
+         "your phase_shift right (check 1)?")
+    c.ok(okc == r_coast, f"OK_ORB_COAST = {okc:g}, but your run says {r_coast}: the 'coast' row, column 'ORB+IMU'")
+    li, lt = number(li, "LEARNED_IMU_TURN30"), number(lt, "LEARNED_MATCHES_TURN30")
+    if abs(li - m_fit) <= 1 and abs(lt - m_imu) <= 1 and abs(m_imu - m_fit) > 1:
+        raise CheckFailed("LEARNED_IMU_TURN30 and LEARNED_MATCHES_TURN30 are swapped: 'learned+IMU' is the derotated "
+                          "column, 'learned fit' the one without the IMU")
+    c.ok(abs(li - m_imu) <= 1, f"LEARNED_IMU_TURN30 = {li:g}, but your run says {m_imu:g}: the matches table, row turn30, "
+         "column 'learned+IMU' (the turn removed first)")
+    c.ok(abs(lt - m_fit) <= 1, f"LEARNED_MATCHES_TURN30 = {lt:g}, but your run says {m_fit:g}: the matches table, row "
+         "turn30, column 'learned fit' (the last one, without the IMU)")
     explained("EXPLAIN_ODOMETERS", why,
               ((r"rotat", r"turn", r"imu", r"derotat", r"heading"), "why phase correlation needs the IMU's turn"),
-              ((r"coast", r"beach", r"sand", r"texture", r"corner", r"keypoint", r"every pixel", r"all the pixel"),
-               "why phase correlation still beats keypoints on the coast"),
-              ((r"\bms\b", r"slow", r"time", r"cost", r"expensive", r"speed", r"train", r"20 ?°", r"range", r"match"),
-               "what your learned descriptor costs, or where it stops working"))
+              ((r"coast", r"beach", r"sand", r"corner", r"every pixel", r"all (the )?pixels", r"low.?texture",
+                r"little texture"), "why phase correlation still beats keypoints on the coast"),
+              ((r"\bms\b", r"slow", r"cost", r"expensive", r"times (slower|longer)", r"train", r"20 ?°", r"range",
+                r"half"), "what your learned descriptor costs, or where it stops working"))
+    if m_fit >= 0.9 * m_imu:
+        explained("EXPLAIN_ODOMETERS", why,
+                  ((r"augment", r"rot90", r"rotat\w* (robust|invarian|proof)", r"trained (with|on) (larger|bigger|all|any)",
+                    r"invarian"), "why YOUR network kept its matches after a 30° turn (the course's ±20° network loses "
+                   "about half: what did you train differently?)"))
 
 
 c.milestone("odometer", "TODO 1:", "TODO 2:", "TODO 3:", "TODO 4:", "Your odometer", "Steps 0–4:", "Step 5:",

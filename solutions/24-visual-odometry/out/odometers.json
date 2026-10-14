@@ -1,0 +1,98 @@
+{
+ "weights": "ref_desc.pt",
+ "weights_sha256": "58d9b361591f76126dedf9e1f42083726b2add37e7181d574b2961a869d4f18b",
+ "right": {
+  "straight": {
+   "phase": 8,
+   "phase+IMU": 8,
+   "OpenCV+IMU": 8,
+   "ORB+IMU": 8,
+   "learned+IMU": 8,
+   "ORB fit": 8,
+   "learned fit": 8
+  },
+  "turn4": {
+   "phase": 1,
+   "phase+IMU": 8,
+   "OpenCV+IMU": 8,
+   "ORB+IMU": 8,
+   "learned+IMU": 8,
+   "ORB fit": 8,
+   "learned fit": 8
+  },
+  "turn12": {
+   "phase": 0,
+   "phase+IMU": 8,
+   "OpenCV+IMU": 8,
+   "ORB+IMU": 8,
+   "learned+IMU": 8,
+   "ORB fit": 8,
+   "learned fit": 8
+  },
+  "turn30": {
+   "phase": 0,
+   "phase+IMU": 8,
+   "OpenCV+IMU": 8,
+   "ORB+IMU": 8,
+   "learned+IMU": 8,
+   "ORB fit": 8,
+   "learned fit": 8
+  },
+  "coast": {
+   "phase": 2,
+   "phase+IMU": 6,
+   "OpenCV+IMU": 8,
+   "ORB+IMU": 4,
+   "learned+IMU": 4,
+   "ORB fit": 2,
+   "learned fit": 3
+  },
+  "sea": {
+   "phase": 0,
+   "phase+IMU": 0,
+   "OpenCV+IMU": 0,
+   "ORB+IMU": 0,
+   "learned+IMU": 0,
+   "ORB fit": 0,
+   "learned fit": 0
+  }
+ },
+ "matches": {
+  "straight": {
+   "ORB+IMU": 265.8,
+   "learned+IMU": 206.1,
+   "ORB fit": 265.8,
+   "learned fit": 206.1
+  },
+  "turn4": {
+   "ORB+IMU": 266.1,
+   "learned+IMU": 203.9,
+   "ORB fit": 262.5,
+   "learned fit": 197.8
+  },
+  "turn12": {
+   "ORB+IMU": 256.6,
+   "learned+IMU": 198.8,
+   "ORB fit": 251.1,
+   "learned fit": 167.9
+  },
+  "turn30": {
+   "ORB+IMU": 254.5,
+   "learned+IMU": 198.2,
+   "ORB fit": 253.1,
+   "learned fit": 106.6
+  },
+  "coast": {
+   "ORB+IMU": 6.5,
+   "learned+IMU": 4.5,
+   "ORB fit": 7.5,
+   "learned fit": 6.2
+  },
+  "sea": {
+   "ORB+IMU": 3.1,
+   "learned+IMU": 2.8,
+   "ORB fit": 3.1,
+   "learned fit": 2.8
+  }
+ }
+}
