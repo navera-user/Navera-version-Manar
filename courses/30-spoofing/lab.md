@@ -1,263 +1,371 @@
-# Lab 30 — Build a GPS guard, measure its ROC, attack the real arbiter
+# Lab 30 — Catch a lying GPS: the statistics, the guard, the attacks
 
-**Goal:** (A) implement the kinematic gate and the cross-check state machine (TRUSTED / IN_DOUBT /
-REFUSED) and test them against seven attacks; (B) treat detection as a hypothesis test: compute
-false-alarm probabilities, the patient-spoofer time, and run a Monte-Carlo **ROC experiment**;
-(C) attack NAVERA's **real** arbiter with a scripted fake GPS; (D) write a short report.
-**Time:** about 4 h for this lab (about 4 h 45 for the whole mission with the lesson).
+**Goal:** build NAVERA Lite's spoofing guard. Session 1 (**Statistician**): the χ² test of a GPS fix against
+vision, the jump gate's hole, the delay of a drift, and a ROC curve you measure by Monte Carlo. Session 2
+(**Guardian**): the guard's two decisions, nine attacks against mission 29's judge with your guard in front of
+it, one attack live over ROS 2, and your own attack on your own guard.
+**Time:** 3 h 30 (fast) to 5 h (if probability or classes are rusty), plus the lesson.
 
-Your files:
+| Lesson | Lab step | You write |
+|---|---|---|
+| §1 the threat, the jump gate | Steps 0, 3 | `patient_accept_time` (TODO 4) |
+| §2 hypothesis test, χ² | Step 1 | `chi2_threshold_2d` (TODO 1) |
+| §3 the innovation | Step 2 | `innovation` (TODO 2) |
+| §4 persistence, drift delay | Steps 4–6 | `first_alarm` (TODO 3), `drift_alarm_time` (TODO 5), `roc_point` (TODO 8), your operating point (TODO 9) |
+| §5 the guard | Steps 7–10 | `SpoofGuard.on_reference` (TODO 6), `SpoofGuard.on_gps` (TODO 7) |
+| §6 the limits | Steps 9, 11 | your attack, `answers.py` |
 
-| File | What you do |
-|---|---|
-| [spoof.py](file:./spoof.py) | your guard — TODO 1–4 |
-| [scenarios.py](file:./scenarios.py) | the seven attacks — read it, do not change it |
-| [detection.py](file:./detection.py) | the statistics — TODO 5–11 |
-| [spoof_real.py](file:./spoof_real.py) | the attack on the real `estimator_node` — do not change it |
-| [report.md](file:./report.md) | your analysis — five sections |
+Your files: [navera_lite/spoof.py](file:./navera_lite/spoof.py) (TODO 1–7), [detection.py](file:./detection.py)
+(TODO 8–9), [answers.py](file:./answers.py). Read, don't change: [scenarios.py](file:./scenarios.py) (the attacks),
+[spoof_run.py](file:./spoof_run.py) (the runner), [guard_node.py](file:./guard_node.py) (the ROS node), and
+`navera_lite/arbiter.py`, mission 29's judge, shipped finished.
 
-Positions in `spoof.py` are **metres on a flat local map** (x east, y north), as in lessons 6 and 27.
-The vehicle flies east at 15 m/s. GPS sends one fix per second. Vision sends one fix every 2 s at the
-true position plus a little noise, and states σ = 15 m (the simulator's *target* accuracy, not a
-measured one) or "unknown" (`None`).
+> [!NOTE]
+> The attacks (scenarios.py): a survey drone flies **north** along the coast near Sousse at 15 m/s; the spoofer
+> pushes the GPS **east**, over the sea. GPS: one fix per second, σ 3 m. Day vision: one fix every 2 s, taken
+> 0.1 s after a GPS fix, reaching the judge 0.5 s later, σ 15 m (the simulator's *target* accuracy) — or no stated
+> accuracy at all in the `…_novision` attacks. The runner gives the jump gate the drone's top speed, 30 m/s.
 
-# Part A — the guard
+# Session 1 — Statistician (about 2 h)
 
-## Step 1 — Run the attacks on the empty guard
+## Step 0 — The judge alone against a slow drift (no code)
 
-```bash
-python3 spoof.py
-```
-
-For each attack it prints only the **changes** of state. With empty TODOs every attack is refused
-at t = 1 s ("max ? m": the gate cannot compute yet), then stays on "TODO 4b".
-
-## Step 2 — The kinematic gate (TODO 1–2)
-
-- `reachable_m(dt_s, max_speed, margin)` returns `max_speed · dt + margin`, with a negative dt counted
-  as 0 (a fix stamped before the trusted one).
-- `kinematic_gate(trusted, fix, max_speed, margin)` takes two `(t, x, y)` tuples and returns `True` when
-  the distance between them is **at most** `reachable_m(t1 − t0, …)`. Use `distance()` (already written).
+Mission 29's judge has the jump gate and nothing else against spoofing. First write `PREDICT_NOGUARD` in
+[answers.py](file:./answers.py), then:
 
 ```bash
-python3 -c "import spoof; print(spoof.reachable_m(2.0), spoof.kinematic_gate((0, 0, 0), (1, 0, 2000)))"
+python3 spoof_run.py drift --no-guard
 ```
 
-Expected: `110.0 False` (2 s at 30 m/s + 50 m; a 2 km jump in 1 s is refused).
+It prints only the **changes**: the time, the spoofer's offset, then the judge's state, source and the error
+of the position it flies on. Open [out/drift_noguard.png](file:./out/drift_noguard.png). Copy the summary's
+"largest error" into `NOGUARD_MAX_ERROR_M`. Look at t = 80 s: the spoofer stops and the **true** GPS returns.
+What does the judge do with it, and why? (Hint: mission 01's gate compares with the last *trusted* fix.)
 
-## Step 3 — Read the guard's flow
+## Step 1 — The threshold of a 2-D test (TODO 1)
 
-Open [spoof.py](file:./spoof.py) and read `on_gps()` (already written). For every GPS fix:
+🧰 **Mission 27's χ² numbers are in your stack:** `from navera_lite.uncertainty import chi2_threshold`;
+`chi2_threshold(0.95)` → 5.991 is the gate that keeps 95 % of honest errors INSIDE. Raising an error:
+`raise ValueError("speed must be >= 0, got -3")` stops the function with that message.
 
-1. the very first fix is trusted;
-2. if GPS is **REFUSED**, or it returns after an **outage** (more than `GPS_TIMEOUT_S` = 3 s since the
-   last trusted fix), it must be **confirmed** → `_confirm()` (TODO 4);
-3. otherwise the **kinematic gate**: a jump → REFUSED, "implausible jump";
-4. otherwise the **cross-check** with vision → `_cross_check()` (TODO 3) sets TRUSTED, IN_DOUBT or REFUSED;
-5. if not refused, this fix becomes the new trusted fix.
-
-`vision_reference()` (below the line) returns `(d, sigma, vt)` — the GPS–vision distance, the vision σ
-and the vision **stamp** — or `None` when there is no fresh vision fix with a **stated** σ. The guard
-stores stamps in a `set()`: that is how it counts **distinct** vision fixes. One vision fix compared
-with three GPS fixes counts once — otherwise a single wrong match would look like a streak.
-
-## Step 4 — The cross-check (TODO 3)
-
-Follow the four numbered comments in `_cross_check()`: the 3σ streak, the refusal at `STREAK_N`, the
-"5σ + 50 m for 3 s" rule, then IN_DOUBT from `DOUBT_AFTER` fixes. Then:
+Write `chi2_threshold_2d(p_fa)` in [navera_lite/spoof.py](file:./navera_lite/spoof.py) (lesson §2): the same
+threshold, but named by its false-alarm probability. Use mission 27's function, or the closed form of §2. Then:
 
 ```bash
-python3 spoof.py
+python3 spoof_run.py test
 ```
 
-Look at the attack **drift**: GPS goes `IN_DOUBT` around 55–60 m off, then `REFUSED` ("drifting away")
-a few seconds later. Compare with the worked example of the course (§4: ≈ 77 m expected for a refusal).
-In **drift_novision** nothing happens during the drift: that is the documented limit, not a bug.
+The first three lines should be ✔. The other lines stay ✘ until you write their TODOs.
 
-## Step 5 — Re-acceptance (TODO 4)
+<details><summary>Stuck? Hints, one at a time</summary>
 
-`_confirm()` has two halves. **4a**, with an independent source: two distinct agreeing vision fixes →
-TRUSTED ("confirmed by vision"), a disagreeing one → REFUSED. **4b**, without one: the kinematic gate
-decides — except after a cross-check refusal (`refused_by == "crosscheck"`), which only vision can clear.
+1. A false alarm is an honest d² OUTSIDE the gate: the probability of being inside is 1 − p_fa.
+2. So `chi2_threshold(1 - p_fa)` (dof 2 is the default). Or by hand: P(d² > γ) = e^(−γ/2), solve for γ.
+3. Refuse 0, 1 and everything outside: `if not 0 < p_fa < 1: raise ValueError(...)`.
+4. You get 0.103 instead of 5.991? You passed p_fa itself to `chi2_threshold`: it wants the probability INSIDE.
+   2.996? The factor 2 is missing. 2.60? `math.log10` is not ln.
+</details>
+
+## Step 2 — The innovation, and does your test keep its promise? (TODO 2)
+
+🧰 **d² is mission 27's Mahalanobis distance:** `from navera_lite.uncertainty import mahalanobis2`;
+`mahalanobis2([2.0, 3.0], [[4.0, 0.0], [0.0, 9.0]])` → 2.0 (2²/4 + 3²/9). Adding 2 × 2 matrices: build them with
+`np.array([[a, b], [b, c]])` and use `+`.
+
+`estimate.horizontal(cov)` gives (a, b, c) of a covariance (lesson 12); `geo.enu_flat(lat0, lon0, lat, lon)`
+gives east and north metres **from** the first point **to** the second (mission 06);
+`estimate.stated_sigma(est, cfg)` is None when an estimate states no accuracy (mission 12).
+
+Write `innovation(gps, ref, cfg)` (lesson §3: r, S with both covariances and the time-gap term, d²). Run
+`python3 spoof_run.py test` until the `innovation` lines are ✔.
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. Three steps: r = (east, north) from ref to gps; S = the sum of three 2×2 matrices; d² = mahalanobis2(r, S).
+2. The covariance of an Estimate as a 2×2 matrix: `[[a, b], [b, c]]` with `a, b, c = horizontal(est.cov)`.
+3. The gap term: `g = cfg["max_speed_mps"] * abs(gps.stamp_s - ref.stamp_s)`, then add g² to the two diagonal
+   terms only.
+4. You get 4.0 instead of 3.846 in `test`? Your S misses the GPS covariance (900 / 225). 50.0? You added σ
+   (3 + 15 = 18 m), not the variances σ² (9 + 225 m²).
+</details>
+
+Before the next command, write `PREDICT_STATS` (look at every term your `innovation` puts into S, and at what
+really happens in these pairs: the two sources measure the same point, 0.1 s apart). Then:
 
 ```bash
-python3 spoof.py
+python3 spoof_run.py stats
 ```
 
-Two stories should make you uneasy:
+20 000 honest GPS/vision pairs go through your `innovation`. Copy the measured share for p_fa 0.01 into
+`STATS_SHARE_1PC`, the mean d² into `MEAN_D2`, look at [out/stats.png](file:./out/stats.png), and write
+`EXPLAIN_STATS`.
 
-- **patient** (no vision): the 2 km spoof is *accepted* at t = 94 s ("plausible again") and at 120 s the
-  **true** GPS is refused as a jump — locked out.
-- **jamspoof_novision**: after an 80 s outage the 2 km spoof is "reachable" and accepted at once.
+## Step 3 — The jump gate's hole (TODO 4)
 
-With vision of stated accuracy (**patient_vision**, **jamspoof**) the spoof is never accepted, and the
-true GPS is confirmed 2 s after it returns.
+🧰 **A quadratic a·x² + b·x + c = 0** has the roots (−b ± √(b² − 4ac)) / (2a) when a ≠ 0. The positive root of
+an upward parabola (a > 0) whose value at 0 is negative (c < 0) is the one with **+**. `math.inf` is "infinity",
+a float: `math.inf > 1e300` → True.
 
-> [!TASK]
-> Complete TODO 1–4 in `spoof.py`. "Done": the seven attacks behave as described above — jump refused
-> and recovered; patient spoofer accepted only without vision; drift IN_DOUBT before REFUSED and refused
-> below 150 m; jam-then-spoof refused when vision states σ. Press **✔ Check my work** (checks 1–8).
-
-# Part B — detection as a hypothesis test
-
-## Step 6 — False alarms and the patient spoofer (TODO 5–7)
-
-In [detection.py](file:./detection.py):
-
-- **TODO 5** `p_exceed(k, sigma_ref, sigma_g)`: P(z > k) for one fix under H0. The course §4 gives the
-  Rayleigh tail: `exp(−ρ² / (2 s²))` with `ρ = k · sigma_ref` and `s² = sigma_ref² + sigma_g²`.
-- **TODO 6** `p_streak(k, n, …)`: n independent fixes in a row.
-- **TODO 7** `patient_accept_time(offset_m, speed_mps, max_speed_mps, margin_m)`: the smallest Δt with
-  `v·Δt + m ≥ sqrt((s·Δt)² + D²)`. Square both sides (both are positive) to get
-  `a·Δt² + b·Δt + c ≥ 0` with `a = v² − s²`, `b = 2·v·m`, `c = m² − D²`, and take the positive root.
-  Handle the edge cases: `m ≥ D` → 0; `a < 0` (the vehicle flies faster than the gate's
-  `max_speed`) → never reachable → `math.inf`; `a = 0` → the inequality is linear,
-  `b·Δt + c ≥ 0`: if `b > 0` (there is a margin), Δt = −c / b; if `b = 0` too (top speed **and** no
-  margin), it says `c ≥ 0`, which is false because `c = −D² < 0` → never reachable → `math.inf`
-  (do not divide by `b = 0`). Example: `patient_accept_time(2000, 30, 30, 0)` → `inf`.
+Write `patient_accept_time(offset_m, speed_mps, v_max_mps, margin_m)` (lesson §1, with the ✏️ check's special
+cases). `python3 spoof_run.py test` must show its two lines ✔. Then compute the lab's case and copy it into
+`PATIENT_THEORY_DT_S`:
 
 ```bash
-python3 -c "import detection as d; print(d.p_exceed(3.0), d.p_streak(3.0, 5), d.patient_accept_time(2000, 15, 30, 50))"
+python3 -c "from navera_lite.spoof import patient_accept_time as f; print(f(2000.0, 15.0, 30.0, 50.0))"
 ```
 
-Expected: `0.0111…`, `1.69…e-10`, `74.77…`. The last trusted fix of the attack *patient* is at
-t = 19 s, so the theory predicts acceptance at t ≈ 93.8 s. Your guard (Step 5) accepted at 94 s: it
-checks once per second.
+Write `PREDICT_PATIENT`, then play the patient spoofer against the judge alone:
 
-> [!WARNING]
-> `math.exp(-k**2 / 2)` works; `math.exp(-k^2 / 2)` does not: in Python `^` is the bitwise XOR, and
-> with a float it raises `TypeError: unsupported operand type(s) for ^`.
+```bash
+python3 spoof_run.py patient --no-guard
+```
 
-## Step 7 — The ROC experiment (TODO 8–9)
+Find the line where the judge starts flying on the GPS with an error near 2 000 m: its time is
+`PATIENT_FLOWN_T_S`. Now give the gate a "generous" top speed, the plane's 100 m/s, and copy the same time into
+`VMAX100_FLOWN_T_S`:
 
-The rule we test is NAVERA's persistence rule: **alarm when n vision fixes in a row have z > k**, with
-z = |GPS − vision| / σ_v.
+```bash
+python3 spoof_run.py patient --no-guard --vmax 100.0
+```
 
-- **TODO 8** `alarm_index(z, k, n)`: the index of the first fix where the last n values are all `> k`,
-  or −1. One pass, one counter.
-- **TODO 9** `roc_point(z_h0, z_h1, k, n, period_s)`: P_FA = fraction of H0 flights with an alarm, P_D =
-  fraction of H1 flights with an alarm, `delay_s` = mean alarm time over the **detected** H1 flights.
+Write `EXPLAIN_PATIENT`.
 
-Below the line, `simulate_z()` generates Monte-Carlo flights with a fixed seed (every run gives the
-same numbers): 2 000 honest flights of 2 min (60 vision checks) and 2 000 spoofed flights where the GPS
-is pulled north at 1.5 m/s and we want an alarm within 40 s. GPS noise σ_g = 3 m, vision σ_v = 15 m.
-It also generates 2 000 honest flights whose vision error is **correlated** from one fix to the next
-(an **AR(1)** series, "auto-regressive of order 1": each error = ρ × the previous error + fresh
-noise, here with ρ = 0.9, so the same map error lasts several frames).
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. Name the four numbers v, s, m, d first, then a = v² − s², b = 2·v·m, c = m² − d² (lesson §1).
+2. Three special cases before the formula: m ≥ d (reachable at once: 0.0); a < 0 (never: `math.inf`); a == 0 (a
+   line, b·Δt + c ≥ 0: careful with b == 0).
+3. You get a ZeroDivisionError? That is the a == 0 case: never divide by 2a there.
+4. You get a negative number? You took the root with −√.
+5. The run shows a few seconds more than 19 + your Δt: the gate accepts on the next whole-second fix, then the
+   judge waits its hold-off (mission 29) before it switches from vision back to GPS.
+</details>
+
+## Step 4 — Persistence and the delay of a drift (TODO 3, TODO 5)
+
+🧰 **`enumerate`** gives the index with each value: `for i, v in enumerate([5, 7]):` → (0, 5), (1, 7).
+**`math.floor(2.7)`** → 2 (the largest whole number ≤ x).
+
+Write `first_alarm(stats, threshold, n)` (a counter that restarts at 0, lesson §4) and then
+`drift_alarm_time(drift_mps, sigma_s_m, threshold, n, period_s)`. For TODO 5, do the lesson's worked example
+(u = 2 m/s → 32 s) **by hand** first, then write the code so that it does the same steps. Run
+`python3 spoof_run.py test` until all the lines above the SpoofGuard lines are ✔.
+
+Then compute the lab's drift (4 m/s, S = 243·I, p_fa 0.01, n = 5, a test every 2 s) and copy it into
+`DRIFT_THEORY_S`:
+
+```bash
+python3 -c "from navera_lite.spoof import drift_alarm_time as f, chi2_threshold_2d as g; print(f(4.0, 243 ** 0.5, g(0.01), 5, 2.0))"
+```
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. `first_alarm`: one counter; it grows when the value is above the threshold, goes back to 0 otherwise; the
+   moment it reaches n, return the index. If the loop ends, return −1.
+2. `first_alarm` returns 4 instead of 6 in `test`? Your counter does not restart at 0 after a value below the threshold.
+3. `drift_alarm_time`: the test's radius is sigma_s_m·√threshold; the drift reaches it at radius / drift_mps.
+4. Tests happen at 0, T, 2T…: the first one STRICTLY after that time is at (floor(t / T) + 1)·T.
+5. The n-th test in a row is (n − 1)·T later. You get 34.0 instead of 32.0 for the worked example? The first
+   disagreeing test is already one of the n. You get 30.0? You took the test just BEFORE the crossing (no + 1).
+</details>
+
+## Step 5 — A ROC curve by Monte Carlo (TODO 8)
+
+The rule of the guard: **alarm when n tests in a row have d² > γ**. [detection.py](file:./detection.py)
+simulates 2 000 honest 2-minute flights (60 tests) and 2 000 spoofed flights (a drift of 1.5 m/s that we want
+caught within 40 s), for p_fa per test in {0.2 … 0.0001} and n in {1, 2, 3, 5}. Write `roc_point` (TODO 8):
+it uses your `first_alarm` once per flight. Then:
 
 ```bash
 python3 detection.py
 ```
 
-It takes a few seconds, prints the table (k, n, P_FA, P_D, delay), and writes `results.json` and
-`roc.png`. Open [roc.png](file:./roc.png) and [results.json](file:./results.json).
+It takes about 10 s, prints the table and writes [results.json](file:./results.json) and
+[out/roc.png](file:./out/roc.png). Look at the first table: does the share of honest tests beyond γ match
+p_fa now? (It should be closer than in Step 2: the simulation has no time gap.)
 
-Read `results.json` → `"single_fix"`: the measured fraction of fixes beyond k against the two theories.
-Which one matches — with or without σ_g? Why?
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. For each row of `d2_h0`, `sp.first_alarm(row, threshold, n)`; a flight "has an alarm" when the result is ≥ 0.
+2. P_FA = the number of honest flights with an alarm / the number of honest flights. P_D: the same on `d2_h1`.
+3. The delay: only the spoofed flights WITH an alarm; mean of (index × period_s). None if no flight has one.
+4. Every P_D is 1.0 and every P_FA 0.0? You compared with `>= 0` the wrong way, or swapped the two arrays.
+</details>
 
 > [!TASK]
-> Complete TODO 5–9. "Done": the functions return the values above and pass the edge cases of the check;
-> `results.json` contains the 24 ROC points of the grid (the check recomputes them with its own
-> reference). Press **✔ Check my work** (checks 9–13).
+> TODO 1–5 in `navera_lite/spoof.py`, TODO 8 in `detection.py`, and the Session 1 answers of Steps 0–4.
+> Press **✔ Check my work**: checks 1–7.
 
-## Step 8 — Choose an operating point (TODO 10)
+## Step 6 — Choose an operating point (TODO 9)
 
-The requirement: **at most 1 % of honest 2-minute flights may raise a false alarm** (`MAX_PFA`). Among
-the 24 rules, choose the one with the highest P_D that meets it. Set `CHOSEN_K` and `CHOSEN_N` at the
-top of `detection.py` and run it again:
+The requirement: **at most 1 % of honest 2-minute flights may have an alarm** (`MAX_PFA`). Among the 24 rules,
+choose the one with the **highest P_D** that meets it. Set `CHOSEN_P` and `CHOSEN_N` at the top of
+detection.py and run it again:
 
 ```bash
 python3 detection.py
 ```
 
 > [!QUESTION]
-> Your rule is probably not NAVERA's (k = 3, n = 5), which has a much lower P_D here. A real flight
-> lasts an hour: 1 800 vision checks, not 60. Roughly, how does the false-alarm rate per flight scale with
-> the number of checks? Which choice would you defend for a product? Put this in report §2.
-
-Also look at `"correlated"`: for the same rule, how much larger is P_FA when ρ = 0.9? (report §3)
-
-> [!TASK]
-> Set `CHOSEN_K`, `CHOSEN_N`, rerun `python3 detection.py`. "Done": `results.json` → `"chosen"` is the
-> grid rule with P_FA ≤ 0.01 and the highest P_D (check 13).
-
-# Part C — attack the real arbiter
-
-## Step 9 — Three attacks on `estimator_node` (TODO 11)
-
-`spoof_real.py` starts NAVERA's real `estimator_node` from your copy (`~/navera`), publishes a GPS
-(2 fixes/s) and a day-vision estimate (1 fix/s) as `PositionEstimate` messages on your private ROS
-domain, and prints every change of `/navera/nav_status`. Run the three attacks one after the other
-(30–50 s each; wait for `saved real_….txt`):
-
-```bash
-python3 spoof_real.py jump
-```
-
-```bash
-python3 spoof_real.py drift
-```
-
-```bash
-python3 spoof_real.py jamspoof
-```
-
-Each run saves `real_<attack>.txt` (the status changes; the check reads it) and
-`real_<attack>_estimator.log` (what the estimator logged). Open them:
-[real_jump.txt](file:./real_jump.txt), [real_drift.txt](file:./real_drift.txt),
-[real_jamspoof.txt](file:./real_jamspoof.txt).
-
-What to look for:
-
-- **jump** — vision states *no* accuracy, so only the gate can act: `GPS refused: implausible jump
-  2000 m in 0.5 s (max 65 m at 30 m/s)` — the exact numbers depend on timing (for example
-  `0.5 s` or `0.6 s`, `max 65 m` or `66 m`). When the true GPS returns, the log says
-  `GPS plausible again — re-accepted`, and FIX GPS comes **2 s later** — the hold-off of lesson 29.
-- **drift** (6 m/s) — first `DEGRADED GPS … — GPS IN DOUBT: day vision disagrees by N m`: *in doubt*
-  raised the GPS's stated uncertainty to the gap (lesson 27). Then `GPS drifting away from day vision: 5
-  independent fixes in a row beyond 3 sigma`. Day vision (σ 15 m) becomes the FIX source.
-- **jamspoof** — while jammed, day vision takes over. The spoofed GPS returns 2 km away and is refused
-  (`GPS 1998 m from day vision (3 sigma 46 m)`) although, at 100 m/s, 2 km was reachable after 20 s.
-  The log shows `GPS confirmed by day vision (… 2 fixes) — re-accepted` when the true GPS returns.
-
-Every line carries the GPS offset at that moment (`GPS   54 m off`). In `real_drift.txt`, find the
-**first** line with `IN DOUBT` and the **first** line with `drifting away`, and copy their offsets
-into `REAL_DRIFT_OFFSET_AT_DOUBT_M` and `REAL_DRIFT_OFFSET_AT_REFUSAL_M` in `detection.py` (TODO 11).
-Check them with the course: σ 15 m → 3σ = 45 m; at 6 m/s and one vision fix per second, five fixes in a
-row take 4 s ≈ 24 m more.
-
-You can list the estimator's own error lines:
-
-```bash
-grep -h "GPS refused\|re-accepted" real_jump_estimator.log real_drift_estimator.log real_jamspoof_estimator.log
-```
+> Look at the two best rules: are they really different, or within Monte-Carlo noise (± √(P(1 − P)/2000))?
+> Find the rule closest to NAVERA's (p_fa 0.01 per test, n = 5): copy its P_D into `NAVERA_RULE_PD`. A real
+> flight lasts an hour, 1 800 tests: roughly how does P_FA per flight grow with the number of tests? Then read
+> results.json → `"correlated"`: copy the P_FA of the rule (0.05, 3) with ρ = 0.9 into `CORRELATED_PFA`.
+> Write `EXPLAIN_ROC` and `EXPLAIN_CORRELATED`.
 
 > [!TASK]
-> Run the three attacks so that the three `real_*.txt` files are complete (each ends with `FIX GPS`, the
-> true GPS back), and fill TODO 11. Press **✔ Check my work** (checks 14–15). A run can differ by a few
-> metres from your neighbour's: ROS timing is real time.
+> TODO 9 and the Step 6 answers. Press **✔ Check my work**: checks 1–8 make the **🏅 Statistician** badge.
 
-# Part D — the report
+# Session 2 — Guardian (1 h 30 to 2 h 30)
 
-## Step 10 — Write report.md
+## Step 7 — The guard's skeleton, then its cross-check (TODO 6)
 
-Open [report.md](file:./report.md). Keep its five `##` headings; replace each TODO with your analysis
-(the comments say what to answer). At least 40 words per section, 60 for §5. The check looks for:
-§1 the patient-spoofer time from `patient_accept_time` (Δt ≈ 75 s or t ≈ 94 s), §2 your chosen k and n,
-§4 the two real offsets you copied in TODO 11. Write short sentences and give units.
+Open `SpoofGuard` in [navera_lite/spoof.py](file:./navera_lite/spoof.py) and read what is given: `__init__`
+(the counters `disagree`, `far`, `agree`, the thresholds `gamma` and `gamma_far`, the jump gate `gate`), `check()`
+(a GPS fix → `on_gps`, any other source → `on_reference`), `closest_gps`, `has_reference` and `set_state`. Compare
+with the lesson's state diagram (§5).
+
+🧰 **Two counters that restart each other** — the same idea as `first_alarm`, kept between calls in `self`:
+
+```python
+if beyond:
+    self.bad, self.good = self.bad + 1, 0
+else:
+    self.bad, self.good = 0, self.good + 1
+```
+
+Write `on_reference(ref)` (TODO 6). Its docstring gives the order of the rules: the first one that applies
+wins. Your `innovation` does the maths.
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. Three early exits return None: an invalid ref, a ref that states no accuracy (`stated_sigma`), no GPS fix
+   close in time (`self.closest_gps(ref.stamp_s)`). Remember `self.last_ref_s` between the second and the third.
+2. Update the three counters (the 🧰 box), with `self.far` growing only while d² > `self.gamma_far`.
+3. Then one `if / elif` chain, in the docstring's order. A REFUSED guard only looks at `self.agree`.
+4. On confirmation, the GPS fix you compared becomes `self.gate.trusted`, so the jump gate starts again from it.
+5. Return d² at the end (also when nothing changed).
+</details>
+
+## Step 8 — The verdict on a GPS fix (TODO 7), and the drift
+
+Write `on_gps(gps)` (TODO 7): five rules, in the docstring's order. Trace by hand first: a guard TRUSTED with
+its last GPS fix at t = 40 s receives a fix at t = 45 s while vision (σ stated) was heard at t = 44.1 s. Which
+rule applies, which verdict, which `refused_by`? Then `python3 spoof_run.py test` (its last two lines).
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. The time since the last GPS fix is `gps.stamp_s - self.last_gps_s` (check() updates `last_gps_s` AFTER you).
+2. Every verdict goes through `self.set_state(state, reason, refused_by)` and you return what it returns. When
+   nothing changes, return `self.state, self.reason`.
+3. The jump gate: `ok, why = self.gate.check(gps)`; use `why` as the reason of a refusal.
+4. Rule 2 before rule 3: an outage while REFUSED changes nothing.
+5. Your guard refuses the true GPS in `jump` at t = 50 s although vision states nothing? Rule 3 needs
+   `self.has_reference(...)`: without a stated reference, the gate decides (rule 4).
+</details>
+
+Write `PREDICT_GUARD_DRIFT`, then:
+
+```bash
+python3 spoof_run.py drift
+```
+
+Open [out/drift.png](file:./out/drift.png). Copy the summary's offsets of the first IN_DOUBT and the first
+REFUSED spoofed fix into `DRIFT_DOUBT_OFFSET_M` and `DRIFT_REFUSED_OFFSET_M`, and write `EXPLAIN_DRIFT`.
+
+## Step 9 — Every attack
+
+Play these three and look at their pictures: the patient spoofer when vision states an accuracy, jam then spoof,
+and an honest flight with two wrong vision matches:
+
+```bash
+python3 spoof_run.py patient_vision
+```
+
+```bash
+python3 spoof_run.py jamspoof
+```
+
+```bash
+python3 spoof_run.py glitch
+```
+
+Then the whole table, every attack with and without your guard (about 10 s):
+
+```bash
+python3 spoof_run.py all
+```
+
+Write `EXPLAIN_LIMITS`: which attacks still win, and what do they have in common?
 
 > [!TASK]
-> Complete `report.md` and press **✔ Check my work** — all 16 checks should be green.
+> TODO 6–7, then `python3 spoof_run.py all` (it saves runs.json), and the answers of Steps 8–9. Press
+> **✔ Check my work**: checks 9–13. Check 11 plays seven attacks you have not seen through your guard.
+
+## Step 10 — Live over ROS 2
+
+The same judge and guard as a ROS 2 node, and the drift attack published in real time on
+`/navera_lite/fix/gps` and `/navera_lite/fix/day`. One terminal is enough: start the node in the **background**
+(the `&` at the end), wait 2 s, then play the attack (45 s of real time):
+
+```bash
+python3 guard_node.py --ros-args --params-file navera_lite.yaml -p max_speed_mps:=30.0 &
+```
+
+```bash
+python3 spoof_run.py drift --ros
+```
+
+The node's log lines (`[INFO] … [arbiter]`, `[WARN] … GPS IN_DOUBT …`) appear between the runner's lines: that is
+normal, both write to the same terminal. Then stop the node:
+
+```bash
+kill %1
+```
+
+(`jobs` lists your background jobs; "no judge listens" means the node is not running yet: wait 2 s and run the
+attack again.) Open [ros_drift.json](file:./ros_drift.json): find the first change with `"gps_guard": "REFUSED"`
+and copy its `t` into `ROS_REFUSED_T_S`. Compare with Step 8: why is it about half a second earlier here, and why
+is its offset one GPS step (4 m) smaller?
+
+<details><summary>Read this after the live run</summary>
+The live run records a change the moment the judge's status changes: the guard decides when the vision fix
+ARRIVES (measured at 30.1 s, received 0.5 s later). Offline, the runner prints the verdict at each GPS fix, so
+it shows the refusal at the next GPS fix (31 s, 4 m further). Same decision, two clocks.
+</details>
+
+## Step 11 — Red team: attack your own guard
+
+You are now the spoofer, and you know the rule. The `creep` attack holds the GPS a constant offset east of
+the truth from t = 10 s. Find the **largest offset your guard never REFUSES** (to the nearest 1–2 m) by trying
+values, for example:
+
+```bash
+python3 spoof_run.py creep --creep 40.0
+```
+
+Change the number (try 60, then halve the interval…) and watch the summary's "first REFUSED". Put your answer
+in `CREEP_MAX_M` and write `EXPLAIN_CREEP` (compare with the test's radius √(γ · 243) of lesson §3).
+
+> [!TASK]
+> `ros_drift.json` from a complete live run and the answers of Steps 10–11. Press **✔ Check my work**: all 15
+> checks make the **🏅 Guardian** badge.
+
+## Step 12 — Look back (not graded)
+
+Write `LOOK_BACK` in answers.py: (1) which of your guard's rules would you defend in front of a safety reviewer,
+and which one worries you? (2) The guard needs a reference of stated accuracy. Over the open sea there is none:
+what would you add to the vehicle? (3) Your best rule in Step 6 is not NAVERA's: who is right, for which
+mission?
 
 ## Going further (optional)
 
-- **One wrong vision fix.** In a copy of `scenarios.py`, add one vision fix 2 km away in the middle of an
-  honest flight. Your guard must not refuse the good GPS. Which line of `_cross_check()` protects it?
-- **A smarter spoofer.** Write an attack that keeps the offset at 2.5σ for ever (`offset = 37.5 m`).
-  Show that neither your guard nor the real rule detects it, and compute the largest undetected offset
-  of the real rule (`3σ + v_max · gap`). This is the **bound** of §6.
-- **Delay vs drift speed.** Change `DRIFT_MPS` to 0.5, 1, 3 and 6 m/s (copy the file first) and plot the
-  offset at detection (`delay_s · DRIFT_MPS`) for k = 3, n = 5. Is it roughly constant? Why?
-- **The product's own test.** `python3 ~/navera/navera_tools/tests/test_estimator.py` (about 2 min)
-  plays these attacks and more against the real node and prints `estimator: PASS`. Find its "gradual
-  spoof" scenario and compare with yours.
+- **Your own judge.** `python3 spoof_run.py all --mine` flies the judge you wrote in mission 29
+  (`../29-arbiter/navera_lite/arbiter.py`) instead of the course's. Same table?
+- **Vision states 30 m** (NAVERA's day vision today). In a copy of scenarios.py set `VISION_SIGMA_M = 30.0` for the
+  STATED σ only (keep the noise at 15 m) and replay `drift` and `creep`: how does the bound move?
+- **Delay against drift speed.** `python3 spoof_run.py drift --drift 1.0`, then 2.0, 4.0, 8.0: plot the offset at
+  refusal against the drift speed. Is it roughly constant? Why (lesson §4)?
+- **A smarter far rule.** NAVERA refuses a clear disagreement after 3 s beyond 5σ + 50 m. Change `p_fa_far` and
+  `far_n` (passed in cfg) and measure on `patient_vision` how fast the refusal comes and on `glitch` whether a good
+  GPS is ever refused.
