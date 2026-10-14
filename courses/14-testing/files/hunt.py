@@ -359,7 +359,8 @@ def run_mine(files):
         say(f"       your tests:            " + ("kill it ✔" if killed else
                                                   "miss it ✘ — add a test to test_geo_examples.py (TODO 6b)"))
         good += survives and killed
-    say(f"\n{good} of your mutants are good ones (missed by the stack's suite, killed by your tests).")
+    say(f"\n{good} of your mutants {'is a good one' if good == 1 else 'are good ones'} "
+        "(missed by the stack's suite, killed by your tests).")
 
 
 def main():
