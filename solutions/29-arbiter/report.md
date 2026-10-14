@@ -1,50 +1,31 @@
-# Lab 29 report — the arbiter
+# Mission 29 — what the judge's choices cost
 
-## 1. Hold-off
+Write in full sentences, with YOUR numbers from `python3 experiment.py` (results.json). At least 40 words
+in each section, 250 in all. Keep the four `## ` headings. The comments between `<!--` and `-->` do not count.
 
-With no hold-off (h = 0 s) the flapping GPS made the output change source 27.1 times per
-minute: every time the GPS came back it took over at once, and every time it failed the output
-jumped back to day vision. With the product value h = 2 s this falls to 12.7 switches per minute,
-and with h = 8 s to 1.3. The price is GPS time that is eligible but not used: 200.8 s out of
-600 s with h = 2 s, and 362 s with h = 8 s. For a drone I would keep 2 s: it removes the
-fast zig-zag (a GPS that flaps every 0.5 s never wins), and a 2 s delay before the better source
-returns is small compared with the time scale of a mission. With a GPS this unreliable, staying
-on vision is not a bad decision anyway.
+## 1. The hold-off
+With no hold-off my judge changed its winner 31.10 times per minute on the flapping GPS: the output jumped
+between GPS and day vision every two seconds. A 2 s hold-off cut that to 12.10 per minute, and 8 s to 0.80,
+but the price grows fast: the GPS was eligible and unused for 228.8 s of the 600 s at 2 s, and its share fell
+from 0.624 to 0.243. For a drone I would keep 2 s: it removes most zig-zags while a real GPS return is still
+used after two seconds.
 
-## 2. Freshness
-
-In the synthetic load model, day vision is available 78.4 % of the time with a 3 s window, with
-79 dropouts in 10 minutes, and 91.1 % with 5 s, with only 19 dropouts. Each dropout is a short
-NO_FIX if no other source exists, which is what made the autopilot land in the simulator. The
-cost of a longer window is staleness: at 40 m/s a fix used 5 s after its photo can be 200 m
-behind the drone (199.9 m measured as max age x speed). 5 s is a reasonable compromise only
-because NAVERA does not use the old position as if it were current: the output carries a vision
-fix to the present and grows its stated accuracy with its age.
+## 2. The freshness window
+A 3 s window kept day vision usable 75.1 % of the time with 82 dropouts; 5 s gave 89.5 % and 24 dropouts.
+The cost is age: with a 5 s window the oldest position used was 5 s old, a staleness of 200 m at 40 m/s,
+against 120 m at 3 s. On a fast plane a long window needs the position carried forward to the present, or
+its stated σ grown with its age.
 
 ## 3. Selection or fusion
+Fusing GPS (2.5 m) with vision (20 m) claims a σ of 2.481 m, barely better than GPS alone. If the errors are
+correlated with ρ = 0.6 the real σ is 2.658 m, worse than GPS alone while the output claims better. A GPS
+spoofed 1500 m east drags the fused position 1476.9 m with it. Selecting one source keeps the output honest
+and explainable; fusion becomes worth it only when each σ is measured and the correlations are known.
 
-Inverse-variance fusion of GPS (sigma 3 m) and vision (sigma 30 m) claims a sigma of 2.985 m,
-only 0.5 % better than GPS alone. If the errors are correlated with rho = 0.8 (vision takes its
-search prior from the GPS output), the true sigma of the same fused value is 3.213 m: worse than
-GPS alone, and the filter would be over-confident. If GPS is spoofed 2000 m away the fused
-position moves 1980 m with it, because the GPS weight is 0.99. So NAVERA selects: the gain is
-tiny, vision accuracy is not validated yet (an unknown sigma cannot be weighted), the errors are
-not independent, and a single winner is easy to check, explain and refuse.
-
-## 4. My arbiter against the real one
-
-My arbiter took the same decision as the real estimator_node at 11 of 11 moments, with the
-same reason texts apart from the ages. The 6 source switches came in the same order; the largest
-difference between a real and my switch instant was 0.15 s (day to night). It comes from the 5 Hz clock:
-my ticks are at exact multiples of 0.2 s, the real timer has its own phase, and the ROS messages
-take a few milliseconds. The real node also checks GPS plausibility (kinematic gate and
-cross-check with vision), which my arbiter does not do; in this scenario it never triggered.
-
-## 5. Limits
-
-All inputs are synthetic and use one seed: the flapping model (exponential on and off times) and
-the frame-gap model are my assumptions, not measurements of a real receiver or of the Jetson
-under load. There is no autopilot in the loop, so I did not measure what a switch or a dropout
-does to the flight. Next I would replay recorded NAVERA logs (frame instants, GPS validity) through
-the same metrics, repeat with several seeds to get a spread, and test the chosen values in the
-mission simulator before any field test.
+## 4. The door, the race and your design
+My judge matched the reference live: 11 of 11 decisions and every switch within 0.35 s. The fix stamped in
+the future is refused at the door and never stored, so it cannot block the honest fixes nor come back as
+FIX. For a plane at 40 m/s I would keep a 2 s hold-off and a short window (3 s) with forward carrying,
+because every second of age costs 40 m; for a harbour boat at 5 m/s a 3 s hold-off and a 6 s window are
+fine, since 6 s of age is only 30 m. These experiments are synthetic: real gaps, real correlations and real
+jammers may differ, and they say nothing about the accuracy of each source.

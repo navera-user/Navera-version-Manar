@@ -1,0 +1,1356 @@
+{
+ "scenario": "race.csv",
+ "mode": "live",
+ "samples": [
+  {
+   "t_s": 0.5,
+   "state": "STARTING",
+   "source": null,
+   "reason": "no position received yet",
+   "same": true
+  },
+  {
+   "t_s": 2.0,
+   "state": "FIX",
+   "source": "gps",
+   "reason": "gps: σ 3.0 m",
+   "same": true
+  },
+  {
+   "t_s": 5.0,
+   "state": "FIX",
+   "source": "gps",
+   "reason": "gps: σ 3.0 m",
+   "same": true
+  },
+  {
+   "t_s": 9.5,
+   "state": "FIX",
+   "source": "gps",
+   "reason": "gps: σ 3.0 m",
+   "same": true
+  },
+  {
+   "t_s": 12.0,
+   "state": "DEGRADED",
+   "source": "day",
+   "reason": "day: σ 30.0 m > 25.0 m",
+   "same": true
+  },
+  {
+   "t_s": 15.0,
+   "state": "DEGRADED",
+   "source": "day",
+   "reason": "day: σ 30.0 m > 25.0 m",
+   "same": true
+  },
+  {
+   "t_s": 16.5,
+   "state": "DEGRADED",
+   "source": "gps",
+   "reason": "gps: σ 40.0 m > 25.0 m",
+   "same": true
+  },
+  {
+   "t_s": 18.5,
+   "state": "DEGRADED",
+   "source": "day",
+   "reason": "day: σ 30.0 m > 25.0 m",
+   "same": true
+  },
+  {
+   "t_s": 21.0,
+   "state": "DEGRADED",
+   "source": "day",
+   "reason": "day: σ 30.0 m > 25.0 m",
+   "same": true
+  },
+  {
+   "t_s": 27.0,
+   "state": "DEGRADED",
+   "source": "night",
+   "reason": "night: σ unknown",
+   "same": true
+  },
+  {
+   "t_s": 30.5,
+   "state": "NO_FIX",
+   "source": null,
+   "reason": "no usable source (gps: no position; last fix refused: jump 5045 m > 350 m in 3.0 s; day: stale (8.9 s > 5.0 s); night: stale (7.4 s > 5.0 s); celestial: refused: from the future (60.0 s ahead))",
+   "same": true
+  }
+ ],
+ "switches": [
+  [
+   1.015,
+   null,
+   "gps"
+  ],
+  [
+   11.201,
+   "gps",
+   "day"
+  ],
+  [
+   16.011,
+   "day",
+   "gps"
+  ],
+  [
+   17.506,
+   "gps",
+   "day"
+  ],
+  [
+   26.6,
+   "day",
+   "night"
+  ],
+  [
+   28.2,
+   "night",
+   null
+  ]
+ ],
+ "decisions_same": 11,
+ "decisions": 11,
+ "switches_same": true,
+ "statuses": [
+  [
+   0.199,
+   "STARTING",
+   null,
+   "no position received yet"
+  ],
+  [
+   0.399,
+   "STARTING",
+   null,
+   "no position received yet"
+  ],
+  [
+   0.599,
+   "STARTING",
+   null,
+   "no position received yet"
+  ],
+  [
+   0.8,
+   "STARTING",
+   null,
+   "no position received yet"
+  ],
+  [
+   0.999,
+   "STARTING",
+   null,
+   "no position received yet"
+  ],
+  [
+   1.015,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   1.199,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   1.399,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   1.507,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   1.6,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   1.799,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   1.999,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   2.014,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   2.2,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   2.4,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   2.508,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   2.6,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   2.8,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   2.999,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   3.008,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   3.199,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   3.306,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   3.4,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   3.506,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   3.599,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   3.799,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   3.999,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   4.009,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   4.199,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   4.308,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   4.4,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   4.507,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   4.6,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   4.799,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   5.002,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   5.005,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   5.2,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   5.307,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   5.399,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   5.51,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   5.599,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   5.8,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   6.0,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   6.008,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   6.201,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   6.308,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   6.399,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   6.507,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   6.599,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   6.799,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   7.0,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   7.003,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   7.2,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   7.305,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   7.399,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   7.506,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   7.599,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   7.8,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   7.999,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   8.008,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   8.2,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   8.307,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   8.399,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   8.599,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   8.799,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   9.0,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   9.2,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   9.303,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   9.399,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   9.599,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   9.799,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   9.999,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   10.199,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   10.307,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   10.399,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   10.6,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   10.803,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   10.999,
+   "FIX",
+   "gps",
+   "gps: σ 3.0 m"
+  ],
+  [
+   11.201,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   11.309,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   11.399,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   11.599,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   11.799,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   11.999,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   12.199,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   12.309,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   12.399,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   12.601,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   12.801,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   12.999,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   13.2,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   13.306,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   13.399,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   13.601,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   13.801,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   14.0,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   14.003,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   14.2,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   14.306,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   14.4,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   14.512,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   14.6,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   14.8,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   15.0,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   15.011,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   15.199,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   15.305,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   15.402,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   15.506,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   15.6,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   15.8,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   16.0,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   16.011,
+   "DEGRADED",
+   "gps",
+   "gps: σ 40.0 m > 25.0 m"
+  ],
+  [
+   16.199,
+   "DEGRADED",
+   "gps",
+   "gps: σ 40.0 m > 25.0 m"
+  ],
+  [
+   16.305,
+   "DEGRADED",
+   "gps",
+   "gps: σ 40.0 m > 25.0 m"
+  ],
+  [
+   16.399,
+   "DEGRADED",
+   "gps",
+   "gps: σ 40.0 m > 25.0 m"
+  ],
+  [
+   16.505,
+   "DEGRADED",
+   "gps",
+   "gps: σ 40.0 m > 25.0 m"
+  ],
+  [
+   16.6,
+   "DEGRADED",
+   "gps",
+   "gps: σ 40.0 m > 25.0 m"
+  ],
+  [
+   16.8,
+   "DEGRADED",
+   "gps",
+   "gps: σ 40.0 m > 25.0 m"
+  ],
+  [
+   16.999,
+   "DEGRADED",
+   "gps",
+   "gps: σ 40.0 m > 25.0 m"
+  ],
+  [
+   17.007,
+   "DEGRADED",
+   "gps",
+   "gps: σ 40.0 m > 25.0 m"
+  ],
+  [
+   17.199,
+   "DEGRADED",
+   "gps",
+   "gps: σ 40.0 m > 25.0 m"
+  ],
+  [
+   17.305,
+   "DEGRADED",
+   "gps",
+   "gps: σ 40.0 m > 25.0 m"
+  ],
+  [
+   17.4,
+   "DEGRADED",
+   "gps",
+   "gps: σ 40.0 m > 25.0 m"
+  ],
+  [
+   17.506,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   17.599,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   17.799,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   17.999,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   18.007,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   18.2,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   18.305,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   18.4,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   18.505,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   18.6,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   18.8,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   19.001,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   19.004,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   19.199,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   19.306,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   19.4,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   19.507,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   19.6,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   19.799,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   19.999,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   20.009,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   20.199,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   20.308,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   20.399,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   20.599,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   20.801,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   20.999,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   21.199,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   21.308,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   21.399,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   21.599,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   21.799,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   21.999,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   22.201,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   22.306,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   22.399,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   22.599,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   22.799,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   23.0,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   23.003,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   23.2,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   23.399,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   23.599,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   23.799,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   23.999,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   24.009,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   24.199,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   24.403,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   24.599,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   24.799,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   25.0,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   25.008,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   25.199,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   25.399,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   25.6,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   25.8,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   26.0,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   26.2,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   26.399,
+   "DEGRADED",
+   "day",
+   "day: σ 30.0 m > 25.0 m"
+  ],
+  [
+   26.6,
+   "DEGRADED",
+   "night",
+   "night: σ unknown"
+  ],
+  [
+   26.801,
+   "DEGRADED",
+   "night",
+   "night: σ unknown"
+  ],
+  [
+   27.003,
+   "DEGRADED",
+   "night",
+   "night: σ unknown"
+  ],
+  [
+   27.201,
+   "DEGRADED",
+   "night",
+   "night: σ unknown"
+  ],
+  [
+   27.399,
+   "DEGRADED",
+   "night",
+   "night: σ unknown"
+  ],
+  [
+   27.609,
+   "DEGRADED",
+   "night",
+   "night: σ unknown"
+  ],
+  [
+   27.799,
+   "DEGRADED",
+   "night",
+   "night: σ unknown"
+  ],
+  [
+   27.999,
+   "DEGRADED",
+   "night",
+   "night: σ unknown"
+  ],
+  [
+   28.2,
+   "NO_FIX",
+   null,
+   "no usable source (gps: no position; last fix refused: jump 5045 m > 350 m in 3.0 s; day: stale (6.7 s > 5.0 s); night: stale (5.2 s > 5.0 s); celestial: refused: from the future (60.0 s ahead))"
+  ],
+  [
+   28.399,
+   "NO_FIX",
+   null,
+   "no usable source (gps: no position; last fix refused: jump 5045 m > 350 m in 3.0 s; day: stale (6.9 s > 5.0 s); night: stale (5.4 s > 5.0 s); celestial: refused: from the future (60.0 s ahead))"
+  ],
+  [
+   28.599,
+   "NO_FIX",
+   null,
+   "no usable source (gps: no position; last fix refused: jump 5045 m > 350 m in 3.0 s; day: stale (7.1 s > 5.0 s); night: stale (5.6 s > 5.0 s); celestial: refused: from the future (60.0 s ahead))"
+  ],
+  [
+   28.8,
+   "NO_FIX",
+   null,
+   "no usable source (gps: no position; last fix refused: jump 5045 m > 350 m in 3.0 s; day: stale (7.3 s > 5.0 s); night: stale (5.8 s > 5.0 s); celestial: refused: from the future (60.0 s ahead))"
+  ],
+  [
+   28.999,
+   "NO_FIX",
+   null,
+   "no usable source (gps: no position; last fix refused: jump 5045 m > 350 m in 3.0 s; day: stale (7.5 s > 5.0 s); night: stale (6.0 s > 5.0 s); celestial: refused: from the future (60.0 s ahead))"
+  ],
+  [
+   29.199,
+   "NO_FIX",
+   null,
+   "no usable source (gps: no position; last fix refused: jump 5045 m > 350 m in 3.0 s; day: stale (7.7 s > 5.0 s); night: stale (6.2 s > 5.0 s); celestial: refused: from the future (60.0 s ahead))"
+  ],
+  [
+   29.4,
+   "NO_FIX",
+   null,
+   "no usable source (gps: no position; last fix refused: jump 5045 m > 350 m in 3.0 s; day: stale (7.9 s > 5.0 s); night: stale (6.4 s > 5.0 s); celestial: refused: from the future (60.0 s ahead))"
+  ],
+  [
+   29.618,
+   "NO_FIX",
+   null,
+   "no usable source (gps: no position; last fix refused: jump 5045 m > 350 m in 3.0 s; day: stale (8.1 s > 5.0 s); night: stale (6.6 s > 5.0 s); celestial: refused: from the future (60.0 s ahead))"
+  ],
+  [
+   29.803,
+   "NO_FIX",
+   null,
+   "no usable source (gps: no position; last fix refused: jump 5045 m > 350 m in 3.0 s; day: stale (8.3 s > 5.0 s); night: stale (6.8 s > 5.0 s); celestial: refused: from the future (60.0 s ahead))"
+  ],
+  [
+   29.999,
+   "NO_FIX",
+   null,
+   "no usable source (gps: no position; last fix refused: jump 5045 m > 350 m in 3.0 s; day: stale (8.5 s > 5.0 s); night: stale (7.0 s > 5.0 s); celestial: refused: from the future (60.0 s ahead))"
+  ],
+  [
+   30.199,
+   "NO_FIX",
+   null,
+   "no usable source (gps: no position; last fix refused: jump 5045 m > 350 m in 3.0 s; day: stale (8.7 s > 5.0 s); night: stale (7.2 s > 5.0 s); celestial: refused: from the future (60.0 s ahead))"
+  ],
+  [
+   30.399,
+   "NO_FIX",
+   null,
+   "no usable source (gps: no position; last fix refused: jump 5045 m > 350 m in 3.0 s; day: stale (8.9 s > 5.0 s); night: stale (7.4 s > 5.0 s); celestial: refused: from the future (60.0 s ahead))"
+  ],
+  [
+   30.6,
+   "NO_FIX",
+   null,
+   "no usable source (gps: no position; last fix refused: jump 5045 m > 350 m in 3.0 s; day: stale (9.1 s > 5.0 s); night: stale (7.6 s > 5.0 s); celestial: refused: from the future (60.0 s ahead))"
+  ],
+  [
+   30.801,
+   "NO_FIX",
+   null,
+   "no usable source (gps: no position; last fix refused: jump 5045 m > 350 m in 3.0 s; day: stale (9.3 s > 5.0 s); night: stale (7.8 s > 5.0 s); celestial: refused: from the future (60.0 s ahead))"
+  ],
+  [
+   30.999,
+   "NO_FIX",
+   null,
+   "no usable source (gps: no position; last fix refused: jump 5045 m > 350 m in 3.0 s; day: stale (9.5 s > 5.0 s); night: stale (8.0 s > 5.0 s); celestial: refused: from the future (60.0 s ahead))"
+  ]
+ ]
+}

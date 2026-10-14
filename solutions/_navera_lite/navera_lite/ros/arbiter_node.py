@@ -1,0 +1,149 @@
+"""navera_lite/ros/arbiter_node.py — YOUR judge (navera_lite/arbiter.py) as a ROS 2 node named "arbiter".
+Part of NAVERA Lite, the course's teaching stack (given in mission 29; it replaces arbiter v0, same topics).
+Written for the course; it is not NAVERA code.
+
+    python3 -m navera_lite.ros.arbiter_node --ros-args --params-file navera_lite.yaml
+
+This file only plugs the Arbiter into ROS: every rule is in navera_lite/arbiter.py.
+  on every fix:  Arbiter.receive(est, now), then a decision (Arbiter.step(now));
+  at tick_hz:    a decision, so that a source that goes silent is noticed;
+  each decision: the status (latched), and the winner's position if it is a NEW measurement (never twice,
+                 never in NO_FIX or STARTING).
+
+Topics (relative names, as arbiter v0):
+  subscribes  navera_lite/fix/{gps,day,night,celestial}  NavSatFix (FIX_QOS); navera_lite/imu Imu (liveness)
+  publishes   navera_lite/position  NavSatFix (FIX_QOS);  navera_lite/status  DiagnosticStatus (STATUS_QOS)
+Status values: state, source, sigma_m, age_s, imu, waiting (a higher-priority source waiting for the hold-off,
+e.g. "gps 0.8 s / 2.0 s"), switches (how many so far), and src.<source> for each source.
+"""
+from diagnostic_msgs.msg import DiagnosticStatus
+from rclpy.node import Node
+from sensor_msgs.msg import Imu, NavSatFix
+
+from navera_lite.arbiter import Arbiter
+from navera_lite.estimate import SOURCES
+from navera_lite.ros.convert import from_navsatfix, make_status, to_navsatfix
+from navera_lite.ros.qos import FIX_QOS, SENSOR_QOS, STATUS_QOS
+from navera_lite.ros.runner import run_node
+from navera_lite.settings import DEFAULTS
+
+# @part 29
+IMU_SILENT_S = 1.0         # no IMU message for this long → "silent" in the status values
+
+
+# @part 29
+def waiting_note(arb, now_s):
+    """Which higher-priority source waits for the hold-off, in words ("" when none): the first source before
+    the current winner (priority order) that is in arb.since, with how long it has been eligible.
+
+    Example: winner "day", since {"gps": 99.2, "day": 80.0}, now 100.0, hold-off 2.0 → "gps 0.8 s / 2.0 s"
+    """
+    if arb.current not in SOURCES:
+        return ""
+    for name in SOURCES[:SOURCES.index(arb.current)]:
+        if name in arb.since:
+            return f"{name} {now_s - arb.since[name]:.1f} s / {float(arb.cfg['switch_holdoff_s']):.1f} s"
+    return ""
+
+
+# @part 29
+class ArbiterNode(Node):
+    """The node "arbiter": your Arbiter fed by the fix topics. Parameters: the settings (navera_lite.yaml)."""
+
+    def __init__(self):
+        super().__init__("arbiter")
+        for key, value in DEFAULTS.items():
+            self.declare_parameter(key, value)
+        cfg = {key: self.get_parameter(key).value for key in DEFAULTS}
+        self.arb = Arbiter(cfg)
+        for name in SOURCES:
+            self.create_subscription(NavSatFix, f"navera_lite/fix/{name}",
+                                     lambda msg, name=name: self.on_fix(name, msg), FIX_QOS)
+        self.create_subscription(Imu, "navera_lite/imu", self.on_imu, SENSOR_QOS)
+        self.pub_position = self.create_publisher(NavSatFix, "navera_lite/position", FIX_QOS)
+        self.pub_status = self.create_publisher(DiagnosticStatus, "navera_lite/status", STATUS_QOS)
+        self.last_imu_s = None
+        self.last_sent = None              # (source, stamp, lat, lon) of the last published position
+        self.last_line = None
+        self.broken = None                 # the first error of the student's code, reported once
+        self.create_timer(1.0 / float(cfg["tick_hz"]), self.step)
+        self.create_timer(5.0, self.count_judges)
+        self.get_logger().info("YOUR arbiter (navera_lite/arbiter.py) started, listening on "
+                               f"{self.resolve_topic_name('navera_lite/fix/gps')} and the other fix topics")
+        self.step()
+
+    def now_s(self):
+        return self.get_clock().now().nanoseconds * 1e-9
+
+    def student_error(self, where, e):
+        """Report an error of arbiter.py once, in one plain sentence, and stop the node."""
+        if isinstance(e, NotImplementedError):
+            text = (f"{where} is not written yet ({e}): finish it in navera_lite/arbiter.py and test it "
+                    "offline first (python3 judge_lab.py test)")
+        else:
+            text = (f"{where} stopped with {type(e).__name__}: {e} — run `python3 judge_lab.py test` "
+                    "to find out why")
+        self.get_logger().error(text)
+        self.broken = text
+        raise SystemExit(1)
+
+    def on_fix(self, name, msg):
+        now = self.now_s()
+        try:
+            got = self.arb.receive(from_navsatfix(msg, source=name, now_s=now), now)
+        except Exception as e:
+            self.student_error("Arbiter.receive()", e)
+        if isinstance(got, tuple) and len(got) == 2 and not got[0]:
+            self.get_logger().warn(f"{name} fix refused: {got[1]}")
+        self.step()
+
+    def on_imu(self, msg):
+        self.last_imu_s = self.now_s()
+
+    def step(self):
+        """Decide now, publish the status, and the winning position if it is a new measurement."""
+        now = self.now_s()
+        try:
+            d = self.arb.step(now)
+            if d is None:
+                raise NotImplementedError("it returned None: TODO 5")
+            state, reason, sources, est = d.state, d.reason, d.sources, d.estimate
+            source, sigma_m = d.source, d.sigma_m
+        except Exception as e:
+            self.student_error("Arbiter.step()", e)
+        if self.last_imu_s is None:
+            imu = "none"
+        else:
+            imu = "alive" if now - self.last_imu_s <= IMU_SILENT_S else "silent"
+        values = {"source": source or "",
+                  "sigma_m": "" if sigma_m is None else f"{sigma_m:.2f}",
+                  "age_s": "" if est is None else f"{now - est.stamp_s:.2f}",
+                  "imu": imu, "waiting": waiting_note(self.arb, now), "switches": str(len(self.arb.switches))}
+        values.update({f"src.{n}": str(why) for n, why in (sources or {}).items()})
+        self.pub_status.publish(make_status(state, reason, values))
+        if (state, source) != self.last_line:
+            self.get_logger().info(f"{state}: {reason}")
+            self.last_line = (state, source)
+        if est is not None and state in ("FIX", "DEGRADED"):
+            key = (est.source, est.stamp_s, est.lat, est.lon)
+            if key != self.last_sent:                  # never send the same measurement twice
+                self.pub_position.publish(to_navsatfix(est))
+                self.last_sent = key
+
+    def count_judges(self):
+        """One judge only: log an ERROR when another node also publishes on our status topic."""
+        topic = self.resolve_topic_name("navera_lite/status")
+        n = self.count_publishers(topic)
+        if n > 1:
+            self.get_logger().error(f"{n} judges publish on {topic}: stop the extra arbiter "
+                                    "(`jobs`, then kill -INT %N in its terminal)")
+
+
+# @part 29
+def main(args=None):
+    """Start YOUR arbiter and spin until Ctrl+C."""
+    run_node(ArbiterNode, args)
+
+
+if __name__ == "__main__":
+    main()

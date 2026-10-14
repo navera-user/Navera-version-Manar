@@ -1,0 +1,94 @@
+{
+ "holdoff": [
+  {
+   "holdoff_s": 0.0,
+   "switches_per_min": 31.1,
+   "gps_share": 0.624,
+   "gps_unused_s": 0.0
+  },
+  {
+   "holdoff_s": 0.5,
+   "switches_per_min": 24.5,
+   "gps_share": 0.49833333333333335,
+   "gps_unused_s": 75.4
+  },
+  {
+   "holdoff_s": 1.0,
+   "switches_per_min": 20.3,
+   "gps_share": 0.39366666666666666,
+   "gps_unused_s": 138.20000000000002
+  },
+  {
+   "holdoff_s": 2.0,
+   "switches_per_min": 12.1,
+   "gps_share": 0.24266666666666667,
+   "gps_unused_s": 228.8
+  },
+  {
+   "holdoff_s": 4.0,
+   "switches_per_min": 4.4,
+   "gps_share": 0.09933333333333333,
+   "gps_unused_s": 314.8
+  },
+  {
+   "holdoff_s": 8.0,
+   "switches_per_min": 0.8,
+   "gps_share": 0.034,
+   "gps_unused_s": 354.0
+  }
+ ],
+ "freshness": [
+  {
+   "window_s": 2.0,
+   "availability": 0.5626666666666666,
+   "dropouts": 131,
+   "max_age_s": 2.0,
+   "max_error_m": 80.0
+  },
+  {
+   "window_s": 3.0,
+   "availability": 0.7506666666666667,
+   "dropouts": 82,
+   "max_age_s": 3.0,
+   "max_error_m": 120.0
+  },
+  {
+   "window_s": 4.0,
+   "availability": 0.8493333333333334,
+   "dropouts": 32,
+   "max_age_s": 4.0,
+   "max_error_m": 160.0
+  },
+  {
+   "window_s": 5.0,
+   "availability": 0.8951666666666667,
+   "dropouts": 24,
+   "max_age_s": 5.0,
+   "max_error_m": 200.0
+  },
+  {
+   "window_s": 6.0,
+   "availability": 0.9291666666666667,
+   "dropouts": 18,
+   "max_age_s": 6.0,
+   "max_error_m": 240.0
+  },
+  {
+   "window_s": 8.0,
+   "availability": 0.981,
+   "dropouts": 10,
+   "max_age_s": 7.983,
+   "max_error_m": 319.32
+  }
+ ],
+ "fusion": {
+  "sigma_gps_m": 2.5,
+  "sigma_vision_m": 20.0,
+  "rho": 0.6,
+  "claimed_sigma_m": 2.480694691784169,
+  "true_sigma_m": 2.6575782008232847,
+  "weight_gps": 0.9846153846153846,
+  "spoof_m": 1500.0,
+  "spoofed_fused_m": 1476.923076923077
+ }
+}

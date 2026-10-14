@@ -1,36 +1,31 @@
-# Reading the real code.  Open ~/navera/navera_estimator/navera_estimator/nodes/estimator_node.py
-# (and its settings file config/estimator_params.yaml). Method names: write them exactly as
-# after `def`, without `self.` and without parentheses, for example:   Q0 = "_on_gps"
+# Lab 29 — your answers. Numbers without quotes (V0_FLAP_SWITCHES = 12). Text in quotes ("…").
+# PREDICT_… : your guess BEFORE you run the step. Never marked right or wrong: write it honestly.
+# EXPLAIN_… : after the run, in your own words (one to three sentences). Your teacher reads them.
 
-# Q1. Which method decides if a source is fresh ("alive") and eligible, with ONE rule for every source?
-Q1 = "_eval_source"
+# ======== Session 1 — The judge ========
 
-# Q2. Which method checks that the position is finite and the covariance is a real covariance
-#     (finite, non-negative variances, symmetric, positive semi-definite)?
-Q2 = "_sane"
+# ---- Step 0: arbiter v0 and a GPS that comes and goes (flapping.csv) ---------------------------------
+PREDICT_FLAP = "about 10 changes"
+V0_FLAP_SWITCHES = 29
 
-# Q3. Which method applies the priority list AND the switch hold-off?
-Q3 = "_select"
+# ---- Step 5: the door left open (lockout.csv) ---------------------------------------------------------
+PREDICT_LOCKOUT = "the judge refuses the future fix and the honest ones keep it at FIX"
+EXPLAIN_LOCKOUT = ("Once the fix stamped 30.5 s was stored, every honest fix had an older stamp, so the door dropped "
+                   "them as old news for 20 s and the judge fell back to day vision. When the clock reached that "
+                   "stamp the stored fix became eligible, waited the hold-off and won as FIX at 32 s with a position "
+                   "about 430 m behind, and the jump gate, which trusted it, refused the honest fixes as jumps.")
 
-# Q4. Which method turns the winner into FIX or DEGRADED (with the reason text)?
-Q4 = "_classify"
+# ======== Session 2 — Live, and what it costs ========
 
-# Q5. Which method builds the one-clause explanation for ONE source that is not usable
-#     ("GPS: stale (4.0s>3.0s)")?
-Q5 = "_source_reason"
+# ---- Step 6: the race ---------------------------------------------------------------------------------
+EXPLAIN_WAIT = ("The hold-off: GPS came back at 14.0 s, so at 15.0 s it has been eligible for 1 s only, less than "
+                "the 2 s it must wait before it may replace day vision; it takes over at 16.0 s.")
 
-# Q6. Which method is called at the END of _on_gps, _on_day, _on_night and _on_cn
-#     (it is also called by the 5 Hz timer)?
-Q6 = "_tick"
+# ---- Step 7: the price of the hold-off (python3 experiment.py) ----------------------------------------
+PREDICT_HOLDOFF = "30 per minute without, 10 with 2 s"
+EXPLAIN_HOLDOFF = ("A 2 s hold-off cuts the changes of winner from 31.1 to 12.1 per minute, so the output is much "
+                   "steadier, but the GPS was eligible and not used for 228.8 s of the 600 s, and its share falls "
+                   "from 62 % to 24 %: stability costs good GPS time.")
 
-# Q7. In estimator_params.yaml, how many seconds is the hold-off (switch_holdoff_s)? A number.
-Q7 = 2.0
-
-# Q8. In estimator_node.py itself (the declare_float lines), what is the DEFAULT day_timeout_s?
-#     (The product runs with the yaml file, which overrides it. A number.)
-Q8 = 3.0
-
-# Q9. The GPS goes silent (no more messages). With the yaml settings, what is the LONGEST time
-#     (s) from its last measurement until the arbiter has certainly stopped using it?
-#     Think: freshness window + the longest wait for the next tick of the 5 Hz clock. A number.
-Q9 = 3.2
+# ---- Look back (not graded) ---------------------------------------------------------------------------
+LOOK_BACK = "a refused fix is never stored, so it can never come back"

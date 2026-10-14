@@ -1,0 +1,13199 @@
+{
+ "candidates": [
+  {
+   "latest": [
+    {
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.82650000000001,
+     "stamp_s": 497.1,
+     "cov": [
+      9.0,
+      0.0,
+      0.0,
+      0.0,
+      9.0,
+      0.0,
+      0.0,
+      0.0,
+      36.0
+     ],
+     "cov_type": 1,
+     "valid": true
+    },
+    {
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.82650000000001,
+     "stamp_s": 499.0,
+     "cov": [
+      900.0,
+      0.0,
+      0.0,
+      0.0,
+      900.0,
+      0.0,
+      0.0,
+      0.0,
+      3600.0
+     ],
+     "cov_type": 1,
+     "valid": false
+    },
+    {
+     "source": "night",
+     "lat": 35.7712,
+     "lon": 10.82650000000001,
+     "stamp_s": 498.0,
+     "cov": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "cov_type": 0,
+     "valid": true
+    }
+   ],
+   "now": 500.0,
+   "cfg": {},
+   "want": [
+    "gps",
+    "night"
+   ]
+  },
+  {
+   "latest": [
+    {
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.82650000000001,
+     "stamp_s": 497.5,
+     "cov": [
+      900.0,
+      0.0,
+      0.0,
+      0.0,
+      900.0,
+      0.0,
+      0.0,
+      0.0,
+      3600.0
+     ],
+     "cov_type": 1,
+     "valid": true
+    },
+    {
+     "source": "celestial",
+     "lat": 35.7712,
+     "lon": 10.82650000000001,
+     "stamp_s": 460.0,
+     "cov": [
+      810000.0,
+      0.0,
+      0.0,
+      0.0,
+      810000.0,
+      0.0,
+      0.0,
+      0.0,
+      3240000.0
+     ],
+     "cov_type": 1,
+     "valid": true
+    }
+   ],
+   "now": 500.0,
+   "cfg": {
+    "day_timeout_s": 2.0
+   },
+   "want": [
+    "celestial"
+   ]
+  },
+  {
+   "latest": [
+    {
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.82650000000001,
+     "stamp_s": 500.4,
+     "cov": [
+      9.0,
+      0.0,
+      0.0,
+      0.0,
+      9.0,
+      0.0,
+      0.0,
+      0.0,
+      36.0
+     ],
+     "cov_type": 1,
+     "valid": true
+    },
+    {
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.82650000000001,
+     "stamp_s": 501.2,
+     "cov": [
+      900.0,
+      0.0,
+      0.0,
+      0.0,
+      900.0,
+      0.0,
+      0.0,
+      0.0,
+      3600.0
+     ],
+     "cov_type": 1,
+     "valid": true
+    }
+   ],
+   "now": 500.0,
+   "cfg": {},
+   "want": [
+    "gps"
+   ]
+  },
+  {
+   "latest": [
+    {
+     "source": "night",
+     "lat": NaN,
+     "lon": 10.8,
+     "stamp_s": 499.0,
+     "cov": [
+      2500.0,
+      0.0,
+      0.0,
+      0.0,
+      2500.0,
+      0.0,
+      0.0,
+      0.0,
+      10000.0
+     ],
+     "cov_type": 1,
+     "valid": true
+    }
+   ],
+   "now": 500.0,
+   "cfg": {},
+   "want": []
+  },
+  {
+   "latest": [
+    {
+     "source": "night",
+     "lat": 35.7712,
+     "lon": 10.82650000000001,
+     "stamp_s": 499.0,
+     "cov": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "cov_type": 0,
+     "valid": true
+    },
+    {
+     "source": "celestial",
+     "lat": 35.7712,
+     "lon": 10.82650000000001,
+     "stamp_s": 480.0,
+     "cov": [
+      4000000.0,
+      0.0,
+      0.0,
+      0.0,
+      4000000.0,
+      0.0,
+      0.0,
+      0.0,
+      16000000.0
+     ],
+     "cov_type": 1,
+     "valid": true
+    },
+    {
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.82650000000001,
+     "stamp_s": 499.9,
+     "cov": [
+      9.0,
+      0.0,
+      0.0,
+      0.0,
+      9.0,
+      0.0,
+      0.0,
+      0.0,
+      36.0
+     ],
+     "cov_type": 1,
+     "valid": true
+    }
+   ],
+   "now": 500.0,
+   "cfg": {},
+   "want": [
+    "gps",
+    "night",
+    "celestial"
+   ]
+  },
+  {
+   "latest": [
+    {
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.82650000000001,
+     "stamp_s": 497.0,
+     "cov": [
+      9.0,
+      0.0,
+      0.0,
+      0.0,
+      9.0,
+      0.0,
+      0.0,
+      0.0,
+      36.0
+     ],
+     "cov_type": 1,
+     "valid": true
+    },
+    {
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.82650000000001,
+     "stamp_s": 495.0,
+     "cov": [
+      900.0,
+      0.0,
+      0.0,
+      0.0,
+      900.0,
+      0.0,
+      0.0,
+      0.0,
+      3600.0
+     ],
+     "cov_type": 1,
+     "valid": true
+    }
+   ],
+   "now": 500.0,
+   "cfg": {},
+   "want": [
+    "gps",
+    "day"
+   ]
+  }
+ ],
+ "track_since": [
+  {
+   "since": {
+    "gps": 10.0
+   },
+   "cands": [
+    "gps"
+   ],
+   "now": 12.0,
+   "want": {
+    "gps": 10.0
+   }
+  },
+  {
+   "since": {
+    "gps": 10.0,
+    "day": 5.0
+   },
+   "cands": [
+    "day",
+    "night"
+   ],
+   "now": 12.0,
+   "want": {
+    "day": 5.0,
+    "night": 12.0
+   }
+  },
+  {
+   "since": {},
+   "cands": [
+    "celestial"
+   ],
+   "now": 7.5,
+   "want": {
+    "celestial": 7.5
+   }
+  },
+  {
+   "since": {
+    "night": 3.0,
+    "gps": 1.0
+   },
+   "cands": [],
+   "now": 9.0,
+   "want": {}
+  }
+ ],
+ "pick": [
+  {
+   "cands": [
+    "gps",
+    "day"
+   ],
+   "current": "day",
+   "since": {
+    "gps": 50.0,
+    "day": 10.0
+   },
+   "now": 52.9,
+   "cfg": {
+    "switch_holdoff_s": 3.0
+   },
+   "want": "day"
+  },
+  {
+   "cands": [
+    "gps",
+    "day"
+   ],
+   "current": "day",
+   "since": {
+    "gps": 50.0,
+    "day": 10.0
+   },
+   "now": 53.0,
+   "cfg": {
+    "switch_holdoff_s": 3.0
+   },
+   "want": "gps"
+  },
+  {
+   "cands": [
+    "day",
+    "night"
+   ],
+   "current": "gps",
+   "since": {
+    "day": 99.95,
+    "night": 20.0
+   },
+   "now": 100.0,
+   "cfg": {},
+   "want": "day"
+  },
+  {
+   "cands": [
+    "gps",
+    "day",
+    "night"
+   ],
+   "current": "night",
+   "since": {
+    "gps": 99.5,
+    "day": 90.0,
+    "night": 80.0
+   },
+   "now": 100.0,
+   "cfg": {},
+   "want": "day"
+  },
+  {
+   "cands": [
+    "night",
+    "celestial"
+   ],
+   "current": "celestial",
+   "since": {
+    "night": 99.0,
+    "celestial": 1.0
+   },
+   "now": 100.0,
+   "cfg": {},
+   "want": "celestial"
+  },
+  {
+   "cands": [
+    "gps"
+   ],
+   "current": null,
+   "since": {
+    "gps": 100.0
+   },
+   "now": 100.0,
+   "cfg": {},
+   "want": "gps"
+  },
+  {
+   "cands": [],
+   "current": "day",
+   "since": {},
+   "now": 5.0,
+   "cfg": {},
+   "want": null
+  },
+  {
+   "cands": [
+    "gps",
+    "day"
+   ],
+   "current": "gps",
+   "since": {
+    "gps": 99.9,
+    "day": 50.0
+   },
+   "now": 100.0,
+   "cfg": {},
+   "want": "gps"
+  },
+  {
+   "cands": [
+    "gps",
+    "day"
+   ],
+   "current": "day",
+   "since": {
+    "gps": 100.0,
+    "day": 50.0
+   },
+   "now": 100.0,
+   "cfg": {
+    "switch_holdoff_s": 0.0
+   },
+   "want": "gps"
+  }
+ ],
+ "receive": [
+  {
+   "name": "a stamp 0.6 s ahead (tolerance 0.5 s), then one 0.4 s ahead",
+   "cfg": {},
+   "steps": [
+    [
+     {
+      "source": "gps",
+      "lat": 35.7712,
+      "lon": 10.82650000000001,
+      "stamp_s": 200.6,
+      "cov": [
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       36.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     200.0
+    ],
+    [
+     {
+      "source": "gps",
+      "lat": 35.7712,
+      "lon": 10.82650000000001,
+      "stamp_s": 200.9,
+      "cov": [
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       36.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     200.5
+    ]
+   ],
+   "want": [
+    {
+     "stored": false,
+     "why": "from the future (0.6 s ahead)",
+     "latest": {},
+     "refused": [
+      "gps"
+     ]
+    },
+    {
+     "stored": true,
+     "why": "stored",
+     "latest": {
+      "gps": 200.9
+     },
+     "refused": []
+    }
+   ]
+  },
+  {
+   "name": "late and duplicate day fixes",
+   "cfg": {},
+   "steps": [
+    [
+     {
+      "source": "day",
+      "lat": 35.7712,
+      "lon": 10.82650000000001,
+      "stamp_s": 300.0,
+      "cov": [
+       900.0,
+       0.0,
+       0.0,
+       0.0,
+       900.0,
+       0.0,
+       0.0,
+       0.0,
+       3600.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     300.5
+    ],
+    [
+     {
+      "source": "day",
+      "lat": 35.7712,
+      "lon": 10.82650000000001,
+      "stamp_s": 299.0,
+      "cov": [
+       900.0,
+       0.0,
+       0.0,
+       0.0,
+       900.0,
+       0.0,
+       0.0,
+       0.0,
+       3600.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     300.8
+    ],
+    [
+     {
+      "source": "day",
+      "lat": 35.7712,
+      "lon": 10.82650000000001,
+      "stamp_s": 300.0,
+      "cov": [
+       900.0,
+       0.0,
+       0.0,
+       0.0,
+       900.0,
+       0.0,
+       0.0,
+       0.0,
+       3600.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     301.0
+    ],
+    [
+     {
+      "source": "day",
+      "lat": 35.7712,
+      "lon": 10.82650000000001,
+      "stamp_s": 301.0,
+      "cov": [
+       900.0,
+       0.0,
+       0.0,
+       0.0,
+       900.0,
+       0.0,
+       0.0,
+       0.0,
+       3600.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     301.5
+    ]
+   ],
+   "want": [
+    {
+     "stored": true,
+     "why": "stored",
+     "latest": {
+      "day": 300.0
+     },
+     "refused": []
+    },
+    {
+     "stored": false,
+     "why": "old news",
+     "latest": {
+      "day": 300.0
+     },
+     "refused": []
+    },
+    {
+     "stored": false,
+     "why": "old news",
+     "latest": {
+      "day": 300.0
+     },
+     "refused": []
+    },
+    {
+     "stored": true,
+     "why": "stored",
+     "latest": {
+      "day": 301.0
+     },
+     "refused": []
+    }
+   ]
+  },
+  {
+   "name": "the jump gate with this vehicle's settings (20 m/s + 30 m)",
+   "cfg": {
+    "max_speed_mps": 20.0,
+    "gps_jump_margin_m": 30.0
+   },
+   "steps": [
+    [
+     {
+      "source": "gps",
+      "lat": 35.7712,
+      "lon": 10.82650000000001,
+      "stamp_s": 400.0,
+      "cov": [
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       36.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     400.0
+    ],
+    [
+     {
+      "source": "gps",
+      "lat": 35.7712,
+      "lon": 10.827608415625264,
+      "stamp_s": 402.0,
+      "cov": [
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       36.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     402.0
+    ],
+    [
+     {
+      "source": "gps",
+      "lat": 35.7712,
+      "lon": 10.827165049375168,
+      "stamp_s": 403.0,
+      "cov": [
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       36.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     403.0
+    ]
+   ],
+   "want": [
+    {
+     "stored": true,
+     "why": "stored",
+     "latest": {
+      "gps": 400.0
+     },
+     "refused": []
+    },
+    {
+     "stored": false,
+     "why": "jump 100 m > 70 m in 2.0 s",
+     "latest": {
+      "gps": 400.0
+     },
+     "refused": [
+      "gps"
+     ]
+    },
+    {
+     "stored": true,
+     "why": "stored",
+     "latest": {
+      "gps": 403.0
+     },
+     "refused": []
+    }
+   ]
+  },
+  {
+   "name": "a GPS with no position, then a fix",
+   "cfg": {},
+   "steps": [
+    [
+     {
+      "source": "gps",
+      "lat": NaN,
+      "lon": NaN,
+      "stamp_s": 500.0,
+      "cov": [
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "cov_type": 0,
+      "valid": false
+     },
+     500.0
+    ],
+    [
+     {
+      "source": "gps",
+      "lat": 35.7712,
+      "lon": 10.82650000000001,
+      "stamp_s": 501.0,
+      "cov": [
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       36.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     501.0
+    ]
+   ],
+   "want": [
+    {
+     "stored": true,
+     "why": "stored",
+     "latest": {
+      "gps": 500.0
+     },
+     "refused": []
+    },
+    {
+     "stored": true,
+     "why": "stored",
+     "latest": {
+      "gps": 501.0
+     },
+     "refused": []
+    }
+   ]
+  },
+  {
+   "name": "a source the judge does not know",
+   "cfg": {},
+   "steps": [
+    [
+     {
+      "source": "radar",
+      "lat": 35.7712,
+      "lon": 10.82650000000001,
+      "stamp_s": 600.0,
+      "cov": [
+       25.0,
+       0.0,
+       0.0,
+       0.0,
+       25.0,
+       0.0,
+       0.0,
+       0.0,
+       100.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     600.0
+    ]
+   ],
+   "want": [
+    {
+     "stored": false,
+     "why": "unknown source 'radar'",
+     "latest": {},
+     "refused": []
+    }
+   ]
+  },
+  {
+   "name": "day vision 5 km away (the jump gate is for GPS only)",
+   "cfg": {},
+   "steps": [
+    [
+     {
+      "source": "day",
+      "lat": 35.7712,
+      "lon": 10.82650000000001,
+      "stamp_s": 700.0,
+      "cov": [
+       900.0,
+       0.0,
+       0.0,
+       0.0,
+       900.0,
+       0.0,
+       0.0,
+       0.0,
+       3600.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     700.0
+    ],
+    [
+     {
+      "source": "day",
+      "lat": 35.7712,
+      "lon": 10.881920781263858,
+      "stamp_s": 701.0,
+      "cov": [
+       900.0,
+       0.0,
+       0.0,
+       0.0,
+       900.0,
+       0.0,
+       0.0,
+       0.0,
+       3600.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     701.0
+    ]
+   ],
+   "want": [
+    {
+     "stored": true,
+     "why": "stored",
+     "latest": {
+      "day": 700.0
+     },
+     "refused": []
+    },
+    {
+     "stored": true,
+     "why": "stored",
+     "latest": {
+      "day": 701.0
+     },
+     "refused": []
+    }
+   ]
+  },
+  {
+   "name": "a GPS fix 30 s ahead and 800 m off, then honest fixes of a vehicle at 25 m/s",
+   "cfg": {},
+   "steps": [
+    [
+     {
+      "source": "gps",
+      "lat": 35.7712,
+      "lon": 10.82650000000001,
+      "stamp_s": 800.0,
+      "cov": [
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       36.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     800.0
+    ],
+    [
+     {
+      "source": "gps",
+      "lat": 35.7712,
+      "lon": 10.835644428908523,
+      "stamp_s": 831.0,
+      "cov": [
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       36.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     801.0
+    ],
+    [
+     {
+      "source": "gps",
+      "lat": 35.7712,
+      "lon": 10.827054207812637,
+      "stamp_s": 802.0,
+      "cov": [
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       36.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     802.0
+    ],
+    [
+     {
+      "source": "gps",
+      "lat": 35.7712,
+      "lon": 10.82733131171895,
+      "stamp_s": 803.0,
+      "cov": [
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       36.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     803.0
+    ],
+    [
+     {
+      "source": "gps",
+      "lat": 35.7712,
+      "lon": 10.827608415625264,
+      "stamp_s": 804.0,
+      "cov": [
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       36.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     804.0
+    ],
+    [
+     {
+      "source": "gps",
+      "lat": 35.7712,
+      "lon": 10.827885519531605,
+      "stamp_s": 805.0,
+      "cov": [
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       36.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     805.0
+    ],
+    [
+     {
+      "source": "gps",
+      "lat": 35.7712,
+      "lon": 10.828162623437919,
+      "stamp_s": 806.0,
+      "cov": [
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       36.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     806.0
+    ],
+    [
+     {
+      "source": "gps",
+      "lat": 35.7712,
+      "lon": 10.828439727344232,
+      "stamp_s": 807.0,
+      "cov": [
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       36.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     807.0
+    ],
+    [
+     {
+      "source": "gps",
+      "lat": 35.7712,
+      "lon": 10.828716831250546,
+      "stamp_s": 808.0,
+      "cov": [
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       36.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     808.0
+    ]
+   ],
+   "want": [
+    {
+     "stored": true,
+     "why": "stored",
+     "latest": {
+      "gps": 800.0
+     },
+     "refused": []
+    },
+    {
+     "stored": false,
+     "why": "from the future (30.0 s ahead)",
+     "latest": {
+      "gps": 800.0
+     },
+     "refused": [
+      "gps"
+     ]
+    },
+    {
+     "stored": true,
+     "why": "stored",
+     "latest": {
+      "gps": 802.0
+     },
+     "refused": []
+    },
+    {
+     "stored": true,
+     "why": "stored",
+     "latest": {
+      "gps": 803.0
+     },
+     "refused": []
+    },
+    {
+     "stored": true,
+     "why": "stored",
+     "latest": {
+      "gps": 804.0
+     },
+     "refused": []
+    },
+    {
+     "stored": true,
+     "why": "stored",
+     "latest": {
+      "gps": 805.0
+     },
+     "refused": []
+    },
+    {
+     "stored": true,
+     "why": "stored",
+     "latest": {
+      "gps": 806.0
+     },
+     "refused": []
+    },
+    {
+     "stored": true,
+     "why": "stored",
+     "latest": {
+      "gps": 807.0
+     },
+     "refused": []
+    },
+    {
+     "stored": true,
+     "why": "stored",
+     "latest": {
+      "gps": 808.0
+     },
+     "refused": []
+    }
+   ]
+  }
+ ],
+ "step": [
+  {
+   "name": "only a refused fix from the future",
+   "cfg": {},
+   "ops": [
+    [
+     "s",
+     10.0
+    ],
+    [
+     "r",
+     {
+      "source": "celestial",
+      "lat": 35.7712,
+      "lon": 10.82650000000001,
+      "stamp_s": 40.0,
+      "cov": [
+       810000.0,
+       0.0,
+       0.0,
+       0.0,
+       810000.0,
+       0.0,
+       0.0,
+       0.0,
+       3240000.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     10.0
+    ],
+    [
+     "s",
+     10.2
+    ]
+   ],
+   "want": {
+    "decisions": [
+     {
+      "state": "STARTING",
+      "source": null,
+      "reason": "no position received yet",
+      "switched": false,
+      "sigma_m": null
+     },
+     {
+      "state": "NO_FIX",
+      "source": null,
+      "reason": "no usable source (celestial: refused: from the future (30.0 s ahead))",
+      "switched": false,
+      "sigma_m": null
+     }
+    ],
+    "switches": [],
+    "current": null
+   }
+  },
+  {
+   "name": "a day fix that states 12 m, then night vision with no σ",
+   "cfg": {},
+   "ops": [
+    [
+     "r",
+     {
+      "source": "day",
+      "lat": 35.7712,
+      "lon": 10.82650000000001,
+      "stamp_s": 49.5,
+      "cov": [
+       144.0,
+       0.0,
+       0.0,
+       0.0,
+       144.0,
+       0.0,
+       0.0,
+       0.0,
+       576.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     50.0
+    ],
+    [
+     "s",
+     50.0
+    ],
+    [
+     "r",
+     {
+      "source": "night",
+      "lat": 35.7712,
+      "lon": 10.82650000000001,
+      "stamp_s": 51.0,
+      "cov": [
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "cov_type": 0,
+      "valid": true
+     },
+     51.2
+    ],
+    [
+     "s",
+     55.0
+    ],
+    [
+     "s",
+     57.0
+    ]
+   ],
+   "want": {
+    "decisions": [
+     {
+      "state": "FIX",
+      "source": "day",
+      "reason": "day: σ 12.0 m",
+      "switched": true,
+      "sigma_m": 12.0
+     },
+     {
+      "state": "DEGRADED",
+      "source": "night",
+      "reason": "night: σ unknown",
+      "switched": true,
+      "sigma_m": null
+     },
+     {
+      "state": "NO_FIX",
+      "source": null,
+      "reason": "no usable source (day: stale (7.5 s > 5.0 s); night: stale (6.0 s > 5.0 s))",
+      "switched": true,
+      "sigma_m": null
+     }
+    ],
+    "switches": [
+     [
+      50.0,
+      null,
+      "day"
+     ],
+     [
+      55.0,
+      "day",
+      "night"
+     ],
+     [
+      57.0,
+      "night",
+      null
+     ]
+    ],
+    "current": null
+   }
+  },
+  {
+   "name": "a hold-off of 3 s, GPS back",
+   "cfg": {
+    "switch_holdoff_s": 3.0
+   },
+   "ops": [
+    [
+     "r",
+     {
+      "source": "day",
+      "lat": 35.7712,
+      "lon": 10.82650000000001,
+      "stamp_s": 60.0,
+      "cov": [
+       900.0,
+       0.0,
+       0.0,
+       0.0,
+       900.0,
+       0.0,
+       0.0,
+       0.0,
+       3600.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     60.2
+    ],
+    [
+     "s",
+     60.2
+    ],
+    [
+     "r",
+     {
+      "source": "gps",
+      "lat": 35.7712,
+      "lon": 10.82650000000001,
+      "stamp_s": 61.0,
+      "cov": [
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       36.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     61.0
+    ],
+    [
+     "s",
+     61.0
+    ],
+    [
+     "r",
+     {
+      "source": "day",
+      "lat": 35.7712,
+      "lon": 10.82650000000001,
+      "stamp_s": 62.0,
+      "cov": [
+       900.0,
+       0.0,
+       0.0,
+       0.0,
+       900.0,
+       0.0,
+       0.0,
+       0.0,
+       3600.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     62.2
+    ],
+    [
+     "s",
+     63.8
+    ],
+    [
+     "r",
+     {
+      "source": "gps",
+      "lat": 35.7712,
+      "lon": 10.82650000000001,
+      "stamp_s": 63.5,
+      "cov": [
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       36.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     63.6
+    ],
+    [
+     "s",
+     64.0
+    ],
+    [
+     "s",
+     64.2
+    ]
+   ],
+   "want": {
+    "decisions": [
+     {
+      "state": "DEGRADED",
+      "source": "day",
+      "reason": "day: σ 30.0 m > 25.0 m",
+      "switched": true,
+      "sigma_m": 30.0
+     },
+     {
+      "state": "DEGRADED",
+      "source": "day",
+      "reason": "day: σ 30.0 m > 25.0 m",
+      "switched": false,
+      "sigma_m": 30.0
+     },
+     {
+      "state": "DEGRADED",
+      "source": "day",
+      "reason": "day: σ 30.0 m > 25.0 m",
+      "switched": false,
+      "sigma_m": 30.0
+     },
+     {
+      "state": "FIX",
+      "source": "gps",
+      "reason": "gps: σ 3.0 m",
+      "switched": true,
+      "sigma_m": 3.0
+     },
+     {
+      "state": "FIX",
+      "source": "gps",
+      "reason": "gps: σ 3.0 m",
+      "switched": false,
+      "sigma_m": 3.0
+     }
+    ],
+    "switches": [
+     [
+      60.2,
+      null,
+      "day"
+     ],
+     [
+      64.0,
+      "day",
+      "gps"
+     ]
+    ],
+    "current": "gps"
+   }
+  },
+  {
+   "name": "a GPS that says no position while it wins",
+   "cfg": {},
+   "ops": [
+    [
+     "r",
+     {
+      "source": "gps",
+      "lat": 35.7712,
+      "lon": 10.82650000000001,
+      "stamp_s": 70.0,
+      "cov": [
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       9.0,
+       0.0,
+       0.0,
+       0.0,
+       36.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     70.0
+    ],
+    [
+     "s",
+     70.0
+    ],
+    [
+     "r",
+     {
+      "source": "day",
+      "lat": 35.7712,
+      "lon": 10.82650000000001,
+      "stamp_s": 70.5,
+      "cov": [
+       900.0,
+       0.0,
+       0.0,
+       0.0,
+       900.0,
+       0.0,
+       0.0,
+       0.0,
+       3600.0
+      ],
+      "cov_type": 1,
+      "valid": true
+     },
+     70.6
+    ],
+    [
+     "s",
+     70.6
+    ],
+    [
+     "r",
+     {
+      "source": "gps",
+      "lat": NaN,
+      "lon": NaN,
+      "stamp_s": 71.0,
+      "cov": [
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "cov_type": 0,
+      "valid": false
+     },
+     71.0
+    ],
+    [
+     "s",
+     71.0
+    ]
+   ],
+   "want": {
+    "decisions": [
+     {
+      "state": "FIX",
+      "source": "gps",
+      "reason": "gps: σ 3.0 m",
+      "switched": true,
+      "sigma_m": 3.0
+     },
+     {
+      "state": "FIX",
+      "source": "gps",
+      "reason": "gps: σ 3.0 m",
+      "switched": false,
+      "sigma_m": 3.0
+     },
+     {
+      "state": "DEGRADED",
+      "source": "day",
+      "reason": "day: σ 30.0 m > 25.0 m",
+      "switched": true,
+      "sigma_m": 30.0
+     }
+    ],
+    "switches": [
+     [
+      70.0,
+      null,
+      "gps"
+     ],
+     [
+      71.0,
+      "gps",
+      "day"
+     ]
+    ],
+    "current": "day"
+   }
+  }
+ ],
+ "scenarios": [
+  {
+   "name": "a",
+   "rows": [
+    {
+     "t_s": 0.6,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.826579805925007,
+     "a": 36.0,
+     "b": 0.0,
+     "c": 36.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 1.1,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.826646310862543,
+     "a": 36.0,
+     "b": 0.0,
+     "c": 36.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 1.6,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.82671281580005,
+     "a": 36.0,
+     "b": 0.0,
+     "c": 36.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 2.1,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.826779320737558,
+     "a": 36.0,
+     "b": 0.0,
+     "c": 36.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 2.3,
+     "source": "day",
+     "lat": 35.771244966080296,
+     "lon": 10.826894596074169,
+     "a": 324.0,
+     "b": 0.0,
+     "c": 324.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.6
+    },
+    {
+     "t_s": 2.6,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.826845825675093,
+     "a": 36.0,
+     "b": 0.0,
+     "c": 36.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 3.1,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.8269123306126,
+     "a": 36.0,
+     "b": 0.0,
+     "c": 36.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 3.4,
+     "source": "day",
+     "lat": 35.771244966080296,
+     "lon": 10.827040906978056,
+     "a": 324.0,
+     "b": 0.0,
+     "c": 324.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.6
+    },
+    {
+     "t_s": 3.6,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.826978835550108,
+     "a": 36.0,
+     "b": 0.0,
+     "c": 36.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 4.1,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.827045340487643,
+     "a": 36.0,
+     "b": 0.0,
+     "c": 36.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 4.5,
+     "source": "day",
+     "lat": 35.771244966080296,
+     "lon": 10.827187217881942,
+     "a": 324.0,
+     "b": 0.0,
+     "c": 324.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.6
+    },
+    {
+     "t_s": 4.6,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.82711184542515,
+     "a": 36.0,
+     "b": 0.0,
+     "c": 36.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 5.1,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.827178350362658,
+     "a": 36.0,
+     "b": 0.0,
+     "c": 36.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 5.6,
+     "source": "day",
+     "lat": 35.771244966080296,
+     "lon": 10.827333528785857,
+     "a": 324.0,
+     "b": 0.0,
+     "c": 324.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.6
+    },
+    {
+     "t_s": 6.1,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.827311360237701,
+     "a": 36.0,
+     "b": 0.0,
+     "c": 36.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 6.6,
+     "source": "gps",
+     "lat": NaN,
+     "lon": NaN,
+     "a": 36.0,
+     "b": 0.0,
+     "c": 36.0,
+     "cov_type": 1,
+     "valid": 0,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 6.7,
+     "source": "day",
+     "lat": 35.771244966080296,
+     "lon": 10.827479839689744,
+     "a": 324.0,
+     "b": 0.0,
+     "c": 324.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.6
+    },
+    {
+     "t_s": 7.1,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.827444370112744,
+     "a": 36.0,
+     "b": 0.0,
+     "c": 36.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 7.6,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.827510875050251,
+     "a": 36.0,
+     "b": 0.0,
+     "c": 36.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 7.8,
+     "source": "day",
+     "lat": 35.771244966080296,
+     "lon": 10.827626150593659,
+     "a": 324.0,
+     "b": 0.0,
+     "c": 324.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.6
+    },
+    {
+     "t_s": 8.1,
+     "source": "gps",
+     "lat": NaN,
+     "lon": NaN,
+     "a": 36.0,
+     "b": 0.0,
+     "c": 36.0,
+     "cov_type": 1,
+     "valid": 0,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 8.6,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.827643884925294,
+     "a": 36.0,
+     "b": 0.0,
+     "c": 36.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 8.9,
+     "source": "day",
+     "lat": 35.771244966080296,
+     "lon": 10.827772461497545,
+     "a": 324.0,
+     "b": 0.0,
+     "c": 324.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.6
+    },
+    {
+     "t_s": 9.1,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.827710389862801,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 9.6,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.827776894800309,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 10.0,
+     "source": "day",
+     "lat": 35.771244966080296,
+     "lon": 10.82791877240146,
+     "a": 324.0,
+     "b": 0.0,
+     "c": 324.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.6
+    },
+    {
+     "t_s": 10.1,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.827843399737844,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 10.6,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.827909904675352,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 11.1,
+     "source": "day",
+     "lat": 35.771244966080296,
+     "lon": 10.828065083305347,
+     "a": 324.0,
+     "b": 0.0,
+     "c": 324.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.6
+    },
+    {
+     "t_s": 11.1,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.827976409612859,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 12.1,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.839193575740666,
+     "a": 36.0,
+     "b": 0.0,
+     "c": 36.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 12.2,
+     "source": "day",
+     "lat": 35.771244966080296,
+     "lon": 10.828211394209262,
+     "a": 324.0,
+     "b": 0.0,
+     "c": 324.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.6
+    },
+    {
+     "t_s": 13.3,
+     "source": "day",
+     "lat": 35.771244966080296,
+     "lon": 10.828357705113149,
+     "a": 324.0,
+     "b": 0.0,
+     "c": 324.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.6
+    },
+    {
+     "t_s": 14.4,
+     "source": "day",
+     "lat": 35.771244966080296,
+     "lon": 10.828504016017064,
+     "a": 324.0,
+     "b": 0.0,
+     "c": 324.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.6
+    },
+    {
+     "t_s": 15.0,
+     "source": "night",
+     "lat": 35.7712,
+     "lon": 10.828328885781701,
+     "a": 0.0,
+     "b": 0.0,
+     "c": 0.0,
+     "cov_type": 0,
+     "valid": 1,
+     "delay_s": 1.2
+    },
+    {
+     "t_s": 15.5,
+     "source": "day",
+     "lat": 35.771244966080296,
+     "lon": 10.82865032692095,
+     "a": 324.0,
+     "b": 0.0,
+     "c": 324.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.6
+    },
+    {
+     "t_s": 16.6,
+     "source": "day",
+     "lat": 35.771244966080296,
+     "lon": 10.828796637824865,
+     "a": 324.0,
+     "b": 0.0,
+     "c": 324.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.6
+    },
+    {
+     "t_s": 17.0,
+     "source": "night",
+     "lat": 35.7712,
+     "lon": 10.828594905531759,
+     "a": 0.0,
+     "b": 0.0,
+     "c": 0.0,
+     "cov_type": 0,
+     "valid": 1,
+     "delay_s": 1.2
+    },
+    {
+     "t_s": 17.7,
+     "source": "day",
+     "lat": 35.771244966080296,
+     "lon": 10.828942948728752,
+     "a": 324.0,
+     "b": 0.0,
+     "c": 324.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.6
+    },
+    {
+     "t_s": 18.8,
+     "source": "day",
+     "lat": 35.771244966080296,
+     "lon": 10.829089259632667,
+     "a": 324.0,
+     "b": 0.0,
+     "c": 324.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.6
+    },
+    {
+     "t_s": 19.0,
+     "source": "night",
+     "lat": 35.7712,
+     "lon": 10.828860925281845,
+     "a": 0.0,
+     "b": 0.0,
+     "c": 0.0,
+     "cov_type": 0,
+     "valid": 1,
+     "delay_s": 1.2
+    },
+    {
+     "t_s": 19.9,
+     "source": "day",
+     "lat": 35.771244966080296,
+     "lon": 10.829235570536554,
+     "a": 324.0,
+     "b": 0.0,
+     "c": 324.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.6
+    },
+    {
+     "t_s": 21.0,
+     "source": "day",
+     "lat": 35.771244966080296,
+     "lon": 10.829381881440469,
+     "a": 324.0,
+     "b": 0.0,
+     "c": 324.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.6
+    },
+    {
+     "t_s": 21.0,
+     "source": "night",
+     "lat": 35.7712,
+     "lon": 10.829126945031902,
+     "a": 0.0,
+     "b": 0.0,
+     "c": 0.0,
+     "cov_type": 0,
+     "valid": 1,
+     "delay_s": 1.2
+    },
+    {
+     "t_s": 22.1,
+     "source": "day",
+     "lat": 35.771244966080296,
+     "lon": 10.829528192344355,
+     "a": 324.0,
+     "b": 0.0,
+     "c": 324.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.6
+    },
+    {
+     "t_s": 23.0,
+     "source": "night",
+     "lat": 35.7712,
+     "lon": 10.82939296478196,
+     "a": 0.0,
+     "b": 0.0,
+     "c": 0.0,
+     "cov_type": 0,
+     "valid": 1,
+     "delay_s": 1.2
+    },
+    {
+     "t_s": 23.2,
+     "source": "day",
+     "lat": 35.771244966080296,
+     "lon": 10.82967450324827,
+     "a": 324.0,
+     "b": 0.0,
+     "c": 324.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.6
+    },
+    {
+     "t_s": 24.3,
+     "source": "day",
+     "lat": 35.771244966080296,
+     "lon": 10.829820814152157,
+     "a": 324.0,
+     "b": 0.0,
+     "c": 324.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.6
+    },
+    {
+     "t_s": 25.0,
+     "source": "night",
+     "lat": 35.7712,
+     "lon": 10.829658984532045,
+     "a": 0.0,
+     "b": 0.0,
+     "c": 0.0,
+     "cov_type": 0,
+     "valid": 1,
+     "delay_s": 1.2
+    },
+    {
+     "t_s": 25.4,
+     "source": "day",
+     "lat": 35.771244966080296,
+     "lon": 10.829967125056044,
+     "a": 324.0,
+     "b": 0.0,
+     "c": 324.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.6
+    },
+    {
+     "t_s": 26.5,
+     "source": "day",
+     "lat": 35.771244966080296,
+     "lon": 10.830113435959959,
+     "a": 324.0,
+     "b": 0.0,
+     "c": 324.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.6
+    },
+    {
+     "t_s": 27.6,
+     "source": "day",
+     "lat": 35.771244966080296,
+     "lon": 10.830259746863874,
+     "a": 324.0,
+     "b": 0.0,
+     "c": 324.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.6
+    },
+    {
+     "t_s": 28.7,
+     "source": "day",
+     "lat": 35.771244966080296,
+     "lon": 10.83040605776776,
+     "a": 324.0,
+     "b": 0.0,
+     "c": 324.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.6
+    },
+    {
+     "t_s": 29.9,
+     "source": "celestial",
+     "lat": 35.75321356788162,
+     "lon": 10.863725254895314,
+     "a": 16000000.0,
+     "b": 0.0,
+     "c": 16000000.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 10.0
+    }
+   ],
+   "until": 36.0,
+   "summary": [
+    [
+     0.0,
+     "STARTING",
+     null,
+     "no position received yet"
+    ],
+    [
+     0.6,
+     "FIX",
+     "gps",
+     "gps: σ 6.0 m"
+    ],
+    [
+     6.6,
+     "FIX",
+     "day",
+     "day: σ 18.0 m"
+    ],
+    [
+     10.6,
+     "DEGRADED",
+     "gps",
+     "gps: σ 30.0 m > 25.0 m"
+    ],
+    [
+     14.2,
+     "FIX",
+     "day",
+     "day: σ 18.0 m"
+    ],
+    [
+     33.2,
+     "DEGRADED",
+     "celestial",
+     "celestial: σ 4000.0 m > 25.0 m"
+    ]
+   ],
+   "switches": [
+    [
+     0.6,
+     null,
+     "gps"
+    ],
+    [
+     6.6,
+     "gps",
+     "day"
+    ],
+    [
+     10.6,
+     "day",
+     "gps"
+    ],
+    [
+     14.2,
+     "gps",
+     "day"
+    ],
+    [
+     33.2,
+     "day",
+     "celestial"
+    ]
+   ],
+   "doc": "GPS σ 6 m flapping, day σ 18 m (FIX!), a GPS at σ 30 m, night, celestial, a 1 km GPS jump."
+  },
+  {
+   "name": "b",
+   "rows": [
+    {
+     "t_s": 0.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.826610841562513,
+     "a": 16.0,
+     "b": 0.0,
+     "c": 16.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 1.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.826832524687575,
+     "a": 16.0,
+     "b": 0.0,
+     "c": 16.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 2.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.827054207812637,
+     "a": 16.0,
+     "b": 0.0,
+     "c": 16.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 3.0,
+     "source": "celestial",
+     "lat": 35.7712,
+     "lon": 10.827165049375168,
+     "a": 9000000.0,
+     "b": 0.0,
+     "c": 9000000.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 12.0
+    },
+    {
+     "t_s": 3.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.827275890937699,
+     "a": 16.0,
+     "b": 0.0,
+     "c": 16.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 4.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.827497574062761,
+     "a": 16.0,
+     "b": 0.0,
+     "c": 16.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 5.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.827719257187795,
+     "a": 16.0,
+     "b": 0.0,
+     "c": 16.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 6.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.827940940312857,
+     "a": 16.0,
+     "b": 0.0,
+     "c": 16.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": -15.0
+    },
+    {
+     "t_s": 7.3,
+     "source": "celestial",
+     "lat": 35.7712,
+     "lon": 10.828118286812895,
+     "a": 9000000.0,
+     "b": 0.0,
+     "c": 9000000.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": -20.0
+    },
+    {
+     "t_s": 18.0,
+     "source": "celestial",
+     "lat": 35.7712,
+     "lon": 10.830490296250986,
+     "a": 9000000.0,
+     "b": 0.0,
+     "c": 9000000.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 14.0
+    }
+   ],
+   "until": 40.0,
+   "summary": [
+    [
+     0.0,
+     "STARTING",
+     null,
+     "no position received yet"
+    ],
+    [
+     0.5,
+     "FIX",
+     "gps",
+     "gps: σ 4.0 m"
+    ],
+    [
+     8.6,
+     "DEGRADED",
+     "celestial",
+     "celestial: σ 3000.0 m > 25.0 m"
+    ]
+   ],
+   "switches": [
+    [
+     0.5,
+     null,
+     "gps"
+    ],
+    [
+     8.6,
+     "gps",
+     "celestial"
+    ]
+   ],
+   "doc": "GPS dies after one fix stamped 15 s ahead; only celestial fixes after that (45 s timeout)."
+  },
+  {
+   "name": "c",
+   "rows": [
+    {
+     "t_s": 0.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.826638551953153,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 1.0,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.826777103906323,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 1.4,
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.826954450406362,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.7
+    },
+    {
+     "t_s": 1.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.826915655859466,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 2.0,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.827054207812637,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 2.4,
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.827231554312675,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.7
+    },
+    {
+     "t_s": 2.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.827192759765808,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 3.0,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.82733131171895,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 3.4,
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.827508658218989,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.7
+    },
+    {
+     "t_s": 3.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.827469863672121,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 4.0,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.827608415625264,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 4.2,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.834314330158207,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": -12.0
+    },
+    {
+     "t_s": 4.4,
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.82778576212533,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.7
+    },
+    {
+     "t_s": 4.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.827746967578435,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 5.0,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.827885519531605,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 5.4,
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.828062866031644,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.7
+    },
+    {
+     "t_s": 5.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.828024071484748,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 6.0,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.828162623437919,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 6.4,
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.828339969937957,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.7
+    },
+    {
+     "t_s": 6.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.828301175391061,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 7.0,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.828439727344232,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 7.4,
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.82861707384427,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.7
+    },
+    {
+     "t_s": 7.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.828578279297403,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 8.0,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.828716831250546,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 8.4,
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.828894177750612,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.7
+    },
+    {
+     "t_s": 8.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.828855383203717,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 9.0,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.82899393515686,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 9.4,
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.829171281656926,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.7
+    },
+    {
+     "t_s": 9.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.82913248711003,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 10.0,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.829271039063201,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 10.4,
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.82944838556324,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.7
+    },
+    {
+     "t_s": 10.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.829409591016343,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 11.0,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.829548142969514,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 11.4,
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.829725489469553,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.7
+    },
+    {
+     "t_s": 11.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.829686694922657,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 12.0,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.829825246875828,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 12.4,
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.830002593375866,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.7
+    },
+    {
+     "t_s": 12.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.829963798828999,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 13.0,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.830102350782141,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 13.4,
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.830279697282208,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.7
+    },
+    {
+     "t_s": 13.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.830240902735312,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 14.0,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.830379454688455,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 14.4,
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.830556801188521,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.7
+    },
+    {
+     "t_s": 14.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.830518006641626,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 15.0,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.830656558594796,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 15.4,
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.830833905094835,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.7
+    },
+    {
+     "t_s": 15.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.830795110547939,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 16.0,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.83093366250111,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 16.4,
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.831111009001148,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.7
+    },
+    {
+     "t_s": 16.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.83107221445428,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 17.0,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.831210766407423,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 17.4,
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.831388112907462,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.7
+    },
+    {
+     "t_s": 17.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.831349318360594,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 18.0,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.831487870313737,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 18.4,
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.831665216813803,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.7
+    },
+    {
+     "t_s": 18.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.831626422266908,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 19.0,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.831764974220079,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 19.4,
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.831942320720117,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.7
+    },
+    {
+     "t_s": 19.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.831903526173221,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 20.0,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.832042078126392,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 20.4,
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.83221942462643,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.7
+    },
+    {
+     "t_s": 20.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.832180630079534,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 21.0,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.832319182032705,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 21.4,
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.832496528532744,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.7
+    },
+    {
+     "t_s": 21.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.832457733985876,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 22.0,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.832596285939019,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 22.4,
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.832773632439057,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.7
+    },
+    {
+     "t_s": 22.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.83273483789219,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 23.0,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.832873389845332,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 23.4,
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.833050736345399,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.7
+    },
+    {
+     "t_s": 23.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.833011941798503,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 24.0,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.833150493751674,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 24.4,
+     "source": "day",
+     "lat": 35.7712,
+     "lon": 10.833327840251712,
+     "a": 900.0,
+     "b": 0.0,
+     "c": 900.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.7
+    },
+    {
+     "t_s": 24.5,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.833289045704817,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    },
+    {
+     "t_s": 25.0,
+     "source": "gps",
+     "lat": 35.7712,
+     "lon": 10.833427597657987,
+     "a": 9.0,
+     "b": 0.0,
+     "c": 9.0,
+     "cov_type": 1,
+     "valid": 1,
+     "delay_s": 0.0
+    }
+   ],
+   "until": 30.0,
+   "summary": [
+    [
+     0.0,
+     "STARTING",
+     null,
+     "no position received yet"
+    ],
+    [
+     0.5,
+     "FIX",
+     "gps",
+     "gps: σ 3.0 m"
+    ],
+    [
+     28.2,
+     "DEGRADED",
+     "day",
+     "day: σ 30.0 m > 25.0 m"
+    ],
+    [
+     28.8,
+     "NO_FIX",
+     null,
+     "no usable source (gps: stale (3.8 s > 3.0 s); day: stale (5.1 s > 5.0 s))"
+    ]
+   ],
+   "switches": [
+    [
+     0.5,
+     null,
+     "gps"
+    ],
+    [
+     28.2,
+     "gps",
+     "day"
+    ],
+    [
+     28.8,
+     "day",
+     null
+    ]
+   ],
+   "doc": "A vehicle at 25 m/s; honest GPS every 0.5 s; ONE GPS fix stamped 12 s ahead and 600 m off at 4.2 s; day."
+  }
+ ],
+ "live": {
+  "rows": [
+   {
+    "t_s": 0.5,
+    "source": "gps",
+    "lat": 35.7712,
+    "lon": 10.826583131171901,
+    "a": 9.0,
+    "b": 0.0,
+    "c": 9.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.0
+   },
+   {
+    "t_s": 1.0,
+    "source": "day",
+    "lat": 35.7712,
+    "lon": 10.826721683125044,
+    "a": 400.0,
+    "b": 0.0,
+    "c": 400.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.5
+   },
+   {
+    "t_s": 1.5,
+    "source": "gps",
+    "lat": 35.7712,
+    "lon": 10.826749393515684,
+    "a": 9.0,
+    "b": 0.0,
+    "c": 9.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.0
+   },
+   {
+    "t_s": 2.5,
+    "source": "gps",
+    "lat": 35.7712,
+    "lon": 10.826915655859466,
+    "a": 9.0,
+    "b": 0.0,
+    "c": 9.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.0
+   },
+   {
+    "t_s": 2.5,
+    "source": "day",
+    "lat": 35.7712,
+    "lon": 10.826971076640746,
+    "a": 400.0,
+    "b": 0.0,
+    "c": 400.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.5
+   },
+   {
+    "t_s": 3.5,
+    "source": "gps",
+    "lat": 35.7712,
+    "lon": 10.827081918203277,
+    "a": 9.0,
+    "b": 0.0,
+    "c": 9.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.0
+   },
+   {
+    "t_s": 4.0,
+    "source": "day",
+    "lat": 35.7712,
+    "lon": 10.82722047015642,
+    "a": 400.0,
+    "b": 0.0,
+    "c": 400.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.5
+   },
+   {
+    "t_s": 4.5,
+    "source": "gps",
+    "lat": 35.7712,
+    "lon": 10.827248180547059,
+    "a": 9.0,
+    "b": 0.0,
+    "c": 9.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.0
+   },
+   {
+    "t_s": 5.5,
+    "source": "day",
+    "lat": 35.7712,
+    "lon": 10.827469863672121,
+    "a": 400.0,
+    "b": 0.0,
+    "c": 400.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.5
+   },
+   {
+    "t_s": 7.0,
+    "source": "day",
+    "lat": 35.7712,
+    "lon": 10.827719257187795,
+    "a": 400.0,
+    "b": 0.0,
+    "c": 400.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.5
+   },
+   {
+    "t_s": 8.5,
+    "source": "day",
+    "lat": 35.7712,
+    "lon": 10.827968650703497,
+    "a": 400.0,
+    "b": 0.0,
+    "c": 400.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.5
+   },
+   {
+    "t_s": 9.0,
+    "source": "celestial",
+    "lat": 35.7712,
+    "lon": 10.827996361094137,
+    "a": 9000000.0,
+    "b": 0.0,
+    "c": 9000000.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": -30.0
+   },
+   {
+    "t_s": 10.0,
+    "source": "day",
+    "lat": 35.7712,
+    "lon": 10.82821804421917,
+    "a": 400.0,
+    "b": 0.0,
+    "c": 400.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.5
+   },
+   {
+    "t_s": 11.2,
+    "source": "gps",
+    "lat": 35.7712,
+    "lon": 10.82836213825047,
+    "a": 9.0,
+    "b": 0.0,
+    "c": 9.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.0
+   },
+   {
+    "t_s": 11.5,
+    "source": "day",
+    "lat": 35.7712,
+    "lon": 10.828467437734872,
+    "a": 400.0,
+    "b": 0.0,
+    "c": 400.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.5
+   },
+   {
+    "t_s": 12.2,
+    "source": "gps",
+    "lat": 35.7712,
+    "lon": 10.828528400594251,
+    "a": 9.0,
+    "b": 0.0,
+    "c": 9.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.0
+   },
+   {
+    "t_s": 13.0,
+    "source": "day",
+    "lat": 35.7712,
+    "lon": 10.828716831250546,
+    "a": 400.0,
+    "b": 0.0,
+    "c": 400.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.5
+   },
+   {
+    "t_s": 13.2,
+    "source": "gps",
+    "lat": 35.7712,
+    "lon": 10.828694662938062,
+    "a": 9.0,
+    "b": 0.0,
+    "c": 9.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.0
+   },
+   {
+    "t_s": 14.2,
+    "source": "gps",
+    "lat": 35.7712,
+    "lon": 10.828860925281845,
+    "a": 9.0,
+    "b": 0.0,
+    "c": 9.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.0
+   },
+   {
+    "t_s": 14.5,
+    "source": "day",
+    "lat": 35.7712,
+    "lon": 10.828966224766248,
+    "a": 400.0,
+    "b": 0.0,
+    "c": 400.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.5
+   },
+   {
+    "t_s": 15.2,
+    "source": "gps",
+    "lat": 35.7712,
+    "lon": 10.829027187625627,
+    "a": 9.0,
+    "b": 0.0,
+    "c": 9.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.0
+   },
+   {
+    "t_s": 16.0,
+    "source": "day",
+    "lat": 35.7712,
+    "lon": 10.829215618281921,
+    "a": 400.0,
+    "b": 0.0,
+    "c": 400.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.5
+   },
+   {
+    "t_s": 16.2,
+    "source": "gps",
+    "lat": 35.7712,
+    "lon": 10.82919344996941,
+    "a": 9.0,
+    "b": 0.0,
+    "c": 9.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.0
+   },
+   {
+    "t_s": 17.2,
+    "source": "gps",
+    "lat": 35.7712,
+    "lon": 10.82935971231322,
+    "a": 9.0,
+    "b": 0.0,
+    "c": 9.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.0
+   },
+   {
+    "t_s": 17.5,
+    "source": "day",
+    "lat": 35.7712,
+    "lon": 10.829465011797623,
+    "a": 400.0,
+    "b": 0.0,
+    "c": 400.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.5
+   },
+   {
+    "t_s": 18.2,
+    "source": "gps",
+    "lat": 35.7712,
+    "lon": 10.829525974657003,
+    "a": 9.0,
+    "b": 0.0,
+    "c": 9.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.0
+   },
+   {
+    "t_s": 19.0,
+    "source": "day",
+    "lat": 35.7712,
+    "lon": 10.829714405313297,
+    "a": 400.0,
+    "b": 0.0,
+    "c": 400.0,
+    "cov_type": 1,
+    "valid": 1,
+    "delay_s": 0.5
+   }
+  ],
+  "summary": [
+   [
+    0.0,
+    "STARTING",
+    null,
+    "no position received yet"
+   ],
+   [
+    0.5,
+    "FIX",
+    "gps",
+    "gps: σ 3.0 m"
+   ],
+   [
+    7.6,
+    "FIX",
+    "day",
+    "day: σ 20.0 m"
+   ],
+   [
+    13.2,
+    "FIX",
+    "gps",
+    "gps: σ 3.0 m"
+   ],
+   [
+    21.4,
+    "FIX",
+    "day",
+    "day: σ 20.0 m"
+   ],
+   [
+    23.6,
+    "NO_FIX",
+    null,
+    "no usable source (gps: stale (5.4 s > 3.0 s); day: stale (5.1 s > 5.0 s); celestial: refused: from the future (30.0 s ahead))"
+   ]
+  ],
+  "switches": [
+   [
+    0.5,
+    null,
+    "gps"
+   ],
+   [
+    7.6,
+    "gps",
+    "day"
+   ],
+   [
+    13.2,
+    "day",
+    "gps"
+   ],
+   [
+    21.4,
+    "gps",
+    "day"
+   ],
+   [
+    23.6,
+    "day",
+    null
+   ]
+  ]
+ },
+ "holdoff_metrics": [
+  {
+   "ticks": [
+    [
+     0.0,
+     "day",
+     true
+    ],
+    [
+     0.2,
+     "day",
+     false
+    ],
+    [
+     0.4,
+     "day",
+     true
+    ],
+    [
+     0.6,
+     "day",
+     false
+    ],
+    [
+     0.8,
+     "day",
+     false
+    ],
+    [
+     1.0,
+     "gps",
+     false
+    ],
+    [
+     1.2,
+     "gps",
+     true
+    ],
+    [
+     1.4,
+     "gps",
+     false
+    ],
+    [
+     1.6,
+     "gps",
+     true
+    ],
+    [
+     1.8,
+     "gps",
+     true
+    ],
+    [
+     2.0,
+     null,
+     false
+    ],
+    [
+     2.2,
+     null,
+     true
+    ],
+    [
+     2.4,
+     "gps",
+     true
+    ],
+    [
+     2.6,
+     "gps",
+     true
+    ],
+    [
+     2.8,
+     "gps",
+     true
+    ],
+    [
+     3.0,
+     "gps",
+     true
+    ],
+    [
+     3.2,
+     "gps",
+     false
+    ],
+    [
+     3.4,
+     "gps",
+     true
+    ],
+    [
+     3.6,
+     "gps",
+     true
+    ],
+    [
+     3.8,
+     "gps",
+     true
+    ],
+    [
+     4.0,
+     "gps",
+     true
+    ],
+    [
+     4.2,
+     "gps",
+     true
+    ],
+    [
+     4.4,
+     "gps",
+     true
+    ],
+    [
+     4.6,
+     "gps",
+     true
+    ],
+    [
+     4.8,
+     "gps",
+     false
+    ],
+    [
+     5.0,
+     "gps",
+     true
+    ],
+    [
+     5.2,
+     "gps",
+     true
+    ],
+    [
+     5.4,
+     "gps",
+     false
+    ],
+    [
+     5.6,
+     "day",
+     true
+    ],
+    [
+     5.8,
+     "day",
+     true
+    ],
+    [
+     6.0,
+     "day",
+     true
+    ],
+    [
+     6.2,
+     "day",
+     false
+    ],
+    [
+     6.4,
+     "day",
+     true
+    ],
+    [
+     6.6,
+     "day",
+     true
+    ],
+    [
+     6.8,
+     "day",
+     true
+    ],
+    [
+     7.0,
+     "day",
+     true
+    ],
+    [
+     7.2,
+     "day",
+     true
+    ],
+    [
+     7.4,
+     "day",
+     false
+    ],
+    [
+     7.6,
+     "day",
+     true
+    ],
+    [
+     7.8,
+     "day",
+     true
+    ]
+   ],
+   "duration_s": 8.0,
+   "want": {
+    "switches_per_min": 30.0,
+    "gps_share": 0.525,
+    "gps_unused_s": 2.6
+   }
+  },
+  {
+   "ticks": [
+    [
+     0.0,
+     "day",
+     true
+    ],
+    [
+     0.2,
+     null,
+     false
+    ],
+    [
+     0.4,
+     null,
+     false
+    ],
+    [
+     0.6,
+     null,
+     true
+    ],
+    [
+     0.8,
+     null,
+     true
+    ],
+    [
+     1.0,
+     null,
+     true
+    ],
+    [
+     1.2,
+     null,
+     false
+    ],
+    [
+     1.4,
+     null,
+     true
+    ],
+    [
+     1.6,
+     null,
+     true
+    ],
+    [
+     1.8,
+     null,
+     true
+    ],
+    [
+     2.0,
+     "night",
+     true
+    ],
+    [
+     2.2,
+     "night",
+     false
+    ],
+    [
+     2.4,
+     "night",
+     true
+    ],
+    [
+     2.6,
+     "night",
+     true
+    ],
+    [
+     2.8,
+     "night",
+     true
+    ],
+    [
+     3.0,
+     "night",
+     true
+    ],
+    [
+     3.2,
+     "day",
+     true
+    ],
+    [
+     3.4,
+     "day",
+     true
+    ],
+    [
+     3.6,
+     "day",
+     false
+    ],
+    [
+     3.8,
+     "night",
+     false
+    ],
+    [
+     4.0,
+     "night",
+     false
+    ],
+    [
+     4.2,
+     "night",
+     true
+    ],
+    [
+     4.4,
+     "night",
+     false
+    ],
+    [
+     4.6,
+     "night",
+     false
+    ],
+    [
+     4.8,
+     "night",
+     true
+    ],
+    [
+     5.0,
+     "gps",
+     true
+    ],
+    [
+     5.2,
+     "gps",
+     true
+    ],
+    [
+     5.4,
+     "gps",
+     true
+    ],
+    [
+     5.6,
+     "gps",
+     false
+    ],
+    [
+     5.8,
+     "gps",
+     false
+    ],
+    [
+     6.0,
+     "gps",
+     false
+    ],
+    [
+     6.2,
+     "gps",
+     false
+    ],
+    [
+     6.4,
+     "gps",
+     true
+    ],
+    [
+     6.6,
+     "gps",
+     true
+    ],
+    [
+     6.8,
+     "gps",
+     true
+    ],
+    [
+     7.0,
+     "gps",
+     true
+    ],
+    [
+     7.2,
+     "gps",
+     true
+    ],
+    [
+     7.4,
+     "gps",
+     true
+    ],
+    [
+     7.6,
+     "gps",
+     false
+    ],
+    [
+     7.8,
+     "gps",
+     true
+    ],
+    [
+     8.0,
+     null,
+     false
+    ],
+    [
+     8.2,
+     null,
+     false
+    ],
+    [
+     8.4,
+     null,
+     true
+    ],
+    [
+     8.6,
+     null,
+     true
+    ],
+    [
+     8.8,
+     null,
+     false
+    ],
+    [
+     9.0,
+     null,
+     false
+    ],
+    [
+     9.2,
+     null,
+     true
+    ],
+    [
+     9.4,
+     null,
+     false
+    ],
+    [
+     9.6,
+     null,
+     true
+    ],
+    [
+     9.8,
+     null,
+     true
+    ],
+    [
+     10.0,
+     null,
+     true
+    ],
+    [
+     10.2,
+     null,
+     true
+    ],
+    [
+     10.4,
+     null,
+     false
+    ],
+    [
+     10.6,
+     null,
+     true
+    ],
+    [
+     10.8,
+     null,
+     true
+    ],
+    [
+     11.0,
+     null,
+     true
+    ],
+    [
+     11.2,
+     null,
+     false
+    ],
+    [
+     11.4,
+     null,
+     false
+    ],
+    [
+     11.6,
+     null,
+     true
+    ],
+    [
+     11.8,
+     null,
+     false
+    ],
+    [
+     12.0,
+     null,
+     true
+    ],
+    [
+     12.2,
+     "gps",
+     false
+    ],
+    [
+     12.4,
+     "gps",
+     true
+    ],
+    [
+     12.6,
+     "gps",
+     true
+    ],
+    [
+     12.8,
+     "gps",
+     true
+    ],
+    [
+     13.0,
+     "gps",
+     true
+    ],
+    [
+     13.2,
+     "gps",
+     true
+    ],
+    [
+     13.4,
+     "gps",
+     false
+    ],
+    [
+     13.6,
+     "gps",
+     false
+    ],
+    [
+     13.8,
+     "gps",
+     false
+    ],
+    [
+     14.0,
+     "gps",
+     true
+    ],
+    [
+     14.2,
+     "gps",
+     false
+    ],
+    [
+     14.4,
+     "gps",
+     false
+    ],
+    [
+     14.6,
+     "gps",
+     true
+    ],
+    [
+     14.8,
+     "gps",
+     true
+    ],
+    [
+     15.0,
+     "gps",
+     true
+    ],
+    [
+     15.2,
+     "gps",
+     true
+    ],
+    [
+     15.4,
+     "gps",
+     false
+    ],
+    [
+     15.6,
+     "gps",
+     true
+    ],
+    [
+     15.8,
+     "gps",
+     false
+    ],
+    [
+     16.0,
+     "gps",
+     false
+    ],
+    [
+     16.2,
+     "day",
+     false
+    ],
+    [
+     16.4,
+     "day",
+     false
+    ],
+    [
+     16.6,
+     "day",
+     true
+    ],
+    [
+     16.8,
+     "day",
+     true
+    ],
+    [
+     17.0,
+     "day",
+     false
+    ],
+    [
+     17.2,
+     "day",
+     false
+    ],
+    [
+     17.4,
+     "day",
+     true
+    ],
+    [
+     17.6,
+     "day",
+     false
+    ],
+    [
+     17.8,
+     "day",
+     true
+    ],
+    [
+     18.0,
+     "day",
+     true
+    ],
+    [
+     18.2,
+     "day",
+     false
+    ],
+    [
+     18.4,
+     "day",
+     true
+    ],
+    [
+     18.6,
+     "day",
+     true
+    ],
+    [
+     18.8,
+     "day",
+     true
+    ],
+    [
+     19.0,
+     "day",
+     true
+    ],
+    [
+     19.2,
+     "night",
+     true
+    ],
+    [
+     19.4,
+     "night",
+     true
+    ],
+    [
+     19.6,
+     "night",
+     false
+    ],
+    [
+     19.8,
+     "night",
+     true
+    ],
+    [
+     20.0,
+     "night",
+     false
+    ],
+    [
+     20.2,
+     "night",
+     false
+    ],
+    [
+     20.4,
+     "night",
+     true
+    ],
+    [
+     20.6,
+     "night",
+     false
+    ],
+    [
+     20.8,
+     "night",
+     true
+    ],
+    [
+     21.0,
+     "night",
+     false
+    ],
+    [
+     21.2,
+     "night",
+     false
+    ],
+    [
+     21.4,
+     "night",
+     true
+    ],
+    [
+     21.6,
+     "night",
+     true
+    ],
+    [
+     21.8,
+     "gps",
+     false
+    ],
+    [
+     22.0,
+     "gps",
+     true
+    ],
+    [
+     22.2,
+     "gps",
+     true
+    ],
+    [
+     22.4,
+     "gps",
+     false
+    ],
+    [
+     22.6,
+     "gps",
+     false
+    ],
+    [
+     22.8,
+     "gps",
+     true
+    ],
+    [
+     23.0,
+     "gps",
+     true
+    ],
+    [
+     23.2,
+     "gps",
+     true
+    ],
+    [
+     23.4,
+     "gps",
+     true
+    ],
+    [
+     23.6,
+     "gps",
+     false
+    ],
+    [
+     23.8,
+     "gps",
+     true
+    ],
+    [
+     24.0,
+     "gps",
+     true
+    ],
+    [
+     24.2,
+     "gps",
+     true
+    ],
+    [
+     24.4,
+     "gps",
+     false
+    ],
+    [
+     24.6,
+     "gps",
+     false
+    ],
+    [
+     24.8,
+     null,
+     true
+    ],
+    [
+     25.0,
+     null,
+     true
+    ],
+    [
+     25.2,
+     "day",
+     true
+    ],
+    [
+     25.4,
+     "day",
+     true
+    ],
+    [
+     25.6,
+     "day",
+     true
+    ],
+    [
+     25.8,
+     "day",
+     true
+    ],
+    [
+     26.0,
+     "day",
+     true
+    ],
+    [
+     26.2,
+     "day",
+     false
+    ],
+    [
+     26.4,
+     "day",
+     true
+    ],
+    [
+     26.6,
+     "day",
+     false
+    ],
+    [
+     26.8,
+     "gps",
+     true
+    ],
+    [
+     27.0,
+     "gps",
+     false
+    ],
+    [
+     27.2,
+     "gps",
+     true
+    ],
+    [
+     27.4,
+     null,
+     true
+    ],
+    [
+     27.6,
+     null,
+     false
+    ],
+    [
+     27.8,
+     null,
+     true
+    ],
+    [
+     28.0,
+     null,
+     false
+    ],
+    [
+     28.2,
+     null,
+     false
+    ],
+    [
+     28.4,
+     null,
+     true
+    ],
+    [
+     28.6,
+     null,
+     true
+    ],
+    [
+     28.8,
+     null,
+     true
+    ],
+    [
+     29.0,
+     null,
+     false
+    ],
+    [
+     29.2,
+     null,
+     false
+    ],
+    [
+     29.4,
+     null,
+     true
+    ],
+    [
+     29.6,
+     null,
+     true
+    ],
+    [
+     29.8,
+     null,
+     false
+    ],
+    [
+     30.0,
+     null,
+     true
+    ],
+    [
+     30.2,
+     null,
+     true
+    ],
+    [
+     30.4,
+     null,
+     false
+    ],
+    [
+     30.6,
+     null,
+     true
+    ],
+    [
+     30.8,
+     null,
+     false
+    ],
+    [
+     31.0,
+     null,
+     false
+    ],
+    [
+     31.2,
+     "day",
+     false
+    ],
+    [
+     31.4,
+     "day",
+     true
+    ],
+    [
+     31.6,
+     "day",
+     true
+    ],
+    [
+     31.8,
+     "day",
+     true
+    ],
+    [
+     32.0,
+     "day",
+     false
+    ],
+    [
+     32.2,
+     "day",
+     true
+    ],
+    [
+     32.4,
+     "day",
+     false
+    ],
+    [
+     32.6,
+     "day",
+     false
+    ],
+    [
+     32.8,
+     "day",
+     false
+    ],
+    [
+     33.0,
+     "day",
+     false
+    ],
+    [
+     33.2,
+     "day",
+     true
+    ],
+    [
+     33.4,
+     "day",
+     true
+    ],
+    [
+     33.6,
+     "day",
+     true
+    ],
+    [
+     33.8,
+     "day",
+     false
+    ],
+    [
+     34.0,
+     "night",
+     true
+    ],
+    [
+     34.2,
+     "night",
+     false
+    ],
+    [
+     34.4,
+     "night",
+     false
+    ],
+    [
+     34.6,
+     "night",
+     true
+    ],
+    [
+     34.8,
+     "night",
+     true
+    ],
+    [
+     35.0,
+     "night",
+     true
+    ],
+    [
+     35.2,
+     "night",
+     false
+    ],
+    [
+     35.4,
+     "night",
+     false
+    ],
+    [
+     35.6,
+     "night",
+     true
+    ],
+    [
+     35.8,
+     "night",
+     true
+    ],
+    [
+     36.0,
+     "gps",
+     true
+    ],
+    [
+     36.2,
+     "gps",
+     true
+    ],
+    [
+     36.4,
+     "gps",
+     true
+    ],
+    [
+     36.6,
+     "gps",
+     true
+    ],
+    [
+     36.8,
+     "gps",
+     true
+    ],
+    [
+     37.0,
+     "gps",
+     true
+    ],
+    [
+     37.2,
+     "gps",
+     true
+    ],
+    [
+     37.4,
+     "gps",
+     false
+    ],
+    [
+     37.6,
+     "gps",
+     false
+    ],
+    [
+     37.8,
+     "gps",
+     false
+    ],
+    [
+     38.0,
+     "gps",
+     true
+    ],
+    [
+     38.2,
+     "gps",
+     false
+    ],
+    [
+     38.4,
+     "gps",
+     false
+    ],
+    [
+     38.6,
+     "gps",
+     true
+    ],
+    [
+     38.8,
+     "gps",
+     true
+    ],
+    [
+     39.0,
+     "gps",
+     false
+    ],
+    [
+     39.2,
+     "gps",
+     true
+    ],
+    [
+     39.4,
+     "gps",
+     false
+    ],
+    [
+     39.6,
+     "gps",
+     false
+    ],
+    [
+     39.8,
+     "gps",
+     true
+    ],
+    [
+     40.0,
+     "gps",
+     true
+    ],
+    [
+     40.2,
+     "gps",
+     false
+    ],
+    [
+     40.4,
+     "gps",
+     false
+    ],
+    [
+     40.6,
+     "gps",
+     true
+    ],
+    [
+     40.8,
+     "day",
+     false
+    ],
+    [
+     41.0,
+     "day",
+     true
+    ],
+    [
+     41.2,
+     "day",
+     true
+    ],
+    [
+     41.4,
+     "day",
+     true
+    ],
+    [
+     41.6,
+     "day",
+     true
+    ],
+    [
+     41.8,
+     "day",
+     true
+    ],
+    [
+     42.0,
+     "day",
+     true
+    ],
+    [
+     42.2,
+     "day",
+     false
+    ],
+    [
+     42.4,
+     "day",
+     true
+    ],
+    [
+     42.6,
+     "day",
+     false
+    ],
+    [
+     42.8,
+     "day",
+     true
+    ],
+    [
+     43.0,
+     "day",
+     true
+    ],
+    [
+     43.2,
+     "day",
+     true
+    ],
+    [
+     43.4,
+     null,
+     false
+    ],
+    [
+     43.6,
+     null,
+     true
+    ],
+    [
+     43.8,
+     null,
+     true
+    ],
+    [
+     44.0,
+     null,
+     true
+    ],
+    [
+     44.2,
+     null,
+     false
+    ],
+    [
+     44.4,
+     null,
+     false
+    ],
+    [
+     44.6,
+     null,
+     false
+    ],
+    [
+     44.8,
+     null,
+     false
+    ],
+    [
+     45.0,
+     null,
+     false
+    ],
+    [
+     45.2,
+     "day",
+     false
+    ],
+    [
+     45.4,
+     "day",
+     true
+    ],
+    [
+     45.6,
+     "day",
+     false
+    ],
+    [
+     45.8,
+     "night",
+     false
+    ],
+    [
+     46.0,
+     "night",
+     false
+    ],
+    [
+     46.2,
+     "night",
+     true
+    ],
+    [
+     46.4,
+     "night",
+     true
+    ],
+    [
+     46.6,
+     "night",
+     true
+    ],
+    [
+     46.8,
+     "night",
+     true
+    ],
+    [
+     47.0,
+     "night",
+     false
+    ],
+    [
+     47.2,
+     "day",
+     false
+    ],
+    [
+     47.4,
+     "day",
+     true
+    ],
+    [
+     47.6,
+     "day",
+     true
+    ],
+    [
+     47.8,
+     "day",
+     false
+    ],
+    [
+     48.0,
+     null,
+     false
+    ],
+    [
+     48.2,
+     null,
+     false
+    ],
+    [
+     48.4,
+     null,
+     false
+    ],
+    [
+     48.6,
+     null,
+     false
+    ],
+    [
+     48.8,
+     null,
+     false
+    ],
+    [
+     49.0,
+     null,
+     true
+    ],
+    [
+     49.2,
+     null,
+     false
+    ],
+    [
+     49.4,
+     null,
+     false
+    ],
+    [
+     49.6,
+     null,
+     true
+    ],
+    [
+     49.8,
+     null,
+     false
+    ],
+    [
+     50.0,
+     null,
+     false
+    ],
+    [
+     50.2,
+     null,
+     true
+    ],
+    [
+     50.4,
+     null,
+     true
+    ],
+    [
+     50.6,
+     null,
+     true
+    ],
+    [
+     50.8,
+     null,
+     true
+    ],
+    [
+     51.0,
+     null,
+     true
+    ],
+    [
+     51.2,
+     null,
+     false
+    ],
+    [
+     51.4,
+     null,
+     true
+    ],
+    [
+     51.6,
+     null,
+     true
+    ],
+    [
+     51.8,
+     null,
+     false
+    ],
+    [
+     52.0,
+     null,
+     true
+    ],
+    [
+     52.2,
+     "night",
+     true
+    ],
+    [
+     52.4,
+     "night",
+     false
+    ],
+    [
+     52.6,
+     "night",
+     false
+    ],
+    [
+     52.8,
+     "day",
+     false
+    ],
+    [
+     53.0,
+     "day",
+     false
+    ],
+    [
+     53.2,
+     "day",
+     false
+    ],
+    [
+     53.4,
+     "day",
+     false
+    ],
+    [
+     53.6,
+     "day",
+     false
+    ],
+    [
+     53.8,
+     "day",
+     true
+    ],
+    [
+     54.0,
+     null,
+     false
+    ],
+    [
+     54.2,
+     null,
+     true
+    ],
+    [
+     54.4,
+     "gps",
+     false
+    ],
+    [
+     54.6,
+     "day",
+     true
+    ],
+    [
+     54.8,
+     "day",
+     true
+    ],
+    [
+     55.0,
+     "day",
+     false
+    ],
+    [
+     55.2,
+     "day",
+     false
+    ],
+    [
+     55.4,
+     "day",
+     false
+    ],
+    [
+     55.6,
+     "day",
+     false
+    ],
+    [
+     55.8,
+     "gps",
+     true
+    ],
+    [
+     56.0,
+     "gps",
+     false
+    ],
+    [
+     56.2,
+     "gps",
+     true
+    ],
+    [
+     56.4,
+     "gps",
+     false
+    ],
+    [
+     56.6,
+     "gps",
+     false
+    ],
+    [
+     56.8,
+     "gps",
+     false
+    ],
+    [
+     57.0,
+     "gps",
+     false
+    ],
+    [
+     57.2,
+     "gps",
+     true
+    ],
+    [
+     57.4,
+     "gps",
+     true
+    ],
+    [
+     57.6,
+     "gps",
+     true
+    ],
+    [
+     57.8,
+     "gps",
+     true
+    ],
+    [
+     58.0,
+     "gps",
+     false
+    ],
+    [
+     58.2,
+     "gps",
+     true
+    ],
+    [
+     58.4,
+     "gps",
+     false
+    ],
+    [
+     58.6,
+     "gps",
+     true
+    ],
+    [
+     58.8,
+     "day",
+     false
+    ],
+    [
+     59.0,
+     "day",
+     true
+    ],
+    [
+     59.2,
+     "day",
+     false
+    ],
+    [
+     59.4,
+     "day",
+     false
+    ],
+    [
+     59.6,
+     "day",
+     true
+    ],
+    [
+     59.8,
+     "day",
+     true
+    ]
+   ],
+   "duration_s": 60.0,
+   "want": {
+    "switches_per_min": 30.0,
+    "gps_share": 0.31,
+    "gps_unused_s": 22.6
+   }
+  },
+  {
+   "ticks": [
+    [
+     0.0,
+     "day",
+     true
+    ],
+    [
+     0.2,
+     "night",
+     true
+    ],
+    [
+     0.4,
+     "night",
+     true
+    ],
+    [
+     0.6,
+     "night",
+     false
+    ],
+    [
+     0.8,
+     "night",
+     true
+    ],
+    [
+     1.0,
+     "night",
+     false
+    ],
+    [
+     1.2,
+     "night",
+     true
+    ],
+    [
+     1.4,
+     "day",
+     false
+    ],
+    [
+     1.6,
+     "day",
+     false
+    ],
+    [
+     1.8,
+     "day",
+     false
+    ],
+    [
+     2.0,
+     "day",
+     false
+    ],
+    [
+     2.2,
+     "day",
+     false
+    ],
+    [
+     2.4,
+     "day",
+     false
+    ],
+    [
+     2.6,
+     "day",
+     true
+    ],
+    [
+     2.8,
+     "day",
+     false
+    ],
+    [
+     3.0,
+     "day",
+     true
+    ],
+    [
+     3.2,
+     "day",
+     false
+    ],
+    [
+     3.4,
+     "day",
+     false
+    ],
+    [
+     3.6,
+     "day",
+     false
+    ],
+    [
+     3.8,
+     "day",
+     true
+    ],
+    [
+     4.0,
+     "day",
+     true
+    ],
+    [
+     4.2,
+     "day",
+     true
+    ],
+    [
+     4.4,
+     "day",
+     true
+    ],
+    [
+     4.6,
+     null,
+     true
+    ],
+    [
+     4.8,
+     null,
+     true
+    ],
+    [
+     5.0,
+     null,
+     true
+    ],
+    [
+     5.2,
+     null,
+     true
+    ],
+    [
+     5.4,
+     null,
+     true
+    ],
+    [
+     5.6,
+     null,
+     true
+    ],
+    [
+     5.8,
+     null,
+     false
+    ],
+    [
+     6.0,
+     "night",
+     false
+    ],
+    [
+     6.2,
+     "night",
+     true
+    ],
+    [
+     6.4,
+     "night",
+     false
+    ],
+    [
+     6.6,
+     "night",
+     true
+    ],
+    [
+     6.8,
+     "night",
+     true
+    ],
+    [
+     7.0,
+     "day",
+     false
+    ],
+    [
+     7.2,
+     "day",
+     false
+    ],
+    [
+     7.4,
+     "day",
+     true
+    ],
+    [
+     7.6,
+     "day",
+     true
+    ],
+    [
+     7.8,
+     "day",
+     true
+    ],
+    [
+     8.0,
+     "day",
+     true
+    ],
+    [
+     8.2,
+     "day",
+     true
+    ],
+    [
+     8.4,
+     "night",
+     false
+    ],
+    [
+     8.6,
+     "night",
+     false
+    ],
+    [
+     8.8,
+     "night",
+     false
+    ],
+    [
+     9.0,
+     "night",
+     false
+    ],
+    [
+     9.2,
+     "night",
+     true
+    ],
+    [
+     9.4,
+     "night",
+     false
+    ],
+    [
+     9.6,
+     "night",
+     false
+    ],
+    [
+     9.8,
+     "night",
+     true
+    ],
+    [
+     10.0,
+     "night",
+     true
+    ],
+    [
+     10.2,
+     "night",
+     true
+    ],
+    [
+     10.4,
+     "night",
+     true
+    ],
+    [
+     10.6,
+     "night",
+     false
+    ],
+    [
+     10.8,
+     "night",
+     false
+    ],
+    [
+     11.0,
+     "night",
+     true
+    ],
+    [
+     11.2,
+     "night",
+     false
+    ],
+    [
+     11.4,
+     "night",
+     true
+    ],
+    [
+     11.6,
+     "night",
+     true
+    ],
+    [
+     11.8,
+     "night",
+     false
+    ],
+    [
+     12.0,
+     "night",
+     false
+    ],
+    [
+     12.2,
+     "night",
+     false
+    ],
+    [
+     12.4,
+     "night",
+     false
+    ],
+    [
+     12.6,
+     "night",
+     true
+    ],
+    [
+     12.8,
+     "night",
+     true
+    ],
+    [
+     13.0,
+     "night",
+     true
+    ],
+    [
+     13.2,
+     "day",
+     false
+    ],
+    [
+     13.4,
+     "day",
+     true
+    ],
+    [
+     13.6,
+     "day",
+     true
+    ],
+    [
+     13.8,
+     "day",
+     true
+    ],
+    [
+     14.0,
+     "day",
+     true
+    ],
+    [
+     14.2,
+     "day",
+     true
+    ],
+    [
+     14.4,
+     "day",
+     false
+    ],
+    [
+     14.6,
+     "night",
+     true
+    ],
+    [
+     14.8,
+     null,
+     true
+    ],
+    [
+     15.0,
+     null,
+     true
+    ],
+    [
+     15.2,
+     null,
+     true
+    ],
+    [
+     15.4,
+     null,
+     true
+    ],
+    [
+     15.6,
+     null,
+     true
+    ],
+    [
+     15.8,
+     null,
+     false
+    ],
+    [
+     16.0,
+     null,
+     false
+    ],
+    [
+     16.2,
+     null,
+     false
+    ],
+    [
+     16.4,
+     "gps",
+     true
+    ],
+    [
+     16.6,
+     "gps",
+     true
+    ],
+    [
+     16.8,
+     "day",
+     true
+    ],
+    [
+     17.0,
+     "day",
+     true
+    ],
+    [
+     17.2,
+     "day",
+     true
+    ],
+    [
+     17.4,
+     "day",
+     true
+    ],
+    [
+     17.6,
+     "day",
+     false
+    ],
+    [
+     17.8,
+     "gps",
+     true
+    ],
+    [
+     18.0,
+     "gps",
+     false
+    ],
+    [
+     18.2,
+     "gps",
+     false
+    ],
+    [
+     18.4,
+     "gps",
+     true
+    ],
+    [
+     18.6,
+     "gps",
+     false
+    ],
+    [
+     18.8,
+     null,
+     false
+    ],
+    [
+     19.0,
+     null,
+     false
+    ],
+    [
+     19.2,
+     "day",
+     true
+    ],
+    [
+     19.4,
+     null,
+     true
+    ],
+    [
+     19.6,
+     null,
+     true
+    ],
+    [
+     19.8,
+     "gps",
+     false
+    ],
+    [
+     20.0,
+     "gps",
+     true
+    ],
+    [
+     20.2,
+     "gps",
+     false
+    ],
+    [
+     20.4,
+     "gps",
+     false
+    ],
+    [
+     20.6,
+     "gps",
+     true
+    ],
+    [
+     20.8,
+     "gps",
+     false
+    ],
+    [
+     21.0,
+     "gps",
+     true
+    ],
+    [
+     21.2,
+     "gps",
+     true
+    ],
+    [
+     21.4,
+     "gps",
+     false
+    ],
+    [
+     21.6,
+     "gps",
+     true
+    ],
+    [
+     21.8,
+     "gps",
+     true
+    ],
+    [
+     22.0,
+     "gps",
+     true
+    ],
+    [
+     22.2,
+     "gps",
+     true
+    ],
+    [
+     22.4,
+     "gps",
+     true
+    ],
+    [
+     22.6,
+     "gps",
+     false
+    ],
+    [
+     22.8,
+     "gps",
+     true
+    ],
+    [
+     23.0,
+     "gps",
+     false
+    ],
+    [
+     23.2,
+     "gps",
+     true
+    ],
+    [
+     23.4,
+     null,
+     true
+    ],
+    [
+     23.6,
+     null,
+     false
+    ],
+    [
+     23.8,
+     null,
+     false
+    ],
+    [
+     24.0,
+     "gps",
+     true
+    ],
+    [
+     24.2,
+     null,
+     true
+    ],
+    [
+     24.4,
+     null,
+     false
+    ],
+    [
+     24.6,
+     null,
+     false
+    ],
+    [
+     24.8,
+     null,
+     false
+    ],
+    [
+     25.0,
+     null,
+     true
+    ],
+    [
+     25.2,
+     null,
+     false
+    ],
+    [
+     25.4,
+     "day",
+     true
+    ],
+    [
+     25.6,
+     "day",
+     true
+    ],
+    [
+     25.8,
+     "day",
+     true
+    ],
+    [
+     26.0,
+     "day",
+     true
+    ],
+    [
+     26.2,
+     "day",
+     true
+    ],
+    [
+     26.4,
+     "gps",
+     true
+    ],
+    [
+     26.6,
+     "gps",
+     true
+    ],
+    [
+     26.8,
+     "gps",
+     false
+    ],
+    [
+     27.0,
+     "gps",
+     false
+    ],
+    [
+     27.2,
+     "gps",
+     true
+    ],
+    [
+     27.4,
+     "day",
+     false
+    ],
+    [
+     27.6,
+     "day",
+     true
+    ],
+    [
+     27.8,
+     "day",
+     true
+    ],
+    [
+     28.0,
+     "day",
+     true
+    ],
+    [
+     28.2,
+     "day",
+     false
+    ],
+    [
+     28.4,
+     "day",
+     false
+    ],
+    [
+     28.6,
+     "day",
+     false
+    ],
+    [
+     28.8,
+     "day",
+     true
+    ],
+    [
+     29.0,
+     "day",
+     true
+    ],
+    [
+     29.2,
+     "day",
+     false
+    ],
+    [
+     29.4,
+     "day",
+     false
+    ],
+    [
+     29.6,
+     "day",
+     true
+    ],
+    [
+     29.8,
+     "day",
+     true
+    ],
+    [
+     30.0,
+     "day",
+     true
+    ],
+    [
+     30.2,
+     "day",
+     false
+    ],
+    [
+     30.4,
+     "day",
+     false
+    ],
+    [
+     30.6,
+     "day",
+     true
+    ],
+    [
+     30.8,
+     "day",
+     true
+    ],
+    [
+     31.0,
+     "day",
+     false
+    ],
+    [
+     31.2,
+     "night",
+     false
+    ],
+    [
+     31.4,
+     "night",
+     false
+    ],
+    [
+     31.6,
+     "night",
+     true
+    ],
+    [
+     31.8,
+     "night",
+     false
+    ],
+    [
+     32.0,
+     "night",
+     false
+    ],
+    [
+     32.2,
+     "night",
+     true
+    ],
+    [
+     32.4,
+     "night",
+     false
+    ],
+    [
+     32.6,
+     "night",
+     true
+    ],
+    [
+     32.8,
+     "night",
+     true
+    ],
+    [
+     33.0,
+     "night",
+     true
+    ],
+    [
+     33.2,
+     "night",
+     true
+    ],
+    [
+     33.4,
+     "day",
+     true
+    ],
+    [
+     33.6,
+     "day",
+     true
+    ],
+    [
+     33.8,
+     "day",
+     true
+    ],
+    [
+     34.0,
+     "day",
+     true
+    ],
+    [
+     34.2,
+     "day",
+     false
+    ],
+    [
+     34.4,
+     "day",
+     false
+    ],
+    [
+     34.6,
+     "day",
+     false
+    ],
+    [
+     34.8,
+     "day",
+     true
+    ],
+    [
+     35.0,
+     "day",
+     true
+    ],
+    [
+     35.2,
+     "day",
+     true
+    ],
+    [
+     35.4,
+     "day",
+     true
+    ],
+    [
+     35.6,
+     "day",
+     true
+    ],
+    [
+     35.8,
+     "night",
+     true
+    ],
+    [
+     36.0,
+     "night",
+     false
+    ],
+    [
+     36.2,
+     "night",
+     true
+    ],
+    [
+     36.4,
+     "night",
+     false
+    ],
+    [
+     36.6,
+     "night",
+     true
+    ],
+    [
+     36.8,
+     null,
+     true
+    ],
+    [
+     37.0,
+     null,
+     true
+    ],
+    [
+     37.2,
+     null,
+     true
+    ],
+    [
+     37.4,
+     null,
+     true
+    ],
+    [
+     37.6,
+     null,
+     true
+    ],
+    [
+     37.8,
+     null,
+     true
+    ],
+    [
+     38.0,
+     null,
+     true
+    ],
+    [
+     38.2,
+     null,
+     false
+    ],
+    [
+     38.4,
+     null,
+     true
+    ],
+    [
+     38.6,
+     null,
+     false
+    ],
+    [
+     38.8,
+     "day",
+     true
+    ],
+    [
+     39.0,
+     "day",
+     true
+    ],
+    [
+     39.2,
+     "gps",
+     false
+    ],
+    [
+     39.4,
+     null,
+     false
+    ],
+    [
+     39.6,
+     null,
+     false
+    ],
+    [
+     39.8,
+     null,
+     true
+    ],
+    [
+     40.0,
+     null,
+     true
+    ],
+    [
+     40.2,
+     null,
+     true
+    ],
+    [
+     40.4,
+     null,
+     true
+    ],
+    [
+     40.6,
+     null,
+     false
+    ],
+    [
+     40.8,
+     null,
+     false
+    ],
+    [
+     41.0,
+     "gps",
+     true
+    ],
+    [
+     41.2,
+     "gps",
+     false
+    ],
+    [
+     41.4,
+     "night",
+     false
+    ],
+    [
+     41.6,
+     "night",
+     false
+    ],
+    [
+     41.8,
+     "night",
+     false
+    ],
+    [
+     42.0,
+     "night",
+     true
+    ],
+    [
+     42.2,
+     "night",
+     false
+    ],
+    [
+     42.4,
+     "night",
+     false
+    ],
+    [
+     42.6,
+     "night",
+     true
+    ],
+    [
+     42.8,
+     "night",
+     false
+    ],
+    [
+     43.0,
+     "night",
+     true
+    ],
+    [
+     43.2,
+     "night",
+     false
+    ],
+    [
+     43.4,
+     "night",
+     true
+    ],
+    [
+     43.6,
+     "night",
+     true
+    ],
+    [
+     43.8,
+     "night",
+     true
+    ],
+    [
+     44.0,
+     "night",
+     true
+    ],
+    [
+     44.2,
+     "night",
+     true
+    ],
+    [
+     44.4,
+     "night",
+     true
+    ],
+    [
+     44.6,
+     "night",
+     true
+    ],
+    [
+     44.8,
+     "night",
+     true
+    ],
+    [
+     45.0,
+     "night",
+     false
+    ],
+    [
+     45.2,
+     "night",
+     true
+    ],
+    [
+     45.4,
+     "night",
+     true
+    ],
+    [
+     45.6,
+     "night",
+     true
+    ],
+    [
+     45.8,
+     "night",
+     true
+    ],
+    [
+     46.0,
+     null,
+     true
+    ],
+    [
+     46.2,
+     null,
+     false
+    ],
+    [
+     46.4,
+     null,
+     false
+    ],
+    [
+     46.6,
+     null,
+     true
+    ],
+    [
+     46.8,
+     null,
+     false
+    ],
+    [
+     47.0,
+     "night",
+     true
+    ],
+    [
+     47.2,
+     "night",
+     false
+    ],
+    [
+     47.4,
+     "night",
+     true
+    ],
+    [
+     47.6,
+     "night",
+     true
+    ],
+    [
+     47.8,
+     "night",
+     false
+    ],
+    [
+     48.0,
+     "gps",
+     true
+    ],
+    [
+     48.2,
+     "gps",
+     true
+    ],
+    [
+     48.4,
+     "gps",
+     true
+    ],
+    [
+     48.6,
+     "gps",
+     false
+    ],
+    [
+     48.8,
+     "gps",
+     false
+    ],
+    [
+     49.0,
+     "gps",
+     true
+    ],
+    [
+     49.2,
+     "gps",
+     false
+    ],
+    [
+     49.4,
+     "gps",
+     true
+    ],
+    [
+     49.6,
+     "gps",
+     false
+    ],
+    [
+     49.8,
+     "gps",
+     true
+    ],
+    [
+     50.0,
+     "gps",
+     true
+    ],
+    [
+     50.2,
+     null,
+     true
+    ],
+    [
+     50.4,
+     null,
+     true
+    ],
+    [
+     50.6,
+     null,
+     false
+    ],
+    [
+     50.8,
+     null,
+     true
+    ],
+    [
+     51.0,
+     null,
+     true
+    ],
+    [
+     51.2,
+     null,
+     false
+    ],
+    [
+     51.4,
+     "night",
+     false
+    ],
+    [
+     51.6,
+     "night",
+     false
+    ],
+    [
+     51.8,
+     "night",
+     true
+    ],
+    [
+     52.0,
+     "night",
+     true
+    ],
+    [
+     52.2,
+     "night",
+     false
+    ],
+    [
+     52.4,
+     "night",
+     true
+    ],
+    [
+     52.6,
+     "night",
+     false
+    ],
+    [
+     52.8,
+     "gps",
+     true
+    ],
+    [
+     53.0,
+     "gps",
+     true
+    ],
+    [
+     53.2,
+     "gps",
+     true
+    ],
+    [
+     53.4,
+     "gps",
+     false
+    ],
+    [
+     53.6,
+     "gps",
+     false
+    ],
+    [
+     53.8,
+     "gps",
+     true
+    ],
+    [
+     54.0,
+     "gps",
+     false
+    ],
+    [
+     54.2,
+     "gps",
+     true
+    ],
+    [
+     54.4,
+     "gps",
+     true
+    ],
+    [
+     54.6,
+     "gps",
+     false
+    ],
+    [
+     54.8,
+     "gps",
+     true
+    ],
+    [
+     55.0,
+     "gps",
+     false
+    ],
+    [
+     55.2,
+     "gps",
+     true
+    ],
+    [
+     55.4,
+     "gps",
+     true
+    ],
+    [
+     55.6,
+     "gps",
+     true
+    ],
+    [
+     55.8,
+     "gps",
+     false
+    ],
+    [
+     56.0,
+     "day",
+     false
+    ],
+    [
+     56.2,
+     "day",
+     false
+    ],
+    [
+     56.4,
+     "day",
+     false
+    ],
+    [
+     56.6,
+     "day",
+     true
+    ],
+    [
+     56.8,
+     "day",
+     false
+    ],
+    [
+     57.0,
+     "gps",
+     true
+    ],
+    [
+     57.2,
+     "gps",
+     true
+    ],
+    [
+     57.4,
+     "gps",
+     true
+    ],
+    [
+     57.6,
+     "gps",
+     true
+    ],
+    [
+     57.8,
+     "gps",
+     true
+    ],
+    [
+     58.0,
+     "gps",
+     true
+    ],
+    [
+     58.2,
+     "gps",
+     false
+    ],
+    [
+     58.4,
+     "gps",
+     true
+    ],
+    [
+     58.6,
+     "gps",
+     false
+    ],
+    [
+     58.8,
+     "day",
+     true
+    ],
+    [
+     59.0,
+     "day",
+     false
+    ],
+    [
+     59.2,
+     "day",
+     false
+    ],
+    [
+     59.4,
+     "day",
+     true
+    ],
+    [
+     59.6,
+     "day",
+     false
+    ],
+    [
+     59.8,
+     "day",
+     false
+    ],
+    [
+     60.0,
+     "day",
+     false
+    ],
+    [
+     60.2,
+     "day",
+     false
+    ],
+    [
+     60.4,
+     "day",
+     false
+    ],
+    [
+     60.6,
+     "day",
+     false
+    ],
+    [
+     60.8,
+     "day",
+     true
+    ],
+    [
+     61.0,
+     "day",
+     true
+    ],
+    [
+     61.2,
+     "day",
+     true
+    ],
+    [
+     61.4,
+     "day",
+     false
+    ],
+    [
+     61.6,
+     "day",
+     true
+    ],
+    [
+     61.8,
+     "day",
+     true
+    ],
+    [
+     62.0,
+     "day",
+     true
+    ],
+    [
+     62.2,
+     "day",
+     true
+    ],
+    [
+     62.4,
+     "day",
+     true
+    ],
+    [
+     62.6,
+     "day",
+     true
+    ],
+    [
+     62.8,
+     "day",
+     false
+    ],
+    [
+     63.0,
+     "day",
+     true
+    ],
+    [
+     63.2,
+     "day",
+     false
+    ],
+    [
+     63.4,
+     "day",
+     true
+    ],
+    [
+     63.6,
+     "day",
+     true
+    ],
+    [
+     63.8,
+     "day",
+     true
+    ],
+    [
+     64.0,
+     "day",
+     true
+    ],
+    [
+     64.2,
+     "day",
+     true
+    ],
+    [
+     64.4,
+     "day",
+     true
+    ],
+    [
+     64.6,
+     "day",
+     false
+    ],
+    [
+     64.8,
+     "day",
+     false
+    ],
+    [
+     65.0,
+     "day",
+     true
+    ],
+    [
+     65.2,
+     "day",
+     true
+    ],
+    [
+     65.4,
+     "day",
+     false
+    ],
+    [
+     65.6,
+     "day",
+     false
+    ],
+    [
+     65.8,
+     "day",
+     true
+    ],
+    [
+     66.0,
+     "day",
+     false
+    ],
+    [
+     66.2,
+     "night",
+     true
+    ],
+    [
+     66.4,
+     "night",
+     false
+    ],
+    [
+     66.6,
+     "night",
+     true
+    ],
+    [
+     66.8,
+     "night",
+     true
+    ],
+    [
+     67.0,
+     "night",
+     false
+    ],
+    [
+     67.2,
+     "night",
+     true
+    ],
+    [
+     67.4,
+     "night",
+     false
+    ],
+    [
+     67.6,
+     "night",
+     true
+    ],
+    [
+     67.8,
+     "night",
+     true
+    ],
+    [
+     68.0,
+     "night",
+     true
+    ],
+    [
+     68.2,
+     "night",
+     true
+    ],
+    [
+     68.4,
+     "gps",
+     true
+    ],
+    [
+     68.6,
+     "gps",
+     true
+    ],
+    [
+     68.8,
+     "gps",
+     false
+    ],
+    [
+     69.0,
+     "gps",
+     false
+    ],
+    [
+     69.2,
+     "gps",
+     false
+    ],
+    [
+     69.4,
+     "day",
+     true
+    ],
+    [
+     69.6,
+     "day",
+     true
+    ],
+    [
+     69.8,
+     "day",
+     false
+    ],
+    [
+     70.0,
+     null,
+     true
+    ],
+    [
+     70.2,
+     "night",
+     false
+    ],
+    [
+     70.4,
+     "night",
+     true
+    ],
+    [
+     70.6,
+     "night",
+     true
+    ],
+    [
+     70.8,
+     "night",
+     false
+    ],
+    [
+     71.0,
+     "night",
+     true
+    ],
+    [
+     71.2,
+     "night",
+     false
+    ],
+    [
+     71.4,
+     "night",
+     true
+    ],
+    [
+     71.6,
+     "night",
+     true
+    ],
+    [
+     71.8,
+     "night",
+     true
+    ],
+    [
+     72.0,
+     "night",
+     false
+    ],
+    [
+     72.2,
+     "night",
+     true
+    ],
+    [
+     72.4,
+     "night",
+     false
+    ],
+    [
+     72.6,
+     "night",
+     true
+    ],
+    [
+     72.8,
+     "night",
+     true
+    ],
+    [
+     73.0,
+     "night",
+     false
+    ],
+    [
+     73.2,
+     "gps",
+     true
+    ],
+    [
+     73.4,
+     "gps",
+     true
+    ],
+    [
+     73.6,
+     "gps",
+     true
+    ],
+    [
+     73.8,
+     "night",
+     true
+    ],
+    [
+     74.0,
+     "night",
+     true
+    ],
+    [
+     74.2,
+     "day",
+     true
+    ],
+    [
+     74.4,
+     "day",
+     true
+    ],
+    [
+     74.6,
+     "day",
+     true
+    ],
+    [
+     74.8,
+     "day",
+     true
+    ],
+    [
+     75.0,
+     "day",
+     true
+    ],
+    [
+     75.2,
+     "day",
+     true
+    ],
+    [
+     75.4,
+     "day",
+     true
+    ],
+    [
+     75.6,
+     "day",
+     false
+    ],
+    [
+     75.8,
+     "day",
+     true
+    ],
+    [
+     76.0,
+     "day",
+     true
+    ],
+    [
+     76.2,
+     "day",
+     true
+    ],
+    [
+     76.4,
+     "day",
+     false
+    ],
+    [
+     76.6,
+     "gps",
+     false
+    ],
+    [
+     76.8,
+     "gps",
+     true
+    ],
+    [
+     77.0,
+     "gps",
+     true
+    ],
+    [
+     77.2,
+     "day",
+     true
+    ],
+    [
+     77.4,
+     "day",
+     false
+    ],
+    [
+     77.6,
+     "day",
+     true
+    ],
+    [
+     77.8,
+     "day",
+     false
+    ],
+    [
+     78.0,
+     "day",
+     true
+    ],
+    [
+     78.2,
+     "day",
+     false
+    ],
+    [
+     78.4,
+     "day",
+     true
+    ],
+    [
+     78.6,
+     "day",
+     false
+    ],
+    [
+     78.8,
+     "day",
+     true
+    ],
+    [
+     79.0,
+     "day",
+     false
+    ],
+    [
+     79.2,
+     "day",
+     true
+    ],
+    [
+     79.4,
+     "gps",
+     false
+    ],
+    [
+     79.6,
+     "gps",
+     false
+    ],
+    [
+     79.8,
+     "gps",
+     false
+    ],
+    [
+     80.0,
+     "gps",
+     true
+    ],
+    [
+     80.2,
+     "gps",
+     true
+    ],
+    [
+     80.4,
+     "gps",
+     true
+    ],
+    [
+     80.6,
+     "gps",
+     false
+    ],
+    [
+     80.8,
+     "gps",
+     true
+    ],
+    [
+     81.0,
+     "gps",
+     true
+    ],
+    [
+     81.2,
+     "gps",
+     true
+    ],
+    [
+     81.4,
+     "gps",
+     false
+    ],
+    [
+     81.6,
+     "gps",
+     true
+    ],
+    [
+     81.8,
+     "gps",
+     true
+    ],
+    [
+     82.0,
+     "gps",
+     true
+    ],
+    [
+     82.2,
+     "gps",
+     false
+    ],
+    [
+     82.4,
+     "gps",
+     true
+    ],
+    [
+     82.6,
+     "gps",
+     true
+    ],
+    [
+     82.8,
+     "gps",
+     true
+    ],
+    [
+     83.0,
+     "night",
+     true
+    ],
+    [
+     83.2,
+     "night",
+     true
+    ],
+    [
+     83.4,
+     null,
+     false
+    ],
+    [
+     83.6,
+     null,
+     false
+    ],
+    [
+     83.8,
+     null,
+     true
+    ],
+    [
+     84.0,
+     null,
+     true
+    ],
+    [
+     84.2,
+     "night",
+     true
+    ],
+    [
+     84.4,
+     "night",
+     true
+    ],
+    [
+     84.6,
+     "night",
+     true
+    ],
+    [
+     84.8,
+     "night",
+     false
+    ],
+    [
+     85.0,
+     "night",
+     true
+    ],
+    [
+     85.2,
+     null,
+     true
+    ],
+    [
+     85.4,
+     null,
+     true
+    ],
+    [
+     85.6,
+     null,
+     false
+    ],
+    [
+     85.8,
+     null,
+     false
+    ],
+    [
+     86.0,
+     null,
+     true
+    ],
+    [
+     86.2,
+     "gps",
+     false
+    ],
+    [
+     86.4,
+     "gps",
+     true
+    ],
+    [
+     86.6,
+     "gps",
+     true
+    ],
+    [
+     86.8,
+     "gps",
+     true
+    ],
+    [
+     87.0,
+     "gps",
+     true
+    ],
+    [
+     87.2,
+     "night",
+     true
+    ],
+    [
+     87.4,
+     "night",
+     true
+    ],
+    [
+     87.6,
+     "night",
+     true
+    ],
+    [
+     87.8,
+     "night",
+     true
+    ],
+    [
+     88.0,
+     "day",
+     true
+    ],
+    [
+     88.2,
+     "day",
+     true
+    ],
+    [
+     88.4,
+     "day",
+     true
+    ],
+    [
+     88.6,
+     "day",
+     true
+    ],
+    [
+     88.8,
+     "day",
+     false
+    ],
+    [
+     89.0,
+     "day",
+     false
+    ],
+    [
+     89.2,
+     "gps",
+     false
+    ],
+    [
+     89.4,
+     "gps",
+     true
+    ],
+    [
+     89.6,
+     "gps",
+     false
+    ],
+    [
+     89.8,
+     "gps",
+     true
+    ],
+    [
+     90.0,
+     "gps",
+     false
+    ],
+    [
+     90.2,
+     "gps",
+     true
+    ],
+    [
+     90.4,
+     "gps",
+     false
+    ],
+    [
+     90.6,
+     "gps",
+     false
+    ],
+    [
+     90.8,
+     "gps",
+     true
+    ],
+    [
+     91.0,
+     "day",
+     false
+    ],
+    [
+     91.2,
+     "day",
+     true
+    ],
+    [
+     91.4,
+     "day",
+     true
+    ],
+    [
+     91.6,
+     "day",
+     true
+    ],
+    [
+     91.8,
+     "day",
+     true
+    ],
+    [
+     92.0,
+     "day",
+     true
+    ],
+    [
+     92.2,
+     "day",
+     true
+    ],
+    [
+     92.4,
+     "day",
+     false
+    ],
+    [
+     92.6,
+     "day",
+     true
+    ],
+    [
+     92.8,
+     "day",
+     false
+    ],
+    [
+     93.0,
+     "day",
+     true
+    ],
+    [
+     93.2,
+     "day",
+     false
+    ],
+    [
+     93.4,
+     "day",
+     true
+    ],
+    [
+     93.6,
+     "night",
+     false
+    ],
+    [
+     93.8,
+     null,
+     true
+    ],
+    [
+     94.0,
+     null,
+     true
+    ],
+    [
+     94.2,
+     null,
+     true
+    ],
+    [
+     94.4,
+     null,
+     true
+    ],
+    [
+     94.6,
+     null,
+     false
+    ],
+    [
+     94.8,
+     null,
+     true
+    ],
+    [
+     95.0,
+     null,
+     true
+    ],
+    [
+     95.2,
+     null,
+     true
+    ],
+    [
+     95.4,
+     null,
+     false
+    ],
+    [
+     95.6,
+     "day",
+     true
+    ],
+    [
+     95.8,
+     "day",
+     false
+    ],
+    [
+     96.0,
+     "day",
+     true
+    ],
+    [
+     96.2,
+     "day",
+     false
+    ],
+    [
+     96.4,
+     "gps",
+     true
+    ],
+    [
+     96.6,
+     "gps",
+     false
+    ],
+    [
+     96.8,
+     "gps",
+     true
+    ],
+    [
+     97.0,
+     "gps",
+     true
+    ],
+    [
+     97.2,
+     "gps",
+     true
+    ],
+    [
+     97.4,
+     "gps",
+     true
+    ],
+    [
+     97.6,
+     "gps",
+     true
+    ],
+    [
+     97.8,
+     "gps",
+     false
+    ],
+    [
+     98.0,
+     "day",
+     false
+    ],
+    [
+     98.2,
+     "day",
+     false
+    ],
+    [
+     98.4,
+     null,
+     true
+    ],
+    [
+     98.6,
+     null,
+     true
+    ],
+    [
+     98.8,
+     null,
+     false
+    ],
+    [
+     99.0,
+     null,
+     true
+    ],
+    [
+     99.2,
+     null,
+     true
+    ],
+    [
+     99.4,
+     null,
+     true
+    ],
+    [
+     99.6,
+     null,
+     true
+    ],
+    [
+     99.8,
+     null,
+     true
+    ],
+    [
+     100.0,
+     null,
+     true
+    ],
+    [
+     100.2,
+     null,
+     false
+    ],
+    [
+     100.4,
+     null,
+     true
+    ],
+    [
+     100.6,
+     null,
+     false
+    ],
+    [
+     100.8,
+     "night",
+     false
+    ],
+    [
+     101.0,
+     "night",
+     false
+    ],
+    [
+     101.2,
+     "night",
+     true
+    ],
+    [
+     101.4,
+     "night",
+     false
+    ],
+    [
+     101.6,
+     null,
+     false
+    ],
+    [
+     101.8,
+     null,
+     true
+    ],
+    [
+     102.0,
+     null,
+     true
+    ],
+    [
+     102.2,
+     "day",
+     true
+    ],
+    [
+     102.4,
+     "day",
+     true
+    ],
+    [
+     102.6,
+     null,
+     false
+    ],
+    [
+     102.8,
+     null,
+     true
+    ],
+    [
+     103.0,
+     null,
+     true
+    ],
+    [
+     103.2,
+     null,
+     false
+    ],
+    [
+     103.4,
+     null,
+     true
+    ],
+    [
+     103.6,
+     "day",
+     false
+    ],
+    [
+     103.8,
+     "day",
+     true
+    ],
+    [
+     104.0,
+     "day",
+     false
+    ],
+    [
+     104.2,
+     "day",
+     false
+    ],
+    [
+     104.4,
+     "day",
+     true
+    ],
+    [
+     104.6,
+     "day",
+     false
+    ],
+    [
+     104.8,
+     "day",
+     true
+    ],
+    [
+     105.0,
+     "day",
+     true
+    ],
+    [
+     105.2,
+     "day",
+     true
+    ],
+    [
+     105.4,
+     "day",
+     false
+    ],
+    [
+     105.6,
+     "day",
+     true
+    ],
+    [
+     105.8,
+     "day",
+     true
+    ],
+    [
+     106.0,
+     "day",
+     true
+    ],
+    [
+     106.2,
+     "day",
+     true
+    ],
+    [
+     106.4,
+     "day",
+     true
+    ],
+    [
+     106.6,
+     "day",
+     true
+    ],
+    [
+     106.8,
+     "day",
+     true
+    ],
+    [
+     107.0,
+     "day",
+     true
+    ],
+    [
+     107.2,
+     "day",
+     false
+    ],
+    [
+     107.4,
+     "day",
+     true
+    ],
+    [
+     107.6,
+     "day",
+     false
+    ],
+    [
+     107.8,
+     "day",
+     true
+    ],
+    [
+     108.0,
+     "day",
+     true
+    ],
+    [
+     108.2,
+     "day",
+     true
+    ],
+    [
+     108.4,
+     "day",
+     false
+    ],
+    [
+     108.6,
+     "day",
+     true
+    ],
+    [
+     108.8,
+     "day",
+     true
+    ],
+    [
+     109.0,
+     "day",
+     true
+    ],
+    [
+     109.2,
+     "day",
+     false
+    ],
+    [
+     109.4,
+     "gps",
+     false
+    ],
+    [
+     109.6,
+     "gps",
+     true
+    ],
+    [
+     109.8,
+     "gps",
+     true
+    ],
+    [
+     110.0,
+     "gps",
+     true
+    ],
+    [
+     110.2,
+     "gps",
+     false
+    ],
+    [
+     110.4,
+     "gps",
+     true
+    ],
+    [
+     110.6,
+     "gps",
+     false
+    ],
+    [
+     110.8,
+     "gps",
+     false
+    ],
+    [
+     111.0,
+     "gps",
+     false
+    ],
+    [
+     111.2,
+     "night",
+     true
+    ],
+    [
+     111.4,
+     "night",
+     true
+    ],
+    [
+     111.6,
+     "night",
+     false
+    ],
+    [
+     111.8,
+     "night",
+     false
+    ],
+    [
+     112.0,
+     "night",
+     true
+    ],
+    [
+     112.2,
+     "night",
+     true
+    ],
+    [
+     112.4,
+     "night",
+     false
+    ],
+    [
+     112.6,
+     "night",
+     true
+    ],
+    [
+     112.8,
+     "night",
+     false
+    ],
+    [
+     113.0,
+     "night",
+     false
+    ],
+    [
+     113.2,
+     "night",
+     true
+    ],
+    [
+     113.4,
+     "night",
+     true
+    ],
+    [
+     113.6,
+     "night",
+     true
+    ],
+    [
+     113.8,
+     "night",
+     false
+    ],
+    [
+     114.0,
+     "day",
+     false
+    ],
+    [
+     114.2,
+     null,
+     true
+    ],
+    [
+     114.4,
+     "gps",
+     false
+    ],
+    [
+     114.6,
+     "gps",
+     false
+    ],
+    [
+     114.8,
+     "gps",
+     true
+    ],
+    [
+     115.0,
+     "gps",
+     false
+    ],
+    [
+     115.2,
+     "night",
+     true
+    ],
+    [
+     115.4,
+     "night",
+     true
+    ],
+    [
+     115.6,
+     "night",
+     false
+    ],
+    [
+     115.8,
+     "night",
+     false
+    ],
+    [
+     116.0,
+     "night",
+     true
+    ],
+    [
+     116.2,
+     "night",
+     true
+    ],
+    [
+     116.4,
+     "night",
+     true
+    ],
+    [
+     116.6,
+     "night",
+     false
+    ],
+    [
+     116.8,
+     "night",
+     false
+    ],
+    [
+     117.0,
+     "night",
+     false
+    ],
+    [
+     117.2,
+     "night",
+     true
+    ],
+    [
+     117.4,
+     "gps",
+     false
+    ],
+    [
+     117.6,
+     "gps",
+     true
+    ],
+    [
+     117.8,
+     "gps",
+     false
+    ],
+    [
+     118.0,
+     "gps",
+     true
+    ],
+    [
+     118.2,
+     "gps",
+     false
+    ],
+    [
+     118.4,
+     "gps",
+     true
+    ],
+    [
+     118.6,
+     "day",
+     true
+    ],
+    [
+     118.8,
+     "day",
+     true
+    ],
+    [
+     119.0,
+     "day",
+     false
+    ],
+    [
+     119.2,
+     "night",
+     false
+    ],
+    [
+     119.4,
+     "night",
+     false
+    ],
+    [
+     119.6,
+     "night",
+     false
+    ],
+    [
+     119.8,
+     "night",
+     true
+    ],
+    [
+     120.0,
+     "night",
+     false
+    ],
+    [
+     120.2,
+     "night",
+     true
+    ],
+    [
+     120.4,
+     "night",
+     false
+    ],
+    [
+     120.6,
+     "gps",
+     true
+    ],
+    [
+     120.8,
+     "gps",
+     true
+    ],
+    [
+     121.0,
+     "gps",
+     false
+    ],
+    [
+     121.2,
+     null,
+     true
+    ],
+    [
+     121.4,
+     null,
+     true
+    ],
+    [
+     121.6,
+     null,
+     true
+    ],
+    [
+     121.8,
+     null,
+     false
+    ],
+    [
+     122.0,
+     null,
+     true
+    ],
+    [
+     122.2,
+     null,
+     true
+    ],
+    [
+     122.4,
+     null,
+     true
+    ],
+    [
+     122.6,
+     null,
+     true
+    ],
+    [
+     122.8,
+     null,
+     false
+    ],
+    [
+     123.0,
+     null,
+     true
+    ],
+    [
+     123.2,
+     null,
+     true
+    ],
+    [
+     123.4,
+     null,
+     false
+    ],
+    [
+     123.6,
+     null,
+     true
+    ],
+    [
+     123.8,
+     "night",
+     false
+    ],
+    [
+     124.0,
+     "night",
+     true
+    ],
+    [
+     124.2,
+     "night",
+     false
+    ],
+    [
+     124.4,
+     "night",
+     true
+    ],
+    [
+     124.6,
+     "night",
+     true
+    ],
+    [
+     124.8,
+     "night",
+     false
+    ],
+    [
+     125.0,
+     "night",
+     true
+    ],
+    [
+     125.2,
+     "night",
+     true
+    ],
+    [
+     125.4,
+     "night",
+     false
+    ],
+    [
+     125.6,
+     "night",
+     true
+    ],
+    [
+     125.8,
+     "night",
+     true
+    ],
+    [
+     126.0,
+     null,
+     true
+    ],
+    [
+     126.2,
+     null,
+     true
+    ],
+    [
+     126.4,
+     null,
+     false
+    ],
+    [
+     126.6,
+     null,
+     false
+    ],
+    [
+     126.8,
+     null,
+     false
+    ],
+    [
+     127.0,
+     "night",
+     true
+    ],
+    [
+     127.2,
+     "day",
+     true
+    ],
+    [
+     127.4,
+     "day",
+     true
+    ],
+    [
+     127.6,
+     "day",
+     false
+    ],
+    [
+     127.8,
+     "day",
+     true
+    ],
+    [
+     128.0,
+     "day",
+     true
+    ],
+    [
+     128.2,
+     "gps",
+     true
+    ],
+    [
+     128.4,
+     "gps",
+     true
+    ],
+    [
+     128.6,
+     "gps",
+     false
+    ],
+    [
+     128.8,
+     "gps",
+     true
+    ],
+    [
+     129.0,
+     "gps",
+     false
+    ],
+    [
+     129.2,
+     "gps",
+     true
+    ],
+    [
+     129.4,
+     "gps",
+     false
+    ],
+    [
+     129.6,
+     "gps",
+     false
+    ],
+    [
+     129.8,
+     "gps",
+     true
+    ],
+    [
+     130.0,
+     "gps",
+     true
+    ],
+    [
+     130.2,
+     "gps",
+     true
+    ],
+    [
+     130.4,
+     "gps",
+     false
+    ],
+    [
+     130.6,
+     "night",
+     false
+    ],
+    [
+     130.8,
+     "gps",
+     false
+    ],
+    [
+     131.0,
+     "gps",
+     true
+    ],
+    [
+     131.2,
+     "gps",
+     false
+    ],
+    [
+     131.4,
+     "gps",
+     false
+    ],
+    [
+     131.6,
+     "gps",
+     true
+    ],
+    [
+     131.8,
+     "gps",
+     true
+    ],
+    [
+     132.0,
+     "gps",
+     false
+    ],
+    [
+     132.2,
+     "gps",
+     false
+    ],
+    [
+     132.4,
+     "gps",
+     false
+    ],
+    [
+     132.6,
+     "gps",
+     true
+    ],
+    [
+     132.8,
+     "gps",
+     true
+    ],
+    [
+     133.0,
+     "gps",
+     false
+    ],
+    [
+     133.2,
+     "gps",
+     false
+    ],
+    [
+     133.4,
+     "gps",
+     true
+    ],
+    [
+     133.6,
+     "gps",
+     true
+    ],
+    [
+     133.8,
+     "gps",
+     true
+    ],
+    [
+     134.0,
+     "gps",
+     true
+    ],
+    [
+     134.2,
+     "gps",
+     false
+    ],
+    [
+     134.4,
+     "gps",
+     true
+    ],
+    [
+     134.6,
+     "gps",
+     false
+    ],
+    [
+     134.8,
+     "gps",
+     false
+    ],
+    [
+     135.0,
+     "day",
+     true
+    ],
+    [
+     135.2,
+     "day",
+     true
+    ],
+    [
+     135.4,
+     "day",
+     false
+    ],
+    [
+     135.6,
+     "day",
+     true
+    ],
+    [
+     135.8,
+     "day",
+     true
+    ],
+    [
+     136.0,
+     "night",
+     false
+    ],
+    [
+     136.2,
+     null,
+     true
+    ],
+    [
+     136.4,
+     "gps",
+     true
+    ],
+    [
+     136.6,
+     "gps",
+     false
+    ],
+    [
+     136.8,
+     "gps",
+     true
+    ],
+    [
+     137.0,
+     "gps",
+     true
+    ],
+    [
+     137.2,
+     "gps",
+     true
+    ],
+    [
+     137.4,
+     "gps",
+     false
+    ],
+    [
+     137.6,
+     "gps",
+     true
+    ],
+    [
+     137.8,
+     "gps",
+     true
+    ],
+    [
+     138.0,
+     "gps",
+     true
+    ],
+    [
+     138.2,
+     "day",
+     true
+    ],
+    [
+     138.4,
+     "day",
+     true
+    ],
+    [
+     138.6,
+     "day",
+     true
+    ],
+    [
+     138.8,
+     "day",
+     true
+    ],
+    [
+     139.0,
+     "day",
+     true
+    ],
+    [
+     139.2,
+     "day",
+     false
+    ],
+    [
+     139.4,
+     "day",
+     true
+    ],
+    [
+     139.6,
+     "day",
+     false
+    ],
+    [
+     139.8,
+     null,
+     true
+    ],
+    [
+     140.0,
+     null,
+     false
+    ],
+    [
+     140.2,
+     null,
+     true
+    ],
+    [
+     140.4,
+     null,
+     true
+    ],
+    [
+     140.6,
+     null,
+     true
+    ],
+    [
+     140.8,
+     "gps",
+     false
+    ],
+    [
+     141.0,
+     "gps",
+     false
+    ],
+    [
+     141.2,
+     "gps",
+     true
+    ],
+    [
+     141.4,
+     "gps",
+     true
+    ],
+    [
+     141.6,
+     "gps",
+     false
+    ],
+    [
+     141.8,
+     "gps",
+     false
+    ],
+    [
+     142.0,
+     "gps",
+     true
+    ],
+    [
+     142.2,
+     "gps",
+     false
+    ],
+    [
+     142.4,
+     "gps",
+     true
+    ],
+    [
+     142.6,
+     null,
+     false
+    ],
+    [
+     142.8,
+     null,
+     true
+    ],
+    [
+     143.0,
+     null,
+     true
+    ],
+    [
+     143.2,
+     null,
+     true
+    ],
+    [
+     143.4,
+     null,
+     true
+    ],
+    [
+     143.6,
+     null,
+     true
+    ],
+    [
+     143.8,
+     null,
+     true
+    ],
+    [
+     144.0,
+     null,
+     true
+    ],
+    [
+     144.2,
+     null,
+     true
+    ],
+    [
+     144.4,
+     null,
+     false
+    ],
+    [
+     144.6,
+     null,
+     false
+    ],
+    [
+     144.8,
+     null,
+     false
+    ],
+    [
+     145.0,
+     null,
+     true
+    ],
+    [
+     145.2,
+     null,
+     true
+    ],
+    [
+     145.4,
+     "gps",
+     true
+    ],
+    [
+     145.6,
+     "gps",
+     true
+    ],
+    [
+     145.8,
+     "gps",
+     true
+    ],
+    [
+     146.0,
+     "gps",
+     false
+    ],
+    [
+     146.2,
+     "gps",
+     false
+    ],
+    [
+     146.4,
+     "gps",
+     true
+    ],
+    [
+     146.6,
+     "gps",
+     false
+    ],
+    [
+     146.8,
+     "gps",
+     true
+    ],
+    [
+     147.0,
+     "gps",
+     false
+    ],
+    [
+     147.2,
+     "gps",
+     false
+    ],
+    [
+     147.4,
+     "gps",
+     true
+    ],
+    [
+     147.6,
+     "gps",
+     false
+    ],
+    [
+     147.8,
+     "gps",
+     true
+    ],
+    [
+     148.0,
+     "gps",
+     true
+    ],
+    [
+     148.2,
+     "gps",
+     true
+    ],
+    [
+     148.4,
+     "gps",
+     true
+    ],
+    [
+     148.6,
+     "gps",
+     false
+    ],
+    [
+     148.8,
+     null,
+     true
+    ],
+    [
+     149.0,
+     null,
+     false
+    ],
+    [
+     149.2,
+     null,
+     true
+    ],
+    [
+     149.4,
+     null,
+     false
+    ],
+    [
+     149.6,
+     null,
+     false
+    ],
+    [
+     149.8,
+     null,
+     true
+    ],
+    [
+     150.0,
+     null,
+     true
+    ],
+    [
+     150.2,
+     null,
+     true
+    ],
+    [
+     150.4,
+     null,
+     true
+    ],
+    [
+     150.6,
+     null,
+     false
+    ],
+    [
+     150.8,
+     null,
+     true
+    ],
+    [
+     151.0,
+     null,
+     true
+    ],
+    [
+     151.2,
+     null,
+     true
+    ],
+    [
+     151.4,
+     null,
+     true
+    ],
+    [
+     151.6,
+     null,
+     false
+    ],
+    [
+     151.8,
+     null,
+     true
+    ],
+    [
+     152.0,
+     null,
+     true
+    ],
+    [
+     152.2,
+     null,
+     true
+    ],
+    [
+     152.4,
+     null,
+     true
+    ],
+    [
+     152.6,
+     "day",
+     false
+    ],
+    [
+     152.8,
+     "day",
+     true
+    ],
+    [
+     153.0,
+     "day",
+     false
+    ],
+    [
+     153.2,
+     "day",
+     false
+    ],
+    [
+     153.4,
+     "day",
+     false
+    ],
+    [
+     153.6,
+     "day",
+     true
+    ],
+    [
+     153.8,
+     "day",
+     true
+    ],
+    [
+     154.0,
+     null,
+     true
+    ],
+    [
+     154.2,
+     null,
+     true
+    ],
+    [
+     154.4,
+     null,
+     true
+    ],
+    [
+     154.6,
+     null,
+     true
+    ],
+    [
+     154.8,
+     null,
+     false
+    ],
+    [
+     155.0,
+     null,
+     true
+    ],
+    [
+     155.2,
+     null,
+     false
+    ],
+    [
+     155.4,
+     null,
+     false
+    ],
+    [
+     155.6,
+     null,
+     true
+    ],
+    [
+     155.8,
+     null,
+     true
+    ],
+    [
+     156.0,
+     null,
+     false
+    ],
+    [
+     156.2,
+     null,
+     true
+    ],
+    [
+     156.4,
+     null,
+     true
+    ],
+    [
+     156.6,
+     null,
+     false
+    ],
+    [
+     156.8,
+     null,
+     true
+    ],
+    [
+     157.0,
+     null,
+     true
+    ],
+    [
+     157.2,
+     null,
+     false
+    ],
+    [
+     157.4,
+     null,
+     true
+    ],
+    [
+     157.6,
+     null,
+     false
+    ],
+    [
+     157.8,
+     null,
+     true
+    ],
+    [
+     158.0,
+     null,
+     true
+    ],
+    [
+     158.2,
+     null,
+     true
+    ],
+    [
+     158.4,
+     null,
+     false
+    ],
+    [
+     158.6,
+     null,
+     true
+    ],
+    [
+     158.8,
+     null,
+     true
+    ],
+    [
+     159.0,
+     null,
+     false
+    ],
+    [
+     159.2,
+     null,
+     false
+    ],
+    [
+     159.4,
+     null,
+     false
+    ],
+    [
+     159.6,
+     null,
+     true
+    ],
+    [
+     159.8,
+     null,
+     true
+    ],
+    [
+     160.0,
+     null,
+     true
+    ],
+    [
+     160.2,
+     null,
+     false
+    ],
+    [
+     160.4,
+     null,
+     false
+    ],
+    [
+     160.6,
+     null,
+     true
+    ],
+    [
+     160.8,
+     "night",
+     true
+    ],
+    [
+     161.0,
+     "night",
+     true
+    ],
+    [
+     161.2,
+     "night",
+     false
+    ],
+    [
+     161.4,
+     "night",
+     false
+    ],
+    [
+     161.6,
+     "day",
+     false
+    ],
+    [
+     161.8,
+     "day",
+     false
+    ],
+    [
+     162.0,
+     "day",
+     false
+    ],
+    [
+     162.2,
+     "day",
+     false
+    ],
+    [
+     162.4,
+     "day",
+     false
+    ],
+    [
+     162.6,
+     "day",
+     false
+    ],
+    [
+     162.8,
+     "day",
+     true
+    ],
+    [
+     163.0,
+     "day",
+     true
+    ],
+    [
+     163.2,
+     "day",
+     true
+    ],
+    [
+     163.4,
+     "day",
+     false
+    ],
+    [
+     163.6,
+     "day",
+     true
+    ],
+    [
+     163.8,
+     "day",
+     true
+    ],
+    [
+     164.0,
+     "day",
+     true
+    ],
+    [
+     164.2,
+     "day",
+     true
+    ],
+    [
+     164.4,
+     "day",
+     false
+    ],
+    [
+     164.6,
+     "day",
+     true
+    ],
+    [
+     164.8,
+     "day",
+     false
+    ],
+    [
+     165.0,
+     "day",
+     false
+    ],
+    [
+     165.2,
+     "day",
+     false
+    ],
+    [
+     165.4,
+     "day",
+     false
+    ],
+    [
+     165.6,
+     "day",
+     false
+    ],
+    [
+     165.8,
+     "day",
+     false
+    ],
+    [
+     166.0,
+     "day",
+     true
+    ],
+    [
+     166.2,
+     "day",
+     false
+    ],
+    [
+     166.4,
+     "day",
+     true
+    ],
+    [
+     166.6,
+     "day",
+     true
+    ],
+    [
+     166.8,
+     "day",
+     false
+    ],
+    [
+     167.0,
+     "day",
+     true
+    ],
+    [
+     167.2,
+     "day",
+     false
+    ],
+    [
+     167.4,
+     "day",
+     true
+    ],
+    [
+     167.6,
+     "day",
+     true
+    ],
+    [
+     167.8,
+     "day",
+     true
+    ],
+    [
+     168.0,
+     null,
+     true
+    ],
+    [
+     168.2,
+     null,
+     true
+    ],
+    [
+     168.4,
+     null,
+     false
+    ],
+    [
+     168.6,
+     "day",
+     true
+    ],
+    [
+     168.8,
+     "day",
+     true
+    ],
+    [
+     169.0,
+     "day",
+     false
+    ],
+    [
+     169.2,
+     "day",
+     true
+    ],
+    [
+     169.4,
+     "day",
+     false
+    ],
+    [
+     169.6,
+     "day",
+     true
+    ],
+    [
+     169.8,
+     "day",
+     false
+    ],
+    [
+     170.0,
+     "day",
+     true
+    ],
+    [
+     170.2,
+     "day",
+     false
+    ],
+    [
+     170.4,
+     "day",
+     false
+    ],
+    [
+     170.6,
+     "day",
+     true
+    ],
+    [
+     170.8,
+     "night",
+     false
+    ],
+    [
+     171.0,
+     "night",
+     true
+    ],
+    [
+     171.2,
+     "night",
+     true
+    ],
+    [
+     171.4,
+     "night",
+     true
+    ],
+    [
+     171.6,
+     "night",
+     false
+    ],
+    [
+     171.8,
+     "night",
+     false
+    ],
+    [
+     172.0,
+     "night",
+     true
+    ],
+    [
+     172.2,
+     "night",
+     true
+    ],
+    [
+     172.4,
+     "night",
+     true
+    ],
+    [
+     172.6,
+     "day",
+     false
+    ],
+    [
+     172.8,
+     "day",
+     true
+    ],
+    [
+     173.0,
+     "day",
+     true
+    ],
+    [
+     173.2,
+     "day",
+     true
+    ],
+    [
+     173.4,
+     "day",
+     true
+    ],
+    [
+     173.6,
+     "day",
+     true
+    ],
+    [
+     173.8,
+     "day",
+     true
+    ],
+    [
+     174.0,
+     "day",
+     false
+    ],
+    [
+     174.2,
+     "day",
+     false
+    ],
+    [
+     174.4,
+     "day",
+     false
+    ],
+    [
+     174.6,
+     "day",
+     false
+    ],
+    [
+     174.8,
+     "day",
+     false
+    ],
+    [
+     175.0,
+     "day",
+     false
+    ],
+    [
+     175.2,
+     null,
+     false
+    ],
+    [
+     175.4,
+     null,
+     false
+    ],
+    [
+     175.6,
+     "gps",
+     false
+    ],
+    [
+     175.8,
+     "gps",
+     false
+    ],
+    [
+     176.0,
+     "gps",
+     true
+    ],
+    [
+     176.2,
+     "gps",
+     false
+    ],
+    [
+     176.4,
+     "gps",
+     false
+    ],
+    [
+     176.6,
+     "gps",
+     false
+    ],
+    [
+     176.8,
+     "gps",
+     true
+    ],
+    [
+     177.0,
+     "gps",
+     false
+    ],
+    [
+     177.2,
+     "gps",
+     false
+    ],
+    [
+     177.4,
+     "gps",
+     true
+    ],
+    [
+     177.6,
+     "gps",
+     true
+    ],
+    [
+     177.8,
+     "gps",
+     false
+    ],
+    [
+     178.0,
+     "gps",
+     true
+    ],
+    [
+     178.2,
+     "gps",
+     false
+    ],
+    [
+     178.4,
+     "gps",
+     true
+    ],
+    [
+     178.6,
+     "gps",
+     false
+    ],
+    [
+     178.8,
+     "gps",
+     true
+    ],
+    [
+     179.0,
+     "gps",
+     true
+    ],
+    [
+     179.2,
+     "gps",
+     false
+    ],
+    [
+     179.4,
+     "gps",
+     false
+    ],
+    [
+     179.6,
+     "gps",
+     true
+    ],
+    [
+     179.8,
+     "gps",
+     true
+    ],
+    [
+     180.0,
+     "gps",
+     true
+    ],
+    [
+     180.2,
+     "gps",
+     true
+    ],
+    [
+     180.4,
+     "gps",
+     true
+    ],
+    [
+     180.6,
+     "gps",
+     false
+    ],
+    [
+     180.8,
+     "gps",
+     true
+    ],
+    [
+     181.0,
+     "gps",
+     true
+    ],
+    [
+     181.2,
+     "gps",
+     true
+    ],
+    [
+     181.4,
+     "gps",
+     false
+    ],
+    [
+     181.6,
+     "gps",
+     false
+    ],
+    [
+     181.8,
+     "gps",
+     false
+    ],
+    [
+     182.0,
+     "gps",
+     true
+    ],
+    [
+     182.2,
+     "gps",
+     true
+    ],
+    [
+     182.4,
+     "gps",
+     false
+    ],
+    [
+     182.6,
+     "gps",
+     true
+    ],
+    [
+     182.8,
+     "gps",
+     false
+    ],
+    [
+     183.0,
+     "gps",
+     true
+    ],
+    [
+     183.2,
+     "gps",
+     false
+    ],
+    [
+     183.4,
+     "gps",
+     true
+    ],
+    [
+     183.6,
+     "gps",
+     true
+    ],
+    [
+     183.8,
+     "gps",
+     true
+    ],
+    [
+     184.0,
+     "gps",
+     false
+    ],
+    [
+     184.2,
+     "gps",
+     true
+    ],
+    [
+     184.4,
+     "gps",
+     false
+    ],
+    [
+     184.6,
+     "gps",
+     false
+    ],
+    [
+     184.8,
+     "gps",
+     true
+    ],
+    [
+     185.0,
+     "gps",
+     true
+    ],
+    [
+     185.2,
+     "gps",
+     true
+    ],
+    [
+     185.4,
+     null,
+     true
+    ],
+    [
+     185.6,
+     null,
+     false
+    ],
+    [
+     185.8,
+     "gps",
+     false
+    ],
+    [
+     186.0,
+     null,
+     true
+    ],
+    [
+     186.2,
+     null,
+     false
+    ],
+    [
+     186.4,
+     null,
+     true
+    ],
+    [
+     186.6,
+     null,
+     true
+    ],
+    [
+     186.8,
+     null,
+     true
+    ],
+    [
+     187.0,
+     null,
+     true
+    ],
+    [
+     187.2,
+     null,
+     false
+    ],
+    [
+     187.4,
+     "night",
+     true
+    ],
+    [
+     187.6,
+     "night",
+     true
+    ],
+    [
+     187.8,
+     "night",
+     false
+    ],
+    [
+     188.0,
+     "night",
+     false
+    ],
+    [
+     188.2,
+     "night",
+     false
+    ],
+    [
+     188.4,
+     "night",
+     true
+    ],
+    [
+     188.6,
+     "night",
+     true
+    ],
+    [
+     188.8,
+     "night",
+     true
+    ],
+    [
+     189.0,
+     null,
+     true
+    ],
+    [
+     189.2,
+     null,
+     true
+    ],
+    [
+     189.4,
+     null,
+     true
+    ],
+    [
+     189.6,
+     null,
+     false
+    ],
+    [
+     189.8,
+     null,
+     true
+    ],
+    [
+     190.0,
+     null,
+     false
+    ],
+    [
+     190.2,
+     null,
+     false
+    ],
+    [
+     190.4,
+     null,
+     true
+    ],
+    [
+     190.6,
+     null,
+     true
+    ],
+    [
+     190.8,
+     null,
+     true
+    ],
+    [
+     191.0,
+     null,
+     false
+    ],
+    [
+     191.2,
+     null,
+     true
+    ],
+    [
+     191.4,
+     null,
+     false
+    ],
+    [
+     191.6,
+     null,
+     true
+    ],
+    [
+     191.8,
+     null,
+     false
+    ],
+    [
+     192.0,
+     null,
+     false
+    ],
+    [
+     192.2,
+     null,
+     true
+    ],
+    [
+     192.4,
+     null,
+     true
+    ],
+    [
+     192.6,
+     null,
+     false
+    ],
+    [
+     192.8,
+     null,
+     true
+    ],
+    [
+     193.0,
+     null,
+     true
+    ],
+    [
+     193.2,
+     null,
+     true
+    ],
+    [
+     193.4,
+     null,
+     true
+    ],
+    [
+     193.6,
+     null,
+     false
+    ],
+    [
+     193.8,
+     null,
+     false
+    ],
+    [
+     194.0,
+     null,
+     true
+    ],
+    [
+     194.2,
+     null,
+     true
+    ],
+    [
+     194.4,
+     null,
+     true
+    ],
+    [
+     194.6,
+     null,
+     true
+    ],
+    [
+     194.8,
+     null,
+     false
+    ],
+    [
+     195.0,
+     null,
+     false
+    ],
+    [
+     195.2,
+     null,
+     true
+    ],
+    [
+     195.4,
+     null,
+     true
+    ],
+    [
+     195.6,
+     null,
+     true
+    ],
+    [
+     195.8,
+     "gps",
+     true
+    ],
+    [
+     196.0,
+     "gps",
+     true
+    ],
+    [
+     196.2,
+     "gps",
+     false
+    ],
+    [
+     196.4,
+     "gps",
+     false
+    ],
+    [
+     196.6,
+     "gps",
+     false
+    ],
+    [
+     196.8,
+     "gps",
+     true
+    ],
+    [
+     197.0,
+     "gps",
+     false
+    ],
+    [
+     197.2,
+     "gps",
+     true
+    ],
+    [
+     197.4,
+     "gps",
+     true
+    ],
+    [
+     197.6,
+     "gps",
+     true
+    ],
+    [
+     197.8,
+     "gps",
+     true
+    ],
+    [
+     198.0,
+     "gps",
+     false
+    ],
+    [
+     198.2,
+     "gps",
+     true
+    ],
+    [
+     198.4,
+     "gps",
+     true
+    ],
+    [
+     198.6,
+     "gps",
+     true
+    ],
+    [
+     198.8,
+     "gps",
+     true
+    ],
+    [
+     199.0,
+     "gps",
+     false
+    ],
+    [
+     199.2,
+     "day",
+     true
+    ],
+    [
+     199.4,
+     "day",
+     false
+    ],
+    [
+     199.6,
+     "day",
+     false
+    ],
+    [
+     199.8,
+     "gps",
+     false
+    ],
+    [
+     200.0,
+     "gps",
+     true
+    ],
+    [
+     200.2,
+     "gps",
+     true
+    ],
+    [
+     200.4,
+     "gps",
+     false
+    ],
+    [
+     200.6,
+     "gps",
+     true
+    ],
+    [
+     200.8,
+     "gps",
+     true
+    ],
+    [
+     201.0,
+     "gps",
+     false
+    ],
+    [
+     201.2,
+     "gps",
+     true
+    ],
+    [
+     201.4,
+     "gps",
+     false
+    ],
+    [
+     201.6,
+     "gps",
+     true
+    ],
+    [
+     201.8,
+     "gps",
+     true
+    ],
+    [
+     202.0,
+     "gps",
+     true
+    ],
+    [
+     202.2,
+     "day",
+     true
+    ],
+    [
+     202.4,
+     "day",
+     false
+    ],
+    [
+     202.6,
+     "day",
+     true
+    ],
+    [
+     202.8,
+     "day",
+     false
+    ],
+    [
+     203.0,
+     "day",
+     true
+    ],
+    [
+     203.2,
+     "day",
+     false
+    ],
+    [
+     203.4,
+     "day",
+     false
+    ],
+    [
+     203.6,
+     "day",
+     false
+    ],
+    [
+     203.8,
+     "night",
+     true
+    ],
+    [
+     204.0,
+     "night",
+     false
+    ],
+    [
+     204.2,
+     "night",
+     false
+    ],
+    [
+     204.4,
+     "night",
+     false
+    ],
+    [
+     204.6,
+     "night",
+     false
+    ],
+    [
+     204.8,
+     "night",
+     true
+    ],
+    [
+     205.0,
+     "night",
+     true
+    ],
+    [
+     205.2,
+     "night",
+     true
+    ],
+    [
+     205.4,
+     "night",
+     false
+    ],
+    [
+     205.6,
+     "night",
+     false
+    ],
+    [
+     205.8,
+     "night",
+     false
+    ],
+    [
+     206.0,
+     "night",
+     true
+    ],
+    [
+     206.2,
+     "night",
+     false
+    ],
+    [
+     206.4,
+     "night",
+     true
+    ],
+    [
+     206.6,
+     "night",
+     false
+    ],
+    [
+     206.8,
+     "night",
+     true
+    ],
+    [
+     207.0,
+     "night",
+     true
+    ],
+    [
+     207.2,
+     "night",
+     true
+    ],
+    [
+     207.4,
+     "night",
+     true
+    ],
+    [
+     207.6,
+     "night",
+     false
+    ],
+    [
+     207.8,
+     "night",
+     false
+    ],
+    [
+     208.0,
+     "night",
+     true
+    ],
+    [
+     208.2,
+     "night",
+     false
+    ],
+    [
+     208.4,
+     "night",
+     false
+    ],
+    [
+     208.6,
+     "night",
+     true
+    ],
+    [
+     208.8,
+     "night",
+     false
+    ],
+    [
+     209.0,
+     "night",
+     true
+    ],
+    [
+     209.2,
+     "night",
+     true
+    ],
+    [
+     209.4,
+     "gps",
+     true
+    ],
+    [
+     209.6,
+     "gps",
+     true
+    ],
+    [
+     209.8,
+     "gps",
+     false
+    ],
+    [
+     210.0,
+     "gps",
+     false
+    ],
+    [
+     210.2,
+     "day",
+     false
+    ],
+    [
+     210.4,
+     "night",
+     true
+    ],
+    [
+     210.6,
+     "night",
+     true
+    ],
+    [
+     210.8,
+     null,
+     true
+    ],
+    [
+     211.0,
+     "gps",
+     true
+    ],
+    [
+     211.2,
+     "gps",
+     true
+    ],
+    [
+     211.4,
+     "day",
+     true
+    ],
+    [
+     211.6,
+     "day",
+     false
+    ],
+    [
+     211.8,
+     "day",
+     true
+    ],
+    [
+     212.0,
+     "day",
+     true
+    ],
+    [
+     212.2,
+     "day",
+     false
+    ],
+    [
+     212.4,
+     "day",
+     true
+    ],
+    [
+     212.6,
+     "day",
+     true
+    ],
+    [
+     212.8,
+     "day",
+     false
+    ],
+    [
+     213.0,
+     "day",
+     false
+    ],
+    [
+     213.2,
+     "day",
+     true
+    ],
+    [
+     213.4,
+     "day",
+     false
+    ],
+    [
+     213.6,
+     "day",
+     true
+    ],
+    [
+     213.8,
+     "day",
+     true
+    ],
+    [
+     214.0,
+     "day",
+     true
+    ],
+    [
+     214.2,
+     "gps",
+     true
+    ],
+    [
+     214.4,
+     "gps",
+     true
+    ],
+    [
+     214.6,
+     "gps",
+     false
+    ],
+    [
+     214.8,
+     "gps",
+     false
+    ],
+    [
+     215.0,
+     "gps",
+     true
+    ],
+    [
+     215.2,
+     "gps",
+     false
+    ],
+    [
+     215.4,
+     "gps",
+     true
+    ],
+    [
+     215.6,
+     "gps",
+     false
+    ],
+    [
+     215.8,
+     "gps",
+     true
+    ],
+    [
+     216.0,
+     "gps",
+     false
+    ],
+    [
+     216.2,
+     "gps",
+     true
+    ],
+    [
+     216.4,
+     "gps",
+     false
+    ],
+    [
+     216.6,
+     "gps",
+     false
+    ],
+    [
+     216.8,
+     "gps",
+     true
+    ],
+    [
+     217.0,
+     "gps",
+     false
+    ],
+    [
+     217.2,
+     "gps",
+     false
+    ],
+    [
+     217.4,
+     "gps",
+     false
+    ],
+    [
+     217.6,
+     "gps",
+     true
+    ],
+    [
+     217.8,
+     "gps",
+     false
+    ],
+    [
+     218.0,
+     "gps",
+     true
+    ],
+    [
+     218.2,
+     null,
+     true
+    ],
+    [
+     218.4,
+     null,
+     false
+    ],
+    [
+     218.6,
+     null,
+     true
+    ],
+    [
+     218.8,
+     null,
+     false
+    ],
+    [
+     219.0,
+     "night",
+     true
+    ],
+    [
+     219.2,
+     "night",
+     false
+    ],
+    [
+     219.4,
+     "night",
+     true
+    ],
+    [
+     219.6,
+     "night",
+     false
+    ],
+    [
+     219.8,
+     "night",
+     false
+    ],
+    [
+     220.0,
+     "night",
+     false
+    ],
+    [
+     220.2,
+     "night",
+     true
+    ],
+    [
+     220.4,
+     "night",
+     false
+    ],
+    [
+     220.6,
+     "night",
+     true
+    ],
+    [
+     220.8,
+     "night",
+     true
+    ],
+    [
+     221.0,
+     "night",
+     true
+    ],
+    [
+     221.2,
+     "night",
+     true
+    ],
+    [
+     221.4,
+     "night",
+     true
+    ],
+    [
+     221.6,
+     "night",
+     false
+    ],
+    [
+     221.8,
+     "night",
+     false
+    ],
+    [
+     222.0,
+     "gps",
+     true
+    ],
+    [
+     222.2,
+     "gps",
+     false
+    ],
+    [
+     222.4,
+     "gps",
+     true
+    ],
+    [
+     222.6,
+     "night",
+     true
+    ],
+    [
+     222.8,
+     "night",
+     false
+    ],
+    [
+     223.0,
+     "night",
+     true
+    ],
+    [
+     223.2,
+     "night",
+     true
+    ],
+    [
+     223.4,
+     "night",
+     true
+    ],
+    [
+     223.6,
+     "night",
+     true
+    ],
+    [
+     223.8,
+     "night",
+     true
+    ],
+    [
+     224.0,
+     "night",
+     true
+    ],
+    [
+     224.2,
+     "night",
+     true
+    ],
+    [
+     224.4,
+     "night",
+     false
+    ],
+    [
+     224.6,
+     "night",
+     true
+    ],
+    [
+     224.8,
+     "night",
+     false
+    ],
+    [
+     225.0,
+     "night",
+     false
+    ],
+    [
+     225.2,
+     "night",
+     false
+    ],
+    [
+     225.4,
+     "night",
+     false
+    ],
+    [
+     225.6,
+     "night",
+     false
+    ],
+    [
+     225.8,
+     "night",
+     false
+    ],
+    [
+     226.0,
+     "night",
+     true
+    ],
+    [
+     226.2,
+     "night",
+     false
+    ],
+    [
+     226.4,
+     "night",
+     false
+    ],
+    [
+     226.6,
+     "night",
+     false
+    ],
+    [
+     226.8,
+     "night",
+     true
+    ],
+    [
+     227.0,
+     "night",
+     true
+    ],
+    [
+     227.2,
+     "day",
+     true
+    ],
+    [
+     227.4,
+     "day",
+     false
+    ],
+    [
+     227.6,
+     "day",
+     true
+    ],
+    [
+     227.8,
+     "day",
+     false
+    ],
+    [
+     228.0,
+     "day",
+     true
+    ],
+    [
+     228.2,
+     "day",
+     true
+    ],
+    [
+     228.4,
+     "day",
+     false
+    ],
+    [
+     228.6,
+     "day",
+     true
+    ],
+    [
+     228.8,
+     "day",
+     false
+    ],
+    [
+     229.0,
+     "day",
+     true
+    ],
+    [
+     229.2,
+     "day",
+     false
+    ],
+    [
+     229.4,
+     "day",
+     false
+    ],
+    [
+     229.6,
+     "day",
+     false
+    ],
+    [
+     229.8,
+     "night",
+     true
+    ],
+    [
+     230.0,
+     "night",
+     false
+    ],
+    [
+     230.2,
+     null,
+     true
+    ],
+    [
+     230.4,
+     null,
+     false
+    ],
+    [
+     230.6,
+     null,
+     true
+    ],
+    [
+     230.8,
+     null,
+     false
+    ],
+    [
+     231.0,
+     null,
+     true
+    ],
+    [
+     231.2,
+     null,
+     false
+    ],
+    [
+     231.4,
+     null,
+     true
+    ],
+    [
+     231.6,
+     null,
+     false
+    ],
+    [
+     231.8,
+     null,
+     false
+    ],
+    [
+     232.0,
+     null,
+     true
+    ],
+    [
+     232.2,
+     null,
+     true
+    ],
+    [
+     232.4,
+     null,
+     false
+    ],
+    [
+     232.6,
+     null,
+     false
+    ],
+    [
+     232.8,
+     null,
+     true
+    ],
+    [
+     233.0,
+     null,
+     true
+    ],
+    [
+     233.2,
+     null,
+     false
+    ],
+    [
+     233.4,
+     null,
+     true
+    ],
+    [
+     233.6,
+     null,
+     false
+    ],
+    [
+     233.8,
+     null,
+     false
+    ],
+    [
+     234.0,
+     "day",
+     true
+    ],
+    [
+     234.2,
+     "gps",
+     false
+    ],
+    [
+     234.4,
+     null,
+     false
+    ],
+    [
+     234.6,
+     null,
+     true
+    ],
+    [
+     234.8,
+     null,
+     true
+    ],
+    [
+     235.0,
+     null,
+     false
+    ],
+    [
+     235.2,
+     null,
+     true
+    ],
+    [
+     235.4,
+     null,
+     false
+    ],
+    [
+     235.6,
+     null,
+     true
+    ],
+    [
+     235.8,
+     null,
+     true
+    ],
+    [
+     236.0,
+     null,
+     false
+    ],
+    [
+     236.2,
+     null,
+     true
+    ],
+    [
+     236.4,
+     "night",
+     false
+    ],
+    [
+     236.6,
+     "night",
+     true
+    ],
+    [
+     236.8,
+     "night",
+     true
+    ],
+    [
+     237.0,
+     "night",
+     true
+    ],
+    [
+     237.2,
+     "night",
+     false
+    ],
+    [
+     237.4,
+     "day",
+     false
+    ],
+    [
+     237.6,
+     null,
+     true
+    ],
+    [
+     237.8,
+     "night",
+     true
+    ],
+    [
+     238.0,
+     "night",
+     true
+    ],
+    [
+     238.2,
+     "night",
+     true
+    ],
+    [
+     238.4,
+     null,
+     true
+    ],
+    [
+     238.6,
+     null,
+     false
+    ],
+    [
+     238.8,
+     null,
+     true
+    ],
+    [
+     239.0,
+     null,
+     false
+    ],
+    [
+     239.2,
+     null,
+     true
+    ],
+    [
+     239.4,
+     "night",
+     true
+    ],
+    [
+     239.6,
+     "day",
+     false
+    ],
+    [
+     239.8,
+     "day",
+     false
+    ],
+    [
+     240.0,
+     "day",
+     false
+    ],
+    [
+     240.2,
+     "day",
+     false
+    ],
+    [
+     240.4,
+     "day",
+     false
+    ],
+    [
+     240.6,
+     "day",
+     true
+    ],
+    [
+     240.8,
+     "day",
+     true
+    ],
+    [
+     241.0,
+     "gps",
+     true
+    ],
+    [
+     241.2,
+     "gps",
+     false
+    ],
+    [
+     241.4,
+     "gps",
+     false
+    ],
+    [
+     241.6,
+     "gps",
+     true
+    ],
+    [
+     241.8,
+     "gps",
+     true
+    ],
+    [
+     242.0,
+     "gps",
+     false
+    ],
+    [
+     242.2,
+     "gps",
+     true
+    ],
+    [
+     242.4,
+     "gps",
+     true
+    ],
+    [
+     242.6,
+     "gps",
+     false
+    ],
+    [
+     242.8,
+     "gps",
+     false
+    ],
+    [
+     243.0,
+     null,
+     false
+    ],
+    [
+     243.2,
+     null,
+     true
+    ],
+    [
+     243.4,
+     null,
+     false
+    ],
+    [
+     243.6,
+     null,
+     true
+    ],
+    [
+     243.8,
+     "gps",
+     true
+    ],
+    [
+     244.0,
+     "gps",
+     true
+    ],
+    [
+     244.2,
+     "gps",
+     false
+    ],
+    [
+     244.4,
+     "gps",
+     true
+    ],
+    [
+     244.6,
+     "day",
+     true
+    ],
+    [
+     244.8,
+     "day",
+     false
+    ],
+    [
+     245.0,
+     "day",
+     true
+    ],
+    [
+     245.2,
+     "day",
+     false
+    ],
+    [
+     245.4,
+     "day",
+     true
+    ],
+    [
+     245.6,
+     "day",
+     false
+    ],
+    [
+     245.8,
+     "day",
+     true
+    ],
+    [
+     246.0,
+     "day",
+     false
+    ],
+    [
+     246.2,
+     "day",
+     false
+    ],
+    [
+     246.4,
+     "day",
+     true
+    ],
+    [
+     246.6,
+     "day",
+     true
+    ],
+    [
+     246.8,
+     "day",
+     true
+    ],
+    [
+     247.0,
+     "day",
+     true
+    ],
+    [
+     247.2,
+     "day",
+     true
+    ],
+    [
+     247.4,
+     null,
+     true
+    ],
+    [
+     247.6,
+     null,
+     true
+    ],
+    [
+     247.8,
+     null,
+     false
+    ],
+    [
+     248.0,
+     null,
+     true
+    ],
+    [
+     248.2,
+     null,
+     false
+    ],
+    [
+     248.4,
+     null,
+     false
+    ],
+    [
+     248.6,
+     null,
+     false
+    ],
+    [
+     248.8,
+     null,
+     true
+    ],
+    [
+     249.0,
+     null,
+     false
+    ],
+    [
+     249.2,
+     "night",
+     true
+    ],
+    [
+     249.4,
+     "night",
+     true
+    ],
+    [
+     249.6,
+     "night",
+     false
+    ],
+    [
+     249.8,
+     "night",
+     false
+    ],
+    [
+     250.0,
+     "night",
+     false
+    ],
+    [
+     250.2,
+     "night",
+     false
+    ],
+    [
+     250.4,
+     "night",
+     false
+    ],
+    [
+     250.6,
+     "night",
+     false
+    ],
+    [
+     250.8,
+     "night",
+     true
+    ],
+    [
+     251.0,
+     "night",
+     true
+    ],
+    [
+     251.2,
+     null,
+     true
+    ],
+    [
+     251.4,
+     null,
+     false
+    ],
+    [
+     251.6,
+     null,
+     true
+    ],
+    [
+     251.8,
+     null,
+     true
+    ],
+    [
+     252.0,
+     "night",
+     true
+    ],
+    [
+     252.2,
+     "night",
+     false
+    ],
+    [
+     252.4,
+     null,
+     true
+    ],
+    [
+     252.6,
+     null,
+     true
+    ],
+    [
+     252.8,
+     null,
+     true
+    ],
+    [
+     253.0,
+     null,
+     false
+    ],
+    [
+     253.2,
+     null,
+     true
+    ],
+    [
+     253.4,
+     "gps",
+     true
+    ],
+    [
+     253.6,
+     "gps",
+     false
+    ],
+    [
+     253.8,
+     "gps",
+     true
+    ],
+    [
+     254.0,
+     "gps",
+     true
+    ],
+    [
+     254.2,
+     "gps",
+     false
+    ],
+    [
+     254.4,
+     null,
+     true
+    ],
+    [
+     254.6,
+     null,
+     false
+    ],
+    [
+     254.8,
+     null,
+     true
+    ],
+    [
+     255.0,
+     null,
+     false
+    ],
+    [
+     255.2,
+     null,
+     false
+    ],
+    [
+     255.4,
+     null,
+     true
+    ],
+    [
+     255.6,
+     null,
+     true
+    ],
+    [
+     255.8,
+     null,
+     false
+    ],
+    [
+     256.0,
+     null,
+     false
+    ],
+    [
+     256.2,
+     null,
+     false
+    ],
+    [
+     256.4,
+     null,
+     true
+    ],
+    [
+     256.6,
+     null,
+     true
+    ],
+    [
+     256.8,
+     null,
+     true
+    ],
+    [
+     257.0,
+     null,
+     true
+    ],
+    [
+     257.2,
+     null,
+     true
+    ],
+    [
+     257.4,
+     null,
+     true
+    ],
+    [
+     257.6,
+     "gps",
+     false
+    ],
+    [
+     257.8,
+     "gps",
+     true
+    ],
+    [
+     258.0,
+     "gps",
+     true
+    ],
+    [
+     258.2,
+     "gps",
+     true
+    ],
+    [
+     258.4,
+     "gps",
+     false
+    ],
+    [
+     258.6,
+     "gps",
+     true
+    ],
+    [
+     258.8,
+     "gps",
+     true
+    ],
+    [
+     259.0,
+     null,
+     false
+    ],
+    [
+     259.2,
+     null,
+     false
+    ],
+    [
+     259.4,
+     null,
+     false
+    ],
+    [
+     259.6,
+     null,
+     true
+    ],
+    [
+     259.8,
+     null,
+     true
+    ],
+    [
+     260.0,
+     null,
+     true
+    ],
+    [
+     260.2,
+     null,
+     false
+    ],
+    [
+     260.4,
+     null,
+     false
+    ],
+    [
+     260.6,
+     null,
+     true
+    ],
+    [
+     260.8,
+     null,
+     false
+    ],
+    [
+     261.0,
+     null,
+     true
+    ],
+    [
+     261.2,
+     null,
+     false
+    ],
+    [
+     261.4,
+     null,
+     true
+    ],
+    [
+     261.6,
+     null,
+     true
+    ],
+    [
+     261.8,
+     null,
+     true
+    ],
+    [
+     262.0,
+     null,
+     false
+    ],
+    [
+     262.2,
+     null,
+     false
+    ],
+    [
+     262.4,
+     null,
+     false
+    ],
+    [
+     262.6,
+     "night",
+     false
+    ],
+    [
+     262.8,
+     "night",
+     false
+    ],
+    [
+     263.0,
+     "night",
+     true
+    ],
+    [
+     263.2,
+     "night",
+     true
+    ],
+    [
+     263.4,
+     "night",
+     false
+    ],
+    [
+     263.6,
+     "night",
+     true
+    ],
+    [
+     263.8,
+     "night",
+     false
+    ],
+    [
+     264.0,
+     "night",
+     false
+    ],
+    [
+     264.2,
+     "night",
+     true
+    ],
+    [
+     264.4,
+     "night",
+     false
+    ],
+    [
+     264.6,
+     "night",
+     false
+    ],
+    [
+     264.8,
+     "night",
+     true
+    ],
+    [
+     265.0,
+     "night",
+     true
+    ],
+    [
+     265.2,
+     "night",
+     false
+    ],
+    [
+     265.4,
+     "night",
+     true
+    ],
+    [
+     265.6,
+     "night",
+     true
+    ],
+    [
+     265.8,
+     "night",
+     false
+    ],
+    [
+     266.0,
+     "night",
+     true
+    ],
+    [
+     266.2,
+     "night",
+     false
+    ],
+    [
+     266.4,
+     "night",
+     false
+    ],
+    [
+     266.6,
+     "night",
+     true
+    ],
+    [
+     266.8,
+     "night",
+     true
+    ],
+    [
+     267.0,
+     "night",
+     false
+    ],
+    [
+     267.2,
+     "night",
+     true
+    ],
+    [
+     267.4,
+     "day",
+     false
+    ],
+    [
+     267.6,
+     "day",
+     false
+    ],
+    [
+     267.8,
+     "day",
+     true
+    ],
+    [
+     268.0,
+     "day",
+     false
+    ],
+    [
+     268.2,
+     "day",
+     false
+    ],
+    [
+     268.4,
+     "day",
+     false
+    ],
+    [
+     268.6,
+     "gps",
+     true
+    ],
+    [
+     268.8,
+     "gps",
+     true
+    ],
+    [
+     269.0,
+     "gps",
+     true
+    ],
+    [
+     269.2,
+     "gps",
+     false
+    ],
+    [
+     269.4,
+     "gps",
+     false
+    ],
+    [
+     269.6,
+     "gps",
+     true
+    ],
+    [
+     269.8,
+     "gps",
+     true
+    ],
+    [
+     270.0,
+     "gps",
+     true
+    ],
+    [
+     270.2,
+     "gps",
+     true
+    ],
+    [
+     270.4,
+     "gps",
+     true
+    ],
+    [
+     270.6,
+     "gps",
+     false
+    ],
+    [
+     270.8,
+     "gps",
+     true
+    ],
+    [
+     271.0,
+     "day",
+     true
+    ],
+    [
+     271.2,
+     "day",
+     false
+    ],
+    [
+     271.4,
+     "night",
+     false
+    ],
+    [
+     271.6,
+     "night",
+     false
+    ],
+    [
+     271.8,
+     "night",
+     false
+    ],
+    [
+     272.0,
+     "night",
+     false
+    ],
+    [
+     272.2,
+     "night",
+     true
+    ],
+    [
+     272.4,
+     "night",
+     true
+    ],
+    [
+     272.6,
+     "night",
+     true
+    ],
+    [
+     272.8,
+     "night",
+     true
+    ],
+    [
+     273.0,
+     "night",
+     true
+    ],
+    [
+     273.2,
+     "night",
+     false
+    ],
+    [
+     273.4,
+     "night",
+     false
+    ],
+    [
+     273.6,
+     "night",
+     false
+    ],
+    [
+     273.8,
+     "night",
+     false
+    ],
+    [
+     274.0,
+     "night",
+     false
+    ],
+    [
+     274.2,
+     "day",
+     false
+    ],
+    [
+     274.4,
+     "day",
+     false
+    ],
+    [
+     274.6,
+     "day",
+     false
+    ],
+    [
+     274.8,
+     "day",
+     true
+    ],
+    [
+     275.0,
+     "day",
+     false
+    ],
+    [
+     275.2,
+     "day",
+     false
+    ],
+    [
+     275.4,
+     null,
+     true
+    ],
+    [
+     275.6,
+     null,
+     false
+    ],
+    [
+     275.8,
+     null,
+     true
+    ],
+    [
+     276.0,
+     null,
+     true
+    ],
+    [
+     276.2,
+     null,
+     false
+    ],
+    [
+     276.4,
+     null,
+     true
+    ],
+    [
+     276.6,
+     null,
+     true
+    ],
+    [
+     276.8,
+     null,
+     false
+    ],
+    [
+     277.0,
+     null,
+     false
+    ],
+    [
+     277.2,
+     "night",
+     true
+    ],
+    [
+     277.4,
+     "night",
+     false
+    ],
+    [
+     277.6,
+     "night",
+     false
+    ],
+    [
+     277.8,
+     "night",
+     true
+    ],
+    [
+     278.0,
+     null,
+     true
+    ],
+    [
+     278.2,
+     null,
+     false
+    ],
+    [
+     278.4,
+     null,
+     true
+    ],
+    [
+     278.6,
+     null,
+     false
+    ],
+    [
+     278.8,
+     null,
+     false
+    ],
+    [
+     279.0,
+     null,
+     false
+    ],
+    [
+     279.2,
+     null,
+     true
+    ],
+    [
+     279.4,
+     null,
+     true
+    ],
+    [
+     279.6,
+     null,
+     true
+    ],
+    [
+     279.8,
+     null,
+     true
+    ],
+    [
+     280.0,
+     null,
+     true
+    ],
+    [
+     280.2,
+     null,
+     true
+    ],
+    [
+     280.4,
+     "gps",
+     true
+    ],
+    [
+     280.6,
+     "gps",
+     false
+    ],
+    [
+     280.8,
+     "gps",
+     false
+    ],
+    [
+     281.0,
+     "gps",
+     true
+    ],
+    [
+     281.2,
+     "gps",
+     true
+    ],
+    [
+     281.4,
+     "gps",
+     true
+    ],
+    [
+     281.6,
+     "gps",
+     true
+    ],
+    [
+     281.8,
+     "gps",
+     false
+    ],
+    [
+     282.0,
+     "gps",
+     true
+    ],
+    [
+     282.2,
+     "gps",
+     true
+    ],
+    [
+     282.4,
+     "gps",
+     true
+    ],
+    [
+     282.6,
+     "gps",
+     false
+    ],
+    [
+     282.8,
+     "gps",
+     true
+    ],
+    [
+     283.0,
+     "gps",
+     false
+    ],
+    [
+     283.2,
+     "gps",
+     true
+    ],
+    [
+     283.4,
+     "gps",
+     false
+    ],
+    [
+     283.6,
+     "gps",
+     false
+    ],
+    [
+     283.8,
+     "gps",
+     true
+    ],
+    [
+     284.0,
+     "gps",
+     true
+    ],
+    [
+     284.2,
+     null,
+     true
+    ],
+    [
+     284.4,
+     "night",
+     true
+    ],
+    [
+     284.6,
+     "night",
+     false
+    ],
+    [
+     284.8,
+     "night",
+     false
+    ],
+    [
+     285.0,
+     "night",
+     true
+    ],
+    [
+     285.2,
+     "night",
+     true
+    ],
+    [
+     285.4,
+     "night",
+     true
+    ],
+    [
+     285.6,
+     "night",
+     true
+    ],
+    [
+     285.8,
+     "night",
+     false
+    ],
+    [
+     286.0,
+     "night",
+     true
+    ],
+    [
+     286.2,
+     "night",
+     false
+    ],
+    [
+     286.4,
+     "night",
+     false
+    ],
+    [
+     286.6,
+     "night",
+     false
+    ],
+    [
+     286.8,
+     "night",
+     true
+    ],
+    [
+     287.0,
+     null,
+     true
+    ],
+    [
+     287.2,
+     null,
+     true
+    ],
+    [
+     287.4,
+     null,
+     true
+    ],
+    [
+     287.6,
+     null,
+     true
+    ],
+    [
+     287.8,
+     "day",
+     true
+    ],
+    [
+     288.0,
+     "day",
+     false
+    ],
+    [
+     288.2,
+     "day",
+     true
+    ],
+    [
+     288.4,
+     "day",
+     true
+    ],
+    [
+     288.6,
+     "day",
+     true
+    ],
+    [
+     288.8,
+     "day",
+     true
+    ],
+    [
+     289.0,
+     "day",
+     false
+    ],
+    [
+     289.2,
+     "day",
+     true
+    ],
+    [
+     289.4,
+     "day",
+     true
+    ],
+    [
+     289.6,
+     "day",
+     false
+    ],
+    [
+     289.8,
+     "day",
+     false
+    ],
+    [
+     290.0,
+     "day",
+     true
+    ],
+    [
+     290.2,
+     "day",
+     true
+    ],
+    [
+     290.4,
+     "day",
+     true
+    ],
+    [
+     290.6,
+     "day",
+     false
+    ],
+    [
+     290.8,
+     "day",
+     true
+    ],
+    [
+     291.0,
+     "day",
+     false
+    ],
+    [
+     291.2,
+     "day",
+     false
+    ],
+    [
+     291.4,
+     "day",
+     false
+    ],
+    [
+     291.6,
+     "day",
+     true
+    ],
+    [
+     291.8,
+     "day",
+     true
+    ],
+    [
+     292.0,
+     "day",
+     true
+    ],
+    [
+     292.2,
+     "day",
+     true
+    ],
+    [
+     292.4,
+     "day",
+     false
+    ],
+    [
+     292.6,
+     "day",
+     true
+    ],
+    [
+     292.8,
+     "day",
+     false
+    ],
+    [
+     293.0,
+     "day",
+     true
+    ],
+    [
+     293.2,
+     "day",
+     true
+    ],
+    [
+     293.4,
+     "day",
+     false
+    ],
+    [
+     293.6,
+     "day",
+     true
+    ],
+    [
+     293.8,
+     "day",
+     false
+    ],
+    [
+     294.0,
+     "gps",
+     false
+    ],
+    [
+     294.2,
+     "gps",
+     false
+    ],
+    [
+     294.4,
+     "gps",
+     false
+    ],
+    [
+     294.6,
+     "gps",
+     true
+    ],
+    [
+     294.8,
+     "gps",
+     true
+    ],
+    [
+     295.0,
+     "gps",
+     false
+    ],
+    [
+     295.2,
+     "gps",
+     false
+    ],
+    [
+     295.4,
+     "gps",
+     true
+    ],
+    [
+     295.6,
+     "gps",
+     false
+    ],
+    [
+     295.8,
+     "gps",
+     true
+    ],
+    [
+     296.0,
+     "gps",
+     true
+    ],
+    [
+     296.2,
+     null,
+     true
+    ],
+    [
+     296.4,
+     "day",
+     false
+    ],
+    [
+     296.6,
+     "day",
+     false
+    ],
+    [
+     296.8,
+     null,
+     true
+    ],
+    [
+     297.0,
+     null,
+     true
+    ],
+    [
+     297.2,
+     null,
+     true
+    ],
+    [
+     297.4,
+     null,
+     false
+    ],
+    [
+     297.6,
+     null,
+     true
+    ],
+    [
+     297.8,
+     null,
+     true
+    ],
+    [
+     298.0,
+     null,
+     false
+    ],
+    [
+     298.2,
+     null,
+     true
+    ],
+    [
+     298.4,
+     "day",
+     true
+    ],
+    [
+     298.6,
+     "day",
+     true
+    ],
+    [
+     298.8,
+     "day",
+     true
+    ],
+    [
+     299.0,
+     "day",
+     true
+    ],
+    [
+     299.2,
+     "day",
+     true
+    ],
+    [
+     299.4,
+     "day",
+     false
+    ],
+    [
+     299.6,
+     null,
+     true
+    ],
+    [
+     299.8,
+     null,
+     false
+    ]
+   ],
+   "duration_s": 300.0,
+   "want": {
+    "switches_per_min": 35.2,
+    "gps_share": 0.25866666666666666,
+    "gps_unused_s": 130.6
+   }
+  }
+ ],
+ "true_sigma": [
+  {
+   "args": [
+    2.0,
+    15.0,
+    0.5
+   ],
+   "want": 2.1083157562573462
+  },
+  {
+   "args": [
+    5.0,
+    5.0,
+    1.0
+   ],
+   "want": 5.0
+  },
+  {
+   "args": [
+    4.0,
+    40.0,
+    -0.5
+   ],
+   "want": 3.777977035314636
+  },
+  {
+   "args": [
+    1.0,
+    100.0,
+    0.9
+   ],
+   "want": 1.0089085243662732
+  },
+  {
+   "args": [
+    6.0,
+    8.0,
+    0.0
+   ],
+   "want": 4.8
+  }
+ ]
+}
