@@ -247,6 +247,9 @@ def test():
          not e and isinstance(v, np.ndarray) and v.shape == (3, 2) and close(v, [[10, 10], [11, 10], [11, 12]], 1e-9),
          note)
     v, e = rk.call(vo, "integrate", [], (7.0, 8.0))
+    if e:
+        e = (f"integrate([], (7, 8)) — no step at all — stopped: {str(e).split(' — ')[0]}. With no step, np.array([]) "
+             "has shape (0,), not (0, 2): np.asarray(steps, dtype=float).reshape(-1, 2) (Lab Step 3, hint 5)")
     line(3, "integrate", v if e else np.asarray(v), e,
          not e and isinstance(v, np.ndarray) and v.shape == (1, 2) and close(v, [[7, 8]], 1e-9),
          "integrate([], (7, 8)) must give [[7., 8.]] (shape (1, 2)): with no step, np.array([]) has shape (0,) — "
@@ -531,7 +534,8 @@ def odometers(weights=None):
           "\nORB/learned = keypoints matched with ORB's bits or YOUR PatchNet, then YOUR median_shift;"
           "\nfit = the same matches without the IMU, then OpenCV's RANSAC fit of a turn and a shift;"
           "\nmatches = mutual matches per pair (mean). Times: this machine, now (they change when it is busy)."
-          "\n* = the median of the pairs that returned a shift (the others found too few matches); — = none did.")
+          "\n* = the median of the pairs that returned a shift (the others found too few matches; the plot counts them "
+          "as failed); — = none did.")
     import hashlib
     summary = {"weights": path, "weights_sha256": hashlib.sha256(open(path, "rb").read()).hexdigest(),
                "right": {g: {m: int((np.array(err[(g, m)]) <= 1.0).sum()) for m in METHODS} for g in groups},
@@ -549,7 +553,7 @@ def odometers(weights=None):
         ax[0].axhline(1.0, color="k", lw=0.8, ls=":")
         ax[0].set_xticks(range(len(groups)))
         ax[0].set_xticklabels(groups)
-        ax[0].set_ylabel("median error (px, log; 300 = failed)")
+        ax[0].set_ylabel("median error over all 8 pairs (px, log;\na pair with no shift counts as failed; 300 = failed)")
         ax[0].legend(fontsize=8, ncol=2)
         ax[0].grid(alpha=0.3, which="both")
         tms = [np.mean([x for gg in groups for x in ms[(gg, m)]]) for m in METHODS]

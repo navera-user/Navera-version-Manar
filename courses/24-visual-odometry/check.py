@@ -351,8 +351,9 @@ def _():
                 r"half"), "what your learned descriptor costs, or where it stops working"))
     if m_fit >= 0.9 * m_imu:
         explained("EXPLAIN_ODOMETERS", why,
-                  ((r"augment", r"rot90", r"rotat\w* (robust|invarian|proof)", r"trained (with|on) (larger|bigger|all|any)",
-                    r"invarian"), "why YOUR network kept its matches after a 30° turn (the course's ±20° network loses "
+                  ((r"augment", r"rot90", r"rotat\w*[ -](robust|invarian|proof)", r"invarian", r"random(ly)? rotat",
+                    r"rotated (patch|crop|training)", r"train\w*.{0,40}rotat", r"rotat\w*.{0,40}train",
+                    r"trained (with|on) (larger|bigger|all|any)"), "why YOUR network kept its matches after a 30° turn (the course's ±20° network loses "
                    "about half: what did you train differently?)"))
 
 

@@ -66,7 +66,7 @@ Expected values in check.py: `solutions/24-visual-odometry/check_values.py`.
 - **Step 6 (`drift_sim.py`):** after 100 steps random 5.03 m (theory 5.00), bias 10.00 (10.00), both 11.22 (11.18);
   **EXPONENT_RANDOM = 0.50**, **EXPONENT_BIAS = 1.00**; PREDICT_GROWTH (the Monte-Carlo error, not in the lesson): ≈ 0.6 % in
   drift_sim's table (5.03 m), 2.2 % for simulate_drift(100, 0.5, 0) alone, spread over seeds about ±1.6 %
-  (1/√(2·2000)); ∝ 1/√trials, so 200 flights ≈ √10 ≈ 3× wider (the lab's five-seed command shows it); **N_CROSS = σ²/b² = 25** (5 or 50 named by the check).
+  (1/√(2·2000)); ∝ 1/√trials, so 200 flights ≈ √10 ≈ 3× wider (the lab's 20-seed command prints std 4.6 % against 1.8 %: ratio ≈ 2.5, theory 3.2); **N_CROSS = σ²/b² = 25** (5 or 50 named by the check).
 - **Step 7 (`responses`, 89 steps):** right steps' lowest responses 0.040 (step 51, coast), 0.051 (78), 0.092 (79),
   0.111 (80); wrong steps: 26 over the water and the coast approach (steps 52–77, 0.020–**0.030**), and the 7 overlay
   steps 81–87 (0.288–0.465). **SEA_MAX_RESPONSE = 0.030**; **MIN_RESPONSE** in (0.030, 0.040] (check: 0.0305–0.0401, the failure names step 51 / steps 66 and 77; the window is knife-edge by design and the lab

@@ -327,14 +327,15 @@ python3 drift_sim.py
 ```
 
 Open `out/drift.png`: your simulation (solid) against your formula (dashed), for random errors only, a bias only, and
-both. Now see the Monte-Carlo error itself — five seeds with 200 flights, then five with 2000 (the error in % of the
+both. Now see the Monte-Carlo error itself — twenty seeds with 200 flights, then twenty with 2000 (the spread, in % of the
 theory, 5 m):
 
 ```bash
-python3 -c "from drift_sim import simulate_drift as s; [print(t, [round(100 * (s(100, 0.5, 0, trials=t, seed=k)[-1] / 5 - 1), 1) for k in range(5)]) for t in (200, 2000)]"
+python3 -c "import numpy as np; from drift_sim import simulate_drift as s; [print(t, 'flights: spread (std) over 20 seeds', round(float(np.std([100 * (s(100, 0.5, 0, trials=t, seed=k)[-1] / 5 - 1) for k in range(20)])), 1), '%') for t in (200, 2000)]"
 ```
 
-Which scatter is wider, and by about how much? (Five seeds are few: compare the spreads, not single numbers.)
+Which spread is wider, and by about how much? (The theory: 1/√(2 · trials), 5.0 % and 1.6 %. Twenty seeds are still
+few: expect the ratio near 3, not exactly 3.)
 
 > [!TASK]
 > Write `EXPONENT_RANDOM`, `EXPONENT_BIAS` (two decimals) and `N_CROSS`: with σ = 0.5 m and a bias of 0.1 m, after how
