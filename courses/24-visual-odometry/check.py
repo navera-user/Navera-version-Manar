@@ -354,7 +354,7 @@ def _():
                   ((r"augment", r"rot90", r"rotat\w*[ -](robust|invarian|proof)", r"invarian", r"random(ly)? rotat",
                     r"rotated (patch|crop|training)", r"train\w*.{0,40}rotat", r"rotat\w*.{0,40}train",
                     r"trained (with|on) (larger|bigger|all|any)"), "why YOUR network kept its matches after a 30° turn (the course's ±20° network loses "
-                   "about half: what did you train differently?)"))
+                   "about 40 %: what did you train differently?)"))
 
 
 c.milestone("odometer", "TODO 1:", "TODO 2:", "TODO 3:", "TODO 4:", "Your odometer", "Steps 0–4:", "Step 5:",

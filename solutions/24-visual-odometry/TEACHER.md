@@ -42,18 +42,18 @@ Expected values in check.py: `solutions/24-visual-odometry/check_values.py`.
 
   | group | phase | phase+IMU | OpenCV+IMU | ORB+IMU | learned+IMU | ORB fit | learned fit |
   |---|---|---|---|---|---|---|---|
-  | straight | 8 (0.08) | 8 (0.08) | 8 (0.19) | 8 (0.30) | 8 (0.10) | 8 (0.06) | 8 (0.05) |
-  | turn4 | **1** (3.34) | 8 (0.08) | 8 (0.12) | 8 (0.15) | 8 (0.09) | 8 (0.10) | 8 (0.07) |
-  | turn12 | 0 (27.8) | 8 (0.09) | 8 (0.11) | 8 (0.19) | 8 (0.12) | 8 (0.07) | 8 (0.09) |
-  | turn30 | 0 (62.5) | 8 (0.07) | 8 (0.10) | 8 (0.28) | 8 (0.12) | 8 (0.16) | 8 (0.38) |
+  | straight | 8 (0.08) | 8 (0.08) | 8 (0.19) | 8 (0.30) | 8 (0.09) | 8 (0.06) | 8 (0.06) |
+  | turn4 | **1** (3.34) | 8 (0.08) | 8 (0.12) | 8 (0.15) | 8 (0.06) | 8 (0.10) | 8 (0.07) |
+  | turn12 | 0 (27.8) | 8 (0.09) | 8 (0.11) | 8 (0.19) | 8 (0.13) | 8 (0.07) | 8 (0.11) |
+  | turn30 | 0 (62.5) | 8 (0.07) | 8 (0.10) | 8 (0.28) | 8 (0.13) | 8 (0.16) | 8 (0.26) |
   | coast | 2 (1.21) | 6 (0.26) | 8 (0.24) | **4** (71.7) | 4 (55.4) | 2 (80.7) | 3 (—) |
   | sea | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 
-  Mean mutual matches: ORB ≈ 254–266 on the city, **6** on the coast, 3 at sea; learned fit (no IMU) **206** straight →
-  198 (4°) → 168 (12°) → **107** (30°): past PatchNet's ±20° training range it loses half of its matches (RANSAC still
+  Mean mutual matches: ORB ≈ 254–266 on the city, **6** on the coast, 3 at sea; learned fit (no IMU) **208** straight →
+  198 (4°) → 174 (12°) → **114** (30°), learned+IMU 198 at 30° (weights eca2b40): past PatchNet's ±20° training range it loses about 40 % of its matches (RANSAC still
   copes). ms/pair (GPU, loaded Jetson): phase 17–19, OpenCV 6, ORB 16–17, learned 150–165; on the CPU learned ≈ 3–4 s
   per pair (the whole command ≈ 6 min). OK_PHASE_TURN4 = 1, **OK_ORB_COAST = 4**, LEARNED_IMU_TURN30 = 198,
-  LEARNED_MATCHES_TURN30 = 107 (review round 2): the runner saves out/odometers.json and the check compares the copied
+  LEARNED_MATCHES_TURN30 = 114 (review round 2): the runner saves out/odometers.json and the check compares the copied
   numbers with the student's own run (±1; a swapped column is named). The learned pair isolates rotation from overlap:
   the same frames with and without derotation (a straight-vs-30° comparison could never fail: any turn lowers the overlap,
   ORB+IMU 266 → 254). A network that keeps its matches without the IMU (≥ 90 % of the derotated count, e.g. rot90

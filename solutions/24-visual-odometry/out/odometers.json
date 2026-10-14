@@ -1,6 +1,6 @@
 {
  "weights": "ref_desc.pt",
- "weights_sha256": "58d9b361591f76126dedf9e1f42083726b2add37e7181d574b2961a869d4f18b",
+ "weights_sha256": "dab883b41415ac401275ef676a520815a519fe6ff7d8a15fe94906fcff2589da",
  "right": {
   "straight": {
    "phase": 8,
@@ -60,39 +60,39 @@
  "matches": {
   "straight": {
    "ORB+IMU": 265.8,
-   "learned+IMU": 206.1,
+   "learned+IMU": 207.5,
    "ORB fit": 265.8,
-   "learned fit": 206.1
+   "learned fit": 207.5
   },
   "turn4": {
    "ORB+IMU": 266.1,
-   "learned+IMU": 203.9,
+   "learned+IMU": 205.6,
    "ORB fit": 262.5,
-   "learned fit": 197.8
+   "learned fit": 197.6
   },
   "turn12": {
    "ORB+IMU": 256.6,
-   "learned+IMU": 198.8,
+   "learned+IMU": 199.6,
    "ORB fit": 251.1,
-   "learned fit": 167.9
+   "learned fit": 174.4
   },
   "turn30": {
    "ORB+IMU": 254.5,
-   "learned+IMU": 198.2,
+   "learned+IMU": 197.5,
    "ORB fit": 253.1,
-   "learned fit": 106.6
+   "learned fit": 113.6
   },
   "coast": {
    "ORB+IMU": 6.5,
-   "learned+IMU": 4.5,
+   "learned+IMU": 4.9,
    "ORB fit": 7.5,
-   "learned fit": 6.2
+   "learned fit": 6.1
   },
   "sea": {
    "ORB+IMU": 3.1,
-   "learned+IMU": 2.8,
+   "learned+IMU": 2.9,
    "ORB fit": 3.1,
-   "learned fit": 2.8
+   "learned fit": 2.9
   }
  }
 }

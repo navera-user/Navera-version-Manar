@@ -274,7 +274,7 @@ votes is noise. That, and a cost that does not depend on the texture, is why NAV
 with the IMU for the turns. Your PatchNet was trained to match <b>map</b> patches with <b>drone</b> patches, within
 ±20° of heading error. After derotation it matches two frames of the same camera (an easier job) as precisely as the
 others. Now compare the two learned columns at 30°: with the course's network the matches fall from about 200
-(derotated) to about 107 (not derotated), about half — your own network may lose more or less. The RANSAC fit still
+(derotated) to about 114 (not derotated), close to half — your own network may lose more or less. The RANSAC fit still
 copes, but a network is only as rotation-proof as its training. And it pays a CNN forward pass on hundreds of patches (several times
 slower on the GPU, far slower on the CPU). Learned features earn their cost on the hard job: a frame against the map
 (missions 22–23). Over the sea no method has anything to follow.

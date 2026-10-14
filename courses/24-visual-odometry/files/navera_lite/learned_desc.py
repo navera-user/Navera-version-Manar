@@ -3,9 +3,10 @@
 the triplet loss, the training loop, and the helpers that turn patches into tensors and descriptors.
 Part of NAVERA Lite, the course's teaching stack (mission 21). Written for the course; it is not NAVERA code.
 
-A patch is a small grey square cut around a keypoint, uint8 (the training pairs are 32 × 32, the validation and test
-pairs 48 × 48 so that OpenCV can describe them too; the network always sees the central PATCH_PX × PATCH_PX). A descriptor is DIM numbers of length 1 (a unit vector): two patches of the
-same ground point should give close descriptors (small Euclidean distance), two different points far ones.
+A patch is a small grey square cut around a keypoint, uint8 (the training pairs are 32 × 32, the validation
+and test pairs 48 × 48 so that OpenCV can describe them too; the network always sees the central
+PATCH_PX × PATCH_PX). A descriptor is DIM numbers of length 1 (a unit vector): two patches of the same ground
+point should give close descriptors (small Euclidean distance), two different points far ones.
 Weights are saved as a state_dict (torch.save(model.state_dict(), path)) and loaded with weights_only=True:
 a weights file holds numbers only, never code.
 """

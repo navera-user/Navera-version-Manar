@@ -27,8 +27,8 @@ PREDICT_RACE = "On the coast ORB will find few corners and fail; phase correlati
 OK_PHASE_TURN4 = 1
 OK_ORB_COAST = 4
 LEARNED_IMU_TURN30 = 198
-LEARNED_MATCHES_TURN30 = 107
-EXPLAIN_ODOMETERS = "Phase correlation breaks after a turn of a few tenths of a degree, so the IMU heading change must derotate the frame first. On the coast it still works because it uses every pixel, while ORB finds only a few corners and its median is noise. My PatchNet is precise but about ten times slower, and without the IMU, past its 20 degree training range, it kept only 107 matches at 30 degrees against 198 on the same frames derotated, about half."
+LEARNED_MATCHES_TURN30 = 114
+EXPLAIN_ODOMETERS = "Phase correlation breaks after a turn of a few tenths of a degree, so the IMU heading change must derotate the frame first. On the coast it still works because it uses every pixel, while ORB finds only a few corners and its median is noise. My PatchNet is precise but about ten times slower, and without the IMU, past its 20 degree training range, it kept only 114 matches at 30 degrees against 198 on the same frames derotated, about half."
 
 # ======== Session 2 — Navigator ========
 
