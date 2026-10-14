@@ -183,7 +183,9 @@ def test():
              (([1.0], [0.9, 1.05, 1.1, 1.2], [30, 31, 33, 32]), [None], "a flash the camera did not see",
               "a rise of 3 is not a flash (min_rise = 20): None — lab Step 3, hint 3"),
              (([1.0], [0.9, 1.05, 1.1, 1.2], [30, 120, 200, 210]), [0.1], "a frame EXACTLY at the midpoint",
-              "brightness 120 is the midpoint (30 + 210) / 2, not brighter than it: use >, not >= — lab Step 3, hint 2"),
+              "brightness 120 IS the midpoint (30 + 210) / 2 = 120, and it must not count. Check two things: the "
+              "comparison is > (not >=), and the midpoint is the AVERAGE (dark + bright) / 2, not half the rise "
+              "(bright − dark) / 2 = 90 — lab Step 3, hint 2"),
              (([1.0, 2.0], [0.9, 1.12, 1.3, 1.9, 2.15, 2.3], [30, 200, 205, 32, 120, 210]), [0.12, 0.3],
               "two flashes, the second frame half lit", "the half-lit frame (120 < (32 + 210) / 2) is not "
               "the first one above the midpoint — lab Step 3, hint 2")]
@@ -442,7 +444,7 @@ def budget():
     for h in (150.0, 300.0):
         print(f"\nattitude part (m) at {h:.0f} m above flat ground, by rotation rate and time error:")
         print(f"{'rate':>10s}" + "".join(f"{f'δt {1000 * x:.0f} ms':>14s}" for x in dts))
-        for rate in (5.0, 13.0, 25.0, 30.0, 60.0):
+        for rate in (5.0, 15.0, 25.0, 30.0, 60.0):
             print(f"{rate:6.0f} °/s" + "".join(f"{rk.need_ok(tm, 'time_error_m', h, rate, x, n=2)[0]:14.2f}"
                                               for x in dts))
     print("\nposition part (m), by speed and time error:")
@@ -488,8 +490,32 @@ def methods(it, iq, fr, latency):
     return rows
 
 
+def centre_en(q, h_m):
+    """Where the camera's optical axis (body down: the camera is fixed under the body) meets flat ground, east and north
+    metres from the point under the plane, for the body attitude q (x, y, z, w) at h_m metres."""
+    d = _matrix(q) @ np.array([0.0, 0.0, -1.0])
+    return h_m * d[:2] / (-d[2])
+
+
 def metres(r, q):
-    return None if q is None else r["height_m"] * math.tan(math.radians(angle_deg(q, r["q_true"])))
+    """The ground error of the image centre: how far the centre lands from where the TRUE attitude puts it (metres).
+    A heading error only swings a tilted camera's centre around the point under the plane; a roll or pitch error
+    moves it outward — this is the real ground point, not h·tan(angle)."""
+    if q is None:
+        return None
+    return float(np.linalg.norm(centre_en(q, r["height_m"]) - centre_en(r["q_true"], r["height_m"])))
+
+
+def turning_mask(fr, min_rate_dps=2.0):
+    """True for the frames where the plane really rotates (true rotation rate over the last 0.2 s > min_rate_dps)."""
+    out = []
+    for i, r in enumerate(fr):
+        j = i
+        while j > 0 and r["grab_s"] - fr[j - 1]["grab_s"] <= 0.2:
+            j -= 1
+        dt = r["grab_s"] - fr[j]["grab_s"]
+        out.append(dt > 0 and angle_deg(fr[j]["q_true"], r["q_true"]) / dt > min_rate_dps)
+    return np.array(out)
 
 
 def turn(latency=None):
@@ -504,15 +530,23 @@ def turn(latency=None):
     names = ("the IMU sample held at the grab", "the nearest sample to the exposure", "YOUR attitude_at(exposure)")
     print(f"{len(fr)} frames of the plane's flight, delay setting latency_s = {lat:.3f} s "
           f"({'camera.yaml' if latency is None else '--latency'}): exposure = grab − {lat:.3f} s")
-    print(f"\nground error of the image centre, from the attitude error at {fr[0]['height_m']:.0f} m (metres):")
-    print(f"{'attitude used':40s}{'median':>8s}{'p95':>8s}{'max':>8s}{'no attitude':>13s}")
+    turning = turning_mask(fr)
+    print(f"\nground error of the image centre (where the camera axis meets the ground, against the truth), metres;")
+    print(f"{int(turning.sum())} frames taken while the plane rotates (> 2 °/s), {int((~turning).sum())} while it flies "
+          "straight and level:")
+    print(f"{'attitude used':38s}{'median':>8s}{'level':>8s}{'turning':>9s}{'p95':>8s}{'max':>8s}{'no att.':>9s}")
     errs = []
     for m, name in enumerate(names):
         e = [metres(row[0], row[1 + m]) for row in rows]
         v = np.array([x for x in e if x is not None])
+        lv = np.array([x for x, t in zip(e, turning) if x is not None and not t])
+        tv = np.array([x for x, t in zip(e, turning) if x is not None and t])
         errs.append(e)
-        print(f"{name:40s}{np.median(v):8.2f}{np.percentile(v, 95):8.2f}{v.max():8.2f}{len(e) - v.size:13d}")
-    print("(the first line does not use latency_s at all: it is the same for every setting)")
+        print(f"{name:38s}{np.median(v):8.2f}{np.median(lv):8.2f}{np.median(tv):9.2f}{np.percentile(v, 95):8.2f}"
+              f"{v.max():8.2f}{len(e) - v.size:9d}")
+    print("(median = all frames; level / turning = the medians of those frames only. Compare the methods in the "
+          "turning column:\n the all-frames median mixes ~400 level frames with ~450 turning ones. The first line "
+          "does not use latency_s.)")
     # the decisions
     have = [hasattr(tm, n) and not only_stub(getattr(tm, n)) for n in ("rotation_rate_dps", "usable")]
     counts, decisions = {}, []
@@ -548,7 +582,7 @@ def turn(latency=None):
             ok = [i for i, x in enumerate(e) if x is not None]
             a2.plot(tt[ok], np.maximum(0.01, [e[i] for i in ok]), st, ms=3, label=name)
         a2.set_yscale("log")
-        a2.set_ylabel("ground error (m, log scale)")
+        a2.set_ylabel("image-centre ground error (m, log)")
         a2.set_xlabel("time of the grab (s since the first frame)")
         a2.legend(fontsize=8, loc="upper right")
         roll = []
@@ -599,7 +633,7 @@ def scan():
         e = [metres(r, tm.attitude_at(r["grab_s"] - lat, it, iq)) for r in fr]
         med.append(float(np.median([x for x in e if x is not None])))
     best = int(np.argmin(med))
-    print("delay setting (s)   median ground error with YOUR attitude_at (m)")
+    print("delay setting (s)   median ground error of the image centre with YOUR attitude_at (m)")
     for lat, m in zip(lats, med):
         if abs(round(lat * 100) - lat * 100) < 1e-6 or lat == lats[best]:
             print(f"   {lat:.3f}            {m:6.2f}" + ("   ← the smallest" if lat == lats[best] else ""))
@@ -608,7 +642,7 @@ def scan():
         fig, ax = plt.subplots(figsize=(8, 3.6))
         ax.plot(lats, med, "o-", ms=3)
         ax.set_xlabel("delay setting latency_s (s)")
-        ax.set_ylabel("median ground error (m)")
+        ax.set_ylabel("median ground error of the image centre (m)")
         ax.set_title("which delay makes the IMU agree with the frames' true attitude?")
         ax.grid(alpha=0.3)
         fig.tight_layout()

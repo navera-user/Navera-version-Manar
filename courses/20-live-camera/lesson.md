@@ -1,6 +1,6 @@
 # Live camera: frames, delay and the attitude at the exposure
 
-![A time line: IMU samples every 20 ms; the picture is taken at the exposure, but the program receives it a latency L later, at the grab (NAVERA's setting for its Insta360: L = 0.138 s, an upper bound). The sample held at the grab is the wrong attitude; the right one is interpolated at the exposure.](assets/timeline.svg)
+![A time line: IMU samples every 20 ms; the picture is taken at the exposure, but the program receives it a latency L later, at the grab (NAVERA's setting for its Insta360: 0.138 s, an upper bound on L). The sample held at the grab is the wrong attitude; the right one is interpolated at the exposure.](assets/timeline.svg)
 
 > [!NOTE] Mission brief
 > **3 October 2026, NAVERA's mission simulator.** A plane flies at 40 m/s, its camera on a gimbal. Day vision
@@ -8,7 +8,7 @@
 > autopilot is off by **83 m** (median), and **none** of its positions is within the ±30 m it states. The
 > matches were right; their **time** was wrong. Each vision position described the instant the photo was taken,
 > 1 to 2.5 s earlier, and was sent as if it were the present. (NAVERA's validation report, 2026-10-03; now
-> fixed.) NAVERA's engineering backlog lists a twin bug in the star pipeline, also fixed: the attitude was read when the
+> fixed in the simulator.) NAVERA's engineering backlog lists a twin bug in the star pipeline, also fixed (on the bench): the attitude was read when the
 > photo was *processed*, not when it was *taken* — "degrees off in flight".
 >
 > A camera picture is a measurement of **one instant**, and that instant is not "now". Today you learn to find
@@ -234,7 +234,10 @@ is **turning**: its heading changes. To fly a level turn at speed v, the tilted 
 ```
 
 For φ = 20° at 40 m/s: ω = 9.81 × 0.364 / 40 = 0.089 rad/s = **5.1 °/s**. A fixed camera turns with the plane, so a
-time error still costs h·tan(ω·δt) during the whole turn, not only while the bank changes.
+time error still leaves the attitude wrong by ω·δt during the whole turn, not only while the bank changes. But this
+rotation is about the **vertical**: like the yaw of the ✏️ below, it turns the picture about the point straight below
+the plane. The image centre lies h·tan φ from that point (87 m at 150 m and 30°), so it swings by about
+h·tan φ · ω·δt (ω·δt in radians), and points farther out move more. h·tan(ω·δt) is the rule for a roll or a pitch error.
 
 **And the position?** The same delay moves the vehicle: a plane at 40 m/s travels 40 × 0.14 = 5.6 m between the
 exposure and the grab. So every position made from a frame must carry the **exposure** time. The mission brief is
@@ -325,7 +328,8 @@ attitude. 17.65 s: 0.15 s from 17.8 → yes (f = 0.8125).
    missing, the rate is unknown: refuse too.
 3. **Tilted too far** (fixed camera): the camera axis more than **45°** from straight down → refuse.
 
-Otherwise the frame is usable. With a **gimbal** that holds the camera straight down, only rule 1 applies.
+Otherwise the frame is usable. With a **gimbal** that holds the camera straight down, only rule 1 applies. (The
+`usable` docstring numbers "rate unknown" as a rule of its own, so it lists five lines: the same rules.)
 
 Why refuse a fast rotation if the attitude is interpolated at the right instant? Because what is left is not
 zero: the delay setting is known to a few ms; an exposure lasts several ms, during which the picture turns (blur);
@@ -368,8 +372,8 @@ from a ROS image topic. For every frame it offers to day or night vision:
 - Always the **newest** frame, never a queue; frames are grabbed at the camera's rate and only the one sent is
   decoded.
 - The two bugs of the mission brief are fixed: vision positions are now carried from their photo's instant to the
-  present along the measured velocity, with an uncertainty grown by the lag (2026-10-03); the star pipeline takes the
-  IMU attitude at the frame's exposure (fixed earlier: bench-verified on 2026-09-28).
+  present along the measured velocity, with an uncertainty grown by the lag (2026-10-03, simulator and unit tests); the star pipeline takes the
+  IMU attitude at the frame's exposure (fixed earlier: bench-verified on synthetic data, 2026-09-28).
 
 Honest limits: the 0.138 s delay of the Insta360 is a bench median that includes the screen; it has not been
 checked in flight. The delay may also change with the computer's load, so it should be measured under the vehicle's

@@ -24,11 +24,20 @@ def flash_phase(t0, frame_s):
     Example: flash_phase(1.0, [0.9, 0.97, 1.01]) → about 0.03
              flash_phase(0.5, [0.9, 0.97]) → None
     """
-    return None   # TODO: replace this line with your code
+    return None   # TODO: write your code above, and return the result
 
 
 # ---- you don't need to change anything below this line ----
 def main():
+    here = sys.modules[__name__]
+    for args, want in (((1.0, [0.9, 0.97, 1.01]), 0.03), ((0.5, [0.9, 0.97]), None)):    # the docstring's examples
+        got, err = rk.call(here, "flash_phase", *args)
+        if want is None and not (err and "returned None" in err):
+            sys.exit(f"✘ flash_phase{args} must be None (no frame at or before t0), got {err or got!r} "
+                     "— lab Step 3b, hint 2")
+        if want is not None and (err or abs(float(got) - want) > 1e-9):
+            sys.exit(f"✘ flash_phase{args} → {err or got!r}, the docstring says {want} — lab Step 3b, hint 1")
+    print("✔ flash_phase passes its two docstring examples\n")
     tm = rk.load_student("navera_lite.timing")
     with open(os.path.join(DATA, "flashes.csv"), newline="") as f:
         flashes = [float(r["t_white_s"]) for r in csv.DictReader(f)]
@@ -37,7 +46,6 @@ def main():
     ft = [float(r["grab_s"]) for r in rows]
     fb = [float(r["brightness"]) for r in rows]
     d = rk.need_ok(tm, "delay_from_flashes", flashes, ft, fb)
-    here = sys.modules[__name__]
     pts = []
     for k, (t0, x) in enumerate(zip(flashes, d)):
         if x is None:

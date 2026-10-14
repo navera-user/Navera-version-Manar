@@ -95,6 +95,7 @@ PHASE_SLOPE = -0.990                      # phase.py on the bench, flash 14 left
 T_MS, SCREEN_MS = 1000.0 / 28.8, 20.0
 BUDGET_500_M, ALONG_60_M, DT_FOR_30M_S = 13.6388, 2.0833, 0.4524
 STEADY_RATE_DPS = 12.9805                 # g·tan 30° / 25 m/s
+BANK48_RATE_DPS = 24.9697                 # g·tan 48° / 25 m/s
 
 
 def tm():
@@ -158,7 +159,9 @@ def num(v, what):
         raise CheckFailed(f"{what} should return one number, got {v!r}")
 
 
-TIPS = [("not supported between instances of 'NoneType'", " — a value is None and is compared: test `is None` "
+TIPS = [("phase.py", " — no frame at or before the flash? flash_phase must return None then (its docstring's second "
+                     "example; lab Step 3b, hint 2)"),
+        ("not supported between instances of 'NoneType'", " — a value is None and is compared: test `is None` "
                                                            "first (usable: rate_dps can be None — lab Step 8, hint 6)"),
         ("list index out of range", " — an index past the end: with bisect, i can be 0 or len(…) (lab Step 6, hints "
                                     "1 and 4)"),
@@ -436,7 +439,9 @@ def _():
     c.near(sl, PHASE_SLOPE, 0.011, "PHASE_SLOPE")
     explained("EXPLAIN_PHASE", whyp,
               ((r"later", r"each (ms|millisecond)", r"one (ms|millisecond)", r"one for one", r"less", r"shorter",
-                r"inverse", r"opposite", r"minus one", r"−1", r"-1", r"decreas"), "what a slope of −1 means"),
+                r"inverse", r"opposite", r"minus one", r"−1", r"-1", r"decreas", r"[−-]0[.,]9\d",
+                r"ms (of delay )?(per|for each|for every) (ms|millisecond)", r"same amount", r"one-to-one",
+                r"all of the spread", r"whole spread", r"entire", r"almost all"), "what a slope of −1 means"),
               ((r"wait", r"phase", r"where", r"when the flash", r"between (two )?(frames|exposures|grabs)", r"\bw\b",
                 r"not noise", r"not random", r"explain"), "that the spread is the flash's place between frames"))
 
@@ -457,6 +462,8 @@ def _():
              DELAY_MIN_MS: "the minimum: it still holds the screen's delay (20 ms)",
              DELAY_MEDIAN_MS - SCREEN_MS: "the median minus the screen: half a frame period (T/2) is still in it",
              DELAY_MEDIAN_MS - T_MS / 2: "the median minus T/2: the screen's 20 ms are still in it",
+             DELAY_MEDIAN_MS - T_MS - SCREEN_MS: "a whole period T removed: the wait w lies between 0 and T, so on "
+                                                 "average (and in the median) it is T/2",
              166.1 - T_MS / 2 - SCREEN_MS: "the MEAN minus T/2 and s: one odd flash pulls the mean — use the median"}
     for v, why_trap in traps.items():
         if abs(lat * 1000 - v) < 1.5 and not (110 <= lat * 1000 <= 128):
@@ -623,7 +630,7 @@ def _():
     c.ok(number(gm, "GRAB_MEDIAN_M") != 0, "GRAB_MEDIAN_M is still 0: run python3 run_timing.py turn (Step 7)")
     c.near(number(gm, "GRAB_MEDIAN_M"), meta["grab_median_m"], 0.011, "GRAB_MEDIAN_M ('held at the grab', median)")
     cm = number(cm, "COPIED_MEDIAN_M")
-    if abs(cm - 0.357) < 0.011:
+    if abs(cm - 0.24) < 0.011:
         raise CheckFailed("COPIED_MEDIAN_M: that is the 'nearest sample' line; write YOUR attitude_at's line")
     c.near(cm, row_for(0.138)["median_m"], 0.011, "COPIED_MEDIAN_M (yours with --latency 0.138)")
     lat = my_latency()
@@ -646,19 +653,28 @@ def _():
     explained("EXPLAIN_STEADY", why_s,
               ((r"turn", r"heading", r"yaw"), "that the banked plane is turning (its heading changes)"),
               ((r"13", r"rate", r"°/s", r"rotat"), "the rotation rate it has"),
-              ((r"late", r"old", r"delay", r"latency", r"0\.1", r"after the exposure", r"too new", r"grab"),
-               "why that rate still costs metres with the attitude held at the grab"))
+              ((r"late", r"old", r"delay", r"latency", r"0\.1", r"after the exposure", r"too new", r"grab", r"\bdt\b",
+                r"δt", r"time error"), "why that rate still costs metres with the attitude held at the grab"))
 
 
 @c.test("Steps 8–9: your refusals on the flight, and the delay the flight prefers",
         hint="Lab Step 8 (python3 run_timing.py turn after TODO 5–6, camera.yaml's rules unchanged) and Step 9 "
              "(python3 run_timing.py scan).")
 def _():
-    nt, nl, nn, why_r, best, why_s = answers("N_TURNING", "N_TILTED", "N_NO_ATTITUDE", "EXPLAIN_REFUSE",
-                                             "BEST_LATENCY_S", "EXPLAIN_SCAN")
+    nl, br, why_b, why_r, best, why_s = answers("N_TILTED", "BANK48_RATE_DPS", "EXPLAIN_BANK48", "EXPLAIN_REFUSE",
+                                                "BEST_LATENCY_S", "EXPLAIN_SCAN")
     rules_are_defaults()
     row = row_for(my_latency())
-    for name, v, key in (("N_TURNING", nt, "turning"), ("N_TILTED", nl, "tilted"), ("N_NO_ATTITUDE", nn, "no attitude")):
+    br = number(br, "BANK48_RATE_DPS")
+    c.ok(br != 0, "BANK48_RATE_DPS is still 0: the same formula as STEADY_RATE_DPS, with 48° (lesson §4)")
+    if abs(br - math.radians(BANK48_RATE_DPS)) < 0.01:
+        raise CheckFailed("BANK48_RATE_DPS: that is rad/s — the question asks °/s")
+    c.near(br, BANK48_RATE_DPS, 0.05, "BANK48_RATE_DPS (°/s)")
+    explained("EXPLAIN_BANK48", why_b,
+              ((r"30", r"below", r"under", r"less than", r"lower", r"smaller", r"not (fast|above|over)"),
+               "that 25 °/s is below the rate limit"),
+              ((r"48", r"45", r"tilt", r"bank", r"lean"), "that the tilt is above 45°"))
+    for name, v, key in (("N_TILTED", nl, "tilted"),):
         v = number(v, name)
         c.ok(v == row[key], f"{name} = {v:g} is not what the lesson's rules give on this flight with your camera.yaml "
                             f"(latency_s {my_latency()}). If `turn` prints this number, one of your functions differs "
@@ -749,7 +765,8 @@ def _():
     lat = my_latency()
     c.ok(mentions(text, lat, 0.0006) or mentions(text, lat * 1000, 0.6), f"report.md does not quote your delay "
                                                                           f"setting ({lat} s)")
-    c.ok(mentions(text, 3.28, 0.011) or mentions(text, 3.3, 0.001), "report.md does not quote the median error of the "
+    gm = table()["meta"]["grab_median_m"]
+    c.ok(mentions(text, gm, 0.011) or mentions(text, round(gm, 1), 0.001), "report.md does not quote the median error of the "
                                                                     "attitude held at the grab")
 
 

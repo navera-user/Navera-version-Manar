@@ -15,6 +15,11 @@ differ slightly from §2.6: `attitude_at(t_s, imu_t, imu_q, max_gap_s=0.2)` (as 
 `rotation_rate_dps(...)` and `time_error_m(...)`; `usable(q, rate_dps, cfg)` takes the attitude and the rate (not a
 meta dict). `exposure_time` is given (one line).
 
+Metrics (round 2): `turn`, `scan`, the GRAB/COPIED/MINE medians and the hidden table use the REAL image-centre ground
+error (where the body-down axis meets flat ground, used attitude vs truth), not h·tan(angle): a heading error only
+swings a tilted camera's centre. `straighten` back-projects the same way. Live check 14: attitude errors measured
+0.01–0.24° even with all cores busy (expert, round 2); the 1.5° / 75 % gate is margin, not tolerance for wrong code.
+
 Mission 19 (fisheye.py) is committed, but the replay node does NOT undistort: its frames are synthetic pinhole
 views drawn from the map (no fisheye lens to remove), and the real fisheye frames are only stills for Step 1. Adding
 undistortion would test mission 19's part, not this mission's timing; a later mission may straighten the stream.
@@ -61,18 +66,18 @@ Badges: **Timekeeper** = checks 1–8 (session 1), **Shutter** = all 15.
 | DELAY_MEDIAN / MIN (ms) | 156.3 / 141.1 | `flashes` (mean 166.1, max 352.9 = flash 14, std 44.4, 20 of 21 seen) |
 | UNSEEN_FLASH / OUTLIER_FLASH | 8 / 14 | |
 | TODO P flash_phase | t0 − last grab at or before t0; None if none | check: a grab exactly at t0 → 0; "first after" caught |
-| PHASE_SLOPE | −0.99 (± 0.011) | `phase.py`, flash 14 left out: r = −0.995, intercept 173.8 ms. NOTE: the intercept is ≈ 5·T (173.6): without jitter delay = m·T − phase, so the intercept only brackets s + L between (m − 1)·T and m·T. "intercept − T − s = 119 ms" matches L here only because s + L ≈ 4·T (a reviewer proposed it as an estimator: it is not one; it is a Going-further question) |
+| PHASE_SLOPE | −0.99 (± 0.011) | `phase.py`, flash 14 left out: r = −0.995, intercept 173.8 ms. NOTE: the clean line exists only because s + L = 138 ms ≈ 4·T (138.9). In general, delay vs phase is a sawtooth (slope −1, a jump of T at phase = m·T − (s + L)), and a straight-line fit gives slopes far from −1. The intercept (≈ 5·T) is a multiple of T, not a measurement. The data bracket s + L between max(d) − T and min(d): 138.7–141.1 ms (truth 138.0, just below because of the ≈ 1 ms grab jitter). Do not reuse Step 3b on other data without checking s + L / T |
 | LATENCY_SETTING_S | 0.119 (accepted 0.110–0.128) | 156.3 − 17.4 − 20 = 118.9 ms; min − s = 121.1 ms; truth 0.118. Traps named: 0.138 (NAVERA's, another camera), 0.156 (median), 0.141 (min), 0.136 (median − s), 0.139 (median − T/2), 0.129 (mean − T/2 − s). Must equal camera.yaml ± 0.5 ms; EXPLAIN_LATENCY must quote the median. `scan` refuses to run until this is set (and camera.yaml ≠ 0.138) |
 | TODO 3 time_error_m | (attitude_m, position_m) | (100, 20, 0.1, 30) → (3.492, 3.0); both parts ≥ 0 |
 | BUDGET_500_M / ALONG_60_M | 13.64 / 2.08 | 500 · tan(45/28.8 °); 60/28.8. The budget table no longer prints a one-period column |
 | DT_FOR_30M_S | 0.45 (± 0.006) | atan(0.2) = 11.31°, / 25 = 0.452 s; small-angle 0.458 → "0.46" caught |
 | PREDICT_METHODS (ungraded) | written at the start of Step 6, before §5 | |
-| GRAB_MEDIAN_M | 3.28 | `turn` (independent of the setting; max 21.42) |
-| COPIED_MEDIAN_M | 0.54 | `turn --latency 0.138`, slerp line (nearest line 0.36 caught; p95 1.32, max 3.66) |
-| MINE_MEDIAN_M | 0.05 at 0.119 | table lookup for the student's camera.yaml latency (0.118: 0.06, 0.121: 0.07, 0.156: 1.13) |
-| STEADY_RATE_DPS | 12.98 (± 0.03) | g·tan 30° / 25 = 0.2266 rad/s; rad/s (0.23) caught. At 48°: 24.97 °/s. Not graded: `straighten` frame 111 (3.85 s), held at the grab 7.4 m, yours 0.1 m at 0.119 |
-| N_TURNING / N_TILTED / N_NO_ATTITUDE | 23 / 69 / 7 at 0.119 | table lookup (at 0.138: 23 / 69 / 6; rate unknown 5 or 6; ok 746) |
-| BEST_LATENCY_S | 0.118 (± 0.0025) | `scan` (0.060–0.200 by 2 ms): 0.06 m at 0.118 and 0.120. On a 1 ms grid the best is 0.119 (≈ L + 1 ms: the grab jitter's positive mean) |
+| GRAB_MEDIAN_M | 1.91 | `turn` (independent of the setting): level 0.13, turning 4.31, p95 9.46, max 28.50 |
+| COPIED_MEDIAN_M | 0.32 | `turn --latency 0.138`, slerp line (nearest line 0.24 caught). Turning column: nearest 0.65, slerp 0.75 — about equal (both ≈ 19 ms off); p95 1.93 vs 1.63, max 7.47 vs 5.13 favour slerp. The all-frames median (0.24 vs 0.32) is a bimodal-median effect (396 level frames ≈ 0.04 m, 454 turning): not a rule. With 0.119: turning nearest 0.18, slerp 0.06 |
+| MINE_MEDIAN_M | 0.05 at 0.119 | table lookup for the student's camera.yaml latency (0.118: 0.05, 0.121: 0.06, 0.156: 0.66) |
+| STEADY_RATE_DPS | 12.98 (± 0.03) | g·tan 30° / 25 = 0.2266 rad/s; rad/s (0.23) caught. Held at the grab in the steady bank (6–10.5 s): real image-centre error median 2.13 m (the centre, 87 m from nadir, swings with the heading); the old h·tan yardstick said 3.66 m. Not graded: `straighten` frame 111 (3.85 s), held at the grab 7.4 m, yours 0.1 m at 0.119 |
+| N_TILTED / BANK48_RATE_DPS | 69 at 0.119 / 24.97 (± 0.05) | N_TILTED: table lookup (other counts at 0.119: turning 23, no attitude 7, rate unknown 5, ok 746). BANK48 = g·tan 48° / 25; rad/s caught; EXPLAIN_BANK48: 25 °/s < 30 °/s but the tilt 48° > 45° |
+| BEST_LATENCY_S | 0.120 (accepted 0.118–0.122) | `scan` (0.060–0.200 by 2 ms) on the image-centre error: 0.051 m at 0.120, 0.053 at 0.118. On a 1 ms grid the best is 0.119 (≈ L + 1 ms: the grab jitter's positive mean) |
 | QUEUE_WAITED_S | ≈ 1.98 (accepted 1.5–2.5) | `-p queue:=4`, 2 frames/s: each frame waits 4 × 0.5 s; attitude error ≈ 25° |
 
 Lesson numbers: §4 steady bank φ = 20°, 40 m/s → 0.089 rad/s = 5.1 °/s; T = 34.7 ms, T/2 = 17.4 ms, T/√12 = 10.0 ms; worked §2: fps 8.0, median 100 ms, jitter 43.3 ms,
@@ -97,8 +102,9 @@ aerial photos from another camera, "not yet measured with NAVERA's camera".
 | EXPLAIN_SPREAD | random wait w for the next exposure, 0 to T, independent of the clock | "frames every 35 ms" | "noise" |
 | EXPLAIN_LATENCY | removes s (20 ms) and T/2 (17 ms) from the median, says why not the min (one flash) | one of the two | uses the median as is |
 | EXPLAIN_BUDGET | h · tan: height multiplies; ω · δt: no rotation, no angle error | one of the two | — |
+| EXPLAIN_BANK48 | 25 °/s < 30 °/s (rate rule passes), tilt 48° > 45° (tilt rule refuses) | one of the two | — |
 | EXPLAIN_TURN | roll-in/out (3–5 s, 17–18 s), error = rate × L | when, not why | — |
-| EXPLAIN_STEADY | a banked plane turns (heading), 13 °/s × ~0.12 s ≈ 1.5° → ≈ 3.5–4 m | "it is turning" only | "the rate" |
+| EXPLAIN_STEADY | a banked plane turns (heading) at 13 °/s; × ~0.12 s ≈ 1.5° of heading error; a rotation about the vertical swings the centre, 87 m from nadir, by ≈ 2 m | "it is turning" only | "the rate" |
 | EXPLAIN_PHASE | slope −1: each ms later after a grab = 1 ms less wait; the spread is the flash's place between frames, not noise | "negative slope" with a vague reason | restates the number |
 | EXPLAIN_REFUSE | leftover timing error (setting ± ms, exposure blur, rolling shutter) × rate | "too fast" | — |
 | EXPLAIN_SCAN | 0.118 vs bench 0.119 agree; a real plane has no true attitude (only a simulator) | one of the two | — |
@@ -121,7 +127,7 @@ aerial photos from another camera, "not yet measured with NAVERA's camera".
 - Step 4 is the engineering decision: many students first write the median (0.156). The check names each trap.
 - Step 10 runs ROS in the student's sandbox; discovery takes 1–2 s for `ros2 topic echo`. The queue line appears
   only once the queue is full (after ≈ 2 s).
-- The "nearest sample beats slerp with 0.138 s" result surprises; it is the point of Step 9 (a wrong instant).
+- With 0.138 s, nearest ≈ slerp in the turning frames (both ≈ 19 ms off; the all-frames median 0.24 vs 0.32 m is a bimodal-median artefact; p95 and max favour slerp). The point of Steps 7 and 9: a wrong instant makes the interpolation method irrelevant; with the right instant slerp wins (0.06 vs 0.18 m while turning).
 
 ## Class plan (2 × 2 h, plus reading)
 

@@ -45,8 +45,8 @@ EXPLAIN_BUDGET = ("The ground error is h·tan(ω·δt): the same angle error mov
                   "zero in straight, level flight and grows in a turn.")
 
 PREDICT_METHODS = "Worst: held at the grab; then the nearest sample; best: slerp at the exposure, for both settings."
-GRAB_MEDIAN_M = 3.28
-COPIED_MEDIAN_M = 0.54
+GRAB_MEDIAN_M = 1.91
+COPIED_MEDIAN_M = 0.32
 MINE_MEDIAN_M = 0.05
 EXPLAIN_TURN = ("It is most wrong when the plane rolls into or out of a bank, at 3–5 s and 17–18 s: the attitude "
                 "changes fast then, and the sample held at the grab is the attitude 0.12 s after the exposure, so "
@@ -54,18 +54,21 @@ EXPLAIN_TURN = ("It is most wrong when the plane rolls into or out of a bank, at
 
 STEADY_RATE_DPS = 12.98
 EXPLAIN_STEADY = ("A banked plane is turning: its heading changes at g·tan(30°)/25 m/s = 0.227 rad/s = 13 °/s, so the "
-                  "attitude still rotates although the roll is constant. The sample held at the grab is 0.12 s too new, "
-                  "13 × 0.12 ≈ 1.5° of heading-and-bank error, about 3.5–4 m at 150 m.")
+                  "attitude still rotates although the roll is constant. The sample held at the grab is 0.12 s too new: "
+                  "about 1.5° of heading error. The camera looks 30° to the side, so its centre is h·tan 30° = 87 m from "
+                  "the point under the plane, and the heading error swings it 87 × 0.027 rad ≈ 2 m along a circle.")
 
-N_TURNING = 23
 N_TILTED = 69
-N_NO_ATTITUDE = 7
+BANK48_RATE_DPS = 24.97
+EXPLAIN_BANK48 = ("In the steady 48° bank the plane turns at g·tan(48°)/25 = 25 °/s, below the 30 °/s rate limit, so the "
+                  "rate rule accepts the frames; but the fixed camera is tilted 48° from straight down, more than the "
+                  "45° limit, so the tilt rule refuses them.")
 EXPLAIN_REFUSE = ("What is left of the timing error is not zero: the delay is known to a few ms, the exposure lasts "
                   "a few ms (blur) and a rolling shutter exposes rows at different times. Each leftover millisecond "
                   "costs h·tan(ω·δt), which grows with the rate: at 60 °/s it is too large.")
 
-BEST_LATENCY_S = 0.118
-EXPLAIN_SCAN = ("The flight prefers 0.118 s, close to my bench setting of 0.119 s, so the bench and its correction "
+BEST_LATENCY_S = 0.120
+EXPLAIN_SCAN = ("The flight prefers 0.120 s, close to my bench setting of 0.119 s, so the bench and its correction "
                 "agree. A real plane cannot run this scan because it has no true attitude to compare with; only a "
                 "simulator knows the truth.")
 

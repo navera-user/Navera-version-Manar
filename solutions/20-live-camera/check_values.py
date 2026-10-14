@@ -22,6 +22,17 @@ imu = list(csv.DictReader(open(D + 'flight/imu.csv')))
 it = [float(r['t_s']) for r in imu]
 iq = [tuple(float(r[k]) for k in ('qx', 'qy', 'qz', 'qw')) for r in imu]
 fr = list(csv.DictReader(open(D + 'flight/frames.csv')))
+from navera_lite.rotations import q_to_matrix
+
+
+def centre_err(q, qt, h):
+    """Ground error of the image centre: where the body-down axis meets flat ground, used attitude vs truth (m)."""
+    def en(qq):
+        d = np.asarray(q_to_matrix(qq)) @ np.array([0.0, 0.0, -1.0])
+        return h * d[:2] / (-d[2])
+    return float(np.linalg.norm(en(q) - en(qt)))
+
+
 def ang(a, b):
     a, b = np.asarray(a, float), np.asarray(b, float)
     return math.degrees(2 * math.acos(min(1.0, abs(float(a @ b) / (np.linalg.norm(a) * np.linalg.norm(b))))))
@@ -35,7 +46,7 @@ for ms in range(0, 201):
         e = g - lat
         q = T.attitude_at(e, it, iq)
         if q is not None:
-            errs.append(h * math.tan(math.radians(ang(q, qt))))
+            errs.append(centre_err(q, qt, h))
         ok, why = T.usable(q, T.rotation_rate_dps(e, it, iq), T.DEFAULTS)
         k = "ok" if ok else {"no": "no attitude", "rotation": "rate unknown"}.get(why.split(" ")[0], why.split(" ")[0])
         c[k] += 1
@@ -43,7 +54,7 @@ for ms in range(0, 201):
 grab = []
 for g, h, qt in rows:
     i = bisect.bisect_right(it, g) - 1
-    grab.append(h * math.tan(math.radians(ang(iq[i], qt))))
+    grab.append(centre_err(iq[i], qt, h))
 meta = {"grab_median_m": round(float(np.median(grab)), 4), "grab_max_m": round(float(max(grab)), 4)}
 scan = {f"{l:.3f}": table[f"{l:.3f}"]["median_m"] for l in np.round(np.arange(0.060, 0.2001, 0.002), 3)}
 meta["best_scan_s"] = min(scan, key=scan.get)
@@ -71,3 +82,12 @@ lab["lesson_worked_m"] = T.time_error_m(150.0, 25.0, 0.14)
 lab["step0_m"] = T.time_error_m(120.0, 40.0, 0.10)
 for k, x in lab.items():
     print(k, x)
+
+# the steady bank (5–11 s after the first grab), attitude held at the grab: real centre error vs the h·tan yardstick
+t0 = rows[0][0]
+st = [(centre_err(iq[bisect.bisect_right(it, g) - 1], qt, h), h * math.tan(math.radians(ang(iq[bisect.bisect_right(it, g) - 1], qt))))
+      for g, h, qt in rows if 6.0 <= g - t0 <= 10.5]
+print("steady bank held-at-grab: real centre median", round(float(np.median([a for a, b in st])), 2),
+      "m; h·tan yardstick", round(float(np.median([b for a, b in st])), 2), "m")
+for k in ("0.119", "0.138"):
+    print(k, table["by_latency"][k] if "by_latency" in table else table[k])

@@ -64,12 +64,13 @@ MINE_MEDIAN_M = 0.0         # YOUR attitude_at with YOUR setting (python3 run_ti
 EXPLAIN_TURN = ""           # when in the flight is "held at the grab" most wrong, and why then?
 STEADY_RATE_DPS = 0.0       # between 5 s and 11 s the bank is a steady 30° at 25 m/s: compute the rotation rate
                             # of the plane (°/s, two decimals) — lesson §4, "A steady bank is still a rotation"
-EXPLAIN_STEADY = ""         # the roll does not change there: why is "held at the grab" still about 3.5 m wrong?
+EXPLAIN_STEADY = ""         # the roll does not change there: why is the image centre of "held at the grab" still
+                            # about 2 m wrong? (the camera looks 30° to the side: where is its centre?)
 
 # ---- Step 8: refuse the frames you cannot trust (TODO 5, TODO 6, python3 run_timing.py turn) ---------
-N_TURNING = 0               # frames refused with "turning …"
-N_TILTED = 0                # frames refused with "tilted …"
-N_NO_ATTITUDE = 0           # frames refused with "no attitude at the exposure"
+N_TILTED = 0                # frames refused with "tilted …" (python3 run_timing.py turn)
+BANK48_RATE_DPS = 0.0       # the steady 48° bank of 18–20 s, at 25 m/s: compute its rotation rate (°/s, two decimals)
+EXPLAIN_BANK48 = ""         # those frames are refused for their tilt, not for their rate: why?
 EXPLAIN_REFUSE = ""         # the attitude is interpolated at the right instant: why still refuse a frame taken while
                             # the plane turns at 60 °/s?
 

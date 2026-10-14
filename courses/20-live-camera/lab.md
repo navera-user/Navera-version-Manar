@@ -81,7 +81,9 @@ pixelated.
 
 Read lesson §2. Open [navera_lite/timing.py](file:./navera_lite/timing.py): the top holds the conventions, the
 settings `DEFAULTS` and three finished helpers (`load_camera_settings`, `exposure_time`, `tilt_deg`). Each `TODO`
-function keeps its docstring and ends with `return None   # TODO…`: replace that line with your code.
+function keeps its docstring and ends with `return None   # TODO: write your code above, and return the result`:
+write your code above that line (it is then never reached; you may also delete it). phase.py (Step 3b) works the
+same way.
 
 <details><summary>🧰 numpy: intervals, median, standard deviation</summary>
 
@@ -177,7 +179,8 @@ brightness around every flash; right, one delay per flash.
 1. For one flash t0: the frames with t ≤ t0 (take the last one's brightness: dark), and the frames with
    t0 < t ≤ t0 + window_s (bright = the largest brightness among them). Build the second list with zip (🧰).
 2. [0.05] instead of [0.1] in the test: the frame at 1.05 (brightness 40) is above `dark` but below the midpoint
-   (30 + 210) / 2 = 120. The rule is "brighter than the midpoint", not "brighter than dark".
+   (30 + 210) / 2 = 120. The rule is "brighter than the midpoint", not "brighter than dark". And (bright − dark) / 2
+   = 90 is half the RISE, not the midpoint LEVEL: add dark.
 3. A number instead of None for the unseen flash: test `bright - dark < min_rise` (and an empty list) before you
    search, and `append(None)`.
 4. Fewer entries than flashes: every flash gets an entry, None included — the list must keep the flashes' order.
@@ -223,7 +226,8 @@ frames per second (T = 34.7 ms).
 
 1. Lesson §3, consequence 3: each delay is s + w + L, and the median of w is about T/2.
 2. 0.156? That is the median itself: it still holds the screen and half a period. 0.141? The minimum still holds
-   the screen. 0.136? You removed the screen but not the half period. 0.138? That is NAVERA's value for another
+   the screen. 0.136? You removed the screen but not the half period. 0.102? You removed a whole period T: the wait w
+   lies between 0 and T, so on average (and in the median) it is T/2. 0.138? That is NAVERA's value for another
    camera, not a result of this bench.
 3. In camera.yaml write a number in seconds, `latency_s: 0.123` (no quotes, no "ms").
 </details>
@@ -347,10 +351,11 @@ lines = a wrong attitude.
 > (yours with your camera.yaml) and `EXPLAIN_TURN`: when in the flight is "held at the grab" most wrong, and why
 > then? Compare with your `PREDICT_METHODS`.
 >
-> Then look at 5–11 s on turn.png: the roll is a steady 30°, yet "held at the grab" is still about 3.5 m wrong.
-> Compute the plane's rotation rate there (lesson §4, "A steady bank is still a rotation", v = 25 m/s):
-> `STEADY_RATE_DPS` (°/s, two decimals), and `EXPLAIN_STEADY`: where does the rotation come from, and why does it
-> cost metres?
+> Then look at 5–11 s on turn.png: the roll is a steady 30°, yet the image centre of "held at the grab" is still
+> about 2 m wrong. Compute the plane's rotation rate there (lesson §4, "A steady bank is still a rotation",
+> v = 25 m/s): `STEADY_RATE_DPS` (°/s, two decimals), and `EXPLAIN_STEADY`: where does the rotation come from, and
+> why does it cost metres? (The camera looks 30° to the side: where is its centre, and what does a heading error do
+> to it?)
 
 <details><summary>Stuck? Hints</summary>
 
@@ -358,8 +363,10 @@ lines = a wrong attitude.
    `python3 run_timing.py test` again; the message names the error.
 2. MINE_MEDIAN_M depends on YOUR setting: the check computes it for the latency_s in your camera.yaml. If you
    change camera.yaml, run `turn` again.
-3. Why is the nearest sample sometimes better than slerp with 0.138 s? Slerp gives the exact attitude of the
-   instant you ask; with the wrong instant, exactness does not help. Look at Step 9.
+3. With 0.138 s the nearest sample and slerp are both about 19 ms from the true exposure: in the "turning" column
+   they are about equally wrong (the all-frames median mixes ~400 level frames, almost error-free, with ~450 turning
+   ones, so it can favour either one). Slerp's exactness only pays once the instant is right: compare the turning
+   column with your own setting. Look at Step 9.
 </details>
 
 ## Step 8 — Refuse the frames you cannot trust (TODO 5, TODO 6)
@@ -383,8 +390,10 @@ python3 run_timing.py turn
 The end of the printout now counts your decisions; on out/turn.png red crosses mark the refused frames.
 
 > [!TASK]
-> Write `N_TURNING`, `N_TILTED`, `N_NO_ATTITUDE` (with your camera.yaml) and `EXPLAIN_REFUSE`: the attitude is
-> interpolated at the right instant — why still refuse a frame taken while the plane turns at 60 °/s?
+> Write `N_TILTED` (with your camera.yaml) and `EXPLAIN_REFUSE`: the attitude is interpolated at the right instant —
+> why still refuse a frame taken while the plane turns at 60 °/s? Then the steady 48° bank of 18–20 s:
+> `BANK48_RATE_DPS` (its rotation rate, the formula of Step 7, two decimals) and `EXPLAIN_BANK48`: why are those
+> frames refused for their tilt and not for their rate?
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
@@ -438,7 +447,8 @@ ros2 topic echo /navera_lite/camera/meta diagnostic_msgs/msg/DiagnosticStatus --
 ```
 
 (Discovery takes a second or two: run it again if it waits. `level: "\0"` is level 0, OK = usable.) Now two wrong programs. Stamp the frames at the grab
-(no delay at all), watch the attitude error during the first roll (frames 90 to 150), then `Ctrl+C`:
+(no delay at all), watch the attitude error during the first roll (about frames 90–150, at 3–5 s; one line every
+14 frames or so), then `Ctrl+C`:
 
 ```bash
 python3 -m navera_lite.ros.camera_node --ros-args -p latency_s:=0.0
@@ -488,9 +498,12 @@ Write your answers in `LOOK_BACK` in `answers.py` if you want your teacher to re
 
 ## Going further (optional)
 
-- **Can the phase fit give L?** phase.py's intercept is about 173.8 ms. Compare it with 5 × T. Show that, without
-  jitter, delay = m·T − phase for a whole number m: the intercept only says that s + L lies between (m − 1)·T and
-  m·T. Why is "intercept − T − s" close to L on this bench, and when would it be 30 ms wrong?
+- **Can the phase fit give L?** phase.py's intercept is about 173.8 ms ≈ 5·T. Show that, without jitter, every
+  delay obeys s + L < d ≤ s + L + T, and d = m·T − phase, where the whole number m grows by one at
+  phase = m·T − (s + L). Sketch the plot for s + L = 4.5·T: a sawtooth, two lines T apart, and a straight-line fit
+  far from −1. Why do you get one clean line here (what is s + L / T on this bench)? So the intercept is a multiple
+  of T, not a measurement. Which two delays really bracket s + L (the largest delay − T, and the smallest delay),
+  and what bracket do they give here?
 
 - **A robust jitter.** Add `"mad_ms"` to a copy of your `frame_stats`: 1.4826 × median(|dᵢ − median|). Compare it
   with the jitter on the first 40 s and on the whole 60 s of `grab_log.csv`. Which number would you use to raise a
