@@ -88,7 +88,9 @@ def missing_data():
 PYTHON_USER_SITE = os.path.join(HOME, ".local", "lib")   # pip --user packages (torch, cv2 extras…)
 
 PORT = int(os.environ.get("ACADEMY_PORT", "8300"))
-MEMORY_MAX = os.environ.get("ACADEMY_MEMORY_MAX", "1800M")   # per student sandbox
+# per student sandbox. On the Jetson, GPU memory counts against it: one GPU training (missions 21–25) peaks at
+# 1.6–1.8 GB (measured 2026-10-15), so 1800M left no margin. At most GPU_SLOTS trainings run at once (below).
+MEMORY_MAX = os.environ.get("ACADEMY_MEMORY_MAX", "2600M")
 HEAVY_MEMORY_MAX = os.environ.get("ACADEMY_HEAVY_MEMORY_MAX", "4500M")  # holder of the simulator
 PIDS_MAX = 400
 # ROS domains in the range ROS documents as safe on Linux (1–101), without NAVERA's own 77–79.
