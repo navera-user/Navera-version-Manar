@@ -149,8 +149,8 @@ def attempt(fn, name):
                     "a list has no .T: np.asarray first)")
         elif "Singular matrix" in s:
             hint = " — a matrix with no inverse: is S = H P Hᵀ + R? (R adds to it, so it is never singular)"
-        elif "object has no attribute 'T'" in s:
-            hint = " — a list has no .T: convert the inputs with np.asarray(…, dtype=float) first"
+        elif "object has no attribute 'T'" in s or "for @" in s:
+            hint = " — a plain list has no .T and cannot use @: convert the inputs with np.asarray(…, dtype=float) first"
         return None, f"{name}() stopped with {type(e).__name__}: {e}{where}{hint}"
     if v is None:
         return None, f"{name}() returned None: every path must end with a `return`"

@@ -1,3 +1,3 @@
 {"number": "28", "title": "The Kalman filter: predict, update, and stay honest", "module": 6, "duration": "7 h",
- "summary": "Build the Kalman filter from its two steps: a constant-velocity model with an honest Q, a height filter that must give exactly the course's reference numbers (written exactly as in NAVERA's day-vision code), the NEES test with a band you simulate, and a 2-D tracker with a χ² gate that survives a 40-second jam and wrong fixes — then tune it, honest first.",
+ "summary": "Build the Kalman filter from its two steps: a constant-velocity model with an honest Q, a height filter that must give exactly the course's reference numbers (the model of NAVERA's day-vision height filter, written by the course), the NEES test with a band you simulate, and a 2-D tracker with a χ² gate that survives a 40-second jam and wrong fixes — then tune it, honest first.",
  "resources": [], "open": ["navera_lite/kalman.py", "answers.py"], "check_timeout_s": 240}

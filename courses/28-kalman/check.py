@@ -58,8 +58,8 @@ def go(fn, *args, **kw):
         if "matmul" in msg or "not aligned" in msg or "mismatch in its core dimension" in msg:
             raise CheckFailed(msg + " — two matrices that cannot be multiplied: print their .shape (H is m × n, Hᵀ = "
                               "H.T; a list has no .T: np.asarray first)")
-        if "has no attribute 'T'" in msg:
-            raise CheckFailed(msg + " — a list has no .T: convert the inputs with np.asarray(…, dtype=float) first")
+        if "has no attribute 'T'" in msg or "for @" in msg:
+            raise CheckFailed(msg + " — a plain list has no .T and cannot use @: convert the inputs with np.asarray(…, dtype=float) first")
         if "'NoneType'" in msg:
             raise CheckFailed(msg + " — something is None: either a function it calls returned None (an earlier TODO "
                               "still a stub?) or a value you use is still None (in Height1D: self.x and self.P are None "

@@ -3,8 +3,9 @@
 **Goal:** write NAVERA Lite's Kalman part (`navera_lite/kalman.py`): the constant-velocity model, the predict and
 update steps, a height filter that must give exactly the course's reference numbers, an honesty test, and a 2-D
 tracker with a gate. Then fly the tracker through a jam and six wrong fixes, and tune it.
-**Time:** 4 h 30 (up to 6 h if numpy is rusty) plus 1 h 30 of reading (session 1: 2–2 h 30, session 2: 2 h 30–3 h
-30; the matrix shapes and the tracker loop take the longest); a strong programmer who knows numpy: about 3 h.
+**Time:** reading 1 h 30, plus the lab: 4 h 30 (up to 6 h if numpy is rusty; the matrix shapes and the tracker loop
+take the longest). Lab sessions: session 1 2–2 h 30, session 2 2 h 30–3 h 30. A strong programmer who knows numpy:
+about 3 h for the lab.
 **Fast track:** if you know numpy well, skip the 🧰 boxes and the "Stuck?" boxes; do "Going further" at the end.
 
 Your files (📝 Code tab): [navera_lite/kalman.py](file:./navera_lite/kalman.py) (**your code**: TODO 1–5 and 7),
@@ -244,8 +245,8 @@ python3 run_kalman.py test
 python3 band_sim.py
 ```
 
-Open `out/band.png`. (The first row, one step, uses only 4 000 flights: expect about 0.05–7.4, a few % off the
-exact χ² values.)
+Open `out/band.png`. (The first row, one step, uses only 4 000 flights: it prints about 0.061–7.201, a few % off
+the exact χ² values 0.05–7.38.)
 
 > [!TASK]
 > Write `BAND_LOW` and `BAND_HIGH` (n = 2, N = 361, p = 0.95, two decimals).
@@ -338,9 +339,9 @@ python3 run_kalman.py track 0.3 0.99
 python3 run_kalman.py sweep
 ```
 
-The same flight with the 99 % gate and seven values of q, from 0.01 to 10. The verdict uses your NEES band. A value
-just outside the band (1.74) is a weak verdict, and lesson §6 says why the band is narrower than reality; q = 0.3
-wins because it is honest AND the most accurate.
+The same flight with the 99 % gate and seven values of q, from 0.01 to 10. The verdict uses your NEES band. Lesson §6
+says this band is narrower than reality: for this tracker an honest mean NEES spreads about 1.6–2.6. Decide with
+both bands which values you trust.
 
 > [!TASK]
 > Write `Q_BEST`: the value of q you would fly (lesson §7's rule: honest first, then the smallest error).

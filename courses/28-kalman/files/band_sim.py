@@ -42,6 +42,9 @@ def main():
         lo, hi = float(v[0]), float(v[1])
         if not lo < hi:
             sys.exit(f"nees_band({n}, {N}) gave low {lo} ≥ high {hi}: low is the lower end")
+        if N > 1 and not lo < n < hi:
+            sys.exit(f"✘ nees_band({n}, {N}) = ({lo:.3f}, {hi:.3f}) does not contain {n}: an honest filter's mean NEES "
+                     f"is near n = {n}. Average over the STEPS (do not sum them) and sum over the DIMENSIONS.")
         res[(n, N, p)] = (lo, hi)
         print(f"{n:13d}{N:9d}{p:6.2f}{'':6s}{lo:7.3f} – {hi:7.3f}{hi - lo:8.3f}")
     lo1, hi1 = res[(2, 1, 0.95)]

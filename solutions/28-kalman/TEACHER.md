@@ -3,8 +3,9 @@
 Teacher only. Rebuilt 2026-10-14 on NAVERA Lite: `navera_lite/kalman.py`, reference in
 `solutions/_navera_lite/navera_lite/kalman.py`, tags `# @part 28 todo 1–5, 7` (cv_model, kf_predict, kf_update,
 Height1D.update, nees, run_filter); given: `Height1D.__init__`, `gate_threshold` (closed-form χ²₂ quantile).
-TODO 6 `nees_band` lives in the lesson folder's `band_sim.py` (an experiment, not a part). No other part is
-needed (no dependency on mission 27's `uncertainty.py`, rebuilt in parallel). This is the SECOND HALF of the old
+TODO 6 `nees_band` lives in the lesson folder's `band_sim.py` (an experiment, not a part). `gate_threshold` calls
+mission 27's `uncertainty.chi2_threshold(p, 2)`, so `uncertainty.py` (27) ships finished, with `estimate` and `geo` by
+closure. This is the SECOND HALF of the old
 mission 26 (covariance/gating/fusion is mission 27 now). No NAVERA code, no NAVERA file: the old lab imported
 NAVERA's own day-vision class to race against; now the race target is `reference_heights.csv`, made by the course's
 own `Height1D`, and the model is described **in words** as the height filter in NAVERA's day-vision code (it exists

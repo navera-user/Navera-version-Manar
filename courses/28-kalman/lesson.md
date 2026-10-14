@@ -17,8 +17,8 @@
 > The lesson: a Kalman filter is only as good as the uncertainties it is given, and the uncertainty it
 > **states** is a promise that others will use. Today you build the filter and you test that promise.
 > **Session 1 — Height keeper:** a filter on height and climb rate, built from two steps, predict and update,
-> that must give **exactly** the same numbers as the course's reference (a filter written exactly as in
-> NAVERA's day-vision code). **Session 2 — Tracker:** a 2-D filter that follows a drone through a 40-second jam and six
+> that must give **exactly** the same numbers as the course's reference (the model of NAVERA's day-vision height
+> filter, written by the course). **Session 2 — Tracker:** a 2-D filter that follows a drone through a 40-second jam and six
 > wrong fixes, a **gate** that refuses the wrong ones, and the **NEES** test that tells an honest filter from
 > a liar.
 >
