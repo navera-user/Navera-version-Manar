@@ -33,8 +33,9 @@
 
 **You need:** convolution and the Sobel kernel divided by 8 (mission 08), homogeneous coordinates and homographies
 (mission 18), numpy arrays. Matrices 2 × 2 and derivatives are refreshed in 🧰 boxes; PyTorch is new and taught
-here. ⏱ Reading: about 100 minutes with the ✏️ checks (Part A, §1–§6, before session 1, about 55 minutes; Part B,
-§7–§9, before session 2). Lab: 4 h 30 to 6 h in two sessions.
+here. ⏱ Reading: 90 to 120 minutes with the ✏️ checks (Part A, §1–§6, before session 1, 55–70 minutes; Part B,
+§7–§9, before session 2, 35–50 minutes). Lab: 3 h 30 to 6 h in two sessions. The whole mission: 5 h (a strong
+programmer) to 8 h (new to PyTorch), about 30 minutes more if your trainings run on the CPU.
 
 **Before you start** — answer without looking (if you miss two, reread mission 08 §4 and mission 18 §7):
 
@@ -148,8 +149,8 @@ The window σ is fixed (1.5 px here). A roof corner is a corner at any height, b
 shows details the map never had: windows, parapets, cars, each a "corner" of its own for a small window. A detector
 that must work at any height should choose, for every point, **its own size**. This is **scale space**: blur the
 picture with growing σ and look, at each point, for the σ where a blob detector (the Laplacian, scaled by σ²) answers
-most strongly. That σ grows in proportion to the structure's size, so the same roof is found at a σ four times larger
-in a photo four times closer. **SIFT** (Lowe, 2004) is built on this idea; **ORB** (Rublee et al., 2011) uses a
+most strongly. That σ grows in proportion to the structure's size: a bright disc of radius r answers most strongly at
+σ = r/√2, the same disc twice as large at twice that σ. **SIFT** (Lowe, 2004) is built on this idea; **ORB** (Rublee et al., 2011) uses a
 simpler pyramid of 8 shrunken copies of the picture.
 
 <details class="further"><summary>Optional — SIFT in four steps, and the pyramid</summary>
@@ -282,7 +283,8 @@ SIFT and ORB were **designed by hand**: someone chose 4 × 4 cells, 8 directions
 network** instead *learns* its own description from examples: thousands of pairs of patches that show the same
 ground point, one from the map and one from a "drone photo" (turned a little, scaled, tilted, blurred, darker,
 noisier). The lab's pairs come from views of NAVERA's test map rendered with exact ground truth, so every pair is
-known to be right. This is how NAVERA's own vision works today: much of it is learned (In NAVERA, below).
+known to be right. NAVERA uses learned networks too, for its former day method and for its night vision, while its
+current day matching uses SIFT (In NAVERA, below): which one wins is measured, not believed.
 
 > [!TIP] 🧰 PyTorch in ten lines
 > ```python
@@ -312,18 +314,18 @@ known to be right. This is how NAVERA's own vision works today: much of it is le
 At the end, each 64-number output is divided by its length, so every descriptor is a unit vector: distances
 between descriptors then lie between 0 and 2, whatever the patch's contrast.
 
-**Worked example — counting parameters.** `conv2 = Conv2d(16, 32, 3)`: each of its 32 filters has 16 × 3 × 3 = 144
-weights and 1 bias, so 32 × 145 = **4 640** parameters. A linear layer from 1 024 inputs to 64 outputs:
-64 × 1 024 + 64 = 65 600. Your whole network has fewer than 100 000: tiny next to the millions of modern vision
-models, small enough to train in seconds on the Jetson's GPU.
+**Worked example — counting parameters.** `Conv2d(3, 8, 5)` (3 input maps, as in a colour picture, 8 filters of
+5 × 5): each filter has 3 × 5 × 5 = 75 weights and 1 bias, so 8 × 76 = **608** parameters. A linear layer from 200
+inputs to 10 outputs: 10 × 200 + 10 = **2 010**. Modern vision models have millions; the course's limit for your
+networks is one million, small enough to train in seconds on the Jetson's GPU. You will count PatchNet's yourself.
 
 > [!QUESTION] ✏️ Check
-> After `conv1` (padding 1) and one 2 × 2 pooling, what is the shape of the output for one 1 × 32 × 32 patch? And
-> after the three blocks?
+> A small network takes a 1 × 24 × 24 patch. Block 1: `Conv2d(1, 8, 3, padding=1)`, ReLU, 2 × 2 pooling. Block 2: the
+> same with 16 maps. What is the shape after each block, and how many numbers does `flatten` give?
 
 <details><summary>Answer</summary>
-16 × 16 × 16 (16 maps, half the size); after three blocks 64 × 4 × 4 = 1 024 numbers, which `flatten` turns into one
-vector for the linear layer.
+8 × 12 × 12 (8 maps, padding keeps 24, pooling halves it), then 16 × 6 × 6, so 576 numbers: a linear layer after it
+must take 576 inputs. (Without padding=1 a 3 × 3 conv shrinks 24 → 22: the sizes no longer halve cleanly.)
 </details>
 
 ## 8. A loss and gradient descent
@@ -347,7 +349,7 @@ the **learning rate**, sets the step size). One weight, worked: loss(w) = (2w �
 ∂loss/∂w = 2(2w − 6)·2 = −24, so w becomes 0 + 0.05 · 24 = 1.2 and the loss falls from 36 to (2.4 − 6)² = 12.96; next
 step: derivative −14.4, w = 1.92, loss 4.67. It slides towards w = 3, where the loss is 0.
 
-A network has 88 896 weights, not one. PyTorch's `loss.backward()` computes all 88 896 derivatives at once
+A network has tens of thousands of parameters, not one. PyTorch's `loss.backward()` computes all their derivatives at once
 (**backpropagation**: the chain rule, applied backwards through the layers), and an **optimiser** applies the
 steps. The lab uses **Adam**, a gradient descent that adapts the step of each weight. One training step is always the
 same four lines: compute the loss on a batch, `opt.zero_grad()` (forget the previous derivatives),
@@ -371,14 +373,18 @@ question is "does it work on ground it has never seen?", which is what a drone n
 
 ![What overfitting looks like: training loss keeps falling, validation loss stops falling and rises](assets/overfit.svg)
 
-While both losses fall, the network is learning something general. When the training loss keeps falling and the
+While both losses fall, the network is learning something general. (In the first epoch the validation loss can even be
+*below* the training loss: the training loss is the mean over the epoch, while the network was still poor at its
+start; the validation loss is measured at the end, with the improved weights.) When the training loss keeps falling and the
 validation loss stops or rises, it is **overfitting**: memorising. More (and more varied) data, fewer epochs, or a
-smaller network fight it. A third set, the **test** set, is kept for the very end: the check of this mission
+smaller network fight it. The validation loss is computed in batches of the same size as training: the triplet loss
+looks for the closest impostor **in the batch**, so with 2 048 pairs at once each anchor would face 2 047 impostors
+instead of 255, and the two losses would not be comparable. A third set, the **test** set, is kept for the very end: the check of this mission
 measures your trained network on pairs you never see.
 
 **The matching score.** Losses compare runs of one network; to compare a network with SIFT or ORB, measure the job:
 in groups of 256 pairs, take each map patch, find the nearest of the 256 photo descriptors, and count how often it
-is the right one. Random descriptors score 1/256 ≈ 0.004 at best by luck; a perfect descriptor 1.0.
+is the right one. Random descriptors score about 1/256 ≈ 0.004 on average (pure luck); a perfect descriptor 1.0.
 
 > [!QUESTION] ✏️ Check
 > Your network scores 0.99 on its training pairs and 0.70 on validation pairs from other places. What do you
@@ -391,7 +397,7 @@ where the validation loss is lowest), or a smaller network. Never judge a networ
 
 > [!WARNING] Common wrong ideas (Part B)
 > - "The training loss went down, so the network works." Only the validation (and later the test) score says that.
-> - "A neural network is magic." It is 88 896 numbers changed by gradient descent to make one loss smaller: it learns
+> - "A neural network is magic." It is tens of thousands of numbers changed by gradient descent to make one loss smaller: it learns
 >   exactly what the data and the loss ask for, including the data's flaws (here: a drawn map, not a real camera).
 > - "`loss.item()` inside the loss is fine." A plain Python number has no gradient: keep tensors until `backward()`.
 > - "Validate on random pairs of the training places." Neighbouring patches share ground: that measures memory.
@@ -425,7 +431,8 @@ median error of 351 m and the autopilot failed safe after 45 s: "day vision is u
 
 Given: `harris_corners`, `detect` (OpenCV's ORB and SIFT), `clahe`, `warp_points`, `spread`, `matchability`,
 `to_tensor`, `describe`, `nn_accuracy`, `load_weights`, and mission 08's `image.py`. Your trained weights file,
-`my_desc.pt`, is a part of your stack too: mission 22 matches with it, and Sim Lite (31) can fly it.
+`my_desc.pt` (with its training log, `logs/my_desc.pt.json`), is a part of your stack too: mission 22 matches with
+it, and Sim Lite (31) can fly it.
 
 ## 🐦 How birds do it
 

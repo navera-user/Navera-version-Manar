@@ -1,0 +1,54 @@
+{
+ "weights": "my_desc.pt",
+ "sha256": "58d9b361591f76126dedf9e1f42083726b2add37e7181d574b2961a869d4f18b",
+ "n_train": 12288,
+ "epochs": 8,
+ "batch": 256,
+ "margin": 0.5,
+ "negatives": "hardest",
+ "device": "cuda",
+ "seconds": 14.9,
+ "val_score": 0.9629,
+ "history": [
+  {
+   "epoch": 1,
+   "train_loss": 0.28986697861303884,
+   "val_loss": 0.2244646567851305
+  },
+  {
+   "epoch": 2,
+   "train_loss": 0.19957074616104364,
+   "val_loss": 0.19328595139086246
+  },
+  {
+   "epoch": 3,
+   "train_loss": 0.17003274212280908,
+   "val_loss": 0.1761160590685904
+  },
+  {
+   "epoch": 4,
+   "train_loss": 0.15113185190906128,
+   "val_loss": 0.167056605219841
+  },
+  {
+   "epoch": 5,
+   "train_loss": 0.13832256073753038,
+   "val_loss": 0.15895552281290293
+  },
+  {
+   "epoch": 6,
+   "train_loss": 0.12577708872656027,
+   "val_loss": 0.15428401716053486
+  },
+  {
+   "epoch": 7,
+   "train_loss": 0.11742654209956527,
+   "val_loss": 0.14935085643082857
+  },
+  {
+   "epoch": 8,
+   "train_loss": 0.10981311354165275,
+   "val_loss": 0.14821715001016855
+  }
+ ]
+}

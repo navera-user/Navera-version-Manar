@@ -1,0 +1,85 @@
+"""Share the one Jetson GPU between every student: at most N trainings at once, and few CPU threads.
+
+    from academy_gpu import torch_device
+    with torch_device() as device:          # waits for a free GPU slot (or uses the CPU)
+        model.to(device); ...train...
+
+The platform gives every sandbox the same slot folder (env ACADEMY_GPU_SLOTS="folder:N"). A slot is a lock
+file held with flock while the block runs; the lock goes away by itself when the process ends, even after
+Ctrl+C or a crash. Outside the academy (no ACADEMY_GPU_SLOTS) the GPU is used freely.
+"""
+import contextlib
+import fcntl
+import os
+import sys
+import time
+
+CPU_THREADS = 2          # measured 2026-10-15: 6 threads per process made a busy Jetson ~12x slower
+
+
+def limit_threads(n=CPU_THREADS):
+    """Use at most n CPU threads in torch (call once, before any work)."""
+    try:
+        import torch
+        torch.set_num_threads(n)
+    except Exception:
+        pass
+
+
+@contextlib.contextmanager
+def gpu_slot(wait_s=600.0, quiet=False):
+    """Hold one of the shared GPU slots while the block runs; yields True, or False if no GPU slot was free
+    within wait_s seconds (then use the CPU)."""
+    spec = os.environ.get("ACADEMY_GPU_SLOTS", "")
+    if not spec:
+        yield True
+        return
+    folder, _, n = spec.rpartition(":")
+    n = max(1, int(n or 1))
+    deadline, told = time.monotonic() + wait_s, False
+    while True:
+        for i in range(n):
+            f = open(os.path.join(folder, f"slot{i}"), "a")
+            try:
+                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                f.close()
+                continue
+            try:
+                yield True
+            finally:
+                fcntl.flock(f, fcntl.LOCK_UN)
+                f.close()
+            return
+        if time.monotonic() >= deadline:
+            yield False
+            return
+        if not told and not quiet:
+            print(f"The GPU is busy ({n} trainings are running in the class): waiting for a free slot…",
+                  file=sys.stderr, flush=True)
+            told = True
+        time.sleep(2.0)
+
+
+@contextlib.contextmanager
+def torch_device(wait_s=600.0, quiet=False):
+    """"cuda" while holding a GPU slot, else "cpu" (no GPU, or none free within wait_s). Also limits threads."""
+    limit_threads()
+    try:
+        import torch
+        has_gpu = torch.cuda.is_available()
+    except Exception:
+        has_gpu = False
+    if not has_gpu:
+        yield "cpu"
+        return
+    with gpu_slot(wait_s, quiet) as ok:
+        if not ok and not quiet:
+            print("No GPU slot came free: training on the CPU (slower).", file=sys.stderr, flush=True)
+        yield "cuda" if ok else "cpu"
+        if ok:
+            try:
+                import torch
+                torch.cuda.empty_cache()
+            except Exception:
+                pass

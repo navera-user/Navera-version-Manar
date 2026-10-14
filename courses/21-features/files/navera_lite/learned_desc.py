@@ -3,8 +3,8 @@
 the triplet loss, the training loop, and the helpers that turn patches into tensors and descriptors.
 Part of NAVERA Lite, the course's teaching stack (mission 21). Written for the course; it is not NAVERA code.
 
-A patch is a small grey square cut around a keypoint, uint8, PATCH_PX × PATCH_PX (the data set stores 48 × 48:
-the network sees its central 32 × 32). A descriptor is DIM numbers of length 1 (a unit vector): two patches of the
+A patch is a small grey square cut around a keypoint, uint8 (the training pairs are 32 × 32, the validation and test
+pairs 48 × 48 so that OpenCV can describe them too; the network always sees the central PATCH_PX × PATCH_PX). A descriptor is DIM numbers of length 1 (a unit vector): two patches of the
 same ground point should give close descriptors (small Euclidean distance), two different points far ones.
 Weights are saved as a state_dict (torch.save(model.state_dict(), path)) and loaded with weights_only=True:
 a weights file holds numbers only, never code.
@@ -42,28 +42,28 @@ def to_tensor(patches, device="cpu"):
 
 # TODO 7 ---------------------------------------------------------------------------------------
 class PatchNet(nn.Module):
-    """A small CNN: one grey patch (1, 32, 32) in, one descriptor of DIM = 64 numbers of length 1 out.
-    Layers, with these attribute NAMES (the check and missions 22–31 load your weights into them):
+    """A small CNN: one grey patch (1, 32, 32) in, one descriptor of DIM = 64 numbers of length 1 out (lesson §7).
+    The rule (derive every size from it; the check, mission 22 and Sim Lite load your weights into these NAMES):
 
-        conv1 = nn.Conv2d(1, 16, 3, padding=1)    then ReLU, then 2 × 2 max-pooling     → (16, 16, 16)
-        conv2 = nn.Conv2d(16, 32, 3, padding=1)   then ReLU, then 2 × 2 max-pooling     → (32, 8, 8)
-        conv3 = nn.Conv2d(32, 64, 3, padding=1)   then ReLU, then 2 × 2 max-pooling     → (64, 4, 4)
-        fc    = nn.Linear(64 * 4 * 4, DIM)        on the flattened maps, then scale each output vector to length 1
+        three blocks conv1, conv2, conv3. One block = a 3 × 3 nn.Conv2d that keeps the width and height (padding=1),
+            then ReLU, then 2 × 2 max-pooling (half the width, half the height).
+            conv1 turns the 1 input map into 16 maps; each later block DOUBLES the number of maps.
+        fc = one nn.Linear from ALL the numbers of the last block's maps (flattened) to DIM,
+            then each output row is divided by its length.
 
-    forward(x): x is a float tensor (N, 1, 32, 32) (from to_tensor); returns a tensor (N, DIM), every row of
-    length 1. 88 896 parameters.
+    forward(x): x is a float tensor (N, 1, 32, 32) (from to_tensor); returns a tensor (N, DIM), rows of length 1.
     Example: PatchNet()(torch.zeros(2, 1, 32, 32)).shape → torch.Size([2, 64]), and each row has length 1.0
     """
 
     def __init__(self):
-        """Create the four layers of the table above, with those names (call super().__init__() first).
+        """Create the four layers of the rule above, with those names (call super().__init__() first).
 
-        Example: sum(p.numel() for p in PatchNet().parameters()) → 88896
+        Example: [name for name, _ in PatchNet().named_children()] → ['conv1', 'conv2', 'conv3', 'fc']
         """
         raise NotImplementedError("TODO 7")
 
     def forward(self, x):
-        """The descriptors of a batch: (N, 1, 32, 32) → (N, DIM), each row of length 1 (the table above, in order).
+        """The descriptors of a batch: (N, 1, 32, 32) → (N, DIM), each row of length 1 (the rule above, in order).
 
         Example: PatchNet()(torch.zeros(2, 1, 32, 32)).norm(dim=1) → tensor([1., 1.])
         """
@@ -89,12 +89,14 @@ def train(model, train_a, train_p, val_a, val_p, epochs=8, lr=1e-3, batch=256, s
     """Train `model` with your triplet_loss and the Adam optimiser on the pairs (train_a[i], train_p[i]) = two views
     of one ground point; after every epoch, measure the loss on the validation pairs WITHOUT learning from them.
 
-    Inputs: train_a, train_p, val_a, val_p: float tensors (N, 1, 32, 32) (to_tensor), already on `device`; epochs
-    passes over the training pairs, in a new random order each time (torch.Generator seeded with `seed`), in batches
-    of `batch` pairs (the last, smaller batch too if it has ≥ 2 pairs); learning rate lr. log: None, or a function
-    called as log(row) after each epoch (the runner prints the row).
+    Inputs: train_a, train_p, val_a, val_p: float tensors (N, 1, 32, 32) (to_tensor), already on `device`.
+    The order (so that two runs with the same seed are identical): ONE generator g = torch.Generator().manual_seed(seed)
+    before the epochs; each epoch's order is torch.randperm(n, generator=g) (n training pairs), cut into batches
+    order[0:batch], order[batch:2·batch], … in that order; a last batch of fewer than 2 pairs is skipped. lr: Adam's
+    learning rate. The validation loss: in batches of `batch` (val[0:batch], val[batch:2·batch], …), averaged.
+    log: None, or a function called as log(row) after each epoch (the runner prints the row).
     Returns the history: a list with one dict per epoch {"epoch": 1, 2, …, "train_loss": mean of that epoch's batch
-    losses, "val_loss": the loss on the validation pairs, in batches of `batch`, averaged} — floats.
+    losses, "val_loss": the validation loss} — Python floats.
     Example: with 512 training and 256 validation pairs, epochs=3 → a list of 3 dicts whose "train_loss" usually
              goes down, e.g. [{"epoch": 1, "train_loss": 0.47, "val_loss": 0.45}, {"epoch": 2, …}, {"epoch": 3, …}]
     """
@@ -120,7 +122,7 @@ def describe(model, patches, device="cpu", batch=1024):
 
 # given — read it and use it, no need to change it
 def nn_accuracy(d1, d2, metric="l2", gallery=256):
-    """The matching score of a descriptor (lesson §8): d1[i] and d2[i] describe the same ground point. In groups of
+    """The matching score of a descriptor (lesson §9): d1[i] and d2[i] describe the same ground point. In groups of
     `gallery` pairs, each d1[i] is compared with the d2 of its whole group; it is right when its nearest one is d2[i].
     Returns the share of right answers (0 to 1). metric: "l2" (float descriptors) or "hamming" (ORB's uint8 rows).
 

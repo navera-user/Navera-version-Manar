@@ -9,15 +9,23 @@ pictures and patches, and draws them.
     python3 run_features.py terrain       keypoints and matchability of every terrain, and what CLAHE does          (Step 5)
   Session 2 — Learner
     python3 run_features.py hamming       ORB descriptors: the same ground point vs two random points               (Step 6)
-    python3 run_features.py train         train YOUR PatchNet and save it in my_desc.pt                             (Step 9)
-          options:  --n-train N (default: all 12 288 pairs)  --epochs E (default 8)  --device cpu|cuda
-                    --out FILE (default my_desc.pt)
-    python3 run_features.py compare       matching score of raw pixels, ORB, SIFT and your network                   (Step 11)
+    python3 run_features.py patches       8 training pairs and 8 random non-pairs, as the network sees them         (Step 7)
+    python3 run_features.py train         train YOUR PatchNet, save the weights and their log                      (Step 10)
+          options:  --n-train N (default: all 12 288 pairs)  --epochs E (default 8)  --device cpu
+                    --out FILE (default my_desc.pt)   and for Step 13 ONE of:
+                    --margin M (default 0.5)  --batch B (default 256)  --negatives all (default: hardest)
+    python3 run_features.py filters       conv1's 16 filters: your trained network vs an untrained one             (Step 11)
+    python3 run_features.py compare       matching score of raw pixels, ORB, SIFT and your network; its failures   (Step 12)
           option:   --weights FILE (default my_desc.pt)
 
+Training and inference share the class's GPU through academy_gpu.py (at most 3 GPU jobs at once: the runner
+waits for a free slot, or uses the CPU). Every training writes logs/<FILE>.json: its settings, its loss curves and a
+fingerprint (SHA-256) of the weights it saved — the check compares it with your weights file.
 Pictures are saved in out/ — click them in the file list of the 📝 Code tab. Map pictures: data © OpenStreetMap
 contributors.
 """
+import contextlib
+import hashlib
 import json
 import os
 import sys
@@ -27,6 +35,7 @@ import cv2
 import numpy as np
 
 import runner_kit as rk
+from academy_gpu import limit_threads, torch_device
 
 # ---- you don't need to change anything in this file (but you can read it!) ----
 
@@ -43,8 +52,10 @@ def _hint(e):
     if "unpackbits" in s or ("ufunc" in s and "bitwise" in s):
         return " — np.bitwise_xor and np.unpackbits need uint8 arrays: np.asarray(d, dtype=np.uint8)"
     if "mat1 and mat2 shapes cannot be multiplied" in s:
-        return (" — the Linear layer got the wrong number of inputs: after three 2 × 2 poolings a 32 × 32 patch is "
-                "4 × 4, with 64 maps: flatten to 64 * 4 * 4 = 1024 numbers per patch (x.flatten(1))")
+        return (" — the Linear layer got another number of inputs than it was built for. The first number after the "
+                "'x' is what reached fc per patch: compute by hand what three blocks make of a 1 × 32 × 32 patch "
+                "(maps × height × width). A conv without padding=1 shrinks the picture by 2 (32 → 30), so the "
+                "sizes no longer halve cleanly (lab Step 8, hint 3)")
     if "Expected 4D" in s or "Expected 3D (unbatched) or 4D" in s:
         return " — a Conv2d wants (N, 1, 32, 32): use the tensors of to_tensor(), not the uint8 patches"
     if "does not require grad" in s:
@@ -52,8 +63,14 @@ def _hint(e):
                 "torch.tensor(...) of a result)")
     if "cannot assign module before Module.__init__()" in s:
         return " — write super().__init__() as the FIRST line of PatchNet.__init__"
-    if "same device" in s or "Expected all tensors to be on the same device" in s:
-        return " — the model and the tensors must be on the same device: model.to(device)"
+    if "mask" in s and ("device" in s or "cuda" in s):
+        return (" — the MASK lives on the CPU while the distances are on the GPU: create it on the data's device, "
+                "torch.eye(len(da), dtype=torch.bool, device=da.device) (lab Step 9, hint 5). The runner already "
+                "moves the model and the patches")
+    if "same device" in s or "Expected all tensors to be on the same device" in s or "device type" in s:
+        return (" — two tensors live on different devices (CPU and GPU). The runner moves the model and the patches; "
+                "a tensor YOU create inside triplet_loss or train (torch.eye, torch.zeros, torch.randperm…) must be "
+                "put on the data's device: device=da.device or .to(train_a.device)")
     return _kit_hint(e)
 
 
@@ -183,28 +200,37 @@ def test():
         import torch
     except ImportError:
         sys.exit("PyTorch is not installed in this sandbox: tell your teacher.")
+    limit_threads()
     net, e = rk.call(ld, "PatchNet")
     if not e:
         n = sum(p.numel() for p in net.parameters())
-        names = sorted({k.split(".")[0] for k in net.state_dict()})
+        names = [name for name, _ in net.named_children()]
         out, e2 = rk.call(net, "forward", torch.zeros(2, 1, 32, 32))
         if e2:
             line(7, "PatchNet", None, e2, False, "")
         else:
             shape_ok = tuple(out.shape) == (2, 64)
-            unit = shape_ok and bool(torch.allclose(out.norm(dim=1), torch.ones(2), atol=1e-4))
-            note = (f"{n} parameters, layers {names}. The docstring says 88896 parameters, layers "
-                    "['conv1', 'conv2', 'conv3', 'fc'], output (2, 64) with rows of length 1")
-            if shape_ok and not unit:
-                note += " — scale each row to length 1 at the end (F.normalize(x, dim=1))"
-            line(7, "PatchNet", f"{n} parameters, output {tuple(out.shape)}, row lengths "
-                 f"{[round(float(x), 4) for x in out.detach().norm(dim=1)]}", None,
-                 n == 88896 and names == ["conv1", "conv2", "conv3", "fc"] and unit, note)
+            unit = shape_ok and bool(torch.allclose(out.detach().norm(dim=1), torch.ones(2), atol=1e-4))
+            sizes_ok = n == 88896
+            if names != ["conv1", "conv2", "conv3", "fc"]:
+                note = f"the layers are {names}: the docstring's names are conv1, conv2, conv3, fc, in that order"
+            elif not shape_ok:
+                note = f"the output has shape {tuple(out.shape)}, the docstring says (2, 64)"
+            elif not unit:
+                note = "the rows must have length 1: divide each row by its length at the end (lab Step 8 🧰)"
+            else:
+                note = (f"{n} parameters: not what the rule gives — recompute each layer's sizes "
+                        "(the maps double each block; fc takes ALL the numbers of the last block; padding=1)")
+            line(7, "PatchNet", f"layers {names}, output {tuple(out.shape)}, row lengths "
+                 f"{[round(float(x), 4) for x in out.detach().norm(dim=1)]}, sizes "
+                 f"{'follow the rule' if sizes_ok else 'do NOT follow the rule'}", None,
+                 sizes_ok and names == ["conv1", "conv2", "conv3", "fc"] and unit, note)
     else:
         line(7, "PatchNet", None, e, False, "")
+    cases = ((torch.tensor([[0.6, 0.8], [0.8, 0.6]]), 0.7620, "docstring"),
+             (torch.tensor([[0.8, 0.6], [0.6, 0.8]]), 0.2380, "second case"))
     da = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
-    for dp, want, label in ((torch.tensor([[0.6, 0.8], [0.8, 0.6]]), 0.7620, "docstring"),
-                            (torch.tensor([[0.8, 0.6], [0.6, 0.8]]), 0.2380, "second case")):
+    for dp, want, label in cases:
         v, e = rk.call(ld, "triplet_loss", da, dp)
         if e:
             line(8, "triplet_loss", None, e, False, "")
@@ -212,19 +238,32 @@ def test():
         val = float(v.detach()) if hasattr(v, "detach") else float(v)
         note = f"the {label} expects {want:.4f}. "
         if abs(val - (want - 0.5)) < 1e-3:
-            note += "Exactly 0.5 too small: the margin is missing (lab Step 8)"
+            note += "Exactly 0.5 too small: the margin is missing (lab Step 9, hint 2)"
         elif abs(val - 0.5) < 1e-3:
-            note += "0.5: the diagonal was not left out, so d_neg = d_pos (lab Step 8, hint 3)"
+            note += "0.5: the diagonal was not left out, so d_neg = d_pos (lab Step 9, hint 3)"
         elif abs(val - 2 * want) < 1e-3:
             note += "twice too big: the SUM — the docstring asks for the mean"
         else:
-            note += "Lab Step 8, hints"
+            note += "Lab Step 9, hints"
         line(8, f"triplet_loss ({label})", f"{val:.4f}", None, abs(val - want) < 1e-3, note)
+    if torch.cuda.is_available():
+        with torch_device(wait_s=20, quiet=True) as dev:
+            if dev == "cuda":
+                v, e = rk.call(ld, "triplet_loss", da.to(dev), cases[0][0].to(dev))
+                if e and ("device" in e or "cuda" in e):
+                    line(8, "triplet_loss (GPU)", None, "on the GPU it fails: a tensor you create inside (the mask?) "
+                         "is on the CPU — torch.eye(len(da), dtype=torch.bool, device=da.device) (lab Step 9, hint 5)",
+                         False, "")
+                elif e:
+                    line(8, "triplet_loss (GPU)", None, e, False, "")
+                else:
+                    line(8, "triplet_loss (GPU)", f"{float(v.detach().cpu()):.4f}", None,
+                         abs(float(v.detach().cpu()) - 0.7620) < 1e-3, "the GPU gives another value than the CPU")
     if not ok_all:
-        print("\nTODO 9 (train) is tested by `python3 run_features.py train --n-train 512 --epochs 3` once TODO 7–8 "
-              "are ✔.")
+        print("\nTODO 9 (train) is tested by `python3 run_features.py train --n-train 512 --epochs 3 --out quick.pt` "
+              "once TODO 7–8 are ✔.")
     else:
-        print("\nAll examples ✔. TODO 9: python3 run_features.py train --n-train 512 --epochs 3")
+        print("\nAll examples ✔. TODO 9: python3 run_features.py train --n-train 512 --epochs 3 --out quick.pt")
 
 
 # ================================================================================================= session 1
@@ -322,7 +361,7 @@ def repeat():
               f"{row['sift']:7.2f} {row['chance']:7.2f}")
     plt = rk.plt_or_none()
     if plt:
-        fig, ax = plt.subplots(figsize=(9, 4))
+        fig, ax = plt.subplots(figsize=(10.5, 4))
         names = list(rows)
         x = np.arange(len(names))
         for i, (m, c) in enumerate((("harris", "#d95f02"), ("orb", "#1b9e77"), ("sift", "#7570b3"))):
@@ -331,7 +370,7 @@ def repeat():
         ax.set_xticks(x, names, rotation=20, fontsize=8)
         ax.set_ylabel("repeatability")
         ax.set_ylim(0, 1)
-        ax.legend()
+        ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1.0))
         fig.tight_layout()
         os.makedirs(OUT, exist_ok=True)
         fig.savefig(os.path.join(OUT, "repeat.png"), dpi=90)
@@ -344,15 +383,21 @@ TERRAINS = ["city", "olives", "fields", "saltpans", "coast", "sea"]
 def terrain():
     print(f"  {'picture':24s} {'SIFT':>6s} {'SIFT 0.02':>9s} {'match':>6s}  reason")
     shots = []
+    counts = {}
     for name in [f"terrain_{t}.png" for t in TERRAINS] + ["drone_city.jpg", "drone_city_dark.jpg",
                                                           "real_town.jpg", "real_coast.jpg"]:
         g = gray(name)
-        n = len(feat.detect(g, "sift", 100000)[0])
-        n2 = len(feat.detect(g, "sift", 100000, contrast=0.02)[0])
+        pts = feat.detect(g, "sift", 100000)[0]
+        n, n2 = len(pts), len(feat.detect(g, "sift", 100000, contrast=0.02)[0])
         score, reason = feat.matchability(g)
         print(f"  {name:24s} {n:6d} {n2:9d} {score:6.2f}  {reason}")
         if name.startswith("terrain_"):
-            shots.append(cv2.resize(colour(name), (256, 256)))
+            tile = colour(name).copy()
+            step = max(1, n // 400)                                     # at most 400 circles: still readable
+            for x, y in pts[::step]:
+                cv2.circle(tile, (int(round(x)), int(round(y))), 4, (0, 0, 255), 1, cv2.LINE_AA)
+            shots.append(cv2.resize(tile, (256, 256), interpolation=cv2.INTER_AREA))
+            counts[name[8:-4]] = n
     dark = gray("drone_city_dark.jpg")
     boosted = feat.clahe(dark)
     nb, na = len(feat.detect(dark, "sift", 100000)[0]), len(feat.detect(boosted, "sift", 100000)[0])
@@ -365,12 +410,14 @@ def terrain():
     os.makedirs(OUT, exist_ok=True)
     grid = np.vstack([np.hstack(shots[:3]), np.hstack(shots[3:])])
     for i, t in enumerate(TERRAINS):
-        cv2.putText(grid, t, (8 + 256 * (i % 3), 22 + 256 * (i // 3)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 3)
-        cv2.putText(grid, t, (8 + 256 * (i % 3), 22 + 256 * (i // 3)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+        label = f"{t} {counts[t]}"
+        cv2.putText(grid, label, (8 + 256 * (i % 3), 22 + 256 * (i // 3)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 3)
+        cv2.putText(grid, label, (8 + 256 * (i % 3), 22 + 256 * (i // 3)), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                    (255, 255, 255), 1)
     cv2.imwrite(os.path.join(OUT, "terrains.png"), stamp(grid))
     side = np.hstack([cv2.cvtColor(dark, cv2.COLOR_GRAY2BGR), cv2.cvtColor(boosted, cv2.COLOR_GRAY2BGR)])
     cv2.imwrite(os.path.join(OUT, "clahe_dark.png"), stamp(side))
-    rk.saved("out/terrains.png and out/clahe_dark.png (left: before, right: after CLAHE)")
+    rk.saved("out/terrains.png (red circles: SIFT keypoints, at most 400 drawn) and out/clahe_dark.png (left: before, right: after CLAHE)")
 
 
 # ================================================================================================= session 2
@@ -425,45 +472,130 @@ def load_patches(name):
     return d["a"], d["b"]
 
 
+def patches_mode():
+    ta, tp = load_patches("patches_train.npz")
+    rng = np.random.default_rng(7)
+    idx = rng.choice(len(ta), 8, replace=False)
+    other = rng.choice(len(ta), 8, replace=False)
+    big = lambda p: cv2.resize(p, (96, 96), interpolation=cv2.INTER_NEAREST)        # noqa: E731
+    gap = np.full((96, 6), 255, np.uint8)
+    row = lambda ims: np.hstack(sum([[big(x), gap] for x in ims], [])[:-1])          # noqa: E731
+    width = row(ta[idx]).shape[1]
+
+    def label(text):
+        strip = np.full((20, width), 255, np.uint8)
+        cv2.putText(strip, text, (4, 14), cv2.FONT_HERSHEY_SIMPLEX, 0.45, 0, 1, cv2.LINE_AA)
+        return strip
+    grid = np.vstack([label("map patches"), row(ta[idx]), label("the SAME places in the drone photo"), row(tp[idx]),
+                      label("8 OTHER places in the drone photo (non-pairs)"), row(tp[other])])
+    out = cv2.cvtColor(grid, cv2.COLOR_GRAY2BGR)
+    os.makedirs(OUT, exist_ok=True)
+    cv2.imwrite(os.path.join(OUT, "patches.png"), stamp(out))
+    print(f"{len(ta)} training pairs of {ta.shape[1]} × {ta.shape[2]} px. Columns 1–8: pairs (top: map, middle: photo);")
+    print("bottom row: photo patches of 8 other places, the kind of impostor the loss must push away.")
+    rk.saved("out/patches.png")
+
+
+def all_negatives_loss(da, dp, margin=0.5):
+    """Step 13 option `--negatives all`: the mean over EVERY impostor j ≠ i of max(0, margin + d_pos − d(da[i], dp[j]))
+    instead of the hardest one only (written for the course, not by you)."""
+    import torch
+    d = torch.cdist(da, dp)
+    pos = d.diagonal().unsqueeze(1)
+    off = ~torch.eye(len(da), dtype=torch.bool, device=da.device)
+    return torch.relu(margin + pos - d)[off].mean()
+
+
+def sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def number_row(history):
+    """One plain sentence for a history the runner cannot use, or None."""
+    if not isinstance(history, list) or not history:
+        return f"train() must return a list with one dict per epoch, got {type(history).__name__}"
+    for i, row in enumerate(history):
+        if not isinstance(row, dict):
+            return f"history[{i}] must be a dict, got {type(row).__name__}"
+        missing = {"epoch", "train_loss", "val_loss"} - set(row)
+        if missing:
+            return f"each row of the history needs the keys epoch, train_loss, val_loss — missing {sorted(missing)}"
+        for k in ("train_loss", "val_loss"):
+            if isinstance(row[k], bool) or not isinstance(row[k], (int, float)):
+                return (f"history[{i}]['{k}'] is a {type(row[k]).__name__}: store a Python number "
+                        "(loss.item(), or float(...) of a mean)")
+    got = [r["epoch"] for r in history]
+    if got != list(range(1, len(history) + 1)):
+        return f"the epochs must be numbered 1, 2, 3…, got {got}"
+    return None
+
+
 def train_mode():
+    import functools
     import torch
     ld = learned()
-    device = option("--device", "cuda" if torch.cuda.is_available() else "cpu")
-    if device == "cuda" and not torch.cuda.is_available():
-        sys.exit("no GPU here: use --device cpu")
     n_train = option("--n-train", 0, int)
     epochs = option("--epochs", 8, int)
     out = option("--out", "my_desc.pt")
+    margin = option("--margin", 0.5, float)
+    batch = option("--batch", 256, int)
+    negatives = option("--negatives", "hardest")
+    if negatives not in ("hardest", "all"):
+        sys.exit("--negatives is 'hardest' (the default) or 'all'")
+    if out.endswith(".json") or "/" in out:
+        sys.exit("--out is a file name in this folder, e.g. --out exp.pt")
     ta, tp = load_patches("patches_train.npz")
     va, vp = load_patches("patches_val.npz")
     if n_train:
         ta, tp = ta[:n_train], tp[:n_train]
+    if negatives == "all":
+        ld.triplet_loss = functools.partial(all_negatives_loss, margin=margin)        # the course's variant
+    elif margin != 0.5:
+        ld.triplet_loss = functools.partial(ld.triplet_loss, margin=margin)          # YOUR loss, another margin
     model, err = rk.call(ld, "PatchNet")
     if err:
         sys.exit(err)
-    model = model.to(device)
-    t0 = time.time()
-    print(f"Training PatchNet on {len(ta)} pairs ({epochs} epochs, {device}); validation: {len(va)} pairs of other "
-          f"places.\n  epoch  train loss  val loss   time")
+    want_cpu = option("--device", "auto") == "cpu"
+    if want_cpu:
+        limit_threads()
+    with (contextlib.nullcontext("cpu") if want_cpu else torch_device()) as device:
+        model = model.to(device)
+        t0 = time.time()
+        print(f"Training PatchNet on {len(ta)} pairs ({epochs} epochs, {device}, batch {batch}, margin {margin}, "
+              f"negatives {negatives}); validation: {len(va)} pairs of other places.")
+        print("  epoch  train loss  val loss   elapsed")
 
-    def log(row):
-        print(f"  {row.get('epoch', '?'):>5}  {row.get('train_loss', float('nan')):10.4f}  "
-              f"{row.get('val_loss', float('nan')):8.4f}  {time.time() - t0:5.1f} s", flush=True, file=sys.__stdout__)
+        def log(row):
+            try:
+                print(f"  {row.get('epoch', '?'):>5}  {float(row.get('train_loss', float('nan'))):10.4f}  "
+                      f"{float(row.get('val_loss', float('nan'))):8.4f}  {time.time() - t0:6.1f} s",
+                      flush=True, file=sys.__stdout__)
+            except (TypeError, ValueError, AttributeError, RuntimeError):
+                print(f"  (a row the runner cannot print: {row!r:.80})", file=sys.__stdout__)
 
-    history, err = rk.call(ld, "train", model, ld.to_tensor(ta, device), ld.to_tensor(tp, device),
-                           ld.to_tensor(va, device), ld.to_tensor(vp, device), epochs=epochs, device=device, log=log)
-    if err:
-        sys.exit(err)
-    if not isinstance(history, list) or not history or not all(isinstance(r, dict) for r in history):
-        sys.exit(f"train() must return a list with one dict per epoch, got {type(history).__name__}")
-    missing = {"epoch", "train_loss", "val_loss"} - set(history[0])
-    if missing:
-        sys.exit(f"each row of the history needs the keys epoch, train_loss, val_loss — missing {sorted(missing)}")
-    if len(history) != epochs:
-        print(f"⚠ the history has {len(history)} rows for {epochs} epochs")
-    torch.save(model.state_dict(), out)
-    acc = ld.nn_accuracy(ld.describe(model, va, device), ld.describe(model, vp, device))
-    print(f"\nsaved {out} ({os.path.getsize(out) / 1e3:.0f} kB). Matching score on the validation pairs: {acc:.3f}")
+        history, err = rk.call(ld, "train", model, ld.to_tensor(ta, device), ld.to_tensor(tp, device),
+                               ld.to_tensor(va, device), ld.to_tensor(vp, device), epochs=epochs, batch=batch,
+                               device=device, log=log)
+        if err:
+            sys.exit(err)
+        bad = number_row(history)
+        if bad:
+            sys.exit(bad)
+        torch.save(model.state_dict(), out)
+        acc = ld.nn_accuracy(ld.describe(model, va, device), ld.describe(model, vp, device))
+        took = time.time() - t0
+    os.makedirs("logs", exist_ok=True)
+    record = {"weights": out, "sha256": sha256(out), "n_train": len(ta), "epochs": epochs, "batch": batch,
+              "margin": margin, "negatives": negatives, "device": device, "seconds": round(took, 1),
+              "val_score": round(float(acc), 4), "history": history}
+    with open(os.path.join("logs", out + ".json"), "w") as f:
+        json.dump(record, f, indent=1)
+    print(f"\nsaved {out} ({os.path.getsize(out) / 1e3:.0f} kB) and logs/{out}.json. Matching score on the validation "
+          f"pairs: {acc:.3f}")
     plt = rk.plt_or_none()
     if plt:
         fig, ax = plt.subplots(figsize=(6, 3.5))
@@ -471,19 +603,63 @@ def train_mode():
         ax.plot([r["epoch"] for r in history], [r["val_loss"] for r in history], "s-", label="validation")
         ax.set_xlabel("epoch")
         ax.set_ylabel("triplet loss")
-        ax.set_title(f"{len(ta)} training pairs")
+        ax.set_ylim(0, max(0.5, max(r["val_loss"] for r in history) * 1.1))          # one scale for every run
+        ax.set_title(f"{out}: {len(ta)} training pairs")
         ax.legend()
         fig.tight_layout()
         os.makedirs(OUT, exist_ok=True)
-        name = f"loss_{len(ta)}.png"
+        name = f"loss_{out.rsplit('.', 1)[0]}.png"
         fig.savefig(os.path.join(OUT, name), dpi=90)
         rk.saved(f"out/{name}")
 
 
+def load_or_exit(ld, weights):
+    if not os.path.exists(weights):
+        sys.exit(f"{weights} does not exist: run `python3 run_features.py train` first")
+    try:
+        return ld.load_weights(weights)
+    except Exception as e:                                           # noqa: BLE001
+        sys.exit(f"{weights} does not fit PatchNet ({type(e).__name__}: {str(e).splitlines()[0][:160]}) — "
+                 "did you change the layers or their names, or retrain after changing them?")
+
+
+def filters_mode():
+    import torch
+    ld = learned()
+    limit_threads()
+    mine = load_or_exit(ld, option("--weights", "my_desc.pt"))
+    torch.manual_seed(0)
+    fresh, err = rk.call(ld, "PatchNet")
+    if err:
+        sys.exit(err)
+    plt = rk.plt_or_none()
+    if not plt:
+        sys.exit("matplotlib is missing: cannot draw the filters")
+    fig, axes = plt.subplots(4, 8, figsize=(9, 5))
+    for r, (net, title) in enumerate(((fresh, "untrained"), (mine, "trained"))):
+        w = net.conv1.weight.detach().cpu().numpy()[:, 0]
+        for i in range(16):
+            ax = axes[2 * r + i // 8, i % 8]
+            m = float(np.abs(w[i]).max()) or 1.0
+            ax.imshow(w[i], cmap="RdBu_r", vmin=-m, vmax=m)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            if i == 0:
+                ax.set_ylabel(title, fontsize=9)
+    fig.suptitle("conv1's 16 filters (3 × 3): red = positive weight, blue = negative")
+    fig.tight_layout()
+    os.makedirs(OUT, exist_ok=True)
+    fig.savefig(os.path.join(OUT, "filters.png"), dpi=90)
+    print("Top two rows: an untrained PatchNet (random weights). Bottom two rows: your trained network.")
+    print("Compare with mission 08's Sobel kernel [[1, 0, −1], [2, 0, −2], [1, 0, −1]] / 8.")
+    rk.saved("out/filters.png")
+
+
 def opencv_descriptors(patches, kind):
-    """ORB or SIFT descriptor of each 48 × 48 patch, at its centre, upright (the photo is pre-turned north-up)."""
+    """ORB or SIFT descriptor of each 48 × 48 patch, at its centre, with angle 0: the photo patches are north-up within
+    the ±20° heading error of the data, so OpenCV's own orientation is not used (like an upright matcher)."""
     det = cv2.SIFT_create() if kind == "sift" else cv2.ORB_create(edgeThreshold=15, patchSize=31)
-    size = 8.0 if kind == "sift" else 31.0          # SIFT: the size that scored best on the validation pairs
+    size = 8.0 if kind == "sift" else 31.0          # SIFT: of 8, 12, 16, 24, 32 px, 8 scores best on these pairs
     c = (patches.shape[1] - 1) / 2.0
     out = []
     for p in patches:
@@ -493,29 +669,57 @@ def opencv_descriptors(patches, kind):
     return np.array(out)
 
 
+def failures(ld, model, va, vp, device, n=6):
+    """The first n validation map patches whose nearest photo descriptor is the WRONG one."""
+    da, dp = ld.describe(model, va, device), ld.describe(model, vp, device)
+    rows = []
+    for s in range(0, len(da), 256):
+        a, b = da[s:s + 256], dp[s:s + 256]
+        dist = ((a[:, None, :] - b[None, :, :]) ** 2).sum(axis=2)
+        pick = dist.argmin(axis=1)
+        for i in np.nonzero(pick != np.arange(len(a)))[0]:
+            rows.append((s + i, s + pick[i]))
+            if len(rows) >= n:
+                break
+        if len(rows) >= n:
+            break
+    big = lambda p: cv2.resize(p[8:40, 8:40], (96, 96), interpolation=cv2.INTER_NEAREST)     # noqa: E731
+    gap = np.full((96, 8), 255, np.uint8)
+    lines = [np.hstack([big(va[i]), gap, big(vp[i]), gap, big(vp[j])]) for i, j in rows]
+    if not lines:
+        return 0
+    sep = np.full((8, lines[0].shape[1]), 255, np.uint8)
+    img = cv2.cvtColor(np.vstack(sum([[x, sep] for x in lines], [])[:-1]), cv2.COLOR_GRAY2BGR)
+    header = np.full((40, img.shape[1], 3), 255, np.uint8)
+    for k, text in enumerate(("map | its true photo |", "the photo your network chose")):
+        cv2.putText(header, text, (4, 15 + 18 * k), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 0, 200), 1, cv2.LINE_AA)
+    os.makedirs(OUT, exist_ok=True)
+    cv2.imwrite(os.path.join(OUT, "failures.png"), stamp(np.vstack([header, img])))
+    return len(rows)
+
+
 def compare():
     import torch
     ld = learned()
     weights = option("--weights", "my_desc.pt")
     va, vp = load_patches("patches_val.npz")
-    raw = lambda p: ld.to_tensor(p).reshape(len(p), -1).numpy()      # noqa: E731
-    rows = [("raw pixels (32 × 32, normalised)", ld.nn_accuracy(raw(va), raw(vp)))]
-    rows.append(("ORB (256 bits, Hamming)", ld.nn_accuracy(opencv_descriptors(va, "orb"),
-                                                           opencv_descriptors(vp, "orb"), "hamming")))
-    rows.append(("SIFT (128 floats)", ld.nn_accuracy(opencv_descriptors(va, "sift"), opencv_descriptors(vp, "sift"))))
-    torch.manual_seed(0)
-    fresh, err = rk.call(ld, "PatchNet")
-    if err:
-        sys.exit(err)
-    rows.append(("PatchNet, untrained (random weights)", ld.nn_accuracy(ld.describe(fresh, va), ld.describe(fresh, vp))))
-    if not os.path.exists(weights):
-        sys.exit(f"{weights} does not exist: run `python3 run_features.py train` first")
-    try:
-        mine = ld.load_weights(weights)
-    except Exception as e:                                           # noqa: BLE001
-        sys.exit(f"{weights} does not fit PatchNet ({type(e).__name__}: {str(e).splitlines()[0]}) — "
-                 "did you change the layers or their names?")
-    rows.append((f"PatchNet, trained ({weights})", ld.nn_accuracy(ld.describe(mine, va), ld.describe(mine, vp))))
+    with torch_device(wait_s=60) as device:
+        raw = lambda p: ld.to_tensor(p).reshape(len(p), -1).numpy()      # noqa: E731
+        rows = [("raw pixels (32 × 32, normalised)", ld.nn_accuracy(raw(va), raw(vp)))]
+        rows.append(("ORB (256 bits, Hamming)", ld.nn_accuracy(opencv_descriptors(va, "orb"),
+                                                               opencv_descriptors(vp, "orb"), "hamming")))
+        rows.append(("SIFT (128 floats)", ld.nn_accuracy(opencv_descriptors(va, "sift"),
+                                                         opencv_descriptors(vp, "sift"))))
+        torch.manual_seed(0)
+        fresh, err = rk.call(ld, "PatchNet")
+        if err:
+            sys.exit(err)
+        rows.append(("PatchNet, untrained (random weights)",
+                     ld.nn_accuracy(ld.describe(fresh.to(device), va, device), ld.describe(fresh, vp, device))))
+        mine = load_or_exit(ld, weights).to(device)
+        rows.append((f"PatchNet, trained ({weights})",
+                     ld.nn_accuracy(ld.describe(mine, va, device), ld.describe(mine, vp, device))))
+        n_fail = failures(ld, mine, va, vp, device)
     print(f"Matching score on {len(va)} validation pairs (places never seen in training): for each map patch, is the")
     print("nearest of the 256 drone patches of its group the right one?\n")
     for name, acc in rows:
@@ -530,10 +734,13 @@ def compare():
         os.makedirs(OUT, exist_ok=True)
         fig.savefig(os.path.join(OUT, "compare.png"), dpi=90)
         rk.saved("out/compare.png")
+    if n_fail:
+        rk.saved(f"out/failures.png ({n_fail} map patches your network matched to the wrong photo patch)")
 
 
 MODES = {"test": test, "house": house, "corners": corners, "repeat": repeat, "terrain": terrain,
-         "hamming": hamming_mode, "train": train_mode, "compare": compare}
+         "hamming": hamming_mode, "patches": patches_mode, "train": train_mode, "filters": filters_mode,
+         "compare": compare}
 
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else ""

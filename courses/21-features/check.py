@@ -1,5 +1,7 @@
 import contextlib
+import hashlib
 import io
+import json
 import os
 import re
 import tempfile
@@ -242,7 +244,9 @@ def _():
         raise CheckFailed(f"R_POINT_3 = {r3:g}: that is det alone (or without Sxy²); R = Sxx·Syy − Sxy² − 0.04·(Sxx + Syy)²")
     c.near(r3, 5674.0, 30.0, "R_POINT_3")
     explained("EXPLAIN_EIGEN", why,
-              ((r"chang", r"direction", r"move", r"shift", r"vary", r"variation"), "what an eigenvalue measures"),
+              ((r"chang", r"direction", r"move", r"shift", r"vary", r"variation", r"slide"),
+               "what an eigenvalue measures (how much the window's content changes when the window moves in one "
+               "direction)"),
               ((r"det", r"trace", r"product", r"sum", r"square root", r"sqrt", r"faster", r"cheap", r"slow", r"costly",
                 r"expensive"), "why Harris uses det and trace instead"))
 
@@ -251,8 +255,8 @@ def _():
         hint="Copy the numbers from `python3 run_features.py repeat` (two decimals) and `python3 run_features.py terrain` "
              "(the first SIFT column), then explain in your own words.")
 def _():
-    (pz, hr, hz, sz, ch, why_s, mk, sf, db, da, why_t) = answers(
-        "PREDICT_ZOOM", "REP_HARRIS_ROT35", "REP_HARRIS_ZOOM4", "REP_SIFT_ZOOM4", "CHANCE", "EXPLAIN_SCALE",
+    (pz, hr, hz, sz, ch, wz, why_s, mk, sf, db, da, why_t) = answers(
+        "PREDICT_ZOOM", "REP_HARRIS_ROT35", "REP_HARRIS_ZOOM4", "REP_SIFT_ZOOM4", "CHANCE", "WORST_ZOOM4", "EXPLAIN_SCALE",
         "MOST_KEYPOINTS", "SIFT_FIELDS", "DARK_SIFT_BEFORE", "DARK_SIFT_AFTER", "EXPLAIN_TERRAIN")
     predicted("PREDICT_ZOOM", pz)
     hr, hz, sz, ch = (number(v, n) for v, n in ((hr, "REP_HARRIS_ROT35"), (hz, "REP_HARRIS_ZOOM4"),
@@ -265,6 +269,11 @@ def _():
     c.near(hz, 0.39, 0.011, "REP_HARRIS_ZOOM4")
     c.near(sz, 0.78, 0.011, "REP_SIFT_ZOOM4")
     c.ok(0.07 <= ch <= 0.10, f"CHANCE = {ch}: the last column of the `repeat` table")
+    w = str(wz).strip().lower().strip(".")
+    if w == "harris":
+        raise CheckFailed("WORST_ZOOM4 = 'harris': read the whole city_zoom4 row — one detector is even lower (at chance)")
+    c.ok(w == "orb", f"WORST_ZOOM4 = {wz!r}: the lowest of the three numbers in the city_zoom4 row "
+                     "(write \"harris\", \"orb\" or \"sift\")")
     explained("EXPLAIN_SCALE", why_s,
               ((r"rotat", r"turn", r"eigen", r"invarian", r"orient"), "why a turn does not hurt Harris"),
               ((r"scale", r"window", r"size", r"zoom", r"detail", r"closer", r"fixed"), "what the zoom does to a fixed window"))
@@ -279,7 +288,8 @@ def _():
     explained("EXPLAIN_TERRAIN", why_t,
               ((r"olive", r"field", r"tree", r"sea", r"coast", r"salt"), "which terrain surprised you"),
               ((r"repet", r"alike", r"similar", r"same", r"twin", r"uniform", r"distinct", r"confus", r"spread", r"bunch",
-                r"pattern"), "why many keypoints do not mean easy matching"))
+                r"pattern", r"identical", r"wrong", r"indistinguish", r"mistak", r"ambigu", r"\brows?\b"),
+               "why many keypoints do not mean easy matching (look-alike points, a tree matched to the wrong tree…)"))
 
 
 c.milestone("corner-hunter", "TODO 1:", "TODO 2:", "TODO 3:", "TODO 4:", "TODO 5:", "Steps 0–3:", "Steps 4–5:",
@@ -356,11 +366,72 @@ def score(d1, d2, gallery=256):
     return right / len(d1)
 
 
-@c.test("TODO 7: PatchNet — the layers of the table, 88 896 parameters, the forward pass in order, unit rows",
-        hint="Lab Step 7: in __init__, super().__init__() then conv1, conv2, conv3, fc with the docstring's sizes; in "
-             "forward, conv → relu → max_pool2d(2) three times, flatten(1), fc, F.normalize(…, dim=1).")
+def threads():
+    """The checker's own torch: 2 CPU threads (academy_gpu), CPU only (inference on a few thousand patches)."""
+    try:
+        from academy_gpu import limit_threads
+        limit_threads()
+    except ImportError:
+        import torch
+        torch.set_num_threads(2)
+
+
+def weights_ok(path):
+    """A student's weights file: present, small; the size limit comes BEFORE any torch.load."""
+    if not os.path.exists(path):
+        return False
+    if os.path.getsize(path) > 5_000_000:
+        raise CheckFailed(f"{path} is larger than 5 MB: it should hold PatchNet's weights only (about 360 kB)")
+    return True
+
+
+def load_ref(path):
+    import torch
+    net = reference_net()
+    try:
+        sd = torch.load(path, map_location="cpu", weights_only=True)
+    except Exception as e:                                                  # noqa: BLE001
+        raise CheckFailed(f"{path} cannot be read as weights ({type(e).__name__}): the runner saves it with "
+                          "torch.save(model.state_dict(), path) — train it with `python3 run_features.py train`")
+    try:
+        net.load_state_dict(sd)
+    except Exception as e:                                                  # noqa: BLE001
+        raise CheckFailed(f"{path} does not fit PatchNet's rule: {str(e).splitlines()[0][:200]}")
+    return net
+
+
+def run_log(name):
+    path = os.path.join("logs", name + ".json")
+    if not os.path.exists(path):
+        raise CheckFailed(f"logs/{name}.json is missing: train {name} with `python3 run_features.py train` (it writes "
+                          "the weights and their log together)")
+    try:
+        with open(path, encoding="utf-8") as f:
+            log = json.load(f)
+    except (OSError, ValueError):
+        raise CheckFailed(f"logs/{name}.json is not readable JSON: train {name} again with the runner")
+    if not isinstance(log, dict):
+        raise CheckFailed(f"logs/{name}.json is not a training log: train {name} again with the runner")
+    return log
+
+
+def same_file(name, log):
+    h = hashlib.sha256()
+    with open(name, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    if log.get("sha256") != h.hexdigest():
+        raise CheckFailed(f"{name} is not the file its log logs/{name}.json describes (its fingerprint differs): the "
+                          "weights must come from YOUR run of `python3 run_features.py train` — train it yourself "
+                          "(Step 10)")
+
+
+@c.test("TODO 7: PatchNet — layers derived from the rule, the forward pass in order, unit rows",
+        hint="Lab Step 8: on paper, follow a 1 × 32 × 32 patch through three blocks (the maps double, padding=1 keeps the "
+             "size, pooling halves it), then fc takes all the numbers of the last block. Names conv1, conv2, conv3, fc.")
 def _():
     import torch
+    threads()
     ld = module("navera_lite.learned_desc")
     (cls,) = need(ld, "PatchNet")
     net = go(cls)
@@ -369,42 +440,44 @@ def _():
     want = ["conv1.bias", "conv1.weight", "conv2.bias", "conv2.weight", "conv3.bias", "conv3.weight", "fc.bias", "fc.weight"]
     c.ok(keys == want, f"PatchNet's parameters are {keys}; the check, mission 22 and Sim Lite need exactly {want} — "
          "the attribute names conv1, conv2, conv3, fc")
-    n = sum(int(p.numel()) for p in net.parameters())
-    c.ok(n == 88896, f"PatchNet has {n} parameters, the table gives 88 896 — check each layer's sizes (and padding=1)")
+    shapes = {str(k): [int(x) for x in v.shape] for k, v in sd.items()}
+    ref = {k: list(v.shape) for k, v in reference_net().state_dict().items()}
+    for k in want:
+        if shapes.get(k) != ref[k]:
+            layer = k.split(".")[0]
+            if layer == "fc" and k.endswith("weight") and shapes.get(k, [0, 0])[0] == ref[k][0]:
+                raise CheckFailed(f"fc takes {shapes[k][1]} inputs: count again what the last block gives per patch "
+                                  "(maps × height × width after three halvings of 32 px)")
+            raise CheckFailed(f"{k} has the shape {shapes.get(k)}: it does not follow the rule (maps 1 → 16, then "
+                              "doubled each block; 3 × 3 kernels; fc to 64)")
     torch.manual_seed(21)
-    ref = reference_net()
+    refnet = reference_net()
     fd, path = tempfile.mkstemp(suffix=".pt")
     os.close(fd)
     try:
-        torch.save(ref.state_dict(), path)
+        torch.save(refnet.state_dict(), path)
         mine = go(ld.load_weights, path)
         probe = np.random.default_rng(3).integers(0, 256, (6, 48, 48)).astype(np.uint8)
         got = arr(go(ld.describe, mine, probe), "describe(your PatchNet, 6 patches)", (6, 64))
     finally:
         os.remove(path)
-    want_d = describe_ref(ref, probe)
+    want_d = describe_ref(refnet, probe)
     norms = np.linalg.norm(got, axis=1)
     if not np.allclose(norms, 1.0, atol=1e-4):
         raise CheckFailed(f"the descriptors have lengths {np.round(norms, 3).tolist()}: divide each row by its length at "
                           "the end (F.normalize(x, dim=1))")
     c.ok(np.allclose(got, want_d, atol=1e-4), "with the same weights, your forward() gives other descriptors than the "
-         "table: the order must be conv → ReLU → 2 × 2 max-pooling (three times), flatten, fc, then length 1")
+         "rule: each block is conv → ReLU → 2 × 2 max-pooling, then flatten, fc, then length 1")
 
 
 @c.test("TODO 8: triplet_loss() on unseen descriptors, with its gradient and other margins",
-        hint="Lesson §8: d = torch.cdist(da, dp); d_pos = the diagonal; d_neg = each row's minimum with the diagonal left "
-             "out; mean of relu(margin + d_pos − d_neg). Torch operations only.")
+        hint="Lesson §8: all the anchor ↔ photo distances, each anchor's distance to its own photo, the closest OTHER "
+             "photo; mean of max(0, margin + d_pos − d_neg). Torch operations only.")
 def _():
     ld = module("navera_lite.learned_desc")
     (f,) = functions("learned_desc", "triplet_loss")
-    A = [[0.017995, 0.715613, 0.644551, -0.268566], [-0.35751, -0.632767, 0.68357, -0.067267],
-         [0.294455, -0.728297, 0.617603, -0.038018], [0.742463, -0.149028, -0.413692, 0.505369],
-         [0.748209, -0.183787, -0.138647, 0.62224], [-0.455151, -0.791958, 0.206559, -0.350677]]
-    B = [[-0.616527, 0.320527, 0.37602, -0.612998], [-0.615402, -0.398522, 0.672123, -0.103494],
-         [-0.002754, -0.53028, 0.835168, -0.14591], [0.851152, 0.23764, -0.440031, 0.159503],
-         [0.936977, -0.089517, 0.317735, 0.114482], [-0.494823, -0.774909, -0.33482, -0.206306]]
-    da = ld.torch.tensor(A, requires_grad=True)
-    dp = ld.torch.tensor(B)
+    da = ld.torch.tensor(TA, requires_grad=True)
+    dp = ld.torch.tensor(TB)
     out = go(f, da, dp)
     if out is None:
         raise CheckFailed("triplet_loss returned None")
@@ -419,6 +492,27 @@ def _():
          "float() or torch.tensor() of a result inside)")
     c.near(float(go(f, da, dp, 1.0).detach()), 0.7637190, 1e-4, "triplet_loss with margin = 1.0 (use the margin argument)")
     c.near(float(go(f, da, dp, margin=0.1).detach()), 0.0259908, 1e-4, "triplet_loss with margin = 0.1")
+    if bool(ld.torch.cuda.is_available()):
+        from academy_gpu import gpu_slot
+        with gpu_slot(wait_s=30, quiet=True) as ok:
+            if ok:
+                try:
+                    out = go(f, da.detach().to("cuda"), dp.to("cuda"))
+                except CheckFailed as e:
+                    if "device" in str(e) or "cuda" in str(e):
+                        raise CheckFailed("triplet_loss fails on the GPU (where your training runs): a tensor you create "
+                                          "inside, the mask, is on the CPU — torch.eye(len(da), dtype=torch.bool, "
+                                          "device=da.device)")
+                    raise
+                c.near(float(out.detach().cpu()), 0.2694832, 1e-4, "triplet_loss on the GPU")
+
+
+TA = [[0.017995, 0.715613, 0.644551, -0.268566], [-0.35751, -0.632767, 0.68357, -0.067267],
+      [0.294455, -0.728297, 0.617603, -0.038018], [0.742463, -0.149028, -0.413692, 0.505369],
+      [0.748209, -0.183787, -0.138647, 0.62224], [-0.455151, -0.791958, 0.206559, -0.350677]]
+TB = [[-0.616527, 0.320527, 0.37602, -0.612998], [-0.615402, -0.398522, 0.672123, -0.103494],
+      [-0.002754, -0.53028, 0.835168, -0.14591], [0.851152, 0.23764, -0.440031, 0.159503],
+      [0.936977, -0.089517, 0.317735, 0.114482], [-0.494823, -0.774909, -0.33482, -0.206306]]
 
 
 def val_patches(n):
@@ -426,165 +520,293 @@ def val_patches(n):
     return d["a"][:n], d["b"][:n]
 
 
-def np_triplet(a, p, margin=0.5):
-    d = np.sqrt(((a[:, None, :].astype(np.float64) - p[None, :, :]) ** 2).sum(axis=2))
-    pos = np.diag(d).copy()
-    np.fill_diagonal(d, np.inf)
-    return float(np.maximum(0.0, margin + pos - d.min(axis=1)).mean())
+def ref_loss(da, dp, margin=0.5):
+    import torch
+    d = torch.cdist(da, dp)
+    pos = d.diagonal()
+    neg = d.masked_fill(torch.eye(len(da), dtype=torch.bool), float("inf")).min(dim=1).values
+    return torch.relu(margin + pos - neg).mean()
 
 
-@c.test("TODO 9: train() — one row per epoch, it learns, it uses lr, the validation loss is measured at the end",
-        hint="Lab Step 9 and its hints: Adam(model.parameters(), lr); per epoch a new seeded torch.randperm, batches of "
-             "`batch` (skip < 2), loss → zero_grad → backward → step; then model.eval() and torch.no_grad() for the "
-             "validation loss in batches of `batch`; one dict per epoch.")
+def ref_train(net, ta, tp, va, vp, epochs, lr, batch, seed, variant=None):
+    """The docstring's train(), written by the check — and the three wrong loops students write (variant)."""
+    import torch
+    g = torch.Generator().manual_seed(seed)
+    opt = torch.optim.Adam(net.parameters(), lr=lr)
+    hist = []
+    for e in range(1, epochs + 1):
+        net.train()
+        order = torch.arange(len(ta)) if variant == "no-shuffle" else torch.randperm(len(ta), generator=g)
+        losses = []
+        for s in range(0, len(ta), batch):
+            idx = order[s:s + batch]
+            if len(idx) < 2:
+                continue
+            loss = ref_loss(net(ta[idx]), net(tp[idx]))
+            if variant != "no-zero-grad":
+                opt.zero_grad()
+            loss.backward()
+            opt.step()
+            losses.append(loss.item())
+            if variant == "first-batch":
+                break
+        net.eval()
+        with torch.no_grad():
+            vl = [ref_loss(net(va[s:s + batch]), net(vp[s:s + batch])).item()
+                  for s in range(0, len(va), batch) if len(va[s:s + batch]) >= 2]
+        hist.append({"epoch": e, "train_loss": float(np.mean(losses)), "val_loss": float(np.mean(vl))})
+    return hist
+
+
+@c.test("TODO 9: train() — follows the specification batch by batch, uses lr and epochs, measures validation after",
+        hint="Lab Step 10: ONE seeded generator; each epoch a new torch.randperm(n, generator=g), EVERY batch of it in "
+             "order (skip < 2): loss → opt.zero_grad() → backward → step; then model.eval() and torch.no_grad() for the "
+             "validation loss in batches of `batch`; one dict of floats per epoch, numbered from 1; log(row) if given.")
 def _():
+    import copy
+    import torch
+    threads()
     ld = module("navera_lite.learned_desc")
+    ld.torch.set_num_threads(2)
     (f,) = functions("learned_desc", "train")
-    ta, tp = val_patches(192)
-    va, vp = val_patches(256)
-    va, vp = va[192:], vp[192:]
-    ld.torch.manual_seed(5)
-    net = go(ld.PatchNet)
+    t = go(ld.triplet_loss, ld.torch.tensor(TA), ld.torch.tensor(TB))
+    if t is None or abs(float(t) - 0.2694832) > 1e-4:
+        raise CheckFailed("fix TODO 8 (triplet_loss) first: train() uses it, so this check cannot judge train() yet")
+    ta, tp = val_patches(128)
+    va, vp = val_patches(192)
+    va, vp = va[128:], vp[128:]
+    torch.manual_seed(5)
+    ref = reference_net()
+    fd, path = tempfile.mkstemp(suffix=".pt")
+    os.close(fd)
+    try:
+        torch.save(ref.state_dict(), path)
+        try:
+            net = go(ld.load_weights, path)
+            fresh = go(ld.load_weights, path)                      # the same start for the specification test
+        except CheckFailed:
+            raise CheckFailed("fix TODO 7 (PatchNet) first: this check loads the specification's weights into your "
+                              "PatchNet, and they do not fit its layers")
+    finally:
+        os.remove(path)
     before = arr(go(ld.describe, net, va), "describe", (64, 64))
-    hist = go(f, net, ld.to_tensor(ta), ld.to_tensor(tp), ld.to_tensor(va), ld.to_tensor(vp), epochs=0, lr=1e-3,
-              batch=32, seed=1, device="cpu")
+    if not np.allclose(before, describe_ref(ref, va), atol=1e-4):
+        raise CheckFailed("fix TODO 7 (PatchNet) first: with the specification's weights your forward() gives other "
+                          "descriptors, so this check cannot judge train() yet")
+    args = (ld.to_tensor(ta), ld.to_tensor(tp), ld.to_tensor(va), ld.to_tensor(vp))
+    msg_none = ("train() calls log although none was given (log=None): write `if log is not None: log(row)`")
+    try:
+        hist = go(f, net, *args, epochs=0, lr=1e-3, batch=32, seed=1, device="cpu")
+    except CheckFailed as e:
+        raise CheckFailed(msg_none if "NoneType" in str(e) and "callable" in str(e) else str(e))
     if not isinstance(hist, list):
         raise CheckFailed(f"train() must return a list (the history), got {type(hist).__name__}")
     c.ok(len(hist) == 0, f"with epochs = 0, the history must be empty, got {len(hist)} rows — use the epochs argument")
-    still = arr(go(ld.describe, net, va), "describe", (64, 64))
-    c.ok(np.allclose(before, still, atol=1e-6), "with epochs = 0 the model changed: only the epochs loop may train")
-    hist = go(f, net, ld.to_tensor(ta), ld.to_tensor(tp), ld.to_tensor(va), ld.to_tensor(vp), epochs=2, lr=0.0,
-              batch=32, seed=1, device="cpu", seconds=120)
+    try:
+        go(f, net, *args, epochs=1, lr=0.0, batch=32, seed=1, device="cpu")
+    except CheckFailed as e:
+        raise CheckFailed(msg_none if "NoneType" in str(e) and "callable" in str(e) else str(e))
     still = arr(go(ld.describe, net, va), "describe", (64, 64))
     c.ok(np.allclose(before, still, atol=1e-5), "with lr = 0 the weights still changed: give lr to the optimiser "
          "(torch.optim.Adam(model.parameters(), lr=lr))")
-    log_rows = []
-    hist = go(f, net, ld.to_tensor(ta), ld.to_tensor(tp), ld.to_tensor(va), ld.to_tensor(vp), epochs=3, lr=3e-3,
-              batch=32, seed=1, device="cpu", log=log_rows.append, seconds=120)
-    if not isinstance(hist, list) or len(hist) != 3:
-        raise CheckFailed(f"with epochs = 3 the history must have 3 rows, got {hist!r:.200}")
+    rows = []
+    hist = go(f, fresh, *args, epochs=2, lr=3e-3, batch=32, seed=1, device="cpu", log=rows.append, seconds=90)
+    if not isinstance(hist, list) or len(hist) != 2:
+        raise CheckFailed(f"with epochs = 2 the history must have 2 rows, got {hist!r:.200}")
     for i, row in enumerate(hist):
         if not isinstance(row, dict) or not {"epoch", "train_loss", "val_loss"} <= set(row):
             raise CheckFailed(f"row {i} of the history must be a dict with epoch, train_loss, val_loss: got {row!r:.120}")
         for k in ("train_loss", "val_loss"):
             if isinstance(row[k], bool) or not isinstance(row[k], (int, float)):
-                raise CheckFailed(f"history[{i}][{k!r}] must be a float (loss.item()), got {type(row[k]).__name__}")
-    c.ok([int(r["epoch"]) for r in hist] == [1, 2, 3], f"the epochs must be numbered 1, 2, 3, got {[r['epoch'] for r in hist]}")
-    c.ok(len(log_rows) == 3, f"log(row) must be called once per epoch (it was called {len(log_rows)} times)")
-    after = arr(go(ld.describe, net, va), "describe", (64, 64))
-    c.ok(not np.allclose(before, after, atol=1e-5), "after 3 epochs with lr = 0.003 the model has not changed: "
-         "opt.zero_grad(), loss.backward(), opt.step() in every batch")
-    c.ok(hist[-1]["train_loss"] < hist[0]["train_loss"], f"the training loss did not go down over 3 epochs "
-         f"({[round(r['train_loss'], 4) for r in hist]}): is opt.zero_grad() called before every backward()?")
-    want = np.mean([np_triplet(after[s:s + 32], arr(go(ld.describe, net, vp), "describe")[s:s + 32])
-                    for s in range(0, 64, 32)])
-    c.ok(abs(hist[-1]["val_loss"] - want) < 2e-3, f"the last val_loss is {hist[-1]['val_loss']:.4f}, but the validation "
-         f"pairs give {want:.4f} with the trained model: measure it AFTER the epoch's batches, in model.eval() and "
-         "torch.no_grad(), in batches of `batch`, averaged")
+                raise CheckFailed(f"history[{i}][{k!r}] must be a Python float (loss.item()), got {type(row[k]).__name__}")
+    c.ok([int(r["epoch"]) for r in hist] == [1, 2], f"the epochs must be numbered 1, 2, …, got {[r['epoch'] for r in hist]}")
+    c.ok(len(rows) == 2, f"log(row) must be called once per epoch (it was called {len(rows)} times for 2 epochs)")
+    tens = [tensors(x) for x in (ta, tp, va, vp)]
+    expected = ref_train(copy.deepcopy(ref), *tens, 2, 3e-3, 32, 1)
+    mine1 = hist[0]["train_loss"]
+    if abs(mine1 - expected[0]["train_loss"]) > 2e-4:
+        for variant, why in (("no-zero-grad", "opt.zero_grad() is missing (or not before every backward()): the "
+                              "gradients of earlier batches pile up"),
+                             ("first-batch", "only the FIRST batch of each epoch is used: loop over every batch of the "
+                              "order"),
+                             ("no-shuffle", "the pairs are never shuffled: each epoch's order must be "
+                              "torch.randperm(n, generator=g)")):
+            wrong = ref_train(copy.deepcopy(ref), *tens, 2, 3e-3, 32, 1, variant)
+            if abs(mine1 - wrong[0]["train_loss"]) < 2e-4:
+                raise CheckFailed(f"your first epoch's training loss is {mine1:.4f}, the specification gives "
+                                  f"{expected[0]['train_loss']:.4f}: {why}")
+        raise CheckFailed(f"your first epoch's training loss is {mine1:.4f}, the specification gives "
+                          f"{expected[0]['train_loss']:.4f} (same weights, same seed): check the order (ONE generator "
+                          "seeded with `seed`, a new randperm each epoch), every batch, zero_grad before every "
+                          "backward, the mean of the batch losses (Step 10, hints 1–4)")
+    c.ok(abs(hist[1]["train_loss"] - expected[1]["train_loss"]) < 5e-4,
+         f"the second epoch's training loss is {hist[1]['train_loss']:.4f}, the specification gives "
+         f"{expected[1]['train_loss']:.4f}: is a NEW randperm drawn each epoch from the SAME generator (created once)?")
+    c.ok(abs(hist[1]["val_loss"] - expected[1]["val_loss"]) < 5e-4,
+         f"the last val_loss is {hist[1]['val_loss']:.4f}, the specification gives {expected[1]['val_loss']:.4f}: "
+         "measure it AFTER the epoch's batches, in model.eval() and torch.no_grad(), in batches of `batch`, averaged")
 
 
 TEST_ORB, TEST_SIFT, NEED = 0.7178, 0.8252, 0.85
 
 
-@c.test("Your trained network: my_desc.pt on 1 024 unseen pairs from places you never saw",
-        hint="Lab Step 9: `python3 run_features.py train` (all pairs) saves my_desc.pt; on the CPU use --device cpu "
-             "--n-train 4096 --epochs 4. Do not save overfit.pt as my_desc.pt.")
+@c.test("Your trained network: my_desc.pt (from your own run) on 1 024 unseen pairs from places you never saw",
+        hint="Lab Step 10: `python3 run_features.py train` (all pairs) writes my_desc.pt and logs/my_desc.pt.json; on the "
+             "CPU add --device cpu --n-train 4096 --epochs 4. Do not copy or rename other weights files.")
 def _():
-    import torch
-    if not os.path.exists("my_desc.pt"):
-        raise CheckFailed("my_desc.pt is missing: run `python3 run_features.py train` (Step 9)")
-    if os.path.getsize("my_desc.pt") > 5_000_000:
-        raise CheckFailed("my_desc.pt is larger than 5 MB: it should hold PatchNet's weights only (about 360 kB)")
-    try:
-        sd = torch.load("my_desc.pt", map_location="cpu", weights_only=True)
-    except Exception as e:                                                  # noqa: BLE001
-        raise CheckFailed(f"my_desc.pt cannot be read as weights ({type(e).__name__}): save it with "
-                          "torch.save(model.state_dict(), path) — the runner does")
-    net = reference_net()
-    try:
-        net.load_state_dict(sd)
-    except Exception as e:                                                  # noqa: BLE001
-        raise CheckFailed(f"my_desc.pt does not fit PatchNet's layers: {str(e).splitlines()[0][:200]}")
+    threads()
+    if not weights_ok("my_desc.pt"):
+        raise CheckFailed("my_desc.pt is missing: run `python3 run_features.py train` (Step 10)")
+    log = run_log("my_desc.pt")
+    same_file("my_desc.pt", log)
+    hist = log.get("history") or []
+    c.ok(isinstance(hist, list) and len(hist) >= 2 and hist[-1].get("train_loss", 9) < hist[0].get("train_loss", 0),
+         "logs/my_desc.pt.json shows no training whose loss went down: train my_desc.pt again (Step 10)")
+    net = load_ref("my_desc.pt")
     d = np.load(io.BytesIO(hidden("patches_test.npz", text=False)))
     s = score(describe_ref(net, d["a"]), describe_ref(net, d["b"]))
     print(f"  your network on the hidden test pairs: matching score {s:.3f} (ORB {TEST_ORB:.3f}, SIFT {TEST_SIFT:.3f})")
     c.ok(s >= NEED, f"my_desc.pt scores {s:.3f} on the hidden test pairs (ORB {TEST_ORB:.3f}, SIFT {TEST_SIFT:.3f}); it "
-         f"needs {NEED}. Train on all the pairs (not overfit.pt), or check `python3 run_features.py compare`.")
+         f"needs {NEED}. Train on all the pairs (or the CPU recipe), or check `python3 run_features.py compare`.")
 
 
-@c.test("Steps 6–11: Hamming medians, parameters, training, overfitting, learned vs OpenCV",
-        hint="Copy the numbers printed by `hamming`, `train` and `compare` (three decimals); N_PARAMS_CONV1 is 16 filters × "
-             "(1 × 3 × 3 weights + 1 bias). Explain in your own words.")
+def my_val_score(name, n=2048):
+    a, b = val_patches(n)
+    net = load_ref(name)
+    return score(describe_ref(net, a), describe_ref(net, b))
+
+
+def logged_score(name):
+    """The validation score the runner measured when it saved `name` (its log, whose fingerprint was checked)."""
+    log = run_log(name)
+    same_file(name, log)
+    v = log.get("val_score")
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        raise CheckFailed(f"logs/{name}.json has no validation score: train {name} again with the runner")
+    return float(v)
+
+
+@c.test("Steps 6–12: Hamming medians, the data, parameters, training, filters, overfitting, learned vs OpenCV",
+        hint="Copy the numbers printed by `hamming`, `train` and `compare` (three decimals); N_PARAMS is your own count "
+             "(weights + biases of the four layers). Run the overfitting training of Step 11. Explain in your own words.")
 def _():
-    import torch
-    (hs, hr, why_h, pp, n1, vs, po, why_o, so, ss, su, sl, why_l) = answers(
-        "HAMMING_SAME", "HAMMING_RANDOM", "EXPLAIN_HAMMING", "PREDICT_PARAMS", "N_PARAMS_CONV1", "VAL_SCORE_FULL",
-        "PREDICT_OVERFIT", "EXPLAIN_OVERFIT", "SCORE_ORB", "SCORE_SIFT", "SCORE_UNTRAINED", "SCORE_LEARNED",
-        "EXPLAIN_LEARNED")
+    threads()
+    (hs, hr, why_h, ph, pp, npar, vs, why_f, po, why_o, so, ss, su, sl, why_b, why_l) = answers(
+        "HAMMING_SAME", "HAMMING_RANDOM", "EXPLAIN_HAMMING", "PREDICT_HARD", "PREDICT_PARAMS", "N_PARAMS",
+        "VAL_SCORE_FULL", "EXPLAIN_FILTERS", "PREDICT_OVERFIT", "EXPLAIN_OVERFIT", "SCORE_ORB", "SCORE_SIFT",
+        "SCORE_UNTRAINED", "SCORE_LEARNED", "EXPLAIN_BASELINES", "EXPLAIN_LEARNED")
     c.near(number(hs, "HAMMING_SAME"), 61, 1, "HAMMING_SAME (bits)")
     c.near(number(hr, "HAMMING_RANDOM"), 127, 1, "HAMMING_RANDOM (bits)")
     explained("EXPLAIN_HAMMING", why_h,
               ((r"half", r"128", r"random", r"coin", r"chance", r"50", r"independ"), "why random pairs differ in about 128 bits"),
               ((r"threshold", r"separat", r"distinguish", r"reject", r"match", r"tell", r"gap", r"nearest", r"recogni"),
                "what the gap allows"))
+    predicted("PREDICT_HARD", ph)
     predicted("PREDICT_PARAMS", pp)
-    n1 = number(n1, "N_PARAMS_CONV1")
-    if n1 == 144:
-        raise CheckFailed("N_PARAMS_CONV1 = 144: the 16 biases count too")
-    c.eq(int(n1), 160, "N_PARAMS_CONV1")
+    npar = number(npar, "N_PARAMS")
+    if npar == 88896 - 176:
+        raise CheckFailed("N_PARAMS = 88 720: the biases count too (one per filter, one per output of fc)")
+    if npar == 160:
+        raise CheckFailed("N_PARAMS = 160 is conv1 alone: add conv2, conv3 and fc")
+    c.ok(int(npar) == 88896, f"N_PARAMS = {npar:g}: count again, layer by layer (filters × (inputs × 3 × 3) + biases; fc: "
+         "inputs × 64 + 64) — `test` says whether your PatchNet follows the rule")
+    vs = number(vs, "VAL_SCORE_FULL")
+    if weights_ok("my_desc.pt") and os.path.exists(os.path.join("logs", "my_desc.pt.json")):
+        logged = run_log("my_desc.pt").get("val_score")
+        if isinstance(logged, (int, float)):
+            c.ok(abs(vs - logged) <= 0.0015, f"VAL_SCORE_FULL = {vs}, but your last training of my_desc.pt printed "
+                 f"{logged:.3f} (logs/my_desc.pt.json)")
+    c.ok(0.8 <= vs <= 1.0, f"VAL_SCORE_FULL = {vs}: the score printed at the end of the full training (Step 10)")
+    explained("EXPLAIN_FILTERS", why_f,
+              ((r"edge", r"gradient", r"derivat", r"sobel", r"dark", r"bright", r"side", r"contrast", r"direction",
+                r"stripe", r"line", r"change"), "the pattern you see in the trained filters"),
+              ((r"edge", r"corner", r"gradient", r"structure", r"detect", r"recogni", r"shape", r"outline", r"light",
+                r"brightness", r"robust", r"invarian"), "why it helps to recognise a ground point"))
     predicted("PREDICT_OVERFIT", po)
+    if not os.path.exists(os.path.join("logs", "overfit.pt.json")):
+        raise CheckFailed("logs/overfit.pt.json is missing: run Step 11's command "
+                          "`python3 run_features.py train --n-train 300 --epochs 30 --out overfit.pt`")
+    ov = run_log("overfit.pt")
+    c.ok(ov.get("n_train") == 300 and ov.get("epochs") == 30, "logs/overfit.pt.json is not the 300-pair, 30-epoch run of "
+         "Step 11: run its command again")
     explained("EXPLAIN_OVERFIT", why_o,
               ((r"train", r"300"), "what the training loss did"),
               ((r"valid", r"val\b", r"unseen", r"new place", r"other place"), "what the validation loss did"),
               ((r"memor", r"by heart", r"overfit", r"too few", r"small", r"not general", r"specific", r"learn"), "why"))
-    vs, so, ss, su, sl = (number(v, n) for v, n in ((vs, "VAL_SCORE_FULL"), (so, "SCORE_ORB"), (ss, "SCORE_SIFT"),
-                                                      (su, "SCORE_UNTRAINED"), (sl, "SCORE_LEARNED")))
-    if max(so, ss, su, sl, vs) > 1:
+    so, ss, su, sl = (number(v, n) for v, n in ((so, "SCORE_ORB"), (ss, "SCORE_SIFT"), (su, "SCORE_UNTRAINED"),
+                                                  (sl, "SCORE_LEARNED")))
+    if max(so, ss, su, sl) > 1:
         raise CheckFailed("matching scores are shares from 0 to 1 (write 0.875, not 87.5)")
     c.near(so, 0.756, 0.0015, "SCORE_ORB")
     c.near(ss, 0.875, 0.0015, "SCORE_SIFT")
-    c.ok(0.8 <= vs <= 1.0, f"VAL_SCORE_FULL = {vs}: the score printed at the end of the full training (Step 9)")
     c.ok(0.35 <= su <= 0.70, f"SCORE_UNTRAINED = {su}: the 'untrained' line of `compare`")
-    if os.path.exists("my_desc.pt"):
-        net = reference_net()
-        try:
-            net.load_state_dict(torch.load("my_desc.pt", map_location="cpu", weights_only=True))
-            a, b = val_patches(2048)
-            mine = score(describe_ref(net, a), describe_ref(net, b))
-        except Exception:                                                   # noqa: BLE001
-            mine = None
-        if mine is not None:
-            c.ok(abs(sl - mine) <= 0.003, f"SCORE_LEARNED = {sl}, but your my_desc.pt scores {mine:.3f} on the validation "
-                 "pairs: run `compare` again after your last training and copy its line")
+    if weights_ok("my_desc.pt"):
+        mine = logged_score("my_desc.pt")
+        c.ok(abs(sl - mine) <= 0.0025, f"SCORE_LEARNED = {sl}, but your my_desc.pt scores {mine:.3f} on the validation "
+             "pairs: run `compare` again after your last training and copy its line")
+    explained("EXPLAIN_BASELINES", why_b,
+              ((r"easy", r"similar", r"close", r"same place", r"upright", r"mild", r"small change", r"hard", r"alike",
+                r"correlat", r"already"), "what raw pixels ≈ ORB says about these pairs"),
+              ((r"random", r"untrained", r"not trained", r"no training", r"lose", r"lost", r"throw", r"destroy", r"mix",
+                r"scrambl", r"noise", r"information"), "why random weights do worse than the pixels themselves"))
     explained("EXPLAIN_LEARNED", why_l,
               ((r"train", r"learn", r"data", r"same kind", r"these pair", r"synthetic", r"drawn", r"render"),
                "why it wins here"),
+              ((r"fail", r"wrong", r"flat", r"uniform", r"blur", r"dark", r"texture", r"similar", r"field", r"tree",
+                r"alike", r"empty"), "what its failures have in common"),
               ((r"real", r"camera", r"flight", r"test", r"measure", r"season", r"light", r"photo", r"frame"),
                "what you would need before trusting it on a drone"))
 
 
-@c.test("report.md: four headings, your own words, your numbers",
-        hint="Lab Step 12: keep the four ## headings, 180–450 words, replace every TODO, quote REP_SIFT_ZOOM4, both Hamming "
-             "medians, and your learned and SIFT scores as numbers.")
+EXPERIMENTS = {"margin": ("margin", (0.85, 0.99)), "batch": ("batch", (0.84, 0.99)),
+               "pairs": ("n_train", (0.80, 0.97)), "negatives": ("negatives", (0.82, 0.97))}
+
+
+@c.test("Step 13: your experiment — one change, predicted, run, measured, explained",
+        hint="Lab Step 13: EXPERIMENT is \"margin\", \"batch\", \"pairs\" or \"negatives\"; train exp.pt with the SAME "
+             "command as my_desc.pt plus that ONE change and --out exp.pt; EXP_SCORE is the last line of that run.")
 def _():
-    if not os.path.exists("report.md"):
-        raise CheckFailed("report.md is missing")
-    text = open("report.md", encoding="utf-8").read()
-    for h in ("## 1. The scout", "## 2. The detector", "## 3. Descriptors", "## 4. The learner"):
-        c.ok(h in text, f"report.md lost its heading “{h}”")
-    c.ok("TODO" not in text, "report.md still contains a TODO")
-    body = re.sub(r"^#.*$", "", text, flags=re.M)
-    n = len(re.findall(r"[A-Za-zÀ-ÿ']{2,}", body))
-    c.ok(180 <= n <= 520, f"report.md has {n} words; write 180–450")
-    nums = [float(x) for x in re.findall(r"\d+(?:\.\d+)?", text)]
-    has = lambda target, tol: any(abs(x - target) <= tol or abs(x - 100 * target) <= 100 * tol for x in nums)  # noqa: E731
-    sz, hs, hr, ss, sl = answers("REP_SIFT_ZOOM4", "HAMMING_SAME", "HAMMING_RANDOM", "SCORE_SIFT", "SCORE_LEARNED")
-    for v, name in ((sz, "REP_SIFT_ZOOM4"), (hs, "HAMMING_SAME"), (hr, "HAMMING_RANDOM"), (ss, "SCORE_SIFT"),
-                    (sl, "SCORE_LEARNED")):
-        v = number(v, name)
-        c.ok(has(v, 0.006 if v < 1 else 0.6), f"report.md does not quote your {name} ({v:g})")
+    threads()
+    ex, pe, es, why = answers("EXPERIMENT", "PREDICT_EXPERIMENT", "EXP_SCORE", "EXPLAIN_EXPERIMENT")
+    ex = str(ex).strip().lower().strip(".")
+    if ex not in EXPERIMENTS:
+        raise CheckFailed(f'EXPERIMENT = {ex!r}: write one of "margin", "batch", "pairs", "negatives"')
+    predicted("PREDICT_EXPERIMENT", pe)
+    if not weights_ok("exp.pt"):
+        raise CheckFailed("exp.pt is missing: run your Step 13 command with --out exp.pt")
+    log = run_log("exp.pt")
+    same_file("exp.pt", log)
+    if not os.path.exists(os.path.join("logs", "my_desc.pt.json")):
+        raise CheckFailed("logs/my_desc.pt.json is missing: the experiment is compared with your my_desc.pt run (Step 10)")
+    base = run_log("my_desc.pt")
+    key, (lo, hi) = EXPERIMENTS[ex]
+    keys = ("margin", "batch", "n_train", "negatives")
+    changed = [k for k in keys if log.get(k) != base.get(k)]
+    if key not in changed:
+        raise CheckFailed(f"exp.pt was trained with the same {key} as my_desc.pt ({base.get(key)!r}): change it "
+                          f"(Step 13's table)")
+    others = [k for k in changed if k != key]
+    if others:
+        raise CheckFailed(f"exp.pt differs from my_desc.pt in more than one setting ({', '.join(changed)}): change ONE "
+                          "thing, keep the rest of my_desc.pt's command (epochs too), or the result cannot be read")
+    c.ok(log.get("epochs") == base.get("epochs") or key == "n_train",
+         f"exp.pt ran {log.get('epochs')} epochs, my_desc.pt {base.get('epochs')}: keep the epochs the same")
+    mine = logged_score("exp.pt")
+    es = number(es, "EXP_SCORE")
+    c.ok(abs(es - mine) <= 0.0015, f"EXP_SCORE = {es}, but exp.pt scored {mine:.3f} on the validation pairs (the last "
+         "line of its training)")
+    part = my_val_score("exp.pt", 512)                            # the check's own measurement, on 2 groups
+    c.ok(abs(part - mine) <= 0.04, f"exp.pt scores {part:.3f} on part of the validation pairs, far from the "
+         f"{mine:.3f} of its log: train it again with the runner")
+    c.ok(lo <= mine <= hi, f"exp.pt scores {mine:.3f}: not a plausible result for a '{ex}' change of this recipe "
+         f"({lo:.2f}–{hi:.2f} in the author's runs) — train it again with the runner")
+    explained("EXPLAIN_EXPERIMENT", why,
+              ((r"score", r"higher", r"lower", r"better", r"worse", r"same", r"noise", r"drop", r"rose", r"increas",
+                r"decreas", r"\d\.\d"), "what changed in the result, compared with my_desc.pt"),
+              ((r"margin", r"batch", r"impostor", r"negativ", r"pair", r"data", r"example", r"hard", r"push", r"gradient"),
+               "what it tells you about that setting"))
 
 
-c.milestone("learner", "TODO", "Step", "Your trained", "report", label="Learner")
+c.milestone("learner", "TODO", "Step", "Your trained", label="Learner")
 
 c.run()

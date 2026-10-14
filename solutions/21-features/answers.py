@@ -21,6 +21,7 @@ REP_HARRIS_ROT35 = 0.85   # from `repeat`, two decimals
 REP_HARRIS_ZOOM4 = 0.39
 REP_SIFT_ZOOM4 = 0.78
 CHANCE = 0.08             # the chance level of the table (all rows show the same)
+WORST_ZOOM4 = "orb"         # "harris", "orb" or "sift": the worst detector on city_zoom4
 EXPLAIN_SCALE = "R depends only on the eigenvalues, which a rotation does not change, so Harris keeps 0.85 after the turn. Its window is fixed, so in a photo 4 times closer it finds small details that the map does not have and drops to 0.39, while SIFT chooses a scale for each point and keeps 0.78, far above the chance level of 0.08."       # why does Harris survive the turn but not the 4× zoom, while SIFT survives both?
 
 # ---- Step 5: terrains ----------------------------------------------------------------------------
@@ -37,21 +38,34 @@ HAMMING_SAME = 61         # median Hamming distance, same ground point (from `ha
 HAMMING_RANDOM = 127       # median Hamming distance, random pairs
 EXPLAIN_HAMMING = "For unrelated points each of the 256 bits is like a coin toss, so about half differ: 128. The same ground point differs in only about 61 bits, so a matcher can keep the nearest descriptor and reject pairs whose distance is close to the random level."     # why is the random median close to 128, and what does the gap allow?
 
-# ---- Step 7: the network ---------------------------------------------------------------------------
-PREDICT_PARAMS = "about 100 000"      # before you count: how many numbers does PatchNet learn? (a guess)
-N_PARAMS_CONV1 = 160       # the parameters of conv1 alone, by hand (weights + biases)
+# ---- Step 7: the training data ------------------------------------------------------------------
+PREDICT_HARD = "the pairs over olive trees and the dark blurred ones; an olive-grove impostor looks like an olive pair"        # in out/patches.png: which pairs will be hardest for a descriptor, and why?
 
-# ---- Steps 9–10: training and overfitting -----------------------------------------------------------
-VAL_SCORE_FULL = 0.957     # the matching score printed after the full training (three decimals)
+# ---- Step 8: the network ----------------------------------------------------------------------------
+PREDICT_PARAMS = "about 100 000"      # BEFORE you work it out: how many numbers will PatchNet learn? (a guess)
+N_PARAMS = 88896             # the parameters of the whole PatchNet, worked out by hand from the rule (weights + biases)
+
+# ---- Steps 10–11: training, filters, overfitting ------------------------------------------------------
+VAL_SCORE_FULL = 0.963     # the matching score printed after your full training of my_desc.pt (three decimals)
+EXPLAIN_FILTERS = "Many trained filters are dark on one side and bright on the other, like a Sobel kernel turned in some direction: they measure the gradient, the change of brightness across an edge. Edges and corners stay in the same place when the light, the blur or the contrast change, so they help to recognise a ground point; the random filters show no such order."     # out/filters.png: what pattern do many trained filters show that random ones do not, and why
+                         # would it help to recognise a ground point?
 PREDICT_OVERFIT = "the training loss will go to almost zero and the validation loss will stop falling"     # with only 300 training pairs and 30 epochs: what will the two loss curves do?
-EXPLAIN_OVERFIT = "With 300 pairs the training loss fell to almost 0 but the validation loss stopped near 0.35 after about 12 epochs and then rose a little: the network memorised the 300 training patches instead of learning what makes a ground point recognisable. I would stop around epoch 12, or use more data."     # what happened to the train and validation losses with 300 pairs, and why?
+EXPLAIN_OVERFIT = "With 300 pairs the training loss fell to almost 0 but the validation loss stopped near 0.37 after about 16 epochs and then rose a little: the network memorised the 300 training patches instead of learning what makes a ground point recognisable. I would stop around epoch 12 to 16, or use more data."     # what happened to the train and validation losses with 300 pairs, and why?
 
-# ---- Step 11: learned vs OpenCV --------------------------------------------------------------------
+# ---- Step 12: learned vs OpenCV --------------------------------------------------------------------
 SCORE_ORB = 0.756          # from `compare`, three decimals
 SCORE_SIFT = 0.875
 SCORE_UNTRAINED = 0.530
-SCORE_LEARNED = 0.957
-EXPLAIN_LEARNED = "It was trained on exactly this kind of pairs, drawn map views with the same blur, turns and noise, so it learned what changes and what stays. Before trusting it on a drone I would test it on real camera frames against the map, with other light, seasons and real buildings, and compare again with SIFT."     # why does your network win here, and what would you need before trusting it on a real drone?
+SCORE_LEARNED = 0.963
+EXPLAIN_BASELINES = "These pairs are rather easy: same place, nearly upright, mild changes, so plain correlation of the normalised pixels already finds most of them, about as well as ORB. An untrained network mixes the pixels with random filters, ReLU, pooling and a random projection to 64 numbers: it throws away information, and only training makes the 64 numbers keep the useful part."   # raw pixels score almost as well as ORB, and the untrained network worse than raw pixels: why?
+EXPLAIN_LEARNED = "It was trained on exactly this kind of pairs, drawn map views with the same blur, turns and noise, so it learned what changes and what stays. Its failures are flat or blurred patches with little texture, or rows of trees that look alike. Before trusting it on a drone I would test it on real camera frames against the map, with other light, seasons and real buildings, and compare again with SIFT."     # why does your network win here, what do its failures (out/failures.png) have in common, and
+                         # what would you need before trusting it on a real drone?
+
+# ---- Step 13: your experiment (ONE change) -----------------------------------------------------------
+EXPERIMENT = "negatives"          # "margin", "batch", "pairs" or "negatives"
+PREDICT_EXPERIMENT = "lower: most impostors are easy, so averaging over all of them gives a weak signal compared with the hardest one"  # BEFORE you run it: will the score go up, down or stay, and why?
+EXP_SCORE = 0.933          # the matching score of exp.pt (three decimals, from the end of its training)
+EXPLAIN_EXPERIMENT = "The score fell from 0.963 to 0.933 and the loss became tiny (0.01): with every impostor of the batch, most terms are already zero because those impostors are far away, so the few hard ones that matter are averaged away and the network gets a weaker push. The hardest negative is what teaches it to separate look-alike patches."  # what happened compared with my_desc.pt, and what it tells you about that setting
 
 # ---- Look back (not graded) ----
 LOOK_BACK = ""

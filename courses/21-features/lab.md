@@ -3,14 +3,15 @@
 **Goal:** rank terrains by eye, then by measurement; write the Harris detector of NAVERA Lite from its maths and
 measure it against OpenCV's ORB and SIFT; compare binary descriptors; then build, train and test your own neural
 network that describes ground patches, and measure it against OpenCV.
-**Time:** 4 h 30 to 6 h in two sessions (a strong programmer: about 3 h 30; more if PyTorch is new to you, which is
-expected). Training runs take seconds on the GPU and 2–5 minutes on the CPU.
+**Time:** two sessions, lab 3 h 30 (a strong programmer) to 6 h (new to PyTorch, which is expected); with the
+lesson, the mission takes 5 h to 8 h. Training runs take about 15 s on the GPU (if three classmates are already
+training, the runner waits for its turn) and about 11 minutes each on the Jetson's CPU (add about 30 minutes).
 **Fast track:** if you know numpy and PyTorch, write the TODOs from the docstrings without the 🧰 and "Stuck?" boxes,
 then do "Going further" and write the results in `LOOK_BACK`.
 
 Your files (📝 Code tab): [navera_lite/features.py](file:./navera_lite/features.py) (**your code**: TODO 1–6),
 [navera_lite/learned_desc.py](file:./navera_lite/learned_desc.py) (**your code**: TODO 7–9),
-[answers.py](file:./answers.py), [report.md](file:./report.md), and the ready-made runner
+[answers.py](file:./answers.py), and the ready-made runner
 [run_features.py](file:./run_features.py) (runs your functions on the lab's pictures and draws them; you don't edit
 it). `python3 run_features.py test` tries every docstring example and names the symptom of a wrong result.
 
@@ -26,16 +27,16 @@ exact truth, plus two real aerial frames from NAVERA's day-camera test data and 
 | §3–§4 scale, repeatability | Step 4 | `repeatability` |
 | §6 texture, matchability | Step 5 | (no new code) |
 | §5 descriptors | Step 6 | `hamming` |
-| §7 tensors and layers | Step 7 | `PatchNet` |
-| §8 loss, gradient descent | Steps 8–9 | `triplet_loss`, `train` |
-| §9 validation, overfitting | Steps 10–11 | (experiments) |
-| all | Step 12 | the report |
+| §7 the data, tensors and layers | Steps 7–8 | `PatchNet` (sizes from a rule) |
+| §8 loss, gradient descent | Steps 9–10 | `triplet_loss`, `train` |
+| §9 validation, overfitting | Steps 11–12 | (looking inside, comparing) |
+| §7–§9 | Step 13 | your own experiment |
 
 > [!NOTE]
 > **Predict, then run.** Each `PREDICT_…` in `answers.py` is written **before** you run the step. It is never
 > marked right or wrong; being wrong and finding out why is the point.
 
-## Session 1 — Scout & detector (about 2 h 30)
+## Session 1 — Scout & detector (about 2 h 30 to 3 h 30 with Part A)
 
 ## Step 0 — The scout
 
@@ -188,16 +189,24 @@ It measures Harris (yours), ORB and SIFT with 1 000 points each on six photo pai
 `out/repeat.png`.
 
 > [!TASK]
-> Write `REP_HARRIS_ROT35`, `REP_HARRIS_ZOOM4`, `REP_SIFT_ZOOM4` and `CHANCE` (two decimals), and `EXPLAIN_SCALE`:
-> why does Harris survive the 35° turn but not the 4× zoom, while SIFT survives both?
+> Write `REP_HARRIS_ROT35`, `REP_HARRIS_ZOOM4`, `REP_SIFT_ZOOM4` and `CHANCE` (two decimals), `WORST_ZOOM4` (the
+> worst detector on `city_zoom4`: `"harris"`, `"orb"` or `"sift"`), and `EXPLAIN_SCALE`: why does Harris survive the
+> 35° turn but not the 4× zoom, while SIFT survives both?
 
 <details><summary>Read this after you ran `repeat`: what the table says</summary>
-Harris's R depends only on the eigenvalues, so a turn changes nothing; but its window is fixed (1.5 px): 4 times
-closer, it finds the photo's small details (windows, low walls, parked cars) that the map does not have at its pixel
-size. SIFT picks a scale per point, so it finds the same structures at both sizes. ORB's pyramid has only 8 levels, 1.2 apart: at 4× most of its map points have no level that fits, and a fixed
-3 px tolerance punishes points found on coarse levels. Every
-detector is far above chance here: the map is a clean drawing. Repeatable positions are necessary, not sufficient:
-Harris gives no scale and no direction, so it has no descriptor that could be compared across a 4× zoom.
+
+- **Harris and the turn:** R depends only on the eigenvalues, so a turn changes nothing. **Harris and the zoom:** its
+  window is fixed (1.5 px); 4 times closer it finds the photo's small details (windows, low walls, cars) that the map
+  does not have at its pixel size.
+- **SIFT** picks a scale per point, so it finds the same structures at both sizes. Why is it *below* Harris after the
+  plain 35° turn? Most of its 1 000 strongest points are its finest blobs, the most sensitive to the photo's noise,
+  blur and JPEG (measured on this pair: its smallest keypoints repeat 0.69, its mid-size ones 0.84), while Harris's
+  corners sit on the drawing's sharp roof corners.
+- **ORB at 4×: at chance** (0.07, chance 0.08): its map points are found no more often than random points. Its
+  pyramid has 8 levels, 1.2 apart (1.2⁷ ≈ 3.6×): a 4× zoom is beyond what it can bridge from the map side. Harris and
+  SIFT stay far above chance on every pair (the map is a clean drawing).
+- Repeatable positions are necessary, not sufficient: Harris gives no scale and no direction, so it has no descriptor
+  that could be compared across a 4× zoom.
 </details>
 
 <details><summary>Stuck? Hints, one at a time</summary>
@@ -229,7 +238,7 @@ the two real frames. Then CLAHE on the dark photo. Open `out/terrains.png` and `
 <details><summary>Stuck? Hints</summary>
 
 1. The numbers are in the first column of the table (`SIFT`), not the `SIFT 0.02` one.
-2. "Fooled": compare your `PREDICT_RANK` with the SIFT column; then think of lesson §6's three traps and Step 4's
+2. "Fooled": compare your `PREDICT_RANK` with the SIFT column and the red circles of `out/terrains.png`; then think of lesson §6's three traps and Step 4's
    `olives_rot35_zoom` line (ORB).
 </details>
 
@@ -237,7 +246,7 @@ the two real frames. Then CLAHE on the dark photo. Open `out/terrains.png` and `
 > Press **✔ Check my work**. When checks 1–7 pass (TODO 1–5 and Steps 0–5; the others are session 2), you earn the
 > **Corner hunter** badge. If the class session ends here, stop here, and read lesson Part B before session 2.
 
-## Session 2 — Learner (about 2 h 30 to 3 h)
+## Session 2 — Learner (about 2 h 30 to 4 h 30 with Part B)
 
 ## Step 6 — Binary descriptors (TODO 6)
 
@@ -264,18 +273,37 @@ compares their descriptors with your `hamming`; then random pairs. Open `out/ham
 2. 6 instead of 2: you counted the bits that are EQUAL — count the ones of the XOR.
 </details>
 
-## Step 7 — The network (TODO 7)
+## Step 7 — Look at the training data
 
-Open [navera_lite/learned_desc.py](file:./navera_lite/learned_desc.py). Read `to_tensor` first: it turns uint8
-patches into the network's input.
+Before building a network, look at what it will learn from:
+
+```bash
+python3 run_features.py patches
+```
+
+Open `out/patches.png`: 8 training pairs (top: the map patch, middle: the same ground in a drone photo, turned up to
+20°, scaled, tilted, blurred, darker or brighter, noisier) and 8 photo patches of other places (bottom): the kind of
+impostor the loss must push away. Each patch is 32 × 32 px, about 30 m of ground.
 
 > [!TASK]
-> **Predict** (`PREDICT_PARAMS`): how many numbers will PatchNet learn? Then count `conv1`'s parameters by hand
-> (lesson §7's worked example does `conv2`): `N_PARAMS_CONV1`.
+> **Predict** (`PREDICT_HARD`): which of the 8 pairs will be hardest for a descriptor to recognise, and why? Which
+> impostor of the bottom row looks most like one of the pairs?
 
-**TODO 7** `PatchNet`: write `__init__` (the four layers of the docstring's table, **with those names**: your weights
-are loaded into them by the check, mission 22 and Sim Lite) and `forward` (the table in order). Lesson §7's 🧰 box
-shows the pieces; two more:
+## Step 8 — The network (TODO 7)
+
+Open [navera_lite/learned_desc.py](file:./navera_lite/learned_desc.py). Read `to_tensor` first: it turns uint8 patches
+into the network's input. Then read the **rule** in `PatchNet`'s docstring: it gives the names, the first block and
+how the sizes change from block to block; the other sizes are yours to derive.
+
+> [!TASK]
+> **Predict** (`PREDICT_PARAMS`): how many numbers will PatchNet learn, roughly? Write it **before** you work them out.
+
+**On paper first**, like lesson §7's ✏️ check: follow one 1 × 32 × 32 patch through the three blocks (maps × height ×
+width after each), then the number that `flatten` gives: that is fc's input size. Then the parameters of each layer
+(lesson §7's worked example) and their sum: `N_PARAMS`.
+
+**TODO 7** `PatchNet`: write `__init__` (four layers, with the docstring's **names**: your weights are loaded into
+them by the check, mission 22 and Sim Lite) and `forward` (the blocks in order, then fc, then length 1).
 
 <details><summary>🧰 PyTorch: functions without parameters</summary>
 
@@ -293,22 +321,23 @@ F.normalize(torch.tensor([[3.0, 4.0]]), dim=1)   # tensor([[0.6, 0.8]]): each ro
 python3 run_features.py test
 ```
 
-The TODO 7 line must say 88 896 parameters, output (2, 64), row lengths 1.0.
+The TODO 7 line must say the layers `['conv1', 'conv2', 'conv3', 'fc']`, output (2, 64), row lengths 1.0 and "sizes
+follow the rule" (it does not tell you the number of parameters: that is your `N_PARAMS`).
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
-1. `__init__`: first `super().__init__()`, then `self.conv1 = nn.Conv2d(1, 16, 3, padding=1)` and the three others
-   from the table.
+1. `__init__`: first `super().__init__()`, then `self.conv1 = nn.Conv2d(1, 16, 3, padding=1)`; conv2 takes conv1's
+   maps and doubles them; conv3 the same.
 2. `forward`: three times "conv, `F.relu`, `F.max_pool2d(…, 2)`", then `x.flatten(1)`, then `self.fc`, then
    `F.normalize(…, dim=1)`; return it.
-3. `mat1 and mat2 shapes cannot be multiplied (2x4096 and 1024x64)`: one pooling is missing (8 × 8 maps instead of
-   4 × 4); `(2x16384 …)`: two are missing; `(2x65536 …)`: no pooling at all.
-4. Parameters wrong (e.g. 88 880): a layer without its bias, or another kernel size; rows of length ≠ 1: the last
-   `F.normalize` is missing.
+3. `mat1 and mat2 shapes cannot be multiplied (2xA and BxC)`: A numbers per patch reached fc, but it was built for B.
+   Trace the shapes on paper again: each block halves 32 → 16 → 8 → 4. `(2x256 …)` or another odd size: `padding=1`
+   is missing in a conv (each 3 × 3 conv without padding shrinks the picture by 2).
+4. "sizes do NOT follow the rule": a layer without its bias, another kernel size, or a wrong number of maps.
 5. `cannot assign module before Module.__init__() call`: `super().__init__()` must come first.
 </details>
 
-## Step 8 — The loss (TODO 8)
+## Step 9 — The loss (TODO 8)
 
 **TODO 8** `triplet_loss(da, dp, margin=0.5)`: lesson §8. Work on the whole batch at once with tensors: no loop, no
 `.item()`, no numpy (the loss must keep its gradient).
@@ -329,6 +358,8 @@ torch.clamp(torch.tensor([-0.2, 0.3]), min=0)          # tensor([0.0, 0.3]) — 
 python3 run_features.py test
 ```
 
+If the computer has a GPU, `test` also runs your loss there (the training will).
+
 <details><summary>Stuck? Hints, one at a time</summary>
 
 1. Three quantities for the whole batch: every distance anchor ↔ photo (one matrix), each anchor's distance to ITS
@@ -337,116 +368,155 @@ python3 run_features.py test
 3. 0.5000 on the second line: the diagonal was not left out, so d_neg = d_pos and each loss is exactly the margin.
 4. `element 0 of tensors does not require grad`: somewhere you left PyTorch (`.item()`, `float()`, numpy, or
    `torch.tensor(...)` of a result).
-5. On the GPU: `torch.eye(len(da), dtype=torch.bool, device=da.device)`. Last hint, the last line:
-   `return F.relu(margin + d_pos - d_neg).mean()`.
+5. "triplet_loss (GPU)" fails with a device or mask message: a tensor you create (the mask) is on the CPU while the
+   distances are on the GPU — create it on the data's device: `torch.eye(len(da), dtype=torch.bool, device=da.device)`.
+   The formula per anchor is max(0, margin + d_pos − d_neg): which 🧰 line gives max(0, ·) for a whole vector?
 </details>
 
-## Step 9 — Train it (TODO 9)
+## Step 10 — Train it (TODO 9)
 
 **TODO 9** `train(model, train_a, train_p, val_a, val_p, …)`: the least guided function. The docstring is the
-specification; lesson §8 gives the four lines of one step. First write, on paper, the plan: what happens once, what
-happens every epoch, what happens every batch, and what happens after each epoch to measure the validation loss
-(without learning: `model.eval()` and `with torch.no_grad():`). Then code it.
+specification, including the exact order of the pairs (so that the check can compare your run with its own). First
+write, on paper, the plan: what happens once, what happens every epoch, what happens every batch, and what happens
+after each epoch to measure the validation loss (without learning: `model.eval()` and `with torch.no_grad():`, in
+batches of `batch`, lesson §9 says why). Then code it.
 
 <details><summary>🧰 PyTorch: an optimiser, a random order, and no gradients</summary>
 
 ```python
 opt = torch.optim.Adam(model.parameters(), lr=1e-3)    # once, before the epochs
-g = torch.Generator().manual_seed(0)
+g = torch.Generator().manual_seed(0)                   # once, before the epochs
 order = torch.randperm(10, generator=g)                # tensor([4, 1, 7, …]): 0..9 shuffled, the same every run
 order[0:4], order[4:8], order[8:12]                    # batches of 4 (the last one has only 2)
 x[order[0:4]]                                          # those 4 samples of a tensor x
 with torch.no_grad():                                  # inside: no gradients are recorded (faster, no learning)
     v = model(x[:4])
-float(loss), loss.item()                               # a 1-number tensor as a Python float (only for printing)
+loss.item()                                            # a 1-number tensor as a Python float (for the history)
 ```
 (On the GPU, move the order to the data: `order.to(train_a.device)`.)
 </details>
 
-A quick run on 512 pairs first:
+A quick run on 512 pairs first (it writes `quick.pt`; a 512-pair network scores about 0.79, below the check's 0.85):
 
 ```bash
-python3 run_features.py train --n-train 512 --epochs 3
+python3 run_features.py train --n-train 512 --epochs 3 --out quick.pt
 ```
 
-The training loss should go down. Then the real training (about 15 s on the GPU; on the CPU add
-`--device cpu --n-train 4096 --epochs 4`, about 2–5 minutes; 8 epochs on all pairs take 10–25 minutes there):
+The training loss should go down. Then the real training, which writes `my_desc.pt` and its log
+`logs/my_desc.pt.json` (about 15 s on the GPU; on the CPU add `--device cpu --n-train 4096 --epochs 4`: about
+11 minutes on the Jetson's CPU, score about 0.93):
 
 ```bash
 python3 run_features.py train
 ```
 
-It prints one line per epoch, saves your weights in `my_desc.pt` and the curves in `out/loss_12288.png` (or the
-number of pairs you used), and prints the matching score on the validation pairs.
+It prints one line per epoch, saves the curves in `out/loss_my_desc.png`, and the matching score on the validation
+pairs. The check measures `my_desc.pt` on pairs you never see, and checks that its fingerprint is the one in
+`logs/my_desc.pt.json`: a weights file trained by someone else, or retrained without the runner, does not pass.
 
 > [!TASK]
 > Write `VAL_SCORE_FULL` (three decimals, from the last line).
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
-1. Once: an Adam optimiser on `model.parameters()` with `lr`, a seeded `torch.Generator`, an empty `history`.
-   Every epoch: `model.train()`, a new `torch.randperm(n, generator=g)`, then the batches.
+1. Once: an Adam optimiser on `model.parameters()` with `lr`, ONE seeded `torch.Generator`, an empty `history`.
+   Every epoch: `model.train()`, a new `torch.randperm(n, generator=g)`, then ALL the batches of that order.
 2. Every batch: `idx = order[start:start + batch]` (skip it if it has fewer than 2 pairs), the loss on
    `model(train_a[idx])` and `model(train_p[idx])`, then the three lines of lesson §8. Keep `loss.item()` in a list.
-3. After the batches: `model.eval()`, `with torch.no_grad():` the loss of each validation batch; the row
-   `{"epoch": e, "train_loss": mean, "val_loss": mean}`; `history.append(row)`; `if log: log(row)`.
-4. The training loss does not move: `opt.zero_grad()` missing (gradients pile up) or `opt.step()` missing; it moves
-   but the validation loss is computed with `model.train()` and gradients: wrap it in `torch.no_grad()`.
+3. After the batches: `model.eval()`, `with torch.no_grad():` the loss of each validation batch of `batch` pairs (not
+   all 2 048 at once: each anchor would then face 2 047 impostors instead of 255, and the loss would not be
+   comparable); the row `{"epoch": e, "train_loss": mean, "val_loss": mean}` with Python floats; `history.append(row)`;
+   `if log is not None: log(row)`. Epochs are numbered from 1.
+4. The training loss moves strangely or the check says your first epoch differs from the specification: is
+   `opt.zero_grad()` called before EVERY `backward()` (otherwise the gradients of all earlier batches pile up)? Is a
+   new `randperm` drawn each epoch from the SAME generator? Does the loop cover every batch, not only the first?
 5. `Expected all tensors to be on the same device`: `order = torch.randperm(...).to(train_a.device)`.
 </details>
 
-## Step 10 — Overfitting, live
+## Step 11 — What did it learn? Filters, and overfitting
+
+```bash
+python3 run_features.py filters
+```
+
+Open `out/filters.png`: conv1's 16 filters, 3 × 3 numbers each, of an untrained network (top) and of yours (bottom).
+Nobody told your network about gradients.
+
+> [!TASK]
+> `EXPLAIN_FILTERS`: what pattern do many of your trained filters show that the random ones do not (compare with
+> mission 08's Sobel kernel), and why would such filters help to recognise a ground point?
+
+Now overfitting, live.
 
 > [!TASK]
 > **Predict** (`PREDICT_OVERFIT`): with only 300 training pairs and 30 epochs, what will the training loss and the
-> validation loss do? Then run (it does not overwrite `my_desc.pt`):
+> validation loss do? Then run (it does not touch `my_desc.pt`):
 
 ```bash
 python3 run_features.py train --n-train 300 --epochs 30 --out overfit.pt
 ```
 
-Open `out/loss_300.png` next to `out/loss_12288.png`.
+Open `out/loss_overfit.png` next to `out/loss_my_desc.png` (same scale).
 
 > [!TASK]
-> `EXPLAIN_OVERFIT`: what happened to the two losses with 300 pairs, and why? At which epoch would you have stopped?
+> `EXPLAIN_OVERFIT`: what happened to the two losses with 300 pairs, and why? (The validation loss may only stop
+> falling and stay flat: that is already overfitting, the gap between the two curves is what matters.) At which epoch
+> would you have stopped?
 
-## Step 11 — Learned vs OpenCV
+## Step 12 — Learned vs OpenCV, and the failures
 
 ```bash
 python3 run_features.py compare
 ```
 
 It measures the matching score (lesson §9) on the 2 048 validation pairs for raw pixels, ORB, SIFT, an untrained
-PatchNet (random weights) and yours. Open `out/compare.png`. Try `--weights overfit.pt` too.
+PatchNet (random weights) and yours, and saves `out/compare.png` and `out/failures.png`: map patches your network
+matched to the wrong photo patch (left: the map, middle: its true photo, right: the one it chose).
 
 > [!TASK]
-> Write `SCORE_ORB`, `SCORE_SIFT`, `SCORE_UNTRAINED`, `SCORE_LEARNED` (three decimals) and `EXPLAIN_LEARNED`: why does
-> your network win here, and what would you need to measure before trusting it on a real drone?
+> Write `SCORE_ORB`, `SCORE_SIFT`, `SCORE_UNTRAINED`, `SCORE_LEARNED` (three decimals), then
+> `EXPLAIN_BASELINES`: raw pixels score almost as well as ORB: what does that say about these pairs? And why does an
+> untrained network, which sees the same pixels, score *below* raw pixels?
+> `EXPLAIN_LEARNED`: why does your network win here, what do its failures have in common, and what would you need to
+> measure before trusting it on a real drone?
 
 <details><summary>Read this after you ran `compare`: a fair comparison?</summary>
-The descriptors are compared on the same patches, at the same place, upright (a matcher turns the photo north-up
-from the drone's heading first, as mission 08's like_map did, and NAVERA does). SIFT was given its best patch size
-(we tried several). ORB and SIFT were designed for any picture; your network was trained for <b>this</b> kind of pair:
-drawn map views with this blur, these turns and this noise. It wins on its home ground. A real camera brings other
-light, seasons, shadows, 3-D buildings and a lens: the honest next step is a test set of real frames.
+The descriptors are compared on the same patches, at the same place, nearly upright: the photo patches keep a heading
+error of up to ±20° (a matcher turns the photo north-up from the drone's heading first, as mission 08's like_map did),
+and ORB and SIFT are computed without their own orientation, like an upright matcher. SIFT was given its best patch
+size, chosen on these same validation pairs (8 px of 8, 12, 16, 24, 32): that favours SIFT, so the comparison is
+conservative. ORB and SIFT were designed for any picture; your network was trained for <b>this</b> kind of pair: drawn
+map views with this blur, these turns and this noise. It wins on its home ground. A real camera brings other light,
+seasons, shadows, 3-D buildings and a lens: the honest next step is a test set of real frames.
 </details>
 
-## Step 12 — The report
+## Step 13 — Your experiment
 
-Write [report.md](file:./report.md) (180–450 words, your own words, keep the four headings): the scout (your ranking
-against the measurement), the detector (repeatability numbers and scale), descriptors (Hamming medians), and the
-learner (your training, overfitting, and learned vs ORB/SIFT with the scores). Quote your numbers.
+You know the recipe; now change ONE thing and measure what it does. Choose one:
+
+| `EXPERIMENT` | What you change | Command |
+|---|---|---|
+| `"margin"` | the triplet margin, 0.5 → 0.2 or 1.0 | `python3 run_features.py train --margin 1.0 --out exp.pt` |
+| `"batch"` | the batch size, 256 → 64 or 1 024 (fewer or more impostors per batch) | `… train --batch 64 --out exp.pt` |
+| `"pairs"` | the number of training pairs, all → 1 024 | `… train --n-train 1024 --out exp.pt` |
+| `"negatives"` | every impostor of the batch instead of the hardest one (the course's variant of the loss) | `… train --negatives all --out exp.pt` |
+
+On the CPU, add the same `--device cpu --n-train 4096 --epochs 4` as for `my_desc.pt` (except for `"pairs"`, where you
+change `--n-train` only): the experiment must differ from your `my_desc.pt` run in that ONE setting.
 
 > [!TASK]
-> report.md has the four headings, at least 180 words, and quotes your `REP_SIFT_ZOOM4`, your two Hamming medians and
-> your learned and SIFT scores.
+> Write `EXPERIMENT` and `PREDICT_EXPERIMENT` (will the validation score go up, down or stay the same, and why?)
+> **before** you run your command. Then write `EXP_SCORE` (three decimals, the last line of the run) and
+> `EXPLAIN_EXPERIMENT`: what changed compared with `my_desc.pt` (score and loss curves, `out/loss_exp.png`), and what
+> does it tell you about that setting? A difference of ±0.005 is within the noise of two runs: say so if you see it.
 
-## Step 13 — Check, then look back
+## Step 14 — Check, then look back
 
-Press **✔ Check my work**. It tests your functions on pictures and numbers they have never seen, loads your
-`my_desc.pt` safely (numbers only) and measures it on 1 024 patch pairs from places you never saw: it must reach a
-matching score of 0.85 (keep `my_desc.pt` from the full training of Step 9, not `overfit.pt`). When every check
-passes, you earn the **Learner** badge. Then look back, without the lesson:
+Press **✔ Check my work**. It tests your functions on pictures and numbers they have never seen, trains a tiny network
+with your `train` and compares it with the specification, loads your `my_desc.pt` safely (numbers only), checks its
+fingerprint against `logs/my_desc.pt.json`, and measures it on 1 024 patch pairs from places you never saw: it must
+reach a matching score of 0.85. When every check passes, you earn the **Learner** badge. Then look back, without the
+lesson:
 
 1. Explain to a colleague, in three sentences, why Ingenuity's camera lost its way and what NAVERA does about it.
 2. Which of your predictions was the most wrong? What did you assume?
@@ -456,10 +526,12 @@ Write your answers in `LOOK_BACK` in `answers.py` if you want your teacher to re
 
 ## Going further (optional)
 
-- **Your own scale test.** Make a fifth pair: `cv2.resize` a terrain patch by 3 and measure Harris and SIFT
-  repeatability with H = diag(3, 3, 1) (careful with the pixel centres: x' = 3x + 1).
-- **Harder negatives.** In `train`, also use the hardest impostor among the anchors (`torch.cdist(da, da)`, diagonal
-  left out). Does the validation score improve?
-- **Rotation.** Turn each validation photo patch by 45° (`np.rot90` gives 90°) and compare again: which descriptor
-  breaks? Why does ORB not break?
+- **Your own scale test.** Make a fifth pair: `cv2.resize` a terrain patch by 3 (`fx=3, fy=3`, linear) and measure
+  Harris and SIFT repeatability. Careful with the pixel centres: x' = 3x + 1, so H = [[3, 0, 1], [0, 3, 1], [0, 0, 1]].
+- **Hardest negatives on both sides.** In a copy of `triplet_loss`, also use the hardest impostor among the anchors
+  (`torch.cdist(da, da)`, diagonal left out). Does the validation score improve?
+- **Rotation.** Turn each validation photo patch by 90° (`np.rot90`) and compare again: which descriptor breaks? Why
+  would ORB with its own orientation not break? Then add a random `torch.rot90` to the photo patches in a copy of your
+  `train`: does augmentation buy the invariance?
+- **A second experiment.** Try another row of Step 13's table, or two epochs instead of eight.
 - **Fly your own parts.** Mission 22 loads `my_desc.pt` from this folder: keep it.

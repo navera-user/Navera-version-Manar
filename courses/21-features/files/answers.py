@@ -21,6 +21,7 @@ REP_HARRIS_ROT35 = 0.0   # from `repeat`, two decimals
 REP_HARRIS_ZOOM4 = 0.0
 REP_SIFT_ZOOM4 = 0.0
 CHANCE = 0.0             # the chance level of the table (all rows show the same)
+WORST_ZOOM4 = ""         # "harris", "orb" or "sift": the worst detector on city_zoom4
 EXPLAIN_SCALE = ""       # why does Harris survive the turn but not the 4× zoom, while SIFT survives both?
 
 # ---- Step 5: terrains ----------------------------------------------------------------------------
@@ -37,21 +38,34 @@ HAMMING_SAME = 0         # median Hamming distance, same ground point (from `ham
 HAMMING_RANDOM = 0       # median Hamming distance, random pairs
 EXPLAIN_HAMMING = ""     # why is the random median close to 128, and what does the gap allow?
 
-# ---- Step 7: the network ---------------------------------------------------------------------------
-PREDICT_PARAMS = ""      # before you count: how many numbers does PatchNet learn? (a guess)
-N_PARAMS_CONV1 = 0       # the parameters of conv1 alone, by hand (weights + biases)
+# ---- Step 7: the training data ------------------------------------------------------------------
+PREDICT_HARD = ""        # in out/patches.png: which pairs will be hardest for a descriptor, and why?
 
-# ---- Steps 9–10: training and overfitting -----------------------------------------------------------
-VAL_SCORE_FULL = 0.0     # the matching score printed after the full training (three decimals)
+# ---- Step 8: the network ----------------------------------------------------------------------------
+PREDICT_PARAMS = ""      # BEFORE you work it out: how many numbers will PatchNet learn? (a guess)
+N_PARAMS = 0             # the parameters of the whole PatchNet, worked out by hand from the rule (weights + biases)
+
+# ---- Steps 10–11: training, filters, overfitting ------------------------------------------------------
+VAL_SCORE_FULL = 0.0     # the matching score printed after your full training of my_desc.pt (three decimals)
+EXPLAIN_FILTERS = ""     # out/filters.png: what pattern do many trained filters show that random ones do not, and why
+                         # would it help to recognise a ground point?
 PREDICT_OVERFIT = ""     # with only 300 training pairs and 30 epochs: what will the two loss curves do?
 EXPLAIN_OVERFIT = ""     # what happened to the train and validation losses with 300 pairs, and why?
 
-# ---- Step 11: learned vs OpenCV --------------------------------------------------------------------
+# ---- Step 12: learned vs OpenCV --------------------------------------------------------------------
 SCORE_ORB = 0.0          # from `compare`, three decimals
 SCORE_SIFT = 0.0
 SCORE_UNTRAINED = 0.0
 SCORE_LEARNED = 0.0
-EXPLAIN_LEARNED = ""     # why does your network win here, and what would you need before trusting it on a real drone?
+EXPLAIN_BASELINES = ""   # raw pixels score almost as well as ORB, and the untrained network worse than raw pixels: why?
+EXPLAIN_LEARNED = ""     # why does your network win here, what do its failures (out/failures.png) have in common, and
+                         # what would you need before trusting it on a real drone?
+
+# ---- Step 13: your experiment (ONE change) -----------------------------------------------------------
+EXPERIMENT = ""          # "margin", "batch", "pairs" or "negatives"
+PREDICT_EXPERIMENT = ""  # BEFORE you run it: will the score go up, down or stay, and why?
+EXP_SCORE = 0.0          # the matching score of exp.pt (three decimals, from the end of its training)
+EXPLAIN_EXPERIMENT = ""  # what happened compared with my_desc.pt, and what it tells you about that setting
 
 # ---- Look back (not graded) ----
 LOOK_BACK = ""

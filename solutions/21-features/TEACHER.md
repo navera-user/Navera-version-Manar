@@ -3,7 +3,9 @@
 Not visible to students. Alignment, answer key, rubrics, known difficulties, class plan.
 
 Two sessions: **Session 1 — Scout & detector** (Steps 0–5, badge **Corner hunter** = checks 1–7, milestone
-`corner-hunter`) and **Session 2 — Learner** (Steps 6–13, badge **Learner** = all 14 checks). Part A of the lesson
+`corner-hunter`) and **Session 2 — Learner** (Steps 6–14, badge **Learner** = all 14 checks). Round 1 (2026-10-14)
+made the AI half design work: PatchNet's sizes are derived from a rule, the student looks at the data, the filters
+and the failures, and runs one experiment of their own; the report was dropped (its content is in the EXPLAINs). Part A of the lesson
 (§1–§6) is read before session 1, Part B (§7–§9) before session 2. Owner decision §7.5 (2026-10-14) added the AI
 half: the student builds, trains and tests a small CNN patch descriptor with PyTorch; mission 22 matches with it and
 Sim Lite (31) can fly it.
@@ -15,8 +17,8 @@ Sim Lite (31) can fly it.
 | 1. Gradients, structure tensor, eigenvalues, Harris | §1–§2 (R of two windows) | Steps 1–3 (TODO 1–4), house | 1, 2, 3, 4, 6 |
 | 2. Measure a detector: repeatability vs chance; scale | §3–§4 (chance level) | Step 4 (TODO 5) | 5, 7 |
 | 3. Descriptors (ORB/Hamming, SIFT); matchability of terrains | §5–§6 (128 bits; bunched score) | Steps 0, 5, 6 (TODO 6) | 7, 8, 13 |
-| 4. Tensors, layers, loss, gradient descent, train/val, overfitting | §7–§9 (shapes; GD step; 0.99 vs 0.70) | Steps 7–10 (TODO 7–9) | 9, 10, 11, 13 |
-| 5. Train a CNN descriptor, compare with ORB/SIFT, measured | §9 (matching score) | Steps 9, 11, 12 | 12, 13, 14 |
+| 4. Tensors, layers, loss, gradient descent, train/val, overfitting | §7–§9 (24 px shapes; GD step; 0.99 vs 0.70) | Steps 7–11 (TODO 7–9, filters, overfit run) | 9, 10, 11, 13 |
+| 5. Train a CNN descriptor, compare with ORB/SIFT, measured | §9 (matching score) | Steps 10, 12, 13 | 12, 13, 14 |
 
 ## Answer key (numbers recomputed on the Jetson, OpenCV 4.11, torch 2.8, 2026-10-13)
 
@@ -43,20 +45,39 @@ Sim Lite (31) can fly it.
   few features"; drone_city 1.00, drone_city_dark 0.00 "too few features"; real_town 1.00, real_coast 0.44.
   **MOST_KEYPOINTS = olives**, **SIFT_FIELDS = 71** (493 with NAVERA's 0.02), **DARK 17 → 632** after CLAHE
   (matchability 0.00 → 0.94). CLAHE on real_coast: 4 316 → 6 160 keypoints, many on the water and seagrass.
+- Step 4 also: **WORST_ZOOM4 = "orb"** (0.07, at chance). SIFT < Harris after the plain turn (0.73 vs 0.85): SIFT's
+  1 000 strongest points are mostly its finest blobs, sensitive to the photo's noise/blur/JPEG — measured on
+  city_rot35: keypoints of size < 4 px repeat 0.69, 4–8 px 0.84, > 8 px 0.77; with ε = 6 px SIFT 0.84, Harris 0.90.
 - Step 6 (`hamming`, 1 296 pairs): **HAMMING_SAME = 61**, **HAMMING_RANDOM = 127**.
-- Step 7: PatchNet = 88 896 parameters (conv1 160, conv2 4 640, conv3 18 496, fc 65 600); **N_PARAMS_CONV1 = 160**
-  (144 if the biases are forgotten — the check names it).
-- Step 9 (GPU, all 12 288 pairs, 8 epochs, ≈ 14 s): train loss 0.289 → 0.110, val loss 0.233 → 0.150, validation
-  score **0.957–0.959** (GPU runs are not bit-identical). CPU, `--n-train 4096 --epochs 4`: ≈ 100 s on a quiet
-  Jetson, 4 min 45 s at load 7 (others training), score 0.931–0.936; 8 epochs on all pairs on the CPU: 10–25 min (too long: say so).
-- Step 10 (300 pairs, 30 epochs): train loss 0.46 → 0.001; val loss 0.43 → minimum 0.347 at epoch 12, then 0.363
-  at epoch 30. Score 0.778 (validation), 0.766 (hidden test).
-- Step 11 (`compare`, 2 048 validation pairs, groups of 256): raw pixels 0.741, **ORB 0.756**, **SIFT 0.875**
-  (size 8 — the best of 8/12/16/24/32: 0.90/0.75/0.61/0.49/0.44 on a pilot set), **untrained 0.530** (seed 0; the
-  check accepts 0.35–0.70), **learned 0.957**.
+- Step 7 (`patches`): any prediction; the hard pairs are the blurred/dark ones and the olive rows; olive impostors
+  look like olive pairs.
+- Step 8: shapes 16 × 16 × 16 → 32 × 8 × 8 → 64 × 4 × 4 → 1 024 → 64; parameters conv1 160, conv2 4 640, conv3 18 496,
+  fc 65 600: **N_PARAMS = 88 896** (88 720 without the biases — the check names it). `test` only says whether the
+  sizes follow the rule, never the number.
+- Step 10 (GPU, all 12 288 pairs, 8 epochs, ≈ 15 s): train loss 0.29 → 0.11, val loss 0.22 → 0.148, validation
+  score **0.957–0.963** (GPU runs are not bit-identical; the check reads the student's own log). CPU recipe
+  `--device cpu --n-train 4096 --epochs 4`: 1 min 40 s on a quiet Jetson with 2 threads, **11 min 16 s** measured by
+  the weak reviewer on a busy one; score ≈ 0.93. The full run on the CPU: 30–45 min (do not).
+- Step 11 (`filters`): several trained filters are oriented derivative-like (dark side / bright side), random ones
+  are noise. Overfitting (300 pairs, 30 epochs): train loss 0.45 → 0.002; val loss 0.42 → minimum ≈ 0.37 near
+  epoch 12–16, then 0.38; score 0.75–0.79 (runs differ). The rise is small: "flat then slightly rising" is right.
+- Step 12 (`compare`, 2 048 validation pairs, groups of 256): raw pixels **0.741**, **ORB 0.756**, **SIFT 0.875**
+  (size 8, the best of 8/12/16/24/32 on these same validation pairs — this favours SIFT: the comparison is
+  conservative), **untrained 0.530** (seed 0; the check accepts 0.35–0.70), **learned 0.957–0.963**. Raw pixels ≈ ORB:
+  the pairs are same place, nearly upright (±20°), mild changes, so correlation already works; the untrained net
+  throws information away (random filters, ReLU, pooling, a random 1 024 → 64 projection). `failures.png`: flat,
+  blurred or dark patches, rows of trees.
+- Step 13 (experiment, val score; full recipe / CPU recipe): margin 0.2 → 0.956 / 0.935, margin 1.0 → 0.960 / 0.937
+  (no real effect: within noise); batch 64 → 0.955 / 0.938, batch 1 024 → 0.960 / 0.901; 1 024 pairs → 0.903 /
+  0.874 (4 epochs); negatives all → 0.929–0.933 / 0.886 (loss tiny, most impostors already far: the signal comes from
+  the hard ones). The check accepts EXP_SCORE = its own evaluation of exp.pt ± 0.0015, inside a plausibility range
+  per change (margin 0.85–0.99, batch 0.84–0.99, pairs 0.80–0.97, negatives 0.82–0.97), and exactly ONE setting
+  changed against logs/my_desc.pt.json (epochs equal).
 - Hidden test (check 12, 1 024 pairs from 4 places in no other set): raw 0.729, ORB 0.718, SIFT 0.825, untrained
-  0.491, reference network 0.940, the 4 096-pair runs 0.908 (GPU) and 0.916 (CPU), overfit.pt 0.766. Threshold
-  **0.85**: a full or a CPU-sized training passes; an overfitted or untrained one does not.
+  0.491, reference networks 0.938–0.940, the 4 096-pair runs 0.908/0.916, overfit 0.766. Threshold **0.85**.
+- Integrity: the runner writes logs/<file>.json with the SHA-256 of the saved weights and the run settings; checks
+  12–14 require the fingerprint to match (a classmate's my_desc.pt fails "train it yourself"). A copied log too is
+  possible, but that is deliberate copying, not a shortcut.
 
 ## Rubric for the written answers (the check only catches empty or off-topic answers)
 
@@ -68,7 +89,9 @@ Sim Lite (31) can fly it.
 | EXPLAIN_HAMMING | unrelated bits are coin tosses → ½ × 256 = 128; same point ≈ 61 → a threshold or nearest-neighbour test separates most, not all (distributions overlap) | one half | "random is random" |
 | EXPLAIN_OVERFIT | train loss → 0, val loss stalls ≈ 0.35 then rises (epoch ~12); memorised 300 patches; more data / early stop | describes curves without why | "it trained badly" |
 | EXPLAIN_LEARNED | trained on this kind of pair (drawn views, these effects) → home advantage; needs a test on real frames / real camera / other light and seasons; SIFT was designed for any picture | one half | "AI is better" |
-| report.md | four sections with the student's numbers, the scout's surprise named, overfitting and the learned-vs-SIFT comparison honest about synthetic data | numbers without interpretation | copy of the runner output |
+| EXPLAIN_FILTERS | trained filters are oriented derivatives (dark/bright sides, like Sobel), learned without being told; gradients/edges survive light and contrast changes | sees a pattern, no why | "they are different" |
+| EXPLAIN_BASELINES | raw ≈ ORB: the pairs are easy (same place, nearly upright, mild changes); untrained < raw: random layers lose information, training is what keeps it | one half | restates scores |
+| EXPLAIN_EXPERIMENT | the change in score vs my_desc.pt with its size compared with run-to-run noise (±0.005), and a mechanism (margin: little effect here; batch: impostors per batch; pairs: data; negatives: easy impostors dilute the signal) | result without mechanism | "it changed" |
 
 Predictions are never marked. In class, ask who put the fields above the salt pans, and who expected the olives.
 
@@ -81,19 +104,28 @@ Predictions are never marked. In class, ask who put the fields above the salt pa
   (runner and check translate it); forgetting `F.normalize` (check 9 prints the row lengths).
 - triplet_loss: the diagonal not excluded only shows when the positive is the nearest (runner's second case, check 10);
   `.item()` inside the loss kills the gradient (check 10).
-- train: lr hard-coded (check 11 trains with lr = 0), validation loss measured before the epoch (check 11 recomputes
-  it after training).
+- train: lr hard-coded (check 11 trains with lr = 0); missing zero_grad, only the first batch, never shuffling, a new
+  generator each epoch, validation on all pairs at once — check 11 trains the student's train() and the check's own
+  reference from the SAME weights and seed (128 pairs, batch 32, 2 epochs, CPU, 2 threads) and names each of these by
+  its first-epoch loss. log(None) and epochs numbered from 0 are named too.
+- Device: a CPU mask in triplet_loss passes on the CPU but fails on the GPU; `test` runs the loss on the GPU when there
+  is one and names the mask; the runner's training error names it too.
 - Students on the CPU must use the reduced command; the full CPU run takes 10–25 min on a shared Jetson.
 
-## Class plan (two sessions of about 3 h)
+## Class plan (two sessions of about 3 h 30; the GPU is shared)
 
-- Session 1: 10 min Step 0 in pairs (rankings on the board) → 45 min Part A reading with the ✏️ checks → Steps 1–4
-  (75 min) → Step 5 and the reveal of the ranking (20 min) → badge.
-- Session 2: 15 min recap of Part B (draw the network and one gradient-descent step on the board) → Steps 6–8 (60
-  min) → Step 9 (30 min; stagger the GPU runs if 15+ students train at once: each run is ≈ 15 s alone) → Steps 10–11
-  together, discussing the curves (30 min) → report.
-- Fast students: Going further (harder negatives, rotation test). Struggling students: the runner's `test` names the
-  symptom and the hint; for TODO 9 give the paper plan of the lab (once / per epoch / per batch / after the epoch).
+- The platform allows **3 GPU jobs at once** for the whole class (courses/_lib/academy_gpu.py, flock slots, 2 CPU
+  threads per job). A training takes ≈ 15 s alone; the runner waits for a slot ("The GPU is busy…") and the
+  student sees it. With 15 students: Step 10's full training ≈ 2 minutes of queue. Students who do not want to wait
+  use the CPU recipe (≈ 2–11 min depending on the load). `compare` also takes a slot for ≈ 30 s.
+- Session 1: 10 min Step 0 in pairs (rankings on the board) → 55–70 min Part A reading with the ✏️ checks → Steps 1–4
+  (75–100 min) → Step 5 and the reveal of the ranking (20 min) → badge.
+- Session 2: 15 min recap of Part B (draw the shapes of a 24 px network and one gradient-descent step on the board)
+  → Steps 6–9 (60–90 min; the paper trace of Step 8 in pairs) → Step 10 (30–60 min; let the queue run) → Steps 11–12
+  together, discussing filters, curves and failures (30 min) → Step 13, each pair chooses a different experiment and
+  reports its number to the board (25 min).
+- Weak students: about 8 h in total (GPU), 8 h 30 if they train on the CPU (weak reviewer, round 1: 8 h 15 before the
+  round-1 fixes of the messages). Fast students: Going further.
 
 ## Data and files
 
@@ -102,5 +134,6 @@ Predictions are never marked. In class, ask who put the fields above the salt pa
   8 val, 4 test on a 1.4 km grid; train 32 × 32, val/test 48 × 48), and `courses/21-features/hidden/patches_test.npz`.
   `--skip-patches` keeps the patch files. Real frames: `python3 make_dataset.py <folder of NAVERA's day frames>`
   copies frames 13 and 18 as data (place and source not established: never name a place).
-- `make_assets.py`: `assets/terrains.jpg`. `my_desc.pt`: the reference weights (GPU run, validation 0.957, test 0.940).
+- `make_assets.py`: `assets/terrains.jpg`. `my_desc.pt` + `logs/my_desc.pt.json`: the reference weights (GPU run,
+  validation 0.963, test 0.938); `exp.pt` + `logs/exp.pt.json` (negatives all, 0.933); `logs/overfit.pt.json`.
 - datasets/21-features = 27 MB. Map data © OpenStreetMap contributors (README, lab, runner pictures).
