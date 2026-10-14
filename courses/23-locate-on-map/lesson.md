@@ -1,483 +1,480 @@
 # Map-based localisation: from a photo to latitude and longitude
 
-> [!NOTE] In short
-> - NAVERA's day vision answers one question every one or two seconds: where on the map was this
->   photo taken, and how sure am I?
-> - The chain has six steps: scale the photo, search near the last position, match features, fit
->   with RANSAC, apply the gates, convert the photo centre to lat/lon.
-> - An **error budget** lists each error source in metres; independent errors combine as the root
->   sum of squares.
-> - An honest evaluation reports four numbers: availability, median error, p90, and the number of
->   wrong fixes accepted.
-> - In the lab you build the full chain, measure the errors of a wrong height and a tilted camera,
->   and test NAVERA's `LocalMatcher` on the same 13 photos.
+![A drone photo of Sousse (left), the same photo turned north-up at the map's scale (middle), and the nine map tiles around it (right). Where on the map was it taken? Map data © OpenStreetMap contributors.](assets/views.jpg)
 
-⏱ Core reading ~16 min · optional deep-dives marked *Going further*.
+> [!NOTE] Mission brief
+> **NAVERA's first day vision was an AI that barely beat doing nothing.** It compared each camera frame with the map
+> tiles around the last known position, using **DINOv2**, a famous network pretrained on 142 million pictures. On 33
+> labelled frames it placed the drone with a median error of **442 m**. Two "methods" that use no picture at all did
+> almost as well: staying at the previous position, **480 m**, and picking a random tile in the same circle,
+> **536 m** (NAVERA's validation report, 3 October 2026). In a simulated GPS loss the error grew to 4–5 km. IRIS
+> replaced it with **local feature matching** (missions 21–22 turned into a position): 30 of 33 bench frames placed
+> with a median error of 4 m. DINOv2 was kept, but only as a fallback.
+>
+> Was the AI useless, or was it used for the wrong job? Today you find out by building both halves of the answer.
+> **Session 1 — Finder:** you run DINOv2 yourself, then train your own small network on views you make from the map,
+> and you measure both against honest baselines. **Session 2 — Locator:** you turn the best candidate into an exact
+> latitude and longitude with OpenCV, write the rule that decides when the AI is worth running, and evaluate the whole
+> chain with four numbers. Each session ends with a badge: **Finder**, then **Locator**.
+>
+> **Start now:** open the 🛠️ **Lab** tab, do **Step 0** (five minutes, no code), then come back here for §1.
 
-A survey drone flies 250 m above a coastal road between two port cities. Halfway, its GPS
-receiver starts to report nonsense: somebody is jamming the signal. The drone still has a camera
-that looks down, an IMU that measures its attitude, a barometer, and — on its NAVERA box — a
-satellite map of the area. Its last good GPS fix is 20 seconds old. The question of this lesson is
-the one NAVERA's **day vision** answers every one or two seconds:
+**Objectives.** After this mission you can:
 
-> "Here is the photo I just took. **Where on the map** was it taken — and how sure am I?"
+1. explain what an **embedding** is, rank map tiles by **cosine similarity**, and feed a pretrained network
+   (DINOv2) the input it was trained on;
+2. evaluate a localiser honestly: against **baselines** and the **resolution limit**, with the median, the p90, the
+   **availability** and the wrong positions accepted, and analyse where and why it fails;
+3. train your own embedding network with a **contrastive loss** (InfoNCE) on data you generate, explain each design
+   choice (positives, augmentation, split by place), and compare it with DINOv2 on accuracy **and** cost;
+4. compute the **search radius** from the prior's σ, turn a fitted similarity into latitude and longitude through the
+   **gates**, and decide, from measurements, when retrieval is worth running;
+5. build an **error budget** (root sum of squares) and compare it with measured errors.
 
-Lesson 21 gave you keypoints and descriptors. Lesson 22 gave you the ratio test, the homography,
-RANSAC and NAVERA's trust gates. This lesson assembles them into a complete **localisation chain**,
-adds the geometry that links pixels to metres and to latitude/longitude, builds an **error budget**,
-and shows how to **evaluate** such a system honestly.
+**You need:** tiles and `pixel_to_latlon` (mission 07), `like_map` (08), the ground sampling distance (18), PyTorch,
+a training loop, the triplet loss and train/validation splits (21), the ratio test, RANSAC and the similarity fit
+(22), linear percentiles (CONVENTIONS). ⏱ Reading: about 110 minutes with the ✏️ checks (Part A, §1–§6, before
+session 1, about 70 minutes; Part B, §7–§9, before session 2). Lab: 5 h 30 to 8 h in two sessions.
 
-> [!NOTE]
-> NAVERA's test map covers **Sousse, Tunisia**, where NAVERA is developed. All the photos and map
-> tiles of the lab come from that map. The examples in the text use places from around the world; the
-> formulas are the same everywhere (only the map changes).
+**Before you start** — answer without looking (if you miss two, reread mission 07 §4, mission 21 §8 and mission 22 §3):
 
-## 1. The problem, stated precisely
+<details><summary>1. At zoom 17, how many metres of ground does one map pixel cover at the equator, and why fewer at Sousse (35.8° N)?</summary>
+40 075 017 m / (2¹⁷ · 256) ≈ 1.19 m. Web Mercator stretches the map by 1 / cos(latitude): at 35.8° N one pixel covers
+1.19 · cos 35.8° ≈ 0.97 m.
+</details>
 
-![The day-vision chain: photo, height and prior go in; a position or "no fix" comes out](assets/chain.svg)
+<details><summary>2. Triplet loss with d_pos = 0.4, d_neg = 0.7, margin 0.5: the loss, and what training does with it?</summary>
+max(0, 0.5 + 0.4 − 0.7) = 0.2: the impostor is too close, so the gradient pulls the pair together and pushes the
+impostor away.
+</details>
 
-**Inputs**
+<details><summary>3. Why fit a similarity (4 numbers) rather than a homography (8) when the photo is already turned north-up and brought to the map's scale?</summary>
+What is left is a small turn, a scale near 1 and a shift: a similarity describes it. Fewer unknowns: a minimal sample of
+2 matches instead of 4, far fewer RANSAC iterations, and fewer ways to fit random matches at a wrong place.
+</details>
 
-| Symbol | Meaning | Where it comes from |
+<details><summary>Workspace and words (open if you need them)</summary>
+
+Your files are in `~/lessons/23-locate-on-map/`. The parts of NAVERA Lite you write are
+[navera_lite/retrieval.py](file:./navera_lite/retrieval.py) and [navera_lite/locate.py](file:./navera_lite/locate.py).
+
+| Word | Meaning | Français |
 |---|---|---|
-| `I` | the camera frame, already **straightened** to a straight-down (nadir) view | live camera + IMU attitude (lessons 16–20) |
-| `h` | the **height above the ground** in metres (not the altitude above the sea!) | GPS minus ground elevation, barometer, or vision itself |
-| `hfov` | the horizontal field of view of the lens | calibration (lesson 19) |
-| `p0`, `σ0` | the **prior**: where the vehicle probably is, and the 1-sigma uncertainty of that guess | last GPS fix or last vision fix, carried forward |
-
-**Output**: either a position `(lat, lon)` with a stated uncertainty `σ`, or **"no fix"** with a
-reason. A wrong position stated with confidence is the worst possible output: the autopilot would
-fly towards the wrong place, sure of itself. So the chain is built to say "no fix" whenever it
-cannot prove its answer.
-
-The chain has six steps: (1) bring the photo to the map's scale, (2) cut the map around the prior,
-(3) match features, (4) fit a transformation with RANSAC, (5) apply the gates, (6) carry the photo
-centre to latitude and longitude. We take them one by one.
-
-## 2. Step 1 — The photo at the map's scale
-
-The **ground sampling distance** (GSD) is the ground size of one pixel. For a nadir pinhole camera
-(lesson 18) the footprint width is `W = 2 h tan(hfov / 2)`, so
-
-```
-GSD_photo = 2 · h · tan(hfov / 2) / width_px                 [m per photo pixel]
-GSD_map   = 40 075 016.7 · cos(lat) / (2^z · 256)            [m per map pixel, Web Mercator, zoom z]
-s         = GSD_photo / GSD_map                              [resize factor for the photo]
-```
-
-**Worked example.** A 640 × 480 photo taken from `h = 200 m` with `hfov = 75°`:
-
-```
-W         = 2 × 200 × tan(37.5°) = 2 × 200 × 0.7673 = 306.9 m
-GSD_photo = 306.9 / 640                                = 0.4796 m/px
-GSD_map   (Sousse, lat 35.83°, z = 17)                 = 0.9684 m/px
-s         = 0.4796 / 0.9684                            = 0.495
-```
-
-The photo is resized to 49.5 % of its size: then a house 10 map pixels wide is also about 10 pixels
-wide in the photo. Over Singapore (lat 1.35°) the same zoom gives 1.194 m/px, because `cos(lat)` is
-larger near the equator: Web Mercator pixels cover more ground there.
-
-Why resize at all, if SIFT is scale invariant? Two reasons. First, descriptors match best when both
-images show the ground at the same scale (scale invariance is approximate). Second — and more
-important — once the scale is fixed *before* matching, the scale fitted *after* matching must be
-**1**. That gives us a free test of the answer (section 5).
-
-<details class="further"><summary>Going further (optional) — Which zoom level?</summary>
-
-**Which zoom?** NAVERA matches against **zoom 17**: about 1 m per pixel. Zoom 18 is twice as sharp
-but has four times more pixels to search and to keep in memory; zoom 16 loses the small details
-(cars, small buildings) that make features distinctive.
-
+| **embedding** | a vector that summarises a whole picture; similar places → close vectors | plongement (embedding) |
+| **cosine similarity** | a·b / (‖a‖ ‖b‖): 1 = same direction, 0 = unrelated, −1 = opposite | similarité cosinus |
+| **retrieval** | finding, in a database, the items closest to a query | recherche par similarité |
+| **pretrained model** | a network trained by someone else on other data, used as it is | modèle pré-entraîné |
+| **baseline** | a simple method any new method must beat to be worth anything | méthode de référence |
+| **prior** | where the drone believes it is before looking, with its σ | a priori |
+| **contrastive loss** | a loss that pulls matching pairs together and pushes the others apart | perte contrastive |
+| **temperature** τ | divides similarities before a softmax: small τ = sharper choice | température |
+| **augmentation** | random changes of training pictures, so the network ignores them | augmentation de données |
+| **availability** | the share of photos for which a position is given | disponibilité |
 </details>
 
-## 3. Step 2 — The prior and the search radius
+# Part A — Finding the tile (read before session 1)
 
-**Why not search the whole map?** Because many places look alike. If the searched area is `A` and
-the density of "look-alike" features is roughly constant, the number of wrong candidates grows with
-`A`, so the chance that a wrong place fits by accident grows too.
+## 1. One question, two scales
 
-<details class="further"><summary>Going further (optional) — How much worse is a whole-map search? (measured)</summary>
+![The chain of this mission: a search circle from the prior; retrieval when the circle is large; local matching for the exact position; or no fix](assets/chain.svg)
 
-NAVERA measured this with its first day-vision method (DINOv2 tile retrieval, 33 labelled
-aerial frames, from `docs/VALIDATION_STATUS.md`):
+The drone's GPS is jammed. It has a downward photo, its height above the ground (barometer), its heading (IMU),
+a camera calibration, the course map, and a **prior**: where it believes it is, (lat, lon), with a 1-σ uncertainty
+σ that grows while it flies without a fix. The question is mission 01's: *where am I, and how sure am I?* The answer is
+a position with a stated σ, or "no fix" with a reason, never a confident wrong position.
 
-| Where it searched | Median error |
-|---|---|
-| the whole map, no prior | **1 696 m** |
-| within 600 m of the previous true position | 442 m |
+The answer comes in two scales. **Coarse:** which piece of map, a few hundred metres wide, is the photo in? **Fine:**
+which exact pixel of that piece is under the camera? Local feature matching (missions 21–22) answers the fine
+question very well, but only inside a small piece of map. When the prior is poor, the circle to search is large, and
+a coarse step must first say where to look. That coarse step is **retrieval**, and it is where NAVERA used AI.
 
+**Worked example — what one photo covers.** The lab's camera has a horizontal field of view of 60° and 640 × 480
+pixels. From 360 m the footprint is 2 · 360 · tan 30° = **415.7 m** wide and 415.7 · 480/640 = **311.8 m** high,
+0.650 m per photo pixel (mission 18's GSD). A zoom-17 map pixel at Sousse covers 0.968 m, so one 256-pixel **tile**
+is **247.9 m** wide. Turned north-up at the map's scale (the photo shrunk by 0.650/0.968 = 0.671), the photo spans
+about 429 × 322 map pixels: a little more than one tile in each direction, and almost never aligned with the tiles.
+
+> [!QUESTION] ✏️ Check
+> From 300 m, how wide is the footprint, and how many tile widths is that? If the photo's centre is 100 m east of a
+> tile's centre, which share of that tile does a 248 m square view centred on the photo still overlap (east–west only)?
+
+<details><summary>Answer</summary>
+2 · 300 · tan 30° = <b>346.4 m</b>, 346.4 / 247.9 ≈ <b>1.4 tile widths</b>. Shifted by 100 m, a 248 m square overlaps
+the tile on 248 − 100 = 148 m: <b>about 60 %</b> of its width. A view and its "own" tile are never the same picture.
 </details>
 
-Whole-map search is therefore **disabled by default** (`allow_global_search: false`): day vision
-waits for a prior.
+## 2. Embeddings and cosine similarity
 
-<details class="further"><summary>Going further (optional) — How NAVERA sizes the search circle</summary>
-
-**The search radius follows the uncertainty.** If the prior has a 1-sigma error `σ`, the true
-position lies within `3σ` of it with a probability above 98 % (for a 2-D Gaussian, the probability
-inside `kσ` is `1 − exp(−k²/2)`: 98.9 % for `k = 3`). NAVERA uses
+Comparing a photo with 100 map tiles pixel by pixel fails: the light, the turn, the blur and the offset all change the
+pixels. Instead, a network turns each picture into an **embedding**: a vector of D numbers (D = 384 for DINOv2) built
+so that pictures of the same kind of place give vectors pointing in nearly the same direction. Comparing two pictures
+becomes comparing two vectors, with the **cosine similarity**:
 
 ```
-r = clamp(k · σ_pred, 80 m, 1500 m)        with k = 3   (vision_nav.py, search())
+cos(a, b) = a·b / (‖a‖ · ‖b‖)          1: same direction    0: unrelated (perpendicular)    −1: opposite
 ```
 
-and `σ_pred` grows with the time since the last fix (velocity error × t, plus a 5° heading error ×
-distance, plus unseen accelerations — lesson 24 explains this "dead-reckoning"). A vehicle that has
-been lost for a while is searched for in a wider circle.
+Only the direction counts, not the length. When every embedding is stored with length 1 (a **unit vector**), the
+cosine is simply the dot product, and ranking 100 tiles is one matrix–vector product. **Retrieval** = embed the query,
+compute its similarity with every candidate, sort, best first.
 
+**Worked example.** Query q = (1, 2, 2), ‖q‖ = 3. Tile a = (2, 1, 2): a·q = 2 + 2 + 4 = 8, ‖a‖ = 3, cos = 8/9 =
+**0.889**. Tile b = (0, 3, 0): b·q = 6, ‖b‖ = 3, cos = **0.667**. Tile c = (−1, −2, −2): cos = **−1**. The ranking is
+a, b, c.
+
+> [!QUESTION] ✏️ Check
+> Add tiles d = (2, 4, 4) and e = (4, 0, 0). Their cosines with q, and the new ranking?
+
+<details><summary>Answer</summary>
+d·q = 18, ‖d‖ = 6: cos = <b>1.0</b> (d is q made twice longer: same direction). e·q = 4, ‖e‖ = 4: cos = 4/12 = <b>0.333</b>.
+Ranking: d, a, b, e, c. A dot product alone would have ranked d first too, but e (16 apart in length) above b: that is
+why the lengths must be divided out.
 </details>
 
-**The margin.** The circle bounds the photo **centre**. The photo itself extends further: we add a
-margin of half the photo's diagonal on the ground, so the whole photo fits in the map patch even
-when the true position is on the circle's edge.
+## 3. A pretrained model: DINOv2
 
-![The map piece: the search circle around the prior, plus a margin for the photo itself](assets/search.svg)
+![DINOv2 cuts the picture into 14 × 14 squares, turns each into a token, lets the tokens look at each other, and keeps the class token](assets/vit.svg)
 
-```
-margin  = 0.5 · sqrt(w² + h²) · GSD_photo                 (640 × 480, 0.4796 m/px → 191.8 m)
-half    = ceil((r + margin) / GSD_map)                    (r = 300 m → ceil(491.8 / 0.9684) = 508 px)
-patch   = square of 2 · half pixels around the prior      (1016 × 1016 pixels ≈ 1 km²)
-```
+**DINOv2** (Meta AI, 2023) is a **vision transformer**. It cuts a picture into squares of 14 × 14 pixels (the
+"/14" of ViT-S/14), turns each square into a token of 384 numbers, adds one extra **class token**, and lets all tokens
+exchange information in 12 attention layers. The class token at the end summarises the whole picture: that is the
+embedding. ViT-S/14 has 22 million parameters. It was trained by **self-supervision**: no labels, only the task "give
+the same answer for two crops of the same picture", on 142 million photos of the world. It was never shown a map.
 
-The cost of matching grows with the patch area, i.e. with `(r + margin)²`. Doubling the radius
-from 300 m to 600 m multiplies the number of map pixels (and of map features) by about
-`(791.8 / 491.8)² ≈ 2.6`. That is time, memory **and** risk of look-alikes. Keep the corner
-`(x0, y0)` of the patch in **global pixels** (lesson 7): it links patch pixels to the world.
+A pretrained network expects its input exactly as it was trained. DINOv2's pictures were:
 
-## 4. Step 3 — Matching and fitting
+- **RGB** (OpenCV gives you BGR: the first channel is blue);
+- scaled to 0..1, then normalised channel by channel with the ImageNet mean (0.485, 0.456, 0.406) and standard
+  deviation (0.229, 0.224, 0.225), red first: x' = (x − mean) / std;
+- square, with a side that is a multiple of 14 (the course uses 224);
+- laid out **channels first**: (N, 3, H, W), not OpenCV's (H, W, 3).
 
-Matching is lesson 22 again: SIFT descriptors of the resized photo and of the patch, two nearest
-neighbours for each photo descriptor, and the **ratio test** (`d1 < 0.8 · d2`) to drop ambiguous
-matches.
+**Worked example — one pixel.** OpenCV gives (B, G, R) = (30, 200, 120). Red: 120/255 = 0.4706, (0.4706 − 0.485)/0.229
+= **−0.063**. Green: 200/255 = 0.7843, (0.7843 − 0.456)/0.224 = **1.466**. Blue: 30/255 = 0.1176,
+(0.1176 − 0.406)/0.225 = **−1.282**. The tensor holds (−0.063, 1.466, −1.282) in the order red, green, blue.
 
-**Which model?** In lesson 22 you fitted a **homography** (8 degrees of freedom), which describes
-any view of a plane. Here the frame is already straightened to nadir and resized to the map's
-scale, so the remaining transformation between photo and map is a **similarity**: a rotation `θ`
-(the heading), a uniform scale `s` (≈ 1) and a translation `(tx, ty)` — 4 degrees of freedom:
+> [!QUESTION] ✏️ Check
+> A white pixel, (255, 255, 255): its three numbers? And a ViT-B/16 network on 224 × 224 pictures: how many patch tokens?
 
-```
-[u]   [ s·cos θ   −s·sin θ   tx ] [x]
-[v] = [ s·sin θ    s·cos θ   ty ] [y]        A = the 2 × 3 matrix, OpenCV: cv2.estimateAffinePartial2D
-                                  [1]
-s = hypot(A[0,0], A[1,0])        θ = atan2(A[1,0], A[0,0])
-```
+<details><summary>Answer</summary>
+(1 − 0.485)/0.229 = <b>2.249</b>, (1 − 0.456)/0.224 = <b>2.429</b>, (1 − 0.406)/0.225 = <b>2.640</b> (red, green,
+blue). 224/16 = 14 per side: <b>196</b> tokens (plus the class token).
+</details>
 
-Because the image y axis points **down**, a positive `θ` turns clockwise on the screen — like a
-compass heading. A photo whose top pointed 30° east of north gives `θ ≈ +30°`.
+> [!WARNING] What a wrong input does
+> Feed BGR instead of RGB, or forget the /255, and DINOv2 still returns 384 numbers of length 1: **no error message**.
+> The embeddings are simply worse, and nothing tells you. That is why lab Step 2 compares your embeddings of four map
+> tiles with the course's index before it embeds the photos.
 
-<details class="further"><summary>Going further (optional) — RANSAC cost: similarity against homography</summary>
+## 4. Measuring honestly: baselines and the limit
 
-Fewer parameters help RANSAC in two ways. A similarity needs a **minimal sample** of 2 matches,
-a homography 4. With the iteration formula of lesson 22, `N = ⌈log(1 − p) / log(1 − w^m)⌉`
-(rounded **up**, as in lesson 22) for a confidence `p = 0.999`:
+A median error of 180 m means nothing alone. Is it good? Compare it with methods that use **no picture at all**:
 
-| Inlier ratio `w` | similarity (`m = 2`) | homography (`m = 4`) |
+- **stay at the prior** — answer the prior itself. Its error is the prior's error. With σ on each axis (east and
+  north), the distance has a median of σ · √(2 ln 2) ≈ **1.18 σ**.
+- **random tile in the circle** — answer the centre of any candidate tile. Its error is about the size of the circle.
+
+And with the best a tile-level answer can ever do: the **resolution limit**, the centre of the best tile of the
+circle, which is still tens of metres from the truth (§1). A retrieval method is useful only if it beats both
+baselines clearly, and its results should be read against the limit.
+
+NAVERA's own table (validation report, 3 October 2026; 33 labelled replay frames, search within 600 m of the previous
+true position):
+
+| Method | Median error | Within 300 m |
 |---|---|---|
-| 0.3 | 74 iterations (73.2 → 74) | 850 iterations (849.4 → 850) |
-| 0.1 | 688 iterations (687.3 → 688) | 69 075 iterations (69 074.1 → 69 075) |
+| DINOv2 retrieval, search within 600 m | 442 m | 41 % |
+| Random tile in the same circle (baseline) | 536 m | 17 % |
+| Repeating the previous position (baseline) | 480 m | 31 % |
+| DINOv2, whole map, no prior | 1 696 m | 12 % |
+| Best tile available (resolution limit) | 107 m | 94 % |
 
-Cross-date photos often have `w ≈ 0.1`: the similarity stays cheap. And a model with fewer
-degrees of freedom has fewer ways to fit random matches at a wrong place. Use the homography only
-when the frame could not be straightened (unknown attitude).
+For a full localiser (Part B) the course reports four numbers, plus "within 300 m" for retrieval:
 
-</details>
-
-## 5. Step 4 — The gates
-
-RANSAC **always** returns its best model, even over the sea, even when the true place is not in
-the patch. The gates decide whether to believe it:
-
-1. **Enough inliers**: at least 8 (`local_min_inliers`). Few inliers means a weak or random fit.
-2. **The right scale**: `|s − 1| ≤ 0.15` (`local_scale_tol`). We fixed the scale before matching,
-   so a correct fit has `s ≈ 1`. A random fit at a wrong place can have any scale.
-3. In flight NAVERA adds more: the fitted rotation must agree with the IMU heading within ±20°
-   (`local_heading_tol_deg`); a fix more than 3σ from the predicted position is refused unless it
-   has ≥ 100 inliers; a weak fix whose inliers cover too little of the frame is refused; and a fix
-   farther than the vehicle could have flown since the last one is refused (the **motion gate**).
-
-<details class="further"><summary>Going further (optional) — What the scale gate was measured to do</summary>
-
-The value of gate 2 was measured on the 33 aerial test frames (`docs/VALIDATION_STATUS.md`, search
-within 600 m of the true position):
-
-| Variant | Accepted | Worst error of the accepted | Wrong (> 50 m) accepted |
-|---|---|---|---|
-| prototype, no scale check, ≥ 12 inliers | 10/33 | 1 097 m | 1 |
-| + scale check | 21/33 | 5 m | 0 |
-
-</details>
-
-A refusal is reported as `"no fix"` with a reason such as `"3 inliers (min 8)"`. That is not a
-failure of the code: it is the code being honest.
-
-## 6. Step 5 — From the photo centre to latitude and longitude
-
-For a nadir camera the point under the vehicle is the photo **centre** `(cx, cy) = (w/2, h/2)` of
-the resized photo. Carry it through the chain:
-
-```
-(u, v)   = A · [cx, cy, 1]ᵀ                          patch pixels
-(X, Y)   = (x0 + u, y0 + v)                          global pixels at zoom z
-n        = 256 · 2^z
-lon      = X / n · 360° − 180°
-lat      = atan( sinh( π · (1 − 2 Y / n) ) )         (inverse Web Mercator, lesson 7)
-```
-
-**Worked example** (photo p01 of the lab, old town of Sousse). The patch corner is
-`(x0, y0) = (17 768 272, 13 195 992)` (the patch is centred on the **prior**, about 145 m from the truth) and
-RANSAC carries the centre to `(u, v) = (384.3, 424.9)`.
-Then `X = 17 768 656.3`, `Y = 13 196 416.9`, `n = 256 · 2^17 = 33 554 432`:
-
-```
-lon = 17 768 656.3 / 33 554 432 × 360 − 180 = 10.63700°
-lat = atan(sinh(π × (1 − 2 × 13 196 416.9 / 33 554 432))) = 35.82560°
-```
-
-The error is the haversine distance (lesson 6) between this answer and the truth.
-
-## 7. The error budget
-
-Even a perfect match does not give the perfect position. An **error budget** lists every
-independent error source as a 1-sigma value in metres, then combines them. For independent errors
-the variances add, so the total is the **root sum of squares** (RSS):
-
-```
-σ_total = sqrt(σ_1² + σ_2² + … + σ_n²)
-```
-
-![Two error sources with simple geometry: the tilt offset and the wrong height](assets/budget.svg)
-
-**a) Attitude (tilt) error → position offset.** If the camera is tilted by `θ` but the code believes
-it looks straight down, the photo centre shows the ground point at distance
-
-```
-d = h · tan θ          dd/dθ = h / cos²θ ≈ h per radian = 0.01745 · h per degree
-```
-
-At 200 m, 1° costs 3.5 m; at 1 000 m it costs 17.5 m. This is why NAVERA straightens every frame
-with the IMU attitude, and why the residual attitude error (a BNO085-class IMU: about 0.3° in tilt)
-stays in the budget: `200 × tan(0.3°) = 1.0 m`. (Celestial navigation, lesson 26, has the same
-problem at a much larger scale: 1° of attitude error costs 111 km there.)
-
-**b) Height error → scale error, not position error.** The photo was resized with the assumed
-height `h_a`, but the true footprint follows the true height `h_t`. The scale RANSAC fits is then
-
-```
-s_fit = GSD_true / GSD_assumed = h_t / h_a
-```
-
-The photo centre still lands on the right map pixel (the scale is fitted, not imposed), so a wrong
-height does **not** move the position — but if `|h_t / h_a − 1| > 0.15` the scale gate refuses a
-correct match. A wrong height costs **availability**. It also means vision can **measure** the
-height: `h_t = h_a · s_fit`. NAVERA uses this: `locate_any_height()` tries a ladder of heights
-when none is known, and the height filter in `vision_nav.py` is updated with `h · s_fit`.
-
-<details class="further"><summary>Going further (optional) — A classic mistake over high ground</summary>
-
-> [!WARNING]
-> Over high ground this is the classic mistake. A drone at 4 100 m above sea level over the
-> Altiplano near La Paz, Bolivia (about 3 800 m high) is only about 300 m above the ground. If the
-> code used the altitude above the sea, it would expect a footprint 13.7 times too large and every
-> match would fail the scale gate. NAVERA needs the **height above the ground**.
-
-</details>
-
-**c) Latency → along-track offset.** A photo processed `Δt` seconds after its exposure describes
-where the vehicle *was*: `d = v · Δt`. NAVERA carries each vision position to the present along the
-measured velocity (from `docs/VALIDATION_STATUS.md`: a photo processed 1.5 s after it was taken, at
-40 m/s, is moved 60 m forward, and its stated accuracy becomes ±31.5 m). Only the residual timing error stays in the budget.
-
-**d) Matcher noise.** Inlier positions are noisy by a few pixels; the fitted centre too.
-`fix_sigma_m()` in NAVERA maps the inlier count to a 1-sigma error, measured in a bench campaign:
-≥ 100 inliers → 4 map pixels, 50–99 → 8, 20–49 → 15, fewer → 25 (times `GSD_map`).
-
-**e) Map registration.** Satellite imagery is not placed perfectly on the Earth: a whole area can be
-shifted by a few metres. `vision_nav.py` learns this bias while GPS is still good (GPS minus vision,
-sampled over several headings) and removes it afterwards, capped at 30 m.
-
-**Worked budget — a survey drone 300 m above the rice fields near Bangkok** (lat 13.75°, `GSD_map` =
-1.16 m at z17): tilt σ 0.3° → 1.6 m; matcher 8 px × 1.16 m → 9.3 m; residual lag 0.1 s × 20 m/s →
-2.0 m; map registration → 5.0 m.
-
-```
-σ_total = sqrt(1.6² + 9.3² + 2.0² + 5.0²) = sqrt(2.56 + 86.49 + 4.0 + 25.0) = sqrt(118.05) = 10.9 m
-```
-
-The matcher term dominates: improving it (more inliers, a learned matcher) pays more than a better
-IMU. That is the use of a budget: it tells you **where to spend effort**.
-
-## 8. Evaluating a localiser honestly
-
-Run the chain on `n` test photos with a known truth. Four numbers describe the result; one alone
-is never enough:
-
-| Metric | Definition | Why |
+| Number | Definition | Why |
 |---|---|---|
-| **availability** | accepted / n | a perfect position once an hour is useless |
-| **median error** | 50th percentile of the accepted errors | the typical error, not pulled by one outlier |
-| **p90** | 90th percentile of the accepted errors | the tail: what the autopilot must survive |
-| **wrong accepted** | number of accepted fixes with error > 50 m | the dangerous failures; must be 0 |
+| **availability** | positions given / photos | a perfect position once an hour is useless |
+| **median** | 50th percentile of the errors of the positions given | the typical error |
+| **p90** | 90th percentile of the same errors | the tail the autopilot must survive |
+| **wrong** | positions given with an error > 50 m | the dangerous failures; must be 0 |
 
-> [!NOTE]
-> **The percentile rule of this course.** From here to lesson 33, "percentile" (median, p90, p95…)
-> means **linear interpolation**, numpy's default, defined just below. There is one exception, and
-> it is announced where it happens: in lesson 32 you reproduce the tables of NAVERA's tool
-> `evaluate_session.py`, which uses the **nearest-rank** rule, so there you use that rule too
-> (numbers that you compare must use the same rule). In every report, write the rule you used.
+Percentiles are **linear** (numpy's default, CONVENTIONS §6): sort the m values, take the position p = (m − 1)·q/100,
+interpolate between the values on either side.
 
-The **percentile** with linear interpolation (numpy's default): sort the `m` values `v[0] ≤ … ≤
-v[m−1]`, compute the position `p = (m − 1) · q / 100`, and interpolate between `v[floor(p)]` and
-`v[ceil(p)]`. Example: errors `[0.2, 0.4, 1.1, 5.0, 7.5, 30]`, q = 90: `p = 4.5`, so
-`p90 = 7.5 + 0.5 × (30 − 7.5) = 18.75 m`.
+**Worked example.** Five photos, errors [5, 9, refused, 120, 30] m. Availability 4/5 = 0.8. Sorted: [5, 9, 30, 120];
+median: p = 1.5 → 9 + 0.5 · 21 = **19.5 m**; p90: p = 2.7 → 30 + 0.7 · 90 = **93 m**; within 300 m: 4/4; wrong: **1**.
 
-<details class="further"><summary>Going further (optional) — Small samples: the rule of three</summary>
+> [!QUESTION] ✏️ Check
+> Seven photos: [refused, 200, 40, refused, 600, 90, 10]. Availability, median, p90, wrong?
 
-**Small samples.** "0 wrong out of 10" does not mean "never wrong". If the true rate of wrong fixes
-were `ρ`, the probability of seeing 0 in `n` trials is `(1 − ρ)^n`. Setting it to 5 % gives the
-**rule of three**: the 95 % upper bound is `ρ ≈ 3 / n`. With 10 photos, you can only claim
-`ρ < 30 %`; with 300 photos, `ρ < 1 %`.
-
+<details><summary>Answer</summary>
+5/7 = <b>0.71</b>. Sorted [10, 40, 90, 200, 600]: median <b>90 m</b>; p90: p = 3.6 → 200 + 0.6 · 400 = <b>440 m</b>;
+wrong (> 50 m): 90, 200, 600 = <b>3</b>.
 </details>
 
-<details class="further"><summary>Going further (optional) — Test data: why photos cut from the map are too easy</summary>
+## 5. The prior and the search circle
 
-**Test data.** Photos cut from the map itself match far too easily. NAVERA's validation document
-quotes its bench result on **33 real aerial frames from another source and date** — 32/33 within
-9 m, median 4 m, no wrong position accepted, 0.42 s per frame on the Jetson CPU — and says clearly
-that these are **not** frames from NAVERA's own camera. Positions are therefore published with a
-cautious 30 m (`local_sigma_m`) until they are measured with the real camera. In the simulator the
-error is about 1 m, but the simulated camera is cut from the map's own imagery: optimistic. You will
-see exactly this effect in the lab.
+![The search circle around the prior: the candidate tiles are those whose centre is inside it](assets/search.svg)
 
+Where to look follows from the prior. If the prior's error is Gaussian with σ on each axis, the truth lies within kσ
+of the prior with probability **1 − exp(−k²/2)**: 39 % for k = 1, 86 % for k = 2, **98.9 % for k = 3**. So the search
+radius is r = k·σ with k = 3, but never below a floor r_min (the prior's own computation is never perfect) nor above a
+ceiling r_max (a larger circle costs more and holds more look-alikes):
+
+```
+r = min(max(k · σ, r_min), r_max)          NAVERA: k = 3, r_min = 80 m, r_max = 1 500 m
+```
+
+**Worked example.** σ = 120 m → r = **360 m**. σ = 10 m → 30 m, raised to **80 m**. σ = 900 m → 2 700 m, cut to
+**1 500 m**. The number of candidate tiles is about π r² / (247.9 m)²: **18** for r = 600 m, **74** for 1 200 m. With
+18 candidates, a random tile is wrong by a few hundred metres; with 74, by about a kilometre. The prior's own error
+grows with σ too (1.18 σ). Which of the two grows faster, and what it means for retrieval, is lab Step 5.
+
+> [!QUESTION] ✏️ Check
+> σ = 30 m and σ = 600 m: the radius, and about how many candidate tiles?
+
+<details><summary>Answer</summary>
+σ = 30 m: 90 m (above the 80 m floor), π · 90² / 247.9² ≈ 0.4: the circle is smaller than one tile; the truth's tile
+and maybe a neighbour. σ = 600 m: 1 800 m → cut to <b>1 500 m</b>, ≈ <b>115 tiles</b>.
 </details>
 
-<details class="further"><summary>Going further (optional) — Learned matchers, DISK + LightGlue</summary>
+## 6. Your own embedding network
 
-SIFT is a hand-designed detector (lesson 21). **Learned** features replace it with neural networks
-trained on many real image pairs: **DISK** detects keypoints and computes descriptors, and
-**LightGlue** matches two sets of keypoints by attention (each keypoint "looks at" the others in
-both images), instead of a nearest-neighbour search plus ratio test. They cope better when the photo
-and the map differ in colour, shadows and date.
+DINOv2 never saw a map. A network trained on **this** map, for **this** job, might do better, and run much faster on
+the drone's small computer. You build one: **TileNet**, four convolution blocks (mission 21's kind), then a
+**global average pooling** (the mean of each map over its width and height: one number per map), then one linear
+layer and a division by the length. Global pooling makes the embedding the same wherever in the view a road or a block
+appears: useful, since a photo's centre is never a tile's centre (§1).
 
-NAVERA has one: [learned_matcher.py](file:navera/day_pkg/day_pkg/learned_matcher.py) (kornia, on the
-GPU). Its docstring reports a bench of 33 aerial frames (600 m search, position carried along the
-velocity): **30/33 located, 0 wrong, 333 ms/frame** on the Orin Nano, against **22/33, 0 wrong,
-720 ms** for SIFT in the same test. (This is a different protocol from the `LocalMatcher` table
-above, so do not compare the two tables line by line.) Two practical points: DISK and LightGlue are
-**not rotation invariant**, so the frame is first turned north-up with the heading; and when the
-learned match fails, SIFT is tried as a fallback. The lab uses SIFT only: the learned models need a
-GPU and their weights.
+**The data you generate.** No labelled photos are needed: the map makes its own pairs. An **anchor** is a map tile; its
+**positive** is a view of a place *inside* that tile, offset by up to half a tile in x and y, as a real photo would be.
+Then **augmentation**: a small turn (±6°, the heading error), a scale change (±8 %, the height error), changes of light
+and colour, blur, a cloud, noise, and black corners where a turned photo does not cover the view. Each change teaches
+the network to ignore it; a change you do not show, it will not ignore. Tiles that are almost uniform (sea, empty land)
+are left out: all alike, they cannot teach which place is which. And the split is **by place**: training pairs from
+the north of the map, validation pairs from the south, and the lab's photos from Sousse, which training never sees.
 
+**The loss: InfoNCE.** In a batch of B pairs, compute every similarity za[i]·zp[j] (B × B numbers). Row i is a
+classification with B answers, and the right answer is j = i (the diagonal). Divide the row by a **temperature** τ,
+turn it into probabilities with a softmax, and take −log of the probability of the right answer. The loss is the mean
+over the rows. Every other view of the batch is a negative, for free.
+
+![InfoNCE: each row of the similarity matrix must pick its own diagonal](assets/infonce.svg)
+
+**Worked example** (B = 3, τ = 0.5). Row 0 of the similarities: [0.9, 0.5, 0.1] → divided by τ: [1.8, 1.0, 0.2].
+e^1.8 = 6.050, e^1.0 = 2.718, e^0.2 = 1.221; the probability of answer 0 is 6.050 / 9.989 = 0.606; the loss of row 0
+is −ln 0.606 = **0.50**. With τ = 0.1 the row becomes [9, 5, 1] and its loss **0.018**: this row is nearly solved, and
+a smaller temperature says so more firmly.
+
+> [!QUESTION] ✏️ Check
+> Row [0.9, 0.85, 0.1] (an impostor almost as close as the right view): its loss with τ = 0.5 and with τ = 0.1? What
+> does a small temperature do to such a row compared with the easy one above?
+
+<details><summary>Answer</summary>
+τ = 0.5: [1.8, 1.7, 0.2] → 6.050 / (6.050 + 5.474 + 1.221) = 0.475 → loss <b>0.745</b>. τ = 0.1: [9, 8.5, 1] →
+8 103 / (8 103 + 4 915 + 3) = 0.622 → loss <b>0.474</b>. Small τ makes easy rows almost free (0.018) while the hard row
+keeps a large loss: training spends its effort on the closest impostors.
 </details>
 
-## 🐦 How birds do it
+**Counting parameters** (as in mission 21): a `Conv2d(3, 8, 5)` has 8 filters of 3 · 5 · 5 = 75 weights plus 8 biases:
+**608**. A `Linear(64, 10)`: 64 · 10 + 10 = **650**. Global average pooling has none. TileNet's count is yours to
+derive in lab Step 8.
 
-In the 1950s the German biologist Gustav Kramer proposed the **"map and compass"** model of bird
-navigation. A **compass** tells a bird which way is which; a **map** tells it where it is. A
-compass alone is not enough: if you do not know where you are, you do not know which way home is.
-NAVERA's day vision has the same two parts: the IMU heading is the compass (it turns the frame
-north-up and checks the fitted rotation), the satellite map is the map, and this lesson finds the
-photo on it.
+> [!QUESTION] ✏️ Check
+> After four blocks, a batch has the shape (N, 128, 4, 4). Its shape after global average pooling? And why would a
+> network that flattens the 128 · 4 · 4 numbers instead struggle when the photo's centre is 100 m from the tile's?
 
-GPS tracking of homing pigeons near Oxford showed that, in familiar country, many birds follow
-roads, rivers and field edges for long stretches instead of flying in a straight line: long,
-contrasting lines are easy to recognise from above. Many migrating birds also follow **leading
-lines** — coastlines and mountain ridges. Birds flying between Europe and Africa follow the
-Atlantic coast of France, Spain and Morocco, or the line of the Alps and the Pyrenees. Navi the
-swallow does the same as NAVERA: she does not scan a whole continent to recognise the place below her — she looks **around
-where she believes she is**, in country she knows. That is the prior.
+<details><summary>Answer</summary>
+(N, 128): one mean per map. Flattening keeps WHERE each feature was: the same road 100 m (about a quarter of the
+view) away lands in other numbers, so the tile and the photo look different to the linear layer. The mean forgets the
+position and keeps WHAT was seen.
+</details>
+
+> [!WARNING] Common wrong ideas (Part A)
+> - "A famous pretrained model beats any baseline." Measure it: NAVERA's DINOv2 beat staying put by 38 m.
+> - "Similar embeddings mean the same place." They mean the same *kind* of place: one city block looks like the next.
+> - "Feed OpenCV's picture to the network as it is." BGR, 0..255 and (H, W, 3) give no error, only wrong embeddings.
+> - "Validate on views of the training area." Neighbouring views share ground: that measures memory. Split by place.
+> - "More augmentation is always better." Each one removes information; add what the real photos really vary in.
+
+# Part B — From a tile to a position (read before session 2)
+
+## 7. The fine step: local matching and the gates
+
+The fine step is mission 22's chain, run by NAVERA Lite's given `local_match`: the photo is made like the map
+(mission 08's `like_map`: grey, contrast stretched, north-up from the heading, at the map's metres per pixel); a map
+patch is cut around a point, big enough for the search circle plus half the view; CLAHE on both, then SIFT keypoints
+with NAVERA's contrast threshold 0.02 (map pictures are pale, mission 21 §6 and "In NAVERA"); for each
+view descriptor its two nearest map descriptors, kept if the nearest is clearly closer (ratio 0.9: drawn maps repeat
+the same corners, so one match per map keypoint is also kept); then a **similarity** fitted by RANSAC
+(`cv2.estimateAffinePartial2D`): A, a 2 × 3 matrix that carries view pixels into patch pixels.
+
+RANSAC always returns its best fit, even over the sea. The **gates** decide whether to believe it (NAVERA's values):
+
+1. **enough inliers**: at least 6;
+2. **the right scale**: the photo was brought to the map's scale from the height, so the right place fits with a scale
+   s = ‖first column of A‖ ≈ 1. A random fit at a wrong place can have any scale: |s − 1| ≤ 0.15 or no fix.
+
+Then the photo's centre goes through the chain of frames: the view's centre ((w − 1)/2, (h − 1)/2) through A into the
+patch (u, v); OpenCV puts pixel centres at whole numbers, the map's continuous coordinates put pixel i between i and
+i + 1, so add **0.5** to both; then mission 07's `pixel_to_latlon` with the patch's origin (x0, y0).
+
+**Worked example.** A view of 449 × 449 px (centre (224, 224)) and A = [[0.98, −0.17, 512.4], [0.17, 0.98, 466.0]],
+31 inliers. Scale √(0.98² + 0.17²) = **0.995**: both gates pass. u = 0.98 · 224 − 0.17 · 224 + 512.4 = 693.84,
+v = 0.17 · 224 + 0.98 · 224 + 466.0 = 723.60. With the patch origin (x0, y0) = (69 390.5, 51 552.25) tiles at zoom 17,
+`pixel_to_latlon(694.34, 724.10, 17, 69390.5, 51552.25)` = **(35.810957, 10.594150)**. Forgetting the 0.5 moves the
+answer by 0.68 m: small, but a systematic error that never averages out.
+
+> [!QUESTION] ✏️ Check
+> The same A with 5 inliers? And a fit A = [[1.18, 0.10, …], [−0.10, 1.18, …]] with 40 inliers? What could cause the
+> second one?
+
+<details><summary>Answer</summary>
+5 inliers: refused, "5 inliers (min 6)". Scale √(1.18² + 0.10²) = 1.18: refused, "scale 1.18 (expected 1 ± 0.15)".
+Either a wrong place that happened to fit, or a height 18 % off: the true footprint is larger than assumed. A wrong
+height costs <b>availability</b> (the scale gate refuses), not accuracy: the scale is fitted, so the centre still lands
+on the right pixel when the fit is accepted.
+</details>
+
+## 8. When is retrieval worth it?
+
+The fine step can search the whole circle at once: one patch of side about 2 · (r / 0.968 + half the view) pixels.
+Its cost grows with the square of that side. For a photo from 360 m (view ≈ 537 px): r = 150 m → **848 px**;
+r = 600 m → **1 778 px**; r = 1 200 m → **3 016 px**, 12.7 times the pixels of the first. SIFT works on a copy
+enlarged twice, so a 3 000-pixel patch needs about a gigabyte: the fine step refuses patches wider than 2 000 px
+(`max_patch_px`), and the time per photo grows too. A larger patch also holds more look-alike corners.
+
+Retrieval turns one large search into a few small ones: rank the tiles of the circle, then run the fine step in a
+small circle (180 m, a tile's half-diagonal) around each of the best k = 3. It is cheap, but coarse and often wrong
+(§4), and that is fine as long as the gates refuse the wrong candidates, and the right tile is among the first three.
+
+So the question "is retrieval worth it?" has no answer in general: it depends on the radius, on the terrain and on the
+finder. In lab Step 14 you measure both ways for four values of σ and **decide** the radius `direct_max_r_m` up to
+which the fine step works alone. That number is yours: it goes into your settings and decides how your stack flies.
+
+> [!QUESTION] ✏️ Check
+> A retrieval method puts the right tile first for 50 % of the photos and among the first three for 70 %. With k = 3
+> and a perfect fine step, which share of photos can get a position? What does k = 10 cost, and what does it risk?
+
+<details><summary>Answer</summary>
+At most <b>70 %</b>: the fine step only looks where retrieval points. k = 10 costs up to 10 fine steps per photo (time),
+and gives the gates 10 chances to accept a wrong place: more availability, but more risk of a wrong position.
+</details>
+
+## 9. The error budget
+
+Even a perfect match is not a perfect position. An **error budget** lists every independent error source as a 1-σ in
+metres and combines them. Independent errors add as **variances** (mission 04), so the total is the **root sum of
+squares** (RSS):
+
+```
+σ_total = √(σ₁² + σ₂² + … + σₙ²)
+```
+
+**Worked example.** Camera tilt left after straightening 1° at 250 m: 250 · tan 1° = 4.4 m; a photo 0.14 s old at
+20 m/s: 2.8 m; map registration: 3 m. RSS = √(4.4² + 2.8² + 3²) = √35.9 = **6.0 m**, against a plain sum of 10.2 m.
+The largest term dominates: improving it pays; improving a small one hardly shows.
+
+> [!QUESTION] ✏️ Check
+> Tilt 0.3° at 400 m, matcher noise 4 m, map 3 m: the total? Which term would you work on first?
+
+<details><summary>Answer</summary>
+400 · tan 0.3° = 2.09 m; √(2.09² + 4² + 3²) = √29.4 = <b>5.4 m</b>. The matcher term (4 m): halving it gives 4.2 m;
+halving the tilt term only 5.2 m.
+</details>
+
+> [!WARNING] Common wrong ideas (Part B)
+> - "RANSAC found a fit, so the drone is there." RANSAC always finds a fit; the gates decide.
+> - "Search the whole circle, to be safe." A large circle costs memory and time, and holds more look-alikes.
+> - "Errors add up." Independent errors add as squares: 3 m and 4 m make 5 m, not 7 m.
+> - "Availability 100 % is the goal." Over the sea the right answer is "no fix".
 
 ## In NAVERA
 
-The real code is [local_matcher.py](file:navera/day_pkg/day_pkg/local_matcher.py), class
-`LocalMatcher`, method `locate()`. Its core is almost what you write in the lab:
+NAVERA's day vision (IRIS's product, described in words) first used **DINOv2 tile retrieval** against zoom-17
+satellite tiles: median 442 m on labelled replay frames, against 480 m for repeating the previous position and 536 m
+for a random tile in the same circle; 1 696 m over the whole map without a prior; and its similarity score stayed high
+on wrong matches (good matches 0.942–0.974, bad ones 0.823–0.972), so it could not flag them. Whole-map search is
+therefore disabled: day vision waits for a prior. The default since 1 October 2026 is **local feature matching**: the
+frame is scaled to the map's resolution from the altitude and the camera's field of view, its SIFT features are matched
+with those of the tiles in the search circle, a rotation + scale + translation is fitted with RANSAC, and a match is
+accepted only with at least 6 inliers **and** a fitted scale within ±15 % of the one the altitude predicts. Measured on
+33 aerial bench frames from another source than the map (not NAVERA's camera): 30/33 placed, median 4 m, worst 5 m,
+no wrong position accepted, 0.11 s per frame on the GPU. The search radius is three times the predicted σ, between
+80 m and 1 500 m. Positions are stated at 30 m until they are measured with the real camera. Over uniform terrain the
+problem is the ground, not the method: in simulation near Gabès, retrieval gave a median of 351 m (p90 853 m) and the
+autopilot failed safe after 45 s; "the terrain is the cause, not the size of the map" (validation report, 3 October
+2026). DINOv2 retrieval is kept as the fallback when the frame's scale is unknown. NAVERA is Release 0.2, field
+validation pending.
 
-```python
-s = frame_m_per_px / mpp_map                     # frame pixels → map pixels
-q = self.clahe.apply(cv2.resize(grey, None, fx=s, fy=s, ...))
-pm, dm = self.tiles.around(prior[0], prior[1], search_m + margin_m)   # cached tile features
-kq, dq = self.sift.detectAndCompute(q, None)
-idx, val = self._knn2(dq, dm)                    # 2 nearest map descriptors (GPU if available)
-ok = val[:, 0] < self.ratio * val[:, 1]          # ratio test, 0.8
-A, inl = cv2.estimateAffinePartial2D(src, dst, method=cv2.RANSAC, ransacReprojThreshold=self.ransac_px,
-                                     maxIters=5000, confidence=0.999)
-scale = math.hypot(A[0, 0], A[1, 0])            # 1.0 when the altitude/FOV prediction is right
-px, py = A @ np.array([q.shape[1] / 2.0, q.shape[0] / 2.0, 1.0])
-lat, lon = tile_px_to_latlon(float(px), float(py), self.z)
-```
+## In NAVERA Lite
 
-Differences with your lab pipeline:
+| You write | It does | Lesson |
+|---|---|---|
+| `preprocess` (retrieval.py) | DINOv2's input, as it was trained | §3 |
+| `rank` | cosine similarity, best first | §2 |
+| `evaluate` (locate.py) | the honest numbers | §4 |
+| `TileNet`, `info_nce` (retrieval.py) | your embedding network and its loss | §6 |
+| `search_radius`, `place`, `locate`, `budget` (locate.py) | the circle, the gates, the chain with your rule, the budget | §5, §7–§9 |
 
-- **Cached tile features** (`TileFeatures`): each 256 × 256 map tile gets its SIFT features once (at
-  most 300 per tile, with a 48-pixel border from its neighbours), kept in an LRU cache and computed
-  in the background ahead of the vehicle (`prefetch()`). Map points are stored directly in global
-  pixels, so there is no `(x0, y0)` to add. The cost: only the 300 strongest features per tile —
-  you will see the consequence in the lab.
+Given: `north_up`, `load_dino`, `embed_dino`, `TileIndex` (the search in the circle, with your `rank`), `make_pairs`,
+`train_tilenet`, `embed_tilenet`, `match_similarity` (OpenCV), `local_match` (with your `place`), `to_estimate`, and
+the finished parts of missions 06, 07, 08 and 18. Your trained `my_tiles.pt` is part of your stack: Sim Lite (31) can
+fly it.
 
-<details class="further"><summary>Going further (optional) — Other differences: search window, height ladder, stated accuracy</summary>
+## 🐦 How birds do it
 
-- **Search window** (`vision_nav.py`, `search()`): `r = clamp(3 · σ_pred, 80 m, 1500 m)`.
-- **Height** (`vision_nav.py`, `heights_to_try()`): the scale tolerance widens with the height
-  uncertainty, `tol = min(0.35, max(0.15, 2 σ_h / h))`, and after 3 failures in a row the heights
-  0.8 h and 1.25 h are tried too.
-- **Stated accuracy** (`fix_sigma_m()`): from the inlier count, as in section 7.
+In the 1950s Gustav Kramer proposed the **map and compass** model of bird navigation: a compass says which way is
+which; a map says where the bird is. Homing pigeons tracked with GPS near Oxford and Rome follow familiar roads, rivers and field
+edges (Biro et al., 2004; Lipp et al., 2004): they do not search the whole country, they look **around where they
+believe they are**, and recognise places they have learned. Navi the swallow does the same: a prior first, then the
+details.
 
+## Summary
+
+1. Two scales: retrieval (which tile?) and local matching (which pixel?). The prior's σ sets the search radius,
+   r = clamp(3σ, r_min, r_max).
+2. An embedding summarises a picture; retrieval ranks tiles by cosine similarity. A pretrained network needs its own
+   input: RGB, its normalisation, its size, channels first.
+3. A method is worth what it beats: baselines without pictures, the resolution limit, four numbers, failures by terrain.
+4. Your own network learns what its data shows it: positives inside the tile, augmentation, a split by place, InfoNCE.
+   Compare it with the pretrained one on accuracy **and** cost.
+5. The gates turn a fit into a position or an honest refusal; the budget adds independent errors as squares.
+
+**Next mission:** visual odometry. Between two map fixes the drone still moves; mission 24 measures how far from one
+frame to the next.
+
+## Check yourself
+
+Answer without scrolling up.
+
+<details><summary>1. Why can the similarity score of the best tile not tell you that the tile is wrong?</summary>
+Similar embeddings mean the same kind of place; a look-alike block scores as high as the right one. NAVERA measured it:
+the scores of good and bad matches overlap. Only an independent test (the fine step's gates) can refuse.
 </details>
 
-## Words to remember
-
-| Word | Meaning |
-|---|---|
-| **localisation chain** | the steps from a photo (and a prior) to a position or "no fix" |
-| **GSD** (ground sampling distance) | ground size of one pixel, in metres |
-| **prior** | where the vehicle probably is before looking, with its uncertainty σ |
-| **search radius** | `k · σ` around the prior; the map is searched only there |
-| **margin** | extra map around the search circle so that the whole photo fits |
-| **similarity** | rotation + uniform scale + translation (4 degrees of freedom) |
-| **gate** | a test a result must pass to be believed (inliers, scale, heading, motion) |
-| **error budget** | the list of independent error sources and their combined total |
-| **RSS** | root sum of squares: how independent 1-sigma errors combine |
-| **availability** | the share of photos that give an accepted position |
-| **percentile (p90)** | the value below which 90 % of the sorted errors lie |
-| **rule of three** | with 0 failures in n trials, the 95 % upper bound of the failure rate is about 3/n |
-| **learned matcher** | features and matching computed by trained neural networks (DISK + LightGlue) |
-
-## Check what you learned
-
-<details><summary>1. A 1 000-pixel-wide photo is taken from 100 m with a 90° lens over Reykjavik (lat 64.15°). What is its GSD, and by how much must it be resized to match zoom 17?</summary>
-GSD = 2 × 100 × tan(45°) / 1000 = 0.2 m/px. GSD_map = 40 075 016.7 × cos(64.15°) / (2^17 × 256) =
-0.521 m/px. Resize factor s = 0.2 / 0.521 = 0.384: the photo is shrunk to 38.4 % of its size (near
-the equator the same photo would be shrunk much more, because map pixels are larger there).
+<details><summary>2. σ = 250 m, k = 3, r_max = 1 500 m: the radius, and about how many zoom-17 tiles at Sousse?</summary>
+750 m; π · 750² / 247.9² ≈ 29 tiles.
 </details>
 
-<details><summary>2. The prior has σ = 120 m. What search radius does NAVERA use, and how many times larger is the patch area than with σ = 50 m (margin 190 m)?</summary>
-r = 3 × 120 = 360 m (within [80, 1500]). With σ = 50 m, r = 150 m. Area ratio = ((360 + 190) /
-(150 + 190))² = (550 / 340)² ≈ 2.6.
+<details><summary>3. Name three things DINOv2's input needs that OpenCV's picture does not have.</summary>
+RGB order, values normalised with the ImageNet mean and std after /255, channels first (and a size multiple of 14).
 </details>
 
-<details><summary>3. The barometer says 250 m above the ground, but the drone is really at 300 m. What scale will RANSAC fit, and what happens?</summary>
-s_fit = h_true / h_assumed = 300 / 250 = 1.2. |1.2 − 1| = 0.2 > 0.15, so the scale gate refuses a
-correct match: no fix (availability lost, not accuracy). The fitted scale also tells the true
-height: 250 × 1.2 = 300 m — which is how NAVERA can re-estimate the height.
+<details><summary>4. Your network is trained on the north of the map and validated on the south. Why not validate on random pairs of the north?</summary>
+Neighbouring views share ground: the score would measure memory of the training places, not the rule.
 </details>
 
-<details><summary>4. At 400 m, what position error does an uncorrected tilt of 2° cause? And 0.3°?</summary>
-d = h · tan θ: 400 × tan(2°) = 14.0 m; 400 × tan(0.3°) = 2.1 m.
+<details><summary>5. A fit has 30 inliers and scale 0.80 over a textured town. Accept? What may be wrong upstream?</summary>
+Refuse (|s − 1| = 0.20 > 0.15). Either a wrong place, or the height used to scale the photo is off by about 25 %.
 </details>
 
-<details><summary>5. Your localiser accepted 12 of 15 test photos, all within 3 m, none wrong. Write the four evaluation numbers you would report, and what you can claim about wrong fixes.</summary>
-Availability 12/15 = 80 %, the median and the p90 of the 12 errors, and "0 wrong accepted". By the
-rule of three, the 95 % upper bound of the wrong-fix rate is about 3 / 12 = 25 %: far too few photos
-to claim the system is safe. Also say what the photos were (cut from the map or real, same date or
-not).
+<details><summary>6. (Mission 07) Which tile number grows towards the south, x or y, and what does an MBTiles file store instead?</summary>
+y (XYZ rows counted from the north); MBTiles stores TMS rows, counted from the south: row = 2^z − 1 − y.
 </details>
 
-<details><summary>6. Why does NAVERA fit a similarity instead of a homography, and when would a homography be needed?</summary>
-After straightening and resizing, only rotation, uniform scale and translation remain (4 DOF). The
-minimal sample is 2 instead of 4, so RANSAC needs far fewer iterations at low inlier ratios, and a
-wrong place has fewer ways to fit by chance. A homography is needed when the frame cannot be
-straightened (unknown attitude, strong perspective).
+<details><summary>7. (Mission 22) With an inlier ratio of 0.3 and a 2-point model, how many RANSAC iterations give p = 0.99?</summary>
+log(0.01) / log(1 − 0.09) = 48.8 → 49.
 </details>
 
 Now open the **🛠️ Lab** tab.
