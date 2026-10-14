@@ -31,6 +31,8 @@ S_DATA = "/data"
 # Read-only data shared with the sandboxes: (host path, sandbox path).
 # The course's map: OpenStreetMap data rendered by datasets/_map/make_map.sh (© OpenStreetMap contributors).
 OSM_MAP = os.path.expanduser("~/academy-data/osm_sousse.mbtiles")
+# Pretrained models given as data (third-party, e.g. DINOv2 ViT-S/14, Apache-2.0): never NAVERA code.
+MODELS = os.path.expanduser("~/academy-data/models")
 
 
 def navera_allowed(name):
@@ -58,6 +60,7 @@ def data_mounts(navera=True):
     if navera:                       # NAVERA_WORKSPACE holds NAVERA code: never for a student without access
         add("~/navera_data", S_DATA + "/navera_data")
     add(OSM_MAP, S_DATA + "/map.mbtiles")           # OpenStreetMap, rendered by datasets/_map
+    add(MODELS, S_DATA + "/models")                 # pretrained models (design §7.5)
     if navera:
         add("~/ardupilot", S_DATA + "/ardupilot")
         add("~/.navera_sim/bsc5.dat", S_DATA + "/bsc5.dat")
