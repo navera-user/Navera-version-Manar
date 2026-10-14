@@ -57,7 +57,8 @@ The drone flies at 20 m/s, one frame per second, so 20 m between frames.
 
 > [!TASK]
 > With frame 1's barometer height, the camera's HFOV and width from `info.json`, compute **by hand** (a calculator or
-> one `python3 -c` line) how many pixels the ground slides between two frames: `SLIDE_PX`. Then **predict**
+> one `python3 -c` line; in Python, `math.tan` takes radians: `math.tan(math.radians(35))`) how many pixels the
+> ground slides between two frames: `SLIDE_PX`. Then **predict**
 > (`PREDICT_SEA`): over open water, what will phase correlation say? Save `answers.py` (`Ctrl+S`), then read lesson
 > Part A (§1–§6).
 
@@ -99,6 +100,9 @@ python3 run_vo.py pair 10
 It prints your (dx, dy, response) and OpenCV's, and saves `out/pair_10.png`: frame 9, frame 10, and frame 9 moved by
 **your** shift subtracted from frame 10. Flat grey = your shift is right.
 
+Compare your dy with your `SLIDE_PX` of Step 0. They differ by about 3 %. Which one do you trust, and what could make
+the other one wrong? Keep the thought for Step 4.
+
 <details><summary>Stuck? Hints, one at a time</summary>
 
 1. Start with `h, w = a.shape`, the float arrays `a = np.asarray(a, dtype=float)` (same for b), and the window
@@ -106,10 +110,13 @@ It prints your (dx, dy, response) and OpenCV's, and saves `out/pair_10.png`: fra
 2. The peak: `py, px = np.unravel_index(np.argmax(r), r.shape)` — row first.
 3. `75` instead of `−5` (or `310` on a frame): an index past the middle is a negative shift (`dx -= w`).
 4. `(2, −5)` instead of `(−5, 2)`: x and y swapped. `(5, −2)`: every sign reversed — it is `B * np.conj(A)`.
+   Something else, like `(62, 5)`: several mistakes at once — fix the row/column order first, then the sign, then the
+   negative-shift rule.
 5. A response far above 1 (or near 0.0001): divide R by `np.abs(R) + 1e-12` before `ifft2`.
 6. Sub-pixel: a small helper `def vertex(cm, c0, cp):` that returns the δ of §3 (0 if the denominator is 0), called once
    with `r[py, (px - 1) % w], r[py, px], r[py, (px + 1) % w]` and once with the neighbours in the column. Add it to
-   px and py **before** the negative-shift rule.
+   px and py **before** the negative-shift rule. The second ✘ line of TODO 1 says "whole pixels only"? The parabola is
+   missing. "goes the WRONG way"? c₋ and c₊ are swapped in δ.
 </details>
 
 ## Step 2 — Your FFT against OpenCV
@@ -118,13 +125,14 @@ It prints your (dx, dy, response) and OpenCV's, and saves `out/pair_10.png`: fra
 python3 run_vo.py compare
 ```
 
-It runs your `phase_shift` and OpenCV's `phaseCorrelate` on the 51 steps of the first leg (frames 0–51, over the city),
+It runs your `phase_shift` and OpenCV's `phaseCorrelate` on the 51 steps of the first leg (frames 0–51: the city, then the coast),
 each previous frame first turned by the IMU's heading change (`derotate`), and prints how far apart the two shifts are,
 both responses, and the time per step.
 
 > [!TASK]
 > Write `MEAN_DIFF_PX` (three decimals) and `EXPLAIN_SUBPIXEL`: where does that small difference come from, and what do
-> both methods agree on?
+> both methods agree on? (Your shift and OpenCV's also differ a little because OpenCV's window is the square root of
+> yours: lesson §3.)
 
 <details><summary>Stuck? Hints</summary>
 
@@ -192,8 +200,8 @@ The runner also fits **one scale and one rotation** that turn your steps into th
 <details><summary>Stuck? Hints</summary>
 
 1. g ∝ h (lesson §6): if every step must be k times longer, the height must be k times larger.
-2. The drift barely moves with `--heading-offset 2`? It got worse: your steps point clockwise of the truth, so the IMU
-   heading is too large — subtract.
+2. The drift got worse (it doubled)? You turned the steps the wrong way. The runner says which way your steps point
+   compared with the truth; which way must the IMU heading move to undo that?
 3. DRIFT_BOTH is below 0.3 m per 100 m when both corrections are right.
 </details>
 
@@ -201,7 +209,7 @@ The runner also fits **one scale and one rotation** that turn your steps into th
 > The error after 1 km is about 47 m and it never comes back down by itself. What kind of information, in a real flight
 > without truth, could reveal the height and heading errors? (Lesson §8 has one answer.)
 
-## Step 5 — Six odometers (TODO 4)
+## Step 5 — Seven odometers (TODO 4)
 
 **TODO 4** `median_shift(p1, p2, tol_px=1.0)`: lesson §4. The votes are `p2 − p1`.
 
@@ -220,38 +228,51 @@ np.asarray([(1, 2)], dtype=float).reshape(-1, 2)        # a list of points as an
 python3 run_vo.py test
 ```
 
-Now the race. The runner measures six odometers on 40 frame pairs from another part of the city and from the sea, in
-five groups: straight flight, and turns of 4°, 12° and 30° between the two frames, and open sea. For each pair the
-true shift is known. The six: your `phase_shift` as it is; your `phase_shift` after `derotate` with the IMU's heading
-change; OpenCV after `derotate`; ORB keypoints + your `median_shift` after `derotate`; **your PatchNet** descriptor
-(mission 21) + your `median_shift` after `derotate`; and ORB keypoints with OpenCV's fit of a turn and a shift, without
-the IMU.
+Before the race, a number by hand. Lesson §4: a turn θ moves the left and right edges of a 320 px frame by 160 · sin θ.
+
+> [!TASK]
+> `TURN_LIMIT_DEG`: at which turn do the edges move by 1 px? Below it, raw phase correlation should still work; above
+> it, the peak starts to break up. (By hand; `math.asin` returns radians.)
+
+Now the race. The runner measures seven odometers on 48 frame pairs from another part of the city, a beach and the
+sea, in six groups: straight flight; turns of 4°, 12° and 30° between the two frames; a low-texture coast (sand and
+water, few corners); and open sea. For each pair the true shift is known. The seven: your `phase_shift` as it is; your
+`phase_shift` after `derotate` with the IMU's heading change; OpenCV after `derotate`; ORB keypoints + your
+`median_shift` after `derotate`; **your PatchNet** descriptor (mission 21) + your `median_shift` after `derotate`; and,
+without the IMU, ORB keypoints or your PatchNet with OpenCV's fit of a turn and a shift ("fit"). It also prints how
+many matches each keypoint method found, and the time of every method.
 
 The runner uses `my_desc.pt` from this folder, else your mission 21 file `../21-features/my_desc.pt`, else the course's
 `ref_desc.pt`; it prints which. (The GPU is shared by the class: if no slot is free within 30 s, it runs on the CPU,
-slower — about a minute.)
+slower — about 6 minutes.)
 
 > [!TASK]
-> **Predict** (`PREDICT_RACE`): on straight pairs, which odometer will be the most precise, and how many times slower
-> than your phase correlation will the learned descriptor be?
+> **Predict** (`PREDICT_RACE`): on the coast pairs, which odometers will fail, and why? And will your PatchNet, without
+> the IMU, still find as many matches after a 30° turn as on straight pairs?
 
 ```bash
 python3 run_vo.py odometers
 ```
 
-Open `out/odometers.png` too.
+Open `out/odometers.png` too: the median error of each method in each group (log scale), and the time per pair.
 
 > [!TASK]
-> Write `OK_PHASE_TURN4` and `OK_ORB_FIT_TURN30` (pairs right, of 8) and `EXPLAIN_ODOMETERS`: why does phase
-> correlation need the IMU; what do keypoints, and your learned descriptor, cost; what can no method do?
+> Write `OK_PHASE_TURN4` (row turn4, column phase) and `OK_ORB_COAST` (row coast, column ORB+IMU), pairs right of 8;
+> `LEARNED_MATCHES_STRAIGHT` and `LEARNED_MATCHES_TURN30` (the matches table, column "learned fit"); and
+> `EXPLAIN_ODOMETERS`: why does phase correlation need the IMU, and why does it still beat keypoints on the coast; what
+> does your PatchNet cost, and what happens to it past its training range (mission 21: turns within ±20°)?
 
 <details><summary>Read this after you ran `odometers`: a fair race?</summary>
-All the methods measured the same pairs against the same truth. Your network was trained to match <b>map</b> patches
-with <b>drone photo</b> patches; here it matches two frames of the same camera one second apart, an easier job, so it
-is precise, but it pays a forward pass of a CNN on hundreds of patches per frame. For consecutive frames of a camera
-whose turn the IMU knows, phase correlation is as precise and much cheaper: that is why NAVERA uses it for odometry, and
-keeps learned features for the hard job of matching a frame with the map (missions 22–23). Over the sea, no method has
-anything to follow.
+All the methods measured the same pairs against the same truth. On the textured city they are all good, and ORB is
+about as fast as phase correlation. The difference is on the coast: phase correlation uses <b>every pixel</b>, so a
+beach with a few edges still gives a peak, while the keypoint detector finds few corners and the median of a handful of
+votes is noise. That, and a cost that does not depend on the texture, is why NAVERA uses phase correlation for odometry,
+with the IMU for the turns. Your PatchNet was trained to match <b>map</b> patches with <b>drone</b> patches, within
+±20° of heading error. After derotation it matches two frames of the same camera (an easier job) as precisely as the
+others; without the IMU, past its training range, it loses about half of its matches at 30° — the RANSAC fit still
+copes, but the network is not rotation-proof. And it pays a CNN forward pass on hundreds of patches (several times
+slower on the GPU, far slower on the CPU). Learned features earn their cost on the hard job: a frame against the map
+(missions 22–23). Over the sea no method has anything to follow.
 </details>
 
 <details><summary>Stuck? Hints (TODO 4)</summary>
@@ -292,7 +313,8 @@ python3 run_vo.py test
 ```
 
 > [!TASK]
-> **Predict** (`PREDICT_GROWTH`): on log-log axes, what will the "both" curve (σ = 0.5 m and a bias of 0.1 m) look like?
+> **Predict** (`PREDICT_GROWTH`): with 2000 simulated flights, how far (in %) will your simulated RMS after 100 steps be
+> from `drift_sigma(100, 0.5, 0)`? Would 200 flights be twice as far, or only about 3 times (√10)?
 
 ```bash
 python3 drift_sim.py
@@ -332,13 +354,19 @@ steps and all the wrong ones, and draws `out/responses.png`. Look at frames 60 a
 > Write `SEA_MAX_RESPONSE` (the highest response of a wrong step over the water) and choose **your threshold**
 > `MIN_RESPONSE`: steps below it will be refused. It must refuse every wrong step over the water and keep every right
 > step. Then `EXPLAIN_THRESHOLD`: why are the steps over the water weak, and what kind of wrong step does a threshold
-> miss? (Was your `PREDICT_SEA` right?)
+> miss? How wide is the margin between the two groups, and would your threshold survive a sea frame with a little more
+> texture, or a blurrier coast? (Was your `PREDICT_SEA` right?)
+
+The gap is narrow on this flight. A real system keeps a margin and adds a second defence: that is Step 8. (NAVERA uses
+another response measure, with a threshold of 0.15 on OpenCV's scale.)
 
 <details><summary>Stuck? Hints</summary>
 
 1. The wrong steps form two groups: very low responses (over the water) and a few high ones. Which steps are the high
    ones, and what is in those frames?
-2. Your threshold lies between the highest response of the first group and the lowest response of a right step.
+2. Your threshold lies between the highest response of the first group and the lowest response of a right step. Read
+   the **printed** numbers, not the plot: on the log axis the gap looks wide, but it is only about 0.01. Pick a value
+   strictly between them (not equal to either).
 </details>
 
 ## Step 8 — Blend and gate (TODO 7, TODO 8)
@@ -379,17 +407,31 @@ python3 run_vo.py fuse
 Open `out/fuse.png`: the four tracks, then D's true error with its stated 2σ, and C's error without fixes.
 
 > [!TASK]
-> Write `GATE_REFUSED`, `WORST_NO_FIX` (stage C), `WORST_FUSED` (stage D), `COVERAGE` (stage D) and `EXPLAIN_FUSION`:
-> what does a fix do to the error, where is the worst error, and is the stated σ honest?
+Coverage is 78 %, not about 86 %. Is the stated σ dishonest? Observe before you judge. The runner lists the frames
+where D's true error leaves the 2σ band, and how far each map fix is from the truth. Then try another bias:
 
-> [!QUESTION]
-> Try `python3 run_vo.py fuse --bias 1.0` (and other values). Which bias makes the coverage close to 86 %? What does
-> that say about the 0.7 m you were given, compared with what you measured in Step 4?
+```bash
+python3 run_vo.py fuse --bias 0.9
+```
+
+Which misses go away, and which stay?
+
+> [!TASK]
+> Write `GATE_REFUSED`, `WORST_NO_FIX` (stage C), `WORST_FUSED` (stage D), `COVERAGE` (stage D, with the default bias)
+> and `EXPLAIN_FUSION`: what does a fix do to the error; where is the worst error; where does the true error leave the
+> 2σ band, and why there; what can 78 % measured on one 90-second flight tell you, and what can it not?
+
+<details><summary>Hint</summary>
+Look at the frames listed right after the fixes at 20 and 30, and at those two fixes' distance from the truth against
+their stated 4 m. Real fixes are sometimes unlucky. And the bias: Step 4 measured 4.6 m of drift per 100 m; one step
+is 20 m, so about 0.9 m per step in all — the 0.7 m of the σ model is per axis (east, north). A larger bias widens σ
+late in each tooth, not right after a fix.
+</details>
 
 ## Step 10 — The report
 
 Write [report.md](file:./report.md) (200–450 words, your own words, keep the four headings): the odometer (your FFT
-against OpenCV), the drift (its two causes and how you found them), the six odometers, and the navigator (threshold,
+against OpenCV), the drift (its two causes and how you found them), the odometer race, and the navigator (threshold,
 gate, fixes, honesty of σ). Quote your numbers.
 
 > [!TASK]

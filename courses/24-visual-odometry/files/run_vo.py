@@ -8,7 +8,7 @@
     python3 run_vo.py leg             dead reckoning along the first leg (frames 0–51)                  (Steps 3–4)
           options:  --altitude A        use A metres instead of the barometer's height
                     --heading-offset D  add D degrees to every IMU heading
-    python3 run_vo.py odometers       six odometers on 40 frame pairs, one of them with YOUR descriptor  (Step 5)
+    python3 run_vo.py odometers       seven odometers on 48 frame pairs, two with YOUR descriptor        (Step 5)
           option:   --weights FILE      (default: my_desc.pt here, else ../21-features/my_desc.pt, else ref_desc.pt)
   Session 2 — Navigator
     python3 drift_sim.py              random walk and bias, simulated                                  (Step 6)
@@ -183,9 +183,32 @@ def test():
             note += "both signs are reversed: the cross-power spectrum is B · conj(A), not A · conj(B)"
         elif r > 1.5 or r < 0.01:
             note += f"the response {r:.3g} is not a peak between 0 and 1: divide B·conj(A) by its magnitude"
+        elif not (math.isfinite(dx) and math.isfinite(dy)):
+            note += "nan: |R| was 0 somewhere — divide by np.abs(R) + 1e-12 (lesson §3, step 3)"
         else:
-            note += "Lab Step 1, hints"
-        line(1, "phase_shift", (dx, dy, r), None, abs(dx + 5) < 0.05 and abs(dy - 2) < 0.05 and 0.5 < r <= 1.01, note)
+            note += ("several mistakes at once? Fix the row/column order first, then the sign (B · conj(A)), then the "
+                     "negative-shift rule (Lab Step 1, hints 2–4)")
+        good1 = abs(dx + 5) < 0.05 and abs(dy - 2) < 0.05 and 0.5 < r <= 1.01
+        line(1, "phase_shift", (dx, dy, r), None, good1, note)
+        if good1:
+            h, w = g.shape
+            fy, fx = np.fft.fftfreq(h)[:, None], np.fft.fftfreq(w)[None, :]
+            gs = np.real(np.fft.ifft2(np.fft.fft2(g) * np.exp(-2j * np.pi * (fx * 2.4 + fy * -1.3))))
+            v, e = rk.call(vo, "phase_shift", g, gs)
+            if e:
+                line(1, "phase_shift", None, e, False, "")
+            else:
+                sx, sy = float(v[0]), float(v[1])
+                note = "g moved by (2.4, −1.3) px must give about (2.29, −1.18). "
+                if abs(sx - round(sx)) < 0.02 and abs(sy - round(sy)) < 0.02:
+                    note += ("whole pixels only: add the sub-pixel parabola (lesson §3, detail 3; hint 6), and add δ "
+                             "BEFORE the negative-shift rule")
+                elif abs(sx - 1.72) < 0.1 and abs(sy + 0.82) < 0.1:
+                    note += ("the sub-pixel correction goes the WRONG way: δ = (c₋ − c₊) / (2 (c₋ − 2 c₀ + c₊)), c₋ = "
+                             "the LEFT (or upper) neighbour")
+                else:
+                    note += "Lab Step 1, hint 6"
+                line(1, "phase_shift", (sx, sy), None, abs(sx - 2.4) < 0.2 and abs(sy + 1.3) < 0.2, note)
     else:
         line(1, "phase_shift", None, e, False, "")
     v, e = rk.call(vo, "px_to_en", 0.0, 10.0, 0.5, 90.0)
@@ -193,7 +216,8 @@ def test():
     if not e and close(v, (0.0, 5.0), 1e-6):
         note += "east and north swapped, or the heading not used: heading 90° means the frame's top points east"
     elif not e and close(v, (-5.0, 0.0), 1e-6):
-        note += "the sign of forward: the ground slid DOWN (dy > 0), so the drone flew FORWARD"
+        note += ("the sign of forward (the ground slid DOWN, dy > 0, so the drone flew FORWARD), or the rotation is "
+                 "turned the wrong way: east = forward·sin θ + right·cos θ")
     elif not e and close(v, (0.0, -5.0), 1e-6):
         note += "a heading of 0 instead of 90? or math.sin of degrees? (math.radians)"
     else:
@@ -204,14 +228,17 @@ def test():
          "(−10, 0) px at heading 0 must give (5, 0): the ground slid LEFT, so the drone moved RIGHT = east")
     v, e = rk.call(vo, "integrate", [(1.0, 0.0), (0.0, 2.0)], (10.0, 10.0))
     note = "the docstring says [[10, 10], [11, 10], [11, 12]]. "
-    if not e and np.asarray(v).shape == (2, 2):
+    if not e and not isinstance(v, np.ndarray):
+        note += "it returned a list: return a numpy array, np.array(track, dtype=float), shape (n + 1, 2)"
+    elif not e and np.asarray(v).shape == (2, 2):
         note += "2 rows for 2 steps: row 0 must be the start"
     elif not e and close(v, [[0, 0], [1, 0], [1, 2]], 1e-9):
         note += "the start is missing: begin at `start`"
     else:
         note += "Lab Step 3, hints"
     line(3, "integrate", v if e else np.asarray(v), e,
-         not e and np.asarray(v).shape == (3, 2) and close(v, [[10, 10], [11, 10], [11, 12]], 1e-9), note)
+         not e and isinstance(v, np.ndarray) and v.shape == (3, 2) and close(v, [[10, 10], [11, 10], [11, 12]], 1e-9),
+         note)
     v, e = rk.call(vo, "median_shift", [(0, 0), (10, 10), (50, 5)], [(3, 1), (13, 11), (0, 0)])
     note = "the docstring says (3.0, 1.0, 2). "
     if not e and isinstance(v, tuple) and len(v) == 3 and close(v[:2], (-14.67, -1.0), 0.02):
@@ -253,6 +280,9 @@ def test():
     v2, e2 = rk.call(vo, "vo_gate", (0.0, 0.0), (20.0, 0.0), 2.0)
     line(8, "vo_gate", (v, v2) if not (e or e2) else None, e or e2, not (e or e2) and v is True and v2 is False,
          "the docstring says (True, False); return a bool (True/False), from the distance between the two vectors")
+    v3, e3 = rk.call(vo, "vo_gate", (20.0, 0.0), (-20.0, 0.0), 2.0)
+    line(8, "vo_gate", v3, e3, not e3 and v3 is False,
+         "(20, 0) against (−20, 0) must be False: the same speed, the opposite way — compare the VECTORS (lesson §9)")
     print()
     print("All the examples work. Run the lab's commands now." if ok_all else
           "Fix the ✘ lines from the top (a later TODO may wait: the lab says when you need it).")
@@ -326,8 +356,12 @@ def compare():
         rn.append(r)
         rc.append(orr)
     d = np.array(d)
-    print(f"first leg, {LEG} steps (frames 0–{LEG}), each frame derotated by the IMU first")
+    print(f"first leg, {LEG} steps (frames 0–{LEG}: the city, then the coast), each frame derotated by the IMU first")
+    if not np.all(np.isfinite(d)):
+        sys.exit("  NaN shifts: |R| was 0 somewhere — divide by np.abs(R) + 1e-12 (lesson §3, step 3)")
     print(f"  |your shift − OpenCV's shift| : mean {d.mean():.3f} px, largest {d.max():.3f} px (step {1 + d.argmax()})")
+    print("     (for reference: a right phase_shift gives about 0.05–0.08 px; without the sub-pixel step about 0.11;"
+          "\n      with δ's sign reversed about 0.17)")
     print(f"  response   yours: median {np.median(rn):.3f} (from {min(rn):.3f} to {max(rn):.3f})   "
           f"OpenCV's: median {np.median(rc):.3f}")
     print(f"  time per step (with reading the frames): yours {1e3 * np.mean(tn):.1f} ms, OpenCV {1e3 * np.mean(tc):.1f} ms")
@@ -393,6 +427,24 @@ def find_weights(arg):
     sys.exit("no descriptor weights found (my_desc.pt, ../21-features/my_desc.pt or ref_desc.pt)")
 
 
+def fit_shift(p1, p2, shape):
+    """OpenCV's RANSAC fit of a turn + a shift (+ a scale) to matched points: the shift of the picture's centre, or
+    (None, None) with fewer than 3 matches."""
+    if len(p1) < 3:
+        return None, None
+    M, _ = cv2.estimateAffinePartial2D(p1, p2, method=cv2.RANSAC, ransacReprojThreshold=2.0)
+    if M is None:
+        return None, None
+    c = np.array([(shape[1] - 1) / 2.0, (shape[0] - 1) / 2.0])
+    q = M[:, :2] @ c + M[:, 2]
+    return float(q[0] - c[0]), float(q[1] - c[1])
+
+
+GROUPS = ["straight", "turn4", "turn12", "turn30", "coast", "sea"]
+METHODS = ["phase", "phase+IMU", "OpenCV+IMU", "ORB+IMU", "learned+IMU", "ORB fit", "learned fit"]
+MATCHERS = ["ORB+IMU", "learned+IMU", "ORB fit", "learned fit"]
+
+
 def odometers(weights=None):
     need_data()
     with open(os.path.join(DATA, "pairs.csv")) as f:
@@ -400,16 +452,19 @@ def odometers(weights=None):
     path = find_weights(weights)
     from academy_gpu import torch_device
     from navera_lite.learned_desc import load_weights
-    methods = ["phase", "phase+IMU", "OpenCV+IMU", "ORB+IMU", "learned+IMU", "ORB fit"]
-    res = {}
+    err, ms, nmatch = {}, {}, {}
     with torch_device(wait_s=30) as device:
         try:
             model = load_weights(path, device)
         except Exception as e:                                       # noqa: BLE001
             sys.exit(f"{path} cannot be loaded as PatchNet weights ({type(e).__name__}): train it again in "
                      "mission 21, or use --weights ref_desc.pt")
-        print(f"descriptor weights: {path}   (PatchNet on {device})\n")
-        vo.keypoint_matches(np.zeros((240, 320), np.uint8), np.zeros((240, 320), np.uint8), "orb")   # warm-up
+        print(f"descriptor weights: {path}   (PatchNet on {device}; {len(rows)} pairs, a few minutes on the CPU)\n")
+        z = np.zeros((240, 320), np.float32)
+        z[60:180, 80:240] = np.random.default_rng(0).random((120, 160)) * 255
+        shift_ok("phase_shift", rk.need_ok(vo, "phase_shift", z, z))                      # warm-ups: the first call
+        vo.opencv_shift(z, z)                                                            # of each method is slow
+        vo.keypoint_matches(z, z, "learned", model, device=device)
         for r in rows:
             k = int(r["pair"])
             a = gray(os.path.join(DATA, "pairs", f"a_{k:02d}.jpg"))
@@ -417,59 +472,68 @@ def odometers(weights=None):
             truth = np.array([float(r["true_dx_px"]), float(r["true_dy_px"])])
             ra = vo.derotate(a, float(r["turn_deg"]))
             out = {}
-            t0 = time.perf_counter()
-            out["phase"] = shift_ok("phase_shift", rk.need_ok(vo, "phase_shift", a, b))[:2]
-            out["phase+IMU"] = shift_ok("phase_shift", rk.need_ok(vo, "phase_shift", ra, b))[:2]
-            t_phase = (time.perf_counter() - t0) / 2
-            out["OpenCV+IMU"] = vo.opencv_shift(ra, b)[:2]
-            times = {"phase": t_phase, "phase+IMU": t_phase}
-            for m, name in (("orb", "ORB+IMU"), ("learned", "learned+IMU")):
+
+            def timed(name, fn):
                 t0 = time.perf_counter()
-                p1, p2 = vo.keypoint_matches(ra, b, m, model, device=device)
+                out[name] = fn()
+                ms.setdefault((r["group"], name), []).append(1e3 * (time.perf_counter() - t0))
+
+            def matched(name, img, method, fit):
+                p1, p2 = vo.keypoint_matches(img, b, method, model, device=device)
+                nmatch.setdefault((r["group"], name), []).append(len(p1))
+                if fit:
+                    return fit_shift(p1, p2, a.shape)
                 v = rk.need_ok(vo, "median_shift", p1, p2, 1.0)
-                times[name] = time.perf_counter() - t0
-                out[name] = (None, None) if v[0] is None else (float(v[0]), float(v[1]))
-            p1, p2 = vo.keypoint_matches(a, b, "orb")
-            out["ORB fit"] = (None, None)
-            if len(p1) >= 3:
-                M, _ = cv2.estimateAffinePartial2D(p1, p2, method=cv2.RANSAC, ransacReprojThreshold=2.0)
-                if M is not None:
-                    c = np.array([(a.shape[1] - 1) / 2.0, (a.shape[0] - 1) / 2.0])
-                    q = M[:, :2] @ c + M[:, 2]
-                    out["ORB fit"] = tuple(q - c)
-            for m in methods:
+                return (None, None) if v[0] is None else (float(v[0]), float(v[1]))
+
+            timed("phase", lambda: shift_ok("phase_shift", rk.need_ok(vo, "phase_shift", a, b))[:2])
+            timed("phase+IMU", lambda: shift_ok("phase_shift", rk.need_ok(vo, "phase_shift", ra, b))[:2])
+            timed("OpenCV+IMU", lambda: vo.opencv_shift(ra, b)[:2])
+            timed("ORB+IMU", lambda: matched("ORB+IMU", ra, "orb", False))
+            timed("learned+IMU", lambda: matched("learned+IMU", ra, "learned", False))
+            timed("ORB fit", lambda: matched("ORB fit", a, "orb", True))
+            timed("learned fit", lambda: matched("learned fit", a, "learned", True))
+            for m in METHODS:
                 dx, dy = out[m]
-                e = 1e9 if dx is None else math.hypot(dx - truth[0], dy - truth[1])
-                res.setdefault((r["group"], m), []).append(e)
-                if m in times:
-                    res.setdefault(("time", m), []).append(times[m])
-    groups = ["straight", "turn4", "turn12", "turn30", "sea"]
+                err.setdefault((r["group"], m), []).append(1e9 if dx is None else math.hypot(dx - truth[0], dy - truth[1]))
+    groups = [g for g in GROUPS if (g, "phase") in err]
     print("right = within 1 px of the true shift, out of 8 pairs (median error in px)\n")
-    print(f"{'group':9s}" + "".join(f"{m:>15s}" for m in methods))
+    print(f"{'group':9s}" + "".join(f"{m:>15s}" for m in METHODS))
     for g in groups:
         cells = []
-        for m in methods:
-            e = np.array(res[(g, m)])
+        for m in METHODS:
+            e = np.array(err[(g, m)])
             med = np.median(e)
-            cells.append(f"{int((e <= 1.0).sum())}/8 ({med:6.2f})" if med < 1e3 else f"{int((e <= 1.0).sum())}/8 (  —  )")
+            cells.append(f"{int((e <= 1.0).sum())}/{len(e)} ({med:6.2f})" if med < 1e3 else
+                         f"{int((e <= 1.0).sum())}/{len(e)} (  —  )")
         print(f"{g:9s}" + "".join(f"{c:>15s}" for c in cells))
-    print(f"{'ms/pair':9s}" + "".join(f"{1e3 * np.mean(res[('time', m)]):15.1f}" if ('time', m) in res else f"{'':15s}"
-                                       for m in methods))
+    print(f"\n{'matches':9s}" + "".join(f"{'':15s}" for m in METHODS[:3])
+          + "".join(f"{m:>15s}" for m in MATCHERS))
+    for g in groups:
+        print(f"{g:9s}" + f"{'':45s}" + "".join(f"{np.mean(nmatch[(g, m)]):15.0f}" for m in MATCHERS))
+    print(f"\n{'ms/pair':9s}" + "".join(f"{np.mean([x for gg in groups for x in ms[(gg, m)]]):15.1f}" for m in METHODS))
     print("\nphase = your phase_shift; +IMU = frame a turned by the IMU heading change first (derotate);"
           "\nORB/learned = keypoints matched with ORB's bits or YOUR PatchNet, then YOUR median_shift;"
-          "\nORB fit = keypoints + OpenCV's RANSAC fit of a turn and a shift (no IMU). Times: this machine, now.")
+          "\nfit = the same matches without the IMU, then OpenCV's RANSAC fit of a turn and a shift;"
+          "\nmatches = mutual matches per pair (mean). Times: this machine, now (they change when it is busy).")
     plt = rk.plt_or_none()
     if plt:
-        fig, ax = plt.subplots(figsize=(10, 3.8))
-        w = 0.13
-        for j, m in enumerate(methods):
-            ax.bar(np.arange(len(groups)) + (j - 2.5) * w, [np.sum(np.array(res[(g, m)]) <= 1.0) for g in groups], w,
-                   label=m)
-        ax.set_xticks(range(len(groups)))
-        ax.set_xticklabels(groups)
-        ax.set_ylabel("pairs right (of 8)")
-        ax.legend(fontsize=8, ncol=6, loc="upper center", bbox_to_anchor=(0.5, -0.1))
-        ax.grid(alpha=0.3, axis="y")
+        fig, ax = plt.subplots(1, 2, figsize=(12, 4.2), gridspec_kw={"width_ratios": [3, 1.3]})
+        for m in METHODS:
+            med = [min(300.0, max(0.02, float(np.median(err[(g, m)])))) for g in groups]
+            ax[0].semilogy(range(len(groups)), med, "o-", label=m)
+        ax[0].axhline(1.0, color="k", lw=0.8, ls=":")
+        ax[0].set_xticks(range(len(groups)))
+        ax[0].set_xticklabels(groups)
+        ax[0].set_ylabel("median error (px, log; 300 = failed)")
+        ax[0].legend(fontsize=8, ncol=2)
+        ax[0].grid(alpha=0.3, which="both")
+        ax[1].barh(range(len(METHODS)), [np.mean([x for gg in groups for x in ms[(gg, m)]]) for m in METHODS])
+        ax[1].set_yticks(range(len(METHODS)))
+        ax[1].set_yticklabels(METHODS, fontsize=8)
+        ax[1].set_xscale("log")
+        ax[1].set_xlabel("ms per pair (log)")
+        ax[1].grid(alpha=0.3, axis="x", which="both")
         os.makedirs(OUT, exist_ok=True)
         fig.savefig(os.path.join(OUT, "odometers.png"), dpi=80, bbox_inches="tight")
         plt.close(fig)
@@ -504,6 +568,11 @@ def responses():
         fig, ax = plt.subplots(figsize=(10, 3.6))
         ax.semilogy(steps[right], meas[right, 2], "o", color="#0b6e8a", ms=4, label="right step")
         ax.semilogy(steps[~right], meas[~right, 2], "x", color="#d64545", ms=6, label="wrong step")
+        sea_max = float(meas[~right & (meas[:, 2] < 0.1), 2].max()) if np.any(~right & (meas[:, 2] < 0.1)) else None
+        if sea_max is not None:
+            ax.axhline(sea_max, color="#d64545", lw=0.8, ls="--", label=f"highest weak wrong step {sea_max:.3f}")
+        ax.axhline(float(meas[right, 2].min()), color="#0b6e8a", lw=0.8, ls="--",
+                   label=f"lowest right step {float(meas[right, 2].min()):.3f}")
         ax.set_xlabel("step (frame i−1 → i)")
         ax.set_ylabel("your response (log scale)")
         ax.grid(alpha=0.3, which="both")
@@ -595,6 +664,12 @@ def fuse(min_resp=None, sigma_step=0.3, bias=0.7, sigma_gate=2.0):
         print(f"{name:26s}{nw:6d}{ng:6d}{err.max():11.1f} m{err[-1]:11.1f} m{100 * cover:10.0f} %")
     gated = [i + 1 for i, s in enumerate(st) if s.startswith("gate")]
     print(f"\nsteps refused by your gate in D: {gated}")
+    tr, sig, err = runs[stages[-1][0]]
+    miss = [i for i in range(1, len(err)) if err[i] > 2 * sig[i]]
+    print(f"frames where D's true error is above its 2σ: {miss if miss else 'none'}")
+    print("map fixes, distance from the truth (stated σ per axis): " + ", ".join(
+        f"frame {i}: {math.hypot(fe - truth[i][0], fn - truth[i][1]):.1f} m ({fs:g} m)" for i, (fe, fn, fs) in
+        sorted(fixes.items())))
     print("within 2σ = share of frames whose true error (distance) is at most twice the stated σ (per axis).")
     plt = rk.plt_or_none()
     if plt:

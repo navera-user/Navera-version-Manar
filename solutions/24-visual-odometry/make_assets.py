@@ -35,8 +35,9 @@ def strip():
         tiles.append(im)
         tiles.append(np.full((240, 6, 3), 255, np.uint8))
     s = np.hstack(tiles[:-1])
-    cv2.putText(s, "Map data (c) OpenStreetMap contributors", (s.shape[1] - 300, 232), cv2.FONT_HERSHEY_SIMPLEX, 0.42,
-                (255, 255, 255), 1, cv2.LINE_AA)
+    s = np.vstack([s, np.full((20, s.shape[1], 3), 255, np.uint8)])
+    cv2.putText(s, "Map data (c) OpenStreetMap contributors", (6, s.shape[0] - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.42,
+                (40, 40, 40), 1, cv2.LINE_AA)
     cv2.imwrite(os.path.join(OUT, "flight_strip.jpg"), s, [cv2.IMWRITE_JPEG_QUALITY, 85])
 
 
@@ -46,14 +47,14 @@ def shift_theorem():
     R = np.fft.fft(b) * np.conj(np.fft.fft(a))
     R /= np.abs(R)
     r = np.real(np.fft.ifft(R))
-    fig, ax = plt.subplots(1, 3, figsize=(10, 2.6))
+    fig, ax = plt.subplots(1, 3, figsize=(9, 2.6))
     x = np.arange(8)
     ax[0].stem(x, a, linefmt=INK, markerfmt="o", basefmt=" ")
     ax[0].set_title("a")
     ax[1].stem(x, b, linefmt=BLUE, markerfmt="o", basefmt=" ")
     ax[1].set_title("b = a moved 2 samples right")
     ax[2].stem(x, r, linefmt=RED, markerfmt="o", basefmt=" ")
-    ax[2].set_title("ifft of B·A* / |B·A*|: one spike, at 2")
+    ax[2].set_title("ifft of B·A*/|B·A*|: spike at 2")
     for k in ax:
         k.set_xticks(x)
         k.set_ylim(-0.3, 3.3 if k is not ax[2] else 1.15)
@@ -172,12 +173,12 @@ TURN = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 250" font-fam
 <line x1="230" y1="150" x2="230" y2="180" marker-end="url(#b)"/></g>
 <text x="30" y="222" fill="#0b6e8a">five equal votes: phase correlation</text>
 <text x="30" y="240" fill="#0b6e8a">and the median of the votes agree</text>
-<text x="340" y="22" font-weight="bold" fill="#1d2733">A shift + a 12° turn: the votes differ</text>
+<text x="340" y="22" font-weight="bold" fill="#1d2733">30 px slide + 12° turn: votes differ</text>
 <rect x="350" y="40" width="240" height="160" fill="#f3efe6" stroke="#1d2733"/>
 <g stroke="#d64545" stroke-width="2.5">
-<line x1="390" y1="70" x2="379" y2="104" marker-end="url(#r)"/><line x1="550" y1="70" x2="562" y2="94" marker-end="url(#r)"/>
-<line x1="470" y1="110" x2="470" y2="140" marker-end="url(#r)"/><line x1="390" y1="150" x2="373" y2="172" marker-end="url(#r)"/>
-<line x1="550" y1="150" x2="557" y2="187" marker-end="url(#r)"/></g>
+<line x1="390" y1="70" x2="402" y2="84" marker-end="url(#r)"/><line x1="550" y1="70" x2="559" y2="118" marker-end="url(#r)"/>
+<line x1="470" y1="110" x2="472" y2="140" marker-end="url(#r)"/><line x1="390" y1="150" x2="386" y2="163" marker-end="url(#r)"/>
+<line x1="550" y1="150" x2="542" y2="196" marker-end="url(#r)"/></g>
 <text x="350" y="222" fill="#d64545">no single shift fits: first turn the older</text>
 <text x="350" y="240" fill="#d64545">frame by the IMU heading change (derotate)</text>
 </svg>

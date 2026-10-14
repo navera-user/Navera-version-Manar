@@ -73,6 +73,8 @@ def two(v, what):
 
 # ======================================================================== session 1 — Odometer
 G = np.random.default_rng(2424).random((48, 64))
+R_REF = [0.2613, 0.2311, 0.1614, 0.2702, 0.1343, 0.2671]          # responses on the hidden pairs, numpy window
+R_SQRT_WIN = [0.2714, 0.2333, 0.1801, 0.2724, 0.1824, 0.2944]     # the same with cv2.createHanningWindow
 ROLLS = {(3, -7): (-7.001, 2.999), (-11, 20): (20.017, -11.004), (0, 31): (30.966, -0.035), (17, 0): (-0.009, 17.002)}
 
 
@@ -105,6 +107,12 @@ def _():
         if abs(dx - want[1]) < 0.2 and abs(dy - want[0]) < 0.2 and sx != sy:
             raise CheckFailed(f"content rolled ({sx}, {sy}) px gave ({dx:.2f}, {dy:.2f}): x and y are swapped — "
                               "np.unravel_index gives (row, column) = (y, x)")
+        if round(dx) == round(want[0]) and round(dy) == round(want[1]) and not (abs(dx - want[0]) < 0.06
+                                                                             and abs(dy - want[1]) < 0.06):
+            raise CheckFailed(f"a 48 × 64 picture rolled by exactly ({sx}, {sy}) px gave ({dx:.3f}, {dy:.3f}): the integer "
+                              f"peak is right, but your sub-pixel step moves it (it should stay within 0.06 px of "
+                              f"({round(want[0])}, {round(want[1])})). Check the sign of δ = (c₋ − c₊) / (2 (c₋ − 2 c₀ + "
+                              "c₊)) and that c₋ is the LEFT (or upper) neighbour")
         c.ok(abs(dx - want[0]) < 0.06 and abs(dy - want[1]) < 0.06,
              f"a 48 × 64 picture rolled by (dx, dy) = ({sx}, {sy}) px gave ({dx:.3f}, {dy:.3f})")
         if r > 1.5 or r < 0.05:
@@ -120,11 +128,17 @@ def _():
              f"a sub-pixel shift of ({sx}, {sy}) px gave ({dx:.3f}, {dy:.3f}): refine the peak with the parabola "
              "δ = (c₋ − c₊) / (2 (c₋ − 2 c₀ + c₊)) in x and in y (lesson §3, detail 3)")
     d = np.load(io.BytesIO(hidden("test_pairs.npz", text=False)))
+    resp = []
     for a, b, t in zip(d["a"], d["b"], d["shift"]):
-        dx, dy, _ = three(go(f, a, b), "phase_shift")
+        dx, dy, r = three(go(f, a, b), "phase_shift")
+        resp.append(r)
         c.ok(math.hypot(dx - t[0], dy - t[1]) < 0.35,
              f"on an unseen pair of real-looking uint8 frames (true shift about ({t[0]:.1f}, {t[1]:.1f}) px) you gave "
              f"({dx:.2f}, {dy:.2f}) — the Hann window (and the mean removed) matter on frames that do not wrap around")
+    if np.allclose(resp, R_SQRT_WIN, atol=0.003) and not np.allclose(resp, R_REF, atol=0.003):
+        raise CheckFailed("your window looks like cv2.createHanningWindow (the square root of hann·hann): use "
+                          "np.outer(np.hanning(h), np.hanning(w)) — lesson §3, detail 2. The lab's thresholds (Step 7) "
+                          "are measured with it")
 
 
 @c.test("TODO 2: px_to_en() with unseen shifts, scales and headings",
@@ -203,8 +217,10 @@ def _():
     v = go(f, P1, P2, 2.5)
     c.ok(int(v[2]) == 7, f"with tol_px = 2.5, n_agree is {v[2]}: use the tol_px argument (and ≤)")
     v = go(f, [(0, 0), (1, 1), (2, 2), (3, 3)], [(1, 2), (3, 3), (5, 4), (4, 5)], 0.5)
-    c.ok(np.allclose([float(v[0]), float(v[1])], [1.5, 2.0]) and int(v[2]) == 3,
+    c.ok(np.allclose([float(v[0]), float(v[1])], [1.5, 2.0]),
          f"with 4 votes (an even number) you gave {v!r}: np.median takes the mean of the two middle values")
+    c.ok(int(v[2]) == 3, f"dx, dy = (1.5, 2.0) are right, but n_agree = {v[2]}: three votes lie exactly tol_px = 0.5 px "
+         "away — count with ≤ (distance ≤ tol_px), not <")
     v = go(f, np.zeros((0, 2)), np.zeros((0, 2)))
     c.ok(isinstance(v, tuple) and len(v) == 3 and v[0] is None and v[1] is None and v[2] == 0,
          f"with no match at all, median_shift must return (None, None, 0), got {v!r}")
@@ -277,22 +293,31 @@ def _():
                 r"never cancel", r"accumul"), "why such errors add up step after step"))
 
 
-@c.test("Step 5: six odometers — turns, keypoints, your learned descriptor",
+@c.test("Step 5: the odometer race — turns, the coast, keypoints, your learned descriptor",
         hint="Copy the two counts from the table of `python3 run_vo.py odometers` (right pairs out of 8) and explain "
              "in your own words.")
 def _():
-    pt, okt, okf, why = answers("PREDICT_RACE", "OK_PHASE_TURN4", "OK_ORB_FIT_TURN30", "EXPLAIN_ODOMETERS")
+    tl, pt, okt, okc, ls, lt, why = answers("TURN_LIMIT_DEG", "PREDICT_RACE", "OK_PHASE_TURN4", "OK_ORB_COAST",
+                                            "LEARNED_MATCHES_STRAIGHT", "LEARNED_MATCHES_TURN30", "EXPLAIN_ODOMETERS")
+    tl = number(tl, "TURN_LIMIT_DEG")
+    if abs(tl - 20.5) < 1.5:
+        raise CheckFailed("TURN_LIMIT_DEG: math.asin works in radians — convert the result with math.degrees")
+    c.ok(0.30 <= tl <= 0.40, f"TURN_LIMIT_DEG = {tl:g}: solve 160 · sin θ = 1 px for θ, in degrees (lesson §4: the "
+         "edges of a 320 px frame are 160 px from its centre)")
     predicted("PREDICT_RACE", pt)
-    okt, okf = number(okt, "OK_PHASE_TURN4"), number(okf, "OK_ORB_FIT_TURN30")
+    okt, okc = number(okt, "OK_PHASE_TURN4"), number(okc, "OK_ORB_COAST")
     c.ok(0 <= okt <= 2, f"OK_PHASE_TURN4 = {okt:g}: the 'turn4' row, column 'phase' (without the IMU), pairs right "
          "out of 8")
-    c.ok(okf == 8, f"OK_ORB_FIT_TURN30 = {okf:g}: the 'turn30' row, last column 'ORB fit'")
+    c.ok(okc == 4, f"OK_ORB_COAST = {okc:g}: the 'coast' row, column 'ORB+IMU', pairs right out of 8")
+    ls, lt = number(ls, "LEARNED_MATCHES_STRAIGHT"), number(lt, "LEARNED_MATCHES_TURN30")
+    c.ok(0 < lt < ls <= 500, f"LEARNED_MATCHES_STRAIGHT = {ls:g}, LEARNED_MATCHES_TURN30 = {lt:g}: the 'matches' table, "
+         "column 'learned fit', rows straight and turn30 (your network finds fewer matches after a 30° turn)")
     explained("EXPLAIN_ODOMETERS", why,
               ((r"rotat", r"turn", r"imu", r"derotat", r"heading"), "why phase correlation needs the IMU's turn"),
-              ((r"slow", r"time", r"ms", r"fast", r"cost", r"expensive", r"speed", r"times"),
-               "what the keypoints, and your learned descriptor, cost"),
-              ((r"sea", r"water", r"no texture", r"nothing", r"all fail", r"none", r"every", r"fail"),
-               "what no method can do"))
+              ((r"coast", r"beach", r"sand", r"texture", r"corner", r"keypoint", r"every pixel", r"all the pixel"),
+               "why phase correlation still beats keypoints on the coast"),
+              ((r"\bms\b", r"slow", r"time", r"cost", r"expensive", r"speed", r"train", r"20 ?°", r"range", r"match"),
+               "what your learned descriptor costs, or where it stops working"))
 
 
 c.milestone("odometer", "TODO 1:", "TODO 2:", "TODO 3:", "TODO 4:", "Your odometer", "Steps 0–4:", "Step 5:",
@@ -406,12 +431,17 @@ def _():
         raise CheckFailed(f"MIN_RESPONSE = {mr:g} refuses right steps (steps 51, 78 and 79 are right with responses "
                           "below 0.1) — and it still lets the overlay steps through: look at the two kinds of wrong "
                           "steps in `responses`")
-    c.ok(0.0305 <= mr <= 0.0400, f"MIN_RESPONSE = {mr:g}: it must refuse every wrong step over the water and keep "
-         "every right step — choose it between the two groups printed by `responses`")
+    if mr > 0.0401:
+        raise CheckFailed(f"MIN_RESPONSE = {mr:g} would refuse the right step 51 (response 0.040). Read the printed "
+                          "numbers (three decimals), not the plot, and choose a value strictly between the two groups")
+    c.ok(mr >= 0.0305, f"MIN_RESPONSE = {mr:g} would keep the wrong steps 66 and 77 over the water (response 0.030): "
+         "choose a value strictly between 0.030 and 0.040 (three or four decimals)")
     explained("EXPLAIN_THRESHOLD", why_t,
               ((r"sea", r"water", r"wave", r"move", r"nothing fixed", r"texture"), "why the steps over the water are weak"),
-              ((r"overlay", r"osd", r"text", r"box", r"static", r"zero", r"stuck", r"high", r"strong", r"not enough",
-                r"cannot", r"can't"), "what a threshold cannot catch"))
+              ((r"overlay", r"osd", r"text", r"box", r"static", r"stuck", r"fixed in the (picture|image|frame)"),
+               "what a threshold cannot catch (and why)"),
+              ((r"margin", r"narrow", r"thin", r"small gap", r"0\.01", r"close", r"risk", r"safe", r"knife"),
+               "how safe your margin is"))
     predicted("PREDICT_GATE", pgt)
     gr, wc, wd, cov = (number(v, n) for v, n in ((gr, "GATE_REFUSED"), (wc, "WORST_NO_FIX"), (wd, "WORST_FUSED"),
                                                 (cov, "COVERAGE")))
@@ -423,9 +453,11 @@ def _():
     c.near(cov, 0.78, 0.03, "COVERAGE (stage D, 'within 2σ', as a share or a %)")
     explained("EXPLAIN_FUSION", why_f,
               ((r"fix", r"map", r"blend", r"reset", r"drop", r"saw"), "what each map fix does to the error"),
-              ((r"sea", r"water", r"gap", r"long", r"no fix", r"between"), "where the worst error comes from"),
-              ((r"86", r"honest", r"optimist", r"over.?confiden", r"too small", r"σ", r"sigma", r"bias", r"2σ",
-                r"coverage"), "what the 78 % says about the stated σ"))
+              ((r"sea", r"water", r"gap", r"long", r"no fix"), "where the worst error comes from"),
+              ((r"\b20\b", r"\b30\b", r"unlucky", r"fix(es)? (was|were|is|are) .*off", r"fix error", r"wrong fix",
+                r"bad fix", r"after (the )?fix"), "where the true error leaves the 2σ band (and why)"),
+              ((r"86", r"honest", r"optimist", r"over.?confiden", r"too small", r"one flight", r"few", r"correlat",
+                r"proof", r"evidence", r"hint"), "what 78 % from one flight can and cannot tell"))
 
 
 @c.test("report.md: four headings, your own words, your numbers",
@@ -435,14 +467,14 @@ def _():
     if not os.path.exists("report.md"):
         raise CheckFailed("report.md is missing")
     text = open("report.md", encoding="utf-8").read()
-    for h in ("## 1. The odometer", "## 2. The drift", "## 3. Six odometers", "## 4. The navigator"):
+    for h in ("## 1. The odometer", "## 2. The drift", "## 3. The odometer race", "## 4. The navigator"):
         c.ok(h in text, f"report.md lost its heading “{h}”")
     c.ok("TODO" not in text, "report.md still contains a TODO")
     body = re.sub(r"^#.*$", "", text, flags=re.M)
     n = len(re.findall(r"[A-Za-zÀ-ÿ']{2,}", body))
-    c.ok(200 <= n <= 520, f"report.md has {n} words; write 200–450")
+    c.ok(200 <= n <= 450, f"report.md has {n} words; write 200–450")
     nums = [float(x) for x in re.findall(r"\d+(?:\.\d+)?", text)]
-    db, okt, wd, cov = answers("DRIFT_BARO", "OK_PHASE_TURN4", "WORST_FUSED", "COVERAGE")
+    db, okt, wd, cov = answers("DRIFT_BARO", "OK_PHASE_TURN4", "WORST_FUSED", "COVERAGE")  # noqa: F841
     for v, name, tol in ((db, "DRIFT_BARO", 0.011), (okt, "OK_PHASE_TURN4", 0.01), (wd, "WORST_FUSED", 0.11)):
         v = number(v, name)
         c.ok(any(abs(x - v) <= tol for x in nums), f"report.md does not quote your {name} ({v:g})")

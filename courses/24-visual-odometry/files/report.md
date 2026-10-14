@@ -10,7 +10,7 @@ TODO: how your phase correlation measures a step; how it compares with OpenCV (M
 
 TODO: the drift of the first leg (DRIFT_BARO), its two causes and how you found them, and the drift once corrected.
 
-## 3. Six odometers
+## 3. The odometer race
 
 TODO: what a turn does to phase correlation (OK_PHASE_TURN4) and how the IMU fixes it; keypoints and your learned
 descriptor: precision and cost; the sea.

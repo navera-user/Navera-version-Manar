@@ -4,7 +4,7 @@
 
 > [!NOTE] Mission brief
 > **22 May 2021, Jezero crater, Mars.** NASA's Ingenuity helicopter is on its sixth flight. It knows its motion by
-> tracking ground features from one navigation-camera frame to the next. About 54 seconds into the flight, one single
+> tracking ground features from one navigation-camera frame to the next, together with its IMU. About 54 seconds into the flight, one single
 > frame is lost in the image pipeline. From then on every frame carries a wrong time stamp, the navigation compares
 > pictures that do not belong together, and the helicopter starts to rock by more than 20° in roll and pitch. It
 > lands safely, about 5 m from its target. (NASA, Mars Helicopter blog, Håvard Grip, 27 May 2021.)
@@ -34,7 +34,8 @@
 **You need:** the ground size of a pixel (mission 18 §4), east/north (mission 06), mean and σ (mission 04 §5), ORB and
 your PatchNet (mission 21). Complex numbers and "variances add" are refreshed in 🧰 boxes; the Fourier transform is taught
 here. ⏱ Reading: about 100 minutes with the ✏️ checks (Part A, §1–§6, before session 1, about 60 minutes; Part B,
-§7–§9, before session 2, about 40 minutes). Lab: 4 h 30 to 6 h in two sessions.
+§7–§9, before session 2, about 40 minutes); up to 2 h 30 if the FFT and complex numbers are new to you — §2 is the
+hardest part: read it with its 1-D example running. Lab: 4 h 30 to 6 h in two sessions.
 
 **Before you start** — answer without looking (if you miss two, reread mission 18 §4 and mission 21 §5):
 
@@ -156,7 +157,7 @@ print(np.round(np.real(np.fft.ifft(R)), 3))     # [ 0.  0.  1.  0.  0.  0.  0.  
 
 ![The shift theorem in 1-D: the inverse transform of the normalised cross-power spectrum is one spike at the shift](assets/shift_theorem.svg)
 
-A shift of 2.5 samples gives a peak **split** between indices 2 and 3 (0.63 each, small ripples around): the shift lies
+A shift of 2.5 samples gives a peak **split** between indices 2 and 3 (0.63 each, with ripples of −0.19 on either side): the shift lies
 between two samples, and §3 shows how to find it.
 
 **Why it is fast.** The **FFT** (fast Fourier transform) computes a DFT in about N log₂ N operations instead of N².
@@ -190,8 +191,10 @@ index W − 3. Rule: an index above W/2 (or H/2) means `index − W` (or `index 
 FFT sees that jump as a strong edge that does not move (it belongs to the picture's frame, not to the ground). It pulls
 the peak towards zero. The **Hann window** fades each picture to zero at its borders:
 w(x, y) = hann(x) · hann(y), with hann(k) = 0.5 − 0.5 cos(2πk / (n − 1)). In numpy:
-`np.outer(np.hanning(h), np.hanning(w))` — shape (h, w), like the picture. OpenCV builds the same with
-`cv2.createHanningWindow((w, h), cv2.CV_32F)`: note **(width, height)**, the opposite order of a numpy shape.
+`np.outer(np.hanning(h), np.hanning(w))` — shape (h, w), like the picture. OpenCV's
+`cv2.createHanningWindow((w, h), cv2.CV_32F)` (note **(width, height)**, the opposite order of a numpy shape) is **not**
+the same: it is the square root of that product, a gentler fade. Use the numpy window in your `phase_shift`; the lab's
+thresholds are measured with it.
 
 **Detail 3 — sub-pixel.** The true shift is rarely a whole number. Fit a parabola through the peak value c₀ and its two
 neighbours c₋ (left, or above) and c₊ (right, or below), separately in x and in y; its top is at
@@ -252,7 +255,7 @@ After a turn the votes are not equal any more (the picture above), so a median o
 of a turn **and** a shift (mission 22 fits such models with RANSAC; OpenCV's `cv2.estimateAffinePartial2D` does it in
 one call). Which descriptor should describe the keypoints: ORB's 256 bits, or the **PatchNet you trained** in
 mission 21? And is any of them better than phase correlation for consecutive frames? That is a measurement, Step 5 of
-the lab.
+the lab. Keep one question in mind: keypoints need corners. What happens over a beach?
 
 > [!QUESTION] ✏️ Check
 > Five matches vote for dx = 3.0, 3.2, 2.9, −31.0, 40.0 px. What do the mean and the median say, and how many votes
@@ -367,7 +370,9 @@ flights.
 
 **In 2-D.** With the same σ in east and north, the distance error has an RMS √2 times larger. And "within 2σ" does not
 mean 95 % any more: for a round 2-D normal error, the distance stays below 2σ (σ per axis) with probability
-1 − e⁻² = **86 %**. Keep that number: it is how you will judge whether a stated σ is honest.
+1 − e⁻² = **86 %**. Keep that number: it is how you will judge whether a stated σ is honest. But one flight gives
+correlated frames (an error that is too large now is still too large one second later), so a coverage measured on
+90 frames is a hint, not a proof.
 
 > [!QUESTION] ✏️ Check
 > σ = 0.3 m per step and no bias. RMS after 25 steps? After 400 steps?
@@ -418,8 +423,9 @@ correlation surface is flat noise. The same happens over fog, uniform sand or in
 position is random. Defence: a **response threshold** — refuse a step whose response is below it.
 
 **The wrong thing measured, confidently.** A telemetry overlay burnt into the video, dirt on the lens, the drone's own
-legs: they stay **fixed in the picture**. When the ground gives little texture, phase correlation locks onto them and
-reports "no motion" with a **high** peak. A threshold cannot see it. Defence: a **gate** on the velocity. Compare the
+legs: they stay **fixed in the picture**. Phase correlation can lock onto them, even over textured ground: whitening
+gives their sharp, high-contrast edges as much weight as the ground's details, and they match perfectly from frame to
+frame. It then reports "no motion" with a **high** peak. A threshold cannot see it. Defence: a **gate** on the velocity. Compare the
 odometry's velocity v_vo with the expected velocity v_ref, and accept it only if
 
 ```
@@ -464,7 +470,7 @@ work over open water.
 When a frame gives no map match (sea, uniform ground, a frame too tilted), NAVERA carries its last measured position
 along the ground velocity fitted to the measured fixes of the last 20 s, **turned by the heading change the IMU
 measures**, and publishes it as PROPAGATED (dead-reckoned), never as measured, with a stated accuracy that grows
-(velocity error × time + 5° heading error × distance), for at most 120 s or 500 m. Measured in simulation (validation
+(velocity error × time + 5° heading error × distance), for at most 120 s, or until its stated accuracy reaches 500 m. Measured in simulation (validation
 report, 3 October 2026): over a land route, median error 10 m, maximum 33 m; across the bay, 90 s over the sea stating
 ±300 m with a true error of at most 146 m, and no autopilot failsafe. It has not been measured with a real camera or a
 real IMU, the frame odometry has no separate published figure yet, and the dead-reckoned position is never used to check
@@ -490,10 +496,10 @@ steps and blends the fixes with your functions. Mission 33's project menu has a 
 Counting your own motion is **path integration**, and animals measure it partly with their eyes, like VO. Honeybees
 judge the distance to food by the image motion they see on the way: bees trained to fly through a narrow tunnel lined
 with a dense pattern "reported" a much longer flight in their waggle dance (Srinivasan and colleagues, *Science*, 2000).
-Their odometer had been fooled by the close, textured walls — a scale error, like a wrong height. And the map fix: in
-A. C. Perdeck's experiment (1958), young starlings moved by plane from the Netherlands to Switzerland kept flying in
-their usual direction for their usual distance, pure dead reckoning, while the adults corrected towards their usual
-winter area. Navi the swallow, on her first migration, flies like the young starlings.
+Their odometer had been fooled by the close, textured walls — a 6 m tunnel "felt" like more than 150 m: a scale error,
+like a wrong height. And the map fix: in A. C. Perdeck's experiment (1958), young starlings moved by plane from the
+Netherlands to Switzerland kept flying in their inborn direction, as if nothing had happened — a compass-and-clock
+programme with no position check — while the adults corrected towards their usual winter area. Navi the swallow, on her first migration, flies like the young starlings.
 
 ## Summary
 
@@ -532,7 +538,8 @@ x = (250 · 25 + 240 · 100) / 125 = 242 m, v = 20 m² (σ 4.5 m).
 </details>
 
 <details><summary>5. Why can a response threshold not catch a step locked on a text overlay?</summary>
-The overlay is fixed in the picture and strongly textured: it gives a high peak, at zero shift. Only a comparison with
+The overlay is fixed in the picture and strongly textured: it gives a high peak, at zero shift, even when the ground
+is textured too. Only a comparison with
 the expected motion (a gate) shows that "no motion" is impossible.
 </details>
 

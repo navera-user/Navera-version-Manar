@@ -13,8 +13,8 @@ Writes datasets/24-visual-odometry/ (students: /data/academy/24-visual-odometry/
   truth.csv            frame, east_m, north_m: the true position (metres from frame 0) — for grading only
   map_fixes.csv        frame, east_m, north_m, sigma_m: map-matching fixes (mission 23) on land only
   info.json            camera and flight facts (no hidden defect named)
-  pairs/a_NN.jpg, b_NN.jpg, pairs.csv   40 frame pairs from another part of the city (and the sea) for the
-                       odometer comparison: group (straight, turn4, turn12, turn30, sea), turn_deg (IMU heading
+  pairs/a_NN.jpg, b_NN.jpg, pairs.csv   48 frame pairs from another part of the city, the sea and a beach, for the
+                       odometer comparison: group (straight, turn4, turn12, turn30, sea, coast), turn_deg (IMU heading
                        change b − a), true_dx_px, true_dy_px (where the ground point at a's centre appears in b,
                        minus the centre: the shift phase correlation should measure after derotation)
   README.md            neutral description + © OpenStreetMap contributors
@@ -261,9 +261,41 @@ def make_pairs():
             cv2.imwrite(os.path.join(OUT, "pairs", f"b_{k:02d}.jpg"), b, [cv2.IMWRITE_JPEG_QUALITY, 92])
             rows.append([k, group, f"{t:.1f}", f"{dx:.3f}", f"{dy:.3f}"])
             k += 1
+    rows += make_coast_pairs(k)
     with open(os.path.join(OUT, "pairs.csv"), "w", newline="") as f:
         csv.writer(f).writerows([["pair", "group", "turn_deg", "true_dx_px", "true_dy_px"]] + rows)
-    print(f"pairs: {k}")
+    print(f"pairs: {len(rows)}")
+
+
+def make_coast_pairs(k0, n=8):
+    """Low-texture coast pairs (review round 1): a beach — 35–65 % of the frame is water and the clean frame a has fewer
+    than 40 ORB corners — with a small turn (±2°). Chosen by texture only, never by any odometer's result."""
+    sys.path.insert(0, os.path.join(REPO, "solutions", "_navera_lite"))
+    from navera_lite.features import detect
+    o, sea, P_o = ortho(FLIGHT_PLACE)
+    rng = np.random.default_rng(2427)
+    rows, k = [], k0
+    while len(rows) < n:
+        e, n_ = rng.uniform(-480, 480, 2)
+        hdg = rng.uniform(0, 360)
+        P = frame_matrix(e, n_, hdg)
+        if not 0.35 < resample(sea, P_o, P).mean() < 0.65:
+            continue
+        g = cv2.cvtColor(resample(o, P_o, P).astype(np.uint8), cv2.COLOR_BGR2GRAY)
+        if len(detect(g, "orb", 500)[0]) > 40:
+            continue
+        t = rng.uniform(-2, 2)
+        fwd, side, th = rng.uniform(16, 24), rng.uniform(-3, 3), math.radians(hdg)
+        e2 = e + fwd * math.sin(th) + side * math.cos(th)
+        n2 = n_ + fwd * math.cos(th) - side * math.sin(th)
+        a, _ = shoot(o, sea, P_o, e, n_, hdg, rng)
+        b, _ = shoot(o, sea, P_o, e2, n2, hdg + t, rng)
+        dx, dy = centre_shift(frame_matrix(e, n_, hdg), frame_matrix(e2, n2, hdg + t))
+        cv2.imwrite(os.path.join(OUT, "pairs", f"a_{k:02d}.jpg"), a, [cv2.IMWRITE_JPEG_QUALITY, 92])
+        cv2.imwrite(os.path.join(OUT, "pairs", f"b_{k:02d}.jpg"), b, [cv2.IMWRITE_JPEG_QUALITY, 92])
+        rows.append([k, "coast", f"{t:.1f}", f"{dx:.3f}", f"{dy:.3f}"])
+        k += 1
+    return rows
 
 
 # ------------------------------------------------------------------ hidden check data
@@ -312,7 +344,7 @@ course's map renderer. Map data © OpenStreetMap contributors (https://www.opens
 | `truth.csv` | frame, east_m, north_m: the true position, metres from frame 0. Use it to grade your odometry, never to compute it |
 | `map_fixes.csv` | frame, east_m, north_m, sigma_m: positions from map matching (mission 23), where it worked |
 | `info.json` | camera and flight facts |
-| `pairs/a_NN.jpg`, `pairs/b_NN.jpg`, `pairs.csv` | 40 frame pairs for comparing odometers: group, turn_deg (heading change from a to b), true_dx_px, true_dy_px (where the ground point at a's centre appears in b, minus the centre) |
+| `pairs/a_NN.jpg`, `pairs/b_NN.jpg`, `pairs.csv` | 48 frame pairs for comparing odometers: group, turn_deg (heading change from a to b), true_dx_px, true_dy_px (where the ground point at a's centre appears in b, minus the centre) |
 """
 
 

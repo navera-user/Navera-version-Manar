@@ -72,6 +72,8 @@ def phase_shift(a, b):
     together), three floats.
     Example: g = np.random.default_rng(0).random((64, 80))
              phase_shift(g, np.roll(g, (2, -5), axis=(0, 1))) → about (-5.00, 2.00, 0.93)   (5 left, 2 down)
+             and g moved by a FRACTION of a pixel, (2.4, −1.3) px (the runner's test makes it) → about (2.29, −1.18):
+             between pixels (the parabola falls a little short), never the whole numbers (2, −1)
     """
     a = np.asarray(a, dtype=np.float64)
     b = np.asarray(b, dtype=np.float64)
@@ -229,5 +231,6 @@ def vo_gate(v_vo, v_ref, sigma_mps, k=3.0):
     between the two velocity vectors (east, north, m/s) is at most k · sigma_mps, else False.
 
     Example: vo_gate((20.0, 0.0), (19.0, 1.0), 1.0) → True      vo_gate((0.0, 0.0), (20.0, 0.0), 2.0) → False
+             vo_gate((20.0, 0.0), (-20.0, 0.0), 2.0) → False   (the same speed, the opposite way)
     """
     return bool(math.hypot(v_vo[0] - v_ref[0], v_vo[1] - v_ref[1]) <= k * sigma_mps)

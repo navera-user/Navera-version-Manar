@@ -10,12 +10,12 @@
 <line x1="230" y1="150" x2="230" y2="180" marker-end="url(#b)"/></g>
 <text x="30" y="222" fill="#0b6e8a">five equal votes: phase correlation</text>
 <text x="30" y="240" fill="#0b6e8a">and the median of the votes agree</text>
-<text x="340" y="22" font-weight="bold" fill="#1d2733">A shift + a 12° turn: the votes differ</text>
+<text x="340" y="22" font-weight="bold" fill="#1d2733">30 px slide + 12° turn: votes differ</text>
 <rect x="350" y="40" width="240" height="160" fill="#f3efe6" stroke="#1d2733"/>
 <g stroke="#d64545" stroke-width="2.5">
-<line x1="390" y1="70" x2="379" y2="104" marker-end="url(#r)"/><line x1="550" y1="70" x2="562" y2="94" marker-end="url(#r)"/>
-<line x1="470" y1="110" x2="470" y2="140" marker-end="url(#r)"/><line x1="390" y1="150" x2="373" y2="172" marker-end="url(#r)"/>
-<line x1="550" y1="150" x2="557" y2="187" marker-end="url(#r)"/></g>
+<line x1="390" y1="70" x2="402" y2="84" marker-end="url(#r)"/><line x1="550" y1="70" x2="559" y2="118" marker-end="url(#r)"/>
+<line x1="470" y1="110" x2="472" y2="140" marker-end="url(#r)"/><line x1="390" y1="150" x2="386" y2="163" marker-end="url(#r)"/>
+<line x1="550" y1="150" x2="542" y2="196" marker-end="url(#r)"/></g>
 <text x="350" y="222" fill="#d64545">no single shift fits: first turn the older</text>
 <text x="350" y="240" fill="#d64545">frame by the IMU heading change (derotate)</text>
 </svg>

@@ -27,7 +27,8 @@ IMU heading +2.0° (± 0.05°), a telemetry overlay on frames 80–87, the sea r
 Expected values in check.py: `solutions/24-visual-odometry/check_values.py`.
 
 - **Step 0:** SLIDE_PX = 20 / (2 · 116.38 · tan 35° / 320) = **39.3 px** (accepted 37.5–40.5; 38.1 with the true 120 m).
-  The measured slide is 38.0 px: the first hint that the barometer is low (good for a discussion).
+  The measured slide is 38.0 px: lab Step 1 now asks the student to compare dy with SLIDE_PX (3 % apart) and keep the
+  thought for Step 4 — the barometer is discovered, not announced.
 - **Step 1 (`pair 10`):** yours (+0.018, +38.024) px, response 0.251; OpenCV (+0.005, +38.094), response 0.921; the drone
   moved (+14.85, +12.46) m against the truth (+14.86, +13.38).
 - **Step 2 (`compare`, 51 steps):** mean |yours − OpenCV| **0.061 px**, largest 0.151 px (step 21); responses yours median
@@ -36,24 +37,31 @@ Expected values in check.py: `solutions/24-visual-odometry/check_values.py`.
   **HEADING_ERROR_DEG = 2.01** (clockwise); **TRUE_ALT_M ≈ 120.1** (116.4 × 1.032; accepted 119.1–121.1);
   `--altitude 120` → **3.51**; `--altitude 120 --heading-offset -2` → **0.07** (accepted 0–0.3). Expected by the error
   budget: 3 % and 100 · sin 2° = 3.5 m → √(3² + 3.5²) = 4.6 m per 100 m.
-- **Step 5 (`odometers`, 8 pairs per group, right = within 1 px; median error px):**
+- **Step 5 (`odometers`, 8 pairs per group, right = within 1 px; median error px; reference weights 2026-10-14):**
+  TURN_LIMIT_DEG = asin(1/160) = **0.358°** (accepted 0.30–0.40; 20.5 = radians not converted, named by the check).
 
-  | group | phase | phase+IMU | OpenCV+IMU | ORB+IMU | learned+IMU | ORB fit |
-  |---|---|---|---|---|---|---|
-  | straight | 8 (0.08) | 8 (0.08) | 8 (0.19) | 8 (0.30) | 8 (0.10) | 8 (0.06) |
-  | turn4 | **1** (3.34) | 8 (0.08) | 8 (0.12) | 8 (0.15) | 8 (0.09) | 8 (0.10) |
-  | turn12 | 0 (27.8) | 8 (0.09) | 8 (0.11) | 8 (0.19) | 8 (0.12) | 8 (0.07) |
-  | turn30 | 0 (62.5) | 8 (0.07) | 8 (0.10) | 8 (0.28) | 8 (0.12) | **8** (0.16) |
-  | sea | 0 | 0 | 0 | 0 | 0 | 0 |
+  | group | phase | phase+IMU | OpenCV+IMU | ORB+IMU | learned+IMU | ORB fit | learned fit |
+  |---|---|---|---|---|---|---|---|
+  | straight | 8 (0.08) | 8 (0.08) | 8 (0.19) | 8 (0.30) | 8 (0.10) | 8 (0.06) | 8 (0.05) |
+  | turn4 | **1** (3.34) | 8 (0.08) | 8 (0.12) | 8 (0.15) | 8 (0.09) | 8 (0.10) | 8 (0.07) |
+  | turn12 | 0 (27.8) | 8 (0.09) | 8 (0.11) | 8 (0.19) | 8 (0.12) | 8 (0.07) | 8 (0.09) |
+  | turn30 | 0 (62.5) | 8 (0.07) | 8 (0.10) | 8 (0.28) | 8 (0.12) | 8 (0.16) | 8 (0.38) |
+  | coast | 2 (1.21) | 6 (0.26) | 8 (0.24) | **4** (71.7) | 4 (55.4) | 2 (80.7) | 3 (—) |
+  | sea | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 
-  Times per pair (reference weights): phase 13–27 ms, ORB 15–33 ms, learned 100–225 ms on the GPU, ≈ 1 s on the CPU
-  (2 threads). OK_PHASE_TURN4 = 1 (accepted 0–2), OK_ORB_FIT_TURN30 = 8. The learned numbers vary with the student's
-  weights and are not graded.
+  Mean mutual matches: ORB ≈ 254–266 on the city, **6** on the coast, 3 at sea; learned fit (no IMU) **206** straight →
+  198 (4°) → 168 (12°) → **107** (30°): past PatchNet's ±20° training range it loses half of its matches (RANSAC still
+  copes). ms/pair (GPU, loaded Jetson): phase 17–19, OpenCV 6, ORB 16–17, learned 150–165; on the CPU learned ≈ 3–4 s
+  per pair (the whole command ≈ 6 min). OK_PHASE_TURN4 = 1 (0–2 accepted), **OK_ORB_COAST = 4**; LEARNED_MATCHES_* depend
+  on the student's weights: the check only asks turn30 < straight. The coast group (pairs 40–47) was chosen by texture
+  only (35–65 % water, < 40 ORB corners in the clean frame), never by any odometer's result.
 - **Step 6 (`drift_sim.py`):** after 100 steps random 5.03 m (theory 5.00), bias 10.00 (10.00), both 11.22 (11.18);
-  **EXPONENT_RANDOM = 0.50**, **EXPONENT_BIAS = 1.00**; **N_CROSS = σ²/b² = 25** (5 or 50 named by the check).
+  **EXPONENT_RANDOM = 0.50**, **EXPONENT_BIAS = 1.00**; PREDICT_GROWTH (now: the Monte-Carlo error, ≈ 0.6 % here; ∝ 1/√trials, so
+  200 flights ≈ √10 ≈ 3× farther — not in the lesson); **N_CROSS = σ²/b² = 25** (5 or 50 named by the check).
 - **Step 7 (`responses`, 89 steps):** right steps' lowest responses 0.040 (step 51, coast), 0.051 (78), 0.092 (79),
   0.111 (80); wrong steps: 26 over the water and the coast approach (steps 52–77, 0.020–**0.030**), and the 7 overlay
-  steps 81–87 (0.288–0.465). **SEA_MAX_RESPONSE = 0.030**; **MIN_RESPONSE** in (0.030, 0.040] (check: 0.0305–0.0400;
+  steps 81–87 (0.288–0.465). **SEA_MAX_RESPONSE = 0.030**; **MIN_RESPONSE** in (0.030, 0.040] (check: 0.0305–0.0401, the failure names step 51 / steps 66 and 77; the window is knife-edge by design and the lab
+  now says so;
   the solution uses 0.035). Any threshold ≥ 0.1 is named by the check (it refuses right steps and still misses the
   overlay).
 - **Step 9 (`fuse`, σ model 0.3 m / 0.7 m, gate 3 × 2 m/s):**
@@ -65,19 +73,22 @@ Expected values in check.py: `solutions/24-visual-odometry/check_values.py`.
   | C + gate | 26 | 7 | **52.6 m** | 39.0 m | 100 % |
   | D + map fixes | 26 | 7 | **18.9 m** | 5.3 m | **78 %** |
 
-  GATE_REFUSED = **7** (steps 81–87). Coverage: `--bias 0.9` → 85 %, `--bias 1.0` → 91 % (try it in class): the given 0.7 m per step is
-  below the measured bias (√(0.6² + 0.7²) ≈ 0.92 m per step, Step 4), so the stated σ is optimistic.
+  GATE_REFUSED = **7** (steps 81–87). Coverage story (review round 1, data NOT re-seeded): the misses are frames
+  **20–39 only**, right after the fixes at 20 and 30, which are 7.0 and 6.5 m from the truth against a stated σ of 4 m per
+  axis (the generator draws σ = 3 m: these are unlucky ≈ 2σ draws). `--bias 0.9` → 85 % removes only the late-tooth misses
+  (20–25 and 30–36 remain). Frames are correlated (about 7 fix intervals), so 78 % against 86 % is weak evidence. Do not
+  teach "the bias 0.7 is too small, so σ is optimistic": 0.92 m per step is a total length, 0.7 m is per axis.
 - **Unseen-flight check (5):** 12 steps, 18 m/s, 90 m high, 5 × 6° turn: reference largest error 0.13 m (pass < 0.6 m).
 
 ## Rubrics (EXPLAIN items; the check only catches empty or off-topic answers)
 
 | Item | 2 (good) | 1 (partial) | 0 |
 |---|---|---|---|
-| EXPLAIN_SUBPIXEL | same integer peak; parabola vs centroid; differences < 0.2 px | "rounding" without naming the refinement | "OpenCV is better" |
+| EXPLAIN_SUBPIXEL | same integer peak; parabola vs centroid and a different window (OpenCV's is √(hann·hann)); differences < 0.2 px | "rounding" without naming the refinement | "OpenCV is better" |
 | EXPLAIN_BIAS | height 3 % → scale; heading 2° → direction; same error every step, adds linearly | one cause | "noise" |
-| EXPLAIN_ODOMETERS | translation only → derotate with the IMU; keypoints survive turns (ORB fit) but cost more, learned most; sea defeats all | two of three | "learned is best" |
-| EXPLAIN_THRESHOLD | moving water: no common motion, flat surface; overlay: static, high peak at zero → threshold blind | one of two | "the sea is dark" |
-| EXPLAIN_FUSION | fix pulls back (saw-tooth); worst at the end of the sea gap; 78 % < 86 % → σ optimistic, bias too small | two of three | — |
+| EXPLAIN_ODOMETERS | translation only → derotate with the IMU; coast: phase uses every pixel, ORB starves (≈ 6 matches); PatchNet ≈ 10× slower and loses half its matches past ±20° without the IMU | two of three | "learned is best" |
+| EXPLAIN_THRESHOLD | moving water: no common motion, flat surface; overlay: static, high peak at zero → threshold blind; margin only 0.01 → not safe alone | two of three | "the sea is dark" |
+| EXPLAIN_FUSION | fix pulls back (saw-tooth); worst at the end of the sea gap; misses right after fixes 20 and 30 (7.0 / 6.5 m off) → the fixes' stated σ, not only the VO bias, decides coverage; one correlated flight is a hint | three of four | "σ is dishonest" with no evidence |
 
 ## Difficulties expected (not yet seen with simulated students — to be filled after the review rounds)
 
@@ -101,7 +112,7 @@ Steps 8–9; 20 min report. Differentiation: fast students do "calibrate on the 
 ## NAVERA facts used (words and numbers only)
 
 From docs/VALIDATION_STATUS.md (3 Oct 2026) and ARCHITECTURE.md: dead reckoning along the measured track (20 s fit,
-turned by the IMU heading change, PROPAGATED, σ growth velocity error × t + 5° × distance, ≤ 120 s / 500 m), simulator:
+turned by the IMU heading change, PROPAGATED, σ growth velocity error × t + 5° × distance, ≤ 120 s / stated σ ≤ 500 m), simulator:
 land median 10 m / max 33 m; bay 90 s at ±300 m, true error ≤ 146 m; not measured with real camera/IMU; never a GPS
 check; Release 0.2. Frame odometry described in words from the product's design (checked against base/, not copied):
 derotation by the IMU heading change and rescaling by the height change, OpenCV phase correlation at half resolution on a
