@@ -14,10 +14,7 @@
 >
 > Read those numbers like an auditor. Is "38 m better than doing nothing" real, or the luck of 33 frames? Is
 > 32/33 "97 %", or something wider? Does "0 wrong in 33" mean "never wrong"? Today you build the tools that
-> answer, and you use them as a buyer's auditor would on a trade-fair claim. **Session 1 — the numbers:**
-> errors, percentiles, availability, gaps and the baseline, on three flights flown by NAVERA Lite's judge.
-> **Session 2 — error bars:** bootstrap and Wilson intervals, a test of the intervals themselves, and whether a
-> source states an honest σ. Badges: **Honest ruler**, then **Auditor**.
+> answer, as a buyer's auditor would. Badges: **Honest ruler**, then **Auditor**.
 >
 > **Start now:** open the 🛠️ **Lab** tab, do **Step 0** (ten minutes, no code), then come back for §1.
 
@@ -106,7 +103,8 @@ A flight at 1 Hz gives hundreds of errors e₁ … eₙ. Every summary keeps one
 **Percentiles: the rule matters.** The q-th **percentile** of n sorted values sits at **position**
 (n − 1) · q / 100. The course rule is **linear**: if the position falls between two samples, interpolate between
 them (numpy's default, mission 23). Another rule, the **nearest sample**, takes the sorted value at index
-round((n − 1) · q / 100) — no interpolation. NAVERA's evaluation tool uses that second rule (in words; §9).
+round((n − 1) · q / 100) — no interpolation. (Textbooks also know a "nearest-rank" rule, index ⌈n·q/100⌉ − 1 — a
+third rule: always say which one.) NAVERA's evaluation tool uses that second rule (described in words under "In NAVERA").
 Neither is wrong, but two reports with different rules are not comparable on small samples. Write your rule.
 
 > [!TIP] 🧰 Positions, by hand
@@ -165,8 +163,8 @@ samples** in two runs. Those counts belong in the result as much as the median.
 > 2. **Best of N**: five test flights with medians 11, 9, 14, 4 and 12 m; the brochure says "4 m".
 > 3. **Statistic chosen after the data**: the median when the mean is ugly, the mean when the median is.
 > 4. **Outliers removed** without a rule written *before* the test ("that one was a glitch").
-> 5. **Easy conditions only**: NAVERA's day vision (former method) had a median of 111 m over textured ground
->    near Sousse and 351 m (p90 853 m) over uniform terrain near Gabès — same day, same code.
+> 5. **Easy conditions only**: report the textured terrain, not the uniform one (NAVERA's former day vision on
+>    2026-10-01: median 111 m over textured ground near Sousse, 351 m over uniform terrain near Gabès).
 >
 > The cure is the same each time: decide the statistics, the data and the exclusion rules **before** you look,
 > and publish all the runs.
@@ -183,8 +181,9 @@ samples** in two runs. Those counts belong in the result as much as the median.
 A method is worth what it beats. The **baseline** is the simplest thing you could do instead. When GPS is lost,
 the simplest thing is to **repeat the last known position**. The vehicle keeps moving, so the baseline's error
 grows: about speed × time. **Worked example.** A drone at 20 m/s loses GPS for 40 s. The frozen position is
-20, 40, … 800 m behind: its median error is (400 + 420) / 2 = **410 m**. A vision method with a median of 300 m
-"beats" it — but look at the figure: in the first 10 s, doing nothing is better than that vision.
+20, 40, … 800 m behind: its median error is (400 + 420) / 2 = **410 m**. The vision method of the figure has a median
+of about 200 m and "beats" it — but look closer: in its first 9 seconds (and again at 14–15 s), doing nothing is
+better than that vision.
 
 ![The baseline grows; the comparison is made second by second](assets/baseline.svg)
 
@@ -236,11 +235,6 @@ On the ten errors of §2 (B = 2 000, seed 1): median 3.45 m, 95 % CI **[2.75, 4.
 **[3.00, 8.22] m** — the outlier makes the mean far less certain. Fix the generator's **seed** and the same call
 always gives the same interval: results must be reproducible.
 
-> [!TIP] 🧰 Functions are values
-> `bootstrap_ci(x, np.median)` passes the *function* `np.median`, without calling it; inside, `stat(sample)`
-> calls it. Like `sorted(words, key=len)`. Any function of one array works, including your own:
-> `bootstrap_ci(x, lambda v: np.percentile(v, 90))`.
-
 > [!QUESTION] ✏️ Check
 > Why can the bootstrap interval of the median of 10 values never contain a number below the smallest value?
 
@@ -259,6 +253,8 @@ a fraction ρ of the previous error (an **AR(1)** process), the **effective samp
 n_eff ≈ n · (1 − ρ) / (1 + ρ)          n = 60, ρ = 0.9  →  n_eff ≈ 3.2
 ```
 
+(The formula is for the mean; a median behaves alike.)
+
 Sixty correlated seconds are worth about three independent values. An ordinary (**iid**) bootstrap shuffles
 single seconds and pretends there are 60: its interval is too narrow. The **moving-block bootstrap** draws
 **runs of L consecutive values** (L = 10 s, say) instead, joined until the resample has n values. Inside each run
@@ -272,7 +268,8 @@ only when it was sure — a "block" of 10 kept values may span a whole minute: t
 **The paired interval.** To decide whether a method beats the baseline, bootstrap the **difference**: in each
 resample, draw ONE set of indices (or blocks) and use it for both lists, then compute
 stat(method) − stat(baseline). If the 95 % interval of the difference **contains 0**, you cannot claim a
-difference on this data; if it lies entirely below 0, the method is better, by at least |upper end|. Do not
+difference on this data; if it lies entirely below 0, the data show that the method is better — plausibly by at least |upper end| (a
+95 % statement, not a guarantee). Do not
 judge by whether two separate intervals overlap: pairing removes the shared part, and only the interval of the
 difference says it.
 
@@ -321,9 +318,7 @@ lying with a straight face.
 ![25 imaginary experiments, 25 intervals](assets/coverage.svg)
 
 A coverage experiment needs three parts: a way to draw one experiment's data, a way to compute its interval, and
-the true value. In the lab you write it once, generically, and test four interval methods with it: the iid and
-block bootstraps on independent and on correlated errors, and the naive and Wilson intervals of a 97 % success
-rate on 33 trials. Predict before you run.
+the true value.
 
 > [!QUESTION] ✏️ Check
 > In 200 imaginary experiments, how many misses do you expect from an honest 95 % method? Would 15 misses
@@ -346,8 +341,7 @@ round 2-D Gaussian: about **39 / 86 / 99 %** (mission 27). Then compute the σ t
 it will trust bad positions. A source that states *more* than its honest σ is only **pessimistic**: the judge is
 more careful than needed — the safer mistake.
 
-Where does the truth come from on a real flight? From the GPS itself, in **shadow mode**: vision keeps working
-while GPS is good, both are recorded, and GPS is the truth. That works for vision at tens of metres, and it
+On a real flight the truth is the GPS itself (shadow mode, below): fine for vision at tens of metres, but it
 cannot measure anything finer than the GPS (§1).
 
 > [!QUESTION] ✏️ Check
@@ -359,13 +353,10 @@ Within 2σ: 90 % ≥ 86 %: honest to slightly pessimistic.
 
 ## 10. Simulation is not the field
 
-A confidence interval covers **sampling noise** — another flight of the same kind. It says nothing about
-**external validity**: whether the result transfers to other conditions. A simulator *decides* its errors;
-NAVERA's report labels such numbers *"simulator only"* or *"optimistic"* (the simulated camera *"is cut from the
-map's own imagery"*). Its bench numbers for local matching are on aerial frames from another source, so it states
-30 m until it measures with its own camera. A number measured over Sousse says little about the sand of the
-Sahara, the dark rock of the Andes or the sea off Cape Town. So every result carries its **conditions**: bench,
-replay, synthetic, simulation or flight; where; how much data; which camera.
+A confidence interval covers sampling noise — another flight of the same kind — not **external validity**: whether
+the result transfers to other conditions. NAVERA labels simulator numbers *"simulator only"* and states 30 m for local
+matching until it measures with its own camera. Every result carries its conditions: bench, replay, synthetic,
+simulation or flight; where; how much data; which camera.
 
 > [!WARNING] Common wrong ideas
 > - "The median is the accuracy." Not without the tail (p90/p95), the availability and the longest gap.
@@ -378,15 +369,12 @@ replay, synthetic, simulation or flight; where; how much data; which camera.
 
 ## In NAVERA
 
-NAVERA has an evaluation harness in its repository (engineering backlog FEAT-4, done) and the **shadow mode**
-of its architecture: vision runs while GPS is good, so a recorded session can be scored against GPS. Its
-evaluation tool (described here in words; the course does not use it) takes the **valid GPS fixes as truth,
-interpolated at each vision measurement's instant**, prints per source the count, median, p90, max and the share
-within 50 / 100 / 300 m, then, for sources that state σ, the share within 1, 2, 3 σ and the honest σ (p86 / 2),
-flagging a stated σ as too optimistic when fewer than 80 % fall within 2σ. Its percentiles use the
-**nearest-sample** rule (§2). The validation report applies the policy of this lesson: every figure with its
-conditions and date, baselines next to the method, "simulator only" where it applies, and *"field validation
-pending"* at the top. NAVERA is Release 0.2.
+NAVERA's evaluation harness (backlog FEAT-4, done) scores a recorded **shadow-mode** session (vision keeps working
+while GPS is good) against GPS, interpolated at each vision measurement's instant. Per source it prints count,
+median, p90, max, the share within 50 / 100 / 300 m, the share within 1 / 2 / 3 stated σ and the honest σ (p86 / 2),
+flagging a σ as too optimistic below 80 % within 2σ. Its percentiles use the nearest-sample rule (§2). Its
+validation report (Release 0.2, 2026-10-03) puts conditions, dates and baselines next to every figure, and
+*"field validation pending"* at the top.
 
 ## In NAVERA Lite
 
@@ -398,6 +386,8 @@ ROS 2 bag against GPS or a truth file, with YOUR percentile. Mission 33 measures
 
 ## 🐦 How birds do it
 
+<details class="further"><summary>🐦 How birds do it (optional)</summary>
+
 Ornithologists fight the same traps. Since 1899, when Hans Christian Mortensen ringed starlings in Denmark,
 birds have carried numbered rings; only a small share is ever found again, so results built on recovered rings
 are **conditional** — like an error computed only on the seconds with a position. Light-level geolocators,
@@ -406,6 +396,7 @@ The famous records — Arctic terns at about 70 900 km a year (Egevang and colle
 flying Alaska to Tasmania non-stop in 2022 — were accepted because the tags, their errors and the data were
 published. And a displaced-bird experiment means something only against birds handled the same way but not
 moved: the **control group** is the baseline. Navi the swallow would add: compare on the same day, in the same wind.
+</details>
 
 ## Summary
 

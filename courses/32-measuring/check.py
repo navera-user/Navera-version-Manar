@@ -79,6 +79,17 @@ def pair(v, what):
     return lo, hi
 
 
+NEGATION = re.compile(r"\bnot\b|n't|\bno\b|\bnever\b|cannot|\blooks?\b|\bseems?\b|\bonly\b|\bwithout\b|\bworse\b|\bbut\b|however|although")
+
+
+def claims_better(text):
+    """A sentence that claims "better" / "beats" / "N m better" with no negation or hedge in it."""
+    for sent in re.split(r"(?<=[.;!?])\s+", str(text)):
+        if re.search(r"\bbetter\b|\bbeats?\b|\boutperform", sent, re.I) and not NEGATION.search(sent.lower()):
+            return True
+    return False
+
+
 def raise_value_error(call, what, rule):
     """The student's function must refuse an impossible input with ValueError."""
     try:
@@ -148,6 +159,8 @@ def _():
             else:
                 hint = (" — rmse is the square root of the MEAN of the squares (not the sum, not the std)"
                         if k == "rmse" else "")
+                if k == "median" and s[k] is not None and abs(float(s[k]) - float(np.mean(case["v"]))) < 1e-9:
+                    hint = " — that is the mean: the median is percentile(e, 50)"
                 if s[k] is None or abs(float(s[k]) - w) > 1e-3 * max(1, abs(w)):
                     raise CheckFailed(f"summary(...)['{k}'] = {s[k]!r} for {len(case['v'])} errors: not right{hint}")
     s = go(f, [])
@@ -168,8 +181,9 @@ def _():
     c.near(go(fa, t, ok=("FIX",)), d["availability_fix_only"], 1e-6, "availability(…, ok=('FIX',))")
     g = go(fg, t, dt_s=0.5)
     if isinstance(g, (int, float)) and abs(g - 1.5) < 1e-9:
-        raise CheckFailed("longest_gap_s(…, dt_s=0.5) = 1.5: the longest gap is the one that lasts until the END of "
-                          "the table (4 rows, 2.0 s) — is a run at the end closed?")
+        raise CheckFailed("longest_gap_s(…, dt_s=0.5) = 1.5, the right value is 2.0 — two usual causes: dt_s not added "
+                          "(a run lasts t_s[i1 − 1] − t_s[i0] + dt_s: one lost row lasts one period), or the run that "
+                          "lasts until the END of the table not closed")
     c.near(g, d["gap"], 1e-6, "longest_gap_s(…, dt_s=0.5) (use dt_s, not 1)")
     c.near(go(fg, t.iloc[:6], dt_s=0.5), d["gap_first5"], 1e-6, "longest_gap_s of the first 6 rows")
 
@@ -245,9 +259,12 @@ def _():
         if isinstance(got, (int, float)) and got == -1:
             raise CheckFailed(f"{name} is still -1: copy the number from measure_lab.py flights")
         c.near(got, want, tol, name)
-    explained("EXPLAIN_MAX", v[4], ([r"stale", r"\bold", r"age", r"5 ?s", r"timeout", r"last (stored )?fix", r"kept"],
+    explained("EXPLAIN_MAX", v[4], ([r"stale", r"\bold", r"\bage\b", r"\baged\b", r"older", r"5 ?s", r"timeout", r"last (stored )?fix", r"kept"],
                                     "that the judge kept giving an OLD position"),
               ([r"lake", r"no match", r"gap", r"missed", r"no (vision|new) fix", r"water"], "why there was no new fix"))
+    if re.match(r"\s*(yes|oui)\b", str(v[7]), re.I) or claims_better(v[7]):
+        raise CheckFailed("EXPLAIN_SELECTIVE says the selective flight is better: look again — it is the same vision; "
+                          "on which seconds is its median computed, and what does the autopilot get in the other 41?")
     explained("EXPLAIN_SELECTIVE", v[7], ([r"availab", r"3[12] ?%", r"19", r"gap", r"no position", r"missing"],
                                           "what it costs (availability, gaps)"),
               ([r"withh", r"remov", r"chose", r"only", r"condition", r"easy", r"delet", r"select", r"good (ones|seconds)"],
@@ -277,7 +294,10 @@ def _():
     for end, got, want in (("lower", lo, x.mean() - 1.96 * se), ("upper", hi, x.mean() + 1.96 * se)):
         if abs(got - want) > 0.07:
             width = hi - lo
-            tip = (f" — your interval is {width:.3f} wide, about {width / (2 * 1.96 * se):.1f}× the right width: "
+            tip = (" — your interval has zero width: every resample was the same. Make the generator ONCE from "
+                   "seed, before the loop (a new default_rng(seed) inside the loop repeats the same draw), and draw "
+                   "len(x) indices WITH replacement" if width < 1e-12 else
+                   f" — your interval is {width:.3f} wide, about {width / (2 * 1.96 * se):.1f}× the right width: "
                    "resample len(x) values each time, with replacement, and take the 2.5 and 97.5 percentiles")
             raise CheckFailed(f"the {end} end of the 95 % interval of the mean of 400 values is {got:.3f}: not right{tip}")
     n_len = pair(go(f, x[:37], len, B=50, seed=1), "bootstrap_ci(37 values, len)")
@@ -424,6 +444,12 @@ def _():
              "PREDICT_COVERAGE", "EXPLAIN_COVERAGE", "HONEST_SIGMA_DAY_M", "DAY_WITHIN_2SIGMA_PCT", "EXPLAIN_GPS_STATED")
     predicted("PREDICT_BLOCK", v[0])
     predicted("PREDICT_COVERAGE", v[5])
+    if claims_better(v[1]):
+        raise CheckFailed("EXPLAIN_PAIRED claims vision is better: does the interval of the difference contain 0? "
+                          "Then write what may (not) be claimed (lesson §6)")
+    if re.match(r"\s*(yes|oui)\b", str(v[2]), re.I) or claims_better(v[2]):
+        raise CheckFailed("EXPLAIN_SELECTIVE_CI says it beats the baseline: an interval computed on the seconds the "
+                          "method chose cannot prove that — why not?")
     explained("EXPLAIN_PAIRED", v[1], ([r"contain", r"includ", r"\b0\b", r"zero", r"cross"], "whether it contains 0"),
               ([r"not (shown|proved|significant|better)", r"cannot", r"can't", r"no (evidence|significant|proof)",
                 r"noise", r"not sure", r"not possible"], "what you may (not) claim"))

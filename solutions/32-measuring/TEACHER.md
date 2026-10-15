@@ -24,7 +24,7 @@ median 4 m, 0 wrong; product module 30/33; frames "from another source", stated 
 camera; score threshold 94 % vs 88 % "always reject"; plane 40 m/s match 0–1 m vs output 83 m median; 3 s window →
 FIX/NO_FIX on 20–60 % of samples, landing in a 6.7–9.2 s gap; long route 2026-10-01: Gabès median 351 m, p90 853 m vs
 Sousse 111 m, 13/48 and 18/48 samples without position), ARCHITECTURE (shadow mode), ENGINEERING_BACKLOG (FEAT-4
-evaluation harness, done). **Behaviour described in words after reading base code** (navera_tools/evaluate_session.py,
+evaluation harness, done). **Behaviour described in words after reading base code** (NAVERA's evaluation script in the base snapshot,
 read only, nothing copied): truth = valid GPS fixes interpolated at the measurement stamp within a max gap;
 nearest-sample percentile `round(q/100·(n−1))`; per source n / median / p90 / max / within 50-100-300 m; within
 1/2/3 σ, honest σ = p86/2, "too optimistic" flag when within-2σ < 80 %. NAVERA Lite's tool is course-written
@@ -73,7 +73,8 @@ Badges: **Honest ruler** = checks 1–7 (Session 1); **Auditor** = all 15.
 | `EXPLAIN_MAX` | ≈ 70 m around t = 120–122 s: over the lake no new match, the judge kept the last stored day fix up to 5 s old (15 m/s × ~4.5 s); then NO_FIX 9 s | rubric below |
 | `EXPLAIN_SELECTIVE` | not better: same method, bad positions withheld; median on 19 chosen seconds; availability 32 %, gaps up to 13 s | |
 | Step 4 rules (linear / nearest) | target jam p50 12.1 / 12.1, p90 21.7 / 21.7, p95 **36.5 / 43.4**; retrieval p50 420.6 / 426.8, p90 757.7 / 750.6, p95 870.9 / 869.4; selective p50 236.0 / 236.0 | n = 51: median position 25 exact; p95 position 47.5 between distant tail samples |
-| Step 6 ci (B 2000, seed 32, blocks 10 s) | target: median iid [10.3, 15.2], block [10.4, 16.6]; diff −378.1, iid [−589.6, −274.2], block [−674.0, −169.8]. retrieval: iid [329.1, 536.4], block [290.7, 536.4]; diff **−29.3**, iid [−152.1, 111.6], **block [−282.1, 189.8]** (contains 0). selective: iid [217.6, 259.6], block n/a; diff −124.2, iid **[−356.2, −49.2]** (excludes 0 — on its own 19 seconds) | measure_lab.py ci; check tolerance max(3 m, 12 % of width) (an implementation drawing random numbers differently was verified within 17 % of the tolerance) |
+| Step 6 ci (B 2000, seed 32, blocks 10 s) | target: median iid [10.3, 15.2], block [10.4, 16.6]; diff −378.1, iid [−589.6, −274.2], block [−674.0, −169.8]. retrieval: iid [329.1, 536.4], block [290.7, 536.4]; diff **−29.3**, iid [−152.1, 111.6], **block [−282.1, 189.8]** (contains 0). selective: iid [217.6, 259.6], block n/a; diff −124.2, iid **[−356.2, −49.2]** (excludes 0 — on its own 19 seconds) | measure_lab.py ci. Note: the target's paired difference uses its 51 answered seconds (the 9 lake seconds are excluded on both sides) — conditional too; the report table puts it next to the baseline on all 60 s. Discuss in class. Check tolerance max(3 m, 12 % of width) (an implementation drawing random numbers differently was verified within 17 % of the tolerance) |
+| true retrieval median | 1.1774 × 370 = 435.6 m (difference −14 m vs 450 m, not detectable on one 60 s jam; revealed to students in the lab's "Behind the curtain" note after Step 6, with the seed choice) | make_dataset.py |
 | `PREDICT_BLOCK` answer | retrieval (block lower end 291 vs 329: strongest correlation of large errors); the target differs little | ungraded |
 | Step 7 wilson | 32/33 **[84.7, 99.5] %** (naive [91.1, 102.8]); 30/33 [76.4, 96.9]; 0/33 **[0.0, 10.4] %** (naive [0, 0]); 19/60 [21.3, 44.2] | `WILSON_LO_PCT` 84.7, `ZERO_UPPER_PCT` 10.4 |
 | Step 8 coverage (200 trials, B 500, seeds 320 / 321) | iid errors + iid bootstrap **97.0 %**; ρ 0.9 + iid **59.0 %**; ρ 0.9 + blocks 10 **76.0 %**; 97 % of 33 naive **63.1 %**, Wilson **92.7 %** | another valid implementation: 97 / 59 / 78 / 63.1 / 92.7; check accepts iid 0.88–1, ρ-iid < 0.8, block > ρ-iid + 0.05, Wald < 0.8, Wilson > 0.85 |
@@ -119,10 +120,18 @@ mission brief's three questions answered with the class's own Wilson and paired 
 Struggling: pair on TODO 6 (give the hand trace orally), skip the block branch first and come back; the check
 separates iid (8) from blocks (9).
 
+## Round 1 fixes (2026-10-15)
+
+Review r1 (strong 8/9/9/8, weak 8/8/8, expert 8/9) applied: the check now refuses the selective-reporting
+conclusions (EXPLAIN_SELECTIVE / EXPLAIN_SELECTIVE_CI starting with "yes" or claiming "better"/"beats" without a
+negation or hedge; EXPLAIN_PAIRED claiming "vision is N m better"); EXPLAIN_MAX's "age" keyword has word
+boundaries; gap and zero-width bootstrap messages name the real causes; median = mean gets its own tip. Lab: 🧰
+pandas filtering for TODO A, EXPLAIN_MAX clue (+15 m/s ramp at 116–119 s, mission 29's 5 s timeout), lake marked on
+the plot, model report sentence, "Behind the curtain" note, honest times (weak up to 7 h lab; meta 5 h 30 – 8 h).
+Lesson cut by about 630 words (birds folded, §10 and In NAVERA shortened, functions box moved to the lab).
+
 ## Open points for the lead
 
-- Lesson is long (about 4 100 words of prose, 5 000 with markup) for its 75 min estimate; candidates to move into
-  `<details class="further">`: §8's figure discussion and the birds' third example.
 - The flights do not come from mission 31's headless simulator (not committed when this was built): they are flown by
   the reference judge inside `make_dataset.py`. If 31's sim is adopted later, regenerate and rerun make_hidden.py.
 - Mission 33 should reuse `stats.py` finished (its `bootstrap_ci(x, stat, B, alpha, seed, block)` takes an int seed, not

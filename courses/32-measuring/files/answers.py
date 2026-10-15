@@ -26,7 +26,8 @@ EXPLAIN_RULE = ""          # flight_target, jam (51 errors): the two rules give 
 # ======== Session 2 — Error bars ========
 
 # ---- Step 6: intervals (python3 measure_lab.py ci) --------------------------------------------------------
-PREDICT_BLOCK = ""         # will the block interval of the jam median be wider or narrower than the iid one?
+PREDICT_BLOCK = ""         # for which flight will the block interval of the jam median differ most from the
+                           # iid one, and why?
 EXPLAIN_PAIRED = ""        # flight_retrieval: what may you write about "vision vs baseline"? Quote the interval.
 EXPLAIN_SELECTIVE_CI = ""  # flight_selective: its paired interval is entirely below 0. Has it proved that it
                            # beats the baseline? Why not?

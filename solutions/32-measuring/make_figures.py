@@ -59,7 +59,7 @@ def rules():
     fig, ax = plt.subplots(figsize=(8.2, 2.4))
     ax.plot(s, [0] * len(s), "o", color=BLUE, ms=8, zorder=3)
     for i, v in enumerate(s):
-        ax.text(v, 0.18, f"{i}", ha="center", fontsize=9, color=GREY)
+        ax.text(v, 0.18 if i % 2 == 0 else -0.28, f"{i}", ha="center", fontsize=9, color=GREY)
     lin, near = S.percentile(EX, 95), S.pct_nearest(EX, 95)
     ax.plot([lin], [0], "D", color=AMBER, ms=10, zorder=4)
     ax.annotate(f"linear p95 = {lin:.1f} m\n(position 8.55: between\nsample 8 and sample 9)", xy=(lin, 0), xytext=(lin, -0.75),

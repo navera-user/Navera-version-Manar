@@ -4,7 +4,7 @@
 (`baseline.py`, TODO A); measure three flights flown by NAVERA Lite's judge; decide with intervals whether a
 vision source beats "repeat the last GPS position"; test your intervals with a coverage experiment; check
 whether a recorded source states an honest σ; write a validation note.
-**Time:** 4 h 30 to 6 h in two sessions (a strong programmer: about 3 h 30).
+**Time:** 4 h 30 to 6 h in two sessions (a strong programmer: about 3 h 30; new to numpy and pandas: up to 7 h — use the 🧰 boxes).
 **Fast track:** if you know numpy and pandas well, skip the 🧰 boxes and the "Stuck?" boxes; do "Going further".
 
 Your files (📝 Code tab): [navera_lite/stats.py](file:./navera_lite/stats.py) (**your code**: TODO 1–9),
@@ -131,7 +131,8 @@ python3 measure_lab.py test
 1. TODO 2: sort first; the position is (n − 1) · q / 100; when it is a whole number, the answer is that sample.
 2. TODO 2: at q = 100 the position is n − 1: there is no "next" sample — return the last one (an `IndexError`
    says you read past the end).
-3. TODO 2 gives 5.0 instead of 4.0 for `[7, 1, 3, 5], 50`? You took the nearest sample: interpolate.
+3. TODO 2 gives 5.0 instead of 4.0 for `[7, 1, 3, 5], 50`? You took the nearest sample, or the position n·q/100 instead of (n − 1)·q/100:
+   interpolate at (n − 1)·q/100.
    2.0? You forgot to sort.
 4. TODO 3 gives rmse 3.0 instead of 5.831? That is the standard deviation; the RMSE is √(mean of e²), around 0,
    not around the mean.
@@ -152,6 +153,15 @@ whether the autopilot can use it. For TODO 5, mission 04's `outage_runs()` is im
 
 **TODO A** in [baseline.py](file:./baseline.py), `last_fix_baseline(df)`: the error of repeating the judge's
 last GPS position during the jam (lesson §4). Read its docstring twice: *which* position is frozen matters.
+
+> [!TIP] 🧰 Rows of a table that match a condition (pandas)
+> ```python
+> jam = (df["gps"] == "jammed").to_numpy()   # one True/False per row
+> first = int(jam.argmax())                   # index of the first True (check jam.any() first)
+> before = df.iloc[:first]                    # the rows above it
+> g = before[before["source"] == "gps"]       # only the GPS rows among them
+> g["lat"].iloc[-1]                           # the last of them
+> ```
 
 ```bash
 python3 measure_lab.py test
@@ -182,7 +192,8 @@ the jam. Red: the baseline. Grey ticks: no position.
 > [!TASK]
 > In `answers.py`: `RETR_JAM_MEDIAN_M`, `BASE_JAM_MEDIAN_M`, `TARGET_LONGEST_GAP_S`, `SELECTIVE_JAM_MEDIAN_M`,
 > `SELECTIVE_JAM_AVAIL_PCT` (in %), then `EXPLAIN_MAX` (the target flight's worst error: when, and why so large?
-> look at the picture around the lake) and `EXPLAIN_SELECTIVE` (is the selective flight's navigation better?).
+> Clue: just before the grey ticks of the lake the error grows by about 15 m every second — what moves at 15 m/s,
+> and what does mission 29's judge keep giving while its last day fix is younger than the 5 s timeout?) and `EXPLAIN_SELECTIVE` (is the selective flight's navigation better?).
 > Compare your answer with `PREDICT_BEAT`.
 
 ## Step 4 — Two percentile rules
@@ -216,6 +227,11 @@ iid case first, test it, then add blocks.
 > np.concatenate([np.arange(0, 2), np.arange(7, 9)])   # array([0, 1, 7, 8])
 > np.percentile(reps, [2.5, 97.5])        # two percentiles at once (linear rule)
 > ```
+
+> [!TIP] 🧰 Functions are values
+> `bootstrap_ci(x, np.median)` passes the *function* `np.median`, without calling it; inside, `stat(sample)`
+> calls it. Like `sorted(words, key=len)`. Any function of one array works, including your own:
+> `bootstrap_ci(x, lambda v: np.percentile(v, 90))`.
 
 **Hand trace first** (blocks, 3 minutes): n = 7, block = 3. Which start indices are allowed? How many runs do
 you need to reach 7 values, and how many values do you cut at the end?
@@ -275,6 +291,13 @@ kept values would join seconds far apart (lesson §6).
 > `EXPLAIN_SELECTIVE_CI`: `flight_selective`'s paired interval lies entirely below 0. Has it proved that it beats
 > the baseline? Why not?
 
+> [!NOTE] Behind the curtain (read after you wrote your answers)
+> `flight_retrieval`'s vision errors were drawn from a profile whose TRUE median is 436 m — really 14 m better
+> than the baseline's 450 m. Your interval [about −282, 190] m was right not to claim it: a real 14 m gain is
+> invisible in one 60 s jam with n_eff ≈ 7. "Contains 0" means "not shown", never "equal". One more confession:
+> its random seed was picked among 40 so that the flight looks like NAVERA's 442 vs 480 m — a best-of-N, fine
+> for a demonstration only because we tell you.
+
 ## Step 7 — Success rates (TODO 8)
 
 **TODO 8**, `wilson(k, n, z)`: the three lines of lesson §7. `ValueError` for impossible counts.
@@ -286,7 +309,8 @@ python3 measure_lab.py wilson
 <details><summary>Stuck? Hints, one at a time</summary>
 
 1. Work in shares (0 to 1), not in per cent: `p = k / n`.
-2. `measure_lab.py test` shows (0.552, 1.048) for `wilson(8, 10)`? That is the naive interval: compute the
+2. `measure_lab.py test` shows (0.552, 1.048) — or (0.552, 1.000) if you already clip — for
+   `wilson(8, 10)`? That is the naive interval: compute the
    centre and the half-width of lesson §7.
 3. For k = 0 the lower end must come out 0.0 (to rounding): clip with `max(0.0, …)` and `min(1.0, …)`.
 </details>
@@ -362,6 +386,12 @@ Fill in [report.md](file:./report.md): what was measured, the table, whether eac
 the stated σ is honest, the limits, a conclusion. A good conclusion says **what** is better, **by how much**
 (with an interval), **compared with what**, on **how much data**, measured **where** — and what it does **not**
 prove. No "accurate", "robust" or "works well" without a number.
+
+> [!TIP] 🧰 A model sentence (another, made-up test — copy the structure, not the numbers)
+> "On 4 synthetic 90 s jams over farmland near Kairouan, the new matcher's median error was 18 m against 41 m
+> for repeating the last GPS position (paired difference −23 m, 95 % block interval [−31, −12] m), with 92 %
+> availability and a longest gap of 6 s. This shows a gain on this terrain and in this simulator only: it does
+> not show the gain over sand, at night or with a real camera, and the interval does not cover those."
 
 > [!TASK]
 > No "(fill in …)" and no "…" left; your numbers in the table (metres rounded to the metre, % to the per cent);

@@ -211,7 +211,8 @@ def plot(plt, S, df, jam, base, name):
     ax.plot(df["t_s"].to_numpy()[has], e, ".", color="#0b6e8a", ms=4, label="the judge's position")
     ax.plot(jam["t_s"], base, "-", color="#d64545", label="baseline: last GPS position")
     lost = df.loc[~has, "t_s"]
-    ax.plot(lost, np.zeros(len(lost)), "|", color="#555", ms=12, label="no position")
+    ax.plot(lost, np.zeros(len(lost)), "|", color="#555", ms=12,
+            label="no position" + (" (over the lake: no match)" if name == "target" else ""))
     ax.set_yscale("symlog", linthresh=10)
     ax.set_xlabel("time (s)")
     ax.set_ylabel("error (m)")

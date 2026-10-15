@@ -134,11 +134,11 @@ def longest_gap_s(df, dt_s=DT_S, ok=USABLE):
 
 # TODO 6 ---------------------------------------------------------------------------------------
 def bootstrap_ci(x, stat, B=2000, alpha=0.05, seed=None, block=1):
-    """A (1 − alpha) percentile-bootstrap confidence interval of stat(x) (lesson 32 §4): B resamples of x,
+    """A (1 − alpha) percentile-bootstrap confidence interval of stat(x) (lesson 32 §5): B resamples of x,
     each the same length as x, drawn WITH replacement; stat of each; the alpha/2 and 1 − alpha/2
     percentiles (linear rule) of those B values.
     block = 1: the values are drawn one by one (iid bootstrap).
-    block = L > 1: moving-block bootstrap (lesson 32 §5): the resample is made of runs of L CONSECUTIVE
+    block = L > 1: moving-block bootstrap (lesson 32 §6): the resample is made of runs of L CONSECUTIVE
     values of x; a run may start at any index from 0 to len(x) − L (runs never wrap around the end);
     enough runs are joined to reach len(x) values, and the extra values at the end are cut off.
     seed: the seed of np.random.default_rng(seed); the same seed must give the same interval.
@@ -252,7 +252,7 @@ def coverage_experiment(make_sample, ci_of, true_value, trials=200, seed=0):
 def ar1_radial(rng, n, rho, sigma_m):
     """n radial errors (m) of a source whose east and north errors are each an AR(1) process: every second
     keeps the fraction rho of the previous error plus fresh noise, with the stationary σ sigma_m per axis
-    (lesson 32 §5). rho = 0 gives independent errors. Their true median is RAYLEIGH_MEDIAN × sigma_m.
+    (lesson 32 §6). rho = 0 gives independent errors. Their true median is RAYLEIGH_MEDIAN × sigma_m.
 
     rng: np.random.default_rng(…); returns a numpy array of n floats.
     Example: ar1_radial(np.random.default_rng(0), 4, 0.9, 10.0) → 4 errors that change slowly
