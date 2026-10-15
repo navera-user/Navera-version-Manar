@@ -105,10 +105,11 @@ def cmd_test():
                        "lat": [35.8, nan, nan, 35.8, nan, 35.8], "lon": [10.6, nan, nan, 10.6, nan, 10.6]})
     t1 = pd.DataFrame({"lat": [35.8, nan, 35.8001], "lon": [10.6, 10.6, 10.6], "truth_lat": [35.8] * 3,
                        "truth_lon": [10.6] * 3})
-    ta = pd.DataFrame({"t_s": [0.0, 1, 2, 3], "gps": ["ok", "ok", "jammed", "jammed"],
-                       "state": ["FIX", "FIX", "DEGRADED", "DEGRADED"], "source": ["gps", "gps", "day", "day"],
-                       "lat": [35.8, 35.8001, 35.9, 35.9], "lon": [10.6] * 4,
-                       "truth_lat": [35.8, 35.8001, 35.8002, 35.8003], "truth_lon": [10.6] * 4})
+    ta = pd.DataFrame({"t_s": [0.0, 1, 2, 3, 4], "gps": ["ok", "ok", "ok", "jammed", "jammed"],
+                       "state": ["FIX", "FIX", "DEGRADED", "DEGRADED", "DEGRADED"],
+                       "source": ["gps", "gps", "day", "day", "day"],
+                       "lat": [35.8, 35.8001, 35.8005, 35.9, 35.9], "lon": [10.6] * 5,
+                       "truth_lat": [35.80002, 35.80012, 35.80014, 35.8002, 35.8003], "truth_lon": [10.6] * 5})
     cases = [
         ("TODO 1", S, "errors_m", (t1,), {}, [0.0, 11.119]),
         ("TODO 2", S, "percentile", ([7, 1, 3, 5], 50), {}, 4.0),
@@ -117,6 +118,7 @@ def cmd_test():
                                                        "p95": 9.1, "max": 10.0, "rmse": 5.831}),
         ("TODO 4", S, "availability", (t4,), {}, 0.75),
         ("TODO 5", S, "longest_gap_s", (t5,), {}, 2.0),
+        ("TODO 6", S, "bootstrap_ci", (list(range(1, 11)), np.mean), {"seed": 0}, "about (3.7, 7.3), width > 0"),
         ("TODO 6", S, "bootstrap_ci", ([4.0] * 20, np.median), {}, (4.0, 4.0)),
         ("TODO 6", S, "bootstrap_ci", (list(range(60)), np.median), {"block": 60}, (29.5, 29.5)),
         ("TODO 7", S, "paired_diff_ci", (np.array([8, 14, 9, 17, 12.0]), np.array([3, 9, 4, 12, 7.0]), np.mean), {},
@@ -128,11 +130,25 @@ def cmd_test():
     for todo, mod, fn, args, kw, want in cases:
         got, err = rk.call(mod, fn, *args, **kw)
         label = f"{todo:7s} {fn}()"
+        if not err and fn == "bootstrap_ci" and kw.get("seed") == 0:
+            try:
+                if float(got[1]) - float(got[0]) <= 0:
+                    err = ("the interval has zero width: every resample was the same — one generator, made before "
+                           "the loop")
+            except (TypeError, ValueError, IndexError):
+                pass
         if err:
             print(f"✘ {label}: {err}")
             bad += 1
             continue
-        ok, shown = compare(got, want)
+        if isinstance(want, str):          # a random interval: any correct implementation is close, not equal
+            try:
+                lo, hi = float(got[0]), float(got[1])
+                ok, shown = 2.5 < lo < 5.0 and 6.0 < hi < 8.5 and hi > lo, f"({lo:.2f}, {hi:.2f})"
+            except (TypeError, ValueError, IndexError):
+                ok, shown = False, repr(got)
+        else:
+            ok, shown = compare(got, want)
         print(("✔ " if ok else "✘ ") + f"{label} → {shown}" + ("" if ok else f"   (the docstring's example says {want})"))
         bad += not ok
     got, err = rk.call(S, "coverage_experiment", lambda rng: rng.normal(0.0, 1.0, size=5),

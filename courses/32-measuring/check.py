@@ -79,15 +79,61 @@ def pair(v, what):
     return lo, hi
 
 
-NEGATION = re.compile(r"\bnot\b|n't|\bno\b|\bnever\b|cannot|\blooks?\b|\bseems?\b|\bonly\b|\bwithout\b|\bworse\b|\bbut\b|however|although")
+# ---- explanation rules (pure functions of the text; tested by the builder on the reviewers' regression set)
+NEGATION = re.compile(r"\bnot\b|n't|\bno\b|\bnever\b|cannot|\blooks?\b|\bseems?\b|\bonly\b|\bwithout\b|\bworse\b"
+                      r"|\bbut\b|however|although|\bunclear\b|\bwhether\b|\bif\b|\bmay\b|\bmight\b|uncertain"
+                      r"|inconclusive|\byet\b")
+CLAIM = re.compile(r"\bbetter\b|\bbeats?\b|\boutperform|more accurate")
+MISSING = re.compile(r"\bno (position|fix|match|gps|data|answer)s?\b")
+LEADING_YES = re.compile(r"\s*(yes|oui|proved|proven|it does)\b", re.I)
+PAIRED_G1 = [r"contain", r"includ", r"\b0\b", r"zero", r"cross"]
+PAIRED_G2 = [r"not (\w+ )?(shown|prov|significant|better|demonstrat|establish|conclusive|clear)", r"cannot", r"can't",
+             r"isn't (\w+ )?(shown|prov|significant|clear)", r"no (\w+ )?(evidence|significant|proof|proven|demonstrated)",
+             r"\bunclear\b", r"inconclusive", r"noise", r"\bluck\b", r"\bchance\b", r"not sure", r"not possible",
+             r"uncertain", r"tell (them )?apart", r"can'?t conclude"]
+SELCI_G1 = [r"chose", r"chosen", r"select", r"own", r"19", r"only", r"withh", r"good seconds", r"easy", r"condition"]
+SELCI_G2 = [r"availab", r"missing", r"gap", r"41", r"no position", r"other seconds", r"rest"]
+MAX_G1 = [r"stale", r"\bold", r"\bage\b", r"\baged\b", r"older", r"5 ?s", r"timeout", r"last (stored )?fix", r"kept",
+          r"previous", r"same position", r"repeat", r"reus", r"\bheld\b", r"\bhold", r"froz", r"five s"]
+MAX_G2 = [r"lake", r"no match", r"gap", r"missed", r"no (vision|new) fix", r"water"]
 
 
 def claims_better(text):
-    """A sentence that claims "better" / "beats" / "N m better" with no negation or hedge in it."""
+    """A sentence that claims "better" / "beats" / "more accurate" with no negation or hedge in it (a phrase that
+    reports missing data, like "no position", is not a hedge), or that says "still better" / starts "Proved:"."""
     for sent in re.split(r"(?<=[.;!?])\s+", str(text)):
-        if re.search(r"\bbetter\b|\bbeats?\b|\boutperform", sent, re.I) and not NEGATION.search(sent.lower()):
+        low = MISSING.sub("", sent.lower())
+        if re.search(r"\bstill (better|more accurate)\b|^\s*prov(ed|en)\b", low):
+            return True
+        if CLAIM.search(low) and not NEGATION.search(low):
             return True
     return False
+
+
+def judge_paired(text):
+    if claims_better(text):
+        raise CheckFailed("EXPLAIN_PAIRED claims vision is better: does the interval of the difference contain 0? "
+                          "Then write what may (not) be claimed (lesson §6)")
+    low = str(text).lower()
+    if re.search(r"\b(are|is) (equal|the same|identical|equivalent)\b|\bsame accuracy\b", low) and \
+            not re.search(r"not (\w+ )?(equal|the same|identical)", low):
+        raise CheckFailed("EXPLAIN_PAIRED says the two are equal: an interval that contains 0 means 'not shown to "
+                          "differ', never 'equal' (lesson §6)")
+    explained("EXPLAIN_PAIRED", text, (PAIRED_G1, "whether it contains 0"), (PAIRED_G2, "what you may (not) claim"))
+
+
+def judge_selective_ci(text):
+    if LEADING_YES.match(str(text)) or claims_better(text):
+        raise CheckFailed("EXPLAIN_SELECTIVE_CI says it beats the baseline: an interval computed on the seconds the "
+                          "method chose cannot prove that — why not?")
+    explained("EXPLAIN_SELECTIVE_CI", text, (SELCI_G1, "which seconds were compared"),
+              (SELCI_G2, "what the comparison leaves out"))
+
+
+def judge_max(text):
+    explained("EXPLAIN_MAX", text, (MAX_G1, "that the judge kept giving an OLD position"),
+              (MAX_G2, "why there was no new fix"))
+# ---- end explanation rules
 
 
 def raise_value_error(call, what, rule):
@@ -259,10 +305,8 @@ def _():
         if isinstance(got, (int, float)) and got == -1:
             raise CheckFailed(f"{name} is still -1: copy the number from measure_lab.py flights")
         c.near(got, want, tol, name)
-    explained("EXPLAIN_MAX", v[4], ([r"stale", r"\bold", r"\bage\b", r"\baged\b", r"older", r"5 ?s", r"timeout", r"last (stored )?fix", r"kept"],
-                                    "that the judge kept giving an OLD position"),
-              ([r"lake", r"no match", r"gap", r"missed", r"no (vision|new) fix", r"water"], "why there was no new fix"))
-    if re.match(r"\s*(yes|oui)\b", str(v[7]), re.I) or claims_better(v[7]):
+    judge_max(v[4])
+    if LEADING_YES.match(str(v[7])) or claims_better(v[7]):
         raise CheckFailed("EXPLAIN_SELECTIVE says the selective flight is better: look again — it is the same vision; "
                           "on which seconds is its median computed, and what does the autopilot get in the other 41?")
     explained("EXPLAIN_SELECTIVE", v[7], ([r"availab", r"3[12] ?%", r"19", r"gap", r"no position", r"missing"],
@@ -444,19 +488,8 @@ def _():
              "PREDICT_COVERAGE", "EXPLAIN_COVERAGE", "HONEST_SIGMA_DAY_M", "DAY_WITHIN_2SIGMA_PCT", "EXPLAIN_GPS_STATED")
     predicted("PREDICT_BLOCK", v[0])
     predicted("PREDICT_COVERAGE", v[5])
-    if claims_better(v[1]):
-        raise CheckFailed("EXPLAIN_PAIRED claims vision is better: does the interval of the difference contain 0? "
-                          "Then write what may (not) be claimed (lesson §6)")
-    if re.match(r"\s*(yes|oui)\b", str(v[2]), re.I) or claims_better(v[2]):
-        raise CheckFailed("EXPLAIN_SELECTIVE_CI says it beats the baseline: an interval computed on the seconds the "
-                          "method chose cannot prove that — why not?")
-    explained("EXPLAIN_PAIRED", v[1], ([r"contain", r"includ", r"\b0\b", r"zero", r"cross"], "whether it contains 0"),
-              ([r"not (shown|proved|significant|better)", r"cannot", r"can't", r"no (evidence|significant|proof)",
-                r"noise", r"not sure", r"not possible"], "what you may (not) claim"))
-    explained("EXPLAIN_SELECTIVE_CI", v[2], ([r"chose", r"chosen", r"select", r"own", r"19", r"only", r"withh",
-                                              r"good seconds", r"easy", r"condition"], "which seconds were compared"),
-              ([r"availab", r"missing", r"gap", r"41", r"no position", r"other seconds", r"rest"],
-               "what the comparison leaves out"))
+    judge_paired(v[1])
+    judge_selective_ci(v[2])
     for name, got, want, tol in (("WILSON_LO_PCT", v[3], 84.68, 0.15), ("ZERO_UPPER_PCT", v[4], 10.43, 0.15),
                                  ("HONEST_SIGMA_DAY_M", v[7], CASES["bag"]["day_honest_true"], 0.15),
                                  ("DAY_WITHIN_2SIGMA_PCT", v[8], CASES["bag"]["day_within2_pct"], 1.0)):

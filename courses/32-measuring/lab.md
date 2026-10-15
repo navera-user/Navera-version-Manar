@@ -63,7 +63,9 @@ cut -d, -f2-5 /data/academy/32-measuring/flight_retrieval.csv | uniq -c
 ```
 
 `cut -f2-5` keeps columns 2 to 5; `uniq -c` counts identical neighbouring lines. In the target flight you see a
-stretch of `NO_FIX` in the middle of the jam: the lake.
+stretch of `NO_FIX` in the middle of the jam: the lake. Vision
+lost its match about 5 s before those `NO_FIX` rows: until then the judge kept giving its last day fix (mission 29's
+5 s day timeout).
 
 > [!TASK]
 > **Predict** (`PREDICT_BEAT` in `answers.py`): during the 60 s jam, will the retrieval-like vision of
@@ -220,6 +222,7 @@ iid case first, test it, then add blocks.
 > [!TIP] 🧰 Random indices with numpy
 > ```python
 > rng = np.random.default_rng(7)          # a generator; the same seed gives the same numbers
+> # make rng ONCE, before your loop: a new default_rng(seed) in every pass draws the same resample B times
 > rng.integers(0, 5, size=3)              # 3 whole numbers from 0 to 4 — the upper bound 5 is EXCLUDED
 > x = np.array([10., 20., 30., 40., 50.])
 > x[np.array([4, 0, 4])]                  # array([50., 10., 50.]): an array of indices picks values

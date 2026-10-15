@@ -147,7 +147,8 @@ def bootstrap_ci(x, stat, B=2000, alpha=0.05, seed=None, block=1):
 
     x: a sequence of numbers; stat: a function of a numpy array that returns a number (np.median, …).
     Returns (lo, hi), two floats. Raises ValueError if block is not between 1 and len(x).
-    Example: bootstrap_ci([4.0] * 20, np.median) → (4.0, 4.0)   (every resample is the same);
+    Example: bootstrap_ci([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], np.mean, seed=0) → about (3.7, 7.3)   (width > 0);
+             bootstrap_ci([4.0] * 20, np.median) → (4.0, 4.0)   (every resample is the same);
              bootstrap_ci(list(range(60)), np.median, block=60) → (29.5, 29.5)   (only one run fits)
     """
     x = np.asarray(x, dtype=float)

@@ -130,6 +130,16 @@ pandas filtering for TODO A, EXPLAIN_MAX clue (+15 m/s ramp at 116–119 s, miss
 the plot, model report sentence, "Behind the curtain" note, honest times (weak up to 7 h lab; meta 5 h 30 – 8 h).
 Lesson cut by about 630 words (birds folded, §10 and In NAVERA shortened, functions box moved to the lab).
 
+## Round 2 fixes (2026-10-15)
+
+Explanation rules are pure functions in check.py (`claims_better`, `judge_paired`, `judge_selective_ci`, `judge_max`)
+and are regression-tested on the reviewers' 37 sentences + the solution's answers (builder script
+claims_regression.py: 40/40). Hedges now include unclear / whether / if / may / might / uncertain / inconclusive / yet;
+"no position / fix / match" is not a hedge; "Proved:" and "still better" are claims; "contains 0, so equal" is
+refused. `measure_lab.py test` catches a generator made inside the loop (zero-width interval) and a baseline frozen at
+the last row or at the truth (the TODO A example now has a day row before the jam). "Common wrong ideas" removed;
+"contains 0 ≠ equal" lives in §6. Lesson ≈ 4 700 raw words (accepted at about 4 300 prose).
+
 ## Open points for the lead
 
 - The flights do not come from mission 31's headless simulator (not committed when this was built): they are flown by

@@ -268,7 +268,7 @@ only when it was sure — a "block" of 10 kept values may span a whole minute: t
 **The paired interval.** To decide whether a method beats the baseline, bootstrap the **difference**: in each
 resample, draw ONE set of indices (or blocks) and use it for both lists, then compute
 stat(method) − stat(baseline). If the 95 % interval of the difference **contains 0**, you cannot claim a
-difference on this data; if it lies entirely below 0, the data show that the method is better — plausibly by at least |upper end| (a
+difference on this data — which is not the same as "equal": absence of evidence is not evidence of absence; if it lies entirely below 0, the data show that the method is better — plausibly by at least |upper end| (a
 95 % statement, not a guarantee). Do not
 judge by whether two separate intervals overlap: pairing removes the shared part, and only the interval of the
 difference says it.
@@ -357,15 +357,6 @@ A confidence interval covers sampling noise — another flight of the same kind 
 the result transfers to other conditions. NAVERA labels simulator numbers *"simulator only"* and states 30 m for local
 matching until it measures with its own camera. Every result carries its conditions: bench, replay, synthetic,
 simulation or flight; where; how much data; which camera.
-
-> [!WARNING] Common wrong ideas
-> - "The median is the accuracy." Not without the tail (p90/p95), the availability and the longest gap.
-> - "A position I don't get doesn't count." It counts as missing: report availability.
-> - "Two overlapping intervals mean no difference." Compute the interval of the paired difference.
-> - "The CI contains 0, so the methods are equal." No: the data cannot tell them apart. Absence of evidence.
-> - "More seconds of the same flight = more information." Only if they are independent; see n_eff.
-> - "0 failures in 33 = 0 % failure rate." Up to about 9–10 % is compatible with that.
-> - "A 95 % interval contains the truth with probability 95 %." The procedure does, over repetitions.
 
 ## In NAVERA
 
