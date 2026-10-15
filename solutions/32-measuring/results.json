@@ -1,0 +1,159 @@
+{
+ "flights": {
+  "target": {
+   "all": {
+    "n": 231,
+    "mean": 5.204,
+    "median": 2.895,
+    "p90": 12.647,
+    "p95": 17.105,
+    "max": 69.984,
+    "rmse": 9.436
+   },
+   "jam": {
+    "n": 51,
+    "mean": 15.042,
+    "median": 12.078,
+    "p90": 21.735,
+    "p95": 36.528,
+    "max": 69.984,
+    "rmse": 19.369
+   },
+   "baseline": {
+    "n": 60,
+    "mean": 442.124,
+    "median": 449.951,
+    "p90": 770.902,
+    "p95": 812.953,
+    "max": 855.225,
+    "rmse": 504.966
+   },
+   "availability": 0.9625,
+   "availability_jam": 0.85,
+   "longest_gap_s": 9.0,
+   "longest_gap_jam_s": 9.0
+  },
+  "retrieval": {
+   "all": {
+    "n": 240,
+    "mean": 118.299,
+    "median": 3.042,
+    "p90": 514.859,
+    "p95": 640.024,
+    "max": 1124.036,
+    "rmse": 256.944
+   },
+   "jam": {
+    "n": 60,
+    "mean": 460.49,
+    "median": 420.629,
+    "p90": 757.653,
+    "p95": 870.918,
+    "max": 1124.036,
+    "rmse": 512.883
+   },
+   "baseline": {
+    "n": 60,
+    "mean": 442.124,
+    "median": 449.951,
+    "p90": 770.902,
+    "p95": 812.953,
+    "max": 855.225,
+    "rmse": 504.966
+   },
+   "availability": 1.0,
+   "availability_jam": 1.0,
+   "longest_gap_s": 0.0,
+   "longest_gap_jam_s": 0.0
+  },
+  "selective": {
+   "all": {
+    "n": 199,
+    "mean": 25.324,
+    "median": 2.369,
+    "p90": 63.633,
+    "p95": 231.953,
+    "max": 293.794,
+    "rmse": 74.37
+   },
+   "jam": {
+    "n": 19,
+    "mean": 225.108,
+    "median": 236.012,
+    "p90": 289.261,
+    "p95": 291.024,
+    "max": 293.794,
+    "rmse": 233.818
+   },
+   "baseline": {
+    "n": 60,
+    "mean": 442.124,
+    "median": 449.951,
+    "p90": 770.902,
+    "p95": 812.953,
+    "max": 855.225,
+    "rmse": 504.966
+   },
+   "availability": 0.8292,
+   "availability_jam": 0.3167,
+   "longest_gap_s": 13.0,
+   "longest_gap_jam_s": 13.0
+  }
+ },
+ "ci": {
+  "target": {
+   "n": 51,
+   "jam_median_iid": [
+    10.298,
+    15.178
+   ],
+   "jam_median_block10": [
+    10.377,
+    16.613
+   ],
+   "diff_median_iid": [
+    -589.643,
+    -274.204
+   ],
+   "diff_median_block10": [
+    -673.981,
+    -169.793
+   ],
+   "diff_median_point": -378.092
+  },
+  "retrieval": {
+   "n": 60,
+   "jam_median_iid": [
+    329.141,
+    536.432
+   ],
+   "jam_median_block10": [
+    290.716,
+    536.432
+   ],
+   "diff_median_iid": [
+    -152.148,
+    111.615
+   ],
+   "diff_median_block10": [
+    -282.115,
+    189.782
+   ],
+   "diff_median_point": -29.323
+  },
+  "selective": {
+   "n": 19,
+   "jam_median_iid": [
+    217.573,
+    259.627
+   ],
+   "jam_median_block10": null,
+   "diff_median_iid": [
+    -356.19,
+    -49.158
+   ],
+   "diff_median_block10": null,
+   "diff_median_point": -124.156
+  }
+ }
+}

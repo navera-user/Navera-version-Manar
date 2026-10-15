@@ -1,411 +1,453 @@
 # Measuring honestly: error statistics, baselines and confidence intervals
 
-> [!NOTE] In short
-> - A claim like "4 m without GPS" means nothing until you know which statistic, how many
->   measurements, where, and compared with what.
-> - You learn the error statistics (median, percentiles, CEP, RMSE), and you always state the
->   percentile rule.
-> - A position you do not get is not 0 m: always report **availability** and continuity too.
-> - A method is useful only if it beats a **baseline**, such as "repeat the last known position".
-> - **Confidence intervals** (the bootstrap, the Wilson interval) say how sure a number is.
-> - In the lab you measure three flights, compare NAVERA with the baseline, and check a stated σ
->   with NAVERA's `evaluate_session.py`.
+![NAVERA's own table: a deep network against two ways of doing nothing](assets/cold_open.svg)
 
-At an international technology fair, a company presents a navigation box for drones: *"Accuracy: 4 m
-without GPS!"* A logistics company that wants to fly medicine from a coastal city to villages in the
-mountains asks you, the engineer, whether to buy it.
+> [!NOTE] Mission brief
+> **NAVERA's validation report, 3 October 2026.** Its first lines say: *"Every number below comes from a run on
+> the Jetson Orin Nano (bench, replay and synthetic data). None of them comes from a real flight."* Then the
+> table above. NAVERA's former day vision, a large neural network (DINOv2) that compares the photo with 1 120 map
+> tiles, placed 33 labelled replay frames with a median error of **442 m**. Repeating the previous position, with
+> no picture at all, gave **480 m**. The report concludes: *"the retrieval method must not be relied on as a GPS
+> replacement."* Its successor, local feature matching, placed **32 of 33** aerial frames within 9 m, with no
+> wrong position accepted — on frames *"from another source"*, **not** from NAVERA's camera, so day vision still
+> states a conservative 30 m until it is measured with that camera.
+>
+> Read those numbers like an auditor. Is "38 m better than doing nothing" real, or the luck of 33 frames? Is
+> 32/33 "97 %", or something wider? Does "0 wrong in 33" mean "never wrong"? Today you build the tools that
+> answer, and you use them as a buyer's auditor would on a trade-fair claim. **Session 1 — the numbers:**
+> errors, percentiles, availability, gaps and the baseline, on three flights flown by NAVERA Lite's judge.
+> **Session 2 — error bars:** bootstrap and Wilson intervals, a test of the intervals themselves, and whether a
+> source states an honest σ. Badges: **Honest ruler**, then **Auditor**.
+>
+> **Start now:** open the 🛠️ **Lab** tab, do **Step 0** (ten minutes, no code), then come back for §1.
 
-Before you answer, you ask five questions. **4 m — the mean, the median, or the best case?**
-**Computed on how many measurements, and how sure is that number?** **Measured where: on a bench, in
-a simulator, in flight over terrain like ours?** **Compared with what?** **And how often does the box
-give no position at all?** Without these answers, "4 m" means nothing. It can even be true *and*
-useless.
+**Objectives.** After this mission you can:
 
-NAVERA's engineering rules say *"Measure, don't guess"* and *"Honesty over optimism. If a result is
-only validated in simulation, say so."* NAVERA is a commercial product at "Release 0.x — field
-validation pending", and its `docs/VALIDATION_STATUS.md` says on its first page: *"None of them comes
-from a real flight."* This lesson teaches you how to produce numbers that deserve to be believed —
-and how to read other people's numbers critically. You will need lesson 27 (σ, covariance, the 2-D
-Gaussian) and a little statistics.
+1. compute position errors against a truth taken **at the right instant**, and summarise them (median = CEP50,
+   p90, p95, RMSE, max) with a **stated percentile rule**;
+2. report **availability** and **continuity** next to accuracy, and recognise **selective reporting**;
+3. compare a method with a **baseline** on the same seconds (a **paired** comparison);
+4. give **bootstrap** (iid, block, paired) and **Wilson** intervals, and test them with a **coverage experiment**;
+5. check whether a source's **stated σ is honest**, and write a validation note that says what it does not prove.
 
-## 1. Truth, estimate, error
+**You need:** mission 04 (runs of outages, median vs mean), 23 (baselines, the linear percentile), 27 (σ, the
+Rayleigh median 1.18 σ, the 39 / 86 / 99 % of a 2-D Gaussian), 29 (the judge's states). ⏱ Reading: about
+75 minutes with the ✏️ checks. Lab: 4 h 30 to 6 h in two sessions (5 h 30 to 7 h in all).
 
-To measure a navigation system you need the **ground truth**: where the vehicle really was. In a
-simulator it is free — the simulator *is* the world. In the field it comes from a **reference that is
-much better than the system under test**: an RTK GPS (centimetres) to measure a GPS, or an ordinary
-GPS (a few metres) to measure a vision system that is good to tens of metres. A useful rule: the
-reference should be at least 3–5 times more accurate than what you measure, otherwise you are partly
-measuring the reference.
+**What you already know** — answer without looking; if you miss two, reread the mission named.
 
-For each instant *i* where the system gave an estimate, the **error vector** is the estimate minus the
-truth, in local metres (east, north) — lesson 6:
+<details><summary>1. Mission 04: valid = [1, 1, 0, 0, 0, 1, 0]. Which runs does outage_runs() return?</summary>
+[(2, 5), (6, 7)]: index pairs with the end excluded, like a slice; a run that lasts to the end is closed at len.
+</details>
 
-```
-dE_i = R · cos(lat) · (lon_est − lon_true)      (angles in radians, R = 6 371 000 m)
-dN_i = R · (lat_est − lat_true)
-e_i  = sqrt(dE_i² + dN_i²)                      the horizontal (radial) error, always ≥ 0
-```
+<details><summary>2. Mission 27: a round 2-D Gaussian error with σ = 10 m per axis. Median distance? Share within 2σ?</summary>
+1.18 × 10 = 11.8 m (Rayleigh median, √(2 ln 2) σ). Within 2σ: 1 − e^(−2) ≈ 86 %.
+</details>
 
-For long distances, use the haversine formula instead (it is what NAVERA's code uses). A flight at 1 Hz
-gives a long list of errors e_1 … e_n. Now you must summarise it — and every summary hides something.
+<details><summary>3. Mission 23: why compare a localiser with "stay at the prior"?</summary>
+Because a method that uses a photo is useful only if it beats an answer that uses no photo at all.
+</details>
 
-## 2. Summary statistics for errors
+<details><summary>Words of this lesson</summary>
 
-| Statistic | Definition | Question it answers | Weakness |
-|---|---|---|---|
-| **mean** | (1/n) Σ e_i | the average error | pulled by a few huge errors (**outliers**) |
-| **RMSE** | sqrt((1/n) Σ e_i²) | the "energy" of the error; what a Kalman filter's covariance describes | even more sensitive to outliers |
-| **CEP50** (median) | the radius that contains 50 % of the errors | "how good is a typical fix?" | hides the bad cases completely |
-| **p90, CEP95** | radius that contains 90 % / 95 % | "how bad on a bad day?" | needs many samples |
-| **max** | the largest error | "what is the worst that happened?" | decided by one sample |
-
-**CEP** means **circular error probable**: the radius of a circle, centred on the truth, that contains
-a given share of the errors. CEP50 is simply the median of e_i; CEP95 is its 95th percentile. Military
-and aviation documents also use **R95** (same as CEP95) and **2DRMS** (= 2 × RMSE).
-
-![CEP50, CEP95 and the bias](assets/cep.svg)
-
-### Percentiles: the rule matters
-
-A **percentile** p is a value below which p % of the sorted data lie. There are several rules for
-the value "between two samples"; on small samples they give different answers.
-
-> [!NOTE]
-> **The course rule, and the one exception.** Lessons 23 and 33 (and the bootstrap intervals of this
-> lesson, computed with `np.percentile`) use **linear interpolation**, the course rule stated in
-> lesson 23. In **this lesson only**, the error statistics (CEP50, p90, CEP95) use NAVERA's
-> **nearest-rank** rule, because you compare your numbers with the tables of NAVERA's own tool
-> `evaluate_session.py`, and numbers that you compare must use the same rule. Always write the rule
-> you used.
-
-NAVERA's tools use the **nearest-rank** rule:
-
-```python
-def pct(v, q):                                   # navera_tools/evaluate_session.py
-    s = sorted(v)
-    return s[min(len(s) - 1, int(round(q / 100.0 * (len(s) - 1))))]
-```
-
-`numpy.median` (and `np.percentile`) **interpolate** between two samples instead. Neither is wrong,
-but two reports that use different rules cannot be compared at the last decimal. Write which rule you
-used. One more trap: Python's `round()` rounds halves to the **even** integer (`round(4.5) == 4`,
-`round(5.5) == 6`). That is the rule NAVERA's code uses, so use `round()`, not `math.ceil()`.
-
-### Worked example (a test drive on a coastal test range)
-
-Ten errors (m) from a test drive: `2.1 3.4 1.8 4.6 2.9 3.1 12.5 2.4 3.8 2.6`.
-Sorted: `1.8 2.1 2.4 2.6 2.9 3.1 3.4 3.8 4.6 12.5`, n = 10.
-
-```
-mean  = 39.2 / 10                         = 3.92 m
-RMSE  = sqrt(241.6 / 10) = sqrt(24.16)    = 4.92 m
-CEP50 = s[round(0.50 · 9)] = s[round(4.5)] = s[4] = 2.9 m   (np.median gives 3.0 m)
-p90   = s[round(0.90 · 9)] = s[round(8.1)] = s[8] = 4.6 m
-CEP95 = s[round(0.95 · 9)] = s[round(8.55)] = s[9] = 12.5 m
-max   = 12.5 m
-```
-
-One bad sample (12.5 m) moves the mean by about 1 m and the RMSE even more, but does not change the
-median. CEP95 = max here: with only 10 samples, "95 %" is the worst sample. You need about 100
-samples before a p95 means something.
-
-### Bias and spread
-
-The error vectors d_i = (dE_i, dN_i) have a mean **b** (the **bias**: a systematic offset, for example
-a map that is shifted, or a camera mounted at an angle). A useful identity:
-
-```
-RMSE² = |b|²  +  (1/n) Σ |d_i − b|²
-        bias²    spread² (random part)
-```
-
-Example: d = (3, 1), (5, −1), (4, 3) m. b = (4, 1), |b|² = 17. Deviations (−1, 0), (1, −2), (0, 2):
-spread² = (1 + 5 + 4)/3 = 3.33. RMSE² = 20.33, RMSE = 4.51 m. Check directly: (10 + 26 + 25)/3 =
-20.33. ✔ Here most of the error is bias — a calibration problem, not noise. The bias can be fixed;
-the spread cannot.
-
-### The Gaussian reference
-
-If the error is a 2-D Gaussian with **no bias** and σ per axis (lesson 27), the radial error follows a
-**Rayleigh distribution**: P(e ≤ kσ) = 1 − exp(−k²/2). From it:
-
-| Statistic | Value | Share inside |
+| Word | Plain meaning | Français |
 |---|---|---|
-| CEP50 | σ · sqrt(2 ln 2) = **1.18 σ** | 50 % |
-| mean | σ · sqrt(π/2) = 1.25 σ | — |
-| RMSE | sqrt(2) · σ = **1.41 σ** | 63 % |
-| 1σ / 2σ / 3σ circle | — | **39 % / 86 % / 99 %** |
-| CEP95 | σ · sqrt(2 ln 20) = **2.45 σ** | 95 % |
+| **ground truth** | where the vehicle really was, from a much better reference | vérité terrain |
+| **CEP50 / CEP95** | radius around the truth that holds 50 % / 95 % of the errors (median / p95) | rayon d'erreur circulaire |
+| **RMSE** | root mean square error: √(mean of e²) | erreur quadratique moyenne |
+| **availability** | share of the time with a usable position | disponibilité |
+| **continuity, gap** | the longest time without a usable position | continuité, trou |
+| **baseline** | the simple answer a method must beat | référence (méthode naïve) |
+| **paired comparison** | two methods compared at the same instants, through their differences | comparaison appariée |
+| **confidence interval (CI)** | a range from a procedure that holds the true value in 95 % of experiments | intervalle de confiance |
+| **bootstrap, resample** | recompute a statistic on data drawn again with replacement | bootstrap, rééchantillon |
+| **coverage** | how often an interval method really holds the truth | taux de couverture |
+</details>
 
-So for a healthy Gaussian source, RMSE / CEP50 ≈ 1.2. If you measure RMSE / CEP50 = 80, the errors are
-**not** one Gaussian: they are a mixture (a good mode and a terrible one), and one number for the
-whole flight is misleading — report each phase separately. The 39 / 86 / 99 % line is what NAVERA's
-`evaluate_session.py` uses to check whether a source's stated σ is honest (section 8).
+## 1. Truth, at the right instant
 
-## 3. Availability and continuity: a position you don't get is not 0 m
+An **error** is a distance: from the position a system gave to the **ground truth**, the position the vehicle
+really had. In a simulator the truth is free. In the field it comes from a reference that is much better than
+the system under test — as a rule of thumb **3 to 5 times better**, or you partly measure the reference. A GPS
+(a few metres) can judge a vision source of tens of metres; it cannot judge a 1 m system.
 
-A system that answers only when it is sure can show a beautiful CEP50 — computed on the 10 % of the
-time it answered. The error statistics are **conditional**: "error *given* that a position was
-given". So you must always report two more numbers, over the same period:
+The truth must be taken **at the instant the position describes**, not when it was published. A vision fix
+describes the photo's instant; it may be published a second later. NAVERA learned this in its simulator
+(validation report, 2026-10-03): on a plane at 40 m/s the matcher's error was 0–1 m, yet the output was off by
+**83 m** (median), because a position 1–2.5 s old was sent as current. Measured against the photo's instant, the
+matcher was excellent; measured against the instant of use, the system was not. Both numbers are true; they
+answer different questions. Say which one you give.
 
-- **Availability** = (time with a usable position) / (total time). In NAVERA "usable" means state FIX
-  or DEGRADED with a position.
-- **Continuity**, here measured by the **longest gap**: the longest run of time without a usable
-  position. An autopilot can bridge 1 s; it may land or hold after a few seconds.
+Truth samples rarely fall exactly on a fix's instant, so you **interpolate in time**. **Worked example.** The
+truth says north = 150.0 m at t = 10.0 s and 165.0 m at t = 11.0 s. A photo was taken at 10.4 s, so the truth
+at that instant is 150.0 + 0.4 × (165.0 − 150.0) = **156.0 m**. Using the sample of 11.0 s instead would add
+9 m of error that the vision source never made.
 
-NAVERA learned this the hard way (VALIDATION_STATUS.md, **simulator only**): with a 3 s freshness
-window for day vision, under load, *NAVERA alternated FIX / NO_FIX on 20–60 % of samples and the
-autopilot landed during a 6.7–9.2 s gap*. Every single fix was fine; the system as a whole was not
-usable. The window became 5 s. In the lab you will see the opposite trick: remove the bad positions
-of a flight, and its CEP50 improves while the vehicle loses its position three quarters of the time.
+> [!QUESTION] ✏️ Check
+> A plane flies at 40 m/s. A vision fix is published 1.2 s after its photo and scored against the truth at the
+> publication instant. How much error does the scoring itself add, at most?
 
-## 4. Compared with what? The baseline
+<details><summary>Answer</summary>
+40 × 1.2 = 48 m, along the track. A tool that scores at the wrong instant blames the matcher for the delay.
+</details>
 
-A method is useful only if it beats the **simplest thing you could do instead** — the **baseline**.
-For navigation without GPS, the simplest thing is: **repeat the last known position**. The vehicle
-moves, so the baseline's error grows with time — at 15 m/s, about 900 m after one minute. A harder,
-fairer baseline is **dead reckoning**: continue the last known velocity in a straight line.
+## 2. Summarising errors, with a stated rule
 
-![The baseline grows with time](assets/baseline.svg)
+A flight at 1 Hz gives hundreds of errors e₁ … eₙ. Every summary keeps one side of them:
 
-Read this table from VALIDATION_STATUS.md (33 labelled replay frames around Sousse, search limited to
-600 m around the previous true position):
-
-| Method | Median error | Within 300 m |
+| Statistic | Answers | Weakness |
 |---|---|---|
-| DINOv2 tile retrieval (the former day vision) | 442 m | 41 % |
-| Random tile in the same circle (**baseline**) | 536 m | 17 % |
-| Repeating the previous position (**baseline**) | 480 m | 31 % |
-| Best tile available (resolution limit) | 107 m | 94 % |
+| **median** (= **CEP50** for radial errors) | how good is a typical position? | blind to the bad cases |
+| **p90**, **p95** (= **CEP95**) | how bad on a bad day? | needs many samples |
+| **max** | the worst that happened | decided by one sample |
+| **mean** | the average | pulled by outliers |
+| **RMSE** = √(mean of e²) | the "energy" of the error; what a covariance describes | pulled even more |
 
-A deep neural network, 1120 map tiles, GPU time — and the median beats "repeat the previous position"
-by 38 m. The document concludes honestly: *"the retrieval method must not be relied on as a GPS
-replacement"*. It was replaced by local feature matching: *32/33 frames within 9 m, median 4 m*, on
-aerial frames from another source — **not yet NAVERA's camera**. Note the last row too: the **upper
-bound** (the best that the tile resolution allows) tells you how much room for improvement exists.
+**Percentiles: the rule matters.** The q-th **percentile** of n sorted values sits at **position**
+(n − 1) · q / 100. The course rule is **linear**: if the position falls between two samples, interpolate between
+them (numpy's default, mission 23). Another rule, the **nearest sample**, takes the sorted value at index
+round((n − 1) · q / 100) — no interpolation. NAVERA's evaluation tool uses that second rule (in words; §9).
+Neither is wrong, but two reports with different rules are not comparable on small samples. Write your rule.
 
-**Compare on the same data, at the same instants.** When the method and the baseline are evaluated on
-the same seconds of the same flight, the comparison is **paired**: look at the *difference*
-e_method,i − e_baseline,i, not at two separate averages. Pairing removes everything the two share
-(the route, the jam length, the terrain) and makes small differences visible.
+> [!TIP] 🧰 Positions, by hand
+> Sorted [1, 3, 5, 7] (n = 4). p50: position 3 × 0.5 = 1.5 → linear 3 + 0.5 × (5 − 3) = **4.0**; nearest
+> round(1.5) = 2 → **5**. p90: position 2.7 → linear 5 + 0.7 × 2 = **6.4**; nearest round(2.7) = 3 → **7**.
+> Python's `round()` sends halves to the **even** integer: `round(1.5) == 2`, `round(2.5) == 2`.
 
-## 5. How sure is the number? Confidence intervals
-
-"CEP50 = 430 m on 60 samples" is an **estimate** of the true CEP50 of the method. Another flight would
-give another number. A **95 % confidence interval (CI)** is a range computed from the data by a
-procedure that, if you repeated the whole experiment many times, would contain the true value in 95 %
-of the repetitions. The 95 % describes the procedure, not this one interval.
-
-### The bootstrap
-
-For a mean there is a formula (mean ± 1.96 · s/sqrt(n)). For a median, a CEP95 or a difference of
-medians there is no simple formula — and errors are not Gaussian anyway. The **bootstrap**
-(Efron, 1979) replaces the formula by computation:
-
-1. From your n errors, draw n values **with replacement** (a **resample**: some values appear twice,
-   some not at all).
-2. Compute the statistic (e.g. the median) of the resample.
-3. Repeat B times (B = 2000 is common).
-4. The 2.5th and 97.5th percentiles of the B statistics are the 95 % CI (**percentile bootstrap**).
-
-![The bootstrap](assets/bootstrap.svg)
-
-The idea: the data are the best picture you have of the unknown distribution, so you sample from
-the data to see how much the statistic moves between "possible experiments". On the 12 errors of
-the picture (one outlier at 31 m), with `numpy.random.default_rng(29)`, B = 2000:
+**Worked example** (ten errors of a test drive, m): 3.1 2.4 5.0 2.8 4.1 3.6 19.0 2.2 3.3 4.4.
+Sorted: 2.2 2.4 2.8 3.1 3.3 3.6 4.1 4.4 5.0 19.0.
 
 ```
-median 3.85 m   95 % CI [3.05, 5.40] m
-mean   6.21 m   95 % CI [3.47, 10.99] m      <- the outlier makes the mean very uncertain
+mean   = 49.9 / 10                                  = 4.99 m
+median : position 4.5  → 3.3 + 0.5 × (3.6 − 3.3)     = 3.45 m    (nearest sample: index 4 → 3.3)
+p90    : position 8.1  → 5.0 + 0.1 × (19.0 − 5.0)    = 6.4 m     (nearest: index 8 → 5.0)
+p95    : position 8.55 → 5.0 + 0.55 × (19.0 − 5.0)   = 12.7 m    (nearest: index 9 → 19.0)
+max    = 19.0 m           RMSE = √(474.07 / 10)      = 6.89 m
 ```
 
-### Correlated errors: the block bootstrap
+![One sample, two rules: the p95 of ten errors](assets/rules.svg)
 
-The bootstrap assumes the n values are **independent**. Errors recorded at 1 Hz are not: a vision
-fix 30 m north at second 10 is usually still about 30 m north at second 11. Correlated samples carry
-less information than independent ones. For a process where each second keeps a fraction ρ of the
-previous error (an AR(1) process), the **effective sample size** of the mean is approximately
+One bad sample moved the mean by more than 1 m and doubled the RMSE against the median; the median did not
+care. In the tail the two rules disagree by 6 m: with ten values, "p95" is little more than the worst sample.
+Mission 27 gives a health test: for a round Gaussian error, RMSE / median = 1.41 σ / 1.18 σ ≈ **1.2**. Here it
+is 6.89 / 3.45 = **2.0**: not one Gaussian, but a good mode plus an outlier. Report the tail, and find its cause.
+
+> [!QUESTION] ✏️ Check
+> Errors (m): 6.0 1.5 2.5 9.0 3.0 2.0 4.0 40.0. Give the median and the p90 with both rules, and the RMSE.
+
+<details><summary>Answer</summary>
+Sorted 1.5 2.0 2.5 3.0 4.0 6.0 9.0 40.0. Median: position 3.5 → linear 3.5 m, nearest round(3.5) = 4 → 4.0 m.
+p90: position 6.3 → linear 9.0 + 0.3 × 31 = 18.3 m, nearest index 6 → 9.0 m. RMSE = √(1754.5 / 8) = 14.8 m.
+</details>
+
+## 3. A position you don't get is not 0 m
+
+Errors exist only for the seconds with a position, so every accuracy number is **conditional**: "the error,
+*given* that the system answered". A system that answers only when it is sure can show a beautiful median.
+Always give, over the same period:
+
+- **availability** — the share of time with a **usable** position (the judge in FIX or DEGRADED *and* a
+  position in the message);
+- **continuity** — here the **longest gap**: the longest time without one. An autopilot bridges a second; after
+  a few seconds it holds, lands or fails safe.
+
+![Two methods on the same minute](assets/availability.svg)
+
+In the figure, method B's median (1.8 m) is five times better than A's (9.4 m) — on 12 seconds out of 60. For an
+autopilot B is useless: it is blind 80 % of the time. NAVERA met the system-level version in its simulator
+(report, 2026-10-03): with a 3 s freshness window under load, the judge alternated FIX / NO_FIX on **20–60 % of
+the samples** and the autopilot **landed during a 6.7–9.2 s gap**. Each fix was fine; the system was not usable.
+Over uniform terrain near Gabès (long route, 2026-10-01), day vision had **no position for 13 or 18 of 48
+samples** in two runs. Those counts belong in the result as much as the median.
+
+> [!WARNING] Selective reporting — five ways to make a number look better without lying
+> 1. **Conditioning**: the median of the positions given, without the availability.
+> 2. **Best of N**: five test flights with medians 11, 9, 14, 4 and 12 m; the brochure says "4 m".
+> 3. **Statistic chosen after the data**: the median when the mean is ugly, the mean when the median is.
+> 4. **Outliers removed** without a rule written *before* the test ("that one was a glitch").
+> 5. **Easy conditions only**: NAVERA's day vision (former method) had a median of 111 m over textured ground
+>    near Sousse and 351 m (p90 853 m) over uniform terrain near Gabès — same day, same code.
+>
+> The cure is the same each time: decide the statistics, the data and the exclusion rules **before** you look,
+> and publish all the runs.
+
+> [!QUESTION] ✏️ Check
+> Over a 50 s GPS loss a method gives a position at seconds 0–9 and 30–34 only. Availability, longest gap?
+
+<details><summary>Answer</summary>
+15 of 50 s = 30 %. Gaps: 10–29 (20 s) and 35–49 (15 s): the longest is 20 s.
+</details>
+
+## 4. Compared with what? Baselines and pairs
+
+A method is worth what it beats. The **baseline** is the simplest thing you could do instead. When GPS is lost,
+the simplest thing is to **repeat the last known position**. The vehicle keeps moving, so the baseline's error
+grows: about speed × time. **Worked example.** A drone at 20 m/s loses GPS for 40 s. The frozen position is
+20, 40, … 800 m behind: its median error is (400 + 420) / 2 = **410 m**. A vision method with a median of 300 m
+"beats" it — but look at the figure: in the first 10 s, doing nothing is better than that vision.
+
+![The baseline grows; the comparison is made second by second](assets/baseline.svg)
+
+NAVERA's table (mission brief) uses two baselines and one **limit**: repeat the previous position (480 m),
+a random tile in the circle (536 m), and the best tile available (107 m: the best that tile-sized answers can
+ever do). The same report uses a baseline for a yes/no test too: a threshold on the matching score classified
+whole-map matches right **94 %** of the time — against **88 %** for "always reject". A score that barely beats
+"always reject" cannot flag wrong matches.
+
+**Compare at the same instants.** When the method and the baseline are scored on the same seconds, look at the
+**differences** d_i = e_method,i − e_baseline,i, not at two separate summaries. This is a **paired**
+comparison: everything the two share (the route, the jam, the terrain) cancels in d_i, and a small but steady
+advantage becomes visible. And never compare a method on its own chosen seconds with a baseline on all of
+them.
+
+> [!QUESTION] ✏️ Check
+> A boat at 6 m/s loses GPS for 120 s. Median error of "repeat the last position"? A vision source has a median
+> of 250 m on the same seconds. Better?
+
+<details><summary>Answer</summary>
+6, 12, … 720 m: median (360 + 366) / 2 = 363 m. 250 m is lower — but only the paired comparison, with an
+interval (§5–6), says whether the difference is more than luck.
+</details>
+
+## 5. How sure is the number? The bootstrap
+
+"Median 3.45 m on 10 errors" is an **estimate**: another drive would give another number. A **95 % confidence
+interval** is a range computed from the data by a procedure that, over many repeated experiments, would contain
+the true value **95 % of the time**. The 95 % belongs to the procedure, not to one interval.
+
+> [!TIP] 🧰 s, σ, the standard error and 1.96
+> σ is the spread of the whole population; **s** is its estimate from your n values (`np.std(x, ddof=1)`). The
+> mean of n independent values wobbles less than one value: its **standard error** is s / √n. A Gaussian puts
+> 95 % within ±1.96 standard deviations, hence **mean ± 1.96 · s/√n**. On the worked example: s = 5.00,
+> s/√10 = 1.58, so 4.99 ± 3.10 → [1.89, 8.09] m — if the mean were Gaussian, which ten skewed errors are not.
+
+For a median, a p90 or a difference of medians there is no simple formula. The **bootstrap** (Efron, 1979)
+replaces the formula by computation. Your n values are the best picture you have of the unknown distribution,
+so you draw new "experiments" from them:
+
+1. draw n values **with replacement** from your data (a **resample**: some values twice, some not at all);
+2. compute the statistic of the resample;
+3. repeat B times (B = 2 000);
+4. the 2.5th and 97.5th percentiles of the B results are the 95 % interval (the **percentile bootstrap**).
+
+![The bootstrap on the ten errors of §2](assets/bootstrap.svg)
+
+On the ten errors of §2 (B = 2 000, seed 1): median 3.45 m, 95 % CI **[2.75, 4.40] m**; mean 4.99 m, CI
+**[3.00, 8.22] m** — the outlier makes the mean far less certain. Fix the generator's **seed** and the same call
+always gives the same interval: results must be reproducible.
+
+> [!TIP] 🧰 Functions are values
+> `bootstrap_ci(x, np.median)` passes the *function* `np.median`, without calling it; inside, `stat(sample)`
+> calls it. Like `sorted(words, key=len)`. Any function of one array works, including your own:
+> `bootstrap_ci(x, lambda v: np.percentile(v, 90))`.
+
+> [!QUESTION] ✏️ Check
+> Why can the bootstrap interval of the median of 10 values never contain a number below the smallest value?
+
+<details><summary>Answer</summary>
+Every resample is made of the data's values, so its median lies between the smallest and the largest of them.
+With few values the bootstrap cannot imagine anything outside what it saw — one reason it is optimistic on tiny n.
+</details>
+
+## 6. Correlated seconds: the block bootstrap and the paired interval
+
+The bootstrap assumes **independent** values. Navigation errors at 1 Hz are not: a vision fix 30 m north at
+second 10 is still about 30 m north at second 11. Correlated samples carry less information. If each second keeps
+a fraction ρ of the previous error (an **AR(1)** process), the **effective sample size** of the mean is about
 
 ```
-n_eff ≈ n · (1 − ρ) / (1 + ρ)          n = 60, ρ = 0.9  →  n_eff ≈ 3
+n_eff ≈ n · (1 − ρ) / (1 + ρ)          n = 60, ρ = 0.9  →  n_eff ≈ 3.2
 ```
 
-Sixty correlated seconds are worth about three independent measurements! An ordinary bootstrap
-pretends they are 60, so its interval is far too narrow. The **moving-block bootstrap** resamples
-**blocks** of L consecutive seconds (e.g. L = 10) instead of single seconds: inside each block the
-correlation is kept. It is better, not perfect — with few blocks the interval is still too narrow.
-In the lab you will *measure* this with a **coverage experiment**: simulate many flights where the
-true median is known, and count how often each method's 95 % CI really contains it.
+Sixty correlated seconds are worth about three independent values. An ordinary (**iid**) bootstrap shuffles
+single seconds and pretends there are 60: its interval is too narrow. The **moving-block bootstrap** draws
+**runs of L consecutive values** (L = 10 s, say) instead, joined until the resample has n values. Inside each run
+the correlation is kept. A run may start anywhere from index 0 to n − L, so it never wraps around the end.
 
-### Paired difference
+![iid and block resamples of a correlated error](assets/blocks.svg)
 
-To decide whether a method beats the baseline, bootstrap the **difference**: in each resample use the
-**same** indices for both lists, compute median(method) − median(baseline), and take the percentiles.
-If the 95 % CI of the difference **contains 0**, you cannot claim that the method is better on this
-data. If it is entirely below 0, the method is better, and the interval says by how much.
+Blocks need **neighbours in the list to be neighbours in time**. If seconds are missing — a method that answered
+only when it was sure — a "block" of 10 kept values may span a whole minute: then no block interval is honest.
 
-### Proportions: "32 of 33"
+**The paired interval.** To decide whether a method beats the baseline, bootstrap the **difference**: in each
+resample, draw ONE set of indices (or blocks) and use it for both lists, then compute
+stat(method) − stat(baseline). If the 95 % interval of the difference **contains 0**, you cannot claim a
+difference on this data; if it lies entirely below 0, the method is better, by at least |upper end|. Do not
+judge by whether two separate intervals overlap: pairing removes the shared part, and only the interval of the
+difference says it.
 
-For a success rate k/n (frames within 9 m, frames within 300 m) use the **Wilson score interval**:
+> [!QUESTION] ✏️ Check
+> The 95 % interval of "median(method) − median(baseline)" is [−210, 45] m. Write the sentence for the report.
+
+<details><summary>Answer</summary>
+"On this flight the method is not shown to differ from the baseline: the 95 % interval of the difference of
+medians, [−210, 45] m, contains 0." Not "slightly better", not "45 m worse".
+</details>
+
+## 7. Success rates: "32 of 33"
+
+For a share k/n — frames within 9 m, matches accepted — use the **Wilson score interval**:
 
 ```
 p = k/n,  z = 1.96
 centre = (p + z²/(2n)) / (1 + z²/n)
-half   = z / (1 + z²/n) · sqrt( p(1−p)/n + z²/(4n²) )
-CI     = [centre − half, centre + half]
+half   = z / (1 + z²/n) · √( p(1−p)/n + z²/(4n²) )          CI = [centre − half, centre + half]
 ```
 
-For 32/33: p = 0.970, z²/n = 0.116, centre = 0.921, half = 0.074 → **[84.7 %, 99.5 %]**. "97 %" from
-33 frames really means "somewhere between 85 % and 99.5 %". And **zero failures is not zero risk**:
-"0 wrong positions accepted in 33 frames" is compatible with a true rate up to about 3/n ≈ 9 % (the
-**rule of three**, a 95 % upper bound). To show a rate below 1 %, you need about 300 clean trials.
+**Worked example**, NAVERA's 32 of 33: p = 0.970, z²/n = 0.1164, centre = 1.0279 / 1.1164 = 0.921,
+half = 1.756 × √(0.000890 + 0.000882) = 0.074 → **[84.7 %, 99.5 %]**. "97 %" from 33 frames means "somewhere
+from 85 % to 99.5 %". The naive p ± 1.96 √(p(1−p)/n) gives [91.1 %, 102.8 %]: above 100 %, impossible — it
+breaks down near 0 and 1, exactly where navigation claims live.
 
-## 6. Simulation is not the field
+**Zero failures is not zero risk.** "0 wrong positions accepted in 33 frames" is compatible with a true rate of
+several per cent. A quick 95 % upper bound is the **rule of three**: 3 / n = 9.1 % for n = 33 (Wilson gives a
+similar bound, computed in the lab). To show a rate below 1 %, you need about 300 clean trials.
 
-A simulator is an excellent **behaviour** test (does NAVERA switch source? does the autopilot keep
-flying? does the spoof get refused?). It is a weak **accuracy** test, because the simulator *decides*
-the errors. In NAVERA's simulator the camera images are cut from the very map vision matches
-against, the ground is flat, and the GPS noise is a formula. VALIDATION_STATUS.md labels such numbers
-**"simulator only"** or **"optimistic"**, and its summary lists *"field validation pending"*.
+> [!QUESTION] ✏️ Check
+> NAVERA's product module accepted 30 of 33 frames. Wilson 95 % interval?
 
-Statisticians call this **external validity**: does the result transfer to the real conditions? A
-number measured in Sousse with simulated images says little about a flight over the sand of the Sahara,
-the dark rock of the Andes, or the open sea off Cape Town — different texture, haze, heat shimmer,
-lighting. A confidence interval only covers the *sampling* noise of *this* experiment; it says nothing
-about such differences. So always write **where** a number comes from — *bench*, *replay*,
-*synthetic data*, *simulation*, *flight* — and on **how much** data.
+<details><summary>Answer</summary>
+p = 0.909, centre = (0.909 + 0.0582) / 1.1164 = 0.866, half = 1.756 × √(0.002504 + 0.000882) = 0.102 →
+[76.4 %, 96.9 %].
+</details>
+
+## 8. Do your intervals work? Coverage
+
+"95 %" is a promise about the **procedure**. You can test it: invent experiments whose true answer you know (a
+simulated error source with a known median), compute an interval in each, and count how often it holds the truth.
+That share is the **coverage**. An honest 95 % method covers about 95 % of the time; one that covers 60 % is
+lying with a straight face.
+
+![25 imaginary experiments, 25 intervals](assets/coverage.svg)
+
+A coverage experiment needs three parts: a way to draw one experiment's data, a way to compute its interval, and
+the true value. In the lab you write it once, generically, and test four interval methods with it: the iid and
+block bootstraps on independent and on correlated errors, and the naive and Wilson intervals of a 97 % success
+rate on 33 trials. Predict before you run.
+
+> [!QUESTION] ✏️ Check
+> In 200 imaginary experiments, how many misses do you expect from an honest 95 % method? Would 15 misses
+> worry you? And 60?
+
+<details><summary>Answer</summary>
+About 10 (5 %). 15 is within chance for 200 trials (a binomial spread of about ±3); 60 misses (70 % coverage)
+is not chance: the method is broken for that kind of data.
+</details>
+
+## 9. Is the stated σ honest?
+
+A source that **states** σ makes a promise the judge relies on (missions 27, 29). Test it like any claim: score
+the source against a truth and count how often the error stays within 1, 2 and 3 × its stated σ. For an honest
+round 2-D Gaussian: about **39 / 86 / 99 %** (mission 27). Then compute the σ that **would** be honest: the
+86th percentile of the errors, divided by 2 (86 % lies within 2σ).
+
+**Worked example.** A source states σ = 10 m. Its errors: p86 = 31 m, and 62 % are within 2 × 10 m. The honest
+σ is 31 / 2 = **15.5 m**; 62 % is far below 86 %: the statement is **too optimistic**, and a judge that believes
+it will trust bad positions. A source that states *more* than its honest σ is only **pessimistic**: the judge is
+more careful than needed — the safer mistake.
+
+Where does the truth come from on a real flight? From the GPS itself, in **shadow mode**: vision keeps working
+while GPS is good, both are recorded, and GPS is the truth. That works for vision at tens of metres, and it
+cannot measure anything finer than the GPS (§1).
+
+> [!QUESTION] ✏️ Check
+> A source states σ = 20 m; 90 % of its errors are within 40 m. Honest, optimistic or pessimistic?
+
+<details><summary>Answer</summary>
+Within 2σ: 90 % ≥ 86 %: honest to slightly pessimistic.
+</details>
+
+## 10. Simulation is not the field
+
+A confidence interval covers **sampling noise** — another flight of the same kind. It says nothing about
+**external validity**: whether the result transfers to other conditions. A simulator *decides* its errors;
+NAVERA's report labels such numbers *"simulator only"* or *"optimistic"* (the simulated camera *"is cut from the
+map's own imagery"*). Its bench numbers for local matching are on aerial frames from another source, so it states
+30 m until it measures with its own camera. A number measured over Sousse says little about the sand of the
+Sahara, the dark rock of the Andes or the sea off Cape Town. So every result carries its **conditions**: bench,
+replay, synthetic, simulation or flight; where; how much data; which camera.
+
+> [!WARNING] Common wrong ideas
+> - "The median is the accuracy." Not without the tail (p90/p95), the availability and the longest gap.
+> - "A position I don't get doesn't count." It counts as missing: report availability.
+> - "Two overlapping intervals mean no difference." Compute the interval of the paired difference.
+> - "The CI contains 0, so the methods are equal." No: the data cannot tell them apart. Absence of evidence.
+> - "More seconds of the same flight = more information." Only if they are independent; see n_eff.
+> - "0 failures in 33 = 0 % failure rate." Up to about 9–10 % is compatible with that.
+> - "A 95 % interval contains the truth with probability 95 %." The procedure does, over repetitions.
+
+## In NAVERA
+
+NAVERA has an evaluation harness in its repository (engineering backlog FEAT-4, done) and the **shadow mode**
+of its architecture: vision runs while GPS is good, so a recorded session can be scored against GPS. Its
+evaluation tool (described here in words; the course does not use it) takes the **valid GPS fixes as truth,
+interpolated at each vision measurement's instant**, prints per source the count, median, p90, max and the share
+within 50 / 100 / 300 m, then, for sources that state σ, the share within 1, 2, 3 σ and the honest σ (p86 / 2),
+flagging a stated σ as too optimistic when fewer than 80 % fall within 2σ. Its percentiles use the
+**nearest-sample** rule (§2). The validation report applies the policy of this lesson: every figure with its
+conditions and date, baselines next to the method, "simulator only" where it applies, and *"field validation
+pending"* at the top. NAVERA is Release 0.2.
+
+## In NAVERA Lite
+
+Your nine TODOs live in `navera_lite/stats.py`: `errors_m`, `percentile` (linear), `summary`, `availability`,
+`longest_gap_s` (which reuses mission 04's `outage_runs`), `bootstrap_ci`, `paired_diff_ci`, `wilson` and
+`coverage_experiment`; `pct_nearest` (the nearest-sample rule) and `wald` (the naive interval) are given to
+compare. The given tool `python3 -m navera_lite.tools.evaluate_bag` scores the `/navera_lite/fix/*` sources of a
+ROS 2 bag against GPS or a truth file, with YOUR percentile. Mission 33 measures your project with this part.
 
 ## 🐦 How birds do it
 
-Ornithologists face exactly the measurement problems of this lesson.
+Ornithologists fight the same traps. Since 1899, when Hans Christian Mortensen ringed starlings in Denmark,
+birds have carried numbered rings; only a small share is ever found again, so results built on recovered rings
+are **conditional** — like an error computed only on the seconds with a position. Light-level geolocators,
+whose positions can be 100 km off, are first left at a **known place** to measure their error (a ground truth).
+The famous records — Arctic terns at about 70 900 km a year (Egevang and colleagues, 2010), a bar-tailed godwit
+flying Alaska to Tasmania non-stop in 2022 — were accepted because the tags, their errors and the data were
+published. And a displaced-bird experiment means something only against birds handled the same way but not
+moved: the **control group** is the baseline. Navi the swallow would add: compare on the same day, in the same wind.
 
-**Missing data.** Since 1899, when the Danish teacher Hans Christian Mortensen ringed starlings,
-scientists have put numbered rings on birds' legs. Only a small fraction of ringed birds are ever
-found and reported again. A ring that never comes back is not a bird that went nowhere — it is
-**missing data**, like a position NAVERA did not give. Results that use only the recovered rings are
-conditional on recovery, exactly like an error computed only on the seconds with a position.
+## Summary
 
-**Know your instrument's error.** A light-level **geolocator** estimates a bird's position from the
-times of sunrise and sunset; its errors are often more than 100 km. Researchers therefore leave
-geolocators at a known place for some days (a calibration period) and measure their error before
-they trust the tracks. A GPS tag is far more precise but heavier. The tool sets the error bars.
+1. An error is measured against a truth **at the instant the position describes**, from a reference 3–5× better.
+2. Give the median, p90/p95, max and RMSE **with the percentile rule**; RMSE / median far above 1.2 means a tail.
+3. Accuracy is conditional: always add **availability** and the **longest gap**, and beware of selective reporting.
+4. A method is worth what it beats: compare with a **baseline**, **paired**, at the same seconds.
+5. **Intervals**: bootstrap (blocks for correlated seconds, paired for differences), **Wilson** for k/n — and a
+   **coverage experiment** tells whether an interval method keeps its promise. They cover sampling noise only.
 
-**Counting a tidal flat.** The Banc d'Arguin, on the Atlantic coast of Mauritania, is one of the most
-important wintering sites for shorebirds in the world: more than two million waders feed on its tidal
-flats in winter. International teams of researchers have counted and tagged birds there for decades.
-Counting birds on a tidal flat is a measurement too: different observers and different tides give
-different numbers, so counts are repeated and compared before a trend is announced.
+**Next mission:** the final project — you change NAVERA Lite and prove, with these tools, that it got better.
 
-**Records need evidence.** In 2010 Carsten Egevang and colleagues fitted geolocators to **Arctic
-terns** in Greenland and Iceland: about **70 900 km per year** on average, from the Arctic to the
-seas of Antarctica and back. In 2022 a young **bar-tailed godwit** with a satellite tag flew
-**non-stop** from Alaska to Tasmania: about **13 560 km in about 11 days**. Such claims were accepted
-because the tags, their errors and their data were published.
+## Check yourself
 
-**Control groups.** In experiments, biologists keep a **control group**: birds handled the same way
-but not changed. Perdeck's displaced starlings (lesson 24) only mean something compared with the
-normal route of starlings that were not moved. That control group is a **baseline**. Navi the
-swallow would say: before you boast about your new route, compare it with the old one — on the same
-day, in the same wind.
+Answer without scrolling up.
 
-## 7. In NAVERA: `evaluate_session.py`
-
-For real data, the product has its own tool. The recipe (`navera_tools/README.md`, *Measuring
-accuracy on a real session*, and `docs/FIELD_TEST_PROCEDURE.md` §7):
-
-1. Enable **shadow mode** (`NAVERA_SHADOW_MODE=true`): vision runs while GPS is valid, so it can be
-   scored against GPS.
-2. Record the session into a ROS 2 bag: `navera_tools/record_session.sh <dir> day`.
-3. `python3 navera_tools/evaluate_session.py <dir> --csv <file>`.
-
-The tool uses the **valid GPS fixes as the truth**, interpolated in time at each vision measurement's
-instant (`sensor_stamp`, the photo's exposure — not when the result was published):
-
-```python
-def truth_at(gps, t, max_gap):
-    """GPS position interpolated at t, or None if no fix within max_gap."""
-    times = [g[0] for g in gps]
-    i = bisect.bisect_left(times, t)
-    if 0 < i < len(gps):
-        (t0, la0, lo0), (t1, la1, lo1) = gps[i - 1], gps[i]
-        if t - t0 <= max_gap and t1 - t <= max_gap:
-            w = (t - t0) / (t1 - t0) if t1 > t0 else 0.0
-            return la0 + w * (la1 - la0), lo0 + w * (lo1 - lo0)
-```
-
-It prints, per source and mode: n, median, p90, max, the share within 50 / 100 / 300 m, and how many
-frames gave no position. Then, for sources that **state** a σ, how often the true error is within
-1σ, 2σ, 3σ, and the σ that would be honest:
-
-```python
-within = [100.0 * sum(e <= k * s for e, s in es) / len(es) for k in (1, 2, 3)]
-honest = pct([e for e, _ in es], 86) / 2.0       # 86 % of a 2-D Gaussian is inside 2σ
-print(... + ("   <- stated sigma too optimistic" if within[1] < 80 else ""))
-```
-
-Why p86 / 2? From section 2: for an honest 2-D Gaussian, 86 % of the errors are inside 2σ. So the
-86th percentile of the errors, divided by 2, is the σ that would make the statement true. The README
-ends with the rule: *"Only numbers produced this way, on representative data, go into
-docs/VALIDATION_STATUS.md."* Note the limit of this method: GPS is the truth, so errors smaller than
-a few metres cannot be measured with it — fine for vision at tens of metres, not for a 1 m system.
-
-## Glossary
-
-| Word | Meaning |
-|---|---|
-| **ground truth** | the true position, from the simulator or a much better reference |
-| **error vector / radial error** | estimate − truth in metres (east, north) / its length |
-| **outlier** | a sample far from the others (a wrong match, a glitch) |
-| **RMSE** | root mean square error, sqrt(mean of e²) |
-| **CEP50 / CEP95** | radius of the circle around the truth containing 50 % / 95 % of the errors |
-| **percentile (nearest-rank)** | the sorted value at index round(p/100 · (n−1)) |
-| **bias / spread** | the mean error vector / the random scatter around it |
-| **Rayleigh distribution** | distribution of the radial error of an unbiased 2-D Gaussian |
-| **availability** | share of time with a usable position |
-| **continuity (longest gap)** | the longest time without a usable position |
-| **baseline** | the simplest alternative a method must beat (e.g. repeat the last position) |
-| **paired comparison** | comparing two methods on the same samples, through their differences |
-| **confidence interval (CI)** | a range from a procedure that contains the true value in 95 % of repetitions |
-| **bootstrap / resample** | estimating a CI by recomputing the statistic on data drawn with replacement |
-| **block bootstrap** | resampling blocks of consecutive samples, to keep their correlation |
-| **effective sample size** | the number of independent samples that would carry the same information |
-| **coverage** | how often a CI method really contains the true value |
-| **Wilson interval** | a CI for a proportion k/n that behaves well for small n and p near 0 or 1 |
-| **external validity** | whether a result transfers to real conditions |
-| **shadow mode** | vision runs while GPS is good, so it can be scored against GPS |
-
-## Check what you learned
-
-<details><summary>1. Method A: CEP50 5 m, availability 30 %. Method B: CEP50 12 m, availability 98 %, longest gap 2 s. Which one for an autopilot?</summary>
-Probably B: 70 % of the time A gives nothing, and A's 5 m is computed only on the easy 30 %. The
-question has no answer without both numbers — accuracy is conditional on availability.
+<details><summary>1. Method A: median 5 m, availability 30 %. Method B: median 12 m, availability 98 %, longest gap 2 s. Which one for an autopilot?</summary>
+B, very probably: A gives nothing 70 % of the time and its 5 m is measured only on its easy seconds.
 </details>
 
-<details><summary>2. A source has CEP50 = 10 m and RMSE = 12 m. Another has CEP50 = 10 m and RMSE = 300 m. What do you conclude?</summary>
-The first looks like one Gaussian (RMSE / CEP50 ≈ 1.2 ≈ 1.41/1.18). The second has a heavy tail or a
-second mode (rare huge errors): look at p90, CEP95 and max, and find the cause of the outliers.
+<details><summary>2. Two sources have a median of 10 m; RMSE 12 m for one, 300 m for the other. What do you conclude?</summary>
+The first behaves like one Gaussian (ratio 1.2); the second has a heavy tail or a second mode: report p95/max and
+find the cause.
 </details>
 
-<details><summary>3. Ten errors give CEP95 = max. Why, and what do you write?</summary>
-With n = 10 the nearest-rank index of p95 is round(8.55) = 9, the last sample. "CEP95" from 10 samples
-is just the worst sample; write "n = 10, max = …" and do not claim a p95.
+<details><summary>3. Why is an iid bootstrap on 60 errors recorded at 1 Hz over-confident, and what helps?</summary>
+Consecutive errors are correlated, so they carry far fewer independent values (n_eff); the iid bootstrap treats
+them as 60. Blocks of consecutive seconds keep the correlation (helpful, not perfect with few blocks).
 </details>
 
-<details><summary>4. A 95 % CI of "CEP50 of method − CEP50 of baseline" is [−297, 221] m. Is the method better?</summary>
-Not shown: the interval contains 0, so on this data the difference is within the sampling noise.
-You may write "no significant difference from the baseline on n = 60 s", not "better".
+<details><summary>4. "32/33 within 9 m": what interval, and what would you ask before believing it for a product?</summary>
+Wilson [84.7 %, 99.5 %]. Ask: which camera and frames (here: another source, not the product's camera), which
+terrain, how the truth was obtained, and whether frames were excluded.
 </details>
 
-<details><summary>5. Why can an ordinary bootstrap on 60 errors recorded at 1 Hz be over-confident?</summary>
-Consecutive errors are correlated, so the 60 samples carry the information of far fewer independent
-ones (n_eff ≈ n(1−ρ)/(1+ρ)). The ordinary bootstrap treats them as independent and gives an interval
-that is too narrow; a block bootstrap reduces the problem.
+<details><summary>5. (Mission 29) Why did a 3 s freshness window make NAVERA's simulated drone land, although each fix was accurate?</summary>
+Photos came every 1–4 s under load: fixes went stale between photos, so the judge flickered to NO_FIX and a 6.7–9.2 s
+gap appeared. Availability and continuity failed, not accuracy.
 </details>
 
-<details><summary>6. Your simulated flight shows vision at 20 m CEP50 [19, 23]. Can you write "NAVERA's day vision is accurate to 20 m"?</summary>
-No. Write: "CEP50 20 m [95 % CI 19–23] on one simulated flight over Sousse (60 s jam, simulated vision
-error profile, not measured with a real camera)". The CI covers sampling noise only, not the
-difference between simulation and the field.
+<details><summary>6. (Mission 04) Why can the mean of a speed error be misleading, and what did you use instead?</summary>
+A few wild values pull the mean; the median and the MAD (× 1.4826) resist them.
 </details>
 
 Now open the **🛠️ Lab** tab.

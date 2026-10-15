@@ -1,318 +1,498 @@
+import contextlib
+import io
 import json
 import math
 import os
 import re
 
-from academy_check import CheckFailed, Checker, load_student, need
+import numpy as np
+import pandas as pd
+
+from academy_check import CheckFailed, Checker, explained, hidden, is_stub, load_student, need, predicted, run
 
 c = Checker()
-DATA = "/data/academy/32-measuring"
-FLIGHTS = ("flight_target", "flight_measured", "flight_selective")
-# expected values, computed from the recorded flights (simulation) with the lab's rules
-EXPECT = {
- "flight_target": {"all": {"n": 284, "cep50": 3.65, "rmse": 13.95, "cep95": 30.9, "max": 64.33},
-                   "jam": {"n": 60, "cep50": 20.45, "rmse": 24.13, "cep95": 32.06, "max": 64.33},
-                   "baseline": {"n": 60, "cep50": 454.93, "rmse": 501.07, "cep95": 803.85, "max": 847.26},
-                   "availability_pct": 100.0, "availability_jam_pct": 100.0, "longest_gap_s": 0,
-                   "ci": {"jam_cep50_iid": [17.9, 23.2], "jam_cep50_block": [18.6, 23.2],
-                          "diff_cep50_block": [-648.5, -200.7]}},
- "flight_measured": {"all": {"n": 190, "cep50": 4.71, "rmse": 390.13, "cep95": 842.64, "max": 1152.32},
-                     "jam": {"n": 60, "cep50": 430.08, "rmse": 514.11, "cep95": 847.33, "max": 1081.64},
-                     "baseline": {"n": 60, "cep50": 452.31, "rmse": 516.17, "cep95": 842.91, "max": 890.26},
-                     "availability_pct": 100.0, "availability_jam_pct": 100.0, "longest_gap_s": 0,
-                     "ci": {"jam_cep50_iid": [389.5, 510.1], "jam_cep50_block": [389.5, 553.9],
-                            "diff_cep50_block": [-297.3, 221.1]}},
- "flight_selective": {"all": {"n": 115, "cep50": 3.11, "rmse": 83.25, "cep95": 243.52, "max": 296.44},
-                      "jam": {"n": 14, "cep50": 154.0, "rmse": 186.67, "cep95": 286.9, "max": 296.44},
-                      "baseline": {"n": 60, "cep50": 452.31, "rmse": 516.17, "cep95": 842.91, "max": 890.26},
-                      "availability_pct": 60.53, "availability_jam_pct": 23.33, "longest_gap_s": 13,
-                      "ci": {"jam_cep50_iid": [94.2, 238.7], "jam_cep50_block": [114.4, 159.1],
-                             "diff_cep50_block": [-308.3, -5.1]}},
-}
-DEMO = [3.1, 4.0, 2.2, 5.9, 3.7, 4.4, 2.8, 31.0, 3.3, 4.9, 3.0, 6.2]
+
+# Unseen inputs and the course reference's answers: courses/32-measuring/hidden/cases.json, written by
+# solutions/32-measuring/make_hidden.py (check.py never runs the reference).
+CASES = json.loads(hidden("cases.json"))
+FLIGHTS = ("target", "retrieval", "selective")
 
 
-def M():
-    return load_student("measure.py")
+def quiet(name):
+    with contextlib.redirect_stdout(io.StringIO()):
+        return load_student(name, fresh=True)
 
 
-def BS():
-    return load_student("bootstrap.py")
+def todo(mod_name, fname, k, where="navera_lite/stats.py"):
+    m = quiet(mod_name)
+    (f,) = need(m, fname)
+    if is_stub(f):
+        raise CheckFailed(f"{fname}() is not written yet (TODO {k} in {where})")
+    return m, f
 
 
-def row(t, phase="enroute", gps="ok", state="FIX", source="GPS", nlat=35.80, nlon=10.60, tlat=35.80, tlon=10.60):
-    return {"t_s": float(t), "phase": phase, "gps_mode": gps, "navera_state": state, "navera_source": source,
-            "navera_lat": nlat, "navera_lon": nlon, "truth_lat": tlat, "truth_lon": tlon}
+TIPS = [("'NoneType'", " — one of your functions returned None: is every TODO it uses written, and does every path "
+                       "end with a return?"),
+        ("KeyError", " — a column name misspelt? The flight tables use lat, lon, truth_lat, truth_lon, state, t_s, gps, "
+                     "source"),
+        ("integers", " — check the range you give rng.integers(low, high): high is EXCLUDED, and it must be > low"),
+        ("could not be broadcast", " — two arrays of different lengths were combined: print their len()")]
 
 
-def pair(ci, what):
+def go(fn, *args, **kw):
     try:
-        lo, hi = float(ci[0]), float(ci[1])
+        return run(fn, *args, **kw)
+    except CheckFailed as e:
+        msg = str(e)
+        for key, tip in TIPS:
+            if key in msg:
+                raise CheckFailed(msg + tip)
+        raise
+
+
+def table(d):
+    return pd.DataFrame({k: [np.nan if v is None else v for v in col] for k, col in d.items()})
+
+
+def as_array(v, what):
+    try:
+        a = np.asarray(v, dtype=float)
+    except (TypeError, ValueError):
+        raise CheckFailed(f"{what} must be numbers (a numpy array), got {type(v).__name__}")
+    if a.ndim != 1:
+        raise CheckFailed(f"{what} must be a 1-D array, its shape is {a.shape}")
+    return a
+
+
+def pair(v, what):
+    try:
+        lo, hi = float(v[0]), float(v[1])
+        ok = len(v) == 2
     except (TypeError, ValueError, IndexError, KeyError):
-        raise CheckFailed(f"{what} should be a pair (lo, hi) of numbers, got {ci!r}")
-    c.ok(math.isfinite(lo) and math.isfinite(hi) and lo <= hi, f"{what}: ({lo}, {hi}) is not an interval")
+        ok = False
+    if not ok:
+        raise CheckFailed(f"{what} must be a pair (lo, hi) of numbers, got {v!r:.80}")
+    if not (math.isfinite(lo) and math.isfinite(hi)):
+        raise CheckFailed(f"{what} = ({lo}, {hi}): not usable numbers")
+    if lo > hi:
+        raise CheckFailed(f"{what} = ({lo:.4g}, {hi:.4g}): the lower end is above the upper end")
     return lo, hi
 
 
-@c.test("errors(): one (t, error) per en-route row with a NAVERA position",
-        hint="Skip rows that are not 'enroute' and rows whose navera_lat is None; error = haversine_m(truth, NAVERA).")
+def raise_value_error(call, what, rule):
+    """The student's function must refuse an impossible input with ValueError."""
+    try:
+        call()
+    except CheckFailed as e:
+        if "ValueError" in str(e):
+            return
+        raise CheckFailed(f"{what} must raise ValueError ({rule}); it stopped with: {e}")
+    raise CheckFailed(f"{what} must raise ValueError ({rule}), it returned a value")
+
+
+# ================================================================ Session 1 — the numbers
+@c.test("TODO 1 — errors_m() on an unseen table (far north, three kinds of empty cells)",
+        hint="One error per row that has a position AND a truth (NaN in lat, lon, truth_lat or truth_lon: left out); "
+             "the distance with logbook.haversine_m, truth vs position; return a numpy array.")
 def _():
-    (errors,) = need(M(), "errors")
-    rows = [row(0, phase="takeoff"), row(1, tlat=35.80 + 100 / 111195.0), row(2, nlat=None, nlon=None), row(3)]
-    out = errors(rows)
-    c.ok(isinstance(out, list) and len(out) == 2, f"errors() should give 2 pairs here, got {out!r}")
-    c.near(out[0][0], 1.0, 1e-9, "the time of the first pair")
-    c.near(out[0][1], 100.0, 0.5, "the error of a fix 100 m south of the truth")
+    m, f = todo("navera_lite.stats", "errors_m", 1)
+    d = CASES["errors"]
+    got = as_array(go(f, table(d["table"])), "errors_m()")
+    want = d["want"]
+    if np.any(~np.isfinite(got)):
+        raise CheckFailed("errors_m() returned NaN values: rows without a position (or without a truth) must be "
+                          "LEFT OUT")
+    c.ok(len(got) == len(want), f"errors_m() gave {len(got)} errors for this 9-row table, but only {len(want)} rows "
+                                "have both a position and a truth (NaN in lat, lon, truth_lat or truth_lon: leave the "
+                                "row out)")
+    for i, (g, w) in enumerate(zip(got, want)):
+        if abs(g - w) > max(0.05, 1e-4 * w):
+            hint = (" — an east offset comes out wrong: a flat formula without cos(latitude) overestimates east "
+                    "distances at 64° N; use haversine_m") if i in (1, 4) else ""
+            raise CheckFailed(f"error number {i + 1} is {g:.3f} m: not right (it must be within 0.05 m){hint}")
 
 
-@c.test("percentile(): the nearest-rank rule of evaluate_session.py (with Python's round())",
-        hint="index = round(p/100 * (n-1)), never beyond n-1. Python rounds 4.5 to 4 (round half to even): "
-             "use round(), not math.ceil or +0.5.")
+@c.test("TODO 2 — percentile(): the linear rule on 40 unseen cases (q from 0 to 100, n from 1 to 23)",
+        hint="Sort; the position is (n − 1) × q / 100; interpolate between the two values on either side of it. "
+             "Compare with np.percentile in a terminal.")
 def _():
-    (pct,) = need(M(), "percentile")
-    v = [5, 1, 9, 3, 7, 2, 8, 4, 6, 11, 10]
-    c.near(pct(v, 90), 10, 1e-9, "percentile(1..11, 90)")
-    c.near(pct(v, 50), 6, 1e-9, "percentile(1..11, 50)")
-    c.near(pct(v, 100), 11, 1e-9, "percentile(1..11, 100)")
-    c.near(pct(list(range(1, 11)), 50), 5, 1e-9, "percentile(1..10, 50) (index round(4.5) = 4)")
-    c.near(pct([42.0], 95), 42.0, 1e-9, "percentile([42], 95)")
-
-
-@c.test("stats(): n, mean, rmse, cep50, p90, cep95, max — on the lesson's worked example",
-        hint="rmse = sqrt(sum of squares / n); cep50, p90, cep95 = percentile(values, 50 / 90 / 95).")
-def _():
-    (stats,) = need(M(), "stats")
-    s = stats([2.1, 3.4, 1.8, 4.6, 2.9, 3.1, 12.5, 2.4, 3.8, 2.6])
-    c.ok(isinstance(s, dict), f"stats() should return a dict, got {s!r}")
-    c.eq(s.get("n"), 10, "n")
-    for k, want in (("mean", 3.92), ("rmse", 4.9153), ("cep50", 2.9), ("p90", 4.6), ("cep95", 12.5), ("max", 12.5)):
-        c.near(s.get(k), want, 1e-3, k)
-
-
-@c.test("availability() and longest_gap_s(): how often, and the longest hole",
-        hint="Only 'enroute' rows (and that gps_mode if given); usable(r) is written for you. The gap counter "
-             "goes back to 0 at each usable row; keep the largest value it reached.")
-def _():
-    av, gap = need(M(), "availability", "longest_gap_s")
-    nf = dict(state="NO FIX", nlat=None, nlon=None)
-    rows = [row(0), row(1, **nf), row(2, gps="jammed", state="DEGRADED"), row(3, gps="jammed", **nf),
-            row(4, gps="jammed", **nf), row(5, phase="arrived", **nf)]
-    c.near(av(rows), 40.0, 1e-9, "availability (2 usable of 5 en-route rows)")
-    c.near(av(rows, "jammed"), 100 / 3, 1e-6, "availability while jammed (1 of 3)")
-    c.eq(gap(rows), 2, "longest_gap_s (rows 3 and 4)")
-    c.eq(gap([row(0), row(1)]), 0, "longest_gap_s with no gap")
-
-
-@c.test("baseline_errors(): repeat the last GPS position during the jam",
-        hint="1) index of the first row with gps_mode 'jammed'; 2) the last navera position with source GPS "
-             "before it; 3) for each jammed en-route row: haversine_m(truth, that position).")
-def _():
-    (be,) = need(M(), "baseline_errors")
-    d = 1 / 111195.0
-    rows = [row(0, tlat=35.80, nlat=35.80), row(1, tlat=35.80 + 10 * d, nlat=35.80 + 10 * d),
-            row(2, gps="jammed", source="DAY VISION", tlat=35.80 + 20 * d),
-            row(3, gps="jammed", source="DAY VISION", tlat=35.80 + 30 * d), row(4, tlat=35.80 + 40 * d)]
-    out = be(rows)
-    c.ok(isinstance(out, list) and len(out) == 2, f"baseline_errors() should give 2 pairs here, got {out!r}")
-    c.near(out[0][1], 10.0, 0.1, "baseline error 1 s into the jam (the last GPS position was at 10 m)")
-    c.near(out[1][1], 20.0, 0.1, "baseline error 2 s into the jam")
-    c.eq(be([row(0), row(1)]), [], "baseline_errors() without a jam")
-
-
-@c.test("bootstrap_ci(): iid percentile bootstrap (the 12-error demo)",
-        hint="rng = np.random.default_rng(seed); B times: idx = rng.integers(0, n, size=n), stat(x[idx]); "
-             "then np.percentile(reps, [2.5, 97.5]). Run python3 bootstrap.py and compare with the lesson.")
-def _():
-    (bci,) = need(BS(), "bootstrap_ci")
-    import numpy as np
-    lo, hi = pair(bci(DEMO, np.median), "bootstrap_ci(demo, np.median)")
-    c.near(lo, 3.05, 0.15, "CI of the median, lower end")
-    c.near(hi, 5.40, 0.15, "CI of the median, upper end")
-    lo, hi = pair(bci(DEMO, np.mean), "bootstrap_ci(demo, np.mean)")
-    c.near(lo, 3.46, 0.3, "CI of the mean, lower end")
-    c.near(hi, 10.99, 0.5, "CI of the mean, upper end (pulled by the 31 m outlier)")
-    c.eq(tuple(bci(DEMO, np.mean, seed=7)), tuple(bci(DEMO, np.mean, seed=7)), "two calls with the same seed")
-    lo, hi = pair(bci([4.0] * 20, np.median), "bootstrap_ci(constant data)")
-    c.ok(lo == hi == 4.0, f"constant data must give the interval (4, 4), got ({lo}, {hi})")
-
-
-@c.test("bootstrap_ci(block=10): moving blocks are wider on a trending series",
-        hint="k = ceil(n / block) starts from rng.integers(0, n - block + 1, size=k); each start s gives "
-             "s, s+1, ..., s+block-1; join them (np.concatenate) and keep the first n.")
-def _():
-    (bci,) = need(BS(), "bootstrap_ci")
-    import numpy as np
-    ramp = list(range(60))
-    lo1, hi1 = pair(bci(ramp, np.median), "bootstrap_ci(ramp)")
-    lo2, hi2 = pair(bci(ramp, np.median, block=10), "bootstrap_ci(ramp, block=10)")
-    c.near(hi1 - lo1, 14.5, 3.0, "width of the iid CI of the median of 0..59")
-    c.near(hi2 - lo2, 31.5, 5.0, "width of the block-10 CI of the median of 0..59")
-    lo3, hi3 = pair(bci(ramp, np.median, block=60), "bootstrap_ci(ramp, block=60)")
-    c.ok(lo3 == hi3, "with block = n there is only one possible resample (the data itself): zero width")
-
-
-@c.test("paired_diff_ci() and wilson()",
-        hint="Paired: the SAME idx for a and b in each resample. Wilson: follow the 3 lines of the docstring.")
-def _():
-    pdc, wil = need(BS(), "paired_diff_ci", "wilson")
-    import numpy as np
-    b = np.array(DEMO) * 10
-    lo, hi = pair(pdc(b + 5.0, b, np.mean), "paired_diff_ci(b + 5, b)")
-    c.ok(abs(lo - 5) < 1e-9 and abs(hi - 5) < 1e-9,
-         f"a = b + 5 exactly: a paired CI must be (5, 5), got ({lo:.2f}, {hi:.2f}) — are you using the same "
-         "indices for a and b?")
-    lo, hi = pair(wil(32, 33), "wilson(32, 33)")
-    c.near(lo, 0.8468, 1e-3, "wilson(32, 33) lower")
-    c.near(hi, 0.9946, 1e-3, "wilson(32, 33) upper")
-    lo, hi = pair(wil(0, 10), "wilson(0, 10)")
-    c.near(lo, 0.0, 1e-9, "wilson(0, 10) lower")
-    c.near(hi, 0.2775, 1e-3, "wilson(0, 10) upper")
-
-
-@c.test("coverage(): the experiment runs, and coverage.json shows the correlation effect",
-        hint="Run python3 bootstrap.py --coverage after TODO 10. iid errors should give ~95 %; correlated "
-             "errors with an iid bootstrap much less; blocks should help.")
-def _():
-    (cov,) = need(BS(), "coverage")
-    v = cov(trials=40, n=30, rho=0.0, B=200)
-    c.near(v, 0.94, 0.09, "coverage(trials=40, n=30, rho=0, B=200)")
-    if not os.path.exists("coverage.json"):
-        raise CheckFailed("coverage.json does not exist yet: run python3 bootstrap.py --coverage")
-    d = json.load(open("coverage.json"))
-    for k in ("iid_n30", "iid_n60", "corr_n60_iid", "corr_n60_block10"):
-        c.ok(isinstance(d.get(k), (int, float)), f"coverage.json: {k} is {d.get(k)!r} — run it again after TODO 10")
-    c.ok(0.88 <= d["iid_n30"] <= 0.99 and 0.88 <= d["iid_n60"] <= 0.99,
-         f"independent errors: coverage should be close to 95 %, got {d['iid_n30']}, {d['iid_n60']}")
-    c.ok(d["corr_n60_iid"] < 0.8, f"correlated errors + iid bootstrap: {d['corr_n60_iid']} (expected well below 95 %)")
-    c.ok(d["corr_n60_block10"] > d["corr_n60_iid"] + 0.05, "the block bootstrap should cover more often than iid")
-
-
-def results(name):
-    p = f"results_{name}.json"
-    if not os.path.exists(p):
-        raise CheckFailed(f"{p} does not exist yet: run python3 measure.py {DATA}/{name}.csv")
-    with open(p) as f:
-        return json.load(f)
-
-
-@c.test("results_flight_*.json: errors, baseline, availability and gap of the three flights",
-        hint=f"Run `python3 measure.py {DATA}/flight_*.csv` after TODO 1–5 (all three flights).")
-def _():
-    for name in FLIGHTS:
-        r, e = results(name), EXPECT[name]
-        for part in ("all", "jam", "baseline"):
-            got = r.get(part) or {}
-            c.ok(got.get("n") == e[part]["n"], f"{name} {part}: n = {got.get('n')}, expected {e[part]['n']}")
-            for k in ("cep50", "rmse", "cep95", "max"):
-                c.near(got.get(k), e[part][k], max(0.5, 0.01 * e[part][k]), f"{name} {part} {k} (m)")
-        for k in ("availability_pct", "availability_jam_pct"):
-            c.near(r.get(k), e[k], 0.2, f"{name} {k}")
-        c.eq(r.get("longest_gap_s"), e["longest_gap_s"], f"{name} longest_gap_s")
-
-
-@c.test("results_flight_*.json: the 95 % confidence intervals",
-        hint="measure.py calls your bootstrap_ci and paired_diff_ci (block 10 s): finish TODO 7–8, then run "
-             "measure.py on the three flights again.")
-def _():
-    for name in FLIGHTS:
-        ci = results(name).get("ci") or {}
-        for k, (wlo, whi) in EXPECT[name]["ci"].items():
-            lo, hi = pair(ci.get(k), f"{name} ci.{k}")
-            tol = max(2.0, 0.12 * (whi - wlo))
-            c.ok(abs(lo - wlo) <= tol and abs(hi - whi) <= tol,
-                 f"{name} ci.{k} = [{lo:.1f}, {hi:.1f}], expected about [{wlo}, {whi}]")
-
-
-@c.test("the three plots exist, with the baseline (TODO 6)",
-        hint="Run measure.py on the three flights; TODO 6 draws the baseline with ax.plot(..., '-', color='#dc2626').")
-def _():
-    for n in FLIGHTS:
-        c.file_exists(f"error_{n}.png")
-    src = open("measure.py").read()
-    todo6 = src[src.find("TODO 6"):src.find("ax.axvspan")]
-    c.ok("ax.plot" in todo6, "TODO 6: the baseline line is not drawn yet")
-
-
-ANSWERS = {"Q1": "b", "Q2": "c", "Q3": "a", "Q4": "c", "Q5": "a"}
-
-
-@c.test("answers.py: reading your numbers and evaluate_session.py",
-        hint="Q6 and Q7 are in the 'stated accuracy vs truth' table of evaluate_session.py; Q8 is 100 × the lower "
-             "end of wilson(32, 33).")
-def _():
-    m = load_student("answers.py")
-    wrong = []
-    for q, good in ANSWERS.items():
-        (v,) = need(m, q)
-        v = str(v).strip().lower().strip(")")
-        if v != good:
-            wrong.append(f"{q} = {v!r}" if v else f"{q} is empty")
-    for q, good, tol in (("Q6", 59.0, 1.5), ("Q7", 21.0, 1.0), ("Q8", 84.7, 0.2)):
-        (v,) = need(m, q)
+    m, f = todo("navera_lite.stats", "percentile", 2)
+    for case in CASES["percentile"]:
+        got = go(f, list(case["v"]), case["q"])
         try:
-            ok = math.isfinite(float(v)) and abs(float(v) - good) <= tol
+            g = float(got)
         except (TypeError, ValueError):
-            ok = False
-        if not ok:
-            wrong.append(f"{q} = {v!r}")
-    c.ok(not wrong, "not right yet: " + ", ".join(wrong))
+            raise CheckFailed(f"percentile() must return a number, got {got!r}")
+        if abs(g - case["want"]) > 1e-6 * max(1, abs(case["want"])):
+            v = case["v"]
+            shown = v if len(v) <= 11 else f"{len(v)} values"
+            near = sorted(v)[min(len(v) - 1, int(round(case["q"] / 100 * (len(v) - 1))))]
+            tip = (" — you returned the nearest sample: interpolate between the two neighbours (lesson §2)"
+                   if abs(g - near) < 1e-9 else " — did you sort the values first? Is the position (n − 1)·q/100?")
+            raise CheckFailed(f"percentile({shown}, {case['q']}) = {g:.6g}: not right{tip}")
+    raise_value_error(lambda: go(f, [], 50), "percentile([], 50)", "an empty sequence has no percentile")
+
+
+@c.test("TODO 3 — summary() on unseen errors (an outlier, one value, none)",
+        hint="Seven keys n, mean, median, p90, p95, max, rmse; percentiles with YOUR percentile(); "
+             "rmse = sqrt(mean of the squares); for an empty list {'n': 0} and None for the others.")
+def _():
+    m, f = todo("navera_lite.stats", "summary", 3)
+    for case in CASES["summary"]:
+        s = go(f, list(case["v"]))
+        c.ok(isinstance(s, dict), f"summary() must return a dict, got {type(s).__name__}")
+        for k, w in case["want"].items():
+            c.ok(k in s, f"summary() has no key {k!r} (keys: n, mean, median, p90, p95, max, rmse)")
+            if k == "n":
+                c.eq(s[k], w, f"summary({len(case['v'])} errors)['n']")
+            else:
+                hint = (" — rmse is the square root of the MEAN of the squares (not the sum, not the std)"
+                        if k == "rmse" else "")
+                if s[k] is None or abs(float(s[k]) - w) > 1e-3 * max(1, abs(w)):
+                    raise CheckFailed(f"summary(...)['{k}'] = {s[k]!r} for {len(case['v'])} errors: not right{hint}")
+    s = go(f, [])
+    c.ok(isinstance(s, dict) and s.get("n") == 0 and all(s.get(k) is None for k in ("mean", "median", "max", "rmse")),
+         f"summary([]) must be n 0 and None for the other keys, got {s!r:.120}")
+
+
+@c.test("TODO 4–5 — availability() and longest_gap_s() on an unseen 0.5 s table",
+        hint="A usable row: a state in ok AND a position (usable_mask() does both). A gap of rows i0..i1−1 lasts "
+             "t_s[i1−1] − t_s[i0] + dt_s; mission 04's outage_runs() finds the runs, also one that lasts to the end.")
+def _():
+    m, fa = todo("navera_lite.stats", "availability", 4)
+    _, fg = todo("navera_lite.stats", "longest_gap_s", 5)
+    d = CASES["avail"]
+    t = table(d["table"])
+    c.near(go(fa, t), d["availability"], 1e-6, "availability (5 usable rows of 13: a DEGRADED row without a position "
+                                               "is not usable)")
+    c.near(go(fa, t, ok=("FIX",)), d["availability_fix_only"], 1e-6, "availability(…, ok=('FIX',))")
+    g = go(fg, t, dt_s=0.5)
+    if isinstance(g, (int, float)) and abs(g - 1.5) < 1e-9:
+        raise CheckFailed("longest_gap_s(…, dt_s=0.5) = 1.5: the longest gap is the one that lasts until the END of "
+                          "the table (4 rows, 2.0 s) — is a run at the end closed?")
+    c.near(g, d["gap"], 1e-6, "longest_gap_s(…, dt_s=0.5) (use dt_s, not 1)")
+    c.near(go(fg, t.iloc[:6], dt_s=0.5), d["gap_first5"], 1e-6, "longest_gap_s of the first 6 rows")
+
+
+@c.test("TODO A — last_fix_baseline() on an unseen flight (London; a vision row just before the jam)",
+        hint="The frozen position is the judge's last position whose source is 'gps' BEFORE the first jammed row "
+             "(not the truth, not the last row); one error per jammed row: haversine_m(truth, frozen).")
+def _():
+    m, f = todo("baseline", "last_fix_baseline", "A", where="baseline.py")
+    d = CASES["baseline"]
+    got = as_array(go(f, table(d["table"])), "last_fix_baseline()")
+    want = d["want"]
+    c.ok(len(got) == len(want), f"last_fix_baseline() gave {len(got)} values: one per jammed row ({len(want)} here)")
+    if all(abs(g - w) <= 0.05 for g, w in zip(got, want)):
+        return
+    if abs(got[0] - 40.0) < 0.5:
+        raise CheckFailed("the first baseline error is 40.0 m: you froze the TRUE position; the baseline repeats the "
+                          "position the judge GAVE (lat, lon of the last row whose source is gps)")
+    if abs(got[0] - 80.2) < 1.0:
+        raise CheckFailed("the first baseline error is about 80 m: you froze the last row before the jam, which is a "
+                          "day-vision position; the baseline is the last position whose source is 'gps'")
+    raise CheckFailed(f"the baseline errors start {got[0]:.1f}, {got[1]:.1f} m: not right — the frozen position is the "
+                      "judge's last 'gps' position before the FIRST jammed row; one error per jammed row")
+
+
+def results(part):
+    if not os.path.exists("results.json"):
+        raise CheckFailed("results.json does not exist yet: run python3 measure_lab.py flights")
+    try:
+        r = json.load(open("results.json"))
+    except json.JSONDecodeError:
+        raise CheckFailed("results.json is not valid JSON: run measure_lab.py again")
+    if part not in r:
+        cmd = {"flights": "flights", "ci": "ci"}[part]
+        raise CheckFailed(f"results.json has no '{part}' part yet: run python3 measure_lab.py {cmd}")
+    return r[part]
+
+
+@c.test("Step 3 — results.json: the three flights (errors, baseline, availability, gaps)",
+        hint="Run python3 measure_lab.py flights after TODO 1–5 and TODO A.")
+def _():
+    fl = results("flights")
+    for name in FLIGHTS:
+        got, want = fl.get(name) or {}, CASES["flights"][name]
+        for part in ("all", "jam", "baseline"):
+            g, w = got.get(part) or {}, want[part]
+            c.ok(g.get("n") == w["n"], f"{name} {part}: n = {g.get('n')}, not right — run measure_lab.py flights again "
+                                       "after fixing TODO 1 / A")
+            for k in ("median", "p90", "rmse", "max"):
+                if g.get(k) is None or abs(float(g[k]) - w[k]) > max(0.05, 1e-3 * w[k]):
+                    raise CheckFailed(f"{name} {part} {k} = {g.get(k)!r}: not right — run measure_lab.py flights again")
+        for k in ("availability", "availability_jam"):
+            c.near(got.get(k), want[k], 1e-3, f"{name} {k}")
+        for k in ("longest_gap_s", "longest_gap_jam_s"):
+            c.near(got.get(k), want[k], 1e-6, f"{name} {k}")
+
+
+@c.test("Steps 0–4 — answers.py: your numbers and explanations",
+        hint="PREDICT_BEAT before Step 3; the numbers come from measure_lab.py flights; EXPLAIN_SELECTIVE: the "
+             "seconds it chose and the availability; EXPLAIN_MAX: the old position over the lake; EXPLAIN_RULE: "
+             "interpolation vs a sample.")
+def _():
+    a = quiet("answers.py")
+    v = need(a, "PREDICT_BEAT", "RETR_JAM_MEDIAN_M", "BASE_JAM_MEDIAN_M", "TARGET_LONGEST_GAP_S", "EXPLAIN_MAX",
+             "SELECTIVE_JAM_MEDIAN_M", "SELECTIVE_JAM_AVAIL_PCT", "EXPLAIN_SELECTIVE", "EXPLAIN_RULE")
+    predicted("PREDICT_BEAT", v[0])
+    F = CASES["flights"]
+    for name, got, want, tol in (("RETR_JAM_MEDIAN_M", v[1], F["retrieval"]["jam"]["median"], 1.0),
+                                 ("BASE_JAM_MEDIAN_M", v[2], F["retrieval"]["baseline"]["median"], 1.0),
+                                 ("TARGET_LONGEST_GAP_S", v[3], F["target"]["longest_gap_s"], 0.01),
+                                 ("SELECTIVE_JAM_MEDIAN_M", v[5], F["selective"]["jam"]["median"], 1.0),
+                                 ("SELECTIVE_JAM_AVAIL_PCT", v[6], 100 * F["selective"]["availability_jam"], 0.6)):
+        if isinstance(got, (int, float)) and got == -1:
+            raise CheckFailed(f"{name} is still -1: copy the number from measure_lab.py flights")
+        c.near(got, want, tol, name)
+    explained("EXPLAIN_MAX", v[4], ([r"stale", r"\bold", r"age", r"5 ?s", r"timeout", r"last (stored )?fix", r"kept"],
+                                    "that the judge kept giving an OLD position"),
+              ([r"lake", r"no match", r"gap", r"missed", r"no (vision|new) fix", r"water"], "why there was no new fix"))
+    explained("EXPLAIN_SELECTIVE", v[7], ([r"availab", r"3[12] ?%", r"19", r"gap", r"no position", r"missing"],
+                                          "what it costs (availability, gaps)"),
+              ([r"withh", r"remov", r"chose", r"only", r"condition", r"easy", r"delet", r"select", r"good (ones|seconds)"],
+               "why its median looks better"))
+    explained("EXPLAIN_RULE", v[8], ([r"interpol", r"between", r"halfway"], "what the linear rule does"),
+              ([r"sample", r"one of the", r"nearest", r"exact", r"position 25", r"index"],
+               "why the median is the same (it falls on a sample)"))
+
+
+# ================================================================ Session 2 — error bars
+def stats_np(m):
+    """numpy as the student's module sees it (its functions run in the student's process)."""
+    return m.np
+
+
+@c.test("TODO 6 — bootstrap_ci(): an iid percentile bootstrap that behaves like one",
+        hint="B resamples of len(x) values drawn with replacement (rng = np.random.default_rng(seed)); stat of each; "
+             "the alpha/2 and 1 − alpha/2 percentiles of the B results. Same seed → same interval.")
+def _():
+    m, f = todo("navera_lite.stats", "bootstrap_ci", 6)
+    npx = stats_np(m)
+    lo, hi = pair(go(f, [7.5] * 15, npx.median), "bootstrap_ci(15 × 7.5, median)")
+    c.ok(lo == hi == 7.5, f"constant data must give (7.5, 7.5), got ({lo}, {hi})")
+    x = np.random.default_rng(3271).normal(10.0, 3.0, 400)
+    se = x.std() / math.sqrt(len(x))
+    lo, hi = pair(go(f, x, npx.mean, B=2000, seed=5, seconds=60), "bootstrap_ci(400 values, mean)")
+    for end, got, want in (("lower", lo, x.mean() - 1.96 * se), ("upper", hi, x.mean() + 1.96 * se)):
+        if abs(got - want) > 0.07:
+            width = hi - lo
+            tip = (f" — your interval is {width:.3f} wide, about {width / (2 * 1.96 * se):.1f}× the right width: "
+                   "resample len(x) values each time, with replacement, and take the 2.5 and 97.5 percentiles")
+            raise CheckFailed(f"the {end} end of the 95 % interval of the mean of 400 values is {got:.3f}: not right{tip}")
+    n_len = pair(go(f, x[:37], len, B=50, seed=1), "bootstrap_ci(37 values, len)")
+    c.ok(n_len == (37.0, 37.0), f"every resample must have len(x) values: stat = len gave {n_len}, not (37, 37)")
+    a1 = pair(go(f, x[:50], npx.median, B=500, seed=9), "seed 9")
+    a2 = pair(go(f, x[:50], npx.median, B=500, seed=9), "seed 9 again")
+    a3 = pair(go(f, x[:50], npx.median, B=500, seed=10), "seed 10")
+    c.ok(a1 == a2, f"the same seed must give the same interval: {a1} then {a2} — make the generator from seed, inside "
+                   "the function")
+    c.ok(a1 != a3, "seeds 9 and 10 gave exactly the same interval: is the seed used?")
+    n90 = pair(go(f, x, npx.mean, B=2000, seed=5, alpha=0.10, seconds=60), "alpha 0.10")
+    c.ok(n90[1] - n90[0] < 0.9 * (hi - lo), "alpha = 0.10 (a 90 % interval) must be narrower than the 95 % one: use "
+                                            "alpha/2 and 1 − alpha/2")
+
+
+@c.test("TODO 6 — bootstrap_ci(block=L): moving blocks that never wrap, cut to len(x)",
+        hint="Runs of L consecutive values starting anywhere from 0 to len(x) − L; join enough runs, cut to len(x). "
+             "block=len(x) leaves one possible run: the data itself. ValueError outside 1 … len(x).")
+def _():
+    m, f = todo("navera_lite.stats", "bootstrap_ci", 6)
+    npx = stats_np(m)
+    ramp = list(range(40))
+    first = pair(go(f, ramp, lambda v: v[0], B=60, seed=3, block=40), "bootstrap_ci(0..39, first value, block=40)")
+    c.ok(first == (0.0, 0.0), f"block = len(x): the only run starts at 0, so the first value is always 0; got {first} "
+                              "— do your runs wrap around the end, or start beyond len(x) − L?")
+    c.ok(pair(go(f, ramp[:37], len, B=40, seed=3, block=10), "block 10, stat len") == (37.0, 37.0),
+         "with blocks of 10 on 37 values the resample must still have 37 values: cut the joined runs to len(x)")
+    for bad in (0, 41):
+        raise_value_error(lambda: go(f, ramp, npx.median, block=bad), f"bootstrap_ci(…, block={bad})",
+                          "block must be 1 … len(x)")
+    e = np.empty(300)
+    g = np.random.default_rng(3272)
+    e[0] = 0.0
+    for i in range(1, 300):
+        e[i] = 0.95 * e[i - 1] + g.normal()
+    iid = pair(go(f, e, npx.mean, B=1000, seed=4, seconds=60), "iid on correlated data")
+    blk = pair(go(f, e, npx.mean, B=1000, seed=4, block=30, seconds=60), "block 30 on correlated data")
+    c.ok(blk[1] - blk[0] > 2.0 * (iid[1] - iid[0]),
+         f"on strongly correlated data the block interval must be much wider than the iid one: "
+         f"{blk[1] - blk[0]:.2f} vs {iid[1] - iid[0]:.2f} — are your runs made of CONSECUTIVE values?")
+
+
+@c.test("TODO 7 — paired_diff_ci(): the SAME indices for a and b",
+        hint="Each resample picks one set of indices and uses it for a AND b: stat(a[idx]) − stat(b[idx]). "
+             "Different lengths: ValueError.")
+def _():
+    m, f = todo("navera_lite.stats", "paired_diff_ci", 7)
+    npx = stats_np(m)
+    g = np.random.default_rng(3273)
+    b = g.normal(300.0, 100.0, 50)
+    for shift in (5.0, -3.0):
+        lo, hi = pair(go(f, b + shift, b, npx.mean, B=300, seed=2), f"paired_diff_ci(b {shift:+g}, b)")
+        if abs(lo - shift) > 1e-6 or abs(hi - shift) > 1e-6:
+            tip = (" — the sign: the difference is stat(a) − stat(b)" if abs(lo + shift) < 1e-6 else
+                   " — use the SAME indices for a and b in each resample")
+            raise CheckFailed(f"a = b {shift:+g} everywhere must give exactly ({shift:g}, {shift:g}), got "
+                              f"({lo:.3f}, {hi:.3f}){tip}")
+    a = b + g.normal(2.0, 1.0, 50)
+    lo, hi = pair(go(f, a, b, npx.mean, B=1000, seed=2), "paired_diff_ci(a, b)")
+    c.ok(hi - lo < 2.0, f"a and b differ by 2 ± 1 m at each instant: the paired interval must be narrow (about 0.6 m), "
+                        f"yours is {hi - lo:.1f} m wide — are the indices the same for a and b?")
+    c.ok(lo < 2.0 < hi + 0.3 and lo > 1.0, f"the interval ({lo:.2f}, {hi:.2f}) should be around 2")
+    blk = pair(go(f, a, b, npx.mean, B=300, seed=2, block=5), "paired_diff_ci(…, block=5)")
+    c.ok(blk[1] - blk[0] < 3.0, "with block=5 the pairs must stay together too")
+    raise_value_error(lambda: go(f, a[:10], b[:9], npx.mean), "paired_diff_ci(10 values, 9 values)",
+                      "a and b must have the same length")
+
+
+@c.test("TODO 8 — wilson() on unseen counts (0 of n, n of n, z = 2.576)",
+        hint="centre = (p + z²/2n) / (1 + z²/n); half = z/(1 + z²/n) · sqrt(p(1−p)/n + z²/4n²) (lesson §7). "
+             "ValueError for k > n or n < 1.")
+def _():
+    m, f = todo("navera_lite.stats", "wilson", 8)
+    for case in CASES["wilson"] + [CASES["wilson_z"]]:
+        args = (case["k"], case["n"]) + ((case["z"],) if "z" in case else ())
+        lo, hi = pair(go(f, *args), f"wilson{args}")
+        for end, g, w in (("lower", lo, case["want"][0]), ("upper", hi, case["want"][1])):
+            if abs(g - w) > 1e-4:
+                p, z = case["k"] / case["n"], case.get("z", 1.96)
+                half = z * math.sqrt(p * (1 - p) / case["n"])
+                naive = p - half if end == "lower" else p + half
+                tip = " — that is the naive p ± z·SE, not Wilson (lesson §7)" if abs(g - naive) < 1e-4 else ""
+                raise CheckFailed(f"wilson{args} {end} end = {g:.4f}: not right (a share between 0 and 1){tip}")
+    for bad in ((5, 4), (1, 0)):
+        raise_value_error(lambda: go(f, *bad), f"wilson{bad}", "0 ≤ k ≤ n and n ≥ 1")
+
+
+@c.test("TODO 9 — coverage_experiment() with experiments it has never seen",
+        hint="ONE generator rng = np.random.default_rng(seed), made before the loop; each trial: sample = "
+             "make_sample(rng), (lo, hi) = ci_of(sample, rng), a hit if lo ≤ true_value ≤ hi; return hits / trials.")
+def _():
+    m, f = todo("navera_lite.stats", "coverage_experiment", 9)
+    want = CASES["coverage"]
+    v = go(f, lambda g: g.normal(0.0, 1.0, 3), lambda s, g: (float(np.min(s)), float(np.max(s))), 0.0,
+           trials=60, seed=7, seconds=60)
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        raise CheckFailed(f"coverage_experiment() must return a share (a number), got {v!r:.60}")
+    if v > 1.0:
+        raise CheckFailed(f"coverage_experiment() returned {v:g}: a SHARE between 0 and 1 (hits / trials), not a count")
+    if abs(v - want["minmax"]) > 1e-9:
+        raise CheckFailed(f"coverage_experiment() = {v:.4f} on 60 trials (seed 7): not right — make the generator ONCE "
+                          "from seed, before the loop, and give the same one to make_sample and to ci_of")
+    v = float(go(f, lambda g: g.normal(0.0, 1.0, 4),
+                 lambda s, g: (float(np.mean(s) - g.uniform(0, 1)), float(np.mean(s) + g.uniform(0, 1))),
+                 0.0, trials=50, seed=11, seconds=60))
+    c.ok(abs(v - want["shared"]) < 1e-9, f"coverage_experiment() = {v:.4f} when ci_of also draws from rng: not right "
+                                         "— ci_of must receive the SAME generator as make_sample (not a new one)")
+
+
+@c.test("Steps 6 and 8 — results.json intervals and coverage.json",
+        hint="Run python3 measure_lab.py ci and python3 measure_lab.py coverage after TODO 6–9.")
+def _():
+    ci = results("ci")
+    for name in FLIGHTS:
+        got, want = ci.get(name) or {}, CASES["ci"][name]
+        for k, (wlo, whi) in want.items():
+            lo, hi = pair(got.get(k), f"results.json ci.{name}.{k}")
+            tol = max(3.0, 0.12 * (whi - wlo))
+            if abs(lo - wlo) > tol or abs(hi - whi) > tol:
+                raise CheckFailed(f"ci.{name}.{k} = [{lo:.1f}, {hi:.1f}]: too far from the right interval (± {tol:.0f} m)"
+                                  " — run measure_lab.py ci again after fixing TODO 6–7")
+    c.ok(ci.get("selective", {}).get("jam_median_block10") is None, "selective: the block interval must be n/a (null)")
+    if not os.path.exists("coverage.json"):
+        raise CheckFailed("coverage.json does not exist yet: run python3 measure_lab.py coverage")
+    d = json.load(open("coverage.json"))
+    keys = ("iid_n60_iid", "ar09_n60_iid", "ar09_n60_block10", "wald_n33_p097", "wilson_n33_p097")
+    for k in keys:
+        c.ok(isinstance(d.get(k), (int, float)), f"coverage.json: {k} is {d.get(k)!r} — run the coverage again")
+    c.ok(0.88 <= d["iid_n60_iid"] <= 1.0, f"independent errors: coverage {d['iid_n60_iid']} should be close to 0.95")
+    c.ok(d["ar09_n60_iid"] < 0.8, f"correlated errors + iid bootstrap: {d['ar09_n60_iid']} — expected well below 0.95")
+    c.ok(d["ar09_n60_block10"] > d["ar09_n60_iid"] + 0.05, "the block bootstrap should cover clearly more often")
+    c.ok(d["wald_n33_p097"] < 0.8 and d["wilson_n33_p097"] > 0.85,
+         f"Wald {d['wald_n33_p097']} / Wilson {d['wilson_n33_p097']}: Wilson must cover far more often")
+
+
+@c.test("Steps 6–9 — answers.py: intervals, success rates, coverage and the stated σ",
+        hint="EXPLAIN_PAIRED quotes the interval and says whether it contains 0; WILSON_LO_PCT / ZERO_UPPER_PCT from "
+             "measure_lab.py wilson; HONEST_SIGMA_DAY_M and DAY_WITHIN_2SIGMA_PCT from evaluate_bag with --truth.")
+def _():
+    a = quiet("answers.py")
+    v = need(a, "PREDICT_BLOCK", "EXPLAIN_PAIRED", "EXPLAIN_SELECTIVE_CI", "WILSON_LO_PCT", "ZERO_UPPER_PCT",
+             "PREDICT_COVERAGE", "EXPLAIN_COVERAGE", "HONEST_SIGMA_DAY_M", "DAY_WITHIN_2SIGMA_PCT", "EXPLAIN_GPS_STATED")
+    predicted("PREDICT_BLOCK", v[0])
+    predicted("PREDICT_COVERAGE", v[5])
+    explained("EXPLAIN_PAIRED", v[1], ([r"contain", r"includ", r"\b0\b", r"zero", r"cross"], "whether it contains 0"),
+              ([r"not (shown|proved|significant|better)", r"cannot", r"can't", r"no (evidence|significant|proof)",
+                r"noise", r"not sure", r"not possible"], "what you may (not) claim"))
+    explained("EXPLAIN_SELECTIVE_CI", v[2], ([r"chose", r"chosen", r"select", r"own", r"19", r"only", r"withh",
+                                              r"good seconds", r"easy", r"condition"], "which seconds were compared"),
+              ([r"availab", r"missing", r"gap", r"41", r"no position", r"other seconds", r"rest"],
+               "what the comparison leaves out"))
+    for name, got, want, tol in (("WILSON_LO_PCT", v[3], 84.68, 0.15), ("ZERO_UPPER_PCT", v[4], 10.43, 0.15),
+                                 ("HONEST_SIGMA_DAY_M", v[7], CASES["bag"]["day_honest_true"], 0.15),
+                                 ("DAY_WITHIN_2SIGMA_PCT", v[8], CASES["bag"]["day_within2_pct"], 1.0)):
+        if isinstance(got, (int, float)) and got == -1:
+            raise CheckFailed(f"{name} is still -1")
+        if name.endswith("PCT") and isinstance(got, (int, float)) and 0 < got < 1:
+            raise CheckFailed(f"{name} = {got}: write it in % (e.g. 84.7), not as a share")
+        c.near(got, want, tol, name)
+    explained("EXPLAIN_COVERAGE", v[6], ([r"correlat", r"depend", r"neighbou?r", r"consecutive", r"ρ", r"rho",
+                                          r"similar", r"not independent"], "that the errors are correlated"),
+              ([r"fewer", r"effective", r"less information", r"n_?eff", r"too narrow", r"narrow", r"few (independent|blocks)",
+                r"6 blocks", r"only \d+ blocks"], "why the interval is too narrow"))
+    explained("EXPLAIN_GPS_STATED", v[9], ([r"pessimis", r"conservativ", r"cautious", r"overstat", r"too (large|big|high)",
+                                            r"larger", r"bigger", r"safe", r"overestimat", r"more accurate than"],
+                                           "which way the GPS's statement is wrong, and why it is the safer side"))
 
 
 def section(text, title):
-    m = re.search(r"^## " + re.escape(title) + r".*?$(.*?)(?=^## |\Z)", text, re.S | re.M)
-    return m.group(1) if m else ""
+    mm = re.search(r"^## " + re.escape(title) + r".*?$(.*?)(?=^## |\Z)", text, re.S | re.M)
+    return mm.group(1) if mm else ""
 
 
-def graded_text():
-    """report.md without the instructions above its first heading (they quote the placeholders)."""
-    if not os.path.exists("report.md"):
-        return ""
-    text = open("report.md", encoding="utf-8", errors="replace").read()
-    first = text.find("\n## ")
-    return text[first:] if first >= 0 else text
-
-
-@c.test("report.md: complete, with your numbers and confidence intervals",
-        hint="No '(fill in' paragraph and no '(m)', '(%)', '(s)', '[lo, hi]' cell left; the jam CEP50 of the target "
-             "and measured flights, the CI of the measured flight's difference, and the selective flight's "
-             "availability while jammed — all rounded to whole numbers.")
+@c.test("Step 10 — report.md: the validation note, with your numbers and their intervals",
+        hint="No '(fill in' and no '…' left; the jam medians (target, retrieval, baseline), the selective flight's "
+             "availability, your retrieval block interval of the difference, the honest σ; sections 3 (40+ words), "
+             "4 (25+), 5 (60+), 6 (80+); name the baseline, the confidence interval, availability, synthetic/simulated "
+             "and Sousse.")
 def _():
     c.file_exists("report.md")
-    text = graded_text()
-    left = [p for p in ("(fill in", "(m)", "(%)", "(s)", "[lo, hi]") if p in text]
+    text = open("report.md", encoding="utf-8", errors="replace").read()
+    first = text.find("\n## ")
+    body = text[first:] if first >= 0 else text
+    left = [p for p in ("(fill in", "…") if p in body]
     c.ok(not left, f"placeholders still there: {left}")
-    nums = [float(x) for x in re.findall(r"-?\d+(?:\.\d+)?", text.replace("−", "-"))]
+    nums = [float(x) for x in re.findall(r"-?\d+(?:\.\d+)?", body.replace("−", "-"))]
 
     def has(v, tol=1.0):
-        return any(abs(n - v) <= tol for n in nums)
-    c.ok(has(round(EXPECT["flight_target"]["jam"]["cep50"])), "the target flight's jam CEP50 (≈ 20 m) is missing")
-    c.ok(has(round(EXPECT["flight_measured"]["jam"]["cep50"])), "the measured flight's jam CEP50 (≈ 430 m) is missing")
-    c.ok(has(round(EXPECT["flight_selective"]["availability_jam_pct"])),
-         "the selective flight's availability while jammed (≈ 23 %) is missing")
-    mine = (results("flight_measured").get("ci") or {}).get("diff_cep50_block")
-    lo, hi = pair(mine, "your flight_measured ci.diff_cep50_block")
-    c.ok(has(round(lo)) and has(round(hi)),
-         f"the CI of the difference for the measured flight (your [{lo:.0f}, {hi:.0f}]) is not in the report")
-
-
-@c.test("report.md: an honest analysis (difference, validity, conclusion)",
-        hint="Sections 'Is the difference real?', 'Validity: simulation vs field' (60+ words) and 'Conclusion' "
-             "(100+ words); name the baseline, the confidence interval, availability, and say the flights are "
-             "simulated over Sousse.")
-def _():
-    text = graded_text()
-    c.ok(text and "(fill in" not in text, "write your own text in place of the '(fill in …)' paragraphs first")
-    diff, val, concl = (section(text, t) for t in ("Is the difference real?", "Validity", "Conclusion"))
-    c.ok(len(diff.split()) >= 40, f"'Is the difference real?' has {len(diff.split())} words (at least 40)")
-    c.ok(len(val.split()) >= 60, f"'Validity' has {len(val.split())} words (at least 60)")
-    c.ok(len(concl.split()) >= 100, f"the conclusion has {len(concl.split())} words (at least 100)")
-    low = text.lower()
-    for word, why in (("baseline", "the baseline"), ("confidence interval", "the confidence interval"),
-                      ("availab", "availability"), ("simulat", "that the flights are simulated"),
-                      ("sousse", "where they were flown (Sousse)")):
+        return any(abs(n - v) <= tol for n in nums) or any(abs(abs(n) - abs(v)) <= tol for n in nums)
+    F = CASES["flights"]
+    for what, val in (("the target flight's jam median", F["target"]["jam"]["median"]),
+                      ("the retrieval flight's jam median", F["retrieval"]["jam"]["median"]),
+                      ("the baseline's jam median", F["retrieval"]["baseline"]["median"]),
+                      ("the selective flight's availability during the jam (%)", 100 * F["selective"]["availability_jam"]),
+                      ("the day source's honest σ", CASES["bag"]["day_honest_true"])):
+        c.ok(has(round(val)), f"{what} (rounded to a whole number) is not in the report")
+    mine = (results("ci").get("retrieval") or {}).get("diff_median_block10")
+    lo, hi = pair(mine, "your ci.retrieval.diff_median_block10")
+    c.ok(has(round(lo)) and has(round(hi)), f"the retrieval flight's block interval of the difference (your "
+                                            f"[{lo:.0f}, {hi:.0f}]) is not in the report")
+    for title, n in (("3. Is the difference real?", 40), ("4. Is the stated accuracy honest?", 25),
+                     ("5. Validity and limits", 60), ("6. Conclusion", 80)):
+        w = len(section(body, title).split())
+        c.ok(w >= n, f"section '{title}' has {w} words (at least {n}) — or its title was changed")
+    low = body.lower()
+    for word, why in (("baseline", "the baseline"), ("interval", "the confidence interval"), ("availab", "availability"),
+                      ("sousse", "where (Sousse)")):
         c.ok(word in low, f"the report does not mention {why}")
-    c.ok("contain" in diff.lower() or "includ" in diff.lower() or " 0" in diff,
-         "say whether each CI of the difference contains 0")
+    c.ok("simulat" in low or "synthetic" in low, "the report does not say the flights are synthetic / simulated")
+    diff = section(body, "3. Is the difference real?").lower()
+    c.ok(re.search(r"contain|includ|\b0\b|zero", diff), "section 3 must say whether each interval contains 0")
 
 
+c.milestone("session1", "TODO 1", "TODO 2", "TODO 3", "TODO 4", "TODO A", "Step 3", "Steps 0", label="Honest ruler")
+c.milestone("session2", "TODO", "Step", label="Auditor")
 c.run()

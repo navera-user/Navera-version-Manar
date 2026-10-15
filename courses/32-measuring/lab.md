@@ -1,261 +1,389 @@
 # Lab 32 — Measure three flights, beat the baseline, put error bars on it
 
-**Goal:** compute the error statistics (CEP50, CEP95, RMSE), availability and longest gap of three
-recorded flights; compare NAVERA with the "repeat the last position" baseline; implement the
-bootstrap (iid and block), the paired difference and the Wilson interval; test your confidence
-intervals with a coverage experiment; check a source's stated σ with NAVERA's own
-`evaluate_session.py`; and write an honest report.
-**Time:** about 4 h for this lab (about 5 h for the whole mission with the lesson).
+**Goal:** write NAVERA Lite's measuring part (`navera_lite/stats.py`, nine TODOs) and the baseline
+(`baseline.py`, TODO A); measure three flights flown by NAVERA Lite's judge; decide with intervals whether a
+vision source beats "repeat the last GPS position"; test your intervals with a coverage experiment; check
+whether a recorded source states an honest σ; write a validation note.
+**Time:** 4 h 30 to 6 h in two sessions (a strong programmer: about 3 h 30).
+**Fast track:** if you know numpy and pandas well, skip the 🧰 boxes and the "Stuck?" boxes; do "Going further".
 
-Your files:
-[measure.py](file:./measure.py) (TODO 1–6),
-[bootstrap.py](file:./bootstrap.py) (TODO 7–10),
-[answers.py](file:./answers.py) and [report.md](file:./report.md).
+Your files (📝 Code tab): [navera_lite/stats.py](file:./navera_lite/stats.py) (**your code**: TODO 1–9),
+[baseline.py](file:./baseline.py) (TODO A), [answers.py](file:./answers.py), [report.md](file:./report.md).
+Given, you only run them: [measure_lab.py](file:./measure_lab.py) (calls your functions on the flights) and the
+tool `navera_lite/tools/evaluate_bag.py`. `navera_lite/logbook.py` is mission 04's part, finished.
 
-The data (`/data/academy/32-measuring/`, read only). NAVERA's test area is **Sousse, Tunisia**, where
-NAVERA is developed: the flights were recorded with NAVERA's mission simulator there (lesson 31,
-`/data/academy/31-simulator/record_sample.sh`). A drone flies at ~15 m/s; the GPS is **jammed for
-60 s**, later **spoofed** for 30 s. One row per second.
+The data, in `/data/academy/32-measuring/` (synthetic, NAVERA's test area around Sousse, Tunisia): three versions
+of one 240 s drone flight at 15 m/s, one row per second, with the decisions of NAVERA Lite's judge (the course's
+reference judge of mission 29) and the true position. GPS is **jammed from 90 s to 149 s**; the judge then uses
+day vision.
 
-| File | What replaces GPS during the jam | What it represents |
+| File | Day vision during the jam |
+|---|---|
+| `flight_target.csv` | a "target" error profile; it finds no match for a while over a lake |
+| `flight_retrieval.csv` | a retrieval-like profile (errors of hundreds of metres), a position every second |
+| `flight_selective.csv` | `flight_retrieval` with every vision position more than 300 m off **withheld** |
+| `shadow_bag/`, `shadow_truth.csv` | another flight, GPS good, GPS and day vision recorded (Step 9) |
+
+| Lesson | Lab | You write |
 |---|---|---|
-| `flight_target.csv` | simulated vision, *target* profile (states 15 m) | the accuracy **goal** — not a measured performance |
-| `flight_measured.csv` | simulated vision, *former day vision* profile (~440 m median, σ unknown) | the error **measured** on real frames for the former DINOv2 method |
-| `flight_selective.csv` | `flight_measured` with every vision position > 300 m off **removed** | **synthetic**: the availability trap |
-| `shadow_bag/` | a ROS 2 bag: GPS + a day-vision source that states σ = 15 m | **synthetic**, for `evaluate_session.py` |
-
-The simulator's own error column has been removed: you compute the errors yourself from
-`truth_lat/lon` and `navera_lat/lon`.
+| (nothing first) | Step 0 | nothing: look at the flights, predict |
+| §1 | Step 1 | `errors_m` (TODO 1) |
+| §2 | Step 2 | `percentile` (TODO 2), `summary` (TODO 3) |
+| §3, §4 | Step 3 | `availability` (TODO 4), `longest_gap_s` (TODO 5), `last_fix_baseline` (TODO A) |
+| §2 | Step 4 | nothing: the two percentile rules |
+| §5, §6 | Step 5 | `bootstrap_ci` (TODO 6) |
+| §6 | Step 6 | `paired_diff_ci` (TODO 7), the intervals of the flights |
+| §7 | Step 7 | `wilson` (TODO 8) |
+| §8 | Step 8 | `coverage_experiment` (TODO 9) |
+| §9 | Step 9 | nothing: `evaluate_bag` on a bag |
+| all | Step 10 | `report.md` |
 
 > [!NOTE]
-> No simulator is needed for this lab: everything uses recorded data. If you flew your
-> own scenario in Sim Lite in lesson 31, you can measure it too ("Going further").
+> **Predict, then run.** Each `PREDICT_…` in `answers.py` is written **before** you run the step; it is never
+> marked right or wrong. Each TODO's docstring says its goal and gives one example with its result;
+> `python3 measure_lab.py test` tries every example. The lesson shows how; the code is yours.
 
-## Step 1 — Look at the data (10 min)
+## Session 1 — The numbers (2 h to 2 h 30)
+
+## Step 0 — Look at the flights (no code)
 
 ```bash
 head -3 /data/academy/32-measuring/flight_target.csv
 ```
 
-```bash
-cut -d, -f2,3,4,5 /data/academy/32-measuring/flight_target.csv | uniq -c
-```
-
-The second command counts the seconds spent in each (phase, GPS mode, NAVERA state, source): the
-whole story of the flight in a dozen lines. Now the synthetic one:
+The columns: time, GPS mode, the judge's state and source, the σ the winner states, the position the judge gave
+(empty: no position), and the truth. Now the story of each flight, one line per stretch of identical rows:
 
 ```bash
-cut -d, -f2,3,4,5 /data/academy/32-measuring/flight_selective.csv | uniq -c | head -25
+cut -d, -f2-5 /data/academy/32-measuring/flight_target.csv | uniq -c
 ```
-
-During the jam you see `NO FIX` holes: these are the positions that were removed. Keep that picture
-in mind for Step 3.
-
-## Step 2 — Errors and statistics (TODO 1–3, 30 min)
-
-Open [measure.py](file:./measure.py). Each function has a docstring that says exactly what to return.
-
-- **TODO 1** `errors(rows)`: one `(t, error_m)` per *en route* row where NAVERA gave a position.
-  `haversine_m()` is written for you below the line.
-- **TODO 2** `percentile(values, p)`: the nearest-rank rule of `evaluate_session.py` (lesson, §2).
-  Use Python's `round()`: the check tests a case where `round(4.5) == 4` matters.
-- **TODO 3** `stats(values)`: a dict with the keys `n`, `mean`, `rmse`, `cep50`, `p90`, `cep95`, `max`.
-
-Test TODO 3 on the lesson's worked example before you use real data. `python3 -c` runs one line:
 
 ```bash
-python3 -c "import measure; print(measure.stats([2.1, 3.4, 1.8, 4.6, 2.9, 3.1, 12.5, 2.4, 3.8, 2.6]))"
+cut -d, -f2-5 /data/academy/32-measuring/flight_retrieval.csv | uniq -c
 ```
 
-You should get mean 3.92, rmse 4.915, cep50 2.9, p90 4.6, cep95 12.5, max 12.5. Then:
+`cut -f2-5` keeps columns 2 to 5; `uniq -c` counts identical neighbouring lines. In the target flight you see a
+stretch of `NO_FIX` in the middle of the jam: the lake.
+
+> [!TASK]
+> **Predict** (`PREDICT_BEAT` in `answers.py`): during the 60 s jam, will the retrieval-like vision of
+> `flight_retrieval` beat the baseline "repeat the last GPS position", and by how much (median)? The drone flies
+> at 15 m/s (lesson §4 shows how to estimate the baseline). Then read the lesson, §1 to §4.
+
+## Step 1 — Errors against the truth (TODO 1)
+
+Open [navera_lite/stats.py](file:./navera_lite/stats.py). Read the top of the file (what a flight table holds),
+then write **TODO 1**, `errors_m(df)`. `haversine_m` (mission 04) is imported at the top and works on whole
+columns at once.
+
+> [!TIP] 🧰 Keep the rows that have every value
+> ```python
+> import numpy as np
+> a = np.array([[1.0, 2.0], [np.nan, 5.0], [3.0, 4.0]])
+> ok = np.all(np.isfinite(a), axis=1)     # array([ True, False,  True]): one answer per row
+> a[ok]                                   # only rows 0 and 2
+> df[["lat", "lon"]].to_numpy(dtype=float)   # a DataFrame's columns as a numpy array (empty cell → nan)
+> ```
 
 ```bash
-python3 measure.py /data/academy/32-measuring/flight_target.csv
+python3 measure_lab.py test
 ```
 
-You get NAVERA's error on the whole flight, while GPS is used, and while GPS is jammed. Compare RMSE
-/ CEP50 in each line with the Gaussian value 1.2 (lesson §2). Which line looks Gaussian?
+The TODO 1 line must be ✔ (the other TODOs are still ✘: normal).
 
-> [!WARNING]
-> Common errors: `TypeError: '<' not supported between 'NoneType' and 'float'` — you forgot to skip
-> rows without a position (`navera_lat is None`). `IndexError` in `percentile` — the index must never
-> exceed `len(s) - 1` (use `min`).
+<details><summary>Stuck? Hints, one at a time</summary>
 
-## Step 3 — Availability, gaps and the baseline (TODO 4–6, 30 min)
+1. Four columns matter: `lat`, `lon`, `truth_lat`, `truth_lon`. A row counts only if all four are numbers.
+2. Build the mask of good rows first, then call `haversine_m(truth lat, truth lon, lat, lon)` once on the kept
+   columns — no loop needed.
+3. You see `nan` in the result, like `(0.000, nan, 11.119)`? You kept the row without a position: the mask must
+   drop it.
+4. Your result is a pandas Series? Wrap it: `np.asarray(…, dtype=float)`.
+</details>
 
-- **TODO 4a** `availability(rows, gps_mode=None)`: the percentage of *en route* rows with a usable
-  position (`usable(r)` is written for you). With `gps_mode="jammed"`, only the jammed rows.
-- **TODO 4b** `longest_gap_s(rows)`: the longest run of consecutive *en route* rows without a usable
-  position (one row = one second).
-- **TODO 5** `baseline_errors(rows)`: what if NAVERA had kept the last GPS position it had before the
-  jam? Find the first jammed row, the last NAVERA position given by GPS before it, and for every jammed
-  *en route* row the distance from the truth to that frozen position.
-- **TODO 6**: in `main()`, plot the baseline as a red line.
+## Step 2 — Percentiles and the summary (TODO 2, TODO 3)
 
-Run the three flights:
+**First a hand trace** (on paper, 3 minutes): the linear p25 and p80 of [12, 4, 9, 20, 6]. Check below, then
+write **TODO 2**, `percentile(v, q)`, with the rule of lesson §2 — not with `np.percentile` (use it only to
+test yours in a terminal).
+
+<details><summary>The hand trace</summary>
+
+Sorted [4, 6, 9, 12, 20], n − 1 = 4. p25: position 1.0 → **6.0**. p80: position 3.2 → 12 + 0.2 × 8 = **13.6**.
+</details>
+
+> [!TIP] 🧰 Whole and fractional part
+> ```python
+> import math
+> pos = 3.2
+> i = math.floor(pos)      # 3: the sample just below
+> frac = pos - i           # 0.2 (to rounding): how far towards the next one
+> ```
+
+Then **TODO 3**, `summary(errs)`: seven numbers in a dict, the percentiles with YOUR `percentile()`.
 
 ```bash
-python3 measure.py /data/academy/32-measuring/flight_target.csv /data/academy/32-measuring/flight_measured.csv /data/academy/32-measuring/flight_selective.csv
+python3 measure_lab.py test
 ```
 
-Open [error_flight_target.png](file:./error_flight_target.png),
-[error_flight_measured.png](file:./error_flight_measured.png) and
-[error_flight_selective.png](file:./error_flight_selective.png). The yellow band is the jam. The red
-line grows steadily: the drone flies away from the frozen position at ~15 m/s.
+<details><summary>Stuck? Hints, one at a time</summary>
 
-> [!QUESTION]
-> In `flight_measured`, compare the blue dots and the red line at the **start** of the jam and at the
-> **end**. Is the vision method better than doing nothing all the time? Now compare `flight_measured`
-> and `flight_selective`: the selective CEP50 during the jam is much smaller. Is the navigation better?
+1. TODO 2: sort first; the position is (n − 1) · q / 100; when it is a whole number, the answer is that sample.
+2. TODO 2: at q = 100 the position is n − 1: there is no "next" sample — return the last one (an `IndexError`
+   says you read past the end).
+3. TODO 2 gives 5.0 instead of 4.0 for `[7, 1, 3, 5], 50`? You took the nearest sample: interpolate.
+   2.0? You forgot to sort.
+4. TODO 3 gives rmse 3.0 instead of 5.831? That is the standard deviation; the RMSE is √(mean of e²), around 0,
+   not around the mean.
+5. TODO 3, empty list: return `{"n": 0}` with every other key `None` (no `max()` of an empty list).
+</details>
 
-<details><summary>Think about it</summary>
-At the start of a jam the frozen position is still close: a ~440 m method is <i>worse</i> than doing
-nothing for the first tens of seconds; it wins only once the drone has flown farther than its typical
-error. The selective flight is the same method with the bad seconds deleted: the CEP50 improves only
-because it is computed on 14 easy seconds out of 60. Its availability while jammed is about 23 % and
-its longest gap 13 s — an autopilot would lose its position.
+## Step 3 — Availability, gaps and the baseline (TODO 4, TODO 5, TODO A)
+
+**TODO 4** `availability(df)` and **TODO 5** `longest_gap_s(df)`: `usable_mask()` is given and says, row by row,
+whether the autopilot can use it. For TODO 5, mission 04's `outage_runs()` is imported: it finds runs of 0.
+
+> [!TIP] 🧰 True/False as numbers
+> ```python
+> m = np.array([True, False, True, True])
+> m.mean()            # 0.75: True counts 1, False 0
+> m.astype(int)       # array([1, 0, 1, 1]) — what outage_runs() expects
+> ```
+
+**TODO A** in [baseline.py](file:./baseline.py), `last_fix_baseline(df)`: the error of repeating the judge's
+last GPS position during the jam (lesson §4). Read its docstring twice: *which* position is frozen matters.
+
+```bash
+python3 measure_lab.py test
+```
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. TODO 4 is one line with `usable_mask()`; an empty table gives `float("nan")`.
+2. TODO 5: a run (i0, i1) of unusable rows lasts `t_s[i1 − 1] − t_s[i0] + dt_s`; keep the largest, 0.0 if no run.
+   Use `dt_s`, not 1: the check uses rows every 0.5 s.
+3. TODO A: find the first jammed row (`df["gps"] == "jammed"`); keep the rows before it whose `source` is
+   `"gps"`; the last of them is the frozen position. Then the distance from it to the truth of every jammed row.
+4. TODO A: the frozen position is the judge's `lat, lon`, not `truth_lat, truth_lon` (the baseline repeats what
+   the autopilot was given), and it is not simply the last row before the jam (that row may be day vision).
+</details>
+
+Now the three flights:
+
+```bash
+python3 measure_lab.py flights
+```
+
+Open [out/errors_target.png](file:./out/errors_target.png),
+[out/errors_retrieval.png](file:./out/errors_retrieval.png) and
+[out/errors_selective.png](file:./out/errors_selective.png) (the error axis is logarithmic above 10 m). Yellow:
+the jam. Red: the baseline. Grey ticks: no position.
+
+> [!TASK]
+> In `answers.py`: `RETR_JAM_MEDIAN_M`, `BASE_JAM_MEDIAN_M`, `TARGET_LONGEST_GAP_S`, `SELECTIVE_JAM_MEDIAN_M`,
+> `SELECTIVE_JAM_AVAIL_PCT` (in %), then `EXPLAIN_MAX` (the target flight's worst error: when, and why so large?
+> look at the picture around the lake) and `EXPLAIN_SELECTIVE` (is the selective flight's navigation better?).
+> Compare your answer with `PREDICT_BEAT`.
+
+## Step 4 — Two percentile rules
+
+```bash
+python3 measure_lab.py rules
+```
+
+Your linear `percentile()` against the given `pct_nearest()` (the nearest-sample rule) on the jam errors of
+each flight.
+
+> [!TASK]
+> `EXPLAIN_RULE`: for `flight_target` (51 errors during the jam) the two rules give the same median but p95
+> values about 7 m apart. Why exactly the same for one, and so different for the other? (Compute the positions.)
+> Press **✔ Check my work** — checks 1–7 should be green: badge **Honest ruler**.
+
+## Session 2 — Error bars (2 h 30 to 3 h 30)
+
+## Step 5 — The bootstrap (TODO 6)
+
+**TODO 6**, `bootstrap_ci(x, stat, B, alpha, seed, block)`: lesson §5 for `block = 1`, §6 for blocks. Write the
+iid case first, test it, then add blocks.
+
+> [!TIP] 🧰 Random indices with numpy
+> ```python
+> rng = np.random.default_rng(7)          # a generator; the same seed gives the same numbers
+> rng.integers(0, 5, size=3)              # 3 whole numbers from 0 to 4 — the upper bound 5 is EXCLUDED
+> x = np.array([10., 20., 30., 40., 50.])
+> x[np.array([4, 0, 4])]                  # array([50., 10., 50.]): an array of indices picks values
+> np.arange(3, 3 + 4)                     # array([3, 4, 5, 6]): 4 consecutive indices from 3
+> np.concatenate([np.arange(0, 2), np.arange(7, 9)])   # array([0, 1, 7, 8])
+> np.percentile(reps, [2.5, 97.5])        # two percentiles at once (linear rule)
+> ```
+
+**Hand trace first** (blocks, 3 minutes): n = 7, block = 3. Which start indices are allowed? How many runs do
+you need to reach 7 values, and how many values do you cut at the end?
+
+<details><summary>The hand trace</summary>
+
+Starts 0 to n − L = 4 (that is `rng.integers(0, 5)`); 3 runs give 9 values; cut the last 2. With block = n only
+start 0 is possible: the resample is the data itself.
+</details>
+
+```bash
+python3 measure_lab.py test
+```
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. Turn `x` into a numpy array first (`np.asarray(x, dtype=float)`), so that `x[idx]` works.
+2. Make ONE generator from `seed` before the loop; inside the loop, draw the indices of one resample, then
+   `stat(x[idx])`; store the B results.
+3. The interval: the percentiles `100 · alpha / 2` and `100 · (1 − alpha / 2)` of the B results; return two floats.
+4. Blocks: draw the run starts with `rng.integers(0, n − block + 1, …)`; each start s gives
+   `np.arange(s, s + block)`; join, cut to n. Runs never wrap around the end.
+5. The check says "every resample must have len(x) values"? You did not cut the joined runs to n. "the first
+   value is always 0" fails? Your runs wrap around (`% n`) or start beyond n − L.
+</details>
+
+## Step 6 — The intervals of the flights (TODO 7)
+
+**TODO 7**, `paired_diff_ci(a, b, stat, …)`: as TODO 6, but each resample uses ONE set of indices for both lists
+(lesson §6). If you want, move the drawing of indices into a small helper function used by both TODOs.
+
+```bash
+python3 measure_lab.py test
+```
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. Check the lengths first: `ValueError` if they differ.
+2. One `idx` per resample, then `stat(a[idx]) − stat(b[idx])`: a minus b, in this order.
+3. The docstring's example gives something wide like (0.800, 9.000) instead of (5.0, 5.0)? You drew separate
+   indices for a and b: the pairs were broken.
 </details>
 
 > [!TASK]
-> Complete TODO 1–6 and run `measure.py` on the **three** flights. "Done" means: the functions pass the
-> unit checks (worked example, a small hand-made flight), and `results_flight_target.json`,
-> `results_flight_measured.json`, `results_flight_selective.json` and the three PNG files exist with
-> the right numbers (CEP50, RMSE, CEP95, max of the whole flight, the jam and the baseline;
-> availability; longest gap). Press **✔ Check my work** — checks 1–5, 10 and 12 should be green.
-
-## Step 4 — The bootstrap (TODO 7–8, 40 min)
-
-Open [bootstrap.py](file:./bootstrap.py).
-
-- **TODO 7b** `_resample_idx(rng, n, block)`: the indices of **one** resample. With `block == 1`:
-  `rng.integers(0, n, size=n)`. With `block > 1`: k = ceil(n / block) random block starts in
-  `[0, n − block]`, each giving `block` consecutive indices; join them and cut to n.
-- **TODO 7a** `bootstrap_ci(values, stat, B, alpha, seed, block)`: B resamples, the statistic of each,
-  then the 2.5 / 97.5 percentiles (`np.percentile`). Use `np.random.default_rng(seed)` so that the
-  same call always gives the same interval — results must be **reproducible**.
-- **TODO 8** `paired_diff_ci(a, b, ...)`: the same, but each resample computes
-  `stat(a[idx]) - stat(b[idx])` with the **same** `idx` for both lists.
-
-`numpy` indexing with an array of indices: `x[idx]` picks the values at those positions (`x` must be a
-numpy array, which the starter code already makes).
+> **Predict** (`PREDICT_BLOCK`): for which flight will the block interval of the jam median differ most from the
+> iid one, and why? Then run:
 
 ```bash
-python3 bootstrap.py
+python3 measure_lab.py ci
 ```
 
-You should see the lesson's numbers: median 3.85 m, CI [3.05, 5.40]; mean CI about [3.47, 10.99].
-
-Now run the flights again: `measure.py` calls your functions with the nearest-rank median and blocks
-of 10 s.
-
-```bash
-python3 measure.py /data/academy/32-measuring/flight_target.csv /data/academy/32-measuring/flight_measured.csv /data/academy/32-measuring/flight_selective.csv
-```
-
-Look at the lines "95 % CI". Then look at the paired difference in detail:
-
-```bash
-python3 -c "import json; print(json.load(open('results_flight_measured.json'))['ci'])"
-```
-
-> [!WARNING]
-> **The block CI of `flight_selective` is not meaningful.** For this flight `measure.py` prints
-> `iid [94, 239] m   block 10 s [114, 159] m`: the block interval is *narrower*, and the point value
-> (154 m) sits at its edge. The reason: the block bootstrap assumes that neighbouring values in the
-> list are **neighbouring seconds**, so that a block of 10 values is 10 s of flight. In the selective
-> flight only 14 of the 60 jammed seconds were kept, and they are **not consecutive** (the gaps were
-> deleted). A "block" of 10 kept values can span most of the jam, and with only 14 values there are
-> just 5 possible block starts, so the resamples are almost always the same few blocks. In your
-> report, give the **iid** CI for this flight and write that a block CI is not valid when seconds are
-> missing. The same is true of this flight's paired difference `[-308, -5]`: it is computed on the
-> same 14 non-consecutive seconds, so treat it with the same caution.
-
-> [!QUESTION]
-> For `flight_measured`, does the CI of "CEP50 of NAVERA − CEP50 of the baseline" contain 0? For
-> `flight_target`? What exactly may you write in each case?
-
-## Step 5 — Wilson and the coverage experiment (TODO 9–10, 40 min)
-
-- **TODO 9** `wilson(k, n, z=1.96)`: the three lines of the lesson (§5). Test it on the local matcher's
-  "32/33":
-
-```bash
-python3 -c "import bootstrap; print(bootstrap.wilson(32, 33))"
-```
-
-You should get about (0.847, 0.995).
-
-- **TODO 10** `coverage(trials, n, rho, block, B, seed)`: does a "95 %" interval really contain the
-  truth 95 % of the time? `make_errors(rng, n, rho)` (below the line) simulates a flight of n errors
-  from a 2-D Gaussian with σ = 10 m per axis, whose true median is known exactly
-  (`TRUE_MEDIAN` = 1.1774 × 10 m). With `rho = 0.9`, each second keeps 90 % of the previous error, like
-  a real vision source. For each trial: make a flight, compute its CI of the median with
-  `seed=1000 + t`, and count whether `covers(lo, hi, TRUE_MEDIAN)`.
-
-```bash
-python3 bootstrap.py --coverage
-```
-
-It takes about a minute and writes `coverage.json` with four cases. Expected shape: independent
-errors give about 95 %; correlated errors with the iid bootstrap give **much less**; blocks of 10 s
-help but do not reach 95 % (n_eff ≈ 3 — see the lesson).
+The block interval of `flight_selective` is **n/a**: 41 of its 60 jam seconds are missing, so a "block" of 10
+kept values would join seconds far apart (lesson §6).
 
 > [!TASK]
-> Complete TODO 7–10. "Done" means: `bootstrap_ci` reproduces the demo interval and makes block
-> intervals wider on a trending series; `paired_diff_ci` gives exactly (5, 5) when a = b + 5;
-> `wilson(32, 33)` ≈ (0.847, 0.995); `coverage.json` shows the correlation effect; and the three
-> `results_flight_*.json` contain your confidence intervals (run `measure.py` again).
-> Press **✔ Check my work** — checks 6–11 should be green.
+> `EXPLAIN_PAIRED`: for `flight_retrieval`, what may you write about "vision vs baseline"? Quote the interval.
+> `EXPLAIN_SELECTIVE_CI`: `flight_selective`'s paired interval lies entirely below 0. Has it proved that it beats
+> the baseline? Why not?
 
-## Step 6 — Is the stated σ honest? (`evaluate_session.py`, 15 min)
+## Step 7 — Success rates (TODO 8)
 
-On a real flight you will not have a simulator's truth: NAVERA's tool uses GPS as the truth for
-vision, in a recorded ROS 2 bag (shadow mode). `shadow_bag/` is a small bag in that format,
-**synthesised** from the target flight's true track: a GPS, and a day-vision source that **states
-σ = 15 m**. Run the product's own tool on it:
+**TODO 8**, `wilson(k, n, z)`: the three lines of lesson §7. `ValueError` for impossible counts.
 
 ```bash
-python3 ~/navera/navera_tools/evaluate_session.py /data/academy/32-measuring/shadow_bag
+python3 measure_lab.py wilson
 ```
 
-Read the second table, *stated accuracy vs truth*: the share of errors within 1, 2, 3 × the stated σ
-(honest: ~39 / 86 / 99 %), and the σ that **would** be honest (p86 / 2). The bag was made with a true
-error of 22 m per axis: how close is the tool's "honest sigma"?
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. Work in shares (0 to 1), not in per cent: `p = k / n`.
+2. `measure_lab.py test` shows (0.552, 1.048) for `wilson(8, 10)`? That is the naive interval: compute the
+   centre and the half-width of lesson §7.
+3. For k = 0 the lower end must come out 0.0 (to rounding): clip with `max(0.0, …)` and `min(1.0, …)`.
+</details>
 
 > [!TASK]
-> Answer the eight questions of [answers.py](file:./answers.py) from your results, `coverage.json` and
-> the tool's output. Press **✔ Check my work** — check 13.
+> `WILSON_LO_PCT` (32 of 33, lower end, in %) and `ZERO_UPPER_PCT` (0 of 33, upper end, in %). Compare the
+> second with the rule of three.
 
-## Step 7 — Write the report (30–45 min)
+## Step 8 — Do the intervals keep their promise? (TODO 9)
 
-Fill in [report.md](file:./report.md). It is the kind of short technical note an engineer attaches to
-a pull request or a validation document: what was measured, how, the table, whether the difference
-is real, the limits of validity, and a conclusion.
+**TODO 9**, `coverage_experiment(make_sample, ci_of, true_value, trials, seed)`: lesson §8. This one has the
+least help. Trace on paper what happens for 2 trials of the docstring's example, then write it.
 
-A good conclusion says **what** is better, **by how much** (with a CI), **compared with what**, on
-**how much data**, measured **where** — and what it does **not** prove. Avoid "accurate", "robust",
-"works well" without a number.
+```bash
+python3 measure_lab.py test
+```
+
+<details><summary>Stuck? Hints, one at a time</summary>
+
+1. One generator for the whole experiment, made before the loop.
+2. Each trial: a sample, its interval, a hit or not. Both functions get the same `rng`.
+3. You got 932 instead of about 0.93? Return the share, not the count.
+</details>
 
 > [!TASK]
-> Complete `report.md`: no "(fill in …)" paragraph and no `(m)`, `(%)`, `(s)`, `[lo, hi]` cell left;
-> the table filled with your numbers (rounded to the metre); "Is the difference real?" (40+ words,
-> says whether each CI of the difference contains 0), "Validity: simulation vs field" (60+ words) and
-> "Conclusion" (100+ words). The report must name the baseline, the confidence interval and
-> availability, and say that the flights are simulated over Sousse. Press **✔ Check my work** —
-> all 15 checks should be green.
+> **Predict** (`PREDICT_COVERAGE`): correlated errors (ρ 0.9, 60 s) and the iid bootstrap: how often will a
+> "95 %" interval of the median contain the true median? Then run (1 to 3 minutes; the class shares the machine):
+
+```bash
+python3 measure_lab.py coverage
+```
+
+> [!TASK]
+> `EXPLAIN_COVERAGE`: why does the iid bootstrap fail on correlated errors, and why do blocks help only partly?
+> (Lesson §6: n_eff.)
+
+## Step 9 — Is the stated σ honest? (evaluate_bag)
+
+A ROS 2 bag recorded in shadow mode: GPS good, GPS and day vision both recorded as `NavSatFix`. First what it holds:
+
+```bash
+ros2 bag info /data/academy/32-measuring/shadow_bag
+```
+
+Then the given tool, which uses YOUR `percentile()`. With the GPS of the bag as the truth (what you would have on
+a real flight):
+
+```bash
+python3 -m navera_lite.tools.evaluate_bag /data/academy/32-measuring/shadow_bag
+```
+
+With the true track (a reference you rarely have):
+
+```bash
+python3 -m navera_lite.tools.evaluate_bag /data/academy/32-measuring/shadow_bag --truth /data/academy/32-measuring/shadow_truth.csv
+```
+
+And with the nearest-sample rule:
+
+```bash
+python3 -m navera_lite.tools.evaluate_bag /data/academy/32-measuring/shadow_bag --rule nearest
+```
+
+> [!TASK]
+> From the run with `--truth`: `HONEST_SIGMA_DAY_M` and `DAY_WITHIN_2SIGMA_PCT`. Then `EXPLAIN_GPS_STATED`: the
+> GPS states 2.0 m but its honest σ is smaller. Is that a problem? Why is it the better mistake for a judge?
+> Compare the day source's numbers with GPS as the truth and with the true track: is GPS good enough as a truth
+> for this source (lesson §1)?
+
+## Step 10 — The validation note
+
+Fill in [report.md](file:./report.md): what was measured, the table, whether each difference is real, whether
+the stated σ is honest, the limits, a conclusion. A good conclusion says **what** is better, **by how much**
+(with an interval), **compared with what**, on **how much data**, measured **where** — and what it does **not**
+prove. No "accurate", "robust" or "works well" without a number.
+
+> [!TASK]
+> No "(fill in …)" and no "…" left; your numbers in the table (metres rounded to the metre, % to the per cent);
+> the retrieval flight's block interval of the difference; the honest σ of the day source; sections 3 (40+
+> words), 4 (25+), 5 (60+) and 6 (80+); the words baseline, interval, availability, synthetic or simulated, Sousse.
+> Press **✔ Check my work** — all 15 checks green: badge **Auditor**. (The check reads that your explanations
+> are written and on topic; your teacher reads what they say.)
+
+## Look back (not graded)
+
+1. Which number of a product sheet will you now read differently, and what would you ask its author?
+2. Your coverage experiment gave a coverage below 95 % even with blocks. What would you change in a field test
+   plan (length of the flights, number of flights) to get honest intervals?
+3. `LOOK_BACK` in `answers.py`: one sentence for your future self.
 
 ## Going further (optional)
 
-- **Your own flight.** If you flew your own scenario in lesson 31 (Part E), run
-  `python3 measure.py ~/lessons/31-simulator/my_runs/<name>.csv` (replace `<name>` by the `"name"` of
-  your scenario, for example `my_run`). Same numbers as the sample? Why not exactly?
-  Would a CI computed on your flight cover the sample's CEP50?
-- **A fairer baseline.** "Repeat the last position" ignores that the drone was moving. Write
-  `baseline_dead_reckoning(rows)`: continue the last GPS velocity (from the last two GPS fixes) in a
-  straight line. Does the target-profile vision still beat it? Which baseline would you publish, and
-  why must you publish the harder one?
-- **How many seconds of jamming do you need?** With `make_errors` and `rho = 0.9`, find the n for which
-  the block-bootstrap CI of the median is narrower than ±10 %. Translate into minutes of flight for a
-  field campaign over a coastal test range.
-- **Rule of three.** Simulate 0 failures in n trials for a true failure rate of 1 %: how often do you
-  see 0 failures with n = 33? With n = 300?
+- **A fairer baseline.** "Repeat the last position" ignores that the drone was moving. Write a dead-reckoning
+  baseline: continue the last GPS velocity (from the last two GPS fixes) in a straight line. Does the target
+  vision still beat it? Which baseline would you publish, and why the harder one?
+- **How long must a test be?** With `ar1_radial(rng, n, 0.9, 10.0)` and your coverage experiment, find the n for
+  which the block bootstrap of the median reaches 90 % coverage. Translate it into minutes of jammed flight.
+- **Best of N.** Simulate 5 flights with `ar1_radial` (ρ 0.9, n 60, σ 10 m) and report the smallest median, as a
+  brochure would. Repeat 1 000 times: how far below the true median (11.8 m) is the "best of 5" on average?
+- **Rule of three.** With a true failure rate of 1 %, how often do you see 0 failures in 33 trials? In 300?

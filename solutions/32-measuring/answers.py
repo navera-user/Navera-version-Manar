@@ -1,49 +1,38 @@
-# Write the letter of your answer between the quotes, or a number where asked.
-# Base every answer on YOUR results (results_*.json, coverage.json) and on the tools' output.
+# Lab 32 — your answers. Numbers without quotes (RETR_JAM_MEDIAN_M = 123.4). Text in quotes ("…").
+# (teacher's solution — see TEACHER.md for the rubric)
 
-# Q1. flight_measured (former day-vision error profile), 60 s jam. Your paired 95 % CI of
-#     "CEP50 of NAVERA minus CEP50 of the baseline" (results_flight_measured.json, ci.diff_cep50_block).
-#     What may you write?
-#   a) NAVERA beats the baseline: its CEP50 is smaller (430 m against 452 m)
-#   b) the interval contains 0: on this data we cannot claim that NAVERA beats "repeat the last
-#      position" — the difference is within the sampling noise
-#   c) the baseline is significantly better than NAVERA
-Q1 = "b"
-
-# Q2. flight_selective is flight_measured with every vision position more than 300 m off removed.
-#     Its jam CEP50 is much smaller. What is the honest reading?
-#   a) withholding bad positions made the navigation better: report the smaller CEP50
-#   b) the two flights cannot be compared at all
-#   c) the error is computed on only the seconds that were kept; availability while jammed fell to
-#      about a quarter and the longest gap is 13 s — accuracy and availability must be reported together
-Q2 = "c"
-
-# Q3. Whole flight_measured: CEP50 about 5 m but RMSE about 390 m. What does this tell you?
-#   a) the errors are a mixture (many GPS seconds at a few metres + a jam with errors of hundreds of
-#      metres); one number for the whole flight hides it — report per phase
-#   b) the RMSE is wrong: it should be close to 1.2 x CEP50
-#   c) the CEP50 is wrong because of the outliers
-Q3 = "a"
-
-# Q4. coverage.json: with correlated errors (rho = 0.9), the ordinary (iid) bootstrap CI contains the
-#     true median far less often than 95 %. Why?
-#   a) because B is too small: with B = 10 000 the coverage would be 95 %
-#   b) because the median is not a good statistic
-#   c) 60 correlated errors carry less information than 60 independent ones; the iid bootstrap
-#      treats them as independent, so its interval is too narrow
-Q4 = "c"
-
-# Q5. evaluate_session.py on shadow_bag: the day-vision source states sigma = 15 m. Is that honest?
-#   a) no: far fewer than 86 % of its errors are within 2 sigma — it is too optimistic
-#   b) yes: its errors match the stated sigma
-Q5 = "a"
-
-# Q6. In that table, the share (in %) of day-vision errors within 2 x the stated sigma. (a number)
-Q6 = 59
-
-# Q7. In that table, the "honest sigma" (in m) the tool suggests for this source. (a number)
-Q7 = 21
-
-# Q8. The local feature matcher: "32/33 frames within 9 m". The LOWER end (in %) of the Wilson 95 %
-#     interval of 32/33 (your wilson(), one decimal). (a number)
-Q8 = 84.7
+PREDICT_BEAT = "I think vision wins easily, maybe 200 m better than the frozen position."
+RETR_JAM_MEDIAN_M = 420.6
+BASE_JAM_MEDIAN_M = 450.0
+TARGET_LONGEST_GAP_S = 9
+EXPLAIN_MAX = ("Around t = 120 s, over the lake: vision found no match for 14 s, so the judge kept giving the last "
+               "stored fix while it was up to 5 s old (the day timeout); at 15 m/s an old position is about 70 m "
+               "behind. Then the fix went stale and the judge said NO_FIX for 9 s.")
+SELECTIVE_JAM_MEDIAN_M = 236.0
+SELECTIVE_JAM_AVAIL_PCT = 31.7
+EXPLAIN_SELECTIVE = ("No, it is the same method with the bad positions withheld: the median is computed only on the "
+                     "19 easy seconds it chose to answer, so it looks better, while the availability during the jam "
+                     "falls to 32 % and the autopilot has no position for gaps up to 13 s.")
+EXPLAIN_RULE = ("With 51 values the median sits exactly on one sample (position 25), so both rules give it. The p95 "
+                "falls at position 47.5, between two errors of the tail that are far apart: the linear rule "
+                "interpolates halfway between them, the nearest rule takes one of the samples (index 48).")
+PREDICT_BLOCK = "wider"
+EXPLAIN_PAIRED = ("The paired interval of median(vision) - median(baseline) is about [-282, 190] m with blocks: it "
+                  "contains 0, so I may only write that on this flight vision is not shown to be better or worse "
+                  "than repeating the last GPS position; the 29 m is within the noise.")
+EXPLAIN_SELECTIVE_CI = ("No. The pairs are only the 19 seconds the method chose to answer, the seconds where it was "
+                        "good; the other 41 seconds are missing, so the comparison is conditional on its own "
+                        "selection and ignores the availability loss.")
+WILSON_LO_PCT = 84.7
+ZERO_UPPER_PCT = 10.4
+PREDICT_COVERAGE = "about 80 %"
+EXPLAIN_COVERAGE = ("Consecutive errors are correlated, so 60 seconds carry the information of only a few independent "
+                    "values; the iid bootstrap treats them as 60 independent ones and its interval is too narrow. "
+                    "Blocks keep the correlation inside each block, but with only 6 blocks of 10 s the interval is "
+                    "still too narrow, so the coverage stays below 95 %.")
+HONEST_SIGMA_DAY_M = 23.4
+DAY_WITHIN_2SIGMA_PCT = 58
+EXPLAIN_GPS_STATED = ("It is pessimistic: the GPS is more accurate than it says (98 % within 2 sigma instead of 86 %). "
+                      "A judge that believes a too large sigma is only cautious, while a too small sigma, like the day "
+                      "source's 15 m, makes it trust a bad position.")
+LOOK_BACK = ""

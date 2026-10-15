@@ -1,3 +1,3 @@
-{"number": "32", "title": "Measuring honestly: error statistics, baselines and confidence intervals", "module": 7, "duration": "5 h",
- "summary": "CEP50, CEP95, RMSE, availability and continuity; the baseline every method must beat; bootstrap confidence intervals (iid, block, paired), the Wilson interval and a coverage experiment — on three recorded simulator flights and with NAVERA's own evaluate_session.py.",
- "resources": [], "open": ["measure.py", "bootstrap.py", "report.md"], "check_timeout_s": 120}
+{"number": "32", "title": "Measuring honestly: error statistics, baselines and confidence intervals", "module": 7, "duration": "5 h 30 – 7 h",
+ "summary": "Write NAVERA Lite's measuring part: errors against the truth, percentiles with a stated rule, availability and gaps, the baseline every method must beat, bootstrap (iid, block, paired) and Wilson intervals — then test your intervals with a coverage experiment and check whether a source's stated σ is honest, on flights and a bag made with NAVERA Lite.",
+ "resources": [], "open": ["navera_lite/stats.py", "baseline.py", "answers.py"], "check_timeout_s": 240}

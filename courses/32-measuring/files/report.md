@@ -1,38 +1,37 @@
-# Results — NAVERA during a 60 s GPS jam (simulated flights)
+# Validation note — day vision during a GPS jam (lab 32)
 
-Replace every "(fill in …)" paragraph and every cell in parentheses or brackets with YOUR numbers
-(from results_flight_*.json, rounded to the metre: "20 m", not "20.45 m"; CIs as "[18, 23]").
+Write this note as you would attach it to a validation document: numbers with their conditions, the
+interval of every comparison, and what the note does NOT prove. Replace every "(fill in …)" paragraph and
+every "…" cell with your own text and numbers (metres rounded to the metre, shares to the per cent).
+The check reads the sections by their titles: keep the "## …" lines as they are.
 
-## What was measured
+## 1. What was measured
 
-(fill in: which flights, where they come from and where they were flown, how long the GPS was
-jammed, how many seconds of data — the sample size — and what is the truth.)
+(fill in: which flights, how long, where, made how, how many seconds of jam, what the truth is)
 
-## Method
+## 2. Results
 
-(fill in: the metrics you report and how they are computed — horizontal error, CEP50 / CEP95 by the
-nearest-rank rule, RMSE, availability, longest gap — the baseline, and how the 95 % confidence
-intervals were obtained: bootstrap, block length, paired or not, B, seed.)
+| During the jam | median (m) | 95 % CI of the median (m) | p90 (m) | availability (%) | longest gap (s) |
+|---|---|---|---|---|---|
+| flight_target, the judge | … | … | … | … | … |
+| flight_retrieval, the judge | … | … | … | … | … |
+| flight_selective, the judge | … | … | … | … | … |
+| baseline: last GPS position | … | — | … | 100 | 0 |
 
-## Results
+Paired difference median(judge) − median(baseline), blocks of 10 s, 95 % CI: target …, retrieval …
 
-| Flight | n (jam, s) | NAVERA CEP50 [95 % CI] | CEP95 | RMSE | max | Baseline CEP50 | CEP50 NAVERA − baseline [95 % CI] | Availability (jam) | Longest gap |
-|---|---|---|---|---|---|---|---|---|---|
-| target (15 m profile, not measured) | (s) | (m) [lo, hi] | (m) | (m) | (m) | (m) | [lo, hi] | (%) | (s) |
-| measured (former day vision) | (s) | (m) [lo, hi] | (m) | (m) | (m) | (m) | [lo, hi] | (%) | (s) |
-| selective (synthetic) — give the iid CI (see the lab, Step 4) | (s) | (m) [lo, hi] | (m) | (m) | (m) | (m) | [lo, hi] | (%) | (s) |
+## 3. Is the difference real?
 
-## Is the difference real?
+(fill in: for each flight, does the interval of the difference contain 0, and what may you claim?)
 
-(fill in: for each flight, does the CI of the difference exclude 0? What does that allow you to
-write? Why a paired, block bootstrap? What does the coverage experiment say about trusting it?)
+## 4. Is the stated accuracy honest?
 
-## Validity: simulation vs field
+(fill in: the day source's stated σ, its honest σ, the share within 2 σ, and what the judge should do)
 
-(fill in, 60 words or more: what these flights can and cannot show; where they were flown; what is
-simulated; what a field test would need.)
+## 5. Validity and limits
 
-## Conclusion
+(fill in: synthetic or real, simulation or field, correlated seconds, what a confidence interval does not cover)
 
-(fill in, 100 words or more: what is better, by how much, compared with what, on how much data,
-measured where — and what it does NOT prove.)
+## 6. Conclusion
+
+(fill in: what is better, by how much, compared with what, on how much data, measured where — and what is not proved)

@@ -2,23 +2,23 @@ rosbag2_bagfile_information:
   version: 5
   storage_identifier: sqlite3
   duration:
-    nanoseconds: 286000000000
+    nanoseconds: 299500000000
   starting_time:
-    nanoseconds_since_epoch: 1791000079500000000
-  message_count: 568
+    nanoseconds_since_epoch: 1791000000049999872
+  message_count: 600
   topics_with_message_count:
     - topic_metadata:
-        name: /navera/estimate/day
-        type: navera_msgs/msg/PositionEstimate
+        name: /navera_lite/fix/day
+        type: sensor_msgs/msg/NavSatFix
         serialization_format: cdr
         offered_qos_profiles: ""
-      message_count: 284
+      message_count: 300
     - topic_metadata:
-        name: /navera/estimate/gps
-        type: navera_msgs/msg/PositionEstimate
+        name: /navera_lite/fix/gps
+        type: sensor_msgs/msg/NavSatFix
         serialization_format: cdr
         offered_qos_profiles: ""
-      message_count: 284
+      message_count: 300
   compression_format: ""
   compression_mode: ""
   relative_file_paths:
@@ -26,7 +26,7 @@ rosbag2_bagfile_information:
   files:
     - path: shadow_bag_0.db3
       starting_time:
-        nanoseconds_since_epoch: 1791000079500000000
+        nanoseconds_since_epoch: 1791000000049999872
       duration:
-        nanoseconds: 286000000000
-      message_count: 568
+        nanoseconds: 299500000000
+      message_count: 600
