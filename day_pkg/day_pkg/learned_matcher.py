@@ -395,16 +395,18 @@ class LearnedMatcher(LocalMatcher):
         fx, fy = tile_xy(prior[0], prior[1], self.z)
         r = (search_m + margin_m) / (mpp_map * f)                 # in level pixels
         x0, y0 = int(fx * 256 / f - r), int(fy * 256 / f - r)
+        t = self._t
+        # the frame first: a uniform frame (sea, blur, darkness) is rejected before the map
+        # window is gathered, which at 600 m cost 5-7 s per failed frame (campaign 7, coast)
+        k0, d0 = self._frame_features(q)
+        if len(k0) < 10:
+            res.update(reason="too few features in the frame (uniform ground, blur, darkness)")
+            return res
         k1, d1 = self.map_features(x0, y0, int(2 * r), int(2 * r), level)
         res["map_level"] = level
         res["n_candidates"] = int(len(k1))
         if len(k1) < 10:
             res.update(spatial_empty=True, reason="no map tiles (or no texture) in the search circle")
-            return res
-        t = self._t
-        k0, d0 = self._frame_features(q)
-        if len(k0) < 10:
-            res.update(reason="too few features in the frame (uniform ground, blur, darkness)")
             return res
         with self._gpu, t.inference_mode():
             ones0 = t.ones(1, len(k0), 1, 1, device=self.dev)
