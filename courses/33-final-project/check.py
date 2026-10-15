@@ -1,468 +1,753 @@
+import hashlib
 import json
 import math
 import os
 import re
-import shutil
+import shlex
 import tempfile
 
 import numpy as np
 
-from academy_check import CheckFailed, Checker, load_student, need, sh
+from academy_check import CheckFailed, Checker, explained, load_student, need, predicted, sh
 
 c = Checker()
-NAV = os.path.expanduser("~/navera")
-DATA = "/data/academy/33-final-project"
-SECTIONS = ["Proposal", "Change", "Test", "Measurement", "Result", "Limits"]
-LABELS = ["Problem", "Hypothesis", "Metric", "Acceptance criterion"]
-IGNORED = ("build/", "install/", "log/")          # build products are never part of a project
+
+GIVEN = "/academy/courses/33-final-project/files"
+METRICS = {"err_median": "value", "err_p90": "value", "err_p95": "value", "err_max": "value",
+           "ap_err_median": "value", "ap_err_p95": "value", "ap_err_max": "value", "availability": "share",
+           "fix_share": "share", "honest2": "share", "bad_fix": "share", "failsafe": "event", "detected": "event",
+           "detect_s": "value", "false_alarm": "event", "custom": "value"}
+NUMERIC = ("t_s", "lite_sigma_m", "lite_err_m", "gps_err_m", "vis_err_m", "ap_err_m", "truth_speed_mps")
+RULER = ("navera_lite/sim/world.py", "navera_lite/sim/run.py", "navera_lite/sim/sensors.py")
+STACK = ("navera_lite", "navera_lite.yaml", "ref_desc.pt", "ref_homography.pt", "campaign", "project.json",
+         "my_metric.py", "my_vision_profile.json")
+SECTIONS = (("1. The problem", 40), ("2. Pre-registration", 30), ("3. The change", 30), ("4. The red test", 30),
+            ("5. The campaign", 25), ("6. Results", 20), ("7. Decision", 25), ("8. Limits", 50))
+CACHE = {}
 
 
-# ---------------------------------------------------------------- helpers
-def git(args, timeout=30):
-    code, out = sh(f"git -C {NAV} {args}", timeout=timeout)
-    if code != 0:
-        raise CheckFailed(f"`git {args}` failed in ~/navera:\n{out[-400:]}")
-    return out.strip()
+# ------------------------------------------------------------------------------------------------ git, in the sandbox
+def git(args, ok_codes=(0,)):
+    code, out = sh("git " + args, timeout=60)
+    if code not in ok_codes:
+        raise CheckFailed(f"git {args.split()[0]} failed: {out.strip()[-300:]}")
+    return code, out.strip()
 
 
-def sections():
-    if not os.path.exists("PROJECT.md"):
-        raise CheckFailed("PROJECT.md is missing — did you rename or delete it? (↺ Reset lab files gives it back)")
-    text = open("PROJECT.md", encoding="utf-8", errors="replace").read()
-    out = {}
-    for p in re.split(r"^##\s+", text, flags=re.M)[1:]:
-        title, _, body = p.partition("\n")
-        out[title.strip()] = body.strip()
-    return out
+def sha(rev):
+    code, out = sh(f"git rev-parse --verify --quiet {shlex.quote(rev + '^{commit}')}")
+    return out.strip() if code == 0 and re.fullmatch(r"[0-9a-f]{40}", out.strip()) else None
 
 
-def no_placeholder(text):
-    return re.sub(r"\((?:[^()]|\([^()]*\))*\)", "", text).strip()     # "(…)" placeholders removed
+def ancestor(a, b):
+    return sh(f"git merge-base --is-ancestor {a} {b}")[0] == 0
 
 
-def changed_files():
-    out = git("diff --name-only base..HEAD")
-    return [f for f in out.splitlines() if f and not f.startswith(IGNORED)]
+def show(rev, path):
+    code, out = sh(f"git show {rev}:{shlex.quote(path)}")
+    return out if code == 0 else None
 
 
-def tests_changed():
-    return [f for f in changed_files() if re.search(r"(^|/)test_[^/]*\.py$", f)
-            and os.path.exists(os.path.join(NAV, f))]
+def changed(a, b, *paths):
+    tail = (" -- " + " ".join(shlex.quote(p) for p in paths)) if paths else ""
+    code, out = sh(f"git diff --name-only {a} {b}{tail}")
+    if code:
+        raise CheckFailed(f"git diff {a[:10]} {b[:10]} failed: {out[-200:]}")
+    return [ln for ln in out.splitlines() if ln.strip()]
 
 
-def results():
-    if not os.path.exists("results.json"):
-        raise CheckFailed("results.json does not exist yet (the example writes it in TODO 5; for another "
-                          "project use write_results() from stats_tools.py)")
+def extract(rev_sha):
+    if rev_sha in CACHE.setdefault("dirs", {}):
+        return CACHE["dirs"][rev_sha]
+    d = tempfile.mkdtemp(prefix="chk33_")
+    code, out = sh(f"git archive {rev_sha} | tar -x -C {d}", timeout=120)
+    if code:
+        raise CheckFailed(f"git archive of {rev_sha[:10]} failed: {out[-200:]}")
+    CACHE["dirs"][rev_sha] = d
+    return d
+
+
+def pytest_at(rev_sha, target):
+    key = (rev_sha, target)
+    if key not in CACHE.setdefault("pytest", {}):
+        d = extract(rev_sha)
+        CACHE["pytest"][key] = sh(f"cd {d} && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH={d}:$PYTHONPATH python3 -B -m pytest "
+                                  f"-q -p no:cacheprovider -rf {shlex.quote(target)}", timeout=300)
+    return CACHE["pytest"][key]
+
+
+def last_line(out):
+    lines = [ln for ln in out.strip().splitlines() if ln.strip()]
+    return lines[-1] if lines else "(no output)"
+
+
+def failed_files(out):
+    return sorted({ln.split()[1].split("::")[0] for ln in out.splitlines()
+                   if ln.startswith(("FAILED ", "ERROR ")) and len(ln.split()) > 1})
+
+
+def sha256_text(t):
+    return hashlib.sha256(t.encode() if isinstance(t, str) else t).hexdigest()
+
+
+def sha256_file(path):
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+# ------------------------------------------------------------------------------------------------ project.json
+def validate(p):
+    """The check's own reading of a pre-registration (the same rules as project.py plan)."""
+    probs = []
+    if not isinstance(p, dict):
+        return ["project.json must be one object {...}"]
+    for k in ("title", "idea", "kind", "test", "scenarios", "seeds", "metric", "better"):
+        if k not in p:
+            probs.append(f'"{k}" is missing')
+    if probs:
+        return probs
+    if not isinstance(p["title"], str) or len(p["title"].split()) < 3 or "(fill in" in p["title"]:
+        probs.append('"title" is not written yet')
+    if not (p["idea"] == "own" or (isinstance(p["idea"], int) and not isinstance(p["idea"], bool)
+                                   and 1 <= p["idea"] <= 10)):
+        probs.append('"idea" must be 1–10 (the lesson\'s menu) or "own"')
+    if p["kind"] not in ("stack", "sim"):
+        probs.append('"kind" must be "stack" or "sim"')
+    t = p["test"]
+    if not (isinstance(t, str) and re.fullmatch(r"navera_lite/tests/test_[A-Za-z0-9_]+\.py", t)):
+        probs.append('"test" must be a file navera_lite/tests/test_<name>.py')
+    sc = p["scenarios"]
+    if not (isinstance(sc, list) and sc and all(isinstance(s, str) and s.endswith(".json") for s in sc)
+            and len(set(sc)) == len(sc)):
+        probs.append('"scenarios" must be a list of different .json files')
+    s = p["seeds"]
+    if not (isinstance(s, dict) and set(s) == {"first", "count"} and all(isinstance(s[k], int)
+                                                                         and not isinstance(s[k], bool) for k in s)):
+        probs.append('"seeds" must be {"first": …, "count": …}')
+    m = p["metric"]
+    if not (isinstance(m, dict) and m.get("name") in METRICS):
+        probs.append('"metric" name is not one of project.py\'s metrics')
+    if p["better"] not in ("lower", "higher", "closer"):
+        probs.append('"better" must be lower, higher or closer')
+    if p["better"] == "closer" and not isinstance(p.get("target"), (int, float)):
+        probs.append('"better": "closer" needs a "target"')
+    g = p.get("guardrail")
+    if g is not None and not (isinstance(g, dict) and isinstance(g.get("metric"), dict)
+                              and g["metric"].get("name") in METRICS and g.get("better") in ("lower", "higher")
+                              and isinstance(g.get("max_loss"), (int, float))):
+        probs.append('"guardrail" is not complete (metric, better, max_loss) — or null')
+    if not probs:
+        n = len(sc) * s["count"]
+        if not 20 <= n <= 300:
+            probs.append(f"{n} runs: use 20 to 300")
+    return probs
+
+
+def project_at(rev_sha, where):
+    text = show(rev_sha, "project.json")
+    if text is None:
+        raise CheckFailed(f"project.json is not in the commit {where}")
     try:
-        return json.load(open("results.json"))
+        p = json.loads(text)
     except ValueError as e:
-        raise CheckFailed(f"results.json is not valid JSON: {e}")
+        raise CheckFailed(f"project.json at {where} is not valid JSON: {e}")
+    probs = validate(p)
+    if probs:
+        raise CheckFailed(f"project.json at {where}: " + "; ".join(probs) + " — python3 project.py plan")
+    p = dict(p, min_effect=float(p.get("min_effect", 0.0)), B=int(p.get("B", 2000)), alpha=float(p.get("alpha", 0.05)),
+             boot_seed=int(p.get("boot_seed", 33)))
+    p["seed_list"] = list(range(p["seeds"]["first"], p["seeds"]["first"] + p["seeds"]["count"]))
+    return p, text
 
 
-def stats():
-    return load_student("stats_tools.py")
+# ------------------------------------------------------------------------------------------------ the chain of commits
+def repo():
+    if not os.path.isdir(".git"):
+        raise CheckFailed("this folder is not a git repository yet: bash navera_lite/tools/init_repo.sh (lab Step 1)")
+    s = sha("start")
+    if s is None:
+        raise CheckFailed("there is no tag 'start': the repository must come from navera_lite/tools/init_repo.sh")
+    return s
 
 
-def ar1(n, rho, seed):
-    rng = np.random.default_rng(seed)
-    e = np.empty(n)
-    e[0] = rng.normal()
-    for k in range(1, n):
-        e[k] = rho * e[k - 1] + math.sqrt(1 - rho ** 2) * rng.normal()
-    return e
+def before():
+    s0 = repo()
+    b = sha("before")
+    if b is None:
+        raise CheckFailed("there is no tag 'before' yet: commit your red test and project.json, check with "
+                          "`python3 project.py red`, then `git tag before` (lab Step 5)")
+    if b == s0 or not ancestor(s0, b):
+        raise CheckFailed("the commit tagged 'before' must come AFTER 'start' on your branch (your red test commit)")
+    return s0, b
 
 
-def pair(r, what):
-    c.ok(isinstance(r, (tuple, list)) and len(r) == 2, f"{what} should return (lo, hi), got {r!r}")
-    lo, hi = float(r[0]), float(r[1])
-    c.ok(math.isfinite(lo) and math.isfinite(hi) and lo <= hi, f"{what} returned lo={lo}, hi={hi}")
-    return lo, hi
-
-
-# ---------------------------------------------------------------- the statistics
-@c.test("stats_tools.percentile() uses linear interpolation (same as numpy's default)",
-        hint="h = (n - 1) * q / 100; take x[floor(h)] and move the fraction h - floor(h) towards the next "
-             "sorted value. q = 100 has no next value; an empty list gives nan.")
-def _():
-    (percentile,) = need(stats(), "percentile")
-    rng = np.random.default_rng(3)
-    for n in (1, 2, 7, 50):
-        x = rng.exponential(5.0, n)
-        for q in (0, 5, 50, 90, 95, 100):
-            c.near(percentile(list(x), q), float(np.percentile(x, q)), 1e-9, what=f"percentile(n={n}, q={q})")
-    r = percentile([], 50)
-    c.ok(isinstance(r, float) and math.isnan(r), f"percentile([], 50) should be nan, got {r!r}")
-
-
-@c.test("bootstrap_ci(): (lo, hi), reproducible with a seed, about 2 x 1.96 sigma / sqrt(n) wide for a mean",
-        hint="Create ONE generator rng = np.random.default_rng(seed) before the loop; each resample draws n "
-             "indices with replacement; the CI is the alpha/2 and 1 - alpha/2 percentiles of the statistics.")
-def _():
-    (bci,) = need(stats(), "bootstrap_ci")
-    x = np.random.default_rng(7).normal(10.0, 1.0, 400)
-    r1 = pair(bci(x, np.mean, n_boot=1000, alpha=0.05, seed=1), "bootstrap_ci")
-    r2 = pair(bci(x, np.mean, n_boot=1000, alpha=0.05, seed=1), "bootstrap_ci")
-    c.ok(r1 == r2, "two calls with the same seed give different intervals: is the seed used?")
-    c.ok(r1[0] < x.mean() < r1[1], f"the CI {r1} does not contain the sample mean {x.mean():.3f}")
-    w, theory = r1[1] - r1[0], 2 * 1.96 * x.std() / math.sqrt(len(x))
-    c.ok(0.8 * theory < w < 1.2 * theory, f"CI width {w:.3f}, expected about {theory:.3f} (2 x 1.96 sigma/sqrt n)")
-
-
-@c.test("bootstrap_ci(): alpha changes the level, any statistic works (median, p95)",
-        hint="alpha = 0.20 is an 80 % interval: narrower than the 95 % one. `stat` is a function you call "
-             "on each resample — do not hard-code np.mean.")
-def _():
-    (bci,) = need(stats(), "bootstrap_ci")
-    x = np.random.default_rng(8).exponential(3.0, 300)
-    w95 = np.subtract(*pair(bci(x, np.median, n_boot=800, alpha=0.05, seed=2), "bootstrap_ci")[::-1])
-    w80 = np.subtract(*pair(bci(x, np.median, n_boot=800, alpha=0.20, seed=2), "bootstrap_ci")[::-1])
-    c.ok(w80 < w95, f"the 80 % CI ({w80:.3f} wide) should be narrower than the 95 % CI ({w95:.3f})")
-    lo, hi = pair(bci(x, lambda v: float(np.percentile(v, 95)), n_boot=800, alpha=0.05, seed=2), "bootstrap_ci")
-    c.ok(lo < np.percentile(x, 95) < hi, "the CI of the p95 does not contain the sample p95: is `stat` used?")
-
-
-@c.test("block_bootstrap_ci(): resamples whole blocks — honest (wider) intervals on correlated errors",
-        hint="Each resample is idx = block_indices(n, block_len, rng) and its value is metric(idx). On a "
-             "correlated series (rho = 0.9) the block CI must be several times wider than the iid one; "
-             "with block_len = 1 it must be about the iid width.")
-def _():
-    m = stats()
-    bci, bbci = need(m, "bootstrap_ci", "block_bootstrap_ci")
-    e = ar1(1800, 0.9, seed=4)
-    seen = []
-
-    def metric(idx):
-        seen.append(idx)
-        return float(np.mean(e[idx]))
-    r = pair(bbci(len(e), metric, block_len=60, n_boot=300, alpha=0.05, seed=5), "block_bootstrap_ci")
-    c.ok(len(seen) == 300, f"metric() was called {len(seen)} times for n_boot=300")
-    idx = np.asarray(seen[0])
-    c.ok(idx.dtype.kind in "iu" and len(idx) == 1800 and idx.min() >= 0 and idx.max() < 1800,
-         "metric() should receive an integer array of 1800 epoch indices between 0 and 1799")
-    c.ok(np.sum(np.diff(idx) == 1) > 1700, "the indices are not in consecutive blocks — use block_indices()")
-    w_block = r[1] - r[0]
-    w_iid = np.subtract(*pair(bci(e, np.mean, n_boot=300, alpha=0.05, seed=5), "bootstrap_ci")[::-1])
-    c.ok(w_block > 2.5 * w_iid, f"block CI width {w_block:.3f} is not much wider than iid {w_iid:.3f}")
-    w1 = np.subtract(*pair(bbci(len(e), lambda i: float(np.mean(e[i])), block_len=1, n_boot=300, seed=5),
-                           "block_bootstrap_ci")[::-1])
-    c.ok(0.75 * w_iid < w1 < 1.33 * w_iid, f"block_len=1 gives width {w1:.3f}, expected about {w_iid:.3f}")
-
-
-@c.test("measure_project.summary(): availability, CEP50, p95 and max of the accepted epochs",
-        hint="Keep errors[accepted] only; availability = accepted / all epochs (rejected epochs count!); "
-             "use percentile() for CEP50 (q=50) and p95; nan everywhere when nothing is accepted.")
-def _():
-    (summary,) = need(load_student("measure_project.py"), "summary")
-    acc = [True, True, False, True, True, False, True, True, True, True]
-    err = [1.0, 2.0, 99.0, 3.0, 4.0, float("nan"), 5.0, 6.0, 7.0, 50.0]
-    s = summary(acc, err)
-    c.ok(isinstance(s, dict), f"summary() should return a dict, got {s!r}")
-    for k, v in (("n_epochs", 10), ("n_accepted", 8), ("availability", 0.8),
-                 ("cep50", float(np.percentile([1, 2, 3, 4, 5, 6, 7, 50], 50))),
-                 ("p95", float(np.percentile([1, 2, 3, 4, 5, 6, 7, 50], 95))), ("max", 50.0)):
-        c.ok(k in s, f"the dict has no key '{k}'")
-        c.near(s[k], v, 1e-9, what=f"summary(...)['{k}']")
-    z = summary([False, False], [1.0, 2.0])
-    c.ok(isinstance(z, dict) and math.isnan(float(z.get("p95", 0.0))) and z.get("n_accepted") == 0,
-         "with nothing accepted: n_accepted 0 and p95 nan")
-
-
-# ---------------------------------------------------------------- the report and the numbers
-@c.test("PROJECT.md has its six sections, each one written by you",
-        hint="Keep the headings ## Proposal, ## Change, ## Test, ## Measurement, ## Result, ## Limits and "
-             "replace every '(…)' placeholder by your own text — a few sentences each.")
-def _():
-    s = sections()
-    missing = [h for h in SECTIONS if h not in s]
-    c.ok(not missing, "missing heading(s): " + ", ".join("## " + h for h in missing))
-    todo = [h for h in SECTIONS if len(no_placeholder(s[h]).split()) < 15]
-    c.ok(not todo, "still empty or only the placeholder: " + ", ".join(todo) + " (at least a few sentences each)")
-
-
-@c.test("PROJECT.md: a real proposal (problem, hypothesis, metric, acceptance criterion) and a measurement with CIs",
-        hint="Under ## Proposal keep the four bold labels and write after each one. ## Measurement needs the "
-             "numbers before AND after and their 95 % confidence intervals (write 'CI' or 'confidence').")
-def _():
-    s = sections()
-    prop = s.get("Proposal", "")
-    for lab in LABELS:
-        mt = re.search(r"\*\*" + lab + r":?\*\*:?(.*?)(?=\*\*[A-Z][a-z ]+:?\*\*|\Z)", prop, re.S)
-        c.ok(mt, f"## Proposal has no **{lab}:** label")
-        c.ok(len(no_placeholder(mt.group(1)).split()) >= 6, f"**{lab}:** is still empty or only the placeholder")
-    m = s.get("Measurement", "")
-    c.ok(len(re.findall(r"\d", m)) >= 8, "## Measurement contains (almost) no numbers")
-    c.ok(re.search(r"before", m, re.I) and re.search(r"after", m, re.I),
-         "## Measurement should show the result BEFORE and AFTER your change")
-    c.ok(re.search(r"\bCIs?\b|confidence", m, re.I), "## Measurement should give the 95 % confidence intervals")
-    c.ok(re.search(r"\b(accept|reject|inconclusive)", s.get("Result", ""), re.I),
-         "## Result should state the decision: accept, reject or inconclusive")
-
-
-@c.test("results.json: complete and self-consistent (values inside their CIs, difference = after - before)",
-        hint="Write it with write_results() (stats_tools.py). Each of before / after / difference has a value and "
-             "a ci95 [lo, hi] with lo <= value <= hi; at least 1000 resamples; n = number of samples.")
-def _():
-    r = results()
-    for k in ("metric", "unit", "better", "n", "before", "after", "difference", "bootstrap", "acceptance", "decision"):
-        c.ok(k in r, f"results.json has no key '{k}'")
-    c.ok(r["better"] in ("lower", "higher"),
-         "'better' must be \"lower\" or \"higher\" (write_results saves better=\"closer\" as \"lower\")")
-    c.ok(isinstance(r["n"], int) and r["n"] >= 20, "'n' should be the number of samples (at least 20)")
-    for k in ("before", "after", "difference"):
-        v, ci = r[k].get("value"), r[k].get("ci95")
-        c.ok(isinstance(ci, list) and len(ci) == 2, f"{k}.ci95 should be [lo, hi]")
-        c.ok(ci[0] - 1e-6 <= v <= ci[1] + 1e-6, f"{k}: value {v} is outside its CI {ci}")
-    c.near(r["difference"]["value"], r["after"]["value"] - r["before"]["value"], 1e-3,
-           what="difference.value (should be after - before)")
-    b = r["bootstrap"]
-    c.ok(b.get("method") in ("moving-block", "iid") and int(b.get("n_boot", 0)) >= 1000 and "seed" in b,
-         "bootstrap should say method (moving-block or iid), n_boot >= 1000 and the seed")
-
-
-AVAIL_LIMIT = -0.10        # the example's guard-rail, fixed in its proposal: availability may drop by <= 10 points
-
-
-def is_example(r):
-    """The worked example (idea 1), whatever the student called it in results.json."""
-    if r.get("project") == "min-satellites":
-        return True
+def manifest(label):
+    path = os.path.join("runs", label, "manifest.json")
+    if not os.path.exists(path):
+        raise CheckFailed(f"runs/{label}/ has no campaign: python3 project.py campaign {label}")
     try:
-        if "min-satellites" in git("rev-parse --abbrev-ref HEAD"):
-            return True
-        diff = git("diff base..HEAD -- gps_pkg/gps_pkg/nodes/gps_node.py")
-    except CheckFailed:
-        diff = ""
-    added = "\n".join(ln for ln in diff.splitlines() if ln.startswith("+"))
-    if re.search(r"num_sats|MIN_SAT|satellites", added, re.I):
-        return True
-    return "nmea_bench" in str(r.get("data", "")) and "target" not in r and "availability" in r.get("secondary", {})
+        with open(path) as f:
+            return json.load(f)
+    except ValueError:
+        raise CheckFailed(f"runs/{label}/manifest.json is damaged: fly the campaign again")
 
 
-def side(ci, limit, better):
-    """'good' if the whole CI is on the good side of `limit`, 'bad' if entirely on the bad side, else None."""
-    lo, hi = float(ci[0]), float(ci[1])
-    if better == "lower":
-        return "good" if hi < limit else ("bad" if lo > limit else None)
-    return "good" if lo > limit else ("bad" if hi < limit else None)
+def after():
+    s0, b = before()
+    ma = manifest("after")
+    a = ma.get("sha")
+    if not (isinstance(a, str) and sha(a) == a):
+        raise CheckFailed("runs/after/manifest.json names a commit that is not in your repository: fly "
+                          "`python3 project.py campaign after` again")
+    if a == b or not ancestor(b, a):
+        raise CheckFailed("the 'after' campaign must fly a commit that comes AFTER the tag 'before' (your change)")
+    head = sha("HEAD")
+    if not ancestor(a, head):
+        raise CheckFailed("the commit the 'after' campaign flew is not on your branch any more (rebased? reset?): "
+                          "fly `python3 project.py campaign after` again")
+    return s0, b, a, head
 
 
-def guard_rails(r):
-    """[(name, ci95 of the difference, limit, better)] — every secondary metric that has a 'limit'
-    (and, for the example, the availability limit of its proposal)."""
-    out = []
-    for name, m in (r.get("secondary") or {}).items():
-        if isinstance(m, dict) and "limit" in m:
-            out.append((name, m["difference"]["ci95"], float(m["limit"]), m.get("better", "higher")))
-    if is_example(r) and not any(g[0] == "availability" for g in out):
-        av = (r.get("secondary") or {}).get("availability")
-        c.ok(isinstance(av, dict) and "difference" in av,
-             "the example's guard-rail (secondary.availability with its difference and CI) is missing")
-        out.append(("availability", av["difference"]["ci95"], AVAIL_LIMIT, "higher"))
+# ------------------------------------------------------------------------------------------------ metrics (the check's own)
+def read_rows(path):
+    import csv
+    with open(path, newline="") as f:
+        rows = list(csv.DictReader(f))
+    for r in rows:
+        for k in NUMERIC:
+            v = r.get(k, "")
+            r[k] = float(v) if v not in ("", None) else None
+    return rows
+
+
+def window_of(m, sc):
+    w = m.get("window", "fault")
+    if isinstance(w, list) and len(w) == 2:
+        return float(w[0]), float(w[1])
+    if w == "all":
+        return 0.0, math.inf
+    faults = sorted((list(f) for f in sc.get("faults", [])), key=lambda f: f[0])
+    if not faults:
+        return 0.0, math.inf
+    t0, sensor = float(faults[0][0]), faults[0][1]
+    for t, s, mode in faults[1:]:
+        if s == sensor and mode == "ok" and t > t0:
+            return t0, float(t)
+    return t0, math.inf
+
+
+def lin_pct(v, q):
+    return float(np.percentile(np.asarray(v, dtype=float), q))
+
+
+def metric_value(m, rows, sc):
+    name = m["name"]
+    if name == "custom":
+        mm = load_student("my_metric.py", fresh=True)
+        (f,) = need(mm, "metric")
+        v = f(rows, sc)
+        return None if v is None else float(v)
+    t0, t1 = window_of(m, sc)
+    win = [r for r in rows if r["t_s"] is not None and t0 <= r["t_s"] < t1]
+    if name == "failsafe":
+        return 1.0 if any(r["ap_mode"] in ("LAND", "HOLD") for r in rows) else 0.0
+    if name == "false_alarm":
+        g = [float(f[0]) for f in sc.get("faults", []) if f[1] == "gps" and f[2] != "ok"]
+        end = min(g) if g else math.inf
+        return 1.0 if any(r["lite_source"] != "gps" for r in rows if r["t_s"] is not None and 5.0 <= r["t_s"] < end) else 0.0
+    if not win:
+        return None
+    if name == "detected":
+        return 1.0 if any(r["lite_source"] != "gps" for r in win) else 0.0
+    if name == "detect_s":
+        hit = next((r for r in win if r["lite_source"] != "gps"), None)
+        return None if hit is None else hit["t_s"] - t0
+    if name in ("availability", "fix_share"):
+        ok = ("FIX", "DEGRADED") if name == "availability" else ("FIX",)
+        return sum(r["lite_state"] in ok for r in win) / len(win)
+    if name == "bad_fix":
+        return sum(r["lite_state"] == "FIX" and r["lite_err_m"] is not None and bool(r["lite_sigma_m"])
+                   and r["lite_err_m"] > 3.0 * r["lite_sigma_m"] for r in win) / len(win)
+    if name == "honest2":
+        both = [r for r in win if r["lite_err_m"] is not None and r["lite_sigma_m"]]
+        return sum(r["lite_err_m"] <= 2.0 * r["lite_sigma_m"] for r in both) / len(both) if both else None
+    col = "ap_err_m" if name.startswith("ap_") else "lite_err_m"
+    v = [r[col] for r in win if r[col] is not None]
+    if not v:
+        return None
+    return {"median": lin_pct(v, 50), "p90": lin_pct(v, 90), "p95": lin_pct(v, 95), "max": max(v)}[name.split("_")[-1]]
+
+
+def stat_of(better, target):
+    if better == "closer":
+        return lambda x: abs(float(np.mean(x)) - float(target))
+    return lambda x: float(np.mean(x))
+
+
+def paired_ci(a, b, stat, B, alpha, seed):
+    a, b = np.asarray(a, float), np.asarray(b, float)
+    n = len(a)
+    rng = np.random.default_rng(seed)
+    reps = np.empty(B)
+    for i in range(B):
+        idx = rng.integers(0, n, size=n)
+        reps[i] = stat(a[idx]) - stat(b[idx])
+    lo, hi = np.percentile(reps, [100 * alpha / 2, 100 * (1 - alpha / 2)])
+    return float(lo), float(hi)
+
+
+def decide(p, ci, g):
+    lo, hi = ci
+    eff = p["min_effect"]
+    good = lo > eff if p["better"] == "higher" else hi < -eff
+    bad = hi < 0 if p["better"] == "higher" else lo > 0
+    g_bad, g_ok = False, True
+    if g:
+        glo, ghi = g["ci"]
+        loss_hi = -glo if g["better"] == "higher" else ghi
+        loss_lo = -ghi if g["better"] == "higher" else glo
+        g_bad, g_ok = loss_lo > g["max_loss"], loss_hi <= g["max_loss"]
+    if bad or g_bad:
+        return "reject"
+    if good and g_ok:
+        return "accept"
+    return "inconclusive"
+
+
+def scenarios_at(p, code_dir, where):
+    out = {}
+    for s in p["scenarios"]:
+        try:
+            with open(os.path.join(code_dir, s)) as f:
+                out[s] = json.load(f)
+        except (OSError, ValueError):
+            raise CheckFailed(f"{s} is not a readable scenario in the commit {where}")
     return out
 
 
-def expected_decision(r):
-    """The decision rule of the lesson (section 7): accept only when the primary CI is entirely on the
-    better side of 0 AND every guard-rail CI stays on the good side of its limit; reject when the
-    primary CI is entirely on the worse side or a guard-rail CI is entirely beyond its limit;
-    otherwise inconclusive."""
-    primary = side(r["difference"]["ci95"], 0.0, r["better"])
-    guards = [(name, ci, lim, side(ci, lim, b)) for name, ci, lim, b in guard_rails(r)]
-    if primary == "bad" or any(g[3] == "bad" for g in guards):
-        return "reject", guards
-    if primary == "good" and all(g[3] == "good" for g in guards):
-        return "accept", guards
-    return "inconclusive", guards
+def expected_runs(p, scs):
+    return [(s, seed, f"{scs[s]['name']}_s{seed}") for s in p["scenarios"] for seed in p["seed_list"]]
 
 
-@c.test("results.json: the decision follows the acceptance rule (CI of the difference AND guard-rails)",
-        hint="Lesson section 7: 'accept' only when the whole CI of the difference is on the 'better' side "
-             "of 0 AND every guard-rail CI stays on the good side of its limit; 'reject' when a CI is "
-             "entirely on the bad side; anything else (a CI that contains 0 or crosses a guard-rail "
-             "limit) is 'inconclusive'.")
+DRIVER = r'''
+import json, sys
+from navera_lite.sim import run as R
+spec = json.load(open(sys.argv[1]))
+sc = dict(spec["scenario"]); sc["seed"] = spec["seed"]; sc["name"] = spec["name"]
+R.write(R.fly(sc, mine=False), spec["out"])
+'''
+
+
+def refly(label, rev_sha, p, scs, man):
+    """Fly ONE run of the campaign again, from the commit, and compare it with the CSV in runs/<label>/."""
+    runs = expected_runs(p, scs)
+    k = int(hashlib.sha256((rev_sha + label).encode()).hexdigest(), 16) % len(runs)
+    s, seed, name = runs[k]
+    d = extract(rev_sha)
+    work = tempfile.mkdtemp(prefix="chk33fly_")
+    spec = os.path.join(work, "spec.json")
+    with open(spec, "w") as f:
+        json.dump({"scenario": scs[s], "seed": seed, "name": name, "out": work}, f)
+    with open(os.path.join(work, "drv.py"), "w") as f:
+        f.write(DRIVER)
+    code, out = sh(f"cd {d} && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH={d}:$PYTHONPATH python3 -B {work}/drv.py {spec}",
+                   timeout=240)
+    if code:
+        raise CheckFailed(f"the commit {rev_sha[:10]} cannot fly {name} again: {out.strip()[-300:]}")
+    mine, theirs = os.path.join(work, name + ".csv"), os.path.join("runs", label, name + ".csv")
+    if sha256_file(mine) == sha256_file(theirs):
+        return name
+    va = metric_value(p["metric"], read_rows(mine), scs[s])
+    vb = metric_value(p["metric"], read_rows(theirs), scs[s])
+    loose = scs[s].get("vision") == "mine"          # trained networks on a GPU are not bit-exact
+    if va is not None and vb is not None and abs(va - vb) <= (0.05 * max(abs(va), 1e-9) if loose else 1e-9):
+        return name
+    raise CheckFailed(f"runs/{label}/{name}.csv is not what commit {rev_sha[:10]} flies (flown again by the check: "
+                      f"{p['metric']['name']} {va} instead of {vb}) — fly `python3 project.py campaign {label}` again, "
+                      "and never edit the runs")
+
+
+def campaign_ok(label, rev_sha, where):
+    p, text = project_at(rev_sha, where)
+    man = manifest(label)
+    if man.get("sha") != rev_sha:
+        raise CheckFailed(f"runs/{label}/ was flown from commit {str(man.get('sha'))[:10]}, not from {where} "
+                          f"({rev_sha[:10]}): python3 project.py campaign {label}")
+    if man.get("project_sha256") != sha256_text(text):
+        raise CheckFailed(f"runs/{label}/ did not fly the project.json of {where}: fly it again")
+    d = extract(rev_sha)
+    scs = scenarios_at(p, d, where)
+    want = expected_runs(p, scs)
+    names = [r.get("name") for r in man.get("runs", [])]
+    if names != [n for _, _, n in want]:
+        raise CheckFailed(f"runs/{label}/ holds {len(names)} runs, the pre-registration asks for {len(want)} "
+                          f"({len(p['scenarios'])} scenario(s) × seeds {p['seed_list'][0]}–{p['seed_list'][-1]}): every "
+                          "pre-registered run, no more, no less — fly the campaign again")
+    for r in man["runs"]:
+        path = os.path.join("runs", label, r["name"] + ".csv")
+        if not os.path.exists(path):
+            raise CheckFailed(f"{path} is missing: fly the campaign again")
+        if sha256_file(path) != r.get("csv_sha256"):
+            raise CheckFailed(f"{path} is not the file the campaign wrote (changed by hand?): fly the campaign again")
+    return p, scs, man
+
+
+# ------------------------------------------------------------------------------------------------ the report
+def section(text, title):
+    mm = re.search(r"^## " + re.escape(title) + r".*?$(.*?)(?=^## |\Z)", text, re.S | re.M)
+    return mm.group(1) if mm else None
+
+
+NEGATION = re.compile(r"\bnot\b|n't|\bno\b|\bnever\b|cannot|\blooks?\b|\bseems?\b|\bonly\b|\bwithout\b|\bworse\b"
+                      r"|\bbut\b|however|although|\bunclear\b|\bwhether\b|\bif\b|\bmay\b|\bmight\b|uncertain"
+                      r"|inconclusive|\byet\b|\bhoped\b|\bexpected\b|\baim|\bmeant\b|\bgoal\b|\bwant")
+CLAIM = re.compile(r"\bbetter\b|\bbeats?\b|\boutperform|more accurate|\bwins?\b|\bsuperior\b|\bimproves?\b"
+                   r"|\bimproved\b|\bfixes\b|\bsolves?\b|\bsolved\b")
+MISSING = re.compile(r"\bno (position|fix|match|gps|data|answer)s?\b")
+
+
+def claims(text):
+    for sent in re.split(r"(?<=[.;!?])\s+|\n\s*\n", str(text)):
+        low = MISSING.sub("", sent.lower())
+        if re.search(r"\bstill (better|more accurate)\b|^\s*prov(ed|en)\b|(?<!not )\bsignificantly (better|more accurate)\b",
+                     low):
+            return sent.strip()
+        if CLAIM.search(low) and not NEGATION.search(low):
+            return sent.strip()
+    return None
+
+
+def numbers(text):
+    out = []
+    for tok in re.findall(r"[-−]?\d+(?:\.\d+)?", text):
+        t = tok.replace("−", "-")
+        d = len(t.split(".")[1]) if "." in t else 0
+        out.append((float(t), d))
+    return out
+
+
+def written(nums, v, scale, share):
+    """Is the value v in the report, correctly rounded, precise enough (or ×100 for a share)?"""
+    need = max(0.05 * abs(v), 0.005 * scale, 1e-9)
+    for f in ((1.0, 100.0) if share else (1.0,)):
+        for x, d in nums:
+            half = 0.5 * 10 ** (-d) / f
+            if abs(x / f - v) <= half + 1e-12 and half <= need + 1e-12:
+                return True
+            if abs(abs(x) / f - abs(v)) <= half + 1e-12 and half <= need + 1e-12 and abs(v) > 0:
+                return True     # a difference written as a size ("lower by 0.11")
+    return False
+
+
+# ================================================================================================ Session 1
+@c.test("Step 1 — a git repository made by init_repo.sh, tag 'start', and the given measuring bench",
+        hint="bash navera_lite/tools/init_repo.sh makes the repository and the tag start; project.py must stay the "
+             "given one (git restore project.py, or cp it back from /academy/courses/33-final-project/files/).")
 def _():
-    r = results()
-    d = r.get("decision")
-    c.ok(d in ("accept", "reject", "inconclusive"), f"decision is {d!r}: use accept, reject or inconclusive")
-    want, guards = expected_decision(r)
-    lo, hi = r["difference"]["ci95"]
-    why = f"CI of the difference [{lo}, {hi}] ({r['better']} is better)"
-    for name, ci, lim, s in guards:
-        why += f"; guard-rail {name}: CI of the difference {list(ci)}, limit {lim:+g}"
-    c.ok(d == want, f"decision is {d!r} but the acceptance rule gives {want!r}: {why}")
+    s0 = repo()
+    c.ok(show(s0, "navera_lite/__init__.py") is not None, "the commit 'start' does not hold navera_lite/: run "
+                                                          "init_repo.sh in the lesson folder")
+    given = open(os.path.join(GIVEN, "project.py"), encoding="utf-8").read()
+    c.ok(os.path.exists("project.py") and open("project.py", encoding="utf-8").read() == given,
+         "project.py is not the given measuring bench any more: it is the ruler, put it back (cp "
+         f"{GIVEN}/project.py .)")
+    for rev in ("start", "before", "HEAD"):
+        h = sha(rev)
+        if h and show(h, "project.py") not in (None, given):
+            raise CheckFailed(f"project.py was changed in a commit (at {rev}): restore the given file and commit it")
 
 
-def _self_test_decision_rule():
-    """The example of the lab (Step 10): Δp95 CI below 0 but the availability CI crosses -10 points
-    -> inconclusive. Run when the check starts: a broken rule must never reach the students."""
-    ex = {"project": "min-satellites", "better": "lower", "difference": {"ci95": [-60.0, -20.0]},
-          "secondary": {"availability": {"difference": {"ci95": [-0.139, -0.020]}}}}
-    assert expected_decision(ex)[0] == "inconclusive", "decision rule: example should be inconclusive"
-    ex["secondary"]["availability"]["difference"]["ci95"] = [-0.05, -0.02]
-    assert expected_decision(ex)[0] == "accept"
-    ex["secondary"]["availability"]["difference"]["ci95"] = [-0.20, -0.12]
-    assert expected_decision(ex)[0] == "reject"
-    ex["difference"]["ci95"] = [-5.0, 3.0]
-    ex["secondary"]["availability"]["difference"]["ci95"] = [-0.05, -0.02]
-    assert expected_decision(ex)[0] == "inconclusive"
-
-
-def reference_example():
-    import pynmea2
-    truth = json.load(open(f"{DATA}/truth.json"))
-    m_lat = 111_195.0
-    acc_b, acc_a, err = [], [], []
-    for line in open(f"{DATA}/nmea_bench.txt"):
-        line = line.strip()
-        if not line.startswith("$GPGGA"):
-            continue
-        try:
-            m = pynmea2.parse(line, check=True)
-        except pynmea2.ParseError:
-            acc_b.append(False), acc_a.append(False), err.append(math.nan)
-            continue
-        pos = bool(m.lat) and bool(m.lon)
-        q = int(m.gps_qual or 0)
-        sats = int(m.num_sats) if m.num_sats else None
-        ok = pos and q in (1, 2, 4, 5)
-        acc_b.append(ok)
-        acc_a.append(ok and (sats is None or sats >= 4))
-        err.append(math.hypot((m.latitude - truth["lat"]) * m_lat,
-                              (m.longitude - truth["lon"]) * m_lat * math.cos(math.radians(truth["lat"])))
-                   if pos else math.nan)
-    err, acc_b, acc_a = np.array(err), np.array(acc_b), np.array(acc_a)
-    return (float(np.percentile(err[acc_b], 95)), float(np.percentile(err[acc_a], 95)),
-            float(acc_b.mean()), float(acc_a.mean()), len(err), acc_b, acc_a)
-
-
-@c.test("example project: results.json agrees with a re-measurement of nmea_bench.txt",
-        hint="Run python3 measure_project.py again after your last change; the p95 values and the availability "
-             "must come from the 1800 epochs of the file (corrupted lines count as epochs, not accepted).")
+@c.test("Step 2 — your work is on a project branch that starts at 'start'",
+        hint="git switch -c project/<short-name> (from the commit 'start'); never work on main.")
 def _():
-    r = results()
-    if not is_example(r):
-        c.skip("your project is not the example (idea 1, refuse fixes from fewer than 4 satellites)")
-    p_b, p_a, a_b, a_a, n, acc_b, acc_a = reference_example()
-    c.eq(r["n"], n, "results.json n (epochs)")
-    c.near(r["before"]["value"], p_b, 0.05, what="before.value (p95, m)")
-    c.near(r["after"]["value"], p_a, 0.05, what="after.value (p95, m)")
-    av = r.get("secondary", {}).get("availability")
-    c.ok(av, "secondary.availability is missing (the guard-rail metric)")
-    c.near(av["before"]["value"], a_b, 0.002, what="availability before")
-    c.near(av["after"]["value"], a_a, 0.002, what="availability after")
-    w = r["difference"]["ci95"][1] - r["difference"]["ci95"][0]
-    c.ok(r["bootstrap"].get("method") == "moving-block" and w > 30,
-         f"the p95-difference CI is only {w:.1f} m wide: the errors are correlated in time, use the "
-         f"moving-block bootstrap (60 s blocks) as in the proposal")
-    # the guard-rail CI, recomputed here with YOUR block_bootstrap_ci on the reference epochs
-    (bbci,) = need(stats(), "block_bootstrap_ci")
-    bt = r["bootstrap"]
-    ref = pair(bbci(n, lambda i: float(np.mean(acc_a[i]) - np.mean(acc_b[i])), int(bt.get("block_len", 60)),
-                    int(bt.get("n_boot", 2000)), 0.05, int(bt.get("seed", 0))), "block_bootstrap_ci")
-    got = av.get("difference", {}).get("ci95", [math.nan, math.nan])
-    c.ok(abs(got[0] - ref[0]) < 0.01 and abs(got[1] - ref[1]) < 0.01,
-         f"availability difference CI in results.json {got} does not match a re-computation "
-         f"[{ref[0]:.4f}, {ref[1]:.4f}] (same epochs, block_len, n_boot, seed): run measure_project.py again")
-    c.ok(ref[0] < AVAIL_LIMIT < ref[1], "the re-computed availability CI does not cross the -10 point limit "
-                                         "(unexpected for nmea_bench.txt — ask the teacher)")
-    c.eq(r["decision"], "inconclusive", "decision of the example (the availability CI crosses -10 points)")
+    s0 = repo()
+    code, out = sh("git symbolic-ref --short -q HEAD")
+    b = out.strip()
+    c.ok(code == 0 and re.fullmatch(r"project/[A-Za-z0-9._-]+", b or ""),
+         f"HEAD is on '{b or 'a detached commit'}': switch to your branch project/<short-name> (git switch …)")
+    c.ok(ancestor(s0, "HEAD"), "your branch does not start from the tag 'start'")
 
 
-# ---------------------------------------------------------------- the engineering part
-@c.test("you work on a project branch in ~/navera",
-        hint="cd ~/navera && git checkout -b project/<short-name>   (the check looks at the branch you are on)")
+@c.test("Step 3 — project.json: a complete pre-registration, frozen at 'before'",
+        hint="python3 project.py plan says what is missing; commit project.json WITH your red test, then never "
+             "change it (git diff before HEAD -- project.json must be empty).")
 def _():
-    c.ok(os.path.isdir(os.path.join(NAV, ".git")), "~/navera is not a git repository any more — ask the teacher")
-    b = git("rev-parse --abbrev-ref HEAD")
-    c.ok(b not in ("work", "main", "master", "HEAD"),
-         f"you are on '{b}': create a project branch (git checkout -b project/<name>)")
-
-
-@c.test("at least one commit since base, and nothing left uncommitted",
-        hint="git add <your files> && git commit -m \"what and why\"; then `git status` must be clean.")
-def _():
-    n = int(git("rev-list --count base..HEAD") or 0)
-    c.ok(n >= 1, "no commit since base on this branch")
-    dirty = [ln for ln in git("status --porcelain").splitlines()
-             if ln[3:] and not ln.startswith("??") and not ln[3:].startswith(IGNORED)]
-    c.ok(not dirty, "uncommitted changes in ~/navera:\n       " + "\n       ".join(dirty[:8]))
-    c.ok(changed_files(), "your commits change no file compared with base")
-
-
-@c.test("your project adds or changes a test, and it passes on your branch",
-        hint="Add a test_*.py file (e.g. in <package>/test/) to your commits. Run it: "
-             "cd ~/navera && python3 -m pytest -q <the file>")
-def _():
-    tests = tests_changed()
-    c.ok(tests, "no test_*.py file among your committed changes (git diff --name-only base)")
-    unit = [t for t in tests if "/test/" in "/" + t]
-    integ = [t for t in tests if t not in unit]
-    if unit:
-        code, out = sh(f"cd {NAV} && python3 -m pytest -q -p no:cacheprovider " + " ".join(unit), timeout=240)
-        c.ok(code == 0, "your test(s) fail:\n" + out[-900:])
-    for t in integ:                                   # e.g. navera_tools/tests/test_*.py: a script
-        code, out = sh(f"cd {NAV} && timeout 280 python3 {t}", timeout=290)
-        c.ok(code == 0, f"{t} fails:\n" + out[-900:])
-
-
-@c.test("your test detects the problem: it FAILS on the base code",
-        hint="A good test fails before the change and passes after. The check copies your test next to the "
-             "base version of the package: if it still passes there, it does not test your change.")
-def _():
-    tests = tests_changed()
-    c.ok(tests, "no test_*.py file among your committed changes yet")
-    unit = [t for t in tests if "/test/" in "/" + t]
-    if not unit:
-        c.skip("no unit test in <package>/test/ (integration scripts are not re-run on base)")
-    pkgs = sorted({t.split("/")[0] for t in unit} | {f.split("/")[0] for f in changed_files() if "/" in f})
-    tmp = tempfile.mkdtemp(prefix="base_")
+    if not os.path.exists("project.json"):
+        raise CheckFailed("project.json is missing")
     try:
-        code, out = sh(f"git -C {NAV} archive base {' '.join(pkgs)} | tar -x -C {tmp}", timeout=60)
-        c.ok(code == 0, "could not extract the base version of your package(s):\n" + out[-300:])
-        for t in unit:
-            os.makedirs(os.path.dirname(os.path.join(tmp, t)), exist_ok=True)
-            shutil.copy(os.path.join(NAV, t), os.path.join(tmp, t))
-        pp = ":".join(os.path.join(tmp, p) for p in pkgs)
-        code, out = sh(f"cd {tmp} && PYTHONPATH={pp}:$PYTHONPATH python3 -m pytest -q -p no:cacheprovider "
-                       + " ".join(unit), timeout=240)
-        c.ok(code != 0, "your test(s) also PASS on the base code — they do not detect the problem your "
-                        "change solves")
-        c.ok(code != 5, "pytest collected no test on the base code — are your tests named test_*?")
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        p = json.load(open("project.json", encoding="utf-8"))
+    except ValueError as e:
+        raise CheckFailed(f"project.json is not valid JSON: {e}")
+    probs = validate(p)
+    c.ok(not probs, "project.json: " + "; ".join(probs) + " — python3 project.py plan")
+    s0, b = before()
+    frozen = [f for f in ["project.json", "project.py", "my_metric.py"] + list(p["scenarios"])
+              if changed(b, "HEAD", f) or sh(f"git diff --quiet HEAD -- {shlex.quote(f)}")[0]]
+    c.ok(not frozen, "changed after the tag 'before': " + ", ".join(frozen) + " — a pre-registration (and the "
+                     "scenarios and the ruler it names) is frozen before the baseline; put them back "
+                     "(git checkout before -- <file>) or start again from a new red-test commit")
 
 
-@c.test("NAVERA's own unit tests still pass in every package you touched",
-        hint="cd ~/navera && python3 -m pytest -q <package>/test — read the first failure: did your change "
-             "break something that worked?")
+@c.test("Step 4 — the red test: added before 'before', and it FAILS there (the rest of the suite passes)",
+        hint="Commit your test with project.json, then `python3 project.py red`. Imports of NEW names go inside the "
+             "test function, so that pytest reports a failure, not a crash.")
 def _():
-    pkgs = sorted({f.split("/")[0] for f in changed_files() if "/" in f})
-    c.ok(pkgs, "your commits do not change any NAVERA package yet")
-    with_tests = [p for p in pkgs if os.path.isdir(os.path.join(NAV, p, "test"))]
-    if not with_tests:
-        c.skip(f"the package(s) you touched ({', '.join(pkgs)}) have no unit-test folder")
-    files = []
-    for p in with_tests:
-        for f in sorted(os.listdir(os.path.join(NAV, p, "test"))):
-            if re.fullmatch(r"test_.*\.py", f) and not re.fullmatch(r"test_(flake8|pep257|copyright)\.py", f):
-                files.append(f"{p}/test/{f}")
-    code, out = sh(f"cd {NAV} && python3 -m pytest -q -p no:cacheprovider " + " ".join(files), timeout=280)
-    c.ok(code == 0, f"unit tests of {', '.join(with_tests)} fail:\n" + out[-900:])
+    s0, b = before()
+    p, _ = project_at(b, "'before'")
+    t = p["test"]
+    c.ok(show(b, t) is not None, f"{t} is not in the commit tagged 'before'")
+    c.ok(changed(s0, b, t), f"{t} was not added or changed between 'start' and 'before': the red test is YOURS")
+    code, out = pytest_at(b, t)
+    if code == 0:
+        raise CheckFailed(f"{t} PASSES at 'before' ({last_line(out)}): it does not see the problem without your "
+                          "change (lesson §3)")
+    if code != 1:
+        raise CheckFailed(f"pytest could not run {t} at 'before' (exit {code}): {last_line(out)} — a syntax error or "
+                          "an import at the top of the file? A red test FAILS, it does not crash")
+    code, out = pytest_at(b, "navera_lite/tests")
+    others = [f for f in failed_files(out) if f != t]
+    c.ok(not others, "at 'before' other tests fail too: " + ", ".join(others) + " — the stack must be healthy before "
+                     "your change")
 
 
-@c.test("my_project.patch: your change, exported after your last commit",
-        hint="cd ~/navera && git diff base > ~/lessons/33-final-project/my_project.patch")
+@c.test("Step 5 — the baseline campaign flew the commit tagged 'before', every pre-registered run",
+        hint="python3 project.py campaign before (after `git tag before`); never edit runs/ by hand.")
 def _():
+    s0, b = before()
+    p, scs, man = campaign_ok("before", b, "'before'")
+    CACHE["refly_before"] = refly("before", b, p, scs, man)
+
+
+# ================================================================================================ Session 2
+@c.test("Step 6 — the change: committed after 'before', the ruler untouched, test and suite green",
+        hint="Change the stack (navera_lite/, navera_lite.yaml or a ref_*.pt), commit, `python3 project.py green`. "
+             "Do not touch the simulator's world (kind stack), the red test or project.json after 'before'.")
+def _():
+    s0, b, a, head = after()
+    p, _ = project_at(b, "'before'")
+    files = changed(b, a)
+    stack = [f for f in files if (f.startswith("navera_lite/") or f in ("navera_lite.yaml", "ref_desc.pt",
+                                                                       "ref_homography.pt"))
+             and not f.startswith("navera_lite/tests/")]
+    c.ok(stack, "between 'before' and the 'after' campaign nothing changed in the stack (navera_lite/, "
+                "navera_lite.yaml, ref_*.pt): where is your change?")
+    if p["kind"] == "stack":
+        moved = [f for f in RULER if f in files]
+        c.ok(not moved, "the simulator's world changed between 'before' and 'after': " + ", ".join(moved) + " — for "
+                        "a 'stack' project the ruler must not move (a sensor model belongs in the setup, before "
+                        "'before', or in a project of kind 'sim')")
+    else:
+        out = [f for f in stack if not f.startswith("navera_lite/sim/")]
+        c.ok(not out, "a 'sim' project changes only the simulator (navera_lite/sim/): also changed " + ", ".join(out))
+    c.ok(not changed(b, a, p["test"]), f"{p['test']} changed after 'before': the red test is frozen (put new tests "
+                                       "in another file)")
+    code, out = pytest_at(a, p["test"])
+    c.ok(code == 0, f"{p['test']} does not pass on the commit you measured: {last_line(out)}")
+    code, out = pytest_at(a, "navera_lite/tests")
+    c.ok(code == 0, "the suite fails on the commit you measured: " + ", ".join(failed_files(out) or [last_line(out)]))
+
+
+@c.test("Step 7 — the 'after' campaign flew your committed change, and HEAD still holds it",
+        hint="Commit everything in navera_lite/ (git status), then python3 project.py campaign after; after it, "
+             "change nothing in the stack (or fly 'after' again).")
+def _():
+    s0, b, a, head = after()
+    p, scs, man = campaign_ok("after", a, "the 'after' commit")
+    later = changed(a, "HEAD", *STACK)
+    c.ok(not later, "the stack changed after the 'after' campaign: " + ", ".join(later[:5]) + " — fly "
+                    "`python3 project.py campaign after` again")
+    code, out = sh("git status --porcelain -- " + " ".join(s for s in STACK if os.path.exists(s)))
+    dirty = [ln[3:] for ln in out.splitlines() if ln.strip()]
+    c.ok(not dirty, "uncommitted changes in the stack: " + ", ".join(dirty[:5]) + " — commit them (and fly 'after' "
+                    "again) or throw them away (git restore)")
+    mb = manifest("before")
+    c.ok([r["name"] for r in mb["runs"]] == [r["name"] for r in man["runs"]], "the two campaigns hold different runs")
+    CACHE["refly_after"] = refly("after", a, p, scs, man)
+
+
+@c.test("Step 8 — evaluation.json: the paired difference, its interval and the decision, from YOUR runs",
+        hint="python3 project.py evaluate, after both campaigns (and again after any new campaign).")
+def _():
+    s0, b, a, head = after()
+    p, _ = project_at(b, "'before'")
+    if not os.path.exists("evaluation.json"):
+        raise CheckFailed("evaluation.json does not exist yet: python3 project.py evaluate")
+    try:
+        ev = json.load(open("evaluation.json"))
+    except ValueError:
+        raise CheckFailed("evaluation.json is damaged: python3 project.py evaluate")
+    c.ok(ev.get("before_sha") == b and ev.get("after_sha") == a, "evaluation.json is not about your two campaigns: "
+                                                                  "python3 project.py evaluate again")
+    scs = scenarios_at(p, extract(b), "'before'")
+    runs = expected_runs(p, scs)
+
+    def vals(label, m):
+        out = []
+        for s, _, name in runs:
+            v = metric_value(m, read_rows(os.path.join("runs", label, name + ".csv")), scs[s])
+            if v is None:
+                raise CheckFailed(f"{m['name']} is not defined in run {label}/{name}: choose a metric defined in "
+                                  "every run")
+            out.append(v)
+        return out
+    vb, va = vals("before", p["metric"]), vals("after", p["metric"])
+    for key, mine in (("values_before", vb), ("values_after", va)):
+        got = ev.get(key)
+        c.ok(isinstance(got, list) and len(got) == len(mine) and all(abs(float(x) - y) <= 1e-9 * max(1, abs(y))
+                                                                     for x, y in zip(got, mine)),
+             f"evaluation.json {key} are not the metric of your runs: python3 project.py evaluate again")
+    st = stat_of(p["better"], p.get("target"))
+    D = st(va) - st(vb)
+    lo, hi = paired_ci(va, vb, st, p["B"], p["alpha"], p["boot_seed"])
+    c.ok(abs(float(ev.get("D", math.nan)) - D) <= 1e-9 * max(1, abs(D)), "evaluation.json D is not "
+                                                                         "statistic(after) − statistic(before)")
+    tol = 0.1 * max(hi - lo, 0.0) + 1e-9 * max(1.0, abs(D))
+    eci = ev.get("ci") or [math.nan, math.nan]
+    c.ok(abs(eci[0] - lo) <= tol and abs(eci[1] - hi) <= tol,
+         f"evaluation.json's interval [{eci[0]:.4g}, {eci[1]:.4g}] is not the paired bootstrap of your runs (the "
+         "check gets another one): python3 project.py evaluate again")
+    g = None
+    if p.get("guardrail"):
+        gp = p["guardrail"]
+        gb, ga = vals("before", gp["metric"]), vals("after", gp["metric"])
+        glo, ghi = paired_ci(ga, gb, lambda x: float(np.mean(x)), p["B"], p["alpha"], p["boot_seed"] + 1)
+        g = dict(gp, ci=(glo, ghi), D=float(np.mean(ga) - np.mean(gb)), before=float(np.mean(gb)),
+                 after=float(np.mean(ga)))
+        eg = ev.get("guardrail") or {}
+        c.ok(abs(float(eg.get("D", math.nan)) - g["D"]) <= 1e-9 * max(1, abs(g["D"])),
+             "evaluation.json's guard-rail is not from your runs: python3 project.py evaluate again")
+    dec = decide(p, (lo, hi), g)
+    c.ok(ev.get("decision") == dec, f"evaluation.json says {ev.get('decision')!r}; your pre-registered rule gives "
+                                    "another decision on these runs: python3 project.py evaluate again")
+    CACHE["eval"] = dict(p=p, D=D, ci=(lo, hi), before=st(vb), after=st(va), g=g, decision=dec, n=len(runs),
+                         mean_b=float(np.mean(vb)), mean_a=float(np.mean(va)), files=changed(b, a))
+
+
+def report_text():
+    if not os.path.exists("REPORT.md"):
+        raise CheckFailed("REPORT.md is missing")
+    text = open("REPORT.md", encoding="utf-8", errors="replace").read()
+    first = text.find("\n## ")
+    return text, (text[first:] if first >= 0 else text)
+
+
+def evaluation():
+    if "eval" not in CACHE:
+        raise CheckFailed("the evaluation must pass first (check 8): REPORT.md is checked against it")
+    return CACHE["eval"]
+
+
+@c.test("Step 9 — REPORT.md: every section written, with YOUR numbers (correctly rounded)",
+        hint="Copy the numbers that `python3 project.py evaluate` prints: before, after, D and both ends of its 95 % "
+             "interval (and the guard-rail's D and interval), the number of runs, the seeds; keep the ## titles.")
+def _():
+    text, body = report_text()
+    left = [s for s in ("(fill in", "…") if s in body]
+    c.ok(not left, f"placeholders still there: {left}")
+    for title, n in SECTIONS:
+        s = section(body, title)
+        c.ok(s is not None, f"the section '## {title}' is missing (keep the titles of the template)")
+        w = len(re.findall(r"[A-Za-zÀ-ÿ']{2,}", s))
+        c.ok(w >= n, f"section '{title}' has {w} words (at least {n})")
+    e = evaluation()
+    p = e["p"]
+    share = METRICS[p["metric"]["name"]] in ("share", "event")
+    nums = numbers(body.replace("−", "-"))
+    scale = max(abs(e["mean_b"]), abs(e["mean_a"]), abs(e["before"]), abs(e["after"]), e["ci"][1] - e["ci"][0], 1e-9)
+    for what, v in (("the statistic before", e["before"]), ("the statistic after", e["after"]), ("D", e["D"]),
+                    ("the lower end of D's 95 % interval", e["ci"][0]), ("the upper end of D's interval", e["ci"][1])):
+        c.ok(written(nums, v, scale, share), f"{what} ({p['metric']['name']}) is not in the report, correctly rounded "
+                                             "to at least 2 significant digits")
+    if e["g"]:
+        g = e["g"]
+        gscale = max(abs(g["before"]), abs(g["after"]), g["ci"][1] - g["ci"][0], 1e-9)
+        gshare = METRICS[g["metric"]["name"]] in ("share", "event")
+        for what, v in (("the guard-rail's D", g["D"]), ("the guard-rail interval's lower end", g["ci"][0]),
+                        ("the guard-rail interval's upper end", g["ci"][1])):
+            c.ok(written(nums, v, gscale, gshare), f"{what} is not in the report")
+    c.ok(any(x == e["n"] and d == 0 for x, d in nums), f"the number of paired runs ({e['n']}) is not in the report")
+    camp = section(body, "5. The campaign")
+    c.ok(str(p["seed_list"][0]) in camp and str(p["seed_list"][-1]) in camp,
+         "section 5 must give the seeds (first and last of the block)")
+    ch = section(body, "3. The change")
+    c.ok(any(os.path.basename(f) in ch for f in e["files"] if not f.startswith("navera_lite/tests/")),
+         "section 3 must name the file(s) you changed")
+    rt = section(body, "4. The red test")
+    c.ok(os.path.basename(p["test"]) in rt and re.search(r"fail", rt.lower()),
+         "section 4 must name your test file and say how it failed at 'before'")
+    c.ok(p["metric"]["name"] in section(body, "2. Pre-registration"), "section 2 must name the pre-registered metric")
+
+
+@c.test("Step 9 — REPORT.md: the decision follows the rule, and no claim the interval does not support",
+        hint="Section 7 starts with the decision of `project.py evaluate` (accept / reject / inconclusive); say whether "
+             "the interval contains 0 (or crosses the minimum effect); 'better', 'improves' only for an accepted "
+             "result; section 8: what a simulation does not show.")
+def _():
+    text, body = report_text()
+    e = evaluation()
+    dec = e["decision"]
+    sec7 = section(body, "7. Decision") or ""
+    first = re.split(r"(?<=[.!?])\s", sec7.strip(), maxsplit=1)[0].lower()
+    found = sorted((m.start(), d) for d in ("accept", "reject", "inconclusive")
+                   for m in [re.search(r"\b" + d[:6], first)] if m)
+    said = found[0][1] if found else "none of accept / reject / inconclusive"
+    c.ok(found and found[0][1] == dec, f"the first sentence of section 7 must start with the decision of your rule: "
+                                       f"{dec.upper()} (it says {said} first)")
+    res = (section(body, "6. Results") or "") + sec7
+    c.ok(re.search(r"contain|includ|exclud|cross|\bzero\b|\b0\b|entirely|whole interval|below|above", res.lower()),
+         "sections 6–7 must say where the interval lies: does it contain 0 (or the minimum effect)?")
+    if dec != "accept":
+        sent = claims(res + (section(body, "8. Limits") or ""))
+        c.ok(sent is None, f"the result is {dec.upper()}, but the report claims a gain: \"{sent[:120]}\" — say what "
+                           "the interval allows (not shown, inconclusive, rejected), not what you hoped")
+    lim = (section(body, "8. Limits") or "").lower()
+    c.ok(re.search(r"simulat|synthetic", lim), "section 8 must say that this is a simulation (and what that means)")
+    c.ok(re.search(r"field|real|flight|camera|terrain|wind|hardware|weather|sensor", lim),
+         "section 8 must say what the simulation does not show (real sensors, field, terrain…)")
+
+
+@c.test("answers.py — predictions and explanations",
+        hint="PREDICT_SUITE (Step 0) and PREDICT_EFFECT (before the 'after' campaign) only need to be written; the "
+             "EXPLAIN_… answers: lesson §2–§5.")
+def _():
+    a = load_student("answers.py", fresh=True)
+    v = need(a, "PREDICT_SUITE", "PREDICT_EFFECT", "EXPLAIN_RED", "EXPLAIN_SEEDS", "EXPLAIN_PAIRED", "EXPLAIN_RULER")
+    predicted("PREDICT_SUITE", v[0])
+    predicted("PREDICT_EFFECT", v[1])
+    explained("EXPLAIN_RED", v[2], ([r"fail", r"red"], "what the test does on the old code"),
+              ([r"see", r"detect", r"catch", r"prove", r"show", r"problem", r"bug", r"without (the|my) change",
+                r"old code", r"check"], "what that proves about the test"))
+    explained("EXPLAIN_SEEDS", v[3], ([r"choos", r"chose", r"pick", r"cherry", r"select", r"luck", r"best", r"favou?r"],
+                                      "what a free choice of seeds would allow"),
+              ([r"advance", r"before", r"fixed", r"pre-?regist", r"first", r"frozen", r"block", r"consecutive"],
+               "why they are fixed beforehand"))
+    explained("EXPLAIN_PAIRED", v[4], ([r"same (seed|run|scenario|condition|noise|random|fault|flight)", r"paired",
+                                        r"pair"], "that the two campaigns fly the same runs"),
+              ([r"differen", r"cancel", r"shared", r"only (the|my) change", r"variance", r"narrow", r"noise",
+                r"remov"], "what pairing removes"))
+    explained("EXPLAIN_RULER", v[5], ([r"ruler", r"yardstick", r"world", r"simulat", r"measur", r"model"],
+                                      "what world.py is for the comparison"),
+              ([r"same", r"both", r"compar", r"chang", r"move", r"differen"], "why it must stay the same"))
+
+
+@c.test("Step 10 — my_project.patch: your change as a patch that matches your branch",
+        hint="git diff before HEAD -- navera_lite navera_lite.yaml > my_project.patch, then "
+             "git apply --check -R my_project.patch must say nothing.")
+def _():
+    s0, b, a, head = after()
     c.file_exists("my_project.patch")
-    text = open("my_project.patch", errors="replace").read()
-    c.ok(text.startswith("diff --git"), "my_project.patch does not look like the output of `git diff base`")
-    for f in changed_files():
-        c.ok(f"b/{f}" in text, f"my_project.patch does not contain {f}: export it again after your last commit")
-    code, out = sh(f"cd {NAV} && git apply --check -R {os.path.abspath('my_project.patch')}", timeout=30)
-    c.ok(code == 0, "my_project.patch does not match your branch any more (did you commit after exporting it?) "
-                    "— export it again:\n" + out[-300:])
+    text = open("my_project.patch", encoding="utf-8", errors="replace").read()
+    c.ok(text.startswith("diff --git") or "\ndiff --git" in text, "my_project.patch is not a git diff")
+    stack = [f for f in changed(b, a) if not f.startswith("navera_lite/tests/") and f != "project.json"]
+    c.ok(any(f"b/{f}" in text for f in stack), "my_project.patch does not contain your change (" + ", ".join(stack[:3])
+         + ")")
+    code, out = sh("git apply --check -R my_project.patch")
+    c.ok(code == 0, "git apply --check -R my_project.patch fails: the patch does not match your branch any more — "
+                    f"make it again ({out.strip()[-160:]})")
 
 
-_self_test_decision_rule()
+S1 = ("Step 1 —", "Step 2 —", "Step 3 —", "Step 4 —", "Step 5 —")
+c.milestone("session1", *S1, label="Pre-registered")
+c.milestone("session2", *S1, "Step 6 —", "Step 7 —", "Step 8 —", label="Measured")
+c.milestone("final", "Step", "answers", label="Engineer")
 c.run()

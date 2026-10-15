@@ -1,0 +1,1 @@
+{"name": "night_lag", "vehicle": "drone", "vision": "measured", "light": "night", "seed": 23, "duration_s": 100, "faults": [[30, "gps", "jammed"]]}

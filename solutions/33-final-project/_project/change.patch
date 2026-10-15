@@ -1,0 +1,66 @@
+diff --git a/navera_lite.yaml b/navera_lite.yaml
+index ca6d4d2..9d65f7c 100644
+--- a/navera_lite.yaml
++++ b/navera_lite.yaml
+@@ -22,4 +22,6 @@
+     # 100 m/s is the plane's limit, the same for every vehicle: NAVERA's R-1 (lesson 03); mission 13's check_settings() refuses a value below the vehicle's top speed (VEHICLES)
+     max_speed_mps: 100.0
+     gps_jump_margin_m: 50.0
++    # a held fix's σ grows by this speed × its age (mission 33 project; 15 m/s = the drone's cruise speed)
++    age_speed_mps: 15.0
+     vehicle: "drone"            # drone, plane, boat or robot (vehicle.VEHICLES)
+diff --git a/navera_lite/arbiter.py b/navera_lite/arbiter.py
+index ff378a0..81a6770 100644
+--- a/navera_lite/arbiter.py
++++ b/navera_lite/arbiter.py
+@@ -132,6 +132,17 @@ def pick(cands, current, since, now_s, cfg):
+ 
+ 
+ # from mission 29 — finished: read it, use it, do not change it
++def aged_sigma(sigma_m, age_s, speed_mps):
++    """The σ (m) a fix states once it is age_s old: the vehicle has moved up to speed_mps × age_s since it was
++    measured, added to the source's own σ as an independent error: √(σ² + (speed × age)²). None stays None
++    (a source that states nothing still states nothing); a negative age counts as 0.
++    Example: aged_sigma(15.0, 2.0, 10.0) → 25.0
++    """
++    if sigma_m is None:
++        return None
++    return math.hypot(sigma_m, speed_mps * max(0.0, age_s))
++
++
+ class Arbiter:
+     """The judge of NAVERA Lite (lesson 29). Feed it with receive(est, now_s) on every arrival; ask it with
+     step(now_s) on every arrival and at tick_hz. Its memory is in its attributes (see the top of this file).
+@@ -221,6 +232,6 @@ class Arbiter:
+         if winner is None:
+             return Decision("NO_FIX", None, None, None, no_fix_reason(sources), sources, switched)
+         est = self.latest[winner]
+-        sigma = stated_sigma(est, self.cfg)
++        sigma = aged_sigma(stated_sigma(est, self.cfg), now_s - est.stamp_s, float(self.cfg["age_speed_mps"]))
+         state, words = classify(sigma, self.cfg)
+         return Decision(state, winner, est, sigma, f"{winner}: {words}", sources, switched)
+diff --git a/navera_lite/settings.py b/navera_lite/settings.py
+index f2020ed..2d5b94a 100644
+--- a/navera_lite/settings.py
++++ b/navera_lite/settings.py
+@@ -26,6 +26,7 @@ DEFAULTS = {
+     "tick_hz": 5.0,                # the judge decides on every arrival and at this rate
+     "max_speed_mps": 100.0,        # jump gate: the fastest the vehicle can move
+     "gps_jump_margin_m": 50.0,     # jump gate: plus this margin
++    "age_speed_mps": 15.0,         # a held fix's σ grows by this speed × its age (0.0: it never grows)
+     "vehicle": "drone",            # a key of vehicle.VEHICLES
+ }
+ 
+diff --git a/navera_lite/tests/test_arbiter.py b/navera_lite/tests/test_arbiter.py
+index adfe748..e552873 100644
+--- a/navera_lite/tests/test_arbiter.py
++++ b/navera_lite/tests/test_arbiter.py
+@@ -61,7 +61,7 @@ def test_receive_door():
+ 
+ 
+ def test_step_states_and_switches():
+-    a = Arbiter(DEFAULTS)
++    a = Arbiter(dict(DEFAULTS, age_speed_mps=0.0))   # states and switches; the σ's growth is tested in test_ageing
+     assert a.step(0.0).state == "STARTING"
+     a.receive(gps(99.5), 100.0)
+     d = a.step(100.0)

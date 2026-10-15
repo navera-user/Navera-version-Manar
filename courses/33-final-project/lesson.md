@@ -1,434 +1,416 @@
 # Final project: one change, tested and measured with confidence
 
-> [!NOTE] In short
-> - In this final project you improve NAVERA with **one** change and prove with measurements that
->   it helps.
-> - First write a proposal and a decision rule, before you look at any result.
-> - Write a test that fails first, then passes after the change.
-> - Measure before and after on the same data, with **bootstrap** confidence intervals; then
->   accept, reject, or say "inconclusive".
-> - Follow NAVERA's rules: work on a git branch, one concern per commit, measure instead of
->   guessing, report honestly.
-> - You finish with a commit, a patch and a report; the guided example changes the GPS driver
->   (`gps_node.py`).
+![The engineer's loop of this project: ten steps; the rule, the seeds, the red test and the ruler are frozen at the tag 'before'; the two campaigns fly the same runs](assets/loop.svg)
 
-A NAVERA box is installed on a survey drone in a large coastal city. The operator reports that, near
-the tall buildings of the business district and in the narrow streets of the old town, the GPS position sometimes jumps by
-tens of metres for half a minute — while the receiver still says "fix". A colleague proposes a
-one-line fix: *"refuse GPS fixes computed from fewer than 4 satellites"*.
+> [!NOTE] Mission brief
+> **2015, Science.** Two hundred and seventy researchers repeated 100 published psychology experiments, with the
+> original materials, the authors' help and samples large enough to see the original effects. 97 of the originals
+> had reported a significant result; only **36** of the repetitions did (Open Science Collaboration, *Estimating the
+> reproducibility of psychological science*, 2015). Fraud explains almost none of it. Among the causes discussed since:
+> small samples, and choices made after seeing the data — which measure to report, which participants to keep, when
+> to stop collecting. Each choice looks reasonable; together they can turn noise into a "finding".
+>
+> Engineering has the same disease, in another form: *"I changed the judge and the error went down on my run."* One
+> run, a metric chosen afterwards, no test, no record of which code flew. Today you change **your own NAVERA Lite**
+> — the stack you built from mission 03 to 32 — and prove the change the way an IRIS reviewer would accept it.
+> **Session 1** (badge **Pre-registered**): choose the change, write the rule, pin the problem with a failing test,
+> fly the baseline. **Session 2** (**Measured**): make the change, fly it, compute the interval. **Session 3**
+> (**Engineer**): decide by the rule and write the report.
+>
+> **Start now:** open the 🛠️ **Lab** tab and do **Step 0** (ten minutes, no code), then come back for §1.
 
-Is that a good change? It removes some bad positions, but it also removes GPS time. Is the gain real,
-or did we get lucky with one recording? How sure are we? Would a reviewer at IRIS Systems accept the
-change into the product?
+**Objectives.** After this mission you can:
 
-This last lesson answers those questions with the method that real engineering teams use:
-**a written proposal, a test that fails first, a measurement before and after with confidence
-intervals, a decision rule fixed in advance, and an honest report**. Then you apply it to a change of
-your own in your NAVERA copy.
+1. **pre-register** a change: a hypothesis, a metric with its window and direction, a minimum effect, a guard-rail
+   and a decision rule, written and committed before any "after" number exists;
+2. pin the problem with a **red test** that fails on a tagged baseline commit and passes after the change, and keep
+   it as a regression test (a branch, small commits, tags);
+3. measure before and after as a **paired campaign** of independent seeded runs flown from **commits**, with the
+   simulator held fixed, and compute the **paired bootstrap interval** of the difference;
+4. **decide** accept, reject or inconclusive by the rule, and write a report whose every claim the interval supports,
+   with its limits.
 
-![The engineer's loop](assets/workflow.svg)
+**You need:** mission 05 (git: branch, commit, diff, tag), 14 (pytest; a regression test), 31 (scenarios, seeds, the
+headless simulator; what a simulation proves), 32 (the paired interval; "contains 0" means "not shown"). ⏱ Reading:
+about 60 minutes with the ✏️ checks. Lab: 5 h 30 to 8 h in three sessions (a ★★★ project: up to 10 h).
 
-## 1. The rules of the product
+**What you already know** — answer without looking; if you miss two, reread the mission named.
 
-NAVERA is a commercial product (**Release 0.2 — field validation pending**, `docs/VALIDATION_STATUS.md`).
-Its engineering guide, `CLAUDE.md` in your copy, starts with golden rules. Four of them define this
-project:
+<details><summary>1. Mission 14: what is a regression test, and why is a failing test "good news, delivered on a desk"?</summary>
+A test written after a bug so that it cannot come back unnoticed. A failing test shows the problem on your desk, in
+seconds, instead of in flight.
+</details>
 
-> 1. **The system currently WORKS. Never break a working pipeline.**
-> 2. **Always work on a git branch**, never directly on `main`. Commit small, commit often.
-> 5. **One concern per commit.** Cleaning, refactor, optimization, and new features go in separate commits.
-> 6. **Measure, don't guess.** For any performance/accuracy claim, run a measurement and report the number.
+<details><summary>2. Mission 31: two runs of the same scenario file with the same seed. Same CSV?</summary>
+Yes: the simulator is deterministic for a given scenario and seed (the GPS noise, the vision errors and the spoof
+direction all come from the seed). A different seed gives another, equally likely, flight.
+</details>
 
-Rule 7 adds: *"Honesty over optimism. If a result is only validated in simulation, say so."* Your
-report follows the same rule.
+<details><summary>3. Mission 32: the 95 % paired interval of "median(method) − median(baseline)" is [−210, 45] m. What may you write?</summary>
+"Not shown to differ from the baseline on this flight: the interval contains 0." Not "slightly better", and not
+"equal".
+</details>
 
-Why **one** change? Because a measurement compares two versions. If the two versions differ in three
-ways and the metric improves, you cannot say which change helped, or whether one of them made things
-worse and was hidden by the others. One change → one comparison → one conclusion.
+<details><summary>Words of this lesson</summary>
 
-## 2. The proposal: decide how you will judge, before you look
-
-A **proposal** is a short text written *before* the "after" measurement. It has four parts:
-
-| Part | Question | Example (the 4-satellite rule) |
+| Word | Plain meaning | Français |
 |---|---|---|
-| **Problem** | What goes wrong, for whom, how often? | gps_node accepts 3-satellite fixes that can be tens of metres wrong |
-| **Hypothesis** | A sentence the data can prove *false* | Refusing them lowers the p95 error of accepted fixes |
-| **Metric** | What number, which unit, which direction is better, on which data? | p95 horizontal error (m), lower is better, on 1800 epochs; guard-rail: availability |
-| **Acceptance criterion** | Which result means "accept"? | 95 % CI of Δp95 entirely below 0 m, and CI of Δavailability above −10 points |
+| **pre-registration** | the rule that will judge a change, written and frozen before the result exists | pré-enregistrement |
+| **hypothesis** | one sentence the measurement can prove wrong | hypothèse |
+| **metric, window** | the number computed on each run, and the part of the run it looks at | métrique, fenêtre |
+| **minimum effect** | the smallest gain that matters; a smaller one is not worth the change | effet minimal |
+| **guard-rail** | a second metric that must not get worse by more than a stated limit | garde-fou |
+| **red / green test** | a test that fails before the change / passes after it | test rouge / vert |
+| **baseline commit** | the commit, tagged `before`, that the "before" campaign flies | commit de référence |
+| **paired runs** | the same scenario and seed flown before and after: one pair per seed | essais appariés |
+| **the ruler** | what measures both versions: the simulator, the scenarios, the metric code | l'étalon |
+| **patch** | a change saved as the output of `git diff`, applied elsewhere with `git apply` | correctif |
+</details>
 
-> [!TIP]
-> **A metric with a right value.** Some metrics are not "lower is better" or "higher is better":
-> they have a **target**. Example: an honest 2-D Gaussian σ puts 86 % of the errors inside 2σ, so a
-> 2σ coverage of 80 % is too optimistic and 95 % is too cautious. For such a **calibration metric**,
-> judge the **distance to the target**, |coverage − 86 %|, which *is* "lower is better". Compute it
-> inside each bootstrap resample (so that it has its own CI), and save it with
-> `write_results(..., better="closer", target=86.0)`. Choosing "higher is better" for a calibration
-> metric is a classic mistake: it rewards a σ that is too large.
+## 1. One change, and the loop
 
-A **guard-rail metric** is a second metric that must not get much worse. Almost every safety rule
-has a price: here, fewer accepted fixes means less GPS time. If you only measure the gain, you will
-always "win".
+Your stack is complete: the witnesses (GPS 15, day vision 21–23, VO 24, night 25, stars 26), the uncertainty
+toolbox (27–28), the judge (29), the guard (30), the messenger and the simulator (31), the measuring part (32). It is
+a working pipeline. The first rule of NAVERA's own development guide says exactly that: the system works — **never
+break a working pipeline**. The others: always work on a **branch**, **one concern per commit**, **measure, don't
+guess** (every accuracy claim comes with a measurement), and **honesty over optimism** (a result validated only in
+simulation says so).
 
-Why must the criterion be written first? Because after seeing the numbers it is very easy — even
-without bad intent — to choose the metric, the subset of data or the threshold that makes the change
-look good. Statisticians call this the **garden of forking paths**: each small choice is reasonable,
-but together they can turn noise into a "result". Writing the criterion first removes those choices.
+Why **one** change? A measurement compares two versions. If they differ in three ways and the metric improves, you
+cannot tell which change helped, or whether one of them made things worse and was hidden by the others. One change,
+one comparison, one conclusion. "One change" may touch several lines — a new setting, the function that uses it and
+its test — but it answers one question.
 
-## 3. The experiment: same data, same command, paired
+The figure at the top is the whole project in ten steps. Two ideas carry it: what is **frozen** at the tag `before`
+(the rule, the seeds, the red test, the ruler), and the **pairing** of the two campaigns. The rest of this lesson
+takes them one at a time, on a worked example that is *not* in the project menu: **should day vision's freshness
+window be 2 s instead of 5 s?**
 
-NAVERA can replay recorded data. That gives you a **controlled experiment**: the old rule and the new
-rule see exactly the same inputs, so any difference in the output is caused by the change, not by the
-weather or the satellites. Three rules:
+The story. During a GPS jam NAVERA Lite flies on day vision, one fix per second. Over water or uniform sand the
+matcher finds nothing, and the judge keeps the last day fix until it is older than `day_timeout_s` (5 s) — mission
+32's lake. Meanwhile the drone moves on at 15 m/s, so the held fix drifts up to 75 m behind. A shorter window would
+drop it sooner. The scenario `campaign/lake.json` flies exactly that: GPS jammed from 30 to 75 s, the camera blind
+from 45 to 48 s.
 
-1. **Same data, same command** before and after. Only the code changes.
-2. **Record what you ran**: the data file, the number of samples, the command, the random seed.
-3. **Paired comparison**: compute the *difference* after − before on the same samples.
+> [!QUESTION] ✏️ Check
+> A colleague changes `day_timeout_s` to 2.0 **and**, in the same commit, the jump gate's margin from 50 to 30 m.
+> The error during the jam goes down. What can you conclude about the timeout?
 
-Why paired? For two metrics A (after) and B (before) measured on the same epochs,
+<details><summary>Answer</summary>
+Nothing yet. Two changes, one comparison: the gain may come from either, or from one while the other made things
+worse. Split them into two commits and measure the timeout alone (the margin only matters when GPS returns — but
+"probably" is a guess, not a measurement).
+</details>
+
+## 2. Pre-registration: decide how you will judge, before you look
+
+A **pre-registration** is the rule that turns numbers into a decision, written before the numbers exist. In this
+project it is a file, `project.json`, committed with the red test and frozen at the tag `before`. It answers six
+questions.
+
+| Question | The worked example |
+|---|---|
+| **Hypothesis** — one sentence the data can prove wrong | A 2 s window lowers NAVERA Lite's large errors during a jam |
+| **Metric** and **window** — which number, on which part of each run | `err_p95`: the 95th percentile of NAVERA Lite's error, window `fault` (from the jam to its end) |
+| **Direction** — lower, higher, or closer to a target | lower is better |
+| **Minimum effect** — the smallest gain worth a change | 5 m |
+| **Guard-rail** and its **limit** — what the change may cost | `availability` (share of the jam with a position) may lose at most **0.02** (about one second per minute) |
+| **Runs** — scenarios and a block of seeds | `lake.json`, seeds 201 to 230: 30 runs |
+
+The decision rule is the same for every project: **accept** if the whole 95 % interval of the difference is on the
+good side of the minimum effect and the guard-rail cannot have lost more than its limit; **reject** if the whole
+interval is on the bad side of 0, or the guard-rail's interval is entirely beyond its limit; **inconclusive**
+otherwise.
+
+Why write it first? After seeing the numbers it is very easy — with no bad intent — to pick the metric that moved, the
+window where it moved, the seeds where it moved, or a guard-rail limit just above the loss you got. Statisticians call
+this the **garden of forking paths** (Gelman and Loken, 2013): each fork is reasonable, the path through them is not.
+Each row of the table closes one fork. The **block of seeds** (first and count, consecutive) closes the subtlest one:
+you cannot drop the seeds that went badly.
+
+A **guard-rail** exists because almost every safety change has a price. A judge that refuses more positions has fewer
+bad positions *and* fewer positions. Measure only the gain, and you will always "win".
+
+Choose the numbers from the **use**, not from the data: the minimum effect is the gain that would justify a change
+(here 5 m, a third of day vision's stated σ); the guard-rail limit is what the operator can live without.
+
+> [!TIP] 🧰 A metric with a target
+> Some metrics are not "lower is better". `honest2` is the share of rows whose error is within 2 × the σ the judge
+> states; an honest round 2-D Gaussian gives **0.86** (mission 27). 0.70 is too optimistic, 0.99 too cautious. For
+> such a metric write `"better": "closer", "target": 0.86`: the bench then compares |mean − 0.86| before and after,
+> which *is* "lower is better". Choosing "higher is better" for it is a classic mistake: it rewards a σ that is far
+> too large.
+
+> [!QUESTION] ✏️ Check
+> A team measures first, then writes: "metric `err_max`, guard-rail availability may lose at most 0.05". Their loss
+> was 0.049. What is wrong, even if every number is true?
+
+<details><summary>Answer</summary>
+The limit was chosen after the result, just above it: the decision was made by the data, not by the rule. The same
+number with a limit written beforehand (from what the operator needs) would mean something.
+</details>
+
+## 3. The red test
+
+A **red test** shows the problem on a commit, before you change anything. In the lab you write it in
+`navera_lite/tests/test_<name>.py`, commit it with `project.json`, and tag that commit `before`. The bench checks
+that, at `before`, your test **fails** and every other test of the suite **passes**; after the change, your test and
+the whole suite pass (**green**).
+
+Why must it fail first? A test that already passes on the old code does not see the problem: it would pass whatever
+you change, and prove nothing about your change. Failing first is the evidence that the test checks the behaviour
+you are adding. It then stays in the suite as a **regression test** (mission 14).
+
+Three practical rules:
+
+- **Fail, don't crash.** If the test imports a function that does not exist yet (`from navera_lite.guard import
+  new_rule` at the top of the file), pytest cannot even collect the file: it prints `ERROR`, not `FAILED`, and stops
+  with an exit code other than 1 (1 means "tests ran and some failed"). A typo gives the same error, so it proves
+  nothing. Put imports of **new** names inside the test function: pytest then reports a clean failure.
+- **The red test is frozen** at `before`. It is your specification. You may add more tests afterwards, in another
+  file.
+- **An old test may disagree with your change.** If your change breaks an existing test, stop and read it: either the
+  old test pins a behaviour you are deliberately changing (then update it, in the same commit, and say why), or your
+  change broke something real. Never delete a test to get green.
+
+> [!QUESTION] ✏️ Check
+> Your red test asserts `new_rule(3, 0.5) is False` and starts with `from navera_lite.guard import new_rule`. At
+> `before`, pytest prints `ERROR … ImportError` and exits with code 4. Red?
+
+<details><summary>Answer</summary>
+No: an error, not a failure (exit code 1 means "tests failed"; 2 or 4 mean "could not run"). A typo would give the
+same error. Move the import inside the test function: the test then fails with that ImportError as its reason — a red
+test that really ran.
+</details>
+
+## 4. The campaign: committed code, seeds, pairs, and a ruler that does not move
+
+**Fly commits, not files.** The bench `project.py` never flies your working folder. `campaign before` unpacks the
+commit tagged `before` (`git archive`) into `runs/.code/` and flies that; `campaign after` flies `HEAD`, and refuses
+while the stack has uncommitted changes. So "before" and "after" are two versions anyone can rebuild from your branch,
+and the run logs record which commit flew.
+
+![The branch: start, (your own parts), the red-test commit tagged before, the change, the report; which commit each campaign flies](assets/commits.svg)
+
+**Seeds make runs independent.** A seed fixes the GPS noise, the vision errors and the fault details of one run
+(mission 31). Different seeds give independent runs; the same seed gives the same flight. A campaign is a list of
+scenarios × a block of seeds, e.g. 2 scenarios × 20 seeds = 40 runs, about 15 s of computing.
+
+**Pairs.** Both campaigns fly the **same** scenarios and seeds. For each pair the bench computes the metric before
+(bᵢ) and after (aᵢ), and studies the difference dᵢ = aᵢ − bᵢ. Why pairs? For two numbers measured on the same runs,
 
 ```
-Var(A − B) = Var(A) + Var(B) − 2 Cov(A, B)
+Var(a − b) = Var(a) + Var(b) − 2 Cov(a, b)
 ```
 
-When A and B are computed on the same data, they are strongly correlated (Cov > 0): the variance of
-the difference is much smaller than Var(A) + Var(B). So the uncertainty of the *difference* is smaller
-than what two separate error bars suggest. Never decide by checking whether two confidence intervals
-overlap; compute the confidence interval of the difference directly.
+A hard run (a long blackout, an unlucky noise) is hard before *and* after, so a and b move together: Cov > 0, and the
+variance of the difference is smaller than the two separate spreads suggest. The shared luck cancels; what is left is
+the change. Worked example: in the lake campaign the per-run err_p95 has a standard deviation of 7.4 m before the
+change, the per-run difference only 6.1 m.
 
-## 4. The metrics
+**Why an iid bootstrap is honest here.** In mission 32 the seconds of one flight were correlated, and only a block
+bootstrap was honest. Here the units are **runs** with different seeds: independent by construction. So the bench
+resamples whole runs, with replacement, B = 2000 times (mission 32's `paired_diff_ci`, the same indices for a and b),
+and takes the 2.5th and 97.5th percentiles of the resampled mean difference. That is also why the bench asks for at
+least 20 runs: with 5, the interval is wide and the bootstrap cannot imagine anything outside the 5 values it saw.
 
-For a set of n horizontal errors e₁ … eₙ (metres, against the known truth):
+**The ruler does not move.** Between `before` and `after`, three things must stay the same: the **simulator's world**
+(`navera_lite/sim/world.py`, `run.py`, `sensors.py`), the **scenarios and seeds**, and the **metric code**
+(`project.py`, frozen; `my_metric.py` if you wrote one). If the world changed too, you could not tell your change
+from a change of the measurement. A project that needs a new sensor model or a new fault (a frozen GPS, a tilted error
+ellipse) adds it **before** `before`, with the red test: both campaigns then fly the new world.
 
-- **CEP50** (circular error probable): the median error, 50 % of the fixes are closer than this.
-- **p95**: 95 % of the fixes are closer than this. It describes the bad cases that the median hides.
-- **max**: the worst case. It is real, but it depends on one sample only.
-- **availability** = accepted epochs / all epochs. An epoch here is one second (one GGA sentence).
+> [!NOTE] A project of kind "sim"
+> One kind of project *is* a change of the ruler: a more realistic sensor model. Then the stack stays the same and the
+> question becomes "how does the stack's result change under the new model?" Write `"kind": "sim"` in
+> `project.json`: the check then demands the opposite — only `navera_lite/sim/` changes. Your conclusion speaks about
+> the model, not about a better stack.
 
-The percentile is computed with **linear interpolation** — the course rule of lesson 23 (numpy's
-default `np.percentile`, and the one you implement in `stats_tools.percentile`). Lesson 32 used
-NAVERA's nearest-rank rule only to reproduce `evaluate_session.py`; your project uses linear
-interpolation and says so in its method:
+> [!QUESTION] ✏️ Check
+> 1. Why do both campaigns use seeds 201–230, instead of 201–230 before and 231–260 after?
+> 2. A student re-runs the "after" campaign with a new block of seeds because the first interval contained 0, and
+>    reports only the second. What is that, in mission 32's words?
 
-```
-sort:  x[0] ≤ x[1] ≤ … ≤ x[n−1]
-h  = (n − 1) · q / 100
-pq = x[⌊h⌋] + (h − ⌊h⌋) · (x[⌊h⌋+1] − x[⌊h⌋])
-```
+<details><summary>Answer</summary>
+1. With the same seeds each run is paired with its twin: the shared noise cancels in the difference. Different seeds
+would make two independent samples: a wider interval for the same number of runs.
+2. Best of N (selective reporting). A second campaign is a new pre-registration — a new block of seeds written
+before it flies — and both results are reported.
+</details>
 
-**Worked example.** Eight errors (m): 2.1, 3.4, 1.8, 2.9, 4.2, 2.5, 38.0, 3.1.
-Sorted: 1.8, 2.1, 2.5, 2.9, 3.1, 3.4, 4.2, 38.0.
+## 5. Decide by the rule
 
-- Median: h = 7 · 0.5 = 3.5 → 2.9 + 0.5 · (3.1 − 2.9) = **3.0 m**.
-- p95: h = 7 · 0.95 = 6.65 → 4.2 + 0.65 · (38.0 − 4.2) = **26.2 m**.
+`python3 project.py evaluate` computes the metric of every run, D = mean(after) − mean(before) (or the difference of
+|mean − target| for a "closer" metric), its 95 % paired bootstrap interval, the same for the guard-rail, and applies
+your rule. Read the interval with the figure below.
 
-One bad fix moves the p95 from "about 4 m" to 26 m, while the median does not see it. That is why
-NAVERA reports more than one number.
+![Four intervals of D for a metric where lower is better: A accept, B and C inconclusive, D reject](assets/decision.svg)
 
-## 5. How sure are we? The bootstrap
+**Worked example, the result.** Thirty runs of `lake.json`, flown from both commits:
 
-A metric computed on one recording is an **estimate**. Another recording of the same situation would
-give a slightly different value. A **95 % confidence interval (CI)** is a range built by a method
-that contains the true value in about 95 % of repeated experiments.
+![Left: err_p95 of each run before and after; right: the 30 differences, their mean and its 95 % interval](assets/paired.svg)
 
-For a mean, there is a formula: x̄ ± 1.96 · s / √n. For a p95, a difference of p95s or an availability
-difference, there is no simple formula. The **bootstrap** (Efron, 1979) replaces the formula with
-computation:
-
-1. Treat the sample as a small copy of the world.
-2. Draw a **resample**: n values *with replacement* from the sample (some appear twice, some not at all).
-3. Compute the statistic on the resample. Repeat B times (B = 1000–2000).
-4. The **percentile CI** is the interval between the α/2 and 1 − α/2 percentiles of the B values
-   (2.5 % and 97.5 % for a 95 % CI).
-
-In code (the structure of your `bootstrap_ci`):
-
-```python
-rng = np.random.default_rng(seed)          # ONE generator, created once: reproducible
-for b in range(n_boot):
-    idx = rng.integers(0, n, size=n)        # n indices drawn with replacement
-    stats[b] = stat(values[idx])
-lo, hi = np.percentile(stats, [100 * alpha / 2, 100 * (1 - alpha / 2)])
-```
-
-**Worked example, continued.** In the eight errors above, the probability that a resample does *not*
-contain the 38.0 m value is (7/8)⁸ = 0.34. So about one resample in three has a p95 ≤ 4.2 m, and the
-others have a p95 around 26 m or more. The bootstrap distribution of the p95 is wide — honestly
-telling you that eight samples cannot pin down a p95.
-
-## 6. Time series: when samples are not independent
-
-The ordinary (iid) bootstrap assumes the samples are **independent**. GPS errors are not: multipath
-from a building changes slowly, and a 3-satellite episode lasts tens of seconds. A simple model is the
-**first-order autoregressive process** AR(1):
-
-```
-e[k] = ρ · e[k−1] + √(1 − ρ²) · σ · w[k],      w[k] ~ N(0, 1)
-```
-
-With ρ = 0.9 (the bench file of this lab), neighbouring seconds are almost the same. The correlation
-time is about −1 / ln ρ ≈ 10 s. For the mean of such a series, the **effective sample size** is
-
-```
-n_eff ≈ n · (1 − ρ) / (1 + ρ) = 1800 · 0.1 / 1.9 ≈ 95
-```
-
-1800 seconds carry about as much information as 95 independent samples. An iid bootstrap pretends
-there are 1800 and gives a CI about √((1+ρ)/(1−ρ)) = √19 ≈ 4.4 times too narrow.
-
-The **moving-block bootstrap** fixes this: it resamples **whole blocks** of L consecutive epochs, so
-the correlation inside each block is kept.
-
-```
-k = ⌈n / L⌉ blocks; each starts at a random s in 0 … n−L;
-indices = [s₁ … s₁+L−1, s₂ … s₂+L−1, …] cut to n
-```
-
-Choose L much longer than the correlation time and than the typical event (here 25–40 s episodes):
-L = 60 s. With L = 1 it is the iid bootstrap again.
-
-![iid vs block resampling and their CIs](assets/bootstrap.svg)
-
-How much does L matter on the example? The 95 % CI of Δp95 (m) and of Δavailability (points),
-1000 resamples (with 2000, as in the lab, the bounds move by a few tenths):
-
-| Block length L | CI of Δp95 (m) | CI of Δavailability (points) |
-|---|---|---|
-| 1 (iid) | [−47.3, −29.8] | [−8.6, −6.2] |
-| 10 s | [−60.0, −3.8] | [−11.2, −4.1] |
-| 30 s | [−66.0, −0.9] | [−13.1, −2.6] |
-| 60 s | [−66.5, −0.7] | [−13.9, −1.8] |
-| 120 s | [−66.9, −0.9] | [−13.9, −2.4] |
-
-The interval grows until L is longer than the episodes, then it is stable: that plateau is how you
-check that L is large enough. The iid bootstrap would say "accept, sure"; the honest answer is
-different, as you will see.
-
-## 7. The decision: accept, reject or inconclusive
-
-With the CI of the difference D = after − before (for a metric where *lower is better*):
-
-| CI of D | Meaning | Decision |
-|---|---|---|
-| entirely below 0 | the change improves the metric | accept (if the guard-rails are also OK) |
-| entirely above 0 | the change makes it worse | reject |
-| contains 0, or a guard-rail CI crosses its limit | the data cannot tell | **inconclusive** |
-
-"Inconclusive" is not a failure. It is a precise statement: *more data is needed*, and it says which
-data (more independent episodes). A team that writes "inconclusive" when it is true is a team whose
-"accept" can be trusted.
-
-## 8. Tests: fail first, then pass
-
-A **unit test** checks one function without hardware or a ROS graph. An **integration test** starts
-real nodes and talks to them (NAVERA's are in `navera_tools/tests/`). For a change like this one, the
-logic should live in a **pure function** — inputs in, result out, no ROS — so that it can be
-unit-tested in milliseconds.
-
-A good test for a change:
-
-1. is written **before** the change and **fails** on the old code (it proves the test sees the problem);
-2. **passes** after the change;
-3. covers the **boundary** (3 satellites refused, 4 accepted), the normal case, and the **old
-   behaviour that must not change** (quality 0 and 6 still refused with the same reason);
-4. stays in the product, so nobody breaks the rule again by accident (a **regression test**).
-
-The check of this lab verifies point 1 itself: it extracts the `base` version of your package
-(`git archive base`), puts your new test beside it, runs it, and expects a failure.
-
-**Property-based testing** goes one step further. Instead of a few hand-picked cases, you state a
-property and the library `hypothesis` (installed) generates hundreds of inputs:
-
-```python
-from hypothesis import given, strategies as st
-
-@given(st.integers(min_value=0, max_value=3))
-def test_fewer_than_four_satellites_is_never_usable(sats):
-    assert fix_problem(1, True, sats) != ""
-```
-
-## 9. Git for a project, and the patch
-
-You know the basics from lesson 5. In your NAVERA copy, `base` is a **tag** on the commit your copy
-started from, so `git diff base` is *everything you changed*:
-
-```bash
-cd ~/navera
-git checkout -b project/min-satellites base   # a branch for one project, starting at base
-# … test first, change, test …
-git add gps_pkg/gps_pkg/nodes/gps_node.py gps_pkg/test/test_gga_validation.py
-git commit -m "gps: refuse GGA fixes computed from fewer than 4 satellites"
-git log --oneline base..HEAD                  # your commits
-git diff base > ~/lessons/33-final-project/my_project.patch
-git apply --check -R ~/lessons/33-final-project/my_project.patch   # the patch matches the branch
-```
-
-A **patch** is the diff saved in a file. A reviewer applies it to a fresh copy with `git apply` —
-that is how changes travel between engineers, and how your teacher reviews the project.
-
-> [!TIP]
-> Your copy is built with `colcon build --symlink-install`: Python edits work **immediately**. Only
-> message changes (`navera_msgs`) or a package's `setup.py` need
-> `colcon build --symlink-install --packages-select <package>`.
-
-## 10. Project ideas
-
-Choose **one**. ★ a few lines, ★★ an afternoon, ★★★ a real challenge. All paths are in your copy
-`~/navera/`. Whatever you choose, the deliverables are the same (section 11).
-
-| # | Idea | ★ | Start here | Metric idea |
+| | before | after | D | 95 % interval of D |
 |---|---|---|---|---|
-| 1 | **Refuse GPS fixes from fewer than 4 satellites** (the worked example of the lab) | ★ | `gps_pkg/gps_pkg/nodes/gps_node.py` (`_publish_fix`), new test in `gps_pkg/test/` | p95 error, availability |
-| 2 | **"NO FIX since 12 s"** in the operator view, so the operator knows how long the gap is | ★ | `simulation_web/simulation_web/resources/operator.html` (`showNoPosition`), tests in `simulation_web/test/test_operator_sim.py` | correctness of the shown duration on scripted gaps |
-| 3 | **Is the GPS σ honest?** gps_node states σ = 2 m × HDOP. On the bench file (truth known), measure the fraction of errors inside 1σ and 2σ (an honest 2-D Gaussian gives 39 % and 86 %), propose a value with a CI. **The change** = a named constant (e.g. `UERE_M`) + a unit test; change its *value* only if the CI of the fitted value excludes the current 2.0 m. Metric: distance of the 2σ coverage to 86 % (`better="closer"`) | ★★ | `gps_pkg/gps_pkg/nodes/gps_node.py` (the `cov = (hdop * 2.0) ** 2` line) | coverage at 1σ / 2σ |
-| 4 | **HDOP-aware jump margin**: the kinematic gate allows a fixed 50 m of GPS noise; make it `max(50, 3 × stated σ)` as a pure function with unit tests | ★★ | `navera_estimator/navera_estimator/nodes/estimator_node.py` (`_check_gps_plausibility`, `gps_jump_margin_m`); pure function + test in `navera_common/navera_common/` and `navera_common/test/` | false alarms on noisy-but-honest GPS vs detection of jumps |
-| 5 | **Skip featureless frames** (sea, the uniform sand of a desert, blur) before the expensive search, with a clear reason | ★★ | `day_pkg/day_pkg/local_matcher.py` (`locate`, "too few features…"), tests in `day_pkg/test/test_local_matcher.py` | time per frame, good frames lost |
-| 6 | **Dead-reckoning drift alarm**: how far has a propagated position travelled since its last measured fix? Warn past a threshold | ★★ | `navera_common/navera_common/track.py` (`TrackVelocity.propagate`), `navera_common/test/test_track.py` | alarm delay vs false alarms on a recorded track |
-| 7 | **A "GPS frozen" fault** in the simulated receiver (same position, still "fix"): add the mode and its unit test; then observe what NAVERA does (the teacher runs it on the full simulator) | ★★ | `navera_tools/sim/nmea_gps.py` (`MODES`, `reported`), `navera_tools/sim/sim.html` | detection: does anything notice? |
-| 8 | **A "GPS frozen" detector** in the arbiter: refuse a GPS whose position does not change for N fixes while another source says the vehicle moves | ★★★ | `estimator_node.py` (`_on_gps`, `_check_gps_plausibility`); integration test in `navera_tools/tests/test_estimator.py` | ROC: N vs false alarms / detections |
-| 9 | **Is day vision's σ honest?** Run the evaluation on the recorded shadow-mode flight (`/data/academy/32-measuring/shadow_bag`; a new recording is made by the teacher on the full simulator), propose the σ day vision should state, with a CI | ★★★ | `navera_tools/evaluate_session.py`, `navera_tools/record_session.sh`, `navera_tools/tests/test_evaluate_session.py` | coverage of the stated σ |
-| 10 | **Freshness windows from data**: the arbiter's per-source timeouts were chosen from simulator runs; measure inter-arrival times (recorded shadow bag of lesson 32, or Sim Lite flights) and propose values with CIs | ★★★ | `navera_estimator/navera_estimator/config/estimator_params.yaml`, `estimator_node.py` | flicker rate FIX↔NO FIX, gap detection delay |
+| err_p95 (m) | 51.2 | 43.5 | −7.7 | [−10.0, −5.6] |
+| availability | 1.000 | 0.951 | −0.049 | [−0.049, −0.049] |
 
-Your own idea is welcome — check with the teacher that it is **one** change you can **test** and
-**measure** in a few hours.
+The accuracy part passes: the whole interval lies beyond −5 m, the minimum effect. The guard-rail does not: the
+window lost 0.049 of its time with a position — about 2.2 s of a 45 s jam — and the whole interval is beyond the 0.02
+limit. By the rule written first: **REJECT**.
 
-> [!WARNING]
-> Ideas 7–10 use a simulator or its recordings: fly in **Sim Lite** (🛩️ Simulator tab — your own
-> estimator, no booking; it writes CSV flights, not ROS 2 bags), or use recorded data (lessons 31 and 32,
-> e.g. the shadow-mode bag `/data/academy/32-measuring/shadow_bag` for idea 9). Idea 7 changes the
-> **full** simulator's receiver model, and a new bag needs the full simulator: ask the teacher to run those. Never change files outside `~/navera` and
-> your lesson folder.
+Two remarks. The guard-rail's interval has **zero width**: every run loses exactly the same 2.2 s, because the
+blackout starts at the same mission second in every run (they share one scenario file). That is not a miracle of precision; it says the
+loss is built into the scenario, not random. And had the team written a limit of 0.05, the same data would give
+"accept" — which is exactly why the limit is written before the result. (With only the first 5 seeds, the interval
+of err_p95 would be [−9.8, −4.0]: it crosses −5, inconclusive. Too few runs cannot show a small effect.)
 
-## 11. The deliverables
+**Inconclusive is a result.** "The data cannot tell" is a precise statement, with a precise next step: which runs to
+add, or which effect size you would need. A team that writes "inconclusive" when it is true is a team whose "accept"
+can be trusted.
 
-The check verifies:
+> [!QUESTION] ✏️ Check
+> Metric `ap_err_max`, lower is better, minimum effect 2 m, no guard-rail. Decision for each interval of D:
+> (a) [−6.1, −2.4] m, (b) [−6.1, −1.2] m, (c) [−0.8, 1.9] m, (d) [0.3, 4.0] m.
 
-1. `stats_tools.py`: `percentile`, `bootstrap_ci`, `block_bootstrap_ci` (they serve every project).
-2. `measure_project.py`: `summary()` (the example's metrics).
-3. **`PROJECT.md`** with six sections: *Proposal* (Problem, Hypothesis, Metric, Acceptance criterion),
-   *Change*, *Test*, *Measurement* (before/after with CIs), *Result* (the decision), *Limits*.
-4. **`results.json`**: metric, before/after/difference with 95 % CIs, bootstrap settings and a decision
-   that follows from the CI (`write_results()` writes the format). For the example project the check
-   re-measures the file and compares.
-5. A **project branch** in `~/navera` with commit(s) since `base` and a clean working tree.
-6. A **test** in your commits that **passes** on your branch and **fails** on `base`.
-7. The existing unit tests of every package you touched still pass.
-8. **`my_project.patch`**, exported after your last commit.
+<details><summary>Answer</summary>
+(a) accept: the whole interval is beyond −2. (b) inconclusive: a gain, but perhaps smaller than 2 m. (c) inconclusive:
+contains 0 — not shown, not "equal". (d) reject: the whole interval is on the bad side of 0.
+</details>
+
+## 6. The report
+
+The report has eight fixed sections (the template `REPORT.md`): the problem, the pre-registration, the change, the
+red test, the campaign, the results table, the decision, the limits. Two rules decide whether a reviewer trusts it.
+
+**Every number comes from the evaluation**, correctly rounded, with its interval. The check compares the report with
+`evaluation.json`, and `evaluation.json` with your runs, and flies one of your runs again from your commit.
+
+**Every claim matches the interval.** Mission 32's sentences, now for a decision:
+
+- **accept** (made-up numbers — copy the structure): "On 40 paired simulated runs (drift and baseline scenarios,
+  seeds 501–520), the guard caught the drift 1.9 s sooner (95 % interval 1.4 to 2.5 s), with no honest GPS refused in
+  either version (0 of 20). Accepted by the rule written before the baseline."
+- **inconclusive:** "D = −1.4 m, 95 % interval [−3.1, 0.4] m: it contains 0. The change is not shown to lower the
+  error on these 30 runs." — never "slightly better", never "the same".
+- **reject:** "The error fell (D = −7.7 m [−10.0, −5.6]) but availability lost 0.049 of the jam, beyond the 0.02
+  limit: rejected." — the gain is reported, and so is the price.
+
+**Limits.** A confidence interval covers the randomness of *these* scenarios in *this* simulator, nothing else.
+Section 8 says what the simulation does not contain (a real camera, wind, terrain, other vehicles, other speeds), what
+was never flown, and what you would measure next. NAVERA labels such numbers "simulator only"; so do you.
+
+> [!QUESTION] ✏️ Check
+> A report says: "Inconclusive. Our change improves the median error by 1.4 m, but more runs are needed." Fix it.
+
+<details><summary>Answer</summary>
+"Inconclusive: D = −1.4 m, 95 % interval [a, b] m, contains 0 — a gain is not shown on these runs." An "improves" in
+an inconclusive report is a claim the interval does not support.
+</details>
+
+## 7. The project menu
+
+Choose **one**. ★ about a day's work, ★★ more design, ★★★ a real challenge (talk to your teacher first). Several
+come from real problems of NAVERA, described in words; in your project they are **NAVERA Lite problems to solve** in
+your own stack. The suggestions (scenarios, metric, guard-rail) are a start: the pre-registration is yours.
+
+| # | Idea | ★ | Where in NAVERA Lite | A first measurement idea |
+|---|---|---|---|---|
+| 1 | **An ageing fix keeps its σ.** A day fix states 15 m for the instant it was measured, yet the judge uses it up to 5 s later while the drone moves 15 m/s. NAVERA met it as a 1–2.5 s lag and fixed it on 2026-10-03 (simulator): its vision positions now state an accuracy grown by the lag. Make the σ the judge states grow with the fix's age. | ★ | `arbiter.py` (`Arbiter.step`), `estimate.py`, a setting in `settings.py` + `navera_lite.yaml` | `honest2` closer to 0.86 on `jam` + `lake`; guard-rail `fix_share` |
+| 2 | **A frozen GPS.** A receiver that keeps sending the same position, still "valid". Add the fault `frozen` to the simulator's GPS (setup, before `before`), then a detector: refuse a GPS whose position has not moved for N fixes. | ★★ | setup: `sim/world.py` (`FAULTS`, `gps_fix`); change: `arbiter.py` or `spoof.py` | `ap_err_max` on a frozen scenario; guard-rail `false_alarm` on `baseline` |
+| 3 | **The tilted ellipse.** NAVERA's judge reads one σ as √max(a, c) — up to √2 shorter than the long axis of a tilted ellipse (mission 27). NAVERA Lite's `stated_sigma` does the same. Setup: a vision profile that states a tilted covariance; change: the σ of the long axis. | ★★★ | setup: `sim/world.py` (a tilted vision error); change: `estimate.stated_sigma` with `uncertainty.ellipse` | `bad_fix` or `honest2`; guard-rail `fix_share` |
+| 4 | **Night lock-in.** NAVERA's night gate compares a new fix with its own dead-reckoned anchor, and can lock onto a wrong place (mission 25). In NAVERA Lite, night vision "measured" follows only a quarter of the motion: fly `campaign/night_lag.json` and watch the autopilot reset onto a position hundreds of metres off. Detect a night source that does not move like the vehicle. | ★★★ | `arbiter.py` or `spoof.py` (a motion-consistency rule) | `ap_err_max`; guard-rail `failsafe` (what will refusing cost?) |
+| 5 | **The star fix and the compass.** NAVERA's star fix needs the camera's direction: 5.5–6.5 km with a perfect attitude, 53 km with 0.5° of tilt, 91 km with 2° of heading more (validation report, 2026-09-30). Setup: a celestial witness in the simulator whose error follows mission 26's rule from the heading the stack gives it; change: give it the TRUE heading (declination, mission 17). | ★★★ | setup: `sim/world.py`; change: `imu.py` functions used by the new witness | `err_median` with GPS jammed and the camera blind |
+| 6 | **Inliers: one number, measured.** NAVERA's report validated "≥ 6 inliers", while the product's setting asks for 8. In NAVERA Lite the minimum is a default in two places (`match.gates`, `locate.DEFAULTS`). Make it one setting, then measure 6 vs 8 in the loop with day vision "mine" (slow: a 100 s day flight takes about 45 s — keep runs short). | ★★★ | `match.py`, `locate.py`, `sim/vision.py` reading the setting | `availability` vs `err_p95` with `vision: "mine"` |
+| 7 | **The guard's patience.** The guard needs 5 disagreeing fixes in a row (mission 30). Fewer catch a drift sooner — and refuse an honest GPS more often (mission 31's R9). Measure both. | ★ | `spoof.py` settings (`GUARD_DEFAULTS`) | `detect_s` on `drift`; guard-rail `false_alarm` on `plane_late` + `baseline` |
+| 8 | **A late camera.** Mission 31's failing run: the plane's pictures are 1.5 s old but stamped "now", and the guard refuses an honest GPS. Make the guard's time-gap term honest about a known camera latency. | ★★ | `spoof.py` (`innovation`), a setting | `false_alarm` on `plane_late` seeds; guard-rail `detected` on a plane drift scenario |
+| 9 | **Retrain the night network.** Train mission 25's HomographyNet better (more pairs, more epochs, an augmentation) on mission 25's training places — never on the corridor you fly (that measures memory, not skill). The change is the weights file `ref_homography.pt`. | ★★★ | `ref_homography.pt` (+ your training script, committed); `homography_net.py` | `err_median` on `night_mine` (≈ 7 s per run, GPU) |
+| 10 | **GPS bursts** (kind `sim`). Real receivers in streets meet multipath: short bursts of tens of metres. Add bursts to the simulated GPS and measure what they do to the stack (jump gate, guard, errors). | ★★ | `sim/sensors.py` / `sim/world.py` | `err_p95` or `false_alarm` with GPS "ok" |
+
+Your own idea is welcome (`"idea": "own"`): check with your teacher that it is **one** change you can **test** and
+**measure** in a day. The lesson's worked example (the 2 s window) is not a project.
 
 ## In NAVERA
 
-The example project touches the GPS driver, `gps_pkg/gps_pkg/nodes/gps_node.py`. The decision you will
-change today is in `_publish_fix()`:
+NAVERA's development guide states the rules of §1 in its own words: the system works and must not be broken, always a
+branch, small commits with one concern each, a measurement for every performance claim, and "if a result is only
+validated in simulation, say so". Its validation report (Release 0.2, 2026-10-03) shows the loop on a real change: a
+vision position used to be sent as it was, describing a photo 1–2.5 s old while stating the matcher's ±30 m. Measured
+in the simulator, a plane at 40 m/s with a matching error of 0–1 m had an output error of 83 m median and **0 %**
+within the stated σ; a drone at 15 m/s, 12–23 m. The change carried the position along the measured ground velocity
+and grew its stated accuracy by the lag, backed by unit tests (a 1.5 s old photo at 40 m/s is moved 60 m and stated
+±31.5 m), and the result is labelled **simulator only**. The same report keeps, next to each figure, its conditions and
+its date. The problems in the menu (√max(a, c), the night anchor, the inlier minimum written as 6 and set to 8) were
+found by the course's team while writing these missions and logged for NAVERA's engineers; they are described here in
+words only.
 
-```python
-gps_qual = int(msg.gps_qual) if msg.gps_qual else 0
-has_pos = bool(msg.lat) and bool(msg.lon)
-if not has_pos or gps_qual not in _VALID_GPS_QUAL:      # _VALID_GPS_QUAL = {1, 2, 4, 5}
-    fix.status.status = NavSatStatus.STATUS_NO_FIX
-    ...
-    # Contract: an invalid fix is published, not swallowed. valid=False,
-    # NaN position, covariance UNKNOWN. Still MODE_MEASURED: it IS a live reading.
-    reason = (f"no GPS fix (qual={gps_qual})" if gps_qual not in (6, 7, 8) else
-              f"receiver reports a non-satellite position (qual={gps_qual}) — not used")
-    self._publish_estimate(fix.header, valid=False, ..., reason=reason, ...)
-    return
-...
-hdop = _field_float(msg.horizontal_dil)
-if hdop is not None and hdop > 0:
-    # sigma = HDOP x 2 m (assumed user range error); vertical ~2x horizontal.
-    cov = (hdop * 2.0) ** 2
-```
+## In NAVERA Lite
 
-The number of satellites (`msg.num_sats`) is read only *after* the decision, for the log. Notice also
-the comment on `confidence` a few lines lower: *"any HDOP->confidence curve needs a CHOSEN constant we
-have not measured"* — the product refuses unmeasured numbers, exactly the attitude of this lesson.
-
-Other places you will use:
-
-| What | Where |
-|---|---|
-| Golden rules and workflow | `CLAUDE.md` |
-| What is measured, and how | `docs/VALIDATION_STATUS.md` |
-| The whole test suite | `navera_tools/run_tests.sh` (unit tests; `--integration` adds real nodes) |
-| Existing GPS unit tests | `gps_pkg/test/test_ros_gps.py` |
-| A simulated NMEA receiver (checksums, fault modes) | `navera_tools/sim/nmea_gps.py` |
-
-NAVERA's real data — the satellite map, the recorded frames and the simulator area — covers
-**Sousse, Tunisia**, where NAVERA is developed. The bench file of this lab is **synthetic**: a simulated
-receiver standing still at a point in Sousse. Say so in your report.
+Your lesson folder holds the **whole** NAVERA Lite, finished, with its whole test suite: the course's versions of
+every part. `python3 -m navera_lite.tools.adopt` puts **your own** parts in their place — those you finished in missions
+03–32 whose course tests and one flight still pass — and lists them in `navera_lite/MINE.md`: your project then
+changes your own stack. `navera_lite/tools/init_repo.sh` (mission 14) makes the folder a repository tagged `start`.
+The bench `project.py` (given, frozen) flies campaigns from commits with mission 31's `sim/run.py`, computes the
+metrics, and judges them with mission 32's `stats.paired_diff_ci` and `stats.wilson` (yours, if you adopted
+your `stats.py`).
 
 ## 🐦 How birds do it
 
-Every autumn, barn swallows from Europe cross the Mediterranean Sea and the Sahara on their way to
-Africa south of the desert, and fly back north every spring; white storks take the short sea crossing
-at the Strait of Gibraltar. Navi the swallow is one of those travellers. Her first journey was
-the hardest.
+<details class="further"><summary>🐦 How birds do it (optional)</summary>
 
-Young birds start with an **inherited programme**: roughly a direction and a duration of flight. In a
-classic experiment in the 1950s, A. C. Perdeck caught migrating starlings in the Netherlands and
-released them in Switzerland. The **young** birds kept their inherited direction and ended up in the
-wrong region; the **adults** corrected towards their usual winter area. Experience had given them
-something the young did not have: a map, built from earlier journeys. Many studies since have found
-the same pattern: first-time migrants make more errors, and birds become better navigators with
-experience.
-
-That is the loop of this lesson. A bird does not change everything at once; it keeps what worked,
-corrects one thing, and the next journey tests the correction. NAVERA was built the same way: the
-arbiter's rules, the honest σ, the spoofing checks each came from one measured improvement after
-another. Your project is one more step on that migration.
-
-## Glossary
-
-| Word | Meaning |
-|---|---|
-| **proposal** | the problem, hypothesis, metric and acceptance criterion, written before measuring |
-| **hypothesis** | a statement the measurement can prove false |
-| **guard-rail metric** | a second metric that must not get much worse (here: availability) |
-| **acceptance criterion** | the rule, fixed in advance, that turns numbers into a decision |
-| **paired comparison** | before and after computed on the same samples; you analyse the difference |
-| **CEP50 / p95** | the median error / the error that 95 % of fixes stay below |
-| **availability** | the fraction of time with an accepted position |
-| **confidence interval (CI)** | a range from a method that contains the true value in ~95 % of experiments |
-| **bootstrap** | estimating a CI by recomputing the statistic on many resamples with replacement |
-| **autocorrelation** | neighbouring samples resemble each other (errors change slowly) |
-| **effective sample size** | the number of independent samples a correlated series is worth |
-| **moving-block bootstrap** | a bootstrap that resamples blocks of consecutive samples |
-| **regression test** | a test that keeps a fixed bug from coming back |
-| **property-based test** | a test that checks a property on many generated inputs (`hypothesis`) |
-| **patch** | the output of `git diff` saved in a file, applied with `git apply` |
-
-## Check what you learned
-
-<details><summary>1. Why must the acceptance criterion be written before the "after" measurement?</summary>
-After seeing the numbers it is easy to choose (even unconsciously) the metric, subset or threshold that
-makes the change look good — the "garden of forking paths". A criterion fixed in advance removes those
-choices, so the decision means something.
+In the autumns of the 1950s A. C. Perdeck caught about 11 000 migrating starlings in the Netherlands, ringed them and
+released them in Switzerland, hundreds of kilometres south-east of their usual route. The experiment had one change (the displacement), a
+comparison planned in advance (young birds against adults, both displaced) and a measurement nobody could bend
+(where the rings were found). The young kept their inborn direction and ended in Spain; the adults corrected towards
+their usual winter grounds. Navi the swallow would add: one change, the same birds, a rule fixed before the rings came
+back.
 </details>
 
-<details><summary>2. Errors (m): 1.0, 2.0, 3.0, 4.0, 10.0. What are the median and the p95 with linear interpolation?</summary>
-Median: h = 4 · 0.5 = 2 → 3.0 m. p95: h = 4 · 0.95 = 3.8 → 4.0 + 0.8 · (10.0 − 4.0) = 8.8 m.
+## Summary
+
+1. **One change**, on a branch, measured: one comparison, one conclusion.
+2. **Pre-register** before any "after" number: hypothesis, metric and window, direction, minimum effect, guard-rail,
+   runs. Each row closes a fork of the garden.
+3. A **red test** fails at the tagged baseline and passes after the change; it is frozen and stays as a regression
+   test.
+4. Fly **commits**, the **same seeds** before and after (pairs), with a **ruler** that does not move; independent runs
+   make the iid bootstrap of runs honest.
+5. **Decide by the rule** — accept, reject, inconclusive — and write only claims the interval supports, with the
+   limits of a simulation.
+
+**After this mission:** your branch, your patch and your report are what an engineer hands to a reviewer. Keep them.
+
+## Check yourself
+
+Answer without scrolling up.
+
+<details><summary>1. Why is a guard-rail part of the pre-registration?</summary>
+Almost every safety change has a price (fewer positions, more refusals, a failsafe). Measured alone, the gain always
+"wins"; the guard-rail and its limit, written first, say how much price is acceptable.
 </details>
 
-<details><summary>3. A series of 1800 errors has ρ = 0.9 between neighbouring seconds. Roughly how many independent samples is it worth for a mean, and what happens to an iid bootstrap CI?</summary>
-n_eff ≈ 1800 · 0.1 / 1.9 ≈ 95. The iid bootstrap treats it as 1800 independent samples, so its CI is
-about √19 ≈ 4.4 times too narrow. A moving-block bootstrap with blocks longer than the correlation time
-gives an honest width.
+<details><summary>2. Your test passes at 'before'. What does that tell you, and what do you do?</summary>
+It does not see the problem, so it cannot prove anything about the change. Make it ask for the new behaviour (fail
+first), commit it, and move the tag before flying the baseline.
 </details>
 
-<details><summary>4. The CI of Δp95 is [−66.6, −0.7] m, the CI of Δavailability is [−13.9, −2.0] points, and the criterion allows at most −10 points. Decision?</summary>
-Inconclusive. The accuracy gain is shown (the whole CI is below 0), but the availability CI crosses the
-−10 point limit: the data cannot show that the cost is acceptable. More independent episodes are needed.
+<details><summary>3. Why does the bench fly a commit instead of your working folder?</summary>
+So that "before" and "after" are two exactly known versions that anyone can rebuild from the branch; uncommitted edits
+would make the measurement unreproducible.
 </details>
 
-<details><summary>5. Your new test passes on your branch. Why is that not enough?</summary>
-A test that also passes on the old code does not check your change at all. It must fail on base and pass
-on your branch; only then does it prove the problem exists and that your change fixes it.
+<details><summary>4. D's interval is [−0.2, 3.5] m for a "lower is better" metric. Decision and sentence?</summary>
+Inconclusive: it contains 0. "Not shown to differ on these runs" — not "equal", not "slightly worse".
 </details>
 
-<details><summary>6. Why compute the CI of the difference instead of checking whether the before and after CIs overlap?</summary>
-Before and after are computed on the same data, so they are positively correlated:
-Var(A − B) = Var A + Var B − 2 Cov(A, B) is smaller than the two separate intervals suggest. Overlapping
-intervals can hide a clear, paired improvement.
+<details><summary>5. (Mission 32) Why did seconds of one flight need a block bootstrap, while runs with different seeds do not?</summary>
+Consecutive seconds are correlated (n_eff ≪ n); runs with different seeds are independent by construction, so
+resampling whole runs is honest.
+</details>
+
+<details><summary>6. (Mission 14) What is a mutant, and how could you use one to test your red test?</summary>
+A deliberately broken copy of the code. Undo or break your change on purpose (a mutant of your fix): if your red test
+still passes, it does not guard your change.
 </details>
 
 Now open the **🛠️ Lab** tab.

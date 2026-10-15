@@ -1,0 +1,1 @@
+{"name": "jump", "vehicle": "drone", "vision": "target", "seed": 14, "duration_s": 120, "faults": [[30, "gps", "spoof_jump"], [90, "gps", "ok"]]}

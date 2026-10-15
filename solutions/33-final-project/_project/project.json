@@ -1,0 +1,15 @@
+{
+  "title": "A held fix states a sigma that grows with its age",
+  "idea": 1,
+  "kind": "stack",
+  "test": "navera_lite/tests/test_ageing.py",
+  "scenarios": ["campaign/jam.json", "campaign/lake.json"],
+  "seeds": {"first": 301, "count": 20},
+  "metric": {"name": "honest2", "window": "fault"},
+  "better": "closer",
+  "target": 0.86,
+  "min_effect": 0.02,
+  "guardrail": {"metric": {"name": "fix_share", "window": "fault"}, "better": "higher", "max_loss": 0.10},
+  "B": 2000,
+  "boot_seed": 33
+}
