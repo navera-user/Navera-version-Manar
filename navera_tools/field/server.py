@@ -175,6 +175,10 @@ class Field:
 
     def _phone_record(self, d):
         rec = {k: d.get(k) for k in ("lat", "lon", "acc", "alt", "speed", "course", "beta", "gamma", "compass")}
+        if d.get("gps_t_ms") is not None and d.get("phone_t_ms") is not None:
+            rec["gps_age_s"] = round((float(d["phone_t_ms"]) - float(d["gps_t_ms"])) / 1000.0, 1)
+        if d.get("gpsError"):
+            rec["gps_error"] = str(d["gpsError"])[:80]
         if d.get("beta") is not None and d.get("gamma") is not None:
             rec["off_vertical_deg"] = round(attitude.boresight(d["beta"], d["gamma"], 0.0)[2], 2)
         return rec

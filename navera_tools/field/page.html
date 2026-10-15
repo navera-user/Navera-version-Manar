@@ -55,7 +55,7 @@ function api(path,body){return fetch(path,body===undefined?{}:{method:"POST",hea
 function startSensors(){
   var go=function(){
     if(navigator.geolocation){navigator.geolocation.watchPosition(function(p){
-      var c=p.coords;phone.lat=c.latitude;phone.lon=c.longitude;phone.acc=c.accuracy;phone.alt=c.altitude;
+      var c=p.coords;phone.gps_t_ms=p.timestamp;phone.lat=c.latitude;phone.lon=c.longitude;phone.acc=c.accuracy;phone.alt=c.altitude;
       phone.speed=c.speed;phone.course=(c.speed&&c.speed>0.5)?c.heading:null;
     },function(e){phone.gpsError=e.message},{enableHighAccuracy:true,maximumAge:0,timeout:20000});}
     var h=function(e){

@@ -68,13 +68,16 @@ def test_good_test_is_ok_and_error_is_measured(tmp_path):
 
 
 def test_problems_are_named_with_causes(tmp_path):
-    phone = [{"t": 1000 + i * 2, "lat": 35.8, "lon": 10.6, "acc": 60} for i in range(300)]
-    frames = [dict(_good(i), confirmed=5, sky="cloudy", off_vertical_deg=3.0, solved=(i % 5 == 0),
-                   why="too few stars") for i in range(20)]
+    phone = [{"t": 1000 + i * 2, "lat": 35.8, "lon": 10.6, "acc": 3000} for i in range(300)]
+    frames = [dict(_good(i), confirmed=5, detected=5, sky="cloudy" if i % 2 else "clear", off_vertical_deg=3.0,
+                   solved=(i % 5 == 0), why="too few stars") for i in range(20)]
     _write(str(tmp_path), phone, frames, {"clock_offset_s": 1.2})
     r = an.analyze(str(tmp_path))
     ids = {p["id"] for p in r["problems"]}
     assert {"few_stars", "sky_not_clear", "not_level", "clock_offset", "phone_gps_poor"} <= ids
+    cloudy = [dict(f, sky="cloudy") for f in frames]            # a cloudy sky is not blamed on the camera's few stars
+    _write(str(tmp_path / "c"), phone, cloudy)
+    assert "few_stars" not in {p["id"] for p in an.analyze(str(tmp_path / "c"))["problems"]}
     assert r["verdict"] == "PARTLY"
     assert r["problems"][0]["severity"] == "bad"
 
@@ -114,3 +117,52 @@ def test_late_phone_samples_fill_the_gap_in_the_truth(tmp_path):
     assert f.on_phone_batch(items + [{"lat": 1}]) == 5          # a sample without its time is refused
     rows = read_jsonl(os.path.join(f.session.dir, "phone.jsonl"))
     assert [r["t"] for r in rows] == [1000.0 + i for i in range(5)] and all(r["late"] for r in rows)
+
+
+def _phone(n=300):
+    return [{"t": 1000 + i * 2, "lat": 35.8, "lon": 10.6, "acc": 5} for i in range(n)]
+
+
+def test_one_lucky_fix_is_not_ok(tmp_path):
+    _write(str(tmp_path), _phone(), [_good(i, 0.0) if i == 0 else dict(_good(i), solved=False, why="too few stars") for i in range(6)])
+    assert an.analyze(str(tmp_path))["verdict"] != "OK"
+
+
+def test_wrong_answers_count_against_the_test(tmp_path):
+    frames = [_good(i, 0.0 if i % 2 else 25.0) for i in range(30)]          # half are 2700 km out
+    _write(str(tmp_path), _phone(), frames)
+    r = an.analyze(str(tmp_path))
+    assert r["wrong_answers"] == 15 and r["verdict"] == "PARTLY"
+    assert "wrong_answers" in {p["id"] for p in r["problems"]}
+
+
+def test_answers_without_any_truth_are_no_truth_not_no_fix(tmp_path):
+    _write(str(tmp_path), [], [_good(i) for i in range(20)])
+    assert an.analyze(str(tmp_path))["verdict"] == "NO TRUTH"
+
+
+def test_a_nan_answer_is_a_bad_answer_not_an_error(tmp_path):
+    frames = [_good(i) for i in range(12)] + [dict(_good(12), lat=float("nan"))]
+    _write(str(tmp_path), _phone(), frames)
+    r = an.analyze(str(tmp_path))
+    assert r["bad_answer"] == 1 and r["scored"] == 12
+
+
+def test_phone_prior_frames_are_not_independent(tmp_path):
+    frames = [dict(_good(i), prior=[35.8, 10.6]) for i in range(20)]
+    _write(str(tmp_path), _phone(), frames)
+    r = an.analyze(str(tmp_path))
+    assert r["scored_with_phone_prior"] == 20 and r["verdict"] == "PARTLY"
+
+
+def test_a_damaged_line_does_not_break_the_report(tmp_path):
+    _write(str(tmp_path), _phone(), [_good(i) for i in range(12)])
+    with open(os.path.join(str(tmp_path), "frames.jsonl"), "a") as f:
+        f.write("12\n{\"idx\": 3}\n")
+    assert an.analyze(str(tmp_path))["frames"] == 12
+
+
+def test_a_frozen_phone_fix_is_not_a_truth(tmp_path):
+    phone = [{"t": 1000 + i * 2, "lat": 35.8, "lon": 10.6, "acc": 5, "gps_age_s": 60.0} for i in range(300)]
+    _write(str(tmp_path), phone, [_good(i) for i in range(12)])
+    assert an.analyze(str(tmp_path))["verdict"] == "NO TRUTH"
