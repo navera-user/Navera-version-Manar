@@ -36,6 +36,8 @@ ap.add_argument("--width", type=int, default=1280, help="the drone image is redu
 ap.add_argument("--calib-n", type=int, default=12)
 ap.add_argument("--hfov", type=float, default=0.0, help="skip the fit")
 ap.add_argument("--max-tilt", type=float, default=99.0, help="only images with |roll|,|pitch| below this (deg)")
+ap.add_argument("--heading-err", type=float, default=0.0, help="heading error given to the matcher (deg, random sign)")
+ap.add_argument("--height-err", type=float, default=0.0, help="height error given to the matcher (fraction, random sign)")
 ap.add_argument("--seed", type=int, default=1)
 ap.add_argument("--out", default="uavvisloc_eval.json")
 a = ap.parse_args()
@@ -68,11 +70,11 @@ def err_m(res, r):
 
 
 def locate(r, im, hfov, prior_m, smeters):
-    h = float(r["height"])
+    h = float(r["height"]) * (1.0 + a.height_err * rng.choice((-1, 1)) * (prior_m > 40))
     mpp = 2 * h * math.tan(math.radians(hfov) / 2) / im.shape[1]
     prior = shifted(r, prior_m)
     t0 = time.time()
-    res = M.locate(im, prior, smeters, mpp, heading_deg=float(r["Phi2"]) % 360)
+    res = M.locate(im, prior, smeters, mpp, heading_deg=(float(r["Phi2"]) + a.heading_err * rng.choice((-1, 1)) * (prior_m > 40)) % 360)
     res["ms"] = (time.time() - t0) * 1000
     return res
 
