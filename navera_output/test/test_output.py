@@ -10,7 +10,7 @@ from pymavlink.dialects.v20 import common as mavlink2
 
 from navera_output import mavlink_out, nmea
 from navera_output.policy import (KIND_ESTIMATED, KIND_FIX, KIND_NONE, STATE_DEGRADED,
-                                  STATE_FIX, Config, Output, decide)
+                                  STATE_FIX, STATE_NO_FIX, Config, Output, bridge, decide, hold)
 
 GPS, DAY = 1, 2
 T = datetime(2026, 9, 28, 12, 34, 56, 780000, tzinfo=timezone.utc)
@@ -224,3 +224,78 @@ def test_only_a_satellite_position_is_labelled_gnss():
     assert decide(Config(), STATE_FIX, 0.1, pos(), 0.1, GPS).gnss is True
     p = pos(source=DAY, details={})
     assert decide(Config(), STATE_FIX, 0.1, p, 0.1, DAY).gnss is False        # a future vision FIX
+
+
+# ── bridging a gap in the vision positions ───────────────────────────────
+VISION = Config(forward_degraded=True, degraded_sigma_m=50.0)
+
+
+def _held_east(speed=15.0, sigma=50.0, sig_v=1.0):
+    """A forwarded estimate at t = 100, the vehicle flying east at `speed`."""
+    p = pos(source=DAY, details={}, var=(sigma ** 2, sigma ** 2, 0))
+    p.position_covariance_type = 2                       # the source states its accuracy
+    o = decide(VISION, STATE_DEGRADED, 0.1, p, 0.1, DAY)
+    return o, hold(o, 100.0, (speed, 0.0, sig_v))
+
+
+def test_the_soft_no_fix_reasons_are_the_ones_a_gap_can_be_bridged_for():
+    cfg = VISION
+    assert decide(cfg, STATE_NO_FIX, 0.1, pos(source=DAY), 0.1, DAY).soft
+    assert decide(cfg, STATE_DEGRADED, 0.1, pos(source=DAY), 6.0, DAY).soft          # position not current
+    assert decide(cfg, STATE_DEGRADED, 0.1, pos(source=DAY), 0.1, DAY, None, 6.0).soft  # measured too long ago
+    assert not decide(cfg, None, None, None, None, None).soft                       # the arbiter is silent
+    assert not decide(cfg, STATE_DEGRADED, 0.1, pos(source=DAY), 0.1, GPS).soft      # other source
+    assert not decide(cfg, 0, 0.1, pos(source=DAY), 0.1, DAY).soft                   # initializing
+    coarse = decide(Config(forward_degraded=True, degraded_sigma_m=900.0, max_speed_mps=30.0), STATE_DEGRADED, 0.1,
+                    pos(source=DAY, details={}), 0.1, DAY, None, 4.0)
+    assert coarse.kind == KIND_NONE and not coarse.soft and "too coarse" in coarse.reason
+
+
+def test_a_bridged_position_moves_along_the_velocity_with_a_growing_accuracy():
+    first, held = _held_east()
+    prev = first.sigma_h_m
+    lon_per_m = 1.0 / (111195.0 * math.cos(math.radians(first.lat)))
+    for dt in (1.0, 3.0, 6.0, 10.0):
+        b = bridge(VISION, held, 100.0 + dt)
+        assert b.kind == KIND_ESTIMATED and b.bridged and b.sigma_h_m > prev and b.age_s == 0.0
+        assert b.lon == pytest.approx(first.lon + 15.0 * dt * lon_per_m, abs=1e-7)
+        prev = b.sigma_h_m
+    # velocity error 1 m/s + heading 5 deg x 15 m/s + 1/2 a t^2 with a = 0.5, over 10 s
+    assert prev == pytest.approx(first.sigma_h_m + 10.0 + math.radians(5.0) * 15.0 * 10.0 + 25.0, rel=1e-6)
+
+
+def test_a_bridge_without_a_velocity_stays_put_and_grows_by_the_top_speed():
+    o = decide(VISION, STATE_DEGRADED, 0.1, pos(source=DAY, details={}, var=(2500.0, 2500.0, 0)), 0.1, DAY)
+    held = hold(o, 100.0, None)
+    b = bridge(VISION, held, 104.0)
+    assert (b.lat, b.lon) == (o.lat, o.lon)
+    assert b.sigma_h_m == pytest.approx(o.sigma_h_m + 30.0 * 4.0)
+
+
+def test_a_bridge_ends_at_its_time_or_when_the_accuracy_is_too_coarse():
+    _, held = _held_east()
+    assert bridge(VISION, held, 100.0 + 10.0).kind == KIND_ESTIMATED
+    late = bridge(VISION, held, 100.0 + 10.1)
+    assert late.kind == KIND_NONE and "longer than the bridge" in late.reason
+    far = Config(forward_degraded=True, degraded_sigma_m=50.0, max_forward_sigma_m=100.0)
+    _, held2 = _held_east(sigma=70.0)
+    coarse = bridge(far, held2, 100.0 + 8.0)                 # 70 + 8 + 0.087*15*8 + 16 = 104 > 100
+    assert coarse.kind == KIND_NONE and "too coarse" in coarse.reason
+
+
+def test_nothing_is_bridged_unless_forwarding_a_vision_estimate():
+    gps = decide(Config(), STATE_FIX, 0.1, pos(), 0.1, GPS)
+    assert hold(gps, 100.0, (10.0, 0.0, 1.0)) is None                # a GPS fix is never bridged
+    assert hold(Output(KIND_NONE, "no fix"), 100.0, None) is None
+    _, held = _held_east()
+    assert bridge(Config(), held, 101.0).kind == KIND_NONE           # forward_degraded off
+    assert bridge(Config(forward_degraded=True, degraded_sigma_m=50.0, bridge_max_s=0.0), held, 101.0).kind == KIND_NONE
+    assert bridge(VISION, None, 101.0).kind == KIND_NONE
+    assert bridge(VISION, held, 99.0).kind == KIND_NONE              # a clock that went backwards
+
+
+def test_bridge_settings_are_validated():
+    with pytest.raises(ValueError):
+        Config(forward_degraded=True, degraded_sigma_m=50.0, bridge_period_s=0.0).validate()
+    with pytest.raises(ValueError):
+        Config(forward_degraded=True, degraded_sigma_m=50.0, bridge_max_s=-1.0).validate()
