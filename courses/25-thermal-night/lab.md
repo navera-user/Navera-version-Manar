@@ -580,13 +580,14 @@ python3 run_night.py train --seed 1 --out seed1.pt
 ```
 
 <details><summary>Read this after your run: what the three ablations gave the author</summary>
-(a) without normalisation: about 5.0–5.6 px instead of 3.8 (four runs) — the thermal camera's gain and the pale reference must be
+(a) without normalisation: about 5.0–5.6 px instead of 3.5–4.1 (four runs) — the thermal camera's gain and the pale reference must be
 learned from examples instead of removed. (c) pixels instead of offsets / 16: about 4.2 px — the targets are 16 times
 larger than what freshly initialised layers produce, the first epochs are spent catching up. (b) without
 augmentation: about 3.6 px, **no worse** with 16 000 pairs from 293 places: the author's choice is not justified by
 this measurement (it may help with fewer places: Going further). Testing your own design decisions is how you find
-that out. And the noise: the baseline trained with seeds 0, 1, 2 gave 3.83, 3.78, 3.92 px (about ±0.1 px), but the
-ablation (a) moved from 5.0 to 5.6 px between runs: one run is enough for (a), not for (b) or (c).</details>
+that out. And the noise: the baseline gave 3.45 to 4.09 px over seven runs (about ±0.3 px; even the same seed is not repeated exactly
+on the GPU — seed 1 gave 3.45 and then 3.78), and ablation (a) moved from 5.0 to 5.6 px: (a) is beyond the noise,
+(b) and (c) are not.</details>
 
 ## Step 14 — Learned vs NCC, in five conditions
 

@@ -387,7 +387,7 @@ def test():
                 share = float((d > 1e-4).float().mean())          # a correct train: ≈ 0.0001; without zero_grad: ≈ 0.5
                 line(11, "train (zero_grad)", f"3 one-batch epochs vs 3 plain Adam steps: {share:.1%} of the weights "
                      "differ", None, share < 0.05,
-                     "your weights differ from 3 plain Adam steps — opt.zero_grad() must come before every "
+                     "opt.zero_grad() must come before every "
                      "loss.backward() (lab Step 11, hint 3)")
             else:
                 line(11, "train (zero_grad)", None, e2, False, "")

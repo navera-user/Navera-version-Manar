@@ -86,7 +86,7 @@ replaced: the replay frames are now copied as DATA into `datasets/25-thermal-nig
   **131 200** (131 072 without biases: the check names it). Per layer: conv1 304,
   conv2 4 640, conv3 18 496, conv4 36 928, fc1 131 200, fc2 1 032 = 192 600. PREDICT_PARAMS: fc1 (68 %).
 - Step 11 (`train`, 16 000 pairs from 293 places, 8 epochs, batch 128, Adam 1e-3, seed 0): train loss 0.17 → 0.057,
-  val loss 0.135 → 0.078; **val median centre error 3.8 px** (3.71–3.84 over runs; ≈ 30 m), corner error 4.5 px, 37–39 %
+  val loss 0.135 → 0.078; **val median centre error 3.8 px** (3.45–4.09 over seven runs, same seed included: GPU not bit-exact; ≈ 30 m), corner error 4.5 px, 37–39 %
   within 3 px. GPU: **32–53 s** of training + 19 s to make the pairs (busy Jetson). Quick run (3 000 pairs, 3 epochs):
   a few seconds, loss 0.21 → ≈ 0.15. The check compares VAL_CENTRE_PX with the student's own
   `logs/my_homography.pt.json` (±0.05); the solution ships its record (`solutions/25-thermal-night/logs/`).
@@ -94,17 +94,17 @@ replaced: the replay frames are now copied as DATA into `datasets/25-thermal-nig
   minimum ≈ 0.159 near epoch 17, then 0.18; val centre error 7.1 px. Stop near epoch 17. Hidden pairs: 6.04 / 6.15 / 6.42 px
   (three runs) — under 6.5, so check 15 (round 2) REQUIRES the runner's record logs/my_homography.pt.json, whose
   SHA-256 must match my_homography.pt (and its file name and student), and refuses < 50 places.
-- Step 13 (ablation, 16 000 pairs, 8 epochs, GPU, one run each; baseline val 3.7–3.8 px): **(a) `--norm none` 5.08 / 5.02 / 5.25 / 5.56 px** (four runs)
+- Step 13 (ablation, 16 000 pairs, 8 epochs, GPU, one run each; baseline val 3.5–4.1 px): **(a) `--norm none` 5.08 / 5.02 / 5.25 / 5.56 px** (four runs)
   (worse: gain and pale reference must be learned), **(b) `--no-augment` 3.60 px** (no worse: the author's
   augmentation is not justified by this measurement at 293 places — a good discussion), **(c) `--rho 1` 4.16 px**
-  (slightly worse: targets 16 × too large for fresh layers). Seed noise (`--seed`, round 2): baseline 3.83 / 3.78 / 3.92 px (seeds 0/1/2,
-  ≈ ±0.1 px), but ablation (a) spreads 0.5 px; students measure it with `--seed 1` (SEED_NOISE_PX, not graded). The check reads the run's log
+  (slightly worse: targets 16 × too large for fresh layers). Seed noise (`--seed`, round 2): baseline 3.45–4.09 px over seven runs (seed 1 alone gave 3.45
+  and 3.78; ≈ ±0.3 px), ablation (a) 5.02–5.56 px; students measure it with `--seed 1` (SEED_NOISE_PX, not graded). The check reads the run's log
   (ablation letter, ABLATION_PX ±0.05); the runner refuses to overwrite my_homography.pt with an ablation.
 - Step 14 (`compare`, val places; median px / share within 3 px):
 
   | condition | prior | NCC | untrained | trained (reference) |
   |---|---|---|---|---|
-  | night | 9.5 / 6 % | **14.5** / 24 % | 9.6 / 5 % | **3.7–3.8** / 37–39 % |
+  | night | 9.5 / 6 % | **14.5** / 24 % | 9.6 / 5 % | **3.5–4.1** / 37–39 % |
   | dawn | 9.5 / 6 % | 16.2 / 2 % | 9.6 / 5 % | 9.4–10.0 / 5 % |
   | noon | 9.5 / 6 % | 13.1 / 22 % | 9.6 / 5 % | **11.8–12.1** / 6–7 % |
   | coast | 9.5 / 5 % | 17.7 / 0 % | 9.6 / 6 % | 7.7–8.4 / 16 % |
