@@ -32,6 +32,14 @@ Parameters:
                                  0.5 m GPS. Off: NMEA says "no fix" for them.
     degraded_sigma_m     (NaN)   accuracy stated for them (required if forwarded)
     max_forward_sigma_m  (1000)  a forwarded position coarser than this is withheld
+    bridge_max_s         (10.0)  a gap in the forwarded vision positions is bridged this long
+                                 (the last one carried along its velocity, sent about once a
+                                 second with an accuracy growing with the gap), then "no fix".
+                                 0 = never. Only with forward_degraded; never for a GPS fix
+    bridge_after_s       (2.5)   the bridge starts when nothing was sent for this long
+    bridge_period_s      (1.0)   and repeats at this period
+    bridge_accel_mps2    (0.5)   unseen acceleration of the vehicle in the accuracy growth
+    bridge_heading_sigma_deg (5.0) heading error in the accuracy growth
     position_timeout_s   (5.0)   an older position is not current
     max_measurement_age_s (5.0)  a position measured longer ago is not sent; the rest
                                  are sent stamped with their measurement instant
@@ -71,7 +79,8 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
 from navera_output import mavlink_out, mavlink_url, nmea
-from navera_output.policy import KIND_FIX, KIND_NONE, Config, decide, for_nmea
+from navera_output.policy import (KIND_ESTIMATED, KIND_FIX, KIND_NONE, Config, bridge, decide,
+                                  for_nmea, hold)
 
 
 class VehicleOutputNode(Node):
@@ -94,6 +103,11 @@ class VehicleOutputNode(Node):
         declare_float(self, "nav_status_timeout_s", 2.0)
         declare_float(self, "gps_vel_timeout_s", 1.0)
         declare_float(self, "max_forward_sigma_m", 1000.0)
+        declare_float(self, "bridge_max_s", 10.0)
+        declare_float(self, "bridge_after_s", 2.5)
+        declare_float(self, "bridge_period_s", 1.0)
+        declare_float(self, "bridge_accel_mps2", 0.5)
+        declare_float(self, "bridge_heading_sigma_deg", 5.0)
         self.declare_parameter("fix_type_without_alt", 3)
         self.declare_parameter("ros_fix_topic", "/navera/fix")
         # the frame of the vehicle's TF tree the fix refers to (robot_localization's
@@ -114,7 +128,12 @@ class VehicleOutputNode(Node):
             max_measurement_age_s=float(self.get_parameter("max_measurement_age_s").value),
             max_speed_mps=float(self.get_parameter("max_speed_mps").value),
             nav_status_timeout_s=float(self.get_parameter("nav_status_timeout_s").value),
-            max_forward_sigma_m=float(self.get_parameter("max_forward_sigma_m").value))
+            max_forward_sigma_m=float(self.get_parameter("max_forward_sigma_m").value),
+            bridge_max_s=float(self.get_parameter("bridge_max_s").value),
+            bridge_after_s=float(self.get_parameter("bridge_after_s").value),
+            bridge_period_s=float(self.get_parameter("bridge_period_s").value),
+            bridge_accel_mps2=float(self.get_parameter("bridge_accel_mps2").value),
+            bridge_heading_sigma_deg=float(self.get_parameter("bridge_heading_sigma_deg").value))
         self.cfg.validate()
         rate = float(self.get_parameter("rate_hz").value)
         if rate <= 0:
@@ -148,6 +167,9 @@ class VehicleOutputNode(Node):
         self._pos_rx = None
         self._last_kind = None
         self._sent_pos = None             # the last position message sent (sent once)
+        self._held = None                 # the last forwarded estimate, for bridging a gap after it
+        self._last_tx = None              # monotonic instant of the last position sent
+        self._bridging = False
         self._vel = None                  # (north, east) m/s from the GPS receiver
         self._vel_rx = None
         self.failed = False
@@ -215,6 +237,9 @@ class VehicleOutputNode(Node):
                      now - self._pos_rx if self._pos else None,
                      st.active_source if st else None, vel,
                      self._measured_age(self._pos), self._ground_velocity())
+        out = self._bridged(out, now)
+        if out is None:
+            return                        # waiting: a bridge may start, nothing to send yet
         if out.kind != self._last_kind:
             # Separate call sites: rclpy refuses one call site changing severity.
             if out.kind == KIND_NONE:
@@ -222,10 +247,14 @@ class VehicleOutputNode(Node):
             else:
                 self.get_logger().info(f"output → {out.kind} ({out.reason})")
             self._last_kind = out.kind
-        if out.kind != KIND_NONE:
+        if out.kind != KIND_NONE and not out.bridged:
             if self._pos is self._sent_pos:
                 return                    # already sent: wait for the next measurement
             self._sent_pos = self._pos
+            self._held = hold(out, now, self._ground_velocity())
+            self._bridging = False
+        if out.kind != KIND_NONE:
+            self._last_tx = now
         # stamped with the measurement instant: GPS_INPUT time, NMEA time, NavSatFix stamp
         t_utc = datetime.now(timezone.utc) - timedelta(seconds=out.age_s)
         try:
@@ -247,6 +276,35 @@ class VehicleOutputNode(Node):
             self.failed = True
             self.context.try_shutdown()
 
+
+    def _bridged(self, out, now):
+        """`out`, or the held position carried to now when the positions stopped coming (policy.bridge),
+        or None to wait (a bridge is pending: nothing is sent yet, the autopilot is not told "no fix"
+        for a gap that may be bridged)."""
+        if out.kind == KIND_FIX:
+            self._held = self._last_tx = None
+            self._bridging = False
+            return out
+        pending = (out.kind == KIND_ESTIMATED and self._pos is self._sent_pos) or (out.kind == KIND_NONE and out.soft)
+        if not pending or self._held is None or self.cfg.bridge_max_s <= 0 or self._last_tx is None:
+            if self._bridging and out.kind == KIND_NONE:
+                self._bridging = False
+            return out
+        gap = now - self._last_tx
+        if gap < (self.cfg.bridge_period_s if self._bridging else self.cfg.bridge_after_s):
+            return None if out.kind == KIND_NONE else out
+        b = bridge(self.cfg, self._held, now)
+        if b.kind == KIND_NONE:
+            if self._bridging:
+                self.get_logger().warn(f"bridge ended: {b.reason}")
+            self._bridging = False
+            self._held = None             # over: plain "no fix" from here on, until a new position
+            return b
+        if not self._bridging:
+            self.get_logger().warn(f"no new position for {gap:.1f} s: bridging along the last one "
+                                   f"(at most {self.cfg.bridge_max_s:.0f} s)")
+        self._bridging = True
+        return b
 
     def _ground_velocity(self):
         """(east, north, sigma) m/s from the positions of the last 20 s, or None."""

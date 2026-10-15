@@ -206,7 +206,8 @@ When a frame gives no match (sea, uniform ground, frame too tilted), day vision 
 last measured position along the ground velocity fitted to the measured fixes of the last
 20 s (`navera_common/track.py`: GPS while trusted, vision matches at their photo's instant),
 turned by the heading change the IMU measured since. It is published PROPAGATED with a
-stated accuracy that grows (velocity error × t + 5° heading error × distance), for at most
+stated accuracy that grows with the time since the last *measured* fix (velocity error × t +
+5° heading error × distance + ½ a t², a = `dead_reckon_accel_mps2` = 0.5 m/s²), for at most
 `max_dead_reckon_s` (120 s) and `dead_reckon_max_sigma_m` (500 m); never used as an
 independent check of GPS.
 

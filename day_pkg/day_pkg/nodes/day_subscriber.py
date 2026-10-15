@@ -214,6 +214,9 @@ class DaySubscriber(Node):
         # ve, vn, sigma): one turn from the fix's heading to the present folded a 180 deg
         # turn or a lap into a small one (bench campaign 4: 3-3.8 km off on the coast)
         self._carry = None
+        # when the carry's velocity was last measured, if the track no longer gives one (None = the
+        # track's last fix): the unseen-acceleration term of the stated accuracy grows from there
+        self._vel_epoch = None
         # the trusted GPS by its measurement time: a bias sample compares a frame's fix with
         # the GPS at that frame's instant (the latest GPS is v x delay off along the track)
         from navera_common.sensor_history import History
@@ -817,19 +820,37 @@ class DaySubscriber(Node):
             sig_v = v[2] if v is not None else 3.0
             speed = math.hypot(ve, vn)
             p = _move((lat, lon), de, dn)
-            return (p[0], p[1], sig + sig_v * dt + math.radians(5.0) * speed * dt + 0.25 * dt * dt
-                    + 0.5 * abs(math.radians(turn)) * speed * dt)
+            # the unseen acceleration grows with the time since the last MEASURED fix (not
+            # of each 1 s step: that sum is linear and was 5x too small after 100 s)
+            since_v = tc - (self._vel_epoch if self._vel_epoch is not None else t_last)
+            return (p[0], p[1], sig + self.track.sigma_growth(sig_v, speed, dt, max(0.0, since_v), turn))
         turn = 0.0
         if h is not None and self._track_heading is not None:
             turn = (h - self._track_heading + 180.0) % 360.0 - 180.0
         return self.track.propagate(t, turn)
 
+    def _keep_carry_velocity(self, lat, lon, t, meta, sigma, t_vel) -> None:
+        """A point was just added to the track. A point after a gap of more than 5 s leaves the track
+        alone with it: no velocity across a gap (a chord is no velocity), so the next frame that
+        gives no match could not be carried — no position at all, for as long as the track needs 3
+        points over 4 s (simulator 2026-10-15: 19 s, then the autopilot's LAND). While the
+        track has none, the carry goes on with the velocity it had; its accuracy keeps growing
+        from the time that velocity was measured (t_vel), not from this point."""
+        if self.track.velocity(t) is not None or self._carry is None:
+            self._carry = None                      # the point is on a track that gives the velocity
+            self._vel_epoch = None
+            return
+        if self._vel_epoch is None:
+            self._vel_epoch = t_vel
+        self._set_carry(lat, lon, t, meta, sigma)
+
     def _set_carry(self, lat, lon, t, meta, sigma):
         """Remember the carried position and its velocity turned to this frame's heading."""
         v = self.track.velocity(t)
-        if v is None:
-            self._carry = None
+        if v is None and self._carry is None:
             return
+        if v is not None:
+            self._vel_epoch = None
         h = self._heading_for_match(meta)
         hc = self._carry[3] if self._carry is not None else self._track_heading
         ve, vn = (self._carry[4], self._carry[5]) if self._carry is not None else (v[0], v[1])
@@ -873,15 +894,18 @@ class DaySubscriber(Node):
             self._dr_why = f"dead-reckoning limit {self.max_dead_reckon_s:.0f}s reached"
             return False
         vo, self._vo_step = self._vo_step, None
+        if vo is not None and not self._odometry_continues(vo, self._anchor_time, t_now):
+            vo = None            # frames in between gave no position: carry along the track instead
         if vo is not None and self._anchor_lat is not None and self._dr_sigma is not None:
             # visual odometry measured this frame's displacement: carry the last position by it
             # (and add it to the track: the velocity follows the turns)
             de, dn, dt, q = vo
             lat, lon = _move((self._anchor_lat, self._anchor_lon), de, dn)
-            sigma = self._dr_sigma + 0.1 * math.hypot(de, dn) + 1.0
+            sigma = self._dr_sigma + self._odometry_rel_error(meta) * math.hypot(de, dn) + 1.0
             if sigma <= self.dr_max_sigma_m:
+                t_vel = self.track.last_time()
                 self.track.add(t_now, lat, lon, sigma)
-                self._carry = None                  # the odometry point is on the track itself
+                self._keep_carry_velocity(lat, lon, t_now, meta, sigma, t_vel)
                 self._anchor_lat, self._anchor_lon, self._anchor_time = lat, lon, t_now
                 self._dr_sigma = sigma
                 self._emit_fix(now, seq_id, lat, lon, meta, status, "dead_reckon", score, None,
@@ -902,6 +926,34 @@ class DaySubscriber(Node):
         self._emit_fix(now, seq_id, lat, lon, meta, status, "dead_reckon", score, None,
                        reason=f"{why}; carried {t_now - t_last:.0f} s, ±{sigma:.0f} m")
         return True
+
+    ODOMETRY_MAX_UNSEEN_S = 0.5
+
+    @classmethod
+    def _odometry_continues(cls, vo, anchor_time, t_now) -> bool:
+        """The odometry step (previous frame -> this frame) is added to the last published
+        position only if that position IS the previous frame's. When a frame in between
+        published nothing (the carry was refused, no match), the anchor is older than the
+        previous frame by the motion nobody measured: adding the step to it leaves the position
+        behind by v x that time while the stated accuracy has not grown (simulator 2026-10-15:
+        error 1205 m, stated +-244 m)."""
+        if anchor_time is None:
+            return False
+        de, dn, dt, _q = vo
+        return (t_now - dt) - anchor_time <= cls.ODOMETRY_MAX_UNSEEN_S
+
+    @staticmethod
+    def _odometry_rel_error(meta) -> float:
+        """Relative error of a visual-odometry displacement: the odometry scales the image by
+        the frame's height above ground, so a height wrong by x % makes every displacement
+        wrong by x %. 10 % at best, else the frame's own stated height uncertainty
+        (simulator 2026-10-15: height held while the vehicle climbed, odometry 30 % short
+        with 10 % stated)."""
+        try:
+            rel = float(meta.get("altitude_sigma_m")) / float(meta.get("altitude_m"))
+        except (TypeError, ValueError, ZeroDivisionError):
+            return 0.1
+        return max(0.1, rel) if math.isfinite(rel) else 0.1
 
     def _remember_anchor(self):
         """Persist the anchor (at most once a second) for a restart in flight."""
@@ -1161,14 +1213,16 @@ class DaySubscriber(Node):
             self._anchor_lat, self._anchor_lon, self._anchor_time = out_lat, out_lon, t_now
             self._last_measured_time = t_now
             self._dr_sigma = max(self.local_sigma_m, float(result.get("sigma_m") or 0.0))
-            self._carry = None
             self._rejects_in_row = 0
             self._remember_anchor()
             if src == "local_match":
                 ns = meta.get("image_stamp_ns")         # the photo's instant, not the processing's
-                self.track.add(int(ns) / 1e9 if ns else t_now, out_lat, out_lon,
-                               max(self.local_sigma_m, float(result.get("sigma_m") or 0.0)))
+                t_vel, t_fix = self.track.last_time(), (int(ns) / 1e9 if ns else t_now)
+                self.track.add(t_fix, out_lat, out_lon, self._dr_sigma)
                 self._track_heading = self._heading_for_match(meta)
+                self._keep_carry_velocity(out_lat, out_lon, t_fix, meta, self._dr_sigma, t_vel)
+            else:
+                self._carry, self._vel_epoch = None, None
             if src == "local_match":
                 self._publish_vision_altitude(meta, result, status)
             self._emit_fix(now, seq_id, out_lat, out_lon, meta, status, src, score, jump_m, reason)

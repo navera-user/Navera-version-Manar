@@ -105,10 +105,23 @@ class TrackVelocity:
             p = dead_reckon(lat, lon, math.degrees(math.atan2(de, dn)) % 360.0, dist / dt, dt)
             if p is None:
                 return None
-        # a turn: when it started and at what rate are not known — half its sideways reach
-        sigma = (sig0 + sig_v * dt + self.heading_sigma * speed * dt + 0.5 * self.accel * dt * dt
-                 + 0.5 * abs(math.radians(heading_change_deg or 0.0)) * speed * dt)
-        return p[0], p[1], sigma
+        return p[0], p[1], sig0 + self.sigma_growth(sig_v, speed, dt, 0.0, heading_change_deg)
+
+    def sigma_growth(self, sig_v: float, speed: float, dt: float, since_fix_s: float = 0.0,
+                     heading_change_deg: float = 0.0) -> float:
+        """How much the stated uncertainty of a carried position grows over dt seconds.
+
+        since_fix_s: the time already elapsed between the last MEASURED fix and the start of this
+        step (0 = the step starts at the fix). A position carried step by step (once a second)
+        must grow like one carried over the whole time: the unseen acceleration term is
+        1/2 a t^2 of the time since the measurement, not 1/2 a dt^2 of each step added up —
+        that sum is 1/2 a dt per second, i.e. linear, and understated the real error 5x after
+        100 s (simulator, 2026-10-15: stated +-244 m, real 1205 m).
+        A turn: when it started and at what rate are not known — half its sideways reach."""
+        t1 = since_fix_s + dt
+        return (sig_v * dt + self.heading_sigma * speed * dt
+                + 0.5 * self.accel * (t1 * t1 - since_fix_s * since_fix_s)
+                + 0.5 * abs(math.radians(heading_change_deg or 0.0)) * speed * dt)
 
     def last_time(self) -> Optional[float]:
         return self._pts[-1][0] if self._pts else None

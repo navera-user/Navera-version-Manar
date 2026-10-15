@@ -35,6 +35,18 @@ failsafe (found in SITL). A position measured more than `max_measurement_age_s` 
 not sent at all. "No fix" is sent at `rate_hz`. A position is never repeated after it stops
 being current.
 
+**Gaps are bridged, but not for long.** An autopilot lands on a silence (ArduPilot Copter SITL:
+EKF failsafe → LAND about 8 s after the last position, even though the vehicle has hardly moved
+from where it was last seen). With `forward_degraded`, when no new vision position has been sent
+for `bridge_after_s` (2.5 s), the last one is carried along its ground velocity and sent again
+about once a second (`bridge_period_s`), its accuracy growing with the gap: velocity error ×
+t + 5° heading error × distance + ½ × `bridge_accel_mps2` × t² (without a velocity: the position
+stays and the accuracy grows by `max_speed_mps` × t). After `bridge_max_s` (10 s), or when the
+grown accuracy exceeds `max_forward_sigma_m`, it is "no fix" again and the autopilot's own
+failsafe acts. Only a forwarded estimate is bridged — never a GPS fix, never while the arbiter is
+silent — and the bridge never claims better than it knows. `bridge_max_s = 0` disables it.
+Log lines: `no new position for 2.6 s: bridging along the last one`, `bridge ended: …`.
+
 **Carried to the present.** A vision position describes where its photo was taken, 1–2.5 s
 before it reaches the output; sent as it was, a plane at 40 m/s was 83 m off with a stated
 ±30 m (simulator). The node learns the ground velocity of the recent positions (any source,
@@ -89,6 +101,8 @@ On the box: `/etc/navera/navera.env`, read by `navera-output.service` and
 | `NAVERA_DEGRADED_SIGMA_M` | `degraded_sigma_m` | NaN | accuracy stated for them (m, 1 σ); required with forwarding, at most `max_forward_sigma_m`. When the source states a worse one, the worse is sent |
 | `NAVERA_MAX_MEASUREMENT_AGE_S` | `max_measurement_age_s` | 5.0 | older measurements are not sent; younger vision positions are carried to the present |
 | `NAVERA_MAX_SPEED_KMH` | `max_speed_mps` | 30 m/s | the lag allowance when no ground velocity is known |
+| — | `bridge_max_s` / `bridge_after_s` / `bridge_period_s` | 10 / 2.5 / 1.0 | a gap in the forwarded vision positions is bridged this long at most (0 = never), starting after 2.5 s without one, one position per second (see "Gaps are bridged") |
+| — | `bridge_accel_mps2` / `bridge_heading_sigma_deg` | 0.5 / 5 | unseen acceleration and heading error in the accuracy growth of a bridged position |
 | — | `max_forward_sigma_m` | 1000 | a forwarded position coarser than this is withheld (a celestial fix moved a SITL autopilot by 125 km) |
 | — | `rate_hz` | 5.0 | "no fix" rate |
 | — | `position_timeout_s` / `nav_status_timeout_s` | 5.0 / 2.0 | older = "no fix" |

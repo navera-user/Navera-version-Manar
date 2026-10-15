@@ -630,6 +630,8 @@ class Simulator(Node):
             if c["forward_degraded"]:
                 vo_cmd += ["-p", "forward_degraded:=true",
                            "-p", f"degraded_sigma_m:={c['degraded_sigma_m']:.1f}"]
+            if os.environ.get("NAVERA_SIM_BRIDGE_MAX_S"):       # experiments: 0 = no gap bridging
+                vo_cmd += ["-p", f"bridge_max_s:={float(os.environ['NAVERA_SIM_BRIDGE_MAX_S'])}"]
             vo = Proc("vehicle_output", vo_cmd, self.work)
             vo.start()
             with self.lock:

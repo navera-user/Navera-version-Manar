@@ -22,8 +22,14 @@ inliers **and** the fitted scale within `local_scale_tol` of the one the altitud
   ≥ `conf_threshold`.
 - Local matches are published with a stated accuracy of `local_sigma_m` (30 m, conservative
   until measured with the real camera); retrieval positions with an unknown one.
-- No match: dead-reckoning from measured heading/speed only, for at most `max_dead_reckon_s`;
-  otherwise an explicit "no position". With retrieval, after `max_consecutive_rejects` the
+- No match: dead-reckoning from measured heading/speed only, for at most `max_dead_reckon_s`
+  and while its stated accuracy stays under `dead_reckon_max_sigma_m`; otherwise an explicit
+  "no position". The stated accuracy grows with the time *since the last measured fix* —
+  velocity error × t + 5° heading error × distance + ½ × `dead_reckon_accel_mps2` × t² (unseen
+  acceleration; quadratic, so after ~40 s it passes 500 m and the position is withdrawn) —
+  not step by step (that sum was linear and 5× too small after 100 s, simulator 2026-10-15).
+  Visual-odometry steps grow it by max(10 %, the frame height's own relative uncertainty) of
+  the distance, and are used only when the previous frame's position was published. With retrieval, after `max_consecutive_rejects` the
   prior is dropped.
 - Whole-map search (no prior) is disabled by default (`allow_global_search`): its score does
   not separate good from bad matches.
