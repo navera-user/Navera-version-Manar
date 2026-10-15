@@ -37,7 +37,7 @@
 
 **You need:** mission 01 (the jump gate), 27 (covariance, Mahalanobis distance, χ² by simulation), 29 (the
 judge: eligibility, priority, hold-off), 06 (east/north metres with `enu_flat`). ⏱ Reading: about 75 minutes
-with the ✏️ checks: §1–§4 before session 1, §5–§6 before session 2. Lab: 3 h 30 to 5 h.
+with the ✏️ checks: §1–§4 before session 1, §5–§6 before session 2. Lab: 3 h 30 to 6 h 30.
 
 **Before you start.** Answer without looking; if you miss two, reread mission 27 §3 and mission 29 §2.
 

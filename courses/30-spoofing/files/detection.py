@@ -154,11 +154,12 @@ if __name__ == "__main__":
     out = experiment()
     print("one test: p_fa (theory)  γ        measured share of honest tests with d² > γ")
     for r in out["single_test"]:
-        print(f"          {r['p']:<14} {r['gamma']:<8} {r['measured']:.4f}")
+        print(f"          {r['p']:<14} {r['gamma']:<9.3f} {r['measured']:.4f}")
     print("\np_fa/test  n   P_FA (flight)  P_D     mean delay  delay without noise (drift_alarm_time)")
     for r in out["roc"]:
-        print(f"{r['p']:<10} {r['n']:<3} {r['p_fa']!s:14} {r['p_d']!s:7} {str(r['delay_s']) + ' s':11} "
-              f"{r['delay_theory_s']} s")
+        delay = "—" if r["delay_s"] is None else f"{r['delay_s']:.1f} s"
+        theory = "—" if r["delay_theory_s"] is None else f"{r['delay_theory_s']:.1f} s"
+        print(f"{r['p']:<10} {r['n']:<3} {r['p_fa']!s:14} {r['p_d']!s:7} {delay:11} {theory}")
     print("\ncorrelated vision errors (ρ = 0.9), honest flights:", out["correlated"])
     print("your operating point:", out["chosen"])
     with open("results.json", "w") as f:

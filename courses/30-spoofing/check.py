@@ -687,9 +687,26 @@ def _():
     publishers_ok("/navera_lite/status", expected=0)
     publishers_ok("/navera_lite/fix/gps", expected=0)
     out_file = f".check_ros_{os.getpid()}.json"
-    live, err = None, ""
+
+    def live_problem(live):
+        """None when the live run shows the right story, else what is wrong (one sentence)."""
+        doubt = next((x for x in live if x.get("gps_guard") == "IN_DOUBT"), None)
+        ref = next((x for x in live if x.get("gps_guard") == "REFUSED"), None)
+        if ref is None:
+            return ("live, your guard_node.py never REFUSED the drifting GPS in 34 s (offline it does at 31 s): does "
+                    "`python3 spoof_run.py drift` refuse it?")
+        if doubt is None or doubt["t"] >= ref["t"]:
+            return "live, the guard should be IN_DOUBT before it is REFUSED"
+        if abs(ref["offset_m"] - LAB["drift_refused_offset_m"]) > 8.5:
+            return (f"live, your guard refused the GPS {ref['offset_m']:.0f} m off; offline it refuses at "
+                    f"{LAB['drift_refused_offset_m']:.0f} m: was something else publishing on navera_lite/fix/* ?")
+        if not any(x.get("source") == "day" and x["t"] >= ref["t"] for x in live):
+            return "live, after the refusal the judge should fly on day vision"
+        return None
+
+    live, problem, err = None, "the live attack did not run against your guard_node.py", ""
     try:
-        for attempt in range(2):                     # one retry: a loaded machine may start the node slowly
+        for attempt in range(2):                     # one retry: a loaded machine may stall a live run
             if os.path.exists(out_file):
                 os.remove(out_file)
             with Background("python3 guard_node.py --ros-args --params-file navera_lite.yaml -p max_speed_mps:=30.0",
@@ -699,24 +716,17 @@ def _():
                     raise CheckFailed("your guard_node.py stopped during the check:\n" + node.p.stdout.read()[-800:])
             if code == 0 and os.path.exists(out_file):
                 live = json.load(open(out_file))["changes"]
-                if any(x.get("gps_guard") == "REFUSED" for x in live):
+                problem = live_problem(live)
+                if problem is None:
                     break
+            else:
+                problem = "the live attack did not run against your guard_node.py:\n" + err[-600:]
     finally:
         if os.path.exists(out_file):
             os.remove(out_file)
-    if live is None:
-        raise CheckFailed("the live attack did not run against your guard_node.py:\n" + err[-600:])
-    doubt = next((x for x in live if x.get("gps_guard") == "IN_DOUBT"), None)
-    ref = next((x for x in live if x.get("gps_guard") == "REFUSED"), None)
-    if ref is None:
-        raise CheckFailed("live, your guard_node.py never REFUSED the drifting GPS in 34 s (offline it does at 31 s): "
-                          "does `python3 spoof_run.py drift` refuse it?")
-    c.ok(doubt is not None and doubt["t"] < ref["t"], "live, the guard should be IN_DOUBT before it is REFUSED")
-    c.ok(abs(ref["offset_m"] - LAB["drift_refused_offset_m"]) <= 8.5,
-         f"live, your guard refused the GPS {ref['offset_m']:.0f} m off; offline it refuses at "
-         f"{LAB['drift_refused_offset_m']:.0f} m: was something else publishing on navera_lite/fix/* ?")
-    c.ok(any(x.get("source") == "day" and x["t"] >= ref["t"] for x in live),
-         "live, after the refusal the judge should fly on day vision")
+    if problem is not None:
+        raise CheckFailed(problem + " (twice; if the machine is very busy, press Check again)")
+    ref = next(x for x in live if x.get("gps_guard") == "REFUSED")
     c.ok(abs(mine["t"] - ref["t"]) <= 1.0,
          f"your ros_drift.json says REFUSED at t = {mine['t']:.1f} s, but your guard_node.py, run by the check, refuses at "
          f"{ref['t']:.1f} s: run Step 10 again with your current code")

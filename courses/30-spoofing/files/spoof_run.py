@@ -194,8 +194,12 @@ def cmd_test():
         jump = est_mod.Estimate("gps", jl, jo, 11.0, cov=start.cov, cov_type=2)
         v, e = rk.call(g, "check", jump)
         show("SpoofGuard: then 2 km away 1 s later → verdict", None if e else v[0], e, "REFUSED")
-        g2 = sp.SpoofGuard(dict(cfg, **G))
         vis = (225.0, 0, 0, 0, 225.0, 0, 0, 0, 400.0)
+        rk.call(g, "check", est_mod.Estimate("day", lat, lon, 11.1, cov=vis, cov_type=2))   # a stated reference
+        v, e = rk.call(g, "check", est_mod.Estimate("gps", jl, jo, 16.0, cov=start.cov, cov_type=2))
+        show("SpoofGuard: REFUSED (jump), back after 5 s of silence → refused_by", None if e else g.refused_by, e,
+             "jump")
+        g2 = sp.SpoofGuard(dict(cfg, **G))
         for k in range(2):                       # two vision fixes 65 m west of the GPS: d² ≈ 17 (γ < d² < γ_far)
             f = est_mod.Estimate("gps", *geo.offset(lat, lon, 0.0, 15.0 * k), 20.0 + k, cov=start.cov, cov_type=2)
             rk.call(g2, "check", f)

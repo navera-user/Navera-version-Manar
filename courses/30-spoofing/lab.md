@@ -26,7 +26,7 @@ Your files: [navera_lite/spoof.py](file:./navera_lite/spoof.py) (TODO 1–7), [d
 > 0.1 s after a GPS fix, reaching the judge 0.5 s later, σ 15 m (the simulator's *target* accuracy) — or no stated
 > accuracy at all in the `…_novision` attacks. The runner gives the jump gate the drone's top speed, 30 m/s.
 
-# Session 1 — Statistician (about 2 h)
+# Session 1 — Statistician (2 h; up to 3 h 30 if probability or Python is rusty)
 
 ## Step 0 — The judge alone against a slow drift (no code)
 
@@ -181,11 +181,13 @@ it uses your `first_alarm` once per flight. Then:
 python3 detection.py
 ```
 
-It takes about 10 s, prints the table and writes [results.json](file:./results.json) and
+It takes a few seconds, prints the table and writes [results.json](file:./results.json) and
 [out/roc.png](file:./out/roc.png). Look at the first table: does the share of honest tests beyond γ match
 p_fa now? (It should be closer than in Step 2: the simulation has no time gap.) The mean delay counts only the
 spoofed flights caught within 40 s: for rules that catch few, it is biased low (the slow ones are cut off), so
-compare delays only between rules with a high P_D.
+compare delays only between rules with a high P_D. For rules with a high P_FA (0.2, 1), many
+"detections" are honest noise that happens to cross γ in a spoofed flight: their delay is far below the
+noise-free one for that reason.
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
@@ -219,7 +221,7 @@ python3 detection.py
 > [!TASK]
 > TODO 9 and the Step 6 answers. Press **✔ Check my work**: checks 1–8 make the **🏅 Statistician** badge.
 
-# Session 2 — Guardian (1 h 30 to 2 h 30)
+# Session 2 — Guardian (1 h 30 to 3 h)
 
 ## Step 7 — The guard's skeleton, then its cross-check (TODO 6)
 
@@ -277,7 +279,7 @@ rule applies, which verdict, which `refused_by`?
 REFUSED, rule 2 would not apply (it says "while the GPS is not REFUSED"): rule 3 keeps it REFUSED as it was.
 </details>
 
-Then `python3 spoof_run.py test` (its last three lines).
+Then `python3 spoof_run.py test` (its last four lines).
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
@@ -285,7 +287,8 @@ Then `python3 spoof_run.py test` (its last three lines).
 2. Every verdict goes through `self.set_state(state, reason, refused_by)` and you return what it returns. When
    nothing changes, return `self.state, self.reason`.
 3. The jump gate: `ok, why = self.gate.check(gps)`; use `why` as the reason of a refusal.
-4. Rule 2 before rule 3: an outage while REFUSED changes nothing.
+4. Rule 2 before rule 3: an outage while REFUSED changes nothing. The `test` line "REFUSED (jump), back after
+   5 s of silence" says 'outage'? Your rule 2 forgot "while the GPS is not REFUSED".
 5. Your guard refuses the true GPS in `jump` at t = 50 s although vision states nothing? Rule 3 needs
    `self.has_reference(...)`: without a stated reference, the gate decides (rule 4).
 6. The `test` line "IN_DOUBT, then a GPS fix the gate accepts" says TRUSTED, or your drift run shows **no
@@ -304,7 +307,7 @@ REFUSED spoofed fix into `DRIFT_DOUBT_OFFSET_M` and `DRIFT_REFUSED_OFFSET_M`, an
 
 ## Step 9 — Every attack
 
-The whole table, every attack with and without your guard (about 10 s). Find in it the patient spoofer when
+The whole table, every attack with and without your guard (a few seconds). Find in it the patient spoofer when
 vision states an accuracy (`patient_vision`), jam then spoof (`jamspoof`) and an honest flight with two wrong
 vision matches (`glitch`); every run is drawn in out/ (for example [out/jamspoof.png](file:./out/jamspoof.png)):
 
@@ -367,10 +370,17 @@ Your answer is a property of **this** noise draw and of a 110 s attack. Is it ab
 √(9.21 · 243) = 47.3 m of lesson §3? Replay your answer with two other noise draws:
 
 ```bash
-python3 spoof_run.py creep --creep 50.0 --seed 31
+python3 spoof_run.py creep --creep 44.0 --seed 31
 ```
 
-(and `--seed 32`, with your own number). Does your offset still survive? Write `EXPLAIN_CREEP`: why such an offset
+(put **your** CREEP_MAX_M in place of 44.0, then do the same with `--seed 32`). Does your offset still survive?
+How lucky was your draw? Count the refusals over 20 draws (about a minute):
+
+```bash
+for s in $(seq 31 50); do python3 spoof_run.py creep --creep 45.0 --seed $s | grep "first REFUSED"; done | grep -c "t ="
+```
+
+The number printed is how many of the 20 flights refused 45 m; try your own offset, and 35.0. Write `EXPLAIN_CREEP`: why such an offset
 exists, whether it would survive a one-hour flight (near the radius each test disagrees about half the time), and
 what would make it smaller.
 
