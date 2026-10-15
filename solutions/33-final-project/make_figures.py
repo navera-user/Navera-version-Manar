@@ -3,7 +3,7 @@
 
     NAVERA_LITE_SIM_DATA=~/navera-academy-v2/datasets/31-simulator python3 solutions/33-final-project/make_figures.py
 
-paired.svg flies the lesson's worked example (make_lesson_numbers.py: lake.json, seeds 201–230, day_timeout_s
+paired.svg flies the lesson's worked example (make_lesson_numbers.py: lake.json, seeds 1201–1230, day_timeout_s
 5.0 → 2.0) with the given bench; the other three are diagrams.
 """
 import os
@@ -51,11 +51,11 @@ def loop():
     ax.set_xlim(0, 9.0)
     ax.set_ylim(0, 4.4)
     ax.axis("off")
-    steps = [("1. pre-register\nproject.json", "#e6f1f5"), ("2. red test\nfails", "#fbe3e3"),
-             ("3. git tag\nbefore", "#eeeeee"), ("4. campaign\nbefore", "#e6f1f5"), ("5. ONE change,\ncommitted", "#fff3d6"),
-             ("6. green: test\nand suite pass", "#e3f4e7"), ("7. campaign\nafter", "#e6f1f5"),
-             ("8. evaluate:\nD and its CI", "#e6f1f5"), ("9. decide by\nthe rule", "#eeeeee"),
-             ("10. report\nand patch", "#fff3d6")]
+    steps = [("Step 3\npre-register", "#e6f1f5"), ("Step 4\nred test (fails)", "#fbe3e3"),
+             ("Step 5\ngit tag before", "#eeeeee"), ("Step 5\nfly before", "#e6f1f5"),
+             ("Step 6\nONE change", "#fff3d6"), ("Step 6\ngreen", "#e3f4e7"), ("Step 7\nfly after", "#e6f1f5"),
+             ("Step 8\nevaluate: D, CI", "#e6f1f5"), ("Step 8\ndecide (rule)", "#eeeeee"),
+             ("Steps 9–10\nreport, patch", "#fff3d6")]
     xs = [0.95 + 1.75 * i for i in range(5)]
     pos = [(x, 3.0) for x in xs] + [(x, 1.3) for x in reversed(xs)]      # a snake: row 2 runs right to left
     for (t_, fc), (x, y) in zip(steps, pos):
@@ -72,7 +72,7 @@ def loop():
                 arrowprops=dict(arrowstyle="<->", color=AMBER, lw=1.6))
     ax.text(pos[3][0] - 0.1, 2.15, "same scenarios, same seeds:\nonly the code differs (paired)", ha="right",
             va="center", color=AMBER, fontsize=9.3)
-    ax.text(4.5, 0.35, "The numbers come only from step 8; accept / reject / inconclusive only from the rule of step 1.",
+    ax.text(4.5, 0.35, "The numbers come only from Step 8; accept / reject / inconclusive only from the rule of Step 3.",
             ha="center", fontsize=9.8, style="italic")
     save(fig, "loop.svg")
 
@@ -94,9 +94,9 @@ def commits():
         if tag:
             ax.text(x, 2.32, f"tag {tag}" if tag not in ("(optional)",) else tag, ha="center", fontsize=9.5,
                     color=BLUE if tag in ("start", "before") else GREY, weight="bold" if tag == "before" else None)
-    ax.annotate("campaign before flies this commit", xy=(5.0, 2.1), xytext=(4.0, 2.95), fontsize=9.2, color=BLUE,
+    ax.annotate("campaign 'before'\nflies this commit", xy=(5.0, 2.1), xytext=(4.3, 2.95), fontsize=9.2, color=BLUE,
                 arrowprops=dict(arrowstyle="-|>", color=BLUE))
-    ax.annotate("campaign after flies this commit", xy=(7.1, 2.1), xytext=(6.9, 2.95), fontsize=9.2, color=AMBER,
+    ax.annotate("campaign 'after'\nflies this commit", xy=(7.1, 2.1), xytext=(6.6, 2.95), fontsize=9.2, color=AMBER,
                 arrowprops=dict(arrowstyle="-|>", color=AMBER))
     ax.text(10.15, 1.9, "branch\nproject/<name>", va="center", fontsize=9, color=GREY)
     ax.text(5.25, 0.2, "Between 'before' and 'after' only the stack changes: not the test, not project.json, not the "
@@ -105,7 +105,7 @@ def commits():
 
 
 def paired():
-    seeds = list(range(201, 231))
+    seeds = list(range(1201, 1231))
     base, short = L.variant(), L.variant(("day_timeout_s: 5.0", "day_timeout_s: 2.0"))
     rb, ra = L.campaign(base, "campaign/lake.json", seeds), L.campaign(short, "campaign/lake.json", seeds)
     m = {"name": "err_p95", "window": "fault"}
@@ -121,16 +121,16 @@ def paired():
     ax[0].set_ylabel("err_p95 during the jam (m)")
     ax[0].set_title("30 runs, each flown twice (same seed)", fontsize=10.5)
     d = a - b
-    ax[1].hist(d, bins=np.arange(-28.0, 4.0, 2.0), color=GREY, ec=BG)
-    ax[1].set_xlim(-28, 3)
+    ax[1].hist(d, bins=np.arange(-24.0, 3.0, 1.5), color=GREY, ec=BG)
+    ax[1].set_xlim(-24, 2)
     ax[1].axvspan(lo, hi, color=AMBER, alpha=0.3, label=f"95 % interval of the mean D [{lo:.1f}, {hi:.1f}] m")
     ax[1].axvline(float(np.mean(d)), color=AMBER, lw=2, label=f"mean D = {np.mean(d):.1f} m")
     ax[1].axvline(0, color=INK, lw=1)
-    ax[1].axvline(-5, color=RED, lw=1.2, ls="--", label="minimum effect −5 m")
+    ax[1].axvline(-3, color=RED, lw=1.2, ls="--", label="minimum effect −3 m")
     ax[1].set_xlabel("D per run = after − before (m)")
     ax[1].set_ylabel("runs")
     ax[1].legend(fontsize=8.3, loc="upper left", frameon=False)
-    ax[1].set_ylim(0, 11)
+    ax[1].set_ylim(0, 14)
     fig.tight_layout()
     save(fig, "paired.svg")
     for dd in (base, short):

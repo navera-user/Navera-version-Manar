@@ -192,6 +192,8 @@ def install_lesson(name, lesson_id, overwrite=False):
 
 def delete_student(name):
     netns.stop(name)                     # the student's private network (sandbox.py / netns.py)
+    import seals
+    seals.reset(name)                    # the stored seals (pre-registrations) of this student
     shutil.rmtree(os.path.join(config.STUDENTS, name), ignore_errors=True)
 
 

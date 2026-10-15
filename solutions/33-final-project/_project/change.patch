@@ -1,9 +1,9 @@
 diff --git a/navera_lite.yaml b/navera_lite.yaml
-index ca6d4d2..9d65f7c 100644
+index 4786a9b..c1a4fed 100644
 --- a/navera_lite.yaml
 +++ b/navera_lite.yaml
-@@ -22,4 +22,6 @@
-     # 100 m/s is the plane's limit, the same for every vehicle: NAVERA's R-1 (lesson 03); mission 13's check_settings() refuses a value below the vehicle's top speed (VEHICLES)
+@@ -23,4 +23,6 @@
+     # mission 31's runner replaces it by the vehicle's own top speed (vehicle.VEHICLES: drone 30, plane 100, boat 20)
      max_speed_mps: 100.0
      gps_jump_margin_m: 50.0
 +    # a held fix's σ grows by this speed × its age (mission 33 project; 15 m/s = the drone's cruise speed)

@@ -41,6 +41,21 @@ is named with its source (Gelman and Loken 2013) and explained.
   accept = whole CI beyond `min_effect` on the good side AND guard-rail's worst plausible loss ≤ `max_loss`; reject =
   whole CI on the bad side of 0 OR guard-rail's smallest plausible loss > `max_loss`; else inconclusive.
 - Iid bootstrap over runs is honest (independent seeds); this is the lesson's contrast with mission 32's seconds.
+- **Round 1 additions (2026-10-15).** `project.json` holds the **hypothesis** (required, ≥ 6 words); the directions
+  are fixed by each metric (`METRICS[...][3]`: errors lower, availability/fix_share/detected higher, honest2 closer;
+  a guard-rail cannot be "closer"); a metric or the guard-rail may hold `"scenarios": [...]` (a subset of the
+  campaign's files: ideas 2, 7, 8 put the metric on a fault scenario and the guard-rail on an honest one);
+  `campaign before` refuses at once a metric undefined in some baseline run; a **0/1 metric or guard-rail** gets an
+  interval never narrower than Newcombe's hybrid score interval from two Wilson intervals (0/30 vs 0/30 → about
+  [−0.114, 0.114], not [0, 0]); every 'after' campaign and evaluation goes into `runs/journal.txt`, `evaluate` warns
+  when more than one after-commit was evaluated against a baseline, and check 10 then requires section 8 to name
+  each commit id; the template's seeds start at 1001 (explore below 1000). For "closer" the interval of
+  |mean − target| is conservative when the after-mean is within about one standard error of the target.
+- **The seal (server).** When check 5 first passes, the check reports `seal = <before sha12>:<sha256(project.json)[:12]>`;
+  the server (`server/seals.py`, `state/seals.json`) keeps the FIRST value per student and mission and hands it to
+  every later check; check 3 fails if `before` or its project.json moved after the Pre-registered badge. To allow a
+  new pre-registration: `python3 tools/seal.py reset <student> 33-final-project` (list: `tools/seal.py list`);
+  deleting the student, or `tools/try_lesson.py` reinstalling the lesson, resets it. No dashboard button yet.
 
 ## What check.py verifies (12 checks) — and what it cannot
 
@@ -61,11 +76,19 @@ is named with its source (Gelman and Loken 2013) and explained.
 
 Badges: **Pre-registered** = checks 1–5; **Measured** = 1–8; **Engineer** = all 12.
 
+Round 1 additions to the table: check 3 also compares the seal; check 4 says when `before` sits on top of the change
+(the stack changed between start and before); check 5 recomputes metric and guard-rail on every baseline run and
+reports the seal; check 8 follows the metrics' "scenarios", widens 0/1 intervals (Newcombe) and, when an interval
+end sits within the tolerance of a decision boundary, accepts evaluate's own decision; check 9 accepts an exact 0
+written as 0 (or 0.000); check 10 applies the claim filter (regexes and 21-sentence regression set:
+`claims_regression.py`) only to INCONCLUSIVE, or REJECT with D on the bad side, and requires section 8 to name every
+after-commit of the journal when there is more than one.
+
 **Cannot verify:** whether the change is a good idea, whether the test really pins the problem (beyond "fails
-before / passes after"), whether the metric suits the hypothesis, whether history was rewritten (a student who
-reruns with `git tag -f before` after seeing a bad result: ask for `git reflog` in the oral, and compare the
-tag date with the dates in `runs/before/manifest.json`), copying between students (same idea and same seeds:
-compare repositories). That is the rubric's job (below). Check time ≈ 1 min 20 (two whole-suite runs, two flights).
+before / passes after"), whether the metric suits the hypothesis, a history rewritten BEFORE the badge (allowed: the
+seal starts at the badge), a journal deleted by hand (ask for it in the oral), copying between students (same idea
+and same seeds: compare repositories). That is the rubric's job (below). Check time ≈ 2 min in the sandbox (two
+whole-suite runs, two flights).
 
 ## Alignment
 
@@ -79,13 +102,15 @@ compare repositories). That is the rubric's job (below). Check time ≈ 1 min 20
 ## Answer key
 
 **Lesson numbers** — all from `make_lesson_numbers.py` (NAVERA_LITE_SIM_DATA=…/datasets/31-simulator, ≈ 30 s):
-worked example `lake.json` (GPS jammed 30–75 s, camera blind 45–48 s), seeds 201–230, day_timeout_s 5.0 → 2.0:
-err_p95 (fault) before 51.161, after 43.475, D −7.686 m, 95 % CI [−9.994, −5.629] (per-run D from −25.4 to +0.2);
+worked example `lake.json` (GPS jammed 30–75 s, camera blind 45–48 s), seeds 1201–1230, day_timeout_s 5.0 → 2.0,
+minimum effect 3 m, guard-rail availability limit 0.02:
+err_p95 (fault) before 46.441, after 41.968, D −4.474 m, 95 % CI [−6.046, −3.141] (per-run D from −21.7 to +0.5);
 availability 1.000 → 0.951, D −0.049, CI [−0.049, −0.049] (every run loses the same 2.2 s: NO_FIX from ≈ 46.2 s (the last picture, 44.1 s, turns stale) to the
-first fix after the blackout, ≈ 48.4 s); err_median D −0.723 [−0.823, −0.625]; err_max D −15.9 [−20.0, −11.5]; first
-5 seeds only: err_p95 D −7.04, CI [−9.85, −3.99] (crosses −5 → inconclusive). Per-run sd of err_p95 before 7.43 m,
-sd of D 6.12 m (pairing helps a little here: most of the per-run variation is the vision noise of the blackout second).
-Separate CIs of the mean err_p95: before [48.6, 54.0], after [42.1, 45.0] (the script prints them).
+first fix after the blackout, ≈ 48.4 s); err_median D −0.727 [−0.823, −0.625]; err_max D −10.5 [−14.1, −6.8]; first
+5 seeds only: err_p95 D −2.34, CI [−3.64, −1.04] (crosses −3 → inconclusive). Per-run sd of err_p95 before 6.47 m,
+after 4.24 m; independent campaigns would give √(6.47² + 4.24²) = 7.73 m, the paired differences 4.21 m (r 0.77).
+Separate CIs of the mean err_p95: before [44.4, 48.8], after [40.5, 43.5] (the script prints them). The lesson's
+0/1 sentence: Wilson upper end of 0/30 = 3.84 / 33.84 = 0.114; below 0.05 needs n > 73.
 Idea 1 exploring: jam seed 101, honest2 (fault) 0.725 (≈ "70 %" in the solution report).
 Figures: `make_figures.py` (loop, commits, decision: diagrams; paired: the worked example's 30 runs).
 
@@ -111,9 +136,12 @@ too optimistic (0.86 would be honest), the hook of idea 1.
 `test_step_states_and_switches` pinned the σ of a 0.5 s old GPS fix (3.0 m → would be 8.1 m) and now runs with
 `age_speed_mps=0.0` (it tests states and switches) — a real "old test disagrees" case for the lesson's §3; note that
 `test_settings` requires the shipped yaml == DEFAULTS, so a default 0.0 with 15.0 in the yaml fails (students meet
-it: Step 6 hint 2). Campaign jam + lake, seeds 301–320 (40 runs), honest2 closer 0.86, min effect 0.02, guard-rail
-fix_share max loss 0.10: before 0.1431, after 0.0324 (means 0.717 → 0.892), D −0.1108, CI [−0.1403, −0.0820];
-fix_share 1.000 → 0.969, D −0.0311, CI [−0.0404, −0.0218] → **ACCEPT**. With age speed 30 m/s (the drone's top speed)
+it: Step 6 hint 2). Campaign jam + lake, seeds 1001–1020 (40 runs), honest2 closer 0.86, min effect 0.02, guard-rail
+fix_share max loss 0.10: before 0.0898, after 0.0582 (means 0.770 → 0.918: from optimistic to too cautious),
+D −0.0316, CI [−0.0589, −0.0054] (crosses −0.02); fix_share 1.000 → 0.969, D −0.0311, CI [−0.0404, −0.0218] →
+**INCONCLUSIVE** — kept on purpose as the teacher's example: an honest inconclusive report earns full marks. (In the
+first build, with seeds 301–320, the same change was ACCEPTED: D −0.111 [−0.140, −0.082] — a good classroom
+illustration of why the block of seeds is fixed before the result.) With age speed 30 m/s (the drone's top speed)
 honest2 rises to ≈ 0.98 (far too cautious) and fix_share collapses (≈ −0.58 on the old lake): the guard-rail rejects —
 a good discussion for idea-1 students. (Exploring numbers of 2026-10-15, `build/exp/e3.py` in the build folder.)
 
@@ -126,7 +154,11 @@ a good discussion for idea-1 students. (Exploring numbers of 2026-10-15, `build/
 2. ★★ **Frozen GPS.** Setup in `sim/world.py`: add `"frozen"` to `FAULTS["gps"]` (run.py's `check_scenario` reads
    that tuple) and in `gps_fix` repeat the position of the first frozen fix (no noise, still valid); a scenario with
    `[30, "gps", "frozen"]`. Detector: N identical positions in a row (a real receiver has noise) in the judge's
-   `receive` or the guard. Today the frozen GPS is used for ever: the autopilot flies on a fixed point.
+   `receive` or the guard. Measured by the round-1 reviewer (seeds 301–330, frozen 30–70 s, drone): the existing guard
+   already refuses it after `detect_s` 5.4–8.4 s (mean 7.07 s; day vision disagrees `refuse_n` = 5 times), NAVERA
+   Lite's error reaching ~90–110 m; a `frozen_n` = 5 rule gives 0.8 s in every run (D −6.27 s [−6.57, −5.97]). The
+   effect is deterministic and the simulated noise never repeats a position, so `false_alarm` on the honest part
+   cannot show the price (a hover): ask for that limit in the report.
 3. ★★★ **Tilted ellipse.** NAVERA fact (verified in base code, read only: its estimator reads σ = √max(a, c) at two
    places; logged as B13 in the problems doc). NAVERA Lite: `estimate.stated_sigma` uses √max(a, c) (taught in 12 and
    27). Setup: a vision profile with an elongated error (e.g. 30 m × 5 m at 45°) drawn and STATED with b ≠ 0 —
@@ -149,11 +181,14 @@ a good discussion for idea-1 students. (Exploring numbers of 2026-10-15, `build/
    ≈ 45 s for 100 s of flight on the Jetson (the map's descriptors are cached after the first run): keep scenarios
    ≈ 40 s and 20 runs (≈ 7 min per campaign). Changing `sim/vision.py` is allowed for kind stack (only world, run and
    sensors are the ruler).
-7. ★ **Guard's patience.** `spoof.GUARD_DEFAULTS` (n disagreeing fixes, p_fa). `detect_s` on `drift`, `false_alarm`
-   on `plane_late` (mission 31's R9 already fails: the guard refuses the honest GPS) and `baseline`.
+7. ★ **Guard's patience.** `spoof.GUARD_DEFAULTS` (n disagreeing fixes, p_fa). Metric `detect_s` with
+   `"scenarios": ["campaign/drift.json"]`; guard-rail `false_alarm` with `"scenarios": ["campaign/plane_late.json",
+   "campaign/baseline.json"]` (mission 31's R9 already fails on plane_late: the guard refuses the honest GPS). A 0/1
+   guard-rail needs 60–80 runs per scenario to show a rate below 0.05 (runs take 0.2–0.5 s).
 8. ★★ **Late camera.** Mission 31's diagnosis: pictures 1.5 s old stamped "now" on a 40 m/s plane → 60 m that the
    guard's time-gap term does not cover. A stack-side fix: a setting for a known camera latency added to the gap term
-   (or to the vision σ). `false_alarm` (0/1 per run) on `plane_late` seeds → Wilson per side is printed.
+   (or to the vision σ). Metric `false_alarm` (0/1 per run) on `plane_late` (`"scenarios"`), Newcombe interval;
+   guard-rail `detected` on a plane drift scenario the student writes (`"scenarios"`).
 9. ★★★ **Retrain the night network.** `homography_net.make_pairs` on `/data/academy/25-thermal-night/scenes_train.npz`,
    `train` through `academy_gpu` (≤ 5 min GPU); the change is `ref_homography.pt` (commit the training script too).
    NEVER train on the corridor (`/data/academy/31-simulator/corridor/night_*.png`): the campaign would measure memory.
@@ -172,8 +207,23 @@ a good discussion for idea-1 students. (Exploring numbers of 2026-10-15, `build/
 | Measurement and decision | scenarios exercise the problem; decision quoted with the interval; zero-width or surprising intervals explained | correct but unexplained | numbers without the interval, or a decision against the rule |
 | Report honesty | every claim matches the interval; limits concrete (what the simulator lacks, what to fly next); a field plan | generic limits | claims beyond the data; "simulation" hidden |
 
+Levels 3 and 1 lie between the descriptions. **The decision is never graded**: an honest REJECT or INCONCLUSIVE can
+earn 20/20; an ACCEPT reached by a metric or limit that does not match the hypothesis loses the Pre-registration
+points. Difficulty: a ★★★ project that ends inconclusive with an excellent report is worth as much as a ★ project that
+is accepted; do not add stars to the score. A setup (new fault or model) committed with the red test and tested itself
+counts under "Test and change: 4". **Oral (5 min, Session 3):** the student shows `git log --oneline --decorate
+--graph`, `runs/journal.txt`, explains one interval and answers "what would make you change your decision?" — use it to
+confirm the criteria above, not as a sixth one. **Integrity:** a pre-registration changed after the badge without a
+reset (the seal fails), or several "after" versions evaluated and not reported (journal), sets Pre-registration and
+Report honesty to 0. **Final mark:** checks 40 % (badges Pre-registered 10 %, Measured 15 %, Engineer 15 % — or as your
+department uses), rubric 60 %.
+
 ## Difficulties seen in testing
 
+- (round 1 reviewer) following the old menu literally (metric on one scenario, guard-rail on another) made
+  `evaluate` die after both campaigns; now the menu uses `"scenarios"` and `campaign before` refuses an undefined
+  metric at once. Re-tagging `before` on top of the change: `red` and check 4 now say so, and lab Step 5 hint 2 /
+  Step 8 hint 1 give the `git switch -c … before` + `cherry-pick` commands.
 - pytest exit code 2 or 4 (an import of a not-yet-existing name at the top of the test file: 4 for the file alone, 2 for the suite): `red` and the check refuse
   it; lesson §3 and Step 4 hint 2.
 - A new setting only in the yaml (default 0.0): `test_settings` fails (yaml must equal DEFAULTS). Step 6 hint 2.
@@ -185,7 +235,7 @@ a good discussion for idea-1 students. (Exploring numbers of 2026-10-15, `build/
 
 ## Class plan (3 sessions)
 
-- **Session 1 (2 h – 2 h 30):** 15 min lesson §1–§2 together (the forking paths with the worked example's 0.02 vs
+- **Session 1 (1 h 30 – 3 h):** 15 min lesson §1–§2 together (the forking paths with the worked example's 0.02 vs
   0.05 limit); Step 0–1 alone; ideas presented in 10 min; each student explores and pre-registers; the teacher
   reviews each project.json before the tag (2 min per student: is the metric the hypothesis?). Badge Pre-registered.
 - **Session 2 (2 h – 3 h):** the change, green, the after campaign, evaluate. Ask for a prediction before the

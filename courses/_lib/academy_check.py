@@ -74,6 +74,12 @@ def hidden(name, text=True):
     return data.decode("utf-8") if text else data
 
 
+def stored_seal():
+    """The seal the server stored for this student and mission (the first Checker.seal ever reported), or None.
+    Outside a sealed run (no server) there is none."""
+    return (_SEALED or {}).get("seal")
+
+
 def hidden_names():
     if _SEALED is not None:
         return sorted(_SEALED["hidden"])
@@ -89,6 +95,7 @@ class Checker:
     def __init__(self):
         self.tests = []
         self.milestones = {}          # name -> list of title prefixes that must all pass
+        self.seal = None              # a value the server keeps the FIRST time it is reported (stored_seal())
 
     def milestone(self, name, *title_prefixes, label=None):
         """A named part of a mission (e.g. a session) reached when every check whose title starts with one
@@ -171,6 +178,8 @@ class Checker:
         result = {"passed": passed, "total": total}
         if reached:
             result["milestones"] = reached
+        if isinstance(self.seal, str):
+            result["seal"] = self.seal
         if _SEALED is not None:
             _SEALED["report"](result)       # the private channel; nothing printed can fake it
         else:

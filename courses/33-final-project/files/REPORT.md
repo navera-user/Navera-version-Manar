@@ -3,7 +3,8 @@
 Write this report for an IRIS reviewer who has never seen your branch: what was wrong, what you changed, how you
 proved it, what the numbers say and what they do NOT say. Replace every "(fill in …)" paragraph and every "…" cell.
 The numbers come from `python3 project.py evaluate` (copy them, correctly rounded). The check reads the sections by
-their titles: keep the "## …" lines as they are.
+their titles: keep the "## …" lines as they are. Each section needs the words of a real answer: at least
+40 for section 1, 30 for sections 2–4, 25 for 5, 20 for 6, 15 for 7 (the decision first, then why), 50 for 8.
 
 ## 1. The problem
 
@@ -12,7 +13,7 @@ NAVERA problem it is related to, in words, if there is one)
 
 ## 2. Pre-registration
 
-(fill in: your hypothesis in one sentence, then the rule of project.json in words — the metric and its window, which
+(fill in: your hypothesis, as in project.json, then the rule in words — the metric and its window, which
 direction is better, the minimum effect, the guard-rail and its limit — and the date of the commit tagged before)
 
 ## 3. The change
@@ -43,4 +44,5 @@ direction is better, the minimum effect, the guard-rail and its limit — and th
 ## 8. Limits
 
 (fill in: what this campaign does not show — a simulation, which models, which conditions were never flown, what a
-field test would need — and what you would measure next)
+field test would need — and what you would measure next; if you evaluated more than one version of your change, or
+made more than one pre-registration, name each one here with its commit id and why)

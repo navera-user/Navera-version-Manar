@@ -8,7 +8,7 @@ import tempfile
 
 import numpy as np
 
-from academy_check import CheckFailed, Checker, explained, load_student, need, predicted, sh
+from academy_check import CheckFailed, Checker, explained, load_student, need, predicted, sh, stored_seal
 
 c = Checker()
 
@@ -17,12 +17,16 @@ METRICS = {"err_median": "value", "err_p90": "value", "err_p95": "value", "err_m
            "ap_err_median": "value", "ap_err_p95": "value", "ap_err_max": "value", "availability": "share",
            "fix_share": "share", "honest2": "share", "bad_fix": "share", "failsafe": "event", "detected": "event",
            "detect_s": "value", "false_alarm": "event", "custom": "value"}
+NATURAL = {"err_median": "lower", "err_p90": "lower", "err_p95": "lower", "err_max": "lower", "ap_err_median": "lower",
+           "ap_err_p95": "lower", "ap_err_max": "lower", "availability": "higher", "fix_share": "higher",
+           "honest2": "closer", "bad_fix": "lower", "failsafe": "lower", "detected": "higher", "detect_s": "lower",
+           "false_alarm": "lower", "custom": None}
 NUMERIC = ("t_s", "lite_sigma_m", "lite_err_m", "gps_err_m", "vis_err_m", "ap_err_m", "truth_speed_mps")
 RULER = ("navera_lite/sim/world.py", "navera_lite/sim/run.py", "navera_lite/sim/sensors.py")
 STACK = ("navera_lite", "navera_lite.yaml", "ref_desc.pt", "ref_homography.pt", "campaign", "project.json",
          "my_metric.py", "my_vision_profile.json")
 SECTIONS = (("1. The problem", 40), ("2. Pre-registration", 30), ("3. The change", 30), ("4. The red test", 30),
-            ("5. The campaign", 25), ("6. Results", 20), ("7. Decision", 25), ("8. Limits", 50))
+            ("5. The campaign", 25), ("6. Results", 20), ("7. Decision", 15), ("8. Limits", 50))
 CACHE = {}
 
 
@@ -101,13 +105,16 @@ def validate(p):
     probs = []
     if not isinstance(p, dict):
         return ["project.json must be one object {...}"]
-    for k in ("title", "idea", "kind", "test", "scenarios", "seeds", "metric", "better"):
+    for k in ("title", "hypothesis", "idea", "kind", "test", "scenarios", "seeds", "metric", "better"):
         if k not in p:
             probs.append(f'"{k}" is missing')
     if probs:
         return probs
     if not isinstance(p["title"], str) or len(p["title"].split()) < 3 or "(fill in" in p["title"]:
         probs.append('"title" is not written yet')
+    hy = p["hypothesis"]
+    if not isinstance(hy, str) or len(hy.split()) < 6 or "(fill in" in hy:
+        probs.append('"hypothesis" is not written yet (one sentence, 6 words or more)')
     if not (p["idea"] == "own" or (isinstance(p["idea"], int) and not isinstance(p["idea"], bool)
                                    and 1 <= p["idea"] <= 10)):
         probs.append('"idea" must be 1–10 (the lesson\'s menu) or "own"')
@@ -127,6 +134,10 @@ def validate(p):
     m = p["metric"]
     if not (isinstance(m, dict) and m.get("name") in METRICS):
         probs.append('"metric" name is not one of project.py\'s metrics')
+    else:
+        if NATURAL[m["name"]] and p["better"] != NATURAL[m["name"]]:
+            probs.append(f'"better": {m["name"]} is better when "{NATURAL[m["name"]]}"')
+        probs += subset_problems(m, sc, "metric")
     if p["better"] not in ("lower", "higher", "closer"):
         probs.append('"better" must be lower, higher or closer')
     if p["better"] == "closer" and not isinstance(p.get("target"), (int, float)):
@@ -136,11 +147,49 @@ def validate(p):
                               and g["metric"].get("name") in METRICS and g.get("better") in ("lower", "higher")
                               and isinstance(g.get("max_loss"), (int, float))):
         probs.append('"guardrail" is not complete (metric, better, max_loss) — or null')
+    elif g is not None:
+        gn = NATURAL[g["metric"]["name"]]
+        if gn in ("lower", "higher") and g["better"] != gn:
+            probs.append(f'guard-rail "better": {g["metric"]["name"]} is better when "{gn}"')
+        if gn == "closer":
+            probs.append(f'guard-rail: {g["metric"]["name"]} has a target — use it as the metric')
+        probs += subset_problems(g["metric"], sc, "guard-rail metric")
     if not probs:
         n = len(sc) * s["count"]
         if not 20 <= n <= 300:
             probs.append(f"{n} runs: use 20 to 300")
     return probs
+
+
+def subset_problems(m, scenarios, what):
+    s = m.get("scenarios")
+    if s is None:
+        return []
+    if isinstance(s, list) and s and isinstance(scenarios, list) and all(x in scenarios for x in s) \
+            and len(set(s)) == len(s):
+        return []
+    return [f'{what} "scenarios" must be some of the campaign\'s scenario files']
+
+
+def metric_runs(m, runs):
+    """(scenario file, seed, name) of the runs a metric is computed on (its own "scenarios", else all)."""
+    s = m.get("scenarios")
+    return [r for r in runs if s is None or r[0] in s]
+
+
+def wilson(k, n, z=1.96):
+    p = k / n
+    cen = (p + z * z / (2 * n)) / (1 + z * z / n)
+    half = z / (1 + z * z / n) * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))
+    return max(0.0, cen - half), min(1.0, cen + half)
+
+
+def newcombe(kb, ka, n):
+    lb, ub = wilson(kb, n)
+    la, ua = wilson(ka, n)
+    pb, pa = kb / n, ka / n
+    return ((pa - pb) - math.sqrt((pa - la) ** 2 + (ub - pb) ** 2),
+            (pa - pb) + math.sqrt((ua - pa) ** 2 + (pb - lb) ** 2))
 
 
 def project_at(rev_sha, where):
@@ -398,11 +447,15 @@ def section(text, title):
     return mm.group(1) if mm else None
 
 
-NEGATION = re.compile(r"\bnot\b|n't|\bno\b|\bnever\b|cannot|\blooks?\b|\bseems?\b|\bonly\b|\bwithout\b|\bworse\b"
-                      r"|\bbut\b|however|although|\bunclear\b|\bwhether\b|\bif\b|\bmay\b|\bmight\b|uncertain"
-                      r"|inconclusive|\byet\b|\bhoped\b|\bexpected\b|\baim|\bmeant\b|\bgoal\b|\bwant")
-CLAIM = re.compile(r"\bbetter\b|\bbeats?\b|\boutperform|more accurate|\bwins?\b|\bsuperior\b|\bimproves?\b"
-                   r"|\bimproved\b|\bfixes\b|\bsolves?\b|\bsolved\b")
+# a claim of a gain, and the words that hedge it; "but", "however", "although", "only", "yet" do NOT hedge
+# ("improves the error by 1.4 m, but more runs are needed" is still a claim). Regression list:
+# solutions/33-final-project/claims_regression.py
+NEGATION = re.compile(r"\bnot\b|n't|\bno\b|\bnever\b|cannot|\bunclear\b|\bwhether\b|\bif\b|\bmay\b|\bmight\b"
+                      r"|\bwould\b|\bcould\b|uncertain|\bhoped\b|\bexpected\b|\baim|\bmeant\b|\bgoal\b|\bwant"
+                      r"|\bhypothes")
+CLAIM = re.compile(r"\bbetter\b|\bbeats?\b|\boutperform|more accurate|\bwins?\b|\bsuperior\b|\bimprov"
+                   r"|\bfixes\b|\bsolves?\b|\bsolved\b|\breduc|\blower(s|ed)\b|\bfaster\b|\bsooner\b|\bdecreas"
+                   r"|\bshortens?\b")
 MISSING = re.compile(r"\bno (position|fix|match|gps|data|answer)s?\b")
 
 
@@ -428,6 +481,8 @@ def numbers(text):
 
 def written(nums, v, scale, share):
     """Is the value v in the report, correctly rounded, precise enough (or ×100 for a share)?"""
+    if v == 0:
+        return any(x == 0 for x, d in nums)           # "0", "0.000", "[0, 0]": an exact zero is written as a zero
     need = max(0.05 * abs(v), 0.005 * scale, 1e-9)
     for f in ((1.0, 100.0) if share else (1.0,)):
         for x, d in nums:
@@ -486,6 +541,12 @@ def _():
     c.ok(not frozen, "changed after the tag 'before': " + ", ".join(frozen) + " — a pre-registration (and the "
                      "scenarios and the ruler it names) is frozen before the baseline; put them back "
                      "(git checkout before -- <file>) or start again from a new red-test commit")
+    seal = f"{b[:12]}:{sha256_text(show(b, 'project.json') or '')[:12]}"
+    stored = stored_seal()
+    c.ok(stored is None or stored == seal,
+         f"the pre-registration changed after your Pre-registered badge (sealed {stored}, now {seal}): the tag "
+         "'before' or its project.json moved. A new pre-registration needs your teacher: they reset the seal, and both "
+         "pre-registrations go in your report")
 
 
 @c.test("Step 4 — the red test: added before 'before', and it FAILS there (the rest of the suite passes)",
@@ -499,6 +560,12 @@ def _():
     c.ok(changed(s0, b, t), f"{t} was not added or changed between 'start' and 'before': the red test is YOURS")
     code, out = pytest_at(b, t)
     if code == 0:
+        moved = [f for f in changed(s0, b, "navera_lite", "navera_lite.yaml")
+                 if not f.startswith(("navera_lite/tests/", "navera_lite/sim/"))]
+        if moved:
+            raise CheckFailed(f"{t} passes at 'before' because that commit already holds a change of the stack ("
+                              + ", ".join(moved[:4]) + "): the tag must sit on the red commit, BEFORE the change "
+                              "(lab Step 5 hint 2 puts the commits back in order)")
         raise CheckFailed(f"{t} PASSES at 'before' ({last_line(out)}): it does not see the problem without your "
                           "change (lesson §3)")
     if code != 1:
@@ -516,6 +583,13 @@ def _():
     s0, b = before()
     p, scs, man = campaign_ok("before", b, "'before'")
     CACHE["refly_before"] = refly("before", b, p, scs, man)
+    runs = expected_runs(p, scs)
+    for m in [p["metric"]] + ([p["guardrail"]["metric"]] if p.get("guardrail") else []):
+        for s, _, name in metric_runs(m, runs):
+            if metric_value(m, read_rows(os.path.join("runs", "before", name + ".csv")), scs[s]) is None:
+                raise CheckFailed(f"{m['name']} is not defined in run before/{name} (no row in its window): this "
+                                  "pre-registration cannot be evaluated — make a new one (lab Step 5 hint 2)")
+    c.seal = f"{b[:12]}:{sha256_text(show(b, 'project.json') or '')[:12]}"   # kept by the server the first time
 
 
 # ================================================================================================ Session 2
@@ -583,7 +657,7 @@ def _():
 
     def vals(label, m):
         out = []
-        for s, _, name in runs:
+        for s, _, name in metric_runs(m, runs):
             v = metric_value(m, read_rows(os.path.join("runs", label, name + ".csv")), scs[s])
             if v is None:
                 raise CheckFailed(f"{m['name']} is not defined in run {label}/{name}: choose a metric defined in "
@@ -599,6 +673,9 @@ def _():
     st = stat_of(p["better"], p.get("target"))
     D = st(va) - st(vb)
     lo, hi = paired_ci(va, vb, st, p["B"], p["alpha"], p["boot_seed"])
+    if METRICS[p["metric"]["name"]] == "event":
+        nlo, nhi = newcombe(int(round(sum(vb))), int(round(sum(va))), len(vb))
+        lo, hi = min(lo, nlo), max(hi, nhi)
     c.ok(abs(float(ev.get("D", math.nan)) - D) <= 1e-9 * max(1, abs(D)), "evaluation.json D is not "
                                                                          "statistic(after) − statistic(before)")
     tol = 0.1 * max(hi - lo, 0.0) + 1e-9 * max(1.0, abs(D))
@@ -611,15 +688,27 @@ def _():
         gp = p["guardrail"]
         gb, ga = vals("before", gp["metric"]), vals("after", gp["metric"])
         glo, ghi = paired_ci(ga, gb, lambda x: float(np.mean(x)), p["B"], p["alpha"], p["boot_seed"] + 1)
+        if METRICS[gp["metric"]["name"]] == "event":
+            nlo, nhi = newcombe(int(round(sum(gb))), int(round(sum(ga))), len(gb))
+            glo, ghi = min(glo, nlo), max(ghi, nhi)
         g = dict(gp, ci=(glo, ghi), D=float(np.mean(ga) - np.mean(gb)), before=float(np.mean(gb)),
                  after=float(np.mean(ga)))
         eg = ev.get("guardrail") or {}
         c.ok(abs(float(eg.get("D", math.nan)) - g["D"]) <= 1e-9 * max(1, abs(g["D"])),
              "evaluation.json's guard-rail is not from your runs: python3 project.py evaluate again")
     dec = decide(p, (lo, hi), g)
-    c.ok(ev.get("decision") == dec, f"evaluation.json says {ev.get('decision')!r}; your pre-registered rule gives "
-                                    "another decision on these runs: python3 project.py evaluate again")
-    CACHE["eval"] = dict(p=p, D=D, ci=(lo, hi), before=st(vb), after=st(va), g=g, decision=dec, n=len(runs),
+    if ev.get("decision") != dec:
+        # the student's own stats.py (adopted) may draw another bootstrap: an end within the tolerance of a boundary
+        # can tip the decision; then evaluate's decision (from its own interval) stands
+        mine = decide(p, tuple(eci), dict(g, ci=tuple((ev.get("guardrail") or {}).get("ci") or g["ci"])) if g else None)
+        c.ok(ev.get("decision") == mine, f"evaluation.json says {ev.get('decision')!r}; your pre-registered rule gives "
+                                         "another decision on these runs: python3 project.py evaluate again")
+        lo, hi = eci
+        dec = mine
+        if g:
+            g["ci"] = tuple((ev.get("guardrail") or {}).get("ci") or g["ci"])
+    CACHE["eval"] = dict(p=p, D=D, ci=(lo, hi), before=st(vb), after=st(va), g=g, decision=dec, n=len(vb),
+                         afters=[x for x in (ev.get("afters_evaluated") or []) if isinstance(x, str)], b_sha=b,
                          mean_b=float(np.mean(vb)), mean_a=float(np.mean(va)), files=changed(b, a))
 
 
@@ -696,11 +785,27 @@ def _():
     res = (section(body, "6. Results") or "") + sec7
     c.ok(re.search(r"contain|includ|exclud|cross|\bzero\b|\b0\b|entirely|whole interval|below|above", res.lower()),
          "sections 6–7 must say where the interval lies: does it contain 0 (or the minimum effect)?")
-    if dec != "accept":
+    bad_side = (e["ci"][1] < 0) if e["p"]["better"] == "higher" else (e["ci"][0] > 0)
+    if dec == "inconclusive" or (dec == "reject" and bad_side):
         sent = claims(res + (section(body, "8. Limits") or ""))
-        c.ok(sent is None, f"the result is {dec.upper()}, but the report claims a gain: \"{sent[:120]}\" — say what "
-                           "the interval allows (not shown, inconclusive, rejected), not what you hoped")
+        if sent is not None:
+            raise CheckFailed(f"the result is {dec.upper()}, but the report claims a gain: \"{sent[:120]}\" — say what "
+                              "the interval allows (not shown, inconclusive, rejected), not what you hoped")
     lim = (section(body, "8. Limits") or "").lower()
+    afters = list(e.get("afters") or [])
+    try:
+        with open(os.path.join("runs", "journal.txt")) as f:
+            for ln in f:
+                w = ln.split()
+                if len(w) >= 7 and w[2] == "evaluate" and w[6] == e["b_sha"][:12] and w[4] not in afters:
+                    afters.append(w[4])
+    except OSError:
+        pass
+    if len(afters) > 1:
+        missing = [x[:7] for x in afters if x[:7] not in lim]
+        c.ok(not missing, f"you evaluated {len(afters)} different changes against this baseline (runs/journal.txt): "
+                          "section 8 must name each of them by its commit id (" + ", ".join(missing) + " missing) and "
+                          "say why — tuning on the pre-registered seeds is a forking path (lesson §2)")
     c.ok(re.search(r"simulat|synthetic", lim), "section 8 must say that this is a simulation (and what that means)")
     c.ok(re.search(r"field|real|flight|camera|terrain|wind|hardware|weather|sensor", lim),
          "section 8 must say what the simulation does not show (real sensors, field, terrain…)")

@@ -131,6 +131,7 @@ def main():
     hidden = {k: bytes.fromhex(v) for k, v in P.get("hidden", {}).items()}
     source = P["source"]
     user_site = P.get("user_site") or ""
+    stored_seal = P.get("seal")
     del P
 
     _trusted_sys_path(user_site)
@@ -152,7 +153,7 @@ def main():
     def report(result):
         sent.append(result)
         _report(result_fd, nonce, result)
-    academy_check._SEALED = {"report": report, "hidden": hidden}
+    academy_check._SEALED = {"report": report, "hidden": hidden, "seal": stored_seal}
 
     import linecache
     import types

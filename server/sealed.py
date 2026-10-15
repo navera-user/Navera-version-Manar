@@ -20,13 +20,14 @@ import time
 
 import config
 import sandbox
+import seals
 import workspaces
 
 MAX_HIDDEN = 64 << 20
 PYTHON = "/usr/bin/python3"
 
 
-def payload(lid):
+def payload(lid, seal=None):
     base = os.path.join(config.COURSES, lid)
     with open(os.path.join(base, "check.py"), encoding="utf-8") as f:
         source = f.read()
@@ -43,7 +44,7 @@ def payload(lid):
             hidden[os.path.relpath(p, hdir)] = data.hex()
     py = f"python{sys.version_info.major}.{sys.version_info.minor}"
     return {"lid": lid, "source": source, "hidden": hidden, "nonce": secrets.token_hex(16),
-            "user_site": os.path.join(config.PYTHON_USER_SITE, py, "site-packages")}
+            "user_site": os.path.join(config.PYTHON_USER_SITE, py, "site-packages"), "seal": seal}
 
 
 def mounts(lid):
@@ -75,6 +76,8 @@ def parse_result(raw, nonce):
         ms = [m for m in (r.get("milestones") or []) if isinstance(m, str) and len(m) < 40]
         if ms:
             s["milestones"] = ms
+        if isinstance(r.get("seal"), str) and seals.VALUE.match(r["seal"]):
+            s["seal"] = r["seal"]             # taken out by run_check (seals.py), never stored in the score
         score = s
     return score
 
@@ -87,7 +90,7 @@ def run_check(name, lid, index=0, timeout=180, resources=(), heavy=False, host_n
     """Run check.py of `lid` sealed for student `name`. Returns (exit code, output, score).
     score is None when the checker reported nothing (crash, timeout, killed): never a pass.
     stream: a file to copy the output to while it runs (try_lesson)."""
-    P = payload(lid)
+    P = payload(lid, seals.get(name, lid))
     nonce = P["nonce"]
     data = json.dumps(P).encode("utf-8")
     del P
@@ -155,6 +158,8 @@ def run_check(name, lid, index=0, timeout=180, resources=(), heavy=False, host_n
         code = 124
         text += f"\n⏱ The check took longer than {timeout} s and was stopped."
     score = None if timed_out else parse_result(b"".join(raw), nonce)
+    if score is not None and "seal" in score:
+        seals.keep_first(name, lid, score.pop("seal"))      # the FIRST value a check reports is kept (seals.py)
     return code, text, score
 
 

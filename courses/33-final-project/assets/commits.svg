@@ -31,7 +31,7 @@ z
    <g id="line2d_1">
     <path d="M 32.467925 84.816 
 L 507.504906 84.816 
-" clip-path="url(#p8a0f58cde9)" style="fill: none; stroke: #8a96a3; stroke-width: 2; stroke-linecap: square"/>
+" clip-path="url(#p3de0405a8c)" style="fill: none; stroke: #8a96a3; stroke-width: 2; stroke-linecap: square"/>
    </g>
    <g id="patch_2">
     <path d="M 52.682264 94.2408 
@@ -44,7 +44,7 @@ C 44.996382 79.919064 44.09117 82.316514 44.09117 84.816
 C 44.09117 87.315486 44.996382 89.712936 46.607443 91.48034 
 C 48.218504 93.247744 50.403879 94.2408 52.682264 94.2408 
 z
-" clip-path="url(#p8a0f58cde9)" style="fill: #eeeeee; stroke: #1d2733; stroke-width: 1.3; stroke-linejoin: miter"/>
+" clip-path="url(#p3de0405a8c)" style="fill: #eeeeee; stroke: #1d2733; stroke-width: 1.3; stroke-linejoin: miter"/>
    </g>
    <g id="patch_3">
     <path d="M 153.753962 94.2408 
@@ -57,7 +57,7 @@ C 146.06808 79.919064 145.162868 82.316514 145.162868 84.816
 C 145.162868 87.315486 146.06808 89.712936 147.679141 91.48034 
 C 149.290203 93.247744 151.475577 94.2408 153.753962 94.2408 
 z
-" clip-path="url(#p8a0f58cde9)" style="fill: #eeeeee; stroke: #1d2733; stroke-width: 1.3; stroke-linejoin: miter"/>
+" clip-path="url(#p3de0405a8c)" style="fill: #eeeeee; stroke: #1d2733; stroke-width: 1.3; stroke-linejoin: miter"/>
    </g>
    <g id="patch_4">
     <path d="M 259.879245 94.2408 
@@ -70,7 +70,7 @@ C 252.193363 79.919064 251.288151 82.316514 251.288151 84.816
 C 251.288151 87.315486 252.193363 89.712936 253.804424 91.48034 
 C 255.415486 93.247744 257.60086 94.2408 259.879245 94.2408 
 z
-" clip-path="url(#p8a0f58cde9)" style="fill: #fbe3e3; stroke: #1d2733; stroke-width: 1.3; stroke-linejoin: miter"/>
+" clip-path="url(#p3de0405a8c)" style="fill: #fbe3e3; stroke: #1d2733; stroke-width: 1.3; stroke-linejoin: miter"/>
    </g>
    <g id="patch_5">
     <path d="M 366.004528 94.2408 
@@ -83,7 +83,7 @@ C 358.318646 79.919064 357.413434 82.316514 357.413434 84.816
 C 357.413434 87.315486 358.318646 89.712936 359.929707 91.48034 
 C 361.540769 93.247744 363.726143 94.2408 366.004528 94.2408 
 z
-" clip-path="url(#p8a0f58cde9)" style="fill: #e3f4e7; stroke: #1d2733; stroke-width: 1.3; stroke-linejoin: miter"/>
+" clip-path="url(#p3de0405a8c)" style="fill: #e3f4e7; stroke: #1d2733; stroke-width: 1.3; stroke-linejoin: miter"/>
    </g>
    <g id="patch_6">
     <path d="M 467.076226 94.2408 
@@ -96,7 +96,7 @@ C 459.390344 79.919064 458.485132 82.316514 458.485132 84.816
 C 458.485132 87.315486 459.390344 89.712936 461.001405 91.48034 
 C 462.612467 93.247744 464.797842 94.2408 467.076226 94.2408 
 z
-" clip-path="url(#p8a0f58cde9)" style="fill: #fff3d6; stroke: #1d2733; stroke-width: 1.3; stroke-linejoin: miter"/>
+" clip-path="url(#p3de0405a8c)" style="fill: #fff3d6; stroke: #1d2733; stroke-width: 1.3; stroke-linejoin: miter"/>
    </g>
    <g id="text_1">
     <text style="font-size: 9.2px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; fill: #1d2733" transform="translate(10.654077 127.842562)">the stack as given</text>
@@ -128,30 +128,32 @@ z
     <text style="font-size: 9.2px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; fill: #1d2733" transform="translate(440.961164 138.14455)">answers.py</text>
    </g>
    <g id="patch_7">
-    <path d="M 283.239204 32.261973 
-Q 272.050405 52.123096 261.410366 71.010124 
+    <path d="M 264.466434 32.505933 
+Q 262.283572 52.12189 260.224361 70.626673 
 " style="fill: none; stroke: #0b6e8a; stroke-linecap: round"/>
-    <path d="M 264.819716 68.707011 
-L 261.410366 71.010124 
-L 261.613486 66.900775 
+    <path d="M 262.460071 67.172747 
+L 260.224361 70.626673 
+L 258.802647 66.765749 
 z
 " style="fill: #0b6e8a; stroke: #0b6e8a; stroke-linecap: round"/>
    </g>
    <g id="text_9">
-    <text style="font-size: 9.2px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: start; fill: #0b6e8a" x="209.343396" y="26.604" transform="rotate(-0 209.343396 26.604)">campaign before flies this commit</text>
+    <text style="font-size: 9.2px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; fill: #0b6e8a" transform="translate(224.504151 16.302013)">campaign 'before'</text>
+    <text style="font-size: 9.2px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; fill: #0b6e8a" transform="translate(224.504151 26.604)">flies this commit</text>
    </g>
    <g id="patch_8">
-    <path d="M 420.525563 31.73979 
-Q 394.058702 52.122678 368.477637 71.823388 
+    <path d="M 375.667365 32.469012 
+Q 371.063894 52.125203 366.715367 70.692815 
 " style="fill: none; stroke: #c98a06; stroke-linecap: round"/>
-    <path d="M 372.515918 71.035803 
-L 368.477637 71.823388 
-L 370.270538 68.120213 
+    <path d="M 369.346039 67.529342 
+L 366.715367 70.692815 
+L 365.762992 66.690193 
 z
 " style="fill: #c98a06; stroke: #c98a06; stroke-linecap: round"/>
    </g>
    <g id="text_10">
-    <text style="font-size: 9.2px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; text-anchor: start; fill: #c98a06" x="355.897358" y="26.604" transform="rotate(-0 355.897358 26.604)">campaign after flies this commit</text>
+    <text style="font-size: 9.2px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; fill: #c98a06" transform="translate(340.736604 16.302013)">campaign 'after'</text>
+    <text style="font-size: 9.2px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; fill: #c98a06" transform="translate(340.736604 26.604)">flies this commit</text>
    </g>
    <g id="text_11">
     <text style="font-size: 9px; font-family: 'DejaVu Sans', 'Bitstream Vera Sans', 'Computer Modern Sans Serif', 'Lucida Grande', 'Verdana', 'Geneva', 'Lucid', 'Arial', 'Helvetica', 'Avant Garde', sans-serif; fill: #8a96a3" transform="translate(520.138868 82.260422)">branch</text>
@@ -163,7 +165,7 @@ z
   </g>
  </g>
  <defs>
-  <clipPath id="p8a0f58cde9">
+  <clipPath id="p3de0405a8c">
    <rect x="7.2" y="7.2" width="535.68" height="182.952"/>
   </clipPath>
  </defs>

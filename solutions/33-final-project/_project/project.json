@@ -1,10 +1,11 @@
 {
   "title": "A held fix states a sigma that grows with its age",
+  "hypothesis": "If the sigma the judge states grows with the age of the fix, the share of errors within 2 sigma during a jam gets closer to the honest 0.86",
   "idea": 1,
   "kind": "stack",
   "test": "navera_lite/tests/test_ageing.py",
   "scenarios": ["campaign/jam.json", "campaign/lake.json"],
-  "seeds": {"first": 301, "count": 20},
+  "seeds": {"first": 1001, "count": 20},
   "metric": {"name": "honest2", "window": "fault"},
   "better": "closer",
   "target": 0.86,

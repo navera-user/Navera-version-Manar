@@ -1,0 +1,52 @@
+"""claims_regression.py — teacher/builder only: the regression set of check 10's claim filter (like mission 32's).
+It takes NEGATION, CLAIM, MISSING and claims() out of courses/33-final-project/check.py (without running the check)
+and classifies every sentence below. Run: python3 solutions/33-final-project/claims_regression.py
+The filter runs only when the decision is INCONCLUSIVE, or REJECT with D on the bad side (a reject that comes from
+the guard-rail may report the gain).
+"""
+import ast
+import os
+import re
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+SRC = open(os.path.join(HERE, "..", "..", "courses", "33-final-project", "check.py"), encoding="utf-8").read()
+ns = {"re": re}
+for node in ast.parse(SRC).body:
+    if (isinstance(node, ast.Assign) and any(getattr(t, "id", "") in ("NEGATION", "CLAIM", "MISSING")
+                                             for t in node.targets)) or \
+            (isinstance(node, ast.FunctionDef) and node.name == "claims"):
+        exec(compile(ast.Module([node], []), "check.py", "exec"), ns)
+
+CLAIMS = [   # must be caught (a gain claimed that an inconclusive interval does not support)
+    "Inconclusive. Our change improves the median error by 1.4 m, but more runs are needed.",
+    "The change reduces the error by 2 m.",
+    "It lowers the p95 to 40 m.",
+    "The guard is faster now.",
+    "Detection comes sooner with the new rule.",
+    "This is an improvement of 1.4 m.",
+    "The new σ is better: the mean honest2 went from 0.717 to 0.892.",
+    "It still beats the old rule, although the interval contains 0.",
+    "The change improves honest2: the mean went from 0.717 to 0.892.",
+    "Only the p95 decreased, by 3 m.",
+    "The detector shortens the detection delay.",
+]
+HONEST = [   # must pass
+    "The change is not shown to lower the error on these 30 runs.",
+    "D = −1.4 m, 95 % interval [−3.1, 0.4] m: it contains 0.",
+    "The error fell (D = −7.7 m [−10.0, −5.6]) but availability lost 0.049 of the jam, beyond the 0.02 limit: rejected.",
+    "I would fly a longer campaign to see whether the gain is real.",
+    "Our hypothesis was that a shorter window lowers the error.",
+    "We hoped the change would reduce the p95.",
+    "No improvement is shown on these runs.",
+    "A gain may exist but these 30 runs cannot show it.",
+    "Inconclusive: the interval of D contains 0, so a gain is not shown.",
+    "The guard-rail did not get worse: 0 false alarms in 30 runs, which shows only a rate below 0.114.",
+]
+bad = [s for s in CLAIMS if ns["claims"](s) is None] + [s for s in HONEST if ns["claims"](s) is not None]
+for s in CLAIMS:
+    print(("✔ caught  " if ns["claims"](s) else "✘ MISSED  ") + s)
+for s in HONEST:
+    print(("✔ passes  " if ns["claims"](s) is None else "✘ FLAGGED ") + s)
+print(f"\n{len(CLAIMS) + len(HONEST) - len(bad)} of {len(CLAIMS) + len(HONEST)} classified right")
+sys.exit(1 if bad else 0)

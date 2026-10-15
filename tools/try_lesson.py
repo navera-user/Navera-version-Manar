@@ -54,6 +54,9 @@ if a.clean:
 workspaces.create_student(name)
 # a check run or --solution starts from the starter files; --shell alone keeps the tester's work (like a student)
 workspaces.install_lesson(name, lid, overwrite=a.fresh or a.solution or not a.shell)
+if a.fresh or a.solution or not a.shell:            # starting again from the starter: forget the stored seal
+    import seals  # noqa: E402
+    seals.reset(name, lid)
 dst = workspaces.lesson_dir(name, lid)
 if a.solution:
     sol = os.path.join(config.ACADEMY, "solutions", lid)

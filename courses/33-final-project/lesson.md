@@ -5,7 +5,7 @@
 > [!NOTE] Mission brief
 > **2015, Science.** Two hundred and seventy researchers repeated 100 published psychology experiments, with the
 > original materials, the authors' help and samples large enough to see the original effects. 97 of the originals
-> had reported a significant result; only **36** of the repetitions did (Open Science Collaboration, *Estimating the
+> had reported a significant result; only **35** of those 97 repetitions did — 36 % (Open Science Collaboration, *Estimating the
 > reproducibility of psychological science*, 2015). Fraud explains almost none of it. Among the causes discussed since:
 > small samples, and choices made after seeing the data — which measure to report, which participants to keep, when
 > to stop collecting. Each choice looks reasonable; together they can turn noise into a "finding".
@@ -32,7 +32,8 @@
 
 **You need:** mission 05 (git: branch, commit, diff, tag), 14 (pytest; a regression test), 31 (scenarios, seeds, the
 headless simulator; what a simulation proves), 32 (the paired interval; "contains 0" means "not shown"). ⏱ Reading:
-about 60 minutes with the ✏️ checks. Lab: 5 h 30 to 8 h in three sessions (a ★★★ project: up to 10 h).
+about 50 minutes with the ✏️ checks. Lab, three sessions: about 4 h 30 if you are fast, up to 9 h if Python or git is
+still slow for you (a ★★★ project: up to 11 h).
 
 **What you already know** — answer without looking; if you miss two, reread the mission named.
 
@@ -113,9 +114,9 @@ questions.
 | **Hypothesis** — one sentence the data can prove wrong | A 2 s window lowers NAVERA Lite's large errors during a jam |
 | **Metric** and **window** — which number, on which part of each run | `err_p95`: the 95th percentile of NAVERA Lite's error, window `fault` (from the jam to its end) |
 | **Direction** — lower, higher, or closer to a target | lower is better |
-| **Minimum effect** — the smallest gain worth a change | 5 m |
+| **Minimum effect** — the smallest gain worth a change | 3 m |
 | **Guard-rail** and its **limit** — what the change may cost | `availability` (share of the jam with a position) may lose at most **0.02** (about one second per minute) |
-| **Runs** — scenarios and a block of seeds | `lake.json`, seeds 201 to 230: 30 runs |
+| **Runs** — scenarios and a block of seeds | `lake.json`, seeds 1201 to 1230: 30 runs, never flown while exploring |
 
 The decision rule is the same for every project: **accept** if the whole 95 % interval of the difference is on the
 good side of the minimum effect and the guard-rail cannot have lost more than its limit; **reject** if the whole
@@ -128,11 +129,18 @@ this the **garden of forking paths** (Gelman and Loken, 2013): each fork is reas
 Each row of the table closes one fork. The **block of seeds** (first and count, consecutive) closes the subtlest one:
 you cannot drop the seeds that went badly.
 
+The same goes for the change itself. Tune it (a speed, a threshold) on **exploring seeds** below 1000 with
+`project.py one`, never on the pre-registered block. The block is flown once, by the version you commit as THE change;
+a second version is a new pre-registration with a new block, and both are reported (the bench writes every
+evaluation in a journal, and the check asks your report to name each one).
+
 A **guard-rail** exists because almost every safety change has a price. A judge that refuses more positions has fewer
 bad positions *and* fewer positions. Measure only the gain, and you will always "win".
 
 Choose the numbers from the **use**, not from the data: the minimum effect is the gain that would justify a change
-(here 5 m, a third of day vision's stated σ); the guard-rail limit is what the operator can live without.
+(here 3 m, a fifth of day vision's stated σ); the guard-rail limit is what the operator can live without. The
+**directions** are not a choice: availability is better when higher, an error when lower (`project.py plan` refuses
+the other way — a guard-rail "better when lower" would turn every loss into a gain).
 
 > [!TIP] 🧰 A metric with a target
 > Some metrics are not "lower is better". `honest2` is the share of rows whose error is within 2 × the σ the judge
@@ -205,8 +213,9 @@ Var(a − b) = Var(a) + Var(b) − 2 Cov(a, b)
 
 A hard run (a long blackout, an unlucky noise) is hard before *and* after, so a and b move together: Cov > 0, and the
 variance of the difference is smaller than the two separate spreads suggest. The shared luck cancels; what is left is
-the change. Worked example: in the lake campaign the per-run err_p95 has a standard deviation of 7.4 m before the
-change, the per-run difference only 6.1 m.
+the change. Worked example: in the lake campaign the per-run err_p95 has a standard deviation of 6.5 m before and
+4.2 m after; two independent campaigns would give a difference spread of √(6.5² + 4.2²) ≈ 7.7 m, the paired
+differences only 4.2 m (the two runs of a pair have a correlation of 0.77).
 
 **Why an iid bootstrap is honest here.** In mission 32 the seconds of one flight were correlated, and only a block
 bootstrap was honest. Here the units are **runs** with different seeds: independent by construction. So the bench
@@ -227,7 +236,7 @@ ellipse) adds it **before** `before`, with the red test: both campaigns then fly
 > the model, not about a better stack.
 
 > [!QUESTION] ✏️ Check
-> 1. Why do both campaigns use seeds 201–230, instead of 201–230 before and 231–260 after?
+> 1. Why do both campaigns use seeds 1201–1230, instead of 1201–1230 before and 1231–1260 after?
 > 2. A student re-runs the "after" campaign with a new block of seeds because the first interval contained 0, and
 >    reports only the second. What is that, in mission 32's words?
 
@@ -252,10 +261,10 @@ your rule. Read the interval with the figure below.
 
 | | before | after | D | 95 % interval of D |
 |---|---|---|---|---|
-| err_p95 (m) | 51.2 | 43.5 | −7.7 | [−10.0, −5.6] |
+| err_p95 (m) | 46.4 | 42.0 | −4.5 | [−6.0, −3.1] |
 | availability | 1.000 | 0.951 | −0.049 | [−0.049, −0.049] |
 
-The accuracy part passes: the whole interval lies beyond −5 m, the minimum effect. The guard-rail does not: the
+The accuracy part passes: the whole interval lies beyond −3 m, the minimum effect. The guard-rail does not: the
 window lost 0.049 of its time with a position — about 2.2 s of a 45 s jam — and the whole interval is beyond the 0.02
 limit. By the rule written first: **REJECT**.
 
@@ -263,7 +272,12 @@ Two remarks. The guard-rail's interval has **zero width**: every run loses exact
 blackout starts at the same mission second in every run (they share one scenario file). That is not a miracle of precision; it says the
 loss is built into the scenario, not random. And had the team written a limit of 0.05, the same data would give
 "accept" — which is exactly why the limit is written before the result. (With only the first 5 seeds, the interval
-of err_p95 would be [−9.8, −4.0]: it crosses −5, inconclusive. Too few runs cannot show a small effect.)
+of err_p95 would be [−3.6, −1.0]: it crosses −3, inconclusive. Too few runs cannot show a small effect.)
+
+**A 0/1 guard-rail** (false_alarm, failsafe) needs care: 0 alarms in 30 runs before and after gives a bootstrap
+interval of [0, 0] — the bootstrap cannot imagine an alarm it never saw. The bench therefore never gives a 0/1 metric
+a narrower interval than Wilson's (mission 32): 0 in 30 only shows a rate below 0.114, so a limit of 0.05 needs about
+75 runs.
 
 **Inconclusive is a result.** "The data cannot tell" is a precise statement, with a precise next step: which runs to
 add, or which effect size you would need. A team that writes "inconclusive" when it is true is a team whose "accept"
@@ -293,7 +307,7 @@ red test, the campaign, the results table, the decision, the limits. Two rules d
   either version (0 of 20). Accepted by the rule written before the baseline."
 - **inconclusive:** "D = −1.4 m, 95 % interval [−3.1, 0.4] m: it contains 0. The change is not shown to lower the
   error on these 30 runs." — never "slightly better", never "the same".
-- **reject:** "The error fell (D = −7.7 m [−10.0, −5.6]) but availability lost 0.049 of the jam, beyond the 0.02
+- **reject:** "The error fell (D = −4.5 m [−6.0, −3.1]) but availability lost 0.049 of the jam, beyond the 0.02
   limit: rejected." — the gain is reported, and so is the price.
 
 **Limits.** A confidence interval covers the randomness of *these* scenarios in *this* simulator, nothing else.
@@ -308,27 +322,13 @@ was never flown, and what you would measure next. NAVERA labels such numbers "si
 an inconclusive report is a claim the interval does not support.
 </details>
 
-## 7. The project menu
+## 7. Choosing a project
 
-Choose **one**. ★ about a day's work, ★★ more design, ★★★ a real challenge (talk to your teacher first). Several
-come from real problems of NAVERA, described in words; in your project they are **NAVERA Lite problems to solve** in
-your own stack. The suggestions (scenarios, metric, guard-rail) are a start: the pre-registration is yours.
-
-| # | Idea | ★ | Where in NAVERA Lite | A first measurement idea |
-|---|---|---|---|---|
-| 1 | **An ageing fix keeps its σ.** A day fix states 15 m for the instant it was measured, yet the judge uses it up to 5 s later while the drone moves 15 m/s. NAVERA met it as a 1–2.5 s lag and fixed it on 2026-10-03 (simulator): its vision positions now state an accuracy grown by the lag. Make the σ the judge states grow with the fix's age. | ★ | `arbiter.py` (`Arbiter.step`), `estimate.py`, a setting in `settings.py` + `navera_lite.yaml` | `honest2` closer to 0.86 on `jam` + `lake`; guard-rail `fix_share` |
-| 2 | **A frozen GPS.** A receiver that keeps sending the same position, still "valid". Add the fault `frozen` to the simulator's GPS (setup, before `before`), then a detector: refuse a GPS whose position has not moved for N fixes. | ★★ | setup: `sim/world.py` (`FAULTS`, `gps_fix`); change: `arbiter.py` or `spoof.py` | `ap_err_max` on a frozen scenario; guard-rail `false_alarm` on `baseline` |
-| 3 | **The tilted ellipse.** NAVERA's judge reads one σ as √max(a, c) — up to √2 shorter than the long axis of a tilted ellipse (mission 27). NAVERA Lite's `stated_sigma` does the same. Setup: a vision profile that states a tilted covariance; change: the σ of the long axis. | ★★★ | setup: `sim/world.py` (a tilted vision error); change: `estimate.stated_sigma` with `uncertainty.ellipse` | `bad_fix` or `honest2`; guard-rail `fix_share` |
-| 4 | **Night lock-in.** NAVERA's night gate compares a new fix with its own dead-reckoned anchor, and can lock onto a wrong place (mission 25). In NAVERA Lite, night vision "measured" follows only a quarter of the motion: fly `campaign/night_lag.json` and watch the autopilot reset onto a position hundreds of metres off. Detect a night source that does not move like the vehicle. | ★★★ | `arbiter.py` or `spoof.py` (a motion-consistency rule) | `ap_err_max`; guard-rail `failsafe` (what will refusing cost?) |
-| 5 | **The star fix and the compass.** NAVERA's star fix needs the camera's direction: 5.5–6.5 km with a perfect attitude, 53 km with 0.5° of tilt, 91 km with 2° of heading more (validation report, 2026-09-30). Setup: a celestial witness in the simulator whose error follows mission 26's rule from the heading the stack gives it; change: give it the TRUE heading (declination, mission 17). | ★★★ | setup: `sim/world.py`; change: `imu.py` functions used by the new witness | `err_median` with GPS jammed and the camera blind |
-| 6 | **Inliers: one number, measured.** NAVERA's report validated "≥ 6 inliers", while the product's setting asks for 8. In NAVERA Lite the minimum is a default in two places (`match.gates`, `locate.DEFAULTS`). Make it one setting, then measure 6 vs 8 in the loop with day vision "mine" (slow: a 100 s day flight takes about 45 s — keep runs short). | ★★★ | `match.py`, `locate.py`, `sim/vision.py` reading the setting | `availability` vs `err_p95` with `vision: "mine"` |
-| 7 | **The guard's patience.** The guard needs 5 disagreeing fixes in a row (mission 30). Fewer catch a drift sooner — and refuse an honest GPS more often (mission 31's R9). Measure both. | ★ | `spoof.py` settings (`GUARD_DEFAULTS`) | `detect_s` on `drift`; guard-rail `false_alarm` on `plane_late` + `baseline` |
-| 8 | **A late camera.** Mission 31's failing run: the plane's pictures are 1.5 s old but stamped "now", and the guard refuses an honest GPS. Make the guard's time-gap term honest about a known camera latency. | ★★ | `spoof.py` (`innovation`), a setting | `false_alarm` on `plane_late` seeds; guard-rail `detected` on a plane drift scenario |
-| 9 | **Retrain the night network.** Train mission 25's HomographyNet better (more pairs, more epochs, an augmentation) on mission 25's training places — never on the corridor you fly (that measures memory, not skill). The change is the weights file `ref_homography.pt`. | ★★★ | `ref_homography.pt` (+ your training script, committed); `homography_net.py` | `err_median` on `night_mine` (≈ 7 s per run, GPU) |
-| 10 | **GPS bursts** (kind `sim`). Real receivers in streets meet multipath: short bursts of tens of metres. Add bursts to the simulated GPS and measure what they do to the stack (jump gate, guard, errors). | ★★ | `sim/sensors.py` / `sim/world.py` | `err_p95` or `false_alarm` with GPS "ok" |
-
-Your own idea is welcome (`"idea": "own"`): check with your teacher that it is **one** change you can **test** and
-**measure** in a day. The lesson's worked example (the 2 s window) is not a project.
+The lab's Step 2 holds the menu: ten ideas from ★ (about a day) to ★★★ (a real challenge — talk to your teacher first).
+Several come from real problems of NAVERA, described in words; in your project they are NAVERA Lite problems to solve
+in your own stack. A good idea is one you can state in one sentence AND see in a run. Your own idea is welcome if it is
+**one** change you can **test** and **measure** in a day. The lesson's worked example (the 2 s window) is not a
+project.
 
 ## In NAVERA
 
@@ -340,7 +340,7 @@ in the simulator, a plane at 40 m/s with a matching error of 0–1 m had an outp
 within the stated σ; a drone at 15 m/s, 12–23 m. The change carried the position along the measured ground velocity
 and grew its stated accuracy by the lag, backed by unit tests (a 1.5 s old photo at 40 m/s is moved 60 m and stated
 ±31.5 m), and the result is labelled **simulator only**. The same report keeps, next to each figure, its conditions and
-its date. The problems in the menu (√max(a, c), the night anchor, the inlier minimum written as 6 and set to 8) were
+its date. The problems in the lab's menu (√max(a, c), the night anchor, the inlier minimum written as 6 and set to 8) were
 found by the course's team while writing these missions and logged for NAVERA's engineers; they are described here in
 words only.
 
@@ -391,7 +391,7 @@ Almost every safety change has a price (fewer positions, more refusals, a failsa
 
 <details><summary>2. Your test passes at 'before'. What does that tell you, and what do you do?</summary>
 It does not see the problem, so it cannot prove anything about the change. Make it ask for the new behaviour (fail
-first), commit it, and move the tag before flying the baseline.
+first), commit it, and move the tag before flying the baseline (if you already flew it: lab Step 5 hint 2).
 </details>
 
 <details><summary>3. Why does the bench fly a commit instead of your working folder?</summary>

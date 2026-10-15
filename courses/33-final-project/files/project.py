@@ -14,6 +14,9 @@ compares it with the given one); your work is in navera_lite/, your test, projec
     python3 project.py one campaign/jam.json 101    fly ONE run of the working folder (exploring) → my_runs/
     python3 project.py metrics my_runs/jam_s101.csv campaign/jam.json   every metric of one run
 
+Explore with seeds below 1000 (`one`), pre-register a block of seeds of 1000 or more that you never flew. Every
+'after' campaign and every evaluation is written in runs/journal.txt: report each change you evaluated.
+
 Why commits: a campaign flies the code of a COMMIT (git archive), never your unsaved files, so that "before" and
 "after" are exactly two versions of the stack that anyone can rebuild from your branch. runs/ is not committed
 (runs/.gitignore): the runs are evidence you can regenerate, not source.
@@ -99,8 +102,8 @@ def dirty_stack():
     """Uncommitted changes in the files a campaign flies (the stack, the settings, the scenarios, project.json)."""
     out = git("status", "--porcelain", "--untracked-files=all", "--", *[p for p in STACK if os.path.exists(
         os.path.join(HERE, p))] or ["."])
-    return [ln[3:] for ln in out.splitlines() if ln.strip() and "__pycache__" not in ln and ".pytest_cache" not in ln
-            and ".hypothesis" not in ln]
+    return [ln.split(None, 1)[1] for ln in out.splitlines() if ln.strip() and "__pycache__" not in ln
+            and ".pytest_cache" not in ln and ".hypothesis" not in ln]
 
 
 def extract(sha):
@@ -149,13 +152,16 @@ def load_project(path=None, text=None):
     if not isinstance(p, dict):
         die("project.json must be one object {...}")
     problems = []
-    for key in ("title", "idea", "kind", "test", "scenarios", "seeds", "metric", "better"):
+    for key in ("title", "hypothesis", "idea", "kind", "test", "scenarios", "seeds", "metric", "better"):
         if key not in p:
             problems.append(f'"{key}" is missing')
     if problems:
         die("project.json: " + "; ".join(problems))
     if not isinstance(p["title"], str) or len(p["title"].split()) < 3 or "(fill in" in p["title"]:
         problems.append('"title": a short sentence that names your change (3 words or more)')
+    hy = p["hypothesis"]
+    if not isinstance(hy, str) or len(hy.split()) < 6 or "(fill in" in hy:
+        problems.append('"hypothesis": one sentence the measurement can prove wrong (6 words or more), written now')
     if not (p["idea"] == "own" or (isinstance(p["idea"], int) and not isinstance(p["idea"], bool)
                                    and 1 <= p["idea"] <= 10)):
         problems.append('"idea": a number 1–10 from the lesson\'s menu, or "own" (agreed with your teacher)')
@@ -176,7 +182,11 @@ def load_project(path=None, text=None):
     if not (isinstance(m, dict) and m.get("name") in METRICS):
         problems.append('"metric": {"name": one of ' + ", ".join(METRICS) + ', "window": "fault" | "all" | [t0, t1]}')
     else:
-        problems += check_window(m, "metric")
+        problems += check_window(m, "metric") + check_subset(m, sc, "metric")
+        nat = METRICS[m["name"]][3]
+        if nat and p["better"] != nat:
+            problems.append(f'"better": {m["name"]} is better when "{nat}"'
+                            + (' (with a "target", e.g. 0.86)' if nat == "closer" else ""))
     if p["better"] not in ("lower", "higher", "closer"):
         problems.append('"better": "lower", "higher" or "closer" (closer to "target")')
     if p["better"] == "closer" and not isinstance(p.get("target"), (int, float)):
@@ -192,7 +202,13 @@ def load_project(path=None, text=None):
             problems.append('"guardrail": {"metric": {"name": …, "window": …}, "better": "lower" | "higher", '
                             '"max_loss": a number ≥ 0} — or null for none')
         else:
-            problems += check_window(g["metric"], "guardrail metric")
+            problems += check_window(g["metric"], "guardrail metric") + check_subset(g["metric"], sc, "guardrail metric")
+            gn = METRICS[g["metric"]["name"]][3]
+            if gn in ("lower", "higher") and g["better"] != gn:
+                problems.append(f'guard-rail "better": {g["metric"]["name"]} is better when "{gn}" (not your choice)')
+            if gn == "closer":
+                problems.append(f'guard-rail: {g["metric"]["name"]} has a target — use it as the metric, not as a '
+                                'guard-rail')
     for key, lo, hi, default in (("B", 500, 20000, 2000), ("alpha", 0.001, 0.2, 0.05)):
         v = p.get(key, default)
         if not isinstance(v, (int, float)) or isinstance(v, bool) or not lo <= v <= hi:
@@ -211,6 +227,23 @@ def load_project(path=None, text=None):
     return p
 
 
+def check_subset(m, scenarios, what):
+    """An optional "scenarios" inside a metric: the runs it is computed on (a part of the campaign's list)."""
+    s = m.get("scenarios")
+    if s is None:
+        return []
+    if isinstance(s, list) and s and isinstance(scenarios, list) and all(x in scenarios for x in s) \
+            and len(set(s)) == len(s):
+        return []
+    return [f'{what} "scenarios": a list of some of the campaign\'s scenario files (or leave it out: all of them)']
+
+
+def runs_of(m, runs):
+    """The runs (manifest entries) a metric is computed on: its own "scenarios" if it has some, else all."""
+    s = m.get("scenarios")
+    return [r for r in runs if s is None or r["file"] in s]
+
+
 def check_window(m, what):
     w = m.get("window", "fault")
     if w in ("fault", "all"):
@@ -227,7 +260,8 @@ def rule_words(p):
          "closer": f"closer to {p.get('target')} is better"}[p["better"]]
     unit = METRICS[m["name"]][1]
     eff = p["min_effect"]
-    out = [f"metric: {m['name']} ({METRICS[m['name']][0]}), window {m.get('window', 'fault')}, {d}",
+    out = [f"metric: {m['name']} ({METRICS[m['name']][0]}), window {m.get('window', 'fault')}, {d}"
+           + (f", on {', '.join(m['scenarios'])} only" if m.get("scenarios") else ""),
            f"statistic over the runs: {'|mean − target|' if p['better'] == 'closer' else 'the mean'}; "
            f"D = statistic(after) − statistic(before), paired by run, 95 % bootstrap interval "
            f"(B {p['B']}, seed {p['boot_seed']})",
@@ -241,7 +275,10 @@ def rule_words(p):
     g = p.get("guardrail")
     if g:
         out.insert(2, f"guard-rail: {g['metric']['name']} (window {g['metric'].get('window', 'fault')}), "
-                      f"{g['better']} is better, may lose at most {g['max_loss']:g}")
+                      f"{g['better']} is better, may lose at most {g['max_loss']:g}"
+                      + (f", on {', '.join(g['metric']['scenarios'])} only" if g['metric'].get("scenarios") else "")
+                      + ("; a 0/1 metric: its interval is never narrower than Newcombe's (Wilson) one"
+                         if METRICS[g['metric']['name']][2] == "event" else ""))
     return out
 
 
@@ -466,9 +503,41 @@ def cmd_campaign(label):
     print(f"  wrote runs/{label}/ ({len(runs)} CSV + events logs) and runs/{label}/manifest.json in "
           f"{time.time() - t0:.0f} s")
     if label == "before":
+        for m in [p["metric"]] + ([p["guardrail"]["metric"]] if p.get("guardrail") else []):
+            values_of(p, man, "before", m)          # dies, naming the run, if the metric is undefined somewhere
+        print("  ✔ the metric" + (" and the guard-rail are" if p.get("guardrail") else " is")
+              + " defined in every baseline run")
         print("  next: make your change in navera_lite/, then `python3 project.py green` (lab Step 6)")
     else:
+        journal(f"campaign after {sha[:12]} against before {man_before_sha()}")
         print("  next: python3 project.py evaluate")
+
+
+def journal(line):
+    """runs/journal.txt: one line per 'after' campaign and per evaluation (lesson §2: every change you evaluate
+    against a baseline is reported)."""
+    ensure_runs_ignored()
+    with open(os.path.join(RUNS, "journal.txt"), "a") as f:
+        f.write(time.strftime("%Y-%m-%d %H:%M:%S") + "  " + line + "\n")
+
+
+def afters_evaluated(before_sha):
+    """The 'after' commits evaluated against this baseline, in the journal (oldest first)."""
+    seen = []
+    try:
+        with open(os.path.join(RUNS, "journal.txt")) as f:
+            for ln in f:
+                w = ln.split()
+                if len(w) >= 7 and w[2] == "evaluate" and w[6] == before_sha[:12] and w[4] not in seen:
+                    seen.append(w[4])
+    except OSError:
+        pass
+    return seen
+
+
+def man_before_sha():
+    b = manifest("before", required=False)
+    return b["sha"][:12] if b else "(none)"
 
 
 def manifest(label, required=True):
@@ -517,6 +586,12 @@ def cmd_red():
     rc, out = pytest_at(sha, p["test"])
     print(f"Your red test at {rev} ({sha[:10]}): {last_line(out)}")
     if rc == 0:
+        moved = [f for f in git("diff", "--name-only", "start", sha, "--", "navera_lite", "navera_lite.yaml",
+                                check=False).split() if not f.startswith(("navera_lite/tests/", "navera_lite/sim/"))]
+        if moved and sha_of("start"):
+            die("your test passes at '" + rev + "' because that commit already holds a change of the stack ("
+                + ", ".join(moved[:4]) + "): the tag 'before' must sit on the red commit, BEFORE the change "
+                "(lab Step 5 hint 2 shows how to put the commits back in order)")
         die("your test PASSES on the code without your change: it does not see the problem yet. Make it ask for "
             "the behaviour you want (lesson §3)")
     if rc != 1:
@@ -564,7 +639,7 @@ def cmd_green():
 def values_of(p, man, label, m):
     code = extract(man["sha"])
     out = []
-    for run in man["runs"]:
+    for run in runs_of(m, man["runs"]):
         with open(os.path.join(code, run["file"])) as f:
             sc = json.load(f)
         csv_path = os.path.join(RUNS, label, run["name"] + ".csv")
@@ -573,10 +648,19 @@ def values_of(p, man, label, m):
         v = metric_value(m, read_rows(csv_path), sc, code)
         if v is None or not math.isfinite(v):
             die(f"{m['name']} is not defined in run {label}/{run['name']} (no row in its window?). Every run counts: "
-                "a metric that is undefined in some runs cannot be used — choose another metric or window BEFORE "
-                "the baseline")
+                "a metric that is undefined in some runs cannot be used — this needs a NEW pre-registration (another "
+                "metric, window or \"scenarios\" for it): lab Step 5 hint 2")
         out.append(v)
     return out
+
+
+def newcombe(kb, ka, n, wilson):
+    """Newcombe's hybrid score interval of p_after − p_before from two Wilson intervals (mission 32's wilson)."""
+    lb, ub = wilson(kb, n)
+    la, ua = wilson(ka, n)
+    pb, pa = kb / n, ka / n
+    return ((pa - pb) - math.sqrt((pa - la) ** 2 + (ub - pb) ** 2),
+            (pa - pb) + math.sqrt((ua - pa) ** 2 + (pb - lb) ** 2))
 
 
 def stat_fn(better, target, np):
@@ -632,12 +716,18 @@ def cmd_evaluate():
                 die(f"runs/{label}/{r['name']}.csv is not the file the campaign wrote: fly 'campaign {label}' again")
     p = load_project(os.path.join(extract(ma["sha"]), "project.json"))
     res = {"metric": p["metric"], "better": p["better"], "target": p.get("target"), "min_effect": p["min_effect"],
-           "n_runs": len(mb["runs"]), "B": p["B"], "alpha": p["alpha"], "boot_seed": p["boot_seed"],
-           "before_sha": mb["sha"], "after_sha": ma["sha"], "runs": [r["name"] for r in mb["runs"]]}
+           "hypothesis": p["hypothesis"], "n_campaign": len(mb["runs"]), "B": p["B"], "alpha": p["alpha"],
+           "boot_seed": p["boot_seed"], "before_sha": mb["sha"], "after_sha": ma["sha"],
+           "runs": [r["name"] for r in runs_of(p["metric"], mb["runs"])]}
     b = values_of(p, mb, "before", p["metric"])
     a = values_of(p, ma, "after", p["metric"])
+    res["n_runs"] = len(b)
     st = stat_fn(p["better"], p.get("target"), np)
     lo, hi = stats.paired_diff_ci(a, b, st, B=p["B"], alpha=p["alpha"], seed=p["boot_seed"])
+    if METRICS[p["metric"]["name"]][2] == "event":
+        nlo, nhi = newcombe(int(round(sum(b))), int(round(sum(a))), len(b), stats.wilson)
+        res["ci_bootstrap"] = [lo, hi]
+        lo, hi = min(lo, nlo), max(hi, nhi)          # never narrower than the score interval (lesson §5)
     res.update(before=st(np.array(b)), after=st(np.array(a)), mean_before=float(np.mean(b)),
                mean_after=float(np.mean(a)), D=st(np.array(a)) - st(np.array(b)), ci=[lo, hi],
                values_before=b, values_after=a)
@@ -652,26 +742,39 @@ def cmd_evaluate():
         ga = values_of(p, ma, "after", gp["metric"])
         glo, ghi = stats.paired_diff_ci(ga, gb, lambda x: float(np.mean(x)), B=p["B"], alpha=p["alpha"],
                                         seed=p["boot_seed"] + 1)
-        g = {"metric": gp["metric"], "better": gp["better"], "max_loss": gp["max_loss"],
+        g = {"metric": gp["metric"], "better": gp["better"], "max_loss": gp["max_loss"], "n_runs": len(gb),
              "before": float(np.mean(gb)), "after": float(np.mean(ga)), "D": float(np.mean(ga) - np.mean(gb)),
              "ci": [glo, ghi]}
+        if METRICS[gp["metric"]["name"]][2] == "event":
+            nlo, nhi = newcombe(int(round(sum(gb))), int(round(sum(ga))), len(gb), stats.wilson)
+            g["ci_bootstrap"] = [glo, ghi]
+            g["ci"] = [min(glo, nlo), max(ghi, nhi)]
+            g["counts"] = [int(round(sum(gb))), int(round(sum(ga)))]
         res["guardrail"] = g
     res["decision"], res["why"] = decide(p, res["D"], (lo, hi), g)
     res["changes"] = git("diff", "--stat", mb["sha"], ma["sha"], "--", ".").splitlines()[-1:] or ["(none)"]
+    journal(f"evaluate after {ma['sha'][:12]} before {mb['sha'][:12]} {res['decision']} D {res['D']:.6g} "
+            f"[{lo:.6g}, {hi:.6g}]")
+    res["afters_evaluated"] = afters_evaluated(mb["sha"])
     with open(os.path.join(HERE, "evaluation.json"), "w") as f:
         json.dump(res, f, indent=1)
     show(p, res)
+    if len(res["afters_evaluated"]) > 1:
+        print(f"  ⚠ you evaluated {len(res['afters_evaluated'])} different changes against this baseline ("
+              + ", ".join(x[:7] for x in res["afters_evaluated"]) + "): section 8 of REPORT.md must name each of them "
+              "and say why (lesson §2: tuning on the pre-registered seeds is a forking path)")
     figure(p, res, np)
 
 
 def fmt(v):
-    return "n/a" if v is None else f"{v:.4g}"
+    return "n/a" if v is None else f"{v:#.4g}"
 
 
 def show(p, r):
     m, unit = p["metric"]["name"], METRICS[p["metric"]["name"]][1]
     stat = "|mean − target|" if p["better"] == "closer" else "mean"
     print(f"Evaluation of {r['n_runs']} paired runs (before {r['before_sha'][:10]} → after {r['after_sha'][:10]}):")
+    print(f"  hypothesis: {r['hypothesis']}")
     print(f"  metric {m} ({unit or 'share/event'}), {p['better']} is better; statistic: {stat}")
     print(f"  before {fmt(r['before'])}   after {fmt(r['after'])}   D = after − before = {fmt(r['D'])}   "
           f"95 % CI of D [{fmt(r['ci'][0])}, {fmt(r['ci'][1])}]")
@@ -684,7 +787,9 @@ def show(p, r):
     g = r.get("guardrail")
     if g:
         print(f"  guard-rail {g['metric']['name']}: before {fmt(g['before'])}   after {fmt(g['after'])}   "
-              f"D {fmt(g['D'])}   95 % CI [{fmt(g['ci'][0])}, {fmt(g['ci'][1])}]   (may lose at most {g['max_loss']:g})")
+              f"D {fmt(g['D'])}   95 % CI [{fmt(g['ci'][0])}, {fmt(g['ci'][1])}]   (may lose at most {g['max_loss']:g})"
+              + (f"\n    0/1 guard-rail: {g['counts'][0]}/{g['n_runs']} → {g['counts'][1]}/{g['n_runs']}; the interval is "
+                 "Newcombe's (Wilson), never narrower than the bootstrap" if "counts" in g else ""))
     print(f"  DECISION (your pre-registered rule): {r['decision'].upper()} — " + "; ".join(r["why"]))
     print("  wrote evaluation.json and out/project.png — the numbers of REPORT.md come from here")
 
@@ -715,6 +820,9 @@ def figure(p, r, np):
     d = a - b
     ax[1].hist(d, bins=min(30, max(8, len(d) // 3)), color="0.6")
     ax[1].axvline(0, color="k", lw=1)
+    if p["better"] != "closer" and p["min_effect"]:
+        ax[1].axvline(-p["min_effect"] if p["better"] == "lower" else p["min_effect"], color="#c33", ls="--",
+                      label="minimum effect")
     lo, hi = r["ci"]
     ax[1].axvspan(lo, hi, color="#cc6622", alpha=0.25, label="95 % CI of D")
     ax[1].set_xlabel("after − before, per run" + (" (the CI is for |mean − target|)" if p["better"] == "closer" else ""))
@@ -729,6 +837,9 @@ def figure(p, r, np):
 def cmd_plan():
     p = load_project()
     print(f"Project: {p['title']}  (idea {p['idea']}, kind {p['kind']})")
+    print(f"Hypothesis: {p['hypothesis']}")
+    if p["seed_list"][0] < 1000:
+        print("  ⚠ your seeds start below 1000: did you fly any of them while exploring? Pre-register seeds you never flew")
     print(f"Red test: {p['test']}")
     print(f"Campaign: {len(p['scenarios'])} scenario(s) × seeds {p['seed_list'][0]}–{p['seed_list'][-1]} = "
           f"{len(p['scenarios']) * len(p['seed_list'])} paired runs")
