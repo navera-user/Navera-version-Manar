@@ -1,2 +1,0 @@
-{"name": "jam_camfail_target", "vision": "target",
- "faults": [[30, "gps", "jammed"], [50, "camera", "failed"], [90, "camera", "ok"], [90, "gps", "ok"]], "tail_s": 30}

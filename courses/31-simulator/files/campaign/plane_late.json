@@ -1,0 +1,1 @@
+{"name": "plane_late", "vehicle": "plane", "vision": "target", "seed": 17, "duration_s": 70, "faults": [[20, "camera", "late"]]}

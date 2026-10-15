@@ -1,0 +1,20 @@
+{
+ "centre_lat": 35.8225,
+ "centre_lon": 10.548,
+ "half_east_m": 500.0,
+ "half_north_m": 1900.0,
+ "day_m_per_px": 0.5,
+ "night_m_per_px": 7.751938,
+ "pixels": "pixel centre (x, y) \u2194 east = (x + 0.5)\u00b7m_per_px \u2212 half_east_m, north = half_north_m \u2212 (y + 0.5)\u00b7m_per_px (metres from the centre)",
+ "route": {
+  "start_en": [
+   0.0,
+   -1600.0
+  ],
+  "dest_en": [
+   0.0,
+   1600.0
+  ]
+ },
+ "attribution": "\u00a9 OpenStreetMap contributors (ODbL), https://www.openstreetmap.org/copyright"
+}

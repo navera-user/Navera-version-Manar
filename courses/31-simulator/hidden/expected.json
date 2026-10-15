@@ -1,0 +1,1753 @@
+{
+ "units": {
+  "decode": [
+   {
+    "payload": "9361254b87460a00b45d581a5963e1e6283c50c28a1b72c1ebfdc73f0000000080e3bfc16bcf87c10000000000000000ba78b743000000004c007b08000309",
+    "want": {
+     "time_usec": 2892296662376851,
+     "time_week_ms": 441998772,
+     "lat": -42.1436583,
+     "lon": -103.4929112,
+     "alt": -15.131723403930664,
+     "hdop": 1.5624364614486694,
+     "vdop": 0.0,
+     "vn": -23.986083984375,
+     "ve": -16.97627830505371,
+     "vd": 0.0,
+     "speed_accuracy": 0.0,
+     "horiz_accuracy": 366.94317626953125,
+     "vert_accuracy": 0.0,
+     "ignore_flags": 76,
+     "time_week": 2171,
+     "gps_id": 0,
+     "fix_type": 3,
+     "satellites_visible": 9,
+     "yaw": 0
+    }
+   },
+   {
+    "payload": "407b341dd30f060087aea61cfdad34ec23caf9c2b77cb1443f02923f0000000048a40041d2b83a41000000000000000055997a430000000003009908000302ee17",
+    "want": {
+     "time_usec": 1706249262758720,
+     "time_week_ms": 480685703,
+     "lat": -33.2091907,
+     "lon": -102.3817181,
+     "alt": 1419.8973388671875,
+     "hdop": 1.1406935453414917,
+     "vdop": 0.0,
+     "vn": 8.040107727050781,
+     "ve": 11.670122146606445,
+     "vd": 0.0,
+     "speed_accuracy": 0.0,
+     "horiz_accuracy": 250.5989532470703,
+     "vert_accuracy": 0.0,
+     "ignore_flags": 3,
+     "time_week": 2201,
+     "gps_id": 0,
+     "fix_type": 3,
+     "satellites_visible": 2,
+     "yaw": 6126
+    }
+   },
+   {
+    "payload": "43b2e2055a53060022647022704e46eebb0ac618e699d7424477894000000000b33e4cc1e747413f0000000000000000984f66420000000080007109000103",
+    "want": {
+     "time_usec": 1780495971168835,
+     "time_week_ms": 577791010,
+     "lat": -29.7382288,
+     "lon": 41.5632059,
+     "alt": 107.80058288574219,
+     "hdop": 4.295808792114258,
+     "vdop": 0.0,
+     "vn": -12.765307426452637,
+     "ve": 0.7550033926963806,
+     "vd": 0.0,
+     "speed_accuracy": 0.0,
+     "horiz_accuracy": 57.577728271484375,
+     "vert_accuracy": 0.0,
+     "ignore_flags": 128,
+     "time_week": 2417,
+     "gps_id": 0,
+     "fix_type": 1,
+     "satellites_visible": 3,
+     "yaw": 0
+    }
+   },
+   {
+    "payload": "7fa349e1c5cc0700d1631b0cb74a05eabf2151ad3c4dde443ebf723f000000005e3e47423bb28bc00000000000000000a5ec9a43000000005800db07000109c817",
+    "want": {
+     "time_usec": 2195475097297791,
+     "time_week_ms": 203121617,
+     "lat": -36.8751945,
+     "lon": -138.7191873,
+     "alt": 1778.41357421875,
+     "hdop": 0.9482306241989136,
+     "vdop": 0.0,
+     "vn": 49.81090545654297,
+     "ve": -4.365506649017334,
+     "vd": 0.0,
+     "speed_accuracy": 0.0,
+     "horiz_accuracy": 309.8487854003906,
+     "vert_accuracy": 0.0,
+     "ignore_flags": 88,
+     "time_week": 2011,
+     "gps_id": 0,
+     "fix_type": 1,
+     "satellites_visible": 9,
+     "yaw": 6088
+    }
+   },
+   {
+    "payload": "732efdc05f2b08008830541bbb7f69ecf09468602ea7df441aa4994000000000ff59e7bc25a35b41000000000000000094a9c441000000002500dd0700000c",
+    "want": {
+     "time_usec": 2299490073390707,
+     "time_week_ms": 458502280,
+     "lat": -32.8630341,
+     "lon": 161.7466608,
+     "alt": 1789.224365234375,
+     "hdop": 4.801281929016113,
+     "vdop": 0.0,
+     "vn": -0.028241155669093132,
+     "ve": 13.727330207824707,
+     "vd": 0.0,
+     "speed_accuracy": 0.0,
+     "horiz_accuracy": 24.582801818847656,
+     "vert_accuracy": 0.0,
+     "ignore_flags": 37,
+     "time_week": 2013,
+     "gps_id": 0,
+     "fix_type": 0,
+     "satellites_visible": 12,
+     "yaw": 0
+    }
+   },
+   {
+    "payload": "38adb4ff7a8c0f00415f4410b79758f34cdf62a42e401745308d564000000000e173a7c00265abc100000000000000007fce0f43000000002b00db07000213a464",
+    "want": {
+     "time_usec": 4376584554589496,
+     "time_week_ms": 272916289,
+     "lat": -21.2297801,
+     "lon": -153.702418,
+     "alt": 2420.01123046875,
+     "hdop": 3.352367401123047,
+     "vdop": 0.0,
+     "vn": -5.232895374298096,
+     "ve": -21.424320220947266,
+     "vd": 0.0,
+     "speed_accuracy": 0.0,
+     "horiz_accuracy": 143.80662536621094,
+     "vert_accuracy": 0.0,
+     "ignore_flags": 43,
+     "time_week": 2011,
+     "gps_id": 0,
+     "fix_type": 2,
+     "satellites_visible": 19,
+     "yaw": 25764
+    }
+   }
+  ],
+  "parse": [
+   {
+    "data": "fdfd3e0000fa01bfe800000080c6a47e8d0300000000009878c7eb684bfb0a000000000000000000000000000000000000000000000000000000000000904000000000bd0056090003012400fd02fd3e0000fb01bfe800000180c6a47e8d0300000000009878c7eb684bfb0a000000000000000000000000000000000000000000000000000000000000904000000000bd0056090003ab7bfd090000030101000000010203040203510403bdd6fd3e0000fc01bfe800000280c6a47e8d0300000000009878c7eb684bfb0a000000000000000000000000000000000000000000000000000000000000904000000000bd005609000316",
+    "want": [
+     {
+      "seq": 250,
+      "sysid": 1,
+      "compid": 191,
+      "msgid": 232,
+      "payload": "0080c6a47e8d0300000000009878c7eb684bfb0a000000000000000000000000000000000000000000000000000000000000904000000000bd0056090003",
+      "crc_ok": true
+     },
+     {
+      "seq": 0,
+      "sysid": 0,
+      "compid": 251,
+      "msgid": 15253249,
+      "payload": "0000",
+      "crc_ok": null
+     },
+     {
+      "seq": 251,
+      "sysid": 1,
+      "compid": 191,
+      "msgid": 232,
+      "payload": "0180c6a47e8d0300000000009878c7eb684bfb0a000000000000000000000000000000000000000000000000000000000000904000000000bd0056090003",
+      "crc_ok": true
+     },
+     {
+      "seq": 3,
+      "sysid": 1,
+      "compid": 1,
+      "msgid": 0,
+      "payload": "010203040203510403",
+      "crc_ok": true
+     }
+    ]
+   },
+   {
+    "data": "fd3e0000ff01bfe800000580c6a47e8d0300000000009878c7fb684bfb0a000000000000000000000000000000000000000000000000000000000000904000000000bd0056090003120dfd3e00000001bfe800000680c6a47e8d0300000000009878c7eb684bfb0a000000000000000000000000000000000000000000000000000000000000904000000000bd00560900032911fd040000090101210000010203041234fd3e00000101bfe800000780c6a47e8d0300000000009878c7eb684bfb0a000000000000000000000000000000000000000000000000000000000000904000000000bd0056090003834e",
+    "want": [
+     {
+      "seq": 255,
+      "sysid": 1,
+      "compid": 191,
+      "msgid": 232,
+      "payload": "0580c6a47e8d0300000000009878c7fb684bfb0a000000000000000000000000000000000000000000000000000000000000904000000000bd0056090003",
+      "crc_ok": false
+     },
+     {
+      "seq": 0,
+      "sysid": 1,
+      "compid": 191,
+      "msgid": 232,
+      "payload": "0680c6a47e8d0300000000009878c7eb684bfb0a000000000000000000000000000000000000000000000000000000000000904000000000bd0056090003",
+      "crc_ok": true
+     },
+     {
+      "seq": 9,
+      "sysid": 1,
+      "compid": 1,
+      "msgid": 33,
+      "payload": "01020304",
+      "crc_ok": null
+     },
+     {
+      "seq": 1,
+      "sysid": 1,
+      "compid": 191,
+      "msgid": 232,
+      "payload": "0780c6a47e8d0300000000009878c7eb684bfb0a000000000000000000000000000000000000000000000000000000000000904000000000bd0056090003",
+      "crc_ok": true
+     }
+    ]
+   },
+   {
+    "data": "11111111111111fd3e0100fd01bfe800000380c6a47e8d0300000000009878c7eb684bfb0a000000000000000000000000000000000000000000000000000000000000904000000000bd005609000334f3fd020000050101e80000112233fd3e0000fe01bfe800000480c6a47e8d0300000000009878c7eb684bfb0a000000000000000000000000000000000000000000000000000000000000904000000000bd0056090003b852fd",
+    "want": [
+     {
+      "seq": 253,
+      "sysid": 1,
+      "compid": 191,
+      "msgid": 232,
+      "payload": "0380c6a47e8d0300000000009878c7eb684bfb0a000000000000000000000000000000000000000000000000000000000000904000000000bd0056090003",
+      "crc_ok": true
+     },
+     {
+      "seq": 254,
+      "sysid": 1,
+      "compid": 191,
+      "msgid": 232,
+      "payload": "0480c6a47e8d0300000000009878c7eb684bfb0a000000000000000000000000000000000000000000000000000000000000904000000000bd0056090003",
+      "crc_ok": true
+     }
+    ]
+   },
+   {
+    "data": "fd3e0000fa01bfe800000080c6a47e8d0300000000009878c7eb684bfb0a000000000000000000000000000000000000000000000000000000000000904000000000bd00560900030124fd3e0000fa01bfe800000080c6a47e8d0300000000009878c7eb684bfb0a000000000000000000000000000000000000000000000000000000000000904000000000bd00560900030124fd3e0000fc01bfe800000280c6a47e8d0300000000009878c7eb684bfb0a000000000000000000000000000000000000000000000000000000000000904000000000bd005609000316ae",
+    "want": [
+     {
+      "seq": 250,
+      "sysid": 1,
+      "compid": 191,
+      "msgid": 232,
+      "payload": "0080c6a47e8d0300000000009878c7eb684bfb0a000000000000000000000000000000000000000000000000000000000000904000000000bd0056090003",
+      "crc_ok": true
+     },
+     {
+      "seq": 250,
+      "sysid": 1,
+      "compid": 191,
+      "msgid": 232,
+      "payload": "0080c6a47e8d0300000000009878c7eb684bfb0a000000000000000000000000000000000000000000000000000000000000904000000000bd0056090003",
+      "crc_ok": true
+     },
+     {
+      "seq": 252,
+      "sysid": 1,
+      "compid": 191,
+      "msgid": 232,
+      "payload": "0280c6a47e8d0300000000009878c7eb684bfb0a000000000000000000000000000000000000000000000000000000000000904000000000bd0056090003",
+      "crc_ok": true
+     }
+    ]
+   }
+  ],
+  "ignored": [
+   {
+    "flags": 0,
+    "want": []
+   },
+   {
+    "flags": 1,
+    "want": [
+     "alt"
+    ]
+   },
+   {
+    "flags": 64,
+    "want": [
+     "horiz_accuracy"
+    ]
+   },
+   {
+    "flags": 189,
+    "want": [
+     "alt",
+     "vdop",
+     "vel_horiz",
+     "vel_vert",
+     "speed_accuracy",
+     "vert_accuracy"
+    ]
+   },
+   {
+    "flags": 180,
+    "want": [
+     "vdop",
+     "vel_vert",
+     "speed_accuracy",
+     "vert_accuracy"
+    ]
+   },
+   {
+    "flags": 255,
+    "want": [
+     "alt",
+     "hdop",
+     "vdop",
+     "vel_horiz",
+     "vel_vert",
+     "speed_accuracy",
+     "horiz_accuracy",
+     "vert_accuracy"
+    ]
+   },
+   {
+    "flags": 130,
+    "want": [
+     "hdop",
+     "vert_accuracy"
+    ]
+   }
+  ],
+  "lost": [
+   {
+    "seqs": [
+     1,
+     2,
+     3
+    ],
+    "want": [
+     0,
+     0
+    ]
+   },
+   {
+    "seqs": [
+     7,
+     7,
+     7,
+     8
+    ],
+    "want": [
+     0,
+     2
+    ]
+   },
+   {
+    "seqs": [
+     254,
+     255,
+     0,
+     2
+    ],
+    "want": [
+     1,
+     0
+    ]
+   },
+   {
+    "seqs": [
+     10,
+     9
+    ],
+    "want": [
+     254,
+     0
+    ]
+   },
+   {
+    "seqs": [],
+    "want": [
+     0,
+     0
+    ]
+   },
+   {
+    "seqs": [
+     5
+    ],
+    "want": [
+     0,
+     0
+    ]
+   },
+   {
+    "seqs": [
+     100,
+     150,
+     200,
+     250,
+     44
+    ],
+    "want": [
+     196,
+     0
+    ]
+   }
+  ],
+  "gauss_markov": [
+   {
+    "args": [
+     5,
+     0.5,
+     10.0,
+     1.2,
+     7,
+     0.0
+    ],
+    "want": [
+     0.001043819737170393,
+     0.25448562325606283,
+     0.009147658285386467,
+     -0.7470019587744808,
+     -1.095452815318561
+    ]
+   },
+   {
+    "args": [
+     4,
+     0.2,
+     20.0,
+     0.6,
+     99,
+     3.0
+    ],
+    "want": [
+     2.9921355446561892,
+     2.8375976517087866,
+     2.8227762889555756,
+     2.9786835773935443
+    ]
+   },
+   {
+    "args": [
+     6,
+     1.0,
+     5.0,
+     2.0,
+     1,
+     -1.0
+    ],
+    "want": [
+     -0.108831615870428,
+     1.5561709943059743,
+     1.9058109478115537,
+     -1.081665704959479,
+     0.9453791693786523,
+     1.6490524802309445
+    ]
+   }
+  ],
+  "stationary": [
+   {
+    "args": [
+     0.5,
+     10.0,
+     1.2
+    ],
+    "want": 2.7174648819470293
+   },
+   {
+    "args": [
+     1.0,
+     30.0,
+     0.3
+    ],
+    "want": 1.1717001988274143
+   },
+   {
+    "args": [
+     0.1,
+     2.0,
+     5.0
+    ],
+    "want": 5.063696835418332
+   }
+  ],
+  "autocorr": [
+   {
+    "x": [
+     -2.358,
+     -1.996,
+     1.939,
+     -3.688,
+     0.913,
+     -3.012,
+     4.002,
+     2.506,
+     5.113,
+     1.692,
+     3.796,
+     2.728
+    ],
+    "lag": 0,
+    "want": 1.0
+   },
+   {
+    "x": [
+     -1.477,
+     0.591,
+     -1.914,
+     0.191,
+     2.593,
+     1.615,
+     0.979,
+     6.479,
+     2.516,
+     1.526,
+     3.319,
+     2.254
+    ],
+    "lag": 1,
+    "want": 0.23354185109156791
+   },
+   {
+    "x": [
+     -0.77,
+     -0.4,
+     4.651,
+     0.945,
+     1.551,
+     2.848,
+     5.834,
+     1.653,
+     1.152,
+     7.649,
+     0.081,
+     2.566
+    ],
+    "lag": 3,
+    "want": 0.3101319841695183
+   },
+   {
+    "x": [
+     1.334,
+     4.867,
+     -1.3,
+     -3.955,
+     2.523,
+     0.457,
+     1.025,
+     3.023,
+     2.847,
+     3.282,
+     2.138,
+     5.879
+    ],
+    "lag": 7,
+    "want": -0.013723720358330414
+   }
+  ],
+  "rayleigh": [
+   {
+    "args": [
+     30.0,
+     0.5
+    ],
+    "want": 35.32230067546424
+   },
+   {
+    "args": [
+     2.5,
+     0.9
+    ],
+    "want": 5.364915065723368
+   },
+   {
+    "args": [
+     100.0,
+     0.99
+    ],
+    "want": 303.48542587702923
+   },
+   {
+    "args": [
+     8.0,
+     0.0
+    ],
+    "want": -0.0
+   }
+  ],
+  "latencies": [
+   {
+    "rows": [
+     {
+      "t_s": 10.0,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.2,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.4,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.6,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.8,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 11.0,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 11.2,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 11.4,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 11.6,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 11.8,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 12.0,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 12.2,
+      "lite_source": ""
+     },
+     {
+      "t_s": 12.4,
+      "lite_source": ""
+     },
+     {
+      "t_s": 12.6,
+      "lite_source": ""
+     },
+     {
+      "t_s": 12.8,
+      "lite_source": ""
+     },
+     {
+      "t_s": 13.0,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 13.2,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 13.4,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 13.6,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 13.8,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 14.0,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 14.2,
+      "lite_source": "gps"
+     }
+    ],
+    "t0": 10.4,
+    "t1": 13.0,
+    "want": [
+     0.7999999999999989,
+     0.5999999999999996
+    ]
+   },
+   {
+    "rows": [
+     {
+      "t_s": 10.0,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.2,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.4,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.6,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.8,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 11.0,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 11.2,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 11.4,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 11.6,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 11.8,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 12.0,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 12.2,
+      "lite_source": ""
+     },
+     {
+      "t_s": 12.4,
+      "lite_source": ""
+     },
+     {
+      "t_s": 12.6,
+      "lite_source": ""
+     },
+     {
+      "t_s": 12.8,
+      "lite_source": ""
+     },
+     {
+      "t_s": 13.0,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 13.2,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 13.4,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 13.6,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 13.8,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 14.0,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 14.2,
+      "lite_source": "gps"
+     }
+    ],
+    "t0": 11.0,
+    "t1": 13.4,
+    "want": [
+     0.1999999999999993,
+     0.1999999999999993
+    ]
+   },
+   {
+    "rows": [
+     {
+      "t_s": 10.0,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.2,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.4,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.6,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.8,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 11.0,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 11.2,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 11.4,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 11.6,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 11.8,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 12.0,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 12.2,
+      "lite_source": ""
+     },
+     {
+      "t_s": 12.4,
+      "lite_source": ""
+     },
+     {
+      "t_s": 12.6,
+      "lite_source": ""
+     },
+     {
+      "t_s": 12.8,
+      "lite_source": ""
+     },
+     {
+      "t_s": 13.0,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 13.2,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 13.4,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 13.6,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 13.8,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 14.0,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 14.2,
+      "lite_source": "gps"
+     }
+    ],
+    "t0": 10.0,
+    "t1": null,
+    "want": [
+     1.1999999999999993,
+     null
+    ]
+   },
+   {
+    "rows": [
+     {
+      "t_s": 10.0,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.2,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.4,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.6,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.8,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 11.0,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 11.2,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 11.4,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 11.6,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 11.8,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 12.0,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 12.2,
+      "lite_source": ""
+     },
+     {
+      "t_s": 12.4,
+      "lite_source": ""
+     },
+     {
+      "t_s": 12.6,
+      "lite_source": ""
+     },
+     {
+      "t_s": 12.8,
+      "lite_source": ""
+     },
+     {
+      "t_s": 13.0,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 13.2,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 13.4,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 13.6,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 13.8,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 14.0,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 14.2,
+      "lite_source": "gps"
+     }
+    ],
+    "t0": 13.8,
+    "t1": 14.0,
+    "want": [
+     null,
+     0.0
+    ]
+   },
+   {
+    "rows": [
+     {
+      "t_s": 10.0,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.2,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.4,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.6,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.8,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 11.0,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 11.2,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 11.4,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 11.6,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 11.8,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 12.0,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 12.2,
+      "lite_source": ""
+     },
+     {
+      "t_s": 12.4,
+      "lite_source": ""
+     },
+     {
+      "t_s": 12.6,
+      "lite_source": ""
+     },
+     {
+      "t_s": 12.8,
+      "lite_source": ""
+     },
+     {
+      "t_s": 13.0,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 13.2,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 13.4,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 13.6,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 13.8,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 14.0,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 14.2,
+      "lite_source": "gps"
+     }
+    ],
+    "t0": 14.4,
+    "t1": 50.0,
+    "want": [
+     null,
+     null
+    ]
+   },
+   {
+    "rows": [
+     {
+      "t_s": 10.0,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.2,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.4,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.6,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.8,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 11.0,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 11.2,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 11.4,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 11.6,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 11.8,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 12.0,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 12.2,
+      "lite_source": ""
+     },
+     {
+      "t_s": 12.4,
+      "lite_source": ""
+     },
+     {
+      "t_s": 12.6,
+      "lite_source": ""
+     },
+     {
+      "t_s": 12.8,
+      "lite_source": ""
+     },
+     {
+      "t_s": 13.0,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 13.2,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 13.4,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 13.6,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 13.8,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 14.0,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 14.2,
+      "lite_source": "gps"
+     }
+    ],
+    "t0": 11.2,
+    "t1": 13.6,
+    "want": [
+     0.0,
+     0.0
+    ]
+   },
+   {
+    "rows": [
+     {
+      "t_s": 10.0,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.2,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.4,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.6,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 10.8,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 11.0,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 11.2,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 11.4,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 11.6,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 11.8,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 12.0,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 12.2,
+      "lite_source": ""
+     },
+     {
+      "t_s": 12.4,
+      "lite_source": ""
+     },
+     {
+      "t_s": 12.6,
+      "lite_source": ""
+     },
+     {
+      "t_s": 12.8,
+      "lite_source": ""
+     },
+     {
+      "t_s": 13.0,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 13.2,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 13.4,
+      "lite_source": "night"
+     },
+     {
+      "t_s": 13.6,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 13.8,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 14.0,
+      "lite_source": "gps"
+     },
+     {
+      "t_s": 14.2,
+      "lite_source": "gps"
+     }
+    ],
+    "t0": 12.1,
+    "t1": 13.5,
+    "want": [
+     0.09999999999999964,
+     0.09999999999999964
+    ]
+   }
+  ],
+  "verdict": [
+   {
+    "args": [
+     2.5,
+     "<=",
+     4.0
+    ],
+    "want": [
+     "PASS",
+     "2.5 <= 4"
+    ]
+   },
+   {
+    "args": [
+     4.0,
+     "<=",
+     4.0
+    ],
+    "want": [
+     "PASS",
+     "4 <= 4"
+    ]
+   },
+   {
+    "args": [
+     4.01,
+     "<=",
+     4.0
+    ],
+    "want": [
+     "FAIL",
+     "4.01 > 4"
+    ]
+   },
+   {
+    "args": [
+     0.97,
+     ">=",
+     0.95
+    ],
+    "want": [
+     "PASS",
+     "0.97 >= 0.95"
+    ]
+   },
+   {
+    "args": [
+     0.5,
+     ">=",
+     0.95
+    ],
+    "want": [
+     "FAIL",
+     "0.5 < 0.95"
+    ]
+   },
+   {
+    "args": [
+     null,
+     ">=",
+     0.95
+    ],
+    "want": [
+     "FAIL",
+     "never happened"
+    ]
+   },
+   {
+    "args": [
+     0.0,
+     "<=",
+     0.0
+    ],
+    "want": [
+     "PASS",
+     "0 <= 0"
+    ]
+   }
+  ]
+ },
+ "lab": {
+  "header_len": 63,
+  "stream": {
+   "frames": 182,
+   "gps_ok": 176,
+   "bad_crc": 2,
+   "heartbeats": 3,
+   "lost_doubled": [
+    6,
+    1
+   ],
+   "fix3": 176,
+   "nofix": 0,
+   "flag_counts": {
+    "180": 146,
+    "189": 30
+   },
+   "shortest_payload": 62,
+   "max_horiz_accuracy": 15.0,
+   "first_vision_lat": 35.8118619
+  },
+  "gm_sigma": 1.9636397648532562,
+  "corr_10s": 0.6356020321335664,
+  "rayleigh_p95_15": 36.716202460212244,
+  "expect_off_switch_s": 3.0,
+  "expect_jump_gate_m": 56.0,
+  "expect_drift_s": 16.0,
+  "runs": {
+   "baseline": {
+    "t0_s": null,
+    "t1_s": null,
+    "switch_s": null,
+    "recover_s": null,
+    "availability": 1.0,
+    "leak_s": 0.0,
+    "max_err_m": 5.3,
+    "error95_m": 4.8,
+    "failsafe_s": null,
+    "false_refusal_s": 0.0,
+    "ap_max_err_m": 5.0
+   },
+   "jam": {
+    "t0_s": 30.0,
+    "t1_s": 70.0,
+    "switch_s": 0.0,
+    "recover_s": 3.4,
+    "availability": 1.0,
+    "leak_s": 0.0,
+    "max_err_m": 56.2,
+    "error95_m": 31.8,
+    "failsafe_s": null,
+    "false_refusal_s": 1.4,
+    "ap_max_err_m": 14.3
+   },
+   "off": {
+    "t0_s": 30.0,
+    "t1_s": 70.0,
+    "switch_s": 3.0,
+    "recover_s": 3.4,
+    "availability": 1.0,
+    "leak_s": 0.0,
+    "max_err_m": 45.1,
+    "error95_m": 32.7,
+    "failsafe_s": null,
+    "false_refusal_s": 1.4,
+    "ap_max_err_m": 13.0
+   },
+   "jump": {
+    "t0_s": 30.0,
+    "t1_s": 90.0,
+    "switch_s": 0.0,
+    "recover_s": 3.4,
+    "availability": 1.0,
+    "leak_s": 0.0,
+    "max_err_m": 75.8,
+    "error95_m": 39.4,
+    "failsafe_s": null,
+    "false_refusal_s": 1.4,
+    "ap_max_err_m": 14.6
+   },
+   "drift": {
+    "t0_s": 30.0,
+    "t1_s": 120.0,
+    "switch_s": 18.4,
+    "recover_s": 3.4,
+    "availability": 1.0,
+    "leak_s": 0.0,
+    "max_err_m": 76.4,
+    "error95_m": 49.1,
+    "failsafe_s": null,
+    "false_refusal_s": 1.4,
+    "ap_max_err_m": 93.0
+   },
+   "blind": {
+    "t0_s": 30.0,
+    "t1_s": null,
+    "switch_s": 0.0,
+    "recover_s": null,
+    "availability": 0.2763,
+    "leak_s": 0.0,
+    "max_err_m": 76.7,
+    "error95_m": 51.3,
+    "failsafe_s": 5.2,
+    "false_refusal_s": 0.0,
+    "ap_max_err_m": 11.8
+   },
+   "plane_late": {
+    "t0_s": 20.0,
+    "t1_s": null,
+    "switch_s": 4.4,
+    "recover_s": null,
+    "availability": 1.0,
+    "leak_s": 0.0,
+    "max_err_m": 137.0,
+    "error95_m": 121.5,
+    "failsafe_s": null,
+    "false_refusal_s": 40.0,
+    "ap_max_err_m": 88.7
+   }
+  },
+  "verdicts": {
+   "R1": "PASS",
+   "R2": "PASS",
+   "R3": "PASS",
+   "R4": "PASS",
+   "R5": "PASS",
+   "R6": "PASS",
+   "R7": "PASS",
+   "R8": "PASS",
+   "R9": "FAIL"
+  },
+  "failed": [
+   "R9"
+  ],
+  "plane_delayed": {
+   "t0_s": 20.0,
+   "t1_s": null,
+   "switch_s": null,
+   "recover_s": null,
+   "availability": 1.0,
+   "leak_s": 0.0,
+   "max_err_m": 5.9,
+   "error95_m": 5.9,
+   "failsafe_s": null,
+   "false_refusal_s": 0.0,
+   "ap_max_err_m": 6.2
+  },
+  "rows": {
+   "baseline": 300,
+   "jam": 550,
+   "off": 550,
+   "jump": 600,
+   "drift": 750,
+   "blind": 226,
+   "plane_late": 350,
+   "plane_delayed": 350
+  }
+ },
+ "flights": [
+  {
+   "scenario": {
+    "name": "h_boat_off",
+    "vehicle": "boat",
+    "vision": "target",
+    "seed": 501,
+    "duration_s": 80,
+    "faults": [
+     [
+      20,
+      "gps",
+      "off"
+     ],
+     [
+      50,
+      "gps",
+      "ok"
+     ]
+    ]
+   },
+   "want": {
+    "t0_s": 20.0,
+    "t1_s": 50.0,
+    "switch_s": 3.0,
+    "recover_s": 3.4,
+    "availability": 1.0,
+    "leak_s": 0.0,
+    "max_err_m": 44.0,
+    "error95_m": 29.5,
+    "failsafe_s": null,
+    "false_refusal_s": 1.4,
+    "ap_max_err_m": 14.4
+   },
+   "rows": 400
+  },
+  {
+   "scenario": {
+    "name": "h_night_blind",
+    "vehicle": "drone",
+    "vision": "target",
+    "light": "night",
+    "seed": 502,
+    "duration_s": 60,
+    "faults": [
+     [
+      25,
+      "gps",
+      "jammed"
+     ],
+     [
+      35,
+      "camera",
+      "blackout"
+     ]
+    ]
+   },
+   "want": {
+    "t0_s": 25.0,
+    "t1_s": null,
+    "switch_s": 0.0,
+    "recover_s": null,
+    "availability": 0.582,
+    "leak_s": 0.0,
+    "max_err_m": 125.5,
+    "error95_m": 97.8,
+    "failsafe_s": 14.4,
+    "false_refusal_s": 0.0,
+    "ap_max_err_m": 4.1
+   },
+   "rows": 247
+  }
+ ],
+ "scenarios": {
+  "baseline.json": {
+   "name": "baseline",
+   "vehicle": "drone",
+   "vision": "target",
+   "seed": 11,
+   "duration_s": 60,
+   "faults": []
+  },
+  "blind.json": {
+   "name": "blind",
+   "vehicle": "drone",
+   "vision": "target",
+   "seed": 16,
+   "duration_s": 60,
+   "faults": [
+    [
+     30,
+     "gps",
+     "jammed"
+    ],
+    [
+     30,
+     "camera",
+     "blackout"
+    ]
+   ]
+  },
+  "day_mine.json": {
+   "name": "day_mine",
+   "vehicle": "drone",
+   "vision": "mine",
+   "seed": 21,
+   "duration_s": 100,
+   "faults": [
+    [
+     20,
+     "gps",
+     "jammed"
+    ]
+   ]
+  },
+  "drift.json": {
+   "name": "drift",
+   "vehicle": "drone",
+   "vision": "target",
+   "seed": 15,
+   "duration_s": 150,
+   "faults": [
+    [
+     30,
+     "gps",
+     "spoof_drift"
+    ],
+    [
+     120,
+     "gps",
+     "ok"
+    ]
+   ]
+  },
+  "jam.json": {
+   "name": "jam",
+   "vehicle": "drone",
+   "vision": "target",
+   "seed": 12,
+   "duration_s": 110,
+   "faults": [
+    [
+     30,
+     "gps",
+     "jammed"
+    ],
+    [
+     70,
+     "gps",
+     "ok"
+    ]
+   ]
+  },
+  "jump.json": {
+   "name": "jump",
+   "vehicle": "drone",
+   "vision": "target",
+   "seed": 14,
+   "duration_s": 120,
+   "faults": [
+    [
+     30,
+     "gps",
+     "spoof_jump"
+    ],
+    [
+     90,
+     "gps",
+     "ok"
+    ]
+   ]
+  },
+  "night_mine.json": {
+   "name": "night_mine",
+   "vehicle": "drone",
+   "vision": "mine",
+   "light": "night",
+   "seed": 22,
+   "duration_s": 100,
+   "faults": [
+    [
+     20,
+     "gps",
+     "jammed"
+    ]
+   ]
+  },
+  "off.json": {
+   "name": "off",
+   "vehicle": "drone",
+   "vision": "target",
+   "seed": 13,
+   "duration_s": 110,
+   "faults": [
+    [
+     30,
+     "gps",
+     "off"
+    ],
+    [
+     70,
+     "gps",
+     "ok"
+    ]
+   ]
+  },
+  "plane_delayed.json": {
+   "name": "plane_delayed",
+   "vehicle": "plane",
+   "vision": "target",
+   "seed": 17,
+   "duration_s": 70,
+   "faults": [
+    [
+     20,
+     "camera",
+     "delayed"
+    ]
+   ]
+  },
+  "plane_late.json": {
+   "name": "plane_late",
+   "vehicle": "plane",
+   "vision": "target",
+   "seed": 17,
+   "duration_s": 70,
+   "faults": [
+    [
+     20,
+     "camera",
+     "late"
+    ]
+   ]
+  }
+ }
+}
