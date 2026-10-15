@@ -968,7 +968,7 @@ def web_tool(tool, sub):
         abort(404)
     if not config.navera_allowed(request.user) and (config.RESOURCES["sim"].get("teacher_only") or _holder("sim") != request.user):
         return webtools.message("The full simulator is for the teacher",
-                                "You fly <b>Sim Lite</b>: open the 🛩️ <b>Simulator</b> tab. It runs your own NAVERA code, "
+                                "You fly <b>Sim Lite</b>: open the 🛩️ <b>Simulator</b> tab. It flies your own NAVERA Lite, "
                                 "and no booking is needed.", 423, lite=True)
     return webtools.proxy(app, tool, sub, request)
 
@@ -977,12 +977,14 @@ def web_tool(tool, sub):
 @app.get("/api/simlite/code")
 @login_required()
 def api_simlite_code():
-    teacher = config.navera_allowed(request.user)          # the original NAVERA: teacher, or a student given access
-    src = "original" if teacher and request.args.get("src") == "original" else "mine"
-    try:
-        return jsonify(simlite.code(request.user, src, allow_original=teacher))
-    except FileNotFoundError as e:
-        return jsonify(error=str(e)), 409
+    # NAVERA Lite for everyone (no NAVERA access needed): the student's own parts; the course's FINISHED parts only for
+    # missions the student has passed (staff and students given NAVERA access: all of them, and src=course)
+    full = is_staff(request.urec) or config.navera_allowed(request.user)
+    src = request.args.get("src", "mine")
+    src = src if src in ("mine", "safe") else ("course" if full else "safe")
+    prog = _load("progress.json", {}).get(request.user, {})
+    passed = [lid for lid, r in prog.items() if isinstance(r, dict) and r.get("status") == "passed"]
+    return jsonify(simlite.code(request.user, src, passed=passed, full=full))
 
 
 @app.get("/api/simlite/script")

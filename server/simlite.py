@@ -1,7 +1,7 @@
 """NAVERA Sim Lite — what the Jetson serves (the simulation itself runs in each student's browser).
 
-  code(name, src)      the student's NAVERA files the browser runs: navera_common, the estimator,
-                       navera_msgs/*.msg — from their own copy ("mine") or the base ("original")
+  code(name, src)      the NAVERA Lite files the browser flies: the student's own parts ("mine", each replaced by
+                       the course's copy when missing or unfinished) or the course's ("course")
   script / save        the student's flight script, kept outside their NAVERA copy (a reset keeps it)
   tile(z, x, y)        OpenStreetMap tiles from the map file; missing low zooms are built from
                        the zoom-17 tiles once and cached
@@ -21,38 +21,173 @@ CACHE = os.path.join(config.ACADEMY, "state", "tilecache")
 _db = threading.local()
 
 
-def _root(name, src, allow_original):
-    if src == "mine":
-        nav = os.path.join(workspaces.student_home(name), "navera")
-        if os.path.isdir(nav):
-            return nav, "mine"
-    if not allow_original:          # students only ever fly their own copy, never the original's code
-        if not config.navera_allowed(name):
-            raise FileNotFoundError("NAVERA is not part of the course: your teacher can open it for you")
-        raise FileNotFoundError("your NAVERA copy is missing — press ♻️ Reset my NAVERA copy in the user menu")
-    return config.BASE, "original"
+# ---------------------------------------------------------------- the code the browser flies: NAVERA Lite
+# Sim Lite flies the student's own NAVERA Lite (owner decisions 2026-10-15): it ALWAYS opens and flies for every
+# student, but never ships a later mission's solution to the browser. For each part:
+#   1. the student's own copy (from the lesson folder where they write it) if it compiles, has no TODO stub left,
+#      and every course part it imports may be sent;
+#   2. else the course's FINISHED copy, only if the student has PASSED the missions whose TODOs it holds
+#      (staff and students given NAVERA access: always);
+#   3. else a simple teaching stand-in (server/simlite_standins: arbiter v0's naive judge, mission 09's position
+#      contract, a pass-through instead of the Kalman filter), or nothing (no spoofing guard).
+COURSE_FILES = ("31-simulator", "files")             # the course's copies: finished up to mission 30, 31 = starter
+STANDINS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "simlite_standins", "navera_lite")
+# part → (missions whose TODOs it holds, course parts it imports, where the student writes it, stand-in?)
+PARTS = {
+    "geo.py": (("06-coordinates",), (), None, False),
+    "estimate.py": (("12-position-message",), ("geo.py",), None, True),
+    "guard.py": ((), ("geo.py",), None, False),
+    "uncertainty.py": (("27-uncertainty",), ("estimate.py",), None, False),
+    "arbiter.py": (("29-arbiter",), ("estimate.py", "geo.py", "guard.py"), "29-arbiter", True),
+    "spoof.py": (("30-spoofing",), ("estimate.py", "geo.py", "guard.py", "uncertainty.py"), "30-spoofing", False),
+    "kalman.py": (("28-kalman",), ("uncertainty.py",), "28-kalman", True),
+}
+ALWAYS = ("__init__.py", "output.py", "sim/__init__.py", "sim/sensors.py", "sim/world.py")   # given or stubs only
+STUB_MARKS = ("# TODO: write your code above", 'NotImplementedError("TODO')
+YAML_FROM = ("33-final-project", "31-simulator", "30-spoofing", "29-arbiter")
 
 
-def code(name, src, allow_original=False):
-    root, origin = _root(name, src, allow_original)
-    files = {}
-    for f in sorted(glob.glob(os.path.join(root, "navera_common", "navera_common", "*.py"))):
-        files["navera_common/" + os.path.basename(f)] = f
-    files["navera_estimator/nodes/estimator_node.py"] = os.path.join(
-        root, "navera_estimator", "navera_estimator", "nodes", "estimator_node.py")
-    for f in sorted(glob.glob(os.path.join(root, "navera_msgs", "msg", "*.msg"))):
-        files["navera_msgs/msg/" + os.path.basename(f)] = f
-    out, missing = {}, []
-    for rel, path in files.items():
+def _course_dir():
+    return os.path.join(config.COURSES, *COURSE_FILES)
+
+
+def _read(path):
+    if os.path.getsize(path) > MAX_FILE:
+        raise ValueError("too big")
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        return fh.read()
+
+
+def _mine(name, lesson, part, needs_done=True):
+    """The student's own copy of a part, or (None, why)."""
+    path = os.path.join(workspaces.lesson_dir(name, lesson), "navera_lite", part)
+    rel = f"lessons/{lesson}/navera_lite/{part}"
+    if not os.path.isfile(path):
+        return None, f"{rel} not found"
+    try:
+        text = _read(path)
+    except (OSError, ValueError) as e:
+        return None, f"{rel} cannot be read ({e})"
+    try:
+        compile(text, rel, "exec")
+    except SyntaxError as e:
+        return None, f"{rel} line {e.lineno}: {e.msg}"
+    if needs_done and any(m in text for m in STUB_MARKS):
+        return None, f"{rel} still has TODO stubs"
+    return text, rel
+
+
+def code(name, src="mine", passed=(), full=False):
+    """{"origin", "files": {"navera_lite/<part>": text, "navera_lite.yaml": text}, "parts": {part: where it comes
+    from and why}, "profile": my_vision_profile.json or None, "missing": []}. Never fails for a student.
+    passed: the mission ids the student has passed; full: may receive every course part (staff, NAVERA access)."""
+    passed = set(passed)
+    course = full and src == "course"
+    own = src == "mine"                                # "safe": never the student's files (after an error)
+    allowed = {}                                       # part → the course's finished copy may be sent
+
+    def ok(part):
+        if part not in allowed:
+            todo, deps, _, _ = PARTS[part]
+            allowed[part] = (full or all(m in passed for m in todo)) and all(ok(d) for d in deps)
+        return allowed[part]
+
+    base = os.path.join(_course_dir(), "navera_lite")
+    files, parts, missing = {}, {}, []
+
+    def put(part, path):
         try:
-            if os.path.getsize(path) > MAX_FILE:
-                missing.append(rel + " (too big)")
+            files["navera_lite/" + part] = _read(path)
+            return True
+        except (OSError, ValueError):
+            missing.append(part)
+            return False
+
+    for part in ALWAYS:
+        if part == "output.py" and own:
+            text, why = _mine(name, "31-simulator", part, needs_done=False)
+            if text is not None:
+                files["navera_lite/" + part] = text
+                parts["output"] = f"yours ({why})"
                 continue
-            with open(path, encoding="utf-8", errors="replace") as fh:
-                out[rel] = fh.read()
-        except OSError:
-            missing.append(rel)
-    return {"origin": origin, "files": out, "missing": missing}
+            parts["output"] = "the course's starter (encoder given; your decoder is not written: direct link)"
+        put(part, os.path.join(base, part))
+    chosen = {}
+    for part in ("arbiter.py", "spoof.py", "kalman.py"):          # the student's parts first
+        todo, deps, lesson, standin = PARTS[part]
+        label, why = part[:-3], ""
+        if own and lesson:
+            text, why = _mine(name, lesson, part)
+            if text is not None and all(ok(d) for d in deps):
+                files["navera_lite/" + part] = text
+                chosen[part] = "yours"
+                parts[label] = f"yours ({why})"
+                continue
+            if text is not None:
+                why = f"{why}: it needs course parts of missions you have not passed yet"
+        if ok(part):
+            chosen[part] = "course"
+            parts[label] = "the course's finished part" + (f" ({why})" if why else "")
+        elif standin:
+            chosen[part] = "standin"
+            parts[label] = {"arbiter": "stand-in: arbiter v0's naive rules (mission 29 not passed yet)",
+                            "kalman": "stand-in: no filter, positions passed through (mission 28 not passed yet)"}[label] \
+                + (f" — {why}" if why else "")
+        else:
+            chosen[part] = "none"
+            parts[label] = "none: no spoofing guard (mission 30 not passed yet)" + (f" — {why}" if why else "")
+    # the course parts they import: finished when allowed, else the stand-in position contract
+    need = {"estimate.py"}                                          # the world itself uses the Estimate
+    todo = [p for p, how in chosen.items() if how in ("yours", "course")]
+    while todo:
+        for d in PARTS[todo.pop()][1]:
+            if d not in need:
+                need.add(d)
+                todo.append(d)                                         # the world itself uses the Estimate
+    for part in sorted(need):
+        if ok(part):
+            put(part, os.path.join(base, part))
+        elif PARTS[part][3]:
+            put(part, os.path.join(STANDINS, part))
+    for part, how in chosen.items():
+        if how == "course":
+            put(part, os.path.join(base, part))
+        elif how == "standin":
+            put(part, os.path.join(STANDINS, part))
+    if not ok("estimate.py"):
+        parts["estimate"] = "stand-in: mission 09's position contract (mission 12 not passed yet)"
+    yaml_text, yaml_from = None, "the course's"
+    if own:
+        for lesson in YAML_FROM:
+            p = os.path.join(workspaces.lesson_dir(name, lesson), "navera_lite.yaml")
+            if os.path.isfile(p):
+                try:
+                    yaml_text, yaml_from = _read(p), f"yours (lessons/{lesson}/navera_lite.yaml)"
+                    break
+                except (OSError, ValueError):
+                    pass
+    if yaml_text is None:
+        try:
+            yaml_text = _read(os.path.join(_course_dir(), "navera_lite.yaml"))
+        except (OSError, ValueError):
+            yaml_text = ""
+    files["navera_lite.yaml"] = yaml_text
+    parts["settings"] = yaml_from
+    profile = None
+    if own:
+        p = os.path.join(workspaces.lesson_dir(name, "31-simulator"), "my_vision_profile.json")
+        try:
+            prof = json.loads(_read(p))
+            if isinstance(prof, dict) and all(isinstance(prof.get(k), dict) and "sigma_m" in prof[k]
+                                              for k in ("day", "night")):
+                profile = {k: {"sigma_m": float(prof[k]["sigma_m"]), "stated_sigma_m": prof[k].get("stated_sigma_m"),
+                               "fail": float(prof[k].get("fail", 0.0))} for k in ("day", "night")}
+        except (OSError, ValueError, TypeError):
+            pass
+    parts["vision profile"] = ("yours (lessons/31-simulator/my_vision_profile.json)" if profile
+                               else "none yet (mission 31, lab Step 11): 'My networks' flies the target profile")
+    return {"origin": "course" if course else src, "files": files, "parts": parts, "profile": profile,
+            "missing": missing, "full": bool(full)}
 
 
 DEFAULT_SCRIPT = '''# Your flight script — runs in your browser with the simulation.
@@ -154,30 +289,37 @@ def _lesson(name, lesson_id):
     return workspaces.lesson_dir(name, lesson_id)
 
 
-FAULTS = {"gps": ("ok", "jammed", "spoof_jump", "spoof_drift", "off"), "camera": ("ok", "failed")}
+FAULTS = {"gps": ("ok", "jammed", "off", "spoof_jump", "spoof_drift"), "camera": ("ok", "blackout", "late", "delayed"),
+          "imu": ("ok", "bias", "off"), "light": ("day", "night")}       # = navera_lite/sim/world.py FAULTS (mission 31)
+VEHICLES = ("drone", "plane", "boat", "robot")
 
 
 def scenario(name, lesson_id):
-    """my_scenario.json, checked like sim_ctl.py checks it: every mistake is reported, nothing is guessed."""
+    """my_scenario.json, checked like navera_lite/sim/run.py checks it: every mistake is reported, nothing is guessed."""
     with open(os.path.join(_lesson(name, lesson_id), "my_scenario.json")) as f:
         sc = json.load(f)
     if not isinstance(sc, dict):
-        raise ValueError('the file must be one object: {"name": …, "vision": …, "faults": […], "tail_s": …}')
-    if not isinstance(sc.get("name", "my_run"), str) or not sc.get("name", "my_run").strip():
-        raise ValueError('"name" must be a text, for example "my_run"')
-    if sc.get("vision", "target") not in ("target", "measured"):
-        raise ValueError(f'"vision" must be "target" or "measured", not {sc.get("vision")!r}')
+        raise ValueError('the file must be one object: {"name": …, "vision": …, "faults": […], "duration_s": …}')
+    nm = sc.get("name", "")
+    if not isinstance(nm, str) or not _NAME.match(nm):
+        raise ValueError('"name" must be a text of letters, digits, - and _, for example "my_run"')
+    if sc.get("vision", "target") not in ("target", "measured", "mine", "profile"):
+        raise ValueError(f'"vision" must be "target", "measured", "mine" or "profile", not {sc.get("vision")!r}')
+    if sc.get("vehicle", "drone") not in VEHICLES:
+        raise ValueError(f'"vehicle" must be one of {", ".join(VEHICLES)}')
+    if sc.get("light", "day") not in FAULTS["light"]:
+        raise ValueError('"light" must be "day" or "night"')
     faults = sc.get("faults", [])
     if not isinstance(faults, list):
         raise ValueError('"faults" must be a list like [[30, "gps", "jammed"], [70, "gps", "ok"]]')
     for f in faults:
         if (not isinstance(f, list) or len(f) != 3 or not isinstance(f[0], (int, float)) or isinstance(f[0], bool)
                 or f[0] < 0 or f[1] not in FAULTS or f[2] not in FAULTS[f[1]]):
-            raise ValueError(f'fault {json.dumps(f)}: use [seconds, "gps", "ok|jammed|spoof_jump|spoof_drift|off"] '
-                             'or [seconds, "camera", "ok|failed"]')
-    tail = sc.get("tail_s", 40)
-    if not isinstance(tail, (int, float)) or isinstance(tail, bool) or tail < 0:
-        raise ValueError('"tail_s" must be a number of seconds')
+            raise ValueError(f"fault {json.dumps(f)}: use [seconds ≥ 0, sensor, mode] with "
+                             + "; ".join(f"{k}: {'|'.join(v)}" for k, v in FAULTS.items()))
+    d = sc.get("duration_s", 120)
+    if not isinstance(d, (int, float)) or isinstance(d, bool) or not 0 < d <= 600:
+        raise ValueError('"duration_s" must be a number of seconds, 0 < duration ≤ 600')
     return sc
 
 

@@ -173,7 +173,7 @@ body.signed-out { display: flex; flex-direction: column; } body.signed-out .sl {
 <div class="auth" id="authBanner"><span>Your session ended — sign in again<span class="auth-x"> (your flight script is still in the editor: copy it first if you changed it)</span>.</span> <a href="/" target="_top">Sign in</a></div>
 <div class="sl">
   <div class="top">
-    <span class="logo">✈ <span class="lt">NAVERA SIM</span></span><a class="by-iris" href="https://iris-systems.tn" target="_blank" rel="noopener" onclick="event.stopPropagation()">by <span class="iris-mark" role="img" aria-label="IRIS"><span>IRIS</span></span></a>
+    <span class="logo">✈ <span class="lt">NAVERA LITE SIM</span></span><a class="by-iris" href="https://iris-systems.tn" target="_blank" rel="noopener" onclick="event.stopPropagation()">by <span class="iris-mark" role="img" aria-label="IRIS"><span>IRIS</span></span></a>
     <span class="lite">Lite · runs on your computer</span>
     <span class="seg" id="modeSeg" style="display:none"><button class="on">Lite</button><button id="toFull" title="The full simulator (real ArduPilot autopilot) — teacher; opens in a new window">Full ↗</button></span>
     <span class="grow"></span>
@@ -211,14 +211,14 @@ body.signed-out { display: flex; flex-direction: column; } body.signed-out .sl {
           <span class="seg light" id="vehSeg"><button data-v="drone" class="on">🛩 Drone</button><button data-v="plane">✈ Plane</button><button data-v="boat">🚤 Boat</button><button data-v="robot">🚙 Robot</button></span>
           <div class="row" style="margin-top:8px">
             <label class="fl">Cruise speed <span>m/s</span><input type="number" id="speedIn" min="1" max="120" step="1"></label>
-            <label class="fl">NAVERA max <span>m/s</span><input type="number" id="maxIn" min="1" max="525" step="1"></label>
+            <label class="fl">max speed <span>m/s</span><input type="number" id="maxIn" min="1" max="525" step="1"></label>
           </div>
         </div>
         <div class="card">
           <div class="ch"><span class="n">3</span>Conditions</div>
           <div class="cond">
             <span class="rl" title="&quot;Measured today&quot; = what NAVERA's day and night vision really achieve now (day ≈ 440 m median). &quot;Target&quot; = the accuracy goal, to see the design work — not a promise.">Vision ⓘ</span>
-            <div class="opts" id="profOpts"><button data-v="measured" class="on">Measured today</button><button data-v="target">Target (goal)</button></div>
+            <div class="opts" id="profOpts"><button data-v="measured" class="on">Measured today</button><button data-v="target">Target (goal)</button><button data-v="mine" title="The profile your own trained networks measured (mission 31, vision_check.py)">My networks</button></div>
             <span class="rl">Light</span>
             <div class="opts" id="lightOpts"><button data-v="day" class="on">☀ Day</button><button data-v="night">☾ Night</button></div>
           </div>
@@ -231,34 +231,34 @@ body.signed-out { display: flex; flex-direction: column; } body.signed-out .sl {
         <div class="card fault"><span class="ic">🛰</span><b>GPS receiver</b>
           <div class="opts" data-k="gps"><button data-v="ok" class="on">Normal</button><button data-v="jammed">Jammed</button><button data-v="spoof_jump">Spoof · 2 km jump</button><button data-v="spoof_drift">Spoof · slow drift</button><button data-v="off">Off</button></div></div>
         <div class="card fault"><span class="ic">📷</span><b>Camera (vision)</b>
-          <div class="opts" data-k="camera"><button data-v="ok" class="on">Working</button><button data-v="failed">Failed</button></div></div>
+          <div class="opts" data-k="camera"><button data-v="ok" class="on">Working</button><button data-v="late">1.5 s late</button><button data-v="failed">Failed</button></div></div>
         <div class="card fault"><span class="ic">🧭</span><b>IMU</b>
-          <div class="opts" data-k="imu"><button data-v="ok" class="on">Working</button><button data-v="failed">Failed</button></div></div>
+          <div class="opts" data-k="imu"><button data-v="ok" class="on">Working</button><button data-v="bias">Tilt bias 3°</button><button data-v="failed">Failed</button></div></div>
         <div class="card fault"><span class="ic">🌗</span><b>Light</b>
           <div class="opts" data-k="light"><button data-v="day" class="on">☀ Day</button><button data-v="night">☾ Night</button></div></div>
       </div>
 
       <div class="pane" id="p-code">
         <div class="card">
-          <div class="ch"><span class="n">1</span>Your estimator <button class="lnk" id="reloadBtn">↻ reload</button></div>
+          <div class="ch"><span class="n">1</span>Your NAVERA Lite <button class="lnk" id="reloadBtn">↻ reload</button></div>
           <div class="src" id="srcSel" style="display:none">
-            <button data-s="mine" class="on"><b>My NAVERA copy</b>from your workspace</button>
-            <button data-s="original"><b>Original NAVERA</b>to compare</button>
+            <button data-s="mine" class="on"><b>My NAVERA Lite</b>your parts, the course's where yours is missing</button>
+            <button data-s="course"><b>The course's NAVERA Lite</b>to compare</button>
           </div>
-          <div class="file" id="fileInfo">📄 navera_estimator/nodes/estimator_node.py — loading…</div>
+          <div class="file" id="fileInfo">📄 navera_lite — loading…</div>
         </div>
         <div class="card">
           <div class="ch"><span class="n">2</span>Flight script <span class="hint" style="margin:0 0 0 auto;text-transform:none;letter-spacing:0;font-weight:500">Python, in your browser</span></div>
           <textarea class="code" id="script" spellcheck="false"></textarea>
           <div class="acts"><button class="btn fly" id="runBtn">▶ Fly</button><button class="btn lite-btn" id="saveBtn">💾 Save</button><button class="btn lite-btn" id="defaultBtn" title="Put the default flight script back in the editor">↺ Restore default script</button></div>
-          <div class="console" id="console">Edit estimator_node.py in your NAVERA copy (in the academy's 📝 Code tab, not this one), press ↻ reload above, then ▶ Fly: the coral line on the map is what YOUR estimator decides.</div>
+          <div class="console" id="console">Sim Lite flies YOUR NAVERA Lite: your judge (mission 29), guard (30), Kalman filter (28) and decoder (31) where you have written them, the course's parts elsewhere. Edit them in the academy's 📝 Code tab, press ↻ reload above, then ▶ Fly.</div>
         </div>
       </div>
 
       <div class="pane" id="p-log">
         <div class="card" id="sumCard" style="display:none"><div class="ch">Flight summary</div>
           <div class="sum" id="sumBody"></div>
-          <p class="hint" style="margin:8px 0 0"><b>Position error</b> = how far NAVERA's estimate was from where the vehicle really was (how wrong NAVERA was).
+          <p class="hint" style="margin:8px 0 0"><b>Position error</b> = how far NAVERA Lite's position was from where the vehicle really was.
             <b>Distance to destination</b> = how far the vehicle really ended from the 🚩 (where the mistakes took it).</p></div>
         <div class="card"><div class="ch">Save this flight</div>
           <button class="btn fly" id="saveRunBtn" disabled title="Save the last flight as a CSV in this mission's my_runs/ folder">📁 Save to my_runs/</button>
@@ -270,7 +270,7 @@ body.signed-out { display: flex; flex-direction: column; } body.signed-out .sl {
 
   <div class="bottom">
     <div class="card"><div class="l">GPS</div><div class="v" id="cGps">—</div><div class="n" id="nGps">not flying yet</div></div>
-    <div class="card"><div class="l">NAVERA</div><div class="v" id="cNav">—</div><div class="n" id="nNav">your estimator</div></div>
+    <div class="card"><div class="l">NAVERA Lite</div><div class="v" id="cNav">—</div><div class="n" id="nNav">your NAVERA Lite</div></div>
     <div class="card"><div class="l">Position error</div><div class="v" id="cErr">—</div><div class="n">your estimate vs. truth</div></div>
     <div class="card"><div class="l">Vehicle</div><div class="v" id="cVeh">—</div><div class="n" id="nVeh"></div></div>
     <div class="card"><div class="l">Error over time</div><svg id="chart" viewBox="0 0 300 56" preserveAspectRatio="none" style="width:100%;height:58px"></svg></div>
