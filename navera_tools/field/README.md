@@ -41,7 +41,10 @@ A frame that is mostly structure is "blocked": no star in it is counted.
 Measured on a real sky photo: keeps 82 % of the stars the solver matched to the catalogue, and a room with a
 screen full of text gives 0 stars.
 
-## Start at boot (optional)
+## Start at boot (once, from the owner account)
 
     sudo cp navera_tools/field/navera-field.service /etc/systemd/system/
     sudo systemctl enable --now navera-field
+    tailscale funnel --https=8443 --bg http://127.0.0.1:8444     # makes the operator link work from any phone
+
+The link (with its secret key) is then in `~/navera-field/LINK.txt`. Delete `~/navera-field/access_key.txt` and restart for a new one.

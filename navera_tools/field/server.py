@@ -58,7 +58,6 @@ CALIBRATION_SEARCH = (os.environ.get("NAVERA_CAMERA_CALIBRATION", ""), "/etc/nav
                       os.path.expanduser("~/.navera_sim/bench_2026-10-06/calib/insta360_top.yaml"))
 DEFAULT_DEVICE = "/dev/v4l/by-id/usb-Amba_Insta360_One_R-video-index0"
 ATTITUDE_SIGMA_DEG = 0.5            # phone accelerometer, first guess until measured against a level
-PRIOR_ROUND_DEG = 5.0               # the prior only picks between two far-apart candidates
 
 
 def log(msg):
@@ -286,10 +285,13 @@ class Field:
             utc_epoch = texp - off                    # phone time = Jetson time - offset
             utc = datetime.fromtimestamp(utc_epoch, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
             p = self.phone
+            # Near the zenith the sky gives ONE position, so no prior is needed and none is given: the
+            # solver accepts a fix only within 2 degrees of its prior, which would hide big errors
+            # instead of measuring them. A strongly tilted camera has two candidate positions and
+            # needs the phone's position to choose between them.
             prior_lat = prior_lon = float("nan")
-            if p.get("lat") is not None:
-                prior_lat = round(p["lat"] / PRIOR_ROUND_DEG) * PRIOR_ROUND_DEG
-                prior_lon = round(p["lon"] / PRIOR_ROUND_DEG) * PRIOR_ROUND_DEG
+            if att["alt"] < 60.0 and p.get("lat") is not None:
+                prior_lat, prior_lon = p["lat"], p["lon"]
             t0 = time.time()
             r = solve_image_b64_geoloc(base64.b64encode(jpg).decode(), att["alt"], att["az"], utc,
                                        prior_lat, prior_lon, self.camera.hfov)
