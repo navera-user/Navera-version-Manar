@@ -26,7 +26,7 @@ DEFAULTS = {
     "k_sigma": 3.0,            # search radius = k_sigma × σ of the prior …
     "r_min_m": 80.0,           # … but at least r_min_m …
     "r_max_m": 1500.0,         # … and at most r_max_m (NAVERA uses 3, 80 m and 1 500 m)
-    "direct_max_r_m": 300.0,   # YOUR decision (lab Step 12): above this radius, retrieval chooses where to look
+    "direct_max_r_m": 300.0,   # YOUR decision (lab Step 14): above this radius, retrieval chooses where to look
     "top_k": 3,                # how many retrieved tiles the fine step tries, best first
     "tile_r_m": 180.0,         # the fine step's radius around a retrieved tile's centre (a tile's half-diagonal ≈ 175 m)
     "ratio": 0.9,              # ratio test (mission 22)

@@ -17,8 +17,10 @@ MED_DINO = 181.0
 MED_PRIOR = 246.0
 MED_RANDOM = 457.0
 MED_BEST = 103.0
-EXPLAIN_BASELINE = ("DINOv2 beat staying at the prior by about 65 m and the random tile by about 275 m, but its p90 is "
-                    "worse than the prior's: when it is wrong it is far wrong. Even the best tile is about 100 m away "
+P90_DINO = 559.0
+P90_PRIOR = 442.0
+EXPLAIN_BASELINE = ("DINOv2 beat staying at the prior by about 65 m on the median and the random tile by about 275 m, but "
+                    "its p90 is worse than the prior's (559 vs 442 m): when it is wrong it is far wrong. Even the best tile is about 100 m away "
                     "because a tile is 248 m wide and its centre is not the photo's centre: a tile-level answer has a "
                     "resolution limit.")
 
@@ -44,11 +46,13 @@ MED_MINE_400 = 215.0
 MED_DINO_400 = 240.0
 
 # ---- Step 10: one experiment -----------------------------------------------------------------------
-PREDICT_EXPERIMENT = "--no-augment: the median will get much worse, because the real photos have effects it never saw."
+PREDICT_EXPERIMENT = ("no-augment > shift 0 > n-train 2000 > tau 0.5: without augmentation the real photos have effects "
+                      "it never saw; tau only changes how hard impostors count. I train --no-augment.")
 EXP_MEDIAN = 813.0
 EXPLAIN_EXPERIMENT = ("Without augmentation the median went from 215.0 m to 813.0 m, because the network "
                       "never saw black corners, blur or light changes in training, so it did not learn to ignore them "
-                      "and real photos looked unlike every tile.")
+                      "and real photos looked unlike every tile. The class table: n-train 2000 555 m, shift 0 483 m, "
+                      "tau 0.5 473 m — fewer pairs hurt more than I guessed.")
 
 # ---- Step 11: speed ----------------------------------------------------------------------------------
 MS_DINO = 1319.0

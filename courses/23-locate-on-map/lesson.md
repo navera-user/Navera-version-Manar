@@ -34,7 +34,7 @@
 **You need:** tiles and `pixel_to_latlon` (mission 07), `like_map` (08), the ground sampling distance (18), PyTorch,
 a training loop, the triplet loss and train/validation splits (21), the ratio test, RANSAC and the similarity fit
 (22), linear percentiles (CONVENTIONS). ⏱ Reading: about 110 minutes with the ✏️ checks (Part A, §1–§6, before
-session 1, about 70 minutes; Part B, §7–§9, before session 2). Lab: 5 h 30 to 8 h in two sessions.
+session 1, about 70 minutes; Part B, §7–§9, before session 2). Lab: 5 h 30 to 8 h in two sessions (up to 10 h if PyTorch is still new).
 
 **Before you start** — answer without looking (if you miss two, reread mission 07 §4, mission 21 §8 and mission 22 §3):
 
@@ -123,12 +123,12 @@ compute its similarity with every candidate, sort, best first.
 a, b, c.
 
 > [!QUESTION] ✏️ Check
-> Add tiles d = (2, 4, 4) and e = (4, 0, 0). Their cosines with q, and the new ranking?
+> Add tiles d = (2, 4, 4) and e = (9, 0, 0). Their cosines with q, and the new ranking?
 
 <details><summary>Answer</summary>
-d·q = 18, ‖d‖ = 6: cos = <b>1.0</b> (d is q made twice longer: same direction). e·q = 4, ‖e‖ = 4: cos = 4/12 = <b>0.333</b>.
-Ranking: d, a, b, e, c. A dot product alone would have ranked d first too, but e (16 apart in length) above b: that is
-why the lengths must be divided out.
+d·q = 18, ‖d‖ = 6: cos = <b>1.0</b> (d is q made twice longer: same direction). e·q = 9, ‖e‖ = 9: cos = 9/27 =
+<b>0.333</b>. Ranking: d, a, b, e, c. A dot product alone would put e (9) above a (8) and b (6) only because e is long:
+that is why the lengths must be divided out.
 </details>
 
 ## 3. A pretrained model: DINOv2
@@ -257,7 +257,8 @@ the north of the map, validation pairs from the south, and the lab's photos from
 **The loss: InfoNCE.** In a batch of B pairs, compute every similarity za[i]·zp[j] (B × B numbers). Row i is a
 classification with B answers, and the right answer is j = i (the diagonal). Divide the row by a **temperature** τ,
 turn it into probabilities with a softmax, and take −log of the probability of the right answer. The loss is the mean
-over the rows. Every other view of the batch is a negative, for free.
+over the rows. In words: for each map tile, "which of the B views in this batch is mine?", a multiple-choice question
+with B answers; the loss is small when the network puts its probability on the right one. Every other view of the batch is a negative, for free.
 
 ![InfoNCE: each row of the similarity matrix must pick its own diagonal](assets/infonce.svg)
 
@@ -348,6 +349,10 @@ Retrieval turns one large search into a few small ones: rank the tiles of the ci
 small circle (180 m, a tile's half-diagonal) around each of the best k = 3. It is cheap, but coarse and often wrong
 (§4), and that is fine as long as the gates refuse the wrong candidates, and the right tile is among the first three.
 
+One more rule closes the chain: a position farther from the prior than r is refused, because the drone cannot be there
+if σ is honest. Sometimes it *is* there (about 1 % of the time for k = 3: e^(−9/2) = 1.1 %): the rule then throws away a
+correct fix. That is the price of never trusting a far jump.
+
 So the question "is retrieval worth it?" has no answer in general: it depends on the radius, on the terrain and on the
 finder. In lab Step 14 you measure both ways for four values of σ and **decide** the radius `direct_max_r_m` up to
 which the fine step works alone. That number is yours: it goes into your settings and decides how your stack flies.
@@ -380,7 +385,7 @@ The largest term dominates: improving it pays; improving a small one hardly show
 
 <details><summary>Answer</summary>
 400 · tan 0.3° = 2.09 m; √(2.09² + 4² + 3²) = √29.4 = <b>5.4 m</b>. The matcher term (4 m): halving it gives 4.2 m;
-halving the tilt term only 5.2 m.
+halving the tilt term only 5.1 m.
 </details>
 
 > [!WARNING] Common wrong ideas (Part B)
@@ -392,9 +397,8 @@ halving the tilt term only 5.2 m.
 ## In NAVERA
 
 NAVERA's day vision (IRIS's product, described in words) first used **DINOv2 tile retrieval** against zoom-17
-satellite tiles: median 442 m on labelled replay frames, against 480 m for repeating the previous position and 536 m
-for a random tile in the same circle; 1 696 m over the whole map without a prior; and its similarity score stayed high
-on wrong matches (good matches 0.942–0.974, bad ones 0.823–0.972), so it could not flag them. Whole-map search is
+satellite tiles (its numbers are in §4); its similarity score stayed high on wrong matches, so it could not flag them,
+and over the whole map without a prior it was off by 1 696 m. Whole-map search is
 therefore disabled: day vision waits for a prior. The default since 1 October 2026 is **local feature matching**: the
 frame is scaled to the map's resolution from the altitude and the camera's field of view, its SIFT features are matched
 with those of the tiles in the search circle, a rotation + scale + translation is fitted with RANSAC, and a match is

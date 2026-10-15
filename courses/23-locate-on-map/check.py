@@ -4,6 +4,7 @@ import io
 import json
 import math
 import os
+import re
 import sqlite3
 import tempfile
 
@@ -87,6 +88,7 @@ PIX = [(0, 0, 0, 0), (0, 1, 50, 60), (1, 2, 223, 223), (1, 0, 100, 7), (0, 2, 13
 PRE224 = [0.9988, 0.29272, -0.91556, 1.01593, -0.41011]
 PRE_BGR = [-0.9363, 0.29272, 1.54196, -1.17604, 0.49621]
 PRE_LINEAR = [1.30705, 0.15266, -1.10728, 1.44404, -0.44497]
+PRE_RESHAPE = [0.9988, 0.91451, -0.91556, -0.7993, -1.39866]
 PRE112 = [0.10831, 0.31022, 1.45482]
 
 
@@ -111,6 +113,12 @@ def _():
     c.ok(shape == (2, 3, 224, 224), f"preprocess of 2 pictures 300 × 260 should have shape (2, 3, 224, 224), got {shape}")
     c.ok(str(getattr(t, "dtype", "")) == "torch.float32", f"the tensor must be float32, got {getattr(t, 'dtype', '?')}")
     v = [float(a[p]) for p in PIX]
+    if np.allclose(v, PRE_RESHAPE, atol=2e-3):
+        raise CheckFailed("reshape(3, size, size) mixes pixels and channels: move the channel axis with "
+                          ".transpose(2, 0, 1) (lab Step 1, hint 6)")
+    if np.abs(a).max() > 50 and abs(v[0] - 299.19214) < 1 and abs(v[2] - 851.52889) < 1:
+        raise CheckFailed("values in the hundreds AND the channels still in BGR order: reverse the channels and divide "
+                          "by 255 (lab Step 1, hints 2 and 3)")
     if np.allclose(v, PRE_BGR, atol=2e-3):
         raise CheckFailed("the channels are still in OpenCV's BGR order: DINOv2 learned from RGB (lesson §3)")
     if np.abs(a).max() > 50:
@@ -208,9 +216,9 @@ def _():
 
 
 # ---------------------------------------------------------------- the lab's numbers (reference, recomputed)
-REF = {"MED_DINO": 181.0, "MED_PRIOR": 246.0, "MED_RANDOM": 457.0, "MED_BEST": 103.0, "MED_DINO_800": 559.0,
+REF = {"P90_DINO": 559.0, "P90_PRIOR": 442.0, "MED_DINO": 181.0, "MED_PRIOR": 246.0, "MED_RANDOM": 457.0, "MED_BEST": 103.0, "MED_DINO_800": 559.0,
        "MED_PRIOR_800": 816.0, "MED_DINO_400": 240.0}
-TOL = {"MED_DINO": 8.0, "MED_PRIOR": 1.0, "MED_RANDOM": 1.0, "MED_BEST": 1.0, "MED_DINO_800": 25.0,
+TOL = {"P90_DINO": 15.0, "P90_PRIOR": 1.0, "MED_DINO": 8.0, "MED_PRIOR": 1.0, "MED_RANDOM": 1.0, "MED_BEST": 1.0, "MED_DINO_800": 25.0,
        "MED_PRIOR_800": 1.0, "MED_DINO_400": 12.0}
 
 
@@ -218,9 +226,9 @@ TOL = {"MED_DINO": 8.0, "MED_PRIOR": 1.0, "MED_RANDOM": 1.0, "MED_BEST": 1.0, "M
         hint="Copy the medians printed by `python3 run_locate.py retrieve` (σ 200 m), `retrieve --sigma 800` and "
              "`retrieve --sigma 400` (no decimals), then explain in your own words.")
 def _():
-    (pl, npatch, pd, md, mp, mr, mb, why_b, md8, mp8, why_s, worst, why_sc, md4) = answers(
-        "PREDICT_LOOK", "N_PATCHES", "PREDICT_DINO", "MED_DINO", "MED_PRIOR", "MED_RANDOM", "MED_BEST",
-        "EXPLAIN_BASELINE", "MED_DINO_800", "MED_PRIOR_800", "EXPLAIN_SIGMA", "WORST_TERRAIN", "EXPLAIN_SCORE",
+    (pl, npatch, pd, md, mp, mr, mb, p9d, p9p, why_b, md8, mp8, why_s, worst, why_sc, md4) = answers(
+        "PREDICT_LOOK", "N_PATCHES", "PREDICT_DINO", "MED_DINO", "MED_PRIOR", "MED_RANDOM", "MED_BEST", "P90_DINO",
+        "P90_PRIOR", "EXPLAIN_BASELINE", "MED_DINO_800", "MED_PRIOR_800", "EXPLAIN_SIGMA", "WORST_TERRAIN", "EXPLAIN_SCORE",
         "MED_DINO_400")
     predicted("PREDICT_LOOK", pl)
     n = number(npatch, "N_PATCHES")
@@ -229,15 +237,17 @@ def _():
     c.eq(int(n), 256, "N_PATCHES")
     predicted("PREDICT_DINO", pd)
     vals = {"MED_DINO": md, "MED_PRIOR": mp, "MED_RANDOM": mr, "MED_BEST": mb, "MED_DINO_800": md8,
-            "MED_PRIOR_800": mp8, "MED_DINO_400": md4}
+            "MED_PRIOR_800": mp8, "MED_DINO_400": md4, "P90_DINO": p9d, "P90_PRIOR": p9p}
     got = {k: number(v, k) for k, v in vals.items()}
     if abs(got["MED_DINO"] - REF["MED_PRIOR"]) < 1 and abs(got["MED_PRIOR"] - REF["MED_DINO"]) < 9:
         raise CheckFailed("MED_DINO and MED_PRIOR are swapped: retrieval is the first line of the table")
     for k in vals:
-        c.ok(abs(got[k] - REF[k]) <= TOL[k], f"{k} = {got[k]:g}: not the number `retrieve` prints for it (the median "
+        c.ok(abs(got[k] - REF[k]) <= TOL[k], f"{k} = {got[k]:g}: not the number `retrieve` prints for it (its median or p90 "
              "column; if your `test` is all ✔ for TODO 1–3, run `embed` and the three `retrieve` commands again)")
     explained("EXPLAIN_BASELINE", why_b,
               ((r"prior", r"stay", r"baseline", r"random"), "the comparison with the baselines"),
+              ((r"p90", r"tail", r"far wrong", r"worst", r"when it is wrong", r"when wrong", r"large error", r"300"),
+               "what the p90 (or within 300 m) shows"),
               ((r"tile", r"centre", r"center", r"resolution", r"grid", r"size", r"limit", r"\b248", r"half"),
                "why even the best tile is not 0 m away"))
     explained("EXPLAIN_SIGMA", why_s,
@@ -292,7 +302,7 @@ def embed_ref(net, imgs):
 
 
 @c.test("TODO 4: TileNet — the five layers of the rule, their sizes, the forward pass in order, unit rows",
-        hint="Lab Step 8: conv1 3 → 32, conv2 and conv3 double, conv4 keeps (3 × 3, padding=1), each followed by ReLU "
+        hint="Lab Step 8: conv1 3 → 32, then each block doubles the maps until DIM, then keeps them (3 × 3, padding=1), each followed by ReLU "
              "and 2 × 2 max-pooling; then the mean over the width and height; fc to DIM; F.normalize(…, dim=1).")
 def _():
     import torch
@@ -324,8 +334,8 @@ def _():
         raise CheckFailed(f"the embeddings have lengths {np.round(norms, 3).tolist()}: divide each row by its length at "
                           "the end (F.normalize(x, dim=1))")
     c.ok(np.allclose(got, embed_ref(ref, probe), atol=1e-4), "with the same weights, your forward() gives other "
-         "embeddings than the rule: conv → ReLU → 2 × 2 max-pooling (four times), the mean over width and height, fc, "
-         "then length 1")
+         "embeddings than the rule: conv → ReLU → 2 × 2 max-pooling (four times; padding=1 in every conv), the mean over "
+         "width and height, fc, then length 1")
 
 
 ZA = [[0.598084, 0.168449, -0.555749, -0.552326], [0.808839, -0.107588, -0.052356, -0.575728],
@@ -395,6 +405,12 @@ def run_log(name):
     if log.get("sha256") != h.hexdigest():
         raise CheckFailed(f"{name} is not the file its log logs/{name}.json describes (its fingerprint differs): train "
                           "it yourself with the runner (copying weights is not training them)")
+    if log.get("weights") != name:
+        raise CheckFailed(f"logs/{name}.json describes {log.get('weights')!r}, not {name}: train {name} itself with "
+                          "the runner (`--out " + name + "`)")
+    me = os.environ.get("ACADEMY_STUDENT")
+    if me and log.get("student") not in (None, "", me):
+        raise CheckFailed(f"{name} and its log were not trained in your workspace: train your own (Step 9 / 10)")
     return log
 
 
@@ -501,6 +517,9 @@ def _():
     c.ok(abs(number(mm4, "MED_MINE_400") - logged) <= 1.0, f"MED_MINE_400 = {mm4}, but the log of your my_tiles.pt says "
          f"{logged:.0f} m (the last line of `train`)")
     predicted("PREDICT_EXPERIMENT", pe)
+    flags = sum(bool(re.search(k, str(pe).lower())) for k in (r"aug", r"shift", r"n.?train|pairs|2000|2 000", r"tau|τ|temperat"))
+    c.ok(flags >= 3, "PREDICT_EXPERIMENT should RANK the four flags (no-augment, shift 0, n-train 2000, tau 0.5), most "
+         "harmful first, before you train exp.pt (Step 10)")
     if not weights_ok("exp.pt"):
         raise CheckFailed("exp.pt is missing: Step 10 trains it with ONE flag and `--out exp.pt`")
     ex = run_log("exp.pt")
@@ -680,7 +699,8 @@ def _():
     v = go(f, photo(q), meta(q), (*q["priors"]["400"], 400.0), finder, CFG, seconds=120)
     c.ok(v[0] is None and "outside" in str(v[2]),
          f"the fine step found this photo 1 214 m from a prior whose circle is 1 200 m: refuse it with \"outside the "
-         f"search circle (…)\" (the docstring's last rule), got {v!r:.90}")
+         f"search circle (…)\" (the docstring's last rule) — this fix was actually right: that is the price of the 3σ "
+         f"rule (lesson §8). Got {v!r:.90}")
 
 
 @c.test("TODO 9: budget() on unseen terms — root sum of squares, a dict or a list, impossible σ",

@@ -17,7 +17,9 @@ MED_DINO = 0.0           # median errors from `retrieve` (metres, no decimals)
 MED_PRIOR = 0.0
 MED_RANDOM = 0.0
 MED_BEST = 0.0
-EXPLAIN_BASELINE = ""    # did DINOv2 beat staying at the prior? Why is even the BEST tile of the circle not 0 m away?
+P90_DINO = 0.0           # the p90 column: DINOv2's and the prior's
+P90_PRIOR = 0.0
+EXPLAIN_BASELINE = ""    # did DINOv2 beat the prior on the median? and on the p90? Why is the BEST tile not 0 m away?
 
 # ---- Step 5: a worse prior --------------------------------------------------------------------------
 MED_DINO_800 = 0.0       # `retrieve --sigma 800`: DINOv2's median, and the prior's
@@ -37,9 +39,9 @@ MED_MINE_400 = 0.0       # your my_tiles.pt: retrieval median at σ 400 m (print
 MED_DINO_400 = 0.0       # `retrieve --sigma 400`: DINOv2's median at σ 400 m
 
 # ---- Step 10: one experiment -----------------------------------------------------------------------
-PREDICT_EXPERIMENT = ""  # which ONE setting you change, and what you expect, BEFORE you train exp.pt
+PREDICT_EXPERIMENT = ""  # rank the FOUR flags (most harmful first) with your reasons, BEFORE you train exp.pt
 EXP_MEDIAN = 0.0         # exp.pt's retrieval median at σ 400 m (printed at the end of its training)
-EXPLAIN_EXPERIMENT = ""  # what changed, by how much, and why
+EXPLAIN_EXPERIMENT = ""  # what changed, by how much, why — and where the class table proved your ranking wrong
 
 # ---- Step 11: speed ----------------------------------------------------------------------------------
 MS_DINO = 0.0            # `speed`: milliseconds per photo on the CPU

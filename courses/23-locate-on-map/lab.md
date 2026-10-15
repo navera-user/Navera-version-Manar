@@ -3,7 +3,8 @@
 **Goal:** locate 80 drone photos on the map of Sousse. Run a pretrained network (DINOv2) as a finder and measure it
 against two baselines that use no picture; train your own finder and compare; then turn the best candidates into
 exact latitudes and longitudes with OpenCV, decide when the finder is worth running, and evaluate your whole chain.
-**Time:** 5 h 30 to 8 h in two sessions (more if PyTorch is still new; GPU trainings wait for a free slot).
+**Time:** 5 h 30 to 8 h in two sessions; up to 10 h if PyTorch is still new (GPU trainings may also wait for a free
+slot).
 **Fast track:** write the TODOs from their docstrings without the 🧰 and "Stuck?" boxes, then do "Going further".
 
 Your files (📝 Code tab): [navera_lite/retrieval.py](file:./navera_lite/retrieval.py) (**your code**: TODO 1, 2, 4,
@@ -41,7 +42,8 @@ code and weights (Meta AI, Apache-2.0) are in `/data/models/dinov2/`.
 python3 run_locate.py look
 ```
 
-Open `out/look.png`: a photo, the same photo turned north-up at the map's scale, and the 9 map tiles around it.
+Open `out/look.png`: a photo, the same photo turned north-up at the map's scale, and the 9 map tiles around it. The
+view is cut to one tile (256 px); the photo's whole footprint (about 429 × 322 map pixels, lesson §1) is larger.
 
 > [!TASK]
 > Find the photo on the tiles by eye. **Predict** (`PREDICT_LOOK`): how many tiles does it cover? Will a method that
@@ -85,6 +87,9 @@ The TODO 1 line must be ✔ (the others are later TODOs).
 4. Shape (2, 224, 224, 3): the channels must come first, `.transpose(2, 0, 1)` per picture.
 5. `TypeError: expected np.ndarray (got …)` or a float64 tensor: make the array `np.float32` before
    `torch.from_numpy`.
+6. `test` names "red, green and blue follow each other along a row", or `embed` refuses with a difference of about
+   0.2: you wrote `.reshape(3, size, size)`. reshape keeps the numbers in memory order (R, G, B of pixel 1, then of
+   pixel 2…) and cuts them into three planes: pixels and channels get mixed. `.transpose(2, 0, 1)` moves the axis.
 </details>
 
 ## Step 2 — Embed the photos with DINOv2
@@ -149,9 +154,9 @@ python3 run_locate.py retrieve
 Open `out/retrieval_dino_csv.png` (the share of photos with an error ≤ x, for each method).
 
 > [!TASK]
-> Write `MED_DINO`, `MED_PRIOR`, `MED_RANDOM`, `MED_BEST` (metres, no decimals) and `EXPLAIN_BASELINE`: did DINOv2 beat
-> staying at the prior, and by how much compared with the random tile? Why is even the best tile of the circle not
-> 0 m away? Look at the p90 column too.
+> Write `MED_DINO`, `MED_PRIOR`, `MED_RANDOM`, `MED_BEST` (metres, no decimals), `P90_DINO`, `P90_PRIOR`, and
+> `EXPLAIN_BASELINE`: did DINOv2 beat staying at the prior on the median? And on the p90 and "within 300 m": which method
+> would you rather have when it goes wrong? Why is even the best tile of the circle not 0 m away?
 
 ## Step 5 — A worse prior
 
@@ -202,9 +207,10 @@ inside each one. Read `make_pairs` in retrieval.py.
 
 ## Step 8 — Your network (TODO 4)
 
-**TODO 4** `TileNet`: read the **rule** in its docstring. Before you code, trace the shapes on paper: (N, 3, 64, 64)
-→ after conv1 and its pooling → … → after conv4 → after the global average pooling → after fc. Then count the
-parameters by hand, block by block (lesson §6's worked example).
+**TODO 4** `TileNet`: read the **rule** in its docstring. It gives conv1 and the embedding's length DIM = 128; the other
+sizes are yours to derive. Before you code, trace the shapes on paper: (N, 3, 64, 64) → after conv1 and its pooling →
+… → after conv4 → after the global average pooling → after fc. Then count the parameters by hand, block by block
+(lesson §6's worked example).
 
 > [!TASK]
 > Write `N_PARAMS` (weights and biases, all five layers), then code `__init__` and `forward`.
@@ -227,7 +233,8 @@ The TODO 4 line must say "sizes follow the rule".
 <details><summary>Stuck? Hints, one at a time</summary>
 
 1. `__init__`: `super().__init__()` first; then the four `nn.Conv2d(in, out, 3, padding=1)` (in of each = out of the
-   one before) and `nn.Linear(?, DIM)`. What arrives at fc is one number per map of conv4.
+   one before; `padding=1` keeps 64 × 64 as 64 × 64 — without it `test` says the maps end smaller than 4 × 4) and
+   `nn.Linear(?, DIM)`. What arrives at fc is one number per map of conv4.
 2. `forward`: four times "conv, `F.relu`, `F.max_pool2d(…, 2)`", then the mean over the width and height, then fc, then
    `F.normalize(…, dim=1)`.
 3. `mat1 and mat2 shapes cannot be multiplied (2x2048 and 128x128)`: you flattened (128 · 4 · 4 = 2 048) instead of
@@ -239,15 +246,16 @@ The TODO 4 line must say "sizes follow the rule".
 
 **TODO 5** `info_nce(za, zp, tau=0.1)`: lesson §6. No loop, no `.item()`, no numpy.
 
-<details><summary>🧰 PyTorch: a classification loss</summary>
+<details><summary>🧰 PyTorch: softmax, −log and picking one number per row</summary>
 
 ```python
-logits = torch.tensor([[2.0, 0.0, 0.0], [0.0, 0.0, 1.0]])   # 2 rows (samples), 3 possible answers each
-right = torch.tensor([0, 2])                                  # the right answer of each row (whole numbers)
-F.cross_entropy(logits, right)                                # tensor(0.3955): the mean over the rows of −log(softmax)
-torch.arange(4)                                               # tensor([0, 1, 2, 3])
-a @ b.T                                                       # (B, D) @ (D, B) → (B, B): every dot product
+x = torch.tensor([[2.0, 0.0], [1.0, 3.0]])
+torch.softmax(x, dim=1)               # each ROW turned into probabilities: [[0.881, 0.119], [0.119, 0.881]]
+torch.log_softmax(x, dim=1)           # their logarithms, computed safely (no log of 0)
+x[torch.arange(2), torch.tensor([1, 0])]   # tensor([0., 1.]): row 0 → column 1, row 1 → column 0
 ```
+PyTorch also has a ready-made loss for "one right answer per row" (a **cross-entropy**): find it in the PyTorch
+documentation's `torch.nn.functional` list, and read what its two arguments must be.
 </details>
 
 ```bash
@@ -256,10 +264,13 @@ python3 run_locate.py test
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
-1. Three things: the matrix of every similarity za[i]·zp[j]; divided by tau; and for row i the right answer i.
-2. `F.cross_entropy` does the softmax, the −log and the mean for you: what are its two arguments here?
+1. On paper first, for B = 2: the 2 × 2 table of every similarity za[i]·zp[j]; which cell is the right answer of
+   each row? Then: one matrix product gives the whole table.
+2. Each row: divide by tau, softmax, −log of the right cell; then the mean of the rows. The 🧰 box has a tool for
+   each part (or the ready-made cross-entropy does the softmax, the −log and the mean at once).
 3. 0.5981 instead of 0.5130 on the docstring example: the division by tau is missing.
-4. `Expected all tensors to be on the same device`: make the right answers on the device of za (`device=za.device`).
+4. `Expected all tensors to be on the same device`: make the index of the right answers on the device of za
+   (`device=za.device`).
 </details>
 
 Then train (about 3 minutes on the GPU, longer if the runner waits for a free slot):
@@ -271,13 +282,16 @@ python3 run_locate.py train
 It makes 8 000 training pairs (north of the map) and 1 024 validation pairs (south), trains your TileNet with your
 `info_nce` (the given `train_tilenet`), saves `my_tiles.pt`, its log `logs/my_tiles.pt.json` (with the weights'
 fingerprint), the curves `out/train_my_tiles.png`, and measures retrieval with it on the 80 lab photos at σ 400 m.
-Use the GPU: the runner waits for one of the class's three GPU slots (each training takes about 3 minutes, so the
-wait is short). This network is too heavy for the CPU: a reduced CPU run took 40 minutes and gave a network that does
+Use the GPU: the runner waits for one of the class's three GPU slots (each training takes about 3 minutes). If many
+classmates train at once you may wait 10–20 minutes: keep the terminal open and reread lesson §6; the runner never
+falls back to the CPU for this training (after an hour without a free slot it stops and says so: ask your teacher). This network is too heavy for the CPU: a reduced CPU run took 40 minutes and gave a network that does
 not reach the check's bar. Training runs in its own process: do not start a second training (or `embed`, `speed`)
 at the same time, your sandbox's memory would not hold both.
 
 > [!TASK]
-> Write `MED_MINE_400` (the last line of `train`). Then measure DINOv2 on the same priors:
+> Write `MED_MINE_400` (the last line of `train`). If it is larger than "stay at the prior" (494 m), your network learned
+> nothing useful: look at `test`'s line 5 (τ) and your curves before training again. Then measure DINOv2 on the same
+> priors:
 
 ```bash
 python3 run_locate.py retrieve --sigma 400
@@ -290,10 +304,9 @@ python3 run_locate.py retrieve --sigma 400 --finder mine
 > [!TASK]
 > Write `MED_DINO_400`. Compare the two tables and the two plots.
 
-## Step 10 — One experiment
+## Step 10 — One experiment, a class table
 
-A network learns what its data shows it. Choose **one** setting, predict, train `exp.pt`, and compare with
-`my_tiles.pt`:
+A network learns what its data shows it. Here are four ways to change the training data or the loss:
 
 | Flag | What changes |
 |---|---|
@@ -303,16 +316,20 @@ A network learns what its data shows it. Choose **one** setting, predict, train 
 | `--tau 0.5` | a softer softmax |
 
 > [!TASK]
-> **Predict** (`PREDICT_EXPERIMENT`): which flag, and what will happen to the median at σ 400 m? Then train, e.g.:
+> **Predict** (`PREDICT_EXPERIMENT`): rank the **four** flags from the one that hurts the median at σ 400 m most to the
+> one that hurts least, and say why for the first and the last (e.g. "shift 0 > … > tau 0.5, because …"). Then train
+> **one** of them as `exp.pt` — the one your teacher gives you (the class shares the four out), or your own choice:
 
 ```bash
 python3 run_locate.py train --no-augment --out exp.pt
 ```
 
+(with your flag instead of `--no-augment`). Write your result on the class board: the class gets the whole table.
+
 > [!TASK]
-> Write `EXP_MEDIAN` (its last line) and `EXPLAIN_EXPERIMENT`: what changed, by how much, and why? Keep the other
-> settings as they were: the check compares `logs/exp.pt.json` with `logs/my_tiles.pt.json` and accepts exactly one
-> change.
+> Write `EXP_MEDIAN` (its last line) and `EXPLAIN_EXPERIMENT`: what changed, by how much, why — and, from the class
+> table, where your ranking was wrong. Keep the other settings as they were: the check compares `logs/exp.pt.json` with
+> `logs/my_tiles.pt.json` and accepts exactly one change.
 
 ## Step 11 — Cost
 
@@ -438,7 +455,7 @@ prints your measured median and p90 next to the budget.
 ## Step 17 — Check, then look back
 
 Press **✔ Check my work**. It tests your functions on inputs they have never seen, loads your `my_tiles.pt` safely
-(numbers only) and measures it on 40 photos you never saw, and runs your `locate` on hidden photos with its own
+(numbers only) and measures it on 36 photos over land you never saw, and runs your `locate` on hidden photos with its own
 finder. When every check passes, you earn the **Locator** badge. Then look back, without the lesson:
 
 1. Explain to a colleague, in three sentences, why NAVERA's DINOv2 barely beat staying put, and what the AI is good

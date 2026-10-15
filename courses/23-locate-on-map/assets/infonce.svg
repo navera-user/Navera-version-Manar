@@ -21,6 +21,6 @@
     <text x="0" y="122">small τ (temperature) sharpens the softmax:</text>
     <text x="0" y="142">the closest impostors count much more</text>
     <text x="0" y="172">every other view of the batch is a negative:</text>
-    <text x="0" y="192">a batch of 32 gives 31 impostors per row, for free</text>
+    <text x="0" y="192">a batch of 64 gives 63 impostors per row, for free</text>
   </g>
 </svg>

@@ -17,8 +17,8 @@ draws the results.
     python3 run_locate.py local pNN         the fine step on one photo, around its prior                    (Step 13)
           option:   --sigma S (default 50)
     python3 run_locate.py sweep             fine step alone vs retrieval first, for four prior σ             (Step 14)
-    python3 run_locate.py budget            YOUR error budget, next to the measured errors                  (Step 16)
-    python3 run_locate.py run               YOUR locate() on the 80 photos: the four numbers                 (Step 17)
+    python3 run_locate.py budget            YOUR error budget, next to the measured errors                  (Step 15)
+    python3 run_locate.py run               YOUR locate() on the 80 photos: the four numbers                 (Step 16)
           options:  --sigma S (default: the 200 m priors)  --finder dino|mine (default mine)
 
 Training and DINOv2 use the shared GPU (academy_gpu: at most 3 jobs in the class; the runner waits for a free slot,
@@ -180,6 +180,26 @@ def fmt(v, nd=0):
 
 
 # ================================================================================================= test
+def tilenet_problem(net):
+    """None if the four blocks give (1, 128, 4, 4) on a 64 × 64 picture as the rule says, else one sentence."""
+    import torch
+    import torch.nn.functional as F
+    try:
+        y = torch.randn(1, 3, 64, 64)
+        with torch.no_grad():
+            for c in (net.conv1, net.conv2, net.conv3, net.conv4):
+                y = F.max_pool2d(F.relu(c(y)), 2)
+    except Exception as ex:                                              # noqa: BLE001
+        return f"the four blocks stop with {type(ex).__name__}: {ex}"
+    if tuple(y.shape) != (1, 128, 4, 4):
+        return (f"after conv4 the maps are {tuple(y.shape)}, the rule gives (1, 128, 4, 4): padding=1 keeps the width "
+                "and height, each pooling halves them (lab Step 8, hint 1)")
+    n = sum(p.numel() for p in net.parameters())
+    if n != 257344:
+        return f"{n} parameters: the sizes do NOT follow the rule (count yours by hand: lab Step 8)"
+    return None
+
+
 def test():
     import torch
     limit_threads()
@@ -199,23 +219,32 @@ def test():
             ok_all = False
 
     z = np.zeros((2, 256, 256, 3), np.uint8)
-    z[1, :, :, 2] = 255                                                  # picture 1: pure RED (BGR order)
+    z[1, :128, :, 2] = 255                                               # picture 1: top half pure RED (BGR order) …
+    z[1, 128:, :, 1] = 255                                               # … bottom half pure GREEN
     v, e = rk.call(R, "preprocess", z)
     if not e:
         try:
             t = v.detach().cpu().numpy() if hasattr(v, "detach") else np.asarray(v)
         except Exception:                                                # noqa: BLE001
             t = np.asarray([])
-        want = [-2.1179, (1 - 0.485) / 0.229, -2.0357, -1.8044]
-        got = [float(t[0, 0, 0, 0]), float(t[1, 0, 5, 5]), float(t[1, 1, 5, 5]), float(t[1, 2, 5, 5])] \
-            if t.shape == (2, 3, 224, 224) else None
-        note = "the docstring: shape (2, 3, 224, 224); a pure red picture gives 2.2489 on channel 0. "
-        if t.shape != (2, 3, 224, 224):
-            note += f"Your shape is {t.shape}: channels first, size × size (lab Step 2)"
+        red, green = [2.2489, -2.0357, -1.8044], [-2.1179, 2.4286, -1.8044]
+        want = [-2.1179] + red + green
+        ok_shape = t.shape == (2, 3, 224, 224)
+        got = ([float(t[0, 0, 0, 0])] + [float(t[1, k, 5, 5]) for k in range(3)]
+               + [float(t[1, k, 200, 5]) for k in range(3)]) if ok_shape else None
+        note = "the docstring: shape (2, 3, 224, 224); a red pixel gives (2.2489, −2.0357, −1.8044). "
+        if not ok_shape:
+            note += f"Your shape is {t.shape}: channels first, size × size (lab Step 1, hint 4)"
+        elif max(abs(x) for x in got) > 100 and got[3] > 100:
+            note += ("Values of hundreds AND red in channel 2: reverse the channels and divide by 255 "
+                     "(lab Step 1, hints 2 and 3)")
+        elif max(abs(x) for x in got) > 100:
+            note += "Values of hundreds: scale 0..255 to 0..1 first (lab Step 1, hint 3)"
         elif close(got[1], -2.1179, 1e-3) and close(got[3], (1 - 0.406) / 0.225, 1e-3):
-            note += "Red ended up in channel 2: OpenCV gives BGR, DINOv2 wants RGB (lab Step 2, hint 2)"
-        elif got[1] > 100:
-            note += "Values of hundreds: scale 0..255 to 0..1 first (hint 3)"
+            note += "Red ended up in channel 2: OpenCV gives BGR, DINOv2 wants RGB (lab Step 1, hint 2)"
+        elif close(sorted(float(t[1, 0, 5, k]) for k in range(3)), sorted(red), 2e-3):
+            note += ("Red, green and blue follow each other along a ROW: reshape(3, size, size) mixes pixels and "
+                     "channels; move the axis with .transpose(2, 0, 1) (lab Step 1, hint 6)")
         line(1, "preprocess", got, None, got is not None and close(got, want, 2e-3), note)
     else:
         line(1, "preprocess", None, e, False, "")
@@ -249,10 +278,10 @@ def test():
             norms = out.norm(dim=1).tolist()
             ok = names == ["conv1", "conv2", "conv3", "conv4", "fc"] and tuple(out.shape) == (2, 128) and \
                 close(norms, [1.0, 1.0], 1e-4)
-            n = sum(p.numel() for p in v.parameters())
             got = f"layers {names}, output {tuple(out.shape)}, row lengths {[round(x, 3) for x in norms]}"
-            if ok and n != 257344:
-                ok, note = False, (f"{n} parameters: the sizes do NOT follow the rule (count yours by hand: lab Step 8)")
+            problem = tilenet_problem(v) if ok else None
+            if problem:
+                ok, note = False, problem
             else:
                 note = "the docstring: layers conv1..conv4, fc; output (2, 128); rows of length 1"
             line(4, "TileNet", got + (f", sizes follow the rule" if ok else ""), None, ok, note)
@@ -355,7 +384,8 @@ def embed():
               f"{diff:.4f}")
         if diff > 0.02:
             sys.exit("Your preprocess does not give DINOv2 the input it learned from (the index would not be "
-                     "comparable with your photos). Lab Step 2's hints.")
+                     "comparable with your photos). Lab Step 1's hints: BGR kept (hint 2), no / 255 (hint 3), or "
+                     "reshape instead of transpose (hint 6) — `python3 run_locate.py test` names most of them.")
         q = R.embed_dino(model, views, dev)
     os.makedirs(OUT, exist_ok=True)
     np.save(os.path.join(OUT, "dino_queries.npy"), q)
@@ -497,7 +527,7 @@ def train(n_train=8000, epochs=12, batch=64, tau=0.1, shift=0.5, augment=True, o
     print("measuring it on the lab's photos ...", flush=True)
     res, _ = retrieve("mine", 400.0, out, quiet=True)
     os.makedirs(LOGS, exist_ok=True)
-    record = {"weights": out, "sha256": R.sha256(out), "n_train": n_train, "epochs": epochs, "batch": batch,
+    record = {"weights": out, "student": os.environ.get("ACADEMY_STUDENT", ""), "sha256": R.sha256(out), "n_train": n_train, "epochs": epochs, "batch": batch,
               "tau": tau, "shift": shift, "augment": augment, "device": dev, "seconds": round(seconds, 1),
               "history": hist, "retrieval_400": {k: res[k] for k in ("top1", "prior", "random", "best")}}
     with open(os.path.join(LOGS, out + ".json"), "w") as f:
@@ -534,9 +564,10 @@ def train_child(job):
     net, e = rk.call(R, "TileNet")
     if e:
         sys.exit(e)
-    n = sum(p.numel() for p in net.parameters())
-    if n != 257344:
-        sys.exit(f"Your TileNet has {n} parameters: its sizes do not follow the docstring's rule. Fix TODO 4 first.")
+    problem = tilenet_problem(net)
+    if problem:
+        sys.exit(f"Your TileNet does not follow the docstring's rule yet: {problem}. Fix TODO 4 first "
+                 "(`python3 run_locate.py test`).")
     za = torch.nn.functional.normalize(torch.randn(4, 8), dim=1)
     v, e = rk.call(R, "info_nce", za, za.clone())
     if e:
@@ -555,7 +586,14 @@ def train_child(job):
         print(f"epoch {row['epoch']:2d}  train loss {row['train_loss']:.3f}  val loss {row['val_loss']:.3f}  "
               f"val recall {row['val_recall']:.3f}   ({time.time() - t0:.0f} s)", flush=True)
 
-    with (torch_device() if job["device"] != "cpu" else contextlib.nullcontext("cpu")) as dev:
+    from academy_gpu import NoGpuSlot
+    try:
+        ctx = torch_device(cpu_ok=False) if job["device"] != "cpu" else contextlib.nullcontext("cpu")
+        dev = ctx.__enter__()
+    except NoGpuSlot as ex:
+        sys.exit(f"{ex}\nThis network is too heavy for the CPU (it would take hours and stay below the check's bar): "
+                 "ask your teacher, then run the same `train` command again.")
+    try:
         limit_threads()
         print(f"training on {dev}: {job['n_train']} pairs, {job['epochs']} epochs, batch {job['batch']}, tau "
               f"{job['tau']}, shift {job['shift']}, augment {job['augment']}", flush=True)
@@ -563,6 +601,8 @@ def train_child(job):
                                device=dev, log=log)
         if not isinstance(hist, list) or not hist:
             sys.exit("train_tilenet returned no history")
+    finally:
+        ctx.__exit__(None, None, None)
     torch.save(model.to("cpu").state_dict(), job["out"])
     with open(os.path.join(OUT, f".train_{job['out']}.json"), "w") as f:
         json.dump({"history": hist, "seconds": time.time() - t0, "device": dev}, f)

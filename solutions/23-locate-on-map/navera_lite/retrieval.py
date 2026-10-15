@@ -25,7 +25,7 @@ from navera_lite.tiles import MAP_PATH, TILE_PX, tile_to_latlon, tiles_in_circle
 ZOOM = 17                                   # the map zoom every view and tile of this part uses (≈ 0.97 m/px)
 VIEW_PX = TILE_PX                           # side of a view: one tile, 256 px ≈ 248 m at Sousse
 DINO_DIR = os.environ.get("NAVERA_LITE_MODELS", "/data/models") + "/dinov2"   # DINOv2's code/ and weights
-DINO_SIZE = 224                             # DINOv2's input side: 16 × 16 patches of 14 × 14 pixels
+DINO_SIZE = 224                             # DINOv2's input side (a multiple of 14)
 IMAGENET_MEAN = (0.485, 0.456, 0.406)       # RED, GREEN, BLUE: the mean of the pictures DINOv2 learned from (0..1)
 IMAGENET_STD = (0.229, 0.224, 0.225)        # and their standard deviation, same order
 SMALL_PX = 64                               # TileNet's input side: a tile shrunk 4 times (≈ 3.9 m per pixel)
@@ -198,8 +198,9 @@ class TileNet(nn.Module):
 
         four blocks conv1, conv2, conv3, conv4. One block = a 3 × 3 nn.Conv2d that keeps the width and height
             (padding=1), then ReLU, then 2 × 2 max-pooling (half the width, half the height).
-            conv1 turns the 3 colour maps into 32 maps; conv2 and conv3 each DOUBLE the number of maps;
-            conv4 keeps it.
+            conv1 turns the 3 colour maps into 32 maps; each next block DOUBLES the number of maps until it
+            reaches DIM (the embedding's length), and from then on keeps it (halve the size, double the maps:
+            each block then costs about the same).
         then the MEAN of each of the last block's maps over its width and height (global average pooling: one
             number per map, wherever in the view a road or a block was seen),
         fc = one nn.Linear from those numbers to DIM, then each output row is divided by its length.

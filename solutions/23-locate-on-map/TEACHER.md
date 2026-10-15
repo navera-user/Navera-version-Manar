@@ -98,22 +98,33 @@ candidate (h33, h37: their first tile is wrong) / a fixed 300 m instead of cfg; 
 MED_DINO/MED_PRIOR swapped, N_PARAMS without biases, N_PATCHES = 16, DIRECT_MAX_R_M = 1 000, BUDGET as a plain sum;
 my_tiles.pt replaced by another file (fingerprint); exp.pt with the same settings as my_tiles.pt.
 
-- **Memory.** A sandbox has 1.8 GB. CUDA + cuDNN + the pairs nearly fill it: the runner trains in a child process
+- **Memory.** A sandbox has 2.6 GB (GPU memory counts against it on the Jetson; it was 1.8 GB when this mission was built). CUDA + cuDNN + the pairs take most of it: the runner trains in a child process
   (all GPU memory returns when it ends) and measures afterwards on the CPU; pairs stay uint8 (8 000 pairs = 197 MB) and
   batches of 64; `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`. Measured peak anonymous memory of a training:
-  anonymous memory 1.23 GB, cgroup total ≤ 1.77 GB of the 1.8 GB limit (batch 64, deterministic cuDNN). With cuDNN's default algorithms batch 64 reached the limit and was OOM-killed (memory.events oom_kill); batch 32 fits but trains a much worse network (median 439–456 m: fewer in-batch negatives). Two trainings at once in one sandbox will be killed ("Killed"): the runner says so.
+  anonymous memory 1.23 GB, cgroup total 1.24–1.77 GB (batch 64, deterministic cuDNN; the reviewer measured 1.24 GB peak on 2026-10-15). With cuDNN's default algorithms batch 64 reached the limit and was OOM-killed (memory.events oom_kill); batch 32 fits but trains a much worse network (median 439–456 m: fewer in-batch negatives). Two trainings at once in one sandbox will be killed ("Killed"): the runner says so.
 - **CPU training** is a poor fallback here (a 64 × 64 colour CNN): `--device cpu --n-train 3000 --epochs 6` took
   41 min on a busy Jetson and gave 712 m at σ 400 m on the lab photos (worse than the prior) (hidden far above the bar). Students should wait for a GPU slot (3 in the class).
+- Copies: the log stores the student's workspace name (ACADEMY_STUDENT) and the file name; a file copied together
+  with its log from a classmate is refused. A student who edits the JSON by hand can still pass — compare
+  logs/*.json "seconds" and "history" across the class if in doubt.
 - `embed` refuses a wrong preprocess (difference > 0.02) before embedding the photos: the most common silent bug.
 - `sweep` takes ≈ 3 min, `run` ≈ 2–3 min (SIFT on CPU), more on a busy machine.
 
 ## Class plan (two sessions of about 3 h 30)
 
 - Session 1: 10 min Step 0 → 60 min Part A with the ✏️ checks → Steps 1–4 (60 min; show NAVERA's table after Step 4) →
-  Steps 5–6 together (20 min: the sea and the score overlap) → Steps 7–9 (45 min; with 3 GPU slots, a class of 15
-  queues ≈ 10 min: start trainings in waves, read §6 again meanwhile) → Steps 10–11 → badge.
+  Steps 5–6 together (20 min: the sea and the score overlap) → Steps 7–9 (45 min; a class of 15 trains 30 networks (my_tiles + exp)
+  ≈ 30 min of GPU on 3 slots: the last in the queue waits ≈ 25 min — start trainings in waves and let exp.pt train during
+  Step 11 or session 2; the runner waits up to an hour and never falls back to the CPU) → Steps 10–11 → badge.
+- **Step 10 board** (the AI design discussion, 15 min): four columns (flag, students, their medians at σ 400 m, their
+  ranks). Share the flags out so each is trained by several students. Reference (lab / hidden over land):
+  --no-augment 813 / 862 m, --n-train 2000 555 / 648 m, --shift 0 483 / 595 m, --tau 0.5 473 / 507 m, defaults 215 / 251 m.
+  Discuss: augmentation and the offset are what make the task like the real photos; fewer pairs overfit; τ changes
+  how hard impostors count. Then compare with the students' predicted rankings.
 - Session 2: 15 min recap (draw the chain on the board; the half pixel) → Steps 12–13 (40 min) → Step 14 (60 min, sweep
   while reading §9) → Steps 15–16 → discussion of the rules chosen in the class.
+- Duration: meta says 8 h (5 h 30 to 10 h). The reviewers' simulated strong student needed about 5 h 30, the weak one
+  9–10 h (reading 2 h, PyTorch class, two trainings with queue waits, locate). Plan a third slot for weak students.
 - Fast students: Going further (flatten vs average, top k). Struggling: the runner's `test` names each symptom; for
   TODO 8 give the paper plan (radius → if small: one fine step; else: one finder call, try the candidates; last: the
   circle).
