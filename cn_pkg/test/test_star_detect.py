@@ -160,3 +160,14 @@ def test_a_dense_real_sky_still_passes():
     det = sd.detect(im)
     assert det.sky != sd.SKY_BLOCKED
     assert len(det.stars) > 300
+
+
+def test_a_jpeg_flattened_dark_sky_still_gives_its_stars():
+    """Video compression turns a dark background into constant blocks: the noise must not fall to zero."""
+    stars = _field(30)
+    img = np.clip(_frame(stars), 0, 255).astype(np.uint8)
+    ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 40])
+    det = sd.detect(cv2.imdecode(buf, cv2.IMREAD_GRAYSCALE).astype(np.float32))
+    assert det.sky != sd.SKY_BLOCKED
+    assert len(det.stars) >= 0.5 * len(stars)
+    assert len(det.stars) <= len(stars) + 5

@@ -77,9 +77,13 @@ def _background(gray: np.ndarray) -> np.ndarray:
     return cv2.resize(small.astype(np.float32), (w, h), interpolation=cv2.INTER_LINEAR)
 
 
-def _mad_sigma(a: np.ndarray) -> float:
+NOISE_FLOOR = 1.6        # grey levels. Video JPEG flattens a dark sky into constant blocks, so the measured
+                         # noise falls to ~0 and every threshold with it (stars lost or hundreds of false ones)
+
+
+def _mad_sigma(a: np.ndarray, floor: float = 1e-3) -> float:
     med = np.median(a)
-    return float(1.4826 * np.median(np.abs(a - med))) or 1e-3
+    return max(float(1.4826 * np.median(np.abs(a - med))), floor)
 
 
 def detect(gray: np.ndarray, snr_min: float = 6.0, max_star_px: int = 60,
@@ -112,9 +116,9 @@ def detect(gray: np.ndarray, snr_min: float = 6.0, max_star_px: int = 60,
 
     if sky_fraction < 0.2:
         verdict = SKY_BLOCKED if float(np.median(bg)) < bg_limit else SKY_BRIGHT
-        return Detection([], rejected, verdict, float(np.median(bg)), _mad_sigma(resid), sky_fraction, 0.0)
+        return Detection([], rejected, verdict, float(np.median(bg)), _mad_sigma(resid, NOISE_FLOOR), sky_fraction, 0.0)
 
-    noise = _mad_sigma(resid[sky_mask])
+    noise = _mad_sigma(resid[sky_mask], NOISE_FLOOR)
     flat = _flat_map(resid, noise) & sky_mask
     flat_fraction = float(flat.mean())
     sky_bg = bg[sky_mask]
@@ -122,7 +126,7 @@ def detect(gray: np.ndarray, snr_min: float = 6.0, max_star_px: int = 60,
     med_bg = float(np.median(sky_bg))
 
     smooth = cv2.GaussianBlur(resid, (0, 0), 1.0)
-    sn = _mad_sigma(smooth[sky_mask])
+    sn = _mad_sigma(smooth[sky_mask], 0.45 * NOISE_FLOOR)
     binary = (smooth > snr_min * sn).astype(np.uint8)
     n, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
 
