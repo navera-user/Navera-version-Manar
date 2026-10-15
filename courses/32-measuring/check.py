@@ -83,7 +83,7 @@ def pair(v, what):
 NEGATION = re.compile(r"\bnot\b|n't|\bno\b|\bnever\b|cannot|\blooks?\b|\bseems?\b|\bonly\b|\bwithout\b|\bworse\b"
                       r"|\bbut\b|however|although|\bunclear\b|\bwhether\b|\bif\b|\bmay\b|\bmight\b|uncertain"
                       r"|inconclusive|\byet\b")
-CLAIM = re.compile(r"\bbetter\b|\bbeats?\b|\boutperform|more accurate")
+CLAIM = re.compile(r"\bbetter\b|\bbeats?\b|\boutperform|more accurate|\bwins?\b|\bsuperior\b")
 MISSING = re.compile(r"\bno (position|fix|match|gps|data|answer)s?\b")
 LEADING_YES = re.compile(r"\s*(yes|oui|proved|proven|it does)\b", re.I)
 PAIRED_G1 = [r"contain", r"includ", r"\b0\b", r"zero", r"cross"]
@@ -103,7 +103,7 @@ def claims_better(text):
     reports missing data, like "no position", is not a hedge), or that says "still better" / starts "Proved:"."""
     for sent in re.split(r"(?<=[.;!?])\s+", str(text)):
         low = MISSING.sub("", sent.lower())
-        if re.search(r"\bstill (better|more accurate)\b|^\s*prov(ed|en)\b", low):
+        if re.search(r"\bstill (better|more accurate)\b|^\s*prov(ed|en)\b|(?<!not )\bsignificantly (better|more accurate)\b", low):
             return True
         if CLAIM.search(low) and not NEGATION.search(low):
             return True
