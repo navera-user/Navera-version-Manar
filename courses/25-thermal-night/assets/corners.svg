@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 660 330" font-family="sans-serif" font-size="13">
-  <rect width="660" height="330" fill="#f7fafc"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 330" font-family="sans-serif" font-size="13">
+  <rect width="720" height="330" fill="#f7fafc"/>
   <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
     <path d="M0,0 L10,5 L0,10 z" fill="#d95f02"/></marker></defs>
   <text x="20" y="24" font-weight="bold" fill="#1d2733">The reference patch (64 × 64 px, north up)</text>
@@ -14,8 +14,8 @@
   </g>
   <circle cx="168" cy="173" r="4" fill="#1d2733"/><circle cx="183" cy="181" r="5" fill="#1b9e77"/>
   <line x1="168" y1="173" x2="181" y2="180" stroke="#1d2733" stroke-dasharray="3 2"/>
-  <text x="330" y="70" fill="#1d2733">grey square: where the thermal frame would lie if the prior</text>
-  <text x="330" y="88" fill="#1d2733">were exact (corners 0, 1, 2, 3 = TL, TR, BR, BL)</text>
+  <text x="330" y="70" fill="#1d2733">grey square: where the thermal frame would lie</text>
+  <text x="330" y="88" fill="#1d2733">if the prior were exact (corners 0, 1, 2, 3 = TL, TR, BR, BL)</text>
   <text x="330" y="118" fill="#1b9e77">green: where it really lies (its 4 corners)</text>
   <text x="330" y="148" fill="#d95f02">orange arrows: the 4-point label, 8 numbers</text>
   <text x="330" y="166" fill="#d95f02">(x0, y0, x1, y1, x2, y2, x3, y3), in pixels</text>

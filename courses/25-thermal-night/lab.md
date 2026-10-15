@@ -2,8 +2,9 @@
 
 **Goal:** audit a night dataset, compute what a thermal camera covers, prepare night frames and find them with NCC,
 guard the fixes with the motion gate; then make your own training pairs from the map, build and train a small
-homography network, measure it against NCC in five conditions, sabotage it as LOC-6 did, and fly a night flight.
-**Time:** 4 h 30 to 6 h in two sessions (a strong programmer: about 3 h 30). The full training takes under a minute
+homography network, test one of its design decisions yourself, measure it against NCC in five conditions, sabotage
+it as LOC-6 did, and fly a night flight.
+**Time:** 4 h 45 to 6 h 15 in two sessions (a strong programmer: about 3 h 45). The full training takes under a minute
 on the GPU.
 **Fast track:** if you know numpy, OpenCV and PyTorch, write the TODOs from the docstrings without the 🧰 and
 "Stuck?" boxes, then do "Going further".
@@ -29,8 +30,9 @@ night and day replay frames, copied as data.
 | §6, §8 corners, pairs | Step 8 | `cut_pair` |
 | §7 the network | Steps 9–10 | `to_input`, `HomographyNet` |
 | §6, §8 H, training | Steps 11–12 | `offsets_to_H`, `train` |
-| §9 measuring, limits | Steps 13–15 | (experiments) |
-| all | Step 16 | the report |
+| §7–§8 design decisions | Step 13 | (an ablation) |
+| §9 measuring, limits | Steps 14–16 | (experiments) |
+| all | Step 17 | the report |
 
 > [!NOTE]
 > **Predict, then run.** Each `PREDICT_…` in `answers.py` is written **before** you run the step. It is never
@@ -104,7 +106,8 @@ python3 run_night.py audit
 It compares every night frame with every day frame using your `ncc` (on reduced copies) and prints, for each night
 frame, the day frame with the best NCC, the best and the second-best score, and the mean brightness. Open
 `out/audit.png` (night frame 1, contrast stretched, above its best day match). Compare the labels too:
-`head -3 /data/academy/25-thermal-night/replay/*_labels.csv`.
+`head -3 /data/academy/25-thermal-night/replay/*_labels.csv` (some rows are empty: NAVERA's labels are incomplete
+too).
 
 > [!TASK]
 > Write `TWIN_OF_NIGHT_01` (a frame number), `AUDIT_BEST_NCC` (the median best NCC, two decimals) and
@@ -114,7 +117,8 @@ frame, the day frame with the best NCC, the best and the second-best score, and 
 
 1. The first line of the table: night frame 1, its best day frame, the NCC.
 2. Clues: how high is the best NCC compared with the second best and with your prediction? Are there sun shadows in
-   `out/audit.png`? Does the place in night frame 1's label match the place of its best day frame's label?
+   `out/audit.png`? How far apart are night frame 1's label and its best day frame's label? (mission 06's
+   `haversine_m`, in `navera_lite/geo.py`)
 </details>
 
 ## Step 3 — Footprint and coverage (TODO 2, TODO 3)
@@ -133,7 +137,7 @@ n = 4
 s = (np.arange(n) + 0.5) / n * 10.0 - 5.0      # 4 centres of cells over [−5, 5]: [-3.75, -1.25, 1.25, 3.75]
 X, Y = np.meshgrid(s, s)                       # two (4, 4) arrays: every (x, y) of the grid
 inside = (np.abs(X) <= 2.0) & (np.abs(Y) <= 4.0)
-inside.mean()                                  # 0.25: the share of True (here 1 column pair of 4 … in x, all 4 in y)
+inside.mean()                                  # 0.5: 2 of the 4 columns have |x| ≤ 2, all 4 rows |y| ≤ 4 → 8 of 16
 ```
 To express a point (x, y) in axes turned by an angle a: u = x·cos a + y·sin a, v = −x·sin a + y·cos a (the sign of a
 does not change the area).
@@ -167,18 +171,20 @@ python3 run_night.py test
 ## Step 4 — Coverage and minimum height (no new code)
 
 > [!TASK]
-> **Predict** (`PREDICT_FIRST_CAM`): NAVERA's simulator first had a thermal camera of 56.7° × 48°, and its simulated
-> drone flies at most 400 m. Could it ever give a night fix (85 % coverage of the 496 m square)?
+> **By hand first** (`COV_350_0`, three decimals): the lesson camera (84° × 68°) at 350 m, heading 0°, over the
+> 495.8 m square — footprint, then coverage (lesson §3). Then **predict** (`PREDICT_FIRST_CAM`): NAVERA's simulator
+> first had a thermal camera of 56.7° × 48°, and its simulated drone flies at most 400 m. Could it ever give a night
+> fix (85 % coverage of the 496 m square)?
 
 ```bash
 python3 run_night.py coverage
 ```
 
-It prints the lesson camera's coverage at five heights and four headings, then the minimum height of three cameras
-(the given `min_altitude`, a bisection with your two functions).
+It prints the lesson camera's coverage at five heights and four headings (compare its 350 m, 0° value with yours),
+then the minimum height of three cameras (the given `min_altitude`, a bisection with your two functions).
 
 > [!TASK]
-> Write `COV_350_30` (three decimals), `MIN_ALT_FIRST_0`, `MIN_ALT_FIRST_45` (whole metres) and `EXPLAIN_COVERAGE`:
+> Write `MIN_ALT_FIRST_0`, `MIN_ALT_FIRST_45` (whole metres) and `EXPLAIN_COVERAGE`:
 > why does 45° need more height than 0°, and what does that mean for the first camera on a drone limited to 400 m?
 
 ## Step 5 — Preparing night frames (TODO 4)
@@ -201,8 +207,10 @@ the turn and the scale; then choose the last column so that the input centre lan
 <details><summary>🧰 Which way to turn (picture coordinates, y down)</summary>
 
 The frame's top points at heading_deg (clockwise from north). In the north-up output, the frame's "up" direction
-(0, −1) must become (sin h, −cos h), and its "right" direction (1, 0) must become (cos h, sin h). The matrix whose
-columns are these two vectors is the turn.
+(0, −1) must become (sin h, −cos h), and its "right" direction (1, 0) must become (cos h, sin h). A matrix's columns
+are where (1, 0) and (0, **+1**) go, and (0, +1) is DOWN = minus "up": so the turn is
+R = [[cos h, −sin h], [sin h, cos h]]. Then A = R · diag(sx, sy), with **two** scales: sx = (fw / w) / map_m_per_px
+along x and sy = (fh / h) / map_m_per_px along y (the frame's ground pixels are not always square).
 </details>
 
 ```bash
@@ -224,9 +232,11 @@ your prepared frame should line up with the reference's, north up.
 
 1. Plan: `fw, fh = footprint_m(...)`; `cov = coverage(fw, fh, heading_deg, out_px * map_m_per_px)`; if cov < need,
    return (None, cov, a sentence with "fly higher"); else the warp, and return (patch, cov, "ok").
-2. Scale: one output pixel is map_m_per_px metres, one frame pixel is fw / w metres along x (and fh / h along y): the
-   frame grows by (fw / w) / map_m_per_px.
-3. The patch is upside down or mirrored in `out/prepared.png`: check the turn with the 🧰 box: frame "up" → (sin h, −cos h).
+2. Scale: one output pixel is map_m_per_px metres; one frame pixel is fw / w metres along x and fh / h metres along y:
+   **two** scales, sx = (fw / w) / map_m_per_px and sy = (fh / h) / map_m_per_px, A = R · diag(sx, sy). The test line
+   "prepare (90° × 40°)" fails with one scale.
+3. The patch is upside down or mirrored in `out/prepared.png`: the 2nd column of R is where (0, +1), DOWN, goes:
+   (−sin h, cos h), not the "up" vector.
 4. The test says the centre pixel is not 200: the centre must go to ((out_px − 1)/2, (out_px − 1)/2) — compute t
    with c_in = ((w − 1)/2, (h − 1)/2).
 </details>
@@ -277,7 +287,10 @@ Open `out/ncc.png`.
 Day vs day, NCC is almost perfect: the same kind of picture up to noise and gain. At night the brightness order of
 the materials changes (lesson §1): roads reverse, trees do not, so no gain and no offset map one picture onto the
 other; NCC's best place is then often wrong. Inverting helps where the night is a negative of the day (roads, soil),
-and hurts where it is not (trees, water). Dawn has almost no contrast: the camera's automatic gain stretches noise.
+and hurts where it is not (trees, water). Noon fails too, although picture C "looks like" the day photo: the road is
+the HOTTEST thing at noon but dark in the day photo, trees and water are cool, soil is hot: the order changes again,
+just differently from the night. Looking similar to your eye is not the same as one gain and one offset: only about 1
+pair in 4 is found. Dawn has almost no contrast: the camera's automatic gain stretches noise.
 </details>
 
 ## Step 7 — The motion gate (TODO 6)
@@ -312,17 +325,19 @@ your gate; the runner moves the anchor only when your gate accepts.
 
 <details><summary>Read this after you ran `gate`: the lock-in</summary>
 The fix at 32 s was wrong by about 300 m, but after 14 s without an accepted fix the reach was 450 m: it passed and
-became the anchor. Every correct fix after it was then "too far" from that wrong anchor and refused, and the reach
-grows by only 30 m/s while the true distance stays about 300 m too large for several frames. A gate that only
-compares with its own last decision can lock onto a wrong anchor; NAVERA compares night fixes with the arbiter's
-output (the prior) and other sources too (missions 29–30).
+became the anchor. Every correct fix after it was then "too far" from that wrong anchor and refused. The lock-in is
+temporary: the reach grows by 30 m every second while the drone moves away at 25 m/s, so the gap (243, 231, 198,
+185 m in the table) closes only slowly, and a correct fix is accepted again some seconds later. NAVERA's night gate
+works the same way: once GPS is lost, it compares each fix with its own last accepted one (reach = 30 m/s × elapsed
+time + 30 m), so it can lock in for a while too. The arbiter (missions 29–30) adds a second check against the other
+sources.
 </details>
 
 > [!TIP] 🏅 End of session 1 — Night watch
 > Press **✔ Check my work**. When checks 1–9 pass (TODO 1–6 and Steps 0–7; the others are session 2), you earn the
 > **Night watch** badge. If the class session ends here, stop here, and read lesson Part B before session 2.
 
-## Session 2 — Night navigator (about 2 h 30 to 3 h)
+## Session 2 — Night navigator (about 2 h 45 to 3 h 15)
 
 ## Step 8 — Making training pairs (TODO 7)
 
@@ -370,16 +385,19 @@ reference patch.
 
 ## Step 9 — The network's input (TODO 8)
 
-**TODO 8** `to_input(pairs, device="cpu")`: lesson §7, "Input normalisation". Torch operations only.
+**TODO 8** `to_input(pairs, device="cpu")`: lesson §7, "Input normalisation". Torch operations only. The question
+to answer first: which axes of an (N, 2, 64, 64) tensor hold the pixels of ONE channel of ONE pair?
 
-<details><summary>🧰 Statistics per channel in PyTorch</summary>
+<details><summary>🧰 Statistics along chosen axes in PyTorch (another shape than yours)</summary>
 
 ```python
-x = torch.arange(16.0).reshape(1, 2, 2, 4)        # 1 pair, 2 channels of 2 × 4
-x.mean(dim=(2, 3), keepdim=True)                  # shape (1, 2, 1, 1): tensor([[[[ 3.5]], [[11.5]]]])
-x.std(dim=(2, 3), keepdim=True)                   # each channel's std, same shape (broadcasts against x)
+x = torch.arange(24.0).reshape(2, 3, 4)          # 2 rows of 3 groups of 4 numbers
+x.mean(dim=2, keepdim=True).shape                 # torch.Size([2, 3, 1]): one mean per (row, group), kept as an axis
+x.mean(dim=(1, 2)).shape                          # torch.Size([2]): one mean per row, over groups AND numbers
+x - x.mean(dim=2, keepdim=True)                   # broadcasting: each group minus its own mean
 torch.as_tensor(np.zeros((2, 2), np.uint8)).float()   # numpy uint8 → float32 tensor
 ```
+`.std()` takes the same `dim` and `keepdim` arguments.
 </details>
 
 ```bash
@@ -391,16 +409,23 @@ python3 run_night.py test
 
 <details><summary>Stuck? Hints</summary>
 
-1. Accept both numpy and tensors: `x = pairs if torch.is_tensor(pairs) else torch.as_tensor(np.asarray(pairs))`, then
-   `.to(device).float()`.
-2. −1.16 instead of −0.84 on the test: you divided by the std alone — the docstring says (std + 1.0).
+1. Accept both numpy and tensors (`torch.is_tensor`), then `.to(device).float()`.
+2. The pixels of one channel of one pair are the last two axes.
+3. −1.16 instead of −0.84 on the test: you divided by the std alone — the docstring says (std + 1.0).
 </details>
 
 ## Step 10 — The network (TODO 9)
 
 > [!TASK]
-> **Predict** (`PREDICT_PARAMS`): which layer holds most of the 192 600 parameters? Then count `fc1`'s parameters by
-> hand (lesson §7 does `conv3`): `N_PARAMS_FC1`.
+> **Predict** (`PREDICT_PARAMS`): which layer holds most of the 192 600 parameters? Write it and save **before** you
+> open the box below.
+
+<details><summary>After your prediction: fc1's size</summary>
+
+The docstring leaves fc1's input size as "?": work it out (what do four 2 × 2 poolings leave of 64 × 64, and how many
+maps does conv4 give?). Then count fc1's parameters by hand (lesson §7 does `conv3`): `N_PARAMS_FC1`. The test line
+shows your whole network's count: it must be 192 600.
+</details>
 
 **TODO 9** `HomographyNet`: `__init__` (the six layers of the docstring's table, **with those names**: the check
 and Sim Lite load your weights into them) and `forward` (the table in order). Mission 21's PatchNet is the same
@@ -420,15 +445,25 @@ python3 run_night.py test
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
-1. `super().__init__()` first; then `self.conv1 = nn.Conv2d(2, 16, 3, padding=1)` and the five others from the table.
+1. `super().__init__()` first; then the six layers with `nn.Conv2d(in, out, kernel, padding=…)` and
+   `nn.Linear(in, out)`. Which padding keeps a 64 × 64 picture 64 × 64 with a 3 × 3 kernel, and why?
 2. `forward`: four times "conv, ReLU, 2 × 2 max-pooling", `x.flatten(1)`, `fc1`, ReLU, `fc2`. No ReLU after fc2.
-3. `mat1 and mat2 shapes cannot be multiplied (3x4096 and 1024x128)`: one pooling is missing.
+3. `mat1 and mat2 shapes cannot be multiplied (3x4096 and …)`: the first matrix shows what flatten really gives —
+   one pooling is missing, or fc1's "?" is wrong.
 4. Parameters wrong: a layer without its bias, another kernel size, or padding missing.
 </details>
 
 ## Step 11 — From corners to H, and training (TODO 10, TODO 11)
 
 **TODO 10** `offsets_to_H(offsets, side=PATCH_PX)`: lesson §6 (the 🧰 box of Step 8 has the OpenCV call).
+
+<details><summary>Stuck on offsets_to_H?</summary>
+
+1. `cv2.getPerspectiveTransform(square, square + offsets)`, both float32 of shape (4, 2); the square's corners are
+   0 and side − 1.
+2. You get [[1, 0, −2], [0, 1, 1], …] for the docstring example: that is the inverse — go from the square to
+   square + offsets.
+</details>
 
 **TODO 11** `train(model, train_x, train_y, val_x, val_y, …)`: the least guided function. Mission 21's `train` had
 the same plan; what changes: the loss (mean squared error against offsets / RHO_PX), and the data stays on the CPU:
@@ -455,49 +490,96 @@ A quick run first (seconds):
 python3 run_night.py train --n-train 3000 --epochs 3 --out quick.pt
 ```
 
-The training loss should go down from about 0.21. Then the real training (about 30–60 s on the GPU; if the class's
-three GPU slots are busy the runner waits, then uses the CPU; on the CPU use `--device cpu --n-train 3000 --epochs 6`,
-about 11 minutes on a busy Jetson, for a weaker network that still passes the check):
+The training loss should go down from about 0.21. Then the real training (about 30–60 s on the GPU). If the class's
+three GPU slots are busy the runner waits, then uses the CPU; on the CPU use `--device cpu --n-train 3000 --epochs 6`:
+11 minutes on a quiet Jetson, up to 25 minutes when the class is training, and a weaker network (about 5.8–6.0 px on
+the check's pairs, limit 6.5): prefer the GPU when a slot is free.
 
 ```bash
 python3 run_night.py train
 ```
 
 It prints one line per epoch, saves your weights in `my_homography.pt`, the curves in `out/loss_my_homography.png`,
-and the median errors on the validation pairs.
+the median errors on the validation pairs, and a record in `logs/my_homography.pt.json` (the check reads it).
 
 > [!TASK]
 > Write `VAL_CENTRE_PX` (two decimals, the median centre error of the last line).
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
+1. Compare your paper plan with mission 21's `train`: what is the same, what changes (the loss, the targets / RHO_PX,
+   the batches through `to_input`)?
+2. A ⚠ line after an epoch, or `val_loss` far above `train_loss`: the VALIDATION targets must be divided by RHO_PX too.
+3. The loss stays at about 0.21 (as good as answering 0): `opt.step()` missing, or the targets are not divided by
+   RHO_PX; `Expected all tensors to be on the same device`: `.to(device)` on the targets.
+4. The check says your weights differ from 3 plain Adam steps: `opt.zero_grad()` is missing (or comes after
+   `backward()`), so every step adds all the old gradients.
+</details>
+
+<details><summary>Still stuck? The full plan</summary>
+
 1. Once: `torch.Generator().manual_seed(seed)`, `torch.optim.Adam(model.parameters(), lr=lr)`, `history = []`.
    Every epoch: `model.train()`, `order = torch.randperm(n, generator=g)`, then the batches.
 2. Every batch: `idx = order[start:start + batch]`; the loss of `model(to_input(train_x[idx], device))` against
    `train_y[idx].to(device) / RHO_PX`; then `opt.zero_grad()`, `loss.backward()`, `opt.step()`; keep `loss.item()`.
-3. After the batches: `model.eval()`, `with torch.no_grad():` the loss of each validation batch; the row
-   `{"epoch": e, "train_loss": mean, "val_loss": mean}`; append; `if log: log(row)`.
-4. The loss stays at about 0.21 (as good as answering 0): `opt.step()` or `zero_grad()` missing, or the targets
-   are not divided by RHO_PX; `Expected all tensors to be on the same device`: `.to(device)` on the targets.
-5. offsets_to_H gives [[1, 0, −2], [0, 1, 1], …]: the inverse — from the square to the square + offsets.
+3. After the batches: `model.eval()`, `with torch.no_grad():` the loss of each validation batch, against
+   `val_y[…].to(device) / RHO_PX` too; the row `{"epoch": e, "train_loss": mean, "val_loss": mean}`; append;
+   `if log: log(row)`.
 </details>
 
 ## Step 12 — Overfitting, live
 
 > [!TASK]
-> **Predict** (`PREDICT_OVERFIT`): with 2 000 pairs from only 6 places and 30 epochs, what will the training loss
+> **Predict** (`PREDICT_OVERFIT`): with 1 000 pairs from only 3 places and 30 epochs, what will the training loss
 > and the validation loss do? Then run (it does not overwrite `my_homography.pt`):
 
 ```bash
-python3 run_night.py train --scenes 6 --n-train 2000 --epochs 30 --out overfit.pt
+python3 run_night.py train --scenes 3 --n-train 1000 --epochs 30 --out overfit.pt
 ```
 
 Open `out/loss_overfit.png` next to `out/loss_my_homography.png`.
 
 > [!TASK]
-> `EXPLAIN_OVERFIT`: what did the two losses do with 6 places, and why? At which epoch would you have stopped?
+> `EXPLAIN_OVERFIT`: what did the two losses do with 3 places, and why? At which epoch would you have stopped?
 
-## Step 13 — Learned vs NCC, in five conditions
+(`overfit.pt` is an experiment, not your navigator: the check refuses weights trained on fewer than 50 places.)
+
+## Step 13 — Your design decision: test one of the author's choices
+
+Lesson §7–§8 gave you three design decisions as facts. Now you test one, against your own `my_homography.pt`
+(`VAL_CENTRE_PX`). Choose ONE:
+
+| | the choice | the run without it |
+|---|---|---|
+| (a) | per-channel normalisation (your `to_input`) | `--norm none`: grey levels / 255, nothing else |
+| (b) | augmentation (turns of 90° and mirrors) | `--no-augment` |
+| (c) | targets divided by ρ = 16 px | `--rho 1`: the network learns pixels directly |
+
+> [!TASK]
+> **Predict** (`PREDICT_ABLATION`): which choice did you pick, and how much worse (or better) will the validation
+> error be? Then run your choice, for example:
+
+```bash
+python3 run_night.py train --norm none --out ablation.pt
+```
+
+(Same 16 000 pairs, 8 epochs, about half a minute on the GPU; `--no-augment --out ablation.pt` or
+`--rho 1 --out ablation.pt` for the others. It never overwrites `my_homography.pt`.)
+
+> [!TASK]
+> Write `ABLATION` (`"a"`, `"b"` or `"c"`), `ABLATION_PX` (the median centre error of its last line, two decimals)
+> and `EXPLAIN_ABLATION`: compared with your own error, was the author's choice worth it? Why — and how sure are you
+> from ONE run? (Training twice with another seed moves the error by about 0.1–0.2 px.)
+
+<details><summary>Read this after your run: what the three ablations gave the author</summary>
+(a) without normalisation: about 5.1 px instead of 3.8 — the thermal camera's gain and the pale reference must be
+learned from examples instead of removed. (c) pixels instead of offsets / 16: about 4.2 px — the targets are 16 times
+larger than what freshly initialised layers produce, the first epochs are spent catching up. (b) without
+augmentation: about 3.6 px, **no worse** with 16 000 pairs from 293 places: the author's choice is not justified by
+this measurement (it may help with fewer places). Testing your own design decisions is how you find that out.
+</details>
+
+## Step 14 — Learned vs NCC, in five conditions
 
 ```bash
 python3 run_night.py compare
@@ -505,7 +587,8 @@ python3 run_night.py compare
 
 It measures, on validation places, the median centre error and the share within 3 px for: the prior alone, NCC (your
 `ncc_locate`), an untrained network (random weights) and yours, at night, at dawn, at noon, over the coast, and with
-a prior wrong by up to 26 px (more than the ρ = 16 px of training). Open `out/compare.png`.
+a prior wrong by more than training ever showed: a common shift up to 22 px (corners up to 26 px, above ρ = 16 px),
+the row `shift 22 px`. Open `out/compare.png`.
 
 > [!TASK]
 > Write `NET_NIGHT_PX`, `NCC_NIGHT_PX`, `NET_NOON_PX` (one decimal) and `EXPLAIN_LEARNED`: why does your network win
@@ -519,7 +602,7 @@ a third of ρ); NAVERA's STHN refines its corners in several steps. And everythi
 real thermal frames, with their own surprises, are the test that counts.
 </details>
 
-## Step 14 — Sabotage: LOC-6 in your hands
+## Step 15 — Sabotage: LOC-6 in your hands
 
 > [!TASK]
 > **Predict** (`PREDICT_STRICT`): the runner saves your weights again under names that start with `module.` (as a
@@ -534,7 +617,7 @@ python3 run_night.py sabotage
 > Write `MISSING_KEYS` and `EXPLAIN_STRICT`: why is `strict=False` dangerous, and what did NAVERA change after LOC-6
 > (lesson, In NAVERA)?
 
-## Step 15 — Fly the night
+## Step 16 — Fly the night
 
 ```bash
 python3 run_night.py fly
@@ -547,7 +630,7 @@ motion gate checks the fix. Errors against the true positions, with NCC for comp
 > [!TASK]
 > Write `FLY_MEDIAN_M` (the last line).
 
-## Step 16 — The report
+## Step 17 — The report
 
 Write [report.md](file:./report.md) (200–500 words, your own words, keep the four headings): the auditor, geometry
 and NCC, the learned homography, limits and honesty. Quote your numbers.
@@ -556,11 +639,12 @@ and NCC, the learned homography, limits and honesty. Quote your numbers.
 > report.md has the four headings, at least 200 words, and quotes your `AUDIT_BEST_NCC`, your `MIN_ALT_FIRST_0`, your
 > `NCC_GOOD_NIGHT` and your `NET_NIGHT_PX`.
 
-## Step 17 — Check, then look back
+## Step 18 — Check, then look back
 
 Press **✔ Check my work**. It tests your functions on numbers and pictures they have never seen, loads your
 `my_homography.pt` safely (numbers only, strictly) and measures it on 512 night pairs from places you never saw: the
-median centre error must be 6.5 px or less (the prior alone: about 9.5; a full GPU training: about 3.5). When every
+median centre error must be 6.5 px or less (the prior alone: about 9.5; the CPU recipe: about 5.9; a full GPU
+training: about 3.5), from a training on all the places. When every
 check passes, you earn the **Night navigator** badge. Then look back, without the lesson:
 
 1. Explain to a colleague, in three sentences, what LOC-6 was and why no test caught it for weeks.
@@ -573,7 +657,8 @@ Write your answers in `LOOK_BACK` in `answers.py` if you want your teacher to re
 ## Going further (optional)
 
 - **Two passes.** Warp the thermal patch with your first H (so it is almost aligned), run the network again, and
-  compose the two homographies. Does the night error fall? (This is the idea behind STHN's refinement.)
+  compose the two homographies. Does the night error fall? (This is the idea behind STHN's refinement steps, and its
+  optional second stage.)
 - **Train for dawn and noon too.** Copy `train_pairs` into your own script and mix night, noon and dawn pairs from
   the training places (`scenes_train.npz` has night only: use `scenes_val.npz`'s first half for training and its
   second half for validation). What happens to the night error?

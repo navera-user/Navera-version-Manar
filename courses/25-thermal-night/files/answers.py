@@ -17,7 +17,8 @@ EXPLAIN_AUDIT = ""       # what are the replay set's "night" frames really, and 
 # ---- Steps 3–4: footprint and coverage ------------------------------------------------------------
 PREDICT_FIRST_CAM = ""   # the simulator's first thermal camera (56.7° × 48°), drone ceiling 400 m: can it ever give a
                          # night fix (85 % coverage)? (before you run `coverage`)
-COV_350_30 = 0.0         # lesson camera, 350 m, heading 30°: coverage (three decimals, from `coverage`)
+COV_350_0 = 0.0          # BY HAND, before `coverage`: lesson camera 84° × 68°, 350 m, heading 0°, square 495.8 m
+                         # (three decimals)
 MIN_ALT_FIRST_0 = 0      # minimum height of the first simulator camera, heading 0° (whole metres)
 MIN_ALT_FIRST_45 = 0     #                                                heading 45°
 EXPLAIN_COVERAGE = ""    # why does a heading of 45° need more height than 0°, and what does that mean for that camera?
@@ -50,23 +51,29 @@ N_PARAMS_FC1 = 0         # the parameters of fc1, worked out by hand (weights + 
 
 # ---- Steps 11–12: training and overfitting -----------------------------------------------------------
 VAL_CENTRE_PX = 0.0      # the median centre error printed after your full training (two decimals)
-PREDICT_OVERFIT = ""     # pairs from only 6 places, 30 epochs: what will the two loss curves do?
-EXPLAIN_OVERFIT = ""     # what did the two losses do with 6 places, and why? At which epoch would you have stopped?
+PREDICT_OVERFIT = ""     # pairs from only 3 places, 30 epochs: what will the two loss curves do?
+EXPLAIN_OVERFIT = ""     # what did the two losses do with 3 places, and why? At which epoch would you have stopped?
 
-# ---- Step 13: learned vs NCC ---------------------------------------------------------------------------
+# ---- Step 13: your design decision (an ablation) ----------------------------------------------------------
+PREDICT_ABLATION = ""    # which choice you turn off (a, b or c) and how much worse or better you expect it to be
+ABLATION = ""            # "a" (no normalisation), "b" (no augmentation) or "c" (no ρ scaling)
+ABLATION_PX = 0.0        # the median centre error of that run's last line (two decimals)
+EXPLAIN_ABLATION = ""    # compared with your own error: was the author's choice worth it? Why? How sure are you?
+
+# ---- Step 14: learned vs NCC ---------------------------------------------------------------------------
 NET_NIGHT_PX = 0.0       # from `compare`: your network's median error at night (px, one decimal)
 NCC_NIGHT_PX = 0.0       #                 NCC's median error at night
 NET_NOON_PX = 0.0        #                 your network's median error at noon
 EXPLAIN_LEARNED = ""     # why does your network win at night but not at noon or at dawn? What would you need before
                          # trusting it on a real drone?
 
-# ---- Step 14: sabotage ------------------------------------------------------------------------------
+# ---- Step 15: sabotage ------------------------------------------------------------------------------
 PREDICT_STRICT = ""      # the renamed checkpoint loaded with strict=False: its median error at night — near yours, near
                          # the prior's, or much worse? Why?
 MISSING_KEYS = 0         # how many keys were missing (from `sabotage`)
 EXPLAIN_STRICT = ""      # why is strict=False dangerous, and what did NAVERA change after LOC-6?
 
-# ---- Step 15: the night flight --------------------------------------------------------------------------
+# ---- Step 16: the night flight --------------------------------------------------------------------------
 FLY_MEDIAN_M = 0.0       # the network's median error over the flight's prepared frames (metres, from `fly`)
 
 # ---- Look back (not graded) ------------------------------------------------------------------------------

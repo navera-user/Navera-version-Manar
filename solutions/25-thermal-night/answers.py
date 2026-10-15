@@ -10,7 +10,7 @@ EXPLAIN_AUDIT = ("The night frames are day photos made darker: each one has an N
                  "put each night frame at the wrong place.")
 
 PREDICT_FIRST_CAM = "No, I think it needs more than 400 m."
-COV_350_30 = 0.896
+COV_350_0 = 0.952
 MIN_ALT_FIRST_0 = 474
 MIN_ALT_FIRST_45 = 524
 EXPLAIN_COVERAGE = ("At 45 degrees the corners of the square stick out of the turned rectangle, so more height is "
@@ -38,9 +38,15 @@ PREDICT_PARAMS = "fc1, because it sees every number of the last maps."
 N_PARAMS_FC1 = 131200
 VAL_CENTRE_PX = 3.84
 PREDICT_OVERFIT = "The training loss will fall a lot and the validation loss will stop falling and rise."
-EXPLAIN_OVERFIT = ("The training loss fell to 0.01 while the validation loss stopped near 0.14 at epoch 11 and rose: "
-                   "with only 6 places the network memorised them instead of learning to align any ground. I would "
-                   "have stopped at about epoch 11.")
+EXPLAIN_OVERFIT = ("The training loss fell to 0.016 while the validation loss stopped near 0.16 at epoch 17 and rose: "
+                   "with only 3 places the network memorised them instead of learning to align any ground. I would "
+                   "have stopped at about epoch 17.")
+PREDICT_ABLATION = "a: without normalisation I expect it to be clearly worse, maybe 5 px instead of 3.8."
+ABLATION = "a"
+ABLATION_PX = 5.08
+EXPLAIN_ABLATION = ("Without per-channel normalisation the error was 5.08 px instead of my 3.83 px, so the author's "
+                    "choice was worth it: the network had to learn the camera's gain and the pale reference from "
+                    "examples. One run is not proof, but 1.2 px is much more than the 0.1-0.2 px seed noise.")
 NET_NIGHT_PX = 3.8
 NCC_NIGHT_PX = 14.5
 NET_NOON_PX = 12.1

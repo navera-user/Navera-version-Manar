@@ -134,12 +134,15 @@ class HomographyNet(nn.Module):
     """A small CNN: one pair (2, 64, 64) in, the 4-point offsets / RHO_PX out (8 numbers). Layers, with these
     attribute NAMES (the check and Sim Lite load your weights into them):
 
-        conv1 = nn.Conv2d(2, 16, 3, padding=1)     then ReLU, then 2 × 2 max-pooling     → (16, 32, 32)
-        conv2 = nn.Conv2d(16, 32, 3, padding=1)    then ReLU, then 2 × 2 max-pooling     → (32, 16, 16)
-        conv3 = nn.Conv2d(32, 64, 3, padding=1)    then ReLU, then 2 × 2 max-pooling     → (64, 8, 8)
-        conv4 = nn.Conv2d(64, 64, 3, padding=1)    then ReLU, then 2 × 2 max-pooling     → (64, 4, 4)
-        fc1   = nn.Linear(64 * 4 * 4, 128)         on the flattened maps, then ReLU
-        fc2   = nn.Linear(128, 8)                  no ReLU: offsets can be negative
+        layer   kind                          channels in → out    then
+        conv1   3 × 3 convolution, size kept   2 → 16             ReLU, 2 × 2 max-pooling   → (16, 32, 32)
+        conv2   3 × 3 convolution, size kept   16 → 32            ReLU, 2 × 2 max-pooling
+        conv3   3 × 3 convolution, size kept   32 → 64            ReLU, 2 × 2 max-pooling
+        conv4   3 × 3 convolution, size kept   64 → 64            ReLU, 2 × 2 max-pooling   → (64, ?, ?)
+        fc1     linear, on the flattened maps  ? → 128            ReLU        (? = every number conv4's block gives)
+        fc2     linear                         128 → 8            nothing: offsets can be negative
+
+    "Size kept": the convolution must not shrink the 64 × 64 picture (which nn.Conv2d argument does that?).
 
     forward(x): x a float tensor (N, 2, 64, 64) from to_input; returns (N, 8). 192 600 parameters.
     Example: HomographyNet()(torch.zeros(3, 2, 64, 64)).shape → torch.Size([3, 8])
@@ -211,7 +214,7 @@ def train(model, train_x, train_y, val_x, val_y, epochs=15, lr=1e-3, batch=128, 
     Returns the history: one dict per epoch {"epoch": 1, 2, …, "train_loss": mean of the epoch's batch losses,
     "val_loss": the validation loss (batches of `batch`, averaged)} — floats.
     Example: 512 training and 128 validation pairs, epochs=3 → 3 dicts whose "train_loss" usually goes down from
-             about 0.3 (the loss of always answering 0 is ≈ 0.25), e.g. [{"epoch": 1, "train_loss": 0.29, "val_loss": 0.26}, …]
+             about 0.21 (the loss of always answering 0, lesson §8), e.g. [{"epoch": 1, "train_loss": 0.21, "val_loss": 0.19}, …]
     """
     g = torch.Generator().manual_seed(int(seed))
     torch.manual_seed(int(seed))
@@ -286,7 +289,7 @@ def centre_error(pred, truth, side=PATCH_PX):
 def load_weights(path, device="cpu"):
     """A HomographyNet with the weights saved at `path` (torch.save(model.state_dict(), path)), read safely
     (weights_only=True: numbers only) and STRICTLY: every layer must find its weights, or this raises. (Loading
-    with strict=False silently keeps random weights for the layers whose names do not match: lesson §8.)
+    with strict=False silently keeps random weights for the layers whose names do not match: lesson §9.)
     Example: load_weights("my_homography.pt") → HomographyNet(...) ready for predict()
     """
     # from mission 25 — finished: read it, use it, do not change it

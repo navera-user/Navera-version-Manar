@@ -14,10 +14,11 @@ and draws them.
     python3 run_night.py train         train YOUR HomographyNet and save it in my_homography.pt           (Step 11)
           options:  --n-train N (default 16 000 pairs)  --epochs E (default 8)  --scenes K (only the first K
                     training places)  --device cpu  --out FILE (default my_homography.pt)
-    python3 run_night.py compare       prior, NCC, untrained and trained network, in five conditions      (Step 13)
+          ablation (Step 13, with --out ablation.pt): --norm none | --no-augment | --rho 1
+    python3 run_night.py compare       prior, NCC, untrained and trained network, in five conditions      (Step 14)
           option:   --weights FILE (default my_homography.pt)
-    python3 run_night.py sabotage      what loading weights with strict=False does                        (Step 14)
-    python3 run_night.py fly           the night flight, end to end: prepare → network → position → gate  (Step 15)
+    python3 run_night.py sabotage      what loading weights with strict=False does                        (Step 15)
+    python3 run_night.py fly           the night flight, end to end: prepare → network → position → gate  (Step 16)
 
 Training and inference share the class's GPU through academy_gpu.py (at most 3 GPU jobs at once: the runner waits for
 a free slot or uses the CPU). Pictures are saved in out/ — click them in the file list of the 📝 Code tab. The views
@@ -52,8 +53,8 @@ _kit_hint = rk._hint
 def _hint(e):
     s = str(e)
     if "mat1 and mat2 shapes cannot be multiplied" in s:
-        return (" — fc1 got the wrong number of inputs: after four 2 × 2 poolings a 64 × 64 pair is 4 × 4, with 64 "
-                "maps: flatten to 64 * 4 * 4 = 1024 numbers (x.flatten(1))")
+        return (" — fc1 got the wrong number of inputs: the SECOND number in 'mat1 (N×K)' is what x.flatten(1) "
+                "really gives; work out what four 2 × 2 poolings leave of 64 × 64, times conv4's channels")
     if "expected input" in s and "channels" in s:
         return " — conv1 takes 2 input channels (the reference and the thermal patch): nn.Conv2d(2, 16, 3, padding=1)"
     if "Expected 4D" in s or "Expected 3D (unbatched) or 4D" in s:
@@ -232,6 +233,26 @@ def test():
              "middle row (lab Step 5, 🧰 'which way to turn')")
     else:
         line(4, "prepare (heading 90°)", None, e, False, "")
+    mark = np.zeros((512, 640), np.uint8)
+    mark[440:500, 300:340] = 255                               # a mark near the BOTTOM of a frame with oblong pixels
+    v, e = rk.call(night, "prepare", mark, 400.0, 90.0, 40.0, 0.0, 7.75, 64, need=0.0)
+    if not e:
+        good = isinstance(v, tuple) and len(v) == 3 and v[0] is not None and np.shape(v[0]) == (64, 64)
+        where = "no patch"
+        if good:
+            ys, xs = np.nonzero(np.asarray(v[0], dtype=float) > 128)
+            good = len(ys) > 0 and abs(ys.mean() - 47.5) < 1.5 and abs(xs.mean() - 31.5) < 1.5
+            where = "nowhere in the patch" if len(ys) == 0 else f"at x ≈ {xs.mean():.1f}, y ≈ {ys.mean():.1f}"
+        note = ("a 90° × 40° camera has ground pixels longer along x than along y: ONE scale for x and y puts the mark "
+                "in the wrong row. Use (fw / w) / map_m_per_px along x and (fh / h) / map_m_per_px along y (lab Step 5, "
+                "hint 2)")
+        if isinstance(v, tuple) and len(v) == 3 and v[0] is None:
+            note = "prepare refused it although need = 0.0 here: compare the coverage with the `need` ARGUMENT"
+        elif where.startswith("at") and abs(ys.mean() - 15.5) < 1.5:
+            note = "the mark is ABOVE the centre: the turn is mirrored (lab Step 5, hint 3)"
+        line(4, "prepare (90° × 40°)", f"the bottom mark lands {where}", None, good, note)
+    else:
+        line(4, "prepare (90° × 40°)", None, e, False, "")
     v, e = rk.call(night, "prepare", frame, 200.0, 75.0, 63.0, 30.0, 7.75, 64)
     if not e:
         good = isinstance(v, tuple) and len(v) == 3 and v[0] is None and "fly higher" in str(v[2])
@@ -274,11 +295,12 @@ def test():
             want = sc[crop[0]:crop[1], crop[2]:crop[3]]
             good = a_.shape == (64, 64) and b_.shape == (64, 64) and np.array_equal(b_, want) and \
                 np.array_equal(a_, sc[30:94, 20:84]) and b_.dtype == np.uint8
-            note = "the docstring's crops. "
+            note = "expected the plain crops of the docstring. "
             if b_.shape == (64, 64) and np.array_equal(b_, sc[30:94, 15:79]):
                 note += "The thermal patch moved LEFT: offsets say where the thermal corners ARE in the scene (+ = right)"
             elif b_.shape == (64, 64) and not np.array_equal(b_, want) and offs[0] == 0:
-                note += "With offsets 0 the thermal patch must be the plain crop: SQUARE is [[0, 0], [63, 0], [63, 63], [0, 63]]"
+                note += ("With offsets 0 the thermal patch must be the plain crop scene[y0:y0+64, x0:x0+64]: warp FROM the "
+                         "scene corners (square + offsets) TO SQUARE, not the other way (lab Step 8, hint 2)")
             else:
                 note += "Lab Step 8, hints"
             line(7, f"cut_pair {what}", f"shapes {a_.shape}, {b_.shape}", None, good, note)
@@ -333,6 +355,12 @@ def test():
         v, e = rk.call(hn, "train", net, torch.as_tensor(x[:32]), torch.as_tensor(y[:32]), torch.as_tensor(x[32:]),
                        torch.as_tensor(y[32:]), epochs=2, batch=16, device="cpu")
         bad = number_row(v) if not e else None
+        if not e and not bad and max(r["val_loss"] for r in v) > 1.0:
+            bad = (f"val_loss {[round(r['val_loss'], 2) for r in v]}: far above ≈ 0.2 — divide the VALIDATION targets "
+                   "by RHO_PX too (lab Step 11, hint 3)")
+        if not e and not bad and max(r["train_loss"] for r in v) > 1.0:
+            bad = (f"train_loss {[round(r['train_loss'], 2) for r in v]}: far above ≈ 0.2 — divide the targets by "
+                   "RHO_PX (the network predicts offsets / 16)")
         line(11, "train (2 epochs)", None if e or bad else
              f"{len(v)} rows, train_loss {[round(r['train_loss'], 3) for r in v]}", e or bad, True, "")
     print("\nAll docstring examples pass." if ok_all else "\nFix the ✘ lines first (the hint names the lab step).")
@@ -601,12 +629,12 @@ def pairs_mode():
     print("patch (after the camera: noise, automatic gain). Your network will have to find the green corners.")
 
 
-def train_pairs(hn, n_train, k_scenes, seed=1):
+def train_pairs(hn, n_train, k_scenes, seed=1, augment=True):
     t = scenes("scenes_train.npz")
     ref, nt = t["ref"], t["night"]
     if k_scenes:
         ref, nt = ref[:k_scenes], nt[:k_scenes]
-    x, y = hn.make_pairs(ref, nt, n_train, seed=seed, augment=True)
+    x, y = hn.make_pairs(ref, nt, n_train, seed=seed, augment=augment)
     v = scenes("scenes_val.npz")
     vx, vy = hn.make_pairs(v["ref"], v["night"], 1024, seed=2, augment=False)
     return x, y, vx, vy, len(ref)
@@ -621,9 +649,28 @@ def train_mode():
     out = option("--out", "my_homography.pt")
     if out.endswith(".json") or "/" in out or not out.endswith(".pt"):
         sys.exit("--out is a .pt file name in this folder, e.g. --out overfit.pt")
+    # Step 13 (ablation): turn OFF one of the author's design choices
+    norm = option("--norm", "per-channel")
+    augment = "--no-augment" not in sys.argv
+    rho = option("--rho", 16.0, float)
+    if norm not in ("per-channel", "none"):
+        sys.exit("--norm is 'per-channel' (the default, your to_input) or 'none'")
+    ablation = [a for a, on in (("norm none", norm == "none"), ("no augmentation", not augment),
+                                (f"rho {rho:g}", rho != 16.0)) if on]
+    if ablation and out == "my_homography.pt":
+        sys.exit("an ablation run must not overwrite your navigator: add --out ablation.pt")
+    if rho <= 0:
+        sys.exit("--rho must be > 0 (16 is the design's value)")
+    if norm == "none":
+        def raw_input(pairs, device="cpu"):
+            """The ablation: grey levels / 255 as they are — no per-channel mean or std (written for the course)."""
+            t = pairs if torch.is_tensor(pairs) else torch.as_tensor(np.asarray(pairs))
+            return t.to(device).float() / 255.0
+        hn.to_input = raw_input
+    hn.RHO_PX = rho
     t0 = time.time()
     try:
-        x, y, vx, vy, n_sc = train_pairs(hn, n_train, k_scenes)
+        x, y, vx, vy, n_sc = train_pairs(hn, n_train, k_scenes, augment=augment)
     except Exception:                                                          # noqa: BLE001
         v = scenes("scenes_val.npz")
         _, err = rk.call(hn, "cut_pair", v["ref"][0], v["night"][0], (20.0, 20.0), [0.0] * 8)
@@ -640,14 +687,18 @@ def train_mode():
             sys.exit(err)
         model = model.to(device)
         t0 = time.time()
-        print(f"Training HomographyNet ({epochs} epochs, {device}).")
+        print(f"Training HomographyNet ({epochs} epochs, {device})"
+              + (f" — ABLATION: {', '.join(ablation)}." if ablation else "."))
         print("  epoch  train loss  val loss   elapsed")
 
         def log(row):
             try:
-                print(f"  {row.get('epoch', '?'):>5}  {float(row.get('train_loss', float('nan'))):10.4f}  "
-                      f"{float(row.get('val_loss', float('nan'))):8.4f}  {time.time() - t0:6.1f} s",
+                tl, vl = float(row.get('train_loss', float('nan'))), float(row.get('val_loss', float('nan')))
+                print(f"  {row.get('epoch', '?'):>5}  {tl:10.4f}  {vl:8.4f}  {time.time() - t0:6.1f} s",
                       flush=True, file=sys.__stdout__)
+                if rho == 16.0 and vl > 1.0 and vl > 5 * tl:
+                    print("  ⚠ the validation loss is far above the training loss: did you divide the VALIDATION "
+                          "targets by RHO_PX too? (lab Step 11, hint 3)", file=sys.__stdout__)
             except (TypeError, ValueError, AttributeError, RuntimeError):
                 print(f"  (a row the runner cannot print: {row!r:.80})", file=sys.__stdout__)
 
@@ -661,10 +712,12 @@ def train_mode():
         took = time.time() - t0
         torch.save(model.state_dict(), out)
         pred = hn.predict(model, vx, device)
+    need_H(hn)
     ce, cc = hn.corner_error(pred, vy), hn.centre_error(pred, vy)
     mpp = float(np.mean(scenes("scenes_val.npz")["m_per_px"]))
     os.makedirs("logs", exist_ok=True)
     record = {"weights": out, "n_train": int(len(x)), "places": int(n_sc), "epochs": epochs, "device": device,
+              "ablation": ablation,
               "seconds": round(took, 1), "val_corner_px": round(float(np.median(ce)), 3),
               "val_centre_px": round(float(np.median(cc)), 3), "history": history}
     with open(os.path.join("logs", out + ".json"), "w") as f:
@@ -679,7 +732,8 @@ def train_mode():
         ax.plot([r["epoch"] for r in history], [r["val_loss"] for r in history], "s-", label="validation")
         ax.set_xlabel("epoch")
         ax.set_ylabel("loss (mean squared error of offsets / 16)")
-        ax.set_ylim(0, 0.25)                                      # one scale for every run; answering 0 scores ≈ 0.21
+        if rho == 16.0:
+            ax.set_ylim(0, 0.25)                                  # one scale for every run; answering 0 scores ≈ 0.21
         ax.set_title(f"{out}: {len(x)} pairs from {n_sc} places")
         ax.legend()
         fig.tight_layout()
@@ -687,6 +741,15 @@ def train_mode():
         name = f"loss_{out.rsplit('.', 1)[0]}.png"
         fig.savefig(os.path.join(OUT, name), dpi=90)
         rk.saved(f"out/{name}")
+
+
+def need_H(hn):
+    """Stop with a plain sentence if YOUR offsets_to_H cannot be used (the error rates below call it)."""
+    v, err = rk.call(hn, "offsets_to_H", [0.0] * 8)
+    if err:
+        sys.exit(err + "\n(the errors below are computed through your offsets_to_H, TODO 10)")
+    if np.shape(v) != (3, 3):
+        sys.exit(f"offsets_to_H() must return a 3 × 3 matrix, got {v!r:.80}")
 
 
 def load_or_exit(hn, weights):
@@ -716,6 +779,7 @@ def compare():
     hn = hnet()
     weights = option("--weights", "my_homography.pt")
     mine = load_or_exit(hn, weights)
+    need_H(hn)
     torch.manual_seed(0)
     fresh, err = rk.call(hn, "HomographyNet")
     if err:
@@ -759,6 +823,7 @@ def sabotage():
     hn = hnet()
     weights = option("--weights", "my_homography.pt")
     load_or_exit(hn, weights)
+    need_H(hn)
     sd = torch.load(weights, map_location="cpu", weights_only=True)
     renamed = {"module." + k: v for k, v in sd.items()}
     os.makedirs(OUT, exist_ok=True)

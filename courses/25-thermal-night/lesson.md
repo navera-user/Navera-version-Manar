@@ -3,12 +3,12 @@
 ![One square of ground near Sousse, 1.24 km wide, drawn from OpenStreetMap data: A, the day aerial view the drone carries as its reference; B, the same ground seen by a thermal-like camera at night; C, at noon; D, at dawn. Which one could you match to A?](assets/look.jpg)
 
 > [!NOTE] Mission brief
-> **Until 28 September 2026, NAVERA's night vision ran with random weights.** Its network, STHN, was loaded from a
-> checkpoint whose layer names did not match the code, with an option that tells PyTorch to ignore names that do
-> not match (`strict=False`). Nothing crashed: night frames went in and homographies came out, computed by a network
-> that had learned nothing. A code review found it (backlog item LOC-6); since
-> then the product refuses to start if the weights do not load. Its validation report (3 October 2026) still says
-> it plainly: night vision is **not validated on real thermal images**.
+> **Until a code review on 28 September 2026 found it, NAVERA's night vision ran with random weights.** Its network,
+> STHN, was loaded from a checkpoint whose layer names did not match the code, with an option that tells PyTorch to
+> ignore names that do not match (`strict=False`). Nothing crashed: night frames went in and homographies came out,
+> computed by a network that had learned nothing (backlog item LOC-6). Since the fix, the product refuses to start if
+> the weights do not load. Its validation report (3 October 2026) still says it plainly: night vision is **not
+> validated on real thermal images**.
 >
 > Today you do NAVERA's night job yourself, and you check every step. **Session 1 — Night watch:** you audit a
 > "thermal" dataset, compute what a thermal camera sees from a given height, find a frame on the map with
@@ -28,14 +28,16 @@
 3. **prepare** a frame for matching: its ground footprint, its scale, north-up, its **coverage** of the reference
    square, and the minimum height that gives 85 %;
 4. explain a **4-point homography network** (what its 8 outputs mean, how its input is normalised, its loss, its
-   overfitting) and **train** one on pairs you generate, **measured** against NCC;
+   overfitting), **train** one on pairs you generate, **test** one of its design decisions, and **measure** it against
+   NCC;
 5. check a fix with the **motion gate**, and state the honest limits of a learned matcher (conditions it never
    saw, loading mistakes, a gate that locks onto a wrong anchor).
 
 **You need:** the homography and the camera footprint (mission 18), contrast normalisation (mission 08), and the
-training loop of mission 21 (tensors, loss, Adam, train/validation, overfitting). ⏱ Reading: about 100 minutes
-with the ✏️ checks (Part A, §1–§5, before session 1, about 50 minutes; Part B, §6–§9, before session 2). Lab: 4 h 30
-to 6 h in two sessions.
+training loop of mission 21 (tensors, loss, Adam, train/validation, overfitting). ⏱ Reading: about 1 h 55
+with the ✏️ checks (Part A, §1–§5, before session 1, about 1 hour; Part B, §6–§9, before session 2, about 55 minutes).
+A fluent reader needs about 75 minutes. Lab: 4 h 45
+to 6 h 15 in two sessions.
 
 **Before you start** — answer without looking (if you miss two, reread mission 18 §6 and mission 21 §8–§9):
 
@@ -78,8 +80,7 @@ Your files are in `~/lessons/25-thermal-night/`. The parts of NAVERA Lite you wr
 
 Every surface emits light because it is warm. At the temperature of the ground at night (about 290 K), most of that
 light has a wavelength near 10 µm (**Wien's law**: λ_max = 2 898 µm·K / T = 2 898 / 290 ≈ 10 µm), far beyond what
-eyes or a normal camera see. A **thermal camera** has a sensor for the **long-wave infrared**, 8–14 µm: a grid of
-tiny thermometers (a microbolometer, often 640 × 512 pixels). Each pixel reports how much the surface emits, which
+eyes or a normal camera see. A **thermal camera** sees the **long-wave infrared**, 8–14 µm. Each pixel reports how much the surface emits, which
 depends on its temperature **and** its **emissivity**. Water, soil and plants have emissivities near 0.95 and look
 like their temperature. A bare metal roof (emissivity about 0.1) emits little and reflects the cold night sky: it
 looks colder than it is.
@@ -110,8 +111,8 @@ of this picture", never "20 °C". At the crossover, AGC stretches the sensor's n
 > every frame has the same pattern of bright roofs and dark roads as a day photo. What do you suspect?
 
 <details><summary>Answer</summary>
-Sun shadows do not exist at night, and at night roads are warmer than most roofs' surroundings: these frames look
-like <b>day photos made darker</b>. Before you train or test on a dataset, check that it is what its name says.
+Sun shadows do not exist at night, and at night the road should be brighter than the soil around it, not darker:
+these frames look like <b>day photos made darker</b>. Before you train or test on a dataset, check that it is what its name says.
 Lab Step 2 asks you to check NAVERA's own night replay set.
 </details>
 
@@ -142,8 +143,7 @@ night: (40, 200, 100, 150). Means 140 and 122.5; deviations (60, −60, −80, 8
 **Template matching.** To find a small picture (the **template**) inside a larger one (the **search area**),
 compute the NCC at every position and keep the best. OpenCV does it in one call,
 `cv2.matchTemplate(search, template, cv2.TM_CCOEFF_NORMED)`, which returns the map of NCC scores;
-`cv2.minMaxLoc` gives the best score and the **top-left corner** (x, y) of the best place. A 32 × 32 template in a
-64 × 64 area has 33 × 33 = 1 089 positions: a fraction of a millisecond. NAVERA Lite's `ncc_locate` reports where
+`cv2.minMaxLoc` gives the best score and the **top-left corner** (x, y) of the best place. NAVERA Lite's `ncc_locate` reports where
 the template's **centre** lies relative to the search area's centre: that is a position correction.
 
 > [!QUESTION] ✏️ Check
@@ -207,13 +207,8 @@ with one affine warp that does three things together:
 
 Pixels outside the frame stay 0, and the coverage decides whether the result is used.
 
-> [!QUESTION] ✏️ Check
-> Why one warp, and not "resize, then rotate, then crop" with three OpenCV calls?
-
-<details><summary>Answer</summary>
-Each resampling interpolates and blurs a little, and each step must get its centre right; one matrix (the product
-of the three) interpolates once and puts the centre exactly where it belongs. It is also faster.
-</details>
+One warp, not three OpenCV calls: each resampling blurs a little, and one matrix (the product of the three) puts the
+centre exactly where it belongs.
 
 ## 5. The motion gate: physics checks the match
 
@@ -243,12 +238,10 @@ what happens next.
 </details>
 
 > [!WARNING] Common wrong ideas (Part A)
-> - "A thermal frame is a dark photo." The brightness order of materials changes, and sun shadows disappear.
 > - "NCC = 1 means the right place." NCC = 1 means the same pattern up to brightness: a repeated pattern (rows of
 >   houses, field strips) gives high scores in several places.
 > - "Higher is always fine." Higher gives more coverage but fewer pixels per metre; NAVERA's camera also has a
 >   ceiling (the simulated drone flies at most 400 m).
-> - "A confident matcher is a right matcher." The score of a wrong match can be as high as a right one (0.93).
 > - "`math.tan(42)`." Trigonometry in Python takes **radians**: `math.tan(math.radians(42))`.
 
 # Part B — Night navigator (read before session 2)
@@ -298,7 +291,7 @@ maps; two linear layers turn those 1 024 numbers into 8.
 
 ![HomographyNet in NAVERA Lite: four conv blocks, two linear layers, 8 outputs](assets/homnet.svg)
 
-Three design decisions you will meet in the code:
+Three design decisions of the author (lab Step 13 lets you test one of them):
 
 - **Input normalisation.** Each channel of each pair is shifted to mean 0 and divided by (its standard deviation
   + 1). The thermal camera's automatic gain makes its absolute grey levels meaningless, and the reference is pale:
@@ -309,44 +302,32 @@ Three design decisions you will meet in the code:
 - **No ReLU at the end.** Offsets can be negative.
 
 **Worked example — parameters.** `conv3 = Conv2d(32, 64, 3)`: 64 filters of 32 × 3 × 3 = 288 weights and 1 bias:
-64 × 289 = **18 496**. The whole network has 192 600, a fifth of a million: it trains in under a minute on the
-Jetson's GPU. NAVERA's STHN is far larger: on the Jetson's 8 GB, NAVERA's day and night pipelines cannot both
-be loaded, so one GPU vision pipeline runs at a time.
-
-> [!QUESTION] ✏️ Check
-> Without the normalisation, the thermal channel of one pair has mean 180, the reference 230. A colleague says
-> "the network will learn to subtract the means". Why is it still better to normalise?
-
-<details><summary>Answer</summary>
-The means change from frame to frame (the camera's gain, the place, the season): the network would have to learn
-that they do not matter, from examples, and might learn the opposite from a biased training set. Removing them is
-free and exact. A good input design removes what you know is irrelevant, and leaves the network the hard part.
-</details>
+64 × 289 = **18 496**. The whole network has 192 600: it trains in under a minute on the Jetson's GPU.
 
 ## 8. Training data you make yourself
 
 There is no labelled thermal-to-map dataset of Sousse. So, as the HomographyNet authors did with photos, you
 **make** the pairs, with an exact label for free:
 
-1. A **scene**: a 160 × 160 px square of ground (7.75 m per pixel, 1.24 km) drawn twice from the OpenStreetMap
-   data of NAVERA's test area: a day aerial view (the reference, with sun shadows) and a night "temperature" picture
-   from a material model like the table of §1 (no shadows). Both come from the same drawing: they are aligned pixel
-   for pixel. (A drawing, not a photograph: thermal-like, not thermal.)
-2. A **square** of 64 px at a random place of the reference scene: the reference patch.
-3. Random **offsets**: a common shift of ±12 px for the four corners (the prior's error, up to ±93 m) plus ±4 px per
-   corner (heading, height and tilt errors). The four shifted corners are where the thermal frame lies.
-4. The **thermal patch**: the night scene inside those four corners, warped onto a 64 px square; then the camera:
-   sensor noise, a column pattern, automatic gain.
-5. The **label** is the offsets you drew. Nobody had to label anything.
+1. A **scene**: 160 × 160 px of ground (7.75 m per pixel, 1.24 km) drawn twice from the OpenStreetMap data of
+   NAVERA's test area, aligned pixel for pixel: a day aerial view (the reference, with sun shadows) and a night
+   "temperature" picture from a material model like the table of §1. A drawing: thermal-like, not thermal.
+2. A random 64 px **square** of the reference scene: the reference patch.
+3. Random **offsets**: a common shift of ±12 px (the prior's error, up to ±93 m) plus ±4 px per corner (heading,
+   height and tilt errors): where the thermal frame's corners lie.
+4. The **thermal patch**: the night scene inside those corners, warped onto a 64 px square, then the camera's noise,
+   column pattern and automatic gain.
+5. The **label** is the offsets you drew: nobody had to label anything.
 
 The **loss** is the mean squared error between the network's 8 outputs and offsets / ρ. A network that always
 answers 0 ("the prior is right") scores the mean of (offset / 16)²: the shift's variance 12²/3 = 48 plus the
 jitter's 4²/3 ≈ 5.3, divided by 256: **≈ 0.21**. Any useful network must go clearly below that.
 
 Training and validation pairs come from **different places** (no ground shared): the question is "does it find the
-frame over ground it has never seen?". Lab Step 12 tests what happens when all the pairs come from a few places. Each training scene is also turned by a random multiple of 90° and mirrored half of the time
-(**augmentation**): the task, aligning two pictures of the same ground, does not care which way is north, so this
-multiplies the variety for free.
+frame over ground it has never seen?". Lab Step 12 tests what happens when all the pairs come from a few places.
+Each training scene is also turned by a random multiple of 90° and mirrored half of the time (**augmentation**): the
+task, aligning two pictures of the same ground, does not care which way is north, so this should add variety for
+free (lab Step 13 can test whether it does).
 
 > [!QUESTION] ✏️ Check
 > The network outputs 0.25 for x0 when the true offset is 6 px. What is this output's term of the loss, and how many
@@ -358,16 +339,12 @@ Target 6 / 16 = 0.375; error 0.125; squared 0.0156. In pixels: 0.25 × 16 = 4 px
 
 ## 9. Measuring honestly, and what a network does not know
 
-Measure what navigation needs: the error of the **position**, the ground under the frame's centre, in pixels and
-metres, on pairs from validation places. Compare with two baselines: **prior only** (answer 0: how far the prior
-already was) and **NCC** (the thermal patch's centre searched in the reference). A result means something only next
-to them.
+Measure what navigation needs, the **position** error (the ground under the frame's centre), on validation places,
+next to two baselines: **prior only** (answer 0) and **NCC**.
 
-A network always answers. Give it a picture unlike its training data, a **distribution shift**, and it returns
-8 numbers with the same confidence: a frame at noon when it learned nights, a dawn picture with no contrast, open
-sea, a prior that is wrong by more than the ρ it was trained for. It has no "I don't know". The lab measures each of
-these cases; the defences are outside the network: refusing frames before (coverage, contrast), checking fixes
-after (the motion gate), and never trusting a network whose weights you did not check.
+A network always answers: give it a picture unlike its training data (a **distribution shift**: noon instead of
+night, dawn, open sea, a prior wrong by more than ρ) and it returns 8 numbers with the same confidence. The defences
+are outside the network: refusing frames before, gating fixes after, and checking the weights you load.
 
 That last point is LOC-6. A PyTorch model's weights are saved as a **state_dict**: a dictionary from layer names
 (`conv1.weight`, `conv1.bias`, …) to tensors. `model.load_state_dict(d)` copies each tensor into the layer with
@@ -386,8 +363,6 @@ tilts; and how often a wrong fix gets past the gate. NAVERA's report lists exact
 </details>
 
 > [!WARNING] Common wrong ideas (Part B)
-> - "Predict H directly." Its 9 entries have wildly different scales; predict 4 corners and let OpenCV solve H.
-> - "The training loss went down, so it works." Only validation places, and then a test set, say that.
 > - "A low error at night means it works by day." It never saw day: measure each condition separately.
 > - "`strict=False` is a harmless way to load old checkpoints." It can load **nothing** without a word.
 > - "Augment by turning the picture 37°." Then the corners of the patch hold black: the network learns black corners.
@@ -396,14 +371,15 @@ tilts; and how often a wrong fix gets past the gate. NAVERA's report lists exact
 ## In NAVERA
 
 NAVERA's night vision, IRIS's product, uses **STHN**, a published network for thermal-to-satellite homography
-(Xiao et al., 2024), trained by its authors on aerial thermal frames and satellite images. Where your network answers in one pass, STHN builds a
-**correlation volume** (every feature of the frame compared with every feature of the map around it) and moves the
-four corners in several **refinement** steps; the four corners give the homography and the frame's centre the
-position. In words and numbers, from its documents (validation report of 3 October 2026, engineering backlog):
+(Xiao et al., 2024), trained by its authors on aerial thermal frames and satellite images. Where your network
+answers in one pass, STHN builds a **correlation volume** (every feature of the frame compared with every feature of
+the map around it) and moves the four corners in several **refinement** steps (NAVERA runs its one-stage version:
+one level of refinement steps, no second, finer stage); the four corners give the homography and the frame's centre
+the position. In words and numbers, from its documents (validation report of 3 October 2026, engineering backlog):
 
-- **Until 28 September 2026 it ran with random weights** (LOC-6: the checkpoint's names never matched, loaded with
-  `strict=False`). The same review found its two inputs swapped, its output read with the wrong layout and units,
-  and the wrong configuration (LOC-7). It is now rebuilt exactly as trained, and it refuses to start if the weights
+- **Until the code review of 28 September 2026 found it, it ran with random weights** (LOC-6: the checkpoint's
+  names never matched, loaded with `strict=False`). The same review found its two inputs swapped, its input
+  normalised twice, its output read with the wrong layout and units, and the wrong configuration (LOC-7). It is now rebuilt exactly as trained, and it refuses to start if the weights
   do not load.
 - **Scale and heading (LOC-16, fixed 30 September 2026):** each frame is resampled from the height and the camera's
   field of view, turned north-up, and refused below **85 %** coverage of the 512 px reference square; a fix implying
@@ -427,17 +403,13 @@ NAVERA is Release 0.2, field validation pending.
 | `cut_pair` (homography_net.py) | one training pair with its exact 4-point label | §6, §8 |
 | `to_input`, `HomographyNet`, `offsets_to_H`, `train` | the network, its input, its output as H, its training | §6–§8 |
 
-Given: `min_altitude`, `thermal_camera`, `random_pair`, `make_pairs`, `centre_shift`, `predict`, `corner_error`,
-`centre_error`, `load_weights` (strict!), and mission 06's `geo.py`. Your trained `my_homography.pt` is a part of
-your stack: Sim Lite (mission 31) can fly it at night.
+Your trained `my_homography.pt` is a part of your stack too.
 
 ## 🐦 How birds do it
 
-Most songbirds migrate at night. In the 1960s Stephen Emlen raised young indigo buntings in a planetarium: birds
-that grew up under a sky turning around a **different** star later steered by that star (Emlen, 1970). They are not
-born with a star map; they **learn** which point the sky turns around during their first months, from examples, as
-your network learns alignment from pairs. And like your network, a bird raised under the wrong sky is confidently
-wrong. Navi the swallow, who migrates by day, has it easier.
+Most songbirds migrate at night. Stephen Emlen raised young indigo buntings in a planetarium whose sky turned around
+a **different** star: later they steered by that star (Emlen, 1970). They **learn** the sky's centre from examples,
+as your network learns alignment from pairs, and a bird raised under the wrong sky is confidently wrong.
 
 ## Summary
 
@@ -480,11 +452,7 @@ t = 2: reach 90 m, refused (the anchor stays at t = 0). t = 4: reach 150 m, acce
 Layers whose names do not match keep their random initial weights, without any error: the network runs and answers.
 </details>
 
-<details><summary>6. (Mission 21) Your network scores 0.02 on its training loss and 0.15 on validation. What do you change first?</summary>
-More varied training data (more places) or fewer epochs: the gap is overfitting. A smaller network can also help.
-</details>
-
-<details><summary>7. (Mission 18) Why is a homography enough to map one nadir view of flat ground to another?</summary>
+<details><summary>6. (Mission 18) Why is a homography enough to map one nadir view of flat ground to another?</summary>
 All the ground points lie on one plane, and the image of a plane in two pinhole cameras is related by a 3 × 3
 homography.
 </details>

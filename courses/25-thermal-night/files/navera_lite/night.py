@@ -129,7 +129,7 @@ def ncc_locate(template, search):
 # TODO 6 ---------------------------------------------------------------------------------------
 def motion_gate(anchor, t_anchor_s, fix, t_s, v_max_mps=V_MAX_MPS, margin_m=GATE_MARGIN_M):
     """Accept a new night fix only if the vehicle could have got there: the distance from the anchor (the last
-    ACCEPTED fix) must not exceed v_max_mps × (t_s − t_anchor_s) + margin_m (lesson §6). A negative elapsed time
+    ACCEPTED fix) must not exceed v_max_mps × (t_s − t_anchor_s) + margin_m (lesson §5). A negative elapsed time
     counts as 0. Without an anchor (None), the first fix is accepted.
 
     Inputs: anchor None or (lat, lon), fix (lat, lon) in degrees; times in seconds.

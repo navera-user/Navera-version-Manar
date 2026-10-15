@@ -46,7 +46,7 @@ def go(fn, *args, seconds=60, **kw):
     except CheckFailed as e:
         msg = str(e)
         if "mat1 and mat2" in msg:
-            msg += " — fc1 gets the wrong size: four 2 × 2 poolings, then flatten to 64 * 4 * 4"
+            msg += " — fc1 gets the wrong number of inputs: what do four 2 × 2 poolings leave of 64 × 64, times conv4's channels?"
         if "checkVector" in msg:
             msg += " — cv2.getPerspectiveTransform wants two float32 arrays of shape (4, 2)"
         if "same device" in msg:
@@ -192,14 +192,20 @@ def _():
             if np.abs(p - u[f"prep{k}_wrongturn"].astype(float))[inside].mean() < 3.0:
                 hint = (" (it is turned the OTHER way: the frame's top must end at the heading, clockwise from north — "
                         "lab Step 5, the 🧰 box 'which way to turn')")
+            elif np.abs(p - u[f"prep{k}_mirror"].astype(float))[inside].mean() < 3.0:
+                hint = (" (it is MIRRORED: the 2nd column of the turn is where (0, +1), DOWN, goes — minus the 'up' "
+                        "vector of the 🧰 box)")
+            elif np.abs(p - u[f"prep{k}_onescale"].astype(float))[inside].mean() < 3.0:
+                hint = (" (one scale for x and y: use (fw / w) / map_m_per_px along x and (fh / h) / map_m_per_px "
+                        "along y — the frame's ground pixels are not square)")
             elif np.abs(p - u[f"prep{k}_corner"].astype(float))[inside].mean() < 3.0:
                 hint = (" (half a pixel off: the frame's centre point is ((w − 1)/2, (h − 1)/2) and it must land on "
                         "((out_px − 1)/2, (out_px − 1)/2))")
             elif np.abs(np.rot90(p, 2) - want)[inside].mean() < 6.0:
                 hint = " (it looks turned by 180°: check the direction of the turn)"
             raise CheckFailed(f"prepare() case {k + 1} (heading {hd:g}°, {op} px): your patch differs from the right "
-                              f"one by {err:.0f} grey levels on average{hint}. Check the scale, the turn and the centre "
-                              "(lab Step 5 hints)")
+                              f"one by {err:.0f} grey levels on average{hint}. Check the two scales (fw/w along x, fh/h "
+                              "along y), the turn of the 🧰 box and the centre (lab Step 5 hints)")
         if k == 0:
             empty = want == 0
             c.ok(float((p[empty] == 0).mean()) > 0.9, "where the frame does not cover the square, the patch must be 0 "
@@ -278,17 +284,19 @@ def _():
                 r"0\.9", r"ncc", r"correlat", r"bright"), "the clues"))
 
 
-@c.test("Steps 3–5: coverage, the minimum heights of the first camera, the refused frame",
-        hint="Copy the numbers of `python3 run_night.py coverage` (the 350 m row, the 30° column; the last line) and "
-             "the frame `prepare` refused.")
+@c.test("Steps 3–5: coverage by hand, the minimum heights of the first camera, the refused frame",
+        hint="COV_350_0 by hand (lesson §3: footprint, then the share of the square); the minimum heights from the last "
+             "line of `python3 run_night.py coverage`; the frame `prepare` refused.")
 def _():
-    pf, cv, m0, m45, why, rf = answers("PREDICT_FIRST_CAM", "COV_350_30", "MIN_ALT_FIRST_0", "MIN_ALT_FIRST_45",
+    pf, cv, m0, m45, why, rf = answers("PREDICT_FIRST_CAM", "COV_350_0", "MIN_ALT_FIRST_0", "MIN_ALT_FIRST_45",
                                        "EXPLAIN_COVERAGE", "REFUSED_FRAME")
     predicted("PREDICT_FIRST_CAM", pf)
-    cv = number(cv, "COV_350_30")
+    cv = number(cv, "COV_350_0")
     if cv > 1:
-        raise CheckFailed("COV_350_30 is a share from 0 to 1 (0.9, not 90)")
-    c.near(cv, 0.896, 0.0015, "COV_350_30")
+        raise CheckFailed("COV_350_0 is a share from 0 to 1 (0.95, not 95)")
+    if abs(cv - 1.0) < 0.002:
+        raise CheckFailed("COV_350_0 = 1: the footprint is 630 m wide (more than the square) but how HIGH is it?")
+    c.near(cv, 0.952, 0.003, "COV_350_0")
     m0, m45 = number(m0, "MIN_ALT_FIRST_0"), number(m45, "MIN_ALT_FIRST_45")
     if abs(m0 - 524) < 3 and abs(m45 - 474) < 3:
         raise CheckFailed("MIN_ALT_FIRST_0 and MIN_ALT_FIRST_45 are swapped")
@@ -501,6 +509,8 @@ def _():
 def _():
     import torch
     hn = module("navera_lite.homography_net")
+    torch.set_num_threads(1)                 # a busy Jetson: 1 thread is ~7x faster than torch's default 6
+    hn.torch.set_num_threads(1)              # the student's process too (sealed mode)
     (f,) = functions("homography_net", "train")
     d = np.load(io.BytesIO(hidden("test_pairs.npz", text=False)))
     tx, ty = d["x"][:96], d["y"][:96]
@@ -509,7 +519,7 @@ def _():
 
     def weights(m):
         sd = m.state_dict()
-        return {str(k): np.asarray(sd[k].detach().cpu().numpy()) for k in sd.keys()}
+        return {str(k): np.array(sd[k].detach().cpu().numpy(), copy=True) for k in sd.keys()}   # a COPY, not a view
 
     hn.torch.manual_seed(5)
     net = go(hn.HomographyNet)
@@ -518,7 +528,7 @@ def _():
     if not isinstance(hist, list):
         raise CheckFailed(f"train() must return a list (the history), got {type(hist).__name__}")
     c.ok(len(hist) == 0, f"with epochs = 0 the history must be empty, got {len(hist)} rows — use the epochs argument")
-    hist = go(f, net, T(tx), T(ty), T(vx), T(vy), epochs=2, lr=0.0, batch=32, seed=1, device="cpu", seconds=120)
+    hist = go(f, net, T(tx), T(ty), T(vx), T(vy), epochs=1, lr=0.0, batch=32, seed=1, device="cpu", seconds=120)
     now = weights(net)
     c.ok(all(np.allclose(before[k], now[k]) for k in before), "with lr = 0 the weights still changed: give lr to the "
          "optimiser (torch.optim.Adam(model.parameters(), lr=lr))")
@@ -551,9 +561,38 @@ def _():
     c.ok(abs(hist[-1]["val_loss"] - want) < 5e-4, f"the last val_loss is {hist[-1]['val_loss']:.4f}, but the validation "
          f"pairs give {want:.4f} with the trained model: measure it AFTER the epoch's batches, in model.eval() and "
          "torch.no_grad(), with targets / RHO_PX, in batches of `batch`, averaged")
+    # zero_grad: ONE batch per epoch (the order cannot matter) → must equal 3 plain Adam steps from the same start
+    hn.torch.manual_seed(9)
+    net2 = go(hn.HomographyNet)
+    init = weights(net2)
+    go(f, net2, T(tx[:32]), T(ty[:32]), T(vx[:16]), T(vy[:16]), epochs=3, lr=1e-3, batch=32, seed=1,
+       device="cpu", seconds=120)
+    ref2 = reference_net()
+    ref2.load_state_dict({k: torch.as_tensor(v) for k, v in init.items()})
+    opt = torch.optim.Adam(ref2.parameters(), lr=1e-3)
+    X, Y = norm_input(tx[:32]), torch.as_tensor(ty[:32]) / 16.0
+    for _ in range(3):
+        opt.zero_grad()
+        torch.nn.functional.mse_loss(ref2(X), Y).backward()
+        opt.step()
+    got2 = weights(net2)
+    gap = max(float(np.abs(got2[k] - ref2.state_dict()[k].detach().numpy()).max()) for k in init)
+    c.ok(gap < 3e-4, "after 3 epochs of ONE batch each your weights differ from 3 plain Adam steps: is "
+         "opt.zero_grad() called before every loss.backward()? Without it each step adds all the old gradients")
 
 
 TEST_PRIOR, TEST_NCC, TEST_REF, NEED = 9.549, 16.532, 3.419, 6.5
+
+
+def train_log():
+    """The runner's record of the training that wrote my_homography.pt (JSON, read as text), or None."""
+    import json
+    try:
+        with open(os.path.join("logs", "my_homography.pt.json"), encoding="utf-8") as fh:
+            d = json.load(fh)
+        return d if isinstance(d, dict) else None
+    except (OSError, ValueError):
+        return None
 
 
 def load_weights_strict(path):
@@ -580,8 +619,12 @@ def load_weights_strict(path):
              "--epochs 6). Do not save overfit.pt or quick.pt as my_homography.pt.")
 def _():
     import torch
-    torch.set_num_threads(2)
+    torch.set_num_threads(1)
     net = load_weights_strict("my_homography.pt")
+    log = train_log()
+    if log is not None and isinstance(log.get("places"), int) and log["places"] < 50:
+        raise CheckFailed(f"my_homography.pt was trained on {log['places']} places: train on all of them (Step 11). "
+                          "overfit.pt is the Step 12 experiment, not your navigator")
     d = np.load(io.BytesIO(hidden("test_pairs.npz", text=False)))
     e = float(np.median(centre_err(predict_ref(net, d["x"]), d["y"])))
     print(f"  your network on the hidden night pairs: median centre error {e:.2f} px "
@@ -612,6 +655,10 @@ def _():
     c.eq(int(n1), 131200, "N_PARAMS_FC1")
     vc = number(vc, "VAL_CENTRE_PX")
     c.ok(1.0 <= vc <= 7.5, f"VAL_CENTRE_PX = {vc}: the median centre error printed at the end of the full training")
+    log = train_log()
+    if log is not None and isinstance(log.get("val_centre_px"), (int, float)):
+        c.ok(abs(vc - float(log["val_centre_px"])) <= 0.05, f"VAL_CENTRE_PX = {vc}, but your last full training "
+             f"(logs/my_homography.pt.json) printed {float(log['val_centre_px']):.2f}: copy the last line of your own training")
     predicted("PREDICT_OVERFIT", po)
     explained("EXPLAIN_OVERFIT", wo,
               ((r"train",), "what the training loss did"),
@@ -623,7 +670,48 @@ def _():
 CMP_NCC_NIGHT = 14.46
 
 
-@c.test("Steps 13–15: learned vs NCC, sabotage, the night flight",
+def ablation_logs():
+    """The runner's records of ablation runs: [(file name, record)] (JSON read as text)."""
+    import glob
+    import json
+    out = []
+    for p in sorted(glob.glob(os.path.join("logs", "*.json")), key=os.path.getmtime):
+        try:
+            with open(p, encoding="utf-8") as fh:
+                d = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if isinstance(d, dict) and isinstance(d.get("ablation"), list) and len(d["ablation"]) == 1:
+            out.append((os.path.basename(p), d))
+    return out
+
+
+@c.test("Step 13: your design decision — one ablation, measured against your own network",
+        hint="Lab Step 13: run ONE of `train --norm none`, `--no-augment` or `--rho 1` with --out ablation.pt; copy its "
+             "letter and its last line's median centre error; compare it with your VAL_CENTRE_PX in your own words.")
+def _():
+    pa, ab, apx, wa = answers("PREDICT_ABLATION", "ABLATION", "ABLATION_PX", "EXPLAIN_ABLATION")
+    predicted("PREDICT_ABLATION", pa)
+    letter = str(ab).strip().lower().strip("()")
+    if letter not in ("a", "b", "c"):
+        raise CheckFailed(f'ABLATION must be "a", "b" or "c", got {ab!r}')
+    want = {"a": "norm none", "b": "no augmentation", "c": "rho"}[letter]
+    runs = [(n, d) for n, d in ablation_logs() if str(d["ablation"][0]).startswith(want)]
+    if not runs:
+        raise CheckFailed(f"no ablation run '{want}' found in logs/: run it (lab Step 13), e.g. "
+                          "`python3 run_night.py train --norm none --out ablation.pt`, with ONE option only")
+    apx = number(apx, "ABLATION_PX")
+    vals = [float(d.get("val_centre_px", -1)) for _, d in runs]
+    c.ok(any(abs(apx - v) <= 0.05 for v in vals), f"ABLATION_PX = {apx}, but your '{want}' run printed "
+         f"{vals[-1]:.2f}: copy the median centre error of its last line")
+    explained("EXPLAIN_ABLATION", wa,
+              ((r"worse", r"better", r"same", r"no differ", r"similar", r"bigger", r"smaller", r"higher", r"lower",
+                r"\d"), "how it compares with your own error"),
+              ((r"because", r"gain", r"normali", r"bright", r"variety", r"place", r"scale", r"target", r"rho", r"ρ",
+                r"16", r"noise", r"seed", r"one run", r"sure", r"random"), "why (or how sure you are)"))
+
+
+@c.test("Steps 14–16: learned vs NCC, sabotage, the night flight",
         hint="Copy the numbers of `compare` (one decimal), `sabotage` and `fly`; explain in your own words.")
 def _():
     (nn_, nc, nno, wl, ps, mk, ws, fm) = answers("NET_NIGHT_PX", "NCC_NIGHT_PX", "NET_NOON_PX", "EXPLAIN_LEARNED",
@@ -659,7 +747,7 @@ def _():
 
 
 @c.test("report.md: four headings, your own words, your numbers",
-        hint="Lab Step 16: keep the four ## headings, 200–500 words, replace every TODO, quote AUDIT_BEST_NCC, "
+        hint="Lab Step 17: keep the four ## headings, 200–500 words, replace every TODO, quote AUDIT_BEST_NCC, "
              "MIN_ALT_FIRST_0, NCC_GOOD_NIGHT and NET_NIGHT_PX as numbers.")
 def _():
     if not os.path.exists("report.md"):

@@ -20,8 +20,9 @@ has no contrast at all.
 
 I made pairs from 293 training places: a random square of the day reference, random offsets for the 4 corners, and
 the night picture warped inside them, with the camera's noise and gain. The 8 offsets are the label, exact and free.
-My network (192 600 parameters) trained in about half a minute on the GPU. With only 6 places it overfitted: the
-training loss fell to 0.01 while the validation loss rose after epoch 11. On validation places at night its median
+My network (192 600 parameters) trained in about half a minute on the GPU. With only 3 places it overfitted: the
+training loss fell to 0.016 while the validation loss rose after epoch 17. Without per-channel normalisation it
+reached only 5.08 px. On validation places at night its median
 error is 3.8 px (about 29 m), against 14.5 px for NCC and 9.5 px for the prior alone.
 
 ## 4. Limits and honesty

@@ -277,6 +277,14 @@ The renders are a produced work of that data.
 """
 
 
+def label_panel(img, text):
+    """A white tab with the panel's letter and name in its top-left corner (in place)."""
+    (w, h), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 1)
+    cv2.rectangle(img, (0, 0), (w + 12, h + 12), (255, 255, 255), -1)
+    cv2.putText(img, text, (6, h + 6), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (20, 20, 20), 1, cv2.LINE_AA)
+    return img
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--workers", type=int, default=3)
@@ -400,6 +408,8 @@ def main():
     i = int(np.argmax([float(np.std(r)) for r in val["ref"]]))
     tiles_ = [by["val"][i][2]["colour"]] + [cv2.cvtColor(val[m][i], cv2.COLOR_GRAY2BGR) for m in ("night", "day", "crossover")]
     big = [cv2.resize(t, (320, 320), interpolation=cv2.INTER_CUBIC) for t in tiles_]
+    for b, text in zip(big, ("A day reference", "B night (thermal-like)", "C noon", "D dawn")):
+        label_panel(b, text)
     look = np.hstack([np.pad(b, ((0, 0), (0, 8), (0, 0)), constant_values=255) for b in big])[:, :-8]
     from navera_lite.tiles import stamp_attribution
     cv2.imwrite(os.path.join(ASSETS, "look.jpg"), stamp_attribution(look), [cv2.IMWRITE_JPEG_QUALITY, 88])

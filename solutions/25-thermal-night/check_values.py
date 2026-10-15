@@ -45,17 +45,23 @@ CUT_CASES = [    # seed, corner_xy, offsets
 ]
 
 
-def corner_centred(frame, alt, hf, vf, hd, mpp, op):
-    """prepare() with the centre at (w/2, h/2) → (out/2, out/2) instead of the pixel-centre points (a mistake)."""
+def corner_centred(frame, alt, hf, vf, hd, mpp, op, kind="corner"):
+    """prepare() made with one plausible mistake: kind "corner" (the centre at (w/2, h/2) → (out/2, out/2)),
+    "mirror" (the 'up' vector used as the 2nd column), "onescale" (fw / w for both axes)."""
     import cv2
     import math
     h, w = frame.shape
     fw, fh = night.footprint_m(alt, hf, vf)
     sx, sy = (fw / w) / mpp, (fh / h) / mpp
+    if kind == "onescale":
+        sy = sx
     a = math.radians(hd)
     c, s = math.cos(a), math.sin(a)
     A = np.array([[c * sx, -s * sy], [s * sx, c * sy]])
-    M = np.hstack([A, (np.array([op / 2.0, op / 2.0]) - A @ np.array([w / 2.0, h / 2.0]))[:, None]])
+    if kind == "mirror":
+        A = np.array([[c * sx, s * sy], [s * sx, -c * sy]])
+    cin, cout = (np.array([w / 2.0, h / 2.0]), op / 2.0) if kind == "corner" else (np.array([(w - 1) / 2.0, (h - 1) / 2.0]), (op - 1) / 2.0)
+    M = np.hstack([A, (np.array([cout, cout]) - A @ cin)[:, None]])
     return cv2.warpAffine(frame, M, (op, op), flags=cv2.INTER_AREA, borderValue=0)
 
 
@@ -73,6 +79,8 @@ def main():
         # two plausible mistakes, so that check.py can name them: the turn the other way, the corner-based centre
         out[f"prep{k}_wrongturn"] = night.prepare(smooth_frame(seed, h, w), alt, hf, vf, -hd, mpp, op, need=0.5)[0]
         out[f"prep{k}_corner"] = corner_centred(smooth_frame(seed, h, w), alt, hf, vf, hd, mpp, op)
+        out[f"prep{k}_mirror"] = corner_centred(smooth_frame(seed, h, w), alt, hf, vf, hd, mpp, op, kind="mirror")
+        out[f"prep{k}_onescale"] = corner_centred(smooth_frame(seed, h, w), alt, hf, vf, hd, mpp, op, kind="onescale")
     for k, (seed, c, off) in enumerate(CUT_CASES):
         a, b = hn.cut_pair(scene(seed), scene(seed + 100), c, off)
         out[f"cut{k}_a"], out[f"cut{k}_b"] = a, b
