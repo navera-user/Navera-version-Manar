@@ -23,6 +23,7 @@ TRUTH_MAX_GAP_S = 3.0          # a phone sample further than this from a frame i
 
 PROBLEM_RULES = {
     "few_stars": f"more than 40 % of frames have fewer than {MIN_STARS} confirmed stars",
+    "not_looking_at_sky": "more than 30 % of frames show something other than open sky",
     "sky_not_clear": "more than 30 % of frames are hazy, cloudy or too bright",
     "not_level": "the camera axis is more than 1 degree off vertical in the median frame",
     "clock_offset": "phone and Jetson clocks differ by more than 0.5 s",
@@ -149,14 +150,19 @@ def _problems(r: dict, frames: List[dict], phone: List[dict], meta: dict) -> Lis
         if accs and statistics.median(accs) > 30:
             add("phone_gps_poor", "warn", "Phone GPS was poor",
                 f"Median accuracy {statistics.median(accs):.0f} m.", "Put the phone near a window with sky view.")
+    blocked = [f for f in frames if f.get("sky") == "blocked"]
     low = [f for f in frames if (f.get("confirmed", f.get("detected")) or 0) < MIN_STARS]
-    if n and len(low) / n > 0.4:
+    if n and len(low) / n > 0.4 and len(blocked) / n <= 0.3:
         med = statistics.median([f.get("confirmed", f.get("detected")) or 0 for f in frames])
         add("few_stars", "bad", "Too few stars",
             f"{len(low)} of {n} frames had fewer than {MIN_STARS} confirmed stars (median {med:g}).",
             "Park away from lights and wait for a clear sky. If it stays low on a clear dark night, "
             "the camera's automatic exposure is the limit: try the other lens module or a camera with manual exposure.")
-    notclear = [f for f in frames if f.get("sky") not in (None, "clear")]
+    if n and len(blocked) / n > 0.3:
+        add("not_looking_at_sky", "bad", "The camera was not looking at open sky",
+            f"{len(blocked)} of {n} frames show a room, a roof, trees or other structure instead of flat dark sky.",
+            "Point the camera straight up with nothing above it (no roof rack, windshield, trees or lamp posts).")
+    notclear = [f for f in frames if f.get("sky") not in (None, "clear", "blocked")]
     if n and len(notclear) / n > 0.3:
         kinds = sorted({f["sky"] for f in notclear})
         add("sky_not_clear", "warn", "Sky was not clear", f"{len(notclear)} of {n} frames: {', '.join(kinds)}.",

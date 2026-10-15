@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>NAVERA Field Sky</title>
+<style>
+:root{--bg:#0b0d12;--panel:#12151d;--line:#222737;--fg:#d9dde8;--mute:#8089a0;--red:#ff6a4d;--ok:#5fd39a;--warn:#f2b84b;--bad:#ff5c6c;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+ padding:16px max(16px,env(safe-area-inset-right)) 48px max(16px,env(safe-area-inset-left))}
+.wrap{max-width:480px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+h1{font:800 32px/1 "Arial Narrow",system-ui,sans-serif;margin:0;letter-spacing:.01em}h1 span{color:var(--red)}
+h2{font:700 12px system-ui;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin:0 0 8px}
+h3{font:800 28px/1.05 "Arial Narrow",system-ui,sans-serif;margin:0 0 8px}
+p{margin:0}.mute{color:var(--mute)}.mono{font-family:ui-monospace,Menlo,monospace}
+.tabs{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.tabs button{border:0;border-radius:0;background:var(--panel);color:var(--mute);min-height:44px;font-size:15px}
+.tabs button[aria-selected=true]{background:var(--red);color:#1a0a06}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+button{font:600 16px system-ui;padding:14px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--fg);min-height:52px;width:100%}
+button.main{background:var(--red);border-color:var(--red);color:#1a0a06;font-size:18px;min-height:60px}
+button:disabled{opacity:.45}
+button:focus-visible,input:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+.prog{display:flex;gap:6px}.prog i{flex:1;height:6px;border-radius:3px;background:var(--line)}.prog i.d{background:var(--ok)}.prog i.c{background:var(--red)}
+.checks div{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
+.checks small{display:block;color:var(--mute)}
+.s{font:500 11px ui-monospace,Menlo,monospace;padding:2px 7px;border-radius:3px;align-self:flex-start;white-space:nowrap}
+.s.ok{background:#12301f;color:var(--ok)}.s.wait{background:#3a2d0e;color:var(--warn)}.s.bad{background:#3d151b;color:var(--bad)}
+.stack{display:flex;flex-direction:column;gap:10px}
+img.pv{width:100%;border-radius:6px;border:1px solid var(--line);background:#05060a;display:block;aspect-ratio:16/5.6}
+.big{font:800 64px/1 "Arial Narrow",system-ui,sans-serif;font-variant-numeric:tabular-nums}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.m .v{font:500 20px ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}.m .l{font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
+.prob{border-left:3px solid var(--bad);padding:2px 0 2px 12px;margin-top:10px}.prob.warn{border-color:var(--warn)}.prob b{display:block}.prob small{color:var(--mute);display:block}
+.sess{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:12px 0;border-top:1px solid var(--line);cursor:pointer;background:none;border-left:0;border-right:0;border-bottom:0;border-radius:0;text-align:left;min-height:0;width:100%}
+table{width:100%;border-collapse:collapse;font:12px ui-monospace,Menlo,monospace}th,td{text-align:left;padding:6px 8px 6px 0;border-top:1px solid var(--line)}th{color:var(--mute);font-weight:500}
+.scroll{overflow-x:auto}
+input[type=text]{font:16px system-ui;padding:12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg);width:100%}
+svg{display:block;width:100%;height:auto}svg text{fill:var(--mute);font:10px ui-monospace,Menlo,monospace}
+a.btn{display:block;text-align:center;text-decoration:none;font:600 16px system-ui;padding:14px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--fg)}
+</style></head>
+<body><div class="wrap">
+<h1>NAVERA <span>sky</span> test</h1>
+<div class="tabs" role="tablist"><button role="tab" id="t1" aria-selected="true">Operator</button><button role="tab" id="t2" aria-selected="false">Results</button></div>
+<div id="op" class="wrap" style="gap:14px"></div>
+<div id="res" class="wrap" hidden></div>
+</div>
+<script>
+"use strict";
+var S={}, phone={}, tab=1, sensorsOn=false, lastSend=0, wake=null, openId=null;
+var $=function(i){return document.getElementById(i)};
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+function api(path,body){return fetch(path,body===undefined?{}:{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){return r.json()})}
+
+// ── phone sensors ───────────────────────────────────────────────
+function startSensors(){
+  var go=function(){
+    if(navigator.geolocation){navigator.geolocation.watchPosition(function(p){
+      var c=p.coords;phone.lat=c.latitude;phone.lon=c.longitude;phone.acc=c.accuracy;phone.alt=c.altitude;
+      phone.speed=c.speed;phone.course=(c.speed&&c.speed>0.5)?c.heading:null;
+    },function(e){phone.gpsError=e.message},{enableHighAccuracy:true,maximumAge:0,timeout:20000});}
+    var h=function(e){
+      if(e.beta!=null){phone.beta=e.beta;phone.gamma=e.gamma;}
+      if(e.webkitCompassHeading!=null)phone.compass=e.webkitCompassHeading;
+      else if(e.absolute&&e.alpha!=null)phone.compass=(360-e.alpha)%360;
+    };
+    window.addEventListener("deviceorientation",h);window.addEventListener("deviceorientationabsolute",h);
+    try{if(navigator.wakeLock)navigator.wakeLock.request("screen").then(function(w){wake=w}).catch(function(){})}catch(e){}
+    sensorsOn=true;
+  };
+  if(window.DeviceOrientationEvent&&typeof DeviceOrientationEvent.requestPermission==="function"){
+    DeviceOrientationEvent.requestPermission().then(go).catch(go);
+  }else go();
+}
+setInterval(function(){
+  if(!sensorsOn)return;
+  var d=Object.assign({},phone);d.phone_t_ms=Date.now();
+  api("/api/phone",d).catch(function(){});
+},1000);
+document.addEventListener("visibilitychange",function(){if(!document.hidden&&sensorsOn&&navigator.wakeLock)navigator.wakeLock.request("screen").then(function(w){wake=w}).catch(function(){})});
+
+// ── operator ────────────────────────────────────────────────────
+function chk(id){return (S.checks||[]).filter(function(c){return c.id===id})[0]||{status:"wait",label:id,detail:""}}
+function checkRows(ids){return '<div class="checks">'+ids.map(function(i){var c=chk(i);
+  return '<div><span>'+esc(c.label)+(c.detail?'<small>'+esc(c.detail)+'</small>':'')+'</span><span class="s '+c.status+'">'+({ok:"OK",wait:"WAIT",bad:"FIX"})[c.status]+'</span></div>'}).join("")+'</div>'}
+function allOk(ids){return ids.every(function(i){return chk(i).status==="ok"})}
+function prog(n){var h="";for(var i=1;i<=5;i++)h+='<i class="'+(i<n?"d":i===n?"c":"")+'"></i>';return '<div class="prog">'+h+'</div>'}
+function step(n,title,body){return prog(n)+'<section class="card"><p class="mute mono">Step '+n+' of 5</p><h3>'+title+'</h3>'+body+'</section>'}
+
+function renderOp(){
+  var n=S.step||1,h="";
+  if(n===1){
+    var ids=["camera","phone_gps","phone_tilt","clock"];
+    h=step(1,"Connect the phone",'<p>Tap the button, then allow location and motion when the phone asks.</p><div class="stack" style="margin-top:12px">'+
+      '<button class="main" id="allow"'+(sensorsOn?' disabled':'')+'>'+(sensorsOn?'Sharing with the Jetson':'Allow GPS and sensors')+'</button></div>'+
+      checkRows(ids)+'<button class="main" id="next"'+(allOk(ids)?'':' disabled')+'>Next</button>');
+  }else if(n===2){
+    var lv=chk("level"),ok=lv.status==="ok";
+    h=step(2,"Mount the camera",'<p>Camera pointing straight up on the roof. Fix the phone flat beside it, screen up, top edge towards the front of the car.</p>'+
+      '<div style="margin:14px 0"><div class="big" style="color:var(--'+({ok:"ok",wait:"warn",bad:"bad"})[lv.status]+')">'+esc((lv.detail||"").split(" ")[0]||"–")+'°</div><p class="mute">off vertical. Under 1° is good. Adjust the mount until it is green.</p></div>'+
+      '<div class="stack"><button id="mc" '+(ok?'':'disabled')+'>'+(S.mount_confirmed?'Phone is fixed (tap to undo)':'The phone is fixed beside the camera')+'</button>'+
+      '<button class="main" id="next" '+(ok&&S.mount_confirmed?'':'disabled')+'>Next</button></div>');
+  }else if(n===3){
+    var st=chk("stars"),ids=["stars"];
+    h=step(3,"Check the sky",'<p>Park away from street lights. Wait for the stars to reach the number needed.</p>'+
+      '<div style="margin:12px 0"><img class="pv" id="pv" alt="Camera view with detected stars circled"></div>'+
+      '<p class="mute" style="font-size:13px">Green circle: a star. Orange: seen once, not confirmed yet. Red cross: not a star (<span id="rej"></span>).</p>'+
+      checkRows(ids)+'<div class="stack"><button class="main" id="next"'+(st.status==="ok"?'':' disabled')+'>Start the drive</button>'+
+      '<button id="force">Record anyway</button></div><p class="mute" style="font-size:13px;margin-top:8px">If it stays under the number for 5 minutes, tap Record anyway so the owner can see why.</p>');
+  }else if(n===4){
+    var f=S.last_fix||{};
+    h=prog(4)+'<section class="card"><p class="mute mono">Step 4 of 5 · recording '+esc(S.recording||"")+'</p><h3>Drive</h3>'+
+      '<p>Keep the screen on. Drive normally. Straight roads are best.</p>'+
+      '<div class="grid" style="margin:14px 0"><div class="m"><div class="v">'+(S.frames||0)+'</div><div class="l">frames</div></div>'+
+      '<div class="m"><div class="v">'+((S.live||{}).confirmed==null?"–":S.live.confirmed)+'</div><div class="l">stars now</div></div>'+
+      '<div class="m"><div class="v">'+(f.err_km==null?"–":f.err_km+" km")+'</div><div class="l">last error</div></div></div>'+
+      '<img class="pv" id="pv" alt="Camera view">'+checkRows(["phone_gps","level","stars"])+
+      '<div class="stack"><input type="text" id="note" placeholder="Note (rain, tunnel, cloud...)" maxlength="200"><button id="sendnote">Save note</button>'+
+      '<button id="mark">Mark this moment</button><button class="main" id="finish">Finish the test</button></div></section>';
+  }else{
+    h=prog(6)+'<section class="card"><h3>Test saved</h3><p>Name: <b class="mono">'+esc(S.done||"")+'</b></p>'+
+      '<p class="mute" style="margin:10px 0 14px">Everything is saved on the Jetson. The owner reads it in Results. Nothing else to do.</p>'+
+      '<div class="stack"><button class="main" id="seeres">See the result</button><button id="again">New test</button></div></section>';
+  }
+  var keep=$("note")?$("note").value:"";
+  $("op").innerHTML=h;
+  if($("note"))$("note").value=keep;
+  bind();
+}
+function bind(){
+  var on=function(i,f){var e=$(i);if(e)e.onclick=f};
+  on("allow",function(){startSensors();renderOp()});
+  on("next",function(){api("/api/step",{to:(S.step||1)+1}).then(function(s){S=s;renderOp()})});
+  on("mc",function(){api("/api/mount",{confirmed:!S.mount_confirmed}).then(poll)});
+  on("force",function(){api("/api/step",{to:4}).then(function(s){S=s;renderOp()})});
+  on("finish",function(){if(!this.dataset.sure){this.dataset.sure=1;this.textContent="Tap again to finish";return}api("/api/step",{to:5}).then(function(s){S=s;renderOp()})});
+  on("sendnote",function(){var t=$("note").value;if(t){api("/api/note",{text:t});$("note").value="";this.textContent="Saved"}});
+  on("mark",function(){api("/api/mark",{text:"mark"});this.textContent="Marked"});
+  on("seeres",function(){show(2);loadList(S.done)});
+  on("again",function(){api("/api/mount",{confirmed:false});api("/api/step",{to:1}).then(function(s){S=s;renderOp()})});
+}
+function updateLive(){
+  var pv=$("pv");if(pv)pv.src="/api/preview.jpg?"+Date.now();
+  var r=$("rej");if(r){var j=(S.live||{}).rejected||{},k=Object.keys(j);r.textContent=k.length?k.map(function(x){return j[x]+" "+x}).join(", "):"nothing rejected"}
+}
+var lastKey="";
+function poll(){
+  api("/api/state").then(function(s){S=s;
+    var key=JSON.stringify([s.step,s.mount_confirmed,(s.checks||[]).map(function(c){return c.status+c.detail+c.label}),s.frames,s.done,s.last_fix,sensorsOn]);
+    if(key!==lastKey&&tab===1){lastKey=key;renderOp()}
+    if(tab===1)updateLive();
+  }).catch(function(){});
+}
+setInterval(poll,1500);poll();
+
+// ── results ─────────────────────────────────────────────────────
+function show(t){tab=t;$("op").hidden=t!==1;$("res").hidden=t!==2;$("t1").setAttribute("aria-selected",t===1);$("t2").setAttribute("aria-selected",t===2);if(t===2)loadList()}
+$("t1").onclick=function(){show(1)};$("t2").onclick=function(){show(2)};
+function when(t){return t?new Date(t*1000).toLocaleString():""}
+function vclass(v){return v==="OK"?"ok":v==="PARTLY"?"wait":"bad"}
+function loadList(openFirst){
+  api("/api/sessions").then(function(l){
+    var h='<section class="card"><h2>Saved tests</h2>'+(l.length?l.map(function(m){
+      return '<button class="sess" data-id="'+esc(m.id)+'"><div><b>'+esc(m.id)+'</b><div class="mute" style="font-size:13px">'+(m.frames||0)+' frames · '+(m.solved||0)+' with a position</div></div><span class="s '+vclass(m.verdict)+'">'+esc(m.verdict||"RUNNING")+'</span></button>'}).join(""):'<p class="mute">No test yet.</p>')+'</section><div id="detail"></div>';
+    $("res").innerHTML=h;
+    Array.prototype.forEach.call(document.querySelectorAll(".sess"),function(b){b.onclick=function(){detail(b.dataset.id)}});
+    if(openFirst)detail(openFirst);
+  });
+}
+function chart(rows){
+  var pts=rows.filter(function(r){return r.err_km!=null});if(!pts.length)return '<p class="mute">No position to plot.</p>';
+  var t0=rows[0].t,t1=rows[rows.length-1].t||t0+1,mx=Math.max.apply(null,pts.map(function(r){return r.err_km}))*1.15||1;
+  var X=function(t){return 30+(t-t0)/Math.max(t1-t0,1)*280},Y=function(e){return 80-e/mx*70};
+  var path=pts.map(function(r,i){return (i?"L":"M")+X(r.t).toFixed(1)+" "+Y(r.err_km).toFixed(1)}).join("");
+  var miss=rows.filter(function(r){return !r.fix}).map(function(r){return '<line x1="'+X(r.t).toFixed(1)+'" x2="'+X(r.t).toFixed(1)+'" y1="4" y2="84" stroke="#ff5c6c" stroke-opacity=".25"/>'}).join("");
+  return '<svg viewBox="0 0 320 96" role="img" aria-label="Error over the test">'+miss+'<path d="'+path+'" fill="none" stroke="#ff6a4d" stroke-width="1.6"/>'+
+    pts.map(function(r){return '<circle cx="'+X(r.t).toFixed(1)+'" cy="'+Y(r.err_km).toFixed(1)+'" r="2.2" fill="#ff6a4d"/>'}).join("")+
+    '<text x="2" y="14">'+mx.toFixed(0)+' km</text><text x="2" y="84">0</text></svg><p class="mute" style="font-size:12px">Red lines: frames with no position.</p>'}
+function detail(id){
+  $("detail").innerHTML='<section class="card"><p class="mute">Loading...</p></section>';
+  api("/api/session/"+encodeURIComponent(id)).then(function(r){
+    var e=r.err_km;
+    var h='<section class="card"><h2>Test '+esc(r.id)+'</h2><div style="display:flex;gap:12px;align-items:center"><span class="s '+vclass(r.verdict)+'" style="font-size:16px;padding:6px 12px">'+esc(r.verdict)+'</span>'+
+      '<p class="mute">'+r.solved+' of '+r.frames+' frames got a position'+(e?', median error '+e.median+' km':'')+'.</p></div>'+
+      '<div class="grid" style="margin-top:12px"><div class="m"><div class="v">'+Math.round(r.solved_frac*100)+' %</div><div class="l">solved</div></div>'+
+      '<div class="m"><div class="v">'+(e?e.median+' km':'–')+'</div><div class="l">median</div></div>'+
+      '<div class="m"><div class="v">'+(r.stars_median==null?'–':r.stars_median)+'</div><div class="l">stars, median</div></div></div>'+
+      (r.problems.length?r.problems.map(function(p){return '<div class="prob '+(p.severity==="bad"?"":"warn")+'"><b>'+esc(p.title)+'</b><span>'+esc(p.detail)+'</span><small>Fix: '+esc(p.fix)+'</small></div>'}).join(""):'<p class="mute" style="margin-top:10px">No problem found.</p>')+'</section>'+
+      '<section class="card"><h2>Error over the drive</h2>'+chart(r.rows)+'</section>'+
+      '<section class="card"><h2>Frame by frame</h2><div class="scroll"><table><tr><th>time</th><th>stars</th><th>fix</th><th>km</th><th>why not</th></tr>'+
+      r.rows.map(function(x){return '<tr><td>'+new Date(x.t*1000).toLocaleTimeString()+'</td><td>'+(x.stars==null?'':x.stars)+'</td><td>'+(x.fix?'yes':'no')+'</td><td>'+(x.err_km==null?'':x.err_km)+'</td><td>'+esc(x.why||'')+'</td></tr>'}).join("")+'</table></div></section>'+
+      '<section class="card"><h2>Where it is saved</h2><p class="mono mute" style="word-break:break-all;font-size:12px">~/navera-field/'+esc(r.id)+'/</p><p class="mute" style="margin:8px 0 12px">Frames, phone GPS and tilt, every decision, notes, report. Written every second.</p>'+
+      '<div class="stack"><a class="btn" href="/api/session/'+encodeURIComponent(r.id)+'/zip">Download the test (zip)</a></div></section>';
+    $("detail").innerHTML=h;$("detail").scrollIntoView();
+  });
+}
+</script></body></html>

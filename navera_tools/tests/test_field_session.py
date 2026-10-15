@@ -92,3 +92,12 @@ def test_report_files_are_written(tmp_path):
     an.write_report(str(tmp_path))
     assert os.path.exists(tmp_path / "report.json") and os.path.exists(tmp_path / "report.md")
     assert an.analyze(str(tmp_path))["verdict"] == "NO DATA"
+
+
+def test_a_room_instead_of_sky_is_named_as_such(tmp_path):
+    phone = [{"t": 1000 + i * 2, "lat": 35.8, "lon": 10.6, "acc": 5} for i in range(300)]
+    frames = [dict(_good(i), confirmed=0, sky="blocked", solved=False, why="too few stars (0)") for i in range(20)]
+    _write(str(tmp_path), phone, frames)
+    ids = [p["id"] for p in an.analyze(str(tmp_path))["problems"]]
+    assert ids[0] == "not_looking_at_sky"
+    assert "few_stars" not in ids             # the cause is named once, not twice

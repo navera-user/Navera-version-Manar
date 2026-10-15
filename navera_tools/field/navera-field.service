@@ -1,0 +1,13 @@
+[Unit]
+Description=NAVERA field sky test server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=shadow-team
+ExecStart=/home/shadow-team/Navera/navera_tools/field/run_field.sh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

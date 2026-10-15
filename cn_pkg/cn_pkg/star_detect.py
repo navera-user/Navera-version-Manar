@@ -31,10 +31,17 @@ GLARE = "light or glare"         # saturated and big: street lamp, headlight, re
 NOT_SKY = "not sky (car, horizon, next to a bright object)"
 FIXED = "fixed on the sensor (dirt, hot pixel)"
 MOVER = "moves against the stars"
-FAINT = "too faint"
+CLUTTER = "on structure (text, edges, objects)"   # not a bright point on flat dark sky
+CROWDED = "crowded (text, texture)"                # stars are far apart; letters are not
 
 # What the sky as a whole looks like.
+# "blocked": the picture is mostly something other than flat dark sky (a room, a roof, trees, a screen)
 SKY_CLEAR, SKY_HAZY, SKY_CLOUDY, SKY_BRIGHT, SKY_BLOCKED = "clear", "hazy", "cloudy", "too bright", "blocked"
+
+RING_INNER, RING_OUTER = 6, 12      # px: the ring around a spot that must be flat sky
+CROWD_RADIUS, CROWD_MAX = 15, 2     # a spot with more than CROWD_MAX other spots this close is not a star
+MIN_JUNK = 15                       # this many spots that are not stars, and more than the stars: not a sky
+MIN_FLAT_FRACTION = 0.5             # share of the picture that must be flat sky to count any star
 
 
 @dataclass
@@ -56,6 +63,7 @@ class Detection:
     noise: float                    # sky noise (grey levels)
     sky_fraction: float             # share of the picture that is usable sky
     cloud_range: float              # spread of the sky level across the picture
+    flat_fraction: float = 1.0      # share of the picture that is flat, dark sky
 
     def counts(self) -> Dict[str, int]:
         return {k: len(v) for k, v in self.rejected.items() if v}
@@ -107,6 +115,8 @@ def detect(gray: np.ndarray, snr_min: float = 6.0, max_star_px: int = 60,
         return Detection([], rejected, verdict, float(np.median(bg)), _mad_sigma(resid), sky_fraction, 0.0)
 
     noise = _mad_sigma(resid[sky_mask])
+    flat = _flat_map(resid, noise) & sky_mask
+    flat_fraction = float(flat.mean())
     sky_bg = bg[sky_mask]
     cloud_range = float(np.percentile(sky_bg, 95) - np.percentile(sky_bg, 5))
     med_bg = float(np.median(sky_bg))
@@ -155,6 +165,8 @@ def detect(gray: np.ndarray, snr_min: float = 6.0, max_star_px: int = 60,
             cv2.circle(big, (int(cx), int(cy)), int(max(15, 1.5 * radius)), 1, -1)
         elif sharp > hot_sharpness:
             reject(HOT_PIXEL, cx, cy)
+        elif not _flat_ring(resid, cx, cy, noise):
+            reject(CLUTTER, cx, cy)
         else:
             stars.append(Star(cx, cy, flux, peak, fwhm, snr))
 
@@ -164,7 +176,17 @@ def detect(gray: np.ndarray, snr_min: float = 6.0, max_star_px: int = 60,
             reject(NOT_SKY, s_.x, s_.y)
         else:
             kept.append(s_)
-    stars = kept
+    stars = _drop_crowded(kept, reject)
+
+    junk = sum(len(rejected.get(k, [])) for k in (CLUTTER, CROWDED, STREAK, BLOB, GLARE, NOT_SKY))
+    # a night sky gives a few odd spots among its stars; a room, a screen or a roof gives mostly odd spots
+    mostly_junk = junk >= MIN_JUNK and junk > len(stars)
+    if flat_fraction < MIN_FLAT_FRACTION or mostly_junk:
+        # most of the picture is structure: whatever looks like a star here is not trusted
+        for s_ in stars:
+            reject(CLUTTER, s_.x, s_.y)
+        return Detection([], rejected, SKY_BLOCKED, float(np.median(sky_bg)), noise, sky_fraction,
+                         float(np.percentile(sky_bg, 95) - np.percentile(sky_bg, 5)), flat_fraction)
 
     if med_bg > 90.0:
         verdict = SKY_BRIGHT
@@ -175,7 +197,55 @@ def detect(gray: np.ndarray, snr_min: float = 6.0, max_star_px: int = 60,
     else:
         verdict = SKY_CLEAR
     stars.sort(key=lambda s: -s.flux)
-    return Detection(stars, rejected, verdict, med_bg, noise, sky_fraction, cloud_range)
+    return Detection(stars, rejected, verdict, med_bg, noise, sky_fraction, cloud_range, flat_fraction)
+
+
+def _flat_map(resid: np.ndarray, noise: float, box: int = 15, limit: float = 1.8) -> np.ndarray:
+    """True where the sky is flat: local spread (stars clipped) close to the sensor noise."""
+    c = np.clip(resid, -5 * noise, 5 * noise)
+    m = cv2.boxFilter(c, -1, (box, box))
+    v = cv2.boxFilter(c * c, -1, (box, box)) - m * m
+    return np.sqrt(np.maximum(v, 0)) < limit * noise
+
+
+_RING = None
+
+
+def _ring_offsets():
+    global _RING
+    if _RING is None:
+        r = RING_OUTER
+        yy, xx = np.mgrid[-r:r + 1, -r:r + 1]
+        d = np.hypot(xx, yy)
+        _RING = (d >= RING_INNER) & (d <= RING_OUTER)
+    return _RING
+
+
+def _flat_ring(resid: np.ndarray, cx: float, cy: float, noise: float) -> bool:
+    """A star is a bright point on flat dark sky: the ring around it must look like sky noise."""
+    r = RING_OUTER
+    x, y = int(round(cx)), int(round(cy))
+    h, w = resid.shape
+    if x - r < 0 or y - r < 0 or x + r >= w or y + r >= h:
+        return True                       # too near the edge to judge: the other tests decide
+    ring = np.clip(resid[y - r:y + r + 1, x - r:x + r + 1], -5 * noise, 5 * noise)[_ring_offsets()]
+    return float(ring.std()) < 2.0 * noise and abs(float(ring.mean())) < 1.5 * noise
+
+
+def _drop_crowded(stars: List[Star], reject) -> List[Star]:
+    """Stars are far apart; the characters of a line of text are not."""
+    if len(stars) < 3:
+        return stars
+    pts = np.array([[s.x, s.y] for s in stars])
+    d = np.hypot(pts[:, None, 0] - pts[None, :, 0], pts[:, None, 1] - pts[None, :, 1])
+    near = ((d < CROWD_RADIUS).sum(axis=1) - 1)
+    keep = []
+    for s, n in zip(stars, near):
+        if n > CROWD_MAX:
+            reject(CROWDED, s.x, s.y)
+        else:
+            keep.append(s)
+    return keep
 
 
 @dataclass
