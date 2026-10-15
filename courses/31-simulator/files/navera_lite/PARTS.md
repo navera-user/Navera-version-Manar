@@ -19,7 +19,7 @@ Mission 31. Finished parts come from the course's reference: read them, use them
 | `kalman.py` | 28 | finished |
 | `arbiter.py` | 29 | finished |
 | `spoof.py` | 30 | finished |
-| `output.py` | 31 | ✏️ YOUR TODOs: decode_gps_input, parse_frames, ignored, lost_frames |
+| `output.py` | 31 | ✏️ YOUR TODOs: decode_gps_input, parse_frames, lost_frames |
 | `sim/run.py` | 31 | given |
 | `sim/sensors.py` | 31 | ✏️ YOUR TODOs: gauss_markov, stationary_sigma, autocorrelation, rayleigh_quantile |
 | `sim/vision.py` | 31 | given |

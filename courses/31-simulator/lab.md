@@ -4,19 +4,19 @@
 autopilot, and check the simulator's sensor models. Session 2 (**Test engineer**): fly NAVERA Lite in a closed
 loop, inject faults, derive expected values from the rules, give verdicts, diagnose the run that fails — then fly
 your own parts and your own networks.
-**Time:** 4 h (fast) to 7 h (if bytes, statistics or Linux are rusty), plus the lesson (80–100 min).
+**Time:** 4 h (fast) to 8 h (if bytes, statistics or Linux are rusty), plus the lesson (80–100 min).
 
 | Lesson | Lab step | You write |
 |---|---|---|
-| §3 MAVLink | Steps 0–3 | `decode_gps_input` (TODO 1), `parse_frames` (TODO 2), `ignored` (TODO 3), `lost_frames` (TODO 4) |
-| §4 the sensors | Steps 4–5 | `gauss_markov` (5), `stationary_sigma` (6), `autocorrelation` (7), `rayleigh_quantile` (8) |
-| §5 campaigns | Steps 6–9 | `latencies` (TODO 9), `verdict` (TODO 10), your expected values, your diagnosis |
-| §7 your stack | Steps 10–11 | (flights with `--mine`, your networks measured) |
+| §3 MAVLink | Steps 0–3 | `decode_gps_input` (TODO 1), `parse_frames` (TODO 2), `lost_frames` (TODO 3) |
+| §4 the sensors | Steps 4–5 | `gauss_markov` (4), `stationary_sigma` (5), `autocorrelation` (6), `rayleigh_quantile` (7) |
+| §5 campaigns | Steps 6–9 | `latencies` (TODO 8), `verdict` (TODO 9), your expected values, your diagnosis |
+| §7 your stack | Steps 10–11 | one rule of your guard changed (`--part`), your networks measured |
 | §5–§6 | Step 12 | your own scenario and requirement |
 
-Your files: [navera_lite/output.py](file:./navera_lite/output.py) (TODO 1–4),
-[navera_lite/sim/sensors.py](file:./navera_lite/sim/sensors.py) (TODO 5–8), [campaign.py](file:./campaign.py)
-(TODO 9–10), [answers.py](file:./answers.py), [my_scenario.json](file:./my_scenario.json). Read, don't change:
+Your files: [navera_lite/output.py](file:./navera_lite/output.py) (TODO 1–3),
+[navera_lite/sim/sensors.py](file:./navera_lite/sim/sensors.py) (TODO 4–7), [campaign.py](file:./campaign.py)
+(TODO 8–9), [answers.py](file:./answers.py), [my_scenario.json](file:./my_scenario.json). Read, don't change:
 [mav_lab.py](file:./mav_lab.py), [vision_check.py](file:./vision_check.py), `campaign/*.json` (the agreed
 scenarios), and the given parts: `navera_lite/sim/world.py`, `sim/run.py`, `sim/vision.py`, and missions 21–30's
 parts shipped finished.
@@ -25,7 +25,7 @@ parts shipped finished.
 > The simulator flies over a 1 km × 3.8 km corridor west of Sousse, Tunisia (NAVERA's test area): fields, a
 > motorway and the edge of a town, drawn from OpenStreetMap data (© OpenStreetMap contributors). The drone takes
 > off at the south end and flies north at 15 m/s, 150 m high; the plane flies at 40 m/s, 300 m high. GPS: 5 fixes
-> per second, σ 1.8 m stated. Vision: one fix per second, taken 0.1 s after a GPS fix and reaching the judge 0.3 s
+> per second, σ 1.9 m stated (HDOP 0.95: the σ its noise model really has, Step 4). Vision: one fix per second, taken 0.1 s after a GPS fix and reaching the judge 0.3 s
 > later.
 
 # Session 1 — Messenger (about 2 h)
@@ -39,9 +39,13 @@ simulated flight of NAVERA Lite. First write `PREDICT_FRAME` in [answers.py](fil
 python3 mav_lab.py hex
 ```
 
-Find the first GPS_INPUT frame (`fd 3f …`). With the table of lesson §3, name each header byte. Copy its `len`
-byte, as a decimal number, into `HEADER_LEN_BYTE`, and after lesson §3 write `EXPLAIN_63`. (The first bytes of the
-file are line noise: a real serial link has some.)
+With the table of lesson §3, find where the first GPS_INPUT frame starts and name its header bytes (the first bytes
+of the file are line noise: a real serial link has some). Copy its `len` byte, as a decimal number, into
+`HEADER_LEN_BYTE`. Then compare with the answer and, after lesson §3, write `EXPLAIN_63`:
+
+```bash
+python3 mav_lab.py hex --answer
+```
 
 ## Step 1 — Decode a payload (TODO 1)
 
@@ -78,8 +82,10 @@ checksum is given: `frame_crc(frame, msgid)`. Then `python3 mav_lab.py test` (th
 python3 mav_lab.py stream
 ```
 
-Copy the number of frames into `STREAM_FRAMES` and the number with `crc_ok` False into `STREAM_BAD_CRC`. One frame
-has `crc_ok` None: look at its message id. Where does it come from?
+Copy the number of frames with `crc_ok` False into `STREAM_BAD_CRC`. One frame has `crc_ok` None: look at its
+message id. Where does it come from? Real parsers differ here: pymavlink (a MAVLink library) swallows that fake
+frame whole and loses the HEARTBEAT and the GPS_INPUT hidden inside it (it finds 175 GPS_INPUT, you find 176).
+Your resync rule is more robust, and costs more CPU.
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
@@ -93,25 +99,24 @@ has `crc_ok` None: look at its message id. Where does it come from?
 5. The test shows 2 frames instead of 1 for "noise + 1 frame + a cut frame"? You returned the cut frame.
 </details>
 
-## Step 3 — Flags and lost frames (TODOs 3–4)
+## Step 3 — Lost frames (TODO 3) and flags
 
-🧰 **Bits:** `57 & 8` → 8 (bit 3 is set), `57 & 2` → 0. **Modulo:** `(1 - 254 - 1) % 256` → 2 (Python's `%` is
-never negative for a positive divisor).
+🧰 **Modulo:** `(1 - 254 - 1) % 256` → 2 (Python's `%` is never negative for a positive divisor).
 
-Write `ignored(flags)` and `lost_frames(seqs)` (lesson §3). `python3 mav_lab.py test` must show their lines ✔.
+Write `lost_frames(seqs)` (lesson §3); `python3 mav_lab.py test` must show its line ✔. (`ignored(flags)`, which
+turns a bit mask into names, is given in output.py: read its two lines — `flags & bit` is the whole trick.)
 Then run `python3 mav_lab.py stream` again and copy `STREAM_LOST`, `STREAM_DOUBLED`, and the `ignore_flags` of the
 frames sent while day vision flew (satellites 0) into `VISION_FLAGS`. Write `EXPLAIN_FLAGS` and `EXPLAIN_LOST`.
 Open [out/stream.png](file:./out/stream.png): where did vision take over?
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
-1. ignored: one `if flags & bit:` per `(name, bit)` of `IGNORE_FLAGS`, keeping the names in that order.
-2. Refuse what is not an int from 0 to 255 — and a bool (`isinstance(True, int)` is True in Python!).
-3. lost_frames: walk over consecutive pairs, `for a, b in zip(seqs, seqs[1:]):`.
-4. You get 255 lost for `[7, 7]`? A doubled frame: test `b == a` first.
+1. Walk over consecutive pairs, `for a, b in zip(seqs, seqs[1:]):`.
+2. You get 255 lost for `[7, 7]`? A doubled frame: test `b == a` first.
+3. A negative count after 255 → 0? Count modulo 256.
 </details>
 
-## Step 4 — The receiver's noise (TODOs 5–7)
+## Step 4 — The receiver's noise (TODOs 4–6)
 
 🧰 **A numpy random generator:** `rng = np.random.default_rng(31)`; `rng.standard_normal(5)` → 5 numbers N(0, 1),
 the same ones for the same seed. **An empty array to fill:** `out = np.empty(n)`, then `out[k] = x`.
@@ -142,16 +147,17 @@ many correlation times are there in one hour?)
    function, or used `rng.normal` with other arguments: draw all n at once, first.
 </details>
 
-## Step 5 — Vision errors (TODO 8)
+## Step 5 — Vision errors (TODO 7)
 
-Write `rayleigh_quantile(sigma, p)` (lesson §4), check it with `python3 mav_lab.py test`, then:
+Write `rayleigh_quantile(sigma, p)` (lesson §4) and check it with `python3 mav_lab.py test`. Write
+`PREDICT_RAYLEIGH_95` (how many σ is the 95 % radius of a 2-D error: 1.96, 2.45 or 3?), then:
 
 ```bash
 python3 mav_lab.py rayleigh
 ```
 
-It draws 200 000 2-D errors for the target (σ 15 m) and the measured (σ 373.7 m) profiles. Copy your
-`rayleigh_quantile(15.0, 0.95)` into `RAYLEIGH_P95_15` and write `EXPLAIN_MEDIAN`.
+It draws 200 000 2-D errors for the target (σ 15 m) and the measured (σ 373.7 m) profiles. Was your prediction
+right? Write `EXPLAIN_MEDIAN`.
 
 Press **✔ Check my work**: checks 1–7 earn the 📡 **Messenger** badge.
 
@@ -179,12 +185,16 @@ state or source, the autopilot's events) and a summary; it writes `my_runs/jam.c
 the time NAVERA Lite flies on the GPS again, minus 70 s. Look at the `guard` column just after 70 s: which rule of
 mission 30 is acting, and what does it cost?
 
+<details><summary>After your run: the same flight as a picture</summary>
+
 ![campaign/jam.json flown with the course's parts](assets/campaign.svg)
 
 *Look at the band (the jam), the step of the source, and the two errors: NAVERA Lite's (dots) and the
-autopilot's (line). Why is the autopilot's error smaller than NAVERA Lite's during the jam?*
+autopilot's (line). Why is the autopilot's error smaller than NAVERA Lite's during the jam? (NAVERA Lite's error
+is its latest position against the truth NOW: a held 1 Hz vision fix grows by 15 m per second of age.)*
+</details>
 
-## Step 7 — Measure a run (TODO 9)
+## Step 7 — Measure a run (TODO 8)
 
 🧰 **The first item that passes a test:** `next((r for r in rows if r["t_s"] >= 30.0), None)` → the first row at
 or after 30 s, or None when there is none.
@@ -211,7 +221,7 @@ you saw in the events?
 4. `(None, 0.0)` for the test "only gps"? That is right: the GPS never left, and it is there at t1.
 </details>
 
-## Step 8 — Expected values from the rules, then the verdict (TODO 10)
+## Step 8 — Expected values from the rules, then the verdict (TODO 9)
 
 **Before** flying the campaign, write what the rules predict (lesson §5), in [answers.py](file:./answers.py):
 
@@ -219,8 +229,8 @@ you saw in the events?
   NAVERA Lite stop using it? (Which setting of [navera_lite.yaml](file:./navera_lite.yaml)?)
 - `EXPECT_JUMP_GATE_M`: the drone's jump gate for the next GPS fix, 0.2 s after the last trusted one (the runner
   gives the gate the drone's top speed, 30 m/s; the margin is in navera_lite.yaml).
-- `EXPECT_DRIFT_REFUSED_S`: the guard against the campaign's drift (`campaign/drift.json`): the GPS drifts at
-  4.0 m/s, states σ 1.8 m; vision states σ 15 m; the GPS fix closest to a vision fix is 0.1 s away, so the guard's
+- `EXPECT_DRIFT_SIGMA_S_M` and `EXPECT_DRIFT_REFUSED_S`: the guard against the campaign's drift
+  (`campaign/drift.json`): the GPS drifts at 4.0 m/s, states σ 1.9 m; vision states σ 15 m; the GPS fix closest to a vision fix is 0.1 s away, so the guard's
   time-gap term is 30 m/s × 0.1 s = 3 m; p_fa 0.01, 5 disagreeing fixes in a row, one vision fix per second.
   Use mission 30's `drift_alarm_time` and `chi2_threshold_2d` (in `navera_lite/spoof.py`, finished).
 
@@ -231,6 +241,9 @@ you saw in the events?
 2. threshold = `chi2_threshold_2d(0.01)`.
 3. `python3 -c "import math; from navera_lite.spoof import drift_alarm_time, chi2_threshold_2d; print(...)"`
 </details>
+
+Why do σ_s = 15.0, 15.1 and 15.4 m all give the same refusal time? (One test per second: the answer is rounded to
+the test grid — which is why `EXPECT_DRIFT_SIGMA_S_M` is asked separately.)
 
 Then write `verdict(value, op, limit)` in [campaign.py](file:./campaign.py) (lesson §5) and run
 `python3 campaign.py test` until all lines are ✔.
@@ -259,7 +272,9 @@ python3 campaign.py report
 [out/campaign.png](file:./out/campaign.png).
 
 1. Copy the drift run's `switch_s` into `DRIFT_MEASURED_S` and compare it with your `EXPECT_DRIFT_REFUSED_S`:
-   write `EXPLAIN_DRIFT`.
+   write `EXPLAIN_DRIFT`. (jam, off, jump and drift show `false_ref_s` 1.4: after a GPS outage the guard holds the
+   returning GPS until two vision fixes agree — mission 30's "jam, then spoof" rule, a price paid on purpose. R9
+   is about a GPS that never failed.)
 2. One requirement FAILS: write its id in `FAILED`. Diagnose it with lesson §5's method. Useful commands:
 
 ```bash
@@ -308,10 +323,28 @@ python3 campaign.py report --mine
 ```
 
 The first lines of each flight's events (`my_runs/mine/*_events.log`, lines `# part`) say which parts were yours
-and why any was not (not found, a TODO left, an error). Compare `results_mine.json` with `results.json` and
-[out/campaign_mine.png](file:./out/campaign_mine.png) with [out/campaign.png](file:./out/campaign.png). Write
-`EXPLAIN_MINE`. If a part of yours made a flight stop, the message names the file and line: fix it in its own
-lesson folder, or fly without it.
+and why any was not (not found, a TODO left, an error — a part of yours that crashes during a flight is replaced by
+the course's for that flight, and the line says why). Compare `results_mine.json` with `results.json`. Your parts
+probably give the course's numbers: they passed the same checks. To fly without one of your parts:
+`python3 campaign.py run --mine --not spoof` (arbiter, spoof or kalman).
+
+**A regression test that catches something.** A regression test is worth something only if it catches a change.
+Copy your guard (`cp ../30-spoofing/navera_lite/spoof.py my_spoof.py`; if you have none, copy the course's:
+`cp navera_lite/spoof.py my_spoof.py`), change ONE rule in [my_spoof.py](file:./my_spoof.py) — for example
+`"confirm_n": 2` → `6`, `"refuse_n": 5` → `2` or `"p_fa": 0.01` → `0.1` in `GUARD_DEFAULTS` — and **predict**
+which requirement moves (perhaps none: a metric can move while every verdict stays).
+Then fly and judge it:
+
+```bash
+python3 campaign.py run --mine --part spoof=my_spoof.py
+```
+
+```bash
+python3 campaign.py report --mine
+```
+
+Compare [out/campaign_mine.png](file:./out/campaign_mine.png) with [out/campaign.png](file:./out/campaign.png). Write
+`EXPLAIN_MINE` about this flight: the rule you changed, your prediction, which requirement moved (or why none did).
 
 ## Step 11 — Your networks in the loop
 
@@ -330,15 +363,21 @@ night mission, GPS jammed at 20 s, with your night network locating every therma
 python3 -m navera_lite.sim.run campaign/night_mine.json --mine
 ```
 
-Look at `vis_err_m` and `lite_err_m` in `my_runs/mine/night_mine.csv`. (By day: `campaign/day_mine.json`, about
-2 minutes, runs your PatchNet on about 100 photos — optional.) Write `EXPLAIN_NETWORKS`: what did your network do in the
-loop, what makes these numbers optimistic (lesson §6), and what would an honest measurement need?
+Look at `vis_err_m`, `lite_err_m`, `lite_state` and `ap_err_m` in `my_runs/mine/night_mine.csv`, and at the
+line `# part stated σ` of its events. **Is your night source FIX or DEGRADED?** Compare the σ it states with
+`fix_max_sigma_m` in [navera_lite.yaml](file:./navera_lite.yaml): a network measured at σ 25.2 m states 25.2 m and
+flies DEGRADED — a few decimetres of honesty change the state the judge gives it, and what the autopilot does
+with it. (By day: `campaign/day_mine.json`, about 2 minutes, runs your PatchNet on about 100 photos — optional.)
+Write `EXPLAIN_NETWORKS`: what your network did in the loop, the state it got and why, what makes these numbers
+optimistic (lesson §6), and what an honest measurement would need. Never edit `my_vision_profile.json` by hand: the
+check measures your night network again.
 
 ## Step 12 — Your own test
 
 Design one test: edit [my_scenario.json](file:./my_scenario.json) — your own `name`, at least one fault (the
 sensors and modes are listed in lesson §5; `"imu"` with `"bias"` or `"off"`, `"light": "night"`, `"vehicle"` …),
-and a `duration_s`. Write the requirement FIRST (`MY_METRIC`, `MY_OP`, `MY_LIMIT`), then fly and measure:
+and a `duration_s`. ⚠️ `campaign.py one` measures from the **first** fault in your list (t0) to the moment **that
+same sensor** comes back (t1): put the fault you want to measure first. Write the requirement FIRST (`MY_METRIC`, `MY_OP`, `MY_LIMIT`), then fly and measure:
 
 ```bash
 python3 -m navera_lite.sim.run my_scenario.json
@@ -354,7 +393,7 @@ python3 campaign.py one my_run
 Press **✔ Check my work**: all 16 checks earn the 🧪 **Test engineer** badge.
 
 > [!TASK]
-> Done means: TODOs 1–10 written; `answers.py` complete; `results.json`, `results_mine.json`,
+> Done means: TODOs 1–9 written; `answers.py` complete; `results.json`, `results_mine.json`,
 > `my_vision_profile.json` and the runs of Steps 9–12 in `my_runs/` written by the tools (not by hand).
 
 ## Look back (not graded)
@@ -370,7 +409,11 @@ Press **✔ Check my work**: all 16 checks earn the 🧪 **Test engineer** badge
   `"vision": "measured"` and another name; fly it and measure `max_err_m` (mission 30 §6: what the guard cannot
   catch).
 - **IMU off and GPS jammed.** No attitude → no vision → … ? Predict the failsafe time, then fly it.
-- **Sim Lite.** If your teacher has switched the 🛩️ Simulator tab to NAVERA Lite, fly `my_scenario.json` there
-  and compare its CSV with yours (same world, same seed).
-- **The 10-bit week.** Decode `time_week` of the first GPS_INPUT and compute what a receiver with a 10-bit week
-  counter would display (lesson §3): which date would it believe?
+- **Sim Lite.** The 🛩️ Simulator tab flies the same world in your browser with your NAVERA Lite (your parts where
+  you have finished them; a browser cannot run PyTorch, so "My networks" draws errors from your measured profile).
+  Press **Fly my scenario**, save the run, and compare its CSV with yours (same world, same seed).
+- **The 10-bit week.** `time_week` and `time_week_ms` give the instant in **GPS time**: weeks since 6 January 1980,
+  no leap seconds (18 s ahead of UTC). The satellites' own message carries the week in only **10 bits** (0–1023): it
+  rolled over to 0 on 22 August 1999 and again on **6 April 2019**, and some older receivers jumped back 19.6 years.
+  `GPS_INPUT`'s `time_week` is 16 bits. Decode `time_week` of the first GPS_INPUT and compute what a receiver with a
+  10-bit counter would display: which date would it believe?

@@ -6,6 +6,8 @@ Written for the course; it is not NAVERA code.
     python3 -m navera_lite.sim.run campaign/jam.json              # the course's parts (this folder's navera_lite)
     python3 -m navera_lite.sim.run campaign/jam.json --mine       # YOUR parts from your earlier lesson folders
     options: --out DIR (default my_runs, or my_runs/mine with --mine)   --quiet (no event list)
+             --part NAME=PATH  fly this file as your part NAME (arbiter, spoof, kalman; day, night: weights)
+             --not NAME        fly the course's part NAME, whatever you have
 
 --mine flies, each one if you finished it (else the course's, and the run says so): your judge
 (../29-arbiter/navera_lite/arbiter.py), your guard (../30-spoofing/navera_lite/spoof.py), your Kalman filter as the
@@ -90,34 +92,54 @@ def load_mine(part, path, needs):
 
 
 # @part 31
-def parts(mine, vision_kind):
-    """The modules and weights this flight uses, and a report line per part ('yours' / 'course')."""
+PART_NAMES = {"arbiter": "arbiter", "spoof": "spoof", "kalman": "kalman", "day": "day weights", "night": "night weights"}
+
+
+# @part 31
+def parts(mine, vision_kind, paths=None, without=()):
+    """The modules and weights this flight uses, a report line per part ('yours' / 'course'), and the files of
+    yours that flew. paths: {"spoof": "my_spoof.py", …} replaces your lesson folder's file for that part (and flies
+    it even without --mine); without: parts that fly as the course's whatever you have (--not, or after a crash)."""
     import importlib
-    report = {}
-    mods = {}
+    paths, without = dict(paths or {}), dict.fromkeys(without, "--not") if not isinstance(without, dict) else without
+    report, mods, files = {}, {}, {}
     needs = {"arbiter": ["candidates", "track_since", "pick", "Arbiter.receive", "Arbiter.step"],
              "spoof": ["chi2_threshold_2d", "innovation", "SpoofGuard.on_reference", "SpoofGuard.on_gps"],
              "kalman": ["cv_model", "kf_predict", "kf_update"]}
     for part in ("arbiter", "spoof", "kalman"):
         mod, why = (None, "")
-        if mine:
-            mod, why = load_mine(part, MINE[part], needs[part])
+        name = "navera_lite." + part
+        if part in without:
+            why = without[part]
+        elif mine or part in paths:
+            mod, why = load_mine(part, paths.get(part, MINE[part]), needs[part])
         if mod is None:
-            mod = importlib.import_module("navera_lite." + part)
-            report[part] = "course" + (f" — {why}" if mine else "")
+            if not isinstance(sys.modules.get(name), type(sys)) or getattr(sys.modules[name], "__file__", "") != \
+                    os.path.abspath(os.path.join("navera_lite", part + ".py")):
+                sys.modules.pop(name, None)                  # a file of yours loaded before: back to the course's
+            mod = importlib.import_module(name)
+            report[part] = "course" + (f" — {why}" if why else "")
         else:
             report[part] = f"yours ({why})"
+            files[part] = os.path.abspath(why)
         mods[part] = mod
     weights = {}
     if vision_kind == "mine":
-        for key in ("day weights", "night weights"):
-            p = MINE[key] if mine and os.path.exists(MINE[key]) else REF_WEIGHTS[key]
-            if mine and p == REF_WEIGHTS[key]:
-                report[key] = f"course ({MINE[key]} not found)"
+        for short in ("day", "night"):
+            key = PART_NAMES[short]
+            own = paths.get(short, MINE[key])
+            use_own = (mine or short in paths) and short not in without and os.path.exists(own)
+            p = own if use_own else REF_WEIGHTS[key]
+            if use_own:
+                report[key] = f"yours ({p})"
+            elif short in without:
+                report[key] = f"course ({p}) — {without[short]}"
+            elif mine or short in paths:
+                report[key] = f"course ({own} not found)"
             else:
-                report[key] = ("yours (" + p + ")") if mine else "course (" + p + ")"
+                report[key] = f"course ({p})"
             weights[key] = p
-    return mods, weights, report
+    return mods, weights, report, files
 
 
 # @part 31
@@ -186,16 +208,43 @@ def check_scenario(sc):
 
 
 # @part 31
-def fly(sc, mine=False, quiet=True, keep_frames=False):
-    """Fly one scenario (a dict) and return the World (rows, events, outcome(), parts report in .parts)."""
+def fly(sc, mine=False, quiet=True, keep_frames=False, paths=None, without=()):
+    """Fly one scenario (a dict) and return the World (rows, events, outcome(), parts report in .parts).
+    If one of YOUR parts raises during the flight, the flight starts again with the course's part in its place
+    (the report says why): one broken part never stops a campaign."""
     check_scenario(sc)
     todo = unfinished(output, ["parse_frames", "decode_gps_input"])
     if todo:
         raise RuntimeError("the autopilot reads the link with YOUR navera_lite/output.py, and "
                            + " and ".join(todo) + " " + ("is" if len(todo) == 1 else "are")
                            + " still a TODO: write TODO 1 and TODO 2 first (lab Steps 1–2)")
+    without = dict.fromkeys(without, "--not") if not isinstance(without, dict) else dict(without)
+    for _ in range(4):
+        w, files = _build(sc, mine, paths, without)
+        try:
+            w.run(reader(output))
+        except Exception as e:                                   # noqa: BLE001 — which of YOUR parts raised?
+            import traceback
+            tb = traceback.extract_tb(e.__traceback__)
+            bad = next((part for fr in reversed(tb) for part, f in files.items()
+                        if os.path.abspath(fr.filename) == f), None)
+            if bad is None:
+                raise
+            fr = next(fr for fr in reversed(tb) if os.path.abspath(fr.filename) == files[bad])
+            without[bad] = (f"yours crashed: {type(e).__name__}: {e} ({os.path.relpath(fr.filename)}, line "
+                            f"{fr.lineno}, in {fr.name}); the flight was flown again with the course's")
+            continue
+        if not keep_frames:
+            w.sent_frames = []
+        return w
+    raise RuntimeError("the flight stopped again and again")
+
+
+# @part 31
+def _build(sc, mine, paths, without):
+    """The world of one flight, with its judge, filter and vision (see fly)."""
     kind = sc.get("vision", "target")
-    mods, weights, report = parts(mine, kind)
+    mods, weights, report, files = parts(mine, kind, paths, without)
     cfg = settings_for(sc)
     judge = mods["arbiter"].Arbiter(cfg)
     if sc.get("guard", True):
@@ -230,10 +279,31 @@ def fly(sc, mine=False, quiet=True, keep_frames=False):
         vision = W.ProfileVision(kind)
     w = W.World(sc, judge, output, mods["kalman"], vision, frame, route)
     w.parts = report
-    w.run(reader(output))
-    if not keep_frames:
-        w.sent_frames = []
-    return w
+    return w, files
+
+
+# @part 31
+def options(args):
+    """(paths, without) from --part NAME=PATH (repeatable) and --not NAME (repeatable); NAME is arbiter, spoof,
+    kalman, day or night. Example: options(["--part", "spoof=my_spoof.py", "--not", "kalman"])
+    → ({"spoof": "my_spoof.py"}, ["kalman"])"""
+    paths, without = {}, []
+    for i, a in enumerate(args):
+        if a in ("--part", "--not"):
+            if i + 1 >= len(args):
+                sys.exit(f"{a} needs a value, e.g. {a} spoof" + ("=my_spoof.py" if a == "--part" else ""))
+            v = args[i + 1]
+            name, _, path = v.partition("=")
+            if name not in PART_NAMES or (a == "--part" and not path):
+                sys.exit(f"{a} {v}: use {a} NAME{'=PATH' if a == '--part' else ''} with NAME one of "
+                         + ", ".join(PART_NAMES))
+            if a == "--part":
+                if not os.path.exists(path):
+                    sys.exit(f"--part {v}: {path} not found")
+                paths[name] = path
+            else:
+                without.append(name)
+    return paths, without
 
 
 # @part 31
@@ -262,7 +332,7 @@ def main(argv=None):
     if not args or args[0].startswith("-"):
         sys.exit(__doc__.split("\n\n")[1])
     mine = "--mine" in args
-    out_dir = os.path.join("my_runs", "mine") if mine else "my_runs"
+    out_dir = os.path.join("my_runs", "mine") if mine or "--part" in args else "my_runs"
     if "--out" in args:
         i = args.index("--out")
         if i + 1 >= len(args):
@@ -275,8 +345,9 @@ def main(argv=None):
         sys.exit(f"{args[0]}: no such file")
     except ValueError as e:
         sys.exit(f"{args[0]} is not valid JSON: {e} (look at commas and quotes near that line)")
+    paths, without = options(args)
     try:
-        w = fly(sc, mine=mine)
+        w = fly(sc, mine=mine, paths=paths, without=without)
     except (ValueError, RuntimeError) as e:
         sys.exit(f"{args[0]}: {e}")
     except Exception as e:                                       # noqa: BLE001 — one plain sentence, with the place
@@ -284,8 +355,7 @@ def main(argv=None):
         frames = traceback.extract_tb(e.__traceback__)
         deep = frames[-1] if frames else None
         where = f" ({os.path.relpath(deep.filename)}, line {deep.lineno}, in {deep.name})" if deep else ""
-        sys.exit(f"the flight stopped: {type(e).__name__}: {e}{where} — if that file is one of YOUR parts, fix it "
-                 "there (or fly without --mine)")
+        sys.exit(f"the flight stopped: {type(e).__name__}: {e}{where}")
     path = write(w, out_dir)
     print(f"Scenario {sc['name']} ({w.vehicle}, vision {sc.get('vision', 'target')}, {w.faults['light']}):")
     for k, v in w.parts.items():

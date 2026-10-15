@@ -1383,6 +1383,7 @@
   "rayleigh_p95_15": 36.716202460212244,
   "expect_off_switch_s": 3.0,
   "expect_jump_gate_m": 56.0,
+  "drift_sigma_s": 15.414603465545262,
   "expect_drift_s": 16.0,
   "runs": {
    "baseline": {

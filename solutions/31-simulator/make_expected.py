@@ -121,11 +121,12 @@ def main():
     with open(os.path.join(HIDDEN, "stream_truth.json")) as f:
         stream = json.load(f)
     x = S.gauss_markov(int(3600 / 0.2), 0.2, 20.0, 0.6, np.random.default_rng(31))
-    sig_s = math.sqrt(1.8 ** 2 + 15.0 ** 2 + (30.0 * 0.1) ** 2)
+    from navera_lite.sim.world import GPS_SIGMA_M
+    sig_s = math.sqrt(GPS_SIGMA_M ** 2 + 15.0 ** 2 + (30.0 * 0.1) ** 2)
     lab = {"header_len": 63, "stream": stream, "gm_sigma": float(x.std()), "corr_10s": S.autocorrelation(x, 50),
            "rayleigh_p95_15": S.rayleigh_quantile(15.0, 0.95), "expect_off_switch_s": 3.0,
            "expect_jump_gate_m": 30.0 * 0.2 + 50.0,
-           "expect_drift_s": spoof.drift_alarm_time(4.0, sig_s, spoof.chi2_threshold_2d(0.01), 5, 1.0)}
+           "drift_sigma_s": sig_s, "expect_drift_s": spoof.drift_alarm_time(4.0, sig_s, spoof.chi2_threshold_2d(0.01), 5, 1.0)}
     subprocess.run([sys.executable, "campaign.py", "run"], check=True, env=env, stdout=subprocess.DEVNULL)
     subprocess.run([sys.executable, "-m", "navera_lite.sim.run", "campaign/plane_delayed.json", "--quiet"], check=True,
                    env=env, stdout=subprocess.DEVNULL)

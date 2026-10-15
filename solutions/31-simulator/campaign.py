@@ -1,12 +1,14 @@
 """campaign.py — the fault-injection campaign of mission 31: fly the scenarios, measure, compare with the
-requirements, PASS or FAIL. You write TODO 9 and TODO 10 (the rest is given).
+requirements, PASS or FAIL. You write TODO 8 and TODO 9 (the rest is given).
 
-    python3 campaign.py test               the examples of TODO 9 and TODO 10
+    python3 campaign.py test               the examples of TODO 8 and TODO 9
     python3 campaign.py one jam            the measurements of ONE run (my_runs/jam.csv)
     python3 campaign.py run                fly every campaign scenario with the course's parts → my_runs/
     python3 campaign.py report             measurements + verdicts of my_runs/ → results.json, out/campaign.png
     python3 campaign.py run --mine         the same flights with YOUR parts (missions 21–30) → my_runs/mine/
     python3 campaign.py report --mine      → results_mine.json, out/campaign_mine.png
+    options of run (with --mine): --part NAME=PATH (fly that file as your part: arbiter, spoof, kalman),
+                                  --not NAME (fly the course's part NAME)
 
 A run is a list of rows (dicts) read from my_runs/<name>.csv: "t_s" (mission time, s, a float), "lite_state",
 "lite_source" ("" when none), "lite_err_m" (float or None), "guard", "gps_mode", "gps_err_m", "ap_mode", …
@@ -33,12 +35,12 @@ REQUIREMENTS = [
     ("R6", "jump", "leak_s", "<=", 0.0, "2 km jump: never flies on a GPS more than 100 m wrong"),
     ("R7", "drift", "max_err_m", "<=", 100.0, "slow drift: NAVERA Lite's error stays ≤ 100 m"),
     ("R8", "blind", "failsafe_s", "<=", 10.0, "no source at all: the autopilot's failsafe within 10 s"),
-    ("R9", "plane_late", "false_refusal_s", "<=", 0.0, "an honest GPS is never refused"),
+    ("R9", "plane_late", "false_refusal_s", "<=", 0.0, "no GPS fault: an honest GPS is never refused"),
 ]
 NUMERIC = ("t_s", "lite_sigma_m", "lite_err_m", "gps_err_m", "vis_err_m", "ap_err_m", "truth_speed_mps")
 
 
-# ---------------------------------------------------------------------------------------------------------- TODO 9
+# ---------------------------------------------------------------------------------------------------------- TODO 8
 # 🧰 The first item that passes a test:  next((r for r in rows if r["t_s"] >= 30.0), None)  → the first row at or
 # after 30 s, or None when there is none.
 
@@ -63,7 +65,7 @@ def latencies(rows, t0, t1):
     return switch, back
 
 
-# ---------------------------------------------------------------------------------------------------------- TODO 10
+# ---------------------------------------------------------------------------------------------------------- TODO 9
 def verdict(value, op, limit):
     """PASS or FAIL for one measured value against one requirement (lesson §5): op is "<=" (the value must be at most
     the limit) or ">=" (at least); any other op: ValueError. A value of None (it was never measured: the event
@@ -134,7 +136,8 @@ def window(sc):
 
 
 def measure(rows, sc):
-    """Every metric of one run (lesson §5); TODO 9 gives the two latencies."""
+    """Every metric of one run (lesson §5), measured from the FIRST fault of the scenario (t0) to the moment that same
+    sensor comes back (t1); TODO 8 gives the two latencies."""
     t0, t1 = window(sc)
     end = rows[-1]["t_s"] if rows else 0.0
     a, b = (t0 if t0 is not None else 0.0), (t1 if t1 is not None else end + 1.0)
@@ -165,11 +168,12 @@ def run_dir(mine):
     return os.path.join("my_runs", "mine") if mine else "my_runs"
 
 
-def fly_all(mine):
+def fly_all(mine, extra=()):
     for name in RUNS:
         cmd = [sys.executable, "-m", "navera_lite.sim.run", os.path.join("campaign", name + ".json"), "--quiet"]
         if mine:
             cmd.append("--mine")
+        cmd += list(extra)
         print(f"— {name}", flush=True)
         r = subprocess.run(cmd)
         if r.returncode:
@@ -283,7 +287,13 @@ def main():
         for k, v in m.items():
             print(f"  {k:16s} {v}")
     elif mode == "run":
-        fly_all(mine)
+        extra = []
+        for i, a in enumerate(args):
+            if a in ("--part", "--not") and i + 1 < len(args):
+                extra += [a, args[i + 1]]
+        if extra and not mine:
+            sys.exit("--part and --not change YOUR stack: use them with --mine (python3 campaign.py run --mine …)")
+        fly_all(mine, extra)
     elif mode == "report":
         report(mine)
     else:

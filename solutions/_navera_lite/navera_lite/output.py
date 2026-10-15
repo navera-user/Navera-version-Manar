@@ -203,19 +203,20 @@ def parse_frames(data):
     return out
 
 
-# @part 31 todo 3
+# @part 31
 def ignored(flags):
     """The names of the fields an autopilot must ignore, from GPS_INPUT's ignore_flags (a bit mask), in the order
     of IGNORE_FLAGS. flags: an int from 0 to 255 (else ValueError).
 
     Example: ignored(57) → ["alt", "vel_horiz", "vel_vert", "speed_accuracy"]   (57 = 1 + 8 + 16 + 32)
     """
+    # from mission 31 — finished: read it, use it, do not change it
     if isinstance(flags, bool) or not isinstance(flags, int) or not 0 <= flags <= 255:
         raise ValueError(f"ignore_flags must be an int from 0 to 255, got {flags!r}")
     return [name for name, bit in IGNORE_FLAGS if flags & bit]
 
 
-# @part 31 todo 4
+# @part 31 todo 3
 def lost_frames(seqs):
     """Lost and doubled frames from the sequence numbers received, in order (lesson §3): seq counts 0, 1, …, 255,
     0, 1, … (modulo 256). Between two consecutive numbers a and b: b == a is a DOUBLED frame; otherwise

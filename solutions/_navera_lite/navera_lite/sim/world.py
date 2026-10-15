@@ -34,7 +34,8 @@ VEHICLES = {  # cruise m/s, altitude m, turn rate deg/s, acceleration m/s²   (t
     "robot": (4.0, 0.0, 40.0, 1.5),
 }
 # @part 31
-GPS_SIGMA_M = 1.8                 # the receiver states HDOP 0.9 → σ = 2 × HDOP (mission 15's rule)
+GPS_SIGMA_M = 1.9                 # the receiver states HDOP 0.95 → σ = 2 × HDOP (mission 15's rule) = the
+                                  # stationary σ of its noise model (sensors.stationary_sigma(0.2, 20, 0.6) = 1.90)
 # @part 31
 SPOOF_JUMP_M = 2000.0             # spoof_jump: a fixed offset, in a direction drawn from the seed
 # @part 31

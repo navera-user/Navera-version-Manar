@@ -10,7 +10,6 @@ HEADER_LEN_BYTE = 63         # the 'len' byte of the first GPS_INPUT frame, as a
 EXPLAIN_63 = "MAVLink 2 drops the trailing zero bytes of the payload; the last field, yaw, is 0 (two zero bytes), so only 63 bytes travel. The receiver must pad the payload with zeros back to 65 bytes before unpacking it."             # why is it not 65, and what must a receiver do about it?
 
 # ---- Steps 2–3: the recording through YOUR decoder (python3 mav_lab.py stream) ----------------------------------
-STREAM_FRAMES = 182           # how many frames your parse_frames finds in the recording
 STREAM_BAD_CRC = 2          # how many of them have crc_ok False
 STREAM_LOST = 6             # your lost_frames on the good GPS_INPUT frames: lost …
 STREAM_DOUBLED = 1          # … and doubled
@@ -26,7 +25,7 @@ CORR_10S = 0.636              # your autocorrelation at 10 s
 EXPLAIN_AVERAGE = "The samples are correlated: with tau = 20 s the noise 10 s later is still about 0.6 correlated, so 50 fixes in 10 s are worth only about one independent sample and the average keeps almost the whole spread (1.83 m instead of 0.27 m)."        # why do 10 s averages spread almost as much as single fixes?
 
 # ---- Step 5: vision errors (python3 mav_lab.py rayleigh) ---------------------------------------------------------
-RAYLEIGH_P95_15 = 36.72       # your rayleigh_quantile(15.0, 0.95), in m
+PREDICT_RAYLEIGH_95 = "2.45 sigma: in 2-D the error adds two axes, so it needs more than the 1.96 of one axis."
 EXPLAIN_MEDIAN = "sigma is the spread on each axis (east and north); the horizontal error combines both axes and follows a Rayleigh law whose median is 1.177 sigma, so sigma = 440 / 1.177 = 373.7 m."         # the 'measured' profile has a MEDIAN of 440 m. Why is its σ 373.7 m and not 440 m?
 
 # ======== Session 2 — Test engineer ========
@@ -39,21 +38,22 @@ JAM_RECOVER_S = 3.4         # from the events: the time NAVERA Lite flies on the
 # ---- Step 8: expected values FROM THE RULES (before the campaign) -------------------------------------------------
 EXPECT_OFF_SWITCH_S = 3.0   # GPS "off" (silent) at 30 s: after how many seconds should NAVERA Lite stop using it?
 EXPECT_JUMP_GATE_M = 56.0    # the jump gate's reach for the next GPS fix (0.2 s later), drone: in metres
+EXPECT_DRIFT_SIGMA_S_M = 15.42  # the σ_s (m) you passed to drift_alarm_time: the innovation σ on one axis
 EXPECT_DRIFT_REFUSED_S = 16.0  # drift_alarm_time for the campaign's drift (lab Step 8 gives the numbers), in s
 
 # ---- Step 9: the campaign (python3 campaign.py run, then report) -------------------------------------------------
 DRIFT_MEASURED_S = 18.4      # the drift run's switch_s: when NAVERA Lite really stopped flying on the spoofed GPS
 EXPLAIN_DRIFT = "The rule without noise gives 16 s; the run gives 18.4 s because each vision fix reaches the judge 0.3 s after the picture and the noise made one test agree, which reset the streak of 5. A requirement should use the rule plus a margin for noise and latency, not the exact theoretical value."          # expected vs measured: why are they not equal? which one would you put in a requirement?
 FAILED = "R9"                 # the id of the requirement that FAILS (for example "R3")
-EXPLAIN_FAIL = "The plane camera is 1.5 s late and its pictures are stamped when they arrive, so each vision fix is 60 m behind the plane (40 m/s x 1.5 s) but claims to be from now. The guard sees the honest GPS disagree with vision for 5 fixes and refuses it as a drift spoof, then flies on the 60 m wrong vision. The fix is to stamp each picture with its exposure time: plane_delayed shows no refusal."           # your diagnosis: what went wrong, step by step, and what would fix it
+EXPLAIN_FAIL = "The plane camera is 1.5 s late and its pictures are stamped when they arrive, so each vision fix is 60 m behind the plane (40 m/s x 1.5 s) but claims to be from now. The guard sees the honest GPS disagree with vision for 5 fixes and refuses it as a drift spoof, then flies on the 60 m wrong vision and keeps the GPS locked out. Stamping each picture at exposure fixes the guard (plane_delayed shows no refusal), but the autopilot fuses fixes on arrival, so a vision fix should also be carried to now with a grown sigma, as NAVERA does."
                             # (then confirm with campaign/plane_delayed.json, lab Step 9)
 
 # ---- Step 10: your own stack (python3 campaign.py run --mine, then report --mine) --------------------------------
-EXPLAIN_MINE = "In my sandbox the arbiter, guard and Kalman filter flew as the course reference parts (the events say course), so every metric and verdict stayed the same; with my own parts any difference would come from my judge timing or my guard."           # which of your parts flew? did any verdict change compared with the course's parts? why?
+EXPLAIN_MINE = "I changed confirm_n from 2 to 6 in a copy of the guard and predicted that the GPS would come back later after an outage. R4 moved from PASS to FAIL: jam.recover_s went from 3.4 s to 7.4 s, because six agreeing vision fixes take four more seconds."
 
 # ---- Step 11: your networks in the loop (python3 vision_check.py, then the night flight) -------------------------
-NIGHT_MINE_MEDIAN_M = 26.15   # vision_check's night median error (m) for the weights it used
-EXPLAIN_NETWORKS = "At night the homography network located each thermal patch around the prior and NAVERA Lite flew on it with about 30 m of error. The numbers are optimistic: the thermal pictures are synthetic and cut from the same reference the network matches against. An honest measurement needs real thermal frames from a real flight with a real camera."       # what did your networks do in the loop (night flight)? what makes these numbers
+NIGHT_MINE_MEDIAN_M = 25.43
+EXPLAIN_NETWORKS = "At night the homography network located each thermal patch around the prior with a median error of about 25 m; it states sigma 21.6 m, below fix_max_sigma_m 25 m, so the night source flew FIX. The numbers are optimistic: the thermal pictures are synthetic and cut from the same reference the network matches against. An honest measurement needs real thermal frames from a real flight with a real camera."
                             # optimistic, and what would you need to measure them honestly?
 
 # ---- Step 12: your own test (my_scenario.json) -------------------------------------------------------------------

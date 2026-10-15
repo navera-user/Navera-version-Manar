@@ -3,10 +3,10 @@
 ![The closed loop of mission 31: simulated sensors feed NAVERA Lite, whose GPS_INPUT bytes are the autopilot's only position; the autopilot moves the vehicle, and the sensors see the new position](assets/loop.svg)
 
 > [!NOTE] Mission brief
-> **Autumn 2026, NAVERA's mission simulator.** NAVERA, IRIS's product, had passed hundreds of unit and
-> integration tests. Then its engineers connected it to a real autopilot firmware running on a PC (ArduPilot
-> **SITL**) whose only position input was NAVERA's output — and found three defects no earlier test could see
-> (engineering backlog, items OUT-1, OUT-2, OUT-5). Without a velocity in its messages, the autopilot's filter
+> **Autumn 2026, NAVERA's mission simulator.** NAVERA, IRIS's product, had passed its unit and integration
+> tests. Then its engineers connected it to a real autopilot firmware running on a PC (ArduPilot **SITL**) whose
+> only position input was NAVERA's output — and found five integration defects no earlier test could see, among
+> them items OUT-1, OUT-2 and OUT-5 of its engineering backlog. Without a velocity in its messages, the autopilot's filter
 > raised a failsafe at take-off. Vision fixes sent as "2-D" were silently ignored by the autopilot. An output
 > polled at 5 Hz while positions also arrived at 5 Hz dropped or doubled messages, and the autopilot reported
 > "GPS not healthy" and refused to arm. Every rule was right; the **integration** was wrong.
@@ -33,7 +33,7 @@
 
 **You need:** mission 15 (σ = 2 × HDOP), 27 (Mahalanobis distance, χ²), 28 (predict / update), 29 (the
 judge: freshness, priority, hold-off), 30 (the guard: drift test, persistence). ⏱ Reading: about 80 minutes
-with the ✏️ checks: §1–§4 before session 1, §5–§7 before session 2. Lab: 4 h to 7 h.
+with the ✏️ checks: §1–§4 before session 1, §5–§7 before session 2. Lab: 4 h (fast) to 8 h.
 
 **Before you start.** Answer without looking; if you miss two, reread mission 29 §4 and mission 30 §4.
 
@@ -45,7 +45,7 @@ An independent source that STATES its accuracy (vision with a σ), so that d² c
 happens to an honest GPS with probability p_fa; the guard waits for several in a row (persistence).
 </details>
 <details><summary>3. (Mission 15) A receiver reports HDOP 0.9. What σ does NAVERA Lite state for its position?</summary>
-σ = 2 m × HDOP = 1.8 m per horizontal axis.
+σ = 2 m × HDOP = 1.8 m per horizontal axis. (The simulator's receiver states HDOP 0.95, so σ 1.9 m.)
 </details>
 
 <details><summary>Words of this lesson (open if you need them)</summary>
@@ -114,15 +114,11 @@ The simulator owns f and h; your stack and the autopilot are real programs. The 
 fault injection happens: "jam the GPS" means "change h for the GPS from now on". The truth x[k] is always known
 to the simulator, so every error can be computed exactly — something a field test never has.
 
-**What runs in mission 31** (the picture at the top). The simulated part is `navera_lite/sim/world.py`: simple
-kinematics (a turn rate and an acceleration limit, no wind), a GPS receiver at 5 Hz, one camera fix per second
-(an error profile, or your networks on pictures), an IMU, and an **autopilot**. Its autopilot is small but has
-the parts that matter: it reads the serial link with **your** decoder (§3), keeps its own position with a
-Kalman filter (mission 28: it predicts with its IMU's accelerations and updates with each usable fix, with a
-χ² gate at 99 %), and if no usable position arrives for 5 s it goes into **failsafe** (a drone lands, a boat
-holds). The real part is NAVERA Lite: the judge (29) with the guard in front of it (30) and the messenger
-(`navera_lite/output.py`). Unlike NAVERA's simulator, the autopilot here is not real firmware: this is a
-software-in-the-loop test of **your** software, with a simulated autopilot.
+**What runs in mission 31** (the picture at the top). Simulated (`navera_lite/sim/world.py`): the kinematics,
+a GPS receiver at 5 Hz, one camera fix per second, an IMU, and a small **autopilot** that reads the link with
+**your** decoder (§3), keeps its position with a Kalman filter (mission 28, χ² gate 99 %) and goes into
+**failsafe** after 5 s without a usable position. Real: NAVERA Lite — the judge (29), its guard (30), the
+messenger. The autopilot is not real firmware: this tests **your** software in the loop.
 
 > [!QUESTION] ✏️ Check
 > In the loop above, the GPS is spoofed and your judge accepts the spoof for 20 s. Why can the vehicle's error
@@ -171,13 +167,19 @@ than none. The function is given (`output.crc_x25`, `output.frame_crc`); its sta
 `crc_x25(b"123456789")` → `0x6F91`. A message id with no known CRC_EXTRA cannot be checked at all.
 
 **The payload of GPS_INPUT (id 232).** On the wire the fields are **ordered by size** (8-byte fields first, then
-4, 2, 1), so its `struct` format is `<QIiifffffffffHHBBBH` (`output.GPS_INPUT_FORMAT`, names in
+4, 2, 1) — except `yaw`, a field added later (a MAVLink 2 *extension*): extensions are never re-sorted, they follow
+the base fields — so its `struct` format is `<QIiifffffffffHHBBBH` (`output.GPS_INPUT_FORMAT`, names in
 `GPS_INPUT_FIELDS`): `time_usec`, `time_week_ms`, `lat`, `lon` (degrees × 10⁷, as `int32`), nine floats (`alt`,
 `hdop`, `vdop`, `vn`, `ve`, `vd`, `speed_accuracy`, `horiz_accuracy`, `vert_accuracy` — accuracies are 1-σ in
 metres), `ignore_flags`, `time_week`, `gps_id`, `fix_type`, `satellites_visible`, `yaw`. That is 65 bytes. But
 **MAVLink 2 drops the trailing zero bytes** of a payload: if `yaw` is 0, its two zero bytes are not sent. A
 receiver must **pad** the payload with zeros back to 65 bytes before unpacking it — forgetting it is the classic
 MAVLink 2 decoding bug.
+
+> [!TIP] 🧰 Where each field sits (offsets in the payload)
+> 0–7 time_usec · 8–11 time_week_ms · 12–15 lat · 16–19 lon · 20–55 the nine floats (4 bytes each) ·
+> 56–57 ignore_flags · 58–59 time_week · 60 gps_id · 61 fix_type · 62 satellites_visible · 63–64 yaw.
+> A payload of 63 bytes lost bytes 63–64 (yaw); one of 62 bytes lost satellites_visible too.
 
 Why integers for latitude? A 32-bit float has 24 bits of mantissa: near 35.8° its step is about 2⁻¹⁸ degree
 ≈ 0.4 m. An int32 in units of 10⁻⁷ degree gives 1.1 cm.
@@ -193,7 +195,8 @@ ignore the speed accuracy, both velocities and the altitude. This is where a nav
 the rules of NAVERA Lite's messenger (`output.gps_input_fields`, given) are
 
 - NO_FIX or STARTING → `fix_type` 1 (no fix), latitude and longitude 0, every flag set: **never** an old position;
-- FIX or DEGRADED → the winner's position with **its measurement time**, `fix_type` 3 (a 2-D fix is ignored by
+- FIX or DEGRADED → the winner's position with **its measurement time** (NAVERA Lite's rule; NAVERA goes one step
+  further for vision, see "In NAVERA"), `fix_type` 3 (a 2-D fix is ignored by
   autopilots: OUT-2), the altitude only if the source measured one, the σ the winner states in
   `horiz_accuracy` (or the flag "ignore horiz_accuracy" when it states none), the velocity only when the GPS
   receiver gave one (OUT-1);
@@ -204,18 +207,17 @@ the rules of NAVERA Lite's messenger (`output.gps_input_fields`, given) are
 (b − a − 1) mod 256 frames were lost; b = a is a doubled frame. 250, 251, 253, 253, 0, 1 → 252 lost, 253 doubled,
 254 and 255 lost: 3 lost, 1 doubled. An autopilot that sees many is right to call its "GPS" unhealthy.
 
-**Time.** `time_week` and `time_week_ms` give the instant in **GPS time** (weeks since 6 January 1980, no leap
-seconds — 18 s ahead of UTC). The satellites' own message carries the week in only **10 bits** (0–1023): it
-rolled over to 0 on **6 April 2019**, and some older receivers jumped back 19.6 years. `GPS_INPUT`'s `time_week`
-is 16 bits. On 15 October 2026 the week is 2440; a 10-bit counter would say 392.
+`time_week` and `time_week_ms` give the instant in **GPS time** (the lab's Going further has more).
 
 > [!QUESTION] ✏️ Check
 > A frame arrives with `len` = 61. Is it broken? And what does `ignore_flags` = 64 tell the autopilot about the
 > position?
 
 <details><summary>Answer</summary>
-Not broken: the last 4 bytes of its payload were zeros (yaw = 0 and satellites_visible = 0, …) and MAVLink 2 cut
-them; pad the 61 bytes with 4 zeros. 64 = horiz_accuracy ignored: the position is sent but its accuracy is not
+Not broken: its last 4 bytes were zeros and MAVLink 2 cut them; pad with 4 zeros. But look at which bytes: 61–64
+are fix_type, satellites_visible and yaw, so fix_type = 0 ("no GPS"). NAVERA Lite never sends that (its no-fix is
+1): the frame is valid, but it comes from another sender or a bug. 64 = horiz_accuracy ignored: the position
+is sent but its accuracy is not
 known (a DEGRADED source that states no σ) — the autopilot must assume its own default.
 </details>
 
@@ -234,7 +236,9 @@ x[k+1] = a·x[k] + q·√Δt·w[k]        a = 1 − Δt/τ,   w[k] independent N
 ```
 
 with τ the **correlation time** and q the noise strength (the receiver: Δt = 0.2 s, τ = 20 s, q = 0.6 m/√s).
-Two properties follow.
+a = 1 − Δt/τ is the first-order form of the exact e^(−Δt/τ) (0.99 against 0.99005 here); the course uses it
+everywhere, so your code must too. A walk-through: a = 0.99, q√Δt = 0.268; from x = 0 and w = 1.0, x = 0.268; the
+next w = −0.5 gives x = 0.99 · 0.268 − 0.134 = 0.131. Two properties follow.
 
 - **Stationary σ.** After a long time Var(x[k+1]) = Var(x[k]) = σ², so σ² = a²σ² + q²Δt, hence
   **σ² = q²Δt / (1 − a²)**.
@@ -274,8 +278,9 @@ The simulator has two vision profiles (`sim/world.py`):
 
 - **target**: day σ 15 m, night σ 25 m, **stated** (covariance given). This is the accuracy **goal**, not a
   measurement. It states a σ, so the judge calls it FIX and the guard can test the GPS against it.
-- **measured**: day vision with a **median** of 440 m — NAVERA's measured day retrieval (VALIDATION_STATUS,
-  2026-10-03) — and **no stated σ**; at night, an estimate that follows only a quarter of the true motion. It
+- **measured**: day vision with a **median** of 440 m — NAVERA's former day method, tile retrieval, measured at
+  442 m on labelled replay frames (VALIDATION_STATUS, 2026-10-03; its newer local matcher is not yet measured with
+  NAVERA's camera) — and **no stated σ**; at night, an estimate that follows only a quarter of the true motion. It
   states nothing, so it is DEGRADED and cannot vouch for or against the GPS.
 
 A third way is **your networks** (vision "mine", §7): pictures cut from the corridor and located by the weights
@@ -331,7 +336,8 @@ in lab Step 8, with the campaign's numbers.
 
 ### What to measure
 
-For a fault from t0 to t1 (mission seconds), on the rows of a run (one every 0.2 s):
+For a fault from t0 to t1 (mission seconds), on the rows of a run (one every 0.2 s). `campaign.py` takes t0 = the
+**first** fault of the scenario's list and t1 = the moment that same sensor comes back:
 
 | Metric | Definition |
 |---|---|
@@ -339,7 +345,7 @@ For a fault from t0 to t1 (mission seconds), on the rows of a run (one every 0.2
 | `recover_s` | first row at or after t1 whose source is GPS, minus t1 (None: never, or no t1) |
 | `availability` | share of rows of the fault window with a position (FIX or DEGRADED) |
 | `leak_s` | seconds of the window flown on a GPS more than 100 m wrong |
-| `max_err_m`, `error95_m` | largest error in the window; 95th percentile over the run |
+| `max_err_m`, `error95_m` | NAVERA Lite's error = its latest position against the truth **now** (so a held vision fix grows by speed × age: up to 15 m between two 1 Hz fixes at 15 m/s); the largest in the window; the 95th percentile over the run |
 | `failsafe_s` | first row at or after t0 where the autopilot is in LAND or HOLD, minus t0 |
 | `false_refusal_s` | seconds during which the guard REFUSED a GPS that was honest (error < 20 m) |
 
@@ -397,23 +403,21 @@ as the autopilot's (`../28-kalman/navera_lite/kalman.py`), and with vision "mine
 (`../21-features/my_desc.pt` by day, `../25-thermal-night/my_homography.pt` at night). A part you have not
 finished flies as the course's, and the run says so. Your decoder (this mission) always reads the autopilot's
 link. The same campaign with two stacks is a **regression test**: if a verdict changes, one of your parts
-behaves differently from the course's — find out which, and why.
+behaves differently from the course's — find out which, and why. A regression test is worth something only if it
+catches a change: in the lab you change ONE rule in a copy of your guard (`--part spoof=my_spoof.py`) and watch
+which verdict moves. `--not NAME` flies the course's part instead of yours, and a part of yours that crashes during
+a flight is replaced by the course's for that flight (the events say so).
 
 The vision source states a σ. For your networks it should be the σ you **measured** — lab Step 11 measures them
 on the corridor, converts the median error into σ with §4's Rayleigh law, and writes `my_vision_profile.json`.
 
-**Sim Lite** (the 🛩️ Simulator tab) runs a simulation in your browser. When your teacher has switched it to
-NAVERA Lite, it flies the same world and your judge, and it can use your measured vision profile (a browser cannot
-run PyTorch, so it draws errors from the profile your networks measured instead of running them).
-
 ## Common wrong ideas
 
-- **"The frame is 63 bytes, so the decoder is wrong."** MAVLink 2 cuts trailing zeros: pad to 65.
 - **"A bad checksum frame is just ignored, nothing is lost."** For the receiver it IS lost: its seq is missing.
-- **"σ of the vision profile = its median error."** The median of a 2-D error is 1.177 σ.
 - **"Averaging 10 s of GPS divides the noise by 7."** Only for independent samples; with τ = 20 s it barely
   helps.
-- **"The run passed, so the product is accurate."** The run proves behaviour; accuracy needs real data.
+- **"An honest time stamp is enough."** It fixes the checks that compare stamps (the guard); a consumer that
+  uses a fix on arrival still needs the position carried to now (In NAVERA, after Step 9).
 - **"The expected value is what the run gave last time."** That is a regression baseline, not an expectation:
   expectations come from the rules.
 
@@ -424,8 +428,7 @@ autopilot firmware (Copter 4.5, Rover, a motorboat) compiled for a PC — with N
 sensors. Its GPS driver reads a simulated receiver through a pseudo-terminal, exactly as it reads the serial port
 on the box; its output sends `GPS_INPUT` to the autopilot, configured so that NAVERA's output is the autopilot's
 **only** position input. The truth comes from the simulator's physics, so NAVERA's error and the autopilot's
-error are both known at every instant. Its control page listens on fixed network ports (8190, 8443), so one
-Jetson flies one mission at a time — and it has no authentication: it must never run on a networked vehicle.
+error are both known at every instant. Its control page listens on fixed network ports (8190, 8443) and has no authentication: it must never run on a networked vehicle.
 
 Documented results (VALIDATION_STATUS, "Autopilot in the loop", **simulation**, 2026-10-03): GPS OK → NAVERA error
 1–4 m, autopilot 1–3 m; GPS jammed in flight with vision at the target accuracy (σ 15 m, simulated) → the mission
@@ -437,7 +440,7 @@ autopilot followed the drift to about 200 m and then recovered on vision; GPS ja
 
 <details><summary>Read this after lab Step 9</summary>
 
-NAVERA met your failing run in its own simulator. Its validation document (2026-10-03, "Vision positions carried
+NAVERA met the same cause in its own simulator, with another symptom. Its validation document (2026-10-03, "Vision positions carried
 to the present") records that a vision position used to be sent as it was, describing a photo 1–2.5 s old: for a
 plane at 40 m/s with a gimbal camera, a match error of 0–1 m became an **output** error of 83 m median, with 0 %
 of positions inside the stated σ. The fix: carry each vision position to the present along the measured ground
@@ -445,28 +448,36 @@ velocity and grow its stated accuracy by the lag (a 1.5 s old photo at 40 m/s is
 The same document raised the day-vision freshness window from 3 s to 5 s after the simulator showed the judge
 alternating FIX / NO_FIX under load and the autopilot landing during a 6.7–9.2 s gap. Both were found only with
 the loop closed.
+
+Why carry, and not only stamp honestly? An autopilot does not fuse a fix at its stamp. NAVERA's ArduPilot notes
+(2026-10-03) say ArduPilot maps the `GPS_INPUT` time through a transport-jitter correction, so the common delay is
+invisible to it, and only its `GPS_DELAY_MS` setting (0–250 ms) compensates it. This simulator's autopilot also
+fuses every fix as "now". So there are two correct designs: (1) stamp at exposure **and** make every consumer
+handle the latency itself; or (2) carry the position forward to the present, grow its stated σ by the lag, and
+stamp it **now**. An honest stamp alone fixes the guard (plane_delayed), not the autopilot: when vision flies, a
+1.5 s old fix would still be fused 60 m behind. NAVERA does (2) for vision and celestial positions (sent stamped
+now; GPS positions keep their measurement instant; with no velocity known, the old stamp and a σ grown by the
+maximum speed × the age).
 </details>
 
 ## In NAVERA Lite
 
 - [navera_lite/output.py](file:./navera_lite/output.py) — the messenger (given: constants, `crc_x25`,
-  `frame_crc`, `gps_time`, `gps_input_fields`, `encode_gps_input`) and the receiving side you write (TODOs 1–4).
-- [navera_lite/sim/sensors.py](file:./navera_lite/sim/sensors.py) — the error models (TODOs 5–8; given
+  `frame_crc`, `gps_time`, `gps_input_fields`, `encode_gps_input`, `ignored`) and the receiving side you write
+  (TODOs 1–3).
+- [navera_lite/sim/sensors.py](file:./navera_lite/sim/sensors.py) — the error models (TODOs 4–7; given
   `sigma_for_median`, `GaussMarkov`).
 - `navera_lite/sim/world.py` (the world and the autopilot), `sim/vision.py` (your networks in the loop),
   `sim/run.py` (the headless runner, `--mine`) — given: read them, they are short and commented.
-- [campaign.py](file:./campaign.py) — the test engineer's tool (TODOs 9–10).
+- [campaign.py](file:./campaign.py) — the test engineer's tool (TODOs 8–9).
 
 ## 🐦 How birds do it
 
-Biologists cannot ask a bird how it navigates, so they build controlled worlds and inject faults. In an **Emlen
-funnel** (1966), a caged songbird restless at migration time hops towards its migration direction and leaves
-inked footprints: the night's "log file". Stephen Emlen **rotated a planetarium sky** over indigo buntings and
-their direction turned with it; Wolfgang and Roswitha Wiltschko **turned the magnetic field** around European
-robins with coils, and the birds turned with it. One input changed, the others kept, the reaction recorded — a
-fault-injection campaign. And biologists know their simulator's limit: a bird in a funnel is not a stork crossing
-the Strait of Gibraltar; the results are checked on free-flying birds with GPS loggers. Navi, our swallow, prefers
-the real sky — but she also prefers not to be jammed over the sea.
+Biologists build controlled worlds and inject faults too. In an **Emlen funnel** (1966) a caged songbird hops
+towards its migration direction and leaves inked footprints; Stephen Emlen **rotated a planetarium sky** over
+indigo buntings, and the Wiltschkos **turned the magnetic field** around European robins: the birds turned with it.
+One input changed, the reaction recorded — a fault-injection campaign. And the results are checked on free-flying
+birds with GPS loggers: a funnel is not a stork crossing the Strait of Gibraltar.
 
 ## Summary
 
@@ -490,26 +501,19 @@ Answer without scrolling up.
 The vehicle's behaviour (staying on course, failsafe) is then a direct consequence of the navigation output: the
 system is judged by what the vehicle does.
 </details>
-<details><summary>2. A GPS_INPUT payload arrives with 62 bytes. What do you do before struct.unpack?</summary>
-Pad it with 3 zero bytes to 65: MAVLink 2 dropped the trailing zeros.
-</details>
-<details><summary>3. Received seq: 254, 0, 0, 3. Lost and doubled?</summary>
+<details><summary>2. Received seq: 254, 0, 0, 3. Lost and doubled?</summary>
 254 → 0: 255 lost (1); 0 → 0: doubled (1); 0 → 3: 1 and 2 lost (2). Lost 3, doubled 1.
 </details>
-<details><summary>4. Δt = 0.2 s, τ = 20 s. Correlation of the GPS noise 10 s apart?</summary>
+<details><summary>3. Δt = 0.2 s, τ = 20 s. Correlation of the GPS noise 10 s apart?</summary>
 a = 0.99, 50 steps: 0.99⁵⁰ ≈ 0.61 — still strongly correlated.
 </details>
-<details><summary>5. Your run's vision median error is 0.1 m in the simulator. Can you write "our day vision is accurate to 0.1 m"?</summary>
-No: the simulated pictures are cut from the map the matcher uses; the run proves the pipeline works, not its
-real accuracy.
-</details>
-<details><summary>6. (Mission 28) What does the χ² gate of the autopilot's filter do with a fix whose d² is 15, and what happens if every fix is refused for 5 s?</summary>
+<details><summary>4. (Mission 28) What does the χ² gate of the autopilot's filter do with a fix whose d² is 15, and what happens if every fix is refused for 5 s?</summary>
 15 > 9.21 (99 %, 2 degrees of freedom): the fix is refused, the state is only predicted. After 5 s of refusals
 the simulated autopilot resets its position on the fix (a glitch reset).
 </details>
-<details><summary>7. (Mission 12) Which time stamp must a position carry: when it was measured, or when it was sent?</summary>
-When it was measured (header.stamp = the measurement instant): the judge's freshness and the guard's time-gap term
-are computed from it.
+<details><summary>5. (Mission 12) A position must carry the instant it was measured. When may NAVERA stamp a position "now"?</summary>
+Only once it has been carried to now (moved along the ground velocity, its σ grown by the lag), as NAVERA does
+for vision. A fix that is merely old must keep its old stamp.
 </details>
 
 Now open the **🛠️ Lab** tab.

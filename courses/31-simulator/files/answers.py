@@ -10,7 +10,6 @@ HEADER_LEN_BYTE = 0         # the 'len' byte of the first GPS_INPUT frame, as a 
 EXPLAIN_63 = ""             # why is it not 65, and what must a receiver do about it?
 
 # ---- Steps 2–3: the recording through YOUR decoder (python3 mav_lab.py stream) ----------------------------------
-STREAM_FRAMES = 0           # how many frames your parse_frames finds in the recording
 STREAM_BAD_CRC = 0          # how many of them have crc_ok False
 STREAM_LOST = 0             # your lost_frames on the good GPS_INPUT frames: lost …
 STREAM_DOUBLED = 0          # … and doubled
@@ -26,7 +25,7 @@ CORR_10S = 0.0              # your autocorrelation at 10 s
 EXPLAIN_AVERAGE = ""        # why do 10 s averages spread almost as much as single fixes?
 
 # ---- Step 5: vision errors (python3 mav_lab.py rayleigh) ---------------------------------------------------------
-RAYLEIGH_P95_15 = 0.0       # your rayleigh_quantile(15.0, 0.95), in m
+PREDICT_RAYLEIGH_95 = ""    # BEFORE running: the radius 95 % of 2-D errors stay below is how many σ: 1.96, 2.45 or 3? why?
 EXPLAIN_MEDIAN = ""         # the 'measured' profile has a MEDIAN of 440 m. Why is its σ 373.7 m and not 440 m?
 
 # ======== Session 2 — Test engineer ========
@@ -39,6 +38,7 @@ JAM_RECOVER_S = 0.0         # from the events: the time NAVERA Lite flies on the
 # ---- Step 8: expected values FROM THE RULES (before the campaign) -------------------------------------------------
 EXPECT_OFF_SWITCH_S = 0.0   # GPS "off" (silent) at 30 s: after how many seconds should NAVERA Lite stop using it?
 EXPECT_JUMP_GATE_M = 0.0    # the jump gate's reach for the next GPS fix (0.2 s later), drone: in metres
+EXPECT_DRIFT_SIGMA_S_M = 0.0  # the σ_s (m) you passed to drift_alarm_time: the innovation σ on one axis
 EXPECT_DRIFT_REFUSED_S = 0.0  # drift_alarm_time for the campaign's drift (lab Step 8 gives the numbers), in s
 
 # ---- Step 9: the campaign (python3 campaign.py run, then report) -------------------------------------------------

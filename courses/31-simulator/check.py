@@ -127,6 +127,33 @@ def events(path):
         raise CheckFailed(f"{path} is missing — fly it first")
 
 
+def fnum(v):
+    return None if v in (None, "") else float(v)
+
+
+def given_metrics(rows, sc):
+    """The metrics of campaign.py's measure() that are GIVEN code (not TODO 8), from a run's CSV rows."""
+    faults = sc.get("faults", [])
+    t0 = float(faults[0][0]) if faults else None
+    back = [f[0] for f in faults[1:] if faults and f[1] == faults[0][1] and f[2] in ("ok", "day")]
+    t1 = float(back[0]) if back else None
+    t = [float(r["t_s"]) for r in rows]
+    end = t[-1] if t else 0.0
+    a, b = (t0 if t0 is not None else 0.0), (t1 if t1 is not None else end + 1.0)
+    win = [r for r, ti in zip(rows, t) if a <= ti < b]
+    errs = [fnum(r["lite_err_m"]) for r in rows if r["lite_err_m"]]
+    werrs = [fnum(r["lite_err_m"]) for r in win if r["lite_err_m"]]
+    fs = next((ti for r, ti in zip(rows, t) if ti >= a and r["ap_mode"] in ("LAND", "HOLD")), None)
+    return {"availability": round(sum(r["lite_state"] in ("FIX", "DEGRADED") for r in win) / len(win), 4) if win else None,
+            "leak_s": round(0.2 * sum(r["lite_source"] == "gps" and (fnum(r["lite_err_m"]) or 0) > 100.0 for r in win), 1),
+            "max_err_m": round(max(werrs), 1) if werrs else None,
+            "error95_m": round(float(np.percentile(errs, 95)), 1) if errs else None,
+            "failsafe_s": None if fs is None else round(fs - a, 1),
+            "false_refusal_s": round(0.2 * sum(r["guard"] == "REFUSED" and r["gps_mode"] == "ok" and r["gps_err_m"] != ""
+                                               and float(r["gps_err_m"]) < 20.0 for r in rows), 1),
+            "ap_max_err_m": round(max(fnum(r["ap_err_m"]) for r in rows if r["ap_err_m"]), 1)}
+
+
 # ======================================================================== session 1 — Messenger
 @c.test("TODO 1: decode_gps_input() on unseen payloads (some truncated), and refuses more than 65 bytes",
         hint="Lesson §3: pad with bytes(65 − len(payload)) first, then struct.unpack(GPS_INPUT_FORMAT, …), zip with "
@@ -143,6 +170,9 @@ def _():
                 raise CheckFailed(f"the dict has no key {k!r} (use the names of GPS_INPUT_FIELDS)")
             if k in ("lat", "lon") and same(got[k], w * 1e7, 1e-9):
                 raise CheckFailed(f"{k} = {got[k]}: still in 1e-7 degrees — divide by 1e7 (10 000 000)")
+            if k in ("lat", "lon") and isinstance(got[k], int) and not isinstance(got[k], bool):
+                raise CheckFailed(f"{k} = {got[k]} is a whole number: divide by 1e7 with /, not // (the decimals "
+                                  "are the position)")
             if not same(got[k], w, 1e-6):
                 raise CheckFailed(f"on a payload of {len(p)} bytes, {k} = {got[k]!r} is wrong (struct format, field "
                                   "order, or the zero padding?)")
@@ -170,6 +200,9 @@ def _():
         if len(got) != len(want):
             raise CheckFailed(f"stream {k}: {len(got)} frames found, not the right number (a frame cut by the end, a "
                               "signed frame's 13 extra bytes, or the resync after a failed checksum?)")
+        if want and all(g.get("crc_ok") is False for g in got) and any(w["crc_ok"] for w in want):
+            raise CheckFailed(f"stream {k}: every frame has crc_ok False — compare frame_crc(frame, msgid) with the "
+                              "received checksum: bytes 10 + len and 11 + len, little-endian")
         for g, w in zip(got, want):
             for key in ("seq", "sysid", "compid", "msgid", "crc_ok"):
                 if g.get(key) != w[key]:
@@ -180,23 +213,10 @@ def _():
                 raise CheckFailed(f"stream {k}: a frame's payload is wrong (bytes 10 … 10 + len)")
 
 
-@c.test("TODO 3–4: ignored() and lost_frames() on unseen values (wrap-around at 255 included)",
-        hint="ignored: one `if flags & bit` per entry of IGNORE_FLAGS, in that order; refuse a bool, a non-int or a value "
-             "outside 0–255. lost_frames: b == a doubled, else (b − a − 1) % 256 lost.")
+@c.test("TODO 3: lost_frames() on unseen sequences (wrap-around at 255 included)",
+        hint="lost_frames: walk over consecutive pairs; b == a is doubled, else (b − a − 1) % 256 frames were lost.")
 def _():
-    ign, lost = functions("navera_lite.output", "ignored", "lost_frames")
-    for case in U["ignored"]:
-        got = go(ign, case["flags"])
-        if list(got or []) != case["want"]:
-            raise CheckFailed(f"ignored({case['flags']}) = {got!r} is wrong")
-    for bad in (256, -1, True):
-        try:
-            run(ign, bad)
-        except CheckFailed as e:
-            if "ValueError" in str(e):
-                continue
-            raise
-        raise CheckFailed(f"ignored({bad!r}) must raise ValueError")
+    (lost,) = functions("navera_lite.output", "lost_frames")
     for case in U["lost"]:
         got = go(lost, case["seqs"])
         if not (isinstance(got, (tuple, list)) and list(got) == case["want"]):
@@ -207,15 +227,14 @@ def _():
 
 
 @c.test("Steps 0–3: the recording through your decoder (answers.py)",
-        hint="Copy the numbers `python3 mav_lab.py hex` and `python3 mav_lab.py stream` print (with your finished "
-             "TODOs 1–4). EXPLAIN_63: the trailing zero bytes; EXPLAIN_FLAGS: altitude and velocity not measured; "
+        hint="Copy the numbers `python3 mav_lab.py hex --answer` and `python3 mav_lab.py stream` print (with your "
+             "finished TODOs 1–3). EXPLAIN_63: the trailing zero bytes; EXPLAIN_FLAGS: altitude and velocity not measured; "
              "EXPLAIN_LOST: a frame with a bad checksum is thrown away.")
 def _():
     a = quiet("answers.py")
     s = LAB["stream"]
     predicted("PREDICT_FRAME", getattr(a, "PREDICT_FRAME", ""))
     answer_near("HEADER_LEN_BYTE", getattr(a, "HEADER_LEN_BYTE", 0), LAB["header_len"], 0, "the first frame's len byte")
-    answer_near("STREAM_FRAMES", getattr(a, "STREAM_FRAMES", 0), s["frames"], 0, "mav_lab.py stream")
     answer_near("STREAM_BAD_CRC", getattr(a, "STREAM_BAD_CRC", 0), s["bad_crc"], 0, "mav_lab.py stream (crc_ok False)")
     answer_near("STREAM_LOST", getattr(a, "STREAM_LOST", 0), s["lost_doubled"][0], 0, "your lost_frames")
     answer_near("STREAM_DOUBLED", getattr(a, "STREAM_DOUBLED", 0), s["lost_doubled"][1], 0, "your lost_frames")
@@ -232,7 +251,7 @@ def _():
                "that a damaged frame is thrown away, so its seq is missing"))
 
 
-@c.test("TODO 5–6: gauss_markov() exactly on unseen seeds and starts, and stationary_sigma()",
+@c.test("TODO 4–5: gauss_markov() exactly on unseen seeds and starts, and stationary_sigma()",
         hint="Lesson §4: a = 1 − dt/τ; draw w = rng.standard_normal(n) ONCE, first; then x = a·x + q·√dt·w[k] and keep "
              "every new x. σ² = q²·dt / (1 − a²). Refuse dt ≤ 0 or dt ≥ 2τ (ValueError).")
 def _():
@@ -263,7 +282,7 @@ def _():
         raise CheckFailed(f"stationary_sigma{bad} must raise ValueError (|a| < 1 needs 0 < dt < 2τ)")
 
 
-@c.test("TODO 7–8: autocorrelation() and rayleigh_quantile() on unseen inputs",
+@c.test("TODO 6–7: autocorrelation() and rayleigh_quantile() on unseen inputs",
         hint="autocorrelation: subtract the mean, Σ d[i]·d[i+lag] over the overlap divided by Σ d² over the WHOLE "
              "series; lag outside 0 … len−1 → ValueError. rayleigh_quantile: σ·√(−2·ln(1 − p)).")
 def _():
@@ -298,8 +317,7 @@ def _():
     predicted("PREDICT_AVERAGE", getattr(a, "PREDICT_AVERAGE", ""))
     answer_near("GM_SIGMA_MEASURED", getattr(a, "GM_SIGMA_MEASURED", 0), LAB["gm_sigma"], 0.002, "mav_lab.py noise")
     answer_near("CORR_10S", getattr(a, "CORR_10S", 0), LAB["corr_10s"], 0.002, "mav_lab.py noise (lag 10 s)")
-    answer_near("RAYLEIGH_P95_15", getattr(a, "RAYLEIGH_P95_15", 0), LAB["rayleigh_p95_15"], 0.05,
-                "your rayleigh_quantile(15.0, 0.95)")
+    predicted("PREDICT_RAYLEIGH_95", getattr(a, "PREDICT_RAYLEIGH_95", ""))
     explained("EXPLAIN_AVERAGE", getattr(a, "EXPLAIN_AVERAGE", ""),
               ([r"correl", r"depend", r"slow", r"previous", r"not independent", r"similar", r"memory"],
                "that the samples are correlated"),
@@ -311,7 +329,7 @@ def _():
 
 
 # ======================================================================== session 2 — Test engineer
-@c.test("TODO 9: latencies() on unseen runs (a source of '' (none) counts as 'not GPS'; never → None)",
+@c.test("TODO 8: latencies() on unseen runs (a source of '' (none) counts as 'not GPS'; never → None)",
         hint="Lesson §5: next(...) over the rows with t_s ≥ t0 and lite_source != 'gps', minus t0; the same with t1 and "
              "== 'gps'; None when there is no such row, and recover_s None when t1 is None.")
 def _():
@@ -326,7 +344,7 @@ def _():
                               + (" — t1 None means recover_s None" if case["t1"] is None else ""))
 
 
-@c.test("TODO 10: verdict() on unseen values (None fails, the limit itself passes, wrong operator → ValueError)",
+@c.test("TODO 9: verdict() on unseen values (None fails, the limit itself passes, wrong operator → ValueError)",
         hint="Lesson §5: <= means 'at most', >= 'at least'; None → (\"FAIL\", \"never happened\"); the text shows "
              "the value, the operator that holds (<=, >, >=, <) and the limit, with :g.")
 def _():
@@ -383,8 +401,8 @@ def _():
 
 @c.test("Steps 6 and 8: the jam's recovery, and expected values FROM THE RULES (written before the campaign)",
         hint="JAM_RECOVER_S from the events of campaign/jam.json. EXPECT_OFF_SWITCH_S: gps_timeout_s. EXPECT_JUMP_GATE_M: "
-             "v_max·Δt + margin with the drone's 30 m/s and Δt 0.2 s. EXPECT_DRIFT_REFUSED_S: drift_alarm_time with the "
-             "numbers of lab Step 8.")
+             "v_max·Δt + margin with the drone's 30 m/s and Δt 0.2 s. EXPECT_DRIFT_SIGMA_S_M and "
+             "EXPECT_DRIFT_REFUSED_S: drift_alarm_time with the numbers of lab Step 8.")
 def _():
     a = quiet("answers.py")
     predicted("PREDICT_JAM", getattr(a, "PREDICT_JAM", ""))
@@ -394,12 +412,15 @@ def _():
                 "the GPS timeout rule (navera_lite.yaml)")
     answer_near("EXPECT_JUMP_GATE_M", getattr(a, "EXPECT_JUMP_GATE_M", 0), LAB["expect_jump_gate_m"], 0.6,
                 "the jump gate's rule with v_max 30 m/s, Δt 0.2 s, margin 50 m")
+    answer_near("EXPECT_DRIFT_SIGMA_S_M", getattr(a, "EXPECT_DRIFT_SIGMA_S_M", 0), LAB["drift_sigma_s"], 0.05,
+                "the innovation's σ on one axis: the square root of the SUM of the three variances (GPS², vision², "
+                "time gap²)")
     answer_near("EXPECT_DRIFT_REFUSED_S", getattr(a, "EXPECT_DRIFT_REFUSED_S", 0), LAB["expect_drift_s"], 0.01,
                 "drift_alarm_time with lab Step 8's numbers")
 
 
 @c.test("Step 9: the campaign flown with the course's parts, measured and judged (results.json from YOUR code)",
-        hint="python3 campaign.py run, then python3 campaign.py report (TODOs 9–10 finished). Do not edit "
+        hint="python3 campaign.py run, then python3 campaign.py report (TODOs 8–9 finished). Do not edit "
              "campaign/*.json: the requirements are the customer's. The runs are deterministic: same seeds, same numbers.")
 def _():
     for fn, sc in E["scenarios"].items():
@@ -437,7 +458,7 @@ def _():
     explained("EXPLAIN_DRIFT", getattr(a, "EXPLAIN_DRIFT", ""),
               ([r"noise", r"random", r"luck", r"streak", r"reset", r"agree", r"latenc", r"0\.3", r"delay"],
                "why the run differs (noise breaks the streak, the vision latency)"),
-              ([r"requirement", r"margin", r"limit", r"rule", r"expect", r"theor"], "which value a requirement uses"))
+              ([r"requir", r"margin", r"limit", r"rule", r"expect", r"theor"], "which value a requirement uses"))
     explained("EXPLAIN_FAIL", getattr(a, "EXPLAIN_FAIL", ""),
               ([r"stamp", r"time ?stamp", r"late", r"delay", r"old", r"1\.5"], "the late, wrongly stamped pictures"),
               ([r"60 ?m", r"behind", r"40 ?m/s", r"fast", r"speed", r"moved"], "that the plane moved 60 m meanwhile"),
@@ -451,18 +472,30 @@ def _():
         raise CheckFailed("my_runs/plane_delayed.csv shows the guard refusing the GPS: fly the file as shipped")
 
 
-@c.test("Step 10: the campaign flown with YOUR parts (--mine), measured, and compared",
-        hint="python3 campaign.py run --mine, then python3 campaign.py report --mine. Parts you have not finished fly as "
-             "the course's (the events say so) — that is fine. EXPLAIN_MINE: which parts were yours, what changed.")
+@c.test("Step 10: the campaign flown with YOUR parts (--mine), one rule of your guard changed, measured and compared",
+        hint="python3 campaign.py run --mine --part spoof=my_spoof.py (a copy of your guard with ONE rule changed), then "
+             "python3 campaign.py report --mine. Parts you have not finished fly as the course's (the events say so). "
+             "EXPLAIN_MINE: which rule you changed, which requirement moved (or why none did).")
 def _():
     res = read_json("results_mine.json", "run python3 campaign.py report --mine")
     runs = res.get("runs", {})
+    changed = False
     for name in RUNS:
         log = events(os.path.join("my_runs", "mine", name + "_events.log"))
         if "# part arbiter:" not in log or "# outcome" not in log:
             raise CheckFailed(f"my_runs/mine/{name}_events.log was not written by the simulator: fly --mine again")
+        m = re.search(r"^# part spoof: yours \((.*)\)$", log, re.M)
+        changed = changed or bool(m and "30-spoofing" not in m.group(1))
         if name not in runs or not all(k in runs[name] for k in METRICS):
             raise CheckFailed(f"results_mine.json: the run {name} or its metrics are missing: run report --mine again")
+        sc = E["scenarios"][name + ".json"]
+        for k, want in given_metrics(run_rows(os.path.join("my_runs", "mine", name + ".csv")), sc).items():
+            if not same(runs[name].get(k), want, 1e-3):
+                raise CheckFailed(f"results_mine.json: {name}.{k} is not what my_runs/mine/{name}.csv gives — run "
+                                  "python3 campaign.py report --mine again (after the last run --mine)")
+    if not changed:
+        raise CheckFailed("my_runs/mine/ was not flown with a changed copy of your guard: python3 campaign.py run --mine "
+                          "--part spoof=my_spoof.py (lab Step 10), then report --mine")
     v = res.get("verdicts", [])
     if len(v) != 9:
         raise CheckFailed("results_mine.json must hold the 9 verdicts: run python3 campaign.py report --mine again")
@@ -472,15 +505,16 @@ def _():
         if x.get("verdict") != ("PASS" if ok else "FAIL"):
             raise CheckFailed(f"results_mine.json: the verdict of {x.get('id')} does not match its value")
     explained("EXPLAIN_MINE", getattr(quiet("answers.py"), "EXPLAIN_MINE", ""),
-              ([r"arbiter", r"judge", r"guard", r"spoof", r"kalman", r"filter", r"mine", r"my ", r"course", r"own",
-                r"reference"], "which parts flew"),
-              ([r"pass", r"fail", r"verdict", r"same", r"differ", r"chang", r"metric", r"latenc", r"error"],
-               "what changed in the results (or why nothing did)"))
+              ([r"refuse_n", r"p_fa", r"doubt_n", r"far_n", r"confirm_n", r"rule", r"threshold", r"guard", r"spoof"],
+               "which rule of your guard you changed"),
+              ([r"r\d", r"pass", r"fail", r"verdict", r"same", r"differ", r"chang", r"mov", r"metric", r"latenc",
+                r"error", r"refus"], "which requirement moved (or why none did)"))
 
 
-@c.test("Step 11: your networks measured (my_vision_profile.json) and flown at night in the loop",
-        hint="python3 vision_check.py, then python3 -m navera_lite.sim.run campaign/night_mine.json --mine. "
-             "NIGHT_MINE_MEDIAN_M is the night median vision_check printed.")
+@c.test("Step 11: your networks measured (my_vision_profile.json, measured again by the check) and flown at night",
+        hint="python3 vision_check.py (never edit my_vision_profile.json by hand: the check measures your night network "
+             "again), then python3 -m navera_lite.sim.run campaign/night_mine.json --mine. NIGHT_MINE_MEDIAN_M is the "
+             "night median vision_check printed.")
 def _():
     prof = read_json("my_vision_profile.json", "run python3 vision_check.py")
     for light, n in (("day", 40), ("night", 80)):
@@ -489,17 +523,39 @@ def _():
             raise CheckFailed(f"my_vision_profile.json has no full '{light}' measurement: run vision_check.py again")
         if abs(p["sigma_m"] - p["median_m"] / math.sqrt(2 * math.log(2))) > 0.01:
             raise CheckFailed("my_vision_profile.json was edited by hand: run vision_check.py again")
+    sha = (prof.get("weights_sha256") or {}).get("night")
+    if not sha:
+        raise CheckFailed("my_vision_profile.json was made by an older vision_check.py: run it again")
+    # the night network measured again, with the course's own (read-only) copy of the tools: same seed, same places
+    ro = "/academy/courses/31-simulator/files"
+    code, out = sh(f"python3 -c \"import sys; sys.path.insert(0, '{ro}'); sys.argv = ['vision_check.py', "
+                   f"'--night-only']; exec(open('{ro}/vision_check.py').read())\"", timeout=200)
+    try:
+        got = json.loads(out.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        raise CheckFailed("the check could not measure your night network again: " + (out.strip()[-200:] or "no output"))
+    if got.get("weights_sha256") != sha:
+        raise CheckFailed("my_vision_profile.json was measured with other night weights than the ones you have now: "
+                          "run vision_check.py again")
+    if got.get("median_m") is None or abs(got["median_m"] - prof["night"]["median_m"]) > 0.05:
+        raise CheckFailed("my_vision_profile.json is not what vision_check.py measures with your night network: run it "
+                          "again (never edit the file by hand)")
     answer_near("NIGHT_MINE_MEDIAN_M", getattr(quiet("answers.py"), "NIGHT_MINE_MEDIAN_M", 0), prof["night"]["median_m"],
                 0.06, "vision_check.py's night median")
     log = events(os.path.join("my_runs", "mine", "night_mine_events.log"))
     if '"vision": "mine"' not in log or "night weights" not in log or "# outcome" not in log:
         raise CheckFailed("my_runs/mine/night_mine_events.log is missing or not a 'mine' vision flight: fly "
                           "campaign/night_mine.json with --mine")
+    m = re.search(r"^# part stated σ: .*night ([0-9.]+) m", log, re.M)
+    if not m or abs(float(m.group(1)) - float(prof["night"]["stated_sigma_m"])) > 0.01:
+        raise CheckFailed("my_runs/mine/night_mine was not flown with the σ of your current my_vision_profile.json: fly "
+                          "campaign/night_mine.json --mine again")
     rows = run_rows(os.path.join("my_runs", "mine", "night_mine.csv"))
     if not any(r["lite_source"] == "night" for r in rows):
         raise CheckFailed("in my_runs/mine/night_mine.csv NAVERA Lite never flew on night vision: look at the events")
     explained("EXPLAIN_NETWORKS", getattr(quiet("answers.py"), "EXPLAIN_NETWORKS", ""),
               ([r"night", r"homograph", r"network", r"weights", r"model"], "what your night network did"),
+              ([r"fix", r"degraded", r"25 ?m", r"state"], "the state your night source got (FIX or DEGRADED) and why"),
               ([r"optimis", r"same (map|picture|image)", r"cut from", r"synthetic", r"render", r"drawing", r"not real",
                 r"simulat"], "why the numbers are optimistic (pictures cut from the matcher's own map)"),
               ([r"real", r"field", r"flight", r"camera", r"thermal"], "what an honest measurement needs"))
@@ -537,7 +593,8 @@ def _():
     explained("EXPLAIN_MY_TEST", getattr(a, "EXPLAIN_MY_TEST", ""),
               ([r"gps", r"camera", r"imu", r"night", r"jam", r"spoof", r"drift", r"bias", r"blackout", r"late", r"off"],
                "the fault you injected"),
-              ([r"requirement", r"limit", r"because", r"should", r"must", r"expect"], "why this requirement"))
+              ([r"requir", r"limit", r"because", r"should", r"must", r"expect", r"so that", r"margin", r"bias"],
+               "why this requirement"))
     explained("EXPLAIN_PROVES", getattr(a, "EXPLAIN_PROVES", ""),
               ([r"behavio", r"logic", r"rule", r"timing", r"integration", r"switch", r"decod", r"autopilot"],
                "what it proves (behaviour: rules, timing, integration)"),
@@ -545,6 +602,6 @@ def _():
                "what it does not prove (real accuracy, real sensors)"))
 
 
-c.milestone("Messenger", "TODO 1", "TODO 2", "TODO 3", "Steps 0", "TODO 5", "TODO 7", "Steps 4", label="📡 Messenger")
+c.milestone("Messenger", "TODO 1", "TODO 2", "TODO 3", "Steps 0", "TODO 4", "TODO 6", "Steps 4", label="📡 Messenger")
 c.milestone("Test engineer", "TODO", "Step", "Your decoder", label="🧪 Test engineer")
 c.run()

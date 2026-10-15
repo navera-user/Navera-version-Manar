@@ -1,8 +1,9 @@
 """mav_lab.py — session 1's runner: the bytes on the autopilot's link, and the sensor models.
 
-    python3 mav_lab.py hex          Step 0: the first frames of the recording, byte by byte (no code needed)
-    python3 mav_lab.py test         the examples of TODOs 1–8 (✔ / ✘)
-    python3 mav_lab.py stream       Steps 2–3: YOUR parse_frames, decode_gps_input, ignored, lost_frames on the recording
+    python3 mav_lab.py hex          Step 0: the first bytes of the recording (no code needed)
+    python3 mav_lab.py hex --answer Step 0's answer: where the first GPS_INPUT frame starts, its header named
+    python3 mav_lab.py test         the examples of TODOs 1–7 (✔ / ✘)
+    python3 mav_lab.py stream       Steps 2–3: YOUR parse_frames, decode_gps_input, lost_frames on the recording
     python3 mav_lab.py noise        Step 4: YOUR gauss_markov, stationary_sigma, autocorrelation (out/noise.png)
     python3 mav_lab.py rayleigh     Step 5: YOUR rayleigh_quantile against 200 000 simulated vision errors
 
@@ -36,6 +37,10 @@ def hexdump():
     print(f"{BIN}: {len(data)} bytes. The first 80, 16 per line (offset in hexadecimal, then the bytes):\n")
     for i in range(0, 80, 16):
         print(f"  {i:04x}  " + " ".join(f"{b:02x}" for b in data[i:i + 16]))
+    if "--answer" not in sys.argv:
+        print("\nFind the first GPS_INPUT frame (lesson §3: which bytes start a MAVLink 2 frame, which byte is len?).")
+        print("Then: python3 mav_lab.py hex --answer")
+        return
     k = data.index(bytes([0xFD, 0x3F]))
     f = data[k:k + 10 + 63 + 2]
     print(f"\nThe first GPS_INPUT frame starts at offset {k} (0x{k:x}). Its 10 header bytes, then its payload:")
@@ -54,7 +59,17 @@ def sensors_mod():
     return rk.load_student("navera_lite.sim.sensors")
 
 
+def short(v):
+    """Payload bytes shown as their length (a bytes repr of 60 bytes helps nobody)."""
+    if isinstance(v, list):
+        return [short(x) for x in v]
+    if isinstance(v, dict):
+        return {k: (f"<{len(x)} bytes>" if isinstance(x, (bytes, bytearray)) else x) for k, x in v.items()}
+    return v
+
+
 def show(what, got, err, ok, want):
+    got, want = short(got), short(want)
     if err:
         print(f"✘ {what}: {err}")
     else:
@@ -91,9 +106,11 @@ def test():
     v, e = rk.call(O, "parse_frames", bytes(bad) + f)
     show("parse_frames(<damaged frame> + <frame>): crc_ok of each", None if e else [d.get("crc_ok") for d in v or []],
          e, isinstance(v, list) and [d.get("crc_ok") for d in v] == [False, True], [False, True])
-    v, e = rk.call(O, "ignored", 57)
-    show("ignored(57)", v, e, v == ["alt", "vel_horiz", "vel_vert", "speed_accuracy"],
-         ["alt", "vel_horiz", "vel_vert", "speed_accuracy"])
+    odd = bytes([O.STX, 2, 0, 0, 9, 1, 1, 0xE8, 0x00, 0x01, 7, 7, 0x12, 0x34])     # msgid 0x0100E8 = 65768: unknown
+    v, e = rk.call(O, "parse_frames", odd)
+    show("parse_frames(<a frame with msgid 65768>): msgid, crc_ok", None if e else [(d.get("msgid"), d.get("crc_ok"))
+         for d in v or []], e, isinstance(v, list) and [(d.get("msgid"), d.get("crc_ok")) for d in v] == [(65768, None)],
+         [(65768, None)])
     v, e = rk.call(O, "lost_frames", [250, 251, 253, 253, 0, 1])
     show("lost_frames([250, 251, 253, 253, 0, 1])", v, e, tuple(v or ()) == (3, 1), (3, 1))
     v, e = rk.call(S, "gauss_markov", 3, 0.2, 20.0, 0.6, np.random.default_rng(0))
@@ -136,7 +153,7 @@ def stream():
     for m in dec:
         key = (m["ignore_flags"], m["fix_type"], m["satellites_visible"])
         flags[key] = flags.get(key, 0) + 1
-    print("  ignore_flags  fix_type  satellites  count   ignored (your ignored())")
+    print("  ignore_flags  fix_type  satellites  count   ignored (output.ignored(), given)")
     for (fl, ft, sat), n in sorted(flags.items()):
         names, err = rk.call(O, "ignored", int(fl))
         print(f"  {fl:12d} {ft:9d} {sat:11d} {n:6d}   {err or ', '.join(names)}")

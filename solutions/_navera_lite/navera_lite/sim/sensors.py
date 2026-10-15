@@ -18,7 +18,7 @@ GPS_Q = 0.6               # its noise strength (m/√s)
 GPS_DT_S = 0.2            # its period: 5 fixes per second
 
 
-# @part 31 todo 5
+# @part 31 todo 4
 def gauss_markov(n, dt, tau_s, q, rng, x0=0.0):
     """n samples of first-order Gauss–Markov noise on one axis (lesson §4), starting from x0.
 
@@ -42,7 +42,7 @@ def gauss_markov(n, dt, tau_s, q, rng, x0=0.0):
     return out
 
 
-# @part 31 todo 6
+# @part 31 todo 5
 def stationary_sigma(dt, tau_s, q):
     """The standard deviation the Gauss–Markov noise settles to after a long time (lesson §4): the σ for which
     Var(x[k+1]) = Var(x[k]). Same inputs as gauss_markov (0 < dt < 2·tau_s, else ValueError). Returns metres.
@@ -54,7 +54,7 @@ def stationary_sigma(dt, tau_s, q):
     return q * math.sqrt(dt) / math.sqrt(1.0 - a * a)
 
 
-# @part 31 todo 7
+# @part 31 todo 6
 def autocorrelation(x, lag):
     """The sample autocorrelation of a series at a lag (in samples): remove the mean m, then
     Σ (x[i] − m)(x[i + lag] − m) over i = 0 … len − 1 − lag, divided by Σ (x[i] − m)² over the whole series.
@@ -72,7 +72,7 @@ def autocorrelation(x, lag):
     return float(np.sum(d[:-lag] * d[lag:]) / den)
 
 
-# @part 31 todo 8
+# @part 31 todo 7
 def rayleigh_quantile(sigma, p):
     """The radius R that a share p of 2-D errors stay below, when the east and north errors are independent
     N(0, sigma²) (lesson §4): P(r ≤ R) = 1 − exp(−R² / (2σ²)). sigma ≥ 0 (metres), 0 ≤ p < 1 (else ValueError).
