@@ -14,7 +14,8 @@ import os
 
 import numpy as np
 
-from academy_check import CheckFailed, Checker, explained, hidden, is_stub, load_student, need, predicted, run, sh
+from academy_check import (Background, CheckFailed, Checker, explained, hidden, is_stub, load_student, need, predicted,
+                           publishers_ok, run, sh)
 
 c = Checker()
 E = json.loads(hidden("expected.json"))
@@ -85,6 +86,7 @@ TIPS = [("math domain error", " — math.log of 0 or of a negative number, or ma
                        "chi2_threshold_2d) still a stub?"),
         ("Singular matrix", " — S has a zero row: did you add the two covariances (and the gap term)?"),
         ("has no attribute 'cov'", " — innovation(gps, ref, cfg) takes two Estimates (gps.cov, ref.cov)"),
+        ("object has no attribute 'max_speed_mps'", " — cfg is a dict: cfg[\"max_speed_mps\"]"),
         ("not subscriptable", " — cfg is a dict: cfg[\"max_speed_mps\"]; an Estimate has attributes: est.lat"),
         ("unsupported operand type(s) for ^", " — in Python ^ is not a power: write x ** 2"),
         ("cannot unpack non-iterable NoneType", " — innovation() returned None (a source that states no accuracy, "
@@ -412,6 +414,9 @@ def _():
 def _():
     if not os.path.exists("results.json"):
         raise CheckFailed("results.json does not exist yet: run `python3 detection.py` (Step 5)")
+    code, out = sh("python3 detection.py", timeout=150)      # results.json always matches the current code
+    if code != 0:
+        raise CheckFailed("`python3 detection.py` stopped:\n" + out[-600:])
     try:
         res = json.load(open("results.json"))
     except ValueError:
@@ -453,7 +458,8 @@ def _():
     explained("EXPLAIN_CORRELATED", a[3],
               ([r"correlat", r"same error", r"persist", r"last", r"several", r"repeat", r"independ", r"rho", r"ρ"],
                "why correlated errors make streaks likely"),
-              ([r"p_?fa\^?n", r"power", r"multipl", r"product", r"one event", r"single", r"independen", r"assum"],
+              ([r"p_?fa\^?n", r"power", r"multipl", r"product", r"one event", r"single", r"independen", r"assum",
+                r"persist", r"\^ ?3", r"cube"],
                "which assumption of P_FA^n breaks"))
 
 
@@ -536,7 +542,7 @@ def _():
     if is_stub(m.SpoofGuard.on_reference):
         raise CheckFailed("write TODO 6 (on_reference) first: these sequences need it")
     est = quiet("navera_lite.estimate")
-    for name in ("on_gps", "outage_noref", "outage_ref"):
+    for name in ("on_gps", "outage_noref", "outage_ref", "doubt_kept"):
         prev = "TRUSTED"
         for k, src, t, st, got, state, rby, g in play_sequence(m, est, name):
             where = f"sequence '{name}', {'GPS' if src == 'gps' else 'reference'} fix at {stamp(t)}"
@@ -552,7 +558,14 @@ def _():
                                                           "heard)",
                         ("REFUSED", "TRUSTED", None): " (rule 3 or 4: is a stated reference heard within ref_memory_s?)",
                         ("REFUSED", "REFUSED", "jump"): " (rule 3/4: without a reference the jump gate decides)"}
-                tip = rule.get((prev, st["state"], st["refused_by"]), "")
+                if rby == "outage" and st["refused_by"] != "outage":
+                    tip = (" (rule 2 applies only while the GPS is NOT already REFUSED: an outage while REFUSED "
+                           "changes nothing)")
+                elif src == "gps" and st["state"] == "IN_DOUBT" and state == "TRUSTED":
+                    tip = (" (rule 5: a fix the gate accepts changes NOTHING — return self.state, self.reason; only "
+                           "on_reference may clear a doubt)")
+                else:
+                    tip = rule.get((prev, st["state"], st["refused_by"]), "")
                 raise CheckFailed(f"{where}: your guard is {state} (refused_by {rby!r}), expected {st['state']} "
                                   f"(refused_by {st['refused_by']!r}){tip}")
             prev = state
@@ -579,9 +592,17 @@ def _():
             v = got[0] if isinstance(got, (tuple, list)) and got else got
             if v != row["verdict"]:
                 t = row["est"]["stamp_s"]
+                why = ""
+                if v == "TRUSTED" and row["verdict"] == "IN_DOUBT":
+                    why = (" — on_gps rule 5: a fix the gate accepts changes nothing; set_state(\"TRUSTED\") there "
+                           "erases the doubt")
+                elif v == "TRUSTED" and row["verdict"] == "REFUSED":
+                    why = " — on_gps rules 2–3: an outage or a refusal with a stated reference heard stays REFUSED"
+                elif v == "REFUSED" and row["verdict"] != "REFUSED":
+                    why = " — on_reference: which rule refused it? (far_n / refuse_n counters, γ_far)"
                 raise CheckFailed(f"attack '{name}': the GPS fix at {stamp(t)} (spoofer's offset {row['offset_m']:.0f} m) "
                                   f"gets {v!r} from your guard (reason: {g.reason!r}); the course's guard says "
-                                  f"{row['verdict']!r}")
+                                  f"{row['verdict']!r}{why}")
 
 
 def runs():
@@ -641,10 +662,10 @@ def _():
               ([r"patient", r"drift", r"jam", r"creep", r"slow"], "which attacks"))
 
 
-@c.test("Live over ROS 2: ros_drift.json from your guard_node run (Step 10)",
-        hint="Start `python3 guard_node.py --ros-args --params-file navera_lite.yaml -p max_speed_mps:=30.0 &`, wait 2 s, run "
-             "`python3 spoof_run.py drift --ros` to the end (45 s), then `kill %1`. ROS_REFUSED_T_S: the t of the first "
-             "change with gps_guard REFUSED in ros_drift.json.")
+@c.test("Live over ROS 2: your guard_node.py against the drift, run by the check (Step 10)",
+        hint="Stop your own nodes first (`jobs`, then `kill %1`). The check starts YOUR guard_node.py with the lab's settings "
+             "and plays 34 s of the drift attack live. ROS_REFUSED_T_S: the t of the first change with gps_guard REFUSED "
+             "in YOUR ros_drift.json (Step 10).")
 def _():
     if not os.path.exists("ros_drift.json"):
         raise CheckFailed("ros_drift.json does not exist yet: do Step 10 (the live run)")
@@ -655,23 +676,52 @@ def _():
     if not d.get("live") or not isinstance(d.get("changes"), list):
         raise CheckFailed("ros_drift.json does not come from `python3 spoof_run.py drift --ros`: run it again")
     dom = os.environ.get("ROS_DOMAIN_ID")
-    if dom and d.get("domain") not in (None, dom):
-        raise CheckFailed("ros_drift.json was recorded on another ROS domain: run the live attack again here")
-    ch = d["changes"]
-    doubt = next((x for x in ch if x.get("gps_guard") == "IN_DOUBT"), None)
-    ref = next((x for x in ch if x.get("gps_guard") == "REFUSED"), None)
-    if ref is None:
+    if dom and d.get("domain") != dom:
+        raise CheckFailed("ros_drift.json was not recorded by `python3 spoof_run.py drift --ros` on your ROS domain: "
+                          "run the live attack again (Step 10)")
+    mine = next((x for x in d["changes"] if x.get("gps_guard") == "REFUSED"), None)
+    if mine is None:
         raise CheckFailed("ros_drift.json has no change with gps_guard REFUSED: let the live run go to the end (45 s); "
                           "was guard_node.py started with -p max_speed_mps:=30.0?")
-    c.ok(doubt is not None and doubt["t"] < ref["t"], "ros_drift.json: the guard should be IN_DOUBT before it is REFUSED")
-    want_t = LAB["drift_refused_t_s"] - 0.4
-    c.ok(abs(ref["t"] - want_t) <= 1.6, f"ros_drift.json: the live refusal came at t = {ref['t']:.1f} s, far from the "
-                                        "offline run (Step 8): was the node started with the lab's settings, and nothing "
-                                        "else publishing (one judge only)?")
-    c.ok(any(x.get("source") == "day" and x["t"] >= ref["t"] for x in ch),
-         "ros_drift.json: after the refusal the judge should fly on day vision: did the run end too early?")
+    functions("innovation", "chi2_threshold_2d")
+    publishers_ok("/navera_lite/status", expected=0)
+    publishers_ok("/navera_lite/fix/gps", expected=0)
+    out_file = f".check_ros_{os.getpid()}.json"
+    live, err = None, ""
+    try:
+        for attempt in range(2):                     # one retry: a loaded machine may start the node slowly
+            if os.path.exists(out_file):
+                os.remove(out_file)
+            with Background("python3 guard_node.py --ros-args --params-file navera_lite.yaml -p max_speed_mps:=30.0",
+                            settle=3.0) as node:
+                code, err = sh(f"python3 spoof_run.py drift --ros --until 34 --out {out_file}", timeout=120)
+                if node.p.poll() is not None:
+                    raise CheckFailed("your guard_node.py stopped during the check:\n" + node.p.stdout.read()[-800:])
+            if code == 0 and os.path.exists(out_file):
+                live = json.load(open(out_file))["changes"]
+                if any(x.get("gps_guard") == "REFUSED" for x in live):
+                    break
+    finally:
+        if os.path.exists(out_file):
+            os.remove(out_file)
+    if live is None:
+        raise CheckFailed("the live attack did not run against your guard_node.py:\n" + err[-600:])
+    doubt = next((x for x in live if x.get("gps_guard") == "IN_DOUBT"), None)
+    ref = next((x for x in live if x.get("gps_guard") == "REFUSED"), None)
+    if ref is None:
+        raise CheckFailed("live, your guard_node.py never REFUSED the drifting GPS in 34 s (offline it does at 31 s): "
+                          "does `python3 spoof_run.py drift` refuse it?")
+    c.ok(doubt is not None and doubt["t"] < ref["t"], "live, the guard should be IN_DOUBT before it is REFUSED")
+    c.ok(abs(ref["offset_m"] - LAB["drift_refused_offset_m"]) <= 8.5,
+         f"live, your guard refused the GPS {ref['offset_m']:.0f} m off; offline it refuses at "
+         f"{LAB['drift_refused_offset_m']:.0f} m: was something else publishing on navera_lite/fix/* ?")
+    c.ok(any(x.get("source") == "day" and x["t"] >= ref["t"] for x in live),
+         "live, after the refusal the judge should fly on day vision")
+    c.ok(abs(mine["t"] - ref["t"]) <= 1.0,
+         f"your ros_drift.json says REFUSED at t = {mine['t']:.1f} s, but your guard_node.py, run by the check, refuses at "
+         f"{ref['t']:.1f} s: run Step 10 again with your current code")
     (rt,) = answers("ROS_REFUSED_T_S")
-    answer_near("ROS_REFUSED_T_S", rt, ref["t"], 0.15, "ros_drift.json (the first change with gps_guard REFUSED)")
+    answer_near("ROS_REFUSED_T_S", rt, mine["t"], 0.15, "your ros_drift.json (the first change with gps_guard REFUSED)")
 
 
 @c.test("Red team: the largest creep offset your guard never refuses (Step 11)",
@@ -695,7 +745,9 @@ def _():
                                  "CREEP_MAX_M is too small — find it to within 2 m"))
     explained("EXPLAIN_CREEP", ex,
               ([r"radius", r"threshold", r"γ", r"gamma", r"√", r"sqrt", r"47", r"bound", r"inside", r"below", r"under"],
-               "why such an offset exists (it stays inside the test's radius)"),
+               "why such an offset exists (near the test's radius)"),
+              ([r"seed", r"luck", r"chance", r"probab", r"random", r"noise", r"hour", r"longer", r"another draw",
+                r"other draw", r"not always", r"sometimes"], "whether it holds for another noise draw or a longer flight"),
               ([r"σ", r"sigma", r"accura", r"vision", r"reference", r"more (tests|fixes)", r"better", r"smaller",
                 r"cusum", r"average", r"mean", r"bias"], "what would make it smaller"))
 

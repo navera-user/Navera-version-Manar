@@ -66,8 +66,8 @@ Badges: **Statistician** = checks 1–8 (session 1), **Guardian** = all 15.
 | CORRELATED_PFA | 0.2815 (± 0.0005; the independent 0.005 → message) | ρ = 0.9: (0.05, 3) 0.005 → 0.2815; (0.01, 5) 0.0 → 0.016 |
 | PREDICT_GUARD_DRIFT (ungraded) | ≈ t 30 s, ≈ 80 m | |
 | DRIFT_DOUBT_OFFSET_M / DRIFT_REFUSED_OFFSET_M | 60 / 84 (± 0.6; swapped → message) | `drift`: IN_DOUBT at the GPS fix of 25 s, REFUSED at 31 s (decided at the vision fix of 30.1 s); max judge error 80 m; true GPS confirmed at 83 s |
-| ROS_REFUSED_T_S | the student's own ros_drift.json (± 0.15); 30.61 in the build runs | the live run records the change at the vision fix's arrival (30.6 s), offset 80 m (one GPS step less than offline) |
-| CREEP_MAX_M | 48.5–50.4 accepted: the check runs the student's guard at X (never refused) and X + 2 m (refused) | reference: never refused up to 50.0 m, refused from 50.5 m (IN_DOUBT already from 30 m); test radius 47.3 m |
+| ROS_REFUSED_T_S | the student's own ros_drift.json (± 0.15); 30.61 in the build runs | the live run records the change at the vision fix's arrival (30.6 s), offset 80 m (one GPS step less than offline). Check 14 (round 1) starts the student's guard_node.py ITSELF and plays 34 s of the drift live (`spoof_run.py drift --ros --until 34 --out .check_ros_<pid>.json`, one retry): IN_DOUBT before REFUSED, refusal offset within 8.5 m of 84 m, day vision flies after; the student's file must carry this ROS domain and its REFUSED t must be within 1 s of the check's run. ≈ 45 s of the check |
+| CREEP_MAX_M | 48.5–50.4 accepted: the check runs the student's guard at X (never refused) and X + 2 m (refused), default seed 30 | reference: never refused up to 50.0 m, refused from 50.5 m (IN_DOUBT already from 30 m); test radius 47.3 m. **50 m is above the radius by luck**: with `--seed 31` or `32`, 50 m (and 46 m) are refused. P(refused) of a constant offset (`build/creep_mc.py`; lab attack 200 seeds / cross-check rule over 1 h, 500 flights): 20 m 0 / 0.2 %, 30 m 2 % / 23 %, 35 m 5 % / 82 %, 40 m 25 % / 100 %, 45 m 72 % / 100 %, 50 m 94.5 % / 100 %. The bound is probabilistic and grows tighter with the flight's length: to last an hour a spoofer must stay near 20–25 m |
 
 `spoof_run.py all` with the reference (guard yes / no): jump refused at 20 s, 44 m max error both; patient (no
 vision): spoof trusted 26 fixes, true GPS refused 21 fixes, 2 005 m; patient_vision: refused at 20 s, never flown,
@@ -92,11 +92,11 @@ radius 92 m; 0.05³ = 1.25·10⁻⁴; drift 2 m/s → 23.65 s → 24 s → 32 s,
 | EXPLAIN_CORRELATED | the same vision error lasts several tests → a streak is ≈ one event; P_FA^n assumes independence; fixes: decorrelate (space the tests, distinct matches), longer n, model ρ | the mechanism only | "more noise" |
 | EXPLAIN_DRIFT | prediction 30.1 s / 80 m vs run 31 s / 84 m: decided at the 30.1 s vision fix, shown at the next GPS fix; noise moves the first test; the judge then flies day vision (FIX, σ 15 m) | two of three | numbers only |
 | EXPLAIN_LIMITS | the *_novision attacks, patient, jam-then-spoof without a stated reference, creep: no independent source of stated accuracy → only the gate; creep inside the radius | the attacks without the common cause | "some attacks" |
-| EXPLAIN_CREEP | the test cannot see inside its radius √(γ·S) ≈ 47 m: the guard bounds the error, does not remove it; smaller σ, more/averaged tests (CUSUM-like), an INS would shrink it | the bound only | "spoofer is clever" |
+| EXPLAIN_CREEP | the test cannot see small offsets: an offset near the radius √(γ·S) ≈ 47 m survives 110 s only by luck (50 m: about 5 % of draws; seeds 31, 32 refuse it), a long flight refuses it; the guard bounds the error in probability; smaller σ, averaged tests (CUSUM-like), an INS shrink it | the bound without the probability, or the luck without the bound | "spoofer is clever" |
 
 ## Mutants run (19 wrong-but-plausible versions; script `~/academy-test/review/30-spoofing/build/run_mutants.py`)
 
-All 19 fail (2026-10-14, with mission 29's committed judge for M13, M15, M16; the others do not involve the
+All 23 fail (19 of the build, 2026-10-14, re-run in round 1 on 2026-10-15 with check 14 live; M20–M23 added in round 1; with mission 29's committed judge for M13, M15, M16; the others do not involve the
 judge). The full messages are in `~/academy-test/review/30-spoofing/build/mutants.txt`.
 
 | Mutant | Score | First ✘ message |
@@ -120,8 +120,20 @@ judge). The full messages are in `~/academy-test/review/30-spoofing/build/mutant
 | M17 on_reference: unknown-accuracy references are tested too | 11/15 | check 9: on_reference() stopped with TypeError: cannot unpack non-iterable NoneType object (navera_lite/spoof.py line 237) — innovation() returned None (a source that states no ac |
 | M18 roc_point: delay as a mean index | 14/15 | check 7: roc_point: delay_s is the mean INDEX — multiply by period_s to get seconds |
 | M19 roc_point: an alarm at test 0 not counted (> 0) | 14/15 | check 7: roc_point: an alarm at the very FIRST test (first_alarm returns 0) is an alarm too: count the results ≥ 0, not > 0 |
+| M20 on_gps rule 5 as set_state("TRUSTED") (wipes IN_DOUBT) — round 1 | 13/15 | check 10: sequence 'doubt_kept', GPS fix at t = 2 s: your guard is TRUSTED, expected IN_DOUBT (rule 5: a fix the gate accepts changes NOTHING …) |
+| M21 on_gps outage rule without "not REFUSED" — round 1 | 14/15 | check 10: … expected REFUSED (refused_by 'jump') (rule 2 applies only while the GPS is NOT already REFUSED …) |
+| M22 hand-written ros_drift.json, no domain — round 1 | 14/15 | check 14: ros_drift.json was not recorded by `python3 spoof_run.py drift --ros` on your ROS domain |
+| M23 stale ros_drift.json (refusal 2.4 s off) — round 1 | 14/15 | check 14: your ros_drift.json says REFUSED at t = 33.0 s, but your guard_node.py, run by the check, refuses at 30.6 s |
 
-## Difficulties expected (no simulated-student run was done in this build: the review rounds should add theirs)
+## Difficulties seen (review round 1, weak persona) and expected
+
+Round 1 timing: strong ≈ 4 h 35, weak ≈ 8 h 15 before the fixes (Step 9's single runs cut, worked traces for TODO 6
+and Step 8 added, the rule-5 `test` line): meta says "6 h 15 (weaker students: up to 8 h)".
+- **on_gps rule 5 written as `set_state("TRUSTED")`** — the commonest bug: it erases IN_DOUBT at every GPS fix.
+  `spoof_run.py test` now has a line for it ("IN_DOUBT, then a GPS fix the gate accepts"), lab Step 8 hint 6, check 10
+  sequence `doubt_kept` with a targeted tip, check 11's message names rule 5.
+- **Rule 2 without "not REFUSED"**: check 10 names rule 2 when an outage refusal replaces a jump refusal.
+- `cfg.max_speed_mps` instead of `cfg["max_speed_mps"]` (tip added).
 
 - `chi2_threshold(p_fa)` instead of `chi2_threshold(1 − p_fa)`: 27's function takes the probability INSIDE (check 1
   message, lab hint 4).
@@ -160,5 +172,6 @@ known limitation 7 (rules, day vision σ 30 m not measured with NAVERA's camera,
 ARCHITECTURE.md §3 "GPS protection": gate (max speed × elapsed + 50 m, per-vehicle speed), cross-check every 2 s
 within 600 m, 3σ + max speed × gap, in doubt from 2 (≤ 500 m), refused 5 in a row or 5σ + 50 m for 3 s with 2
 distinct, re-acceptance 2 agreeing within 3σ, 120 s. ENGINEERING_BACKLOG.md: EST-4, EST-8, EST-9, EST-11 (found in
-the mission simulator), QA-1, R-1. The lesson's NAVERA Lite rules (χ² on both covariances, once per reference fix,
+the mission simulator), R-1, and the spoofing defect of its QA section (§7; the backlog has two items numbered QA-1,
+so the lesson names it "the QA campaign of 30 September 2026", never by number). The lesson's NAVERA Lite rules (χ² on both covariances, once per reference fix,
 2 in a row beyond γ_far for the far rule) are the course's, said so in "In NAVERA Lite".

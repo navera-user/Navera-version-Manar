@@ -123,6 +123,9 @@ def sequences():
         "on_gps": [gps(0), gps(1, 2000), gps(2, 2000), gps(40, 1500), gps(41, 1490), ref(41.1, 1495),
                    gps(46, 1500), gps(47, 3000), ref(47.1, 1490), gps(48, 1500), ref(48.1, 1495), gps(49, 1500),
                    gps(50, 1510), ref(50.5, 1500), gps(180, 1600), gps(200, 1700)],
+        # IN_DOUBT survives GPS fixes the gate accepts (rule 5: no change); only a reference clears the doubt
+        "doubt_kept": [gps(0), ref(0.1, -65), gps(1), ref(1.1, -66), gps(2), gps(3), gps(4, 5), ref(4.1, 2),
+                       gps(5), ref(5.1, -64), gps(6), ref(6.1, -66), gps(7)],
         # back after an outage WITHOUT any stated reference: the gate decides
         "outage_noref": [gps(0), ref(0.1, ctype=0), gps(10, 200), gps(11, 5000), gps(80, 1500)],
     }

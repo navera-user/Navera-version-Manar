@@ -13,7 +13,10 @@ the judge of mission 29 (navera_lite/arbiter.py), and shows who wins.
              --drift U       the drift speed of the drift attacks (m/s, default 4)
              --creep M       the offset of the creep attack (m, default 30)
              --pfa P         the guard's false-alarm probability per test (default 0.01)
+             --seed N        another noise draw of the same attack (default 30)
              --mine          fly YOUR judge from ../29-arbiter instead of the course's (Going further)
+    with --ros:  --until T       stop after T s of the attack (drift: 45 s)
+                 --out FILE      save the live run in FILE (default ros_<attack>.json)
 
 Every run is saved in runs.json (the check reads it) and drawn in out/<attack>.png (click it in the 📝 Code tab).
 """
@@ -170,7 +173,8 @@ def cmd_test():
         print(f"  ✘ innovation(gps, a reference of UNKNOWN accuracy): {e}")
     else:
         ok_all = False
-        print(f"  ✘ innovation(gps, a reference of UNKNOWN accuracy) should be None, got {v!r} {e or ''}")
+        print(f"  ✘ innovation(gps, a reference of UNKNOWN accuracy): {e}" if e else
+              f"  ✘ innovation(gps, a reference of UNKNOWN accuracy) should be None, got {v!r}")
     v, e = rk.call(sp, "first_alarm", [1.0, 12.0, 13.0, 2.0, 11.0, 10.0, 15.0], 9.21, 3)
     show("first_alarm([1, 12, 13, 2, 11, 10, 15], 9.21, 3)", v, e, 6, 0)
     v, e = rk.call(sp, "first_alarm", [12.0, 13.0], 9.21, 3)
@@ -190,8 +194,19 @@ def cmd_test():
         jump = est_mod.Estimate("gps", jl, jo, 11.0, cov=start.cov, cov_type=2)
         v, e = rk.call(g, "check", jump)
         show("SpoofGuard: then 2 km away 1 s later → verdict", None if e else v[0], e, "REFUSED")
+        g2 = sp.SpoofGuard(dict(cfg, **G))
+        vis = (225.0, 0, 0, 0, 225.0, 0, 0, 0, 400.0)
+        for k in range(2):                       # two vision fixes 65 m west of the GPS: d² ≈ 17 (γ < d² < γ_far)
+            f = est_mod.Estimate("gps", *geo.offset(lat, lon, 0.0, 15.0 * k), 20.0 + k, cov=start.cov, cov_type=2)
+            rk.call(g2, "check", f)
+            r = est_mod.Estimate("day", *geo.offset(lat, lon, -65.0, 15.0 * k + 1.5), 20.1 + k, cov=vis, cov_type=2)
+            rk.call(g2, "check", r)
+        v, e = rk.call(g2, "check", est_mod.Estimate("gps", *geo.offset(lat, lon, 0.0, 30.0), 22.0, cov=start.cov,
+                                                      cov_type=2))
+        show("SpoofGuard: IN_DOUBT, then a GPS fix the gate accepts → verdict", None if e else v[0], e, "IN_DOUBT")
     else:
-        print("  … SpoofGuard.on_reference / on_gps: not written yet (TODO 6–7)")
+        ok_all = False
+        print("  ✘ SpoofGuard.on_reference / on_gps: not written yet (TODO 6–7)")
     print("\nAll examples right. Now the attacks: python3 spoof_run.py drift" if ok_all else
           "\nFix the ✘ lines first (the lesson's worked examples and the docstrings show the rule).")
 
@@ -255,15 +270,17 @@ def play(name, args, verbose=True):
     arb_mod = load_arbiter("--mine" in args)
     drift = flag(args, "--drift")
     creep = flag(args, "--creep")
+    seed = flag(args, "--seed", scenarios.SEED, kind=int)
     try:
-        rows = scenarios.build(name, drift_mps=drift, creep_m=creep)
+        rows = scenarios.build(name, seed=seed, drift_mps=drift, creep_m=creep)
     except ValueError as e:
         sys.exit(str(e))
     judge = arb_mod.Arbiter(cfg)
     guard = sp.SpoofGuard(cfg) if guard_on else None
     front = sp.GuardedArbiter(judge, guard) if guard_on else judge
     if verbose:
-        print(f"=== {name}: {scenarios.describe(name, drift, creep)}")
+        print(f"=== {name}: {scenarios.describe(name, drift, creep)}"
+              + ("" if seed == scenarios.SEED else f" (noise seed {seed})"))
         print(f"    top speed {cfg['max_speed_mps']:g} m/s, margin {cfg['gps_jump_margin_m']:g} m"
               + (f", guard p_fa {cfg['p_fa']:g}" if guard_on else ", NO guard (the judge alone)") + "\n")
         print("     t (s)  GPS offset │ guard verdict │ judge: state, source, error of its position")
@@ -302,6 +319,7 @@ def play(name, args, verbose=True):
                       + (f"\n            guard: {why}" if guard_on and why else ""))
                 last_key = key
     summary = summarise(name, timeline, cfg, guard_on, drift, creep)
+    summary["seed"] = seed
     key = name + ("" if guard_on else "__noguard")
     save_run(key, summary)
     if verbose:
@@ -411,7 +429,9 @@ def cmd_ros(name, args):
     qos = rk.load_student("navera_lite.ros.qos")
     drift, creep = flag(args, "--drift"), flag(args, "--creep")
     until = flag(args, "--until", {"drift": 45.0}.get(name, 1e9))
-    rows = [r for r in scenarios.build(name, drift_mps=drift, creep_m=creep) if r[0] <= until]
+    seed = flag(args, "--seed", scenarios.SEED, kind=int)
+    out_path = flag(args, "--out", f"ros_{name}.json", kind=str)
+    rows = [r for r in scenarios.build(name, seed=seed, drift_mps=drift, creep_m=creep) if r[0] <= until]
 
     class Player(Node):
         def __init__(self):
@@ -428,7 +448,7 @@ def cmd_ros(name, args):
     t_wait = node.get_clock().now().nanoseconds * 1e-9
     while node.count_subscribers("navera_lite/fix/gps") == 0:
         rclpy.spin_once(node, timeout_sec=0.2)
-        if node.get_clock().now().nanoseconds * 1e-9 - t_wait > 10.0:
+        if node.get_clock().now().nanoseconds * 1e-9 - t_wait > 20.0:
             node.destroy_node()
             rclpy.shutdown()
             sys.exit("no judge listens on navera_lite/fix/gps: start guard_node.py first (Step 10), then wait 2 s")
@@ -464,9 +484,9 @@ def cmd_ros(name, args):
         print("\nstopped (Ctrl+C): the file is saved with what was recorded")
     out = {"attack": name, "live": True, "domain": os.environ.get("ROS_DOMAIN_ID"), "until_s": until,
            "changes": node.changes}
-    with open(f"ros_{name}.json", "w") as f:
+    with open(out_path, "w") as f:
         json.dump(out, f, indent=1)
-    print(f"\nsaved ros_{name}.json ({len(node.changes)} changes)")
+    print(f"\nsaved {out_path} ({len(node.changes)} changes)")
     node.destroy_node()
     rclpy.shutdown()
 

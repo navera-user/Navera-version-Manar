@@ -116,7 +116,8 @@ trusted fix, so the **honest receiver is refused as a jump**. This is NAVERA's E
 With s = 0 the condition is simply 20·Δt + 50 ≥ 1000: Δt = 47.5 s (the quadratic gives the same root). If
 s = v_max, a = 0: the inequality is linear, b·Δt + c ≥ 0, so Δt = −c/b — unless b = 0 too (no margin): then it
 says c ≥ 0, false, so <b>never</b> (do not divide by zero). If s > v_max (the gate's speed is set too low for the
-vehicle), a < 0: the spoof never becomes reachable — but neither does the vehicle's own true position.
+vehicle), a < 0: with a margin much smaller than the offset (b² < 4ac, always the case here) the spoof never
+becomes reachable — but neither does the vehicle's own true position.
 </details>
 
 ## 2. Detection is a hypothesis test
@@ -267,15 +268,16 @@ jump gate's circle has grown huge during the outage (at 30 m/s, 80 s of jamming 
 
 How does the guard reach the judge you wrote in mission 29? It stands **in front** of it (`GuardedArbiter`):
 a TRUSTED GPS fix goes through unchanged, an IN_DOUBT one with its widened covariance, a REFUSED one as "no
-position" (`valid = False`), so the judge's own eligibility rules switch to vision at once. The judge needs no
-change.
+position" (`valid = False`), so the judge's own eligibility rules switch to vision at the next GPS fix (the
+judge keeps the fix it already holds until a new one replaces it: at most one GPS period, 1 s here). The judge
+needs no change.
 
 > [!QUESTION] ✏️ Check
 > The guard is IN_DOUBT, gap 60 m. Your judge receives the GPS fix with its covariance widened to 60² m².
 > Which state does the judge report, and why is that better than keeping FIX until the refusal?
 
 <details><summary>Answer</summary>
-Its stated σ becomes 60 m > 25 m: DEGRADED (mission 12's classify). The autopilot and the operator see the doubt
+Its stated σ becomes 60 m > 25 m: DEGRADED (the judge's stated_sigma of mission 12, then classify). The autopilot and the operator see the doubt
 seconds before the refusal, and the autopilot's own filter already trusts the GPS less: the later switch to
 vision is a small step, not a jump in what it believes.
 </details>
@@ -289,9 +291,11 @@ with a stated accuracy**. Concretely:
   only the gate is left. A jump is caught; a patient spoofer, a slow drift and "jam, then spoof" are not.
 - **Unknown or dishonest σ.** If vision states no σ, a 100 m gap proves nothing. Too large a σ makes the test
   blind; too small a σ refuses good GPS (§3).
-- **A spoofer below the radius.** An attacker who knows the rule keeps the offset just inside the test's
-  radius and is never refused. The test does not remove the error: it **bounds** it (lab Step 11 measures that
-  bound on your own guard).
+- **A spoofer near or below the radius.** An attacker who knows the rule keeps the offset small enough that
+  5 disagreeing tests in a row stay unlikely for the length of the flight. Near the radius each test disagrees
+  about half the time: that survives a two-minute attack only with luck, and almost never an hour; to last an
+  hour the offset must stay near half the radius (about 20–25 m here). The test does not remove the error: it
+  **bounds** it, **in probability** (lab Step 11 measures your guard on one noise draw, then on others).
 - **Correlated errors** make streaks likelier than P_FA^n (§4).
 - **Other defences exist** outside the judge: receivers that watch signal power or the direction the signals come
   from (several antennas), and authenticated signals such as Galileo's **OSNMA** service. They need receiver
@@ -305,7 +309,7 @@ with a stated accuracy**. Concretely:
 > - "Five tests in a row: P_FA⁵." Only for independent tests. The same map error repeated breaks it (§4, lab Step 6).
 > - "The jump gate stops spoofing." It stops jumps. Time, an outage or a slow drift get through it (§1).
 > - "With the guard, spoofing is solved." Without an independent source of stated accuracy only the gate is left,
->   and a careful spoofer inside the radius is never refused (§6).
+>   and a careful spoofer who stays well inside the radius is rarely refused (§6).
 
 ## In NAVERA
 
@@ -325,13 +329,15 @@ backlog (review of 28 September 2026), in words:
 - **Re-acceptance:** a GPS refused by the cross-check, or back after an outage, is re-accepted only when **2
   distinct independent fixes agree within 3 σ** (EST-9, EST-11, both found in NAVERA's mission simulator). Only
   if no independent source of stated accuracy has been heard for **120 s** does the gate decide alone.
-- **Measured** (simulation and bench, none in flight): a 2 km spoof on a boat for 150 s refused within 1 s; a
-  drone jammed 30 s then spoofed 2 km: refused throughout, the true GPS re-accepted 3 s after it returned; a
-  slow drift at 4 m/s refused at about **160–200 m** in one test and, with a gimbal camera in the mission
-  simulator, at about **140 m**, NAVERA's error median 15 m, max 143 m — against median 417 m, max 902 m, never
-  refused, before the cross-check existed. Before the EST-9 fix, a patient 2 km spoof was accepted after
-  offset / maximum speed (33 s) and the true GPS was then locked out.
-- **QA-1 (campaign of 30 September 2026):** with the real vision, a spoof left NAVERA with no position and the
+- **Measured** (simulation and bench, none in flight):
+  - a 2 km spoof on a boat for 150 s: refused within 1 s;
+  - a drone jammed 30 s, then spoofed 2 km: refused throughout; the true GPS re-accepted 3 s after it returned;
+  - a slow drift at 4 m/s: refused at about **160–200 m** (one test); with a gimbal camera in the mission
+    simulator at about **140 m** — NAVERA's error median 15 m, max 143 m, against median 417 m, max 902 m (never
+    refused) before the cross-check existed;
+  - before the EST-9 fix, a patient 2 km spoof was accepted after offset / maximum speed (33 s) and the true GPS
+    was then locked out.
+- **The QA campaign of 30 September 2026** (the backlog's spoofing defect in its QA section): with the real vision, a spoof left NAVERA with no position and the
   drone landed — vision had taken the first spoofed fix as its search centre. Vision now takes its GPS
   reference from the arbiter's vetted output (re-test: 3/3 spoofs taken over by vision).
 - **Known limitation 7:** all these protections need that independent source. Day vision states σ 30 m, **not
@@ -369,7 +375,8 @@ recalibrate one against another: three senses that must agree are much harder to
 4. The jump gate catches jumps; time, outages and drifts get through it. Persistence (n in a row) controls false
    alarms only if the tests are independent; a drift is caught at a roughly fixed offset, the test's radius.
 5. The guard (TRUSTED → IN_DOUBT → REFUSED → confirmed) sits in front of the judge. Everything beyond the gate
-   needs an independent source of stated accuracy, and a spoofer inside the radius is never refused.
+   needs an independent source of stated accuracy, and a spoofer well inside the radius is seldom refused: the
+   error is bounded in probability, not removed.
 
 **Next mission:** the simulator. Your judge and guard fly a whole vehicle, and you meet the autopilot's side of
 the story.
@@ -402,7 +409,8 @@ It holds only 39 % of honest errors: such a gate refuses 61 % of good fixes. A g
 </details>
 <details><summary>7. (Mission 29) The guard refuses the GPS. What does the judge receive, and what does it do?</summary>
 A GPS estimate with valid = False ("no position"): the GPS is no longer a candidate. Day vision has been eligible
-for longer than the hold-off, so the judge switches to it at once — no need to wait for the GPS to go stale.
+for longer than the hold-off, so the judge switches to it at the next GPS fix — no need to wait for the GPS to
+go stale (3 s).
 </details>
 
 Now open the **🛠️ Lab** tab.

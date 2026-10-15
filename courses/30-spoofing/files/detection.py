@@ -1,5 +1,5 @@
 """detection.py — spoofing detection as a statistical test: measure the ROC of the persistence rule by Monte Carlo
-(lab Steps 7–8). Uses YOUR navera_lite/spoof.py (chi2_threshold_2d, first_alarm).
+(lab Steps 5–6). Uses YOUR navera_lite/spoof.py (chi2_threshold_2d, first_alarm).
 
     python3 detection.py        # about 10 s; prints the table, writes results.json and out/roc.png
 
@@ -32,7 +32,7 @@ P_GRID = [0.2, 0.1, 0.05, 0.01, 0.001, 0.0001]     # p_fa per test → γ = chi2
 N_GRID = [1, 2, 3, 5]                               # tests in a row
 MAX_PFA = 0.01          # the requirement: at most 1 % of honest 2-minute flights with an alarm
 
-# ---- TODO 9: your operating point, chosen from the table (lab Step 8) ----
+# ---- TODO 9: your operating point, chosen from the table (lab Step 6) ----
 CHOSEN_P = 0.2          # p_fa per test, one value of P_GRID
 CHOSEN_N = 1            # tests in a row, one value of N_GRID
 

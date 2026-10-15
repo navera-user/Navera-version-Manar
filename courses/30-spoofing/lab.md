@@ -4,7 +4,7 @@
 vision, the jump gate's hole, the delay of a drift, and a ROC curve you measure by Monte Carlo. Session 2
 (**Guardian**): the guard's two decisions, nine attacks against mission 29's judge with your guard in front of
 it, one attack live over ROS 2, and your own attack on your own guard.
-**Time:** 3 h 30 (fast) to 5 h (if probability or classes are rusty), plus the lesson.
+**Time:** 3 h 30 (fast) to 6 h 30 (if probability, classes or Linux are rusty), plus the lesson (75–100 min).
 
 | Lesson | Lab step | You write |
 |---|---|---|
@@ -167,6 +167,7 @@ python3 -c "from navera_lite.spoof import drift_alarm_time as f, chi2_threshold_
 4. Tests happen at 0, T, 2T…: the first one STRICTLY after that time is at (floor(t / T) + 1)·T.
 5. The n-th test in a row is (n − 1)·T later. You get 34.0 instead of 32.0 for the worked example? The first
    disagreeing test is already one of the n. You get 30.0? You took the test just BEFORE the crossing (no + 1).
+   In `python3 spoof_run.py test` the same two mistakes show **23.0** (n·T) and **21.0** (no + 1) instead of 22.0.
 </details>
 
 ## Step 5 — A ROC curve by Monte Carlo (TODO 8)
@@ -182,7 +183,9 @@ python3 detection.py
 
 It takes about 10 s, prints the table and writes [results.json](file:./results.json) and
 [out/roc.png](file:./out/roc.png). Look at the first table: does the share of honest tests beyond γ match
-p_fa now? (It should be closer than in Step 2: the simulation has no time gap.)
+p_fa now? (It should be closer than in Step 2: the simulation has no time gap.) The mean delay counts only the
+spoofed flights caught within 40 s: for rules that catch few, it is biased low (the slow ones are cut off), so
+compare delays only between rules with a high P_D.
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
@@ -235,7 +238,22 @@ else:
 ```
 
 Write `on_reference(ref)` (TODO 6). Its docstring gives the order of the rules: the first one that applies
-wins. Your `innovation` does the maths.
+wins. Your `innovation` does the maths. A worked trace (γ = 9.21, γ_far = 27.63, every gap below 500 m) —
+complete the last two rows before you code:
+
+| reference fix | d² | disagree, far, agree after it | state before → after |
+|---|---|---|---|
+| 10.1 s | 3.1 | 0, 0, 1 | TRUSTED → TRUSTED |
+| 12.1 s | 10.4 | 1, 0, 0 | TRUSTED → TRUSTED (one fix is not evidence) |
+| 14.1 s | 11.9 | 2, 0, 0 | TRUSTED → IN_DOUBT (gap 54 m ≤ 500 m) |
+| 16.1 s | 30.2 | 3, 1, 0 | IN_DOUBT → ? |
+| 18.1 s | 33.0 | 4, 2, 0 | ? → ? |
+
+<details><summary>Answer</summary>
+16.1 s: d² > γ_far once only (far = 1 < far_n 2) and disagree 3 < refuse_n 5, so the doubt rule applies: IN_DOUBT
+stays. 18.1 s: far = 2 = far_n → REFUSED, refused_by "far" — checked before the doubt rule; disagree 4 is not
+yet 5. (Entering REFUSED then empties the counters: set_state does it.)
+</details>
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
@@ -251,7 +269,15 @@ wins. Your `innovation` does the maths.
 
 Write `on_gps(gps)` (TODO 7): five rules, in the docstring's order. Trace by hand first: a guard TRUSTED with
 its last GPS fix at t = 40 s receives a fix at t = 45 s while vision (σ stated) was heard at t = 44.1 s. Which
-rule applies, which verdict, which `refused_by`? Then `python3 spoof_run.py test` (its last two lines).
+rule applies, which verdict, which `refused_by`?
+
+<details><summary>Answer (check before you code)</summary>
+45 − 40 = 5 s > gps_timeout_s 3 s, the guard is not REFUSED, and vision (σ stated) was heard 0.9 s ago
+(has_reference): rule 2 → "REFUSED", refused_by "outage". Rule 5 is never reached. Had the guard already been
+REFUSED, rule 2 would not apply (it says "while the GPS is not REFUSED"): rule 3 keeps it REFUSED as it was.
+</details>
+
+Then `python3 spoof_run.py test` (its last three lines).
 
 <details><summary>Stuck? Hints, one at a time</summary>
 
@@ -262,6 +288,9 @@ rule applies, which verdict, which `refused_by`? Then `python3 spoof_run.py test
 4. Rule 2 before rule 3: an outage while REFUSED changes nothing.
 5. Your guard refuses the true GPS in `jump` at t = 50 s although vision states nothing? Rule 3 needs
    `self.has_reference(...)`: without a stated reference, the gate decides (rule 4).
+6. The `test` line "IN_DOUBT, then a GPS fix the gate accepts" says TRUSTED, or your drift run shows **no
+   IN_DOUBT at all**? Rule 5 says *no change* when the gate accepts the fix: return `self.state, self.reason`.
+   Writing `set_state("TRUSTED", …)` there erases the doubt at every GPS fix: only `on_reference` clears a doubt.
 </details>
 
 Write `PREDICT_GUARD_DRIFT`, then:
@@ -275,22 +304,9 @@ REFUSED spoofed fix into `DRIFT_DOUBT_OFFSET_M` and `DRIFT_REFUSED_OFFSET_M`, an
 
 ## Step 9 — Every attack
 
-Play these three and look at their pictures: the patient spoofer when vision states an accuracy, jam then spoof,
-and an honest flight with two wrong vision matches:
-
-```bash
-python3 spoof_run.py patient_vision
-```
-
-```bash
-python3 spoof_run.py jamspoof
-```
-
-```bash
-python3 spoof_run.py glitch
-```
-
-Then the whole table, every attack with and without your guard (about 10 s):
+The whole table, every attack with and without your guard (about 10 s). Find in it the patient spoofer when
+vision states an accuracy (`patient_vision`), jam then spoof (`jamspoof`) and an honest flight with two wrong
+vision matches (`glitch`); every run is drawn in out/ (for example [out/jamspoof.png](file:./out/jamspoof.png)):
 
 ```bash
 python3 spoof_run.py all
@@ -345,7 +361,18 @@ python3 spoof_run.py creep --creep 40.0
 ```
 
 Change the number (try 60, then halve the interval…) and watch the summary's "first REFUSED". Put your answer
-in `CREEP_MAX_M` and write `EXPLAIN_CREEP` (compare with the test's radius √(γ · 243) of lesson §3).
+in `CREEP_MAX_M`.
+
+Your answer is a property of **this** noise draw and of a 110 s attack. Is it above or below the test's radius
+√(9.21 · 243) = 47.3 m of lesson §3? Replay your answer with two other noise draws:
+
+```bash
+python3 spoof_run.py creep --creep 50.0 --seed 31
+```
+
+(and `--seed 32`, with your own number). Does your offset still survive? Write `EXPLAIN_CREEP`: why such an offset
+exists, whether it would survive a one-hour flight (near the radius each test disagrees about half the time), and
+what would make it smaller.
 
 > [!TASK]
 > `ros_drift.json` from a complete live run and the answers of Steps 10–11. Press **✔ Check my work**: all 15
@@ -366,6 +393,8 @@ mission?
   STATED σ only (keep the noise at 15 m) and replay `drift` and `creep`: how does the bound move?
 - **Delay against drift speed.** `python3 spoof_run.py drift --drift 1.0`, then 2.0, 4.0, 8.0: plot the offset at
   refusal against the drift speed. Is it roughly constant? Why (lesson §4)?
+- **One attack at a time.** `python3 spoof_run.py patient_vision` (or `jamspoof`, `glitch`) prints every change
+  of one attack with the guard's reasons.
 - **A smarter far rule.** NAVERA refuses a clear disagreement after 3 s beyond 5σ + 50 m. Change `p_fa_far` and
   `far_n` (passed in cfg) and measure on `patient_vision` how fast the refusal comes and on `glitch` whether a good
   GPS is ever refused.

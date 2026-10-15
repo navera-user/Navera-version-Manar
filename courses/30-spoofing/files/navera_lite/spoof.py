@@ -211,6 +211,7 @@ class SpoofGuard:
           4. REFUSED and no reference: the jump gate decides (self.gate.check) → "TRUSTED" if reachable again,
              else "REFUSED", refused_by "jump"
           5. TRUSTED or IN_DOUBT: the jump gate; a refused jump → "REFUSED", refused_by "jump"; else no change
+             (an IN_DOUBT GPS stays IN_DOUBT: only on_reference clears a doubt)
         Example: TRUSTED at (lat, lon) at t = 10 s, then a fix 2 km away at t = 11 s (30 m/s, margin 50 m)
                  → ("REFUSED", "jump 2000 m > 80 m in 1.0 s")
         """

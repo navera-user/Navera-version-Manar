@@ -5,7 +5,7 @@
 # ======== Session 1 — Statistician ========
 
 # ---- Step 0: the judge alone against a slow drift (python3 spoof_run.py drift --no-guard) ----------------------
-PREDICT_NOGUARD = ""        # BEFORE running: the spoofer pulls the GPS east at 4 m/s for 70 s (up to 280 m). Mission 29's
+PREDICT_NOGUARD = ""        # BEFORE running: the spoofer pulls the GPS east at 4 m/s for 70 s. Mission 29's
                             # judge has the jump gate. How far from the truth will the judge's position get? why?
 NOGUARD_MAX_ERROR_M = 0.0   # the run's "largest error of the judge's position" (m)
 
@@ -52,8 +52,8 @@ ROS_REFUSED_T_S = 0.0       # ros_drift.json: the time t of the first change wit
 
 # ---- Step 11: red team (python3 spoof_run.py creep --creep X) ----------------------------------------------------
 CREEP_MAX_M = 0.0           # the largest creep offset (m) your guard never REFUSES (find it to the nearest metre or two)
-EXPLAIN_CREEP = ""          # why is there such an offset, how does it compare with the test's radius, and what would
-                            # make it smaller?
+EXPLAIN_CREEP = ""          # why is there such an offset, how does it compare with the test's radius, would it hold
+                            # for a one-hour flight (another seed), and what would make it smaller?
 
 # ---- Step 12: look back (not graded; for you and your teacher) ---------------------------------------------------
 LOOK_BACK = ""
