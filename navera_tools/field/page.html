@@ -38,7 +38,7 @@ input[type=text]{font:16px system-ui;padding:12px;border-radius:8px;border:1px s
 svg{display:block;width:100%;height:auto}svg text{fill:var(--mute);font:10px ui-monospace,Menlo,monospace}
 a.btn{display:block;text-align:center;text-decoration:none;font:600 16px system-ui;padding:14px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--fg)}
 </style></head>
-<body><div class="wrap">
+<body><div id="net" hidden style="position:sticky;top:0;z-index:5;background:var(--bad);color:#1a0a06;padding:8px 12px;border-radius:6px;font-weight:600"></div><div class="wrap">
 <h1>NAVERA <span>sky</span> test</h1>
 <div class="tabs" role="tablist"><button role="tab" id="t1" aria-selected="true">Operator</button><button role="tab" id="t2" aria-selected="false">Results</button></div>
 <div id="op" class="wrap" style="gap:14px"></div>
@@ -71,10 +71,21 @@ function startSensors(){
     DeviceOrientationEvent.requestPermission().then(go).catch(go);
   }else go();
 }
+// Samples the network could not carry are kept here and sent, with their own time, when it is back.
+var backlog=[],offline=false,flushing=false;
+function showLink(){var b=document.getElementById("net");if(!b)return;b.hidden=!offline;
+  b.textContent="Connection lost - keep driving, "+backlog.length+" readings kept on the phone."}
+function flush(){
+  if(flushing||!backlog.length)return;flushing=true;
+  var chunk=backlog.slice(0,200);
+  api("/api/phone_batch",{items:chunk}).then(function(){backlog.splice(0,chunk.length);flushing=false;flush()})
+    .catch(function(){flushing=false});
+}
 setInterval(function(){
   if(!sensorsOn)return;
   var d=Object.assign({},phone);d.phone_t_ms=Date.now();
-  api("/api/phone",d).catch(function(){});
+  api("/api/phone",d).then(function(){offline=false;showLink();flush()}).catch(function(){
+    offline=true;backlog.push(d);if(backlog.length>7200)backlog.shift();showLink()});
 },1000);
 document.addEventListener("visibilitychange",function(){if(!document.hidden&&sensorsOn&&navigator.wakeLock)navigator.wakeLock.request("screen").then(function(w){wake=w}).catch(function(){})});
 

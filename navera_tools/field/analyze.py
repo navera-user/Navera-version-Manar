@@ -74,7 +74,7 @@ def analyze(folder: str) -> dict:
     if os.path.exists(p):
         with open(p) as f:
             meta = json.load(f)
-    phone = read_jsonl(os.path.join(folder, "phone.jsonl"))
+    phone = sorted(read_jsonl(os.path.join(folder, "phone.jsonl")), key=lambda p: p["t"])
     frames = read_jsonl(os.path.join(folder, "frames.jsonl"))
     events = read_jsonl(os.path.join(folder, "events.jsonl"))
 

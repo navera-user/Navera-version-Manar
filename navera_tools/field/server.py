@@ -155,6 +155,24 @@ class Field:
         if s is not None:
             s.log("phone", self._phone_record(d))
 
+    def on_phone_batch(self, items: list) -> int:
+        """Samples the phone kept while the network was down: filed at the time the phone took them
+        (its clock plus the measured offset), so the truth has no hole where the link dropped."""
+        sess = self.session
+        if sess is None:
+            return 0
+        off = self.clock_offset_s() or 0.0
+        n = 0
+        for d in items[:500]:
+            if not isinstance(d, dict) or d.get("phone_t_ms") is None:
+                continue
+            rec = self._phone_record(d)
+            rec["t"] = float(d["phone_t_ms"]) / 1000.0 + off
+            rec["late"] = True
+            sess.log("phone", rec)
+            n += 1
+        return n
+
     def _phone_record(self, d):
         rec = {k: d.get(k) for k in ("lat", "lon", "acc", "alt", "speed", "course", "beta", "gamma", "compass")}
         if d.get("beta") is not None and d.get("gamma") is not None:
@@ -462,6 +480,8 @@ def make_handler(field: Field):
             if path == "/api/phone":
                 field.on_phone(d)
                 return self._json({"ok": True, "server_time_ms": int(time.time() * 1000)})
+            if path == "/api/phone_batch":
+                return self._json({"ok": True, "stored": field.on_phone_batch(d.get("items", []) if isinstance(d, dict) else [])})
             if path == "/api/step":
                 field.go(d.get("to", 1))
                 return self._json(field.state())

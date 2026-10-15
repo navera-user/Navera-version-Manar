@@ -48,3 +48,7 @@ screen full of text gives 0 stars.
     tailscale funnel --https=8443 --bg http://127.0.0.1:8444     # makes the operator link work from any phone
 
 The link (with its secret key) is then in `~/navera-field/LINK.txt`. Delete `~/navera-field/access_key.txt` and restart for a new one.
+
+## If the network drops
+
+The Jetson keeps recording on its own disk. The phone page keeps its GPS/tilt readings while offline (up to 2 hours), shows "Connection lost - keep driving", and sends them with their original times when the link is back (`/api/phone_batch`), so the truth has no hole. Frames taken while the Jetson itself has no internet are saved as usual.

@@ -101,3 +101,16 @@ def test_a_room_instead_of_sky_is_named_as_such(tmp_path):
     ids = [p["id"] for p in an.analyze(str(tmp_path))["problems"]]
     assert ids[0] == "not_looking_at_sky"
     assert "few_stars" not in ids             # the cause is named once, not twice
+
+
+def test_late_phone_samples_fill_the_gap_in_the_truth(tmp_path):
+    from navera_tools.field.server import Field
+    f = Field.__new__(Field)                       # only the batch path is under test
+    f.session = FieldSession(str(tmp_path))
+    f.offsets = []
+    import threading
+    f.lock = threading.Lock()
+    items = [{"phone_t_ms": (1000 + i) * 1000, "lat": 35.8, "lon": 10.6, "acc": 5} for i in range(5)]
+    assert f.on_phone_batch(items + [{"lat": 1}]) == 5          # a sample without its time is refused
+    rows = read_jsonl(os.path.join(f.session.dir, "phone.jsonl"))
+    assert [r["t"] for r in rows] == [1000.0 + i for i in range(5)] and all(r["late"] for r in rows)
