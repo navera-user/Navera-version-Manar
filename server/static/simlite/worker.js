@@ -4,7 +4,9 @@ importScripts('/static/vendor/pyodide/pyodide.js');
 let py = null, ready = null;
 
 async function boot() {
-  py = await loadPyodide({ indexURL: '/static/vendor/pyodide/' });
+  // stdlib under a .dat name: download managers (IDM…) grab .zip URLs out of the browser, and Python then
+  // cannot start ("Program terminated with exit(1)")
+  py = await loadPyodide({ indexURL: '/static/vendor/pyodide/', stdLibURL: '/static/vendor/pyodide/python_stdlib.dat' });
   const list = await (await fetch('/static/simlite/py/manifest.json', { cache: 'no-cache' })).json();
   for (const rel of list) {
     const text = await (await fetch('/static/simlite/py/' + rel, { cache: 'no-cache' })).text();
