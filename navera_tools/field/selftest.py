@@ -67,7 +67,7 @@ def main():
     for _ in range(4):
         feed()
         time.sleep(0.3)
-    f.go(4)
+    f.go(2), f.go(3), f.go(4)
     deadline = time.time() + 240
     while time.time() < deadline:
         feed()

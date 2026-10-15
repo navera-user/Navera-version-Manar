@@ -4,6 +4,8 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+KillSignal=SIGINT
+TimeoutStopSec=90
 User=shadow-team
 Environment=NAVERA_FIELD_PLAIN=1
 Environment=NAVERA_FIELD_PORT=8444

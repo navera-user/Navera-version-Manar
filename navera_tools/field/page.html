@@ -38,7 +38,7 @@ input[type=text]{font:16px system-ui;padding:12px;border-radius:8px;border:1px s
 svg{display:block;width:100%;height:auto}svg text{fill:var(--mute);font:10px ui-monospace,Menlo,monospace}
 a.btn{display:block;text-align:center;text-decoration:none;font:600 16px system-ui;padding:14px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--fg)}
 </style></head>
-<body><div id="net" hidden style="position:sticky;top:0;z-index:5;background:var(--bad);color:#1a0a06;padding:8px 12px;border-radius:6px;font-weight:600"></div><div class="wrap">
+<body><div id="err" hidden style="position:sticky;top:0;z-index:6;background:var(--bad);color:#1a0a06;padding:8px 12px;border-radius:6px;font-weight:600"></div><div id="sens" hidden style="position:sticky;top:0;z-index:6"><button class="main" id="sensbtn" style="background:var(--bad);border-color:var(--bad)">SENSORS OFF - tap here to turn GPS and tilt on</button></div><div id="net" hidden style="position:sticky;top:0;z-index:5;background:var(--bad);color:#1a0a06;padding:8px 12px;border-radius:6px;font-weight:600"></div><div class="wrap">
 <h1>NAVERA <span>sky</span> test</h1>
 <div class="tabs" role="tablist"><button role="tab" id="t1" aria-selected="true">Operator</button><button role="tab" id="t2" aria-selected="false">Results</button></div>
 <div id="op" class="wrap" style="gap:14px"></div>
@@ -49,23 +49,36 @@ a.btn{display:block;text-align:center;text-decoration:none;font:600 16px system-
 var S={}, phone={}, tab=1, sensorsOn=false, lastSend=0, wake=null, openId=null;
 var $=function(i){return document.getElementById(i)};
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
-function api(path,body){return fetch(path,body===undefined?{}:{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){return r.json()})}
+function api(path,body){
+  var ac=new AbortController(),t=setTimeout(function(){ac.abort()},10000);
+  var o=body===undefined?{signal:ac.signal}:{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),signal:ac.signal};
+  return fetch(path,o).then(function(r){clearTimeout(t);return r.json()},function(e){clearTimeout(t);throw e})}
+var errT=null;
+function toast(m){var e=$("err");e.textContent=m;e.hidden=false;clearTimeout(errT);errT=setTimeout(function(){e.hidden=true},6000)}
+window.addEventListener("unhandledrejection",function(ev){ev.preventDefault();toast("That did not go through. Check the connection and tap again.")});
 
 // ── phone sensors ───────────────────────────────────────────────
+var gpsId=null;
+function watchGps(){
+  if(!navigator.geolocation)return;
+  if(gpsId!==null)try{navigator.geolocation.clearWatch(gpsId)}catch(e){}
+  gpsId=navigator.geolocation.watchPosition(function(p){
+    var c=p.coords;phone.gpsError=null;phone.gps_t_ms=p.timestamp;phone.lat=c.latitude;phone.lon=c.longitude;phone.acc=c.accuracy;phone.alt=c.altitude;
+    phone.speed=c.speed;phone.course=(c.speed&&c.speed>0.5)?c.heading:null;
+  },function(e){phone.gpsError=e.message},{enableHighAccuracy:true,maximumAge:0,timeout:20000});
+}
 function startSensors(){
   var go=function(){
-    if(navigator.geolocation){navigator.geolocation.watchPosition(function(p){
-      var c=p.coords;phone.gps_t_ms=p.timestamp;phone.lat=c.latitude;phone.lon=c.longitude;phone.acc=c.accuracy;phone.alt=c.altitude;
-      phone.speed=c.speed;phone.course=(c.speed&&c.speed>0.5)?c.heading:null;
-    },function(e){phone.gpsError=e.message},{enableHighAccuracy:true,maximumAge:0,timeout:20000});}
+    watchGps();
     var h=function(e){
-      if(e.beta!=null){phone.beta=e.beta;phone.gamma=e.gamma;}
+      if(e.beta!=null){phone.beta=e.beta;phone.gamma=e.gamma;phone.tilt_t_ms=Date.now();}
       if(e.webkitCompassHeading!=null)phone.compass=e.webkitCompassHeading;
       else if(e.absolute&&e.alpha!=null)phone.compass=(360-e.alpha)%360;
     };
     window.addEventListener("deviceorientation",h);window.addEventListener("deviceorientationabsolute",h);
     try{if(navigator.wakeLock)navigator.wakeLock.request("screen").then(function(w){wake=w}).catch(function(){})}catch(e){}
-    sensorsOn=true;
+    sensorsOn=true;try{localStorage.setItem("navera_sens","1")}catch(e){}
+    showSens();
   };
   if(window.DeviceOrientationEvent&&typeof DeviceOrientationEvent.requestPermission==="function"){
     DeviceOrientationEvent.requestPermission().then(go).catch(go);
@@ -78,7 +91,7 @@ function showLink(){var b=document.getElementById("net");if(!b)return;b.hidden=!
 function flush(){
   if(flushing||!backlog.length)return;flushing=true;
   var chunk=backlog.slice(0,200);
-  api("/api/phone_batch",{items:chunk}).then(function(){backlog.splice(0,chunk.length);flushing=false;flush()})
+  api("/api/phone_batch",{items:chunk}).then(function(r){flushing=false;if(r&&r.stored===chunk.length){backlog.splice(0,chunk.length);flush()}})
     .catch(function(){flushing=false});
 }
 setInterval(function(){
@@ -87,7 +100,9 @@ setInterval(function(){
   api("/api/phone",d).then(function(){offline=false;showLink();flush()}).catch(function(){
     offline=true;backlog.push(d);if(backlog.length>7200)backlog.shift();showLink()});
 },1000);
-document.addEventListener("visibilitychange",function(){if(!document.hidden&&sensorsOn&&navigator.wakeLock)navigator.wakeLock.request("screen").then(function(w){wake=w}).catch(function(){})});
+function showSens(){var s=$("sens");if(s)s.hidden=sensorsOn||!(S.step>=2&&S.step<=4)}
+$("sensbtn").onclick=function(){startSensors()};
+document.addEventListener("visibilitychange",function(){if(!document.hidden&&sensorsOn)watchGps();if(!document.hidden&&sensorsOn&&navigator.wakeLock)navigator.wakeLock.request("screen").then(function(w){wake=w}).catch(function(){})});
 
 // ── operator ────────────────────────────────────────────────────
 function chk(id){return (S.checks||[]).filter(function(c){return c.id===id})[0]||{status:"wait",label:id,detail:""}}
@@ -103,13 +118,13 @@ function renderOp(){
     var ids=["camera","phone_gps","phone_tilt","clock"];
     h=step(1,"Connect the phone",'<p>Tap the button, then allow location and motion when the phone asks.</p><div class="stack" style="margin-top:12px">'+
       '<button class="main" id="allow"'+(sensorsOn?' disabled':'')+'>'+(sensorsOn?'Sharing with the Jetson':'Allow GPS and sensors')+'</button></div>'+
-      checkRows(ids)+'<button class="main" id="next"'+(allOk(ids)?'':' disabled')+'>Next</button>');
+      checkRows(ids)+'<button class="main" id="next"'+(allOk(ids)?'':' disabled')+'>Next</button>'+(allOk(ids)?'':'<button id="skip" style="margin-top:10px">Continue anyway</button>'));
   }else if(n===2){
     var lv=chk("level"),ok=lv.status==="ok";
     h=step(2,"Mount the camera",'<p>Camera pointing straight up on the roof. Fix the phone flat beside it, screen up, top edge towards the front of the car.</p>'+
       '<div style="margin:14px 0"><div class="big" style="color:var(--'+({ok:"ok",wait:"warn",bad:"bad"})[lv.status]+')">'+esc((lv.detail||"").split(" ")[0]||"–")+'°</div><p class="mute">off vertical. Under 1° is good. Adjust the mount until it is green.</p></div>'+
       '<div class="stack"><button id="mc" '+(ok?'':'disabled')+'>'+(S.mount_confirmed?'Phone is fixed (tap to undo)':'The phone is fixed beside the camera')+'</button>'+
-      '<button class="main" id="next" '+(ok&&S.mount_confirmed?'':'disabled')+'>Next</button></div>');
+      '<button class="main" id="next" '+(ok&&S.mount_confirmed?'':'disabled')+'>Next</button>'+(ok&&S.mount_confirmed?'':'<button id="skip">Continue anyway</button>')+'</div>');
   }else if(n===3){
     var st=chk("stars"),ids=["stars"];
     h=step(3,"Check the sky",'<p>Park away from street lights. Wait for the stars to reach the number needed.</p>'+
@@ -121,12 +136,12 @@ function renderOp(){
     var f=S.last_fix||{};
     h=prog(4)+'<section class="card"><p class="mute mono">Step 4 of 5 · recording '+esc(S.recording||"")+'</p><h3>Drive</h3>'+
       '<p>Keep the screen on. Drive normally. Straight roads are best.</p>'+
-      '<div class="grid" style="margin:14px 0"><div class="m"><div class="v">'+(S.frames||0)+'</div><div class="l">frames</div></div>'+
-      '<div class="m"><div class="v">'+((S.live||{}).confirmed==null?"–":S.live.confirmed)+'</div><div class="l">stars now</div></div>'+
-      '<div class="m"><div class="v">'+(f.err_km==null?"–":f.err_km+" km")+'</div><div class="l">last error</div></div></div>'+
-      '<img class="pv" id="pv" alt="Camera view">'+checkRows(["phone_gps","level","stars"])+
+      '<div class="grid" style="margin:14px 0"><div class="m"><div class="v" id="v_frames">'+(S.frames||0)+'</div><div class="l">frames</div></div>'+
+      '<div class="m"><div class="v" id="v_stars">'+((S.live||{}).confirmed==null?"–":S.live.confirmed)+'</div><div class="l">stars now</div></div>'+
+      '<div class="m"><div class="v" id="v_err">'+(f.err_km==null?"–":f.err_km+" km")+'</div><div class="l">last error</div></div></div>'+
+      '<img class="pv" id="pv" alt="Camera view">'+checkRows(["camera","phone_gps","phone_tilt","level","stars"])+
       '<div class="stack"><input type="text" id="note" placeholder="Note (rain, tunnel, cloud...)" maxlength="200"><button id="sendnote">Save note</button>'+
-      '<button id="mark">Mark this moment</button><button class="main" id="finish">Finish the test</button></div></section>';
+      '<button id="mark">Mark this moment</button><button class="main" id="finish">'+(finishSure?'Tap again to finish':'Finish the test')+'</button></div></section>';
   }else{
     h=prog(6)+'<section class="card"><h3>Test saved</h3><p>Name: <b class="mono">'+esc(S.done||"")+'</b></p>'+
       '<p class="mute" style="margin:10px 0 14px">Everything is saved on the Jetson. The owner reads it in Results. Nothing else to do.</p>'+
@@ -140,23 +155,30 @@ function renderOp(){
 function bind(){
   var on=function(i,f){var e=$(i);if(e)e.onclick=f};
   on("allow",function(){startSensors();renderOp()});
+  on("skip",function(){api("/api/step",{to:(S.step||1)+1}).then(function(s){S=s;renderOp()})});
   on("next",function(){api("/api/step",{to:(S.step||1)+1}).then(function(s){S=s;renderOp()})});
   on("mc",function(){api("/api/mount",{confirmed:!S.mount_confirmed}).then(poll)});
   on("force",function(){api("/api/step",{to:4}).then(function(s){S=s;renderOp()})});
-  on("finish",function(){if(!this.dataset.sure){this.dataset.sure=1;this.textContent="Tap again to finish";return}api("/api/step",{to:5}).then(function(s){S=s;renderOp()})});
+  on("finish",function(){if(!finishSure){finishSure=true;this.textContent="Tap again to finish";setTimeout(function(){finishSure=false;if($("finish"))$("finish").textContent="Finish the test"},8000);return}
+    finishSure=false;api("/api/step",{to:5}).then(function(s){S=s;renderOp()})});
   on("sendnote",function(){var t=$("note").value;if(t){api("/api/note",{text:t});$("note").value="";this.textContent="Saved"}});
   on("mark",function(){api("/api/mark",{text:"mark"});this.textContent="Marked"});
   on("seeres",function(){show(2);loadList(S.done)});
   on("again",function(){api("/api/mount",{confirmed:false});api("/api/step",{to:1}).then(function(s){S=s;renderOp()})});
 }
 function updateLive(){
+  var a=$("v_frames");if(a)a.textContent=S.frames||0;
+  a=$("v_stars");if(a)a.textContent=(S.live||{}).confirmed==null?"–":S.live.confirmed;
+  a=$("v_err");if(a)a.textContent=(S.last_fix||{}).err_km==null?"–":S.last_fix.err_km+" km";
   var pv=$("pv");if(pv)pv.src="/api/preview.jpg?"+Date.now();
   var r=$("rej");if(r){var j=(S.live||{}).rejected||{},k=Object.keys(j);r.textContent=k.length?k.map(function(x){return j[x]+" "+x}).join(", "):"nothing rejected"}
 }
-var lastKey="";
+var lastKey="",finishSure=false;
 function poll(){
   api("/api/state").then(function(s){S=s;
-    var key=JSON.stringify([s.step,s.mount_confirmed,(s.checks||[]).map(function(c){return c.status+c.detail+c.label}),s.frames,s.done,s.last_fix,sensorsOn]);
+    var live=s.step===4?(s.checks||[]).map(function(c){return c.id+c.status}):(s.checks||[]).map(function(c){return c.status+c.detail+c.label});
+    var key=JSON.stringify([s.step,s.mount_confirmed,live,s.step===4?0:s.frames,s.done,s.step===4?0:s.last_fix,sensorsOn]);
+    showSens();if(s.disk_error)toast("Cannot save to the disk of the Jetson - tell the owner now.");
     if(key!==lastKey&&tab===1){lastKey=key;renderOp()}
     if(tab===1)updateLive();
   }).catch(function(){});

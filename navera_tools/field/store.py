@@ -30,6 +30,7 @@ class FieldSession:
         self._lock = threading.Lock()
         self._files = {}
         self._last_sync = 0.0
+        self.io_error = None
         self.meta = {"id": name, "started": time.time(), "ended": None, "software": _software_version(),
                      **(meta or {})}
         self._write_meta()
@@ -48,27 +49,51 @@ class FieldSession:
             self.meta.update(kw)
             self._write_meta()
 
+    @classmethod
+    def resume(cls, folder: str) -> "FieldSession":
+        """Reopen a test the server was stopped in the middle of: new lines are appended to the same files."""
+        self = cls.__new__(cls)
+        self.dir, self.id = folder, os.path.basename(folder.rstrip("/"))
+        self._lock = threading.Lock()
+        self._files = {}
+        self._last_sync = 0.0
+        self.io_error = None
+        with open(os.path.join(folder, "session.json")) as f:
+            self.meta = json.load(f)
+        self.meta["ended"] = None
+        os.makedirs(os.path.join(folder, "frames"), exist_ok=True)
+        self.event("resumed")
+        return self
+
     def log(self, stream: str, record: dict):
+        """Append one line. A disk error is remembered (self.io_error) and never raised: the test goes on."""
         record = {"t": time.time(), **record}
         line = json.dumps(record, default=str, separators=(",", ":")) + "\n"
-        with self._lock:
-            f = self._files.get(stream)
-            if f is None:
-                f = self._files[stream] = open(os.path.join(self.dir, stream + ".jsonl"), "a")
-            f.write(line)
-            f.flush()
-            if time.time() - self._last_sync > 1.0:
-                for g in self._files.values():
-                    os.fsync(g.fileno())
-                self._last_sync = time.time()
+        try:
+            with self._lock:
+                f = self._files.get(stream)
+                if f is None:
+                    f = self._files[stream] = open(os.path.join(self.dir, stream + ".jsonl"), "a")
+                f.write(line)
+                f.flush()
+                if time.time() - self._last_sync > 1.0:
+                    for g in self._files.values():
+                        os.fsync(g.fileno())
+                    self._last_sync = time.time()
+        except OSError as e:
+            self.io_error = repr(e)
 
     def event(self, kind: str, **kw):
         self.log("events", {"kind": kind, **kw})
 
     def save_frame(self, idx: int, jpeg: bytes) -> str:
         rel = os.path.join("frames", f"frame_{idx:06d}.jpg")
-        with open(os.path.join(self.dir, rel), "wb") as f:
-            f.write(jpeg)
+        try:
+            with open(os.path.join(self.dir, rel), "wb") as f:
+                f.write(jpeg)
+        except OSError as e:
+            self.io_error = repr(e)
+            return None
         return rel
 
     def close(self):

@@ -140,9 +140,37 @@ class Field:
         self.interval_s = float(os.environ.get("NAVERA_FIELD_INTERVAL_S", "20"))
         self.last_solve_t = 0.0
         self.solving = False
+        self.solving_since = 0.0
+        self.go_lock = threading.RLock()
+        self.cam_ok = True
+        self.last_done = None
         self.last_fix: dict = {}
         self.usable_skies = ("clear", "hazy")       # the only skies whose stars count and are solved
+        self._recover()
         threading.Thread(target=self._loop, daemon=True).start()
+
+    def _recover(self):
+        """The server was stopped or crashed in the middle of a test: close the old ones with a report and
+        carry on in the newest if it is recent, so the operator does not have to start again."""
+        from navera_tools.field.store import read_jsonl
+        open_ones = [m for m in list_sessions(self.root) if m.get("ended") is None]
+        for i, m in enumerate(open_ones):                           # newest first
+            folder = os.path.join(self.root, m["id"])
+            frames = read_jsonl(os.path.join(folder, "frames.jsonl"))
+            stamps = [x.get("t", 0) for x in frames if isinstance(x, dict)] or [m.get("started", 0)]
+            if i == 0 and time.time() - max(stamps) < 6 * 3600:
+                self.session = FieldSession.resume(folder)
+                self.frame_idx = max([x.get("idx", 0) for x in frames if isinstance(x, dict)] or [0])
+                self.step, self.mount_confirmed = 4, True
+                log(f"resumed the unfinished test {m['id']} at frame {self.frame_idx}")
+            else:
+                try:
+                    s = FieldSession.resume(folder)
+                    s.event("interrupted")
+                    s.close()
+                    report_mod.write_report(folder)
+                except Exception as e:
+                    log(f"could not close {m['id']}: {e!r}")
 
     # ── phone ───────────────────────────────────────────────────────────
     def on_phone(self, d: dict):
@@ -160,7 +188,7 @@ class Field:
         (its clock plus the measured offset), so the truth has no hole where the link dropped."""
         sess = self.session
         if sess is None:
-            return 0
+            return 0            # the page keeps its readings until a test is recording
         off = self.clock_offset_s() or 0.0
         n = 0
         for d in items[:500]:
@@ -177,6 +205,8 @@ class Field:
         rec = {k: d.get(k) for k in ("lat", "lon", "acc", "alt", "speed", "course", "beta", "gamma", "compass")}
         if d.get("gps_t_ms") is not None and d.get("phone_t_ms") is not None:
             rec["gps_age_s"] = round((float(d["phone_t_ms"]) - float(d["gps_t_ms"])) / 1000.0, 1)
+        if d.get("tilt_t_ms") is not None and d.get("phone_t_ms") is not None:
+            rec["tilt_age_s"] = round((float(d["phone_t_ms"]) - float(d["tilt_t_ms"])) / 1000.0, 1)
         if d.get("gpsError"):
             rec["gps_error"] = str(d["gpsError"])[:80]
         if d.get("beta") is not None and d.get("gamma") is not None:
@@ -210,11 +240,13 @@ class Field:
             out.append({"id": i, "label": label, "status": status, "detail": detail})
 
         _, t = self.camera.latest()
+        if self.session is not None and self.session.io_error:
+            add("disk", "Saving to disk", "bad", self.session.io_error[:80])
         add("camera", "Camera running", "ok" if t and now - t < 3 else "bad", self.camera.error or "")
         add("phone_gps", "Phone sharing GPS", "bad" if not fresh or acc is None else ("ok" if acc <= 30 else "wait"),
             "no GPS from the phone: allow location on the page" if not fresh or acc is None else f"accuracy {acc:.0f} m")
         add("phone_tilt", "Phone sharing tilt", "ok" if att else "bad", "" if att else "allow motion sensors on the page")
-        add("clock", "Phone clock matches Jetson", "wait" if off is None else ("ok" if abs(off) <= 0.5 else "bad"),
+        add("clock", "Phone clock matches Jetson", "wait" if off is None else ("ok" if abs(off) <= 1.0 else "bad"),
             "" if off is None else f"{off:+.2f} s")
         if att:
             add("level", "Camera pointing straight up", "ok" if att["off"] <= 1.0 else ("wait" if att["off"] <= 3.0 else "bad"),
@@ -239,7 +271,19 @@ class Field:
             t0 = time.time()
             try:
                 img, texp = self.camera.latest()
-                if img is not None:
+                if (img is not None) != self.cam_ok:
+                    self.cam_ok = img is not None
+                    if self.session is not None:
+                        self.session.event("camera_back" if self.cam_ok else "camera_lost", error=self.camera.error)
+                if img is None:
+                    self.live, self.preview = {}, b""
+                    s = self.session
+                    if s is not None and self.step == 4 and time.time() - self.last_solve_t >= self.interval_s:
+                        self.last_solve_t = time.time()
+                        self.frame_idx += 1
+                        s.log("frames", {"idx": self.frame_idx, "solved": False, "why": "no camera frame",
+                                         "sky": None})
+                else:
                     det = detect(img)
                     res = self.tracker.update(det)
                     # only a clear or hazy night sky gives stars to count; anything else is not navigation data
@@ -271,8 +315,13 @@ class Field:
     # ── solving ─────────────────────────────────────────────────────────
     def _maybe_solve(self, img, texp):
         s = self.session
-        if s is None or self.step != 4 or self.solving or time.time() - self.last_solve_t < self.interval_s:
+        if s is None or self.step != 4 or time.time() - self.last_solve_t < self.interval_s:
             return
+        if self.solving:
+            if time.time() - self.solving_since < 90:
+                return
+            self.solving = False                       # a hung solver must not stop the recording for good
+            s.event("solver_hung", since_s=round(time.time() - self.solving_since))
         self.last_solve_t = time.time()
         self.frame_idx += 1
         idx, live, att = self.frame_idx, dict(self.live), self._attitude()
@@ -296,13 +345,13 @@ class Field:
             rec["why"] = why
             s.log("frames", rec)
             return
-        self.solving = True
+        self.solving, self.solving_since = True, time.time()
         threading.Thread(target=self._solve, args=(s, rec, jpg.tobytes(), att, texp), daemon=True).start()
 
     def _solve(self, s, rec, jpg, att, texp):
         import base64
-        from cn_pkg.nodes.solver import solve_image_b64_geoloc
         try:
+            from cn_pkg.nodes.solver import solve_image_b64_geoloc
             off = self.clock_offset_s() or 0.0
             utc_epoch = texp - off                    # phone time = Jetson time - offset
             utc = datetime.fromtimestamp(utc_epoch, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -319,7 +368,7 @@ class Field:
                                        prior_lat, prior_lon, self.camera.hfov)
             rec["solve_s"] = round(time.time() - t0, 1)
             rec["utc_used"] = utc
-            rec["prior"] = [prior_lat, prior_lon]
+            rec["prior"] = None if prior_lat != prior_lat else [prior_lat, prior_lon]
             if r.get("success"):
                 sigma = ATTITUDE_SIGMA_DEG * report_mod.KM_PER_DEGREE + abs(off) * report_mod.SKY_KM_PER_SECOND
                 rec.update(solved=True, lat=r["predicted_lat"], lon=r["predicted_lon"], ra=r.get("ra_deg"),
@@ -340,22 +389,36 @@ class Field:
 
     # ── session control ─────────────────────────────────────────────────
     def go(self, step):
-        step = int(step)
-        if step == 4 and self.session is None:
-            self.session = FieldSession(self.root, {"camera_device": self.camera.device,
-                                                    "calibration": self.camera.cal_path, "interval_s": self.interval_s,
-                                                    "min_stars": MIN_STARS, "attitude_sigma_deg": ATTITUDE_SIGMA_DEG,
-                                                    "clock_offset_s": self.clock_offset_s(),
-                                                    "operator_note": ""})
-            self.frame_idx = 0
-            self.last_solve_t = 0.0
-            self.tracker.__init__()
-            self.session.event("step", to=4)
-        elif step == 5 and self.session is not None:
-            self.finish()
-        elif self.session is not None:
-            self.session.event("step", to=step)
-        self.step = step
+        """Move to a step. Only the page's own order is allowed, so a second phone or a double tap cannot wreck a test."""
+        try:
+            step = int(step)
+        except (TypeError, ValueError):
+            return
+        with self.go_lock:
+            if step not in (1, 2, 3, 4, 5):
+                return
+            if self.session is not None and step not in (4, 5):
+                return                                   # recording: only "finish" leaves step 4
+            if step == 4 and self.session is not None:
+                return                                   # already recording (double tap)
+            if step == 5 and self.session is None:
+                return
+            if step == 4 and self.step != 3:
+                return
+            if step == 4:
+                self.session = FieldSession(self.root, {"camera_device": self.camera.device,
+                                                        "calibration": self.camera.cal_path, "interval_s": self.interval_s,
+                                                        "min_stars": MIN_STARS, "attitude_sigma_deg": ATTITUDE_SIGMA_DEG,
+                                                        "clock_offset_s": self.clock_offset_s(),
+                                                        "operator_note": ""})
+                self.frame_idx = 0
+                self.last_solve_t = 0.0
+                self.tracker = type(self.tracker)()
+                self.session.event("step", to=4)
+            elif step == 5:
+                self.finish()
+                return
+            self.step = step
 
     def finish(self):
         s = self.session
@@ -364,12 +427,16 @@ class Field:
         deadline = time.time() + 60
         while self.solving and time.time() < deadline:
             time.sleep(0.5)
-        s.update_meta(clock_offset_s=self.clock_offset_s())
-        s.event("step", to=5)
-        s.close()
-        r = report_mod.write_report(s.dir)
-        s.update_meta(verdict=r["verdict"], frames=r["frames"], solved=r["solved"],
-                      problems=[p["id"] for p in r["problems"]])
+        r = None
+        try:
+            s.update_meta(clock_offset_s=self.clock_offset_s())
+            s.event("step", to=5)
+            s.close()
+            r = report_mod.write_report(s.dir)
+            s.update_meta(verdict=r["verdict"], frames=r["frames"], solved=r["solved"],
+                          problems=[p["id"] for p in r["problems"]])
+        except Exception as e:                       # whatever failed, the operator must get out of step 4
+            log(f"finish error: {e!r}")
         self.session = None
         self.step = 5
         self.last_done = s.id
@@ -380,7 +447,7 @@ class Field:
         return {"step": self.step, "checks": self.checks(), "live": self.live, "mount_confirmed": self.mount_confirmed,
                 "recording": s.id if s else None, "frames": self.frame_idx if s else 0,
                 "last_fix": self.last_fix, "solving": self.solving, "interval_s": self.interval_s,
-                "done": getattr(self, "last_done", None), "server_time_ms": int(time.time() * 1000)}
+                "done": self.last_done, "disk_error": bool(s and s.io_error), "server_time_ms": int(time.time() * 1000)}
 
 
 # ── HTTP ────────────────────────────────────────────────────────────────
@@ -402,7 +469,15 @@ def make_handler(field: Field):
             self.wfile.write(body)
 
         def _json(self, obj, code=200):
-            self._send(code, "application/json", json.dumps(obj, allow_nan=False, default=str).encode())
+            def clean(x):
+                if isinstance(x, float) and not math.isfinite(x):
+                    return None
+                if isinstance(x, dict):
+                    return {k: clean(v) for k, v in x.items()}
+                if isinstance(x, (list, tuple)):
+                    return [clean(v) for v in x]
+                return x
+            self._send(code, "application/json", json.dumps(clean(obj), default=str).encode())
 
         def _body(self):
             n = int(self.headers.get("Content-Length") or 0)
@@ -424,6 +499,8 @@ def make_handler(field: Field):
             cookie = self.headers.get("Cookie", "")
             have = next((c.split("=", 1)[1] for c in (x.strip() for x in cookie.split(";")) if c.startswith("navera_k=")), "")
             given = (query.get("k") or [have])[0]
+            if not given or not field.key:
+                return False
             return hmac.compare_digest(given.encode(), field.key.encode())
 
         def _deny(self):
@@ -509,15 +586,23 @@ def make_handler(field: Field):
 
 
 def access_key(root):
-    """The secret in the operator's link. Kept in <root>/access_key.txt; delete the file for a new link."""
+    """The secret in the operator's link. Kept in <root>/access_key.txt; delete the file for a new link.
+    A missing, empty or short key is replaced, so the link can never be open to everyone."""
     p = os.path.join(root, "access_key.txt")
-    if not os.path.exists(p):
+    key = ""
+    if os.path.exists(p):
+        with open(p) as f:
+            key = f.read().strip()
+    if len(key) < 8:
         import secrets
-        with open(p, "w") as f:
-            f.write(secrets.token_urlsafe(12))
-        os.chmod(p, 0o600)
-    with open(p) as f:
-        return f.read().strip()
+        key = secrets.token_urlsafe(12)
+        with open(p + ".tmp", "w") as f:
+            f.write(key)
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(p + ".tmp", 0o600)
+        os.replace(p + ".tmp", p)
+    return key
 
 
 def ensure_certificate(tls_dir):
@@ -567,6 +652,8 @@ def main():
         links = [f"https://{ip}:{port}/field?k={field.key}" for ip in ips]
         log("(on the local network the phone warns about the certificate once: Advanced, then continue)")
     httpd.daemon_threads = True
+    import signal
+    signal.signal(signal.SIGTERM, lambda *a: (_ for _ in ()).throw(KeyboardInterrupt()))
     with open(os.path.join(root, "LINK.txt"), "w") as f:
         f.write("\n".join(links) + "\n")
     for link in links:
