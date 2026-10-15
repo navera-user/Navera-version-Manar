@@ -191,6 +191,9 @@ def tilenet_problem(net):
                 y = F.max_pool2d(F.relu(c(y)), 2)
     except Exception as ex:                                              # noqa: BLE001
         return f"the four blocks stop with {type(ex).__name__}: {ex}"
+    if y.shape[1] != 128:
+        return (f"after conv4 there are {y.shape[1]} maps, the rule gives 128: each block doubles the maps only UNTIL "
+                "they reach DIM = 128, then keeps 128 (lab Step 8)")
     if tuple(y.shape) != (1, 128, 4, 4):
         return (f"after conv4 the maps are {tuple(y.shape)}, the rule gives (1, 128, 4, 4): padding=1 keeps the width "
                 "and height, each pooling halves them (lab Step 8, hint 1)")
@@ -375,7 +378,7 @@ def embed():
     db = open_map()
     probe = np.stack([decode_tile(read_tile(db, 17, int(x), int(y))) for x, y in idx["xy"][:4]])
     t0 = time.time()
-    with torch_device() as dev:
+    with torch_device(wait_s=120) as dev:         # a few seconds of GPU; after 2 min waiting the CPU (≈ 3 min) is faster
         print(f"DINOv2 on {dev} ...", flush=True)
         model = R.load_dino(dev)
         mine = R.embed_dino(model, probe, dev)
@@ -591,8 +594,7 @@ def train_child(job):
         ctx = torch_device(cpu_ok=False) if job["device"] != "cpu" else contextlib.nullcontext("cpu")
         dev = ctx.__enter__()
     except NoGpuSlot as ex:
-        sys.exit(f"{ex}\nThis network is too heavy for the CPU (it would take hours and stay below the check's bar): "
-                 "ask your teacher, then run the same `train` command again.")
+        sys.exit(f"{ex}")
     try:
         limit_threads()
         print(f"training on {dev}: {job['n_train']} pairs, {job['epochs']} epochs, batch {job['batch']}, tau "
@@ -678,7 +680,7 @@ def sweep(finder="mine", weights="my_tiles.pt"):
     result = {"finder": finder, "photos": len(ps), "rows": []}
     t_all = time.time()
     print(f"{len(ps)} photos; each σ twice: 'fine only' searches the whole circle with local matching, 'retrieval' asks"
-          f" the finder ({finder}) for 3 tiles first. About 5 minutes — read lesson §8 meanwhile.\n", flush=True)
+          f" the finder ({finder}) for 3 tiles first. About 3 to 5 minutes — read lesson §9 meanwhile.\n", flush=True)
     rows_out = []
     for s in SWEEP_SIGMAS:
         for mode in ("fine only", "retrieval"):

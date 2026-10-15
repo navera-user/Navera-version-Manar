@@ -34,7 +34,7 @@
 **You need:** tiles and `pixel_to_latlon` (mission 07), `like_map` (08), the ground sampling distance (18), PyTorch,
 a training loop, the triplet loss and train/validation splits (21), the ratio test, RANSAC and the similarity fit
 (22), linear percentiles (CONVENTIONS). ⏱ Reading: about 110 minutes with the ✏️ checks (Part A, §1–§6, before
-session 1, about 70 minutes; Part B, §7–§9, before session 2). Lab: 5 h 30 to 8 h in two sessions (up to 10 h if PyTorch is still new).
+session 1, about 70 minutes; Part B, §7–§9, before session 2). Reading and lab together: 5 h 30 to 8 h in two sessions (up to 10 h if PyTorch is still new).
 
 **Before you start** — answer without looking (if you miss two, reread mission 07 §4, mission 21 §8 and mission 22 §3):
 
@@ -254,11 +254,12 @@ the network to ignore it; a change you do not show, it will not ignore. Tiles th
 are left out: all alike, they cannot teach which place is which. And the split is **by place**: training pairs from
 the north of the map, validation pairs from the south, and the lab's photos from Sousse, which training never sees.
 
-**The loss: InfoNCE.** In a batch of B pairs, compute every similarity za[i]·zp[j] (B × B numbers). Row i is a
-classification with B answers, and the right answer is j = i (the diagonal). Divide the row by a **temperature** τ,
-turn it into probabilities with a softmax, and take −log of the probability of the right answer. The loss is the mean
-over the rows. In words: for each map tile, "which of the B views in this batch is mine?", a multiple-choice question
-with B answers; the loss is small when the network puts its probability on the right one. Every other view of the batch is a negative, for free.
+**The loss: InfoNCE.** In words: for each map tile, "which of the B views in this batch is mine?", a multiple-choice
+question with B answers; the loss is small when the network puts its probability on the right one. The recipe: in a
+batch of B pairs, compute every similarity za[i]·zp[j] (B × B numbers). Row i is a classification with B answers, and
+the right answer is j = i (the diagonal). Divide the row by a **temperature** τ, turn it into probabilities with a
+softmax, and take −log of the probability of the right answer. The loss is the mean over the rows. Every other view of
+the batch is a negative, for free.
 
 ![InfoNCE: each row of the similarity matrix must pick its own diagonal](assets/infonce.svg)
 
@@ -312,7 +313,8 @@ the same corners, so one match per map keypoint is also kept); then a **similari
 
 RANSAC always returns its best fit, even over the sea. The **gates** decide whether to believe it (NAVERA's values):
 
-1. **enough inliers**: at least 6;
+1. **enough inliers**: at least 6 (the value of NAVERA's validation report of 3 October 2026; its current setting is
+   8, after more bench frames);
 2. **the right scale**: the photo was brought to the map's scale from the height, so the right place fits with a scale
    s = ‖first column of A‖ ≈ 1. A random fit at a wrong place can have any scale: |s − 1| ≤ 0.15 or no fix.
 
@@ -402,7 +404,7 @@ and over the whole map without a prior it was off by 1 696 m. Whole-map search i
 therefore disabled: day vision waits for a prior. The default since 1 October 2026 is **local feature matching**: the
 frame is scaled to the map's resolution from the altitude and the camera's field of view, its SIFT features are matched
 with those of the tiles in the search circle, a rotation + scale + translation is fitted with RANSAC, and a match is
-accepted only with at least 6 inliers **and** a fitted scale within ±15 % of the one the altitude predicts. Measured on
+accepted only with at least 6 inliers (8 in its current setting) **and** a fitted scale within ±15 % of the one the altitude predicts. Measured on
 33 aerial bench frames from another source than the map (not NAVERA's camera): 30/33 placed, median 4 m, worst 5 m,
 no wrong position accepted, 0.11 s per frame on the GPU. The search radius is three times the predicted σ, between
 80 m and 1 500 m. Positions are stated at 30 m until they are measured with the real camera. Over uniform terrain the

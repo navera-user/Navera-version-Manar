@@ -43,8 +43,8 @@ tiles of the test area (lat 35.77–35.87, lon 10.55–10.68). Search radius 600
   **MED_MINE_400 = 215** (two default runs: 215 and 215 m — the runner sets cudnn.deterministic, so the same code gives the same weights — GPU runs are not bit-identical). **MED_DINO_400 =
   240**, prior 494, random 874 (σ 400 m, lab photos).
 - Step 10 (one experiment, σ 400 m lab median; reference runs): defaults 215 m; `--no-augment` **813 m** (worse than the prior: it never saw black corners, light or blur); `--shift 0` 483 m; `--n-train 2000` 555 m; `--tau 0.5` 473 m. Every single change hurts; the reference exp.pt is the --no-augment run (EXP_MEDIAN = 813).
-- Step 11 (`speed`, CPU, 2 threads, busy Jetson): DINOv2 1 319 ms, TileNet 7.5 ms per photo (22 056 576 vs 257 344
-  parameters).
+- Step 11 (`speed`, CPU, 2 threads): DINOv2 0.5–4.3 s, TileNet 7–72 ms per photo depending on the Jetson's load (measured
+  1 319 / 7.5, 565 / 16.6, 3 075 / 71.6, 4 299 / 64.7 ms); the ratio (≈ 40–175×) is what matters (22 056 576 vs 257 344 parameters).
 - Step 13: **LOCAL_ERR_P02 = 3.0 m** (σ 50 m prior, r 150 m). p01 (sea): "0 inliers (min 6)"; p02 with σ 400 m:
   "circle too large for one patch (3 048 px > 2 000 px)".
 - Step 14 (`sweep`, 20 photos, finder my_tiles.pt): 
@@ -105,7 +105,7 @@ my_tiles.pt replaced by another file (fingerprint); exp.pt with the same setting
 - **CPU training** is a poor fallback here (a 64 × 64 colour CNN): `--device cpu --n-train 3000 --epochs 6` took
   41 min on a busy Jetson and gave 712 m at σ 400 m on the lab photos (worse than the prior) (hidden far above the bar). Students should wait for a GPU slot (3 in the class).
 - Copies: the log stores the student's workspace name (ACADEMY_STUDENT) and the file name; a file copied together
-  with its log from a classmate is refused. A student who edits the JSON by hand can still pass — compare
+  with its log from a classmate is refused, and so is a log without the field (the reference logs say "_reference"). A student who edits the JSON by hand can still pass — compare
   logs/*.json "seconds" and "history" across the class if in doubt.
 - `embed` refuses a wrong preprocess (difference > 0.02) before embedding the photos: the most common silent bug.
 - `sweep` takes ≈ 3 min, `run` ≈ 2–3 min (SIFT on CPU), more on a busy machine.

@@ -226,10 +226,9 @@ TOL = {"P90_DINO": 15.0, "P90_PRIOR": 1.0, "MED_DINO": 8.0, "MED_PRIOR": 1.0, "M
         hint="Copy the medians printed by `python3 run_locate.py retrieve` (σ 200 m), `retrieve --sigma 800` and "
              "`retrieve --sigma 400` (no decimals), then explain in your own words.")
 def _():
-    (pl, npatch, pd, md, mp, mr, mb, p9d, p9p, why_b, md8, mp8, why_s, worst, why_sc, md4) = answers(
+    (pl, npatch, pd, md, mp, mr, mb, p9d, p9p, why_b, md8, mp8, why_s, worst, why_sc) = answers(
         "PREDICT_LOOK", "N_PATCHES", "PREDICT_DINO", "MED_DINO", "MED_PRIOR", "MED_RANDOM", "MED_BEST", "P90_DINO",
-        "P90_PRIOR", "EXPLAIN_BASELINE", "MED_DINO_800", "MED_PRIOR_800", "EXPLAIN_SIGMA", "WORST_TERRAIN", "EXPLAIN_SCORE",
-        "MED_DINO_400")
+        "P90_PRIOR", "EXPLAIN_BASELINE", "MED_DINO_800", "MED_PRIOR_800", "EXPLAIN_SIGMA", "WORST_TERRAIN", "EXPLAIN_SCORE")
     predicted("PREDICT_LOOK", pl)
     n = number(npatch, "N_PATCHES")
     if n == 16:
@@ -237,7 +236,7 @@ def _():
     c.eq(int(n), 256, "N_PATCHES")
     predicted("PREDICT_DINO", pd)
     vals = {"MED_DINO": md, "MED_PRIOR": mp, "MED_RANDOM": mr, "MED_BEST": mb, "MED_DINO_800": md8,
-            "MED_PRIOR_800": mp8, "MED_DINO_400": md4, "P90_DINO": p9d, "P90_PRIOR": p9p}
+            "MED_PRIOR_800": mp8, "P90_DINO": p9d, "P90_PRIOR": p9p}
     got = {k: number(v, k) for k, v in vals.items()}
     if abs(got["MED_DINO"] - REF["MED_PRIOR"]) < 1 and abs(got["MED_PRIOR"] - REF["MED_DINO"]) < 9:
         raise CheckFailed("MED_DINO and MED_PRIOR are swapped: retrieval is the first line of the table")
@@ -409,8 +408,9 @@ def run_log(name):
         raise CheckFailed(f"logs/{name}.json describes {log.get('weights')!r}, not {name}: train {name} itself with "
                           "the runner (`--out " + name + "`)")
     me = os.environ.get("ACADEMY_STUDENT")
-    if me and log.get("student") not in (None, "", me):
-        raise CheckFailed(f"{name} and its log were not trained in your workspace: train your own (Step 9 / 10)")
+    if me and log.get("student") not in (me, "_reference"):
+        raise CheckFailed(f"{name} and its log were not trained in your workspace (or the log was edited): train your "
+                          "own (Step 9 / 10)")
     return log
 
 
@@ -490,12 +490,13 @@ def _():
 EXP_KEYS = ("n_train", "epochs", "batch", "tau", "shift", "augment")
 
 
-@c.test("Steps 7–11: your network's numbers, one experiment, the cost",
+@c.test("Steps 7–11: your network's numbers (and DINOv2 at σ 400 m), one experiment, the cost",
         hint="N_PARAMS: count each layer's weights and biases (lab Step 8). Copy MED_MINE_400 and EXP_MEDIAN from the "
              "last line of each `train`, MS_… from `speed`. The experiment changes ONE setting of my_tiles.pt's run.")
 def _():
-    (why_p, npar, mm4, pe, em, why_e, msd, msm, why_c) = answers(
-        "EXPLAIN_PAIRS", "N_PARAMS", "MED_MINE_400", "PREDICT_EXPERIMENT", "EXP_MEDIAN", "EXPLAIN_EXPERIMENT",
+    (why_p, npar, mm4, md4, pe, em, why_e, msd, msm, why_c) = answers(
+        "EXPLAIN_PAIRS", "N_PARAMS", "MED_MINE_400", "MED_DINO_400", "PREDICT_EXPERIMENT", "EXP_MEDIAN",
+        "EXPLAIN_EXPERIMENT",
         "MS_DINO", "MS_MINE", "EXPLAIN_CHOICE")
     explained("EXPLAIN_PAIRS", why_p,
               ((r"offset", r"anywhere", r"not cent", r"shift", r"inside", r"never cent", r"real photo", r"random place",
@@ -516,6 +517,9 @@ def _():
         raise CheckFailed("logs/my_tiles.pt.json has no retrieval result: train my_tiles.pt again with the runner")
     c.ok(abs(number(mm4, "MED_MINE_400") - logged) <= 1.0, f"MED_MINE_400 = {mm4}, but the log of your my_tiles.pt says "
          f"{logged:.0f} m (the last line of `train`)")
+    md4 = number(md4, "MED_DINO_400")
+    c.ok(abs(md4 - REF["MED_DINO_400"]) <= TOL["MED_DINO_400"], f"MED_DINO_400 = {md4:g}: the median of DINOv2 printed "
+         "by `retrieve --sigma 400` (Step 9)")
     predicted("PREDICT_EXPERIMENT", pe)
     flags = sum(bool(re.search(k, str(pe).lower())) for k in (r"aug", r"shift", r"n.?train|pairs|2000|2 000", r"tau|τ|temperat"))
     c.ok(flags >= 3, "PREDICT_EXPERIMENT should RANK the four flags (no-augment, shift 0, n-train 2000, tau 0.5), most "

@@ -200,7 +200,7 @@ class TileNet(nn.Module):
             (padding=1), then ReLU, then 2 × 2 max-pooling (half the width, half the height).
             conv1 turns the 3 colour maps into 32 maps; each next block DOUBLES the number of maps until it
             reaches DIM (the embedding's length), and from then on keeps it (halve the size, double the maps:
-            each block then costs about the same).
+            the middle blocks then cost about the same).
         then the MEAN of each of the last block's maps over its width and height (global average pooling: one
             number per map, wherever in the view a road or a block was seen),
         fc = one nn.Linear from those numbers to DIM, then each output row is divided by its length.

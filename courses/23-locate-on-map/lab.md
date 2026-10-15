@@ -3,7 +3,7 @@
 **Goal:** locate 80 drone photos on the map of Sousse. Run a pretrained network (DINOv2) as a finder and measure it
 against two baselines that use no picture; train your own finder and compare; then turn the best candidates into
 exact latitudes and longitudes with OpenCV, decide when the finder is worth running, and evaluate your whole chain.
-**Time:** 5 h 30 to 8 h in two sessions; up to 10 h if PyTorch is still new (GPU trainings may also wait for a free
+**Time (lesson reading included):** 5 h 30 to 8 h in two sessions; up to 10 h if PyTorch is still new (GPU trainings may also wait for a free
 slot).
 **Fast track:** write the TODOs from their docstrings without the 🧰 and "Stuck?" boxes, then do "Going further".
 
@@ -326,6 +326,12 @@ python3 run_locate.py train --no-augment --out exp.pt
 
 (with your flag instead of `--no-augment`). Write your result on the class board: the class gets the whole table.
 
+<details><summary>No class board? Open this only after you have trained exp.pt and written EXP_MEDIAN</summary>
+
+Reference runs (same code, σ 400 m, the 80 lab photos): defaults 215 m · `--tau 0.5` 473 m · `--shift 0` 483 m ·
+`--n-train 2000` 555 m · `--no-augment` 813 m (worse than staying at the prior, 494 m). Compare with your ranking.
+</details>
+
 > [!TASK]
 > Write `EXP_MEDIAN` (its last line) and `EXPLAIN_EXPERIMENT`: what changed, by how much, why — and, from the class
 > table, where your ranking was wrong. Keep the other settings as they were: the check compares `logs/exp.pt.json` with
@@ -405,7 +411,7 @@ python3 run_locate.py sweep
 ```
 
 It runs your `locate` on the first 20 photos for σ = 50, 100, 200 and 400 m, each twice: with retrieval switched off
-("fine only") and always on ("retrieval", with your `my_tiles.pt` as the finder). About 5 minutes: read lesson §9
+("fine only") and always on ("retrieval", with your `my_tiles.pt` as the finder). About 3 to 5 minutes: read lesson §9
 meanwhile.
 
 > [!TASK]
