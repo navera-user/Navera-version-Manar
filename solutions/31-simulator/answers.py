@@ -49,11 +49,16 @@ EXPLAIN_FAIL = "The plane camera is 1.5 s late and its pictures are stamped when
                             # (then confirm with campaign/plane_delayed.json, lab Step 9)
 
 # ---- Step 10: your own stack (python3 campaign.py run --mine, then report --mine) --------------------------------
-EXPLAIN_MINE = "I changed confirm_n from 2 to 6 in a copy of the guard and predicted that the GPS would come back later after an outage. R4 moved from PASS to FAIL: jam.recover_s went from 3.4 s to 7.4 s, because six agreeing vision fixes take four more seconds."
+PREDICT_MINE = "confirm_n 2 -> 6: R4 should move to FAIL, recover_s about 3.4 + 4 = 7.4 s (four more agreeing 1 Hz vision fixes)."
+                            # BEFORE flying your changed guard: the rule you change, the requirement you expect to
+                            # move (or "none"), and the new value you expect (e.g. "confirm_n 6: R4, recover_s ≈ …")
+EXPLAIN_MINE = "I changed confirm_n from 2 to 6 in a copy of the guard and predicted R4 would fail with about 7.4 s; the prediction was right. R4 moved from PASS to FAIL: jam.recover_s went from 3.4 s to 7.4 s, because six agreeing vision fixes take four more seconds."
+                            # the rule you changed, your prediction, which requirement moved (or why none did), and
+                            # the value measured
 
 # ---- Step 11: your networks in the loop (python3 vision_check.py, then the night flight) -------------------------
 NIGHT_MINE_MEDIAN_M = 25.43
-EXPLAIN_NETWORKS = "At night the homography network located each thermal patch around the prior with a median error of about 25 m; it states sigma 21.6 m, below fix_max_sigma_m 25 m, so the night source flew FIX. The numbers are optimistic: the thermal pictures are synthetic and cut from the same reference the network matches against. An honest measurement needs real thermal frames from a real flight with a real camera."
+EXPLAIN_NETWORKS = "At night the homography network located each thermal patch around the prior with a median error of about 25 m; it states sigma 21.6 m, below fix_max_sigma_m 25 m, so the night source flew FIX. Its 95th percentile (83 m) is far above the 53 m that Rayleigh predicts from the median: the errors have a heavy tail, so a sigma computed from a median is too optimistic for the worst fixes. The numbers are optimistic anyway: the thermal pictures are synthetic and cut from the same reference the network matches against. An honest measurement needs real thermal frames from a real flight with a real camera."
                             # optimistic, and what would you need to measure them honestly?
 
 # ---- Step 12: your own test (my_scenario.json) -------------------------------------------------------------------

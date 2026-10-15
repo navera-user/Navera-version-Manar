@@ -84,7 +84,7 @@ at 18.4; + 0.3 s latency). FAILED "R9".
 | plane_late | 4.4 | – | 1 | 0 | 137.0 | 121.5 | – | 40.0 | 88.7 |
 | plane_delayed | – | – | 1 | 0 | 5.9 | 5.9 | – | 0 | 6.2 |
 
-Verdicts R1–R8 PASS, **R9 FAIL** ("no GPS fault: an honest GPS is never refused"; plane_late false_refusal_s 40 > 0). Step 10's regression exercise (solution: confirm_n 2 → 6 in my_spoof.py) moves R4 to FAIL (jam.recover_s 7.4 s); refuse_n 5 → 2 or p_fa 0.1 move metrics only (drift switch 12.4 s; plane_late 45–45.6 s). The diagnosis: the plane's camera is 1.5 s
+Verdicts R1–R8 PASS, **R9 FAIL** ("no GPS fault: an honest GPS is never refused"; plane_late false_refusal_s 40 > 0). Step 10's regression exercise (solution: confirm_n 2 → 6 in my_spoof.py; PREDICT_MINE written before the flight: +4 agreeing 1 Hz vision fixes → recover ≈ 3.4 + 4 = 7.4 s) moves R4 to FAIL (jam.recover_s 7.4 s); the events show `# part spoof: yours (my_spoof.py; changed: confirm_n 2 → 6)` and check 14 requires a change and re-flies jam to compare; refuse_n 5 → 2 or p_fa 0.1 move metrics only (drift switch 12.4 s; plane_late 45–45.6 s). The diagnosis: the plane's camera is 1.5 s
 late and its pictures are stamped on arrival → each vision fix is 60 m behind (40 m/s × 1.5 s) but claims "now"
 (vis_err_m ≈ 60) → the guard sees the honest GPS (gps_err_m ≈ 2) disagree: d² = 60²/(1.9² + 15² + 10²) ≈ 11 > 9.21,
 5 in a row → REFUSED as a drift, the judge flies on the 60 m-wrong vision (max 137 m with noise), and the GPS stays
@@ -116,7 +116,7 @@ Solution's own test (my_scenario.json): imu_bias_jam (bias at 20 s, jam at 30 s)
 | EXPLAIN_MEDIAN | median of the 2-D (Rayleigh) error = 1.177 σ per axis → σ = 440/1.177 | "different distribution" | — |
 | EXPLAIN_DRIFT | noise broke the 5-in-a-row streak once (+2 s), vision latency 0.3 s; requirement = rule + margin | one cause | "the code is wrong" |
 | EXPLAIN_FAIL | late pictures stamped on arrival → 60 m behind → guard refuses honest GPS (5 tests) → locked out (needs 2 agreeing) → names BOTH layers: honest exposure stamp (fixes the guard) AND carry to now with grown σ (the autopilot fuses on arrival; NAVERA's design); fix: exposure stamp / carry to present; confirmed by plane_delayed | stamp or delay, no chain | "the guard is bad" |
-| EXPLAIN_MINE | names which parts were theirs (from `# part`), compares verdicts/metrics, explains any change | lists parts only | — |
+| EXPLAIN_MINE | the rule changed, PREDICT_MINE vs the result (requirement and value), why (e.g. +4 agreeing 1 Hz fixes) | rule and result without the why | — |
 | EXPLAIN_NETWORKS | what the night network did (errors, failures) + optimism (synthetic, cut from the same reference) + needs real thermal frames/flight | two of three | — |
 | EXPLAIN_MY_TEST / MY_* | a fault, a requirement written before, a coherent metric | a fault without a reason | — |
 | EXPLAIN_PROVES | behaviour (logic, timing, integration) vs not accuracy (models, synthetic pictures, real sensors) | one side | — |

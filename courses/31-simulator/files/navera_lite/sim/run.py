@@ -88,6 +88,30 @@ def load_mine(part, path, needs):
     return mod, path
 
 
+# given — read it and use it, no need to change it
+def guard_changes(mod, path):
+    """'; changed: confirm_n 2 → 6' — the GUARD_DEFAULTS rules of a guard file that differ from the course's guard
+    (and, for another file than ../30-spoofing's, from your mission-30 guard too): what a regression test changed."""
+    def defaults(p):
+        try:
+            spec = importlib.util.spec_from_file_location("_guard_ref", p)
+            m = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(m)
+            return dict(getattr(m, "GUARD_DEFAULTS", {}))
+        except Exception:                                        # noqa: BLE001 — no reference, no comparison
+            return None
+    mine = dict(getattr(mod, "GUARD_DEFAULTS", {}))
+    refs = [defaults(os.path.join("navera_lite", "spoof.py"))]
+    if os.path.abspath(path) != os.path.abspath(MINE["spoof"]) and os.path.exists(MINE["spoof"]):
+        refs.append(defaults(MINE["spoof"]))
+    out = []
+    for k in sorted(mine):
+        olds = [r[k] for r in refs if r is not None and k in r]
+        if olds and all(mine[k] != o for o in olds):
+            out.append(f"{k} {olds[0]} → {mine[k]}")
+    return "; changed: " + (", ".join(out) if out else "none")
+
+
 PART_NAMES = {"arbiter": "arbiter", "spoof": "spoof", "kalman": "kalman", "day": "day weights", "night": "night weights"}
 
 
@@ -116,7 +140,7 @@ def parts(mine, vision_kind, paths=None, without=()):
             mod = importlib.import_module(name)
             report[part] = "course" + (f" — {why}" if why else "")
         else:
-            report[part] = f"yours ({why})"
+            report[part] = f"yours ({why}{guard_changes(mod, why) if part == 'spoof' else ''})"
             files[part] = os.path.abspath(why)
         mods[part] = mod
     weights = {}

@@ -64,7 +64,8 @@ def short(v):
     if isinstance(v, list):
         return [short(x) for x in v]
     if isinstance(v, dict):
-        return {k: (f"<{len(x)} bytes>" if isinstance(x, (bytes, bytearray)) else x) for k, x in v.items()}
+        return {k: (f"<{len(x)} bytes: {bytes(x[:4]).hex(' ')} … {bytes(x[-4:]).hex(' ')}>"
+                    if isinstance(x, (bytes, bytearray)) else x) for k, x in v.items()}
     return v
 
 

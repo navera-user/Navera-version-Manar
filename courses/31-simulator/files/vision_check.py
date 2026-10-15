@@ -29,7 +29,7 @@ DATA = os.environ.get("NAVERA_LITE_SIM_DATA", "/data/academy/31-simulator")
 MINE = {"day": os.path.join("..", "21-features", "my_desc.pt"),
         "night": os.path.join("..", "25-thermal-night", "my_homography.pt")}
 COURSE = {"day": "ref_desc.pt", "night": "ref_homography.pt"}
-FLOOR_M = 5.0          # a stated σ is never below this (see the lab: the simulated camera is too kind)
+FLOOR_M = 5.0          # a stated σ is never below this: lab Step 11 explains why (the simulated camera is too kind)
 
 
 def sha256(path):

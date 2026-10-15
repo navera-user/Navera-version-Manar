@@ -28,7 +28,7 @@ parts shipped finished.
 > per second, σ 1.9 m stated (HDOP 0.95: the σ its noise model really has, Step 4). Vision: one fix per second, taken 0.1 s after a GPS fix and reaching the judge 0.3 s
 > later.
 
-# Session 1 — Messenger (about 2 h)
+# Session 1 — Messenger (1 h 30 fast, up to 3 h 30)
 
 ## Step 0 — The bytes (no code)
 
@@ -67,7 +67,9 @@ The three `decode_gps_input` lines should be ✔; the others stay ✘ until you 
 1. Three steps: refuse a payload longer than 65 bytes; pad it to 65; unpack, then name the values.
 2. `struct.unpack(GPS_INPUT_FORMAT, padded)` returns a tuple of 19 values in the order of `GPS_INPUT_FIELDS`.
 3. lat and lon arrive as integers in 10⁻⁷ degree: divide them by `1e7` after naming.
-4. `struct.error: unpack requires a buffer of 65 bytes`? You did not pad. lat = 358242433? You forgot the division.
+4. `unpack requires a buffer of 65 bytes`? You did not pad. **66 (or 72) bytes?** Your format lost its `<`: use
+   `GPS_INPUT_FORMAT` exactly — without `<`, struct aligns fields like C and inserts padding. lat = −212.49…? Wrong
+   byte order (`>`). lat = 358242433? You forgot the division. lat = 3.58e−06? You divided twice.
 </details>
 
 ## Step 2 — Find the frames in a stream (TODO 2)
@@ -168,7 +170,7 @@ Press **✔ Check my work**: checks 1–7 earn the 📡 **Messenger** badge.
 3. You get 17.7 for p = 0.95? You used ln(p) instead of ln(1 − p) somewhere — try p = 0.5, where both agree.
 </details>
 
-# Session 2 — Test engineer (about 3 h)
+# Session 2 — Test engineer (2 h 30 fast, up to 4 h 30)
 
 ## Step 6 — A first flight
 
@@ -331,9 +333,10 @@ probably give the course's numbers: they passed the same checks. To fly without 
 **A regression test that catches something.** A regression test is worth something only if it catches a change.
 Copy your guard (`cp ../30-spoofing/navera_lite/spoof.py my_spoof.py`; if you have none, copy the course's:
 `cp navera_lite/spoof.py my_spoof.py`), change ONE rule in [my_spoof.py](file:./my_spoof.py) — for example
-`"confirm_n": 2` → `6`, `"refuse_n": 5` → `2` or `"p_fa": 0.01` → `0.1` in `GUARD_DEFAULTS` — and **predict**
-which requirement moves (perhaps none: a metric can move while every verdict stays).
-Then fly and judge it:
+`"confirm_n": 2` → `6`, `"refuse_n": 5` → `2` or `"p_fa": 0.01` → `0.1` in `GUARD_DEFAULTS` — and write in
+`PREDICT_MINE`, **before** flying, which requirement moves and its new value (perhaps none: a metric can move while
+every verdict stays). The events' line `# part spoof: yours (my_spoof.py; changed: …)` will show the rule you
+changed. Then fly and judge it:
 
 ```bash
 python3 campaign.py run --mine --part spoof=my_spoof.py
@@ -356,8 +359,12 @@ python3 vision_check.py
 ```
 
 It writes `my_vision_profile.json`: the median error of each network, the σ it implies (lesson §4), and the σ
-your vision sources will **state** in "mine" flights. Copy the night median into `NIGHT_MINE_MEDIAN_M`. Then fly a
-night mission, GPS jammed at 20 s, with your night network locating every thermal picture:
+your vision sources will **state** in "mine" flights. A stated σ is never below 5 m: vision_check floors it, because
+the simulated pictures are cut from the very map the network matches against (lesson §6), and a measured 2 m is a
+promise no real camera keeps. That is why your day source states 5 m. Copy the night median into
+`NIGHT_MINE_MEDIAN_M`. Compare the night 95th percentile vision_check printed with what your `rayleigh_quantile`
+predicts from the median: which is larger, and what does that say about a σ computed from a median? (Put it in
+`EXPLAIN_NETWORKS`.) Then fly a night mission, GPS jammed at 20 s, with your night network locating every thermal picture:
 
 ```bash
 python3 -m navera_lite.sim.run campaign/night_mine.json --mine
@@ -412,6 +419,10 @@ Press **✔ Check my work**: all 16 checks earn the 🧪 **Test engineer** badge
 - **Sim Lite.** The 🛩️ Simulator tab flies the same world in your browser with your NAVERA Lite (your parts where
   you have finished them; a browser cannot run PyTorch, so "My networks" draws errors from your measured profile).
   Press **Fly my scenario**, save the run, and compare its CSV with yours (same world, same seed).
+- **Why integers for latitude?** A 32-bit float has 24 bits of mantissa: near 35.8° its step is about 2⁻¹⁸ degree
+  ≈ 0.4 m. An int32 in units of 10⁻⁷ degree gives 1.1 cm. Check it with `struct.pack("<f", 35.8242433)`.
+- **A development tool on a vehicle?** NAVERA's mission simulator listens on fixed network ports (8190, 8443) with
+  no authentication: its documentation says it must never run on a networked vehicle. Why is that a real risk?
 - **The 10-bit week.** `time_week` and `time_week_ms` give the instant in **GPS time**: weeks since 6 January 1980,
   no leap seconds (18 s ahead of UTC). The satellites' own message carries the week in only **10 bits** (0–1023): it
   rolled over to 0 on 22 August 1999 and again on **6 April 2019**, and some older receivers jumped back 19.6 years.

@@ -49,7 +49,12 @@ EXPLAIN_FAIL = ""           # your diagnosis: what went wrong, step by step, and
                             # (then confirm with campaign/plane_delayed.json, lab Step 9)
 
 # ---- Step 10: your own stack (python3 campaign.py run --mine, then report --mine) --------------------------------
-EXPLAIN_MINE = ""           # which of your parts flew? did any verdict change compared with the course's parts? why?
+PREDICT_MINE = ""
+                            # BEFORE flying your changed guard: the rule you change, the requirement you expect to
+                            # move (or "none"), and the new value you expect (e.g. "confirm_n 6: R4, recover_s ≈ …")
+EXPLAIN_MINE = ""
+                            # the rule you changed, your prediction, which requirement moved (or why none did), and
+                            # the value measured
 
 # ---- Step 11: your networks in the loop (python3 vision_check.py, then the night flight) -------------------------
 NIGHT_MINE_MEDIAN_M = 0.0   # vision_check's night median error (m) for the weights it used

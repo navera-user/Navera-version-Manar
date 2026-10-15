@@ -125,7 +125,8 @@ def window(sc):
 
 def measure(rows, sc):
     """Every metric of one run (lesson §5), measured from the FIRST fault of the scenario (t0) to the moment that same
-    sensor comes back (t1); TODO 8 gives the two latencies."""
+    sensor comes back (t1); TODO 8 gives the two latencies. failsafe_s searches from t0 to the END of the run;
+    false_refusal_s counts over the WHOLE run; error95_m is over the whole run, max_err_m over the window."""
     t0, t1 = window(sc)
     end = rows[-1]["t_s"] if rows else 0.0
     a, b = (t0 if t0 is not None else 0.0), (t1 if t1 is not None else end + 1.0)
@@ -240,10 +241,14 @@ def test():
     me = sys.modules[__name__]
     rows = [{"t_s": t, "lite_source": s} for t, s in
             [(29.8, "gps"), (30.0, "gps"), (30.2, "day"), (30.4, "day"), (40.0, "day"), (40.2, "day"), (40.4, "gps")]]
+    edge = [{"t_s": t, "lite_source": src} for t, src in [(29.8, "gps"), (30.0, ""), (30.2, "night"), (30.4, "gps")]]
     cases = [("latencies(<example rows>, 30.0, 40.0)", lambda: latencies(rows, 30.0, 40.0), (0.2, 0.4)),
              ("latencies(<example rows>, 30.0, None)", lambda: latencies(rows, 30.0, None), (0.2, None)),
              ("latencies(<only gps>, 30.0, 40.0)", lambda: latencies([dict(r, lite_source="gps") for r in rows], 30.0,
                                                                      40.0), (None, 0.0)),
+             ("latencies(<a row with no source exactly at t0>, 30.0, None)", lambda: latencies(edge, 30.0, None),
+              (0.0, None)),
+             ("latencies(<a GPS row exactly at t1>, 30.0, 30.4)", lambda: latencies(edge, 30.0, 30.4), (0.0, 0.0)),
              ('verdict(0.2, "<=", 1.0)', lambda: verdict(0.2, "<=", 1.0), ("PASS", "0.2 <= 1")),
              ('verdict(3.4, "<=", 1.0)', lambda: verdict(3.4, "<=", 1.0), ("FAIL", "3.4 > 1")),
              ('verdict(0.9, ">=", 0.95)', lambda: verdict(0.9, ">=", 0.95), ("FAIL", "0.9 < 0.95")),

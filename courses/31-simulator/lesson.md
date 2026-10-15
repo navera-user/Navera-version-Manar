@@ -181,9 +181,6 @@ MAVLink 2 decoding bug.
 > 56–57 ignore_flags · 58–59 time_week · 60 gps_id · 61 fix_type · 62 satellites_visible · 63–64 yaw.
 > A payload of 63 bytes lost bytes 63–64 (yaw); one of 62 bytes lost satellites_visible too.
 
-Why integers for latitude? A 32-bit float has 24 bits of mantissa: near 35.8° its step is about 2⁻¹⁸ degree
-≈ 0.4 m. An int32 in units of 10⁻⁷ degree gives 1.1 cm.
-
 **Worked example.** Inside a payload, `lat` is the bytes `81 58 5a 15` at offsets 12–15. Little-endian, that is
 0x155a5881 = 358 242 433 → **35.8242433°**; `lon` = `f2 ec 56 06` → 0x0656ecf2 = 106 360 050 → **10.6360050°**.
 In code: `struct.unpack("<i", bytes.fromhex("81585a15"))[0] / 1e7`.
@@ -279,7 +276,7 @@ The simulator has two vision profiles (`sim/world.py`):
 - **target**: day σ 15 m, night σ 25 m, **stated** (covariance given). This is the accuracy **goal**, not a
   measurement. It states a σ, so the judge calls it FIX and the guard can test the GPS against it.
 - **measured**: day vision with a **median** of 440 m — NAVERA's former day method, tile retrieval, measured at
-  442 m on labelled replay frames (VALIDATION_STATUS, 2026-10-03; its newer local matcher is not yet measured with
+  442 m on labelled replay frames, searching only 600 m around the true position (VALIDATION_STATUS, 2026-10-03; its newer local matcher is not yet measured with
   NAVERA's camera) — and **no stated σ**; at night, an estimate that follows only a quarter of the true motion. It
   states nothing, so it is DEGRADED and cannot vouch for or against the GPS.
 
@@ -323,12 +320,13 @@ the same noise: the runs of this mission are deterministic (lesson 32 deals with
 ### From the rules to expected numbers — before the run
 
 The hardest idea of this mission is that a test's expectation comes from the **rules**, not from the last run.
-You know the rules: missions 01, 12, 29, 30 and `navera_lite.yaml`. **Worked example — NAVERA's drift rule.**
+You know the rules: missions 01, 12, 29, 30 and `navera_lite.yaml`. **Worked example — one of NAVERA's drift rules.**
 NAVERA refuses a GPS that disagrees with vision beyond 5σ + 50 m for 3 s (VALIDATION_STATUS, 2026-10-03). Vision
 states σ = 30 m; the spoofer drifts at 4 m/s. The gap reaches 5 × 30 + 50 = 200 m after 200 / 4 = 50 s; held 3 s
-more → refused at **53 s, about 212 m** of offset. NAVERA's document reports "at ~160–200 m" in the simulator,
-and ~140 m in a later run. The rule and the runs differ: the GPS noise and the vision errors make the gap cross
-the threshold earlier, sometimes. **Discuss the gap, never hide it**: a requirement uses the rule plus a margin.
+more → refused at **53 s, about 212 m** of offset. The document reports "at ~160–200 m" in the simulator: the GPS
+noise and the vision errors make the gap cross the threshold earlier, sometimes. A later run was refused at
+~140 m, for another reason: NAVERA's current rule set also refuses after **5 distinct fixes in a row beyond 3σ**
+(3 × 30 = 90 m, then five fixes 2 s apart), which acts first. A new rule needs a new expectation. **Discuss the gap, never hide it**: a requirement uses the rule plus a margin.
 
 For NAVERA Lite's guard (mission 30) the same reasoning uses its own rule — a χ² test at p_fa = 0.01, five
 disagreeing reference fixes in a row — and its function `spoof.drift_alarm_time` (given in your folder): you do it
@@ -346,8 +344,8 @@ For a fault from t0 to t1 (mission seconds), on the rows of a run (one every 0.2
 | `availability` | share of rows of the fault window with a position (FIX or DEGRADED) |
 | `leak_s` | seconds of the window flown on a GPS more than 100 m wrong |
 | `max_err_m`, `error95_m` | NAVERA Lite's error = its latest position against the truth **now** (so a held vision fix grows by speed × age: up to 15 m between two 1 Hz fixes at 15 m/s); the largest in the window; the 95th percentile over the run |
-| `failsafe_s` | first row at or after t0 where the autopilot is in LAND or HOLD, minus t0 |
-| `false_refusal_s` | seconds during which the guard REFUSED a GPS that was honest (error < 20 m) |
+| `failsafe_s` | first row at or after t0 (to the end of the run) where the autopilot is in LAND or HOLD, minus t0 |
+| `false_refusal_s` | seconds **of the whole run** during which the guard REFUSED a GPS that was honest (error < 20 m) |
 
 A **requirement** turns a metric into a promise: "after a GPS jam, NAVERA Lite stops using the GPS within 1 s" →
 `switch_s` ≤ 1.0. The **verdict** is PASS if the measured value keeps the promise, FAIL otherwise — and FAIL if
@@ -391,7 +389,7 @@ about its own simulator: "these are behaviour results, not accuracy results".
 
 **Optimism.** When the simulated camera is cut from the matcher's own map, the matcher finds "itself": NAVERA's
 document notes about 1 m of error in such runs, against a median of 96 m with its real day vision on simulated
-pictures over another route. Your day network will do the same in this simulator (lab Step 11): a number that
+pictures over another route — which the document also calls optimistic, for the same reason. Your day network will do the same in this simulator (lab Step 11): a number that
 proves the pipeline works, not that it is accurate.
 
 ## 7. Your stack in the loop
@@ -428,7 +426,7 @@ autopilot firmware (Copter 4.5, Rover, a motorboat) compiled for a PC — with N
 sensors. Its GPS driver reads a simulated receiver through a pseudo-terminal, exactly as it reads the serial port
 on the box; its output sends `GPS_INPUT` to the autopilot, configured so that NAVERA's output is the autopilot's
 **only** position input. The truth comes from the simulator's physics, so NAVERA's error and the autopilot's
-error are both known at every instant. Its control page listens on fixed network ports (8190, 8443) and has no authentication: it must never run on a networked vehicle.
+error are both known at every instant.
 
 Documented results (VALIDATION_STATUS, "Autopilot in the loop", **simulation**, 2026-10-03): GPS OK → NAVERA error
 1–4 m, autopilot 1–3 m; GPS jammed in flight with vision at the target accuracy (σ 15 m, simulated) → the mission
@@ -449,9 +447,11 @@ The same document raised the day-vision freshness window from 3 s to 5 s after t
 alternating FIX / NO_FIX under load and the autopilot landing during a 6.7–9.2 s gap. Both were found only with
 the loop closed.
 
-Why carry, and not only stamp honestly? An autopilot does not fuse a fix at its stamp. NAVERA's ArduPilot notes
-(2026-10-03) say ArduPilot maps the `GPS_INPUT` time through a transport-jitter correction, so the common delay is
-invisible to it, and only its `GPS_DELAY_MS` setting (0–250 ms) compensates it. This simulator's autopilot also
+Why carry, and not only stamp honestly? ArduPilot uses the stamps only relative to each other. NAVERA's ArduPilot
+notes (2026-10-03) say it maps the `GPS_INPUT` time through a transport-jitter correction that assumes the
+least-delayed recent message arrived without delay. Differences between messages are kept, but a delay **common** to
+them is invisible, and only its `GPS_DELAY_MS` setting (0–250 ms) compensates it. When vision flies alone, every fix
+is 1–2.5 s old, and that whole delay is common. This simulator's autopilot also
 fuses every fix as "now". So there are two correct designs: (1) stamp at exposure **and** make every consumer
 handle the latency itself; or (2) carry the position forward to the present, grow its stated σ by the lag, and
 stamp it **now**. An honest stamp alone fixes the guard (plane_delayed), not the autopilot: when vision flies, a

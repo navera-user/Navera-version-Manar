@@ -62,10 +62,16 @@ def answer_near(name, v, want, tol, where):
     if x == 0.0 and want != 0.0:
         raise CheckFailed(f"{name} is still 0.0 — {where}")
     if abs(x - want) > tol:
+        if tol == 0:
+            raise CheckFailed(f"{name} = {x:g} is not what {where} gives (it must be exactly that number)")
         raise CheckFailed(f"{name} = {x:g} is not what {where} gives (it must be within ± {tol:g} of it)")
 
 
-TIPS = [("unpack requires a buffer of 65 bytes", " — pad the payload with zero bytes up to 65 first "
+TIPS = [("unpack requires a buffer of 66 bytes", " — your struct format has no '<': use GPS_INPUT_FORMAT as given "
+                                                 "(without '<' struct aligns the fields like C and adds padding bytes)"),
+        ("unpack requires a buffer of 72 bytes", " — your struct format has no '<': use GPS_INPUT_FORMAT as given "
+                                                 "(without '<' struct aligns the fields like C and adds padding bytes)"),
+        ("unpack requires a buffer of 65 bytes", " — pad the payload with zero bytes up to 65 first "
                                                  "(MAVLink 2 drops the trailing zeros)"),
         ("index out of range", " — a frame cut by the end of the data: check that all its bytes are there before "
                                "reading them"),
@@ -174,8 +180,16 @@ def _():
                 raise CheckFailed(f"{k} = {got[k]} is a whole number: divide by 1e7 with /, not // (the decimals "
                                   "are the position)")
             if not same(got[k], w, 1e-6):
-                raise CheckFailed(f"on a payload of {len(p)} bytes, {k} = {got[k]!r} is wrong (struct format, field "
-                                  "order, or the zero padding?)")
+                if k in ("lat", "lon") and isinstance(got[k], (int, float)) and w != 0 and any(
+                        abs(got[k] * f - w) < 1e-6 * max(1.0, abs(w)) for f in (1e7, 1e14, 1e-7)):
+                    raise CheckFailed(f"{k} = {got[k]!r}: the wire carries degrees × 10⁷ as an int — divide by 1e7 "
+                                      "exactly once, after unpacking")
+                if k in ("lat", "lon"):
+                    raise CheckFailed(f"on a payload of {len(p)} bytes, {k} = {got[k]!r} is wrong: the byte order ('<'), "
+                                      "the zero padding (at the END), or the field order of GPS_INPUT_FORMAT?")
+                raise CheckFailed(f"on a payload of {len(p)} bytes, {k} = {got[k]!r} is wrong: the byte order ('<' "
+                                  "little-endian), the zero padding (at the END of the payload), or the field order "
+                                  "of GPS_INPUT_FORMAT?")
     try:
         run(f, bytes(70))
     except CheckFailed as e:
@@ -200,7 +214,7 @@ def _():
         if len(got) != len(want):
             raise CheckFailed(f"stream {k}: {len(got)} frames found, not the right number (a frame cut by the end, a "
                               "signed frame's 13 extra bytes, or the resync after a failed checksum?)")
-        if want and all(g.get("crc_ok") is False for g in got) and any(w["crc_ok"] for w in want):
+        if want and not any(g.get("crc_ok") is True for g in got) and any(w["crc_ok"] is True for w in want):
             raise CheckFailed(f"stream {k}: every frame has crc_ok False — compare frame_crc(frame, msgid) with the "
                               "received checksum: bytes 10 + len and 11 + len, little-endian")
         for g, w in zip(got, want):
@@ -371,7 +385,19 @@ def _():
         hint="The autopilot reads every byte with YOUR parse_frames and decode_gps_input: if a hidden flight goes wrong, "
              "check the no-fix frames (fix_type 1, short payload) and frames that arrive two at a time.")
 def _():
-    functions("navera_lite.output", "parse_frames", "decode_gps_input")
+    pf, dg = functions("navera_lite.output", "parse_frames", "decode_gps_input")
+    try:                                     # the autopilot needs both: a broken one makes a cryptic flight error
+        ok = all([(g.get("seq"), g.get("msgid"), g.get("crc_ok"), bytes(g.get("payload", b"")))
+                  for g in run(pf, bytes.fromhex(c_["data"]))]
+                 == [(w["seq"], w["msgid"], w["crc_ok"], bytes.fromhex(w["payload"])) for w in c_["want"]]
+                 for c_ in U["parse"])
+        ok = ok and all(same(run(dg, bytes.fromhex(c_["payload"])).get("lat"), c_["want"]["lat"], 1e-9)
+                        for c_ in U["decode"])
+    except Exception:                                            # noqa: BLE001 — any crash: not finished
+        ok = False
+    if not ok:
+        raise CheckFailed("your parse_frames / decode_gps_input is not finished: make checks 1–2 pass first (the "
+                          "autopilot reads every byte with them)")
     tmp = tempfile.mkdtemp(prefix="m31_", dir=".")
     try:
         for fl in E["flights"]:
@@ -479,13 +505,20 @@ def _():
 def _():
     res = read_json("results_mine.json", "run python3 campaign.py report --mine")
     runs = res.get("runs", {})
-    changed = False
+    predicted("PREDICT_MINE", getattr(quiet("answers.py"), "PREDICT_MINE", ""))
+    guard_path = None
     for name in RUNS:
         log = events(os.path.join("my_runs", "mine", name + "_events.log"))
         if "# part arbiter:" not in log or "# outcome" not in log:
             raise CheckFailed(f"my_runs/mine/{name}_events.log was not written by the simulator: fly --mine again")
-        m = re.search(r"^# part spoof: yours \((.*)\)$", log, re.M)
-        changed = changed or bool(m and "30-spoofing" not in m.group(1))
+        m = re.search(r"^# part spoof: yours \(([^;)]*)(?:; changed: (.*))?\)$", log, re.M)
+        if not m or "30-spoofing" in m.group(1):
+            raise CheckFailed(f"my_runs/mine/{name} was not flown with a changed copy of your guard: python3 campaign.py "
+                              "run --mine --part spoof=my_spoof.py (lab Step 10), then report --mine")
+        if not m.group(2) or m.group(2).strip() == "none":
+            raise CheckFailed(f"{m.group(1)} is the same as your guard: change ONE rule in GUARD_DEFAULTS (lab Step 10), "
+                              "fly again with --part, then report --mine")
+        guard_path = m.group(1)
         if name not in runs or not all(k in runs[name] for k in METRICS):
             raise CheckFailed(f"results_mine.json: the run {name} or its metrics are missing: run report --mine again")
         sc = E["scenarios"][name + ".json"]
@@ -493,9 +526,22 @@ def _():
             if not same(runs[name].get(k), want, 1e-3):
                 raise CheckFailed(f"results_mine.json: {name}.{k} is not what my_runs/mine/{name}.csv gives — run "
                                   "python3 campaign.py report --mine again (after the last run --mine)")
-    if not changed:
-        raise CheckFailed("my_runs/mine/ was not flown with a changed copy of your guard: python3 campaign.py run --mine "
-                          "--part spoof=my_spoof.py (lab Step 10), then report --mine")
+    # the jam flight again, with the same parts: the files in my_runs/mine/ must be what this guard really flies
+    log = events(os.path.join("my_runs", "mine", "jam_events.log"))
+    nots = " ".join(f"--not {k}" for k in ("arbiter", "spoof", "kalman")
+                    if re.search(rf"^# part {k}: course — --not", log, re.M))
+    tmp = tempfile.mkdtemp(prefix="m31m_", dir=".")
+    try:
+        code, out = sh(f"python3 -m navera_lite.sim.run campaign/jam.json --mine --part spoof={guard_path} {nots} "
+                       f"--out {tmp} --quiet", timeout=120)
+        if code:
+            raise CheckFailed(f"flying campaign/jam.json again with {guard_path} failed: {out.strip()[-200:]}")
+        with open(os.path.join(tmp, "jam.csv")) as f1, open(os.path.join("my_runs", "mine", "jam.csv")) as f2:
+            if f1.read() != f2.read():
+                raise CheckFailed(f"my_runs/mine/jam.csv is not what {guard_path} flies now: fly the campaign again "
+                                  "(python3 campaign.py run --mine --part spoof=…), then report --mine")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
     v = res.get("verdicts", [])
     if len(v) != 9:
         raise CheckFailed("results_mine.json must hold the 9 verdicts: run python3 campaign.py report --mine again")
@@ -507,6 +553,7 @@ def _():
     explained("EXPLAIN_MINE", getattr(quiet("answers.py"), "EXPLAIN_MINE", ""),
               ([r"refuse_n", r"p_fa", r"doubt_n", r"far_n", r"confirm_n", r"rule", r"threshold", r"guard", r"spoof"],
                "which rule of your guard you changed"),
+              ([r"predict", r"expect", r"thought", r"guess", r"right", r"wrong"], "how your prediction compared"),
               ([r"r\d", r"pass", r"fail", r"verdict", r"same", r"differ", r"chang", r"mov", r"metric", r"latenc",
                 r"error", r"refus"], "which requirement moved (or why none did)"))
 
