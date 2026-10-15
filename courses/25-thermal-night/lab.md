@@ -328,9 +328,10 @@ The fix at 32 s was wrong by about 300 m, but after 14 s without an accepted fix
 became the anchor. Every correct fix after it was then "too far" from that wrong anchor and refused. The lock-in is
 temporary: the reach grows by 30 m every second while the drone moves away at 25 m/s, so the gap (243, 231, 198,
 185 m in the table) closes only slowly, and a correct fix is accepted again some seconds later. NAVERA's night gate
-works the same way: once GPS is lost, it compares each fix with its own last accepted one (reach = 30 m/s × elapsed
-time + 30 m), so it can lock in for a while too. The arbiter (missions 29–30) adds a second check against the other
-sources.
+works the same way: once GPS is lost, it compares each fix with its own last position (reach = 30 m/s × elapsed time
++ 30 m). One difference: while it refuses fixes it dead-reckons that position forward and restarts the clock, for up
+to 30 s, so its reach does not grow during that time and a lock-in can last longer than here. The arbiter (missions
+29–30) adds a second check against the other sources.
 </details>
 
 > [!TIP] 🏅 End of session 1 — Night watch
@@ -490,10 +491,11 @@ A quick run first (seconds):
 python3 run_night.py train --n-train 3000 --epochs 3 --out quick.pt
 ```
 
-The training loss should go down from about 0.21. Then the real training (about 30–60 s on the GPU). If the class's
-three GPU slots are busy the runner waits, then uses the CPU; on the CPU use `--device cpu --n-train 3000 --epochs 6`:
-11 minutes on a quiet Jetson, up to 25 minutes when the class is training, and a weaker network (about 5.8–6.0 px on
-the check's pairs, limit 6.5): prefer the GPU when a slot is free.
+The training loss should go down from about 0.21. Then the real training (about 1–1.5 minutes on the GPU, half of it
+making the pairs on the CPU). If the class's three GPU slots stay busy, the runner waits up to an hour and then stops
+and tells you (it never starts a 1–2 hour CPU training by itself). The CPU recipe is a separate, explicit command:
+`--device cpu --n-train 3000 --epochs 6`: 11 minutes on a quiet Jetson, up to 25 minutes when the class is training,
+and a weaker network (about 5.8–6.0 px on the check's pairs, limit 6.5): prefer the GPU when a slot is free.
 
 ```bash
 python3 run_night.py train
@@ -510,8 +512,8 @@ the median errors on the validation pairs, and a record in `logs/my_homography.p
 1. Compare your paper plan with mission 21's `train`: what is the same, what changes (the loss, the targets / RHO_PX,
    the batches through `to_input`)?
 2. A ⚠ line after an epoch, or `val_loss` far above `train_loss`: the VALIDATION targets must be divided by RHO_PX too.
-3. The loss stays at about 0.21 (as good as answering 0): `opt.step()` missing, or the targets are not divided by
-   RHO_PX; `Expected all tensors to be on the same device`: `.to(device)` on the targets.
+3. The loss stays at about 0.21 (as good as answering 0): `opt.zero_grad()` or `opt.step()` missing, or the targets
+   are not divided by RHO_PX (`test` names the zero_grad case); `Expected all tensors to be on the same device`: `.to(device)` on the targets.
 4. The check says your weights differ from 3 plain Adam steps: `opt.zero_grad()` is missing (or comes after
    `backward()`), so every step adds all the old gradients.
 </details>
@@ -542,7 +544,8 @@ Open `out/loss_overfit.png` next to `out/loss_my_homography.png`.
 > [!TASK]
 > `EXPLAIN_OVERFIT`: what did the two losses do with 3 places, and why? At which epoch would you have stopped?
 
-(`overfit.pt` is an experiment, not your navigator: the check refuses weights trained on fewer than 50 places.)
+(`overfit.pt` is an experiment, not your navigator: the check refuses weights trained on fewer than 50 places, and a
+copied file — it compares `my_homography.pt` with the record your training wrote in `logs/`.)
 
 ## Step 13 — Your design decision: test one of the author's choices
 
@@ -563,21 +566,27 @@ Lesson §7–§8 gave you three design decisions as facts. Now you test one, aga
 python3 run_night.py train --norm none --out ablation.pt
 ```
 
-(Same 16 000 pairs, 8 epochs, about half a minute on the GPU; `--no-augment --out ablation.pt` or
+(Same 16 000 pairs, 8 epochs, 1–2 minutes with the pairs; `--no-augment --out ablation.pt` or
 `--rho 1 --out ablation.pt` for the others. It never overwrites `my_homography.pt`.)
 
 > [!TASK]
 > Write `ABLATION` (`"a"`, `"b"` or `"c"`), `ABLATION_PX` (the median centre error of its last line, two decimals)
 > and `EXPLAIN_ABLATION`: compared with your own error, was the author's choice worth it? Why — and how sure are you
-> from ONE run? (Training twice with another seed moves the error by about 0.1–0.2 px.)
+> from ONE run? Measure it: train your baseline again with another seed and compare its last line with
+> `VAL_CENTRE_PX` (`SEED_NOISE_PX`, not graded; 1–2 minutes):
+
+```bash
+python3 run_night.py train --seed 1 --out seed1.pt
+```
 
 <details><summary>Read this after your run: what the three ablations gave the author</summary>
-(a) without normalisation: about 5.1 px instead of 3.8 — the thermal camera's gain and the pale reference must be
+(a) without normalisation: about 5.0–5.6 px instead of 3.8 (four runs) — the thermal camera's gain and the pale reference must be
 learned from examples instead of removed. (c) pixels instead of offsets / 16: about 4.2 px — the targets are 16 times
 larger than what freshly initialised layers produce, the first epochs are spent catching up. (b) without
 augmentation: about 3.6 px, **no worse** with 16 000 pairs from 293 places: the author's choice is not justified by
-this measurement (it may help with fewer places). Testing your own design decisions is how you find that out.
-</details>
+this measurement (it may help with fewer places: Going further). Testing your own design decisions is how you find
+that out. And the noise: the baseline trained with seeds 0, 1, 2 gave 3.83, 3.78, 3.92 px (about ±0.1 px), but the
+ablation (a) moved from 5.0 to 5.6 px between runs: one run is enough for (a), not for (b) or (c).</details>
 
 ## Step 14 — Learned vs NCC, in five conditions
 
@@ -664,4 +673,5 @@ Write your answers in `LOOK_BACK` in `answers.py` if you want your teacher to re
   second half for validation). What happens to the night error?
 - **NCC on edges.** Replace both patches by their gradient magnitude (mission 08's Sobel) before `ncc_locate`. Does
   it survive the night better? Why could it?
+- **Does augmentation help with fewer places?** `--scenes 30 --out aug30.pt` with and without `--no-augment`.
 - **Fly your own parts.** Sim Lite (mission 31) can load `my_homography.pt` for night flights: keep it.

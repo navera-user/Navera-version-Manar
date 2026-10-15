@@ -77,8 +77,10 @@ replaced: the replay frames are now copied as DATA into `datasets/25-thermal-nig
   (103 m, reach 150 m: the anchor is still 6 s). 32 s accepted: 291 m from the 18 s anchor, reach 30 · 14 + 30 = 450 m.
   Then lock-in: 333 m in 2 s (max 90), 381 in 4 (150), 408 in 6 (210), 455 in 8 (270): the gap closes slowly
   (243 → 185 m), so the lock-in is temporary. NAVERA's night gate (base code, read only) compares with its OWN last
-  accepted fix after GPS loss (reach = max speed × elapsed + margin), so it can lock in for a while too; while it
-  dead-reckons between fixes it moves its anchor and restarts the clock, which can lengthen the wait.
+  accepted fix after GPS loss (reach = max speed × elapsed + margin); while it refuses fixes it dead-reckons the
+  anchor forward and restarts the clock for up to `max_dead_reckon_s` = 30 s after the last measured fix, so its
+  reach does not grow and a lock-in can last longer than in the lab (logged as **NAVERA problem B16**; the lab says
+  it in words).
 - Step 8 (`pairs`): any; the label is 8 offsets; corners not H entries because of scale balance (lesson §6).
 - Step 10: fc1's input "?" = 64 maps × 4 × 4 = 1 024 (the docstring no longer gives it); fc1 = 128 × (1 024 + 1) =
   **131 200** (131 072 without biases: the check names it). Per layer: conv1 304,
@@ -89,12 +91,14 @@ replaced: the replay frames are now copied as DATA into `datasets/25-thermal-nig
   a few seconds, loss 0.21 → ≈ 0.15. The check compares VAL_CENTRE_PX with the student's own
   `logs/my_homography.pt.json` (±0.05); the solution ships its record (`solutions/25-thermal-night/logs/`).
 - Step 12 (overfit, round 1: 1 000 pairs from **3** places, 30 epochs, 12 s GPU): train 0.21 → 0.016; val 0.21 →
-  minimum ≈ 0.159 near epoch 17, then 0.18; val centre error 7.1 px. Stop near epoch 17. Hidden pairs: 6.15 / 6.42 px
-  (two runs) — still under 6.5, so check 15 also refuses any weights whose training log says < 50 places.
-- Step 13 (ablation, 16 000 pairs, 8 epochs, GPU, one run each; baseline val 3.7–3.8 px): **(a) `--norm none` 5.08 px**
+  minimum ≈ 0.159 near epoch 17, then 0.18; val centre error 7.1 px. Stop near epoch 17. Hidden pairs: 6.04 / 6.15 / 6.42 px
+  (three runs) — under 6.5, so check 15 (round 2) REQUIRES the runner's record logs/my_homography.pt.json, whose
+  SHA-256 must match my_homography.pt (and its file name and student), and refuses < 50 places.
+- Step 13 (ablation, 16 000 pairs, 8 epochs, GPU, one run each; baseline val 3.7–3.8 px): **(a) `--norm none` 5.08 / 5.02 / 5.25 / 5.56 px** (four runs)
   (worse: gain and pale reference must be learned), **(b) `--no-augment` 3.60 px** (no worse: the author's
   augmentation is not justified by this measurement at 293 places — a good discussion), **(c) `--rho 1` 4.16 px**
-  (slightly worse: targets 16 × too large for fresh layers). Seed noise ≈ 0.1–0.2 px. The check reads the run's log
+  (slightly worse: targets 16 × too large for fresh layers). Seed noise (`--seed`, round 2): baseline 3.83 / 3.78 / 3.92 px (seeds 0/1/2,
+  ≈ ±0.1 px), but ablation (a) spreads 0.5 px; students measure it with `--seed 1` (SEED_NOISE_PX, not graded). The check reads the run's log
   (ablation letter, ABLATION_PX ±0.05); the runner refuses to overwrite my_homography.pt with an ablation.
 - Step 14 (`compare`, val places; median px / share within 3 px):
 
@@ -141,7 +145,8 @@ replaced: the replay frames are now copied as DATA into `datasets/25-thermal-nig
   on the CPU, batches go to the GPU). Model 192 600 parameters, weights file 0.8 MB.
 - CPU (2 threads): 3 000 pairs × 6 epochs = **664 s** quiet, **~1 300 s** with 3 trainings at load ~20 (expert,
   2026-10-14). The 656 k variant of the network (first design) took 63 ms per pair-step and was dropped.
-- Ablation runs: 33–51 s each on the GPU. Overfit run (3 places): 12 s.
+- Ablation and seed runs: 33–51 s of training + 15–35 s of pair making (≈ 1.5–2 min under load). Overfit run (3
+  places): 12–17 s.
 - Check: ≈ 25 s on a quiet Jetson; **104–116 s** at load average 26 (3 CPU hogs, 2026-10-15, after the round-1 fix:
   torch at 1 thread in check 14, in the checker AND the student's process; before it, 160–210 s and a 120 s time-out
   in check 14 — the flaky 17/18). `check_timeout_s` 420. It never retrains a real network: check 14 runs a few CPU
@@ -154,10 +159,13 @@ the wrong way / without `need` / with the corner-based centre; ncc_locate return
 unnormalised mode; motion_gate with a negative elapsed time / with the constants instead of the arguments; cut_pair
 inverted / with a 64-px SQUARE; to_input by std alone / with global statistics; HomographyNet with a final ReLU /
 without the fc1 ReLU; offsets_to_H inverted / ignoring `side`; train without / RHO_PX, with the validation loss
-measured before the epoch, **without `opt.zero_grad()`** (round 1: 3 one-batch epochs compared with 3 plain Adam
-steps, solution 2.9e-5, mutant 2.2e-3, threshold 3e-4), **validation targets not / RHO_PX**; prepare with **one
+measured before the epoch, **without `opt.zero_grad()`** (3 one-batch epochs compared with 3 plain Adam steps; round 2
+measure: share of weights differing by > 1e-4 — solution ≈ 0.01 %, mutant ≈ 53 %, threshold 5 %; the max difference
+was too close on random inputs, 2.3e-4 vs 3e-4), **validation targets not / RHO_PX**; prepare with **one
 scale** for x and y, **mirrored** turn (round 1, from the weak student). Each fails a named check with a specific
-message; the runner's `test` catches most of them locally too.
+message; the runner's `test` catches most of them locally too, the missing zero_grad included (round 2: the same
+probe in the student's process, "train (zero_grad)"). Round 2 also: **`cp overfit.pt my_homography.pt`** (check 15:
+"not the file your last train saved") and **`rm logs/my_homography.pt.json`** (check 15: "… is missing").
 
 ## Difficulties to expect (author's estimate — not yet tested with students)
 
@@ -166,8 +174,11 @@ message; the runner's `test` catches most of them locally too.
   "heading 90°" and "90° × 40°" lines name them.
 - `GATE_REFUSED` as a list; students copy only the first refusal.
 - cut_pair: warping from SQUARE to the corners (the inverse).
-- The GPU queue: with more than three trainings at once the runner waits up to 10 min, then uses the CPU; tell
-  students to start Step 11 early, or to use the CPU recipe.
+- The GPU queue: with three trainings running the runner waits up to an hour for a slot, then STOPS with the CPU
+  recipe in its message (`torch_device(cpu_ok=False)`, academy_gpu round 2: no silent 1–2 h CPU training); the CPU
+  recipe itself (3 000 × 6) may run on the CPU. Tell students to start Step 11 early.
+- Total time: the weak reviewer measured ≈ 7 h 40 (8 h 05 with a zero_grad detour, now named by `test`); the lesson
+  states 6 h 40 – 8 h 10 (reading 1 h 55 + lab 4 h 45 – 6 h 15), meta.json 7 h 40.
 - The lesson is long (≈ 5 300 words with tables and answers; the weak reviewer read it in ≈ 1 h 55): Part A before
   session 1, Part B before session 2.
 - Validation targets not divided by RHO_PX: val loss ≈ 50; the runner now prints a ⚠ line.

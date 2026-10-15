@@ -13,7 +13,7 @@ TODO: coverage and the minimum height of the first simulator camera (your number
 
 ## 3. The learned homography
 
-TODO: your pairs, your network, its training (overfitting with 6 places), and its night error next to NCC's.
+TODO: your pairs, your network, its training (overfitting with 3 places), and its night error next to NCC's.
 
 ## 4. Limits and honesty
 

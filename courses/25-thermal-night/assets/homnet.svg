@@ -5,9 +5,9 @@
     <text x="12" y="150">pair 2 × 64 × 64</text><text x="12" y="166">(reference, thermal)</text>
     <text x="12" y="40" font-weight="bold">to_input</text>
     <rect x="125" y="55" width="54" height="64" fill="#cfe3ee" stroke="#1d2733"/><text x="120" y="140">conv1 16</text><text x="120" y="155">→ 16×32×32</text>
-    <rect x="205" y="65" width="44" height="46" fill="#cfe3ee" stroke="#1d2733"/><text x="198" y="140">conv2 32</text><text x="198" y="155">→ 32×16×16</text>
+    <rect x="205" y="65" width="44" height="46" fill="#cfe3ee" stroke="#1d2733"/><text x="198" y="140">conv2 32</text><text x="198" y="172">→ 32×16×16</text>
     <rect x="275" y="72" width="36" height="32" fill="#cfe3ee" stroke="#1d2733"/><text x="268" y="140">conv3 64</text><text x="268" y="155">→ 64×8×8</text>
-    <rect x="337" y="78" width="28" height="20" fill="#cfe3ee" stroke="#1d2733"/><text x="330" y="140">conv4 64</text><text x="330" y="155">→ 64×4×4</text>
+    <rect x="337" y="78" width="28" height="20" fill="#cfe3ee" stroke="#1d2733"/><text x="330" y="140">conv4 64</text><text x="330" y="172">→ 64×?×?</text>
     <text x="120" y="40">each: 3 × 3 conv (padding 1), ReLU, 2 × 2 max-pool</text>
     <rect x="425" y="45" width="16" height="90" fill="#e7d4ee" stroke="#1d2733"/><text x="415" y="155">fc1 128</text><text x="410" y="170">(ReLU)</text>
     <rect x="475" y="70" width="16" height="40" fill="#f3d9c4" stroke="#1d2733"/><text x="470" y="155">fc2 8</text>

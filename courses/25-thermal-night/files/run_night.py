@@ -14,7 +14,7 @@ and draws them.
     python3 run_night.py train         train YOUR HomographyNet and save it in my_homography.pt           (Step 11)
           options:  --n-train N (default 16 000 pairs)  --epochs E (default 8)  --scenes K (only the first K
                     training places)  --device cpu  --out FILE (default my_homography.pt)
-          ablation (Step 13, with --out ablation.pt): --norm none | --no-augment | --rho 1
+          ablation (Step 13, with --out ablation.pt): --norm none | --no-augment | --rho 1     --seed N (default 0)
     python3 run_night.py compare       prior, NCC, untrained and trained network, in five conditions      (Step 14)
           option:   --weights FILE (default my_homography.pt)
     python3 run_night.py sabotage      what loading weights with strict=False does                        (Step 15)
@@ -26,6 +26,7 @@ are drawn from OpenStreetMap data: © OpenStreetMap contributors.
 """
 import contextlib
 import csv
+import hashlib
 import json
 import math
 import os
@@ -36,7 +37,7 @@ import cv2
 import numpy as np
 
 import runner_kit as rk
-from academy_gpu import limit_threads, torch_device
+from academy_gpu import NoGpuSlot, limit_threads, torch_device
 
 # ---- you don't need to change anything in this file (but you can read it!) ----
 
@@ -357,13 +358,47 @@ def test():
         bad = number_row(v) if not e else None
         if not e and not bad and max(r["val_loss"] for r in v) > 1.0:
             bad = (f"val_loss {[round(r['val_loss'], 2) for r in v]}: far above ≈ 0.2 — divide the VALIDATION targets "
-                   "by RHO_PX too (lab Step 11, hint 3)")
+                   "by RHO_PX too (lab Step 11, hint 2)")
         if not e and not bad and max(r["train_loss"] for r in v) > 1.0:
             bad = (f"train_loss {[round(r['train_loss'], 2) for r in v]}: far above ≈ 0.2 — divide the targets by "
                    "RHO_PX (the network predicts offsets / 16)")
         line(11, "train (2 epochs)", None if e or bad else
              f"{len(v)} rows, train_loss {[round(r['train_loss'], 3) for r in v]}", e or bad, True, "")
+        if not e and not bad:
+            # opt.zero_grad(): ONE batch per epoch → 3 epochs must equal 3 plain Adam steps from the same start
+            torch.manual_seed(9)
+            net2, e2 = rk.call(hn, "HomographyNet")
+            if not e2:
+                init = {k: t.detach().clone() for k, t in net2.state_dict().items()}
+                _, e2 = rk.call(hn, "train", net2, torch.as_tensor(x[:32]), torch.as_tensor(y[:32]),
+                                torch.as_tensor(x[32:48]), torch.as_tensor(y[32:48]), epochs=3, batch=32, lr=1e-3,
+                                device="cpu")
+            if not e2:
+                torch.manual_seed(9)
+                ref, e3 = rk.call(hn, "HomographyNet")
+                ref.load_state_dict(init)
+                opt = torch.optim.Adam(ref.parameters(), lr=1e-3)
+                X, Y = _ref_input(x[:32]), torch.as_tensor(y[:32]) / 16.0
+                for _ in range(3):
+                    opt.zero_grad()
+                    torch.nn.functional.mse_loss(ref(X), Y).backward()
+                    opt.step()
+                d = torch.cat([(net2.state_dict()[k] - ref.state_dict()[k]).abs().flatten() for k in init])
+                share = float((d > 1e-4).float().mean())          # a correct train: ≈ 0.0001; without zero_grad: ≈ 0.5
+                line(11, "train (zero_grad)", f"3 one-batch epochs vs 3 plain Adam steps: {share:.1%} of the weights "
+                     "differ", None, share < 0.05,
+                     "your weights differ from 3 plain Adam steps — opt.zero_grad() must come before every "
+                     "loss.backward() (lab Step 11, hint 3)")
+            else:
+                line(11, "train (zero_grad)", None, e2, False, "")
     print("\nAll docstring examples pass." if ok_all else "\nFix the ✘ lines first (the hint names the lab step).")
+
+
+def _ref_input(pairs):
+    """The network's input exactly as to_input's docstring defines it (written for the course, for one test)."""
+    import torch
+    t = torch.as_tensor(np.asarray(pairs)).float()
+    return (t - t.mean(dim=(2, 3), keepdim=True)) / (t.std(dim=(2, 3), keepdim=True) + 1.0)
 
 
 def number_row(history):
@@ -646,6 +681,7 @@ def train_mode():
     n_train = option("--n-train", 16000, int)
     epochs = option("--epochs", 8, int)
     k_scenes = option("--scenes", 0, int)
+    seed = option("--seed", 0, int)
     out = option("--out", "my_homography.pt")
     if out.endswith(".json") or "/" in out or not out.endswith(".pt"):
         sys.exit("--out is a .pt file name in this folder, e.g. --out overfit.pt")
@@ -680,8 +716,22 @@ def train_mode():
     want_cpu = option("--device", "auto") == "cpu"
     if want_cpu:
         limit_threads()
-    with (contextlib.nullcontext("cpu") if want_cpu else torch_device()) as device:
-        torch.manual_seed(0)
+    cpu_ok = n_train * epochs <= 3000 * 6                        # a CPU-sized run may fall back to the CPU
+    try:
+        ctx = contextlib.nullcontext("cpu") if want_cpu else torch_device(cpu_ok=cpu_ok)
+        with ctx as device:
+            history, model, pred, took = _train_on(hn, device, x, y, vx, vy, epochs, seed, ablation, rho, out)
+    except NoGpuSlot:
+        sys.exit(f"No GPU slot came free in an hour (the class is training). This training ({len(x)} pairs × {epochs} "
+                 "epochs) would take 1–2 h on the CPU: run the same command again later, or use the CPU recipe:\n"
+                 "  python3 run_night.py train --device cpu --n-train 3000 --epochs 6      (11–25 minutes)")
+    _after_training(hn, history, pred, took, x, vy, n_sc, epochs, device, ablation, rho, out, seed)
+
+
+def _train_on(hn, device, x, y, vx, vy, epochs, seed, ablation, rho, out):
+    import torch
+    if True:
+        torch.manual_seed(seed)
         model, err = rk.call(hn, "HomographyNet")
         if err:
             sys.exit(err)
@@ -698,12 +748,12 @@ def train_mode():
                       flush=True, file=sys.__stdout__)
                 if rho == 16.0 and vl > 1.0 and vl > 5 * tl:
                     print("  ⚠ the validation loss is far above the training loss: did you divide the VALIDATION "
-                          "targets by RHO_PX too? (lab Step 11, hint 3)", file=sys.__stdout__)
+                          "targets by RHO_PX too? (lab Step 11, hint 2)", file=sys.__stdout__)
             except (TypeError, ValueError, AttributeError, RuntimeError):
                 print(f"  (a row the runner cannot print: {row!r:.80})", file=sys.__stdout__)
 
         history, err = rk.call(hn, "train", model, torch.as_tensor(x), torch.as_tensor(y), torch.as_tensor(vx),
-                               torch.as_tensor(vy), epochs=epochs, device=device, log=log)
+                               torch.as_tensor(vy), epochs=epochs, seed=seed, device=device, log=log)
         if err:
             sys.exit(err)
         bad = number_row(history)
@@ -712,11 +762,24 @@ def train_mode():
         took = time.time() - t0
         torch.save(model.state_dict(), out)
         pred = hn.predict(model, vx, device)
+    return history, model, pred, took
+
+
+def sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def _after_training(hn, history, pred, took, x, vy, n_sc, epochs, device, ablation, rho, out, seed):
     need_H(hn)
     ce, cc = hn.corner_error(pred, vy), hn.centre_error(pred, vy)
     mpp = float(np.mean(scenes("scenes_val.npz")["m_per_px"]))
     os.makedirs("logs", exist_ok=True)
-    record = {"weights": out, "n_train": int(len(x)), "places": int(n_sc), "epochs": epochs, "device": device,
+    record = {"weights": out, "student": os.environ.get("ACADEMY_STUDENT", ""), "sha256": sha256(out),
+              "n_train": int(len(x)), "places": int(n_sc), "epochs": epochs, "seed": seed, "device": device,
               "ablation": ablation,
               "seconds": round(took, 1), "val_corner_px": round(float(np.median(ce)), 3),
               "val_centre_px": round(float(np.median(cc)), 3), "history": history}

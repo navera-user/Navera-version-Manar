@@ -286,8 +286,9 @@ prior.
 
 The network takes the two patches **stacked** as two channels of one 64 × 64 picture: its first convolution sees, at
 every pixel, the reference and the frame together, so it can learn local comparisons from the very first layer.
-Four blocks of mission 21's kind (3 × 3 convolution, ReLU, 2 × 2 max-pooling) shrink 64 × 64 to 4 × 4 with 64
-maps; two linear layers turn those 1 024 numbers into 8.
+Four blocks of mission 21's kind (3 × 3 convolution, ReLU, 2 × 2 max-pooling) shrink the 64 × 64 picture step by
+step while the number of maps grows to 64; two linear layers turn the result into 8 numbers (how many go into the
+first one is yours to work out in lab Step 10).
 
 ![HomographyNet in NAVERA Lite: four conv blocks, two linear layers, 8 outputs](assets/homnet.svg)
 

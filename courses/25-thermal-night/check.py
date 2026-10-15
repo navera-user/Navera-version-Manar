@@ -576,8 +576,9 @@ def _():
         torch.nn.functional.mse_loss(ref2(X), Y).backward()
         opt.step()
     got2 = weights(net2)
-    gap = max(float(np.abs(got2[k] - ref2.state_dict()[k].detach().numpy()).max()) for k in init)
-    c.ok(gap < 3e-4, "after 3 epochs of ONE batch each your weights differ from 3 plain Adam steps: is "
+    diff = np.concatenate([np.abs(got2[k] - ref2.state_dict()[k].detach().numpy()).ravel() for k in init])
+    share = float((diff > 1e-4).mean())         # a correct train: ≈ 0.0001 (float noise); without zero_grad: ≈ 0.5
+    c.ok(share < 0.05, "after 3 epochs of ONE batch each your weights differ from 3 plain Adam steps: is "
          "opt.zero_grad() called before every loss.backward()? Without it each step adds all the old gradients")
 
 
@@ -588,6 +589,8 @@ def train_log():
     """The runner's record of the training that wrote my_homography.pt (JSON, read as text), or None."""
     import json
     try:
+        if os.path.getsize(os.path.join("logs", "my_homography.pt.json")) > 2_000_000:
+            return None
         with open(os.path.join("logs", "my_homography.pt.json"), encoding="utf-8") as fh:
             d = json.load(fh)
         return d if isinstance(d, dict) else None
@@ -622,7 +625,21 @@ def _():
     torch.set_num_threads(1)
     net = load_weights_strict("my_homography.pt")
     log = train_log()
-    if log is not None and isinstance(log.get("places"), int) and log["places"] < 50:
+    if log is None:
+        raise CheckFailed("logs/my_homography.pt.json is missing: train with `python3 run_night.py train` (Step 11) — "
+                          "the check reads the record your training wrote")
+    import hashlib
+    h = hashlib.sha256()
+    with open("my_homography.pt", "rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            h.update(block)
+    if log.get("sha256") != h.hexdigest() or log.get("weights") != "my_homography.pt":
+        raise CheckFailed("my_homography.pt is not the file your last `train` saved (logs/my_homography.pt.json): was "
+                          "overfit.pt, quick.pt or ablation.pt copied over it? Train again (Step 11)")
+    me = os.environ.get("ACADEMY_STUDENT")
+    if me and log.get("student") not in (None, "", me):
+        raise CheckFailed("my_homography.pt and its record were not trained in your workspace: train your own (Step 11)")
+    if isinstance(log.get("places"), int) and log["places"] < 50:
         raise CheckFailed(f"my_homography.pt was trained on {log['places']} places: train on all of them (Step 11). "
                           "overfit.pt is the Step 12 experiment, not your navigator")
     d = np.load(io.BytesIO(hidden("test_pairs.npz", text=False)))
@@ -663,7 +680,8 @@ def _():
     explained("EXPLAIN_OVERFIT", wo,
               ((r"train",), "what the training loss did"),
               ((r"valid", r"val\b", r"val loss", r"other place", r"unseen", r"new place"), "what the validation loss did"),
-              ((r"memor", r"by heart", r"overfit", r"few", r"6 place", r"six", r"not general", r"specific", r"variety"),
+              ((r"memor", r"by heart", r"overfit", r"few", r"3 place", r"three", r"6 place", r"six", r"not general",
+                r"specific", r"variety"),
                "why"))
 
 

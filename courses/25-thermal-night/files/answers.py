@@ -59,6 +59,7 @@ PREDICT_ABLATION = ""    # which choice you turn off (a, b or c) and how much wo
 ABLATION = ""            # "a" (no normalisation), "b" (no augmentation) or "c" (no ρ scaling)
 ABLATION_PX = 0.0        # the median centre error of that run's last line (two decimals)
 EXPLAIN_ABLATION = ""    # compared with your own error: was the author's choice worth it? Why? How sure are you?
+SEED_NOISE_PX = 0.0      # (not graded) your baseline trained again with --seed 1: its median centre error
 
 # ---- Step 14: learned vs NCC ---------------------------------------------------------------------------
 NET_NIGHT_PX = 0.0       # from `compare`: your network's median error at night (px, one decimal)
