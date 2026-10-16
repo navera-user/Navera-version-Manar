@@ -265,7 +265,7 @@ pre-registration after the badge needs your teacher (they reset the seal), and b
 2. You must change the test or project.json after tagging? That is a new pre-registration. **Before the change**
    (you are still on the red commit): edit, `git commit -am "pre-registration v2"`, `git tag -f before`, then
    `python3 project.py red` and `python3 project.py campaign before`. **If the change is already committed**, the tag
-   must not land on top of it: start a fresh branch from the old red commit and bring the change back —
+   must not land on top of it: start a fresh branch from the old red commit and bring the change back.
    Find the red commit first: `python3 project.py red` printed its id ("Red commit: …"), and `git log --oneline`
    shows it — the commit just BEFORE your change commit (if you already moved the tag, `before` is no longer it).
    ```bash

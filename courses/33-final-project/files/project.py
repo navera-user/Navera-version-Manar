@@ -924,6 +924,15 @@ def cmd_one(args):
         die(f"{args[0]}: no such file")
     except ValueError as e:
         die(f"{args[0]} is not valid JSON, or {args[1]!r} is not a whole number: {e}")
+    try:
+        pj = json.load(open(os.path.join(HERE, "project.json")))
+        first, n = int(pj["seeds"]["first"]), int(pj["seeds"]["count"])
+    except Exception:
+        first = n = None
+    if first is not None and first <= seed < first + n:
+        die(f"seed {seed} is in your pre-registered block ({first}–{first + n - 1}): only the campaigns fly it. To look at "
+            f"that run, open runs/before/ or runs/after/ (…_s{seed}.csv and its _events.log); to explore, use a seed "
+            "below 1000 (lesson §2)")
     sc = dict(sc, seed=seed, name=f"{sc.get('name', 'run')}_s{seed}")
     w = R.fly(sc, mine=False)
     path = R.write(w, os.path.join(HERE, "my_runs"))

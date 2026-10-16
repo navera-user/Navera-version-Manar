@@ -50,6 +50,13 @@ CLAIMS = [   # must be caught (a gain claimed that an inconclusive interval does
     "We expected a gain and we got it: 2.55 s.",
     "The change is effective.",
     "The change was successful.",
+    "The mean error after the change is smaller than the mean before, so the change works.",
+    "The p95 is less than the old one: the change improves the guard.",
+    "The change reduces the error by less than the 3 m we hoped, but it reduces it.",
+    "The error after is lower than before.",
+    "The change makes the error drop by 1.4 m.",
+    "The change clearly brings the error down.",
+    "Honest2 got closer to 0.86, which is what we wanted.",
 ]
 HONEST = [   # must pass
     "The change is not shown to lower the error on these 30 runs.",

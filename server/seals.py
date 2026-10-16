@@ -81,10 +81,10 @@ def reset(name, lid=None):
         if lid is None:
             return d.pop(name), True
         gone = d[name].pop(lid, None)
-        d[name].pop(lid + ":log", None)
+        gone_log = d[name].pop(lid + ":log", None)
         if not d[name]:
             d.pop(name)
-        return ({lid: gone} if gone else {}), gone is not None
+        return ({lid: gone} if gone else {}), gone is not None or gone_log is not None
     return _locked(fn)
 
 

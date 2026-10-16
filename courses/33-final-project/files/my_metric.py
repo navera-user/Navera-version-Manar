@@ -14,4 +14,4 @@ def metric(rows, scenario):
 
     Example (a metric that counts the seconds in NO_FIX): metric(rows, scenario) → 3.2
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code

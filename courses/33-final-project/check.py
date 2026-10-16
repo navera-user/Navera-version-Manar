@@ -457,9 +457,9 @@ NEGATION = re.compile(r"\bnot\b|n't|\bno\b(?!\s*0)|\bnever\b|cannot|\bunclear\b|
 CLAIM = re.compile(r"\bbetter\b|\bbeats?\b|\boutperform|more accurate|\bwins?\b|\bsuperior\b|\bimprov"
                    r"|\bfixes\b|\bsolves?\b|\bsolved\b|\breduc|\blower(s|ed)\b|\bfaster\b|\bsooner\b|\bdecreas"
                    r"|\bshortens?\b|\bshorter\b|\bearlier\b|\bquicker\b|\bhelps?\b|\bgains?\b|\bworks?\b"
-                   r"|\bdropped\b|\bwent down\b|\beffective\b|\bsuccess|\bshould be merged\b")
+                   r"|\bdrop(s|ped)?\b|\bbrings? \S+( \S+)? down\b|\blower than before\b|\bcloser\b|\bwent down\b|\beffective\b|\bsuccess|\bshould be merged\b")
 # a "case (b)" sentence of lesson §5: a gain over 0, but perhaps smaller than the minimum effect — honest
-CASE_B = re.compile(r"minimum effect|minimal effect|(less|smaller) than the|not one larger")
+CASE_B = re.compile(r"minimum effect|minimal effect|not one larger")
 CASE_B_HEDGE = re.compile(r"perhaps|maybe|not shown|cross|cannot|\bnot\b|less than|smaller than")
 CLAUSES = re.compile(r",|;|\b(?:but|however|although|yet)\b")
 MISSING = re.compile(r"\bno (position|fix|match|gps|data|answer)s?\b")
