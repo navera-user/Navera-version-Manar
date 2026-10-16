@@ -26,7 +26,7 @@ def d2_samples(n, seed=0):
     Example: d2_samples(4, seed=1) → 4 numbers ≥ 0, the same ones at every run;
              d2_samples(200000).mean() → about 2.0
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ---- you don't need to change anything below this line ----

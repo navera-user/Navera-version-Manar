@@ -43,7 +43,7 @@ PARTS = {
     "kalman.py": (("28-kalman",), ("uncertainty.py",), "28-kalman", True),
 }
 ALWAYS = ("__init__.py", "output.py", "sim/__init__.py", "sim/sensors.py", "sim/world.py")   # given or stubs only
-STUB_MARKS = ("# TODO: write your code above", 'NotImplementedError("TODO')
+STUB_MARKS = ("# TODO: replace this line with your code", "# TODO: write your code above", 'NotImplementedError("TODO')
 YAML_FROM = ("33-final-project", "31-simulator", "30-spoofing", "29-arbiter")
 
 

@@ -60,7 +60,7 @@ def cut_pair(ref_scene, thermal_scene, corner_xy, offsets):
     Example: with offsets all 0 both patches are the plain crops scene[y0:y0 + 64, x0:x0 + 64]; with every
              offset (x, y) = (5, 0) the thermal patch is the crop 5 pixels further RIGHT, scene[y0:y0 + 64, x0 + 5:x0 + 69]
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it
@@ -115,7 +115,7 @@ def to_input(pairs, device="cpu"):
     Example: to_input(np.array([[[[0, 2], [4, 6]], [[9, 9], [9, 9]]]], np.uint8))
              → tensor([[[[-0.8375, -0.2792], [0.2792, 0.8375]], [[0., 0.], [0., 0.]]]])
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 9 ---------------------------------------------------------------------------------------
@@ -149,7 +149,7 @@ class HomographyNet(nn.Module):
 
         Example: HomographyNet()(torch.zeros(1, 2, 64, 64)) → a tensor of shape (1, 8) (small random numbers)
         """
-        return None   # TODO: write your code above, and return the result
+        return None   # TODO: replace this line with your code
 
 
 # TODO 10 --------------------------------------------------------------------------------------
@@ -161,7 +161,7 @@ def offsets_to_H(offsets, side=PATCH_PX):
     Returns a numpy (3, 3) float64 array with H[2, 2] = 1.
     Example: offsets_to_H([2, -1] * 4) → [[1, 0, 2], [0, 1, -1], [0, 0, 1]]   (every corner moved 2 right, 1 up)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it
@@ -194,7 +194,7 @@ def train(model, train_x, train_y, val_x, val_y, epochs=15, lr=1e-3, batch=128, 
     Example: 512 training and 128 validation pairs, epochs=3 → 3 dicts whose "train_loss" usually goes down from
              about 0.21 (the loss of always answering 0, lesson §8), e.g. [{"epoch": 1, "train_loss": 0.21, "val_loss": 0.19}, …]
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ====================================================================== using a trained network (given)

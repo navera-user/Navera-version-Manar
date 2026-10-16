@@ -81,7 +81,7 @@ def focal_px(hfov_deg, width_px):
     Returns one float (pixels).
     Example: focal_px(60.0, 1280) → about 1108.51
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 2 ---------------------------------------------------------------------------------------
@@ -92,7 +92,7 @@ def K_from_hfov(hfov_deg, width_px, height_px):
     Returns a numpy array of floats, shape (3, 3).
     Example: K_from_hfov(60.0, 1280, 720) → about [[1108.51, 0, 640], [0, 1108.51, 360], [0, 0, 1]]
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 3 ---------------------------------------------------------------------------------------
@@ -105,7 +105,7 @@ def project(K, R_wc, C, X):
     Example: project(K_from_hfov(90.0, 960, 540), camera_rotation_hpr(0.0), [0, 0, 100], [20, 10, 0])
              → array([576., 222.])   (20 m east, 10 m north, seen from 100 m: right of and above the centre)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 4 ---------------------------------------------------------------------------------------
@@ -118,7 +118,7 @@ def backproject_ground(K, R_wc, C, u, v):
     Example: backproject_ground(K_from_hfov(90.0, 960, 540), camera_rotation_hpr(0.0), [0, 0, 100], 576, 222)
              → array([20., 10.])
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 5 ---------------------------------------------------------------------------------------
@@ -129,7 +129,7 @@ def gsd(h_m, hfov_deg, width_px):
     Returns one float (m/px).
     Example: gsd(100.0, 90.0, 960) → about 0.20833
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ============================================================================ errors and straightening (session 2)
@@ -143,7 +143,7 @@ def footprint(K, R_wc, C, width_px, height_px):
     Example: footprint(K_from_hfov(90.0, 960, 540), camera_rotation_hpr(0.0), [0, 0, 100], 960, 540)
              → [[−100, 56.25], [100, 56.25], [100, −56.25], [−100, −56.25]]
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 7 ---------------------------------------------------------------------------------------
@@ -156,7 +156,7 @@ def tilt_position_error(h_m, tilt_deg, dtilt_deg):
     Returns one float ≥ 0 (metres).
     Example: tilt_position_error(100.0, 10.0, 1.0) → about 1.805
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 8 ---------------------------------------------------------------------------------------
@@ -169,4 +169,4 @@ def nadir_homography(K, R_wc, R_wv):
     Returns a numpy array (3, 3) scaled so that H[2, 2] = 1.
     Example: nadir_homography(K, R, R) → the identity matrix, for any K and R (nothing to straighten)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code

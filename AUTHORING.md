@@ -347,8 +347,8 @@ Design: `reviews/fledgling-design.md` (§7 owner decisions override it: read "Fl
   `navera_lite/__init__.py` to register a part; adding `vehicle.py` for 03 and `geo.py` for 06 touches no
   common file). `tools/lite_build.py --parts` prints the table.
 - **Build:** `python3 tools/lite_build.py <id>` (or `--all`) writes `courses/<id>/files/navera_lite/`
-  (tags < NN finished, tags == NN stubbed to signature + docstring + `return None   # TODO: write your code
-  above, and return the result` or `raise NotImplementedError("TODO K")`, tags > NN removed, plus `PARTS.md`)
+  (tags < NN finished, tags == NN stubbed to signature + docstring + `return None   # TODO: replace this line
+  with your code` or `raise NotImplementedError("TODO K")`, tags > NN removed, plus `PARTS.md`)
   and `solutions/<id>/navera_lite/` (complete), then verifies: the starter imports, its TODOs are stubs,
   every TODO docstring has an `Example:`, the shipped tests pass on the solution, lite_lint is clean.
   Both folders are generated: edit the reference and rebuild. Runners, answers.py, report.md and play tools

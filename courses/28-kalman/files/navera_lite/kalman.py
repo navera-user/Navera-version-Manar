@@ -30,7 +30,7 @@ def cv_model(dt, q, dims=2):
     Example: cv_model(0.5, 4.0, dims=1) → F = [[1.0, 0.5], [0.0, 1.0]], Q = [[0.0625, 0.25], [0.25, 1.0]]
              cv_model(0.5, 4.0) → F and Q of shape (4, 4); F[0, 2] = 0.5, Q[1, 3] = 0.25, Q[0, 1] = 0.0
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 2 ---------------------------------------------------------------------------------------
@@ -43,7 +43,7 @@ def kf_predict(x, P, F, Q):
              kf_predict([80.0, 2.0], [[9.0, 0.0], [0.0, 4.0]], F, Q)
              → (array([82., 2.]), array([[13.0625, 4.125], [4.125, 4.25]]))
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 3 ---------------------------------------------------------------------------------------
@@ -57,7 +57,7 @@ def kf_update(x, P, z, H, R):
     Example: kf_update([82.0, 2.0], [[13.0625, 4.125], [4.125, 4.25]], [85.0], [[1.0, 0.0]], [[2.25]])
              → (array([84.559…, 2.808…]), array([[1.919…, 0.606…], [0.606…, 3.139…]]), 0.5877…)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ====================================================================== a height filter
@@ -94,7 +94,7 @@ class Height1D:
                  then f.update(1.0, 83.0, 1.5) → (82.559…, 1.385…)
                  then f.update(2.0, 0.0, 1.5) → (82.559…, 1.385…)   (0 = no reading: ignored)
         """
-        return None   # TODO: write your code above, and return the result
+        return None   # TODO: replace this line with your code
 
 
 # ====================================================================== honesty and the tracker
@@ -107,7 +107,7 @@ def nees(err, P):
 
     Example: nees([3.0, -1.0], [[4.0, 0.0], [0.0, 1.0]]) → 3.25      nees([2.0], [[4.0]]) → 1.0
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it
@@ -137,4 +137,4 @@ def run_filter(times, zs, sigma_z, q, gate_p=None, v0_sigma=20.0):
                r["accepted"] = [True, None, True], r["x"][2][2] = 14.559… (it learned a speed east)
              run_filter(…the same…, gate_p=0.2)["accepted"] = [True, None, False]   (0.5446 > 0.4462)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code

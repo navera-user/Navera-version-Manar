@@ -81,8 +81,8 @@ pixelated.
 
 Read lesson §2. Open [navera_lite/timing.py](file:./navera_lite/timing.py): the top holds the conventions, the
 settings `DEFAULTS` and three finished helpers (`load_camera_settings`, `exposure_time`, `tilt_deg`). Each `TODO`
-function keeps its docstring and ends with `return None   # TODO: write your code above, and return the result`:
-write your code above that line (it is then never reached; you may also delete it). phase.py (Step 3b) works the
+function keeps its docstring and ends with `return None   # TODO: replace this line with your code`:
+replace that line with your code (code written above it also counts: the line is then never reached). phase.py (Step 3b) works the
 same way.
 
 <details><summary>🧰 numpy: intervals, median, standard deviation</summary>

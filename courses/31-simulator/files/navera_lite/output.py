@@ -147,7 +147,7 @@ def decode_gps_input(payload):
              decode_gps_input(struct.pack(GPS_INPUT_FORMAT, 0, 0, 358242433, 106360050, *[0.0] * 9, 0, 0, 0, 3, 0,
              0)[:62])["lat"] → 35.8242433   (62 bytes: everything after fix_type was zero)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 2 ---------------------------------------------------------------------------------------
@@ -164,7 +164,7 @@ def parse_frames(data):
     Example: parse_frames(b"\\x00\\x13" + f + f[:5]) with f = encode_gps_input(fields, 7) → one dict:
              {"seq": 7, "sysid": 1, "compid": 191, "msgid": 232, "payload": f[10:-2], "crc_ok": True}
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it
@@ -189,4 +189,4 @@ def lost_frames(seqs):
     seqs: a list of ints 0–255. Returns (lost, doubled): two ints.
     Example: lost_frames([250, 251, 253, 253, 0, 1]) → (3, 1)   (252 lost, 253 doubled, 254 and 255 lost)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code

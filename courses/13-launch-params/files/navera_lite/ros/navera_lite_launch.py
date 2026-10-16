@@ -38,4 +38,4 @@ def generate_launch_description():
     Example: after `ros2 launch navera_lite/ros/navera_lite_launch.py`, `ros2 node list` →
              /arbiter  /boat/fake_gps  /drone/fake_gps
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code

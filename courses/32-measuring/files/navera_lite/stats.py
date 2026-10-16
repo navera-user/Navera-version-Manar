@@ -33,7 +33,7 @@ def errors_m(df):
     Example: rows (lat 35.8000, truth 35.8000), (lat NaN), (lat 35.8001, truth 35.8000), same lon 10.6
              → array([0.0, 11.12])   (0.0001° of latitude is 11.12 m; the NaN row is left out)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 2 ---------------------------------------------------------------------------------------
@@ -45,7 +45,7 @@ def percentile(v, q):
     Raises ValueError("percentile of an empty sequence") when v is empty.
     Example: percentile([7, 1, 3, 5], 50) → 4.0;   percentile([7, 1, 3, 5], 90) → 6.4
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it
@@ -78,7 +78,7 @@ def summary(errs):
     Example: summary([2, 4, 4, 10]) → {"n": 4, "mean": 5.0, "median": 4.0, "p90": 8.2, "p95": 9.1,
                                        "max": 10.0, "rmse": 5.831}
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it
@@ -100,7 +100,7 @@ def availability(df, ok=USABLE):
     df: a flight table. Returns a float.
     Example: states FIX, FIX, NO_FIX, DEGRADED (all with a position except the NO_FIX row) → 0.75
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 5 ---------------------------------------------------------------------------------------
@@ -112,7 +112,7 @@ def longest_gap_s(df, dt_s=DT_S, ok=USABLE):
     df: a flight table sorted by t_s; dt_s: the period of the rows (s). Returns a float (s).
     Example: t_s 0, 1, 2, 3, 4, 5 with usable rows yes, no, no, yes, no, yes → 2.0
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 6 ---------------------------------------------------------------------------------------
@@ -132,7 +132,7 @@ def bootstrap_ci(x, stat, B=2000, alpha=0.05, seed=None, block=1):
              bootstrap_ci([4.0] * 20, np.median) → (4.0, 4.0)   (every resample is the same);
              bootstrap_ci(list(range(60)), np.median, block=60) → (29.5, 29.5)   (only one run fits)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 7 ---------------------------------------------------------------------------------------
@@ -144,7 +144,7 @@ def paired_diff_ci(a, b, stat, B=2000, alpha=0.05, seed=None, block=1):
     a, b: sequences of the same length (else ValueError). Returns (lo, hi), two floats.
     Example: b = [3, 9, 4, 12, 7], a = b + 5 everywhere → paired_diff_ci(a, b, np.mean) → (5.0, 5.0)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 8 ---------------------------------------------------------------------------------------
@@ -155,7 +155,7 @@ def wilson(k, n, z=1.96):
     k, n: integers, 0 ≤ k ≤ n, n ≥ 1 (else ValueError). Returns (lo, hi), two floats (shares, 0 to 1).
     Example: wilson(8, 10) → (0.490, 0.943)   (to 3 decimals)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it
@@ -183,7 +183,7 @@ def coverage_experiment(make_sample, ci_of, true_value, trials=200, seed=0):
              ci_of = lambda s, rng: (s.min(), s.max()), true_value 0.0, trials 1000 → about 0.94
              (the truth 0 lies between the smallest and the largest of 5 values unless all 5 are on one side)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it

@@ -35,7 +35,7 @@ def integrate_gyro(q0, t_s, gyro_rad_s):
              → about [[0, 0, 0, 1], [0, 0, 0.1494, 0.9888], [0, 0, 0.2955, 0.9553]]
              (0.6 rad/s about up for 1 s: a 0.6 rad = 34.4° yaw to the left)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 2 ---------------------------------------------------------------------------------------
@@ -50,7 +50,7 @@ def tilt_from_accel(ax, ay, az):
              tilt_from_accel(-1.6, 0.0, 9.68) → about (0.0, 0.1638)              (nose 9.4° DOWN)
              tilt_from_accel(0.0, 4.905, 8.496) → about (0.5236, 0.0)            (30° right wing down)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ====================================================================== session 2 — fusion, compass, trust
@@ -68,7 +68,7 @@ def complementary(q0, t_s, gyro_rad_s, accel_mps2, tau_s):
              → about [[0, 0, 0, 1], [0.0654, 0, 0, 0.9979], [0.1143, 0, 0, 0.9934]]
              (no turn measured, gravity says 30° right wing down, τ = 1.5 s, dt = 0.5 s: the roll grows step by step towards 30°)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 4 ---------------------------------------------------------------------------------------
@@ -80,7 +80,7 @@ def mag_heading(mag_uT, roll_rad, pitch_rad):
     Example: mag_heading((0.0, 28.2, -34.3), 0.0, 0.0) → 90.0            (level, magnetic north on the LEFT)
              mag_heading((13.68, 6.0, -41.82), math.radians(20), math.radians(-10)) → about 45.0
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 5 ---------------------------------------------------------------------------------------
@@ -91,7 +91,7 @@ def true_heading(mag_heading_deg, declination_deg):
     Example: true_heading(350.0, 12.8) → about 2.8
              true_heading(10.0, -26.8) → about 343.2
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 6 ---------------------------------------------------------------------------------------
@@ -103,7 +103,7 @@ def q_true_north(q_mag, declination_deg):
     Example: q_true_north((0.0, 0.0, 0.0, 1.0), 10.0) → about array([0., 0., -0.0872, 0.9962])
              (the nose points to magnetic east, heading 90° magnetic; that is heading 100° true: yaw −10°)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it
@@ -146,4 +146,4 @@ class StaleDetector:
                  [d.update(s) for s in [(1, 5), (1, 5), (1, 5), (1, 5), (1, 6), (1, 6)]]
                  → [False, False, True, True, False, False]
         """
-        return None   # TODO: write your code above, and return the result
+        return None   # TODO: replace this line with your code

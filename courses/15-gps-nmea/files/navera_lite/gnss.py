@@ -28,7 +28,7 @@ def nmea_checksum(body):
     Input: a str. Returns 2 upper-case hexadecimal digits, a str ("0D", never "D").
     Example: nmea_checksum("GPGSA,A,1") → "32"
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 2 ---------------------------------------------------------------------------------------
@@ -42,7 +42,7 @@ def is_valid(line):
 
     Example: is_valid("$GPGSA,A,1*32\\r\\n") → True;  is_valid("$GPGSA,A,1*33") → False;  is_valid(None) → False
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it
@@ -117,7 +117,7 @@ def dm_to_deg(value, hemisphere):
     the angle is beyond 90° (N/S) or 180° (E/W).
     Example: dm_to_deg("3544.04006", "N") → about 35.734001;  dm_to_deg("3574.17098", "N") → None
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 4 ---------------------------------------------------------------------------------------
@@ -135,7 +135,7 @@ def parse_gga(line):
              → {"t_utc_s": 51381.0, "lat": about 35.734001, "lon": about 10.575849, "qual": 1, "sats": 12,
                 "hdop": 0.72, "alt_msl_m": 95.3, "geoid_m": 32.1, "h_ell_m": about 127.4}
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 5 ---------------------------------------------------------------------------------------
@@ -149,7 +149,7 @@ def parse_gsa(line):
     Example: parse_gsa("$GPGSA,A,3,02,05,07,09,13,20,23,24,30,,,,1.98,1.15,1.61*0C")
              → {"mode": 3, "prns": [2, 5, 7, 9, 13, 20, 23, 24, 30], "pdop": 1.98, "hdop": 1.15, "vdop": 1.61}
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it
@@ -200,7 +200,7 @@ def geometry_matrix(az_deg, el_deg):
     Example: geometry_matrix([90.0], [30.0]) → about [[-0.866025, -0.0, -0.5, 1.0]]
              (a satellite due east, 30° up; the North entry is −5e-17, i.e. 0 up to rounding)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 7 ---------------------------------------------------------------------------------------
@@ -213,7 +213,7 @@ def dops(az_deg, el_deg):
     Example: dops([0, 90, 180, 270, 0], [30, 30, 30, 30, 90]) → HDOP about 1.155, VDOP about 2.236
              (lesson §5's worked example);  dops([0, 90, 180, 270], [40, 40, 40, 40]) → None
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ====================================================================== the decision
@@ -230,7 +230,7 @@ def fix_decision(gga):
       no latitude or no longitude   → "no position"
     Example: fix_decision({"qual": 6, "lat": 35.8, "lon": 10.7, "hdop": None}) → (False, "receiver dead reckoning (quality 6)")
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 9 ---------------------------------------------------------------------------------------
@@ -243,7 +243,7 @@ def covariance_from_hdop(hdop):
     Example: covariance_from_hdop(0.72) → ([2.0736, 0.0, 0.0, 0.0, 2.0736, 0.0, 0.0, 0.0, 8.2944], 1)
              (σ = 1.44 m; numbers about these, to rounding)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 10 --------------------------------------------------------------------------------------
@@ -259,4 +259,4 @@ def fix_state(gga, fix_max_sigma_m=25.0):
     Example: fix_state(parse_gga("$GNGGA,141621.00,3544.04006,N,01034.55091,E,1,12,0.72,95.3,M,32.1,M,,*70"))
              → ("FIX", "σ 1.4 m")
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code

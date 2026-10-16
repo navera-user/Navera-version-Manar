@@ -68,4 +68,4 @@ def check_settings(cfg):
     number for them (an int 0 timeout breaks rules 1 and 2).
     Example: check_settings(dict(DEFAULTS, gps_timeout_s=3)) → ["gps_timeout_s must be a float: write 3.0, not 3"]
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code

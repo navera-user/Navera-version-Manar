@@ -68,7 +68,7 @@ class PatchNet(nn.Module):
 
         Example: PatchNet()(torch.zeros(2, 1, 32, 32)).norm(dim=1) → tensor([1., 1.])
         """
-        return None   # TODO: write your code above, and return the result
+        return None   # TODO: replace this line with your code
 
 
 # TODO 8 ---------------------------------------------------------------------------------------
@@ -82,7 +82,7 @@ def triplet_loss(da, dp, margin=0.5):
     Example: da = torch.tensor([[1.0, 0.0], [0.0, 1.0]]); dp = torch.tensor([[0.6, 0.8], [0.8, 0.6]])
              triplet_loss(da, dp) → tensor(0.7620)   (each point: 0.5 + 0.8944 − 0.6325; its impostor is closer!)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 9 ---------------------------------------------------------------------------------------
@@ -101,7 +101,7 @@ def train(model, train_a, train_p, val_a, val_p, epochs=8, lr=1e-3, batch=256, s
     Example: with 512 training and 256 validation pairs, epochs=3 → a list of 3 dicts whose "train_loss" usually
              goes down, e.g. [{"epoch": 1, "train_loss": 0.47, "val_loss": 0.45}, {"epoch": 2, …}, {"epoch": 3, …}]
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ====================================================================== using a trained network (given)

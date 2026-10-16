@@ -47,7 +47,7 @@ def chi2_threshold_2d(p_fa):
     p_fa: a probability, 0 < p_fa < 1 (else ValueError). Returns γ (no unit: d² is in "σ²").
     Example: chi2_threshold_2d(0.05) → 5.991 (5.99146…, mission 27's 95 % gate)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it
@@ -72,7 +72,7 @@ def innovation(gps, ref, cfg):
     Example: gps 30 m east of ref, gps σ 3 m (cov a = c = 9), ref σ 15 m (a = c = 225), same stamp
              → (3.846, 30.0)   (S = 234 on each axis, d² = 900 / 234)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 3 ---------------------------------------------------------------------------------------
@@ -83,7 +83,7 @@ def first_alarm(stats, threshold, n):
     stats: a sequence of d² values, in time order; threshold: γ; n ≥ 1 (else ValueError).
     Example: first_alarm([1.0, 12.0, 13.0, 2.0, 11.0, 10.0, 15.0], 9.21, 3) → 6
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 4 ---------------------------------------------------------------------------------------
@@ -96,7 +96,7 @@ def patient_accept_time(offset_m, speed_mps, v_max_mps, margin_m):
     Example: patient_accept_time(1000.0, 10.0, 20.0, 50.0) → 54.43 (54.425…);
              patient_accept_time(2000.0, 30.0, 30.0, 0.0) → inf
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 5 ---------------------------------------------------------------------------------------
@@ -109,7 +109,7 @@ def drift_alarm_time(drift_mps, sigma_s_m, threshold, n, period_s):
     Example: drift_alarm_time(2.5, 20.0, 5.99, 3, 1.0) → 22.0   (radius 48.9 m reached after 19.6 s:
              first disagreeing test at 20 s, the third in a row at 22 s)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — this class is finished except its TODO methods
@@ -197,7 +197,7 @@ class SpoofGuard:
         Example: after 4 reference fixes in a row with d² 12.0 (γ = 9.21 for p_fa 0.01), GPS "IN_DOUBT";
                  the 5th → "REFUSED" (refused_by "drift")
         """
-        return None   # TODO: write your code above, and return the result
+        return None   # TODO: replace this line with your code
 
     # TODO 7 -----------------------------------------------------------------------------------
     def on_gps(self, gps):
@@ -215,7 +215,7 @@ class SpoofGuard:
         Example: TRUSTED at (lat, lon) at t = 10 s, then a fix 2 km away at t = 11 s (30 m/s, margin 50 m)
                  → ("REFUSED", "jump 2000 m > 80 m in 1.0 s")
         """
-        return None   # TODO: write your code above, and return the result
+        return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it

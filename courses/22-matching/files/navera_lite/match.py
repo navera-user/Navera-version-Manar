@@ -51,7 +51,7 @@ def ratio_test(dist, ratio=0.8):
     Example: ratio_test(np.array([[1.0, 5.0, 9.0], [4.0, 3.0, 3.5], [2.0, 8.0, 2.4]]), 0.8)
              → array([[0, 0]])   (row 1: 3.0 is not < 0.8 × 3.5; row 2: 2.0 is not < 0.8 × 2.4 = 1.92)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ====================================================================== fitting a model (session 1)
@@ -68,7 +68,7 @@ def fit_similarity(src, dst):
     Example: fit_similarity([[0, 0], [10, 0]], [[5, 5], [5, 25]]) → (2.0, 90.0, 5.0, 5.0)
              (twice as big, turned 90° clockwise on the screen, shifted by (5, 5))
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it
@@ -110,7 +110,7 @@ def dlt_homography(src, dst):
     Example: dlt_homography([[0, 0], [1, 0], [1, 1], [0, 1]], [[1, 2], [3, 2], [3, 4], [1, 4]])
              → [[2, 0, 1], [0, 2, 2], [0, 0, 1]] (up to rounding: a zoom by 2 and a shift by (1, 2))
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ====================================================================== RANSAC (session 1)
@@ -124,7 +124,7 @@ def ransac_iterations(p=0.99, w=0.5, s=2):
     homography). Returns an int ≥ 1. Raises ValueError when w ≤ 0 or w > 1 (no finite N).
     Example: ransac_iterations(0.99, 0.5, 2) → 17      ransac_iterations(0.99, 1.0, 4) → 1
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 MIN_SAMPLE = {"similarity": 2, "homography": 4}
@@ -179,7 +179,7 @@ def ransac(src, dst, kind="similarity", thr_px=6.0, iters=100, rng=None):
              ransac(src, dst, "similarity", 1.0, 20, np.random.default_rng(1))
              → (≈ [[2, 0, 0], [0, 2, 0], [0, 0, 1]], [True] * 8 + [False, False])
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it
@@ -217,4 +217,4 @@ def gates(fit, inlier_pts, shape, predicted_scale, min_inliers=6, scale_tol=0.15
     Example: gates((1.62, -35.0, 10.0, 4.0), pts, (480, 640), 1.6) → (True, "ok") when pts are 40 points spread
              over the whole 640 × 480 photo; with predicted_scale = 2.0 → (False, "scale off")
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code

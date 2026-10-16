@@ -24,7 +24,7 @@ def simulate_drift(n_steps, sigma_m, bias_m, trials=2000, seed=0):
     Example: simulate_drift(100, 0.0, 0.1) → array([0.1, 0.2, 0.3, …, 10.0])   (no randomness: exactly n · bias)
              simulate_drift(100, 0.5, 0.0)[-1] → about 5.0   (a few % either way: it is random)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ---- you don't need to change anything below this line ----

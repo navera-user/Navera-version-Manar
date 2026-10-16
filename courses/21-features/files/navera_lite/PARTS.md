@@ -1,8 +1,9 @@
 # NAVERA Lite — the parts in this folder
 
 Mission 21. Finished parts come from the course's reference: read them, use them.
+"Missions" lists every mission that wrote a piece of the part, earliest first.
 
-| Part | Mission | Status |
+| Part | Missions | Status |
 |---|---|---|
 | `image.py` | 08 | finished |
 | `features.py` | 21 | ✏️ YOUR TODOs: gradients, structure_tensor, eigen2, harris, repeatability, hamming |

@@ -75,7 +75,7 @@ def preprocess(views, size=DINO_SIZE):
     Example: preprocess(np.zeros((2, 256, 256, 3), np.uint8)).shape → torch.Size([2, 3, 224, 224]), and every value
              of channel 0 (red) is (0 − 0.485) / 0.229 ≈ −2.1179
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it
@@ -123,7 +123,7 @@ def rank(q, E):
     lower index first); sims = numpy float array (M,), the similarity of EVERY row, in E's own order (not sorted).
     Example: rank([1.0, 0.0], [[0.0, 2.0], [3.0, 3.0], [5.0, 0.0]]) → (array([2, 1, 0]), array([0.0, 0.7071, 1.0]))
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it
@@ -211,7 +211,7 @@ class TileNet(nn.Module):
 
         Example: TileNet()(torch.zeros(2, 3, 64, 64)).norm(dim=1) → tensor([1., 1.])
         """
-        return None   # TODO: write your code above, and return the result
+        return None   # TODO: replace this line with your code
 
 
 # TODO 5 ---------------------------------------------------------------------------------------
@@ -226,7 +226,7 @@ def info_nce(za, zp, tau=0.1):
     Example: za = torch.tensor([[1.0, 0.0], [0.0, 1.0]]); zp = torch.tensor([[0.8, 0.6], [0.6, 0.8]])
              info_nce(za, zp, tau=0.5) → tensor(0.5130)   (each tile: −log(e^1.6 / (e^1.6 + e^1.2)))
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ====================================================================== training data (given)

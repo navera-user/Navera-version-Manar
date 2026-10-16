@@ -51,7 +51,7 @@ def roc_point(d2_h0, d2_h1, threshold, n, period_s=PERIOD_S):
     Example: roc_point(np.array([[1.0, 12.0, 13.0], [0.5, 0.5, 0.5]]), np.array([[10.0, 11.0, 12.0]]), 9.21, 2)
              → {"p_fa": 0.5, "p_d": 1.0, "delay_s": 2.0}
     """
-    return None   # TODO 8: write your code above, and return the result
+    return None   # TODO 8: replace this line with your code
 
 
 # ---- you don't need to change anything below this line (but read it!) ----

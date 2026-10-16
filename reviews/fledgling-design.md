@@ -96,7 +96,7 @@ fledgling.yaml       settings, ROS params-file format (§2.2)
 - Python 3.10, numpy < 2, OpenCV, pandas only in `logbook.py`/`stats.py` callers; scipy only as a test oracle.
 - Mission 01 style: every student function has a docstring with the **goal, inputs/outputs with units, and one
   `Example:` call with its result**, never the algorithm. Stubs end with
-  `return None   # TODO: write your code above, and return the result` (runner_kit's STUB_MARKS);
+  `return None   # TODO: replace this line with your code` (runner_kit's STUB_MARKS);
   methods that must return nothing use `raise NotImplementedError("TODO 3")`.
 - Units in names (`_m`, `_s`, `_deg`, `_rad`, `_mps`); degrees at interfaces; latitude before longitude;
   quaternions (x, y, z, w); covariance a/b/c notation; percentiles linear — all as `courses/_lib/CONVENTIONS.md`.

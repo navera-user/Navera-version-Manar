@@ -112,7 +112,7 @@ aerial photos from another camera, "not yet measured with NAVERA's camera".
 
 ## Difficulties (build mutants + round-1 simulated students, 2026-10-13: strong 3 h 10, weak ≈ 95 min reading + 4 h 50 lab)
 
-- Weak student: leaving the stub line under the code ("write your code above") — the check now treats a function as
+- Weak student: leaving the stub line under the code (the old stub wording said "write your code above"; it now says "replace this line with your code") — the check now treats a function as
   written whenever code precedes the stub (AST test); `imu_t[i - 1]` with i = 0 wrapping to the last sample (🧰 notes
   in lesson §5 and lab Step 6, and a runner message); comparing rate_dps before testing None (hint 6); the steady
   bank's 13 °/s looked like a bug in their rate (now taught in lesson §4 and asked in Step 7).

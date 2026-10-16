@@ -56,7 +56,7 @@ def latencies(rows, t0, t1):
     Example: rows at t = 29.8, 30.0, 30.2, 30.4 with sources gps, gps, day, day and then t = 40.0, 40.2, 40.4 with
              day, day, gps → latencies(rows, 30.0, 40.0) → (0.2, 0.4)   (to rounding)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ---------------------------------------------------------------------------------------------------------- TODO 9
@@ -68,7 +68,7 @@ def verdict(value, op, limit):
     Example: verdict(0.2, "<=", 1.0) → ("PASS", "0.2 <= 1")      verdict(3.4, "<=", 1.0) → ("FAIL", "3.4 > 1")
              verdict(None, "<=", 1.0) → ("FAIL", "never happened")
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ---- you don't need to change anything below this line ----------------------------------------------------------

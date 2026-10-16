@@ -265,7 +265,7 @@ def julian_date(y, mo, d, h=0, mi=0, s=0.0):
     Example: julian_date(2000, 1, 1, 12) → 2451545.0            (the epoch J2000.0)
              julian_date(2026, 10, 20, 20, 30) → 2461334.3541667
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 2 ---------------------------------------------------------------------------------------
@@ -276,7 +276,7 @@ def gmst_deg(jd):
     Example: gmst_deg(2451545.0) → 280.46061837
              gmst_deg(2461334.3541667) → about 336.8118
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 3 ---------------------------------------------------------------------------------------
@@ -289,7 +289,7 @@ def altaz(ra_deg, dec_deg, lat, lon, gst_deg):
     Example: altaz(279.4596, 38.8078, 35.83, 10.64, 336.8118) → about (37.13, 295.02)
              (Vega from Sousse, 20 October 2026, 20:30 UTC: 37° up, in the west-north-west)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 4 ---------------------------------------------------------------------------------------
@@ -301,7 +301,7 @@ def lat_from_polaris(alt_deg, ha_deg=None, p_deg=POLARIS_P_DEG):
     Example: lat_from_polaris(50.0) → 50.0
              lat_from_polaris(50.0, 60.0) → about 49.687          (0.6253° × cos 60° = 0.313° below)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ====================================================================== session 2 — a fix from a photo
@@ -319,7 +319,7 @@ def detect_stars(gray, k_sigma=5.0, min_area=3, max_area=150):
     Example: a 9 × 9 black image with one 3 × 3 block [[10, 20, 10], [20, 80, 40], [10, 20, 10]] centred on
              row 4, column 4 → pts about [[4.0909, 4.0]], flux [220.0]
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 6 ---------------------------------------------------------------------------------------
@@ -332,7 +332,7 @@ def boresight_altaz(q_body, cam_axis_body=CAM_AXIS_BODY):
     Example: boresight_altaz((0.0, 0.0, 0.7071068, 0.7071068)) → about (70.0, 0.0)
              (level, nose north: the camera leans 20° towards the nose, so it looks north, 70° high)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 7 ---------------------------------------------------------------------------------------
@@ -346,7 +346,7 @@ def both_roots(alt_deg, az_deg, ra_deg, dec_deg, gst_deg):
     Example: both_roots(37.13, 295.02, 279.4596, 38.8078, 336.8118)
              → about [(35.83, 10.64), (85.80, 54.66)]     (Vega seen 37° up in the WNW: Sousse, or near the pole)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 8 ---------------------------------------------------------------------------------------
@@ -358,7 +358,7 @@ def choose(roots, prior_lat, prior_lon, max_sep_deg=5.0):
     Example: choose([(35.8, 10.6), (37.5, 6.7)], 36.0, 10.0, max_sep_deg=1.0) → (35.8, 10.6)
              choose([(35.8, 10.6), (37.5, 6.7)], 36.0, 10.0) → None      (both within 5°: cannot tell)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 9 ---------------------------------------------------------------------------------------
@@ -369,4 +369,4 @@ def error_km(tilt_deg, heading_deg=0.0, alt_deg=90.0):
 
     Example: error_km(0.2, 1.0, 60.0) → about 59.88
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code

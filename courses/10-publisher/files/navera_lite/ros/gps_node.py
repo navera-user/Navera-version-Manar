@@ -47,7 +47,7 @@ def step(lat, lon, speed_mps, heading_deg, dt_s):
     Returns (lat, lon) in degrees.
     Example: step(35.8256, 10.6084, 10.0, 90.0, 0.62) → (about 35.8256, about 10.608469)   (6.2 m east)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 2 ---------------------------------------------------------------------------------------
@@ -59,7 +59,7 @@ def covariance_from_sigma(sigma_m):
     Returns (cov9, cov_type): a list of 9 floats and an int.
     Example: covariance_from_sigma(3.0) → ([9.0, 0.0, 0.0, 0.0, 9.0, 0.0, 0.0, 0.0, 36.0], 1)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 3 ---------------------------------------------------------------------------------------
@@ -70,7 +70,7 @@ def make_fix(lat, lon, alt_m, sigma_m, stamp_s):
     Example: make_fix(35.8256, 10.6084, 40.0, 3.0, 100.5).position_covariance_type → 1
              (and .header.stamp → Time(sec=100, nanosec=500000000))
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — this class is finished except its TODO methods

@@ -24,7 +24,7 @@ def nees_band(n_dim, n_steps, trials=4000, p=0.95, seed=0):
     Example: nees_band(2, 1, trials=200000) → about (0.051, 7.38)     (one step: the χ² values of mission 27)
              nees_band(2, 100) → about (1.6, 2.4)                      (a few % either way: it is random)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ---- you don't need to change anything below this line ----

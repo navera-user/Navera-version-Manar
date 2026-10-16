@@ -15,7 +15,7 @@ def distance(p, q):
 
     Example:  distance((0, 0), (3, 4))  ->  5.0
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 2 ------------------------------------------------------------------------------------
@@ -25,7 +25,7 @@ def mismatch(p, beacons, measured, bias=0.0):
 
     Example:  mismatch((4, 4), [(0, 0), (10, 0), (0, 10)], [5.0, 8.062, 6.708])  ->  about 1.409
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 3 ------------------------------------------------------------------------------------
@@ -35,7 +35,7 @@ def find_position(beacons, measured):
 
     Example:  find_position([(0, 0), (10, 0), (0, 10)], [5.0, 8.062, 6.708])  ->  (3.0, 4.0)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 4 ------------------------------------------------------------------------------------
@@ -44,7 +44,7 @@ def find_position_and_bias(beacons, measured):
 
     Example:  find_position_and_bias([(0, 0), (10, 0), (0, 10)], [5.3, 8.362, 7.008])  ->  (3.0, 4.0, 0.3)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 5 ------------------------------------------------------------------------------------
@@ -54,7 +54,7 @@ def gauss_newton(beacons, measured, guess=(5.0, 5.0, 0.0), steps=10):
 
     Example:  gauss_newton([(0, 0), (10, 0), (0, 10)], [5.3, 8.362, 7.008])  ->  about (3.0, 4.0, 0.3)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 6 ------------------------------------------------------------------------------------
@@ -64,7 +64,7 @@ def spoof_measurements(beacons, fake_position, bias):
 
     Example:  spoof_measurements([(0, 0), (10, 0)], (6, 8), 0.5)  ->  [10.5, 9.444…]
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 7 ------------------------------------------------------------------------------------
@@ -74,7 +74,7 @@ def gate_ok(last, new, elapsed_s, v_max_mps, margin_m):
     Examples:  gate_ok((0, 0), (120, 0), 1.0, 100.0, 50.0)  ->  True
                gate_ok((0, 0), (500, 0), 1.0, 100.0, 50.0)  ->  False
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 8 ------------------------------------------------------------------------------------
@@ -85,7 +85,7 @@ def count_refused(fixes, dt_s, v_max_mps, margin_m):
     Example (the 7-row table of lesson §5):
         count_refused([(0, 0)] + [(500, 0)] * 6 + [(900, 0)], 1.0, 100.0, 50.0)  ->  5
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 9 ------------------------------------------------------------------------------------
@@ -100,4 +100,4 @@ def first_disagreement(rows, k=5.0, margin_m=50.0):
               "vision_sigma_m": None}, {"t_s": 101, "gps_x_m": 500, "gps_y_m": 0, "vision_x_m": 0, "vision_y_m": 0,
               "vision_sigma_m": 30}])  ->  101
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code

@@ -35,6 +35,12 @@ every other source unchanged. The judge needs no change and no hook; its own Jum
 judge's gate use the same settings, so they agree). `spoof_run.py` and `guard_node.py` import `navera_lite.arbiter`;
 `spoof.py` does not.
 
+## Running the reference solution yourself
+
+`python3 tools/try_lesson.py 30-spoofing --solution` alone gives **13/15**: checks 8 and 14 read `results.json` and
+`ros_drift.json`, which only lab Steps 5 and 10 produce, and `--solution` starts from an empty lesson folder.
+Run those two steps in the sandbox (`--who you --shell bash`), then the checker: 15/15.
+
 ## Alignment
 
 | Objective | Lesson | Lab | check.py |

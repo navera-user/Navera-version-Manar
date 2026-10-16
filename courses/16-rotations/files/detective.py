@@ -27,7 +27,7 @@ def misread(q_ros):
 
     Example: misread((0.1, 0.2, 0.3, 0.9)) → array([0.2, 0.3, 0.9, 0.1])
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO B ------------------------------------------------------------------------------------------
@@ -38,7 +38,7 @@ def tilt_deg(q):
 
     Example: tilt_deg(rot.q_from_euler_zyx(math.radians(30), 0.0, math.radians(200))) → about 30.0
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ---- you don't need to change anything below this line (but you can read it!) ----

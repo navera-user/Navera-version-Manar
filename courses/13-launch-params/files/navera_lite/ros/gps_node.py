@@ -165,7 +165,7 @@ def make_descriptor(name, value):
     one short sentence of your own (not checked).
     Example: make_descriptor("speed_mps", 10.0).floating_point_range[0].to_value → 100.0
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — this class is finished except its TODO methods
@@ -191,7 +191,7 @@ class CheckedGps(FakeGps):
         Example: vehicle "boat" (20 m/s), set speed_mps 25.0 → SetParametersResult(successful=False,
                  reason="speed_mps 25.0 > 20.0 m/s, the top speed of a boat")
         """
-        return None   # TODO: write your code above, and return the result
+        return None   # TODO: replace this line with your code
 
 
 NODE_CLASS = CheckedGps              # from mission 13 on, main() starts the checked node

@@ -27,7 +27,7 @@ def gradients(gray):
     Example: gradients(np.tile(np.arange(6, dtype=np.uint8) * 3, (5, 1)))[0][2]
              → array([0., 3., 3., 3., 3., 0.], dtype=float32)   (the ramp I = 3x; 0 at the mirrored borders)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 2 ---------------------------------------------------------------------------------------
@@ -39,7 +39,7 @@ def structure_tensor(gx, gy, sigma=1.5):
     Example: with gx = 20 and gy = 0 everywhere: structure_tensor(gx, gy) → sxx = 400, syy = 0, sxy = 0
              at every pixel (a vertical edge seen through any window)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 3 ---------------------------------------------------------------------------------------
@@ -51,7 +51,7 @@ def eigen2(sxx, syy, sxy):
     Example: eigen2(200.0, 200.0, 0.0) → (200.0, 200.0)      eigen2(400.0, 0.0, 0.0) → (400.0, 0.0)
              eigen2(5.0, 5.0, 3.0) → (8.0, 2.0)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 4 ---------------------------------------------------------------------------------------
@@ -64,7 +64,7 @@ def harris(gray, k=0.04, sigma=1.5):
              middle of each side:  img = np.zeros((40, 40), np.uint8); img[10:30, 10:30] = 255
              harris(img)[10, 10] > 0 and harris(img)[20, 10] < 0  → True
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it
@@ -153,7 +153,7 @@ def repeatability(pts1, pts2, H, shape2, tol_px=3.0):
     Example: repeatability([[1, 1], [5, 5], [50, 50]], [[3.0, 1.0], [9.0, 9.0]], np.eye(3), (20, 20))
              → 0.5   ((50, 50) is outside; (1, 1) has a point 2 px away; (5, 5) has none within 3 px)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 6 ---------------------------------------------------------------------------------------
@@ -163,7 +163,7 @@ def hamming(d1, d2):
     Inputs: two uint8 arrays of the same length (ORB: 32 bytes = 256 bits). Returns a Python int.
     Example: hamming(np.array([0b10110000], np.uint8), np.array([0b10010001], np.uint8)) → 2
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it

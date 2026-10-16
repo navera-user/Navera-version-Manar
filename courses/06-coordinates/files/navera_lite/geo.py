@@ -49,7 +49,7 @@ def enu_flat(lat0, lon0, lat, lon):
     Example: enu_flat(51.5074, -0.1278, 48.8566, 2.3522) → (about 176 585.4, about −294 755.5)
              (Paris seen from London: 177 km east, 295 km south)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 2 ---------------------------------------------------------------------------------------
@@ -62,7 +62,7 @@ def offset(lat, lon, e_m, n_m):
     Example: offset(-33.9249, 18.4241, 1000.0, 2000.0) → (about −33.906914, about 18.434937)
              (1 km east and 2 km north of Cape Town)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 3 ---------------------------------------------------------------------------------------
@@ -74,7 +74,7 @@ def haversine_m(lat1, lon1, lat2, lon2):
     Example: haversine_m(51.5074, -0.1278, 48.8566, 2.3522) → about 343 556.1   (London → Paris)
              haversine_m(np.array([0.0, 0.0]), 0.0, 0.0, np.array([1.0, 90.0])) → about [111 194.9, 10 007 543.4]
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 4 ---------------------------------------------------------------------------------------
@@ -85,7 +85,7 @@ def bearing_deg(lat1, lon1, lat2, lon2):
     Inputs: degrees. Returns degrees.
     Example: bearing_deg(51.5074, -0.1278, 48.8566, 2.3522) → about 148.12   (London → Paris: south-east)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 5 ---------------------------------------------------------------------------------------
@@ -98,7 +98,7 @@ def great_circle_points(p1, p2, n):
     Example: great_circle_points((0.0, 0.0), (0.0, 90.0), 3) → [(0.0, 0.0), (0.0, 45.0), (0.0, 90.0)]
              great_circle_points((51.5074, -0.1278), (48.8566, 2.3522), 3)[1] → about (50.1886, 1.1466)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it
@@ -120,7 +120,7 @@ def max_offset_km(p1, p2):
 
     Example: max_offset_km((51.5074, -0.1278), (48.8566, 2.3522)) → about 2.48   (London → Paris)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ====================================================================== the WGS84 ellipsoid (session 2)
@@ -133,7 +133,7 @@ def radii(lat):
     Returns (M_m, N_m) in metres.
     Example: radii(0.0) → (about 6 335 439.327, 6 378 137.0);  radii(45.0) → (about 6 367 381.8, about 6 388 838.3)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 8 ---------------------------------------------------------------------------------------
@@ -146,7 +146,7 @@ def geodetic_to_ecef(lat, lon, h=0.0):
              geodetic_to_ecef(1.3521, 103.8198, 15.0) → (about −1 523 121.7, about 6 191 803.0, about 149 494.2)
              (Singapore, 15 m above the ellipsoid)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 9 ---------------------------------------------------------------------------------------
@@ -158,7 +158,7 @@ def ecef_to_geodetic(x, y, z):
     Example: ecef_to_geodetic(-1523121.7, 6191803.0, 149494.2) → (about 1.3521, about 103.8198, about 15.02)
              (15.02, not 15.0: the input above was rounded to 0.1 m)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 10 --------------------------------------------------------------------------------------
@@ -170,7 +170,7 @@ def enu_matrix(lat0, lon0):
     Example: enu_matrix(0.0, 0.0) → [[0, 1, 0], [0, 0, 1], [1, 0, 0]]
              (at (0°, 0°): east is ECEF +y, north is +z, up is +x)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 11 --------------------------------------------------------------------------------------
@@ -182,7 +182,7 @@ def geodetic_to_enu(lat, lon, h, lat0, lon0, h0):
     Example: geodetic_to_enu(-33.80, 151.30, 0.0, -33.8688, 151.2093, 0.0)
              → (about 8 398.9, about 7 627.5, about −10.1)   (a point north-east of Sydney)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 12 --------------------------------------------------------------------------------------
@@ -193,4 +193,4 @@ def enu_to_geodetic(e, n, u, lat0, lon0, h0):
     Returns (lat_deg, lon_deg, h_m).
     Example: enu_to_geodetic(8398.9, 7627.5, -10.1, -33.8688, 151.2093, 0.0) → (about −33.80, about 151.30, about 0.0)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code

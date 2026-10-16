@@ -45,7 +45,7 @@ def hunk_header(line):
     Examples:  hunk_header("@@ -78,7 +78,8 @@ class JumpGate:")  ->  (78, 7, 78, 8)
                hunk_header("@@ -5 +5,2 @@")                      ->  (5, 1, 5, 2)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 2 ------------------------------------------------------------------------------------
@@ -58,7 +58,7 @@ def diff_stat(patch_text):
 
     Example:  diff_stat(EXAMPLE_PATCH)  ->  {"README.md": (2, 0), "navera_lite.yaml": (1, 1)}
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 3 ------------------------------------------------------------------------------------
@@ -74,7 +74,7 @@ def first_bad(commits, is_bad):
 
     Example:  first_bad(list(range(1, 17)), lambda c: c >= 11)  ->  11      (4 calls to is_bad)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 if __name__ == "__main__":

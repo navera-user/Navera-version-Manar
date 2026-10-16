@@ -36,7 +36,7 @@ def ncc(a, b):
     Example: ncc(np.array([[10, 20], [30, 40]]), np.array([[100, 120], [140, 160]])) → 1.0
              ncc(np.array([[10, 20], [30, 40]]), np.array([[9, 7], [5, 3]]))         → -1.0
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ====================================================================== the camera's footprint and coverage
@@ -50,7 +50,7 @@ def footprint_m(alt_m, hfov_deg, vfov_deg):
     Inputs: alt_m > 0; 0 < hfov_deg, vfov_deg < 180. Returns (width_m, height_m), two floats.
     Example: footprint_m(100.0, 90.0, 60.0) → (200.0, 115.47…)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 3 ---------------------------------------------------------------------------------------
@@ -64,7 +64,7 @@ def coverage(width_m, height_m, heading_deg, ref_m):
     Example: coverage(600.0, 300.0, 0.0, 400.0) → 0.75        (the full width, 300 of the 400 m of height)
              coverage(600.0, 300.0, 90.0, 400.0) → 0.75       (turned a quarter: now the full height)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it
@@ -106,7 +106,7 @@ def prepare(frame, alt_m, hfov_deg, vfov_deg, heading_deg, map_m_per_px, out_px,
     Example: prepare(np.full((512, 640), 200, np.uint8), 400.0, 75.0, 63.0, 0.0, 7.75, 64)
              → (a 64 × 64 patch of 200s (the footprint covers it all but a sliver), 0.988…, "ok")
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 5 ---------------------------------------------------------------------------------------
@@ -121,7 +121,7 @@ def ncc_locate(template, search):
     Example: a 9 × 9 search area, and the template = its 5 × 5 block with top-left corner at (x=3, y=1)
              → (1.0, -1.0, 1.0)     (the block's centre (5, 3) is 1 px right of and 1 px above the centre (4, 4))
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ====================================================================== checking a fix with physics
@@ -138,4 +138,4 @@ def motion_gate(anchor, t_anchor_s, fix, t_s, v_max_mps=V_MAX_MPS, margin_m=GATE
     Example: motion_gate((35.8, 10.6), 0.0, (35.8, 10.601), 1.0) → (False, 'implausible jump 90 m in 1.0 s (max 60 m)')
              motion_gate((35.8, 10.6), 0.0, (35.8, 10.601), 3.0) → (True, 'ok')        (the limit is now 120 m)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code

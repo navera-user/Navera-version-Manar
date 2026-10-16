@@ -27,7 +27,7 @@ def to_uint8(a):
     Example: to_uint8(np.array([-7.2, 0.4, 99.5, 254.6, 300.0])) → array([0, 0, 100, 255, 255], dtype=uint8)
              (99.5 → 100 and 0.5 → 0: numpy rounds a half to the even neighbour)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 2 ---------------------------------------------------------------------------------------
@@ -41,7 +41,7 @@ def to_float01(a):
     Example: to_float01(np.array([0, 51, 255], np.uint8)) → array([0.0, 0.2, 1.0], dtype=float32)
              to_float01(np.array([0, 13107, 65535], np.uint16)) → array([0.0, 0.2, 1.0], dtype=float32)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it
@@ -81,7 +81,7 @@ def normalise(gray):
     Example: normalise(np.array([[7200, 7800], [8400, 7500]], np.uint16)) → array([[0, 128], [255, 64]], dtype=uint8)
              (a 16-bit thermal patch: 7 200 → 0, 8 400 → 255)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ====================================================================== filters (session 1)
@@ -98,7 +98,7 @@ def convolve2d(img, k):
              → array([[0.0, 3.0, 6.0, 3.0, 0.0]], dtype=float32)
              (with the flip, the kernel [1, 0, −1] gives img(x + 1) − img(x − 1): brighter to the right → positive)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it
@@ -148,7 +148,7 @@ def affine_matrix(angle_deg, scale, centre):
     (a·x + b·y + tx, c·x + d·y + ty).
     Example: affine_matrix(90.0, 2.0, (10.0, 0.0)) → [[0.0, 2.0, 10.0], [-2.0, 0.0, 20.0]] (to rounding)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it
@@ -181,7 +181,7 @@ def warp_affine(img, M, size):
              → array([[15.0, 10.0], [12.5, 7.5]], dtype=float32)
              (shifted half a pixel up-left: each result is a blend, and the pixels past the edge count as 0)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 7 ---------------------------------------------------------------------------------------
@@ -198,4 +198,4 @@ def like_map(photo, heading_deg, gsd_photo_m, gsd_map_m):
              and with heading_deg=90.0, a bright mark at the top-centre of a photo lands on the result's
              middle row, right of its centre (east).
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code

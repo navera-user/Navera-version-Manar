@@ -92,7 +92,7 @@ def frame_stats(stamps_s):
     Example: frame_stats([0.0, 0.1, 0.2, 0.4, 0.5]) → {"n": 5, "fps": 8.0, "median_ms": 100.0,
              "jitter_ms": 43.30…, "max_gap_ms": 200.0, "dropped": 1}
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 2 ---------------------------------------------------------------------------------------
@@ -110,7 +110,7 @@ def delay_from_flashes(flash_s, frame_s, brightness, window_s=0.5, min_rise=20.0
     Example: delay_from_flashes([1.0], [0.9, 1.05, 1.1, 1.2], [30, 40, 200, 210]) → [0.1]
              (dark 30, bright 210, midpoint 120: the frame at 1.1 is the first one above it)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 3 ---------------------------------------------------------------------------------------
@@ -123,7 +123,7 @@ def time_error_m(h_m, rate_dps, dt_s, speed_mps=0.0):
     Both ≥ 0 (a time error or a rotation in the other direction costs the same). Returns a tuple of two floats.
     Example: time_error_m(100.0, 20.0, 0.1, 30.0) → about (3.492, 3.0)    (2° of error seen from 100 m; 3 m flown)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ============================================================================ session 2 — the attitude at the exposure
@@ -140,7 +140,7 @@ def attitude_at(t_s, imu_t, imu_q, max_gap_s=0.2):
     Example: attitude_at(0.05, [0.0, 0.2], [(0, 0, 0, 1), (0, 0, 0.173648, 0.984808)])
              → about array([0.     , 0.     , 0.04362, 0.99905])   (a quarter of the way from yaw 0° to 20°: 5°)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 5 ---------------------------------------------------------------------------------------
@@ -152,7 +152,7 @@ def rotation_rate_dps(t_s, imu_t, imu_q, window_s=0.2, max_gap_s=0.2):
     Example: rotation_rate_dps(0.2, [0.0, 0.2], [(0, 0, 0, 1), (0, 0, 0.173648, 0.984808)]) → about 100.0
              (20° in 0.2 s)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 6 ---------------------------------------------------------------------------------------
@@ -168,4 +168,4 @@ def usable(q, rate_dps, cfg):
     With a gimbal (cfg["gimbal"] true) the camera stays level and steady: only rule 1 applies.
     Example: usable((0.0, 0.0, 0.0, 1.0), 12.0, DEFAULTS) → (True, "ok")
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code

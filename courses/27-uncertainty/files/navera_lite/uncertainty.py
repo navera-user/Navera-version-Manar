@@ -78,7 +78,7 @@ def sample_cov(points):
 
     Example: sample_cov([[0.0, 0.0], [2.0, 2.0], [4.0, 1.0]]) → array([[4., 1.], [1., 1.]])
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 2 ---------------------------------------------------------------------------------------
@@ -91,7 +91,7 @@ def ellipse(P, k=1.0):
     Example: ellipse([[13.6, 4.8], [4.8, 6.4]]) → (4.0, 2.0, 26.565…)
              ellipse([[13.6, 4.8], [4.8, 6.4]], k=3) → (12.0, 6.0, 26.565…)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 3 ---------------------------------------------------------------------------------------
@@ -102,7 +102,7 @@ def mahalanobis2(r, S):
     Example: mahalanobis2([6.0, 0.0], [[9.0, 0.0], [0.0, 1.0]]) → 4.0
              mahalanobis2([0.0, 6.0], [[9.0, 0.0], [0.0, 1.0]]) → 36.0   (the same 6 m, across the thin axis)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 5 ---------------------------------------------------------------------------------------
@@ -113,7 +113,7 @@ def propagate(J, P):
     Example: propagate([[1.0, 1.0], [1.0, -1.0]], [[4.0, 0.0], [0.0, 9.0]]) → array([[13., -5.], [-5., 13.]])
              (the sum and the difference of two independent errors)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 6 ---------------------------------------------------------------------------------------
@@ -126,7 +126,7 @@ def polar_to_en(r_m, bearing_deg, sigma_r_m, sigma_bearing_deg):
     Example: polar_to_en(1000.0, 90.0, 10.0, 1.0) → (array([1000., 0.]), array([[100., 0.], [0., 304.6…]]))
              (to rounding: cos 90° is 6e-17 in floating point)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ====================================================================== session 2 — refuse, fuse, publish
@@ -140,7 +140,7 @@ def gate(r, S, p=0.99):
     Example: gate([6.0, 0.0], [[9.0, 0.0], [0.0, 1.0]]) → True
              gate([0.0, 6.0], [[9.0, 0.0], [0.0, 1.0]]) → False
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 8 ---------------------------------------------------------------------------------------
@@ -153,7 +153,7 @@ def fuse(x1, P1, x2, P2):
     Example: fuse([0.0, 0.0], [[4.0, 0.0], [0.0, 100.0]], [10.0, 10.0], [[100.0, 0.0], [0.0, 4.0]])
              → (array([0.3846…, 9.6153…]), array([[3.846…, 0.], [0., 3.846…]]))
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 9 ---------------------------------------------------------------------------------------
@@ -172,4 +172,4 @@ def make_covariance(P2, sigma_up_m=None):
     Example: make_covariance([[13.6, 4.8], [4.8, 6.4]], sigma_up_m=5.0)
              → ([13.6, 4.8, 0.0, 4.8, 6.4, 0.0, 0.0, 0.0, 25.0], 3)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code

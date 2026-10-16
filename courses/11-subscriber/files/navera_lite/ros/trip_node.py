@@ -54,7 +54,7 @@ class TripComputer:
         great-circle length along them; a refused fix only counts in self.refused and self.last_refusal.
         Example: after a first fix (35.8256, 10.6084) at t = 0.0, a fix 5 km away at t = 1.0 → (False, "jump")
         """
-        return None   # TODO: write your code above, and return the result
+        return None   # TODO: replace this line with your code
 
 
 # TODO 2 ---------------------------------------------------------------------------------------
@@ -66,7 +66,7 @@ def speed_window(fixes, window_s):
     Example: speed_window([(0.0, 35.8256, 10.6084), (5.0, 35.8256, 10.60895), (10.0, 35.8256, 10.61005)], 6.0)
              → about 19.83   (only the fixes at 5 s and 10 s are inside: 99.2 m in 5 s)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — this class is finished except its TODO methods
@@ -89,7 +89,7 @@ class Watchdog:
         message (nothing ever came). False otherwise.
         Example: w = Watchdog(3.0); w.silent(0.0) → True; w.kick(10.0); w.silent(13.0) → False; w.silent(13.1) → True
         """
-        return None   # TODO: write your code above, and return the result
+        return None   # TODO: replace this line with your code
 
 
 # given — this class is finished except its TODO methods

@@ -27,7 +27,7 @@ def gauss_markov(n, dt, tau_s, q, rng, x0=0.0):
     Example: gauss_markov(3, 0.2, 20.0, 0.6, np.random.default_rng(0)) → array([0.0337, -0.0020, 0.1698])
              (rounded to 4 decimals)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 5 ---------------------------------------------------------------------------------------
@@ -36,7 +36,7 @@ def stationary_sigma(dt, tau_s, q):
     Var(x[k+1]) = Var(x[k]). Same inputs as gauss_markov (0 < dt < 2·tau_s, else ValueError). Returns metres.
     Example: stationary_sigma(0.2, 20.0, 0.6) → 1.902   (1.90213…)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 6 ---------------------------------------------------------------------------------------
@@ -46,7 +46,7 @@ def autocorrelation(x, lag):
     lag = 0 gives 1.0. lag must be an int with 0 ≤ lag < len(x) (else ValueError).
     Example: autocorrelation([1.0, 2.0, 3.0, 4.0], 1) → 0.25
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 7 ---------------------------------------------------------------------------------------
@@ -55,7 +55,7 @@ def rayleigh_quantile(sigma, p):
     N(0, sigma²) (lesson §4): P(r ≤ R) = 1 − exp(−R² / (2σ²)). sigma ≥ 0 (metres), 0 ≤ p < 1 (else ValueError).
     Example: rayleigh_quantile(15.0, 0.5) → 17.66 (the median, 1.177 σ);  rayleigh_quantile(15.0, 0.95) → 36.72
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it

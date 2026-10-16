@@ -42,7 +42,7 @@ class Track:
 
         Example:  a track through (0, 0), (6, 8), (6, 20)  ->  length_m() is 22.0
         """
-        return None   # TODO: write your code above, and return the result
+        return None   # TODO: replace this line with your code
 
     # TODO 12 ----------------------------------------------------------------------------------
     def speeds_mps(self):
@@ -52,7 +52,7 @@ class Track:
 
         Example:  positions (0, 0) at 0 s, (6, 8) at 2 s, (6, 20) at 3 s  ->  array([ 5., 12.])
         """
-        return None   # TODO: write your code above, and return the result
+        return None   # TODO: replace this line with your code
 
     # TODO 13 ----------------------------------------------------------------------------------
     def glitches(self, max_mps):
@@ -62,7 +62,7 @@ class Track:
 
         Example:  positions (0, 0), (10, 0), (20, 0), (95, 0), one per second, max_mps 50  ->  [3]
         """
-        return None   # TODO: write your code above, and return the result
+        return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it

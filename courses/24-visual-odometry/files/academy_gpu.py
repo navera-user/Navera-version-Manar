@@ -55,15 +55,22 @@ def gpu_slot(wait_s=600.0, quiet=False):
             yield False
             return
         if not told and not quiet:
-            print(f"The GPU is busy ({n} trainings are running in the class): waiting for a free slot…",
-                  file=sys.stderr, flush=True)
+            print(f"The GPU is busy ({n} GPU job{'s' if n != 1 else ''} already running in the class): waiting for a "
+                  f"free slot (up to {wait_s / 60:.0f} min)…", file=sys.stderr, flush=True)
             told = True
         time.sleep(2.0)
 
 
+class NoGpuSlot(RuntimeError):
+    """No GPU slot came free in time and the mission said the CPU is not an option."""
+
+
 @contextlib.contextmanager
-def torch_device(wait_s=600.0, quiet=False):
-    """"cuda" while holding a GPU slot, else "cpu" (no GPU, or none free within wait_s). Also limits threads."""
+def torch_device(wait_s=3600.0, quiet=False, cpu_ok=True):
+    """"cuda" while holding a GPU slot, else "cpu" (no GPU, or none free within wait_s). Also limits threads.
+
+    cpu_ok=False (a training too slow for the CPU): instead of falling back, raise NoGpuSlot with a clear
+    message, so the student retries later rather than training for hours."""
     limit_threads()
     try:
         import torch
@@ -74,6 +81,9 @@ def torch_device(wait_s=600.0, quiet=False):
         yield "cpu"
         return
     with gpu_slot(wait_s, quiet) as ok:
+        if not ok and not cpu_ok:
+            raise NoGpuSlot(f"No GPU slot came free in {wait_s / 60:.0f} min (the class is training). This job is too "
+                            "slow for the CPU: run the same command again a bit later, or ask your teacher.")
         if not ok and not quiet:
             print("No GPU slot came free: training on the CPU (slower).", file=sys.stderr, flush=True)
         yield "cuda" if ok else "cpu"

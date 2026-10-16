@@ -93,7 +93,7 @@ def is_covariance(cov9, tol=1e-9):
     The east-up and north-up terms (indices 2, 5, 6, 7) are not tested.
     Example: is_covariance([25.0, 30.0, 0, 30.0, 16.0, 0, 0, 0, 1.0]) → (False, "not positive semi-definite")
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 2 ---------------------------------------------------------------------------------------
@@ -105,7 +105,7 @@ def stated_sigma(est, cfg):
     Example: stated_sigma(Estimate("gps", 35.8, 10.6, 0.0, cov=(9.0, 0, 0, 0, 4.0, 0, 0, 0, 36.0),
              cov_type=COV_DIAGONAL_KNOWN), {"min_stated_sigma_m": 0.01}) → 3.0
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 3 ---------------------------------------------------------------------------------------
@@ -115,7 +115,7 @@ def staleness_m(speed_mps, age_s):
     is negative.
     Example: staleness_m(40.0, 2.5) → 100.0   (a plane at 40 m/s, a vision fix 2.5 s old)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 4 ---------------------------------------------------------------------------------------
@@ -134,4 +134,4 @@ def eligible(est, now_s, cfg):
     eligible: the judge then calls it DEGRADED (classify).
     Example: eligible(Estimate("gps", 35.8, 10.6, 100.0), 103.4, DEFAULTS) → (False, "stale (3.4 s > 3.0 s)")
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code

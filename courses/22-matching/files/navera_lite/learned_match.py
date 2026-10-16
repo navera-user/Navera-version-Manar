@@ -132,7 +132,7 @@ def learned_pairs(map_gray, photo_gray, heading_deg, zoom, model, ratio=0.8, max
     Example: on the lab's city pair (photo heading 35°, prior heading 38°, zoom 1.6) with the reference weights,
              learned_pairs(map_g, photo_g, 38.0, 1.6, model) → about 200 pairs, more than 9 in 10 of them right
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 8 ---------------------------------------------------------------------------------------
@@ -149,7 +149,7 @@ def ratio_curve(best, second, correct, ratios):
              → [{"ratio": 0.6, "kept": 2, "right": 2, "precision": 1.0},
                 {"ratio": 0.8, "kept": 3, "right": 2, "precision": 0.6667}]   (precision not rounded)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ====================================================================== the matcher's policy (session 2)
@@ -179,4 +179,4 @@ def match_photo(map_gray, photo_gray, prior, model, cfg):
              match_photo(map_g, photo_g, {"heading_deg": None, "heading_sigma_deg": 180.0, "zoom": 1.6}, model, cfg)
              → {"ok": True, "method": "sift", "fit": (1.60, -35.0, …, …), "inliers": about 500, "reason": "ok"}
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code

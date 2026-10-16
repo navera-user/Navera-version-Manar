@@ -50,7 +50,7 @@ def evaluate(errors_m, wrong_m=50.0):
     Example: evaluate([4.0, None, 12.0, 80.0, 2.0]) → {"n": 5, "accepted": 4, "availability": 0.8, "median_m": 8.0,
              "p90_m": 59.6, "within_300": 1.0, "wrong": 1}
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ====================================================================== the search circle (session 2)
@@ -63,7 +63,7 @@ def search_radius(sigma_m, k=3.0, r_min_m=80.0, r_max_m=1500.0):
 
     Example: search_radius(120.0) → 360.0; search_radius(10.0) → 80.0; search_radius(900.0) → 1500.0
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ====================================================================== the fine step (session 2)
@@ -122,7 +122,7 @@ def place(A, n_inliers, view_shape, x0, y0, z=ZOOM, min_inliers=6, scale_tol=0.1
     Example: place(np.array([[1.0, 0.0, 100.0], [0.0, 1.0, 50.0]]), 20, (101, 101), 69408.0, 51546.0)
              → (35.83030…, 10.63638…, "ok: 20 inliers, scale 1.00")
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it
@@ -168,7 +168,7 @@ def locate(photo, meta, prior, finder, cfg=DEFAULTS):
     Example: locate(photo, meta, (35.8201, 10.6197, 40.0), finder) → (35.8192…, 10.6213…, "ok: 37 inliers, scale 0.99")
              (r = 120 m: no retrieval); with a σ of 400 m (r = 1 200 m) the finder chooses where to look
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ====================================================================== the error budget (session 2)
@@ -180,7 +180,7 @@ def budget(terms):
 
     Example: budget({"tilt": 3.0, "matcher": 4.0}) → 5.0
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it

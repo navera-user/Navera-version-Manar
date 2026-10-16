@@ -136,7 +136,7 @@ def fisheye_project(X_cam, K, D):
     Example: with the bench calibration (load_calibration(...)), fisheye_project([[1.0, 0.5, 2.0]], K, D)
              → about [[1250.35, 488.75]]
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 2 ---------------------------------------------------------------------------------------
@@ -149,7 +149,7 @@ def theta_from_theta_d(theta_d, D):
     theta_d: the calibration cannot describe that pixel.
     Example: with the bench D, theta_from_theta_d(0.5303, D) → about 0.5097 ; theta_from_theta_d(1.30, D) → nan
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 3 ---------------------------------------------------------------------------------------
@@ -164,7 +164,7 @@ def stretch_at(theta_deg, f_new_px, K, D):
     Example: with the bench K, D: stretch_at(0.0, 659.79, K, D) → about 0.999 ; stretch_at(40.0, 659.79, K, D)
              → about 1.474
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 4 ---------------------------------------------------------------------------------------
@@ -176,7 +176,7 @@ def undistort(img, K, D, K_new):
     Returns a numpy image of the same shape and dtype.
     Example: undistort(img, K, D, K_from_hfov(111.0, 1920, 540)).shape → (540, 1920, 3) for a 1920 × 540 view
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ============================================================================ calibration (session 2)
@@ -190,7 +190,7 @@ def board_points(cols, rows, square_m):
     Returns a (cols·rows, 1, 3) float64 array (metres).
     Example: board_points(3, 2, 0.5)[:, 0] → [[0, 0, 0], [0.5, 0, 0], [1.0, 0, 0], [0, 0.5, 0], [0.5, 0.5, 0], [1.0, 0.5, 0]]
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 6 ---------------------------------------------------------------------------------------
@@ -206,7 +206,7 @@ def calibrate_fisheye(obj, views, size):
     Example: on 10 made-up views of a lens with fx 520, fy 540 (python3 calibrate_lab.py test):
              K[0, 0] → 520.00, K[1, 1] → 540.00, rms → about 0 (an exact lens, exact corners)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 7 ---------------------------------------------------------------------------------------
@@ -220,7 +220,7 @@ def reprojection_rms(obj, views, rvecs, tvecs, K, D):
     Example: reprojection_rms(obj, [corners], [rvec], [tvec], K, D) → (0.0, [0.0]) when the corners are exactly
              the projected points
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 8 ---------------------------------------------------------------------------------------
@@ -232,4 +232,4 @@ def holdout_rms(obj, test_views, K, D):
     Returns (rms over all corners in px, [rms of each view in px]).
     Example: 4 unseen exact views of a lens, with its true K and D (python3 calibrate_lab.py test) → (about 1e-8, [4 values])
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code

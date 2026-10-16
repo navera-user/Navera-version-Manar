@@ -78,7 +78,7 @@ def phase_shift(a, b):
              and g moved by a FRACTION of a pixel, (2.4, −1.3) px (the runner's test makes it) → about (2.29, −1.18):
              between pixels (the parabola falls a little short), never the whole numbers (2, −1)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 2 ---------------------------------------------------------------------------------------
@@ -90,7 +90,7 @@ def px_to_en(dx, dy, m_per_px, heading_deg):
     Returns two floats, metres.
     Example: px_to_en(0.0, 10.0, 0.5, 90.0) → (5.0, 0.0)   (the ground slid down: the drone flew forward, east)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 3 ---------------------------------------------------------------------------------------
@@ -102,7 +102,7 @@ def integrate(steps, start=(0.0, 0.0)):
     Example: integrate([(1.0, 0.0), (0.0, 2.0)], start=(10.0, 10.0)) → array([[10., 10.], [11., 10.], [11., 12.]])
              integrate([], start=(7.0, 8.0)) → array([[7., 8.]])   (no step: only the start)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it
@@ -158,7 +158,7 @@ def median_shift(p1, p2, tol_px=1.0):
     Example: median_shift([(0, 0), (10, 10), (50, 5)], [(3, 1), (13, 11), (0, 0)]) → (3.0, 1.0, 2)
              (two matches agree on 3 px right, 1 px down; the third is wrong)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ====================================================================== drift and fixes (session 2)
@@ -172,7 +172,7 @@ def drift_sigma(n, sigma_step_m, bias_m):
     Example: drift_sigma(25, 1.0, 0.0) → 5.0     drift_sigma(25, 0.0, 0.2) → 5.0     drift_sigma(0, 1.0, 0.2) → 0.0
              drift_sigma(25, 1.0, 0.2) → 7.0710…   (not 5 + 5: the two parts are independent)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 7 ---------------------------------------------------------------------------------------
@@ -182,7 +182,7 @@ def blend(x1, v1, x2, v2):
     Works on numbers, and element by element on numpy arrays (east and north at once).
     Example: blend(10.0, 9.0, 16.0, 3.0) → (14.5, 2.25)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 8 ---------------------------------------------------------------------------------------
@@ -193,4 +193,4 @@ def vo_gate(v_vo, v_ref, sigma_mps, k=3.0):
     Example: vo_gate((20.0, 0.0), (19.0, 1.0), 1.0) → True      vo_gate((0.0, 0.0), (20.0, 0.0), 2.0) → False
              vo_gate((20.0, 0.0), (-20.0, 0.0), 2.0) → False   (the same speed, the opposite way)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code

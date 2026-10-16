@@ -95,7 +95,7 @@ def candidates(latest, now_s, cfg):
     Example: candidates({"day": Estimate("day", 35.8, 10.6, 98.5), "gps": Estimate("gps", 35.8, 10.6, 96.0)},
              100.0, DEFAULTS) → ["day"]          (the GPS fix is 4.0 s old: stale, 3.0 s timeout)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 2 ---------------------------------------------------------------------------------------
@@ -107,7 +107,7 @@ def track_since(since, cands, now_s):
     since: dict source → time (s); cands: list of source names; now_s: s. Returns a NEW dict.
     Example: track_since({"day": 90.0, "night": 95.0}, ["gps", "day"], 100.0) → {"gps": 100.0, "day": 90.0}
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 3 ---------------------------------------------------------------------------------------
@@ -122,7 +122,7 @@ def pick(cands, current, since, now_s, cfg):
     Example: pick(["gps", "day"], "day", {"gps": 99.0, "day": 80.0}, 100.0, DEFAULTS) → "day"
              (GPS eligible for 1.0 s only, the hold-off is 2.0 s);  the same at now_s = 101.0 → "gps"
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — this class is finished except its TODO methods
@@ -160,7 +160,7 @@ class Arbiter:
         Example: a = Arbiter(DEFAULTS); a.receive(Estimate("gps", 35.8, 10.6, 120.0), 100.0)
                  → (False, "from the future (20.0 s ahead)")   and a.latest is still {}
         """
-        return None   # TODO: write your code above, and return the result
+        return None   # TODO: replace this line with your code
 
     # TODO 5 -----------------------------------------------------------------------------------
     def step(self, now_s):
@@ -180,4 +180,4 @@ class Arbiter:
                  cov_type=1), 100.0), a.step(100.0) → Decision(state="FIX", source="gps", sigma_m=3.0,
                  reason="gps: σ 3.0 m", switched=True, …)   and a.switches == [(100.0, None, "gps")]
         """
-        return None   # TODO: write your code above, and return the result
+        return None   # TODO: replace this line with your code

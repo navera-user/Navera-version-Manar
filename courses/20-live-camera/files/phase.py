@@ -24,7 +24,7 @@ def flash_phase(t0, frame_s):
     Example: flash_phase(1.0, [0.9, 0.97, 1.01]) → about 0.03
              flash_phase(0.5, [0.9, 0.97]) → None
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ---- you don't need to change anything below this line ----

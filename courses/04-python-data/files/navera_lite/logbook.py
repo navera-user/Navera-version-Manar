@@ -76,7 +76,7 @@ def clean(df):
     Example: a 6-row log with one doubled row, one row at (0, 0) and no bad altitude →
              (a 4-row DataFrame, {"duplicates": 1, "null_island": 1, "bad_altitude": 0})
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 2 ---------------------------------------------------------------------------------------
@@ -92,7 +92,7 @@ def add_motion(df):
     Example: rows (f1, 0 s, 35.0000, 10.0), (f1, 2 s, 35.0002, 10.0), (f2, 0 s, 36.0, 11.0) →
              dt_s [NaN, 2.0, NaN], step_m [NaN, about 22.24, NaN], pos_speed_mps [NaN, about 11.12, NaN]
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 3 ---------------------------------------------------------------------------------------
@@ -103,7 +103,7 @@ def outage_runs(valid):
 
     Example: outage_runs([1, 0, 0, 1, 0]) → [(1, 3), (4, 5)];   outage_runs([1, 1]) → []
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 4 ---------------------------------------------------------------------------------------
@@ -119,7 +119,7 @@ def outage_table(df, dt_s=DT_S):
     Example: flight a: time_s 0, 2, 4, 6 with gps_valid 1, 0, 0, 1;  flight b: gps_valid all 1 →
              a: n_outages 1, longest_s 4.0, total_s 4.0;   b: 0, 0.0, 0.0
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 5 ---------------------------------------------------------------------------------------
@@ -131,7 +131,7 @@ def state_shares(df):
     Example: flight a with states FIX, FIX, FIX, DEGRADED →
              {"a": {"FIX": 75.0, "DEGRADED": 25.0, "NO_FIX": 0.0}}
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 6 ---------------------------------------------------------------------------------------
@@ -150,7 +150,7 @@ def noise_by_source(df):
     Example: one source "gps" with errors [−30, −2, −1, 0, 0, 1, 1] →
              n 7, mean −4.429, std 11.33, median 0.0, mad_sigma 1.483, p95_abs 21.6
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 KMH_PER_MPS, KN_PER_MPS = 3.6, 1.0 / 0.5144   # 1 m/s = 3.6 km/h = 1.944 kn
@@ -168,4 +168,4 @@ def unit_suspects(df, tol=0.05):
     Example: flight a logged in knots (ratio 1.95), flight b right (ratio 1.01), flight c with ratio 0.5 →
              {"a": "kn", "c": "?"}
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code

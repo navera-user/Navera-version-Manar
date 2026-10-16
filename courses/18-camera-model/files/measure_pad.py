@@ -39,7 +39,7 @@ def pad_size_px(img):
     Input: an image (numpy array rows × columns × 3, B G R). Returns an int, or None when no pixel is orange.
     Example: a mask whose orange pixels sit in columns 10 to 13 (rows do not matter) → 4
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO B ------------------------------------------------------------------------------------------
@@ -50,7 +50,7 @@ def pad_centre_px(img):
     pixel is orange.
     Example: orange pixels at (row 2, column 10) and (row 4, column 20) → (15.0, 3.0)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO C ------------------------------------------------------------------------------------------
@@ -61,7 +61,7 @@ def height_from_size(f_px, size_m, n_px):
     Returns one float (metres).
     Example: height_from_size(800.0, 4.5, 30) → 120.0   (a 4.5 m car, 30 px long)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ---- you don't need to change anything below this line (but read it!) ----

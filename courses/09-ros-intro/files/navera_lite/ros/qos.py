@@ -36,7 +36,7 @@ def incompatible_policies(offered, requested):
     Example: incompatible_policies(SENSOR_QOS, FIX_QOS) → ["RELIABILITY"]   (the IMU offers BEST_EFFORT, the listener asks RELIABLE)
              incompatible_policies(FIX_QOS, SENSOR_QOS) → []
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — read it and use it, no need to change it

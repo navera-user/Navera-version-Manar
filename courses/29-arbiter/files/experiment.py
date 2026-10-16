@@ -47,7 +47,7 @@ def holdoff_metrics(ticks, duration_s=DURATION_S):
     Example: holdoff_metrics([(0.0, "day", False), (0.2, "day", True), (0.4, "gps", True), (0.6, "day", False)],
              duration_s=60.0) → {"switches_per_min": 2.0, "gps_share": 0.25, "gps_unused_s": 0.2}
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 def fuse(x1, s1, x2, s2):
@@ -68,7 +68,7 @@ def true_sigma(s1, s2, rho):
     w1²·s1² + w2²·s2² + 2·w1·w2·rho·s1·s2 (lesson §7). With rho = 0 it is the σ fuse() claims.
     Example: true_sigma(3.0, 30.0, 0.0) → 2.985 (to 3 decimals);  true_sigma(3.0, 30.0, 0.8) → 3.213
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ---- you don't need to change anything below this line (but you can read it!) ----

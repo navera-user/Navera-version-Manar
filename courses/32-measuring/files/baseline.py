@@ -23,4 +23,4 @@ def last_fix_baseline(df):
              then gps ok / source day at 35.80050 (t 2), then two jammed rows whose truth is 35.80020 and
              35.80030 (same longitude) → array([11.12, 22.24])
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code

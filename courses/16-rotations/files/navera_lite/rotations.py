@@ -55,7 +55,7 @@ def rot_y(angle_rad):
 
     Example: rot_y(math.radians(30)) @ [1, 0, 0] → about [0.866, 0, -0.5]   (nose 30° DOWN)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 2 ---------------------------------------------------------------------------------------
@@ -65,7 +65,7 @@ def rot_z(angle_rad):
 
     Example: rot_z(math.radians(30)) @ [1, 0, 0] → about [0.866, 0.5, 0]
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 3 ---------------------------------------------------------------------------------------
@@ -78,7 +78,7 @@ def euler_zyx_to_matrix(roll_rad, pitch_rad, yaw_rad):
              euler_zyx_to_matrix(math.radians(20), math.radians(-15), math.radians(-40))[:, 0]
              → about [0.7399, -0.6209, 0.2588]   (the nose: heading 130°, 15° UP)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 4 ---------------------------------------------------------------------------------------
@@ -91,7 +91,7 @@ def matrix_to_euler_zyx(R):
     Example: matrix_to_euler_zyx(euler_zyx_to_matrix(0.3, -0.2, 2.5)) → about (0.3, -0.2, 2.5, False)
              matrix_to_euler_zyx(euler_zyx_to_matrix(0.0, math.pi / 2, 0.5)) → about (0.0, 1.5708, 0.5, True)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ====================================================================== session 2 — quaternions (x, y, z, w)
@@ -106,7 +106,7 @@ def q_mul(p, q):
              q_mul((0.0, 0.0, 0.6, 0.8), (0.0, 0.6, 0.0, 0.8)) → array([-0.36,  0.48,  0.48,  0.64])
              q_mul((0.0, 0.0, 0.6, 0.8), (0.0, 0.0, 0.6, 0.8)) → array([0.  , 0.  , 0.96, 0.28])
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 6 ---------------------------------------------------------------------------------------
@@ -116,7 +116,7 @@ def q_conj(q):
 
     Example: q_conj((0.1, -0.2, 0.3, 0.9)) → array([-0.1,  0.2, -0.3,  0.9])
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 7 ---------------------------------------------------------------------------------------
@@ -126,7 +126,7 @@ def q_from_axis_angle(axis, angle_rad):
 
     Example: q_from_axis_angle((0, 0, 2), math.radians(60)) → about array([0. , 0. , 0.5, 0.866])
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 8 ---------------------------------------------------------------------------------------
@@ -136,7 +136,7 @@ def q_rotate(q, v):
 
     Example: q_rotate((0.0, 0.0, 0.5, 0.866025), (2.0, 0.0, 0.0)) → about array([1.   , 1.732, 0.   ])
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 9 ---------------------------------------------------------------------------------------
@@ -148,7 +148,7 @@ def q_to_matrix(q):
              q_to_matrix((0.0537, 0.0812, 0.4943, 0.8638))
              → about [[0.498, -0.845, 0.193], [0.863, 0.506, -0.013], [-0.087, 0.173, 0.981]]   (lesson §3's R)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 10 --------------------------------------------------------------------------------------
@@ -161,7 +161,7 @@ def slerp(q0, q1, t):
     Example: slerp((0, 0, 0, 1), (0, 0, 1, 0), 0.5) → about array([0.    , 0.    , 0.7071, 0.7071])
              (half-way from no rotation to a 180° yaw: a 90° yaw)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 11 --------------------------------------------------------------------------------------
@@ -173,7 +173,7 @@ def q_angle_deg(q0, q1):
     Example: q_angle_deg((0, 0, 0, 1), (0, 0, 0.258819, 0.965926)) → about 30.0
              q_angle_deg((0, 0, 0, 1), (0, 0, 0, -1)) → 0.0
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ====================================================================== given: the human angles

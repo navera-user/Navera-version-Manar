@@ -25,7 +25,7 @@ def heading_vector(heading_deg):
 
     Example:  heading_vector(90)  ->  (1.0, 6.1e-17)   (east; 6.1e-17 is 0 up to rounding)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 2 ---------------------------------------------------------------------------------------
@@ -36,7 +36,7 @@ def ground_velocity(airspeed_mps, heading_deg, wind_e=0.0, wind_n=0.0):
 
     Example:  ground_velocity(10.0, 90.0, 0.0, 3.0)  ->  (10.0, 3.0)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 3 ---------------------------------------------------------------------------------------
@@ -49,7 +49,7 @@ def wind_components(track_deg, wind_e, wind_n):
 
     Example:  wind_components(0.0, 2.0, -5.0)  ->  (-5.0, 2.0)   (track north: 5 m/s headwind, 2 m/s to the right)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 4 ---------------------------------------------------------------------------------------
@@ -64,7 +64,7 @@ def heading_for_track(track_deg, tas_mps, wind_e, wind_n):
 
     Example:  heading_for_track(0.0, 10.0, 6.0, 0.0)  ->  (323.13, 8.0)   (crab 36.87° into the wind)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 5 ---------------------------------------------------------------------------------------
@@ -76,7 +76,7 @@ def endurance_s(battery_wh, power_w, reserve=0.2):
 
     Example:  endurance_s(50.0, 200.0, 0.1)  ->  810.0   (13.5 min)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # given — this class is finished except its TODO methods
@@ -103,7 +103,7 @@ class Vehicle:
 
         Example:  Vehicle("rover", 2.0, 3.0, 400.0, 100.0).endurance_s()  ->  11520.0
         """
-        return None   # TODO: write your code above, and return the result
+        return None   # TODO: replace this line with your code
 
     # TODO 8 -----------------------------------------------------------------------------------
     def range_m(self, wind_along_mps=0.0, reserve=0.2):
@@ -113,7 +113,7 @@ class Vehicle:
 
         Example:  Vehicle("rover", 2.0, 3.0, 400.0, 100.0).range_m(-0.5)  ->  17280.0
         """
-        return None   # TODO: write your code above, and return the result
+        return None   # TODO: replace this line with your code
 
     # given — read it and use it, no need to change it
     def __repr__(self):

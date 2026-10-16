@@ -80,7 +80,25 @@ def is_stub(func):
         src = inspect.getsource(func)
     except (OSError, TypeError):
         return False
-    return any(m in src for m in STUB_MARKS)
+    if not any(m in src for m in STUB_MARKS):
+        return False
+    # A stub only when the stub line is the WHOLE body (after the docstring): code written above or
+    # below the old `return None   # TODO…` line counts as written.
+    import ast
+    import textwrap
+    try:
+        tree = ast.parse(textwrap.dedent(src))
+    except SyntaxError:
+        return True
+    fn = next((n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))), None)
+    if fn is None:
+        return True
+    body = list(fn.body)
+    if body and isinstance(body[0], ast.Expr) and isinstance(getattr(body[0], "value", None), ast.Constant) \
+            and isinstance(body[0].value.value, str):
+        body = body[1:]
+    lines = textwrap.dedent(src).splitlines()
+    return len(body) == 1 and any(m in lines[body[0].lineno - 1] for m in STUB_MARKS)
 
 
 _is_stub = is_stub          # older runners
@@ -100,7 +118,8 @@ def _hint(e):
         return (" — one value on that line is None: a function that did not `return`, or a variable that "
                 "starts as None (like an attribute set to None in __init__). Print the values on that line")
     if isinstance(e, ValueError) and "math domain error" in s:
-        return " — math.sqrt / math.asin / math.acos got a value out of range (negative, or beyond ±1)"
+        return (" — a math function got a value out of its range: math.sqrt or math.log of a negative number, "
+                "math.log(0), or math.asin / math.acos beyond ±1 — print the value just before that line")
     if isinstance(e, TypeError) and "cannot be interpreted as an integer" in s:
         return " — range() takes whole numbers only: use range(101) and x = i / 10"
     return ""

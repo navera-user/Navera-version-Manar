@@ -1,15 +1,16 @@
 # NAVERA Lite — the parts in this folder
 
 Mission 31. Finished parts come from the course's reference: read them, use them.
+"Missions" lists every mission that wrote a piece of the part, earliest first.
 
-| Part | Mission | Status |
+| Part | Missions | Status |
 |---|---|---|
 | `vehicle.py` | 03 | finished |
 | `geo.py` | 06 | finished |
 | `image.py` | 08 | finished |
-| `estimate.py` | 09 | finished |
 | `guard.py` | 09 | finished |
-| `settings.py` | 09 | finished |
+| `estimate.py` | 09, 12 | finished |
+| `settings.py` | 09, 13 | finished |
 | `features.py` | 21 | finished |
 | `learned_desc.py` | 21 | finished |
 | `learned_match.py` | 22 | finished |

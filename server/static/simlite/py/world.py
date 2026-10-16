@@ -94,7 +94,7 @@ def decoder_ready(out):
             src = inspect.getsource(getattr(out, name))
         except (OSError, TypeError, AttributeError):
             return False
-        if "# TODO: write your code" in src or 'NotImplementedError("TODO' in src:
+        if "# TODO: replace this line" in src or "# TODO: write your code" in src or 'NotImplementedError("TODO' in src:
             return False
     return True
 

@@ -55,8 +55,8 @@ def gpu_slot(wait_s=600.0, quiet=False):
             yield False
             return
         if not told and not quiet:
-            print(f"The GPU is busy ({n} trainings are running in the class): waiting for a free slot…",
-                  file=sys.stderr, flush=True)
+            print(f"The GPU is busy ({n} GPU job{'s' if n != 1 else ''} already running in the class): waiting for a "
+                  f"free slot (up to {wait_s / 60:.0f} min)…", file=sys.stderr, flush=True)
             told = True
         time.sleep(2.0)
 
@@ -82,8 +82,8 @@ def torch_device(wait_s=3600.0, quiet=False, cpu_ok=True):
         return
     with gpu_slot(wait_s, quiet) as ok:
         if not ok and not cpu_ok:
-            raise NoGpuSlot(f"No GPU slot came free in {wait_s / 60:.0f} min (the class is training). This training is "
-                            "too slow for the CPU: run the same command again a bit later, or ask your teacher.")
+            raise NoGpuSlot(f"No GPU slot came free in {wait_s / 60:.0f} min (the class is training). This job is too "
+                            "slow for the CPU: run the same command again a bit later, or ask your teacher.")
         if not ok and not quiet:
             print("No GPU slot came free: training on the CPU (slower).", file=sys.stderr, flush=True)
         yield "cuda" if ok else "cpu"

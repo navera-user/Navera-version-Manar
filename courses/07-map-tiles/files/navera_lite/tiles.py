@@ -49,7 +49,7 @@ def mercator_y(lat):
     Example: mercator_y(0.0) → 0.0 (to rounding);  mercator_y(51.5007) → about 1.052085   (London)
              mercator_y(MAX_LAT) → about 3.141593 (π: the top edge of a web map)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 2 ---------------------------------------------------------------------------------------
@@ -61,7 +61,7 @@ def tile_xy(lat, lon, z):
     Example: tile_xy(1.2834, 103.8607, 17) → about (103350.53, 65068.69)   (Marina Bay Sands, Singapore)
              tile_xy(0.0, 0.0, 1) → (1.0, 1.0)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 3 ---------------------------------------------------------------------------------------
@@ -73,7 +73,7 @@ def tile_to_latlon(x, y, z):
     Example: tile_to_latlon(0, 0, 0) → about (85.051129, −180.0)   (the world's north-west corner)
              tile_to_latlon(103350.5, 65068.5, 17) → about (1.283920, 103.860626)   (centre of a Singapore tile)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 4 ---------------------------------------------------------------------------------------
@@ -83,7 +83,7 @@ def m_per_px(lat, z):
     Inputs: latitude in degrees, zoom z. Returns metres per pixel (float).
     Example: m_per_px(0.0, 0) → about 156 543.03;  m_per_px(1.2834, 17) → about 1.1940   (Singapore)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 5 ---------------------------------------------------------------------------------------
@@ -96,7 +96,7 @@ def best_zoom(gsd_m, lat, zmin=13, zmax=19):
     Example: best_zoom(0.352, 1.2834) → 18   (Singapore: zoom 18 has 0.597 m pixels, zoom 19 0.299 m)
              best_zoom(100.0, 1.2834) → 13   (the coarsest zoom the map holds)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ====================================================================== the map file (session 2)
@@ -110,7 +110,7 @@ def open_map(path=None):
     Example: db = open_map("/data/academy/07-map-tiles/sousse_small.mbtiles")
              db.execute("SELECT COUNT(*) FROM tiles").fetchone() → (88,)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 7 ---------------------------------------------------------------------------------------
@@ -126,7 +126,7 @@ def read_tile(db, z, x, y):
     Example: read_tile(open_map(SMALL_MAP), 17, 69409, 51547)[:3] → b'\\xff\\xd8\\xff'   (the Ribat of Sousse)
              read_tile(open_map(SMALL_MAP), 17, 103350, 65068) → None   (Singapore is not in the map)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 8 ---------------------------------------------------------------------------------------
@@ -137,7 +137,7 @@ def latlon_to_pixel(lat, lon, z, x0, y0):
     Inputs: degrees, zoom, tile numbers x0, y0 (whole or fractional). Returns (px, py), two floats.
     Example: latlon_to_pixel(1.2834, 103.8607, 17, 103349, 65067) → about (390.88, 432.45)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 9 ---------------------------------------------------------------------------------------
@@ -149,7 +149,7 @@ def pixel_to_latlon(px, py, z, x0, y0):
     Example: pixel_to_latlon(128.0, 128.0, 17, 103350, 65068) → about (1.283920, 103.860626)
              (the centre pixel of tile 17/103350/65068)
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # TODO 10 --------------------------------------------------------------------------------------
@@ -161,7 +161,7 @@ def tiles_in_circle(lat, lon, r_m, z):
     Example: tiles_in_circle(35.8277, 10.6388, 300.0, 17)
              → [(69408, 51547), (69409, 51546), (69409, 51547), (69409, 51548), (69410, 51547)]
     """
-    return None   # TODO: write your code above, and return the result
+    return None   # TODO: replace this line with your code
 
 
 # ---------------------------------------------------------------------- given helpers

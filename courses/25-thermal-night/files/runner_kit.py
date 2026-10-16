@@ -118,7 +118,8 @@ def _hint(e):
         return (" — one value on that line is None: a function that did not `return`, or a variable that "
                 "starts as None (like an attribute set to None in __init__). Print the values on that line")
     if isinstance(e, ValueError) and "math domain error" in s:
-        return " — math.sqrt / math.asin / math.acos got a value out of range (negative, or beyond ±1)"
+        return (" — a math function got a value out of its range: math.sqrt or math.log of a negative number, "
+                "math.log(0), or math.asin / math.acos beyond ±1 — print the value just before that line")
     if isinstance(e, TypeError) and "cannot be interpreted as an integer" in s:
         return " — range() takes whole numbers only: use range(101) and x = i / 10"
     return ""
