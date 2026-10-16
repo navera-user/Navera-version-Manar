@@ -77,6 +77,23 @@ def _mine(name, lesson, part, needs_done=True):
     return text, rel
 
 
+def _function_text(text, fn):
+    """The source of a top-level function in a file's text ('' if absent)."""
+    i = text.find(f"\ndef {fn}(")
+    if i < 0:
+        return ""
+    j = text.find("\ndef ", i + 1)
+    k = text.find("\n# @part", i + 1)
+    ends = [x for x in (j, k) if x > 0]
+    return text[i:min(ends)] if ends else text[i:]
+
+
+def _decoder_written(text):
+    """True when parse_frames and decode_gps_input (mission 31 TODOs 1–2) hold no stub marker."""
+    return all(_function_text(text, fn) and not any(m in _function_text(text, fn) for m in STUB_MARKS)
+               for fn in ("parse_frames", "decode_gps_input"))
+
+
 def code(name, src="mine", passed=(), full=False):
     """{"origin", "files": {"navera_lite/<part>": text, "navera_lite.yaml": text}, "parts": {part: where it comes
     from and why}, "profile": my_vision_profile.json or None, "missing": []}. Never fails for a student.
@@ -108,7 +125,8 @@ def code(name, src="mine", passed=(), full=False):
             text, why = _mine(name, "31-simulator", part, needs_done=False)
             if text is not None:
                 files["navera_lite/" + part] = text
-                parts["output"] = f"yours ({why})"
+                parts["output"] = (f"yours ({why})" if _decoder_written(text) else
+                                   f"the course's starter ({why}: your decoder is not written yet: direct link)")
                 continue
             parts["output"] = "the course's starter (encoder given; your decoder is not written: direct link)"
         put(part, os.path.join(base, part))
@@ -162,10 +180,16 @@ def code(name, src="mine", passed=(), full=False):
             p = os.path.join(workspaces.lesson_dir(name, lesson), "navera_lite.yaml")
             if os.path.isfile(p):
                 try:
-                    yaml_text, yaml_from = _read(p), f"yours (lessons/{lesson}/navera_lite.yaml)"
-                    break
+                    yaml_text = _read(p)
                 except (OSError, ValueError):
-                    pass
+                    continue
+                try:
+                    same = yaml_text == _read(os.path.join(config.COURSES, lesson, "files", "navera_lite.yaml"))
+                except (OSError, ValueError):
+                    same = False
+                yaml_from = (f"the course's (lessons/{lesson}/navera_lite.yaml, unchanged)" if same
+                             else f"yours (lessons/{lesson}/navera_lite.yaml)")
+                break
     if yaml_text is None:
         try:
             yaml_text = _read(os.path.join(_course_dir(), "navera_lite.yaml"))

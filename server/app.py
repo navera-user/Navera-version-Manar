@@ -1006,6 +1006,12 @@ def api_simlite_script_save():
 @app.get("/api/simlite/scenario")
 @login_required()
 def api_simlite_scenario():
+    lesson = request.args.get("lesson", "")
+    if lesson in lesson_ids():
+        err = lock_error(request.user, lesson)
+        if err:
+            return jsonify(error=err, locked=True), 403
+        workspaces.install_lesson(request.user, lesson)   # an open mission's files are there before they are read
     try:
         return jsonify(simlite.scenario(request.user, request.args.get("lesson", "")))
     except FileNotFoundError:
@@ -1023,6 +1029,12 @@ def api_simlite_scenario():
 @login_required()
 def api_simlite_flight():
     d = request.get_json(force=True)
+    lesson = str(d.get("lesson", ""))
+    if lesson in lesson_ids():
+        err = lock_error(request.user, lesson)
+        if err:
+            return jsonify(error=err, locked=True), 403
+        workspaces.install_lesson(request.user, lesson)   # the starter files first: never a folder holding only my_runs/
     try:
         path = simlite.save_flight(request.user, str(d.get("lesson", "")), str(d.get("run", "")),
                                    str(d.get("csv", "")), str(d.get("events", "")))
@@ -1631,7 +1643,11 @@ def api_class_export(cid):
 @app.get("/api/classes/<cid>/qr.svg")
 @login_required("teacher")
 def api_class_qr(cid):
-    return Response(certs.qr_svg(_class_view(_my_class(cid))["join_url"]), mimetype="image/svg+xml")
+    try:
+        svg = certs.qr_svg(_class_view(_my_class(cid))["join_url"])
+    except ImportError:                       # setup/vendor/segno is missing (setup/install.sh vendors it)
+        return jsonify(error="QR library missing: run setup/install.sh (it vendors segno into setup/vendor)"), 503
+    return Response(svg, mimetype="image/svg+xml")
 
 
 @app.get("/class/<cid>/poster")

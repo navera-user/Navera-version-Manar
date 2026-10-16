@@ -231,7 +231,9 @@ async function loadCode() {
     $('srcSel').style.display = c.full ? '' : 'none';            // the course's finished parts: staff (and NAVERA access)
     const p = c.parts || {}, mine = Object.entries(p).filter(([k, v]) => /^yours/.test(v)).map(([k]) => k);
     const stand = Object.entries(p).filter(([k, v]) => /^stand-in|^none:/.test(v)).map(([k]) => k);
-    $('fileInfo').innerHTML = `📄 navera_lite <span class="ok">✓ ${c.origin === 'course' ? "the course's finished parts" :
+    $('fileInfo').innerHTML = c.origin === 'safe' ? `📄 navera_lite <span class="no">⚠ flying WITHOUT your files (your code failed: see the console)</span>` +
+      (stand.length ? ` <span class="ok">stand-ins: ${esc(stand.join(', '))}</span>` : '') :
+      `📄 navera_lite <span class="ok">✓ ${c.origin === 'course' ? "the course's finished parts" :
       (mine.length ? 'yours: ' + esc(mine.join(', ')) : c.full ? "the course's finished parts (none of yours yet)" : 'none of yours finished yet') +
       (stand.length ? ' · stand-ins: ' + esc(stand.join(', ')) : '')}</span>` +
       (c.missing.length ? ` <span class="no">missing: ${c.missing.join(', ')}</span>` : '');
@@ -246,6 +248,7 @@ async function loadCode() {
     if (lines.length > 1) consoleLine('bad', lines.join('\n'));
     if (S.src === 'mine' && !e.signedOut) {            // never a dead screen: fly without your files
       consoleLine('warn', "Your files could not be loaded (above): flying without them (the course's parts you have earned, or the teaching stand-ins). Fix the file, then ↻ reload.");
+      S.fallback = "Your files could not be loaded, so this flight uses the course's parts / stand-ins:\n" + lines.join('\n');
       S.src = 'safe'; markSrc();
       return loadCode();
     }
@@ -304,14 +307,19 @@ async function startFlight(opts) {
   checkSession();
   const run = ++S.runId;
   stop(); clearMap(); $('result').style.display = 'none'; $('log').innerHTML = ''; $('console').innerHTML = ''; summary(null);
+  if (S.fallback) { consoleLine('bad', S.fallback); consoleLine('warn', 'Fix it in 📝 Code, then ↻ reload (above).'); S.fallback = null; }
   S.rows = []; S.evlines = []; S.lastSnap = null; $('saveRunBtn').disabled = true;
   ['gps', 'camera', 'light', 'imu'].forEach(k => markFault(k, k === 'light' ? S.light : 'ok'));
   faultHint('', '');
   if (!S.files) { if (!(await loadCode())) { consoleLine('bad', 'NAVERA Lite could not be loaded: see ✗ above.'); openTab('code'); return; } }
+  if (S.fallback) { consoleLine('bad', S.fallback); consoleLine('warn', 'Fix it in 📝 Code, then ↻ reload (above).'); S.fallback = null; }
   const cfg = { vehicle: S.vehicle, start: S.start, dest: S.dest, profile: S.profile, light: S.light,
     speed: +$('speedIn').value || null, max_speed: +$('maxIn').value || null, seed: Math.floor(Math.random() * 1e6),
     map_boxes: S.mapBoxes };
-  consoleLine('ok', `▶ starting: ${S.files.origin === 'course' ? "the course's NAVERA Lite" : 'your NAVERA Lite (parts above)'} + flight script`);
+  consoleLine('ok', `▶ starting: ${S.files.origin === 'course' ? "the course's NAVERA Lite" : S.files.origin === 'safe' ?
+    "the course's parts / stand-ins (your files are off)" : 'your NAVERA Lite (its parts: the 📄 line above)'} + flight script`);
+  S.evlines.push(`# source: ${S.files.origin}`);                    // the saved events say which parts flew
+  Object.entries(S.files.parts || {}).forEach(([k, v]) => S.evlines.push(`# part ${k}: ${v}`));
   if (opts.cfg) Object.assign(cfg, opts.cfg);
   // an answer still on its way from the previous flight is awaited (and dropped), never a reason to restart Python
   let first;
@@ -319,7 +327,7 @@ async function startFlight(opts) {
   catch (e) {
     if (run !== S.runId) return;
     consoleLine('bad', 'Your code stopped while starting:\n' + e);
-    if (S.src === 'mine') { consoleLine('warn', "Flying without your files instead (press ↻ reload after fixing your file)."); S.src = 'safe'; markSrc(); S.files = null; S.starting = false; return fly(opts); }
+    if (S.src === 'mine') { S.fallback = "Your code stopped while starting, so this flight uses the course's parts / stand-ins:\n" + e; S.src = 'safe'; markSrc(); S.files = null; S.starting = false; return fly(opts); }
     openTab('code'); return;
   }
   if (run !== S.runId) return;
@@ -335,7 +343,7 @@ async function tick() {
   catch (e) {
     if (run !== S.runId) return;
     consoleLine('bad', 'Your code stopped during the flight:\n' + e); stop();
-    if (S.src === 'mine') { consoleLine('warn', "Flying again without your files (press ↻ reload after fixing your file)."); S.src = 'safe'; markSrc(); S.files = null; setTimeout(() => fly(S.lastOpts || {}), 0); }
+    if (S.src === 'mine') { S.fallback = "Your code stopped during the flight, so it was flown again with the course's parts / stand-ins:\n" + e; S.src = 'safe'; markSrc(); S.files = null; setTimeout(() => fly(S.lastOpts || {}), 0); }
     else openTab('code');
   }
   finally { S.busy = false; }
