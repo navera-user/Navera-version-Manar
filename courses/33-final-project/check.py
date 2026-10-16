@@ -8,7 +8,7 @@ import tempfile
 
 import numpy as np
 
-from academy_check import CheckFailed, Checker, explained, load_student, need, predicted, sh, stored_seal
+from academy_check import CheckFailed, Checker, explained, load_student, need, predicted, sh, stored_log, stored_seal
 
 c = Checker()
 
@@ -168,7 +168,8 @@ def subset_problems(m, scenarios, what):
     if isinstance(s, list) and s and isinstance(scenarios, list) and all(x in scenarios for x in s) \
             and len(set(s)) == len(s):
         return []
-    return [f'{what} "scenarios" must be some of the campaign\'s scenario files']
+    bad = [x for x in s if x not in (scenarios or [])] if isinstance(s, list) else s
+    return [f'{what} "scenarios": {bad} — each must be one of {scenarios} (or leave "scenarios" out: all of them)']
 
 
 def metric_runs(m, runs):
@@ -450,12 +451,17 @@ def section(text, title):
 # a claim of a gain, and the words that hedge it; "but", "however", "although", "only", "yet" do NOT hedge
 # ("improves the error by 1.4 m, but more runs are needed" is still a claim). Regression list:
 # solutions/33-final-project/claims_regression.py
-NEGATION = re.compile(r"\bnot\b|n't|\bno\b|\bnever\b|cannot|\bunclear\b|\bwhether\b|\bif\b|\bmay\b|\bmight\b"
-                      r"|\bwould\b|\bcould\b|uncertain|\bhoped\b|\bexpected\b|\baim|\bmeant\b|\bgoal\b|\bwant"
+NEGATION = re.compile(r"\bnot\b|n't|\bno\b(?!\s*0)|\bnever\b|cannot|\bunclear\b|\bwhether\b|\bif\b|\bmay\b"
+                      r"|\bmight\b|\bwould\b|\bcould\b|uncertain|\bhoped\b|\baim|\bmeant\b|\bgoal\b|\bwant"
                       r"|\bhypothes")
 CLAIM = re.compile(r"\bbetter\b|\bbeats?\b|\boutperform|more accurate|\bwins?\b|\bsuperior\b|\bimprov"
                    r"|\bfixes\b|\bsolves?\b|\bsolved\b|\breduc|\blower(s|ed)\b|\bfaster\b|\bsooner\b|\bdecreas"
-                   r"|\bshortens?\b")
+                   r"|\bshortens?\b|\bshorter\b|\bearlier\b|\bquicker\b|\bhelps?\b|\bgains?\b|\bworks?\b"
+                   r"|\bdropped\b|\bwent down\b|\beffective\b|\bsuccess|\bshould be merged\b")
+# a "case (b)" sentence of lesson §5: a gain over 0, but perhaps smaller than the minimum effect — honest
+CASE_B = re.compile(r"minimum effect|minimal effect|(less|smaller) than the|not one larger")
+CASE_B_HEDGE = re.compile(r"perhaps|maybe|not shown|cross|cannot|\bnot\b|less than|smaller than")
+CLAUSES = re.compile(r",|;|\b(?:but|however|although|yet)\b")
 MISSING = re.compile(r"\bno (position|fix|match|gps|data|answer)s?\b")
 
 
@@ -465,8 +471,11 @@ def claims(text):
         if re.search(r"\bstill (better|more accurate)\b|^\s*prov(ed|en)\b|(?<!not )\bsignificantly (better|more accurate)\b",
                      low):
             return sent.strip()
-        if CLAIM.search(low) and not NEGATION.search(low):
-            return sent.strip()
+        if CASE_B.search(low) and CASE_B_HEDGE.search(low):
+            continue
+        for clause in CLAUSES.split(low):            # a hedge only covers its own clause
+            if CLAIM.search(clause) and not NEGATION.search(clause):
+                return sent.strip()
     return None
 
 
@@ -541,9 +550,15 @@ def _():
     c.ok(not frozen, "changed after the tag 'before': " + ", ".join(frozen) + " — a pre-registration (and the "
                      "scenarios and the ruler it names) is frozen before the baseline; put them back "
                      "(git checkout before -- <file>) or start again from a new red-test commit")
+    seeds = set(range(p["seeds"]["first"], p["seeds"]["first"] + p["seeds"]["count"]))
+    flown = {int(m.group(1)) for f in (os.listdir("my_runs") if os.path.isdir("my_runs") else [])
+             if (m := re.search(r"_s(\d+)\.csv$", f))}
+    both = sorted(flown & seeds)
+    c.ok(not both, f"seeds {both[:5]} of your pre-registered block were flown while exploring (my_runs/): pre-register "
+                   "a block you never flew (lesson §2) — a new pre-registration (lab Step 5 hint 2)")
     seal = f"{b[:12]}:{sha256_text(show(b, 'project.json') or '')[:12]}"
     stored = stored_seal()
-    c.ok(stored is None or stored == seal,
+    c.ok(stored is None or stored.split(":late")[0] == seal,
          f"the pre-registration changed after your Pre-registered badge (sealed {stored}, now {seal}): the tag "
          "'before' or its project.json moved. A new pre-registration needs your teacher: they reset the seal, and both "
          "pre-registrations go in your report")
@@ -589,7 +604,10 @@ def _():
             if metric_value(m, read_rows(os.path.join("runs", "before", name + ".csv")), scs[s]) is None:
                 raise CheckFailed(f"{m['name']} is not defined in run before/{name} (no row in its window): this "
                                   "pre-registration cannot be evaluated — make a new one (lab Step 5 hint 2)")
-    c.seal = f"{b[:12]}:{sha256_text(show(b, 'project.json') or '')[:12]}"   # kept by the server the first time
+    late = stored_seal() is None and (os.path.exists(os.path.join("runs", "after", "manifest.json"))
+                                      or os.path.exists("evaluation.json"))
+    c.seal = f"{b[:12]}:{sha256_text(show(b, 'project.json') or '')[:12]}" + (":late" if late else "")
+    # kept by the server the first time; ":late" = first stored when a result already existed (the teacher sees it)
 
 
 # ================================================================================================ Session 2
@@ -637,6 +655,7 @@ def _():
     mb = manifest("before")
     c.ok([r["name"] for r in mb["runs"]] == [r["name"] for r in man["runs"]], "the two campaigns hold different runs")
     CACHE["refly_after"] = refly("after", a, p, scs, man)
+    c.seal_log.append(f"after:{b[:12]}:{a[:12]}")          # the server remembers every after-commit it sees
 
 
 @c.test("Step 8 — evaluation.json: the paired difference, its interval and the decision, from YOUR runs",
@@ -710,6 +729,36 @@ def _():
     CACHE["eval"] = dict(p=p, D=D, ci=(lo, hi), before=st(vb), after=st(va), g=g, decision=dec, n=len(vb),
                          afters=[x for x in (ev.get("afters_evaluated") or []) if isinstance(x, str)], b_sha=b,
                          mean_b=float(np.mean(vb)), mean_a=float(np.mean(va)), files=changed(b, a))
+
+
+def after_commits(b_sha, extra):
+    """Every after-commit flown or evaluated against this baseline: runs/journal.txt (both line shapes), the git refs
+    refs/flown/<before12>-<after12> written by `campaign after`, runs/after's manifest, evaluation.json, and the list
+    the server kept from earlier checks (stored_log)."""
+    b12, seen = b_sha[:12], [x[:12] for x in extra]
+    try:
+        with open(os.path.join("runs", "journal.txt")) as f:
+            for ln in f:
+                w = ln.split()
+                if len(w) >= 7 and w[2] == "evaluate" and w[6] == b12:
+                    seen.append(w[4][:12])
+                elif len(w) >= 8 and w[2] == "campaign" and w[3] == "after" and w[7] == b12:
+                    seen.append(w[4][:12])
+    except OSError:
+        pass
+    code, out = sh("git for-each-ref --format=%(refname:short) refs/flown/")
+    seen += [r.split("-", 1)[1][:12] for r in out.split() if r.startswith("flown/" + b12 + "-")]
+    try:
+        seen += [a[:12] for b, a in json.load(open(os.path.join("runs", "after", "manifest.json"))).get(
+            "afters_history", []) if b == b12]
+    except (OSError, ValueError, TypeError):
+        pass
+    seen += [v.split(":")[2] for v in stored_log() if v.startswith("after:" + b12 + ":") and v.count(":") == 2]
+    out_ = []
+    for s in seen:
+        if s and s not in out_:
+            out_.append(s)
+    return out_
 
 
 def report_text():
@@ -786,26 +835,31 @@ def _():
     c.ok(re.search(r"contain|includ|exclud|cross|\bzero\b|\b0\b|entirely|whole interval|below|above", res.lower()),
          "sections 6–7 must say where the interval lies: does it contain 0 (or the minimum effect)?")
     bad_side = (e["ci"][1] < 0) if e["p"]["better"] == "higher" else (e["ci"][0] > 0)
-    if dec == "inconclusive" or (dec == "reject" and bad_side):
+    shown = (e["ci"][0] > 0) if e["p"]["better"] == "higher" else (e["ci"][1] < 0)
+    if dec == "inconclusive" and shown:
+        c.ok(re.search(r"minimum|min(\.|imal)? effect", res.lower()),
+             "your interval excludes 0 but crosses the minimum effect: say so in sections 6–7 (lesson §5 (b): 'a gain, "
+             "but perhaps smaller than the minimum effect')")
+    if (dec == "inconclusive" and not shown) or (dec == "reject" and bad_side):
         sent = claims(res + (section(body, "8. Limits") or ""))
         if sent is not None:
             raise CheckFailed(f"the result is {dec.upper()}, but the report claims a gain: \"{sent[:120]}\" — say what "
                               "the interval allows (not shown, inconclusive, rejected), not what you hoped")
     lim = (section(body, "8. Limits") or "").lower()
-    afters = list(e.get("afters") or [])
-    try:
-        with open(os.path.join("runs", "journal.txt")) as f:
-            for ln in f:
-                w = ln.split()
-                if len(w) >= 7 and w[2] == "evaluate" and w[6] == e["b_sha"][:12] and w[4] not in afters:
-                    afters.append(w[4])
-    except OSError:
-        pass
+    afters = after_commits(e["b_sha"], e.get("afters") or [])
     if len(afters) > 1:
         missing = [x[:7] for x in afters if x[:7] not in lim]
-        c.ok(not missing, f"you evaluated {len(afters)} different changes against this baseline (runs/journal.txt): "
-                          "section 8 must name each of them by its commit id (" + ", ".join(missing) + " missing) and "
-                          "say why — tuning on the pre-registered seeds is a forking path (lesson §2)")
+        c.ok(not missing, f"you flew or evaluated {len(afters)} different changes against this baseline (journal, "
+                          "refs/flown, the server's log): section 8 must name each of them by its commit id ("
+                          + ", ".join(missing) + " missing) and say why — tuning on the pre-registered seeds is a "
+                          "forking path (lesson §2)")
+    code, out = sh(f"git log --format=%h start..{e['b_sha']} -- project.json")
+    regs = out.split() if code == 0 else []
+    if len(regs) > 1:
+        missing = [h[:7] for h in regs[1:] if h[:7] not in lim]
+        c.ok(not missing, f"project.json was pre-registered {len(regs)} times before 'before' ({', '.join(regs)}): "
+                          f"section 8 must name each earlier pre-registration ({', '.join(missing)}) and say why it "
+                          "was replaced (lesson §2)")
     c.ok(re.search(r"simulat|synthetic", lim), "section 8 must say that this is a simulation (and what that means)")
     c.ok(re.search(r"field|real|flight|camera|terrain|wind|hardware|weather|sensor", lim),
          "section 8 must say what the simulation does not show (real sensors, field, terrain…)")

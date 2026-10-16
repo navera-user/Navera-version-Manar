@@ -94,7 +94,7 @@ git add navera_lite && git commit -m "use my own parts"
 
 Read the menu below and choose ONE idea (or agree your own with your teacher). Before you write anything,
 **explore** — with seeds **below 1000** only (the block you pre-register in Step 3 starts at 1000 or more and is never
-flown while exploring):
+flown while exploring; `plan` and the check refuse a block that overlaps the seeds in `my_runs/`):
 fly the scenario where the problem shows, with `project.py one`, and look at the run (the CSV in `my_runs/`, its
 `_events.log`, and the metrics). For example, for idea 4:
 
@@ -131,12 +131,14 @@ or a guard-rail may be computed on only some of the campaign's scenarios: `"scen
 | 5 | **The star fix and the compass.** NAVERA's star fix needs the camera's direction: 5.5–6.5 km with a perfect attitude, 53 km with 0.5° of tilt, 91 km with 2° of heading more (validation report, 2026-09-30). Setup: a celestial witness in the simulator whose error follows mission 26's rule from the heading the stack gives it — the setup is most of the work: agree its design with your teacher first; change: give it the TRUE heading (declination, mission 17). | ★★★ | setup: `sim/world.py`; change: `imu.py` functions used by the new witness | the celestial fix's own error, GPS jammed and the camera blind (`custom`) |
 | 6 | **Inliers: one number, measured.** NAVERA's report validated "≥ 6 inliers", while the product's setting asks for 8. In NAVERA Lite the minimum is a default in two places (`match.gates`, `locate.DEFAULTS`). Make it one setting, then measure 6 vs 8 in the loop with day vision "mine" (slow: a 100 s day flight takes about 45 s — keep runs short). | ★★★ | `match.py`, `locate.py`, `sim/vision.py` reading the setting | `availability` vs `err_p95` with `vision: "mine"` |
 | 7 | **The guard's patience.** The guard needs 5 disagreeing fixes in a row (mission 30). Fewer catch a drift sooner — and refuse an honest GPS more often (mission 31's R9). Measure both. | ★ | `spoof.py` settings (`GUARD_DEFAULTS`) | `detect_s` on `drift` only (`"scenarios"`); guard-rail `false_alarm` on `plane_late` + `baseline` (`"scenarios"`) |
-| 8 | **A late camera.** Mission 31's failing run: the plane's pictures are 1.5 s old but stamped "now", and the guard refuses an honest GPS. Make the guard's time-gap term honest about a known camera latency. | ★★ | `spoof.py` (`innovation`), a setting | `false_alarm` on `plane_late` (`"scenarios"`); guard-rail `detected` on a plane drift scenario of yours (`"scenarios"`) |
+| 8 | **A late camera.** Mission 31's failing run: the plane's pictures are 1.5 s old but stamped "now", and the guard refuses an honest GPS. Make the guard's time-gap term honest about a known camera latency. | ★★ | `spoof.py` (`innovation`), a setting | `false_alarm` on a late-camera plane scenario (`"scenarios"`); guard-rail **`detect_s`** on a plane drift scenario of yours with the same camera (`"scenarios"`) — `detected` alone cannot see a guard that catches the spoof 30 s later. Measure first: a latency added to the time-gap term is multiplied by `max_speed_mps` (100 m/s for the plane), which can blind the test; `plane_late`'s camera is on time for its first 20 s |
 | 9 | **Retrain the night network.** Train mission 25's HomographyNet better (more pairs, more epochs, an augmentation) on mission 25's training places — never on the corridor you fly (that measures memory, not skill). The change is the weights file `ref_homography.pt`. | ★★★ | `ref_homography.pt` (+ your training script, committed); `homography_net.py` | `err_median` on `night_mine` (≈ 7 s per run, GPU) |
 | 10 | **GPS bursts** (kind `sim`). Real receivers in streets meet multipath: short bursts of tens of metres. Add bursts to the simulated GPS and measure what they do to the stack (jump gate, guard, errors). | ★★ | `sim/sensors.py` / `sim/world.py` | `err_p95` or `false_alarm` with GPS "ok" |
 
 A 0/1 guard-rail (`false_alarm`, `failsafe`, `detected`) needs many runs: 0 alarms in 30 runs only shows a rate below
 about 0.11 (lesson §5), so a limit of 0.05 needs about 75 runs on that scenario (runs take well under a second).
+With 20 runs on that scenario, a 0/1 guard-rail can only end inconclusive (0/20 still allows 0.16): decide the number
+of runs NOW, in Step 3.
 
 Your own idea is welcome (`"idea": "own"`): check with your teacher that it is **one** change you can **test** and
 **measure** in a day. The lesson's worked example (the 2 s window) is not a project.
@@ -264,8 +266,10 @@ pre-registration after the badge needs your teacher (they reset the seal), and b
    (you are still on the red commit): edit, `git commit -am "pre-registration v2"`, `git tag -f before`, then
    `python3 project.py red` and `python3 project.py campaign before`. **If the change is already committed**, the tag
    must not land on top of it: start a fresh branch from the old red commit and bring the change back —
+   Find the red commit first: `python3 project.py red` printed its id ("Red commit: …"), and `git log --oneline`
+   shows it — the commit just BEFORE your change commit (if you already moved the tag, `before` is no longer it).
    ```bash
-   git switch -c project/<name>-v2 before          # the old red commit
+   git switch -c project/<name>-v2 <red-commit-id>   # the red commit, before your change
    # edit project.json (and the test if needed), then:
    git commit -am "pre-registration v2" && git tag -f before
    git cherry-pick <id of your change commit>      # git log project/<name> --oneline shows it
@@ -351,8 +355,10 @@ Press **✔ Check my work**: checks 1–8 earn the badge **Measured**.
 1. "is not defined in run …": your metric has no value in some run (no row in its window). Every run counts: you need
    a new pre-registration (another metric, window, or `"scenarios"` for it), and your change must stay AFTER the new
    red commit. Ask your teacher to reset the seal, then:
+   Find the red commit first: `python3 project.py red` printed its id ("Red commit: …"), and `git log --oneline`
+   shows it — the commit just BEFORE your change commit (if you already moved the tag, `before` is no longer it).
    ```bash
-   git switch -c project/<name>-v2 before          # the old red commit
+   git switch -c project/<name>-v2 <red-commit-id>   # the red commit, before your change
    # edit project.json (and the test if needed), then:
    git commit -am "pre-registration v2" && git tag -f before
    git cherry-pick <id of your change commit>      # git log project/<name> --oneline shows it

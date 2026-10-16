@@ -283,6 +283,11 @@ a narrower interval than Wilson's (mission 32): 0 in 30 only shows a rate below 
 add, or which effect size you would need. A team that writes "inconclusive" when it is true is a team whose "accept"
 can be trusted.
 
+The course's own example shows why the block is fixed first: the same change (a held fix states a σ that grows with
+its age, idea 1 of the lab's menu) was ACCEPTED on one block of 20 seeds (D −0.111 [−0.140, −0.082]) and is
+INCONCLUSIVE on another (D −0.032 [−0.059, −0.005], minimum effect 0.02). Neither result is wrong; one block of 20 runs
+is simply short for a 0.02 effect — which is why the block is chosen before the result, not after.
+
 > [!QUESTION] ✏️ Check
 > Metric `ap_err_max`, lower is better, minimum effect 2 m, no guard-rail. Decision for each interval of D:
 > (a) [−6.1, −2.4] m, (b) [−6.1, −1.2] m, (c) [−0.8, 1.9] m, (d) [0.3, 4.0] m.

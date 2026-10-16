@@ -13,7 +13,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = open(os.path.join(HERE, "..", "..", "courses", "33-final-project", "check.py"), encoding="utf-8").read()
 ns = {"re": re}
 for node in ast.parse(SRC).body:
-    if (isinstance(node, ast.Assign) and any(getattr(t, "id", "") in ("NEGATION", "CLAIM", "MISSING")
+    if (isinstance(node, ast.Assign) and any(getattr(t, "id", "") in ("NEGATION", "CLAIM", "MISSING", "CASE_B",
+                                                                       "CASE_B_HEDGE", "CLAUSES")
                                              for t in node.targets)) or \
             (isinstance(node, ast.FunctionDef) and node.name == "claims"):
         exec(compile(ast.Module([node], []), "check.py", "exec"), ns)
@@ -30,6 +31,25 @@ CLAIMS = [   # must be caught (a gain claimed that an inconclusive interval does
     "The change improves honest2: the mean went from 0.717 to 0.892.",
     "Only the p95 decreased, by 3 m.",
     "The detector shortens the detection delay.",
+    # round-2 reviewer's realistic weak sentences (all must be caught)
+    "Inconclusive. Our change improves detection by 2.55 s, but more runs are needed.",
+    "The change makes the guard detect the drift 2.55 s earlier.",
+    "Detection is quicker with the change.",
+    "The new patience catches the drift sooner, but the guard-rail is unclear.",
+    "The guard now detects spoofing 2.55 s earlier on average.",
+    "The change helps: detection went from 18.25 to 15.70 s.",
+    "Our change gives a gain of 2.55 s.",
+    "This change works well and should be merged.",
+    "The detection time dropped by 2.55 s.",
+    "The detect time is shorter after the change.",
+    "Detection got 14 % faster.",
+    "The change does improve detection but not by 2 s for sure.",
+    "There is a clear improvement in detection time.",
+    "It reduces detect_s by 2.55 s, if the guard-rail allows.",
+    "The interval contains no 0, so detection is faster.",
+    "We expected a gain and we got it: 2.55 s.",
+    "The change is effective.",
+    "The change was successful.",
 ]
 HONEST = [   # must pass
     "The change is not shown to lower the error on these 30 runs.",
@@ -42,6 +62,12 @@ HONEST = [   # must pass
     "A gain may exist but these 30 runs cannot show it.",
     "Inconclusive: the interval of D contains 0, so a gain is not shown.",
     "The guard-rail did not get worse: 0 false alarms in 30 runs, which shows only a rate below 0.114.",
+    # lesson §5 case (b): a gain over 0, but perhaps smaller than the minimum effect (honest; the check applies the
+    # filter only when the interval contains 0, and these must pass even if it did)
+    "Detection is faster by 2.55 s (95 % interval 1.70 to 3.45 s), but perhaps by less than the 2 s minimum effect.",
+    "The change lowers the error, but the interval crosses the minimum effect, so a gain that matters is not shown.",
+    "A gain over 0 is shown, but not one larger than the minimum effect of 0.02.",
+    "D lies below 0, perhaps only by less than the minimum effect.",
 ]
 bad = [s for s in CLAIMS if ns["claims"](s) is None] + [s for s in HONEST if ns["claims"](s) is not None]
 for s in CLAIMS:

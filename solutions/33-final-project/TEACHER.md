@@ -46,7 +46,8 @@ is named with its source (Gelman and Loken 2013) and explained.
   a guard-rail cannot be "closer"); a metric or the guard-rail may hold `"scenarios": [...]` (a subset of the
   campaign's files: ideas 2, 7, 8 put the metric on a fault scenario and the guard-rail on an honest one);
   `campaign before` refuses at once a metric undefined in some baseline run; a **0/1 metric or guard-rail** gets an
-  interval never narrower than Newcombe's hybrid score interval from two Wilson intervals (0/30 vs 0/30 → about
+  interval never narrower than Newcombe's hybrid score interval from two Wilson intervals (the unpaired form, Newcombe
+  1998 method 10: conservative for positively correlated pairs; used only as a floor) (0/30 vs 0/30 → about
   [−0.114, 0.114], not [0, 0]); every 'after' campaign and evaluation goes into `runs/journal.txt`, `evaluate` warns
   when more than one after-commit was evaluated against a baseline, and check 10 then requires section 8 to name
   each commit id; the template's seeds start at 1001 (explore below 1000). For "closer" the interval of
@@ -84,11 +85,26 @@ written as 0 (or 0.000); check 10 applies the claim filter (regexes and 21-sente
 `claims_regression.py`) only to INCONCLUSIVE, or REJECT with D on the bad side, and requires section 8 to name every
 after-commit of the journal when there is more than one.
 
+Round 2 additions: the claim filter runs only when D's interval contains 0 (INCONCLUSIVE) or lies on the bad side
+(REJECT); when an INCONCLUSIVE interval excludes 0 but crosses the minimum effect (lesson §5 (b)) sections 6–7 must
+mention the minimum effect instead; the claim words are wider (earlier, quicker, helps, gain, works, dropped, shorter,
+effective, success, should be merged…), a hedge covers only its own clause, and a "case (b)" sentence (minimum effect +
+perhaps/less than…) passes — `claims_regression.py`: 43/43 (11 + the reviewer's 18 claims caught, 10 + 4 honest
+pass). Check 3 refuses a block that overlaps the seeds in `my_runs/` (exploring). Check 5 marks a seal FIRST stored
+when an 'after' campaign or evaluation.json already existed as `…:late` (shown by `tools/seal.py list`). Check 7 sends
+`after:<before12>:<after12>` to the server's per-student log (`seals.append`, ≤ 20 values, `stored_log()`); check 10
+merges every after-commit from the journal (`campaign after` AND `evaluate` lines), the git refs
+`refs/flown/<before12>-<after12>` that `campaign after` writes, runs/after's `afters_history`, evaluation.json and the
+server's log, and requires section 8 to name each one when there is more than one. Check 10 also requires section 8 to
+name every earlier pre-registration: the commits that wrote project.json in start..before.
+
 **Cannot verify:** whether the change is a good idea, whether the test really pins the problem (beyond "fails
-before / passes after"), whether the metric suits the hypothesis, a history rewritten BEFORE the badge (allowed: the
-seal starts at the badge), a journal deleted by hand (ask for it in the oral), copying between students (same idea
-and same seeds: compare repositories). That is the rubric's job (below). Check time ≈ 2 min in the sandbox (two
-whole-suite runs, two flights).
+before / passes after"), whether the metric suits the hypothesis, a history rewritten from `start` on purpose (the
+earlier pre-registrations are then gone from the branch: `git reflog` in the oral), versions flown and then deleted
+(journal, refs/flown and runs/after removed) between two Checks — the server's log only holds what a check saw —,
+copying between students (same idea and same seeds: compare repositories). A seal is a FIRST value: a student who
+presses Check for the first time after a result gets a `:late` seal (see the rubric). That is the rubric's job
+(below). Check time ≈ 1 min 20 s for a complete project (sealed, 60-run plane campaigns).
 
 ## Alignment
 
@@ -96,7 +112,7 @@ whole-suite runs, two flights).
 |---|---|---|---|
 | 1 pre-register (hypothesis, metric/window, direction, minimum effect, guard-rail, runs, rule) | §2 (table, forking paths, 🧰 target, ✏️ limit chosen afterwards), §5 (the rule judged) | Steps 2–3 (`plan`, EXPLAIN_SEEDS) | 3, 8, 11 |
 | 2 red test on a tagged commit, regression test, branch/commits/tags | §3 (fail vs crash, frozen, old tests, ✏️ exit 2), commits.svg | Steps 1, 4, 5, 6 (`red`, `green`, EXPLAIN_RED) | 1, 2, 4, 6, 11 |
-| 3 paired campaign from commits, ruler fixed, paired bootstrap | §4 (commits, seeds, Var(a − b), sd 7.4 vs 6.1, iid over runs, ruler, kind sim, ✏️ seeds), paired.svg | Steps 5, 7, 8 (`campaign`, `evaluate`, EXPLAIN_PAIRED, EXPLAIN_RULER) | 5, 6, 7, 8, 11 |
+| 3 paired campaign from commits, ruler fixed, paired bootstrap | §4 (commits, seeds, Var(a − b), independent 7.7 m vs paired 4.2 m (sd 6.5 / 4.2, r 0.77), iid over runs, ruler, kind sim, ✏️ seeds), paired.svg | Steps 5, 7, 8 (`campaign`, `evaluate`, EXPLAIN_PAIRED, EXPLAIN_RULER) | 5, 6, 7, 8, 11 |
 | 4 decide by the rule; honest report with limits | §5 (decision.svg, worked REJECT, zero width, 5 runs, ✏️ four intervals), §6 (model sentences, ✏️ fix), In NAVERA | Steps 8–10 | 9, 10, 12 |
 
 ## Answer key
@@ -186,9 +202,19 @@ a good discussion for idea-1 students. (Exploring numbers of 2026-10-15, `build/
    "campaign/baseline.json"]` (mission 31's R9 already fails on plane_late: the guard refuses the honest GPS). A 0/1
    guard-rail needs 60–80 runs per scenario to show a rate below 0.05 (runs take 0.2–0.5 s).
 8. ★★ **Late camera.** Mission 31's diagnosis: pictures 1.5 s old stamped "now" on a 40 m/s plane → 60 m that the
-   guard's time-gap term does not cover. A stack-side fix: a setting for a known camera latency added to the gap term
-   (or to the vision σ). Metric `false_alarm` (0/1 per run) on `plane_late` (`"scenarios"`), Newcombe interval;
-   guard-rail `detected` on a plane drift scenario the student writes (`"scenarios"`).
+   guard's time-gap term does not cover. Three designs measured by the round-2 reviewer on exploring seeds:
+
+   | Design | false alarm (late camera) | drift detection |
+   |---|---|---|
+   | A. latency in the gap term: g = max_speed × (\|Δt\| + 1.5 s) | 0 | **detected 0 in 5/5**: a 150 m gap term (100 m/s × 1.5 s) blinds the χ² test |
+   | B. shift every camera fix by 1.5 s | 0 when late from 0 s; still 1 on `plane_late` (on time for its first 20 s) | on-time camera: the GPS is refused at once |
+   | C. test the fix at its stamp AND at stamp − 1.5 s, keep the better match | 0 on both | late camera 12–19 → 47–51 s; on-time 18–23 → 22–26 s |
+
+   Metric `false_alarm` on a late-camera plane scenario (`"scenarios"`), Newcombe interval; guard-rail **`detect_s`**
+   on a plane drift scenario with the same camera (`"scenarios"`) — `detected` alone stays 1 → 1 while detection is
+   30 s later. (Round-2 reviewer, seeds 2001–2030: design C false_alarm 30/30 → 0/30, D −1.000 [−1.000, −0.8395];
+   detect_s 19.47 → 48.70 s, D +29.2 [27.3, 31.1] → REJECT at a 10 s limit.) Ask for the bias in the Limits: the old
+   guard's quick "detection" on a late camera is helped by its own false alarms.
 9. ★★★ **Retrain the night network.** `homography_net.make_pairs` on `/data/academy/25-thermal-night/scenes_train.npz`,
    `train` through `academy_gpu` (≤ 5 min GPU); the change is `ref_homography.pt` (commit the training script too).
    NEVER train on the corridor (`/data/academy/31-simulator/corridor/night_*.png`): the campaign would measure memory.
@@ -215,7 +241,9 @@ counts under "Test and change: 4". **Oral (5 min, Session 3):** the student show
 --graph`, `runs/journal.txt`, explains one interval and answers "what would make you change your decision?" — use it to
 confirm the criteria above, not as a sixth one. **Integrity:** a pre-registration changed after the badge without a
 reset (the seal fails), or several "after" versions evaluated and not reported (journal), sets Pre-registration and
-Report honesty to 0. **Final mark:** checks 40 % (badges Pre-registered 10 %, Measured 15 %, Engineer 15 % — or as your
+Report honesty to 0. A second pre-registration made with your reset is
+not penalised when section 8 names both and says why; a seal marked `:late` (`tools/seal.py list`) means the rule was
+frozen after a result existed: Pre-registration at most 2/4 unless the reflog shows otherwise. **Final mark:** checks 40 % (badges Pre-registered 10 %, Measured 15 %, Engineer 15 % — or as your
 department uses), rubric 60 %.
 
 ## Difficulties seen in testing

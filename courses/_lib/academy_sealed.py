@@ -132,6 +132,7 @@ def main():
     source = P["source"]
     user_site = P.get("user_site") or ""
     stored_seal = P.get("seal")
+    stored_log = list(P.get("seal_log") or [])
     del P
 
     _trusted_sys_path(user_site)
@@ -153,7 +154,7 @@ def main():
     def report(result):
         sent.append(result)
         _report(result_fd, nonce, result)
-    academy_check._SEALED = {"report": report, "hidden": hidden, "seal": stored_seal}
+    academy_check._SEALED = {"report": report, "hidden": hidden, "seal": stored_seal, "seal_log": stored_log}
 
     import linecache
     import types

@@ -4,8 +4,8 @@ figures of the example solution's exploring runs) with the given bench project.p
     NAVERA_LITE_SIM_DATA=~/navera-academy-v2/datasets/31-simulator python3 solutions/33-final-project/make_lesson_numbers.py
 
 The worked example: "day_timeout_s 5.0 → 2.0" on campaign/lake.json, seeds 1201–1230 (30 paired runs);
-pre-registered metric err_p95 (window fault), lower is better, minimum effect 5 m; guard-rail availability (window
-fault), higher is better, may lose at most 0.05. Takes about 30 s.
+pre-registered metric err_p95 (window fault), lower is better, minimum effect 3 m; guard-rail availability (window
+fault), higher is better, may lose at most 0.02. Takes about 30 s.
 """
 import json
 import os

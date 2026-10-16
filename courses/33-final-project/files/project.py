@@ -235,7 +235,8 @@ def check_subset(m, scenarios, what):
     if isinstance(s, list) and s and isinstance(scenarios, list) and all(x in scenarios for x in s) \
             and len(set(s)) == len(s):
         return []
-    return [f'{what} "scenarios": a list of some of the campaign\'s scenario files (or leave it out: all of them)']
+    bad = [x for x in s if x not in (scenarios or [])] if isinstance(s, list) else s
+    return [f'{what} "scenarios": {bad} — each must be one of {scenarios} (or leave "scenarios" out: all of them)']
 
 
 def runs_of(m, runs):
@@ -485,6 +486,8 @@ def cmd_campaign(label):
     jobs = jobs_of(p, code)
     ensure_runs_ignored()
     out = os.path.join(RUNS, label)
+    old = manifest(label, required=False) if label == "after" else None
+    history = list((old or {}).get("afters_history", []))
     shutil.rmtree(out, ignore_errors=True)
     print(f"Campaign '{label}': {len(jobs)} runs ({len(p['scenarios'])} scenario(s) × {len(p['seed_list'])} seeds "
           f"{p['seed_list'][0]}–{p['seed_list'][-1]}) with the stack of commit {sha[:10]} ({rev})")
@@ -498,6 +501,12 @@ def cmd_campaign(label):
     man = {"label": label, "rev": rev, "sha": sha, "branch": branch(), "tree_navera_lite": git("rev-parse", sha + ":navera_lite"),
            "project_sha256": sha256_file(os.path.join(code, "project.json")),
            "started": time.strftime("%Y-%m-%d %H:%M:%S"), "seconds": round(time.time() - t0, 1), "runs": runs}
+    if label == "after":
+        b12 = man_before_sha()
+        if [b12, sha[:12]] not in history:
+            history.append([b12, sha[:12]])
+        man["afters_history"] = history          # every after-commit flown against each baseline (lesson §2)
+        git("update-ref", f"refs/flown/{b12}-{sha[:12]}", sha, check=False)
     with open(os.path.join(out, "manifest.json"), "w") as f:
         json.dump(man, f, indent=1)
     print(f"  wrote runs/{label}/ ({len(runs)} CSV + events logs) and runs/{label}/manifest.json in "
@@ -522,17 +531,29 @@ def journal(line):
 
 
 def afters_evaluated(before_sha):
-    """The 'after' commits evaluated against this baseline, in the journal (oldest first)."""
-    seen = []
+    """The 'after' commits flown or evaluated against this baseline (oldest first): from the journal, from the git
+    refs refs/flown/<before12>-<after12> the bench writes at every 'after' campaign, and from runs/after's manifest."""
+    seen, b12 = [], before_sha[:12]
     try:
         with open(os.path.join(RUNS, "journal.txt")) as f:
             for ln in f:
                 w = ln.split()
-                if len(w) >= 7 and w[2] == "evaluate" and w[6] == before_sha[:12] and w[4] not in seen:
+                if len(w) >= 7 and w[2] == "evaluate" and w[6] == b12:
+                    seen.append(w[4])
+                elif len(w) >= 8 and w[2] == "campaign" and w[3] == "after" and w[7] == b12:
                     seen.append(w[4])
     except OSError:
         pass
-    return seen
+    refs = subprocess.run(["git", "for-each-ref", "--format=%(refname:short)", "refs/flown/"], cwd=HERE,
+                          capture_output=True, text=True).stdout.split()
+    seen += [r.split("-", 1)[1] for r in refs if r.startswith("flown/" + b12 + "-")]
+    m = manifest("after", required=False)
+    seen += [a for b, a in (m or {}).get("afters_history", []) if b == b12]
+    out = []
+    for s in seen:
+        if s[:12] not in out:
+            out.append(s[:12])
+    return out
 
 
 def man_before_sha():
@@ -589,9 +610,10 @@ def cmd_red():
         moved = [f for f in git("diff", "--name-only", "start", sha, "--", "navera_lite", "navera_lite.yaml",
                                 check=False).split() if not f.startswith(("navera_lite/tests/", "navera_lite/sim/"))]
         if moved and sha_of("start"):
+            red = red_commit_before_change(sha)
             die("your test passes at '" + rev + "' because that commit already holds a change of the stack ("
-                + ", ".join(moved[:4]) + "): the tag 'before' must sit on the red commit, BEFORE the change "
-                "(lab Step 5 hint 2 shows how to put the commits back in order)")
+                + ", ".join(moved[:4]) + "): the tag 'before' must sit on the red commit, BEFORE the change. Your red "
+                f"commit is probably {red}: git switch -c {branch() or 'project/<name>'}-v2 {red}   (lab Step 5 hint 2)")
         die("your test PASSES on the code without your change: it does not see the problem yet. Make it ask for "
             "the behaviour you want (lesson §3)")
     if rc != 1:
@@ -604,9 +626,20 @@ def cmd_red():
     if others or (rc2 not in (0, 1)):
         die("other tests fail too: " + (", ".join(others) or "\n" + "\n".join(out2.strip().splitlines()[-8:]))
             + "\n— the code before your change must be healthy")
-    print("✔ RED: your test fails for the right reason, the rest of the suite passes.")
+    print(f"✔ RED: your test fails for the right reason, the rest of the suite passes. Red commit: {sha[:7]} "
+          "(note it: a new pre-registration branches from it — lab Step 5 hint 2)")
     if rev == "HEAD":
         print("  next: git tag before   then   python3 project.py campaign before")
+
+
+def red_commit_before_change(sha):
+    """The commit just before the first commit (start..sha) that changed the stack outside tests/ and sim/."""
+    for c in git("log", "--format=%H", "--reverse", f"start..{sha}", check=False).split():
+        files = git("diff-tree", "--no-commit-id", "--name-only", "-r", c, check=False).split()
+        if any((f.startswith("navera_lite/") or f == "navera_lite.yaml")
+               and not f.startswith(("navera_lite/tests/", "navera_lite/sim/")) for f in files):
+            return git("log", "--format=%h", "-1", c + "~1", check=False) or "<red-commit-id>"
+    return "<red-commit-id>"
 
 
 def cmd_green():
@@ -840,6 +873,10 @@ def cmd_plan():
     print(f"Hypothesis: {p['hypothesis']}")
     if p["seed_list"][0] < 1000:
         print("  ⚠ your seeds start below 1000: did you fly any of them while exploring? Pre-register seeds you never flew")
+    both = sorted(explored_seeds() & set(p["seed_list"]))
+    if both:
+        die(f"seeds {both[:5]} of your block were flown while exploring (my_runs/): pre-register a block you never "
+            "flew (lesson §2)")
     print(f"Red test: {p['test']}")
     print(f"Campaign: {len(p['scenarios'])} scenario(s) × seeds {p['seed_list'][0]}–{p['seed_list'][-1]} = "
           f"{len(p['scenarios']) * len(p['seed_list'])} paired runs")
@@ -863,6 +900,15 @@ def cmd_plan():
         if not os.path.exists(os.path.join(HERE, "my_metric.py")):
             die("metric 'custom' needs my_metric.py with metric(rows, scenario) → a number")
     print("✔ project.json is complete. Commit it with your red test (lab Step 4).")
+
+
+def explored_seeds():
+    """Seeds of the exploring runs in my_runs/ (project.py one names them <scenario>_s<seed>.csv)."""
+    import re
+    d = os.path.join(HERE, "my_runs")
+    if not os.path.isdir(d):
+        return set()
+    return {int(m.group(1)) for f in os.listdir(d) if (m := re.search(r"_s(\d+)\.csv$", f))}
 
 
 def cmd_one(args):

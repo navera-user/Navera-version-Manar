@@ -54,6 +54,25 @@ def keep_first(name, lid, value):
     return _locked(fn)
 
 
+def log(name, lid):
+    """The values a check has logged for this student and mission (seal_log), oldest first."""
+    return list(_locked(lambda d: ((d.get(name) or {}).get(lid + ":log") or [], False)))
+
+
+def append(name, lid, value, keep=20):
+    """Add one value to the student's log for this mission (distinct values, at most `keep`, the oldest kept)."""
+    if not (isinstance(value, str) and VALUE.match(value)):
+        return log(name, lid)
+
+    def fn(d):
+        lst = d.setdefault(name, {}).setdefault(lid + ":log", [])
+        if value in lst or len(lst) >= keep:
+            return list(lst), False
+        lst.append(value)
+        return list(lst), True
+    return _locked(fn)
+
+
 def reset(name, lid=None):
     """Forget the seal(s) of a student (one mission, or all). Returns what was removed."""
     def fn(d):
@@ -62,6 +81,7 @@ def reset(name, lid=None):
         if lid is None:
             return d.pop(name), True
         gone = d[name].pop(lid, None)
+        d[name].pop(lid + ":log", None)
         if not d[name]:
             d.pop(name)
         return ({lid: gone} if gone else {}), gone is not None
