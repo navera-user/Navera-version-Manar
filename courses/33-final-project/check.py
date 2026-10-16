@@ -457,7 +457,7 @@ NEGATION = re.compile(r"\bnot\b|n't|\bno\b(?!\s*0)|\bnever\b|cannot|\bunclear\b|
 CLAIM = re.compile(r"\bbetter\b|\bbeats?\b|\boutperform|more accurate|\bwins?\b|\bsuperior\b|\bimprov"
                    r"|\bfixes\b|\bsolves?\b|\bsolved\b|\breduc|\blower(s|ed)\b|\bfaster\b|\bsooner\b|\bdecreas"
                    r"|\bshortens?\b|\bshorter\b|\bearlier\b|\bquicker\b|\bhelps?\b|\bgains?\b|\bworks?\b"
-                   r"|\bdrop(s|ped)?\b|\bbrings? \S+( \S+)? down\b|\blower than before\b|\bcloser\b|\bwent down\b|\beffective\b|\bsuccess|\bshould be merged\b")
+                   r"|\bdrop(s|ped)?\b|\bbrings? \S+( \S+)? down\b|\b(lower|smaller|less) than before\b|\bcloser\b(?! to (?:d = )?0(?![.\d]))|\b(go(es)?|went|comes?|came) down\b|\beffective\b|\bsuccess|\bshould be merged\b")
 # a "case (b)" sentence of lesson §5: a gain over 0, but perhaps smaller than the minimum effect — honest
 CASE_B = re.compile(r"minimum effect|minimal effect|not one larger")
 CASE_B_HEDGE = re.compile(r"perhaps|maybe|not shown|cross|cannot|\bnot\b|less than|smaller than")

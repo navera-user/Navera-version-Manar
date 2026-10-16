@@ -57,6 +57,9 @@ CLAIMS = [   # must be caught (a gain claimed that an inconclusive interval does
     "The change makes the error drop by 1.4 m.",
     "The change clearly brings the error down.",
     "Honest2 got closer to 0.86, which is what we wanted.",
+    "The new sigma makes the error smaller than before.",
+    "After the change the p95 comes down by 0.8 m.",
+    "With the change the time to detect the jam goes down to 2.1 s.",
 ]
 HONEST = [   # must pass
     "The change is not shown to lower the error on these 30 runs.",
@@ -75,6 +78,7 @@ HONEST = [   # must pass
     "The change lowers the error, but the interval crosses the minimum effect, so a gain that matters is not shown.",
     "A gain over 0 is shown, but not one larger than the minimum effect of 0.02.",
     "D lies below 0, perhaps only by less than the minimum effect.",
+    "The point estimate is closer to 0 than to the minimum effect; we cannot say the change helps.",
 ]
 bad = [s for s in CLAIMS if ns["claims"](s) is None] + [s for s in HONEST if ns["claims"](s) is not None]
 for s in CLAIMS:

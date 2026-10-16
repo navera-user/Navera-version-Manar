@@ -354,8 +354,8 @@ Press **✔ Check my work**: checks 1–8 earn the badge **Measured**.
 
 1. "is not defined in run …": your metric has no value in some run (no row in its window). Every run counts: you need
    a new pre-registration (another metric, window, or `"scenarios"` for it), and your change must stay AFTER the new
-   red commit. Ask your teacher to reset the seal, then:
-   Find the red commit first: `python3 project.py red` printed its id ("Red commit: …"), and `git log --oneline`
+   red commit. Ask your teacher to reset the seal, then find the red commit first.
+   Find it: `python3 project.py red` printed its id ("Red commit: …"), and `git log --oneline`
    shows it — the commit just BEFORE your change commit (if you already moved the tag, `before` is no longer it).
    ```bash
    git switch -c project/<name>-v2 <red-commit-id>   # the red commit, before your change
