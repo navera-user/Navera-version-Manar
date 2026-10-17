@@ -9,7 +9,9 @@ A phone, the Jetson and the camera are enough. The phone is the dashboard and th
    It prints an address like `https://192.168.43.5:8443/field`.
 2. Phone on its own hotspot, Jetson connected to it. Open that address on the phone.
    The phone warns about the certificate once: Advanced, continue.
-3. Follow the page: connect, mount (camera straight up, phone flat beside it), check the sky, drive, finish.
+3. Follow the page: connect, place the camera, check the sky, drive, finish. With the 360 camera (below) the
+   camera STANDS on the roof with open sky above it and the phone just stays in the car; with the webcam
+   strip the camera points straight up and the phone lies flat beside it.
 4. Nothing to save by hand. The test is saved on the Jetson as you go.
 
 ## For the owner
@@ -21,6 +23,28 @@ A phone, the Jetson and the camera are enough. The phone is the dashboard and th
 * Re-read a test with new rules: `python3 -m navera_tools.field.analyze <folder>`.
 * Remote: the Jetson has Tailscale; `https://<tailscale-ip>:8443/field` works from anywhere on the tailnet.
 * Before the first night: `python3 -m navera_tools.field.selftest` (known sky photo through the whole chain).
+
+## 360 mode (the default when the Insta360 is in USB mode "Android")
+
+The server picks it by itself (`NAVERA_FIELD_CAMERA=auto|360|strip`). Set the camera's USB mode to
+**Android** in its menu; the udev rule `/etc/udev/rules.d/99-insta360.rules` (MODE 0666 for vendor
+2e1a) lets the server open it.
+
+* `insta360_usb.py`: the full 3840x1920 dual fisheye and the camera's own accelerometer/gyro (500 Hz)
+  over USB, no SDK (the protocol of Insta360's app). Key frames only: 2 frames/s, 1.5 s behind the
+  scene (measured on the screen, corrected in the time used).
+* Gravity comes from the camera itself (6-position calibration in `~/.navera_sim/insta360_usb_imu.json`):
+  no phone tilt, no heading, any camera attitude. The camera only has to be still for a second.
+* `allsky.py`: bright stars in both circles above the horizon, identified like a star tracker,
+  the zenith through the camera's orientation → latitude, longitude. Works with stars to magnitude 2.5
+  (simulated). The lens focal length is found on the first identified frame and kept.
+* Every full frame is saved with 'up', |a| and the rotation rate: `python3 -m navera_tools.field.reprocess360
+  <folder> --fit 5` scores the test, measures the sensor-to-lens angle on the first 5 frames with the phone's
+  GPS and applies it to the rest (simulated 0.4 degree misalignment: 36 km → 0.5 km); `--resolve` solves the
+  saved images again.
+* Before a night: `python3 -m navera_tools.field.selftest360` (synthetic standing-camera sky through the whole server).
+* Not measured yet: how many stars the video exposure keeps on a real night, the sensor-to-lens angle
+  (stated ±0.3 degrees = 33 km until the first frames measure it), lens distortion beyond the focal length.
 
 ## What it measures, and what it does not
 
