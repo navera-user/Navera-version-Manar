@@ -79,8 +79,8 @@ class Insta360Usb:
             raise RuntimeError("Insta360 not found in USB mode 'Android' (vendor 2e1a)")
         self._util.claim_interface(self.dev, 0)
         self.max_rate = np.radians(max_rate_dps)
-        # the decoder (~16 fps at 3840x1920) is slower than the stream (~18 fps): fed every frame it falls
-        # behind and the delay grows; key frames only (one in 15, ~1.2 per second) keep it current
+        # the decoder is slower than the stream (~18 fps): fed every frame it falls behind and the delay
+        # grows; key frames only (one in 15 here, ~2 per second) keep it current
         self.keyframes_only = keyframes_only
         self.acc_bias, self.acc_scale, self.gyro_bias = load_imu_calibration()
         self.error = None
@@ -94,6 +94,18 @@ class Insta360Usb:
         self._fifo = os.path.join(self._dir, "video.h264")
         os.mkfifo(self._fifo)
         self._video = None
+        # key frames: keep the newest two (old ones dropped); every frame: a P frame needs all before it.
+        # Measured on the Jetson: every frame decodes at ~8 fps (< the camera's 18: falls behind, errors);
+        # key frames only give 2 fresh frames per second, 1.5 s behind the scene (screen flash test)
+        self._packets = collections.deque(maxlen=2 if keyframes_only else 64)
+        self._packet_ready = threading.Event()
+        try:
+            import av                                         # packet-by-packet decoding: no decoder backlog
+            self._codec = av.CodecContext.create("h264", "r")
+            self._codec.thread_type = "SLICE"
+            self._codec.thread_count = 4
+        except Exception:
+            self._codec = None                                # fallback: OpenCV reading a FIFO (adds delay)
         self._send(PKT_SYNC)
         self._message(CMD_START_LIVE, START_FULL)
         for target in (self._read_usb, self._keepalive, self._decode):
@@ -143,8 +155,14 @@ class Insta360Usb:
             i += n
             if p[:1] != b"\x01" or len(p) < 12:
                 continue
-            if p[3] == KIND_VIDEO and self._video is not None:
+            if p[3] == KIND_VIDEO:
                 if self.keyframes_only and not _has_keyframe(p, 12):
+                    continue
+                if self._codec is not None:
+                    self._packets.append((time.time(), p[12:]))
+                    self._packet_ready.set()
+                    continue
+                if self._video is None:
                     continue
                 try:
                     self._video.write(p[12:])
@@ -159,6 +177,8 @@ class Insta360Usb:
         del b[:i]
 
     def _decode(self):
+        if self._codec is not None:
+            return self._decode_av()
         import cv2
         threading.Thread(target=self._open_pipe, daemon=True).start()
         # FFmpeg's frame threads each hold a frame: with 8 threads the picture came 1.2 s late at the full
@@ -174,6 +194,23 @@ class Insta360Usb:
                 continue
             with self._lock:
                 self._frame, self._frame_t = f, time.time()
+
+    def _decode_av(self):
+        """Each key frame is decoded as soon as it arrives (measured on the screen: see view360)."""
+        while not self._stop:
+            if not self._packet_ready.wait(0.5):
+                continue
+            self._packet_ready.clear()
+            while self._packets:
+                t_in, data = self._packets.popleft()
+                try:
+                    for pkt in self._codec.parse(data):
+                        for fr in self._codec.decode(pkt):
+                            img = fr.to_ndarray(format="bgr24")
+                            with self._lock:
+                                self._frame, self._frame_t = img, t_in       # time the packet arrived
+                except Exception as e:                    # a damaged packet: skip it, the next key frame resyncs
+                    self.error = f"decode: {e}"
 
     def _open_pipe(self):
         self._video = open(self._fifo, "wb", buffering=0)    # blocks until the decoder opens it
