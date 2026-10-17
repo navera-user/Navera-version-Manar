@@ -143,7 +143,7 @@ class Camera360:
     """The Insta360's full 360 frame and its own gravity over USB (USB mode "Android"); reconnects if it drops."""
     device = "insta360-usb (Android mode)"
     hfov = None
-    latency_s = 1.5                                   # measured: screen flash → key frame 1.27-1.76 s later (0.46 km/s)
+    latency_s = 1.71                                  # measured: day bench, 54 frames 20-80 m/s (screen toggles: 1.27-1.76 s)
 
     def __init__(self):
         from navera_tools.field import insta360_usb

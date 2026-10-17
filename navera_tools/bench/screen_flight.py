@@ -43,7 +43,7 @@ ap.add_argument("--gps-lost-at", type=float, default=75.0, help="s: GPS lost")
 ap.add_argument("--screen-mm", type=float, default=527.0)
 ap.add_argument("--hfov", type=float, default=100.0, help="undistorted view width, deg")
 ap.add_argument("--latency", type=float, default=None,
-                help="s, the camera delay: a frame is dated arrival - latency (strip 0.14 measured, 360 1.5 measured)")
+                help="s, the camera delay: a frame is dated arrival - latency (strip 0.14 measured, 360 1.71 measured)")
 ap.add_argument("--match-area", help="tiles NAVERA matches against (default --area)")
 ap.add_argument("--match-zoom", type=int, default=17)
 ap.add_argument("--matcher", choices=["sift", "learned"], default="learned",
@@ -61,7 +61,7 @@ ap.add_argument("--overlay-amount", type=float, default=0.3, help="clouds: sky f
 ap.add_argument("--out", default="screen_flight.csv")
 a = ap.parse_args()
 if a.latency is None:
-    a.latency = 1.5 if a.source == "360" else 0.14
+    a.latency = 1.71 if a.source == "360" else 0.14            # 360: fitted on 54 bench frames at 20-80 m/s
 if a.source == "strip" and not a.calib:
     ap.error("--calib is needed with --source strip")
 
