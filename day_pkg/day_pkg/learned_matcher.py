@@ -25,20 +25,26 @@ from typing import Optional, Tuple
 import cv2
 import numpy as np
 
-from day_pkg.local_matcher import (LocalMatcher, fix_sigma_m, inlier_spread, map_m_per_px, tile_px_to_latlon,
-                                   tile_xy)
+from day_pkg.local_matcher import (LocalMatcher, fix_sigma_m, inlier_spread, map_m_per_px, refine_with_pose,
+                                   tile_px_to_latlon, tile_xy)
 
 
-def north_up(img: np.ndarray, heading_deg: float) -> np.ndarray:
-    """The frame turned so its top points north (its top was at heading_deg), on a canvas
-    holding all of it; the frame centre stays the canvas centre."""
-    h, w = img.shape[:2]
+def north_up_matrix(shape, heading_deg: float):
+    """(2x3 affine frame -> north-up canvas, canvas (w, h)) for north_up."""
+    h, w = shape[:2]
     R = cv2.getRotationMatrix2D((w / 2.0, h / 2.0), -heading_deg, 1.0)
     c, s = abs(R[0, 0]), abs(R[0, 1])
     nw, nh = int(h * s + w * c), int(h * c + w * s)
     R[0, 2] += nw / 2.0 - w / 2.0
     R[1, 2] += nh / 2.0 - h / 2.0
-    return cv2.warpAffine(img, R, (nw, nh))
+    return R, (nw, nh)
+
+
+def north_up(img: np.ndarray, heading_deg: float) -> np.ndarray:
+    """The frame turned so its top points north (its top was at heading_deg), on a canvas
+    holding all of it; the frame centre stays the canvas centre."""
+    R, size = north_up_matrix(img.shape, heading_deg)
+    return cv2.warpAffine(img, R, size)
 
 
 class LearnedMatcher(LocalMatcher):
@@ -54,6 +60,7 @@ class LearnedMatcher(LocalMatcher):
     MAX_MAP_KEYPOINTS = 24000
     SIFT_FALLBACK_MAX_M = 300.0
     HEADING_MEMORY_S = 10.0           # a measured rotation stands in for the heading this long
+    RESCALE_MIN_INLIERS = 60          # a match rejected for its scale is retried at that scale from this many
 
     def __init__(self, images_dir: str, zoom: int = 17, keypoints: int = 1536, cache_dir: Optional[str] = None,
                  per_chunk: int = 768, half: bool = True,
@@ -224,7 +231,8 @@ class LearnedMatcher(LocalMatcher):
     # ── localisation ─────────────────────────────────────────────────────
     def locate(self, frame, prior: Tuple[float, float], search_m: float, frame_m_per_px: float,
                margin_m: Optional[float] = None, scale_tol: Optional[float] = None,
-               heading_deg: Optional[float] = None, heading_tol_deg: float = 20.0) -> dict:
+               heading_deg: Optional[float] = None, heading_tol_deg: float = 20.0,
+               hfov_deg: Optional[float] = None) -> dict:
         """As LocalMatcher.locate; res["features"] says which matcher gave the result."""
         t0 = time.time()
         hdg, hdg_src = heading_deg, "attitude"
@@ -233,7 +241,8 @@ class LearnedMatcher(LocalMatcher):
         res = None
         if hdg is not None:
             try:
-                res = self._locate_learned(frame, prior, search_m, frame_m_per_px, margin_m, scale_tol, hdg)
+                res = self._locate_learned(frame, prior, search_m, frame_m_per_px, margin_m, scale_tol, hdg,
+                                           hfov_deg)
             except RuntimeError as e:                        # GPU out of memory, CUDA error: SIFT this frame
                 res = dict(accepted=False, reason=f"learned matcher failed: {str(e)[:120]}")
                 self._t.cuda.empty_cache()
@@ -242,11 +251,22 @@ class LearnedMatcher(LocalMatcher):
                     abs((res["rotation_deg"] - heading_deg + 180) % 360 - 180) > heading_tol_deg:
                 res.update(accepted=False, reason=f"fitted rotation {res['rotation_deg']:.0f} deg ≠ heading "
                                                   f"{heading_deg:.0f} deg (±{heading_tol_deg:.0f}): wrong place")
+            sc = float(res.get("scale_residual") or 1.0)
+            if not res["accepted"] and "fitted scale" in str(res.get("reason")) and \
+                    int(res.get("inliers") or 0) >= self.RESCALE_MIN_INLIERS and 0.6 < sc < 1.6:
+                # a strong match at another scale than the height predicts (height 20 % off:
+                # 0/10 located, simulation): matched again at the scale it measured, kept only
+                # if that second match confirms it (scale within tolerance, same heading check)
+                again = self._locate_learned(frame, prior, search_m, frame_m_per_px * sc, margin_m, scale_tol,
+                                             hdg, hfov_deg)
+                if again["accepted"] and not (heading_deg is not None and abs(
+                        (again["rotation_deg"] - heading_deg + 180) % 360 - 180) > heading_tol_deg):
+                    res = dict(again, heading_source=hdg_src, rescaled_by=round(sc, 3))
         if (res is None or not res["accepted"]) and not (self._no_fallback and res is not None) \
                 and (res is None or search_m <= self.SIFT_FALLBACK_MAX_M):
             learned = res
             res = super().locate(frame, prior, search_m, frame_m_per_px, margin_m=margin_m, scale_tol=scale_tol,
-                                 heading_deg=heading_deg, heading_tol_deg=heading_tol_deg)
+                                 heading_deg=heading_deg, heading_tol_deg=heading_tol_deg, hfov_deg=hfov_deg)
             res["features"] = "sift"
             if learned is not None:
                 res["learned_reason"] = learned.get("reason")
@@ -271,14 +291,16 @@ class LearnedMatcher(LocalMatcher):
         finally:
             self._no_fallback = False
 
-    def _locate_learned(self, frame, prior, search_m, frame_m_per_px, margin_m, scale_tol, hdg) -> dict:
+    def _locate_learned(self, frame, prior, search_m, frame_m_per_px, margin_m, scale_tol, hdg,
+                        hfov_deg=None) -> dict:
         tol = self.scale_tol if scale_tol is None else float(scale_tol)
         res = dict(spatial=True, spatial_empty=False, radius_m=float(search_m), matcher="local",
                    features="disk+lightglue", predicted_lat=None, predicted_lon=None, accepted=False, score=0.0,
                    fused_score=0.0, match=None, top5=[], n_candidates=0, inliers=0, scale_residual=None,
                    rotation_deg=None)
         img = frame if frame.ndim == 3 else cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
-        img = north_up(img, hdg)
+        rot_m, rot_size = north_up_matrix(img.shape, hdg)
+        img = cv2.warpAffine(img, rot_m, rot_size)
         mpp_map = map_m_per_px(prior[0], self.z)
         s = frame_m_per_px / mpp_map
         if not (math.isfinite(s) and 0.02 < s < 50):
@@ -328,8 +350,20 @@ class LearnedMatcher(LocalMatcher):
                    rotation_deg=round(rot, 1), score=float(n_in), fused_score=float(n_in),
                    match=f"{n_in} inliers / {good} matches (DISK+LightGlue)",
                    spread=inlier_spread(src[inl.ravel() > 0], q.shape), sigma_m=fix_sigma_m(n_in, mpp_map))
+        # the pose from the matches near the similarity fit (loosely: a tilted frame's edges
+        # depart from a similarity), its own RANSAC removing the rest
+        m = np.hypot(*(src @ A[:, :2].T.astype(np.float32) + A[:, 2].astype(np.float32) - dst).T) < 16.0
+        inv = cv2.invertAffineTransform(rot_m)       # north-up canvas -> frame pixels
+        fp = (src / np.float32(s)) @ inv[:, :2].T.astype(np.float32) + inv[:, 2].astype(np.float32)
+        mp = dst + np.float32([x0, y0])
+        fi = inl.ravel() > 0
+        not_straight = refine_with_pose(res, (fp[fi], mp[fi]), (fp[m], mp[m]), (frame.shape[1], frame.shape[0]),
+                                        hfov_deg, frame_m_per_px, scale, mpp_map, self.z,
+                                        (float(px) + x0, float(py) + y0))
         if n_in < need:
             res["reason"] = f"{n_in} geometric inliers (min {need})"
+        elif not_straight:
+            res["reason"] = not_straight
         elif abs(scale - 1.0) > tol:
             res["reason"] = f"fitted scale {scale:.2f} ≠ 1 expected from the altitude (±{tol:.0%}): wrong place"
         else:

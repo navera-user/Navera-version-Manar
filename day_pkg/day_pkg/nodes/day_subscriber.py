@@ -554,7 +554,7 @@ class DaySubscriber(Node):
                 for f in factors:
                     result = self.local.locate(img, center, R, mpp * f, scale_tol=self._scale_tol(meta),
                                                heading_deg=self._heading_for_match(meta),
-                                               heading_tol_deg=self.local_heading_tol_deg)
+                                               heading_tol_deg=self.local_heading_tol_deg, hfov_deg=self._hfov(meta))
                     if result.get("accepted"):
                         break
                 sc = float(result.get("scale_residual") or 1.0)
@@ -563,7 +563,7 @@ class DaySubscriber(Node):
                     # 0.45-0.6): match again at the corrected height, keep it if it holds
                     again = self.local.locate(img, center, R, mpp * f * sc, scale_tol=self._scale_tol(meta),
                                               heading_deg=self._heading_for_match(meta),
-                                              heading_tol_deg=self.local_heading_tol_deg)
+                                              heading_tol_deg=self.local_heading_tol_deg, hfov_deg=self._hfov(meta))
                     if again.get("accepted") and int(again.get("inliers") or 0) >= int(result.get("inliers") or 0) // 2:
                         result, f = again, f * sc
                 result["_frame_shape"], result["_frame_mpp"] = img.shape, mpp * f
@@ -689,7 +689,7 @@ class DaySubscriber(Node):
         self._last_calib = time.time()
         res = self.local.locate(img, prior, self.calib_radius_m, mpp, scale_tol=self._scale_tol(meta),
                                 heading_deg=self._heading_for_match(meta),
-                                heading_tol_deg=self.local_heading_tol_deg)
+                                heading_tol_deg=self.local_heading_tol_deg, hfov_deg=self._hfov(meta))
         self.get_logger().info(
             f"[day] GPS check frame={seq_id}: " + (f"vision {haversine_m(prior[0], prior[1], res['predicted_lat'], res['predicted_lon']):.0f} m from GPS "
                                                   f"({res.get('inliers')} inliers)" if res.get("accepted") else f"no match ({res.get('reason')})"))
