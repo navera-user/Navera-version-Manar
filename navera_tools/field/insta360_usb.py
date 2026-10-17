@@ -21,6 +21,7 @@ Measured 2026-10-17 on the user's One R: 3840x1920 decoded at 16 fps on the Jets
 reading a FIFO); camera at rest: |accel| 0.997 g, noise 0.0017 g per sample.
 """
 import collections
+import json
 import os
 import shutil
 import struct
@@ -41,6 +42,18 @@ CMD_START_LIVE, CMD_STOP_LIVE = 1, 2
 START_FULL = bytes.fromhex("10013028380040014828500f5802")
 KIND_VIDEO, KIND_IMU, KIND_FRAME = 0x20, 0x30, 0x40
 IMU_RECORD = struct.Struct("<Q6d")
+IMU_CALIBRATION = os.environ.get("NAVERA_INSTA360_IMU", os.path.expanduser("~/.navera_sim/insta360_usb_imu.json"))
+
+
+def load_imu_calibration(path: str = IMU_CALIBRATION):
+    """(accel bias g, accel scale, gyro bias rad/s) from a 6-position calibration, or neutral values."""
+    try:
+        with open(path) as f:
+            d = json.load(f)
+        return (np.array(d["accel_bias_g"], float), np.array(d["accel_scale"], float),
+                np.array(d["gyro_bias_rad_s"], float))
+    except (OSError, ValueError, KeyError):
+        return np.zeros(3), np.ones(3), np.zeros(3)
 
 
 class Insta360Usb:
@@ -56,6 +69,7 @@ class Insta360Usb:
             raise RuntimeError("Insta360 not found in USB mode 'Android' (vendor 2e1a)")
         self._util.claim_interface(self.dev, 0)
         self.max_rate = np.radians(max_rate_dps)
+        self.acc_bias, self.acc_scale, self.gyro_bias = load_imu_calibration()
         self.error = None
         self._seq = 1
         self._lock = threading.Lock()
@@ -157,8 +171,8 @@ class Insta360Usb:
             rows = [r for r in self._imu if r[0] >= time.time() - window_s]
         if len(rows) < 50:
             return None, None, None
-        a = np.array([r[2:5] for r in rows])
-        w = np.array([r[5:8] for r in rows])
+        a = (np.array([r[2:5] for r in rows]) - self.acc_bias) / self.acc_scale
+        w = np.array([r[5:8] for r in rows]) - self.gyro_bias
         rate = float(np.linalg.norm(w, axis=1).max())
         m = a.mean(axis=0)
         g = float(np.linalg.norm(m))
