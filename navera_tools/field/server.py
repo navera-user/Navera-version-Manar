@@ -57,6 +57,10 @@ MIN_STARS = report_mod.MIN_STARS
 # strip: never solved; its central 40-62 degrees: 4-15 km). Wider cameras are solved on their central window.
 SOLVE_MAX_HFOV = 62.0
 SOLVE_WINDOW_HFOV = 52.0
+# 360 mode: the camera's own accelerometer (6-position calibrated) gives 'up'; the lens-to-IMU mounting is not
+# measured yet, so the stated accuracy keeps a margin until a night calibrates it (first guess).
+ATTITUDE_SIGMA_360_DEG = 0.3
+F_SCALE_SEARCH = (0.90, 0.95, 1.0, 1.05, 1.10)       # lens focal length not measured: searched once, then kept
 
 
 def solver_view(img, hfov):
@@ -135,6 +139,56 @@ class Camera:
         return self.model.undistort(g), t - self.latency_s
 
 
+class Camera360:
+    """The Insta360's full 360 frame and its own gravity over USB (USB mode "Android"); reconnects if it drops."""
+    device = "insta360-usb (Android mode)"
+    hfov = None
+    latency_s = 0.3                                   # USB live preview delay, first guess (0.46 km per second)
+
+    def __init__(self):
+        from navera_tools.field import insta360_usb
+        self._mod = insta360_usb
+        self.cal_path = insta360_usb.IMU_CALIBRATION
+        self.cam = None
+        self.error = None
+        self._open()
+        threading.Thread(target=self._watch, daemon=True).start()
+
+    def _open(self):
+        self.opened_at = time.time()
+        try:
+            self.cam = self._mod.Insta360Usb()
+            self.error = None
+        except Exception as e:
+            self.cam, self.error = None, f"360 camera: {e}"
+
+    def _watch(self):
+        while True:
+            time.sleep(3.0)
+            f, t = self.cam.latest() if self.cam else (None, 0.0)
+            if self.cam is not None and time.time() - self.opened_at < 20.0:
+                continue                              # the decoder waits for the stream's next key frame
+            if f is None or time.time() - t > 8.0:
+                if self.cam is not None:
+                    self.error = self.cam.error or "no frame for 8 s: reconnecting"
+                    try:
+                        self.cam.close()
+                    except Exception:
+                        pass
+                    time.sleep(2.0)
+                self._open()
+
+    def latest(self):
+        """(grey full 360 frame, exposure time) or (None, 0)."""
+        f, t = self.cam.latest() if self.cam else (None, 0.0)
+        if f is None or time.time() - t > 3.0:
+            return None, 0.0
+        return (cv2.cvtColor(f, cv2.COLOR_BGR2GRAY) if f.ndim == 3 else f), t - self.latency_s
+
+    def gravity(self):
+        return self.cam.gravity() if self.cam else (None, None, None)
+
+
 class Field:
     def __init__(self, root, camera):
         self.root, self.camera = root, camera
@@ -161,6 +215,10 @@ class Field:
         self.last_done = None
         self.last_fix: dict = {}
         self.usable_skies = ("clear", "hazy")       # the only skies whose stars count and are solved
+        self.mode = "360" if hasattr(camera, "gravity") else "strip"
+        self.cat = None                             # 360: bright-star catalogue, built on the first solve
+        self.f_scale = None                         # 360: lens focal length found by the first identified frame
+        self.spots: list = []
         self._recover()
         threading.Thread(target=self._loop, daemon=True).start()
 
@@ -260,10 +318,19 @@ class Field:
         add("camera", "Camera running", "ok" if t and now - t < 3 else "bad", self.camera.error or "")
         add("phone_gps", "Phone sharing GPS", "bad" if not fresh or acc is None else ("ok" if acc <= 30 else "wait"),
             "no GPS from the phone: allow location on the page" if not fresh or acc is None else f"accuracy {acc:.0f} m")
-        add("phone_tilt", "Phone sharing tilt", "ok" if att else "bad", "" if att else "allow motion sensors on the page")
+        if self.mode != "360":
+            add("phone_tilt", "Phone sharing tilt", "ok" if att else "bad", "" if att else "allow motion sensors on the page")
         add("clock", "Phone clock matches Jetson", "wait" if off is None else ("ok" if abs(off) <= 1.0 else "bad"),
             "" if off is None else f"{off:+.2f} s")
-        if att:
+        if self.mode == "360":
+            up, g, rate = self.camera.gravity()
+            if up is not None:
+                tilt = math.degrees(math.acos(max(-1.0, min(1.0, float(up[0])))))      # IMU +x is up when standing
+                add("steady", "Camera steady (its own sensor)", "ok", f"{tilt:.0f} degrees from standing upright")
+            else:
+                add("steady", "Camera steady (its own sensor)", "wait",
+                    "no sensor data yet" if g is None else f"moving: {math.degrees(rate or 0):.1f} deg/s, {g:.2f} g")
+        elif att:
             add("level", "Camera pointing straight up", "ok" if att["off"] <= 1.0 else ("wait" if att["off"] <= 3.0 else "bad"),
                 f"{att['off']:.1f} degrees off vertical")
         else:
@@ -298,6 +365,9 @@ class Field:
                         self.frame_idx += 1
                         s.log("frames", {"idx": self.frame_idx, "solved": False, "why": "no camera frame",
                                          "sky": None})
+                elif self.mode == "360":
+                    self._live360(img, texp)
+                    self._maybe_solve(img, texp)
                 else:
                     det = detect(img)
                     res = self.tracker.update(det)
@@ -312,6 +382,30 @@ class Field:
             except Exception as e:                     # the loop must never die in the field
                 log(f"analysis error: {e!r}")
             time.sleep(max(0.0, 1.0 - (time.time() - t0)))
+
+    def _live360(self, img, texp):
+        """Bright spots above the horizon in both circles (the all-sky solver's input) and the preview."""
+        from navera_tools.field import allsky, sky360
+        up, _, _ = self.camera.gravity()
+        lenses = sky360.default_lenses()
+        sky_px = np.concatenate([img[::8, int(L.cx - 400):int(L.cx + 400):8].ravel() for L in lenses])
+        level = float(np.median(sky_px))
+        spots = []
+        if level < 80:
+            for L in lenses:
+                for x, y, fl in allsky.detect_spots(img, L):
+                    if up is None or float(allsky.unproject(L, x, y) @ up) > math.sin(math.radians(12)):
+                        spots.append((x, y, fl))
+        self.spots = spots
+        sky = "too bright" if level >= 80 else "clear"
+        self.live = {"t": texp, "detected": len(spots), "confirmed": len(spots), "sky": sky,
+                     "rejected": {}, "shift_px": 0.0, "background": round(level, 1), "noise": None}
+        vis = cv2.convertScaleAbs(cv2.cvtColor(cv2.resize(img, (1920, 960)), cv2.COLOR_GRAY2BGR), alpha=2.5, beta=0)
+        for x, y, _ in spots[:150]:
+            cv2.circle(vis, (int(x / 2), int(y / 2)), 9, (90, 211, 154), 2)
+        vis = cv2.resize(vis, (960, 480))
+        ok, jpg = cv2.imencode(".jpg", vis, [cv2.IMWRITE_JPEG_QUALITY, 70])
+        self.preview = jpg.tobytes() if ok else b""
 
     def _draw(self, img, det, res):
         vis = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
@@ -333,7 +427,7 @@ class Field:
         if s is None or self.step != 4 or time.time() - self.last_solve_t < self.interval_s:
             return
         if self.solving:
-            if time.time() - self.solving_since < 90:
+            if time.time() - self.solving_since < (300 if self.mode == "360" else 90):   # 360: first solve searches the lens
                 return
             self.solving = False                       # a hung solver must not stop the recording for good
             s.event("solver_hung", since_s=round(time.time() - self.solving_since))
@@ -344,6 +438,8 @@ class Field:
                "rejected": live.get("rejected"), "shift_px": live.get("shift_px"), "solved": False}
         ok, jpg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 92])
         rec["image"] = s.save_frame(idx, jpg.tobytes()) if ok else None
+        if self.mode == "360":
+            return self._maybe_solve360(s, rec, img, texp)
         why = None
         if att is None:
             why = "no phone tilt"
@@ -365,6 +461,54 @@ class Field:
         ok2, vjpg = cv2.imencode(".jpg", view, [cv2.IMWRITE_JPEG_QUALITY, 92])
         threading.Thread(target=self._solve, args=(s, rec, vjpg.tobytes() if ok2 else jpg.tobytes(), att, texp, view_hfov),
                          daemon=True).start()
+
+    def _maybe_solve360(self, s, rec, img, texp):
+        up, g, rate = self.camera.gravity()
+        rec.update(mode="360", up_imu=None if up is None else [round(float(v), 6) for v in up],
+                   accel_g=None if g is None else round(g, 5), rate_dps=None if rate is None else round(math.degrees(rate), 2))
+        why = None
+        if up is None:
+            why = "camera moving or turning (its own sensor)" if g is not None else "no camera sensor data"
+        elif self.live.get("sky") not in self.usable_skies:
+            why = f"sky {self.live.get('sky')}"
+        elif (self.live.get("confirmed") or 0) < MIN_STARS:
+            why = f"too few stars ({self.live.get('confirmed')})"
+        if why:
+            rec["why"] = why
+            s.log("frames", rec)
+            return
+        self.solving, self.solving_since = True, time.time()
+        threading.Thread(target=self._solve360, args=(s, rec, img, np.array(up), texp), daemon=True).start()
+
+    def _solve360(self, s, rec, img, up, texp):
+        try:
+            from navera_tools.field import allsky
+            if self.cat is None:
+                self.cat = allsky.Catalogue(limit_mag=4.0)
+            off = self.clock_offset_s() or 0.0
+            utc = datetime.fromtimestamp(texp - off, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            t0 = time.time()
+            r = allsky.locate(img, up, utc, self.cat, f_scales=F_SCALE_SEARCH if self.f_scale is None else (self.f_scale,))
+            rec.update(solve_s=round(time.time() - t0, 1), utc_used=utc, prior=None, spots=r.get("spots"))
+            if r.get("solved"):
+                if self.f_scale is None:
+                    self.f_scale = r["f_scale"]
+                    s.event("lens_focal_found", f_scale=self.f_scale)
+                sigma = ATTITUDE_SIGMA_360_DEG * report_mod.KM_PER_DEGREE + abs(off) * report_mod.SKY_KM_PER_SECOND
+                rec.update(solved=True, lat=r["lat"], lon=r["lon"], matched=r["matched"], used=r["used"],
+                           rms_deg=r["rms_deg"], f_scale=r["f_scale"], sigma_km=round(sigma, 1))
+                p = self.phone
+                if p.get("lat") is not None:
+                    rec["err_km_live"] = round(report_mod.haversine_km(r["lat"], r["lon"], p["lat"], p["lon"]), 1)
+                self.last_fix = {"t": time.time(), "lat": r["lat"], "lon": r["lon"],
+                                 "err_km": rec.get("err_km_live"), "sigma_km": rec["sigma_km"]}
+            else:
+                rec["why"] = str(r.get("why") or "not solved")[:200]
+        except Exception as e:
+            rec["why"] = f"solver error: {e!r}"[:200]
+        finally:
+            self.solving = False
+            s.log("frames", rec)
 
     def _solve(self, s, rec, jpg, att, texp, hfov):
         import base64
@@ -428,7 +572,10 @@ class Field:
                                                         "calibration": self.camera.cal_path, "interval_s": self.interval_s,
                                                         "min_stars": MIN_STARS, "attitude_sigma_deg": ATTITUDE_SIGMA_DEG,
                                                         "clock_offset_s": self.clock_offset_s(),
-                                                        "operator_note": ""})
+                                                        "mode": self.mode, "operator_note": ""})
+                if self.mode == "360":
+                    self.session.update_meta(attitude_sigma_deg=ATTITUDE_SIGMA_360_DEG, imu_calibration=_read_json(self.camera.cal_path),
+                                             latency_s=self.camera.latency_s, f_scale=self.f_scale)
                 self.frame_idx = 0
                 self.last_solve_t = 0.0
                 self.tracker = type(self.tracker)()
@@ -462,7 +609,7 @@ class Field:
 
     def state(self):
         s = self.session
-        return {"step": self.step, "checks": self.checks(), "live": self.live, "mount_confirmed": self.mount_confirmed,
+        return {"step": self.step, "mode": self.mode, "checks": self.checks(), "live": self.live, "mount_confirmed": self.mount_confirmed,
                 "recording": s.id if s else None, "frames": self.frame_idx if s else 0,
                 "last_fix": self.last_fix, "solving": self.solving, "interval_s": self.interval_s,
                 "done": self.last_done, "disk_error": bool(s and s.io_error), "server_time_ms": int(time.time() * 1000)}
@@ -642,6 +789,23 @@ def ensure_certificate(tls_dir):
     return cert, key, ips
 
 
+def _read_json(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def insta360_android_mode():
+    """True when the Insta360 is plugged in USB mode "Android" (full 360 + its own IMU)."""
+    try:
+        import usb.core
+        return usb.core.find(idVendor=0x2E1A, idProduct=0x0002) is not None
+    except Exception:
+        return False
+
+
 def find_calibration():
     for p in CALIBRATION_SEARCH:
         if p and os.path.exists(p):
@@ -652,10 +816,16 @@ def find_calibration():
 def main():
     root = os.environ.get("NAVERA_FIELD_DIR", os.path.expanduser("~/navera-field"))
     port = int(os.environ.get("NAVERA_FIELD_PORT", "8443"))
-    device = os.environ.get("NAVERA_CAMERA_DEVICE", DEFAULT_DEVICE)
-    cal = find_calibration()
-    log(f"camera {device}\ncalibration {cal}\ntests saved in {root}")
-    field = Field(root, Camera(device, cal))
+    choice = os.environ.get("NAVERA_FIELD_CAMERA", "auto")         # auto | 360 | strip
+    if choice == "360" or (choice == "auto" and insta360_android_mode()):
+        camera = Camera360()
+        log(f"camera: Insta360 full 360 over USB (Android mode), own IMU, calibration {camera.cal_path}\ntests saved in {root}")
+    else:
+        device = os.environ.get("NAVERA_CAMERA_DEVICE", DEFAULT_DEVICE)
+        cal = find_calibration()
+        log(f"camera {device}\ncalibration {cal}\ntests saved in {root}")
+        camera = Camera(device, cal)
+    field = Field(root, camera)
     public = os.environ.get("NAVERA_FIELD_PUBLIC_URL", "")          # e.g. https://navera-academy.tail27d06f.ts.net:8443
     if os.environ.get("NAVERA_FIELD_PLAIN") == "1":
         # behind Tailscale (serve/funnel): it provides the trusted HTTPS address, this stays on this machine

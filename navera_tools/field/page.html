@@ -115,10 +115,16 @@ function step(n,title,body){return prog(n)+'<section class="card"><p class="mute
 function renderOp(){
   var n=S.step||1,h="";
   if(n===1){
-    var ids=["camera","phone_gps","phone_tilt","clock"];
+    var ids=S.mode==="360"?["camera","phone_gps","clock"]:["camera","phone_gps","phone_tilt","clock"];
     h=step(1,"Connect the phone",'<p>Tap the button, then allow location and motion when the phone asks.</p><div class="stack" style="margin-top:12px">'+
       '<button class="main" id="allow"'+(sensorsOn?' disabled':'')+'>'+(sensorsOn?'Sharing with the Jetson':'Allow GPS and sensors')+'</button></div>'+
       checkRows(ids)+'<button class="main" id="next"'+(allOk(ids)?'':' disabled')+'>Next</button>'+(allOk(ids)?'':'<button id="skip" style="margin-top:10px">Continue anyway</button>'));
+  }else if(n===2&&S.mode==="360"){
+    var sd=chk("steady"),ok=sd.status==="ok";
+    h=step(2,"Place the camera",'<p>Camera standing on the roof, fixed so it cannot move, with open sky above it (no roof rack or tree over it). It sees all around and measures its own tilt: no need to make it level. The phone stays in the car, screen on.</p>'+
+      checkRows(["steady"])+
+      '<div class="stack"><button id="mc">'+(S.mount_confirmed?'Camera is fixed (tap to undo)':'The camera is fixed')+'</button>'+
+      '<button class="main" id="next" '+(ok&&S.mount_confirmed?'':'disabled')+'>Next</button>'+(ok&&S.mount_confirmed?'':'<button id="skip">Continue anyway</button>')+'</div>');
   }else if(n===2){
     var lv=chk("level"),ok=lv.status==="ok";
     h=step(2,"Mount the camera",'<p>Camera pointing straight up on the roof. Fix the phone flat beside it, screen up, top edge towards the front of the car.</p>'+
@@ -139,7 +145,7 @@ function renderOp(){
       '<div class="grid" style="margin:14px 0"><div class="m"><div class="v" id="v_frames">'+(S.frames||0)+'</div><div class="l">frames</div></div>'+
       '<div class="m"><div class="v" id="v_stars">'+((S.live||{}).confirmed==null?"–":S.live.confirmed)+'</div><div class="l">stars now</div></div>'+
       '<div class="m"><div class="v" id="v_err">'+(f.err_km==null?"–":f.err_km+" km")+'</div><div class="l">last error</div></div></div>'+
-      '<img class="pv" id="pv" alt="Camera view">'+checkRows(["camera","phone_gps","phone_tilt","level","stars"])+
+      '<img class="pv" id="pv" alt="Camera view">'+checkRows(S.mode==="360"?["camera","phone_gps","steady","stars"]:["camera","phone_gps","phone_tilt","level","stars"])+
       '<div class="stack"><input type="text" id="note" placeholder="Note (rain, tunnel, cloud...)" maxlength="200"><button id="sendnote">Save note</button>'+
       '<button id="mark">Mark this moment</button><button class="main" id="finish">'+(finishSure?'Tap again to finish':'Finish the test')+'</button></div></section>';
   }else{

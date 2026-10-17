@@ -176,34 +176,56 @@ def locate(frame: np.ndarray, up_imu: np.ndarray, utc: str, cat: Catalogue,
     up = up_imu / np.linalg.norm(up_imu)
     spots = [(lens, s) for lens in lenses for s in detect_spots(gray, lens)]
     out = {"solved": False, "spots": len(spots)}
-    best = None
-    for fs in f_scales:
-        rays, flux = [], []
-        for lens, (x, y, fl) in spots:
-            rays.append(unproject(lens, x, y, lens.f * fs))
-            flux.append(fl)
-        if not rays:
-            break
-        rays, flux = np.array(rays), np.array(flux)
+    if not spots:
+        out["why"] = "no star pattern identified (0 spots)"
+        return out
+    flux_all = np.array([s[2] for _, s in spots])
+
+    def rays_for(fs, sel=None):
+        """Refraction-corrected rays of the spots above min_alt, brightest first, and their spot indices."""
+        rays = np.array([unproject(lens, x, y, lens.f * fs) for lens, (x, y, _) in spots])
         alt = np.degrees(np.arcsin(np.clip(rays @ up, -1, 1)))
-        keep = alt > min_alt
-        rays, flux, alt = rays[keep], flux[keep], alt[keep]
-        order = np.argsort(-flux)[:max_spots]
-        rays, alt = rays[order], alt[order]
+        if sel is None:
+            sel = np.nonzero(alt > min_alt)[0]
+            sel = sel[np.argsort(-flux_all[sel])][:max_spots]
+        rays, alt = rays[sel], alt[sel]
         # undo refraction: move each ray down towards the horizon by the refraction at its altitude
         drop = np.radians(refraction_deg(alt))
         tang = _unit(up - (rays @ up)[:, None] * rays)
-        rays = _unit(rays * np.cos(drop)[:, None] - tang * np.sin(drop)[:, None])
+        return _unit(rays * np.cos(drop)[:, None] - tang * np.sin(drop)[:, None]), sel
+
+    best = None
+    for fs in f_scales:
+        rays, sel = rays_for(fs)
         r = identify(rays, cat)
         if r is not None and (best is None or (len(r[1]), -r[3]) > (len(best[1][1]), -best[1][3])):
-            best = (fs, r, len(rays))
+            best = (fs, r, sel)
     if best is None:
         out["why"] = f"no star pattern identified ({out['spots']} spots)"
         return out
-    fs, (R, idx, kidx, rms), n_used = best
+    fs, (R, idx, kidx, rms), sel = best
+    n_used = len(sel)
+
+    # the matched stars measure the lens: the focal length that makes them fit best (a 1% error is tens of km)
+    matched_spots, matched_cat = sel[idx], cat.vec[kidx]
+
+    def fit(f):
+        rays, _ = rays_for(f, matched_spots)
+        Rf = wahba(rays, matched_cat)
+        res = np.degrees(np.arccos(np.clip(np.einsum("ij,ij->i", rays @ Rf.T, matched_cat), -1, 1)))
+        return float(np.sqrt(np.mean(res ** 2))), Rf
+    lo, hi = fs - 0.06, fs + 0.06
+    for _ in range(40):                                               # golden-section on the rms
+        a, b = lo + 0.382 * (hi - lo), lo + 0.618 * (hi - lo)
+        if fit(a)[0] < fit(b)[0]:
+            hi = b
+        else:
+            lo = a
+    fs = (lo + hi) / 2
+    rms, R = fit(fs)
     ra, dec = vec_to_radec(R @ up)
     ra_a, dec_a = apparent_radec(ra, dec, utc)
-    out.update(solved=True, lat=dec_a, lon=(ra_a - gast_deg(utc) + 540.0) % 360.0 - 180.0, f_scale=fs,
+    out.update(solved=True, lat=dec_a, lon=(ra_a - gast_deg(utc) + 540.0) % 360.0 - 180.0, f_scale=round(fs, 5),
                matched=int(len(idx)), used=int(n_used), rms_deg=round(rms, 3),
                brightest_matched_mag=round(float(cat.mag[kidx].min()), 2), faintest_matched_mag=round(float(cat.mag[kidx].max()), 2))
     return out

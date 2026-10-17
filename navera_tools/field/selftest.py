@@ -84,7 +84,8 @@ def main():
     ok = bool(fix) and fix.get("err_km") is not None and fix["err_km"] < 5.0 and "report.json" in saved \
         and "frames.jsonl" in saved and "phone.jsonl" in saved
     print("SELFTEST", "PASSED" if ok else "FAILED", "error", fix.get("err_km"), "km; folder", sdir)
-    sys.exit(0 if ok else 1)
+    sys.stdout.flush()
+    os._exit(0 if ok else 1)                 # background threads (camera, decoder) must not abort the exit
 
 
 if __name__ == "__main__":

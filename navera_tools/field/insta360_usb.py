@@ -181,13 +181,18 @@ class Insta360Usb:
         return m / g, g, rate
 
     def close(self):
-        self._stop = True
         try:
             self._message(CMD_STOP_LIVE, b"")
         except Exception:
             pass
+        self._stop = True
+        time.sleep(0.8)                                  # the reader's 0.5 s timeout lets it leave the USB read
         try:
             self._util.release_interface(self.dev, 0)
+        except Exception:
+            pass
+        try:
+            self._util.dispose_resources(self.dev)       # without this a new instance gets "Resource busy"
         except Exception:
             pass
         shutil.rmtree(self._dir, ignore_errors=True)
