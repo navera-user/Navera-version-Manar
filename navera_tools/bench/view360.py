@@ -85,6 +85,7 @@ class Bench360:
         n2, lab2, st2, _ = cv2.connectedComponentsWithStats(m)
         k2 = 1 + int(np.argmax(st2[1:, cv2.CC_STAT_AREA]))
         xs = np.nonzero(lab2[height // 2] == k2)[0]
+        self.screen_mask = cv2.erode((lab2 == k2).astype(np.uint8), np.ones((15, 15), np.uint8))   # in the first view
         c, fv = (width - 1) / 2.0, self.view.f
         width_deg = math.degrees(math.atan((xs.max() - c) / fv) - math.atan((xs.min() - c) / fv)) if len(xs) else float("nan")
         self.info = {"lens": lens.name, "screen_centre_px": [round(float(x)), round(float(y))],

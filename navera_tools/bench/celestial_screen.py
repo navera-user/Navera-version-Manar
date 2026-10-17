@@ -104,7 +104,7 @@ def main():
                 while time.time() < end:
                     cv2.imshow(W, draw_sky(ra0, dec0, hfov_s, lim, cond, time.time() - t0, rng))
                     cv2.waitKey(60)
-                img, _ = cam.grab()
+                img, _ = cam.grab(stabilise=False)          # the camera does not move here: keep the masked first view
                 if img is None:
                     continue
                 g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -112,7 +112,8 @@ def main():
                 bg = cv2.GaussianBlur(g.astype(np.float32), (0, 0), 12)
                 res = g.astype(np.float32) - bg
                 noise = 1.4826 * float(np.median(np.abs(res - np.median(res)))) + 1e-3
-                peak = (res == cv2.dilate(res, np.ones((7, 7), np.uint8))) & (res > 6 * noise)
+                peak = (res == cv2.dilate(res, np.ones((7, 7), np.uint8))) & (res > 6 * noise) \
+                    & (cam.screen_mask > 0)                  # only the screen: the room around it is not sky
                 ys, xs = np.nonzero(peak)
                 flux = res[ys, xs]
                 order = np.argsort(-flux)[:60]
@@ -129,7 +130,8 @@ def main():
                     # the screen centre: where the camera's view of it points among the stars
                     ra_c, dec_c = allsky.vec_to_radec(R @ np.array([0.0, 0.0, 1.0]))
                     err = math.degrees(math.acos(float(np.clip(allsky.radec_to_vec(ra_c, dec_c) @ allsky.radec_to_vec(ra0, dec0), -1, 1))))
-                    row.update(identified=True, matched=int(len(idx)), rms_deg=round(rms, 3), centre_err_deg=round(err, 3))
+                    row.update(identified=True, matched=int(len(idx)), rms_deg=round(rms, 3), centre_err_deg=round(err, 3),
+                               correct=bool(err < 2.0))      # a wrong identification is worse than none
                 row["s"] = round(time.time() - t0, 1)
                 print(json.dumps(row), flush=True)
                 results.append(row)
