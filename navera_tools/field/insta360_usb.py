@@ -56,11 +56,21 @@ def load_imu_calibration(path: str = IMU_CALIBRATION):
         return np.zeros(3), np.ones(3), np.zeros(3)
 
 
+def _has_keyframe(p: bytes, start: int) -> bool:
+    """True when the H.264 access unit holds an IDR slice (NAL type 5) or a sequence header (7)."""
+    i = p.find(b"\x00\x00\x01", start)
+    while i >= 0 and i + 3 < len(p):
+        if p[i + 3] & 0x1F in (5, 7):
+            return True
+        i = p.find(b"\x00\x00\x01", i + 3)
+    return False
+
+
 class Insta360Usb:
     """Live full-360 frames and IMU. latest() → (BGR frame, Jetson time it arrived); gravity() → unit
     vector of 'down' in the camera's IMU frame, averaged over the last second, or None while moving."""
 
-    def __init__(self, max_rate_dps: float = 3.0):
+    def __init__(self, max_rate_dps: float = 3.0, keyframes_only: bool = True):
         import usb.core
         import usb.util
         self._usb, self._util = usb.core, usb.util
@@ -69,6 +79,9 @@ class Insta360Usb:
             raise RuntimeError("Insta360 not found in USB mode 'Android' (vendor 2e1a)")
         self._util.claim_interface(self.dev, 0)
         self.max_rate = np.radians(max_rate_dps)
+        # the decoder (~16 fps at 3840x1920) is slower than the stream (~18 fps): fed every frame it falls
+        # behind and the delay grows; key frames only (one in 15, ~1.2 per second) keep it current
+        self.keyframes_only = keyframes_only
         self.acc_bias, self.acc_scale, self.gyro_bias = load_imu_calibration()
         self.error = None
         self._seq = 1
@@ -131,6 +144,8 @@ class Insta360Usb:
             if p[:1] != b"\x01" or len(p) < 12:
                 continue
             if p[3] == KIND_VIDEO and self._video is not None:
+                if self.keyframes_only and not _has_keyframe(p, 12):
+                    continue
                 try:
                     self._video.write(p[12:])
                 except OSError as e:
@@ -146,6 +161,10 @@ class Insta360Usb:
     def _decode(self):
         import cv2
         threading.Thread(target=self._open_pipe, daemon=True).start()
+        # FFmpeg's frame threads each hold a frame: with 8 threads the picture came 1.2 s late at the full
+        # rate and 4.3 s late with key frames only. One thread, no buffering: the frame is out as it arrives.
+        os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS",
+                              "threads;1|fflags;nobuffer|flags;low_delay|probesize;100000|analyzeduration;0")
         cap = cv2.VideoCapture(self._fifo, cv2.CAP_FFMPEG)
         while not self._stop:
             ok, f = cap.read()

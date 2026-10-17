@@ -85,6 +85,34 @@ class Window:
         return c + self.f * w[0] / w[2], c + self.f * w[1] / w[2]
 
 
+class PinholeView:
+    """A fixed straight view cut from one lens (maps computed once): looks along fwd_imu, image-up towards
+    up_hint_imu. apply(frame) → width x height image; R_view_imu maps IMU vectors into the view frame."""
+
+    def __init__(self, lens: Lens, fwd_imu, up_hint_imu, hfov_deg: float, width: int, height: int):
+        fwd = np.asarray(fwd_imu, float) / np.linalg.norm(fwd_imu)
+        up = np.asarray(up_hint_imu, float)
+        down = -(up - (up @ fwd) * fwd)
+        if np.linalg.norm(down) < 1e-6:
+            raise ValueError("the up hint is along the view direction")
+        down /= np.linalg.norm(down)
+        right = np.cross(down, fwd)
+        self.R_view_imu = np.stack([right, down, fwd])
+        self.lens, self.hfov_deg, self.width, self.height = lens, hfov_deg, width, height
+        self.f = (width / 2.0) / math.tan(math.radians(hfov_deg) / 2.0)
+        jj, ii = np.meshgrid(np.arange(width), np.arange(height))
+        rays = np.stack([(jj - (width - 1) / 2.0) / self.f, (ii - (height - 1) / 2.0) / self.f,
+                         np.ones((height, width))], axis=-1) @ self.R_view_imu
+        x, y, _ = lens.project(rays @ lens.R_lens_imu.T)
+        bad = np.hypot(x - lens.cx, y - lens.cy) > lens.radius
+        self.mx = np.where(bad, -1, x).astype(np.float32)
+        self.my = np.where(bad, -1, y).astype(np.float32)
+
+    def apply(self, frame: np.ndarray) -> np.ndarray:
+        import cv2
+        return cv2.remap(frame, self.mx, self.my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+
+
 def sky_window(frame: np.ndarray, lens: Lens, up_imu: np.ndarray, tilt_deg: float = 30.0,
                hfov_deg: float = 50.0, size: int = 640) -> Window:
     """The window centred tilt_deg from the zenith towards the lens axis, image-up towards the zenith."""
