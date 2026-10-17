@@ -57,6 +57,7 @@ BENCH = os.path.join(SIM, "bench_2026-10-06")
 DATA = os.path.join(SIM, "dayv_conditions")
 MBTILES = os.environ.get("NAVERA_MBTILES", os.path.expanduser("~/navera_data_map.mbtiles"))
 WRONG_M = 50.0
+POSE = True                                        # pass hfov_deg: position from the camera pose
 
 # name: map z17 images dir, query imagery (dir or "mbtiles"), query zoom, centre, sample radius (m),
 # synthetic appearance change on top (same-source imagery), what the imagery is
@@ -414,8 +415,9 @@ def conditions(hfov: float, width: int) -> List[dict]:
         add("spoof", f"GPS spoof: prior {pe} m off, radius 600 m", prior_err=float(pe), radius=600.0, spoof=True)
     # combined worst-but-plausible
     add("combo", "500 m, tilt 15 straightened, IMU 2 deg, haze, clouds 30%, 60 m/s",
-        height=500.0, tilt=15.0, imu_err=2.0, degrade=[("haze", dict(t=0.6)), ("clouds", dict(cover=0.3)),
-                                                     ("motion", dict(length_px=blur_px(60, 0.004, 500, hfov, width)))])
+        height=500.0, tilt=15.0, imu_err=2.0,
+        degrade=[("haze", dict(t=0.6)), ("clouds", dict(cover=0.3)),
+                 ("motion", dict(length_px=blur_px(60, 0.004, 500, hfov, width)))])
     return C
 
 
@@ -436,12 +438,16 @@ def spread_gate(res: dict) -> bool:
 def run_one(matcher, imagery: Imagery, scene: dict, c: dict, i: int, size, hfov: float, seed: int = 0) -> dict:
     rng = np.random.default_rng(1000 * seed + i)
     ang, r = rng.uniform(0, 2 * math.pi), scene["spread_m"] * math.sqrt(rng.uniform(0, 1))
-    pos = move(scene["centre"], r * math.cos(ang), r * math.sin(ang))
     heading = rng.uniform(0, 360)
     R = camera_R(heading, c["tilt"], rng.uniform(0, 360))
     K = K_of(size[0], size[1], hfov)
-    frame, valid = render(imagery, scene["qz"], pos, c["height"], R, K, size)
-    if frame is None or valid < 0.98:
+    for _ in range(6):                             # a high frame must fit in the imagery: closer in
+        pos = move(scene["centre"], r * math.cos(ang), r * math.sin(ang))
+        frame, valid = render(imagery, scene["qz"], pos, c["height"], R, K, size)
+        if frame is not None and valid >= 0.98:
+            break
+        r *= 0.5
+    else:
         return dict(skip=True)
     drng = np.random.default_rng(7 + 1000 * seed + i)
     if scene["app"]:
@@ -461,11 +467,13 @@ def run_one(matcher, imagery: Imagery, scene: dict, c: dict, i: int, size, hfov:
     if hasattr(matcher, "_heading"):
         matcher._heading = None                    # no memory between independent frames
     t0 = time.time()
-    res = matcher.locate(frame, prior, radius, mpp_f, heading_deg=hdg)
+    kw = dict(hfov_deg=hfov) if POSE else {}
+    res = matcher.locate(frame, prior, radius, mpp_f, heading_deg=hdg, **kw)
     ms = (time.time() - t0) * 1000.0
     out = dict(skip=False, accepted=bool(res.get("accepted")), inliers=int(res.get("inliers") or 0),
                spread=float(res.get("spread") or 0.0), ms=ms, features=res.get("features"),
-               reason=res.get("reason"), scale=res.get("scale_residual"))
+               reason=res.get("reason"), scale=res.get("scale_residual"), position_from=res.get("position_from"),
+               pose_tilt=res.get("pose_tilt_deg"), pose_h=res.get("pose_height_m"), pose_rms=res.get("pose_rms_px"))
     if res.get("predicted_lat") is not None:
         out["err_m"] = dist_m(pos, (res["predicted_lat"], res["predicted_lon"]))
     out["gated"] = out["accepted"] and spread_gate(res)
@@ -534,7 +542,10 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="", help="JSON file for per-frame results and the table")
     ap.add_argument("--save-frames", default="", help="directory: save the first frame of each condition")
+    ap.add_argument("--no-pose", action="store_true", help="locate the frame centre (no hfov_deg passed)")
     a = ap.parse_args()
+    global POSE
+    POSE = not a.no_pose
     if a.setup:
         setup()
         return
