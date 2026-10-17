@@ -53,6 +53,21 @@ from navera_tools.field import attitude  # noqa: E402
 from navera_tools.field.store import FieldSession, list_sessions  # noqa: E402
 
 MIN_STARS = report_mod.MIN_STARS
+# astrometry.net cannot match a rectilinear picture wider than ~65 degrees (edges stretched 3x, simulated 111 degree
+# strip: never solved; its central 40-62 degrees: 4-15 km). Wider cameras are solved on their central window.
+SOLVE_MAX_HFOV = 62.0
+SOLVE_WINDOW_HFOV = 52.0
+
+
+def solver_view(img, hfov):
+    """(picture, field of view in degrees) given to the plate solver: the whole picture, or its central window."""
+    if hfov <= SOLVE_MAX_HFOV:
+        return img, hfov
+    h, w = img.shape[:2]
+    f = (w / 2.0) / math.tan(math.radians(hfov) / 2.0)
+    cw = min(w, int(round(2 * f * math.tan(math.radians(SOLVE_WINDOW_HFOV) / 2.0))))
+    x0 = (w - cw) // 2
+    return img[:, x0:x0 + cw], 2 * math.degrees(math.atan(cw / 2.0 / f))
 CALIBRATION_SEARCH = (os.environ.get("NAVERA_CAMERA_CALIBRATION", ""), "/etc/navera/camera.yaml",
                       "/var/lib/navera/camera.yaml",
                       os.path.expanduser("~/.navera_sim/bench_2026-10-06/calib/insta360_top.yaml"))
@@ -346,9 +361,12 @@ class Field:
             s.log("frames", rec)
             return
         self.solving, self.solving_since = True, time.time()
-        threading.Thread(target=self._solve, args=(s, rec, jpg.tobytes(), att, texp), daemon=True).start()
+        view, view_hfov = solver_view(img, self.camera.hfov)
+        ok2, vjpg = cv2.imencode(".jpg", view, [cv2.IMWRITE_JPEG_QUALITY, 92])
+        threading.Thread(target=self._solve, args=(s, rec, vjpg.tobytes() if ok2 else jpg.tobytes(), att, texp, view_hfov),
+                         daemon=True).start()
 
-    def _solve(self, s, rec, jpg, att, texp):
+    def _solve(self, s, rec, jpg, att, texp, hfov):
         import base64
         try:
             from cn_pkg.nodes.solver import solve_image_b64_geoloc
@@ -365,7 +383,7 @@ class Field:
                 prior_lat, prior_lon = p["lat"], p["lon"]
             t0 = time.time()
             r = solve_image_b64_geoloc(base64.b64encode(jpg).decode(), att["alt"], att["az"], utc,
-                                       prior_lat, prior_lon, self.camera.hfov)
+                                       prior_lat, prior_lon, hfov)
             rec["solve_s"] = round(time.time() - t0, 1)
             rec["utc_used"] = utc
             rec["prior"] = None if prior_lat != prior_lat else [prior_lat, prior_lon]

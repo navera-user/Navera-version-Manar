@@ -166,3 +166,14 @@ def test_a_frozen_phone_fix_is_not_a_truth(tmp_path):
     phone = [{"t": 1000 + i * 2, "lat": 35.8, "lon": 10.6, "acc": 5, "gps_age_s": 60.0} for i in range(300)]
     _write(str(tmp_path), phone, [_good(i) for i in range(12)])
     assert an.analyze(str(tmp_path))["verdict"] == "NO TRUTH"
+
+
+def test_wide_camera_is_solved_on_its_central_window():
+    import numpy as np
+    from navera_tools.field import server
+    img = np.zeros((540, 1920), np.uint8)
+    view, hfov = server.solver_view(img, 111.0)
+    assert view.shape[0] == 540 and abs(hfov - server.SOLVE_WINDOW_HFOV) < 0.2
+    assert abs((1920 - view.shape[1]) // 2 - (1920 - view.shape[1] + 1) // 2) <= 1      # centred
+    same, hf = server.solver_view(img, 60.7)                                              # a normal lens is untouched
+    assert same is img and hf == 60.7
