@@ -142,9 +142,12 @@ def refine_with_pose(res: dict, fit_pts: Tuple[np.ndarray, np.ndarray], near_pts
     if hfov_deg is None or not (1.0 < float(hfov_deg) < 179.0):
         return None
     f = (frame_size[0] / 2.0) / math.tan(math.radians(float(hfov_deg)) / 2.0)
+    # frame pixels per map pixel (>= 1: below ~510 m a frame pixel is finer than the map's,
+    # and the match noise, in map pixels, is that many frame pixels)
+    px_map = max(1.0, map_mpp / frame_m_per_px)
     pose = camera_pose_on_map(fit_pts[0], fit_pts[1], frame_size, f, map_mpp)
     if pose is not None and pose["tilt_deg"] > NOT_STRAIGHT_DEG:
-        wide = camera_pose_on_map(near_pts[0], near_pts[1], frame_size, f, map_mpp, ransac_px=3.0)
+        wide = camera_pose_on_map(near_pts[0], near_pts[1], frame_size, f, map_mpp, ransac_px=3.0 * px_map)
         if wide is not None:
             pose = wide
     if pose is None:
@@ -154,7 +157,7 @@ def refine_with_pose(res: dict, fit_pts: Tuple[np.ndarray, np.ndarray], near_pts
                pose_rms_px=round(pose["rms_px"], 2), pose_inliers=pose["inliers"])
     tilted = (f"frame {pose['tilt_deg']:.0f} deg from straight down by its pose, which is not "
               "consistent: position unknown")
-    if pose["rms_px"] > 4.0 or pose["tilt_deg"] > max_tilt_deg or \
+    if pose["rms_px"] > 4.0 * px_map or pose["tilt_deg"] > max_tilt_deg or \
             abs(pose["height_m"] / max(h_scale, 1e-6) - 1.0) > 0.15:
         return tilted if pose["tilt_deg"] > NOT_STRAIGHT_DEG else None
     # the camera is above the frame centre's ground point give or take height x tan(tilt):
