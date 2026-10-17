@@ -390,16 +390,17 @@ class Field:
         lenses = sky360.default_lenses()
         sky_px = np.concatenate([img[::8, int(L.cx - 400):int(L.cx + 400):8].ravel() for L in lenses])
         level = float(np.median(sky_px))
-        spots = []
+        spots, rejected = [], {}
         if level < 80:
             for L in lenses:
-                for x, y, fl in allsky.detect_spots(img, L):
-                    if up is None or float(allsky.unproject(L, x, y) @ up) > math.sin(math.radians(12)):
-                        spots.append((x, y, fl))
+                st = {}
+                spots += allsky.detect_spots(img, L, up_imu=up, min_alt=None if up is None else 12.0, stats=st)
+                for k, v in st.items():
+                    rejected[k] = rejected.get(k, 0) + v
         self.spots = spots
         sky = "too bright" if level >= 80 else "clear"
         self.live = {"t": texp, "detected": len(spots), "confirmed": len(spots), "sky": sky,
-                     "rejected": {}, "shift_px": 0.0, "background": round(level, 1), "noise": None}
+                     "rejected": {k: v for k, v in rejected.items() if v}, "shift_px": 0.0, "background": round(level, 1), "noise": None}
         vis = cv2.convertScaleAbs(cv2.cvtColor(cv2.resize(img, (1920, 960)), cv2.COLOR_GRAY2BGR), alpha=2.5, beta=0)
         for x, y, _ in spots[:150]:
             cv2.circle(vis, (int(x / 2), int(y / 2)), 9, (90, 211, 154), 2)
@@ -463,12 +464,15 @@ class Field:
                          daemon=True).start()
 
     def _maybe_solve360(self, s, rec, img, texp):
+        from navera_tools.field import allsky
         up, g, rate = self.camera.gravity()
         rec.update(mode="360", up_imu=None if up is None else [round(float(v), 6) for v in up],
                    accel_g=None if g is None else round(g, 5), rate_dps=None if rate is None else round(math.degrees(rate), 2))
         why = None
         if up is None:
             why = "camera moving or turning (its own sensor)" if g is not None else "no camera sensor data"
+        elif g is not None and abs(g - 1.0) > allsky.ACCEL_NORM_TOL:
+            why = f"vehicle accelerating (|a| = {g:.3f} g): 'up' is not gravity"
         elif self.live.get("sky") not in self.usable_skies:
             why = f"sky {self.live.get('sky')}"
         elif (self.live.get("confirmed") or 0) < MIN_STARS:
@@ -495,9 +499,13 @@ class Field:
                 if self.f_scale is None:
                     self.f_scale = r["f_scale"]
                     s.event("lens_focal_found", f_scale=self.f_scale)
-                sigma = ATTITUDE_SIGMA_360_DEG * report_mod.KM_PER_DEGREE + abs(off) * report_mod.SKY_KM_PER_SECOND
+                # the accelerometer (first guess) and the star fit (residuals, lenses' disagreement) add in quadrature
+                att = math.hypot(ATTITUDE_SIGMA_360_DEG, r.get("sigma_fit_deg") or 0.0)
+                sigma = att * report_mod.KM_PER_DEGREE + abs(off) * report_mod.SKY_KM_PER_SECOND
                 rec.update(solved=True, lat=r["lat"], lon=r["lon"], matched=r["matched"], used=r["used"],
-                           rms_deg=r["rms_deg"], f_scale=r["f_scale"], sigma_km=round(sigma, 1), R_icrs_imu=r["R_icrs_imu"])
+                           rms_deg=r["rms_deg"], f_scale=r["f_scale"], sigma_km=round(sigma, 1), R_icrs_imu=r["R_icrs_imu"],
+                           p_chance=r.get("p_chance"), lens_disagree_deg=r.get("lens_disagree_deg"),
+                           matched_per_lens=r.get("matched_per_lens"))
                 p = self.phone
                 if p.get("lat") is not None:
                     rec["err_km_live"] = round(report_mod.haversine_km(r["lat"], r["lon"], p["lat"], p["lon"]), 1)
@@ -505,6 +513,7 @@ class Field:
                                  "err_km": rec.get("err_km_live"), "sigma_km": rec["sigma_km"]}
             else:
                 rec["why"] = str(r.get("why") or "not solved")[:200]
+                rec.update({k: r[k] for k in ("matched", "rms_deg", "p_chance", "lens_disagree_deg", "f_scale") if k in r})
         except Exception as e:
             rec["why"] = f"solver error: {e!r}"[:200]
         finally:
