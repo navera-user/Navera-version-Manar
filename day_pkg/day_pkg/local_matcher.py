@@ -300,8 +300,14 @@ class LocalMatcher:
         if not (math.isfinite(s) and 0.02 < s < 50):
             res.update(error=f"frame scale {s:.3f} of the map resolution is not plausible")
             return res
-        q = self.clahe.apply(cv2.resize(grey, None, fx=s, fy=s,
-                                        interpolation=cv2.INTER_AREA if s < 1 else cv2.INTER_LINEAR))
+        # never enlarged: a frame coarser than the map is described at its own resolution and
+        # its keypoints scaled to map pixels (SIFT is scale invariant). Enlarging it 3x added no
+        # information and made SIFT 7 s of an 8.5 s frame on the Jetson (bench, 1486 m).
+        s_det = min(s, 1.0)
+        q = self.clahe.apply(grey if s_det == 1.0 else cv2.resize(grey, None, fx=s_det, fy=s_det,
+                                                                   interpolation=cv2.INTER_AREA))
+        k_up = s / s_det                                  # detected pixels -> map-scale pixels
+        q_shape = (grey.shape[0] * s, grey.shape[1] * s)
         if margin_m is None:                              # half the frame's diagonal on the ground
             margin_m = 0.5 * math.hypot(*grey.shape[:2]) * frame_m_per_px
         pm, dm = self.tiles.around(prior[0], prior[1], search_m + margin_m)
@@ -320,7 +326,7 @@ class LocalMatcher:
         if good < self.min_inliers:
             res.update(reason=f"{good} feature matches (min {self.min_inliers})")
             return res
-        src = np.float32([kq[i].pt for i in qi])
+        src = np.float32([kq[i].pt for i in qi]) * np.float32(k_up)
         dst = pm[idx[qi, 0]].astype(np.float32)
         A, inl = cv2.estimateAffinePartial2D(src, dst, method=cv2.RANSAC, ransacReprojThreshold=self.ransac_px,
                                              maxIters=5000, confidence=0.999)
@@ -329,12 +335,12 @@ class LocalMatcher:
             return res
         n_in = int(inl.sum())
         scale = math.hypot(A[0, 0], A[1, 0])              # 1.0 when the altitude/FOV prediction is right
-        px, py = A @ np.array([q.shape[1] / 2.0, q.shape[0] / 2.0, 1.0])
+        px, py = A @ np.array([q_shape[1] / 2.0, q_shape[0] / 2.0, 1.0])
         lat, lon = tile_px_to_latlon(float(px), float(py), self.z)
         res.update(predicted_lat=lat, predicted_lon=lon, inliers=n_in, matches=good,
                    scale_residual=round(scale, 3), rotation_deg=round(math.degrees(math.atan2(A[1, 0], A[0, 0])), 1),
                    score=float(n_in), fused_score=float(n_in), match=f"{n_in} inliers / {good} matches",
-                   spread=inlier_spread(src[inl.ravel() > 0], q.shape), sigma_m=fix_sigma_m(n_in, mpp_map))
+                   spread=inlier_spread(src[inl.ravel() > 0], q_shape), sigma_m=fix_sigma_m(n_in, mpp_map))
         if n_in < self.min_inliers:
             res["reason"] = f"{n_in} geometric inliers (min {self.min_inliers})"
         elif heading_deg is not None and abs((res["rotation_deg"] - heading_deg + 180) % 360 - 180) > heading_tol_deg:
