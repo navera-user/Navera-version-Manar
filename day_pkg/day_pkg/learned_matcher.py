@@ -60,6 +60,7 @@ class LearnedMatcher(LocalMatcher):
     MAX_MAP_KEYPOINTS = 24000
     SIFT_FALLBACK_MAX_M = 300.0
     HEADING_MEMORY_S = 10.0           # a measured rotation stands in for the heading this long
+    RESCALE_MIN_INLIERS = 60          # a match rejected for its scale is retried at that scale from this many
 
     def __init__(self, images_dir: str, zoom: int = 17, keypoints: int = 1536, cache_dir: Optional[str] = None,
                  per_chunk: int = 768, half: bool = True,
@@ -250,6 +251,17 @@ class LearnedMatcher(LocalMatcher):
                     abs((res["rotation_deg"] - heading_deg + 180) % 360 - 180) > heading_tol_deg:
                 res.update(accepted=False, reason=f"fitted rotation {res['rotation_deg']:.0f} deg ≠ heading "
                                                   f"{heading_deg:.0f} deg (±{heading_tol_deg:.0f}): wrong place")
+            sc = float(res.get("scale_residual") or 1.0)
+            if not res["accepted"] and "fitted scale" in str(res.get("reason")) and \
+                    int(res.get("inliers") or 0) >= self.RESCALE_MIN_INLIERS and 0.6 < sc < 1.6:
+                # a strong match at another scale than the height predicts (height 20 % off:
+                # 0/10 located, simulation): matched again at the scale it measured, kept only
+                # if that second match confirms it (scale within tolerance, same heading check)
+                again = self._locate_learned(frame, prior, search_m, frame_m_per_px * sc, margin_m, scale_tol,
+                                             hdg, hfov_deg)
+                if again["accepted"] and not (heading_deg is not None and abs(
+                        (again["rotation_deg"] - heading_deg + 180) % 360 - 180) > heading_tol_deg):
+                    res = dict(again, heading_source=hdg_src, rescaled_by=round(sc, 3))
         if (res is None or not res["accepted"]) and not (self._no_fallback and res is not None) \
                 and (res is None or search_m <= self.SIFT_FALLBACK_MAX_M):
             learned = res
