@@ -350,10 +350,12 @@ def worker():
                          navera_err_m=None if out_err is None else round(out_err, 1), ms=round(ms),
                          inliers=r.get("inliers"), height_m=None if height is None else round(height),
                          vis_de=None if not vis else round(metres(vis, centre)[1], 1),
-                         vis_dn=None if not vis else round(metres(vis, centre)[2], 1)))
+                         vis_dn=None if not vis else round(metres(vis, centre)[2], 1),
+                         turned_deg=round(getattr(cam360, "turned_deg", 0.0), 1) if a.source == "360" else None))
         print(f"{t:6.1f}s {phase:5s} gps+{drift:5.0f}m  vision "
               f"{'%5.1f m' % vis_err if vis_err is not None else '  -   '}  NAVERA={src:7s} "
-              f"err {'%5.1f' % out_err if out_err is not None else '  -  '} m  {ms:4.0f} ms", flush=True)
+              f"err {'%5.1f' % out_err if out_err is not None else '  -  '} m  {ms:4.0f} ms"
+              + (f"  camera turned {cam360.turned_deg:5.1f} deg" if a.source == "360" else ""), flush=True)
     stop.refused_at = refused_at
 
 

@@ -22,6 +22,7 @@ reading a FIFO); camera at rest: |accel| 0.997 g, noise 0.0017 g per sample.
 """
 import collections
 import json
+import math
 import os
 import shutil
 import struct
@@ -66,6 +67,15 @@ def _has_keyframe(p: bytes, start: int) -> bool:
     return False
 
 
+def _rotvec(w):
+    t = float(np.linalg.norm(w))
+    if t < 1e-12:
+        return np.eye(3)
+    k = w / t
+    K = np.array([[0, -k[2], k[1]], [k[2], 0, -k[0]], [-k[1], k[0], 0]])
+    return np.eye(3) + math.sin(t) * K + (1 - math.cos(t)) * K @ K
+
+
 class Insta360Usb:
     """Live full-360 frames and IMU. latest() → (BGR frame, Jetson time it arrived); gravity() → unit
     vector of 'down' in the camera's IMU frame, averaged over the last second, or None while moving."""
@@ -88,6 +98,13 @@ class Insta360Usb:
         self._lock = threading.Lock()
         self._frame, self._frame_t = None, 0.0
         self._imu = collections.deque(maxlen=1500)          # 3 s at 500 Hz
+        # attitude: gyro integrated (bias-corrected), tilt pulled towards gravity; R maps IMU → reference
+        # frame (the camera's frame at start). History by camera ms, the clock frames are stamped with.
+        self._R = np.eye(3)
+        self._ref_up = None
+        self._last_ms = None
+        self._att = collections.deque(maxlen=6000)          # (camera ms, R) — 12 s
+        self._frame_ms = None
         self._stop = False
         self._buf = bytearray()
         self._dir = tempfile.mkdtemp(prefix="insta360_")
@@ -159,7 +176,7 @@ class Insta360Usb:
                 if self.keyframes_only and not _has_keyframe(p, 12):
                     continue
                 if self._codec is not None:
-                    self._packets.append((time.time(), p[12:]))
+                    self._packets.append((time.time(), p[12:], struct.unpack_from("<I", p, 4)[0]))
                     self._packet_ready.set()
                     continue
                 if self._video is None:
@@ -173,7 +190,9 @@ class Insta360Usb:
                 now = time.time()
                 with self._lock:
                     for k in range(0, len(body) - IMU_RECORD.size + 1, IMU_RECORD.size):
-                        self._imu.append((now,) + IMU_RECORD.unpack_from(body, k))
+                        rec = IMU_RECORD.unpack_from(body, k)
+                        self._imu.append((now,) + rec)
+                        self._track(rec)
         del b[:i]
 
     def _decode(self):
@@ -202,15 +221,72 @@ class Insta360Usb:
                 continue
             self._packet_ready.clear()
             while self._packets:
-                t_in, data = self._packets.popleft()
+                t_in, data, cam_ms = self._packets.popleft()
                 try:
                     for pkt in self._codec.parse(data):
                         for fr in self._codec.decode(pkt):
                             img = fr.to_ndarray(format="bgr24")
                             with self._lock:
-                                self._frame, self._frame_t = img, t_in       # time the packet arrived
+                                self._frame, self._frame_t, self._frame_ms = img, t_in, cam_ms   # arrival; camera clock
                 except Exception as e:                    # a damaged packet: skip it, the next key frame resyncs
                     self.error = f"decode: {e}"
+
+    def _track(self, rec):
+        """One IMU sample into the attitude (called with the lock held)."""
+        ms = rec[0]
+        a = (np.array(rec[1:4]) - self.acc_bias) / self.acc_scale
+        w = np.array(rec[4:7]) - self.gyro_bias
+        if self._ref_up is None:
+            # first 2 s, camera still: 'up' = their mean accel (not one noisy sample), and the gyro bias measured
+            # again (it moves with temperature: the 6-position value left ~1.5 deg/min about the vertical)
+            self._init = getattr(self, "_init", []) + [(a, np.array(rec[4:7]))]
+            if len(self._init) < 1000:
+                return
+            acc = np.array([x[0] for x in self._init])
+            gyr = np.array([x[1] for x in self._init])
+            if float(np.abs(gyr - gyr.mean(axis=0)).max()) < math.radians(2.0):    # it was still
+                self.gyro_bias = gyr.mean(axis=0)
+            m = acc.mean(axis=0)
+            self._ref_up, self._last_ms = m / np.linalg.norm(m), ms
+            self._att.append((ms, self._R.copy()))
+            return
+        dt = (ms - self._last_ms) / 1000.0
+        self._last_ms = ms
+        if not 0.0 < dt < 0.1:
+            return
+        self._R = self._R @ _rotvec(w * dt)
+        # still (gyro and accelerometer quiet for 1 s): track the gyro bias, it creeps as the camera warms up
+        # (measured 0.017 deg/s in 40 s = 1 deg/min about the vertical, which gravity cannot correct)
+        self._still = getattr(self, "_still", collections.deque(maxlen=500))
+        self._still.append((np.array(rec[4:7]), a))
+        if len(self._still) == 500 and ms % 100 < 3:
+            gw = np.array([x[0] for x in self._still])
+            ga = np.array([x[1] for x in self._still])
+            if float(gw.std(axis=0).max()) < math.radians(0.15) and float(ga.std(axis=0).max()) < 0.004 \
+                    and float(np.linalg.norm(gw.mean(axis=0) - self.gyro_bias)) < math.radians(0.3):
+                self.gyro_bias = 0.8 * self.gyro_bias + 0.2 * gw.mean(axis=0)
+        g = float(np.linalg.norm(a))
+        if 0.97 < g < 1.03:                               # not accelerating: pull the tilt towards gravity
+            up_pred = self._R.T @ self._ref_up            # where 'up' should be in the IMU frame
+            err = np.cross(up_pred, a / g)                # small rotation from predicted to measured
+            self._R = self._R @ _rotvec(-0.002 * err)
+        u, _, vt = np.linalg.svd(self._R)                 # keep it a rotation
+        self._R = u @ vt
+        self._att.append((ms, self._R.copy()))
+
+    def attitude_at(self, cam_ms):
+        """R (IMU → the camera's frame at start) at camera time cam_ms, or None outside the history."""
+        with self._lock:
+            hist = list(self._att)
+        if not hist or cam_ms is None or cam_ms < hist[0][0] or cam_ms > hist[-1][0] + 200:
+            return None
+        i = min(range(len(hist)), key=lambda k: abs(hist[k][0] - cam_ms))
+        return hist[i][1]
+
+    def latest_stamped(self):
+        """(BGR frame, arrival time, camera ms of the frame)."""
+        with self._lock:
+            return self._frame, self._frame_t, self._frame_ms
 
     def _open_pipe(self):
         self._video = open(self._fifo, "wb", buffering=0)    # blocks until the decoder opens it

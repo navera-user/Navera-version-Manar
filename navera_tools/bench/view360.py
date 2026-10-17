@@ -24,6 +24,7 @@ class Bench360:
         self.window, self.screen_wh = window, screen_wh
         self.view = None
         self.info = {}
+        self._ref, self._view_R, self.turned_deg = None, None, 0.0
 
     def _frame(self, timeout=20.0):
         t0 = time.time()
@@ -70,6 +71,13 @@ class Bench360:
         up, _, _ = self.cam.gravity()
         up = up if up is not None else np.array([1.0, 0.0, 0.0])
         self.view = PinholeView(lens, fwd, up, hfov_deg, width, height)
+        # the screen's direction and 'up' in the reference frame (the camera at start): the view stays locked on
+        # them however the camera is turned later (gyro + gravity attitude, at each frame's own capture time)
+        f_, t_, ms = self.cam.latest_stamped()
+        R0 = self.cam.attitude_at(ms)
+        self._ref = None if R0 is None else (R0 @ fwd, R0 @ up)
+        self._geom = (hfov_deg, width, height)
+        self._view_R = R0
         # angular width of the screen, in the straight view (the screen's edges look dimmer at an angle:
         # Otsu on the flash difference keeps all of it)
         d = self.view.apply(np.clip(diff, 0, 255).astype(np.uint8))
@@ -90,11 +98,21 @@ class Bench360:
             raise RuntimeError(f"screen not found reliably ({self.info}); is a lens facing it, nothing moving in front?")
         return self.info
 
-    def grab(self):
-        """(straight view on the screen, Jetson arrival time) or (None, t)."""
-        f, t = self.cam.latest()
+    def grab(self, stabilise=True):
+        """(straight view on the screen, Jetson arrival time) or (None, t). stabilise: the view follows the
+        camera's own attitude at the frame's capture time, so it stays on the screen while the camera turns."""
+        f, t, ms = self.cam.latest_stamped()
         if f is None or self.view is None:
             return None, t
+        if stabilise and self._ref is not None:
+            R = self.cam.attitude_at(ms)
+            if R is not None and (self._view_R is None or
+                                  math.degrees(math.acos(max(-1.0, min(1.0, (np.trace(R.T @ self._view_R) - 1) / 2)))) > 0.2):
+                fwd, up = R.T @ self._ref[0], R.T @ self._ref[1]
+                lens = max(default_lenses(), key=lambda L: float(fwd @ L.R_lens_imu[2]))
+                self.view = PinholeView(lens, fwd, up, *self._geom)
+                self._view_R = R
+                self.turned_deg = math.degrees(math.acos(max(-1.0, min(1.0, (np.trace(R) - 1) / 2))))
         return self.view.apply(f), t
 
     def gravity(self):
