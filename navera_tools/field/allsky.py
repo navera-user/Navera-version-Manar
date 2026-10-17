@@ -224,8 +224,9 @@ def chance_probability(n_rays: int, n_matched: int, n_hyp: int, cat: Catalogue, 
 
 
 def identify(rays: np.ndarray, cat: Catalogue, n_seed: int = 16, tol_deg: float = 0.5,
-             match_deg: float = 0.5, min_matches: int = 6, stop_p: float = 1e-15):
-    """(rotation IMU→ICRS, matched ray indices, catalogue indices, rms deg, chance probability) or None.
+             match_deg: float = 0.5, min_matches: int = 6, stop_p: float = 1e-15, with_p: bool = False):
+    """(rotation IMU→ICRS, matched ray indices, catalogue indices, rms deg[, chance probability if with_p]) or None.
+    No quality gate here: a caller that acts on the answer must apply accept() (locate does).
 
     Lost-in-space: every pair of the n_seed brightest rays is compared with the catalogue pairs of the
     same separation; each candidate rotation (TRIAD, vectorised over all candidates of a pair) is
@@ -280,7 +281,7 @@ def identify(rays: np.ndarray, cat: Catalogue, n_seed: int = 16, tol_deg: float 
         R = wahba(rays[ok], cat.vec[k])
     ok, k, d = match(rays, R, tree, chord)
     rms = math.degrees(float(np.sqrt(np.mean((2 * np.arcsin(d / 2)) ** 2))))
-    return R, ok, k, rms, p_chance
+    return (R, ok, k, rms, p_chance) if with_p else (R, ok, k, rms)
 
 
 # 'up' is the accelerometer's mean: any vehicle acceleration tilts it (0.1 g = 5.7 degrees = 640 km). Its norm is
@@ -305,6 +306,21 @@ MAX_RMS_DEG = 0.2
 MAX_RMS_TIGHT_DEG = 0.12
 MAX_LENS_DISAGREE_DEG = 1.0     # zenith from each lens alone (when both have >= 4 stars)
 K1_FIT_MIN_STARS = 20           # the radial term is refitted only with this many matched stars
+
+
+def accept(matched: int, rms_deg: float, p_chance: float, lens_disagree_deg: float = 0.0) -> Optional[str]:
+    """The quality gate: None when the identification may be used, else the reason it may not."""
+    if matched < MIN_MATCHED:
+        return f"only {matched} stars matched (< {MIN_MATCHED})"
+    if p_chance > MAX_P_CHANCE_TIGHT:
+        return f"match could be chance (p = {p_chance:.2g})"
+    if rms_deg > MAX_RMS_DEG:
+        return f"star residual {rms_deg:.2f} deg (> {MAX_RMS_DEG})"
+    if p_chance > MAX_P_CHANCE and rms_deg > MAX_RMS_TIGHT_DEG:
+        return f"match could be chance (p = {p_chance:.2g}) and residual {rms_deg:.2f} deg (> {MAX_RMS_TIGHT_DEG})"
+    if lens_disagree_deg > MAX_LENS_DISAGREE_DEG:
+        return f"the two lenses disagree by {lens_disagree_deg:.2f} deg"
+    return None
 
 
 def locate(frame: np.ndarray, up_imu: np.ndarray, utc: str, cat: Catalogue,
@@ -358,7 +374,7 @@ def locate(frame: np.ndarray, up_imu: np.ndarray, utc: str, cat: Catalogue,
         rays, sel = rays_for(fs)
         if len(rays) < 3:
             continue
-        r = identify(rays, cat, match_deg=match_deg)
+        r = identify(rays, cat, match_deg=match_deg, with_p=True)
         if r is not None and (best is None or (len(r[1]), -r[3]) > (len(best[1][1]), -best[1][3])):
             best = (fs, r, sel)
     if best is None:
@@ -433,17 +449,7 @@ def locate(frame: np.ndarray, up_imu: np.ndarray, utc: str, cat: Catalogue,
     out.update(f_scale=round(fs, 5), k1_offset=round(dk1[0], 5), matched=int(m), used=int(n_used), rms_deg=round(rms, 3),
                p_chance=float(f"{p_chance:.3g}"), lens_disagree_deg=round(disagree, 3), sigma_fit_deg=round(sigma_fit, 4),
                matched_per_lens={lens.name: int((lens_of[sel[idx]] == li).sum()) for li, lens in enumerate(lenses)})
-    why = None
-    if m < MIN_MATCHED:
-        why = f"only {m} stars matched (< {MIN_MATCHED})"
-    elif p_chance > MAX_P_CHANCE_TIGHT:
-        why = f"match could be chance (p = {p_chance:.2g})"
-    elif rms > MAX_RMS_DEG:
-        why = f"star residual {rms:.2f} deg (> {MAX_RMS_DEG})"
-    elif p_chance > MAX_P_CHANCE and rms > MAX_RMS_TIGHT_DEG:
-        why = f"match could be chance (p = {p_chance:.2g}) and residual {rms:.2f} deg (> {MAX_RMS_TIGHT_DEG})"
-    elif disagree > MAX_LENS_DISAGREE_DEG:
-        why = f"the two lenses disagree by {disagree:.2f} deg"
+    why = accept(m, rms, p_chance, disagree)
     if why:
         out["why"] = "rejected: " + why
         if retry_spots and n_used > retry_spots:              # junk among the spots: try again on the brightest only
