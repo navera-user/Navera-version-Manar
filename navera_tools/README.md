@@ -31,6 +31,7 @@ tools; both have `--help`.
 | `run_demo.sh [measured\|target]` | **demonstration**: simulated mission over Sousse with GPS jamming, on the real arbiter and operator view (`demo_mission.py`) |
 | `tests/sitl_ardupilot.py`, `tests/sitl_vehicle_link.py`, `tests/sitl_discovery.py` | the vehicle output, vehicle link and discovery against ArduPilot SITL (needs an ArduPilot build) |
 | `bench/camera_chain.py`, `bench/day_wrong_altitude.py` | offline benchmarks of the camera chain |
+| `bench/night_conditions.py [--n 24] [--only names\|groups] [--csv f]` | night vision (STHN) stress test: 53 simulated conditions (thermal look, blur, lights, weather, occluders, geometry, terrain, no-information frames) with ground truth — match rate, error, wrong accepts, time. Synthetic frames from the matched map; loads one STHN model (`nice` it on a shared box) |
 
 ## Lens calibration (`calibrate_camera.py`)
 
