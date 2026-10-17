@@ -55,6 +55,7 @@ WRONG_M = 50.0          # an accepted fix farther than this from the truth is a 
 HFOV_DEG = 75.0         # the simulator's thermal camera (~75 x 63 deg, 640 x 512)
 SIZE = (640, 512)
 TAU_S = 0.012           # microbolometer thermal time constant (smear along the track)
+HEADING_RETRY: tuple = ()   # --heading-retry: offsets tried when the map check fails
 
 # Sites inside the Sousse map (ESRI imagery, z13-z19): centre lat, lon, radius (m)
 SITES = {
@@ -476,7 +477,8 @@ def run_condition(cond: Condition, loc, cam: _GeomCamera, fb: FrameBuilder, n: i
             cv2.imwrite(str(save_dir / f"{cond.name}_{i}.jpg"), img)
         t0 = time.perf_counter()
         r = loc.localize(img, pose.prior[0], pose.prior[1], altitude_m=meta["altitude_m"],
-                         hfov_deg=meta["camera_hfov_deg"], heading_deg=meta["heading_deg"])
+                         hfov_deg=meta["camera_hfov_deg"], heading_deg=meta["heading_deg"],
+                         **({"heading_retry_deg": HEADING_RETRY} if HEADING_RETRY else {}))
         dt = (time.perf_counter() - t0) * 1000
         acc = bool(r.get("success"))
         err = dist_m((r["lat"], r["lon"]), (pose.lat, pose.lon)) if acc else None
@@ -485,8 +487,9 @@ def run_condition(cond: Condition, loc, cam: _GeomCamera, fb: FrameBuilder, n: i
                          conf=r.get("conf"), shift_px=r.get("rms_px"), reason=r.get("reason", ""),
                          prior_err_m=dist_m(pose.prior, (pose.lat, pose.lon)), dt_ms=dt,
                          coverage=(r.get("query") or {}).get("coverage"),
+                         recheck_m=r.get("recheck_m"), heading_fix=r.get("heading_correction_deg"),
                          **{f"v_{k}": v for k, v in (r.get("verify") or
-                                                     dict(ncc=None, margin=None, texture=None)).items()},
+                                                     dict(ncc=None)).items()},
                          wrong=acc and (cond.no_info or err > WRONG_M)))
     return summarize(cond, rows), rows
 
@@ -538,8 +541,13 @@ def main():
     ap.add_argument("--night-pkg", default="",
                     help="another night_pkg source tree to test (e.g. an older commit, for before/after)")
     ap.add_argument("--min-ncc", type=float, default=None, help="override the map-check correlation gate")
-    ap.add_argument("--min-margin", type=float, default=None, help="override the map-check peak-margin gate")
+    ap.add_argument("--recheck-max", type=float, default=None,
+                    help="override the second-centre re-check gate (m)")
+    ap.add_argument("--heading-retry", default="",
+                    help="heading offsets (deg, comma-separated) retried when the map check fails")
     a = ap.parse_args()
+    global HEADING_RETRY
+    HEADING_RETRY = tuple(float(x) for x in a.heading_retry.split(",") if x.strip())
     if a.night_pkg:
         sys.path.insert(0, str(Path(a.night_pkg).resolve()))
     mbtiles = os.environ.get("NAVERA_MBTILES", os.path.expanduser("~/navera_data_map.mbtiles"))
@@ -557,7 +565,9 @@ def main():
     tiles = Tiles(mbtiles)
     cam = _GeomCamera(lens, tiles.get)
     fb = FrameBuilder(CameraModel.ideal(HFOV_DEG, SIZE), camera_type="thermal")
-    gates = {k: v for k, v in (("min_match_ncc", a.min_ncc), ("min_match_margin", a.min_margin))
+    # omitted: the localizer's defaults; <= -1: that gate off (measure only)
+    gates = {k: (v if v > -1 else None) for k, v in (("min_match_ncc", a.min_ncc),
+                                                   ("recheck_max_m", a.recheck_max))
              if v is not None}
     loc = NightLocalizer(sthn, weights, mbtiles, device=a.device, **gates)
     save = Path(a.save_frames) if a.save_frames else None

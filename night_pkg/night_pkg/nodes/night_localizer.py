@@ -39,6 +39,10 @@ STHN_QUERY_PX      = 512
 # ran away to 2.4 km while the consistency stayed ~0.9; >= 0.88 (350 m) held
 # at every heading.
 MIN_QUERY_COVERAGE = 0.85
+# Share of the reference the frame's ground pixels must cover once the empty wedges of a
+# straightened (tilted) frame are removed; the wedges are filled with the mean, which
+# STHN tolerated down to ~0.6 on synthetic frames (tilt 20 deg at 400 m: 0.57-0.71).
+MIN_GROUND_COVERAGE = 0.55
 
 
 def ground_resolution_m(lat, zoom):
@@ -46,24 +50,45 @@ def ground_resolution_m(lat, zoom):
     return 40_075_016.686 * math.cos(math.radians(lat)) / (2 ** zoom) / 256.0
 
 
-def normalize_query(img_bgr, lat, zoom, altitude_m, hfov_deg, heading_deg=None):
+def image_valid_mask(img_bgr):
+    """Pixels that carry a picture: the black wedges a straightened (tilted) frame or an
+    undistorted lens leaves at its edges are not ground. Only exact-zero regions wide
+    enough to survive a 7 px opening AND touching the image edge count as empty, so
+    scattered clipped pixels (AGC) and cold objects inside the frame stay valid."""
+    g = img_bgr if img_bgr.ndim == 2 else cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+    zero = (g == 0).astype(np.uint8)
+    if not zero.any():
+        return np.full(g.shape, 255, np.uint8)
+    zero = cv2.morphologyEx(zero, cv2.MORPH_OPEN, np.ones((7, 7), np.uint8))
+    n, lab = cv2.connectedComponents(zero, connectivity=4)
+    edge = np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]]))
+    empty = np.isin(lab, edge[edge > 0])
+    return np.where(empty, 0, 255).astype(np.uint8)
+
+
+def normalize_query(img_bgr, lat, zoom, altitude_m, hfov_deg, heading_deg=None, return_mask=False):
     """Thermal frame → north-up, satellite-resolution, STHN_QUERY_PX square.
 
     altitude_m: height above ground; hfov_deg: horizontal field of view of the
     (nadir) camera; heading_deg: direction of the image top, clockwise from
     north (None = assume north-up). Returns (query_bgr, info) or (None, info)
-    with info["reason"] when the frame cannot be brought to scale.
+    with info["reason"] when the frame cannot be brought to scale; with
+    return_mask, a third value: the query's ground-covered pixels (255) or None.
+    Empty borders of the frame (image_valid_mask) do not count as coverage.
     """
     info = {}
+
+    def _out(q, m=None):
+        return (q, info, m) if return_mask else (q, info)
     if altitude_m is None or not math.isfinite(altitude_m):
         info["reason"] = "altitude unknown — the thermal image cannot be scaled to the map"
-        return None, info
+        return _out(None)
     if altitude_m <= 1.0:
         info["reason"] = f"vehicle on the ground ({altitude_m:.0f} m): no ground footprint to match"
-        return None, info
+        return _out(None)
     if hfov_deg is None or not (1.0 < hfov_deg < 170.0):
         info["reason"] = "camera field of view not configured (camera_hfov_deg)"
-        return None, info
+        return _out(None)
     h, w = img_bgr.shape[:2]
     footprint_w = 2.0 * altitude_m * math.tan(math.radians(hfov_deg) / 2.0)
     gsd_cam = footprint_w / w
@@ -72,7 +97,11 @@ def normalize_query(img_bgr, lat, zoom, altitude_m, hfov_deg, heading_deg=None):
     info.update(footprint_w_m=footprint_w, footprint_h_m=footprint_w * h / w,
                 gsd_cam_m=gsd_cam, gsd_map_m=gsd_map, scale=scale,
                 heading_deg=heading_deg)
-    mask = np.full((h, w), 255, np.uint8)
+    valid = image_valid_mask(img_bgr)
+    empty = 1.0 - float(np.count_nonzero(valid)) / valid.size
+    info["empty_share"] = empty
+    # channel 0: the frame's footprint; channel 1: its pixels that show ground
+    mask = np.dstack([np.full_like(valid, 255), valid])
     if heading_deg is not None and math.isfinite(heading_deg) and abs(heading_deg) > 0.01:
         # The image top points along the heading, i.e. the camera image is the
         # north-up view turned counter-clockwise by the heading (OpenCV: positive
@@ -91,23 +120,89 @@ def normalize_query(img_bgr, lat, zoom, altitude_m, hfov_deg, heading_deg=None):
     mask = cv2.resize(mask, (nw, nh), interpolation=cv2.INTER_NEAREST)
     q = STHN_QUERY_PX
     out = np.zeros((q, q, 3), np.uint8)
-    out_mask = np.zeros((q, q), np.uint8)
+    out_mask = np.zeros((q, q, 2), np.uint8)
     sx, sy = (nw - q) // 2, (nh - q) // 2          # source crop origin (may be < 0)
     x0, y0 = max(0, -sx), max(0, -sy)
     x1, y1 = min(q, nw - sx), min(q, nh - sy)
     out[y0:y1, x0:x1] = img[y0 + sy:y1 + sy, x0 + sx:x1 + sx]
     out_mask[y0:y1, x0:x1] = mask[y0 + sy:y1 + sy, x0 + sx:x1 + sx]
-    coverage = float(np.count_nonzero(out_mask)) / (q * q)
+    coverage = float(np.count_nonzero(out_mask[..., 0])) / (q * q)
+    ground = float(np.count_nonzero(out_mask[..., 1])) / (q * q)
+    out_mask = out_mask[..., 1].copy()
     info["coverage"] = coverage
+    info["ground_coverage"] = ground
+    if coverage >= MIN_QUERY_COVERAGE and ground < MIN_GROUND_COVERAGE:
+        info["reason"] = (f"only {ground:.0%} of the {q * gsd_map:.0f} m reference shows ground: "
+                          f"{empty:.0%} of the frame is empty (camera tilted, straightened frame)")
+        return _out(None)
     if coverage < MIN_QUERY_COVERAGE:
         info["reason"] = (f"camera footprint too small for night matching ({footprint_w:.0f} m wide "
                           f"at {altitude_m:.0f} m, covers {coverage:.0%} of the {q * gsd_map:.0f} m "
                           f"reference) — fly higher")
-        return None, info
+        return _out(None)
     if coverage < 0.999:                           # fill the uncovered border with the mean
         mean = cv2.mean(out, mask=out_mask)[:3]
         out[out_mask == 0] = np.array(mean, dtype=np.uint8)
-    return out, info
+    return _out(out, out_mask)
+
+
+def _edges(grey):
+    """Polarity-free structure image: gradient magnitude of the lightly smoothed picture
+    (a hot road on a cool field and a dark road on a bright field give the same edges)."""
+    g = cv2.GaussianBlur(grey.astype(np.float32), (0, 0), 1.2)
+    gx = cv2.Sobel(g, cv2.CV_32F, 1, 0, ksize=3)
+    gy = cv2.Sobel(g, cv2.CV_32F, 0, 1, ksize=3)
+    return cv2.GaussianBlur(cv2.magnitude(gx, gy), (0, 0), 1.0)
+
+
+def _ncc(a, b, m):
+    a, b = a[m], b[m]
+    if a.size < 100:
+        return 0.0
+    a = a - a.mean()
+    b = b - b.mean()
+    d = math.sqrt(float((a * a).sum()) * float((b * b).sum()))
+    return float((a * b).sum()) / d if d > 1e-9 else 0.0
+
+
+VERIFY_SIZE = 256           # the map check runs at STHN's input scale (~2 m/px)
+# Gates measured on synthetic frames (navera_tools/bench/night_conditions.py, 2026-10-17;
+# docs/VALIDATION_STATUS.md). The re-check is the strong one: from two search centres
+# 150 m apart, correct fixes mostly agreed within 25 m while wrong ones disagreed by
+# 27-480 m. The map correlation only refuses frames that do not resemble the map at all.
+MIN_MATCH_NCC = 0.05
+RECHECK_OFFSET_M = 150.0
+RECHECK_MAX_M = 25.0
+
+
+def verify_match(query_bgr, query_mask, sat_bgr, corners_rw, resize_width=256):
+    """Does the satellite map, cut where STHN put the frame, look like the frame?
+
+    STHN always returns a quad, even for a frame with no information (fog, cloud,
+    sea, sensor noise): its own geometric consistency stays ~1 and the position
+    sits near the search centre. This check is independent of the network: the
+    satellite patch is warped into the frame by the predicted homography and the
+    two edge images are correlated (NCC of gradient magnitudes: polarity-free, so
+    black-hot and white-hot frames score alike).
+
+    Returns {"ncc": the correlation}; the threshold is the caller's. Synthetic
+    frames: correct fixes 0.08 (5th percentile) to 0.30 (median); a real thermal
+    camera will score lower against a daylight map (not measured).
+    """
+    n = VERIFY_SIZE
+    q = cv2.cvtColor(query_bgr, cv2.COLOR_BGR2GRAY) if query_bgr.ndim == 3 else query_bgr
+    q = cv2.resize(q, (n, n), interpolation=cv2.INTER_AREA)
+    m = np.full((n, n), 255, np.uint8) if query_mask is None else cv2.resize(
+        query_mask, (n, n), interpolation=cv2.INTER_NEAREST)
+    m = cv2.erode(m, np.ones((9, 9), np.uint8)) > 0
+    s = cv2.cvtColor(sat_bgr, cv2.COLOR_BGR2GRAY) if sat_bgr.ndim == 3 else sat_bgr
+    k = s.shape[1] / float(resize_width)                   # rw pixel -> satellite patch pixel
+    src = np.array([[0, 0], [n - 1, 0], [n - 1, n - 1], [0, n - 1]], np.float32)
+    dst = ((np.asarray(corners_rw, np.float64) + 0.5) * k - 0.5).astype(np.float32)
+    H = cv2.getPerspectiveTransform(src, dst)              # frame pixel -> satellite pixel
+    w = cv2.warpPerspective(s, H, (n, n), flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP,
+                            borderMode=cv2.BORDER_REFLECT)
+    return {"ncc": _ncc(_edges(q), _edges(w), m)}
 
 
 # ─── Tile utilities (MBTiles → numpy) ────────────────────────────────────────
@@ -244,11 +339,20 @@ class NightLocalizer:
         zoom: int = 17,
         device: str = None,
         conf_threshold: float = 0.30,
+        min_match_ncc: float = MIN_MATCH_NCC,
+        recheck_offset_m: float = RECHECK_OFFSET_M,
+        recheck_max_m: float = RECHECK_MAX_M,
         mixed_precision: bool = False,
         map_offset_deg: tuple = (0.0, 0.0),
     ):
         self.zoom           = zoom
         self.conf_threshold = conf_threshold
+        # map-check gate (verify_match); None = measured and reported, not enforced
+        self.min_match_ncc = min_match_ncc
+        # second-centre re-check (_recheck): offset of the second search centre, and the
+        # largest disagreement accepted (None = measured, not enforced)
+        self.recheck_offset_m = recheck_offset_m
+        self.recheck_max_m = recheck_max_m
         self.map_offset_deg = (float(map_offset_deg[0]), float(map_offset_deg[1]))
         self.mixed_precision = bool(mixed_precision)   # fp16 autocast au forward (network.py:110/139)
         self.device     = device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -525,10 +629,73 @@ class NightLocalizer:
 
     # ── Main inference ────────────────────────────────────────────────────────
 
-    @torch.no_grad()
     def localize(self, query_bgr: np.ndarray, prior_lat: float, prior_lon: float,
                  altitude_m: float = None, hfov_deg: float = None,
-                 heading_deg: float = None, require_scale: bool = True) -> dict:
+                 heading_deg: float = None, require_scale: bool = True,
+                 heading_retry_deg=()) -> dict:
+        """STHN fix (see _localize_once); when the map check fails and heading_retry_deg
+        is given (e.g. (10, -10, 20, -20)), the frame is tried again turned by each offset
+        and the first verified fix is kept (STHN does not absorb a heading error above
+        ~5-10 deg: the frame must be north-up). Costs one more inference per retry, only
+        on frames that failed the map check."""
+        def attempt(heading):
+            a = self._localize_once(query_bgr, prior_lat, prior_lon, altitude_m, hfov_deg,
+                                    heading, require_scale)
+            if a.get("success") and self.recheck_offset_m:
+                a = self._recheck(a, query_bgr, prior_lat, prior_lon, altitude_m, hfov_deg,
+                                  heading, require_scale)
+            return a
+
+        r = attempt(heading_deg)
+        if (r.get("success") or not r.get("map_check_failed") or heading_deg is None
+                or not heading_retry_deg):
+            return r
+        total = r["dt_ms"]
+        for d in heading_retry_deg:
+            t = attempt((heading_deg + d) % 360.0)
+            total += t["dt_ms"]
+            if t.get("success"):
+                t["heading_correction_deg"] = float(d)
+                t["dt_ms"] = total
+                return t
+        r["dt_ms"] = total
+        r["reason"] += f" (also with the heading turned by {', '.join(f'{d:+g}' for d in heading_retry_deg)} deg)"
+        return r
+
+    def _recheck(self, r, query_bgr, prior_lat, prior_lon, altitude_m, hfov_deg, heading_deg,
+                 require_scale):
+        """Second opinion from a search centre moved by recheck_offset_m: a frame that
+        really matches the map lands on the same ground from both centres; a frame with
+        no usable information (cloud, fog, sea, noise, wrong heading) stays near each
+        search centre, so the two answers differ by about the offset."""
+        d = self.recheck_offset_m / math.sqrt(2.0)              # towards the north-east
+        lat2 = prior_lat + d / 111_320.0
+        lon2 = prior_lon + d / (111_320.0 * math.cos(math.radians(prior_lat)))
+        s = self._localize_once(query_bgr, lat2, lon2, altitude_m, hfov_deg, heading_deg,
+                                require_scale)
+        r["dt_ms"] += s["dt_ms"]
+        if not s.get("success"):
+            gap = None
+        else:
+            dn = (s["lat"] - r["lat"]) * 111_320.0
+            de = (s["lon"] - r["lon"]) * 111_320.0 * math.cos(math.radians(r["lat"]))
+            gap = math.hypot(dn, de)
+        r["recheck_m"] = gap
+        if self.recheck_max_m is not None and (gap is None or gap > self.recheck_max_m):
+            why = ("not confirmed from a second search centre "
+                   + (f"({gap:.0f} m apart, max {self.recheck_max_m:.0f} m)" if gap is not None
+                      else f"(second try failed: {s.get('reason', 'rejected')})"))
+            logger.warning(f"STHN prediction rejected: {why}")
+            r.update(success=False, lat=prior_lat, lon=prior_lon, reason=why, map_check_failed=True)
+        else:
+            # the two answers agree: their mean, which halves the network's own spread
+            r["lat"], r["lon"] = (r["lat"] + s["lat"]) / 2.0, (r["lon"] + s["lon"]) / 2.0
+        return r
+
+    @torch.no_grad()
+    def _localize_once(self, query_bgr: np.ndarray, prior_lat: float, prior_lon: float,
+                       altitude_m: float = None, hfov_deg: float = None,
+                       heading_deg: float = None, require_scale: bool = True) -> dict:
         """
         Run STHN inference.
 
@@ -560,14 +727,15 @@ class NightLocalizer:
         _FAIL.update(search)
 
         # 0. Bring the thermal frame to the map's scale and orientation
-        query, qinfo = normalize_query(query_bgr, prior_lat, self.zoom, altitude_m,
-                                       hfov_deg, heading_deg)
+        query, qinfo, qmask = normalize_query(query_bgr, prior_lat, self.zoom, altitude_m,
+                                              hfov_deg, heading_deg, return_mask=True)
         _FAIL["query"] = {k: v for k, v in qinfo.items() if k != "reason"}
         if query is None:
             if require_scale:
                 _FAIL["reason"] = qinfo["reason"]
                 return _FAIL
             query = query_bgr                     # legacy: unscaled (known to drift)
+            qmask = None
 
         # 1. Satellite reference patch centred on the prior
         try:
@@ -616,6 +784,21 @@ class NightLocalizer:
         inside = 0.0 <= u <= STHN_DATABASE_SIZE and 0.0 <= v <= STHN_DATABASE_SIZE
         dt_ms = (time.perf_counter() - t0) * 1000.0
 
+        verify = None
+        if inside and conf >= self.conf_threshold:
+            verify = verify_match(query, qmask, sat_patch, corners, STHN_RESIZE_WIDTH)
+            dt_ms = (time.perf_counter() - t0) * 1000.0
+        weak = None
+        if verify is not None:
+            if self.min_match_ncc is not None and verify["ncc"] < self.min_match_ncc:
+                weak = (f"map check failed: frame and map correlate {verify['ncc']:.2f} "
+                        f"(min {self.min_match_ncc:.2f})")
+        if weak:
+            logger.warning(f"STHN prediction rejected: {weak}")
+            return {"success": False, "lat": prior_lat, "lon": prior_lon,
+                    "conf": conf, "dt_ms": dt_ms, "rms_px": disp_px, "verify": verify,
+                    "raw_lat": prior_lat, "raw_lon": prior_lon, **search,
+                    "query": _FAIL["query"], "reason": weak, "map_check_failed": True}
         if not inside or conf < self.conf_threshold:
             logger.warning(
                 f"STHN prediction rejected: consistency {conf:.2f} (min {self.conf_threshold:.2f}), "
@@ -653,6 +836,7 @@ class NightLocalizer:
             "raw_lon": raw_lon,
             "conf":    conf,
             "rms_px":  disp_px,
+            "verify":  verify,
             "dt_ms":   dt_ms,
         }
 

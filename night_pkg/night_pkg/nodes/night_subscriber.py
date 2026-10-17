@@ -53,7 +53,8 @@ from cv_bridge import CvBridge
 
 # Import the existing STHN wrapper (UNMODIFIED user code).
 # NightLocalizer.localize(query_bgr, prior_lat, prior_lon) -> dict
-from night_pkg.nodes.night_localizer import NightLocalizer
+from night_pkg.nodes.night_localizer import (MIN_MATCH_NCC, RECHECK_MAX_M, RECHECK_OFFSET_M,
+                                             NightLocalizer)
 from navera_msgs.msg import NavStatus, PositionEstimate
 
 # Typed source contract (estimator step 6) — mode is the HONESTY axis:
@@ -70,6 +71,12 @@ _NIGHT_MODEL_BY_SRC = {
     "dead_reckon": "dead_reckon_v1",
 }
 
+
+
+def _gate(value):
+    """A map-check threshold parameter: <= -1 (or not finite) disables that gate."""
+    v = float(value)
+    return v if math.isfinite(v) and v > -1.0 else None
 
 
 def image_to_bgr8(bridge, msg: Image):
@@ -143,6 +150,20 @@ class NightSubscriber(Node):
         # with a high consistency score; without this the track ran away (2.4 km).
         declare_float(self, "max_speed_mps", 30.0)
         declare_float(self, "gate_margin_m", 30.0)
+        # Wrong-fix checks. STHN returns a confident quad near the search centre for frames
+        # with no information (cloud, sea, salt flat, noise, heading off > 10 deg): measured
+        # on synthetic frames, every such frame was accepted 200-400 m off. Each fix is now
+        # re-run from a second search centre recheck_offset_m away and kept only if both
+        # agree within recheck_max_m (costs a second inference), and the map cut where STHN
+        # put the frame must correlate with it (min_match_ncc). <= -1 disables a check.
+        declare_float(self, "min_match_ncc", MIN_MATCH_NCC)
+        declare_float(self, "recheck_offset_m", RECHECK_OFFSET_M)
+        declare_float(self, "recheck_max_m", RECHECK_MAX_M)
+        # heading offsets (deg) tried again when a frame fails the checks — for a heading
+        # source that can be 10-20 deg off (magnetometer); each costs two more inferences
+        self.declare_parameter("heading_retry_deg", "")
+        self.heading_retry_deg = tuple(
+            float(x) for x in str(self.get_parameter("heading_retry_deg").value).split(",") if x.strip())
 
         sthn_dir   = self.get_parameter("sthn_dir").value
         weights    = self.get_parameter("weights").value
@@ -205,6 +226,9 @@ class NightSubscriber(Node):
             self.localizer = NightLocalizer(
                 sthn_dir=sthn_dir, weights=weights, mbtiles=mbtiles,
                 zoom=zoom, conf_threshold=self.conf_threshold,
+                min_match_ncc=_gate(self.get_parameter("min_match_ncc").value),
+                recheck_offset_m=_gate(self.get_parameter("recheck_offset_m").value),
+                recheck_max_m=_gate(self.get_parameter("recheck_max_m").value),
                 mixed_precision=self.mixed_precision,
                 map_offset_deg=(float(self.get_parameter("map_offset_lat_deg").value),
                                 float(self.get_parameter("map_offset_lon_deg").value)),
@@ -449,10 +473,12 @@ class NightSubscriber(Node):
                 img, c_lat, c_lon,
                 altitude_m=float(alt) if alt is not None else None,
                 hfov_deg=self._hfov(meta),
-                heading_deg=heading)
+                heading_deg=heading,
+                heading_retry_deg=self.heading_retry_deg)
             result["heading_source"] = heading_src
             self._search = {k: result.get(k) for k in (
-                "search_center", "search_size_m", "footprint_quad", "query", "heading_source")}
+                "search_center", "search_size_m", "footprint_quad", "query", "heading_source",
+                "verify", "recheck_m", "heading_correction_deg")}
             conf   = float(result.get("conf", 0.0) or 0.0)
 
             self.get_logger().info(
