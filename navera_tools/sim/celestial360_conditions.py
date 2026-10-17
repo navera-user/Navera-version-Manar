@@ -106,7 +106,7 @@ class Scene:
         self.lenses = sky360.default_lenses()                  # the TRUE lenses (the solver keeps the defaults)
         for L in self.lenses:
             L.f *= cond.f_true
-            L.k1 = cond.k1_true
+            L.k1 += cond.k1_true                          # error added to the lens model's own radial term
             if cond.centre_off_px:
                 a = rng.uniform(0, 2 * math.pi)
                 L.cx += cond.centre_off_px * math.cos(a)
@@ -569,7 +569,7 @@ def main():
                     help="lens model (truth and solver): sky360.default_lenses() as measured, or the first guess")
     a = ap.parse_args()
     if a.lens == "nominal":
-        os.environ["NAVERA_INSTA360_LENS"] = "/nonexistent"     # default_lenses() falls back to the first guess
+        sky360.LENS_FILE = "/nonexistent"                         # default_lenses() falls back to the first guess
     if a.solver:
         import importlib.util
         global _SOLVER
