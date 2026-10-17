@@ -31,6 +31,7 @@ from navera_tools.field.reprocess360 import rotvec  # noqa: E402
 
 W, SW, SH = "NAVERA lens", 1920, 1080
 LENS_FILE = os.path.expanduser("~/.navera_sim/insta360_usb_lens.json")
+POSE_FILE = os.path.expanduser("~/.navera_sim/insta360_screen_pose.json")
 
 
 def grid(nx, ny, margin=90):
@@ -142,7 +143,11 @@ def main():
         d[lens0.name] = {k: report["lens"][k] for k in ("f", "k1", "cx", "cy")}
         d[lens0.name].update(measured="screen dot grid " + time.strftime("%Y-%m-%d"), rms_deg=report["fine"]["rms_deg"])
         json.dump(d, open(LENS_FILE, "w"), indent=1)
-        print("saved", LENS_FILE)
+        # the screen's pose in the camera's IMU frame, for the star bench (stars drawn at their true angles)
+        json.dump({"lens": lens0.name, "rotvec": [float(v) for v in params[4:7]], "T_mm": [float(v) for v in params[7:10]],
+                   "mm_per_px": mm, "screen_px": [SW, SH], "measured": time.strftime("%Y-%m-%d %H:%M")},
+                  open(POSE_FILE, "w"), indent=1)
+        print("saved", LENS_FILE, POSE_FILE)
     cam.close()
     cv2.destroyAllWindows()
     os._exit(0)
