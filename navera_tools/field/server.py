@@ -478,6 +478,7 @@ class Field:
             s.log("frames", rec)
             return
         self.solving, self.solving_since = True, time.time()
+        rec["t_exp"] = round(texp, 3)                     # Jetson time of the exposure (the phone track is on this clock)
         threading.Thread(target=self._solve360, args=(s, rec, img, np.array(up), texp), daemon=True).start()
 
     def _solve360(self, s, rec, img, up, texp):
@@ -496,7 +497,7 @@ class Field:
                     s.event("lens_focal_found", f_scale=self.f_scale)
                 sigma = ATTITUDE_SIGMA_360_DEG * report_mod.KM_PER_DEGREE + abs(off) * report_mod.SKY_KM_PER_SECOND
                 rec.update(solved=True, lat=r["lat"], lon=r["lon"], matched=r["matched"], used=r["used"],
-                           rms_deg=r["rms_deg"], f_scale=r["f_scale"], sigma_km=round(sigma, 1))
+                           rms_deg=r["rms_deg"], f_scale=r["f_scale"], sigma_km=round(sigma, 1), R_icrs_imu=r["R_icrs_imu"])
                 p = self.phone
                 if p.get("lat") is not None:
                     rec["err_km_live"] = round(report_mod.haversine_km(r["lat"], r["lon"], p["lat"], p["lon"]), 1)

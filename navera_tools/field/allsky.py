@@ -227,5 +227,6 @@ def locate(frame: np.ndarray, up_imu: np.ndarray, utc: str, cat: Catalogue,
     ra_a, dec_a = apparent_radec(ra, dec, utc)
     out.update(solved=True, lat=dec_a, lon=(ra_a - gast_deg(utc) + 540.0) % 360.0 - 180.0, f_scale=round(fs, 5),
                matched=int(len(idx)), used=int(n_used), rms_deg=round(rms, 3),
-               brightest_matched_mag=round(float(cat.mag[kidx].min()), 2), faintest_matched_mag=round(float(cat.mag[kidx].max()), 2))
+               brightest_matched_mag=round(float(cat.mag[kidx].min()), 2), faintest_matched_mag=round(float(cat.mag[kidx].max()), 2),
+               R_icrs_imu=np.round(R, 8).tolist())                  # the camera's orientation among the stars (J2000)
     return out
