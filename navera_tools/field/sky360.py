@@ -60,8 +60,25 @@ R_RIGHT = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]])
 F_GUESS = 1040.0 / math.radians(100.0)         # circle edge taken as 100 degrees off axis (not yet measured)
 
 
+LENS_FILE = os.environ.get("NAVERA_INSTA360_LENS", os.path.expanduser("~/.navera_sim/insta360_usb_lens.json"))
+
+
 def default_lenses() -> List[Lens]:
-    return [Lens("left", 938.5, 969.5, F_GUESS, R_LEFT), Lens("right", 2906.7, 966.2, F_GUESS, R_RIGHT)]
+    """The two lenses: measured values (bench/lens_calib_screen.py) where there are some, else the first guess."""
+    lenses = [Lens("left", 938.5, 969.5, F_GUESS, R_LEFT), Lens("right", 2906.7, 966.2, F_GUESS, R_RIGHT)]
+    try:
+        import json
+        with open(LENS_FILE) as fh:
+            measured = json.load(fh)
+    except (OSError, ValueError):
+        return lenses
+    for lens in lenses:
+        m = measured.get(lens.name)
+        if isinstance(m, dict):
+            lens.f, lens.k1 = float(m.get("f", lens.f)), float(m.get("k1", 0.0))
+            lens.cx = float(m.get("cx", lens.cx))
+            lens.cy = float(m.get("cy", lens.cy))
+    return lenses
 
 
 @dataclass

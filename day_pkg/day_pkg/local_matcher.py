@@ -32,6 +32,8 @@ import cv2
 import numpy as np
 
 EQUATOR_M = 40075016.7
+# a pose further than this from straight down: the frame is not straight (its centre is off)
+NOT_STRAIGHT_DEG = 2.5
 
 
 def tile_xy(lat: float, lon: float, z: int) -> Tuple[float, float]:
@@ -71,6 +73,101 @@ def fix_sigma_m(inliers: int, map_mpp: float) -> float:
     inliers p95 7.6 m, 50-99 about 15 m, 20-49 p95 29-34 m, fewer p95 up to 47 m."""
     px = 4.0 if inliers >= 100 else 8.0 if inliers >= 50 else 15.0 if inliers >= 20 else 25.0
     return px * float(map_mpp)
+
+
+def camera_pose_on_map(frame_pts: np.ndarray, map_pts: np.ndarray, frame_size: Tuple[int, int],
+                       focal_px: float, map_mpp: float, ransac_px: Optional[float] = None) -> Optional[dict]:
+    """Where the camera itself is, from its matches on the flat map: the ground point under
+    it (map pixels), its height (m) and how far its optical axis is from straight down.
+
+    The frame centre is the point under the camera only if the frame is exactly straight
+    down; an attitude error e moves it by height x tan(e) (2 deg at 300 m: 10 m). The
+    matched points fix the camera's pose (planar PnP), which needs no attitude at all.
+    frame_pts: matched points in the (undistorted, pinhole) frame's pixels; map_pts: the
+    same points in map pixels; focal_px: the frame's focal length in pixels; ransac_px:
+    reject outliers first (RANSAC, this reprojection error in frame pixels), else use all.
+    None when the pose cannot be trusted (too few points, a poor fit)."""
+    if len(frame_pts) < 12 or not (focal_px > 0):
+        return None
+    w, h = frame_size
+    K = np.array([[focal_px, 0.0, w / 2.0], [0.0, focal_px, h / 2.0], [0.0, 0.0, 1.0]])
+    c = map_pts.mean(axis=0)
+    obj = np.zeros((len(map_pts), 3), np.float64)
+    obj[:, :2] = map_pts - c                       # X east, Y south (map pixels), Z down
+    img = frame_pts.astype(np.float64).reshape(-1, 1, 2)
+    frame_pts = frame_pts.reshape(-1, 2)
+    try:
+        if ransac_px:
+            ok, rv, tv, inl = cv2.solvePnPRansac(obj, img, K, None, iterationsCount=500,
+                                                 reprojectionError=ransac_px, confidence=0.999,
+                                                 flags=cv2.SOLVEPNP_IPPE)
+            if not ok or inl is None or len(inl) < 12:
+                return None
+            inl = inl.ravel()
+            obj, img, frame_pts = obj[inl], img[inl], frame_pts[inl]
+        else:
+            ok, rv, tv = cv2.solvePnP(obj, img, K, None, flags=cv2.SOLVEPNP_IPPE)
+            if not ok:
+                return None
+        rv, tv = cv2.solvePnPRefineLM(obj, img, K, None, rv, tv)
+    except cv2.error:
+        return None
+    R = cv2.Rodrigues(rv)[0]
+    C = (-R.T @ tv).ravel()                        # camera centre in the object frame
+    if C[2] >= 0:                                  # below the ground: a mirror solution
+        return None
+    proj = cv2.projectPoints(obj, rv, tv, K, None)[0].reshape(-1, 2)
+    rms = float(np.sqrt(np.mean(np.sum((proj - frame_pts) ** 2, axis=1))))
+    axis = R.T @ np.array([0.0, 0.0, 1.0])         # optical axis in the object frame
+    tilt = math.degrees(math.acos(max(-1.0, min(1.0, axis[2]))))
+    return dict(x=float(C[0] + c[0]), y=float(C[1] + c[1]), height_m=float(-C[2] * map_mpp),
+                tilt_deg=tilt, rms_px=rms, inliers=int(len(obj)))
+
+
+def refine_with_pose(res: dict, fit_pts: Tuple[np.ndarray, np.ndarray], near_pts: Tuple[np.ndarray, np.ndarray],
+                     frame_size: Tuple[int, int], hfov_deg: Optional[float], frame_m_per_px: float, scale: float,
+                     map_mpp: float, z: int, centre_px: Tuple[float, float],
+                     max_tilt_deg: float = 35.0) -> Optional[str]:
+    """Replace res's position by the point under the camera (camera_pose_on_map) when the
+    pose is consistent: small reprojection error, plausible tilt, the height it gives agrees
+    with the fitted scale. fit_pts: (frame px, map px) of the similarity fit's inliers;
+    near_pts: the matches near that fit, loosely (a frame far from straight down departs
+    from a similarity at its edges: its pose is solved again from these, with RANSAC).
+    Adds pose_tilt_deg / pose_height_m / pose_rms_px / position_from. Returns why the match
+    must be refused (the frame is clearly not straight down but its pose cannot be used:
+    its centre would be height x tan(tilt) off), else None.
+    Simulation (navera_tools/sim/dayvision_conditions.py, cross-date 2022 imagery, 300 m):
+    attitude error 1/2/3 deg in the straightening: 5.7/12/17 m -> see the commit message."""
+    res["position_from"] = "frame centre"
+    if hfov_deg is None or not (1.0 < float(hfov_deg) < 179.0):
+        return None
+    f = (frame_size[0] / 2.0) / math.tan(math.radians(float(hfov_deg)) / 2.0)
+    # frame pixels per map pixel (>= 1: below ~510 m a frame pixel is finer than the map's,
+    # and the match noise, in map pixels, is that many frame pixels)
+    px_map = max(1.0, map_mpp / frame_m_per_px)
+    pose = camera_pose_on_map(fit_pts[0], fit_pts[1], frame_size, f, map_mpp)
+    if pose is not None and pose["tilt_deg"] > NOT_STRAIGHT_DEG:
+        wide = camera_pose_on_map(near_pts[0], near_pts[1], frame_size, f, map_mpp, ransac_px=3.0 * px_map)
+        if wide is not None:
+            pose = wide
+    if pose is None:
+        return None
+    h_scale = f * frame_m_per_px * scale           # the height the similarity fit implies
+    res.update(pose_tilt_deg=round(pose["tilt_deg"], 2), pose_height_m=round(pose["height_m"], 1),
+               pose_rms_px=round(pose["rms_px"], 2), pose_inliers=pose["inliers"])
+    tilted = (f"frame {pose['tilt_deg']:.0f} deg from straight down by its pose, which is not "
+              "consistent: position unknown")
+    if pose["rms_px"] > 4.0 * px_map or pose["tilt_deg"] > max_tilt_deg or \
+            abs(pose["height_m"] / max(h_scale, 1e-6) - 1.0) > 0.15:
+        return tilted if pose["tilt_deg"] > NOT_STRAIGHT_DEG else None
+    # the camera is above the frame centre's ground point give or take height x tan(tilt):
+    # a pose much further than that is a poorly conditioned solution
+    shift_m = math.hypot(pose["x"] - centre_px[0], pose["y"] - centre_px[1]) * map_mpp
+    if shift_m > pose["height_m"] * math.tan(math.radians(pose["tilt_deg"] + 3.0)) + 5.0:
+        return tilted if pose["tilt_deg"] > NOT_STRAIGHT_DEG else None
+    res["predicted_lat"], res["predicted_lon"] = tile_px_to_latlon(pose["x"], pose["y"], z)
+    res["position_from"] = "camera pose"
+    return None
 
 
 class TileFeatures:
@@ -267,7 +364,7 @@ class LocalMatcher:
             # footprint would load several km of map per height tried)
             margin = min(0.5 * math.hypot(*frame.shape[:2]) * mpp, max_margin_m)
             r = self.locate(frame, prior, search_m, mpp, margin_m=margin, scale_tol=0.3,
-                            heading_deg=heading_deg, heading_tol_deg=heading_tol_deg)
+                            heading_deg=heading_deg, heading_tol_deg=heading_tol_deg, hfov_deg=hfov_deg)
             tried.append(round(h))
             if r.get("accepted") and int(r.get("inliers") or 0) >= min_inliers and \
                     (best is None or r["inliers"] > best["inliers"]):
@@ -282,8 +379,12 @@ class LocalMatcher:
 
     def locate(self, frame, prior: Tuple[float, float], search_m: float, frame_m_per_px: float,
                margin_m: Optional[float] = None, scale_tol: Optional[float] = None,
-               heading_deg: Optional[float] = None, heading_tol_deg: float = 20.0) -> dict:
+               heading_deg: Optional[float] = None, heading_tol_deg: float = 20.0,
+               hfov_deg: Optional[float] = None) -> dict:
         """Position of the frame centre near prior, as a result dict (see keys below).
+        hfov_deg (the frame's horizontal field of view): the position is then the point
+        under the camera from its pose on the map (refine_with_pose), not the frame
+        centre — it removes the error of the straightening attitude (height x tan(error)).
         scale_tol: accepted |fitted scale - 1| for this frame (default self.scale_tol) —
         wider when the frame's altitude is uncertain.
         heading_deg: azimuth of the frame's top from the attitude (live camera): the fitted
@@ -300,8 +401,14 @@ class LocalMatcher:
         if not (math.isfinite(s) and 0.02 < s < 50):
             res.update(error=f"frame scale {s:.3f} of the map resolution is not plausible")
             return res
-        q = self.clahe.apply(cv2.resize(grey, None, fx=s, fy=s,
-                                        interpolation=cv2.INTER_AREA if s < 1 else cv2.INTER_LINEAR))
+        # never enlarged: a frame coarser than the map is described at its own resolution and
+        # its keypoints scaled to map pixels (SIFT is scale invariant). Enlarging it 3x added no
+        # information and made SIFT 7 s of an 8.5 s frame on the Jetson (bench, 1486 m).
+        s_det = min(s, 1.0)
+        q = self.clahe.apply(grey if s_det == 1.0 else cv2.resize(grey, None, fx=s_det, fy=s_det,
+                                                                   interpolation=cv2.INTER_AREA))
+        k_up = s / s_det                                  # detected pixels -> map-scale pixels
+        q_shape = (grey.shape[0] * s, grey.shape[1] * s)
         if margin_m is None:                              # half the frame's diagonal on the ground
             margin_m = 0.5 * math.hypot(*grey.shape[:2]) * frame_m_per_px
         pm, dm = self.tiles.around(prior[0], prior[1], search_m + margin_m)
@@ -320,7 +427,7 @@ class LocalMatcher:
         if good < self.min_inliers:
             res.update(reason=f"{good} feature matches (min {self.min_inliers})")
             return res
-        src = np.float32([kq[i].pt for i in qi])
+        src = np.float32([kq[i].pt for i in qi]) * np.float32(k_up)
         dst = pm[idx[qi, 0]].astype(np.float32)
         A, inl = cv2.estimateAffinePartial2D(src, dst, method=cv2.RANSAC, ransacReprojThreshold=self.ransac_px,
                                              maxIters=5000, confidence=0.999)
@@ -329,14 +436,24 @@ class LocalMatcher:
             return res
         n_in = int(inl.sum())
         scale = math.hypot(A[0, 0], A[1, 0])              # 1.0 when the altitude/FOV prediction is right
-        px, py = A @ np.array([q.shape[1] / 2.0, q.shape[0] / 2.0, 1.0])
+        px, py = A @ np.array([q_shape[1] / 2.0, q_shape[0] / 2.0, 1.0])
         lat, lon = tile_px_to_latlon(float(px), float(py), self.z)
         res.update(predicted_lat=lat, predicted_lon=lon, inliers=n_in, matches=good,
                    scale_residual=round(scale, 3), rotation_deg=round(math.degrees(math.atan2(A[1, 0], A[0, 0])), 1),
                    score=float(n_in), fused_score=float(n_in), match=f"{n_in} inliers / {good} matches",
-                   spread=inlier_spread(src[inl.ravel() > 0], q.shape), sigma_m=fix_sigma_m(n_in, mpp_map))
+                   spread=inlier_spread(src[inl.ravel() > 0], q_shape), sigma_m=fix_sigma_m(n_in, mpp_map))
+        # the pose from the matches near the similarity fit (loosely: a tilted frame's edges
+        # depart from a similarity), its own RANSAC removing the rest
+        m = np.hypot(*(src @ A[:, :2].T.astype(np.float32) + A[:, 2].astype(np.float32) - dst).T) \
+            < 4.0 * self.ransac_px
+        fi = inl.ravel() > 0
+        not_straight = refine_with_pose(res, (src[fi] / np.float32(s), dst[fi]),
+                                        (src[m] / np.float32(s), dst[m]), (grey.shape[1], grey.shape[0]),
+                                        hfov_deg, frame_m_per_px, scale, mpp_map, self.z, (float(px), float(py)))
         if n_in < self.min_inliers:
             res["reason"] = f"{n_in} geometric inliers (min {self.min_inliers})"
+        elif not_straight:
+            res["reason"] = not_straight
         elif heading_deg is not None and abs((res["rotation_deg"] - heading_deg + 180) % 360 - 180) > heading_tol_deg:
             res["reason"] = (f"fitted rotation {res['rotation_deg']:.0f} deg ≠ heading {heading_deg:.0f} deg "
                              f"(±{heading_tol_deg:.0f}): wrong place")

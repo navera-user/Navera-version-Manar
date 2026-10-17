@@ -27,7 +27,9 @@ import yaml
 from day_pkg.local_matcher import LocalMatcher, map_m_per_px, tile_px_to_latlon
 
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-ap.add_argument("--calib", required=True)
+ap.add_argument("--calib", help="strip source: the webcam lens calibration (not used with --source 360)")
+ap.add_argument("--source", choices=["strip", "360"], default="strip",
+                help="strip: webcam mode (top lens, cropped); 360: full 360 over USB (Android mode), straight view on the screen")
 ap.add_argument("--area", required=True, help="tile_<z>_<x>_<y>.jpg directory around the start")
 ap.add_argument("--device", default="/dev/v4l/by-id/usb-Amba_Insta360_One_R-video-index0")
 ap.add_argument("--lat", type=float, required=True)
@@ -40,8 +42,8 @@ ap.add_argument("--gps-drift-rate", type=float, default=3.0, help="m/s of drift"
 ap.add_argument("--gps-lost-at", type=float, default=75.0, help="s: GPS lost")
 ap.add_argument("--screen-mm", type=float, default=527.0)
 ap.add_argument("--hfov", type=float, default=100.0, help="undistorted view width, deg")
-ap.add_argument("--latency", type=float, default=0.14,
-                help="s, the camera delay (camera_latency.py): a frame is dated arrival - latency")
+ap.add_argument("--latency", type=float, default=None,
+                help="s, the camera delay: a frame is dated arrival - latency (strip 0.14 measured, 360 1.71 measured)")
 ap.add_argument("--match-area", help="tiles NAVERA matches against (default --area)")
 ap.add_argument("--match-zoom", type=int, default=17)
 ap.add_argument("--matcher", choices=["sift", "learned"], default="learned",
@@ -53,8 +55,15 @@ ap.add_argument("--max-alt", type=float, default=2000.0)
 ap.add_argument("--height", type=float,
                 help="m: the height is known from the start (GPS altitude while it works): no search")
 ap.add_argument("--save-frame", help="write the latest camera frame (undistorted) here, for checks")
+ap.add_argument("--overlay", default="none",
+                help="conditions drawn over the map on the screen, comma-separated: clouds, haze, glare, dusk, birds, planes, drones")
+ap.add_argument("--overlay-amount", type=float, default=0.3, help="clouds: sky fraction covered; haze/dusk: strength 0-1")
 ap.add_argument("--out", default="screen_flight.csv")
 a = ap.parse_args()
+if a.latency is None:
+    a.latency = 1.71 if a.source == "360" else 0.14            # 360: fitted on 54 bench frames at 20-80 m/s
+if a.source == "strip" and not a.calib:
+    ap.error("--calib is needed with --source strip")
 
 Z = a.display_zoom
 MPP = map_m_per_px(a.lat, Z)                                  # ground metres per map/screen pixel
@@ -99,20 +108,30 @@ def offset(p, de, dn):
     return (p[0] + dn / 111320.0, p[1] + de / (111320.0 * math.cos(math.radians(a.lat))))
 
 
-# ---- the camera: top lens, undistorted to a straight view ----
-cal = yaml.safe_load(open(a.calib))
-K = np.array(cal["camera_matrix"]).reshape(3, 3)
-D = np.array(cal["distortion"]).reshape(4, 1)
-cx0, cy0, cw, ch = cal.get("crop") or (0, 0, cal["image_width"], cal["image_height"])
-OW, OH = 1200, ch
-fo = (OW / 2) / math.tan(math.radians(a.hfov / 2))
-m1, m2 = cv2.fisheye.initUndistortRectifyMap(K, D, np.eye(3), np.array([[fo, 0, OW / 2], [0, fo, OH / 2], [0, 0, 1]]),
-                                             (OW, OH), cv2.CV_16SC2)
-cap = cv2.VideoCapture(a.device, cv2.CAP_V4L2)
-cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
-cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+cv2.namedWindow("NAVERA flight", cv2.WND_PROP_FULLSCREEN)
+cv2.setWindowProperty("NAVERA flight", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+if a.source == "360":
+    # ---- the camera: full 360 over USB, a straight view centred on the screen it finds ----
+    from navera_tools.bench.view360 import Bench360
+    OW, OH = 1200, 900
+    cam360 = Bench360("NAVERA flight")
+    print("360 camera, screen found:", cam360.find_screen(a.hfov, OW, OH, screen_mm=a.screen_mm), flush=True)
+    last_frame_t = [0.0]
+else:
+    # ---- the camera: top lens, undistorted to a straight view ----
+    cal = yaml.safe_load(open(a.calib))
+    K = np.array(cal["camera_matrix"]).reshape(3, 3)
+    D = np.array(cal["distortion"]).reshape(4, 1)
+    cx0, cy0, cw, ch = cal.get("crop") or (0, 0, cal["image_width"], cal["image_height"])
+    OW, OH = 1200, ch
+    fo = (OW / 2) / math.tan(math.radians(a.hfov / 2))
+    m1, m2 = cv2.fisheye.initUndistortRectifyMap(K, D, np.eye(3), np.array([[fo, 0, OW / 2], [0, fo, OH / 2], [0, 0, 1]]),
+                                                 (OW, OH), cv2.CV_16SC2)
+    cap = cv2.VideoCapture(a.device, cv2.CAP_V4L2)
+    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
 if a.matcher == "learned":
     from day_pkg.learned_matcher import LearnedMatcher
@@ -124,6 +143,66 @@ shown = []                                 # (time shown, map px, map py): what 
 M.tiles.around(a.lat, a.lon, a.radius + 1500)                  # warm the map features
 stop = threading.Event()
 hud = {}
+
+
+_rng = np.random.default_rng(7)
+_cloud_field = None
+
+
+def draw_conditions(img, t):
+    """Weather and traffic over the map, as the real camera would see them (the truth is not changed)."""
+    global _cloud_field
+    kinds = set(a.overlay.split(",")) - {"none", ""}
+    h, w = img.shape[:2]
+    out = img.astype(np.float32)
+    if "clouds" in kinds:
+        if _cloud_field is None:                               # smooth random field, twice the screen, drifts slowly
+            noise = _rng.random((h // 8 * 2, w // 8 * 2)).astype(np.float32)
+            _cloud_field = cv2.resize(cv2.GaussianBlur(noise, (0, 0), 12), (w * 2, h * 2))
+            _cloud_field = (_cloud_field - _cloud_field.min()) / (np.ptp(_cloud_field) + 1e-6)
+        ox, oy = int(t * 15) % w, int(t * 6) % h
+        fld = _cloud_field[oy:oy + h, ox:ox + w]
+        thr = float(np.quantile(fld, 1 - a.overlay_amount))
+        alpha = np.clip((fld - thr) / 0.08, 0, 1)[..., None] * 0.95
+        out = out * (1 - alpha) + 245 * alpha
+        shadow = np.roll(np.roll(alpha, 60, 0), 90, 1) * 0.35      # cloud shadows on the ground
+        out = out * (1 - shadow)
+    if "haze" in kinds:
+        out = out * (1 - 0.6 * a.overlay_amount) + 210 * 0.6 * a.overlay_amount
+    if "dusk" in kinds:
+        out = out * (1 - 0.8 * a.overlay_amount) + _rng.normal(0, 6, out.shape)
+    if "glare" in kinds:
+        gx, gy = w * (0.3 + 0.4 * math.sin(t / 9)), h * (0.4 + 0.2 * math.cos(t / 7))
+        yy, xx = np.mgrid[0:h, 0:w]
+        out += 255 * np.exp(-((xx - gx) ** 2 + (yy - gy) ** 2) / (2 * 140.0 ** 2))[..., None]
+    if "birds" in kinds:
+        for k in range(6):                                     # small dark birds crossing fast
+            x = (t * (260 + 40 * k) + k * 333) % (w + 200) - 100
+            y = (k * 173 + 40 * math.sin(t * 2 + k)) % h
+            pts = np.array([[x - 14, y - 6], [x, y], [x + 14, y - 6]], np.int32)
+            cv2.polylines(out, [pts], False, (25, 25, 25), 4)
+    if "drones" in kinds:
+        for k in range(5):                                     # quadcopters, near (big) and far (small), erratic paths
+            size = (12, 18, 26, 40, 60)[k]
+            x = w * (0.5 + 0.42 * math.sin(t * (0.31 + 0.07 * k) + k)) + 25 * math.sin(t * 3.1 + k)
+            y = h * (0.5 + 0.40 * math.cos(t * (0.23 + 0.05 * k) + 2 * k)) + 20 * math.cos(t * 2.7 + k)
+            arm = size
+            col = (40, 40, 40) if k % 2 else (200, 200, 205)   # dark and light airframes
+            for dx, dy in ((1, 1), (1, -1)):
+                cv2.line(out, (int(x - dx * arm), int(y - dy * arm)), (int(x + dx * arm), int(y + dy * arm)), col, max(2, size // 6))
+            for dx, dy in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
+                cv2.circle(out, (int(x + dx * arm), int(y + dy * arm)), max(3, size // 2), col, max(1, size // 10))
+            cv2.circle(out, (int(x), int(y)), max(3, size // 3), col, -1)
+            if int(t * 3 + k) % 2:                             # blinking navigation lights
+                cv2.circle(out, (int(x - arm), int(y)), max(2, size // 8), (0, 0, 255), -1)
+                cv2.circle(out, (int(x + arm), int(y)), max(2, size // 8), (0, 255, 0), -1)
+    if "planes" in kinds:
+        for k in range(2):                                     # a plane crossing, white body and wings
+            x = (t * (120 + 60 * k) + k * 700) % (w + 400) - 200
+            y = h * (0.3 + 0.4 * k)
+            cv2.line(out, (int(x - 60), int(y)), (int(x + 60), int(y)), (235, 235, 235), 12)
+            cv2.line(out, (int(x), int(y - 70)), (int(x + 10), int(y + 70)), (235, 235, 235), 10)
+    return np.clip(out, 0, 255).astype(np.uint8)
 
 
 def draw_hud(img, t):
@@ -152,6 +231,14 @@ rows = []
 
 def grab():
     """The newest camera frame, undistorted, with its capture time (since the start)."""
+    if a.source == "360":
+        while not stop.is_set():                               # wait for a frame not used yet
+            img, t_arr = cam360.grab()
+            if img is not None and t_arr > last_frame_t[0]:
+                last_frame_t[0] = t_arr
+                return img, t_arr - t_start[0] - a.latency
+            time.sleep(0.02)
+        return None, 0.0
     # the driver queues frames while NAVERA works: drain the queue (a frame that waited
     # is late), the time is taken when the fresh one arrives
     while True:
@@ -263,15 +350,15 @@ def worker():
                          navera_err_m=None if out_err is None else round(out_err, 1), ms=round(ms),
                          inliers=r.get("inliers"), height_m=None if height is None else round(height),
                          vis_de=None if not vis else round(metres(vis, centre)[1], 1),
-                         vis_dn=None if not vis else round(metres(vis, centre)[2], 1)))
+                         vis_dn=None if not vis else round(metres(vis, centre)[2], 1),
+                         turned_deg=round(getattr(cam360, "turned_deg", 0.0), 1) if a.source == "360" else None))
         print(f"{t:6.1f}s {phase:5s} gps+{drift:5.0f}m  vision "
               f"{'%5.1f m' % vis_err if vis_err is not None else '  -   '}  NAVERA={src:7s} "
-              f"err {'%5.1f' % out_err if out_err is not None else '  -  '} m  {ms:4.0f} ms", flush=True)
+              f"err {'%5.1f' % out_err if out_err is not None else '  -  '} m  {ms:4.0f} ms"
+              + (f"  camera turned {cam360.turned_deg:5.1f} deg" if a.source == "360" else ""), flush=True)
     stop.refused_at = refused_at
 
 
-cv2.namedWindow("NAVERA flight", cv2.WND_PROP_FULLSCREEN)
-cv2.setWindowProperty("NAVERA flight", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 t_start[0] = time.time()
 th = threading.Thread(target=worker, daemon=True)
 th.start()
@@ -282,6 +369,8 @@ while True:
     px, py, _ = route(t)
     mx, my = int(round(px - x0 * 256 - SW / 2)), int(round(py - y0 * 256 - SH / 2))
     view = mosaic[my:my + SH, mx:mx + SW].copy()
+    if a.overlay != "none":
+        view = draw_conditions(view, t)
     draw_hud(view, t)
     cv2.imshow("NAVERA flight", view)
     key = cv2.waitKey(1)
@@ -308,4 +397,7 @@ for ph in ("gps", "drift", "lost"):
           + f"; {np.median([x['ms'] for x in rr]):.0f} ms/frame")
 ra = getattr(stop, "refused_at", None)
 print(f"GPS drift refused at t={ra[0]:.1f} s, after {ra[1]:.0f} m of drift" if ra else "GPS drift never refused")
-print(f"height measured from the image: {rows[-1]['height_m']} m; speed {a.speed} m/s; log {a.out}")
+print(f"height measured from the image: {rows[-1]['height_m']} m; speed {a.speed} m/s; overlay {a.overlay}; log {a.out}")
+if a.source == "360":
+    cam360.close()
+    os._exit(0)                                                # camera threads must not abort the exit

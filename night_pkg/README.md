@@ -21,6 +21,14 @@ the STHN homography network (`night_localizer.py`, one-stage weights from Huggin
 5. A geometric consistency score (0–1, not a probability) rejects impossible quadrilaterals,
    and a **motion gate** rejects a fix farther from the last one than the vehicle can travel
    (`max_speed_mps` × elapsed + `gate_margin_m`): the score does not detect a wrong match.
+6. **Wrong-fix checks** (2026-10-17): STHN returns a confident quad near the search centre even
+   for a frame with no information (sea, salt flat, cloud, noise, heading > 10° off). Each fix
+   is re-run from a search centre `recheck_offset_m` (150 m) away and kept only if both agree
+   within `recheck_max_m` (25 m; the mean is published), and the map warped into the frame
+   must correlate with it (`min_match_ncc`, 0.05). Synthetic stress test: wrong accepts
+   228 → 1 of 1272 frames (`navera_tools/bench/night_conditions.py`, docs/VALIDATION_STATUS.md).
+   Costs a second inference per accepted frame. The black wedges of a straightened (tilted)
+   frame are not ground: a frame showing < 55 % ground in the reference is refused.
 
 The weights must match the network exactly: loading refuses any missing weight.
 
@@ -34,14 +42,20 @@ In: `/thermal/image_raw` (bgr8 or mono16), `/thermal/frame_meta`, `/navera/estim
 `NAVERA_MBTILES`), `conf_threshold` (consistency), `max_dead_reckon_s`,
 `map_offset_lat_deg` / `map_offset_lon_deg` (map calibration, 0 unless measured),
 `mixed_precision`, **`camera_hfov_deg` (required; `NAVERA_THERMAL_HFOV_DEG`)**,
-`max_speed_mps` (30), `gate_margin_m` (30). `night_status` also carries the search square
+`max_speed_mps` (30), `gate_margin_m` (30), `recheck_offset_m` (150), `recheck_max_m` (25),
+`min_match_ncc` (0.05) — ≤ −1 disables a check — and `heading_retry_deg` (default empty; e.g.
+`"10,-10,20,-20"` for a magnetometer heading that can be 10–30° off: recovered 19/24 synthetic
+frames at 20–30° off, 1.4–1.8 s per failed frame). `night_status` also carries the search square
 (`search_center`, `search_size_m`), the matched footprint (`footprint_quad`) and the query
 geometry.
 
 ## Limits
 - Minimum altitude: the frame must cover ≥ 85 % of the 512 px (~500 m) reference — about
   350 m with an 84° camera (lower with a wider lens).
-- The heading from the IMU is magnetic (IMU-3); a 1.5° heading error was tolerated in tests.
+- The heading from the IMU is magnetic (IMU-3). Synthetic: 5° off is tolerated, 10° off loses a
+  third of the fixes, 20° off none without `heading_retry_deg`.
+- Height error: −10 % refuses half the frames at 400 m (footprint), −20 % all; +20 % keeps about
+  half. The search area is ±745 m around the prior: a prior farther off gives no fix.
 - GPU: ~225 ms/frame. On JetPack 6 the Jetson PyTorch build cannot load CUDA linear algebra;
   the small homography solves are then routed to the CPU automatically (same results).
 - The replay set's frames cover only ~190–300 m of ground (mostly sea): they are refused.
