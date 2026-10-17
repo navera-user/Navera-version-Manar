@@ -181,10 +181,47 @@ re-aimed between campaigns. **Not a flight measurement.**
   ground, mostly sea (measured by correlation with the map at 0.12–0.2 m/px); the former
   4.7 km "drift" came from feeding them at the wrong scale. The node now refuses them
   ("footprint too small").
+- **Conditions stress test (2026-10-17, `navera_tools/bench/night_conditions.py`).**
+  Synthetic frames rendered from the map through the simulator's camera geometry (75° ×
+  63°, 640 × 512, true attitude, straightened by `FrameBuilder` with a 0.5°/2° IMU error,
+  3 % height error, prior 100–250 m off, 400 m unless stated), 24 frames per condition,
+  the same poses in every condition. Before the fix STHN accepted **every** frame, including
+  frames with no position information, each 200–1000 m wrong with consistency ~1: 228 wrong
+  accepts (> 50 m) out of 1272. Each fix is now re-run from a search centre 150 m away and
+  kept only if both agree within 25 m, and the map warped into the frame must correlate
+  with it (gradient NCC ≥ 0.05); empty wedges of a straightened frame no longer count as
+  ground. Accepted / 24, median / max error (m), wrong accepts:
+
+  | Condition | Before | After |
+  |---|---|---|
+  | Nominal (urban + farmland) | 24, 10 / 20, 0 | 24, 10 / 24, 0 |
+  | Polarity inverted, NETD ×4, stale-NUC stripes, vignetting + narcissus, AGC jumps, hot spots (percentile or min-max AGC), birds + aircraft, occluded corner, fog (transmission 0.35), rain | 24, 9–11 / 18–25, 0 | 23–24, 9–11 / 16–29, 0 |
+  | Material remap (heuristic night emission: man-made warm, vegetation cool, water warm) | 24, 9 / 66, **1** | 21, 8 / 19, 0 |
+  | Crossover contrast ×0.12 / ×0.05 | 24 / 24, 11 / 19, 0 / **9** | 22 / 13, 10 / 10, 0 / 0 |
+  | Fog transmission 0.12 | 24, 11 / 26, 0 | 22, 10 / 21, 0 |
+  | Microbolometer smear 10–100 m/s (τ 12 ms) | 24, 10 / 20, 0 | 24, 9–10 / 24, 0 (≤ 1 px: no effect at 400 m) |
+  | Cloud below, 30 % / 60 % of the frame | 24 / 24, 69 / 208, **13 / 23** | 9 / 1, 11 / 13, 0 / 0 |
+  | Height 350 / 600 / 1000 / 1500 m (150–250 m: refused, footprint) | 6 / 24 / 24 / 24, 11–20, 0 | 5 / 24 / 23 / 23, 10–22, 0 |
+  | Heading error 5° / 10° / 20° / 30° | 24 each, 12 / 25 / 198 / 236, 0 / **4 / 22 / 24** | 23 / 16 / 0 / 0, 11 / 18, 0 / 1 (55 m) / 0 / 0 |
+  | … with `heading_retry_deg` 10,−10,20,−20 (12 frames) | — | 20°: 11/12, 30°: 8/12, 20 m median, 1 at 55 m; 1.4–1.8 s per frame |
+  | Tilt 10° / 20° (straightened) | 24 / 24, 9 / 10, **1 / 7** | 20 / 15, 8 / 8, 0 / 0 |
+  | Height error −20 % / −10 % / +10 % / +20 % | 0 / 12 / 24 / 24, —/15/10/16, 0 / 0 / **2 / 7** | 0 / 11 / 20 / 13, —/14/10/11, 0 |
+  | Prior 50 / 500 / 750 / 1000 m off | 24 each, 10 / 20 / 689 / 950, 0 / **2 / 24 / 24** | 24 / 13 / 0 / 0, 8 / 10, 0 |
+  | Terrain urban / farmland / coast | 24, 8 / 10 / 11, 0 | 24 / 22 / 24, 7 / 10 / 11, 0 |
+  | Coast with the sea as one temperature (LWIR) | 24, 15 / 225, **5** | 15, 11 / 25, 0 |
+  | Open sea / salt flat / sensor noise / uniform frame | 24 each, 236–269, **24 each** | 0 each |
+
+  Stated sigma: 100 % of accepted fixes within 3 sigma after (as low as 0–8 % before on the
+  failing conditions). Cost: a second STHN inference per accepted frame (~570 vs ~450 ms
+  per frame here, CPU shared with another job; ~225 ms per inference on an idle GPU). The
+  search area is ±745 m: a prior farther off cannot be found (now refused, not wrong).
+  Optimistic: the frames are grey renders of the very map STHN matches against; real LWIR
+  contrast follows materials and temperature, not visible albedo.
 
 **Not validated:** real thermal imagery (which differs from grey satellite images), real
-camera calibration, and any confidence calibration: the consistency score does not detect a
-wrong match, the motion gate does.
+camera calibration, and the wrong-fix thresholds (re-check 25 m, map correlation 0.05),
+set on synthetic frames only: a real thermal frame will correlate less with a daylight map.
+STHN's consistency score does not detect a wrong match; the re-check and the motion gate do.
 
 ### Celestial (`cn_pkg`)
 
