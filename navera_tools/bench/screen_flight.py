@@ -56,7 +56,7 @@ ap.add_argument("--height", type=float,
                 help="m: the height is known from the start (GPS altitude while it works): no search")
 ap.add_argument("--save-frame", help="write the latest camera frame (undistorted) here, for checks")
 ap.add_argument("--overlay", default="none",
-                help="conditions drawn over the map on the screen, comma-separated: clouds, haze, glare, dusk, birds, planes")
+                help="conditions drawn over the map on the screen, comma-separated: clouds, haze, glare, dusk, birds, planes, drones")
 ap.add_argument("--overlay-amount", type=float, default=0.3, help="clouds: sky fraction covered; haze/dusk: strength 0-1")
 ap.add_argument("--out", default="screen_flight.csv")
 a = ap.parse_args()
@@ -181,6 +181,21 @@ def draw_conditions(img, t):
             y = (k * 173 + 40 * math.sin(t * 2 + k)) % h
             pts = np.array([[x - 14, y - 6], [x, y], [x + 14, y - 6]], np.int32)
             cv2.polylines(out, [pts], False, (25, 25, 25), 4)
+    if "drones" in kinds:
+        for k in range(5):                                     # quadcopters, near (big) and far (small), erratic paths
+            size = (12, 18, 26, 40, 60)[k]
+            x = w * (0.5 + 0.42 * math.sin(t * (0.31 + 0.07 * k) + k)) + 25 * math.sin(t * 3.1 + k)
+            y = h * (0.5 + 0.40 * math.cos(t * (0.23 + 0.05 * k) + 2 * k)) + 20 * math.cos(t * 2.7 + k)
+            arm = size
+            col = (40, 40, 40) if k % 2 else (200, 200, 205)   # dark and light airframes
+            for dx, dy in ((1, 1), (1, -1)):
+                cv2.line(out, (int(x - dx * arm), int(y - dy * arm)), (int(x + dx * arm), int(y + dy * arm)), col, max(2, size // 6))
+            for dx, dy in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
+                cv2.circle(out, (int(x + dx * arm), int(y + dy * arm)), max(3, size // 2), col, max(1, size // 10))
+            cv2.circle(out, (int(x), int(y)), max(3, size // 3), col, -1)
+            if int(t * 3 + k) % 2:                             # blinking navigation lights
+                cv2.circle(out, (int(x - arm), int(y)), max(2, size // 8), (0, 0, 255), -1)
+                cv2.circle(out, (int(x + arm), int(y)), max(2, size // 8), (0, 255, 0), -1)
     if "planes" in kinds:
         for k in range(2):                                     # a plane crossing, white body and wings
             x = (t * (120 + 60 * k) + k * 700) % (w + 400) - 200

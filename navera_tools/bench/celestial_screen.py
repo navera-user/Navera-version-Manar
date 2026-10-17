@@ -3,7 +3,7 @@
 so that, seen from the camera, every star sits at its true angle; the camera's own optics, exposure
 and the all-sky identifier must recognise it.
 
-    python3 navera_tools/bench/celestial_screen.py [--limits 4,3,2.5] [--conditions none,clouds,planes,glow]
+    python3 navera_tools/bench/celestial_screen.py [--limits 4,3,2.5] [--conditions none,glow,planes,drones,clouds]
 
 What it measures (per star-brightness limit and condition): spots found, stars identified, the
 direction of the screen centre among the stars against what was drawn (angular error, degrees),
@@ -64,6 +64,13 @@ def draw_sky(ra0, dec0, hfov_deg, limit, condition, t, rng):
             cv2.circle(img, (int(px), int(py)), 4, 255, -1)
             if int(t * 2 + k) % 2:
                 cv2.circle(img, (int(px) + 20, int(py)), 3, 200, -1)
+    if condition == "drones":                                # drone lights: blinking red/green/white points moving erratically
+        for k in range(6):
+            px = SW * (0.5 + 0.45 * math.sin(t * (0.5 + 0.1 * k) + k)) + 30 * math.sin(t * 4 + k)
+            py = SH * (0.5 + 0.42 * math.cos(t * (0.4 + 0.1 * k) + 2 * k))
+            if int(t * 3 + k) % 2:
+                cv2.circle(img, (int(px), int(py)), 3, 255, -1)
+                cv2.circle(img, (int(px) + 14, int(py)), 3, 180, -1)
     if condition == "clouds":                                # opaque dark patches hiding ~40 % of the stars
         noise = cv2.GaussianBlur(rng.random((SH // 8, SW // 8)).astype(np.float32), (0, 0), 6)
         noise = cv2.resize(noise, (SW, SH))
@@ -74,7 +81,7 @@ def draw_sky(ra0, dec0, hfov_deg, limit, condition, t, rng):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limits", default="4,3,2.5")
-    ap.add_argument("--conditions", default="none,glow,planes,clouds")
+    ap.add_argument("--conditions", default="none,glow,planes,drones,clouds")
     ap.add_argument("--fields", default="88,7;200,-20;15,40", help="sky centres ra,dec;...")
     ap.add_argument("--out", default="celestial_screen.json")
     a = ap.parse_args()
