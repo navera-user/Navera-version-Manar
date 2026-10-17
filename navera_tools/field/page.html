@@ -141,7 +141,7 @@ function renderOp(){
   }else if(n===4){
     var f=S.last_fix||{};
     h=prog(4)+'<section class="card"><p class="mute mono">Step 4 of 5 · recording '+esc(S.recording||"")+'</p><h3>Drive</h3>'+
-      '<p>Keep the screen on. Drive normally. Straight roads are best.</p>'+
+      '<p>Keep the screen on. Drive normally. '+(S.mode==="360"?'<b>Every 2-3 minutes, stop the car for 20 seconds</b> (parking, red light): the sky fixes made while stopped are the reliable ones.':'Straight roads are best.')+'</p>'+
       '<div class="grid" style="margin:14px 0"><div class="m"><div class="v" id="v_frames">'+(S.frames||0)+'</div><div class="l">frames</div></div>'+
       '<div class="m"><div class="v" id="v_stars">'+((S.live||{}).confirmed==null?"–":S.live.confirmed)+'</div><div class="l">stars now</div></div>'+
       '<div class="m"><div class="v" id="v_err">'+(f.err_km==null?"–":f.err_km+" km")+'</div><div class="l">last error</div></div></div>'+

@@ -296,6 +296,23 @@ class Insta360Usb:
         with self._lock:
             return self._frame, self._frame_t
 
+    def stopped(self, window_s: float = 2.0) -> dict:
+        """Is the vehicle at rest? Vehicle acceleration tilts the measured 'up' (0.1 g braking or a curve = ~6 deg,
+        hundreds of km) without changing |a| enough to notice, so a trusted fix needs the vehicle stopped:
+        0.1 s means of the accelerometer steady within 0.003 g (engine vibration averages out) and rotation
+        under 0.5 deg/s, over window_s."""
+        with self._lock:
+            rows = [r for r in self._imu if r[0] >= time.time() - window_s]
+        if len(rows) < 400:
+            return {"stopped": False, "why": "no sensor data"}
+        a = (np.array([r[2:5] for r in rows]) - self.acc_bias) / self.acc_scale
+        w = np.array([r[5:8] for r in rows]) - self.gyro_bias
+        n = len(a) // 50 * 50
+        means = a[:n].reshape(-1, 50, 3).mean(axis=1)                 # 0.1 s blocks
+        acc_std = float(means.std(axis=0).max())
+        rate = float(np.degrees(np.linalg.norm(w[:n].reshape(-1, 50, 3).mean(axis=1), axis=1)).max())   # 0.1 s means too
+        return {"stopped": acc_std < 0.003 and rate < 0.5, "acc_std_g": round(acc_std, 4), "rate_dps": round(rate, 2)}
+
     def gravity(self, window_s: float = 1.0):
         """(unit 'down' vector in the IMU frame, accel norm g, max rotation rad/s) over the last window,
         or (None, ...) when the camera turned faster than max_rate_dps (the accelerometer then sees more than gravity)."""

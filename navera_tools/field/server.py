@@ -60,6 +60,7 @@ SOLVE_WINDOW_HFOV = 52.0
 # 360 mode: the camera's own accelerometer (6-position calibrated) gives 'up'; the lens-to-IMU mounting is not
 # measured yet, so the stated accuracy keeps a margin until a night calibrates it (first guess).
 ATTITUDE_SIGMA_360_DEG = 0.3
+MOVING_ATTITUDE_SIGMA_DEG = 3.0                     # vehicle moving: 'up' may hold its acceleration (simulated 0.1 g: hundreds of km)
 F_SCALE_SEARCH = (0.90, 0.95, 1.0, 1.05, 1.10)       # lens focal length not measured: searched once, then kept
 
 
@@ -187,6 +188,9 @@ class Camera360:
 
     def gravity(self):
         return self.cam.gravity() if self.cam else (None, None, None)
+
+    def stopped(self):
+        return self.cam.stopped() if self.cam else {"stopped": False, "why": "no camera"}
 
 
 class Field:
@@ -468,6 +472,9 @@ class Field:
         up, g, rate = self.camera.gravity()
         rec.update(mode="360", up_imu=None if up is None else [round(float(v), 6) for v in up],
                    accel_g=None if g is None else round(g, 5), rate_dps=None if rate is None else round(math.degrees(rate), 2))
+        st = self.camera.stopped() if hasattr(self.camera, "stopped") else {"stopped": True}
+        rec["stopped"] = bool(st.get("stopped"))          # moving: vehicle acceleration can tilt 'up' (not trusted)
+        rec["stillness"] = {k: v for k, v in st.items() if k != "stopped"}
         why = None
         if up is None:
             why = "camera moving or turning (its own sensor)" if g is not None else "no camera sensor data"
@@ -501,6 +508,8 @@ class Field:
                     s.event("lens_focal_found", f_scale=self.f_scale)
                 # the accelerometer (first guess) and the star fit (residuals, lenses' disagreement) add in quadrature
                 att = math.hypot(ATTITUDE_SIGMA_360_DEG, r.get("sigma_fit_deg") or 0.0)
+                if not rec.get("stopped", True):                 # moving: 0.1 g of braking/curve = ~6 deg of 'up'
+                    att = math.hypot(att, MOVING_ATTITUDE_SIGMA_DEG)
                 sigma = att * report_mod.KM_PER_DEGREE + abs(off) * report_mod.SKY_KM_PER_SECOND
                 rec.update(solved=True, lat=r["lat"], lon=r["lon"], matched=r["matched"], used=r["used"],
                            rms_deg=r["rms_deg"], f_scale=r["f_scale"], sigma_km=round(sigma, 1), R_icrs_imu=r["R_icrs_imu"],
