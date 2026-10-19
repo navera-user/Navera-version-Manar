@@ -148,7 +148,7 @@ def frames(raw_dir: str, every_frame: bool = False):
     saved = insta360_usb.time
     insta360_usb.time = clock.module()
     try:
-        t, last_ms = None, 0
+        t, last_ms, last_yield = None, 0, -1
         for t, kind, cam_ms, p in read_raw(raw_dir):
             clock.t = t
             d.feed(t, p)
@@ -156,12 +156,17 @@ def frames(raw_dir: str, every_frame: bool = False):
                 last_ms = cam_ms
             while d.new_frames:
                 ft, ms, f = d.new_frames.pop(0)
+                if ms <= last_yield:
+                    continue                             # released together with an earlier one: its own time is unknown
+                last_yield = ms
                 yield ft, ms, f, d
         if t is not None:
             d.flush(t, last_ms)
             while d.new_frames:
                 ft, ms, f = d.new_frames.pop(0)
-                yield ft, ms, f, d
+                if ms > last_yield:                      # the flush stamps what it releases with the last packet's ms
+                    last_yield = ms
+                    yield ft, ms, f, d
     finally:
         insta360_usb.time = saved
 

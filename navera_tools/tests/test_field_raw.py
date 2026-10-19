@@ -115,7 +115,9 @@ def test_replay_gives_the_live_drivers_imu_gravity_and_frames(tmp_path):
     assert rows[-len(live._imu):] == list(live._imu)
     seen = list(rp.frames(str(tmp_path)))
     keys = sum(1 for _, p in pk if p[3:4] == bytes([iu.KIND_VIDEO]) and iu._has_keyframe(p, 12))
-    assert len(seen) == keys and seen[-1][2].shape == (32, 64, 3)
+    # the frames the decoder still holds at the end come out together, with one time: only the first is kept
+    stamps = [ms for _, ms, _, _ in seen]
+    assert len(set(stamps)) == len(stamps) and keys - 3 <= len(seen) <= keys and seen[-1][2].shape == (32, 64, 3)
     _, ms, _, d = seen[-1]
     g_live, g_rep = live.gravity(at_ms=ms - 600), d.gravity(at_ms=ms - 600)
     assert g_rep[0] is not None and np.allclose(g_live[0], g_rep[0]) and g_live[1] == g_rep[1]
