@@ -60,7 +60,10 @@ SOLVE_WINDOW_HFOV = 52.0
 # 360 mode: the camera's own accelerometer (6-position calibrated) gives 'up'; the lens-to-IMU mounting is not
 # measured yet, so the stated accuracy keeps a margin until a night calibrates it (first guess).
 ATTITUDE_SIGMA_360_DEG = 0.3
-MOVING_ATTITUDE_SIGMA_DEG = 3.0                     # vehicle moving: 'up' may hold its acceleration (simulated 0.1 g: hundreds of km)
+# vehicle moving: 'up' may hold its acceleration. The |a| gate (allsky.ACCEL_NORM_TOL) does not bound it: 1-2 Hz body
+# bounce moves the 1 s mean of the vertical by 0.01-0.02 g, which hides 0.2 g of braking (simulated drive,
+# sim/car360_drive.py: 'up' up to 10.6 deg off in frames that passed every gate; 3.0 deg left 26 of 6872 outside 3 sigma).
+MOVING_ATTITUDE_SIGMA_DEG = 5.0
 F_SCALE_SEARCH = (0.90, 0.95, 1.0, 1.05, 1.10)       # lens focal length not measured: searched once, then kept
 
 
