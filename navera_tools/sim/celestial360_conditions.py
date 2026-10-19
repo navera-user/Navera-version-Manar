@@ -39,7 +39,7 @@ from navera_tools.field import allsky, sky360  # noqa: E402
 
 LAT, LON = 36.8, 10.2                     # Tunis area; the UTC hours below are night there in October
 WRONG_KM = 50.0
-F_SCALE_SEARCH = (0.90, 0.95, 1.0, 1.05, 1.10)   # the server's first-solve focal search (server.F_SCALE_SEARCH)
+F_SCALE_SEARCH = (0.96, 1.0, 1.04)   # the server's first-solve focal search (server.F_SCALE_SEARCH)
 EXPOSURE_S = 1.0 / 30.0
 ATTITUDE_SIGMA_360_DEG = 0.3                     # server.ATTITUDE_SIGMA_360_DEG (not imported: server pulls in cv2/http)
 

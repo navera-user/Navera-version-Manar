@@ -66,7 +66,10 @@ ATTITUDE_SIGMA_360_DEG = 0.3
 MOVING_ATTITUDE_SIGMA_DEG = 5.0
 STOPPED_SOLVE_GAP_S = 4.0                            # 360: while stopped, a frame every 4 s (a solve takes ~1-5 s)
 PHONE_MOVING_MPS = 1.0                               # phone GPS speed above which the car is not stopped (GPS noise ~0.3 m/s)
-F_SCALE_SEARCH = (0.90, 0.95, 1.0, 1.05, 1.10)       # lens focal length not measured: searched once, then kept
+# lens focal length: searched once on the first identified frame, then kept. Both lenses were measured to 87 deg
+# on the screen (bench/lens_calib_wide.py, 2026-10-19, f within ~0.5 %): +-4 % covers it with margin (was +-10 %
+# while unmeasured: 5 tries, a 6.6 s first solve and 5x the chance-match odds)
+F_SCALE_SEARCH = (0.96, 1.0, 1.04)
 # 360: the lens-to-IMU mounting angle and the accelerometer's residual tilt are one fixed tilt of 'up' in the camera
 # (1 deg = ~111 km on every fix; nothing in the stars shows it). While a reference position exists (the phone here,
 # NAVERA's GPS before it is lost in the product), stopped fixes measure it; it is learned on the first
