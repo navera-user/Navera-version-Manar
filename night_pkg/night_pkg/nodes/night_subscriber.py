@@ -38,7 +38,7 @@ import numpy as np
 
 import rclpy
 from navera_common.qos import SENSOR_QOS
-from navera_common.geo import dead_reckon, haversine_m, is_finite_latlon
+from navera_common.geo import is_finite_latlon
 from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
 from navera_common.pairing import FramePairer, exposure_stamp, stamp_ns
@@ -55,6 +55,7 @@ from cv_bridge import CvBridge
 # NightLocalizer.localize(query_bgr, prior_lat, prior_lon) -> dict
 from night_pkg.nodes.night_localizer import (MIN_MATCH_NCC, RECHECK_MAX_M, RECHECK_OFFSET_M,
                                              NightLocalizer)
+from night_pkg.nodes.night_tracker import NightTracker
 from navera_msgs.msg import NavStatus, PositionEstimate
 
 # Typed source contract (estimator step 6) — mode is the HONESTY axis:
@@ -140,7 +141,6 @@ class NightSubscriber(Node):
         declare_float(self, "max_altitude_rel_sigma", 0.15)
         self.max_alt_rel_sigma = float(self.get_parameter("max_altitude_rel_sigma").value)
         self.state_sigma = bool(self.get_parameter("state_sim_calibrated_sigma").value)
-        self._gps_lost_at = None              # when GPS stopped being the anchor (wall time)
         self._fix_sigma = None                # the sigma of the night fix being published
         self.declare_parameter("imu_topic", "/navera/sensors/imu")
         declare_float(self, "imu_heading_timeout_s", 1.0)
@@ -185,7 +185,6 @@ class NightSubscriber(Node):
         self.gate_margin_m = float(self.get_parameter("gate_margin_m").value)
         self._imu_heading = None          # (heading_deg, monotonic time)
         self._imu_timeout = float(self.get_parameter("imu_heading_timeout_s").value)
-        self._last_measured_time = None   # wall-clock of the last STHN / known fix
 
         # ── State ───────────────────────────────────────────────
         self.bridge        = CvBridge()
@@ -194,10 +193,9 @@ class NightSubscriber(Node):
         self._frame_count    = 0
         self._success_count  = 0
         self._reject_count   = 0
-        # anchor = dernier point RETENU (GPS vérité OU sortie STHN/DR). dt source.
-        self._anchor_lat  = None
-        self._anchor_lon  = None
-        self._anchor_time = None
+        # the track: anchor = last retained position (GPS, STHN or dead reckoning), motion
+        # gate, dead reckoning (wall-clock times)
+        self._track = NightTracker(self.max_speed_mps, self.gate_margin_m, self.max_dead_reckon_s)
         self._search = {}                # last search, for display in night_status
 
         # ── Banner (PRE-load) ──────────────────────────────────
@@ -324,12 +322,9 @@ class NightSubscriber(Node):
             return
         if self._gps_prior.update(msg.latitude, msg.longitude, msg.valid,
                                   msg.mode == PositionEstimate.MODE_MEASURED):
-            if self.shadow_mode and self._anchor_lat is not None:
+            if self.shadow_mode and self._track.has_anchor:
                 return
-            self._anchor_lat, self._anchor_lon = msg.latitude, msg.longitude
-            self._anchor_time = time.time()
-            self._last_measured_time = self._anchor_time
-            self._gps_lost_at = None
+            self._track.set_known(msg.latitude, msg.longitude, time.time())
 
     def on_imu(self, msg: Imu):
         """Heading (deg clockwise from north) from the IMU orientation (ENU)."""
@@ -356,8 +351,7 @@ class NightSubscriber(Node):
         starts from GPS, or reports no position until it has a prior)."""
         if msg.data or self._gps_prior.fresh() is not None:
             return
-        self._anchor_lat = self._anchor_lon = self._anchor_time = None
-        self._last_measured_time = None
+        self._track.reset()
         self.get_logger().info("[thermal] mission rewind — tracking state reset")
 
     def on_meta(self, msg: String):
@@ -423,13 +417,12 @@ class NightSubscriber(Node):
             if self._gps_prior.fresh() is not None and not self.shadow_mode:
                 self.pub_status.publish(String(data=json.dumps({
                     "frame_id": seq_id, "success": False, "source": "gps_active",
-                    "anchor": [self._anchor_lat, self._anchor_lon]
-                    if self._anchor_lat is not None else None,
+                    "anchor": list(self._track.anchor) if self._track.has_anchor else None,
                     "reason": "GPS valid — STHN idle, tracking GPS as prior"})))
                 return
 
             # 2) NOGPS → prior = anchor (dernier point valide)
-            if self._anchor_lat is None:
+            if not self._track.has_anchor:
                 # aucun anchor encore (cas limite : 1res frames NOGPS) → hold
                 self.get_logger().warn(
                     f"[night] ⚠ frame={seq_id} no prior: GPS never had a fix")
@@ -437,18 +430,13 @@ class NightSubscriber(Node):
                 return
 
             t_now = time.time()
-            if self._gps_lost_at is None:
-                self._gps_lost_at = t_now
+            self._track.note_gps_lost(t_now)
 
             # the search centre: the anchor carried to the frame's exposure along the
             # measured motion (the anchor was ~3 s stale at GPS loss: first matches 29 m off)
-            c_lat, c_lon = self._anchor_lat, self._anchor_lon
             ns = meta.get("image_stamp_ns")
-            if ns and self._anchor_time is not None:
-                carried = dead_reckon(c_lat, c_lon, meta.get("heading_deg"), meta.get("speed_mps"),
-                                      max(0.0, int(ns) / 1e9 - self._anchor_time))
-                if carried is not None:
-                    c_lat, c_lon = carried
+            c_lat, c_lon = self._track.search_centre(int(ns) / 1e9 if ns else None,
+                                                     meta.get("heading_deg"), meta.get("speed_mps"))
 
             self.get_logger().info(
                 f"[night] 🛰 STHN frame={seq_id} prior=anchor"
@@ -489,26 +477,21 @@ class NightSubscriber(Node):
 
             gated = None
             if (result.get("success") and conf >= self.conf_threshold
-                    and is_finite_latlon(result.get("lat"), result.get("lon"))
-                    and self._anchor_time is not None):
-                jump = haversine_m(self._anchor_lat, self._anchor_lon,
-                                   float(result["lat"]), float(result["lon"]))
-                reach = self.max_speed_mps * max(0.0, t_now - self._anchor_time) + self.gate_margin_m
-                if jump > reach:
-                    gated = (f"implausible jump {jump:.0f} m in {t_now - self._anchor_time:.1f} s "
-                             f"(max {reach:.0f} m) — rejected, retrying from the last position")
+                    and is_finite_latlon(result.get("lat"), result.get("lon"))):
+                gated = self._track.offer(float(result["lat"]), float(result["lon"]), t_now,
+                                          meta.get("heading_deg"), meta.get("speed_mps"))
+                if gated is not None:
                     result["reason"] = gated
+                else:
+                    out_lat = float(result["lat"]); out_lon = float(result["lon"])
             if (gated is None and result.get("success") and conf >= self.conf_threshold
                     and is_finite_latlon(result.get("lat"), result.get("lon"))):
-                out_lat = float(result["lat"]); out_lon = float(result["lon"])
-                self._anchor_lat, self._anchor_lon, self._anchor_time = out_lat, out_lon, t_now
-                self._last_measured_time = t_now
                 # sigma (simulator-calibrated): 2.5 % of the height (8 m min), x2.5 for a weak
                 # match (consistency < 0.995 or shift > 20 px) or in the first 10 s after GPS loss
                 h = float(alt) if alt is not None else 400.0
                 sig = max(8.0, 0.025 * h)
                 shift = result.get("rms_px")
-                if conf < 0.995 or (shift is not None and float(shift) > 20.0) or t_now - self._gps_lost_at < 10.0:
+                if conf < 0.995 or (shift is not None and float(shift) > 20.0) or self._track.seconds_since_gps_lost(t_now) < 10.0:
                     sig *= 2.5
                 try:
                     sig = math.hypot(sig, 0.1 * float(meta.get("altitude_sigma_m")))
@@ -523,15 +506,8 @@ class NightSubscriber(Node):
             # Rejected / failed: dead-reckon only from measured motion, and only for a while.
             reason = (result.get("reason") or
                       f"STHN rejected (consistency {conf:.2f}, min {self.conf_threshold:.2f})")
-            propagated = None
-            if (self._last_measured_time is not None
-                    and t_now - self._last_measured_time <= self.max_dead_reckon_s):
-                propagated = dead_reckon(self._anchor_lat, self._anchor_lon,
-                                         meta.get("heading_deg"), meta.get("speed_mps"),
-                                         t_now - self._anchor_time)
+            propagated = self._track.coast(t_now, meta.get("heading_deg"), meta.get("speed_mps"))
             if propagated is not None:
-                self._anchor_lat, self._anchor_lon = propagated
-                self._anchor_time = t_now
                 self._publish_fix(seq_id, propagated[0], propagated[1], meta, "dead_reckon",
                                   score=0.0, conf=conf, reason=reason)
             else:
@@ -549,8 +525,7 @@ class NightSubscriber(Node):
     def _publish_known(self, seq_id, meta):
         """GPS connu (vérité terrain) : publie la position du CSV, sans STHN."""
         lat = float(meta["lat"]); lon = float(meta["lon"])
-        self._anchor_lat, self._anchor_lon, self._anchor_time = lat, lon, time.time()
-        self._last_measured_time = self._anchor_time
+        self._track.set_known(lat, lon, time.time())
         self._publish_fix(seq_id, lat, lon, meta, "gps", score=1.0, conf=1.0)
 
     def _publish_fix(self, seq_id, lat, lon, meta, src, score, conf,
