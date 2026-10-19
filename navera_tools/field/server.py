@@ -67,6 +67,13 @@ MOVING_ATTITUDE_SIGMA_DEG = 5.0
 STOPPED_SOLVE_GAP_S = 4.0                            # 360: while stopped, a frame every 4 s (a solve takes ~1-5 s)
 PHONE_MOVING_MPS = 1.0                               # phone GPS speed above which the car is not stopped (GPS noise ~0.3 m/s)
 F_SCALE_SEARCH = (0.90, 0.95, 1.0, 1.05, 1.10)       # lens focal length not measured: searched once, then kept
+# 360: the lens-to-IMU mounting angle and the accelerometer's residual tilt are one fixed tilt of 'up' in the camera
+# (1 deg = ~111 km on every fix; nothing in the stars shows it). While a reference position exists (the phone here,
+# NAVERA's GPS before it is lost in the product), stopped fixes measure it; it is learned on the first
+# CAL_SAMPLES of them, then frozen, so every later corrected fix is judged on frames the fit never saw.
+CAL_MIN_SAMPLES = 4
+CAL_SAMPLES = 12
+CAL_SIGMA_FLOOR_DEG = 0.05
 
 
 def solver_view(img, hfov):
@@ -237,6 +244,8 @@ class Field:
         self.mode = "360" if hasattr(camera, "gravity") else "strip"
         self.cat = None                             # 360: bright-star catalogue, built on the first solve
         self.f_scale = None                         # 360: lens focal length found by the first identified frame
+        self.cal_samples: list = []                 # 360: (R_icrs_imu, up, true zenith) of stopped fixes with a reference
+        self.tilt_cal: Optional[dict] = None        # 360: the fitted tilt of 'up' (see CAL_SAMPLES)
         self.spots: list = []
         self._recover()
         threading.Thread(target=self._loop, daemon=True).start()
@@ -564,8 +573,10 @@ class Field:
                 p = self.phone
                 if p.get("lat") is not None:
                     rec["err_km_live"] = round(report_mod.haversine_km(r["lat"], r["lon"], p["lat"], p["lon"]), 1)
+                self._tilt_corrected(s, rec, r, up, utc, off)
                 self.last_fix = {"t": time.time(), "lat": r["lat"], "lon": r["lon"],
                                  "err_km": rec.get("err_km_live"), "sigma_km": rec["sigma_km"],
+                                 "err_km_cal": rec.get("err_km_cal_live"), "sigma_km_cal": rec.get("sigma_km_cal"),
                                  "stopped": rec.get("stopped"), "stopped_but_phone_moving": rec.get("stopped_but_phone_moving")}
             else:
                 rec["why"] = str(r.get("why") or "not solved")[:200]
@@ -575,6 +586,42 @@ class Field:
         finally:
             self.solving = False
             s.log("frames", rec)
+
+    def _tilt_corrected(self, s, rec, r, up, utc, off):
+        """The fix again with the learned tilt of 'up' removed (lat_cal/lon_cal), then this fix taken as a
+        calibration sample if the car is stopped and a fresh reference position exists."""
+        from navera_tools.field import reprocess360 as rp
+        R = np.array(r["R_icrs_imu"], float)
+        cal = self.tilt_cal
+        if cal is not None:
+            lat, lon = rp.position(R @ (cal["Q"] @ up), utc)
+            att = math.hypot(cal["sigma_deg"], r.get("sigma_fit_deg") or 0.0)
+            if not rec.get("stopped", True):
+                att = math.hypot(att, MOVING_ATTITUDE_SIGMA_DEG)
+            rec.update(lat_cal=lat, lon_cal=lon, cal_samples=cal["n"],
+                       sigma_km_cal=round(att * report_mod.KM_PER_DEGREE + abs(off) * report_mod.SKY_KM_PER_SECOND, 1))
+            p = self.phone
+            if p.get("lat") is not None:
+                rec["err_km_cal_live"] = round(report_mod.haversine_km(lat, lon, p["lat"], p["lon"]), 1)
+        p = self.phone
+        trusted = rec.get("stopped") and not rec.get("stopped_but_phone_moving")
+        fresh = p.get("lat") is not None and time.time() - self.phone_recv < 4.0 and (p.get("acc") or 999) <= 30
+        if not trusted or not fresh or len(self.cal_samples) >= CAL_SAMPLES:
+            return
+        self.cal_samples.append((R, np.asarray(up, float), rp.zenith_icrs(p["lat"], p["lon"], utc)))
+        rec["cal_sample"] = len(self.cal_samples)
+        if len(self.cal_samples) < CAL_MIN_SAMPLES:
+            return
+        w = rp.fit_mount(self.cal_samples)
+        Q = rp.rotvec(w)
+        res = [math.degrees(math.acos(max(-1.0, min(1.0, float(np.dot(Rk @ (Q @ u) / np.linalg.norm(u), z))))))
+               for Rk, u, z in self.cal_samples]
+        n = len(res)
+        rms = math.sqrt(sum(x * x for x in res) / n) * math.sqrt(n / max(n - 2, 1))
+        self.tilt_cal = {"Q": Q, "n": n, "sigma_deg": max(rms, CAL_SIGMA_FLOOR_DEG)}
+        s.event("tilt_calibrated", samples=n, tilt_deg=round(math.degrees(float(np.linalg.norm(w))), 3),
+                rotvec_deg=[round(math.degrees(float(v)), 3) for v in w], residual_deg=round(rms, 3),
+                frozen=n >= CAL_SAMPLES)
 
     def _solve(self, s, rec, jpg, att, texp, hfov):
         import base64

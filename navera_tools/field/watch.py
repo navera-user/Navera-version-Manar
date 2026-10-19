@@ -83,6 +83,11 @@ def print_360(frames):
           f"{len(use)} USE, {len(ign)} IGNORE")
     print(f"  USE (stopped) error vs phone: {errs(use)}")
     print(f"  IGNORE (moving)  error vs phone: {errs(ign)}")
+    cal = [f for f in use if f.get("err_km_cal_live") is not None and not f.get("cal_sample")]
+    if cal:
+        e = sorted(f["err_km_cal_live"] for f in cal)
+        print(f"  USE, tilt-corrected (learned on {cal[-1].get('cal_samples')} earlier stopped fixes): "
+              f"median {e[len(e) // 2]:.1f} km, max {e[-1]:.1f} km (n={len(e)}), sigma {cal[-1].get('sigma_km_cal')} km")
     fooled = sum(1 for f in solved if f.get("stopped_but_phone_moving"))
     if fooled:
         print(f"  WARNING: {fooled} fix(es) called stopped while the phone moved - the stillness test was fooled")

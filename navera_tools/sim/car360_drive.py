@@ -521,6 +521,10 @@ def full_run(p: Profile, interval_s: float, keep_dir: Optional[str] = None):
             lat, lon = sim.latlon(te)
             from navera_tools.field.reprocess360 import haversine_km
             row["err_km"] = round(haversine_km(fr["lat"], fr["lon"], lat, lon), 1)
+            if fr.get("lat_cal") is not None:
+                row.update(err_cal_km=round(haversine_km(fr["lat_cal"], fr["lon_cal"], lat, lon), 1),
+                           sigma_cal_km=fr.get("sigma_km_cal"), cal_n=fr.get("cal_samples"))
+            row["cal_sample"] = fr.get("cal_sample")
         out.append(row)
     for r, w in zip([r for r in out if r["solved"] is not None and (r["solved"] or (r["why"] or "").startswith(("rejected", "no star")))], solve_wall):
         r["solve_s"] = round(w, 2)
@@ -544,9 +548,22 @@ def summarise_full(rows, stops, solve_wall):
             "moving_fixes": len(mv), "moving_err_km_p50_p90_max": [q([r["err_km"] for r in mv], p) for p in (50, 90, 100)],
             "moving_within_3sigma": f"{cover(mv)}/{len(mv)}",
             "stopped_fixes_per_stop": per_stop,
+            # tilt of 'up' learned on the first stops (server.CAL_SAMPLES), judged only on later stopped fixes
+            **calibrated(st),
             "why_not": dict(collections.Counter((r["why"] or "").split("(")[0].strip()[:50] for r in rows if not r["solved"])),
             "solve_s_mean_max": [round(float(np.mean(solve_wall)), 2) if solve_wall else None,
                                  round(float(np.max(solve_wall)), 2) if solve_wall else None]}
+
+
+def calibrated(st):
+    def q(v, p_):
+        return round(float(np.percentile(v, p_)), 1) if len(v) else None
+    after = [r for r in st if r.get("cal_n") == server.CAL_SAMPLES and not r.get("cal_sample")]
+    return {"after_calibration_fixes": len(after),
+            "after_calibration_raw_err_km_p50_p90_max": [q([r["err_km"] for r in after], p) for p in (50, 90, 100)],
+            "after_calibration_err_km_p50_p90_max": [q([r["err_cal_km"] for r in after], p) for p in (50, 90, 100)],
+            "after_calibration_within_3sigma": f"{sum(r['err_cal_km'] <= 3 * r['sigma_cal_km'] for r in after)}/{len(after)}",
+            "after_calibration_sigma_km_p50": q([r["sigma_cal_km"] for r in after], 50)}
 
 
 def stop_windows(sim):
