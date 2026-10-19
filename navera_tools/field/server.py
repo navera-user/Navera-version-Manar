@@ -208,6 +208,10 @@ class Camera360:
             return None, None, None
         return self.cam.gravity(at_ms=self.frame_ms) if at_frame and self.frame_ms is not None else self.cam.gravity()
 
+    def imu_age(self):
+        """Seconds since the camera's last IMU sample (None: no camera)."""
+        return self.cam.imu_age() if self.cam else None
+
     def stopped(self, at_frame=False):
         if not self.cam:
             return {"stopped": False, "why": "no camera"}
@@ -749,6 +753,8 @@ class Field:
         return {"step": self.step, "mode": self.mode, "checks": self.checks(), "live": self.live, "mount_confirmed": self.mount_confirmed,
                 "recording": s.id if s else None, "frames": self.frame_idx if s else 0,
                 "started": s.meta.get("started") if s else None, "fixes": self.n_fixes if s else 0,
+                "camera_error": self.camera.error,
+                "imu_age_s": _round(self.camera.imu_age(), 1) if hasattr(self.camera, "imu_age") else None,
                 "last_fix": self.last_fix, "solving": self.solving, "interval_s": self.interval_s,
                 "done": self.last_done, "disk_error": bool(s and s.io_error), "server_time_ms": int(time.time() * 1000)}
 
@@ -1007,6 +1013,10 @@ def ensure_certificate(tls_dir):
         with open(ips_file, "w") as f:
             f.write(" ".join(ips))
     return cert, key, ips
+
+
+def _round(v, n):
+    return None if v is None or not math.isfinite(v) else round(float(v), n)
 
 
 def _read_json(path):
