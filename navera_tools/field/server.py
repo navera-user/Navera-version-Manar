@@ -169,9 +169,11 @@ class Camera360:
             f, t = self.cam.latest() if self.cam else (None, 0.0)
             if self.cam is not None and time.time() - self.opened_at < 20.0:
                 continue                              # the decoder waits for the stream's next key frame
-            if f is None or time.time() - t > 8.0:
+            imu_dead = self.cam is not None and self.cam.imu_age() > 10.0   # restarting the stream did not bring it back
+            if f is None or time.time() - t > 8.0 or imu_dead:
                 if self.cam is not None:
-                    self.error = self.cam.error or "no frame for 8 s: reconnecting"
+                    self.error = ("camera IMU silent for 10 s: reconnecting" if imu_dead
+                                  else self.cam.error or "no frame for 8 s: reconnecting")
                     try:
                         self.cam.close()
                     except Exception:

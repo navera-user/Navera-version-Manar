@@ -105,6 +105,9 @@ class Insta360Usb:
         self._last_ms = None
         self._att = collections.deque(maxlen=6000)          # (camera ms, R) — 12 s
         self._frame_ms = None
+        # the IMU feed sometimes stops after its first packet while the video goes on (seen 2026-10-19 on the
+        # first starts after power-on): the keepalive restarts the stream when the IMU goes quiet
+        self._started, self._imu_t, self.imu_restarts = time.time(), 0.0, 0
         self._stop = False
         self._buf = bytearray()
         self._dir = tempfile.mkdtemp(prefix="insta360_")
@@ -139,12 +142,24 @@ class Insta360Usb:
                    + struct.pack("<i", seq)[:3] + b"\x80\x00\x00" + body)
 
     def _keepalive(self):
+        last_restart = 0.0
         while not self._stop:
             time.sleep(1.0)
             try:
                 self._send(PKT_KEEPALIVE)
+                now = time.time()
+                if now - self._started > 4.0 and self.imu_age() > 1.5 and now - last_restart > 3.0:
+                    self._message(CMD_START_LIVE, START_FULL)   # asking again brings the IMU back
+                    last_restart, self.imu_restarts = now, self.imu_restarts + 1
+                    self.error = f"camera IMU silent: stream restarted ({self.imu_restarts})"
+                elif self.imu_age() < 1.0 and (self.error or "").startswith("camera IMU silent"):
+                    self.error = None
             except Exception as e:                       # the reader reports the lost camera
                 self.error = f"keepalive: {e}"
+
+    def imu_age(self) -> float:
+        """Seconds since the last IMU packet (inf before the first)."""
+        return time.time() - self._imu_t if self._imu_t else float("inf")
 
     def _read_usb(self):
         while not self._stop:
@@ -188,6 +203,7 @@ class Insta360Usb:
             elif p[3] == KIND_IMU:
                 body = p[12:]
                 now = time.time()
+                self._imu_t = now
                 with self._lock:
                     for k in range(0, len(body) - IMU_RECORD.size + 1, IMU_RECORD.size):
                         rec = IMU_RECORD.unpack_from(body, k)
