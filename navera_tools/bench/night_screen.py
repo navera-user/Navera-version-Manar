@@ -294,6 +294,11 @@ def main():
     ap.add_argument("--out", default="night_screen.csv")
     a = ap.parse_args()
 
+    if a.source == "360" and not a.render_only:
+        # the window first: created after torch / the STHN imports, cv2.namedWindow hung at 100 % CPU (2026-10-19)
+        cv2.namedWindow("NAVERA night", cv2.WND_PROP_FULLSCREEN)
+        cv2.setWindowProperty("NAVERA night", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        cv2.waitKey(1)
     from navera_common.geo import haversine_m
     from night_pkg.nodes.night_localizer import NightLocalizer
     from night_pkg.nodes.night_tracker import NightTracker
@@ -339,8 +344,6 @@ def main():
     if a.source == "360":
         from navera_tools.bench.view360 import Bench360
         win = "NAVERA night"
-        cv2.namedWindow(win, cv2.WND_PROP_FULLSCREEN)
-        cv2.setWindowProperty(win, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
         OW, OH = 1200, 900
         cam = Bench360(win)
         print("360 camera, screen found:", cam.find_screen(a.hfov, OW, OH, screen_mm=a.screen_mm), flush=True)
