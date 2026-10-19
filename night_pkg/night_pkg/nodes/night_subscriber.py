@@ -167,9 +167,12 @@ class NightSubscriber(Node):
         declare_float(self, "min_match_ncc", MIN_MATCH_NCC)
         declare_float(self, "recheck_offset_m", RECHECK_OFFSET_M)
         declare_float(self, "recheck_max_m", RECHECK_MAX_M)
-        # heading offsets (deg) tried again when a frame fails the checks — for a heading
-        # source that can be 10-20 deg off (magnetometer); each costs two more inferences
-        self.declare_parameter("heading_retry_deg", "")
+        # heading offsets (deg) tried again when a frame fails the map check — for a heading
+        # source that can be 10-20 deg off (magnetometer, attitude timing in turns); each costs
+        # two more inferences, only on frames that failed. Simulated (night_conditions, 30 frames):
+        # heading 10 deg off 19 -> 29/30 accepted, 20 deg 0 -> 29/30, 30 deg 0 -> 19/30,
+        # nominal unchanged, no new wrong fix. "" turns it off.
+        self.declare_parameter("heading_retry_deg", "-10,10,-20,20")
         self.heading_retry_deg = tuple(
             float(x) for x in str(self.get_parameter("heading_retry_deg").value).split(",") if x.strip())
 

@@ -51,9 +51,10 @@ In: `/thermal/image_raw` (bgr8 or mono16), `/thermal/frame_meta`, `/navera/estim
 `map_offset_lat_deg` / `map_offset_lon_deg` (map calibration, 0 unless measured),
 `mixed_precision`, **`camera_hfov_deg` (required; `NAVERA_THERMAL_HFOV_DEG`)**,
 `max_speed_mps` (30), `gate_margin_m` (30), `recheck_offset_m` (150), `recheck_max_m` (25),
-`min_match_ncc` (0.05) — ≤ −1 disables a check — and `heading_retry_deg` (default empty; e.g.
-`"10,-10,20,-20"` for a magnetometer heading that can be 10–30° off: recovered 19/24 synthetic
-frames at 20–30° off, 1.4–1.8 s per failed frame). `night_status` also carries the search square
+`min_match_ncc` (0.05) — ≤ −1 disables a check — and `heading_retry_deg` (default `"-10,10,-20,20"`, `""` turns it
+off: a heading 10–30° off is tried again turned by each offset, only on frames that failed the map
+check; synthetic 30 frames: 10° off 19 → 29/30, 20° off 0 → 29/30, 30° off 0 → 19/30, nominal
+unchanged, no new wrong fix; ~1.7 s per failed frame instead of ~0.5 s). `night_status` also carries the search square
 (`search_center`, `search_size_m`), the matched footprint (`footprint_quad`) and the query
 geometry.
 
@@ -61,7 +62,7 @@ geometry.
 - Minimum altitude: the frame must cover ≥ 85 % of the 512 px (~500 m) reference — about
   350 m with an 84° camera (lower with a wider lens).
 - The heading from the IMU is magnetic (IMU-3). Synthetic: 5° off is tolerated, 10° off loses a
-  third of the fixes, 20° off none without `heading_retry_deg`.
+  third of the fixes and 20° off all of them without the heading retry (on by default since 2026-10-19).
 - Height error: −10 % refuses half the frames at 400 m (footprint), −20 % all; +20 % keeps about
   half. The search area is ±745 m around the prior: a prior farther off gives no fix.
 - GPU: ~225 ms/frame. On JetPack 6 the Jetson PyTorch build cannot load CUDA linear algebra;
