@@ -63,6 +63,8 @@ ap.add_argument("--overlay-amount", type=float, default=0.3,
                 help="strength 0-1 (clouds: sky fraction covered; wind: shake 0.5-3 deg equivalent)")
 ap.add_argument("--max-speed", type=float, default=None,
                 help="m/s, the vehicle's top speed for the track gate (default 1.5 x --speed)")
+ap.add_argument("--blend", action="store_true",
+                help="NAVERA output from VisionNavigator with blend_fixes (a fix averaged with the prediction)")
 ap.add_argument("--no-gate", action="store_true",
                 help="forward every accepted match as NAVERA's output (the rule before 2026-10-19: "
                      "a wrong-but-confident match 100-650 m off was output)")
@@ -222,7 +224,7 @@ def worker():
     first = []                                                 # unconfirmed no-height matches
     # the product's track gate (day_pkg.vision_nav): with GPS trusted it follows GPS; after,
     # a match is output only if consistent with the carried track and the vehicle's speed
-    nav = None if a.no_gate else VisionNavigator(max_speed_mps=a.max_speed or 1.5 * a.speed)
+    nav = None if a.no_gate else VisionNavigator(max_speed_mps=a.max_speed or 1.5 * a.speed, blend_fixes=a.blend)
     while not stop.is_set():
         img, t = grab()
         if img is None:
@@ -232,7 +234,11 @@ def worker():
         past = [x for x in list(shown) if x[0] <= t]
         if not past:
             continue
-        _, tpx, tpy = past[-1]
+        _, tpx, tpy, sdx, sdy = past[-1]
+        # wind: how fast the scene was shaking when the frame was taken (bench truth is only as good as the frame
+        # time: 10 ms at 1000 px/s is 10 px of reference error)
+        shake_v = (math.hypot(sdx - past[-2][3], sdy - past[-2][4]) / max(past[-1][0] - past[-2][0], 1e-3)
+                   if len(past) > 1 else 0.0)
         centre = latlon(tpx, tpy)
         phase = "gps" if t < a.gps_drift_at else ("drift" if t < a.gps_lost_at else "lost")
         drift = 0.0 if phase == "gps" else a.gps_drift_rate * (t - a.gps_drift_at)
@@ -305,6 +311,10 @@ def worker():
             pos, pos_t, sigma = gps, t, 5.0
         elif src == "vision":
             pos, pos_t, sigma = vis, t, 10.0
+            if a.blend and nav is not None:              # the navigator's blended position
+                o = nav.output(t)
+                if o[0] is not None:
+                    pos = (o[0], o[1])
         else:
             if pos is not None:
                 dt = t - pos_t
@@ -320,7 +330,7 @@ def worker():
                          inliers=r.get("inliers"), height_m=None if height is None else round(height),
                          vis_de=None if not vis else round(metres(vis, centre)[1], 1),
                          vis_dn=None if not vis else round(metres(vis, centre)[2], 1),
-                         gated=int(gate_why is not None),
+                         gated=int(gate_why is not None), shake_pxps=round(shake_v),
                          turned_deg=round(getattr(cam360, "turned_deg", 0.0), 1) if a.source == "360" else None,
                          imu_ok=int(cam360.cam.imu_age() < 1.5) if a.source == "360" else None))
         print(f"{t:6.1f}s {phase:5s} gps+{drift:5.0f}m  vision "
@@ -348,7 +358,7 @@ while True:
     draw_hud(view, t)
     cv2.imshow("NAVERA flight", view)
     key = cv2.waitKey(1)
-    shown.append((time.time() - t_start[0], px - shift[0], py - shift[1]))   # wind moves the scene
+    shown.append((time.time() - t_start[0], px - shift[0], py - shift[1], shift[0], shift[1]))   # wind moves the scene
     del shown[:-400]
     if key in (27, ord("q")):
         break

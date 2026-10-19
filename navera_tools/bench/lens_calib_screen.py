@@ -95,6 +95,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--screen-mm", default="527x296.5")
     ap.add_argument("--save", action="store_true")
+    ap.add_argument("--pose-only", action="store_true",
+                    help="keep the lens model (e.g. lens_calib_wide's): fit and save only the screen pose")
     a = ap.parse_args()
     sw_mm, sh_mm = (float(v) for v in a.screen_mm.split("x"))
     mm = sw_mm / SW
@@ -110,7 +112,7 @@ def main():
     T0 = R_view[2] * dist
     Rs0 = np.stack([R_view[0], R_view[1], R_view[2]], axis=1)  # screen x→right, y→down, z→away
     from scipy.spatial.transform import Rotation
-    params = np.r_[lens0.f, 0.0, lens0.cx, lens0.cy, Rotation.from_matrix(Rs0).as_rotvec(), T0]
+    params = np.r_[lens0.f, lens0.k1 if a.pose_only else 0.0, lens0.cx, lens0.cy, Rotation.from_matrix(Rs0).as_rotvec(), T0]
     from scipy.optimize import least_squares
     report = {"screen": info}
     for name, (nx, ny), tol in (("coarse", (8, 5), 60.0), ("fine", (16, 9), 18.0)):
@@ -124,8 +126,13 @@ def main():
 
         def res(x):
             return (model_pts(x, lens0, P[pi]) - det[di]).ravel()
-        fit = least_squares(res, params, x_scale="jac", loss="soft_l1", f_scale=2.0)
-        params = fit.x
+        if a.pose_only:
+            lens_p = params[:4].copy()
+            fit = least_squares(lambda q: res(np.r_[lens_p, q]), params[4:], x_scale="jac", loss="soft_l1", f_scale=2.0)
+            params = np.r_[lens_p, fit.x]
+        else:
+            fit = least_squares(res, params, x_scale="jac", loss="soft_l1", f_scale=2.0)
+            params = fit.x
         r = res(params).reshape(-1, 2)
         rms = float(np.sqrt(np.mean(np.sum(r ** 2, axis=1))))
         report[name] = {"dots": len(G), "spots": int(len(det)), "paired": int(len(pi)), "rms_px": round(rms, 2),
@@ -136,7 +143,12 @@ def main():
                       "cy": round(float(cy), 2), "f_guess": round(lens0.f, 2), "f_ratio": round(float(f) / lens0.f, 4)}
     report["screen_distance_mm"] = round(float(np.linalg.norm(params[7:10])), 1)
     print(json.dumps(report, indent=1), flush=True)
-    if a.save:
+    if a.save and a.pose_only:
+        json.dump({"lens": lens0.name, "rotvec": [float(v) for v in params[4:7]], "T_mm": [float(v) for v in params[7:10]],
+                   "mm_per_px": mm, "screen_px": [SW, SH], "measured": time.strftime("%Y-%m-%d %H:%M"),
+                   "lens_model": "kept (pose only)"}, open(POSE_FILE, "w"), indent=1)
+        print("saved", POSE_FILE)
+    elif a.save:
         d = {}
         if os.path.exists(LENS_FILE):
             d = json.load(open(LENS_FILE))
