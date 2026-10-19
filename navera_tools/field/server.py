@@ -60,7 +60,12 @@ SOLVE_WINDOW_HFOV = 52.0
 # 360 mode: the camera's own accelerometer (6-position calibrated) gives 'up'; the lens-to-IMU mounting is not
 # measured yet, so the stated accuracy keeps a margin until a night calibrates it (first guess).
 ATTITUDE_SIGMA_360_DEG = 0.3
-MOVING_ATTITUDE_SIGMA_DEG = 3.0                     # vehicle moving: 'up' may hold its acceleration (simulated 0.1 g: hundreds of km)
+# vehicle moving: 'up' may hold its acceleration. The |a| gate (allsky.ACCEL_NORM_TOL) does not bound it: 1-2 Hz body
+# bounce moves the 1 s mean of the vertical by 0.01-0.02 g, which hides 0.2 g of braking (simulated drive,
+# sim/car360_drive.py: 'up' up to 10.6 deg off in frames that passed every gate; 3.0 deg left 26 of 6872 outside 3 sigma).
+MOVING_ATTITUDE_SIGMA_DEG = 5.0
+STOPPED_SOLVE_GAP_S = 4.0                            # 360: while stopped, a frame every 4 s (a solve takes ~1-5 s)
+PHONE_MOVING_MPS = 1.0                               # phone GPS speed above which the car is not stopped (GPS noise ~0.3 m/s)
 F_SCALE_SEARCH = (0.90, 0.95, 1.0, 1.05, 1.10)       # lens focal length not measured: searched once, then kept
 
 
@@ -213,6 +218,7 @@ class Field:
         self.phone: dict = {}
         self.phone_recv = 0.0
         self.offsets = collections.deque(maxlen=60)       # server time - phone time, seconds
+        self.speeds = collections.deque(maxlen=120)       # (server time, phone GPS speed m/s): the stopped flag's referee
         self.live: dict = {}
         self.preview: bytes = b""
         self.step = 1
@@ -265,6 +271,8 @@ class Field:
             if d.get("phone_t_ms") is not None:
                 self.offsets.append(now - float(d["phone_t_ms"]) / 1000.0)
             self.phone, self.phone_recv = dict(d), now
+            if isinstance(d.get("speed"), (int, float)):
+                self.speeds.append((now, float(d["speed"])))
         s = self.session
         if s is not None:
             s.log("phone", self._phone_record(d))
@@ -436,9 +444,23 @@ class Field:
         return jpg.tobytes() if ok else b""
 
     # ── solving ─────────────────────────────────────────────────────────
+    def _due(self):
+        """Time for the next frame: every interval_s, and in 360 mode also as soon as the camera says the vehicle is
+        stopped (every STOPPED_SOLVE_GAP_S while it stays so): only stopped fixes are trusted and the driver stops
+        for ~20 s, so a 20 s cadence alone gave 0-1 trusted fix per stop."""
+        since = time.time() - self.last_solve_t
+        if since >= self.interval_s:
+            return True
+        if self.mode != "360" or since < STOPPED_SOLVE_GAP_S or self.solving or not hasattr(self.camera, "stopped"):
+            return False
+        try:
+            return bool(self.camera.stopped(at_frame=True).get("stopped"))
+        except Exception:
+            return False
+
     def _maybe_solve(self, img, texp):
         s = self.session
-        if s is None or self.step != 4 or time.time() - self.last_solve_t < self.interval_s:
+        if s is None or self.step != 4 or not self._due():
             return
         if self.solving:
             if time.time() - self.solving_since < (300 if self.mode == "360" else 90):   # 360: first solve searches the lens
@@ -484,6 +506,12 @@ class Field:
         st = self.camera.stopped(at_frame=True) if hasattr(self.camera, "stopped") else {"stopped": True}
         rec["stopped"] = bool(st.get("stopped"))          # moving: vehicle acceleration can tilt 'up' (not trusted)
         rec["stillness"] = {k: v for k, v in st.items() if k != "stopped"}
+        v = self._phone_speed_at(texp)
+        if v is not None:
+            # the test's referee only, never used to decide: a stopped flag while the phone's GPS says the car moves
+            # means the camera's stillness test was fooled (smooth road, gentle steady acceleration): ignore that fix
+            rec["phone_speed_mps"] = round(v, 1)
+            rec["stopped_but_phone_moving"] = bool(rec["stopped"] and v > PHONE_MOVING_MPS)
         why = None
         if up is None:
             why = "camera moving or turning (its own sensor)" if g is not None else "no camera sensor data"
@@ -500,6 +528,15 @@ class Field:
         self.solving, self.solving_since = True, time.time()
         rec["t_exp"] = round(texp, 3)                     # Jetson time of the exposure (the phone track is on this clock)
         threading.Thread(target=self._solve360, args=(s, rec, img, np.array(up), texp), daemon=True).start()
+
+    def _phone_speed_at(self, t):
+        """The phone's GPS speed (m/s) nearest to Jetson time t, if one is within 2 s."""
+        with self.lock:
+            pts = list(self.speeds)
+        if not pts:
+            return None
+        tt, v = min(pts, key=lambda p: abs(p[0] - t))
+        return v if abs(tt - t) <= 2.0 else None
 
     def _solve360(self, s, rec, img, up, texp):
         try:
@@ -528,7 +565,8 @@ class Field:
                 if p.get("lat") is not None:
                     rec["err_km_live"] = round(report_mod.haversine_km(r["lat"], r["lon"], p["lat"], p["lon"]), 1)
                 self.last_fix = {"t": time.time(), "lat": r["lat"], "lon": r["lon"],
-                                 "err_km": rec.get("err_km_live"), "sigma_km": rec["sigma_km"]}
+                                 "err_km": rec.get("err_km_live"), "sigma_km": rec["sigma_km"],
+                                 "stopped": rec.get("stopped"), "stopped_but_phone_moving": rec.get("stopped_but_phone_moving")}
             else:
                 rec["why"] = str(r.get("why") or "not solved")[:200]
                 rec.update({k: r[k] for k in ("matched", "rms_deg", "p_chance", "lens_disagree_deg", "f_scale") if k in r})

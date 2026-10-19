@@ -97,6 +97,7 @@ def analyze(folder: str) -> dict:
     events = rows_of("events.jsonl")
 
     errs, within2, rows = [], [], []
+    trusted_errs, flagged_errs, within3_trusted, within3_flagged = [], [], [], []
     no_truth = bad_answer = with_prior = 0
     for fr in frames:
         row = {"t": fr["t"], "idx": fr.get("idx"), "stars": fr.get("confirmed", fr.get("detected")),
@@ -106,8 +107,9 @@ def analyze(folder: str) -> dict:
                 bad_answer += 1
                 row["why"] = "answer is not a number"
             else:
-                # the frame is stamped when its solve ended; the exposure was solve_s earlier
-                truth = _truth_at(phone, fr["t"] - (fr.get("solve_s") or 0.0))
+                # the frame is stamped when its solve ended; the exposure was solve_s earlier (360: t_exp is recorded)
+                truth = _truth_at(phone, fr["t_exp"] if isinstance(fr.get("t_exp"), (int, float))
+                                  else fr["t"] - (fr.get("solve_s") or 0.0))
                 if truth is None:
                     no_truth += 1
                 else:
@@ -120,6 +122,10 @@ def analyze(folder: str) -> dict:
                         row["prior_used"] = True
                     if fr.get("sigma_km"):
                         within2.append(e <= 2 * fr["sigma_km"])
+                    row["trusted"] = _trusted(fr)
+                    (trusted_errs if row["trusted"] else flagged_errs).append(e)
+                    if fr.get("sigma_km"):
+                        (within3_trusted if row["trusted"] else within3_flagged).append(e <= 3 * fr["sigma_km"])
         rows.append(row)
 
     n = len(frames)
@@ -140,7 +146,13 @@ def analyze(folder: str) -> dict:
         "frames": n, "solved": solved,
         "solved_frac": round(solved / n, 3) if n else 0.0,
         "scored": len(errs), "solved_no_truth": no_truth, "bad_answer": bad_answer,
-        "wrong_answers": sum(1 for e in errs if e > WRONG_KM), "scored_with_phone_prior": with_prior,
+        # a fix the system itself flags as not to be trusted (360: taken while the vehicle moved) is not a wrong answer
+        # when its error is inside its stated 3 sigma; it is reported apart
+        "wrong_answers": sum(1 for e in trusted_errs if e > WRONG_KM) + sum(1 for ok in within3_flagged if not ok),
+        "scored_with_phone_prior": with_prior,
+        "trusted_err_km": _stats(trusted_errs), "trusted_within_3sigma": _frac(within3_trusted),
+        "flagged_err_km": _stats(flagged_errs), "flagged_within_3sigma": _frac(within3_flagged),
+        "stopped_but_phone_moving": sum(1 for fr in frames if fr.get("solved") and fr.get("stopped_but_phone_moving")),
         "no_answer_by_reason": _count(r["why"] for r in rows if not r["fix"]),
         "solve_s": _solve_times(frames),
         "err_km": ({"median": round(statistics.median(errs), 1), "p90": round(_pct(errs, 0.9), 1),
@@ -153,6 +165,23 @@ def analyze(folder: str) -> dict:
     report["problems"] = _problems(report, frames, phone, meta)
     report["verdict"] = _verdict(report)
     return report
+
+
+def _trusted(fr: dict) -> bool:
+    """A fix the system stands behind: every strip-mode fix; a 360 fix only when the camera's own sensor said
+    stopped and the phone's GPS did not see the car moving (the test's referee)."""
+    if fr.get("mode") != "360":
+        return True
+    return bool(fr.get("stopped")) and not fr.get("stopped_but_phone_moving")
+
+
+def _stats(v):
+    return {"n": len(v), "median": round(statistics.median(v), 1), "p90": round(_pct(v, 0.9), 1),
+            "max": round(max(v), 1)} if v else None
+
+
+def _frac(v):
+    return round(sum(v) / len(v), 3) if v else None
 
 
 def _verdict(r: dict) -> str:
@@ -257,7 +286,11 @@ def write_report(folder: str) -> dict:
     lines = [f"# Test {r['id']}: {r['verdict']}", "",
              f"- Frames: {r['frames']}, with a position: {r['solved']} ({r['solved_frac'] * 100:.0f} %)",
              f"- Checked against the phone GPS: {r['scored']} (answered but not checkable: {r['solved_no_truth']}, wrong by more than {WRONG_KM:g} km: {r['wrong_answers']})",
-             f"- Error against the phone GPS: {r['err_km']}", f"- Median confirmed stars: {r['stars_median']}",
+             f"- Error against the phone GPS: {r['err_km']}",
+             f"- Trusted fixes (360: stopped): {r['trusted_err_km']}, within 3 sigma: {r['trusted_within_3sigma']}",
+             f"- Flagged fixes (360: moving, not to be used): {r['flagged_err_km']}, within 3 sigma: {r['flagged_within_3sigma']}",
+             f"- Stopped by the camera's sensor but moving by the phone's GPS: {r['stopped_but_phone_moving']}",
+             f"- Median confirmed stars: {r['stars_median']}",
              f"- No answer, by reason: {r['no_answer_by_reason']}", f"- Solver time (s): {r['solve_s']}",
              f"- Sky: {r['sky']}", "", "## Problems", ""]
     lines += [f"- **{p['title']}** ({p['severity']}): {p['detail']} Fix: {p['fix']}" for p in r["problems"]] or ["- none found"]

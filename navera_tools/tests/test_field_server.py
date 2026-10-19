@@ -71,3 +71,38 @@ def test_a_disk_error_is_remembered_not_raised(tmp_path):
     s.dir = "/proc/does-not-exist"
     s.log("phone", {"lat": 1})                                   # must not raise
     assert s.io_error and s.save_frame(1, b"x") is None
+
+
+class Fake360(FakeCam):
+    hfov = None
+
+    def __init__(self):
+        self.still = False
+
+    def gravity(self, at_frame=False):
+        return None, None, None
+
+    def stopped(self, at_frame=False):
+        return {"stopped": self.still}
+
+
+def test_360_solves_early_while_stopped_but_not_while_moving(tmp_path):
+    f = sv.Field(str(tmp_path), Fake360())
+    f.interval_s = 20.0
+    f.last_solve_t = time.time() - (sv.STOPPED_SOLVE_GAP_S + 1)
+    assert not f._due()                                           # moving: wait for the 20 s cadence
+    f.camera.still = True
+    assert f._due()                                               # stopped: a frame now
+    f.last_solve_t = time.time() - 1.0
+    assert not f._due()                                           # but not more often than every STOPPED_SOLVE_GAP_S
+    f.last_solve_t = time.time() - 21.0
+    f.camera.still = False
+    assert f._due()
+
+
+def test_phone_speed_is_matched_to_the_exposure(tmp_path):
+    f = sv.Field(str(tmp_path), Fake360())
+    now = time.time()
+    f.speeds.extend([(now - 5, 12.0), (now - 2, 0.0)])
+    assert f._phone_speed_at(now - 4.6) == 12.0 and f._phone_speed_at(now - 1.5) == 0.0
+    assert f._phone_speed_at(now - 30) is None

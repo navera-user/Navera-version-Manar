@@ -177,3 +177,16 @@ def test_wide_camera_is_solved_on_its_central_window():
     assert abs((1920 - view.shape[1]) // 2 - (1920 - view.shape[1] + 1) // 2) <= 1      # centred
     same, hf = server.solver_view(img, 60.7)                                              # a normal lens is untouched
     assert same is img and hf == 60.7
+
+
+def test_360_moving_fixes_are_reported_apart_and_a_fooled_stop_is_wrong(tmp_path):
+    def fr(i, lat_err, stopped, sigma, fooled=False):
+        return dict(_good(i, lat_err), mode="360", stopped=stopped, sigma_km=sigma, stopped_but_phone_moving=fooled)
+    frames = [fr(i, 0.07, True, 34) for i in range(12)]                         # stopped: ~8 km, trusted
+    frames += [fr(12 + i, 4.0, False, 556) for i in range(8)]                   # moving: 445 km, inside its 3 sigma
+    frames += [fr(20, 4.0, True, 34, fooled=True)]                              # 'stopped' but the phone moved
+    _write(str(tmp_path), _phone(), frames)
+    r = an.analyze(str(tmp_path))
+    assert r["trusted_err_km"]["n"] == 12 and r["trusted_err_km"]["max"] < 10
+    assert r["flagged_err_km"]["n"] == 9 and r["stopped_but_phone_moving"] == 1
+    assert r["wrong_answers"] == 1                     # only the fooled stop: its 445 km is outside 3 x 34 km
