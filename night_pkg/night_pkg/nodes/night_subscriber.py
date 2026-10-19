@@ -38,7 +38,7 @@ import numpy as np
 
 import rclpy
 from navera_common.qos import SENSOR_QOS
-from navera_common.geo import is_finite_latlon
+from navera_common.geo import haversine_m, is_finite_latlon
 from navera_common.lifecycle import die_with_parent
 from navera_common.params import declare_float
 from navera_common.pairing import FramePairer, exposure_stamp, stamp_ns
@@ -150,6 +150,12 @@ class NightSubscriber(Node):
         # with a high consistency score; without this the track ran away (2.4 km).
         declare_float(self, "max_speed_mps", 30.0)
         declare_float(self, "gate_margin_m", 30.0)
+        # B16: a fix farther than max_single_jump_m from the anchor (<= 0: no limit) is not
+        # taken alone, and fixes refused by the gate re-anchor the track once
+        # reacquire_n of them agree (reacquire_confirmed_n against a confirmed track)
+        declare_float(self, "max_single_jump_m", 150.0)
+        self.declare_parameter("reacquire_n", 3)
+        self.declare_parameter("reacquire_confirmed_n", 5)
         # Wrong-fix checks. STHN returns a confident quad near the search centre for frames
         # with no information (cloud, sea, salt flat, noise, heading off > 10 deg): measured
         # on synthetic frames, every such frame was accepted 200-400 m off. Each fix is now
@@ -195,7 +201,12 @@ class NightSubscriber(Node):
         self._reject_count   = 0
         # the track: anchor = last retained position (GPS, STHN or dead reckoning), motion
         # gate, dead reckoning (wall-clock times)
-        self._track = NightTracker(self.max_speed_mps, self.gate_margin_m, self.max_dead_reckon_s)
+        jump = float(self.get_parameter("max_single_jump_m").value)
+        self._track = NightTracker(self.max_speed_mps, self.gate_margin_m, self.max_dead_reckon_s,
+                                   max_single_jump_m=jump if jump > 0 else None,
+                                   reacquire_n=int(self.get_parameter("reacquire_n").value),
+                                   reacquire_confirmed_n=int(
+                                       self.get_parameter("reacquire_confirmed_n").value))
         self._search = {}                # last search, for display in night_status
 
         # ── Banner (PRE-load) ──────────────────────────────────
@@ -482,6 +493,11 @@ class NightSubscriber(Node):
                                           meta.get("heading_deg"), meta.get("speed_mps"))
                 if gated is not None:
                     result["reason"] = gated
+                elif self._track.reacquired_from is not None:
+                    self.get_logger().warn(
+                        f"[night] frame={seq_id}: track re-anchored by {self._track.support} agreeing "
+                        f"fixes, {haversine_m(*self._track.reacquired_from, *self._track.anchor):.0f} m "
+                        "from the previous anchor (it was wrong, or dead reckoning drifted)")
                 else:
                     out_lat = float(result["lat"]); out_lon = float(result["lon"])
             if (gated is None and result.get("success") and conf >= self.conf_threshold
