@@ -66,6 +66,19 @@ The server picks it by itself (`NAVERA_FIELD_CAMERA=auto|360|strip`). Set the ca
 * Not measured yet: how many stars the video exposure keeps on a real night, the sensor-to-lens angle
   (stated ±0.3 degrees = 33 km until the first frames measure it), lens distortion beyond the focal length.
 
+## Raw recording and replay (360 mode)
+
+From START to END the server writes every packet the camera sends (all video frames, the 500 Hz IMU, the rest)
+to `<test>/raw/raw360_NNNN.bin` (1 GB files; a writer thread, so the camera is never slowed by the disk; lost
+packets are counted and the supervisor alerts). The whole test can then be run again offline through the real
+server code with any setting changed:
+
+    python3 -m navera_tools.field.replay360 <test folder> --info                      # duration, MB/min, frames
+    python3 -m navera_tools.field.replay360 <test folder> [--set server.STOPPED_SOLVE_GAP_S=1] [--every-frame]
+    python3 -m navera_tools.field.replay360 <test folder> --export-frames DIR --stops-only   # lossless PNG + index.csv
+
+Keep at least 10 GB free per hour of drive (STATUS.txt shows the size).
+
 ## What it measures, and what it does not
 
 * Measures the celestial METHOD with this camera: star detection, plate solving, the position, against the phone's GPS (about 5 m).
