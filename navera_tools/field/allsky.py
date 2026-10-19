@@ -71,9 +71,14 @@ SATURATED = 250           # DN
 MAX_AREA = 150            # px above 3 sigma: a mag -2 star (simulated PSF) covers ~70; lamps, moon, meteors, glare far more
 MAX_SATURATED = 45        # px at >= 250 DN: Jupiter in the simulation ~37; a street lamp of radius >= 4 px more
 MAX_SHARPNESS = 0.6       # centre / 3x3 sum of the residual: hot pixel ~1, star (PSF sigma >= 0.5 px) <= 0.6
+# defaults of detect_spots / locate, module-level so the field server can tune them live (live_params.json)
+DETECT_K_SIGMA = 6.0      # a spot's peak above this many times the local noise
+LOCATE_MAX_SPOTS = 60     # brightest spots above LOCATE_MIN_ALT given to the identification
+LOCATE_MATCH_DEG = 0.5    # a spot and a catalogue star match within this angle
+LOCATE_MIN_ALT = 12.0     # deg above the horizon (ground, lamps, roofs below)
 
 
-def detect_spots(gray: np.ndarray, lens: Lens, k_sigma: float = 6.0, max_spots: int = 120,
+def detect_spots(gray: np.ndarray, lens: Lens, k_sigma: Optional[float] = None, max_spots: int = 120,
                  up_imu: Optional[np.ndarray] = None, min_alt: Optional[float] = None,
                  stats: Optional[dict] = None):
     """Star-like spots inside the lens circle: (x, y, flux) sorted brightest first.
@@ -84,6 +89,7 @@ def detect_spots(gray: np.ndarray, lens: Lens, k_sigma: float = 6.0, max_spots: 
     (ground, lamps, windows) are dropped before the max_spots cap so they cannot crowd out the sky.
     stats (optional dict) receives the number of blobs rejected per reason."""
     import cv2
+    k_sigma = DETECT_K_SIGMA if k_sigma is None else k_sigma
     H = gray.shape[0]
     x0, x1 = int(max(0, lens.cx - lens.radius)), int(min(gray.shape[1], lens.cx + lens.radius))
     y0, y1 = int(max(0, lens.cy - lens.radius)), int(min(H, lens.cy + lens.radius))
@@ -325,7 +331,8 @@ def accept(matched: int, rms_deg: float, p_chance: float, lens_disagree_deg: flo
 
 def locate(frame: np.ndarray, up_imu: np.ndarray, utc: str, cat: Catalogue,
            lenses: Optional[List[Lens]] = None, f_scales: Sequence[float] = (1.0,),
-           min_alt: float = 12.0, max_spots: int = 60, match_deg: float = 0.5, retry_spots: int = 25) -> dict:
+           min_alt: Optional[float] = None, max_spots: Optional[int] = None, match_deg: Optional[float] = None,
+           retry_spots: int = 25) -> dict:
     """Latitude, longitude from the whole sky above the camera. f_scales: focal lengths to try
     (x each lens's f); the best one is reported so the caller can keep it.
 
@@ -335,6 +342,9 @@ def locate(frame: np.ndarray, up_imu: np.ndarray, utc: str, cat: Catalogue,
     is the zenith's uncertainty from the star fit alone (residuals, the two lenses' disagreement);
     the caller adds the accelerometer's and the clock's."""
     import cv2
+    min_alt = LOCATE_MIN_ALT if min_alt is None else min_alt
+    max_spots = LOCATE_MAX_SPOTS if max_spots is None else max_spots
+    match_deg = LOCATE_MATCH_DEG if match_deg is None else match_deg
     gray = frame if frame.ndim == 2 else cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     lenses = lenses or default_lenses()
     up = up_imu / np.linalg.norm(up_imu)

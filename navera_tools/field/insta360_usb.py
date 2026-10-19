@@ -52,6 +52,9 @@ IMU_HZ = 500
 # called a parked car moving in 80% of its frames (simulated, navera_tools/sim/car360_drive.py); 0.5 s blocks average
 # out the 1-2 Hz body bounce too and called gently accelerating cars stopped
 STILL_BLOCK_S = 0.2
+STILL_WINDOW_S = 2.0         # stopped(): the vehicle at rest over this long ...
+STILL_ACC_STD_G = 0.003      # ... with the STILL_BLOCK_S accelerometer means steady within this
+STILL_RATE_DPS = 0.5         # ... and turning slower than this
 IMU_COVERAGE = 0.9           # fraction of the stillness window the IMU rows must cover
 IMU_CALIBRATION = os.environ.get("NAVERA_INSTA360_IMU", os.path.expanduser("~/.navera_sim/insta360_usb_imu.json"))
 
@@ -477,7 +480,7 @@ class Insta360Usb:
                 return [r for r in self._imu if r[0] >= time.time() - window_s]
             return [r for r in self._imu if at_ms - 1000.0 * window_s <= r[1] <= at_ms + 1000.0 * after_s]
 
-    def stopped(self, window_s: float = 2.0, at_ms=None) -> dict:
+    def stopped(self, window_s: "float | None" = None, at_ms=None) -> dict:
         """Is the vehicle at rest? Vehicle acceleration tilts the measured 'up' (0.1 g braking or a curve = ~6 deg,
         hundreds of km) without changing |a| enough to notice, so a trusted fix needs the vehicle stopped:
         STILL_BLOCK_S means of the accelerometer steady within 0.003 g and rotation under 0.5 deg/s, over window_s.
@@ -485,6 +488,7 @@ class Insta360Usb:
         ~1.7 s late: 'now' would judge the wrong moment, e.g. a frame taken while braking judged on the stop that
         followed). The window must be covered (IMU_COVERAGE): after a silence of the IMU feed the stillness of the
         missing part is unknown, so it is not called stopped."""
+        window_s = STILL_WINDOW_S if window_s is None else window_s
         rows = self._rows(window_s, at_ms, 0.5)
         span = window_s + (0.5 if at_ms is not None else 0.0)
         if len(rows) < IMU_COVERAGE * IMU_HZ * span:
@@ -497,7 +501,8 @@ class Insta360Usb:
         means = a[:n].reshape(-1, b, 3).mean(axis=1)
         acc_std = float(means.std(axis=0).max())
         rate = float(np.degrees(np.linalg.norm(w[:n].reshape(-1, b, 3).mean(axis=1), axis=1)).max())
-        return {"stopped": acc_std < 0.003 and rate < 0.5, "acc_std_g": round(acc_std, 4), "rate_dps": round(rate, 2)}
+        return {"stopped": acc_std < STILL_ACC_STD_G and rate < STILL_RATE_DPS, "acc_std_g": round(acc_std, 4),
+                "rate_dps": round(rate, 2)}
 
     def gravity(self, window_s: float = 1.0, at_ms=None):
         """(unit 'up' vector in the IMU frame (the accelerometer at rest reads +1 g upwards), accel norm g, max rotation rad/s) over the last window,
