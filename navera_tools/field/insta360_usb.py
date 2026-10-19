@@ -86,6 +86,128 @@ def _rotvec(w):
     return np.eye(3) + math.sin(t) * K + (1 - math.cos(t)) * K @ K
 
 
+RAW_MAGIC = b"NAVRAW360v1\n"
+RAW_RECORD = struct.Struct("<dBII")                     # Jetson arrival time, kind, camera ms, packet length
+RAW_ROTATE_BYTES = 1 << 30
+
+
+class RawRecorder:
+    """Every packet the camera sends (all video frames, IMU, the rest), as it arrived, to raw360_NNNN.bin files
+    in a folder: a one-time test can then be replayed and re-analysed offline with any change (replay360.py).
+
+    File: RAW_MAGIC, then records RAW_RECORD + the whole packet (its 12-byte stream header included). kind is the
+    stream kind byte (0x20 video, 0x30 IMU, 0x40 frame info, 0x10 other) or 0 for a non-stream packet; cam_ms the
+    packet header's camera ms (0 for non-stream). A writer thread does the disk work, so the USB reader never waits
+    on the disk; when the queue holds more than max_queue_bytes the packet is dropped and counted. Files rotate at
+    rotate_bytes; numbering goes on after the files already in the folder (a resumed test does not overwrite)."""
+
+    def __init__(self, folder: str, rotate_bytes: int = RAW_ROTATE_BYTES, max_queue_bytes: int = 192 << 20):
+        os.makedirs(folder, exist_ok=True)
+        self.folder, self.rotate_bytes, self.max_queue_bytes = folder, rotate_bytes, max_queue_bytes
+        done = [n for n in os.listdir(folder) if n.startswith("raw360_") and n.endswith(".bin")]
+        self._n = max([int(n[7:11]) for n in done if n[7:11].isdigit()] or [-1]) + 1
+        self._q = collections.deque()
+        self._cv = threading.Condition()
+        self.queue_bytes = self.bytes = self.records = self.drops = self.drop_bytes = 0
+        self.files: list = []
+        self.error = None
+        self._f, self._fbytes, self._closed = None, 0, False
+        self._thread = threading.Thread(target=self._writer, daemon=True)
+        self._thread.start()
+
+    def put(self, t: float, p: bytes):
+        """Queue one packet (called by the USB reader: never blocks on the disk)."""
+        stream = p[:1] == b"\x01" and len(p) >= 12
+        kind = p[3] if stream else 0
+        cam_ms = struct.unpack_from("<I", p, 4)[0] if stream else 0
+        with self._cv:
+            if self._closed:
+                return
+            if self.queue_bytes + len(p) > self.max_queue_bytes:
+                self.drops += 1
+                self.drop_bytes += len(p)
+                return
+            self._q.append((t, kind, cam_ms, p))
+            self.queue_bytes += len(p)
+            self._cv.notify()
+
+    def _open_next(self):
+        if self._f is not None:
+            self._f.close()
+        path = os.path.join(self.folder, f"raw360_{self._n:04d}.bin")
+        self._n += 1
+        self._f = open(path, "wb")
+        self._f.write(RAW_MAGIC)
+        self._fbytes = len(RAW_MAGIC)
+        self.files.append(os.path.basename(path))
+
+    def _writer(self):
+        last_flush = time.time()
+        while True:
+            with self._cv:
+                while not self._q and not self._closed:
+                    self._cv.wait(0.5)
+                    if time.time() - last_flush > 1.0:
+                        break
+                batch = list(self._q)
+                self._q.clear()
+                self.queue_bytes = 0
+                closed = self._closed
+            try:
+                for t, kind, cam_ms, p in batch:
+                    if self._f is None or self._fbytes >= self.rotate_bytes:
+                        self._open_next()
+                    self._f.write(RAW_RECORD.pack(t, kind, cam_ms, len(p)))
+                    self._f.write(p)
+                    self._fbytes += RAW_RECORD.size + len(p)
+                    self.bytes += RAW_RECORD.size + len(p)
+                    self.records += 1
+                if self._f is not None and (time.time() - last_flush > 1.0 or closed):
+                    self._f.flush()
+                    last_flush = time.time()
+            except OSError as e:                         # disk full or gone: keep counting what is lost
+                self.error = f"raw recording: {e}"
+                with self._cv:
+                    self.drops += len(batch)
+            if closed:
+                if self._f is not None:
+                    self._f.close()
+                    self._f = None
+                return
+
+    def stats(self) -> dict:
+        return {"folder": self.folder, "files": list(self.files), "mb": round(self.bytes / 1e6, 1), "records": self.records,
+                "drops": self.drops, "drop_mb": round(self.drop_bytes / 1e6, 1), "queue_mb": round(self.queue_bytes / 1e6, 1),
+                "error": self.error}
+
+    def close(self) -> dict:
+        """Write what is queued, close the file; the final stats."""
+        with self._cv:
+            self._closed = True
+            self._cv.notify()
+        self._thread.join(timeout=60)
+        return self.stats()
+
+
+def read_raw(folder: str):
+    """The records of a raw recording, in order: (t_arrival, kind, cam_ms, packet bytes). A record cut short by a
+    power loss at the end of a file is skipped."""
+    names = sorted(n for n in os.listdir(folder) if n.startswith("raw360_") and n.endswith(".bin"))
+    for n in names:
+        with open(os.path.join(folder, n), "rb") as f:
+            if f.read(len(RAW_MAGIC)) != RAW_MAGIC:
+                raise ValueError(f"{n}: not a NAVERA raw 360 recording")
+            while True:
+                h = f.read(RAW_RECORD.size)
+                if len(h) < RAW_RECORD.size:
+                    break
+                t, kind, cam_ms, ln = RAW_RECORD.unpack(h)
+                p = f.read(ln)
+                if len(p) < ln:
+                    break
+                yield t, kind, cam_ms, p
+
+
 class Insta360Usb:
     """Live full-360 frames and IMU. latest() → (BGR frame, Jetson time it arrived); gravity() → unit
     vector of 'down' in the camera's IMU frame, averaged over the last second, or None while moving."""
@@ -98,6 +220,30 @@ class Insta360Usb:
         if self.dev is None:
             raise RuntimeError("Insta360 not found in USB mode 'Android' (vendor 2e1a)")
         self._util.claim_interface(self.dev, 0)
+        self._init_state(max_rate_dps, keyframes_only)
+        self._dir = tempfile.mkdtemp(prefix="insta360_")
+        self._fifo = os.path.join(self._dir, "video.h264")
+        os.mkfifo(self._fifo)
+        self._video = None
+        # key frames: keep the newest two (old ones dropped); every frame: a P frame needs all before it.
+        # Measured on the Jetson: every frame decodes at ~8 fps (< the camera's 18: falls behind, errors);
+        # key frames only give 2 fresh frames per second, 1.5 s behind the scene (screen flash test)
+        self._packets = collections.deque(maxlen=2 if keyframes_only else 64)
+        self._packet_ready = threading.Event()
+        try:
+            import av                                         # packet-by-packet decoding: no decoder backlog
+            self._codec = av.CodecContext.create("h264", "r")
+            self._codec.thread_type = "SLICE"
+            self._codec.thread_count = 4
+        except Exception:
+            self._codec = None                                # fallback: OpenCV reading a FIFO (adds delay)
+        self._send(PKT_SYNC)
+        self._message(CMD_START_LIVE, START_FULL)
+        for target in (self._read_usb, self._keepalive, self._decode):
+            threading.Thread(target=target, daemon=True).start()
+
+    def _init_state(self, max_rate_dps: float, keyframes_only: bool):
+        """Everything but the USB device, its threads and the decoder (replay360 builds the driver from this)."""
         self.max_rate = np.radians(max_rate_dps)
         # the decoder is slower than the stream (~18 fps): fed every frame it falls behind and the delay
         # grows; key frames only (one in 15 here, ~2 per second) keep it current
@@ -119,27 +265,8 @@ class Insta360Usb:
         # first starts after power-on): the keepalive restarts the stream when the IMU goes quiet
         self._started, self._imu_t, self.imu_restarts = time.time(), 0.0, 0
         self._stop = False
+        self.recorder = None                                # RawRecorder: every packet to disk (record())
         self._buf = bytearray()
-        self._dir = tempfile.mkdtemp(prefix="insta360_")
-        self._fifo = os.path.join(self._dir, "video.h264")
-        os.mkfifo(self._fifo)
-        self._video = None
-        # key frames: keep the newest two (old ones dropped); every frame: a P frame needs all before it.
-        # Measured on the Jetson: every frame decodes at ~8 fps (< the camera's 18: falls behind, errors);
-        # key frames only give 2 fresh frames per second, 1.5 s behind the scene (screen flash test)
-        self._packets = collections.deque(maxlen=2 if keyframes_only else 64)
-        self._packet_ready = threading.Event()
-        try:
-            import av                                         # packet-by-packet decoding: no decoder backlog
-            self._codec = av.CodecContext.create("h264", "r")
-            self._codec.thread_type = "SLICE"
-            self._codec.thread_count = 4
-        except Exception:
-            self._codec = None                                # fallback: OpenCV reading a FIFO (adds delay)
-        self._send(PKT_SYNC)
-        self._message(CMD_START_LIVE, START_FULL)
-        for target in (self._read_usb, self._keepalive, self._decode):
-            threading.Thread(target=target, daemon=True).start()
 
     # ── protocol ────────────────────────────────────────────────────────
     def _send(self, payload: bytes):
@@ -195,31 +322,51 @@ class Insta360Usb:
                 break
             p = bytes(b[i + 4:i + n])
             i += n
-            if p[:1] != b"\x01" or len(p) < 12:
-                continue
-            if p[3] == KIND_VIDEO:
-                if self.keyframes_only and not _has_keyframe(p, 12):
-                    continue
-                if self._codec is not None:
-                    self._packets.append((time.time(), p[12:], struct.unpack_from("<I", p, 4)[0]))
-                    self._packet_ready.set()
-                    continue
-                if self._video is None:
-                    continue
-                try:
-                    self._video.write(p[12:])
-                except OSError as e:
-                    self.error = f"decoder pipe: {e}"
-            elif p[3] == KIND_IMU:
-                body = p[12:]
-                now = time.time()
-                self._imu_t = now
-                with self._lock:
-                    for k in range(0, len(body) - IMU_RECORD.size + 1, IMU_RECORD.size):
-                        rec = IMU_RECORD.unpack_from(body, k)
-                        self._imu.append((now,) + rec)
-                        self._track(rec)
+            self._packet(p, time.time())
         del b[:i]
+
+    def _packet(self, p: bytes, now: float):
+        """One packet from the camera, arrived at Jetson time now (replay360 feeds recorded ones here)."""
+        rec = self.recorder
+        if rec is not None:
+            rec.put(now, p)                                 # every packet, before any filtering
+        if p[:1] != b"\x01" or len(p) < 12:
+            return
+        if p[3] == KIND_VIDEO:
+            if self.keyframes_only and not _has_keyframe(p, 12):
+                return
+            self._on_video(now, p[12:], struct.unpack_from("<I", p, 4)[0])
+        elif p[3] == KIND_IMU:
+            body = p[12:]
+            self._imu_t = now
+            with self._lock:
+                for k in range(0, len(body) - IMU_RECORD.size + 1, IMU_RECORD.size):
+                    r = IMU_RECORD.unpack_from(body, k)
+                    self._imu.append((now,) + r)
+                    self._track(r)
+
+    def _on_video(self, now: float, data: bytes, cam_ms: int):
+        if self._codec is not None:
+            self._packets.append((now, data, cam_ms))
+            self._packet_ready.set()
+            return
+        if self._video is None:
+            return
+        try:
+            self._video.write(data)
+        except OSError as e:
+            self.error = f"decoder pipe: {e}"
+
+    def record(self, folder_or_recorder):
+        """Start writing every packet to disk (a folder, or a RawRecorder shared across reconnects)."""
+        r = folder_or_recorder
+        self.recorder = r if isinstance(r, RawRecorder) else RawRecorder(r)
+        return self.recorder
+
+    def stop_record(self) -> dict:
+        """Stop recording; the recorder's final stats ({} when not recording)."""
+        r, self.recorder = self.recorder, None
+        return r.close() if r is not None else {}
 
     def _decode(self):
         if self._codec is not None:
