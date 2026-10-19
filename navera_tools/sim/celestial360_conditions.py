@@ -41,6 +41,7 @@ LAT, LON = 36.8, 10.2                     # Tunis area; the UTC hours below are 
 WRONG_KM = 50.0
 F_SCALE_SEARCH = (0.90, 0.95, 1.0, 1.05, 1.10)   # the server's first-solve focal search (server.F_SCALE_SEARCH)
 EXPOSURE_S = 1.0 / 30.0
+ATTITUDE_SIGMA_360_DEG = 0.3                     # server.ATTITUDE_SIGMA_360_DEG (not imported: server pulls in cv2/http)
 
 
 def rot(axis, deg):
@@ -72,6 +73,12 @@ class Condition:
     yaw_rate_dps: float = 0.0                 # the vehicle's turn rate meanwhile (the camera's gyro gate)
     clock_err_s: float = 0.0
     junk: bool = False                        # no catalogue star in the frame: any fix is a false accept
+    lat: float = LAT                          # where the car is
+    lon: float = LON
+    mount_deg: float = 0.0                    # both lenses rotated against the IMU (lens-to-IMU mounting error)
+    right_f_true: float = 1.0                 # right lens only: true focal / model (its f is a first guess)
+    right_k1_true: float = 0.0
+    right_centre_off_px: float = 0.0
     effects: Dict[str, float] = field(default_factory=dict)
 
 
@@ -91,7 +98,7 @@ class Scene:
         ra, dec, mag = load_bsc5(os.path.expanduser("~/.navera_sim"))
         keep = mag <= cond.limit_mag
         aa = SkyCoord(ra=ra[keep] * u.deg, dec=dec[keep] * u.deg).transform_to(
-            AltAz(obstime=Time(self.utc), location=EarthLocation(lat=LAT * u.deg, lon=LON * u.deg)))
+            AltAz(obstime=Time(self.utc), location=EarthLocation(lat=cond.lat * u.deg, lon=cond.lon * u.deg)))
         alt = aa.alt.deg + allsky.refraction_deg(aa.alt.deg)
         self.star_alt, self.star_v, self.star_mag = alt, enu(alt, aa.az.deg), mag[keep]
         heading = rng.uniform(0, 360)
@@ -111,6 +118,17 @@ class Scene:
                 a = rng.uniform(0, 2 * math.pi)
                 L.cx += cond.centre_off_px * math.cos(a)
                 L.cy += cond.centre_off_px * math.sin(a)
+        R = self.lenses[1]
+        R.f *= cond.right_f_true
+        R.k1 += cond.right_k1_true
+        if cond.right_centre_off_px:
+            a = rng.uniform(0, 2 * math.pi)
+            R.cx += cond.right_centre_off_px * math.cos(a)
+            R.cy += cond.right_centre_off_px * math.sin(a)
+        if cond.mount_deg:
+            ax = np.cross([1.0, 0, 0], rng.normal(size=3))          # a tilt of the lenses against the accelerometer
+            for L in self.lenses:
+                L.R_lens_imu = L.R_lens_imu @ rot(ax, cond.mount_deg)
         if cond.right_misalign_deg:
             ax = rng.normal(size=3)
             self.lenses[1].R_lens_imu = self.lenses[1].R_lens_imu @ rot(ax, cond.right_misalign_deg)
@@ -275,14 +293,14 @@ def render(sc: Scene):
         bg += np.where(sc.inside, g, 0)
         extra_var += np.where(sc.inside, 0.3 * g, 0)
         trans *= 0.7                                  # fainter stars lost in the brighter sky (contrast)
-    if "moon" in e:
-        alt, az = sc.rand_dir(25, 65, 1)
+    if "moon" in e:                                   # moon: e = glow at the moon (full ~40, quarter ~12, crescent ~4)
+        alt, az = sc.rand_dir(e.get("moon_alt_lo", 25), e.get("moon_alt_hi", 65), 1)
         dist = sc.dist_deg(alt[0], az[0])
-        g = e["moon"] * (np.exp(-dist / 12.0) + 0.25)
+        g = e["moon"] * (np.exp(-dist / 12.0) + 0.25) * (1.0 if alt[0] > 0 else 0.3)   # below the horizon: twilight-like glow only
         bg += np.where(sc.inside, g, 0)
         extra_var += np.where(sc.inside, 0.3 * g, 0)
         x, y = sc.to_px(enu(alt, az))
-        if np.isfinite(x[0]):
+        if np.isfinite(x[0]) and alt[0] > 0:
             add_disc(bg, x[0], y[0], 14, 400, halo=200, halo_r=25)
             sc.moon_px = (x[0], y[0])
 
@@ -376,6 +394,51 @@ def render(sc: Scene):
         tex = cv2.GaussianBlur(rng.normal(size=(H, W)).astype(np.float32), (0, 0), 3) * 40 + 30
         bg[gnd] += tex[gnd].clip(0, 200)
 
+    if "cirrus" in e:                                 # thin cirrus: patchy 0..e magnitudes of extinction, faintly lit
+        lo = rng.normal(size=(H // 128 + 1, W // 128 + 1)).astype(np.float32)
+        fld = cv2.GaussianBlur(cv2.resize(lo, (W, H), interpolation=cv2.INTER_CUBIC), (0, 0), 40)
+        fld = (fld - fld.min()) / (np.ptp(fld) + 1e-6)
+        trans *= 10 ** (-0.4 * e["cirrus"] * fld)
+        bg += np.where(sky, 4.0 * e["cirrus"] * fld, 0)
+    if "drones" in e:                                 # drone LEDs: steady point lights not in the catalogue, some pairs
+        n = int(e["drones"])
+        alt, az = sc.rand_dir(10, 60, n)
+        x, y = sc.to_px(enu(alt, az))
+        for xi, yi in zip(x, y):
+            if np.isfinite(xi):
+                add_psf(stars, xi, yi, star_amp(rng.uniform(0.0, 3.0)))
+                if rng.random() < 0.5:
+                    add_psf(stars, xi + rng.uniform(2, 5), yi, star_amp(rng.uniform(1.0, 3.0)))
+    if "insects" in e:                                # insects near the lens, lit by lamps: big soft blobs and streaks
+        for _ in range(int(e["insects"])):
+            alt, az = sc.rand_dir(10, 85, 1)
+            x, y = sc.to_px(enu(alt, az))
+            if not np.isfinite(x[0]):
+                continue
+            if rng.random() < 0.5:
+                add_psf(bg, x[0], y[0], rng.uniform(30, 200), sigma=rng.uniform(2.5, 8.0))
+            else:
+                d, ln = rng.uniform(0, 2 * math.pi), rng.uniform(15, 60)
+                cv2.line(bg, (int(x[0]), int(y[0])), (int(x[0] + ln * math.cos(d)), int(y[0] + ln * math.sin(d))),
+                         float(rng.uniform(30, 150)), int(rng.uniform(2, 6)), lineType=cv2.LINE_AA)
+    if "inside" in e:                                 # camera inside the car: roof hides alt < e deg, glass, reflections
+        roof = sc.inside & (sc.alt < e["inside"])
+        trans[roof] = 0
+        bg[roof] = 6 + 4 * rng.random()
+        trans *= 10 ** (-0.4 * 0.5)                  # windscreen/sunroof glass ~0.5 mag
+        if not c.junk:                               # second-surface ghosts of the bright stars, 8 px away, 8%
+            vis = sc.star_alt > e["inside"]
+            gx, gy = sc.to_px(sc.star_v[vis])
+            off = rng.uniform(5, 10, 2)
+            for xi, yi, mi in zip(gx, gy, sc.star_mag[vis]):
+                if np.isfinite(xi) and mi < 2.0:
+                    add_psf(stars, xi + off[0], yi + off[1], 0.08 * star_amp(mi))
+        alt, az = sc.rand_dir(e["inside"], 89, 15)    # dashboard LEDs / phone screen reflected in the glass
+        x, y = sc.to_px(enu(alt, az))
+        for xi, yi in zip(x, y):
+            if np.isfinite(xi):
+                add_psf(bg, xi, yi, rng.uniform(40, 400), sigma=rng.uniform(0.9, 1.6))
+
     frame = stars * trans + bg
     noise_sd = math.sqrt(9.0 + e.get("read_noise", 0.0) ** 2)
     frame += rng.normal(0, 1, (H, W)).astype(np.float32) * np.sqrt(noise_sd ** 2 + extra_var + 0.3 * stars * trans)
@@ -389,7 +452,30 @@ def render(sc: Scene):
     if "jpeg" in e:
         ok, buf = cv2.imencode(".jpg", out, [cv2.IMWRITE_JPEG_QUALITY, int(e["jpeg"])])
         out = cv2.imdecode(buf, cv2.IMREAD_GRAYSCALE)
+    if "h264_qp" in e:
+        out, sc.h264_bytes = h264_keyframe(out, int(e["h264_qp"]))
     return out
+
+
+def h264_keyframe(gray, qp):
+    """(the frame after an H.264 intra (key) frame round trip at quantiser qp, its size in bytes): libx264 as a
+    stand-in for the camera's hardware encoder (40 Mbps, 3840x1920, key frames decoded only)."""
+    import av
+    enc = av.CodecContext.create("libx264", "w")
+    enc.width, enc.height, enc.pix_fmt = gray.shape[1], gray.shape[0], "yuv420p"
+    enc.time_base = __import__("fractions").Fraction(1, 30)
+    enc.options = {"qp": str(qp), "preset": "veryfast", "keyint": "1", "bframes": "0"}
+    yuv = np.full((gray.shape[0] * 3 // 2, gray.shape[1]), 128, np.uint8)
+    yuv[:gray.shape[0]] = gray
+    fr = av.VideoFrame.from_ndarray(yuv, format="yuv420p")
+    pkts = list(enc.encode(fr)) + list(enc.encode(None))
+    nbytes = sum(p.size for p in pkts)
+    dec = av.CodecContext.create("h264", "r")
+    imgs = []
+    for p in pkts:
+        imgs += [f.to_ndarray(format="yuv420p")[:gray.shape[0]] for f in dec.decode(p)]       # the Y plane as coded
+    imgs += [f.to_ndarray(format="yuv420p")[:gray.shape[0]] for f in dec.decode(None)]
+    return imgs[0], nbytes
 
 
 def solver_up(sc: Scene):
@@ -458,7 +544,10 @@ def _run_one(args):
                lens_disagree_deg=r.get("lens_disagree_deg"), f_scale=r.get("f_scale"))
     if r.get("solved"):
         from navera_tools.field.reprocess360 import haversine_km
-        res["err_km"] = haversine_km(r["lat"], r["lon"], LAT, LON)
+        res["err_km"] = haversine_km(r["lat"], r["lon"], cond.lat, cond.lon)
+        # the sigma the server states for a stopped fix (server._solve360): accelerometer + star fit
+        att = math.hypot(ATTITUDE_SIGMA_360_DEG, r.get("sigma_fit_deg") or 0.0)
+        res["sigma_km"] = att * 111.2
     return res
 
 
@@ -526,6 +615,66 @@ def conditions() -> List[Condition]:
     ]
 
 
+def car_matrix() -> List[Condition]:
+    """The car field-test matrix (2026-10-19): the standing camera on a car roof at a stop. Every real-sky cell
+    has the accelerometer's measured residual (0.07 deg, the stopped case) so the stated sigma is tested too."""
+    def C(name, **kw):
+        if not kw.get("junk"):
+            kw.setdefault("up_err_deg", 0.07)
+        return Condition(name, **kw)
+    urban = {"skyglow": 40, "lamps": 12, "ground": 1, "obstruction": 20}
+    return [
+        C("base mag<=3"),
+        C("stars mag<=2.0", limit_mag=2.0), C("stars mag<=2.5", limit_mag=2.5), C("stars mag<=3.5", limit_mag=3.5),
+        C("stars mag<=4.0", limit_mag=4.0), C("stars mag<=5.0", limit_mag=5.0),
+        C("h264 key frame qp24 (~640 kB) mag<=3", effects={"h264_qp": 24}),
+        C("h264 qp24 mag<=3.5", limit_mag=3.5, effects={"h264_qp": 24}),
+        C("h264 qp28 (~150 kB) mag<=3", effects={"h264_qp": 28}),
+        C("h264 qp32 (~12 kB) mag<=3", effects={"h264_qp": 32}),
+        C("h264 qp28 mag<=2.5", limit_mag=2.5, effects={"h264_qp": 28}),
+        C("gain: read noise 8", effects={"read_noise": 8}),
+        C("exposure -1 mag", effects={"haze_mag": 1.0}),
+        C("moon full high", effects={"moon": 40}),
+        C("moon full low (5-20 deg)", effects={"moon": 40, "moon_alt_lo": 5, "moon_alt_hi": 20}),
+        C("moon quarter", effects={"moon": 12}),
+        C("moon crescent", effects={"moon": 4}),
+        C("moon full below horizon", effects={"moon": 40, "moon_alt_lo": -15, "moon_alt_hi": -3}),
+        C("moon full + flare", effects={"moon": 40, "flare": 6}),
+        C("city glow 20", effects={"skyglow": 20}), C("city glow 60", effects={"skyglow": 60}),
+        C("clouds 20%", effects={"clouds": 0.2}), C("clouds 50%", effects={"clouds": 0.5}),
+        C("clouds 80%", effects={"clouds": 0.8}),
+        C("cirrus 1 mag", effects={"cirrus": 1.0}), C("cirrus 2 mag", effects={"cirrus": 2.0}),
+        C("twilight", effects={"twilight": 50}),
+        C("obstruction 10 deg", effects={"obstruction": 10, "ground": 1}),
+        C("obstruction 25 deg", effects={"obstruction": 25, "ground": 1}),
+        C("obstruction 40 deg", effects={"obstruction": 40, "ground": 1}),
+        C("camera inside car (roof below 45 deg)", effects={"inside": 45}),
+        C("planes 4 (blinking)", effects={"planes": 4}), C("satellites 8", effects={"satellites": 8}),
+        C("drones 4", effects={"drones": 4}), C("birds 12", effects={"birds": 12}),
+        C("insects 15 near the lens", effects={"insects": 15}), C("hot pixels 400", effects={"hot_pixels": 400}),
+        C("street lamps 15", effects={"lamps": 15}),
+        C("urban + moon + clouds 50% + planes", effects={**urban, "moon": 40, "clouds": 0.5, "planes": 3}),
+        C("tilt 15 deg", tilt_deg=15), C("tilt 25 deg", tilt_deg=25), C("tilt 35 deg", tilt_deg=35),
+        C("tilt 45 deg", tilt_deg=45),
+        C("right lens f -5.5% (left's measured)", right_f_true=0.945),
+        C("right lens f -3%", right_f_true=0.97), C("right lens f +3%", right_f_true=1.03),
+        C("right lens k1 +0.02", right_k1_true=0.02), C("right lens centre 10 px", right_centre_off_px=10),
+        C("right lens f -5.5% + centre 10 px", right_f_true=0.945, right_centre_off_px=10),
+        C("mount 0.5 deg", mount_deg=0.5), C("mount 1 deg", mount_deg=1.0), C("mount 2 deg", mount_deg=2.0),
+        C("clock +10 s", clock_err_s=10), C("clock +30 s", clock_err_s=30), C("clock +60 s", clock_err_s=60),
+        C("latitude 0", lat=0.0), C("latitude 20", lat=20.0), C("latitude 50", lat=50.0), C("latitude 65", lat=65.0),
+        C("latitude -35", lat=-35.0),
+        C("JUNK pure noise", junk=True, effects={"pure_noise": 0}),
+        C("JUNK overcast lit", junk=True, effects={"clouds": 1.0, "skyglow": 40}),
+        C("JUNK 60 random points", junk=True, effects={"random_points": 60}),
+        C("JUNK 120 random points", junk=True, effects={"random_points": 120}),
+        C("JUNK clutter + insects + drones", junk=True,
+          effects={**urban, "obstruction": 35, "lamps": 25, "random_points": 40, "insects": 15, "drones": 6}),
+        C("JUNK inside car, LEDs", junk=True, effects={"inside": 45, "random_points": 30}),
+        C("JUNK h264 qp28 + 60 points", junk=True, effects={"random_points": 60, "h264_qp": 28}),
+    ]
+
+
 def summarise(rows):
     out = []
     by = {}
@@ -539,8 +688,11 @@ def summarise(rows):
         else:
             wrong = [r for r in solved if r.get("err_km", 1e9) > WRONG_KM]
         good = [r["err_km"] for r in solved if r not in wrong]
+        cov = [r for r in solved if r.get("sigma_km") is not None and not rs[0]["junk"]]
         out.append({"cond": name, "n": n, "solved": len(solved), "wrong": len(wrong),
                     "median_km": round(float(np.median(good)), 1) if good else None,
+                    "p90_km": round(float(np.percentile([r["err_km"] for r in solved], 90)), 1) if solved and not rs[0]["junk"] else None,
+                    "within_3sigma": f"{sum(r['err_km'] <= 3 * r['sigma_km'] for r in cov)}/{len(cov)}" if cov else "-",
                     "max_good_km": round(float(np.max(good)), 1) if good else None,
                     "matched": round(float(np.median([r["matched"] for r in solved])), 0) if solved else None,
                     "t_s": round(float(np.mean([r["t"] for r in rs])), 1),
@@ -549,10 +701,11 @@ def summarise(rows):
 
 
 def table(summary) -> str:
-    lines = ["| condition | solved | WRONG (>50 km / junk fix) | median km | max km (ok) | matched | solve s | why not |",
-             "|---|---|---|---|---|---|---|---|"]
+    lines = ["| condition | solved | WRONG (>50 km / junk fix) | median km | p90 km (all fixes) | within 3 sigma | max km (ok) | matched | solve s | why not |",
+             "|---|---|---|---|---|---|---|---|---|---|"]
     for s in summary:
         lines.append(f"| {s['cond']} | {s['solved']}/{s['n']} | {s['wrong']} | {s['median_km'] if s['median_km'] is not None else '-'} | "
+                     f"{s.get('p90_km') if s.get('p90_km') is not None else '-'} | {s.get('within_3sigma', '-')} | "
                      f"{s['max_good_km'] if s['max_good_km'] is not None else '-'} | {s['matched'] if s['matched'] is not None else '-'} | "
                      f"{s['t_s']} | {'; '.join(s['whys'])} |")
     return "\n".join(lines)
@@ -564,6 +717,8 @@ def main():
     ap.add_argument("--only", default="", help="comma-separated substrings of condition names")
     ap.add_argument("--workers", type=int, default=5)
     ap.add_argument("--json", default="")
+    ap.add_argument("--set", choices=("stress", "car"), default="stress",
+                    help="stress: the 2026-10-17 conditions table; car: the car field-test matrix (2026-10-19)")
     ap.add_argument("--solver", default="", help="path of another allsky.py to test instead of the current one")
     ap.add_argument("--lens", choices=("measured", "nominal"), default="measured",
                     help="lens model (truth and solver): sky360.default_lenses() as measured, or the first guess")
@@ -576,7 +731,7 @@ def main():
         spec = importlib.util.spec_from_file_location("allsky_under_test", a.solver)
         _SOLVER = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(_SOLVER)
-    conds = conditions()
+    conds = car_matrix() if a.set == "car" else conditions()
     if a.only:
         keys = [k.strip() for k in a.only.split(",") if k.strip()]
         conds = [c for c in conds if any(k in c.name for k in keys)]

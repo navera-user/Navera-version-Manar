@@ -27,7 +27,7 @@ import tempfile
 import threading
 import time as _time
 import types
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -74,6 +74,7 @@ class Profile:
     gyro_noise_dps: float = 0.17   # per sample
     imu_gap: Optional[tuple] = None  # (start_s, duration_s) of IMU silence
     stamp_err_ms: float = 0.0      # true frame-stamp lag minus the driver's FRAME_STAMP_LAG_MS
+    lens_mount_deg: float = 0.0    # true lenses tilted against the IMU (the unmeasured lens-to-IMU mounting angle)
     limit_mag: float = 3.0
     seed: int = 1
 
@@ -91,6 +92,7 @@ PROFILES = {
     "slope8": Profile("slope8", slope_deg=8.0),
     "imu_gap": Profile("imu_gap", imu_gap=(148.0, 6.0)),
     "imu_gap_stop": Profile("imu_gap_stop", imu_gap=(176.0, 3.6)),    # silent through the last braking (stop at 178.2)
+    "mount1": Profile("mount1", lens_mount_deg=1.0, cycles=4),
     "stamp+300ms": Profile("stamp+300ms", stamp_err_ms=300.0),
     "stamp-300ms": Profile("stamp-300ms", stamp_err_ms=-300.0),
 }
@@ -371,6 +373,10 @@ class Sim:
             self._noise = [self.rng.normal(10, 3, (1920, 3840)).astype(np.float32) for _ in range(3)]
         img = self._noise[int(te * 2) % 3].copy()
         lenses = server_lenses()
+        if self.p.lens_mount_deg:                                  # the TRUE lenses, tilted against the IMU
+            ax = np.cross([1.0, 0, 0], np.random.default_rng(self.p.seed + 3).normal(size=3))
+            for L in lenses:
+                L.R_lens_imu = L.R_lens_imu @ rot(ax, math.radians(self.p.lens_mount_deg))
         i0 = int(te * HZ)
         K = 5
         for s in range(K):
@@ -481,7 +487,6 @@ def full_run(p: Profile, interval_s: float, keep_dir: Optional[str] = None):
     f.go(2), f.go(3), f.go(4)
     t_end = sim.car["t"][-1] - 0.5
     ts = 2.0
-    from cn_pkg.star_detect import detect  # noqa: F401  (the loop body imports it)
     while ts < t_end:
         CLOCK.t = sim.t0 + ts
         sim.feed_imu(cam.cam, ts)
@@ -510,7 +515,8 @@ def full_run(p: Profile, interval_s: float, keep_dir: Optional[str] = None):
         i = min(int(max(te, 0) * HZ), sim.n - 1)
         row = {"idx": fr["idx"], "te": round(te, 1), "phase": str(sim.car["phase"][i]), "moving": bool(sim.car["moving"][i]),
                "at_rest": bool(sim.car["at_rest"][i]), "stopped": fr.get("stopped"), "solved": fr.get("solved"),
-               "why": fr.get("why"), "sigma_km": fr.get("sigma_km"), "matched": fr.get("matched"), "solve_s": None}
+               "why": fr.get("why"), "sigma_km": fr.get("sigma_km"), "matched": fr.get("matched"), "solve_s": None,
+               "phone_says_moving": fr.get("stopped_but_phone_moving")}
         if fr.get("solved"):
             lat, lon = sim.latlon(te)
             from navera_tools.field.reprocess360 import haversine_km
@@ -534,6 +540,7 @@ def summarise_full(rows, stops, solve_wall):
             "stopped_fixes": len(st), "stopped_err_km_p50_p90_max": [q([r["err_km"] for r in st], p) for p in (50, 90, 100)],
             "stopped_within_3sigma": f"{cover(st)}/{len(st)}",
             "stopped_fix_while_moving": sum(r["moving"] for r in st),
+            "referee_flagged": sum(bool(r.get("phone_says_moving")) for r in st),
             "moving_fixes": len(mv), "moving_err_km_p50_p90_max": [q([r["err_km"] for r in mv], p) for p in (50, 90, 100)],
             "moving_within_3sigma": f"{cover(mv)}/{len(mv)}",
             "stopped_fixes_per_stop": per_stop,
