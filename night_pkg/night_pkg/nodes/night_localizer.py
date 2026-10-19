@@ -146,6 +146,26 @@ def normalize_query(img_bgr, lat, zoom, altitude_m, hfov_deg, heading_deg=None, 
     return _out(out, out_mask)
 
 
+def stretch_contrast(query_bgr, mask=None, lo_pct=1.0, hi_pct=99.0):
+    """Percentile stretch of the query's ground pixels to the full 8-bit range.
+
+    A thermal camera's own gain control decides how the scene fills the 8 bits: with a
+    linear (min-max) AGC a fire or the sun's reflection takes the top of the range and
+    the whole ground is left in a few grey levels, and at thermal crossover the scene
+    is faint. STHN then sees an almost flat frame. Stretching the 1-99 % percentiles
+    of the ground (empty borders excluded) restores the contrast; a frame already
+    stretched by the camera is left nearly unchanged. Returns a new BGR image."""
+    g = cv2.cvtColor(query_bgr, cv2.COLOR_BGR2GRAY) if query_bgr.ndim == 3 else query_bgr
+    vals = g[mask > 0] if mask is not None and np.count_nonzero(mask) > 100 else g.ravel()
+    lo, hi = np.percentile(vals, (lo_pct, hi_pct))
+    if hi - lo < 1.0:
+        return query_bgr                     # flat: nothing to stretch (refused later)
+    out = np.clip((g.astype(np.float32) - lo) * (255.0 / (hi - lo)), 0, 255).astype(np.uint8)
+    if mask is not None:
+        out[mask == 0] = int(round(float(np.mean(out[mask > 0])))) if np.count_nonzero(mask) else 0
+    return cv2.cvtColor(out, cv2.COLOR_GRAY2BGR)
+
+
 def _edges(grey):
     """Polarity-free structure image: gradient magnitude of the lightly smoothed picture
     (a hot road on a cool field and a dark road on a bright field give the same edges)."""
@@ -173,6 +193,21 @@ VERIFY_SIZE = 256           # the map check runs at STHN's input scale (~2 m/px)
 MIN_MATCH_NCC = 0.05
 RECHECK_OFFSET_M = 150.0
 RECHECK_MAX_M = 25.0
+# Stated 1-sigma (per axis, metres) of a confirmed STHN fix (D3), fitted on 1389 accepted
+# synthetic fixes (navera_tools/bench/night_conditions.py, 78 conditions x 30 frames,
+# 2026-10-19): sigma = hypot(8 m + 1 % of the height above 400 m, 0.8 x the disagreement
+# between the two search centres). 99.4 % of the fixes within 3 sigma (random half held
+# out: 99.6 %); fitted on the city alone, it covered farmland only 96.4 %: terrain matters,
+# and real thermal imagery is not measured.
+SIGMA_BASE_M = 8.0
+SIGMA_PER_M_ABOVE_400 = 0.01
+SIGMA_RECHECK_K = 0.8
+
+
+def fix_sigma_m(altitude_m, recheck_m):
+    """The stated 1-sigma of a fix confirmed from two search centres (see SIGMA_BASE_M)."""
+    base = SIGMA_BASE_M + SIGMA_PER_M_ABOVE_400 * max(0.0, float(altitude_m or 400.0) - 400.0)
+    return math.hypot(base, SIGMA_RECHECK_K * float(recheck_m))
 
 
 def verify_match(query_bgr, query_mask, sat_bgr, corners_rw, resize_width=256):
@@ -344,8 +379,11 @@ class NightLocalizer:
         recheck_max_m: float = RECHECK_MAX_M,
         mixed_precision: bool = False,
         map_offset_deg: tuple = (0.0, 0.0),
+        contrast_stretch: bool = True,
     ):
         self.zoom           = zoom
+        # percentile stretch of the query before STHN (stretch_contrast)
+        self.contrast_stretch = bool(contrast_stretch)
         self.conf_threshold = conf_threshold
         # map-check gate (verify_match); None = measured and reported, not enforced
         self.min_match_ncc = min_match_ncc
@@ -644,6 +682,8 @@ class NightLocalizer:
             if a.get("success") and self.recheck_offset_m:
                 a = self._recheck(a, query_bgr, prior_lat, prior_lon, altitude_m, hfov_deg,
                                   heading, require_scale)
+                if a.get("success") and a.get("recheck_m") is not None:
+                    a["sigma_m"] = fix_sigma_m(altitude_m, a["recheck_m"])
             return a
 
         r = attempt(heading_deg)
@@ -736,6 +776,8 @@ class NightLocalizer:
                 return _FAIL
             query = query_bgr                     # legacy: unscaled (known to drift)
             qmask = None
+        if self.contrast_stretch:
+            query = stretch_contrast(query, qmask)
 
         # 1. Satellite reference patch centred on the prior
         try:

@@ -52,6 +52,7 @@ from navera_common.frame_builder import FrameBuilder  # noqa: E402
 from physical_camera import PhysicalCamera  # noqa: E402
 
 WRONG_M = 50.0          # an accepted fix farther than this from the truth is a wrong accept
+WRONG_HARD_M = 100.0    # "wrong3s": accepted and > 100 m off or outside 3 stated sigma
 HFOV_DEG = 75.0         # the simulator's thermal camera (~75 x 63 deg, 640 x 512)
 SIZE = (640, 512)
 TAU_S = 0.012           # microbolometer thermal time constant (smear along the track)
@@ -64,6 +65,7 @@ SITES = {
     "coast":    (35.8800, 10.5900, 0.0),       # shoreline: sampled along it (see _coast_point)
     "sea":      (35.9200, 10.7500, 2000.0),    # open sea, no structure
     "desert":   (35.5850, 10.4300, 900.0),     # Sebkhet Sidi el Hani salt flat (uniform)
+    "olives":   (35.6930, 10.6348, 1000.0),    # olive groves: the same tree pattern repeated
 }
 # The shoreline north of Sousse, roughly NW-SE (lat, lon): frames half sea / half land
 COAST_LINE = [(35.9200, 10.5770), (35.9050, 10.5890), (35.8900, 10.6010), (35.8750, 10.6058),
@@ -136,16 +138,26 @@ class Pose:
     alt_sigma: float
     att_err: tuple          # (roll, pitch, heading) error of the measured attitude, deg
     prior: tuple
+    hfov_factor: float = 1.0    # stated field of view / true field of view
+
+
+TURN_BANK_DEG = 20.0        # timing-offset conditions: a coordinated turn at this bank
 
 
 def make_pose(i: int, site: str = "mixed", agl: float = 400.0, prior_m=(100.0, 250.0),
               heading_err_deg: Optional[float] = None, tilt_deg: Optional[float] = None,
-              alt_err: Optional[float] = None, speed: float = 25.0) -> Pose:
+              alt_err: Optional[float] = None, speed: float = 25.0,
+              hfov_err: Optional[float] = None, timing_s: Optional[float] = None) -> Pose:
     """Frame i's pose (seeded by i, so every condition sees the same poses).
 
     Defaults are a realistic small-error flight: tilt 0-5 deg, IMU attitude error
     0.5 deg (roll/pitch) and 2 deg (heading) 1-sigma, barometric height 3 % 1-sigma,
-    prior 100-250 m off in a random direction."""
+    prior 100-250 m off in a random direction.
+
+    hfov_err: relative error of the configured field of view (+0.1 = states 10 % wider).
+    timing_s: the attitude is read timing_s away from the exposure while the vehicle is in
+    a coordinated turn (bank TURN_BANK_DEG at `speed`): the heading is off by the turn rate
+    x timing_s (the bank does not change in a steady turn)."""
     rng = np.random.default_rng(1000 + i)
     if site == "mixed":
         site = ("urban", "farmland")[i % 2]
@@ -166,8 +178,13 @@ def make_pose(i: int, site: str = "mixed", agl: float = 400.0, prior_m=(100.0, 2
     pm = float(rng.uniform(*prior_m)) if isinstance(prior_m, tuple) else float(prior_m)
     pa = rng.uniform(0, 2 * math.pi)
     prior = offset(lat, lon, pm * math.cos(pa), pm * math.sin(pa))
+    if timing_s is not None:
+        roll, pitch = TURN_BANK_DEG, 0.0
+        rate = math.degrees(9.81 * math.tan(math.radians(TURN_BANK_DEG)) / speed)
+        att_err = (att_err[0], att_err[1], att_err[2] + rate * float(timing_s))
     return Pose(site, lat, lon, agl, heading, roll, pitch, speed, agl * (1 + rel),
-                max(0.03, abs(rel)) * agl, att_err, prior)
+                max(0.03, abs(rel)) * agl, att_err, prior,
+                1.0 + (float(hfov_err) if hfov_err is not None else 0.0))
 
 
 # ── thermal-like rendering and conditions ──────────────────────────────────────
@@ -397,6 +414,157 @@ def c_uniform(t, ctx, bgr):
     return finish(np.full_like(t, 0.5), ctx)
 
 
+# ── 2026-10-19 additions: sensor defects, AGC, weather, distractors, low-light visible ──
+
+def c_dead_pixels(t, ctx, bgr):
+    """Dead / stuck pixels after AGC: 0.5 % stuck black or white, 4 dead columns, one
+    dead 3 px cluster per 50 000 px (a real core ships with a bad-pixel map; this is the
+    case where it is stale)."""
+    g = c_nominal(t, ctx, bgr).copy()
+    h, w = g.shape
+    rng = np.random.default_rng(11)                # the same defects on every frame
+    n = int(0.005 * h * w)
+    ys, xs = rng.integers(0, h, n), rng.integers(0, w, n)
+    g[ys, xs] = rng.choice([0.0, 1.0], n)
+    for x in rng.integers(0, w, 4):
+        g[:, x] = float(rng.choice([0.02, 0.98]))
+    for _ in range(max(1, h * w // 50_000)):
+        x, y = int(rng.integers(0, w - 3)), int(rng.integers(0, h - 3))
+        g[y:y + 3, x:x + 3] = 1.0
+    return g
+
+
+def c_nuc_drift(t, ctx, bgr):
+    """NUC drift long after the last shutter calibration: a smooth offset bowl / gradient
+    across the frame (housing warming) of 40 % of the scene range, plus column stripes."""
+    h, w = t.shape
+    rng = np.random.default_rng(13)
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    bowl = ((xx - 0.3 * w) ** 2 + (yy - 0.6 * h) ** 2) / float(w * w)
+    col = rng.normal(0, 0.08, (1, w)).astype(np.float32)
+    t = smear(cv2.GaussianBlur(t, (0, 0), 1.0), ctx)
+    rng_scene = float(np.percentile(t, 99) - np.percentile(t, 1))
+    return finish(t + 0.4 * rng_scene * bowl / max(float(bowl.max()), 1e-6) + col * rng_scene, ctx)
+
+
+def _plateau_eq(counts: np.ndarray, bins: int = 4096, plateau: float = 0.004) -> np.ndarray:
+    """Plateau histogram equalisation (the usual 14-bit -> 8-bit thermal AGC): each
+    histogram bin is clipped at `plateau` of the pixels before the cumulative mapping."""
+    lo, hi = float(counts.min()), float(counts.max())
+    idx = np.clip(((counts - lo) / max(hi - lo, 1e-6) * (bins - 1)).astype(np.int32), 0, bins - 1)
+    hist = np.bincount(idx.ravel(), minlength=bins).astype(np.float64)
+    hist = np.minimum(hist, plateau * counts.size)
+    cdf = np.cumsum(hist)
+    cdf /= max(cdf[-1], 1.0)
+    return cdf[idx].astype(np.float32)
+
+
+def c_agc_14bit_plateau(t, ctx, bgr):
+    """14-bit counts (scene + hot vehicles + one fire), plateau-equalised to 8 bit: local
+    contrast stretched where the histogram is dense, grey levels no longer linear."""
+    h, w = t.shape
+    t = t.copy()
+    m = 0.06 * 0.96 / ctx.gsd
+    _blobs(ctx.rng, h, w, 40, (max(1.0, 2 * m), max(1.5, 3 * m)), 1.6, t)
+    _blobs(ctx.rng, h, w, 1, (8, 16), 6.0, t)
+    t = smear(cv2.GaussianBlur(t, (0, 0), 1.0), ctx)
+    t = t * _vignette(h, w, 0.15) + ctx.rng.normal(0, 0.02, t.shape).astype(np.float32)
+    counts = np.round(np.clip(t / 6.0, 0, 1) * 16383.0)
+    return _plateau_eq(counts)
+
+
+def c_agc_linear_fire(t, ctx, bgr):
+    """Linear min-max AGC 14 -> 8 bit with a fire in view: the fire takes the top of the
+    range and the whole ground is squeezed into ~1/20 of the grey levels (quantised)."""
+    h, w = t.shape
+    t = t.copy()
+    _blobs(ctx.rng, h, w, 2, (6, 14), 20.0, t)
+    t = smear(cv2.GaussianBlur(t, (0, 0), 1.0), ctx)
+    t = t * _vignette(h, w, 0.15) + ctx.rng.normal(0, 0.02, t.shape).astype(np.float32)
+    counts = np.round(np.clip(t / 20.0, 0, 1) * 16383.0)
+    g = agc(counts, 0.0, 100.0)
+    return np.round(g * 255.0) / 255.0               # the 8-bit quantisation is the point
+
+
+def c_fires(t, ctx, bgr):
+    """1-3 fires (saturated, 15-40 m) with a warm smoke plume drifting downwind; percentile AGC."""
+    h, w = t.shape
+    t = t.copy()
+    plume = np.zeros((h, w), np.float32)
+    for _ in range(int(ctx.rng.integers(1, 4))):
+        x, y = int(ctx.rng.integers(40, w - 40)), int(ctx.rng.integers(40, h - 40))
+        r = max(3, int(round(float(ctx.rng.uniform(15, 40)) / 2 / ctx.gsd)))
+        cv2.circle(plume, (x, y), r, 1.0, -1)
+        cv2.circle(t, (x, y), r, 5.0, -1, lineType=cv2.LINE_AA)
+    k = np.zeros((1, 81), np.float32)
+    k[0, 40:] = np.exp(-np.arange(41) / 15.0)
+    plume = cv2.filter2D(plume, -1, k / k.sum())
+    t = t + 0.6 * cv2.GaussianBlur(plume, (0, 0), 6.0)
+    return finish(smear(cv2.GaussianBlur(t, (0, 0), 1.0), ctx), ctx)
+
+
+def c_city_hot(t, ctx, bgr):
+    """A city at night: 400 hot points (vehicles, lit windows, AC units) and 10 chimneys."""
+    h, w = t.shape
+    t = t.copy()
+    m = 0.06 * 0.96 / ctx.gsd
+    _blobs(ctx.rng, h, w, 400, (max(1.0, 1.5 * m), max(1.5, 3 * m)), 1.5, t)
+    _blobs(ctx.rng, h, w, 10, (3, 7), 3.0, t)
+    return finish(smear(cv2.GaussianBlur(t, (0, 0), 1.0), ctx), ctx)
+
+
+def c_lights_drones(t, ctx, bgr):
+    """Hot points that do not belong to the ground: 3 drones (small hot crosses), aircraft
+    navigation lights / landing light (bright points), 40 birds."""
+    h, w = t.shape
+    t = smear(cv2.GaussianBlur(t, (0, 0), 1.0), ctx).copy()
+    for _ in range(3):
+        x, y = int(ctx.rng.integers(20, w - 20)), int(ctx.rng.integers(20, h - 20))
+        s = int(ctx.rng.integers(5, 12))
+        cv2.line(t, (x - s, y - s), (x + s, y + s), 1.8, 2)
+        cv2.line(t, (x - s, y + s), (x + s, y - s), 1.8, 2)
+    _blobs(ctx.rng, h, w, 8, (1, 2), 4.0, t)
+    _blobs(ctx.rng, h, w, 40, (1, 3), 1.2, t)
+    return finish(t, ctx)
+
+
+def c_haze_humid(t, ctx, bgr):
+    """Humid haze: transmission 0.55 with a slow 20 % variation across the frame, path
+    radiance, a slightly softer image."""
+    h, w = t.shape
+    tr = 0.55 * (1 + 0.2 * _smooth_noise(ctx.rng, h, w, 128))
+    t = t * tr + (1 - tr) * 0.55
+    return finish(smear(cv2.GaussianBlur(t, (0, 0), 2.0), ctx), ctx)
+
+
+def _lowlight_visible(photons_white: float, lights: bool = True):
+    def f(t, ctx, bgr):
+        """A VISIBLE camera at night (the Insta360 class, not thermal): the scene's
+        reflectance times a moonlight level, shot noise (Poisson, `photons_white`
+        electrons for a white surface per exposure), read noise 2 e-, street / window
+        lights on man-made surfaces (grey, bright in the day image), auto-exposure on the
+        99th percentile, gamma 2.2, 8 bit. Grey output (the night chain takes a grey image)."""
+        h, w = t.shape
+        f32 = bgr.astype(np.float32) / 255.0
+        luma = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
+        sat = (f32.max(axis=2) - f32.min(axis=2)) / np.maximum(f32.max(axis=2), 1e-3)
+        e = luma * photons_white
+        if lights:
+            built = ((sat < 0.18) & (luma > 0.45)).astype(np.float32)
+            cand = np.flatnonzero(built.ravel())
+            if cand.size:
+                pick = ctx.rng.choice(cand, size=min(cand.size, int(0.002 * h * w)), replace=False)
+                lamp = np.zeros(h * w, np.float32)
+                lamp[pick] = 1.0
+                lamp = cv2.GaussianBlur(lamp.reshape(h, w), (0, 0), 2.5)
+                e = e + lamp / max(float(lamp.max()), 1e-6) * 60.0 * max(photons_white, 5.0)
+        e = ctx.rng.poisson(np.clip(e, 0, None)).astype(np.float32) + ctx.rng.normal(0, 2.0, e.shape)
+        e = smear(e, ctx)
+        g = np.clip(e / max(float(np.percentile(e, 99)), 1e-3), 0, 1) ** (1 / 2.2)
+        return np.round(g * 255.0) / 255.0
+    return f
+
+
 @dataclass
 class Condition:
     name: str
@@ -443,6 +611,28 @@ CONDITIONS: List[Condition] = [
     Condition("terrain_desert", "false-accept", pose_kw=dict(site="desert")),
     Condition("pure_noise", "false-accept", c_pure_noise, no_info=True),
     Condition("uniform_frame", "false-accept", c_uniform, no_info=True),
+    # 2026-10-19 additions
+    Condition("dead_pixels", "thermal", c_dead_pixels, note="stale bad-pixel map"),
+    Condition("nuc_drift", "thermal", c_nuc_drift, note="offset bowl 40 % + stripes"),
+    Condition("agc_14bit_plateau", "thermal", c_agc_14bit_plateau, note="plateau equalisation"),
+    Condition("agc_linear_fire", "thermal", c_agc_linear_fire, note="min-max AGC, fire in view"),
+    Condition("haze_humid", "weather", c_haze_humid),
+    Condition("clouds_85pct", "weather", _clouds(0.85)),
+    Condition("clouds_100pct", "weather", _clouds(1.0), no_info=True),
+    Condition("fires", "objects", c_fires),
+    Condition("lights_drones", "objects", c_lights_drones),
+    Condition("city_hot", "terrain", c_city_hot, dict(site="urban"), note="400 hot points"),
+    Condition("terrain_olives", "terrain", pose_kw=dict(site="olives"), note="repeated pattern"),
+    Condition("heading_err_45deg", "geometry", pose_kw=dict(heading_err_deg=45)),
+    Condition("tilt_0deg", "geometry", pose_kw=dict(tilt_deg=0)),
+    Condition("tilt_15deg", "geometry", pose_kw=dict(tilt_deg=15)),
+    *[Condition(f"height_err_{e:+.0%}", "geometry", pose_kw=dict(alt_err=e)) for e in (-0.4, 0.4)],
+    *[Condition(f"hfov_err_{e:+.0%}", "geometry", pose_kw=dict(hfov_err=e)) for e in (-0.1, -0.05, 0.05, 0.1)],
+    *[Condition(f"timing_{s}s_turn", "geometry", pose_kw=dict(timing_s=s)) for s in (0.2, 0.5, 1.5)],
+    Condition("visible_fullmoon", "visible-night", _lowlight_visible(60.0), dict(site="urban")),
+    Condition("visible_quartermoon", "visible-night", _lowlight_visible(8.0), dict(site="urban")),
+    Condition("visible_starlight", "visible-night", _lowlight_visible(0.5), dict(site="urban")),
+    Condition("visible_fullmoon_rural", "visible-night", _lowlight_visible(60.0), dict(site="farmland")),
 ]
 
 
@@ -477,20 +667,22 @@ def run_condition(cond: Condition, loc, cam: _GeomCamera, fb: FrameBuilder, n: i
             cv2.imwrite(str(save_dir / f"{cond.name}_{i}.jpg"), img)
         t0 = time.perf_counter()
         r = loc.localize(img, pose.prior[0], pose.prior[1], altitude_m=meta["altitude_m"],
-                         hfov_deg=meta["camera_hfov_deg"], heading_deg=meta["heading_deg"],
+                         hfov_deg=meta["camera_hfov_deg"] * pose.hfov_factor, heading_deg=meta["heading_deg"],
                          **({"heading_retry_deg": HEADING_RETRY} if HEADING_RETRY else {}))
         dt = (time.perf_counter() - t0) * 1000
         acc = bool(r.get("success"))
         err = dist_m((r["lat"], r["lon"]), (pose.lat, pose.lon)) if acc else None
-        sig = sigma_stated(pose.alt_meas, float(r.get("conf", 0.0)), r.get("rms_px"), pose.alt_sigma) if acc else None
-        rows.append(dict(cond=cond.name, i=i, site=pose.site, accepted=acc, err_m=err, sigma_m=sig,
+        sig = (r.get("sigma_m") or sigma_stated(pose.alt_meas, float(r.get("conf", 0.0)), r.get("rms_px"),
+                                                pose.alt_sigma)) if acc else None
+        rows.append(dict(cond=cond.name, i=i, site=pose.site, agl=pose.agl, accepted=acc, err_m=err, sigma_m=sig,
                          conf=r.get("conf"), shift_px=r.get("rms_px"), reason=r.get("reason", ""),
                          prior_err_m=dist_m(pose.prior, (pose.lat, pose.lon)), dt_ms=dt,
                          coverage=(r.get("query") or {}).get("coverage"),
                          recheck_m=r.get("recheck_m"), heading_fix=r.get("heading_correction_deg"),
                          **{f"v_{k}": v for k, v in (r.get("verify") or
                                                      dict(ncc=None)).items()},
-                         wrong=acc and (cond.no_info or err > WRONG_M)))
+                         wrong=acc and (cond.no_info or err > WRONG_M),
+                         wrong3s=acc and (cond.no_info or err > WRONG_HARD_M or err > 3 * sig)))
     return summarize(cond, rows), rows
 
 
@@ -512,6 +704,7 @@ def summarize(cond: Condition, rows: List[dict]) -> dict:
         max_m=max(errs) if errs else None,
         wrong=sum(r["wrong"] for r in rows),
         wrong_rate=sum(r["wrong"] for r in rows) / n if n else 0.0,
+        wrong3s=sum(r["wrong3s"] for r in rows),
         within_3sigma=len(in3) / len(acc) if acc else None,
         ms_median=statistics.median(r["dt_ms"] for r in rows),
         refused=refused)
@@ -523,11 +716,11 @@ def _fmt(v, f="{:.0f}"):
 
 def print_table(summaries: List[dict]):
     print(f"\n{'condition':24s} {'group':12s} {'match':>7s} {'med':>5s} {'p90':>5s} {'max':>6s} "
-          f"{'wrong':>6s} {'in3σ':>5s} {'ms':>5s}  refused")
+          f"{'wrong':>6s} {'w100|3σ':>7s} {'in3σ':>5s} {'ms':>5s}  refused")
     for s in summaries:
         print(f"{s['condition']:24s} {s['group']:12s} {s['accepted']:3d}/{s['n']:<3d} "
               f"{_fmt(s['median_m']):>5s} {_fmt(s['p90_m']):>5s} {_fmt(s['max_m']):>6s} "
-              f"{s['wrong']:3d}/{s['n']:<2d} {_fmt(s['within_3sigma'], '{:.0%}'):>5s} "
+              f"{s['wrong']:3d}/{s['n']:<2d} {s['wrong3s']:7d} {_fmt(s['within_3sigma'], '{:.0%}'):>5s} "
               f"{s['ms_median']:5.0f}  {'; '.join(f'{k}:{v}' for k, v in s['refused'].items())}")
 
 
