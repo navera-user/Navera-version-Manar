@@ -77,6 +77,56 @@ F_SCALE_SEARCH = (0.96, 1.0, 1.04)
 CAL_MIN_SAMPLES = 4
 CAL_SAMPLES = 12
 CAL_SIGMA_FLOOR_DEG = 0.05
+# Live settings: <NAVERA_FIELD_DIR>/live_params.json ({"KEY": value, ..., "_by": "who"}) is re-read each loop second
+# (livectl.py writes it). Only these knobs, each within its range; a key left out of the file goes back to its
+# value at start. KEY: (kind, min, max, what). kind: int | float | ftuple (tuple of floats) | action.
+LIVE_PARAMS_FILE = "live_params.json"
+LIVE_PARAMS = {
+    "server.MIN_STARS": ("int", 3, 40, "stars seen before a frame is solved"),
+    "server.STOPPED_SOLVE_GAP_S": ("float", 1.0, 30.0, "s between solves while stopped"),
+    "field.interval_s": ("float", 2.0, 120.0, "s between solves while moving"),
+    "server.CAL_MIN_SAMPLES": ("int", 2, 30, "stopped fixes before the tilt is first fitted (before it froze only)"),
+    "server.CAL_SAMPLES": ("int", 4, 60, "stopped fixes the tilt is learned on, then frozen (before it froze only)"),
+    "server.F_SCALE_SEARCH": ("ftuple", 0.85, 1.15, "focal scales tried on the first solve"),
+    "field.f_scale_reset": ("action", None, None, "forget the focal scale found: the next solve searches again"),
+    "allsky.MAX_RMS_DEG": ("float", 0.05, 0.5, "gate: star residual"),
+    "allsky.MIN_MATCHED": ("int", 5, 40, "gate: matched stars"),
+    "allsky.MAX_P_CHANCE": ("float", 1e-12, 1e-3, "gate: chance-match probability"),
+    "allsky.ACCEL_NORM_TOL": ("float", 0.002, 0.05, "|a| - 1 g allowed for 'up' (g)"),
+    "allsky.DETECT_K_SIGMA": ("float", 3.0, 15.0, "spot threshold, local noise sigmas"),
+    "allsky.LOCATE_MAX_SPOTS": ("int", 15, 150, "brightest spots given to the identification"),
+    "allsky.LOCATE_MATCH_DEG": ("float", 0.2, 1.5, "spot-star match radius (deg)"),
+    "allsky.LOCATE_MIN_ALT": ("float", 0.0, 45.0, "lowest altitude used (deg)"),
+    "insta360_usb.STILL_WINDOW_S": ("float", 0.5, 6.0, "stopped: window (s)"),
+    "insta360_usb.STILL_ACC_STD_G": ("float", 0.0005, 0.03, "stopped: accelerometer steadiness (g)"),
+    "insta360_usb.STILL_RATE_DPS": ("float", 0.05, 5.0, "stopped: rotation rate (deg/s)"),
+}
+
+
+def check_live_param(key, value):
+    """(value converted, None) or (None, why refused)."""
+    spec = LIVE_PARAMS.get(key)
+    if spec is None:
+        return None, "unknown key"
+    kind, lo, hi, _ = spec
+    try:
+        if kind == "action":
+            return bool(value), None
+        if kind == "ftuple":
+            v = tuple(float(x) for x in (value if isinstance(value, (list, tuple)) else [value]))
+            if not 1 <= len(v) <= 9 or any(not (lo <= x <= hi) for x in v):
+                return None, f"1-9 values each in [{lo}, {hi}]"
+            return v, None
+        if isinstance(value, bool):
+            return None, "not a number"
+        v = int(value) if kind == "int" else float(value)
+        if kind == "int" and float(value) != v:
+            return None, "not an integer"
+    except (TypeError, ValueError):
+        return None, f"not a {kind}"
+    if not (lo <= v <= hi) or v != v:
+        return None, f"out of range [{lo}, {hi}]"
+    return v, None
 
 
 def solver_view(img, hfov):
@@ -274,6 +324,9 @@ class Field:
         self.cal_samples: list = []                 # 360: (R_icrs_imu, up, true zenith) of stopped fixes with a reference
         self.tilt_cal: Optional[dict] = None        # 360: the fitted tilt of 'up' (see CAL_SAMPLES)
         self.spots: list = []
+        self.live_params = {"active": {}, "refused": {}, "mtime": None, "error": None}
+        self._lp_defaults: dict = {}                # KEY: value at start, for a key taken out of the file
+        self._lp_check_t = 0.0
         self._recover()
         threading.Thread(target=self._loop, daemon=True).start()
 
@@ -409,6 +462,7 @@ class Field:
         from cn_pkg.star_detect import detect
         while True:
             t0 = time.time()
+            self.live_params_tick()
             try:
                 img, texp = self.camera.latest()
                 if (img is not None) != self.cam_ok:
@@ -441,6 +495,90 @@ class Field:
                 log(f"analysis error: {e!r}")
             time.sleep(max(0.0, 1.0 - (time.time() - t0)))
 
+    # ── live settings ───────────────────────────────────────────────────
+    def _lp_target(self, key):
+        from navera_tools.field import allsky, insta360_usb
+        scope, _, name = key.partition(".")
+        if scope == "field":
+            return self, name
+        return {"server": sys.modules[__name__], "allsky": allsky, "insta360_usb": insta360_usb}[scope], name
+
+    def live_params_tick(self, force=False):
+        """Apply live_params.json when it changed (at most once a second). Never raises."""
+        try:
+            if not force and time.time() - self._lp_check_t < 1.0:
+                return
+            self._lp_check_t = time.time()
+            path = os.path.join(self.root, LIVE_PARAMS_FILE)
+            try:
+                st = os.stat(path)
+                mtime = [st.st_mtime_ns, st.st_ino, st.st_size]   # livectl renames a new file in: a new inode
+            except FileNotFoundError:
+                mtime = None
+            if mtime == self.live_params["mtime"]:
+                return
+            self.live_params["mtime"] = mtime
+            want = {}
+            if mtime is not None:
+                try:
+                    with open(path) as fh:
+                        want = json.load(fh)
+                    if not isinstance(want, dict):
+                        raise ValueError("not a JSON object")
+                    self.live_params["error"] = None
+                except (OSError, ValueError) as e:
+                    self.live_params["error"] = f"{path}: {e}"[:300]
+                    log(f"live params not read: {e}")
+                    return                              # a half-written or bad file changes nothing
+            self._apply_live_params(want)
+        except Exception as e:                          # the loop must never die for a setting
+            self.live_params["error"] = repr(e)[:300]
+
+    def _apply_live_params(self, want):
+        by = str(want.get("_by") or "file")[:40]
+        refused, active = {}, self.live_params["active"]
+        frozen = len(self.cal_samples) >= CAL_SAMPLES
+        for key in list(active):                        # taken out of the file: back to the value at start
+            if key not in want and key not in self._lp_defaults:
+                active.pop(key)                         # an action: nothing to undo
+            elif key not in want:
+                obj, name = self._lp_target(key)
+                old = getattr(obj, name)
+                setattr(obj, name, self._lp_defaults[key])
+                active.pop(key)
+                self._lp_event(key, old, self._lp_defaults[key], by)
+        for key, raw in want.items():
+            if key.startswith("_"):
+                continue
+            v, why = check_live_param(key, raw)
+            if why is None and key.startswith("server.CAL") and frozen:
+                why = "the tilt calibration is frozen"
+            if why is not None:
+                refused[key] = why
+                continue
+            if LIVE_PARAMS[key][0] == "action":
+                if v and active.get(key) != raw:
+                    if key == "field.f_scale_reset":
+                        old, self.f_scale = self.f_scale, None
+                        self._lp_event(key, old, None, by)
+                active[key] = raw
+                continue
+            obj, name = self._lp_target(key)
+            old = getattr(obj, name)
+            self._lp_defaults.setdefault(key, old)
+            if old != v:
+                setattr(obj, name, v)
+                self._lp_event(key, old, v, by)
+            active[key] = v
+        self.live_params["refused"] = refused
+        if refused:
+            log(f"live params refused: {refused}")
+
+    def _lp_event(self, key, old, new, by):
+        log(f"live param {key}: {old!r} -> {new!r} (by {by})")
+        if self.session is not None:
+            self.session.event("live_param", key=key, old=_jsonable(old), new=_jsonable(new), by=by)
+
     def _live360(self, img, texp):
         """Bright spots above the horizon in both circles (the all-sky solver's input) and the preview."""
         from navera_tools.field import allsky, sky360
@@ -452,7 +590,7 @@ class Field:
         if level < 80:
             for L in lenses:
                 st = {}
-                spots += allsky.detect_spots(img, L, up_imu=up, min_alt=None if up is None else 12.0, stats=st)
+                spots += allsky.detect_spots(img, L, up_imu=up, min_alt=None if up is None else allsky.LOCATE_MIN_ALT, stats=st)
                 for k, v in st.items():
                     rejected[k] = rejected.get(k, 0) + v
         self.spots = spots
@@ -803,7 +941,16 @@ class Field:
                 "imu_age_s": _round(self.camera.imu_age(), 1) if hasattr(self.camera, "imu_age") else None,
                 "last_fix": self.last_fix, "solving": self.solving, "interval_s": self.interval_s,
                 "done": self.last_done, "disk_error": bool(s and s.io_error), "server_time_ms": int(time.time() * 1000),
-                "raw": self.camera.raw_stats() if hasattr(self.camera, "raw_stats") else None}
+                "raw": self.camera.raw_stats() if hasattr(self.camera, "raw_stats") else None,
+                "live_params": {k: _jsonable(v) if k in ("active", "refused") else v for k, v in self.live_params.items()}}
+
+
+def _jsonable(v):
+    if isinstance(v, dict):
+        return {k: _jsonable(x) for k, x in v.items()}
+    if isinstance(v, (tuple, list)):
+        return [_jsonable(x) for x in v]
+    return v
 
 
 # ── HTTP ────────────────────────────────────────────────────────────────
