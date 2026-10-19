@@ -152,6 +152,7 @@ class Camera360:
         self.cal_path = insta360_usb.IMU_CALIBRATION
         self.cam = None
         self.error = None
+        self.frame_ms = None
         self._open()
         threading.Thread(target=self._watch, daemon=True).start()
 
@@ -183,16 +184,22 @@ class Camera360:
 
     def latest(self):
         """(grey full 360 frame, exposure time) or (None, 0)."""
-        f, t = self.cam.latest() if self.cam else (None, 0.0)
+        f, t, ms = self.cam.latest_stamped() if self.cam else (None, 0.0, None)
         if f is None or time.time() - t > 3.0:
             return None, 0.0
+        self.frame_ms = ms                            # the exposure on the IMU's clock: gravity()/stopped() judge it
         return (cv2.cvtColor(f, cv2.COLOR_BGR2GRAY) if f.ndim == 3 else f), t - self.latency_s
 
-    def gravity(self):
-        return self.cam.gravity() if self.cam else (None, None, None)
+    def gravity(self, at_frame=False):
+        """'up' now (health checks) or at the last frame's exposure (a fix: the frame is ~1.7 s old)."""
+        if not self.cam:
+            return None, None, None
+        return self.cam.gravity(at_ms=self.frame_ms) if at_frame and self.frame_ms is not None else self.cam.gravity()
 
-    def stopped(self):
-        return self.cam.stopped() if self.cam else {"stopped": False, "why": "no camera"}
+    def stopped(self, at_frame=False):
+        if not self.cam:
+            return {"stopped": False, "why": "no camera"}
+        return self.cam.stopped(at_ms=self.frame_ms) if at_frame and self.frame_ms is not None else self.cam.stopped()
 
 
 class Field:
@@ -471,10 +478,10 @@ class Field:
 
     def _maybe_solve360(self, s, rec, img, texp):
         from navera_tools.field import allsky
-        up, g, rate = self.camera.gravity()
+        up, g, rate = self.camera.gravity(at_frame=True)
         rec.update(mode="360", up_imu=None if up is None else [round(float(v), 6) for v in up],
                    accel_g=None if g is None else round(g, 5), rate_dps=None if rate is None else round(math.degrees(rate), 2))
-        st = self.camera.stopped() if hasattr(self.camera, "stopped") else {"stopped": True}
+        st = self.camera.stopped(at_frame=True) if hasattr(self.camera, "stopped") else {"stopped": True}
         rec["stopped"] = bool(st.get("stopped"))          # moving: vehicle acceleration can tilt 'up' (not trusted)
         rec["stillness"] = {k: v for k, v in st.items() if k != "stopped"}
         why = None

@@ -80,7 +80,7 @@ class SimCamera360:
     def latest(self):
         return self.frame, time.time()
 
-    def gravity(self):
+    def gravity(self, at_frame=False):
         return self.up + np.random.default_rng().normal(0, 0.0005, 3), 1.0, 0.001
 
 

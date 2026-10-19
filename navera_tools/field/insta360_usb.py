@@ -43,6 +43,10 @@ CMD_START_LIVE, CMD_STOP_LIVE = 1, 2
 START_FULL = bytes.fromhex("10013028380040014828500f5802")
 KIND_VIDEO, KIND_IMU, KIND_FRAME = 0x20, 0x30, 0x40
 IMU_RECORD = struct.Struct("<Q6d")
+# a video packet's camera-clock stamp is ~1.5 s after the picture was taken (on the IMU's clock): measured
+# 2026-10-19 against a dot grid on the screen while the camera was turned by hand (bench/attitude_check.py,
+# best match at -1500 ms, worse by 0.2 deg at +-50 ms; the turn error fell from 1.8 to 0.4 deg median)
+FRAME_STAMP_LAG_MS = 1500
 IMU_CALIBRATION = os.environ.get("NAVERA_INSTA360_IMU", os.path.expanduser("~/.navera_sim/insta360_usb_imu.json"))
 
 
@@ -97,7 +101,7 @@ class Insta360Usb:
         self._seq = 1
         self._lock = threading.Lock()
         self._frame, self._frame_t = None, 0.0
-        self._imu = collections.deque(maxlen=1500)          # 3 s at 500 Hz
+        self._imu = collections.deque(maxlen=3500)          # 7 s at 500 Hz: the newest frame's exposure is ~1.7 s back
         # attitude: gyro integrated (bias-corrected), tilt pulled towards gravity; R maps IMU → reference
         # frame (the camera's frame at start). History by camera ms, the clock frames are stamped with.
         self._R = np.eye(3)
@@ -243,7 +247,8 @@ class Insta360Usb:
                         for fr in self._codec.decode(pkt):
                             img = fr.to_ndarray(format="bgr24")
                             with self._lock:
-                                self._frame, self._frame_t, self._frame_ms = img, t_in, cam_ms   # arrival; camera clock
+                                # arrival (Jetson clock); exposure on the camera/IMU clock
+                                self._frame, self._frame_t, self._frame_ms = img, t_in, cam_ms - FRAME_STAMP_LAG_MS
                 except Exception as e:                    # a damaged packet: skip it, the next key frame resyncs
                     self.error = f"decode: {e}"
 
@@ -300,7 +305,7 @@ class Insta360Usb:
         return hist[i][1]
 
     def latest_stamped(self):
-        """(BGR frame, arrival time, camera ms of the frame)."""
+        """(BGR frame, arrival time, camera-clock ms of its exposure: the clock attitude_at() and the IMU use)."""
         with self._lock:
             return self._frame, self._frame_t, self._frame_ms
 
@@ -312,13 +317,21 @@ class Insta360Usb:
         with self._lock:
             return self._frame, self._frame_t
 
-    def stopped(self, window_s: float = 2.0) -> dict:
+    def _rows(self, window_s, at_ms, after_s=0.0):
+        """IMU rows over window_s ending at camera ms at_ms (+ after_s), or ending now when at_ms is None."""
+        with self._lock:
+            if at_ms is None:
+                return [r for r in self._imu if r[0] >= time.time() - window_s]
+            return [r for r in self._imu if at_ms - 1000.0 * window_s <= r[1] <= at_ms + 1000.0 * after_s]
+
+    def stopped(self, window_s: float = 2.0, at_ms=None) -> dict:
         """Is the vehicle at rest? Vehicle acceleration tilts the measured 'up' (0.1 g braking or a curve = ~6 deg,
         hundreds of km) without changing |a| enough to notice, so a trusted fix needs the vehicle stopped:
         0.1 s means of the accelerometer steady within 0.003 g (engine vibration averages out) and rotation
-        under 0.5 deg/s, over window_s."""
-        with self._lock:
-            rows = [r for r in self._imu if r[0] >= time.time() - window_s]
+        under 0.5 deg/s, over window_s. at_ms: judge the moment of a frame's exposure (latest_stamped()), with
+        0.5 s after it too (the frame arrives ~1.7 s late: 'now' would judge the wrong moment, e.g. a frame
+        taken while braking judged on the stop that followed)."""
+        rows = self._rows(window_s, at_ms, 0.5)
         if len(rows) < 400:
             return {"stopped": False, "why": "no sensor data"}
         a = (np.array([r[2:5] for r in rows]) - self.acc_bias) / self.acc_scale
@@ -329,11 +342,11 @@ class Insta360Usb:
         rate = float(np.degrees(np.linalg.norm(w[:n].reshape(-1, 50, 3).mean(axis=1), axis=1)).max())   # 0.1 s means too
         return {"stopped": acc_std < 0.003 and rate < 0.5, "acc_std_g": round(acc_std, 4), "rate_dps": round(rate, 2)}
 
-    def gravity(self, window_s: float = 1.0):
-        """(unit 'down' vector in the IMU frame, accel norm g, max rotation rad/s) over the last window,
-        or (None, ...) when the camera turned faster than max_rate_dps (the accelerometer then sees more than gravity)."""
-        with self._lock:
-            rows = [r for r in self._imu if r[0] >= time.time() - window_s]
+    def gravity(self, window_s: float = 1.0, at_ms=None):
+        """(unit 'up' vector in the IMU frame (the accelerometer at rest reads +1 g upwards), accel norm g, max rotation rad/s) over the last window,
+        or (None, ...) when the camera turned faster than max_rate_dps (the accelerometer then sees more than gravity).
+        at_ms: the window centred on a frame's exposure (camera ms, latest_stamped()) instead of the last one."""
+        rows = self._rows(window_s / 2, at_ms, window_s / 2) if at_ms is not None else self._rows(window_s, None)
         if len(rows) < 50:
             return None, None, None
         a = (np.array([r[2:5] for r in rows]) - self.acc_bias) / self.acc_scale
