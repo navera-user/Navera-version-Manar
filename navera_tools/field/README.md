@@ -3,16 +3,36 @@
 A phone, the Jetson and the camera are enough. The phone is the dashboard and the truth
 (its GPS); the Jetson runs the real celestial solver and saves everything.
 
-## For the person doing the test (5 steps, the page walks you through them)
+## For the person doing the test: START, drive, END
 
-1. On the Jetson: `navera_tools/field/run_field.sh` (or it starts by itself at boot, see below).
-   It prints an address like `https://192.168.43.5:8443/field`.
-2. Phone on its own hotspot, Jetson connected to it. Open that address on the phone.
-   The phone warns about the certificate once: Advanced, continue.
-3. Follow the page: connect, place the camera, check the sky, drive, finish. With the 360 camera (below) the
-   camera STANDS on the roof with open sky above it and the phone just stays in the car; with the webcam
-   strip the camera points straight up and the phone lies flat beside it.
-4. Nothing to save by hand. The test is saved on the Jetson as you go.
+1. Install the app once: open the link in Chrome (Android: menu, "Add to Home screen") or Safari (iPhone: Share,
+   "Add to Home Screen"). The "NAVERA Sky" icon opens the test from then on, even before the Jetson answers
+   ("Waiting for NAVERA...").
+2. Press START (the phone asks once for location and motion). Recording starts whatever the sky: camera,
+   steadiness, stars and positions are only shown as status lines; a red banner appears only when the
+   operator must act ("Turn on location", "Keep this app open").
+3. Drive; stop 20 s every 2-3 minutes. Press END (confirm): "Test saved: <name>. Thank you."
+
+The owner's Results are behind the small "Owner: results" link at the bottom of the page.
+
+Two ways to connect (both printed at start in `~/navera-field/LINK.txt`):
+
+* **Phone hotspot with mobile data** (best): the Tailscale link (`NAVERA_FIELD_PUBLIC_URL`, trusted certificate,
+  the app works offline, Claude can watch live).
+* **Same Wi-Fi, no internet**: `https://<jetson>.local:<lan port>/field?k=...` or the Wi-Fi IP, with the Jetson's
+  own certificate (the phone warns once). Behind Tailscale (`NAVERA_FIELD_PLAIN=1`) this LAN listener is on
+  `NAVERA_FIELD_LAN_PORT` (8445), otherwise on `NAVERA_FIELD_PORT`. The offline app shell (service worker)
+  only works on the trusted link.
+
+## Watching and checking
+
+* `supervisor.py` (started by `run_field.sh`): every 20 s `~/navera-field/STATUS.txt` (one screen) and
+  `ALERTS.log` (each problem when it appears, with what to do; when it clears). Read-only. After a 360 test
+  ends: `reprocess360 --fit 12` once, output in `~/navera-field/<test>_reprocess360.txt`.
+* `python3 -m navera_tools.field.e2e_check --selftest`: a whole test over HTTPS on a synthetic 360 sky (free
+  port, never the real camera, no DISPLAY), cron-ready; `--live https://127.0.0.1:8445` reads the running
+  server's health only. Verdicts in `~/navera-field/E2E.log`.
+* `NAVERA_FIELD_CAMERA=none` runs the server without any camera (page checks).
 
 ## For the owner
 

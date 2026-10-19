@@ -955,6 +955,8 @@ def write_links(root, key, public, lan_port):
     lines, lan = [], []
     if public:
         lines.append(f"internet (phone hotspot with mobile data, Claude can watch): {public}/field?k={key}")
+    if lan_port > 0 and subprocess.run(["systemctl", "is-active", "--quiet", "avahi-daemon"]).returncode == 0:
+        lines.append(f"same Wi-Fi or hotspot by name (iPhone, most Android): https://{socket.gethostname()}.local:{lan_port}/field?k={key}")
     for dev, ip in lan_addresses():
         link = f"https://{ip}:{lan_port}/field?k={key}"
         if dev.startswith("tailscale"):
@@ -1005,13 +1007,14 @@ def ensure_certificate(tls_dir):
     except Exception:
         ips = []
     ips = sorted(i for i in ips if ":" not in i)
+    names = [f"{socket.gethostname()}.local"]        # the Jetson's name on the local network (mDNS)
     old = open(ips_file).read().split() if os.path.exists(ips_file) else None
-    if not (os.path.exists(cert) and os.path.exists(key)) or (old is not None and not set(ips) <= set(old)):
-        san = ",".join(["DNS:navera-field", "DNS:localhost", "IP:127.0.0.1"] + [f"IP:{i}" for i in ips])
+    if not (os.path.exists(cert) and os.path.exists(key)) or (old is not None and not set(ips + names) <= set(old)):
+        san = ",".join(["DNS:navera-field", "DNS:localhost", "IP:127.0.0.1"] + [f"DNS:{n}" for n in names] + [f"IP:{i}" for i in ips])
         subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "3650", "-subj", "/CN=navera-field",
                         "-addext", f"subjectAltName={san}", "-keyout", key, "-out", cert], check=True, capture_output=True)
         with open(ips_file, "w") as f:
-            f.write(" ".join(ips))
+            f.write(" ".join(ips + names))
     return cert, key, ips
 
 

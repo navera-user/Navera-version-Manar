@@ -26,7 +26,8 @@ def test_a_restart_in_the_middle_of_a_test_carries_on_in_the_same_folder(tmp_pat
     f.session.log("frames", {"idx": 7, "solved": False})
     f.session.log("phone", {"lat": 35.8, "lon": 10.6})
     f2 = _field(tmp_path)                                         # the server was killed and started again
-    assert f2.session is not None and f2.session.id == first and f2.step == 4 and f2.frame_idx == 7
+    # resumed after frame 7; the loop thread may already have logged the next frame (no camera) before this line
+    assert f2.session is not None and f2.session.id == first and f2.step == 4 and f2.frame_idx in (7, 8)
     assert len([n for n in os.listdir(tmp_path) if n[:2] == "20"]) == 1
     assert f2.on_phone_batch([{"phone_t_ms": 1000, "lat": 1.0, "lon": 2.0}]) == 1
 
@@ -106,3 +107,19 @@ def test_phone_speed_is_matched_to_the_exposure(tmp_path):
     f.speeds.extend([(now - 5, 12.0), (now - 2, 0.0)])
     assert f._phone_speed_at(now - 4.6) == 12.0 and f._phone_speed_at(now - 1.5) == 0.0
     assert f._phone_speed_at(now - 30) is None
+
+
+def test_one_button_start_and_end(tmp_path):
+    f = _field(tmp_path)
+    f.start()                                                     # whatever the checks say: recording now
+    first = f.session.id
+    f.start()                                                     # a second tap changes nothing
+    assert f.session.id == first and f.state()["recording"] == first and f.state()["started"]
+    f.end()
+    assert f.session is None and f.step == 5 and f.last_done == first
+    f.start()                                                     # another test after the first
+    assert f.session is not None and f.session.id != first
+    f.end()
+    m = sv.app_manifest("secretkey123")
+    assert m["start_url"].endswith("k=secretkey123") and m["display"] == "standalone"
+    assert all(os.path.exists(os.path.join(sv.HERE, "static", n)) for n, _ in sv.PUBLIC_FILES.values())
