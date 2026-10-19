@@ -124,3 +124,16 @@ def test_gpu_matching_in_blocks_gives_the_same_neighbours(world):
     ci, cv = m._knn2(dq, dm)
     assert np.array_equal(gi[:, 0], ci[:, 0])
     assert np.allclose(gv, cv, atol=1e-3)
+
+
+def test_heading_search_order_covers_the_circle_nearest_first():
+    import time
+    from types import SimpleNamespace
+    from day_pkg.learned_matcher import LearnedMatcher
+    m = SimpleNamespace(_heading=None, HEADING_MEMORY_S=10.0, heading_search_deg=30.0)
+    order = LearnedMatcher.heading_search_order(m, 10.0)
+    assert order[:3] == [10.0, 40.0, -20.0]                   # the given heading, then right / left
+    assert len(order) == 12                                    # the full circle once, no duplicate
+    m._heading = (95.0, time.time())                           # a recent match's rotation: tried first
+    assert LearnedMatcher.heading_search_order(m, 10.0)[0] == 95.0
+    assert LearnedMatcher.heading_search_order(m, None)[:2] == [95.0, 125.0]

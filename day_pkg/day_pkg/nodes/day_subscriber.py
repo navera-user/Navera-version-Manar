@@ -170,6 +170,10 @@ class DaySubscriber(Node):
         # widest scale window when the frame altitude is uncertain (frame_meta altitude_sigma_m)
         declare_float(self, "local_scale_tol_max", 0.35)
         declare_float(self, "local_heading_tol_deg", 20.0)
+        # an IMU without magnetometer (its yaw drifts tens of degrees, or is unknown): the learned
+        # matcher searches the heading (every 30 deg) when the IMU's fails — simulation
+        # 2026-10-19, 300 m: heading 45 deg wrong 0/30 -> 30/30 located, 0 wrong
+        self.declare_parameter("local_heading_search", False)
         # a height measured by a match is trusted only from a strong match confirmed by
         # the next one (a wrong match must not set the altitude the next frames are judged by)
         self.declare_parameter("altitude_min_inliers", 20)
@@ -279,6 +283,7 @@ class DaySubscriber(Node):
         self.local_max_radius_m = float(self.get_parameter("local_max_radius_m").value)
         self.local_scale_tol_max = float(self.get_parameter("local_scale_tol_max").value)
         self.local_heading_tol_deg = float(self.get_parameter("local_heading_tol_deg").value)
+        self.heading_search = bool(self.get_parameter("local_heading_search").value)
         self.alt_min_inliers = int(self.get_parameter("altitude_min_inliers").value)
         self._alt_candidate = None             # (height, time) of the last strong match
         self._check_fix = None                 # (lat, lon, time) of the last GPS-check match
@@ -560,7 +565,8 @@ class DaySubscriber(Node):
                 for f in factors:
                     result = self.local.locate(img, center, R, mpp * f, scale_tol=self._scale_tol(meta),
                                                heading_deg=self._heading_for_match(meta),
-                                               heading_tol_deg=self.local_heading_tol_deg, hfov_deg=self._hfov(meta))
+                                               heading_tol_deg=self.local_heading_tol_deg, hfov_deg=self._hfov(meta),
+                                               **self._heading_search_kw())
                     if result.get("accepted"):
                         break
                 sc = float(result.get("scale_residual") or 1.0)
@@ -569,7 +575,8 @@ class DaySubscriber(Node):
                     # 0.45-0.6): match again at the corrected height, keep it if it holds
                     again = self.local.locate(img, center, R, mpp * f * sc, scale_tol=self._scale_tol(meta),
                                               heading_deg=self._heading_for_match(meta),
-                                              heading_tol_deg=self.local_heading_tol_deg, hfov_deg=self._hfov(meta))
+                                              heading_tol_deg=self.local_heading_tol_deg, hfov_deg=self._hfov(meta),
+                                              **self._heading_search_kw())
                     if again.get("accepted") and int(again.get("inliers") or 0) >= int(result.get("inliers") or 0) // 2:
                         result, f = again, f * sc
                 result["_frame_shape"], result["_frame_mpp"] = img.shape, mpp * f
@@ -731,6 +738,12 @@ class DaySubscriber(Node):
         _, R = self._spatial_window(img, meta)
         margin = 0.5 * math.hypot(*img.shape[:2]) * mpp
         self.local.tiles.prefetch(self._anchor_lat, self._anchor_lon, R + margin)
+
+    def _heading_search_kw(self) -> dict:
+        """locate() keywords: the heading search when enabled and the matcher has it."""
+        if self.heading_search and hasattr(self.local, "heading_search_deg"):
+            return {"heading_search": True}
+        return {}
 
     def _hfov(self, meta):
         """Field of view of this frame: the live camera states it (undistorted image),

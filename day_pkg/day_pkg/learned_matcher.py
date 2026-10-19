@@ -61,6 +61,11 @@ class LearnedMatcher(LocalMatcher):
     SIFT_FALLBACK_MAX_M = 300.0
     HEADING_MEMORY_S = 10.0           # a measured rotation stands in for the heading this long
     RESCALE_MIN_INLIERS = 60          # a match rejected for its scale is retried at that scale from this many
+    # heading search (an IMU without magnetometer: its yaw drifts, or is unknown): the frame is
+    # turned north-up at these steps around the given heading until a match; more tries = more
+    # chances of an accidental match, so one found away from the first heading needs more inliers
+    heading_search_deg = 30.0
+    HEADING_SEARCH_MIN_INLIERS = 25
 
     def __init__(self, images_dir: str, zoom: int = 17, keypoints: int = 1536, cache_dir: Optional[str] = None,
                  per_chunk: int = 768, half: bool = True,
@@ -232,9 +237,20 @@ class LearnedMatcher(LocalMatcher):
     def locate(self, frame, prior: Tuple[float, float], search_m: float, frame_m_per_px: float,
                margin_m: Optional[float] = None, scale_tol: Optional[float] = None,
                heading_deg: Optional[float] = None, heading_tol_deg: float = 20.0,
-               hfov_deg: Optional[float] = None) -> dict:
-        """As LocalMatcher.locate; res["features"] says which matcher gave the result."""
+               hfov_deg: Optional[float] = None, heading_search: bool = False) -> dict:
+        """As LocalMatcher.locate; res["features"] says which matcher gave the result.
+        heading_search: the heading is not trusted (no magnetometer: unknown, or drifted by
+        tens of degrees) — when no match is found at it, the frame is tried turned every
+        heading_search_deg around it (the full circle; the previous match's rotation first),
+        and the fitted rotation is not checked against heading_deg."""
         t0 = time.time()
+        if heading_search:
+            res = self._locate_heading_search(frame, prior, search_m, frame_m_per_px, margin_m, scale_tol,
+                                              heading_deg, hfov_deg)
+            res["total_ms"] = (time.time() - t0) * 1000.0
+            if search_m > 300.0:
+                self._t.cuda.empty_cache()
+            return res
         hdg, hdg_src = heading_deg, "attitude"
         if hdg is None and self._heading and time.time() - self._heading[1] < self.HEADING_MEMORY_S:
             hdg, hdg_src = self._heading[0], "previous match"
@@ -277,6 +293,51 @@ class LearnedMatcher(LocalMatcher):
             # a wide window's tensors stay in PyTorch's cache, which on the Jetson is system
             # memory: a single 600 m frame raised the process by 1.7 GB (campaign 4)
             self._t.cuda.empty_cache()
+        return res
+
+    def heading_search_order(self, heading_deg: Optional[float]) -> list:
+        """Headings tried by the heading search, in order: the previous match's rotation (kept
+        HEADING_MEMORY_S), the given heading, then alternately right and left of it every
+        heading_search_deg, the full circle once."""
+        out = []
+        if self._heading and time.time() - self._heading[1] < self.HEADING_MEMORY_S:
+            out.append(self._heading[0])
+        base = heading_deg if heading_deg is not None else (out[0] if out else 0.0)
+        n = max(1, int(round(360.0 / self.heading_search_deg)))
+        out.append(base)
+        for k in range(1, n // 2 + 1):
+            out += [base + k * self.heading_search_deg, base - k * self.heading_search_deg]
+        uniq = []
+        for h in out:
+            h = (h + 180.0) % 360.0 - 180.0
+            if not any(abs((h - x + 180.0) % 360.0 - 180.0) < 1.0 for x in uniq):
+                uniq.append(h)
+        return uniq
+
+    def _locate_heading_search(self, frame, prior, search_m, frame_m_per_px, margin_m, scale_tol, heading_deg,
+                               hfov_deg) -> dict:
+        """The learned match at headings around the given one (locate(heading_search=True))."""
+        res, tried = None, []
+        for h in self.heading_search_order(heading_deg):
+            tried.append(h)
+            try:
+                r = self._locate_learned(frame, prior, search_m, frame_m_per_px, margin_m, scale_tol, h, hfov_deg)
+            except RuntimeError as e:                        # GPU out of memory, CUDA error
+                self._t.cuda.empty_cache()
+                r = dict(accepted=False, reason=f"learned matcher failed: {str(e)[:120]}", inliers=0)
+            # the first heading is trusted as a normal match; any other is a search, which
+            # needs more inliers
+            if r["accepted"] and len(tried) > 1 and int(r.get("inliers") or 0) < self.HEADING_SEARCH_MIN_INLIERS:
+                r = dict(r, accepted=False, reason=f"heading search: {r.get('inliers')} inliers at heading "
+                                                   f"{h:.0f} (min {self.HEADING_SEARCH_MIN_INLIERS})")
+            if res is None or r["accepted"] or (not res["accepted"] and
+                                               int(r.get("inliers") or 0) > int(res.get("inliers") or 0)):
+                res = r
+            if r["accepted"]:
+                break
+        res = dict(res, heading_source="heading search", heading_tried=[round(x) for x in tried])
+        if res["accepted"] and res.get("rotation_deg") is not None:
+            self._heading = (float(res["rotation_deg"]), time.time())
         return res
 
     def locate_any_height(self, frame, prior, search_m, hfov_deg, *args, heading_deg=None, **kw) -> dict:
