@@ -90,6 +90,7 @@ PROFILES = {
     "no_gentle": Profile("no_gentle", gentle=False),
     "slope8": Profile("slope8", slope_deg=8.0),
     "imu_gap": Profile("imu_gap", imu_gap=(148.0, 6.0)),
+    "imu_gap_stop": Profile("imu_gap_stop", imu_gap=(176.0, 3.6)),    # silent through the last braking (stop at 178.2)
     "stamp+300ms": Profile("stamp+300ms", stamp_err_ms=300.0),
     "stamp-300ms": Profile("stamp-300ms", stamp_err_ms=-300.0),
 }
@@ -431,6 +432,7 @@ def summarise_detector(rows):
     mv_used = [r["up_err_deg"] for r in rows if r["server_ok"] and not r["stopped"]]
     return {"frames": len(rows), "at_rest": len(rest), "moving": len(mov),
             "rest_flagged_stopped": sum(r["stopped"] for r in rest),
+            "rest_usable_stopped": sum(r["stopped"] and r["server_ok"] for r in rest),
             "moving_flagged_stopped": len(bad_flag),
             "moving_flagged_phases": dict(collections.Counter(r["phase"] for r in bad_flag)),
             "stopped_up_err_deg_p50_p90_max": [q(st_err, 50), q(st_err, 90), q(st_err, 100)],
