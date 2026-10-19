@@ -345,8 +345,38 @@ def d_vehicle(img, rng, kind="propeller"):
     return np.clip(out, 0, 255).astype(np.uint8)
 
 
+def d_lowlight(img, rng, photons=60.0, lights=True, exposure_s=0.03, speed=25.0, height=300.0,
+               hfov=85.0):
+    """A visible camera at night (the Insta360 class): reflectance x a moonlight level,
+    shot noise (`photons` electrons for a white surface per exposure), read noise 2 e-,
+    street / window lights on man-made surfaces (grey and bright in the day image), a
+    long exposure's motion blur along the track, auto-exposure on the 99th percentile,
+    gamma 2.2, colour lost (sodium / moonlight: grey). Not a camera model: no colour
+    noise, no ISP denoising, no lens flare around the lights."""
+    f = img.astype(np.float32) / 255.0
+    luma = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
+    sat = (f.max(axis=2) - f.min(axis=2)) / np.maximum(f.max(axis=2), 1e-3)
+    e = luma * photons
+    h, w = luma.shape
+    if lights:
+        cand = np.flatnonzero(((sat < 0.18) & (luma > 0.45)).ravel())
+        if cand.size:
+            lamp = np.zeros(h * w, np.float32)
+            lamp[rng.choice(cand, size=min(cand.size, int(0.002 * h * w)), replace=False)] = 1.0
+            lamp = cv2.GaussianBlur(lamp.reshape(h, w), (0, 0), 2.5)
+            e = e + lamp / max(float(lamp.max()), 1e-6) * 60.0 * max(photons, 5.0)
+    e = rng.poisson(np.clip(e, 0, None)).astype(np.float32) + rng.normal(0, 2.0, e.shape).astype(np.float32)
+    L = blur_px(speed, exposure_s, height, hfov, w)
+    if L >= 1.0:
+        e = d_motion(np.clip(e / max(float(e.max()), 1e-3) * 255, 0, 255).astype(np.uint8)[..., None]
+                     .repeat(3, axis=2), rng, length_px=L)[..., 0].astype(np.float32)
+    g = np.clip(e / max(float(np.percentile(e, 99)), 1e-3), 0, 1) ** (1 / 2.2)
+    return cv2.cvtColor((g * 255).astype(np.uint8), cv2.COLOR_GRAY2BGR)
+
+
 DEGRADE = dict(low_sun=d_low_sun, exposure=d_exposure, haze=d_haze, glare=d_glare, wb=d_wb,
-               jpeg_noise=d_jpeg_noise, motion=d_motion, clouds=d_clouds, birds=d_birds, vehicle=d_vehicle)
+               jpeg_noise=d_jpeg_noise, motion=d_motion, clouds=d_clouds, birds=d_birds, vehicle=d_vehicle,
+               lowlight=d_lowlight)
 
 
 # ── conditions ───────────────────────────────────────────────────────────
@@ -413,6 +443,15 @@ def conditions(hfov: float, width: int) -> List[dict]:
         add("prior", f"prior error {pe} m (radius {max(1.3 * pe, 100):.0f} m)", prior_err=float(pe))
     for pe in (1500, 3000):
         add("spoof", f"GPS spoof: prior {pe} m off, radius 600 m", prior_err=float(pe), radius=600.0, spoof=True)
+    # visible camera at night (2026-10-19): moonlight levels, street lights, 30 ms exposure
+    for sc in ("urban", "xdate2022"):
+        for lbl, ph in (("full moon", 60.0), ("quarter moon", 8.0), ("starlight", 0.5)):
+            add("lowlight", f"night visible, {lbl}, lights, {sc}", scene=sc,
+                degrade=[("lowlight", dict(photons=ph, hfov=hfov))])
+    add("lowlight", "night visible, full moon, no lights, xdate2022",
+        degrade=[("lowlight", dict(photons=60.0, lights=False, hfov=hfov))])
+    add("lowlight", "night visible, full moon, lights, xdate2022, 1 ms (no blur, very noisy)",
+        degrade=[("lowlight", dict(photons=2.0, exposure_s=0.001, hfov=hfov))])
     # combined worst-but-plausible
     add("combo", "500 m, tilt 15 straightened, IMU 2 deg, haze, clouds 30%, 60 m/s",
         height=500.0, tilt=15.0, imu_err=2.0,
