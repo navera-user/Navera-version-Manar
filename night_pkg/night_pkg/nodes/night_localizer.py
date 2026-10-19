@@ -670,36 +670,47 @@ class NightLocalizer:
     def localize(self, query_bgr: np.ndarray, prior_lat: float, prior_lon: float,
                  altitude_m: float = None, hfov_deg: float = None,
                  heading_deg: float = None, require_scale: bool = True,
-                 heading_retry_deg=()) -> dict:
+                 heading_retry_deg=(), height_retry=()) -> dict:
         """STHN fix (see _localize_once); when the map check fails and heading_retry_deg
         is given (e.g. (10, -10, 20, -20)), the frame is tried again turned by each offset
         and the first verified fix is kept (STHN does not absorb a heading error above
-        ~5-10 deg: the frame must be north-up). Costs one more inference per retry, only
-        on frames that failed the map check."""
-        def attempt(heading):
-            a = self._localize_once(query_bgr, prior_lat, prior_lon, altitude_m, hfov_deg,
+        ~5-10 deg: the frame must be north-up). height_retry (relative, e.g. (0.1, -0.1)):
+        then the frame is tried at the height scaled by each (STHN does not absorb a ~10 %
+        scale error either: a barometric or terrain height, or the stated field of view).
+        Costs one more inference per retry, only on frames that failed the map check."""
+        def attempt(heading, alt):
+            a = self._localize_once(query_bgr, prior_lat, prior_lon, alt, hfov_deg,
                                     heading, require_scale)
             if a.get("success") and self.recheck_offset_m:
-                a = self._recheck(a, query_bgr, prior_lat, prior_lon, altitude_m, hfov_deg,
+                a = self._recheck(a, query_bgr, prior_lat, prior_lon, alt, hfov_deg,
                                   heading, require_scale)
                 if a.get("success") and a.get("recheck_m") is not None:
-                    a["sigma_m"] = fix_sigma_m(altitude_m, a["recheck_m"])
+                    a["sigma_m"] = fix_sigma_m(alt, a["recheck_m"])
             return a
 
-        r = attempt(heading_deg)
-        if (r.get("success") or not r.get("map_check_failed") or heading_deg is None
-                or not heading_retry_deg):
+        r = attempt(heading_deg, altitude_m)
+        small = str(r.get("reason") or "").startswith("camera footprint too small")
+        if r.get("success") or not (r.get("map_check_failed") or small):
+            return r
+        # a footprint too small for the stated height: only a greater height can help
+        tries = [] if heading_deg is None or small else [(float(d), 0.0) for d in heading_retry_deg]
+        tries += [] if not altitude_m else [(0.0, float(f)) for f in height_retry if f > 0 or not small]
+        if not tries:
             return r
         total = r["dt_ms"]
-        for d in heading_retry_deg:
-            t = attempt((heading_deg + d) % 360.0)
+        for d, f in tries:
+            t = attempt(None if heading_deg is None else (heading_deg + d) % 360.0, altitude_m * (1.0 + f))
             total += t["dt_ms"]
             if t.get("success"):
-                t["heading_correction_deg"] = float(d)
+                if d:
+                    t["heading_correction_deg"] = d
+                if f:
+                    t["height_correction"] = f
                 t["dt_ms"] = total
                 return t
         r["dt_ms"] = total
-        r["reason"] += f" (also with the heading turned by {', '.join(f'{d:+g}' for d in heading_retry_deg)} deg)"
+        r["reason"] += " (also tried: " + ", ".join(
+            f"heading {d:+g} deg" if d else f"height {f:+.0%}" for d, f in tries) + ")"
         return r
 
     def _recheck(self, r, query_bgr, prior_lat, prior_lon, altitude_m, hfov_deg, heading_deg,

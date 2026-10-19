@@ -57,6 +57,7 @@ HFOV_DEG = 75.0         # the simulator's thermal camera (~75 x 63 deg, 640 x 51
 SIZE = (640, 512)
 TAU_S = 0.012           # microbolometer thermal time constant (smear along the track)
 HEADING_RETRY: tuple = ()   # --heading-retry: offsets tried when the map check fails
+HEIGHT_RETRY: tuple = ()    # --height-retry: relative height changes tried after them
 
 # Sites inside the Sousse map (ESRI imagery, z13-z19): centre lat, lon, radius (m)
 SITES = {
@@ -668,7 +669,8 @@ def run_condition(cond: Condition, loc, cam: _GeomCamera, fb: FrameBuilder, n: i
         t0 = time.perf_counter()
         r = loc.localize(img, pose.prior[0], pose.prior[1], altitude_m=meta["altitude_m"],
                          hfov_deg=meta["camera_hfov_deg"] * pose.hfov_factor, heading_deg=meta["heading_deg"],
-                         **({"heading_retry_deg": HEADING_RETRY} if HEADING_RETRY else {}))
+                         **({"heading_retry_deg": HEADING_RETRY} if HEADING_RETRY else {}),
+                         **({"height_retry": HEIGHT_RETRY} if HEIGHT_RETRY else {}))
         dt = (time.perf_counter() - t0) * 1000
         acc = bool(r.get("success"))
         err = dist_m((r["lat"], r["lon"]), (pose.lat, pose.lon)) if acc else None
@@ -738,9 +740,12 @@ def main():
                     help="override the second-centre re-check gate (m)")
     ap.add_argument("--heading-retry", default="",
                     help="heading offsets (deg, comma-separated) retried when the map check fails")
+    ap.add_argument("--height-retry", default="",
+                    help="relative height changes (e.g. 0.1,-0.1) retried after the heading offsets")
     a = ap.parse_args()
-    global HEADING_RETRY
+    global HEADING_RETRY, HEIGHT_RETRY
     HEADING_RETRY = tuple(float(x) for x in a.heading_retry.split(",") if x.strip())
+    HEIGHT_RETRY = tuple(float(x) for x in a.height_retry.split(",") if x.strip())
     if a.night_pkg:
         sys.path.insert(0, str(Path(a.night_pkg).resolve()))
     mbtiles = os.environ.get("NAVERA_MBTILES", os.path.expanduser("~/navera_data_map.mbtiles"))

@@ -54,7 +54,10 @@ In: `/thermal/image_raw` (bgr8 or mono16), `/thermal/frame_meta`, `/navera/estim
 `min_match_ncc` (0.05) — ≤ −1 disables a check — and `heading_retry_deg` (default `"-10,10,-20,20"`, `""` turns it
 off: a heading 10–30° off is tried again turned by each offset, only on frames that failed the map
 check; synthetic 30 frames: 10° off 19 → 29/30, 20° off 0 → 29/30, 30° off 0 → 19/30, nominal
-unchanged, no new wrong fix; ~1.7 s per failed frame instead of ~0.5 s). `night_status` also carries the search square
+unchanged, no new wrong fix; ~1.7 s per failed frame instead of ~0.5 s) and `height_retry` (default `"0.1,-0.1,0.2"`: then the
+height scaled by each; a footprint too small for the stated height is only tried higher; synthetic:
+height −10 % 13 → 28/30, −20 % 0 → 29/30, field of view −10 % 6 → 30/30, 350 m 5 → 24/30; frames
+with no information still 0/30 but ~2.4 s each). `night_status` also carries the search square
 (`search_center`, `search_size_m`), the matched footprint (`footprint_quad`) and the query
 geometry.
 

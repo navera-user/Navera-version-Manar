@@ -175,6 +175,13 @@ class NightSubscriber(Node):
         self.declare_parameter("heading_retry_deg", "-10,10,-20,20")
         self.heading_retry_deg = tuple(
             float(x) for x in str(self.get_parameter("heading_retry_deg").value).split(",") if x.strip())
+        # relative height changes tried after them (barometric/terrain height or the stated field of
+        # view off by 10-20 %). Simulated, 30 frames: height -10 % 13 -> 28/30, -20 % 0 -> 29/30,
+        # +20 % 16 -> 25/30, field of view -10 % 6 -> 30/30, 350 m 5 -> 24/30; no-information frames
+        # (noise, uniform, sea, full cloud) still 0/30 but ~2.4 s instead of ~0.5 s. "" turns it off.
+        self.declare_parameter("height_retry", "0.1,-0.1,0.2")
+        self.height_retry = tuple(
+            float(x) for x in str(self.get_parameter("height_retry").value).split(",") if x.strip())
 
         sthn_dir   = self.get_parameter("sthn_dir").value
         weights    = self.get_parameter("weights").value
@@ -478,7 +485,7 @@ class NightSubscriber(Node):
                 altitude_m=float(alt) if alt is not None else None,
                 hfov_deg=self._hfov(meta),
                 heading_deg=heading,
-                heading_retry_deg=self.heading_retry_deg)
+                heading_retry_deg=self.heading_retry_deg, height_retry=self.height_retry)
             result["heading_source"] = heading_src
             self._search = {k: result.get(k) for k in (
                 "search_center", "search_size_m", "footprint_quad", "query", "heading_source",
