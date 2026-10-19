@@ -104,9 +104,11 @@ class NightSubscriber(Node):
             os.environ.get("NAVERA_MBTILES", "/home/navera/isaac_ros_common/vision_pkg/vision_pkg/dataset/sousse_satellite.mbtiles"))
         self.declare_parameter("zoom",            17)
         declare_float(self, "conf_threshold",  0.30)
-        # night fixes state an accuracy only when this is true: it is calibrated on the
-        # mission simulator's thermal rendering (2026-10-07, 245 fixes: sigma below gives 86 %
-        # within 1 sigma, 100 % within 3) — not measured on a real thermal camera yet
+        # night fixes state an accuracy (covariance) only when this is true. The sigma is
+        # always computed and given in details_json; it is fitted on SYNTHETIC frames
+        # (2026-10-19, 1389 fixes, 99.4 % within 3 sigma, night_localizer.fix_sigma_m) — not
+        # measured on a real thermal camera: stating it makes night a bounded FIX in the
+        # arbiter and a GPS cross-check reference, so it stays an explicit choice
         self.declare_parameter("state_sim_calibrated_sigma", False)
         self.declare_parameter("image_topic",     "/thermal/image_raw")
         self.declare_parameter("meta_topic",      "/thermal/frame_meta")
@@ -502,13 +504,19 @@ class NightSubscriber(Node):
                     out_lat = float(result["lat"]); out_lon = float(result["lon"])
             if (gated is None and result.get("success") and conf >= self.conf_threshold
                     and is_finite_latlon(result.get("lat"), result.get("lon"))):
-                # sigma (simulator-calibrated): 2.5 % of the height (8 m min), x2.5 for a weak
-                # match (consistency < 0.995 or shift > 20 px) or in the first 10 s after GPS loss
-                h = float(alt) if alt is not None else 400.0
-                sig = max(8.0, 0.025 * h)
-                shift = result.get("rms_px")
-                if conf < 0.995 or (shift is not None and float(shift) > 20.0) or self._track.seconds_since_gps_lost(t_now) < 10.0:
-                    sig *= 2.5
+                # sigma (D3): the localizer's, fitted on synthetic fixes from the agreement of
+                # the two search centres and the height (night_localizer.fix_sigma_m); without
+                # the re-check (disabled), the former simulator calibration: 2.5 % of the
+                # height (8 m min), x2.5 for a weak match or the first 10 s after GPS loss
+                sig = result.get("sigma_m")
+                if sig is None:
+                    h = float(alt) if alt is not None else 400.0
+                    sig = max(8.0, 0.025 * h)
+                    shift = result.get("rms_px")
+                    if (conf < 0.995 or (shift is not None and float(shift) > 20.0)
+                            or self._track.seconds_since_gps_lost(t_now) < 10.0):
+                        sig *= 2.5
+                sig = float(sig)
                 try:
                     sig = math.hypot(sig, 0.1 * float(meta.get("altitude_sigma_m")))
                 except (TypeError, ValueError):
@@ -574,7 +582,8 @@ class NightSubscriber(Node):
         self.pub_fix.publish(fix)
         self._publish_estimate(now, seq_id, src, lat, lon, meta,
                                details={"src": src, "score": score, "conf": conf,
-                                        "dt_ms": dt_ms, "rms_px": rms_px, "reason": reason})
+                                        "dt_ms": dt_ms, "rms_px": rms_px, "reason": reason,
+                                        "sigma_m": self._fix_sigma if src == "night_sthn" else None})
 
         if src == "dead_reckon":
             self._reject_count += 1

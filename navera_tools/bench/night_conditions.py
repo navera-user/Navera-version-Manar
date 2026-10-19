@@ -674,7 +674,7 @@ def run_condition(cond: Condition, loc, cam: _GeomCamera, fb: FrameBuilder, n: i
         err = dist_m((r["lat"], r["lon"]), (pose.lat, pose.lon)) if acc else None
         sig = (r.get("sigma_m") or sigma_stated(pose.alt_meas, float(r.get("conf", 0.0)), r.get("rms_px"),
                                                 pose.alt_sigma)) if acc else None
-        rows.append(dict(cond=cond.name, i=i, site=pose.site, accepted=acc, err_m=err, sigma_m=sig,
+        rows.append(dict(cond=cond.name, i=i, site=pose.site, agl=pose.agl, accepted=acc, err_m=err, sigma_m=sig,
                          conf=r.get("conf"), shift_px=r.get("rms_px"), reason=r.get("reason", ""),
                          prior_err_m=dist_m(pose.prior, (pose.lat, pose.lon)), dt_ms=dt,
                          coverage=(r.get("query") or {}).get("coverage"),
