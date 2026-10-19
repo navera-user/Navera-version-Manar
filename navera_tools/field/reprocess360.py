@@ -82,13 +82,22 @@ def rotvec(w):
 
 
 def fit_mount(samples):
-    """Rotation vector (rad) Q with R (Q up) closest to the true zenith over the samples [(R, up, z_true)]."""
+    """Rotation vector (rad) Q with R (Q up) closest to the true zenith over the samples [(R, up, z_true)].
+    A turn about 'up' itself does not move 'up' and cannot be measured: Q is fitted as a tilt only (rotation
+    axis perpendicular to the mean 'up'), so its angle is the mounting tilt (before, the free turn about 'up'
+    came out as tens of degrees: a 1 deg simulated mount was reported as 56 deg)."""
     from scipy.optimize import least_squares
+    u = np.mean([up / np.linalg.norm(up) for _, up, _ in samples], axis=0)
+    u /= np.linalg.norm(u)
+    e1 = np.cross(u, [1.0, 0, 0] if abs(u[0]) < 0.9 else [0, 1.0, 0])
+    e1 /= np.linalg.norm(e1)
+    e2 = np.cross(u, e1)
 
-    def res(w):
-        Q = rotvec(w)
+    def res(p):
+        Q = rotvec(p[0] * e1 + p[1] * e2)
         return np.concatenate([np.asarray(R) @ (Q @ up) - z for R, up, z in samples])
-    return least_squares(res, np.zeros(3)).x
+    p = least_squares(res, np.zeros(2)).x
+    return p[0] * e1 + p[1] * e2
 
 
 def main():
@@ -123,15 +132,20 @@ def main():
         if tru is None:
             continue
         rows.append({"idx": fr.get("idx"), "R": np.array(R), "up": up, "utc": fr["utc_used"], "truth": tru,
-                     "z_true": zenith_icrs(tru[0], tru[1], fr["utc_used"])})
+                     "z_true": zenith_icrs(tru[0], tru[1], fr["utc_used"]),
+                     # 'up' of a frame taken while moving holds the vehicle's acceleration: never fit the mount on it
+                     "trusted": bool(fr.get("stopped", True)) and not fr.get("stopped_but_phone_moving")})
     if not rows:
         print("no solved 360 frame with a phone position")
         return 1
     for r in rows:
         lat, lon = position(r["R"] @ r["up"], r["utc"])
         r["err_raw"] = haversine_km(lat, lon, *r["truth"])
+    moving = [r for r in rows if not r["trusted"]]
+    rows = [r for r in rows if r["trusted"]]
     n = len(rows)
-    out = {"frames_scored": n, "err_raw_km": summary([r["err_raw"] for r in rows])}
+    out = {"frames_scored": n, "err_raw_km": summary([r["err_raw"] for r in rows]),
+           "moving_frames_not_used": len(moving), "moving_err_raw_km": summary([r["err_raw"] for r in moving])}
     if n > a.fit:
         w = fit_mount([(r["R"], r["up"], r["z_true"]) for r in rows[:a.fit]])
         Q = rotvec(w)
