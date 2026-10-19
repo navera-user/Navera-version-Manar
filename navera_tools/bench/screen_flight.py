@@ -26,6 +26,7 @@ import yaml
 
 from day_pkg.local_matcher import LocalMatcher, map_m_per_px, tile_px_to_latlon
 from day_pkg.vision_nav import VisionNavigator
+from navera_tools.bench.screen_overlays import KINDS as OVERLAYS, Overlays
 
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 ap.add_argument("--calib", help="strip source: the webcam lens calibration (not used with --source 360)")
@@ -57,8 +58,9 @@ ap.add_argument("--height", type=float,
                 help="m: the height is known from the start (GPS altitude while it works): no search")
 ap.add_argument("--save-frame", help="write the latest camera frame (undistorted) here, for checks")
 ap.add_argument("--overlay", default="none",
-                help="conditions drawn over the map on the screen, comma-separated: clouds, haze, glare, dusk, birds, planes, drones")
-ap.add_argument("--overlay-amount", type=float, default=0.3, help="clouds: sky fraction covered; haze/dusk: strength 0-1")
+                help="conditions drawn over the map on the screen, comma-separated: " + ", ".join(OVERLAYS))
+ap.add_argument("--overlay-amount", type=float, default=0.3,
+                help="strength 0-1 (clouds: sky fraction covered; wind: shake 0.5-3 deg equivalent)")
 ap.add_argument("--max-speed", type=float, default=None,
                 help="m/s, the vehicle's top speed for the track gate (default 1.5 x --speed)")
 ap.add_argument("--no-gate", action="store_true",
@@ -66,6 +68,9 @@ ap.add_argument("--no-gate", action="store_true",
                      "a wrong-but-confident match 100-650 m off was output)")
 ap.add_argument("--out", default="screen_flight.csv")
 a = ap.parse_args()
+_bad = set(a.overlay.split(",")) - set(OVERLAYS) - {"none", ""}
+if _bad:
+    ap.error(f"unknown --overlay {sorted(_bad)}; known: {', '.join(OVERLAYS)}")
 if a.latency is None:
     a.latency = 1.71 if a.source == "360" else 0.14            # 360: fitted on 54 bench frames at 20-80 m/s
 if a.source == "strip" and not a.calib:
@@ -151,64 +156,10 @@ stop = threading.Event()
 hud = {}
 
 
-_rng = np.random.default_rng(7)
-_cloud_field = None
-
-
-def draw_conditions(img, t):
-    """Weather and traffic over the map, as the real camera would see them (the truth is not changed)."""
-    global _cloud_field
-    kinds = set(a.overlay.split(",")) - {"none", ""}
-    h, w = img.shape[:2]
-    out = img.astype(np.float32)
-    if "clouds" in kinds:
-        if _cloud_field is None:                               # smooth random field, twice the screen, drifts slowly
-            noise = _rng.random((h // 8 * 2, w // 8 * 2)).astype(np.float32)
-            _cloud_field = cv2.resize(cv2.GaussianBlur(noise, (0, 0), 12), (w * 2, h * 2))
-            _cloud_field = (_cloud_field - _cloud_field.min()) / (np.ptp(_cloud_field) + 1e-6)
-        ox, oy = int(t * 15) % w, int(t * 6) % h
-        fld = _cloud_field[oy:oy + h, ox:ox + w]
-        thr = float(np.quantile(fld, 1 - a.overlay_amount))
-        alpha = np.clip((fld - thr) / 0.08, 0, 1)[..., None] * 0.95
-        out = out * (1 - alpha) + 245 * alpha
-        shadow = np.roll(np.roll(alpha, 60, 0), 90, 1) * 0.35      # cloud shadows on the ground
-        out = out * (1 - shadow)
-    if "haze" in kinds:
-        out = out * (1 - 0.6 * a.overlay_amount) + 210 * 0.6 * a.overlay_amount
-    if "dusk" in kinds:
-        out = out * (1 - 0.8 * a.overlay_amount) + _rng.normal(0, 6, out.shape)
-    if "glare" in kinds:
-        gx, gy = w * (0.3 + 0.4 * math.sin(t / 9)), h * (0.4 + 0.2 * math.cos(t / 7))
-        yy, xx = np.mgrid[0:h, 0:w]
-        out += 255 * np.exp(-((xx - gx) ** 2 + (yy - gy) ** 2) / (2 * 140.0 ** 2))[..., None]
-    if "birds" in kinds:
-        for k in range(6):                                     # small dark birds crossing fast
-            x = (t * (260 + 40 * k) + k * 333) % (w + 200) - 100
-            y = (k * 173 + 40 * math.sin(t * 2 + k)) % h
-            pts = np.array([[x - 14, y - 6], [x, y], [x + 14, y - 6]], np.int32)
-            cv2.polylines(out, [pts], False, (25, 25, 25), 4)
-    if "drones" in kinds:
-        for k in range(5):                                     # quadcopters, near (big) and far (small), erratic paths
-            size = (12, 18, 26, 40, 60)[k]
-            x = w * (0.5 + 0.42 * math.sin(t * (0.31 + 0.07 * k) + k)) + 25 * math.sin(t * 3.1 + k)
-            y = h * (0.5 + 0.40 * math.cos(t * (0.23 + 0.05 * k) + 2 * k)) + 20 * math.cos(t * 2.7 + k)
-            arm = size
-            col = (40, 40, 40) if k % 2 else (200, 200, 205)   # dark and light airframes
-            for dx, dy in ((1, 1), (1, -1)):
-                cv2.line(out, (int(x - dx * arm), int(y - dy * arm)), (int(x + dx * arm), int(y + dy * arm)), col, max(2, size // 6))
-            for dx, dy in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
-                cv2.circle(out, (int(x + dx * arm), int(y + dy * arm)), max(3, size // 2), col, max(1, size // 10))
-            cv2.circle(out, (int(x), int(y)), max(3, size // 3), col, -1)
-            if int(t * 3 + k) % 2:                             # blinking navigation lights
-                cv2.circle(out, (int(x - arm), int(y)), max(2, size // 8), (0, 0, 255), -1)
-                cv2.circle(out, (int(x + arm), int(y)), max(2, size // 8), (0, 255, 0), -1)
-    if "planes" in kinds:
-        for k in range(2):                                     # a plane crossing, white body and wings
-            x = (t * (120 + 60 * k) + k * 700) % (w + 400) - 200
-            y = h * (0.3 + 0.4 * k)
-            cv2.line(out, (int(x - 60), int(y)), (int(x + 60), int(y)), (235, 235, 235), 12)
-            cv2.line(out, (int(x), int(y - 70)), (int(x + 10), int(y + 70)), (235, 235, 235), 10)
-    return np.clip(out, 0, 255).astype(np.uint8)
+# weather, traffic, lens and camera-shake conditions over the map (navera_tools/bench/screen_overlays.py;
+# check them offline with render_overlays.py)
+overlays = Overlays(SW, SH)
+OVERLAY_KINDS = [k for k in a.overlay.split(",") if k not in ("", "none")]
 
 
 def draw_hud(img, t):
@@ -391,12 +342,13 @@ while True:
     px, py, _ = route(t)
     mx, my = int(round(px - x0 * 256 - SW / 2)), int(round(py - y0 * 256 - SH / 2))
     view = mosaic[my:my + SH, mx:mx + SW].copy()
-    if a.overlay != "none":
-        view = draw_conditions(view, t)
+    shift = (0.0, 0.0)
+    if OVERLAY_KINDS:
+        view, shift = overlays.draw(view, t, OVERLAY_KINDS, a.overlay_amount)
     draw_hud(view, t)
     cv2.imshow("NAVERA flight", view)
     key = cv2.waitKey(1)
-    shown.append((time.time() - t_start[0], px, py))
+    shown.append((time.time() - t_start[0], px - shift[0], py - shift[1]))   # wind moves the scene
     del shown[:-400]
     if key in (27, ord("q")):
         break
