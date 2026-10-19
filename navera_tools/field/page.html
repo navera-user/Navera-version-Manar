@@ -2,9 +2,17 @@
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>NAVERA Field Sky</title>
+<link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
+<meta name="theme-color" content="#0b0d12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="NAVERA Sky">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="icon" href="/static/icon-192.png">
 <style>
 :root{--bg:#0b0d12;--panel:#12151d;--line:#222737;--fg:#d9dde8;--mute:#8089a0;--red:#ff6a4d;--ok:#5fd39a;--warn:#f2b84b;--bad:#ff5c6c;color-scheme:dark}
-*{box-sizing:border-box}
+*{box-sizing:border-box}[hidden]{display:none!important}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
  padding:16px max(16px,env(safe-area-inset-right)) 48px max(16px,env(safe-area-inset-left))}
 .wrap{max-width:480px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
@@ -40,9 +48,10 @@ a.btn{display:block;text-align:center;text-decoration:none;font:600 16px system-
 </style></head>
 <body><div id="err" hidden style="position:sticky;top:0;z-index:6;background:var(--bad);color:#1a0a06;padding:8px 12px;border-radius:6px;font-weight:600"></div><div id="sens" hidden style="position:sticky;top:0;z-index:6"><button class="main" id="sensbtn" style="background:var(--bad);border-color:var(--bad)">SENSORS OFF - tap here to turn GPS and tilt on</button></div><div id="net" hidden style="position:sticky;top:0;z-index:5;background:var(--bad);color:#1a0a06;padding:8px 12px;border-radius:6px;font-weight:600"></div><div class="wrap">
 <h1>NAVERA <span>sky</span> test</h1>
-<div class="tabs" role="tablist"><button role="tab" id="t1" aria-selected="true">Operator</button><button role="tab" id="t2" aria-selected="false">Results</button></div>
+<div id="act" hidden role="alert" style="background:var(--bad);color:#1a0a06;padding:12px 14px;border-radius:8px;font-weight:700;font-size:17px"></div><div class="tabs" role="tablist" hidden><button role="tab" id="t1" aria-selected="true">Operator</button><button role="tab" id="t2" aria-selected="false">Results</button></div>
 <div id="op" class="wrap" style="gap:14px"></div>
 <div id="res" class="wrap" hidden></div>
+<p style="text-align:center;margin-top:24px"><a href="#" id="owner" class="mute" style="font-size:13px">Owner: results</a></p>
 </div>
 <script>
 "use strict";
@@ -65,7 +74,7 @@ function watchGps(){
   gpsId=navigator.geolocation.watchPosition(function(p){
     var c=p.coords;phone.gpsError=null;phone.gps_t_ms=p.timestamp;phone.lat=c.latitude;phone.lon=c.longitude;phone.acc=c.accuracy;phone.alt=c.altitude;
     phone.speed=c.speed;phone.course=(c.speed&&c.speed>0.5)?c.heading:null;
-  },function(e){phone.gpsError=e.message},{enableHighAccuracy:true,maximumAge:0,timeout:20000});
+  },function(e){if(e.code===1||e.code===2)phone.gpsError=e.message},{enableHighAccuracy:true,maximumAge:0,timeout:20000});
 }
 function startSensors(){
   var go=function(){
@@ -100,100 +109,96 @@ setInterval(function(){
   api("/api/phone",d).then(function(){offline=false;showLink();flush()}).catch(function(){
     offline=true;backlog.push(d);if(backlog.length>7200)backlog.shift();showLink()});
 },1000);
-function showSens(){var s=$("sens");if(s)s.hidden=sensorsOn||!(S.step>=2&&S.step<=4)}
+function showSens(){var s=$("sens");if(s)s.hidden=sensorsOn||!S.recording}
 $("sensbtn").onclick=function(){startSensors()};
 document.addEventListener("visibilitychange",function(){if(!document.hidden&&sensorsOn)watchGps();if(!document.hidden&&sensorsOn&&navigator.wakeLock)navigator.wakeLock.request("screen").then(function(w){wake=w}).catch(function(){})});
 
-// ── operator ────────────────────────────────────────────────────
+// ── operator: START, drive, END ─────────────────────────────────
+// Everything else (camera, steadiness, stars, recording) is automatic and never blocks: small status
+// lines, and a red banner only when the operator has something to do.
 function chk(id){return (S.checks||[]).filter(function(c){return c.id===id})[0]||{status:"wait",label:id,detail:""}}
-function checkRows(ids){return '<div class="checks">'+ids.map(function(i){var c=chk(i);
-  return '<div><span>'+esc(c.label)+(c.detail?'<small>'+esc(c.detail)+'</small>':'')+'</span><span class="s '+c.status+'">'+({ok:"OK",wait:"WAIT",bad:"FIX"})[c.status]+'</span></div>'}).join("")+'</div>'}
-function allOk(ids){return ids.every(function(i){return chk(i).status==="ok"})}
-function prog(n){var h="";for(var i=1;i<=5;i++)h+='<i class="'+(i<n?"d":i===n?"c":"")+'"></i>';return '<div class="prog">'+h+'</div>'}
-function step(n,title,body){return prog(n)+'<section class="card"><p class="mute mono">Step '+n+' of 5</p><h3>'+title+'</h3>'+body+'</section>'}
-
+function line(st,label,detail){return '<div><span>'+esc(label)+(detail?'<small>'+esc(detail)+'</small>':'')+'</span><span class="s '+st+'">'+({ok:"OK",wait:"WAIT",bad:"CHECK"})[st]+'</span></div>'}
+function gpsLine(){
+  if(phone.gpsError)return line("bad","Phone GPS","location is off or refused");
+  if(phone.acc==null)return line(sensorsOn||!S.recording?"wait":"bad","Phone GPS",sensorsOn?"searching...":"starts with START");
+  return line(phone.acc<=30?"ok":"wait","Phone GPS","accuracy "+Math.round(phone.acc)+" m")}
+function statusLines(){
+  var cam=chk("camera"),st=chk("stars"),f=S.last_fix||{};
+  return '<div class="checks">'+gpsLine()+line(navOk?"ok":"bad","NAVERA connected",navOk?"":"the phone cannot reach the Jetson")+
+    line(cam.status==="ok"?"ok":"bad","Camera",cam.status==="ok"?"":(cam.detail||"no picture"))+
+    line(st.status==="ok"?"ok":"wait","Stars",(S.live||{}).confirmed==null?"waiting for the sky":S.live.confirmed+" seen")+
+    (S.recording?line((S.fixes||0)>0?"ok":"wait","Positions from the sky",(S.fixes||0)+(f.err_km==null?"":" · last "+f.err_km+" km from GPS")):"")+'</div>'}
+function banner(){
+  var m="";
+  if(phone.gpsError)m="Turn on location for this app (phone settings), then press START again.";
+  else if(S.recording&&!sensorsOn)m="";        // the SENSORS OFF button says it
+  else if(S.recording&&hiddenWhileRec)m="Keep this app open on the screen during the drive.";
+  else if(!navOk&&(S.recording||startPending))m="NAVERA is not reachable. Keep driving: the phone keeps its GPS and sends it later.";
+  var b=$("act");b.hidden=!m;b.textContent=m}
+var navOk=false,startPending=false,hiddenWhileRec=false;
 function renderOp(){
-  var n=S.step||1,h="";
-  if(n===1){
-    var ids=S.mode==="360"?["camera","phone_gps","clock"]:["camera","phone_gps","phone_tilt","clock"];
-    h=step(1,"Connect the phone",'<p>Tap the button, then allow location and motion when the phone asks.</p><div class="stack" style="margin-top:12px">'+
-      '<button class="main" id="allow"'+(sensorsOn?' disabled':'')+'>'+(sensorsOn?'Sharing with the Jetson':'Allow GPS and sensors')+'</button></div>'+
-      checkRows(ids)+'<button class="main" id="next"'+(allOk(ids)?'':' disabled')+'>Next</button>'+(allOk(ids)?'':'<button id="skip" style="margin-top:10px">Continue anyway</button>'));
-  }else if(n===2&&S.mode==="360"){
-    var sd=chk("steady"),ok=sd.status==="ok";
-    h=step(2,"Place the camera",'<p>Camera standing on the roof, fixed so it cannot move, with open sky above it (no roof rack or tree over it). It sees all around and measures its own tilt: no need to make it level. The phone stays in the car, screen on.</p>'+
-      checkRows(["steady"])+
-      '<div class="stack"><button id="mc">'+(S.mount_confirmed?'Camera is fixed (tap to undo)':'The camera is fixed')+'</button>'+
-      '<button class="main" id="next" '+(ok&&S.mount_confirmed?'':'disabled')+'>Next</button>'+(ok&&S.mount_confirmed?'':'<button id="skip">Continue anyway</button>')+'</div>');
-  }else if(n===2){
-    var lv=chk("level"),ok=lv.status==="ok";
-    h=step(2,"Mount the camera",'<p>Camera pointing straight up on the roof. Fix the phone flat beside it, screen up, top edge towards the front of the car.</p>'+
-      '<div style="margin:14px 0"><div class="big" style="color:var(--'+({ok:"ok",wait:"warn",bad:"bad"})[lv.status]+')">'+esc((lv.detail||"").split(" ")[0]||"–")+'°</div><p class="mute">off vertical. Under 1° is good. Adjust the mount until it is green.</p></div>'+
-      '<div class="stack"><button id="mc" '+(ok?'':'disabled')+'>'+(S.mount_confirmed?'Phone is fixed (tap to undo)':'The phone is fixed beside the camera')+'</button>'+
-      '<button class="main" id="next" '+(ok&&S.mount_confirmed?'':'disabled')+'>Next</button>'+(ok&&S.mount_confirmed?'':'<button id="skip">Continue anyway</button>')+'</div>');
-  }else if(n===3){
-    var st=chk("stars"),ids=["stars"];
-    h=step(3,"Check the sky",'<p>Park away from street lights. Wait for the stars to reach the number needed.</p>'+
-      '<div style="margin:12px 0"><img class="pv" id="pv" alt="Camera view with detected stars circled"></div>'+
-      '<p class="mute" style="font-size:13px">Green circle: a star. Orange: seen once, not confirmed yet. Red cross: not a star (<span id="rej"></span>).</p>'+
-      checkRows(ids)+'<div class="stack"><button class="main" id="next"'+(st.status==="ok"?'':' disabled')+'>Start the drive</button>'+
-      '<button id="force">Record anyway</button></div><p class="mute" style="font-size:13px;margin-top:8px">If it stays under the number for 5 minutes, tap Record anyway so the owner can see why.</p>');
-  }else if(n===4){
-    var f=S.last_fix||{};
-    h=prog(4)+'<section class="card"><p class="mute mono">Step 4 of 5 · recording '+esc(S.recording||"")+'</p><h3>Drive</h3>'+
-      '<p>Keep the screen on. Drive normally. '+(S.mode==="360"?'<b>Every 2-3 minutes, stop the car for 20 seconds</b> (parking, red light): the sky fixes made while stopped are the reliable ones.':'Straight roads are best.')+'</p>'+
-      '<div class="grid" style="margin:14px 0"><div class="m"><div class="v" id="v_frames">'+(S.frames||0)+'</div><div class="l">frames</div></div>'+
-      '<div class="m"><div class="v" id="v_stars">'+((S.live||{}).confirmed==null?"–":S.live.confirmed)+'</div><div class="l">stars now</div></div>'+
-      '<div class="m"><div class="v" id="v_err">'+(f.err_km==null?"–":f.err_km+" km")+'</div><div class="l">last error</div></div></div>'+
-      '<img class="pv" id="pv" alt="Camera view">'+checkRows(S.mode==="360"?["camera","phone_gps","steady","stars"]:["camera","phone_gps","phone_tilt","level","stars"])+
-      '<div class="stack"><input type="text" id="note" placeholder="Note (rain, tunnel, cloud...)" maxlength="200"><button id="sendnote">Save note</button>'+
-      '<button id="mark">Mark this moment</button><button class="main" id="finish">'+(finishSure?'Tap again to finish':'Finish the test')+'</button></div></section>';
+  var h;
+  if(S.recording){
+    h='<section class="card" style="text-align:center"><p class="mute mono">Recording '+esc(S.recording)+'</p>'+
+      '<div class="big" id="clock">'+elapsed()+'</div><p style="margin:10px 0 4px"><b>Drive normally. Stop 20 s every 2-3 min.</b></p></section>'+
+      '<section class="card">'+statusLines()+'</section>'+
+      '<button class="main" id="end" style="min-height:84px;font-size:24px;background:var(--panel);color:var(--fg);border:2px solid var(--red)">END</button>';
+  }else if(S.done&&!startPending){
+    h='<section class="card" style="text-align:center"><h3>Test saved</h3><p class="mono" style="font-size:18px">'+esc(S.done)+'</p>'+
+      '<p style="margin-top:10px">Thank you.</p></section><button id="start" style="margin-top:6px">Start another test</button>';
   }else{
-    h=prog(6)+'<section class="card"><h3>Test saved</h3><p>Name: <b class="mono">'+esc(S.done||"")+'</b></p>'+
-      '<p class="mute" style="margin:10px 0 14px">Everything is saved on the Jetson. The owner reads it in Results. Nothing else to do.</p>'+
-      '<div class="stack"><button class="main" id="seeres">See the result</button><button id="again">New test</button></div></section>';
+    h='<p class="mute" style="text-align:center">Camera on the roof, phone in the car.</p>'+
+      '<button class="main" id="start" style="min-height:120px;font-size:34px;letter-spacing:.08em"'+(startPending?' disabled':'')+'>'+(startPending?'STARTING...':'START')+'</button>'+
+      '<section class="card">'+statusLines()+'</section>';
   }
-  var keep=$("note")?$("note").value:"";
-  $("op").innerHTML=h;
-  if($("note"))$("note").value=keep;
-  bind();
+  $("op").innerHTML=h;bind();banner();
 }
+function elapsed(){if(!S.started)return "00:00";var s=Math.max(0,Math.floor(Date.now()/1000-S.started)),m=Math.floor(s/60);
+  return (m>=60?Math.floor(m/60)+":"+String(m%60).padStart(2,"0"):String(m).padStart(2,"0"))+":"+String(s%60).padStart(2,"0")}
 function bind(){
   var on=function(i,f){var e=$(i);if(e)e.onclick=f};
-  on("allow",function(){startSensors();renderOp()});
-  on("skip",function(){api("/api/step",{to:(S.step||1)+1}).then(function(s){S=s;renderOp()})});
-  on("next",function(){api("/api/step",{to:(S.step||1)+1}).then(function(s){S=s;renderOp()})});
-  on("mc",function(){api("/api/mount",{confirmed:!S.mount_confirmed}).then(poll)});
-  on("force",function(){api("/api/step",{to:4}).then(function(s){S=s;renderOp()})});
-  on("finish",function(){if(!finishSure){finishSure=true;this.textContent="Tap again to finish";setTimeout(function(){finishSure=false;if($("finish"))$("finish").textContent="Finish the test"},8000);return}
-    finishSure=false;api("/api/step",{to:5}).then(function(s){S=s;renderOp()})});
-  on("sendnote",function(){var t=$("note").value;if(t){api("/api/note",{text:t});$("note").value="";this.textContent="Saved"}});
-  on("mark",function(){api("/api/mark",{text:"mark"});this.textContent="Marked"});
-  on("seeres",function(){show(2);loadList(S.done)});
-  on("again",function(){api("/api/mount",{confirmed:false});api("/api/step",{to:1}).then(function(s){S=s;renderOp()})});
+  on("start",function(){
+    startSensors();                       // the one permission prompt (location + motion), from this tap
+    startPending=true;renderOp();
+    api("/api/start",{}).then(function(s){S=s;startPending=false;lastKey="";renderOp()})
+      .catch(function(){startPending=false;renderOp();toast("NAVERA did not answer. Check the Jetson is on, then press START again.")});
+  });
+  on("end",function(){
+    if(!window.confirm("End the test?"))return;
+    this.disabled=true;this.textContent="Saving...";
+    api("/api/end",{}).then(function(s){S=s;lastKey="";renderOp()}).catch(function(){toast("NAVERA did not answer. Tap END again in a moment.");renderOp()});
+  });
 }
-function updateLive(){
-  var a=$("v_frames");if(a)a.textContent=S.frames||0;
-  a=$("v_stars");if(a)a.textContent=(S.live||{}).confirmed==null?"–":S.live.confirmed;
-  a=$("v_err");if(a)a.textContent=(S.last_fix||{}).err_km==null?"–":S.last_fix.err_km+" km";
-  var pv=$("pv");if(pv)pv.src="/api/preview.jpg?"+Date.now();
-  var r=$("rej");if(r){var j=(S.live||{}).rejected||{},k=Object.keys(j);r.textContent=k.length?k.map(function(x){return j[x]+" "+x}).join(", "):"nothing rejected"}
-}
-var lastKey="",finishSure=false;
+function updateLive(){var c=$("clock");if(c)c.textContent=elapsed()}
+setInterval(function(){if(tab===1){updateLive();banner()}},1000);
+document.addEventListener("visibilitychange",function(){if(document.hidden&&S.recording)hiddenWhileRec=true;
+  else if(!document.hidden)setTimeout(function(){hiddenWhileRec=false;banner()},8000);banner()});
+var lastKey="";
 function poll(){
-  api("/api/state").then(function(s){S=s;
-    var live=s.step===4?(s.checks||[]).map(function(c){return c.id+c.status}):(s.checks||[]).map(function(c){return c.status+c.detail+c.label});
-    var key=JSON.stringify([s.step,s.mount_confirmed,live,s.step===4?0:s.frames,s.done,s.step===4?0:s.last_fix,sensorsOn]);
+  api("/api/state").then(function(s){S=s;navOk=true;
+    var key=JSON.stringify([s.recording,s.done,(s.checks||[]).map(function(c){return c.id+c.status}),(s.live||{}).confirmed,s.fixes,
+      (s.last_fix||{}).err_km,sensorsOn,phone.acc==null,phone.gpsError]);
     showSens();if(s.disk_error)toast("Cannot save to the disk of the Jetson - tell the owner now.");
     if(key!==lastKey&&tab===1){lastKey=key;renderOp()}
-    if(tab===1)updateLive();
-  }).catch(function(){});
+  }).catch(function(){
+    navOk=false;
+    if(!S.step){lastKey="";$("op").innerHTML='<section class="card"><h3>Waiting for NAVERA...</h3><p class="mute">The phone cannot reach the Jetson yet. '+
+      'Check that the Jetson is on, and that the phone and the Jetson are on the same Wi-Fi or hotspot. This screen updates by itself.</p></section>'}
+    else if(tab===1){lastKey="";renderOp()}
+  });
 }
 setInterval(poll,1500);poll();
+// ── installed app ───────────────────────────────────────────────
+// the page shell stays on the phone (service worker: only on a trusted https address, not the LAN's own certificate)
+if("serviceWorker" in navigator)navigator.serviceWorker.register("/sw.js").catch(function(){});
+// an iPhone home-screen app keeps its own cookies: the shortcut must carry the link's key (Android uses the manifest)
+(function(){var k="__NAVERA_KEY__",standalone=window.navigator.standalone||matchMedia("(display-mode: standalone)").matches;
+  if(/iPhone|iPad|iPod/.test(navigator.userAgent)&&!standalone&&k.indexOf("__")!==0&&location.search.indexOf("k=")<0)
+    history.replaceState(null,"","/field?k="+encodeURIComponent(k))})();
 
 // ── results ─────────────────────────────────────────────────────
-function show(t){tab=t;$("op").hidden=t!==1;$("res").hidden=t!==2;$("t1").setAttribute("aria-selected",t===1);$("t2").setAttribute("aria-selected",t===2);if(t===2)loadList()}
-$("t1").onclick=function(){show(1)};$("t2").onclick=function(){show(2)};
+function show(t){tab=t;$("owner").textContent=t===1?"Owner: results":"Back to the test";$("op").hidden=t!==1;$("res").hidden=t!==2;$("t1").setAttribute("aria-selected",t===1);$("t2").setAttribute("aria-selected",t===2);if(t===2)loadList()}
+$("t1").onclick=function(){show(1)};$("t2").onclick=function(){show(2)};$("owner").onclick=function(e){e.preventDefault();show(tab===1?2:1)};
 function when(t){return t?new Date(t*1000).toLocaleString():""}
 function vclass(v){return v==="OK"?"ok":v==="PARTLY"?"wait":"bad"}
 function loadList(openFirst){

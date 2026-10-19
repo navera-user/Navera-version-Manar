@@ -240,6 +240,7 @@ class Field:
         self.cam_ok = True
         self.last_done = None
         self.last_fix: dict = {}
+        self.n_fixes = 0                            # positions solved in the test being recorded
         self.usable_skies = ("clear", "hazy")       # the only skies whose stars count and are solved
         self.mode = "360" if hasattr(camera, "gravity") else "strip"
         self.cat = None                             # 360: bright-star catalogue, built on the first solve
@@ -574,6 +575,7 @@ class Field:
                 if p.get("lat") is not None:
                     rec["err_km_live"] = round(report_mod.haversine_km(r["lat"], r["lon"], p["lat"], p["lon"]), 1)
                 self._tilt_corrected(s, rec, r, up, utc, off)
+                self.n_fixes += 1
                 self.last_fix = {"t": time.time(), "lat": r["lat"], "lon": r["lon"],
                                  "err_km": rec.get("err_km_live"), "sigma_km": rec["sigma_km"],
                                  "err_km_cal": rec.get("err_km_cal_live"), "sigma_km_cal": rec.get("sigma_km_cal"),
@@ -652,6 +654,7 @@ class Field:
                 if truth["lat"] is not None:
                     rec["err_km_live"] = round(report_mod.haversine_km(r["predicted_lat"], r["predicted_lon"],
                                                                        truth["lat"], truth["lon"]), 1)
+                self.n_fixes += 1
                 self.last_fix = {"t": time.time(), "lat": r["predicted_lat"], "lon": r["predicted_lon"],
                                  "err_km": rec.get("err_km_live"), "sigma_km": rec["sigma_km"]}
             else:
@@ -690,6 +693,8 @@ class Field:
                     self.session.update_meta(attitude_sigma_deg=ATTITUDE_SIGMA_360_DEG, imu_calibration=_read_json(self.camera.cal_path),
                                              latency_s=self.camera.latency_s, f_scale=self.f_scale)
                 self.frame_idx = 0
+                self.n_fixes = 0
+                self.last_fix = {}
                 self.last_solve_t = 0.0
                 self.tracker = type(self.tracker)()
                 self.session.event("step", to=4)
@@ -697,6 +702,25 @@ class Field:
                 self.finish()
                 return
             self.step = step
+
+    def start(self):
+        """The operator's START: recording begins now whatever the sky (the camera, stars and steadiness are
+        only reported, never waited for). A second START while recording changes nothing."""
+        with self.go_lock:
+            if self.session is not None:
+                return
+            self.mount_confirmed = True
+            self.step = 3
+            self.go(4)
+            if self.session is not None:
+                self.session.event("start", by="operator")
+
+    def end(self):
+        """The operator's END: the test is closed and reported."""
+        with self.go_lock:
+            if self.session is not None:
+                self.session.event("end", by="operator")
+                self.go(5)
 
     def finish(self):
         s = self.session
@@ -724,6 +748,7 @@ class Field:
         s = self.session
         return {"step": self.step, "mode": self.mode, "checks": self.checks(), "live": self.live, "mount_confirmed": self.mount_confirmed,
                 "recording": s.id if s else None, "frames": self.frame_idx if s else 0,
+                "started": s.meta.get("started") if s else None, "fixes": self.n_fixes if s else 0,
                 "last_fix": self.last_fix, "solving": self.solving, "interval_s": self.interval_s,
                 "done": self.last_done, "disk_error": bool(s and s.io_error), "server_time_ms": int(time.time() * 1000)}
 
@@ -790,6 +815,11 @@ def make_handler(field: Field):
             u = urlparse(self.path)
             path = u.path.rstrip("/")
             q = parse_qs(u.query)
+            if path in PUBLIC_FILES:          # the app's icons and offline shell: no data, no key
+                name, ctype = PUBLIC_FILES[path]
+                with open(os.path.join(HERE, "static", name), "rb") as f:
+                    extra = {"Service-Worker-Allowed": "/"} if name == "sw.js" else None
+                    return self._send(200, ctype, f.read(), extra)
             if not self._authed(q):
                 return self._deny()
             if "k" in q:           # first visit from the link: keep the key in a cookie and drop it from the address bar
@@ -797,7 +827,11 @@ def make_handler(field: Field):
                                   f"navera_k={q['k'][0]}; Max-Age=31536000; Path=/; Secure; HttpOnly; SameSite=Lax"})
             if path in ("", "/", "/field"):
                 with open(os.path.join(HERE, "page.html"), "rb") as f:
-                    return self._send(200, "text/html; charset=utf-8", f.read())
+                    # the key is already this phone's (cookie): an iPhone home-screen app needs it in its address
+                    return self._send(200, "text/html; charset=utf-8", f.read().replace(b"__NAVERA_KEY__", field.key.encode()))
+            if path == "/manifest.webmanifest":
+                # authenticated: its start address carries the key, so the installed app opens straight in
+                return self._send(200, "application/manifest+json", json.dumps(app_manifest(field.key)).encode())
             if path == "/api/state":
                 return self._json(field.state())
             if path == "/api/preview.jpg":
@@ -844,6 +878,12 @@ def make_handler(field: Field):
             if path == "/api/step":
                 field.go(d.get("to", 1))
                 return self._json(field.state())
+            if path == "/api/start":
+                field.start()
+                return self._json(field.state())
+            if path == "/api/end":
+                field.end()
+                return self._json(field.state())
             if path == "/api/mount":
                 field.mount_confirmed = bool(d.get("confirmed"))
                 return self._json({"ok": True})
@@ -861,6 +901,73 @@ def make_handler(field: Field):
             return self._json({"error": "not found"}, 404)
 
     return H
+
+
+PUBLIC_FILES = {"/sw.js": ("sw.js", "text/javascript; charset=utf-8"),
+                "/static/icon-192.png": ("icon-192.png", "image/png"),
+                "/static/icon-512.png": ("icon-512.png", "image/png"),
+                "/static/apple-touch-icon.png": ("apple-touch-icon.png", "image/png")}
+
+
+def app_manifest(key):
+    """The installable phone app (Add to Home screen): NAVERA Sky Test, full screen, opening the test page."""
+    return {"name": "NAVERA Sky Test", "short_name": "NAVERA Sky", "start_url": f"/field?k={key}", "scope": "/",
+            "display": "standalone", "orientation": "portrait", "background_color": "#0b0d12", "theme_color": "#0b0d12",
+            "icons": [{"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+                      {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}]}
+
+
+class NoCamera:
+    """NAVERA_FIELD_CAMERA=none: the server without any camera (checks of the page and the phone; it never
+    opens a USB or video device)."""
+    device, cal_path, hfov, latency_s, error = "none", "none", None, 0.0, "no camera (NAVERA_FIELD_CAMERA=none)"
+
+    def latest(self):
+        return None, 0.0
+
+
+def lan_addresses():
+    """IPv4 addresses a phone can reach: Wi-Fi/Ethernet (same network) and Tailscale; never loopback or docker."""
+    out = []
+    try:
+        lines = subprocess.run(["ip", "-4", "-o", "addr"], capture_output=True, text=True, timeout=5).stdout.splitlines()
+    except Exception:
+        lines = []
+    for ln in lines:
+        f = ln.split()
+        if len(f) < 4:
+            continue
+        dev, ip = f[1], f[3].split("/")[0]
+        if dev == "lo" or dev.startswith(("docker", "br-", "veth", "virbr")):
+            continue
+        out.append((dev, ip))
+    return out
+
+
+def write_links(root, key, public, lan_port):
+    """LINK.txt (and LINK_QR.png when the qrcode module exists): every address of the operator's link."""
+    lines, lan = [], []
+    if public:
+        lines.append(f"internet (phone hotspot with mobile data, Claude can watch): {public}/field?k={key}")
+    for dev, ip in lan_addresses():
+        link = f"https://{ip}:{lan_port}/field?k={key}"
+        if dev.startswith("tailscale"):
+            lines.append(f"tailscale (devices on the tailnet): {link}")
+        else:
+            lines.append(f"same Wi-Fi or hotspot, no internet needed ({dev}): {link}")
+            lan.append(link)
+    with open(os.path.join(root, "LINK.txt"), "w") as f:
+        f.write("\n".join(lines) + "\n")
+    qr = None
+    try:
+        import qrcode
+        target = lan[0] if lan else (f"{public}/field?k={key}" if public else None)
+        if target:
+            qr = os.path.join(root, "LINK_QR.png")
+            qrcode.make(target).save(qr)
+    except ImportError:
+        pass
+    return lines, qr
 
 
 def access_key(root):
@@ -929,8 +1036,11 @@ def find_calibration():
 def main():
     root = os.environ.get("NAVERA_FIELD_DIR", os.path.expanduser("~/navera-field"))
     port = int(os.environ.get("NAVERA_FIELD_PORT", "8443"))
-    choice = os.environ.get("NAVERA_FIELD_CAMERA", "auto")         # auto | 360 | strip
-    if choice == "360" or (choice == "auto" and insta360_android_mode()):
+    choice = os.environ.get("NAVERA_FIELD_CAMERA", "auto")         # auto | 360 | strip | none
+    if choice == "none":
+        camera = NoCamera()
+        log(f"camera: none (NAVERA_FIELD_CAMERA=none)\ntests saved in {root}")
+    elif choice == "360" or (choice == "auto" and insta360_android_mode()):
         camera = Camera360()
         log(f"camera: Insta360 full 360 over USB (Android mode), own IMU, calibration {camera.cal_path}\ntests saved in {root}")
     else:
@@ -940,25 +1050,34 @@ def main():
         camera = Camera(device, cal)
     field = Field(root, camera)
     public = os.environ.get("NAVERA_FIELD_PUBLIC_URL", "")          # e.g. https://navera-academy.tail27d06f.ts.net:8443
+    servers = []
     if os.environ.get("NAVERA_FIELD_PLAIN") == "1":
         # behind Tailscale (serve/funnel): it provides the trusted HTTPS address, this stays on this machine
-        httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(field))
-        links = [f"{public or 'https://<tailscale address>'}/field?k={field.key}"]
+        servers.append(ThreadingHTTPServer(("127.0.0.1", port), make_handler(field)))
+        lan_port = int(os.environ.get("NAVERA_FIELD_LAN_PORT", "8445"))
     else:
-        cert, key, ips = ensure_certificate(os.path.join(root, "tls"))
-        httpd = ThreadingHTTPServer(("0.0.0.0", port), make_handler(field))
+        lan_port = int(os.environ.get("NAVERA_FIELD_LAN_PORT", str(port)))
+    if lan_port > 0:
+        # the same page on the local network (the phone's hotspot or the same Wi-Fi, no internet needed),
+        # with this machine's own certificate: the phone warns once
+        cert, key, _ = ensure_certificate(os.path.join(root, "tls"))
+        lan = ThreadingHTTPServer(("0.0.0.0", lan_port), make_handler(field))
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ctx.load_cert_chain(cert, key)
-        httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
-        links = [f"https://{ip}:{port}/field?k={field.key}" for ip in ips]
+        lan.socket = ctx.wrap_socket(lan.socket, server_side=True)
+        servers.append(lan)
         log("(on the local network the phone warns about the certificate once: Advanced, then continue)")
-    httpd.daemon_threads = True
+    for h in servers:
+        h.daemon_threads = True
     import signal
     signal.signal(signal.SIGTERM, lambda *a: (_ for _ in ()).throw(KeyboardInterrupt()))
-    with open(os.path.join(root, "LINK.txt"), "w") as f:
-        f.write("\n".join(links) + "\n")
+    links, qr = write_links(root, field.key, public, lan_port)
     for link in links:
-        log(f"link for the operator's phone:  {link}")
+        log(f"link for the operator's phone, {link}")
+    log(f"QR code of the link: {qr}" if qr else "(no QR code: python module qrcode not installed)")
+    httpd = servers[0]
+    for h in servers[1:]:
+        threading.Thread(target=h.serve_forever, daemon=True).start()
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
