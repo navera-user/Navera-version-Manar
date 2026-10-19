@@ -25,6 +25,7 @@ import numpy as np
 import yaml
 
 from day_pkg.local_matcher import LocalMatcher, map_m_per_px, tile_px_to_latlon
+from day_pkg.vision_nav import VisionNavigator
 
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 ap.add_argument("--calib", help="strip source: the webcam lens calibration (not used with --source 360)")
@@ -58,6 +59,11 @@ ap.add_argument("--save-frame", help="write the latest camera frame (undistorted
 ap.add_argument("--overlay", default="none",
                 help="conditions drawn over the map on the screen, comma-separated: clouds, haze, glare, dusk, birds, planes, drones")
 ap.add_argument("--overlay-amount", type=float, default=0.3, help="clouds: sky fraction covered; haze/dusk: strength 0-1")
+ap.add_argument("--max-speed", type=float, default=None,
+                help="m/s, the vehicle's top speed for the track gate (default 1.5 x --speed)")
+ap.add_argument("--no-gate", action="store_true",
+                help="forward every accepted match as NAVERA's output (the rule before 2026-10-19: "
+                     "a wrong-but-confident match 100-650 m off was output)")
 ap.add_argument("--out", default="screen_flight.csv")
 a = ap.parse_args()
 if a.latency is None:
@@ -263,6 +269,9 @@ def worker():
     height, axis, rot = a.height, None, 0.0
     src_prev = "gps"
     first = []                                                 # unconfirmed no-height matches
+    # the product's track gate (day_pkg.vision_nav): with GPS trusted it follows GPS; after,
+    # a match is output only if consistent with the carried track and the vehicle's speed
+    nav = None if a.no_gate else VisionNavigator(max_speed_mps=a.max_speed or 1.5 * a.speed)
     while not stop.is_set():
         img, t = grab()
         if img is None:
@@ -317,13 +326,6 @@ def worker():
         ms = (time.time() - t0) * 1000
         vis = (r["predicted_lat"], r["predicted_lon"]) if r["accepted"] else None
         vis_err = metres(vis, truth)[0] if vis else None
-        if vis:
-            if vis_last is not None and t - vis_last[2] > 0.2:
-                _, de, dn = metres(vis, vis_last[:2])
-                k = 0.5                                        # smoothed ground velocity
-                vis_vel = (k * de / (t - vis_last[2]) + (1 - k) * vis_vel[0],
-                           k * dn / (t - vis_last[2]) + (1 - k) * vis_vel[1])
-            vis_last = (vis[0], vis[1], t)
         # the estimator: GPS while it agrees with vision, else vision, else carried
         if gps is not None and vis is not None and axis is not None and height is not None:
             gap = metres(gps, vis)[0]
@@ -331,6 +333,22 @@ def worker():
                 doubt = doubt + 1 if gap > 3 * math.hypot(5.0, 10.0) else 0
             if doubt >= 2 and not gps_refused:
                 gps_refused, refused_at = True, (t, drift)
+                if nav is not None:                            # hand over from vision, not the drifted GPS
+                    nav.gps(t, *vis, sigma_m=10.0)
+        gate_why = None
+        if nav is not None:
+            if gps is not None and not gps_refused:
+                nav.gps(t, *gps)
+            elif vis is not None and not (refused_at and refused_at[0] == t) and \
+                    not nav.update(t, dict(r, sigma_m=r.get("sigma_m") or 10.0), None, None, gps_valid=False):
+                gate_why, vis = nav.last_reason, None
+        if vis:
+            if vis_last is not None and t - vis_last[2] > 0.2:
+                _, de, dn = metres(vis, vis_last[:2])
+                k = 0.5                                        # smoothed ground velocity
+                vis_vel = (k * de / (t - vis_last[2]) + (1 - k) * vis_vel[0],
+                           k * dn / (t - vis_last[2]) + (1 - k) * vis_vel[1])
+            vis_last = (vis[0], vis[1], t)
         src = "gps" if gps is not None and not gps_refused else ("vision" if vis else "carried")
         if src == "gps":
             pos, pos_t, sigma = gps, t, 5.0
@@ -351,13 +369,15 @@ def worker():
                          inliers=r.get("inliers"), height_m=None if height is None else round(height),
                          vis_de=None if not vis else round(metres(vis, centre)[1], 1),
                          vis_dn=None if not vis else round(metres(vis, centre)[2], 1),
+                         gated=int(gate_why is not None),
                          turned_deg=round(getattr(cam360, "turned_deg", 0.0), 1) if a.source == "360" else None,
                          imu_ok=int(cam360.cam.imu_age() < 1.5) if a.source == "360" else None))
         print(f"{t:6.1f}s {phase:5s} gps+{drift:5.0f}m  vision "
               f"{'%5.1f m' % vis_err if vis_err is not None else '  -   '}  NAVERA={src:7s} "
               f"err {'%5.1f' % out_err if out_err is not None else '  -  '} m  {ms:4.0f} ms"
               + (f"  camera turned {cam360.turned_deg:5.1f} deg" if a.source == "360" else "")
-              + ("  IMU SILENT" if a.source == "360" and cam360.cam.imu_age() > 1.5 else ""), flush=True)
+              + ("  IMU SILENT" if a.source == "360" and cam360.cam.imu_age() > 1.5 else "")
+              + (f"  GATED: {gate_why[:70]}" if gate_why else ""), flush=True)
     stop.refused_at = refused_at
 
 
