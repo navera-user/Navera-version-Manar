@@ -310,3 +310,9 @@ def test_weak_fix_places_but_does_not_set_the_velocity():
     assert nav.update(11.0, _fix(*q, inliers=25, sigma=8.0), 500.0, 90.0)
     assert nav.fix[:2] == q
     assert math.hypot(nav.vel[0] - vel[0], nav.vel[1] - vel[1]) < 0.01
+
+
+def test_kinematic_margin_is_the_two_sigmas_capped():
+    from day_pkg.vision_nav import kinematic_margin_m
+    assert abs(kinematic_margin_m(3.0, 30.0, 40.0) - 150.0) < 1e-9
+    assert kinematic_margin_m(3.0, 300.0, 40.0, cap_m=250.0) == 250.0     # never looser than the old margin

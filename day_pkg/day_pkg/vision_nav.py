@@ -45,6 +45,12 @@ def _wrap(a: float) -> float:
     return (a + 180.0) % 360.0 - 180.0
 
 
+def kinematic_margin_m(gate_k: float, sigma_last_m: float, sigma_fix_m: float, cap_m: float = float("inf")) -> float:
+    """Allowance, beyond max_speed x elapsed, for a fix's distance from the last position:
+    gate_k x the two positions' combined sigma, at most cap_m."""
+    return min(gate_k * math.hypot(sigma_last_m, sigma_fix_m), cap_m)
+
+
 class VisionNavigator:
     """Position, velocity, height and map bias of a vehicle navigating by map matches."""
 
@@ -304,7 +310,7 @@ class VisionNavigator:
             return False
         if not gps_valid and self.max_speed_mps and self.fix is not None and t > self.fix[2]:
             # physically impossible from the last fix, however strong or confirmed the match
-            reach = self.max_speed_mps * (t - self.fix[2]) + self.gate_k * math.hypot(self.fix[3], sig)
+            reach = self.max_speed_mps * (t - self.fix[2]) + kinematic_margin_m(self.gate_k, self.fix[3], sig)
             jump = math.hypot(*_en((lat, lon), self.fix[:2]))
             if jump > reach:
                 self.fails += 1
