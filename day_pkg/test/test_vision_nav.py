@@ -63,7 +63,32 @@ def test_weak_fix_far_from_the_prediction_is_rejected_strong_one_kept():
     far = _move(p, 25.0 + 300.0, 0.0)
     assert not nav.update(11.0, _fix(*far, inliers=40, sigma=15.0), 500.0)
     assert "prediction" in nav.last_reason
-    assert nav.update(11.0, _fix(*far, inliers=300), 500.0)    # very strong: believed
+    assert nav.update(11.0, _fix(*far, inliers=300, sigma=4.0 * 25), 500.0)  # very strong, within 6 sigma
+
+
+def test_a_strong_fix_far_beyond_the_prediction_needs_a_second_one():
+    # 2026-10-19 bench: 100-150 inlier matches 270-650 m off were forwarded as the position
+    nav = VisionNavigator()
+    p = _fly(nav, 0, 10, 25.0, 0.0)
+    far = _move(p, 25.0 + 300.0, 0.0)
+    assert not nav.update(11.0, _fix(*far, inliers=300), 500.0)
+    assert "strong fix" in nav.last_reason
+    assert nav.update(12.0, _fix(*_move(far, 25.0, 0.0), inliers=300), 500.0)   # confirmed: re-acquired
+
+
+def test_an_impossible_jump_is_never_believed_even_confirmed():
+    nav = VisionNavigator(max_speed_mps=30.0)
+    p = _fly(nav, 0, 10, 25.0, 0.0)
+    far = _move(p, 25.0 + 300.0, 0.0)
+    assert not nav.update(11.0, _fix(*far, inliers=300), 500.0)
+    assert "impossible jump" in nav.last_reason
+    assert not nav.update(12.0, _fix(*_move(far, 25.0, 0.0), inliers=300), 500.0)
+    assert nav.kinematic_rejected == 2
+    # the right place goes on being accepted, and after a long gap the reach has grown
+    assert nav.update(13.0, _fix(*_move(p, 75.0, 0.0)), 500.0)
+    nav2 = VisionNavigator(max_speed_mps=30.0)
+    q = _fly(nav2, 0, 10, 25.0, 0.0)
+    assert nav2.update(30.0, _fix(*_move(q, 25.0 * 20 + 100.0, 0.0), inliers=300), 500.0)
 
 
 def test_inliers_on_a_strip_are_rejected():
@@ -285,3 +310,9 @@ def test_weak_fix_places_but_does_not_set_the_velocity():
     assert nav.update(11.0, _fix(*q, inliers=25, sigma=8.0), 500.0, 90.0)
     assert nav.fix[:2] == q
     assert math.hypot(nav.vel[0] - vel[0], nav.vel[1] - vel[1]) < 0.01
+
+
+def test_kinematic_margin_is_the_two_sigmas_capped():
+    from day_pkg.vision_nav import kinematic_margin_m
+    assert abs(kinematic_margin_m(3.0, 30.0, 40.0) - 150.0) < 1e-9
+    assert kinematic_margin_m(3.0, 300.0, 40.0, cap_m=250.0) == 250.0     # never looser than the old margin

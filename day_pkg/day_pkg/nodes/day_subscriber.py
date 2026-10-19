@@ -53,7 +53,7 @@ from navera_msgs.msg import NavStatus, PositionEstimate
 from day_pkg.nodes.day_localizer import IMAGES_DIR, DayLocalizer, haversine_m
 from day_pkg.frame_odometry import FrameOdometry
 from day_pkg.local_matcher import LocalMatcher
-from day_pkg.vision_nav import VisionNavigator, _en, _move
+from day_pkg.vision_nav import VisionNavigator, _en, _move, kinematic_margin_m
 
 # ── A priori spatial GPS-denied (fix matching cross-source) ─────────────────
 # Sur une frame sans GPS, on restreint la recherche DINOv2 à un CERCLE autour du
@@ -150,7 +150,9 @@ class DaySubscriber(Node):
         self.declare_parameter("matcher", "auto")
         # Between map matches (bench campaign 2026-10-06, day_pkg/vision_nav.py): the search
         # circle is k sigma of the carried position, never under local_min_radius_m; a fix
-        # far from the prediction (gate_k sigma) is rejected unless it has strong_inliers,
+        # far from the prediction (gate_k sigma) is rejected — one with strong_inliers only beyond
+        # strong_gate_k_sigma (it was believed at any distance: 2026-10-19 bench, 100-150 inlier
+        # matches 270-650 m off were forwarded) — unless the next fix agrees with it,
         # one whose inliers cover < min_inlier_spread of the frame too (if < 50 inliers);
         # after height_retry_after failures in a row, the frame is also tried 20 % lower
         # and 25 % higher (a stale height makes every match fail).
@@ -158,6 +160,7 @@ class DaySubscriber(Node):
         declare_float(self, "search_k_sigma", 3.0)
         declare_float(self, "gate_k_sigma", 3.0)
         self.declare_parameter("strong_inliers", 100)
+        declare_float(self, "strong_gate_k_sigma", 6.0)
         declare_float(self, "min_inlier_spread", 0.25)
         self.declare_parameter("height_retry_after", 3)
         declare_float(self, "camera_hfov_deg", float("nan"))   # day camera horizontal field of view
@@ -167,6 +170,10 @@ class DaySubscriber(Node):
         # widest scale window when the frame altitude is uncertain (frame_meta altitude_sigma_m)
         declare_float(self, "local_scale_tol_max", 0.35)
         declare_float(self, "local_heading_tol_deg", 20.0)
+        # an IMU without magnetometer (its yaw drifts tens of degrees, or is unknown): the learned
+        # matcher searches the heading (every 30 deg) when the IMU's fails — simulation
+        # 2026-10-19, 300 m: heading 45 deg wrong 0/30 -> 30/30 located, 0 wrong
+        self.declare_parameter("local_heading_search", False)
         # a height measured by a match is trusted only from a strong match confirmed by
         # the next one (a wrong match must not set the altitude the next frames are judged by)
         self.declare_parameter("altitude_min_inliers", 20)
@@ -199,9 +206,11 @@ class DaySubscriber(Node):
         self.track = TrackVelocity(accel_mps2=float(self.get_parameter("dead_reckon_accel_mps2").value))
         self._track_heading = None             # frame heading (IMU) at the last measured fix
         self._dr_sigma = None
+        self._anchor_sigma = None               # 1-sigma (m) of the anchor position, None: unknown
         p_ = lambda n: self.get_parameter(n).value               # noqa: E731
         self.local_min_radius_m, self.search_k = float(p_("local_min_radius_m")), float(p_("search_k_sigma"))
         self.gate_k, self.strong_inliers = float(p_("gate_k_sigma")), int(p_("strong_inliers"))
+        self.strong_gate_k = float(p_("strong_gate_k_sigma"))
         self.min_spread, self.height_retry_after = float(p_("min_inlier_spread")), int(p_("height_retry_after"))
         # the map's offset from the ground (registration, camera boresight), learned from the
         # GPS-check matches while GPS is good and removed from the fixes after its loss
@@ -274,6 +283,7 @@ class DaySubscriber(Node):
         self.local_max_radius_m = float(self.get_parameter("local_max_radius_m").value)
         self.local_scale_tol_max = float(self.get_parameter("local_scale_tol_max").value)
         self.local_heading_tol_deg = float(self.get_parameter("local_heading_tol_deg").value)
+        self.heading_search = bool(self.get_parameter("local_heading_search").value)
         self.alt_min_inliers = int(self.get_parameter("altitude_min_inliers").value)
         self._alt_candidate = None             # (height, time) of the last strong match
         self._check_fix = None                 # (lat, lon, time) of the last GPS-check match
@@ -419,8 +429,8 @@ class DaySubscriber(Node):
             self._rejects_in_row = 0
             self._remember_anchor()
             cov = list(msg.position_covariance)
-            self.track.add(self._anchor_time, msg.latitude, msg.longitude,
-                           math.sqrt(max(cov[0], cov[4])) if cov[0] > 0 else 5.0)
+            self._anchor_sigma = math.sqrt(max(cov[0], cov[4])) if cov[0] > 0 else 5.0
+            self.track.add(self._anchor_time, msg.latitude, msg.longitude, self._anchor_sigma)
 
     def on_operator_position(self, msg: PositionEstimate):
         """The operator's start position: the search centre while no GPS is trusted, the
@@ -430,6 +440,7 @@ class DaySubscriber(Node):
         acc = math.sqrt(max(msg.position_covariance[0], msg.position_covariance[4], 1.0))
         now = time.time()
         self._anchor_lat, self._anchor_lon, self._anchor_time = msg.latitude, msg.longitude, now
+        self._anchor_sigma = acc
         # the search circle grows by max_speed x the time since the last measurement:
         # start it as wide as the operator's accuracy
         self._last_measured_time = now - acc / max(self.max_speed_mps, 1.0)
@@ -554,7 +565,8 @@ class DaySubscriber(Node):
                 for f in factors:
                     result = self.local.locate(img, center, R, mpp * f, scale_tol=self._scale_tol(meta),
                                                heading_deg=self._heading_for_match(meta),
-                                               heading_tol_deg=self.local_heading_tol_deg, hfov_deg=self._hfov(meta))
+                                               heading_tol_deg=self.local_heading_tol_deg, hfov_deg=self._hfov(meta),
+                                               **self._heading_search_kw())
                     if result.get("accepted"):
                         break
                 sc = float(result.get("scale_residual") or 1.0)
@@ -563,7 +575,8 @@ class DaySubscriber(Node):
                     # 0.45-0.6): match again at the corrected height, keep it if it holds
                     again = self.local.locate(img, center, R, mpp * f * sc, scale_tol=self._scale_tol(meta),
                                               heading_deg=self._heading_for_match(meta),
-                                              heading_tol_deg=self.local_heading_tol_deg, hfov_deg=self._hfov(meta))
+                                              heading_tol_deg=self.local_heading_tol_deg, hfov_deg=self._hfov(meta),
+                                              **self._heading_search_kw())
                     if again.get("accepted") and int(again.get("inliers") or 0) >= int(result.get("inliers") or 0) // 2:
                         result, f = again, f * sc
                 result["_frame_shape"], result["_frame_mpp"] = img.shape, mpp * f
@@ -633,6 +646,7 @@ class DaySubscriber(Node):
         self._success_count += 1
         # frame 11 (1ère prédiction) prendra CE point GPS (frame 10) comme référence
         self._anchor_lat, self._anchor_lon, self._anchor_time = lat, lon, time.time()
+        self._anchor_sigma = None
         self._last_measured_time = self._anchor_time
         self._rejects_in_row = 0
         # Additive contract: CSV truth → MODE_REPLAYED (never a DINOv2 measurement).
@@ -670,6 +684,7 @@ class DaySubscriber(Node):
             self.get_logger().warn(f"[day] GPS lost/refused: starting from the last vision fix, "
                                    f"{d:.0f} m from the last GPS position (GPS was drifting)")
             self._anchor_lat, self._anchor_lon, self._anchor_time = c[0], c[1], c[2]
+            self._anchor_sigma = self.local_sigma_m
             self._last_measured_time = c[2]
             self.track.reset()                      # its GPS points were the spoofed ones
             self.track.add(c[2], c[0], c[1], self.local_sigma_m)
@@ -723,6 +738,12 @@ class DaySubscriber(Node):
         _, R = self._spatial_window(img, meta)
         margin = 0.5 * math.hypot(*img.shape[:2]) * mpp
         self.local.tiles.prefetch(self._anchor_lat, self._anchor_lon, R + margin)
+
+    def _heading_search_kw(self) -> dict:
+        """locate() keywords: the heading search when enabled and the matcher has it."""
+        if self.heading_search and hasattr(self.local, "heading_search_deg"):
+            return {"heading_search": True}
+        return {}
 
     def _hfov(self, meta):
         """Field of view of this frame: the live camera states it (undistorted image),
@@ -883,7 +904,7 @@ class DaySubscriber(Node):
                 self.track.add(t_now, lat, lon, sigma)
                 self._carry = None                  # the odometry point is on the track itself
                 self._anchor_lat, self._anchor_lon, self._anchor_time = lat, lon, t_now
-                self._dr_sigma = sigma
+                self._dr_sigma = self._anchor_sigma = sigma
                 self._emit_fix(now, seq_id, lat, lon, meta, status, "dead_reckon", score, None,
                                reason=f"{why}; visual odometry {math.hypot(de, dn):.0f} m in {dt:.1f} s, "
                                       f"±{sigma:.0f} m")
@@ -898,7 +919,7 @@ class DaySubscriber(Node):
             return False
         self._set_carry(lat, lon, t_now, meta, sigma)
         self._anchor_lat, self._anchor_lon, self._anchor_time = lat, lon, t_now
-        self._dr_sigma = sigma
+        self._dr_sigma = self._anchor_sigma = sigma
         self._emit_fix(now, seq_id, lat, lon, meta, status, "dead_reckon", score, None,
                        reason=f"{why}; carried {t_now - t_last:.0f} s, ±{sigma:.0f} m")
         return True
@@ -1053,7 +1074,12 @@ class DaySubscriber(Node):
         pred = self._predicted(meta)
         sig = float(result.get("sigma_m") or self.local_sigma_m)
         doubt = None
-        if pred is not None and inl < self.strong_inliers:
+        if pred is not None and inl >= self.strong_inliers:
+            d = math.hypot(*_en((lat, lon), pred[:2]))
+            lim = self.strong_gate_k * math.hypot(pred[2], sig)
+            if d > lim:
+                doubt = f"strong fix ({inl} inliers) {d:.0f} m from the carried position (> {lim:.0f} m)"
+        elif pred is not None:
             d = math.hypot(*_en((lat, lon), pred[:2]))
             lim = self.gate_k * math.hypot(pred[2], sig)
             if d > lim:
@@ -1139,7 +1165,13 @@ class DaySubscriber(Node):
             measured = gated is None
         if measured and self._anchor_lat is not None and self._anchor_time is not None:
             jump = haversine_m(self._anchor_lat, self._anchor_lon, float(raw_lat), float(raw_lon))
-            reach = self.max_speed_mps * max(0.0, t_now - self._anchor_time) + self.gate_margin_m
+            margin = self.gate_margin_m
+            if result.get("matcher") == "local" and self._anchor_sigma is not None:
+                # a local match is a position (not a ~250 m tile): the margin is the two
+                # positions' uncertainty, never more than gate_margin_m
+                margin = kinematic_margin_m(self.gate_k, self._anchor_sigma,
+                                            float(result.get("sigma_m") or self.local_sigma_m), self.gate_margin_m)
+            reach = self.max_speed_mps * max(0.0, t_now - self._anchor_time) + margin
             if jump > reach:
                 measured = False
                 gated = (f"implausible jump {jump:.0f} m in {t_now - self._anchor_time:.1f} s "
@@ -1160,7 +1192,7 @@ class DaySubscriber(Node):
                                      mpp=result.get("_frame_mpp"))
             self._anchor_lat, self._anchor_lon, self._anchor_time = out_lat, out_lon, t_now
             self._last_measured_time = t_now
-            self._dr_sigma = max(self.local_sigma_m, float(result.get("sigma_m") or 0.0))
+            self._dr_sigma = self._anchor_sigma = max(self.local_sigma_m, float(result.get("sigma_m") or 0.0))
             self._carry = None
             self._rejects_in_row = 0
             self._remember_anchor()

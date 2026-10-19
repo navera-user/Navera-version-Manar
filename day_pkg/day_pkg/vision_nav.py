@@ -13,8 +13,13 @@ holds what happens between and around them — the problems a 2026-10-06 bench c
   failing: an independent height (GPS - ground, a barometer) is used whenever there is one,
   and after retry_after failures neighbouring heights are tried;
 - fixes with few inliers carried the 20-50 m errors: each fix gets a sigma from its inlier
-  count and is rejected when it disagrees with the prediction beyond gate_k sigma (unless
-  it is very strong) or when its inliers cover too little of the frame;
+  count and is rejected when it disagrees with the prediction beyond gate_k sigma (a very
+  strong one: beyond strong_gate_k sigma) or when its inliers cover too little of the frame;
+  a doubted fix is believed when the next one agrees with it (re-acquisition);
+- a strong match can still be in the wrong place (2026-10-19 bench: 100-150 inliers, 270-650 m
+  off, forwarded as NAVERA's position): with max_speed_mps, no fix — strong, confirmed or
+  not — is believed further from the last fix than the vehicle can travel (max_speed_mps x
+  the time since + gate_k x the two sigmas);
 - constant offsets between the matched map and the ground (map registration, camera
   boresight): measured while GPS is good, removed after its loss, near where measured.
 
@@ -40,17 +45,27 @@ def _wrap(a: float) -> float:
     return (a + 180.0) % 360.0 - 180.0
 
 
+def kinematic_margin_m(gate_k: float, sigma_last_m: float, sigma_fix_m: float, cap_m: float = float("inf")) -> float:
+    """Allowance, beyond max_speed x elapsed, for a fix's distance from the last position:
+    gate_k x the two positions' combined sigma, at most cap_m."""
+    return min(gate_k * math.hypot(sigma_last_m, sigma_fix_m), cap_m)
+
+
 class VisionNavigator:
     """Position, velocity, height and map bias of a vehicle navigating by map matches."""
 
     def __init__(self, max_dr_s: float = 120.0, max_sigma_m: float = 300.0, accel_mps2: float = 0.5,
                  search_k: float = 3.0, min_search_m: float = 80.0, max_search_m: float = 600.0,
                  gate_k: float = 3.0, strong_inliers: int = 100, min_spread: float = 0.25,
-                 retry_after: int = 3, bias_radius_m: float = 3000.0):
+                 retry_after: int = 3, bias_radius_m: float = 3000.0, strong_gate_k: float = 6.0,
+                 max_speed_mps: Optional[float] = None):
         self.max_dr_s, self.max_sigma_m, self.accel = max_dr_s, max_sigma_m, accel_mps2
         self.search_k, self.min_search_m, self.max_search_m = search_k, min_search_m, max_search_m
         self.gate_k, self.strong_inliers, self.min_spread = gate_k, strong_inliers, min_spread
         self.retry_after, self.bias_radius_m = retry_after, bias_radius_m
+        self.strong_gate_k = strong_gate_k  # a strong fix's gate (sigmas); was unlimited
+        self.max_speed_mps = max_speed_mps  # the vehicle's top speed: the kinematic gate (None: off)
+        self.kinematic_rejected = 0
         self.weak_inliers = 30        # fewer: the fix places the vehicle, not its velocity
         self.fix = None               # (lat, lon, t, sigma_m, heading_deg or None): last position measured
         self.vel = None               # (east, north) m/s
@@ -293,11 +308,25 @@ class VisionNavigator:
             self.fails += 1
             self.last_reason = f"inliers on {res.get('spread', 0):.0%} of the frame ({inl}): rejected"
             return False
+        if not gps_valid and self.max_speed_mps and self.fix is not None and t > self.fix[2]:
+            # physically impossible from the last fix, however strong or confirmed the match
+            reach = self.max_speed_mps * (t - self.fix[2]) + kinematic_margin_m(self.gate_k, self.fix[3], sig)
+            jump = math.hypot(*_en((lat, lon), self.fix[:2]))
+            if jump > reach:
+                self.fails += 1
+                self.kinematic_rejected += 1
+                self.last_reason = (f"impossible jump {jump:.0f} m in {t - self.fix[2]:.1f} s from the last fix "
+                                    f"(max {reach:.0f} m at {self.max_speed_mps:.0f} m/s, {inl} inliers): rejected")
+                return False
         doubt, reacquired = None, False
-        if not gps_valid and pred is not None and inl < self.strong_inliers:
+        if not gps_valid and pred is not None:
             d = math.hypot(*_en((lat, lon), pred[:2]))
             lim = self.gate_k * math.hypot(pred[2], sig)
-            if d > lim:
+            if inl >= self.strong_inliers:
+                lim = self.strong_gate_k * math.hypot(pred[2], sig)
+                if d > lim:
+                    doubt = f"strong fix ({inl} inliers) {d:.0f} m from the prediction (> {lim:.0f} m)"
+            elif d > lim:
                 doubt = f"{d:.0f} m from the prediction (> {lim:.0f} m, {inl} inliers)"
             elif pred[2] > 50.0 and inl < 40:
                 # lost enough that the gate is wide: a weak fix alone could be anywhere in it
