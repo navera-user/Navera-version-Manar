@@ -64,6 +64,7 @@ ATTITUDE_SIGMA_360_DEG = 0.3
 # bounce moves the 1 s mean of the vertical by 0.01-0.02 g, which hides 0.2 g of braking (simulated drive,
 # sim/car360_drive.py: 'up' up to 10.6 deg off in frames that passed every gate; 3.0 deg left 26 of 6872 outside 3 sigma).
 MOVING_ATTITUDE_SIGMA_DEG = 5.0
+STOPPED_SOLVE_GAP_S = 4.0                            # 360: while stopped, a frame every 4 s (a solve takes ~1-5 s)
 PHONE_MOVING_MPS = 1.0                               # phone GPS speed above which the car is not stopped (GPS noise ~0.3 m/s)
 F_SCALE_SEARCH = (0.90, 0.95, 1.0, 1.05, 1.10)       # lens focal length not measured: searched once, then kept
 
@@ -443,9 +444,23 @@ class Field:
         return jpg.tobytes() if ok else b""
 
     # ── solving ─────────────────────────────────────────────────────────
+    def _due(self):
+        """Time for the next frame: every interval_s, and in 360 mode also as soon as the camera says the vehicle is
+        stopped (every STOPPED_SOLVE_GAP_S while it stays so): only stopped fixes are trusted and the driver stops
+        for ~20 s, so a 20 s cadence alone gave 0-1 trusted fix per stop."""
+        since = time.time() - self.last_solve_t
+        if since >= self.interval_s:
+            return True
+        if self.mode != "360" or since < STOPPED_SOLVE_GAP_S or self.solving or not hasattr(self.camera, "stopped"):
+            return False
+        try:
+            return bool(self.camera.stopped(at_frame=True).get("stopped"))
+        except Exception:
+            return False
+
     def _maybe_solve(self, img, texp):
         s = self.session
-        if s is None or self.step != 4 or time.time() - self.last_solve_t < self.interval_s:
+        if s is None or self.step != 4 or not self._due():
             return
         if self.solving:
             if time.time() - self.solving_since < (300 if self.mode == "360" else 90):   # 360: first solve searches the lens
