@@ -27,11 +27,17 @@ def test_a_healthy_drive_has_no_alert(tmp_path):
                "err_km_cal_live": 1.2, "sigma_km": 33.0, "solve_s": 2.0, "cal_sample": None} for k in range(20, 0, -1)]
     d = _session(str(tmp_path), now, frames, [{"t": now - 2, "lat": 35.8, "lon": 10.6, "acc": 5}])
     state = {"step": 4, "recording": "2026-10-19_2100", "mode": "360", "imu_age_s": 0.1, "frames": 20, "fixes": 20,
-             "checks": [{"id": "camera", "status": "ok"}], "live": {"sky": "clear", "confirmed": 25}}
+             "checks": [{"id": "camera", "status": "ok"}], "live": {"sky": "clear", "confirmed": 25},
+             "raw": {"mb": 3400.0, "files": ["raw360_0000.bin"], "drops": 0, "drop_mb": 0.0, "queue_mb": 0.1, "error": None}}
     before = _digest(d)
     lines, alerts = sv.assess(state, d, now=now, root=str(tmp_path))
     assert alerts == {}, alerts
     text = "\n".join(lines)
+    assert "raw recording: 3400 MB" in text
+    lines, alerts = sv.assess(dict(state, raw=dict(state["raw"], drops=3, drop_mb=0.4)), d, now=now, root=str(tmp_path))
+    assert "raw" in alerts
+    lines, alerts = sv.assess(dict(state, raw=None), d, now=now, root=str(tmp_path))
+    assert "raw_off" in alerts
     assert "RECORDING 2026-10-19_2100" in text and "USE" in text and "corrected 1.2 km" in text
     assert _digest(d) == before                                   # read only
 

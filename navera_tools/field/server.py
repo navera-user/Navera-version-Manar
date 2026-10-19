@@ -168,6 +168,7 @@ class Camera360:
         self.cam = None
         self.error = None
         self.frame_ms = None
+        self.raw = None                               # RawRecorder while a test records (kept across reconnects)
         self._open()
         threading.Thread(target=self._watch, daemon=True).start()
 
@@ -176,8 +177,26 @@ class Camera360:
         try:
             self.cam = self._mod.Insta360Usb()
             self.error = None
+            if self.raw is not None:
+                self.cam.record(self.raw)
         except Exception as e:
             self.cam, self.error = None, f"360 camera: {e}"
+
+    def start_raw(self, folder):
+        """Record every camera packet into folder (raw360_*.bin) until stop_raw()."""
+        if self.raw is None:
+            self.raw = self._mod.RawRecorder(folder)
+        if self.cam is not None:
+            self.cam.record(self.raw)
+
+    def stop_raw(self) -> dict:
+        r, self.raw = self.raw, None
+        if self.cam is not None:
+            self.cam.recorder = None
+        return r.close() if r is not None else {}
+
+    def raw_stats(self):
+        return self.raw.stats() if self.raw is not None else None
 
     def _watch(self):
         while True:
@@ -272,6 +291,7 @@ class Field:
                 self.frame_idx = max([x.get("idx", 0) for x in frames if isinstance(x, dict)] or [0])
                 self.step, self.mount_confirmed = 4, True
                 log(f"resumed the unfinished test {m['id']} at frame {self.frame_idx}")
+                self._raw_start()
             else:
                 try:
                     s = FieldSession.resume(folder)
@@ -705,10 +725,32 @@ class Field:
                 self.last_solve_t = 0.0
                 self.tracker = type(self.tracker)()
                 self.session.event("step", to=4)
+                self._raw_start()
             elif step == 5:
                 self.finish()
                 return
             self.step = step
+
+    def _raw_start(self):
+        """360: every camera packet of the test to <session>/raw (replay360.py replays the whole test from it)."""
+        s = self.session
+        if s is None or self.mode != "360" or not hasattr(self.camera, "start_raw"):
+            return
+        try:
+            self.camera.start_raw(os.path.join(s.dir, "raw"))
+            s.event("raw_start", folder="raw")
+        except Exception as e:                       # recording raw must never stop the test
+            s.event("raw_error", error=repr(e)[:200])
+
+    def _raw_stop(self, s):
+        if not hasattr(self.camera, "stop_raw"):
+            return
+        try:
+            st = self.camera.stop_raw()
+            if st:
+                s.event("raw_stop", **{k: v for k, v in st.items() if k != "folder"})
+        except Exception as e:
+            s.event("raw_error", error=repr(e)[:200])
 
     def start(self):
         """The operator's START: recording begins now whatever the sky (the camera, stars and steadiness are
@@ -737,6 +779,7 @@ class Field:
         while self.solving and time.time() < deadline:
             time.sleep(0.5)
         r = None
+        self._raw_stop(s)
         try:
             s.update_meta(clock_offset_s=self.clock_offset_s())
             s.event("step", to=5)
@@ -759,7 +802,8 @@ class Field:
                 "camera_error": self.camera.error,
                 "imu_age_s": _round(self.camera.imu_age(), 1) if hasattr(self.camera, "imu_age") else None,
                 "last_fix": self.last_fix, "solving": self.solving, "interval_s": self.interval_s,
-                "done": self.last_done, "disk_error": bool(s and s.io_error), "server_time_ms": int(time.time() * 1000)}
+                "done": self.last_done, "disk_error": bool(s and s.io_error), "server_time_ms": int(time.time() * 1000),
+                "raw": self.camera.raw_stats() if hasattr(self.camera, "raw_stats") else None}
 
 
 # ── HTTP ────────────────────────────────────────────────────────────────

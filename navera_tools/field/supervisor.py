@@ -29,7 +29,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 IMU_SILENT_S = 30.0
 NO_FRAME_S = 60.0
 PHONE_SILENT_S = 60.0
-DISK_MIN_GB = 2.0
+DISK_MIN_GB = 10.0                 # the raw camera recording takes ~14 GB an hour (replay360.py)
 SOLVE_SLOW_S = 6.0
 NO_USE_FIX_S = 600.0
 
@@ -101,6 +101,18 @@ def assess(state, folder, now=None, root=None):
                      f"   frames {state.get('frames', 0)}   fixes {state.get('fixes', 0)}")
         if state.get("disk_error"):
             alerts["disk_write"] = ("cannot write the test to disk", "free space or check the disk; the test is not being saved")
+        raw = state.get("raw")
+        if raw:
+            lines.append(f"raw recording: {raw.get('mb', 0):.0f} MB in {len(raw.get('files') or [])} file(s), "
+                         f"{raw.get('drops', 0)} dropped, queue {raw.get('queue_mb', 0)} MB")
+            if raw.get("drops") or raw.get("error"):
+                alerts["raw"] = (f"raw recording lost {raw.get('drops')} packet(s) ({raw.get('drop_mb')} MB)"
+                                 + (f": {raw['error']}" if raw.get("error") else ""),
+                                 "the disk is too slow or full: stop other jobs, free space; the test itself goes on")
+        elif state.get("recording") and state.get("mode") == "360":
+            lines.append("raw recording: OFF")
+            alerts["raw_off"] = ("the camera's raw stream is not being recorded",
+                                 "check the camera; the per-frame images are still saved but the drive cannot be replayed")
     if folder:
         frames = read_jsonl(os.path.join(folder, "frames.jsonl"), tail=2_000_000)
         phone = read_jsonl(os.path.join(folder, "phone.jsonl"), tail=200_000)
