@@ -316,3 +316,21 @@ def test_kinematic_margin_is_the_two_sigmas_capped():
     from day_pkg.vision_nav import kinematic_margin_m
     assert abs(kinematic_margin_m(3.0, 30.0, 40.0) - 150.0) < 1e-9
     assert kinematic_margin_m(3.0, 300.0, 40.0, cap_m=250.0) == 250.0     # never looser than the old margin
+
+
+def test_blended_weak_fixes_are_less_noisy_than_the_fixes():
+    rng = np.random.default_rng(3)
+    out = {}
+    for blend in (False, True):
+        nav = VisionNavigator(blend_fixes=blend)
+        _fly(nav, 0, 10, 20.0, 0.0, heading=90.0, gps=True)
+        errs = []
+        for k in range(1, 61):                                   # weak fixes, 12 m noise, every 0.5 s
+            t = 10 + 0.5 * k
+            p = _move(P0, 20.0 * t, 0.0)
+            z = _move(p, *rng.normal(0, 12.0, 2))
+            nav.update(t, _fix(*z, inliers=40, sigma=15.0), 500.0, 90.0)
+            lat, lon, _, _ = nav.output(t, 90.0)
+            errs.append(math.hypot(*_en((lat, lon), p)))
+        out[blend] = float(np.median(errs[10:]))
+    assert out[True] < 0.8 * out[False]

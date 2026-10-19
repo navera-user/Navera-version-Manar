@@ -58,13 +58,18 @@ class VisionNavigator:
                  search_k: float = 3.0, min_search_m: float = 80.0, max_search_m: float = 600.0,
                  gate_k: float = 3.0, strong_inliers: int = 100, min_spread: float = 0.25,
                  retry_after: int = 3, bias_radius_m: float = 3000.0, strong_gate_k: float = 6.0,
-                 max_speed_mps: Optional[float] = None):
+                 max_speed_mps: Optional[float] = None, blend_fixes: bool = False,
+                 blend_below_inliers: int = 10 ** 9):
         self.max_dr_s, self.max_sigma_m, self.accel = max_dr_s, max_sigma_m, accel_mps2
         self.search_k, self.min_search_m, self.max_search_m = search_k, min_search_m, max_search_m
         self.gate_k, self.strong_inliers, self.min_spread = gate_k, strong_inliers, min_spread
         self.retry_after, self.bias_radius_m = retry_after, bias_radius_m
         self.strong_gate_k = strong_gate_k  # a strong fix's gate (sigmas); was unlimited
         self.max_speed_mps = max_speed_mps  # the vehicle's top speed: the kinematic gate (None: off)
+        # a fix is averaged with the prediction, each weighted by its sigma (a Kalman update per
+        # axis), instead of replacing it: few-inlier fixes (heavy clouds) are noisy, not biased
+        self.blend_fixes = blend_fixes
+        self.blend_below_inliers = blend_below_inliers   # only fixes with fewer inliers are averaged
         self.kinematic_rejected = 0
         self.weak_inliers = 30        # fewer: the fix places the vehicle, not its velocity
         self.fix = None               # (lat, lon, t, sigma_m, heading_deg or None): last position measured
@@ -358,6 +363,11 @@ class VisionNavigator:
             hs = max(0.03 * hv, 0.05 * hv if inl < 50 else 0.0)
             self._height_update(t, hv, 0.12 * hv if wide and inl < 100 else hs, "vision")
         if not gps_valid:
+            if self.blend_fixes and pred is not None and not reacquired and inl < self.blend_below_inliers:
+                k = pred[2] ** 2 / (pred[2] ** 2 + sig ** 2)
+                de, dn = _en((lat, lon), pred[:2])
+                lat, lon = _move(pred[:2], k * de, k * dn)
+                sig = math.sqrt(k) * sig
             # a weak fix places the vehicle but does not measure its velocity (campaign 5: the
             # velocity of weak fixes carried the output to 68-142 m)
             self._set_fix(t, lat, lon, sig, heading_deg, velocity=inl >= self.weak_inliers)
