@@ -632,6 +632,13 @@ def car_matrix() -> List[Condition]:
         C("h264 qp28 (~150 kB) mag<=3", effects={"h264_qp": 28}),
         C("h264 qp32 (~12 kB) mag<=3", effects={"h264_qp": 32}),
         C("h264 qp28 mag<=2.5", limit_mag=2.5, effects={"h264_qp": 28}),
+        # the real exposure's star brightness is not measured: 2.5 mag dimmer puts mag-3 stars at SNR ~5 (near the
+        # detector's 6 sigma), where the encoder's quantisation decides
+        C("dim -2.5 mag, mag<=3.5", limit_mag=3.5, effects={"haze_mag": 2.5}),
+        C("dim -2.5 mag + h264 qp24", limit_mag=3.5, effects={"haze_mag": 2.5, "h264_qp": 24}),
+        C("dim -2.5 mag + h264 qp28", limit_mag=3.5, effects={"haze_mag": 2.5, "h264_qp": 28}),
+        C("dim -2.5 mag + h264 qp32", limit_mag=3.5, effects={"haze_mag": 2.5, "h264_qp": 32}),
+        C("dim -3.5 mag + h264 qp28", limit_mag=3.5, effects={"haze_mag": 3.5, "h264_qp": 28}),
         C("gain: read noise 8", effects={"read_noise": 8}),
         C("exposure -1 mag", effects={"haze_mag": 1.0}),
         C("moon full high", effects={"moon": 40}),
