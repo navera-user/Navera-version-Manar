@@ -13,6 +13,17 @@ runs expert agents on the data while the car drives. Everything the camera sends
 | Trusted fixes > 50 km | 0 | a wrong trusted position is the worst outcome |
 | Raw recording | 0 drops, whole drive | everything can be replayed |
 
+## Choose the night
+
+A bright moon washes out the faint stars the camera's video barely shows, and the sun must be 15 deg below the
+horizon. Drive only when it is dark AND the moon is down:
+
+    python3 -m navera_tools.field.sky_window --start 2026-10-31 --nights 7    # offline; Tunis by default
+
+On 2026-10-20 it printed, local time: 31 Oct 18:40-22:25, 1 Nov 18:35-23:35, 2 Nov 18:35-00:45, 3 Nov
+18:35-01:55, 4 Nov 18:35-03:00 (24-27 Oct: none, full moon on the 25th). Check the cloud forecast for the
+same hours; scattered cloud is handled, overcast gives no fix.
+
 ## The day before
 
 1. Rehearsal: 10 min, any clear night, camera on a balcony or a parked car (START, wait, END).
