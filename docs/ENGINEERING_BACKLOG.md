@@ -165,7 +165,7 @@ IDs QAS-n (simulator QA campaign) — distinct from the QA-n code-quality items 
 | ID | Sev. | Finding | Status |
 |---|---|---|---|
 | R-1 | H | The box had no vehicle speed setting: estimator 100 m/s, day/night vision gates 30 m/s, whatever the vehicle — a fixed-wing's real GPS would be refused, every vision position rejected. `NAVERA_MAX_SPEED_KMH` in navera.env feeds all three | ✅ 19fd1b7 |
-| R-2 | H | Long routes: the ±1 km map corridor followed the straight lat/lon line, ~17 km from the path a vehicle flies on Paris–Tunisia (871 of 20 675 downloaded tiles on the real path). Routes are mapped and flown as the same ≤ 10 km great-circle legs | ✅ a026805 |
+| R-2 | H | Long routes: the ±1 km map corridor followed the straight lat/lon line, up to 31 km (Paris–Tunis) or 35 km (Paris–Sousse) from the great-circle path a vehicle flies (recomputed 2026-10-20; was written ~17 km) (871 of 20 675 downloaded tiles on the real path). Routes are mapped and flown as the same ≤ 10 km great-circle legs | ✅ a026805 |
 | R-3 | H | Day vision compared the camera with every tile of the map before applying the search circle: 289 ms/frame on an 80 000-tile route, 1.35 s on 400 000. Grid index, circle first: 3–11 ms, same ranking | ✅ 2664ad0 |
 | R-4 | M | Simulator lost its ROS link once, silently ("no output" while the autopilot flew). Watchdog thread + red banner | ✅ a12e09d |
 | R-5 | M | Test run hung 30 min with no failure reported (cause not found). Time limit per step, process group killed | ✅ c5a9654 |
