@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-rtc_node.py — NAVERA real-time-clock driver for the DS3231 (TCXO, ±2 ppm).
+"""rtc_node.py — NAVERA real-time-clock driver for the DS3231 (TCXO, ±2 ppm).
 
 Reads the DS3231 over I2C through the Adafruit Blinka / CircuitPython stack and
 publishes:
@@ -126,8 +125,8 @@ class RTCNode(Node):
             i2c = busio.I2C(getattr(board, scl_name), getattr(board, sda_name))
             rtc = adafruit_ds3231.DS3231(i2c)
             _ = rtc.datetime  # probe: fails here if nothing answers at 0x68
-            lost_power = bool(rtc.lost_power)   # inside the try: a transient I2C
-                                                # error here must not crash the node
+            # inside the try: a transient I2C error here must not crash the node
+            lost_power = bool(rtc.lost_power)
         except Exception as exc:  # I2C bus, wiring or missing-device failure
             self.get_logger().error(
                 f"DS3231 init failed on I2C bus {self.bus_num} @ 0x68: {exc}"

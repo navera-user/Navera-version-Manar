@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-rtc.launch.py — start the NAVERA RTC node (DS3231, I2C bus 1 @ 0x68).
+"""rtc.launch.py — start the NAVERA RTC node (DS3231, I2C bus 1 @ 0x68).
 
 Examples:
   ros2 launch rtc_pkg rtc.launch.py
