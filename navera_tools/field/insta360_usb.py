@@ -269,6 +269,7 @@ class Insta360Usb:
         self._started, self._imu_t, self.imu_restarts = time.time(), 0.0, 0
         self._stop = False
         self.recorder = None                                # RawRecorder: every packet to disk (record())
+        self.stack_ring = None                              # stack.StackRing: recent key frames while stacking is on
         self._buf = bytearray()
 
     # ── protocol ────────────────────────────────────────────────────────
@@ -405,8 +406,16 @@ class Insta360Usb:
                             with self._lock:
                                 # arrival (Jetson clock); exposure on the camera/IMU clock
                                 self._frame, self._frame_t, self._frame_ms = img, t_in, cam_ms - FRAME_STAMP_LAG_MS
+                            self._keep_for_stack(img, cam_ms - FRAME_STAMP_LAG_MS)
                 except Exception as e:                    # a damaged packet: skip it, the next key frame resyncs
                     self.error = f"decode: {e}"
+
+    def _keep_for_stack(self, img, ms):
+        """A decoded key frame into the stacking ring (grey), when the server has one (stack.py)."""
+        ring = self.stack_ring
+        if ring is not None:
+            import cv2
+            ring.keep(ms, cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img)
 
     def _track(self, rec):
         """One IMU sample into the attitude (called with the lock held)."""

@@ -64,6 +64,11 @@ ATTITUDE_SIGMA_360_DEG = 0.3
 # bounce moves the 1 s mean of the vertical by 0.01-0.02 g, which hides 0.2 g of braking (simulated drive,
 # sim/car360_drive.py: 'up' up to 10.6 deg off in frames that passed every gate; 3.0 deg left 26 of 6872 outside 3 sigma).
 MOVING_ATTITUDE_SIGMA_DEG = 5.0
+# 360, stopped: solve the mean of the key frames of the last STACK_SECONDS (stack.py: noise / sqrt(N), the stars stay;
+# simulated with H.264 like the camera's stream: a sky too faint for one frame is solved from a few key frames).
+# 0 = off until a real night shows the gain (live knob; autolab reports it, never applies it).
+STACK_SECONDS = 0.0
+STACK_MIN_FRAMES = 3
 STOPPED_SOLVE_GAP_S = 4.0                            # 360: while stopped, a frame every 4 s (a solve takes ~1-5 s)
 PHONE_MOVING_MPS = 1.0                               # phone GPS speed above which the car is not stopped (GPS noise ~0.3 m/s)
 # lens focal length: searched once on the first identified frame, then kept. Both lenses were measured to 87 deg
@@ -100,6 +105,7 @@ LIVE_PARAMS = {
     "insta360_usb.STILL_WINDOW_S": ("float", 0.5, 6.0, "stopped: window (s)"),
     "insta360_usb.STILL_ACC_STD_G": ("float", 0.0005, 0.03, "stopped: accelerometer steadiness (g)"),
     "insta360_usb.STILL_RATE_DPS": ("float", 0.05, 5.0, "stopped: rotation rate (deg/s)"),
+    "server.STACK_SECONDS": ("float", 0.0, 8.0, "stopped: solve the mean of the key frames of the last s (0 = off)"),
 }
 
 
@@ -478,6 +484,7 @@ class Field:
                         s.log("frames", {"idx": self.frame_idx, "solved": False, "why": "no camera frame",
                                          "sky": None})
                 elif self.mode == "360":
+                    self._sync_stack_ring()
                     self._live360(img, texp)
                     self._maybe_solve(img, texp)
                 else:
@@ -694,7 +701,8 @@ class Field:
             why = f"vehicle accelerating (|a| = {g:.3f} g): 'up' is not gravity"
         elif self.live.get("sky") not in self.usable_skies:
             why = f"sky {self.live.get('sky')}"
-        elif (self.live.get("confirmed") or 0) < MIN_STARS:
+        stack = STACK_SECONDS > 0 and rec["stopped"] and not why
+        if not why and not stack and (self.live.get("confirmed") or 0) < MIN_STARS:
             why = f"too few stars ({self.live.get('confirmed')})"
         if why:
             rec["why"] = why
@@ -702,7 +710,46 @@ class Field:
             return
         self.solving, self.solving_since = True, time.time()
         rec["t_exp"] = round(texp, 3)                     # Jetson time of the exposure (the phone track is on this clock)
-        threading.Thread(target=self._solve360, args=(s, rec, img, np.array(up), texp), daemon=True).start()
+        threading.Thread(target=self._solve360, args=(s, rec, img, np.array(up), texp, stack), daemon=True).start()
+
+    def _sync_stack_ring(self):
+        """The camera driver keeps the recent key frames only while stacking is on (stack.py)."""
+        from navera_tools.field import stack as stack_mod
+        drv = getattr(self.camera, "cam", None)
+        if drv is None or not hasattr(drv, "stack_ring"):
+            return
+        n = stack_mod.ring_size(STACK_SECONDS)
+        if n == 0:
+            drv.stack_ring = None
+        elif drv.stack_ring is None or drv.stack_ring.size != n:
+            drv.stack_ring = stack_mod.StackRing(n)
+
+    def _stack360(self, texp):
+        """(stacked grey frame, 'up' and Jetson exposure time at the window's middle, info) or (None, why): the key
+        frames of the last STACK_SECONDS, all taken while the camera was still."""
+        from navera_tools.field import allsky, sky360
+        from navera_tools.field import stack as stack_mod
+        drv = getattr(self.camera, "cam", None)
+        ring = getattr(drv, "stack_ring", None)
+        end = getattr(self.camera, "frame_ms", None)
+        if ring is None or end is None:
+            return None, "no stacking ring yet"
+        win = ring.window(end - STACK_SECONDS * 1000.0, end)
+        if len(win) < STACK_MIN_FRAMES:
+            return None, f"{len(win)} key frames to stack (min {STACK_MIN_FRAMES})"
+        t0 = win[0][0]
+        if not stack_mod.window_is_still(lambda m: drv.stopped(at_ms=m), t0, end):
+            return None, "the camera moved during the stacking window"
+        centre = float(np.mean([ms for ms, _ in win]))
+        up, _, _ = drv.gravity(at_ms=centre)
+        if up is None:
+            return None, "no 'up' at the window's middle"
+        img = stack_mod.stack_frames([g for _, g in win])
+        spots = sum(len(allsky.detect_spots(img, L, up_imu=up, min_alt=allsky.LOCATE_MIN_ALT))
+                    for L in sky360.default_lenses())
+        info = {"frames": len(win), "seconds": round((end - t0) / 1000.0, 1), "spots": spots,
+                "spots_single": self.live.get("confirmed")}
+        return (img, np.asarray(up, float), texp - (end - centre) / 1000.0, info), None
 
     def _phone_speed_at(self, t):
         """The phone's GPS speed (m/s) nearest to Jetson time t, if one is within 2 s."""
@@ -713,9 +760,23 @@ class Field:
         tt, v = min(pts, key=lambda p: abs(p[0] - t))
         return v if abs(tt - t) <= 2.0 else None
 
-    def _solve360(self, s, rec, img, up, texp):
+    def _solve360(self, s, rec, img, up, texp, stack=False):
         try:
             from navera_tools.field import allsky
+            if stack:
+                got, why = self._stack360(texp)
+                if got is not None:
+                    img, up, texp, info = got
+                    rec["stack"] = info
+                    rec["t_exp"] = round(texp, 3)
+                    rec["up_imu"] = [round(float(v), 6) for v in up]
+                    stars = info["spots"]
+                else:
+                    rec["stack"] = {"none": why}
+                    stars = self.live.get("confirmed") or 0
+                if stars < MIN_STARS:
+                    rec["why"] = f"too few stars ({stars}{' in the stack' if got is not None else ''})"
+                    return
             if self.cat is None:
                 self.cat = allsky.Catalogue(limit_mag=4.0)
             off = self.clock_offset_s() or 0.0

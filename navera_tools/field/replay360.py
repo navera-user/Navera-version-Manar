@@ -94,6 +94,7 @@ class OfflineDriver(insta360_usb.Insta360Usb):
             ms = cam_ms - insta360_usb.FRAME_STAMP_LAG_MS
             with self._lock:
                 self._frame, self._frame_t, self._frame_ms = img, now, ms
+            self._keep_for_stack(img, ms)
             self.frames_decoded += 1
             self.new_frames.append((now, ms, img))
 
