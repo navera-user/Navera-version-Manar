@@ -15,6 +15,7 @@ flight is north-up (no rotation) at one height.
 """
 import argparse
 import csv
+import json
 import math
 import os
 import threading
@@ -57,6 +58,8 @@ ap.add_argument("--max-alt", type=float, default=2000.0)
 ap.add_argument("--height", type=float,
                 help="m: the height is known from the start (GPS altitude while it works): no search")
 ap.add_argument("--save-frame", help="write the latest camera frame (undistorted) here, for checks")
+ap.add_argument("--record", help="directory: every processed camera frame (JPEG q95) + frames.jsonl with its truth, "
+                                 "for offline comparisons of matcher variants on identical real frames")
 ap.add_argument("--overlay", default="none",
                 help="conditions drawn over the map on the screen, comma-separated: " + ", ".join(OVERLAYS))
 ap.add_argument("--overlay-amount", type=float, default=0.3,
@@ -65,6 +68,13 @@ ap.add_argument("--max-speed", type=float, default=None,
                 help="m/s, the vehicle's top speed for the track gate (default 1.5 x --speed)")
 ap.add_argument("--blend", action="store_true",
                 help="NAVERA output from VisionNavigator with blend_fixes (a fix averaged with the prediction)")
+ap.add_argument("--retry-features", type=int, default=0,
+                help="LocalMatcher retry_features: a frame that fills its 1500-feature budget and finds too few "
+                     "inliers is described again with this many (heavy rain)")
+ap.add_argument("--imu-heading", type=float, default=None, metavar="DRIFT_DPS",
+                help="give the track the vehicle heading as the camera's gyro would (the route's heading plus a "
+                     "drift of DRIFT_DPS deg/s): the position is carried across gaps along the turn "
+                     "(day_pkg.vision_nav) instead of straight on")
 ap.add_argument("--no-gate", action="store_true",
                 help="forward every accepted match as NAVERA's output (the rule before 2026-10-19: "
                      "a wrong-but-confident match 100-650 m off was output)")
@@ -98,6 +108,14 @@ for f, x, y in zip(names, xs, ys):
         mosaic[(y - y0) * 256:(y - y0 + 1) * 256, (x - x0) * 256:(x - x0 + 1) * 256] = cv2.resize(t, (256, 256))
 
 
+def imu_heading(t):
+    """The heading (deg) a gyro-integrated attitude would give at t: the route's, drifting at --imu-heading deg/s."""
+    if a.imu_heading is None:
+        return None
+    _, _, (ve, vn) = route(t)
+    return (math.degrees(math.atan2(ve, vn)) + a.imu_heading * t) % 360.0
+
+
 def route(t):
     """Screen-centre ground point at time t (global map pixels) and the velocity (m/s e, n)."""
     w = a.speed / a.radius
@@ -121,6 +139,8 @@ def offset(p, de, dn):
     return (p[0] + dn / 111320.0, p[1] + de / (111320.0 * math.cos(math.radians(a.lat))))
 
 
+if a.record:
+    os.makedirs(a.record, exist_ok=True)
 cv2.namedWindow("NAVERA flight", cv2.WND_PROP_FULLSCREEN)
 cv2.setWindowProperty("NAVERA flight", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 if a.source == "360":
@@ -151,7 +171,7 @@ if a.matcher == "learned":
     M = LearnedMatcher(a.match_area or a.area, zoom=a.match_zoom)
     M.warm(a.lat, a.lon, a.radius * 2 + 1000)                 # the mission area, before the flight
 else:
-    M = LocalMatcher(a.match_area or a.area, zoom=a.match_zoom)
+    M = LocalMatcher(a.match_area or a.area, zoom=a.match_zoom, retry_features=a.retry_features)
 shown = []                                 # (time shown, map px, map py): what the screen showed
 M.tiles.around(a.lat, a.lon, a.radius + 1500)                  # warm the map features
 stop = threading.Event()
@@ -239,12 +259,21 @@ def worker():
         # time: 10 ms at 1000 px/s is 10 px of reference error)
         shake_v = (math.hypot(sdx - past[-2][3], sdy - past[-2][4]) / max(past[-1][0] - past[-2][0], 1e-3)
                    if len(past) > 1 else 0.0)
+        # how uncertain the bench truth is: the frame time is known to ~+-25 ms (key-frame arrival jitter 8 ms std,
+        # 24 ms max, measured 2026-10-20, plus the display's own timing): the spread of what the screen showed
+        # over that window, in metres ('wind' at 0.7: up to tens of metres; every other overlay: the scroll only)
+        near = [x for x in list(shown) if abs(x[0] - t) <= 0.025] or [past[-1]]
+        truth_unc = MPP * max(math.hypot(x[1] - tpx, x[2] - tpy) for x in near)
         centre = latlon(tpx, tpy)
         phase = "gps" if t < a.gps_drift_at else ("drift" if t < a.gps_lost_at else "lost")
         drift = 0.0 if phase == "gps" else a.gps_drift_rate * (t - a.gps_drift_at)
         gps = None if phase == "lost" else offset(centre if axis is None else offset(centre, *axis), drift, 0.0)
         if a.save_frame:
             cv2.imwrite(a.save_frame, img)
+        rec_name = None
+        if a.record:
+            rec_name = f"f_{len(rows):05d}.jpg"
+            cv2.imwrite(os.path.join(a.record, rec_name), img, [cv2.IMWRITE_JPEG_QUALITY, 95])
         t0 = time.time()
         if height is None:
             # no height known (no GPS altitude, no barometer): the multi-height search
@@ -291,13 +320,13 @@ def worker():
             if doubt >= 2 and not gps_refused:
                 gps_refused, refused_at = True, (t, drift)
                 if nav is not None:                            # hand over from vision, not the drifted GPS
-                    nav.gps(t, *vis, sigma_m=10.0)
+                    nav.gps(t, *vis, sigma_m=10.0, heading_deg=imu_heading(t))
         gate_why = None
         if nav is not None:
             if gps is not None and not gps_refused:
-                nav.gps(t, *gps)
+                nav.gps(t, *gps, heading_deg=imu_heading(t))
             elif vis is not None and not (refused_at and refused_at[0] == t) and \
-                    not nav.update(t, dict(r, sigma_m=r.get("sigma_m") or 10.0), None, None, gps_valid=False):
+                    not nav.update(t, dict(r, sigma_m=r.get("sigma_m") or 10.0), None, imu_heading(t), gps_valid=False):
                 gate_why, vis = nav.last_reason, None
         if vis:
             if vis_last is not None and t - vis_last[2] > 0.2:
@@ -315,6 +344,9 @@ def worker():
                 o = nav.output(t)
                 if o[0] is not None:
                     pos = (o[0], o[1])
+        elif a.imu_heading is not None and nav is not None and nav.output(t, imu_heading(t))[0] is not None:
+            o = nav.output(t, imu_heading(t))                  # carried along the turn the gyro measures
+            pos, pos_t, sigma = (o[0], o[1]), t, o[2]
         else:
             if pos is not None:
                 dt = t - pos_t
@@ -330,9 +362,18 @@ def worker():
                          inliers=r.get("inliers"), height_m=None if height is None else round(height),
                          vis_de=None if not vis else round(metres(vis, centre)[1], 1),
                          vis_dn=None if not vis else round(metres(vis, centre)[2], 1),
-                         gated=int(gate_why is not None), shake_pxps=round(shake_v),
+                         gated=int(gate_why is not None), shake_pxps=round(shake_v), truth_unc_m=round(truth_unc, 1),
                          turned_deg=round(getattr(cam360, "turned_deg", 0.0), 1) if a.source == "360" else None,
                          imu_ok=int(cam360.cam.imu_age() < 1.5) if a.source == "360" else None))
+        if a.record:
+            lv = locals()
+            with open(os.path.join(a.record, "frames.jsonl"), "a") as fh:
+                fh.write(json.dumps({"file": rec_name, "t": round(t, 3), "phase": phase, "centre": centre,
+                                     "truth": truth, "axis": axis, "height_m": used_h, "rot_deg": rot,
+                                     "mpp": lv.get("mpp"), "prior": lv.get("prior"), "truth_unc_m": round(truth_unc, 1),
+                                     "speed": a.speed, "overlay": a.overlay, "amount": a.overlay_amount,
+                                     "accepted": bool(r.get("accepted")), "inliers": r.get("inliers"),
+                                     "vision_err_m": None if vis_err is None else round(vis_err, 1)}) + "\n")
         print(f"{t:6.1f}s {phase:5s} gps+{drift:5.0f}m  vision "
               f"{'%5.1f m' % vis_err if vis_err is not None else '  -   '}  NAVERA={src:7s} "
               f"err {'%5.1f' % out_err if out_err is not None else '  -  '} m  {ms:4.0f} ms"
