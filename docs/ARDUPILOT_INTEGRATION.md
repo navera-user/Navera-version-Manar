@@ -86,7 +86,8 @@ Autopilot parameters (names as in ArduPilot 4.5: `GPS_TYPE`, `GPS_TYPE2`, `GPS_D
 | `EK3_SRC1_POSXY` | 3 (GPS, default) | position from NAVERA | SITL (default) |
 | `EK3_SRC1_VELXY` | **0** | vision fixes carry no velocity, and ArduPilot kept fusing the *last* GPS velocity received: after GPS loss that stale velocity caused a glitch and an EKF failsafe (LAND) within 40 s. Cost: see below | SITL |
 | `EK3_SRC1_VELZ` | **0** | same | SITL |
-| `EK3_SRC1_POSZ` | 1 (barometer, default) | vision fixes carry no altitude | SITL (default) |
+| `EK3_SRC1_POSZ` | 1 (barometer, default) — **never 3** | vision fixes carry no altitude (ArduPilot reads it as 0 m) | SITL, EKF height logged (below) |
+| `EK3_OGN_HGT_MASK` | 0 (default) — **never set** | it would correct the EKF origin height from that 0 m | Source |
 | `GPS_DELAY_MS` (`GPS1_DELAY_MS`) | see §5 | lag compensation | Not verified |
 
 **What `EK3_SRC1_VELXY = 0` / `EK3_SRC1_VELZ = 0` cost.** These settings remove GPS velocity
@@ -141,6 +142,60 @@ Measured in SITL (simulated vision, not real accuracy): drone at 120 m, 10–15 
 jammed in flight, vision at the *target* accuracy (15 m σ): the autopilot flew the mission
 on NAVERA's position, its own error 2–18 m for 2.5 min, no failsafe
 ([VALIDATION_STATUS.md](VALIDATION_STATUS.md), "Autopilot in the loop").
+
+### Height: NAVERA's positions never move the vehicle's height (F7) — SITL 2026-10-20
+
+`navera_tools/tests/sitl_f7_height.py` (ArduCopter 4.5.7 SITL, no simulated GPS, the
+parameters above; home 300 m AMSL, hover at 40 m in GUIDED). It plays NAVERA: every
+`GPS_INPUT` is built by `mavlink_out.gps_input_fields()` from the simulator's true position
+(vision: ±3 m noise, stated 15 m, 0 satellites). After take-off on a passed-through GPS, the
+GPS is cut and the phases are: *vision* (exactly as sent: no altitude, `IGNORE_ALT`) 20 s;
+*garbage_z* (ignored alt field = truth + 5000 m) 10 s; then, injected on the wire although
+NAVERA never sends it (a bug, or a spoofed GNSS height passed through), an altitude flagged
+**valid**: *wrong_z* (200 m low) 15 s, *jumps* (±300 m every 2 s) 16 s, *drift* (position
+**and** altitude pulled 90 m north / up at 1 m/s) 90 s, *hold* 10 s. Analysed from the
+dataflash log (XKF1 PD/PN/PE core 0, BARO Alt, SIM truth, GPS Alt, XKF3 IPD, XKF4 SH):
+
+| Phase | Recommended (`POSZ = 1`): EKF − baro max | EKF height at end (true) | `POSZ = 3`: EKF − baro max | EKF height at end (true) |
+|---|---|---|---|---|
+| gps | 0.3 m | 39.9 m (38.2) | 1.9 m | 40.0 m (40.1) |
+| vision | **0.0 m** | 40.0 m (38.3) | **431 m** | **−277 m (150 m)** |
+| garbage_z | 0.0 m | 40.0 m (38.3) | 587 m | −297 m (278 m) |
+| wrong_z | 0.0 m | 40.0 m (38.3) | 661 m | 234 m (468 m) |
+| jumps | 0.0 m | 40.0 m (38.3) | 397 m | 334 m (643 m) |
+| drift | 0.0 m | 40.0 m (38.3) | 404 m | 915 m (825 m) |
+| hold | 0.0 m | 40.0 m (38.3) | 55 m | 899 m (809 m) |
+
+(Heights above the EKF origin. The constant 1.7 m between the EKF and the truth in the
+recommended run is the simulated barometer's own offset, present before the GPS cut.)
+
+- **(a) Recommended parameters:** the EKF height followed the barometer within 0.1 m in every
+  phase, whatever the message carried — no altitude (ArduPilot logged GPS Alt = 0 m AMSL,
+  −300 m here), an ignored +5000 m, a valid altitude 200 m below the truth, jumps of ±300 m, a slow
+  90 m drift. Height innovation |IPD| ≤ 0.1 m (barometer only).
+- **(b) `EK3_SRC1_POSZ = 3` (control):** the very first phase — NAVERA's normal vision output
+  — pulled the EKF height to the 0 m AMSL ArduPilot stores for an ignored altitude: −277 m
+  within 20 s, while the vehicle climbed to 150 m to "hold" 40 m, then to 825 m as the wrong
+  heights followed. The test is sensitive; the setting must never be used with NAVERA.
+- **(c) Horizontal:** the same vision positions are used: during the 90 m drift spoof the EKF
+  position moved 88 m north of the truth (92 m at the end of *hold*), i.e. it follows the
+  vision position (and the vehicle was flown 90 m off by it — the cost of an undetected spoof,
+  not a height effect). Unspoofed, the EKF stayed within 2.8–3.7 m of the truth.
+
+**Change made with this test.** `mavlink_out` sends an altitude only for a satellite (GNSS)
+position: a vision / celestial one goes out with `IGNORE_ALT` even if its producer attached a
+height (unit test `test_gps_input_never_carries_a_vision_height`). Before, a non-GNSS position
+with a height and a geoid separation would have been sent with a valid altitude — no vision
+source does that today, so this closes a latent path, not an observed one.
+
+What remains outside this test: the EKF origin's AMSL height is taken from the GPS fix when it
+is set (a real GPS at power-on, above) — it only affects AMSL altitudes, not the height the
+vehicle flies by; ArduPlane / Rover were not run (same EKF3 height selection); real barometers
+drift (weather), which NAVERA cannot correct and does not try to.
+
+Run: `nice -n 19 python3 navera_tools/tests/sitl_f7_height.py` (both runs, ~9 min; `--keep`
+keeps the logs). The logging arming check is excluded in this script only: on the loaded
+Jetson the SITL log thread misses its heartbeat although the log is written.
 
 ## 4. Output alternative: NMEA
 

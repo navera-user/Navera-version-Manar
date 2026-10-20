@@ -45,6 +45,13 @@ towards 0 m and the vehicle would climb to hold its height. (Problems doc F7, a 
 SITL 2026-10-15 while a runaway dead-reckoned position was forwarded, is not explained by this with
 the default parameters; it disappeared once that position was withdrawn honestly — 142–164 m in the
 2026-10-15/16 re-runs — and the autopilot's EKF height was not logged in the climbing run.)
+*Verified in SITL with EKF height logged (2026-10-20, `navera_tools/tests/sitl_f7_height.py`,
+results in docs/ARDUPILOT_INTEGRATION.md §3): with the recommended parameters the EKF height
+stayed on the barometer within 0.1 m whatever altitude the messages carried — none, a garbage
+ignored value, 200 m off, ±300 m jumps, a 90 m slow drift — while the horizontal position took
+the vision positions; with `EK3_SRC1_POSZ = 3` the EKF height went to −277 m within 20 s and the
+vehicle climbed to 150 m, then 825 m.* Only a satellite position ever carries an altitude in
+GPS_INPUT: a non-GNSS one is sent with `IGNORE_ALT` even if its producer attached a height.
 
 **Gaps are bridged, but not for long.** An autopilot lands on a silence (ArduPilot Copter SITL:
 EKF failsafe → LAND about 8 s after the last position, even though the vehicle has hardly moved
